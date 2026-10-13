@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
@@ -11,14 +12,16 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	bgpengine "github.com/tunnexio/tunnex/apps/node/internal/bgp"
 )
 
 // Restoration records retired obligations, not permission. Previous entries are
 // flattened (Restoration=nil) so history cannot recursively amplify the journal.
 type RuntimeRestoration struct {
-	BootID  string
-	Epoch   uint64
-	Retired []RuntimeRetiredEpoch
+	Compacted *RuntimeHistoryContinuation `json:",omitempty"`
+	BootID    string
+	Epoch     uint64
+	Retired   []RuntimeRetiredEpoch
 }
 type RuntimeRetiredEpoch struct {
 	Entry                       RuntimeJournalEntry
@@ -55,6 +58,12 @@ func sameRestorationIntent(before, after RuntimeJournalEntry) bool {
 		a.Engines[i].LocalAddress = b.Engines[i].LocalAddress
 	}
 	a.Observed = b.Observed
+	if b.ContractVersion == 3 {
+		a.BGPProcess = b.BGPProcess
+		a.BGPRoutes = b.BGPRoutes
+		a.BGPProcessRetired = b.BGPProcessRetired
+		a.BGPProcessHistory = b.BGPProcessHistory
+	}
 	return reflect.DeepEqual(b, a)
 }
 func validRestoration(r RuntimeJournalEntry) bool {
@@ -62,14 +71,20 @@ func validRestoration(r RuntimeJournalEntry) bool {
 	if v == nil {
 		return true
 	}
-	if r.ContractVersion != 2 || r.AbsenceOnly || !validBootID(v.BootID) || v.Epoch != uint64(len(v.Retired)) || v.Epoch > 16 {
+	if (r.ContractVersion != 2 && r.ContractVersion != 3) || r.AbsenceOnly || !validBootID(v.BootID) || !validHistoryContinuation(v.Compacted) || len(v.Retired) > 16 || (v.Compacted != nil && len(v.Retired) != 16) || historyCount(v.Compacted) > ^uint64(0)-uint64(len(v.Retired)) || v.Epoch != historyCount(v.Compacted)+uint64(len(v.Retired)) {
 		return false
 	}
 	for i, h := range v.Retired {
 		if h.Entry.Restoration != nil || h.Entry.ResetCleanup != nil || h.Entry.Phase != RuntimeApplied || !validBootID(h.NewBootID) || !validKernelNamespace(h.NewNamespace) || h.NewGeneration == uuid.Nil || h.NewGeneration == h.Entry.Allocation.Generation || !validDigest(h.EvidenceDigest) {
 			return false
 		}
-		if !validJournalPayload(runtimeJournalPayload{Version: 3, OwnerID: r.Engines[0].Binding.GatewayID, Entries: []RuntimeJournalEntry{h.Entry}}) {
+		// A flattened history entry cannot resolve predecessor IDs by itself.
+		// Validate its local structure without those references; their ORIGINAL
+		// values remain in h.Entry and must match every next intent below. The
+		// complete outer payload resolves the exact immutable predecessor graph.
+		structural := h.Entry
+		structural.RetainedGuardPredecessors = nil
+		if !validJournalPayload(runtimeJournalPayload{Version: retiredJournalVersion(structural), OwnerID: r.Engines[0].Binding.GatewayID, Entries: []RuntimeJournalEntry{structural}}) {
 			return false
 		}
 		switch h.Termination {
@@ -113,7 +128,7 @@ func restorationAdvanced(before, after RuntimeJournalEntry) bool {
 	if before.Restoration != nil {
 		oldEpoch = before.Restoration.Epoch
 	}
-	return a != nil && a.Epoch == oldEpoch+1
+	return oldEpoch != ^uint64(0) && a != nil && a.Epoch == oldEpoch+1
 }
 func validRestorationSuccessor(before, after RuntimeJournalEntry) bool {
 	if !validRestoration(after) {
@@ -129,10 +144,41 @@ func validRestorationSuccessor(before, after RuntimeJournalEntry) bool {
 		return false
 	}
 	v := after.Restoration
+	if len(v.Retired) == 0 {
+		return false
+	}
+	if before.Restoration == nil && v.Compacted != nil {
+		return false
+	}
 	oldBoot := ""
 	if before.Restoration != nil {
 		oldBoot = before.Restoration.BootID
-		if !reflect.DeepEqual(before.Restoration.Retired, append([]RuntimeRetiredEpoch(nil), v.Retired[:len(v.Retired)-1]...)) {
+		expected := *before.Restoration
+		if compactRestorationHistory(&expected) != nil {
+			return false
+		}
+		if !reflect.DeepEqual(expected.Compacted, v.Compacted) || !reflect.DeepEqual(expected.Retired, append([]RuntimeRetiredEpoch(nil), v.Retired[:len(v.Retired)-1]...)) {
+			return false
+		}
+	}
+	if before.ContractVersion == 3 {
+		if after.BGPProcess != nil || after.BGPRoutes != nil {
+			return false
+		}
+		historyBase := before
+		if before.BGPProcess != nil && compactBGPProcessHistory(&historyBase) != nil {
+			return false
+		}
+		if !reflect.DeepEqual(historyBase.BGPProcessHistory, after.BGPProcessHistory) {
+			return false
+		}
+		expected := append([]bgpengine.ProcessIdentity{}, historyBase.BGPProcessRetired...)
+		if before.BGPProcess != nil {
+			old := *before.BGPProcess
+			old.Stage = "cleaned"
+			expected = append(expected, old)
+		}
+		if !reflect.DeepEqual(expected, append([]bgpengine.ProcessIdentity{}, after.BGPProcessRetired...)) {
 			return false
 		}
 	}
@@ -159,7 +205,7 @@ func (c *RuntimeController) recordRuntimeBoot(ctx context.Context, id uuid.UUID)
 		if e.DeliveryID != id {
 			continue
 		}
-		if e.Allocation.Namespace != ns || e.Phase != RuntimeApplied || e.ContractVersion != 2 {
+		if e.Allocation.Namespace != ns || e.Phase != RuntimeApplied || (e.ContractVersion != 2 && e.ContractVersion != 3) {
 			return ErrRuntimeController
 		}
 		if e.Restoration != nil {
@@ -169,7 +215,11 @@ func (c *RuntimeController) recordRuntimeBoot(ctx context.Context, id uuid.UUID)
 			return nil
 		}
 		// Prove exact surviving indices before binding a legacy entry to today's boot.
-		missing, err := c.kernel.RestartNeedsRecreation(ctx, e.Allocation, e.Observed)
+		missing, err := c.restartNeedsRecreation(ctx, e)
+		if e.ContractVersion == 3 {
+			err = c.kernel.verifyBGPRoutes(ctx, e.Allocation, e.Observed, bgpRouteUnion(e.BGPRoutes), true)
+			missing = false
+		}
 		if err != nil || missing {
 			return ErrRuntimeController
 		}
@@ -264,24 +314,39 @@ func (c *RuntimeController) reserveRestoration(ctx context.Context, m RuntimeMat
 	candidate.Phase = old.Phase
 	candidate.Observed = old.Observed
 	candidate.Recovery = old.Recovery
-	if old.Phase != RuntimeApplied || old.ContractVersion != 2 || old.AbsenceOnly || old.ResetCleanup != nil || !sameRestorationIntent(old, candidate) {
-		return ErrRuntimeController
+	candidate.BGPProcess = old.BGPProcess
+	candidate.BGPProcessHistory = old.BGPProcessHistory
+	candidate.BGPProcessRetired = append([]bgpengine.ProcessIdentity(nil), old.BGPProcessRetired...)
+	candidate.BGPRoutes = old.BGPRoutes
+	if old.Phase != RuntimeApplied || (old.ContractVersion != 2 && old.ContractVersion != 3) || old.AbsenceOnly || old.ResetCleanup != nil || !sameRestorationIntent(old, candidate) {
+		return fmt.Errorf("%w: restoration intent", ErrRuntimeController)
 	}
 	ns := candidate.Allocation.Namespace
 	termination, digest, err := c.restorationProof(old, boot, ns)
 	if err != nil {
-		return err
+		return fmt.Errorf("%w: restoration proof", err)
 	}
 	c.active = nil
 	if _, err = c.refuse(ctx, entries); err != nil {
-		return err
+		return fmt.Errorf("%w: restoration denial", err)
 	}
 	authority, identity, err := c.recoveryLease(ctx, old, m.Policy.Hash)
 	if err != nil {
-		return err
+		return fmt.Errorf("%w: restoration lease", err)
 	}
 	if c.restorationAbsent(ctx, old, boot, ns) != nil {
-		return ErrRuntimeController
+		return fmt.Errorf("%w: restoration absence", ErrRuntimeController)
+	}
+	if old.ContractVersion == 3 && old.BGPProcess != nil {
+		if recoverRetiredRuntimeBGPProcess(*old.BGPProcess, boot, ns) != nil {
+			return fmt.Errorf("%w: restoration retired process", ErrRuntimeController)
+		}
+		if compactBGPProcessHistory(&candidate) != nil {
+			return ErrRuntimeJournal
+		}
+		retired := *old.BGPProcess
+		retired.Stage = "cleaned"
+		candidate.BGPProcessRetired = append(append([]bgpengine.ProcessIdentity{}, candidate.BGPProcessRetired...), retired)
 	}
 	if _, err = authority.RemainingForApply(identity, 5*time.Second); err != nil {
 		return err
@@ -290,10 +355,11 @@ func (c *RuntimeController) reserveRestoration(ctx context.Context, m RuntimeMat
 	oldBoot := ""
 	if old.Restoration != nil {
 		v.Epoch = old.Restoration.Epoch
+		v.Compacted = old.Restoration.Compacted
 		v.Retired = append(v.Retired, old.Restoration.Retired...)
 		oldBoot = old.Restoration.BootID
 	}
-	if v.Epoch >= 16 {
+	if v.Epoch == ^uint64(0) || compactRestorationHistory(&v) != nil {
 		return ErrRuntimeController
 	}
 	candidate.Allocation.Generation = uuid.New()
@@ -301,14 +367,28 @@ func (c *RuntimeController) reserveRestoration(ctx context.Context, m RuntimeMat
 		candidate.Allocation.Tunnels[i].Alias = KernelTunnelAlias(candidate.Allocation.Generation, candidate.Allocation.Tunnels[i].TunnelID)
 	}
 	candidate.Observed = [2]Ownership{}
+	if candidate.ContractVersion == 3 {
+		candidate.BGPProcess = nil
+		candidate.BGPRoutes = nil
+	}
 	v.Epoch++
 	v.Retired = append(v.Retired, RuntimeRetiredEpoch{Entry: flattenedRestorationEntry(old), BootID: oldBoot, NewBootID: boot, NewNamespace: ns, NewGeneration: candidate.Allocation.Generation, Termination: termination, EvidenceDigest: digest})
 	candidate.Restoration = &v
 	entries[pos] = candidate
 	if c.journal.Save(entries) != nil {
-		return ErrRuntimeController
+		return fmt.Errorf("%w: restoration journal commit", ErrRuntimeController)
 	}
 	delete(c.recoveryPrepared, old.DeliveryID)
 	delete(c.recoveryHistory, old.Allocation.ConnectionID)
 	return nil
+}
+
+func retiredJournalVersion(e RuntimeJournalEntry) int {
+	if hasHistoryContinuation(e) {
+		return 8
+	}
+	if e.ContractVersion == 3 {
+		return 7
+	}
+	return 3
 }

@@ -209,6 +209,8 @@ type Manager struct {
 	flushErr error
 	// fqdnBaselinePath stores a committed active FQDN generation and its exact
 	// enforcement tuples. A pending/missing/corrupt file is never trusted.
+	fqdnBeforePolicy       func(context.Context, *nodepolicy.Compiled) error
+	fqdnCommittedPolicy    func(*nodepolicy.Compiled)
 	fqdnBaselinePath       string
 	fqdnRecoveryRequired   bool
 	fqdnHistoryKnown       bool
@@ -249,6 +251,12 @@ func New(wgIface string) *Manager {
 // must be called before the first policy reconcile. The sibling history marker
 // distinguishes a new/CIDR-only gateway from a gateway that has proven prior
 // FQDN enforcement. Only the latter needs selective marked-flow recovery.
+// SetFQDNPolicyCallbacks binds the IPsec owner to actual ordinary-policy commits.
+// The callbacks are installed once at startup, before any reconciliation.
+func (m *Manager) SetFQDNPolicyCallbacks(before func(context.Context, *nodepolicy.Compiled) error, committed func(*nodepolicy.Compiled)) {
+	m.fqdnBeforePolicy, m.fqdnCommittedPolicy = before, committed
+}
+
 func (m *Manager) SetFQDNBaselinePath(path string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -637,6 +645,14 @@ func poolCIDRForForward(policyPool, wgPool string) string {
 // atomically reduces the exact manager-owned tables to marker-only state; it
 // never deletes the manager's ownership receipts.
 func (m *Manager) Teardown(ctx context.Context) {
+	if m.fqdnBeforePolicy != nil {
+		if err := m.fqdnBeforePolicy(ctx, nil); err != nil {
+			if m.log != nil {
+				m.log.Warn("ipsec_fqdn_withdraw_failed")
+			}
+			return
+		}
+	}
 	if !m.kubernetesMode.Load() {
 		if m.apply != nil {
 			_ = m.apply(ctx, "delete table ip tunnex\ndelete table ip6 tunnex\n")
@@ -1112,6 +1128,17 @@ func (m *Manager) applyAndTrack(ctx context.Context, ruleset string, pol *nodepo
 	// + logs), NOT Zero Trust policy staleness — so it must NOT set policy_error/failingSince
 	// (finding #6: a nftless open-build gateway must not report itself policy-stale).
 	isPolicy := pol != nil && pol.Mode == nodepolicy.ModeEnforcing
+	fqdnCandidate := pol
+	if !m.policyReceived.Load() || m.refusedVersion.Load() != 0 || pol == nil || pol.Mesh || pol.Mode != nodepolicy.ModeEnforcing {
+		fqdnCandidate = nil
+	}
+	// Retract affected IPsec answer authority before the ordinary nft swap.
+	// Failure aborts this swap; callbacks never adopt desired/pending state.
+	if m.fqdnBeforePolicy != nil {
+		if err := m.fqdnBeforePolicy(ctx, fqdnCandidate); err != nil {
+			return err
+		}
+	}
 	// Write a pending marker before nft. If this process dies before the
 	// matching committed marker, the next process performs restart recovery
 	// instead of trusting an ambiguous tuple baseline.
@@ -1143,6 +1170,9 @@ func (m *Manager) applyAndTrack(ctx context.Context, ruleset string, pol *nodepo
 			// (removedTuples diffs from nil → empty). This is the SAME no-continuous-baseline class as the deferred
 			// boot reconcile — carried by S8.7b, stated in its named limitation. NEW connections are denied at once.
 			m.appliedAllow = nil
+			if m.fqdnCommittedPolicy != nil {
+				m.fqdnCommittedPolicy(nil)
+			}
 			return nil
 		}
 		// The apply FAILED, so the kernel keeps the PREVIOUS ruleset in force.
@@ -1197,6 +1227,9 @@ func (m *Manager) applyAndTrack(ctx context.Context, ruleset string, pol *nodepo
 			return err
 		}
 		m.fqdnHistorySeen, m.fqdnHistoryKnown = true, true
+	}
+	if m.fqdnCommittedPolicy != nil {
+		m.fqdnCommittedPolicy(fqdnCandidate)
 	}
 	return nil
 }

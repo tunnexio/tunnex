@@ -312,3 +312,51 @@ func TestDaemonEngineConfigDoesNotInventPolicyRevision(t *testing.T) {
 	// Engine configuration is not a permit. Runtime leases separately bind the
 	// current authoritative policy hash before a packet permit can be installed.
 }
+
+func TestDaemonCleanupTransportSelectors(t *testing.T) {
+	for _, tc := range []struct {
+		name          string
+		bgp           bool
+		local, remote string
+		accept        bool
+	}{
+		{"bgp broad transport", true, "0.0.0.0/0", "0.0.0.0/0", true},
+		{"static narrow transport", false, "10.10.0.0/24", "10.20.0.0/24", true},
+		{"bgp policy substituted for local transport", true, "10.10.0.0/24", "0.0.0.0/0", false},
+		{"bgp policy substituted for remote transport", true, "0.0.0.0/0", "10.20.0.0/24", false},
+		{"bgp foreign broad boundary", true, "0.0.0.0/1", "0.0.0.0/0", false},
+		{"static broad selectors refused", false, "0.0.0.0/0", "0.0.0.0/0", false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := daemonFixture()
+			cfg.BGP = tc.bgp
+			cfg.ReqID = 7
+			fixture := daemonSAFixture()
+			ike := fixture["owned"].section
+			child := ike["child-sas"].section["child-1"].section
+			child["name"] = viciText(engineName(cfg))
+			child["local-ts"] = viciList(tc.local)
+			child["remote-ts"] = viciList(tc.remote)
+			calls, reads := 0, 0
+			c := daemonInventoryStub(nil, viciMessage{}, &calls)
+			base := c.request
+			c.request = func(ctx context.Context, cmd, event string, m viciMessage) (viciMessage, []viciMessage, error) {
+				if cmd == "list-sas" {
+					reads++
+					if reads == 1 {
+						return viciMessage{}, []viciMessage{{engineName(cfg): viciSection(ike)}}, nil
+					}
+				}
+				return base(ctx, cmd, event, m)
+			}
+			err := c.removeTunnel(context.Background(), cfg)
+			if tc.accept {
+				if err != nil || calls != 1 || reads != 2 {
+					t.Fatalf("exact transport cleanup refused: err=%v mutations=%d reads=%d", err, calls, reads)
+				}
+			} else if err != ErrDaemonProtocol || calls != 0 || reads != 1 {
+				t.Fatalf("foreign transport mutated: err=%v mutations=%d reads=%d", err, calls, reads)
+			}
+		})
+	}
+}

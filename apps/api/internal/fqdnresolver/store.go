@@ -101,6 +101,31 @@ func (s *PostgresStore) WithAfterCommit(after AfterCommit) *PostgresStore {
 	return s
 }
 
+// NextRefreshAt reads only deadlines for server-selected resources. Database
+// time supplies the deadline of new work; refresh/retry times stay unchanged.
+// A past deadline is bounded by the scheduler's wake floor, never a forced refresh.
+func (s *PostgresStore) NextRefreshAt(ctx context.Context) (time.Time, error) {
+	var at *time.Time
+	err := s.pool.QueryRow(ctx, `SELECT min(deadline) FROM (
+ SELECT CASE
+  WHEN g.state='active' THEN g.activated_at + g.effective_ttl * 0.8
+  WHEN g.state='withdrawn' THEN g.ended_at + $1::interval
+  WHEN g.id IS NULL THEN clock_timestamp()
+ END AS deadline
+ FROM fqdn_resources r
+ JOIN organizations o ON o.id=r.org_id AND o.deleted_at IS NULL AND o.fqdn_resources_enabled
+ LEFT JOIN LATERAL (
+  SELECT id,state,activated_at,effective_ttl,ended_at FROM fqdn_resource_answer_generations
+  WHERE org_id=r.org_id AND resource_id=r.id ORDER BY generation DESC LIMIT 1
+ ) g ON true
+ WHERE r.resolver_site_id IS NOT NULL AND r.resolver_node_id IS NOT NULL
+ ) deadlines`, s.retryAfter.String()).Scan(&at)
+	if err != nil || at == nil {
+		return time.Time{}, err
+	}
+	return *at, nil
+}
+
 // Due returns only resources with a server-selected active Site/Gateway pair.
 // A missing pair is a draft, not an invitation to use a public resolver.
 func (s *PostgresStore) Due(ctx context.Context, now time.Time, limit int) ([]Work, error) {
@@ -118,6 +143,7 @@ LEFT JOIN LATERAL (
          COALESCE((
            SELECT jsonb_agg(jsonb_build_object(
              'id',p.id,'name',p.name,'provider',p.provider_hint,'legacy_default',p.legacy_default,
+             'ipsec_path',CASE WHEN p.ipsec_connection_id IS NULL THEN NULL ELSE jsonb_build_object('connection_id',p.ipsec_connection_id,'configuration_revision',p.ipsec_configuration_revision,'source_address',host(p.ipsec_source_address)) END,
              'zone_suffixes',COALESCE((SELECT jsonb_agg(s.suffix ORDER BY length(s.suffix) DESC,s.suffix) FROM fqdn_resolver_context_profile_suffixes s WHERE s.profile_id=p.id AND s.org_id=p.org_id),'[]'::jsonb),
              'endpoints',COALESCE((SELECT jsonb_agg(jsonb_build_object('address',host(pe.address),'port',pe.port,'transport',pe.transport) ORDER BY pe.ordinal) FROM fqdn_resolver_context_profile_endpoints pe WHERE pe.profile_id=p.id AND pe.org_id=p.org_id),'[]'::jsonb)
            ) ORDER BY p.ordinal)
@@ -159,7 +185,10 @@ WHERE r.resolver_site_id IS NOT NULL AND r.resolver_node_id IS NOT NULL
         AND g.generation=(SELECT max(x.generation) FROM fqdn_resource_answer_generations x WHERE x.org_id=r.org_id AND x.resource_id=r.id)
     )
   )
-ORDER BY r.updated_at,r.id
+ORDER BY COALESCE(
+ (SELECT min(g.activated_at + g.effective_ttl) FROM fqdn_resource_answer_generations g WHERE g.org_id=r.org_id AND g.resource_id=r.id AND g.state='active'),
+ (SELECT max(g.ended_at) + $2::interval FROM fqdn_resource_answer_generations g WHERE g.org_id=r.org_id AND g.resource_id=r.id AND g.state='withdrawn'),
+ '-infinity'::timestamptz), r.updated_at,r.id
 LIMIT $3`, now, s.retryAfter.String(), limit)
 	if err != nil {
 		return nil, err
@@ -198,6 +227,7 @@ LIMIT $3`, now, s.retryAfter.String(), limit)
 				w.ResolverConfig.ProfileProvider = profile.Provider
 				w.ResolverConfig.MatchedSuffix = suffix
 				w.ResolverConfig.Endpoints = append([]ResolverEndpoint(nil), profile.Endpoints...)
+				w.ResolverConfig.IPsecPath = profile.IPsecPath
 			}
 			if selectErr != nil || !w.ResolverConfig.valid() {
 				// A malformed persisted config is not a reason to consult another
@@ -287,7 +317,11 @@ func approvedWithdrawalCause(c WithdrawalCause) bool {
 	}
 }
 
-func (s *PostgresStore) inTx(ctx context.Context, w Work, fn func(pgx.Tx, int64, uuid.UUID, uuid.UUID, uuid.UUID) error) (err error) {
+func (s *PostgresStore) inTx(ctx context.Context, w Work, fn func(pgx.Tx, int64, uuid.UUID, uuid.UUID, uuid.UUID) error) error {
+	return retryFQDNSerialization(ctx, nil, func() error { return s.inTxOnce(ctx, w, fn) })
+}
+
+func (s *PostgresStore) inTxOnce(ctx context.Context, w Work, fn func(pgx.Tx, int64, uuid.UUID, uuid.UUID, uuid.UUID) error) (err error) {
 	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.Serializable})
 	if err != nil {
 		return err

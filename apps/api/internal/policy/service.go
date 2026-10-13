@@ -1523,6 +1523,17 @@ func fqdnResourceFromActiveGeneration(g fqdnresolver.ActiveGeneration, routedPre
 		}
 		answers = append(answers, address.String())
 	}
+	var connectionID uuid.UUID
+	var configurationRevision int64
+	var sourceAddress string
+	if path := g.ResolverConfig.IPsecPath; path != nil {
+		var err error
+		connectionID, err = uuid.Parse(path.ConnectionID)
+		if err != nil || connectionID == uuid.Nil {
+			return FQDNResource{}, fmt.Errorf("invalid IPsec path in active FQDN generation %s", g.ResourceID)
+		}
+		configurationRevision, sourceAddress = path.ConfigurationRevision, path.SourceAddress
+	}
 	return FQDNResource{
 		ID:       g.ResourceID,
 		FQDN:     g.Hostname,
@@ -1530,15 +1541,19 @@ func fqdnResourceFromActiveGeneration(g fqdnresolver.ActiveGeneration, routedPre
 		PortLow:  derefI32(g.PortLow),
 		PortHigh: derefI32(g.PortHigh),
 		Active: &FQDNGeneration{
-			ResourceID:            g.ResourceID,
-			SelectedSiteID:        site,
-			SelectedGatewayID:     gateway,
-			ResolverConfigID:      configID,
-			ResolverProfileID:     profileID,
-			ResolverMatchSuffix:   g.ResolverConfig.MatchedSuffix,
-			ResolverConfigVersion: g.ResolverConfig.Version,
-			Answers:               answers,
-			ResolverAddresses:     resolverAddresses,
+			ResourceID:                 g.ResourceID,
+			SelectedSiteID:             site,
+			SelectedGatewayID:          gateway,
+			ResolverConfigID:           configID,
+			ResolverProfileID:          profileID,
+			ResolverMatchSuffix:        g.ResolverConfig.MatchedSuffix,
+			ResolverConfigVersion:      g.ResolverConfig.Version,
+			IPsecConnectionID:          connectionID,
+			IPsecConfigurationRevision: configurationRevision,
+			IPsecSourceAddress:         sourceAddress,
+			ValidUntil:                 g.ResolvedAt.Add(g.TTL),
+			Answers:                    answers,
+			ResolverAddresses:          resolverAddresses,
 		},
 	}, nil
 }

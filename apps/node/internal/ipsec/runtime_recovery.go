@@ -38,7 +38,13 @@ func (c *RuntimeController) recoveryNow() time.Duration {
 	}
 	return c.recoveryClock()
 }
-func (c *RuntimeController) observeRecovery(ctx context.Context, e RuntimeJournalEntry) [2]string {
+func (c *RuntimeController) observeRecovery(ctx context.Context, e RuntimeJournalEntry) (statuses [2]string) {
+	startedDiagnostic := time.Now()
+	defer func() {
+		if statuses[0] == "unknown" || statuses[1] == "unknown" {
+			c.emitRuntimeDiagnostic(ctx, "recovery_observe", "native_status", e.Allocation.ConnectionID, startedDiagnostic, true)
+		}
+	}()
 	if c.recoveryObserve != nil {
 		return c.recoveryObserve(ctx, e)
 	}
@@ -53,6 +59,36 @@ func (c *RuntimeController) observeRecovery(ctx context.Context, e RuntimeJourna
 	}
 	return runtimeObservedStatuses(ctx, e, runtimeStatusReaders{daemon: c.config.Daemon.Inspect, kernel: kr.Read, xfrm: xr.Read, alive: c.config.DaemonAlive})
 }
+
+// The proof result belongs only to the current bounded heartbeat observation.
+// Hooks retain their original independent reads and failure seams. No snapshot
+// or proof is stored on the controller or survives a publication callback.
+func (c *RuntimeController) observeRecoveryForHeartbeat(ctx context.Context, e RuntimeJournalEntry, env RuntimeEnvironment) ([2]string, func() error) {
+	if c.recoveryObserve != nil || c.prove != nil {
+		return c.observeRecovery(ctx, e), func() error { return c.proveCurrent(ctx, e, env) }
+	}
+	started := time.Now()
+	unknown := [2]string{"unknown", "unknown"}
+	xr, err := NewXFRMReader(c.config.IPPath)
+	if err != nil {
+		return unknown, func() error { return ErrRuntimeController }
+	}
+	kr, err := NewKernelReader(c.config.IPPath)
+	if err != nil {
+		return unknown, func() error { return ErrRuntimeController }
+	}
+	statuses, proofErr := c.observeAndProveRecoveryWithIndependentReaders(ctx, e, env, runtimeStatusReaders{daemon: c.config.Daemon.Inspect, kernel: kr.Read, xfrm: xr.Read, alive: c.config.DaemonAlive})
+	if proofErr != nil {
+		c.emitRuntimeDiagnostic(ctx, "recovery_observe", "native_status", e.Allocation.ConnectionID, started, true)
+	}
+	return statuses, func() error {
+		if ctx.Err() != nil || !c.config.DaemonAlive() {
+			return ErrRuntimeController
+		}
+		return proofErr
+	}
+}
+
 func (c *RuntimeController) reconcileRecoveryRoutes(ctx context.Context, e RuntimeJournalEntry, target uint8) error {
 	if c.recoverySwitch != nil {
 		return c.recoverySwitch(ctx, e.Allocation, e.Observed, target)
@@ -75,7 +111,34 @@ func (c *RuntimeController) recoveryLease(ctx context.Context, e RuntimeJournalE
 
 // applyRecovery executes only authenticated versioned material, serialized by
 // Apply. No saved transition, observation or process cache can restore a lease.
-func (c *RuntimeController) applyRecovery(ctx context.Context, m RuntimeMaterial, entries []RuntimeJournalEntry, pos int, env RuntimeEnvironment, grants []GuardGrant) (RuntimeAcknowledgement, error) {
+// recoveryUnchangedActive can retain only the original, unextended authority.
+// A complete owned-table read requires this exact target's members to be live;
+// the final ordinary Apply still obtains a new nonce and rebuilds the full guard.
+func (c *RuntimeController) recoveryUnchangedActive(ctx context.Context, entry RuntimeJournalEntry, env RuntimeEnvironment, policyHash string, grants []GuardGrant) bool {
+	old, ok := c.active[entry.Allocation.ConnectionID]
+	prepared, known := c.recoveryPrepared[entry.DeliveryID]
+	identity := PermitLeaseIdentity{DeliveryID: entry.DeliveryID, Binding: entry.Engines[0].Binding, PolicyHash: policyHash}
+	if !ok || !known || !validJournalRecovery(entry) || old.Delivery.ID != entry.DeliveryID || old.Delivery.OwnershipDigest != entry.OwnershipDigest || !reflect.DeepEqual(prepared, env) || entry.Phase != RuntimeApplied || entry.ContractVersion != 2 || entry.Recovery == nil || entry.Recovery.Stage != "completed" || entry.Recovery.SelectedSlot < 1 || entry.Recovery.SelectedSlot > 2 || old.Authority == nil || old.Identity != identity || !reflect.DeepEqual(old.Entry, entry) || !reflect.DeepEqual(old.Environment, env) || !reflect.DeepEqual(old.Grants, grants) || !c.qualification.current() || c.config.DaemonAlive == nil || !c.config.DaemonAlive() {
+		return false
+	}
+	if _, err := old.Authority.RemainingForApply(identity, 5*time.Second); err != nil {
+		return false
+	}
+	proofCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+	if c.proveCurrent(proofCtx, entry, env) != nil || c.recoveryGuardPermitCheck(proofCtx, entry) != nil || proofCtx.Err() != nil || !c.qualification.current() || !c.config.DaemonAlive() {
+		return false
+	}
+	_, err := old.Authority.RemainingForApply(identity, 5*time.Second)
+	return err == nil
+}
+
+func (c *RuntimeController) applyRecovery(ctx context.Context, m RuntimeMaterial, entries []RuntimeJournalEntry, pos int, env RuntimeEnvironment, grants []GuardGrant) (ackResult RuntimeAcknowledgement, resultErr error) {
+	stage := "input"
+	startedDiagnostic := time.Now()
+	defer func() {
+		c.emitRuntimeDiagnostic(ctx, "recovery_apply", stage, m.Manifest.ConnectionID, startedDiagnostic, resultErr != nil)
+	}()
 	entry := entries[pos]
 	metricSequence := uint64(0)
 	id := entry.Allocation.ConnectionID
@@ -88,7 +151,7 @@ func (c *RuntimeController) applyRecovery(ctx context.Context, m RuntimeMaterial
 	if c.recoveryPrepared == nil {
 		c.recoveryPrepared = map[uuid.UUID]RuntimeEnvironment{}
 	}
-	withdraw := func() error { delete(c.active, id); return c.installActive(ctx, entries) }
+	withdraw := func() error { c.withdrawDNSOwnerView(id); delete(c.active, id); return c.installActive(ctx, entries) }
 	fail := func() (RuntimeAcknowledgement, error) {
 		c.recoveryMetrics.refuse(entry.DeliveryID, metricSequence)
 		_ = withdraw()
@@ -101,6 +164,7 @@ func (c *RuntimeController) applyRecovery(ctx context.Context, m RuntimeMaterial
 	if entry.Recovery.Stage == "pending" {
 		c.recoveryMetrics.begin(entry.DeliveryID, metricSequence, time.Now())
 	}
+	stage = "recovery_preparation"
 	prepared, known := c.recoveryPrepared[entry.DeliveryID]
 	if !known || !reflect.DeepEqual(prepared, env) {
 		delete(c.recoveryHistory, id)
@@ -108,7 +172,8 @@ func (c *RuntimeController) applyRecovery(ctx context.Context, m RuntimeMaterial
 			return fail()
 		}
 		if entry.Phase == RuntimeApplied {
-			missing, err := c.kernel.RestartNeedsRecreation(ctx, entry.Allocation, entry.Observed)
+			stage = "restored_transport"
+			missing, err := c.restartNeedsRecreation(ctx, entry)
 			if err != nil {
 				return fail()
 			}
@@ -120,18 +185,21 @@ func (c *RuntimeController) applyRecovery(ctx context.Context, m RuntimeMaterial
 				if err != nil {
 					return fail()
 				}
-				missing, err = c.kernel.RestartNeedsRecreation(ctx, entry.Allocation, entry.Observed)
+				missing, err = c.restartNeedsRecreation(ctx, entry)
 				if err != nil || !missing {
 					return fail()
 				}
+				stage = "remaining_authority"
 				if _, err = authority.RemainingForApply(identity, 5*time.Second); err != nil {
 					return fail()
 				}
+				stage = "transport_stage"
 				owned, err := c.kernel.Apply(ctx, entry.Allocation, [2]Ownership{})
 				if err != nil {
 					return fail()
 				}
 				entries[pos].Observed = owned
+				stage = "journal_commit"
 				if c.journal.Save(entries) != nil {
 					return fail()
 				}
@@ -139,24 +207,29 @@ func (c *RuntimeController) applyRecovery(ctx context.Context, m RuntimeMaterial
 		}
 		if entry.Phase == RuntimeReserved || entry.Phase == RuntimeApplying {
 			entries[pos].Phase = RuntimeApplying
+			stage = "journal_commit"
 			if c.journal.Save(entries) != nil {
 				return fail()
 			}
+			stage = "transport_stage"
 			owned, err := c.kernel.Apply(ctx, entry.Allocation, entry.Observed)
 			if err != nil {
 				return fail()
 			}
 			entries[pos].Observed = owned
+			stage = "journal_commit"
 			if c.journal.Save(entries) != nil {
 				return fail()
 			}
 		}
 		entry = entries[pos]
 		for i, t := range entry.Engines {
+			stage = "transport_remove"
 			if c.config.Daemon.removeTunnel(ctx, t) != nil {
 				return fail()
 			}
 			secret := []byte(m.Secrets[i].PSK)
+			stage = "transport_stage"
 			err := c.config.Daemon.stageTunnel(ctx, t, secret)
 			for j := range secret {
 				secret[j] = 0
@@ -166,11 +239,13 @@ func (c *RuntimeController) applyRecovery(ctx context.Context, m RuntimeMaterial
 			}
 		}
 		// Either peer may be unavailable; only independent readback can declare Up.
+		stage = "transport_initiate"
 		for _, t := range entry.Engines {
 			_ = c.config.Daemon.initiateTunnel(ctx, t)
 		}
 		if entry.Phase == RuntimeApplying {
 			entries[pos].Phase = RuntimeApplied
+			stage = "journal_commit"
 			if c.journal.Save(entries) != nil {
 				return fail()
 			}
@@ -179,17 +254,25 @@ func (c *RuntimeController) applyRecovery(ctx context.Context, m RuntimeMaterial
 		c.recoveryPrepared[entry.DeliveryID] = env
 	}
 	// Revalidate old permits before potentially slow CP or daemon observations.
-	if c.installActive(ctx, entries) != nil {
-		return fail()
+	stage = "guard_fallback"
+	if !c.recoveryUnchangedActive(ctx, entry, env, m.Policy.Hash, grants) && !c.recoveryGuardDenied(ctx, entry) && c.installActive(ctx, entries) != nil {
+		// A global assembly refusal must keep traffic denied, but must not
+		// starve this independently denied target's recovery observations.
+		if !c.recoveryGuardDenied(ctx, entry) {
+			return fail()
+		}
 	}
+	stage = "permit_lease"
 	authority, identity, err := c.recoveryLease(ctx, entry, m.Policy.Hash)
 	if err != nil {
 		delete(c.recoveryHistory, id)
 		return fail()
 	}
 	started := c.recoveryNow()
+	stage = "native_status"
 	statuses := c.observeRecovery(ctx, entry)
 	now := c.recoveryNow()
+	stage = "observation_window"
 	if now < started || now-started > 5*time.Second || !c.qualification.current() {
 		delete(c.recoveryHistory, id)
 		return fail()
@@ -198,10 +281,12 @@ func (c *RuntimeController) applyRecovery(ctx context.Context, m RuntimeMaterial
 	// connection itself. Retry only complete, independently verified all-Down
 	// evidence, under refusal. A healthy alternate and failover hold are untouched.
 	if statuses == ([2]string{"down", "down"}) {
+		stage = "transport_retry"
 		delete(c.recoveryHistory, id)
 		if withdraw() != nil {
 			return fail()
 		}
+		stage = "remaining_authority"
 		if _, err = authority.RemainingForApply(identity, 5*time.Second); err != nil {
 			return fail()
 		}
@@ -216,13 +301,16 @@ func (c *RuntimeController) applyRecovery(ctx context.Context, m RuntimeMaterial
 		}
 		// Retry time cannot extend the old lease or authorize reopening. Revalidate
 		// current CP policy with a new nonce before considering the fresh result.
+		stage = "permit_lease"
 		authority, identity, err = c.recoveryLease(ctx, entry, m.Policy.Hash)
 		if err != nil {
 			return fail()
 		}
 		started = c.recoveryNow()
+		stage = "native_status"
 		statuses = c.observeRecovery(ctx, entry)
 		now = c.recoveryNow()
+		stage = "observation_window"
 		if now < started || now-started > 5*time.Second || !c.qualification.current() {
 			return fail()
 		}
@@ -237,6 +325,7 @@ func (c *RuntimeController) applyRecovery(ctx context.Context, m RuntimeMaterial
 	pending := entry.Recovery.Stage == "pending"
 	target := slot
 	if pending {
+		stage = "pending_target_observation"
 		// A crash never discards a durable transition. Complete only its exact
 		// target under fresh authority; do not infer a rollback from source health.
 		target = entry.Recovery.PendingTo
@@ -245,12 +334,14 @@ func (c *RuntimeController) applyRecovery(ctx context.Context, m RuntimeMaterial
 			return fail()
 		}
 	} else {
+		stage = "recovery_advice"
 		advice := history.observe(epoch, now, recoveryObservation{Epoch: epoch, Current: slot, Status: statuses, Authorized: true, At: started})
 		if advice.Refuse {
 			if withdraw() != nil {
 				return fail()
 			}
 			if advice.Target == 0 {
+				stage = "recovery_hold"
 				return fail()
 			}
 			target = advice.Target
@@ -264,6 +355,7 @@ func (c *RuntimeController) applyRecovery(ctx context.Context, m RuntimeMaterial
 		if withdraw() != nil {
 			return fail()
 		}
+		stage = "remaining_authority"
 		if _, err = authority.RemainingForApply(identity, 5*time.Second); err != nil {
 			return fail()
 		}
@@ -279,6 +371,7 @@ func (c *RuntimeController) applyRecovery(ctx context.Context, m RuntimeMaterial
 			next.PendingFrom = slot
 			next.PendingTo = target
 			entries[pos].Recovery = &next
+			stage = "journal_commit"
 			if c.journal.Save(entries) != nil {
 				return fail()
 			}
@@ -287,14 +380,17 @@ func (c *RuntimeController) applyRecovery(ctx context.Context, m RuntimeMaterial
 		}
 		// Fresh target readback follows verified refusal and precedes route mutation.
 		started = c.recoveryNow()
+		stage = "pending_target_observation"
 		statuses = c.observeRecovery(ctx, entry)
 		now = c.recoveryNow()
 		if now < started || now-started > 5*time.Second || statuses[target-1] != "up" || statuses[1-(target-1)] == "unknown" || !c.qualification.current() {
 			return fail()
 		}
+		stage = "remaining_authority"
 		if _, err = authority.RemainingForApply(identity, 5*time.Second); err != nil {
 			return fail()
 		}
+		stage = "route_selection"
 		if c.reconcileRecoveryRoutes(ctx, entry, target) != nil {
 			return fail()
 		}
@@ -305,32 +401,49 @@ func (c *RuntimeController) applyRecovery(ctx context.Context, m RuntimeMaterial
 		completed.PendingFrom = 0
 		completed.PendingTo = 0
 		candidate.Recovery = &completed
+		stage = "native_current_proof"
 		if c.proveCurrent(ctx, candidate, env) != nil {
 			return fail()
 		}
+		stage = "remaining_authority"
 		if _, err = authority.RemainingForApply(identity, 5*time.Second); err != nil || !c.qualification.current() {
 			return fail()
 		}
 		if pending {
 			entries[pos] = candidate
+			stage = "journal_commit"
 			if c.journal.Save(entries) != nil {
 				return fail()
 			}
 		}
 		entry = candidate
 	} else if c.proveCurrent(ctx, entry, env) != nil {
+		stage = "native_current_proof"
 		return fail()
 	}
-	c.active[id] = runtimeActive{Entry: entry, Environment: env, Grants: grants, Identity: identity, Authority: authority}
+	stage = "underlay_mtu"
+	if _, err := c.ensureUnderlayMTUs(ctx, entry, env, entries); err != nil {
+		return fail()
+	}
+	stage = "active_install"
+	c.active[id] = runtimeActive{Delivery: m.RuntimeDelivery, Entry: entry, Environment: env, Grants: grants, Identity: identity, Authority: authority}
 	if c.installActive(ctx, entries) != nil {
 		return fail()
 	}
 	if _, ok := c.active[id]; !ok {
 		return fail()
 	}
+	if target != slot {
+		// The successful route commit changed the observation coordinates. Old
+		// slot advice cannot be reused for this new selection; its absence does
+		// not revoke the independently installed active authority.
+		delete(c.recoveryHistory, id)
+		delete(c.recoveryReportClocks, id)
+	}
 	// Retry standby establishment only after the selected route and its permits
 	// are independently proved. Initiation cannot manufacture health or grants;
 	// a later normal reconciliation must observe the resulting SA itself.
+	stage = "standby_retry"
 	c.retryDownStandby(ctx, entry, authority, identity)
 	c.recoveryMetrics.complete(entry.DeliveryID, metricSequence, time.Now())
 	return RuntimeAcknowledgement{DeliveryID: m.ID, DesiredRevision: m.DesiredRevision, Kind: "apply", Result: "applied", OwnershipDigest: m.OwnershipDigest}, nil

@@ -29,7 +29,7 @@ type ProviderConfiguration struct {
 }
 
 func (s *ConnectionStore) CreateProviderDisabled(ctx context.Context, org, actor uuid.UUID, sealer *crypto.Sealer, r CreateProviderRequest) (Connection, error) {
-	if ValidateAWSStaticConfig(r.Config) != nil {
+	if ValidateAWSConfig(r.Config) != nil {
 		return Connection{}, ErrConnectionInvalid
 	}
 	identity := CreateDisabledRequest{ID: r.ID, SiteID: r.SiteID, GatewayID: r.GatewayID, Name: r.Name}
@@ -93,11 +93,17 @@ func checkProviderRanges(ctx context.Context, tx pgx.Tx, org uuid.UUID, config S
 	return nil
 }
 func insertProvider(ctx context.Context, tx pgx.Tx, c Connection, r CreateDisabledRequest, config StaticConfig, subnets []providerSubnet) error {
-	if _, err := tx.Exec(ctx, `INSERT INTO ipsec_provider_bindings(connection_id,org_id) VALUES($1,$2)`, c.ID, c.OrgID); err != nil {
+	if _, err := tx.Exec(ctx, `INSERT INTO ipsec_provider_bindings(connection_id,org_id,profile_id) VALUES($1,$2,$3)`, c.ID, c.OrgID, providerProfile(config)); err != nil {
 		return createError(err)
 	}
 	if _, err := tx.Exec(ctx, `INSERT INTO ipsec_aws_static_configs(connection_id,org_id,site_id,gateway_node_id,customer_outside_ipv4) VALUES($1,$2,$3,$4,$5::inet)`, c.ID, c.OrgID, r.SiteID, r.GatewayID, config.CustomerOutsideAddress); err != nil {
 		return createError(err)
+	}
+	if config.BGP != nil {
+		b := config.BGP
+		if _, err := tx.Exec(ctx, `INSERT INTO ipsec_aws_bgp_configs(connection_id,org_id,local_asn,remote_asn,router_id,maximum_prefixes) VALUES($1,$2,$3,$4,$5::inet,$6)`, c.ID, c.OrgID, int64(b.LocalASN), int64(b.RemoteASN), b.RouterID, b.MaximumPrefixes); err != nil {
+			return createError(err)
+		}
 	}
 	for i, t := range config.Tunnels {
 		if _, err := tx.Exec(ctx, `INSERT INTO ipsec_aws_tunnel_configs(tunnel_id,org_id,connection_id,slot,gateway_node_id,aws_outside_ipv4,inside_cidr,customer_inside_ipv4,aws_inside_ipv4) VALUES($1,$2,$3,$4,$5,$6::inet,$7::cidr,$8::inet,$9::inet)`, r.Tunnels[i].ID, c.OrgID, c.ID, i+1, r.GatewayID, t.OutsideAddress, t.InsideCIDR, t.CustomerInsideAddress, t.CloudInsideAddress); err != nil {
@@ -119,7 +125,15 @@ func insertProvider(ctx context.Context, tx pgx.Tx, c Connection, r CreateDisabl
 func removeProvider(ctx context.Context, tx pgx.Tx, org, id uuid.UUID) error {
 	//159 precedes deployment of this service. No compatibility fallback may hide
 	// a missing schema. Binding history remains after withdrawing live children.
-	for _, table := range []string{"ipsec_aws_local_prefixes", "ipsec_aws_remote_prefixes", "ipsec_aws_tunnel_configs", "ipsec_aws_static_configs"} {
+	var profile string
+	if err := tx.QueryRow(ctx, `SELECT COALESCE(provider_profile,'') FROM ipsec_connections WHERE id=$1 AND org_id=$2`, id, org).Scan(&profile); err != nil {
+		return createError(err)
+	}
+	tables := []string{"ipsec_aws_local_prefixes", "ipsec_aws_remote_prefixes", "ipsec_aws_tunnel_configs", "ipsec_aws_static_configs"}
+	if profile == "aws-bgp-ipv4-v1" {
+		tables = append([]string{"ipsec_aws_bgp_configs"}, tables...)
+	}
+	for _, table := range tables {
 		if _, err := tx.Exec(ctx, `DELETE FROM `+table+` WHERE org_id=$1 AND connection_id=$2`, org, id); err != nil {
 			return createError(err)
 		}
@@ -155,6 +169,14 @@ func (s *ConnectionStore) ReadProvider(ctx context.Context, org, id uuid.UUID) (
 		return result, nil
 	}
 	config := &StaticConfig{Mode: "ipv4-static", LocalPrefixes: []string{}, RemotePrefixes: []string{}, Tunnels: []StaticTunnel{}}
+	if result.ProfileID == "aws-bgp-ipv4-v1" {
+		config.Mode = "ipv4-bgp"
+		config.BGP = &BGPConfig{}
+		b := config.BGP
+		if err = tx.QueryRow(ctx, `SELECT local_asn,remote_asn,host(router_id),maximum_prefixes FROM ipsec_aws_bgp_configs WHERE org_id=$1 AND connection_id=$2`, org, id).Scan(&b.LocalASN, &b.RemoteASN, &b.RouterID, &b.MaximumPrefixes); err != nil {
+			return ProviderConfiguration{}, ErrConnectionUnavailable
+		}
+	}
 	if err = tx.QueryRow(ctx, `SELECT host(customer_outside_ipv4) FROM ipsec_aws_static_configs WHERE org_id=$1 AND connection_id=$2`, org, id).Scan(&config.CustomerOutsideAddress); err != nil {
 		return ProviderConfiguration{}, ErrConnectionUnavailable
 	}

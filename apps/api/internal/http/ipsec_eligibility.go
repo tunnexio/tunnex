@@ -30,7 +30,11 @@ func (s apiServer) GetIPsecEligibility(ctx context.Context, r api.GetIPsecEligib
 	if err != nil {
 		return nil, ipsecProviderError(err)
 	}
-	return api.GetIPsecEligibility200JSONResponse{Body: api.IPsecEligibility{Eligible: e.Eligible, Reason: api.IPsecEligibilityReason(e.Reason)}, Headers: api.GetIPsecEligibility200ResponseHeaders{CacheControl: "no-store", XRequestId: reqID(ctx)}}, nil
+	out := api.IPsecEligibility{Eligible: e.Eligible, Reason: api.IPsecEligibilityReason(e.Reason)}
+	if e.BGP != nil {
+		out.Bgp = &api.IPsecBGPEligibility{Eligible: e.BGP.Eligible, Reason: api.IPsecBGPEligibilityReason(e.BGP.Reason)}
+	}
+	return api.GetIPsecEligibility200JSONResponse{Body: out, Headers: api.GetIPsecEligibility200ResponseHeaders{CacheControl: "no-store", XRequestId: reqID(ctx)}}, nil
 }
 func isIPsecEligibilityRequest(r *http.Request) bool {
 	p := strings.Split(strings.TrimPrefix(r.URL.Path, "/"), "/")

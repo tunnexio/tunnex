@@ -65,7 +65,7 @@ func TestPostgresStorePublishesAndWithdrawsAtomically(t *testing.T) {
 	t.Cleanup(func() { _, _ = admin.Exec(context.Background(), "DROP DATABASE IF EXISTS "+name+" WITH (FORCE)") })
 	testURL := *base
 	testURL.Path = "/" + name
-	if err := db.MigrateTo(testURL.String(), 118); err != nil {
+	if err := db.MigrateTo(testURL.String(), 219); err != nil {
 		t.Fatal(err)
 	}
 	pool, err := pgxpool.New(ctx, testURL.String())
@@ -102,7 +102,10 @@ func TestPostgresStorePublishesAndWithdrawsAtomically(t *testing.T) {
 	hook := &committedHook{t: t, pool: pool, resource: resource}
 	store := NewPostgresStore(pool).WithAfterCommit(hook)
 	w := Work{OrgID: org, ResourceID: resource, Hostname: "orders.internal", Context: Context{ResolverID: site.String(), GatewayID: gateway.String()}, ResolverConfig: ResolverConfig{ID: config.String(), Version: 1, ProfileID: profile.String(), ProfileName: "Private internal", ProfileProvider: "aws", MatchedSuffix: "internal", Endpoints: []ResolverEndpoint{{Address: addr("10.53.0.53"), Port: 53, Transport: "udp"}}}}
-	now := time.Date(2026, 8, 27, 12, 0, 0, 0, time.UTC)
+	var now time.Time
+	if err := pool.QueryRow(ctx, `SELECT clock_timestamp()`).Scan(&now); err != nil {
+		t.Fatal(err)
+	}
 	if err := store.Publish(ctx, w, Generation{TTL: time.Minute, ResolvedAt: now, Addresses: []netip.Addr{addr("10.2.3.4"), addr("fd00::4")}}); err != nil {
 		t.Fatal(err)
 	}
@@ -138,6 +141,66 @@ func TestPostgresStorePublishesAndWithdrawsAtomically(t *testing.T) {
 	if got.ResolverConfig.ProfileID != profile.String() || got.ResolverConfig.MatchedSuffix != "internal" || len(got.ResolverConfig.Endpoints) != 1 || got.ResolverConfig.Endpoints[0].Address != addr("10.53.0.53") {
 		t.Fatalf("active projection mixed resolver profiles or compatibility endpoints: %#v", got.ResolverConfig)
 	}
+	// The IPsec compiler must read its already-locked transaction rather than
+	// borrowing the pool's committed generation after an in-transaction edit.
+	t.Run("transaction-selected-current-generation", func(t *testing.T) {
+		tx, err := pool.Begin(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer tx.Rollback(ctx)
+		if _, err := tx.Exec(ctx, `UPDATE fqdn_resolver_context_profiles SET name='tx-only-profile' WHERE id=$1`, profile); err != nil {
+			t.Fatal(err)
+		}
+		inside, err := ActiveGenerationsWithQuery(ctx, tx, org)
+		if err != nil || len(inside) != 1 || inside[0].ResolverConfig.ProfileName != "tx-only-profile" {
+			t.Fatalf("transaction snapshot not used: %+v %v", inside, err)
+		}
+		outside, err := store.ActiveGenerations(ctx, org)
+		if err != nil || len(outside) != 1 || outside[0].ResolverConfig.ProfileName == "tx-only-profile" {
+			t.Fatalf("uncommitted change leaked: %+v %v", outside, err)
+		}
+		if _, err := tx.Exec(ctx, `UPDATE fqdn_resolver_context_configs SET state='retired',retired_at=now() WHERE id=$1`, config); err != nil {
+			t.Fatal(err)
+		}
+		inside, err = ActiveGenerationsWithQuery(ctx, tx, org)
+		if err != nil || len(inside) != 0 {
+			t.Fatalf("retired transaction context compiled: %+v %v", inside, err)
+		}
+	})
+	t.Run("hard-answer-expiry-and-future-refusal", func(t *testing.T) {
+		for _, offset := range []time.Duration{-61 * time.Second, 60 * time.Second} {
+			id := uuid.New()
+			t.Cleanup(func() {
+				if _, err := pool.Exec(ctx, `UPDATE fqdn_resources SET resolver_site_id=NULL,resolver_node_id=NULL WHERE id=$1 AND org_id=$2`, id, org); err != nil {
+					t.Error(err)
+				}
+			})
+			if _, err := pool.Exec(ctx, `INSERT INTO fqdn_resources(id,org_id,name,fqdn,resolver_site_id,resolver_node_id) VALUES($1,$2,$3,$4,$5,$6)`, id, org, "expiry-"+id.String(), "expiry-"+id.String()+".internal", site, gateway); err != nil {
+				t.Fatal(err)
+			}
+			work := w
+			work.ResourceID = id
+			work.Hostname = "expiry-" + id.String() + ".internal"
+			var observed time.Time
+			if err := pool.QueryRow(ctx, `SELECT clock_timestamp()`).Scan(&observed); err != nil {
+				t.Fatal(err)
+			}
+			if err := NewPostgresStore(pool).Publish(ctx, work, Generation{TTL: time.Minute, ResolvedAt: observed.Add(offset), Addresses: []netip.Addr{addr("10.2.3.4")}}); err != nil {
+				t.Fatal(err)
+			}
+			rows, err := store.ActiveGenerations(ctx, org)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, row := range rows {
+				if row.ResourceID == id {
+					t.Fatal("expired or future generation selected")
+				}
+			}
+		}
+	})
+
 	if other, err := store.ActiveGenerations(ctx, uuid.New()); err != nil || len(other) != 0 {
 		t.Fatalf("cross-org active projection leaked: rows=%#v err=%v", other, err)
 	}
@@ -230,4 +293,66 @@ func TestPostgresStorePublishesAndWithdrawsAtomically(t *testing.T) {
 	if projection, err := store.ActiveGenerations(ctx, org); err != nil || len(projection) != 0 {
 		t.Fatalf("context-mismatched active generation must not project: rows=%#v err=%v", projection, err)
 	}
+	t.Run("deadline-query-and-expiry-priority", func(t *testing.T) {
+		freshStore := NewPostgresStore(pool)
+		var dbNow time.Time
+		if err := pool.QueryRow(ctx, `SELECT clock_timestamp()`).Scan(&dbNow); err != nil {
+			t.Fatal(err)
+		}
+		first, urgent, draft := uuid.New(), uuid.New(), uuid.New()
+		for _, r := range []struct {
+			id   uuid.UUID
+			name string
+		}{{first, "first.internal"}, {urgent, "urgent.internal"}} {
+			exec(`INSERT INTO fqdn_resources(id,org_id,name,fqdn,resolver_site_id,resolver_node_id) VALUES($1,$2,$3,$3,$4,$5)`, r.id, org, r.name, site, gateway)
+		}
+		exec(`INSERT INTO fqdn_resources(id,org_id,name,fqdn) VALUES($1,$2,'draft.internal','draft.internal')`, draft, org)
+		for _, r := range []struct {
+			id   uuid.UUID
+			name string
+			ttl  time.Duration
+		}{{first, "first.internal", time.Minute}, {urgent, "urgent.internal", 30 * time.Second}} {
+			next := w
+			next.ResourceID = r.id
+			next.Hostname = r.name
+			next.ExpectedGeneration = 0
+			if err := freshStore.Publish(ctx, next, Generation{TTL: r.ttl, ResolvedAt: dbNow, Addresses: []netip.Addr{addr("10.2.3.4")}}); err != nil {
+				t.Fatal(err)
+			}
+		}
+		deadline, err := freshStore.NextRefreshAt(ctx)
+		if err != nil || !deadline.Equal(dbNow.Add(24*time.Second)) {
+			t.Fatalf("next deadline=%v want%v err%v", deadline, dbNow.Add(24*time.Second), err)
+		}
+		due, err := freshStore.Due(ctx, dbNow.Add(time.Minute), 32)
+		if err != nil || len(due) != 2 || due[0].ResourceID != urgent || due[1].ResourceID != first {
+			t.Fatalf("expiry-priority due=%+v err%v", due, err)
+		}
+
+		for _, q := range []string{`UPDATE organizations SET fqdn_resources_enabled=false WHERE id=$1`, `UPDATE organizations SET deleted_at=clock_timestamp() WHERE id=$1`} {
+			exec(q, org)
+			at, err := freshStore.NextRefreshAt(ctx)
+			if err != nil || !at.IsZero() {
+				t.Fatalf("ineligible org deadline=%v err%v", at, err)
+			}
+			if rows, err := freshStore.Due(ctx, dbNow.Add(time.Minute), 32); err != nil || len(rows) != 0 {
+				t.Fatalf("ineligible org due=%+v err%v", rows, err)
+			}
+			exec(`UPDATE organizations SET fqdn_resources_enabled=true,deleted_at=NULL WHERE id=$1`, org)
+		}
+		pending := uuid.New()
+		exec(`INSERT INTO fqdn_resources(id,org_id,name,fqdn,resolver_site_id,resolver_node_id) VALUES($1,$2,'new.internal','new.internal',$3,$4)`, pending, org, site, gateway)
+		var before, after time.Time
+		if err := pool.QueryRow(ctx, `SELECT clock_timestamp()`).Scan(&before); err != nil {
+			t.Fatal(err)
+		}
+		deadline, err = freshStore.NextRefreshAt(ctx)
+		if err := pool.QueryRow(ctx, `SELECT clock_timestamp()`).Scan(&after); err != nil {
+			t.Fatal(err)
+		}
+		if err != nil || deadline.Before(before) || deadline.After(after) {
+			t.Fatalf("new selected work deadline must use database clock: %v range[%v,%v] err%v", deadline, before, after, err)
+		}
+	})
+
 }

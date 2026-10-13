@@ -258,9 +258,10 @@ func (f *Forwarder) ReconcileK8sBinds(ctx context.Context, wgIface string) {
 	}
 	lst := f.listen
 	if lst == nil {
-		lst = realListen
+		lst = func(address netip.Addr) (udpListener, error) { return listenUDPOnInterface(address, wgIface) }
 	}
 	f.reconcileBinds(ctx, src, lst, wgIface, f.ownedLive)
+	f.reconcileTCPBinds(src, wgIface)
 }
 
 func (f *Forwarder) closeOwnedBinds() {
@@ -271,6 +272,7 @@ func (f *Forwarder) closeOwnedBinds() {
 		f.closeListener(addr)
 		delete(f.ownedLive, addr)
 	}
+	f.closeTCPBinds()
 	f.listenerWG.Wait()
 }
 
@@ -399,6 +401,7 @@ func (f *Forwarder) serveConn(ctx context.Context, pc udpListener) {
 		handlers.Wait()
 	}()
 	buf := make([]byte, dnsUDPMax)
+	slots := make(chan struct{}, 64)
 	for {
 		n, src, err := pc.ReadFromUDPAddrPort(buf)
 		if err != nil {
@@ -406,11 +409,19 @@ func (f *Forwarder) serveConn(ctx context.Context, pc udpListener) {
 		}
 		q := append([]byte(nil), buf[:n]...)
 		srcAddr := src.Addr().Unmap()
+		select {
+		case slots <- struct{}{}:
+		default:
+			continue
+		}
 		handlers.Add(1)
 		go func() {
 			defer handlers.Done()
+			defer func() { <-slots }()
 			if resp := f.handle(q, srcAddr); resp != nil {
-				_, _ = pc.WriteToUDPAddrPort(resp, src)
+				if bounded := downstreamUDPResponse(q, resp); bounded != nil {
+					_, _ = pc.WriteToUDPAddrPort(bounded, src)
+				}
 			}
 		}()
 	}

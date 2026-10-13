@@ -4,44 +4,202 @@ import (
 	"context"
 	"net/netip"
 	"reflect"
+	"time"
 )
 
 // proveRuntime correlates independent VICI and keyless kernel observations. It
 // does not confer authority: the caller still requires a fresh exact CP lease.
 func (c *RuntimeController) proveRuntime(ctx context.Context, e RuntimeJournalEntry, env RuntimeEnvironment) error {
+	started := time.Now()
 	xr, err := NewXFRMReader(c.config.IPPath)
 	if err != nil {
+		c.emitRuntimeDiagnostic(ctx, "native_proof", "native_xfrm_reader", e.Allocation.ConnectionID, started, true)
 		return ErrRuntimeController
 	}
 	kr, err := NewKernelReader(c.config.IPPath)
 	if err != nil {
+		c.emitRuntimeDiagnostic(ctx, "native_proof", "native_kernel_reader", e.Allocation.ConnectionID, started, true)
 		return ErrRuntimeController
 	}
-	before, err := xr.Read(ctx)
-	if err != nil || before.Namespace != e.Allocation.Namespace {
-		return ErrRuntimeController
+	return c.proveRuntimeWithIndependentReaders(ctx, e, env, runtimeStatusReaders{daemon: c.config.Daemon.Inspect, kernel: kr.Read, xfrm: xr.Read})
+}
+
+// runtimeXFRMCoherenceRefusal is internal and contains no observed material.
+// It is returned only after both complete independent ownership proofs pass.
+type runtimeXFRMCoherenceRefusal struct{}
+
+func (runtimeXFRMCoherenceRefusal) Error() string { return ErrRuntimeController.Error() }
+
+// Reader handles carry no snapshots. Every retry rereads all native sources
+// under the same caller context and requires the original equality checks.
+// Real clients use separate immutable transports; injected readers stay serial.
+func (c *RuntimeController) proveRuntimeWithIndependentReaders(ctx context.Context, e RuntimeJournalEntry, env RuntimeEnvironment, r runtimeStatusReaders) error {
+	r.independent = true
+	return c.proveRuntimeWithReaders(ctx, e, env, r)
+}
+
+func (c *RuntimeController) proveRuntimeWithReaders(ctx context.Context, e RuntimeJournalEntry, env RuntimeEnvironment, r runtimeStatusReaders) error {
+	for attempt := 0; attempt < 2; attempt++ {
+		if ctx.Err() != nil {
+			return ErrRuntimeController
+		}
+		err := c.proveRuntimeAttempt(ctx, e, env, r)
+		if err == nil {
+			return nil
+		}
+		if _, moved := err.(runtimeXFRMCoherenceRefusal); !moved || ctx.Err() != nil {
+			return ErrRuntimeController
+		}
 	}
-	daemon, err := c.config.Daemon.Inspect(ctx)
+	return ErrRuntimeController
+}
+
+func (c *RuntimeController) proveRuntimeAttempt(ctx context.Context, e RuntimeJournalEntry, env RuntimeEnvironment, r runtimeStatusReaders) error {
+	return c.runtimeNativeObservationAttempt(ctx, e, env, r, nil)
+}
+
+// An optional status output shares only this fresh observation's inventories.
+// The ordinary proof keeps its exact retry and selected-owner proof contract.
+func (c *RuntimeController) runtimeNativeObservationAttempt(ctx context.Context, e RuntimeJournalEntry, env RuntimeEnvironment, r runtimeStatusReaders, observed *[2]string) (resultErr error) {
+	stage := "native_xfrm_before_read"
+	started := time.Now()
+	defer func() {
+		if resultErr != nil {
+			c.emitRuntimeDiagnostic(ctx, "native_proof", stage, e.Allocation.ConnectionID, started, true)
+		}
+	}()
+	stage = "native_xfrm_before_read"
+	before, err := r.xfrm(ctx)
 	if err != nil {
 		return ErrRuntimeController
 	}
-	kernel, err := kr.Read(ctx)
-	if err != nil || kernel.Namespace != e.Allocation.Namespace {
+	stage = "native_xfrm_before_namespace"
+	if before.Namespace != e.Allocation.Namespace {
 		return ErrRuntimeController
 	}
-	if runtimeInventoryMatches(e, daemon, kernel, before) != nil {
+	stage = "native_vici_before"
+	daemon, kernel, daemonErr, kernelErr := runtimeNativeDaemonKernel(ctx, r)
+	if daemonErr != nil {
+		return ErrRuntimeController
+	}
+	stage = "native_kernel_before_read"
+	if kernelErr != nil {
+		return ErrRuntimeController
+	}
+	stage = "native_kernel_before_namespace"
+	if kernel.Namespace != e.Allocation.Namespace {
+		return ErrRuntimeController
+	}
+	var statusesBefore [2]string
+	proveSelected := true
+	if observed != nil {
+		statusesBefore = runtimeTunnelStatuses(e, daemon, kernel, before)
+		for _, status := range statusesBefore {
+			if status != "up" && status != "down" {
+				return ErrRuntimeController
+			}
+		}
+		slot := selectedRuntimeSlot(e)
+		if slot < 1 || slot > 2 {
+			return ErrRuntimeController
+		}
+		proveSelected = statusesBefore[slot-1] == "up"
+	}
+	stage = "native_inventory_before"
+	if proveSelected && runtimeInventoryMatches(e, daemon, kernel, before) != nil {
 		return ErrRuntimeController
 	}
 	// Environment includes independent hook and physical route qualification.
-	again, err := c.config.Environment.Observe(ctx, e.Allocation, e.Engines)
-	if err != nil || !reflect.DeepEqual(again, env) {
+	stage = "native_environment_observe"
+	if proveSelected {
+		again, err := c.config.Environment.Observe(ctx, e.Allocation, e.Engines)
+		if err != nil {
+			return ErrRuntimeController
+		}
+		stage = "native_environment_equal"
+		if !reflect.DeepEqual(again, env) {
+			return ErrRuntimeController
+		}
+	}
+	stage = "native_xfrm_after_read"
+	after, err := r.xfrm(ctx)
+	if err != nil {
 		return ErrRuntimeController
 	}
-	after, err := xr.Read(ctx)
-	if err != nil || !reflect.DeepEqual(before, after) || !c.config.DaemonAlive() {
+	stage = "native_xfrm_after_equal"
+	if after.Namespace != e.Allocation.Namespace || after.Namespace != before.Namespace {
 		return ErrRuntimeController
+	}
+	moved := !reflect.DeepEqual(connectionXFRMSnapshot(e, before), connectionXFRMSnapshot(e, after))
+	stage = "native_daemon_alive"
+	if !c.config.DaemonAlive() {
+		return ErrRuntimeController
+	}
+	// Reprove the requested connection against a fresh complete independent
+	// snapshot; unrelated namespace changes cannot supply target ownership.
+	stage = "native_vici_after"
+	daemonAfter, kernelAfter, daemonErr, kernelErr := runtimeNativeDaemonKernel(ctx, r)
+	if daemonErr != nil {
+		return ErrRuntimeController
+	}
+	stage = "native_kernel_after_read"
+	if kernelErr != nil {
+		return ErrRuntimeController
+	}
+	stage = "native_kernel_after_equal"
+	if !reflect.DeepEqual(connectionKernelSnapshot(e, kernel), connectionKernelSnapshot(e, kernelAfter)) {
+		return ErrRuntimeController
+	}
+	stage = "native_inventory_after"
+	if proveSelected && runtimeInventoryMatches(e, daemonAfter, kernelAfter, after) != nil {
+		return ErrRuntimeController
+	}
+	if observed != nil {
+		statusesAfter := runtimeTunnelStatuses(e, daemonAfter, kernelAfter, after)
+		if statusesAfter != statusesBefore {
+			return ErrRuntimeController
+		}
+		for _, status := range statusesAfter {
+			if status != "up" && status != "down" {
+				return ErrRuntimeController
+			}
+		}
+	}
+	stage = "native_daemon_alive"
+	if !c.config.DaemonAlive() {
+		return ErrRuntimeController
+	}
+	stage = "native_context_final"
+	if ctx.Err() != nil {
+		return ErrRuntimeController
+	}
+	if moved {
+		stage = "native_xfrm_after_equal"
+		return runtimeXFRMCoherenceRefusal{}
+	}
+	if observed != nil {
+		*observed = statusesBefore
 	}
 	return nil
+}
+
+// A status observation never retries incoherence into an UP report. It uses
+// the same caller context and one complete before/after ownership bracket.
+func (c *RuntimeController) observeAndProveRecoveryWithIndependentReaders(ctx context.Context, e RuntimeJournalEntry, env RuntimeEnvironment, r runtimeStatusReaders) ([2]string, error) {
+	r.independent = true
+	return c.observeAndProveRecoveryWithReaders(ctx, e, env, r)
+}
+
+func (c *RuntimeController) observeAndProveRecoveryWithReaders(ctx context.Context, e RuntimeJournalEntry, env RuntimeEnvironment, r runtimeStatusReaders) ([2]string, error) {
+	unknown := [2]string{"unknown", "unknown"}
+	if r.daemon == nil || r.kernel == nil || r.xfrm == nil || r.alive == nil || !r.alive() || ctx.Err() != nil {
+		return unknown, ErrRuntimeController
+	}
+	statuses := unknown
+	if err := c.runtimeNativeObservationAttempt(ctx, e, env, r, &statuses); err != nil || !r.alive() || ctx.Err() != nil {
+		return unknown, ErrRuntimeController
+	}
+	return statuses, nil
 }
 
 func runtimeInventoryMatches(e RuntimeJournalEntry, daemon DaemonInventory, kernel KernelInventory, before XFRMInventory) error {
@@ -120,48 +278,15 @@ func runtimeInventoryMatches(e RuntimeJournalEntry, daemon DaemonInventory, kern
 			}
 			continue
 		}
-		matches := 0
-		var expectedSPIIn, expectedSPIOut uint32
-		for _, sa := range daemon.SAs {
-			if sa.Name != engineName(t) {
-				continue
-			}
-			if !sa.Established || sa.LocalAddress != t.LocalAddress || sa.RemoteAddress != t.RemoteAddress {
-				return ErrRuntimeController
-			}
-			for _, child := range sa.Children {
-				if child.Name != engineName(t) || !child.Installed || child.ReqID != t.ReqID || child.IfIDIn != t.XFRMID || child.IfIDOut != t.XFRMID || !sameEnginePrefixes(child.LocalPrefixes, t.LocalPrefixes) || !sameEnginePrefixes(child.RemotePrefixes, t.RemotePrefixes) {
-					return ErrRuntimeController
-				}
-				in, out := false, false
-				for _, state := range before.States {
-					if state.IfID != t.XFRMID {
-						if state.ReqID == t.ReqID {
-							return ErrRuntimeController
-						}
-						continue
-					}
-					if state.ReqID != t.ReqID {
-						return ErrRuntimeController
-					}
-					if state.Source == t.LocalAddress && state.Destination == t.RemoteAddress && state.SPI == child.SPIOut && (state.Direction == "" || state.Direction == "out") {
-						out = true
-					} else if state.Source == t.RemoteAddress && state.Destination == t.LocalAddress && state.SPI == child.SPIIn && (state.Direction == "" || state.Direction == "in") {
-						in = true
-					} else {
-						return ErrRuntimeController
-					}
-				}
-				if !in || !out {
-					return ErrRuntimeController
-				}
-				expectedSPIIn, expectedSPIOut = child.SPIIn, child.SPIOut
-				matches++
-			}
-		}
-		if matches != 1 {
+		sa, child, retired, err := ownedRuntimeChildren(t, daemon)
+		if err != nil || sa == nil || !sa.Established || child == nil || !child.Installed {
 			return ErrRuntimeController
 		}
+		in, out, err := ownedRuntimeSPIStates(t, child, retired, before)
+		if err != nil || in != 1 || out != 1 {
+			return ErrRuntimeController
+		}
+		expectedSPIIn, expectedSPIOut := child.SPIIn, child.SPIOut
 		for _, p := range before.Policies {
 			if p.IfID != t.XFRMID {
 				if p.ReqID == t.ReqID {
@@ -177,8 +302,8 @@ func runtimeInventoryMatches(e RuntimeJournalEntry, daemon DaemonInventory, kern
 				return ErrRuntimeController
 			}
 			allowed := false
-			for _, l := range t.LocalPrefixes {
-				for _, r := range t.RemotePrefixes {
+			for _, l := range engineTransportPrefixes(t, true) {
+				for _, r := range engineTransportPrefixes(t, false) {
 					if p.ReqID == t.ReqID && (p.Direction == "out" && p.Source == l && p.Destination == r && p.TemplateSource == t.LocalAddress && p.TemplateDestination == t.RemoteAddress || (p.Direction == "in" || p.Direction == "fwd") && p.Source == r && p.Destination == l && p.TemplateSource == t.RemoteAddress && p.TemplateDestination == t.LocalAddress) {
 						allowed = true
 					}
@@ -188,8 +313,8 @@ func runtimeInventoryMatches(e RuntimeJournalEntry, daemon DaemonInventory, kern
 				return ErrRuntimeController
 			}
 		}
-		for _, local := range t.LocalPrefixes {
-			for _, remote := range t.RemotePrefixes {
+		for _, local := range engineTransportPrefixes(t, true) {
+			for _, remote := range engineTransportPrefixes(t, false) {
 				for _, dir := range []string{"in", "fwd", "out"} {
 					found := false
 					for _, p := range before.Policies {

@@ -12,7 +12,16 @@ type Settings = components["schemas"]["IPsecSettings"];
 type Configuration = components["schemas"]["IPsecConfigurationCheckInput"];
 type CreateInput = components["schemas"]["IPsecProviderCreateInput"];
 type Provider = components["schemas"]["IPsecProviderConfiguration"];
-type Eligibility = { eligible: boolean; reason: "eligible" | "opt_in_required" | "gateway_unavailable" | "unsupported" | "report_stale" };
+type Eligibility = components["schemas"]["IPsecEligibility"];
+function canEnableConfiguration(provider: Provider, eligibility: Eligibility): boolean {
+  if (!eligibility.eligible) return false;
+  if (provider.profile_id === "aws-static-ipv4-v1" && provider.configuration?.mode === "ipv4-static") return true;
+  return provider.profile_id === "aws-bgp-ipv4-v1" && provider.configuration?.mode === "ipv4-bgp" && eligibility.bgp?.eligible === true;
+}
+function privateASN(value: string): boolean {
+  const n = Number(value);
+  return /^\d+$/.test(value) && Number.isSafeInteger(n) && ((n >= 64512 && n <= 65534) || (n >= 4200000000 && n <= 4294967294));
+}
 type Props = { createRequest?: number; onCreateHandled?: () => void; onRequestCreate?: () => void; orgId: string; userId: string; emailVerified: boolean; role?: string; sites: Site[] };
 function connectionStatus(item: Connection): string {
   if (item.cleanup_state === "pending") return "Cleanup pending";
@@ -57,8 +66,11 @@ function IPsecSession({ orgId, emailVerified, role, sites, createRequest = 0, on
     let cancelled = false; setReady({});
     if (!manage || !settings?.enabled) return;
     void Promise.all(items.filter(item => item.desired_intent === "disabled" && item.cleanup_state !== "pending" && item.site_id && item.gateway_node_id).map(async item => {
-      const result = await loadOne(() => api.GET("/api/v1/organizations/{orgId}/ipsec/eligibility", { params: { path: { orgId }, query: { site_id: item.site_id!, gateway_node_id: item.gateway_node_id! } } }));
-      return [item.id, result.ok && result.data.eligible] as const;
+      const [result, provider] = await Promise.all([
+        loadOne(() => api.GET("/api/v1/organizations/{orgId}/ipsec/eligibility", { params: { path: { orgId }, query: { site_id: item.site_id!, gateway_node_id: item.gateway_node_id! } } })),
+        loadOne(() => api.GET("/api/v1/organizations/{orgId}/ipsec/connections/{connectionId}/configuration", { params: { path: { orgId, connectionId: item.id } } })),
+      ]);
+      return [item.id, result.ok && provider.ok && canEnableConfiguration(provider.data, result.data)] as const;
     })).then(values => { if (!cancelled) setReady(Object.fromEntries(values)); });
     return () => { cancelled = true; };
   }, [orgId, items, manage, settings?.enabled]);
@@ -131,7 +143,7 @@ function IPsecSession({ orgId, emailVerified, role, sites, createRequest = 0, on
         <DataTable<Connection> caption="IPsec connections" rows={visible} pageSize={0} rowAttrs={item => ({ "data-selected": String(selected === item.id) })} rowKey={item => item.id} failed={!!error} filterable={false} empty={<span className="block py-6 text-center"><span className="block">No connections match your filters.</span><Button variant="ghost" onClick={() => { setSearch(""); setFilter("all"); }}>Clear filters</Button></span>} columns={[
           { key: "name", header: "Connection", cell: item => <button aria-pressed={selected === item.id} className={`text-left font-medium hover:underline ${selected === item.id ? "text-accent" : "text-ink-heading"}`} onClick={() => setSelected(item.id)}>{item.name}</button> },
           { key: "network", header: "Local network", cell: item => sites.find(site => site.id === item.site_id)?.name ?? "Network unavailable" },
-          { key: "state", header: "Configuration", cell: item => <><span title={item.cleanup_state === "retained_guard" ? "Tunnel traffic is stopped. Safety guard remains; network ranges stay reserved." : item.application_state === "applied" ? "Gateway applied this revision. End-to-end traffic is not verified." : undefined} className={`ipsec-state ${item.cleanup_state === "pending" || (item.desired_intent === "enabled" && item.application_state !== "applied") ? "ipsec-state-pending" : item.desired_intent === "enabled" ? "ipsec-state-applied" : ""}`}>{connectionStatus(item)}</span></> },
+          { key: "state", header: "Configuration", cell: item => <><span title={item.desired_intent !== "enabled" && item.cleanup_state === "retained_guard" ? "Tunnel traffic is stopped. Safety guard remains; network ranges stay reserved." : item.application_state === "applied" ? "Gateway applied this revision. End-to-end traffic is not verified." : undefined} className={`ipsec-state ${item.cleanup_state === "pending" || (item.desired_intent === "enabled" && item.application_state !== "applied") ? "ipsec-state-pending" : item.desired_intent === "enabled" ? "ipsec-state-applied" : ""}`}>{connectionStatus(item)}</span></> },
           { key: "actions", header: "Actions", cell: item => <div className="flex flex-wrap justify-end gap-2">
         {manage && item.desired_intent === "enabled" && <Button variant="ghost" size="sm" aria-label={`Disable ${item.name}`} onClick={() => setChanging(item)}>Disable</Button>}
         {manage && item.desired_intent === "disabled" && item.cleanup_state !== "pending" && ready[item.id] && <Button variant="ghost" size="sm" aria-label={`Enable ${item.name}`} onClick={() => setChanging(item)}>Enable</Button>}
@@ -156,10 +168,15 @@ function ProviderReadback({ orgId, id, name, onClose }: { orgId: string; id: str
   useEffect(() => { let cancelled = false; void loadOne(() => api.GET("/api/v1/organizations/{orgId}/ipsec/connections/{connectionId}/configuration", { params: { path: { orgId, connectionId: id } } })).then(value => { if (cancelled) return; if (value.ok) setResult(value.data); else setError("No provider configuration could be loaded for this record."); }); return () => { cancelled = true; }; }, [orgId, id]);
   return <Card className="ipsec-details"><div className="mb-3 flex justify-between gap-3"><div><p className="ipsec-eyebrow">Connection overview</p><h3 className="text-lg font-semibold text-ink-heading">{name}</h3></div><Button size="sm" variant="ghost" onClick={onClose}>Close details</Button></div>
     <ErrorText>{error}</ErrorText>{!result && !error && <p role="status">Loading configuration…</p>}
-    {result && <><p className="mb-3 text-xs text-ink-secondary">AWS · IPv4 static · revision {result.configuration_revision}</p>
+    {result && <><p className="mb-3 text-xs text-ink-secondary">AWS · {result.profile_id === "aws-bgp-ipv4-v1" ? "IPv4 BGP" : "IPv4 static"} · revision {result.configuration_revision}</p>
       {!result.configuration ? <p className="text-sm text-ink-secondary">Configuration removed. Identity retained.</p> : <div className="space-y-4">
-        <details className="ipsec-routing"><summary>Stored configuration</summary><dl className="grid grid-cols-1 gap-4 text-sm sm:grid-cols-3"><div><dt className="text-ink-secondary">Customer public IP</dt><dd>{result.configuration.customer_outside_address}</dd></div><div><dt className="text-ink-secondary">Local networks</dt>{result.configuration.local_prefixes.map(value => <dd key={value}>{value}</dd>)}</div><div><dt className="text-ink-secondary">Remote networks</dt>{result.configuration.remote_prefixes.map(value => <dd key={value}>{value}</dd>)}</div></dl></details>
-        <div><IPsecTunnelHealth orgId={orgId} connectionId={id} tunnels={result.configuration.tunnels} /></div>
+        <details className="ipsec-routing"><summary>Stored configuration</summary><dl className="grid grid-cols-1 gap-4 text-sm sm:grid-cols-3"><div><dt className="text-ink-secondary">Customer public IP</dt><dd>{result.configuration.customer_outside_address}</dd></div><div><dt className="text-ink-secondary">Local networks</dt>{result.configuration.local_prefixes.map(value => <dd key={value}>{value}</dd>)}</div><div><dt className="text-ink-secondary">Remote networks</dt>{result.configuration.remote_prefixes.map(value => <dd key={value}>{value}</dd>)}</div></dl>
+          {result.configuration.bgp && <dl className="mt-4 grid grid-cols-1 gap-4 text-sm sm:grid-cols-4">{[
+            ["Customer ASN", result.configuration.bgp.local_asn], ["AWS ASN", result.configuration.bgp.remote_asn],
+            ["Router ID", result.configuration.bgp.router_id], ["Maximum prefixes per peer", result.configuration.bgp.maximum_prefixes],
+          ].map(([label, value]) => <div key={label}><dt className="text-ink-secondary">{label}</dt><dd className="font-mono">{value}</dd></div>)}</dl>}
+        </details>
+        <div><IPsecTunnelHealth orgId={orgId} connectionId={id} tunnels={result.configuration.tunnels} mode={result.configuration.mode === "ipv4-bgp" ? "ipv4-bgp" : "ipv4-static"} approvedRemotePrefixes={result.configuration.remote_prefixes} /></div>
       </div>}</>}
   </Card>;
 }
@@ -174,9 +191,12 @@ function ChangeIntent({ orgId, connection, onClose, onChanged }: { orgId: string
       if (intent === "enabled") {
         const siteId = connection.site_id, gatewayId = connection.gateway_node_id;
         if (!siteId || !gatewayId) { setError("Gateway assignment is unavailable. Close and refresh."); return; }
-        const checked = await loadOne(() => api.GET("/api/v1/organizations/{orgId}/ipsec/eligibility", { params: { path: { orgId }, query: { site_id: siteId, gateway_node_id: gatewayId } } }));
+        const [checked, provider] = await Promise.all([
+          loadOne(() => api.GET("/api/v1/organizations/{orgId}/ipsec/eligibility", { params: { path: { orgId }, query: { site_id: siteId, gateway_node_id: gatewayId } } })),
+          loadOne(() => api.GET("/api/v1/organizations/{orgId}/ipsec/connections/{connectionId}/configuration", { params: { path: { orgId, connectionId: connection.id } } })),
+        ]);
         if (!alive.current) return;
-        if (!checked.ok || !checked.data.eligible) { setError("Gateway readiness changed. Close and refresh before enabling."); return; }
+        if (!checked.ok || !provider.ok || !canEnableConfiguration(provider.data, checked.data)) { setError("Gateway readiness changed. Close and refresh before enabling."); return; }
       }
       const result = await api.PUT("/api/v1/organizations/{orgId}/ipsec/connections/{connectionId}/intent", { params: { path: { orgId, connectionId: connection.id }, header: { "If-Match": `"${connection.desired_revision}"` } }, body: { intent } });
       if (!alive.current) return;
@@ -204,6 +224,9 @@ function ConnectionForm({ orgId, sites, onCancel, onSaved }: { orgId: string; si
   const [step, setStep] = useState(1); const [name, setName] = useState(""); const [site, setSite] = useState(""); const [gateway, setGateway] = useState("");
   const [nodes, setNodes] = useState<Node[]>([]); const [subnets, setSubnets] = useState<SiteSubnet[]>([]); const [local, setLocal] = useState<string[]>([]);
   const [customer, setCustomer] = useState(""); const [remote, setRemote] = useState(""); const [tunnels, setTunnels] = useState(() => [blankTunnel(), blankTunnel()]);
+  const [mode, setMode] = useState<Configuration["mode"]>("ipv4-static");
+  const [localASN, setLocalASN] = useState("65000"); const [remoteASN, setRemoteASN] = useState("64512");
+  const [routerID, setRouterID] = useState(""); const [maximumPrefixes, setMaximumPrefixes] = useState("64");
   const [eligibility, setEligibility] = useState<{ key: string; value: Eligibility } | null>(null); const [checking, setChecking] = useState(false); const [checkAttempt, setCheckAttempt] = useState(0);
   const [error, setError] = useState(""); const [busy, setBusy] = useState(false); const [uncertain, setUncertain] = useState(false);
   const frozen = useRef<CreateInput | null>(null); const saving = useRef(false);
@@ -214,7 +237,8 @@ function ConnectionForm({ orgId, sites, onCancel, onSaved }: { orgId: string; si
   useEffect(() => () => { frozen.current = null; }, []);
   const currentEligibility = eligibility?.key === pair ? eligibility.value : null;
   const selectedGateways = nodes.filter(node => node.site_id === site && node.status === "active");
-  const prepared = name.trim() && site && selectedGateways.some(node => node.id === gateway) && local.length && customer && remote.trim();
+  const bgpPrepared = mode === "ipv4-static" || (privateASN(localASN) && (privateASN(remoteASN) || remoteASN === "7224") && Number(localASN) !== Number(remoteASN) && routerID.trim() && /^\d+$/.test(maximumPrefixes) && Number(maximumPrefixes) >= 1 && Number(maximumPrefixes) <= 64);
+  const prepared = name.trim() && site && selectedGateways.some(node => node.id === gateway) && local.length && customer && remote.trim() && bgpPrepared;
   function cancel() { frozen.current = null; setTunnels([blankTunnel(), blankTunnel()]); onCancel(); }
   async function recover(id: string) {
     const result = await loadOne(() => api.GET("/api/v1/organizations/{orgId}/ipsec/connections/{connectionId}", { params: { path: { orgId, connectionId: id } } }));
@@ -226,7 +250,7 @@ function ConnectionForm({ orgId, sites, onCancel, onSaved }: { orgId: string; si
     if (saving.current || (!uncertain && (!prepared || !currentEligibility?.eligible))) return;
     saving.current = true; setBusy(true); setError("");
     let posted = false;
-    const input: CreateInput = frozen.current ?? { id: ids.id, name, site_id: site, gateway_node_id: gateway, tunnel_ids: ids.tunnels, configuration: { mode: "ipv4-static", customer_outside_address: customer, local_prefixes: local, remote_prefixes: remote.split(/[\s,]+/).filter(Boolean), tunnels: tunnels.map(tunnel => ({ ...tunnel })) } };
+    const input: CreateInput = frozen.current ?? { id: ids.id, name, site_id: site, gateway_node_id: gateway, tunnel_ids: ids.tunnels, configuration: { mode, ...(mode === "ipv4-bgp" ? { bgp: { local_asn: Number(localASN), remote_asn: Number(remoteASN), router_id: routerID.trim(), maximum_prefixes: Number(maximumPrefixes) } } : {}), customer_outside_address: customer, local_prefixes: local, remote_prefixes: remote.split(/[\s,]+/).filter(Boolean), tunnels: tunnels.map(tunnel => ({ ...tunnel })) } };
     try {
       // Resolve an earlier write before testing whether a new write is currently allowed.
       if (uncertain && await recover(input.id)) return;
@@ -237,7 +261,7 @@ function ConnectionForm({ orgId, sites, onCancel, onSaved }: { orgId: string; si
       if (!eligibilityResult.ok || !eligibilityResult.data.eligible) { setEligibility(eligibilityResult.ok ? { key: pair, value: eligibilityResult.data } : null); setError("Gateway readiness changed. Check support before saving."); return; }
       const checked = await api.POST("/api/v1/organizations/{orgId}/ipsec/configuration-check", { params: { path: { orgId } }, body: input.configuration });
       if (!alive.current) return;
-      if (checked.error || !checked.data?.valid) { setError("Check the addresses, ranges and credentials before saving."); return; }
+      if (checked.error || !checked.data?.valid) { setError(input.configuration.mode === "ipv4-bgp" ? "Check BGP settings, addresses, ranges and credentials before saving." : "Check the addresses, ranges and credentials before saving."); return; }
       frozen.current = input; posted = true;
       const result = await api.POST("/api/v1/organizations/{orgId}/ipsec/connections", { params: { path: { orgId } }, body: input });
       if (!alive.current) return;
@@ -257,15 +281,31 @@ function ConnectionForm({ orgId, sites, onCancel, onSaved }: { orgId: string; si
       <fieldset disabled={busy || uncertain} className="space-y-4">
         {step === 1 ? <>
           <Field label="Name"><Input required value={name} maxLength={255} onChange={event => setName(event.target.value)} placeholder="Office to AWS" /></Field>
-          <div className="grid grid-cols-2 gap-4"><Field label="Local network"><Select required value={site} onChange={event => { setSite(event.target.value); setGateway(""); setLocal([]); setSubnets([]); setEligibility(null); }}><option value="">Choose a network</option>{sites.map(value => <option key={value.id} value={value.id}>{value.name}</option>)}</Select></Field>
+          <Field label="Routing"><Select value={mode} onChange={event => setMode(event.target.value as Configuration["mode"])}><option value="ipv4-static">Static routes</option><option value="ipv4-bgp">Dynamic routing (BGP)</option></Select></Field>
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2"><Field label="Local network"><Select required value={site} onChange={event => { setSite(event.target.value); setGateway(""); setLocal([]); setSubnets([]); setEligibility(null); }}><option value="">Choose a network</option>{sites.map(value => <option key={value.id} value={value.id}>{value.name}</option>)}</Select></Field>
             <Field label="Gateway"><Select required value={gateway} onChange={event => { setGateway(event.target.value); setEligibility(null); }}><option value="">Choose a gateway</option>{selectedGateways.map(node => <option key={node.id} value={node.id}>{node.name}</option>)}</Select></Field></div>
           <fieldset><legend className="mb-2 text-sm text-ink-secondary">Approved local ranges</legend><div className="flex flex-wrap gap-3">{subnets.map(subnet => <label key={subnet.id} className="flex items-center gap-2 rounded border border-line px-3 py-2 text-sm"><input type="checkbox" checked={local.includes(subnet.cidr)} onChange={event => setLocal(old => event.target.checked ? [...old, subnet.cidr] : old.filter(value => value !== subnet.cidr))} />{subnet.cidr}</label>)}</div>{site && subnets.length === 0 && <p className="text-xs text-ink-secondary">No approved ranges available.</p>}</fieldset>
-          <div className="grid grid-cols-2 gap-4"><Field label="Customer public IP"><Input required value={customer} onChange={event => setCustomer(event.target.value)} placeholder="Public gateway or NAT IP" /></Field><Field label="Remote network ranges"><Input required value={remote} onChange={event => setRemote(event.target.value)} placeholder="CIDRs, separated by commas" /></Field></div>
-        </> : <div className="grid grid-cols-2 gap-4">{tunnels.map((tunnel, i) => <div key={i} className="space-y-3 rounded border border-line p-4"><h3 className="font-semibold">Tunnel {i + 1}</h3>{([
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2"><Field label="Customer public IP"><Input required value={customer} onChange={event => setCustomer(event.target.value)} placeholder="Public gateway or NAT IP" /></Field><Field label="Remote network ranges"><Input required value={remote} onChange={event => setRemote(event.target.value)} placeholder="CIDRs, separated by commas" /></Field></div>
+          {mode === "ipv4-bgp" && <fieldset className="space-y-3"><legend className="font-medium text-ink-heading">BGP settings</legend>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <Field label="Customer ASN"><Input type="number" required min={64512} max={4294967294} step={1} value={localASN} onChange={event => setLocalASN(event.target.value)} /></Field>
+              <Field label="AWS ASN"><Input type="number" required min={1} max={4294967294} step={1} value={remoteASN} onChange={event => setRemoteASN(event.target.value)} /></Field>
+              <Field label="Router ID"><Input required maxLength={15} value={routerID} onChange={event => setRouterID(event.target.value)} placeholder="Stable IPv4 router ID" /></Field>
+              <Field label="Maximum prefixes per peer"><Input type="number" required min={1} max={64} step={1} value={maximumPrefixes} onChange={event => setMaximumPrefixes(event.target.value)} /></Field>
+            </div>
+            <p className="text-xs text-ink-secondary">Approved local ranges are advertised. Only the exact remote ranges above are accepted. Learning routes does not grant application access.</p>
+          </fieldset>}
+        </> : <><section aria-label="Connection review" className="space-y-3 rounded border border-line bg-surface-inset p-4">
+          <h3 className="font-semibold text-ink-heading">Review connection</h3>
+          <dl className="grid grid-cols-1 gap-3 text-sm sm:grid-cols-2"><div><dt className="text-ink-secondary">Routing</dt><dd>{mode === "ipv4-bgp" ? "Dynamic routing (BGP)" : "Static routes"}</dd></div><div><dt className="text-ink-secondary">Connection</dt><dd>{name}</dd></div><div><dt className="text-ink-secondary">Local ranges</dt><dd>{local.join(", ")}</dd></div><div><dt className="text-ink-secondary">Remote ranges</dt><dd>{remote}</dd></div></dl>
+          {mode === "ipv4-bgp" && <p className="text-sm text-ink-secondary">Customer ASN {localASN} · AWS ASN {remoteASN} · Router ID {routerID} · Maximum {maximumPrefixes} prefixes per peer</p>}
+          <p className="text-xs text-ink-secondary">This connection is saved disabled. Access policies control traffic when you enable it.</p>
+        </section><div className="grid grid-cols-1 gap-4 sm:grid-cols-2">{tunnels.map((tunnel, i) => <div key={i} className="space-y-3 rounded border border-line p-4"><h3 className="font-semibold">Tunnel {i + 1}</h3>{([
           ["outside_address", "outside IP"], ["inside_cidr", "inside CIDR"], ["customer_inside_address", "customer IP"], ["cloud_inside_address", "cloud IP"], ["psk", "PSK"],
-        ] as const).map(([field, label]) => <Field key={field} label={`Tunnel ${i + 1} ${label}`}><Input required type={field === "psk" ? "password" : "text"} autoComplete={field === "psk" ? "new-password" : "off"} spellCheck={false} value={tunnel[field]} onChange={event => setTunnels(old => old.map((value, n) => n === i ? { ...value, [field]: event.target.value } : value))} /></Field>)}</div>)}</div>}
+        ] as const).map(([field, label]) => <Field key={field} label={`Tunnel ${i + 1} ${label}`}><Input required type={field === "psk" ? "password" : "text"} autoComplete={field === "psk" ? "new-password" : "off"} spellCheck={false} value={tunnel[field]} onChange={event => setTunnels(old => old.map((value, n) => n === i ? { ...value, [field]: event.target.value } : value))} /></Field>)}</div>)}</div></>}
       </fieldset>
       <div className="flex items-center justify-between gap-3 text-sm"><p role="status" className="text-ink-secondary">{checking ? "Checking gateway support…" : currentEligibility ? eligibilityText[currentEligibility.reason] : "Choose a network and gateway to check support."}</p>{site && gateway && <Button type="button" variant="ghost" size="sm" disabled={busy || checking} onClick={() => setCheckAttempt(value => value + 1)}>Check support</Button>}</div>
+      {mode === "ipv4-bgp" && currentEligibility?.eligible && !currentEligibility.bgp?.eligible && <p role="status" className="text-xs text-ink-secondary">You can save this BGP configuration disabled. Enabling requires a gateway with fresh BGP support.</p>}
       <ErrorText>{error}</ErrorText>
       <div className="flex justify-end gap-2"><Button type="button" variant="ghost" onClick={cancel}>Cancel</Button>{step === 2 && !uncertain && <Button type="button" variant="ghost" disabled={busy} onClick={() => setStep(1)}>Back</Button>}{step === 1 ? <Button type="submit" disabled={!prepared || busy}>Next: tunnels</Button> : <Button type="submit" disabled={busy || (!uncertain && (checking || !currentEligibility?.eligible))}>{busy ? "Saving…" : uncertain ? "Retry save" : "Save disabled connection"}</Button>}</div>
     </form>

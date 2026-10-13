@@ -14,6 +14,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 const (
@@ -61,7 +63,29 @@ type ResolverEndpoint struct {
 // ResolverConfig is an immutable revision. The full, canonically ordered
 // endpoint list binds a Gateway DNS RPC to exactly the configuration the
 // scheduler observed; a changed, absent, or retired revision fails closed.
+type ResolverIPsecPath struct {
+	ConnectionID          string `json:"connection_id"`
+	ConfigurationRevision int64  `json:"configuration_revision"`
+	SourceAddress         string `json:"source_address"`
+}
+
+func (p *ResolverIPsecPath) valid() bool {
+	if p == nil {
+		return true
+	}
+	source, err := netip.ParseAddr(p.SourceAddress)
+	connection, connectionErr := uuid.Parse(p.ConnectionID)
+	return connectionErr == nil && connection != uuid.Nil && p.ConfigurationRevision > 0 && err == nil && source.Is4() && source.IsPrivate()
+}
+func sameIPsecPath(a, b *ResolverIPsecPath) bool {
+	if a == nil || b == nil {
+		return a == nil && b == nil
+	}
+	return *a == *b
+}
+
 type ResolverConfig struct {
+	IPsecPath       *ResolverIPsecPath `json:"ipsec_path,omitempty"`
 	ID              string             `json:"id"`
 	Version         int64              `json:"version"`
 	ProfileID       string             `json:"profile_id"`
@@ -72,10 +96,13 @@ type ResolverConfig struct {
 }
 
 func (c ResolverConfig) valid() bool {
-	if c.ID == "" || c.Version < 1 || len(c.Endpoints) == 0 || len(c.Endpoints) > 8 {
+	if !c.IPsecPath.valid() || c.ID == "" || c.Version < 1 || len(c.Endpoints) == 0 || len(c.Endpoints) > 8 {
 		return false
 	}
 	for _, endpoint := range c.Endpoints {
+		if c.IPsecPath != nil && (!endpoint.Address.Is4() || endpoint.Port != 53) {
+			return false
+		}
 		if !endpoint.Address.IsValid() || endpoint.Address.IsUnspecified() || endpoint.Address.IsLoopback() || endpoint.Address.IsMulticast() || endpoint.Address.IsLinkLocalUnicast() || endpoint.Port == 0 || (endpoint.Transport != "udp" && endpoint.Transport != "tcp") {
 			return false
 		}
@@ -87,6 +114,7 @@ func (c ResolverConfig) valid() bool {
 // revision. Explicit suffix profiles never fall back to another profile. A
 // LegacyDefault is created only by migration/legacy API compatibility.
 type ResolverProfile struct {
+	IPsecPath     *ResolverIPsecPath `json:"ipsec_path,omitempty"`
 	ID            string             `json:"id"`
 	Name          string             `json:"name"`
 	Provider      string             `json:"provider"`

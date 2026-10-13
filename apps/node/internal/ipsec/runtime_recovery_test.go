@@ -3,6 +3,7 @@ package ipsec
 import (
 	"context"
 	"errors"
+	"net/netip"
 	"testing"
 	"time"
 
@@ -65,8 +66,8 @@ func newRecoveryTestRig(t *testing.T) *recoveryTestRig {
 	if err = j.Save([]RuntimeJournalEntry{entry}); err != nil {
 		t.Fatal(err)
 	}
-	r.env = RuntimeEnvironment{Namespace: entry.Allocation.Namespace, Underlays: [2]RuntimeUnderlay{{InterfaceIndex: 2}, {InterfaceIndex: 2}}}
-	r.c = &RuntimeController{started: true, journal: j, config: RuntimeControllerConfig{OrgID: r.m.Manifest.OrgID, GatewayID: r.m.Manifest.NodeID}, client: r.lease,
+	r.env = RuntimeEnvironment{Namespace: entry.Allocation.Namespace, Underlays: [2]RuntimeUnderlay{{InterfaceIndex: 2, OuterMTU: 1500, LocalAddress: netip.MustParseAddr("192.0.2.1")}, {InterfaceIndex: 2, OuterMTU: 1500, LocalAddress: netip.MustParseAddr("192.0.2.1")}}}
+	r.c = &RuntimeController{started: true, journal: j, config: RuntimeControllerConfig{OrgID: r.m.Manifest.OrgID, GatewayID: r.m.Manifest.NodeID, DaemonAlive: func() bool { return true }}, client: r.lease,
 		qualification: testRuntimeQualification(entry.Allocation.Namespace), namespace: func() (string, error) { return entry.Allocation.Namespace, nil },
 		recoveryPrepared: map[uuid.UUID]RuntimeEnvironment{entry.DeliveryID: r.env}, recoveryClock: func() time.Duration { return r.now },
 		recoveryObserve: func(context.Context, RuntimeJournalEntry) [2]string { return r.status },
@@ -77,6 +78,11 @@ func newRecoveryTestRig(t *testing.T) *recoveryTestRig {
 			return nil
 		},
 	}
+	f := newRecoveryKernelFixture()
+	f.p, f.owned = entry.Allocation, entry.Observed
+	f.routes = [2]map[string]bool{{}, {}}
+	r.c.kernel = f.applier()
+	r.c.config.Environment = &mtuEnvironmentFixture{env: r.env}
 	r.c.replace = func(_ context.Context, in GuardIntent) (GuardManifest, error) {
 		if in.Connections[0].PrefixOnly {
 			r.events = append(r.events, "deny")

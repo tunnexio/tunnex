@@ -108,6 +108,8 @@ func ipsecConnectionError(err error) error {
 		return apierr.BadRequest("invalid_ipsec_connection", "invalid IPsec connection request")
 	case errors.Is(err, ipsec.ErrConnectionNotFound):
 		return apierr.NotFound("ipsec_connection_not_found", "IPsec connection not found")
+	case errors.Is(err, ipsec.ErrCleanupInProgress):
+		return apierr.Conflict("ipsec_cleanup_in_progress", "IPsec cleanup is in progress; wait for cleanup to complete before deleting")
 	case errors.Is(err, ipsec.ErrConnectionConflict):
 		return apierr.Conflict("ipsec_connection_conflict", "IPsec connection changed; refresh before retrying")
 	default:

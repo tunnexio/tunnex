@@ -1,3 +1,4 @@
+import { PrivateDNSResolvers } from "../components/PrivateDNSResolvers";
 import { NetworkDetailList } from "../components/NetworkDetailList";
 import { SiteToSiteNavigation } from "../components/SiteToSiteNavigation";
 import "../network-workspaces.css";
@@ -500,6 +501,7 @@ export default function Sites() {
           {section === "dns" && (
             <div className="space-y-3">
               <div className="flex flex-wrap items-center justify-between gap-3"><div><p className="text-xs font-semibold uppercase tracking-wide text-ink-faint">Advanced Site Networking</p><p className="mt-1 text-cell text-ink-tertiary">Optional site-to-site zone forwarding. Private DNS Resolver remains the only primary configuration for FQDN access.</p></div><Button variant="ghost" onClick={() => updateQuery({ section: "overview", site: null, gateway: null, q: null, dns: null })}>Back to Sites overview</Button></div>
+              <PrivateDNSResolvers orgId={org.id} role={myRole} />
               <DNSForwardsPanel
                 view={raw.forwards}
                 siteCount={raw.sites.length}

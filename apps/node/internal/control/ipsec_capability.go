@@ -28,3 +28,26 @@ func (c *Client) ipsecRecoveryCapability() int {
 	}
 	return controller.RecoveryCapability()
 }
+
+// BGP support is reported only from the actual opaque qualified controller.
+func (c *Client) ipsecBGPCapability() int {
+	if c == nil {
+		return 0
+	}
+	controller := c.ipsecController.Load()
+	if controller == nil || controller.Capability() != 1 {
+		return 0
+	}
+	return controller.BGPCapability()
+}
+
+func (c *Client) ipsecFQDNPolicyCapability() int {
+	if c == nil {
+		return 0
+	}
+	controller := c.ipsecController.Load()
+	if controller == nil {
+		return 0
+	}
+	return controller.FQDNPolicyCapability()
+}

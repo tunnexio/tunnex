@@ -20,7 +20,7 @@ func TestEligibilityReadOnlyAndScope(t *testing.T) {
 	}
 	before := snapshot()
 	got, err := s.ReadEligibility(ctx, org, r.SiteID, r.GatewayID)
-	if err != nil || !got.Eligible || got.Reason != "eligible" {
+	if err != nil || !got.Eligible || got.Reason != "eligible" || got.BGP == nil || got.BGP.Eligible || got.BGP.Reason != "unsupported" {
 		t.Fatalf("eligible=%+v %v", got, err)
 	}
 	if snapshot() != before {
@@ -51,7 +51,7 @@ func TestEligibilityReadOnlyAndScope(t *testing.T) {
 		}
 		before = snapshot()
 		got, err = s.ReadEligibility(ctx, org, r.SiteID, r.GatewayID)
-		if err != nil || got.Eligible || got.Reason != tc.reason {
+		if err != nil || got.Eligible || got.Reason != tc.reason || got.BGP == nil || got.BGP.Eligible || got.BGP.Reason != tc.reason {
 			t.Fatalf("got=%+v err=%v want%s", got, err, tc.reason)
 		}
 		if snapshot() != before {
@@ -62,7 +62,7 @@ func TestEligibilityReadOnlyAndScope(t *testing.T) {
 		t.Fatal(err)
 	}
 	got, err = s.ReadEligibility(ctx, org, r.SiteID, r.GatewayID)
-	if err != nil || got.Reason != "opt_in_required" {
+	if err != nil || got.Reason != "opt_in_required" || got.BGP == nil || got.BGP.Reason != "opt_in_required" {
 		t.Fatalf("optin=%+v %v", got, err)
 	}
 }
@@ -70,7 +70,7 @@ func TestEligibilityMissingSettingsAndDeletedOrganization(t *testing.T) {
 	ctx, p, org, _ := settingsFixture(t)
 	s := ipsec.NewConnectionStore(p)
 	got, err := s.ReadEligibility(ctx, org, uuid.New(), uuid.New())
-	if err != nil || got.Reason != "opt_in_required" {
+	if err != nil || got.Reason != "opt_in_required" || got.BGP == nil || got.BGP.Reason != "opt_in_required" {
 		t.Fatalf("missing settings=%+v %v", got, err)
 	}
 	var count int

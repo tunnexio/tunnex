@@ -1,0 +1,22 @@
+#!/usr/bin/env python3
+"""Source-only reviewed plan until fresh corrected worker pins supplied. Default READONLY."""
+import argparse,hashlib,json,os,pathlib,stat,subprocess,datetime
+os.umask(0o077);assert os.geteuid()==0
+p=argparse.ArgumentParser();p.add_argument('action',choices=['begin','restore','observe']);p.add_argument('--pins',type=pathlib.Path,required=True);p.add_argument('--execute',action='store_true');a=p.parse_args();st=a.pins.lstat();assert stat.S_ISREG(st.st_mode)and st.st_uid==0 and stat.S_IMODE(st.st_mode)==0o600;pins=json.loads(a.pins.read_text());assert pins['root_reviewed']is True and pins['project']=='tunnex-bgp-20261007'and pins['gateway_id']!='382b1763ae4bd0fa21a871839af4be0d9c0c8e37dc7d57c85a68172cfff6be06','Wait for accepted corrected gateway identity';run=pathlib.Path('/home/ubuntu/tunnex-bgp-lab/cp-lease-fault-corrected-20261008');comment='tunnex-cp-mtls-lease-fault-20261008'
+def cmd(*args):return subprocess.check_output(list(args),text=True)
+def save(name,d):
+ with(run/name).open('x')as f:json.dump(d,f,indent=2);f.flush();os.fsync(f.fileno())
+ fd=os.open(run,os.O_DIRECTORY|os.O_RDONLY);os.fsync(fd);os.close(fd)
+def identity():
+ d=json.loads(cmd('docker','inspect',pins['gateway_id']))[0];assert d['State']['Running']and d['Image']==pins['image']and d['Config']['Labels']['tunnex.lab']==pins['project'];assert cmd('docker','exec',d['Id'],'sha256sum','/proc/1/exe').split()[0]==pins['node_sha256'];assert cmd('docker','exec',d['Id'],'readlink','/proc/1/ns/net').strip()==pins['namespace'];assert cmd('docker','exec',d['Id'],'sha256sum','/state/cert.pem').split()[0]==pins['cert_sha256'];env=dict(x.split('=',1)for x in d['Config']['Env']);assert env['TUNNEX_AGENT_URL']=='https://api:8443'and env['TUNNEX_API_URL']=='http://api:8080';e=d['NetworkSettings']['Networks']['tunnex-bgp-20261007-net'];assert e['IPAddress']=='172.30.88.2';net=json.loads(cmd('docker','network','inspect',e['NetworkID']))[0];assert net['Labels']['tunnex.lab']==pins['project'];bridge=net['Options'].get('com.docker.network.bridge.name','br-'+net['Id'][:12]);api=json.loads(cmd('docker','inspect',pins['api_id']))[0];assert api['State']['Running']and api['Config']['Labels']['tunnex.lab']==pins['project']and api['NetworkSettings']['Networks']['tunnex-bgp-20261007-net']['IPAddress']=='172.30.88.3';route=json.loads(cmd('docker','exec',d['Id'],'ip','-j','-4','route','get','172.30.88.3'));assert len(route)==1 and route[0]['dev']=='eth0'and route[0]['prefsrc']=='172.30.88.2';assert pathlib.Path('/proc/sys/net/bridge/bridge-nf-call-iptables').read_text().strip()=='1';return {'gateway_id':d['Id'],'namespace':pins['namespace'],'api_id':api['Id'],'bridge':bridge,'started_at':d['State']['StartedAt'],'pid':d['State']['Pid']}
+def foreign():return [x for x in cmd('iptables','-S').splitlines()if comment not in x]
+id=identity();rule=['-i',id['bridge'],'-o',id['bridge'],'-s','172.30.88.2/32','-d','172.30.88.3/32','-p','tcp','--dport','8443','-m','comment','--comment',comment,'-j','DROP']
+def exists():return subprocess.run(['iptables','-C','FORWARD',*rule],stdout=subprocess.DEVNULL,stderr=subprocess.DEVNULL).returncode==0
+if not a.execute:print(json.dumps({'review_only':True,'identity':id,'rule':rule,'scope':'agent mTLS control channel outage, not URL-specific permit filtering','management_http8080_preserved':True}));raise SystemExit(0)
+if a.action=='begin':
+ assert not run.exists()and not exists();run.mkdir(mode=0o700);save('before.json',{'identity':id,'rule':rule,'foreign_rules':foreign(),'pins_sha256':hashlib.sha256(a.pins.read_bytes()).hexdigest(),'at':datetime.datetime.now(datetime.timezone.utc).isoformat()});save('begin-pending.json',{'identity':id});subprocess.run(['iptables','-I','FORWARD','1',*rule],check=True);assert exists()and foreign()==json.loads((run/'before.json').read_text())['foreign_rules'];save('begun.json',{'counter_readback':cmd('iptables','-L','FORWARD','-v','-n','-x')});print('EXACT_MTLS_CONTROL_PATH_DROPPED')
+elif a.action=='restore':
+ before=json.loads((run/'before.json').read_text());assert before['identity']==id and before['rule']==rule and before['foreign_rules']==foreign();save('restore-pending.json',{'counter_readback':cmd('iptables','-L','FORWARD','-v','-n','-x')})
+ if exists():subprocess.run(['iptables','-D','FORWARD',*rule],check=True)
+ assert not exists()and foreign()==before['foreign_rules'];save('restored.json',{'owned_rule_absent':True,'foreign_rules_preserved':True});print('EXACT_MTLS_CONTROL_PATH_RESTORED')
+else:print(cmd('iptables','-L','FORWARD','-v','-n','-x'))

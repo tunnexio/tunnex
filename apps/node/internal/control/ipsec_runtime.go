@@ -9,6 +9,7 @@ import (
 	"github.com/tunnexio/tunnex/apps/node/internal/ipsec"
 	"io"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"strconv"
 	"time"
@@ -132,16 +133,65 @@ func (c *Client) RenewIPsecLease(ctx context.Context, id uuid.UUID, request ipse
 	return out, err
 }
 
-func (c *Client) IPsecReportStatus(ctx context.Context, id uuid.UUID, report ipsec.RuntimeStatusReport) error {
-	if id == uuid.Nil || report.DeliveryID == uuid.Nil || report.DesiredRevision <= 0 || report.ConfigurationRevision <= 0 {
-		return ErrIPsecControl
+func validIPsecStatusReport(report ipsec.RuntimeStatusReport) bool {
+	if report.DeliveryID == uuid.Nil || report.DesiredRevision <= 0 || report.ConfigurationRevision <= 0 {
+		return false
 	}
 	for i, t := range report.Tunnels {
-		if t.ID == uuid.Nil || t.Slot != i+1 || t.Selected != (i == 0) || (t.Status != "up" && t.Status != "down" && t.Status != "unknown") {
-			return ErrIPsecControl
+		if t.ID == uuid.Nil || t.Slot != i+1 || (t.Status != "up" && t.Status != "down" && t.Status != "unknown") {
+			return false
 		}
 	}
 	if report.Tunnels[0].ID == report.Tunnels[1].ID {
+		return false
+	}
+	dynamic := !report.Tunnels[0].Selected && !report.Tunnels[1].Selected
+	if dynamic {
+		if report.RecoveryVersion != nil || report.SelectionSequence != nil || report.ActiveSlot != nil {
+			return false
+		}
+		if report.BGP == nil {
+			return true
+		} // No BGP measurements; delivery/profile is checked by poll and CP.
+		b := report.BGP
+		if b.Version != 1 || b.Sequence == 0 || b.Sequence > 9007199254740991 || b.Routes == nil || len(b.Routes) > 64 {
+			return false
+		}
+		installed := [2]int{}
+		seen := map[string]bool{}
+		for _, r := range b.Routes {
+			prefix, err := netip.ParsePrefix(r.Prefix)
+			if err != nil || !prefix.Addr().Is4() || prefix != prefix.Masked() || prefix.String() != r.Prefix || r.Slot < 1 || r.Slot > 2 || seen[r.Prefix] {
+				return false
+			}
+			seen[r.Prefix] = true
+			installed[r.Slot-1]++
+		}
+		for i, p := range b.Peers {
+			switch p.State {
+			case "unknown", "idle", "connect", "active", "opensent", "openconfirm", "established":
+			default:
+				return false
+			}
+			if p.Slot != i+1 || p.AcceptedPrefixes < 0 || p.AcceptedPrefixes > 64 || p.InstalledPrefixes != installed[i] || p.InstalledPrefixes > p.AcceptedPrefixes || (p.State != "established" && (p.AcceptedPrefixes != 0 || p.InstalledPrefixes != 0)) || (p.State == "established" && report.Tunnels[i].Status != "up") || (p.RejectedPrefixes != nil && (*p.RejectedPrefixes < 0 || *p.RejectedPrefixes > 1000000000)) {
+				return false
+			}
+		}
+		return true
+	}
+	if report.BGP != nil || !report.Tunnels[0].Selected || report.Tunnels[1].Selected {
+		return false
+	}
+	if report.RecoveryVersion == nil {
+		return report.SelectionSequence == nil && report.ActiveSlot == nil
+	}
+	if *report.RecoveryVersion != 1 || report.SelectionSequence == nil || *report.SelectionSequence == 0 || *report.SelectionSequence > 9007199254740991 {
+		return false
+	}
+	return report.ActiveSlot == nil || (*report.ActiveSlot >= 1 && *report.ActiveSlot <= 2 && report.Tunnels[*report.ActiveSlot-1].Status == "up")
+}
+func (c *Client) IPsecReportStatus(ctx context.Context, id uuid.UUID, report ipsec.RuntimeStatusReport) error {
+	if id == uuid.Nil || !validIPsecStatusReport(report) {
 		return ErrIPsecControl
 	}
 	return c.ipsecRequest(ctx, "POST", ipsecRuntimePath(id, "/status"), report, nil)

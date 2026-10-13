@@ -33,7 +33,7 @@ export function ConnectionChooser({ sites, orgId, onClose, onAWS }: {
       <button className={tile} onClick={() => setStep("ipsec")}><FaShieldAlt size={32} aria-hidden="true" /><strong>Cloud VPN / Firewall</strong><span className="text-sm text-ink-secondary">IPsec · External VPN endpoint</span></button>
     </div>}
     {step === "ipsec" && <div className="grid gap-3 sm:grid-cols-2">
-      <button className={tile} onClick={onAWS}><FaAws size={34} color="#ff9900" aria-hidden="true" /><strong>AWS</strong><span className="text-sm text-ink-secondary">Site-to-Site VPN · Static IPv4</span></button>
+      <button className={tile} onClick={onAWS}><FaAws size={34} color="#ff9900" aria-hidden="true" /><strong>AWS</strong><span className="text-sm text-ink-secondary">Site-to-Site VPN · Static or BGP IPv4</span></button>
       <button disabled className={tile}><VscAzure size={32} color="#0089d6" aria-hidden="true" /><strong>Azure</strong><span className="text-sm text-ink-secondary">Not available yet</span></button>
       <button disabled className={tile}><SiGooglecloud size={32} color="#4285f4" aria-hidden="true" /><strong>Google Cloud</strong><span className="text-sm text-ink-secondary">Not available yet</span></button>
       <button disabled className={tile}><FaNetworkWired size={32} aria-hidden="true" /><strong>On-premises / Other</strong><span className="text-sm text-ink-secondary">Not available yet</span></button>

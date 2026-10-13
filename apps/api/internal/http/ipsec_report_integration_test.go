@@ -73,16 +73,22 @@ func TestIPsecCapabilityAuthenticatedReportIntegration(t *testing.T) {
 		name, fields string
 		version      int
 		recovery     int
+		bgp          int
 	}{
-		{"recovery supported", `,"ipsec_config_version":1,"ipsec_recovery_version":1`, 1, 1},
-		{"recovery no config", `,"ipsec_recovery_version":1`, 0, 0},
-		{"recovery future", `,"ipsec_config_version":1,"ipsec_recovery_version":2`, 1, 0},
-		{"supported", `,"ipsec_config_version":1`, 1, 0},
-		{"legacy clears", ``, 0, 0},
-		{"supported again", `,"ipsec_config_version":1`, 1, 0},
-		{"negative clears", `,"ipsec_config_version":-1`, 0, 0},
-		{"future unknown", `,"ipsec_config_version":2`, 0, 0},
-		{"explicit unsupported", `,"ipsec_config_version":0`, 0, 0},
+		{"recovery supported", `,"ipsec_config_version":1,"ipsec_recovery_version":1`, 1, 1, 0},
+		{"recovery no config", `,"ipsec_recovery_version":1`, 0, 0, 0},
+		{"recovery future", `,"ipsec_config_version":1,"ipsec_recovery_version":2`, 1, 0, 0},
+		{"supported", `,"ipsec_config_version":1`, 1, 0, 0},
+		{"legacy clears", ``, 0, 0, 0},
+		{"supported again", `,"ipsec_config_version":1`, 1, 0, 0},
+		{"negative clears", `,"ipsec_config_version":-1`, 0, 0, 0},
+		{"future unknown", `,"ipsec_config_version":2`, 0, 0, 0},
+		{"explicit unsupported", `,"ipsec_config_version":0`, 0, 0, 0},
+		{"bgp supported", `,"ipsec_config_version":1,"ipsec_bgp_version":1`, 1, 0, 1},
+		{"bgp no config", `,"ipsec_bgp_version":1`, 0, 0, 0},
+		{"bgp future", `,"ipsec_config_version":1,"ipsec_bgp_version":2`, 1, 0, 0},
+		{"bgp negative", `,"ipsec_config_version":1,"ipsec_bgp_version":-1`, 1, 0, 0},
+		{"bgp legacy clear", ``, 0, 0, 0},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var before time.Time
@@ -107,6 +113,9 @@ func TestIPsecCapabilityAuthenticatedReportIntegration(t *testing.T) {
 				t.Fatal(err)
 			}
 			caps := nodes.Capabilities(raw)
+			if caps.IPsecBGPVersion != tc.bgp {
+				t.Fatalf("BGP=%d want%d", caps.IPsecBGPVersion, tc.bgp)
+			}
 			if caps.IPsecRecoveryVersion != tc.recovery {
 				t.Fatalf("recovery=%d want%d", caps.IPsecRecoveryVersion, tc.recovery)
 			}

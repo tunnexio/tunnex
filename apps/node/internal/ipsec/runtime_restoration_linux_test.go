@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	bgpengine "github.com/tunnexio/tunnex/apps/node/internal/bgp"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -16,6 +17,15 @@ import (
 // Synthetic prior-boot/namespace evidence, real kernel absence and guard checks.
 // This is not evidence of a real host reboot or cloud traffic continuity.
 func TestRuntimeRestorationReservationNative(t *testing.T) {
+	runRuntimeRestorationReservationNative(t, false)
+}
+
+// Synthetic stopped-runtime receipt, actual kernel/daemon absence; no live CP authority.
+func TestBGPRestorationRetainsHistoryWithoutCurrentProcessNative(t *testing.T) {
+	runRuntimeRestorationReservationNative(t, true)
+}
+
+func runRuntimeRestorationReservationNative(t *testing.T, bgpHistory bool) {
 	if os.Getenv("TUNNEX_IPSEC_RESTORATION_LAB") != "1" {
 		t.Skip("disconnected disposable namespace only")
 	}
@@ -33,6 +43,15 @@ func TestRuntimeRestorationReservationNative(t *testing.T) {
 	m := runtimeMaterialFixture()
 	version := 1
 	m.Manifest.RecoveryVersion = &version
+	if bgpHistory {
+		m.Manifest.RecoveryVersion = nil
+		m.Manifest.ProfileID = "aws-bgp-ipv4-v1"
+		m.Manifest.BGPVersion = &version
+		m.Manifest.BGP = &BGPConfig{LocalASN: 65000, RemoteASN: 7224, RouterID: "10.10.0.1", MaximumPrefixes: 64}
+		for i := range m.Manifest.Tunnels {
+			m.Manifest.Tunnels[i].Selected = false
+		}
+	}
 	runtimeReseal(&m)
 	ns, _ := os.Readlink("/proc/self/ns/net")
 	boot, _ := resetBootID()
@@ -47,13 +66,56 @@ func TestRuntimeRestorationReservationNative(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer c.Close()
+	if bgpHistory {
+		// Guard rendering is covered independently; this reservation regression
+		// verifies denial ordering/intent while keeping kernel/daemon absence real.
+		c.replace = func(_ context.Context, in GuardIntent) (GuardManifest, error) {
+			for _, g := range in.Connections {
+				if !g.PrefixOnly || len(g.Grants) != 0 {
+					t.Fatal("history reservation widened authority")
+				}
+			}
+			return GuardManifest{}, nil
+		}
+	}
 	old = saveAppliedRestorationFixture(t, c.journal, old)
-	old.Recovery = &RuntimeRecoveryState{SelectedSlot: 1, Sequence: 1, PendingFrom: 1, PendingTo: 2, Stage: "pending"}
+	if bgpHistory {
+		processIdentity := *processStateFixture(t).BGPProcess
+		processIdentity.Namespace = old.Allocation.Namespace
+		processIdentity.Directory = filepath.Join(dir, "bgp-"+old.DeliveryID.String()+"-g1")
+		old.BGPProcess = &processIdentity
+		if err = c.journal.Save([]RuntimeJournalEntry{old}); err != nil {
+			t.Fatal("reserve synthetic process", err)
+		}
+		cleaned := processIdentity
+		cleaned.Stage = "cleaned"
+		old.BGPProcess = &cleaned
+		if err = c.journal.Save([]RuntimeJournalEntry{old}); err != nil {
+			t.Fatal("checkpoint synthetic cleanup", err)
+		}
+		// Construct an already validated prior restoration epoch, as a controller
+		// fixture only; the next reservation below still uses real absence gates.
+		first := restoredFixture(old)
+		first.Restoration.BootID = boot
+		first.Restoration.Retired[0].NewBootID = boot
+		first.BGPProcess = nil
+		first.BGPRoutes = nil
+		first.BGPProcessRetired = []bgpengine.ProcessIdentity{cleaned}
+		if err = c.journal.Save([]RuntimeJournalEntry{first}); err != nil {
+			t.Fatal("prior synthetic epoch", err)
+		}
+		old = first
+	}
+	if !bgpHistory {
+		old.Recovery = &RuntimeRecoveryState{SelectedSlot: 1, Sequence: 1, PendingFrom: 1, PendingTo: 2, Stage: "pending"}
+	}
 	if err = c.journal.Save([]RuntimeJournalEntry{old}); err != nil {
 		t.Fatal(err)
 	}
-	if err = c.Start(ctx); err != nil {
-		t.Fatal(err)
+	if !bgpHistory {
+		if err = c.Start(ctx); err != nil {
+			t.Fatal(err)
+		}
 	}
 	candidate, _, err := runtimeMaterialEntry(m, m.Manifest.OrgID, m.Manifest.NodeID, ns)
 	if err != nil {
@@ -136,8 +198,20 @@ func TestRuntimeRestorationReservationNative(t *testing.T) {
 		t.Fatal("valid reservation", err)
 	}
 	e := entries()[0]
-	if e.Allocation.Namespace != ns || e.Allocation.Generation == old.Allocation.Generation || e.Restoration.Epoch != 1 || e.Observed != ([2]Ownership{}) || !reflect.DeepEqual(e.Recovery, old.Recovery) {
+	if e.Allocation.Namespace != ns || e.Allocation.Generation == old.Allocation.Generation || e.Restoration.Epoch != func() uint64 {
+		if bgpHistory {
+			return 2
+		}
+		return 1
+	}() || e.Observed != ([2]Ownership{}) || !reflect.DeepEqual(e.Recovery, old.Recovery) {
 		t.Fatal("reservation lost identity separation or route duty")
+	}
+	if bgpHistory && (e.BGPProcess != nil || !reflect.DeepEqual(e.BGPProcessRetired, old.BGPProcessRetired) || !reflect.DeepEqual(e.Restoration.Retired[len(e.Restoration.Retired)-1].Entry.BGPProcessRetired, old.BGPProcessRetired)) {
+		t.Fatal("history-only stopped runtime lost immutable process duty")
+	}
+	if bgpHistory {
+		t.Log("PASS synthetic prior epoch, real next reservation absence/lease guards, immutable retired history retained")
+		return
 	}
 	// Reopen proves a crash after reservation does not depend on an in-memory receipt.
 	c.Close()

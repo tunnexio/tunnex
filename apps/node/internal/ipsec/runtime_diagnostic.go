@@ -1,0 +1,78 @@
+package ipsec
+
+import (
+	"context"
+	"errors"
+	"time"
+
+	"github.com/google/uuid"
+)
+
+// RuntimeDiagnostic contains only fixed local stage names and timing. It has
+// no error body, material, credentials, configuration or forwarding authority.
+type RuntimeDiagnostic struct {
+	Operation, Stage, ContextState string
+	ConnectionID                   uuid.UUID
+	ElapsedMillis                  int64
+	Refused                        bool
+}
+
+func validRuntimeDiagnostic(operation, stage string) bool {
+	switch operation {
+	case "maintenance_pulse", "native_proof", "maintenance", "maintenance_current", "recovery_observe", "recovery_apply", "recovery_refresh", "recovery_guard_denial", "apply", "bgp_apply", "validate", "heartbeat", "install_active", "guard_replace", "bgp_reconcile", "dns_proof", "dns_before_proof", "dns_after_proof", "dns_exchange":
+	default:
+		return false
+	}
+	switch stage {
+	case "history", "history_entry", "history_epoch", "history_selection", "history_clock", "clock", "sample", "report_binding", "publish", "prior_reserve", "remember", "maintenance_qualification", "maintenance_candidate_qualification", "maintenance_candidate_report_reserve", "combined_guard_candidate_qualification", "combined_guard_final_prior_reserve", "combined_guard_prior_binding", "combined_guard_prior_reserve", "combined_guard_required_binding", "maintenance_active_pulse", "maintenance_authority_factory", "maintenance_begin", "maintenance_bgp_native_status", "maintenance_bgp_process", "maintenance_bgp_qualification", "maintenance_bgp_ready", "maintenance_bgp_routes", "maintenance_bgp_status", "maintenance_bgp_target", "maintenance_candidate_after_publish", "maintenance_candidate_binding", "maintenance_candidate_final", "maintenance_candidate_reserve", "maintenance_captured_owner", "maintenance_combined_install", "maintenance_current_after_fresh", "maintenance_current_before_fresh", "maintenance_exact_owner", "maintenance_final_context", "maintenance_final_prior_reserve", "maintenance_fresh_lease", "maintenance_journal_lineage", "maintenance_lease_accept", "maintenance_lease_binding", "maintenance_native_guard", "maintenance_native_proof", "maintenance_prior_reserve", "maintenance_publish", "maintenance_static_ready", "maintenance_status", "native_context_final", "native_daemon_alive", "native_environment_equal", "native_environment_observe", "native_inventory_after", "native_inventory_before", "native_kernel_after_equal", "native_kernel_after_read", "native_kernel_before_namespace", "native_kernel_before_read", "native_kernel_reader", "native_vici_after", "native_vici_before", "native_xfrm_after_equal", "native_xfrm_after_read", "native_xfrm_before_namespace", "native_xfrm_before_read", "native_xfrm_reader", "recovery_preparation", "transport_remove", "guard_fallback", "observation_window", "recovery_advice", "recovery_hold", "pending_target_observation", "route_selection", "active_install", "standby_retry", "inactive_history_inventory", "inactive_no_due_history", "inactive_no_denied_candidate", "prepared_binding", "input", "qualification", "material_contract", "journal_inventory", "startup_gate", "delivery_lineage", "environment", "journal_continuity", "bgp_apply", "static_apply", "bgp_qualification", "bgp_reconcile", "combined_guard", "permit_lease", "restored_transport", "transport_stage", "transport_initiate", "transport_retry", "native_current_proof", "journal_commit", "underlay_mtu", "active_continuity", "session_cleanup", "session_start", "route_initialization", "authority_binding", "remaining_authority", "native_status", "guard_denial_read", "native_current_proof_and_guard", "final_binding", "journal_sequence", "entry_current_proof", "entry_lease_remaining", "guard_projection", "entry_bgp_observation", "entry_static_observation", "entry_tunnel_mtu", "combined_guard_context", "combined_guard_authority", "entry_dns_source", "combined_guard_qualification", "entry_bgp_process", "combined_guard_replace", "combined_guard_final_binding", "combined_guard_final_lease", "guard_render", "guard_namespace", "guard_interfaces", "guard_table_read", "guard_prior_ownership", "guard_source_bracket", "guard_resolve_journal", "guard_prepare_journal", "guard_atomic_replace", "guard_complete_readback", "guard_finish_journal", "permit_freshness", "peer_summary_observation", "route_observation", "transport_status", "route_journal_binding", "route_guard_withdrawal", "route_commit_readback", "final_permit", "dns_input", "dns_endpoint", "dns_binding", "dns_owner", "dns_authority", "dns_grant", "dns_original_lease", "dns_native_proof", "dns_route_slot", "dns_guard", "dns_source_before", "dns_route", "dns_source_after", "dns_current_lease", "dns_epoch", "dns_latest_guard", "dns_before_proof", "dns_socket", "dns_socket_udp", "dns_socket_tcp", "dns_guard_template", "dns_guard_required", "dns_guard_full_read", "dns_guard_superseded_verified", "dns_guard_current_refused", "dns_after_proof", "dns_after_binding", "dns_latest_guard_stability", "dns_latest_guard_template", "dns_latest_guard_required", "dns_latest_guard_full_read", "dns_socket_tcp_input", "dns_socket_tcp_dial", "dns_socket_tcp_write", "dns_socket_tcp_length", "dns_socket_tcp_body", "dns_socket_tcp_complete":
+		return true
+	}
+	return false
+}
+
+func (c *RuntimeController) emitRuntimeDiagnostic(ctx context.Context, operation, stage string, connection uuid.UUID, started time.Time, refused bool) {
+	if c == nil {
+		return
+	}
+	emitRuntimeDiagnostic(c.config.Diagnostic, ctx, operation, stage, connection, started, refused)
+}
+
+func emitRuntimeDiagnostic(callback func(RuntimeDiagnostic), ctx context.Context, operation, stage string, connection uuid.UUID, started time.Time, refused bool) {
+	if callback == nil || !validRuntimeDiagnostic(operation, stage) {
+		return
+	}
+	state := "active"
+	if ctx != nil {
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			state = "deadline"
+		} else if ctx.Err() != nil {
+			state = "canceled"
+		}
+	}
+	elapsed := time.Since(started).Milliseconds()
+	if elapsed < 0 {
+		elapsed = 0
+	}
+	callback(RuntimeDiagnostic{Operation: operation, Stage: stage, ConnectionID: connection, ElapsedMillis: elapsed, Refused: refused, ContextState: state})
+}
+
+// DNS reads can be concurrent and high volume. Refusal diagnostics share one
+// controller-wide one-second gate; this never affects packet admission.
+func (c *RuntimeController) claimDNSDiagnostic(now time.Time) bool {
+	n := now.UnixNano()
+	for {
+		previous := c.dnsDiagnosticAfter.Load()
+		if n < previous {
+			return false
+		}
+		if c.dnsDiagnosticAfter.CompareAndSwap(previous, n+int64(time.Second)) {
+			return true
+		}
+	}
+}
+func (c *RuntimeController) emitDNSRuntimeDiagnostic(ctx context.Context, operation, stage string, connection uuid.UUID, started time.Time, refused bool) {
+	if c == nil || c.config.Diagnostic == nil || !refused || !validRuntimeDiagnostic(operation, stage) || !c.claimDNSDiagnostic(time.Now()) {
+		return
+	}
+	c.emitRuntimeDiagnostic(ctx, operation, stage, connection, started, true)
+}
