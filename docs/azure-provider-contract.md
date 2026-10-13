@@ -76,12 +76,17 @@ Run these checks from an explicitly authorized client, using the actual workload
 | Check | Evidence to retain |
 | --- | --- |
 | Direct private-IP access | Successful TCP and UDP exchanges on authorized ports, with the original permitted source observed at the workload; refusal from an ungranted source. |
+| Ordinary application grant expiry and recovery | After an ordinary private-IP grant expires or is revoked, both new and existing TCP/UDP flows lose access. A genuine replacement grant restores authorized traffic. Test this independently of DNS resolution and FQDN address-lease expiry. |
 | Private DNS | Expected A/CNAME results, NXDOMAIN handling and a large UDP response that can complete through TCP retry; public names still use the client's normal resolver. |
 | FQDN application grant | Fresh resolution and successful authorized traffic, followed by refusal when the grant is revoked or its permitted address lease expires. Check existing TCP/UDP flows as well as new flows. |
 | Profile health and routing | The expected one or two peer slots, current SA health and, for BGP, established peers and only approved remote routes. |
-| Recovery | During a planned maintenance window, test the profile's supported peer failure and restoration, return routing and representative application traffic. Restore the original configuration and record the final state. |
+| MTU and large transfers | Test large TCP/UDP exchanges in both directions at the intended reduced tunnel MTU. Record DF/ICMP path-MTU feedback and the TCP SYN/SYN-ACK MSS on the selected tunnel interface; successful small packets alone do not prove these checks. Restore the original MTU and record the final routing and traffic state. |
+| Peer recovery | During a planned maintenance window, test the profile's supported peer failure and restoration, return routing and representative application traffic. Measure interruption and recovery on new and existing TCP/UDP flows. Restore the original configuration and record the final state. |
+| Gateway restart and key maintenance | Test a planned gateway restart using fresh connections and the original TCP sockets/UDP flows. Check automatic CHILD and IKE renewal separately, with successful traffic through each transition. Test a coordinated two-sided PSK change separately; record recovery time and the final cleanup state. |
 
 These are acceptance checks to perform in the customer's environment. A local UI test, stored configuration, successful DNS answer or applied runtime state does not establish that all of them passed on Azure.
+
+Current owned Azure qualification, reviewed 2026-10-13, covers active-active BGP forwarding and filtering, active-active static traffic in both directions, and bounded forward static MTU1280 continuity. Active-standby routing/traffic, ordinary grant expiry/recovery, sustained private DNS and encrypted FQDN application access, restart/key-maintenance continuity, reverse reduced-MTU/DF/PMTU/MSS and peer-fault recovery remain open. Do not assume those behaviors are ready for a customer rollout from the completed checks. See the [current story status](evidence/azure-s2s-20261010/azure-story-wise-status-20261012.json) for their individual scope.
 
 ### Maintain and troubleshoot
 

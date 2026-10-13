@@ -1,10 +1,22 @@
 # Azure site-to-site DNS and application qualification
 
-Status: implementation and test plan only. No Azure live acceptance is asserted by this document or by receipt-checker fixtures.
+Qualification status reviewed 2026-10-13: basic owned office DNS, genuine FQDN entitlement and disconnected native FQDN expiry have evidence. Sustained DNS readiness and encrypted FQDN application allow/revoke/expiry/recovery/failover/negative acceptance remain open. Receipt-checker fixtures do not establish Azure live acceptance. See the [current story status](evidence/azure-s2s-20261010/azure-story-wise-status-20261012.json).
 
 ## Reuse and Azure contract
 
 Reuse the existing private DNS resolver profiles, most-specific suffix selection, IPsec connection/revision/source binding, policy evaluation, TCP/UDP transport, lease guards, mailbox freshness and FQDN answer generation. The existing `azure` provider hint is presentation metadata; it does not create an Azure resolver or authorize traffic. Keep ordinary DNS and application permissions separate.
+
+## Customer setup and readiness
+
+Follow the [customer setup guide](azure-provider-contract.md#reach-azure-private-dns) with the customer's actual network values:
+
+- Select the intended Site, Gateway and enabled IPsec connection. Approve the private zone suffixes, resolver endpoint ranges and the gateway or office resolver's actual source address, including the return route.
+- Authorize that source to the inbound resolver on both UDP and TCP port 53. Authorize application TCP/UDP ports separately. FQDN enforcement also requires its feature and a genuine eligible licence or trial.
+- Verify fresh DNS answers and actual application traffic independently. A configured resolver, successful DNS query or established tunnel does not prove current application permission. When an allowed answer's address lease expires, access fails closed; recovery requires a fresh permitted answer under the current connection and policy.
+
+The fixed suffixes, addresses and commands in the office-resolver section below describe the owned lab fixture. Substitute independently verified customer values for customer setup.
+
+The latest owned sustained DNS window recorded 43/61 Ready reads, 18 original-cutoff refusals and one of three required new answer generations. The scheduler repair passed local qualification, but its effect on that live failure remains unproved. Basic DNS success and local tests do not establish uninterrupted private-name application access. See the [recorded cutoff result](evidence/azure-s2s-20261010/azure-static-909-enabled18-dns-original-cutoff-confirmed.json).
 
 For customer-to-Azure private resolution, configure conditional forwarding for each approved private namespace to the Azure DNS Private Resolver **inbound endpoint private IP**. Link the private zone to the resolver's VNet and provide an approved VPN route and return path. Do not target Azure's platform IP `168.63.129.16` from outside Azure. A custom forwarder inside Azure is a separate customer configuration, not evidence of managed Private Resolver acceptance.
 
@@ -46,7 +58,7 @@ Use the standard dnsmasq template `deploy/ipsec/azure-office-forwarder.conf.temp
 
 The lead executes these commands through the designated bastion, after inspecting the actual namespace and rendered configuration. `PEER_NAMESPACE`, `FORWARDER_CONF` and `FORWARDER_PID` denote owned resources; retain the foreground process handle or exact PID and terminate only that process at cleanup. Do not replace host/system resolver configuration or restart an existing resolver.
 
-Current owned lab values reported by the lead are namespace `azure-s2s-client`, inbound endpoints `10.231.2.4` and `10.231.2.20`, source `10.233.10.2`, service CNAME `service.azure-s2s.test` to `app.azure-s2s.test`, and separately granted application TCP 8080 / UDP 8081. Render these resolver addresses into the template; the application answer remains obtained from DNS, never inserted into the forwarder configuration. The fixture was executed through the designated bastion on the owned peer namespace. dnsmasq syntax passed; ordinary loopback queries passed UDP/TCP CNAME resolution, genuine NXDOMAIN, and a 3,000-byte TXT answer with UDP-to-TCP fallback. The unrelated suffix returned REFUSED. Receipt: `evidence/azure-s2s-20261010/office-dns-observations.json`. Hostname-to-application, upstream failover, expiry and FQDN entitlement acceptance remain pending.
+Current owned lab values reported by the lead are namespace `azure-s2s-client`, inbound endpoints `10.231.2.4` and `10.231.2.20`, source `10.233.10.2`, service CNAME `service.azure-s2s.test` to `app.azure-s2s.test`, and separately granted application TCP 8080 / UDP 8081. Render these resolver addresses into the template; the application answer remains obtained from DNS, never inserted into the forwarder configuration. The fixture was executed through the designated bastion on the owned peer namespace. dnsmasq syntax passed; ordinary loopback queries passed UDP/TCP CNAME resolution, genuine NXDOMAIN, and a 3,000-byte TXT answer with UDP-to-TCP fallback. The unrelated suffix returned REFUSED. Receipt: `evidence/azure-s2s-20261010/office-dns-observations.json`. Genuine entitlement and disconnected native FQDN expiry were separately qualified. Sustained DNS, hostname-to-application access, connected revoke/expiry/recovery, upstream failover and negative application cases remain pending.
 
 ```sh
 ip netns exec "$PEER_NAMESPACE" ip -4 address show

@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"sort"
 	"time"
+	"unicode/utf8"
 )
 
 var ErrRuntimeEnvironment = errors.New("IPsec local environment unavailable")
@@ -106,8 +107,28 @@ func runtimeCensusRows(raw []byte) ([]map[string]json.RawMessage, bool) {
 	if !ok || len(root) != 1 {
 		return nil, false
 	}
-	return kernelObjects(root["nftables"])
+	data := root["nftables"]
+	if len(data) > kernelDumpLimit || !utf8.Valid(data) {
+		return nil, false
+	}
+	// runtimeJSONObject already walked this entire subtree, rejecting duplicate
+	// keys, excessive depth and malformed JSON. Keep kernelObjects' remaining
+	// array, count and row-shape checks without walking those tokens again.
+	var values []json.RawMessage
+	if json.Unmarshal(data, &values) != nil || values == nil || len(values) > kernelEntryLimit {
+		return nil, false
+	}
+	objects := make([]map[string]json.RawMessage, 0, len(values))
+	for _, value := range values {
+		object, ok := kernelObject(value)
+		if !ok {
+			return nil, false
+		}
+		objects = append(objects, object)
+	}
+	return objects, true
 }
+
 func runtimeHookCensusRows(rows []map[string]json.RawMessage, protected []netip.Prefix) bool {
 	for _, item := range rows {
 		if len(item) != 1 {

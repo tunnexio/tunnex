@@ -1,0 +1,87 @@
+{
+  "accepted_human_stories": [
+    1,
+    2,
+    3,
+    4,
+    7,
+    8
+  ],
+  "accepted_story_count": 6,
+  "capability_pass_at_original_collection": true,
+  "capability_readback": {
+    "dns_ipsec_resolve_version": 1,
+    "dns_resolve_rpc_version": 2,
+    "id": "01a1252e-14d2-7edc-b181-903325c4c56a",
+    "ipsec_config_version": 1,
+    "ipsec_fqdn_policy_version": 2,
+    "kind": "authenticated_node_heartbeat_scalar_readback",
+    "org_id": "01a1252d-34fe-72bb-a40b-222a0a0bf9a2",
+    "policy_reported_at": "2026-10-11T23:36:18.715907Z",
+    "revoked_at": null,
+    "server_now": "2026-10-11T23:36:20.865405Z",
+    "site_id": "01a1252d-3612-7a65-ad65-2dd5f4ebcd72",
+    "status": "active"
+  },
+  "category": "static_actual_capability_pass_and_guard_renewal_observation_refusal",
+  "cause": "Genuine enabled lease maintenance republishes the guard on the 5-second polling loop; no entry change was observed. Full byte equality remains required.",
+  "configuration_revision": 1,
+  "current_profile": "azure-active-active-static-ipv4-v1",
+  "desired_revision": 4,
+  "evidence_inputs": {
+    "drift": {
+      "path": "/private/tmp/azure-static-journal-drift-projection-9be5c7f3-80bc-41a8-93b4-08157298f883/result.json",
+      "sha256": "419b2b0795e6995dd5f611ee9a04801a77758d39d8531531b1a8d2f112a7ba76"
+    },
+    "linux_units": {
+      "path": "/private/tmp/azure-static-fqdn-pure-linux-root-0e5e1f67-a4b9-4e7f-80ef-ef4d6d8cf7ae/result.json",
+      "sha256": "193e4476431f4a34d4c9f1550edd5fada6c74a6e8f177211e42f13f4d26f3f6c"
+    },
+    "pipeline": {
+      "path": "/private/tmp/azure-fresh-eight-window-root-134b86f5-9426-4b22-b4b1-c8532a0edce9/result.json",
+      "sha256": "91c8667ec78b6fcee6d57c324159a882a1be4a686edebb0d81352eebdb5f514d"
+    },
+    "refusal": {
+      "path": "/private/tmp/azure-static-latest-refusal-projection-b9d200e1-2b55-40d9-83d3-d85498f9e1e2/result.json",
+      "sha256": "102f3a586347151b76e2b10dbc684694c660daf82a49a7cff15250114f329677"
+    }
+  },
+  "fqdn_pure_linux_tests": {
+    "binary_sha256": "02c538dedb9eae9f7968e021c188a57147a1628fa154c1ca9d4a2c3294c5514e",
+    "gateway_mutations": 0,
+    "native_acceptance": false,
+    "passed": true,
+    "returncode": 0,
+    "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "stdout_sha256": "f79579ebeba4cd26b065c1bd58cd75c200a282d8749ba9dc76b3eebbccaf661e",
+    "test_counts": {
+      "FAIL": 0,
+      "PASS": 2,
+      "SKIP": 0
+    }
+  },
+  "journal_diff": {
+    "before_entry_count": 32,
+    "before_sha256": "8f86dc7a18d52d9357c96999c209ed578bfb60fa5f752bda9e52215c976f8f40",
+    "changed_field_paths": [
+      "journal.Checksum",
+      "journal.Payload.Guards[].Digest",
+      "journal.Payload.Guards[].ExpectedJSON",
+      "journal.Payload.Guards[].Revision",
+      "journal.Payload.Sequence"
+    ],
+    "current_entry_count": 32,
+    "current_sha256": "77669387b0f1e9c207758172642869ddc51eb13901598ceaa1e0c161c521f185",
+    "preflight_live_journal": {
+      "passed": true
+    }
+  },
+  "latest_native_failure_label": "journal_bracket_changed",
+  "native_eight_baseline_pass": true,
+  "packet_pass": false,
+  "packet_window_started": false,
+  "production_fix_claim": false,
+  "recorded_at": "2026-10-11T23:51:32.765327+00:00",
+  "sustained_dns_pass": false,
+  "version": 1
+}

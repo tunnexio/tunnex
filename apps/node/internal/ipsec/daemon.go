@@ -2,12 +2,16 @@ package ipsec
 
 import (
 	"context"
+	"errors"
 	"net"
 	"net/netip"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strconv"
 	"strings"
+	"syscall"
+	"time"
 	"unicode"
 	"unicode/utf8"
 
@@ -28,39 +32,110 @@ func NewDaemonClient(socketPath string) (*DaemonClient, error) {
 	transport := viciTransport{dial: func(ctx context.Context) (net.Conn, error) { return dialOwnedVICI(ctx, socketPath) }}
 	return &DaemonClient{request: transport.call}, nil
 }
+
+// Only a Unix connect that returned EAGAIN before any command can wait for backlog capacity.
+// Every retry binds the original owned parent/socket inode and metadata; no protocol retry occurs.
 func dialOwnedVICI(ctx context.Context, path string) (net.Conn, error) {
-	if ctx == nil || !filepath.IsAbs(path) {
+	return dialOwnedVICIWith(ctx, path, (&net.Dialer{}).DialContext, waitOwnedVICI)
+}
+
+type viciOwnedIdentity struct {
+	info     os.FileInfo
+	uid, gid uint64
+}
+
+func ownedVICIIdentity(path string, socket bool) (viciOwnedIdentity, error) {
+	info, err := os.Lstat(path)
+	if err != nil || info.Mode()&os.ModeSymlink != 0 || info.Mode().Perm()&0077 != 0 || !ownedByCurrentUser(info) {
+		return viciOwnedIdentity{}, ErrDaemonProtocol
+	}
+	if socket {
+		if info.Mode()&os.ModeSocket == 0 {
+			return viciOwnedIdentity{}, ErrDaemonProtocol
+		}
+	} else if !info.IsDir() {
+		return viciOwnedIdentity{}, ErrDaemonProtocol
+	}
+	metadata := reflect.ValueOf(info.Sys())
+	if metadata.Kind() != reflect.Pointer || metadata.IsNil() {
+		return viciOwnedIdentity{}, ErrDaemonProtocol
+	}
+	metadata = metadata.Elem()
+	if metadata.Kind() != reflect.Struct {
+		return viciOwnedIdentity{}, ErrDaemonProtocol
+	}
+	uid, gid := metadata.FieldByName("Uid"), metadata.FieldByName("Gid")
+	if !uid.IsValid() || !gid.IsValid() || !uid.CanUint() || !gid.CanUint() {
+		return viciOwnedIdentity{}, ErrDaemonProtocol
+	}
+	return viciOwnedIdentity{info, uid.Uint(), gid.Uint()}, nil
+}
+func sameVICIIdentity(a, b viciOwnedIdentity) bool {
+	return os.SameFile(a.info, b.info) && a.info.Mode() == b.info.Mode() && a.uid == b.uid && a.gid == b.gid
+}
+func waitOwnedVICI(ctx context.Context) error {
+	timer := time.NewTimer(10 * time.Millisecond)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
+}
+func dialOwnedVICIWith(ctx context.Context, path string, dial func(context.Context, string, string) (net.Conn, error), wait func(context.Context) error) (net.Conn, error) {
+	if ctx == nil || ctx.Err() != nil || !filepath.IsAbs(path) || filepath.Clean(path) != path || dial == nil || wait == nil {
 		return nil, ErrDaemonProtocol
 	}
 	parent := filepath.Dir(path)
-	resolved, err := filepath.EvalSymlinks(parent)
-	if err != nil || resolved != parent {
+	canonical := func() bool { resolved, err := filepath.EvalSymlinks(parent); return err == nil && resolved == parent }
+	if !canonical() {
 		return nil, ErrDaemonProtocol
 	}
-	for _, entry := range []struct {
-		path   string
-		socket bool
-	}{{parent, false}, {path, true}} {
-		info, err := os.Lstat(entry.path)
-		if err != nil || info.Mode()&os.ModeSymlink != 0 || info.Mode().Perm()&0077 != 0 {
-			return nil, ErrDaemonProtocol
-		}
-		if !ownedByCurrentUser(info) {
-			return nil, ErrDaemonProtocol
-		}
-		if entry.socket {
-			if info.Mode()&os.ModeSocket == 0 {
-				return nil, ErrDaemonProtocol
-			}
-		} else if !info.IsDir() {
-			return nil, ErrDaemonProtocol
-		}
-	}
-	conn, err := (&net.Dialer{}).DialContext(ctx, "unix", path)
+	originalParent, err := ownedVICIIdentity(parent, false)
 	if err != nil {
 		return nil, ErrDaemonProtocol
 	}
-	return conn, nil
+	originalSocket, err := ownedVICIIdentity(path, true)
+	if err != nil {
+		return nil, ErrDaemonProtocol
+	}
+	unchanged := func() bool {
+		if !canonical() {
+			return false
+		}
+		p, pe := ownedVICIIdentity(parent, false)
+		s, se := ownedVICIIdentity(path, true)
+		return pe == nil && se == nil && sameVICIIdentity(originalParent, p) && sameVICIIdentity(originalSocket, s)
+	}
+	for {
+		if ctx.Err() != nil || !unchanged() {
+			return nil, ErrDaemonProtocol
+		}
+		conn, err := dial(ctx, "unix", path)
+		if err == nil {
+			if conn == nil || ctx.Err() != nil || !unchanged() {
+				if conn != nil {
+					conn.Close()
+				}
+				return nil, ErrDaemonProtocol
+			}
+			return conn, nil
+		}
+		// net.Dialer closes its failed descriptor. Never reuse it or retry any written command.
+		if conn != nil {
+			conn.Close()
+		}
+		if !errors.Is(err, syscall.EAGAIN) {
+			return nil, ErrDaemonProtocol
+		}
+		if _, bounded := ctx.Deadline(); !bounded || ctx.Err() != nil || !unchanged() {
+			return nil, ErrDaemonProtocol
+		}
+		if wait(ctx) != nil {
+			return nil, ErrDaemonProtocol
+		}
+	}
 }
 
 type DaemonInventory struct {

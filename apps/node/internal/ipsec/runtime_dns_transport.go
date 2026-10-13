@@ -163,22 +163,31 @@ func (c *RuntimeController) proveResolverDNSStage(ctx context.Context, config fq
 	stage, started := "dns_input", time.Now()
 	connection := uuid.Nil
 	var guardTiming runtimeDNSReadTiming
+	nativeObserved := false
 	var observeGuard func(guardReadTiming)
 	var observeRevalidation func(string)
 	var observeNative func(string)
 	var observeNativeTiming func(runtimeNativePhaseTiming)
 	if c != nil && c.config.DNSReadTiming {
-		observeNativeTiming = func(phases runtimeNativePhaseTiming) { guardTiming.Native = phases }
+		observeNativeTiming = func(phases runtimeNativePhaseTiming) { guardTiming.Native = phases; nativeObserved = true }
 		observeNative = func(reason string) { guardTiming.NativeFailureClass = reason }
 		observeRevalidation = func(reason string) { guardTiming.GuardRevalidation = reason }
 		observeGuard = func(t guardReadTiming) {
 			guardTiming.GuardBracketCount++
+			fqdnrpc.RecordLookupPhase(ctx, "guard_commands", time.Duration(t.CommandMillis)*time.Millisecond, t.FailureClass == "none")
+			fqdnrpc.RecordLookupPhase(ctx, "guard_verification", time.Duration(t.VerificationMillis)*time.Millisecond, t.FailureClass == "none")
 			guardTiming.GuardCommandMillis = t.CommandMillis
 			guardTiming.GuardVerificationMillis = t.VerificationMillis
 			guardTiming.GuardFailureClass = t.FailureClass
 		}
 	}
 	defer func() {
+		if nativeObserved {
+			success := resultErr == nil
+			for phase, ms := range map[string]int64{"native_route": guardTiming.Native.RouteMillis, "native_recovery": guardTiming.Native.RecoveryMillis, "native_environment": guardTiming.Native.EnvironmentMillis, "native_environment_commands": guardTiming.Native.Environment.CommandMillis, "native_environment_verification": guardTiming.Native.Environment.VerificationMillis} {
+				fqdnrpc.RecordLookupPhase(ctx, phase, time.Duration(ms)*time.Millisecond, success)
+			}
+		}
 		c.emitDNSRuntimeDiagnostic(ctx, operation, stage, connection, started, resultErr != nil, guardTiming)
 	}()
 	fail := func() (runtimeDNSProof, error) { return runtimeDNSProof{}, ErrRuntimeController }
@@ -457,10 +466,11 @@ func (v *runtimeDNSOwnerView) resolverGuardPermitsStageObserved(ctx context.Cont
 	if g.Namespace != entry.Allocation.Namespace {
 		return false, stage
 	}
-	objects, ok := normalizedGuardObjects([]byte(g.ExpectedJSON))
-	if !ok {
+	snapshot := v.expected
+	if snapshot.raw != g.ExpectedJSON || len(snapshot.objects) == 0 {
 		return false, stage
 	}
+	objects := snapshot.objects
 	stage = "dns_guard_required"
 	required := map[string]string{guardLeaseName(entry.Allocation.ConnectionID): strconv.Itoa(index), guardReplyLeaseName(entry.Allocation.ConnectionID): strconv.Itoa(index), guardSALeaseName(entry.Allocation.ConnectionID): strconv.FormatUint(uint64(reqid), 10)}
 	for _, object := range objects {

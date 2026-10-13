@@ -105,10 +105,17 @@ def run(phase,state_path,binding=None,cleanup=None,native=None,native_bytes=None
    if hashlib.sha256(raw).hexdigest()!=item['sha256'] or json.loads(raw)!=state['baseline'][name]:raise ValueError('original snapshot digest')
   if common.digest(protection(state['baseline']))!=state['protected_sha256']:raise ValueError('saved protected digest')
   value,unused=observed();kind=classify(value,state['baseline'])
-  if phase in ('apply','restore'):
+  if phase in ('apply','apply-step','continue-apply','restore'):
    restore=phase=='restore'
    if kind=='provisioning_pending':raise ValueError('pending; reconcile only')
-   if not restore and (state['stage']!='prepared' or kind!='original'):raise ValueError('single prepared apply only')
+   if not restore:
+    if phase=='continue-apply':
+     if state['stage']!='apply_sent' or kind!='owned_partial' or state.get('last_reserved_step')!='lng' or prefixes(value['lng'])!=STATIC_PREFIXES or value['connection']['enableBgp']is not True:raise ValueError('terminal prior LNG effect required; reconcile only')
+     prior_marker=state_path.with_name(state_path.name+'.apply-lng-reserved')
+     recorded=json.loads(helpers.private_read(prior_marker))
+     if recorded.get('version')!=1or recorded.get('action')!='apply'or recorded.get('step')!='lng'or recorded.get('current_connection_id')!=state['expected']['connection_id']or recorded.get('protected_sha256')!=state['protected_sha256']or recorded.get('disabled_revision')!=cleanup['connection']['desired_revision']:raise ValueError('prior reserved lineage')
+     if state_path.with_name(state_path.name+'.apply-connection-reserved').exists():raise ValueError('connection step already reserved; reconcile only')
+    elif state['stage']!='prepared' or kind!='original':raise ValueError('single prepared apply only')
    if restore and state['stage'] not in ('apply_sent','static','restore_sent'):raise ValueError('restoration boundary')
    if restore and state['stage'] in ('apply_sent','static'):
     # Old Succeeded/original readback does not settle an outstanding write.
@@ -140,10 +147,13 @@ def run(phase,state_path,binding=None,cleanup=None,native=None,native_bytes=None
     value,unused=observed();kind=classify(value,state['baseline'])
     if kind=='provisioning_pending':raise ValueError('pending; reconcile only')
     if step=='connection' and value['connection']['enableBgp']!=target_bgp or step=='lng' and prefixes(value['lng'])!=target_prefix:raise ValueError('write readback unknown; reconcile only')
+    if phase in ('apply-step','continue-apply'):break
    kind=classify(value,state['baseline'])
    wanted='original' if restore else 'static'
-   if kind!=wanted:raise ValueError('target settings incomplete; reconcile only')
-   state['stage']='restored' if restore else 'static';common.private_write(state_path,state)
+   if kind!=wanted:
+    if phase not in ('apply-step','continue-apply')or kind!='owned_partial':raise ValueError('target settings incomplete; reconcile only')
+   else:
+    state['stage']='restored' if restore else 'static';common.private_write(state_path,state)
   elif phase in ('read','reconcile'):
    if state['stage']=='apply_sent' and kind=='static':state['stage']='static';common.private_write(state_path,state)
    if state['stage']=='restore_sent' and kind=='original':state['stage']='restored';common.private_write(state_path,state)
@@ -152,7 +162,7 @@ def run(phase,state_path,binding=None,cleanup=None,native=None,native_bytes=None
  return {'version':1,'phase':phase,'stage':'prepared','observed_at':shared.now().isoformat(),'protected_sha256':state['protected_sha256'],'scope':'Saved actual public baseline bytes; no mutation or readiness'}
 
 def main():
- p=argparse.ArgumentParser(description=__doc__);p.add_argument('phase',choices=('prepare','apply','read','reconcile','restore'));p.add_argument('--state',type=Path,required=True);p.add_argument('--binding',type=Path);p.add_argument('--cleanup',type=Path);p.add_argument('--native',type=Path);p.add_argument('--native-sha256');p.add_argument('--output',type=Path,required=True);a=p.parse_args()
+ p=argparse.ArgumentParser(description=__doc__);p.add_argument('phase',choices=('prepare','apply','apply-step','continue-apply','read','reconcile','restore'));p.add_argument('--state',type=Path,required=True);p.add_argument('--binding',type=Path);p.add_argument('--cleanup',type=Path);p.add_argument('--native',type=Path);p.add_argument('--native-sha256');p.add_argument('--output',type=Path,required=True);a=p.parse_args()
  if socket.gethostname()!='bastion-host':raise ValueError('bastion hostname required')
  shared.output_parent(a.output)
  binding=json.loads(helpers.private_read(a.binding)) if a.binding else None

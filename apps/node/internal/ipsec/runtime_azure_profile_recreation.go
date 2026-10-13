@@ -31,7 +31,7 @@ func sameAzureProfileRecreationDomain(a, b RuntimeJournalEntry) bool {
 	}
 	for i := 0; i < n; i++ {
 		at, bt := a.Engines[i], b.Engines[i]
-		if at.LocalAddress != bt.LocalAddress || at.LocalIdentity != bt.LocalIdentity || at.RemoteIdentity != bt.RemoteIdentity || at.RemoteAddress != bt.RemoteAddress {
+		if !sameAzureRecreationLocalSocket(a, b, at, bt) || at.LocalIdentity != bt.LocalIdentity || at.RemoteIdentity != bt.RemoteIdentity || at.RemoteAddress != bt.RemoteAddress {
 			return false
 		}
 		if IsAzureBGPProfile(a.Allocation.ProfileID) == IsAzureBGPProfile(b.Allocation.ProfileID) {
@@ -109,4 +109,26 @@ func retainedAzureTransportRefusals(entries, projected []RuntimeJournalEntry, re
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].String() < out[j].String() })
 	return out
+}
+
+// Cleanup-only delivered lineage has never observed a local socket. Its public
+// identity placeholder cannot be treated as a historical physical underlay.
+func sameAzureRecreationLocalSocket(a, b RuntimeJournalEntry, at, bt EngineTunnel) bool {
+	if at.LocalAddress == bt.LocalAddress {
+		return true
+	}
+	placeholder := func(e RuntimeJournalEntry, tunnel EngineTunnel) bool {
+		if !e.AbsenceOnly || e.Observed != ([2]Ownership{}) || e.BGPRoutes != nil || e.BGPProcess != nil || len(e.BGPProcessRetired) != 0 || e.BGPProcessHistory != nil || e.Restoration != nil || tunnel.LocalAddress != tunnel.LocalIdentity {
+			return false
+		}
+		switch e.Phase {
+		case RuntimeReserved:
+			return e.CleanupID == uuid.Nil && e.CleanupDesiredRevision == 0 && e.CoveredDeliveryRevision == 0
+		case RuntimeCleanupPending, RuntimeRetainedRefusal:
+			return e.CleanupID != uuid.Nil && e.CoveredDeliveryRevision >= tunnel.Binding.DesiredRevision && e.CleanupDesiredRevision > tunnel.Binding.DesiredRevision && e.CleanupDesiredRevision > e.CoveredDeliveryRevision
+		default:
+			return false
+		}
+	}
+	return at.LocalIdentity == bt.LocalIdentity && (placeholder(a, at) || placeholder(b, bt))
 }

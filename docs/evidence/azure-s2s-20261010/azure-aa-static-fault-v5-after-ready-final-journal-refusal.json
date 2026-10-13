@@ -1,0 +1,31 @@
+{
+  "acceptance": false,
+  "accepted_story_count": 6,
+  "actual_final_flags": {
+    "binary": true,
+    "identity": true,
+    "journal": false,
+    "manifest": true,
+    "normal": true
+  },
+  "actual_native_refusal_stage": "final_bracket",
+  "category": "actual_fault_v5_after_ready_native_final_journal_refusal",
+  "current_owned_nft_table_absent": true,
+  "helper_action_marker_absent": true,
+  "helper_invoked": false,
+  "network_fault_applied": false,
+  "new_slices_closed": 0,
+  "original_and_attempt2_coordinator_markers_preserved": true,
+  "qa_coordinator_run": "azure-fault-overlap-0c07860a-bfe0-4da0-bafe-88d95dcfdd41",
+  "qa_observer_run": "azure-profile-observe-63d95185-08d8-488c-a8c3-841576adda1a",
+  "qa_outer_run": "azure-fault-9090-actual18-d3b53926-461d-4656-9f3b-69fba0a6fb8a",
+  "recorded_at": "2026-10-12T15:39:28.451935+00:00",
+  "root_tests_passed": 23,
+  "saved_root_reads": {
+    "path": "/private/tmp/azure-fault909-v5-read-results.json",
+    "sha256": "706a702b7b62b9c80816ad08ba9cc20dcbd93f04a67c3d239af4a2112549e88e"
+  },
+  "source_review_sha256": "0c658e9ba762fed4e2999cc2a1aeb777ccbb15cfb667ea9668186f47f74226e2",
+  "version": 1,
+  "wrapper_sha256": "70a2d26bdb3e437cc349ece037d28cc4cc25f6e36cd9290a6302c915c4f44078"
+}

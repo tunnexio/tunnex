@@ -1,0 +1,294 @@
+{
+  "accepted_human_stories": [
+    1,
+    2,
+    3,
+    4,
+    7,
+    8
+  ],
+  "accepted_story_count": 6,
+  "category": "actual_last12_hours_new_accepted_slice_audit",
+  "completed_new_slice_list": [],
+  "correction": "IST offset rendering only; UTC window instants, receipts and acceptance counts unchanged.",
+  "excluded_requalification": {
+    "file": "azure-static-d6fe-current-ordinary-packet-window-pass.json",
+    "reason": "Re-proves a forward ordinary packet slice already accepted before this window; it is not new completion."
+  },
+  "immutable_receipts_audited": 33,
+  "new_accepted_slices": 0,
+  "new_accepted_whole_stories": 0,
+  "original_forward_reverse_acceptance": [
+    "azure-active-active-static-ordinary-packet-window-pass.json",
+    "azure-active-active-static-reverse-packet-window-pass.json"
+  ],
+  "receipts": [
+    {
+      "file": "azure-static-40b9-sustained-dns-failed.json",
+      "new_closure_fields": {},
+      "recorded_at": "2026-10-12T03:50:11.251866+00:00",
+      "sha256": "437128ff86ad4b3a316628b6d17268e7023e8a45972e7a48d4ea11461f7f1ebb"
+    },
+    {
+      "file": "azure-static-d6fe-deployed-sustained-dns-failed.json",
+      "new_closure_fields": {},
+      "recorded_at": "2026-10-12T04:22:51.360506+00:00",
+      "sha256": "bd532d1906f57dc42c5f799293cf625fe82e9cd1373c8b31ae4bfd1972825fc2"
+    },
+    {
+      "file": "azure-static-d6fe-current-ordinary-packet-window-pass.json",
+      "new_closure_fields": {},
+      "recorded_at": "2026-10-12T04:28:59.406481+00:00",
+      "sha256": "ca3340fdbf5015b270a3d8128fb6e719cac80e1d678aecfdff573543770b7b16"
+    },
+    {
+      "file": "azure-static-d6fe-concurrent-daemon-read-diagnostic.json",
+      "new_closure_fields": {},
+      "recorded_at": "2026-10-12T04:36:39.714271+00:00",
+      "sha256": "f20caa51399b523defa428afb0af32d29efa6889035ff9580b7267d2356b1ae6"
+    },
+    {
+      "file": "azure-static-d6fe-daemon-request-boundary-diagnostic.json",
+      "new_closure_fields": {},
+      "recorded_at": "2026-10-12T04:48:05.697696+00:00",
+      "sha256": "30f932f8e6757a897501b57879e9ff1b6bd0ae5c54bb6e27ad4b8aa72ce996ba"
+    },
+    {
+      "file": "azure-static-d6fe-socket-dial-auxiliary-diagnostic.json",
+      "new_closure_fields": {},
+      "recorded_at": "2026-10-12T05:05:55.315645+00:00",
+      "sha256": "f73ae133036e26898892a92e00f3b08ae7852b7cc4077202adceb5fc9c68cb6c"
+    },
+    {
+      "file": "azure-static-d6fe-concurrent-connect-eagain-diagnostic.json",
+      "new_closure_fields": {
+        "new_slices_closed": 0
+      },
+      "recorded_at": "2026-10-12T05:17:40.820794+00:00",
+      "sha256": "70eeac5995a27c5d40a70448176ed5300448564786ae010a5ba59225742eaaff"
+    },
+    {
+      "file": "azure-static-vici-connect-eagain-fix-local-and-linux-pass.json",
+      "new_closure_fields": {
+        "new_slices_closed": 0
+      },
+      "recorded_at": "2026-10-12T05:37:05.300273+00:00",
+      "sha256": "bf049adff1e43c2927c1738817fe0f7aab6627f42d09cced0c948363893171d3"
+    },
+    {
+      "file": "azure-static-vici-update-known-stopped-journal-check.json",
+      "new_closure_fields": {
+        "new_slices_closed": 0
+      },
+      "recorded_at": "2026-10-12T06:06:05.483969+00:00",
+      "sha256": "3bf5b266f2514cf641ba22fb109dc08383d8d3783fa69f911894e835b3a14f38"
+    },
+    {
+      "file": "azure-static-vici-connect-eagain-qa-update-pass.json",
+      "new_closure_fields": {
+        "new_slices_closed": 0
+      },
+      "recorded_at": "2026-10-12T06:29:22.562454+00:00",
+      "sha256": "1a0c20cb42116925f36c6d110894aff5281bf066dea2aca01e2f51aaf2a6b951"
+    },
+    {
+      "file": "azure-static-197b-readonly-prewindow-scheduling-refusal.json",
+      "new_closure_fields": {
+        "new_slices_closed": 0
+      },
+      "recorded_at": "2026-10-12T06:36:33.044394+00:00",
+      "sha256": "25e40fef106523526a2f80e2136eeb8feb781fbde864a664401d752e9c000595"
+    },
+    {
+      "file": "azure-static-197b-native-pass-dns-improved-stability-failed.json",
+      "new_closure_fields": {
+        "new_slices_closed": 0
+      },
+      "recorded_at": "2026-10-12T06:56:39.621577+00:00",
+      "sha256": "9c5c9ebdf848d5560e620c1ebc3811c42815cfa1104a71ccc35737f6f94f2a1e"
+    },
+    {
+      "file": "azure-single-walk-parser-local-and-qa-stage-pass.json",
+      "new_closure_fields": {
+        "new_slices_closed": 0
+      },
+      "recorded_at": "2026-10-12T07:21:30.751450+00:00",
+      "sha256": "3b778d31d9f6ce73fa4f98626f8f4cd08fb5c166e7379f9dbbe6a7fb91f69b16"
+    },
+    {
+      "file": "azure-single-walk-parser-qa-update-enable14-finite-pass.json",
+      "new_closure_fields": {
+        "new_slices_closed": 0
+      },
+      "recorded_at": "2026-10-12T07:52:28.894389+00:00",
+      "sha256": "21ce32c7565e243acb98862cc3d6723573c99a0dc0ac7de70b00de67bb88fc81"
+    },
+    {
+      "file": "azure-static-2c33-native-pass-dns-stability-failed.json",
+      "new_closure_fields": {
+        "new_slices_closed": 0
+      },
+      "recorded_at": "2026-10-12T08:14:20.835582+00:00",
+      "sha256": "a84e06aaf5b4371bf62a5f3f0ca2e7001409ec88c0eb8e67b1c1d4df80285d71"
+    },
+    {
+      "file": "azure-fqdn-inflight-admission-local-and-qa-stage-pass.json",
+      "new_closure_fields": {
+        "new_acceptance_slices_closed": 0
+      },
+      "recorded_at": "2026-10-12T08:31:38.737811+00:00",
+      "sha256": "143928824fe5f7b8460abf96a145d71e9e796ba68f3c1ea3ea55816c20b8f214"
+    },
+    {
+      "file": "azure-inflight-qa-pre-restart-refusals-preserved.json",
+      "new_closure_fields": {
+        "new_acceptance_slices_closed": 0
+      },
+      "recorded_at": "2026-10-12T09:09:20.967932+00:00",
+      "sha256": "fb46a8e1c0abf9de48758954cb3e1c8e2eb4f5cbe50346a282eb05a920b06118"
+    },
+    {
+      "file": "azure-inflight-qa-update-enable16-finite-pass.json",
+      "new_closure_fields": {
+        "new_slices_closed": 0
+      },
+      "recorded_at": "2026-10-12T09:29:24.838086+00:00",
+      "sha256": "03ece37fd5cf3df3aee72f659bbe0dea5577d4940b55a7505c71a75f09ce4b2f"
+    },
+    {
+      "file": "azure-static-3690-native-pass-dns-improved-stability-failed.json",
+      "new_closure_fields": {
+        "new_acceptance_slices_closed": 0
+      },
+      "recorded_at": "2026-10-12T09:43:39.206876+00:00",
+      "sha256": "a01841883352cf280cba7930d27eb187aee1ee3278ffa6e59bc5adb53bc4f30a"
+    },
+    {
+      "file": "azure-mtu-original-packets-pass-preset-refusal.json",
+      "new_closure_fields": {
+        "new_acceptance_slices_closed": 0
+      },
+      "recorded_at": "2026-10-12T10:15:49.022013+00:00",
+      "sha256": "fd9d3e3a4b84dae815da0f05c9edb78be57a427f7f259eb617f7e395a0f2827d"
+    },
+    {
+      "file": "azure-mtu-observer-lock-refusal.json",
+      "new_closure_fields": {
+        "new_acceptance_slices_closed": 0
+      },
+      "recorded_at": "2026-10-12T10:37:10.370858+00:00",
+      "sha256": "22e499c707715fc58d98bc99c83173e19e6ba7fc6b7aa7daca493d66f7d7b7a6"
+    },
+    {
+      "file": "azure-expected-template-qa-update-enable18-checkpoint.json",
+      "new_closure_fields": {
+        "new_slices_closed": 0
+      },
+      "recorded_at": "2026-10-12T11:25:07.354312+00:00",
+      "sha256": "d2ab1aa743a0577c23476eb98a6a6e36c07b11265c954274bde97f40cca5472f"
+    },
+    {
+      "file": "azure-expected-template-enabled18-native-process-census-refusal.json",
+      "new_closure_fields": {
+        "new_acceptance_slices_closed": 0
+      },
+      "recorded_at": "2026-10-12T11:47:28.998386+00:00",
+      "sha256": "75ffc300beeeb93ca61fc6496c95ba4a3121756ca78c99dfdbe53edbe10f70f6"
+    },
+    {
+      "file": "azure-enabled18-census-diagnostic-build-and-approval-checkpoint.json",
+      "new_closure_fields": {
+        "new_acceptance_slices_closed": 0
+      },
+      "recorded_at": "2026-10-12T12:26:41.867947+00:00",
+      "sha256": "307927db2843f674a33767c4b211d85e6bb9a1586d4a98ef1f2ab24bf2253cee"
+    },
+    {
+      "file": "azure-enabled18-approved-diagnostic-cardinality-refusal.json",
+      "new_closure_fields": {
+        "new_acceptance_slices_closed": 0
+      },
+      "recorded_at": "2026-10-12T12:37:46.595832+00:00",
+      "sha256": "b72ed149e6b7d42c64950053dd420c2d16ac81c4d9cecd064e79dac22d0e73de"
+    },
+    {
+      "file": "azure-enabled18-current-census-clear-observer-publication-refusal.json",
+      "new_closure_fields": {
+        "new_accepted_slices": 0
+      },
+      "recorded_at": "2026-10-12T13:17:49.134312+00:00",
+      "sha256": "370e49fa34a963e9882854bb1209d15cffb2de297c2e77642b99e04f54f3935c"
+    },
+    {
+      "file": "azure-expected-template-enabled18-full-native-baseline-pass.json",
+      "new_closure_fields": {
+        "new_accepted_slices": 0
+      },
+      "recorded_at": "2026-10-12T13:26:03.576201+00:00",
+      "sha256": "3d6f6d2a9bc6a0aaa3add1f0e61dd2ec4405f7d9060909ff8439b59d04f438e5"
+    },
+    {
+      "file": "azure-static-909-enabled18-native-pass-dns-improved-stability-failed.json",
+      "new_closure_fields": {
+        "new_accepted_slices": 0
+      },
+      "recorded_at": "2026-10-12T13:40:04.483915+00:00",
+      "sha256": "8ddfdd017d033f5f364f508d58e79d611f104bf15cb52b03396b8f4b0bcd962a"
+    },
+    {
+      "file": "azure-static-909-enabled18-dns-original-cutoff-confirmed.json",
+      "new_closure_fields": {
+        "new_accepted_slices": 0
+      },
+      "recorded_at": "2026-10-12T14:03:46.402793+00:00",
+      "sha256": "18a89fdd2d4a7f816d22cb1c8b68d81f12b81b62eed2ac2b411842bc62d35766"
+    },
+    {
+      "file": "azure-fqdn-expiry-headroom-local-candidate-race-pass-sql-pending.json",
+      "new_closure_fields": {
+        "new_slices_closed": 0
+      },
+      "recorded_at": "2026-10-12T14:25:27.852822+00:00",
+      "sha256": "2c046eb807fa622ef521fa86efb135dd477b34a9ae8b89cb00f6db1b19fbfad2"
+    },
+    {
+      "file": "azure-shared-release909-pass-approved-mtu-fault-preaction-refusals.json",
+      "new_closure_fields": {
+        "new_slices_closed": 0
+      },
+      "recorded_at": "2026-10-12T14:25:27.852822+00:00",
+      "sha256": "46fdc37a3009a9f5f776fa5430b0622ee9974cc6336e739e1262f8f568815ca2"
+    },
+    {
+      "file": "azure-before-bracket-parallel-mtu-fault-qualified-approval-pending.json",
+      "new_closure_fields": {
+        "new_slices_closed": 0
+      },
+      "recorded_at": "2026-10-12T14:37:36.279527+00:00",
+      "sha256": "b8e0c654cf66339171aafe7daeb55859bece664b7f35fad1e266325b776e9b9f"
+    },
+    {
+      "file": "azure-fqdn-expiry-headroom-local-integrated-sql-race-linux-build-pass.json",
+      "new_closure_fields": {
+        "new_slices_closed": 0
+      },
+      "recorded_at": "2026-10-12T14:37:36.279527+00:00",
+      "sha256": "9d2852658fea8b71a0e712c12f21e937caed0e395ccfbe1fb29c2774e87772e5"
+    }
+  ],
+  "recorded_at": "2026-10-12T14:37:36.279527+00:00",
+  "scope": "Written story/slice acceptance; deployments, diagnostic baseline passes and locally qualified fixes are progress, not newly accepted slices.",
+  "supersedes": {
+    "path": "/Users/pawangupta/.codex/worktrees/65f0/tunnex/docs/evidence/azure-s2s-20261010/azure-last12-hours-new-accepted-slices-audit-20261012.json",
+    "sha256": "bc05156739c9352e75ab9a00c321445d4d4de813880b6f22a8e4c953a8abd1e1"
+  },
+  "version": 1,
+  "window_ist": [
+    "2026-10-12T08:07:36.279527+05:30",
+    "2026-10-12T20:07:36.279527+05:30"
+  ],
+  "window_utc": [
+    "2026-10-12T02:37:36.279527+00:00",
+    "2026-10-12T14:37:36.279527+00:00"
+  ]
+}

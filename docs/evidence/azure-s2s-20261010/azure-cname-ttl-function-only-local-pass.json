@@ -1,0 +1,99 @@
+{
+  "recorded_at_utc": "2026-10-11T11:30:25.092508+00:00",
+  "scope": "Local Azure function-only DNS record TTL canonicalization correction with focused causal proof and complete fqdnrpc race gate",
+  "prior_root_head": "36a6191525ebf31c9fc8a04c25566c81f52737ec",
+  "root_head": "da9915c4a15473861ac8718e94b9345b6895d851",
+  "candidate_commit": "7d1faf5240c9c3d0723bf120273fd174ad7e5c84",
+  "change": {
+    "production_path": "apps/node/internal/fqdnrpc/fqdnrpc.go",
+    "old_source_sha256": "b08365250ecf39b2014be07ae734323108f7bd6fa8cdb02b00d0365b433f2479",
+    "new_source_sha256": "f452cf817a45057a934564d742c08dadb8a83834c0c1713471d93d2ef13ddae6",
+    "function": "canonicalRecords",
+    "new_function_sha256": "254301fafd0d6458930c3aaa777181b2426e6544e922e71ac416dca849e12dae",
+    "identity_fields": [
+      "Name",
+      "Type",
+      "Address",
+      "Target"
+    ],
+    "ttl_rule": "Merge exact record identities using numeric minimum observed TTL; retain distinct identities",
+    "outside_function_bytes_unchanged": true,
+    "whole_donor_file_applied": false,
+    "test_path": "apps/node/internal/fqdnrpc/cname_ttl_identity_regression_test.go",
+    "test_sha256": "747782a89b8a1855270dc790006de8cca5ee83fb6298f591c01fea84e59ed91c"
+  },
+  "donor": {
+    "qualified_receipt_path": "/private/tmp/aws-cname-ttl-canonicalization-candidate-sourceonly-20261011-1/candidate-qualified-receipt-rootfalse.json",
+    "qualified_receipt_sha256": "fea883db3e5f78d3d338ecc1ee86c12f73d1ecefe288b2f4dfab85158d1b95a9",
+    "independent_review_sha256": "2f2772202bb0ad5813ab7a297c63dd991e51d1f27b9b0835be1a2dd740c898cf",
+    "function_only_patch_sha256": "9c2283f66fbe176992d6c893bade4ac45230713cbedbe93472001ee3d60c18de",
+    "old_function_exact_match": true,
+    "whole_source_file_match": false
+  },
+  "qualification": {
+    "toolchain": "cached Go 1.26.9 darwin-arm64; module readonly; GOPROXY off",
+    "causal_red": {
+      "actual_old_azure_source": true,
+      "production_overlay": false,
+      "test_only_overlay": true,
+      "exit_code": 1,
+      "failed_top_level_tests": [
+        "TestCanonicalRecordsTTLIdentityMinimumOrdering",
+        "TestDirectResolverCNAMETTLIdentityConsensus"
+      ],
+      "different_RDATA_refusal_control": "PASS within and between endpoints",
+      "stdout_sha256": "e572bab36866b19d66813ed68873cc682f1309f31428d11c7835c7c2683608a8",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "result_sha256": "af0116a4d6196d07d1edb6d2f2959c019d103bfa461ea6030935639bc880072e"
+    },
+    "green": {
+      "actual_candidate_source": true,
+      "overlay": false,
+      "gate": "entire internal/fqdnrpc package with race detection, count=1",
+      "top_level_passed": 37,
+      "failed": 0,
+      "skipped": 0,
+      "elapsed_seconds": 9.955,
+      "eight_donor_focused_tests_included": true,
+      "coverage": [
+        "numeric minimum and deterministic canonical ordering",
+        "caller input isolation",
+        "same CNAME across A/AAAA with different TTL",
+        "cross-endpoint duplicate multiplicity and conservative consensus",
+        "different actual CNAME targets refuse",
+        "configured endpoint selection and sequential CNAME behavior",
+        "GatewayDNSRPCv2 and resolver snapshot wire shape",
+        "current source-bound UDP/TCP, TC fallback and authority/refusal behavior"
+      ],
+      "stdout_sha256": "a20625b143275dbbefe8d3cbf805808566edcc0a6a72c10737fb07049fc46f37",
+      "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "result_sha256": "449a5423d587954db06ea5f460052c3163a3beac2529fe515d0b0ea617378841"
+    },
+    "azure_independent_review": {
+      "path": "/private/tmp/azure-cname-ttl-independent-review-runtime.json",
+      "sha256": "a70649f3c49154a6cb26cd7cfc41a7ce5013b34993f58794a3fa9c8875df2032",
+      "verdict": "PASS; no blockers; no tests repeated"
+    },
+    "diff_check": "PASS"
+  },
+  "preservation": {
+    "baseline_api_node_shared_input_files": 2604,
+    "unchanged_existing_input_files": 2603,
+    "existing_dirty_files_preserved_at_merge": 15,
+    "baseline_pins_sha256": "e1a70ff808322cac77bd9d8268e4839cadf8d1eef514313ca025fc31b1dc77e3",
+    "postqualification_audit_sha256": "bcc11fa33498931bdeb12840585aefc6e334da7052c64c60d1ed4ad97fc9b274",
+    "root_integration_sha256": "36e6a88408c3219c599a4cc202e02c3ad92361c0902b71d73bad8461b384b0e0",
+    "Azure_provider_ExpiresAt_ResolverSourceAddress_native_hooks": "unchanged source bytes",
+    "wire_types_and_serialization": "unchanged source bytes"
+  },
+  "boundaries": {
+    "all_changes_local": true,
+    "new_node_artifact_build": false,
+    "push_deploy_or_remote_action": false,
+    "additional_recovery_kit_staged": false,
+    "recovery_post_or_repeated_start": false,
+    "historical_live_DNS_failure_verdicts": "retained; no causal attribution or accepted replacement cloud run from this local fix",
+    "formal_stories_closed": 0,
+    "formal_story_count": 11
+  }
+}

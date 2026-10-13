@@ -1,0 +1,148 @@
+{
+  "accepted_story_count": 6,
+  "category": "actual_mtu_prewindow_pass_original_packets_pass_preset_refusal",
+  "existing_socket_reuse_note": "The diagnostic counts include initial socket creation. Reuse must be assessed after the genuine four-flow start barrier.",
+  "first_attempt": {
+    "all_once_markers_absent": true,
+    "category": "readonly_prewindow_native_final_journal_changed",
+    "coordinator_dispatched": false,
+    "projection_path": "/private/tmp/azure-mtu-first-refusal-read-root-04c83d31-4c91-4dea-b15c-ddf64ab5190c/result.json"
+  },
+  "initial_full_native_passed": true,
+  "mtu_reduction_applied": false,
+  "native_after_packet_window_completed": false,
+  "new_acceptance_slices_closed": 0,
+  "next_step": "Authenticate known pre-SET refusal in an immutable follow-up; preserve all original gates and add genuine full native proof after the four-flow start barrier.",
+  "original_packet_window_seconds": 180,
+  "packet_failure_count": 0,
+  "per_flow_success_count": 180,
+  "raw_records_exported": false,
+  "recorded_at": "2026-10-12T10:15:49.022013+00:00",
+  "restoration_needed": false,
+  "second_attempt": {
+    "acceptance": false,
+    "category": "readonly_actual_mtu16_refusal_projection",
+    "coordinator": {
+      "artifact_presence": {
+        "after-native.stderr": false,
+        "after-native.stdout": false,
+        "outcome.json": false,
+        "packets-started.json": true,
+        "packets.json": true,
+        "private.stderr": false,
+        "private.stdout": false,
+        "request.json": true,
+        "result.json": false,
+        "timing.json": false
+      },
+      "flows": {
+        "existing_tcp": {
+          "bytes_exact": true,
+          "failure": 0,
+          "first_elapsed": 0.134632,
+          "last_elapsed": 179.236084,
+          "maxgap_seconds": 1.0287870000000012,
+          "samples": 180,
+          "socket_reused": false,
+          "source_preserved": true,
+          "success": 180
+        },
+        "existing_udp": {
+          "bytes_exact": true,
+          "failure": 0,
+          "first_elapsed": 0.281392,
+          "last_elapsed": 179.394589,
+          "maxgap_seconds": 1.056443999999999,
+          "samples": 180,
+          "socket_reused": false,
+          "source_preserved": null,
+          "success": 180
+        },
+        "fresh_tcp": {
+          "bytes_exact": true,
+          "failure": 0,
+          "first_elapsed": 4.7e-05,
+          "last_elapsed": 179.117885,
+          "maxgap_seconds": 1.0026389999999878,
+          "samples": 180,
+          "socket_reused": null,
+          "source_preserved": true,
+          "success": 180
+        },
+        "fresh_udp": {
+          "bytes_exact": true,
+          "failure": 0,
+          "first_elapsed": 0.255811,
+          "last_elapsed": 179.374334,
+          "maxgap_seconds": 1.0564970000000002,
+          "samples": 180,
+          "socket_reused": null,
+          "source_preserved": null,
+          "success": 180
+        }
+      },
+      "four_ready": true,
+      "original_request_binding": true,
+      "packet_elapsed_seconds": 180.000365,
+      "packet_scope": true,
+      "packet_sha256": "7350eaf8ef07d966d55334c0857eeb02e376683b13501a2bba3202110a556283"
+    },
+    "initial_native": {
+      "category_matches": true,
+      "entry_count": 38,
+      "history_boot_count": 1,
+      "mode_matches": true,
+      "private_run_id": "azure-profile-observe-b6ae0465-0747-489a-9e93-fbcadcbd2b2e",
+      "receipt_sha256": "67807ce3b0c733cfe00a68bd1a4001e388406b486d63df66def5b9c472a6670d",
+      "receipt_verified": true,
+      "result_json": true,
+      "static_two_matches": true
+    },
+    "markers": {
+      "coordinator": {
+        "present": true,
+        "private_run_id": "azure-mtu-overlap-81677dc3-0851-4c4e-a1e0-cf2f8bcc8fbb",
+        "sha256": "301b94415e4e9eb4fd41a75b7209f9e11f10bad0a8ccd10c35f2f73624f85561"
+      },
+      "helper": {
+        "present": false
+      },
+      "recorder": {
+        "present": true,
+        "private_run_id": "azure-mtu-recorder-9023adae-6af0-4207-a25d-bfa5ffe6f38a",
+        "sha256": "0971bdce5474c4b8c24ca729a6b7b54c9803b345d13c977caedb37d6988fc482"
+      }
+    },
+    "mutations": 0,
+    "native_rerun": false,
+    "recorder": {
+      "artifact_presence": {
+        "after-native.stderr": false,
+        "after-native.stdout": false,
+        "outcome.json": true,
+        "packets-started.json": false,
+        "packets.json": false,
+        "private.stderr": true,
+        "private.stdout": true,
+        "request.json": true,
+        "result.json": false,
+        "timing.json": false
+      },
+      "helper_stderr": {
+        "exception_type": "ValueError",
+        "fixed_reason": "immediate_bracket",
+        "sha256": "159246de160ed0e476e6a6abed689c3207f25c3522b0869720d5f4abb77ab709",
+        "source_location": {
+          "line": 98,
+          "source": "owned-mtu-window.py"
+        }
+      },
+      "outcome_category": "unknown_or_refused_no_replay",
+      "returncode": 1
+    },
+    "transport_seconds": 1.698
+  },
+  "second_attempt_projection_sha256": "5519016781c1bb07c9aaa5b5abc1d05dade6bb16ca5942e3dadc7f4f82da5b54",
+  "version": 1,
+  "whole_mtu_acceptance_passed": false
+}

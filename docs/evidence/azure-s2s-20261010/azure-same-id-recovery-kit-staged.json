@@ -1,0 +1,47 @@
+{
+  "version": 1,
+  "category": "exact_approved_recovery_kit_staged_no_connection_changes",
+  "recorded_at": "2026-10-11T12:24:32.699726+00:00",
+  "approval": "new human approved reply to the exact payload, destination, read-only preflight and single guarded original-ID recovery request; staging accepted by automatic approval review",
+  "payload": {
+    "path": "/private/tmp/azure-same-id-recovery-root-kit-sealer.py",
+    "sha256": "f72a322d9ae3290217ece1bf2515705cf99f7e2863bda685d31a48b1ea8fd55e",
+    "bytes": 28212,
+    "via_bastion": "104.211.219.1",
+    "peer": "20.219.28.146",
+    "root_kit": "/run/tunnex-qualification/azure-same-id-recovery-kit-49168c7d"
+  },
+  "actual_stage": {
+    "version": 1,
+    "category": "same_id_recovery_kit_root_sealed_no_execution",
+    "payload_sha256": {
+      "bracket-same-id-recovery.py": "943d43b711d9d697dae931aefa162bcbce71ac71a018341ef85196eda115072d",
+      "original409.json": "1bc560269426c2cc37e8abf2138bed8f1f76c055fbcdfe1a43824b24bd5802b3"
+    },
+    "credential_payloads": 0,
+    "connection_mutations": 0
+  },
+  "transport_result": {
+    "categories": [
+      "same_id_recovery_kit_root_sealed_no_execution"
+    ],
+    "phase": "stage",
+    "replay_allowed": false,
+    "returncode": 0,
+    "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "stdout_sha256": "ba6daaa864bf006d741e0fb84bd0cb20573a47e11194036b6c339c67a95c517f",
+    "timed_out": false
+  },
+  "private_transport_artifacts": {
+    "/private/tmp/azure-same-id-root-sealer-run-20261011/stage.once.json": "6b34214c757a629e75666175bcdd9ad5ecb83b19d710326e11f482c7a0b26ae0",
+    "/private/tmp/azure-same-id-root-sealer-run-20261011/stage.stdout": "ba6daaa864bf006d741e0fb84bd0cb20573a47e11194036b6c339c67a95c517f",
+    "/private/tmp/azure-same-id-root-sealer-run-20261011/stage.stderr": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "/private/tmp/azure-same-id-root-sealer-run-20261011/stage.result.json": "6f253df9c9f719a296281c8a7f5d05b8b5409eb93395ed63ad18cea1c2fb2d2c"
+  },
+  "gateway_START": false,
+  "recovery_POST": false,
+  "V7_stream_wrapper_replayed": false,
+  "cloud_acceptance_claim": false,
+  "stories_formally_closed": 0,
+  "story_total": 11
+}

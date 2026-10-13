@@ -1,0 +1,390 @@
+{
+  "authority": {
+    "acceptance": false,
+    "control_plane_recreate_authority": false,
+    "corrected_create_start_eligible": false,
+    "native_running_node_inventory": false,
+    "native_stopped_negative_proof_passed": false
+  },
+  "changes": {
+    "cloud_prefix_changed": false,
+    "connection_recovery_executed": false,
+    "new_sealed_extension_files": 5,
+    "old_reader_versions_preserved": true,
+    "original_gateway_state_mode_changed": false,
+    "services_mutated_by_observer": false,
+    "timers_changed": false
+  },
+  "evidence": {
+    "actual_historical_reset_binding_scalars": {
+      "local_artifact_sha256": "4ad60439168227b04491d94cae56cd05333675d903f91ea93ed7408e60e5d90e",
+      "receipt": {
+        "category": "historical_reset_finite_scalars_diagnostic_readonly_no_authority",
+        "entries": [
+          {
+            "allocation_namespace_is_current": false,
+            "covered_delivery_revision": 2,
+            "delivery_id": "07de1d1a-f8d9-4df2-b0f5-f7e0b1ec0a78",
+            "historical_boot": true,
+            "original_delivery_revision": 2,
+            "recorded_cleanup_revision": 3,
+            "reset_persisted": false
+          },
+          {
+            "allocation_namespace_is_current": true,
+            "covered_delivery_revision": 4,
+            "delivery_id": "853ad2ea-a491-497c-a1ab-8b14c91fc956",
+            "historical_boot": true,
+            "original_delivery_revision": 4,
+            "receipt_boot_equals_persisted": true,
+            "receipt_bytes": 425,
+            "receipt_cleanup_matches": true,
+            "receipt_exact_hash_equals_persisted": true,
+            "receipt_has_exact_schema": true,
+            "receipt_namespace_equals_persisted": true,
+            "receipt_owner_matches": true,
+            "receipt_revision_matches": true,
+            "receipt_root_private": true,
+            "receipt_termination_is_vm_stop": true,
+            "recorded_cleanup_revision": 5,
+            "reset_boot_is_current": true,
+            "reset_namespace_is_current": false,
+            "reset_persisted": true
+          }
+        ],
+        "journal_sha256": "8d2ee28b25c8f361afbdb038c62c425520f86508e3b1894df8fc8be2f7eb898e"
+      }
+    },
+    "current_namespace_same_inode_diagnostic": {
+      "local_artifact_sha256": "d608d9c597be4a5e912a6286ec4fc575eea134ca12c80b4697facbb54b0c3c65",
+      "receipt": {
+        "category": "private_mount_transport_diagnostic_only_no_authority",
+        "command_observations": [
+          {
+            "command": "namespace_fd_membership",
+            "inherited_mount_id_in_current_namespace": false,
+            "original_inode_equal": true,
+            "reopened_mount_id_in_current_namespace": true
+          },
+          {
+            "command": "mount_tmpfs",
+            "error_classes": {
+              "bad_fd": false,
+              "not_directory": false,
+              "operation_not_permitted": false,
+              "permission": false,
+              "source_missing": false,
+              "wrong_fs": false
+            },
+            "log_bytes": 0,
+            "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "ok": true,
+            "parent_fd_matches_original": true,
+            "private_run_id": "private-mount-command-diagnostic-aeffe4c1-212f-4238-9f7d-7993b3cd3b87",
+            "returncode": 0
+          },
+          {
+            "command": "direct_bind_same_inode_current_namespace_fd",
+            "errno": 0,
+            "ok": true,
+            "returncode": 0
+          },
+          {
+            "command": "remount_readonly",
+            "error_classes": {
+              "bad_fd": false,
+              "not_directory": false,
+              "operation_not_permitted": false,
+              "permission": false,
+              "source_missing": false,
+              "wrong_fs": false
+            },
+            "log_bytes": 0,
+            "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "ok": true,
+            "parent_fd_matches_original": true,
+            "private_run_id": "private-mount-command-diagnostic-6b96786a-ba7e-4146-abfc-0ce275eaf029",
+            "returncode": 0
+          }
+        ],
+        "outcome": "ready_to_exec_not_dispatched",
+        "phase": "ready_to_exec_not_dispatched",
+        "qualified": false,
+        "service_mutations": 0
+      }
+    },
+    "inherited_fd_direct_bind_diagnostic": {
+      "local_artifact_sha256": "3620a6795cb1dcf29dc98f932e5c91a27ee6085f8e174039f2a454eb56d250aa",
+      "receipt": {
+        "category": "private_mount_transport_diagnostic_only_no_authority",
+        "code": "private_namespace_operation",
+        "command_observations": [
+          {
+            "command": "mount_tmpfs",
+            "error_classes": {
+              "bad_fd": false,
+              "not_directory": false,
+              "operation_not_permitted": false,
+              "permission": false,
+              "source_missing": false,
+              "wrong_fs": false
+            },
+            "log_bytes": 0,
+            "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "ok": true,
+            "parent_fd_matches_original": true,
+            "private_run_id": "private-mount-command-diagnostic-29fefb76-73cb-492d-b2a7-42fe52650efe",
+            "returncode": 0
+          },
+          {
+            "command": "direct_bind_original_fd",
+            "errno": 22,
+            "ok": false,
+            "returncode": -1
+          }
+        ],
+        "failure_class": "Refused",
+        "outcome": "refused",
+        "phase": "bind_original",
+        "qualified": false,
+        "service_mutations": 0
+      }
+    },
+    "reader_v1_initial_refusal": {
+      "local_artifact_sha256": "48d448238890503782238200c783b8aeac10f14d0e2cf2f945181a2e5e2efea2",
+      "receipt": {
+        "category": "stopped_negative_observation_refused",
+        "phase": "initial_bracket",
+        "private_run_id": "azure-stopped-negative-observe-a3bb1784-71aa-420a-8de0-63f13d206988",
+        "version": 1
+      }
+    },
+    "reader_v2_bind_diagnostic": {
+      "local_artifact_sha256": "0e19c1233921a57d47215f61e73c5453ee2460acb693a236e6197a14d4046b91",
+      "receipt": {
+        "category": "private_mount_transport_diagnostic_only_no_authority",
+        "code": "private_namespace_operation",
+        "command_observations": [
+          {
+            "command": "mount_tmpfs",
+            "error_classes": {
+              "bad_fd": false,
+              "not_directory": false,
+              "operation_not_permitted": false,
+              "permission": false,
+              "source_missing": false,
+              "wrong_fs": false
+            },
+            "log_bytes": 0,
+            "log_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+            "ok": true,
+            "parent_fd_matches_original": true,
+            "private_run_id": "private-mount-command-diagnostic-93a246e4-2ac9-4ce2-913c-72b34dce682f",
+            "returncode": 0
+          },
+          {
+            "command": "bind_original",
+            "error_classes": {
+              "bad_fd": false,
+              "not_directory": false,
+              "operation_not_permitted": false,
+              "permission": false,
+              "source_missing": false,
+              "wrong_fs": true
+            },
+            "log_bytes": 143,
+            "log_sha256": "6b34e2cf8b8887efd7bf5828c76b1994896e4f5281a677d08a874072e49436d2",
+            "ok": false,
+            "parent_fd_matches_original": true,
+            "private_run_id": "private-mount-command-diagnostic-d5be3d77-f86e-4fec-9be4-1ba841763a15",
+            "returncode": 32
+          }
+        ],
+        "failure_class": "Refused",
+        "outcome": "refused",
+        "phase": "bind_original",
+        "qualified": false,
+        "service_mutations": 0
+      }
+    },
+    "reader_v2_native_dispatch_refusal": {
+      "local_artifact_sha256": "adb16d467b3fd12d2bb9b68e5d60c723d31d489ed7697031cd3aedec66ec28c4",
+      "receipt": {
+        "category": "stopped_negative_observation_refused",
+        "code": "actual_native_refused",
+        "phase": "actual_stopped_observer",
+        "private_run_id": "azure-stopped-negative-observe-d23f143b-af75-4b7c-996a-288bf2b7afbe",
+        "version": 1
+      }
+    },
+    "v3_extension_seal": {
+      "local_artifact_sha256": "ff1139a854ac143bb556167c84bf5c8a122adf8c5d35789397a522550cefc3e9",
+      "receipt": {
+        "binary_sha256": "df8adee3e41f507741400309bc38f76c359e364123b13d8195372b58330f0600",
+        "category": "new_stopped_reader_and_continuation_sealed_existing_native_reused_no_execution",
+        "continuation_sha256": "a694a50b51f5f1d877080c15a7c89d077ffe47d839e07977eaaad512986ce98b",
+        "driver_sha256": "40ee863bfb0647e1b5097166d85ca7e2ba90620d3a9742e24d83e895243d3e03",
+        "native_closure_sha256": "f1be05699e2954515c6615aec64fcc94fa135debdad185df1380018f465594b7",
+        "new_sealed_files": 5,
+        "outer_closure_sha256": "01460a97bd94eac689615000fa292ae9bbacdbe64e185857a55aed05694fc3dc",
+        "private_run_id": "azure-stopped-extension-seal-fc7aec3d-cc3a-4e7e-89b6-39e2dc0fbba4",
+        "reused_native_source_files": 622,
+        "service_mutations": 0,
+        "version": 1
+      }
+    },
+    "v3_native_failure_stage": {
+      "local_artifact_sha256": "f4f8c1943052220b410cdf14bdbdf15d2ea28c5b687c584254570615f2feea03",
+      "receipt": {
+        "category": "private_stopped_observer_stage_projection_readonly",
+        "host_run_executable": true,
+        "log_bytes": 231,
+        "log_line_count": 5,
+        "log_sha256": "ce347bed0501e78863ae9ca0e17beea2490c4b6b7660a551930c0cd634cde39e",
+        "native_stages": [
+          "frr_history"
+        ],
+        "private_run_id": "azure-stopped-negative-observe-167267bd-0308-4ef2-be9c-4dff04fa4269",
+        "reader_refused": false,
+        "test_failed": true,
+        "unshare_denied": false
+      }
+    },
+    "v3_native_refusal": {
+      "local_artifact_sha256": "1cd28e3cf465cf615769e39197b76621c96a02512e37ecffc4d7bd90dbcfd7f5",
+      "receipt": {
+        "category": "stopped_negative_observation_refused",
+        "code": "actual_native_refused",
+        "phase": "actual_stopped_observer",
+        "private_run_id": "azure-stopped-negative-observe-167267bd-0308-4ef2-be9c-4dff04fa4269",
+        "version": 1
+      }
+    },
+    "v4_first_sealing_refusal": {
+      "local_artifact_sha256": "059811be7500ff12c13202f43c75a7f5c2d162fc198facc2b54bb5bb625a958f",
+      "receipt": {
+        "category": "new_stopped_source_sealing_refused",
+        "phase": "verify_all_inputs",
+        "private_run_id": "azure-stopped-source-seal-eed53e0c-1a84-4482-8728-2d0b017179a7",
+        "version": 1
+      }
+    },
+    "v4_inputs_missing": {
+      "local_artifact_sha256": "42fe01a5af6ac9533466926e6e8727a9ef913905e57fdd2accdbc15091bd901b",
+      "receipt": {
+        "binary_destination_exists": false,
+        "category": "new_stopped_native_sealing_inputs_readonly_diagnostic",
+        "extension_destinations_exist": [
+          false,
+          false,
+          false,
+          false,
+          false
+        ],
+        "inputs": [
+          {
+            "code": "other",
+            "errno": 2,
+            "exact_metadata_and_hash": false,
+            "exception_class": "FileNotFoundError",
+            "path_exists": false,
+            "role": "native"
+          },
+          {
+            "code": "other",
+            "errno": 2,
+            "exact_metadata_and_hash": false,
+            "exception_class": "FileNotFoundError",
+            "path_exists": false,
+            "role": "extension"
+          },
+          {
+            "code": "other",
+            "errno": 2,
+            "exact_metadata_and_hash": false,
+            "exception_class": "FileNotFoundError",
+            "path_exists": false,
+            "role": "binary"
+          }
+        ],
+        "native_destination_exists": false
+      }
+    },
+    "v4_native_failure_reason": {
+      "local_artifact_sha256": "199f7d8a672e1de8cbade41d83165e11f29e54988ebb464582b419fc225a334e",
+      "receipt": {
+        "category": "private_stopped_observer_stage_projection_readonly",
+        "frr_reasons": [
+          "historical_reset_refused"
+        ],
+        "host_run_executable": true,
+        "log_bytes": 284,
+        "log_line_count": 6,
+        "log_sha256": "4c02dc8732c8d6f0d15d973720cd846af40c0233754fa4c38cafb5ec4339f55d",
+        "native_stages": [
+          "frr_history"
+        ],
+        "private_run_id": "azure-stopped-negative-observe-d68e5cc4-7c65-4f47-8da0-6b1004f56b9f",
+        "reader_refused": false,
+        "test_failed": true,
+        "unshare_denied": false
+      }
+    },
+    "v4_native_refusal": {
+      "local_artifact_sha256": "f22fe05ada69e73ad3dddeb88200c7f18647190b1d260a88f2386993bb82097b",
+      "receipt": {
+        "category": "stopped_negative_observation_refused",
+        "code": "actual_native_refused",
+        "phase": "actual_stopped_observer",
+        "private_run_id": "azure-stopped-negative-observe-d68e5cc4-7c65-4f47-8da0-6b1004f56b9f",
+        "version": 1
+      }
+    },
+    "v4_seal": {
+      "local_artifact_sha256": "48fd126d7d5e1196b98f75ebabfcff76036553e3569c0ed17fb1ac176cea065f",
+      "receipt": {
+        "binary_sha256": "ea97b77a1b52961df26e4ce714efa4a46a1cfc8e7d2bfd59cc75a966daf75306",
+        "category": "new_stopped_observer_and_owned_continuation_sources_sealed_no_execution",
+        "continuation_sha256": "52c403176b7aa5244641a9e6e14462cbb1736ee04e00d36a53b9ae24120224ec",
+        "driver_sha256": "538641914618f81cccf84d733f31add2b52e3e26678e2446ddf0aa97332de17e",
+        "native_closure_sha256": "212833041140136b93fc97666f10db87136a3935aa755450e3d6c1e162ea808e",
+        "outer_closure_sha256": "d17250ec966b71b0e28ac9e1ad34e9053bf1e776e9def215b80044e098d59357",
+        "private_run_id": "azure-stopped-source-seal-c9b8dd3c-31ff-402b-a2d5-d545e33ee357",
+        "service_mutations": 0,
+        "source_files": 627,
+        "version": 1
+      }
+    }
+  },
+  "kind": "azure_stopped_observer_private_mount_causal_diagnostic_and_native_refusal",
+  "limitations": [
+    "The transport-only success stopped before native execution and is not qualification authority.",
+    "V4 reaches Go, passes full FRR generation census, then refuses historical_reset_refused. The actual persisted reset receipt namespace differs from the current anchor namespace; the full receipt CoveredDigest has not yet been independently accepted by this observer.",
+    "No corrected CREATE/START continuation has executed. Original unknown/refused create outcome and all reservation markers remain preserved.",
+    "Gateway running-node and scenario acceptance still require fresh independent proof."
+  ],
+  "local_verification": {
+    "archive_valid_and_five_causal_refusals_passed": true,
+    "continuation_tests": 15,
+    "diagnostic_focused_race_seconds": 3.024,
+    "diagnostic_helper_commit": "2861f4adf98b31b00e87d10a580b5ab83a0aa479",
+    "diagnostic_root_binary_byte_identical": true,
+    "driver_tests": 6,
+    "python_versions": [
+      "3.14",
+      "3.9"
+    ],
+    "reader_source_review": "no blocker identified; source review only",
+    "reader_tests": 11
+  },
+  "source_commit": "49168c7d8706a8e956bce4ad04d5884d1c65cdc7",
+  "staging_diagnosis": "A nested SSH command consumed the remaining shell script stdin; no input files transferred. Independent reads proved all three absent and all seven sealed destinations absent. Corrected nested SSH uses -n, then the same reviewed bytes passed full sealing/readback. The failed source-sealing receipt remains preserved.",
+  "state_parent": {
+    "actual_mode_octal": "0755",
+    "actual_owner_uid": 0,
+    "changed": false,
+    "journal_directory_mode_octal": "0700",
+    "journal_directory_owner_uid": 0
+  },
+  "version": 1
+}

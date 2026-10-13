@@ -1,0 +1,50 @@
+{
+  "actual_read": {
+    "actual_output_sha256": "3e04fd8774910b1b8310706348e2a6d2dd55124e5f09b79655fc02fb46bc9212",
+    "actual_state_sha256": "299c0de964c4260525e2613bb7173a4dea749d6046c63253ba0c808991045ba8",
+    "classification": "static",
+    "connection_reserved": true,
+    "last_reserved_step": "connection",
+    "lng_reserved": true,
+    "observed_at": "2026-10-11T21:39:39.777599+00:00",
+    "protected_sha256": "4710cff9fe19e5eda170605ac97542a7af82fe7caa2fb95a43c14cb3940291e2",
+    "stage": "static"
+  },
+  "cloud_scope": {
+    "active_active": true,
+    "connection_bgp": false,
+    "local_gateway_prefixes": [
+      "10.233.10.0/24"
+    ],
+    "new_resources_created": false,
+    "protected_properties_unchanged": true
+  },
+  "human_story_count": {
+    "accepted": 6,
+    "accepted_numbers": [
+      1,
+      2,
+      3,
+      4,
+      7,
+      8
+    ],
+    "open_numbers": [
+      5,
+      6,
+      9,
+      10,
+      11
+    ],
+    "total": 11
+  },
+  "kind": "owned_azure_active_active_static_cloud_settings_pass",
+  "qualification": {
+    "dns_story_accepted": false,
+    "e2e_story_accepted": false,
+    "static_story_accepted": false,
+    "tunnel_traffic_accepted": false
+  },
+  "scope": "Independent terminal cloud configuration only; normal static successor and native/packet/DNS/lifecycle acceptance remain pending. Distinct writes used distinct genuine native absence receipts, with durable reservations preserved.",
+  "version": 1
+}

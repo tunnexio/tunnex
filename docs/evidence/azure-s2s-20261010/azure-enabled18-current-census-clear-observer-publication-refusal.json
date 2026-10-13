@@ -1,0 +1,129 @@
+{
+  "acceptance": false,
+  "accepted_human_story_numbers": [
+    1,
+    2,
+    3,
+    4,
+    7,
+    8
+  ],
+  "accepted_story_count": 6,
+  "bounded_scheduler_successor": {
+    "independent_review": "pending",
+    "path": "/private/tmp/azure-enabled18-observer-bounded-settle-v1/observe.py",
+    "qa_executed": false,
+    "sha256": "ace04144c647e5a19d1bbab98a2cf7a9e4aa5b53a7acf861af7d5e545eccb10a",
+    "source_review_sha256": "217b7d3f86a0916ea7b1d0387a77da9eec65d963c6d6e091aed0c642cacfb0e7",
+    "tests_pass": 5
+  },
+  "category": "actual_enabled18_current_census_clear_and_original_wrapper_publication_refusal",
+  "current_enabled_native_accepted": false,
+  "current_readonly_scope_projection": {
+    "applied_count": 1,
+    "applied_profile_revision_prefixes_matches": true,
+    "diagnostic_only": true,
+    "entry_count": 39,
+    "guard_count": 1,
+    "journal_alias_and_node_sha256": "2117635ffcd7e0e55006f186985aa9b8644446979aaf2f6afedffeba12115659",
+    "missing_archived_old_namespace_delivery_count": 0,
+    "old_namespace_entry_count": 1,
+    "owner_scope_matches": true,
+    "payload_version": 13,
+    "retained_count": 38,
+    "retained_process_duty_refusal_count": 0,
+    "retained_route_duty_refusal_count": 0
+  },
+  "fresh_approved_diagnostic": {
+    "actual_result": {
+      "acceptance": false,
+      "category": "readonly_history_branch_diagnostic",
+      "diagnostic": {
+        "acceptance": false,
+        "branch": "none",
+        "context_active": true,
+        "delivery_count": 39,
+        "elapsed_ms": 4,
+        "failed_index": -1,
+        "kind": "history_branch_diagnostic"
+      },
+      "final": {
+        "identity": true,
+        "manifest": true,
+        "normal": true
+      },
+      "private_run_id": "azure-history-branch-diagnostic-5ca34ac3-13ca-4b59-b5fd-f15e021d55be",
+      "returncode": 0,
+      "test_pass": true,
+      "timeout": false,
+      "transport_seconds": 7.332
+    },
+    "binary_sha256": "bfd88afa757f0c5ac20f090999ba71ebb9fe0a2925edc00817c43206aa2ad2cb",
+    "driver_sha256": "72ef5ec7f2a523252930a84dbd13ddbd3b1c06b1f014c07cc01ee848551d7754",
+    "local_result_path": "/private/tmp/azure-history-branch-current-root-20261012-1791810570619/finite-result.json",
+    "local_result_sha256": "0710aaa7b4ea167ae5524f1a34200e718cbbc11204f44a61fc66383fb48a468f",
+    "source_sha256": "8b5c6c0b060d518b8fdc0b87c31fcdb97dc762d738cdd5aa04e254f669c6c19a",
+    "unchanged_user_approved_files": true
+  },
+  "latest_original_wrapper": {
+    "category": "profile_observer_refused",
+    "later_current_comparison": {
+      "before_guard_count": 1,
+      "checksum_equal": false,
+      "current_guard_count": 1,
+      "entries_equal": true,
+      "guards_equal": false,
+      "owner_equal": true,
+      "sequence_equal": false,
+      "version_equal": true
+    },
+    "manifest_sha256": "ca3c2dd917b22106613c7ed7a88a8ac96f3ad2d977ca55fb0acd64041a2d4cd2",
+    "native_executed": false,
+    "native_log_exists": false,
+    "original_native_binary_sha256": "0eb458cd0d1553771201188853a4b975383175e02a504abef22724fef1a75a23",
+    "qa_private_run_id": "azure-profile-observe-49fcf152-b3ba-4552-b76a-94922e697e25",
+    "returncode": 1,
+    "saved_before_flags": {
+      "identity": true,
+      "journal": false,
+      "normal": true
+    },
+    "source_sha256": "8b5c6c0b060d518b8fdc0b87c31fcdb97dc762d738cdd5aa04e254f669c6c19a",
+    "stage": "before_bracket"
+  },
+  "native_accepted_entry_count": null,
+  "new_accepted_slices": 0,
+  "recorded_at": "2026-10-12T13:17:49.134312+00:00",
+  "saved_classifier": {
+    "actual_result": {
+      "acceptance": false,
+      "category": "saved_history_diagnostic_finite_classification",
+      "native_rerun": false,
+      "result": {
+        "acceptance": false,
+        "diagnostic_line_count": 0,
+        "fail_count": 1,
+        "known_fatal_reasons": [
+          "whole_journal_scope_refused"
+        ],
+        "pass_count": 0,
+        "private_run_id": "azure-history-branch-diagnostic-a6246125-721a-4174-9641-019afc710230",
+        "skip_count": 0,
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "stderr_size": 0,
+        "stdout_sha256": "463a1203cc5a09faf46c4fdabc8826eb1627b4cd0e3d81373fdb6fba9a581c5b",
+        "stdout_size": 195,
+        "test_named": 1,
+        "unknown_fatal_reason": false
+      },
+      "transport_seconds": 1.831
+    },
+    "local_result_path": "/private/tmp/azure-history-saved-failure-root-a4ce56cf-e983-4325-9701-30da85b34dda/result.json",
+    "local_result_sha256": "27784a6be463963c8f66da9723f3a6ac550f6ab4963b04957669a460394db45d",
+    "source_sha256": "39e32db2874e3c2360643743032f31e9ef8a1e4e2d533036f12194d6eb411d64",
+    "user_approval_resolved": true
+  },
+  "scope": "Fresh diagnostic current census cleared; earlier census and scope failures remain historical and their exact causes are not retrospectively established. Latest full original wrapper refused its journal-only initial bracket during guard publication before native execution. All original acceptance gates remain. Counts are diagnostic only.",
+  "total_story_count": 11,
+  "version": 1
+}

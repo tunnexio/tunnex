@@ -77,7 +77,8 @@ func (v *runtimeDNSOwnerView) frozenResolverGuardPermitsStage(ctx context.Contex
 func dnsParseReuseView(raw, expected []byte) *runtimeDNSOwnerView {
 	ns := guardFixture().Namespace
 	r := &GuardReader{namespace: func() (string, error) { return ns, nil }, interfaces: func() ([]GuardInterface, error) { return nil, nil }, run: func(context.Context, ...string) ([]byte, error) { return raw, nil }}
-	return &runtimeDNSOwnerView{guard: GuardManifest{Namespace: ns, ExpectedJSON: string(expected)}, observer: runtimeDNSObserver{guardReader: r}}
+	objects, _ := normalizedGuardObjects(expected)
+	return &runtimeDNSOwnerView{expected: guardExpectedSnapshot{raw: string(expected), objects: objects}, guard: GuardManifest{Namespace: ns, ExpectedJSON: string(expected)}, observer: runtimeDNSObserver{guardReader: r}}
 }
 func TestDNSExpectedSnapshotFrozenDifferential(t *testing.T) {
 	raw, id := guardParserFixture(t, 2)

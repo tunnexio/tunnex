@@ -1,0 +1,78 @@
+{
+  "accepted_story_count": 6,
+  "actual_normal_observation": {
+    "application_state": "not_applied",
+    "category": "actual_disabled15_readonly_projection",
+    "cleanup_state": "retained_guard",
+    "configuration_revision": 1,
+    "desired_intent": "disabled",
+    "desired_revision": 15,
+    "fresh_native_acceptance": false,
+    "journal_entry_count": 37,
+    "node_pid": 1514467,
+    "node_sha256": "2c33e96f7dbefbc5e0588428d974a2da1c91fbe87d4dd8f87077dc7212d0b4a2",
+    "node_started_at": "2026-10-12T07:41:08.708138572Z",
+    "observed_at": "2026-10-12T08:41:58.982924+00:00",
+    "policy_count": 8,
+    "raw_journal_exported": false,
+    "transport_seconds": 1.617
+  },
+  "candidate_node_sha256": "369044f622adc7c756f31be378909a407c7e09d0ea75e667bf6f6e187766c884",
+  "category": "inflight_qa_update_pre_restart_refusals_preserved",
+  "fqdn_live_acceptance_passed": false,
+  "full_guard_cause_diagnosed": false,
+  "new_acceptance_slices_closed": 0,
+  "next_step": "Diagnose full original guard verifier refusal on the owned QA node; perform controlled update only after unchanged fresh native gates pass.",
+  "normal_disable_receipt_sha256": "6825133493cc81ecfa168dafa23f6537fc395934a83e6ec2cf36a8a914f937b7",
+  "observation_wrapper_sha256": "15e001a78c58dfb545957943b2c59d2f7b08118e7111ff8e92ccbc65a665b42e",
+  "preserved_attempts": [
+    {
+      "attempt": 1,
+      "lifecycle_started": false,
+      "outcome": {
+        "returncode": 1,
+        "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+        "stdout_sha256": "51038b72624283b36404e3cf98f71dc6609d51a66f78464c2f30e050c2cf7377"
+      },
+      "phase": "update-execute",
+      "private_run_id": "azure-inflight-repair-prepare-update-df16a07e-2a37-46a5-ba42-25cca8e2821b",
+      "reason": "late_native_before_bracket",
+      "whole_story_accepted": false,
+      "wrapper_sha256": "7cbe0e37e0b1a4810675c5b25e6dcf3b332efd562f9483d8bb363c50d9a2a0fd"
+    },
+    {
+      "attempt": 2,
+      "lifecycle_started": false,
+      "outcome": {
+        "returncode": 1,
+        "stderr_sha256": "b6d2f2b7dd37d754bde092e301274a831dacf86cf2017c66b2c4c0c1f7970aa9",
+        "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "phase": "prepare",
+      "private_run_id": "azure-inflight-repair-prepare-update-c4b22abc-692d-4b32-b525-c524c141f93a",
+      "reason": "native_refused",
+      "whole_story_accepted": false,
+      "wrapper_sha256": "37c58903f19f5893ba0d8ac6f6ee8af8928ecd5391a7e990cfa700f80f63e072"
+    },
+    {
+      "attempt": 3,
+      "lifecycle_started": false,
+      "outcome": {
+        "returncode": 1,
+        "stderr_sha256": "b6d2f2b7dd37d754bde092e301274a831dacf86cf2017c66b2c4c0c1f7970aa9",
+        "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "phase": "prepare",
+      "private_run_id": "azure-inflight-repair-prepare-update-15d0001b-a6b6-4490-ae44-aa41fda7a958",
+      "reason": "native_refused",
+      "whole_story_accepted": false,
+      "wrapper_sha256": "131a898db8b7c21be871308358351f36f3bfd5a2aca03d6834d53412b946e05b"
+    }
+  ],
+  "qa_node_updated": false,
+  "raw_control_records_exported": false,
+  "recorded_at": "2026-10-12T09:09:20.967932+00:00",
+  "sustained_dns_acceptance_passed": false,
+  "total_story_count": 11,
+  "version": 1
+}

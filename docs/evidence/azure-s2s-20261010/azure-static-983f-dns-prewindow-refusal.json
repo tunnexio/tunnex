@@ -1,0 +1,34 @@
+{
+  "accepted_story_count": 6,
+  "actual_enable_receipt_sha256": "fd7bc313abe60b3bb800d58d3c0dd58ea902ff03324bef1a06354ef3c33b594d",
+  "actual_updater_result_sha256": "38f489a8b5bdf0c2151fd09c64555064ae0fb5fc1f4afbb987fe667039bbb704",
+  "category": "static_983f_dns_prewindow_scheduling_refusal",
+  "configuration_revision": 1,
+  "desired_revision": 6,
+  "dns_window_started": false,
+  "latest_completed_dns_window": {
+    "node": "0dda historical failed window",
+    "reads": 61,
+    "ready": 0
+  },
+  "new_enabled_native_acceptance": false,
+  "next_action": "Bounded scheduling-only transient read handling within original6s; full native/lineage/bytes/authority/freshness guards retained.",
+  "node_sha256": "983f9bc5e2fb621e676e0cce74f97fd8ba4a46391af8cf927a6ce7b978326515",
+  "packet_capture_started": false,
+  "policy_count": 8,
+  "private_stderr_sha256": "a2cf80fcb85da2eaf39405fc4f550cac5218681550ba349f6828cc2f6a2abca8",
+  "recorded_at": "2026-10-12T01:42:17.328917+00:00",
+  "refusal": {
+    "bounded_tag": "changed",
+    "cause": "strict whole-journal read metadata changed during periodic publication",
+    "exception_class": "ValueError",
+    "source_chain": [
+      "driver-setup-code.py:64",
+      "settle-publication.py:8",
+      "observe.py:26"
+    ],
+    "stage": "eight-setup before capture/native/capability/window"
+  },
+  "source_runner_sha256": "fd1043d9e9f27f495a41997b356b1c9caa384d4ce4b3e7f32172446455fa9d2c",
+  "whole_story_accepted": false
+}

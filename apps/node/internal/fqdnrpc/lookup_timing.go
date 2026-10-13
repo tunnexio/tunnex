@@ -17,7 +17,22 @@ type LookupPhaseTiming struct {
 	SummedMillis int64 `json:"summed_ms"`
 	MaxMillis    int64 `json:"max_ms"`
 }
+type LookupProofComponents struct {
+	Route                   LookupPhaseTiming `json:"route"`
+	Recovery                LookupPhaseTiming `json:"recovery"`
+	Environment             LookupPhaseTiming `json:"environment"`
+	EnvironmentCommands     LookupPhaseTiming `json:"environment_commands"`
+	EnvironmentVerification LookupPhaseTiming `json:"environment_verification"`
+	GuardCommands           LookupPhaseTiming `json:"guard_commands"`
+	GuardVerification       LookupPhaseTiming `json:"guard_verification"`
+}
 type LookupTiming struct {
+	// Summed concurrent component durations, not request wall time. Native
+	// success means the enclosing proof returned successfully; guard success
+	// means the reader reported no fixed failure category. Missing callbacks
+	// produce no fabricated samples.
+	ProofComponents LookupProofComponents `json:"proof_components"`
+
 	// StatsSaturated means at least one counter/sample was capped or scalar clamped;
 	// drained workers do not imply an uncapped measurement.
 	StatsSaturated bool `json:"stats_saturated"`
@@ -75,7 +90,29 @@ func RecordLookupPhase(ctx context.Context, phase string, elapsed time.Duration,
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	var p *LookupPhaseTiming
+	ceiling := lookupExchangeCeiling
 	switch phase {
+	case "native_route":
+		p = &a.value.ProofComponents.Route
+		ceiling *= 2
+	case "native_recovery":
+		p = &a.value.ProofComponents.Recovery
+		ceiling *= 2
+	case "native_environment":
+		p = &a.value.ProofComponents.Environment
+		ceiling *= 2
+	case "native_environment_commands":
+		p = &a.value.ProofComponents.EnvironmentCommands
+		ceiling *= 2
+	case "native_environment_verification":
+		p = &a.value.ProofComponents.EnvironmentVerification
+		ceiling *= 2
+	case "guard_commands":
+		p = &a.value.ProofComponents.GuardCommands
+		ceiling *= 4
+	case "guard_verification":
+		p = &a.value.ProofComponents.GuardVerification
+		ceiling *= 4
 	case "before":
 		p = &a.value.BeforeProof
 	case "after":
@@ -85,7 +122,7 @@ func RecordLookupPhase(ctx context.Context, phase string, elapsed time.Duration,
 	default:
 		return
 	}
-	if p.Count >= lookupExchangeCeiling {
+	if p.Count >= ceiling {
 		a.value.StatsSaturated = true
 		return
 	}

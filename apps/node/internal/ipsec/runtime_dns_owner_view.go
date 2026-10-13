@@ -44,6 +44,7 @@ func (c *RuntimeController) awaitDNSPublication(ctx context.Context, previous *r
 type runtimeDNSOwnerView struct {
 	entries  map[uuid.UUID]runtimeDNSOwnerEntry
 	guard    GuardManifest
+	expected guardExpectedSnapshot
 	observer runtimeDNSObserver
 }
 type runtimeDNSObserver struct {
@@ -189,12 +190,13 @@ func (c *RuntimeController) publishDNSOwnerView(g GuardManifest) {
 		c.withdrawDNSOwnerView(uuid.Nil)
 		return
 	}
-	if _, ok := normalizedGuardObjects([]byte(g.ExpectedJSON)); !ok {
+	objects, ok := normalizedGuardObjects([]byte(g.ExpectedJSON))
+	if !ok {
 		c.withdrawDNSOwnerView(uuid.Nil)
 		return
 	}
 	previous := c.dnsView.Load()
-	next := &runtimeDNSOwnerView{entries: map[uuid.UUID]runtimeDNSOwnerEntry{}, guard: g}
+	next := &runtimeDNSOwnerView{entries: map[uuid.UUID]runtimeDNSOwnerEntry{}, guard: g, expected: guardExpectedSnapshot{raw: g.ExpectedJSON, objects: objects}}
 	next.observer = runtimeDNSObserver{
 		controller:    &RuntimeController{config: c.config, kernel: c.kernel, prove: c.prove, recoveryObserve: c.recoveryObserve},
 		qualification: c.qualification, guardReader: c.guard.reader, source: observeDNSSource, route: runKernelCommand,

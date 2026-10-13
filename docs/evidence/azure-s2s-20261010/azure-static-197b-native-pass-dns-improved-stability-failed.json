@@ -1,0 +1,434 @@
+{
+  "accepted_story_count": 6,
+  "actual_local_result_sha256": "1debfedc8e3305127e7a27f9f3f69d6df5f651ab003cb7115e50f79ef53ffdac",
+  "capture": {
+    "capture_health": [
+      {
+        "captured": 114,
+        "dropped": 0,
+        "received": 114
+      },
+      {
+        "captured": 30,
+        "dropped": 0,
+        "received": 30
+      },
+      {
+        "captured": 0,
+        "dropped": 0,
+        "received": 0
+      }
+    ],
+    "capture_ready_epoch": 1791787774.863325,
+    "capture_sha256": [
+      "0facc986a1dccd656d36b58253baf09baf9da6fecf24a8e6254eea948800e360",
+      "67df01673e274a37c752101376389be4f2f6820a239019e2b45de522c452066d",
+      "9f648f8632961129ff3eebe5fba65c71316022b2739a76e11d0572043dbb6bd6"
+    ],
+    "capture_stopped_epoch": 1791787834.871165,
+    "correlations": [],
+    "ended_at": "2026-10-12T06:50:35.022187+00:00",
+    "packet_header_count": 144,
+    "scope": "Read-only natural RPC header correlation; no authority or readiness claim",
+    "socket_sample_count": 67,
+    "started_at": "2026-10-12T06:49:34.805057+00:00",
+    "supporting_conntrack_available": false,
+    "version": 1
+  },
+  "category": "actual_197b_full_native_pass_dns_improved_stability_failed",
+  "current_native_baseline": {
+    "bgp_route_count": 0,
+    "category": "genuine_197b_enable12_full_native_prewindow_baseline",
+    "entry_count": 36,
+    "full_saved_journal_sha256": "57de1dfd6052fd3e23ef65ad9c6f7af15300a3d8c2a6b880c0ab6504724ef94f",
+    "ike_count": 2,
+    "manifest_sha256": "86699c0d8900a687898f4ce9e48e606a856a2b94c2fc84bb9538ee0a22e2d0f8",
+    "mode": "baseline",
+    "native_receipt_sha256": "dd086ccd212ee7bd69e52dd10e6ecd671750b52ec5e55ad39f2448b65424c19b",
+    "node_executable_sha256": "197b6f795ee9b1613bb809bd00ffbc471f5c638ef23594dafb93c74a1a7201d3",
+    "normal_at_baseline": {
+      "application_state": "applied",
+      "cleanup_state": "retained_guard",
+      "desired_intent": "enabled",
+      "desired_revision": 12
+    },
+    "observed_at": "2026-10-12T06:49:33.055560476Z",
+    "policy_count": 8,
+    "profile_id": "azure-active-active-static-ipv4-v1",
+    "sad_count": 4,
+    "scope": "source-paired prewindow native baseline only",
+    "spd_count": 6
+  },
+  "desired_revision": 12,
+  "fqdn_live_acceptance_passed": false,
+  "limits": [
+    "Prewindow full native proof only; no postwindow full native inferred.",
+    "Census failed_reads are public GET/schema refusals, not an inferred count of DNS transport failures.",
+    "Environment verification timing is residual wall time including scheduling and validation; parser CPU cause is not yet proven."
+  ],
+  "new_slices_closed": 0,
+  "node_executable_sha256": "197b6f795ee9b1613bb809bd00ffbc471f5c638ef23594dafb93c74a1a7201d3",
+  "prior_completed_read_count": 61,
+  "prior_completed_ready_read_count": 0,
+  "public_census": {
+    "distinct_new_generations": [
+      3417
+    ],
+    "failed_reads": 43,
+    "read_count": 61,
+    "ready_read_count": 17,
+    "sampled_stability_passed": false,
+    "state_counts": {
+      "failed": 43,
+      "healthy": 18,
+      "pending": 0,
+      "stale": 0
+    }
+  },
+  "public_census_sha256": "01ad6ddb9e6e177acdfef14039ac203d4ac8cd1eb931d860d936e8252e904b71",
+  "ready_sample_improvement_observed": true,
+  "recorded_at": "2026-10-12T06:56:39.621577+00:00",
+  "remote_run_id": "azure-static-fresh-eight-window-e2447757-c627-4805-bcef-a9f897781dfe",
+  "sustained_dns_passed": false,
+  "total_story_count": 11,
+  "typed_diagnostics": {
+    "dns_refusals": [
+      {
+        "context_state": "active",
+        "elapsed_ms": 2011,
+        "guard_bracket_count": 1,
+        "guard_command_ms": 165,
+        "guard_failure_class": "none",
+        "guard_revalidation": "",
+        "guard_verification_ms": 74,
+        "native_elapsed_ms": 1745,
+        "native_environment_command_count": 18,
+        "native_environment_command_ms": 630,
+        "native_environment_ms": 1442,
+        "native_environment_verification_ms": 812,
+        "native_failure_class": "",
+        "native_recovery_ms": 303,
+        "native_remaining_at_entry_ms": 2159,
+        "native_route_ms": 0,
+        "operation": "dns_after_proof",
+        "socket_ms": 0,
+        "socket_stage": "",
+        "stage": "dns_epoch",
+        "time": "2026-10-12T06:49:35.358368375Z"
+      },
+      {
+        "context_state": "deadline",
+        "elapsed_ms": 1036,
+        "guard_bracket_count": 0,
+        "guard_command_ms": 0,
+        "guard_failure_class": "",
+        "guard_revalidation": "",
+        "guard_verification_ms": 0,
+        "native_elapsed_ms": 1036,
+        "native_environment_command_count": 18,
+        "native_environment_command_ms": 315,
+        "native_environment_ms": 843,
+        "native_environment_verification_ms": 528,
+        "native_failure_class": "",
+        "native_recovery_ms": 191,
+        "native_remaining_at_entry_ms": 1020,
+        "native_route_ms": 0,
+        "operation": "dns_after_proof",
+        "socket_ms": 0,
+        "socket_stage": "",
+        "stage": "dns_native_proof",
+        "time": "2026-10-12T06:50:05.522805877Z"
+      }
+    ],
+    "rejected_line_count": 1,
+    "rpc_timings": [
+      {
+        "context_state": "active",
+        "deadline_remaining_ms": 4317,
+        "delivery": "success",
+        "dispatch_utc": "2026-10-12T06:49:31.189528666Z",
+        "handle_ms": 4211,
+        "lookup": {
+          "after_proof": {
+            "count": 8,
+            "max_ms": 2069,
+            "refused": 4,
+            "successful": 4,
+            "summed_ms": 15679
+          },
+          "before_proof": {
+            "count": 8,
+            "max_ms": 2125,
+            "refused": 0,
+            "successful": 8,
+            "summed_ms": 16253
+          },
+          "completed_exchanges": 4,
+          "endpoint_workers_drained": true,
+          "outcome": "resolver_failure",
+          "proof_components": {
+            "environment": {
+              "count": 16,
+              "max_ms": 1525,
+              "refused": 4,
+              "successful": 12,
+              "summed_ms": 21059
+            },
+            "environment_commands": {
+              "count": 16,
+              "max_ms": 697,
+              "refused": 4,
+              "successful": 12,
+              "summed_ms": 8779
+            },
+            "environment_verification": {
+              "count": 16,
+              "max_ms": 1085,
+              "refused": 4,
+              "successful": 12,
+              "summed_ms": 12280
+            },
+            "guard_commands": {
+              "count": 16,
+              "max_ms": 174,
+              "refused": 0,
+              "successful": 16,
+              "summed_ms": 2248
+            },
+            "guard_verification": {
+              "count": 16,
+              "max_ms": 201,
+              "refused": 0,
+              "successful": 16,
+              "summed_ms": 1620
+            },
+            "recovery": {
+              "count": 16,
+              "max_ms": 444,
+              "refused": 4,
+              "successful": 12,
+              "summed_ms": 4976
+            },
+            "route": {
+              "count": 16,
+              "max_ms": 0,
+              "refused": 4,
+              "successful": 12,
+              "summed_ms": 0
+            }
+          },
+          "reduction_observed": true,
+          "remaining_at_reduction_ms": 105,
+          "returned_exchanges": 8,
+          "socket": {
+            "count": 8,
+            "max_ms": 132,
+            "refused": 0,
+            "successful": 8,
+            "summed_ms": 576
+          },
+          "stats_saturated": false,
+          "transport_timing_observed": true
+        },
+        "report_failure": "none",
+        "report_http_status": 204,
+        "report_ms": 29,
+        "result": "resolver_unavailable",
+        "start_delay_ms": 0,
+        "status": "SERVFAIL"
+      },
+      {
+        "context_state": "active",
+        "deadline_remaining_ms": 4899,
+        "delivery": "failure",
+        "dispatch_utc": "2026-10-12T06:50:00.607595012Z",
+        "handle_ms": 4965,
+        "lookup": {
+          "after_proof": {
+            "count": 16,
+            "max_ms": 1587,
+            "refused": 8,
+            "successful": 8,
+            "summed_ms": 15883
+          },
+          "before_proof": {
+            "count": 16,
+            "max_ms": 1752,
+            "refused": 0,
+            "successful": 16,
+            "summed_ms": 21636
+          },
+          "completed_exchanges": 8,
+          "endpoint_workers_drained": true,
+          "outcome": "deadline",
+          "proof_components": {
+            "environment": {
+              "count": 32,
+              "max_ms": 1051,
+              "refused": 8,
+              "successful": 24,
+              "summed_ms": 21980
+            },
+            "environment_commands": {
+              "count": 32,
+              "max_ms": 500,
+              "refused": 8,
+              "successful": 24,
+              "summed_ms": 10873
+            },
+            "environment_verification": {
+              "count": 32,
+              "max_ms": 758,
+              "refused": 8,
+              "successful": 24,
+              "summed_ms": 11107
+            },
+            "guard_commands": {
+              "count": 24,
+              "max_ms": 237,
+              "refused": 0,
+              "successful": 24,
+              "summed_ms": 3121
+            },
+            "guard_verification": {
+              "count": 24,
+              "max_ms": 220,
+              "refused": 0,
+              "successful": 24,
+              "summed_ms": 2677
+            },
+            "recovery": {
+              "count": 32,
+              "max_ms": 507,
+              "refused": 8,
+              "successful": 24,
+              "summed_ms": 7615
+            },
+            "route": {
+              "count": 32,
+              "max_ms": 0,
+              "refused": 8,
+              "successful": 24,
+              "summed_ms": 0
+            }
+          },
+          "reduction_observed": true,
+          "remaining_at_reduction_ms": -66,
+          "returned_exchanges": 16,
+          "socket": {
+            "count": 16,
+            "max_ms": 186,
+            "refused": 0,
+            "successful": 16,
+            "summed_ms": 1111
+          },
+          "stats_saturated": false,
+          "transport_timing_observed": true
+        },
+        "report_failure": "http_status",
+        "report_http_status": 400,
+        "report_ms": 47,
+        "result": "resolver_unavailable",
+        "start_delay_ms": 0,
+        "status": "SERVFAIL"
+      },
+      {
+        "context_state": "active",
+        "deadline_remaining_ms": 4831,
+        "delivery": "success",
+        "dispatch_utc": "2026-10-12T06:50:15.680051473Z",
+        "handle_ms": 3026,
+        "lookup": {
+          "after_proof": {
+            "count": 8,
+            "max_ms": 1512,
+            "refused": 0,
+            "successful": 8,
+            "summed_ms": 10519
+          },
+          "before_proof": {
+            "count": 8,
+            "max_ms": 1801,
+            "refused": 0,
+            "successful": 8,
+            "summed_ms": 11811
+          },
+          "completed_exchanges": 8,
+          "endpoint_workers_drained": true,
+          "outcome": "success",
+          "proof_components": {
+            "environment": {
+              "count": 16,
+              "max_ms": 1006,
+              "refused": 0,
+              "successful": 16,
+              "summed_ms": 12833
+            },
+            "environment_commands": {
+              "count": 16,
+              "max_ms": 564,
+              "refused": 0,
+              "successful": 16,
+              "summed_ms": 6834
+            },
+            "environment_verification": {
+              "count": 16,
+              "max_ms": 571,
+              "refused": 0,
+              "successful": 16,
+              "summed_ms": 5999
+            },
+            "guard_commands": {
+              "count": 16,
+              "max_ms": 195,
+              "refused": 0,
+              "successful": 16,
+              "summed_ms": 1942
+            },
+            "guard_verification": {
+              "count": 16,
+              "max_ms": 211,
+              "refused": 0,
+              "successful": 16,
+              "summed_ms": 1744
+            },
+            "recovery": {
+              "count": 16,
+              "max_ms": 419,
+              "refused": 0,
+              "successful": 16,
+              "summed_ms": 4433
+            },
+            "route": {
+              "count": 16,
+              "max_ms": 0,
+              "refused": 0,
+              "successful": 16,
+              "summed_ms": 0
+            }
+          },
+          "reduction_observed": true,
+          "remaining_at_reduction_ms": 1805,
+          "returned_exchanges": 8,
+          "socket": {
+            "count": 8,
+            "max_ms": 156,
+            "refused": 0,
+            "successful": 8,
+            "summed_ms": 696
+          },
+          "stats_saturated": false,
+          "transport_timing_observed": true
+        },
+        "report_failure": "none",
+        "report_http_status": 204,
+        "report_ms": 33,
+        "result": "none",
+        "start_delay_ms": 0,
+        "status": "NOERROR"
+      }
+    ]
+  },
+  "window_begin": "2026-10-12T06:49:34.863325Z",
+  "window_end": "2026-10-12T06:50:35.968477Z"
+}

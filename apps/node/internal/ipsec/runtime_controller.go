@@ -1068,7 +1068,7 @@ func (c *RuntimeController) proveCurrentTimed(ctx context.Context, e RuntimeJour
 	if e.ContractVersion == 3 {
 		return c.proveBGPCurrentTimed(ctx, e, env, observe, timing)
 	}
-	return c.proveRuntime(ctx, e, env)
+	return c.proveRuntimeTimed(ctx, e, env, timing)
 }
 
 // AttachQualification adds independently observed process/platform facts. It is

@@ -16,7 +16,6 @@ type runtimeEnvironmentSnapshot struct {
 func runtimeReadEnvironmentSnapshot(ctx context.Context, ip func(context.Context, ...string) ([]byte, error), nft func(context.Context) ([]byte, error), engines [2]EngineTunnel) (runtimeEnvironmentSnapshot, bool) {
 	var out runtimeEnvironmentSnapshot
 	tasks := []func(context.Context) error{
-		func(c context.Context) error { _, e := nft(c); return e },
 		func(c context.Context) error { var e error; out.rules, e = ip(c, "-j", "-4", "rule", "show"); return e },
 		func(c context.Context) error { var e error; out.links, e = ip(c, "-j", "-d", "link", "show"); return e },
 		func(c context.Context) error {
@@ -38,7 +37,17 @@ func runtimeReadEnvironmentSnapshot(ctx context.Context, ip func(context.Context
 			return e
 		})
 	}
-	ok := runtimeEnvironmentReadPool(ctx, tasks)
+	// NFT qualification and the two-worker IP census are independent reads.
+	// Both branches share cancellation and drain before any snapshot is consumed.
+	ok := runtimeEnvironmentReadPool(ctx, []func(context.Context) error{
+		func(c context.Context) error { _, err := nft(c); return err },
+		func(c context.Context) error {
+			if !runtimeEnvironmentReadPool(c, tasks) {
+				return ErrRuntimeEnvironment
+			}
+			return nil
+		},
+	})
 	return out, ok
 }
 

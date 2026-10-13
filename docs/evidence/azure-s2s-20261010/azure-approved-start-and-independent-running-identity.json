@@ -1,0 +1,137 @@
+{
+  "approved_source_archive_sha256": "5bc4af960abfc9d3ee83949a9f0aabc903711ed68b5f7810b6a42497b9f5e72b",
+  "candidate_cloud_prefix_added": false,
+  "connection_recovery_executed": false,
+  "destinations": [
+    "104.211.219.1",
+    "20.219.28.146"
+  ],
+  "full_story_acceptance_claimed": false,
+  "native_running_observation_pending": true,
+  "original_create_and_start_outcomes_and_markers_preserved": true,
+  "receipts": {
+    "independent_running_identity_and_configuration": {
+      "actual_generated_hostname_equals_verified_anchor": true,
+      "actual_runtime_oom_kill_disable_is_original_null": true,
+      "actual_started_identity": {
+        "container_id": "21833b87403bb637ad19c191608996bf2fb7614201cec39e28738f80710e1a95",
+        "image": "sha256:04d2d7137ba5d1c55505071c00dd0d781ad85a412700bb3ae7c2e13ad9d366c2",
+        "namespace_inode": 4026532430,
+        "node_executable_sha256": "029a6b041de018112a83f7d99bdfd155a708521746373466d072fe6bc60085e6",
+        "protected_sha256": "f505b3081efbea19a6367c7f5bd988cd8591271a122ea278f23a548ca0d9d6ff",
+        "started_at": "2026-10-11T04:59:08.120079236Z"
+      },
+      "api_exact_running_identity": true,
+      "category": "new_gateway_actual_identity_and_preserved_configuration_verified",
+      "cloud_mutations": 0,
+      "full_original_configuration_and_mounts_verified": true,
+      "gateway_actual_running": true,
+      "gateway_mutations": 0,
+      "native_running_node_observation_performed": false,
+      "old_backup_stopped_and_full_configuration_unchanged": true,
+      "original_create_and_start_outcomes_preserved": true,
+      "private_run_id": "azure-start-only-independent-running-read-e0f0cde6-60a3-4352-84b9-5d61643b020b",
+      "same_anchor_running": true,
+      "scope": "Independent actual running identity and full configuration only; no native runtime or connection acceptance",
+      "single_exact_candidate": true,
+      "start_marker_sha256": "edb49d36fbfa00fdd489f86984debc58a155ad516dbfbf3d2e5dfab9e80d039f",
+      "start_outcome_sha256": "bb2e2852ff35de9767035cb9a88569608c28c26721037b89182f570fc008346f",
+      "start_repeated": false,
+      "state_sha256": "8f85ab019859f941f7757a04e4e21fa125ee2f4359d54b06c94737f908de41e4",
+      "version": 1
+    },
+    "post_start_readonly_diagnostic": {
+      "actual_namespace_inode": 4026532430,
+      "actual_node_executable_sha256": "029a6b041de018112a83f7d99bdfd155a708521746373466d072fe6bc60085e6",
+      "anchor_running": true,
+      "anchor_started_at": "2026-10-10T13:02:09.205864302Z",
+      "api_executable_exact": true,
+      "api_running": true,
+      "api_started_at": "2026-10-11T01:19:11.155742733Z",
+      "candidate_container_count": 1,
+      "category": "actual_post_start_state_readonly_diagnostic_no_acceptance",
+      "cloud_mutations": 0,
+      "config_different_keys": [
+        "Hostname"
+      ],
+      "created_container_id": "21833b87403bb637ad19c191608996bf2fb7614201cec39e28738f80710e1a95",
+      "exact_name_mapping": true,
+      "expected_node_executable": true,
+      "gateway_mutations": 0,
+      "host_config_different_keys": [
+        "OomKillDisable"
+      ],
+      "mounts_equal": true,
+      "new_exit_code": 0,
+      "new_finished_at": "0001-01-01T00:00:00Z",
+      "new_image_exact": true,
+      "new_name_exact": true,
+      "new_paused": false,
+      "new_pid_zero": false,
+      "new_restarting": false,
+      "new_running": true,
+      "new_started_at": "2026-10-11T04:59:08.120079236Z",
+      "new_state_error_present": false,
+      "old_backup_stopped_and_full_configuration_unchanged": true,
+      "original_create_records_unchanged": {
+        "continuation-outcome.json": true,
+        "created-identity.json": true,
+        "wrapper-result.json": true
+      },
+      "private_run_id": "azure-start-only-post-start-read-28fcebcd-0a59-45a0-8982-1730655e7744",
+      "protected_different_fields": [
+        "Config",
+        "HostConfig"
+      ],
+      "same_anchor_namespace": true,
+      "start_marker_sha256": "edb49d36fbfa00fdd489f86984debc58a155ad516dbfbf3d2e5dfab9e80d039f",
+      "start_outcome_category": "unknown_or_refused_no_replay",
+      "start_outcome_phase": "started_readback",
+      "start_outcome_sha256": "bb2e2852ff35de9767035cb9a88569608c28c26721037b89182f570fc008346f",
+      "start_repeated": false,
+      "start_run_id": "azure-gateway-start-existing-847854d4-7df1-43eb-82c3-43fa7ea0a255",
+      "state_sha256": "8f85ab019859f941f7757a04e4e21fa125ee2f4359d54b06c94737f908de41e4",
+      "version": 1
+    },
+    "readonly_preflight": {
+      "category": "existing_gateway_start_preflight",
+      "created_container_id": "21833b87403bb637ad19c191608996bf2fb7614201cec39e28738f80710e1a95",
+      "created_snapshot_sha256": "152a0dc4d1888f205f2cc5968ab19d5d1d861be19ff1ba215306290793009e1b",
+      "phase": "preflight",
+      "private_run_id": "azure-gateway-start-existing-2eb77b2f-bd2b-49f5-b9ca-c8d1eb5a1c84",
+      "scope": "Once START eligibility for exact existing created-stopped gateway only. No CREATE/replay, running-node inventory, CP recreate authority, timer change or runtime acceptance.",
+      "start_dispatched": false,
+      "version": 1
+    },
+    "sealed_approved_kit": {
+      "category": "new_created_stopped_observer_and_start_only_sources_sealed_no_execution",
+      "closure_role_count": 26,
+      "driver_sha256": "5da5e5afa75b597a3c60ac82ea8d291a84bd5ffd87e25aa93b8771950724253c",
+      "model_sha256": "2582f2bac8c51a13a643e83050ab2e2b2a1f7188fa08b0516f37b592c08031d0",
+      "native_closure_sha256": "7a7f12616bbe60b1d7d94c46e842eef3c31ffe1b392ec60ce27c84229ee66639",
+      "native_source_unchanged": true,
+      "outer_closure_sha256": "577197f06ba9a61a410d0d05f1db40cad691b8aa20e00b25ea6e4c71b55b6882",
+      "private_run_id": "azure-start-only-source-seal-ff9f3b3c-8423-4ea9-949d-72110fc89e78",
+      "service_mutations": 0,
+      "snapshot_sha256": "152a0dc4d1888f205f2cc5968ab19d5d1d861be19ff1ba215306290793009e1b",
+      "source_files": 4,
+      "start_sha256": "0eed737b19be84e527fb58c86577387e3de1959ef1d5e14d12c19e51b84502ee",
+      "version": 1
+    },
+    "single_start_outcome": {
+      "category": "unknown_or_refused_no_replay",
+      "created_container_id": "21833b87403bb637ad19c191608996bf2fb7614201cec39e28738f80710e1a95",
+      "created_snapshot_sha256": "152a0dc4d1888f205f2cc5968ab19d5d1d861be19ff1ba215306290793009e1b",
+      "failure_class": "Refused",
+      "phase": "started_readback",
+      "private_run_id": "azure-gateway-start-existing-847854d4-7df1-43eb-82c3-43fa7ea0a255",
+      "scope": "Once START eligibility for exact existing created-stopped gateway only. No CREATE/replay, running-node inventory, CP recreate authority, timer change or runtime acceptance.",
+      "start_dispatched": true,
+      "version": 1
+    }
+  },
+  "scope": "Explicitly approved four-file transfer/preflight/once START and independent actual running/configuration reconciliation only",
+  "start_replayed": false,
+  "timers_changed": false,
+  "version": 1
+}

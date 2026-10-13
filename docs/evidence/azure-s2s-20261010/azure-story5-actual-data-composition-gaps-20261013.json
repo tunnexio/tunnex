@@ -1,0 +1,81 @@
+{
+  "accepted_human_story_numbers": [
+    1,
+    2,
+    3,
+    4,
+    7,
+    8
+  ],
+  "accepted_story_count": 6,
+  "actual_journal_shape_read": {
+    "current_applied_entries": 1,
+    "current_connection_entry_count": 9,
+    "current_retained_entries": 8,
+    "does_not_replace_fresh_native_proof": true,
+    "entry_count": 39,
+    "journal_sha256": "4ae327c79a976a9215f00227cad04cb76fdb9c4b4938bb1c53ea1cd2c9cd24f2",
+    "manifest_sha256": "a396c4f409f8a79e7cffbfb56974d6d416ee5a9481009c9a97ae7021227bbe45",
+    "raw_journal_exported": false
+  },
+  "category": "story5_real_input_composition_audit_source_repairs_no_live_acceptance",
+  "cloud_writes": 0,
+  "gaps": [
+    {
+      "independent_review": {
+        "path": "/private/tmp/azure-legacy-aa-restore-v6-runtime-independent-review.json",
+        "sha256": "91229ff850b40ecaf01441eca3db22c6f9aa07f0c0116139b4484e36ddd498ea"
+      },
+      "limit": "19 declared executions pass; one undeclared inherited aged-apply fixture fails and is documented.",
+      "problem": "Legacy genuine AA state has no actual_topology tag; V5 restore rejects it.",
+      "source_repair": "V6 known-legacy-AA-only restore branch preserves authenticated snapshots/native/cleanup/once and does not rewrite the state."
+    },
+    {
+      "blocked_review": {
+        "path": "/private/tmp/azure-as-capture-v1-runtime-blocker-review.json",
+        "sha256": "03f716b93970352ae8e8dccc6c64113d70c21dd6db5f3a32eb7d6385ac45e3ea"
+      },
+      "independent_review": {
+        "path": "/private/tmp/azure-as-capture-v2-runtime-independent-review.json",
+        "sha256": "4101aaa943a6076fe65adff49ef61d458e1644f577cc40129aeb4ffbe46c5352"
+      },
+      "problem": "V1 capture assumed one entry for a connection; current real history has nine.",
+      "source_repair": "V2/V3 bind exact genuine current delivery while preserving every journal/history entry."
+    },
+    {
+      "problem": "Original normal enable may return pending before actual later runtime applied.",
+      "remaining_source_review_issue": "Exact ordered receipt timestamp lineage correction is being qualified.",
+      "review": {
+        "path": "/private/tmp/azure-as-settled-v3-v4-runtime-timestamp-review.json",
+        "sha256": "fd0a613993905ebb4ebd140f8e3a13571c7d2de248c1e5b4320b4ae067bbb082"
+      },
+      "source_repair": "V3 capture/V4 packets preserve original enable CAS receipt and authenticate a separate real settled read."
+    }
+  ],
+  "new_live_slices_closed": 0,
+  "normal_grant_mutations": 0,
+  "normal_profile_mutations": 0,
+  "original_cloud_state_read": {
+    "actual_topology_field_present": false,
+    "historical_connection_id": "2d8d5f0a-ffdd-4781-b230-81901c4c3224",
+    "host": "104.211.219.1",
+    "mode": "0600",
+    "original_connection_bgp": true,
+    "original_connection_mode": "ResponderOnly",
+    "original_gateway_active_active": true,
+    "owner": "ubuntu:ubuntu",
+    "path": "/home/ubuntu/.tunnex-azure-s2s-01a12505/aa-static-current2d8-cloud-f555d3d4-63d1-47ae-a6b6-28cbb9cdaf63/static-state.json",
+    "raw_contents_exported": false,
+    "sha256": "299c0de964c4260525e2613bb7173a4dea749d6046c63253ba0c808991045ba8",
+    "snapshot_names": [
+      "connection",
+      "gateway",
+      "lng"
+    ]
+  },
+  "qa_source_uploads": 0,
+  "recorded_at": "2026-10-12T18:53:23Z",
+  "story6_current25fe_ttl": "source_ready_exact_human_approval_pending_after_automatic_review_rejection",
+  "version": 1,
+  "whole_azure_e2e_accepted": false
+}

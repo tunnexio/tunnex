@@ -1,0 +1,51 @@
+{
+  "accepted_human_stories": [
+    1,
+    2,
+    3,
+    4,
+    7,
+    8
+  ],
+  "accepted_story_count": 6,
+  "category": "story5_story6_standby_test_source_integration_qualified",
+  "cloud_or_normal_api_mutations": 0,
+  "exact_source_inventory": {
+    "path": "/private/tmp/azure-story5-6-standby-exact-source-v1.json",
+    "sha256": "0fa67b229b27dcc1835cdc20111f50f31ab2614efaa9ab496dbf57d2b18eff88"
+  },
+  "fixed_findings": [
+    "Genuine current delivery selected without discarding all39 history entries, including9 for current original connection",
+    "Original pending enable CAS retained separately from genuine later settled read; exact nanosecond ordering enforced in capture and packet scope",
+    "Authenticated known legacy original AA restore/read/reconcile supported without topology tag rewrite; all legacy apply phases remain refused",
+    "Correct Ubuntu normal receipt and root native producer actors; terminal cloud restoration does not imply enabled normal AA profile"
+  ],
+  "held": "Existing exact TTL approval question remains pending. The new49-file AS inventory has not been uploaded or authorized by an older source approval.",
+  "independent_review": {
+    "path": "/private/tmp/azure-as-exact-time-and-legacy-v7-runtime-independent-review.json",
+    "sha256": "e6c595c5acc34aaaf633fc593f8c28d1e98e8c7f1b4cd74bae2d36d1c0dddfe2"
+  },
+  "named_tests_passed": 66,
+  "new_live_slices_closed": 0,
+  "next_execution_order": [
+    "Current25fe ordinary expiry/recovery once exact20-file/eight-grant-operation authorization is received",
+    "Genuine AS BGP routing and forward/reverse packets, then AS static with protected normal/cloud/native handoffs once exact49-file source authorization is received"
+  ],
+  "operator_plan": {
+    "path": "/private/tmp/azure-story5-exact-next-commands-v2-current-reviewed-20261013.txt",
+    "sha256": "6ed340d59f04376bf8580b54be34a6832f97364ef504592b9bfa252ae26e8f04"
+  },
+  "ordinary_story6_independent_of_dns_api_repair": true,
+  "preserved": [
+    "Original saved cloud state and snapshots",
+    "All immutable history and once markers",
+    "Original CAS/read timestamps and bytes",
+    "No new binary, credential or key payload"
+  ],
+  "qa_source_transfers": 0,
+  "recorded_at": "2026-10-12T19:10:51.316425+00:00",
+  "scope": "Source/test-helper integration only; no complete released-system or live AS acceptance",
+  "source_bytes": 349567,
+  "source_files": 49,
+  "version": 1
+}

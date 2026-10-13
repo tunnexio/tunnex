@@ -46,12 +46,16 @@ func runtimeQualifiedHookCensusWithCommands(ctx context.Context, nftPath string,
 	ctx, cancel := context.WithTimeout(ctx, 2*time.Second)
 	defer cancel()
 	path := filepath.Join(filepath.Dir(nftPath), "iptables-nft-save")
-	version, err := run(ctx, path, "-V")
-	if err != nil || !strings.HasPrefix(strings.TrimSpace(string(version)), "iptables-nft-save v") || !strings.HasSuffix(strings.TrimSpace(string(version)), " (nf_tables)") {
+	// Version and complete NAT listing are independent read-only commands.
+	// Keep both original validators and the bounded cancellation/drain barrier.
+	var version, listing []byte
+	if !runtimeEnvironmentReadPool(ctx, []func(context.Context) error{
+		func(c context.Context) error { var err error; version, err = run(c, path, "-V"); return err },
+		func(c context.Context) error { var err error; listing, err = run(c, path, "-t", "nat"); return err },
+	}) || !strings.HasPrefix(strings.TrimSpace(string(version)), "iptables-nft-save v") || !strings.HasSuffix(strings.TrimSpace(string(version)), " (nf_tables)") {
 		return false
 	}
-	listing, err := run(ctx, path, "-t", "nat")
-	return err == nil && runtimeDockerDNSCensusRows(rows, listing, protected)
+	return runtimeDockerDNSCensusRows(rows, listing, protected)
 }
 
 func runtimeDockerDNSPorts(listing []byte) (map[string]int, bool) {

@@ -61,7 +61,7 @@ func azureProfileProofEntryHistory(p runtimeJournalPayload, b azureProfileProofB
 	}
 	// A genuine Cleanup may durably record authenticated lineage never admitted
 	// locally. It can prove only fresh absence, never baseline or restage rights.
-	if selected.AbsenceOnly && (b.Mode != "absence" || selected.Phase != RuntimeRetainedRefusal || selected.Allocation.Namespace != ns || selected.Observed != ([2]Ownership{}) || selected.BGPRoutes != nil || selected.BGPProcess != nil || len(selected.BGPProcessRetired) != 0 || selected.BGPProcessHistory != nil || selected.Restoration != nil || selected.ResetCleanup != nil || selected.Recovery != nil) {
+	if selected.AbsenceOnly && (b.Mode != "absence" || selected.Phase != RuntimeRetainedRefusal || selected.Allocation.Namespace != ns || selected.Observed != ([2]Ownership{}) || selected.BGPRoutes != nil || selected.BGPProcess != nil || len(selected.BGPProcessRetired) != 0 || selected.BGPProcessHistory != nil || selected.Restoration != nil || selected.ResetCleanup != nil || (selected.Recovery != nil && (selected.ContractVersion != 2 || selected.Allocation.ProfileID != AzureActiveActiveStaticProfile || selected.BGP != nil || !validJournalRecovery(selected) || *selected.Recovery != (RuntimeRecoveryState{SelectedSlot: 1, Stage: "completed"})))) {
 		return bad()
 	}
 	if !sameEnginePrefixes(selected.Engines[0].LocalPrefixes, []netip.Prefix{netip.MustParsePrefix("10.233.10.0/24")}) || !sameEnginePrefixes(selected.Engines[0].RemotePrefixes, []netip.Prefix{netip.MustParsePrefix("10.231.0.0/16")}) {

@@ -1,0 +1,129 @@
+{
+  "acceptance": {
+    "accepted": 3,
+    "accepted_stories": [
+      "AZ-S2S-0",
+      "AZ-S2S-1",
+      "AZ-S2S-2"
+    ],
+    "full_cloud_E2E": false,
+    "newly_accepted": 0,
+    "total": 11
+  },
+  "actual_running": {
+    "api_executable_sha256": "fcddf1403a1a41931ef67ce06696effed077dbeeaafd7a6324be7ac8066dcfb9",
+    "api_started_at": "2026-10-11T14:07:30.526142066Z",
+    "base_image_does_not_attest_replaced_executable": true,
+    "gateway_base_image_sha256": "04d2d7137ba5d1c55505071c00dd0d781ad85a412700bb3ae7c2e13ad9d366c2",
+    "node_executable_sha256": "f0a4af124645c9be4ff2b6420236eb005e480b3001944ff14bb61e0d93aa3033",
+    "node_started_at": "2026-10-11T14:08:59.05770101Z",
+    "same_containers_anchor_namespace_and_protected_configuration": true
+  },
+  "category": "actual_owned_api_node_update_and_pending_cleanup_diagnosis",
+  "cleanup_failure": {
+    "cause": "Azure negative cleanup validates a version10 singleton instead of the real version11 full predecessor graph",
+    "confirmed_by_source_and_actual_entry_metadata": true,
+    "context_state": "active",
+    "native_objects_remain": true,
+    "new_fix_not_yet_deployed": true,
+    "operation": "cleanup",
+    "stage": "cleanup_remove_tunnel"
+  },
+  "evidence": {
+    "api_update": {
+      "private_run_id": "azure-a0a7-api-update-execute-d44c9dc1-4672-41fb-9d13-415f15c6eb64",
+      "sha256": "37b8c92e0a558c27e0d0cb55351f5ce36baed8698be7b25e9255b10dd9258a08"
+    },
+    "cleanup_metadata": {
+      "private_run_id": "azure-a0a7-cleanup-entry-diagnostic-v2-d2144367-492c-4770-813e-a3a30582a599",
+      "sha256": "a7104b0f6c009a6953c5473d3a6f876f242139820341d480cc544c463bc1c3cb"
+    },
+    "disable": {
+      "private_run_id": "azure-a0a7-initial-mode-disable5-28cc19e6-88f1-407f-8177-8faa2124329e",
+      "sha256": "89a8062e525cc62e7abba426f6e2af9d1503e28a23d8d640a2dcaf74c05a3d0c"
+    },
+    "enable": {
+      "private_run_id": "azure-a0a7-after-deploy-enable-c8253e67-08e5-43d2-abfc-551aa88b9ca4",
+      "sha256": "70f2f0cd81b1293a7e9cd8ee4c8e5e01e8c7bf3797e9c6095377a2b4b03473d9"
+    },
+    "native_diagnostic": {
+      "private_run_id": "azure-a0a7-current-native-diagnostic-v2-92da266b-929f-46c0-9a1e-7ac7780dc7f1",
+      "sha256": "4e2511b3e1398bfbebe1f41eaf19a8f9e203ca754c43b7243546bc82759dcf12"
+    },
+    "node_update": {
+      "private_run_id": "azure-a0a7-node-update-execute-dd2ccd1f-3095-4f69-b580-66d817bd632a",
+      "sha256": "0f03751495b9f4b873a0a88e1673fb44edf6290a3819c7fd0454b1723f80840b"
+    }
+  },
+  "fresh_cleanup": {
+    "journal_version": 11,
+    "normal_connection": {
+      "application_state": "not_applied",
+      "cleanup_state": "pending",
+      "configuration_revision": 1,
+      "desired_intent": "disabled",
+      "desired_revision": 5,
+      "id": "3e51a274-ab79-48db-b162-a8f1dbbc132f",
+      "maximum_prefixes": 1,
+      "profile_id": "azure-active-active-bgp-ipv4-v1",
+      "remote_prefixes": [
+        "10.231.0.0/16",
+        "10.235.77.0/24"
+      ]
+    },
+    "observed_at": "2026-10-11T14:26:04.750998+00:00",
+    "policy_count": 0,
+    "target_journal_entries": [
+      {
+        "absence_only": true,
+        "azure_bgp_recreation_version": 1,
+        "bgp_process_stage": null,
+        "bgp_routes_stage": null,
+        "cleanup_revision": 3,
+        "delivery_revision": 2,
+        "phase": "retained_refusal",
+        "retained_guard_predecessor_count": 26
+      },
+      {
+        "absence_only": false,
+        "azure_bgp_recreation_version": 1,
+        "bgp_process_stage": null,
+        "bgp_routes_stage": null,
+        "cleanup_revision": 5,
+        "delivery_revision": 4,
+        "phase": "cleanup_pending",
+        "retained_guard_predecessor_count": 26
+      }
+    ]
+  },
+  "native_before_enable": {
+    "actual_new_node_executable_verified": true,
+    "full_native_absence_retained_guard_history_and_two_passes": true,
+    "no_baseline_or_traffic_acceptance_claim": true
+  },
+  "normal_actions": {
+    "actions_once_only": true,
+    "cloud_prefix_added": false,
+    "disable_from_revision": 4,
+    "disabled_revision": 5,
+    "enable_from_revision": 3,
+    "enabled_revision": 4
+  },
+  "recorded_at": "2026-10-11T14:30:08.502931+00:00",
+  "runtime_findings": {
+    "BGP_process_started": false,
+    "actual_phase_after_enable": "applying",
+    "old_journal_continuity_refusal_cleared": true,
+    "positive_admission_still_refused": true,
+    "positive_ownership_validation_preserved": true,
+    "reason": "competing_owned_narrow_and_broad_initial_children"
+  },
+  "schema_version": 1,
+  "scope": "Owned Azure QA only. Local and live fixes are separated from story acceptance; private raw outputs stay private.",
+  "source": {
+    "observer_commit": "e6675f1aa6b68e8af93008cab73772729956b94d",
+    "observer_is_independent_reader": true,
+    "observer_sha256": "11fbc51356e6c4bb8a82570e36cae87516f81fc02c664df11ab2356b28008fb1",
+    "production_build_commit": "a0a7b702c84a7db7b9a0524ea550b7c8101801b9"
+  }
+}

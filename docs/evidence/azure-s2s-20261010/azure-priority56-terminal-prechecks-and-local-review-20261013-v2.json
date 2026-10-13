@@ -1,0 +1,127 @@
+{
+  "acceptance": false,
+  "accepted_story_count": 6,
+  "all_remote_sessions_terminal": true,
+  "atomic_publication_metadata": {
+    "acceptance": false,
+    "all_entries_equal": true,
+    "all_owner_version_equal": true,
+    "changes": 18,
+    "complete_bytes_changed": 18,
+    "guard_field_changed": 15,
+    "interpretation": "Actual complete-frame changes include guard authority changes. Inode-only relaxation or ignoring guards cannot clear the observer gate.",
+    "result_sha256": "246b695df7595bedf475a444fb34bda397ce68b886e747b7c6a6fa7656e7095f",
+    "sample_count": 60,
+    "sequence_changed": 18,
+    "service_identity_unchanged": true,
+    "strict_read_refusals": 0
+  },
+  "category": "actual_terminal_pretraffic_refusals_and_priority56_source_review",
+  "event_collector": {
+    "acceptance": false,
+    "event_count": 2,
+    "events": [
+      {
+        "child_after": 27,
+        "child_before": 25,
+        "observed_at": "2026-10-12T20:44:04.394749Z",
+        "parent_ike": 3,
+        "raw_frame_sha256": "488601a3ff033bdc39c61c688c840a6e56d050c181a15750f701d6ad610d22e3"
+      },
+      {
+        "child_after": 28,
+        "child_before": 26,
+        "observed_at": "2026-10-12T20:53:03.347169Z",
+        "parent_ike": 4,
+        "raw_frame_sha256": "421f0083183c7b70248ae75be776f4ac86ccc05232bb52daa7b49790215c9a53"
+      }
+    ],
+    "no_control_or_timer_mutation": true,
+    "normal_unchanged": true,
+    "result_sha256": "a2245aba155daa41ccc4a88f71088bfe746b3ad78674a951735c2f15877186cb",
+    "returncode": 255,
+    "service_identity_unchanged": true,
+    "session_id": 95507,
+    "terminal_reason": "Intentional SIGINT to exact owned read-only monitor after two saved events; finally closed event socket and captured unchanged service identities/normal. SSH returned255 with interruption traceback."
+  },
+  "exact_approval_questions": {
+    "private_consolidation_path": "/private/tmp/azure-exact-pending-approval-questions-root-consolidation-20261013.json",
+    "private_consolidation_sha256": "645dbf7b413a4412833e41aa7601044acf21c494c2ebfb0a93d1d22e414d83d3",
+    "status": "Pending human answers to exact TTL20/eight grant operations, AS49/destinations, and API97dd/update. Questions sent to authorized parent for one central approval question. Coordination messages are not consent."
+  },
+  "new_live_slices_closed": 0,
+  "ordinary_story6_requires_api_update": false,
+  "ordinary_story6_requires_dns_ready": false,
+  "packet_attempts": [
+    {
+      "journal_equal": false,
+      "packets_started": false,
+      "returncode": 1,
+      "session_id": 58931,
+      "stage": "final_bracket"
+    },
+    {
+      "packets_started": false,
+      "returncode": 1,
+      "session_id": 59853,
+      "stage": "journal_identity",
+      "stdout_sha256": "95b13365228a8eeac1a4a76f0b05215b689a947a6fd8e44816bc23a5dc70dbd5"
+    },
+    {
+      "journal_equal": false,
+      "native_inner_returncode_saved": false,
+      "native_receipt_present": false,
+      "other_final_bracket_equalities": true,
+      "packets_started": false,
+      "returncode": 1,
+      "session_id": 4718,
+      "stage": "final_bracket",
+      "stdout_sha256": "d6e8323b315f14dea8d14898c9c1cb7de1e126249908ac3520042f5508e80590"
+    }
+  ],
+  "priority_order": [
+    "Story6 ordinary expiry/recovery",
+    "Story5 active-standby BGP",
+    "Story6 active-standby static"
+  ],
+  "raw_records_exported": false,
+  "recorded_at": "2026-10-12T21:08:03.469633+00:00",
+  "separate_original_native_after": {
+    "does_not_authenticate_prior_failed_precheck_or_packets": true,
+    "exact_observed_at_not_projected": true,
+    "observed_at_minute_utc": "2026-10-12T20:09Z",
+    "receipt_sha256": "6a14820e5ebaa5c9775b06d71c24633b12afe76d3aad16e8f857a52169d6e501",
+    "returncode": 0,
+    "session_id": 65712
+  },
+  "source_only_candidate": {
+    "frozen_bundles_changed": false,
+    "live_improvement_verified": false,
+    "path": "/private/tmp/azure-observer-final-bracket-parallel-v1/observe.py",
+    "qa_dispatched": false,
+    "root_focused_tests_passed": 4,
+    "root_review_path": "/private/tmp/azure-observer-final-bracket-parallel-root-review-20261013.json",
+    "root_review_sha256": "cc95796ac5a4e5255b7a7d9b8bf8d2e929fd76fb7627d89d4324e9a7f0caeb01",
+    "sha256": "88d78a9761254de41c82e38dee75247336a139c80deedf6d639c4afa1b93770b"
+  },
+  "standby_frozen_inventory": {
+    "destination_counts": {
+      "bastion104.211.219.1": 19,
+      "qa20.219.28.146": 49
+    },
+    "member_count": 49,
+    "member_hash_mismatches": 0,
+    "path": "/private/tmp/azure-story5-6-standby-exact-source-v2.json",
+    "payload_bytes": 349567,
+    "sha256": "c53b4e2dcbfa8c6d7aad36bde3ac4fefd7d7464e764a65a9606a9ee7851da936",
+    "staged": false
+  },
+  "supersedes": {
+    "path": "/Users/pawangupta/.codex/worktrees/65f0/tunnex/docs/evidence/azure-s2s-20261010/azure-priority56-terminal-prechecks-and-local-review-20261013.json",
+    "reason": "Separate native receipt time was only known to minute precision; remove unsupported seconds precision.",
+    "sha256": "f562f4d46f92ee56f7668d1a586a964440a62f4dc2a60a185e6676f1f2fbc13b"
+  },
+  "total_story_count": 11,
+  "version": 2,
+  "whole_azure_e2e_accepted": false
+}

@@ -1,0 +1,43 @@
+{
+  "accepted_story_count": 6,
+  "behavior": "Independent NFT qualification and two-worker full IP census run concurrently. Docker fallback version and complete NAT listing run concurrently.",
+  "build": {
+    "node_sha256": "40b9fda20d76e78dfdad45a906993e130f410176b8b145125e7c1f8b18a52484",
+    "observer_sha256": "a8e4c9bfbf60e6d222a0090933f0f6d10442812448ae22d8206fc1198aef76c3",
+    "original_generic_test_overlay_count": 4,
+    "production_source_closure_sha256": "661d216aec2d5b0c64bede0b49df05ee14c538fdc6881dfd378ced0e63cae382",
+    "receipt_sha256": "925399d96b830a470317b9b8cc2d8787d6305d9fe4e8fcdff70167f62ded0566"
+  },
+  "category": "static_full_environment_cost_fix_local_pass",
+  "independent_build_review_sha256": "dbd17f10419c8ddc3646582c03067aa8c733499aa1c8700113a14c282fd26078",
+  "independent_source_review_sha256": "8988a5a101cec1d6265368d94987de8fbcdf0e72b2a08025297628d350bdcb6e",
+  "isolated_archive_staged": true,
+  "latest_completed_live_dns": "983f enabled6 0/61 Ready",
+  "limits": [
+    "Native read concurrency increases to3 and up to4 during fallback; live timing benefit is unproved.",
+    "Malformed or changing snapshots continue to fail closed.",
+    "This receipt accepts local product qualification only."
+  ],
+  "live_dns_improvement_verified": false,
+  "preserved": [
+    "Every original command and semantic validator",
+    "Both complete independently validated native snapshots and their consistency comparisons",
+    "Original authority, namespace, context deadline, cancellation and draining",
+    "No caching or skipped checks"
+  ],
+  "production_files_changed": [
+    "apps/node/internal/ipsec/runtime_environment_snapshot.go",
+    "apps/node/internal/ipsec/runtime_docker_dns.go"
+  ],
+  "race": {
+    "elapsed_seconds": 489.32988345900003,
+    "exit_code": 0,
+    "individual_skip_count": "not_established_nonverbose_output",
+    "log_sha256": "ae0f70aab00a07e7aaaf904c5c05802299fcda038956b8b6dc6602d5a4605be7",
+    "receipt_sha256": "2b4ab7011bbe85760ef6d26ca44ec21cfddc6b1a2dd98e321636e29df019d343",
+    "source_before_after_unchanged": true,
+    "source_input_count": 585
+  },
+  "running_node_updated": false,
+  "whole_story_accepted": false
+}

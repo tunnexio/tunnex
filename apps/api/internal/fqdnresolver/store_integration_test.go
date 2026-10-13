@@ -109,6 +109,34 @@ func TestPostgresStorePublishesAndWithdrawsAtomically(t *testing.T) {
 	if err := store.Publish(ctx, w, Generation{TTL: time.Minute, ResolvedAt: now, Addresses: []netip.Addr{addr("10.2.3.4"), addr("fd00::4")}}); err != nil {
 		t.Fatal(err)
 	}
+	// Scheduling lookahead admits only active work; actual clock/retry scope stays unchanged.
+	if early, err := store.DueForRefresh(ctx, now.Add(9*time.Second), 10, 50*time.Second); err != nil || len(early) != 0 {
+		t.Fatalf("refresh before headroom boundary: %v %v", early, err)
+	}
+	if early, err := store.DueForRefresh(ctx, now.Add(10*time.Second), 10, 50*time.Second); err != nil || len(early) != 1 || early[0].ResourceID != resource {
+		t.Fatalf("active refresh headroom boundary missing: %v %v", early, err)
+	}
+	exec(`UPDATE organizations SET fqdn_resources_enabled=false WHERE id=$1`, org)
+	if early, err := store.DueForRefresh(ctx, now.Add(10*time.Second), 10, time.Hour); err != nil || len(early) != 0 {
+		t.Fatalf("headroom bypassed organization eligibility: %v %v", early, err)
+	}
+	exec(`UPDATE organizations SET fqdn_resources_enabled=true WHERE id=$1`, org)
+	second := uuid.New()
+	exec(`INSERT INTO fqdn_resources(id,org_id,name,fqdn,resolver_site_id,resolver_node_id) VALUES($1,$2,'earlier','earlier.internal',$3,$4)`, second, org, site, gateway)
+	other := w
+	other.ResourceID = second
+	other.Hostname = "earlier.internal"
+	if err := NewPostgresStore(pool).Publish(ctx, other, Generation{TTL: 40 * time.Second, ResolvedAt: now, Addresses: []netip.Addr{addr("10.2.3.5")}}); err != nil {
+		t.Fatal(err)
+	}
+	if early, err := store.DueForRefresh(ctx, now.Add(10*time.Second), 10, 50*time.Second); err != nil || len(early) != 2 || early[0].ResourceID != second || early[1].ResourceID != resource {
+		t.Fatalf("expiry ordering lost: %v %v", early, err)
+	}
+	other.ExpectedGeneration = 1
+	if err := NewPostgresStore(pool).Withdraw(ctx, other, WithdrawalTimeout, now); err != nil {
+		t.Fatal(err)
+	}
+	exec(`UPDATE fqdn_resources SET resolver_site_id=NULL,resolver_node_id=NULL WHERE id=$1 AND org_id=$2`, second, org)
 	var active, answers int
 	if err := pool.QueryRow(ctx, `SELECT count(*) FROM fqdn_resource_answer_generations WHERE resource_id=$1 AND state='active'`, resource).Scan(&active); err != nil {
 		t.Fatal(err)
@@ -211,6 +239,9 @@ func TestPostgresStorePublishesAndWithdrawsAtomically(t *testing.T) {
 	// A withdrawn row is retryable, but it is not "no active row" every 15s.
 	// The durable retry bound prevents a failed resolver from minting an
 	// unbounded sequence of withdrawn generations.
+	if due, err := store.DueForRefresh(ctx, now.Add(time.Minute), 10, time.Hour); err != nil || len(due) != 0 {
+		t.Fatalf("active headroom advanced withdrawn retry clock: due=%v err=%v", due, err)
+	}
 	if due, err := store.Due(ctx, now.Add(time.Minute), 10); err != nil || len(due) != 0 {
 		t.Fatalf("withdrawn resource retried before bound: due=%v err=%v", due, err)
 	}

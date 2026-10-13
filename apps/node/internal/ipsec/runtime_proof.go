@@ -4,11 +4,35 @@ import (
 	"context"
 	"net/netip"
 	"reflect"
+	"time"
 )
 
 // proveRuntime correlates independent VICI and keyless kernel observations. It
 // does not confer authority: the caller still requires a fresh exact CP lease.
 func (c *RuntimeController) proveRuntime(ctx context.Context, e RuntimeJournalEntry, env RuntimeEnvironment) error {
+	return c.proveRuntimeTimed(ctx, e, env, nil)
+}
+func (c *RuntimeController) proveRuntimeTimed(ctx context.Context, e RuntimeJournalEntry, env RuntimeEnvironment, timing func(runtimeNativePhaseTiming)) error {
+	var phases runtimeNativePhaseTiming
+	var started time.Time
+	if timing != nil {
+		started = time.Now()
+		if deadline, ok := ctx.Deadline(); ok && deadline.After(started) {
+			phases.RemainingAtEntryMillis = deadline.Sub(started).Milliseconds()
+		}
+		defer func() { phases.ElapsedMillis = time.Since(started).Milliseconds(); timing(phases) }()
+	}
+	phaseStart := func() time.Time {
+		if timing != nil {
+			return time.Now()
+		}
+		return time.Time{}
+	}
+	phaseEnd := func(start time.Time, value *int64) {
+		if timing != nil {
+			*value += time.Since(start).Milliseconds()
+		}
+	}
 	xr, err := NewXFRMReader(c.config.IPPath)
 	if err != nil {
 		return ErrRuntimeController
@@ -17,38 +41,34 @@ func (c *RuntimeController) proveRuntime(ctx context.Context, e RuntimeJournalEn
 	if err != nil {
 		return ErrRuntimeController
 	}
-	before, err := xr.Read(ctx)
-	if err != nil || before.Namespace != e.Allocation.Namespace {
-		return ErrRuntimeController
-	}
-	daemon, err := c.config.Daemon.Inspect(ctx)
-	if err != nil {
-		return ErrRuntimeController
-	}
-	kernel, err := kr.Read(ctx)
-	if err != nil || kernel.Namespace != e.Allocation.Namespace {
-		return ErrRuntimeController
-	}
-	if runtimeInventoryMatches(e, daemon, kernel, before) != nil {
+	readers := runtimeStatusReaders{daemon: c.config.Daemon.Inspect, kernel: kr.Read, xfrm: xr.Read}
+	nativeStarted := phaseStart()
+	daemon, kernel, before, de, ke, xe := runtimeReadStaticProofSnapshot(ctx, readers)
+	phaseEnd(nativeStarted, &phases.RecoveryMillis)
+	if xe != nil || before.Namespace != e.Allocation.Namespace || de != nil || ke != nil || kernel.Namespace != e.Allocation.Namespace || runtimeInventoryMatches(e, daemon, kernel, before) != nil {
 		return ErrRuntimeController
 	}
 	// Environment includes independent hook and physical route qualification.
-	again, err := c.config.Environment.Observe(ctx, e.Allocation, e.Engines)
+	environmentStarted := phaseStart()
+	var again RuntimeEnvironment
+	if inspector, ok := c.config.Environment.(interface {
+		observeTimed(context.Context, KernelAllocation, [2]EngineTunnel, func(runtimeEnvironmentTiming)) (RuntimeEnvironment, error)
+	}); timing != nil && ok {
+		again, err = inspector.observeTimed(ctx, e.Allocation, e.Engines, func(v runtimeEnvironmentTiming) { phases.Environment = v })
+	} else {
+		again, err = c.config.Environment.Observe(ctx, e.Allocation, e.Engines)
+	}
+	phaseEnd(environmentStarted, &phases.EnvironmentMillis)
 	if err != nil || !reflect.DeepEqual(again, env) {
 		return ErrRuntimeController
 	}
-	after, err := xr.Read(ctx)
-	if err != nil || !reflect.DeepEqual(connectionXFRMSnapshot(e, before), connectionXFRMSnapshot(e, after)) || !c.config.DaemonAlive() {
+	nativeStarted = phaseStart()
+	daemonAfter, kernelAfter, after, de, ke, xe := runtimeReadStaticProofSnapshot(ctx, readers)
+	phaseEnd(nativeStarted, &phases.RecoveryMillis)
+	if xe != nil || !reflect.DeepEqual(connectionXFRMSnapshot(e, before), connectionXFRMSnapshot(e, after)) || !c.config.DaemonAlive() {
 		return ErrRuntimeController
 	}
-	// Reprove the requested connection against a fresh complete independent
-	// snapshot; unrelated namespace changes cannot supply target ownership.
-	daemonAfter, err := c.config.Daemon.Inspect(ctx)
-	if err != nil {
-		return ErrRuntimeController
-	}
-	kernelAfter, err := kr.Read(ctx)
-	if err != nil || !reflect.DeepEqual(connectionKernelSnapshot(e, kernel), connectionKernelSnapshot(e, kernelAfter)) || runtimeInventoryMatches(e, daemonAfter, kernelAfter, after) != nil || !c.config.DaemonAlive() || ctx.Err() != nil {
+	if de != nil || ke != nil || !reflect.DeepEqual(connectionKernelSnapshot(e, kernel), connectionKernelSnapshot(e, kernelAfter)) || runtimeInventoryMatches(e, daemonAfter, kernelAfter, after) != nil || !c.config.DaemonAlive() || ctx.Err() != nil {
 		return ErrRuntimeController
 	}
 	return nil

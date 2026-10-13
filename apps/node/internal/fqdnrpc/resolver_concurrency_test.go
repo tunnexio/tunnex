@@ -202,7 +202,7 @@ func TestDirectResolverConfiguredOrderWinsOverCompletionOrder(t *testing.T) {
 	}
 }
 
-func TestDirectResolverParallelCNAMEKeepsTypesSequentialAndTTLConservative(t *testing.T) {
+func TestDirectResolverParallelCNAMEKeepsStepsSequentialAndTTLConservative(t *testing.T) {
 	config := concurrentResolverConfig(4)
 	var mu sync.Mutex
 	calls := map[ResolverEndpoint][]RecordType{}
@@ -233,8 +233,8 @@ func TestDirectResolverParallelCNAMEKeepsTypesSequentialAndTTLConservative(t *te
 	}
 	for _, endpoint := range config.Endpoints {
 		got := calls[endpoint]
-		if len(got) != 4 || got[0] != RecordA || got[1] != RecordAAAA || got[2] != RecordA || got[3] != RecordAAAA {
-			t.Fatalf("types/CNAME became parallel or explicit CNAME queried: %v", got)
+		if len(got) != 4 || got[0] == got[1] || got[2] == got[3] || got[0] == RecordCNAME || got[1] == RecordCNAME || got[2] == RecordCNAME || got[3] == RecordCNAME {
+			t.Fatalf("CNAME step missing a type or explicit CNAME queried: %v", got)
 		}
 	}
 	for _, loop := range []bool{false, true} {

@@ -1,0 +1,43 @@
+{
+  "accepted_story_count": 6,
+  "actual_result_path": "/var/lib/tunnex-qualification-archive/azure-known-stop-continuation-operation-1a358995-bc65-4056-83c2-8a8340ee8c66/result.json",
+  "actual_result_sha256": "6f2bffbd18d4e1e9f54f2d0ed3c7b2ad6a47ff3071e63d60bcb2cf23ecc6ccc1",
+  "all_35_pre_stop_entries_preserved": true,
+  "category": "actual_vici_eagain_qa_update_and_enable12_passed",
+  "continuation_independent_review_sha256": "2a682eb60e8fd64e627ee1238b40edb51a9ca7a7b300bc88e48aa05603f835da",
+  "continuation_source_sha256": "2e9a31f6b05bd191e66c17ec9e2426e53cf7af793edb077343ab698e6a620970",
+  "current_stopped_native_absence_verified_before_install": true,
+  "enable_dispatch_verified": true,
+  "enable_receipt_path": "/var/lib/tunnex-qualification-archive/azure-static-proof-normal-enable-dc04a065-94b5-4355-b9c8-4a9fe452e638/receipt.json",
+  "enable_receipt_sha256": "2b7b4f2dfe06311bbc262733ca2a3576c04301c5d1a5843317eb19ec89a87ce9",
+  "enabled_native_entry_count": null,
+  "enabled_native_read_required": true,
+  "fqdn_live_acceptance_passed": false,
+  "latest_enable_attempt": {
+    "category": "actual_normal_intent_cas_readback",
+    "desired_revision": 12,
+    "phase": "enable",
+    "private_run_id": "azure-static-proof-normal-enable-dc04a065-94b5-4355-b9c8-4a9fe452e638",
+    "receipt_sha256": "2b7b4f2dfe06311bbc262733ca2a3576c04301c5d1a5843317eb19ec89a87ce9"
+  },
+  "new_slices_closed": 0,
+  "normal_desired_revision": 12,
+  "normal_intent": "enabled",
+  "original_markers_and_failure_preserved": true,
+  "original_stop_replayed": false,
+  "postupdate_full_native_absence_entry_count": 35,
+  "postupdate_full_native_absence_sha256": "535a70fbe613b412aa4ef4f6295c2204024c8e7df4b4bfb3ced9b7cfae5e1fb6",
+  "recorded_at": "2026-10-12T06:29:22.562454+00:00",
+  "running_node": {
+    "category": "started_requires_independent_normal_native_read",
+    "container_id": "21833b87403bb637ad19c191608996bf2fb7614201cec39e28738f80710e1a95",
+    "executable_sha256": "197b6f795ee9b1613bb809bd00ffbc471f5c638ef23594dafb93c74a1a7201d3",
+    "image_unchanged": true,
+    "immutable_sha256": "c1d958821728a1b1c833350e6897a45c1f0ce750c8e37fdc092376e0677fc0de",
+    "namespace": "net:[4026532430]",
+    "pid": 1146644,
+    "started_at": "2026-10-12T06:23:11.079384002Z"
+  },
+  "sustained_dns_passed": false,
+  "total_story_count": 11
+}

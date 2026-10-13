@@ -1,0 +1,53 @@
+{
+  "category": "owned_dns_measurement_source_and_actual_pre_stop_refusal",
+  "acceptance_count": 6,
+  "total_stories": 11,
+  "accepted_human_story_numbers": [1, 2, 3, 4, 7, 8],
+  "open_human_story_numbers": [5, 6, 9, 10, 11],
+  "measurement_source": {
+    "integrated_locally": true,
+    "qualified_source_commit": "d54651120ae235fc73bd420e90689e9b2708f32c",
+    "node_tree": "2d61c863a9b5d639ba316a44278e637962dfe3cf",
+    "candidate_executable_sha256": "9f8d0a90658fe6676f5e5809c62bf72831cdc3cf7bead2cd63dc4207a12d5009",
+    "scope": "Bounded DNS route, environment and guard proof timing components; no authority or timeout changes",
+    "focused_root_race_tests": {
+      "fqdnrpc_passed": true,
+      "fqdnrpc_seconds": 1.963,
+      "ipsec_passed": true,
+      "ipsec_seconds": 1.879
+    },
+    "deployed": false,
+    "dns_acceptance": false
+  },
+  "actual_update_attempt": {
+    "category": "refused_before_stop",
+    "refusal": "journal_changed_before_stop",
+    "stop_marker_present": false,
+    "node_running": true,
+    "node_started_at": "2026-10-11T19:06:16.205224164Z",
+    "node_executable_sha256": "f8b43ba1835215f6a0a57069fcef88809f71b41f04326c6fbb757a7f8ad4354f",
+    "stop_executed": false,
+    "binary_replacement_executed": false,
+    "start_executed": false
+  },
+  "preserved_frame_diagnosis": {
+    "native_journal_sha256": "57fa80c4426fdc79843d33d11514605bba4e645488fef253da8016e6f04d8cce",
+    "pre_stop_journal_sha256": "1a3a40db48655d5f367e496406f2bb5db34bd3512e08969cc3638d7a4b7152b4",
+    "connection_entries_identical": true,
+    "changed_payload_fields": ["Guards", "Sequence"],
+    "sequence_delta": 3,
+    "changed_guard_fields": ["Digest", "ExpectedJSON", "Revision"],
+    "exact_existing_retained_guard_transition_comparator_passed": true,
+    "full_journal_pre_stop_comparison_relaxed": false,
+    "raw_journal_exported": false
+  },
+  "static_cloud": {
+    "baseline_preparation_passed": true,
+    "profile_apply_executed": false,
+    "profile_acceptance": false
+  },
+  "limitations": [
+    "The diagnosis explains the held-frame mismatch; it does not certify current DNS or application readiness.",
+    "A corrected update still requires a new genuine complete native proof and unchanged normal, service, binding and full-journal brackets."
+  ]
+}

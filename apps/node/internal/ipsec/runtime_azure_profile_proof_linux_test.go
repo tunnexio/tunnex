@@ -11,8 +11,11 @@ import (
 	bgpengine "github.com/tunnexio/tunnex/apps/node/internal/bgp"
 	"io"
 	"net"
+	"net/netip"
 	"os"
+	"path/filepath"
 	"reflect"
+	"sort"
 	"testing"
 	"time"
 )
@@ -134,12 +137,29 @@ func TestAzureOwnedProfileNativeProof(t *testing.T) {
 		}
 		return d, k, x, status, routes
 	}
+	exportMode := os.Getenv("TUNNEX_AZURE_LAN_EXPORT_PROOF") == "1"
+	if exportMode && (binding.Mode != "baseline" || entry.Allocation.ProfileID != "azure-active-active-bgp-ipv4-v1") {
+		t.Fatal("export_scope_refused")
+	}
 	d, k, x, status, routes := collect()
+	var exports [2][]string
+	if exportMode {
+		exports, err = azureLANExports(ctx, entry)
+		if err != nil {
+			t.Fatal("first_export_read_refused")
+		}
+	}
 	again, err := azureProofDaemonIdentity(ctx, binding.azureMaxProofBinding)
 	if err != nil || again != first {
 		t.Fatal("process_bracket_changed")
 	}
 	da, ka, xa, statusAfter, routesAfter := collect()
+	if exportMode {
+		second, e := azureLANExports(ctx, entry)
+		if e != nil || !reflect.DeepEqual(exports, second) {
+			t.Fatal("export_bracket_refused")
+		}
+	}
 	last, err := azureProofDaemonIdentity(ctx, binding.azureMaxProofBinding)
 	if err != nil || last != first {
 		t.Fatal("process_bracket_changed")
@@ -159,9 +179,83 @@ func TestAzureOwnedProfileNativeProof(t *testing.T) {
 		t.Fatal("journal_bracket_changed")
 	}
 	projection := map[string]any{"version": 1, "kind": "owned_azure_profile_native_observation", "mode": binding.Mode, "profile_id": entry.Allocation.ProfileID, "org_id": binding.OrgID, "site_id": binding.SiteID, "gateway_id": binding.GatewayID, "connection_id": binding.ConnectionID, "desired_revision": binding.DesiredRevision, "configuration_revision": binding.ConfigurationRevision, "observed_at": time.Now().UTC(), "journal_sha256": remediationSHA(raw), "entry_count": len(payload.Entries), "historical_boot_entry_count": len(historical), "node_executable_sha256": last.Node.Hash, "namespace": last.Namespace, "namespace_device": last.Device, "namespace_inode": last.Inode, "active_tunnel_count": entry.Allocation.activeTunnelCount(), "ike_count": len(da.SAs), "sad_count": len(xa.States), "spd_count": len(xa.Policies), "bgp_route_count": len(routesAfter), "traffic_counters_monotonic_advanced": trafficAdvanced, "scope": "Fresh whole-journal/process/VICI/kernel/XFRM/guard two-pass readback; no API readiness or packet inference"}
+	if binding.Mode == "absence" {
+		// Counts come from the same independently collected second frame, never
+		// from API intent or an inferred successful test result.
+		for key, value := range azureProfileAbsenceProjection(payload, entry, binding.azureMaxProofBinding, time.Now().UTC(), remediationSHA(raw), da, ka, xa, statusAfter, routesAfter) {
+			projection[key] = value
+		}
+	}
+	if exportMode {
+		projection["lan_export_two_frames"] = true
+		projection["advertised_prefixes"] = exports
+	}
 	encoded, err := json.Marshal(projection)
 	if err != nil {
 		t.Fatal("typed_projection_refused")
 	}
 	fmt.Println("AZURE_PROFILE_NATIVE_PROOF " + string(encoded))
+}
+
+// Additional read only: every command is sent on the independently bound actual socket.
+func azureLANExports(ctx context.Context, entry RuntimeJournalEntry) ([2][]string, error) {
+	var result [2][]string
+	cfg, err := runtimeBGPProcessConfig(entry)
+	if err != nil || entry.BGPProcess == nil || cfg.LocalPrefixes == nil {
+		return result, fmt.Errorf("export_config_refused")
+	}
+	expected := []string{}
+	for _, prefix := range cfg.LocalPrefixes {
+		expected = append(expected, prefix.String())
+	}
+	sort.Strings(expected)
+	if !reflect.DeepEqual(expected, []string{"10.233.10.0/24"}) {
+		return result, fmt.Errorf("export_local_scope_refused")
+	}
+	var socket bgpengine.FileIdentity
+	for _, file := range entry.BGPProcess.Files {
+		if file.Name == "bgpd.vty" {
+			socket = file.File
+		}
+	}
+	for index, peer := range cfg.Peers {
+		child, cancel := context.WithTimeout(ctx, 2*time.Second)
+		conn, e := azureProofBoundPeer(child, filepath.Join(entry.BGPProcess.Directory, "bgpd.vty"), entry.BGPProcess.Children[1].PID, socket)
+		if e != nil {
+			cancel()
+			return result, fmt.Errorf("export_socket_refused")
+		}
+		deadline, _ := child.Deadline()
+		e = conn.SetDeadline(deadline)
+		var raw []byte
+		if e == nil {
+			raw, e = azureLANExportWire(conn, "show bgp ipv4 unicast neighbors "+peer.Remote.String()+" advertised-routes json", 1<<20)
+		}
+		conn.Close()
+		cancel()
+		if e != nil {
+			return result, fmt.Errorf("export_wire_refused")
+		}
+		var document map[string]json.RawMessage
+		if json.Unmarshal(raw, &document) != nil {
+			return result, fmt.Errorf("export_json_refused")
+		}
+		var rows map[string]json.RawMessage
+		if json.Unmarshal(document["advertisedRoutes"], &rows) != nil || rows == nil || len(rows) > 64 {
+			return result, fmt.Errorf("export_shape_refused")
+		}
+		result[index] = []string{}
+		for value := range rows {
+			prefix, e := netip.ParsePrefix(value)
+			if e != nil || !prefix.Addr().Is4() || prefix != prefix.Masked() {
+				return result, fmt.Errorf("export_prefix_refused")
+			}
+			result[index] = append(result[index], prefix.String())
+		}
+		sort.Strings(result[index])
+		if !reflect.DeepEqual(result[index], expected) {
+			return result, fmt.Errorf("export_exact_set_refused")
+		}
+	}
+	return result, nil
 }

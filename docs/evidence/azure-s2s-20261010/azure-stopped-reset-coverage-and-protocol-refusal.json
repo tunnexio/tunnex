@@ -1,0 +1,144 @@
+{
+  "evidence": {
+    "actual_protocol_shape": {
+      "local_artifact_sha256": "c61ca397b316ae4885f425618f2178df4a67aeb6600f6dc798e051413565e820",
+      "receipt": {
+        "canonical_protocol_counts": {
+          "2": 9,
+          "3": 1
+        },
+        "category": "actual_numeric_route_protocol_scalar_shape_diagnostic_no_authority",
+        "protocol_shapes": {
+          "canonical_decimal_string": 10,
+          "json_number": 0,
+          "missing": 0,
+          "owned_protocol_242": 0,
+          "symbolic_or_noncanonical": 0
+        },
+        "route_count": 10,
+        "route_dump_sha256": "d9aae8f1b814441e2a80a23210ed88f8b2925a534af638bbb52cb90938c4d8c6",
+        "service_mutations": 0
+      }
+    },
+    "read_only_native_census": {
+      "local_artifact_sha256": "8398754f6b208e9207c7788ef38c9cd5f2af839910bd87df2f4b9d2a0feaa379",
+      "receipt": {
+        "category": "native_absence_finite_census_diagnostic_readonly_no_authority",
+        "command_readback": {
+          "addresses": {
+            "bytes": 1042,
+            "sha256": "e71743e99eb38b2ff5c094ec291c58c66bb7b7e863edcec0da41090614f1094a"
+          },
+          "links": {
+            "bytes": 1331,
+            "sha256": "7868a271d617ef8915476801e5794ddf181e321662403e3bb297fac4e0d171bf"
+          },
+          "policies": {
+            "bytes": 0,
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          },
+          "routes": {
+            "bytes": 1249,
+            "sha256": "d9aae8f1b814441e2a80a23210ed88f8b2925a534af638bbb52cb90938c4d8c6"
+          },
+          "states": {
+            "bytes": 0,
+            "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+          }
+        },
+        "entries_including_retired": 28,
+        "entry_count": 26,
+        "entry_diagnostics": [
+          {
+            "known_genuine_historical_delivery": true,
+            "matches": {
+              "inside_address": 0,
+              "owned_ifid": 0,
+              "owned_name_or_alias": 0,
+              "peer_route": 0,
+              "remote_route_or_subroute": 0
+            },
+            "namespace_is_current": false,
+            "nested": false,
+            "phase": "retained_refusal"
+          }
+        ],
+        "guard_namespace_is_current": true,
+        "invalid_route_destination_count": 0,
+        "journal_sha256": "8d2ee28b25c8f361afbdb038c62c425520f86508e3b1894df8fc8be2f7eb898e",
+        "link_count": 3,
+        "missing_route_destination_count": 0,
+        "nonnumeric_or_owned_route_protocol_count": 10,
+        "nonzero_xfrm_ifid_links": 0,
+        "policy_output_empty": true,
+        "private_run_id": "azure-stopped-native-finite-diagnostic-4638cdf3-01ff-453c-923a-3c4ab67c97cd",
+        "route_count": 10,
+        "service_mutations": 0,
+        "state_output_empty": true
+      }
+    },
+    "v5_full_seal": {
+      "local_artifact_sha256": "e42f63f0f72180fd6ab0fdf08e609441208b1fae05ebbb69937decba022ac773",
+      "receipt": {
+        "binary_sha256": "889be1c67616b10b803f3e4caf108fad72e04c64383367a7054b1737c9c32127",
+        "category": "new_stopped_observer_and_owned_continuation_sources_sealed_no_execution",
+        "continuation_sha256": "bc3b529f2cde9d6893bb466f286ed21311fb15096edbc362f61d6cb9f7ca71fd",
+        "driver_sha256": "b3204eb574b09cad5b0bf4e88ab1d2ff2c2e7de18a8452438bc3e3de58399fcb",
+        "native_closure_sha256": "f28f75290324faeecb08dcec29b23e11c05516ffc8797aa92a16114f2b47475b",
+        "outer_closure_sha256": "fafd9aa015a9636eb8d0988ee9c9b0c44d86328687a332393a78666bdfbf2762",
+        "private_run_id": "azure-stopped-source-seal-da1ac116-68e0-4a17-9cf5-cba12f11dc24",
+        "service_mutations": 0,
+        "source_files": 627,
+        "version": 1
+      }
+    },
+    "v5_native_failure_stage": {
+      "local_artifact_sha256": "8e5cc5d3ba41f8dff440b8a1d443217a5937869008973f87a55ee7c29f32dab8",
+      "receipt": {
+        "category": "private_stopped_observer_stage_projection_readonly",
+        "frr_reasons": [],
+        "host_run_executable": true,
+        "log_bytes": 234,
+        "log_line_count": 5,
+        "log_sha256": "b62910371518ddd1876855dc93e566080f79467c54bb3bd8b8f0a8bcd4ebcfc2",
+        "native_stages": [
+          "native_absence"
+        ],
+        "private_run_id": "azure-stopped-negative-observe-8be73228-956e-43ff-b08a-b53834ff75d9",
+        "reader_refused": false,
+        "test_failed": true,
+        "unshare_denied": false
+      }
+    },
+    "v5_native_refusal": {
+      "local_artifact_sha256": "0100492a9104b597ead5fcf5f984cf2de238302bff64d808d9adfb7d7929e956",
+      "receipt": {
+        "category": "stopped_negative_observation_refused",
+        "code": "actual_native_refused",
+        "phase": "actual_stopped_observer",
+        "private_run_id": "azure-stopped-negative-observe-8be73228-956e-43ff-b08a-b53834ff75d9",
+        "version": 1
+      }
+    }
+  },
+  "findings": [
+    "The actual sealed V5 observer passes the complete genuine historical reset receipt coverage and full FRR generation/retired-history checks before refusing at native_absence.",
+    "Independent diagnostic census found empty no-key XFRM state/policy dumps, no XFRM links and no matching owned link names/aliases/inside addresses/peer or remote routes across all28 entries including retired epochs. This diagnostic is not acceptance authority.",
+    "All10 observed route protocol fields are canonical decimal JSON strings: nine protocol2 and one protocol3, with no protocol242. The new stopped helper incorrectly used kernelNumber whereas existing kernel inventory uses kernelDecimal."
+  ],
+  "helper_commit": "3af76778aa6cd75f9e0d6f3e805141955e75d8d2",
+  "kind": "azure_stopped_observer_saved_reset_coverage_accepted_native_protocol_parser_refusal",
+  "limitations": [
+    "The native observer has not passed both full absence observations or its final brackets.",
+    "No corrected CREATE/START continuation has executed. The original stopped gateway, unknown/refused create outcome, historical evidence and reservation markers remain preserved.",
+    "No timer change or FQDN application enforcement acceptance is implied."
+  ],
+  "local_verification": {
+    "baseline_files_unchanged": 618,
+    "focused_helper_race_seconds": 2.342,
+    "independent_amd64_build_byte_identical": true,
+    "reader_driver_continuation_plan_tests_passed": 37
+  },
+  "source_commit": "49168c7d8706a8e956bce4ad04d5884d1c65cdc7",
+  "version": 1
+}

@@ -439,14 +439,16 @@ func main() {
 			dispatch = time.Now().UTC()
 		}
 		go func() {
-			response, err := timedFQDNResolve(ctx, nodeID, request, dispatch, fqdnTimingEnabled, dnsResponder.Handle, client.ReportDNSResolution, time.Now, func(event fqdnRPCTiming) {
-				logger.Info("fqdn_rpc_timing", "dispatch_utc", event.DispatchUTC, "deadline_remaining_ms", event.DeadlineRemainingMillis, "start_delay_ms", event.StartDelayMillis, "handle_ms", event.HandleMillis, "status", event.Status, "result", event.Result, "report_ms", event.ReportMillis, "delivery", event.Delivery, "context_state", event.Context, "lookup", event.Lookup, "report_http_status", event.ReportHTTPStatus, "report_failure", event.ReportFailure)
+			dnsResponder.Run(ctx, nodeID, request, func() {
+				response, err := timedFQDNResolve(ctx, nodeID, request, dispatch, fqdnTimingEnabled, dnsResponder.Handle, client.ReportDNSResolution, time.Now, func(event fqdnRPCTiming) {
+					logger.Info("fqdn_rpc_timing", "dispatch_utc", event.DispatchUTC, "deadline_remaining_ms", event.DeadlineRemainingMillis, "start_delay_ms", event.StartDelayMillis, "handle_ms", event.HandleMillis, "status", event.Status, "result", event.Result, "report_ms", event.ReportMillis, "delivery", event.Delivery, "context_state", event.Context, "lookup", event.Lookup, "report_http_status", event.ReportHTTPStatus, "report_failure", event.ReportFailure)
+				})
+				if err != nil && ctx.Err() == nil {
+					// Do not log hostname or answer data. The request id is enough to
+					// correlate the retried, cached response at the control plane.
+					logger.Warn("fqdn_resolution_response_delivery_failed", slog.String("request_id", response.RequestID), slog.String("error", err.Error()))
+				}
 			})
-			if err != nil && ctx.Err() == nil {
-				// Do not log hostname or answer data. The request id is enough to
-				// correlate the retried, cached response at the control plane.
-				logger.Warn("fqdn_resolution_response_delivery_failed", slog.String("request_id", response.RequestID), slog.String("error", err.Error()))
-			}
 		}()
 	})
 

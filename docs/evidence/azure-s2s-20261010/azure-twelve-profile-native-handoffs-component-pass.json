@@ -1,0 +1,142 @@
+{
+  "schema_version": 1,
+  "observed_at": "2026-10-11T17:27:32.810732+00:00",
+  "scope": "disposable isolated native Linux component qualification; Azure production acceptance remains separate",
+  "source_commit": "968347ab4f0c9b1bc1b675a22d1fd205072ef744",
+  "root_commit": "2b88065f",
+  "production_source_changed": false,
+  "test_only_correction": "fresh root0700 journal under /run instead of writable /tmp; all original BGP private-ancestor validation retained",
+  "observer_sha256": "0d0715ea127c82bd8201e5ca1302a9f46f30639e3e9b9d4154d601079ba8418f",
+  "private_run_id": "azure-profile-native-gate-9a5e0219-b0e1-4247-89e1-c0efa26a6237",
+  "total_pairs": 12,
+  "completed_pairs": 12,
+  "original_failed_attempt_preserved": true,
+  "cloud_mutations": 0,
+  "live_gateway_mutations": 0,
+  "actual_outcomes": {
+    "manifest_sha256": "9f42407be9534df889902a788b597100a25b6bc07492c408902c86edac58a69e",
+    "pairs": [
+      {
+        "index": 0,
+        "profiles": [
+          "azure-active-active-bgp-ipv4-v1",
+          "azure-active-active-static-ipv4-v1"
+        ],
+        "outcome_sha256": "9f51f0a7538ea76e8d9ea3713868f7cb7bf4dd2ae0ca2a3455d5611ea070210a",
+        "log_sha256": "814b3e35a7712b4b593b04b4ccee8fe9bfc63987ddf4691ee6a1ee4c09146c30",
+        "pass": true
+      },
+      {
+        "index": 1,
+        "profiles": [
+          "azure-active-active-bgp-ipv4-v1",
+          "azure-active-standby-bgp-ipv4-v1"
+        ],
+        "outcome_sha256": "f06b290e13945ee76fada76f3abc5ae863906ccd4e5e5cf6fb74210f35c4490c",
+        "log_sha256": "475db71a2d4d88ab824da77b238a921347dc15b292b37994d4193fc8c80f0af6",
+        "pass": true
+      },
+      {
+        "index": 2,
+        "profiles": [
+          "azure-active-active-bgp-ipv4-v1",
+          "azure-active-standby-static-ipv4-v1"
+        ],
+        "outcome_sha256": "7fd0087889a272b95f369ea22b9b1c734c5f4a671b12eae8c6ec454e9762530c",
+        "log_sha256": "ba88c54bab7b2ac3dbf945785dbb7e9abcbd5fc6cc4ab864afcd42cb79fec0eb",
+        "pass": true
+      },
+      {
+        "index": 3,
+        "profiles": [
+          "azure-active-active-static-ipv4-v1",
+          "azure-active-active-bgp-ipv4-v1"
+        ],
+        "outcome_sha256": "56530827ff1988511b244255c98367764252aa6ba3433c6bc9e90142867a4cca",
+        "log_sha256": "bafac9dd054a983cf6e8d0b19d06fca02e0b6b38cc977780e7f78bc0933be657",
+        "pass": true
+      },
+      {
+        "index": 4,
+        "profiles": [
+          "azure-active-active-static-ipv4-v1",
+          "azure-active-standby-bgp-ipv4-v1"
+        ],
+        "outcome_sha256": "ae9af33f2ac1c8eaedb2b5052ff11f9955e17c06159d2cfcf94e6709f5b6b79d",
+        "log_sha256": "36a9efa5520c38d9618b17dd8972c04ac5f423837648d8ddc7681799846c90d0",
+        "pass": true
+      },
+      {
+        "index": 5,
+        "profiles": [
+          "azure-active-active-static-ipv4-v1",
+          "azure-active-standby-static-ipv4-v1"
+        ],
+        "outcome_sha256": "7be76505f71f18d848f54acc94dffb6882a4901b46bb4a7fd4e055926f32e193",
+        "log_sha256": "a916fbf842993aa790cb466dc3ac75a18cbc4606a11be93df45277e79663f9ba",
+        "pass": true
+      },
+      {
+        "index": 6,
+        "profiles": [
+          "azure-active-standby-bgp-ipv4-v1",
+          "azure-active-active-bgp-ipv4-v1"
+        ],
+        "outcome_sha256": "da2d21ae499c01a2acf0fdcb3777d317d56b83c85e6f3269a79bba4dcc7bea9f",
+        "log_sha256": "8099e34b7f3fdb16bfc13c04f886197ddba31d8bef8c27e980a3985f7fecc094",
+        "pass": true
+      },
+      {
+        "index": 7,
+        "profiles": [
+          "azure-active-standby-bgp-ipv4-v1",
+          "azure-active-active-static-ipv4-v1"
+        ],
+        "outcome_sha256": "fa460961063a28dab0672a5546eedaea2ae0b85fbe41dd8e8d93e908d5e97cbe",
+        "log_sha256": "65519e5813ece707baf68264aeb7a22c462bd9ebf38bb145f87fa058275cd4a7",
+        "pass": true
+      },
+      {
+        "index": 8,
+        "profiles": [
+          "azure-active-standby-bgp-ipv4-v1",
+          "azure-active-standby-static-ipv4-v1"
+        ],
+        "outcome_sha256": "ae9677de8ef4496fc25f2269231efa002461b21652fd18699fa3bddf95fe6482",
+        "log_sha256": "d9005b837bbdcc19cae070d25a252fbcf1d1a257ed57119bdf9b426ff70e4f33",
+        "pass": true
+      },
+      {
+        "index": 9,
+        "profiles": [
+          "azure-active-standby-static-ipv4-v1",
+          "azure-active-active-bgp-ipv4-v1"
+        ],
+        "outcome_sha256": "d6af3a9de8835db9d40fb5dbbd9aa511eab8b7907b7ff4f1f0cef3c026a28735",
+        "log_sha256": "08a53c178e3fe76206e8e1345890f1d70072960d1dd9a2ce4958332bdbcc45b4",
+        "pass": true
+      },
+      {
+        "index": 10,
+        "profiles": [
+          "azure-active-standby-static-ipv4-v1",
+          "azure-active-active-static-ipv4-v1"
+        ],
+        "outcome_sha256": "248aabf1a103ad0982f44ef39f50d9e8ed0ece7c4cd1f491a87e57c551a94bca",
+        "log_sha256": "c2f25d95c007a83eda6c5eeb89d0156e0610f47f3491faaeeb4c54d9c230c577",
+        "pass": true
+      },
+      {
+        "index": 11,
+        "profiles": [
+          "azure-active-standby-static-ipv4-v1",
+          "azure-active-standby-bgp-ipv4-v1"
+        ],
+        "outcome_sha256": "966d6cdf135b89d80ca4c7e97c8ba6093d1daf1ad79d564be678c94fb93fd993",
+        "log_sha256": "83262ea64a3a4ce5c7874131e7b1b191226c2bcb67b7fe01c3d295cb7cd264f4",
+        "pass": true
+      }
+    ],
+    "production_acceptance": false
+  }
+}

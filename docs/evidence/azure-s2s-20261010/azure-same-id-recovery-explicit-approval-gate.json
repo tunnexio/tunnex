@@ -1,0 +1,72 @@
+{
+  "version": 1,
+  "category": "exact_recovery_payload_requires_explicit_authorization",
+  "recorded_at": "2026-10-11T12:18:41.918599+00:00",
+  "root_head": "da9915c4a15473861ac8718e94b9345b6895d851",
+  "payload": {
+    "path": "/private/tmp/azure-same-id-recovery-root-kit-sealer.py",
+    "bytes": 28212,
+    "sha256": "f72a322d9ae3290217ece1bf2515705cf99f7e2863bda685d31a48b1ea8fd55e",
+    "destination": "20.219.28.146",
+    "via_bastion": "104.211.219.1",
+    "root_kit": "/run/tunnex-qualification/azure-same-id-recovery-kit-49168c7d",
+    "target_id": "3e51a274-ab79-48db-b162-a8f1dbbc132f"
+  },
+  "requested_scope": [
+    "exclusive private staging with hash readback",
+    "read-only preflight using fresh <=60s ARM/native/source/identity bracket",
+    "one guarded original-ID recovery POST initially disabled if preflight verifies"
+  ],
+  "latest_human_message": "approved",
+  "automatic_approval_review": {
+    "result": "rejected_before_process_creation",
+    "reason": "generic approved did not explicitly authorize this exact additional payload and destination",
+    "bypass_attempted": false
+  },
+  "fresh_explicit_request_pending": true,
+  "transport_invocation_marker_exists": false,
+  "staging_transfer_or_recovery_POST_occurred": false,
+  "gateway_START_occurred": false,
+  "V7_replayed": false,
+  "payload_changed": false,
+  "filename_validation_check": "normal owned discovery filename accepted; no defect or repair needed",
+  "offline_review_receipts": {
+    "/private/tmp/azure-same-id-root-sealer-independent-review/review.json": "e52a7a105f405f1df6ce7f6d708a0122917a0c7447e459f815d1f52b2aebccca",
+    "/private/tmp/azure-same-id-root-sealer-independent-review/timeout-amendment.json": "641c7d0ea0f5d3731d3bf460d66bfb1e6daf6bcd6c7f75d5c1f51de568b4b895"
+  },
+  "original_dirty_files_rechecked_byte_exact": [
+    "docs/evidence/azure-s2s-20261010/azure-login-live-read-and-start-transfer-blocked.json",
+    "docs/evidence/azure-s2s-20261010/azure-stopped-native-pass-and-created-container-readback.json",
+    "docs/evidence/azure-s2s-20261010/azure-stopped-reset-coverage-and-protocol-refusal.json",
+    "docs/evidence/azure-s2s-20261010/azure-v7-native-observer-local-and-transfer-blocked.json",
+    "docs/evidence/azure-s2s-20261010/azure-ui-import-mobile-and-fqdn-source-status.json",
+    "docs/evidence/azure-s2s-20261010/azure-stopped-observer-transport-and-frr-refusal.json",
+    "docs/evidence/azure-s2s-20261010/azure-stopped-canonical-nft-reader-and-final-bracket-refusal.json",
+    "docs/evidence/azure-s2s-20261010/azure-created-stopped-start-only-local-qualification.json",
+    "docs/evidence/azure-s2s-20261010/azure-approved-start-and-independent-running-identity.json"
+  ],
+  "latest_owned_arm_read": {
+    "path": "/private/tmp/azure-approved-recovery-gate-arm-read-20261011.json",
+    "sha256": "4a3c28cdc683013c7013f78d00c6ee18bbcbf42ea8e730e654fe6bc1fef97b6a",
+    "observed_at": "2026-10-11T12:17:26.808217+00:00",
+    "gateway": {
+      "activeActive": true,
+      "bgp": true,
+      "id": "/subscriptions/34e2f259-b462-40bf-8f4a-06a3930d99e6/resourceGroups/tunnex-azure-s2s-20261010/providers/Microsoft.Network/virtualNetworkGateways/azure-vpn",
+      "owner": "azure-s2s-01a12505",
+      "sku": "VpnGw1AZ",
+      "state": "Succeeded"
+    },
+    "claim": "fresh owned ARM metadata read succeeded; does not prove tunnel or recovery readiness"
+  },
+  "disk_available_kib_at_read": 4524456,
+  "stories_formally_closed": 0,
+  "story_total": 11,
+  "cache_inventory": {
+    "path": "/private/tmp/azure-disposable-cache-final-inventory-20261011.json",
+    "sha256": "120a3024d086a1cdde93a32688c52a3437fb6268cfeba11f64c92f8adccb744f",
+    "inactive_cache_count": 24,
+    "total_gib": 12.799,
+    "deleted_by_this_task": false
+  }
+}

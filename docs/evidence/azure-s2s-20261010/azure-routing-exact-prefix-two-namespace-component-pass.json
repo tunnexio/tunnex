@@ -1,0 +1,47 @@
+{
+  "accepted_prefix": [
+    "10.231.0.0/16"
+  ],
+  "actual_result": {
+    "apparmor_causality": "not_inferred",
+    "binary_sha256": "793453bdd1be42cdfc17db901efd57223a2508ad6e0ac74764b98de8a10feb01",
+    "container_name": "azure-routing-component-ae2c38e7-1e7b-472f-90d0-54c6dfc213ca",
+    "container_preserved": true,
+    "fixture_apparmor": "unconfined",
+    "image": "sha256:04d2d7137ba5d1c55505071c00dd0d781ad85a412700bb3ae7c2e13ad9d366c2",
+    "log_sha256": "dc26aef768896d97685f9a5acf45c6ffdad0c8dc0b89a3466fc005f1e86b60a3",
+    "pass": true,
+    "private_run_id": "azure-routing-native-component-ccf15ac4-f571-4d47-90ad-7b75c00f8c6b",
+    "receipt": {
+      "accepted_prefixes": 1,
+      "cloud_claim": false,
+      "distinct_peer_namespaces": true,
+      "exported_prefixes": 1,
+      "kernel_install_claim": false,
+      "offered_prefixes": 6,
+      "recovery_observed": true,
+      "version": 1,
+      "withdrawal_observed": true
+    },
+    "returncode": 0,
+    "scope": "Isolated network-none unchanged customer generator with genuine synthetic FRR offers; no live gateway/cloud changes or kernel route installation claim",
+    "transport_seconds": 5.763
+  },
+  "exported_prefix": [
+    "10.233.10.0/24"
+  ],
+  "failed_predecessors_preserved": true,
+  "full_story_acceptance": false,
+  "offered_prefixes": [
+    "0.0.0.0/0",
+    "10.231.0.0/16",
+    "10.231.1.0/24",
+    "10.232.1.0/24",
+    "10.233.10.0/24",
+    "10.235.77.0/24"
+  ],
+  "production_filter_changed": false,
+  "scope": "Isolated FRR exact-prefix component; no live Azure or kernel route installation claim",
+  "unchanged_customer_generator": true,
+  "version": 1
+}

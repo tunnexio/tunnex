@@ -1,0 +1,60 @@
+{
+  "accepted_story_count": 6,
+  "active_eviction": false,
+  "build_receipt_sha256": "ef218dc0e6ee2ff91b066de81dbce330ca987786a1c16eb84ecfe8e4332070f0",
+  "category": "inflight_dns_admission_root_local_and_qa_stage_pass",
+  "causal_regression": "Same original pending RequestID executed three concurrent Handle/report workflows on QA. Old actual Responder duplicate regression fails; bounded immutable-ID admission passes.",
+  "four_original_native_overlay_sources_unchanged": true,
+  "fqdn_live_acceptance_passed": false,
+  "independent_review_sha256": "4cbe1953243acac3fc1debf98bc49fe1c1473b1c9b3d50a2f0b423c10d32ef2a",
+  "maximum_live_request_ids": 64,
+  "new_acceptance_slices_closed": 0,
+  "next_step": "Reviewed controlled QA update14\u219215\u219216, fresh full native baseline with measured cardinality, then genuine sustained DNS window.",
+  "original_handle_proof_report_semantics_unchanged": true,
+  "production_closure_sha256": "1876d3b26fc0eef0cb55b1273cd3d00ec4ab4823cfd30d3bc633b073a6683231",
+  "production_files": [
+    "apps/node/internal/fqdnrpc/fqdnrpc.go",
+    "apps/node/cmd/agent/main.go"
+  ],
+  "production_files_count": 233,
+  "production_integrated_locally": true,
+  "qa_current_desired_revision": 14,
+  "qa_current_node_sha256": "2c33e96f7dbefbc5e0588428d974a2da1c91fbe87d4dd8f87077dc7212d0b4a2",
+  "qa_node_updated": false,
+  "qa_stages": [
+    {
+      "bytes": 14708898,
+      "kind": "node",
+      "path": "/var/lib/tunnex-qualification-archive/azure-inflight-admission-node-stage-e03a40bb-bc0c-48c7-a860-a6ebd2878d0d/tunnex-node",
+      "sha256": "369044f622adc7c756f31be378909a407c7e09d0ea75e667bf6f6e187766c884",
+      "wrapper_sha256": "a5142854f99259fe49585e395299e48b1458eb010e8c94bed513df2c7698f670"
+    },
+    {
+      "bytes": 19558393,
+      "kind": "observer",
+      "path": "/var/lib/tunnex-qualification-archive/azure-inflight-admission-observer-stage-f6a64670-fe5a-405c-9713-236dbec0be11/observer.test",
+      "sha256": "c7fd603ff8d35aa7a441f68c28c566690307dcd30697f2a5c81d867db7e695a9",
+      "wrapper_sha256": "a8cc66769e3d3715261ae605f42d7160a58de4ca598f7e7e7aff2ac02622de5c"
+    },
+    {
+      "bytes": 19617911,
+      "kind": "combined",
+      "path": "/var/lib/tunnex-qualification-archive/azure-inflight-admission-combined-stage-4c0bd8d0-ff29-471e-af96-30fd27fd74e0/combined-observer.test",
+      "sha256": "5ed9d1d862c28d5720a48ac6a8d1119879213cce5be0eabbbddab7ca00572e5e",
+      "wrapper_sha256": "58e36018d456424f20a8e88c60af414e4151e9456c4ac35d522ae306eedfa1f8"
+    }
+  ],
+  "raw_control_records_exported": false,
+  "recorded_at": "2026-10-12T08:31:38.737811+00:00",
+  "root_full_fqdnrpc_race": {
+    "failures": 0,
+    "passed_test_events": 84,
+    "seconds": 9.636018167,
+    "sha256": "73d89428c949dbdc058eeab1cc6bf84b60b3563c1d167a10538775d46f8cbb0a",
+    "skips": 0,
+    "top_level_tests": 46
+  },
+  "sustained_dns_acceptance_passed": false,
+  "total_story_count": 11,
+  "version": 1
+}
