@@ -192,6 +192,8 @@ jobs:
         run: ruby deploy/release-draft-permissions_test.rb
       - name: CI aggregation and wiring contracts
         run: node --test deploy/ci-gates_test.mjs deploy/ci-active-go-packages_test.mjs deploy/test-api-edition_test.mjs deploy/pull-ci-services_test.mjs
+      - name: Security severity and screenshot custody regressions
+        run: node --test scripts/check-codeql-sarif.test.mjs tests/ipsec-bgp-local/customer-role-ui-screenshot.test.cjs
 
       - name: Kubernetes zero-touch chart contracts
         run: make test-k8s-charts

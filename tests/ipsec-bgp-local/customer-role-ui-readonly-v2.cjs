@@ -1,6 +1,7 @@
 /* SOURCE ONLY by default. Separate headless Chrome profile; no user tab, trace,
    login screenshots, credential logs or fabricated sessions. Authenticated normal form. */
 const fs=require('fs'),path=require('path');
+const {capturePrivateScreenshot}=require('./customer-role-ui-screenshot.cjs');
 const {chromium}=require('/Users/pawangupta/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright');
 const args=process.argv.slice(2);if(!args.includes('--execute')){console.log(JSON.stringify({source_only:true,ui:'http://127.0.0.1:25173',roles:['admin','member','ai-view'],views:['desktop','mobile'],mutations:false}));process.exit(0)}
 function arg(name){const i=args.indexOf(name);if(i<0||!args[i+1])throw Error('Missing reviewed argument');return args[i+1]}
@@ -30,7 +31,7 @@ let browser;const deadline=setTimeout(()=>{receipt.hard_deadline_expired=true;br
    result.phase='ipsec-radio';await page.locator('input[type=radio][name=connection-purpose][value=ipsec]').check();
    const table=page.getByRole('table',{name:'IPsec connections',exact:true});await table.waitFor();
    result.phase='provider-details';for(const provider of pins.providers){const button=table.getByRole('button',{name:provider.name,exact:true});await button.click();await page.getByRole('region',{name:'Tunnel status',exact:true}).waitFor();result.provider_ids??=[];result.provider_ids.push(provider.id);result.tunnel_columns=await page.getByRole('table',{name:'IPsec tunnel state',exact:true}).getByRole('columnheader').allTextContents()}
-   const screenshot=path.join(shots,c.role+'-'+viewport.name+'-authenticated-site.png');if(fs.existsSync(screenshot))throw Error('Screenshot already exists');await page.screenshot({path:screenshot,fullPage:true});fs.chmodSync(screenshot,0o600);const imageFD=fs.openSync(screenshot,fs.constants.O_RDONLY|fs.constants.O_NOFOLLOW);fs.fsyncSync(imageFD);fs.closeSync(imageFD);const shotDirFD=fs.openSync(shots,fs.constants.O_RDONLY);fs.fsyncSync(shotDirFD);fs.closeSync(shotDirFD);result.screenshot=screenshot;
+   const screenshot=path.join(shots,c.role+'-'+viewport.name+'-authenticated-site.png');await capturePrivateScreenshot(page,screenshot);result.screenshot=screenshot;
    result.phase='role-assertion';const create=page.getByRole('button',{name:'Create connection',exact:true});result.manage_visible=await create.count()>0;
    if(c.role==='admin'){
     result.phase='create-chooser';if(!result.manage_visible)throw Error('Admin management missing');await create.click();await page.getByRole('button',{name:/Cloud \/ Firewall/}).click();await page.getByRole('button',{name:/^AWS/}).click();

@@ -1,5 +1,6 @@
 /* Source-only default. Normal synthetic admin login; separate headless browser. */
 const fs=require('fs'),path=require('path');
+const {capturePrivateScreenshot}=require('./customer-role-ui-screenshot.cjs');
 const {chromium}=require('/Users/pawangupta/.cache/codex-runtimes/codex-primary-runtime/dependencies/node/node_modules/playwright');
 const args=process.argv.slice(2);if(!args.includes('--execute')){console.log(JSON.stringify({source_only:true,scope:'admin mobile horizontal table scrolling',application_writes:false}));process.exit(0)}
 function arg(k){const n=args.indexOf(k);if(n<0||!args[n+1])throw Error('Reviewed arguments required');return args[n+1]}
@@ -10,7 +11,7 @@ const st=fs.lstatSync(shots);if(!st.isDirectory()||st.isSymbolicLink()||st.uid!=
 const fd=fs.openSync(out,fs.constants.O_WRONLY|fs.constants.O_CREAT|fs.constants.O_EXCL|fs.constants.O_NOFOLLOW,0o600);
 const receipt={scope:'admin mobile390 read-only table scrolling',user_id:c.user_id,phase:'start',application_writes:false,started_at:new Date().toISOString()};let browser;
 const deadline=setTimeout(()=>{receipt.deadline_expired=true;browser?.close().catch(()=>{})},90000);
-async function screenshot(page,name){if(await page.getByLabel('Password',{exact:true}).count())throw Error('Unsafe authenticated screenshot');const p=path.join(shots,name+'.png');if(fs.existsSync(p))throw Error('Screenshot exists');await page.screenshot({path:p,fullPage:true});fs.chmodSync(p,0o600);return p}
+async function screenshot(page,name){if(await page.getByLabel('Password',{exact:true}).count())throw Error('Unsafe authenticated screenshot');const p=path.join(shots,name+'.png');return capturePrivateScreenshot(page,p)}
 async function pageBounds(page){return page.evaluate(()=>({client:document.documentElement.clientWidth,scroll:document.documentElement.scrollWidth,bodyScroll:document.body.scrollWidth}))}
 (async()=>{
  browser=await chromium.launch({channel:'chrome',headless:true});const context=await browser.newContext({viewport:{width:390,height:844}}),page=await context.newPage();page.setDefaultTimeout(15000);

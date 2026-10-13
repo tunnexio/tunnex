@@ -166,21 +166,9 @@ jobs:
             echo "::error::CodeQL ran but produced NO SARIF — the scan did not analyse anything"
             exit 1
           fi
-          # CodeQL marks high/critical security alerts as SARIF level "error" (medium/low are "warning"/
-          # "note"). Counting error-level results is the documented, stable signal — more robust than
-          # re-deriving security-severity from the rule table, which lives in different SARIF locations
-          # depending on whether a query pack contributed it.
-          total=0
-          for f in "${files[@]}"; do
-            n=$(jq '[.runs[].results[]? | select(.level == "error")] | length' "$f")
-            echo "  $(basename "$f"): $n error-level result(s)"
-            total=$((total + n))
-          done
-          echo "high/critical findings: $total"
-          if [ "$total" -ne 0 ]; then
-            echo "::error::CodeQL reported $total high/critical finding(s) — see the Security tab"
-            exit 1
-          fi
+          # Security severity is rule metadata, independent of result.level. Resolve driver/query-pack
+          # rules and retain explicit error-level blocking; malformed metadata also fails closed.
+          node scripts/check-codeql-sarif.mjs "${files[@]}"
 
   # ── BLOCKING: formatting / lint parity (the same checks a dev runs locally) ─────────────────────────
   fmt-lint:
