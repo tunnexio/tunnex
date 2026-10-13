@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 )
 
 // ActiveGeneration is an immutable, database-backed answer snapshot suitable
@@ -46,10 +47,25 @@ type ActiveGenerationReader interface {
 // to the current resource row so an old generation cannot compile after a
 // resolver-context edit, even before a scheduler tick records its withdrawal.
 func (s *PostgresStore) ActiveGenerations(ctx context.Context, orgID uuid.UUID) ([]ActiveGeneration, error) {
-	rows, err := s.pool.Query(ctx, `
+	return ActiveGenerationsWithQuery(ctx, s.pool, orgID)
+}
+
+// ActiveGenerationQuery is satisfied by the runtime's already-locked transaction.
+// Pool and transaction readers deliberately share the exact selected-generation
+// SQL and decoder; pending, withdrawn and superseded contexts stay excluded.
+type ActiveGenerationQuery interface {
+	Query(context.Context, string, ...any) (pgx.Rows, error)
+}
+
+func ActiveGenerationsWithQuery(ctx context.Context, query ActiveGenerationQuery, orgID uuid.UUID) ([]ActiveGeneration, error) {
+	if query == nil || orgID == uuid.Nil {
+		return nil, fmt.Errorf("active FQDN generation reader unavailable")
+	}
+	rows, err := query.Query(ctx, `
 SELECT g.org_id,g.resource_id,r.fqdn,r.protocol,r.port_low,r.port_high,
        g.generation,g.resolver_site_id,g.resolver_node_id,g.effective_ttl,g.resolved_at,
        cfg.id,cfg.version,profile.id,profile.name,profile.provider_hint,COALESCE(g.resolver_match_suffix,''),
+       CASE WHEN profile.ipsec_connection_id IS NULL THEN NULL ELSE jsonb_build_object('connection_id',profile.ipsec_connection_id,'configuration_revision',profile.ipsec_configuration_revision,'source_address',host(profile.ipsec_source_address)) END,
        (SELECT COALESCE(jsonb_agg(jsonb_build_object('address',host(e.address),'port',e.port,'transport',e.transport) ORDER BY e.ordinal),'[]'::jsonb)
           FROM fqdn_resolver_context_profile_endpoints e
          WHERE e.profile_id=profile.id AND e.org_id=profile.org_id),
@@ -72,6 +88,10 @@ JOIN fqdn_resolver_context_profiles profile
   ON profile.config_id=cfg.id AND profile.org_id=cfg.org_id
  AND profile.id=COALESCE(g.resolver_profile_id,cfg.id)
 WHERE g.org_id=$1 AND g.state='active'
+  AND g.effective_ttl >= interval '30 seconds' AND g.effective_ttl <= interval '1 hour'
+  AND g.resolved_at <= clock_timestamp()
+  AND g.resolved_at + g.effective_ttl > clock_timestamp()
+  AND (profile.ipsec_connection_id IS NULL OR fqdn_ipsec_resolver_profile_valid(profile.id,profile.org_id))
   AND (
     (profile.legacy_default AND COALESCE(g.resolver_match_suffix,'')=''
       AND NOT EXISTS (
@@ -125,17 +145,22 @@ ORDER BY g.resource_id`, orgID)
 		var profile uuid.UUID
 		var configVersion int64
 		var profileName, profileProvider, matchedSuffix string
-		var endpointJSON []byte
+		var endpointJSON, pathJSON []byte
 		var raw []string
 		if err := rows.Scan(&g.OrgID, &g.ResourceID, &g.Hostname, &g.Protocol, &g.PortLow, &g.PortHigh,
 			&g.Sequence, &site, &gateway, &g.TTL, &g.ResolvedAt, &config, &configVersion,
-			&profile, &profileName, &profileProvider, &matchedSuffix, &endpointJSON, &raw); err != nil {
+			&profile, &profileName, &profileProvider, &matchedSuffix, &pathJSON, &endpointJSON, &raw); err != nil {
 			return nil, err
 		}
 		g.Context = Context{ResolverID: site.String(), GatewayID: gateway.String()}
 		g.ResolverConfig = ResolverConfig{
 			ID: config.String(), Version: configVersion, ProfileID: profile.String(),
 			ProfileName: profileName, ProfileProvider: profileProvider, MatchedSuffix: matchedSuffix,
+		}
+		if len(pathJSON) > 0 {
+			if err := json.Unmarshal(pathJSON, &g.ResolverConfig.IPsecPath); err != nil {
+				return nil, err
+			}
 		}
 		if err := json.Unmarshal(endpointJSON, &g.ResolverConfig.Endpoints); err != nil || !g.Context.valid() || !g.ResolverConfig.valid() || len(raw) == 0 || len(raw) > MaxAnswers {
 			return nil, fmt.Errorf("invalid active FQDN generation %s", g.ResourceID)

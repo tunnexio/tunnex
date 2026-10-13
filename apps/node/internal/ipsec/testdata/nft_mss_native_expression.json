@@ -1,0 +1,53 @@
+[
+  {
+    "match": {
+      "op": "==",
+      "left": {
+        "&": [
+          {
+            "payload": {
+              "protocol": "tcp",
+              "field": "flags"
+            }
+          },
+          {
+            "|": [
+              "syn",
+              "rst"
+            ]
+          }
+        ]
+      },
+      "right": "syn"
+    }
+  },
+  {
+    "match": {
+      "op": ">",
+      "left": {
+        "tcp option": {
+          "name": "maxseg",
+          "field": "size"
+        }
+      },
+      "right": 1382
+    }
+  },
+  {
+    "mangle": {
+      "key": {
+        "tcp option": {
+          "name": "maxseg",
+          "field": "size"
+        }
+      },
+      "value": 1382
+    }
+  },
+  {
+    "counter": {
+      "packets": 0,
+      "bytes": 0
+    }
+  }
+]

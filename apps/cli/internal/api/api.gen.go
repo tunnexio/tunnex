@@ -1257,8 +1257,34 @@ const (
 	Standby HubMemberRole = "standby"
 )
 
+// Defines values for IPsecBGPEligibilityReason.
+const (
+	IPsecBGPEligible           IPsecBGPEligibilityReason = "eligible"
+	IPsecBGPGatewayUnavailable IPsecBGPEligibilityReason = "gateway_unavailable"
+	IPsecBGPOptInRequired      IPsecBGPEligibilityReason = "opt_in_required"
+	IPsecBGPReportStale        IPsecBGPEligibilityReason = "report_stale"
+	IPsecBGPUnsupported        IPsecBGPEligibilityReason = "unsupported"
+)
+
+// Defines values for IPsecBGPPeerStatusState.
+const (
+	IPsecBGPActive      IPsecBGPPeerStatusState = "active"
+	IPsecBGPConnect     IPsecBGPPeerStatusState = "connect"
+	IPsecBGPEstablished IPsecBGPPeerStatusState = "established"
+	IPsecBGPIdle        IPsecBGPPeerStatusState = "idle"
+	IPsecBGPOpenConfirm IPsecBGPPeerStatusState = "openconfirm"
+	IPsecBGPOpenSent    IPsecBGPPeerStatusState = "opensent"
+	IPsecBGPUnknown     IPsecBGPPeerStatusState = "unknown"
+)
+
+// Defines values for IPsecBGPStatusVersion.
+const (
+	IPsecBGPStatusVersion1 IPsecBGPStatusVersion = 1
+)
+
 // Defines values for IPsecConfigurationCheckInputMode.
 const (
+	Ipv4Bgp    IPsecConfigurationCheckInputMode = "ipv4-bgp"
 	Ipv4Static IPsecConfigurationCheckInputMode = "ipv4-static"
 )
 
@@ -5324,12 +5350,22 @@ type FQDNResolverEndpoint struct {
 // FQDNResolverEndpointTransport defines model for FQDNResolverEndpoint.Transport.
 type FQDNResolverEndpointTransport string
 
+// FQDNResolverIPsecPath defines model for FQDNResolverIPsecPath.
+type FQDNResolverIPsecPath struct {
+	ConfigurationRevision int64              `json:"configuration_revision"`
+	ConnectionId          openapi_types.UUID `json:"connection_id"`
+
+	// SourceAddress Private IPv4 address owned by the selected gateway, inside an approved local connection prefix. Runtime ownership and lease are verified before every DNS query.
+	SourceAddress string `json:"source_address"`
+}
+
 // FQDNResolverProfile defines model for FQDNResolverProfile.
 type FQDNResolverProfile struct {
 	Endpoints []FQDNResolverEndpoint `json:"endpoints"`
 
 	// Id Immutable profile provenance bound to gateway DNS requests and answer generations.
-	Id openapi_types.UUID `json:"id"`
+	Id        openapi_types.UUID     `json:"id"`
+	IpsecPath *FQDNResolverIPsecPath `json:"ipsec_path,omitempty"`
 
 	// LegacyDefault True only for a migrated legacy flat configuration. New profile-native configurations always require explicit suffixes.
 	LegacyDefault bool   `json:"legacy_default"`
@@ -5348,6 +5384,7 @@ type FQDNResolverProfileProviderHint string
 // FQDNResolverProfileRequest defines model for FQDNResolverProfileRequest.
 type FQDNResolverProfileRequest struct {
 	Endpoints    []FQDNResolverEndpoint                 `json:"endpoints"`
+	IpsecPath    *FQDNResolverIPsecPath                 `json:"ipsec_path,omitempty"`
 	Name         string                                 `json:"name"`
 	ProviderHint FQDNResolverProfileRequestProviderHint `json:"provider_hint"`
 	ZoneSuffixes []string                               `json:"zone_suffixes"`
@@ -5676,8 +5713,61 @@ type HubSet struct {
 	Members []HubMember `json:"members"`
 }
 
+// IPsecBGPConfiguration Required for ipv4-bgp and forbidden for ipv4-static. Local prefixes are exact advertisements; remote prefixes are exact accepted destinations. Route learning does not grant access. BGP activation requires a qualified gateway runtime.
+type IPsecBGPConfiguration struct {
+	LocalAsn uint32 `json:"local_asn"`
+
+	// MaximumPrefixes Maximum accepted prefixes per BGP peer. Installed destinations across both peers remain bounded by the approved remote prefix list.
+	MaximumPrefixes int    `json:"maximum_prefixes"`
+	RemoteAsn       uint32 `json:"remote_asn"`
+	RouterId        string `json:"router_id"`
+}
+
+// IPsecBGPEligibility Advisory readiness to enable BGP, checked independently from storing disabled configurations. Enabling rechecks gateway capability and authority.
+type IPsecBGPEligibility struct {
+	Eligible bool                      `json:"eligible"`
+	Reason   IPsecBGPEligibilityReason `json:"reason"`
+}
+
+// IPsecBGPEligibilityReason defines model for IPsecBGPEligibility.Reason.
+type IPsecBGPEligibilityReason string
+
+// IPsecBGPPeerStatus defines model for IPsecBGPPeerStatus.
+type IPsecBGPPeerStatus struct {
+	AcceptedPrefixes  int `json:"accepted_prefixes"`
+	InstalledPrefixes int `json:"installed_prefixes"`
+
+	// RejectedPrefixes Present only when the gateway can measure rejected prefixes.
+	RejectedPrefixes *int                    `json:"rejected_prefixes,omitempty"`
+	Slot             int                     `json:"slot"`
+	State            IPsecBGPPeerStatusState `json:"state"`
+}
+
+// IPsecBGPPeerStatusState defines model for IPsecBGPPeerStatus.State.
+type IPsecBGPPeerStatusState string
+
+// IPsecBGPRouteStatus defines model for IPsecBGPRouteStatus.
+type IPsecBGPRouteStatus struct {
+	// Prefix Exact approved IPv4 prefix with a verified installed route.
+	Prefix string `json:"prefix"`
+	Slot   int    `json:"slot"`
+}
+
+// IPsecBGPStatus defines model for IPsecBGPStatus.
+type IPsecBGPStatus struct {
+	Peers    []IPsecBGPPeerStatus  `json:"peers"`
+	Routes   []IPsecBGPRouteStatus `json:"routes"`
+	Sequence uint64                `json:"sequence"`
+	Version  IPsecBGPStatusVersion `json:"version"`
+}
+
+// IPsecBGPStatusVersion defines model for IPsecBGPStatus.Version.
+type IPsecBGPStatusVersion int
+
 // IPsecConfigurationCheckInput defines model for IPsecConfigurationCheckInput.
 type IPsecConfigurationCheckInput struct {
+	// Bgp Required for ipv4-bgp and forbidden for ipv4-static. Local prefixes are exact advertisements; remote prefixes are exact accepted destinations. Route learning does not grant access. BGP activation requires a qualified gateway runtime.
+	Bgp                    *IPsecBGPConfiguration           `json:"bgp,omitempty"`
 	CustomerOutsideAddress string                           `json:"customer_outside_address"`
 	LocalPrefixes          []string                         `json:"local_prefixes"`
 	Mode                   IPsecConfigurationCheckInputMode `json:"mode"`
@@ -5739,7 +5829,8 @@ type IPsecConnectionPage struct {
 // IPsecConnectionStatus defines model for IPsecConnectionStatus.
 type IPsecConnectionStatus struct {
 	// ActiveSlot Verified active path; absent or null is unknown and is separate from configured preference.
-	ActiveSlot *int `json:"active_slot"`
+	ActiveSlot *int            `json:"active_slot"`
+	Bgp        *IPsecBGPStatus `json:"bgp,omitempty"`
 
 	// ObservedAt Control-plane receipt time; older than 90 seconds is unknown.
 	ObservedAt *time.Time `json:"observed_at"`
@@ -5757,6 +5848,8 @@ type IPsecConnectionStatusRecoveryVersion int
 
 // IPsecEligibility defines model for IPsecEligibility.
 type IPsecEligibility struct {
+	// Bgp Advisory readiness to enable BGP, checked independently from storing disabled configurations. Enabling rechecks gateway capability and authority.
+	Bgp      *IPsecBGPEligibility   `json:"bgp,omitempty"`
 	Eligible bool                   `json:"eligible"`
 	Reason   IPsecEligibilityReason `json:"reason"`
 }
@@ -5792,6 +5885,8 @@ type IPsecProviderCreateInput struct {
 
 // IPsecProviderNetworkConfiguration defines model for IPsecProviderNetworkConfiguration.
 type IPsecProviderNetworkConfiguration struct {
+	// Bgp Required for ipv4-bgp and forbidden for ipv4-static. Local prefixes are exact advertisements; remote prefixes are exact accepted destinations. Route learning does not grant access. BGP activation requires a qualified gateway runtime.
+	Bgp                    *IPsecBGPConfiguration       `json:"bgp,omitempty"`
 	CustomerOutsideAddress string                       `json:"customer_outside_address"`
 	LocalPrefixes          []string                     `json:"local_prefixes"`
 	Mode                   string                       `json:"mode"`

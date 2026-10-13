@@ -15,6 +15,7 @@ var (
 	ErrConnectionNotFound    = errors.New("IPsec connection not found")
 	ErrConnectionConflict    = errors.New("IPsec connection revision changed")
 	ErrConnectionInvalid     = errors.New("IPsec connection request invalid")
+	ErrCleanupInProgress     = errors.New("IPsec cleanup in progress")
 )
 
 // Connection is an explicit ordinary-reader projection. It has no tunnel or

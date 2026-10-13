@@ -1,0 +1,646 @@
+{
+  "nftables": [
+    {
+      "chain": {
+        "family": "inet",
+        "table": "tunnex_ipsec",
+        "name": "forward_guard",
+        "handle": 12,
+        "type": "filter",
+        "hook": "forward",
+        "prio": -10,
+        "policy": "accept"
+      }
+    },
+    {
+      "chain": {
+        "family": "inet",
+        "table": "tunnex_ipsec",
+        "name": "output_guard",
+        "handle": 53,
+        "type": "filter",
+        "hook": "output",
+        "prio": -10,
+        "policy": "accept"
+      }
+    },
+    {
+      "chain": {
+        "family": "inet",
+        "table": "tunnex_ipsec",
+        "name": "input_guard",
+        "handle": 98,
+        "type": "filter",
+        "hook": "input",
+        "prio": -10,
+        "policy": "accept"
+      }
+    },
+    {
+      "chain": {
+        "family": "inet",
+        "table": "tunnex_ipsec",
+        "name": "postrouting_guard",
+        "handle": 139,
+        "type": "filter",
+        "hook": "postrouting",
+        "prio": 90,
+        "policy": "accept"
+      }
+    },
+    {
+      "chain": {
+        "family": "inet",
+        "table": "tunnex_ipsec",
+        "name": "postnat_guard",
+        "handle": 176,
+        "type": "filter",
+        "hook": "postrouting",
+        "prio": 300,
+        "policy": "accept"
+      }
+    },
+    {
+      "chain": {
+        "family": "inet",
+        "table": "tunnex_ipsec",
+        "name": "owner",
+        "handle": 183280,
+        "comment": "tunnex-ipsec:01a115fb-f7d4-794f-80b6-84f507a94152:40296:a10f06787218a494d1f30431ff262bbf1f8b80fba599b43ea5cc57d34427fc67"
+      }
+    },
+    {
+      "set": {
+        "family": "inet",
+        "name": "sa_lease_4ae1e806d6ed47918137cff6871dbd4e",
+        "table": "tunnex_ipsec",
+        "type": {
+          "typeof": {
+            "ipsec": {
+              "key": "reqid",
+              "dir": "out",
+              "spnum": 0
+            }
+          }
+        },
+        "handle": 2,
+        "flags": [
+          "timeout"
+        ],
+        "timeout": 60
+      }
+    },
+    {
+      "set": {
+        "family": "inet",
+        "name": "lease_4ae1e806d6ed47918137cff6871dbd4e",
+        "table": "tunnex_ipsec",
+        "type": "iface_index",
+        "handle": 3,
+        "flags": [
+          "timeout"
+        ],
+        "timeout": 60
+      }
+    },
+    {
+      "set": {
+        "family": "inet",
+        "name": "reply_lease_4ae1e806d6ed47918137cff6871dbd4e",
+        "table": "tunnex_ipsec",
+        "type": "iface_index",
+        "handle": 4,
+        "flags": [
+          "timeout"
+        ],
+        "timeout": 60
+      }
+    },
+    {
+      "set": {
+        "family": "inet",
+        "name": "sa_lease_81b4c7de74754b71947763eadf417fb4",
+        "table": "tunnex_ipsec",
+        "type": {
+          "typeof": {
+            "ipsec": {
+              "key": "reqid",
+              "dir": "out",
+              "spnum": 0
+            }
+          }
+        },
+        "handle": 5,
+        "flags": [
+          "timeout"
+        ],
+        "timeout": 60
+      }
+    },
+    {
+      "set": {
+        "family": "inet",
+        "name": "lease_81b4c7de74754b71947763eadf417fb4",
+        "table": "tunnex_ipsec",
+        "type": "iface_index",
+        "handle": 6,
+        "flags": [
+          "timeout"
+        ],
+        "timeout": 60
+      }
+    },
+    {
+      "set": {
+        "family": "inet",
+        "name": "reply_lease_81b4c7de74754b71947763eadf417fb4",
+        "table": "tunnex_ipsec",
+        "type": "iface_index",
+        "handle": 7,
+        "flags": [
+          "timeout"
+        ],
+        "timeout": 60
+      }
+    },
+    {
+      "set": {
+        "family": "inet",
+        "name": "sa_lease_b0a538fd3bbd45aeb26450207539281b",
+        "table": "tunnex_ipsec",
+        "type": {
+          "typeof": {
+            "ipsec": {
+              "key": "reqid",
+              "dir": "out",
+              "spnum": 0
+            }
+          }
+        },
+        "handle": 8,
+        "flags": [
+          "timeout"
+        ],
+        "timeout": 60
+      }
+    },
+    {
+      "set": {
+        "family": "inet",
+        "name": "lease_b0a538fd3bbd45aeb26450207539281b",
+        "table": "tunnex_ipsec",
+        "type": "iface_index",
+        "handle": 9,
+        "flags": [
+          "timeout"
+        ],
+        "timeout": 60
+      }
+    },
+    {
+      "set": {
+        "family": "inet",
+        "name": "reply_lease_b0a538fd3bbd45aeb26450207539281b",
+        "table": "tunnex_ipsec",
+        "type": "iface_index",
+        "handle": 10,
+        "flags": [
+          "timeout"
+        ],
+        "timeout": 60
+      }
+    },
+    {
+      "rule": {
+        "family": "inet",
+        "table": "tunnex_ipsec",
+        "chain": "forward_guard",
+        "handle": 183317,
+        "expr": [
+          {
+            "match": {
+              "op": "==",
+              "left": {
+                "payload": {
+                  "protocol": "ip",
+                  "field": "daddr"
+                }
+              },
+              "right": {
+                "prefix": {
+                  "addr": "10.30.0.0",
+                  "len": 24
+                }
+              }
+            }
+          },
+          {
+            "counter": {
+              "packets": 0,
+              "bytes": 0
+            }
+          },
+          {
+            "drop": null
+          }
+        ]
+      }
+    },
+    {
+      "rule": {
+        "family": "inet",
+        "table": "tunnex_ipsec",
+        "chain": "forward_guard",
+        "handle": 183318,
+        "expr": [
+          {
+            "match": {
+              "op": "==",
+              "left": {
+                "payload": {
+                  "protocol": "ip",
+                  "field": "saddr"
+                }
+              },
+              "right": {
+                "prefix": {
+                  "addr": "10.30.0.0",
+                  "len": 24
+                }
+              }
+            }
+          },
+          {
+            "counter": {
+              "packets": 0,
+              "bytes": 0
+            }
+          },
+          {
+            "drop": null
+          }
+        ]
+      }
+    },
+    {
+      "rule": {
+        "family": "inet",
+        "table": "tunnex_ipsec",
+        "chain": "forward_guard",
+        "handle": 183319,
+        "expr": [
+          {
+            "match": {
+              "op": "==",
+              "left": {
+                "payload": {
+                  "protocol": "ip",
+                  "field": "daddr"
+                }
+              },
+              "right": {
+                "prefix": {
+                  "addr": "10.31.0.0",
+                  "len": 24
+                }
+              }
+            }
+          },
+          {
+            "counter": {
+              "packets": 0,
+              "bytes": 0
+            }
+          },
+          {
+            "drop": null
+          }
+        ]
+      }
+    },
+    {
+      "rule": {
+        "family": "inet",
+        "table": "tunnex_ipsec",
+        "chain": "forward_guard",
+        "handle": 183320,
+        "expr": [
+          {
+            "match": {
+              "op": "==",
+              "left": {
+                "payload": {
+                  "protocol": "ip",
+                  "field": "saddr"
+                }
+              },
+              "right": {
+                "prefix": {
+                  "addr": "10.31.0.0",
+                  "len": 24
+                }
+              }
+            }
+          },
+          {
+            "counter": {
+              "packets": 0,
+              "bytes": 0
+            }
+          },
+          {
+            "drop": null
+          }
+        ]
+      }
+    },
+    {
+      "rule": {
+        "family": "inet",
+        "table": "tunnex_ipsec",
+        "chain": "output_guard",
+        "handle": 183361,
+        "expr": [
+          {
+            "match": {
+              "op": "==",
+              "left": {
+                "payload": {
+                  "protocol": "ip",
+                  "field": "daddr"
+                }
+              },
+              "right": {
+                "prefix": {
+                  "addr": "10.30.0.0",
+                  "len": 24
+                }
+              }
+            }
+          },
+          {
+            "counter": {
+              "packets": 0,
+              "bytes": 0
+            }
+          },
+          {
+            "drop": null
+          }
+        ]
+      }
+    },
+    {
+      "rule": {
+        "family": "inet",
+        "table": "tunnex_ipsec",
+        "chain": "output_guard",
+        "handle": 183362,
+        "expr": [
+          {
+            "match": {
+              "op": "==",
+              "left": {
+                "payload": {
+                  "protocol": "ip",
+                  "field": "saddr"
+                }
+              },
+              "right": {
+                "prefix": {
+                  "addr": "10.30.0.0",
+                  "len": 24
+                }
+              }
+            }
+          },
+          {
+            "counter": {
+              "packets": 0,
+              "bytes": 0
+            }
+          },
+          {
+            "drop": null
+          }
+        ]
+      }
+    },
+    {
+      "rule": {
+        "family": "inet",
+        "table": "tunnex_ipsec",
+        "chain": "output_guard",
+        "handle": 183363,
+        "expr": [
+          {
+            "match": {
+              "op": "==",
+              "left": {
+                "payload": {
+                  "protocol": "ip",
+                  "field": "daddr"
+                }
+              },
+              "right": {
+                "prefix": {
+                  "addr": "10.31.0.0",
+                  "len": 24
+                }
+              }
+            }
+          },
+          {
+            "counter": {
+              "packets": 0,
+              "bytes": 0
+            }
+          },
+          {
+            "drop": null
+          }
+        ]
+      }
+    },
+    {
+      "rule": {
+        "family": "inet",
+        "table": "tunnex_ipsec",
+        "chain": "output_guard",
+        "handle": 183364,
+        "expr": [
+          {
+            "match": {
+              "op": "==",
+              "left": {
+                "payload": {
+                  "protocol": "ip",
+                  "field": "saddr"
+                }
+              },
+              "right": {
+                "prefix": {
+                  "addr": "10.31.0.0",
+                  "len": 24
+                }
+              }
+            }
+          },
+          {
+            "counter": {
+              "packets": 0,
+              "bytes": 0
+            }
+          },
+          {
+            "drop": null
+          }
+        ]
+      }
+    },
+    {
+      "rule": {
+        "family": "inet",
+        "table": "tunnex_ipsec",
+        "chain": "input_guard",
+        "handle": 183403,
+        "expr": [
+          {
+            "match": {
+              "op": "==",
+              "left": {
+                "payload": {
+                  "protocol": "ip",
+                  "field": "saddr"
+                }
+              },
+              "right": {
+                "prefix": {
+                  "addr": "10.30.0.0",
+                  "len": 24
+                }
+              }
+            }
+          },
+          {
+            "counter": {
+              "packets": 0,
+              "bytes": 0
+            }
+          },
+          {
+            "drop": null
+          }
+        ]
+      }
+    },
+    {
+      "rule": {
+        "family": "inet",
+        "table": "tunnex_ipsec",
+        "chain": "input_guard",
+        "handle": 183404,
+        "expr": [
+          {
+            "match": {
+              "op": "==",
+              "left": {
+                "payload": {
+                  "protocol": "ip",
+                  "field": "saddr"
+                }
+              },
+              "right": {
+                "prefix": {
+                  "addr": "10.31.0.0",
+                  "len": 24
+                }
+              }
+            }
+          },
+          {
+            "counter": {
+              "packets": 0,
+              "bytes": 0
+            }
+          },
+          {
+            "drop": null
+          }
+        ]
+      }
+    },
+    {
+      "rule": {
+        "family": "inet",
+        "table": "tunnex_ipsec",
+        "chain": "postrouting_guard",
+        "handle": 183439,
+        "expr": [
+          {
+            "match": {
+              "op": "==",
+              "left": {
+                "payload": {
+                  "protocol": "ip",
+                  "field": "daddr"
+                }
+              },
+              "right": {
+                "prefix": {
+                  "addr": "10.30.0.0",
+                  "len": 24
+                }
+              }
+            }
+          },
+          {
+            "counter": {
+              "packets": 0,
+              "bytes": 0
+            }
+          },
+          {
+            "drop": null
+          }
+        ]
+      }
+    },
+    {
+      "rule": {
+        "family": "inet",
+        "table": "tunnex_ipsec",
+        "chain": "postrouting_guard",
+        "handle": 183440,
+        "expr": [
+          {
+            "match": {
+              "op": "==",
+              "left": {
+                "payload": {
+                  "protocol": "ip",
+                  "field": "daddr"
+                }
+              },
+              "right": {
+                "prefix": {
+                  "addr": "10.31.0.0",
+                  "len": 24
+                }
+              }
+            }
+          },
+          {
+            "counter": {
+              "packets": 0,
+              "bytes": 0
+            }
+          },
+          {
+            "drop": null
+          }
+        ]
+      }
+    }
+  ]
+}

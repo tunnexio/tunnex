@@ -2,12 +2,16 @@ package ipsec
 
 import (
 	"context"
+	"errors"
 	"net"
 	"net/netip"
 	"os"
 	"path/filepath"
+	"reflect"
 	"strconv"
 	"strings"
+	"syscall"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -16,7 +20,8 @@ import (
 // Mutation methods remain package-private until the refusal controller calls them.
 // A successful command never grants runtime capability or proves traffic delivery.
 type DaemonClient struct {
-	request func(context.Context, string, string, viciMessage) (viciMessage, []viciMessage, error)
+	independentInspect bool // Set only for immutable per-call owned transports.
+	request            func(context.Context, string, string, viciMessage) (viciMessage, []viciMessage, error)
 }
 
 func NewDaemonClient(socketPath string) (*DaemonClient, error) {
@@ -24,41 +29,112 @@ func NewDaemonClient(socketPath string) (*DaemonClient, error) {
 		return nil, ErrDaemonProtocol
 	}
 	transport := viciTransport{dial: func(ctx context.Context) (net.Conn, error) { return dialOwnedVICI(ctx, socketPath) }}
-	return &DaemonClient{request: transport.call}, nil
+	return (&DaemonClient{request: transport.call}).independentReadClient(), nil
 }
+
+// Only a Unix connect that returned EAGAIN before any command can wait for backlog capacity.
+// Every retry binds the original owned parent/socket inode and metadata; no protocol retry occurs.
 func dialOwnedVICI(ctx context.Context, path string) (net.Conn, error) {
-	if ctx == nil || !filepath.IsAbs(path) {
+	return dialOwnedVICIWith(ctx, path, (&net.Dialer{}).DialContext, waitOwnedVICI)
+}
+
+type viciOwnedIdentity struct {
+	info     os.FileInfo
+	uid, gid uint64
+}
+
+func ownedVICIIdentity(path string, socket bool) (viciOwnedIdentity, error) {
+	info, err := os.Lstat(path)
+	if err != nil || info.Mode()&os.ModeSymlink != 0 || info.Mode().Perm()&0077 != 0 || !ownedByCurrentUser(info) {
+		return viciOwnedIdentity{}, ErrDaemonProtocol
+	}
+	if socket {
+		if info.Mode()&os.ModeSocket == 0 {
+			return viciOwnedIdentity{}, ErrDaemonProtocol
+		}
+	} else if !info.IsDir() {
+		return viciOwnedIdentity{}, ErrDaemonProtocol
+	}
+	metadata := reflect.ValueOf(info.Sys())
+	if metadata.Kind() != reflect.Pointer || metadata.IsNil() {
+		return viciOwnedIdentity{}, ErrDaemonProtocol
+	}
+	metadata = metadata.Elem()
+	if metadata.Kind() != reflect.Struct {
+		return viciOwnedIdentity{}, ErrDaemonProtocol
+	}
+	uid, gid := metadata.FieldByName("Uid"), metadata.FieldByName("Gid")
+	if !uid.IsValid() || !gid.IsValid() || !uid.CanUint() || !gid.CanUint() {
+		return viciOwnedIdentity{}, ErrDaemonProtocol
+	}
+	return viciOwnedIdentity{info, uid.Uint(), gid.Uint()}, nil
+}
+func sameVICIIdentity(a, b viciOwnedIdentity) bool {
+	return os.SameFile(a.info, b.info) && a.info.Mode() == b.info.Mode() && a.uid == b.uid && a.gid == b.gid
+}
+func waitOwnedVICI(ctx context.Context) error {
+	timer := time.NewTimer(10 * time.Millisecond)
+	defer timer.Stop()
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-timer.C:
+		return nil
+	}
+}
+func dialOwnedVICIWith(ctx context.Context, path string, dial func(context.Context, string, string) (net.Conn, error), wait func(context.Context) error) (net.Conn, error) {
+	if ctx == nil || ctx.Err() != nil || !filepath.IsAbs(path) || filepath.Clean(path) != path || dial == nil || wait == nil {
 		return nil, ErrDaemonProtocol
 	}
 	parent := filepath.Dir(path)
-	resolved, err := filepath.EvalSymlinks(parent)
-	if err != nil || resolved != parent {
+	canonical := func() bool { resolved, err := filepath.EvalSymlinks(parent); return err == nil && resolved == parent }
+	if !canonical() {
 		return nil, ErrDaemonProtocol
 	}
-	for _, entry := range []struct {
-		path   string
-		socket bool
-	}{{parent, false}, {path, true}} {
-		info, err := os.Lstat(entry.path)
-		if err != nil || info.Mode()&os.ModeSymlink != 0 || info.Mode().Perm()&0077 != 0 {
-			return nil, ErrDaemonProtocol
-		}
-		if !ownedByCurrentUser(info) {
-			return nil, ErrDaemonProtocol
-		}
-		if entry.socket {
-			if info.Mode()&os.ModeSocket == 0 {
-				return nil, ErrDaemonProtocol
-			}
-		} else if !info.IsDir() {
-			return nil, ErrDaemonProtocol
-		}
-	}
-	conn, err := (&net.Dialer{}).DialContext(ctx, "unix", path)
+	originalParent, err := ownedVICIIdentity(parent, false)
 	if err != nil {
 		return nil, ErrDaemonProtocol
 	}
-	return conn, nil
+	originalSocket, err := ownedVICIIdentity(path, true)
+	if err != nil {
+		return nil, ErrDaemonProtocol
+	}
+	unchanged := func() bool {
+		if !canonical() {
+			return false
+		}
+		p, pe := ownedVICIIdentity(parent, false)
+		s, se := ownedVICIIdentity(path, true)
+		return pe == nil && se == nil && sameVICIIdentity(originalParent, p) && sameVICIIdentity(originalSocket, s)
+	}
+	for {
+		if ctx.Err() != nil || !unchanged() {
+			return nil, ErrDaemonProtocol
+		}
+		conn, err := dial(ctx, "unix", path)
+		if err == nil {
+			if conn == nil || ctx.Err() != nil || !unchanged() {
+				if conn != nil {
+					conn.Close()
+				}
+				return nil, ErrDaemonProtocol
+			}
+			return conn, nil
+		}
+		// net.Dialer closes its failed descriptor. Never reuse it or retry any written command.
+		if conn != nil {
+			conn.Close()
+		}
+		if !errors.Is(err, syscall.EAGAIN) {
+			return nil, ErrDaemonProtocol
+		}
+		if _, bounded := ctx.Deadline(); !bounded || ctx.Err() != nil || !unchanged() {
+			return nil, ErrDaemonProtocol
+		}
+		if wait(ctx) != nil {
+			return nil, ErrDaemonProtocol
+		}
+	}
 }
 
 type DaemonInventory struct {
@@ -74,6 +150,7 @@ type DaemonIKE struct {
 	Children                    []DaemonChild
 }
 type DaemonChild struct {
+	State                                 string
 	Name                                  string
 	UniqueID                              uint64
 	ReqID, IfIDIn, IfIDOut, SPIIn, SPIOut uint32
@@ -98,6 +175,9 @@ func (c *DaemonClient) Inspect(ctx context.Context) (DaemonInventory, error) {
 	release, ok := viciString(version, "version")
 	if !ok || release != "6.1.0" {
 		return invalid()
+	}
+	if c.independentInspect {
+		return c.inspectIndependentInventory(ctx, daemon, release)
 	}
 	stats, _, err := c.request(ctx, "stats", "", viciMessage{})
 	if err != nil {
@@ -333,13 +413,14 @@ func parseDaemonChild(m viciMessage) (DaemonChild, error) {
 	if !ok {
 		return invalid()
 	}
-	return DaemonChild{Name: name, UniqueID: id, ReqID: uint32(req), IfIDIn: in, IfIDOut: out, SPIIn: spiIn, SPIOut: spiOut, Installed: state == "INSTALLED", LocalPrefixes: local, RemotePrefixes: remote, BytesIn: bytesIn, BytesOut: bytesOut}, nil
+	return DaemonChild{Name: name, UniqueID: id, ReqID: uint32(req), IfIDIn: in, IfIDOut: out, SPIIn: spiIn, SPIOut: spiOut, Installed: state == "INSTALLED", State: state, LocalPrefixes: local, RemotePrefixes: remote, BytesIn: bytesIn, BytesOut: bytesOut}, nil
 }
 
 // EngineTunnel contains only explicit facts supplied by the owning controller.
 // LocalAddress is the actual local underlay address; LocalIdentity may be the
 // separately configured public NAT identity. Neither is inferred from a name.
 type EngineTunnel struct {
+	BGP                                                        bool `json:",omitempty"`
 	Binding                                                    Binding
 	TunnelID                                                   uuid.UUID
 	SecretRevision                                             int64
@@ -391,6 +472,15 @@ func validEngineTunnel(t EngineTunnel) bool {
 	}
 	return true
 }
+func engineTransportPrefixes(t EngineTunnel, local bool) []netip.Prefix {
+	if t.BGP {
+		return []netip.Prefix{netip.MustParsePrefix("0.0.0.0/0")}
+	}
+	if local {
+		return t.LocalPrefixes
+	}
+	return t.RemotePrefixes
+}
 func enginePrefixes(prefixes []netip.Prefix) viciValue {
 	values := make([]string, 0, len(prefixes))
 	for _, p := range prefixes {
@@ -430,7 +520,7 @@ func (c *DaemonClient) stageTunnel(ctx context.Context, t EngineTunnel, psk []by
 	if c.success(ctx, "load-shared", shared) != nil {
 		return ErrDaemonProtocol
 	}
-	child := viciMessage{"mode": viciText("tunnel"), "local_ts": enginePrefixes(t.LocalPrefixes), "remote_ts": enginePrefixes(t.RemotePrefixes), "esp_proposals": viciList("aes256-sha256-modp2048"), "start_action": viciText("none"), "dpd_action": viciText("clear"), "close_action": viciText("none"), "if_id_in": viciText(strconv.FormatUint(uint64(t.XFRMID), 10)), "if_id_out": viciText(strconv.FormatUint(uint64(t.XFRMID), 10)), "life_time": viciText("3600s"), "rekey_time": viciText("3000s")}
+	child := viciMessage{"mode": viciText("tunnel"), "local_ts": enginePrefixes(engineTransportPrefixes(t, true)), "remote_ts": enginePrefixes(engineTransportPrefixes(t, false)), "esp_proposals": viciList("aes256-sha256-modp2048"), "start_action": viciText("none"), "dpd_action": viciText("clear"), "close_action": viciText("none"), "if_id_in": viciText(strconv.FormatUint(uint64(t.XFRMID), 10)), "if_id_out": viciText(strconv.FormatUint(uint64(t.XFRMID), 10)), "life_time": viciText("3600s"), "rekey_time": viciText("3000s")}
 	if t.ReqID != 0 {
 		child["reqid"] = viciText(strconv.FormatUint(uint64(t.ReqID), 10))
 	}
@@ -477,7 +567,7 @@ func (c *DaemonClient) removeTunnel(ctx context.Context, t EngineTunnel) error {
 			return ErrDaemonProtocol
 		}
 		for _, child := range sa.Children {
-			if child.Name != name || child.IfIDIn != t.XFRMID || child.IfIDOut != t.XFRMID || (t.ReqID != 0 && child.ReqID != t.ReqID) || !sameEnginePrefixes(child.LocalPrefixes, t.LocalPrefixes) || !sameEnginePrefixes(child.RemotePrefixes, t.RemotePrefixes) {
+			if child.Name != name || child.IfIDIn != t.XFRMID || child.IfIDOut != t.XFRMID || (t.ReqID != 0 && child.ReqID != t.ReqID) || !sameEnginePrefixes(child.LocalPrefixes, engineTransportPrefixes(t, true)) || !sameEnginePrefixes(child.RemotePrefixes, engineTransportPrefixes(t, false)) {
 				return ErrDaemonProtocol
 			}
 		}

@@ -1303,6 +1303,7 @@ type FqdnGatewayDnsRequest struct {
 	ResolverEndpoints     []byte             `json:"resolver_endpoints"`
 	ResolverProfileID     pgtype.UUID        `json:"resolver_profile_id"`
 	ResolverMatchSuffix   *string            `json:"resolver_match_suffix"`
+	ResolverIpsecPath     []byte             `json:"resolver_ipsec_path"`
 }
 
 type FqdnResolverContextConfig struct {
@@ -1328,13 +1329,16 @@ type FqdnResolverContextEndpoint struct {
 }
 
 type FqdnResolverContextProfile struct {
-	ID            uuid.UUID `json:"id"`
-	ConfigID      uuid.UUID `json:"config_id"`
-	OrgID         uuid.UUID `json:"org_id"`
-	Ordinal       int16     `json:"ordinal"`
-	Name          string    `json:"name"`
-	ProviderHint  string    `json:"provider_hint"`
-	LegacyDefault bool      `json:"legacy_default"`
+	ID                         uuid.UUID   `json:"id"`
+	ConfigID                   uuid.UUID   `json:"config_id"`
+	OrgID                      uuid.UUID   `json:"org_id"`
+	Ordinal                    int16       `json:"ordinal"`
+	Name                       string      `json:"name"`
+	ProviderHint               string      `json:"provider_hint"`
+	LegacyDefault              bool        `json:"legacy_default"`
+	IpsecConnectionID          pgtype.UUID `json:"ipsec_connection_id"`
+	IpsecConfigurationRevision *int64      `json:"ipsec_configuration_revision"`
+	IpsecSourceAddress         *netip.Addr `json:"ipsec_source_address"`
 }
 
 type FqdnResolverContextProfileEndpoint struct {
@@ -1443,6 +1447,15 @@ type Invitation struct {
 	UpdatedAt       time.Time          `json:"updated_at"`
 }
 
+type IpsecAwsBgpConfig struct {
+	ConnectionID    uuid.UUID  `json:"connection_id"`
+	OrgID           uuid.UUID  `json:"org_id"`
+	LocalAsn        int64      `json:"local_asn"`
+	RemoteAsn       int64      `json:"remote_asn"`
+	RouterID        netip.Addr `json:"router_id"`
+	MaximumPrefixes int32      `json:"maximum_prefixes"`
+}
+
 type IpsecAwsLocalPrefix struct {
 	ConnectionID uuid.UUID    `json:"connection_id"`
 	OrgID        uuid.UUID    `json:"org_id"`
@@ -1476,6 +1489,18 @@ type IpsecAwsTunnelConfig struct {
 	InsideCidr         netip.Prefix `json:"inside_cidr"`
 	CustomerInsideIpv4 netip.Addr   `json:"customer_inside_ipv4"`
 	AwsInsideIpv4      netip.Addr   `json:"aws_inside_ipv4"`
+}
+
+type IpsecBgpStatus struct {
+	ConnectionID          uuid.UUID `json:"connection_id"`
+	OrgID                 uuid.UUID `json:"org_id"`
+	NodeID                uuid.UUID `json:"node_id"`
+	DeliveryID            uuid.UUID `json:"delivery_id"`
+	DesiredRevision       int64     `json:"desired_revision"`
+	ConfigurationRevision int64     `json:"configuration_revision"`
+	CertificateSerial     string    `json:"certificate_serial"`
+	ReceivedAt            time.Time `json:"received_at"`
+	Report                []byte    `json:"report"`
 }
 
 type IpsecConnection struct {

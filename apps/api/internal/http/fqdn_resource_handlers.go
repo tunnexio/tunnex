@@ -53,15 +53,27 @@ func toAPIFQDNResolverConfig(c fqdnresources.ResolverConfig) api.FQDNResolverCon
 		for j, endpoint := range profile.Endpoints {
 			profileEndpoints[j] = api.FQDNResolverEndpoint{Address: endpoint.Address, Port: endpoint.Port, Transport: api.FQDNResolverEndpointTransport(endpoint.Transport)}
 		}
-		profiles[i] = api.FQDNResolverProfile{Id: profile.ID, Name: profile.Name, ProviderHint: api.FQDNResolverProfileProviderHint(profile.ProviderHint), ZoneSuffixes: profile.ZoneSuffixes, Endpoints: profileEndpoints, LegacyDefault: profile.LegacyDefault}
+		profiles[i] = api.FQDNResolverProfile{Id: profile.ID, Name: profile.Name, ProviderHint: api.FQDNResolverProfileProviderHint(profile.ProviderHint), ZoneSuffixes: profile.ZoneSuffixes, Endpoints: profileEndpoints, LegacyDefault: profile.LegacyDefault, IpsecPath: toAPIFQDNIPsecPath(profile.IPsecPath)}
 	}
 	return api.FQDNResolverContextConfig{Id: c.ID, OrgId: c.OrgID, SiteId: c.SiteID, GatewayId: c.GatewayID, Version: c.Version, State: api.FQDNResolverContextConfigState(c.State), ProviderHint: (*api.FQDNResolverContextConfigProviderHint)(c.ProviderHint), Endpoints: endpoints, Profiles: profiles, CreatedAt: c.CreatedAt}
 }
 
+func toAPIFQDNIPsecPath(path *fqdnresources.ResolverIPsecPath) *api.FQDNResolverIPsecPath {
+	if path == nil {
+		return nil
+	}
+	return &api.FQDNResolverIPsecPath{ConnectionId: path.ConnectionID, ConfigurationRevision: path.ConfigurationRevision, SourceAddress: path.SourceAddress}
+}
+func fromAPIFQDNIPsecPath(path *api.FQDNResolverIPsecPath) *fqdnresources.ResolverIPsecPath {
+	if path == nil {
+		return nil
+	}
+	return &fqdnresources.ResolverIPsecPath{ConnectionID: path.ConnectionId, ConfigurationRevision: path.ConfigurationRevision, SourceAddress: path.SourceAddress}
+}
 func fqdnResolverProfiles(in []api.FQDNResolverProfileRequest) []fqdnresources.ResolverProfile {
 	out := make([]fqdnresources.ResolverProfile, len(in))
 	for i, profile := range in {
-		out[i] = fqdnresources.ResolverProfile{Name: profile.Name, ProviderHint: string(profile.ProviderHint), ZoneSuffixes: append([]string(nil), profile.ZoneSuffixes...), Endpoints: fqdnResolverEndpoints(profile.Endpoints)}
+		out[i] = fqdnresources.ResolverProfile{Name: profile.Name, ProviderHint: string(profile.ProviderHint), ZoneSuffixes: append([]string(nil), profile.ZoneSuffixes...), Endpoints: fqdnResolverEndpoints(profile.Endpoints), IPsecPath: fromAPIFQDNIPsecPath(profile.IpsecPath)}
 	}
 	return out
 }

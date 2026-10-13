@@ -4,6 +4,8 @@ import (
 	"context"
 	"github.com/google/uuid"
 	"github.com/tunnexio/tunnex/apps/api/db/sqlc"
+	"github.com/tunnexio/tunnex/apps/api/internal/policyspec"
+	"time"
 )
 
 // RuntimePrincipal must be derived from the authenticated agent certificate.
@@ -15,6 +17,11 @@ type RuntimePrincipal struct {
 type RuntimePolicyInput struct {
 	OrgID, NodeID, SiteID, ConnectionID uuid.UUID
 	Config                              StaticConfig
+	// These inputs are supplied only by the locked runtime transaction. They are
+	// not agent material or API request authority.
+	ConfigurationRevision int64     `json:"-"`
+	FQDNPolicyVersion     int       `json:"-"`
+	Transaction           sqlc.DBTX `json:"-"`
 }
 type RuntimeGrant struct {
 	Source      string `json:"source"`
@@ -24,9 +31,43 @@ type RuntimeGrant struct {
 	PortHigh    uint16 `json:"port_high"`
 	RuleID      string `json:"rule_id"`
 }
+
+// RuntimeFQDNGrant preserves answer provenance independently of ordinary grants.
+// A capability-1 receiver must retain this ownership when rendering and withdrawing.
+type RuntimeFQDNGrant struct {
+	RuntimeGrant
+	FQDNManaged           bool   `json:"fqdn_managed"`
+	ResourceID            string `json:"resource_id"`
+	Name                  string `json:"name"`
+	Generation            string `json:"generation"`
+	ResolverConfigID      string `json:"resolver_config_id"`
+	ResolverConfigVersion int64  `json:"resolver_config_version"`
+	SelectedSiteID        string `json:"selected_site_id"`
+	SelectedGatewayID     string `json:"selected_gateway_id"`
+	ResolverProfileID     string `json:"resolver_profile_id"`
+	ResolverMatchSuffix   string `json:"resolver_match_suffix"`
+	ConnectionID          string `json:"connection_id"`
+	ConfigurationRevision int64  `json:"configuration_revision"`
+}
+
+type RuntimeDNSResolverGrant struct {
+	ContextConfigID       string `json:"context_config_id"`
+	ContextConfigVersion  int64  `json:"context_config_version"`
+	ProfileID             string `json:"profile_id"`
+	ConnectionID          string `json:"connection_id"`
+	ConfigurationRevision int64  `json:"configuration_revision"`
+	SourceAddress         string `json:"source_address"`
+	ResolverAddress       string `json:"resolver_address"`
+}
 type RuntimePolicy struct {
-	Hash   string         `json:"hash"`
-	Grants []RuntimeGrant `json:"grants"`
+	// Selected answer expiry is server-only authority, excluded from wire/hash.
+	FQDNValidUntil      time.Time                       `json:"-"`
+	FQDNPolicyVersion   int                             `json:"fqdn_policy_version,omitempty"`
+	FQDNGrants          []RuntimeFQDNGrant              `json:"fqdn_grants,omitempty"`
+	DNSResolverGrants   []RuntimeDNSResolverGrant       `json:"dns_resolver_grants,omitempty"`
+	DNSResolverProfiles []policyspec.DNSResolverProfile `json:"dns_resolver_profiles,omitempty"`
+	Hash                string                          `json:"hash"`
+	Grants              []RuntimeGrant                  `json:"grants"`
 }
 type RuntimePolicyCompiler func(context.Context, *sqlc.Queries, RuntimePolicyInput) (RuntimePolicy, error)
 
@@ -62,8 +103,21 @@ type RuntimeManifest struct {
 	RemotePrefixes         []string         `json:"remote_prefixes"`
 	Tunnels                [2]RuntimeTunnel `json:"tunnels"`
 	// RecoveryVersion is explicit delivery authorization; nil preserves the legacy digest.
-	RecoveryVersion *int `json:"recovery_version,omitempty"`
+	RecoveryVersion           *int                              `json:"recovery_version,omitempty"`
+	BGP                       *BGPConfig                        `json:"bgp,omitempty"`
+	BGPVersion                *int                              `json:"bgp_version,omitempty"`
+	RetainedGuardPredecessors []RuntimeRetainedGuardPredecessor `json:"retained_guard_predecessors,omitempty"`
 }
+
+// RuntimeRetainedGuardPredecessor names one immutable, finalized cleanup lineage.
+// Its ownership digest belongs to the predecessor apply delivery.
+type RuntimeRetainedGuardPredecessor struct {
+	ConnectionID      uuid.UUID `json:"connection_id"`
+	DeliveryID        uuid.UUID `json:"delivery_id"`
+	CleanupDeliveryID uuid.UUID `json:"cleanup_delivery_id"`
+	OwnershipDigest   string    `json:"ownership_digest"`
+}
+
 type RuntimeDelivery struct {
 	ID                     uuid.UUID       `json:"delivery_id"`
 	DesiredRevision        int64           `json:"desired_revision"`

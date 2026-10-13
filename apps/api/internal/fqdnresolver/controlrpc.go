@@ -37,6 +37,7 @@ var (
 // RecordTypes deliberately request both independently usable address families
 // and CNAME chain data in one atomic selected-resolver observation.
 type GatewayDNSRequest struct {
+	ResolverIPsecPath     *ResolverIPsecPath `json:"resolver_ipsec_path,omitempty"`
 	Version               uint16             `json:"version"`
 	RequestID             uuid.UUID          `json:"request_id"`
 	OrgID                 uuid.UUID          `json:"org_id"`
@@ -57,6 +58,7 @@ type GatewayDNSRequest struct {
 // by the selected gateway and verified against the request deadline and the
 // broker's current clock; a delayed response is never published.
 type GatewayDNSResponse struct {
+	ResolverIPsecPath     *ResolverIPsecPath     `json:"resolver_ipsec_path,omitempty"`
 	Version               uint16                 `json:"version"`
 	RequestID             uuid.UUID              `json:"request_id"`
 	OrgID                 uuid.UUID              `json:"org_id"`
@@ -164,6 +166,7 @@ func (t *GatewayDNSRPCTransport) LookupWork(ctx context.Context, w Work) ([]Resp
 		OrgID: w.OrgID, ResourceID: w.ResourceID, SiteID: site, GatewayID: gateway,
 		ResolverConfigVersion: w.ResolverConfig.Version,
 		ResolverMatchSuffix:   w.ResolverConfig.MatchedSuffix,
+		ResolverIPsecPath:     w.ResolverConfig.IPsecPath,
 		ResolverEndpoints:     append([]ResolverEndpoint(nil), w.ResolverConfig.Endpoints...),
 		Hostname:              dnsName(w.Hostname), RecordTypes: []RecordType{TypeA, TypeAAAA, TypeCNAME}, Deadline: deadline,
 	}
@@ -189,7 +192,14 @@ func (t *GatewayDNSRPCTransport) LookupWork(ctx context.Context, w Work) ([]Resp
 		_ = t.mailbox.Expire(context.Background(), req.RequestID, t.now())
 		return nil, err
 	}
-	records, err := validateGatewayDNSResponse(req, response, now, t.maxAge)
+	completedAt := t.now()
+	if requestCtx.Err() != nil {
+		return nil, requestCtx.Err()
+	}
+	if !completedAt.Before(req.Deadline) {
+		return nil, context.DeadlineExceeded
+	}
+	records, err := validateGatewayDNSResponse(req, response, completedAt, t.maxAge)
 	if err != nil {
 		return nil, err
 	}
@@ -197,7 +207,7 @@ func (t *GatewayDNSRPCTransport) LookupWork(ctx context.Context, w Work) ([]Resp
 }
 
 func validGatewayDNSResolverConfig(req GatewayDNSRequest) bool {
-	return req.ResolverConfigID != uuid.Nil && req.ResolverProfileID != uuid.Nil && req.ResolverConfigVersion > 0 && ResolverConfig{ID: req.ResolverConfigID.String(), Version: req.ResolverConfigVersion, ProfileID: req.ResolverProfileID.String(), MatchedSuffix: req.ResolverMatchSuffix, Endpoints: req.ResolverEndpoints}.valid()
+	return req.ResolverConfigID != uuid.Nil && req.ResolverProfileID != uuid.Nil && req.ResolverConfigVersion > 0 && ResolverConfig{ID: req.ResolverConfigID.String(), Version: req.ResolverConfigVersion, ProfileID: req.ResolverProfileID.String(), MatchedSuffix: req.ResolverMatchSuffix, Endpoints: req.ResolverEndpoints, IPsecPath: req.ResolverIPsecPath}.valid()
 }
 
 func validateGatewayDNSResponse(req GatewayDNSRequest, response GatewayDNSResponse, now time.Time, maxAge time.Duration) ([]Record, error) {
@@ -207,7 +217,7 @@ func validateGatewayDNSResponse(req GatewayDNSRequest, response GatewayDNSRespon
 	if response.RequestID != req.RequestID {
 		return nil, fmt.Errorf("%w: request id", ErrGatewayDNSRPCReplay)
 	}
-	if response.OrgID != req.OrgID || response.ResourceID != req.ResourceID || response.SiteID != req.SiteID || response.GatewayID != req.GatewayID || response.ResolverConfigID != req.ResolverConfigID || response.ResolverConfigVersion != req.ResolverConfigVersion || response.ResolverProfileID != req.ResolverProfileID || dnsName(response.ResolverMatchSuffix) != dnsName(req.ResolverMatchSuffix) || dnsName(response.Hostname) != req.Hostname {
+	if !sameIPsecPath(response.ResolverIPsecPath, req.ResolverIPsecPath) || response.OrgID != req.OrgID || response.ResourceID != req.ResourceID || response.SiteID != req.SiteID || response.GatewayID != req.GatewayID || response.ResolverConfigID != req.ResolverConfigID || response.ResolverConfigVersion != req.ResolverConfigVersion || response.ResolverProfileID != req.ResolverProfileID || dnsName(response.ResolverMatchSuffix) != dnsName(req.ResolverMatchSuffix) || dnsName(response.Hostname) != req.Hostname {
 		return nil, ErrGatewayDNSRPCIdentity
 	}
 	if !sameRecordTypes(req.RecordTypes, response.RecordTypes) {

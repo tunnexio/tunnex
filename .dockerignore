@@ -20,3 +20,5 @@
 tests/app-access-local/.runtime
 # Beam bootstrap passwords, TLS keys and authority credentials are local-only.
 tests/beam-local/.runtime
+
+tests/ipsec-bgp-local/.runtime

@@ -28,11 +28,13 @@ type runtimeState struct {
 	cleanup                     *uuid.UUID
 }
 type runtimeLocked struct {
-	connection       Connection
-	state            runtimeState
-	enabled          bool
-	eligible         bool
-	recoveryEligible bool
+	connection            Connection
+	state                 runtimeState
+	enabled               bool
+	eligible              bool
+	recoveryEligible      bool
+	bgpEligible           bool
+	retainedGuardEligible bool
 }
 
 func runtimeRevision(p *int64) int64 {
@@ -108,6 +110,8 @@ func (s *ConnectionStore) runtimeLock(ctx context.Context, org, id uuid.UUID, pr
 	out.eligible = gatewayEligibilityReason(status, serial, revoked, reported, caps, now) == "eligible"
 	var capability map[string]json.RawMessage
 	out.recoveryEligible = out.eligible && json.Unmarshal(caps, &capability) == nil && string(capability["ipsec_recovery_version"]) == "1"
+	out.bgpEligible = out.eligible && string(capability["ipsec_bgp_version"]) == "1"
+	out.retainedGuardEligible = out.eligible && retainedGuardCapability(caps)
 	out.connection, e = scanConnection(tx.QueryRow(ctx, `SELECT `+connectionColumns+` FROM ipsec_connections c WHERE c.org_id=$1 AND c.id=$2 FOR UPDATE`, org, id))
 	if e != nil {
 		return fail(createError(e))
@@ -119,7 +123,26 @@ func (s *ConnectionStore) runtimeLock(ctx context.Context, org, id uuid.UUID, pr
 	return tx, out, nil
 }
 func runtimeConfig(ctx context.Context, tx pgx.Tx, c Connection) (StaticConfig, [2]RuntimeTunnel, error) {
+	var profile string
+	if err := tx.QueryRow(ctx, `SELECT COALESCE(provider_profile,'') FROM ipsec_connections WHERE id=$1 AND org_id=$2`, c.ID, c.OrgID).Scan(&profile); err != nil {
+		return StaticConfig{}, [2]RuntimeTunnel{}, ErrConnectionUnavailable
+	}
 	cfg := StaticConfig{Mode: "ipv4-static", LocalPrefixes: []string{}, RemotePrefixes: []string{}, Tunnels: []StaticTunnel{}}
+	if profile == "aws-bgp-ipv4-v1" {
+		var eligible bool
+		if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM nodes WHERE id=$1 AND org_id=$2 AND site_id=$3 AND status='active' AND revoked_at IS NULL AND cert_serial<>'' AND capabilities->'ipsec_config_version'='1'::jsonb AND capabilities->'ipsec_bgp_version'='1'::jsonb AND policy_reported_at BETWEEN clock_timestamp()-interval '90 seconds' AND clock_timestamp())`, c.HistoricalGatewayNodeID, c.OrgID, c.HistoricalSiteID).Scan(&eligible); err != nil {
+			return cfg, [2]RuntimeTunnel{}, ErrConnectionUnavailable
+		}
+		if !eligible {
+			return cfg, [2]RuntimeTunnel{}, ErrConnectionIneligible
+		}
+		cfg.Mode = "ipv4-bgp"
+		cfg.BGP = &BGPConfig{}
+		b := cfg.BGP
+		if err := tx.QueryRow(ctx, `SELECT local_asn,remote_asn,host(router_id),maximum_prefixes FROM ipsec_aws_bgp_configs WHERE connection_id=$1 AND org_id=$2`, c.ID, c.OrgID).Scan(&b.LocalASN, &b.RemoteASN, &b.RouterID, &b.MaximumPrefixes); err != nil {
+			return cfg, [2]RuntimeTunnel{}, ErrConnectionUnavailable
+		}
+	}
 	var tunnels [2]RuntimeTunnel
 	e := tx.QueryRow(ctx, `SELECT host(customer_outside_ipv4) FROM ipsec_aws_static_configs WHERE connection_id=$1 AND org_id=$2`, c.ID, c.OrgID).Scan(&cfg.CustomerOutsideAddress)
 	if errors.Is(e, pgx.ErrNoRows) {
@@ -175,7 +198,7 @@ func runtimeConfig(ctx context.Context, tx pgx.Tx, c Connection) (StaticConfig, 
 		t.RouteTable = 254
 		t.RouteProtocol = 242
 		t.RouteMetric = uint32(50000 + t.Slot)
-		t.Selected = t.Slot == 1
+		t.Selected = cfg.BGP == nil && t.Slot == 1
 		cfg.Tunnels = append(cfg.Tunnels, StaticTunnel{OutsideAddress: t.OutsideAddress, InsideCIDR: t.InsideCIDR, CustomerInsideAddress: t.CustomerInsideAddress, CloudInsideAddress: t.CloudInsideAddress})
 		n++
 	}
@@ -188,11 +211,23 @@ func (s *ConnectionStore) compileRuntime(ctx context.Context, tx pgx.Tx, c Conne
 	if s.runtimePolicy == nil {
 		return RuntimePolicy{}, ErrConnectionIneligible
 	}
-	policy, e := s.runtimePolicy(ctx, sqlc.New(tx), RuntimePolicyInput{OrgID: c.OrgID, NodeID: c.HistoricalGatewayNodeID, SiteID: c.HistoricalSiteID, ConnectionID: c.ID, Config: cfg})
+	var fqdnSupported bool
+	if e := tx.QueryRow(ctx, `SELECT coalesce(status='active' AND revoked_at IS NULL AND cert_serial<>'' AND capabilities->'ipsec_config_version'='1'::jsonb AND capabilities->'ipsec_fqdn_policy_version'='1'::jsonb AND policy_reported_at BETWEEN clock_timestamp()-interval '90 seconds' AND clock_timestamp(),false) FROM nodes WHERE id=$1 AND org_id=$2 AND site_id=$3`, c.HistoricalGatewayNodeID, c.OrgID, c.HistoricalSiteID).Scan(&fqdnSupported); e != nil {
+		return RuntimePolicy{}, ErrConnectionUnavailable
+	}
+	fqdnVersion := 0
+	if fqdnSupported {
+		fqdnVersion = 1
+	}
+	input := RuntimePolicyInput{OrgID: c.OrgID, NodeID: c.HistoricalGatewayNodeID, SiteID: c.HistoricalSiteID, ConnectionID: c.ID, Config: cfg, ConfigurationRevision: 1, FQDNPolicyVersion: fqdnVersion, Transaction: tx}
+	policy, e := s.runtimePolicy(ctx, sqlc.New(tx), input)
 	if e != nil {
 		return RuntimePolicy{}, ErrConnectionUnavailable
 	}
-	if !runtimeDigest(policy.Hash) || len(policy.Grants) > 128 {
+	if !runtimeDigest(policy.Hash) || len(policy.Grants)+len(policy.FQDNGrants)+2*len(policy.DNSResolverGrants) > 128 {
+		return RuntimePolicy{}, ErrConnectionUnavailable
+	}
+	if !validRuntimeFQDNPolicy(policy, input) {
 		return RuntimePolicy{}, ErrConnectionUnavailable
 	}
 	for _, g := range policy.Grants {
@@ -205,6 +240,25 @@ func (s *ConnectionStore) compileRuntime(ctx context.Context, tx pgx.Tx, c Conne
 			return RuntimePolicy{}, ErrConnectionUnavailable
 		}
 		if g.Protocol != "any" && g.Protocol != "tcp" && g.Protocol != "udp" || g.PortLow > g.PortHigh || (g.Protocol == "any" && (g.PortLow != 0 || g.PortHigh != 0)) {
+			return RuntimePolicy{}, ErrConnectionUnavailable
+		}
+	}
+	for _, grant := range policy.DNSResolverGrants {
+		source, e := netip.ParseAddr(grant.SourceAddress)
+		if e != nil || !source.Is4() {
+			return RuntimePolicy{}, ErrConnectionUnavailable
+		}
+		resolver, e := netip.ParseAddr(grant.ResolverAddress)
+		if e != nil || !resolver.Is4() {
+			return RuntimePolicy{}, ErrConnectionUnavailable
+		}
+		if grant.ConnectionID != c.ID.String() || grant.ConfigurationRevision != 1 || grant.ContextConfigVersion < 1 {
+			return RuntimePolicy{}, ErrConnectionUnavailable
+		}
+		if id, e := uuid.Parse(grant.ContextConfigID); e != nil || id == uuid.Nil {
+			return RuntimePolicy{}, ErrConnectionUnavailable
+		}
+		if id, e := uuid.Parse(grant.ProfileID); e != nil || id == uuid.Nil {
 			return RuntimePolicy{}, ErrConnectionUnavailable
 		}
 	}
@@ -221,7 +275,14 @@ func runtimeDigest(s string) bool {
 	return e == nil && s == strings.ToLower(s)
 }
 func runtimeManifest(c Connection, cfg StaticConfig, tunnels [2]RuntimeTunnel) RuntimeManifest {
-	return RuntimeManifest{OrgID: c.OrgID, NodeID: c.HistoricalGatewayNodeID, SiteID: c.HistoricalSiteID, ConnectionID: c.ID, DesiredRevision: c.DesiredRevision, ConfigurationRevision: 1, ProfileID: "aws-static-ipv4-v1", CustomerOutsideAddress: cfg.CustomerOutsideAddress, LocalPrefixes: cfg.LocalPrefixes, RemotePrefixes: cfg.RemotePrefixes, Tunnels: tunnels}
+	m := RuntimeManifest{OrgID: c.OrgID, NodeID: c.HistoricalGatewayNodeID, SiteID: c.HistoricalSiteID, ConnectionID: c.ID, DesiredRevision: c.DesiredRevision, ConfigurationRevision: 1, ProfileID: providerProfile(cfg), CustomerOutsideAddress: cfg.CustomerOutsideAddress, LocalPrefixes: cfg.LocalPrefixes, RemotePrefixes: cfg.RemotePrefixes, Tunnels: tunnels}
+	if cfg.BGP != nil {
+		v := 1
+		b := *cfg.BGP
+		m.BGP = &b
+		m.BGPVersion = &v
+	}
+	return m
 }
 func runtimeHash(v any) ([]byte, string) {
 	raw, _ := json.Marshal(v)
@@ -257,6 +318,11 @@ func (s *ConnectionStore) changeIntent(ctx context.Context, org, actor, id uuid.
 	if c.DesiredRevision != revision || c.DesiredIntent == "deleted" || c.DesiredIntent == intent {
 		return Connection{}, ErrConnectionConflict
 	}
+	// Preserve the first successful native cleanup identity until its exact ACK
+	// commits. Superseding it could strand a retained journal after ACK loss.
+	if intent == "deleted" && locked.state.cleanup != nil {
+		return Connection{}, ErrCleanupInProgress
+	}
 	if intent == "enabled" {
 		if !locked.enabled || !locked.eligible || locked.state.cleanup != nil {
 			return Connection{}, ErrConnectionIneligible
@@ -267,7 +333,14 @@ func (s *ConnectionStore) changeIntent(ctx context.Context, org, actor, id uuid.
 		}
 		next := c
 		next.DesiredRevision++
-		if e = runtimeCapacity(ctx, tx, next, runtimeManifest(next, cfg, tunnels)); e != nil {
+		manifest := runtimeManifest(next, cfg, tunnels)
+		if e = attachStaticRecreation(ctx, tx, &manifest); e != nil {
+			return Connection{}, e
+		}
+		if len(manifest.RetainedGuardPredecessors) > 0 && !locked.retainedGuardEligible {
+			return Connection{}, ErrConnectionIneligible
+		}
+		if e = runtimeCapacity(ctx, tx, next, manifest); e != nil {
 			return Connection{}, e
 		}
 		if _, e = s.compileRuntime(ctx, tx, c, cfg); e != nil {

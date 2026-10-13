@@ -68,7 +68,8 @@ func responseFor(request GatewayDNSRequest, now time.Time, records ...Record) Ga
 		OrgID: request.OrgID, ResourceID: request.ResourceID, SiteID: request.SiteID, GatewayID: request.GatewayID,
 		ResolverConfigID: request.ResolverConfigID, ResolverConfigVersion: request.ResolverConfigVersion,
 		ResolverProfileID: request.ResolverProfileID, ResolverMatchSuffix: request.ResolverMatchSuffix,
-		Hostname: request.Hostname, RecordTypes: append([]RecordType(nil), request.RecordTypes...),
+		ResolverIPsecPath: request.ResolverIPsecPath,
+		Hostname:          request.Hostname, RecordTypes: append([]RecordType(nil), request.RecordTypes...),
 		ObservedAt: now, Status: StatusNoError, Records: wired,
 	}
 }
@@ -250,5 +251,45 @@ func TestGatewayDNSRPCTransportKeepsFailoverGatewayScopeSeparate(t *testing.T) {
 	}
 	if got, want := seen, []uuid.UUID{uuid.MustParse(first.Context.GatewayID), uuid.MustParse(second.Context.GatewayID)}; len(got) != len(want) || got[0] != want[0] || got[1] != want[1] {
 		t.Fatalf("gateway failover scope leaked or substituted: got %v want %v", got, want)
+	}
+}
+
+func TestGatewayDNSRPCIPsecPathIsEchoedAndCannotBeSubstituted(t *testing.T) {
+	w := rpcWork()
+	w.ResolverConfig.Endpoints = w.ResolverConfig.Endpoints[:1]
+	w.ResolverConfig.IPsecPath = &ResolverIPsecPath{ConnectionID: uuid.NewString(), ConfigurationRevision: 3, SourceAddress: "10.10.0.5"}
+	for _, kind := range []string{"good", "missing", "connection", "revision", "source"} {
+		t.Run(kind, func(t *testing.T) {
+			var now time.Time
+			transport, now := newRPCTestTransport(t, func(_ context.Context, request GatewayDNSRequest) (GatewayDNSResponse, error) {
+				if !sameIPsecPath(request.ResolverIPsecPath, w.ResolverConfig.IPsecPath) {
+					t.Fatal("immutable path omitted from request")
+				}
+				r := responseFor(request, now, Record{Name: w.Hostname, Type: TypeA, Address: netip.MustParseAddr("10.20.30.40"), TTL: time.Minute})
+				if kind == "missing" {
+					r.ResolverIPsecPath = nil
+				} else {
+					path := *r.ResolverIPsecPath
+					r.ResolverIPsecPath = &path
+					switch kind {
+					case "connection":
+						path.ConnectionID = uuid.NewString()
+					case "revision":
+						path.ConfigurationRevision++
+					case "source":
+						path.SourceAddress = "10.10.0.6"
+					}
+				}
+				return r, nil
+			})
+			_, err := transport.LookupWork(context.Background(), w)
+			if kind == "good" {
+				if err != nil {
+					t.Fatal(err)
+				}
+			} else if !errors.Is(err, ErrGatewayDNSRPCIdentity) {
+				t.Fatalf("substituted path accepted: %v", err)
+			}
+		})
 	}
 }

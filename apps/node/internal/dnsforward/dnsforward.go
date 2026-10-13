@@ -19,6 +19,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/netip"
 	"sort"
 	"strings"
@@ -26,6 +27,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/tunnexio/tunnex/apps/node/internal/fqdnrpc"
 	"golang.org/x/net/dns/dnsmessage"
 )
 
@@ -163,11 +165,13 @@ type exchangeFn func(resolver netip.Addr, query []byte) ([]byte, error)
 
 // Forwarder holds the atomic table + a per-source rate limiter. Serve() (real UDP) is thin over handle().
 type Forwarder struct {
-	vpnHost  atomic.Pointer[vpnHostAnswer]
-	tbl      atomic.Pointer[table]
-	k8s      atomic.Pointer[k8sAnswers] // S10.3 A1: direct-answer set (FQDN → VIP + owned zones)
-	exchange exchangeFn
-	log      *slog.Logger
+	profiles  atomic.Pointer[resolverProfiles]
+	transport fqdnrpc.BoundTransport
+	vpnHost   atomic.Pointer[vpnHostAnswer]
+	tbl       atomic.Pointer[table]
+	k8s       atomic.Pointer[k8sAnswers] // S10.3 A1: direct-answer set (FQDN → VIP + owned zones)
+	exchange  exchangeFn
+	log       *slog.Logger
 
 	// F1 lifecycle seams (nil → real). Serve runs a BIND-RECONCILE loop that re-reads the wg interface's
 	// addresses every tick and reconciles its live listeners to match — so it binds when wg0 appears
@@ -175,6 +179,8 @@ type Forwarder struct {
 	// closes listeners when an address goes. bindSource/listen/bindInterval are injectable for the red.
 	bindSource   func(string) ([]netip.Addr, error) // nil → wgBindAddrs
 	listen       func(netip.Addr) (udpListener, error)
+	listenTCP    func(netip.Addr) (net.Listener, error)
+	tcpListeners map[netip.Addr]*dnsTCPBind
 	bindInterval time.Duration // 0 → 5s
 	listenerMu   sync.Mutex
 	listeners    map[netip.Addr]boundListener
@@ -197,8 +203,10 @@ func New(log *slog.Logger, exchange exchangeFn) *Forwarder {
 	f := &Forwarder{
 		exchange: exchange, log: log, buckets: map[netip.Addr]*bucket{},
 		listeners: map[netip.Addr]boundListener{}, ownedLive: map[netip.Addr]context.CancelFunc{},
+		tcpListeners: map[netip.Addr]*dnsTCPBind{},
 	}
 	f.tbl.Store(&table{})
+	f.profiles.Store(&resolverProfiles{})
 	f.k8s.Store(&k8sAnswers{})
 	return f
 }
@@ -249,6 +257,10 @@ func (f *Forwarder) AppliedK8sState() AppliedK8sState {
 // handle answers one query from src. Not-in-table -> REFUSED (scoped). In-table -> relay to the resolver;
 // resolver error -> SERVFAIL (fail-static, tunnel untouched). Over the rate limit -> dropped (nil, no reply).
 func (f *Forwarder) handle(query []byte, src netip.Addr) []byte {
+	return f.handleTransport(query, src, "udp")
+}
+
+func (f *Forwarder) handleTransport(query []byte, src netip.Addr, transport string) []byte {
 	if !f.allow(src) {
 		return nil // rate-limited: drop silently
 	}
@@ -274,6 +286,12 @@ func (f *Forwarder) handle(query []byte, src netip.Addr) []byte {
 	// K8s branch taken → fall through (fail-closed: a stale/empty map fabricates nothing).
 	if k8sResp, handled := f.answerK8s(hdr.ID, query, q); handled {
 		return k8sResp
+	}
+	// A declared private zone remains authoritative routing even when its
+	// connection is disabled or its lease has expired. Never fall through to a
+	// conflicting LAN rule, host DNS or public resolver on transport failure.
+	if privateResp, handled := f.answerResolverProfile(hdr.ID, query, q, src, transport); handled {
+		return privateResp
 	}
 	res, ok := f.tbl.Load().match(q.Name.String())
 	if !ok {

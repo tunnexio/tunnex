@@ -21,11 +21,15 @@ import (
 )
 
 type engineLabRequest struct {
-	Role         string
-	Phase        string
-	PSKs         [2]string
-	Forwarded    bool
-	LeaseSeconds int
+	BGPMED         bool
+	BGPAppGrant    bool
+	BGPRouteWriter bool
+	BGP            bool
+	Role           string
+	Phase          string
+	PSKs           [2]string
+	Forwarded      bool
+	LeaseSeconds   int
 }
 
 func engineLabTunnels(role string) [2]EngineTunnel {
@@ -205,6 +209,25 @@ func TestDaemonEncryptedLabPhase(t *testing.T) {
 		t.Fatal("trailing lab input")
 	}
 	configs := engineLabTunnels(request.Role)
+	if request.BGPMED {
+		for i := range configs {
+			if request.Role == "gateway" {
+				configs[i].RemotePrefixes = append(configs[i].RemotePrefixes, netip.MustParsePrefix("10.30.0.0/24"))
+			} else {
+				configs[i].LocalPrefixes = append(configs[i].LocalPrefixes, netip.MustParsePrefix("10.30.0.0/24"))
+			}
+		}
+	}
+	if request.BGPRouteWriter {
+		for i := range configs {
+			configs[i].XFRMID = KernelTunnelID(configs[i].TunnelID)
+		}
+	}
+	if request.BGP {
+		for i := range configs {
+			configs[i].BGP = true
+		}
+	}
 	client, err := NewDaemonClient("/run/tunnex-ipsec/charon.vici")
 	if err != nil {
 		t.Fatal(err)
@@ -224,6 +247,11 @@ func TestDaemonEncryptedLabPhase(t *testing.T) {
 				t.Fatal("initiate failed for tunnel", i+1)
 			}
 		}
+	case "bgp-control", "bgp-observe":
+		if !request.BGP {
+			t.Fatal("BGP transport optin required")
+		}
+		engineLabBGPTransport(t, client, configs, request.Role, request.Phase == "bgp-control", request.BGPAppGrant)
 	case "allow", "observe":
 		inventory, err := client.Inspect(context.Background())
 		if err != nil {
@@ -238,7 +266,7 @@ func TestDaemonEncryptedLabPhase(t *testing.T) {
 			for _, sa := range inventory.SAs {
 				if sa.Name == engineName(cfg) && sa.Established && len(sa.Children) == 1 {
 					child := sa.Children[0]
-					if child.Installed && child.IfIDIn == cfg.XFRMID && child.IfIDOut == cfg.XFRMID && len(child.LocalPrefixes) == 1 && child.LocalPrefixes[0] == cfg.LocalPrefixes[0] && len(child.RemotePrefixes) == 1 && child.RemotePrefixes[0] == cfg.RemotePrefixes[0] {
+					if child.Installed && child.IfIDIn == cfg.XFRMID && child.IfIDOut == cfg.XFRMID && len(child.LocalPrefixes) == 1 && child.LocalPrefixes[0] == engineTransportPrefixes(cfg, true)[0] && len(child.RemotePrefixes) == 1 && child.RemotePrefixes[0] == engineTransportPrefixes(cfg, false)[0] {
 						found = true
 						totalIn += child.BytesIn
 						totalOut += child.BytesOut
@@ -440,7 +468,7 @@ func engineLabKernelSA(t *testing.T, cfg EngineTunnel, child DaemonChild, invent
 			t.Fatal("kernel policy identity mismatch")
 		}
 		seen[policy.Direction] = true
-		local, remote := cfg.LocalPrefixes[0], cfg.RemotePrefixes[0]
+		local, remote := engineTransportPrefixes(cfg, true)[0], engineTransportPrefixes(cfg, false)[0]
 		src, dst := cfg.LocalAddress, cfg.RemoteAddress
 		spi := child.SPIOut
 		if policy.Direction != "out" {

@@ -5,7 +5,10 @@ package main
 import (
 	"context"
 	"github.com/tunnexio/tunnex/apps/node/internal/control"
+	"github.com/tunnexio/tunnex/apps/node/internal/ipsec"
 	"log/slog"
 )
 
-func startIPsecRuntime(context.Context, *control.Client, string, *slog.Logger) error { return nil }
+func startIPsecRuntime(context.Context, *control.Client, string, *slog.Logger, *ipsec.DNSRuntimeTransport, *ipsec.RuntimeFQDNPolicySource) error {
+	return nil
+}

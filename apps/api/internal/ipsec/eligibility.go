@@ -11,8 +11,9 @@ import (
 )
 
 type Eligibility struct {
-	Eligible bool   `json:"eligible"`
-	Reason   string `json:"reason"`
+	Eligible bool         `json:"eligible"`
+	Reason   string       `json:"reason"`
+	BGP      *Eligibility `json:"bgp,omitempty"`
 }
 
 // gatewayEligibilityReason is shared by advisory reads and locked creation.
@@ -28,6 +29,24 @@ func gatewayEligibilityReason(status, serial string, revoked, reported *time.Tim
 		return "report_stale"
 	}
 	return "eligible"
+}
+
+// gatewayBGPEligibilityReason describes reported capability, not rollout authority.
+func gatewayBGPEligibilityReason(status, serial string, revoked, reported *time.Time, capabilities []byte, clock time.Time) string {
+	reason := gatewayEligibilityReason(status, serial, revoked, reported, capabilities, clock)
+	if reason != "eligible" {
+		return reason
+	}
+	var caps map[string]json.RawMessage
+	if json.Unmarshal(capabilities, &caps) != nil || string(caps["ipsec_bgp_version"]) != "1" {
+		return "unsupported"
+	}
+	return "eligible"
+}
+
+// Advisory readiness follows actual reported capability; activation rechecks under locks.
+func advisoryEligibility(reason, bgpReason string) Eligibility {
+	return Eligibility{Eligible: reason == "eligible", Reason: reason, BGP: &Eligibility{Eligible: bgpReason == "eligible", Reason: bgpReason}}
 }
 
 // ReadEligibility never locks or writes. Creation must recheck under its locks.
@@ -52,7 +71,7 @@ func (s *ConnectionStore) ReadEligibility(ctx context.Context, org, site, gatewa
 	var enabled bool
 	err = tx.QueryRow(ctx, `SELECT enabled FROM ipsec_org_settings WHERE org_id=$1`, org).Scan(&enabled)
 	if errors.Is(err, pgx.ErrNoRows) || err == nil && !enabled {
-		return Eligibility{Reason: "opt_in_required"}, nil
+		return advisoryEligibility("opt_in_required", "opt_in_required"), nil
 	}
 	if err != nil {
 		return Eligibility{}, ErrConnectionUnavailable
@@ -62,7 +81,7 @@ func (s *ConnectionStore) ReadEligibility(ctx context.Context, org, site, gatewa
 	var caps []byte
 	err = tx.QueryRow(ctx, `SELECT n.status,n.cert_serial,n.revoked_at,n.policy_reported_at,n.capabilities FROM nodes n JOIN sites s ON s.id=n.site_id AND s.org_id=n.org_id WHERE n.org_id=$1 AND n.id=$2 AND n.site_id=$3`, org, gateway, site).Scan(&status, &serial, &revoked, &reported, &caps)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return Eligibility{Reason: "gateway_unavailable"}, nil
+		return advisoryEligibility("gateway_unavailable", "gateway_unavailable"), nil
 	}
 	if err != nil {
 		return Eligibility{}, ErrConnectionUnavailable
@@ -72,5 +91,5 @@ func (s *ConnectionStore) ReadEligibility(ctx context.Context, org, site, gatewa
 		return Eligibility{}, ErrConnectionUnavailable
 	}
 	reason := gatewayEligibilityReason(status, serial, revoked, reported, caps, clock)
-	return Eligibility{Eligible: reason == "eligible", Reason: reason}, nil
+	return advisoryEligibility(reason, gatewayBGPEligibilityReason(status, serial, revoked, reported, caps, clock)), nil
 }

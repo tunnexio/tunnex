@@ -1,0 +1,28 @@
+{
+  "package": "frr",
+  "version": "10.6.1-r0",
+  "upstream_version": "10.6.1",
+  "distribution": "Alpine v3.24",
+  "aports_commit": "23a7c9f1a27473a1a8a09ad3433d4a7a5b0fb62c",
+  "license": "GPL-2.0-or-later",
+  "upstream": "https://github.com/FRRouting/frr/tree/frr-10.6.1",
+  "package_source": "https://gitlab.alpinelinux.org/alpine/aports/-/tree/23a7c9f1a27473a1a8a09ad3433d4a7a5b0fb62c/community/frr",
+  "packages": {
+    "aarch64": {
+      "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/community/aarch64/frr-10.6.1-r0.apk",
+      "sha256": "70d3cf2ed8620a4e20830d160f0af2b93db40ffbc70f1cddf8e9e60ebaae5179"
+    },
+    "x86_64": {
+      "url": "https://dl-cdn.alpinelinux.org/alpine/v3.24/community/x86_64/frr-10.6.1-r0.apk",
+      "sha256": "804ee8cef7ab3b7e2f539121a9d1b78172c5dc8eca0cf92eeceb678ca162533a"
+    }
+  },
+  "runtime_contract": "No automatic startup or capability advertisement; node owns kernel routes; standalone versus managed zebra observation requires pinned-version runtime qualification",
+  "observer": {
+    "source_url": "https://github.com/FRRouting/frr/archive/frr-10.6.1.tar.gz",
+    "source_sha512": "c591055fc29c237f16f337835268515685872876e6f6abf82f91226543a22068c4e169904780a7ad08e383a31509b93a14fbfce26170186e64b9af3799e8f271",
+    "patch": "zebra-no-sys-admin.patch",
+    "patch_sha256": "4861c1425d878028bd36ea19bc5b1c6fa9b94d5da7e007ff356e34b359a87496",
+    "restriction": "remove initial SYS_ADMIN request; reject namespace VRF backend; no bfdd/staticd/watchfrr; source libfrr isolated to observer RPATH"
+  }
+}

@@ -70,8 +70,13 @@ func (r *recoveryDecision) observe(expected recoveryEpoch, now time.Duration, o 
 	if r.epoch != expected || r.current != o.Current {
 		*r = recoveryDecision{}
 	}
-	if r.seen && (o.At <= r.lastAt || o.At-r.lastAt > 10*time.Second || now-r.lastNow > 10*time.Second) {
+	if r.seen && o.At <= r.lastAt {
 		return reset()
+	}
+	if r.seen && (o.At-r.lastAt > 10*time.Second || now-r.lastNow > 10*time.Second) {
+		// Scheduling gaps discard accumulated failover evidence. The already
+		// validated current observation remains independently fresh.
+		*r = recoveryDecision{}
 	}
 	r.epoch, r.current, r.seen = expected, o.Current, true
 	r.lastAt, r.lastNow = o.At, now

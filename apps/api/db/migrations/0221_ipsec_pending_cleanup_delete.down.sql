@@ -1,0 +1,2 @@
+DROP TRIGGER ipsec_pending_cleanup_delete_guard ON ipsec_connections;
+DROP FUNCTION ipsec_pending_cleanup_delete_guard();

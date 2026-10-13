@@ -53,9 +53,9 @@ func TestRuntimeEnvironmentObservedUnderlayAndIngress(t *testing.T) {
 		switch command {
 		case "-j -d link show":
 			if duplicateIndex {
-				return []byte(`[{"ifindex":2,"ifname":"eth0","link_type":"ether","flags":["UP"]},{"ifindex":2,"ifname":"lan0","link_type":"ether","flags":["UP"]}]`), nil
+				return []byte(`[{"ifindex":2,"ifname":"eth0","link_type":"ether","mtu":1500,"flags":["UP"]},{"ifindex":2,"ifname":"lan0","link_type":"ether","mtu":1500,"flags":["UP"]}]`), nil
 			}
-			return []byte(`[{"ifindex":2,"ifname":"eth0","link_type":"ether","flags":["UP"]},{"ifindex":3,"ifname":"lan0","link_type":"ether","flags":["UP"]}]`), nil
+			return []byte(`[{"ifindex":2,"ifname":"eth0","link_type":"ether","mtu":1500,"flags":["UP"]},{"ifindex":3,"ifname":"lan0","link_type":"ether","mtu":1500,"flags":["UP"]}]`), nil
 		case "-j -4 rule show":
 			if unknownRule {
 				return []byte(`[]`), nil
@@ -87,6 +87,28 @@ func TestRuntimeEnvironmentObservedUnderlayAndIngress(t *testing.T) {
 	if e != nil || len(out.LocalIngressIndices) != 1 || out.LocalIngressIndices[0] != 3 || out.Underlays[0].InterfaceIndex != 2 || out.Underlays[0].LocalAddress.String() != "172.18.0.2" {
 		t.Fatal("independent observation failed", e)
 	}
+	if out.Underlays[0].OuterMTU != 1500 || out.Underlays[1].OuterMTU != 1500 {
+		t.Fatal("physical MTU missing from proof")
+	}
+	baseIP := inspector.ip
+	for _, shape := range []string{`"metrics":[{"mtu":1300}]`, `"metrics":[{"mtu":"1300"}]`} {
+		inspector.ip = func(ctx context.Context, args ...string) ([]byte, error) {
+			raw, err := baseIP(ctx, args...)
+			if strings.HasPrefix(strings.Join(args, " "), "-j -4 route get ") {
+				raw = []byte(strings.Replace(string(raw), `"dev":"eth0"`, `"dev":"eth0",`+shape, 1))
+			}
+			return raw, err
+		}
+		got, err := inspector.Observe(context.Background(), entry.Allocation, entry.Engines)
+		if strings.Contains(shape, `"1300"`) {
+			if err == nil {
+				t.Fatal("malformed observed route MTU accepted")
+			}
+		} else if err != nil || got.Underlays[0].OuterMTU != 1300 {
+			t.Fatal("route MTU not included in independent proof", err)
+		}
+	}
+	inspector.ip = baseIP
 	for i := range entry.Engines {
 		entry.Engines[i].LocalPrefixes = append(entry.Engines[i].LocalPrefixes, netip.MustParsePrefix("172.18.0.0/16"))
 	}

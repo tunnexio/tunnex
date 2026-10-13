@@ -216,6 +216,9 @@ type PolicyStatus struct {
 	// selected-gateway DNS RPC version. Zero/missing means an older agent and is
 	// a compatibility refusal for FQDN enforcement, never a public-DNS fallback.
 	DNSResolveRPCVersion int
+	// DNSIPsecResolveVersion independently gates the source-bound private DNS
+	// path. Legacy RPC v2 agents must never receive this optional transport.
+	DNSIPsecResolveVersion int
 	// FlowLogState reports whether the NFLOG observer is active, explicitly
 	// disabled, failed to read its source, or failed to deliver. It is a closed
 	// catalogue on the wire so the server can distinguish an idle gateway from
@@ -238,18 +241,26 @@ type PolicyStatus struct {
 func (c *Client) ReportInfo(ctx context.Context, publicKey, endpoint string, egressNAT, egressIPv6 bool, ps PolicyStatus) error {
 	payload := map[string]any{
 		// Only the actual qualified controller may advertise this protocol.
-		"ipsec_config_version":   c.ipsecCapability(),
-		"ipsec_recovery_version": c.ipsecRecoveryCapability(),
-		"public_key":             publicKey, "endpoint": endpoint, "egress_nat": egressNAT, "egress_ipv6": egressIPv6,
+		"ipsec_config_version":         c.ipsecCapability(),
+		"ipsec_recovery_version":       c.ipsecRecoveryCapability(),
+		"ipsec_retained_guard_version": c.ipsecRetainedGuardCapability(),
+		"public_key":                   publicKey, "endpoint": endpoint, "egress_nat": egressNAT, "egress_ipv6": egressIPv6,
 		"policy_version": ps.Version, "policy_hash": ps.Hash, "policy_error": ps.Error,
 		"policy_failing_since": ps.FailingSince, "policy_refused_version": ps.RefusedVersion,
 		"site_link_stale": ps.SiteLinkStale, "site_subnet_unreachable": ps.SiteSubnetUnreachable,
 		"conntrack_flush_unavailable": ps.ConntrackFlushUnavailable, "k8s_endpoints_unavailable": ps.K8sEndpointsUnavailable, "max_policy_version": ps.MaxSupportedVersion,
-		"ovpn_health":             ps.OVPNHealth,
-		"dns_resolve_rpc_version": ps.DNSResolveRPCVersion,
-		"flow_log_state":          ps.FlowLogState.Bounded(),
-		"ai_vpn_http_ready":       ps.AIVPNHTTPReady,
-		"ai_vpn_http_address":     ps.AIVPNHTTPAddress,
+		"ovpn_health":               ps.OVPNHealth,
+		"dns_resolve_rpc_version":   ps.DNSResolveRPCVersion,
+		"dns_ipsec_resolve_version": ps.DNSIPsecResolveVersion,
+		"flow_log_state":            ps.FlowLogState.Bounded(),
+		"ai_vpn_http_ready":         ps.AIVPNHTTPReady,
+		"ai_vpn_http_address":       ps.AIVPNHTTPAddress,
+	}
+	if version := c.ipsecFQDNPolicyCapability(); version == 1 {
+		payload["ipsec_fqdn_policy_version"] = version
+	}
+	if version := c.ipsecBGPCapability(); version == 1 {
+		payload["ipsec_bgp_version"] = version
 	}
 	if !ps.FlowLogLastObservedAt.IsZero() {
 		payload["flow_log_last_observed_at"] = ps.FlowLogLastObservedAt.UTC().Format(time.RFC3339Nano)

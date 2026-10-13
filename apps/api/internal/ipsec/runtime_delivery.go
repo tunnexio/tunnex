@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
@@ -36,19 +37,25 @@ func (s *ConnectionStore) Material(ctx context.Context, p RuntimePrincipal, id u
 		return invalid(e)
 	}
 	manifest := runtimeManifest(c, cfg, tunnels)
+	if e = attachStaticRecreation(ctx, tx, &manifest); e != nil {
+		return invalid(e)
+	}
+	if len(manifest.RetainedGuardPredecessors) > 0 && !locked.retainedGuardEligible {
+		return invalid(ErrConnectionIneligible)
+	}
 	delivery, _, e := scanDelivery(tx.QueryRow(ctx, `SELECT `+runtimeDeliveryColumns+` FROM ipsec_runtime_deliveries WHERE connection_id=$1 AND org_id=$2 AND desired_revision=$3 AND kind='apply'`, id, p.OrgID, revision))
 	fresh := errors.Is(e, pgx.ErrNoRows)
 	if !fresh && e != nil {
 		return invalid(createError(e))
 	}
-	if fresh && locked.recoveryEligible {
+	if fresh && manifest.BGP == nil && locked.recoveryEligible {
 		v := 1
 		manifest.RecoveryVersion = &v
 	}
 	if !fresh {
 		manifest.RecoveryVersion = delivery.Manifest.RecoveryVersion
 	}
-	if !runtimeRecoveryEligible(manifest, locked.recoveryEligible) {
+	if !runtimeRecoveryEligible(manifest, locked.recoveryEligible) || !runtimeBGPCompatible(manifest, locked.bgpEligible) {
 		return invalid(ErrConnectionIneligible)
 	}
 	raw, digest := runtimeHash(manifest)
@@ -105,6 +112,9 @@ func (s *ConnectionStore) Cleanup(ctx context.Context, p RuntimePrincipal, id uu
 	if e != nil {
 		return RuntimeCleanup{}, createError(e)
 	}
+	if len(d.Manifest.RetainedGuardPredecessors) > 0 && !locked.retainedGuardEligible {
+		return RuntimeCleanup{}, ErrConnectionIneligible
+	}
 	if e = tx.Commit(ctx); e != nil {
 		return RuntimeCleanup{}, createError(e)
 	}
@@ -143,6 +153,9 @@ func (s *ConnectionStore) Acknowledge(ctx context.Context, p RuntimePrincipal, i
 	}
 	if e != nil {
 		return createError(e)
+	}
+	if len(d.Manifest.RetainedGuardPredecessors) > 0 && !locked.retainedGuardEligible {
+		return ErrConnectionIneligible
 	}
 	if d.Kind != ack.Kind || d.DesiredRevision != ack.DesiredRevision || d.OwnershipDigest != ack.OwnershipDigest {
 		return ErrConnectionConflict
@@ -188,11 +201,19 @@ func (s *ConnectionStore) Pending(ctx context.Context, p RuntimePrincipal, after
 	if e != nil {
 		return RuntimePendingPage{}, ErrRuntimeUnauthorized
 	}
+	var retainedCap bool
+	if e = tx.QueryRow(ctx, `SELECT coalesce(capabilities->'ipsec_config_version'='1'::jsonb AND capabilities->'ipsec_retained_guard_version'='1'::jsonb AND policy_reported_at BETWEEN clock_timestamp()-interval '90 seconds' AND clock_timestamp(),false) FROM nodes WHERE id=$1`, p.NodeID).Scan(&retainedCap); e != nil {
+		return RuntimePendingPage{}, createError(e)
+	}
+	blocked, e := blockedStaticRecreations(ctx, tx, p.OrgID, retainedCap)
+	if e != nil {
+		return RuntimePendingPage{}, e
+	}
 	var optedIn bool
 	if e = tx.QueryRow(ctx, `SELECT coalesce((SELECT enabled FROM ipsec_org_settings WHERE org_id=$1),false)`, p.OrgID).Scan(&optedIn); e != nil {
 		return RuntimePendingPage{}, createError(e)
 	}
-	rows, e := tx.Query(ctx, `SELECT c.id,c.desired_revision,CASE WHEN r.current_cleanup_id IS NOT NULL THEN 'cleanup' ELSE 'apply' END FROM ipsec_connections c LEFT JOIN ipsec_runtime_state r ON r.connection_id=c.id WHERE c.org_id=$1 AND c.historical_gateway_node_id=$2 AND c.finalized_at IS NULL AND (c.desired_intent='enabled' OR r.current_cleanup_id IS NOT NULL) AND ($3::uuid IS NULL OR c.id>$3) ORDER BY c.id LIMIT $4`, p.OrgID, p.NodeID, after, limit+1)
+	rows, e := tx.Query(ctx, `SELECT c.id,c.desired_revision,CASE WHEN r.current_cleanup_id IS NOT NULL THEN 'cleanup' ELSE 'apply' END FROM ipsec_connections c LEFT JOIN ipsec_runtime_state r ON r.connection_id=c.id WHERE c.org_id=$1 AND c.historical_gateway_node_id=$2 AND c.finalized_at IS NULL AND (c.desired_intent='enabled' OR r.current_cleanup_id IS NOT NULL) AND ($3::uuid IS NULL OR c.id>$3) AND NOT(c.id=ANY($5::uuid[])) ORDER BY c.id LIMIT $4`, p.OrgID, p.NodeID, after, limit+1, blocked)
 	if e != nil {
 		return RuntimePendingPage{}, createError(e)
 	}
@@ -245,7 +266,7 @@ func (s *ConnectionStore) PermitLease(ctx context.Context, p RuntimePrincipal, i
 		return RuntimeLease{}, createError(e)
 	}
 	var manifest RuntimeManifest
-	if json.Unmarshal(manifestRaw, &manifest) != nil || !runtimeRecoveryEligible(manifest, locked.recoveryEligible) {
+	if json.Unmarshal(manifestRaw, &manifest) != nil || !runtimeRecoveryEligible(manifest, locked.recoveryEligible) || !runtimeBGPCompatible(manifest, locked.bgpEligible) || (len(manifest.RetainedGuardPredecessors) > 0 && !locked.retainedGuardEligible) {
 		return RuntimeLease{}, ErrConnectionIneligible
 	}
 	cfg, _, e := runtimeConfig(ctx, tx, c)
@@ -259,8 +280,42 @@ func (s *ConnectionStore) PermitLease(ctx context.Context, p RuntimePrincipal, i
 	if policy.Hash != r.PolicyHash {
 		return RuntimeLease{}, ErrConnectionConflict
 	}
+	// Re-observe database time after compilation; transaction-start now() could
+	// be stale after lock waits. Node measures TTL from request start, so response
+	// transit cannot extend this server bound.
+	var observedAt time.Time
+	if e = tx.QueryRow(ctx, `SELECT clock_timestamp()`).Scan(&observedAt); e != nil {
+		return RuntimeLease{}, createError(e)
+	}
+	observedMono := time.Now()
+	ttlMS, e := runtimePolicyLeaseTTL(policy, observedAt, 0)
+	if e != nil {
+		return RuntimeLease{}, e
+	}
 	if e = tx.Commit(ctx); e != nil {
 		return RuntimeLease{}, createError(e)
 	}
-	return RuntimeLease{RuntimeLeaseRequest: r, TTLMS: 60000}, nil
+	ttlMS, e = runtimePolicyLeaseTTL(policy, observedAt, time.Since(observedMono))
+	if e != nil {
+		return RuntimeLease{}, e
+	}
+	return RuntimeLease{RuntimeLeaseRequest: r, TTLMS: ttlMS}, nil
+}
+
+func runtimePolicyLeaseTTL(policy RuntimePolicy, observedAt time.Time, elapsed time.Duration) (int64, error) {
+	ttl := 60 * time.Second
+	if len(policy.FQDNGrants) != 0 {
+		if policy.FQDNValidUntil.IsZero() || observedAt.IsZero() || elapsed < 0 {
+			return 0, ErrConnectionIneligible
+		}
+		remaining := policy.FQDNValidUntil.Sub(observedAt) - elapsed
+		if remaining < ttl {
+			ttl = remaining
+		}
+	}
+	ms := ttl.Milliseconds()
+	if ms <= 0 {
+		return 0, ErrConnectionIneligible
+	}
+	return ms, nil
 }

@@ -15,6 +15,7 @@ import (
 var ErrRuntimeEnvironment = errors.New("IPsec local environment unavailable")
 
 type runtimeEnvironmentInspector struct {
+	nftPath   string
 	ip, nft   func(context.Context, ...string) ([]byte, error)
 	namespace func() (string, error)
 	drain     func(context.Context, []RuntimeJournalEntry) error
@@ -24,7 +25,7 @@ func NewRuntimeEnvironmentInspector(ipPath, nftPath string) (RuntimeEnvironmentI
 	if !filepath.IsAbs(ipPath) || !filepath.IsAbs(nftPath) {
 		return nil, ErrRuntimeEnvironment
 	}
-	return &runtimeEnvironmentInspector{ip: func(c context.Context, a ...string) ([]byte, error) { return runKernelCommand(c, ipPath, a...) }, nft: func(c context.Context, a ...string) ([]byte, error) { return runKernelCommand(c, nftPath, a...) }, namespace: func() (string, error) { return os.Readlink("/proc/self/ns/net") }, drain: runtimeDrainConntrack}, nil
+	return &runtimeEnvironmentInspector{nftPath: nftPath, ip: func(c context.Context, a ...string) ([]byte, error) { return runKernelCommand(c, ipPath, a...) }, nft: func(c context.Context, a ...string) ([]byte, error) { return runKernelCommand(c, nftPath, a...) }, namespace: func() (string, error) { return os.Readlink("/proc/self/ns/net") }, drain: runtimeDrainConntrack}, nil
 }
 func (r *runtimeEnvironmentInspector) Drain(ctx context.Context, entries []RuntimeJournalEntry) error {
 	if r == nil || r.drain == nil || len(entries) == 0 {
@@ -252,7 +253,7 @@ func (r *runtimeEnvironmentInspector) Observe(ctx context.Context, a KernelAlloc
 		return fail()
 	}
 	nft, e := r.nft(ctx, "-j", "list", "ruleset")
-	if e != nil || !runtimeHookCensus(nft, protected) {
+	if e != nil || !runtimeQualifiedHookCensus(ctx, r.nftPath, nft, protected) {
 		return fail()
 	}
 	rules, e := r.ip(ctx, "-j", "-4", "rule", "show")
@@ -268,6 +269,7 @@ func (r *runtimeEnvironmentInspector) Observe(ctx context.Context, a KernelAlloc
 		return fail()
 	}
 	physical := map[string]int{}
+	physicalMTU := map[string]uint32{}
 	indices := map[uint64]bool{}
 	for _, o := range objects {
 		name, _ := kernelString(o, "ifname")
@@ -289,6 +291,11 @@ func (r *runtimeEnvironmentInspector) Observe(ctx context.Context, a KernelAlloc
 				return fail()
 			}
 			physical[name] = int(idx)
+			mtu, valid := kernelNumber(o["mtu"], 32)
+			if !valid || mtu < 68 || mtu > 65535 {
+				return fail()
+			}
+			physicalMTU[name] = uint32(mtu)
 		}
 	}
 	routes, e := r.ip(ctx, "-j", "-4", "route", "show", "table", "main")
@@ -403,7 +410,11 @@ func (r *runtimeEnvironmentInspector) Observe(ctx context.Context, a KernelAlloc
 				return fail()
 			}
 		}
-		out.Underlays[i] = RuntimeUnderlay{InterfaceIndex: physical[dev], LocalAddress: address}
+		outerMTU, valid := runtimeOuterMTU(physicalMTU[dev], row)
+		if !valid {
+			return fail()
+		}
+		out.Underlays[i] = RuntimeUnderlay{InterfaceIndex: physical[dev], LocalAddress: address, OuterMTU: outerMTU}
 	}
 	// Re-read independent interface and policy inventories before returning facts.
 	again, e := r.ip(ctx, "-j", "-d", "link", "show")
@@ -415,7 +426,7 @@ func (r *runtimeEnvironmentInspector) Observe(ctx context.Context, a KernelAlloc
 		return fail()
 	}
 	again, e = r.nft(ctx, "-j", "list", "ruleset")
-	if e != nil || !runtimeHookCensus(again, protected) {
+	if e != nil || !runtimeQualifiedHookCensus(ctx, r.nftPath, again, protected) {
 		return fail()
 	}
 	again, e = r.ip(ctx, "-j", "-4", "route", "show", "table", "main")

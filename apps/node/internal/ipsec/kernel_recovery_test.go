@@ -11,6 +11,7 @@ import (
 )
 
 type recoveryKernelFixture struct {
+	mtu                [2]uint64
 	p                  KernelAllocation
 	owned              [2]Ownership
 	routes             [2]map[string]bool
@@ -23,7 +24,7 @@ type recoveryKernelFixture struct {
 }
 
 func newRecoveryKernelFixture() *recoveryKernelFixture {
-	f := &recoveryKernelFixture{p: kernelPlanFixture(), missing: -1, down: -1}
+	f := &recoveryKernelFixture{p: kernelPlanFixture(), missing: -1, down: -1, mtu: [2]uint64{1422, 1422}}
 	for i := range f.p.Tunnels {
 		f.p.Tunnels[i].RemotePrefixes = append(f.p.Tunnels[i].RemotePrefixes, netip.MustParsePrefix("10.30.0.0/16"))
 		t := f.p.Tunnels[i]
@@ -57,14 +58,14 @@ func (f *recoveryKernelFixture) run(_ context.Context, args ...string) ([]byte, 
 			if f.down == i {
 				flags = []string{}
 			}
-			out = append(out, map[string]any{"ifname": t.Name, "ifindex": 10 + i, "ifalias": t.Alias, "flags": flags, "linkinfo": map[string]any{"info_kind": "xfrm", "info_data": map[string]any{"if_id": fmt.Sprintf("0x%x", t.XFRMID)}}})
+			out = append(out, map[string]any{"mtu": f.mtu[i], "ifname": t.Name, "ifindex": f.owned[i].InterfaceIndex, "ifalias": t.Alias, "flags": flags, "linkinfo": map[string]any{"info_kind": "xfrm", "info_data": map[string]any{"if_id": fmt.Sprintf("0x%x", t.XFRMID)}}})
 		}
 	} else if strings.Contains(q, "addr show") {
 		for i, t := range f.p.Tunnels {
 			if i == f.missing || f.deleted[i] {
 				continue
 			}
-			out = append(out, map[string]any{"ifname": t.Name, "ifindex": 10 + i, "addr_info": []map[string]any{{"family": "inet", "local": t.InsideAddress.Addr().String(), "prefixlen": 30}}})
+			out = append(out, map[string]any{"ifname": t.Name, "ifindex": f.owned[i].InterfaceIndex, "addr_info": []map[string]any{{"family": "inet", "local": t.InsideAddress.Addr().String(), "prefixlen": 30}}})
 		}
 	} else if strings.Contains(q, "-4 route show") {
 		for i, t := range f.p.Tunnels {

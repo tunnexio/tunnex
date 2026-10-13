@@ -28,11 +28,14 @@ var ErrKernelApply = errors.New("IPsec owned kernel operation refused")
 // KernelAllocation is nonsecret journal data, persisted before the first mutation.
 // Names and IDs are proposals, never proof of ownership. Collisions refuse.
 type KernelAllocation struct {
+	BGP                      bool `json:",omitempty"`
 	Namespace                string
 	Generation, ConnectionID uuid.UUID
 	Tunnels                  [2]KernelTunnelAllocation
 }
+type KernelBGPTransport struct{ Peer netip.Addr }
 type KernelTunnelAllocation struct {
+	BGP            *KernelBGPTransport `json:",omitempty"`
 	TunnelID       uuid.UUID
 	Slot           uint8
 	Name, Alias    string
@@ -64,7 +67,7 @@ func validKernelAllocation(p KernelAllocation) bool {
 		return false
 	}
 	for i, t := range p.Tunnels {
-		if t.TunnelID == uuid.Nil || t.Slot != uint8(i+1) || t.Name != KernelTunnelName(t.TunnelID) || t.XFRMID != KernelTunnelID(t.TunnelID) || t.Alias != KernelTunnelAlias(p.Generation, t.TunnelID) || t.Selected != (i == 0) {
+		if t.TunnelID == uuid.Nil || t.Slot != uint8(i+1) || t.Name != KernelTunnelName(t.TunnelID) || t.XFRMID != KernelTunnelID(t.TunnelID) || t.Alias != KernelTunnelAlias(p.Generation, t.TunnelID) || t.Selected != (!p.BGP && i == 0) {
 			return false
 		}
 		if !t.InsideAddress.IsValid() || !t.InsideAddress.Addr().Is4() || t.InsideAddress.Bits() != 30 || !netip.MustParsePrefix("169.254.0.0/16").Contains(t.InsideAddress.Addr()) {
@@ -72,6 +75,17 @@ func validKernelAllocation(p KernelAllocation) bool {
 		}
 		b := t.InsideAddress.Addr().As4()
 		if b[3]&3 == 0 || b[3]&3 == 3 {
+			return false
+		}
+		if p.BGP {
+			if t.BGP == nil || !t.BGP.Peer.Is4() || !t.InsideAddress.Contains(t.BGP.Peer) || t.BGP.Peer == t.InsideAddress.Addr() {
+				return false
+			}
+			b := t.BGP.Peer.As4()
+			if b[3]&3 == 0 || b[3]&3 == 3 {
+				return false
+			}
+		} else if t.BGP != nil {
 			return false
 		}
 		if len(t.RemotePrefixes) == 0 || len(t.RemotePrefixes) > 128 {
@@ -136,6 +150,12 @@ func (a *KernelApplier) snapshot(ctx context.Context, p KernelAllocation) (owned
 	return a.snapshotSelection(ctx, p, false)
 }
 func (a *KernelApplier) snapshotSelection(ctx context.Context, p KernelAllocation, recovery bool) (ownedKernelSnapshot, error) {
+	return a.snapshotSelectionRoutes(ctx, p, recovery, nil)
+}
+func (a *KernelApplier) snapshotBGPRoutes(ctx context.Context, p KernelAllocation, routes []RuntimeBGPRouteTuple) (ownedKernelSnapshot, error) {
+	return a.snapshotSelectionRoutes(ctx, p, true, routes)
+}
+func (a *KernelApplier) snapshotSelectionRoutes(ctx context.Context, p KernelAllocation, recovery bool, bgpRoutes []RuntimeBGPRouteTuple) (ownedKernelSnapshot, error) {
 	out := ownedKernelSnapshot{}
 	fail := func() (ownedKernelSnapshot, error) { return ownedKernelSnapshot{}, ErrKernelApply }
 	if a.check(ctx, p) != nil {
@@ -288,6 +308,13 @@ func (a *KernelApplier) snapshotSelection(ctx context.Context, p KernelAllocatio
 			}
 		}
 		if owned < 0 {
+			if p.BGP {
+				for _, t := range p.Tunnels {
+					if prefix.Contains(t.BGP.Peer) && prefix.Bits() == 32 {
+						return fail()
+					}
+				}
+			}
 			for _, remote := range p.Tunnels[0].RemotePrefixes {
 				if prefix.Overlaps(remote) && prefix.Bits() >= remote.Bits() {
 					return fail()
@@ -339,7 +366,7 @@ func (a *KernelApplier) snapshotSelection(ctx context.Context, p KernelAllocatio
 			}
 		}
 		metric, ok := kernelNumber(obj["metric"], 32)
-		if !ok || table != 254 || protocol != 242 || kind != 1 || metric != uint64(50000+int(t.Slot)) || (!t.Selected && !recovery) {
+		if !ok || table != 254 || protocol != 242 || kind != 1 || metric != uint64(50000+int(t.Slot)) || (!t.Selected && !recovery && !p.BGP) {
 			return fail()
 		}
 		scope, ok := kernelDecimal(obj, "scope", 8)
@@ -352,9 +379,14 @@ func (a *KernelApplier) snapshotSelection(ctx context.Context, p KernelAllocatio
 				return fail()
 			}
 		}
-		expected := false
+		expected := p.BGP && t.BGP != nil && prefix == netip.PrefixFrom(t.BGP.Peer, 32)
+		for _, r := range bgpRoutes {
+			if p.BGP && r.Slot == t.Slot && r.Prefix == prefix && r.InterfaceIndex == out.ownership[owned].InterfaceIndex && r.Table == uint32(table) && r.Protocol == uint32(protocol) && r.Metric == uint32(metric) {
+				expected = true
+			}
+		}
 		for _, r := range t.RemotePrefixes {
-			if r == prefix {
+			if !p.BGP && r == prefix {
 				expected = true
 			}
 		}
@@ -460,6 +492,12 @@ func (a *KernelApplier) Apply(ctx context.Context, p KernelAllocation, previous 
 				return fail()
 			}
 		}
+		if p.BGP {
+			peer := netip.PrefixFrom(t.BGP.Peer, 32)
+			if !s.routes[i][peer] && a.mutate(ctx, p, "-4", "route", "add", peer.String(), "dev", t.Name, "table", "254", "proto", "242", "metric", fmt.Sprint(50000+int(t.Slot))) != nil {
+				return fail()
+			}
+		}
 		for _, prefix := range t.RemotePrefixes {
 			if !t.Selected || s.routes[i][prefix] {
 				continue
@@ -474,7 +512,7 @@ func (a *KernelApplier) Apply(ctx context.Context, p KernelAllocation, previous 
 		return fail()
 	}
 	for i, t := range p.Tunnels {
-		if s.mtu[i] == 0 || s.mtu[i] > AWSIPv4TunnelMTU || !s.address[i] || !s.up[i] || s.ownership[i].InterfaceIndex == 0 || (t.Selected && len(s.routes[i]) != len(t.RemotePrefixes)) {
+		if s.mtu[i] == 0 || s.mtu[i] > AWSIPv4TunnelMTU || !s.address[i] || !s.up[i] || s.ownership[i].InterfaceIndex == 0 || (t.Selected && len(s.routes[i]) != len(t.RemotePrefixes)) || (p.BGP && (len(s.routes[i]) != 1 || !s.routes[i][netip.PrefixFrom(t.BGP.Peer, 32)])) {
 			return fail()
 		}
 	}
@@ -573,6 +611,9 @@ func (a *KernelApplier) removeSelection(ctx context.Context, p KernelAllocation,
 // ownership throughout. It moves exact routes only; it never repairs or adopts
 // links, changes immutable preference, or grants forwarding authority.
 func (a *KernelApplier) ReconcileSelection(ctx context.Context, p KernelAllocation, previous [2]Ownership, target uint8) error {
+	if p.BGP {
+		return ErrKernelApply
+	}
 	if target < 1 || target > 2 || a.check(ctx, p) != nil {
 		return ErrKernelApply
 	}
