@@ -1,0 +1,18 @@
+{
+  "completed": true,
+  "error_type": null,
+  "image": "sha256:c0ca8999d3ae601d3dc2e8a9d319c2b98444a94896ade84b692ab590f1ae3906",
+  "phase": "reconcile",
+  "remote_source_sha256": "39393215190f99355479829b7c8e61c871f7dacb5ae12f29d226e17fa6cc955f",
+  "returncode": 0,
+  "source_commit": "0249f7cf8804a7d6b4e1f82bf4dbf42b887bdfe7",
+  "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "stdout_sha256": "433aa60caf3e926121bbe74e4f8b20002e7bddac5f5694d0ca230096a588f8a1",
+  "transport_sha256": "f2b27b12b40073ed5ad0d9625d92778047dbf766d460368db2fc97602d77ce38",
+  "original_sha256": "86a9a67c6b996348aa4e60e371021f1fe745f8eb459a2e5913ff42c8383f3a97",
+  "GET_only_reconciliation": {
+    "mutations": 0,
+    "new_container": null,
+    "old_running": false
+  }
+}

@@ -40,7 +40,7 @@ func (c *RuntimeController) restartNeedsRecreation(ctx context.Context, target R
 			// Only actual state/policy ownership needs an exclusion. Empty obligations
 			// remain independently absent; they do not authorize adopting any tuple.
 			relevant := false
-			for _, t := range e.Engines {
+			for _, t := range e.Engines[:e.Allocation.activeTunnelCount()] {
 				for _, s := range x.States {
 					relevant = relevant || s.IfID == t.XFRMID || s.ReqID == t.ReqID
 				}
@@ -79,8 +79,8 @@ func restartInventoryOwnedByOthers(target RuntimeJournalEntry, others []RuntimeJ
 		if e.DeliveryID == target.DeliveryID || e.Phase != RuntimeApplied || e.AbsenceOnly || e.Allocation.Namespace != x.Namespace || k.Namespace != x.Namespace {
 			return false
 		}
-		for i, t := range e.Engines {
-			for _, wanted := range target.Engines {
+		for i, t := range e.Engines[:e.Allocation.activeTunnelCount()] {
+			for _, wanted := range target.Engines[:target.Allocation.activeTunnelCount()] {
 				if t.XFRMID == wanted.XFRMID || t.ReqID == wanted.ReqID || engineName(t) == engineName(wanted) {
 					return false
 				}

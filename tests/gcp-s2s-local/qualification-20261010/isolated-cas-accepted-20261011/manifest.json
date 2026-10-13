@@ -1,0 +1,61 @@
+{
+  "files": [
+    {
+      "file": "run-cas.cjs",
+      "source": "/private/tmp/gcp-isolated-cas-fixture-prep-20261011/run-cas.cjs",
+      "sha256": "76eeec74e0ba769d006f8e9aee6581bc72b1f97b34a735e44b27df69c781da83"
+    },
+    {
+      "file": "run-cas-v2.cjs",
+      "source": "/private/tmp/gcp-isolated-cas-fixture-prep-20261011/run-cas-v2.cjs",
+      "sha256": "991dfec02b2f1745b0c136e56f8251b7ea01f3f8e0b0df2403513d66c7d6a3d9"
+    },
+    {
+      "file": "reconcile-cas-v1.cjs",
+      "source": "/private/tmp/gcp-isolated-cas-fixture-prep-20261011/reconcile-cas-v1.cjs",
+      "sha256": "9d3cb69e440532f6fd10f3d1abc75ee05b3e70abb58abf76727f7679ec3b909f"
+    },
+    {
+      "file": "reconcile-cas-v2.cjs",
+      "source": "/private/tmp/gcp-isolated-cas-fixture-prep-20261011/reconcile-cas-v2.cjs",
+      "sha256": "80191813b9bb972d1d109119071e1e94e5ed0913c087be411fe0003502ef1fb6"
+    },
+    {
+      "file": "test-cas.cjs",
+      "source": "/private/tmp/gcp-isolated-cas-fixture-prep-20261011/test-cas.cjs",
+      "sha256": "419c0fb790f854cc305f632440ca49b3acc928b99dcb1c446a92eacfe2e5d7a1"
+    },
+    {
+      "file": "test-tombstone.cjs",
+      "source": "/private/tmp/gcp-isolated-cas-fixture-prep-20261011/test-tombstone.cjs",
+      "sha256": "f41c72a8d2e5ea39c418e1cabc45fd06f8feb3a9961913d83f2bae45631056a0"
+    },
+    {
+      "file": "actual-ui-v1-overall-false.jsonl",
+      "source": "/private/tmp/gcp-isolated-cas-actual-apply-20261011-v1/receipt.jsonl",
+      "sha256": "66435f642b8b24813eee2ce7a9e86f6c5224cb1352add328a971eb152a8c8d48"
+    },
+    {
+      "file": "actual-readonly-v2-validation-failure.jsonl",
+      "source": "/private/tmp/gcp-isolated-cas-actual-reconciled-20261011-v2/receipt.jsonl",
+      "sha256": "57d1a6b21edc73094479bc01be2ecf0e0d8a5647fe444b16b1f31d5644bfbd95"
+    },
+    {
+      "file": "actual-readonly-v3-accepted.jsonl",
+      "source": "/private/tmp/gcp-isolated-cas-actual-reconciled-20261011-v3/receipt.jsonl",
+      "sha256": "c98050a5b3a5e2fa6c25fdd1a0019eb24f15c350eebc8e3891c89f2a4d5eac28"
+    },
+    {
+      "file": "actual-deleted-tombstone-readback.json",
+      "source": "/private/tmp/gcp-isolated-cas-actual-reconcile-20261011-v1/receipt.json",
+      "sha256": "2ad987e70b83dc7b8ef94df4f5456f0095aec87b7fdb592369fb21725cd0117a"
+    },
+    {
+      "file": "test-sdk-cookie.cjs",
+      "sha256": "3be0a9977b8bf4a5a2f3be8be23fd8ac9ccfbba743669121af561681065d9999",
+      "source_only_fixture": true
+    }
+  ],
+  "actual_CAS_slice_accepted": true,
+  "mutation_replay": false
+}

@@ -277,3 +277,21 @@ it("accepts fresh public BGP evidence with null active_slot without displaying a
   expect(within(row).getByText(`Tunnel ${i + 1}`)).toBeTruthy();
  }
 });
+const classicTunnels=[{outside_address:"198.51.100.9",inside_cidr:"",customer_inside_address:"",cloud_inside_address:""}];
+const classicView=()=> <IPsecTunnelHealth orgId="org-a" connectionId="classic-a" profileId="gcp-classic-static-ipv4-v1" tunnels={classicTunnels}/>;
+it("shows Classic single tunnel without a second slot or BGP inside fields",async()=>{
+ mock.get.mockResolvedValue({data:{observed_at:new Date().toISOString(),recovery_version:1,selection_sequence:1,active_slot:1,tunnels:[{id:"classic-tunnel",slot:1,status:"up",selected:true}]}});
+ render(classicView());await screen.findByRole("status",{name:"Tunnel 1 Up"});expect(screen.getByText("Active path")).toBeTruthy();
+ expect(screen.queryByRole("status",{name:/Tunnel 2/})).toBeNull();expect(screen.queryByText("Inside IPv4 CIDR")).toBeNull();expect(screen.queryByRole("table",{name:"BGP routes"})).toBeNull();
+ fireEvent.click(screen.getByLabelText("Tunnel 1 troubleshooting"));expect(screen.getByText(/Classic route-based static routing uses no BGP inside addresses/)).toBeTruthy();expect(screen.queryByText("Customer inside IP")).toBeNull();
+});
+it.each([2,null])("does not invent Classic Up from an invalid active slot or stale evidence %j",async slot=>{
+ mock.get.mockResolvedValue({data:{observed_at:slot===null?new Date(Date.now()-91_000).toISOString():new Date().toISOString(),recovery_version:1,selection_sequence:1,active_slot:slot,tunnels:[{id:"classic-tunnel",slot:1,status:"up",selected:true}]}});
+ render(classicView());await waitFor(()=>expect(mock.get).toHaveBeenCalled());expect(screen.queryByRole("status",{name:"Tunnel 1 Up"})).toBeNull();expect(screen.getByRole("status",{name:"Tunnel 1 Unknown"})).toBeTruthy();
+});
+it("refuses two-slot public status for Classic rather than rendering a fake second tunnel",async()=>{
+ render(classicView());await screen.findByText("Status unavailable");expect(screen.queryByRole("status",{name:"Tunnel 1 Up"})).toBeNull();expect(screen.queryByRole("status",{name:/Tunnel 2/})).toBeNull();
+});
+it("refuses a single-slot report for AWS rather than treating it as Classic",async()=>{
+ mock.get.mockResolvedValue({data:{observed_at:new Date().toISOString(),tunnels:[{id:"classic-tunnel",slot:1,status:"up",selected:true}]}});render(view());await screen.findByText("Status unavailable");expect(screen.queryByRole("status",{name:/ Up$/})).toBeNull();
+});

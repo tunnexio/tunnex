@@ -28,8 +28,6 @@ func (c *RuntimeController) MaintainIPsecRuntimeObserved(ctx context.Context, ma
 	return c.MaintainIPsecRuntimeRecoveryObserved(ctx, materials, publish, nil)
 }
 
-// The separate callback reports active static evidence only. It cannot satisfy
-// a maintained result or acknowledge Apply; the original callback stays once/owner.
 func (c *RuntimeController) MaintainIPsecRuntimeRecoveryObserved(ctx context.Context, materials []RuntimeMaterial, publish func(context.Context, RuntimeDelivery, RuntimeStatusReport) error, publishRecovery func(context.Context, RuntimeRecoveryHeartbeat) error) ([]RuntimeMaintenanceResult, error) {
 	if c == nil {
 		return nil, ErrRuntimeController
@@ -37,10 +35,12 @@ func (c *RuntimeController) MaintainIPsecRuntimeRecoveryObserved(ctx context.Con
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	if !supportedRuntimePlatform(runtime.GOOS, runtime.GOARCH) {
+		c.deniedClassicTransports = nil
 		return nil, ErrRuntimeController
 	}
 	for _, m := range materials {
 		if m.Manifest.BGP != nil && !c.bgpQualificationCurrent() {
+			c.deniedClassicTransports = nil
 			return nil, ErrRuntimeController
 		}
 	}
@@ -54,12 +54,6 @@ func (c *RuntimeController) maintainIPsecRuntime(ctx context.Context, materials 
 	return c.maintainIPsecRuntimeObserved(ctx, materials, authority, bgpCurrent, nil)
 }
 
-func (c *RuntimeController) maintainIPsecRuntimeObserved(ctx context.Context, materials []RuntimeMaterial, authority func() *PermitLeaseAuthority, bgpCurrent func() bool, publish func(context.Context, RuntimeDelivery, RuntimeStatusReport) error) ([]RuntimeMaintenanceResult, error) {
-	return c.maintainIPsecRuntimeRecoveryObserved(ctx, materials, authority, bgpCurrent, publish, nil)
-}
-
-// maintenanceItem contains only already validated public ownership and policy data.
-// Neither the normal material path nor priority renewal retains a secret here.
 type maintenanceItem struct {
 	RuntimeDelivery
 	Entry      RuntimeJournalEntry
@@ -67,15 +61,21 @@ type maintenanceItem struct {
 	PolicyHash string
 }
 
+func (c *RuntimeController) maintainIPsecRuntimeObserved(ctx context.Context, materials []RuntimeMaterial, authority func() *PermitLeaseAuthority, bgpCurrent func() bool, publish func(context.Context, RuntimeDelivery, RuntimeStatusReport) error) ([]RuntimeMaintenanceResult, error) {
+	return c.maintainIPsecRuntimeRecoveryObserved(ctx, materials, authority, bgpCurrent, publish, nil)
+}
+
 func (c *RuntimeController) maintainIPsecRuntimeRecoveryObserved(ctx context.Context, materials []RuntimeMaterial, authority func() *PermitLeaseAuthority, bgpCurrent func() bool, publish func(context.Context, RuntimeDelivery, RuntimeStatusReport) error, publishRecovery func(context.Context, RuntimeRecoveryHeartbeat) error) ([]RuntimeMaintenanceResult, error) {
-	prepare := func(ns string, _ []RuntimeJournalEntry) ([]maintenanceItem, error) {
+	prepare := func(ns string, _ []RuntimeJournalEntry, stage *string, connection *uuid.UUID) ([]maintenanceItem, error) {
 		var err error
 		// Validate every secret-bearing normal material and its unique page identity
 		// before requesting any lease. No PSK is retained in a candidate or result.
 		input := make([]RuntimeJournalEntry, len(materials))
 		grants := make([][]GuardGrant, len(materials))
 		connections, deliveries := map[uuid.UUID]bool{}, map[uuid.UUID]bool{}
+		*stage = "maintenance_material"
 		for i, m := range materials {
+			*connection = m.Manifest.ConnectionID
 			input[i], grants[i], err = runtimeMaterialEntry(m, c.config.OrgID, c.config.GatewayID, ns)
 			id := m.Manifest.ConnectionID
 			if err != nil || connections[id] || deliveries[m.ID] {
@@ -86,15 +86,17 @@ func (c *RuntimeController) maintainIPsecRuntimeRecoveryObserved(ctx context.Con
 		// Match ordinary Apply: revoke changed published DNS inputs before any
 		// blocking environment/native/lease IO can leave an old query permission open.
 		for i, m := range materials {
+			*connection = m.Manifest.ConnectionID
+			*stage = "maintenance_material_withdraw"
 			c.withdrawChangedDNSMaterial(m, grants[i])
 			if err := c.withdrawChangedFQDNMaterial(ctx, m, grants[i]); err != nil {
 				return nil, ErrRuntimeController
 			}
+			*stage = "maintenance_material_current"
 			if !c.fqdnGrantsCurrent(grants[i]) {
 				return nil, ErrRuntimeController
 			}
 		}
-
 		items := make([]maintenanceItem, len(materials))
 		for i, m := range materials {
 			items[i] = maintenanceItem{RuntimeDelivery: m.RuntimeDelivery, Entry: input[i], Grants: grants[i], PolicyHash: m.Policy.Hash}
@@ -104,25 +106,24 @@ func (c *RuntimeController) maintainIPsecRuntimeRecoveryObserved(ctx context.Con
 	return c.maintainIPsecRuntimeItems(ctx, len(materials), prepare, authority, bgpCurrent, publish, publishRecovery)
 }
 
-func (c *RuntimeController) maintainIPsecRuntimeItems(ctx context.Context, count int, prepare func(string, []RuntimeJournalEntry) ([]maintenanceItem, error), authority func() *PermitLeaseAuthority, bgpCurrent func() bool, publish func(context.Context, RuntimeDelivery, RuntimeStatusReport) error, publishRecovery func(context.Context, RuntimeRecoveryHeartbeat) error) (reportsResult []RuntimeMaintenanceResult, resultErr error) {
-
-	stage, connection := "input", uuid.Nil
+func (c *RuntimeController) maintainIPsecRuntimeItems(ctx context.Context, count int, prepare func(string, []RuntimeJournalEntry, *string, *uuid.UUID) ([]maintenanceItem, error), authority func() *PermitLeaseAuthority, bgpCurrent func() bool, publish func(context.Context, RuntimeDelivery, RuntimeStatusReport) error, publishRecovery func(context.Context, RuntimeRecoveryHeartbeat) error) (resultOut []RuntimeMaintenanceResult, resultErr error) {
 	started := time.Now()
-	defer func() {
-		if resultErr != nil {
-			c.emitRuntimeDiagnostic(ctx, "maintenance", stage, connection, started, true)
-		}
-	}()
-	if !c.started || c.closed || ctx.Err() != nil || authority == nil || c.config.DaemonAlive == nil || !c.config.DaemonAlive() || !c.qualification.current() || count > 256 {
+	stage, connection := "maintenance_input", uuid.Nil
+	defer func() { c.emitRuntimeDiagnostic(ctx, "maintenance", stage, connection, started, resultErr != nil) }()
+	if !c.started || c.closed || ctx.Err() != nil || authority == nil || c.config.DaemonAlive == nil || !c.config.DaemonAlive() || !c.qualification.current() || count < 0 || count > 256 || prepare == nil {
+		c.deniedClassicTransports = nil
 		return nil, ErrRuntimeController
 	}
+	stage = "maintenance_journal"
 	entries, err := c.journal.Entries()
 	if err != nil {
+		c.deniedClassicTransports = nil
 		c.withdrawDNSOwnerView(uuid.Nil)
 		c.active = nil
 		return nil, ErrRuntimeController
 	}
 	fail := func() ([]RuntimeMaintenanceResult, error) {
+		c.deniedClassicTransports = nil
 		c.withdrawDNSOwnerView(uuid.Nil)
 		c.active = nil
 		_, _ = c.refuse(ctx, entries)
@@ -142,23 +143,35 @@ func (c *RuntimeController) maintainIPsecRuntimeItems(ctx context.Context, count
 		}
 		return fail()
 	}
+	failHAFreshness := func() ([]RuntimeMaintenanceResult, error) {
+		hints := c.rememberDeniedClassicTransports(entries)
+		c.withdrawDNSOwnerView(uuid.Nil)
+		c.active = nil
+		c.deniedClassicTransports = nil
+		if _, err := c.refuse(ctx, entries); err == nil && ctx.Err() == nil && c.qualification.current() && c.config.DaemonAlive != nil && c.config.DaemonAlive() {
+			c.deniedClassicTransports = hints
+		}
+		return nil, ErrRuntimeController
+	}
+	stage = "maintenance_startup_gate"
 	if _, gateErr := os.Lstat(filepath.Join(c.config.JournalDir, "restoration-startup-gate")); !os.IsNotExist(gateErr) {
 		return fail()
 	}
+	stage = "maintenance_namespace"
 	ns, err := c.namespace()
 	if err != nil {
 		return fail()
 	}
-	items, err := prepare(ns, entries)
-	if err != nil || len(items) != count {
+	materials, prepareErr := prepare(ns, entries, &stage, &connection)
+	if prepareErr != nil || len(materials) != count {
 		return fail()
 	}
-	if count == 0 {
+	if len(materials) == 0 {
 		return nil, nil
 	}
 	// Only exact unchanged page deliveries can participate in active telemetry.
 	pulseAllowed := map[uuid.UUID]bool{}
-	for _, m := range items {
+	for _, m := range materials {
 		a, ok := c.active[m.Manifest.ConnectionID]
 		pulseAllowed[m.Manifest.ConnectionID] = ok && reflect.DeepEqual(a.Delivery, m.RuntimeDelivery) && a.Identity.PolicyHash == m.PolicyHash && reflect.DeepEqual(a.Grants, m.Grants)
 	}
@@ -167,30 +180,28 @@ func (c *RuntimeController) maintainIPsecRuntimeItems(ctx context.Context, count
 		staged[id] = a
 	}
 	candidates := map[uuid.UUID]runtimeActive{}
-	maintained := make([]RuntimeDelivery, 0, count)
+	maintained := make([]RuntimeDelivery, 0, len(materials))
 	changed := false
 	type eligibleOwner struct {
 		index  int
 		active runtimeActive
 	}
-	eligibleOwners := make([]eligibleOwner, 0, count)
-	// Finish all unchanged-owner eligibility IO before starting a candidate's
-	// finite lease. The original native permits must bridge both phases.
-	for i, m := range items {
-		connection = m.Manifest.ConnectionID
-		stage = "maintenance_active_pulse"
+	eligibleOwners := make([]eligibleOwner, 0, len(materials))
+	// Complete all eligibility proof IO before beginning any fresh finite lease.
+	for i, m := range materials {
 		c.refreshMaintenanceRecovery(ctx)
-		stage = "maintenance_active_pulse"
 		if pulseErr := c.refreshMaintenanceActiveRecovery(ctx, pulseAllowed, publishRecovery); pulseErr != nil {
 			return pulseFailure(pulseErr)
 		}
 		id := m.Manifest.ConnectionID
+		connection, stage = id, "maintenance_eligibility"
+		eligibilityStarted := time.Now()
 		old, ok := c.active[id]
 		eligible := false
+		eligibilityStage := "eligibility_active"
 		if ok {
 			// The complete journal is trusted; exact delivery must appear once and no
 			// unresolved competing lineage may be hidden by the current active map.
-			stage = "maintenance_journal_lineage"
 			var current *RuntimeJournalEntry
 			lineage := true
 			for n := range entries {
@@ -207,19 +218,22 @@ func (c *RuntimeController) maintainIPsecRuntimeItems(ctx context.Context, count
 					lineage = false
 				}
 			}
+			eligibilityStage = "eligibility_current"
+			if current != nil {
+				eligibilityStage = "eligibility_lineage"
+			}
 			if current != nil && lineage {
 				env, observeErr := c.config.Environment.Observe(ctx, m.Entry.Allocation, m.Entry.Engines)
 				c.refreshMaintenanceRecovery(ctx)
-				stage = "maintenance_active_pulse"
 				if pulseErr := c.refreshMaintenanceActiveRecovery(ctx, pulseAllowed, publishRecovery); pulseErr != nil {
 					return pulseFailure(pulseErr)
 				}
 				same := m.Entry
-				for n := range same.Engines {
+				for n := range same.Engines[:same.Allocation.activeTunnelCount()] {
 					same.Engines[n].LocalAddress = env.Underlays[n].LocalAddress
 				}
 				same.Restoration, same.Allocation.Generation = current.Restoration, current.Allocation.Generation
-				for n := range same.Allocation.Tunnels {
+				for n := range same.Allocation.Tunnels[:same.Allocation.activeTunnelCount()] {
 					same.Allocation.Tunnels[n].Alias = current.Allocation.Tunnels[n].Alias
 				}
 				same.Phase, same.Observed = current.Phase, current.Observed
@@ -230,34 +244,44 @@ func (c *RuntimeController) maintainIPsecRuntimeItems(ctx context.Context, count
 					same.Recovery = current.Recovery
 				}
 				identity := PermitLeaseIdentity{DeliveryID: m.ID, Binding: same.Engines[0].Binding, PolicyHash: m.PolicyHash}
-				stage = "maintenance_exact_owner"
-				eligible = observeErr == nil && env.Namespace == ns && same.Phase == RuntimeApplied && (same.ContractVersion == 2 || same.ContractVersion == 3) && reflect.DeepEqual(same, *current) && reflect.DeepEqual(old.Entry, same) && reflect.DeepEqual(old.Delivery, m.RuntimeDelivery) && reflect.DeepEqual(old.Environment, env) && reflect.DeepEqual(old.Grants, m.Grants) && old.Identity == identity && old.Authority != nil
+				eligible = maintenanceEligibilityTerm(&eligibilityStage, "eligibility_observe", func() bool { return observeErr == nil }) &&
+					maintenanceEligibilityTerm(&eligibilityStage, "eligibility_namespace", func() bool { return env.Namespace == ns }) &&
+					maintenanceEligibilityTerm(&eligibilityStage, "eligibility_phase", func() bool { return same.Phase == RuntimeApplied }) &&
+					maintenanceEligibilityTerm(&eligibilityStage, "eligibility_contract", func() bool {
+						return (same.ContractVersion == 2 || same.ContractVersion == 3 || (same.ContractVersion == 4 && same.Allocation.ProfileID == GCPClassicStaticProfile && validClassicJournal(same)))
+					}) &&
+					maintenanceEligibilityTerm(&eligibilityStage, "eligibility_entry_current", func() bool { return reflect.DeepEqual(same, *current) }) &&
+					maintenanceEligibilityTerm(&eligibilityStage, "eligibility_active_entry", func() bool { return reflect.DeepEqual(old.Entry, same) }) &&
+					maintenanceEligibilityTerm(&eligibilityStage, "eligibility_delivery", func() bool { return reflect.DeepEqual(old.Delivery, m.RuntimeDelivery) }) &&
+					maintenanceEligibilityTerm(&eligibilityStage, "eligibility_environment", func() bool { return reflect.DeepEqual(old.Environment, env) }) &&
+					maintenanceEligibilityTerm(&eligibilityStage, "eligibility_grants", func() bool { return reflect.DeepEqual(old.Grants, m.Grants) }) &&
+					maintenanceEligibilityTerm(&eligibilityStage, "eligibility_identity", func() bool { return old.Identity == identity }) &&
+					maintenanceEligibilityTerm(&eligibilityStage, "eligibility_authority", func() bool { return old.Authority != nil })
 				if eligible {
 					if same.ContractVersion == 2 {
-						stage = "maintenance_static_ready"
+						eligibilityStage = "eligibility_recovery"
 						prepared, known := c.recoveryPrepared[m.ID]
 						eligible = known && reflect.DeepEqual(prepared, env) && validJournalRecovery(same) && same.Recovery.Stage == "completed"
 					}
 					if same.ContractVersion == 3 {
-						stage = "maintenance_bgp_ready"
+						eligibilityStage = "eligibility_bgp"
 						eligible = validJournalBGP(same) && same.BGPProcess != nil && same.BGPProcess.Stage == "ready" && same.BGPRoutes != nil && same.BGPRoutes.Stage == "completed"
 					}
 				}
 				if eligible {
-					stage = "maintenance_current_before_fresh"
+					stage = "maintenance_eligibility_proof"
+					eligibilityStage = "eligibility_proof"
 					eligible = c.maintenanceCurrent(ctx, old, bgpCurrent) == nil
 					c.refreshMaintenanceRecovery(ctx)
-					stage = "maintenance_active_pulse"
 					if pulseErr := c.refreshMaintenanceActiveRecovery(ctx, pulseAllowed, publishRecovery); pulseErr != nil {
 						return pulseFailure(pulseErr)
 					}
-					stage = "maintenance_current_before_fresh"
 				}
 			}
 		}
+		c.emitRuntimeDiagnostic(ctx, "maintenance_eligibility", eligibilityStage, id, eligibilityStarted, !eligible)
 		if !eligible {
 			if ok {
-				c.emitRuntimeDiagnostic(ctx, "maintenance", stage, id, started, true)
 				delete(staged, id)
 				c.withdrawDNSOwnerView(id)
 				changed = true
@@ -267,89 +291,92 @@ func (c *RuntimeController) maintainIPsecRuntimeItems(ctx context.Context, count
 		eligibleOwners = append(eligibleOwners, eligibleOwner{index: i, active: old})
 	}
 	for _, owner := range eligibleOwners {
-		m, old := items[owner.index], owner.active
+		m, old := materials[owner.index], owner.active
 		id := m.Manifest.ConnectionID
 		connection = id
-		stage = "maintenance_captured_owner"
+		stage = "maintenance_authority"
 		current, ok := c.active[id]
 		if !ok || !reflect.DeepEqual(current, old) {
 			return fail()
 		}
-		stage = "maintenance_authority_factory"
 		fresh := authority()
 		if fresh == nil {
 			return fail()
 		}
-		stage = "maintenance_captured_owner"
 		current, ok = c.active[id]
 		if !ok || !reflect.DeepEqual(current, old) {
 			return fail()
 		}
-		stage = "maintenance_prior_reserve"
 		if _, err = old.Authority.RemainingForApply(old.Identity, 5*time.Second); err != nil {
-			c.emitRuntimeDiagnostic(ctx, "maintenance", stage, id, started, true)
 			delete(staged, id)
 			c.withdrawDNSOwnerView(id)
 			changed = true
 			continue
 		}
-		stage = "maintenance_qualification"
 		if ctx.Err() != nil || !c.qualification.current() || !c.config.DaemonAlive() || (old.Entry.ContractVersion == 3 && (bgpCurrent == nil || !bgpCurrent())) {
 			return fail()
 		}
-		stage = "maintenance_begin"
 		request, beginErr := fresh.Begin(old.Identity)
 		if beginErr != nil {
 			return fail()
 		}
-		stage = "maintenance_fresh_lease"
+		stage = "maintenance_lease"
 		lease, leaseErr := c.client.RenewIPsecLease(ctx, id, RuntimeLeaseRequest{DeliveryID: m.ID, DesiredRevision: m.DesiredRevision, PolicyHash: m.PolicyHash, Nonce: request.Nonce})
 		if leaseErr != nil {
+			stage = maintenanceLeaseFailureStage(leaseErr)
 			return fail()
 		}
-		stage = "maintenance_lease_binding"
-		if lease.DeliveryID != m.ID || lease.DesiredRevision != m.DesiredRevision || lease.PolicyHash != m.PolicyHash || lease.Nonce != request.Nonce {
+		stage = "maintenance_lease_delivery"
+		if lease.DeliveryID != m.ID {
 			return fail()
 		}
-		stage = "maintenance_lease_accept"
+		stage = "maintenance_lease_revision"
+		if lease.DesiredRevision != m.DesiredRevision {
+			return fail()
+		}
+		stage = "maintenance_lease_policy"
+		if lease.PolicyHash != m.PolicyHash {
+			return fail()
+		}
+		stage = "maintenance_lease_nonce"
+		if lease.Nonce != request.Nonce {
+			return fail()
+		}
+		stage = "maintenance_lease_ttl"
 		if fresh.Accept(PermitLeaseResponse{PermitLeaseRequest: request, TTLMillis: lease.TTLMS}) != nil {
 			return fail()
 		}
 		c.refreshMaintenanceRecovery(ctx)
-		stage = "maintenance_active_pulse"
 		if pulseErr := c.refreshMaintenanceActiveRecovery(ctx, pulseAllowed, publishRecovery); pulseErr != nil {
 			return pulseFailure(pulseErr)
 		}
-		stage = "maintenance_captured_owner"
+		stage = "maintenance_lease_active"
 		current, ok = c.active[id]
 		if !ok || !reflect.DeepEqual(current, old) {
 			return fail()
 		}
 		// The old authority must still bridge this collection; a response arriving
 		// after it expires cannot recreate a missing permit from cached transport.
-		stage = "maintenance_current_after_fresh"
-		// The mandatory combined install below freshly proves every candidate's
-		// native ownership after CP renewal and before publishing authority.
-		// Keep the original bridge and guard here. The required-candidate
-		// installer proves BGP routes with its same fresh guard health sample.
+		stage = "maintenance_bridge_proof"
+		bridgeStarted := time.Now()
+		// The combined installer supplies the fresh post-CP native/BGP proof.
+		// This check still requires the original authority and complete guard.
 		if c.maintenanceCurrentWithNativeProof(ctx, old, bgpCurrent, false) != nil {
-			c.emitRuntimeDiagnostic(ctx, "maintenance", stage, id, started, true)
+			c.emitRuntimeDiagnostic(ctx, "maintenance", stage, id, bridgeStarted, true)
 			delete(staged, id)
 			c.withdrawDNSOwnerView(id)
 			changed = true
 			continue
 		}
 		c.refreshMaintenanceRecovery(ctx)
-		stage = "maintenance_active_pulse"
 		if pulseErr := c.refreshMaintenanceActiveRecovery(ctx, pulseAllowed, publishRecovery); pulseErr != nil {
 			return pulseFailure(pulseErr)
 		}
-		stage = "maintenance_captured_owner"
 		current, ok = c.active[id]
 		if !ok || !reflect.DeepEqual(current, old) {
 			return fail()
 		}
-		stage = "maintenance_candidate_reserve"
+		stage = "maintenance_fresh_authority"
 		if _, err = fresh.RemainingForApply(old.Identity, 5*time.Second); err != nil {
 			return fail()
 		}
@@ -363,53 +390,62 @@ func (c *RuntimeController) maintainIPsecRuntimeItems(ctx context.Context, count
 	}
 	// Original authorities remain untouched and externally visible until the
 	// exact combined guard transaction and final native/lease checks succeed.
+	stage, connection = "maintenance_bgp_freshness", uuid.Nil
 	for _, a := range candidates {
-		connection = a.Entry.Allocation.ConnectionID
-		stage = "maintenance_candidate_qualification"
 		if a.Entry.ContractVersion == 3 && (bgpCurrent == nil || !bgpCurrent()) {
-			return fail()
+			return failHAFreshness()
 		}
 	}
-	connection = uuid.Nil
-	stage = "maintenance_combined_install"
+	haFreshnessFailed := false
+	stage, connection = "maintenance_combined_guard", uuid.Nil
 	if c.installActiveCandidates(ctx, entries, staged, candidates, c.active, func() bool {
 		if ctx.Err() != nil || !c.qualification.current() || !c.config.DaemonAlive() {
 			return false
 		}
 		for _, a := range candidates {
 			if a.Entry.ContractVersion == 3 && (bgpCurrent == nil || !bgpCurrent()) {
+				haFreshnessFailed = true
 				return false
 			}
 		}
 		return true
 	}) != nil {
+		if haFreshnessFailed && ctx.Err() == nil && c.qualification.current() && c.config.DaemonAlive() {
+			return failHAFreshness()
+		}
 		return fail()
 	}
 	nativeCommitted = true
 	c.refreshMaintenanceRecovery(ctx)
-	stage = "maintenance_active_pulse"
 	if pulseErr := c.refreshMaintenanceActiveRecovery(ctx, pulseAllowed, publishRecovery); pulseErr != nil {
 		return pulseFailure(pulseErr)
 	}
 	result := make([]RuntimeMaintenanceResult, 0, len(maintained))
 	for _, m := range maintained {
 		id := m.Manifest.ConnectionID
+		connection, stage = id, "maintenance_candidate"
 		candidate := candidates[id]
-		connection = id
-		stage = "maintenance_candidate_binding"
 		current, ok := c.active[id]
 		if !ok || current.Authority != candidate.Authority || !reflect.DeepEqual(current, candidate) {
 			return fail()
 		}
+		stage = "maintenance_report_contract"
 		bgp, bgpErr := runtimeBGPContract(m.Manifest)
 		recovery, recoveryErr := runtimeRecoveryContract(m.Manifest)
+		count, transportErr := runtimeTransportContract(m.Manifest)
+		if transportErr != nil {
+			return fail()
+		}
 		report := RuntimeStatusReport{DeliveryID: m.ID, DesiredRevision: m.DesiredRevision, ConfigurationRevision: m.Manifest.ConfigurationRevision}
-		for i, t := range m.Manifest.Tunnels {
+		if count == 1 {
+			version, tunnels := 1, 1
+			report.TransportVersion = &version
+			report.TunnelCount = &tunnels
+		}
+		for i, t := range m.Manifest.Tunnels[:count] {
 			report.Tunnels[i] = RuntimeTunnelStatus{ID: t.ID, Slot: t.Slot, Status: "unknown", Selected: t.Selected}
 		}
-		// Do not advance this owner's sequence between its captured report and
-		// the corresponding callback; every transmitted report stays ordered.
-		stage = "maintenance_active_pulse"
+		c.refreshMaintenanceRecovery(ctx)
 		if pulseErr := c.refreshMaintenanceActiveRecovery(ctx, pulseAllowed, publishRecovery); pulseErr != nil {
 			return pulseFailure(pulseErr)
 		}
@@ -419,7 +455,7 @@ func (c *RuntimeController) maintainIPsecRuntimeItems(ctx context.Context, count
 			return fail()
 		}
 		c.refreshMaintenanceRecovery(ctx)
-		stage = "maintenance_candidate_report_reserve"
+		stage = "maintenance_candidate_authority"
 		if _, err = candidate.Authority.RemainingForApply(candidate.Identity, time.Millisecond); err != nil {
 			return fail()
 		}
@@ -429,17 +465,17 @@ func (c *RuntimeController) maintainIPsecRuntimeItems(ctx context.Context, count
 				return fail()
 			}
 			c.refreshMaintenanceRecovery(ctx)
-			stage = "maintenance_active_pulse"
 			if pulseErr := c.refreshMaintenanceActiveRecovery(ctx, pulseAllowed, publishRecovery); pulseErr != nil {
 				return pulseFailure(pulseErr)
 			}
 			// External report IO cannot turn a now-expired or replaced candidate
 			// into an applied result. The full-set check below remains required.
-			stage = "maintenance_candidate_after_publish"
+			stage = "maintenance_publish_binding"
 			current, ok = c.active[id]
 			if !ok || current.Authority != candidate.Authority || !reflect.DeepEqual(current, candidate) || ctx.Err() != nil || !c.qualification.current() || !c.config.DaemonAlive() || (candidate.Entry.ContractVersion == 3 && (bgpCurrent == nil || !bgpCurrent())) {
 				return fail()
 			}
+			stage = "maintenance_candidate_authority"
 			if _, err = candidate.Authority.RemainingForApply(candidate.Identity, time.Millisecond); err != nil {
 				return fail()
 			}
@@ -459,13 +495,14 @@ func (c *RuntimeController) maintainIPsecRuntimeItems(ctx context.Context, count
 	// A later owner's status IO can consume an earlier candidate's remaining
 	// deadline. Validate the complete result set once more before any external ACK.
 	for _, m := range maintained {
+		connection, stage = m.Manifest.ConnectionID, "maintenance_final_binding"
 		candidate := candidates[m.Manifest.ConnectionID]
-		connection = m.Manifest.ConnectionID
-		stage = "maintenance_candidate_final"
 		current, ok := c.active[m.Manifest.ConnectionID]
 		if !ok || current.Authority != candidate.Authority || !reflect.DeepEqual(current, candidate) || ctx.Err() != nil || !c.qualification.current() || !c.config.DaemonAlive() || (candidate.Entry.ContractVersion == 3 && (bgpCurrent == nil || !bgpCurrent())) {
 			return fail()
 		}
+		c.refreshMaintenanceRecovery(ctx)
+		stage = "maintenance_candidate_authority"
 		if _, err = candidate.Authority.RemainingForApply(candidate.Identity, time.Millisecond); err != nil {
 			return fail()
 		}
@@ -481,57 +518,48 @@ func (c *RuntimeController) maintenanceCurrent(ctx context.Context, old runtimeA
 }
 
 func (c *RuntimeController) maintenanceCurrentWithNativeProof(ctx context.Context, old runtimeActive, bgpCurrent func() bool, proveNative bool) (resultErr error) {
-	stage := "maintenance_prior_reserve"
 	started := time.Now()
-	diagnosed := false
+	stage := "maintenance_current_authority_before"
 	defer func() {
-		if resultErr != nil && !diagnosed {
-			c.emitRuntimeDiagnostic(ctx, "maintenance_current", stage, old.Entry.Allocation.ConnectionID, started, true)
-		}
+		c.emitRuntimeDiagnostic(ctx, "maintenance_current", stage, old.Entry.Allocation.ConnectionID, started, resultErr != nil)
 	}()
 	if _, err := old.Authority.RemainingForApply(old.Identity, 5*time.Second); err != nil {
 		return ErrRuntimeController
 	}
 	proofCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
-	defer func() {
-		if resultErr != nil {
-			c.emitRuntimeDiagnostic(proofCtx, "maintenance_current", stage, old.Entry.Allocation.ConnectionID, started, true)
-			diagnosed = true
-		}
-		cancel()
-	}()
+	defer cancel()
 	if proveNative {
-		stage = "maintenance_native_proof"
+		stage = "maintenance_current_native"
 		if c.proveCurrent(proofCtx, old.Entry, old.Environment) != nil {
 			return ErrRuntimeController
 		}
 	}
-	stage = "maintenance_native_guard"
+	stage = "maintenance_current_guard"
 	if c.maintenanceGuard(proofCtx, old.Entry) != nil {
 		return ErrRuntimeController
 	}
+	stage = "maintenance_current_bgp_qualification"
 	if proveNative && old.Entry.ContractVersion == 3 {
-		stage = "maintenance_bgp_qualification"
 		if bgpCurrent == nil || !bgpCurrent() {
 			return ErrRuntimeController
 		}
 		e := old.Entry
-		stage = "maintenance_bgp_process"
+		stage = "maintenance_current_bgp_process"
 		p := c.bgpProcesses[e.DeliveryID]
 		if p == nil || !p.Alive() {
 			return ErrRuntimeController
 		}
-		stage = "maintenance_bgp_status"
+		stage = "maintenance_current_bgp_status"
 		status, err := p.Observe(proofCtx)
 		if err != nil {
 			return ErrRuntimeController
 		}
-		stage = "maintenance_bgp_routes"
+		stage = "maintenance_current_bgp_routes"
 		routes, err := p.ObserveRoutes(proofCtx, status)
 		if err != nil {
 			return ErrRuntimeController
 		}
-		stage = "maintenance_bgp_native_status"
+		stage = "maintenance_current_bgp_health"
 		health := c.observeRecovery(proofCtx, e)
 		for _, state := range health {
 			if state != "up" && state != "down" {
@@ -544,16 +572,16 @@ func (c *RuntimeController) maintenanceCurrentWithNativeProof(ctx context.Contex
 				target = append(target, RuntimeBGPRouteTuple{Prefix: r.Prefix, Slot: uint8(r.Slot), InterfaceIndex: e.Observed[r.Slot-1].InterfaceIndex, Table: 254, Protocol: 242, Metric: 50000 + uint32(r.Slot)})
 			}
 		}
-		stage = "maintenance_bgp_target"
+		stage = "maintenance_current_bgp_binding"
 		if !p.Alive() || !bgpCurrent() || !reflect.DeepEqual(target, e.BGPRoutes.Owned) {
 			return ErrRuntimeController
 		}
 	}
-	stage = "maintenance_final_context"
+	stage = "maintenance_current_final_qualification"
 	if proofCtx.Err() != nil || !c.qualification.current() || !c.config.DaemonAlive() {
 		return ErrRuntimeController
 	}
-	stage = "maintenance_final_prior_reserve"
+	stage = "maintenance_current_authority_after"
 	_, err := old.Authority.RemainingForApply(old.Identity, 5*time.Second)
 	return err
 }
@@ -571,4 +599,11 @@ func (c *RuntimeController) maintenanceGuard(ctx context.Context, e RuntimeJourn
 	}
 	g := templates[0]
 	return c.guard.reader.checkConnection(ctx, GuardManifest{Namespace: g.Namespace, ExpectedJSON: g.ExpectedJSON}, e.Allocation.ConnectionID)
+}
+
+// maintenanceEligibilityTerm records only the next predicate already being evaluated.
+// Its caller retains the original short-circuit order; no predicate is repeated.
+func maintenanceEligibilityTerm(stage *string, label string, predicate func() bool) bool {
+	*stage = label
+	return predicate()
 }

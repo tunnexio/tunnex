@@ -1,0 +1,44 @@
+{
+  "api_partial_retry": {
+    "completed": true,
+    "log_sha256": "e4e798d34d8b4e079a5ef7612d995699370a4bf88d6655d50a6db3a4607ffb1e",
+    "named_tests": "PASS",
+    "original_receipt_sha256": "207e6ef2f925ca668142c8f148c3850398b8543b978b4ec35b85d5247060dba6",
+    "required_tests": [
+      "TestPendingCleanupCannotBeSupersededBeforeExactAcknowledgementPostgres",
+      "TestPendingCleanupGuardPreservesNeverDeliveredDeleteAndOtherConnectionsPostgres"
+    ],
+    "source_verified_after": true,
+    "source_verified_before": true
+  },
+  "node_partial_retry": {
+    "completed": true,
+    "named_tests": [
+      "TestBGPControllerFailedProcessProofRetainsDuty",
+      "TestKernelRecoverySelectionAndPartialRetry"
+    ],
+    "original_receipt_sha256": "66f58f3ec1950ec398e93cb18317d4647306a5f305621e4748e04a5e4ac6152a",
+    "passed_subtests": 5,
+    "passed_top_tests": 2,
+    "source_verified_after": true,
+    "source_verified_before": true,
+    "test_log_sha256": "78d0488dcfb096398a8cacd3b76ffcb183d8264e4280ef9de912cd240fce6e66"
+  },
+  "qa_go_models": {
+    "completed": true,
+    "named_tests": "PASS",
+    "original_receipt_sha256": "cd7069f3d4d66c4766fac5cd34ec0f0d3aba679181af67cccf544f7acef9d04b",
+    "production_files": 258,
+    "production_manifest_sha256": "8f2f46908331ef7beb2c63b0e615a3318f1a34702277df269aaf6548cf414053",
+    "source_verified_after": true,
+    "source_verified_before": true
+  },
+  "qa_python_models": {
+    "completed": true,
+    "original_receipt_sha256": "abb930ba20269b9dec5a0a58215eb267ab8b3399830cdbb79fbd6907b6a178ab",
+    "source_verified_after": true,
+    "source_verified_before": true,
+    "test_log_sha256": "b03f9c5679aa1434325420e120838845c19957a4ec48fb817f686e749a90a8a2",
+    "tests_passed": 11
+  }
+}

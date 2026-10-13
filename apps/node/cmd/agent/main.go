@@ -221,10 +221,16 @@ func main() {
 	}
 	dnsTransport := &ipsec.DNSRuntimeTransport{}
 	fqdnPolicySource := &ipsec.RuntimeFQDNPolicySource{}
-	if err := startIPsecRuntime(ctx, client, certDir, logger, dnsTransport, fqdnPolicySource); err != nil {
+	shutdownIPsec, err := startIPsecRuntime(ctx, client, certDir, logger, dnsTransport, fqdnPolicySource)
+	if err != nil {
 		logger.Error("ipsec_saved_refusal_restore_failed")
 		os.Exit(1)
 	}
+	defer func() {
+		if err := shutdownIPsec(); err != nil {
+			logger.Error("ipsec_runtime_shutdown_incomplete")
+		}
+	}()
 	// WireGuard key: generated locally and persisted; the private key never
 	// leaves the node. Re-key = delete the file -> a new key is generated and its
 	// pubkey re-reported.
@@ -392,7 +398,7 @@ func main() {
 		go aiVPN.Run(ctx)
 		defer aiVPN.Close()
 	}
-	go reportKeyLoop(ctx, client, wgPub, endpointSource, reportKick, &egressNAT, &egressIPv6, egressMgr, &siteLinkStale, &siteSubnetUnreachable, &ovpnHealth, flowLogStatus, aiVPN, &keyReported, reportEvery, logger)
+	go reportKeyLoop(ctx, client, wgPub, endpointSource, reportKick, &egressNAT, &egressIPv6, egressMgr, &siteLinkStale, &siteSubnetUnreachable, &ovpnHealth, flowLogStatus, aiVPN, &keyReported, reportEvery, logger, r.AppliedWireGuardMTU)
 	r.SetSiteLinkStaleSink(&siteLinkStale)
 	r.SetSiteSubnetUnreachableSink(&siteSubnetUnreachable) // D3: unreachable-advertised-subnet health signal
 	r.SetForwardBlockedFn(egressMgr.ForwardBlocked)        // WF-4: Docker FORWARD DROP swallowing the forward → same signal
@@ -915,7 +921,7 @@ func identityWatchLoop(ctx context.Context, client *control.Client, apiURL, cert
 // failures with backoff and publishing changed applied policy promptly. The report is
 // idempotent server-side, so retrying is safe. Until it succeeds the agent stays
 // not-ready, so no orchestrator routes to a node the control plane can't peer.
-func reportKeyLoop(ctx context.Context, client *control.Client, pubKey string, endpointSource reportEndpointSource, reportKick <-chan struct{}, egressNAT, egressIPv6 *atomic.Bool, egressMgr *egress.Manager, siteLinkStale, siteSubnetUnreachable *atomic.Bool, ovpnHealth *atomic.Pointer[string], flowStatus *flowlog.Status, aiVPN *aivpn.Runtime, reported *atomic.Bool, every time.Duration, logger *slog.Logger) {
+func reportKeyLoop(ctx context.Context, client *control.Client, pubKey string, endpointSource reportEndpointSource, reportKick <-chan struct{}, egressNAT, egressIPv6 *atomic.Bool, egressMgr *egress.Manager, siteLinkStale, siteSubnetUnreachable *atomic.Bool, ovpnHealth *atomic.Pointer[string], flowStatus *flowlog.Status, aiVPN *aivpn.Runtime, reported *atomic.Bool, every time.Duration, logger *slog.Logger, mtuSource ...func() int) {
 	report := func(reportCtx context.Context) bool {
 		endpoint := endpointSource()
 		if !endpoint.Reportable {
@@ -931,6 +937,7 @@ func reportKeyLoop(ctx context.Context, client *control.Client, pubKey string, e
 		}
 		flow := flowStatus.Snapshot()
 		ps := control.PolicyStatus{
+			WireGuardAppliedMTU:       observedWireGuardMTU(mtuSource),
 			Version:                   v,
 			Hash:                      h,
 			RefusedVersion:            egressMgr.RefusedVersion(),
@@ -1579,4 +1586,11 @@ func enrollWithToken(ctx context.Context, logger *slog.Logger, apiURL, certDir, 
 	}
 	logger.Info("agent_enrolled", slog.String("node_id", res.NodeID))
 	return certPEM, keyPEM, caPEM, true
+}
+
+func observedWireGuardMTU(source []func() int) int {
+	if len(source) != 1 || source[0] == nil {
+		return 0
+	}
+	return source[0]()
 }

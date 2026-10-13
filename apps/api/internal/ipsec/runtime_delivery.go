@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"time"
 
 	"github.com/google/uuid"
@@ -48,14 +49,14 @@ func (s *ConnectionStore) Material(ctx context.Context, p RuntimePrincipal, id u
 	if !fresh && e != nil {
 		return invalid(createError(e))
 	}
-	if fresh && manifest.BGP == nil && locked.recoveryEligible {
+	if fresh && manifest.BGP == nil && manifest.ProfileID != GCPClassicProfile && locked.recoveryEligible {
 		v := 1
 		manifest.RecoveryVersion = &v
 	}
 	if !fresh {
 		manifest.RecoveryVersion = delivery.Manifest.RecoveryVersion
 	}
-	if !runtimeRecoveryEligible(manifest, locked.recoveryEligible) || !runtimeBGPCompatible(manifest, locked.bgpEligible) {
+	if !runtimeRecoveryEligible(manifest, locked.recoveryEligible) || manifest.ProfileID == GCPClassicProfile && !classicManifestCompatible(manifest, locked.gcpClassicEligible) || !runtimeBGPCompatible(manifest, locked.bgpEligible && (manifest.ProfileID != GCPHAProfile || locked.gcpHAEligible)) {
 		return invalid(ErrConnectionIneligible)
 	}
 	raw, digest := runtimeHash(manifest)
@@ -69,7 +70,7 @@ func (s *ConnectionStore) Material(ctx context.Context, p RuntimePrincipal, id u
 		return invalid(ErrConnectionConflict)
 	}
 	result := RuntimeMaterial{RuntimeDelivery: delivery, Policy: policy}
-	for i, t := range tunnels {
+	for i, t := range tunnels[:activeTunnelCount(manifest.ProfileID)] {
 		var sealed string
 		e = tx.QueryRow(ctx, `SELECT sealed_psk FROM ipsec_tunnel_secrets WHERE org_id=$1 AND connection_id=$2 AND tunnel_id=$3 AND secret_revision=$4 FOR UPDATE`, p.OrgID, id, t.ID, t.SecretRevision).Scan(&sealed)
 		if e != nil {
@@ -252,6 +253,7 @@ func (s *ConnectionStore) PermitLease(ctx context.Context, p RuntimePrincipal, i
 	defer tx.Rollback(ctx)
 	c := locked.connection
 	if c.DesiredIntent != "enabled" || c.DesiredRevision != r.DesiredRevision || locked.state.cleanup != nil {
+		slog.WarnContext(ctx, "ipsec_permit_lease_conflict", "stage", "intent_revision_cleanup", "connection_id", id.String())
 		return RuntimeLease{}, ErrConnectionConflict
 	}
 	if !locked.enabled || !locked.eligible {
@@ -260,13 +262,14 @@ func (s *ConnectionStore) PermitLease(ctx context.Context, p RuntimePrincipal, i
 	var manifestRaw []byte
 	e = tx.QueryRow(ctx, `SELECT manifest FROM ipsec_runtime_deliveries WHERE id=$1 AND org_id=$2 AND connection_id=$3 AND node_id=$4 AND desired_revision=$5 AND kind='apply'`, r.DeliveryID, p.OrgID, id, p.NodeID, r.DesiredRevision).Scan(&manifestRaw)
 	if errors.Is(e, pgx.ErrNoRows) {
+		slog.WarnContext(ctx, "ipsec_permit_lease_conflict", "stage", "delivery_missing", "connection_id", id.String())
 		return RuntimeLease{}, ErrConnectionConflict
 	}
 	if e != nil {
 		return RuntimeLease{}, createError(e)
 	}
 	var manifest RuntimeManifest
-	if json.Unmarshal(manifestRaw, &manifest) != nil || !runtimeRecoveryEligible(manifest, locked.recoveryEligible) || !runtimeBGPCompatible(manifest, locked.bgpEligible) || (len(manifest.RetainedGuardPredecessors) > 0 && !locked.retainedGuardEligible) {
+	if json.Unmarshal(manifestRaw, &manifest) != nil || !runtimeRecoveryEligible(manifest, locked.recoveryEligible) || manifest.ProfileID == GCPClassicProfile && !classicManifestCompatible(manifest, locked.gcpClassicEligible) || !runtimeBGPCompatible(manifest, locked.bgpEligible && (manifest.ProfileID != GCPHAProfile || locked.gcpHAEligible)) || (len(manifest.RetainedGuardPredecessors) > 0 && !locked.retainedGuardEligible) {
 		return RuntimeLease{}, ErrConnectionIneligible
 	}
 	cfg, _, e := runtimeConfig(ctx, tx, c)
@@ -278,6 +281,7 @@ func (s *ConnectionStore) PermitLease(ctx context.Context, p RuntimePrincipal, i
 		return RuntimeLease{}, e
 	}
 	if policy.Hash != r.PolicyHash {
+		slog.WarnContext(ctx, "ipsec_permit_lease_conflict", "stage", "policy_hash", "connection_id", id.String())
 		return RuntimeLease{}, ErrConnectionConflict
 	}
 	// Re-observe database time after compilation; transaction-start now() could

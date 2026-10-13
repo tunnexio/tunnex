@@ -156,7 +156,7 @@ func (a *KernelApplier) verifyBGPRoutes(ctx context.Context, p KernelAllocation,
 	if err != nil {
 		return err
 	}
-	for i, t := range p.Tunnels {
+	for i, t := range p.Tunnels[:p.activeTunnelCount()] {
 		if s.ownership[i] != owned[i] || owned[i].InterfaceIndex == 0 || !s.address[i] {
 			return ErrKernelApply
 		}

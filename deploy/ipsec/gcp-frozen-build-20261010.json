@@ -1,0 +1,46 @@
+{
+  "source_commit": "3d0951e84aa58ce78dcc6238bd2ecaf7d3f38fd9",
+  "archive_sha256": "b4080ec2a60d18920d8c7e1b16eae58a2965f8deb4f3b26782b658f4b3dd75e1",
+  "status": "six-Linux-builds-pass",
+  "binaries": {
+    "tunnex-api-amd64": "e2dff585d15bae352af9d2b6dae8f730bc216f5ccc3b002ca56765d8fd16c793",
+    "tunnex-api-arm64": "a4612765d6ab2aaf9b195c56027c2b3e2350a5ff5c21930c683d3fe8bddf10ac",
+    "tunnex-node-amd64": "12f75f63c965fa31f1d7c3f756f8e3c6270beb5bc7e7eae4e1fed75748f97038",
+    "tunnex-node-arm64": "5d10cfc9f503a57d9c8612b89365f05caca507519d1f956b352e00ef6adbe2ee",
+    "tunnex-ai-vpn-relay-amd64": "923bda1af32cc01bd6603bfee37143be0aedcb99cce21e5563105a7800858cca",
+    "tunnex-ai-vpn-relay-arm64": "31959e47b622598cebe1fe0f6420872383a7da6fc577010539012488a79603d4"
+  },
+  "scope": "clean tracked source cross-build only; no deployment proof",
+  "relevant_node_suites": {
+    "ipsec_seconds": 41.624,
+    "control_seconds": 5.936,
+    "bgp_seconds": 1.541,
+    "fqdnrpc_seconds": 3.049,
+    "dnsforward_seconds": 3.55,
+    "nodepolicy_seconds": 2.557,
+    "result": "pass"
+  },
+  "native_image_status": "owned AMD64 native build and isolated content verification pass",
+  "cloud_tunnel_proof": false,
+  "native_image": {
+    "source_commit": "3d0951e84aa58ce78dcc6238bd2ecaf7d3f38fd9",
+    "status": "native-amd64-build-and-content-pass",
+    "image": "tunnex-gcp-s2s-native:20261010-3d0951e8-amd64",
+    "image_id": "sha256:ccde530ca3e815ee169ed258ab6a95ad20de4089f8e4abf6b0f20440a7d62102",
+    "architecture": "amd64",
+    "build_seconds": 331.616,
+    "remote_owned_stage": "/tmp/tunnex-gcp-amd64-build-20261010-3d0951e8",
+    "sha256": {
+      "source.tar": "b4080ec2a60d18920d8c7e1b16eae58a2965f8deb4f3b26782b658f4b3dd75e1",
+      "tunnex-node": "12f75f63c965fa31f1d7c3f756f8e3c6270beb5bc7e7eae4e1fed75748f97038",
+      "tunnex-ai-vpn-relay": "923bda1af32cc01bd6603bfee37143be0aedcb99cce21e5563105a7800858cca",
+      "node.prebuilt.Dockerfile": "521ed8d9f153ba0b1b599417dbb729b8cff2182866b62e8bbb554ab336eca3e7"
+    },
+    "logs": {
+      "native-build.log": "9890e58fbe11537247da6fa04fc05336c0a2b96f9f618724f05975474df647fc",
+      "native-content.log": "3a2d07b907b0bfe4e78a27e35a63d647048581274acccbca1bb78706e869f1df"
+    },
+    "scope": "Owned native AMD64 image content only; no enrollment, node start, cloud tunnel or packet proof",
+    "preserved": "Owned source stages/image/content container; no unrelated resources modified"
+  }
+}

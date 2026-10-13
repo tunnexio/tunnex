@@ -2,6 +2,7 @@ package ipsec
 
 import (
 	"context"
+	"crypto/sha256"
 	"errors"
 	"github.com/google/uuid"
 	bgpengine "github.com/tunnexio/tunnex/apps/node/internal/bgp"
@@ -47,12 +48,13 @@ type RuntimeControllerConfig struct {
 	Environment                 RuntimeEnvironmentInspector
 }
 type runtimeActive struct {
-	Delivery    RuntimeDelivery // secret-free, authenticated normal Apply context for telemetry
-	Entry       RuntimeJournalEntry
-	Environment RuntimeEnvironment
-	Grants      []GuardGrant
-	Identity    PermitLeaseIdentity
-	Authority   *PermitLeaseAuthority
+	StaticKeyDigest [32]byte        // process-private successful Classic key continuity; never journaled or logged
+	Delivery        RuntimeDelivery // secret-free, authenticated normal Apply context for telemetry
+	Entry           RuntimeJournalEntry
+	Environment     RuntimeEnvironment
+	Grants          []GuardGrant
+	Identity        PermitLeaseIdentity
+	Authority       *PermitLeaseAuthority
 }
 
 type RuntimeController struct {
@@ -71,6 +73,7 @@ type RuntimeController struct {
 	qualification           *RuntimePlatformQualification
 	prove                   func(context.Context, RuntimeJournalEntry, RuntimeEnvironment) error
 	active                  map[uuid.UUID]runtimeActive
+	deniedClassicTransports map[uuid.UUID]runtimeDeniedClassicTransport
 	recoveryHistory         map[uuid.UUID]*recoveryDecision
 	recoveryPrepared        map[uuid.UUID]RuntimeEnvironment
 	recoveryClock           func() time.Duration
@@ -137,6 +140,7 @@ func (c *RuntimeController) Close() error {
 	defer c.mu.Unlock()
 	c.withdrawDNSOwnerView(uuid.Nil)
 	c.closed = true
+	c.deniedClassicTransports = nil
 	c.started = false
 	c.active = nil
 	c.recoveryReportClocks = nil
@@ -187,6 +191,19 @@ func (c *RuntimeController) Start(ctx context.Context) error {
 			if entry.Allocation.Namespace != ns {
 				continue
 			}
+			// Namespace inode numbers can be reused after a kernel reboot.
+			// Old-boot duties cannot identify current processes. Prefix denial
+			// is already installed; exact reset receipt and independent absence
+			// proof remain required by normal restoration and cleanup.
+			if entry.Restoration != nil {
+				boot, err := resetBootID()
+				if err != nil {
+					return ErrRuntimeController
+				}
+				if entry.Restoration.BootID != boot {
+					continue
+				}
+			}
 			if c.cleanupBGPDuties(ctx, entry) != nil {
 				return ErrRuntimeController
 			}
@@ -236,7 +253,10 @@ func (c *RuntimeController) Apply(ctx context.Context, m RuntimeMaterial) (ackRe
 	}()
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	fail := func() (RuntimeAcknowledgement, error) { return RuntimeAcknowledgement{}, ErrRuntimeController }
+	fail := func() (RuntimeAcknowledgement, error) {
+		delete(c.deniedClassicTransports, m.Manifest.ConnectionID)
+		return RuntimeAcknowledgement{}, ErrRuntimeController
+	}
 	if !c.started || c.closed || ctx.Err() != nil || c.config.DaemonAlive == nil || !c.config.DaemonAlive() {
 		return fail()
 	}
@@ -258,21 +278,25 @@ func (c *RuntimeController) Apply(ctx context.Context, m RuntimeMaterial) (ackRe
 	if e != nil {
 		return fail()
 	}
-	stage = "material_contract"
+	stage = "material_entry"
 	entry, grants, e := runtimeMaterialEntry(m, c.config.OrgID, c.config.GatewayID, ns)
 	if e != nil {
 		return fail()
 	}
 	c.withdrawChangedDNSMaterial(m, grants)
+	stage = "material_fqdn_withdraw"
 	if err := c.withdrawChangedFQDNMaterial(ctx, m, grants); err != nil {
 		return fail()
 	}
+	stage = "material_fqdn_current"
 	if !c.fqdnGrantsCurrent(grants) {
 		return RuntimeAcknowledgement{}, ErrRuntimeController
 	}
+	stage = "material_bgp_qualification"
 	if entry.ContractVersion == 3 && !c.bgpQualificationCurrent() {
 		return fail()
 	} // BGP transport alone never grants runtime capability.
+	stage = "material_contract"
 	entries, e := c.journal.Entries()
 	if e != nil {
 		return fail()
@@ -305,10 +329,10 @@ func (c *RuntimeController) Apply(ctx context.Context, m RuntimeMaterial) (ackRe
 	// public/NAT identity as the actual local socket address.
 	stage = "environment"
 	env, e := c.config.Environment.Observe(ctx, entry.Allocation, entry.Engines)
-	if e != nil || env.Namespace != ns {
+	if e != nil || env.Namespace != ns || (entry.Allocation.activeTunnelCount() == 1 && env.Underlays[1] != (RuntimeUnderlay{})) {
 		return fail()
 	}
-	for i := range entry.Engines {
+	for i := range entry.Engines[:entry.Allocation.activeTunnelCount()] {
 		entry.Engines[i].LocalAddress = env.Underlays[i].LocalAddress
 		if env.Underlays[i].InterfaceIndex <= 0 || !validEngineTunnel(entry.Engines[i]) {
 			return fail()
@@ -317,18 +341,21 @@ func (c *RuntimeController) Apply(ctx context.Context, m RuntimeMaterial) (ackRe
 	stage = "journal_continuity"
 	if pos < 0 {
 		if c.admitRetainedGuardHandoff(ctx, entries, entry) != nil {
+			stage = "journal_handoff_refused"
 			return fail()
 		}
 		entries = append(entries, entry)
 		pos = len(entries) - 1
 		if c.journal.Save(entries) != nil {
+			stage = "journal_save_refused"
 			return fail()
 		}
 	} else {
 		old := entries[pos]
-		if entry.ContractVersion == 2 || entry.ContractVersion == 3 {
+		if entry.ContractVersion == 2 || entry.ContractVersion == 3 || entry.ContractVersion == 4 {
 			boot, err := resetBootID()
 			if err != nil {
+				stage = "journal_boot_refused"
 				return fail()
 			}
 			resetNeeded := old.Allocation.Namespace != ns || (old.Restoration != nil && old.Restoration.BootID != boot)
@@ -340,6 +367,7 @@ func (c *RuntimeController) Apply(ctx context.Context, m RuntimeMaterial) (ackRe
 			}
 			if resetNeeded {
 				if c.reserveRestoration(ctx, m, entries, pos, entry, boot) != nil {
+					stage = "journal_restoration_refused"
 					return fail()
 				}
 				old = entries[pos]
@@ -348,7 +376,7 @@ func (c *RuntimeController) Apply(ctx context.Context, m RuntimeMaterial) (ackRe
 		same := entry
 		same.Restoration = old.Restoration
 		same.Allocation.Generation = old.Allocation.Generation
-		for i := range same.Allocation.Tunnels {
+		for i := range same.Allocation.Tunnels[:same.Allocation.activeTunnelCount()] {
 			same.Allocation.Tunnels[i].Alias = old.Allocation.Tunnels[i].Alias
 		}
 		same.Phase = old.Phase
@@ -363,6 +391,7 @@ func (c *RuntimeController) Apply(ctx context.Context, m RuntimeMaterial) (ackRe
 			same.Recovery = old.Recovery
 		}
 		if old.Phase == RuntimeCleanupPending || old.Phase == RuntimeRetainedRefusal || !reflect.DeepEqual(old, same) {
+			stage = runtimeJournalContinuityRefusalStage(old, same)
 			return fail()
 		}
 	}
@@ -394,11 +423,22 @@ func (c *RuntimeController) Apply(ctx context.Context, m RuntimeMaterial) (ackRe
 		}
 		return ack, err
 	}
+	// Continuity above validated the durable allocation, including any restored
+	// generation. Kernel mutations must use that allocation, not its original
+	// manifest generation, which is now a retired obligation.
+	entry = entries[pos]
 	if c.active == nil {
 		c.active = map[uuid.UUID]runtimeActive{}
 	}
 	prior, known := c.active[entry.Allocation.ConnectionID]
 	unchanged := known && prior.Entry.DeliveryID == entry.DeliveryID && reflect.DeepEqual(prior.Environment, env)
+	if !known {
+		reuse, err := c.deniedClassicTransportMatches(ctx, m, entry, env, entries)
+		if err != nil {
+			return fail()
+		}
+		unchanged = reuse
+	}
 	if unchanged && prior.Identity.PolicyHash != m.Policy.Hash {
 		delete(c.active, entry.Allocation.ConnectionID)
 		if c.installActive(ctx, entries) != nil {
@@ -424,7 +464,7 @@ func (c *RuntimeController) Apply(ctx context.Context, m RuntimeMaterial) (ackRe
 		if c.journal.Save(entries) != nil {
 			return fail()
 		}
-		for i, t := range entry.Engines {
+		for i, t := range entry.Engines[:entry.Allocation.activeTunnelCount()] {
 			if c.config.Daemon.removeTunnel(ctx, t) != nil {
 				return fail()
 			}
@@ -449,13 +489,13 @@ func (c *RuntimeController) Apply(ctx context.Context, m RuntimeMaterial) (ackRe
 		return fail()
 	}
 	if !unchanged {
-		for _, t := range entry.Engines {
+		for _, t := range entry.Engines[:entry.Allocation.activeTunnelCount()] {
 			if c.config.Daemon.initiateTunnel(ctx, t) != nil {
 				return fail()
 			}
 		}
 	}
-	// Both tunnel observations are required; selection remains explicit slot 1.
+	// Every active tunnel must be independently observed; static selection is slot 1.
 	if e = c.proveCurrent(ctx, entries[pos], env); e != nil {
 		delete(c.active, entry.Allocation.ConnectionID)
 		_ = c.installActive(ctx, entries)
@@ -478,16 +518,68 @@ func (c *RuntimeController) Apply(ctx context.Context, m RuntimeMaterial) (ackRe
 		_, _ = c.refuse(ctx, entries)
 		return fail()
 	}
+	if entry.ContractVersion == 4 {
+		stage = "static_boot_record"
+		if c.recordRuntimeBoot(ctx, entry.DeliveryID) != nil {
+			c.active = nil
+			_, _ = c.refuse(ctx, entries)
+			return fail()
+		}
+		// Initial Apply commits Phase and boot provenance after the native guard.
+		// Maintenance must retain that exact durable entry, not its Applying copy.
+		committed, readErr := c.journal.Entries()
+		boot, bootErr := resetBootID()
+		if bootErr != nil {
+			readErr = bootErr
+		}
+		active, present := c.active[entry.Allocation.ConnectionID]
+		found := false
+		for _, saved := range committed {
+			if saved.DeliveryID != entry.DeliveryID {
+				continue
+			}
+
+			if found || !present || !classicCommittedEntryMatches(active.Entry, saved, boot) {
+				readErr = ErrRuntimeController
+				break
+			}
+			active.Entry, found = saved, true
+		}
+		if readErr != nil || !found {
+			c.active = nil
+			_, _ = c.refuse(ctx, entries)
+			return fail()
+		}
+		active.Delivery = m.RuntimeDelivery
+		active.StaticKeyDigest = sha256.Sum256([]byte(m.Secrets[0].PSK))
+		c.active[entry.Allocation.ConnectionID] = active
+	}
 	return RuntimeAcknowledgement{DeliveryID: m.ID, DesiredRevision: m.DesiredRevision, Kind: "apply", Result: "applied", OwnershipDigest: m.OwnershipDigest}, nil
+}
+
+// Only the ordinary Applied phase and initial proven boot stamp may advance.
+func classicCommittedEntryMatches(before, saved RuntimeJournalEntry, boot string) bool {
+	if boot == "" || (before.Restoration != nil && before.Restoration.BootID != boot) {
+		return false
+	}
+	before.Phase = RuntimeApplied
+	if before.Restoration == nil {
+		before.Restoration = &RuntimeRestoration{BootID: boot}
+	}
+	return reflect.DeepEqual(before, saved)
 }
 
 func (c *RuntimeController) Cleanup(ctx context.Context, cleanup RuntimeCleanup) (RuntimeAcknowledgement, error) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	fail := func() (RuntimeAcknowledgement, error) { return RuntimeAcknowledgement{}, ErrRuntimeController }
+	fail := func() (RuntimeAcknowledgement, error) {
+		c.deniedClassicTransports = nil
+		return RuntimeAcknowledgement{}, ErrRuntimeController
+	}
 	if !c.started || c.closed || ctx.Err() != nil || !cleanup.RetainGuard || !runtimeCleanupValid(cleanup, c.config.OrgID, c.config.GatewayID) || cleanup.CoversDeliveryRevision <= 0 || cleanup.CoversDeliveryRevision >= cleanup.DesiredRevision || len(cleanup.Lineage) == 0 || len(cleanup.Lineage) > 256 {
 		return fail()
 	}
+	delete(c.deniedClassicTransports, cleanup.Manifest.ConnectionID)
 	c.withdrawDNSOwnerView(cleanup.Manifest.ConnectionID)
 	entries, e := c.journal.Entries()
 	if e != nil {
@@ -640,7 +732,7 @@ func (c *RuntimeController) Cleanup(ctx context.Context, cleanup RuntimeCleanup)
 				}
 			}
 		}
-		for _, t := range entry.Engines {
+		for _, t := range entry.Engines[:entry.Allocation.activeTunnelCount()] {
 			if c.config.Daemon.removeTunnel(ctx, t) != nil {
 				return fail()
 			}
@@ -778,6 +870,9 @@ func (c *RuntimeController) installActiveCandidates(ctx context.Context, entries
 				}
 				g.PrefixOnly = false
 				g.Tunnels = a.Entry.Observed
+				if a.Entry.Allocation.activeTunnelCount() == 1 {
+					g.TunnelCount = 1
+				}
 				g.Grants = a.Grants
 				g.LocalIngressIndices = a.Environment.LocalIngressIndices
 				g.PermitFor = remaining
@@ -794,7 +889,7 @@ func (c *RuntimeController) installActiveCandidates(ctx context.Context, entries
 				// The installation observation can disagree with the earlier recovery
 				// decision. Withdraw existing authority before returning; empty reply
 				// observations must never fall back to selected-path permission.
-				if statuses[index] != "up" || (statuses[1-index] != "up" && statuses[1-index] != "down") {
+				if statuses[index] != "up" || (a.Entry.Allocation.activeTunnelCount() == 2 && statuses[1-index] != "up" && statuses[1-index] != "down") {
 					c.withdrawDNSOwnerView(id)
 					delete(active, id)
 					_, _ = c.refuse(ctx, entries)
@@ -806,7 +901,7 @@ func (c *RuntimeController) installActiveCandidates(ctx context.Context, entries
 					return ErrRuntimeController
 				}
 				g.PermitFor = remaining
-				for i, status := range statuses {
+				for i, status := range statuses[:a.Entry.Allocation.activeTunnelCount()] {
 					if status == "up" {
 						g.ReplyIngressIndices = append(g.ReplyIngressIndices, a.Entry.Observed[i].InterfaceIndex)
 					}

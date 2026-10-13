@@ -20,7 +20,7 @@ import (
 // Static simulator only: its return route/ACL grants no enrolled gateway authority.
 func standaloneStaticServe(t *testing.T, c standalonePeerConfig, g GuardIntent, r *KernelReader, d *DaemonClient) {
 	gc := g.Connections[0]
-	owned := RouteTuple{Destination: netip.MustParsePrefix("10.10.0.0/24"), Table: 254, Protocol: 242, Metric: 50001, OutputInterface: gc.Tunnels[0].InterfaceIndex}
+	owned := RouteTuple{Destination: c.CustomTunnels[0].RemotePrefixes[0], Table: 254, Protocol: 242, Metric: 50001, OutputInterface: gc.Tunnels[0].InterfaceIndex}
 	run := func(args ...string) error {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer cancel()
@@ -31,7 +31,11 @@ func standaloneStaticServe(t *testing.T, c standalonePeerConfig, g GuardIntent, 
 		defer cancel()
 		cmd := exec.CommandContext(ctx, "/usr/sbin/nft", "-f", "-")
 		cmd.Stdin = bytes.NewBufferString(text)
-		return cmd.Run()
+		err := cmd.Run()
+		if err != nil && ctx.Err() == context.DeadlineExceeded {
+			return fmt.Errorf("peer nft deadline exceeded: %w", err)
+		}
+		return err
 	}
 	deny := func() error {
 		v, e := RenderGuard(g)
@@ -99,8 +103,11 @@ func standaloneStaticServe(t *testing.T, c standalonePeerConfig, g GuardIntent, 
 			return
 		default:
 		}
-		if deny() != nil || verify(true) != nil {
-			t.Fatal("static simulator proof failed")
+		if err := deny(); err != nil {
+			t.Fatalf("static simulator denial update failed: %v", err)
+		}
+		if err := verify(true); err != nil {
+			t.Fatalf("static simulator return proof failed: %v", err)
 		}
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		sas, e := d.Inspect(ctx)
@@ -112,16 +119,23 @@ func standaloneStaticServe(t *testing.T, c standalonePeerConfig, g GuardIntent, 
 					continue
 				}
 				ch := sa.Children[0]
-				if !ch.Installed || ch.ReqID != tunnel.ReqID || ch.IfIDIn != tunnel.XFRMID || ch.IfIDOut != tunnel.XFRMID || !sameEnginePrefixes(ch.LocalPrefixes, tunnel.LocalPrefixes) || !sameEnginePrefixes(ch.RemotePrefixes, tunnel.RemotePrefixes) {
+				if !ch.Installed || ch.ReqID != tunnel.ReqID || ch.IfIDIn != tunnel.XFRMID || ch.IfIDOut != tunnel.XFRMID || !sameEnginePrefixes(ch.LocalPrefixes, engineTransportPrefixes(tunnel, true)) || !sameEnginePrefixes(ch.RemotePrefixes, engineTransportPrefixes(tunnel, false)) {
 					continue
 				}
 				underlay, e := standalonePeerUnderlay(tunnel)
 				if e != nil {
 					t.Fatal("static underlay refused")
 				}
-				rules := fmt.Sprintf("insert rule inet tunnex_ipsec forward_guard meta iif %d meta oif %d ip saddr 10.10.0.2 ip daddr 10.32.0.2 tcp dport 18080 ipsec in reqid %d accept\ninsert rule inet tunnex_ipsec forward_guard meta iif %d meta oif %d ip saddr 10.32.0.2 ip daddr 10.10.0.2 tcp sport 18080 ct state established accept\ninsert rule inet tunnex_ipsec postrouting_guard meta oif %d ip saddr 10.32.0.2 ip daddr 10.10.0.2 tcp sport 18080 ipsec out reqid %d accept\ninsert rule inet tunnex_ipsec postrouting_guard meta oif %d ip saddr 10.32.0.2 ip daddr 10.10.0.2 tcp sport 18080 ipsec out reqid %d ipsec out ip daddr %s counter accept\n", gc.Tunnels[0].InterfaceIndex, lan.Index, tunnel.ReqID, lan.Index, gc.Tunnels[0].InterfaceIndex, gc.Tunnels[0].InterfaceIndex, tunnel.ReqID, underlay.Index, tunnel.ReqID, tunnel.RemoteAddress)
-				if nft(rules) != nil {
-					t.Fatal("static simulator ACL refused")
+				localTarget, remoteTarget := netip.MustParseAddr("10.32.0.2"), netip.MustParseAddr("10.10.0.2")
+				if c.ProfileID == GCPClassicStaticProfile {
+					localTarget, remoteTarget = c.LocalTarget, c.RemoteTarget
+				}
+				services := []standalonePeerService{{Source: remoteTarget, Destination: localTarget, Protocol: "tcp", Port: 18080}}
+				services = append(services, c.Services...)
+				rules := standaloneStaticServiceRules(services, gc.Tunnels[0].InterfaceIndex, lan.Index, underlay.Index, tunnel.ReqID, tunnel.RemoteAddress)
+				rules += standaloneStaticReverseServiceRules(c.ReverseServices, gc.Tunnels[0].InterfaceIndex, lan.Index, underlay.Index, tunnel.ReqID, tunnel.RemoteAddress)
+				if err := nft(rules); err != nil {
+					t.Fatalf("static simulator ACL refused: %v", err)
 				}
 			}
 		}

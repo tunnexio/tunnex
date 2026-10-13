@@ -1,0 +1,26 @@
+{
+  "source_commit": "76643037",
+  "review": "No current UDP probe/frame parser source finding; no edits or cloud probe retry",
+  "actual_local_udp": {
+    "receipt_path": "/private/tmp/gcp-packet-local-udp-check-20261010.json",
+    "sha256": "ce6e6bbe189d43a62a5e7e4f11f07f2798505b9adadb9da24f435d06a2bff461",
+    "exact_echo_accepted": true,
+    "wrong_echo_refused": true,
+    "scope": "actual localhost UDP only; no AF_PACKET/native/cloud authority claim"
+  },
+  "cloud_partial_receipt": {
+    "path": "/private/tmp/gcp-cloud-packets-20261010/classic-allow-normal-grants-v1.json",
+    "sha256": "e52953ca325bfe3af24cb84d72411201a5f7a43c3de3a9ff803e986fb6dc08cb",
+    "tcp": "exact marker and target request observed",
+    "udp": "timeout; local receiver self-control passed; zero matching tuple frames with zero drops and completed STOP",
+    "accepted": false
+  },
+  "modeled_frame_check": {
+    "cloud_nonce_payload_hash_reproduced": true,
+    "udp_payload_bytes": 51,
+    "ipv4_df": "exact_payload",
+    "ethernet_padding": "exact_payload",
+    "scope": "constructed frames; actual missing cloud UDP packet bytes were not captured"
+  },
+  "limitation": "No actual local AF_PACKET execution. TCP capture alone does not prove UDP. Missing target observation does not identify the drop location; native guard/API/cloud firewall diagnosis remains separate."
+}

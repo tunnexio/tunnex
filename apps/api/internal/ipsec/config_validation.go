@@ -12,6 +12,7 @@ type BGPConfig struct {
 }
 
 type StaticConfig struct {
+	ProfileID              string         `json:"profile_id,omitempty"`
 	BGP                    *BGPConfig     `json:"bgp,omitempty"`
 	Mode                   string         `json:"mode"`
 	CustomerOutsideAddress string         `json:"customer_outside_address"`
@@ -116,25 +117,13 @@ func ValidateAWSStaticConfig(c StaticConfig) error {
 	if c.Mode != "ipv4-static" || c.BGP != nil {
 		return configError("mode_unsupported", "mode", 0)
 	}
-	local, err := routedPrefixes(c.LocalPrefixes, "local_prefixes")
+	routes, err := validateRoutedIPv4Pair(c.LocalPrefixes, c.RemotePrefixes)
 	if err != nil {
 		return err
-	}
-	remote, err := routedPrefixes(c.RemotePrefixes, "remote_prefixes")
-	if err != nil {
-		return err
-	}
-	for _, l := range local {
-		for _, r := range remote {
-			if l.Overlaps(r) {
-				return configError("prefix_overlap", "remote_prefixes", 0)
-			}
-		}
 	}
 	if len(c.Tunnels) != 2 {
 		return configError("tunnel_count", "tunnels", 0)
 	}
-	routes := append(local, remote...)
 	customerOutside, ok := canonicalIPv4Address(c.CustomerOutsideAddress)
 	if !ok {
 		return configError("outside_invalid", "customer_outside_address", 0)
@@ -247,6 +236,9 @@ func privateBGPASN(a uint32) bool {
 	return a >= 64512 && a <= 65534 || a >= 4200000000 && a <= 4294967294
 }
 func providerProfile(c StaticConfig) string {
+	if c.ProfileID != "" {
+		return c.ProfileID
+	}
 	if c.Mode == "ipv4-bgp" {
 		return "aws-bgp-ipv4-v1"
 	}

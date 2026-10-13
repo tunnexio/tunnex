@@ -18,30 +18,24 @@ import (
 // Existing obligations restore refusal synchronously before any WireGuard
 // forwarding. New hosts discover opt-in in the background and bind no IKE ports
 // until authoritative opt-in is true. There is no local capability override.
-func startIPsecRuntime(ctx context.Context, client *control.Client, stateDir string, logger *slog.Logger, dns *ipsec.DNSRuntimeTransport, fqdn *ipsec.RuntimeFQDNPolicySource) error {
+func startIPsecRuntime(ctx context.Context, client *control.Client, stateDir string, logger *slog.Logger, dns *ipsec.DNSRuntimeTransport, fqdn *ipsec.RuntimeFQDNPolicySource) (func() error, error) {
 	dir := filepath.Join(stateDir, "ipsec")
 	org, node, err := ipsec.ReadRuntimeJournalIdentity(dir)
 	existing := err == nil
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
-		return errors.New("IPsec saved refusal unavailable")
+		return nil, errors.New("IPsec saved refusal unavailable")
 	}
 	var controller *ipsec.RuntimeController
+	diagnostic := ipsecDiagnosticSink(logger, os.Getenv("TUNNEX_IPSEC_DNS_DIAGNOSTICS") == "1")
 	construct := func() error {
-		environment, e := ipsec.NewRuntimeEnvironmentInspector("/sbin/ip", "/usr/sbin/nft")
+		environment, e := ipsec.NewRuntimeEnvironmentInspectorWithDiagnostics("/sbin/ip", "/usr/sbin/nft", diagnostic)
 		if e != nil {
 			return e
 		}
 		if e = os.Mkdir(dir, 0700); e != nil && !errors.Is(e, os.ErrExist) {
 			return e
 		}
-		controller, e = ipsec.NewRuntimeController(ipsec.RuntimeControllerConfig{FQDNPolicy: fqdn, OrgID: org, GatewayID: node, JournalDir: dir, IPPath: "/sbin/ip", NFTPath: "/usr/sbin/nft", Environment: environment, Diagnostic: func(event ipsec.RuntimeDiagnostic) {
-			attrs := []any{"operation", event.Operation, "stage", event.Stage, "connection_id", event.ConnectionID.String(), "elapsed_ms", event.ElapsedMillis, "context_state", event.ContextState}
-			if event.Refused {
-				logger.Warn("ipsec_runtime_diagnostic_refused", attrs...)
-			} else {
-				logger.Debug("ipsec_runtime_diagnostic_completed", attrs...)
-			}
-		}}, client)
+		controller, e = ipsec.NewRuntimeController(ipsec.RuntimeControllerConfig{FQDNPolicy: fqdn, OrgID: org, GatewayID: node, JournalDir: dir, IPPath: "/sbin/ip", NFTPath: "/usr/sbin/nft", Environment: environment, Diagnostic: diagnostic}, client)
 		if e != nil {
 			return e
 		}
@@ -57,18 +51,19 @@ func startIPsecRuntime(ctx context.Context, client *control.Client, stateDir str
 	}
 	if existing {
 		if err = construct(); err != nil {
-			return errors.New("IPsec saved refusal unavailable")
+			return nil, errors.New("IPsec saved refusal unavailable")
 		}
 	}
-	go func() {
+	shutdown := launchIPsecRuntime(ctx, func(ctx context.Context) (result error) {
 		var process *ipsec.DaemonProcess
 		qualified := false
+		bgpQualified := false
 		defer func() {
 			if process != nil {
-				process.Close()
+				result = errors.Join(result, process.Close())
 			}
 			if controller != nil {
-				controller.Close()
+				result = errors.Join(result, controller.Close())
 			}
 		}()
 		ticker := time.NewTicker(5 * time.Second)
@@ -135,6 +130,15 @@ func startIPsecRuntime(ctx context.Context, client *control.Client, stateDir str
 								logger.Warn("ipsec_runtime_platform_refused", "stage", qualificationStage, "elapsed_ms", time.Since(qualificationStarted).Milliseconds(), "context_done", ctx.Err() != nil)
 							}
 						}
+						if qualified && page.IPsecEnabled && !bgpQualified {
+							bgpStarted := time.Now()
+							bgpStage, bgpErr := qualifyIPsecRuntimeBGP(ctx, &bgpQualified, func(ctx context.Context) (*bgp.PreflightQualification, error) {
+								return bgp.QualifyPreflight(ctx, dir)
+							}, controller.AttachBGPQualification)
+							if bgpErr != nil {
+								logger.Warn("ipsec_runtime_bgp_platform_refused", "stage", bgpStage, "reason", bgp.PreflightRefusalReason(bgpErr), "elapsed_ms", time.Since(bgpStarted).Milliseconds(), "context_done", ctx.Err() != nil)
+							}
+						}
 						// Cleanup remains available without activation qualification; Apply requires
 						// the attached current receipt and cannot grant permits without it.
 						bound := &boundIPsecClient{Client: client, org: org, node: node}
@@ -160,8 +164,8 @@ func startIPsecRuntime(ctx context.Context, client *control.Client, stateDir str
 			case <-ticker.C:
 			}
 		}
-	}()
-	return nil
+	})
+	return shutdown, nil
 }
 
 type boundIPsecClient struct {

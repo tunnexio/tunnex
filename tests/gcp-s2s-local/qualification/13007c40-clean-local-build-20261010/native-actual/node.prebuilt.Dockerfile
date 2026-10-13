@@ -1,0 +1,42 @@
+# One verified multi-platform index for the C builder AND its runtime ABI.
+FROM alpine:3.24.2@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6 AS ipsec-build
+RUN apk add --no-cache build-base openssl-dev linux-headers python3 gnupg pax-utils ca-certificates
+COPY deploy/ipsec/build.sh deploy/ipsec/verify_source.py deploy/ipsec/PROVENANCE.json deploy/ipsec/NOTICE deploy/ipsec/STRONGSWAN-RELEASE-PGP-KEY deploy/ipsec/strongswan-6.1.0.tar.gz.sig /build/ipsec/
+COPY deploy/docker/node.Dockerfile /build/ipsec/node.Dockerfile
+RUN sh /build/ipsec/build.sh
+
+FROM alpine:3.24.2@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6 AS bgp-observer-build
+COPY deploy/bgp/build_observer.sh /build_observer.sh
+COPY deploy/bgp/zebra-no-sys-admin.patch /build/zebra-no-sys-admin.patch
+RUN sh /build_observer.sh
+
+FROM alpine:3.24.2@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6
+# WireGuard data plane (S3.2): wg/wg-quick + ip (iproute2) drive the kernel
+# WireGuard module (present in most modern kernels incl. Docker's LinuxKit VM).
+# ca-certificates for the control channel. If a host lacks the module the agent
+# fails readiness with a diagnosable error rather than pretending success.
+# openvpn (S9.1 D-S9.5-OPTIN b): the OpenVPN server binary ships UNCONDITIONALLY — its
+# presence is NEVER gated on the feature flag (the conntrack-tools packaging trap: a feature
+# guarded by an unstated runtime dep breaks silently on a base-image change). The FEATURE is
+# what the org opts into; the binary is always here. Absent-at-runtime → ovpn_binary_absent
+# (refuse-loudly on the health surface), never a crash.
+# AWS compat-rule inspection uses the explicit iptables-nft-save binary only;
+# the alternative-selected iptables wrapper is never part of the authority proof.
+RUN apk add --no-cache ca-certificates wireguard-tools iproute2 nftables iptables openvpn libcrypto3 libssl3 \
+    && iptables-nft-save -V
+COPY deploy/bgp/install.sh deploy/bgp/PROVENANCE.json deploy/bgp/NOTICE /usr/share/tunnex-bgp/
+RUN sh /usr/share/tunnex-bgp/install.sh
+COPY --from=bgp-observer-build /stage/opt/tunnex-bgp /opt/tunnex-bgp
+COPY --from=ipsec-build /stage/opt/tunnex-ipsec /opt/tunnex-ipsec
+COPY --from=ipsec-build /stage/usr/share/tunnex-ipsec /usr/share/tunnex-ipsec
+COPY binaries/tunnex-node /usr/local/bin/tunnex-node
+COPY binaries/tunnex-ai-vpn-relay /usr/local/bin/tunnex-ai-vpn-relay
+COPY deploy/ipsec/verify_runtime.sh /usr/share/tunnex-ipsec/verify_runtime.sh
+RUN test -x /usr/local/bin/tunnex-node \
+    && test -x /usr/local/bin/tunnex-ai-vpn-relay \
+    && apk info -v > /usr/share/tunnex-ipsec/source/runtime-apk-manifest.txt \
+    && sh /usr/share/tunnex-ipsec/verify_runtime.sh
+EXPOSE 9091
+HEALTHCHECK --interval=10s --timeout=3s --start-period=5s --retries=5 \
+  CMD wget -qO- http://127.0.0.1:9091/healthz >/dev/null 2>&1 || exit 1
+ENTRYPOINT ["/usr/local/bin/tunnex-node"]

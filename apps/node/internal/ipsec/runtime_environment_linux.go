@@ -36,7 +36,7 @@ func runtimeDrainConntrack(ctx context.Context, entries []RuntimeJournalEntry) e
 		if entry.Allocation.Namespace != ns || !validKernelAllocation(entry.Allocation) {
 			return ErrRuntimeEnvironment
 		}
-		for _, engine := range entry.Engines {
+		for _, engine := range entry.Engines[:entry.Allocation.activeTunnelCount()] {
 			if !validEngineTunnel(engine) {
 				return ErrRuntimeEnvironment
 			}
@@ -106,7 +106,7 @@ func runtimeConntrackMatch(flow conntrack.Con, entries []RuntimeJournalEntry) (b
 	src = src.Unmap()
 	dst = dst.Unmap()
 	for _, entry := range entries {
-		for _, engine := range entry.Engines {
+		for _, engine := range entry.Engines[:entry.Allocation.activeTunnelCount()] {
 			for _, local := range engine.LocalPrefixes {
 				for _, remote := range engine.RemotePrefixes {
 					if local.Contains(src) && remote.Contains(dst) || local.Contains(dst) && remote.Contains(src) {

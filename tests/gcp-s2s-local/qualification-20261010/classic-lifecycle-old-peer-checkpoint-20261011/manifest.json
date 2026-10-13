@@ -1,0 +1,107 @@
+{
+  "immutable_exact_bytes": true,
+  "files": [
+    {
+      "file": "020-disable-withdraw-native-v3.jsonl",
+      "source": "/private/tmp/gcp-classic-psk-lifecycle-actual-20261011-v1/020-disable-withdraw-native-v3.jsonl",
+      "sha256": "c33902e3001fcbe34bec41936f0b9e4d35aee060aea69cfcddc7f66059757d51",
+      "bytes": 1937
+    },
+    {
+      "file": "021-before-rotate4-full-guard.json",
+      "source": "/private/tmp/gcp-classic-psk-lifecycle-actual-20261011-v1/021-before-rotate4-full-guard.json",
+      "sha256": "357b0543214ddbcddcec75075367e4d082fc28473701eb50902d3b0a7048edea",
+      "bytes": 11512
+    },
+    {
+      "file": "022-rotate-disabled4-audit.jsonl",
+      "source": "/private/tmp/gcp-classic-psk-lifecycle-actual-20261011-v1/022-rotate-disabled4-audit.jsonl",
+      "sha256": "f065a3887dc67fe87e7b22ab07e28174d61bcb0a7e72c621035b2befc3dd4ede",
+      "bytes": 413
+    },
+    {
+      "file": "023-rotate-disabled4-withdraw-native.jsonl",
+      "source": "/private/tmp/gcp-classic-psk-lifecycle-actual-20261011-v1/023-rotate-disabled4-withdraw-native.jsonl",
+      "sha256": "c33902e3001fcbe34bec41936f0b9e4d35aee060aea69cfcddc7f66059757d51",
+      "bytes": 1937
+    },
+    {
+      "file": "024-before-enable5-full-guard.json",
+      "source": "/private/tmp/gcp-classic-psk-lifecycle-actual-20261011-v1/024-before-enable5-full-guard.json",
+      "sha256": "abae20ffab7d31b0de9a91d2205a2d6e0075bde37c2d72882d71ccd750314d02",
+      "bytes": 12039
+    },
+    {
+      "file": "025-original-cloud-inventory-before-enable5.jsonl",
+      "source": "/private/tmp/gcp-classic-psk-lifecycle-actual-20261011-v1/025-original-cloud-inventory-before-enable5.jsonl",
+      "sha256": "7884515be209379cd88741d7235bf3bc416f241e0243adf6b0573293175f9803",
+      "bytes": 682
+    },
+    {
+      "file": "026-old-peer-auth-vici.jsonl",
+      "source": "/private/tmp/gcp-classic-psk-lifecycle-actual-20261011-v1/026-old-peer-auth-vici.jsonl",
+      "sha256": "21099fc283363a0bba308b85a60ac21e73eac39fb696017e41b34071fb509d53",
+      "bytes": 10933
+    },
+    {
+      "file": "027-enabled5-api-audit.jsonl",
+      "source": "/private/tmp/gcp-classic-psk-lifecycle-actual-20261011-v1/027-enabled5-api-audit.jsonl",
+      "sha256": "43f40fc2da55110aeb916e471453074ca7fde41b83af516a4d1873bc71206f76",
+      "bytes": 408
+    },
+    {
+      "file": "028-enabled5-old-peer-denial-native.jsonl",
+      "source": "/private/tmp/gcp-classic-psk-lifecycle-actual-20261011-v1/028-enabled5-old-peer-denial-native.jsonl",
+      "sha256": "c5e3c4e4c0f4501783d92ced3dab2a56b80c6cbb3e730abd880f725017ffd06d",
+      "bytes": 2406
+    },
+    {
+      "file": "029-enabled5-old-peer-full-guard.json",
+      "source": "/private/tmp/gcp-classic-psk-lifecycle-actual-20261011-v1/029-enabled5-old-peer-full-guard.json",
+      "sha256": "00b58d407c15e8cef8780493a15d9d20f944df8222af61eb22360ffc18f34860",
+      "bytes": 12041
+    },
+    {
+      "file": "030-enabled5-old-peer-packets-deny.json",
+      "source": "/private/tmp/gcp-classic-psk-lifecycle-actual-20261011-v1/030-enabled5-old-peer-packets-deny.json",
+      "sha256": "cc9ba534296c318e6fe91fb31e46522dc43c56a6b95d56261b30f0b658dafd84",
+      "bytes": 3526
+    },
+    {
+      "file": "031-disabled6-api-audit.jsonl",
+      "source": "/private/tmp/gcp-classic-psk-lifecycle-actual-20261011-v1/031-disabled6-api-audit.jsonl",
+      "sha256": "c3c53cb1f578342607295f5455ad89480e8b1bfe454b2631e11a6c4a1710c266",
+      "bytes": 413
+    },
+    {
+      "file": "032-disabled6-full-guard.json",
+      "source": "/private/tmp/gcp-classic-psk-lifecycle-actual-20261011-v1/032-disabled6-full-guard.json",
+      "sha256": "d2585d24578d04ca29f0ab907d15ffa43d2cabbf348364880b6719022839855a",
+      "bytes": 12034
+    },
+    {
+      "file": "033-native-withdraw-v4b.jsonl",
+      "source": "/private/tmp/gcp-classic-psk-lifecycle-actual-20261011-v1/033-native-withdraw-v4b.jsonl",
+      "sha256": "c1b8aee4e4ff8e92c8b423ab434375cfc136f9e9552f04d9096d579e250a3f7f",
+      "bytes": 2020
+    },
+    {
+      "file": "034-before-route-delete-api.jsonl",
+      "source": "/private/tmp/gcp-classic-psk-lifecycle-actual-20261011-v1/034-before-route-delete-api.jsonl",
+      "sha256": "c3c53cb1f578342607295f5455ad89480e8b1bfe454b2631e11a6c4a1710c266",
+      "bytes": 413
+    },
+    {
+      "file": "035-before-route-delete-fullguard.json",
+      "source": "/private/tmp/gcp-classic-psk-lifecycle-actual-20261011-v1/035-before-route-delete-fullguard.json",
+      "sha256": "e94a4394414eabc57910caa1fc5f9452e064d26046a29c44fbb6a95faa3a0e9d",
+      "bytes": 170
+    },
+    {
+      "file": "candidate-linux-unit-v3.json",
+      "source": "/private/tmp/gcp-classic-denied-unit-root-20261011-v3/receipt.json",
+      "sha256": "84b3d651c3dd7225acbb99585a67f6faa4c63c3352be494f9aa99dcf4a12143a",
+      "bytes": 1081
+    }
+  ]
+}

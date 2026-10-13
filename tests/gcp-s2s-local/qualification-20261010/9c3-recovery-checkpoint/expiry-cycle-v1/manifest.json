@@ -1,0 +1,140 @@
+{
+  "files": [
+    {
+      "file": "api-expired-deny-after.json",
+      "sha256": "fdeb4660aff64234ce2c78c372eb6929741d7f8e59382808b83833f1fe3035ec",
+      "original": "/private/tmp/gcp-cloud-expiry-9c3ab006-20261011/cycle-v1/api-expired-deny-after.json"
+    },
+    {
+      "file": "api-expired-deny.json",
+      "sha256": "fdeb4660aff64234ce2c78c372eb6929741d7f8e59382808b83833f1fe3035ec",
+      "original": "/private/tmp/gcp-cloud-expiry-9c3ab006-20261011/cycle-v1/api-expired-deny.json"
+    },
+    {
+      "file": "api-fresh-pre-expiry.json",
+      "sha256": "6fd63096d7deea27772f3c7ca0074e6abe49f79a20d747c00d1401d91cf3f463",
+      "original": "/private/tmp/gcp-cloud-expiry-9c3ab006-20261011/cycle-v1/api-fresh-pre-expiry.json"
+    },
+    {
+      "file": "api-restored-allow.json",
+      "sha256": "6fd63096d7deea27772f3c7ca0074e6abe49f79a20d747c00d1401d91cf3f463",
+      "original": "/private/tmp/gcp-cloud-expiry-9c3ab006-20261011/cycle-v1/api-restored-allow.json"
+    },
+    {
+      "file": "api-temporary-allow.json",
+      "sha256": "fdeb4660aff64234ce2c78c372eb6929741d7f8e59382808b83833f1fe3035ec",
+      "original": "/private/tmp/gcp-cloud-expiry-9c3ab006-20261011/cycle-v1/api-temporary-allow.json"
+    },
+    {
+      "file": "cleanup-replacement-v1.jsonl",
+      "sha256": "8340565e232ca893844ae3bef39ad9bb7557a337f6442b17ef2e1ec0471ddf70",
+      "original": "/private/tmp/gcp-cloud-expiry-9c3ab006-20261011/cycle-v1/cleanup-replacement-v1.jsonl"
+    },
+    {
+      "file": "cycle-replacement-v1.jsonl",
+      "sha256": "e01c3b7a426b87a4f33e5b170f8132ef10b6ff28ed0016913a185b4792a87612",
+      "original": "/private/tmp/gcp-cloud-expiry-9c3ab006-20261011/cycle-v1/cycle-replacement-v1.jsonl"
+    },
+    {
+      "file": "expired-deny-packets-replacement-v1.json",
+      "sha256": "975051899cdb6bb497e4cbac14d954b7b40ccd000af98db77d49b3012e875d6e",
+      "original": "/private/tmp/gcp-cloud-expiry-9c3ab006-20261011/cycle-v1/expired-deny-packets-replacement-v1.json"
+    },
+    {
+      "file": "expired-deny-tcp-observer-replacement-v1.json",
+      "sha256": "c356f407f1b9d7004ecf7ff32d38cb2450f973bbca045003183390b8cbb75fc3",
+      "original": "/private/tmp/gcp-cloud-expiry-9c3ab006-20261011/cycle-v1/expired-deny-tcp-observer-replacement-v1.json"
+    },
+    {
+      "file": "expired-deny-udp-observer-replacement-v1.json",
+      "sha256": "7f89f8021436f56ce3eb0da2ce58e8f313e9ed7537ddf6ae6d074e4e2d36781b",
+      "original": "/private/tmp/gcp-cloud-expiry-9c3ab006-20261011/cycle-v1/expired-deny-udp-observer-replacement-v1.json"
+    },
+    {
+      "file": "fresh-pre-expiry-packets-replacement-v1.json",
+      "sha256": "4c780b5c0c1b1a7f21a58ce1f8ed0e0d47e0a1bafab5a9294f370fab18022547",
+      "original": "/private/tmp/gcp-cloud-expiry-9c3ab006-20261011/cycle-v1/fresh-pre-expiry-packets-replacement-v1.json"
+    },
+    {
+      "file": "lease-replacement-v1.jsonl",
+      "sha256": "38a7ea60ab215ebad4f0a9e4f1568dc223aab044d463a3b04f7587f9a8ab5cb9",
+      "original": "/private/tmp/gcp-cloud-expiry-9c3ab006-20261011/cycle-v1/lease-replacement-v1.jsonl"
+    },
+    {
+      "file": "positive-fresh-pre-expiry/aggregate.jsonl",
+      "sha256": "a7cc4d86c221f0852fd64793bcab4c329f2724bc804e7f8ac282dacdb9312537",
+      "original": "/private/tmp/gcp-cloud-expiry-9c3ab006-20261011/cycle-v1/positive-fresh-pre-expiry/aggregate.jsonl"
+    },
+    {
+      "file": "positive-fresh-pre-expiry/attempt-1.json",
+      "sha256": "b0a9995f062824bab6867f7c24673a272e40a27546a1bf96b60b8ae586afab3f",
+      "original": "/private/tmp/gcp-cloud-expiry-9c3ab006-20261011/cycle-v1/positive-fresh-pre-expiry/attempt-1.json"
+    },
+    {
+      "file": "positive-fresh-pre-expiry/full-observer-tcp.json",
+      "sha256": "ad74acd1108febc491baef4ec7efc3f6dc40f41bb81863660374b0370e4f340b",
+      "original": "/private/tmp/gcp-cloud-expiry-9c3ab006-20261011/cycle-v1/positive-fresh-pre-expiry/full-observer-tcp.json"
+    },
+    {
+      "file": "positive-fresh-pre-expiry/full-observer-udp.json",
+      "sha256": "5cc5b8ea8de33e07d3c7457ce3de033adba8a7319d0ee9fe890af05eed0b6944",
+      "original": "/private/tmp/gcp-cloud-expiry-9c3ab006-20261011/cycle-v1/positive-fresh-pre-expiry/full-observer-udp.json"
+    },
+    {
+      "file": "positive-restored-allow/aggregate.jsonl",
+      "sha256": "f746f9968136e65d101386a64f8a0e563fc9998b7ed49f4be52325143db7def5",
+      "original": "/private/tmp/gcp-cloud-expiry-9c3ab006-20261011/cycle-v1/positive-restored-allow/aggregate.jsonl"
+    },
+    {
+      "file": "positive-restored-allow/attempt-1.json",
+      "sha256": "c535aa48dbb9e97c9b505595c7b3c6e1b90b5041e4079c8298410df48d09f23b",
+      "original": "/private/tmp/gcp-cloud-expiry-9c3ab006-20261011/cycle-v1/positive-restored-allow/attempt-1.json"
+    },
+    {
+      "file": "positive-restored-allow/full-observer-tcp.json",
+      "sha256": "44e381a6625e2c6bbb44650f21a500687b86ad0725e8381a1a35b81efef3040d",
+      "original": "/private/tmp/gcp-cloud-expiry-9c3ab006-20261011/cycle-v1/positive-restored-allow/full-observer-tcp.json"
+    },
+    {
+      "file": "positive-restored-allow/full-observer-udp.json",
+      "sha256": "44e381a6625e2c6bbb44650f21a500687b86ad0725e8381a1a35b81efef3040d",
+      "original": "/private/tmp/gcp-cloud-expiry-9c3ab006-20261011/cycle-v1/positive-restored-allow/full-observer-udp.json"
+    },
+    {
+      "file": "positive-temporary-allow/aggregate.jsonl",
+      "sha256": "b59492fe6f0e3b0b2f037959e932adf000ccd941764f9f947ffea284038cb4ef",
+      "original": "/private/tmp/gcp-cloud-expiry-9c3ab006-20261011/cycle-v1/positive-temporary-allow/aggregate.jsonl"
+    },
+    {
+      "file": "positive-temporary-allow/attempt-1.json",
+      "sha256": "3dced449773ca4200b9ec22ffb6453b57ea6174e47cf9a5bcbfe9f70a4672696",
+      "original": "/private/tmp/gcp-cloud-expiry-9c3ab006-20261011/cycle-v1/positive-temporary-allow/attempt-1.json"
+    },
+    {
+      "file": "positive-temporary-allow/full-observer-tcp.json",
+      "sha256": "b1dc24f28119a54e2da428cc6426b1e85dbff55fa17bd8065c1af1533f717353",
+      "original": "/private/tmp/gcp-cloud-expiry-9c3ab006-20261011/cycle-v1/positive-temporary-allow/full-observer-tcp.json"
+    },
+    {
+      "file": "positive-temporary-allow/full-observer-udp.json",
+      "sha256": "992f5c98592106ba96c24a754b5c90b3697d0da2f8550fe96e4260b944d91b76",
+      "original": "/private/tmp/gcp-cloud-expiry-9c3ab006-20261011/cycle-v1/positive-temporary-allow/full-observer-udp.json"
+    },
+    {
+      "file": "restore-replacement-v1.jsonl",
+      "sha256": "ebaeec96f58c7b573dc52ee760659722cc7d9a246d0643c9b66bc08ebed5f934",
+      "original": "/private/tmp/gcp-cloud-expiry-9c3ab006-20261011/cycle-v1/restore-replacement-v1.jsonl"
+    },
+    {
+      "file": "temporary-allow-packets-replacement-v1.json",
+      "sha256": "c05f8240b025bffcf18d8042dc5c30c5578d74733c3e7a3e216ae24e774b6d63",
+      "original": "/private/tmp/gcp-cloud-expiry-9c3ab006-20261011/cycle-v1/temporary-allow-packets-replacement-v1.json"
+    },
+    {
+      "file": "classic-app-expired-deny-replacement-v1.json",
+      "sha256": "263a7ff8bb3597ef8de23c89c9b44ce2e1d5042fe4b57cb3f763d45844daca8b",
+      "original": "/private/tmp/gcp-cloud-expiry-observer-9c3ab006-20261011/classic-app-expired-deny-replacement-v1.json"
+    }
+  ],
+  "limits": "temporaryallow and genuine expired deny passed; API restore/cleanup complete; immediate restored native positive refused and restored packets not run; overall cycle acceptance false"
+}

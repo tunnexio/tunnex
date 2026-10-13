@@ -1,6 +1,7 @@
 package bgp
 
 import (
+	"context"
 	"encoding/json"
 	"net/netip"
 )
@@ -186,6 +187,27 @@ func probeLocalReachability(prefixes []netip.Prefix, read reachabilityRead) erro
 		if !found {
 			return ErrPackage
 		}
+	}
+	return nil
+}
+
+// LocalExportProof is supplied only by a controller that independently proves
+// current local reachability for these exact immutable configured prefixes.
+type LocalExportProof func(context.Context, []netip.Prefix) error
+
+func proveProcessLocalExport(ctx context.Context, prefixes []netip.Prefix, proof LocalExportProof, strict LocalExportProof) error {
+	if ctx.Err() != nil {
+		return ErrPackage
+	}
+	check := proof
+	if check == nil {
+		check = strict
+	}
+	if check == nil {
+		return ErrPackage
+	}
+	if err := check(ctx, append([]netip.Prefix(nil), prefixes...)); err != nil || ctx.Err() != nil {
+		return ErrPackage
 	}
 	return nil
 }

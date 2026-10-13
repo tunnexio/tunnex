@@ -1,0 +1,58 @@
+{
+  "files": [
+    {
+      "file": "actual-start-fresh-guard-capture-v2-public-summary.json",
+      "original_source": "/private/tmp/gcp-cloud-replacement-0249f7cf-20261011/actual-start-fresh-guard-capture-v2.json",
+      "source_sha256": "b4d7dda65fc2a2a3441fadf3408ad2f229dce26279c95898231f43c647202af2",
+      "sha256": "5abbe6f7d663708f509e24c7a82695173ed57b1d420f3fdf68fc1316e8ddebeb"
+    },
+    {
+      "file": "actual-start-fresh-owned-prefix-verification-v2-public-summary.json",
+      "original_source": "/private/tmp/gcp-cloud-replacement-0249f7cf-20261011/actual-start-fresh-owned-prefix-verification-v2.json",
+      "source_sha256": "0098b7fdd113f641243cded65b8c37545a36157f5fc12af82666ab0173a3afb5",
+      "sha256": "4f44d5c1e3c0e99a012cf643c4c5633409ab924cb2ef7f85f9763cf239d41ef7"
+    },
+    {
+      "file": "actual-start-created-public-summary.json",
+      "original_source": "/private/tmp/gcp-cloud-replacement-0249f7cf-20261011/actual-start-created.json",
+      "source_sha256": "f62ba2156e91caa4ffee2891a382f6f7a11a971bfe6f93823562890e822be95f",
+      "sha256": "a3921908dabd52d69bc80e5b5ec6a6720cd5101b4e8f08d54012e398c5481792"
+    },
+    {
+      "file": "actual-start-started-public-summary.json",
+      "original_source": "/private/tmp/gcp-cloud-replacement-0249f7cf-20261011/actual-start-started.json",
+      "source_sha256": "f3efbd7303396918f76bf045ac3c5be71d1210826ee43fec00d75b455ac629f8",
+      "sha256": "e8c9213a583ab79e2fcc5faff2cab156fa9b6fc436bec39f4b1abbfd3840281f"
+    },
+    {
+      "file": "actual-start-create-attempted-public-summary.json",
+      "original_source": "/private/tmp/gcp-cloud-replacement-0249f7cf-20261011/actual-start-create-attempted.json",
+      "source_sha256": "e8804c18fd1519b36512cecff9cb5de6124f96346e8529fdb5292c535915c425",
+      "sha256": "c2420f47c71c303bd70d73626df438ca1353977f0bffdaf8e2c391e1508ae1bd"
+    },
+    {
+      "file": "actual-start-start-attempted-public-summary.json",
+      "original_source": "/private/tmp/gcp-cloud-replacement-0249f7cf-20261011/actual-start-start-attempted.json",
+      "source_sha256": "64939e318b46bd49fb6f22e469d3eac7a8fb3683454d81dd465eae8b4cdbc100",
+      "sha256": "aa8cd3577bb017baa2efd439c75d81bf2ce1ecf33d0d003decbdb4a2a17f7714"
+    },
+    {
+      "file": "actual-start-observed-wg-table-close-v2-public-summary.json",
+      "original_source": "/private/tmp/gcp-cloud-replacement-0249f7cf-20261011/actual-start-observed-wg-table-close-v2.json",
+      "source_sha256": "50d4505452901c0d1f17e34bd1fde5ab2d34e73fc61dd64c4d7c12722acc8bfb",
+      "sha256": "ad776eb6650bf2f0f7c9a6355d148c1f536e24a955e70774c67bb61435b329de"
+    },
+    {
+      "file": "poststop-refusal-offline-diagnosis-v1-public-summary.json",
+      "original_source": "/private/tmp/gcp-cloud-replacement-0249f7cf-20261011/poststop-refusal-offline-diagnosis-v1.json",
+      "source_sha256": "f5e107c817d0515d573914f1b97a599924c531dda0e7587db3eb797677530863",
+      "sha256": "4d07f823cd87aa040d32610ef7698b1c20e182b0ed9eb558cbdc3423ecd3ded1"
+    },
+    {
+      "file": "post-cutover-api-reconcile-public-summary.json",
+      "source_sha256": "c98050a5b3a5e2fa6c25fdd1a0019eb24f15c350eebc8e3891c89f2a4d5eac28"
+    }
+  ],
+  "fresh_empty_prefix_gate_accepted": true,
+  "full_readiness_accepted": false
+}

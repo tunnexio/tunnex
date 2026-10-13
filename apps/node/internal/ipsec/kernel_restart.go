@@ -13,12 +13,15 @@ func (a *KernelApplier) RestartNeedsRecreation(ctx context.Context, p KernelAllo
 }
 
 func (a *KernelApplier) restartNeedsRecreation(ctx context.Context, p KernelAllocation, previous [2]Ownership, proveOthers func(context.Context, XFRMInventory) error) (bool, error) {
+	if p.activeTunnelCount() == 1 && previous[1] != (Ownership{}) {
+		return false, ErrKernelApply
+	}
 	for pass := 0; pass < 2; pass++ {
 		s, err := a.snapshotSelection(ctx, p, true)
 		if err != nil {
 			return false, ErrKernelApply
 		}
-		if s.ownership == previous && previous[0].InterfaceIndex > 0 && previous[1].InterfaceIndex > 0 {
+		if s.ownership == previous && previous[0].InterfaceIndex > 0 && (p.activeTunnelCount() == 1 || previous[1].InterfaceIndex > 0) {
 			return false, nil
 		}
 		if s.ownership != ([2]Ownership{}) {

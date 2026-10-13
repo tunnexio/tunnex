@@ -25,22 +25,26 @@ export function IPsecRotateKeys({ orgId, connection, onClose, onSaved }: {
     alive.current = true;
     void Promise.all([
       loadOne(() => api.GET("/api/v1/organizations/{orgId}/ipsec/connections/{connectionId}", { params: { path: { orgId, connectionId: connection.id } } })),
+      loadOne(() => api.GET("/api/v1/organizations/{orgId}/ipsec/connections/{connectionId}/configuration", { params: { path: { orgId, connectionId: connection.id } } })),
       loadOne(() => api.GET("/api/v1/organizations/{orgId}/ipsec/connections/{connectionId}/status", { params: { path: { orgId, connectionId: connection.id } } })),
-    ]).then(([current, status]) => {
+     ]).then(([current, provider, status]) => {
       if (!alive.current) return;
       if (!current.ok || !canRotateIPsecKeys(current.data) || current.data.id !== connection.id || current.data.desired_revision !== connection.desired_revision) {
         setError("Connection changed. Close and refresh before replacing keys."); return;
       }
-      if (!status.ok || !Array.isArray(status.data.tunnels) || status.data.tunnels.length !== 2 || status.data.tunnels[0].slot !== 1 || status.data.tunnels[1].slot !== 2 || !status.data.tunnels[0].id || !status.data.tunnels[1].id || status.data.tunnels[0].id === status.data.tunnels[1].id) {
+      const expectedCount = provider.ok && provider.data.profile_id === "gcp-classic-static-ipv4-v1" ? 1 : 2;
+      if (!provider.ok || !["aws-static-ipv4-v1", "aws-bgp-ipv4-v1", "gcp-ha-bgp-ipv4-v1", "gcp-classic-static-ipv4-v1"].includes(provider.data.profile_id) || !provider.data.configuration || !Array.isArray(provider.data.configuration.tunnels) || provider.data.configuration.tunnels.length !== expectedCount) { setError("Could not verify the VPN profile. Close and refresh before replacing keys."); return; }
+      if (!status.ok || !Array.isArray(status.data.tunnels) || status.data.tunnels.length !== expectedCount || status.data.tunnels.some((t,i) => !t || typeof t.id !== "string" || !t.id || t.slot !== i + 1) || new Set(status.data.tunnels.map(t => t.id)).size !== expectedCount) {
         setError("Could not load tunnel identities. Close and try again."); return;
       }
+      setKeys(Array.from({ length: expectedCount }, () => ""));
       setTunnels(status.data.tunnels.map(t => ({ id: t.id, slot: t.slot })));
     });
     return () => { alive.current = false; };
   }, [orgId, connection.id, connection.desired_revision]);
   function close() { setKeys(["", ""]); onClose(); }
   async function save() {
-    if (submitting.current || uncertain || tunnels.length !== 2 || !keys.some(Boolean) || !canRotateIPsecKeys(connection)) return;
+    if (submitting.current || uncertain || (tunnels.length !== 1 && tunnels.length !== 2) || !keys.some(Boolean) || !canRotateIPsecKeys(connection)) return;
     submitting.current = true; setBusy(true); setError("");
     const body = { expected_desired_revision: connection.desired_revision, tunnels: tunnels.flatMap((t, i) => keys[i] ? [{ tunnel_id: t.id, psk: keys[i] }] : []) };
     setKeys(["", ""]);
@@ -55,7 +59,7 @@ export function IPsecRotateKeys({ orgId, connection, onClose, onSaved }: {
       if (alive.current) { setUncertain(true); setError("Could not confirm the key change. Close and refresh before trying again."); }
     } finally { submitting.current = false; if (alive.current) setBusy(false); }
   }
-  return <Modal title="Rotate tunnel keys" onDismiss={close} actions={<><Button variant="ghost" onClick={close}>Close</Button><Button disabled={busy || uncertain || tunnels.length !== 2 || !keys.some(Boolean)} onClick={() => void save()}>Save new keys</Button></>}>
+  return <Modal title="Rotate tunnel keys" onDismiss={close} actions={<><Button variant="ghost" onClick={close}>Close</Button><Button disabled={busy || uncertain || (tunnels.length !== 1 && tunnels.length !== 2) || !keys.some(Boolean)} onClick={() => void save()}>Save new keys</Button></>}>
     <p className="font-medium text-ink-heading">{connection.name}</p>
     <p className="mt-2 text-sm text-ink-secondary">Connection stays disabled. Update the matching keys on your remote VPN before enabling.</p>
     <div className="mt-4 space-y-4">{tunnels.map((t, i) => <Field key={t.id} label={`Tunnel ${t.slot} new PSK`}><Input type="password" autoComplete="new-password" spellCheck={false} value={keys[i]} disabled={busy || uncertain} onChange={event => setKeys(old => old.map((v, index) => index === i ? event.target.value : v))} /></Field>)}</div>

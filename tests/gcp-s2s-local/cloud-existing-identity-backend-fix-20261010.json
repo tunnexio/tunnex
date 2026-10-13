@@ -1,0 +1,14 @@
+{
+  "old_container_id": "d6accd1a6cbc850b3bebbc31294f39ff0e5de9b115d2f2e945d071d208f96d24",
+  "new_container_id": "dc81baef1c4924007b39224fd4f9b14bef94e734c2138257b12bfdc46abd8294",
+  "image_id": "sha256:ccde530ca3e815ee169ed258ab6a95ad20de4089f8e4abf6b0f20440a7d62102",
+  "source": "3d0951e84aa58ce78dcc6238bd2ecaf7d3f38fd9",
+  "credential_presence": {
+    "cert.pem": true,
+    "key.pem": true,
+    "ca.pem": true
+  },
+  "ipsec_journal_present": false,
+  "change": "only TUNNEX_WG_BACKEND=wgctrl added; existing identity retained; no token reissued",
+  "status": "normal existing-identity startup requested; capability verification pending"
+}

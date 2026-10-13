@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"net/netip"
+	"reflect"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -24,14 +25,19 @@ type dnsOwnerViewFixture struct {
 
 func newDNSOwnerViewFixture(t *testing.T, proof func(context.Context) error) *dnsOwnerViewFixture {
 	t.Helper()
-	f := &dnsOwnerViewFixture{material: dnsMaterialFixture()}
+	return newDNSOwnerProfileFixture(t, dnsMaterialFixture(), proof)
+}
+
+func newDNSOwnerProfileFixture(t *testing.T, material RuntimeMaterial, proof func(context.Context) error) *dnsOwnerViewFixture {
+	t.Helper()
+	f := &dnsOwnerViewFixture{material: material}
 	m := f.material
 	entry, grants, err := runtimeMaterialEntry(m, m.Manifest.OrgID, m.Manifest.NodeID, "net:[4026531992]")
 	if err != nil {
 		t.Fatal(err)
 	}
 	entry.Phase = RuntimeApplied
-	for i, tunnel := range entry.Allocation.Tunnels {
+	for i, tunnel := range entry.Allocation.Tunnels[:entry.Allocation.activeTunnelCount()] {
 		entry.Observed[i] = Ownership{Namespace: entry.Allocation.Namespace, InterfaceName: tunnel.Name, InterfaceIndex: 10 + i, XFRMID: tunnel.XFRMID}
 	}
 	identity := PermitLeaseIdentity{PolicyHash: m.Policy.Hash, Binding: entry.Engines[0].Binding, DeliveryID: entry.DeliveryID}
@@ -53,6 +59,9 @@ func newDNSOwnerViewFixture(t *testing.T, proof func(context.Context) error) *dn
 	i.OwnerID = m.Manifest.NodeID
 	i.Connections[0].ID = entry.Allocation.ConnectionID
 	i.Connections[0].Tunnels = entry.Observed
+	if entry.Allocation.activeTunnelCount() == 1 {
+		i.Connections[0].TunnelCount = 1
+	}
 	i.Connections[0].Grants = grants
 	i.Connections[0].ReplyIngressIndices = []int{10}
 	i.Connections[0].EncryptedEgress = []GuardEncryptedEgress{{TunnelInterfaceIndex: 10, ReqID: entry.Engines[0].ReqID, Peer: entry.Engines[0].RemoteAddress, UnderlayInterfaceIndex: 2}}
@@ -62,7 +71,11 @@ func newDNSOwnerViewFixture(t *testing.T, proof func(context.Context) error) *dn
 	}
 	f.observed.Store(f.manifest.ExpectedJSON)
 	reader := &GuardReader{namespace: func() (string, error) { return entry.Allocation.Namespace, nil }, interfaces: func() ([]GuardInterface, error) {
-		return []GuardInterface{{Name: "eth0", Index: 2}, {Name: entry.Observed[0].InterfaceName, Index: 10}, {Name: entry.Observed[1].InterfaceName, Index: 11}}, nil
+		links := []GuardInterface{{Name: "eth0", Index: 2}}
+		for _, owned := range entry.Observed[:entry.Allocation.activeTunnelCount()] {
+			links = append(links, GuardInterface{Name: owned.InterfaceName, Index: owned.InterfaceIndex})
+		}
+		return links, nil
 	}, run: func(context.Context, ...string) ([]byte, error) {
 		f.guardReads.Add(1)
 		return []byte(f.observed.Load().(string)), nil
@@ -598,6 +611,89 @@ func TestDNSOwnerViewDoesNotPublishForeignGuardBinding(t *testing.T) {
 			f.c.mu.Unlock()
 			if f.c.dnsView.Load() != nil {
 				t.Fatal("unbound native manifest produced resolver view")
+			}
+		})
+	}
+}
+
+// These exercise real provider-shaped material validation and immutable owner
+// epochs. They do not execute native SA/source/route or Linux packet proof.
+func TestDNSOwnerViewGCPProfileEpochs(t *testing.T) {
+	for _, profile := range []string{GCPClassicStaticProfile, GCPHABGPProfile} {
+		t.Run(profile, func(t *testing.T) {
+			m := classicMaterialFixture()
+			wantCount, wantContract := 1, 4
+			if profile == GCPHABGPProfile {
+				m = gcpMaterialFixture()
+				wantCount, wantContract = 2, 3
+			}
+			m.Policy.DNSResolverGrants = dnsMaterialFixture().Policy.DNSResolverGrants
+			m.Policy.DNSResolverGrants[0].ConnectionID = m.Manifest.ConnectionID
+			m.Policy.DNSResolverGrants[0].ConfigurationRevision = m.Manifest.ConfigurationRevision
+			e, grants, err := runtimeMaterialEntry(m, m.Manifest.OrgID, m.Manifest.NodeID, "net:[4026531992]")
+			if err != nil {
+				t.Fatal(err)
+			}
+			e.Phase = RuntimeApplied
+			if wantCount == 2 {
+				e.Observed[0].InterfaceIndex, e.Observed[1].InterfaceIndex = 10, 11
+				tuple := routeTupleFixture(e, 1)
+				e.BGPRoutes = &RuntimeBGPRoutes{Sequence: 1, Stage: "completed", Owned: []RuntimeBGPRouteTuple{tuple}, Target: []RuntimeBGPRouteTuple{tuple}}
+				if !validBGPRoutes(e) {
+					t.Fatal("initial GCP route tuple invalid")
+				}
+			}
+			identity := PermitLeaseIdentity{PolicyHash: m.Policy.Hash, Binding: e.Engines[0].Binding, DeliveryID: e.DeliveryID}
+			a := runtimeActive{Entry: e, Grants: grants, Identity: identity, Authority: dnsTestAuthority(t, identity)}
+			id := m.Manifest.ConnectionID
+			original := runtimeDNSOwnerEntry{active: cloneDNSOwnerActive(a), epoch: &runtimeDNSEpoch{}}
+			c := &RuntimeController{active: map[uuid.UUID]runtimeActive{id: a}}
+			c.dnsView.Store(&runtimeDNSOwnerView{entries: map[uuid.UUID]runtimeDNSOwnerEntry{id: original}})
+			if original.active.Entry.ContractVersion != wantContract || original.active.Entry.Allocation.activeTunnelCount() != wantCount {
+				t.Fatal("provider contract lost during snapshot")
+			}
+			if wantCount == 1 && (!reflect.DeepEqual(original.active.Entry.Allocation.Tunnels[1], KernelTunnelAllocation{}) || original.active.Entry.Observed[1] != (Ownership{})) {
+				t.Fatal("Classic inactive slot populated")
+			}
+			if _, ok := c.currentDNSOwnerEntry(id, original); !ok {
+				t.Fatal("valid profile epoch refused")
+			}
+
+			var elapsed atomic.Int64
+			deadline := NewPermitLeaseAuthority()
+			deadline.elapsed = func() time.Duration { return time.Duration(elapsed.Load()) }
+			req, err := deadline.Begin(identity)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if err = deadline.Accept(PermitLeaseResponse{PermitLeaseRequest: req, TTLMillis: 2000}); err != nil {
+				t.Fatal(err)
+			}
+			expired := original
+			expired.active.Authority = deadline
+			elapsed.Store(int64(1200 * time.Millisecond))
+			if _, ok := c.currentDNSOwnerEntry(id, expired); ok {
+				t.Fatal("renewed profile authority extended original minimum deadline")
+			}
+			changed := c.active[id]
+			// A newly selected BGP route slot changes immutable ownership even if the
+			// policy identity and accepted deadline have not changed.
+			if wantCount == 2 {
+				tuple := routeTupleFixture(changed.Entry, 2)
+				changed.Entry.BGPRoutes = &RuntimeBGPRoutes{Sequence: 2, Stage: "completed", Owned: []RuntimeBGPRouteTuple{tuple}, Target: []RuntimeBGPRouteTuple{tuple}}
+				if !validBGPRoutes(changed.Entry) {
+					t.Fatal("changed GCP route tuple invalid")
+				}
+			} else {
+				changed.Entry.Observed[0].InterfaceIndex++
+			}
+			c.active[id] = changed
+			c.reconcileDNSOwnerView()
+			if !original.epoch.revoked.Load() {
+				t.Fatal("route/interface mutation retained original query epoch")
+			}
+			if _, ok := c.currentDNSOwnerEntry(id, original); ok {
+				t.Fatal("changed route accepted original in-flight query")
 			}
 		})
 	}

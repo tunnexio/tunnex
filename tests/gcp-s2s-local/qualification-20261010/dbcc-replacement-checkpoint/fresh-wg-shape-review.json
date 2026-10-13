@@ -1,0 +1,136 @@
+{
+  "before_nft_sha256": "1a720047bb7abdea030a83016ec5bf2288bfa83070036f31f7c236de1991daf2",
+  "historical_nft_sha256": "1b2031cd97bb0a16369e5245856fa65e5b7e4e82d328e9ccbffe7cbb298fd6f1",
+  "fresh_exact_wg_objects_sha256": "b7e1c7a3b769c5f6f0ae4f8a17a3027c9398790d66f4605252714243a7bb1b5b",
+  "objects": 22,
+  "differences_only_kernel_handles": [
+    {
+      "object_index": 0,
+      "kind": "table",
+      "family": "ip",
+      "before_handle": 17,
+      "after_handle": 21
+    },
+    {
+      "object_index": 3,
+      "kind": "rule",
+      "family": "ip",
+      "before_handle": 2763,
+      "after_handle": 5139
+    },
+    {
+      "object_index": 4,
+      "kind": "rule",
+      "family": "ip",
+      "before_handle": 2764,
+      "after_handle": 5140
+    },
+    {
+      "object_index": 5,
+      "kind": "rule",
+      "family": "ip",
+      "before_handle": 2765,
+      "after_handle": 5141
+    },
+    {
+      "object_index": 6,
+      "kind": "rule",
+      "family": "ip",
+      "before_handle": 2766,
+      "after_handle": 5142
+    },
+    {
+      "object_index": 7,
+      "kind": "rule",
+      "family": "ip",
+      "before_handle": 2767,
+      "after_handle": 5143
+    },
+    {
+      "object_index": 8,
+      "kind": "rule",
+      "family": "ip",
+      "before_handle": 2768,
+      "after_handle": 5144
+    },
+    {
+      "object_index": 9,
+      "kind": "rule",
+      "family": "ip",
+      "before_handle": 2769,
+      "after_handle": 5145
+    },
+    {
+      "object_index": 10,
+      "kind": "rule",
+      "family": "ip",
+      "before_handle": 2770,
+      "after_handle": 5146
+    },
+    {
+      "object_index": 11,
+      "kind": "rule",
+      "family": "ip",
+      "before_handle": 2771,
+      "after_handle": 5147
+    },
+    {
+      "object_index": 12,
+      "kind": "rule",
+      "family": "ip",
+      "before_handle": 2772,
+      "after_handle": 5148
+    },
+    {
+      "object_index": 13,
+      "kind": "rule",
+      "family": "ip",
+      "before_handle": 2773,
+      "after_handle": 5149
+    },
+    {
+      "object_index": 14,
+      "kind": "rule",
+      "family": "ip",
+      "before_handle": 2774,
+      "after_handle": 5150
+    },
+    {
+      "object_index": 15,
+      "kind": "table",
+      "family": "ip6",
+      "before_handle": 18,
+      "after_handle": 22
+    },
+    {
+      "object_index": 18,
+      "kind": "rule",
+      "family": "ip6",
+      "before_handle": 923,
+      "after_handle": 1715
+    },
+    {
+      "object_index": 19,
+      "kind": "rule",
+      "family": "ip6",
+      "before_handle": 924,
+      "after_handle": 1716
+    },
+    {
+      "object_index": 20,
+      "kind": "rule",
+      "family": "ip6",
+      "before_handle": 925,
+      "after_handle": 1717
+    },
+    {
+      "object_index": 21,
+      "kind": "rule",
+      "family": "ip6",
+      "before_handle": 926,
+      "after_handle": 1718
+    }
+  ],
+  "source_parity": "egress and agent main unchanged f1\u219213007",
+  "scope": "source-shape assessment only; finalguard retains all exactfreshhandles andfullforeigncomparison, nohandleignore at execution"
+}

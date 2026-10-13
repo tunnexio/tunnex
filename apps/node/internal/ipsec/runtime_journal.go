@@ -228,7 +228,7 @@ func validDigest(v string) bool {
 	return e == nil && len(b) == 32 && hex.EncodeToString(b) == v
 }
 func validJournalPayload(p runtimeJournalPayload) bool {
-	if (p.Version != 1 && p.Version != 2 && p.Version != 3 && p.Version != 4 && p.Version != 5 && p.Version != 6 && p.Version != 7 && p.Version != 8 && p.Version != 9) || p.OwnerID == uuid.Nil || len(p.Entries) > 256 || len(p.Guards) > 2 {
+	if (p.Version != 1 && p.Version != 2 && p.Version != 3 && p.Version != 4 && p.Version != 5 && p.Version != 6 && p.Version != 7 && p.Version != 8 && p.Version != 9 && p.Version != 10) || p.OwnerID == uuid.Nil || len(p.Entries) > 256 || len(p.Guards) > 2 {
 		return false
 	}
 	for _, g := range p.Guards {
@@ -244,6 +244,9 @@ func validJournalPayload(p runtimeJournalPayload) bool {
 		return false
 	}
 	for _, r := range p.Entries {
+		if (r.ContractVersion == 4 && p.Version < 10) || !validClassicJournal(r) {
+			return false
+		}
 		if len(r.RetainedGuardPredecessors) > 0 && p.Version < 9 {
 			return false
 		}
@@ -269,9 +272,9 @@ func validJournalPayload(p runtimeJournalPayload) bool {
 			return false
 		}
 		ids[r.DeliveryID] = true
-		for i, e := range r.Engines {
+		for i, e := range r.Engines[:r.Allocation.activeTunnelCount()] {
 			a := r.Allocation.Tunnels[i]
-			if !validEngineTunnel(e) || e.Binding.GatewayID != p.OwnerID || e.Binding.ConnectionID != r.Allocation.ConnectionID || e.TunnelID != a.TunnelID || e.XFRMID != a.XFRMID || !sameEnginePrefixes(e.RemotePrefixes, a.RemotePrefixes) || e.Binding != r.Engines[0].Binding {
+			if e.ProfileID != r.Allocation.ProfileID || !validEngineTunnel(e) || e.Binding.GatewayID != p.OwnerID || e.Binding.ConnectionID != r.Allocation.ConnectionID || e.TunnelID != a.TunnelID || e.XFRMID != a.XFRMID || !sameEnginePrefixes(e.RemotePrefixes, a.RemotePrefixes) || e.Binding != r.Engines[0].Binding {
 				return false
 			}
 			o := r.Observed[i]
@@ -298,8 +301,17 @@ func validJournalPayload(p runtimeJournalPayload) bool {
 	return true
 }
 func validJournalSuccessor(old, next runtimeJournalPayload) bool {
-	if next.Version < old.Version || next.Version > 9 || (next.Version > old.Version+1 && !(old.Version == 1 && next.Version == 3) && next.Version != 4 && next.Version != 5 && next.Version != 6 && next.Version != 7 && next.Version != 8 && next.Version != 9) {
+	if next.Version < old.Version || next.Version > 10 || (next.Version > old.Version+1 && !(old.Version == 1 && next.Version == 3) && next.Version != 4 && next.Version != 5 && next.Version != 6 && next.Version != 7 && next.Version != 8 && next.Version != 9 && next.Version != 10) {
 		return false
+	}
+	if next.Version == 10 && old.Version < 10 {
+		upgrade := false
+		for _, r := range next.Entries {
+			upgrade = upgrade || r.ContractVersion == 4
+		}
+		if !upgrade {
+			return false
+		}
 	}
 	if next.Version == 9 && old.Version < 9 {
 		upgrade := false
@@ -461,6 +473,9 @@ func (j *RuntimeJournal) Save(entries []RuntimeJournalEntry) error {
 	next.Sequence++
 	next.Entries = entries
 	for _, entry := range entries {
+		if entry.ContractVersion == 4 && next.Version < 10 {
+			next.Version = 10
+		}
 		if len(entry.RetainedGuardPredecessors) > 0 && next.Version < 9 {
 			next.Version = 9
 		}
@@ -651,7 +666,7 @@ func ReadRuntimeJournalIdentity(dir string) (uuid.UUID, uuid.UUID, error) {
 	}
 	org := p.Entries[0].Engines[0].Binding.OrgID
 	for _, entry := range p.Entries {
-		for _, engine := range entry.Engines {
+		for _, engine := range entry.Engines[:entry.Allocation.activeTunnelCount()] {
 			if engine.Binding.OrgID != org || engine.Binding.GatewayID != p.OwnerID {
 				return fail()
 			}
@@ -666,7 +681,7 @@ func validJournalRecovery(r RuntimeJournalEntry) bool {
 	if r.ContractVersion == 3 {
 		return r.Recovery == nil
 	}
-	if r.ContractVersion == 0 {
+	if r.ContractVersion == 0 || r.ContractVersion == 4 {
 		return r.Recovery == nil
 	}
 	if r.ContractVersion != 2 || r.Recovery == nil {

@@ -1,0 +1,13 @@
+{
+  "accepted_policy_evidence_sha256": "1c7dc7ed92f94012059ac677acd07da931d8d26a5112dcf79e11691d53648c1d",
+  "new_image": "sha256:c0ca8999d3ae601d3dc2e8a9d319c2b98444a94896ade84b692ab590f1ae3906",
+  "old": "3bad435938b37398218e1c28a278fe72a57735cc489719527d2f8d1167e732ed",
+  "scope": "observational deployment baseline; no authority",
+  "source": "0249f7cf8804a7d6b4e1f82bf4dbf42b887bdfe7",
+  "original_sha256": "7b5075bbbe4ce9b8c90115b48c9b2097b06f98fb6668a163b4f25584219fd55b",
+  "native": {
+    "sad_count": 6,
+    "managed_process_count": 3,
+    "nft_sha256": "10e0a44f649534ba474de17ff9b2ed38ddd7d0a1ad44bdec6d1ea0c554041da2"
+  }
+}

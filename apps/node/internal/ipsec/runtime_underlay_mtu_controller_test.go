@@ -2,8 +2,11 @@ package ipsec
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"net/netip"
 	"strconv"
+	"strings"
 	"testing"
 )
 
@@ -14,13 +17,13 @@ type mtuEnvironmentFixture struct {
 
 func (f *mtuEnvironmentFixture) Observe(context.Context, KernelAllocation, [2]EngineTunnel) (RuntimeEnvironment, error) {
 	if f.drift {
-		return RuntimeEnvironment{}, ErrRuntimeEnvironment
+		return RuntimeEnvironment{}, errors.New("shared-secret password=forbidden 192.0.2.1")
 	}
 	return f.env, nil
 }
 func (f *mtuEnvironmentFixture) Drain(context.Context, []RuntimeJournalEntry) error { return nil }
 func TestUnderlayMTUControllerDeniesOnlyWhenLowering(t *testing.T) {
-	for _, scenario := range []string{"unchanged", "lower", "denialfailed", "drift"} {
+	for _, scenario := range []string{"unchanged", "lower", "denialfailed", "drift", "bindingchanged", "snapshotfailed", "ownershipchanged"} {
 		t.Run(scenario, func(t *testing.T) {
 			c, f, _, _ := bgpControllerFixture(t, true)
 			entries, _ := c.journal.Entries()
@@ -34,12 +37,26 @@ func TestUnderlayMTUControllerDeniesOnlyWhenLowering(t *testing.T) {
 			if scenario != "unchanged" {
 				env.Underlays[0].OuterMTU = 1300
 			}
+			if scenario == "bindingchanged" {
+				env.Underlays[0].OuterMTU = 1500
+			}
 			observed := &mtuEnvironmentFixture{env: env, drift: scenario == "drift"}
+			if scenario == "bindingchanged" {
+				observed.env.Underlays[0].OuterMTU--
+			}
+			if scenario == "ownershipchanged" {
+				e.Observed[0].InterfaceIndex++
+			}
+			var diagnostics []RuntimeDiagnostic
+			c.config.Diagnostic = func(d RuntimeDiagnostic) { diagnostics = append(diagnostics, d) }
 			c.config.Environment = observed
 			writes := 0
 			denials := 0
 			oldrun := c.kernel.run
 			c.kernel.run = func(ctx context.Context, args ...string) ([]byte, error) {
+				if scenario == "snapshotfailed" {
+					return nil, ErrKernelApply
+				}
 				if len(args) == 6 && args[0] == "link" && args[4] == "mtu" {
 					writes++
 					if denials == 0 {
@@ -68,6 +85,22 @@ func TestUnderlayMTUControllerDeniesOnlyWhenLowering(t *testing.T) {
 				return GuardManifest{}, nil
 			}
 			lower, err := c.ensureUnderlayMTUs(context.Background(), e, env, entries)
+			wantStage := map[string]string{"unchanged": "mtu_unchanged", "lower": "mtu_lowered", "denialfailed": "mtu_lowering", "drift": "mtu_environment_observe", "bindingchanged": "mtu_environment_binding", "snapshotfailed": "mtu_kernel_snapshot", "ownershipchanged": "mtu_owned_ceiling"}[scenario]
+			var leaf []RuntimeDiagnostic
+			for _, d := range diagnostics {
+				if d.Operation == "underlay_mtu" {
+					leaf = append(leaf, d)
+				}
+			}
+			if len(leaf) != 1 || leaf[0].Stage != wantStage || leaf[0].Refused != (err != nil) || leaf[0].ElapsedMillis < 0 {
+				t.Fatalf("incorrect MTU diagnostic: %+v", leaf)
+			}
+			encoded, _ := json.Marshal(leaf)
+			for _, secret := range []string{"192.0.2.1", e.Allocation.Namespace, e.Allocation.Tunnels[0].Alias, "shared-secret"} {
+				if strings.Contains(string(encoded), secret) {
+					t.Fatal("diagnostic disclosed input")
+				}
+			}
 			switch scenario {
 			case "unchanged":
 				if err != nil || lower || writes != 0 || denials != 0 || len(c.active[e.Allocation.ConnectionID].Grants) == 0 {

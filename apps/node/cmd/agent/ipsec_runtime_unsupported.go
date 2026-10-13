@@ -9,6 +9,6 @@ import (
 	"log/slog"
 )
 
-func startIPsecRuntime(context.Context, *control.Client, string, *slog.Logger, *ipsec.DNSRuntimeTransport, *ipsec.RuntimeFQDNPolicySource) error {
-	return nil
+func startIPsecRuntime(context.Context, *control.Client, string, *slog.Logger, *ipsec.DNSRuntimeTransport, *ipsec.RuntimeFQDNPolicySource) (func() error, error) {
+	return func() error { return nil }, nil
 }

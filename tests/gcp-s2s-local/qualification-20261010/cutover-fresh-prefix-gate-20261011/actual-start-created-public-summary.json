@@ -1,0 +1,9 @@
+{
+  "container_id": "f15e09815f8a9ccbb6f6caf46d6c543168f42ec9e11d50fde1e5e5f5ba5d7a04",
+  "current_policy_evidence_sha256": "1c7dc7ed92f94012059ac677acd07da931d8d26a5112dcf79e11691d53648c1d",
+  "fresh_guard_capture_sha256": "b4d7dda65fc2a2a3441fadf3408ad2f229dce26279c95898231f43c647202af2",
+  "image": "sha256:c0ca8999d3ae601d3dc2e8a9d319c2b98444a94896ade84b692ab590f1ae3906",
+  "scope": "normal startup requested; no readiness claim",
+  "stopped_sha256": "778aab93000b7909d9504bbc59ad8b0399f556a0aaac8e7e96eac865336a381e",
+  "private_original_sha256": "f62ba2156e91caa4ffee2891a382f6f7a11a971bfe6f93823562890e822be95f"
+}

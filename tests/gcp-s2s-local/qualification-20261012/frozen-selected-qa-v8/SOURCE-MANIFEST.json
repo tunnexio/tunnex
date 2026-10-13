@@ -1,0 +1,14 @@
+{
+  "sources/check-selected-transition-v8.py": "e747446e10eab56d92457693bd2753067f71f0f0543ec12ded0dbc28b8f5c005",
+  "sources/test_native_diagnostic_v8.py": "acdb2f5d01297a12d3f2c6c251525bc40e5e288a5c78afde2943f6447d9aef1f",
+  "sources/native-fqdn-binding.diagnostic-v1.remote.py": "1f36429fe0639d2c7eebe58776c0879e45449ee5faeaad707e26d05fce173bd8",
+  "sources/read-native-fqdn-binding.diagnostic-v1.py": "790e2ae6494c93bb0a35bd93a59278f7f39cb6cd6eb3a75d859955572b8f0195",
+  "sources/root-launch-selected-udp-v8.py": "9c868ed3e4fab38c7e51f6daf47c1e1b3b16b66b6afee1617d7b81b585eb31f4",
+  "sources/run-selected-udp-continuation.bound-v8.py": "a4358468bfdd6d227e7334eedec5f2c97a4b38c0332c3766e6054b120d09f6d6",
+  "sources/test_udp_continuation_bound_v8.py": "7b68651020ad9905933b53eeb46495ca93a5427108d91f0561fa9d937ed1e442",
+  "sources/ui_ack_generation_budget_v1.py": "01c24ee531b3cd6f8058424dabd940dbd1112d40788b9bd50344acc2f26cba3a",
+  "sources/ui_test_ack_generation_budget_v1.py": "ffe848da3882eed983ab2a73be263a93f65375cbd02077b5e576cba5fc5b32ae",
+  "local-qualification.json": "510eebbc7a9f3a7d2d12ccec97fca80cfaa2601c31870ef9662fc69d63dd8388",
+  "README.md": "fcb3774157f8905a6de5659542965beb7e72f464fc1a58b0e54931fa15aa8698",
+  "CONDITIONAL-FINAL-LEDGER.json": "e9458b9f3d15b21eb6b171bc99fbdee48fef5b46e48b4b0665849b6925fbd5ad"
+}

@@ -29,3 +29,7 @@ func proveUncertainRuntimeBGPProcess(id bgpengine.ProcessIdentity) error {
 func recoverUncertainRuntimeBGPProcess(id bgpengine.ProcessIdentity) error {
 	return bgpengine.RecoverUncertainProcess(id)
 }
+
+func startRuntimeBGPSessionWithLocalExportProof(ctx context.Context, dir string, id uuid.UUID, generation uint64, cfg bgpengine.Config, checkpoint func(bgpengine.ProcessIdentity) error, proof bgpengine.LocalExportProof) (runtimeBGPSession, error) {
+	return bgpengine.StartProcessWithCheckpointAndLocalExportProof(ctx, filepath.Join(dir, fmt.Sprintf("bgp-%s-g%d", id.String(), generation)), cfg, checkpoint, proof)
+}

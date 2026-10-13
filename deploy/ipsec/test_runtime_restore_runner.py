@@ -2,14 +2,21 @@ import copy
 import hashlib
 import json
 import unittest
+from unittest import mock
 
 import runtime_restore_runner as runner
+from test_runtime_restore_profiles import entry as profile_entry
 
 
 class RestorationAcceptanceTests(unittest.TestCase):
     def setUp(self):
         self.before = {'DeliveryID': 'delivery', 'Phase': 'applied', 'Allocation': {'Namespace': 'net:[1]', 'Generation': 'old'}, 'Restoration': {'Epoch': 1}, 'Recovery': {'Stage': 'completed', 'SelectedSlot': 2, 'Sequence': 4}}
         self.after = {'DeliveryID': 'delivery', 'Phase': 'applied', 'Allocation': {'Namespace': 'net:[2]', 'Generation': 'new'}, 'Restoration': {'Epoch': 2}, 'Observed': [{'Namespace': 'net:[2]', 'InterfaceIndex': 7}, {'Namespace': 'net:[2]', 'InterfaceIndex': 8}], 'Recovery': {'Stage': 'completed', 'SelectedSlot': 2, 'Sequence': 4, 'PendingFrom': 0, 'PendingTo': 0}}
+
+        for target, namespace in ((self.before, 'net:[1]'), (self.after, 'net:[2]')):
+            shape = profile_entry('', 2, namespace)
+            target.update(ContractVersion=2, Engines=shape['Engines'], Observed=shape['Observed'])
+            target['Allocation']['Tunnels'] = shape['Allocation']['Tunnels']
 
     def test_reserved_epoch_alone_not_success(self):
         self.assertTrue(runner.restored(self.before, self.after, 'net:[2]'))
@@ -48,6 +55,10 @@ class RestorationAcceptanceTests(unittest.TestCase):
 
     def test_both_exact_sessions_required(self):
         entry = {'Engines': [{'TunnelID': 'one', 'SecretRevision': 2, 'Binding': {'DesiredRevision': 3, 'ConfigurationRevision': 4}}, {'TunnelID': 'two', 'SecretRevision': 2, 'Binding': {'DesiredRevision': 3, 'ConfigurationRevision': 4}}]}
+        shape = profile_entry('', 2)
+        entry.update(ContractVersion=2, Allocation=shape['Allocation'], Observed=shape['Observed'], Recovery=shape['Recovery'])
+        for i, name in enumerate(('one', 'two')):
+            entry['Allocation']['Tunnels'][i]['TunnelID'] = name
         text = '\n'.join('tnx-ipsec-%s-d3-c4-s2: #1, ESTABLISHED, IKEv2\n  tnx-ipsec-%s-d3-c4-s2: #1, reqid 7, INSTALLED, TUNNEL' % (name, name) for name in ('one', 'two'))
         self.assertTrue(runner.tunnels_installed(text, entry))
         self.assertFalse(runner.tunnels_installed(text.replace('two-d3-c4-s2', 'two-d3-c4-s1'), entry))
@@ -55,6 +66,10 @@ class RestorationAcceptanceTests(unittest.TestCase):
 
     def test_observed_kernel_link_ownership_required(self):
         entry = {'Allocation': {'Tunnels': [{'Name': 'x1', 'Alias': 'owned1', 'XFRMID': 1}, {'Name': 'x2', 'Alias': 'owned2', 'XFRMID': 2}]}, 'Observed': [{'InterfaceIndex': 11}, {'InterfaceIndex': 12}]}
+        shape = profile_entry('', 2)
+        entry.update(ContractVersion=2, Engines=shape['Engines'], Recovery=shape['Recovery'])
+        for i, tunnel in enumerate(entry['Allocation']['Tunnels']):
+            tunnel.update(TunnelID=str(i), Slot=i+1, Selected=i == 0)
         links = [{'ifname': 'x%d' % i, 'ifalias': 'owned%d' % i, 'ifindex': 10+i, 'linkinfo': {'info_kind': 'xfrm', 'info_data': {'if_id': i}}} for i in (1, 2)]
         self.assertTrue(runner.links_owned(links, entry))
         links[0]['linkinfo']['info_data']['if_id'] = '0x1'
@@ -76,7 +91,7 @@ class OrchestrationTests(unittest.TestCase):
             calls = []
             with patch.object(runner, 'preflight', return_value=({'id': 'exact-id'}, {}, target, None, lock)), \
                  patch.object(runner.proof, 'snapshot', return_value={'scope': 'exact'}), \
-                 patch.object(runner.proof, 'command', side_effect=lambda *a: calls.append(a) or ''), \
+                 patch.object(runner.proof, 'command', side_effect=lambda *a, **kw: calls.append(a) or ''), \
                  patch.object(runner.proof, 'prove', side_effect=ValueError('holder survived')):
                 with self.assertRaisesRegex(ValueError, 'holder survived'):
                     runner.run(args)
@@ -110,6 +125,17 @@ class OrchestrationTests(unittest.TestCase):
             unlink.assert_called_once_with('/gate')
 
     def test_same_inode_controlled_sequence_releases_gate_only_after_receipt(self):
+        self.exercise_controlled_sequence()
+
+    def test_controlled_stop_command_bound_supports_exact_grace(self):
+        for grace in (10, 45):
+            with self.subTest(grace=grace):
+                self.exercise_controlled_sequence(stop_timeout=grace)
+
+    def test_explicit_supersession_captures_new_stop_and_preserves_old_receipt(self):
+        self.exercise_controlled_sequence(supersede=True)
+
+    def exercise_controlled_sequence(self, supersede=False, stop_timeout=2):
         import os
         import tempfile
         from pathlib import Path
@@ -124,42 +150,106 @@ class OrchestrationTests(unittest.TestCase):
             journal = Path(tmp) / 'journal.json'
             journal.write_text('{}')
             lock = os.open(Path(tmp) / 'lock', os.O_CREAT | os.O_RDWR, 0o600)
-            args = SimpleNamespace(evidence_dir=tmp, journal=str(journal), stop_timeout=2, timeout=10,
+            args = SimpleNamespace(evidence_dir=tmp, journal=str(journal), stop_timeout=stop_timeout, timeout=10,
                                    receipt_helper='/helper', strongswan_conf='/conf', swanctl='/swanctl', vici='unix:///vici')
+            previous = b'{"old":"exact-unconsumed-receipt"}' if supersede else None
+            if previous:
+                target.write_bytes(previous)
+                args.supersede_unconsumed_evidence_dir = '/exact-historical-attempt'
             calls = []
-            def command(*a):
+            bounds = []
+            def command(*a, **kw):
+                bounds.append((a, kw))
                 calls.append(a)
                 if a[0] == '/helper':
                     Path(a[a.index('-out') + 1]).write_text('{"valid":"receipt"}')
                 return '[]' if 'ip' in a else ''
-            current = {'state': {'Running': True, 'Pid': 99, 'StartedAt': 'new'}}
-            before = {'namespace': {'inode': 2}, 'boot': 'same-boot', 'started': 'old'}
+            old_identity = {'id': 'exact-id', 'state': {'Running': True, 'Pid': 98, 'StartedAt': 'old'}}
+            current = {'id': 'exact-id', 'state': {'Running': True, 'Pid': 99, 'StartedAt': 'new'}}
+            before = {'namespace': {'inode': 2}, 'boot': 'same-boot', 'started': 'old', 'pid': 98, 'state_mount': None}
             evidence = {'stopped_journal_raw_sha256': hashlib.sha256(b'{}').hexdigest()}
             def release_gate(path, raw, identity):
                 self.assertTrue(target.exists(), 'receipt must be durable before gate release')
                 self.assertEqual(Path(path).read_bytes(), raw)
                 Path(path).unlink()
-            with patch.object(runner, 'release_gate', side_effect=release_gate), \
-                 patch.object(runner, 'preflight', return_value=({'id': 'exact-id'}, fixture.before, target, None, lock)), \
+            with patch.object(runner, 'validate_unconsumed_receipt') as historical_verify, \
+                 patch.object(runner, 'observe_fresh_runtime', return_value={'verified':'fresh'}), \
+                 patch.object(runner, 'journal_entries_unchanged'), \
+                 patch.object(runner, 'release_gate', side_effect=release_gate), \
+                 patch.object(runner, 'preflight', return_value=(old_identity, fixture.before, target, previous, lock)), \
                  patch.object(runner.proof, 'snapshot', return_value=before), \
                  patch.object(runner.proof, 'prove', return_value=evidence), \
                  patch.object(runner.proof, 'command', side_effect=command), \
-                 patch.object(runner.proof, 'inspect', return_value=current), \
+                 patch.object(runner.proof, 'inspect', side_effect=([old_identity, current, current, current] if supersede else [current, current, current])), \
                  patch.object(runner.proof, 'boot', return_value='same-boot'), \
-                 patch.object(runner.proof, 'state_mount'), \
+                 patch.object(runner.proof, 'state_mount', return_value=None), \
                  patch.object(runner.proof, 'private_bytes', side_effect=lambda p: Path(p).read_bytes()), \
-                 patch.object(runner.proof, 'private_read', return_value={'Payload': {'Entries': [dict(after, ContractVersion=2)]}}), \
+                 patch.object(runner.proof, 'private_read', side_effect=[{'Payload': {'Entries': [dict(after, ContractVersion=2, Phase=phase)]}} for phase in ('reserved', 'applying', 'applied')]), \
+                 patch.object(runner.time, 'sleep'), \
                  patch.object(runner.os, 'readlink', return_value='net:[2]'), \
                  patch.object(runner, 'tunnels_installed', return_value=True), \
                  patch.object(runner, 'links_owned', return_value=True):
                 result = runner.run(args)
             self.assertEqual(result['status'], 'controller-and-tunnels-restored')
             self.assertFalse(result['payload_verified'])
+            self.assertIn('stop_to_active_established_seconds', result)
+            self.assertNotIn('resume_wait_to_active_established_seconds', result)
             self.assertTrue(target.exists())
             self.assertFalse((Path(tmp) / 'restoration-startup-gate').exists())
             self.assertEqual(calls[0][:2], ('docker', 'stop'))
+            self.assertEqual(bounds[0][1], {'timeout': stop_timeout + 5})
+            self.assertTrue(all(not kw for _, kw in bounds[1:]), 'only controlled stop overrides command timeout')
             self.assertEqual(calls[1][:2], ('docker', 'start'))
             self.assertEqual(calls[2][0], '/helper')
+            if supersede:
+                historical_verify.assert_called_once_with(args, fixture.before, previous, old_identity)
+                archived = next(Path(tmp).glob('run-*/previous-receipt.json'))
+                self.assertEqual(archived.read_bytes(), previous)
+                # NEW stop and prove are still ordinary run operations; no resume path.
+                self.assertEqual(calls[0], ('docker', 'stop', '--time', '2', 'exact-id'))
+                self.assertTrue(next(Path(tmp).glob('run-*/stopped.json')).exists())
+
+
+class UnconsumedReceiptTests(unittest.TestCase):
+    def test_explicit_historical_receipt_requires_exact_current_instance(self):
+        cid = 'a' * 64
+        entry = {'DeliveryID': 'delivery', 'Restoration': None}
+        raw = json.dumps({'DeliveryID': 'delivery', 'BootID': 'boot', 'Namespace': 'net:[7]'}).encode()
+        fresh = {'container': cid, 'boot': 'boot', 'namespace': 'net:[7]', 'pid': 102,
+                 'pid_start_ticks': 20, 'started_at': 'new'}
+        identity = {'id': cid, 'state': {'Pid': 102, 'StartedAt': 'new', 'Running': True, 'Restarting': False}}
+        args = [entry, raw, raw, fresh, identity, 'boot', 'net:[7]', '0::/docker/' + cid, 20]
+        # Legacy admission stays RED for unconsumed receipts; explicit bound path GREEN.
+        with self.assertRaises((ValueError, AttributeError)):
+            runner.validate_previous_receipt(entry, raw)
+        runner.validate_unconsumed_identity(*args)
+        for name, index, value in [('receipt', 2, raw + b' '), ('boot', 5, 'other'),
+                ('namespace', 6, 'net:[8]'), ('cgroup', 7, '0::/docker/foreign'), ('ticks', 8, 21)]:
+            with self.subTest(name=name):
+                bad = copy.deepcopy(args); bad[index] = value
+                with self.assertRaises(ValueError): runner.validate_unconsumed_identity(*bad)
+        for key, value in [('Pid', 103), ('StartedAt', 'other'), ('Running', False), ('Restarting', True)]:
+            bad = copy.deepcopy(args); bad[4]['state'][key] = value
+            with self.subTest(key=key), self.assertRaises(ValueError): runner.validate_unconsumed_identity(*bad)
+        bad = copy.deepcopy(args); bad[0]['Restoration'] = {'Retired': []}
+        with self.assertRaises(ValueError): runner.validate_unconsumed_identity(*bad)
+
+
+class StopTimeoutCLITests(unittest.TestCase):
+    def test_exact_stop_grace_bounds_preserve_recovery_wait(self):
+        options = ['runner']
+        for name in ('container', 'journal', 'receipt-helper', 'evidence-dir', 'swanctl', 'vici', 'strongswan-conf'):
+            options += ['--' + name, '/owned']
+        options += ['--timeout', '180']
+        for grace in (1, 10, 45):
+            with self.subTest(grace=grace), mock.patch('sys.argv', options + ['--stop-timeout', str(grace)]), mock.patch.object(runner, 'run') as run:
+                runner.main()
+                self.assertEqual(run.call_args.args[0].stop_timeout, grace)
+                self.assertEqual(run.call_args.args[0].timeout, 180)
+        for grace in (0, 46):
+            with self.subTest(grace=grace), mock.patch('sys.argv', options + ['--stop-timeout', str(grace)]), mock.patch.object(runner, 'run') as run:
+                with self.assertRaises(SystemExit): runner.main()
+                run.assert_not_called()
 
 
 if __name__ == '__main__':

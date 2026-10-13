@@ -1,0 +1,38 @@
+{
+  "source_commit": "3d0951e84aa58ce78dcc6238bd2ecaf7d3f38fd9",
+  "original_script_sha256": "0ed131d41f7ebb8b7d367211b5ef5feb3b2fccbeec09dfd200b587f2d017b8ea",
+  "failed_execution": "primary approved prepare-stop exit1; remote generic error",
+  "reconciliation": {
+    "running": true,
+    "oom": false,
+    "boot": "db39e8bf-cb92-44a2-a523-7f00b3d173bd",
+    "repair_files": {
+      "/etc/docker/daemon.json": {
+        "exists": false
+      },
+      "/tmp/tunnex-gcp-amd64-build-20261010-3d0951e8/daemon.host-only.candidate.json": {
+        "exists": false
+      },
+      "/tmp/tunnex-gcp-amd64-build-20261010-3d0951e8/dedicated-host-repair.json": {
+        "exists": false
+      },
+      "/tmp/tunnex-gcp-amd64-build-20261010-3d0951e8/dedicated-host-stopped.json": {
+        "exists": false
+      }
+    },
+    "journal_present": false,
+    "identity_ownership": "cert/key/CA root0600; presence and metadata only, no contents",
+    "service_returncodes": {
+      "nftables": 0,
+      "netfilter-persistent": 0,
+      "ufw": 0,
+      "firewalld": 0
+    }
+  },
+  "causal_boundary": "Installed Docker20.10.24 has no --validate option; prewrite assertion refused before candidate/config/receipt/stop. Service queries all returned0.",
+  "compatibility_script_sha256": "2ef337f942fab8eb781f93947c989365993d511f87928c96dbc47053963fbe82",
+  "compatibility": "Exact four CLI flags with --help parser check and canonical JSON schema; reject conflicting current daemon/systemd args including -b shorthand/config overrides/nonempty option variables before writes. No second daemon or firewall deletion.",
+  "review": "parent and independent UI final PASS; four remote phases syntax PASS",
+  "current_execution_owner": "Primary coordinating chat owns authorized single prepare/reboot; this receipt does not claim retry executed or boot changed",
+  "node_status": "Last verified healthy but GCP capabilities unsupported; no connections enabled"
+}

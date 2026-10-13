@@ -1,0 +1,111 @@
+{
+  "scope": "isolated reviewed GCP batch renewal adaptation; modeled tests only; no cloud or deployed acceptance",
+  "base": "f1dd3a2605fb03e542f02a93599ab906662ffc2b",
+  "inputs": [
+    {
+      "name": "candidate-final-manifest.json",
+      "sha256": "3410fb3006f5003f76c4ab2045ce0bcc1f915fcf725c59bb4b2931c3ae5604fb"
+    },
+    {
+      "name": "runtime-final-source-peer-20261010-1.json",
+      "sha256": "d397f5a775685ec3f34ccbbdfd1280cc02c059bbf16636f930e50c8ee26ce57d"
+    },
+    {
+      "name": "runtime-final-qualification-peer-20261010-1.json",
+      "sha256": "84327550df97244931049adae01fb1470899ace75bdf5b2b821eadf03a8a8b6e"
+    },
+    {
+      "name": "source-manifest.json",
+      "sha256": "232c5921966480876284f62c1323bdc5c8539aaae86100b66ce57103b673af7e"
+    },
+    {
+      "name": "feature-cas-plan.json",
+      "sha256": "463d926960eaac3635cba609769ad9dc21ff45e5d6a769c80327974d877a6e48"
+    }
+  ],
+  "runtime_patch_sha256": "de1759a4aa6365ff71ba8467f64eafbe08e4e36e9d7166fe5dcd9008c8305200",
+  "control_patch_sha256": "289d20fb1f91ef2f112ec33b7f3277b1beba1e1be345261ca9935055fcb5e3c7",
+  "frozen_feature_after_hashes_verified": 13,
+  "method": "reviewed function hunks only, three rejected contexts manually adapted preserving GCP active-count/status and recovery signature; no wholesale file transplant",
+  "gcp_production_adaptations": [
+    "status private locked helper independently validates existing transport count",
+    "maintenance eligibility Contract4 only exact GCP Classic profile and validClassicJournal",
+    "active-count address/alias loops retain exact inactive-zero allocation/engine",
+    "Classic report transport1/count1 and inactive slot exact zero"
+  ],
+  "preserved": [
+    "ordinary same-namespace HA absent daemon restaging",
+    "exact GCP BGP export inspector / version2 manifest validation",
+    "scoped failure/zero-expiry readback and classified DNS retry/concurrency",
+    "Classic restored generation, boot lineage and inactive zero",
+    "generic AWS/BGP version1/recovery2 checks",
+    "fresh nonce beforeCP, original authority bridging full commit, immutable candidate checks"
+  ],
+  "causal_red": {
+    "runtime_source": "exact frozen stage14 runtime_maintenance.go overlay",
+    "fixture": "same final genuine runtimeMaterialEntry HA3+Classic4, bounded TCP8080/UDP9000 grants, real kernel/readback parser with modeled I/O",
+    "both_orders": "FAIL result1 active1 errnil"
+  },
+  "green": {
+    "both_orders": "PASS result2 active2 one combined guard commit",
+    "modeled_elapsed_seconds": 6.1,
+    "fresh_cp_nonces": 2,
+    "lease_lapse": false,
+    "report": "Classic transport1/count1 exact zero inactive; HA version2"
+  },
+  "checks": [
+    {
+      "check": "full IPsec/control",
+      "result": "PASS79.349s/5.666s",
+      "note": "permitted unchanged rerun after first sandbox Unix/loopback bind refusals; final extra test-only app inventory fixture followed by focused qualification"
+    },
+    {
+      "check": "GCP restored/pair/negative and control batch race before app-fixture strengthening",
+      "result": "PASS12.187s/2.232s"
+    },
+    {
+      "check": "control exact GCP report race",
+      "result": "PASS2.057s"
+    },
+    {
+      "check": "Linux AMD64 and ARM64 agent builds",
+      "result": "PASS"
+    },
+    {
+      "check": "final strengthened GCP pair/restored/refusal plus control report/export/DNS race",
+      "result": "PASS15.162s/1.663s",
+      "note": "includes exact TCP8080/UDP9000 guard grants with real kernel parser modeled current inventory; no native claim"
+    }
+  ],
+  "limits": [
+    "native Linux qualification and actual multi-cloud renewal not executed",
+    "6.1s virtual-clock result is fixture cost-model evidence, not live time",
+    "no initialApply, transport recreation, cached journal authority or new deadline from heartbeat"
+  ],
+  "changed_source_sha256": {
+    "apps/node/cmd/agent/ipsec_runtime_linux.go": "1be2d3f8d0ece5c2be8cd8f683e1e3c621497e1e58e32293d673e8013c0401fb",
+    "apps/node/internal/control/ipsec_runtime_poll.go": "6bd867f1785cf7edcd827f049ffbf4655d3a99697dd063fc2dd6c9cfbc4600d8",
+    "apps/node/internal/ipsec/runtime_bgp_controller.go": "555eec8e1b341c04fbc830d3f668ca8287068da26289bc996ab07cdd63ca6c1d",
+    "apps/node/internal/ipsec/runtime_controller.go": "dff01242997db27cd05cecbfc068626a16b7ee2562c9c358cd332dd12723230c",
+    "apps/node/internal/ipsec/runtime_recovery.go": "dddad44e14bb77d1c49ddca551815d7363b5196391eca398e417f2e3525b5fb9",
+    "apps/node/internal/ipsec/runtime_status.go": "0fed6649b801757768e9211d5366ecbe9dfadb04332dcfef3e7144a722b7a321",
+    "apps/node/internal/ipsec/runtime_wire.go": "c79cb93edece8cca05547d9f4428f6a36057ffb17ce3763627a5a065dc7ded36",
+    "apps/node/internal/control/ipsec_runtime_maintenance_poll_test.go": "771eb2d00566a1f11af543288ef139efce38b1a02c95bedd33f3dd46a19ded55",
+    "apps/node/internal/ipsec/runtime_maintenance.go": "9b45f9db30cb37cf2943fd20f5970c370776d6d366bab7759817ec6a7bac963a",
+    "apps/node/internal/ipsec/runtime_maintenance_gcp_test.go": "2309348ccfb1d8fd3da2e4d22a1b7c7fa5b7747be705df4d0ee80a71ef4f7000",
+    "apps/node/internal/ipsec/runtime_maintenance_test.go": "46077a17e3a09668edd0af0fdebc1c7c2413548032b825d2894cb7e8d8337bfa",
+    "apps/node/internal/ipsec/runtime_recovery_continuity_test.go": "d49096169387460dc875aee7a52ef6553e87a7eb006584c2a8da85560bc7e222",
+    "apps/node/internal/ipsec/runtime_renewal_cycle_test.go": "ab731fd2ba492a3344f1fbf80092ee22335bffdd3154d3207f5c7ad5256ed912"
+  },
+  "cloud_actions_executed": false,
+  "root_or_aws_checkout_edited": false,
+  "preserved_source_file_sha256": {
+    "apps/node/internal/ipsec/runtime_bgp_same_namespace.go": "835c303da3658bb27242f7da34cd789a2e6e9d02f28c620628be18cc6cee7c4d",
+    "apps/node/internal/ipsec/runtime_environment.go": "840669053bd6cae9149e62a3f6b10b470d826aec90e9eaa1efd7dade921d0f4a",
+    "apps/node/internal/ipsec/runtime_dns_transport.go": "82b49a3b16e84c1e9e988a147038b228b119186940df13ca5cb039f2e9589ef0",
+    "apps/node/internal/ipsec/runtime_guard.go": "d17f99c49f6ed531d33780bf160c40b3bdb375f00c3a58aabe40f38eeac33115",
+    "apps/node/internal/ipsec/guard_reader.go": "7872982c90caf2e1b1fb0cabca948c37f7a6de272cf1e7588134d61d119a4ac5",
+    "apps/node/internal/ipsec/runtime_transport_contract.go": "083288febf2c82308676dd56fb356af7674615363d68f947111eead9e5cd0ba3"
+  },
+  "independent_review": "UI preliminary source PASS; final committed review pending"
+}

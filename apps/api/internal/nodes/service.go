@@ -2158,12 +2158,15 @@ func (s *Service) ReportStatus(ctx context.Context, node sqlc.Node, stats []Peer
 // the control plane compares it against what it pushed — a gateway running stale
 // policy must be VISIBLE (a policy violation in slow motion), never silent.
 type AppliedPolicy struct {
-	AIVPNHTTPReady   bool   `json:"ai_vpn_http_ready"`
-	AIVPNHTTPAddress string `json:"ai_vpn_http_address"`
+	WireGuardAppliedMTU int    `json:"wireguard_applied_mtu"`
+	AIVPNHTTPReady      bool   `json:"ai_vpn_http_ready"`
+	AIVPNHTTPAddress    string `json:"ai_vpn_http_address"`
 	// IPsecConfigVersion is an authenticated configuration protocol assertion.
 	// Only exact version 1 is recognized; current shipped agents report zero.
 	IPsecConfigVersion        int    `json:"ipsec_config_version"`
 	IPsecRecoveryVersion      int    `json:"ipsec_recovery_version"`
+	IPsecGCPClassicVersion    int    `json:"ipsec_gcp_classic_version"`
+	IPsecGCPHAVersion         int    `json:"ipsec_gcp_ha_version"`
 	IPsecBGPVersion           int    `json:"ipsec_bgp_version"`
 	IPsecRetainedGuardVersion int    `json:"ipsec_retained_guard_version"`
 	IPsecFQDNPolicyVersion    int    `json:"ipsec_fqdn_policy_version"`
@@ -2261,6 +2264,12 @@ func (s *Service) ReportWGInfo(ctx context.Context, node sqlc.Node, publicKey, e
 	if applied.IPsecConfigVersion != 1 || applied.IPsecBGPVersion != 1 {
 		applied.IPsecBGPVersion = 0
 	}
+	if applied.IPsecConfigVersion != 1 || applied.IPsecGCPClassicVersion != 1 {
+		applied.IPsecGCPClassicVersion = 0
+	}
+	if applied.IPsecBGPVersion != 1 || applied.IPsecGCPHAVersion != 1 {
+		applied.IPsecGCPHAVersion = 0
+	}
 	if applied.IPsecConfigVersion != 1 || applied.IPsecRecoveryVersion != 1 {
 		applied.IPsecRecoveryVersion = 0
 	}
@@ -2283,12 +2292,18 @@ func (s *Service) ReportWGInfo(ctx context.Context, node sqlc.Node, publicKey, e
 	// S7.2 applied-policy status). The column is a forward-compat JSONB map; we build
 	// it server-side from the typed report so a compromised agent can't inject
 	// arbitrary JSON. egress_nat gates full-tunnel device creation (gateway_no_egress).
+	if applied.WireGuardAppliedMTU < 1280 || applied.WireGuardAppliedMTU > 1420 {
+		applied.WireGuardAppliedMTU = 0
+	}
 	caps, err := json.Marshal(map[string]any{
+		"wireguard_applied_mtu":        applied.WireGuardAppliedMTU,
 		"ai_vpn_http_ready":            applied.AIVPNHTTPReady,
 		"ai_vpn_http_address":          applied.AIVPNHTTPAddress,
 		"ipsec_config_version":         applied.IPsecConfigVersion,
 		"ipsec_recovery_version":       applied.IPsecRecoveryVersion,
 		"ipsec_bgp_version":            applied.IPsecBGPVersion,
+		"ipsec_gcp_classic_version":    applied.IPsecGCPClassicVersion,
+		"ipsec_gcp_ha_version":         applied.IPsecGCPHAVersion,
 		"ipsec_retained_guard_version": applied.IPsecRetainedGuardVersion,
 		"ipsec_fqdn_policy_version":    applied.IPsecFQDNPolicyVersion,
 		"egress_nat":                   egressNAT,
@@ -2378,6 +2393,8 @@ type NodeCapabilities struct {
 	// Freshness is the server-written policy_reported_at on the same node row.
 	IPsecConfigVersion        int    `json:"ipsec_config_version"`
 	IPsecRecoveryVersion      int    `json:"ipsec_recovery_version"`
+	IPsecGCPClassicVersion    int    `json:"ipsec_gcp_classic_version"`
+	IPsecGCPHAVersion         int    `json:"ipsec_gcp_ha_version"`
 	IPsecBGPVersion           int    `json:"ipsec_bgp_version"`
 	IPsecRetainedGuardVersion int    `json:"ipsec_retained_guard_version"`
 	IPsecFQDNPolicyVersion    int    `json:"ipsec_fqdn_policy_version"`

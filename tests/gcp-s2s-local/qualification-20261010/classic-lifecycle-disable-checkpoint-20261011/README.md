@@ -1,0 +1,7 @@
+# Actual Classic Disable checkpoint
+
+Owned lifecycle receipts000..016 and named normalDisable receipts are preserved exactly. API Disable revision3 returned; audit012 observed genuine retained_guard/not_applied. Dedicated withdrawn Classic v2 fullDENY (actual empty three lease sets/permanent81drops) and separate HA fullALLOW passed in014. Original current allocation005 and scoped application packets008 passed beforeDisable.
+
+Native013 and fixed-category016 refused JSONDecodeError. They are helper failures, not cleanup gate acceptance or product failure. Safe015 is intermediate read-only diagnostic evidence: retained-refusal original lineage, HA6/7 twoSA/SAD4 and Classic config/link/route absence. It is not a substitute for the still-pending complete native withdrawal predicate. The installed CLI emits textual XFRM policy output despite -j, requiring the existing production parser; route table string254 is another exact grammar mismatch under source review. No newkey rotation, old-peer rejection, new-peer recreation or end-to-end restored traffic is claimed by this checkpoint.
+
+The exact lifecycle phase plan006 remains unchanged. Only JSON/JSONL key-free evidence is archived; privatekeys, cookies, stderr and raw daemon logs are excluded. New-key creation receipts contain only metadata/boolean/no-key-export declarations, never keybytes or keyhash. Deployed gateway remains9c3/imageDFBE/CID3bad; later locally integrated0249 source is separate.

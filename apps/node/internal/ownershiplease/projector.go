@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/netip"
+	"slices"
 	"strings"
 	"sync"
 
@@ -453,7 +454,7 @@ func cloneDesiredState(in reconcile.DesiredState) reconcile.DesiredState {
 	}
 	if in.Policy != nil {
 		policy := *in.Policy
-		policy.Allow = append([]nodepolicy.AllowEntry(nil), in.Policy.Allow...)
+		policy.Allow = slices.Clone(in.Policy.Allow)
 		policy.Subjects = make([]nodepolicy.SubjectAttribution, len(in.Policy.Subjects))
 		for i, subject := range in.Policy.Subjects {
 			policy.Subjects[i] = subject
@@ -469,9 +470,9 @@ func cloneDesiredState(in reconcile.DesiredState) reconcile.DesiredState {
 			policy.DNSResolverProfiles = make([]nodepolicy.DNSResolverProfile, len(in.Policy.DNSResolverProfiles))
 			for i, profile := range in.Policy.DNSResolverProfiles {
 				policy.DNSResolverProfiles[i] = profile
-				policy.DNSResolverProfiles[i].ZoneSuffixes = append([]string(nil), profile.ZoneSuffixes...)
-				policy.DNSResolverProfiles[i].AllowedSources = append([]string(nil), profile.AllowedSources...)
-				policy.DNSResolverProfiles[i].Endpoints = append([]nodepolicy.DNSResolverEndpoint(nil), profile.Endpoints...)
+				policy.DNSResolverProfiles[i].ZoneSuffixes = slices.Clone(profile.ZoneSuffixes)
+				policy.DNSResolverProfiles[i].AllowedSources = slices.Clone(profile.AllowedSources)
+				policy.DNSResolverProfiles[i].Endpoints = slices.Clone(profile.Endpoints)
 			}
 		}
 		policy.VIPMappings = append([]nodepolicy.VIPMapping(nil), in.Policy.VIPMappings...)
@@ -479,7 +480,7 @@ func cloneDesiredState(in reconcile.DesiredState) reconcile.DesiredState {
 		policy.FQDNGenerations = make([]nodepolicy.FQDNGeneration, len(in.Policy.FQDNGenerations))
 		for i, generation := range in.Policy.FQDNGenerations {
 			policy.FQDNGenerations[i] = generation
-			policy.FQDNGenerations[i].Answers = append([]string(nil), generation.Answers...)
+			policy.FQDNGenerations[i].Answers = slices.Clone(generation.Answers)
 		}
 		out.Policy = &policy
 	}

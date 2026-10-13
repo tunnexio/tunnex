@@ -1,0 +1,166 @@
+{
+  "scope": "source-only exact new resource/grant plan; no writes",
+  "precondition": "Actual native tunnel/default-deny evidence first; preserve existing policies",
+  "items": [
+    {
+      "profile": "ha",
+      "resource_endpoint": "POST /api/v1/organizations/{org}/resources",
+      "resource_body": {
+        "name": "gcp-cloud-ha-http-1010",
+        "label": "Owned GCP qualification exact http endpoint",
+        "cidr": "10.80.0.10/32",
+        "protocol": "tcp",
+        "port_low": 8080,
+        "port_high": 8080
+      },
+      "grant_endpoint": "POST /api/v1/organizations/{org}/policies",
+      "grant_body": {
+        "src_kind": "site",
+        "src_site_id": "01a12500-95ae-7728-b901-54f20df98cc1",
+        "dst_kind": "resource",
+        "dst_resource_id": null,
+        "expires_at": null
+      }
+    },
+    {
+      "profile": "ha",
+      "resource_endpoint": "POST /api/v1/organizations/{org}/resources",
+      "resource_body": {
+        "name": "gcp-cloud-ha-udp-echo-1010",
+        "label": "Owned GCP qualification exact udp-echo endpoint",
+        "cidr": "10.80.0.10/32",
+        "protocol": "udp",
+        "port_low": 9000,
+        "port_high": 9000
+      },
+      "grant_endpoint": "POST /api/v1/organizations/{org}/policies",
+      "grant_body": {
+        "src_kind": "site",
+        "src_site_id": "01a12500-95ae-7728-b901-54f20df98cc1",
+        "dst_kind": "resource",
+        "dst_resource_id": null,
+        "expires_at": null
+      }
+    },
+    {
+      "profile": "ha",
+      "resource_endpoint": "POST /api/v1/organizations/{org}/resources",
+      "resource_body": {
+        "name": "gcp-cloud-ha-dns-udp-1010",
+        "label": "Owned GCP qualification exact dns-udp endpoint",
+        "cidr": "10.80.0.2/32",
+        "protocol": "udp",
+        "port_low": 53,
+        "port_high": 53
+      },
+      "grant_endpoint": "POST /api/v1/organizations/{org}/policies",
+      "grant_body": {
+        "src_kind": "cidr",
+        "src_cidr": "10.70.0.2/32",
+        "dst_kind": "resource",
+        "dst_resource_id": null,
+        "expires_at": null
+      }
+    },
+    {
+      "profile": "ha",
+      "resource_endpoint": "POST /api/v1/organizations/{org}/resources",
+      "resource_body": {
+        "name": "gcp-cloud-ha-dns-tcp-1010",
+        "label": "Owned GCP qualification exact dns-tcp endpoint",
+        "cidr": "10.80.0.2/32",
+        "protocol": "tcp",
+        "port_low": 53,
+        "port_high": 53
+      },
+      "grant_endpoint": "POST /api/v1/organizations/{org}/policies",
+      "grant_body": {
+        "src_kind": "cidr",
+        "src_cidr": "10.70.0.2/32",
+        "dst_kind": "resource",
+        "dst_resource_id": null,
+        "expires_at": null
+      }
+    },
+    {
+      "profile": "classic",
+      "resource_endpoint": "POST /api/v1/organizations/{org}/resources",
+      "resource_body": {
+        "name": "gcp-cloud-classic-http-1010",
+        "label": "Owned GCP qualification exact http endpoint",
+        "cidr": "10.81.0.10/32",
+        "protocol": "tcp",
+        "port_low": 8080,
+        "port_high": 8080
+      },
+      "grant_endpoint": "POST /api/v1/organizations/{org}/policies",
+      "grant_body": {
+        "src_kind": "site",
+        "src_site_id": "01a12500-95ae-7728-b901-54f20df98cc1",
+        "dst_kind": "resource",
+        "dst_resource_id": null,
+        "expires_at": null
+      }
+    },
+    {
+      "profile": "classic",
+      "resource_endpoint": "POST /api/v1/organizations/{org}/resources",
+      "resource_body": {
+        "name": "gcp-cloud-classic-udp-echo-1010",
+        "label": "Owned GCP qualification exact udp-echo endpoint",
+        "cidr": "10.81.0.10/32",
+        "protocol": "udp",
+        "port_low": 9000,
+        "port_high": 9000
+      },
+      "grant_endpoint": "POST /api/v1/organizations/{org}/policies",
+      "grant_body": {
+        "src_kind": "site",
+        "src_site_id": "01a12500-95ae-7728-b901-54f20df98cc1",
+        "dst_kind": "resource",
+        "dst_resource_id": null,
+        "expires_at": null
+      }
+    },
+    {
+      "profile": "classic",
+      "resource_endpoint": "POST /api/v1/organizations/{org}/resources",
+      "resource_body": {
+        "name": "gcp-cloud-classic-dns-udp-1010",
+        "label": "Owned GCP qualification exact dns-udp endpoint",
+        "cidr": "10.81.0.2/32",
+        "protocol": "udp",
+        "port_low": 53,
+        "port_high": 53
+      },
+      "grant_endpoint": "POST /api/v1/organizations/{org}/policies",
+      "grant_body": {
+        "src_kind": "cidr",
+        "src_cidr": "10.70.0.2/32",
+        "dst_kind": "resource",
+        "dst_resource_id": null,
+        "expires_at": null
+      }
+    },
+    {
+      "profile": "classic",
+      "resource_endpoint": "POST /api/v1/organizations/{org}/resources",
+      "resource_body": {
+        "name": "gcp-cloud-classic-dns-tcp-1010",
+        "label": "Owned GCP qualification exact dns-tcp endpoint",
+        "cidr": "10.81.0.2/32",
+        "protocol": "tcp",
+        "port_low": 53,
+        "port_high": 53
+      },
+      "grant_endpoint": "POST /api/v1/organizations/{org}/policies",
+      "grant_body": {
+        "src_kind": "cidr",
+        "src_cidr": "10.70.0.2/32",
+        "dst_kind": "resource",
+        "dst_resource_id": null,
+        "expires_at": null
+      }
+    }
+  ]
+}

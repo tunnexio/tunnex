@@ -11,9 +11,11 @@ import (
 )
 
 type Eligibility struct {
-	Eligible bool         `json:"eligible"`
-	Reason   string       `json:"reason"`
-	BGP      *Eligibility `json:"bgp,omitempty"`
+	Eligible   bool         `json:"eligible"`
+	Reason     string       `json:"reason"`
+	GCPClassic *Eligibility `json:"gcp_classic,omitempty"`
+	GCPHA      *Eligibility `json:"gcp_ha,omitempty"`
+	BGP        *Eligibility `json:"bgp,omitempty"`
 }
 
 // gatewayEligibilityReason is shared by advisory reads and locked creation.
@@ -91,5 +93,17 @@ func (s *ConnectionStore) ReadEligibility(ctx context.Context, org, site, gatewa
 		return Eligibility{}, ErrConnectionUnavailable
 	}
 	reason := gatewayEligibilityReason(status, serial, revoked, reported, caps, clock)
-	return advisoryEligibility(reason, gatewayBGPEligibilityReason(status, serial, revoked, reported, caps, clock)), nil
+	result := advisoryEligibility(reason, gatewayBGPEligibilityReason(status, serial, revoked, reported, caps, clock))
+	gcpReason := result.BGP.Reason
+	var cap map[string]json.RawMessage
+	if gcpReason == "eligible" && (json.Unmarshal(caps, &cap) != nil || string(cap["ipsec_gcp_ha_version"]) != "1") {
+		gcpReason = "unsupported"
+	}
+	result.GCPHA = &Eligibility{Eligible: gcpReason == "eligible", Reason: gcpReason}
+	classicReason := reason
+	if classicReason == "eligible" && (json.Unmarshal(caps, &cap) != nil || string(cap["ipsec_gcp_classic_version"]) != "1") {
+		classicReason = "unsupported"
+	}
+	result.GCPClassic = &Eligibility{Eligible: classicReason == "eligible", Reason: classicReason}
+	return result, nil
 }

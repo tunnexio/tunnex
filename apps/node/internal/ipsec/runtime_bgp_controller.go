@@ -25,12 +25,12 @@ func runtimeBGPProcessConfig(e RuntimeJournalEntry) (bgpengine.Config, error) {
 		return bgpengine.Config{}, ErrRuntimeController
 	}
 	c := bgpengine.Config{LocalASN: e.BGP.LocalASN, RemoteASN: e.BGP.RemoteASN, RouterID: router, MaximumPrefixes: e.BGP.MaximumPrefixes, LocalPrefixes: e.Engines[0].LocalPrefixes, RemotePrefixes: e.Engines[0].RemotePrefixes}
-	for i, t := range e.Allocation.Tunnels {
+	for i, t := range e.Allocation.Tunnels[:e.Allocation.activeTunnelCount()] {
 		c.Peers[i] = bgpengine.Peer{Slot: int(t.Slot), Local: t.InsideAddress.Addr(), Remote: t.BGP.Peer, LinkName: t.Name, XFRMID: t.XFRMID}
 	}
 	return c, nil
 }
-func (c *RuntimeController) startBGPSession(ctx context.Context, e RuntimeJournalEntry) error {
+func (c *RuntimeController) startBGPSession(ctx context.Context, e RuntimeJournalEntry, environments ...RuntimeEnvironment) error {
 	if c.bgpProcesses == nil {
 		c.bgpProcesses = map[uuid.UUID]runtimeBGPSession{}
 	}
@@ -84,7 +84,18 @@ func (c *RuntimeController) startBGPSession(ctx context.Context, e RuntimeJourna
 			}
 			return ErrRuntimeJournal
 		}
-		process, err = startRuntimeBGPSession(ctx, c.config.JournalDir, e.DeliveryID, generation, cfg, checkpoint)
+		if e.Allocation.ProfileID == GCPHABGPProfile {
+			if len(environments) != 1 {
+				return ErrRuntimeController
+			}
+			proof, proofErr := c.gcpBGPLocalExportProof(e, cfg, environments[0])
+			if proofErr != nil {
+				return proofErr
+			}
+			process, err = startRuntimeBGPSessionWithLocalExportProof(ctx, c.config.JournalDir, e.DeliveryID, generation, cfg, checkpoint, proof)
+		} else {
+			process, err = startRuntimeBGPSession(ctx, c.config.JournalDir, e.DeliveryID, generation, cfg, checkpoint)
+		}
 	}
 	if err != nil || process == nil {
 		return ErrRuntimeController
@@ -152,13 +163,20 @@ func (c *RuntimeController) BGPCapability() int {
 	return 0
 }
 
-func (c *RuntimeController) proveBGPCurrent(ctx context.Context, e RuntimeJournalEntry, env RuntimeEnvironment) error {
+func (c *RuntimeController) proveBGPCurrent(ctx context.Context, e RuntimeJournalEntry, env RuntimeEnvironment) (resultErr error) {
+	stage := "proof_bgp_journal"
+	started := time.Now()
+	defer func() {
+		c.emitRuntimeDiagnostic(ctx, "bgp_proof", stage, e.Allocation.ConnectionID, started, resultErr != nil)
+	}()
 	if !validJournalBGP(e) || !validBGPRoutes(e) || e.ContractVersion != 3 || (e.BGPRoutes != nil && e.BGPRoutes.Stage != "completed") {
 		return ErrRuntimeController
 	}
+	stage = "proof_bgp_routes"
 	if c.kernel.verifyBGPRoutes(ctx, e.Allocation, e.Observed, bgpRouteUnion(e.BGPRoutes), true) != nil {
 		return ErrRuntimeController
 	}
+	stage = "proof_bgp_status"
 	statuses := c.observeRecovery(ctx, e)
 	up := false
 	for _, state := range statuses {
@@ -167,13 +185,20 @@ func (c *RuntimeController) proveBGPCurrent(ctx context.Context, e RuntimeJourna
 		}
 		up = up || state == "up"
 	}
+	stage = "proof_bgp_any_up"
 	if !up {
 		return ErrRuntimeController
 	}
+	stage = "proof_environment_observe"
 	current, err := c.config.Environment.Observe(ctx, e.Allocation, e.Engines)
-	if err != nil || !reflect.DeepEqual(current, env) {
+	if err != nil {
 		return ErrRuntimeController
 	}
+	stage = "proof_environment_binding"
+	if !reflect.DeepEqual(current, env) {
+		return ErrRuntimeController
+	}
+	stage = "proof_complete"
 	return nil
 }
 func (c *RuntimeController) bgpGuard(ctx context.Context, a runtimeActive, remaining time.Duration) (GuardConnection, error) {
@@ -183,7 +208,7 @@ func (c *RuntimeController) bgpGuard(ctx context.Context, a runtimeActive, remai
 func (c *RuntimeController) bgpGuardWithStatuses(ctx context.Context, a runtimeActive, remaining time.Duration, statuses [2]string) (GuardConnection, error) {
 	e := a.Entry
 	g := GuardConnection{ID: e.Allocation.ConnectionID, Local: e.Engines[0].LocalPrefixes, Remote: e.Engines[0].RemotePrefixes, Tunnels: e.Observed, LocalIngressIndices: a.Environment.LocalIngressIndices, Grants: a.Grants, PermitFor: remaining}
-	for i, t := range e.Allocation.Tunnels {
+	for i, t := range e.Allocation.Tunnels[:e.Allocation.activeTunnelCount()] {
 		peer := GuardBGPPeer{Local: t.InsideAddress.Addr(), Remote: t.BGP.Peer}
 		if statuses[i] == "up" {
 			peer.InterfaceIndex = e.Observed[i].InterfaceIndex
@@ -448,7 +473,7 @@ func (c *RuntimeController) applyBGP(ctx context.Context, m RuntimeMaterial, ent
 		c.bgpStaged = map[uuid.UUID]bool{}
 	}
 	stage = "restored_transport"
-	recreate, missingTransport, err := c.bgpRestoredTransportAbsent(ctx, e, entries, authority, identity)
+	recreate, missingTransport, err := c.bgpRestoredTransportAbsent(ctx, e, entries, authority, identity, env)
 	if err != nil {
 		return fail()
 	}
@@ -478,7 +503,7 @@ func (c *RuntimeController) applyBGP(ctx context.Context, m RuntimeMaterial, ent
 		if c.journal.Save(entries) != nil {
 			return fail()
 		}
-		for i, t := range e.Engines {
+		for i, t := range e.Engines[:e.Allocation.activeTunnelCount()] {
 			if c.config.Daemon.removeTunnel(ctx, t) != nil {
 				return fail()
 			}
@@ -563,7 +588,7 @@ func (c *RuntimeController) applyBGP(ctx context.Context, m RuntimeMaterial, ent
 		}
 	}
 	stage = "session_start"
-	if c.startBGPSession(ctx, e) != nil {
+	if c.startBGPSession(ctx, e, env) != nil {
 		return fail()
 	}
 	entries, err = c.journal.Entries()
@@ -710,9 +735,12 @@ func (c *RuntimeController) expiredBGPContinuityDenied(ctx context.Context, old 
 // bgpRestoredTransportAbsent keeps trusted reset intent Applied while proving
 // whether its deliberately cleared ownership can be recreated. It grants no
 // authority and writes no kernel object or journal entry.
-func (c *RuntimeController) bgpRestoredTransportAbsent(ctx context.Context, e RuntimeJournalEntry, entries []RuntimeJournalEntry, authority *PermitLeaseAuthority, identity PermitLeaseIdentity) (bool, bool, error) {
+func (c *RuntimeController) bgpRestoredTransportAbsent(ctx context.Context, e RuntimeJournalEntry, entries []RuntimeJournalEntry, authority *PermitLeaseAuthority, identity PermitLeaseIdentity, environment RuntimeEnvironment) (bool, bool, error) {
 	if e.Phase != RuntimeApplied || c.bgpStaged[e.DeliveryID] {
 		return false, false, nil
+	}
+	if e.Allocation.ProfileID == GCPHABGPProfile && (e.Restoration == nil || e.Restoration.Epoch == 0) {
+		return c.bgpOrdinaryDaemonAbsent(ctx, e, entries, authority, identity, environment)
 	}
 	if e.Restoration == nil {
 		if e.Observed == ([2]Ownership{}) {

@@ -216,15 +216,28 @@ func runtimeStatusMatchesDelivery(d ipsec.RuntimeDelivery, report ipsec.RuntimeS
 	if !validIPsecStatusReport(report) || report.DeliveryID != d.ID || report.DesiredRevision != d.DesiredRevision || report.ConfigurationRevision != m.ConfigurationRevision {
 		return false
 	}
-	dynamic := m.ProfileID == "aws-bgp-ipv4-v1"
-	if dynamic {
-		if m.BGP == nil || m.BGPVersion == nil || *m.BGPVersion != 1 || m.RecoveryVersion != nil {
+	count := 2
+	if m.ProfileID == ipsec.GCPClassicStaticProfile {
+		if m.TransportVersion == nil || *m.TransportVersion != 1 || m.TunnelCount == nil || *m.TunnelCount != 1 || m.Tunnels[1] != (ipsec.RuntimeTunnel{}) || report.TransportVersion == nil || *report.TransportVersion != 1 || report.TunnelCount == nil || *report.TunnelCount != 1 {
 			return false
 		}
-	} else if m.ProfileID != "aws-static-ipv4-v1" || m.BGP != nil || m.BGPVersion != nil || report.BGP != nil {
+		count = 1
+	} else if m.TransportVersion != nil || m.TunnelCount != nil || report.TransportVersion != nil || report.TunnelCount != nil {
 		return false
 	}
-	for i, t := range m.Tunnels {
+	dynamic := m.ProfileID == "aws-bgp-ipv4-v1" || m.ProfileID == ipsec.GCPHABGPProfile
+	bgpVersion := 1
+	if m.ProfileID == ipsec.GCPHABGPProfile {
+		bgpVersion = 2
+	}
+	if dynamic {
+		if m.BGP == nil || m.BGPVersion == nil || *m.BGPVersion != bgpVersion || m.RecoveryVersion != nil {
+			return false
+		}
+	} else if (m.ProfileID != "aws-static-ipv4-v1" && m.ProfileID != ipsec.GCPClassicStaticProfile) || m.BGP != nil || m.BGPVersion != nil || report.BGP != nil {
+		return false
+	}
+	for i, t := range m.Tunnels[:count] {
 		if report.Tunnels[i].ID != t.ID || t.Slot != i+1 || t.Selected != (!dynamic && i == 0) || report.Tunnels[i].Selected != t.Selected {
 			return false
 		}

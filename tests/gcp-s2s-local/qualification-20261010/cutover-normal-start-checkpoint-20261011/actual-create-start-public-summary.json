@@ -1,0 +1,19 @@
+{
+  "completed": true,
+  "error_type": null,
+  "image": "sha256:c0ca8999d3ae601d3dc2e8a9d319c2b98444a94896ade84b692ab590f1ae3906",
+  "phase": "create-start",
+  "remote_source_sha256": "3a694b2c4de369300e0acb05d16e029edb4f40ea514d7a4d02e5ab6bb0be25cb",
+  "returncode": 0,
+  "source_commit": "0249f7cf8804a7d6b4e1f82bf4dbf42b887bdfe7",
+  "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "stdout_sha256": "85590f622716c104ddc047da4458780b250d6d2a3150ddf33245c200e2d8e5e5",
+  "transport_sha256": "f2b27b12b40073ed5ad0d9625d92778047dbf766d460368db2fc97602d77ce38",
+  "phase_result": {
+    "container_id": "f15e09815f8a9ccbb6f6caf46d6c543168f42ec9e11d50fde1e5e5f5ba5d7a04",
+    "created_receipt_sha256": "f62ba2156e91caa4ffee2891a382f6f7a11a971bfe6f93823562890e822be95f",
+    "phase": "create-start",
+    "status": "normal same-identity startup; independently verify readiness"
+  },
+  "original_sha256": "5aa95e418e93f866843f1a4cfb9bf1661784aafc0c3f3f72575618f6d87f69c6"
+}

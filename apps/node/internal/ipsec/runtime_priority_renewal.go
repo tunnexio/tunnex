@@ -32,7 +32,7 @@ func (c *RuntimeController) RenewActiveIPsecRuntimeObserved(ctx context.Context,
 
 func (c *RuntimeController) renewActiveIPsecRuntimeObserved(ctx context.Context, authority func() *PermitLeaseAuthority, bgpCurrent func() bool, publish func(context.Context, RuntimeDelivery, RuntimeStatusReport) error, publishRecovery func(context.Context, RuntimeRecoveryHeartbeat) error) error {
 	count := len(c.active)
-	prepare := func(ns string, entries []RuntimeJournalEntry) ([]maintenanceItem, error) {
+	prepare := func(ns string, entries []RuntimeJournalEntry, _ *string, _ *uuid.UUID) ([]maintenanceItem, error) {
 		ids := make([]uuid.UUID, 0, count)
 		for id := range c.active {
 			ids = append(ids, id)
@@ -43,7 +43,7 @@ func (c *RuntimeController) renewActiveIPsecRuntimeObserved(ctx context.Context,
 		for _, id := range ids {
 			a := c.active[id]
 			d, e := a.Delivery, a.Entry
-			if !runtimeDeliveryValid(d, c.config.OrgID, c.config.GatewayID, "apply") || d.CoversDeliveryRevision != 0 || d.Manifest.ConnectionID != id || d.ID != e.DeliveryID || d.OwnershipDigest != e.OwnershipDigest || d.DesiredRevision != e.Engines[0].Binding.DesiredRevision || e.Allocation.ConnectionID != id || e.Allocation.Namespace != ns || e.Phase != RuntimeApplied || (e.ContractVersion != 2 && e.ContractVersion != 3) || a.Authority == nil || !validDigest(a.Identity.PolicyHash) || a.Identity != (PermitLeaseIdentity{DeliveryID: d.ID, Binding: e.Engines[0].Binding, PolicyHash: a.Identity.PolicyHash}) || !reflect.DeepEqual(a.Environment.Namespace, ns) || deliveries[d.ID] || !c.fqdnGrantsCurrent(a.Grants) {
+			if !runtimeDeliveryValid(d, c.config.OrgID, c.config.GatewayID, "apply") || d.CoversDeliveryRevision != 0 || d.Manifest.ConnectionID != id || d.ID != e.DeliveryID || d.OwnershipDigest != e.OwnershipDigest || d.DesiredRevision != e.Engines[0].Binding.DesiredRevision || e.Allocation.ConnectionID != id || e.Allocation.Namespace != ns || e.Phase != RuntimeApplied || (e.ContractVersion != 2 && e.ContractVersion != 3 && !(e.ContractVersion == 4 && e.Allocation.ProfileID == GCPClassicStaticProfile && validClassicJournal(e))) || a.Authority == nil || !validDigest(a.Identity.PolicyHash) || a.Identity != (PermitLeaseIdentity{DeliveryID: d.ID, Binding: e.Engines[0].Binding, PolicyHash: a.Identity.PolicyHash}) || !reflect.DeepEqual(a.Environment.Namespace, ns) || deliveries[d.ID] || !c.fqdnGrantsCurrent(a.Grants) {
 				return nil, ErrRuntimeController
 			}
 			// A process-local record is not sufficient by itself: require its

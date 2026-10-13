@@ -41,7 +41,7 @@ func (apiServer) CheckIPsecConfiguration(ctx context.Context, req api.CheckIPsec
 	if err != nil {
 		return nil, err
 	}
-	if err := ipsec.ValidateAWSConfig(input); err != nil {
+	if err := ipsec.ValidateProviderConfig(input); err != nil {
 		var validation *ipsec.ConfigValidationError
 		if !errors.As(err, &validation) {
 			return nil, invalidIPsecConfiguration()
@@ -159,6 +159,9 @@ func privateIPsecConfiguration(body api.IPsecConfigurationCheckInput) (ipsec.Sta
 	// The storage-independent validator intentionally omits PSKs from JSON. Map
 	// the private request DTO explicitly; never log/serialize this intermediate.
 	input := ipsec.StaticConfig{Mode: string(body.Mode), CustomerOutsideAddress: body.CustomerOutsideAddress, LocalPrefixes: body.LocalPrefixes, RemotePrefixes: body.RemotePrefixes, Tunnels: make([]ipsec.StaticTunnel, len(body.Tunnels))}
+	if body.ProfileId != nil {
+		input.ProfileID = string(*body.ProfileId)
+	}
 	if b := body.Bgp; b != nil {
 		input.BGP = &ipsec.BGPConfig{LocalASN: b.LocalAsn, RemoteASN: b.RemoteAsn, RouterID: b.RouterId, MaximumPrefixes: b.MaximumPrefixes}
 	}

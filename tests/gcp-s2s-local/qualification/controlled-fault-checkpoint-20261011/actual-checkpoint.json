@@ -1,0 +1,1727 @@
+{
+  "actual_partial_native_before_refusal": {
+    "bgp_routes": {
+      "Owned": [],
+      "Sequence": 17,
+      "Stage": "completed",
+      "Target": []
+    },
+    "bgp_summary": {
+      "as": 65010,
+      "bestPath": {
+        "multiPathRelax": "false"
+      },
+      "displayedPeers": 2,
+      "dynamicPeers": 0,
+      "failedPeers": 1,
+      "peerCount": 2,
+      "peerMemory": 33808,
+      "peers": {
+        "169.254.100.1": {
+          "connectionsDropped": 1,
+          "connectionsEstablished": 1,
+          "idType": "ipv4",
+          "inq": 0,
+          "localAs": 65010,
+          "msgRcvd": 146,
+          "msgSent": 151,
+          "outq": 0,
+          "peerState": "OK",
+          "peerUptime": "00:00:02",
+          "peerUptimeEstablishedEpoch": 1791678645,
+          "peerUptimeMsec": 2000,
+          "pfxRcd": 0,
+          "pfxSnt": 0,
+          "remoteAs": 64514,
+          "softwareVersion": "n/a",
+          "state": "Connect",
+          "tableVersion": 0,
+          "version": 4
+        },
+        "169.254.100.5": {
+          "connectionsDropped": 0,
+          "connectionsEstablished": 1,
+          "idType": "ipv4",
+          "inq": 0,
+          "localAs": 65010,
+          "msgRcvd": 149,
+          "msgSent": 150,
+          "outq": 0,
+          "peerState": "OK",
+          "peerUptime": "00:24:07",
+          "peerUptimeEstablishedEpoch": 1791677200,
+          "peerUptimeMsec": 1447000,
+          "pfxRcd": 1,
+          "pfxSnt": 1,
+          "remoteAs": 64514,
+          "softwareVersion": "n/a",
+          "state": "Established",
+          "tableVersion": 3,
+          "version": 4
+        }
+      },
+      "ribCount": 3,
+      "ribMemory": 456,
+      "routerId": "10.70.0.2",
+      "tableVersion": 3,
+      "totalPeers": 2,
+      "vrfId": 0,
+      "vrfName": "default"
+    },
+    "boot_id": "9617762e-19db-4a21-bdee-909dfb31e501",
+    "container_id": "f15e09815f8a9ccbb6f6caf46d6c543168f42ec9e11d50fde1e5e5f5ba5d7a04",
+    "image_id": "sha256:c0ca8999d3ae601d3dc2e8a9d319c2b98444a94896ade84b692ab590f1ae3906",
+    "public_sa_headers": [
+      "tnx-ipsec-b03bada6-b799-4732-ad77-1a6b457d1d3f-d2-c1-s1: #32, CONNECTING, IKEv2, f53a424649270bf1_i* 0000000000000000_r",
+      "tnx-ipsec-8494b8ef-e6e8-4d8d-b964-fc6faec7cb72-d7-c1-s2: #31, ESTABLISHED, IKEv2, 4cb49b9b5f91bc84_i* bc1afe15a1ede6af_r",
+      "tnx-ipsec-8494b8ef-e6e8-4d8d-b964-fc6faec7cb72-d7-c1-s2: #5, reqid 3912688814, INSTALLED, TUNNEL-in-UDP, ESP:AES_CBC-256/HMAC_SHA2_256_128/MODP_2048",
+      "tnx-ipsec-1c626ff9-cc99-4c8b-a316-90b190c7497e-d2-c1-s1: #30, ESTABLISHED, IKEv2, e62704a38a11449f_i* f6fba694172d3e4f_r",
+      "tnx-ipsec-1c626ff9-cc99-4c8b-a316-90b190c7497e-d2-c1-s1: #3, reqid 2378095810, INSTALLED, TUNNEL-in-UDP, ESP:AES_CBC-256/HMAC_SHA2_256_128"
+    ],
+    "sa_count": "SAD count 4",
+    "source_commit": "0249f7cf8804a7d6b4e1f82bf4dbf42b887bdfe7"
+  },
+  "isolated_six_rule": {
+    "completed": true,
+    "error_type": null,
+    "fixture": {
+      "fixture_completed": true,
+      "host_mutations": 0,
+      "packet_sends": 0,
+      "result": {
+        "cleanup_verified": true,
+        "completed": true,
+        "owned_filters_withdrawn": true
+      }
+    },
+    "host_unchanged": true,
+    "returncode": 0,
+    "scope": "fresh isolated network namespace six-rule install/cleanup only; no physical fault or packet sends"
+  },
+  "one_peer_cleanup_verified": {
+    "phase": "cleanup_verified",
+    "result": {
+      "cleanup_verified": true,
+      "completed": true,
+      "owned_filters_withdrawn": true
+    }
+  },
+  "one_peer_initial_failure": {
+    "completed": false,
+    "error_type": "ValueError"
+  },
+  "one_peer_preflight": {
+    "api_baseline_unchanged": true,
+    "classic_single_sa_unchanged": true,
+    "container": "f15e09815f8a9ccbb6f6caf46d6c543168f42ec9e11d50fde1e5e5f5ba5d7a04",
+    "foreign_state_unchanged": true,
+    "full_guard_verified": true,
+    "healthy_indices": [
+      6,
+      7
+    ],
+    "image": "sha256:c0ca8999d3ae601d3dc2e8a9d319c2b98444a94896ade84b692ab590f1ae3906",
+    "native_completed": true,
+    "owned_route_index": 6,
+    "owned_route_prefix": "10.80.0.0/24",
+    "owned_route_protocol": 242,
+    "selected_index": 6,
+    "source": "0249f7cf8804a7d6b4e1f82bf4dbf42b887bdfe7"
+  },
+  "positive_fault_drop_observation": [
+    {
+      "action_stats": {
+        "backlog": 0,
+        "bytes": 2800,
+        "drops": 20,
+        "overlimits": 0,
+        "packets": 20,
+        "qlen": 0,
+        "requeues": 0
+      },
+      "destination_port": 4500,
+      "ip_protocol": "udp",
+      "peer": "34.153.32.207",
+      "pref": 49102
+    }
+  ],
+  "restored_packet_receipts": {
+    "classic": {
+      "accepted": true,
+      "completed": true,
+      "executed_at_utc": "2026-10-11T00:34:46Z",
+      "results": [
+        {
+          "accepted": true,
+          "capture_drops": 0,
+          "elapsed_ms": 7.888,
+          "exact_response": true,
+          "outcome": "response",
+          "protocol": "tcp",
+          "receiver_exact_payload": 1
+        },
+        {
+          "accepted": true,
+          "capture_drops": 0,
+          "elapsed_ms": 4.443,
+          "exact_response": true,
+          "outcome": "response",
+          "protocol": "udp",
+          "receiver_exact_payload": 1
+        }
+      ]
+    },
+    "ha": {
+      "accepted": true,
+      "completed": true,
+      "executed_at_utc": "2026-10-11T00:34:44Z",
+      "results": [
+        {
+          "accepted": true,
+          "capture_drops": 0,
+          "elapsed_ms": 7.711,
+          "exact_response": true,
+          "outcome": "response",
+          "protocol": "tcp",
+          "receiver_exact_payload": 1
+        },
+        {
+          "accepted": true,
+          "capture_drops": 0,
+          "elapsed_ms": 4.331,
+          "exact_response": true,
+          "outcome": "response",
+          "protocol": "udp",
+          "receiver_exact_payload": 1
+        }
+      ]
+    }
+  },
+  "restored_prepare_native": {
+    "completed": true,
+    "mutations": 0,
+    "observation": {
+      "api_baseline_unchanged": true,
+      "classic_single_sa_unchanged": true,
+      "container": "f15e09815f8a9ccbb6f6caf46d6c543168f42ec9e11d50fde1e5e5f5ba5d7a04",
+      "foreign_state_unchanged": true,
+      "full_guard_verified": true,
+      "healthy_indices": [
+        6,
+        7
+      ],
+      "image": "sha256:c0ca8999d3ae601d3dc2e8a9d319c2b98444a94896ade84b692ab590f1ae3906",
+      "native_completed": true,
+      "owned_route_index": 6,
+      "owned_route_prefix": "10.80.0.0/24",
+      "owned_route_protocol": 242,
+      "selected_index": 6,
+      "source": "0249f7cf8804a7d6b4e1f82bf4dbf42b887bdfe7"
+    }
+  },
+  "scope": "Immutable initial one-peer failure and verified cleanup/restoration; isolated six-rule qualification is not a physical two-peer fault result.",
+  "source_receipts": [
+    {
+      "path": "/private/tmp/gcp-ha-one-peer-actual-0249-20261011-v1/042-native-during.json",
+      "sha256": "be7d564d97bc5eefc3c3adf60cd818a206e448cd37335211e605e4e61816de56"
+    },
+    {
+      "path": "/private/tmp/gcp-ha-one-peer-actual-0249-20261011-v1/048-failure.json",
+      "sha256": "673108f003dc4cb5903f98b8fe2b67e6e1e794a4fb1c2f9212c328a83917d841"
+    },
+    {
+      "path": "/private/tmp/gcp-ha-one-peer-actual-0249-20261011-v1/045-fault_event.json",
+      "sha256": "dc10697693eca31757f9b5636fc52b7502ca296a63ea9a6f7a1f34b411ad73cc"
+    },
+    {
+      "path": "/private/tmp/gcp-ha-one-peer-actual-0249-20261011-v1/009-preflight.json",
+      "sha256": "b032e977ea697ea18f58b166d1878acc1ac625496a704fb37eab40f9e875a439"
+    },
+    {
+      "path": "/private/tmp/gcp-ha-one-postfault-restoration-0249-20261011-v1/009-prepare-native.json",
+      "sha256": "195363a60bac994c056af00373074f6a6de1f58467d3a5a99d583b8d5b98ea72"
+    },
+    {
+      "path": "/private/tmp/gcp-tc-six-fixture-actual-0249-20261011-v1/receipt.jsonl",
+      "sha256": "8ceceb22c7c85c69e61ae45c6cf28f54df70426f5b2f92dcd45c9e40c72cfb69"
+    },
+    {
+      "path": "/private/tmp/gcp-ha-one-postfault-restoration-0249-20261011-v1/005-guard-preflight-obs-tcp.json",
+      "sha256": "fcbb3e3a2ae7f2868097c6b33b28beb7d39acf314c48fe468e794429f2fef431"
+    },
+    {
+      "path": "/private/tmp/gcp-ha-one-postfault-restoration-0249-20261011-v1/006-guard-preflight-obs-udp.json",
+      "sha256": "4f530e6d60104c3511919f2664ddb29027a2fcb86a2c01acbb6b92567f9b92df"
+    },
+    {
+      "path": "/private/tmp/gcp-ha-one-postfault-restoration-0249-20261011-v1/007-guard-preflight-classicobs-tcp.json",
+      "sha256": "0e57e25e6da487274885efe8fc4cbb8c80f45d05aa335c898b8ccd9e8bf3ecd9"
+    },
+    {
+      "path": "/private/tmp/gcp-ha-one-postfault-restoration-0249-20261011-v1/008-guard-preflight-classicobs-udp.json",
+      "sha256": "ff956e5b6129dfb367d6216b3b3710b26b60d7174e0389041b9b442ecccadc1e"
+    },
+    {
+      "path": "/private/tmp/gcp-ha-one-postfault-restoration-0249-20261011-v1/packets-restored-ha.json",
+      "sha256": "85ee50f6194467f6b334d2f1fdf88992e8c1439783bef977987e959ee4762dc6"
+    },
+    {
+      "path": "/private/tmp/gcp-ha-one-postfault-restoration-0249-20261011-v1/packets-restored-classic.json",
+      "sha256": "da6d8ba939db7ac5f07bd70cfa7a6eb20635e7549d5db204c0e12efb8e0a84ca"
+    },
+    {
+      "path": "/private/tmp/gcp-ha-one-peer-actual-0249-20261011-v1/044-fault_event.json",
+      "sha256": "5054b4a758cce0088ff324aaf34fc432f518b7bba31d2d80ca8a55fa6266a008"
+    }
+  ],
+  "successful_full_guard_results": {
+    "005-guard-preflight-obs-tcp.json": {
+      "returncode": 0,
+      "stdout": {
+        "capture_sha256": "8d4551034a7e4cf4c444dd31293b024bc192dd2b782f9b274dab8e18d0e4dc77",
+        "completed": true,
+        "observation": {
+          "deadline_binding": "normal API policy/deadline evidence bound externally; no per-rule policy ID claim",
+          "expect": "allow",
+          "guard_digest": "efd80ef75f02dfbd941a4df53e429b6b8020c96235bd275ae56e8b05e07d5f33",
+          "guard_revision": 62835,
+          "ha_live_sets": {
+            "lease_80c206678d844dd88e51ae4a10445cbb": true,
+            "reply_lease_80c206678d844dd88e51ae4a10445cbb": true,
+            "sa_lease_80c206678d844dd88e51ae4a10445cbb": true
+          },
+          "protocol": "tcp",
+          "readback": "positive",
+          "scope": "verified full owned-table observation; selected route and healthy paths bound externally, no native SA/BGP/packet/lease/cleanup authority",
+          "source": "0249f7cf8804a7d6b4e1f82bf4dbf42b887bdfe7",
+          "tuples": [
+            {
+              "exact_forward_original_rules": 1,
+              "exact_rules_per_healthy_path": {
+                "6": 1,
+                "7": 1
+              },
+              "matching_or_wider_forward_rules": 2,
+              "port": 8080,
+              "protocol": "tcp",
+              "verified_canonical_expected_rules": [
+                {
+                  "chain": "forward_guard",
+                  "expr": [
+                    {
+                      "match": {
+                        "left": {
+                          "meta": {
+                            "key": "iif"
+                          }
+                        },
+                        "op": "==",
+                        "right": 2
+                      }
+                    },
+                    {
+                      "match": {
+                        "left": {
+                          "meta": {
+                            "key": "oif"
+                          }
+                        },
+                        "op": "==",
+                        "right": 6
+                      }
+                    },
+                    {
+                      "match": {
+                        "left": {
+                          "payload": {
+                            "field": "saddr",
+                            "protocol": "ip"
+                          }
+                        },
+                        "op": "==",
+                        "right": {
+                          "prefix": {
+                            "addr": "10.70.0.0",
+                            "len": 24
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "match": {
+                        "left": {
+                          "payload": {
+                            "field": "daddr",
+                            "protocol": "ip"
+                          }
+                        },
+                        "op": "==",
+                        "right": {
+                          "prefix": {
+                            "addr": "10.80.0.10",
+                            "len": 32
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "match": {
+                        "left": {
+                          "payload": {
+                            "field": "dport",
+                            "protocol": "tcp"
+                          }
+                        },
+                        "op": "==",
+                        "right": 8080
+                      }
+                    },
+                    {
+                      "match": {
+                        "left": {
+                          "ct": {
+                            "key": "direction"
+                          }
+                        },
+                        "op": "==",
+                        "right": "original"
+                      }
+                    },
+                    {
+                      "match": {
+                        "left": {
+                          "meta": {
+                            "key": "oif"
+                          }
+                        },
+                        "op": "==",
+                        "right": "@lease_80c206678d844dd88e51ae4a10445cbb"
+                      }
+                    },
+                    {
+                      "counter": {
+                        "bytes": 0,
+                        "packets": 0
+                      }
+                    },
+                    {
+                      "accept": null
+                    }
+                  ],
+                  "family": "inet",
+                  "table": "tunnex_ipsec"
+                },
+                {
+                  "chain": "forward_guard",
+                  "expr": [
+                    {
+                      "match": {
+                        "left": {
+                          "meta": {
+                            "key": "iif"
+                          }
+                        },
+                        "op": "==",
+                        "right": 2
+                      }
+                    },
+                    {
+                      "match": {
+                        "left": {
+                          "meta": {
+                            "key": "oif"
+                          }
+                        },
+                        "op": "==",
+                        "right": 7
+                      }
+                    },
+                    {
+                      "match": {
+                        "left": {
+                          "payload": {
+                            "field": "saddr",
+                            "protocol": "ip"
+                          }
+                        },
+                        "op": "==",
+                        "right": {
+                          "prefix": {
+                            "addr": "10.70.0.0",
+                            "len": 24
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "match": {
+                        "left": {
+                          "payload": {
+                            "field": "daddr",
+                            "protocol": "ip"
+                          }
+                        },
+                        "op": "==",
+                        "right": {
+                          "prefix": {
+                            "addr": "10.80.0.10",
+                            "len": 32
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "match": {
+                        "left": {
+                          "payload": {
+                            "field": "dport",
+                            "protocol": "tcp"
+                          }
+                        },
+                        "op": "==",
+                        "right": 8080
+                      }
+                    },
+                    {
+                      "match": {
+                        "left": {
+                          "ct": {
+                            "key": "direction"
+                          }
+                        },
+                        "op": "==",
+                        "right": "original"
+                      }
+                    },
+                    {
+                      "match": {
+                        "left": {
+                          "meta": {
+                            "key": "oif"
+                          }
+                        },
+                        "op": "==",
+                        "right": "@lease_80c206678d844dd88e51ae4a10445cbb"
+                      }
+                    },
+                    {
+                      "counter": {
+                        "bytes": 0,
+                        "packets": 0
+                      }
+                    },
+                    {
+                      "accept": null
+                    }
+                  ],
+                  "family": "inet",
+                  "table": "tunnex_ipsec"
+                }
+              ]
+            },
+            {
+              "exact_forward_original_rules": 1,
+              "exact_rules_per_healthy_path": {
+                "6": 1,
+                "7": 1
+              },
+              "matching_or_wider_forward_rules": 2,
+              "port": 9000,
+              "protocol": "udp",
+              "verified_canonical_expected_rules": [
+                {
+                  "chain": "forward_guard",
+                  "expr": [
+                    {
+                      "match": {
+                        "left": {
+                          "meta": {
+                            "key": "iif"
+                          }
+                        },
+                        "op": "==",
+                        "right": 2
+                      }
+                    },
+                    {
+                      "match": {
+                        "left": {
+                          "meta": {
+                            "key": "oif"
+                          }
+                        },
+                        "op": "==",
+                        "right": 6
+                      }
+                    },
+                    {
+                      "match": {
+                        "left": {
+                          "payload": {
+                            "field": "saddr",
+                            "protocol": "ip"
+                          }
+                        },
+                        "op": "==",
+                        "right": {
+                          "prefix": {
+                            "addr": "10.70.0.0",
+                            "len": 24
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "match": {
+                        "left": {
+                          "payload": {
+                            "field": "daddr",
+                            "protocol": "ip"
+                          }
+                        },
+                        "op": "==",
+                        "right": {
+                          "prefix": {
+                            "addr": "10.80.0.10",
+                            "len": 32
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "match": {
+                        "left": {
+                          "payload": {
+                            "field": "dport",
+                            "protocol": "udp"
+                          }
+                        },
+                        "op": "==",
+                        "right": 9000
+                      }
+                    },
+                    {
+                      "match": {
+                        "left": {
+                          "ct": {
+                            "key": "direction"
+                          }
+                        },
+                        "op": "==",
+                        "right": "original"
+                      }
+                    },
+                    {
+                      "match": {
+                        "left": {
+                          "meta": {
+                            "key": "oif"
+                          }
+                        },
+                        "op": "==",
+                        "right": "@lease_80c206678d844dd88e51ae4a10445cbb"
+                      }
+                    },
+                    {
+                      "counter": {
+                        "bytes": 0,
+                        "packets": 0
+                      }
+                    },
+                    {
+                      "accept": null
+                    }
+                  ],
+                  "family": "inet",
+                  "table": "tunnex_ipsec"
+                },
+                {
+                  "chain": "forward_guard",
+                  "expr": [
+                    {
+                      "match": {
+                        "left": {
+                          "meta": {
+                            "key": "iif"
+                          }
+                        },
+                        "op": "==",
+                        "right": 2
+                      }
+                    },
+                    {
+                      "match": {
+                        "left": {
+                          "meta": {
+                            "key": "oif"
+                          }
+                        },
+                        "op": "==",
+                        "right": 7
+                      }
+                    },
+                    {
+                      "match": {
+                        "left": {
+                          "payload": {
+                            "field": "saddr",
+                            "protocol": "ip"
+                          }
+                        },
+                        "op": "==",
+                        "right": {
+                          "prefix": {
+                            "addr": "10.70.0.0",
+                            "len": 24
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "match": {
+                        "left": {
+                          "payload": {
+                            "field": "daddr",
+                            "protocol": "ip"
+                          }
+                        },
+                        "op": "==",
+                        "right": {
+                          "prefix": {
+                            "addr": "10.80.0.10",
+                            "len": 32
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "match": {
+                        "left": {
+                          "payload": {
+                            "field": "dport",
+                            "protocol": "udp"
+                          }
+                        },
+                        "op": "==",
+                        "right": 9000
+                      }
+                    },
+                    {
+                      "match": {
+                        "left": {
+                          "ct": {
+                            "key": "direction"
+                          }
+                        },
+                        "op": "==",
+                        "right": "original"
+                      }
+                    },
+                    {
+                      "match": {
+                        "left": {
+                          "meta": {
+                            "key": "oif"
+                          }
+                        },
+                        "op": "==",
+                        "right": "@lease_80c206678d844dd88e51ae4a10445cbb"
+                      }
+                    },
+                    {
+                      "counter": {
+                        "bytes": 0,
+                        "packets": 0
+                      }
+                    },
+                    {
+                      "accept": null
+                    }
+                  ],
+                  "family": "inet",
+                  "table": "tunnex_ipsec"
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "006-guard-preflight-obs-udp.json": {
+      "returncode": 0,
+      "stdout": {
+        "capture_sha256": "8d4551034a7e4cf4c444dd31293b024bc192dd2b782f9b274dab8e18d0e4dc77",
+        "completed": true,
+        "observation": {
+          "deadline_binding": "normal API policy/deadline evidence bound externally; no per-rule policy ID claim",
+          "expect": "allow",
+          "guard_digest": "efd80ef75f02dfbd941a4df53e429b6b8020c96235bd275ae56e8b05e07d5f33",
+          "guard_revision": 62835,
+          "ha_live_sets": {
+            "lease_80c206678d844dd88e51ae4a10445cbb": true,
+            "reply_lease_80c206678d844dd88e51ae4a10445cbb": true,
+            "sa_lease_80c206678d844dd88e51ae4a10445cbb": true
+          },
+          "protocol": "udp",
+          "readback": "positive",
+          "scope": "verified full owned-table observation; selected route and healthy paths bound externally, no native SA/BGP/packet/lease/cleanup authority",
+          "source": "0249f7cf8804a7d6b4e1f82bf4dbf42b887bdfe7",
+          "tuples": [
+            {
+              "exact_forward_original_rules": 1,
+              "exact_rules_per_healthy_path": {
+                "6": 1,
+                "7": 1
+              },
+              "matching_or_wider_forward_rules": 2,
+              "port": 8080,
+              "protocol": "tcp",
+              "verified_canonical_expected_rules": [
+                {
+                  "chain": "forward_guard",
+                  "expr": [
+                    {
+                      "match": {
+                        "left": {
+                          "meta": {
+                            "key": "iif"
+                          }
+                        },
+                        "op": "==",
+                        "right": 2
+                      }
+                    },
+                    {
+                      "match": {
+                        "left": {
+                          "meta": {
+                            "key": "oif"
+                          }
+                        },
+                        "op": "==",
+                        "right": 6
+                      }
+                    },
+                    {
+                      "match": {
+                        "left": {
+                          "payload": {
+                            "field": "saddr",
+                            "protocol": "ip"
+                          }
+                        },
+                        "op": "==",
+                        "right": {
+                          "prefix": {
+                            "addr": "10.70.0.0",
+                            "len": 24
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "match": {
+                        "left": {
+                          "payload": {
+                            "field": "daddr",
+                            "protocol": "ip"
+                          }
+                        },
+                        "op": "==",
+                        "right": {
+                          "prefix": {
+                            "addr": "10.80.0.10",
+                            "len": 32
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "match": {
+                        "left": {
+                          "payload": {
+                            "field": "dport",
+                            "protocol": "tcp"
+                          }
+                        },
+                        "op": "==",
+                        "right": 8080
+                      }
+                    },
+                    {
+                      "match": {
+                        "left": {
+                          "ct": {
+                            "key": "direction"
+                          }
+                        },
+                        "op": "==",
+                        "right": "original"
+                      }
+                    },
+                    {
+                      "match": {
+                        "left": {
+                          "meta": {
+                            "key": "oif"
+                          }
+                        },
+                        "op": "==",
+                        "right": "@lease_80c206678d844dd88e51ae4a10445cbb"
+                      }
+                    },
+                    {
+                      "counter": {
+                        "bytes": 0,
+                        "packets": 0
+                      }
+                    },
+                    {
+                      "accept": null
+                    }
+                  ],
+                  "family": "inet",
+                  "table": "tunnex_ipsec"
+                },
+                {
+                  "chain": "forward_guard",
+                  "expr": [
+                    {
+                      "match": {
+                        "left": {
+                          "meta": {
+                            "key": "iif"
+                          }
+                        },
+                        "op": "==",
+                        "right": 2
+                      }
+                    },
+                    {
+                      "match": {
+                        "left": {
+                          "meta": {
+                            "key": "oif"
+                          }
+                        },
+                        "op": "==",
+                        "right": 7
+                      }
+                    },
+                    {
+                      "match": {
+                        "left": {
+                          "payload": {
+                            "field": "saddr",
+                            "protocol": "ip"
+                          }
+                        },
+                        "op": "==",
+                        "right": {
+                          "prefix": {
+                            "addr": "10.70.0.0",
+                            "len": 24
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "match": {
+                        "left": {
+                          "payload": {
+                            "field": "daddr",
+                            "protocol": "ip"
+                          }
+                        },
+                        "op": "==",
+                        "right": {
+                          "prefix": {
+                            "addr": "10.80.0.10",
+                            "len": 32
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "match": {
+                        "left": {
+                          "payload": {
+                            "field": "dport",
+                            "protocol": "tcp"
+                          }
+                        },
+                        "op": "==",
+                        "right": 8080
+                      }
+                    },
+                    {
+                      "match": {
+                        "left": {
+                          "ct": {
+                            "key": "direction"
+                          }
+                        },
+                        "op": "==",
+                        "right": "original"
+                      }
+                    },
+                    {
+                      "match": {
+                        "left": {
+                          "meta": {
+                            "key": "oif"
+                          }
+                        },
+                        "op": "==",
+                        "right": "@lease_80c206678d844dd88e51ae4a10445cbb"
+                      }
+                    },
+                    {
+                      "counter": {
+                        "bytes": 0,
+                        "packets": 0
+                      }
+                    },
+                    {
+                      "accept": null
+                    }
+                  ],
+                  "family": "inet",
+                  "table": "tunnex_ipsec"
+                }
+              ]
+            },
+            {
+              "exact_forward_original_rules": 1,
+              "exact_rules_per_healthy_path": {
+                "6": 1,
+                "7": 1
+              },
+              "matching_or_wider_forward_rules": 2,
+              "port": 9000,
+              "protocol": "udp",
+              "verified_canonical_expected_rules": [
+                {
+                  "chain": "forward_guard",
+                  "expr": [
+                    {
+                      "match": {
+                        "left": {
+                          "meta": {
+                            "key": "iif"
+                          }
+                        },
+                        "op": "==",
+                        "right": 2
+                      }
+                    },
+                    {
+                      "match": {
+                        "left": {
+                          "meta": {
+                            "key": "oif"
+                          }
+                        },
+                        "op": "==",
+                        "right": 6
+                      }
+                    },
+                    {
+                      "match": {
+                        "left": {
+                          "payload": {
+                            "field": "saddr",
+                            "protocol": "ip"
+                          }
+                        },
+                        "op": "==",
+                        "right": {
+                          "prefix": {
+                            "addr": "10.70.0.0",
+                            "len": 24
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "match": {
+                        "left": {
+                          "payload": {
+                            "field": "daddr",
+                            "protocol": "ip"
+                          }
+                        },
+                        "op": "==",
+                        "right": {
+                          "prefix": {
+                            "addr": "10.80.0.10",
+                            "len": 32
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "match": {
+                        "left": {
+                          "payload": {
+                            "field": "dport",
+                            "protocol": "udp"
+                          }
+                        },
+                        "op": "==",
+                        "right": 9000
+                      }
+                    },
+                    {
+                      "match": {
+                        "left": {
+                          "ct": {
+                            "key": "direction"
+                          }
+                        },
+                        "op": "==",
+                        "right": "original"
+                      }
+                    },
+                    {
+                      "match": {
+                        "left": {
+                          "meta": {
+                            "key": "oif"
+                          }
+                        },
+                        "op": "==",
+                        "right": "@lease_80c206678d844dd88e51ae4a10445cbb"
+                      }
+                    },
+                    {
+                      "counter": {
+                        "bytes": 0,
+                        "packets": 0
+                      }
+                    },
+                    {
+                      "accept": null
+                    }
+                  ],
+                  "family": "inet",
+                  "table": "tunnex_ipsec"
+                },
+                {
+                  "chain": "forward_guard",
+                  "expr": [
+                    {
+                      "match": {
+                        "left": {
+                          "meta": {
+                            "key": "iif"
+                          }
+                        },
+                        "op": "==",
+                        "right": 2
+                      }
+                    },
+                    {
+                      "match": {
+                        "left": {
+                          "meta": {
+                            "key": "oif"
+                          }
+                        },
+                        "op": "==",
+                        "right": 7
+                      }
+                    },
+                    {
+                      "match": {
+                        "left": {
+                          "payload": {
+                            "field": "saddr",
+                            "protocol": "ip"
+                          }
+                        },
+                        "op": "==",
+                        "right": {
+                          "prefix": {
+                            "addr": "10.70.0.0",
+                            "len": 24
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "match": {
+                        "left": {
+                          "payload": {
+                            "field": "daddr",
+                            "protocol": "ip"
+                          }
+                        },
+                        "op": "==",
+                        "right": {
+                          "prefix": {
+                            "addr": "10.80.0.10",
+                            "len": 32
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "match": {
+                        "left": {
+                          "payload": {
+                            "field": "dport",
+                            "protocol": "udp"
+                          }
+                        },
+                        "op": "==",
+                        "right": 9000
+                      }
+                    },
+                    {
+                      "match": {
+                        "left": {
+                          "ct": {
+                            "key": "direction"
+                          }
+                        },
+                        "op": "==",
+                        "right": "original"
+                      }
+                    },
+                    {
+                      "match": {
+                        "left": {
+                          "meta": {
+                            "key": "oif"
+                          }
+                        },
+                        "op": "==",
+                        "right": "@lease_80c206678d844dd88e51ae4a10445cbb"
+                      }
+                    },
+                    {
+                      "counter": {
+                        "bytes": 0,
+                        "packets": 0
+                      }
+                    },
+                    {
+                      "accept": null
+                    }
+                  ],
+                  "family": "inet",
+                  "table": "tunnex_ipsec"
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "007-guard-preflight-classicobs-tcp.json": {
+      "returncode": 0,
+      "stdout": {
+        "capture_sha256": "8d4551034a7e4cf4c444dd31293b024bc192dd2b782f9b274dab8e18d0e4dc77",
+        "completed": true,
+        "observation": {
+          "classic_live_sets": {
+            "lease_b79d7edafafe41cfaf2c4115d4ef32c6": true,
+            "reply_lease_b79d7edafafe41cfaf2c4115d4ef32c6": true,
+            "sa_lease_b79d7edafafe41cfaf2c4115d4ef32c6": true
+          },
+          "deadline_binding": "normal API policy/deadline evidence bound externally; no per-rule policy ID claim",
+          "expect": "allow",
+          "guard_digest": "efd80ef75f02dfbd941a4df53e429b6b8020c96235bd275ae56e8b05e07d5f33",
+          "guard_revision": 62835,
+          "protocol": "tcp",
+          "readback": "positive",
+          "scope": "verified owned-table observation; no packet/lease/cleanup authority",
+          "source": "0249f7cf8804a7d6b4e1f82bf4dbf42b887bdfe7",
+          "tuples": [
+            {
+              "exact_forward_original_rules": 1,
+              "matching_or_wider_forward_rules": 1,
+              "port": 8080,
+              "protocol": "tcp",
+              "verified_canonical_expected_rules": [
+                {
+                  "chain": "forward_guard",
+                  "expr": [
+                    {
+                      "match": {
+                        "left": {
+                          "meta": {
+                            "key": "iif"
+                          }
+                        },
+                        "op": "==",
+                        "right": 2
+                      }
+                    },
+                    {
+                      "match": {
+                        "left": {
+                          "meta": {
+                            "key": "oif"
+                          }
+                        },
+                        "op": "==",
+                        "right": 20
+                      }
+                    },
+                    {
+                      "match": {
+                        "left": {
+                          "payload": {
+                            "field": "saddr",
+                            "protocol": "ip"
+                          }
+                        },
+                        "op": "==",
+                        "right": {
+                          "prefix": {
+                            "addr": "10.70.0.0",
+                            "len": 24
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "match": {
+                        "left": {
+                          "payload": {
+                            "field": "daddr",
+                            "protocol": "ip"
+                          }
+                        },
+                        "op": "==",
+                        "right": {
+                          "prefix": {
+                            "addr": "10.81.0.10",
+                            "len": 32
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "match": {
+                        "left": {
+                          "payload": {
+                            "field": "dport",
+                            "protocol": "tcp"
+                          }
+                        },
+                        "op": "==",
+                        "right": 8080
+                      }
+                    },
+                    {
+                      "match": {
+                        "left": {
+                          "ct": {
+                            "key": "direction"
+                          }
+                        },
+                        "op": "==",
+                        "right": "original"
+                      }
+                    },
+                    {
+                      "match": {
+                        "left": {
+                          "meta": {
+                            "key": "oif"
+                          }
+                        },
+                        "op": "==",
+                        "right": "@lease_b79d7edafafe41cfaf2c4115d4ef32c6"
+                      }
+                    },
+                    {
+                      "counter": {
+                        "bytes": 0,
+                        "packets": 0
+                      }
+                    },
+                    {
+                      "accept": null
+                    }
+                  ],
+                  "family": "inet",
+                  "table": "tunnex_ipsec"
+                }
+              ]
+            },
+            {
+              "exact_forward_original_rules": 1,
+              "matching_or_wider_forward_rules": 1,
+              "port": 9000,
+              "protocol": "udp",
+              "verified_canonical_expected_rules": [
+                {
+                  "chain": "forward_guard",
+                  "expr": [
+                    {
+                      "match": {
+                        "left": {
+                          "meta": {
+                            "key": "iif"
+                          }
+                        },
+                        "op": "==",
+                        "right": 2
+                      }
+                    },
+                    {
+                      "match": {
+                        "left": {
+                          "meta": {
+                            "key": "oif"
+                          }
+                        },
+                        "op": "==",
+                        "right": 20
+                      }
+                    },
+                    {
+                      "match": {
+                        "left": {
+                          "payload": {
+                            "field": "saddr",
+                            "protocol": "ip"
+                          }
+                        },
+                        "op": "==",
+                        "right": {
+                          "prefix": {
+                            "addr": "10.70.0.0",
+                            "len": 24
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "match": {
+                        "left": {
+                          "payload": {
+                            "field": "daddr",
+                            "protocol": "ip"
+                          }
+                        },
+                        "op": "==",
+                        "right": {
+                          "prefix": {
+                            "addr": "10.81.0.10",
+                            "len": 32
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "match": {
+                        "left": {
+                          "payload": {
+                            "field": "dport",
+                            "protocol": "udp"
+                          }
+                        },
+                        "op": "==",
+                        "right": 9000
+                      }
+                    },
+                    {
+                      "match": {
+                        "left": {
+                          "ct": {
+                            "key": "direction"
+                          }
+                        },
+                        "op": "==",
+                        "right": "original"
+                      }
+                    },
+                    {
+                      "match": {
+                        "left": {
+                          "meta": {
+                            "key": "oif"
+                          }
+                        },
+                        "op": "==",
+                        "right": "@lease_b79d7edafafe41cfaf2c4115d4ef32c6"
+                      }
+                    },
+                    {
+                      "counter": {
+                        "bytes": 0,
+                        "packets": 0
+                      }
+                    },
+                    {
+                      "accept": null
+                    }
+                  ],
+                  "family": "inet",
+                  "table": "tunnex_ipsec"
+                }
+              ]
+            }
+          ]
+        }
+      }
+    },
+    "008-guard-preflight-classicobs-udp.json": {
+      "returncode": 0,
+      "stdout": {
+        "capture_sha256": "8d4551034a7e4cf4c444dd31293b024bc192dd2b782f9b274dab8e18d0e4dc77",
+        "completed": true,
+        "observation": {
+          "classic_live_sets": {
+            "lease_b79d7edafafe41cfaf2c4115d4ef32c6": true,
+            "reply_lease_b79d7edafafe41cfaf2c4115d4ef32c6": true,
+            "sa_lease_b79d7edafafe41cfaf2c4115d4ef32c6": true
+          },
+          "deadline_binding": "normal API policy/deadline evidence bound externally; no per-rule policy ID claim",
+          "expect": "allow",
+          "guard_digest": "efd80ef75f02dfbd941a4df53e429b6b8020c96235bd275ae56e8b05e07d5f33",
+          "guard_revision": 62835,
+          "protocol": "udp",
+          "readback": "positive",
+          "scope": "verified owned-table observation; no packet/lease/cleanup authority",
+          "source": "0249f7cf8804a7d6b4e1f82bf4dbf42b887bdfe7",
+          "tuples": [
+            {
+              "exact_forward_original_rules": 1,
+              "matching_or_wider_forward_rules": 1,
+              "port": 8080,
+              "protocol": "tcp",
+              "verified_canonical_expected_rules": [
+                {
+                  "chain": "forward_guard",
+                  "expr": [
+                    {
+                      "match": {
+                        "left": {
+                          "meta": {
+                            "key": "iif"
+                          }
+                        },
+                        "op": "==",
+                        "right": 2
+                      }
+                    },
+                    {
+                      "match": {
+                        "left": {
+                          "meta": {
+                            "key": "oif"
+                          }
+                        },
+                        "op": "==",
+                        "right": 20
+                      }
+                    },
+                    {
+                      "match": {
+                        "left": {
+                          "payload": {
+                            "field": "saddr",
+                            "protocol": "ip"
+                          }
+                        },
+                        "op": "==",
+                        "right": {
+                          "prefix": {
+                            "addr": "10.70.0.0",
+                            "len": 24
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "match": {
+                        "left": {
+                          "payload": {
+                            "field": "daddr",
+                            "protocol": "ip"
+                          }
+                        },
+                        "op": "==",
+                        "right": {
+                          "prefix": {
+                            "addr": "10.81.0.10",
+                            "len": 32
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "match": {
+                        "left": {
+                          "payload": {
+                            "field": "dport",
+                            "protocol": "tcp"
+                          }
+                        },
+                        "op": "==",
+                        "right": 8080
+                      }
+                    },
+                    {
+                      "match": {
+                        "left": {
+                          "ct": {
+                            "key": "direction"
+                          }
+                        },
+                        "op": "==",
+                        "right": "original"
+                      }
+                    },
+                    {
+                      "match": {
+                        "left": {
+                          "meta": {
+                            "key": "oif"
+                          }
+                        },
+                        "op": "==",
+                        "right": "@lease_b79d7edafafe41cfaf2c4115d4ef32c6"
+                      }
+                    },
+                    {
+                      "counter": {
+                        "bytes": 0,
+                        "packets": 0
+                      }
+                    },
+                    {
+                      "accept": null
+                    }
+                  ],
+                  "family": "inet",
+                  "table": "tunnex_ipsec"
+                }
+              ]
+            },
+            {
+              "exact_forward_original_rules": 1,
+              "matching_or_wider_forward_rules": 1,
+              "port": 9000,
+              "protocol": "udp",
+              "verified_canonical_expected_rules": [
+                {
+                  "chain": "forward_guard",
+                  "expr": [
+                    {
+                      "match": {
+                        "left": {
+                          "meta": {
+                            "key": "iif"
+                          }
+                        },
+                        "op": "==",
+                        "right": 2
+                      }
+                    },
+                    {
+                      "match": {
+                        "left": {
+                          "meta": {
+                            "key": "oif"
+                          }
+                        },
+                        "op": "==",
+                        "right": 20
+                      }
+                    },
+                    {
+                      "match": {
+                        "left": {
+                          "payload": {
+                            "field": "saddr",
+                            "protocol": "ip"
+                          }
+                        },
+                        "op": "==",
+                        "right": {
+                          "prefix": {
+                            "addr": "10.70.0.0",
+                            "len": 24
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "match": {
+                        "left": {
+                          "payload": {
+                            "field": "daddr",
+                            "protocol": "ip"
+                          }
+                        },
+                        "op": "==",
+                        "right": {
+                          "prefix": {
+                            "addr": "10.81.0.10",
+                            "len": 32
+                          }
+                        }
+                      }
+                    },
+                    {
+                      "match": {
+                        "left": {
+                          "payload": {
+                            "field": "dport",
+                            "protocol": "udp"
+                          }
+                        },
+                        "op": "==",
+                        "right": 9000
+                      }
+                    },
+                    {
+                      "match": {
+                        "left": {
+                          "ct": {
+                            "key": "direction"
+                          }
+                        },
+                        "op": "==",
+                        "right": "original"
+                      }
+                    },
+                    {
+                      "match": {
+                        "left": {
+                          "meta": {
+                            "key": "oif"
+                          }
+                        },
+                        "op": "==",
+                        "right": "@lease_b79d7edafafe41cfaf2c4115d4ef32c6"
+                      }
+                    },
+                    {
+                      "counter": {
+                        "bytes": 0,
+                        "packets": 0
+                      }
+                    },
+                    {
+                      "accept": null
+                    }
+                  ],
+                  "family": "inet",
+                  "table": "tunnex_ipsec"
+                }
+              ]
+            }
+          ]
+        }
+      }
+    }
+  }
+}

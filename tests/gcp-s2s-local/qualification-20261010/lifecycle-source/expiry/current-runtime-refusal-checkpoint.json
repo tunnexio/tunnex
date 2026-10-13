@@ -1,0 +1,118 @@
+{
+  "scope": "key-free saved-checkpoint/source assessment; no cloud/API/probes",
+  "checkpoint_sha256": "4f68fd57b6112c7e8b88b1135060b28d1005082970344a90e8588551386e9770",
+  "source_commit": "4143d866ab97386411ff1ac4705aaa0e4579bcf6",
+  "container_id": "5f77c5857fa78b0533eb4fddc46cc4a0e9c69369d8e7987ee068b88ec7ba8c2f",
+  "entries": [
+    {
+      "connection_id": "80c20667-8d84-4dd8-8e51-ae4a10445cbb",
+      "phase": "applied",
+      "contract_version": 3,
+      "delivery_id": "b73f2806-9218-4845-894d-0655f7ae7fd2",
+      "bgp_process_present": false,
+      "bgp_route_count": 0,
+      "restoration_present": false,
+      "observed_indices": [
+        6,
+        7
+      ]
+    },
+    {
+      "connection_id": "b79d7eda-fafe-41cf-af2c-4115d4ef32c6",
+      "phase": "applied",
+      "contract_version": 4,
+      "delivery_id": "205ff1ac-cfb8-4375-b691-4f742113b619",
+      "bgp_process_present": false,
+      "bgp_route_count": 0,
+      "restoration_present": true,
+      "observed_indices": [
+        8,
+        0
+      ]
+    }
+  ],
+  "guard_templates": [
+    {
+      "revision": 23079,
+      "digest": "e2bba3e36fb0f6ef25d2e0ecaec411db8a636c1026509efc3a8d5d0ad47d6e6d",
+      "namespace": "net:[4026531840]"
+    }
+  ],
+  "public_status": [
+    {
+      "connection_id": "80c20667-8d84-4dd8-8e51-ae4a10445cbb",
+      "status": {
+        "active_slot": null,
+        "observed_at": "2026-10-10T17:18:44.366852Z",
+        "tunnels": [
+          {
+            "id": "b03bada6-b799-4732-ad77-1a6b457d1d3f",
+            "selected": false,
+            "slot": 1,
+            "status": "down"
+          },
+          {
+            "id": "1c626ff9-cc99-4c8b-a316-90b190c7497e",
+            "selected": false,
+            "slot": 2,
+            "status": "down"
+          }
+        ]
+      }
+    },
+    {
+      "connection_id": "b79d7eda-fafe-41cf-af2c-4115d4ef32c6",
+      "status": {
+        "active_slot": null,
+        "observed_at": "2026-10-10T17:18:44.959202Z",
+        "tunnels": [
+          {
+            "id": "8494b8ef-e6e8-4d8d-b964-fc6faec7cb72",
+            "selected": true,
+            "slot": 1,
+            "status": "up"
+          }
+        ]
+      }
+    }
+  ],
+  "bounded_diagnostics": {
+    "bgp_apply": {
+      "count": 20,
+      "elapsed_ms_min": 495,
+      "elapsed_ms_max": 614,
+      "stages": [
+        "transport_retry"
+      ],
+      "context_states": [
+        "active"
+      ],
+      "first_utc": "2026-10-10T17:17:09.52900629Z",
+      "last_utc": "2026-10-10T17:18:44.497743066Z"
+    },
+    "apply": {
+      "count": 20,
+      "elapsed_ms_min": 574,
+      "elapsed_ms_max": 708,
+      "stages": [
+        "bgp_apply"
+      ],
+      "context_states": [
+        "active"
+      ],
+      "first_utc": "2026-10-10T17:17:09.52904464Z",
+      "last_utc": "2026-10-10T17:18:44.497781266Z"
+    }
+  },
+  "observed": "HA3 remains Applied with6/7/noBGPprocess/noRestoration, repeats transport_retry with active contexts; Classic4 retained8/0/restoration and publicSAUp. Earlier744c full trusted refusal-only template has allsets empty and appallows absent. SAUp does not imply current traffic authority.",
+  "source_causal_explanation": "Frozen4143 returns no-restage for Applied/noRestoration/nonzeroObserved before actual daemon configuration proof. Its transport_retry failure executes global c.refuse(entries), capable of withdrawing every profile. Ordinary HA absent-daemon defect previously reproduced and fixed in1fa327b3. No direct per-turn guard-before/after or packet loss timestamp attribution claimed.",
+  "combined_fix_scope": {
+    "ordinary_HA_restage": "Fresh exact daemon inventory/knownClassicSA/environment/ns/lease and retainedlinks admit only absent HA configs; no missing-link or historical restoration fabrication.",
+    "heartbeat_scope": "dc913 target permit-expiry isolation samples Contract2 recovery entries, not HA3/Classic4 directly; prevents known-expiry coupling in broader shared deployments.",
+    "BGP_expiry_scope": "67b45 isolates only exact exhausted post-successful-reconcile completed withdrawal, preserving unknown global refusal.",
+    "Classic_recovery": "Normal fresh material/lease and current proof can republish from prefix-only guard using validated durable restored allocation. No journal alteration or synthetic receipt necessary for intact same namespace.",
+    "remaining_limit": "Generic BGP transportRetry/allDown/unknown still follows global fail-closed refusal; corrected source does not guarantee no brief sibling denial during negotiation. Batch renewal qualification remains pending parent review."
+  },
+  "new_recovery_gap": "No additional unseen gap proved by saved state; no new tests/source edits warranted",
+  "deployed_change": false
+}

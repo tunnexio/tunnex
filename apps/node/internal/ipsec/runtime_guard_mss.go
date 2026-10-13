@@ -31,11 +31,11 @@ func (c *RuntimeController) guardTunnelMTUs(ctx context.Context, e RuntimeJourna
 		}
 	}
 	var result []GuardTunnelMTU
-	for i, owned := range snap.ownership {
+	for i, owned := range snap.ownership[:e.Allocation.activeTunnelCount()] {
 		if !wanted[owned.InterfaceIndex] {
 			continue
 		}
-		ceiling, qualified := awsIPv4InnerMTU(env.Underlays[i].OuterMTU)
+		ceiling, qualified := runtimeProfileInnerMTU(e.Allocation.ProfileID, env.Underlays[i].OuterMTU)
 		if !qualified || owned != e.Observed[i] || !snap.up[i] || snap.mtu[i] < 68 || snap.mtu[i] > uint64(ceiling) {
 			return nil, ErrRuntimeController
 		}

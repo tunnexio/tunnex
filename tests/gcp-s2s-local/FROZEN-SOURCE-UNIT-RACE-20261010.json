@@ -1,0 +1,35 @@
+{
+  "source": "3d0951e84aa58ce78dcc6238bd2ecaf7d3f38fd9",
+  "source_directory": "/private/tmp/gcp-s2s-final-build-20261010-2/source",
+  "race_filter": "DNSOwner|DNSRuntime|GCPEnvironment|RuntimeEnvironment",
+  "race_exit": 0,
+  "race_elapsed_seconds": 3.788,
+  "binary_sha256": "df69aba3db4cbd1d1be76cc766025ffc73070a6f25076ec712ff4d9d695a9435",
+  "log_sha256": "09f2ba1a3b604a65a57c24f67690e8ddcc570e4820507644b116564901e292b4",
+  "container": "tunnex-gcp-final-3d0951e8-boot-unit",
+  "container_id": "60a26e34c190856e78ad8b41a57938e34cb18ebcf0d8a2ec6ca8886930c634b8",
+  "network": "none",
+  "memory_bytes": 67108864,
+  "cap_drop": "ALL",
+  "test_filter": "Test(ClassicInitialApply|ClassicRestoredApply|BGPStartup|GCPHAStartup)",
+  "test_exit": 0,
+  "stopped": true,
+  "oom_killed": false,
+  "finished_utc": "2026-10-10T12:41:49.263862571Z",
+  "scope": "Actual Linux ARM64 execution of controller unit fixtures with modeled I/O; no native SA/kernel/network authority or Google cloud packet claim. Immutable binary copied after unavailable Colima host bind, no gateway namespace/volume accessed.",
+  "binary_tracked": false,
+  "tests": [
+    "TestClassicRestoredApplyUsesReservedGeneration",
+    "TestClassicInitialApplyRecordsProvenCurrentBoot",
+    "TestClassicInitialApplyRefusesChangedIndexBeforeBootBinding",
+    "TestBGPStartupBootChangeWithReusedNamespacePreservesDuties",
+    "TestBGPStartupSameBootStillCleansBeforeStarting",
+    "TestGCPHAStartupBootChangeWithReusedNamespacePreservesDuties",
+    "TestGCPHAStartupSameBootStillCleansBeforeStarting"
+  ],
+  "phase_subcases": [
+    "applied",
+    "cleanup_pending",
+    "retained_refusal"
+  ]
+}

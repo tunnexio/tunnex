@@ -46,17 +46,20 @@ type renewalCycleRig struct {
 }
 
 func newRenewalCycleRig(t *testing.T) *renewalCycleRig { return newRenewalCycleRigInput(t, false) }
-func newRenewalCycleRigInput(t *testing.T, canonical bool) *renewalCycleRig {
+func newRenewalCycleRigInput(t *testing.T, canonical bool, transform ...func(*testing.T, *RuntimeController, []RuntimeJournalEntry, []RuntimeMaterial) ([]RuntimeJournalEntry, []RuntimeMaterial)) *renewalCycleRig {
 	t.Helper()
 	c, entries, ids := mixedBudgetFixture(t)
 	var materials []RuntimeMaterial
 	if canonical {
 		entries, materials = renewalCanonicalMaterials(t, c, entries)
 	}
+	for _, fn := range transform {
+		entries, materials = fn(t, c, entries, materials)
+	}
 	r := &renewalCycleRig{c: c, entries: entries, materials: materials, now: budgetClock(t, c), target: ids[0], installed: map[string]time.Duration{}, applicationDenied: map[uuid.UUID]bool{}, charged: map[string]time.Duration{}, nonces: map[string]bool{}}
 	c.journal.Close()
 	dir := journalDir(t)
-	payload := runtimeJournalPayload{Version: 8, OwnerID: c.config.GatewayID, Sequence: 1, Entries: entries}
+	payload := runtimeJournalPayload{Version: 10, OwnerID: c.config.GatewayID, Sequence: 1, Entries: entries}
 	if !validJournalPayload(payload) {
 		t.Fatal("five-provider fixture invalid")
 	}
@@ -81,7 +84,18 @@ func newRenewalCycleRigInput(t *testing.T, canonical bool) *renewalCycleRig {
 	links := []GuardInterface{}
 	for _, e := range entries {
 		a := c.active[e.Allocation.ConnectionID]
-		for _, o := range e.Observed {
+		for _, index := range a.Environment.LocalIngressIndices {
+			found := false
+			for _, link := range links {
+				if link.Index == index {
+					found = true
+				}
+			}
+			if !found {
+				links = append(links, GuardInterface{Name: "ens4", Index: index})
+			}
+		}
+		for _, o := range e.Observed[:e.Allocation.activeTunnelCount()] {
 			links = append(links, GuardInterface{Name: o.InterfaceName, Index: o.InterfaceIndex})
 		}
 		if e.ContractVersion == 3 {
@@ -96,7 +110,7 @@ func newRenewalCycleRigInput(t *testing.T, canonical bool) *renewalCycleRig {
 			one := 1
 			if !canonical {
 				a.Delivery = RuntimeDelivery{ID: e.DeliveryID, Kind: "apply", OwnershipDigest: e.OwnershipDigest, DesiredRevision: e.Engines[0].Binding.DesiredRevision, Manifest: RuntimeManifest{OrgID: c.config.OrgID, NodeID: c.config.GatewayID, DesiredRevision: e.Engines[0].Binding.DesiredRevision, ProfileID: "aws-static-ipv4-v1", ConnectionID: e.Allocation.ConnectionID, ConfigurationRevision: e.Engines[0].Binding.ConfigurationRevision, RecoveryVersion: &one}}
-				for i, v := range e.Engines {
+				for i, v := range e.Engines[:e.Allocation.activeTunnelCount()] {
 					a.Delivery.Manifest.Tunnels[i] = RuntimeTunnel{ID: v.TunnelID, Slot: i + 1, Selected: i == 0}
 				}
 			}

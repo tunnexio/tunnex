@@ -1,0 +1,63 @@
+{
+  "source": "9c3ab006c13b72285f43baed1805da1af273ffa7",
+  "image": "dfbe391873e7013111d47f489cf6ddbd6c8a83541b8bbb8aab191310879a8db9",
+  "cid": "3bad435938b37398218e1c28a278fe72a57735cc489719527d2f8d1167e732ed",
+  "files": [
+    {
+      "file": "native-build.json",
+      "original": "/private/tmp/gcp-cloud-native-build-9c3ab006-20261011/receipt.json",
+      "sha256": "84e0c88f5434a4ec30a88d0d6f046845cecca8da702d638d7b7fd93733426a3b"
+    },
+    {
+      "file": "actual-before.json",
+      "original": "/private/tmp/gcp-cloud-replacement-9c3ab006-20261011/actual-before.json",
+      "sha256": "70ffc779b64a11d4f55ce97334a3441ac65fb6bb452aa223d89410fa810d4002"
+    },
+    {
+      "file": "actual-stopped.json",
+      "original": "/private/tmp/gcp-cloud-replacement-9c3ab006-20261011/actual-stopped.json",
+      "sha256": "e2fb30cf708c5e141cf129ab9572d0b4eb847dbff250b8e1b274b10c436ff481"
+    },
+    {
+      "file": "actual-created.json",
+      "original": "/private/tmp/gcp-cloud-replacement-9c3ab006-20261011/actual-created.json",
+      "sha256": "4fff8d29bd3a5cfd820746712cbf0e6caedb2d3801aae6e793ec3a1a0158fa99"
+    },
+    {
+      "file": "actual-fresh-owned-prefix-verification.json",
+      "original": "/private/tmp/gcp-cloud-replacement-9c3ab006-20261011/actual-fresh-owned-prefix-verification.json",
+      "sha256": "d018af6d9a6bb61b69bc1c98bc7228a2961208de80f814730a9a91915f389d92"
+    },
+    {
+      "file": "post-replacement-native-partial-v2.json",
+      "original": "/private/tmp/gcp-cloud-replacement-9c3ab006-20261011/post-replacement-native-partial-v2.json",
+      "sha256": "d467f655bb6e59d6f4e6a00d832917903f89da34c6edc403254fd2caf49f6687"
+    },
+    {
+      "file": "fresh-wg-shape-review.json",
+      "original": "/private/tmp/gcp-cloud-replacement-9c3ab006-20261011/fresh-wg-shape-review.json",
+      "sha256": "8f58063a5837975c88f6b5c41eeee46f44e40a77bd97b4cd02eb90b3b88b45fa"
+    },
+    {
+      "file": "aggregate.jsonl",
+      "original": "/private/tmp/gcp-cloud-recovery-9c3ab006-20261011/strict-positive-v1/aggregate.jsonl",
+      "sha256": "4b00dc9f22d1421d4640fee16c7252acff114bd4c98f11579b304f38a17a6464"
+    },
+    {
+      "file": "full-observer-tcp.json",
+      "original": "/private/tmp/gcp-cloud-recovery-9c3ab006-20261011/strict-positive-v1/full-observer-tcp.json",
+      "sha256": "ca153ee50b9c0ed929f54be69f57bb266a3a3a5608882db30da6150e77bbf152"
+    },
+    {
+      "file": "full-observer-udp.json",
+      "original": "/private/tmp/gcp-cloud-recovery-9c3ab006-20261011/strict-positive-v1/full-observer-udp.json",
+      "sha256": "57329d57aa67b867f16d85b75926f2f9cf945025c81d5789060fdcbe6c543bc0"
+    },
+    {
+      "file": "classic-recovery-packets-v1.json",
+      "original": "/private/tmp/gcp-cloud-recovery-9c3ab006-20261011/classic-recovery-packets-v1.json",
+      "sha256": "fc8d20ddfcb661245941b8724c6582acf37fe3e62804acf0cf289d946f2d1cb2"
+    }
+  ],
+  "scope": "actual owned replacement/native/strict permission plus single Classic packet recovery; expiry cycle pending; no FQDN enforcement/HA packets/production readiness claim"
+}

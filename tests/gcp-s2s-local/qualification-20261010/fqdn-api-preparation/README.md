@@ -1,0 +1,15 @@
+Normal Classic FQDN API qualification helper (source preparation)
+
+Invoke fqdn-api.py --phase prepare|create|observe|cleanup --cookie-file PRIVATE_OWNER_COOKIE --baseline PRIVATE_BASELINE --receipt NEW_PRIVATE_JSONL. Non-prepare phases require --baseline-sha256; observe/cleanup also require --created-receipt and --created-sha256. All output parents must already be private0700; files are exclusive0600. Normal owned CP127.0.0.1:38083 only, auth/private-reader5623 pinned, proxies/redirects disabled. No execute on import.
+
+Prepare captures authoritative current normal9connections/13resources/12policies, complete existing FQDN list and exact saved Classic resolver context+enabled setting. It refuses unexpected counts, duplicate IDs/names/context drift. Connection application_state/cleanup_state/updated_at, resource created_at/updated_at and policy fqdn_destination_status alone are excluded, matching reviewed read-api-baseline.py; all unknown fields and all three complete configuration views remain exact.
+
+Create adds ONLY app/alias/nx-qualification selected-context TCP8080 resources, no policies. Server returned IDs are recorded/fsynced before readback, partial failures preserve them; no POST replay. Fresh setting impact is read before each create; enabled/entitled required, create consumes no enforcement token. No opt-in toggle/token mint or reuse of stale setting token. Final baseline preservation executes after create success/failure.
+
+Observe reads actual server detail at five-second cadence, bounded90s. Pending null generation/freshness is not success. App/alias need current healthy active_generation/profile/answer81.10/freshness; NX needs nxdomain/NXDOMAIN emptyanswers. API detail success alone does not prove selected-node RPC/native DNS/packet enforcement; root must correlate genuine scheduler15s/RPC5s reports and full native guard. Existing CIDR8080 masks FQDN packet authority; no grant phase yet.
+
+Cleanup addresses only digest-bound actually created IDs after exact semantic resource check. Normal DELETE can refuse live-generation/reference impact; every refusal/remainingID is recorded, other IDs still attempted, originals checked finally. No forced context edit, SQL, synthetic report/generation, stop/journal/lease mutation. No baseline object modified, hence no invented restore flow. Partial POST ambiguity without returned ID remains explicit and requires normal read-only diagnosis.
+
+API contract sources: apps/api/internal/http/fqdn_resource_handlers.go (list plainarray/create resource/detail envelope/settingimpact), api.gen.go FQDNResource and Detail nullablegeneration/fresh_until_at, fqdnresources/service.go Delete refuses active/reference; fqdnresolver/scheduler.go defaults.
+
+Six meaningful Python3.9 -O tests cover unknownbaseline/duplicate/context/name, legitimate impact token changes with allthreePOSTs and finallypreservation, runtime-only projection changes vs unknown/configuration drift, backend cleanup refusal, pendingnullgeneration. No API actions executed from this source.

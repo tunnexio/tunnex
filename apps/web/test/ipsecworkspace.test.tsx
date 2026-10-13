@@ -80,6 +80,13 @@ it("deletes only after confirmation using the displayed revision", async () => {
  await waitFor(() => expect(mock.del).toHaveBeenCalledWith("/api/v1/organizations/{orgId}/ipsec/connections/{connectionId}", { params: { path: { orgId: "org-a", connectionId: record.id }, header: { "If-Match": '"1"' } } }));
  await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
 });
+it("blocks another stale deletion attempt until the operator closes and refreshes", async () => {
+ mock.del.mockResolvedValue({error:{},response:{status:409}});
+ render(view()); fireEvent.click((await connectionMenu("Office to cloud")).getByRole("menuitem",{name:"Delete Office to cloud"}));
+ const submit=screen.getByRole("button",{name:"Delete connection"}); fireEvent.click(submit);
+ await screen.findByText("Could not confirm deletion. Close and refresh before retrying.");
+ expect((submit as HTMLButtonElement).disabled).toBe(true); fireEvent.click(submit); expect(mock.del).toHaveBeenCalledTimes(1);
+});
 it("shows unsupported gateway readiness without enabling a save", async () => {
  const original = mock.get.getMockImplementation()!;
  mock.get.mockImplementation(async (path: string, opts: any) => path.endsWith("/eligibility") ? { data: { eligible: false, reason: "unsupported" } } : original(path, opts));
@@ -148,6 +155,7 @@ it("retains a failed intent dialog and requires refresh after conflict",async()=
  mock.put.mockResolvedValue({error:{},response:{status:409}});render(view());
  fireEvent.click((await connectionMenu("Office to cloud")).getByRole("menuitem",{name:"Disable Office to cloud"}));fireEvent.click(screen.getByRole("button",{name:"Disable connection"}));
  await screen.findByText("Could not confirm the change. Close and refresh before retrying.");expect(screen.getByRole("dialog")).toBeTruthy();
+ const retry=screen.getByRole("button",{name:"Disable connection"});expect((retry as HTMLButtonElement).disabled).toBe(true);fireEvent.click(retry);expect(mock.put).toHaveBeenCalledTimes(1);
 });
 it("rechecks support before enabling and refuses a gateway that became unsupported",async()=>{
  const original=mock.get.getMockImplementation()!;let supported=true;
@@ -326,7 +334,7 @@ async function prepareBGPForm() {
 function fillBGPTunnels() {
  for (const n of [1, 2]) for (const [field, value] of Object.entries({ "outside IP": n === 1 ? "8.8.8.8" : "1.1.1.1", "inside CIDR": n === 1 ? "169.254.10.0/30" : "169.254.10.4/30", "customer IP": n === 1 ? "169.254.10.1" : "169.254.10.5", "cloud IP": n === 1 ? "169.254.10.2" : "169.254.10.6", PSK: `Synthetic.BGP_${n}` })) fireEvent.change(screen.getByLabelText(`Tunnel ${n} ${field}`), { target: { value } });
 }
-const bgpReadback = { profile_id: "aws-bgp-ipv4-v1", configuration_revision: 1, configuration: { mode: "ipv4-bgp", customer_outside_address: "9.9.9.9", local_prefixes: ["10.10.0.0/16"], remote_prefixes: ["10.20.0.0/16"], tunnels: [], bgp: { local_asn: 65000, remote_asn: 64512, router_id: "10.10.0.1", maximum_prefixes: 64 } } };
+const bgpReadback = { profile_id: "aws-bgp-ipv4-v1", configuration_revision: 1, configuration: { mode: "ipv4-bgp", customer_outside_address: "9.9.9.9", local_prefixes: ["10.10.0.0/16"], remote_prefixes: ["10.20.0.0/16"], tunnels: [1,2].map(i => ({ outside_address:`8.8.8.${i}`, inside_cidr:`169.254.${i}.0/30`, customer_inside_address:`169.254.${i}.1`, cloud_inside_address:`169.254.${i}.2` })), bgp: { local_asn: 65000, remote_asn: 64512, router_id: "10.10.0.1", maximum_prefixes: 64 } } };
 it("reviews and saves BGP disabled even when BGP activation capability is unavailable", async () => {
  const original = mock.get.getMockImplementation()!;
  mock.get.mockImplementation(async (path: string, opts: any) => path.endsWith("/eligibility") ? { data: { eligible: true, reason: "eligible", bgp: { eligible: false, reason: "unsupported" } } } : original(path, opts));
@@ -365,14 +373,14 @@ it("requires valid distinct private ASNs and bounded per-peer limits before BGP 
 });
 it("uses stored BGP mode and fresh BGP readiness for enable and rechecks at the action", async () => {
  const original = mock.get.getMockImplementation()!; let bgpSupported = true;
- mock.get.mockImplementation(async (path: string, opts: any) => path.endsWith("/connections") ? { data: { next_cursor: null, items: [{ ...record, cleanup_state: "not_required", site_id: "site-a", gateway_node_id: "gateway-a" }] } } : path.endsWith("/configuration") ? { data: bgpReadback } : path.endsWith("/eligibility") ? { data: { eligible: true, reason: "eligible", bgp: { eligible: bgpSupported, reason: bgpSupported ? "eligible" : "unsupported" } } } : original(path, opts));
+ mock.get.mockImplementation(async (path: string, opts: any) => path.endsWith("/connections") ? { data: { items: [{ ...record, cleanup_state: "not_required", site_id: "site-a", gateway_node_id: "gateway-a" }], next_cursor: null } } : path.endsWith("/configuration") ? { data: bgpReadback } : path.endsWith("/eligibility") ? { data: { eligible: true, reason: "eligible", bgp: { eligible: bgpSupported, reason: bgpSupported ? "eligible" : "unsupported" } } } : original(path, opts));
  render(view()); fireEvent.click(await (await connectionMenu("Office to cloud")).findByRole("menuitem", { name: "Enable Office to cloud" }));
  bgpSupported = false; fireEvent.click(screen.getByRole("button", { name: "Enable connection" }));
  await screen.findByText("Gateway readiness changed. Close and refresh before enabling."); expect(mock.put).not.toHaveBeenCalled();
 });
 it("does not offer BGP enable based on base IPsec support alone", async () => {
  const original = mock.get.getMockImplementation()!;
- mock.get.mockImplementation(async (path: string, opts: any) => path.endsWith("/connections") ? { data: { next_cursor: null, items: [{ ...record, cleanup_state: "not_required", site_id: "site-a", gateway_node_id: "gateway-a" }] } } : path.endsWith("/configuration") ? { data: bgpReadback } : original(path, opts));
+ mock.get.mockImplementation(async (path: string, opts: any) => path.endsWith("/connections") ? { data: { items: [{ ...record, cleanup_state: "not_required", site_id: "site-a", gateway_node_id: "gateway-a" }], next_cursor: null } } : path.endsWith("/configuration") ? { data: bgpReadback } : original(path, opts));
  render(view()); await screen.findByRole("button", { name: "Office to cloud" });
  await waitFor(() => expect(mock.get.mock.calls.some(([path]) => path.endsWith("/configuration"))).toBe(true));
  expect((await connectionMenu("Office to cloud")).queryByRole("menuitem", { name: "Enable Office to cloud" })).toBeNull();
@@ -384,4 +392,88 @@ it("reads back BGP settings without showing credentials", async () => {
  await screen.findByText("AWS · IPv4 BGP · revision 1");
  expect(screen.getByText("65000")).toBeTruthy(); expect(screen.getByText("64512")).toBeTruthy();
  expect(screen.getByText("Maximum prefixes per peer")).toBeTruthy(); expect(screen.queryByLabelText("Tunnel 1 PSK")).toBeNull();
+});
+it("saves explicit GCP HA profile using common BGP fields and interface review", async () => {
+ mock.post.mockImplementation(async (path:string, opts:any) => path.endsWith("configuration-check") ? {data:{valid:true}} : {data:{...record,id:opts.body.id}});
+ render(view()); await prepareBGPForm();
+ fireEvent.change(screen.getByLabelText("Cloud VPN profile"),{target:{value:"gcp-ha-bgp-ipv4-v1"}});
+ expect((screen.getByLabelText("Routing") as HTMLSelectElement).disabled).toBe(true);
+ expect(screen.getByLabelText("Cloud Router ASN")).toBeTruthy();
+ expect(screen.getByText(/Enabling requires fresh Google Cloud HA VPN support/)).toBeTruthy();
+ expect(screen.getByText(/A single local gateway/)).toBeTruthy();
+ fireEvent.click(screen.getByRole("button",{name:"Next: tunnels"})); fillBGPTunnels();
+ expect(screen.getByText("Tunnel 1 · GCP interface 0")).toBeTruthy();
+ expect(screen.getByText("Tunnel 2 · GCP interface 1")).toBeTruthy();
+ expect(screen.getByRole("region",{name:"Connection review"}).textContent).not.toContain("Synthetic.BGP");
+ fireEvent.click(screen.getByRole("button",{name:"Save disabled connection"}));
+ await waitFor(()=>expect(mock.post.mock.calls.some(([path])=>path.endsWith("/connections"))).toBe(true));
+ const configuration=mock.post.mock.calls.find(([path])=>path.endsWith("/connections"))![1].body.configuration;
+ expect(configuration.profile_id).toBe("gcp-ha-bgp-ipv4-v1");expect(configuration.mode).toBe("ipv4-bgp");expect(configuration.tunnels).toHaveLength(2);
+});
+it("saves Classic with one real tunnel and no BGP or invented inside addresses",async()=>{
+ mock.post.mockImplementation(async(path:string,opts:any)=>path.endsWith("configuration-check")?{data:{valid:true}}:{data:{...record,id:opts.body.id}});
+ render(view());await prepareBGPForm();
+ fireEvent.change(screen.getByLabelText("Cloud VPN profile"),{target:{value:"gcp-classic-static-ipv4-v1"}});
+ expect(screen.getByText(/Classic uses one route-based static tunnel/)).toBeTruthy();expect(screen.queryByLabelText("Cloud Router ASN")).toBeNull();
+ fireEvent.click(screen.getByRole("button",{name:"Next: tunnels"}));
+ expect(screen.getByRole("region",{name:"Connection review"}).textContent).toContain("Google Cloud Classic VPN");
+ expect(screen.queryByLabelText("Tunnel 1 inside CIDR")).toBeNull();expect(screen.queryByLabelText("Tunnel 2 outside IP")).toBeNull();
+ fireEvent.change(screen.getByLabelText("Tunnel 1 outside IP"),{target:{value:"8.8.8.8"}});fireEvent.change(screen.getByLabelText("Tunnel 1 PSK"),{target:{value:"Synthetic.Classic1"}});
+ fireEvent.click(screen.getByRole("button",{name:"Save disabled connection"}));
+ await waitFor(()=>expect(mock.post.mock.calls.some(([path])=>path.endsWith("/connections"))).toBe(true));
+ const input=mock.post.mock.calls.find(([path])=>path.endsWith("/connections"))![1].body;
+ expect(input.tunnel_ids).toHaveLength(1);expect(input.configuration.tunnels).toHaveLength(1);expect(input.configuration.profile_id).toBe("gcp-classic-static-ipv4-v1");expect(input.configuration.mode).toBe("ipv4-static");expect(input.configuration).not.toHaveProperty("bgp");
+ expect(input.configuration.tunnels[0]).toMatchObject({inside_cidr:"",customer_inside_address:"",cloud_inside_address:""});
+});
+it("refuses to enable GCP from generic or AWS BGP readiness",async()=>{
+ const original=mock.get.getMockImplementation()!;
+ mock.get.mockImplementation(async(path:string,opts:any)=>path.endsWith("/connections")?{data:{items:[{...record,site_id:"site-a",gateway_node_id:"gateway-a"}],next_cursor:null}}:path.endsWith("/configuration")?{data:{...bgpReadback,profile_id:"gcp-ha-bgp-ipv4-v1"}}:path.endsWith("/eligibility")?{data:{eligible:true,reason:"eligible",bgp:{eligible:true,reason:"eligible"}}}:original(path,opts));
+ render(view());await screen.findByRole("button",{name:"Office to cloud"});
+ await waitFor(()=>expect(mock.get.mock.calls.some(([path])=>path.endsWith("/configuration"))).toBe(true));
+ expect((await connectionMenu("Office to cloud")).queryByRole("menuitem",{name:"Enable Office to cloud"})).toBeNull();
+});
+it("reads GCP BGP configuration with Cloud Router labels and no PSK fields",async()=>{
+ const original=mock.get.getMockImplementation()!;
+ mock.get.mockImplementation(async(path:string,opts:any)=>path.endsWith("/configuration")?{data:{...bgpReadback,profile_id:"gcp-ha-bgp-ipv4-v1"}}:original(path,opts));
+ render(view());fireEvent.click(await screen.findByRole("button",{name:"Office to cloud"}));
+ await screen.findByText("Google Cloud · IPv4 BGP · revision 1");
+ expect(screen.getByText("Cloud Router ASN")).toBeTruthy();expect(screen.queryByText("AWS ASN")).toBeNull();
+ expect(screen.queryByLabelText("Tunnel 1 PSK")).toBeNull();
+});
+it("enables GCP HA only with actual GCP and BGP capability and rechecks at action",async()=>{
+ const original=mock.get.getMockImplementation()!;let supported=true;
+ mock.get.mockImplementation(async(path:string,opts:any)=>path.endsWith("/connections")?{data:{items:[{...record,site_id:"site-a",gateway_node_id:"gateway-a"}],next_cursor:null}}:path.endsWith("/configuration")?{data:{...bgpReadback,profile_id:"gcp-ha-bgp-ipv4-v1"}}:path.endsWith("/eligibility")?{data:{eligible:true,reason:"eligible",bgp:{eligible:true,reason:"eligible"},gcp_ha:{eligible:supported,reason:supported?"eligible":"unsupported"}}}:original(path,opts));
+ render(view());fireEvent.click(await (await connectionMenu("Office to cloud")).findByRole("menuitem",{name:"Enable Office to cloud"}));
+ supported=false;fireEvent.click(screen.getByRole("button",{name:"Enable connection"}));
+ await screen.findByText("Gateway readiness changed. Close and refresh before enabling.");expect(mock.put).not.toHaveBeenCalled();
+});
+it("refuses GCP HA enable when GCP readiness exists but BGP readiness is stale",async()=>{
+ const original=mock.get.getMockImplementation()!;
+ mock.get.mockImplementation(async(path:string,opts:any)=>path.endsWith("/connections")?{data:{items:[{...record,site_id:"site-a",gateway_node_id:"gateway-a"}],next_cursor:null}}:path.endsWith("/configuration")?{data:{...bgpReadback,profile_id:"gcp-ha-bgp-ipv4-v1"}}:path.endsWith("/eligibility")?{data:{eligible:true,reason:"eligible",bgp:{eligible:false,reason:"report_stale"},gcp_ha:{eligible:true,reason:"eligible"}}}:original(path,opts));
+ render(view());await screen.findByRole("button",{name:"Office to cloud"});
+ await waitFor(()=>expect(mock.get.mock.calls.some(([path])=>path.endsWith("/configuration"))).toBe(true));
+ expect((await connectionMenu("Office to cloud")).queryByRole("menuitem",{name:"Enable Office to cloud"})).toBeNull();
+});
+const classicReadback={...bgpReadback,profile_id:"gcp-classic-static-ipv4-v1",configuration:{...bgpReadback.configuration,mode:"ipv4-static",bgp:undefined,tunnels:[{outside_address:"8.8.8.8",inside_cidr:"",customer_inside_address:"",cloud_inside_address:""}]}};
+it("enables Classic with exact one-tunnel capability without BGP, and rechecks before action",async()=>{
+ const original=mock.get.getMockImplementation()!;let supported=true;
+ mock.get.mockImplementation(async(path:string,opts:any)=>path.endsWith("/connections")?{data:{items:[{...record,site_id:"site-a",gateway_node_id:"gateway-a"}],next_cursor:null}}:path.endsWith("/configuration")?{data:classicReadback}:path.endsWith("/eligibility")?{data:{eligible:true,reason:"eligible",gcp_classic:{eligible:supported,reason:supported?"eligible":"unsupported"}}}:original(path,opts));
+ render(view());fireEvent.click(await (await connectionMenu("Office to cloud")).findByRole("menuitem",{name:"Enable Office to cloud"}));supported=false;
+ fireEvent.click(screen.getByRole("button",{name:"Enable connection"}));await screen.findByText("Gateway readiness changed. Close and refresh before enabling.");expect(mock.put).not.toHaveBeenCalled();
+});
+it("refuses Classic activation from generic IPsec or HA-only readiness",async()=>{
+ const original=mock.get.getMockImplementation()!;
+ mock.get.mockImplementation(async(path:string,opts:any)=>path.endsWith("/connections")?{data:{items:[{...record,site_id:"site-a",gateway_node_id:"gateway-a"}],next_cursor:null}}:path.endsWith("/configuration")?{data:classicReadback}:path.endsWith("/eligibility")?{data:{eligible:true,reason:"eligible",bgp:{eligible:true,reason:"eligible"},gcp_ha:{eligible:true,reason:"eligible"}}}:original(path,opts));
+ render(view());await screen.findByRole("button",{name:"Office to cloud"});await waitFor(()=>expect(mock.get.mock.calls.some(([path])=>path.endsWith("/configuration"))).toBe(true));expect((await connectionMenu("Office to cloud")).queryByRole("menuitem",{name:"Enable Office to cloud"})).toBeNull();
+});
+it("refuses Classic activation if public stored configuration contains two tunnels",async()=>{
+ const original=mock.get.getMockImplementation()!;
+ mock.get.mockImplementation(async(path:string,opts:any)=>path.endsWith("/connections")?{data:{items:[{...record,site_id:"site-a",gateway_node_id:"gateway-a"}],next_cursor:null}}:path.endsWith("/configuration")?{data:{...classicReadback,configuration:{...classicReadback.configuration,tunnels:bgpReadback.configuration.tunnels}}}:path.endsWith("/eligibility")?{data:{eligible:true,reason:"eligible",gcp_classic:{eligible:true,reason:"eligible"}}}:original(path,opts));
+ render(view());await screen.findByRole("button",{name:"Office to cloud"});await waitFor(()=>expect(mock.get.mock.calls.some(([path])=>path.endsWith("/configuration"))).toBe(true));expect((await connectionMenu("Office to cloud")).queryByRole("menuitem",{name:"Enable Office to cloud"})).toBeNull();
+});
+it("switches Classic back to HA with two clean tunnel drafts",async()=>{
+ render(view());await prepareBGPForm();fireEvent.change(screen.getByLabelText("Cloud VPN profile"),{target:{value:"gcp-classic-static-ipv4-v1"}});
+ fireEvent.click(screen.getByRole("button",{name:"Next: tunnels"}));fireEvent.change(screen.getByLabelText("Tunnel 1 PSK"),{target:{value:"Synthetic.Classic1"}});fireEvent.click(screen.getByRole("button",{name:"Back"}));
+ fireEvent.change(screen.getByLabelText("Cloud VPN profile"),{target:{value:"gcp-ha-bgp-ipv4-v1"}});fireEvent.click(screen.getByRole("button",{name:"Next: tunnels"}));
+ expect(screen.getByLabelText("Tunnel 2 PSK")).toBeTruthy();expect(screen.getByLabelText("Tunnel 2 inside CIDR")).toBeTruthy();expect(screen.queryByDisplayValue("Synthetic.Classic1")).toBeNull();expect(mock.post).not.toHaveBeenCalled();
 });

@@ -4,6 +4,7 @@
 package main
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -27,6 +28,8 @@ type proof struct {
 	Snapshot struct {
 		Boot      string `json:"boot"`
 		Container string `json:"container"`
+		PID       int    `json:"pid"`
+		Started   string `json:"started"`
 		Namespace struct {
 			Inode uint64 `json:"inode"`
 		} `json:"namespace"`
@@ -70,6 +73,9 @@ func assemble(journal, evidence []byte, boot, ns string) ([]byte, error) {
 	return assembleDelivery(journal, evidence, boot, ns, uuid.Nil)
 }
 func assembleDelivery(journal, evidence []byte, boot, ns string, selected uuid.UUID) ([]byte, error) {
+	return assembleDeliveryFresh(journal, evidence, boot, ns, selected, nil, nil)
+}
+func assembleDeliveryFresh(journal, evidence []byte, boot, ns string, selected uuid.UUID, fresh, current []byte) ([]byte, error) {
 	var p proof
 	if json.Unmarshal(evidence, &p) != nil || p.Version != 1 || p.Kind != "supervisor-confirmed-runtime-stop" || p.Snapshot.Boot != boot || p.StoppedJournalRawSHA256 != digest(journal) || p.Termination.Container != p.Snapshot.Container || p.Termination.Action != "die" || p.Termination.TimeNS <= 0 || p.VerifiedNS < p.Termination.TimeNS {
 		return nil, errors.New("stop evidence mismatch")
@@ -121,14 +127,14 @@ func assembleDelivery(journal, evidence []byte, boot, ns string, selected uuid.U
 			return nil, errors.New("duplicate active delivery")
 		}
 		seen[candidate.DeliveryID] = true
-		if candidate.Phase != ipsec.RuntimeApplied || (candidate.ContractVersion != 2 && candidate.ContractVersion != 3) || candidate.AbsenceOnly || candidate.ResetCleanup != nil {
+		if candidate.Phase != ipsec.RuntimeApplied || (candidate.ContractVersion != 2 && candidate.ContractVersion != 3 && candidate.ContractVersion != 4) || candidate.AbsenceOnly || candidate.ResetCleanup != nil {
 			return nil, errors.New("unsupported obligation")
 		}
 		if selected == uuid.Nil || candidate.DeliveryID == selected {
 			// A mixed journal may retain independently stopped prior namespaces.
 			// Whole-journal eligibility and ownership stay mandatory above; this
 			// supervisor stop evidence binds only the exact selected obligation.
-			if p.Snapshot.Namespace.Inode == 0 || ns == candidate.Allocation.Namespace || candidate.Allocation.Namespace != fmt.Sprintf("net:[%d]", p.Snapshot.Namespace.Inode) || (candidate.Restoration != nil && candidate.Restoration.BootID != p.Snapshot.Boot) || (candidate.BGPProcess != nil && candidate.BGPProcess.BootID != p.Snapshot.Boot) {
+			if p.Snapshot.Namespace.Inode == 0 || candidate.Allocation.Namespace != fmt.Sprintf("net:[%d]", p.Snapshot.Namespace.Inode) || (candidate.Restoration != nil && candidate.Restoration.BootID != p.Snapshot.Boot) || (candidate.BGPProcess != nil && candidate.BGPProcess.BootID != p.Snapshot.Boot) {
 				return nil, errors.New("prior runtime identity does not match stopped container")
 			}
 			e = candidate
@@ -137,17 +143,28 @@ func assembleDelivery(journal, evidence []byte, boot, ns string, selected uuid.U
 	if active == 0 || active > 256 || (selected == uuid.Nil && active != 1) || (selected != uuid.Nil && !seen[selected]) {
 		return nil, errors.New("expected exactly one active obligation")
 	}
-	if e.Phase != ipsec.RuntimeApplied || (e.ContractVersion != 2 && e.ContractVersion != 3) || e.AbsenceOnly || e.ResetCleanup != nil || e.Engines[0].Binding.GatewayID != j.Payload.OwnerID {
+	if e.Phase != ipsec.RuntimeApplied || (e.ContractVersion != 2 && e.ContractVersion != 3 && e.ContractVersion != 4) || e.AbsenceOnly || e.ResetCleanup != nil || e.Engines[0].Binding.GatewayID != j.Payload.OwnerID {
 		return nil, errors.New("unsupported obligation")
 	}
-	if p.Snapshot.Namespace.Inode == 0 || ns == e.Allocation.Namespace || e.Allocation.Namespace != fmt.Sprintf("net:[%d]", p.Snapshot.Namespace.Inode) || (e.Restoration != nil && e.Restoration.BootID != p.Snapshot.Boot) || (e.BGPProcess != nil && e.BGPProcess.BootID != p.Snapshot.Boot) {
+	if p.Snapshot.Namespace.Inode == 0 || e.Allocation.Namespace != fmt.Sprintf("net:[%d]", p.Snapshot.Namespace.Inode) || (e.Restoration != nil && e.Restoration.BootID != p.Snapshot.Boot) || (e.BGPProcess != nil && e.BGPProcess.BootID != p.Snapshot.Boot) {
 		return nil, errors.New("prior runtime identity does not match stopped container")
+	}
+	if ns == e.Allocation.Namespace && len(fresh) == 0 {
+		return nil, errors.New("reused namespace requires fresh runtime evidence")
+	}
+	evidenceDigest := digest(evidence)
+	if len(fresh) > 0 {
+		if err := validateFresh(fresh, journal, current, evidence, p, boot, ns); err != nil {
+			return nil, err
+		}
+		bound, _ := json.Marshal(struct{ StoppedEvidence, FreshRuntimeEvidence string }{digest(evidence), digest(fresh)})
+		evidenceDigest = digest(bound)
 	}
 	raw, err := json.Marshal(e)
 	if err != nil {
 		return nil, err
 	}
-	return json.Marshal(receipt{1, j.Payload.OwnerID, e.DeliveryID, digest(raw), boot, ns, p.Kind, digest(evidence)})
+	return json.Marshal(receipt{1, j.Payload.OwnerID, e.DeliveryID, digest(raw), boot, ns, p.Kind, evidenceDigest})
 }
 func privateRead(path string, limit int64) ([]byte, error) {
 	before, err := os.Lstat(path)
@@ -174,21 +191,68 @@ func privateRead(path string, limit int64) ([]byte, error) {
 	}
 	return b, nil
 }
+
+// verifyHistoricalReceipt validates existing bytes only. It does not attest a
+// currently running process, publish a receipt, or authorize a new restoration.
+func verifyHistoricalReceipt(journal, evidence, fresh, current, existing []byte, boot, ns string) error {
+	if len(fresh) == 0 {
+		return errors.New("fresh historical evidence required")
+	}
+	raw, err := assembleDeliveryFresh(journal, evidence, boot, ns, uuid.Nil, fresh, current)
+	if err != nil {
+		return err
+	}
+	if !bytes.Equal(existing, append(raw, '\n')) {
+		return errors.New("historical receipt differs")
+	}
+	return nil
+}
+
 func main() {
 	journal := flag.String("journal", "", "stopped journal snapshot")
 	evidence := flag.String("evidence", "", "verified supervisor evidence")
 	boot := flag.String("boot", "", "current kernel boot identity")
 	ns := flag.String("namespace", "", "current runtime namespace")
 	delivery := flag.String("delivery", "", "optional exact active delivery UUID; validates every active obligation")
+	currentPath := flag.String("current-journal", "", "private current journal snapshot; immutable entries must match stopped proof")
+	freshPath := flag.String("fresh-runtime", "", "separate trusted fresh-runtime observation")
+	gatePath := flag.String("startup-gate", "", "exact retained supervisor startup gate")
 	out := flag.String("out", "", "new receipt file; must not exist")
+	verifyPath := flag.String("verify-existing", "", "verify exact historical receipt only; never publish authority")
 	flag.Parse()
 	fail := func() { fmt.Fprintln(os.Stderr, "receipt assembly refused"); os.Exit(1) }
 	if os.Geteuid() != 0 {
 		fail()
 	}
+	if *verifyPath != "" {
+		if *out != "" || *gatePath != "" || *delivery != "" || *freshPath == "" || *currentPath == "" {
+			fail()
+		}
+		j, e := privateRead(*journal, 4<<20)
+		if e != nil {
+			fail()
+		}
+		p, e := privateRead(*evidence, 1<<20)
+		if e != nil {
+			fail()
+		}
+		f, e := privateRead(*freshPath, 8192)
+		if e != nil {
+			fail()
+		}
+		c, e := privateRead(*currentPath, 4<<20)
+		if e != nil {
+			fail()
+		}
+		r, e := privateRead(*verifyPath, 8192)
+		if e != nil || verifyHistoricalReceipt(j, p, f, c, r, *boot, *ns) != nil {
+			fail()
+		}
+		return
+	}
 	currentBoot, err := os.ReadFile("/proc/sys/kernel/random/boot_id")
 	currentNS, nsErr := os.Readlink("/proc/self/ns/net")
-	if err != nil || nsErr != nil || strings.TrimSpace(string(currentBoot)) != *boot || currentNS != *ns {
+	if err != nil || nsErr != nil || strings.TrimSpace(string(currentBoot)) != *boot {
 		fail()
 	}
 	j, e := privateRead(*journal, 4<<20)
@@ -207,8 +271,30 @@ func main() {
 			fail()
 		}
 	}
-	raw, e := assembleDelivery(j, p, *boot, *ns, selected)
+	var fresh, current []byte
+	if (*freshPath == "") != (*gatePath == "") || (*freshPath == "") != (*currentPath == "") {
+		fail()
+	}
+	if *freshPath != "" {
+		current, e = privateRead(*currentPath, 4<<20)
+		if e != nil {
+			fail()
+		}
+		fresh, e = privateRead(*freshPath, 8192)
+		if e != nil || verifyFreshCurrent(fresh, *gatePath, *boot, *ns) != nil {
+			fail()
+		}
+	}
+	if validateExecutionContext(strings.TrimSpace(string(currentBoot)), currentNS, *boot, *ns, len(fresh) > 0) != nil {
+		fail()
+	}
+	raw, e := assembleDeliveryFresh(j, p, *boot, *ns, selected, fresh, current)
 	if e != nil {
+		fail()
+	}
+	// Assembly reads both complete journals. Recheck the independent target
+	// process and retained gate afterward, before publishing any receipt bytes.
+	if len(fresh) > 0 && verifyFreshCurrent(fresh, *gatePath, *boot, *ns) != nil {
 		fail()
 	}
 	f, e := os.OpenFile(*out, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0600)

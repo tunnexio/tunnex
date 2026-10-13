@@ -37,15 +37,24 @@ func StartProcess(ctx context.Context, dir string, c Config) (*Process, error) {
 }
 
 func StartProcessWithCheckpoint(ctx context.Context, dir string, c Config, checkpoint func(ProcessIdentity) error) (*Process, error) {
-	return startProcess(ctx, dir, c, checkpoint, false)
+	return startProcess(ctx, dir, c, checkpoint, false, nil)
+}
+
+// StartProcessWithCheckpointAndLocalExportProof requires a fresh caller-owned
+// proof for the exact exported prefixes. Generic start methods remain strict.
+func StartProcessWithCheckpointAndLocalExportProof(ctx context.Context, dir string, c Config, checkpoint func(ProcessIdentity) error, proof LocalExportProof) (*Process, error) {
+	if proof == nil {
+		return nil, ErrPackage
+	}
+	return startProcess(ctx, dir, c, checkpoint, false, proof)
 }
 
 // StartObserver has no configured BGP instance or peers and never listens on a
 // BGP/TCP VTY port. It qualifies the installed engine without route authority.
 func StartObserver(ctx context.Context, dir string) (*Process, error) {
-	return startProcess(ctx, dir, Config{}, nil, true)
+	return startProcess(ctx, dir, Config{}, nil, true, nil)
 }
-func startProcess(ctx context.Context, dir string, c Config, checkpoint func(ProcessIdentity) error, observer bool) (*Process, error) {
+func startProcess(ctx context.Context, dir string, c Config, checkpoint func(ProcessIdentity) error, observer bool, localExportProof LocalExportProof) (*Process, error) {
 	if (!observer && !c.valid()) || ProbePackage(ctx) != nil || !filepath.IsAbs(dir) || filepath.Clean(dir) != dir {
 		return nil, ErrPackage
 	}
@@ -53,7 +62,7 @@ func startProcess(ctx context.Context, dir string, c Config, checkpoint func(Pro
 		if err := ProbePeerReachability(ctx, c.Peers); err != nil {
 			return nil, err
 		}
-		if err := ProbeLocalReachability(ctx, c.LocalPrefixes); err != nil {
+		if err := proveProcessLocalExport(ctx, c.LocalPrefixes, localExportProof, ProbeLocalReachability); err != nil {
 			return nil, err
 		}
 	}

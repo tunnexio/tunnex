@@ -1,0 +1,5 @@
+# Actual0249 same-enrollment restart recovery
+
+Current0249/imagec0ca/CIDf15e is qualified by policy-parser stage065, fresh currentallocation066 and native067: Classic1+HA2 installed CHILDs/SAD6/BGP2, nine production-parsed policy inventories and source/identity brackets. Full capture8d798a and all four independent Classic/HA TCP/UDP guard verifications passed. Actual Classic068 and HA069 accepted exact TCP/UDP receiver exchanges, localcontrols and zero capture drops. Normal API reconciliation preserved all original configuration/policy/resource/FQDN state plus the verified isolatedCAS tombstone.
+
+This closes same-enrollment restart/cutover recovery, not continuous availability or a measured outage guarantee. Controlled rekey and HA one/both-path fault remain separate open gates. Historical failed captures and the correct poststop live-permit refusal remain unchanged. Whole NFT, whole journal, private stderr, raw logs and secrets are excluded; public projected receipts/source/binary digests are retained. CanonicalCAPv2 known-two-template mode reports incomplete only and never manufactures full proof.

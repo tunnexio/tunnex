@@ -219,5 +219,20 @@ class StopProofTests(unittest.TestCase):
         self.assertEqual(proof.unescape_mount('/a\\040b/\\134x'), '/a b/\\x')
 
 
+class CommandTimeoutTests(unittest.TestCase):
+    def test_default_and_explicit_command_bounds(self):
+        from unittest.mock import patch
+        with patch.object(proof.subprocess, 'check_output', return_value='ok\n') as call:
+            self.assertEqual(proof.command('owned'), 'ok')
+            call.assert_called_once_with(('owned',), text=True, timeout=30)
+            call.reset_mock()
+            proof.command('owned', timeout=50)
+            call.assert_called_once_with(('owned',), text=True, timeout=50)
+            for limit in (0, 51):
+                call.reset_mock()
+                with self.assertRaises(ValueError): proof.command('owned', timeout=limit)
+                call.assert_not_called()
+
+
 if __name__ == '__main__':
     unittest.main()

@@ -113,6 +113,39 @@ func (c *RuntimeController) exchangeResolverDNS(ctx context.Context, config fqdn
 	return response, nil
 }
 
+// The composition is private and preserves the existing two native proofs and
+// socket sequence. Diagnostics carry fixed phases and timing only.
+func exchangeResolverDNSObserved(ctx context.Context, config fqdnrpc.ResolverConfig, endpoint fqdnrpc.ResolverEndpoint, payload []byte, prove func(context.Context, fqdnrpc.ResolverConfig, fqdnrpc.ResolverEndpoint) (runtimeDNSProof, error), exchange func(context.Context, fqdnrpc.ResolverEndpoint, netip.Addr, []byte) ([]byte, error), emit func(string, time.Time, bool)) ([]byte, error) {
+	started := time.Now()
+	proof, err := prove(ctx, config, endpoint)
+	emit("dns_proof_before", started, err != nil)
+	if err != nil {
+		return nil, ErrRuntimeController
+	}
+	started = time.Now()
+	response, err := exchange(ctx, endpoint, proof.Source, payload)
+	emit("dns_socket", started, err != nil)
+	if err != nil {
+		return nil, ErrRuntimeController
+	}
+	started = time.Now()
+	after, err := prove(ctx, config, endpoint)
+	stage := "dns_proof_after"
+	refused := false
+	if err != nil {
+		stage, refused = "dns_after_proof_refused", true
+	} else if !sameResolverDNSProof(after, proof) {
+		stage, refused = "dns_after_binding_refused", true
+	} else if ctx.Err() != nil {
+		stage, refused = "dns_after_context_refused", true
+	}
+	emit(stage, started, refused)
+	if refused {
+		return nil, ErrRuntimeController
+	}
+	return response, nil
+}
+
 func sameResolverDNSProof(a, b runtimeDNSProof) bool {
 	current, original := a.authority, b.authority
 	a.authority, b.authority = nil, nil
@@ -135,9 +168,14 @@ func (c *RuntimeController) proveResolverDNSStage(ctx context.Context, config fq
 	stage, started := "dns_input", time.Now()
 	connection := uuid.Nil
 	defer func() { c.emitDNSRuntimeDiagnostic(ctx, operation, stage, connection, started, resultErr != nil) }()
-	fail := func() (runtimeDNSProof, error) { return runtimeDNSProof{}, ErrRuntimeController }
+	fail := func(refusal ...string) (runtimeDNSProof, error) {
+		if len(refusal) == 1 {
+			c.emitRuntimeDiagnostic(ctx, "dns_proof", refusal[0], connection, started, true)
+		}
+		return runtimeDNSProof{}, ErrRuntimeController
+	}
 	if c == nil || config.IPsecPath == nil || !fqdnrpc.ValidResolverConfig(config) || endpoint.Port != 53 || endpoint.Transport != "udp" && endpoint.Transport != "tcp" {
-		return fail()
+		return fail("dns_refusal_input")
 	}
 	stage = "dns_endpoint"
 	listed := false
@@ -147,7 +185,7 @@ func (c *RuntimeController) proveResolverDNSStage(ctx context.Context, config fq
 		}
 	}
 	if !listed {
-		return fail()
+		return fail("dns_refusal_endpoint")
 	}
 	stage = "dns_binding"
 	conn, ce := uuid.Parse(config.IPsecPath.ConnectionID)
@@ -157,27 +195,25 @@ func (c *RuntimeController) proveResolverDNSStage(ctx context.Context, config fq
 	source, se := netip.ParseAddr(config.IPsecPath.SourceAddress)
 	resolver, re := netip.ParseAddr(endpoint.Address)
 	if ce != nil || ge != nil || pe != nil || se != nil || re != nil || !source.Is4() || !resolver.Is4() {
-		return fail()
+		return fail("dns_refusal_addresses")
 	}
 	binding := DNSResolverBinding{cfg, config.Version, profile, conn, config.IPsecPath.ConfigurationRevision}
 	if !binding.valid() {
-		return fail()
+		return fail("dns_refusal_binding")
 	}
 	// Only immutable owner-selected inputs are loaded here. The serial owner may
 	// be blocked on unrelated IO; no global mutex or journal mutex is acquired.
-	stage = "dns_owner"
 	view := c.dnsView.Load()
 	if view == nil || ctx.Err() != nil {
-		return fail()
+		return fail("dns_refusal_view")
 	}
 	owner, ok := view.entries[conn]
 	if !ok || owner.epoch.revoked.Load() || !view.observer.qualification.current() || view.observer.controller.config.DaemonAlive == nil || !view.observer.controller.config.DaemonAlive() {
-		return fail()
+		return fail("dns_refusal_owner")
 	}
-	stage = "dns_authority"
 	a := owner.active
 	if a.Authority == nil || a.Entry.Phase != RuntimeApplied || a.Identity.Binding.OrgID != view.observer.controller.config.OrgID || a.Identity.Binding.GatewayID != view.observer.controller.config.GatewayID || a.Identity.Binding.ConnectionID != conn || a.Identity.Binding.ConfigurationRevision != binding.ConfigurationRevision {
-		return fail()
+		return fail("dns_refusal_active")
 	}
 	protocol := GuardUDP
 	if endpoint.Transport == "tcp" {
@@ -191,94 +227,87 @@ func (c *RuntimeController) proveResolverDNSStage(ctx context.Context, config fq
 		}
 	}
 	if !authorized {
-		return fail()
+		return fail("dns_refusal_grant")
 	}
 	stage = "dns_original_lease"
 	if _, err := a.Authority.RemainingForApply(a.Identity, time.Second); err != nil {
-		return fail()
+		return fail("dns_refusal_authority_before")
 	}
-	stage = "dns_native_proof"
 	if view.observer.controller.proveCurrent(ctx, a.Entry, a.Environment) != nil {
-		return fail()
+		return fail("dns_refusal_native")
 	}
 	stage = "dns_route_slot"
 	slot := dnsResolverSlot(a.Entry, resolver)
 	if slot < 1 || slot > 2 {
-		return fail()
+		return fail("dns_refusal_slot")
 	}
 	stage = "dns_guard"
-	revalidationUsed := false
 	index := a.Entry.Observed[slot-1].InterfaceIndex
+	revalidationUsed := false
 	if index <= 0 {
-		return fail()
+		return fail("dns_refusal_interface")
 	}
-	if permitted, guardStage := view.resolverGuardPermitsStage(ctx, a.Entry, index, a.Entry.Engines[slot-1].ReqID); !permitted {
-		stage = guardStage
-		// A committed renewal may supersede this loaded template. Try exactly one
-		// current immutable template, retaining the original owner/lease/epoch.
-		if guardStage != "dns_guard_full_read" || !c.revalidateDNSGuardSnapshot(ctx, conn, owner, view, a.Entry, index, a.Entry.Engines[slot-1].ReqID) {
-			return fail()
+	guardCommit := c.dnsGuardCommit.Load()
+	if permitted, fullRead := view.resolverGuardPermitsRead(ctx, a.Entry, index, a.Entry.Engines[slot-1].ReqID); !permitted {
+		if guardCommit == nil {
+			guardCommit = c.dnsGuardCommit.Load()
+		}
+		if !fullRead || c.revalidateDNSGuardSnapshotDigest(ctx, conn, owner, view, a.Entry, index, a.Entry.Engines[slot-1].ReqID, guardCommit) == "" {
+			return fail("dns_refusal_guard_initial")
 		}
 		revalidationUsed = true
 	}
-	stage = "dns_source_before"
 	before, err := view.observer.source(source, a.Environment.LocalIngressIndices)
 	if err != nil {
-		return fail()
+		return fail("dns_refusal_source_before")
 	}
 	stage = "dns_route"
 	raw, err := view.observer.route(ctx, view.observer.controller.config.IPPath, "-j", "-4", "route", "get", resolver.String(), "from", source.String())
 	if err != nil || !dnsResolverRouteMatches(raw, a.Entry.Observed[slot-1].InterfaceName, source, resolver) {
-		return fail()
+		return fail("dns_refusal_route")
 	}
-	stage = "dns_source_after"
 	after, err := view.observer.source(source, a.Environment.LocalIngressIndices)
 	if err != nil || before != after || ctx.Err() != nil || !view.observer.qualification.current() || !view.observer.controller.config.DaemonAlive() {
-		return fail()
+		return fail("dns_refusal_source_after")
 	}
 	stage = "dns_current_lease"
 	if _, err := a.Authority.RemainingForApply(a.Identity, time.Second); err != nil {
-		return fail()
+		return fail("dns_refusal_authority_after")
 	}
-	stage = "dns_epoch"
 	if _, ok := c.currentDNSOwnerEntry(conn, owner); !ok {
-		return fail()
+		return fail("dns_refusal_owner_before_final")
 	}
-	stage = "dns_latest_guard"
 	latest := c.dnsView.Load()
 	if latest == nil {
-		return fail()
+		return fail("dns_refusal_view_final")
 	}
-	// The final read must bind a stable published template. The entire proof
-	// shares one supersession retry, including the earlier native guard read.
+	// Initial and final reads share one supersession retry. Both the original
+	// owner/authority and the current native template must remain unchanged.
 	checkedDigest := latest.guard.Digest
 	if latest.guard.Digest != view.guard.Digest {
-		permitted, guardStage := latest.resolverGuardPermitsStage(ctx, a.Entry, index, a.Entry.Engines[slot-1].ReqID)
+		guardCommit := c.dnsGuardCommit.Load()
+		permitted, fullRead := latest.resolverGuardPermitsRead(ctx, a.Entry, index, a.Entry.Engines[slot-1].ReqID)
 		current := c.dnsView.Load()
-		stable := current != nil && current.guard.Digest == checkedDigest
-		if !permitted || !stable {
-			stage = "dns_latest_guard_stability"
-			if !permitted {
-				stage = "dns_latest_" + guardStage[len("dns_"):]
+		if !permitted || current == nil || current.guard.Digest != checkedDigest {
+			if guardCommit == nil {
+				guardCommit = c.dnsGuardCommit.Load()
 			}
-			if revalidationUsed || !permitted && guardStage != "dns_guard_full_read" {
-				return fail()
+			if revalidationUsed || !permitted && !fullRead {
+				return fail("dns_refusal_guard_retry_budget")
 			}
-			checkedDigest = c.revalidateDNSGuardSnapshotDigest(ctx, conn, owner, latest, a.Entry, index, a.Entry.Engines[slot-1].ReqID)
+			checkedDigest = c.revalidateDNSGuardSnapshotDigest(ctx, conn, owner, latest, a.Entry, index, a.Entry.Engines[slot-1].ReqID, guardCommit)
 			if checkedDigest == "" {
-				return fail()
+				return fail("dns_refusal_guard_retry")
 			}
 			revalidationUsed = true
 		}
 	}
-	stage = "dns_epoch"
 	if _, ok := c.currentDNSOwnerEntry(conn, owner); !ok || ctx.Err() != nil {
-		return fail()
+		return fail("dns_refusal_owner_final")
 	}
-	stage = "dns_latest_guard_stability"
 	current := c.dnsView.Load()
 	if current == nil || current.guard.Digest != checkedDigest {
-		return fail()
+		return fail("dns_refusal_guard_final")
 	}
 	return runtimeDNSProof{DeliveryID: a.Entry.DeliveryID, Identity: a.Identity, Binding: binding, Source: source, Resolver: resolver, Slot: slot, InterfaceIndex: index, SourceInterfaceIndex: before, Namespace: a.Entry.Allocation.Namespace, epoch: owner.epoch, authority: a.Authority}, nil
 }
@@ -399,6 +428,11 @@ func (v *runtimeDNSOwnerView) resolverGuardPermits(ctx context.Context, entry Ru
 	permitted, _ := v.resolverGuardPermitsStage(ctx, entry, index, reqid)
 	return permitted
 }
+func (v *runtimeDNSOwnerView) resolverGuardPermitsRead(ctx context.Context, entry RuntimeJournalEntry, index int, reqid uint32) (bool, bool) {
+	permitted, stage := v.resolverGuardPermitsStage(ctx, entry, index, reqid)
+	return permitted, stage == "dns_guard_full_read"
+}
+
 func (v *runtimeDNSOwnerView) resolverGuardPermitsStage(ctx context.Context, entry RuntimeJournalEntry, index int, reqid uint32) (bool, string) {
 	stage := "dns_guard_template"
 	if v == nil || v.observer.guardReader == nil {
@@ -469,7 +503,7 @@ func (c *RuntimeController) revalidateDNSGuardSnapshot(ctx context.Context, conn
 	return c.revalidateDNSGuardSnapshotDigest(ctx, connection, owner, previous, entry, index, reqid) != ""
 }
 
-func (c *RuntimeController) revalidateDNSGuardSnapshotDigest(ctx context.Context, connection uuid.UUID, owner runtimeDNSOwnerEntry, previous *runtimeDNSOwnerView, entry RuntimeJournalEntry, index int, reqid uint32) string {
+func (c *RuntimeController) revalidateDNSGuardSnapshotDigest(ctx context.Context, connection uuid.UUID, owner runtimeDNSOwnerEntry, previous *runtimeDNSOwnerView, entry RuntimeJournalEntry, index int, reqid uint32, commits ...*runtimeDNSGuardCommit) string {
 	if c == nil || previous == nil || ctx.Err() != nil {
 		return ""
 	}
@@ -477,9 +511,12 @@ func (c *RuntimeController) revalidateDNSGuardSnapshotDigest(ctx context.Context
 	if latest == nil {
 		return ""
 	}
+	commit := c.dnsGuardCommit.Load()
+	if len(commits) > 0 {
+		commit = commits[0]
+	}
 	waited := false
 	if latest.guard.Digest == previous.guard.Digest {
-		commit := c.dnsGuardCommit.Load()
 		// Wait only for an independently identified replacement of the exact
 		// published template, using the original caller deadline. A random
 		// native mismatch, unbounded caller or changed owner still refuses.

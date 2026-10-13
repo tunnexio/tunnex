@@ -34,6 +34,8 @@ type RuntimeBGPStatus struct {
 	Routes   []RuntimeBGPRoute       `json:"routes"`
 }
 type RuntimeStatusReport struct {
+	TransportVersion  *int              `json:"transport_version,omitempty"`
+	TunnelCount       *int              `json:"tunnel_count,omitempty"`
 	BGP               *RuntimeBGPStatus `json:"bgp,omitempty"`
 	RecoveryVersion   *int              `json:"recovery_version,omitempty"`
 	SelectionSequence *uint64           `json:"selection_sequence,omitempty"`
@@ -61,12 +63,19 @@ func (s *ConnectionStore) ReportStatus(ctx context.Context, p RuntimePrincipal, 
 	if r.DeliveryID == uuid.Nil || r.DesiredRevision <= 0 || r.ConfigurationRevision != 1 {
 		return ErrConnectionInvalid
 	}
-	for i, t := range r.Tunnels {
+	count := 2
+	if r.TransportVersion != nil || r.TunnelCount != nil {
+		if r.TransportVersion == nil || *r.TransportVersion != 1 || r.TunnelCount == nil || *r.TunnelCount != 1 || r.Tunnels[1] != (RuntimeTunnelStatus{}) {
+			return ErrConnectionInvalid
+		}
+		count = 1
+	}
+	for i, t := range r.Tunnels[:count] {
 		if t.ID == uuid.Nil || t.Slot != i+1 || (t.Status != "up" && t.Status != "down" && t.Status != "unknown") {
 			return ErrConnectionInvalid
 		}
 	}
-	if r.Tunnels[0].ID == r.Tunnels[1].ID {
+	if count == 2 && r.Tunnels[0].ID == r.Tunnels[1].ID {
 		return ErrConnectionInvalid
 	}
 	tx, l, e := s.runtimeLock(ctx, p.OrgID, id, &p)
@@ -94,13 +103,13 @@ func (s *ConnectionStore) ReportStatus(ctx context.Context, p RuntimePrincipal, 
 	if json.Unmarshal(manifest, &m) != nil {
 		return ErrConnectionUnavailable
 	}
-	if !runtimeBGPCompatible(m, l.bgpEligible) || (m.BGP == nil && (!validRecoveryStatus(m, r) || !runtimeRecoveryEligible(m, l.recoveryEligible))) || (m.BGP != nil && (r.RecoveryVersion != nil || r.SelectionSequence != nil || r.ActiveSlot != nil)) {
+	if (m.ProfileID == GCPClassicProfile && (!classicManifestCompatible(m, l.gcpClassicEligible) || r.TransportVersion == nil || r.TunnelCount == nil || !reflect.DeepEqual(m.TransportVersion, r.TransportVersion) || !reflect.DeepEqual(m.TunnelCount, r.TunnelCount))) || (m.ProfileID != GCPClassicProfile && (r.TransportVersion != nil || r.TunnelCount != nil)) || !runtimeBGPCompatible(m, l.bgpEligible && (m.ProfileID != GCPHAProfile || l.gcpHAEligible)) || (m.BGP == nil && (!validRecoveryStatus(m, r) || !runtimeRecoveryEligible(m, l.recoveryEligible))) || (m.BGP != nil && (r.RecoveryVersion != nil || r.SelectionSequence != nil || r.ActiveSlot != nil)) {
 		return ErrConnectionInvalid
 	}
 	if r.ActiveSlot != nil && r.Tunnels[*r.ActiveSlot-1].Status != "up" {
 		return ErrConnectionInvalid
 	}
-	for i, t := range r.Tunnels {
+	for i, t := range r.Tunnels[:count] {
 		if t.ID != m.Tunnels[i].ID || t.Slot != m.Tunnels[i].Slot || t.Selected != m.Tunnels[i].Selected {
 			return ErrConnectionInvalid
 		}
@@ -179,7 +188,7 @@ func (s *ConnectionStore) ReadStatus(ctx context.Context, org, id uuid.UUID) (Co
 	if e = tx.QueryRow(ctx, `SELECT COALESCE(provider_profile,'') FROM ipsec_connections WHERE id=$1 AND org_id=$2`, id, org).Scan(&profile); e != nil {
 		return out, ErrConnectionUnavailable
 	}
-	if profile == "aws-bgp-ipv4-v1" {
+	if isBGPProfile(profile) {
 		for i := range out.Tunnels {
 			out.Tunnels[i].Selected = false
 		}
@@ -194,22 +203,26 @@ func (s *ConnectionStore) ReadStatus(ctx context.Context, org, id uuid.UUID) (Co
 	var raw, manifestRaw []byte
 	var fresh bool
 	var now time.Time
-	e = tx.QueryRow(ctx, `SELECT clock_timestamp(),s.received_at,s.tunnels,d.manifest,COALESCE((s.desired_revision=$3 AND c.desired_intent='enabled' AND d.desired_revision=c.desired_revision AND d.kind='apply' AND d.configuration_revision=s.configuration_revision AND d.node_id=s.node_id AND d.org_id=s.org_id AND n.cert_serial=s.certificate_serial AND n.status='active' AND n.revoked_at IS NULL AND n.site_id=c.site_id AND n.id=c.gateway_node_id AND n.capabilities->>'ipsec_config_version'='1' AND n.policy_reported_at BETWEEN clock_timestamp()-interval '90 seconds' AND clock_timestamp() AND (NOT(d.manifest ? 'recovery_version') OR (d.manifest->>'recovery_version'='1' AND n.capabilities->>'ipsec_recovery_version'='1')) AND NOT(d.manifest ? 'bgp_version') AND EXISTS(SELECT 1 FROM ipsec_org_settings o WHERE o.org_id=c.org_id AND o.enabled)),false) FROM ipsec_tunnel_status s JOIN ipsec_connections c ON c.id=s.connection_id JOIN ipsec_runtime_deliveries d ON d.id=s.delivery_id AND d.connection_id=c.id AND d.org_id=c.org_id JOIN nodes n ON n.id=s.node_id AND n.org_id=c.org_id WHERE s.connection_id=$1 AND s.org_id=$2`, id, org, c.DesiredRevision).Scan(&now, &out.ObservedAt, &raw, &manifestRaw, &fresh)
+	e = tx.QueryRow(ctx, `SELECT clock_timestamp(),s.received_at,s.tunnels,d.manifest,COALESCE((s.desired_revision=$3 AND c.desired_intent='enabled' AND d.desired_revision=c.desired_revision AND d.kind='apply' AND d.configuration_revision=s.configuration_revision AND d.node_id=s.node_id AND d.org_id=s.org_id AND n.cert_serial=s.certificate_serial AND n.status='active' AND n.revoked_at IS NULL AND n.site_id=c.site_id AND n.id=c.gateway_node_id AND n.capabilities->>'ipsec_config_version'='1' AND (c.provider_profile<>'gcp-classic-static-ipv4-v1' OR n.capabilities->>'ipsec_gcp_classic_version'='1') AND n.policy_reported_at BETWEEN clock_timestamp()-interval '90 seconds' AND clock_timestamp() AND (NOT(d.manifest ? 'recovery_version') OR (d.manifest->>'recovery_version'='1' AND n.capabilities->>'ipsec_recovery_version'='1')) AND NOT(d.manifest ? 'bgp_version') AND EXISTS(SELECT 1 FROM ipsec_org_settings o WHERE o.org_id=c.org_id AND o.enabled)),false) FROM ipsec_tunnel_status s JOIN ipsec_connections c ON c.id=s.connection_id JOIN ipsec_runtime_deliveries d ON d.id=s.delivery_id AND d.connection_id=c.id AND d.org_id=c.org_id JOIN nodes n ON n.id=s.node_id AND n.org_id=c.org_id WHERE s.connection_id=$1 AND s.org_id=$2`, id, org, c.DesiredRevision).Scan(&now, &out.ObservedAt, &raw, &manifestRaw, &fresh)
 	if e != nil && !errors.Is(e, pgx.ErrNoRows) {
 		return out, ErrConnectionUnavailable
 	}
-	if fresh && tunnelStatusFresh(out.ObservedAt, now) && len(out.Tunnels) == 2 {
+	if fresh && tunnelStatusFresh(out.ObservedAt, now) && len(out.Tunnels) == activeTunnelCount(profile) {
 		var reported [2]RuntimeTunnelStatus
 		var recovery RuntimeStatusReport
 		var manifest RuntimeManifest
 		valid := json.Unmarshal(raw, &reported) == nil && json.Unmarshal(manifestRaw, &manifest) == nil
-		for i, t := range reported {
+		count := activeTunnelCount(profile)
+		if count == 1 && (reported[1] != (RuntimeTunnelStatus{}) || !classicManifestCompatible(manifest, true)) {
+			valid = false
+		}
+		for i, t := range reported[:count] {
 			if t.ID != out.Tunnels[i].ID || t.Slot != out.Tunnels[i].Slot || t.Selected != out.Tunnels[i].Selected || (t.Status != "up" && t.Status != "down" && t.Status != "unknown") {
 				valid = false
 			}
 		}
 		if valid {
-			for i, t := range reported {
+			for i, t := range reported[:count] {
 				out.Tunnels[i].Status = t.Status
 			}
 			if decodeRecoveryStored(raw, &recovery) && validRecoveryStatus(manifest, recovery) && (recovery.ActiveSlot == nil || reported[*recovery.ActiveSlot-1].Status == "up") {

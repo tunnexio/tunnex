@@ -1,0 +1,32 @@
+{
+  "scope": "owned external Classic emulator fixture; no Google cloud or gateway guard change",
+  "source_commit": "76e1a87e",
+  "candidate_arm64_sha256": "865878f482aca57362c498e25e376ddc0d02184e93a549a4da32d1ac4f2f27ce",
+  "evidence": {
+    "peer-fragment-trace2.txt": "65bd14b83efcd6094117b3c9800c938989bd968e654aa4657eaebc84ec0b5d3b",
+    "peer-fragment-trace3.txt": "d9d32c96aef19b8b288b84df985e7f4601af693f693c2d633534f1fd3c04502c",
+    "peer-fragment-trace4.txt": "284fde8beb736eee58709444109d7dca339a8cfae1f64dc3c9225d76ecec13aa"
+  },
+  "observed": [
+    "1400-byte synthetic UDP request reaches target in both fragments",
+    "1420-byte response first fragment admitted; tail fragment dropped by peer postrouting prefix fallback",
+    "pre-XFRM reply has exact established CT original UDP9000 tuple",
+    "recursive physical postrouting fragments retain ReqID but CT is invalid",
+    "16-byte and 1200-byte requests succeed during same trace",
+    "all owned trace tables removed after bounded probes"
+  ],
+  "fix": "optional UDP service CT association before XFRM scrub, scoped mark carried to exact reqid and outer peer; clear before forward service acceptance",
+  "checks": [
+    "Linux ARM64 compile",
+    "disposable native nft syntax and numeric readback",
+    "clear-before-UDP-accept rule order",
+    "single exact CT association writer",
+    "configuration scope negatives",
+    "legacy TCP and reverse-service contract preserved"
+  ],
+  "pending": [
+    "actual managed-SA 1400-byte echo after genuine gateway lifecycle restoration",
+    "negative marked packet and lower-underlay-MTU qualification"
+  ],
+  "live_fixture_modified": false
+}

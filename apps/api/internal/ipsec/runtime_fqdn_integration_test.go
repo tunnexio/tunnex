@@ -15,21 +15,33 @@ import (
 
 // The compiler's authority inputs come from the locked store, not request fields.
 // Rejected capability/provenance leaves the disabled connection revision intact.
-func TestRuntimeFQDNGatedLockedInputPreservesAWSAdmission(t *testing.T) {
-	for _, profile := range []string{"aws-static-ipv4-v1", "aws-bgp-ipv4-v1"} {
+func TestRuntimeFQDNGatedLockedInputPreservesMixedProviderAdmission(t *testing.T) {
+	for _, profile := range []string{"aws-static-ipv4-v1", "aws-bgp-ipv4-v1", ipsec.GCPClassicProfile, ipsec.GCPHAProfile} {
 		t.Run(profile, func(t *testing.T) {
 			ctx, p, org, actor, sealer, identity := createFixture(t)
-			if err := db.MigrateTo(p.Config().ConnConfig.ConnString(), 221); err != nil {
+			if err := db.MigrateTo(p.Config().ConnConfig.ConnString(), 224); err != nil {
 				t.Fatal(err)
 			}
 			if _, err := p.Exec(ctx, `INSERT INTO site_subnets(id,site_id,cidr,status) VALUES($1,$2,'10.10.0.0/16','approved')`, uuid.New(), identity.SiteID); err != nil {
 				t.Fatal(err)
 			}
 			req := providerRequest(identity)
-			if profile == "aws-bgp-ipv4-v1" {
-				req.Config = bgpConfigFixture()
+			req.Config.ProfileID = profile
+			if profile == ipsec.GCPClassicProfile {
+				req.Config.Tunnels = req.Config.Tunnels[:1]
+				req.TunnelIDs[1] = uuid.Nil
+				req.Config.Tunnels[0].InsideCIDR = ""
+				req.Config.Tunnels[0].CustomerInsideAddress = ""
+				req.Config.Tunnels[0].CloudInsideAddress = ""
 			}
-			if _, err := p.Exec(ctx, `UPDATE nodes SET capabilities=capabilities||'{"ipsec_bgp_version":1}'::jsonb,policy_reported_at=clock_timestamp() WHERE id=$1`, identity.GatewayID); err != nil {
+			if profile == "aws-bgp-ipv4-v1" || profile == ipsec.GCPHAProfile {
+				req.Config = bgpConfigFixture()
+				req.Config.ProfileID = profile
+				if profile == ipsec.GCPHAProfile {
+					req.Config.BGP.RemoteASN = 65002
+				}
+			}
+			if _, err := p.Exec(ctx, `UPDATE nodes SET capabilities=capabilities||'{"ipsec_gcp_classic_version":1,"ipsec_gcp_ha_version":1,"ipsec_bgp_version":1}'::jsonb,policy_reported_at=clock_timestamp() WHERE id=$1`, identity.GatewayID); err != nil {
 				t.Fatal(err)
 			}
 			store := ipsec.NewConnectionStore(p)
@@ -55,7 +67,7 @@ func TestRuntimeFQDNGatedLockedInputPreservesAWSAdmission(t *testing.T) {
 					if _, err := store.SetIntent(ctx, org, actor, c.ID, 1, "enabled"); !errors.Is(err, ipsec.ErrConnectionUnavailable) {
 						t.Fatalf("compiler refusal lost: %v", err)
 					}
-					if captured.FQDNPolicyVersion != tc.want || captured.ConfigurationRevision != 1 || captured.Transaction == nil || captured.ConnectionID != c.ID || captured.NodeID != identity.GatewayID || captured.Config.Mode != req.Config.Mode {
+					if captured.FQDNPolicyVersion != tc.want || captured.ConfigurationRevision != 1 || captured.Transaction == nil || captured.ConnectionID != c.ID || captured.NodeID != identity.GatewayID || captured.Config.ProfileID != profile || captured.Config.Mode != req.Config.Mode {
 						t.Fatalf("locked input changed: %+v", captured)
 					}
 					got, err := store.Read(ctx, org, c.ID)
@@ -96,6 +108,9 @@ func TestRuntimeFQDNGatedLockedInputPreservesAWSAdmission(t *testing.T) {
 				t.Fatalf("expired answer renewed: %v", err)
 			}
 			want := 2
+			if profile == ipsec.GCPClassicProfile {
+				want = 1
+			}
 			actual := 0
 			for _, tun := range material.Manifest.Tunnels {
 				if tun.ID != uuid.Nil {

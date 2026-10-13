@@ -1,0 +1,98 @@
+{
+  "README.md": {
+    "sha256": "514c939d9cb203c6c738ea84f8685d67b9b94a28031fdeaa9930484683e70a7b"
+  },
+  "portable-tests/test_bracket_v5.py": {
+    "original_basename": "test_bracket_v5.py",
+    "original_sha256": "d6be0824b595bcc55be86ee4a2c241556c3a204d17a11b69b49a4c219e37bd01",
+    "portable_transform": "literal checker path to adjacent source; no predicate changes",
+    "sha256": "91a42c8d97f5ece3f62cce8342d8db8a175cfad0175d523e02f4c275409163c3"
+  },
+  "portable-tests/test_clock_v5.py": {
+    "original_basename": "test_clock_v5.py",
+    "original_sha256": "01fb3354793a05211aee90bdf2e9273daab809cde99ca9f7ad7739328ed298c8",
+    "portable_transform": "byte exact; adjacent module sources required",
+    "sha256": "01fb3354793a05211aee90bdf2e9273daab809cde99ca9f7ad7739328ed298c8"
+  },
+  "portable-tests/test_pending_bracket_v5.py": {
+    "original_basename": "test_pending_bracket_v5.py",
+    "original_sha256": "85f3e93f6a0343963755ae83e798a18b2db857dbfb8b67eba66130ded3e8c542",
+    "portable_transform": "byte exact; adjacent module sources required",
+    "sha256": "85f3e93f6a0343963755ae83e798a18b2db857dbfb8b67eba66130ded3e8c542"
+  },
+  "portable-tests/test_transition_v3.py": {
+    "original_basename": "test_transition_v3.py",
+    "original_sha256": "a718a81b1b5690452cb8c4ccb5f11805f6f3cddddcf7098f469f55a65c650af1",
+    "portable_transform": "byte exact; adjacent module sources required",
+    "sha256": "a718a81b1b5690452cb8c4ccb5f11805f6f3cddddcf7098f469f55a65c650af1"
+  },
+  "qualification-receipts.json": {
+    "sha256": "4e8ed926f4c2accdd691e2e4691ca7030566cd478fb6d4317aa4512124cac7c9"
+  },
+  "sources/check-selected-transition-v5.py": {
+    "original_basename": "check-selected-transition-v5.py",
+    "original_sha256": "85db3c77a3a01c22e3ddaad03d032ad962d0347dcf363c2256bab5d98038b2f9",
+    "portable_transform": "none; byte exact",
+    "sha256": "85db3c77a3a01c22e3ddaad03d032ad962d0347dcf363c2256bab5d98038b2f9"
+  },
+  "sources/classic-transition-observer-main.go": {
+    "original_basename": "classic-transition-observer-main.go",
+    "original_sha256": "9a5b14ecfa02727593f61362dfd74818bbd6b201c964348a60ce7218aab4e2b1",
+    "portable_transform": "none; byte exact",
+    "sha256": "9a5b14ecfa02727593f61362dfd74818bbd6b201c964348a60ce7218aab4e2b1"
+  },
+  "sources/classic_transition_test.go": {
+    "original_basename": "classic_transition_test.go",
+    "original_sha256": "7ba5eeef3cf6dd34454cb43c13be3aa74bdd4019cd956f24516713f8bbb0fb60",
+    "portable_transform": "none; byte exact",
+    "sha256": "7ba5eeef3cf6dd34454cb43c13be3aa74bdd4019cd956f24516713f8bbb0fb60"
+  },
+  "sources/run-selected-transition-clean17-v5.py": {
+    "original_basename": "run-selected-transition-clean17-v5.py",
+    "original_sha256": "0a1f3a095684dbc19bf23ce612884698bb85d2aaa2dd001810a65bcb9f51b4fb",
+    "portable_transform": "none; byte exact",
+    "sha256": "0a1f3a095684dbc19bf23ce612884698bb85d2aaa2dd001810a65bcb9f51b4fb"
+  },
+  "sources/strict-settle-transition-v3.py": {
+    "original_basename": "strict-settle-transition-v3.py",
+    "original_sha256": "9be9325405021779111e637fc608b1198a7ab466c0900df2e91614df5cc9e327",
+    "portable_transform": "none; byte exact",
+    "sha256": "9be9325405021779111e637fc608b1198a7ab466c0900df2e91614df5cc9e327"
+  },
+  "sources/test_bracket_v5.py": {
+    "original_basename": "test_bracket_v5.py",
+    "original_sha256": "d6be0824b595bcc55be86ee4a2c241556c3a204d17a11b69b49a4c219e37bd01",
+    "portable_transform": "none; byte exact",
+    "sha256": "d6be0824b595bcc55be86ee4a2c241556c3a204d17a11b69b49a4c219e37bd01"
+  },
+  "sources/test_clock_v5.py": {
+    "original_basename": "test_clock_v5.py",
+    "original_sha256": "01fb3354793a05211aee90bdf2e9273daab809cde99ca9f7ad7739328ed298c8",
+    "portable_transform": "none; byte exact",
+    "sha256": "01fb3354793a05211aee90bdf2e9273daab809cde99ca9f7ad7739328ed298c8"
+  },
+  "sources/test_pending_bracket_v5.py": {
+    "original_basename": "test_pending_bracket_v5.py",
+    "original_sha256": "85f3e93f6a0343963755ae83e798a18b2db857dbfb8b67eba66130ded3e8c542",
+    "portable_transform": "none; byte exact",
+    "sha256": "85f3e93f6a0343963755ae83e798a18b2db857dbfb8b67eba66130ded3e8c542"
+  },
+  "sources/test_transition_v3.py": {
+    "original_basename": "test_transition_v3.py",
+    "original_sha256": "a718a81b1b5690452cb8c4ccb5f11805f6f3cddddcf7098f469f55a65c650af1",
+    "portable_transform": "none; byte exact",
+    "sha256": "a718a81b1b5690452cb8c4ccb5f11805f6f3cddddcf7098f469f55a65c650af1"
+  },
+  "sources/transition_contract.py": {
+    "original_basename": "transition_contract.py",
+    "original_sha256": "51827d04cb7e78ec48ae4450f975ba5427930a7be8f5214c1ee525df8b2c4162",
+    "portable_transform": "none; byte exact",
+    "sha256": "51827d04cb7e78ec48ae4450f975ba5427930a7be8f5214c1ee525df8b2c4162"
+  },
+  "sources/ui_transition_empty_negative_test.go": {
+    "original_basename": "ui_transition_empty_negative_test.go",
+    "original_sha256": "cb44f8479e5135eb5f86f68f808a2226caa196f35451ddec7d2a8a3a461d4db2",
+    "portable_transform": "none; byte exact",
+    "sha256": "cb44f8479e5135eb5f86f68f808a2226caa196f35451ddec7d2a8a3a461d4db2"
+  }
+}

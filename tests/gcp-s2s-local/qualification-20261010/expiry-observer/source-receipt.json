@@ -1,0 +1,32 @@
+{
+  "scope": "source-only owned-table observation, no cloud execution/API/policy/lease/packet authority",
+  "base": "4143d866ab97386411ff1ac4705aaa0e4579bcf6",
+  "production_ipsec_files_changed": false,
+  "files": {
+    "apps/node/cmd/gcp-expiry-guard-observer/main.go": "2ed21a6e047c1a0a081130c3f47981a945deb0f163611e339cbb76da60fb520c",
+    "apps/node/cmd/gcp-expiry-guard-observer/main_test.go": "bc1e5c50cf0f1b9c2240a3ac6df53d4e869b933c437b41ef9659b1fd1b6d347a",
+    "apps/node/cmd/gcp-expiry-guard-observer/producer_test.go": "45e14ac968ce5884669f55d2bf0ff6f196ac4d669547e19179fe6a74ffae5aca",
+    "tests/gcp-s2s-local/qualification-20261010/expiry-observer/capture.py": "ad94e5161146c34b3158946526e4087a1675c6474b869d2adffc27e172229d8e",
+    "tests/gcp-s2s-local/qualification-20261010/expiry-observer/capture_test.py": "4c040c0a5fd5c3dd4b7acf40a568f6549c96f691f4d4175c3f89e142f1da2812"
+  },
+  "checks": {
+    "producer_fixture_test_seconds": 0.73,
+    "final_race_seconds": 3.273,
+    "python_static_reservation_tests": 4,
+    "linux_amd64_build": "PASS",
+    "amd64_sha256": "641bae725149c8eaf99332b49e97a3780524246f1923c9d7a15f7b94cd09f7dc",
+    "darwin_arm64_build": {
+      "result": "PASS",
+      "path": "/private/tmp/gcp-expiry-guard-observer-darwin-arm64",
+      "sha256": "cd98f213ae95534093eba217c3e26d7d97bc82c58793fa9b082c86eb96159a9f"
+    }
+  },
+  "evidence": "Full producer-shaped Classic1/HA2 guard inputs modeled. Unknown/wider accept blocks denial; zero-life nonempty cannot prove positive or rule absence; inherited60s native timeout and interface names covered. API deadline association external.",
+  "cloud_execution": false,
+  "capture_fields": "Full unchanged ip -j -d link show; no -s or unsupported counter filtering",
+  "independent_review": {
+    "result": "PASS",
+    "fixture_seconds": 0.785,
+    "reviewer": "ui_dns"
+  }
+}

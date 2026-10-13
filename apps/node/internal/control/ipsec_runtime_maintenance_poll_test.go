@@ -220,3 +220,53 @@ func TestIPsecMaintenancePollLastRPCCancellationRequiresValidation(t *testing.T)
 	}
 	assertMaintenanceSecretsCleared(t, f)
 }
+
+// Control delivery/report shape qualification only; no native runtime claim.
+func TestIPsecMaintenancePollGCPProfiles(t *testing.T) {
+	for _, hidden := range []bool{false, true} {
+		t.Run(map[bool]string{false: "exact_inactive_zero", true: "hidden_inactive_status"}[hidden], func(t *testing.T) {
+			f := newMaintenancePollFake(t)
+			for i, item := range f.items {
+				m := f.materials[item.ConnectionID]
+				if i == 0 {
+					v := 2
+					m.Manifest.ProfileID = ipsec.GCPHABGPProfile
+					m.Manifest.BGPVersion = &v
+					m.Manifest.BGP = &ipsec.BGPConfig{MaximumPrefixes: 8}
+					for n := range m.Manifest.Tunnels {
+						m.Manifest.Tunnels[n].Selected = false
+					}
+				} else {
+					v, count := 1, 1
+					m.Manifest.ProfileID = ipsec.GCPClassicStaticProfile
+					m.Manifest.TransportVersion = &v
+					m.Manifest.TunnelCount = &count
+					m.Manifest.Tunnels[1] = ipsec.RuntimeTunnel{}
+					m.Secrets[1] = ipsec.RuntimeSecret{}
+				}
+				f.materials[item.ConnectionID] = m
+			}
+			f.change = func(out []ipsec.RuntimeMaintenanceResult) ([]ipsec.RuntimeMaintenanceResult, error) {
+				v, count := 1, 1
+				out[1].Report.TransportVersion = &v
+				out[1].Report.TunnelCount = &count
+				out[1].Report.Tunnels[1] = ipsec.RuntimeTunnelStatus{}
+				if hidden {
+					out[1].Report.Tunnels[1].Status = "unknown"
+				}
+				return out, nil
+			}
+			valid, err := PollIPsecRuntimeValidated(context.Background(), f, f)
+			if hidden {
+				if valid || err == nil || f.acks != 0 || len(f.reports) != 0 {
+					t.Fatal("hidden Classic status published")
+				}
+			} else {
+				if !valid || err != nil || f.acks != 2 || len(f.reports) != 2 || f.applyCount != 0 {
+					t.Fatalf("valid GCP reports refused: %v", err)
+				}
+			}
+			assertMaintenanceSecretsCleared(t, f)
+		})
+	}
+}

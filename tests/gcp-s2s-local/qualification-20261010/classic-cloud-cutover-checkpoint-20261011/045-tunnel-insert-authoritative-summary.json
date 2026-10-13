@@ -1,0 +1,22 @@
+{
+  "started": true,
+  "completed": true,
+  "apply": true,
+  "phase": "tunnel-insert",
+  "requested_phase": "tunnel-insert",
+  "utc": "2026-10-10T23:38:16.811517+00:00",
+  "mutations_submitted": 1,
+  "mutation_attempted": true,
+  "operation": {
+    "id": "1420307406770369153",
+    "name": "operation-1791675502028-65d84f5d9e56a-2772dc81-de7c5858",
+    "operationType": "insert",
+    "status": "DONE",
+    "targetLink": "https://www.googleapis.com/compute/v1/projects/project-0048836f-6ba1-4a14-8da/regions/asia-south2/vpnTunnels/tn-gcps2s-20261010-classic-0"
+  },
+  "api_secret_fields_privately_discarded": true,
+  "psk_file_read_attempted": true,
+  "native_and_normal_API_gates": "external ROOT responsibility; not supplied by this executor",
+  "private_original_sha256": "a98e5964690a0d134f5eb5a4fb538e95b3ef70deec4d6754bf7debb53effbce3",
+  "full_inventory_archived": false
+}

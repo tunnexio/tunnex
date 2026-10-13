@@ -103,6 +103,8 @@ type RuntimeManifest struct {
 	RemotePrefixes         []string         `json:"remote_prefixes"`
 	Tunnels                [2]RuntimeTunnel `json:"tunnels"`
 	// RecoveryVersion is explicit delivery authorization; nil preserves the legacy digest.
+	TransportVersion          *int                              `json:"transport_version,omitempty"`
+	TunnelCount               *int                              `json:"tunnel_count,omitempty"`
 	RecoveryVersion           *int                              `json:"recovery_version,omitempty"`
 	BGP                       *BGPConfig                        `json:"bgp,omitempty"`
 	BGPVersion                *int                              `json:"bgp_version,omitempty"`

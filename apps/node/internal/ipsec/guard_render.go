@@ -23,7 +23,7 @@ const (
 )
 
 // GuardGrant is explicit shared-policy authority. Configuration and SA selectors
-// never create a grant. FQDN-managed provenance is not supported by this renderer.
+// never create a grant. FQDN-managed grants require authenticated current provenance.
 type GuardGrant struct {
 	Source, Destination netip.Prefix
 	Protocol            GuardProtocol
@@ -53,8 +53,9 @@ type GuardTunnelMTU struct {
 	MTU            uint16
 }
 type GuardConnection struct {
-	TunnelMTUs []GuardTunnelMTU `json:",omitempty"`
-	BGPPeers   []GuardBGPPeer   `json:",omitempty"`
+	TunnelCount uint8            `json:",omitempty"`
+	TunnelMTUs  []GuardTunnelMTU `json:",omitempty"`
+	BGPPeers    []GuardBGPPeer   `json:",omitempty"`
 	// PrefixOnly installs permanent refusal before any live interface ownership
 	// is known (startup/retained cleanup). It cannot carry permits or grants.
 	PrefixOnly      bool
@@ -144,8 +145,19 @@ func RenderGuard(intent GuardIntent) (GuardManifest, error) {
 			if c.PrefixOnly {
 				continue
 			}
-			indices := []int{c.Tunnels[0].InterfaceIndex, c.Tunnels[1].InterfaceIndex}
-			line := guardRule{text: fmt.Sprintf("    ip saddr %s meta iif != %s counter drop\n", p, indexSet(indices)), expr: []any{guardMatch("==", guardPayload("ip", "saddr"), guardPrefixJSON(p)), guardMatch("!=", guardMeta("iif"), map[string]any{"set": indices}), guardCounter(), guardVerdict("drop")}}
+			indices := []int{c.Tunnels[0].InterfaceIndex}
+			if c.activeTunnelCount() == 2 {
+				indices = append(indices, c.Tunnels[1].InterfaceIndex)
+			}
+			// nft canonicalizes a one-member anonymous interface set to a
+			// scalar. Render its exact native form; keep strict readback.
+			var right any = map[string]any{"set": indices}
+			text := indexSet(indices)
+			if len(indices) == 1 {
+				right = indices[0]
+				text = fmt.Sprint(indices[0])
+			}
+			line := guardRule{text: fmt.Sprintf("    ip saddr %s meta iif != %s counter drop\n", p, text), expr: []any{guardMatch("==", guardPayload("ip", "saddr"), guardPrefixJSON(p)), guardMatch("!=", guardMeta("iif"), right), guardCounter(), guardVerdict("drop")}}
 			forward.add(line)
 			input.add(line)
 		}
@@ -238,7 +250,7 @@ func RenderGuard(intent GuardIntent) (GuardManifest, error) {
 			}
 			post.add(dropDst)
 		}
-		for _, tunnel := range c.Tunnels {
+		for _, tunnel := range c.Tunnels[:c.activeTunnelCount()] {
 			if c.PrefixOnly {
 				continue
 			}
@@ -312,8 +324,10 @@ func guardAllow(g GuardGrant, ingress, egress int, reply bool, leaseName, leaseK
 			fmt.Fprintf(&b, "ct mark & 0x%08x == 0x%08x ", fqdnConntrackMarkMask, fqdnConntrackMark)
 			expr = append(expr, guardMatch("==", map[string]any{"&": []any{guardCT("mark"), fqdnConntrackMarkMask}}, fqdnConntrackMark))
 		} else {
-			fmt.Fprintf(&b, "ct mark set ((ct mark & 0x%08x) | 0x%08x) ", ^fqdnConntrackMarkMask, fqdnConntrackMark)
-			expr = append(expr, map[string]any{"mangle": map[string]any{"key": guardCT("mark"), "value": map[string]any{"|": []any{map[string]any{"&": []any{guardCT("mark"), ^fqdnConntrackMarkMask}}, fqdnConntrackMark}}}})
+			// Keep the native nft canonical form: OR-forced bits may remain in the AND mask.
+			// This is algebraically identical and preserves all bits outside our mark mask.
+			fmt.Fprintf(&b, "ct mark set ((ct mark & 0x%08x) | 0x%08x) ", (^fqdnConntrackMarkMask)|fqdnConntrackMark, fqdnConntrackMark)
+			expr = append(expr, map[string]any{"mangle": map[string]any{"key": guardCT("mark"), "value": map[string]any{"|": []any{map[string]any{"&": []any{guardCT("mark"), (^fqdnConntrackMarkMask) | fqdnConntrackMark}}, fqdnConntrackMark}}}})
 		}
 	}
 	b.WriteString("counter accept\n")
@@ -355,7 +369,7 @@ func canonicalGuard(in GuardIntent) (GuardIntent, bool) {
 	reqids := map[uint32]bool{}
 	var allRemote, allLocal []netip.Prefix
 	for i, c := range out.Connections {
-		if c.ID == uuid.Nil || connIDs[c.ID] || retired[c.ID] || len(c.Grants) > 128 || c.PermitFor < 0 || c.PermitFor > 60*time.Second {
+		if (c.TunnelCount != 0 && c.TunnelCount != 1) || (c.TunnelCount == 1 && c.Tunnels[1] != (Ownership{})) || c.ID == uuid.Nil || connIDs[c.ID] || retired[c.ID] || len(c.Grants) > 128 || c.PermitFor < 0 || c.PermitFor > 60*time.Second {
 			return GuardIntent{}, false
 		}
 		connIDs[c.ID] = true
@@ -378,7 +392,7 @@ func canonicalGuard(in GuardIntent) (GuardIntent, bool) {
 		seenMTU := map[int]bool{}
 		for _, m := range c.TunnelMTUs {
 			owned := false
-			for _, t := range c.Tunnels {
+			for _, t := range c.Tunnels[:c.activeTunnelCount()] {
 				owned = owned || t.InterfaceIndex == m.InterfaceIndex
 			}
 			if !owned || m.InterfaceIndex <= 0 || seenMTU[m.InterfaceIndex] || m.MTU < 68 || m.MTU > AWSIPv4TunnelMTU {
@@ -390,7 +404,7 @@ func canonicalGuard(in GuardIntent) (GuardIntent, bool) {
 		if c.PrefixOnly && (len(c.TunnelMTUs) != 0 || c.Tunnels != [2]Ownership{} || c.PermitFor != 0 || len(c.PermittedInterfaceIndices) != 0 || len(c.ReplyIngressIndices) != 0 || len(c.EncryptedEgress) != 0 || len(c.LocalIngressIndices) != 0 || len(c.Grants) != 0) {
 			return GuardIntent{}, false
 		}
-		for _, t := range c.Tunnels {
+		for _, t := range c.Tunnels[:c.activeTunnelCount()] {
 			if c.PrefixOnly {
 				continue
 			}
@@ -402,7 +416,7 @@ func canonicalGuard(in GuardIntent) (GuardIntent, bool) {
 			xfrms[t.XFRMID] = true
 			own[t.InterfaceIndex] = true
 		}
-		if c.Tunnels[0].InterfaceIndex > c.Tunnels[1].InterfaceIndex {
+		if c.activeTunnelCount() == 2 && c.Tunnels[0].InterfaceIndex > c.Tunnels[1].InterfaceIndex {
 			c.Tunnels[0], c.Tunnels[1] = c.Tunnels[1], c.Tunnels[0]
 		}
 		c.PermittedInterfaceIndices, ok = guardIndices(c.PermittedInterfaceIndices, 2)
@@ -786,4 +800,11 @@ func guardReplyLeaseName(id uuid.UUID) string { return "reply_" + guardLeaseName
 func guardReplyLeaseSetText(c GuardConnection) string {
 	c.PermittedInterfaceIndices = c.ReplyIngressIndices
 	return strings.ReplaceAll(guardLeaseSetText(c), guardLeaseName(c.ID), guardReplyLeaseName(c.ID))
+}
+
+func (c GuardConnection) activeTunnelCount() int {
+	if c.TunnelCount == 1 {
+		return 1
+	}
+	return 2
 }

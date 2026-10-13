@@ -1,0 +1,2 @@
+{"action": "audit", "apply": false, "expected_revision": 7, "external_native_gates_required": true, "started": true}
+{"application_state": "applied", "baseline_preserved": true, "cleanup_state": "retained_guard", "completed": true, "configuration_revision": 1, "desired_intent": "enabled", "desired_revision": 7, "id": "b79d7eda-fafe-41cf-af2c-4115d4ef32c6", "mutations": 0, "native_readiness_claim": false}

@@ -1,0 +1,952 @@
+{
+  "dns_counts": {
+    "absence_is_not_success": true,
+    "fixed_stage_counts": {
+      "dns_proof_after|active|completed": 26,
+      "dns_proof_after|active|refused": 2,
+      "dns_proof_before|active|completed": 28,
+      "dns_socket|active|completed": 28
+    },
+    "per_connection_stage_durations": {
+      "b79d7eda-fafe-41cf-af2c-4115d4ef32c6|dns_proof_after|active|completed": {
+        "count": 26,
+        "max_ms": 731,
+        "min_ms": 289,
+        "total_ms": 9767
+      },
+      "b79d7eda-fafe-41cf-af2c-4115d4ef32c6|dns_proof_after|active|refused": {
+        "count": 2,
+        "max_ms": 431,
+        "min_ms": 381,
+        "total_ms": 812
+      },
+      "b79d7eda-fafe-41cf-af2c-4115d4ef32c6|dns_proof_before|active|completed": {
+        "count": 28,
+        "max_ms": 668,
+        "min_ms": 283,
+        "total_ms": 10867
+      },
+      "b79d7eda-fafe-41cf-af2c-4115d4ef32c6|dns_socket|active|completed": {
+        "count": 28,
+        "max_ms": 34,
+        "min_ms": 4,
+        "total_ms": 243
+      }
+    },
+    "ten_second_buckets": [
+      {
+        "completed": 0,
+        "end_seconds": 10,
+        "refused": 0,
+        "start_seconds": 0
+      },
+      {
+        "completed": 24,
+        "end_seconds": 20,
+        "refused": 0,
+        "start_seconds": 10
+      },
+      {
+        "completed": 24,
+        "end_seconds": 30,
+        "refused": 0,
+        "start_seconds": 20
+      },
+      {
+        "completed": 0,
+        "end_seconds": 40,
+        "refused": 0,
+        "start_seconds": 30
+      },
+      {
+        "completed": 24,
+        "end_seconds": 50,
+        "refused": 0,
+        "start_seconds": 40
+      },
+      {
+        "completed": 10,
+        "end_seconds": 60,
+        "refused": 2,
+        "start_seconds": 50
+      }
+    ]
+  },
+  "dns_events": [
+    {
+      "connection_id": "b79d7eda-fafe-41cf-af2c-4115d4ef32c6",
+      "context_state": "active",
+      "elapsed_ms": 292,
+      "msg": "ipsec_runtime_diagnostic_completed",
+      "operation": "dns_exchange",
+      "stage": "dns_proof_before",
+      "time": "2026-10-11T01:17:34.632940836Z"
+    },
+    {
+      "connection_id": "b79d7eda-fafe-41cf-af2c-4115d4ef32c6",
+      "context_state": "active",
+      "elapsed_ms": 6,
+      "msg": "ipsec_runtime_diagnostic_completed",
+      "operation": "dns_exchange",
+      "stage": "dns_socket",
+      "time": "2026-10-11T01:17:34.639716506Z"
+    },
+    {
+      "connection_id": "b79d7eda-fafe-41cf-af2c-4115d4ef32c6",
+      "context_state": "active",
+      "elapsed_ms": 302,
+      "msg": "ipsec_runtime_diagnostic_completed",
+      "operation": "dns_exchange",
+      "stage": "dns_proof_before",
+      "time": "2026-10-11T01:17:34.643950487Z"
+    },
+    {
+      "connection_id": "b79d7eda-fafe-41cf-af2c-4115d4ef32c6",
+      "context_state": "active",
+      "elapsed_ms": 7,
+      "msg": "ipsec_runtime_diagnostic_completed",
+      "operation": "dns_exchange",
+      "stage": "dns_socket",
+      "time": "2026-10-11T01:17:34.651181587Z"
+    },
+    {
+      "connection_id": "b79d7eda-fafe-41cf-af2c-4115d4ef32c6",
+      "context_state": "active",
+      "elapsed_ms": 298,
+      "msg": "ipsec_runtime_diagnostic_completed",
+      "operation": "dns_exchange",
+      "stage": "dns_proof_after",
+      "time": "2026-10-11T01:17:34.938609605Z"
+    },
+    {
+      "connection_id": "b79d7eda-fafe-41cf-af2c-4115d4ef32c6",
+      "context_state": "active",
+      "elapsed_ms": 289,
+      "msg": "ipsec_runtime_diagnostic_completed",
+      "operation": "dns_exchange",
+      "stage": "dns_proof_after",
+      "time": "2026-10-11T01:17:34.940713795Z"
+    },
+    {
+      "connection_id": "b79d7eda-fafe-41cf-af2c-4115d4ef32c6",
+      "context_state": "active",
+      "elapsed_ms": 283,
+      "msg": "ipsec_runtime_diagnostic_completed",
+      "operation": "dns_exchange",
+      "stage": "dns_proof_before",
+      "time": "2026-10-11T01:17:35.224496182Z"
+    },
+    {
+      "connection_id": "b79d7eda-fafe-41cf-af2c-4115d4ef32c6",
+      "context_state": "active",
+      "elapsed_ms": 285,
+      "msg": "ipsec_runtime_diagnostic_completed",
+      "operation": "dns_exchange",
+      "stage": "dns_proof_before",
+      "time": "2026-10-11T01:17:35.224805922Z"
+    },
+    {
+      "connection_id": "b79d7eda-fafe-41cf-af2c-4115d4ef32c6",
+      "context_state": "active",
+      "elapsed_ms": 6,
+      "msg": "ipsec_runtime_diagnostic_completed",
+      "operation": "dns_exchange",
+      "stage": "dns_socket",
+      "time": "2026-10-11T01:17:35.231388532Z"
+    },
+    {
+      "connection_id": "b79d7eda-fafe-41cf-af2c-4115d4ef32c6",
+      "context_state": "active",
+      "elapsed_ms": 7,
+      "msg": "ipsec_runtime_diagnostic_completed",
+      "operation": "dns_exchange",
+      "stage": "dns_socket",
+      "time": "2026-10-11T01:17:35.232665633Z"
+    },
+    {
+      "connection_id": "b79d7eda-fafe-41cf-af2c-4115d4ef32c6",
+      "context_state": "active",
+      "elapsed_ms": 299,
+      "msg": "ipsec_runtime_diagnostic_completed",
+      "operation": "dns_exchange",
+      "stage": "dns_proof_after",
+      "time": "2026-10-11T01:17:35.530697161Z"
+    },
+    {
+      "connection_id": "b79d7eda-fafe-41cf-af2c-4115d4ef32c6",
+      "context_state": "active",
+      "elapsed_ms": 331,
+      "msg": "ipsec_runtime_diagnostic_completed",
+      "operation": "dns_exchange",
+      "stage": "dns_proof_after",
+      "time": "2026-10-11T01:17:35.564758363Z"
+    },
+    {
+      "connection_id": "b79d7eda-fafe-41cf-af2c-4115d4ef32c6",
+      "context_state": "active",
+      "elapsed_ms": 295,
+      "msg": "ipsec_runtime_diagnostic_completed",
+      "operation": "dns_exchange",
+      "stage": "dns_proof_before",
+      "time": "2026-10-11T01:17:35.825857289Z"
+    },
+    {
+      "connection_id": "b79d7eda-fafe-41cf-af2c-4115d4ef32c6",
+      "context_state": "active",
+      "elapsed_ms": 8,
+      "msg": "ipsec_runtime_diagnostic_completed",
+      "operation": "dns_exchange",
+      "stage": "dns_socket",
+      "time": "2026-10-11T01:17:35.834862329Z"
+    },
+    {
+      "connection_id": "b79d7eda-fafe-41cf-af2c-4115d4ef32c6",
+      "context_state": "active",
+      "elapsed_ms": 294,
+      "msg": "ipsec_runtime_diagnostic_completed",
+      "operation": "dns_exchange",
+      "stage": "dns_proof_before",
+      "time": "2026-10-11T01:17:35.859213961Z"
+    },
+    {
+      "connection_id": "b79d7eda-fafe-41cf-af2c-4115d4ef32c6",
+      "context_state": "active",
+      "elapsed_ms": 6,
+      "msg": "ipsec_runtime_diagnostic_completed",
+      "operation": "dns_exchange",
+      "stage": "dns_socket",
+      "time": "2026-10-11T01:17:35.865736881Z"
+    },
+    {
+      "connection_id": "b79d7eda-fafe-41cf-af2c-4115d4ef32c6",
+      "context_state": "active",
+      "elapsed_ms": 316,
+      "msg": "ipsec_runtime_diagnostic_completed",
+      "operation": "dns_exchange",
+      "stage": "dns_proof_after",
+      "time": "2026-10-11T01:17:36.151466638Z"
+    },
+    {
+      "connection_id": "b79d7eda-fafe-41cf-af2c-4115d4ef32c6",
+      "context_state": "active",
+      "elapsed_ms": 306,
+      "msg": "ipsec_runtime_diagnostic_completed",
+      "operation": "dns_exchange",
+      "stage": "dns_proof_after",
+      "time": "2026-10-11T01:17:36.172555Z"
+    },
+    {
+      "connection_id": "b79d7eda-fafe-41cf-af2c-4115d4ef32c6",
+      "context_state": "active",
+      "elapsed_ms": 319,
+      "msg": "ipsec_runtime_diagnostic_completed",
+      "operation": "dns_exchange",
+      "stage": "dns_proof_before",
+      "time": "2026-10-11T01:17:36.471012878Z"
+    },
+    {
+      "connection_id": "b79d7eda-fafe-41cf-af2c-4115d4ef32c6",
+      "context_state": "active",
+      "elapsed_ms": 5,
+      "msg": "ipsec_runtime_diagnostic_completed",
+      "operation": "dns_exchange",
+      "stage": "dns_socket",
+      "time": "2026-10-11T01:17:36.476739538Z"
+    },
+    {
+      "connection_id": "b79d7eda-fafe-41cf-af2c-4115d4ef32c6",
+      "context_state": "active",
+      "elapsed_ms": 307,
+      "msg": "ipsec_runtime_diagnostic_completed",
+      "operation": "dns_exchange",
+      "stage": "dns_proof_before",
+      "time": "2026-10-11T01:17:36.480693919Z"
+    },
+    {
+      "connection_id": "b79d7eda-fafe-41cf-af2c-4115d4ef32c6",
+      "context_state": "active",
+      "elapsed_ms": 8,
+      "msg": "ipsec_runtime_diagnostic_completed",
+      "operation": "dns_exchange",
+      "stage": "dns_socket",
+      "time": "2026-10-11T01:17:36.489485109Z"
+    },
+    {
+      "connection_id": "b79d7eda-fafe-41cf-af2c-4115d4ef32c6",
+      "context_state": "active",
+      "elapsed_ms": 321,
+      "msg": "ipsec_runtime_diagnostic_completed",
+      "operation": "dns_exchange",
+      "stage": "dns_proof_after",
+      "time": "2026-10-11T01:17:36.798982438Z"
+    },
+    {
+      "connection_id": "b79d7eda-fafe-41cf-af2c-4115d4ef32c6",
+      "context_state": "active",
+      "elapsed_ms": 314,
+      "msg": "ipsec_runtime_diagnostic_completed",
+      "operation": "dns_exchange",
+      "stage": "dns_proof_after",
+      "time": "2026-10-11T01:17:36.804684418Z"
+    },
+    {
+      "connection_id": "b79d7eda-fafe-41cf-af2c-4115d4ef32c6",
+      "context_state": "active",
+      "elapsed_ms": 656,
+      "msg": "ipsec_runtime_diagnostic_completed",
+      "operation": "dns_exchange",
+      "stage": "dns_proof_before",
+      "time": "2026-10-11T01:17:49.54773485Z"
+    },
+    {
+      "connection_id": "b79d7eda-fafe-41cf-af2c-4115d4ef32c6",
+      "context_state": "active",
+      "elapsed_ms": 6,
+      "msg": "ipsec_runtime_diagnostic_completed",
+      "operation": "dns_exchange",
+      "stage": "dns_socket",
+      "time": "2026-10-11T01:17:49.55405334Z"
+    },
+    {
+      "connection_id": "b79d7eda-fafe-41cf-af2c-4115d4ef32c6",
+      "context_state": "active",
+      "elapsed_ms": 668,
+      "msg": "ipsec_runtime_diagnostic_completed",
+      "operation": "dns_exchange",
+      "stage": "dns_proof_before",
+      "time": "2026-10-11T01:17:49.561677981Z"
+    },
+    {
+      "connection_id": "b79d7eda-fafe-41cf-af2c-4115d4ef32c6",
+      "context_state": "active",
+      "elapsed_ms": 5,
+      "msg": "ipsec_runtime_diagnostic_completed",
+      "operation": "dns_exchange",
+      "stage": "dns_socket",
+      "time": "2026-10-11T01:17:49.566754581Z"
+    },
+    {
+      "connection_id": "b79d7eda-fafe-41cf-af2c-4115d4ef32c6",
+      "context_state": "active",
+      "elapsed_ms": 308,
+      "msg": "ipsec_runtime_diagnostic_completed",
+      "operation": "dns_exchange",
+      "stage": "dns_proof_after",
+      "time": "2026-10-11T01:17:49.862500219Z"
+    },
+    {
+      "connection_id": "b79d7eda-fafe-41cf-af2c-4115d4ef32c6",
+      "context_state": "active",
+      "elapsed_ms": 313,
+      "msg": "ipsec_runtime_diagnostic_completed",
+      "operation": "dns_exchange",
+      "stage": "dns_proof_after",
+      "time": "2026-10-11T01:17:49.88001619Z"
+    },
+    {
+      "connection_id": "b79d7eda-fafe-41cf-af2c-4115d4ef32c6",
+      "context_state": "active",
+      "elapsed_ms": 303,
+      "msg": "ipsec_runtime_diagnostic_completed",
+      "operation": "dns_exchange",
+      "stage": "dns_proof_before",
+      "time": "2026-10-11T01:17:50.166569837Z"
+    },
+    {
+      "connection_id": "b79d7eda-fafe-41cf-af2c-4115d4ef32c6",
+      "context_state": "active",
+      "elapsed_ms": 9,
+      "msg": "ipsec_runtime_diagnostic_completed",
+      "operation": "dns_exchange",
+      "stage": "dns_socket",
+      "time": "2026-10-11T01:17:50.176534388Z"
+    },
+    {
+      "connection_id": "b79d7eda-fafe-41cf-af2c-4115d4ef32c6",
+      "context_state": "active",
+      "elapsed_ms": 299,
+      "msg": "ipsec_runtime_diagnostic_completed",
+      "operation": "dns_exchange",
+      "stage": "dns_proof_before",
+      "time": "2026-10-11T01:17:50.181414429Z"
+    },
+    {
+      "connection_id": "b79d7eda-fafe-41cf-af2c-4115d4ef32c6",
+      "context_state": "active",
+      "elapsed_ms": 4,
+      "msg": "ipsec_runtime_diagnostic_completed",
+      "operation": "dns_exchange",
+      "stage": "dns_socket",
+      "time": "2026-10-11T01:17:50.185962239Z"
+    },
+    {
+      "connection_id": "b79d7eda-fafe-41cf-af2c-4115d4ef32c6",
+      "context_state": "active",
+      "elapsed_ms": 305,
+      "msg": "ipsec_runtime_diagnostic_completed",
+      "operation": "dns_exchange",
+      "stage": "dns_proof_after",
+      "time": "2026-10-11T01:17:50.481839626Z"
+    },
+    {
+      "connection_id": "b79d7eda-fafe-41cf-af2c-4115d4ef32c6",
+      "context_state": "active",
+      "elapsed_ms": 301,
+      "msg": "ipsec_runtime_diagnostic_completed",
+      "operation": "dns_exchange",
+      "stage": "dns_proof_after",
+      "time": "2026-10-11T01:17:50.487018567Z"
+    },
+    {
+      "connection_id": "b79d7eda-fafe-41cf-af2c-4115d4ef32c6",
+      "context_state": "active",
+      "elapsed_ms": 341,
+      "msg": "ipsec_runtime_diagnostic_completed",
+      "operation": "dns_exchange",
+      "stage": "dns_proof_before",
+      "time": "2026-10-11T01:17:51.069929382Z"
+    },
+    {
+      "connection_id": "b79d7eda-fafe-41cf-af2c-4115d4ef32c6",
+      "context_state": "active",
+      "elapsed_ms": 344,
+      "msg": "ipsec_runtime_diagnostic_completed",
+      "operation": "dns_exchange",
+      "stage": "dns_proof_before",
+      "time": "2026-10-11T01:17:51.074308322Z"
+    },
+    {
+      "connection_id": "b79d7eda-fafe-41cf-af2c-4115d4ef32c6",
+      "context_state": "active",
+      "elapsed_ms": 7,
+      "msg": "ipsec_runtime_diagnostic_completed",
+      "operation": "dns_exchange",
+      "stage": "dns_socket",
+      "time": "2026-10-11T01:17:51.077352572Z"
+    },
+    {
+      "connection_id": "b79d7eda-fafe-41cf-af2c-4115d4ef32c6",
+      "context_state": "active",
+      "elapsed_ms": 9,
+      "msg": "ipsec_runtime_diagnostic_completed",
+      "operation": "dns_exchange",
+      "stage": "dns_socket",
+      "time": "2026-10-11T01:17:51.083405702Z"
+    },
+    {
+      "connection_id": "b79d7eda-fafe-41cf-af2c-4115d4ef32c6",
+      "context_state": "active",
+      "elapsed_ms": 567,
+      "msg": "ipsec_runtime_diagnostic_completed",
+      "operation": "dns_exchange",
+      "stage": "dns_proof_before",
+      "time": "2026-10-11T01:17:51.625279746Z"
+    },
+    {
+      "connection_id": "b79d7eda-fafe-41cf-af2c-4115d4ef32c6",
+      "context_state": "active",
+      "elapsed_ms": 16,
+      "msg": "ipsec_runtime_diagnostic_completed",
+      "operation": "dns_exchange",
+      "stage": "dns_socket",
+      "time": "2026-10-11T01:17:51.641875686Z"
+    },
+    {
+      "connection_id": "b79d7eda-fafe-41cf-af2c-4115d4ef32c6",
+      "context_state": "active",
+      "elapsed_ms": 575,
+      "msg": "ipsec_runtime_diagnostic_completed",
+      "operation": "dns_exchange",
+      "stage": "dns_proof_after",
+      "time": "2026-10-11T01:17:51.652781967Z"
+    },
+    {
+      "connection_id": "b79d7eda-fafe-41cf-af2c-4115d4ef32c6",
+      "context_state": "active",
+      "elapsed_ms": 571,
+      "msg": "ipsec_runtime_diagnostic_completed",
+      "operation": "dns_exchange",
+      "stage": "dns_proof_after",
+      "time": "2026-10-11T01:17:51.654916337Z"
+    },
+    {
+      "connection_id": "b79d7eda-fafe-41cf-af2c-4115d4ef32c6",
+      "context_state": "active",
+      "elapsed_ms": 651,
+      "msg": "ipsec_runtime_diagnostic_completed",
+      "operation": "dns_exchange",
+      "stage": "dns_proof_before",
+      "time": "2026-10-11T01:17:51.707117821Z"
+    },
+    {
+      "connection_id": "b79d7eda-fafe-41cf-af2c-4115d4ef32c6",
+      "context_state": "active",
+      "elapsed_ms": 9,
+      "msg": "ipsec_runtime_diagnostic_completed",
+      "operation": "dns_exchange",
+      "stage": "dns_socket",
+      "time": "2026-10-11T01:17:51.716241611Z"
+    },
+    {
+      "connection_id": "b79d7eda-fafe-41cf-af2c-4115d4ef32c6",
+      "context_state": "active",
+      "elapsed_ms": 370,
+      "msg": "ipsec_runtime_diagnostic_completed",
+      "operation": "dns_exchange",
+      "stage": "dns_proof_after",
+      "time": "2026-10-11T01:17:52.012760809Z"
+    },
+    {
+      "connection_id": "b79d7eda-fafe-41cf-af2c-4115d4ef32c6",
+      "context_state": "active",
+      "elapsed_ms": 358,
+      "msg": "ipsec_runtime_diagnostic_completed",
+      "operation": "dns_exchange",
+      "stage": "dns_proof_after",
+      "time": "2026-10-11T01:17:52.074870143Z"
+    },
+    {
+      "connection_id": "b79d7eda-fafe-41cf-af2c-4115d4ef32c6",
+      "context_state": "active",
+      "elapsed_ms": 396,
+      "msg": "ipsec_runtime_diagnostic_completed",
+      "operation": "dns_exchange",
+      "stage": "dns_proof_before",
+      "time": "2026-10-11T01:18:03.866917928Z"
+    },
+    {
+      "connection_id": "b79d7eda-fafe-41cf-af2c-4115d4ef32c6",
+      "context_state": "active",
+      "elapsed_ms": 34,
+      "msg": "ipsec_runtime_diagnostic_completed",
+      "operation": "dns_exchange",
+      "stage": "dns_socket",
+      "time": "2026-10-11T01:18:03.901953521Z"
+    },
+    {
+      "connection_id": "b79d7eda-fafe-41cf-af2c-4115d4ef32c6",
+      "context_state": "active",
+      "elapsed_ms": 476,
+      "msg": "ipsec_runtime_diagnostic_completed",
+      "operation": "dns_exchange",
+      "stage": "dns_proof_before",
+      "time": "2026-10-11T01:18:03.948865333Z"
+    },
+    {
+      "connection_id": "b79d7eda-fafe-41cf-af2c-4115d4ef32c6",
+      "context_state": "active",
+      "elapsed_ms": 23,
+      "msg": "ipsec_runtime_diagnostic_completed",
+      "operation": "dns_exchange",
+      "stage": "dns_socket",
+      "time": "2026-10-11T01:18:03.972578775Z"
+    },
+    {
+      "connection_id": "b79d7eda-fafe-41cf-af2c-4115d4ef32c6",
+      "context_state": "active",
+      "elapsed_ms": 731,
+      "msg": "ipsec_runtime_diagnostic_completed",
+      "operation": "dns_exchange",
+      "stage": "dns_proof_after",
+      "time": "2026-10-11T01:18:04.633673144Z"
+    },
+    {
+      "connection_id": "b79d7eda-fafe-41cf-af2c-4115d4ef32c6",
+      "context_state": "active",
+      "elapsed_ms": 680,
+      "msg": "ipsec_runtime_diagnostic_completed",
+      "operation": "dns_exchange",
+      "stage": "dns_proof_after",
+      "time": "2026-10-11T01:18:04.653455975Z"
+    },
+    {
+      "connection_id": "b79d7eda-fafe-41cf-af2c-4115d4ef32c6",
+      "context_state": "active",
+      "elapsed_ms": 363,
+      "msg": "ipsec_runtime_diagnostic_completed",
+      "operation": "dns_exchange",
+      "stage": "dns_proof_before",
+      "time": "2026-10-11T01:18:04.997725826Z"
+    },
+    {
+      "connection_id": "b79d7eda-fafe-41cf-af2c-4115d4ef32c6",
+      "context_state": "active",
+      "elapsed_ms": 8,
+      "msg": "ipsec_runtime_diagnostic_completed",
+      "operation": "dns_exchange",
+      "stage": "dns_socket",
+      "time": "2026-10-11T01:18:05.006325917Z"
+    },
+    {
+      "connection_id": "b79d7eda-fafe-41cf-af2c-4115d4ef32c6",
+      "context_state": "active",
+      "elapsed_ms": 352,
+      "msg": "ipsec_runtime_diagnostic_completed",
+      "operation": "dns_exchange",
+      "stage": "dns_proof_before",
+      "time": "2026-10-11T01:18:05.006779277Z"
+    },
+    {
+      "connection_id": "b79d7eda-fafe-41cf-af2c-4115d4ef32c6",
+      "context_state": "active",
+      "elapsed_ms": 7,
+      "msg": "ipsec_runtime_diagnostic_completed",
+      "operation": "dns_exchange",
+      "stage": "dns_socket",
+      "time": "2026-10-11T01:18:05.013948007Z"
+    },
+    {
+      "connection_id": "b79d7eda-fafe-41cf-af2c-4115d4ef32c6",
+      "context_state": "active",
+      "elapsed_ms": 297,
+      "msg": "ipsec_runtime_diagnostic_completed",
+      "operation": "dns_exchange",
+      "stage": "dns_proof_after",
+      "time": "2026-10-11T01:18:05.304025435Z"
+    },
+    {
+      "connection_id": "b79d7eda-fafe-41cf-af2c-4115d4ef32c6",
+      "context_state": "active",
+      "elapsed_ms": 340,
+      "msg": "ipsec_runtime_diagnostic_completed",
+      "operation": "dns_exchange",
+      "stage": "dns_proof_after",
+      "time": "2026-10-11T01:18:05.354479277Z"
+    },
+    {
+      "connection_id": "b79d7eda-fafe-41cf-af2c-4115d4ef32c6",
+      "context_state": "active",
+      "elapsed_ms": 319,
+      "msg": "ipsec_runtime_diagnostic_completed",
+      "operation": "dns_exchange",
+      "stage": "dns_proof_before",
+      "time": "2026-10-11T01:18:05.624089304Z"
+    },
+    {
+      "connection_id": "b79d7eda-fafe-41cf-af2c-4115d4ef32c6",
+      "context_state": "active",
+      "elapsed_ms": 5,
+      "msg": "ipsec_runtime_diagnostic_completed",
+      "operation": "dns_exchange",
+      "stage": "dns_socket",
+      "time": "2026-10-11T01:18:05.630059164Z"
+    },
+    {
+      "connection_id": "b79d7eda-fafe-41cf-af2c-4115d4ef32c6",
+      "context_state": "active",
+      "elapsed_ms": 308,
+      "msg": "ipsec_runtime_diagnostic_completed",
+      "operation": "dns_exchange",
+      "stage": "dns_proof_before",
+      "time": "2026-10-11T01:18:05.663249036Z"
+    },
+    {
+      "connection_id": "b79d7eda-fafe-41cf-af2c-4115d4ef32c6",
+      "context_state": "active",
+      "elapsed_ms": 4,
+      "msg": "ipsec_runtime_diagnostic_completed",
+      "operation": "dns_exchange",
+      "stage": "dns_socket",
+      "time": "2026-10-11T01:18:05.668024727Z"
+    },
+    {
+      "connection_id": "b79d7eda-fafe-41cf-af2c-4115d4ef32c6",
+      "context_state": "active",
+      "elapsed_ms": 317,
+      "msg": "ipsec_runtime_diagnostic_completed",
+      "operation": "dns_exchange",
+      "stage": "dns_proof_after",
+      "time": "2026-10-11T01:18:05.947409653Z"
+    },
+    {
+      "connection_id": "b79d7eda-fafe-41cf-af2c-4115d4ef32c6",
+      "context_state": "active",
+      "elapsed_ms": 297,
+      "msg": "ipsec_runtime_diagnostic_completed",
+      "operation": "dns_exchange",
+      "stage": "dns_proof_after",
+      "time": "2026-10-11T01:18:05.965582644Z"
+    },
+    {
+      "connection_id": "b79d7eda-fafe-41cf-af2c-4115d4ef32c6",
+      "context_state": "active",
+      "elapsed_ms": 301,
+      "msg": "ipsec_runtime_diagnostic_completed",
+      "operation": "dns_exchange",
+      "stage": "dns_proof_before",
+      "time": "2026-10-11T01:18:06.249425932Z"
+    },
+    {
+      "connection_id": "b79d7eda-fafe-41cf-af2c-4115d4ef32c6",
+      "context_state": "active",
+      "elapsed_ms": 6,
+      "msg": "ipsec_runtime_diagnostic_completed",
+      "operation": "dns_exchange",
+      "stage": "dns_socket",
+      "time": "2026-10-11T01:18:06.256040942Z"
+    },
+    {
+      "connection_id": "b79d7eda-fafe-41cf-af2c-4115d4ef32c6",
+      "context_state": "active",
+      "elapsed_ms": 307,
+      "msg": "ipsec_runtime_diagnostic_completed",
+      "operation": "dns_exchange",
+      "stage": "dns_proof_before",
+      "time": "2026-10-11T01:18:06.273291623Z"
+    },
+    {
+      "connection_id": "b79d7eda-fafe-41cf-af2c-4115d4ef32c6",
+      "context_state": "active",
+      "elapsed_ms": 5,
+      "msg": "ipsec_runtime_diagnostic_completed",
+      "operation": "dns_exchange",
+      "stage": "dns_socket",
+      "time": "2026-10-11T01:18:06.278806383Z"
+    },
+    {
+      "connection_id": "b79d7eda-fafe-41cf-af2c-4115d4ef32c6",
+      "context_state": "active",
+      "elapsed_ms": 303,
+      "msg": "ipsec_runtime_diagnostic_completed",
+      "operation": "dns_exchange",
+      "stage": "dns_proof_after",
+      "time": "2026-10-11T01:18:06.56051041Z"
+    },
+    {
+      "connection_id": "b79d7eda-fafe-41cf-af2c-4115d4ef32c6",
+      "context_state": "active",
+      "elapsed_ms": 292,
+      "msg": "ipsec_runtime_diagnostic_completed",
+      "operation": "dns_exchange",
+      "stage": "dns_proof_after",
+      "time": "2026-10-11T01:18:06.571438531Z"
+    },
+    {
+      "connection_id": "b79d7eda-fafe-41cf-af2c-4115d4ef32c6",
+      "context_state": "active",
+      "elapsed_ms": 390,
+      "msg": "ipsec_runtime_diagnostic_completed",
+      "operation": "dns_exchange",
+      "stage": "dns_proof_before",
+      "time": "2026-10-11T01:18:18.548705508Z"
+    },
+    {
+      "connection_id": "b79d7eda-fafe-41cf-af2c-4115d4ef32c6",
+      "context_state": "active",
+      "elapsed_ms": 5,
+      "msg": "ipsec_runtime_diagnostic_completed",
+      "operation": "dns_exchange",
+      "stage": "dns_socket",
+      "time": "2026-10-11T01:18:18.554983448Z"
+    },
+    {
+      "connection_id": "b79d7eda-fafe-41cf-af2c-4115d4ef32c6",
+      "context_state": "active",
+      "elapsed_ms": 535,
+      "msg": "ipsec_runtime_diagnostic_completed",
+      "operation": "dns_exchange",
+      "stage": "dns_proof_before",
+      "time": "2026-10-11T01:18:18.690960507Z"
+    },
+    {
+      "connection_id": "b79d7eda-fafe-41cf-af2c-4115d4ef32c6",
+      "context_state": "active",
+      "elapsed_ms": 13,
+      "msg": "ipsec_runtime_diagnostic_completed",
+      "operation": "dns_exchange",
+      "stage": "dns_socket",
+      "time": "2026-10-11T01:18:18.704935737Z"
+    },
+    {
+      "connection_id": "b79d7eda-fafe-41cf-af2c-4115d4ef32c6",
+      "context_state": "active",
+      "elapsed_ms": 511,
+      "msg": "ipsec_runtime_diagnostic_completed",
+      "operation": "dns_exchange",
+      "stage": "dns_proof_after",
+      "time": "2026-10-11T01:18:19.066444319Z"
+    },
+    {
+      "connection_id": "b79d7eda-fafe-41cf-af2c-4115d4ef32c6",
+      "context_state": "active",
+      "elapsed_ms": 424,
+      "msg": "ipsec_runtime_diagnostic_completed",
+      "operation": "dns_exchange",
+      "stage": "dns_proof_after",
+      "time": "2026-10-11T01:18:19.129456633Z"
+    },
+    {
+      "connection_id": "b79d7eda-fafe-41cf-af2c-4115d4ef32c6",
+      "context_state": "active",
+      "elapsed_ms": 395,
+      "msg": "ipsec_runtime_diagnostic_completed",
+      "operation": "dns_exchange",
+      "stage": "dns_proof_before",
+      "time": "2026-10-11T01:18:19.525355206Z"
+    },
+    {
+      "connection_id": "b79d7eda-fafe-41cf-af2c-4115d4ef32c6",
+      "context_state": "active",
+      "elapsed_ms": 11,
+      "msg": "ipsec_runtime_diagnostic_completed",
+      "operation": "dns_exchange",
+      "stage": "dns_socket",
+      "time": "2026-10-11T01:18:19.536498637Z"
+    },
+    {
+      "connection_id": "b79d7eda-fafe-41cf-af2c-4115d4ef32c6",
+      "context_state": "active",
+      "elapsed_ms": 519,
+      "msg": "ipsec_runtime_diagnostic_completed",
+      "operation": "dns_exchange",
+      "stage": "dns_proof_before",
+      "time": "2026-10-11T01:18:19.58620388Z"
+    },
+    {
+      "connection_id": "b79d7eda-fafe-41cf-af2c-4115d4ef32c6",
+      "context_state": "active",
+      "elapsed_ms": 4,
+      "msg": "ipsec_runtime_diagnostic_completed",
+      "operation": "dns_exchange",
+      "stage": "dns_socket",
+      "time": "2026-10-11T01:18:19.59119822Z"
+    },
+    {
+      "connection_id": "b79d7eda-fafe-41cf-af2c-4115d4ef32c6",
+      "context_state": "active",
+      "elapsed_ms": 381,
+      "msg": "ipsec_runtime_diagnostic_refused",
+      "operation": "dns_exchange",
+      "stage": "dns_proof_after",
+      "time": "2026-10-11T01:18:19.91815444Z"
+    },
+    {
+      "connection_id": "b79d7eda-fafe-41cf-af2c-4115d4ef32c6",
+      "context_state": "active",
+      "elapsed_ms": 431,
+      "msg": "ipsec_runtime_diagnostic_refused",
+      "operation": "dns_exchange",
+      "stage": "dns_proof_after",
+      "time": "2026-10-11T01:18:20.022604237Z"
+    }
+  ],
+  "mailbox_rows": [
+    {
+      "completed_at": "2026-10-11T01:18:19.893328+00:00",
+      "created_at": "2026-10-11T01:18:17.792014+00:00",
+      "deadline": "2026-10-11T01:18:22.791862+00:00",
+      "expired_at": null,
+      "protocol_version": 2,
+      "request_id": "71970829-0b00-476b-8e24-da4a58bcfa05",
+      "resolver_config_id": "01a12793-bb1b-7da4-927b-78c5363c9ad1",
+      "resolver_config_version": 2,
+      "resolver_match_suffix": "classic.gcp.s2s-qa.tunnex.app",
+      "resolver_profile_id": "459d6c22-a2ad-4fae-a795-8690e9091d66",
+      "resource_id": "01a127b1-ba33-7941-9bdf-58dbaca5ab12",
+      "response_config_id": "01a12793-bb1b-7da4-927b-78c5363c9ad1",
+      "response_config_version": "2",
+      "response_error_code": "resolver_unavailable",
+      "response_observed_at": "2026-10-11T01:18:20.022679247Z",
+      "response_profile_id": "459d6c22-a2ad-4fae-a795-8690e9091d66",
+      "response_status": "SERVFAIL",
+      "state": "completed"
+    },
+    {
+      "completed_at": "2026-10-11T01:18:06.368348+00:00",
+      "created_at": "2026-10-11T01:18:02.989064+00:00",
+      "deadline": "2026-10-11T01:18:07.988962+00:00",
+      "expired_at": null,
+      "protocol_version": 2,
+      "request_id": "035f8507-e6e1-496a-af92-6e51edf760f6",
+      "resolver_config_id": "01a12793-bb1b-7da4-927b-78c5363c9ad1",
+      "resolver_config_version": 2,
+      "resolver_match_suffix": "classic.gcp.s2s-qa.tunnex.app",
+      "resolver_profile_id": "459d6c22-a2ad-4fae-a795-8690e9091d66",
+      "resource_id": "01a127b1-ba4c-74bf-bbb5-38339ea6c516",
+      "response_config_id": "01a12793-bb1b-7da4-927b-78c5363c9ad1",
+      "response_config_version": "2",
+      "response_error_code": null,
+      "response_observed_at": "2026-10-11T01:18:06.571563091Z",
+      "response_profile_id": "459d6c22-a2ad-4fae-a795-8690e9091d66",
+      "response_status": "NOERROR",
+      "state": "completed"
+    },
+    {
+      "completed_at": "2026-10-11T01:17:51.554505+00:00",
+      "created_at": "2026-10-11T01:17:50.469713+00:00",
+      "deadline": "2026-10-11T01:17:55.469578+00:00",
+      "expired_at": null,
+      "protocol_version": 2,
+      "request_id": "8efda4d0-2db0-4956-970d-6c6b78f2189a",
+      "resolver_config_id": "01a12793-bb1b-7da4-927b-78c5363c9ad1",
+      "resolver_config_version": 2,
+      "resolver_match_suffix": "classic.gcp.s2s-qa.tunnex.app",
+      "resolver_profile_id": "459d6c22-a2ad-4fae-a795-8690e9091d66",
+      "resource_id": "01a127b1-ba5d-7b7d-a885-4230f29ee67b",
+      "response_config_id": "01a12793-bb1b-7da4-927b-78c5363c9ad1",
+      "response_config_version": "2",
+      "response_error_code": null,
+      "response_observed_at": "2026-10-11T01:17:51.654993907Z",
+      "response_profile_id": "459d6c22-a2ad-4fae-a795-8690e9091d66",
+      "response_status": "NXDOMAIN",
+      "state": "completed"
+    },
+    {
+      "completed_at": "2026-10-11T01:17:50.364044+00:00",
+      "created_at": "2026-10-11T01:17:48.544646+00:00",
+      "deadline": "2026-10-11T01:17:53.544493+00:00",
+      "expired_at": null,
+      "protocol_version": 2,
+      "request_id": "2904221d-4021-4a5d-837c-0e6335d69621",
+      "resolver_config_id": "01a12793-bb1b-7da4-927b-78c5363c9ad1",
+      "resolver_config_version": 2,
+      "resolver_match_suffix": "classic.gcp.s2s-qa.tunnex.app",
+      "resolver_profile_id": "459d6c22-a2ad-4fae-a795-8690e9091d66",
+      "resource_id": "01a127b1-ba33-7941-9bdf-58dbaca5ab12",
+      "response_config_id": "01a12793-bb1b-7da4-927b-78c5363c9ad1",
+      "response_config_version": "2",
+      "response_error_code": null,
+      "response_observed_at": "2026-10-11T01:17:50.487090207Z",
+      "response_profile_id": "459d6c22-a2ad-4fae-a795-8690e9091d66",
+      "response_status": "NOERROR",
+      "state": "completed"
+    },
+    {
+      "completed_at": "2026-10-11T01:17:36.6035+00:00",
+      "created_at": "2026-10-11T01:17:33.872612+00:00",
+      "deadline": "2026-10-11T01:17:38.872536+00:00",
+      "expired_at": null,
+      "protocol_version": 2,
+      "request_id": "1dc5fb22-74f4-4394-94f0-d8e40f607b52",
+      "resolver_config_id": "01a12793-bb1b-7da4-927b-78c5363c9ad1",
+      "resolver_config_version": 2,
+      "resolver_match_suffix": "classic.gcp.s2s-qa.tunnex.app",
+      "resolver_profile_id": "459d6c22-a2ad-4fae-a795-8690e9091d66",
+      "resource_id": "01a127b1-ba4c-74bf-bbb5-38339ea6c516",
+      "response_config_id": "01a12793-bb1b-7da4-927b-78c5363c9ad1",
+      "response_config_version": "2",
+      "response_error_code": null,
+      "response_observed_at": "2026-10-11T01:17:36.804801198Z",
+      "response_profile_id": "459d6c22-a2ad-4fae-a795-8690e9091d66",
+      "response_status": "NOERROR",
+      "state": "completed"
+    }
+  ],
+  "private_receipt_sha256": {
+    "dns_phases": "c659320203d90f3b2f3ea0ba48ac0d49abccb5d3a97ebd879070fcbc74520660",
+    "mailbox": "db4ead8a7d8c49568e6e89c7bb6e9a63d96dcb5c496ad9fc9033247dfd7447c2",
+    "readiness": "7be70d8f33657ae3631a3301cc59f712245a467b86c6a3d9c3afcbd4df6e4ac4"
+  },
+  "readiness": {
+    "completed": true,
+    "container": "2a5ef7b1ffe6c3c4822aa37f3fb673606019fbc9724f3d2a160e2b56157b6a01",
+    "elapsed_seconds": 12.044275209000006,
+    "scope": "separate bounded current native/full guard/fresh HA and Classic TCPUDP checkpoints; no continuous availability claim",
+    "source": "372e43ac935591f287aae02b023bba8de1b43a66"
+  },
+  "source_commit": "372e43ac935591f287aae02b023bba8de1b43a66",
+  "window": {
+    "since": "2026-10-11T01:17:23Z",
+    "until": "2026-10-11T01:18:23Z"
+  }
+}

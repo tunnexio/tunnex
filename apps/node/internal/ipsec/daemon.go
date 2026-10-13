@@ -12,6 +12,8 @@ import (
 	"strings"
 	"syscall"
 	"time"
+	"unicode"
+	"unicode/utf8"
 
 	"github.com/google/uuid"
 )
@@ -420,7 +422,8 @@ func parseDaemonChild(m viciMessage) (DaemonChild, error) {
 // LocalAddress is the actual local underlay address; LocalIdentity may be the
 // separately configured public NAT identity. Neither is inferred from a name.
 type EngineTunnel struct {
-	BGP                                                        bool `json:",omitempty"`
+	ProfileID                                                  string `json:",omitempty"`
+	BGP                                                        bool   `json:",omitempty"`
 	Binding                                                    Binding
 	TunnelID                                                   uuid.UUID
 	SecretRevision                                             int64
@@ -437,7 +440,7 @@ func engineName(t EngineTunnel) string {
 // Engine configuration is not traffic authority. A policy revision is not
 // required here: production permits use the current CP policy hash separately.
 func validEngineTunnel(t EngineTunnel) bool {
-	if t.Binding.OrgID == uuid.Nil || t.Binding.GatewayID == uuid.Nil || t.Binding.ConnectionID == uuid.Nil || t.Binding.DesiredRevision <= 0 || t.Binding.ConfigurationRevision <= 0 || t.TunnelID == uuid.Nil || t.SecretRevision <= 0 || t.XFRMID == 0 {
+	if !validRuntimeProviderProfile(t.ProfileID) || t.Binding.OrgID == uuid.Nil || t.Binding.GatewayID == uuid.Nil || t.Binding.ConnectionID == uuid.Nil || t.Binding.DesiredRevision <= 0 || t.Binding.ConfigurationRevision <= 0 || t.TunnelID == uuid.Nil || t.SecretRevision <= 0 || t.XFRMID == 0 {
 		return false
 	}
 	for _, a := range []netip.Addr{t.LocalAddress, t.RemoteAddress, t.LocalIdentity, t.RemoteIdentity} {
@@ -473,7 +476,7 @@ func validEngineTunnel(t EngineTunnel) bool {
 	return true
 }
 func engineTransportPrefixes(t EngineTunnel, local bool) []netip.Prefix {
-	if t.BGP {
+	if t.BGP || t.ProfileID == GCPClassicStaticProfile {
 		return []netip.Prefix{netip.MustParsePrefix("0.0.0.0/0")}
 	}
 	if local {
@@ -500,11 +503,28 @@ func validEnginePSK(psk []byte) bool {
 	return true
 }
 
+// Provider constraints follow the accepted delivery contract. GCP secrets are
+// preserved as UTF-8 bytes; the legacy AWS alphabet remains unchanged.
+func validProfileEnginePSK(profile string, psk []byte) bool {
+	if profile != GCPHABGPProfile && profile != GCPClassicStaticProfile {
+		return validRuntimeProviderProfile(profile) && validEnginePSK(psk)
+	}
+	if len(psk) < 8 || len(psk) > 64 || !utf8.Valid(psk) || strings.TrimSpace(string(psk)) == "" {
+		return false
+	}
+	for _, r := range string(psk) {
+		if unicode.IsControl(r) {
+			return false
+		}
+	}
+	return true
+}
+
 // stageTunnel is private because loading a responder is itself a mutation that
 // requires verified denial, even with start_action=none. No automatic retry or
 // rollback is attempted: the controller retains the durable cleanup obligation.
 func (c *DaemonClient) stageTunnel(ctx context.Context, t EngineTunnel, psk []byte) error {
-	if c == nil || c.request == nil || !validEngineTunnel(t) || !validEnginePSK(psk) {
+	if c == nil || c.request == nil || !validEngineTunnel(t) || !validProfileEnginePSK(t.ProfileID, psk) {
 		return ErrDaemonProtocol
 	}
 	name := engineName(t)
@@ -520,13 +540,13 @@ func (c *DaemonClient) stageTunnel(ctx context.Context, t EngineTunnel, psk []by
 	if c.success(ctx, "load-shared", shared) != nil {
 		return ErrDaemonProtocol
 	}
-	child := viciMessage{"mode": viciText("tunnel"), "local_ts": enginePrefixes(engineTransportPrefixes(t, true)), "remote_ts": enginePrefixes(engineTransportPrefixes(t, false)), "esp_proposals": viciList("aes256-sha256-modp2048"), "start_action": viciText("none"), "dpd_action": viciText("clear"), "close_action": viciText("none"), "if_id_in": viciText(strconv.FormatUint(uint64(t.XFRMID), 10)), "if_id_out": viciText(strconv.FormatUint(uint64(t.XFRMID), 10)), "life_time": viciText("3600s"), "rekey_time": viciText("3000s")}
+	child := viciMessage{"mode": viciText("tunnel"), "local_ts": enginePrefixes(engineTransportPrefixes(t, true)), "remote_ts": enginePrefixes(engineTransportPrefixes(t, false)), "esp_proposals": viciList("aes256-sha256-modp2048"), "start_action": viciText("none"), "dpd_action": viciText("clear"), "close_action": viciText("none"), "if_id_in": viciText(strconv.FormatUint(uint64(t.XFRMID), 10)), "if_id_out": viciText(strconv.FormatUint(uint64(t.XFRMID), 10)), "life_time": viciText(runtimeChildLifetime(t.ProfileID)), "rekey_time": viciText(runtimeChildRekey(t.ProfileID))}
 	if t.ReqID != 0 {
 		child["reqid"] = viciText(strconv.FormatUint(uint64(t.ReqID), 10))
 	}
 	// Periodic IKEv2 liveness probes are opt-in (strongSwan defaults to zero).
 	// Failure uses normal IKE retransmissions; the controller owns route recovery.
-	conn := viciMessage{"dpd_delay": viciText("10s"), "version": viciText("2"), "local_addrs": viciList(t.LocalAddress.String()), "remote_addrs": viciList(t.RemoteAddress.String()), "proposals": viciList("aes256-sha256-modp2048"), "mobike": viciText("no"), "rekey_time": viciText("28800s"), "reauth_time": viciText("0s"), "local": viciSection(viciMessage{"auth": viciText("psk"), "id": viciText(t.LocalIdentity.String())}), "remote": viciSection(viciMessage{"auth": viciText("psk"), "id": viciText(t.RemoteIdentity.String())}), "children": viciSection(viciMessage{name: viciSection(child)})}
+	conn := viciMessage{"dpd_delay": viciText("10s"), "version": viciText("2"), "local_addrs": viciList(t.LocalAddress.String()), "remote_addrs": viciList(t.RemoteAddress.String()), "proposals": viciList("aes256-sha256-modp2048"), "mobike": viciText("no"), "rekey_time": viciText(runtimeIKERekey(t.ProfileID)), "reauth_time": viciText("0s"), "local": viciSection(viciMessage{"auth": viciText("psk"), "id": viciText(t.LocalIdentity.String())}), "remote": viciSection(viciMessage{"auth": viciText("psk"), "id": viciText(t.RemoteIdentity.String())}), "children": viciSection(viciMessage{name: viciSection(child)})}
 	return c.success(ctx, "load-conn", viciMessage{name: viciSection(conn)})
 }
 func (c *DaemonClient) success(ctx context.Context, command string, m viciMessage) error {

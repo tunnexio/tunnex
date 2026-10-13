@@ -41,6 +41,30 @@ func (c *Client) ipsecBGPCapability() int {
 	return controller.BGPCapability()
 }
 
+// The provider capability identifies this reader, while native BGP/controller
+// qualification still determines host readiness. It is not a cloud health claim.
+func (c *Client) ipsecGCPHACapability() int {
+	if c == nil {
+		return 0
+	}
+	controller := c.ipsecController.Load()
+	if controller == nil {
+		return 0
+	}
+	return controller.GCPHACapability()
+}
+
+func (c *Client) ipsecGCPClassicCapability() int {
+	if c == nil {
+		return 0
+	}
+	controller := c.ipsecController.Load()
+	if controller == nil {
+		return 0
+	}
+	return controller.GCPClassicCapability()
+}
+
 func (c *Client) ipsecFQDNPolicyCapability() int {
 	if c == nil {
 		return 0

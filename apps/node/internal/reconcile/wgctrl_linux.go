@@ -13,6 +13,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync/atomic"
 )
 
 // wgctrlBackend is the real WireGuard data-plane adapter. It drives the standard
@@ -21,6 +22,7 @@ import (
 // absent peers and leaves unchanged peers UNTOUCHED (no handshake reset) —
 // idempotent against a dirty device.
 type wgctrlBackend struct {
+	appliedMTU             atomic.Int64
 	iface                  string
 	logger                 *slog.Logger
 	preserveInterfaceAlias string
@@ -70,6 +72,7 @@ func (b *wgctrlBackend) runCommand(ctx context.Context, name string, args ...str
 // would needlessly churn the interface. Diagnosable errors bubble up (agent
 // readiness reflects them) rather than pretending success.
 func (b *wgctrlBackend) Configure(ctx context.Context, cfg InterfaceConfig) error {
+	b.appliedMTU.Store(0)
 	if err := b.ensureDevice(ctx); err != nil {
 		return err
 	}
@@ -133,7 +136,31 @@ func (b *wgctrlBackend) Configure(ctx context.Context, cfg InterfaceConfig) erro
 			return err
 		}
 	}
-	return b.ensureLinkUp(ctx, cfg.MTU)
+	mtu := cfg.MTU
+	if mtu <= 0 {
+		return b.ensureLinkUp(ctx, mtu)
+	}
+	underlay, err := b.underlayMTU(ctx)
+	if err != nil {
+		if b.logger != nil {
+			b.logger.Warn("wireguard_underlay_mtu_unavailable")
+		}
+	} else {
+		mtu, err = wireGuardMTU(mtu, underlay)
+		if err != nil {
+			return err
+		}
+	}
+	if err := b.ensureLinkUp(ctx, mtu); err != nil {
+		return err
+	}
+	if underlay > 0 {
+		after, err := b.underlayMTU(ctx)
+		if err != nil || after != underlay {
+			return fmt.Errorf("underlay MTU observation changed during Configure")
+		}
+	}
+	return b.verifyAppliedMTU(ctx, mtu)
 }
 
 func (b *wgctrlBackend) ensureDevice(ctx context.Context) error {

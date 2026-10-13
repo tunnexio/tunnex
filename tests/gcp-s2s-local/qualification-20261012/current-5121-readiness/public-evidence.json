@@ -1,0 +1,102 @@
+{
+  "all_story_signoff": true,
+  "api_source": "a2e7c5bffa6327a66c6cec839c0fd1e5a9d3c439",
+  "application_accepted": true,
+  "application_allow_packet_attempted": true,
+  "application_packet_bracketed": true,
+  "bounded_partial_retry": {
+    "api_top_tests": 2,
+    "no_skip": true,
+    "node_subtests": 5,
+    "node_top_tests": 2,
+    "serving_database_access": false,
+    "source_preserved_before_after": true
+  },
+  "causal_scope": "Historical ACK/native transition observations and latest UDP diagnostic are separate; no unique cause established.",
+  "ci_publication_production_qualified": false,
+  "cleanup_errors": [],
+  "continuous_availability_asserted": false,
+  "created_receipt_sha256": "052baed1001c9f238e37d130bb3b46e6e37133b5e1e4f3ccca38b2195b5bd354",
+  "final_required_receipts": {
+    "cname_inverse": "baf5ee741dcd24ff6ab930e50ad34346138f120cd632d1c8057dcb291a6af18e",
+    "gateway_qa_inverse": "f8d602c92585abf091b1b35f4e16353b0d2d2ed3278b27ece6ad597c309e1d69",
+    "native_final": "e788f79a91c8365c5009b8ec48e31789e72e41c43aefbafc3fa28ddd4aac70ef",
+    "normal9_device0": "3d8ffd2301902bfc06be06b5febe666b5cad16bf815ddba6c618e70d9c1d5d54"
+  },
+  "historical_before_receipt_sha256": "67c551b1f0cfc132871455de79a98a6050087c350242c724faf0483df6f314df",
+  "historical_failed_application": "6606af775b39aed2484577c570717de446dd71771016822c4213d2d8f34b88ef",
+  "historical_final_pending_snapshot": {
+    "all_story_signoff": false,
+    "scoped_stories": "9/11"
+  },
+  "historical_native_checkpoint": {
+    "completed": true,
+    "elapsed_seconds": 17.016111332999998
+  },
+  "historical_open_stories": [
+    "GCP-9",
+    "GCP-10"
+  ],
+  "historical_selected_protocol": "tcp",
+  "historical_transition_observations": {
+    "classic_capture_empty": "2026-10-11T19:07:46.134Z",
+    "classic_capture_live": "2026-10-11T19:07:49.660Z",
+    "cleanup_delete_completed": "2026-10-11T19:07:51.253Z",
+    "eligibility_active_semantics": "active entry missing; not installation success",
+    "grant_post_completed": "2026-10-11T19:07:40.938Z",
+    "maintenance_eligibility_active_refused": "2026-10-11T19:07:54.871Z",
+    "maintenance_eligibility_grants_refused": "2026-10-11T19:07:45.079Z"
+  },
+  "historical_udp_failure": {
+    "allow_packet_attempted": false,
+    "causal_attribution_established": false,
+    "cleanup_known": true,
+    "grant_created": false,
+    "latest_generation_status": "failed",
+    "server_reason": "timeout",
+    "stage": "pregrant_generation"
+  },
+  "image": "sha256:b8f7ccba5b01cc9dd8ca0337c780c69d72e8037fcd5f16adfe98c53af4285ded",
+  "known_guard_publication_pending_observations": 1,
+  "native_checkpoint_completed": true,
+  "native_checkpoint_elapsed_seconds": 14.61729729199999,
+  "node_sha256": "cbfabf16f1561f8dfb9d01cc49fad92a8ef2a8fed98dcd96b3e48a5533370bde",
+  "node_source": "5121dc3374656449dd53dab9abd248216d5d5581",
+  "normal_client_dns_accepted": true,
+  "normal_client_dns_allow_cases": 8,
+  "normal_client_dns_refused_cases": 2,
+  "open_stories": [],
+  "original_service_preserved": true,
+  "owned_cloud_inverses_complete": true,
+  "owned_grants_removed": true,
+  "readonly_diagnostic": {
+    "deadline_proof_after_refusals": 2,
+    "request_attribution_established": false,
+    "socket_successes": 48
+  },
+  "receipts": {
+    "api_partial_retry": "207e6ef2f925ca668142c8f148c3850398b8543b978b4ec35b85d5247060dba6",
+    "cname_inverse": "baf5ee741dcd24ff6ab930e50ad34346138f120cd632d1c8057dcb291a6af18e",
+    "gateway_qa_inverse": "f8d602c92585abf091b1b35f4e16353b0d2d2ed3278b27ece6ad597c309e1d69",
+    "native_final": "e788f79a91c8365c5009b8ec48e31789e72e41c43aefbafc3fa28ddd4aac70ef",
+    "node_partial_retry": "66f58f3ec1950ec398e93cb18317d4647306a5f305621e4748e04a5e4ac6152a",
+    "normal9_after_native": "3d8ffd2301902bfc06be06b5febe666b5cad16bf815ddba6c618e70d9c1d5d54",
+    "normal9_before_native": "3d8ffd2301902bfc06be06b5febe666b5cad16bf815ddba6c618e70d9c1d5d54",
+    "selected_tcp": "e8cb3eb519b025b548d3699179dac4e1e56177148a575fed2fcc537476e4ce4a",
+    "tcp_full_cycle": "e8cb3eb519b025b548d3699179dac4e1e56177148a575fed2fcc537476e4ce4a",
+    "udp_full_cycle": "22de3699b29840f1a2b630388dbb1ed929ffb897500055449350c4f6c516174c",
+    "udp_readonly_diagnostic": "3cc9cc5548d7ca11ab86c2dbadf4afa7d8c31eb746006ecc195e89d74cdab4c2",
+    "udp_v8_failed": "c57095f4da834e99cf538158c122f22c57e4c0fd334500308efd0d92f867971f"
+  },
+  "scope": "recorded development/local qualification and dedicated GCP lab slices",
+  "scoped_stories": "11/11",
+  "selected_protocols_separately_accepted": [
+    "tcp",
+    "udp"
+  ],
+  "simultaneous_pair_asserted": false,
+  "strict_final_guard_acceptance": true,
+  "udp_accepted": true,
+  "unknown_outcomes": false,
+  "v8_local_qa_tests": 11
+}

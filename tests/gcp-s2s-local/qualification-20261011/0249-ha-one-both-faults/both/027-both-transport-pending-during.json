@@ -1,0 +1,1 @@
+{"utc": "2026-10-11T00:45:07Z", "monotonic": 2066351.238903666, "observation": {"mode": "pending", "pending_reason": "during_transport_convergence", "selected_index": 6, "healthy_indices": [6, 7], "ha_installed_children": 2, "sad_count": 6, "completed": false}}

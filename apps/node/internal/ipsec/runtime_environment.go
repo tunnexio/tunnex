@@ -9,23 +9,31 @@ import (
 	"net/netip"
 	"os"
 	"path/filepath"
+	"reflect"
 	"sort"
+	"time"
 )
 
 var ErrRuntimeEnvironment = errors.New("IPsec local environment unavailable")
 
 type runtimeEnvironmentInspector struct {
-	nftPath   string
-	ip, nft   func(context.Context, ...string) ([]byte, error)
-	namespace func() (string, error)
-	drain     func(context.Context, []RuntimeJournalEntry) error
+	diagnostic func(RuntimeDiagnostic)
+	nftPath    string
+	ip, nft    func(context.Context, ...string) ([]byte, error)
+	namespace  func() (string, error)
+	drain      func(context.Context, []RuntimeJournalEntry) error
 }
 
 func NewRuntimeEnvironmentInspector(ipPath, nftPath string) (RuntimeEnvironmentInspector, error) {
+	return NewRuntimeEnvironmentInspectorWithDiagnostics(ipPath, nftPath, nil)
+}
+
+// NewRuntimeEnvironmentInspectorWithDiagnostics reports fixed observation stages only.
+func NewRuntimeEnvironmentInspectorWithDiagnostics(ipPath, nftPath string, diagnostic func(RuntimeDiagnostic)) (RuntimeEnvironmentInspector, error) {
 	if !filepath.IsAbs(ipPath) || !filepath.IsAbs(nftPath) {
 		return nil, ErrRuntimeEnvironment
 	}
-	return &runtimeEnvironmentInspector{nftPath: nftPath, ip: func(c context.Context, a ...string) ([]byte, error) { return runKernelCommand(c, ipPath, a...) }, nft: func(c context.Context, a ...string) ([]byte, error) { return runKernelCommand(c, nftPath, a...) }, namespace: func() (string, error) { return os.Readlink("/proc/self/ns/net") }, drain: runtimeDrainConntrack}, nil
+	return &runtimeEnvironmentInspector{diagnostic: diagnostic, nftPath: nftPath, ip: func(c context.Context, a ...string) ([]byte, error) { return runKernelCommand(c, ipPath, a...) }, nft: func(c context.Context, a ...string) ([]byte, error) { return runKernelCommand(c, nftPath, a...) }, namespace: func() (string, error) { return os.Readlink("/proc/self/ns/net") }, drain: runtimeDrainConntrack}, nil
 }
 func (r *runtimeEnvironmentInspector) Drain(ctx context.Context, entries []RuntimeJournalEntry) error {
 	if r == nil || r.drain == nil || len(entries) == 0 {
@@ -186,6 +194,10 @@ func runtimeHookCensus(raw []byte, protected []netip.Prefix) bool {
 								}
 							}
 						case "mangle":
+							chain, _ := kernelString(o, "chain")
+							if (family == "ip" || family == "ip6") && table == "tunnex" && chain == "forward" && runtimeFQDNConntrackMark(v) {
+								continue
+							}
 							m, ok := kernelObject(v)
 							if !ok || len(m) != 2 {
 								return false
@@ -238,28 +250,52 @@ func runtimeHookCensus(raw []byte, protected []netip.Prefix) bool {
 	return true
 }
 func (r *runtimeEnvironmentInspector) Observe(ctx context.Context, a KernelAllocation, engines [2]EngineTunnel) (RuntimeEnvironment, error) {
-	fail := func() (RuntimeEnvironment, error) { return RuntimeEnvironment{}, ErrRuntimeEnvironment }
+	return r.observe(ctx, a, engines, false)
+}
+
+// ObserveLocalExports applies export-only protocol restrictions to the same
+// bounded, namespace-stable inventory used by ordinary environment proof.
+func (r *runtimeEnvironmentInspector) ObserveLocalExports(ctx context.Context, a KernelAllocation, engines [2]EngineTunnel) (RuntimeEnvironment, error) {
+	if a.ProfileID != GCPHABGPProfile || !a.BGP {
+		return RuntimeEnvironment{}, ErrRuntimeEnvironment
+	}
+	return r.observe(ctx, a, engines, true)
+}
+
+func (r *runtimeEnvironmentInspector) observe(ctx context.Context, a KernelAllocation, engines [2]EngineTunnel, localExports bool) (RuntimeEnvironment, error) {
+	stage, started := "env_input", time.Now()
+	fail := func() (RuntimeEnvironment, error) {
+		if r != nil {
+			emitRuntimeDiagnostic(r.diagnostic, ctx, "environment_observe", stage, a.ConnectionID, started, true)
+		}
+		return RuntimeEnvironment{}, ErrRuntimeEnvironment
+	}
 	if r == nil || r.ip == nil || r.nft == nil || r.namespace == nil || !validKernelAllocation(a) {
 		return fail()
 	}
 	ctx, cancel := context.WithTimeout(ctx, kernelReadTimeout)
 	defer cancel()
+	stage = "env_namespace_before"
 	ns, e := r.namespace()
 	if e != nil || ns != a.Namespace {
 		return fail()
 	}
+	stage = "env_material"
 	protected := append(append([]netip.Prefix{}, engines[0].LocalPrefixes...), engines[0].RemotePrefixes...)
-	if len(engines[0].LocalPrefixes) == 0 || !sameEnginePrefixes(engines[0].LocalPrefixes, engines[1].LocalPrefixes) {
+	if engineTunnelCount(engines) != a.activeTunnelCount() || (a.activeTunnelCount() == 1 && !emptyEngineTunnel(engines[1])) || len(engines[0].LocalPrefixes) == 0 || (a.activeTunnelCount() == 2 && !sameEnginePrefixes(engines[0].LocalPrefixes, engines[1].LocalPrefixes)) {
 		return fail()
 	}
+	stage = "env_hooks_before"
 	nft, e := r.nft(ctx, "-j", "list", "ruleset")
 	if e != nil || !runtimeQualifiedHookCensus(ctx, r.nftPath, nft, protected) {
 		return fail()
 	}
+	stage = "env_rules_before"
 	rules, e := r.ip(ctx, "-j", "-4", "rule", "show")
 	if e != nil || !runtimeDefaultRules(rules) {
 		return fail()
 	}
+	stage = "env_links_before"
 	links, e := r.ip(ctx, "-j", "-d", "link", "show")
 	if e != nil {
 		return fail()
@@ -269,6 +305,7 @@ func (r *runtimeEnvironmentInspector) Observe(ctx context.Context, a KernelAlloc
 		return fail()
 	}
 	physical := map[string]int{}
+	downBridges := map[string]bool{}
 	physicalMTU := map[string]uint32{}
 	indices := map[uint64]bool{}
 	for _, o := range objects {
@@ -286,6 +323,15 @@ func (r *runtimeEnvironmentInspector) Observe(ctx context.Context, a KernelAlloc
 		for _, f := range flags {
 			up = up || f == "UP"
 		}
+		state, _ := kernelString(o, "operstate")
+		noCarrier, lowerUp := false, false
+		for _, f := range flags {
+			noCarrier = noCarrier || f == "NO-CARRIER"
+			lowerUp = lowerUp || f == "LOWER_UP"
+		}
+		if fok && typ == "ether" && kind == "bridge" && state == "DOWN" && !lowerUp && (!up || noCarrier) {
+			downBridges[name] = true
+		}
 		if ok && fok && idx > 0 && up && typ == "ether" && (kind == "" || kind == "veth") {
 			if _, dup := physical[name]; dup {
 				return fail()
@@ -298,6 +344,7 @@ func (r *runtimeEnvironmentInspector) Observe(ctx context.Context, a KernelAlloc
 			physicalMTU[name] = uint32(mtu)
 		}
 	}
+	stage = "env_routes_before"
 	routes, e := r.ip(ctx, "-j", "-4", "route", "show", "table", "main")
 	if e != nil {
 		return fail()
@@ -306,6 +353,8 @@ func (r *runtimeEnvironmentInspector) Observe(ctx context.Context, a KernelAlloc
 	if !ok {
 		return fail()
 	}
+	stage = "env_addresses_before"
+	addressReadStarted := time.Now()
 	addresses, e := r.ip(ctx, "-j", "-4", "address", "show")
 	if e != nil {
 		return fail()
@@ -330,6 +379,7 @@ func (r *runtimeEnvironmentInspector) Observe(ctx context.Context, a KernelAlloc
 			}
 		}
 	}
+	stage = "env_local_coverage"
 	out := RuntimeEnvironment{Namespace: ns}
 	local := map[int]bool{}
 	for _, prefix := range engines[0].LocalPrefixes {
@@ -346,20 +396,38 @@ func (r *runtimeEnvironmentInspector) Observe(ctx context.Context, a KernelAlloc
 			if typ, present := row["type"]; present && string(typ) != `"unicast"` {
 				return fail()
 			}
+			p, valid := runtimeMainRoutePrefix(row)
+			dev, deviceOK := kernelString(row, "dev")
+			if !valid || !deviceOK || dev == "" {
+				return fail()
+			}
+			gcp := a.ProfileID == GCPHABGPProfile || a.ProfileID == GCPClassicStaticProfile
 			if flags, present := row["flags"]; present {
 				f, ok := kernelFlags(flags)
-				if !ok || len(f) != 0 {
+				// An unrelated, assigned Docker bridge may be down. It cannot
+				// supply LAN or underlay identity, and protected routes still refuse.
+				disjointBridge := gcp && len(f) == 1 && f[0] == "linkdown" && runtimeDisjointDownBridge(row, p, protected, downBridges, assigned)
+				if !ok || (len(f) != 0 && !disjointBridge) {
 					return fail()
 				}
 			}
-			dst, _ := kernelString(row, "dst")
-			p, err := netip.ParsePrefix(dst)
-			if err != nil || !p.Overlaps(prefix) {
+			if !p.IsValid() || !p.Overlaps(prefix) {
 				continue
 			}
-			dev, _ := kernelString(row, "dev")
 			index := physical[dev]
-			if index == 0 || p.Bits() > prefix.Bits() {
+			if index == 0 {
+				return fail()
+			}
+			if p.Bits() > prefix.Bits() {
+				if !gcp || !runtimeRoutedGatewayHost(row, p, prefix, routeRows, physical, assigned) {
+					return fail()
+				}
+				continue // A gateway host is never proof of prefix coverage.
+			}
+			if _, routed := row["gateway"]; gcp && routed && !runtimeRoutedLocalPrefix(row, p, prefix, routeRows, physical, assigned) {
+				return fail()
+			}
+			if localExports && (p != prefix || !runtimeLocalExportProtocol(row["protocol"])) {
 				return fail()
 			}
 			if found != 0 && found != index {
@@ -379,9 +447,10 @@ func (r *runtimeEnvironmentInspector) Observe(ctx context.Context, a KernelAlloc
 		out.LocalIngressIndices = append(out.LocalIngressIndices, index)
 	}
 	sort.Ints(out.LocalIngressIndices)
+	stage = "env_peer_routes_before"
 	peerReads := [2][]byte{}
-	for i, engine := range engines {
-		if engine.TunnelID != a.Tunnels[i].TunnelID || engine.XFRMID != a.Tunnels[i].XFRMID || engine.Binding.ConnectionID != a.ConnectionID || !engine.RemoteAddress.Is4() {
+	for i, engine := range engines[:engineTunnelCount(engines)] {
+		if engine.ProfileID != a.ProfileID || engine.TunnelID != a.Tunnels[i].TunnelID || engine.XFRMID != a.Tunnels[i].XFRMID || engine.Binding.ConnectionID != a.ConnectionID || !engine.RemoteAddress.Is4() {
 			return fail()
 		}
 		raw, e := r.ip(ctx, "-j", "-4", "route", "get", engine.RemoteAddress.String())
@@ -417,35 +486,180 @@ func (r *runtimeEnvironmentInspector) Observe(ctx context.Context, a KernelAlloc
 		out.Underlays[i] = RuntimeUnderlay{InterfaceIndex: physical[dev], LocalAddress: address, OuterMTU: outerMTU}
 	}
 	// Re-read independent interface and policy inventories before returning facts.
+	stage = "env_links_after"
 	again, e := r.ip(ctx, "-j", "-d", "link", "show")
 	if e != nil || !bytes.Equal(again, links) {
 		return fail()
 	}
+	stage = "env_rules_after"
 	again, e = r.ip(ctx, "-j", "-4", "rule", "show")
 	if e != nil || !bytes.Equal(again, rules) {
 		return fail()
 	}
+	stage = "env_hooks_after"
 	again, e = r.nft(ctx, "-j", "list", "ruleset")
 	if e != nil || !runtimeQualifiedHookCensus(ctx, r.nftPath, again, protected) {
 		return fail()
 	}
+	stage = "env_routes_after"
 	again, e = r.ip(ctx, "-j", "-4", "route", "show", "table", "main")
 	if e != nil || !bytes.Equal(again, routes) {
 		return fail()
 	}
+	stage = "env_addresses_after"
 	again, e = r.ip(ctx, "-j", "-4", "address", "show")
-	if e != nil || !bytes.Equal(again, addresses) {
+	if e != nil || !runtimeAddressBracket(addresses, again, time.Since(addressReadStarted)) {
 		return fail()
 	}
-	for i, engine := range engines {
+	stage = "env_peer_routes_after"
+	for i, engine := range engines[:engineTunnelCount(engines)] {
 		again, e = r.ip(ctx, "-j", "-4", "route", "get", engine.RemoteAddress.String())
 		if e != nil || !bytes.Equal(again, peerReads[i]) {
 			return fail()
 		}
 	}
+	stage = "env_namespace_after"
 	after, e := r.namespace()
 	if e != nil || after != ns || ctx.Err() != nil {
 		return fail()
 	}
+	emitRuntimeDiagnostic(r.diagnostic, ctx, "environment_observe", "env_complete", a.ConnectionID, started, false)
 	return out, nil
+}
+
+// iproute2 renders a host destination without /32. Do not silently hide an
+// overlapping host or malformed destination while proving a protected prefix.
+func runtimeMainRoutePrefix(row map[string]json.RawMessage) (netip.Prefix, bool) {
+	for _, field := range []string{"gateway", "prefsrc"} {
+		if _, present := row[field]; present {
+			value, ok := kernelString(row, field)
+			a, err := netip.ParseAddr(value)
+			if !ok || err != nil || !a.Is4() {
+				return netip.Prefix{}, false
+			}
+		}
+	}
+	dst, ok := kernelString(row, "dst")
+	if !ok {
+		return netip.Prefix{}, false
+	}
+	if dst == "default" {
+		return netip.Prefix{}, true
+	}
+	if p, err := netip.ParsePrefix(dst); err == nil {
+		return p, p.Addr().Is4() && p == p.Masked()
+	}
+	a, err := netip.ParseAddr(dst)
+	if err != nil || !a.Is4() {
+		return netip.Prefix{}, false
+	}
+	return netip.PrefixFrom(a, 32), true
+}
+
+// The only narrow GCP route exception is the on-link gateway for one exact
+// approved routed prefix. A default route, another host, or another interface
+// cannot manufacture local coverage. Route order has no effect.
+func runtimeRoutedGatewayHost(host map[string]json.RawMessage, p, prefix netip.Prefix, rows []map[string]json.RawMessage, physical map[string]int, assigned map[string]map[netip.Addr]bool) bool {
+	if p.Bits() != 32 {
+		return false
+	}
+	dev, _ := kernelString(host, "dev")
+	scope, _ := kernelString(host, "scope")
+	source, sourceOK := kernelString(host, "prefsrc")
+	src, err := netip.ParseAddr(source)
+	if scope != "link" || physical[dev] == 0 || !sourceOK || err != nil || !src.Is4() || !prefix.Contains(src) || !assigned[dev][src] {
+		return false
+	}
+	if _, via := host["gateway"]; via {
+		return false
+	}
+	matches := 0
+	for _, route := range rows {
+		covering, valid := runtimeMainRoutePrefix(route)
+		if !valid || covering != prefix {
+			continue
+		}
+		routeDev, _ := kernelString(route, "dev")
+		gateway, _ := kernelString(route, "gateway")
+		routeSource, _ := kernelString(route, "prefsrc")
+		gw, err := netip.ParseAddr(gateway)
+		if routeDev != dev || routeSource != source || err != nil || gw != p.Addr() {
+			return false
+		}
+		matches++
+	}
+	return matches == 1
+}
+
+func runtimeDisjointDownBridge(row map[string]json.RawMessage, p netip.Prefix, protected []netip.Prefix, down map[string]bool, assigned map[string]map[netip.Addr]bool) bool {
+	if !p.IsValid() {
+		return false
+	}
+	for _, prefix := range protected {
+		if p.Overlaps(prefix) {
+			return false
+		}
+	}
+	dev, _ := kernelString(row, "dev")
+	scope, _ := kernelString(row, "scope")
+	value, _ := kernelString(row, "prefsrc")
+	src, err := netip.ParseAddr(value)
+	if !down[dev] || scope != "link" || err != nil || !p.Contains(src) || !assigned[dev][src] {
+		return false
+	}
+	_, via := row["gateway"]
+	return !via
+}
+
+func runtimeRoutedLocalPrefix(route map[string]json.RawMessage, p, approved netip.Prefix, rows []map[string]json.RawMessage, physical map[string]int, assigned map[string]map[netip.Addr]bool) bool {
+	if p != approved {
+		return false
+	}
+	gateway, _ := kernelString(route, "gateway")
+	gw, err := netip.ParseAddr(gateway)
+	if err != nil || !approved.Contains(gw) {
+		return false
+	}
+	matches := 0
+	for _, host := range rows {
+		hp, valid := runtimeMainRoutePrefix(host)
+		if valid && hp.IsValid() && hp.Bits() == 32 && hp.Addr() == gw && runtimeRoutedGatewayHost(host, hp, approved, rows, physical, assigned) {
+			matches++
+		}
+	}
+	return matches == 1
+}
+
+func runtimeLocalExportProtocol(raw json.RawMessage) bool {
+	var named string
+	if json.Unmarshal(raw, &named) == nil {
+		switch named {
+		case "kernel", "static", "boot", "2", "3", "4", "242":
+			return true
+		}
+		return false
+	}
+	n, ok := kernelNumber(raw, 32)
+	return ok && (n == 2 || n == 3 || n == 4 || n == 242)
+}
+
+// Admit only the production S21 conntrack ownership transform, in its native
+// canonical form. It cannot alter packet routing marks or unrelated ct bits.
+func runtimeFQDNConntrackMark(raw json.RawMessage) bool {
+	var actual, expected any
+	if _, ok := runtimeJSONObject(raw); !ok {
+		return false
+	}
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.UseNumber()
+	if decoder.Decode(&actual) != nil {
+		return false
+	}
+	const canonical = `{"key":{"ct":{"key":"mark"}},"value":{"|":[{"&":[{"ct":{"key":"mark"}},4060086271]},16777216]}}`
+	decoder = json.NewDecoder(bytes.NewBufferString(canonical))
+	decoder.UseNumber()
+	if decoder.Decode(&expected) != nil {
+		return false
+	}
+	return reflect.DeepEqual(actual, expected)
 }

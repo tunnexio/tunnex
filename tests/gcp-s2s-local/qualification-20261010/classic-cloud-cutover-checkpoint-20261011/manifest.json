@@ -1,0 +1,173 @@
+{
+  "files": [
+    {
+      "file": "036-before-route-delete-fullguard.json",
+      "source": "/private/tmp/gcp-classic-psk-lifecycle-actual-20261011-v1/036-before-route-delete-fullguard.json",
+      "source_sha256": "03dcffaf43bac1cf5b316c5001c6d70abb0d7397d06907714b4162ae4d25eb3b",
+      "archive_sha256": "03dcffaf43bac1cf5b316c5001c6d70abb0d7397d06907714b4162ae4d25eb3b",
+      "mode": "exact_bytes"
+    },
+    {
+      "file": "037-route-delete-authoritative-summary.json",
+      "source": "/private/tmp/gcp-classic-psk-lifecycle-actual-20261011-v1/037-route-delete-authoritative.jsonl",
+      "source_sha256": "02c128dcf42fbd0aa335f4dc2e529304af5cc8ba8d48637cc207e5c5a3a0581e",
+      "archive_sha256": "ba2d1184694ac7ab565e8296e73748d7c99c0a23995eeb6a2b819083b1808e24",
+      "mode": "terminal_nonsecret_summary"
+    },
+    {
+      "file": "038-before-tunnel-delete-api.jsonl",
+      "source": "/private/tmp/gcp-classic-psk-lifecycle-actual-20261011-v1/038-before-tunnel-delete-api.jsonl",
+      "source_sha256": "c3c53cb1f578342607295f5455ad89480e8b1bfe454b2631e11a6c4a1710c266",
+      "archive_sha256": "c3c53cb1f578342607295f5455ad89480e8b1bfe454b2631e11a6c4a1710c266",
+      "mode": "exact_bytes"
+    },
+    {
+      "file": "039-before-tunnel-delete-native.jsonl",
+      "source": "/private/tmp/gcp-classic-psk-lifecycle-actual-20261011-v1/039-before-tunnel-delete-native.jsonl",
+      "source_sha256": "c1b8aee4e4ff8e92c8b423ab434375cfc136f9e9552f04d9096d579e250a3f7f",
+      "archive_sha256": "c1b8aee4e4ff8e92c8b423ab434375cfc136f9e9552f04d9096d579e250a3f7f",
+      "mode": "exact_bytes"
+    },
+    {
+      "file": "040-before-tunnel-delete-fullguard.json",
+      "source": "/private/tmp/gcp-classic-psk-lifecycle-actual-20261011-v1/040-before-tunnel-delete-fullguard.json",
+      "source_sha256": "c3ec626210c3344ebb759db01b999c154cf6d332c5813807d94892498da8858e",
+      "archive_sha256": "c3ec626210c3344ebb759db01b999c154cf6d332c5813807d94892498da8858e",
+      "mode": "exact_bytes"
+    },
+    {
+      "file": "041-tunnel-delete-authoritative-summary.json",
+      "source": "/private/tmp/gcp-classic-psk-lifecycle-actual-20261011-v1/041-tunnel-delete-authoritative.jsonl",
+      "source_sha256": "df1a819ccb6d1b6c5b647e4b97e81691c1ad928f799579965a52df6b7d95dc11",
+      "archive_sha256": "5868f82dd6e1ccd535fc8c8c0e4010638eb909f0a334e8f4953c733c09c1bd35",
+      "mode": "terminal_nonsecret_summary"
+    },
+    {
+      "file": "042-before-tunnel-insert-api.jsonl",
+      "source": "/private/tmp/gcp-classic-psk-lifecycle-actual-20261011-v1/042-before-tunnel-insert-api.jsonl",
+      "source_sha256": "c3c53cb1f578342607295f5455ad89480e8b1bfe454b2631e11a6c4a1710c266",
+      "archive_sha256": "c3c53cb1f578342607295f5455ad89480e8b1bfe454b2631e11a6c4a1710c266",
+      "mode": "exact_bytes"
+    },
+    {
+      "file": "043-before-tunnel-insert-native.jsonl",
+      "source": "/private/tmp/gcp-classic-psk-lifecycle-actual-20261011-v1/043-before-tunnel-insert-native.jsonl",
+      "source_sha256": "c1b8aee4e4ff8e92c8b423ab434375cfc136f9e9552f04d9096d579e250a3f7f",
+      "archive_sha256": "c1b8aee4e4ff8e92c8b423ab434375cfc136f9e9552f04d9096d579e250a3f7f",
+      "mode": "exact_bytes"
+    },
+    {
+      "file": "044-before-tunnel-insert-fullguard.json",
+      "source": "/private/tmp/gcp-classic-psk-lifecycle-actual-20261011-v1/044-before-tunnel-insert-fullguard.json",
+      "source_sha256": "363a6870ef4a3d5d2b8e9e042b7c64687e5c284d5154b33c3d7e3ecb28624fd2",
+      "archive_sha256": "363a6870ef4a3d5d2b8e9e042b7c64687e5c284d5154b33c3d7e3ecb28624fd2",
+      "mode": "exact_bytes"
+    },
+    {
+      "file": "045-tunnel-insert-authoritative-summary.json",
+      "source": "/private/tmp/gcp-classic-psk-lifecycle-actual-20261011-v1/045-tunnel-insert-authoritative.jsonl",
+      "source_sha256": "a98e5964690a0d134f5eb5a4fb538e95b3ef70deec4d6754bf7debb53effbce3",
+      "archive_sha256": "964fdf3a3a7f547040f88cf2f20b7ad1c6531824a679fa02d2451f17a20ae6d5",
+      "mode": "terminal_nonsecret_summary"
+    },
+    {
+      "file": "046-before-route-insert-api.jsonl",
+      "source": "/private/tmp/gcp-classic-psk-lifecycle-actual-20261011-v1/046-before-route-insert-api.jsonl",
+      "source_sha256": "c3c53cb1f578342607295f5455ad89480e8b1bfe454b2631e11a6c4a1710c266",
+      "archive_sha256": "c3c53cb1f578342607295f5455ad89480e8b1bfe454b2631e11a6c4a1710c266",
+      "mode": "exact_bytes"
+    },
+    {
+      "file": "047-before-route-insert-native.jsonl",
+      "source": "/private/tmp/gcp-classic-psk-lifecycle-actual-20261011-v1/047-before-route-insert-native.jsonl",
+      "source_sha256": "c1b8aee4e4ff8e92c8b423ab434375cfc136f9e9552f04d9096d579e250a3f7f",
+      "archive_sha256": "c1b8aee4e4ff8e92c8b423ab434375cfc136f9e9552f04d9096d579e250a3f7f",
+      "mode": "exact_bytes"
+    },
+    {
+      "file": "048-before-route-insert-fullguard.json",
+      "source": "/private/tmp/gcp-classic-psk-lifecycle-actual-20261011-v1/048-before-route-insert-fullguard.json",
+      "source_sha256": "95df4df06db5fd293e1594f93a4195adc8a681c470908b57cfb0de0fe243a6b0",
+      "archive_sha256": "95df4df06db5fd293e1594f93a4195adc8a681c470908b57cfb0de0fe243a6b0",
+      "mode": "exact_bytes"
+    },
+    {
+      "file": "049-route-insert-authoritative-summary.json",
+      "source": "/private/tmp/gcp-classic-psk-lifecycle-actual-20261011-v1/049-route-insert-authoritative.jsonl",
+      "source_sha256": "e83349432c24d4b4a648a410f3304d0e9b546433f180367a3d9672e507596ea8",
+      "archive_sha256": "ea4c601c3af26f5d6db9351d83724e48824d3624e95f45d47617d7e40715425b",
+      "mode": "terminal_nonsecret_summary"
+    },
+    {
+      "file": "050-before-enable7-native.jsonl",
+      "source": "/private/tmp/gcp-classic-psk-lifecycle-actual-20261011-v1/050-before-enable7-native.jsonl",
+      "source_sha256": "c1b8aee4e4ff8e92c8b423ab434375cfc136f9e9552f04d9096d579e250a3f7f",
+      "archive_sha256": "c1b8aee4e4ff8e92c8b423ab434375cfc136f9e9552f04d9096d579e250a3f7f",
+      "mode": "exact_bytes"
+    },
+    {
+      "file": "051-before-enable7-fullguard.json",
+      "source": "/private/tmp/gcp-classic-psk-lifecycle-actual-20261011-v1/051-before-enable7-fullguard.json",
+      "source_sha256": "7e8ae9f7361ae55da1b2ebfface5300ed068220a12530b0fbb1609a330cf8619",
+      "archive_sha256": "7e8ae9f7361ae55da1b2ebfface5300ed068220a12530b0fbb1609a330cf8619",
+      "mode": "exact_bytes"
+    },
+    {
+      "file": "route-delete-prepare-summary.json",
+      "source": "/private/tmp/gcp-classic-psk-lifecycle-actual-20261011-v1/route-delete-prepare.jsonl",
+      "source_sha256": "8faee79a5598026619c5eeae90264138d11a9d9714fec194a8a5c01e1ff982ce",
+      "archive_sha256": "a95ec7c769b99aeb516bd5cd26044b17016aa409c7857f9e58adf28a6e929ed5",
+      "mode": "terminal_nonsecret_summary"
+    },
+    {
+      "file": "route-delete-summary.json",
+      "source": "/private/tmp/gcp-classic-psk-lifecycle-actual-20261011-v1/route-delete.jsonl",
+      "source_sha256": "77fce3f7cb60bf913b84e0886ab0660f7187802c98987c224f0cbc7e6b3822dd",
+      "archive_sha256": "70129b91685af9ae9637ae247c50f47ff212578d9b22826e64b0e889a4f8a941",
+      "mode": "terminal_nonsecret_summary"
+    },
+    {
+      "file": "route-insert-prepare-summary.json",
+      "source": "/private/tmp/gcp-classic-psk-lifecycle-actual-20261011-v1/route-insert-prepare.jsonl",
+      "source_sha256": "9a849e01387c2f6edeb288d54cf00a78e13b4fa4bf57919b2d78d51e6573f4e1",
+      "archive_sha256": "6d03a93069e85f117bf550b73135c16f0db0478955c588b1444251a78250c168",
+      "mode": "terminal_nonsecret_summary"
+    },
+    {
+      "file": "route-insert-summary.json",
+      "source": "/private/tmp/gcp-classic-psk-lifecycle-actual-20261011-v1/route-insert.jsonl",
+      "source_sha256": "ab318a785613a12a9229597513fe4a2b55e9b9d8c750811a9a4516b2ce6cd0c2",
+      "archive_sha256": "d85e0dddb9b695f036e9aac1fa64338c3b2472cecbd2929dec3a7081063eecd9",
+      "mode": "terminal_nonsecret_summary"
+    },
+    {
+      "file": "tunnel-delete-prepare-summary.json",
+      "source": "/private/tmp/gcp-classic-psk-lifecycle-actual-20261011-v1/tunnel-delete-prepare.jsonl",
+      "source_sha256": "accf788e01e05dbe64fc9d706ee5547532d4edcdf02c6d2615c4a7baff374c06",
+      "archive_sha256": "7a85939d6d07325ee32bb54d7a5ffc0bd29a3b7b2ad76ca7b809ed3e0ab6f7b3",
+      "mode": "terminal_nonsecret_summary"
+    },
+    {
+      "file": "tunnel-delete-summary.json",
+      "source": "/private/tmp/gcp-classic-psk-lifecycle-actual-20261011-v1/tunnel-delete.jsonl",
+      "source_sha256": "b81fb217b7b7ebcb301253d91428ae69dd1ad9282039e4d3257b57b47319cdb4",
+      "archive_sha256": "9c52f5b41443793d33b7b0419ec793a09b66312499d91c6aad36b066a0540fd1",
+      "mode": "terminal_nonsecret_summary"
+    },
+    {
+      "file": "tunnel-insert-prepare-summary.json",
+      "source": "/private/tmp/gcp-classic-psk-lifecycle-actual-20261011-v1/tunnel-insert-prepare.jsonl",
+      "source_sha256": "4f8205bafc1920cb948dbc9aeb8be850deb0bd7ca7f48344cf972aa49a752cd9",
+      "archive_sha256": "f6e34a45d9645d70902bac1cbc5315a5631c411e823e311c0a92215e8186b506",
+      "mode": "terminal_nonsecret_summary"
+    },
+    {
+      "file": "tunnel-insert-summary.json",
+      "source": "/private/tmp/gcp-classic-psk-lifecycle-actual-20261011-v1/tunnel-insert.jsonl",
+      "source_sha256": "d2223df71b6b17f4bbce276879dc2d22f24bc998cef0aaeb5a888340ed79efe0",
+      "archive_sha256": "ce1784a952e0292ef02acaa47080c9753b26235601bf033227cf61099b1ff8fb",
+      "mode": "terminal_nonsecret_summary"
+    }
+  ],
+  "known_API_secret_fields_discarded_privately_before_receipts": true
+}

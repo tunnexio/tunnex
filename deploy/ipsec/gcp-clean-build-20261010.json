@@ -1,0 +1,52 @@
+{
+  "build": {
+    "source_commit": "aa72e085241052cb7d61222242f3f7c1612535dd",
+    "archive_sha256": "3fd46807f439e954f3708b0c531e2035cb5175dd142d6d258b94d55a93a4b34d",
+    "status": "six-Linux-builds-pass",
+    "scope": "clean tracked production source cross-build; no cloud or image deployment proof",
+    "binaries": {
+      "tunnex-ai-vpn-relay-amd64": "85966ff7bc155def396a9898148409b705308794fe6099ed8919229671870e12",
+      "tunnex-ai-vpn-relay-arm64": "306b6a94f7950d610c5aadd315c3c752fb9c982e02dc2a3e4aec69e9e8cabccb",
+      "tunnex-api-amd64": "1e8eff631e91a99d21b94f8a305f45e4d14cbad66b74bbab4f5cdc6efee12d5b",
+      "tunnex-api-arm64": "2c708326881a9a41de21b63121888a87269eced09f63d2dbebe6692eaf179e81",
+      "tunnex-node-amd64": "be63d5a39e6755a5f719667fc77df05612daa58126983fe5e32fbe5e48fe97bc",
+      "tunnex-node-arm64": "5123bece19d9d6be950e436ec1d32f3ed617ce7339ee1ecc124d84862921fa87"
+    },
+    "architectures": [
+      "linux/arm64",
+      "linux/amd64"
+    ],
+    "production_node_regression": "ipsec control bgp fqdnrpc dnsforward nodepolicy all pass"
+  },
+  "native_package": {
+    "source_commit": "aa72e085241052cb7d61222242f3f7c1612535dd",
+    "image_id": "sha256:1b179467078025f0853d200c40f2c0f49f8df27cafb25f50671346b654fa8ba6",
+    "repo_digests": [
+      "tunnex-gcp-s2s-native@sha256:1b179467078025f0853d200c40f2c0f49f8df27cafb25f50671346b654fa8ba6"
+    ],
+    "architecture": "arm64",
+    "content_exit_code": 0,
+    "isolation": {
+      "network": "none",
+      "read_only": true,
+      "cap_drop": [
+        "ALL"
+      ],
+      "mount_count": 0,
+      "ports": {}
+    },
+    "receipt_sha256": "da513100cc82cfd7473d00673859fb6a9fc31045ddabbec446e417c09eb6f30d",
+    "recipe_sha256": "521ed8d9f153ba0b1b599417dbb729b8cff2182866b62e8bbb554ab336eca3e7",
+    "log_sha256": "658dfe301a4aeb3e982b6bc529951b4b6c95a9a4319c9f0ec051a5075c591a30",
+    "scope": "native clean-source image content only; running gateway not replaced"
+  },
+  "tracked_root_at_receipt": "71e5ca34",
+  "live_gateway_source": "15eb7a1c4c94a912c0dabb0418c1434335dfe7bc",
+  "limitations": [
+    "New source image not yet running on genuine enrolled local gateway",
+    "Google Cloud qualification pending bastion SSH restoration",
+    "Fragmentation fixture investigation and lower-underlay-MTU tests remain open",
+    "Automatic FQDN acceptance pending valid licence entitlement",
+    "Original disposable PG recreation eligibility refusal remains unclassified"
+  ]
+}

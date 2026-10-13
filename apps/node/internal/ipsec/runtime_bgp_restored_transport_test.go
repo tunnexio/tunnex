@@ -62,7 +62,7 @@ func TestBGPTrustedRestoredAppliedTransportPreparation(t *testing.T) {
 			}
 			before := e
 			mutations := f.mutations
-			recreate, missing, err := c.bgpRestoredTransportAbsent(context.Background(), e, entries, authority, identity)
+			recreate, missing, err := c.bgpRestoredTransportAbsent(context.Background(), e, entries, authority, identity, active.Environment)
 			if fault == "none" || fault == "checkpointed survivor" || fault == "checkpointed now absent" {
 				if err != nil || !recreate || !*denied || missing != (fault != "checkpointed survivor") {
 					t.Fatal("trusted Applied reset did not authorize reconstruction after proof", err)

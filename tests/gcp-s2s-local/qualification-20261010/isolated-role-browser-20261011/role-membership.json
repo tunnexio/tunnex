@@ -1,0 +1,50 @@
+[
+  {
+    "fixture": "owner",
+    "user_id": "01a124e7-60f6-71ca-9ef9-9ec9c8e56a86",
+    "cp_admin": false,
+    "membership_matches": 1,
+    "membership": [
+      {
+        "role": "owner",
+        "roles": [
+          "owner"
+        ]
+      }
+    ],
+    "connections_read_count": 9,
+    "next_cursor": null
+  },
+  {
+    "fixture": "admin",
+    "user_id": "01a124e7-6129-7754-9065-95ec2453d8bb",
+    "cp_admin": false,
+    "membership_matches": 1,
+    "membership": [
+      {
+        "role": "admin",
+        "roles": [
+          "admin"
+        ]
+      }
+    ],
+    "connections_read_count": 9,
+    "next_cursor": null
+  },
+  {
+    "fixture": "member",
+    "user_id": "01a124e7-615a-7c6d-8649-87fdead5e45f",
+    "cp_admin": false,
+    "membership_matches": 1,
+    "membership": [
+      {
+        "role": "member",
+        "roles": [
+          "member"
+        ]
+      }
+    ],
+    "connections_read_count": 9,
+    "next_cursor": null
+  }
+]

@@ -1,0 +1,9 @@
+{
+  "fresh_guard_capture_sha256": "b4d7dda65fc2a2a3441fadf3408ad2f229dce26279c95898231f43c647202af2",
+  "image": "sha256:c0ca8999d3ae601d3dc2e8a9d319c2b98444a94896ade84b692ab590f1ae3906",
+  "name": "tunnex-gcp-cloud-gateway-0249f7cf-20261011",
+  "operation": "create",
+  "status": "attempted; unknown result requires GET-only reconciliation",
+  "stopped_sha256": "778aab93000b7909d9504bbc59ad8b0399f556a0aaac8e7e96eac865336a381e",
+  "private_original_sha256": "e8804c18fd1519b36512cecff9cb5de6124f96346e8529fdb5292c535915c425"
+}

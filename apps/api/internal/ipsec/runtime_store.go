@@ -34,6 +34,8 @@ type runtimeLocked struct {
 	eligible              bool
 	recoveryEligible      bool
 	bgpEligible           bool
+	gcpHAEligible         bool
+	gcpClassicEligible    bool
 	retainedGuardEligible bool
 }
 
@@ -111,6 +113,8 @@ func (s *ConnectionStore) runtimeLock(ctx context.Context, org, id uuid.UUID, pr
 	var capability map[string]json.RawMessage
 	out.recoveryEligible = out.eligible && json.Unmarshal(caps, &capability) == nil && string(capability["ipsec_recovery_version"]) == "1"
 	out.bgpEligible = out.eligible && string(capability["ipsec_bgp_version"]) == "1"
+	out.gcpClassicEligible = out.eligible && string(capability["ipsec_gcp_classic_version"]) == "1"
+	out.gcpHAEligible = out.bgpEligible && string(capability["ipsec_gcp_ha_version"]) == "1"
 	out.retainedGuardEligible = out.eligible && retainedGuardCapability(caps)
 	out.connection, e = scanConnection(tx.QueryRow(ctx, `SELECT `+connectionColumns+` FROM ipsec_connections c WHERE c.org_id=$1 AND c.id=$2 FOR UPDATE`, org, id))
 	if e != nil {
@@ -127,10 +131,10 @@ func runtimeConfig(ctx context.Context, tx pgx.Tx, c Connection) (StaticConfig, 
 	if err := tx.QueryRow(ctx, `SELECT COALESCE(provider_profile,'') FROM ipsec_connections WHERE id=$1 AND org_id=$2`, c.ID, c.OrgID).Scan(&profile); err != nil {
 		return StaticConfig{}, [2]RuntimeTunnel{}, ErrConnectionUnavailable
 	}
-	cfg := StaticConfig{Mode: "ipv4-static", LocalPrefixes: []string{}, RemotePrefixes: []string{}, Tunnels: []StaticTunnel{}}
-	if profile == "aws-bgp-ipv4-v1" {
+	cfg := StaticConfig{ProfileID: profile, Mode: "ipv4-static", LocalPrefixes: []string{}, RemotePrefixes: []string{}, Tunnels: []StaticTunnel{}}
+	if isBGPProfile(profile) {
 		var eligible bool
-		if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM nodes WHERE id=$1 AND org_id=$2 AND site_id=$3 AND status='active' AND revoked_at IS NULL AND cert_serial<>'' AND capabilities->'ipsec_config_version'='1'::jsonb AND capabilities->'ipsec_bgp_version'='1'::jsonb AND policy_reported_at BETWEEN clock_timestamp()-interval '90 seconds' AND clock_timestamp())`, c.HistoricalGatewayNodeID, c.OrgID, c.HistoricalSiteID).Scan(&eligible); err != nil {
+		if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM nodes WHERE id=$1 AND org_id=$2 AND site_id=$3 AND status='active' AND revoked_at IS NULL AND cert_serial<>'' AND capabilities->'ipsec_config_version'='1'::jsonb AND capabilities->'ipsec_bgp_version'='1'::jsonb AND ($4<>'gcp-ha-bgp-ipv4-v1' OR capabilities->'ipsec_gcp_ha_version'='1'::jsonb) AND policy_reported_at BETWEEN clock_timestamp()-interval '90 seconds' AND clock_timestamp())`, c.HistoricalGatewayNodeID, c.OrgID, c.HistoricalSiteID, profile).Scan(&eligible); err != nil {
 			return cfg, [2]RuntimeTunnel{}, ErrConnectionUnavailable
 		}
 		if !eligible {
@@ -141,6 +145,15 @@ func runtimeConfig(ctx context.Context, tx pgx.Tx, c Connection) (StaticConfig, 
 		b := cfg.BGP
 		if err := tx.QueryRow(ctx, `SELECT local_asn,remote_asn,host(router_id),maximum_prefixes FROM ipsec_aws_bgp_configs WHERE connection_id=$1 AND org_id=$2`, c.ID, c.OrgID).Scan(&b.LocalASN, &b.RemoteASN, &b.RouterID, &b.MaximumPrefixes); err != nil {
 			return cfg, [2]RuntimeTunnel{}, ErrConnectionUnavailable
+		}
+	}
+	if profile == GCPClassicProfile {
+		var eligible bool
+		if err := tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM nodes WHERE id=$1 AND org_id=$2 AND site_id=$3 AND status='active' AND revoked_at IS NULL AND cert_serial<>'' AND capabilities->'ipsec_config_version'='1'::jsonb AND capabilities->'ipsec_gcp_classic_version'='1'::jsonb AND policy_reported_at BETWEEN clock_timestamp()-interval '90 seconds' AND clock_timestamp())`, c.HistoricalGatewayNodeID, c.OrgID, c.HistoricalSiteID).Scan(&eligible); err != nil {
+			return cfg, [2]RuntimeTunnel{}, ErrConnectionUnavailable
+		}
+		if !eligible {
+			return cfg, [2]RuntimeTunnel{}, ErrConnectionIneligible
 		}
 	}
 	var tunnels [2]RuntimeTunnel
@@ -174,7 +187,7 @@ func runtimeConfig(ctx context.Context, tx pgx.Tx, c Connection) (StaticConfig, 
 			return cfg, tunnels, createError(e)
 		}
 	}
-	rows, e := tx.Query(ctx, `SELECT t.tunnel_id,t.slot,s.secret_revision,host(t.aws_outside_ipv4),t.inside_cidr::text,host(t.customer_inside_ipv4),host(t.aws_inside_ipv4) FROM ipsec_aws_tunnel_configs t JOIN ipsec_tunnels s ON s.id=t.tunnel_id AND s.org_id=t.org_id AND s.connection_id=t.connection_id WHERE t.connection_id=$1 AND t.org_id=$2 ORDER BY t.slot FOR UPDATE OF s`, c.ID, c.OrgID)
+	rows, e := tx.Query(ctx, `SELECT t.tunnel_id,t.slot,s.secret_revision,host(t.aws_outside_ipv4),COALESCE(t.inside_cidr::text,''),COALESCE(host(t.customer_inside_ipv4),''),COALESCE(host(t.aws_inside_ipv4),'') FROM ipsec_aws_tunnel_configs t JOIN ipsec_tunnels s ON s.id=t.tunnel_id AND s.org_id=t.org_id AND s.connection_id=t.connection_id WHERE t.connection_id=$1 AND t.org_id=$2 ORDER BY t.slot FOR UPDATE OF s`, c.ID, c.OrgID)
 	if e != nil {
 		return cfg, tunnels, createError(e)
 	}
@@ -202,7 +215,7 @@ func runtimeConfig(ctx context.Context, tx pgx.Tx, c Connection) (StaticConfig, 
 		cfg.Tunnels = append(cfg.Tunnels, StaticTunnel{OutsideAddress: t.OutsideAddress, InsideCIDR: t.InsideCIDR, CustomerInsideAddress: t.CustomerInsideAddress, CloudInsideAddress: t.CloudInsideAddress})
 		n++
 	}
-	if rows.Err() != nil || n != 2 || tunnels[0].XFRMID == tunnels[1].XFRMID || tunnels[0].LinkName == tunnels[1].LinkName {
+	if rows.Err() != nil || n != activeTunnelCount(profile) || n == 2 && (tunnels[0].XFRMID == tunnels[1].XFRMID || tunnels[0].LinkName == tunnels[1].LinkName) {
 		return cfg, tunnels, ErrConnectionUnavailable
 	}
 	return cfg, tunnels, nil
@@ -276,8 +289,16 @@ func runtimeDigest(s string) bool {
 }
 func runtimeManifest(c Connection, cfg StaticConfig, tunnels [2]RuntimeTunnel) RuntimeManifest {
 	m := RuntimeManifest{OrgID: c.OrgID, NodeID: c.HistoricalGatewayNodeID, SiteID: c.HistoricalSiteID, ConnectionID: c.ID, DesiredRevision: c.DesiredRevision, ConfigurationRevision: 1, ProfileID: providerProfile(cfg), CustomerOutsideAddress: cfg.CustomerOutsideAddress, LocalPrefixes: cfg.LocalPrefixes, RemotePrefixes: cfg.RemotePrefixes, Tunnels: tunnels}
+	if cfg.ProfileID == GCPClassicProfile {
+		v, n := 1, 1
+		m.TransportVersion = &v
+		m.TunnelCount = &n
+	}
 	if cfg.BGP != nil {
 		v := 1
+		if cfg.ProfileID == GCPHAProfile {
+			v = 2
+		}
 		b := *cfg.BGP
 		m.BGP = &b
 		m.BGPVersion = &v

@@ -1,0 +1,17 @@
+{
+  "scope": "read-only designated bastion exact secret-free describe fields",
+  "address_name": "tn-gcps2s-20261010-classic-ip",
+  "address": "34.131.214.202",
+  "address_status": "IN_USE",
+  "tunnel": "tn-gcps2s-20261010-classic-0",
+  "peer": "34.131.136.132",
+  "local_traffic_selector": [
+    "0.0.0.0/0"
+  ],
+  "remote_traffic_selector": [
+    "0.0.0.0/0"
+  ],
+  "status": "NO_INCOMING_PACKETS",
+  "secrets_read": false,
+  "cloud_mutation": false
+}
