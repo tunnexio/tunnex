@@ -160,11 +160,11 @@ func testAgentIPsecCommittedDelivery(t *testing.T, classic bool, azure ...bool) 
 	}
 	c, err := store.CreateProviderDisabled(ctx, org, actor, sealer, ipsec.CreateProviderRequest{ID: id, SiteID: site, GatewayID: gateway, Name: "runtime HTTP", TunnelIDs: tunnelIDs, Config: cfg})
 	if err != nil {
-		t.Fatal(err)
+		t.Fatal("create disabled provider", err)
 	}
 	c, err = store.SetIntent(ctx, org, actor, id, c.DesiredRevision, "enabled")
 	if err != nil {
-		t.Fatal(err)
+		t.Fatal("enable provider", err)
 	}
 	rule := uuid.New()
 	if _, err = pool.Exec(ctx, `UPDATE organizations SET zero_trust_mode='enforcing' WHERE id=$1`, org); err != nil {
@@ -275,7 +275,7 @@ func testAgentIPsecCommittedDelivery(t *testing.T, classic bool, azure ...bool) 
 	runtimeLeasePolicyRace(t, ctx, pool, store, org, gateway, id, rule, material)
 	c, err = store.SetIntent(ctx, org, actor, id, c.DesiredRevision, "disabled")
 	if err != nil {
-		t.Fatal(err)
+		t.Fatal("disable provider", err)
 	}
 	if c.CleanupState != "pending" {
 		t.Fatal("failed response lost cleanup obligation")

@@ -27,18 +27,18 @@ func TestDNSDiagnosticClassifiesNativeGuardGrantAndRouteRefusal(t *testing.T) {
 					return errors.New("private error must never enter diagnostic")
 				}
 				f.publish(t)
-				expected = "dns_native_proof"
+				expected = "dns_refusal_native"
 			case "grant":
 				f.config.Version++
-				expected = "dns_grant"
+				expected = "dns_refusal_grant"
 			case "guard":
 				f.observed.Store(`{"private":"never emit"}`)
-				expected = "dns_guard_full_read"
+				expected = "dns_refusal_guard_initial"
 			case "route":
 				view := *f.c.dnsView.Load()
 				view.observer.route = func(context.Context, string, ...string) ([]byte, error) { return nil, errors.New("private route") }
 				f.c.dnsView.Store(&view)
-				expected = "dns_route"
+				expected = "dns_refusal_route"
 			case "epoch":
 				view := *f.c.dnsView.Load()
 				old := view.observer.source
@@ -52,7 +52,7 @@ func TestDNSDiagnosticClassifiesNativeGuardGrantAndRouteRefusal(t *testing.T) {
 					return index, err
 				}
 				f.c.dnsView.Store(&view)
-				expected = "dns_epoch"
+				expected = "dns_refusal_owner_before_final"
 			}
 			if _, err := f.c.proveResolverDNSStage(context.Background(), f.config, f.config.Endpoints[0], "dns_after_proof"); err == nil {
 				t.Fatal("mandatory refusal changed")
@@ -167,7 +167,7 @@ func TestDNSDiagnosticRenewalWithWrongNativeTableRemainsRefused(t *testing.T) {
 		return nil
 	}
 	f.publish(t)
-	if _, err := f.prove(context.Background()); err == nil || diagnostic.Stage != "dns_guard_full_read" {
+	if _, err := f.prove(context.Background()); err == nil || diagnostic.Stage != "dns_refusal_guard_initial" {
 		t.Fatalf("wrong native table accepted/misclassified: %+v", diagnostic)
 	}
 }
@@ -256,7 +256,7 @@ func TestDNSDiagnosticSeparatesFinalPublishedGuardRead(t *testing.T) {
 		return raw, err
 	}
 	f.c.dnsView.Store(&view)
-	if _, err := f.prove(context.Background()); err == nil || diagnostic.Stage != "dns_latest_guard_full_read" {
+	if _, err := f.prove(context.Background()); err == nil || diagnostic.Stage != "dns_refusal_guard_retry" {
 		t.Fatalf("final current table refusal misclassified: %+v", diagnostic)
 	}
 	if f.guardReads.Load() != 2 {

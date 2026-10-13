@@ -328,14 +328,14 @@ func (c *RuntimeController) maintenanceBGPGuard(ctx context.Context, a, old runt
 		return fail()
 	}
 	health := c.observeRecovery(ctx, e)
-	for _, state := range health {
+	for _, state := range health[:e.Allocation.activeTunnelCount()] {
 		if state != "up" && state != "down" {
 			return fail()
 		}
 	}
 	target := []RuntimeBGPRouteTuple{}
 	for _, route := range routes {
-		if route.Slot >= 1 && route.Slot <= 2 && health[route.Slot-1] == "up" {
+		if route.Slot >= 1 && route.Slot <= e.Allocation.activeTunnelCount() && health[route.Slot-1] == "up" {
 			target = append(target, RuntimeBGPRouteTuple{Prefix: route.Prefix, Slot: uint8(route.Slot), InterfaceIndex: e.Observed[route.Slot-1].InterfaceIndex, Table: 254, Protocol: 242, Metric: 50000 + uint32(route.Slot)})
 		}
 	}

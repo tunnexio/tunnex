@@ -368,6 +368,7 @@ func (r *runtimeEnvironmentInspector) observeQualified(ctx context.Context, a Ke
 			return raw, nil
 		}, engines)
 	}
+	stage = "env_snapshot_before"
 	first, valid := readSnapshot()
 	if !valid {
 		return fail()
@@ -548,6 +549,7 @@ func (r *runtimeEnvironmentInspector) observeQualified(ctx context.Context, a Ke
 		out.Underlays[i] = RuntimeUnderlay{InterfaceIndex: physical[dev], LocalAddress: address, OuterMTU: outerMTU}
 	}
 	// The first complete snapshot is fully validated before any second-snapshot read.
+	stage = "env_snapshot_after"
 	second, valid := readSnapshot()
 	if !valid || !bytes.Equal(second.links, links) || !bytes.Equal(second.rules, rules) || !bytes.Equal(second.routes, routes) || !runtimeAddressBracket(addresses, second.addresses, time.Since(addressReadStarted)) {
 		return fail()

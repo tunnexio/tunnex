@@ -7,7 +7,9 @@ import (
 	"net/netip"
 	"os"
 	"reflect"
+	"sort"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -34,12 +36,14 @@ func TestRuntimeEnvironmentDiagnosticsPreserveReadsAndRefusal(t *testing.T) {
 		var priorReads []string
 		for _, enabled := range []bool{false, true} {
 			reads := []string{}
+			var readsMu sync.Mutex
+			recordRead := func(q string) { readsMu.Lock(); defer readsMu.Unlock(); reads = append(reads, q) }
 			events := []RuntimeDiagnostic{}
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
-			r := &runtimeEnvironmentInspector{namespace: func() (string, error) { reads = append(reads, "namespace"); return e.Allocation.Namespace, nil }, nft: func(context.Context, ...string) ([]byte, error) { reads = append(reads, "nft"); return f.NFT, nil }, ip: func(_ context.Context, a ...string) ([]byte, error) {
+			r := &runtimeEnvironmentInspector{namespace: func() (string, error) { recordRead("namespace"); return e.Allocation.Namespace, nil }, nft: func(context.Context, ...string) ([]byte, error) { recordRead("nft"); return f.NFT, nil }, ip: func(_ context.Context, a ...string) ([]byte, error) {
 				q := strings.Join(a, " ")
-				reads = append(reads, q)
+				recordRead(q)
 				if mode != "success" && q == "-j -4 rule show" {
 					if mode == "canceled" {
 						cancel()
@@ -52,12 +56,28 @@ func TestRuntimeEnvironmentDiagnosticsPreserveReadsAndRefusal(t *testing.T) {
 				r.diagnostic = func(v RuntimeDiagnostic) { events = append(events, v) }
 			}
 			got, err := r.Observe(ctx, e.Allocation, e.Engines)
+			sort.Strings(reads)
 			if !enabled {
 				prior, priorErr, priorReads = got, err, reads
 				continue
 			}
-			if !reflect.DeepEqual(got, prior) || err != priorErr || !reflect.DeepEqual(reads, priorReads) {
+			if !reflect.DeepEqual(got, prior) || err != priorErr || mode == "success" && !reflect.DeepEqual(reads, priorReads) {
 				t.Fatal("diagnostics changed reads/result/error")
+			}
+			// Parallel snapshot reads cancel cooperatively. A failure may stop different
+			// peers first, but diagnostics must never add duplicate reads or lose
+			// the required failing rule read and original refusal.
+			if mode != "success" {
+				seen := map[string]int{}
+				for _, q := range reads {
+					seen[q]++
+					if seen[q] > 1 {
+						t.Fatal("diagnostic duplicated read", q)
+					}
+				}
+				if seen["namespace"] != 1 || seen["-j -4 rule show"] != 1 {
+					t.Fatal("missing required refusal read", reads)
+				}
 			}
 			if len(events) != 1 || events[0].Operation != "environment_observe" || events[0].ConnectionID != e.Allocation.ConnectionID {
 				t.Fatal("diagnostic binding")
@@ -67,7 +87,7 @@ func TestRuntimeEnvironmentDiagnosticsPreserveReadsAndRefusal(t *testing.T) {
 					t.Fatal("completion")
 				}
 			} else {
-				if err != ErrRuntimeEnvironment || events[0].Stage != "env_rules_before" || !events[0].Refused {
+				if err != ErrRuntimeEnvironment || events[0].Stage != "env_snapshot_before" || !events[0].Refused {
 					t.Fatal("fixed refusal")
 				}
 			}

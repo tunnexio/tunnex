@@ -64,7 +64,11 @@ func TestConnectionGuardReadDoesNotCoupleUnrelatedExpiry(t *testing.T) {
 			if c.recoveryGuardPermits(context.Background(), bad) {
 				t.Fatal("expired target promoted")
 			}
-			view := &runtimeDNSOwnerView{guard: m, observer: runtimeDNSObserver{guardReader: c.guard.reader}}
+			objects, ok := normalizedGuardObjects([]byte(m.ExpectedJSON))
+			if !ok {
+				t.Fatal("invalid expected guard fixture")
+			}
+			view := &runtimeDNSOwnerView{expected: guardExpectedSnapshot{raw: m.ExpectedJSON, objects: objects}, guard: m, observer: runtimeDNSObserver{guardReader: c.guard.reader}}
 			index, req := good.Observed[0].InterfaceIndex, good.Engines[0].ReqID
 			before := reads
 			if !view.resolverGuardPermits(context.Background(), good, index, req) || reads != before+1 {

@@ -225,7 +225,7 @@ func (c *RuntimeController) proveResolverDNSStage(ctx context.Context, config fq
 	}()
 	fail := func(refusal ...string) (runtimeDNSProof, error) {
 		if len(refusal) == 1 {
-			c.emitRuntimeDiagnostic(ctx, "dns_proof", refusal[0], connection, started, true)
+			stage = refusal[0]
 		}
 		return runtimeDNSProof{}, ErrRuntimeController
 	}
