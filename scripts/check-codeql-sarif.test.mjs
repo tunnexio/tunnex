@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import test from 'node:test';
-import { summarizeSarif } from './check-codeql-sarif.mjs';
+import { fetchGitHubReview, summarizeSarif } from './check-codeql-sarif.mjs';
 
 const script = resolve(import.meta.dirname, 'check-codeql-sarif.mjs');
 const descriptor = (id, severity, extra = {}) => ({ id, ...(severity === undefined ? {} : {
@@ -14,7 +14,7 @@ const sarif = (rules, results, extensions = []) => ({ version: '2.1.0', runs: [{
   tool: { driver: { name: 'CodeQL', rules }, extensions }, results,
 }] });
 const result = (extra = {}) => ({ ruleId: 'js/file-system-race', ruleIndex: 0, level: 'warning', ...extra });
-const counts = (blocking, highCritical = blocking, errorLevel = 0) => ({ highCritical, errorLevel, blocking });
+const counts = (blocking, highCritical = blocking, errorLevel = 0, reviewedFalsePositives = 0) => ({ highCritical, errorLevel, reviewedFalsePositives, blocking });
 function cli(t, logs) {
   const dir = mkdtempSync(join(tmpdir(), 'codeql-severity-gate-'));
   t.after(() => rmSync(dir, { recursive: true, force: true }));
@@ -141,7 +141,138 @@ test('Missing or malformed SARIF and empty runs fail rather than masquerading as
 
 test('The workflow consumes the tested severity helper under its existing analysis condition', () => {
   const workflow = readFileSync(resolve(import.meta.dirname, '../.github/workflows/security.yml'), 'utf8');
-  assert.match(workflow, /node scripts\/check-codeql-sarif\.mjs "\$\{files\[@\]\}"/);
+  assert.match(workflow, /node scripts\/check-codeql-sarif\.mjs --github-dismissals "\$\{files\[@\]\}"/);
   assert.doesNotMatch(workflow, /select\(\.level == "error"\)/);
   assert.match(workflow, /queries: security-extended/);
+});
+
+const githubContext = {
+  repository: 'owner/repository', ref: 'refs/pull/10/merge', sha: 'a'.repeat(40),
+  category: '/language:go', analysisKey: '.github/workflows/security.yml:codeql',
+};
+function reviewedFixture() {
+  const finding = { ruleId: 'high', level: 'warning', locations: [{ physicalLocation: {
+    artifactLocation: { uri: 'src/proxy.go' }, region: { startLine: 10, startColumn: 3, endLine: 10, endColumn: 9 },
+  } }] };
+  const log = sarif([descriptor('high', '7.7')], [finding]);
+  log.runs[0].automationDetails = { id: '/language:go/' };
+  log.runs[0].versionControlProvenance = [{ repositoryUri: 'https://github.com/owner/repository', revisionId: githubContext.sha }];
+  const alert = { number: 1, rule: { id: 'high' }, tool: { name: 'CodeQL' },
+    state: 'dismissed', dismissed_reason: 'false positive', most_recent_instance: {
+      state: 'dismissed', ref: githubContext.ref, commit_sha: githubContext.sha,
+      category: githubContext.category, analysis_key: githubContext.analysisKey,
+      location: { path: 'src/proxy.go', start_line: 10, end_line: 10, start_column: 3, end_column: 9 },
+    } };
+  return { log, review: { context: structuredClone(githubContext), alerts: [alert] } };
+}
+
+test('Only an exact already-reviewed current GitHub false positive can pass', () => {
+  const { log, review } = reviewedFixture();
+  assert.deepEqual(summarizeSarif(log), counts(1));
+  assert.deepEqual(summarizeSarif(log, review), counts(0, 1, 0, 1));
+  log.runs[0].results[0].level = 'error';
+  assert.deepEqual(summarizeSarif(log, review), counts(0, 1, 1, 1));
+  delete log.runs[0].results[0].locations[0].physicalLocation.region.endLine;
+  assert.deepEqual(summarizeSarif(log, review), counts(0, 1, 1, 1));
+  delete log.runs[0].versionControlProvenance;
+  assert.deepEqual(summarizeSarif(log, review), counts(0, 1, 1, 1));
+  delete log.runs[0].automationDetails;
+  assert.deepEqual(summarizeSarif(log, review), counts(1, 1, 1));
+});
+
+test('New, open, stale, differently reviewed and ambiguous findings remain blocking', () => {
+  const mutations = [
+    (r) => { r.alerts = []; }, (r) => { r.alerts[0].state = 'open'; },
+    (r) => { r.alerts[0].most_recent_instance.state = 'open'; },
+    (r) => { r.alerts[0].dismissed_reason = "won't fix"; },
+    (r) => { r.alerts[0].most_recent_instance.ref = 'refs/heads/main'; },
+    (r) => { r.alerts[0].most_recent_instance.commit_sha = 'b'.repeat(40); },
+    (r) => { r.alerts[0].most_recent_instance.category = '/language:javascript-typescript'; },
+    (r) => { r.alerts[0].most_recent_instance.analysis_key = 'other workflow'; },
+    (r) => { r.alerts[0].rule.id = 'other'; },
+    (r) => { r.alerts[0].most_recent_instance.location.path = 'src/other.go'; },
+    ...['start_line', 'end_line', 'start_column', 'end_column'].map((key) => (r) => { r.alerts[0].most_recent_instance.location[key]++; }),
+    (r) => { r.alerts.push(structuredClone(r.alerts[0])); },
+    (r) => { const open = structuredClone(r.alerts[0]); open.state = 'open'; open.most_recent_instance.state = 'open'; r.alerts.push(open); },
+  ];
+  for (const mutate of mutations) {
+    const { log, review } = reviewedFixture(); mutate(review);
+    assert.deepEqual(summarizeSarif(log, review), counts(1));
+  }
+});
+
+test('A dismissal cannot approve other SARIF source context or a hierarchical child rule', () => {
+  for (const mutate of [
+    (l) => { l.runs[0].automationDetails.id = '/language:javascript-typescript/'; },
+    (l) => { l.runs[0].versionControlProvenance[0].revisionId = 'b'.repeat(40); },
+    (l) => { l.runs[0].versionControlProvenance[0].branch = 'refs/heads/main'; },
+    (l) => { l.runs[0].results[0].ruleId = 'high/child'; },
+    (l) => { delete l.runs[0].results[0].locations[0].physicalLocation.region.startColumn; },
+  ]) {
+    const { log, review } = reviewedFixture(); mutate(log);
+    assert.deepEqual(summarizeSarif(log, review), counts(1));
+  }
+});
+
+test('GitHub metadata lookup fetches every page of both dismissed and open CodeQL alerts', () => {
+  const { review } = reviewedFixture();
+  const env = { GITHUB_REPOSITORY: githubContext.repository, GITHUB_REF: githubContext.ref,
+    GITHUB_SHA: githubContext.sha, CODEQL_ANALYSIS_CATEGORY: githubContext.category, CODEQL_ANALYSIS_KEY: githubContext.analysisKey };
+  const calls = [];
+  const fetched = fetchGitHubReview(env, (command, args) => {
+    if (command === 'git') { assert.deepEqual(args, ['rev-parse', 'HEAD']); return githubContext.sha; }
+    assert.equal(command, 'gh'); assert.ok(args.includes('--paginate') && args.includes('--slurp'));
+    assert.ok(args.includes(`ref=${githubContext.ref}`) && args.includes('tool_name=CodeQL'));
+    calls.push(args.find((arg) => arg.startsWith('state=')));
+    return calls.length === 1 ? JSON.stringify([[], review.alerts]) : JSON.stringify([[]]);
+  });
+  assert.deepEqual(calls, ['state=dismissed', 'state=open']);
+  assert.deepEqual(fetched, review);
+  for (const response of ['not JSON', '{}', '[]', '[{}]', '[[{}]]']) {
+    assert.throws(() => fetchGitHubReview(env, (command) => command === 'git' ? githubContext.sha : response));
+  }
+  assert.throws(() => fetchGitHubReview(env, (command) => { if (command === 'git') return githubContext.sha; throw new Error('API unavailable'); }));
+  assert.throws(() => fetchGitHubReview(env, (command) => { assert.equal(command, 'git'); return 'b'.repeat(40); }));
+  assert.throws(() => fetchGitHubReview({ ...env, GITHUB_SHA: '' }, () => { assert.fail('unexpected API read'); }));
+});
+
+test('The opt-in CLI applies reviewed metadata and keeps unknown, stale and API failure blocking', (t) => {
+  const { log, review } = reviewedFixture();
+  const dir = mkdtempSync(join(tmpdir(), 'codeql-reviewed-cli-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const gh = join(dir, 'gh');
+  writeFileSync(gh, `#!/usr/bin/env node
+if (process.env.TEST_GH_FAIL === '1') process.exit(1);
+const alerts = ${JSON.stringify(review.alerts)};
+console.log(JSON.stringify(process.argv.includes('state=dismissed') ? [[], alerts] : [[]]));
+`);
+  chmodSync(gh, 0o700);
+  const git = join(dir, 'git');
+  writeFileSync(git, `#!/usr/bin/env node
+console.log(process.env.TEST_CHECKOUT_SHA ?? process.env.GITHUB_SHA);
+`);
+  chmodSync(git, 0o700);
+  const file = join(dir, 'go.sarif');
+  const env = { ...process.env, PATH: `${dir}:${dirname(process.execPath)}:${process.env.PATH ?? ''}`,
+    GITHUB_REPOSITORY: githubContext.repository, GITHUB_REF: githubContext.ref, GITHUB_SHA: githubContext.sha,
+    CODEQL_ANALYSIS_CATEGORY: githubContext.category, CODEQL_ANALYSIS_KEY: githubContext.analysisKey };
+  const run = (extra = {}) => spawnSync(process.execPath, [script, '--github-dismissals', file],
+    { encoding: 'utf8', env: { ...env, ...extra } });
+  writeFileSync(file, JSON.stringify(log));
+  const accepted = run();
+  assert.equal(accepted.status, 0, accepted.stdout + accepted.stderr);
+  assert.match(accepted.stdout, /1 exact reviewed false positive/);
+  assert.equal(run({ GITHUB_SHA: 'b'.repeat(40) }).status, 1);
+  assert.equal(run({ TEST_CHECKOUT_SHA: 'b'.repeat(40) }).status, 1);
+  const failedAPI = run({ TEST_GH_FAIL: '1' });
+  assert.equal(failedAPI.status, 1);
+  assert.match(failedAPI.stderr, /Cannot read GitHub/);
+  const unknown = structuredClone(log.runs[0].results[0]);
+  unknown.locations[0].physicalLocation.region.startLine++;
+  unknown.locations[0].physicalLocation.region.endLine++;
+  log.runs[0].results.push(unknown);
+  writeFileSync(file, JSON.stringify(log));
+  const blocked = run();
+  assert.equal(blocked.status, 1);
+  assert.match(blocked.stdout, /blocking findings: 1/);
 });
