@@ -1,0 +1,77 @@
+{
+  "source_commit": "3d0951e84aa58ce78dcc6238bd2ecaf7d3f38fd9",
+  "container_id": "dc81baef1c4924007b39224fd4f9b14bef94e734c2138257b12bfdc46abd8294",
+  "image_id": "sha256:ccde530ca3e815ee169ed258ab6a95ad20de4089f8e4abf6b0f20440a7d62102",
+  "connection_id": "b79d7eda-fafe-41cf-af2c-4115d4ef32c6",
+  "boot_id": "9617762e-19db-4a21-bdee-909dfb31e501",
+  "phase": "applied",
+  "contract_version": 4,
+  "allocation": {
+    "ProfileID": "gcp-classic-static-ipv4-v1",
+    "Namespace": "net:[4026531840]",
+    "Generation": "205ff1ac-cfb8-4375-b691-4f742113b619",
+    "ConnectionID": "b79d7eda-fafe-41cf-af2c-4115d4ef32c6",
+    "Tunnels": [
+      {
+        "TunnelID": "8494b8ef-e6e8-4d8d-b964-fc6faec7cb72",
+        "Slot": 1,
+        "Name": "txe936e4aecebb",
+        "Alias": "tunnex-ipsec:205ff1ac-cfb8-4375-b691-4f742113b619:8494b8ef-e6e8-4d8d-b964-fc6faec7cb72",
+        "XFRMID": 3912688814,
+        "InsideAddress": "169.254.233.53/32",
+        "RemotePrefixes": [
+          "10.81.0.0/24"
+        ],
+        "Selected": true
+      },
+      {
+        "TunnelID": "00000000-0000-0000-0000-000000000000",
+        "Slot": 0,
+        "Name": "",
+        "Alias": "",
+        "XFRMID": 0,
+        "InsideAddress": "",
+        "RemotePrefixes": null,
+        "Selected": false
+      }
+    ]
+  },
+  "observed": [
+    {
+      "Namespace": "net:[4026531840]",
+      "InterfaceName": "txe936e4aecebb",
+      "InterfaceIndex": 8,
+      "XFRMID": 3912688814
+    },
+    {
+      "Namespace": "",
+      "InterfaceName": "",
+      "InterfaceIndex": 0,
+      "XFRMID": 0
+    }
+  ],
+  "sa_count": "SAD count 6",
+  "reader_identity": {
+    "nft_sha256": "7156559ea0d2d062a40af33952eb412833a191cb7179e9ad9efe8b146a563d7f",
+    "container_netns": "net:[4026531840]",
+    "host_netns": "net:[4026531840]"
+  },
+  "native_receipt_sha256": "77a87a5d48ab2fdfe052ae3b89db9ac76ce4333a9cd450ed32c87f8b7b131da8",
+  "remote81_routes": [
+    {
+      "dst": "10.81.0.0/24",
+      "dev": "txe936e4aecebb",
+      "protocol": "242",
+      "scope": "link",
+      "metric": 50001,
+      "flags": []
+    }
+  ],
+  "classic_ike_established": true,
+  "classic_child_installed": true,
+  "ha_two_children_coexist": true,
+  "full_nft_json_captured": true,
+  "full_guard_validator_independent_pass": false,
+  "scope": "Read-only managed-SA/static-route/single-active baseline. Full guard JSON captured for root review; no full-validator or payload/default-deny claim; no grants/mutations.",
+  "chunk": "0a5e25"
+}

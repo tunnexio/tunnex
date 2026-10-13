@@ -1,0 +1,110 @@
+{
+  "api_tree": "5feb0e3cc916a7ed7c439b9f9f18598c3277ff8e",
+  "binary_candidates": {
+    "api": {
+      "bytes": 61578649,
+      "sha256": "cb0eefb473a19c5ff4051adc70543c50264a274a84ae652533fa2705d7196ddf"
+    },
+    "node": {
+      "bytes": 20667615,
+      "sha256": "029a6b041de018112a83f7d99bdfd155a708521746373466d072fe6bc60085e6"
+    },
+    "observer": {
+      "bytes": 14154441,
+      "sha256": "03bdf5b97edaa1a341f7078176ee88a2faf1078cfabfbe1859ceb95c73a09830"
+    }
+  },
+  "kind": "azure_bgp_recreation_local_qualification_and_predeployment_absence",
+  "limitations": [
+    "Historical Azure SKU equality cannot be derived from finalized runtime history; normal current ARM discovery is separately required.",
+    "No maximum-prefix shutdown or restored baseline/grants acceptance at this checkpoint.",
+    "Sustained DNS stability remains failed in the previous live sample.",
+    "Accelerated timer change remains rejected by automatic approval review and awaits explicit human approval."
+  ],
+  "live_checkpoint": {
+    "candidate_cloud_prefix_added": false,
+    "fresh_absence_required_before_next_mutation": true,
+    "historical_POST_status": 409,
+    "original_connection": "finalized_revision56_cleanup55",
+    "policy_count": 0,
+    "reserved_target_created": false,
+    "services_replaced": false,
+    "state_sha256": "8f85ab019859f941f7757a04e4e21fa125ee2f4359d54b06c94737f908de41e4",
+    "state_stage": "create_reserved"
+  },
+  "live_predeployment_absence": {
+    "category": "source_paired_reserved_prior_absence_verified",
+    "historical_boot_entry_count": 1,
+    "journal_entries": 26,
+    "native_binding_sha256": "5ad40fd4c9ac9f788d27c2b6a03f9ef2caf66fe79962fec4753a80f63f0436f7",
+    "native_counts": {
+      "owned_children": 0,
+      "owned_ike": 0,
+      "owned_interfaces": 0,
+      "owned_routes": 0,
+      "owned_sad": 0,
+      "owned_spd": 0
+    },
+    "native_observed_at": "2026-10-11T00:55:09.604199891Z",
+    "native_receipt_sha256": "a00fa1fcb929b4c828ca7d731bd67c1892504ab5c6a3774f87eecb8a88f146f1",
+    "native_window": "maxproof-window-a367ffab-74af-4e0f-958b-c329b77891cb",
+    "node_executable_sha256": "e2fddce35434dd43513ec73ecc10714c01e592d50e368c1278a5a8e1ebd2c49c",
+    "normal_phase": "reserved-prior-read",
+    "normal_receipt_id": "max-prefix-v6-reserved-normal-0ea4abfd-b34f-49f9-a36f-0d29e7373a08.json",
+    "observed_at": "2026-10-11T00:55:10.307891+00:00",
+    "observer_sha256": "03bdf5b97edaa1a341f7078176ee88a2faf1078cfabfbe1859ceb95c73a09830",
+    "policy_count": 0,
+    "private_run_id": "azure-recreation-predeploy-observe-6017ed6f-026f-4950-8840-bb7dcf2253f3",
+    "reserved_target_id": "3e51a274-ab79-48db-b162-a8f1dbbc132f",
+    "scope": "Independent native absence and real normal reserved target404/prior finalization only; no recreate, restart, prefix advertisement, timer change or acknowledgement.",
+    "source_manifest_sha256": "8692e27678ff76d324154a3bdb0b3a952d958e877cbe54f0a01ffe3a10a787b2",
+    "state_sha256": "8f85ab019859f941f7757a04e4e21fa125ee2f4359d54b06c94737f908de41e4",
+    "state_stage": "create_reserved",
+    "version": 1
+  },
+  "local_api": {
+    "elapsed_seconds": 26.286,
+    "kind": "combined_local_postgresql_qualification",
+    "pass_lines": 28,
+    "required_real_pass": {
+      "TestAgentAzureReportCapabilityPropagation": true,
+      "TestAzureBGPRecreationExpansionContraction": true,
+      "TestStaticRecreationFinalizedExactDomainAndImmutableAuthority": true
+    },
+    "returncode": 0,
+    "skip_lines": 0,
+    "version": 1
+  },
+  "local_focused_python": {
+    "result": "pass",
+    "tests": 50
+  },
+  "local_node_race": {
+    "control_seconds": 9.099,
+    "ipsec_seconds": 454.989,
+    "result": "pass",
+    "scope": "combined ipsec and control packages with local sockets permitted"
+  },
+  "native_arm64_network_none": {
+    "actual_bgp_preflight": "pass",
+    "azure_history_reset_receipts": "pass",
+    "capabilities": [
+      "NET_ADMIN",
+      "NET_RAW",
+      "SYS_RESOURCE"
+    ],
+    "frr_generation_census": "pass",
+    "image_sha256": "317b5b3feac78b74b7dd39013e470a3b28d9ac35895fa427d30f4d68cef837fe",
+    "result": "pass",
+    "static_recreation_regression": "pass"
+  },
+  "node_tree": "982a24bf29b667ffdce3dc65a74d49430a40b645",
+  "preserved_prior_packaging_refusal": {
+    "cause": "reviewed wrapper SOURCE still referenced older qualifier and rejected reserved-prior-read",
+    "repair": "new V6B source closure with AST assertion of SOURCE binding",
+    "result": "refused before native observation",
+    "stage": "normal_before"
+  },
+  "source_commit": "49168c7d8706a8e956bce4ad04d5884d1c65cdc7",
+  "version": 1
+}

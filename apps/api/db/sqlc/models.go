@@ -1303,6 +1303,7 @@ type FqdnGatewayDnsRequest struct {
 	ResolverEndpoints     []byte             `json:"resolver_endpoints"`
 	ResolverProfileID     pgtype.UUID        `json:"resolver_profile_id"`
 	ResolverMatchSuffix   *string            `json:"resolver_match_suffix"`
+	ResolverIpsecPath     []byte             `json:"resolver_ipsec_path"`
 }
 
 type FqdnResolverContextConfig struct {
@@ -1328,13 +1329,16 @@ type FqdnResolverContextEndpoint struct {
 }
 
 type FqdnResolverContextProfile struct {
-	ID            uuid.UUID `json:"id"`
-	ConfigID      uuid.UUID `json:"config_id"`
-	OrgID         uuid.UUID `json:"org_id"`
-	Ordinal       int16     `json:"ordinal"`
-	Name          string    `json:"name"`
-	ProviderHint  string    `json:"provider_hint"`
-	LegacyDefault bool      `json:"legacy_default"`
+	ID                         uuid.UUID   `json:"id"`
+	ConfigID                   uuid.UUID   `json:"config_id"`
+	OrgID                      uuid.UUID   `json:"org_id"`
+	Ordinal                    int16       `json:"ordinal"`
+	Name                       string      `json:"name"`
+	ProviderHint               string      `json:"provider_hint"`
+	LegacyDefault              bool        `json:"legacy_default"`
+	IpsecConnectionID          pgtype.UUID `json:"ipsec_connection_id"`
+	IpsecConfigurationRevision *int64      `json:"ipsec_configuration_revision"`
+	IpsecSourceAddress         *netip.Addr `json:"ipsec_source_address"`
 }
 
 type FqdnResolverContextProfileEndpoint struct {
@@ -1443,6 +1447,15 @@ type Invitation struct {
 	UpdatedAt       time.Time          `json:"updated_at"`
 }
 
+type IpsecAwsBgpConfig struct {
+	ConnectionID    uuid.UUID  `json:"connection_id"`
+	OrgID           uuid.UUID  `json:"org_id"`
+	LocalAsn        int64      `json:"local_asn"`
+	RemoteAsn       int64      `json:"remote_asn"`
+	RouterID        netip.Addr `json:"router_id"`
+	MaximumPrefixes int32      `json:"maximum_prefixes"`
+}
+
 type IpsecAwsLocalPrefix struct {
 	ConnectionID uuid.UUID    `json:"connection_id"`
 	OrgID        uuid.UUID    `json:"org_id"`
@@ -1467,15 +1480,38 @@ type IpsecAwsStaticConfig struct {
 }
 
 type IpsecAwsTunnelConfig struct {
-	TunnelID           uuid.UUID    `json:"tunnel_id"`
-	OrgID              uuid.UUID    `json:"org_id"`
-	ConnectionID       uuid.UUID    `json:"connection_id"`
-	Slot               int16        `json:"slot"`
-	GatewayNodeID      uuid.UUID    `json:"gateway_node_id"`
-	AwsOutsideIpv4     netip.Addr   `json:"aws_outside_ipv4"`
-	InsideCidr         netip.Prefix `json:"inside_cidr"`
-	CustomerInsideIpv4 netip.Addr   `json:"customer_inside_ipv4"`
-	AwsInsideIpv4      netip.Addr   `json:"aws_inside_ipv4"`
+	TunnelID           uuid.UUID     `json:"tunnel_id"`
+	OrgID              uuid.UUID     `json:"org_id"`
+	ConnectionID       uuid.UUID     `json:"connection_id"`
+	Slot               int16         `json:"slot"`
+	GatewayNodeID      uuid.UUID     `json:"gateway_node_id"`
+	AwsOutsideIpv4     netip.Addr    `json:"aws_outside_ipv4"`
+	InsideCidr         *netip.Prefix `json:"inside_cidr"`
+	CustomerInsideIpv4 *netip.Addr   `json:"customer_inside_ipv4"`
+	AwsInsideIpv4      *netip.Addr   `json:"aws_inside_ipv4"`
+}
+
+type IpsecAzureConfig struct {
+	ConnectionID                   uuid.UUID `json:"connection_id"`
+	OrgID                          uuid.UUID `json:"org_id"`
+	GatewaySku                     string    `json:"gateway_sku"`
+	VpnType                        string    `json:"vpn_type"`
+	IkeVersion                     int32     `json:"ike_version"`
+	CustomPolicy                   string    `json:"custom_policy"`
+	UsePolicyBasedTrafficSelectors bool      `json:"use_policy_based_traffic_selectors"`
+	NatEnabled                     bool      `json:"nat_enabled"`
+}
+
+type IpsecBgpStatus struct {
+	ConnectionID          uuid.UUID `json:"connection_id"`
+	OrgID                 uuid.UUID `json:"org_id"`
+	NodeID                uuid.UUID `json:"node_id"`
+	DeliveryID            uuid.UUID `json:"delivery_id"`
+	DesiredRevision       int64     `json:"desired_revision"`
+	ConfigurationRevision int64     `json:"configuration_revision"`
+	CertificateSerial     string    `json:"certificate_serial"`
+	ReceivedAt            time.Time `json:"received_at"`
+	Report                []byte    `json:"report"`
 }
 
 type IpsecConnection struct {
@@ -1593,6 +1629,14 @@ type IpsecRuntimeState struct {
 	LastCleanedDeliveryRevision      *int64      `json:"last_cleaned_delivery_revision"`
 	CurrentCleanupID                 pgtype.UUID `json:"current_cleanup_id"`
 	AppliedRevision                  *int64      `json:"applied_revision"`
+}
+
+type IpsecStaticRecreation struct {
+	ConnectionID            uuid.UUID `json:"connection_id"`
+	OrgID                   uuid.UUID `json:"org_id"`
+	PredecessorConnectionID uuid.UUID `json:"predecessor_connection_id"`
+	CleanupDeliveryID       uuid.UUID `json:"cleanup_delivery_id"`
+	CreatedAt               time.Time `json:"created_at"`
 }
 
 type IpsecTunnel struct {

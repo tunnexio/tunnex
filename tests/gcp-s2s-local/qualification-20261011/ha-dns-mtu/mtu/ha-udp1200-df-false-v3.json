@@ -1,0 +1,145 @@
+{
+  "completed": true,
+  "scope": "fixed owned packet observation; no authority/MTU mutation",
+  "profile": "ha",
+  "size": 1200,
+  "df": false,
+  "source_sha256": "073001c83af7a069e798efe50d4f146fc9dd77c2d77ff04e55d8d8cd37e1dc65",
+  "started_at_utc": "2026-10-10T21:00:38Z",
+  "stderr_sha256": "129148f6934b5b4940366eb9ce52a857b411ff2d0bdc2568ae215fc84096655e",
+  "observation": {
+    "completed": true,
+    "observer_ready": [
+      {
+        "ready": true,
+        "address": "10.70.0.10",
+        "interface": "ens4",
+        "boot_id": "5d6a0f20-8cc2-45fd-b604-7802d95658f7"
+      },
+      {
+        "ready": true,
+        "address": "10.80.0.10",
+        "interface": "ens4",
+        "boot_id": "b421e753-b6cb-470b-9f86-7df987b08a7b"
+      }
+    ],
+    "ends": [
+      {
+        "stopped": true,
+        "capture_packets": 17,
+        "capture_drops": 0,
+        "counts": {
+          "request_exact": 0,
+          "reply_exact": 1,
+          "malformed_or_overlap": 0,
+          "icmp_frag_needed": [],
+          "syn_mss": [
+            {
+              "direction": "reply",
+              "mss": 1342,
+              "source_port": 8080,
+              "destination_port": 32793
+            }
+          ],
+          "exact_datagrams": [
+            {
+              "direction": "reply",
+              "ip_id": 10332,
+              "fragments": [
+                {
+                  "offset": 0,
+                  "more_fragments": false,
+                  "length": 1208,
+                  "df": true
+                }
+              ]
+            }
+          ]
+        },
+        "partial_datagrams": 0,
+        "drain_limit_reached": false,
+        "udp_source_port": 52430,
+        "tcp_source_port": 32793,
+        "scope": "two-ended packet metadata only; no guard/SA/route authority"
+      },
+      {
+        "stopped": true,
+        "capture_packets": 8,
+        "capture_drops": 0,
+        "counts": {
+          "request_exact": 1,
+          "reply_exact": 0,
+          "malformed_or_overlap": 0,
+          "icmp_frag_needed": [],
+          "syn_mss": [
+            {
+              "direction": "request",
+              "mss": 1342,
+              "source_port": 32793,
+              "destination_port": 8080
+            }
+          ],
+          "exact_datagrams": [
+            {
+              "direction": "request",
+              "ip_id": 49052,
+              "fragments": [
+                {
+                  "offset": 0,
+                  "more_fragments": false,
+                  "length": 1208,
+                  "df": false
+                }
+              ]
+            }
+          ]
+        },
+        "partial_datagrams": 0,
+        "drain_limit_reached": false,
+        "udp_source_port": 52430,
+        "tcp_source_port": 32793,
+        "scope": "two-ended packet metadata only; no guard/SA/route authority"
+      }
+    ],
+    "client_stderr_path": "/tmp/tunnex-gcp-mtu-client-pzm8d7za/client.stderr",
+    "scope": "observation only; fresh full guard/native/API evidence bound separately",
+    "reservation": {
+      "ready": true,
+      "source": "10.70.0.10",
+      "udp_port": 52430,
+      "tcp_port": 32793
+    },
+    "probe": {
+      "completed": true,
+      "udp": {
+        "size": 1200,
+        "df": false,
+        "payload_sha256": "67803e9e27b9ae36389af2323553356a413dc77319e8b95a6e22c1ff988073d7",
+        "destination": "10.80.0.10",
+        "source": "10.70.0.10",
+        "source_port": 52430,
+        "outcome": "response",
+        "exact_response": true,
+        "response_sha256": "67803e9e27b9ae36389af2323553356a413dc77319e8b95a6e22c1ff988073d7",
+        "discovered_ip_mtu": 1460,
+        "elapsed_ms": 5.666,
+        "error_queue": [],
+        "error_queue_complete": true
+      },
+      "tcp": {
+        "source": "10.70.0.10",
+        "destination": "10.80.0.10",
+        "port": 8080,
+        "nonce": "231677756da8419aac4a396ac1c5cfcb",
+        "source_port": 32793,
+        "outcome": "response",
+        "exact_response": true,
+        "response_sha256": "0b19596d89dc61c890ebff7b01d0c90e49bbd6408369c8f552cd797e2152a46c",
+        "elapsed_ms": 6.989
+      }
+    },
+    "observations_complete": true,
+    "client_stderr_sha256": "add570e1817c0ed87949acf8da9309bb69d821b3fbc89d9eeb35f85a52890209",
+    "client_stderr_size": 1326
+  }
+}

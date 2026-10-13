@@ -1,0 +1,98 @@
+{
+  "accepted_count": 3,
+  "accepted_stories": [
+    "AZ-S2S-0",
+    "AZ-S2S-1",
+    "AZ-S2S-2"
+  ],
+  "actual_native_window_stdout_sha256": "4305e4f7f019674b85dee44a797c982dae2311925436d6562061643bbdd8b78a",
+  "causal_local_receipt_sha256": "12e4b00f831e24bb03a94cc8177b9045dfff3e27e053590fd52618b8279d79f1",
+  "immutable_configuration_sha256": "e4fe2da1ab366f1387f2c855eade711acfab615c8008aaa16d9a4a89b0babb0f",
+  "independent_native": {
+    "azure_connection_id": "/subscriptions/34e2f259-b462-40bf-8f4a-06a3930d99e6/resourceGroups/tunnex-azure-s2s-20261010/providers/Microsoft.Network/connections/tunnex-connection",
+    "configuration_revision": 1,
+    "connection_id": "3e51a274-ab79-48db-b162-a8f1dbbc132f",
+    "desired_revision": 5,
+    "gateway_id": "01a1252e-14d2-7edc-b181-903325c4c56a",
+    "guard_retained": true,
+    "historical_boot_entry_count": 1,
+    "historical_proof_sha256": "d6ebe190917e77423dbb1199a5286c6d01894d9b6d2667e1e3fc4ec6771d906f",
+    "historical_stopped_journal_sha256": "92a80b5758cbcac11bb0c14f56787ee47eb58a1210b2c119b8304ac2196ddf79",
+    "host_machine_identity_source": "external_root_attestation",
+    "journal_entries": 28,
+    "journal_sha256": "8cf9c8f427c08c54111dea704a8c741307caa57a635887d58bcbb19890fd2fce",
+    "kind": "owned_native_cleanup_absence",
+    "namespace_device": 4,
+    "namespace_inode": 4026532430,
+    "node_executable_sha256": "9addf3d03d0a1ff2e2322a84c6f1e792e8264f992271fe56dbddecf0b8c63381",
+    "observed_at": "2026-10-11T14:58:37.529352805Z",
+    "org_id": "01a1252d-34fe-72bb-a40b-222a0a0bf9a2",
+    "owned_children": 0,
+    "owned_ike": 0,
+    "owned_interfaces": 0,
+    "owned_routes": 0,
+    "owned_sad": 0,
+    "owned_spd": 0,
+    "scope": "Independent bracketed native observation only; no authority, synthetic acknowledgement or packet readiness",
+    "site_id": "01a1252d-3612-7a65-ad65-2dd5f4ebcd72",
+    "traffic_counters_monotonic_advanced": false,
+    "version": 1
+  },
+  "native_receipt_sha256": "be204a06bca55798eba9dc14d29fa41ef40492f5f5531c7caaba517583f4af24",
+  "node_tree": "65d6b52c53f6ae1f1a5d51b0d10c61499802236c",
+  "normal_connection": {
+    "application_state": "not_applied",
+    "cleanup_state": "retained_guard",
+    "configuration_revision": 1,
+    "desired_intent": "disabled",
+    "desired_revision": 5,
+    "id": "3e51a274-ab79-48db-b162-a8f1dbbc132f",
+    "maximum_prefixes": 1,
+    "profile_id": "azure-active-active-bgp-ipv4-v1",
+    "remote_prefixes": [
+      "10.231.0.0/16",
+      "10.235.77.0/24"
+    ]
+  },
+  "normal_native_bracket_private_run_id": "azure-90b96648-postrepair-normal-native-7ee6521c-0222-48e9-9b03-0ae4088cd272",
+  "observed_at": "2026-10-11T14:58:38.095714+00:00",
+  "observer_binary_sha256": "11fbc51356e6c4bb8a82570e36cae87516f81fc02c664df11ab2356b28008fb1",
+  "open_count": 8,
+  "original_updater_refusal": {
+    "actual_raw_stdout_sha256": "61574b473116920041fe5a80a4747336c2dcdcd2e3050b9e1999b4593d52f3eb",
+    "category": "refused_or_unknown_preserve_evidence_no_replay",
+    "cause": "Python 3.8 fromisoformat refused genuine RFC3339Nano timestamp before mutation",
+    "preserved": true,
+    "source_line": 79,
+    "stage": "inputs"
+  },
+  "policy_count": 0,
+  "production_fix": "Validate Azure cleanup against the authentic version-11 complete journal and immutable recreation lineage, then use the unchanged exact negative selectors",
+  "remaining": [
+    "genuine active restart and PSK/rekey",
+    "remaining static and active-standby profiles",
+    "maximum-prefix live shutdown and recovery",
+    "sustained DNS and encrypted FQDN application enforcement",
+    "complete live UI Save and full E2E matrix"
+  ],
+  "running_identity": {
+    "api_unchanged": true,
+    "executable_sha256": "9addf3d03d0a1ff2e2322a84c6f1e792e8264f992271fe56dbddecf0b8c63381",
+    "gateway_cid": "21833b87403bb637ad19c191608996bf2fb7614201cec39e28738f80710e1a95",
+    "namespace": "net:[4026532430]",
+    "started_at": "2026-10-11T14:57:21.319232448Z"
+  },
+  "scope": "Owned Azure QA deployment and independent disabled cleanup proof; no full story acceptance",
+  "source_commit": "90b9664840f4babdb86557e83382ad7c8b90b900",
+  "story_acceptance_changed": false,
+  "updater_v4": {
+    "actual_raw_stdout_sha256": "df47b4ac0cde96bc3a0917696065414fb0c00b0bb2def81655cd4afeb45f826f",
+    "category": "started_requires_independent_normal_native_read",
+    "independent_read_only_review": "no blocker",
+    "operation_replayed": false,
+    "parser_change": "Validate original UTC RFC3339 and conservatively floor nanoseconds; original receipt and 60-second age bound unchanged",
+    "private_run_id": "azure-90b96648-pending-node-update-7a24f583-dac5-48d1-83a5-3459f02631ee",
+    "sha256": "2ce0d1d08e26dfcb8aae5e4362426dc65dbd5c43fe483aae8d8e1594172d1356"
+  },
+  "version": 1
+}

@@ -1,0 +1,19 @@
+{
+  "attempted_receipt_sha256": "0506568e8609271820d13e48b0b5c21441f4c57d27bc714b3099bee6eb9b39df",
+  "before_sha256": "7b5075bbbe4ce9b8c90115b48c9b2097b06f98fb6668a163b4f25584219fd55b",
+  "exit_code": 0,
+  "finished_at": "2026-10-11T00:03:14.354396409Z",
+  "immutable_journal_matches": true,
+  "oom_killed": false,
+  "retained_binding_matches": true,
+  "running": false,
+  "scope": "actual deployment stop/readback; NOT absence/guard/restoration proof",
+  "stop_attempted": true,
+  "stop_command_exit": 0,
+  "original_sha256": "778aab93000b7909d9504bbc59ad8b0399f556a0aaac8e7e96eac865336a381e",
+  "native": {
+    "sad_count": 0,
+    "managed_process_count": 0,
+    "nft_sha256": "f0a1a94b5fa32a6a118885378ebbc3b24630631178fc79e969f8f703fe21d00e"
+  }
+}

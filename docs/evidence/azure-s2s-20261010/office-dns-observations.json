@@ -1,0 +1,60 @@
+{
+  "scope": "Actual ordinary namespace office resolver; no FQDN entitlement claim",
+  "observations": [
+    {
+      "query": "service.azure-s2s.test",
+      "type": "A",
+      "tcp_requested": false,
+      "status": "NOERROR",
+      "exit_code": 0,
+      "tcp_fallback": false,
+      "cname_present": true,
+      "private_answer_present": true,
+      "txt_bytes": null
+    },
+    {
+      "query": "service.azure-s2s.test",
+      "type": "A",
+      "tcp_requested": true,
+      "status": "NOERROR",
+      "exit_code": 0,
+      "tcp_fallback": false,
+      "cname_present": true,
+      "private_answer_present": true,
+      "txt_bytes": null
+    },
+    {
+      "query": "missing-owned.azure-s2s.test",
+      "type": "A",
+      "tcp_requested": false,
+      "status": "NXDOMAIN",
+      "exit_code": 0,
+      "tcp_fallback": false,
+      "cname_present": false,
+      "private_answer_present": false,
+      "txt_bytes": null
+    },
+    {
+      "query": "large.azure-s2s.test",
+      "type": "TXT",
+      "tcp_requested": false,
+      "status": "NOERROR",
+      "exit_code": 0,
+      "tcp_fallback": true,
+      "cname_present": false,
+      "private_answer_present": false,
+      "txt_bytes": 3000
+    },
+    {
+      "query": "unrelated.example",
+      "type": "A",
+      "tcp_requested": false,
+      "status": "REFUSED",
+      "exit_code": 0,
+      "tcp_fallback": false,
+      "cname_present": false,
+      "private_answer_present": false,
+      "txt_bytes": null
+    }
+  ]
+}

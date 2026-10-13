@@ -1,0 +1,26 @@
+{
+  "accepted_story_count": 6,
+  "api_restarted": false,
+  "approval_pending": true,
+  "automatic_review_rejection": "New compiled project API binary and helper source to QA destination not specifically authorized by earlier approvals for other artifacts",
+  "binary_bytes": 61546806,
+  "binary_sha256": "97dd8cc13191a48fad9ddd11e2d6b1405ae1086aae371a0071bd9dfae0720907",
+  "category": "api_scheduler_package_ready_source_upload_approval_pending",
+  "launcher_sha256": "3e857b3d25902ff62d84f10329be6155681fa018627fd4209e29e602b3609e6e",
+  "new_slices_closed": 0,
+  "package_review": {
+    "path": "/private/tmp/azure-api-headroom-update-v3-late-native-source/FINAL-REVIEW.json",
+    "sha256": "af97063b7beab269379c085598330c5102ad2c88e63a7ad55c44eac1a695a19d"
+  },
+  "qa_source_or_binary_uploaded": false,
+  "recorded_at": "2026-10-12T15:39:28.451935+00:00",
+  "requested_scope": "Stage exact reviewed source and binary through bastion104.211.219.1 to QA20.219.28.146; controlled same-API STOP/backup-preserving install/START with native/normal before and after; no Azure writes or production actions",
+  "root_independent_review": {
+    "path": "/private/tmp/azure-api-headroom-v3-root-independent-review.json",
+    "sha256": "7e3652613f5ebf20cfe8a3f9397f7c04f9daef4ccd36057da2e4cd0b2116289d"
+  },
+  "root_named_tests_passed": 30,
+  "source_inventory_sha256": "442808959eba0ca50618ced573b54bb2c0aee049e18a44c966d360e0d5300db0",
+  "tests_skipped": 0,
+  "version": 1
+}

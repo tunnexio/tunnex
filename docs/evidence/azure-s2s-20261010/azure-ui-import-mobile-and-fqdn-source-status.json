@@ -1,0 +1,145 @@
+{
+  "schema": 1,
+  "scope": "local source and cloud UI draft qualification; no provider changes or import save",
+  "current_root_commit": "e58976de2b6a724630cbba0018f052f56b5d5512",
+  "story_closure": {
+    "formally_closed_count": 0,
+    "total_original_stories": 11,
+    "basis": "No original full-acceptance story is marked closed in the epic; implemented/local-pass slices are separate from closure."
+  },
+  "mobile_css": {
+    "commit": "e58976de2b6a724630cbba0018f052f56b5d5512",
+    "path": "apps/web/src/site-to-site-workspace.css",
+    "sha256": "788ac3940324b35faa874be6034233fb80157ba126faa04d42382ec8118ac6cc",
+    "viewport": [
+      390,
+      844
+    ],
+    "tunnel_cards": [
+      {
+        "left": 33,
+        "right": 357,
+        "width": 324,
+        "client_width": 322,
+        "scroll_width": 322
+      },
+      {
+        "left": 33,
+        "right": 357,
+        "width": 324,
+        "client_width": 322,
+        "scroll_width": 322
+      }
+    ],
+    "save_action_bounds": {
+      "left": 154.265625,
+      "right": 357,
+      "top": 766.0625,
+      "bottom": 807.15625
+    },
+    "desktop_viewport_width": 1280,
+    "desktop_columns": [
+      363,
+      363
+    ],
+    "desktop_form_client_and_scroll_width": [
+      742,
+      742
+    ],
+    "viewport_reset": true,
+    "draft_cancelled": true,
+    "deployed": false,
+    "screenshot_observed": true,
+    "screenshot_saved_to_file": false
+  },
+  "actual_cloud_ui": {
+    "valid_supported_nonsecret_import_draft": "pass normal configuration check; both tunnel endpoints and BGP fields populated",
+    "malformed_import": "refused",
+    "invalid_topology": "refused after removing unsupported fixture slot field",
+    "mismatched_common_psks": "refused after removing unsupported fixture slot field",
+    "first_slot_bearing_fixture_results": "preserved; early topology/PSK failures not attributed to their intended causes",
+    "cancel_clears_both_tunnel_draft_psks": true,
+    "saved_new_connection": false,
+    "table_count_after_cancel": 1,
+    "retained_row_status": "Removed - guard retained; network unavailable"
+  },
+  "profile_helpers": {
+    "commits": [
+      "1abd17b0",
+      "c3584261"
+    ],
+    "independent_review": "pass after unresolved mutation restoration fix",
+    "focused_python_tests": 67,
+    "live_profile_execution": false,
+    "actual_advertised_prefixes_verified": false
+  },
+  "fqdn_original_candidate": {
+    "commit": "bdbf6891c2446a48e8d6b82eeaeff1bf39238629",
+    "worktree": "/Users/pawangupta/.codex/worktrees/azure-fqdn-application/tunnex",
+    "manifest": "/private/tmp/azure-fqdn-v2-review-bdbf6891/manifest.json",
+    "integration_patch_sha256": "93324c5bcf9e1c2dfac6347ec997bfc10da3efd9ca113043218379e9ba74f035",
+    "parent_stage_delta_sha256": "08ab64bfa87fe2e8c68d5faf50ed2d7a93395c4b45d52960c3727d0670d2fa43",
+    "initial_source_review": "no blocker reported; superseded at observation/clock seams by subsequent causal review",
+    "focused_race_wire": "pass",
+    "linux": "compile only"
+  },
+  "fqdn_observation_correction": {
+    "commit": "65417233c3a11d2fc24405c75d6534121ae1b732",
+    "manifest": "/private/tmp/azure-fqdn-observation-review-65417233/manifest.json",
+    "patch_sha256": "f37722d1f768779eda079d11b014c9fa29f420ae3898c0f22d3e6300caaae724",
+    "causal_red": "missing observation, future observation and missing compilation clock emitted grants in original candidate",
+    "focused_and_fresh_compiler_node_wire": "pass",
+    "monotonic_pergrant_correction": "in progress; not yet qualified"
+  },
+  "provisional_common_comparison": {
+    "patch": "/private/tmp/ipsec-fqdn-expiry-shared-candidate-qualified-sourceonly-20261011-1/shared-expiry-correction.patch",
+    "sha256": "b26f88e958e13637ea451a880c92a8ed5e2c2e63a2baf22982795692cde22d1f",
+    "other_reference_unbound": "ce83b5328f210c5b01935ef0f7f0e165d3505329b50afd9f2e06940812241278",
+    "difference": "common caps whole owner lease at postcommit authoritative cutoff through monotonic request fence; candidate needs independent pergrant evidence to preserve ordinary/DNS authority"
+  },
+  "actual_gateway": {
+    "container": "21833b87403bb637ad19c191608996bf2fb7614201cec39e28738f80710e1a95",
+    "started_at": "2026-10-11T04:59:08.120079236Z",
+    "actual_full_running_configuration": "independently passed",
+    "start_wrapper_result": "unknown_or_refused_no_replay; preserved",
+    "start_repeated": false,
+    "native_running_proof": "not yet run"
+  },
+  "human_only_blockers": [
+    {
+      "action": "V7 derivation/metadata transfer and remote source+kit qualification writes, then fresh pinned running observer",
+      "approval": "exact request still pending",
+      "automatic_approval_review": "rejected specific payload/destination authorization; no workaround",
+      "mutated_v7_remote_state": false
+    },
+    {
+      "action": "temporary live accelerated rekey scheduler operation",
+      "approval": "specific human approval pending after separate automatic review rejection",
+      "performed": false
+    }
+  ],
+  "remaining_live_acceptance": [
+    "fresh native running proof and same-ID disabled recovery",
+    "maximum-prefix and accepted/installed advertised routes",
+    "other three Azure topology/routing profiles",
+    "genuine active restart/rekey/PSK and retained recreation",
+    "sustained DNS generation stability",
+    "real FQDN application existing/fresh encrypted flow expiry/revoke",
+    "asymmetric lower-MTU UDP loss unresolved",
+    "full four-profile combined acceptance"
+  ],
+  "preserved_failures": [
+    "genuine old active restart did not recover in60s",
+    "sustained DNS lookup window failure",
+    "asymmetric reduced-MTU UDP loss",
+    "uncertain/refused wrapper receipts"
+  ],
+  "external_publication": {
+    "push": false,
+    "pr": false,
+    "merge": false
+  },
+  "new_live_actions": false,
+  "fqdn_original_manifest_sha256": "30c3f56626664b740b767edf2c4f59e8e6d265904462cec29a5c5d112ba883ce",
+  "observation_manifest_sha256": "3209d26d6520487953897892c2faac3993ac37d0fd8d3dedcbf37d6510910b61"
+}

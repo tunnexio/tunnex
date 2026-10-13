@@ -1,0 +1,51 @@
+{
+  "accepted_story_count": 6,
+  "actual_native_absence": {
+    "desired_revision": 7,
+    "entry_count": 33,
+    "node_sha256": "983f9bc5e2fb621e676e0cce74f97fd8ba4a46391af8cf927a6ce7b978326515",
+    "retained_guard": true,
+    "sha256": "f6da5f340012233693039a5de5067931cdc2ba5982ef356120079fbc04f2f879",
+    "six_owned_object_counts_zero": true
+  },
+  "category": "environment_update_preparation_stale_count_refusal_and_full_history_attestation",
+  "correction": "The genuine983f enabled6 prewindow native receipt already covered33 entries. Disable6->7 did not add an entry; prior32 statements for that baseline were stale.",
+  "exact33_source_successor_review_sha256": "b065aa3f755fb9fdfa40c6a4e777b628987fb0062df6d709c0015b9d8996041e",
+  "full_history_comparison": {
+    "added_count": 0,
+    "after_entry_count": 33,
+    "all_previous_delivery_ids_retained": true,
+    "before_entry_count": 33,
+    "changed_existing_entries": [
+      {
+        "changed_fields": [
+          "CleanupDesiredRevision",
+          "CleanupID",
+          "CoveredDeliveryRevision",
+          "Phase"
+        ],
+        "delivery_id": "8e228324-1ca9-4220-af61-a28463909ef3"
+      }
+    ],
+    "journal_version_after": 13,
+    "journal_version_before": 13,
+    "owner_after_matches_gateway": true,
+    "owner_equal": true,
+    "removed_count": 0
+  },
+  "live_dns_improvement_verified": false,
+  "normal_disable": {
+    "configuration_version": 1,
+    "desired_revision": 7,
+    "expected_revision": 6,
+    "policy_count": 8,
+    "receipt_sha256": "5f49ad551122a98cdf14ffc821d59abb03d55731fe783f1f0b703bdcfee30e0e"
+  },
+  "original_prepare_refusal": {
+    "node_update_dispatched": false,
+    "reason": "complete_negative_gate",
+    "stderr_sha256": "062e7f2a1b6af8181c3dc588cf3a500761b539cd55ca830e12653a659914c100"
+  },
+  "running_node_updated": false,
+  "whole_story_accepted": false
+}

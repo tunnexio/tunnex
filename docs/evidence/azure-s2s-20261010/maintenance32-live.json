@@ -1,0 +1,135 @@
+{
+  "root_source": "dd1d0d87",
+  "frozen_qualified_source": "2d1032a28b461a8a00d92c32fa64f2de8ad4aa01",
+  "identical_apps_node_tree": "95f3022c0128e0717e003b2f13571984a168e3f6",
+  "local_qualification": {
+    "complete_ipsec_control_race": true,
+    "ipsec_seconds": 399.466,
+    "control_seconds": 8.962,
+    "log_sha256": "f76493fa2f81425a09e2c3497c3761dba11054543f5dbdfbc3d9d68dcb357c5e",
+    "original_sandbox_listener_failure_preserved": true,
+    "focused_azure_race": true,
+    "linux_amd64_arm64_builds": true
+  },
+  "binary_sha256": "c35ca97f1ac95a549a841610618b8d3b4daa54e0d770a8bad080ccd7a4095364",
+  "binary_provenance_limit": "Frozen exact source files built before candidate commit; VCS metadata may mark dirty; source tree equality and deployed binary hash separately verified",
+  "image": "sha256:7d102a913d0a2c5cebccb4a2ab96e4144a89ca9cfeb4612e63a990098030d095",
+  "container": "6cac022f7c21e144757c0679d998333d7d4fe952a734bdc802ff5a38b3416624",
+  "normal_disable": {
+    "desired_revision": 31,
+    "observed_at": "2026-10-10T17:55:46.465227Z",
+    "cleanup_settled": true
+  },
+  "independent_absence": {
+    "retained_entries": 14,
+    "daemon_connections_sas_keys": 0,
+    "sad_spd_links_protocol242_routes": 0,
+    "full_guard": true,
+    "withdrawal_guard": true,
+    "whole_journal_unchanged": true
+  },
+  "deployment": {
+    "namespace_preserved": true,
+    "state_preserved": true,
+    "prior_container_retained_stopped": true,
+    "binary_hash_verified": true
+  },
+  "startup_eligibility": {
+    "early_enable_refused": true,
+    "refusal_http_status": 409,
+    "desired_revision_unchanged": 31,
+    "subsequent_fresh_azure_bgp_static_eligible": true
+  },
+  "live_acceptance_pending": true,
+  "limits": [
+    "Full local race qualification is not live renewal/DNS/stability acceptance",
+    "Existing standby native proof availability limitation preserved"
+  ],
+  "normal_enable": {
+    "desired_revision": 32,
+    "intent_sent_at": "2026-10-10T17:57:27.102207Z",
+    "applied_observed_at": "2026-10-10T17:57:45.472791Z",
+    "both_tunnels": "up",
+    "both_bgp": "established",
+    "approved_route_slot": 1
+  },
+  "packet_window": {
+    "started_at": "2026-10-10T17:58:02.041033Z",
+    "seconds": 60,
+    "each_four_flow_success": 60,
+    "each_four_flow_failure": 0,
+    "source_preserved_tcp64KiB": true,
+    "udp_exact4096": true,
+    "existing_socket_reuse": true,
+    "receipt_sha256": "4766597ec7a20709e0bc5d62073a2aa4a06dee0c498b9cd93a67b61cc130666e",
+    "acceptance_passed": true,
+    "scope": "One actual60s unfaulted packet window; no maintenance-branch/native rekey/sustained longer stability or DNS claim"
+  },
+  "native_status": {
+    "observed_at": "2026-10-10T17:59:16.267920909Z",
+    "each_slot_ike": 1,
+    "each_slot_installed_child": 1,
+    "each_slot_sad": 2,
+    "each_slot_spd_direction": 1,
+    "selectors": "0.0.0.0/0",
+    "positive_guard_parser": true
+  },
+  "maintenance_discriminator": {
+    "available": false,
+    "reason": "Normal apply/applied ACK and status are identical for maintained renewal and ordinary Apply; lease, journal checkpoint and status sequence changes are not unique",
+    "scope": "Maintenance-capable source deployed and forwarding observed; no separately observed completed maintained-renewal claim"
+  },
+  "first_fqdn_grant": {
+    "normal_grant_acknowledged_at": "2026-10-10T17:59:41.497219Z",
+    "genuine_fresh_ready": true,
+    "expires_seconds": 90,
+    "normal_revoke_completion_log_mtime": "2026-10-10T18:00:17.187457Z",
+    "http_acceptance": false,
+    "probe_start": "2026-10-10T18:00:10.095708Z",
+    "probe_end": "2026-10-10T18:00:30.096661Z",
+    "fresh_http_success_failure": [
+      0,
+      20
+    ],
+    "persistent_http_success_failure": [
+      0,
+      20
+    ],
+    "all_dns_failed_before_http": true,
+    "reused_socket_samples": 0,
+    "receipt_sha256": "6996f5275505dcfb52a1457668e37b889dbec5275dfa6aecacd9d150bb3a8c24",
+    "receipt_reader_permission_failure_corrected_with_read_only_sudo": true,
+    "scope": "Grant and normal revoke happened; no HTTP or persistent-flow enforcement proof"
+  },
+  "client_dns_fixture_correction": {
+    "original_namespace_nameservers": [
+      "127.0.0.53"
+    ],
+    "actual_direct_existing_resolvers_udp_tcp_noerror_expected_vip": true,
+    "nameservers_now": [
+      "10.231.2.4",
+      "10.231.2.20"
+    ],
+    "host_resolver_unchanged": true,
+    "actual_libc_expected_vip": true,
+    "scope": "Named namespace resolver file only, existing approved LANprincipal DNS grants; no gateway listener/rules changed and no suffix restriction/public-fallback claim"
+  },
+  "stored_rpc_timing_sample": {
+    "observed_at": "2026-10-10T18:06:05.940835Z",
+    "since": "2026-10-10T17:57:27Z",
+    "request_count": 10,
+    "noerror_with_one_record": 2,
+    "completed_non_noerror_empty": 4,
+    "expired_no_response": 4,
+    "noerror_observed_after_enqueue_seconds": [
+      4.634,
+      4.883
+    ],
+    "receipt_after_observation_seconds": [
+      0.001,
+      0.002
+    ],
+    "original_deadline_seconds": 5,
+    "scope": "Typed normal stored RPC outcomes, not isolated causal attribution; genuine readiness remains intermittent"
+  }
+}

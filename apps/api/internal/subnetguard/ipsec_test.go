@@ -73,3 +73,22 @@ func TestIPsecInsideUniquenessIsGatewayScoped(t *testing.T) {
 		t.Fatal("inside reservation captured underlay")
 	}
 }
+
+func TestAzureInsideHostKeepsLegacyInsideBoundAndRangeDenial(t *testing.T) {
+	r, err := Collect(context.Background(), providerSource{entries: []IPsecReservation{{CIDR: "169.254.21.2/32", Class: ClassIPsecUnderlay}}}, uuid.New())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := CheckInside(p("169.254.20.1/32"), r); ok {
+		t.Fatal("legacy /30 contract widened")
+	}
+	if _, ok := CheckInsideHost(p("169.254.20.1/32"), r); !ok {
+		t.Fatal("Azure host rejected")
+	}
+	if _, ok := CheckInsideHost(p("169.254.21.2/32"), r); ok {
+		t.Fatal("Azure peer captures underlay")
+	}
+	if _, ok := CheckInsideHost(p("169.254.20.0/30"), r); ok {
+		t.Fatal("host helper accepted subnet")
+	}
+}

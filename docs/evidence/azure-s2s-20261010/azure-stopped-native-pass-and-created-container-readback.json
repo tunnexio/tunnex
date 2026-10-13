@@ -1,0 +1,120 @@
+{
+  "cloud_prefix_changed": false,
+  "connection_recovery_executed": false,
+  "earlier_v8_final_bracket_refusal_classified": false,
+  "prior_refusals_preserved": true,
+  "receipts": {
+    "actual_created_stopped_configuration": {
+      "actual_created_stopped": true,
+      "actual_oom_kill_disable_is_false": true,
+      "actual_single_exact_candidate": true,
+      "all_remaining_configuration_and_mounts_equal": true,
+      "category": "actual_created_stopped_gateway_exact_engine_default_and_complete_config_verified_no_start_authority",
+      "cloud_mutations": 0,
+      "created_container_id": "21833b87403bb637ad19c191608996bf2fb7614201cec39e28738f80710e1a95",
+      "created_record_files": {
+        "continuation-outcome.json": {
+          "bytes": 406,
+          "path": "/run/tunnex-qualification/azure-gateway-create-continuation-839bd2f9-4344-4cbe-8adb-04dcf88c3ef8/continuation-outcome.json",
+          "sha256": "8c460151e18367579c66c91efca6b7861889db7daf10130e14fd3aa1621ef7eb"
+        },
+        "created-identity.json": {
+          "bytes": 364,
+          "path": "/run/tunnex-qualification/azure-gateway-create-continuation-839bd2f9-4344-4cbe-8adb-04dcf88c3ef8/created-identity.json",
+          "sha256": "876b003701d5f560936b04fbc22c644e6420d2b8149fbb365e3b38ffd1ee3f71"
+        },
+        "wrapper-result.json": {
+          "bytes": 406,
+          "path": "/run/tunnex-qualification/azure-gateway-create-continuation-839bd2f9-4344-4cbe-8adb-04dcf88c3ef8/wrapper-result.json",
+          "sha256": "8c460151e18367579c66c91efca6b7861889db7daf10130e14fd3aa1621ef7eb"
+        }
+      },
+      "engine_api_version": "1.52",
+      "engine_default_source_lines": [
+        341,
+        343
+      ],
+      "engine_version": "29.1.3",
+      "gateway_mutations": 0,
+      "old_backup_stopped_and_full_configuration_unchanged": true,
+      "only_host_configuration_difference": "OomKillDisable:null-to-false",
+      "original_oom_kill_disable_is_null": true,
+      "original_record_sha256": {
+        "anchor-inspect.json": "bb14447bd11a21fc1d4e6334ba91bad021f65c6a492e47b7b8c004180a2e0901",
+        "backup-identity.json": "139fc5df24e7a8c4536bc496288fc0d20534b5b6318950aee5628ef340e9c9cb",
+        "base-inspect.json": "508b39be2e4e05c14c219d710a6c619a5cd71976d38c63389c8770547297ba83",
+        "candidate-inspect.json": "26f002293a1e4cf104c2d068b03a7d699e176dab8877aedbf2ed1c328d6f67a5",
+        "image-receipt.json": "c26b326885d140c1654237dc793d60ee8024990f703349fc821f330048fe508e",
+        "original.json": "cac1e781124cec386389f57ef438caabd0895ccc650012d23213ada935d4b6d9",
+        "outcome.json": "892089d2f506580a707b9d30dd701b0e22682103b2b30fc7f09a52a97cddc9b4",
+        "pins.json": "19abd5a56f61e45c1fed53d7880317ea590238dcbf3c9473d2a0b538a1278a58",
+        "wrapper-result.json": "894ebe1349fc29b38ace21ca98da03f2dd974d1f7e42655f7eaf68dae83c591a"
+      },
+      "private_run_id": "azure-created-stopped-start-review-a429f579-7396-4b20-9dc6-d3638a6c263d",
+      "snapshot_bytes": 4101,
+      "snapshot_path": "/run/tunnex-qualification/azure-created-stopped-start-review-a429f579-7396-4b20-9dc6-d3638a6c263d/actual-created-stopped-private.json",
+      "snapshot_sha256": "152a0dc4d1888f205f2cc5968ab19d5d1d861be19ff1ba215306290793009e1b",
+      "source_reference": "https://raw.githubusercontent.com/moby/moby/docker-v29.1.3/daemon/daemon_unix.go",
+      "start_dispatched": false,
+      "state_sha256": "8f85ab019859f941f7757a04e4e21fa125ee2f4359d54b06c94737f908de41e4",
+      "version": 1
+    },
+    "corrected_continuation_default": {
+      "category": "continuation_preflight",
+      "dispatch_started": false,
+      "phase": "preflight",
+      "private_run_id": "azure-gateway-create-continuation-4ead2730-32bf-4252-9d3a-2984461a461d",
+      "scope": "Owned gateway create/start eligibility only; no CP recreation or runtime acceptance",
+      "version": 1
+    },
+    "corrected_continuation_once": {
+      "category": "unknown_or_refused_no_replay",
+      "created_container_id": "21833b87403bb637ad19c191608996bf2fb7614201cec39e28738f80710e1a95",
+      "dispatch_started": true,
+      "failure_class": "Refused",
+      "phase": "created_readback",
+      "private_run_id": "azure-gateway-create-continuation-839bd2f9-4344-4cbe-8adb-04dcf88c3ef8",
+      "scope": "Owned gateway create/start eligibility only; no CP recreation or runtime acceptance",
+      "version": 1
+    },
+    "stopped_native_v9": {
+      "binding_sha256": "11bb337e7a7cc938f0db30b252d097330ad7ba7f7d7633a1d12d2f1fb65c9267",
+      "category": "owned_stopped_gateway_create_start_eligible",
+      "historical_original_node_sha256": "e2fddce35434dd43513ec73ecc10714c01e592d50e368c1278a5a8e1ebd2c49c",
+      "journal_entries": 26,
+      "journal_sha256": "8d2ee28b25c8f361afbdb038c62c425520f86508e3b1894df8fc8be2f7eb898e",
+      "native_receipt_sha256": "4e84ab851f5fad9ab4384440b485d6a3cd9ae532293c22571d0586203dddea11",
+      "node_running": false,
+      "normal_after_sha256": "376a155966917b203cc5c835b2a28bc2d103c38dee9c2c4b3235ccbefda099e3",
+      "normal_phase": "reserved-prior-read",
+      "observed_at": "2026-10-11T03:43:00.810914085Z",
+      "observed_charon_processes": 0,
+      "observed_frr_processes": 0,
+      "observed_node_processes": 0,
+      "original_file_sha256": {
+        "anchor-inspect.json": "bb14447bd11a21fc1d4e6334ba91bad021f65c6a492e47b7b8c004180a2e0901",
+        "backup-identity.json": "139fc5df24e7a8c4536bc496288fc0d20534b5b6318950aee5628ef340e9c9cb",
+        "base-inspect.json": "508b39be2e4e05c14c219d710a6c619a5cd71976d38c63389c8770547297ba83",
+        "candidate-inspect.json": "26f002293a1e4cf104c2d068b03a7d699e176dab8877aedbf2ed1c328d6f67a5",
+        "image-receipt.json": "c26b326885d140c1654237dc793d60ee8024990f703349fc821f330048fe508e",
+        "original.json": "cac1e781124cec386389f57ef438caabd0895ccc650012d23213ada935d4b6d9",
+        "outcome.json": "892089d2f506580a707b9d30dd701b0e22682103b2b30fc7f09a52a97cddc9b4",
+        "pins.json": "19abd5a56f61e45c1fed53d7880317ea590238dcbf3c9473d2a0b538a1278a58",
+        "wrapper-result.json": "894ebe1349fc29b38ace21ca98da03f2dd974d1f7e42655f7eaf68dae83c591a"
+      },
+      "original_run_id": "azure-gateway-replacement-2d14b588-e5e0-4121-a6df-73c32dc3fa1c",
+      "policy_count": 0,
+      "prior_run_id": "azure-gateway-replacement-2d14b588-e5e0-4121-a6df-73c32dc3fa1c",
+      "private_run_id": "azure-stopped-negative-observe-7d6dff88-bc0c-4278-ad75-da41dc525db4",
+      "scope": "Owned corrected gateway CREATE/START eligibility only. No running-node inventory, CP recreate authority, timer change or runtime acceptance.",
+      "source_closure_sha256": "7a7f12616bbe60b1d7d94c46e842eef3c31ffe1b392ec60ce27c84229ee66639",
+      "state_sha256": "8f85ab019859f941f7757a04e4e21fa125ee2f4359d54b06c94737f908de41e4",
+      "target_id": "3e51a274-ab79-48db-b162-a8f1dbbc132f",
+      "version": 1
+    }
+  },
+  "scope": "Actual stopped native eligibility, corrected CREATE, and stopped-container reconciliation; no START or scenario acceptance",
+  "start_dispatched": false,
+  "timer_changes": false,
+  "version": 1
+}

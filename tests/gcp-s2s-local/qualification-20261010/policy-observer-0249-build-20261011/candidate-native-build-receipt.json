@@ -1,0 +1,21 @@
+{
+  "source_commit": "0249f7cf8804a7d6b4e1f82bf4dbf42b887bdfe7",
+  "status": "native-amd64-build-and-content-pass",
+  "image": "tunnex-gcp-s2s-native:20261011-0249f7cf-amd64",
+  "image_id": "sha256:c0ca8999d3ae601d3dc2e8a9d319c2b98444a94896ade84b692ab590f1ae3906",
+  "architecture": "amd64",
+  "build_seconds": 9.372,
+  "remote_owned_stage": "/tmp/tunnex-gcp-amd64-build-20261011-0249f7cf",
+  "sha256": {
+    "source.tar": "b3148eba840c9e8a36d1590508def529c5da573f6b86739f6e0db8053f2c71ac",
+    "tunnex-node": "21074d14dbee2543c7c331806008cd0041a7ff96d0809a894d461c89a8911e8f",
+    "tunnex-ai-vpn-relay": "e510f032707a8a12ac9fec5be7ea5a40e3a608b4e6fdc6053284027104931e35",
+    "node.prebuilt.Dockerfile": "521ed8d9f153ba0b1b599417dbb729b8cff2182866b62e8bbb554ab336eca3e7"
+  },
+  "logs": {
+    "native-build.log": "30c0be08694d8538c68e8415d3bd5e92ee0db233ffc18db290f0d36684a6aabd",
+    "native-content.log": "f33b4768d50702c333afcceea92ee80efc09f0a321fb7127b3c47b28b3992e61"
+  },
+  "scope": "Owned native AMD64 image content only; no enrollment, node start, cloud tunnel or packet proof",
+  "preserved": "Owned source stages/image/content container; no unrelated resources modified"
+}

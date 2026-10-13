@@ -1,0 +1,611 @@
+package ipsec
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"github.com/google/uuid"
+	"github.com/tunnexio/tunnex/apps/node/internal/fqdnrpc"
+	"net/netip"
+	"strings"
+	"sync"
+	"sync/atomic"
+	"testing"
+	"time"
+)
+
+func TestDNSDiagnosticClassifiesNativeGuardGrantAndRouteRefusal(t *testing.T) {
+	for _, scenario := range []string{"native", "grant", "guard", "route", "epoch"} {
+		t.Run(scenario, func(t *testing.T) {
+			f := newDNSOwnerViewFixture(t, nil)
+			var diagnostic RuntimeDiagnostic
+			f.c.config.Diagnostic = func(d RuntimeDiagnostic) { diagnostic = d }
+			expected := ""
+			switch scenario {
+			case "native":
+				f.c.prove = func(context.Context, RuntimeJournalEntry, RuntimeEnvironment) error {
+					return errors.New("private error must never enter diagnostic")
+				}
+				f.publish(t)
+				expected = "dns_refusal_native"
+			case "grant":
+				f.config.Version++
+				expected = "dns_refusal_grant"
+			case "guard":
+				f.observed.Store(`{"private":"never emit"}`)
+				expected = "dns_refusal_guard_initial"
+			case "route":
+				view := *f.c.dnsView.Load()
+				view.observer.route = func(context.Context, string, ...string) ([]byte, error) { return nil, errors.New("private route") }
+				f.c.dnsView.Store(&view)
+				expected = "dns_refusal_route"
+			case "epoch":
+				view := *f.c.dnsView.Load()
+				old := view.observer.source
+				view.observer.source = func(source netip.Addr, indices []int) (int, error) {
+					index, err := old(source, indices)
+					if f.sourceReads.Load() == 2 {
+						for _, owner := range view.entries {
+							owner.epoch.revoked.Store(true)
+						}
+					}
+					return index, err
+				}
+				f.c.dnsView.Store(&view)
+				expected = "dns_refusal_owner_before_final"
+			}
+			if _, err := f.c.proveResolverDNSStage(context.Background(), f.config, f.config.Endpoints[0], "dns_after_proof"); err == nil {
+				t.Fatal("mandatory refusal changed")
+			}
+			if diagnostic.Operation != "dns_after_proof" || diagnostic.Stage != expected || !diagnostic.Refused || diagnostic.ContextState != "active" {
+				t.Fatalf("wrong fixed stage: %+v", diagnostic)
+			}
+		})
+	}
+}
+func TestDNSDiagnosticRateIsConcurrentAndDoesNotAlterProof(t *testing.T) {
+	f := newDNSOwnerViewFixture(t, nil)
+	var calls atomic.Int32
+	f.c.config.Diagnostic = func(RuntimeDiagnostic) { calls.Add(1) }
+	// Successful proof remains silent and retains every independent read.
+	if _, err := f.prove(context.Background()); err != nil || calls.Load() != 0 || f.nativeProofs.Load() != 1 || f.guardReads.Load() != 1 || f.routeReads.Load() != 1 || f.sourceReads.Load() != 2 {
+		t.Fatal("successful proof changed")
+	}
+	start := time.Unix(1000, 0)
+	f.c.dnsDiagnosticAfter.Store(0)
+	var accepted atomic.Int32
+	var wait sync.WaitGroup
+	for i := 0; i < 100; i++ {
+		wait.Add(1)
+		go func() {
+			defer wait.Done()
+			if f.c.claimDNSDiagnostic(start) {
+				accepted.Add(1)
+			}
+		}()
+	}
+	wait.Wait()
+	if accepted.Load() != 1 || f.c.claimDNSDiagnostic(start.Add(time.Second-time.Nanosecond)) || !f.c.claimDNSDiagnostic(start.Add(time.Second)) {
+		t.Fatal("DNS diagnostics are not one per second")
+	}
+	if validRuntimeDiagnostic("dns_proof", "private error or hostname") {
+		t.Fatal("arbitrary diagnostic accepted")
+	}
+}
+
+func TestDNSDiagnosticSocketRefusalPreservesActiveContext(t *testing.T) {
+	for _, protocol := range []string{"udp", "tcp"} {
+		t.Run(protocol, func(t *testing.T) {
+			f := newDNSOwnerViewFixture(t, nil)
+			var diagnostic RuntimeDiagnostic
+			f.c.config.Diagnostic = func(d RuntimeDiagnostic) { diagnostic = d }
+			endpoint := fqdnrpc.ResolverEndpoint{Address: f.config.Endpoints[0].Address, Port: 53, Transport: protocol}
+			// Malformed packet rejected before any socket; no real network fixture.
+			if _, err := f.c.exchangeResolverDNS(context.Background(), f.config, endpoint, []byte("short")); err == nil {
+				t.Fatal("malformed DNS packet accepted")
+			}
+			stage := "dns_socket_" + protocol
+			if protocol == "tcp" {
+				stage = "dns_socket_tcp_input"
+			}
+			if diagnostic.Operation != "dns_exchange" || diagnostic.Stage != stage || diagnostic.ContextState != "active" || !diagnostic.Refused {
+				t.Fatalf("wrong socket refusal or context: %+v", diagnostic)
+			}
+		})
+	}
+}
+
+func renewDNSDiagnosticGuard(t *testing.T, f *dnsOwnerViewFixture) {
+	t.Helper()
+	a := f.c.active[f.material.Manifest.ConnectionID]
+	i := guardFixture()
+	i.OwnerID = f.material.Manifest.NodeID
+	i.Revision = f.manifest.Revision + 1
+	i.Connections[0].ID = a.Entry.Allocation.ConnectionID
+	i.Connections[0].Tunnels = a.Entry.Observed
+	i.Connections[0].Grants = a.Grants
+	i.Connections[0].ReplyIngressIndices = []int{10}
+	i.Connections[0].EncryptedEgress = []GuardEncryptedEgress{{TunnelInterfaceIndex: 10, ReqID: a.Entry.Engines[0].ReqID, Peer: a.Entry.Engines[0].RemoteAddress, UnderlayInterfaceIndex: 2}}
+	g, err := RenderGuard(i)
+	if err != nil {
+		t.Fatal(err)
+	}
+	f.manifest = g
+	f.observed.Store(g.ExpectedJSON)
+	f.publish(t)
+}
+func TestDNSBenignPublishedGuardRenewalRevalidatesExactCurrentTemplate(t *testing.T) {
+	f := newDNSOwnerViewFixture(t, nil)
+	original := f.c.dnsView.Load().entries[f.material.Manifest.ConnectionID]
+	var diagnostic RuntimeDiagnostic
+	f.c.config.Diagnostic = func(d RuntimeDiagnostic) { diagnostic = d }
+	// Replace native table and publish exact manifest between view load and guard
+	// read. Only guard revision changes; owner and accepted authority are exact.
+	f.c.prove = func(context.Context, RuntimeJournalEntry, RuntimeEnvironment) error {
+		renewDNSDiagnosticGuard(t, f)
+		return nil
+	}
+	f.publish(t)
+	if _, err := f.prove(context.Background()); err != nil {
+		t.Fatal("benign exact-authority guard renewal refused", err)
+	}
+	current := f.c.dnsView.Load().entries[f.material.Manifest.ConnectionID]
+	if current.epoch != original.epoch || !sameDNSOwnerInputs(current.active, original.active) {
+		t.Fatal("fixture changed authority")
+	}
+	if diagnostic.Refused || f.guardReads.Load() != 3 {
+		t.Fatalf("current template not independently bracketed: %+v reads%d", diagnostic, f.guardReads.Load())
+	}
+}
+func TestDNSDiagnosticRenewalWithWrongNativeTableRemainsRefused(t *testing.T) {
+	f := newDNSOwnerViewFixture(t, nil)
+	var diagnostic RuntimeDiagnostic
+	f.c.config.Diagnostic = func(d RuntimeDiagnostic) { diagnostic = d }
+	f.c.prove = func(context.Context, RuntimeJournalEntry, RuntimeEnvironment) error {
+		renewDNSDiagnosticGuard(t, f)
+		f.observed.Store(`{"nftables":[]}`)
+		return nil
+	}
+	f.publish(t)
+	if _, err := f.prove(context.Background()); err == nil || diagnostic.Stage != "dns_refusal_guard_initial" {
+		t.Fatalf("wrong native table accepted/misclassified: %+v", diagnostic)
+	}
+}
+
+func TestDNSGuardRevalidationRefusesChangedAuthorityAndDigestChurn(t *testing.T) {
+	for _, name := range []string{"owner_epoch", "grants", "original_lease", "current_lease", "native_table", "digest_churn", "deadline", "original_lease_during", "current_lease_during"} {
+		t.Run(name, func(t *testing.T) {
+			f := newDNSOwnerViewFixture(t, nil)
+			id := f.material.Manifest.ConnectionID
+			previous := f.c.dnsView.Load()
+			owner := previous.entries[id]
+			entry := owner.active.Entry
+			renewDNSDiagnosticGuard(t, f)
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			switch name {
+			case "owner_epoch":
+				f.c.withdrawDNSOwnerView(id)
+			case "grants":
+				a := f.c.active[id]
+				a.Grants = append([]GuardGrant(nil), a.Grants[1:]...)
+				f.c.active[id] = a
+				f.publish(t)
+			case "original_lease", "current_lease":
+				a := f.c.active[id]
+				a.Authority = dnsTestAuthority(t, a.Identity)
+				f.c.active[id] = a
+				f.publish(t)
+				if name == "original_lease" {
+					owner.active.Authority.Invalidate()
+				} else {
+					a.Authority.Invalidate()
+				}
+			case "original_lease_during", "current_lease_during":
+				a := f.c.active[id]
+				a.Authority = dnsTestAuthority(t, a.Identity)
+				f.c.active[id] = a
+				f.publish(t)
+				run := f.c.guard.reader.run
+				f.c.guard.reader.run = func(ctx context.Context, args ...string) ([]byte, error) {
+					raw, err := run(ctx, args...)
+					if name == "original_lease_during" {
+						owner.active.Authority.Invalidate()
+					} else {
+						a.Authority.Invalidate()
+					}
+					return raw, err
+				}
+			case "native_table":
+				f.observed.Store(`{"nftables":[]}`)
+			case "digest_churn":
+				run := f.c.guard.reader.run
+				f.c.guard.reader.run = func(ctx context.Context, args ...string) ([]byte, error) {
+					raw, err := run(ctx, args...)
+					renewDNSDiagnosticGuard(t, f)
+					return raw, err
+				}
+			case "deadline":
+				cancel()
+			}
+			reason := ""
+			if f.c.revalidateDNSGuardSnapshotDigestReason(ctx, id, owner, previous, entry, entry.Observed[0].InterfaceIndex, entry.Engines[0].ReqID, nil, func(v string) { reason = v }) != "" {
+				t.Fatal("changed or expired authority accepted")
+			}
+			expected := map[string]string{"owner_epoch": "owner_entry_refused", "grants": "owner_entry_refused", "original_lease": "owner_entry_refused", "current_lease": "owner_entry_refused", "native_table": "latest_guard_refused", "digest_churn": "digest_changed_again", "deadline": "context_inactive", "original_lease_during": "final_owner_entry_refused", "current_lease_during": "final_owner_entry_refused"}[name]
+			if reason != expected {
+				t.Fatalf("reason %s expected %s", reason, expected)
+			}
+			if f.guardReads.Load() > 1 {
+				t.Fatal("retry loop exceeded one current-template check", f.guardReads.Load())
+			}
+		})
+	}
+}
+
+func TestDNSDiagnosticSeparatesFinalPublishedGuardRead(t *testing.T) {
+	f := newDNSOwnerViewFixture(t, nil)
+	var diagnostic RuntimeDiagnostic
+	f.c.config.Diagnostic = func(d RuntimeDiagnostic) { diagnostic = d }
+	view := *f.c.dnsView.Load()
+	route := view.observer.route
+	view.observer.route = func(ctx context.Context, path string, args ...string) ([]byte, error) {
+		raw, err := route(ctx, path, args...)
+		renewDNSDiagnosticGuard(t, f)
+		f.observed.Store(`{"nftables":[]}`)
+		return raw, err
+	}
+	f.c.dnsView.Store(&view)
+	if _, err := f.prove(context.Background()); err == nil || diagnostic.Stage != "dns_refusal_guard_retry" {
+		t.Fatalf("final current table refusal misclassified: %+v", diagnostic)
+	}
+	if f.guardReads.Load() != 2 {
+		t.Fatal("diagnostic changed guard read count")
+	}
+}
+
+func TestDNSFinalGuardRenewalUsesOneCurrentTemplateRevalidation(t *testing.T) {
+	f := newDNSOwnerViewFixture(t, nil)
+	original := f.c.dnsView.Load().entries[f.material.Manifest.ConnectionID]
+	view := *f.c.dnsView.Load()
+	route := view.observer.route
+	view.observer.route = func(ctx context.Context, path string, args ...string) ([]byte, error) {
+		raw, err := route(ctx, path, args...)
+		renewDNSDiagnosticGuard(t, f)
+		return raw, err
+	}
+	f.c.dnsView.Store(&view)
+	run := f.c.guard.reader.run
+	f.c.guard.reader.run = func(ctx context.Context, args ...string) ([]byte, error) {
+		if f.guardReads.Load() == 1 {
+			renewDNSDiagnosticGuard(t, f)
+		}
+		return run(ctx, args...)
+	}
+	if _, err := f.prove(context.Background()); err != nil {
+		t.Fatal("benign final template supersession refused", err)
+	}
+	current := f.c.dnsView.Load().entries[f.material.Manifest.ConnectionID]
+	if original.epoch != current.epoch || !sameDNSOwnerInputs(original.active, current.active) {
+		t.Fatal("fixture changed owner authority")
+	}
+	if f.guardReads.Load() != 3 {
+		t.Fatal("expected one bounded current-template retry")
+	}
+}
+func TestDNSFinalGuardReadRequiresPublishedDigestStability(t *testing.T) {
+	f := newDNSOwnerViewFixture(t, nil)
+	view := *f.c.dnsView.Load()
+	route := view.observer.route
+	view.observer.route = func(ctx context.Context, path string, args ...string) ([]byte, error) {
+		raw, err := route(ctx, path, args...)
+		renewDNSDiagnosticGuard(t, f)
+		return raw, err
+	}
+	f.c.dnsView.Store(&view)
+	run := f.c.guard.reader.run
+	f.c.guard.reader.run = func(ctx context.Context, args ...string) ([]byte, error) {
+		raw, err := run(ctx, args...)
+		if f.guardReads.Load() == 2 {
+			renewDNSDiagnosticGuard(t, f)
+		}
+		return raw, err
+	}
+	if _, err := f.prove(context.Background()); err != nil {
+		t.Fatal("stable current template retry refused", err)
+	}
+	if f.guardReads.Load() != 3 {
+		t.Fatal("final guard changed after native read without strict current revalidation")
+	}
+}
+
+func TestDNSFinalGuardCannotSpendSecondRevalidation(t *testing.T) {
+	f := newDNSOwnerViewFixture(t, nil)
+	f.c.prove = func(context.Context, RuntimeJournalEntry, RuntimeEnvironment) error {
+		renewDNSDiagnosticGuard(t, f)
+		return nil
+	}
+	f.publish(t)
+	view := *f.c.dnsView.Load()
+	route := view.observer.route
+	view.observer.route = func(ctx context.Context, path string, args ...string) ([]byte, error) {
+		raw, err := route(ctx, path, args...)
+		renewDNSDiagnosticGuard(t, f)
+		return raw, err
+	}
+	f.c.dnsView.Store(&view)
+	run := f.c.guard.reader.run
+	f.c.guard.reader.run = func(ctx context.Context, args ...string) ([]byte, error) {
+		if f.guardReads.Load() == 2 {
+			renewDNSDiagnosticGuard(t, f)
+		}
+		return run(ctx, args...)
+	}
+	if _, err := f.prove(context.Background()); err == nil {
+		t.Fatal("second supersession retry accepted")
+	}
+	if f.guardReads.Load() != 3 {
+		t.Fatalf("proof exceeded one revalidation: %d", f.guardReads.Load())
+	}
+}
+func TestDNSFinalGuardRevalidationRejectsContinuedDigestChurn(t *testing.T) {
+	f := newDNSOwnerViewFixture(t, nil)
+	view := *f.c.dnsView.Load()
+	route := view.observer.route
+	view.observer.route = func(ctx context.Context, path string, args ...string) ([]byte, error) {
+		raw, err := route(ctx, path, args...)
+		renewDNSDiagnosticGuard(t, f)
+		return raw, err
+	}
+	f.c.dnsView.Store(&view)
+	run := f.c.guard.reader.run
+	f.c.guard.reader.run = func(ctx context.Context, args ...string) ([]byte, error) {
+		if f.guardReads.Load() >= 1 {
+			renewDNSDiagnosticGuard(t, f)
+		}
+		raw, err := run(ctx, args...)
+		if f.guardReads.Load() == 3 {
+			renewDNSDiagnosticGuard(t, f)
+		}
+		return raw, err
+	}
+	if _, err := f.prove(context.Background()); err == nil {
+		t.Fatal("unstable retried final digest accepted")
+	}
+	if f.guardReads.Load() != 3 {
+		t.Fatal("unbounded final retry")
+	}
+}
+
+func TestDNSFinalGuardRevalidationRefusesAuthorityChanges(t *testing.T) {
+	for _, scenario := range []string{"epoch", "grants", "original_lease", "current_lease", "cancel"} {
+		t.Run(scenario, func(t *testing.T) {
+			f := newDNSOwnerViewFixture(t, nil)
+			id := f.material.Manifest.ConnectionID
+			original := f.c.dnsView.Load().entries[id]
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			view := *f.c.dnsView.Load()
+			route := view.observer.route
+			view.observer.route = func(ctx context.Context, path string, args ...string) ([]byte, error) {
+				raw, err := route(ctx, path, args...)
+				a := f.c.active[id]
+				a.Authority = dnsTestAuthority(t, a.Identity)
+				f.c.active[id] = a
+				renewDNSDiagnosticGuard(t, f)
+				return raw, err
+			}
+			f.c.dnsView.Store(&view)
+			run := f.c.guard.reader.run
+			f.c.guard.reader.run = func(ctx context.Context, args ...string) ([]byte, error) {
+				if f.guardReads.Load() == 1 {
+					renewDNSDiagnosticGuard(t, f)
+					switch scenario {
+					case "epoch":
+						f.c.withdrawDNSOwnerView(id)
+					case "grants":
+						a := f.c.active[id]
+						a.Grants = append([]GuardGrant(nil), a.Grants[1:]...)
+						f.c.active[id] = a
+						f.publish(t)
+					case "original_lease":
+						original.active.Authority.Invalidate()
+					case "current_lease":
+						f.c.active[id].Authority.Invalidate()
+					case "cancel":
+						cancel()
+					}
+				}
+				return run(ctx, args...)
+			}
+			if _, err := f.prove(ctx); err == nil {
+				t.Fatal("changed final authority accepted")
+			}
+			if f.guardReads.Load() > 3 {
+				t.Fatal("unbounded final revalidation")
+			}
+		})
+	}
+}
+
+func TestDNSRevalidationReasonDoesNotReadOrChangeAcceptance(t *testing.T) {
+	for _, kind := range []string{"latest_unchanged", "latest_absent", "accepted"} {
+		for _, enabled := range []bool{false, true} {
+			t.Run(kind, func(t *testing.T) {
+				f := newDNSOwnerViewFixture(t, nil)
+				id := f.material.Manifest.ConnectionID
+				previous := f.c.dnsView.Load()
+				owner := previous.entries[id]
+				entry := owner.active.Entry
+				switch kind {
+				case "latest_absent":
+					f.c.dnsView.Store(nil)
+				case "accepted":
+					renewDNSDiagnosticGuard(t, f)
+				}
+				reason := ""
+				var callback func(string)
+				if enabled {
+					callback = func(v string) { reason = v }
+				}
+				got := f.c.revalidateDNSGuardSnapshotDigestReason(context.Background(), id, owner, previous, entry, entry.Observed[0].InterfaceIndex, entry.Engines[0].ReqID, nil, callback)
+				if (got != "") != (kind == "accepted") {
+					t.Fatal("result changed")
+				}
+				if enabled && reason != kind {
+					t.Fatal(reason)
+				}
+				if !enabled && reason != "" {
+					t.Fatal("off callback")
+				}
+				expected := int32(0)
+				if kind == "accepted" {
+					expected = 1
+				}
+				if f.guardReads.Load() != expected {
+					t.Fatal("extra read", f.guardReads.Load())
+				}
+			})
+		}
+	}
+}
+
+func TestRuntimeDNSExchangeDiagnosticStages(t *testing.T) {
+	for _, failure := range []string{"before", "socket", "after", "identity", "context", "success"} {
+		t.Run(failure, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			var events []RuntimeDiagnostic
+			var calls []string
+			fixture := newDNSOwnerViewFixture(t, func(context.Context) error { return nil })
+			proof, proofErr := fixture.prove(ctx)
+			if proofErr != nil {
+				t.Fatal(proofErr)
+			}
+			n := 0
+			prove := func(context.Context, fqdnrpc.ResolverConfig, fqdnrpc.ResolverEndpoint) (runtimeDNSProof, error) {
+				n++
+				calls = append(calls, "prove")
+				if failure == "before" && n == 1 || failure == "after" && n == 2 {
+					return runtimeDNSProof{}, errors.New("hostname answer secret payload")
+				}
+				if failure == "identity" && n == 2 {
+					p := proof
+					p.InterfaceIndex = 99
+					return p, nil
+				}
+				if failure == "context" && n == 2 {
+					cancel()
+				}
+				return proof, nil
+			}
+			exchange := func(context.Context, fqdnrpc.ResolverEndpoint, netip.Addr, []byte) ([]byte, error) {
+				calls = append(calls, "socket")
+				if failure == "socket" {
+					return nil, errors.New("hostname answer secret payload")
+				}
+				return []byte("answer"), nil
+			}
+			result, err := exchangeResolverDNSObserved(ctx, fqdnrpc.ResolverConfig{}, fqdnrpc.ResolverEndpoint{}, []byte("secret request"), prove, exchange, func(stage string, started time.Time, refused bool) {
+				emitRuntimeDiagnostic(func(v RuntimeDiagnostic) { events = append(events, v) }, ctx, "dns_exchange", stage, uuid.Nil, started, refused)
+			})
+			count := 3
+			if failure == "before" {
+				count = 1
+			}
+			if failure == "socket" {
+				count = 2
+			}
+			if len(events) != count || len(calls) != count {
+				t.Fatalf("sequence events=%v calls=%v", events, calls)
+			}
+			names := []string{"dns_proof_before", "dns_socket", "dns_proof_after"}
+			if failure == "after" {
+				names[2] = "dns_after_proof_refused"
+			}
+			if failure == "identity" {
+				names[2] = "dns_after_binding_refused"
+			}
+			if failure == "context" {
+				names[2] = "dns_after_context_refused"
+			}
+			for i, v := range events {
+				if v.Stage != names[i] || v.Operation != "dns_exchange" || v.ElapsedMillis < 0 {
+					t.Fatalf("event %+v", v)
+				}
+			}
+			if failure == "success" {
+				if err != nil || string(result) != "answer" || events[count-1].Refused {
+					t.Fatal("success changed")
+				}
+			} else if err != ErrRuntimeController || result != nil || !events[count-1].Refused {
+				t.Fatal("failure changed")
+			}
+			raw, _ := json.Marshal(events)
+			for _, s := range []string{"hostname", "answer", "secret", "payload", "10.70"} {
+				if strings.Contains(string(raw), s) {
+					t.Fatal("diagnostic disclosed input")
+				}
+			}
+		})
+	}
+}
+
+func TestDNSAfterDiagnosticShortCircuitOrder(t *testing.T) {
+	for _, tc := range []struct {
+		name                            string
+		proofError, mismatch, cancelled bool
+		stage                           string
+	}{
+		{"success", false, false, false, "dns_proof_after"},
+		{"proof dominates binding and context", true, true, true, "dns_after_proof_refused"},
+		{"binding dominates context", false, true, true, "dns_after_binding_refused"},
+		{"binding", false, true, false, "dns_after_binding_refused"},
+		{"context", false, false, true, "dns_after_context_refused"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			fixture := newDNSOwnerViewFixture(t, func(context.Context) error { return nil })
+			proof, err := fixture.prove(ctx)
+			if err != nil {
+				t.Fatal(err)
+			}
+			var calls, stages []string
+			n := 0
+			got, e := exchangeResolverDNSObserved(ctx, fqdnrpc.ResolverConfig{}, fqdnrpc.ResolverEndpoint{}, nil,
+				func(context.Context, fqdnrpc.ResolverConfig, fqdnrpc.ResolverEndpoint) (runtimeDNSProof, error) {
+					calls = append(calls, "proof")
+					n++
+					p := proof
+					if n == 2 {
+						if tc.cancelled {
+							cancel()
+						}
+						if tc.mismatch {
+							p.InterfaceIndex++
+						}
+						if tc.proofError {
+							return p, errors.New("private response detail")
+						}
+					}
+					return p, nil
+				}, func(context.Context, fqdnrpc.ResolverEndpoint, netip.Addr, []byte) ([]byte, error) {
+					calls = append(calls, "socket")
+					return []byte("unchanged"), nil
+				},
+				func(s string, _ time.Time, _ bool) { stages = append(stages, s) })
+			if strings.Join(calls, ",") != "proof,socket,proof" || len(stages) != 3 || stages[2] != tc.stage {
+				t.Fatalf("calls=%v stages=%v", calls, stages)
+			}
+			refused := tc.proofError || tc.mismatch || tc.cancelled
+			if refused {
+				if e != ErrRuntimeController || got != nil {
+					t.Fatal("refusal semantics changed")
+				}
+			} else if e != nil || string(got) != "unchanged" {
+				t.Fatal("success semantics changed")
+			}
+		})
+	}
+}

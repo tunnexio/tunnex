@@ -1,0 +1,38 @@
+{
+  "kind": "owned_azure_active_active_static_successor_current_checkpoint",
+  "observed_at": "2026-10-11T21:59:29.377172+00:00",
+  "accepted_story_count": 6,
+  "accepted_human_story_numbers": [1, 2, 3, 4, 7, 8],
+  "open_human_story_numbers": [5, 6, 9, 10, 11],
+  "profile_id": "azure-active-active-static-ipv4-v1",
+  "connection_id": "8595cbe4-ebd8-4a02-ae12-9b031f370481",
+  "tunnel_ids": [
+    "47e20c0a-1fcd-4cfb-819a-3fb72ecc3f09",
+    "1b81313d-a8d1-422a-87f2-6b9a2eca72f0"
+  ],
+  "normal_api": {
+    "create_completed": true,
+    "enable_completed": true,
+    "current_read_cas_request_sent": false,
+    "desired_revision": 2,
+    "desired_intent": "enabled",
+    "application_state": "pending",
+    "cleanup_state": "not_required",
+    "configuration_revision": null,
+    "configuration_revision_evidence": "not_exposed_in_phase_stdout"
+  },
+  "preserved_verification_attempt": {
+    "private_run_id": "azure-static-native-v3-2d12079f-0b9b-4c90-9f47-80388bf20d65",
+    "allocation_sha256": "1103c642d06d7ab8299e73a0a8eef31e080ff8550cbb5f50565e56b69f2e64ab",
+    "current_read_returncode": 1,
+    "current_read_fixed_error": "current_authority",
+    "current_read_stderr_sha256": "ea4f77165bbf0ba2b520e5fd21755222bf9778486c60190f36b9c9522685da42",
+    "capture_launched": false,
+    "native_launched": false
+  },
+  "current_read_private_stdout_sha256": "14e5ea1bff03dcda7f5c08ac45d8aad40942b0f528d1597d4f283a09c19f791b",
+  "static_native_accepted": false,
+  "static_packets_accepted": false,
+  "static_story_accepted": false,
+  "scope": "Normal API create and enable completed after owned static cloud alignment. Fresh current status remains pending; the preserved verification attempt refused before capture or native observation. Runtime admission cause is not yet classified. No DNS or application grants were created for this successor."
+}

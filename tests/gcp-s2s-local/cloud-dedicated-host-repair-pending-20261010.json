@@ -1,0 +1,21 @@
+{
+  "source_commit": "3d0951e84aa58ce78dcc6238bd2ecaf7d3f38fd9",
+  "image_id": "sha256:ccde530ca3e815ee169ed258ab6a95ad20de4089f8e4abf6b0f20440a7d62102",
+  "container_id": "dc81baef1c4924007b39224fd4f9b14bef94e734c2138257b12bfdc46abd8294",
+  "node_id": "01a125fa-32f3-762b-83d4-d368447bf6ed",
+  "status": "reviewed repair blocked before execution",
+  "script_sha256": "0ed131d41f7ebb8b7d367211b5ef5feb3b2fccbeec09dfd200b587f2d017b8ea",
+  "ssh_dependency_sha256": "f2b27b12b40073ed5ad0d9625d92778047dbf766d460368db2fc97602d77ce38",
+  "plan_sha256": "5d6199944d2e7ce23f1b960cb60354a308901539ced6e68aba569a714020f358",
+  "review": "parent and independent UI source review passed; four remote phases compile",
+  "executed": {
+    "docker_config_write": false,
+    "gateway_stop": false,
+    "vm_reboot": false,
+    "firewall_delete": false,
+    "guard_relaxation": false
+  },
+  "approval_review_reason": "Persistent Docker firewall-management disablement and gateway stop require exact trusted human authorization beyond general GCP development. No workaround or indirect execution permitted.",
+  "node_last_verified": "healthy; actual wg0 UP; GCP eligibility unsupported; no connection enabled",
+  "scope": "Dedicated owned gateway deployment plan only; no new runtime authority or cloud acceptance claim"
+}

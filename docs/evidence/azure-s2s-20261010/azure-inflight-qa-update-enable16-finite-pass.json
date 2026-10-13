@@ -1,0 +1,124 @@
+{
+  "accepted_story_count": 6,
+  "actual_result_path": "/var/lib/tunnex-qualification-archive/azure-inflight-repair-execute-e50dca92-f788-46c8-bc02-f4085ed55b0a/result.json",
+  "actual_result_sha256": "95102ff57fe7ed5b67c03a9fe2c9f2b02b5db36ae943105d13c1ace02f0f51e3",
+  "category": "actual_inflight_3690_qa_update_enable16_finite_checkpoint",
+  "enable_receipt_path": "/var/lib/tunnex-qualification-archive/azure-static-proof-normal-enable-99b962e8-5aa7-43a5-bead-65703c6641fc/receipt.json",
+  "enable_receipt_sha256": "627e7a157e04118dad9f383ff161f2513f2cc1c42727da3c8163b1e142aabe04",
+  "enabled_native_entry_count": null,
+  "enabled_native_read_required": true,
+  "fqdn_live_acceptance_passed": false,
+  "fresh_dns_window_completed": false,
+  "new_slices_closed": 0,
+  "normal_configuration_revision": 1,
+  "normal_desired_revision": 16,
+  "normal_intent": "enabled",
+  "policy_count": 8,
+  "postabsence_enable_wrapper_sha256": "8d607d4e6fff5c616dde74f80fd2f4a8a42446df5033299518c9ef2fff752f6e",
+  "postupdate_full_native_absence_entry_count": 37,
+  "postupdate_full_native_absence_sha256": "cdb32981850f354cd1934ed374401696ce9c7d0d4f06cbeeb431d2577fc985a1",
+  "prior_postabsence_enable_refusal": {
+    "classification_path": "/private/tmp/azure-inflight-postabsence-outcome-read-93ba1b90-8fe2-4d3a-b689-36be41f2c29b/result.json",
+    "enable_once_marker_present": false,
+    "normal_cas_sent": false,
+    "phase": "enable-execute",
+    "reason": "fresh_current_native_journal"
+  },
+  "prior_pre_restart_refusals": {
+    "accepted_story_count": 6,
+    "actual_normal_observation": {
+      "application_state": "not_applied",
+      "category": "actual_disabled15_readonly_projection",
+      "cleanup_state": "retained_guard",
+      "configuration_revision": 1,
+      "desired_intent": "disabled",
+      "desired_revision": 15,
+      "fresh_native_acceptance": false,
+      "journal_entry_count": 37,
+      "node_pid": 1514467,
+      "node_sha256": "2c33e96f7dbefbc5e0588428d974a2da1c91fbe87d4dd8f87077dc7212d0b4a2",
+      "node_started_at": "2026-10-12T07:41:08.708138572Z",
+      "observed_at": "2026-10-12T08:41:58.982924+00:00",
+      "policy_count": 8,
+      "raw_journal_exported": false,
+      "transport_seconds": 1.617
+    },
+    "candidate_node_sha256": "369044f622adc7c756f31be378909a407c7e09d0ea75e667bf6f6e187766c884",
+    "category": "inflight_qa_update_pre_restart_refusals_preserved",
+    "fqdn_live_acceptance_passed": false,
+    "full_guard_cause_diagnosed": false,
+    "new_acceptance_slices_closed": 0,
+    "next_step": "Diagnose full original guard verifier refusal on the owned QA node; perform controlled update only after unchanged fresh native gates pass.",
+    "normal_disable_receipt_sha256": "6825133493cc81ecfa168dafa23f6537fc395934a83e6ec2cf36a8a914f937b7",
+    "observation_wrapper_sha256": "15e001a78c58dfb545957943b2c59d2f7b08118e7111ff8e92ccbc65a665b42e",
+    "preserved_attempts": [
+      {
+        "attempt": 1,
+        "lifecycle_started": false,
+        "outcome": {
+          "returncode": 1,
+          "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+          "stdout_sha256": "51038b72624283b36404e3cf98f71dc6609d51a66f78464c2f30e050c2cf7377"
+        },
+        "phase": "update-execute",
+        "private_run_id": "azure-inflight-repair-prepare-update-df16a07e-2a37-46a5-ba42-25cca8e2821b",
+        "reason": "late_native_before_bracket",
+        "whole_story_accepted": false,
+        "wrapper_sha256": "7cbe0e37e0b1a4810675c5b25e6dcf3b332efd562f9483d8bb363c50d9a2a0fd"
+      },
+      {
+        "attempt": 2,
+        "lifecycle_started": false,
+        "outcome": {
+          "returncode": 1,
+          "stderr_sha256": "b6d2f2b7dd37d754bde092e301274a831dacf86cf2017c66b2c4c0c1f7970aa9",
+          "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "phase": "prepare",
+        "private_run_id": "azure-inflight-repair-prepare-update-c4b22abc-692d-4b32-b525-c524c141f93a",
+        "reason": "native_refused",
+        "whole_story_accepted": false,
+        "wrapper_sha256": "37c58903f19f5893ba0d8ac6f6ee8af8928ecd5391a7e990cfa700f80f63e072"
+      },
+      {
+        "attempt": 3,
+        "lifecycle_started": false,
+        "outcome": {
+          "returncode": 1,
+          "stderr_sha256": "b6d2f2b7dd37d754bde092e301274a831dacf86cf2017c66b2c4c0c1f7970aa9",
+          "stdout_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        "phase": "prepare",
+        "private_run_id": "azure-inflight-repair-prepare-update-15d0001b-a6b6-4490-ae44-aa41fda7a958",
+        "reason": "native_refused",
+        "whole_story_accepted": false,
+        "wrapper_sha256": "131a898db8b7c21be871308358351f36f3bfd5a2aca03d6834d53412b946e05b"
+      }
+    ],
+    "qa_node_updated": false,
+    "raw_control_records_exported": false,
+    "recorded_at": "2026-10-12T09:09:20.967932+00:00",
+    "sustained_dns_acceptance_passed": false,
+    "total_story_count": 11,
+    "version": 1
+  },
+  "raw_control_records_exported": false,
+  "recorded_at": "2026-10-12T09:29:24.838086+00:00",
+  "running_node": {
+    "category": "started_requires_independent_normal_native_read",
+    "container_id": "21833b87403bb637ad19c191608996bf2fb7614201cec39e28738f80710e1a95",
+    "executable_sha256": "369044f622adc7c756f31be378909a407c7e09d0ea75e667bf6f6e187766c884",
+    "image_unchanged": true,
+    "immutable_sha256": "c1d958821728a1b1c833350e6897a45c1f0ce750c8e37fdc092376e0677fc0de",
+    "namespace": "net:[4026532430]",
+    "pid": 1816931,
+    "started_at": "2026-10-12T09:20:05.227210548Z"
+  },
+  "scope": "Authentic successful QA update and normal enable16 after complete original new-process absence proof. Fresh enabled16 full native baseline, exact history count and sustained DNS/application acceptance remain required.",
+  "sustained_dns_passed": false,
+  "total_story_count": 11,
+  "update_wrapper_sha256": "dfd6533983a352ea5a1e42b76e2f30c3b1809142f777e1c49a0cf6942a743d6c",
+  "updater_independent_review_sha256": "397bd755fccacda076d800bbfb456f4ac2273b7baa84d26f7db729b2f073814d",
+  "updater_source_manifest_sha256": "de49436e64323e115d84fcf7976b0365c9bf3cdc92ab726d118cba36d9a5720e",
+  "version": 1
+}

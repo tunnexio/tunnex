@@ -1,0 +1,71 @@
+{
+  "source_base": "35605112",
+  "scope": "normal local control-plane lifecycle and read-only cloud/connectivity; no cloud enrollment or deployment",
+  "local_lifecycle": {
+    "disable": {
+      "id": "56125c63-10de-4e3c-8636-49a22d8c82e0",
+      "desired_revision": 3,
+      "desired_intent": "disabled",
+      "cleanup_state": "pending",
+      "application_state": "not_applied"
+    },
+    "delete": {
+      "id": "56125c63-10de-4e3c-8636-49a22d8c82e0",
+      "desired_revision": 4,
+      "desired_intent": "deleted",
+      "cleanup_state": "retained_guard",
+      "application_state": "not_applied",
+      "finalized_at": "2026-10-10T12:24:57.806775Z"
+    },
+    "revoke": {
+      "http": 204,
+      "error": null
+    }
+  },
+  "cloud": {
+    "bastion": "34.131.23.179",
+    "gateway": "34.131.136.132",
+    "pinned_host_alias": "compute.1860325440445762510",
+    "project": "project-0048836f-6ba1-4a14-8da",
+    "gateway_running_containers": 0,
+    "gateway_sad_count": 0,
+    "tunnel_status": "NO_INCOMING_PACKETS",
+    "route_destinations": {
+      "peer_to_ha": "10.80.0.0/24",
+      "peer_to_classic": "10.81.0.0/24",
+      "classic_return": "10.70.0.0/24"
+    },
+    "next_hop": "existing owned gateway VM; Classic return existing owned VPN tunnel"
+  },
+  "connectivity": {
+    "listeners": [
+      "bastion127.0.0.1:48083",
+      "bastion127.0.0.1:48446",
+      "gateway127.0.0.1:38083",
+      "gateway127.0.0.1:38446"
+    ],
+    "gateway_cp_health_http": 200,
+    "unauthenticated_mtls": "certificate required",
+    "owned_exec_sessions": [
+      85330,
+      9675
+    ],
+    "cleanup": "Verify exact owned SSH command/PID using private forward-sessions.json then terminate exact session/process; no broad pkill."
+  },
+  "old_site_eligibility": {
+    "eligible": false,
+    "reason": "gateway_unavailable",
+    "bgp": {
+      "eligible": false,
+      "reason": "gateway_unavailable"
+    },
+    "gcp_ha": {
+      "eligible": false,
+      "reason": "gateway_unavailable"
+    },
+    "gcp_classic": {
+      "eligible": false,
+      "reason": "gateway_unavailable"
+    }
+  }
+}

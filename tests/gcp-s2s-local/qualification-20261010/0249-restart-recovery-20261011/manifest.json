@@ -1,0 +1,81 @@
+{
+  "files": [
+    {
+      "file": "065-poststart-policy-observer-stage.json",
+      "source": "/private/tmp/gcp-classic-psk-lifecycle-actual-20261011-v1/065-poststart-policy-observer-stage.json",
+      "sha256": "450ba83236b6527b000fee42d5a80a660da92a9fbc84f1c2b92c540cccb16995"
+    },
+    {
+      "file": "066-poststart-current-allocation.jsonl",
+      "source": "/private/tmp/gcp-classic-psk-lifecycle-actual-20261011-v1/066-poststart-current-allocation.jsonl",
+      "sha256": "cd534b9360d5d31dc1eb9a5bfa8357a062bf602d2363508e69167188bcfd104f"
+    },
+    {
+      "file": "067-poststart-fullnative.jsonl",
+      "source": "/private/tmp/gcp-classic-psk-lifecycle-actual-20261011-v1/067-poststart-fullnative.jsonl",
+      "sha256": "7de1d78a575810330efce1b1ade01ca06c482644686c163f1b5ef1d448702e57"
+    },
+    {
+      "file": "068-poststart-classic-packets.json",
+      "source": "/private/tmp/gcp-classic-psk-lifecycle-actual-20261011-v1/068-poststart-classic-packets.json",
+      "sha256": "4017a265d2820f8f5f5fe74fde35ba119c299ff674d452b2893a95b61d4188b9"
+    },
+    {
+      "file": "069-poststart-ha-packets.json",
+      "source": "/private/tmp/gcp-classic-psk-lifecycle-actual-20261011-v1/069-poststart-ha-packets.json",
+      "sha256": "5794fffa7d95820c72a61484c7b4d763f76eb32b468e350e8760028030188add"
+    },
+    {
+      "file": "poststart-classic-tcp-verification.json",
+      "source": "/private/tmp/gcp-cloud-expiry-observer-0249f7cf-20261011/poststart-classic-tcp-verification.json",
+      "sha256": "f9ae9c7303f081bbe10a31f59a40b6107f589680e7d23690b95bf2e0116e4a06"
+    },
+    {
+      "file": "poststart-classic-udp-verification.json",
+      "source": "/private/tmp/gcp-cloud-expiry-observer-0249f7cf-20261011/poststart-classic-udp-verification.json",
+      "sha256": "c3c9a58f7dd1f7e2eb8bd23bed14a56b428862983b5f88b22d73b4e138c0941b"
+    },
+    {
+      "file": "poststart-ha-tcp-verification.json",
+      "source": "/private/tmp/gcp-cloud-expiry-observer-0249f7cf-20261011/poststart-ha-tcp-verification.json",
+      "sha256": "55e3ce8d5f2a38257a82ee37b7e5e13015695441bcc7068ef300c364ec7447e5"
+    },
+    {
+      "file": "poststart-ha-udp-verification.json",
+      "source": "/private/tmp/gcp-cloud-expiry-observer-0249f7cf-20261011/poststart-ha-udp-verification.json",
+      "sha256": "477c2e3e53767e11e38ace78a052650fc345f460376e93be947fb195897b2754"
+    },
+    {
+      "file": "fullguard-public-binding.json",
+      "source_sha256": "8d798a5f1620d560476d472773f989eee829dbc042cde3fc365ff0a816f9928e"
+    },
+    {
+      "file": "normal-api-reconciliation.jsonl",
+      "source": "/private/tmp/gcp-post-cutover-api-reconcile-20261011-v1/receipt.jsonl",
+      "sha256": "c98050a5b3a5e2fa6c25fdd1a0019eb24f15c350eebc8e3891c89f2a4d5eac28"
+    },
+    {
+      "public_source": "/private/tmp/gcp-expiry-bound-0249f7cf-20261011/capture-v2.py",
+      "sha256": "3a472dd8b172bd8b72210397288b8d94d1e55f1b80e5e0ad787c0584180bfa96"
+    },
+    {
+      "public_source": "/private/tmp/gcp-poststop-qualifier-0249f7cf-20261011/apps/node/cmd/gcp-ha-guard-observer/main.go",
+      "sha256": "d301b26d87543e8d43963fc754dcc0cdb20a72ee4b0ccd5ccfc8bca4202ed07a"
+    },
+    {
+      "public_source": "/private/tmp/gcp-poststop-qualifier-0249f7cf-20261011/apps/node/cmd/gcp-classic-enabled7-guard/main.go",
+      "sha256": "7e32f9aed73f3e61d711bda1caf54d014a88d4272e3527301751402e648f7f06"
+    },
+    {
+      "binary_provenance": "/private/tmp/gcp-ha-guard-observer-0249f7cf-darwin-arm64",
+      "sha256": "003aa57e51ae2dc39c69bb9cd64f413b1c2fcdea6b0cf1835dfa09a22070a8da"
+    },
+    {
+      "binary_provenance": "/private/tmp/gcp-classic-guard-observer-0249f7cf-darwin-arm64",
+      "sha256": "270d6c79a87e89bdc045c16b99af21b60c76bf3b8e04e3f34fd47d9dd66c5ff3"
+    }
+  ],
+  "same_enrollment_restart_recovery_passed": true,
+  "continuous_availability_claim": false,
+  "rekey_or_fault_accepted": false
+}

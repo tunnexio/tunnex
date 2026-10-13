@@ -1,0 +1,44 @@
+{
+  "completed": false,
+  "scope": "fixed owned packet observation; no authority/MTU mutation",
+  "profile": "ha",
+  "size": 1200,
+  "df": false,
+  "source_sha256": "752df0436f2693c3dd3eae368d2bbd4524ed2896eb8f85c0d6e3485a780af2f5",
+  "started_at_utc": "2026-10-10T20:52:26Z",
+  "stderr_sha256": "d456a441b1b3d3c62ea97ab00a20702bad3c454eb30078193070429de278733b",
+  "observation": {
+    "completed": false,
+    "observer_ready": [
+      {
+        "ready": true,
+        "address": "10.70.0.10",
+        "interface": "ens4",
+        "boot_id": "5d6a0f20-8cc2-45fd-b604-7802d95658f7"
+      },
+      {
+        "ready": true,
+        "address": "10.80.0.10",
+        "interface": "ens4",
+        "boot_id": "b421e753-b6cb-470b-9f86-7df987b08a7b"
+      }
+    ],
+    "ends": [],
+    "client_stderr_path": "/tmp/tunnex-gcp-mtu-client-esr5kol0/client.stderr",
+    "scope": "observation only; fresh full guard/native/API evidence bound separately",
+    "reservation": {
+      "ready": true,
+      "source": "10.70.0.10",
+      "udp_port": 51633,
+      "tcp_port": 47103
+    },
+    "probe": {
+      "completed": false,
+      "error_type": "TimeoutError",
+      "refused_phase": "udp"
+    },
+    "error_type": "ValueError",
+    "client_stderr_sha256": "a1086207daa167724323d867cc142ed283fd10e07492c2a231bd1530f7c9a93d",
+    "client_stderr_size": 170
+  }
+}

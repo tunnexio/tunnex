@@ -26,20 +26,23 @@ type PermitLeaseRequest struct {
 }
 type PermitLeaseResponse struct {
 	PermitLeaseRequest
-	TTLMillis int64
+	TTLMillis   int64
+	FQDNPermits []RuntimeFQDNPermit
 }
 
 // PermitLeaseAuthority is process-local and must not be copied or persisted.
 // Callers authenticate the response transport; this helper cannot authenticate a CP.
 // It does not install permits, acknowledge cleanup or advertise capability.
 type PermitLeaseAuthority struct {
-	mu       sync.Mutex
-	elapsed  func() time.Duration
-	last     time.Duration
-	pending  *PermitLeaseRequest
-	started  time.Duration
-	identity PermitLeaseIdentity
-	deadline time.Duration
+	mu            sync.Mutex
+	elapsed       func() time.Duration
+	last          time.Duration
+	pending       *PermitLeaseRequest
+	started       time.Duration
+	identity      PermitLeaseIdentity
+	deadline      time.Duration
+	pendingFQDN   []string
+	fqdnDeadlines map[string]time.Duration
 }
 
 func NewPermitLeaseAuthority() *PermitLeaseAuthority {
@@ -66,14 +69,22 @@ func (a *PermitLeaseAuthority) clearLocked() {
 	a.pending = nil
 	a.identity = PermitLeaseIdentity{}
 	a.deadline = 0
+	a.pendingFQDN = nil
+	a.fqdnDeadlines = nil
 }
 
 // Begin supersedes any outstanding request. Different identities also revoke the
 // previous in-memory lease. Begin must run immediately before sending the request.
 func (a *PermitLeaseAuthority) Begin(identity PermitLeaseIdentity) (PermitLeaseRequest, error) {
+	return a.BeginFQDN(identity, nil)
+}
+
+// BeginFQDN uses the same request/nonce and pre-transport fence for exact v2 keys.
+func (a *PermitLeaseAuthority) BeginFQDN(identity PermitLeaseIdentity, keys []string) (PermitLeaseRequest, error) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	a.pending = nil
+	a.pendingFQDN = nil
 	if !validPermitIdentity(identity) {
 		a.clearLocked()
 		return PermitLeaseRequest{}, ErrPermitLease
@@ -85,6 +96,17 @@ func (a *PermitLeaseAuthority) Begin(identity PermitLeaseIdentity) (PermitLeaseR
 	if a.identity != identity {
 		a.identity = PermitLeaseIdentity{}
 		a.deadline = 0
+		a.fqdnDeadlines = nil
+	}
+	seen := map[string]bool{}
+	if len(keys) > 128 {
+		return PermitLeaseRequest{}, ErrPermitLease
+	}
+	for _, key := range keys {
+		if !validDigest(key) || seen[key] {
+			return PermitLeaseRequest{}, ErrPermitLease
+		}
+		seen[key] = true
 	}
 	var nonce [32]byte
 	if _, err := rand.Read(nonce[:]); err != nil {
@@ -92,6 +114,7 @@ func (a *PermitLeaseAuthority) Begin(identity PermitLeaseIdentity) (PermitLeaseR
 	}
 	request := PermitLeaseRequest{Identity: identity, Nonce: hex.EncodeToString(nonce[:])}
 	a.pending = &request
+	a.pendingFQDN = append([]string(nil), keys...)
 	a.started = now
 	return request, nil
 }
@@ -102,7 +125,9 @@ func (a *PermitLeaseAuthority) Accept(response PermitLeaseResponse) error {
 	a.mu.Lock()
 	defer a.mu.Unlock()
 	request := a.pending
+	keys := a.pendingFQDN
 	a.pending = nil
+	a.pendingFQDN = nil
 	now, ok := a.nowLocked()
 	if !ok || request == nil || response.PermitLeaseRequest != *request || response.TTLMillis <= 0 || response.TTLMillis > MaxPermitLease.Milliseconds() {
 		return ErrPermitLease
@@ -115,7 +140,29 @@ func (a *PermitLeaseAuthority) Accept(response PermitLeaseResponse) error {
 	if now >= deadline {
 		return ErrPermitLease
 	}
+	if len(response.FQDNPermits) != len(keys) {
+		return ErrPermitLease
+	}
+	expected := map[string]bool{}
+	for _, key := range keys {
+		expected[key] = true
+	}
+	fqdn := make(map[string]time.Duration, len(keys))
+	for _, permit := range response.FQDNPermits {
+		if !expected[permit.GrantDigest] || permit.TTLMS < 0 || permit.TTLMS > MaxPermitLease.Milliseconds() {
+			return ErrPermitLease
+		}
+		delete(expected, permit.GrantDigest)
+		d := time.Duration(permit.TTLMS) * time.Millisecond
+		if a.started > time.Duration(1<<63-1)-d {
+			return ErrPermitLease
+		}
+		// A valid response arriving after its per-grant deadline withdraws only that
+		// grant. It cannot delay or shorten ordinary/DNS authority.
+		fqdn[permit.GrantDigest] = a.started + d
+	}
 	a.identity = request.Identity
+	a.fqdnDeadlines = fqdn
 	a.deadline = deadline
 	return nil
 }
@@ -145,3 +192,27 @@ func (a *PermitLeaseAuthority) RemainingForApply(identity PermitLeaseIdentity, b
 // Invalidate rejects late replies and discards authority, without claiming that
 // existing kernel objects have been removed. Permanent refusal must remain.
 func (a *PermitLeaseAuthority) Invalidate() { a.mu.Lock(); defer a.mu.Unlock(); a.clearLocked() }
+
+// RemainingFQDNForApply never reads wall time or persists authority. It shares
+// the original nonce, monotonic/backwards-clock fence and ordinary lease cap.
+func (a *PermitLeaseAuthority) RemainingFQDNForApply(identity PermitLeaseIdentity, key string, budget time.Duration) (time.Duration, error) {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	now, ok := a.nowLocked()
+	deadline, present := a.fqdnDeadlines[key]
+	if !ok || !validPermitIdentity(identity) || identity != a.identity || !validDigest(key) || !present || budget <= 0 || budget >= MaxPermitLease {
+		return 0, ErrPermitLease
+	}
+	if deadline > a.deadline {
+		deadline = a.deadline
+	}
+	remaining := deadline - now - budget
+	if remaining <= 0 {
+		return 0, ErrPermitLease
+	}
+	remaining = remaining.Truncate(time.Millisecond)
+	if remaining <= 0 {
+		return 0, ErrPermitLease
+	}
+	return remaining, nil
+}

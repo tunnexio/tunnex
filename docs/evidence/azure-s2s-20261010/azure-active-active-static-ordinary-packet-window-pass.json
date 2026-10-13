@@ -1,0 +1,101 @@
+{
+  "accepted_story_count": 6,
+  "actual_result_path": "/private/tmp/azure-fresh-eight-window-root-655b0f51-4c13-4cd1-891a-7ae58507ff46/result.json",
+  "actual_result_sha256": "fa4bfde3ebed30edf68af1138a8787b75be218a946535c9dbafb1bf8cd80fa17",
+  "capability_readback": {
+    "dns_ipsec_resolve_version": 1,
+    "dns_resolve_rpc_version": 2,
+    "id": "01a1252e-14d2-7edc-b181-903325c4c56a",
+    "ipsec_config_version": 1,
+    "ipsec_fqdn_policy_version": 2,
+    "kind": "authenticated_node_heartbeat_scalar_readback",
+    "org_id": "01a1252d-34fe-72bb-a40b-222a0a0bf9a2",
+    "policy_reported_at": "2026-10-12T00:01:18.444215Z",
+    "revoked_at": null,
+    "server_now": "2026-10-12T00:01:21.626865Z",
+    "site_id": "01a1252d-3612-7a65-ad65-2dd5f4ebcd72",
+    "status": "active"
+  },
+  "category": "actual_active_active_static_ordinary_packet_window_pass",
+  "configuration_revision": 1,
+  "connection_id": "8595cbe4-ebd8-4a02-ae12-9b031f370481",
+  "desired_revision": 4,
+  "direction": "customer LAN to Azure private target",
+  "duration_seconds": 60,
+  "manifest_result": {
+    "actual_input_sha256": {
+      "allocation": "1103c642d06d7ab8299e73a0a8eef31e080ff8550cbb5f50565e56b69f2e64ab",
+      "current_read": "bab27822cdb1c3bacd4edbc3ebe0ed5c14004c55b1cddaa6bca57b411b0e427d",
+      "dns_state": "2ff25dd82eb3a758c47d4c9fd6530a23c427460eb87a2e4ce601d22a30e0f191",
+      "node_update_result": "04ec4b7add033eff8c5729aa93e05b35ac7a91356a19e9f381f6c257987b08e4",
+      "transition": "ef3a180887e3b8b76d944c14933ba1062d4858403f9ec119c8a5b7ba8ceb63da"
+    },
+    "category": "actual_enabled_static_eight_manifest_captured",
+    "manifest_path": "/var/lib/tunnex-qualification-archive/azure-enabled-static-manifest-1a924b0d-22a9-4af2-b3d1-d7aeab279c44/manifest.json",
+    "manifest_sha256": "91ddb1534004e7e6bf3745f1e1df66b1dfad1fb101ead7cb9474205179e6123b",
+    "native_executed": false,
+    "version": 1
+  },
+  "native_result": {
+    "acceptance": false,
+    "category": "actual_profile_native_observation_written",
+    "private_run_id": "azure-profile-observe-4484af70-c6a2-4921-9ab0-296608fdde6f",
+    "receipt_sha256": "0557ad640055085da22f130299b9320ef317f5ba6ad0f985339746f6a5d6f2c1",
+    "version": 1
+  },
+  "profile_id": "azure-active-active-static-ipv4-v1",
+  "recorded_at": "2026-10-12T00:04:19.355909+00:00",
+  "reduced_mtu_pass_claim": false,
+  "reverse_direction_pass_claim": false,
+  "source_address": "10.233.10.2",
+  "source_review_sha256": "fedde69311707033bb802da78e22f132586ebb0fe81f11071b4ee03347fae1bf",
+  "source_runner_sha256": "19249984d2d7c40af02ff450137231cefe9f6ecc4b3200ed404bfb201d2fd2ca",
+  "sustained_dns_pass_claim": false,
+  "target_address": "10.231.1.4",
+  "tcp_exact_bytes": 65536,
+  "udp_exact_bytes": 4096,
+  "version": 1,
+  "whole_story_acceptance_claim": false,
+  "window": {
+    "checks": {
+      "all_four_zero_failure": true,
+      "existing_socket_reuse": true,
+      "no_dns_probe": true,
+      "tails_successful": true,
+      "tcp_exact_source_preserved": true,
+      "udp_exact_4096": true
+    },
+    "counters": {
+      "existing_tcp": {
+        "failure": 0,
+        "maximum_observed_success_gap_seconds": 1.033474,
+        "seconds_since_last_success_at_run_end": 0.807699,
+        "success": 60
+      },
+      "existing_udp": {
+        "failure": 0,
+        "maximum_observed_success_gap_seconds": 1.04496,
+        "seconds_since_last_success_at_run_end": 0.615691,
+        "success": 60
+      },
+      "fresh_tcp": {
+        "failure": 0,
+        "maximum_observed_success_gap_seconds": 1.001698,
+        "seconds_since_last_success_at_run_end": 0.964446,
+        "success": 60
+      },
+      "fresh_udp": {
+        "failure": 0,
+        "maximum_observed_success_gap_seconds": 1.033582,
+        "seconds_since_last_success_at_run_end": 0.638081,
+        "success": 60
+      }
+    },
+    "native_acceptance": "source-paired prewindow baseline only",
+    "passed": true,
+    "phase": "ordinary",
+    "private_run_id": "azure-static-window-35fa70b8-250b-4918-abf0-b46cbf136627",
+    "receipt_sha256": "99728eeef57db166a5acfb6237e879380754fe21cbd8ce3f748cff8cdf3a5311",
+    "returncode": 0
+  }
+}

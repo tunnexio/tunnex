@@ -1,0 +1,28 @@
+{
+  "revision": 20,
+  "helper_source": "b79dd0da",
+  "node_sha256": "ba3bd84657db5c84eebfb446d63f47124e419abdbe9920c02a7a148043bc9649",
+  "normal_status_before_and_after_applied": true,
+  "both_tunnels_up": true,
+  "both_bgp_established": true,
+  "timings_ms": {
+    "daemon_inspect": 2,
+    "kernel_read": 4,
+    "xfrm_read": 2,
+    "environment_observe": 317,
+    "full_guard_check": 62
+  },
+  "final_checks": {
+    "context_active": true,
+    "journal_same_bytes": true,
+    "journal_same_inode": true,
+    "kernel_snapshot_equal": true,
+    "native_reader_ok": true,
+    "strict_native_ok": true,
+    "xfrm_snapshot_equal": true
+  },
+  "result": "read_only_measurement_complete",
+  "authority": false,
+  "in_memory_epoch_observed": false,
+  "scope": "One external read-only sample under common5s limit; no DNS exchange, caching, deadline extension, causal inference or readiness claim"
+}

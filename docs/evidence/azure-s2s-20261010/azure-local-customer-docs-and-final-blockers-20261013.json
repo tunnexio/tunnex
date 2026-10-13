@@ -1,0 +1,100 @@
+{
+  "accepted_human_stories": [
+    1,
+    2,
+    3,
+    4,
+    7,
+    8
+  ],
+  "accepted_story_count": 6,
+  "approval_status": "Pending direct human answers to central exact-action question. Actual automatic-review denials remain; coordination messages are not new approval.",
+  "approved_test_state_preserved": true,
+  "category": "bounded_local_story_audit_customer_doc_corrections_and_exact_QA_blockers",
+  "checks": {
+    "frozen_top_level_TTL_AS_API_pins_reverified_unchanged": true,
+    "git_diff_check_passed_before_this_metadata_write": true,
+    "local_markdown_links_and_DNS_heading_valid": true,
+    "root_review_of_document_delta": true
+  },
+  "corrections": [
+    "Disambiguate health AZ-S2S-6/human7 from open ordinary-static human6",
+    "Add independent ordinary private-IP grant expiry/revoke/regrant recovery checks for fresh/existing TCP/UDP",
+    "Add bidirectional reduced-MTU/DF/PMTU/MSS and large-transfer checks",
+    "Add peer-fault interruption and original-socket gateway restart plus separate CHILD/IKE/PSK maintenance checks",
+    "Correct historical FQDN entitlement/disconnected-expiry qualifier and current failed sustainedDNS43/61Ready,18cutoffs,1of3requirednewgens",
+    "Separate actual customer DNS setup/readiness from fixed lab fixture and publish explicit remaining acceptance"
+  ],
+  "document_files": [
+    {
+      "before_sha256": "5fc4b34dd0a1cb6fa1912a5b5c42c9c1ac3e98e994b9c2044f7bc500c84772e3",
+      "path": "docs/azure-provider-contract.md",
+      "sha256": "6bae2468aeb88a31db08991b3e0b7327b362da48f14838afb66bf94219afb94f"
+    },
+    {
+      "before_sha256": "401fdb326f8f3b81862154de0d00d6fd776e15800f92f27debdae4bcf6891c16",
+      "path": "docs/AZ-S2S-DNS.md",
+      "sha256": "d77995f7b34b4d16f9df1bda53b3b9b0bad017251e97326a03b7a5301c44d818"
+    },
+    {
+      "before_sha256": "cf89af3db93f1376f98718fc6d33c9283b7019ee5fbc94f4614372ce35ad7298",
+      "path": "docs/EPIC-azure-s2s.md",
+      "sha256": "f80e9e6f49a125b64db52d65327a5599ea03172ac49080b3758a305b6663a2bc"
+    }
+  ],
+  "exact_three_QA_blockers": [
+    {
+      "action": "Transfer frozen current25fe TTL V6 source package20 and launcherV8 via designated bastion to owned QA, then eight once-only ordinary grant writes and original180-second expiry/recovery window with full native proof.",
+      "customer_impact": "Ordinary grant expiry/revoke and genuine regrant recovery for fresh/existing TCP/UDP have no completed live acceptance. This test is independent of DNS/API97dd.",
+      "human_story": [
+        6
+      ],
+      "launcher_sha256": "a0114c605bf15372508f74027afa0cf4f0f301f046d6902468d3607131fe02f3",
+      "qa_host": "20.219.28.146",
+      "review_sha256": "a80503d8ae08196271905e22947d9299c48c6136cc7990a11e06e290cc88f8f2",
+      "via_bastion": "104.211.219.1"
+    },
+    {
+      "action": "Transfer and use frozen V2 project/test source49 for owned active-standby BGP/static routing and forward/reverse traffic qualification:19 files to bastion and49 to QA through bastion.",
+      "customer_impact": "Active-standby BGP routing/filter/export and one-peer BGP/static application traffic are unverified in owned Azure.",
+      "human_story": [
+        5,
+        6
+      ],
+      "inventory_sha256": "c53b4e2dcbfa8c6d7aad36bde3ac4fefd7d7464e764a65a9606a9ee7851da936",
+      "qa_host": "20.219.28.146",
+      "via_bastion": "104.211.219.1"
+    },
+    {
+      "action": "Transfer exact API97dd binary plus V3 late-native helper package via bastion to owned QA; backup-preserving API STOP/install/START with brief QA interruption and fresh before/after proof.",
+      "binary_bytes": 61546806,
+      "binary_sha256": "97dd8cc13191a48fad9ddd11e2d6b1405ae1086aae371a0071bd9dfae0720907",
+      "customer_impact": "Scheduler repair has no live proof of improved sustained DNS turnover. Full encrypted FQDN allow/revoke/expiry/recovery/failover/negative matrix remains open.",
+      "final_review_sha256": "af97063b7beab269379c085598330c5102ad2c88e63a7ad55c44eac1a695a19d",
+      "human_story": [
+        9
+      ],
+      "qa_host": "20.219.28.146",
+      "via_bastion": "104.211.219.1"
+    }
+  ],
+  "frozen_packages_modified": false,
+  "goal_status": "blocked",
+  "local_product_code_changes_this_audit": 0,
+  "new_live_slices_closed": 0,
+  "priority_order": [
+    "Story6 ordinary expiry/recovery",
+    "Story5 active-standby BGP",
+    "Story6 active-standby static",
+    "Remaining9/10/11"
+  ],
+  "product_test_reruns_this_audit": 0,
+  "recorded_at": "2026-10-12T23:01:31.531961+00:00",
+  "rejected_actions_replayed": false,
+  "remaining_customer_impact_story10_11": "Original-socket warm recovery, two-sided PSK rotation, scheduled CHILD/IKE traffic continuity, final cleanup, reverse/profile MTU/DF/PMTU/MSS and peer-fault downtime remain unaccepted. Natural rekey events alone are observations, not application continuity.",
+  "remote_actions_this_audit": 0,
+  "scope": "Three completed agent reviews found no additional concrete local product-code defect in bounded existing-source audit. Customer-document omissions corrected; this does not establish complete local correctness or live acceptance.",
+  "total_story_count": 11,
+  "version": 1,
+  "whole_azure_e2e_accepted": false
+}

@@ -1,0 +1,91 @@
+{
+  "accepted_story_count": 6,
+  "actual_root_race_receipt_sha256": "b56541c43e09688b2728043c43e9f3f828797ee52a68ba676444243f51c4e338",
+  "category": "single_walk_parser_local_qualification_and_source_paired_qa_staging_pass",
+  "current_normal_desired_revision": 12,
+  "current_running_node_sha256": "197b6f795ee9b1613bb809bd00ffbc471f5c638ef23594dafb93c74a1a7201d3",
+  "deployed": false,
+  "dns_acceptance_passed": false,
+  "inputs_unchanged": 631,
+  "new_slices_closed": 0,
+  "parser_independent_review_sha256": "d56da30bda2a45e35497ab6eaa9e3632507692f5ebbe454ed3d843d8f60992cf",
+  "production_closure_sha256": "66eb5d6163e76645ab4974299e552b40f92d1967b3eccf8896ce87103c99206b",
+  "production_file": "apps/node/internal/ipsec/runtime_environment.go",
+  "production_sha256": "55b5be1f8e034e6ce4d609aab7080ac059ed5c0e626204a22ed4f3bc3b1afb46",
+  "recorded_at": "2026-10-12T07:21:30.751450+00:00",
+  "root_build_review_sha256": "77290e47abfc1581dd076ca9d580be472d0bdc4565c264d0c8aa4bd6eae12099",
+  "root_race_seconds": 100.572400291,
+  "root_race_skipped": 0,
+  "root_race_tests": 11,
+  "source_paired_build_receipt_sha256": "ae55f5b84969a9804864e6cb3bfea9255db9f3ba74da6bc77a6b2f810ede7408",
+  "staged_binaries": {
+    "combined": {
+      "binary_executed": false,
+      "bytes": 19618055,
+      "category": "actual_census_single_walk_binary_staged",
+      "current_manifest_sha256": "86699c0d8900a687898f4ce9e48e606a856a2b94c2fc84bb9538ee0a22e2d0f8",
+      "current_node_unchanged": true,
+      "kind": "combined",
+      "path": "/var/lib/tunnex-qualification-archive/azure-census-single-walk-combined-stage-0d244137-a2a5-4d10-9061-7d6b077cd106/combined-observer.test",
+      "production_updated": false,
+      "sha256": "0620184c3c6e8cffec2cb62f5910d343f910b910458d204ad8a8380d190a9ee0",
+      "source_files": {
+        "build-receipt.json": "ae55f5b84969a9804864e6cb3bfea9255db9f3ba74da6bc77a6b2f810ede7408",
+        "independent-parser-review.json": "d56da30bda2a45e35497ab6eaa9e3632507692f5ebbe454ed3d843d8f60992cf",
+        "production-source-closure.json": "66eb5d6163e76645ab4974299e552b40f92d1967b3eccf8896ce87103c99206b",
+        "root-race-receipt.json": "b56541c43e09688b2728043c43e9f3f828797ee52a68ba676444243f51c4e338"
+      }
+    },
+    "node": {
+      "binary_executed": false,
+      "bytes": 14704802,
+      "category": "actual_census_single_walk_binary_staged",
+      "current_manifest_sha256": "86699c0d8900a687898f4ce9e48e606a856a2b94c2fc84bb9538ee0a22e2d0f8",
+      "current_node_unchanged": true,
+      "kind": "node",
+      "path": "/var/lib/tunnex-qualification-archive/azure-census-single-walk-node-stage-da5e4c7c-95ce-4cb0-8a9b-ba5bfdcdcfa6/tunnex-node",
+      "production_updated": false,
+      "sha256": "2c33e96f7dbefbc5e0588428d974a2da1c91fbe87d4dd8f87077dc7212d0b4a2",
+      "source_files": {
+        "build-receipt.json": "ae55f5b84969a9804864e6cb3bfea9255db9f3ba74da6bc77a6b2f810ede7408",
+        "independent-parser-review.json": "d56da30bda2a45e35497ab6eaa9e3632507692f5ebbe454ed3d843d8f60992cf",
+        "production-source-closure.json": "66eb5d6163e76645ab4974299e552b40f92d1967b3eccf8896ce87103c99206b",
+        "root-race-receipt.json": "b56541c43e09688b2728043c43e9f3f828797ee52a68ba676444243f51c4e338"
+      }
+    },
+    "observer": {
+      "binary_executed": false,
+      "bytes": 19558337,
+      "category": "actual_census_single_walk_binary_staged",
+      "current_manifest_sha256": "86699c0d8900a687898f4ce9e48e606a856a2b94c2fc84bb9538ee0a22e2d0f8",
+      "current_node_unchanged": true,
+      "kind": "observer",
+      "path": "/var/lib/tunnex-qualification-archive/azure-census-single-walk-observer-stage-410f95ed-135f-4cc2-9836-6a6864e8ccde/observer.test",
+      "production_updated": false,
+      "sha256": "2f1e0882b5a364a9caae974054a5f0300058c3b71a6f4f1ce63bea55e287c3f7",
+      "source_files": {
+        "build-receipt.json": "ae55f5b84969a9804864e6cb3bfea9255db9f3ba74da6bc77a6b2f810ede7408",
+        "independent-parser-review.json": "d56da30bda2a45e35497ab6eaa9e3632507692f5ebbe454ed3d843d8f60992cf",
+        "production-source-closure.json": "66eb5d6163e76645ab4974299e552b40f92d1967b3eccf8896ce87103c99206b",
+        "root-race-receipt.json": "b56541c43e09688b2728043c43e9f3f828797ee52a68ba676444243f51c4e338"
+      }
+    }
+  },
+  "synthetic_parser_benchmark": {
+    "candidate_allocations": 469042,
+    "candidate_ns": [
+      27900469,
+      27813219
+    ],
+    "large_input_bytes": 546006,
+    "legacy_allocations": 914962,
+    "legacy_ns": [
+      46054059,
+      44549899
+    ],
+    "limits": "Local parser CPU/allocation savings do not establish live DNS readiness or full environment elapsed savings.",
+    "platform": "Darwin arm64 Apple M2 Pro; GOMAXPROCS 2",
+    "scope": "Representative RenderGuard one and 36 owned connections merged with repository Docker fixture; no full QA ruleset transfer"
+  },
+  "total_story_count": 11
+}

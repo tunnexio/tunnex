@@ -9,6 +9,7 @@ import (
 	"github.com/tunnexio/tunnex/apps/node/internal/ipsec"
 	"io"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"strconv"
 	"time"
@@ -19,6 +20,15 @@ var ErrIPsecControl = errors.New("IPsec control request unavailable")
 // The private channel uses the existing mTLS transport, but never copies a
 // remote body or transport error into diagnostics. Redirects cannot move PSKs.
 func (c *Client) ipsecRequest(ctx context.Context, method, path string, input, output any) error {
+	return c.ipsecRequestObserved(ctx, method, path, input, output, nil)
+}
+func (c *Client) ipsecRequestObserved(ctx context.Context, method, path string, input, output any, observe func(string)) (resultErr error) {
+	category := "request"
+	defer func() {
+		if resultErr != nil && observe != nil {
+			observe(category)
+		}
+	}()
 	if c == nil || c.http == nil {
 		return ErrIPsecControl
 	}
@@ -46,6 +56,12 @@ func (c *Client) ipsecRequest(ctx context.Context, method, path string, input, o
 	client.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }
 	resp, err := client.Do(req)
 	if err != nil {
+		category = "transport_other"
+		if errors.Is(err, context.DeadlineExceeded) {
+			category = "transport_deadline"
+		} else if errors.Is(err, context.Canceled) {
+			category = "transport_cancel"
+		}
 		return ErrIPsecControl
 	}
 	defer resp.Body.Close()
@@ -54,8 +70,24 @@ func (c *Client) ipsecRequest(ctx context.Context, method, path string, input, o
 		expectedStatus = http.StatusNoContent
 	}
 	if resp.StatusCode != expectedStatus {
+		category = "http_other"
+		switch resp.StatusCode {
+		case 400, 401, 403, 404, 409, 429:
+			category = "http_" + strconv.Itoa(resp.StatusCode)
+		default:
+			if resp.StatusCode >= 500 && resp.StatusCode <= 599 {
+				category = "http_5xx"
+			}
+		}
+		if observe != nil && resp.StatusCode == http.StatusConflict {
+			// Diagnostic reads can only cancel the existing request earlier.
+			stopDiagnostic := time.AfterFunc(100*time.Millisecond, cancel)
+			category = leaseConflictCodeCategory(ctx, resp.Body)
+			stopDiagnostic.Stop()
+		}
 		return ErrIPsecControl
 	}
+	category = "parse"
 	raw, err := io.ReadAll(io.LimitReader(resp.Body, (1<<20)+1))
 	defer clear(raw)
 	if err != nil || len(raw) > 1<<20 {
@@ -128,20 +160,83 @@ func (c *Client) RenewIPsecLease(ctx context.Context, id uuid.UUID, request ipse
 	if id == uuid.Nil {
 		return out, ErrIPsecControl
 	}
-	err := c.ipsecRequest(ctx, "POST", ipsecRuntimePath(id, "/permit-lease"), request, &out)
-	return out, err
+	category := "request"
+	err := c.ipsecRequestObserved(ctx, "POST", ipsecRuntimePath(id, "/permit-lease"), request, &out, func(v string) { category = v })
+	if err != nil {
+		return out, leaseControlFailure{category: category}
+	}
+	return out, nil
 }
 
-func (c *Client) IPsecReportStatus(ctx context.Context, id uuid.UUID, report ipsec.RuntimeStatusReport) error {
-	if id == uuid.Nil || report.DeliveryID == uuid.Nil || report.DesiredRevision <= 0 || report.ConfigurationRevision <= 0 {
-		return ErrIPsecControl
+func validIPsecStatusReport(report ipsec.RuntimeStatusReport) bool {
+	if report.DeliveryID == uuid.Nil || report.DesiredRevision <= 0 || report.ConfigurationRevision <= 0 {
+		return false
 	}
-	for i, t := range report.Tunnels {
-		if t.ID == uuid.Nil || t.Slot != i+1 || t.Selected != (i == 0) || (t.Status != "up" && t.Status != "down" && t.Status != "unknown") {
-			return ErrIPsecControl
+	count := 2
+	if report.TransportVersion != nil || report.TunnelCount != nil {
+		if report.TransportVersion == nil || *report.TransportVersion != 1 || report.TunnelCount == nil || *report.TunnelCount != 1 || report.Tunnels[1] != (ipsec.RuntimeTunnelStatus{}) || report.RecoveryVersion != nil {
+			return false
+		}
+		count = 1
+	}
+	for i, t := range report.Tunnels[:count] {
+		if t.ID == uuid.Nil || t.Slot != i+1 || (t.Status != "up" && t.Status != "down" && t.Status != "unknown") {
+			return false
 		}
 	}
 	if report.Tunnels[0].ID == report.Tunnels[1].ID {
+		return false
+	}
+	dynamic := !report.Tunnels[0].Selected && !report.Tunnels[1].Selected
+	if dynamic {
+		if report.RecoveryVersion != nil || report.SelectionSequence != nil || report.ActiveSlot != nil {
+			return false
+		}
+		if report.BGP == nil {
+			return true
+		} // No BGP measurements; delivery/profile is checked by poll and CP.
+		b := report.BGP
+		if b.Version != 1 || b.Sequence == 0 || b.Sequence > 9007199254740991 || b.Routes == nil || len(b.Routes) > 64 {
+			return false
+		}
+		installed := [2]int{}
+		seen := map[string]bool{}
+		for _, r := range b.Routes {
+			prefix, err := netip.ParsePrefix(r.Prefix)
+			if err != nil || !prefix.Addr().Is4() || prefix != prefix.Masked() || prefix.String() != r.Prefix || r.Slot < 1 || r.Slot > count || seen[r.Prefix] {
+				return false
+			}
+			seen[r.Prefix] = true
+			installed[r.Slot-1]++
+		}
+		if count == 1 && b.Peers[1] != (ipsec.RuntimeBGPPeerStatus{}) {
+			return false
+		}
+		for i, p := range b.Peers[:count] {
+			switch p.State {
+			case "unknown", "idle", "connect", "active", "opensent", "openconfirm", "established":
+			default:
+				return false
+			}
+			if p.Slot != i+1 || p.AcceptedPrefixes < 0 || p.AcceptedPrefixes > 64 || p.InstalledPrefixes != installed[i] || p.InstalledPrefixes > p.AcceptedPrefixes || (p.State != "established" && (p.AcceptedPrefixes != 0 || p.InstalledPrefixes != 0)) || (p.State == "established" && report.Tunnels[i].Status != "up") || (p.RejectedPrefixes != nil && (*p.RejectedPrefixes < 0 || *p.RejectedPrefixes > 1000000000)) {
+				return false
+			}
+		}
+		return true
+	}
+	if report.BGP != nil || !report.Tunnels[0].Selected || report.Tunnels[1].Selected {
+		return false
+	}
+	if report.RecoveryVersion == nil {
+		return report.SelectionSequence == nil && report.ActiveSlot == nil
+	}
+	if *report.RecoveryVersion != 1 || report.SelectionSequence == nil || *report.SelectionSequence == 0 || *report.SelectionSequence > 9007199254740991 {
+		return false
+	}
+	return report.ActiveSlot == nil || (*report.ActiveSlot >= 1 && *report.ActiveSlot <= 2 && report.Tunnels[*report.ActiveSlot-1].Status == "up")
+}
+func (c *Client) IPsecReportStatus(ctx context.Context, id uuid.UUID, report ipsec.RuntimeStatusReport) error {
+	if id == uuid.Nil || !validIPsecStatusReport(report) {
 		return ErrIPsecControl
 	}
 	return c.ipsecRequest(ctx, "POST", ipsecRuntimePath(id, "/status"), report, nil)

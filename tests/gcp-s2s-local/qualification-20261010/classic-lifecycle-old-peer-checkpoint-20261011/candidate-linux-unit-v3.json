@@ -1,0 +1,24 @@
+{
+  "completed": true,
+  "binary_sha256": "b72b341a1cc66733240c6ba49b0c843df4ac9e14a2d7d24105a5e6c5c96b7dbb",
+  "source_patch_sha256": "928b16179a39e6e946ca3687a549e99daaf78aa3974d99d0ec9495d02c996d4a",
+  "image_id": "sha256:1b179467078025f0853d200c40f2c0f49f8df27cafb25f50671346b654fa8ba6",
+  "name": "tunnex-gcp-classic-denied-unit-20261011-v3",
+  "network": "none",
+  "capabilities": "ALL dropped",
+  "test_args": [
+    "-test.run",
+    "TestClassicDeniedTransportFreshApplyPreservesSession|TestGCPHACommitFreshnessChangeClassicSibling|TestDeniedClassicTransport|TestLateUnknownMaintenance",
+    "-test.v",
+    "-test.timeout",
+    "30s"
+  ],
+  "scope": "Linux real Apply with modeled native I/O; no cloud acceptance",
+  "container_id": "25ab4c40284cdb11518af5ff3089ca1c9431b1232d7258d85855bf20ad5499a3",
+  "cli_returncode": 0,
+  "exit_code": 0,
+  "oom_killed": false,
+  "stdout_sha256": "f5cae36008527315cf90eaf854bfec235a7d600878f1c19437b78d48509634ea",
+  "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+  "owned_container_removed": true
+}

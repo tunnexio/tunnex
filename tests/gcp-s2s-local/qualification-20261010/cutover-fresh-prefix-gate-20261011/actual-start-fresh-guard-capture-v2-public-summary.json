@@ -1,0 +1,36 @@
+{
+  "guard_identity_stable": true,
+  "journal_sha256": "c04c42eaf92bfe2e0cfdb12189851de390f84db0ccaf9a83ac69cd9a1803f791",
+  "namespace_after": "net:[4026531840]",
+  "namespace_before": "net:[4026531840]",
+  "qualifier_source": "0249f7cf8804a7d6b4e1f82bf4dbf42b887bdfe7",
+  "reader_image": "sha256:c0ca8999d3ae601d3dc2e8a9d319c2b98444a94896ade84b692ab590f1ae3906",
+  "reader_sha256": "7156559ea0d2d062a40af33952eb412833a191cb7179e9ad9efe8b146a563d7f",
+  "private_original_sha256": "b4d7dda65fc2a2a3441fadf3408ad2f229dce26279c95898231f43c647202af2",
+  "actual_set_element_counts": [
+    {
+      "name": "sa_lease_80c206678d844dd88e51ae4a10445cbb",
+      "element_count": 0
+    },
+    {
+      "name": "lease_80c206678d844dd88e51ae4a10445cbb",
+      "element_count": 0
+    },
+    {
+      "name": "reply_lease_80c206678d844dd88e51ae4a10445cbb",
+      "element_count": 0
+    },
+    {
+      "name": "sa_lease_b79d7edafafe41cfaf2c4115d4ef32c6",
+      "element_count": 0
+    },
+    {
+      "name": "lease_b79d7edafafe41cfaf2c4115d4ef32c6",
+      "element_count": 0
+    },
+    {
+      "name": "reply_lease_b79d7edafafe41cfaf2c4115d4ef32c6",
+      "element_count": 0
+    }
+  ]
+}

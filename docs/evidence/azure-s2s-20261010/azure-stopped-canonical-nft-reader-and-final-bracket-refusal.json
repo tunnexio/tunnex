@@ -1,0 +1,240 @@
+{
+  "acceptance": false,
+  "actual_canonical_reader_diagnostic": {
+    "acceptance": false,
+    "actual_json_bytes": 20083,
+    "actual_json_sha256": "12b59cc720e7e7b5c1f1017be0b0099ee2c781fc7473443099b337203ff142f2",
+    "actual_owned_object_counts": {
+      "chain": 6,
+      "rule": 50,
+      "set": 3,
+      "table": 1
+    },
+    "actual_set_types": [
+      {
+        "exact_owned_ipsec_reqid_typeof": true,
+        "type_shape": "map"
+      },
+      {
+        "exact_owned_ipsec_reqid_typeof": false,
+        "type_shape": "iface_index"
+      },
+      {
+        "exact_owned_ipsec_reqid_typeof": false,
+        "type_shape": "iface_index"
+      }
+    ],
+    "all_owned_sets_empty": true,
+    "category": "canonical_cached_image_nft_actual_readonly_schema_diagnostic_no_authority",
+    "cloud_mutations": 0,
+    "expected_set_types": [
+      {
+        "exact_owned_ipsec_reqid_typeof": true,
+        "type_shape": "map"
+      },
+      {
+        "exact_owned_ipsec_reqid_typeof": false,
+        "type_shape": "iface_index"
+      },
+      {
+        "exact_owned_ipsec_reqid_typeof": false,
+        "type_shape": "iface_index"
+      }
+    ],
+    "gateway_mutations": 0,
+    "image_id": "sha256:04d2d7137ba5d1c55505071c00dd0d781ad85a412700bb3ae7c2e13ad9d366c2",
+    "journal_unchanged": true,
+    "private_run_id": "azure-canonical-nft-readonly-probe-706d50ba-8c41-4039-8304-853de4e6afcf",
+    "tool_file_brackets_verified": true,
+    "tool_manifest_sha256": "df81623506abcc98a16a8d454a35776a52c1ca08f06413e31005460b3d5f3358",
+    "unsupported_argument_cases_refused": 5
+  },
+  "actual_host_set_datatype": {
+    "category": "saved_nft_set_datatype_scalar_diagnostic_no_authority",
+    "expected_set_types": [
+      {
+        "exact_owned_ipsec_reqid_typeof": true,
+        "type_shape": "map"
+      },
+      {
+        "exact_owned_ipsec_reqid_typeof": false,
+        "type_shape": "iface_index"
+      },
+      {
+        "exact_owned_ipsec_reqid_typeof": false,
+        "type_shape": "iface_index"
+      }
+    ],
+    "observed_json_sha256": "be6d4dc2349196a9d161d01bc9fc50364ef25f097b35f65f55e206f41c1c546c",
+    "observed_set_types": [
+      {
+        "exact_owned_ipsec_reqid_typeof": false,
+        "type_shape": "integer"
+      },
+      {
+        "exact_owned_ipsec_reqid_typeof": false,
+        "type_shape": "iface_index"
+      },
+      {
+        "exact_owned_ipsec_reqid_typeof": false,
+        "type_shape": "iface_index"
+      }
+    ],
+    "service_mutations": 0
+  },
+  "canonical_tool_seal": {
+    "category": "exact_cached_image_readonly_nft_tool_closure_sealed_no_execution",
+    "cloud_mutations": 0,
+    "dependency_file_count": 11,
+    "gateway_mutations": 0,
+    "image_id": "sha256:04d2d7137ba5d1c55505071c00dd0d781ad85a412700bb3ae7c2e13ad9d366c2",
+    "private_run_id": "azure-owned-nft-tools-04d2d713-24b4c58d-ac54-4c3a-80ab-0cea30508a0c",
+    "tool_executions": 0,
+    "tool_manifest_path": "/run/tunnex-qualification/azure-owned-nft-tools-04d2d713-24b4c58d-ac54-4c3a-80ab-0cea30508a0c/tool-manifest.json",
+    "tool_manifest_sha256": "df81623506abcc98a16a8d454a35776a52c1ca08f06413e31005460b3d5f3358",
+    "verified_config_sha256": "6516d6fbe0c9f3dd3884b97cfae2701984399bf45d1b14274a523d50d68bf3d6",
+    "verified_layer_count": 25,
+    "verified_manifest_sha256": "04d2d7137ba5d1c55505071c00dd0d781ad85a412700bb3ae7c2e13ad9d366c2",
+    "version": 1,
+    "wrapper_path": "/run/tunnex-qualification/azure-owned-nft-tools-04d2d713-24b4c58d-ac54-4c3a-80ab-0cea30508a0c/bundle/nft-readonly.sh"
+  },
+  "category": "stopped_observer_canonical_nft_reader_progress_refused_no_eligibility",
+  "cloud_mutations": 0,
+  "cp_recreation_authority_claimed": false,
+  "earlier_wrapper_argument_refusal": {
+    "local_probe_result_pin": {
+      "bytes": 0,
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    "reason": "Chained shell AND-list did not reject every mismatching argument; fixed read-only command only; corrected wrapper sealed separately without overwriting original bundle."
+  },
+  "gateway_create_start_continuation_executed": false,
+  "native_receipt_schema_fields": 17,
+  "next": "Qualify a diagnostic-only final bracket stage split and observe the preserved state again. No predicate or timeout relaxation.",
+  "oci_target_chain_diagnostic": {
+    "archive_member_count": 32,
+    "category": "cached_image_export_oci_digest_chain_readonly_diagnostic_no_authority",
+    "digest_chain": [
+      {
+        "all_layer_blob_sizes_equal": true,
+        "bytes": 5894,
+        "child_count": 0,
+        "config_architecture": "amd64",
+        "config_digest": "sha256:6516d6fbe0c9f3dd3884b97cfae2701984399bf45d1b14274a523d50d68bf3d6",
+        "config_digest_verified": true,
+        "config_os": "linux",
+        "config_size_verified": true,
+        "depth": 0,
+        "digest": "sha256:04d2d7137ba5d1c55505071c00dd0d781ad85a412700bb3ae7c2e13ad9d366c2",
+        "full_runtime_config_equal": true,
+        "layer_count": 25,
+        "layer_media_types": [
+          "application/vnd.docker.image.rootfs.diff.tar.gzip",
+          "application/vnd.oci.image.layer.v1.tar+gzip"
+        ],
+        "media_type": "application/vnd.oci.image.manifest.v1+json",
+        "ordered_diffids_equal": true,
+        "requested_id_match": true
+      }
+    ],
+    "index_descriptor_count": 1,
+    "oci_layout_version": "1.0.0",
+    "service_mutations": 0
+  },
+  "product_source_commit": "49168c7d8706a8e956bce4ad04d5884d1c65cdc7",
+  "running_node_inventory_claimed": false,
+  "timer_changes": 0,
+  "v6_protocol_helper": {
+    "actual_result": {
+      "category": "stopped_negative_observation_refused",
+      "code": "actual_native_refused",
+      "phase": "actual_stopped_observer",
+      "private_run_id": "azure-stopped-negative-observe-4b7cbb0a-3b0a-4ac0-ae7f-b4e2a550b9e6",
+      "version": 1
+    },
+    "commit": "d34acd9cfdb36a0c21306786adf3bd26521ab5b6",
+    "focused_race_seconds": 2.646,
+    "reached_full_guard": true
+  },
+  "v7_guard_diagnostic": {
+    "category": "private_stopped_observer_stage_projection_readonly",
+    "frr_reasons": [],
+    "guard_diagnostics": [
+      {
+        "class": "structural_or_read",
+        "equal": false,
+        "expected_normalization": true,
+        "observed_normalization": false
+      }
+    ],
+    "host_run_executable": true,
+    "log_bytes": 370,
+    "log_line_count": 6,
+    "log_sha256": "527dc1bd0ec46a6375aa870c6165dd42565eea587a5d05648d23657d22820517",
+    "native_stages": [
+      "full_guard"
+    ],
+    "private_run_id": "azure-stopped-negative-observe-84e04b29-8188-4a19-9c70-e3798cf06208",
+    "reader_refused": false,
+    "test_failed": true,
+    "unshare_denied": false
+  },
+  "v8": {
+    "actual_finite_failure_diagnostic": {
+      "category": "private_stopped_observer_stage_projection_readonly",
+      "frr_reasons": [],
+      "guard_diagnostics": [],
+      "host_run_executable": true,
+      "log_bytes": 233,
+      "log_line_count": 5,
+      "log_sha256": "74901ed9493256b45ac74b0c3ef0f039a7929af003058bc5daede1216f51c630",
+      "native_stages": [
+        "final_bracket"
+      ],
+      "private_run_id": "azure-stopped-negative-observe-422edf8a-4ef5-4c5e-84d1-28a3401f8a0d",
+      "reader_refused": false,
+      "test_duration_seconds": [
+        0.22
+      ],
+      "test_failed": true,
+      "unshare_denied": false
+    },
+    "actual_result": {
+      "category": "stopped_negative_observation_refused",
+      "code": "actual_native_refused",
+      "phase": "actual_stopped_observer",
+      "private_run_id": "azure-stopped-negative-observe-422edf8a-4ef5-4c5e-84d1-28a3401f8a0d",
+      "version": 1
+    },
+    "baseline_differences": [],
+    "baseline_files_compared": 618,
+    "focused_race_log": {
+      "bytes": 64,
+      "sha256": "d3153a0ccf9edab789a23b44d7b2b7564a9e2dd49d019dd427c8c2becb289fd0"
+    },
+    "focused_race_seconds": 2.055,
+    "helper_commit": "d56c4a3240b75689059793e79ba264b7e8ef1a37",
+    "local_python_tests_passed": 40,
+    "outer_closure_roles": 21,
+    "root_binary": {
+      "bytes": 14343603,
+      "sha256": "7320f2688df2924851a46b6ed5d8b51d13143c27f1572a0c1516940f83cc86ce"
+    },
+    "root_binary_equals_reviewed": true,
+    "sealed_sources": {
+      "binary_sha256": "7320f2688df2924851a46b6ed5d8b51d13143c27f1572a0c1516940f83cc86ce",
+      "category": "new_stopped_observer_and_owned_continuation_sources_sealed_no_execution",
+      "continuation_sha256": "6b99c699ab551bcf6b2064b9fc31331206afbb3382c0d908101520fff46eb7ef",
+      "driver_sha256": "738b3a0a690473eeffbc9d486fa5e8537c5225868bb1843294285fce06aa7f7b",
+      "external_nft_files_verified": 11,
+      "native_closure_sha256": "e27ccf810dbdbfd6e3f81677ebe28dd9529dda11bd0d5af11db6b48f3ae9163c",
+      "nft_bundle_manifest_sha256": "df81623506abcc98a16a8d454a35776a52c1ca08f06413e31005460b3d5f3358",
+      "outer_closure_sha256": "3a02b42d43a71d89fdc55171e223f72d7f3ffb699a66db33aec31077ac2a6c6c",
+      "private_run_id": "azure-stopped-source-seal-d85a7dc3-e7c2-47c3-af3d-49e7523657e7",
+      "service_mutations": 0,
+      "source_files": 627,
+      "version": 1
+    }
+  },
+  "version": 1
+}

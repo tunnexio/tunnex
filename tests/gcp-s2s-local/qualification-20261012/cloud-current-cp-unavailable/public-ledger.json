@@ -1,0 +1,215 @@
+{
+  "boot_id": "9617762e-19db-4a21-bdee-909dfb31e501",
+  "branch": "gcp-s2s",
+  "captured_at_India_time": "2026-10-12T23:00:59.373602+05:30",
+  "checkout": "/Users/pawangupta/.codex/worktrees/gcp-s2s/tunnex",
+  "checkout_head_at_capture": "56574529387537265fbbee60d71050fdc14a34f4",
+  "coverage": {
+    "cold_new_node_fresh_setup": "OPEN/BLOCKED; normal new enrollment/Site binding/nonconflicting ranges need reachable CP and license capacity",
+    "cold_new_node_restoration_of_existing_connections": "UNSUPPORTED direct transfer in current normal API; immutable Site/gateway history and static recreation require same old node ID",
+    "current_source_DNS_FQDN": "OPEN; historical A/alias/NXDOMAIN/fallback and5121QG8ALLOW/2REFUSED are not latest-source sustained-generation acceptance",
+    "current_source_HA_fault_failover": "OPEN; historical0249/cac7 fault evidence remains separate with recorded losses",
+    "latest384_cloud_deployment": "NOT PERFORMED; observed cloud runtime remains5121",
+    "latest384_local_node_suites_crossbuild_image_native_preflight": "PASS; local/model/image/no-peer platform only",
+    "sustained_static_cloud_continuity": "OPEN/BLOCKED by unavailable genuine normal CP; no fresh grant/finite lease/traffic window accepted"
+  },
+  "current_API_source_verified": false,
+  "current_deployed_runtime": {
+    "container_id": "5ed2a7643f2756b58c2920e7f9f74cf68078c5a794cc128e8a6a112684ce283e",
+    "image_id": "sha256:b8f7ccba5b01cc9dd8ca0337c780c69d72e8037fcd5f16adfe98c53af4285ded",
+    "lab_label": null,
+    "network_mode": "host",
+    "pid": 3703875,
+    "running": true,
+    "source_commit": "5121dc3374656449dd53dab9abd248216d5d5581",
+    "started_at": "2026-10-11T19:00:23.223646733Z"
+  },
+  "direct_new_node_transfer_source_evidence": {
+    "different_gateway_refusal_regression": "apps/api/internal/ipsec/static_recreation_integration_test.go:102",
+    "immutable_binding": "apps/api/db/migrations/0158_ipsec_foundation.up.sql:118",
+    "normal_join_license_capacity": "apps/api/internal/nodes/service.go:287",
+    "same_node_static_recreation": "apps/api/internal/ipsec/static_recreation.go:84"
+  },
+  "first_failed_capture_retained": {
+    "host_nft_probe_exit_code": -11,
+    "journal_count_unqualified": "Lowercase keys did not match production JSON schema; first zero count must not be used",
+    "not_relabelled_accepted": true,
+    "sha256": "24a21df6145bf127d9c5ecceaac46e65892354453c46070bc73f5cbcdc6c3b3c"
+  },
+  "historical_source_coverage": {
+    "DNS_FQDN": "Historical A/CNAME/NXDOMAIN and explicit EDNS1232 UDP truncation followed by TCP100A fallback. Original no-EDNS timeout retained. 5121 final ledger records inherited QG8ALLOW/2REFUSED and two retained histories, not sustained automatic-generation uptime.",
+    "cold_restoration": "0249 accepted same-enrollment restart; no cold new-enrollment/new-node acceptance found. Immutable image replacements/journal lineage are not that proof.",
+    "historical_fault_denial_and_recovery": "0249 one/both HA path fault fixtures, actual UDP4500 drops, strict HA TCP/UDP denial while Classic allowed, inverse cleanup followed by native/guard/four-payload recovery.",
+    "historical_measured_HA_one_path_fault": {
+      "exact_recorded_limits": {
+        "ci_or_publication": false,
+        "continuous_availability": false,
+        "exact_outage_duration": false,
+        "host_ha": false,
+        "sla": false,
+        "zero_loss": false
+      },
+      "exact_recorded_samples": {
+        "elapsed_seconds": 59.131692205002764,
+        "same_tcp_tuple": true,
+        "same_udp_socket": true,
+        "sample_count": 567,
+        "streams": {
+          "fresh_tcp": {
+            "attempt_count": 99,
+            "max_observed_reply_interval_seconds": 14.781136363002588,
+            "max_response_latency_seconds": 0.008414030002313666,
+            "reply_count": 86,
+            "timeout_count": 11,
+            "trailing_no_reply_seconds_lower_bound": 0.01559519900183659,
+            "transport_failure_count": 2
+          },
+          "fresh_udp": {
+            "attempt_count": 92,
+            "max_observed_reply_interval_seconds": 23.027248539998254,
+            "max_response_latency_seconds": 0.004165530001046136,
+            "reply_count": 80,
+            "timeout_count": 12,
+            "trailing_no_reply_seconds_lower_bound": 0.08388989600643981,
+            "transport_failure_count": 0
+          },
+          "tcp": {
+            "attempt_count": 187,
+            "max_observed_reply_interval_seconds": 8.34890577600163,
+            "max_response_latency_seconds": 8.098718239001755,
+            "reply_count": 187,
+            "timeout_count": 2,
+            "trailing_no_reply_seconds_lower_bound": 0.13772498100297526,
+            "transport_failure_count": 0
+          },
+          "udp": {
+            "attempt_count": 187,
+            "max_observed_reply_interval_seconds": 10.023516789995483,
+            "max_response_latency_seconds": 0.003833278999081813,
+            "reply_count": 183,
+            "timeout_count": 4,
+            "trailing_no_reply_seconds_lower_bound": 0.06220510700222803,
+            "transport_failure_count": 0
+          }
+        }
+      },
+      "interpretation": "Retain original counter meanings and explicit limits; counters are not asserted mutually exclusive. No zero-loss or exact-outage claim.",
+      "public_evidence_sha256": "b3fec0d485f567619bdaa55b4c007ad33fbaf163d33c1d1484fff830440f04b9",
+      "source": "cac7ffd17e162841f90fa8a7299587349e62d262"
+    },
+    "latest_source": "Focused/full local suites, ARM64/AMD64 cross-build, ordinary-user modeled tests, fresh ARM64 image content plus isolated no-peer actual platform qualification. No fresh GCP cloud sustained/failover/restoration/private-IP-DNS acceptance for runtime source384e93a1342bc51cfc0d819282d8eda93312e71c.",
+    "sustained_static_traffic_on_5121": "No duration/request-count acceptance found in final ledger or linked current scope audit; final TCP/UDP are separate full cycles."
+  },
+  "inspection_program_sha256": "86af3d22ad6cf870875fe801fe6b081f2150b703d0762f3f718542d66209c884",
+  "latest_locally_qualified_runtime_source": "384e93a1342bc51cfc0d819282d8eda93312e71c",
+  "namespace": "net:[4026531840]",
+  "normal_CP_readiness": {
+    "bastion_API_48083": "Health GET unavailable",
+    "bastion_mTLS_48446_TCP_reachable": false,
+    "default_local_Docker": "Unreachable on fresh read-only info probe",
+    "local_API_38083": "Connection refused on fresh bounded probe",
+    "normal_authority_or_join_token_obtained": false
+  },
+  "observational_receipt_sha256": "217852147c40b83d303d6e35e0b0a1dcb9311ae8db4be26717f149454c3cc886",
+  "observed_node_executable_sha256": "cbfabf16f1561f8dfb9d01cc49fad92a8ef2a8fed98dcd96b3e48a5533370bde",
+  "observed_pid_start_ticks": 10383458,
+  "operations": {
+    "Git_push": false,
+    "cloud_VM_or_gateway_restart": false,
+    "cloud_resource_creation": false,
+    "grant_or_connection_mutation": false,
+    "new_node_enrollment": false,
+    "router_or_Mac_route_DNS_change": false,
+    "shared_local_Docker_restart": false
+  },
+  "owned_gateway_VM": {
+    "id": "1860325440445762510",
+    "labels": {
+      "managed-by": "tunnex-development",
+      "tunnex-lab": "gcp-s2s-20261010"
+    },
+    "name": "tn-gcps2s-20261010-gateway",
+    "outside_address": "34.131.136.132",
+    "private_addresses": [
+      "10.70.0.2"
+    ],
+    "status": "RUNNING"
+  },
+  "pending_human_prerequisite": "Existing normal CP recovery; broader shared default-VM restart approval remains pending. Router login applies separately to Mac/LAN testing.",
+  "recorded_historical_API_source": "a2e7c5bffa6327a66c6cec839c0fd1e5a9d3c439",
+  "runtime_file_hashes_at_latest_source": {
+    "apps/node/cmd/agent/ipsec_runtime_linux.go": {
+      "baseline_present": true,
+      "baseline_sha256": "1f9f063e79e08da228c6b3b53ea20176eaa29efddbb59bbf5f282865503b06ed",
+      "current_sha256": "145b0f9c2c8f2c87258174c0e33ae59de2aa0f89f6b4ef9e8e273e0b1b743c87"
+    },
+    "apps/node/internal/control/ipsec_runtime_poll.go": {
+      "baseline_present": true,
+      "baseline_sha256": "e9f744a509d2c2f9c8491d1066542c1965d5563658d2139e95caf74fce3a3376",
+      "current_sha256": "e9f744a509d2c2f9c8491d1066542c1965d5563658d2139e95caf74fce3a3376"
+    },
+    "apps/node/internal/control/ipsec_runtime_priority.go": {
+      "baseline_present": false,
+      "baseline_sha256": null,
+      "current_sha256": "709a050ff20d7d7033c4f825b8a7815cc16e21a958389c9a13d5bd6309c846bf"
+    },
+    "apps/node/internal/ipsec/runtime_controller.go": {
+      "baseline_present": true,
+      "baseline_sha256": "c47ff049fa59f69db897b700add461312ab69b5e309137ae2916a69ee5c542a0",
+      "current_sha256": "14205dae41c77392e2a0ca8eb7ad62aadf8d405ee17c46fc5cc180e49e0c491d"
+    },
+    "apps/node/internal/ipsec/runtime_maintenance.go": {
+      "baseline_present": true,
+      "baseline_sha256": "eaad97c158b55046749a159ee3e65b0a8c1ab8febc9077138a76f2a8a238300f",
+      "current_sha256": "469941e8f49a7dd7b8938898216eb0fe3edcc9bf4822f7d6fc3e8a4762cee963"
+    },
+    "apps/node/internal/ipsec/runtime_priority_renewal.go": {
+      "baseline_present": false,
+      "baseline_sha256": null,
+      "current_sha256": "33801c36044808a5cb6d14f198249e58c0d76b49c53d2d569d1f75a0e69faa68"
+    },
+    "apps/node/internal/ipsec/runtime_proof.go": {
+      "baseline_present": true,
+      "baseline_sha256": "06add22fbdfb4725bea145498d28096043912e4163c4b84937ec72cb2344749b",
+      "current_sha256": "06add22fbdfb4725bea145498d28096043912e4163c4b84937ec72cb2344749b"
+    },
+    "apps/node/internal/ipsec/runtime_recovery.go": {
+      "baseline_present": true,
+      "baseline_sha256": "dddad44e14bb77d1c49ddca551815d7363b5196391eca398e417f2e3525b5fb9",
+      "current_sha256": "dddad44e14bb77d1c49ddca551815d7363b5196391eca398e417f2e3525b5fb9"
+    },
+    "apps/node/internal/ipsec/runtime_recovery_heartbeat.go": {
+      "baseline_present": true,
+      "baseline_sha256": "26357a1957971631462ac8f8281a7380e566a9b6ab0f625ffb6ca4a6f8552849",
+      "current_sha256": "26357a1957971631462ac8f8281a7380e566a9b6ab0f625ffb6ca4a6f8552849"
+    },
+    "apps/node/internal/ipsec/runtime_recovery_refresh.go": {
+      "baseline_present": true,
+      "baseline_sha256": "fb0048d8d493328971dd440e6adf5d983969b8220bf757abf5ce9405d66f61a6",
+      "current_sha256": "fb0048d8d493328971dd440e6adf5d983969b8220bf757abf5ce9405d66f61a6"
+    },
+    "apps/node/internal/ipsec/runtime_status.go": {
+      "baseline_present": true,
+      "baseline_sha256": "0fed6649b801757768e9211d5366ecbe9dfadb04332dcfef3e7144a722b7a321",
+      "current_sha256": "0fed6649b801757768e9211d5366ecbe9dfadb04332dcfef3e7144a722b7a321"
+    }
+  },
+  "scope": "Fresh owned GCP cloud read-only readiness and coverage ledger; no new live acceptance",
+  "source_bound_point_observation": {
+    "embedded_elements_in_those_set_objects": 0,
+    "full_canonical_guard_or_denial_proof_performed": false,
+    "full_identity_end_bracket_performed": false,
+    "journal_entry_count": 4,
+    "journal_phase_counts": {
+      "applied": 2,
+      "retained_refusal": 2
+    },
+    "lease_prefixed_set_objects": 2,
+    "nft_executable_before_after_equal": true,
+    "nft_executable_sha256": "7156559ea0d2d062a40af33952eb412833a191cb7179e9ad9efe8b146a563d7f",
+    "production_journal_checksum_and_owner_contract_verified": false,
+    "separate_element_object_census_performed": false,
+    "source_image_ELF_boot_namespace_match": true
+  },
+  "sustained_or_new_node_customer_acceptance": false
+}

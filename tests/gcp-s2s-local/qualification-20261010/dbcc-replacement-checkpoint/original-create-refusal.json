@@ -1,0 +1,9 @@
+{
+  "executed_phase": "create-start-v1",
+  "created": false,
+  "started": false,
+  "scope": "refused at WG exact historical hash before creation; original private failure retained",
+  "private_error_sha256": "a6800e820b9418f32381ec39e16291ef6b0deb03e78b5024989553d83f9f6a35",
+  "private_error_path": "/private/tmp/gcp-cloud-replacement-dbccbc35-20261011/private-error-create-start-1791660214197865000.txt",
+  "followup": "new literal full22-object hash b7e1 source-shape assessed; original refusal retained"
+}

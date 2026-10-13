@@ -9,6 +9,7 @@ import argparse
 import hashlib
 import json
 import os
+import posixpath
 from pathlib import Path
 import re
 import stat
@@ -16,8 +17,28 @@ import subprocess
 import time
 
 
-def command(*args):
-    return subprocess.check_output(args, text=True, timeout=30).strip()
+def command(*args, timeout=30):
+    if not 1 <= timeout <= 50:
+        raise ValueError("bounded command timeout required")
+    return subprocess.check_output(args, text=True, timeout=timeout).strip()
+
+
+def canonical_mounts(mounts):
+    """Only enumeration order is immaterial; retain every literal mount field."""
+    if not isinstance(mounts, list):
+        raise ValueError('malformed mount enumeration')
+    destinations = set()
+    for mount in mounts:
+        if not isinstance(mount, dict):
+            raise ValueError('malformed mount')
+        destination = mount.get('Destination')
+        if (not isinstance(destination, str) or not destination.startswith('/')
+                or destination.startswith('//') or '\x00' in destination
+                or posixpath.normpath(destination) != destination
+                or destination in destinations):
+            raise ValueError('noncanonical or duplicate mount destination')
+        destinations.add(destination)
+    return sorted(mounts, key=lambda mount: mount['Destination'])
 
 
 def inspect(container):
@@ -26,7 +47,7 @@ def inspect(container):
         'id': command('docker', 'inspect', '--format', '{{.Id}}', container),
         'state': json.loads(command('docker', 'inspect', '--format', '{{json .State}}', container)),
         'sandbox': command('docker', 'inspect', '--format', '{{.NetworkSettings.SandboxKey}}', container),
-        'mounts': json.loads(command('docker', 'inspect', '--format', '{{json .Mounts}}', container)),
+        'mounts': canonical_mounts(json.loads(command('docker', 'inspect', '--format', '{{json .Mounts}}', container))),
     }
 
 
@@ -115,32 +136,49 @@ def journal_entries_digest(document):
     return hashlib.sha256(json.dumps(binding, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
 
 
-def state_mount(identity, journal):
-    mounts = [m for m in identity['mounts'] if m['Destination'] == '/var/lib/tunnex-node']
+def state_mount(identity, journal, destination='/var/lib/tunnex-node'):
+    if destination not in ('/var/lib/tunnex-node', '/state'):
+        raise ValueError('unsupported state destination')
+    mounts = [m for m in identity['mounts'] if m['Destination'] == destination]
     if len(mounts) != 1 or mounts[0]['Type'] not in ('volume', 'bind') or not mounts[0]['RW']:
         raise ValueError('expected exactly one writable gateway state mount')
     mount = mounts[0]
-    expected = Path(mount['Source']) / 'ipsec/journal.json'
-    if Path(journal).resolve() != expected.resolve():
+    source = Path(mount['Source'])
+    expected = source / 'ipsec/journal.json'
+    if not source.is_absolute() or source.resolve() != source or Path(journal) != expected or expected.resolve() != expected:
         raise ValueError('journal does not belong to exact stopped container state mount')
     return {'source': mount['Source'], 'destination': mount['Destination'], 'type': mount['Type']}
 
 
-def snapshot(container, journal):
+def exact_cgroup(container, membership):
+    """Accept only dedicated cgroup-v2 Docker IDs in the two standard drivers."""
+    if not re.fullmatch('[0-9a-f]{64}', container):
+        raise ValueError('invalid Docker identity')
+    paths = ('/docker/' + container,
+             '/system.slice/docker-' + container + '.scope')
+    if membership not in tuple('0::' + path for path in paths):
+        raise ValueError('unsupported or foreign cgroup membership')
+    return '/sys/fs/cgroup' + membership[3:]
+
+
+def snapshot(container, journal, state_destination='/var/lib/tunnex-node'):
     journal_raw = private_bytes(journal)
     journal_value = json.loads(journal_raw)
     journal_digest = journal_entries_digest(journal_value)
     identity = inspect(container)
-    mount = state_mount(identity, journal)
+    mount = state_mount(identity, journal, state_destination)
     s = identity['state']
     if not re.fullmatch('[0-9a-f]{64}', identity['id']) or not s['Running'] or s['Pid'] <= 0:
         raise ValueError('expected exact running Docker container')
     pid = s['Pid']
     ns = os.stat(f'/proc/{pid}/ns/net')
     cg = Path(f'/proc/{pid}/cgroup').read_text().strip()
-    expected = '0::/docker/' + identity['id']
-    if cg != expected:
-        raise ValueError('unsupported cgroup layout; requires dedicated cgroup v2 Docker host')
+    cgroup = exact_cgroup(identity['id'], cg)
+    members = (Path(cgroup) / 'cgroup.procs').read_text().splitlines()
+    if str(pid) not in members:
+        raise ValueError('Docker inspect PID is not in exact container cgroup')
+    if Path(f'/proc/{pid}/cgroup').read_text().strip() != cg:
+        raise ValueError('cgroup membership changed during snapshot')
     b = boot()
     again = inspect(identity['id'])
     if again != identity:
@@ -148,14 +186,14 @@ def snapshot(container, journal):
     return {'version': 1, 'boot': b, 'container': identity['id'],
             'pid': pid, 'started': s['StartedAt'], 'sandbox': identity['sandbox'], 'state_mount': mount,
             'namespace': {'device': ns.st_dev, 'inode': ns.st_ino},
-            'cgroup': '/sys/fs/cgroup/docker/' + identity['id'],
+            'cgroup': cgroup,
             'observed_ns': time.time_ns(), 'journal': str(Path(journal).resolve()),
             'journal_entries_sha256': journal_digest,
             'journal_raw_sha256': hashlib.sha256(journal_raw).hexdigest()}
 
 
 def validate_stopped(before, identity, current_boot):
-    if state_mount(identity, before['journal']) != before['state_mount']:
+    if state_mount(identity, before['journal'], before['state_mount']['destination']) != before['state_mount']:
         raise ValueError('state mount changed')
     s = identity['state']
     if current_boot != before['boot'] or identity['id'] != before['container']:
@@ -169,7 +207,8 @@ def validate_stopped(before, identity, current_boot):
 def prove(before):
     if before.get('version') != 1 or not re.fullmatch('[0-9a-f]{64}', before['container']):
         raise ValueError('invalid snapshot')
-    if before['cgroup'] != '/sys/fs/cgroup/docker/' + before['container']:
+    prefix = '/sys/fs/cgroup'
+    if not before['cgroup'].startswith(prefix) or exact_cgroup(before['container'], '0::' + before['cgroup'][len(prefix):]) != before['cgroup']:
         raise ValueError('foreign cgroup')
     current_raw = private_bytes(before['journal'])
     current_journal = json.loads(current_raw)
@@ -211,14 +250,23 @@ def main():
     parser.add_argument('--container')
     parser.add_argument('--snapshot')
     parser.add_argument('--journal')
+    parser.add_argument('--state-destination', choices=['/var/lib/tunnex-node', '/state'], default='/var/lib/tunnex-node')
     parser.add_argument('--output', required=True)
     args = parser.parse_args()
     if os.geteuid() != 0 or not Path('/proc/1').exists():
         raise SystemExit('Requires root on the Linux Docker host')
-    value = snapshot(args.container, args.journal) if args.mode == 'snapshot' else prove(private_read(args.snapshot))
+    value = snapshot(args.container, args.journal, args.state_destination) if args.mode == 'snapshot' else prove(private_read(args.snapshot))
     private_write(args.output, value)
     print('Lifecycle evidence saved; controller authorization remains separate.')
 
 
 if __name__ == '__main__':
     main()
+
+
+def docker_cgroup_paths(container_id):
+    """Compatibility view over the common exact Docker identity validator."""
+    candidates = ('/docker/' + str(container_id), '/system.slice/docker-' + str(container_id) + '.scope')
+    for path in candidates:
+        exact_cgroup(container_id, '0::' + path)
+    return candidates

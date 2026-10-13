@@ -1,0 +1,606 @@
+{
+  "archive_sha256": "740ca239754e256e6efcd5c85aa32839421b6fd9e4bced47ac9be52cb4c28996",
+  "stager_sha256": "3e673a5c6ec79d0a56df57ba734e5be699eca092d28f5cb082ddcbd35cc26149",
+  "manifest_sha256": "b9a581fd8cba627ce5ee40661dec56a7c418bde8cb2e6eec2be17cdb46f01a52",
+  "archive_members": 25,
+  "python_ast_validated": 20,
+  "root_source_files_match": true,
+  "existing_v4_changed_files": [
+    "tests/azure-s2s-local/run-max-prefix-observer.py",
+    "tests/azure-s2s-local/max-prefix-reviewed-phases.py"
+  ],
+  "exact_observer_bytes": 13791412,
+  "journal_state_limit_unchanged_bytes": 10485760,
+  "version": 1,
+  "kind": "maximum_prefix_exact_binary_bound_and_actual_normal_lifecycle_progress",
+  "root_commit": "9682b2b0",
+  "candidate_commit": "09aae229c7a8e63ca6e3614108ce165b2202b8e3",
+  "root_offline_tests": {
+    "count": 39,
+    "passed": true,
+    "seconds": 0.175
+  },
+  "staging": {
+    "bastion": "reviewed_v5_source_staged_no_execution",
+    "peer": "reviewed_v5_source_staged_no_execution"
+  },
+  "normal_disable": [
+    {
+      "category": "phase_helper_returned_success_requires_actual_readback",
+      "phase": "disable",
+      "private_run_id": "max-prefix-phase-disable-f3f225a2-bb3b-4012-b32e-81b675f60323",
+      "scope": "No native cleanup, packet or cloud proof inferred"
+    }
+  ],
+  "disabled_normal": [
+    {
+      "dispatcher": {
+        "category": "phase_helper_returned_success_requires_actual_readback",
+        "phase": "restore-read",
+        "private_run_id": "max-prefix-phase-restore-read-20576dbe-c544-41de-8f51-51ee13fa0faf",
+        "scope": "No native cleanup, packet or cloud proof inferred"
+      },
+      "observed_at": "2026-10-10T23:53:25.858350+00:00"
+    },
+    {
+      "private_normal_receipt_name": "max-prefix-phase-restore-read-20576dbe-c544-41de-8f51-51ee13fa0faf.json",
+      "normal": {
+        "version": 1,
+        "phase": "restore-read",
+        "purpose": "limit",
+        "observed_at": "2026-10-10T23:53:25.792520+00:00",
+        "connection": {
+          "id": "9bfa4090-d3ca-4a8e-9ef9-3b41bd91fe99",
+          "desired_revision": 55,
+          "desired_intent": "disabled",
+          "application_state": "not_applied",
+          "cleanup_state": "retained_guard"
+        },
+        "saved_stage": "prepared",
+        "scope": "Immutable normal connection/config/policy identity only; no runtime or readiness inference",
+        "policy_count": 0,
+        "normal_connection": {
+          "id": "9bfa4090-d3ca-4a8e-9ef9-3b41bd91fe99",
+          "configuration_revision": 1,
+          "profile_id": "azure-active-active-bgp-ipv4-v1",
+          "remote_prefixes": [
+            "10.231.0.0/16"
+          ],
+          "maximum_prefixes": 8,
+          "desired_revision": 55,
+          "desired_intent": "disabled",
+          "application_state": "not_applied",
+          "cleanup_state": "retained_guard"
+        },
+        "runtime_observation": "not_requested"
+      },
+      "private_receipt_sha256": "8a8db85bc8f8033668c515befe920a443f1ea88221dcc5d07936db19a449e2db",
+      "scope": "Exact normal typed receipt only; no readiness or native proof inferred"
+    }
+  ],
+  "disabled_native_absence": [
+    {
+      "version": 1,
+      "category": "independent_observation_written",
+      "mode": "absence",
+      "private_run_id": "maxproof-window-a4b750a5-bef6-40cb-807c-60766ab4a953",
+      "binding_sha256": "5ad40fd4c9ac9f788d27c2b6a03f9ef2caf66fe79962fec4753a80f63f0436f7",
+      "receipt_sha256": "a8a80e0d27cba64e67172e4c0b7a38a5a56e42244138f1508b40d47bd766dd1c"
+    }
+  ],
+  "disabled_typed_copy": [
+    {
+      "category": "typed_absence_inputs_copied",
+      "private_run_id": "max-prefix-typed-copy-748e3bb0-6c3c-40dd-9f70-5f6f007272bf",
+      "receipt_sha256": "a8a80e0d27cba64e67172e4c0b7a38a5a56e42244138f1508b40d47bd766dd1c",
+      "binding_sha256": "5ad40fd4c9ac9f788d27c2b6a03f9ef2caf66fe79962fec4753a80f63f0436f7",
+      "scope": "Exact bytes/ownership copy only; no new observations or freshness extension"
+    }
+  ],
+  "normal_delete": [
+    {
+      "category": "phase_helper_returned_success_requires_actual_readback",
+      "phase": "delete",
+      "private_run_id": "max-prefix-phase-delete-6c33d659-8bf8-46ea-993a-c38c1591c0fa",
+      "scope": "No native cleanup, packet or cloud proof inferred"
+    }
+  ],
+  "actual_finalized_tombstone": [
+    {
+      "dispatcher": {
+        "category": "phase_helper_returned_success_requires_actual_readback",
+        "phase": "finalized-read",
+        "private_run_id": "max-prefix-phase-finalized-read-51486603-f19e-4672-ad6d-95573aeeb11f",
+        "scope": "No native cleanup, packet or cloud proof inferred"
+      },
+      "observed_at": "2026-10-10T23:55:12.091450+00:00"
+    },
+    {
+      "private_normal_receipt_name": "max-prefix-phase-finalized-read-51486603-f19e-4672-ad6d-95573aeeb11f.json",
+      "normal": {
+        "version": 1,
+        "kind": "owned_finalized_prior_authority",
+        "phase": "finalized-read",
+        "purpose": "limit",
+        "observed_at": "2026-10-10T23:55:12.027794+00:00",
+        "policy_count": 0,
+        "runtime_observation": "not_requested",
+        "finalized_authority": {
+          "id": "9bfa4090-d3ca-4a8e-9ef9-3b41bd91fe99",
+          "desired_revision": 56,
+          "desired_intent": "deleted",
+          "application_state": "not_applied",
+          "cleanup_state": "retained_guard",
+          "org_id": "01a1252d-34fe-72bb-a40b-222a0a0bf9a2",
+          "site_id": "01a1252d-3612-7a65-ad65-2dd5f4ebcd72",
+          "gateway_id": "01a1252e-14d2-7edc-b181-903325c4c56a",
+          "historical_site_id": "01a1252d-3612-7a65-ad65-2dd5f4ebcd72",
+          "historical_gateway_node_id": "01a1252e-14d2-7edc-b181-903325c4c56a",
+          "deleted_at": "2026-10-10T23:54:30.999582Z",
+          "finalized_at": "2026-10-10T23:54:30.999582Z",
+          "profile_id": "azure-active-active-bgp-ipv4-v1",
+          "configuration_revision": 1
+        },
+        "saved_cleanup_revision": 55,
+        "saved_prior_contract": {
+          "id": "9bfa4090-d3ca-4a8e-9ef9-3b41bd91fe99",
+          "configuration_revision": 1,
+          "profile_id": "azure-active-active-bgp-ipv4-v1",
+          "remote_prefixes": [
+            "10.231.0.0/16"
+          ],
+          "maximum_prefixes": 8
+        },
+        "saved_prior_configuration_sha256": "44c0526d20c8ff2dc5c997e499797c7668e22189717a5f59439e3f5c1f27da51",
+        "scope": "Actual finalized tombstone and surviving public metadata only; saved predelete config explicitly historical; no live authority or native absence proof"
+      },
+      "private_receipt_sha256": "3a1535e92afe5193bfd190156d575459b429ba4e202c56b6382af50276be6e4d",
+      "scope": "Exact normal typed receipt only; no readiness or native proof inferred"
+    }
+  ],
+  "fresh_finalized_native_absence": [
+    {
+      "version": 1,
+      "category": "independent_observation_written",
+      "mode": "absence",
+      "private_run_id": "maxproof-window-40dce35d-2f7a-4d3f-9070-9214beac0a5d",
+      "binding_sha256": "5ad40fd4c9ac9f788d27c2b6a03f9ef2caf66fe79962fec4753a80f63f0436f7",
+      "receipt_sha256": "fb5a0c35285bfb1122b63de3881a916d89df2bf8917caab46b98b9e4bf263e8d"
+    }
+  ],
+  "fresh_finalized_typed_copy": [
+    {
+      "category": "typed_absence_inputs_copied",
+      "private_run_id": "max-prefix-typed-copy-862d820c-86f4-4d73-88a1-f2406bb77694",
+      "receipt_sha256": "fb5a0c35285bfb1122b63de3881a916d89df2bf8917caab46b98b9e4bf263e8d",
+      "binding_sha256": "5ad40fd4c9ac9f788d27c2b6a03f9ef2caf66fe79962fec4753a80f63f0436f7",
+      "scope": "Exact bytes/ownership copy only; no new observations or freshness extension"
+    }
+  ],
+  "normal_create_attempt": [
+    {
+      "category": "phase_refused_or_unknown_no_replay",
+      "phase": "create",
+      "private_run_id": "max-prefix-phase-create-e94a1ffd-ac51-4679-839f-c544ffcd3ea0"
+    }
+  ],
+  "genuine_AA_discovery": {
+    "saved_privately": true,
+    "no_cloud_updates": true
+  },
+  "original_private_key": {
+    "privately_equal_to_acknowledged_original_restore": true,
+    "keys_or_derived_hashes_exported": false
+  },
+  "cloud_prefix_changes": 0,
+  "accelerated_timer_changes": 0,
+  "limits": [
+    "Actual normal finalization desired56 and independently retained cleanup55 remain separately bound.",
+    "No old receipt timestamp or native binding was rewritten.",
+    "No ambiguous mutation replay or new allocation after unknown outcome.",
+    "Create helper return is not actual target/native/BGP/packet proof.",
+    "Protected whole-cloud baseline, real candidate advertisement, maximum-prefix shutdown, restoration and resolver/grant rebind remain pending."
+  ],
+  "create_refusal_actual_read": [
+    {
+      "observed_at": "2026-10-10T23:58:13.997679+00:00",
+      "M_stage": "prepared",
+      "target_allocated": false,
+      "target": null,
+      "create_reservation_exists": false,
+      "saved_cleanup_revision": 55,
+      "absence_observed_at": "2026-10-10T23:55:54.231900583Z",
+      "discovery_observed_at": "2026-10-10T23:55:56.004037+00:00",
+      "private_create_log_sha256": "3ce5ae4db3b5b6d49442aad0517770fe2ce8f1162e474a01e731d285dd5079e4",
+      "log_finite_category": "generic_owned_lifecycle_refusal",
+      "scope": "Actual private state/reservation metadata only; no POST outcome or replay permission inferred."
+    }
+  ],
+  "create_entry_age_evidence": [
+    {
+      "observed_at": "2026-10-10T23:59:40.512174+00:00",
+      "durable_create_output_reservation_at": "2026-10-10T23:57:06.315962+00:00",
+      "private_create_log_modified_at": "2026-10-10T23:57:06.366961+00:00",
+      "absence_age_seconds_at_helper_entry": 72.084062,
+      "discovery_age_seconds_at_helper_entry": 70.311925,
+      "scope": "Actual durable helper-entry metadata compared with real receipt timestamps; no historical timestamp rewritten."
+    }
+  ],
+  "existing_fresh_native_failure_census": [
+    {
+      "native_run_id": "maxproof-window-9abf370a-1971-47ee-9ff5-35bbe6c6b10a",
+      "actual_log_modified_at": "2026-10-11T00:00:38.208584+00:00",
+      "private_log_sha256": "005e9a9a71bba1a25640ec5b2f74dfa51366cd281c36f5dee6bfa1c5836f35f9",
+      "receipt_exists": false,
+      "failure_categories": [
+        "whole_withdrawal_refused"
+      ],
+      "scope": "Existing actual observer private evidence classification only; no native receipt constructed or mutation retried."
+    },
+    {
+      "native_run_id": "maxproof-window-40dce35d-2f7a-4d3f-9070-9214beac0a5d",
+      "actual_log_modified_at": "2026-10-10T23:55:54.237450+00:00",
+      "private_log_sha256": "25bb50358076d0677fd59704dc0c234eb40640087e8219e64dfbc993b3fb67c7",
+      "receipt_exists": true,
+      "failure_categories": [],
+      "scope": "Existing actual observer private evidence classification only; no native receipt constructed or mutation retried."
+    },
+    {
+      "native_run_id": "maxproof-window-a4b750a5-bef6-40cb-807c-60766ab4a953",
+      "actual_log_modified_at": "2026-10-10T23:53:52.183194+00:00",
+      "private_log_sha256": "88262ffc895d0e08485fc23d267bdb362c2deccd56d6531f73a611f5aad1daa0",
+      "receipt_exists": true,
+      "failure_categories": [],
+      "scope": "Existing actual observer private evidence classification only; no native receipt constructed or mutation retried."
+    }
+  ],
+  "fresh_read_and_native_diagnostic": [
+    {
+      "observed_at": "2026-10-11T00:02:27.217132+00:00",
+      "normal_read": {
+        "category": "phase_helper_returned_success_requires_actual_readback",
+        "phase": "finalized-read",
+        "private_run_id": "max-prefix-phase-finalized-read-3e7f78f5-6d5f-4a25-b7aa-34b38d7401a8",
+        "scope": "No native cleanup, packet or cloud proof inferred"
+      },
+      "normal": {
+        "version": 1,
+        "kind": "owned_finalized_prior_authority",
+        "phase": "finalized-read",
+        "purpose": "limit",
+        "observed_at": "2026-10-11T00:02:25.310522+00:00",
+        "policy_count": 0,
+        "runtime_observation": "not_requested",
+        "finalized_authority": {
+          "id": "9bfa4090-d3ca-4a8e-9ef9-3b41bd91fe99",
+          "desired_revision": 56,
+          "desired_intent": "deleted",
+          "application_state": "not_applied",
+          "cleanup_state": "retained_guard",
+          "org_id": "01a1252d-34fe-72bb-a40b-222a0a0bf9a2",
+          "site_id": "01a1252d-3612-7a65-ad65-2dd5f4ebcd72",
+          "gateway_id": "01a1252e-14d2-7edc-b181-903325c4c56a",
+          "historical_site_id": "01a1252d-3612-7a65-ad65-2dd5f4ebcd72",
+          "historical_gateway_node_id": "01a1252e-14d2-7edc-b181-903325c4c56a",
+          "deleted_at": "2026-10-10T23:54:30.999582Z",
+          "finalized_at": "2026-10-10T23:54:30.999582Z",
+          "profile_id": "azure-active-active-bgp-ipv4-v1",
+          "configuration_revision": 1
+        },
+        "saved_cleanup_revision": 55,
+        "saved_prior_contract": {
+          "id": "9bfa4090-d3ca-4a8e-9ef9-3b41bd91fe99",
+          "configuration_revision": 1,
+          "profile_id": "azure-active-active-bgp-ipv4-v1",
+          "remote_prefixes": [
+            "10.231.0.0/16"
+          ],
+          "maximum_prefixes": 8
+        },
+        "saved_prior_configuration_sha256": "44c0526d20c8ff2dc5c997e499797c7668e22189717a5f59439e3f5c1f27da51",
+        "scope": "Actual finalized tombstone and surviving public metadata only; saved predelete config explicitly historical; no live authority or native absence proof"
+      },
+      "native_observation": {
+        "version": 1,
+        "category": "independent_observation_written",
+        "mode": "absence",
+        "private_run_id": "maxproof-window-6e938b56-1e1b-46c5-a0b3-cffafb64ba43",
+        "binding_sha256": "5ad40fd4c9ac9f788d27c2b6a03f9ef2caf66fe79962fec4753a80f63f0436f7",
+        "receipt_sha256": "ea7ef9559dc6354fcdf39903c34b8f8b96f6c8e3fa2552aa0792a3d893483d06"
+      },
+      "actual_native_receipt": {
+        "azure_connection_id": "/subscriptions/34e2f259-b462-40bf-8f4a-06a3930d99e6/resourceGroups/tunnex-azure-s2s-20261010/providers/Microsoft.Network/connections/tunnex-connection",
+        "configuration_revision": 1,
+        "connection_id": "9bfa4090-d3ca-4a8e-9ef9-3b41bd91fe99",
+        "desired_revision": 55,
+        "gateway_id": "01a1252e-14d2-7edc-b181-903325c4c56a",
+        "guard_retained": true,
+        "historical_boot_entry_count": 1,
+        "historical_proof_sha256": "d6ebe190917e77423dbb1199a5286c6d01894d9b6d2667e1e3fc4ec6771d906f",
+        "historical_stopped_journal_sha256": "92a80b5758cbcac11bb0c14f56787ee47eb58a1210b2c119b8304ac2196ddf79",
+        "host_machine_identity_source": "external_root_attestation",
+        "journal_entries": 26,
+        "journal_sha256": "84c66dc4140e5f2bccd8f47336bce396deb32cdd7b7f15e9daa888e34321b0f9",
+        "kind": "owned_native_cleanup_absence",
+        "namespace_device": 4,
+        "namespace_inode": 4026532430,
+        "observed_at": "2026-10-11T00:02:26.745993854Z",
+        "org_id": "01a1252d-34fe-72bb-a40b-222a0a0bf9a2",
+        "owned_children": 0,
+        "owned_ike": 0,
+        "owned_interfaces": 0,
+        "owned_routes": 0,
+        "owned_sad": 0,
+        "owned_spd": 0,
+        "scope": "Independent bracketed native observation only; no authority, synthetic acknowledgement or packet readiness",
+        "site_id": "01a1252d-3612-7a65-ad65-2dd5f4ebcd72",
+        "traffic_counters_monotonic_advanced": false,
+        "version": 1
+      },
+      "typed_copy": {
+        "category": "typed_absence_inputs_copied",
+        "private_run_id": "max-prefix-typed-copy-9f3a73f6-4408-4ee1-8dfb-e56783f016f4",
+        "receipt_sha256": "ea7ef9559dc6354fcdf39903c34b8f8b96f6c8e3fa2552aa0792a3d893483d06",
+        "binding_sha256": "5ad40fd4c9ac9f788d27c2b6a03f9ef2caf66fe79962fec4753a80f63f0436f7",
+        "scope": "Exact bytes/ownership copy only; no new observations or freshness extension"
+      },
+      "scope": "Fresh actual finalized normal read, complete independent native absence, then exact typed ownership copy only; no create/intent/cloud/timer mutation."
+    }
+  ],
+  "current_finalized_guard_semantic": [
+    {
+      "observed_at": "2026-10-11T00:03:10.122242+00:00",
+      "same_process_namespace_boot": true,
+      "whole_journal_and_interface_mapping_unchanged": true,
+      "source_commit": "64f61087",
+      "helper_sha256": "eb45ae57a8f29246c6825b6d6fef682057417f65d6dba978aa67860cabc1ef2d",
+      "projection": {
+        "candidate_count": 1,
+        "candidates": [
+          {
+            "digest": "670b44ddbd097a73cae28e2cae3f7580d9b9b3036dfeaacc611d78ce7556ea62",
+            "expected_normalization_valid": true,
+            "namespace_matches": true,
+            "revision": 53735,
+            "withdrawal_matches": true
+          }
+        ],
+        "exact_prior_ownership_match_count": 1,
+        "historical_failure_reproduced": false,
+        "journal_raw_sha256": "bd2d302ae58ecab9409f4379f2ee5c3d01c3af87d4de42f305702a90eb8c4efd",
+        "journal_sequence": 53737,
+        "native_normalization_valid": true,
+        "native_raw_sha256": "ca22f0cfc9352f51f659cbaa714a8c287cf2f6c372eeac3f05ff10a7a43fad8a",
+        "no_controller_reader_or_authority_constructed": true,
+        "no_packet_permission_or_health_receipt": true,
+        "phase": "recovery",
+        "raw_set_shape_observations": [],
+        "read_only": true,
+        "whole_journal_valid": true
+      },
+      "scope": "One current read-only semantic classification from complete private journal/native inputs; no native, renewal or packet acceptance."
+    }
+  ],
+  "first_fresh_observation_driver_failure": {
+    "passed": false,
+    "child_stage": "native_observer",
+    "child_stdout_not_forwarded_by_initial_driver": true,
+    "actual_private_native_log_preserved_in_census": true
+  },
+  "create_refusal_classification": "Both actual evidence ages exceeded60seconds at durable helper entry; actual state and create marker show no allocation/reservation. Source validation precedes its durable reservation and POST. No timestamp was extended.",
+  "bounded_fresh_first_create": [
+    {
+      "observed_at": "2026-10-11T00:05:12.544111+00:00",
+      "category": "first_create_sequence_returned_requires_actual_readback",
+      "private_run_id": "max-prefix-first-create-9f46edd9-113d-47db-9808-0421adacfcc8",
+      "fresh_actual_native": {
+        "observed_at": "2026-10-11T00:05:11.390500+00:00",
+        "normal_read": {
+          "category": "phase_helper_returned_success_requires_actual_readback",
+          "phase": "finalized-read",
+          "private_run_id": "max-prefix-phase-finalized-read-8679a711-b6ea-4e1d-a69a-85002f3203d9",
+          "scope": "No native cleanup, packet or cloud proof inferred"
+        },
+        "normal": {
+          "version": 1,
+          "kind": "owned_finalized_prior_authority",
+          "phase": "finalized-read",
+          "purpose": "limit",
+          "observed_at": "2026-10-11T00:05:09.479553+00:00",
+          "policy_count": 0,
+          "runtime_observation": "not_requested",
+          "finalized_authority": {
+            "id": "9bfa4090-d3ca-4a8e-9ef9-3b41bd91fe99",
+            "desired_revision": 56,
+            "desired_intent": "deleted",
+            "application_state": "not_applied",
+            "cleanup_state": "retained_guard",
+            "org_id": "01a1252d-34fe-72bb-a40b-222a0a0bf9a2",
+            "site_id": "01a1252d-3612-7a65-ad65-2dd5f4ebcd72",
+            "gateway_id": "01a1252e-14d2-7edc-b181-903325c4c56a",
+            "historical_site_id": "01a1252d-3612-7a65-ad65-2dd5f4ebcd72",
+            "historical_gateway_node_id": "01a1252e-14d2-7edc-b181-903325c4c56a",
+            "deleted_at": "2026-10-10T23:54:30.999582Z",
+            "finalized_at": "2026-10-10T23:54:30.999582Z",
+            "profile_id": "azure-active-active-bgp-ipv4-v1",
+            "configuration_revision": 1
+          },
+          "saved_cleanup_revision": 55,
+          "saved_prior_contract": {
+            "id": "9bfa4090-d3ca-4a8e-9ef9-3b41bd91fe99",
+            "configuration_revision": 1,
+            "profile_id": "azure-active-active-bgp-ipv4-v1",
+            "remote_prefixes": [
+              "10.231.0.0/16"
+            ],
+            "maximum_prefixes": 8
+          },
+          "saved_prior_configuration_sha256": "44c0526d20c8ff2dc5c997e499797c7668e22189717a5f59439e3f5c1f27da51",
+          "scope": "Actual finalized tombstone and surviving public metadata only; saved predelete config explicitly historical; no live authority or native absence proof"
+        },
+        "native_observation": {
+          "version": 1,
+          "category": "independent_observation_written",
+          "mode": "absence",
+          "private_run_id": "maxproof-window-d94c8117-724f-4481-a12a-aaf83ddb1506",
+          "binding_sha256": "5ad40fd4c9ac9f788d27c2b6a03f9ef2caf66fe79962fec4753a80f63f0436f7",
+          "receipt_sha256": "2d44ca5721db98f5f535407151c05ae566cd84dcdbd662acdcde70ecf0175554"
+        },
+        "actual_native_receipt": {
+          "azure_connection_id": "/subscriptions/34e2f259-b462-40bf-8f4a-06a3930d99e6/resourceGroups/tunnex-azure-s2s-20261010/providers/Microsoft.Network/connections/tunnex-connection",
+          "configuration_revision": 1,
+          "connection_id": "9bfa4090-d3ca-4a8e-9ef9-3b41bd91fe99",
+          "desired_revision": 55,
+          "gateway_id": "01a1252e-14d2-7edc-b181-903325c4c56a",
+          "guard_retained": true,
+          "historical_boot_entry_count": 1,
+          "historical_proof_sha256": "d6ebe190917e77423dbb1199a5286c6d01894d9b6d2667e1e3fc4ec6771d906f",
+          "historical_stopped_journal_sha256": "92a80b5758cbcac11bb0c14f56787ee47eb58a1210b2c119b8304ac2196ddf79",
+          "host_machine_identity_source": "external_root_attestation",
+          "journal_entries": 26,
+          "journal_sha256": "081d58c333b03fb925a8fcc648c5fbeac0b7da08bfd2151b8a6e4a717a68bed2",
+          "kind": "owned_native_cleanup_absence",
+          "namespace_device": 4,
+          "namespace_inode": 4026532430,
+          "observed_at": "2026-10-11T00:05:10.911479662Z",
+          "org_id": "01a1252d-34fe-72bb-a40b-222a0a0bf9a2",
+          "owned_children": 0,
+          "owned_ike": 0,
+          "owned_interfaces": 0,
+          "owned_routes": 0,
+          "owned_sad": 0,
+          "owned_spd": 0,
+          "scope": "Independent bracketed native observation only; no authority, synthetic acknowledgement or packet readiness",
+          "site_id": "01a1252d-3612-7a65-ad65-2dd5f4ebcd72",
+          "traffic_counters_monotonic_advanced": false,
+          "version": 1
+        },
+        "typed_copy": {
+          "category": "typed_absence_inputs_copied",
+          "private_run_id": "max-prefix-typed-copy-6eff2927-f2ed-4964-a01d-e8c3c091b05b",
+          "receipt_sha256": "2d44ca5721db98f5f535407151c05ae566cd84dcdbd662acdcde70ecf0175554",
+          "binding_sha256": "5ad40fd4c9ac9f788d27c2b6a03f9ef2caf66fe79962fec4753a80f63f0436f7",
+          "scope": "Exact bytes/ownership copy only; no new observations or freshness extension"
+        },
+        "scope": "Fresh actual finalized normal read, complete independent native absence, then exact typed ownership copy only; no create/intent/cloud/timer mutation."
+      },
+      "discovery_name": "max-prefix-first-create-9f46edd9-113d-47db-9808-0421adacfcc8-discovery.json",
+      "create_dispatch": {
+        "category": "phase_refused_or_unknown_no_replay",
+        "phase": "create",
+        "private_run_id": "max-prefix-phase-create-b77548ef-aa3e-463b-a26f-f2ff104a4afc"
+      },
+      "return_code": 1,
+      "scope": "Actual fresh bounded discovery/native/copy then one normal first create; no native health, cloud prefix, timer or replay authority inferred."
+    }
+  ],
+  "reserved_target_normal_read": [
+    {
+      "dispatcher": {
+        "category": "phase_helper_returned_success_requires_actual_readback",
+        "phase": "read",
+        "private_run_id": "max-prefix-phase-read-aba2f472-3bea-4dad-a713-0254207107a7",
+        "scope": "No native cleanup, packet or cloud proof inferred"
+      },
+      "observed_at": "2026-10-11T00:08:15.668311+00:00"
+    },
+    {
+      "private_normal_receipt_name": "max-prefix-phase-read-aba2f472-3bea-4dad-a713-0254207107a7.json",
+      "normal": {
+        "version": 1,
+        "phase": "read",
+        "purpose": "limit",
+        "observed_at": "2026-10-11T00:08:15.651714+00:00",
+        "saved_stage": "create_reserved",
+        "target_id": "3e51a274-ab79-48db-b162-a8f1dbbc132f",
+        "classification": "reserved_target_not_observed",
+        "requires_review": true,
+        "scope": "Exact normal GET404 only; does not prove POST never committed and permits no replay or allocation"
+      },
+      "private_receipt_sha256": "eff37f33635d13801bdf5353ba381b959ee00425e20c5ee76bc0c087c6c2cd56",
+      "scope": "Exact normal typed receipt only; no readiness or native proof inferred"
+    }
+  ],
+  "bounded_create_http_and_reservation_evidence": [
+    {
+      "observed_at": "2026-10-11T00:10:00.411990+00:00",
+      "saved_stage": "create_reserved",
+      "target": {
+        "id": "3e51a274-ab79-48db-b162-a8f1dbbc132f",
+        "tunnel_ids": [
+          "60e449ae-23e7-43a5-b331-67ca6bb7d052",
+          "12a2c793-f27a-4f93-8dfd-e4bbd0c3aa4b"
+        ]
+      },
+      "cleanup_revision": 55,
+      "state_sha256": "8f85ab019859f941f7757a04e4e21fa125ee2f4359d54b06c94737f908de41e4",
+      "creation_marker": true,
+      "creation_marker_mtime": "2026-10-11T00:05:12.470917+00:00",
+      "selected_http_rows": [
+        {
+          "event": "http_request",
+          "path_kind": "configuration_check",
+          "time": "2026-10-11T00:05:12.471460762Z",
+          "method": "POST",
+          "status": 200,
+          "bytes": 15
+        },
+        {
+          "event": "http_request",
+          "path_kind": "create",
+          "time": "2026-10-11T00:05:12.488095134Z",
+          "method": "POST",
+          "status": 409,
+          "bytes": 164
+        }
+      ],
+      "all_message_counts": {
+        "http_request": 47
+      },
+      "unparsed_lines": 0,
+      "private_raw_log_sha256": "beec8cda65db062a06057095d535dfa15b8d77dd536a4b08f21e89534eb5310a",
+      "phase_log_generic_refusal_verified": true,
+      "scope": "Saved same-ID reservation and actual bounded API HTTP status evidence only; no replay authority or POST outcome inferred from GET404."
+    }
+  ],
+  "current_lab_state": {
+    "original_connection": "9bfa4090-d3ca-4a8e-9ef9-3b41bd91fe99",
+    "original_normal_finalized_revision": 56,
+    "actual_saved_cleanup_revision": 55,
+    "saved_stage": "create_reserved",
+    "reserved_target": "3e51a274-ab79-48db-b162-a8f1dbbc132f",
+    "reserved_target_observation": "Exact normal GET404 at00:08:15UTC; no replay authority",
+    "actual_policy_count_last_independent_read": 0,
+    "api_healthy_verified": true,
+    "azure_candidate_prefix_added": false,
+    "timer_mutation_executed": false,
+    "scope": "Current observed states at stated receipts; no restored baseline or maximum-prefix acceptance."
+  },
+  "fresh_create_refusal_source_assessment": {
+    "actual_HTTP_status": 409,
+    "configuration_check_HTTP_status": 200,
+    "API_source_barrier": "staticRecreationCandidates rejects BGP and unequal remote domains",
+    "database_source_barriers": [
+      "0225 binding permits only static Azure recreation",
+      "0220 domain requires exact retained/successor prefixes",
+      "0220 delivery trigger rejects BGP material"
+    ],
+    "runtime_source_barriers": [
+      "validRetainedGuardReferences rejects BGP",
+      "sameHandoffDomain excludes contract3/BGP and requires equal prefixes",
+      "whole predecessor suppression would lose candidate denial on contraction"
+    ],
+    "limits": [
+      "HTTP status is actual; private response payload was not retained by generic helper.",
+      "These source barriers establish missing coordinated support, not a private API error payload.",
+      "No UUID allocation, creation replay, reservation deletion, native guard relaxation or cloud mutation followed the refusal."
+    ],
+    "next_required_work": "Coherent source-gated Azure AA-BGP retained recreation, complete native and FRR absence, residual denial preservation, then reviewed same-ID recovery."
+  },
+  "reserved_prior_observation_source_only": {
+    "focused_tests": 41,
+    "passed": true,
+    "duration_seconds": 0.199,
+    "scope": "Read-only source path only; neither staged nor executed; preserves Mtarget and markers; requires exact GET404 and genuine prior tombstone/metadata/empty policy reads."
+  }
+}

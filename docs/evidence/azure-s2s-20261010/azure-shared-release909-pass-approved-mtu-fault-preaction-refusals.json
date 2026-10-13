@@ -1,0 +1,57 @@
+{
+  "accepted_story_count": 6,
+  "approved_exact_bundles": true,
+  "category": "current909_shared_release_pass_and_approved_preaction_refusals",
+  "limits": [
+    "No MTU or peer-fault acceptance claimed",
+    "Journal-only flag is confirmed for first MTU attempt; other saved predicates are not inferred",
+    "Scheduling source timing exposure is not measured live latency or confirmed root cause"
+  ],
+  "mtu": {
+    "attempts": [
+      {
+        "native_returncode": 1,
+        "native_stage": "before_bracket",
+        "private_run_id": "azure-mtu-9090-actual18-fa0f7ab5-86e4-4a21-af1d-1d4441b5afd9",
+        "saved_flags": {
+          "identity": true,
+          "journal": false,
+          "normal": true
+        },
+        "unknown": false
+      },
+      {
+        "native_returncode": 1,
+        "native_stage": "before_bracket",
+        "private_run_id": "azure-mtu-9090-actual18-c4473f25-4752-439a-bc77-19f19ed00745",
+        "unknown": false
+      }
+    ],
+    "coordinator_dispatched": false,
+    "inventory_sha256": "bea3331a765e5881e3740c3533b0ff63e682ef9aa89d00c49cc4a97ba5d25046",
+    "mtu_changed": false,
+    "wrapper_sha256": "e02d297d83fa7f77325aa5bedbda29ee264b4bbf6780798dac4c0ca3e9b2901a"
+  },
+  "new_slices_closed": 0,
+  "peer_fault": {
+    "coordinator_dispatched": false,
+    "inventory_sha256": "b447dc262207c9abe0665533f9c06a6e6b81960ec2bf137f3ddf7a268ae35298",
+    "native_returncode": 1,
+    "native_stage": "before_bracket",
+    "private_run_id": "azure-fault-9090-actual18-b79c8ccc-4e0e-4664-a6c5-7d98ca282b60",
+    "slot_blocked": false,
+    "unknown": false
+  },
+  "recorded_at": "2026-10-12T14:25:27.852822+00:00",
+  "shared_release_metadata": {
+    "acceptance": false,
+    "actual_result_sha256": "57a3090b78e33975d2d5342474457cad61f759ea5eead617f2daf0423b853e53",
+    "category": "actual_shared_release909_pipeline_written",
+    "entry_count": 39,
+    "private_run_id": "azure-shared-release909-4fcab8a4-df46-4be0-9e8e-af9008f796ff",
+    "release_path": "/var/lib/tunnex-qualification-archive/azure-current909-e18-release-bd5b4fcd-0f56-4def-b9fe-29c5da141239/release.json",
+    "release_sha256": "36c862730919643ae04395baca93dfe89030f658de0539f1b23a8ac2ae71d0c7",
+    "transport_seconds": 9.447
+  },
+  "version": 1
+}

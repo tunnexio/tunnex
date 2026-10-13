@@ -1,0 +1,124 @@
+{
+  "source": "9c3ab006c13b72285f43baed1805da1af273ffa7",
+  "before_sha256": "70ffc779b64a11d4f55ce97334a3441ac65fb6bb452aa223d89410fa810d4002",
+  "before_nft_sha256": "1a790f1d5c37294751dda085478f66d063bf62f1b7c9c0cd933cf0d21757e1f5",
+  "previous_nft_sha256": "1a720047bb7abdea030a83016ec5bf2288bfa83070036f31f7c236de1991daf2",
+  "object_count": 22,
+  "fresh_exact_wg_objects_sha256": "76229ac171ad6506af013610a07d78b0ccce9c27e70a34c7452745ea25c332f9",
+  "only_handle_differences": [
+    {
+      "index": 0,
+      "kind": "table",
+      "old_handle": 21,
+      "new_handle": 24
+    },
+    {
+      "index": 3,
+      "kind": "rule",
+      "old_handle": 5139,
+      "new_handle": 3207
+    },
+    {
+      "index": 4,
+      "kind": "rule",
+      "old_handle": 5140,
+      "new_handle": 3208
+    },
+    {
+      "index": 5,
+      "kind": "rule",
+      "old_handle": 5141,
+      "new_handle": 3209
+    },
+    {
+      "index": 6,
+      "kind": "rule",
+      "old_handle": 5142,
+      "new_handle": 3210
+    },
+    {
+      "index": 7,
+      "kind": "rule",
+      "old_handle": 5143,
+      "new_handle": 3211
+    },
+    {
+      "index": 8,
+      "kind": "rule",
+      "old_handle": 5144,
+      "new_handle": 3212
+    },
+    {
+      "index": 9,
+      "kind": "rule",
+      "old_handle": 5145,
+      "new_handle": 3213
+    },
+    {
+      "index": 10,
+      "kind": "rule",
+      "old_handle": 5146,
+      "new_handle": 3214
+    },
+    {
+      "index": 11,
+      "kind": "rule",
+      "old_handle": 5147,
+      "new_handle": 3215
+    },
+    {
+      "index": 12,
+      "kind": "rule",
+      "old_handle": 5148,
+      "new_handle": 3216
+    },
+    {
+      "index": 13,
+      "kind": "rule",
+      "old_handle": 5149,
+      "new_handle": 3217
+    },
+    {
+      "index": 14,
+      "kind": "rule",
+      "old_handle": 5150,
+      "new_handle": 3218
+    },
+    {
+      "index": 15,
+      "kind": "table",
+      "old_handle": 22,
+      "new_handle": 25
+    },
+    {
+      "index": 18,
+      "kind": "rule",
+      "old_handle": 1715,
+      "new_handle": 1071
+    },
+    {
+      "index": 19,
+      "kind": "rule",
+      "old_handle": 1716,
+      "new_handle": 1072
+    },
+    {
+      "index": 20,
+      "kind": "rule",
+      "old_handle": 1717,
+      "new_handle": 1073
+    },
+    {
+      "index": 21,
+      "kind": "rule",
+      "old_handle": 1718,
+      "new_handle": 1074
+    }
+  ],
+  "all_other_fields_order_expressions_exact": true,
+  "scope": "offline source-owned schema assessment only; execution retains exact fresh handles",
+  "source_wg_creation_cleanup_paths_byte_exact_dbcc_to_9c3": {
+    "apps/node/internal/egress/egress_linux.go": "52f892663107fe0bcc881a3f34dec662f0b8a6e68a1175d09c51d06ca1a39d7e",
+    "apps/node/cmd/agent/main.go": "2634f4e01823a099bc0c5988a302ecb3d0607301a4dc837fd2bccfc1bb758140"
+  }
+}

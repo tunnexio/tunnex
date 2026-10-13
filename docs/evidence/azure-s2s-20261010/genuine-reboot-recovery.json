@@ -1,0 +1,30 @@
+{
+  "native": {
+    "sad": "SAD count 0",
+    "spd": "SPD IN  0 OUT 0 FWD 0",
+    "xfrm_links": "",
+    "remote_routes": ""
+  },
+  "current_journal_sha256": "85d2d859d08ddd5dc1dce84f5c1d548e77db505246f026bc9b2ed1a5cae9480f",
+  "node_running": false,
+  "environment": "live-azure",
+  "proof": {
+    "Version": 1,
+    "OwnerID": "01a1252e-14d2-7edc-b181-903325c4c56a",
+    "MachineID": "43945b1283804c5c840685c4c9082b0a",
+    "OldBootID": "0259d2d2-daa8-4006-8530-a790617ec736",
+    "StoppedJournalSHA256": "92a80b5758cbcac11bb0c14f56787ee47eb58a1210b2c119b8304ac2196ddf79",
+    "Kind": "supervisor-confirmed-owned-vm-reboot",
+    "RequestedAt": "2026-10-10T11:58:33.132480+00:00",
+    "NewBootID": "66142c80-c3da-4137-97ba-9b8896cc3deb",
+    "CompletedAt": "2026-10-10T12:01:18.293038+00:00",
+    "CleanupSHA256": "b286982a7aba8d86656c9ce91f33a8ccae4678b2c2b380e38d2f654acb447888"
+  },
+  "source_node": "6e53e071",
+  "source_receipt_tool": "d77b104c",
+  "receipt_assembly": "accepted",
+  "normal_cleanup_ack": "pending",
+  "startup": "refused_saved_refusal_restore",
+  "active_restart_acceptance": false,
+  "note": "Actual reboot recovery incomplete; kernel reset absence does not imply normal cleanup acknowledgement or traffic recovery."
+}

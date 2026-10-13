@@ -1,0 +1,22 @@
+{
+  "phase": "preflight",
+  "receipt_sha256": "031d37c0f7bd4dc256464371d79761ab94661967a7392d3f7349c762752d894b",
+  "native": {
+    "sad_count": 6,
+    "managed_processes": [
+      {
+        "pid": 659907,
+        "comm": "charon"
+      },
+      {
+        "pid": 661038,
+        "comm": "zebra"
+      },
+      {
+        "pid": 661043,
+        "comm": "bgpd"
+      }
+    ],
+    "nft_sha256": "1a720047bb7abdea030a83016ec5bf2288bfa83070036f31f7c236de1991daf2"
+  }
+}

@@ -21,7 +21,7 @@ func TestPermitLeaseStartAndExpiry(t *testing.T) {
 		t.Fatal(e)
 	}
 	*now = 10 * time.Second
-	r := PermitLeaseResponse{q, 60000}
+	r := PermitLeaseResponse{PermitLeaseRequest: q, TTLMillis: 60000}
 	if e = a.Accept(r); e != nil {
 		t.Fatal(e)
 	}
@@ -51,12 +51,12 @@ func TestPermitLeaseRefusals(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			a, _, id := leaseFixture()
 			q, _ := a.Begin(id)
-			r := PermitLeaseResponse{q, 60000}
+			r := PermitLeaseResponse{PermitLeaseRequest: q, TTLMillis: 60000}
 			mut(&r)
 			if a.Accept(r) == nil {
 				t.Fatal("invalid accepted")
 			}
-			if a.Accept(PermitLeaseResponse{q, 60000}) == nil {
+			if a.Accept(PermitLeaseResponse{PermitLeaseRequest: q, TTLMillis: 60000}) == nil {
 				t.Fatal("pending not consumed")
 			}
 			if _, e := a.RemainingForApply(id, time.Second); e == nil {
@@ -68,7 +68,7 @@ func TestPermitLeaseRefusals(t *testing.T) {
 func TestPermitLeaseRenewalAndInvalidation(t *testing.T) {
 	a, now, id := leaseFixture()
 	q, _ := a.Begin(id)
-	if e := a.Accept(PermitLeaseResponse{q, 60000}); e != nil {
+	if e := a.Accept(PermitLeaseResponse{PermitLeaseRequest: q, TTLMillis: 60000}); e != nil {
 		t.Fatal(e)
 	}
 	*now = 20 * time.Second
@@ -76,7 +76,7 @@ func TestPermitLeaseRenewalAndInvalidation(t *testing.T) {
 	if r.Nonce == q.Nonce {
 		t.Fatal("nonce reused")
 	}
-	if a.Accept(PermitLeaseResponse{r, 0}) == nil {
+	if a.Accept(PermitLeaseResponse{PermitLeaseRequest: r, TTLMillis: 0}) == nil {
 		t.Fatal("bad renewal")
 	}
 	d, e := a.RemainingForApply(id, time.Second)
@@ -85,7 +85,7 @@ func TestPermitLeaseRenewalAndInvalidation(t *testing.T) {
 	}
 	r, _ = a.Begin(id)
 	a.Invalidate()
-	if a.Accept(PermitLeaseResponse{r, 60000}) == nil {
+	if a.Accept(PermitLeaseResponse{PermitLeaseRequest: r, TTLMillis: 60000}) == nil {
 		t.Fatal("late response")
 	}
 	if _, e = a.RemainingForApply(id, time.Second); e == nil {
@@ -98,7 +98,7 @@ func TestPermitLeaseRenewalAndInvalidation(t *testing.T) {
 	other := id
 	other.Binding.PolicyRevision++
 	a.Begin(other)
-	if a.Accept(PermitLeaseResponse{q, 60000}) == nil {
+	if a.Accept(PermitLeaseResponse{PermitLeaseRequest: q, TTLMillis: 60000}) == nil {
 		t.Fatal("old generation")
 	}
 }
@@ -106,12 +106,12 @@ func TestPermitLeaseClockAndBudget(t *testing.T) {
 	a, now, id := leaseFixture()
 	q, _ := a.Begin(id)
 	*now = 60 * time.Second
-	if a.Accept(PermitLeaseResponse{q, 60000}) == nil {
+	if a.Accept(PermitLeaseResponse{PermitLeaseRequest: q, TTLMillis: 60000}) == nil {
 		t.Fatal("delayed response")
 	}
 	*now = 61 * time.Second
 	q, _ = a.Begin(id)
-	if e := a.Accept(PermitLeaseResponse{q, 60000}); e != nil {
+	if e := a.Accept(PermitLeaseResponse{PermitLeaseRequest: q, TTLMillis: 60000}); e != nil {
 		t.Fatal(e)
 	}
 	for _, b := range []time.Duration{-1, 0, 60 * time.Second} {
@@ -140,13 +140,13 @@ func TestPermitLeaseClockAndBudget(t *testing.T) {
 func TestPermitLeaseOnlyFreshRenewalExtends(t *testing.T) {
 	a, now, id := leaseFixture()
 	q, _ := a.Begin(id)
-	if err := a.Accept(PermitLeaseResponse{q, 60000}); err != nil {
+	if err := a.Accept(PermitLeaseResponse{PermitLeaseRequest: q, TTLMillis: 60000}); err != nil {
 		t.Fatal(err)
 	}
 	*now = 40 * time.Second
 	renewal, _ := a.Begin(id)
 	*now = 45 * time.Second
-	if err := a.Accept(PermitLeaseResponse{renewal, 60000}); err != nil {
+	if err := a.Accept(PermitLeaseResponse{PermitLeaseRequest: renewal, TTLMillis: 60000}); err != nil {
 		t.Fatal(err)
 	}
 	duration, err := a.RemainingForApply(id, time.Second)
@@ -187,5 +187,21 @@ func TestPermitLeaseCanonicalPolicyHashIdentity(t *testing.T) {
 	bad.PolicyHash = "not-a-hash"
 	if _, err = a.Begin(bad); err != ErrPermitLease {
 		t.Fatal("invalid policy identity")
+	}
+}
+
+func TestPermitLeaseMixedPolicyAuthorityRefused(t *testing.T) {
+	id := PermitLeaseIdentity{Binding: Binding{OrgID: uuid.New(), GatewayID: uuid.New(), ConnectionID: uuid.New(), DesiredRevision: 1, ConfigurationRevision: 1, PolicyRevision: 1}, DeliveryID: uuid.New(), PolicyHash: strings.Repeat("b", 64)}
+	if _, err := NewPermitLeaseAuthority().Begin(id); err == nil {
+		t.Fatal("legacy revision mixed with canonical hash accepted")
+	}
+	id.PolicyHash = ""
+	if _, err := NewPermitLeaseAuthority().Begin(id); err != nil {
+		t.Fatal("legal legacy authority refused", err)
+	}
+	id.Binding.PolicyRevision = 0
+	id.PolicyHash = strings.Repeat("b", 64)
+	if _, err := NewPermitLeaseAuthority().Begin(id); err != nil {
+		t.Fatal("legal canonical authority refused", err)
 	}
 }

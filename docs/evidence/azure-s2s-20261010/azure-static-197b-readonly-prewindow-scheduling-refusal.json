@@ -1,0 +1,33 @@
+{
+  "accepted_story_count": 6,
+  "category": "actual_197b_enabled12_readonly_prewindow_scheduling_refusal",
+  "dns_success_or_failure_observed": false,
+  "dns_window_started": false,
+  "failed_gate_is_scheduling_only": true,
+  "failure_gate": "publication_settle_deadline",
+  "genuine_enabled_normal": {
+    "application_state": "applied",
+    "capability_prefetch_started": false,
+    "category": "authenticated_enabled12_current_before_scheduling_refusal",
+    "cleanup_state": "retained_guard",
+    "configuration_revision": 1,
+    "current_read_sha256": "1aa6568a890bc7d95fdaef71dd92f41b524cb350180776f7cabf304e2cb0941a",
+    "desired_intent": "enabled",
+    "desired_revision": 12,
+    "dns_window_started": false,
+    "failure_gate": "publication_settle_deadline",
+    "native_window_started": false,
+    "new_slices_closed": 0,
+    "observed_at": "2026-10-12T06:32:20.654058+00:00",
+    "original_current_read_path": "/var/lib/tunnex-qualification-archive/azure-current-static-read-abe76468-c0b5-4547-8ec6-1d151a9fc024/normal.json",
+    "policy_count": 8,
+    "profile_id": "azure-active-active-static-ipv4-v1"
+  },
+  "native_baseline_after_enable_observed": false,
+  "new_slices_closed": 0,
+  "node_executable_sha256": "197b6f795ee9b1613bb809bd00ffbc471f5c638ef23594dafb93c74a1a7201d3",
+  "recorded_at": "2026-10-12T06:36:33.044394+00:00",
+  "saved_stderr_sha256": "f123224269166270ad2814f7332f0dca8eb72b090525bb6d955e939413ebf3c5",
+  "source_release_independent_review_sha256": "651da81906a1fd0fa3cf610f8d79794d5b2b947a09152a95d3d8543d0f219434",
+  "total_story_count": 11
+}

@@ -1,0 +1,136 @@
+{
+  "version": 1,
+  "observed_at": "2026-10-11T18:19:58.432052301Z",
+  "scope": "Owned node upgrade checkpoint and written Story3 runtime acceptance; no new packet or remaining-cloud-matrix claim",
+  "node": {
+    "executable_sha256": "f8b43ba1835215f6a0a57069fcef88809f71b41f04326c6fbb757a7f8ad4354f",
+    "started_at": "2026-10-11T18:07:29.709083288Z",
+    "container_id": "21833b87403bb637ad19c191608996bf2fb7614201cec39e28738f80710e1a95",
+    "base_image": "sha256:04d2d7137ba5d1c55505071c00dd0d781ad85a412700bb3ae7c2e13ad9d366c2",
+    "namespace": {
+      "device": 4,
+      "inode": 4026532430
+    },
+    "upgrade_kind": "same-container binary replacement; base image identity unchanged"
+  },
+  "oracle": {
+    "sha256": "6fe200c4ed093933c1daf043c419d96d05dcff83c61f19fda4c6f850abf89787",
+    "bytes": 19304114,
+    "source_manifest_sha256": "c9e69c89a86e8dc3b8f2c11d0e88995d5cde91a9cfa90f7d5198b4eddee45817"
+  },
+  "native_baseline": {
+    "private_run_id": "maxproof-window-38c23db0-c82a-4953-b140-e0c9a4d5f5cc",
+    "receipt_sha256": "f3fd4693ad31105be5d3e478a74c33040507e21f33da53ffd95d80ec880af4d2",
+    "binding_sha256": "a5e0454f618e8535f78fb2b755721088a1f453fdb40b14cc84108e53a393fb4c",
+    "receipt": {
+      "bgp": {
+        "peers": [
+          {
+            "accepted_prefixes": 1,
+            "slot": 1,
+            "state": "established"
+          },
+          {
+            "accepted_prefixes": 1,
+            "slot": 2,
+            "state": "established"
+          }
+        ],
+        "routes": [
+          "10.231.0.0/16"
+        ]
+      },
+      "configuration_revision": 1,
+      "connection_id": "2d8d5f0a-ffdd-4781-b230-81901c4c3224",
+      "desired_revision": 2,
+      "gateway_id": "01a1252e-14d2-7edc-b181-903325c4c56a",
+      "historical_boot_entry_count": 1,
+      "historical_proof_sha256": "d6ebe190917e77423dbb1199a5286c6d01894d9b6d2667e1e3fc4ec6771d906f",
+      "historical_stopped_journal_sha256": "92a80b5758cbcac11bb0c14f56787ee47eb58a1210b2c119b8304ac2196ddf79",
+      "host_machine_identity_source": "external_root_attestation",
+      "journal_entries": 30,
+      "journal_sha256": "6fd0deb9c8b98931c29ab45e1ff1e075ae56e3dbe9f48a47e26ddcbf86b81823",
+      "kind": "owned_max_prefix_baseline",
+      "namespace": {
+        "device": 4,
+        "inode": 4026532430
+      },
+      "native": {
+        "sad": 4,
+        "spd_fwd": 2,
+        "spd_in": 2,
+        "spd_out": 2
+      },
+      "node_executable_sha256": "f8b43ba1835215f6a0a57069fcef88809f71b41f04326c6fbb757a7f8ad4354f",
+      "observed_at": "2026-10-11T18:19:58.432052301Z",
+      "org_id": "01a1252d-34fe-72bb-a40b-222a0a0bf9a2",
+      "scope": "Independent bracketed native observation only; no authority, synthetic acknowledgement or packet readiness",
+      "site_id": "01a1252d-3612-7a65-ad65-2dd5f4ebcd72",
+      "traffic_counters_monotonic_advanced": false,
+      "tunnels": [
+        {
+          "owned_ike": 1,
+          "owned_installed_children": 1,
+          "slot": 1,
+          "state": "up"
+        },
+        {
+          "owned_ike": 1,
+          "owned_installed_children": 1,
+          "slot": 2,
+          "state": "up"
+        }
+      ],
+      "version": 1
+    }
+  },
+  "prior_full_history_absence": {
+    "private_run_id": "maxproof-window-13498fc5-5359-48a4-ba98-34bee9fb1323",
+    "receipt_sha256": "736b130c9841dfa8a35cb9bf49c96842a9bc66565cd47b0be4466a2bb8dc2c2e",
+    "binding_sha256": "7bf5e281f58858394213673bc18e836ba562ab51d77f4a123248eacdae695ede",
+    "observed_at": "2026-10-11T18:09:53.67136273Z",
+    "journal_entries": 29,
+    "guard_retained": true,
+    "actual_counts": {
+      "owned_ike": 0,
+      "owned_children": 0,
+      "owned_sad": 0,
+      "owned_spd": 0,
+      "owned_interfaces": 0,
+      "owned_routes": 0
+    }
+  },
+  "source_receipts": {
+    "baseline_result_sha256": "1c3b1229aa2c19fc965237b4dc4f8ca086832558010d7372fa66603f62be8513",
+    "absence_result_sha256": "f80a19c579cba6891c652545a5718f6039a0cf4a031547139c2e7e16887f8f5e",
+    "derivation_result_sha256": "202c9a5f839c352f856d689c3b355d989fea3784ff90eb11ec2c754e4fb4202d",
+    "twelve_native_component_receipt_sha256": "f6d002ee61831097c72897ebd92a798b10741524d5016beb57339c3073649e24"
+  },
+  "story3": {
+    "accepted": true,
+    "criteria": [
+      "Daemon capabilities",
+      "Fail-closed apply",
+      "Owned cleanup"
+    ],
+    "evidence_mapping": {
+      "Daemon capabilities": "Actual platform/managed daemon/BGP qualification in twelve isolated native profile-pair runs plus current owned full native baseline",
+      "Fail-closed apply": "Twelve native handoff/retained-denial readback cases with renamed link/peer-route survivor refusal and no permission in reserved successor; source-bound AA live admission and current exact IKE/CHILD/routes",
+      "Owned cleanup": "Actual old29-entry retained cleanup with six zero native counts, full withdrawal and unchanged history; current30-entry full native baseline retains those obligations"
+    },
+    "count": 5,
+    "total": 11
+  },
+  "preserved_prior_outcomes": {
+    "earlier_baseline_refusal_preserved": true,
+    "earlier_baseline_precise_cause": "unclassified; later success does not establish cause",
+    "disk_partial_stop_install_preserved": true,
+    "start_only_continuation": "Root reports once-reserved START-only continuation; prior STOP/INSTALL not replayed"
+  },
+  "limitations": [
+    "This receipt does not establish new packet forwarding after the upgrade",
+    "Static/standby managed Azure traffic and complete Story10 matrix remain pending",
+    "Story4 specific default/subprefix/local/WAN routing negatives remain pending",
+    "Active restart, maintenance and sustained DNS/FQDN acceptance remain separate"
+  ]
+}

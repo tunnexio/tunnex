@@ -9,7 +9,10 @@ import (
 	"reflect"
 	"sort"
 	"strconv"
+	"strings"
 	"unicode/utf8"
+
+	"github.com/google/uuid"
 )
 
 var ErrGuardReadback = errors.New("IPsec guard readback does not match")
@@ -32,6 +35,16 @@ func normalizedGuardObjects(raw []byte) ([]any, bool) {
 	return normalizedGuardObjectsWithInterfaces(raw, nil)
 }
 func normalizedGuardObjectsWithInterfaces(raw []byte, interfaces map[string]int) ([]any, bool) {
+	return normalizedGuardObservedObjects(raw, interfaces, false)
+}
+
+// Withdrawal accepts a bounded zero remaining lifetime only as an exact known
+// member. It must not drop that member or supply a positive readback receipt.
+func normalizedGuardWithdrawalObjectsWithInterfaces(raw []byte, interfaces map[string]int) ([]any, bool) {
+	return normalizedGuardObservedObjects(raw, interfaces, true)
+}
+
+func normalizedGuardObservedObjects(raw []byte, interfaces map[string]int, withdrawal bool) ([]any, bool) {
 	if len(raw) > kernelDumpLimit || !utf8.Valid(raw) {
 		return nil, false
 	}
@@ -94,7 +107,7 @@ func normalizedGuardObjectsWithInterfaces(raw []byte, interfaces map[string]int)
 				return nil, false
 			}
 		case "set":
-			if !translateGuardSet(fields, interfaces) || !normalizeGuardSet(fields) {
+			if !translateGuardSet(fields, interfaces) || !normalizeGuardSetObserved(fields, withdrawal) {
 				return nil, false
 			}
 		case "chain":
@@ -189,7 +202,13 @@ func guardCounterNumber(value any) bool {
 // Expiry is observed remaining life, never renewal authority. Callers must also
 // enforce their monotonic lease deadline before and after application/readback.
 func normalizeGuardSet(fields map[string]any) bool {
-	if (!reflect.DeepEqual(fields["type"], "iface_index") && !reflect.DeepEqual(fields["type"], map[string]any{"typeof": map[string]any{"ipsec": map[string]any{"dir": "out", "key": "reqid", "spnum": json.Number("0")}}})) || !reflect.DeepEqual(fields["flags"], []any{"timeout"}) {
+	return normalizeGuardSetObserved(fields, false)
+}
+
+func normalizeGuardSetObserved(fields map[string]any, withdrawal bool) bool {
+	fqdnName, _ := fields["name"].(string)
+	fqdn := validFQDNSetName(fqdnName) && fields["type"] == "ipv4_addr"
+	if (!fqdn && !reflect.DeepEqual(fields["type"], "iface_index") && !reflect.DeepEqual(fields["type"], map[string]any{"typeof": map[string]any{"ipsec": map[string]any{"dir": "out", "key": "reqid", "spnum": json.Number("0")}}})) || !reflect.DeepEqual(fields["flags"], []any{"timeout"}) {
 		return false
 	}
 	duration, ok := guardPositiveSeconds(fields["timeout"])
@@ -214,17 +233,60 @@ func normalizeGuardSet(fields map[string]any) bool {
 		if !ok {
 			return false
 		}
-		value, ok := element["val"].(json.Number)
-		if !ok || !guardCounterNumber(value) || value.String() == "0" || seen[value.String()] {
+		key := ""
+		if fqdn {
+			raw, ok := element["val"].(string)
+			address, err := netip.ParseAddr(raw)
+			if !ok || err != nil || !address.Is4() || raw != address.String() || len(elements) != 1 {
+				return false
+			}
+			key = raw
+		} else {
+			value, ok := element["val"].(json.Number)
+			if !ok || !guardCounterNumber(value) || value.String() == "0" {
+				return false
+			}
+			key = value.String()
+		}
+		if seen[key] {
 			return false
 		}
-		seen[value.String()] = true
+		seen[key] = true
 		timeout, ok := guardPositiveSeconds(element["timeout"])
+		if _, explicit := element["timeout"]; !explicit {
+			// Native nft omits an element timeout equal to the known set
+			// default. Accept only our typed 60s lease set with an observed,
+			// bounded expiry. Positive readback still requires remaining life;
+			// withdrawal preserves zero-life members until actual absence.
+			name, named := fields["name"].(string)
+			suffix := ""
+			for _, prefix := range []string{"sa_lease_", "reply_lease_", "lease_"} {
+				if strings.HasPrefix(name, prefix) {
+					suffix = strings.TrimPrefix(name, prefix)
+					break
+				}
+			}
+			known := named && len(suffix) == 32
+			if fqdn {
+				known = true
+			}
+			for _, c := range suffix {
+				if !(c >= '0' && c <= '9' || c >= 'a' && c <= 'f') {
+					known = false
+				}
+			}
+			expiry, live := guardObservedExpirySeconds(element["expires"], withdrawal)
+			if !known || duration != 60 || !live || expiry > duration {
+				return false
+			}
+			timeout, ok = duration, true
+			element["timeout"] = json.Number("60")
+		}
 		if !ok || timeout > duration {
 			return false
 		}
 		if remaining, present := element["expires"]; present {
-			expiry, ok := guardPositiveSeconds(remaining)
+			expiry, ok := guardObservedExpirySeconds(remaining, withdrawal)
 			if !ok || expiry > timeout {
 				return false
 			}
@@ -236,6 +298,21 @@ func normalizeGuardSet(fields map[string]any) bool {
 	}
 	return true
 }
+
+// This distinction is private to withdrawal readback. Timeout authority remains
+// strictly positive, and a zero-life member remains present for denial checks.
+func guardObservedExpirySeconds(value any, withdrawal bool) (uint64, bool) {
+	if !withdrawal {
+		return guardPositiveSeconds(value)
+	}
+	n, ok := value.(json.Number)
+	if !ok {
+		return 0, false
+	}
+	seconds, ok := kernelNumber(json.RawMessage(n.String()), 64)
+	return seconds, ok && seconds <= 60
+}
+
 func guardPositiveSeconds(value any) (uint64, bool) {
 	n, ok := value.(json.Number)
 	if !ok {
@@ -349,14 +426,19 @@ func translateGuardSet(fields map[string]any, links map[string]int) bool {
 	return true
 }
 
-// nft canonicalizes IPv4 /32 payload matches to scalar addresses. Normalize
+// nft canonicalizes IPv4 /32 payload and typed original CT matches to scalar addresses. Normalize
 // only this exact equivalence; preserve all other fields for strict comparison.
 func normalizeGuardHostPrefix(match, left map[string]any) {
 	if len(left) != 1 {
 		return
 	}
-	payload, ok := left["payload"].(map[string]any)
-	if !ok || len(payload) != 2 || payload["protocol"] != "ip" || (payload["field"] != "saddr" && payload["field"] != "daddr") {
+	payload, payloadOK := left["payload"].(map[string]any)
+	payloadHost := payloadOK && len(payload) == 2 && payload["protocol"] == "ip" && (payload["field"] == "saddr" || payload["field"] == "daddr")
+	ct, ctOK := left["ct"].(map[string]any)
+	// Native nft renders typed IPv4 original-tuple NAT predicates as a
+	// scalar for /32. Direction and typed key must remain exact.
+	ctHost := ctOK && len(ct) == 2 && ct["dir"] == "original" && (ct["key"] == "ip saddr" || ct["key"] == "ip daddr")
+	if !payloadHost && !ctHost {
 		return
 	}
 	right, ok := match["right"].(map[string]any)
@@ -376,4 +458,90 @@ func normalizeGuardHostPrefix(match, left map[string]any) {
 		return
 	}
 	match["right"] = text
+}
+
+// This private result distinguishes a proven target-only loss of membership
+// from unknown structure, namespace or IO. It never authorizes another owner.
+var errGuardConnectionNotPermitted = errors.New("IPsec connection permit is absent")
+
+func verifyGuardConnectionReadback(expected, observed []byte, links []GuardInterface, id uuid.UUID) error {
+	if id == uuid.Nil {
+		return ErrGuardReadback
+	}
+	want, ok := normalizedGuardObjects(expected)
+	if !ok {
+		return ErrGuardReadback
+	}
+	return verifyGuardConnectionObjectsReadback(want, observed, links, id)
+}
+
+func verifyGuardConnectionObjectsReadback(expected []any, observed []byte, links []GuardInterface, id uuid.UUID) error {
+	return verifyGuardConnectionObjectsReadbackClass(expected, observed, links, id, nil)
+}
+
+func verifyGuardConnectionObjectsReadbackClass(expected []any, observed []byte, links []GuardInterface, id uuid.UUID, classify func(string)) error {
+	if id == uuid.Nil || len(expected) == 0 {
+		return ErrGuardReadback
+	}
+	want, err := verifyGuardWithdrawalObjectsSnapshotClass(expected, observed, links, classify)
+	if err != nil {
+		return ErrGuardReadback
+	}
+	required := map[string]any{guardLeaseName(id): nil, guardReplyLeaseName(id): nil, guardSALeaseName(id): nil}
+	for _, object := range want {
+		if set, ok := object.(map[string]any)["set"].(map[string]any); ok {
+			name, _ := set["name"].(string)
+			if _, needed := required[name]; needed {
+				members, ok := set["elem"].([]any)
+				if !ok || len(members) == 0 {
+					return errGuardConnectionNotPermitted
+				}
+				required[name] = set
+			}
+		}
+	}
+	for _, set := range required {
+		if set == nil {
+			if classify != nil {
+				classify("required_set_missing")
+			}
+			return ErrGuardReadback
+		}
+	}
+	// Parse the SAME bounded raw listing again: withdrawal normalization erased
+	// expires, so it must not be reused as a positive target proof.
+	decoder := json.NewDecoder(bytes.NewReader(observed))
+	decoder.UseNumber()
+	var env map[string]any
+	if decoder.Decode(&env) != nil {
+		return ErrGuardReadback
+	}
+	mapping := map[string]int{}
+	for _, link := range links {
+		mapping[link.Name] = link.Index
+	}
+	for _, object := range env["nftables"].([]any) {
+		set, ok := object.(map[string]any)["set"].(map[string]any)
+		if !ok {
+			continue
+		}
+		name, _ := set["name"].(string)
+		target, needed := required[name]
+		if !needed {
+			continue
+		}
+		if !translateGuardSet(set, mapping) || !normalizeGuardSetObserved(set, false) {
+			return errGuardConnectionNotPermitted
+		}
+		// Drop only metadata already independently bounded by full-table ownership.
+		delete(set, "handle")
+		if !reflect.DeepEqual(target, set) {
+			return errGuardConnectionNotPermitted
+		}
+		delete(required, name)
+	}
+	if len(required) != 0 {
+		return ErrGuardReadback
+	}
+	return nil
 }

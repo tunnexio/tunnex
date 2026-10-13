@@ -1,0 +1,117 @@
+{
+  "files": [
+    {
+      "file": "classic-current-after-bracket-v1.json",
+      "retained_path": "/private/tmp/gcp-cloud-expiry-observer-13007c40-20261010/classic-current-after-bracket-v1.json",
+      "sha256": "c00d5c5932c2c8fb9ec0f9319b8feee2b78507e2d3d4d6e842e50bcbb2350079"
+    },
+    {
+      "file": "current-after-brackets-diagnostics-v1.json",
+      "retained_path": "/private/tmp/gcp-cloud-replacement-13007c40-20261010/current-after-brackets-diagnostics-v1.json",
+      "sha256": "93f352d98322c3c72b13e8f8504e8f9858ec56ec866df46360166897c1b9d7cc"
+    },
+    {
+      "file": "classic-tcp-allow-observer.json",
+      "observer_sha256": "4f397b99757669d0ad63d96b6e723d60c5da6f374c9ad12f2caab8dd6e924574",
+      "exit_code": 1,
+      "sha256": "44e381a6625e2c6bbb44650f21a500687b86ad0725e8381a1a35b81efef3040d"
+    },
+    {
+      "file": "classic-udp-allow-observer.json",
+      "observer_sha256": "4f397b99757669d0ad63d96b6e723d60c5da6f374c9ad12f2caab8dd6e924574",
+      "exit_code": 1,
+      "sha256": "44e381a6625e2c6bbb44650f21a500687b86ad0725e8381a1a35b81efef3040d"
+    },
+    {
+      "file": "environment-initial-receipt.json",
+      "retained_path": "/private/tmp/gcp-environment-bracket-13007-20261010/actual-observer-receipt.json",
+      "sha256": "ca38a83dd5aed5e80708ef10a82b5a9a3fdb87c27f39cec836a5f4829415ee45"
+    },
+    {
+      "file": "environment-batch-receipt.json",
+      "retained_path": "/private/tmp/gcp-environment-bracket-13007-20261010/actual-v2/batch-receipt.json",
+      "sha256": "f1de17b4fb34d1d0f55fea8820b430787e32fac7742f5668015b911ca8070a23"
+    },
+    {
+      "file": "environment-sample-1-receipt.json",
+      "retained_path": "/private/tmp/gcp-environment-bracket-13007-20261010/actual-v2/sample-1/observer-receipt.json",
+      "sha256": "5b35ee9c86d9e6ce18a9a862f90d6eb5005d2a5dba35ffaaddaa098952d19d95"
+    },
+    {
+      "file": "environment-sample-2-receipt.json",
+      "retained_path": "/private/tmp/gcp-environment-bracket-13007-20261010/actual-v2/sample-2/observer-receipt.json",
+      "sha256": "1b414e8c14e21b11939480b40b55bddda9956a03ec22830aa834ba0f2cb0bd50"
+    },
+    {
+      "file": "environment-sample-3-receipt.json",
+      "retained_path": "/private/tmp/gcp-environment-bracket-13007-20261010/actual-v2/sample-3/observer-receipt.json",
+      "sha256": "9590ab78e26633e3e69073ee7db6562e3dcf833f0f20a3d202756f288efc74a1"
+    },
+    {
+      "file": "environment-sample-4-receipt.json",
+      "retained_path": "/private/tmp/gcp-environment-bracket-13007-20261010/actual-v2/sample-4/observer-receipt.json",
+      "sha256": "4749fb13eaccc4d33bd0d7cfcb79f551e6705f2fa69f33bc52a8158ce0eccb5d"
+    },
+    {
+      "file": "environment-sample-5-receipt.json",
+      "retained_path": "/private/tmp/gcp-environment-bracket-13007-20261010/actual-v2/sample-5/observer-receipt.json",
+      "sha256": "20c442567c44e7ea0046ebbd5b6e5c134af6ca8486b2225b506d14d4cd97a95f"
+    },
+    {
+      "file": "environment-sample-6-receipt.json",
+      "retained_path": "/private/tmp/gcp-environment-bracket-13007-20261010/actual-v2/sample-6/observer-receipt.json",
+      "sha256": "8f57701041f6bb2f96436754530b1edb582404cc6172df983010bbac1b210bcb"
+    },
+    {
+      "file": "environment-sample-7-receipt.json",
+      "retained_path": "/private/tmp/gcp-environment-bracket-13007-20261010/actual-v2/sample-7/observer-receipt.json",
+      "sha256": "87c7974b8e36ad88ca9db45ef681068876c2d755515ff3f9a81ee9416f607ec0"
+    },
+    {
+      "file": "environment-sample-8-receipt.json",
+      "retained_path": "/private/tmp/gcp-environment-bracket-13007-20261010/actual-v2/sample-8/observer-receipt.json",
+      "sha256": "810b2040d3ed44b14f2ad10005f4ca756ca230710aa4bdb69d08058fcdee3ac9"
+    },
+    {
+      "file": "environment-sample-9-receipt.json",
+      "retained_path": "/private/tmp/gcp-environment-bracket-13007-20261010/actual-v2/sample-9/observer-receipt.json",
+      "sha256": "e2b74d22194d5b0d6b938f566f951fad53dce14f91e4e188f5e8cedc84483e5b"
+    },
+    {
+      "file": "environment-sample-10-receipt.json",
+      "retained_path": "/private/tmp/gcp-environment-bracket-13007-20261010/actual-v2/sample-10/observer-receipt.json",
+      "sha256": "5f52728e367e255e358ed68660e5f158302c52ae82c6f7452d5ab7f8f8a86738"
+    },
+    {
+      "file": "environment-sample-11-receipt.json",
+      "retained_path": "/private/tmp/gcp-environment-bracket-13007-20261010/actual-v2/sample-11/observer-receipt.json",
+      "sha256": "c047b9a3c75524dd2dd2c514e63ff94370dbc662514c303c4208a871c05559d1"
+    },
+    {
+      "file": "environment-sample-12-receipt.json",
+      "retained_path": "/private/tmp/gcp-environment-bracket-13007-20261010/actual-v2/sample-12/observer-receipt.json",
+      "sha256": "17dff9f730cc4a62bbb39c7ea7f63dc7c651d855beecc4f84d09d36c78e94393"
+    },
+    {
+      "file": "inventory-receipt.json",
+      "retained_path": "/private/tmp/gcp-runtime-proof-diagnostics-20261010/actual-observer-receipt.json",
+      "sha256": "6352e5b2a4a48e57767ed56a4bb3456f6916801c04ff9321952635bf45b40374"
+    },
+    {
+      "file": "inventory-capture.json",
+      "retained_path": "/private/tmp/gcp-runtime-proof-diagnostics-20261010/actual-native-capture.json",
+      "sha256": "0adefd40323975708efb735f055016c47a4a7c20cc909935937c54b390a781cd"
+    },
+    {
+      "file": "actual-v3-native-capture.json",
+      "retained_path": "/private/tmp/gcp-environment-bracket-13007-20261010/actual-v3-native-capture.json",
+      "sha256": "f995ee96be0673a86475c22940a36dd31bda61a1428ceba3b65a3dbe84bf795f"
+    },
+    {
+      "file": "actual-v3-observer-receipt.json",
+      "retained_path": "/private/tmp/gcp-environment-bracket-13007-20261010/actual-v3-observer-receipt.json",
+      "sha256": "2e92e25a89ed25dcf7dcb2ff8b1902ed422aa4520d452b8ad09ec02267d47653"
+    }
+  ],
+  "scope": "Actual read-only checkpoint; offline strict observer; no packet or authority restoration claim"
+}

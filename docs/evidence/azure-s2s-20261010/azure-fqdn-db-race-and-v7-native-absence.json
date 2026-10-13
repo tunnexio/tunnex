@@ -1,0 +1,201 @@
+{
+  "schema": 1,
+  "recorded_at": "2026-10-11T09:29:29.715797+00:00",
+  "scope": "successor local source/real PostgreSQL/race qualification and approved cloud read-only V7 absence; not full Azure acceptance",
+  "root_head": "7a1724f109bc5ad764b85bcc59fefa4081f86ec8",
+  "candidate_source_head": "a39eeef9a45b0a4eedfa347896a6961604bb1067",
+  "formally_closed_stories": 0,
+  "total_stories": 11,
+  "database": {
+    "distinct_top_level_passes": 7,
+    "skips": 0,
+    "attempts": [
+      {
+        "attempt": 2,
+        "result_sha256": "20b395274d3a6d0e450ac7045d658a14a707e289dd304351462a822c589a124b",
+        "log_sha256": "58b32839394cce5bdcfbdcd5df4772d4e1777317dad0fcea3cd7b8e32023b267",
+        "tests": [
+          {
+            "status": "PASS",
+            "name": "TestAzureBGPRecreationExpansionContraction"
+          },
+          {
+            "status": "PASS",
+            "name": "TestAzureProviderPersistenceCapabilityAndMaterial"
+          },
+          {
+            "status": "FAIL",
+            "name": "TestTransactionalIPsecFQDNV2MaintainFreshNonceBridge"
+          },
+          {
+            "status": "PASS",
+            "name": "TestTransactionalIPsecFQDNV2LeaseExpiryContinuity"
+          },
+          {
+            "status": "PASS",
+            "name": "TestTransactionalIPsecFQDNV2Compiler"
+          },
+          {
+            "status": "PASS",
+            "name": "TestActiveGenerationsOriginalDatabaseClockFreshness"
+          },
+          {
+            "status": "PASS",
+            "name": "TestPostgresStorePublishesAndWithdrawsAtomically"
+          }
+        ],
+        "suite_exit_code": 1,
+        "source_unchanged": true,
+        "database_scope": "fresh tnx_test_UUID child only; existing application database rows untouched; fixture cleanup reports errors"
+      },
+      {
+        "attempt": 5,
+        "result_sha256": "2e1e59ddbd1c3e3f33a67e933ecb4ce00a2e5e8c70b83536d2df9c77ab2e4e2f",
+        "log_sha256": "e716d06bb6678c8b52a69eb61adb58ab420e5927ea73d5067faa5b4bf73b60c7",
+        "tests": [
+          {
+            "status": "PASS",
+            "name": "TestTransactionalIPsecFQDNV2MaintainFreshNonceBridge"
+          }
+        ],
+        "suite_exit_code": 0,
+        "source_unchanged": true,
+        "database_scope": "fresh tnx_test_UUID child only; existing application database rows untouched; fixture cleanup reports errors"
+      }
+    ],
+    "initial_failures_preserved": true,
+    "bridge_scope": "actual PostgreSQL API store, wire response, real PermitLease HTTP client and Maintain; synthetic kernel/journal/PSK; no native SAs/encrypted packet proof"
+  },
+  "race": {
+    "top_level_passes": 59,
+    "skips": 0,
+    "source_unchanged": true,
+    "checks": [
+      {
+        "module": "api",
+        "passes": 19,
+        "elapsed_seconds": 5.661,
+        "private_log_sha256": "cab930db5f9d7a52cce9996e820df4b91ef21c7d249d19a8ffa8c61e8caf89e2"
+      },
+      {
+        "module": "node",
+        "passes": 40,
+        "elapsed_seconds": 88.319,
+        "private_log_sha256": "5f45dcd272864fe4493e756abf33ea7cb26d4458811db4a9f2d6ab37066506e2"
+      }
+    ],
+    "result": {
+      "private_artifact": "/private/tmp/azure-fqdn-focused-race-20261011-2/result.json",
+      "sha256": "60695c275bfa93a14dddee9227b8fbf025235633f24e491fd153ffefa3c982c0"
+    }
+  },
+  "source_integration": {
+    "database_and_monotonic_candidate": "7e86fde2d902e2fa4034e42486466a24c0c4740e",
+    "first_root_merge": "948e4b21db4764ff688bf5b8922799fe8ef89247",
+    "proxy_candidate": "8f3f91c81541c3f11cf16230e66bb2f0be906f8f",
+    "native_harness_candidate": "a39eeef9a45b0a4eedfa347896a6961604bb1067",
+    "proxy_race_receipt": {
+      "private_artifact": "/private/tmp/azure-proxy-successor-integration-receipt.json",
+      "sha256": "08077a37378e970f587493f41a5166913953da81e40b96c582b7925830b3921b"
+    },
+    "proxy_harness_root_merge": {
+      "private_artifact": "/private/tmp/azure-proxy-harness-root-integration-20261011.json",
+      "sha256": "2e84b848cbadd07c26bf529bf00ed2b913d8ece2c05ba12cc065fcda63e1656d"
+    },
+    "all_original_dirty_evidence_preserved": true,
+    "pushed": false,
+    "deployed": false
+  },
+  "native_component": {
+    "attempt1": "pre-dispatch identity/readback refusal",
+    "attempt2": "exec126 due tmpfs noexec; test not dispatched",
+    "attempt3": "test dispatched; initial nft JSON apply failed; no expiry acceptance",
+    "causal_check_only": {
+      "binary_sha256": "636c21750eed670bbb2f92c5956fb384bceac3762c645f1fb5bcb209d20deeb4",
+      "container_id": "40cd9ee764df8e42a46c7a25460e3f2fb9f933e83199d13a390cf0a92c592744",
+      "native_tables_after": 0,
+      "original_check_refused": true,
+      "replay_allowed": false,
+      "returncode": 1,
+      "scope": "actual parser check-only causal comparison; no applied table/native expiry acceptance",
+      "single_lookup_candidate_check_passed": true
+    },
+    "causal_receipt": {
+      "private_artifact": "/private/tmp/azure-fqdn-single-lookup-check-only-comparison-20261011-1/result.json",
+      "sha256": "91685f136604d5b62dfcccac6afb85dedfb4fa6847d110601ff33bdaaee3aa34"
+    },
+    "finding": "nft1.1.6 requires typed CT address key in the FQDN original-destination set lookup; single lookup variant check-only passed, original refused; ordinary scalar CT syntax unchanged",
+    "production_fix_status": "pending focused regression qualification",
+    "full_native_expiry_pass": false
+  },
+  "azure_auth": {
+    "actual_read": true,
+    "read_successful": true,
+    "gateway": {
+      "activeActive": true,
+      "bgp": true,
+      "id": "/subscriptions/34e2f259-b462-40bf-8f4a-06a3930d99e6/resourceGroups/tunnex-azure-s2s-20261010/providers/Microsoft.Network/virtualNetworkGateways/azure-vpn",
+      "sku": "VpnGw1AZ",
+      "state": "Succeeded"
+    },
+    "result": {
+      "private_artifact": "/private/tmp/azure-ready-arm-read-20261011-2.json",
+      "sha256": "d069f70eace455d1733d1b04aa27d4d75017524093173a6dcb61ac45031a0f6b"
+    }
+  },
+  "approved_v7_cloud_observer": {
+    "result": {
+      "version": 1,
+      "category": "source_paired_reserved_prior_absence_verified",
+      "observed_at": "2026-10-11T08:57:33.967891+00:00",
+      "private_run_id": "azure-recreation-postdeploy-observe-4c054851-7e0f-4968-abfc-28725f34dbdf",
+      "native_window": "maxproof-window-7c635527-2c1a-4a7d-b32f-07e5236b2e99",
+      "normal_receipt_id": "max-prefix-v6-reserved-normal-0ba88972-00a5-40a2-9885-6fb6a8f1a05a.json",
+      "state_sha256": "8f85ab019859f941f7757a04e4e21fa125ee2f4359d54b06c94737f908de41e4",
+      "state_stage": "create_reserved",
+      "reserved_target_id": "3e51a274-ab79-48db-b162-a8f1dbbc132f",
+      "normal_phase": "reserved-prior-read",
+      "policy_count": 0,
+      "native_observed_at": "2026-10-11T08:57:33.178271631Z",
+      "native_receipt_sha256": "be3970ae50dd1e47a5103759a7563f678c8b70c8a28e82bd186021b71b5f48a6",
+      "native_binding_sha256": "53d66165ba81fb9e1d482832395069e7fc4363671975dc034b48dcda1c183eae",
+      "node_executable_sha256": "029a6b041de018112a83f7d99bdfd155a708521746373466d072fe6bc60085e6",
+      "journal_entries": 26,
+      "historical_boot_entry_count": 1,
+      "native_counts": {
+        "owned_ike": 0,
+        "owned_children": 0,
+        "owned_sad": 0,
+        "owned_spd": 0,
+        "owned_interfaces": 0,
+        "owned_routes": 0
+      },
+      "source_manifest_sha256": "0ba71caf5dc6a9df3d59a7f35d8c9df75974fbc58e2dbae8db40207702cf8add",
+      "observer_sha256": "03bdf5b97edaa1a341f7078176ee88a2faf1078cfabfbe1859ceb95c73a09830",
+      "scope": "Independent native absence and real normal reserved target404/prior finalization only; no recreate, restart, prefix advertisement, timer change or acknowledgement."
+    },
+    "stdout_sha256": "242d7edf5fb453ca84a7f924ec27f4d1a56ed4a256e6ab041c6d4bda4551590f",
+    "proof_freshness": "historical observation only; a fresh bracket within60seconds is required before recovery",
+    "no_additional_start": true
+  },
+  "same_id_recovery": {
+    "target_id": "3e51a274-ab79-48db-b162-a8f1dbbc132f",
+    "sealer_size": 28212,
+    "sealer_sha256": "f72a322d9ae3290217ece1bf2515705cf99f7e2863bda685d31a48b1ea8fd55e",
+    "status": "additional exact payload approval pending; auto-review rejected staging outside two-fileV7 approval",
+    "staged": false,
+    "executed": false,
+    "no_replay": true
+  },
+  "source_identity_correction": {
+    "ce83b5328f210c5b01935ef0f7f0e165d3505329b50afd9f2e06940812241278": "manifest-rootfalse.json SHA256, not a Git commit; accessible private shared candidate artifact now bound"
+  },
+  "remaining_live_acceptance": [
+    "sustained DNS generation stability",
+    "FQDN fresh/existing encrypted TCP and UDP expiry/revoke",
+    "genuine active restart",
+    "other Azure profiles",
+    "prefix negative/max-prefix/PSK/rekey/failover/MTU and final owned cleanup"
+  ],
+  "historical_failed_live_observations_retained": true
+}

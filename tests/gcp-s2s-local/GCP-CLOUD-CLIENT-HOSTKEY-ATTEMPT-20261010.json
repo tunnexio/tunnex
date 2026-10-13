@@ -1,0 +1,23 @@
+{
+  "scope": "actual client-only metadata CAS and normal reset; no SSH trust accepted",
+  "attempt": "f220e637-3b74-4b87-a6da-ff3834ea59a1",
+  "instance_id": "4751969643435150303",
+  "reset_operation": "operation-1791641231007-65d7cfb239e21-8ae784f6-e61da05c",
+  "reset_status": "DONE",
+  "reset_end_time": "2026-10-10T07:07:12.510-07:00",
+  "execution_exit_code": 1,
+  "serial_failure": {
+    "class": "PermissionError",
+    "errno": 13,
+    "driver_line": 6,
+    "owned_temporary_original": true,
+    "public_helper_started": false,
+    "publication_marker_count": 0
+  },
+  "current_metadata_equals_captured_installed": true,
+  "original_backup_preserved": true,
+  "original_metadata_restored": false,
+  "trust_pinned": false,
+  "automatic_retry": false,
+  "cause_bound": "execution of owned temporary original denied; guest mount flags unverified"
+}

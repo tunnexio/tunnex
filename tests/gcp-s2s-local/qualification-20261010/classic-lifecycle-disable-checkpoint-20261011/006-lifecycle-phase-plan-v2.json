@@ -1,0 +1,460 @@
+{
+  "completed": true,
+  "source_only": true,
+  "mutations": 0,
+  "connection": "b79d7eda-fafe-41cf-af2c-4115d4ef32c6",
+  "baseline_sha256": "4ac53ba6071be20e25ba55c9e68d2a27698c7bfa97f9bebc9fa45afee1214003",
+  "fqdn_sha256": "6ceab0de30b4701fda94f63e59c014b463a7d76ba9ccc9ed8acf01c7fe37dbe9",
+  "pins": {
+    "api": [
+      "run-lifecycle-api-origin-bound.py",
+      "8f1509170fa3e6b58a2b54e3b267f76ea8029e07013ebe0fbd5b16bf54a18eee"
+    ],
+    "api_source": [
+      "api-phase-origin-bound.remote.py",
+      "3cf17f94e416de28a06a3efac9c417ccf8b33a0fa2f55fb4cdab3bd76f6d2b75"
+    ],
+    "peer": [
+      "run-peer-phase-origin-bound.py",
+      "c016604525c90a34c3d3a1e0e9d0158797e179bf07b9a20faa112fa48419fa22"
+    ],
+    "peer_source": [
+      "peer-executor-origin-bound.remote.py",
+      "2fb15fef2a6c7e8a81c354fd2e528d7d1b050ea8ef00846727faf591918f2f88"
+    ],
+    "withdraw": [
+      "read-classic-withdraw-native.py",
+      "e54e95805be4528d17f3fea3d84ab85fd8f61736d8b2b9f75b0561dcf57a4b80"
+    ],
+    "old_peer": [
+      "read-classic-old-peer-denial-native.py",
+      "a31af3ef375a7d7904df8025a42cf1ef5e598b92120df57a140332edf5d71d3b"
+    ]
+  },
+  "stages": [
+    {
+      "phase": "disable",
+      "prepare_command": [
+        "/usr/bin/python3",
+        "/private/tmp/gcp-classic-psk-lifecycle-prep-20261011/run-lifecycle-api-origin-bound.py",
+        "--action",
+        "disable",
+        "--revision",
+        "2",
+        "--attempt",
+        "66cd96a5fddd420589b653d56ccbd3e5",
+        "--cookie-file",
+        "/Users/pawangupta/.codex/worktrees/gcp-s2s/tunnex/tests/gcp-s2s-local/.runtime/gateway-owner.cookies",
+        "--receipt",
+        "/private/tmp/gcp-classic-psk-lifecycle-actual-20261011-v1/disable-prepare.jsonl"
+      ],
+      "prepare_receipt": "/private/tmp/gcp-classic-psk-lifecycle-actual-20261011-v1/disable-prepare.jsonl",
+      "write_command": [
+        "/usr/bin/python3",
+        "/private/tmp/gcp-classic-psk-lifecycle-prep-20261011/run-lifecycle-api-origin-bound.py",
+        "--action",
+        "disable",
+        "--revision",
+        "2",
+        "--attempt",
+        "1aabb6168f0c4323b8ab7d89b3d96329",
+        "--cookie-file",
+        "/Users/pawangupta/.codex/worktrees/gcp-s2s/tunnex/tests/gcp-s2s-local/.runtime/gateway-owner.cookies",
+        "--receipt",
+        "/private/tmp/gcp-classic-psk-lifecycle-actual-20261011-v1/disable.jsonl",
+        "--apply"
+      ],
+      "preconditions": [
+        "fresh complete 4ac graph and seven configured FQDN preservation",
+        "original full Classic+HA native proof and real payload baseline"
+      ],
+      "expected_revision": 3,
+      "expected_intent": "disabled",
+      "receipt": "/private/tmp/gcp-classic-psk-lifecycle-actual-20261011-v1/disable.jsonl"
+    },
+    {
+      "phase": "cleanup",
+      "mutation": false,
+      "requires": [
+        "normal API disabled rev3/config1 cleanup_state retained_guard",
+        "fresh exact withdrawal native collector and separate full Classic-empty HA-live production guard validator",
+        "Classic installed CHILD/SAD/policy/config/link/route absent; HA2 live and foreign state preserved"
+      ]
+    },
+    {
+      "phase": "rotate",
+      "prepare_command": [
+        "/usr/bin/python3",
+        "/private/tmp/gcp-classic-psk-lifecycle-prep-20261011/run-lifecycle-api-origin-bound.py",
+        "--action",
+        "rotate",
+        "--revision",
+        "3",
+        "--attempt",
+        "7d2396a03f984d14802641dbcd6c2500",
+        "--cookie-file",
+        "/Users/pawangupta/.codex/worktrees/gcp-s2s/tunnex/tests/gcp-s2s-local/.runtime/gateway-owner.cookies",
+        "--receipt",
+        "/private/tmp/gcp-classic-psk-lifecycle-actual-20261011-v1/rotate-prepare.jsonl",
+        "--key-file",
+        "/var/lib/tunnex-gcp-classic-peer-9c3-20261011-1/new-classic.psk",
+        "--key-purpose",
+        "new"
+      ],
+      "prepare_receipt": "/private/tmp/gcp-classic-psk-lifecycle-actual-20261011-v1/rotate-prepare.jsonl",
+      "write_command": [
+        "/usr/bin/python3",
+        "/private/tmp/gcp-classic-psk-lifecycle-prep-20261011/run-lifecycle-api-origin-bound.py",
+        "--action",
+        "rotate",
+        "--revision",
+        "3",
+        "--attempt",
+        "7d6835bbb7584d708892bf243d19bdde",
+        "--cookie-file",
+        "/Users/pawangupta/.codex/worktrees/gcp-s2s/tunnex/tests/gcp-s2s-local/.runtime/gateway-owner.cookies",
+        "--receipt",
+        "/private/tmp/gcp-classic-psk-lifecycle-actual-20261011-v1/rotate.jsonl",
+        "--key-file",
+        "/var/lib/tunnex-gcp-classic-peer-9c3-20261011-1/new-classic.psk",
+        "--key-purpose",
+        "new",
+        "--apply"
+      ],
+      "preconditions": [
+        "cleanup rev3 and fresh withdrawal as above",
+        "new key generated EXCL root600 on bastion only, no key digest/output"
+      ],
+      "expected_revision": 4,
+      "expected_intent": "disabled",
+      "receipt": "/private/tmp/gcp-classic-psk-lifecycle-actual-20261011-v1/rotate.jsonl"
+    },
+    {
+      "phase": "enable-old-peer",
+      "prepare_command": [
+        "/usr/bin/python3",
+        "/private/tmp/gcp-classic-psk-lifecycle-prep-20261011/run-lifecycle-api-origin-bound.py",
+        "--action",
+        "enable",
+        "--revision",
+        "4",
+        "--attempt",
+        "e1b935c339c448bc98026f1341fe3581",
+        "--cookie-file",
+        "/Users/pawangupta/.codex/worktrees/gcp-s2s/tunnex/tests/gcp-s2s-local/.runtime/gateway-owner.cookies",
+        "--receipt",
+        "/private/tmp/gcp-classic-psk-lifecycle-actual-20261011-v1/enable-old-peer-prepare.jsonl"
+      ],
+      "prepare_receipt": "/private/tmp/gcp-classic-psk-lifecycle-actual-20261011-v1/enable-old-peer-prepare.jsonl",
+      "write_command": [
+        "/usr/bin/python3",
+        "/private/tmp/gcp-classic-psk-lifecycle-prep-20261011/run-lifecycle-api-origin-bound.py",
+        "--action",
+        "enable",
+        "--revision",
+        "4",
+        "--attempt",
+        "faebecb6db71455bbea964c2faaff744",
+        "--cookie-file",
+        "/Users/pawangupta/.codex/worktrees/gcp-s2s/tunnex/tests/gcp-s2s-local/.runtime/gateway-owner.cookies",
+        "--receipt",
+        "/private/tmp/gcp-classic-psk-lifecycle-actual-20261011-v1/enable-old-peer.jsonl",
+        "--apply"
+      ],
+      "preconditions": [
+        "fresh disabled rev4/config1 cleanup retained_guard and withdrawal",
+        "normal current eligible Classic admission"
+      ],
+      "expected_revision": 5,
+      "expected_intent": "enabled",
+      "receipt": "/private/tmp/gcp-classic-psk-lifecycle-actual-20261011-v1/enable-old-peer.jsonl"
+    },
+    {
+      "phase": "old-key-deny",
+      "mutation": false,
+      "requires": [
+        "normal enabled rev5/config1 and cloud original tunnel ID/key unchanged",
+        "0664 old-peer native census current d5/c1/s2; no Classic child or SAD, HA2 live",
+        "full Classic-empty HA-live guard validator and separate real TCP+UDP negative with target self-controls",
+        "classify handshake failure from fixed native diagnostics; empty sets alone do not prove key rejection"
+      ]
+    },
+    {
+      "phase": "disable-old-peer",
+      "prepare_command": [
+        "/usr/bin/python3",
+        "/private/tmp/gcp-classic-psk-lifecycle-prep-20261011/run-lifecycle-api-origin-bound.py",
+        "--action",
+        "disable",
+        "--revision",
+        "5",
+        "--attempt",
+        "2e602a13a642437ca28005106f935d81",
+        "--cookie-file",
+        "/Users/pawangupta/.codex/worktrees/gcp-s2s/tunnex/tests/gcp-s2s-local/.runtime/gateway-owner.cookies",
+        "--receipt",
+        "/private/tmp/gcp-classic-psk-lifecycle-actual-20261011-v1/disable-old-peer-prepare.jsonl"
+      ],
+      "prepare_receipt": "/private/tmp/gcp-classic-psk-lifecycle-actual-20261011-v1/disable-old-peer-prepare.jsonl",
+      "write_command": [
+        "/usr/bin/python3",
+        "/private/tmp/gcp-classic-psk-lifecycle-prep-20261011/run-lifecycle-api-origin-bound.py",
+        "--action",
+        "disable",
+        "--revision",
+        "5",
+        "--attempt",
+        "c7f879f5bed64e3b962430a21ee16ab7",
+        "--cookie-file",
+        "/Users/pawangupta/.codex/worktrees/gcp-s2s/tunnex/tests/gcp-s2s-local/.runtime/gateway-owner.cookies",
+        "--receipt",
+        "/private/tmp/gcp-classic-psk-lifecycle-actual-20261011-v1/disable-old-peer.jsonl",
+        "--apply"
+      ],
+      "preconditions": [
+        "exact enabled rev5 normal graph/FQDN preservation",
+        "old-key-deny evidence retained"
+      ],
+      "expected_revision": 6,
+      "expected_intent": "disabled",
+      "receipt": "/private/tmp/gcp-classic-psk-lifecycle-actual-20261011-v1/disable-old-peer.jsonl"
+    },
+    {
+      "phase": "cleanup-old-peer",
+      "mutation": false,
+      "requires": [
+        "normal disabled rev6/config1 cleanup retained_guard",
+        "fresh native withdrawal and full Classic-empty HA-live guard; foreign exact"
+      ]
+    },
+    {
+      "phase": "route-delete",
+      "prepare_command_template": [
+        "/usr/bin/python3",
+        "/private/tmp/gcp-classic-psk-lifecycle-prep-20261011/run-peer-phase-origin-bound.py",
+        "--phase",
+        "route-delete",
+        "--previous",
+        "/var/lib/tunnex-gcp-classic-peer-9c3-20261011-1/prepare-secret-projected-v1.jsonl",
+        "--previous-sha256",
+        "0be2b7f03c06a204029396b71fab06f5dd50ce6fd7f24a5505a2cc0a5976a730",
+        "--attempt",
+        "6cf797aa78844f16968c259f4d1198bc",
+        "--receipt",
+        "/private/tmp/gcp-classic-psk-lifecycle-actual-20261011-v1/route-delete-prepare.jsonl"
+      ],
+      "prepare_receipt": "/private/tmp/gcp-classic-psk-lifecycle-actual-20261011-v1/route-delete-prepare.jsonl",
+      "write_command_template": [
+        "/usr/bin/python3",
+        "/private/tmp/gcp-classic-psk-lifecycle-prep-20261011/run-peer-phase-origin-bound.py",
+        "--phase",
+        "route-delete",
+        "--previous",
+        "/var/lib/tunnex-gcp-classic-peer-9c3-20261011-1/prepare-secret-projected-v1.jsonl",
+        "--previous-sha256",
+        "0be2b7f03c06a204029396b71fab06f5dd50ce6fd7f24a5505a2cc0a5976a730",
+        "--attempt",
+        "4f7816ac77b04047b3f9324fe2cb4b83",
+        "--receipt",
+        "/private/tmp/gcp-classic-psk-lifecycle-actual-20261011-v1/route-delete.jsonl",
+        "--apply"
+      ],
+      "preconditions": [
+        "fresh normal disabled rev6/config1 cleanup retained_guard",
+        "fresh native full withdrawal/HA-live guard",
+        "fresh complete Cloud inventory and exact dependency set from predecessor"
+      ],
+      "expected_remote_receipt": "/var/lib/tunnex-gcp-classic-peer-9c3-20261011-1/peer-phase-4f7816ac77b04047b3f9324fe2cb4b83.jsonl",
+      "receipt": "/private/tmp/gcp-classic-psk-lifecycle-actual-20261011-v1/route-delete.jsonl",
+      "next_predecessor_hash": "actual exact remote JSONL digest, never local wrapper digest"
+    },
+    {
+      "phase": "tunnel-delete",
+      "prepare_command_template": [
+        "/usr/bin/python3",
+        "/private/tmp/gcp-classic-psk-lifecycle-prep-20261011/run-peer-phase-origin-bound.py",
+        "--phase",
+        "tunnel-delete",
+        "--previous",
+        "/var/lib/tunnex-gcp-classic-peer-9c3-20261011-1/peer-phase-4f7816ac77b04047b3f9324fe2cb4b83.jsonl",
+        "--previous-sha256",
+        "REQUIRES_ACTUAL_PREDECESSOR_SHA256",
+        "--attempt",
+        "4e83bfda994f484490699bf68177d93e",
+        "--receipt",
+        "/private/tmp/gcp-classic-psk-lifecycle-actual-20261011-v1/tunnel-delete-prepare.jsonl"
+      ],
+      "prepare_receipt": "/private/tmp/gcp-classic-psk-lifecycle-actual-20261011-v1/tunnel-delete-prepare.jsonl",
+      "write_command_template": [
+        "/usr/bin/python3",
+        "/private/tmp/gcp-classic-psk-lifecycle-prep-20261011/run-peer-phase-origin-bound.py",
+        "--phase",
+        "tunnel-delete",
+        "--previous",
+        "/var/lib/tunnex-gcp-classic-peer-9c3-20261011-1/peer-phase-4f7816ac77b04047b3f9324fe2cb4b83.jsonl",
+        "--previous-sha256",
+        "REQUIRES_ACTUAL_PREDECESSOR_SHA256",
+        "--attempt",
+        "8a5011c0afd448dba8b96b22da9e254b",
+        "--receipt",
+        "/private/tmp/gcp-classic-psk-lifecycle-actual-20261011-v1/tunnel-delete.jsonl",
+        "--apply"
+      ],
+      "preconditions": [
+        "fresh normal disabled rev6/config1 cleanup retained_guard",
+        "fresh native full withdrawal/HA-live guard",
+        "fresh complete Cloud inventory and exact dependency set from predecessor"
+      ],
+      "expected_remote_receipt": "/var/lib/tunnex-gcp-classic-peer-9c3-20261011-1/peer-phase-8a5011c0afd448dba8b96b22da9e254b.jsonl",
+      "receipt": "/private/tmp/gcp-classic-psk-lifecycle-actual-20261011-v1/tunnel-delete.jsonl",
+      "next_predecessor_hash": "actual exact remote JSONL digest, never local wrapper digest"
+    },
+    {
+      "phase": "tunnel-insert",
+      "prepare_command_template": [
+        "/usr/bin/python3",
+        "/private/tmp/gcp-classic-psk-lifecycle-prep-20261011/run-peer-phase-origin-bound.py",
+        "--phase",
+        "tunnel-insert",
+        "--previous",
+        "/var/lib/tunnex-gcp-classic-peer-9c3-20261011-1/peer-phase-8a5011c0afd448dba8b96b22da9e254b.jsonl",
+        "--previous-sha256",
+        "REQUIRES_ACTUAL_PREDECESSOR_SHA256",
+        "--attempt",
+        "fc0800b8b1ba4cd9b1e8f8f3d4be288d",
+        "--receipt",
+        "/private/tmp/gcp-classic-psk-lifecycle-actual-20261011-v1/tunnel-insert-prepare.jsonl",
+        "--key-purpose",
+        "new"
+      ],
+      "prepare_receipt": "/private/tmp/gcp-classic-psk-lifecycle-actual-20261011-v1/tunnel-insert-prepare.jsonl",
+      "write_command_template": [
+        "/usr/bin/python3",
+        "/private/tmp/gcp-classic-psk-lifecycle-prep-20261011/run-peer-phase-origin-bound.py",
+        "--phase",
+        "tunnel-insert",
+        "--previous",
+        "/var/lib/tunnex-gcp-classic-peer-9c3-20261011-1/peer-phase-8a5011c0afd448dba8b96b22da9e254b.jsonl",
+        "--previous-sha256",
+        "REQUIRES_ACTUAL_PREDECESSOR_SHA256",
+        "--attempt",
+        "c9ec9243561149738e6615eb3c7676ba",
+        "--receipt",
+        "/private/tmp/gcp-classic-psk-lifecycle-actual-20261011-v1/tunnel-insert.jsonl",
+        "--key-purpose",
+        "new",
+        "--apply"
+      ],
+      "preconditions": [
+        "fresh normal disabled rev6/config1 cleanup retained_guard",
+        "fresh native full withdrawal/HA-live guard",
+        "fresh complete Cloud inventory and exact dependency set from predecessor"
+      ],
+      "expected_remote_receipt": "/var/lib/tunnex-gcp-classic-peer-9c3-20261011-1/peer-phase-c9ec9243561149738e6615eb3c7676ba.jsonl",
+      "receipt": "/private/tmp/gcp-classic-psk-lifecycle-actual-20261011-v1/tunnel-insert.jsonl",
+      "next_predecessor_hash": "actual exact remote JSONL digest, never local wrapper digest"
+    },
+    {
+      "phase": "route-insert",
+      "prepare_command_template": [
+        "/usr/bin/python3",
+        "/private/tmp/gcp-classic-psk-lifecycle-prep-20261011/run-peer-phase-origin-bound.py",
+        "--phase",
+        "route-insert",
+        "--previous",
+        "/var/lib/tunnex-gcp-classic-peer-9c3-20261011-1/peer-phase-c9ec9243561149738e6615eb3c7676ba.jsonl",
+        "--previous-sha256",
+        "REQUIRES_ACTUAL_PREDECESSOR_SHA256",
+        "--attempt",
+        "95e596fb06eb4c09b3ff200b3ae494ad",
+        "--receipt",
+        "/private/tmp/gcp-classic-psk-lifecycle-actual-20261011-v1/route-insert-prepare.jsonl"
+      ],
+      "prepare_receipt": "/private/tmp/gcp-classic-psk-lifecycle-actual-20261011-v1/route-insert-prepare.jsonl",
+      "write_command_template": [
+        "/usr/bin/python3",
+        "/private/tmp/gcp-classic-psk-lifecycle-prep-20261011/run-peer-phase-origin-bound.py",
+        "--phase",
+        "route-insert",
+        "--previous",
+        "/var/lib/tunnex-gcp-classic-peer-9c3-20261011-1/peer-phase-c9ec9243561149738e6615eb3c7676ba.jsonl",
+        "--previous-sha256",
+        "REQUIRES_ACTUAL_PREDECESSOR_SHA256",
+        "--attempt",
+        "da07302cf1d347efa70eb0d3634e25f6",
+        "--receipt",
+        "/private/tmp/gcp-classic-psk-lifecycle-actual-20261011-v1/route-insert.jsonl",
+        "--apply"
+      ],
+      "preconditions": [
+        "fresh normal disabled rev6/config1 cleanup retained_guard",
+        "fresh native full withdrawal/HA-live guard",
+        "fresh complete Cloud inventory and exact dependency set from predecessor"
+      ],
+      "expected_remote_receipt": "/var/lib/tunnex-gcp-classic-peer-9c3-20261011-1/peer-phase-da07302cf1d347efa70eb0d3634e25f6.jsonl",
+      "receipt": "/private/tmp/gcp-classic-psk-lifecycle-actual-20261011-v1/route-insert.jsonl",
+      "next_predecessor_hash": "actual exact remote JSONL digest, never local wrapper digest"
+    },
+    {
+      "phase": "enable-new-peer",
+      "prepare_command": [
+        "/usr/bin/python3",
+        "/private/tmp/gcp-classic-psk-lifecycle-prep-20261011/run-lifecycle-api-origin-bound.py",
+        "--action",
+        "enable",
+        "--revision",
+        "6",
+        "--attempt",
+        "60574b5fbcce4d30b5b252cfd241fcdf",
+        "--cookie-file",
+        "/Users/pawangupta/.codex/worktrees/gcp-s2s/tunnex/tests/gcp-s2s-local/.runtime/gateway-owner.cookies",
+        "--receipt",
+        "/private/tmp/gcp-classic-psk-lifecycle-actual-20261011-v1/enable-new-peer-prepare.jsonl"
+      ],
+      "prepare_receipt": "/private/tmp/gcp-classic-psk-lifecycle-actual-20261011-v1/enable-new-peer-prepare.jsonl",
+      "write_command": [
+        "/usr/bin/python3",
+        "/private/tmp/gcp-classic-psk-lifecycle-prep-20261011/run-lifecycle-api-origin-bound.py",
+        "--action",
+        "enable",
+        "--revision",
+        "6",
+        "--attempt",
+        "90fec56656694128a7d15c70d873af6b",
+        "--cookie-file",
+        "/Users/pawangupta/.codex/worktrees/gcp-s2s/tunnex/tests/gcp-s2s-local/.runtime/gateway-owner.cookies",
+        "--receipt",
+        "/private/tmp/gcp-classic-psk-lifecycle-actual-20261011-v1/enable-new-peer.jsonl",
+        "--apply"
+      ],
+      "preconditions": [
+        "all four Cloud operation DONE/readback exact, full foreign inventory preserved",
+        "fresh disabled rev6 cleanup/withdrawal and normal current eligible Classic admission"
+      ],
+      "expected_revision": 7,
+      "expected_intent": "enabled",
+      "receipt": "/private/tmp/gcp-classic-psk-lifecycle-actual-20261011-v1/enable-new-peer.jsonl"
+    },
+    {
+      "phase": "new-key-native-and-packets",
+      "mutation": false,
+      "requires": [
+        "normal enabled rev7/config1 and exact new cloud tunnel/route IDs",
+        "fresh native derive current Classic index/reqid/name and actual namespace; do not reuse historical index8 after cleanup",
+        "source-bound full guard validator rendered against measured current indices; HA2+Classic1 installed/SAD6",
+        "real TCP8080 and UDP9000 exact payload/target nonce/zero drops; original graph/FQDN preservation"
+      ]
+    }
+  ],
+  "recovery": {
+    "automatic_rollback": false,
+    "unknown_response": "retain attempted receipt; normal API audit at observed current revision/intent and Google operation GET-only reconciliation. Never replay POST/DELETE/PUT.",
+    "before_cloud_delete": "If genuine disabled cleanup completes, normal API rotate restore-original from exact immutable old file at fresh quoted revision, then enable against unchanged peer; require fresh full native+packets.",
+    "cloud_deleted_before_insert": "Reconcile exact completed predecessor. Finish canonical tunnel-insert using restore-original and route-insert with existing phase executor; rotate normal API restore-original while disabled, then enable only after fresh withdrawal and current eligibility.",
+    "new_tunnel_inserted": "Finish exact canonical route-insert after known completed insert; retain new key in both peers. Unknown insert outcome remains pending until GET proves actual resource/operation identity.",
+    "post_insert_failure": "Disable normally at fresh current revision, wait genuine cleanup/full withdrawal. Keep fail-closed; replacing a newly allocated tunnel to old key needs a new exact numeric-ID capture and reviewed deletion plan. Old IDs must not be reused.",
+    "cleanup_refusal": "Stop; retain disabled intent/old resources/all receipts and truthful restoration pending. No revoke/journal edit/guard bypass.",
+    "original_key": "Never modified/deleted/hashed/exported; root-bound restore-original purpose only."
+  },
+  "execution_blocker": "Each external native/API gate must be freshly independently verified by ROOT. Predecessor templates cannot execute until actual remote digest is substituted and reviewed."
+}

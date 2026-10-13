@@ -1,0 +1,91 @@
+{
+  "recorded_at_utc": "2026-10-11T10:24:42.007992+00:00",
+  "qualification": "local Azure import-to-disabled-Save component regression and customer operating guide",
+  "root_head": "36a6191525ebf31c9fc8a04c25566c81f52737ec",
+  "candidate_commit": "eab47694f899d3c0f02a1d41813a10bd7f16e789",
+  "source_file_hashes": {
+    "apps/web/test/ipsecworkspace.test.tsx": "787d662729271e7874903fdbb324bd4f4762d4477901631d23da6383f04f68fa",
+    "docs/azure-provider-contract.md": "5fc4b34dd0a1cb6fa1912a5b5c42c9c1ac3e98e994b9c2044f7bc500c84772e3"
+  },
+  "scope": {
+    "production_behavior_changed": false,
+    "source_input_comparison_count": 334,
+    "qualification_source_mismatches": 0,
+    "unchanged_inputs_after_integration": 333,
+    "previous_dirty_files_preserved_byte_exact": 14,
+    "http_api": "mocked component API; not a real control-plane create",
+    "secrets": "synthetic test PSKs only; no production credential/key read or emitted"
+  },
+  "checks": {
+    "focused_new_regression": {
+      "passed": 1,
+      "failed": 0,
+      "deselected": 62,
+      "log_sha256": "7289302053e0ee043b81438c503c0b8b23238a6032b4049598445c0cd0439383",
+      "report_sha256": "336134697641a50951a556dd70d17b59c660e9679a38eec5f430dd9b153692a9"
+    },
+    "shared_ipsec_component_suites": {
+      "passed": 147,
+      "failed": 0,
+      "skipped": 0,
+      "suites": [
+        {
+          "file": "ipsecrotation.test.tsx",
+          "passed": 24
+        },
+        {
+          "file": "ipsectunnelhealth.test.tsx",
+          "passed": 60
+        },
+        {
+          "file": "ipsecworkspace.test.tsx",
+          "passed": 63
+        }
+      ],
+      "log_sha256": "db6567d7faa5a3b2a63f2a7d5f2dd9427086761b49d1fb2644c028405406fe31",
+      "report_sha256": "455fcd6bd00aff98847a0601423a6cffaaec58725a77dbd61b5295317f6878d8"
+    },
+    "independent_review": {
+      "path": "/private/tmp/azure-ui-customer-runbook-independent-review-20261011/review.json",
+      "sha256": "87bb292fa6cedc648e2dd0787f7ba88a48569faa40f65978d1ee0e4d30904bb2",
+      "result": "no concrete correction; bounded local scope approved"
+    },
+    "diff_check": "pass",
+    "reused_mobile_source": {
+      "file": "apps/web/src/site-to-site-workspace.css",
+      "sha256": "788ac3940324b35faa874be6034233fb80157ba126faa04d42382ec8118ac6cc",
+      "new_browser_run": false,
+      "prior_mobile_receipt": "azure-ui-import-mobile-and-fqdn-source-status.json"
+    }
+  },
+  "private_provenance": {
+    "directory": "/private/tmp/azure-ui-import-save-qualification-20261011-1",
+    "baseline_pins_sha256": "966d9f2f9d71821beb0aead394c516de6bd6bb1c2070c41dc81acbce5b45f8c7",
+    "root_integration_sha256": "b057b8e0270cc42b80bcb38eba96397e7b9722185bc57d2b84d1770fa5f78ba9"
+  },
+  "customer_guide": {
+    "topics": [
+      "actual Azure inputs and route/policy setup",
+      "manual entry and secret-bearing Tunnex import",
+      "disabled Save, nonsecret review and separate Enable",
+      "Azure private DNS inbound endpoint, source ownership and DNS/application permissions",
+      "direct IP, DNS, FQDN expiry/revoke and profile recovery checks",
+      "PSK rotation, uncertain writes and retained cleanup ownership"
+    ],
+    "azure_sources": [
+      "https://learn.microsoft.com/en-us/azure/vpn-gateway/configure-bgp",
+      "https://learn.microsoft.com/en-us/azure/dns/dns-private-resolver-overview"
+    ],
+    "source_check_date": "2026-10-11"
+  },
+  "boundaries": {
+    "all_git_changes_local": true,
+    "push_or_deployment": false,
+    "new_cloud_or_peer_action": false,
+    "live_import_save_verified": false,
+    "additional_recovery_kit_staged": false,
+    "recovery_post_or_repeated_start": false,
+    "formal_stories_closed": 0,
+    "formal_story_count": 11
+  }
+}

@@ -1,0 +1,43 @@
+{
+  "accepted_human_stories": [
+    1,
+    2,
+    3,
+    4,
+    7,
+    8
+  ],
+  "accepted_story_count": 6,
+  "action": "/usr/bin/python3 -B /private/tmp/azure-story5-6-standby-stage-v1.py --stage",
+  "actual_automatic_review_reason": "This command exfiltrates49 project source files to bastion and QA destinations; broad approval does not specifically authorize this sensitive payload and these destinations.",
+  "actually_rejected_api_ttl_actions_retried": false,
+  "category": "story5_6_exact_source_stage_automatic_review_rejected",
+  "cloud_api_grant_network_service_mutations": 0,
+  "destinations": {
+    "bastion104.211.219.1": 19,
+    "qa20.219.28.146_via_bastion": 49
+  },
+  "driver": {
+    "path": "/private/tmp/azure-story5-6-standby-stage-v1.py",
+    "sha256": "4b0edc0e1d45c6fadd400ebcfa3d5eb263bd43240e2c33a5e57dd135cf2cc632"
+  },
+  "earlier_inferred_new_inventory_hold": "Superseded by this actual standard-review rejection; broad direct human development/test authorization was considered and new source-only staging was attempted.",
+  "exact_human_question_asked_here": true,
+  "new_live_slices_closed": 0,
+  "no_bypass_or_automatic_replay": true,
+  "recorded_at": "2026-10-12T19:15:11.253424+00:00",
+  "rejected_before_process_creation": true,
+  "remote_source_directories_created": 0,
+  "source_bytes": 349567,
+  "source_files": 49,
+  "source_inventory": {
+    "path": "/private/tmp/azure-story5-6-standby-exact-source-v2.json",
+    "sha256": "c53b4e2dcbfa8c6d7aad36bde3ac4fefd7d7464e764a65a9606a9ee7851da936"
+  },
+  "source_qualification": {
+    "complete_system_or_live_acceptance": false,
+    "named_tests_passed": 66
+  },
+  "uploads": 0,
+  "version": 1
+}

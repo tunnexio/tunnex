@@ -1,0 +1,16 @@
+FRRouting 10.6.1 (Alpine package frr-10.6.1-r0)
+License: GPL-2.0-or-later (Alpine package metadata).
+Upstream source: https://github.com/FRRouting/frr/tree/frr-10.6.1
+Exact distribution recipe: https://gitlab.alpinelinux.org/alpine/aports/-/tree/23a7c9f1a27473a1a8a09ad3433d4a7a5b0fb62c/community/frr
+Official package URLs and SHA256 checksums are recorded in PROVENANCE.json.
+The package is installed with Alpine signature verification. Packaging does not
+start any routing daemon or enable BGP runtime capability. bgpd must use
+--no_kernel with managed zebra observation; Tunnex owns learned kernel routes.
+
+Managed zebra observer is built from the exact pinned upstream source archive
+recorded in PROVENANCE.json. zebra-no-sys-admin.patch removes only initial
+SYS_ADMIN demand and explicitly refuses namespace VRF backend; unused bfdd,
+staticd and watchfrr are disabled. Its source-built libfrr is isolated through
+/opt/tunnex-bgp/lib RPATH. Signed packaged bgpd/vtysh keep packaged libraries.
+Bgpd uses supported -S within the container's existing capability bounding set
+and -n (no kernel installs); no SYS_ADMIN capability is added to the node.

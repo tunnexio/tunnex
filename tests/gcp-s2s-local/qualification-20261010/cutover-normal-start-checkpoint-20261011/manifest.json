@@ -1,0 +1,18 @@
+{
+  "files": [
+    {
+      "file": "actual-poststart-measure-v1.json",
+      "source": "/private/tmp/gcp-cloud-replacement-0249f7cf-20261011/actual-poststart-measure-v1.json",
+      "sha256": "43345e353bddab7ee94d8f3935a18728aed26ffc5e0f2f25012488d993874708",
+      "exact_public_measurement": true
+    },
+    {
+      "file": "actual-create-start-public-summary.json",
+      "source": "/private/tmp/gcp-cloud-replacement-0249f7cf-20261011/create-start-1791677154892729000.receipt.json",
+      "source_sha256": "5aa95e418e93f866843f1a4cfb9bf1661784aafc0c3f3f72575618f6d87f69c6",
+      "sha256": "cf7897d1fb10bcaca83aff5feea1860d11a4bfec6cf87b6d89caa672ea7d0c16"
+    }
+  ],
+  "normal_start_passed": true,
+  "full_readiness_accepted": false
+}

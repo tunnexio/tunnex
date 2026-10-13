@@ -1,0 +1,55 @@
+{
+  "schema_version": 1,
+  "scope": "Actual normal API never-enabled QA creation; browser two-tab rotation awaits required human credential handoff; no rotation/CAS success claim",
+  "connection_id": "431fa305-4d3d-4c38-b0e4-88068c0e2297",
+  "tunnel_id": "d4ef2357-ec8d-47e6-af09-68f9381fc060",
+  "desired_revision": 1,
+  "configuration_revision": 1,
+  "desired_intent": "disabled",
+  "outside_peer": "34.131.121.30",
+  "remote_prefix": "10.82.0.0/24",
+  "old_connection_count": 8,
+  "new_connection_count": 9,
+  "original_connections_preserved": true,
+  "never_enabled": true,
+  "source_hashes": {
+    "cas.py": "9be1f3755a9f5407cce1ea9c86d0f4ae081fee3ff4e6f0649bb0a9d59941832d",
+    "test_cas.py": "d9977f81e55fd4a4d4301ae259d4e1ea7b3fa3f234f4c8ea22e9c3f9cab6edee",
+    "cas-create.py": "4511528b70bd65cf779b73c1328b91e18cbc9af9bb11071f4eda6d6eaa5b369b",
+    "cas-create-v2.py": "98e5b9575c783145be6a8878d6a903a6145dbdd06def6681b5c1c70b74b51923",
+    "cas-create-v3.py": "e62dfa4dff1833d11d0fd85d982ec78527284212a8eefc402be0fb81bf6fefa1",
+    "expiry.py": "7e8ce129762160991edd6e61c1df9b78791a241d3ed10d584a635ab5ccd4c321",
+    "test_expiry.py": "5c6e54203ed76f27eb5945ab2650c1e6133f289249612ad6a6cc795784cd88a4"
+  },
+  "attempts": [
+    {
+      "name": "create-v1",
+      "receipt_sha256": "02d665b72a16112e2aca10891a46cb9b930803e5bbe953f95dc28e6a16c2dc2d",
+      "completed": false,
+      "error_type": "ValueError",
+      "status": null
+    },
+    {
+      "name": "create-v2",
+      "receipt_sha256": "8533134649fcc34aefc78ee56da7a3b9efef64c7c6d9c42243a973953b61160a",
+      "completed": false,
+      "error_type": "HTTPError",
+      "status": 409
+    },
+    {
+      "name": "create-v3",
+      "receipt_sha256": "97abd066ce2a7782840630262de82bc369c1e8a8c286c88c877f025627311241",
+      "completed": true,
+      "original_connections_preserved": true,
+      "never_enabled": true
+    }
+  ],
+  "expiry_phase": "read-only baseline prepared; no lease write or expiry packet acceptance yet",
+  "limitations": [
+    "First create refused paginated inventory shape before POST; retained",
+    "Second save returned409; owned active peer duplicate input matches unique-binding source, server SQL constraint provenance not proven",
+    "Third save uses distinct inert owned client peer; original eight public records preserved",
+    "No real tunnel was enabled for QA CAS; no active peer key copied",
+    "Two blank browser dialogs are at original revision1; pending human entry/submission, no UI stale-save acceptance claimed"
+  ]
+}

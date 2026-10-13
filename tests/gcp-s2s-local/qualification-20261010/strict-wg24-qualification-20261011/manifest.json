@@ -1,0 +1,31 @@
+{
+  "files": [
+    {
+      "file": "actual063-public-summary.json",
+      "sha256": "d3b878b5a807060c46a353e08df6b968f480c051cb4109c923330699b8fb4281"
+    },
+    {
+      "file": "capture-post-lifecycle-cutover-wg24-v1.remote.py",
+      "sha256": "f198a449c762e10fec840ac470709aa02dfc147d6dff85e2d07fede28892ac6c"
+    },
+    {
+      "file": "read-post-lifecycle-cutover-wg24-v1.py",
+      "sha256": "cd323d57097603975047936967d9e5d745ac76856fefa1790767c43135700eb3"
+    },
+    {
+      "file": "source-proof-public-summary.json",
+      "sha256": "acffe44fd6801a8c514a94b2038adebc4752738edac6d8076370ec795c296fdd"
+    },
+    {
+      "file": "test_wg24_source_capture.py",
+      "sha256": "ef5b205671c32094dfc8e5dd01759e7acd65b8b919d00ab632aa408700354260"
+    },
+    {
+      "file": "verify-wg24-source-proof.py",
+      "sha256": "ce355736aad6124afcd18ade219d0c853ed52603750f7dc2d120e1cb60da595f"
+    }
+  ],
+  "public_hashes_only_receipt_projection": true,
+  "strict063_observation_completed": true,
+  "cutover_accepted": false
+}

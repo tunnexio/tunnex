@@ -1,0 +1,121 @@
+{
+  "actual_result": {
+    "binding_path": "/home/ubuntu/tunnex-azure-lab/tests/azure-s2s-local/.runtime/maxproof-window-329bbb3e-3370-451a-b837-9cf1f47c3383/binding.json",
+    "native": {
+      "bgp": {
+        "peers": [
+          {
+            "accepted_prefixes": 1,
+            "slot": 1,
+            "state": "established"
+          },
+          {
+            "accepted_prefixes": 1,
+            "slot": 2,
+            "state": "established"
+          }
+        ],
+        "routes": [
+          "10.231.0.0/16"
+        ]
+      },
+      "configuration_revision": 1,
+      "connection_id": "2d8d5f0a-ffdd-4781-b230-81901c4c3224",
+      "desired_revision": 2,
+      "gateway_id": "01a1252e-14d2-7edc-b181-903325c4c56a",
+      "historical_boot_entry_count": 1,
+      "historical_proof_sha256": "d6ebe190917e77423dbb1199a5286c6d01894d9b6d2667e1e3fc4ec6771d906f",
+      "historical_stopped_journal_sha256": "92a80b5758cbcac11bb0c14f56787ee47eb58a1210b2c119b8304ac2196ddf79",
+      "host_machine_identity_source": "external_root_attestation",
+      "journal_entries": 30,
+      "journal_sha256": "ea1cc988751c170d8bb1dafd61a3709e3ef2f59afcb74badc8c1e13475b2dbcc",
+      "kind": "owned_max_prefix_baseline",
+      "namespace": {
+        "device": 4,
+        "inode": 4026532430
+      },
+      "native": {
+        "sad": 4,
+        "spd_fwd": 2,
+        "spd_in": 2,
+        "spd_out": 2
+      },
+      "node_executable_sha256": "f8b43ba1835215f6a0a57069fcef88809f71b41f04326c6fbb757a7f8ad4354f",
+      "observed_at": "2026-10-11T19:25:28.140532671Z",
+      "org_id": "01a1252d-34fe-72bb-a40b-222a0a0bf9a2",
+      "scope": "Independent bracketed native observation only; no authority, synthetic acknowledgement or packet readiness",
+      "site_id": "01a1252d-3612-7a65-ad65-2dd5f4ebcd72",
+      "traffic_counters_monotonic_advanced": false,
+      "tunnels": [
+        {
+          "owned_ike": 1,
+          "owned_installed_children": 1,
+          "slot": 1,
+          "state": "up"
+        },
+        {
+          "owned_ike": 1,
+          "owned_installed_children": 1,
+          "slot": 2,
+          "state": "up"
+        }
+      ],
+      "version": 1
+    },
+    "native_path": "/home/ubuntu/tunnex-azure-lab/tests/azure-s2s-local/.runtime/maxproof-window-329bbb3e-3370-451a-b837-9cf1f47c3383/native-receipt.json",
+    "normal": {
+      "connection": {
+        "application_state": "applied",
+        "cleanup_state": "not_required",
+        "desired_intent": "enabled",
+        "desired_revision": 2,
+        "id": "2d8d5f0a-ffdd-4781-b230-81901c4c3224"
+      },
+      "immutable_configuration_sha256": "44c0526d20c8ff2dc5c997e499797c7668e22189717a5f59439e3f5c1f27da51",
+      "normal_connection": {
+        "application_state": "applied",
+        "cleanup_state": "not_required",
+        "configuration_revision": 1,
+        "desired_intent": "enabled",
+        "desired_revision": 2,
+        "id": "2d8d5f0a-ffdd-4781-b230-81901c4c3224",
+        "maximum_prefixes": 8,
+        "profile_id": "azure-active-active-bgp-ipv4-v1",
+        "remote_prefixes": [
+          "10.231.0.0/16"
+        ]
+      },
+      "observed_at": "2026-10-11T19:25:26.229359Z",
+      "phase": "warm-baseline-read",
+      "policy_count": 8,
+      "purpose": "baseline",
+      "runtime_observation": "not_requested",
+      "scope": "Exact normal eight-policy readback only; native observer independently checks complete current guard, not a policy-to-native compiler proof",
+      "version": 1,
+      "warm_context_sha256": "79d379b3a33a7da5d58a6019c26777b95e1953227b868d30fbcef33dd5e66e98",
+      "warm_policy_sha256": "217b0a939e21c33ae817c2f327ae07beb38669f273e23f40e963a45a7b306ad4",
+      "warm_resource_sha256": "481a1b7abbb8676cfcec25564b45fdb17bab8046b003ee838f6529d1622296a6"
+    },
+    "normal_path": "/run/tunnex-qualification/azure-warm-eight-ffb-d71be942-6631-4eb4-8163-f9edbd2396ed/normal-native-71fc3fcd-d774-4852-be94-76072ad6e828.json",
+    "phase": "native",
+    "private_run_id": "azure-warm-eight-native-bebc6684-4123-4c6e-bd88-423928acee11",
+    "result": {
+      "binding_sha256": "a5e0454f618e8535f78fb2b755721088a1f453fdb40b14cc84108e53a393fb4c",
+      "category": "independent_observation_written",
+      "mode": "baseline",
+      "private_run_id": "maxproof-window-329bbb3e-3370-451a-b837-9cf1f47c3383",
+      "receipt_sha256": "4ad2913ba91c7e1a8501a49592e9a898992d108b94db333b7e94dadc80232021",
+      "version": 1
+    },
+    "returncode": 0,
+    "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "stdout_sha256": "44409470229fe5cd36c743566aba92e31e06e8198bac67bc5920949b299e4f35",
+    "transport_seconds": 3.986,
+    "warm_root": "/run/tunnex-qualification/azure-warm-eight-ffb-d71be942-6631-4eb4-8163-f9edbd2396ed"
+  },
+  "node_started_at": "2026-10-11T19:06:16.205224164Z",
+  "scope": "Fresh post-restart strict native and normal readback; no packet recovery or warm-restart acceptance inferred",
+  "source_commit": "2b88065f06bb5a3d684880296d881b5a96bdb43a",
+  "version": 1,
+  "warm_restart_acceptance": false
+}

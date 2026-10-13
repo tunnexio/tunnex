@@ -1,0 +1,41 @@
+{
+  "accepted": false,
+  "allow_count": 8,
+  "applied_hash": "0ab92f08950b",
+  "cause": "ownership projector clones the second empty nonnil AllowedSources slice with append(nil,...), changing [] to null in hash-significant JSON",
+  "completed": false,
+  "consistent_checkpoints": true,
+  "dns_profile_count": 2,
+  "expected_hash": "5df9f19bf4f5",
+  "fqdn_generation_count": 0,
+  "gcp9_accepted": false,
+  "patch_applied_or_requalified": false,
+  "profile_allowed_sources_counts": [
+    1,
+    0
+  ],
+  "reason_code": "policy_degraded",
+  "receipt_sha256": "403c0469095c7649fb83e51ac05ca06bf5194104a03e62837a918d4b88c4a899",
+  "served_policy_hash": "5df9f19bf4f5",
+  "served_policy_version": 11,
+  "source_clone_variants": {
+    "all_profiles_allowed_sources_clone_hash": "0ab92f08950b",
+    "all_profiles_three_slice_clone_hash": "0ab92f08950b",
+    "per_profile": [
+      {
+        "allowed_sources_clone_hash": "5df9f19bf4f5",
+        "endpoints_clone_hash": "5df9f19bf4f5",
+        "profile_index": 0,
+        "profile_three_slice_clone_hash": "5df9f19bf4f5",
+        "zone_suffixes_clone_hash": "5df9f19bf4f5"
+      },
+      {
+        "allowed_sources_clone_hash": "0ab92f08950b",
+        "endpoints_clone_hash": "5df9f19bf4f5",
+        "profile_index": 1,
+        "profile_three_slice_clone_hash": "0ab92f08950b",
+        "zone_suffixes_clone_hash": "5df9f19bf4f5"
+      }
+    ]
+  }
+}

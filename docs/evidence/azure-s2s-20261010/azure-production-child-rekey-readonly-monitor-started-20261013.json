@@ -1,0 +1,55 @@
+{
+  "acceptance": false,
+  "accepted_human_stories": [
+    1,
+    2,
+    3,
+    4,
+    7,
+    8
+  ],
+  "accepted_story_count": 6,
+  "bastion": "104.211.219.1",
+  "category": "production_child_rekey_readonly_monitor_and_packet_wait_confirmed_live",
+  "event_subscription": {
+    "event_count_at_latest_poll": 0,
+    "live_handle_repolled": true,
+    "private_run_id": "azure-production-child-events-f1c24dde-f6fb-410b-9ade-722eab20313a",
+    "protocol": "EVENT_REGISTER child-rekey only; confirmation received",
+    "raw_events_stay_private_on_QA": true,
+    "session_id": 82479
+  },
+  "new_live_slices_closed": 0,
+  "new_project_source_or_binary_transfers": 0,
+  "node_sha256": "90937a36268f998604d713a77a93b8846556a59e744aaa8021e85d45393f5e61",
+  "normal_configuration_revision": 1,
+  "normal_desired_revision": 18,
+  "observed_at": "2026-10-12T19:50:23.068153+00:00",
+  "ordinary_expiry_depends_on_dns_repair": false,
+  "packet_coordinator": {
+    "administrative_code_sha256": "a1f7feebe993d792d966daeb530537f172bbc2e64c229220601e2330fa1b2172",
+    "installed_snapshot_binary_hash_checked": true,
+    "namespace_checks_at_packet_boundaries": true,
+    "observed_child_remaining_seconds": [
+      883,
+      1030
+    ],
+    "observed_wait_before_native_seconds": 753.0,
+    "original_native_before_after_and_exact_event_correlation": "required, not yet complete",
+    "pid": 571263,
+    "private_run_id": "azure-production-child-packets-2f661b08-55e4-4ccd-804a-7f0ffef6c84d",
+    "session_id": 58931,
+    "status": "live waiting before genuine native and original packet windows",
+    "timing_rechecked_at_each_packet_start": true
+  },
+  "priority_human_stories": [
+    6,
+    5
+  ],
+  "priority_source_dispatch": "existing exact TTL/eight-operation and49-file stage approvals still pending after actual automatic review rejection",
+  "project_tools": "Existing pinned6af/0eb/047/b59 only; new generic administrative command orchestration passed standard review",
+  "qa": "20.219.28.146",
+  "scope": "Only supplemental natural production CHILD evidence while priority5/6 dispatch is blocked. No IKE/PSK or wholeStory10 acceptance.",
+  "timer_control_restart_cloud_api_grant_mutations": 0,
+  "version": 1
+}

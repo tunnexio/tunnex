@@ -1,0 +1,16 @@
+{
+  "source_commit": "13007c405cece2ab3a1a790b1b539980479336a3",
+  "image": "sha256:9a051bbdc9eed316bfabf2914e26a1c5f454927665902b0c7e0d2ded8a5374d7",
+  "production_ipsec_go_files_byte_identical": 214,
+  "tests": {
+    "command": "go test ./cmd/gcp-poststop-guard",
+    "status": "pass",
+    "seconds": 0.625
+  },
+  "artifact": {
+    "path": "/private/tmp/gcp-poststop-qualifier-13007c40-amd64",
+    "sha256": "9d2ee9f02e83bbf6395bcbf362e82b373af223df4112ceff8a63b649ab8596a8"
+  },
+  "change": "Reviewed f1 qualifier source/image pins and matching test fixture only; production verifier unchanged",
+  "scope": "Observational post-stop guard qualifier; no remote execution or cleanup authority"
+}

@@ -1,0 +1,1 @@
+059 and060 remain failed strict capture/diagnostic observations.061 is explicitly unqualified schema observation, not accepted cutover/source preservation. No private stderr or raw logs are included. Later source proof is required; these observations do not reverse separate accepted guard/payload recovery.

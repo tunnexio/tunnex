@@ -1,0 +1,81 @@
+{
+  "accepted": true,
+  "cleanup_errors": [],
+  "completed": true,
+  "container_id": "19121dbc4b6b6dc9d173ba1c705fe10603f17b18d08e69528bd6e7ee1685079f",
+  "elapsed_seconds": 76.44062095800001,
+  "fault_proof": {
+    "cleanup_verified": true,
+    "completed": true,
+    "one_peer_fault": true,
+    "positive_udp4500_drop": true
+  },
+  "image": "sha256:e42d38ab723dc56a1ba207b9c83f2636785f96567bb1c94318b24a9388b5443c",
+  "limits": {
+    "ci_or_publication": false,
+    "continuous_availability": false,
+    "exact_outage_duration": false,
+    "host_ha": false,
+    "sla": false,
+    "zero_loss": false
+  },
+  "prior_v2": {
+    "accepted": false,
+    "reason": "strict recovery duplicate-primary census refused; original failure retained",
+    "receipt_sha256": "e797d1297fe838b62a6f155714dccf83bc614f528d0ad4f974a6a7c48fc75f9c",
+    "target_original_source_restored": true
+  },
+  "receipt_sha256": {
+    "fault_and_flow": "dbe07d297c032f9c73d07daca74c038a1f2dab713e8d2db665b3caf418c1e5f0",
+    "overall": "07549379cedd4e18286db637dddcc2615508cf9105332a19d9aef1619303304c",
+    "samples": "afbb7140124f89bfaad54b1021fefe51ccca090f063c767825bc942228d36ec3",
+    "target_restore": "7c13ee03da508e360a98a260886ae1090d443f17c4acd50a0bf5846f90016cfb"
+  },
+  "samples": {
+    "elapsed_seconds": 59.131692205002764,
+    "same_tcp_tuple": true,
+    "same_udp_socket": true,
+    "sample_count": 567,
+    "streams": {
+      "fresh_tcp": {
+        "attempt_count": 99,
+        "max_observed_reply_interval_seconds": 14.781136363002588,
+        "max_response_latency_seconds": 0.008414030002313666,
+        "reply_count": 86,
+        "timeout_count": 11,
+        "trailing_no_reply_seconds_lower_bound": 0.01559519900183659,
+        "transport_failure_count": 2
+      },
+      "fresh_udp": {
+        "attempt_count": 92,
+        "max_observed_reply_interval_seconds": 23.027248539998254,
+        "max_response_latency_seconds": 0.004165530001046136,
+        "reply_count": 80,
+        "timeout_count": 12,
+        "trailing_no_reply_seconds_lower_bound": 0.08388989600643981,
+        "transport_failure_count": 0
+      },
+      "tcp": {
+        "attempt_count": 187,
+        "max_observed_reply_interval_seconds": 8.34890577600163,
+        "max_response_latency_seconds": 8.098718239001755,
+        "reply_count": 187,
+        "timeout_count": 2,
+        "trailing_no_reply_seconds_lower_bound": 0.13772498100297526,
+        "transport_failure_count": 0
+      },
+      "udp": {
+        "attempt_count": 187,
+        "max_observed_reply_interval_seconds": 10.023516789995483,
+        "max_response_latency_seconds": 0.003833278999081813,
+        "reply_count": 183,
+        "timeout_count": 4,
+        "trailing_no_reply_seconds_lower_bound": 0.06220510700222803,
+        "transport_failure_count": 0
+      }
+    }
+  },
+  "source": "cac7ffd17e162841f90fa8a7299587349e62d262",
+  "target_original_source_restored": true,
+  "target_original_source_sha256": "eda322aa4767f45dd880a1fd61d2329c95f374006d0803f5f0af848ea03ac997"
+}

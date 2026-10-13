@@ -1,0 +1,26 @@
+{
+  "scope": "offline saved-capture diagnosis; no new cloud/API/SSH observation or mutation",
+  "capture_sha256": "744c4cbf3e8353576dda2da3122deed0e9fe372b906d9023da02749d31daae5a",
+  "guard_revision": 21401,
+  "guard_digest": "2cdad2f1d1d5b603019223f1954e364d7babfc2a4b3546134db075d541bbebe4",
+  "full_production_readback": true,
+  "structural_withdrawal": true,
+  "identity_pins_match": true,
+  "expected_and_actual_ha_permit_member_counts": [
+    0,
+    0,
+    0
+  ],
+  "expected_and_actual_classic_permit_member_counts": [
+    0,
+    0,
+    0
+  ],
+  "expected_and_actual_matching_forward_tcp8080_rules": 0,
+  "expected_and_actual_matching_forward_udp9000_rules": 0,
+  "offline_reviewed_observer_deny_both_protocols": true,
+  "permanent_remote81_drops_present": true,
+  "cause_of_preallow_refusal": "Correct refusal: current trusted template and actual table contain no application allows or live permit members. This is not an observer/parser error.",
+  "underlying_runtime_withdrawal_cause": "Not established from this snapshot; no stale healthy state inferred",
+  "next_requirement": "Normal runtime positive current state and fresh complete guard proof before any expiry authority mutation"
+}

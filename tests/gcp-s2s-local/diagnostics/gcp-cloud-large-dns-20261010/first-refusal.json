@@ -1,0 +1,11 @@
+{
+  "source_sha256": "7210ba2df18ac2ff4713f6313c68b248d0e74e713b25e324f0c3768725ddbe1d",
+  "profile": "ha",
+  "started": true,
+  "completed": false,
+  "created": false,
+  "error_type": "ValueError",
+  "execution_chunk": "b8e164",
+  "reconciliation_chunk": "0d06a9",
+  "cause": "Exact owned Google CloudDNS binding uses compute.googleapis.com API URL and documented optional kind metadata. Earlier strict dictionary comparison refused before any record creation. No Classic operation executed; private partial receipt retained; no blind replay."
+}

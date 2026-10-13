@@ -1,6 +1,9 @@
 package ipsec
 
-import "github.com/google/uuid"
+import (
+	"github.com/google/uuid"
+	"github.com/tunnexio/tunnex/apps/node/internal/nodepolicy"
+)
 
 // Private authenticated control-channel DTOs. Material is memory-only and must never enter logs or the journal.
 type RuntimeGrant struct {
@@ -12,8 +15,12 @@ type RuntimeGrant struct {
 	RuleID      string `json:"rule_id"`
 }
 type RuntimePolicy struct {
-	Hash   string         `json:"hash"`
-	Grants []RuntimeGrant `json:"grants"`
+	FQDNPolicyVersion   int                             `json:"fqdn_policy_version,omitempty"`
+	FQDNGrants          []RuntimeFQDNGrant              `json:"fqdn_grants,omitempty"`
+	Hash                string                          `json:"hash"`
+	Grants              []RuntimeGrant                  `json:"grants"`
+	DNSResolverGrants   []RuntimeDNSResolverGrant       `json:"dns_resolver_grants,omitempty"`
+	DNSResolverProfiles []nodepolicy.DNSResolverProfile `json:"dns_resolver_profiles,omitempty"`
 }
 type RuntimeTunnel struct {
 	ID                    uuid.UUID `json:"id"`
@@ -34,6 +41,20 @@ type RuntimeTunnel struct {
 
 // RuntimeManifest contains CP-owned stable intent, never observed namespace or
 // interface indices, credentials, dynamic policy authority or daemon output.
+type BGPConfig struct {
+	LocalASN        uint32 `json:"local_asn"`
+	RemoteASN       uint32 `json:"remote_asn"`
+	RouterID        string `json:"router_id"`
+	MaximumPrefixes int    `json:"maximum_prefixes"`
+}
+
+type RuntimeRetainedGuardPredecessor struct {
+	ConnectionID      uuid.UUID `json:"connection_id"`
+	DeliveryID        uuid.UUID `json:"delivery_id"`
+	CleanupDeliveryID uuid.UUID `json:"cleanup_delivery_id"`
+	OwnershipDigest   string    `json:"ownership_digest"`
+}
+
 type RuntimeManifest struct {
 	OrgID                  uuid.UUID        `json:"org_id"`
 	NodeID                 uuid.UUID        `json:"node_id"`
@@ -46,8 +67,17 @@ type RuntimeManifest struct {
 	LocalPrefixes          []string         `json:"local_prefixes"`
 	RemotePrefixes         []string         `json:"remote_prefixes"`
 	Tunnels                [2]RuntimeTunnel `json:"tunnels"`
+	// TransportVersion/TunnelCount are explicit one-slot intent, omitted on
+	// existing AWS and HA deliveries so their ownership digests are unchanged.
+	TransportVersion *int `json:"transport_version,omitempty"`
+	TunnelCount      *int `json:"tunnel_count,omitempty"`
 	// RecoveryVersion is explicit delivery authorization; nil preserves the legacy digest.
-	RecoveryVersion *int `json:"recovery_version,omitempty"`
+	RecoveryVersion               *int                              `json:"recovery_version,omitempty"`
+	BGP                           *BGPConfig                        `json:"bgp,omitempty"`
+	BGPVersion                    *int                              `json:"bgp_version,omitempty"`
+	RetainedGuardPredecessors     []RuntimeRetainedGuardPredecessor `json:"retained_guard_predecessors,omitempty"`
+	AzureBGPRecreationVersion     *int                              `json:"azure_bgp_recreation_version,omitempty"`
+	AzureProfileRecreationVersion *int                              `json:"azure_profile_recreation_version,omitempty"`
 }
 type RuntimeDelivery struct {
 	ID                     uuid.UUID       `json:"delivery_id"`
@@ -97,14 +127,23 @@ type RuntimeAcknowledgement struct {
 	GuardRetained bool `json:"guard_retained"`
 }
 type RuntimeLeaseRequest struct {
-	DeliveryID      uuid.UUID `json:"delivery_id"`
-	DesiredRevision int64     `json:"desired_revision"`
-	PolicyHash      string    `json:"policy_hash"`
-	Nonce           string    `json:"nonce"`
+	FQDNGrants      []RuntimeFQDNGrant `json:"fqdn_grants,omitempty"`
+	DeliveryID      uuid.UUID          `json:"delivery_id"`
+	DesiredRevision int64              `json:"desired_revision"`
+	PolicyHash      string             `json:"policy_hash"`
+	Nonce           string             `json:"nonce"`
+}
+
+// RuntimeFQDNPermit is response-only authority for one exact v2 descriptor.
+// Zero is an explicit selective withdrawal; omission is never authority.
+type RuntimeFQDNPermit struct {
+	GrantDigest string `json:"grant_digest"`
+	TTLMS       int64  `json:"ttl_ms"`
 }
 type RuntimeLease struct {
 	RuntimeLeaseRequest
-	TTLMS int64 `json:"ttl_ms"`
+	TTLMS       int64               `json:"ttl_ms"`
+	FQDNPermits []RuntimeFQDNPermit `json:"fqdn_permits,omitempty"`
 }
 
 type RuntimeTunnelStatus struct {
@@ -113,7 +152,27 @@ type RuntimeTunnelStatus struct {
 	Status   string    `json:"status"`
 	Selected bool      `json:"selected"`
 }
+type RuntimeBGPPeerStatus struct {
+	Slot              int    `json:"slot"`
+	State             string `json:"state"`
+	AcceptedPrefixes  int    `json:"accepted_prefixes"`
+	InstalledPrefixes int    `json:"installed_prefixes"`
+	RejectedPrefixes  *int   `json:"rejected_prefixes,omitempty"`
+}
+type RuntimeBGPRoute struct {
+	Prefix string `json:"prefix"`
+	Slot   int    `json:"slot"`
+}
+type RuntimeBGPStatus struct {
+	Version  int                     `json:"version"`
+	Sequence uint64                  `json:"sequence"`
+	Peers    [2]RuntimeBGPPeerStatus `json:"peers"`
+	Routes   []RuntimeBGPRoute       `json:"routes"`
+}
 type RuntimeStatusReport struct {
+	TransportVersion      *int                   `json:"transport_version,omitempty"`
+	TunnelCount           *int                   `json:"tunnel_count,omitempty"`
+	BGP                   *RuntimeBGPStatus      `json:"bgp,omitempty"`
 	RecoveryVersion       *int                   `json:"recovery_version,omitempty"`
 	SelectionSequence     *uint64                `json:"selection_sequence,omitempty"`
 	ActiveSlot            *int                   `json:"active_slot,omitempty"`
@@ -121,4 +180,11 @@ type RuntimeStatusReport struct {
 	DesiredRevision       int64                  `json:"desired_revision"`
 	ConfigurationRevision int64                  `json:"configuration_revision"`
 	Tunnels               [2]RuntimeTunnelStatus `json:"tunnels"`
+}
+
+// RuntimeMaintenanceResult can acknowledge only an exact previously applied
+// delivery after fresh native proof and a committed replacement lease.
+type RuntimeMaintenanceResult struct {
+	Acknowledgement RuntimeAcknowledgement
+	Report          RuntimeStatusReport
 }

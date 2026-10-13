@@ -1,0 +1,115 @@
+{
+  "scope": "Approved dedicated gateway normal cutover and separate bounded native/guard/payload checkpoint; no complete story acceptance",
+  "source": "fbf3b87b1babc60ee21bb463f93ab0a121bc9f03",
+  "container_id": "3ee164a8d677e81abad5cb7184ab9613e53ca177071108e26eab51fe70a040a8",
+  "image": "sha256:523c28ba5ab005c40b3af4b75ff3c642f549c9e12ed12922cc263b808da1c14a",
+  "prior_rejected_before_execution_preserved": true,
+  "subsequent_direct_human_approval": true,
+  "stop": {
+    "exit_code": 0,
+    "oom_killed": false,
+    "running": false,
+    "stop_attempted": true,
+    "stop_command_exit": 0,
+    "immutable_journal_matches": true,
+    "retained_binding_matches": true,
+    "readback_errors": []
+  },
+  "withdrawal": {
+    "owned_table_prefix_refusal_verified": true,
+    "permit_sets_actually_empty": true,
+    "qualifier_source": "fbf3b87b1babc60ee21bb463f93ab0a121bc9f03"
+  },
+  "wg_objects_removed": 24,
+  "provenance_sha256": {
+    "actual-cutover-fbf-created.json": "2d9f13592c9c6e293610219d4d7e481b5b3db3282e5a6364d7f90dd2430d113b",
+    "actual-cutover-fbf-started.json": "e868eeb6c081f29422fdf7cedd5a0d31e7c49c5df92ca69cfa629c8122d2bcc2",
+    "actual-cutover-fbf-stopped.json": "d7bac9e2d8c900ab085ecf146aa4b811ae5d8b64323c7327d1fb47e380952767",
+    "actual-cutover-fbf-fresh-owned-prefix-verification-v2.json": "0df19805ea9bc862efd5e25fd648dbdcce4e5be0f05c6c8a3d438d6aeb3a8c0d",
+    "actual-cutover-fbf-observed-wg-table-close-v2.json": "f60d2e41becad883dbf0d5883888a6ba256b8662dcaa9bf8f3f887d47d70a3bb"
+  },
+  "scoped_checkpoint": {
+    "completed": true,
+    "source": "fbf3b87b1babc60ee21bb463f93ab0a121bc9f03",
+    "container": "3ee164a8d677e81abad5cb7184ab9613e53ca177071108e26eab51fe70a040a8",
+    "api_generation_qualified": false,
+    "elapsed_seconds": 15.155596790999994,
+    "receipt_sha256": "af44282e0f60a9c6adce235a05d7ee177a7401af776305c7664cf993126334e1"
+  },
+  "classic_dns_cases": [
+    {
+      "case": "app",
+      "query_completed": true,
+      "query_accepted": true,
+      "aggregate_completed": true,
+      "native_before": true,
+      "native_after": true,
+      "receipt_sha256": "ce0c019d0c92c5c337d8e11de8f05bea528aaea178f570d3a18cabdaba2671c9",
+      "aggregate_sha256": "8364133f20083ce5a3e4f140bc74b3a2898be0cc35e9dab7e97e411f6ea2c930"
+    },
+    {
+      "case": "alias",
+      "query_completed": true,
+      "query_accepted": true,
+      "aggregate_completed": true,
+      "native_before": true,
+      "native_after": true,
+      "receipt_sha256": "24650d8f44f040fe4d0380b35a601c1c5692436be22267b5dbeba72d16b7b6c0",
+      "aggregate_sha256": "fdb8dfa54bad0f26d19cc9dd5f0a3614f2070e8e6bb76bb0aa238d1c398bb933"
+    },
+    {
+      "case": "nx",
+      "query_completed": true,
+      "query_accepted": true,
+      "aggregate_completed": true,
+      "native_before": true,
+      "native_after": true,
+      "receipt_sha256": "3b6e45d9decb72561e3824b0a148eb93e896b68ef1b7b655ed9a86f24da99628",
+      "aggregate_sha256": "f11349e7feec226c1d2ca85a21b36c9e5b7bcadea21a6a2475230e6694b0063e"
+    }
+  ],
+  "classic_edns_tc_control": {
+    "completed": true,
+    "nested_query_accepted": true,
+    "tcp_fallback_used": true,
+    "edns_udp_payload_size": 1232,
+    "aggregate_completed": true,
+    "native_before": true,
+    "native_after": true,
+    "receipt_sha256": "405e0ef7b1ad0cc8903991d14d84fe1477d32c009db6386cf16a7ae0cdae664e",
+    "aggregate_sha256": "b1df34fd0bb677593133d4dd3acc6b08b25b608f08ca6a0f4dfcf75070d2a69b",
+    "top_level_query_accepted_reporting_field_not_authoritative": true
+  },
+  "ha_dns_cases": [
+    {
+      "case": "app",
+      "query_completed": true,
+      "query_accepted": true,
+      "native_before": true,
+      "native_after": true,
+      "aggregate_completed": true,
+      "receipt_sha256": "6689c9f5a48d9ec408faa0226e4fdd8fe68250b8925de763be3dcfc63ca7df32",
+      "aggregate_sha256": "6c1337210721aa85bc5121870163d54a3564025aea2cc18921222ccefc785dd5"
+    },
+    {
+      "case": "alias",
+      "query_completed": true,
+      "query_accepted": true,
+      "native_before": true,
+      "native_after": true,
+      "aggregate_completed": true,
+      "receipt_sha256": "faa24c5d1f09c95296f0cccafeb702494d874ea825b50564ff906b2e4114f4b8",
+      "aggregate_sha256": "5d388fdc7f641b7da4b3f99ac6918e601974f6f0f100e0c2dcb95a45bc92688f"
+    },
+    {
+      "case": "nx",
+      "query_completed": true,
+      "query_accepted": true,
+      "native_before": true,
+      "native_after": true,
+      "aggregate_completed": true,
+      "receipt_sha256": "f2958b18afc59e5c9978104e095d7c67d69a62722376173a00e213c5b56f2119",
+      "aggregate_sha256": "403442b087d85a7e5eb57ef2c1f0c1a904d741fbd316e8ffc582ca44ae47bef8"
+    }
+  ]
+}

@@ -1,0 +1,89 @@
+{
+  "accepted_human_story_numbers": [
+    1,
+    2,
+    3,
+    4,
+    7,
+    8
+  ],
+  "accepted_story_count": 6,
+  "actual_result": "/private/tmp/azure-static-reverse-root-1a3c7c72-f4b9-4d17-9b1a-269d18283618/result.json",
+  "actual_result_sha256": "41f31c44c6641e5893513845e04035a045c8464d6e0f305da6e2c90ba62dfacc",
+  "after_native": {
+    "acceptance": false,
+    "category": "actual_profile_native_observation_written",
+    "private_run_id": "azure-profile-observe-403b9fab-e0b9-4c57-81f8-39df6b7c8925",
+    "receipt_sha256": "d7f9cefa6c1a4764fba1406deb3db3a5ca48bad2395138dfdf5c62a0f578e127",
+    "version": 1
+  },
+  "before_native": {
+    "acceptance": false,
+    "category": "actual_profile_native_observation_written",
+    "private_run_id": "azure-profile-observe-abfc656f-54e4-4b93-b5ba-3c1bddb6a4e4",
+    "receipt_sha256": "3972e28238b19ae399459dabf429a175392f754fa9c98dfefdb22d74f3815ded",
+    "version": 1
+  },
+  "category": "actual_active_active_static_reverse_packet_window_pass",
+  "configuration_revision": 1,
+  "connection_id": "8595cbe4-ebd8-4a02-ae12-9b031f370481",
+  "desired_revision": 4,
+  "dns_accepted": false,
+  "exact_tcp_bytes": 65536,
+  "exact_udp_bytes": 4096,
+  "existing_sockets_reused_without_reconnect": true,
+  "failover_accepted": false,
+  "node_executable_sha256": "0dda48e7f09d7c03467b9f66df0fb4bb1eac8f458f99f0606d594307d4bc42a5",
+  "normal_and_full_service_brackets_unchanged": true,
+  "observe_source_sha256": "3c5ac8bb7d5d357ce8a333e1f2ae772092b3d93b81286fb740c69b40a5a50cbe",
+  "packet_projection": {
+    "category": "actual_reverse_packet_receipt_verified",
+    "counters": {
+      "existing_tcp": {
+        "failure": 0,
+        "success": 120
+      },
+      "existing_udp": {
+        "failure": 0,
+        "success": 120
+      },
+      "fresh_tcp": {
+        "failure": 0,
+        "success": 120
+      },
+      "fresh_udp": {
+        "failure": 0,
+        "success": 120
+      }
+    },
+    "elapsed_seconds": 120.00076,
+    "receipt_sha256": "9a258694f0762ffe0d4fc967ca67827ab99fc47eede187d41baf57fc8a8565b4",
+    "udp_server_source_proved": false
+  },
+  "recorded_at": "2026-10-12T00:40:47.793175Z",
+  "reduced_mtu_accepted": false,
+  "reverse_packet_slice_accepted": true,
+  "runner_sha256": "70abfe05964b3e21ca7d0472c8efe5936b78305a70d6ee24761976965cbf78af",
+  "scope": "Azure private target10.231.1.4 to customerLAN10.233.10.2 TCP8082/UDP8083",
+  "source_metadata_projection": {
+    "category": "actual_owned_reverse_listener_source_metadata",
+    "listener_receipt_sha256": "bb10671611349277d2709ff2eef5ae22ff8b5fd501ad1abd30e03e215ab67602",
+    "private_run_id": "azure-static-lan-listener-0471e2fb-44e1-438e-91e1-d56ff8ec5a85",
+    "read_only": true,
+    "source_metadata_checks": {
+      "all_tcp_original_source": true,
+      "all_udp_original_source": true,
+      "tcp_exact_480": true,
+      "udp_exact_240": true
+    },
+    "tcp_server_observations": 480,
+    "transport_seconds": 2.104,
+    "udp_server_observations": 240,
+    "whole_story_accepted": false
+  },
+  "source_metadata_result": "/private/tmp/azure-static-reverse-lan-metadata-612ff458-7c90-4799-a784-e19d449e462f/result.json",
+  "source_metadata_result_sha256": "c4392555deca58c5893083fb661e0009b08ad3774ad1bbf9eee377cab01f9e1b",
+  "tcp_original_source_verified": true,
+  "udp_original_source_verified_by_server_metadata": true,
+  "whole_story_accepted": false
+}

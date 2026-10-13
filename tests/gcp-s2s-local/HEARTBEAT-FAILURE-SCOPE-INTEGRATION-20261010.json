@@ -1,0 +1,32 @@
+{
+  "scope": "source-only integration; modeled tests, no cloud acceptance",
+  "base": "90c873091ed24d70403fcfaf34cb0373a0c3b083",
+  "shared_patch_sha256": "fb514a6666960f927f1a268d712f2440ea0a194530dd201dd98eb8c7f46a2f85",
+  "shared_manifest_sha256": "a7614a21782f17e39c7a709ff09809a01df7b581f218be9c49141a28a8900418",
+  "integration": "Five exact production hunks; DNS single reader substitution in resolverGuardPermitsRead preserves existing b63 classified retry and concurrency. No wholesale file replacement.",
+  "preservation": [
+    "Generic full-table positive reader remains strict",
+    "Unknown global context/read/native/qualification failures retain global refusal",
+    "Only exact target three permit sets flushed; other native members and deadlines unchanged",
+    "GCP HA3 and Classic4 cardinality from genuine material fixtures, inactive Classic slot remains zero",
+    "Ordinary HA same-namespace restaging and fqdn concurrency untouched"
+  ],
+  "checks": {
+    "focused_race_seconds": 15.722,
+    "full_ipsec": {
+      "result": "PASS",
+      "seconds": 45.131
+    },
+    "first_full_ipsec": {
+      "result": "FAIL",
+      "seconds": 43.989,
+      "cause": "Existing positive status fixture had no reply ingress permit, so stricter target three-set proof correctly refused. Fixed test fixture only with exact owned reply indices."
+    },
+    "linux_amd64_agent": {
+      "result": "PASS",
+      "sha256": "eff9c4778dea6f003686b76abb5a0d932735337f12a062b38426b4811416e779"
+    }
+  },
+  "freeze": "Hold pending parent BGP expiry and renewal-budget source union; no deployed change",
+  "test_adaptation": "runtime_status_test attachRecoveryStatusGuard now includes exact two owned reply indices; production reader not weakened."
+}

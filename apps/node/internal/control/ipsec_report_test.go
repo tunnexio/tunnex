@@ -30,6 +30,9 @@ func TestReportInfoExplicitlyRefusesIPsecRuntime(t *testing.T) {
 	if !ok || string(version) != "0" {
 		t.Fatalf("runtime must explicitly report IPsec unsupported, got %s", version)
 	}
+	if _, exists := got["ipsec_bgp_version"]; exists {
+		t.Fatal("unqualified BGP field must remain omitted")
+	}
 	if _, exists := got["ipsec_reported_at"]; exists {
 		t.Fatal("agent cannot choose capability receipt time")
 	}

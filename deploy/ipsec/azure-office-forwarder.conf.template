@@ -1,0 +1,14 @@
+# Owned disposable qualification namespace only. Substitute both actual Azure
+# inbound endpoint IPs; validate with dnsmasq --test --conf-file=FILE first.
+port=53
+listen-address=127.0.0.1
+bind-interfaces
+no-resolv
+no-poll
+no-hosts
+cache-size=0
+domain-needed
+server=/azure-s2s.test/INBOUND_1@10.233.10.2
+server=/azure-s2s.test/INBOUND_2@10.233.10.2
+log-queries=extra
+log-facility=-

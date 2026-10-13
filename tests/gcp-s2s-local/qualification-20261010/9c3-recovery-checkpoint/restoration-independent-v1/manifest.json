@@ -1,0 +1,27 @@
+[
+  {
+    "file": "full-capture.json",
+    "original": "/private/tmp/gcp-cloud-expiry-observer-9c3ab006-20261011/classic-post-restore-independent-v1.json",
+    "sha256": "96567e686d7c6d017c3acb2c1b3e5080e1cf7c5558bb74bcf195b8f2c34ff558"
+  },
+  {
+    "file": "tcp-observer.json",
+    "original": "/private/tmp/gcp-cloud-expiry-9c3ab006-20261011/restoration-independent-v1/tcp-observer.json",
+    "sha256": "6448a688ea1e24fa265708358d86b882378245f6a59eb91b768117c2c1d5e44d"
+  },
+  {
+    "file": "udp-observer.json",
+    "original": "/private/tmp/gcp-cloud-expiry-9c3ab006-20261011/restoration-independent-v1/udp-observer.json",
+    "sha256": "ba2e145c67a9a9f2c90e8b1ec90eb6e7d3e2be4c83ac1f9eff01b4eb4365362e"
+  },
+  {
+    "file": "packets.json",
+    "original": "/private/tmp/gcp-cloud-expiry-9c3ab006-20261011/restoration-independent-v1/packets.json",
+    "sha256": "c202cc125b19bc9e6dbbb4e1cabd37b18ba57756893d95c368942e814b75fb1f"
+  },
+  {
+    "file": "api-after-expiry.json",
+    "original": "/private/tmp/gcp-cloud-replacement-13007c40-20261010/api-after-expiry-9c3ab006.json",
+    "sha256": "2f9f3d3b03459616047a23047bed5320482b42ad901926bd35e72a084121a3fa"
+  }
+]

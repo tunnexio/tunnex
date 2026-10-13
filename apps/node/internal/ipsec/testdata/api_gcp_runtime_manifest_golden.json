@@ -1,0 +1,119 @@
+[
+  {
+    "name": "gcp-ha",
+    "manifest": {
+      "org_id": "00000000-0000-0000-0000-000000000001",
+      "node_id": "00000000-0000-0000-0000-000000000002",
+      "site_id": "00000000-0000-0000-0000-000000000003",
+      "connection_id": "00000000-0000-0000-0000-000000000004",
+      "desired_revision": 1,
+      "configuration_revision": 1,
+      "profile_id": "gcp-ha-bgp-ipv4-v1",
+      "customer_outside_address": "192.0.2.1",
+      "local_prefixes": [
+        "10.10.0.0/24"
+      ],
+      "remote_prefixes": [
+        "10.20.0.0/24"
+      ],
+      "tunnels": [
+        {
+          "id": "00000000-0000-0000-0000-000000000005",
+          "slot": 1,
+          "secret_revision": 1,
+          "link_name": "tunnel1",
+          "xfrm_id": 101,
+          "reqid": 101,
+          "outside_address": "198.51.100.1",
+          "inside_cidr": "169.254.20.0/30",
+          "customer_inside_address": "169.254.20.1",
+          "cloud_inside_address": "169.254.20.2",
+          "route_table": 254,
+          "route_protocol": 242,
+          "route_metric": 50001,
+          "selected": false
+        },
+        {
+          "id": "00000000-0000-0000-0000-000000000006",
+          "slot": 2,
+          "secret_revision": 1,
+          "link_name": "tunnel2",
+          "xfrm_id": 102,
+          "reqid": 102,
+          "outside_address": "198.51.100.2",
+          "inside_cidr": "169.254.20.4/30",
+          "customer_inside_address": "169.254.20.5",
+          "cloud_inside_address": "169.254.20.6",
+          "route_table": 254,
+          "route_protocol": 242,
+          "route_metric": 50002,
+          "selected": false
+        }
+      ],
+      "bgp": {
+        "local_asn": 65000,
+        "remote_asn": 65002,
+        "router_id": "10.10.0.1",
+        "maximum_prefixes": 64
+      },
+      "bgp_version": 2
+    },
+    "sha256": "5bdcca4a575a1abe93a30bf390ddb4c51c8a8223d9d30c7410484d6959ff6337"
+  },
+  {
+    "name": "gcp-classic",
+    "manifest": {
+      "org_id": "00000000-0000-0000-0000-000000000001",
+      "node_id": "00000000-0000-0000-0000-000000000002",
+      "site_id": "00000000-0000-0000-0000-000000000003",
+      "connection_id": "00000000-0000-0000-0000-000000000004",
+      "desired_revision": 1,
+      "configuration_revision": 1,
+      "profile_id": "gcp-classic-static-ipv4-v1",
+      "customer_outside_address": "192.0.2.1",
+      "local_prefixes": [
+        "10.10.0.0/24"
+      ],
+      "remote_prefixes": [
+        "10.20.0.0/24"
+      ],
+      "tunnels": [
+        {
+          "id": "00000000-0000-0000-0000-000000000005",
+          "slot": 1,
+          "secret_revision": 1,
+          "link_name": "tunnel1",
+          "xfrm_id": 101,
+          "reqid": 101,
+          "outside_address": "198.51.100.1",
+          "inside_cidr": "",
+          "customer_inside_address": "",
+          "cloud_inside_address": "",
+          "route_table": 254,
+          "route_protocol": 242,
+          "route_metric": 50001,
+          "selected": true
+        },
+        {
+          "id": "00000000-0000-0000-0000-000000000000",
+          "slot": 0,
+          "secret_revision": 0,
+          "link_name": "",
+          "xfrm_id": 0,
+          "reqid": 0,
+          "outside_address": "",
+          "inside_cidr": "",
+          "customer_inside_address": "",
+          "cloud_inside_address": "",
+          "route_table": 0,
+          "route_protocol": 0,
+          "route_metric": 0,
+          "selected": false
+        }
+      ],
+      "transport_version": 1,
+      "tunnel_count": 1
+    },
+    "sha256": "d89ee67596a83cc1dcbc5dfc9f46f058bfb8e1b22aca039b25da03039cf862d5"
+  }
+]

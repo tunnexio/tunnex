@@ -1,0 +1,32 @@
+{
+  "accepted_story_count": 6,
+  "category": "actual_aa_static_peer_fault_preaction_refusal",
+  "coordinator_once_preserved": true,
+  "current_owned_fault_table_absent": true,
+  "exact_preaction_predicate": "not recorded by original helper; unknown",
+  "fault_event": {
+    "error": "owned_fault_refused_or_interrupted",
+    "monotonic_ns": 183619357342479,
+    "observed_at": "2026-10-12T14:59:08.555939+00:00"
+  },
+  "fault_slice_accepted": false,
+  "helper_action_marker_absent": true,
+  "helper_outcome": {
+    "returncode": 1,
+    "unknown_no_replay": false
+  },
+  "inventory_sha256": "77136fbef15c0b1169d7e4bee18cbc25e4d3ef73ca820310a3edf1314a013e3c",
+  "network_fault_applied": false,
+  "new_slices_closed": 0,
+  "no_action_evidence": "Saved exact request identifies semantic action marker; root sudo stat returned ENOENT. Source reserves durable marker before nft apply and contains no marker deletion. Successful complete nft table inventory contains no owned fault table.",
+  "qa_coordinator_run": "azure-fault-overlap-c44e78d5-47d8-45d7-872e-a0035cca3459",
+  "qa_outer_run": "azure-fault-9090-actual18-5df7f8a8-4dd8-4fce-ae24-460eb9f75813",
+  "recorded_at": "2026-10-12T15:15:19.234748+00:00",
+  "replay_permitted": false,
+  "root_saved_qa_observations": {
+    "path": "/private/tmp/azure-approved-mtu-fault-saved-observations-20261012.json",
+    "sha256": "7e879c41080bbe885c509abcca828471c9fa65f6c4f94b485deb4861b8595776"
+  },
+  "version": 1,
+  "wrapper_sha256": "72c33040cfd006ef563001ea8f877d77b50afc2f1050d471fba2826795bbdd87"
+}

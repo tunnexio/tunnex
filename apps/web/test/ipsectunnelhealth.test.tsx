@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 const mock = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), put: vi.fn(), patch: vi.fn(), delete: vi.fn() }));
 vi.mock("../src/lib/api", async original => ({ ...await original<object>(), api: { GET: mock.get, POST: mock.post, PUT: mock.put, PATCH: mock.patch, DELETE: mock.delete } }));
 import { IPsecTunnelHealth } from "../src/components/IPsecTunnelHealth";
@@ -111,4 +111,200 @@ it.each([
  mock.get.mockResolvedValue({data:{...data,...extra}});
  render(view());await waitFor(()=>expect(mock.get).toHaveBeenCalled());
  expect(screen.queryByText("Active path")).toBeNull();
+});
+
+const approvedRemotePrefixes = ["10.20.0.0/24", "10.21.0.0/24"];
+const bgpReport = () => ({
+ ...report(),
+ tunnels: report().tunnels.map(t => ({ ...t, selected: false, status: "up" })),
+ bgp: { version: 1, sequence: 7,
+  peers: [{ slot: 1, state: "established", accepted_prefixes: 2, installed_prefixes: 1 }, { slot: 2, state: "established", accepted_prefixes: 2, installed_prefixes: 1, rejected_prefixes: 4 }],
+  routes: [{ prefix: approvedRemotePrefixes[0], slot: 1 }, { prefix: approvedRemotePrefixes[1], slot: 2 }],
+ },
+});
+const bgpView = () => <IPsecTunnelHealth orgId="org-a" connectionId="connection-a" tunnels={tunnels} mode="ipv4-bgp" approvedRemotePrefixes={approvedRemotePrefixes} />;
+it("reports BGP peers and installed routes per prefix without a global path preference", async () => {
+ mock.get.mockResolvedValue({ data: bgpReport() });
+ render(bgpView());
+ await screen.findByRole("status", { name: "Tunnel 1 BGP Established" });
+ expect(screen.getByRole("status", { name: "Tunnel 2 BGP Established" })).toBeTruthy();
+ const rows = within(screen.getByRole("table", { name: "IPsec tunnel state" })).getAllByRole("row").slice(1);
+ expect(within(rows[0]).getAllByRole("cell").slice(4, 7).map(cell => cell.textContent)).toEqual(["2", "1", "-"]);
+ expect(within(rows[1]).getAllByRole("cell").slice(4, 7).map(cell => cell.textContent)).toEqual(["2", "1", "4"]);
+ const routes = screen.getByRole("table", { name: "BGP routes" });
+ for (const [i, prefix] of approvedRemotePrefixes.entries()) {
+  const row = within(routes).getByRole("rowheader", { name: prefix }).closest("tr")!;
+  expect(within(row).getByText(`Tunnel ${i + 1}`)).toBeTruthy();
+ }
+ expect(screen.queryByText(/Active path|Preferred path|Not selected/)).toBeNull();
+ expect(screen.getByText(/IPsec health, BGP peer state, and application reachability are separate/)).toBeTruthy();
+});
+it("keeps valid IPsec evidence when BGP evidence is absent", async () => {
+ const { bgp: _bgp, ...data } = bgpReport();
+ mock.get.mockResolvedValue({ data }); render(bgpView());
+ await screen.findByRole("status", { name: "Tunnel 1 Up" });
+ expect(screen.getByRole("status", { name: "Tunnel 1 BGP Unknown" })).toBeTruthy();
+ const row = screen.getByRole("rowheader", { name: "Tunnel 1" }).closest("tr")!;
+ expect(within(row).getAllByRole("cell").slice(4, 7).map(cell => cell.textContent)).toEqual(["-", "-", "-"]);
+ expect(within(screen.getByRole("table", { name: "BGP routes" })).queryByText(/Tunnel [12]|No installed route/)).toBeNull();
+});
+it.each(["stale", "future", "unknown"])("never presents stale or unknown BGP counts as measured zero: %s", async kind => {
+ const data = bgpReport();
+ if (kind === "stale") data.observed_at = new Date(Date.now() - 91_000).toISOString();
+ if (kind === "future") data.observed_at = new Date(Date.now() + 6_000).toISOString();
+ if (kind === "unknown") {
+  data.bgp.peers = data.bgp.peers.map(p => ({ ...p, state: "unknown", accepted_prefixes: 0, installed_prefixes: 0, rejected_prefixes: 0 }));
+  data.bgp.routes = [];
+ }
+ mock.get.mockResolvedValue({ data }); render(bgpView());
+ await screen.findByText(kind === "unknown" ? "Live gateway report · updates every 10s" : "Waiting for a fresh gateway report");
+ const rows = within(screen.getByRole("table", { name: "IPsec tunnel state" })).getAllByRole("row").slice(1);
+ for (const row of rows) expect(within(row).getAllByRole("cell").slice(4, 7).map(cell => cell.textContent)).toEqual(["-", "-", "-"]);
+ expect(screen.queryByRole("status", { name: /BGP Established/ })).toBeNull();
+ expect(within(screen.getByRole("table", { name: "BGP routes" })).queryByText(/Tunnel [12]|No installed route/)).toBeNull();
+ expect(screen.getAllByText("No fresh BGP peer or route evidence yet. Refresh status and check gateway connectivity.")).toHaveLength(2);
+});
+it("shows measured zero for a known idle peer and absent rejected counts as unavailable", async () => {
+ const data = bgpReport(); data.bgp.routes = [];
+ data.bgp.peers = data.bgp.peers.map(p => ({ slot: p.slot, state: "idle", accepted_prefixes: 0, installed_prefixes: 0 }));
+ mock.get.mockResolvedValue({ data }); render(bgpView());
+ await screen.findByRole("status", { name: "Tunnel 1 BGP Idle" });
+ const row = screen.getByRole("rowheader", { name: "Tunnel 1" }).closest("tr")!;
+ expect(within(row).getAllByRole("cell").slice(4, 7).map(cell => cell.textContent)).toEqual(["0", "0", "-"]);
+ expect(screen.getAllByText("No installed route")).toHaveLength(2);
+});
+const invalidBGPReports = [
+ ["unsupported version", () => ({ ...bgpReport(), bgp: { ...bgpReport().bgp, version: 2 } })],
+ ["zero sequence", () => ({ ...bgpReport(), bgp: { ...bgpReport().bgp, sequence: 0 } })],
+ ["unsafe sequence", () => ({ ...bgpReport(), bgp: { ...bgpReport().bgp, sequence: Number.MAX_SAFE_INTEGER + 1 } })],
+ ["null BGP", () => ({ ...bgpReport(), bgp: null })],
+ ["null peer", () => ({ ...bgpReport(), bgp: { ...bgpReport().bgp, peers: [null, bgpReport().bgp.peers[1]] } })],
+ ["missing peer", () => ({ ...bgpReport(), bgp: { ...bgpReport().bgp, peers: [bgpReport().bgp.peers[0]] } })],
+ ["unordered slots", () => ({ ...bgpReport(), bgp: { ...bgpReport().bgp, peers: [...bgpReport().bgp.peers].reverse() } })],
+ ["array FSM", () => ({ ...bgpReport(), bgp: { ...bgpReport().bgp, peers: bgpReport().bgp.peers.map(p => ({ ...p, state: ["idle"], accepted_prefixes: 0, installed_prefixes: 0 })), routes: [] } })],
+ ["invalid FSM", () => ({ ...bgpReport(), bgp: { ...bgpReport().bgp, peers: bgpReport().bgp.peers.map(p => ({ ...p, state: "__proto__" })) } })],
+ ["unapproved subprefix", () => ({ ...bgpReport(), bgp: { ...bgpReport().bgp, routes: [{ prefix: "10.20.0.0/25", slot: 1 }] } })],
+ ["duplicate prefix", () => ({ ...bgpReport(), bgp: { ...bgpReport().bgp, routes: [bgpReport().bgp.routes[0], bgpReport().bgp.routes[0]] } })],
+ ["invalid route slot", () => ({ ...bgpReport(), bgp: { ...bgpReport().bgp, routes: [{ prefix: approvedRemotePrefixes[0], slot: 3 }] } })],
+ ["null route", () => ({ ...bgpReport(), bgp: { ...bgpReport().bgp, routes: [null] } })],
+ ["route tally mismatch", () => ({ ...bgpReport(), bgp: { ...bgpReport().bgp, peers: bgpReport().bgp.peers.map(p => ({ ...p, installed_prefixes: 0 })) } })],
+ ["unaccepted install", () => ({ ...bgpReport(), bgp: { ...bgpReport().bgp, peers: bgpReport().bgp.peers.map(p => ({ ...p, accepted_prefixes: 0 })) } })],
+ ["too many accepted", () => ({ ...bgpReport(), bgp: { ...bgpReport().bgp, peers: bgpReport().bgp.peers.map(p => ({ ...p, accepted_prefixes: 65 })) } })],
+ ["fractional count", () => ({ ...bgpReport(), bgp: { ...bgpReport().bgp, peers: bgpReport().bgp.peers.map(p => ({ ...p, accepted_prefixes: 1.5 })) } })],
+ ["negative rejected", () => ({ ...bgpReport(), bgp: { ...bgpReport().bgp, peers: bgpReport().bgp.peers.map(p => ({ ...p, rejected_prefixes: -1 })) } })],
+ ["oversized rejected", () => ({ ...bgpReport(), bgp: { ...bgpReport().bgp, peers: bgpReport().bgp.peers.map(p => ({ ...p, rejected_prefixes: 1_000_000_001 })) } })],
+ ["installed on idle", () => ({ ...bgpReport(), bgp: { ...bgpReport().bgp, peers: bgpReport().bgp.peers.map(p => ({ ...p, state: "idle" })) } })],
+ ["established with IPsec down", () => ({ ...bgpReport(), tunnels: bgpReport().tunnels.map(t => ({ ...t, status: "down" })) })],
+ ["static preference", () => ({ ...bgpReport(), tunnels: bgpReport().tunnels.map(t => ({ ...t, selected: true })) })],
+ ["recovery fields", () => ({ ...bgpReport(), recovery_version: 1, selection_sequence: 7, active_slot: 1 })],
+ ["nonnull active path", () => ({ ...bgpReport(), active_slot: 2 })],
+] as const;
+it.each(invalidBGPReports)("refuses malformed BGP reports: %s", async (_name, fixture) => {
+ mock.get.mockResolvedValue({ data: fixture() }); render(bgpView());
+ await screen.findByText("Status unavailable");
+ expect(screen.queryByRole("status", { name: / Up$|BGP Established/ })).toBeNull();
+ expect(within(screen.getByRole("table", { name: "BGP routes" })).queryByText(/Tunnel [12]|No installed route/)).toBeNull();
+});
+it("clears BGP counts and routes after a failed refresh without issuing writes", async () => {
+ mock.get.mockResolvedValue({ data: bgpReport() }); render(bgpView());
+ await screen.findByRole("status", { name: "Tunnel 1 BGP Established" });
+ mock.get.mockRejectedValue(new Error("offline"));
+ fireEvent.click(screen.getByRole("button", { name: "Refresh tunnel status" }));
+ await screen.findByText("Status unavailable");
+ expect(screen.queryByRole("status", { name: /BGP Established/ })).toBeNull();
+ expect(within(screen.getByRole("table", { name: "BGP routes" })).queryByText(/Tunnel [12]|No installed route/)).toBeNull();
+ for (const write of [mock.post, mock.put, mock.patch, mock.delete]) expect(write).not.toHaveBeenCalled();
+});
+it("ignores a late BGP response after connection or approved prefixes change", async () => {
+ let resolve!: (value: unknown) => void;
+ mock.get.mockImplementationOnce(() => new Promise(r => { resolve = r; })).mockResolvedValue({ data: { ...bgpReport(), bgp: undefined } });
+ const result = render(bgpView());
+ result.rerender(<IPsecTunnelHealth orgId="org-a" connectionId="connection-b" tunnels={tunnels} mode="ipv4-bgp" approvedRemotePrefixes={["10.30.0.0/24"]} />);
+ await screen.findByRole("status", { name: "Tunnel 1 Up" });
+ resolve({ data: bgpReport() });
+ await waitFor(() => expect(screen.getByRole("status", { name: "Tunnel 1 BGP Unknown" })).toBeTruthy());
+ expect(screen.queryByText("10.20.0.0/24")).toBeNull();
+ expect(screen.queryByRole("status", { name: /BGP Established/ })).toBeNull();
+});
+
+it("does not accept static preference metadata even when BGP evidence is absent", async () => {
+ const { bgp: _bgp, ...data } = bgpReport();
+ data.tunnels[0].selected = true;
+ mock.get.mockResolvedValue({ data }); render(bgpView());
+ await screen.findByText("Status unavailable");
+ expect(screen.queryByRole("status", { name: / Up$/ })).toBeNull();
+});
+it("clears an old BGP response when only the approved prefix list changes", async () => {
+ let resolve!: (value: unknown) => void;
+ mock.get.mockImplementationOnce(() => new Promise(r => { resolve = r; })).mockResolvedValue({ data: { ...bgpReport(), bgp: undefined } });
+ const result = render(bgpView());
+ result.rerender(<IPsecTunnelHealth orgId="org-a" connectionId="connection-a" tunnels={tunnels} mode="ipv4-bgp" approvedRemotePrefixes={["10.30.0.0/24"]} />);
+ await screen.findByRole("status", { name: "Tunnel 1 Up" });
+ resolve({ data: bgpReport() });
+ await waitFor(() => expect(screen.getByRole("status", { name: "Tunnel 1 BGP Unknown" })).toBeTruthy());
+ expect(screen.queryByText("10.20.0.0/24")).toBeNull();
+ expect(screen.queryByRole("status", { name: /BGP Established/ })).toBeNull();
+});
+
+it("accepts the public wire's null active_slot before any BGP observation", async () => {
+ const data = {
+  observed_at: null, active_slot: null,
+  tunnels: report().tunnels.map(t => ({ ...t, selected: false, status: "unknown" })),
+ };
+ let resolve!: (value: unknown) => void;
+ mock.get.mockImplementationOnce(() => new Promise(r => { resolve = r; })); render(bgpView());
+ await waitFor(() => expect(mock.get).toHaveBeenCalled());
+ await act(async () => { resolve({ data }); });
+ expect(screen.queryByText("Status unavailable")).toBeNull();
+ expect(screen.getByText("Waiting for a fresh gateway report")).toBeTruthy();
+ for (const slot of [1, 2]) {
+  expect(screen.getByRole("status", { name: `Tunnel ${slot} Unknown` })).toBeTruthy();
+  expect(screen.getByRole("status", { name: `Tunnel ${slot} BGP Unknown` })).toBeTruthy();
+  const row = screen.getByRole("rowheader", { name: `Tunnel ${slot}` }).closest("tr")!;
+  expect(within(row).getAllByRole("cell").slice(4, 7).map(cell => cell.textContent)).toEqual(["-", "-", "-"]);
+ }
+ expect(within(screen.getByRole("table", { name: "BGP routes" })).queryByText(/Tunnel [12]|No installed route/)).toBeNull();
+});
+it("accepts fresh public BGP evidence with null active_slot without displaying a global path", async () => {
+ mock.get.mockResolvedValue({ data: { ...bgpReport(), active_slot: null } }); render(bgpView());
+ await screen.findByRole("status", { name: "Tunnel 1 BGP Established" });
+ expect(screen.getByRole("status", { name: "Tunnel 2 BGP Established" })).toBeTruthy();
+ expect(screen.queryByText("Status unavailable")).toBeNull();
+ expect(screen.queryByText(/Active path|Preferred path|Not selected/)).toBeNull();
+ const routes = screen.getByRole("table", { name: "BGP routes" });
+ for (const [i, prefix] of approvedRemotePrefixes.entries()) {
+  const row = within(routes).getByRole("rowheader", { name: prefix }).closest("tr")!;
+  expect(within(row).getByText(`Tunnel ${i + 1}`)).toBeTruthy();
+ }
+});
+const classicTunnels=[{outside_address:"198.51.100.9",inside_cidr:"",customer_inside_address:"",cloud_inside_address:""}];
+const classicView=()=> <IPsecTunnelHealth orgId="org-a" connectionId="classic-a" profileId="gcp-classic-static-ipv4-v1" tunnels={classicTunnels}/>;
+it("shows Classic single tunnel without a second slot or BGP inside fields",async()=>{
+ mock.get.mockResolvedValue({data:{observed_at:new Date().toISOString(),recovery_version:1,selection_sequence:1,active_slot:1,tunnels:[{id:"classic-tunnel",slot:1,status:"up",selected:true}]}});
+ render(classicView());await screen.findByRole("status",{name:"Tunnel 1 Up"});expect(screen.getByText("Active path")).toBeTruthy();
+ expect(screen.queryByRole("status",{name:/Tunnel 2/})).toBeNull();expect(screen.queryByText("Inside IPv4 CIDR")).toBeNull();expect(screen.queryByRole("table",{name:"BGP routes"})).toBeNull();
+ fireEvent.click(screen.getByLabelText("Tunnel 1 troubleshooting"));expect(screen.getByText(/Classic route-based static routing uses no BGP inside addresses/)).toBeTruthy();expect(screen.queryByText("Customer inside IP")).toBeNull();
+});
+it.each([2,null])("does not invent Classic Up from an invalid active slot or stale evidence %j",async slot=>{
+ mock.get.mockResolvedValue({data:{observed_at:slot===null?new Date(Date.now()-91_000).toISOString():new Date().toISOString(),recovery_version:1,selection_sequence:1,active_slot:slot,tunnels:[{id:"classic-tunnel",slot:1,status:"up",selected:true}]}});
+ render(classicView());await waitFor(()=>expect(mock.get).toHaveBeenCalled());expect(screen.queryByRole("status",{name:"Tunnel 1 Up"})).toBeNull();expect(screen.getByRole("status",{name:"Tunnel 1 Unknown"})).toBeTruthy();
+});
+it("refuses two-slot public status for Classic rather than rendering a fake second tunnel",async()=>{
+ render(classicView());await screen.findByText("Status unavailable");expect(screen.queryByRole("status",{name:"Tunnel 1 Up"})).toBeNull();expect(screen.queryByRole("status",{name:/Tunnel 2/})).toBeNull();
+});
+it("refuses a single-slot report for AWS rather than treating it as Classic",async()=>{
+ mock.get.mockResolvedValue({data:{observed_at:new Date().toISOString(),tunnels:[{id:"classic-tunnel",slot:1,status:"up",selected:true}]}});render(view());await screen.findByText("Status unavailable");expect(screen.queryByRole("status",{name:/ Up$/})).toBeNull();
+});
+
+it("shows a verified single Azure active-standby BGP peer and rejects nonexistent route slots", async () => {
+ const data=bgpReport(); data.tunnels=data.tunnels.slice(0,1); data.bgp.peers=data.bgp.peers.slice(0,1); data.bgp.routes=data.bgp.routes.slice(0,1);
+ data.bgp.peers[0].accepted_prefixes=1;
+ mock.get.mockResolvedValue({data});
+ render(<IPsecTunnelHealth orgId="org-a" connectionId="connection-a" tunnels={tunnels.slice(0,1)} mode="ipv4-bgp" approvedRemotePrefixes={approvedRemotePrefixes} profileId="azure-active-standby-bgp-ipv4-v1" />);
+ await screen.findByRole("status", {name:"Tunnel 1 BGP Established"});
+ expect(screen.queryByRole("status", {name:/Tunnel 2/})).toBeNull();
+ data.bgp.routes[0].slot=2;
+ fireEvent.click(screen.getByRole("button", {name:"Refresh tunnel status"}));
+ await screen.findByText("Status unavailable");
+ expect(screen.getByRole("status", {name:"Tunnel 1 Unknown"})).toBeTruthy();
 });

@@ -1,0 +1,18 @@
+{
+  "production_source": "330cbdd5",
+  "fixture_fix_source": "6e429329",
+  "counts_including_subtests": {
+    "pass": 1273,
+    "skip": 2,
+    "fail": 0
+  },
+  "package_result": "pass",
+  "elapsed_seconds": 201.695,
+  "log_sha256": "d864ac72fa94b7cd9fdeca19a6cb9c1d476d07921e1e6c05374694a286786279",
+  "scope": "Full local Darwin ARM IPsec race suite after production-faithful fixture correction; opt-in Linux/native tests remain a separate gate",
+  "prior_full_run": {
+    "result": "failed",
+    "elapsed_seconds": 198.724,
+    "cause": "recovery fixtures omitted production-native positive reply sets; strict production checks retained"
+  }
+}

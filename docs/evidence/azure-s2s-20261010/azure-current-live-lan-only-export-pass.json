@@ -1,0 +1,74 @@
+{
+  "actual_dispatch": {
+    "acceptance": false,
+    "observation": {
+      "acceptance": false,
+      "category": "actual_profile_native_observation_written",
+      "private_run_id": "azure-profile-observe-9b1efef3-704b-4b43-8838-4a776056e421",
+      "receipt_sha256": "be649b6369e5acb7af66e3e8fef2925a6bdecad2158f485a8b14a525b45ff72b",
+      "version": 1
+    },
+    "phase": "observe",
+    "private_run_id": "azure-lan-export-6c4264cd-920b-4ed9-acde-7f4c63838b98",
+    "returncode": 0,
+    "stderr_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "stdout_sha256": "ea7f2d427e30645de297fbdddb9a03d257ff6c9aa1034fd369115c4bc1f7f636",
+    "transport_seconds": 10.847,
+    "version": 1
+  },
+  "actual_manifest_sha256": "3501d1141e9e3b3984943c8862739301c487a3e4580c3c8f271bc9eef79f6d03",
+  "actual_receipt": {
+    "active_tunnel_count": 2,
+    "advertised_prefixes": [
+      [
+        "10.233.10.0/24"
+      ],
+      [
+        "10.233.10.0/24"
+      ]
+    ],
+    "bgp_route_count": 1,
+    "configuration_revision": 1,
+    "connection_id": "2d8d5f0a-ffdd-4781-b230-81901c4c3224",
+    "desired_revision": 2,
+    "entry_count": 30,
+    "gateway_id": "01a1252e-14d2-7edc-b181-903325c4c56a",
+    "historical_boot_entry_count": 1,
+    "ike_count": 2,
+    "journal_sha256": "914eb4a133f07a1449259c8ea53e4852fb42a2f8490c60c3bf911b4d301877ca",
+    "kind": "owned_azure_profile_native_observation",
+    "lan_export_two_frames": true,
+    "mode": "baseline",
+    "namespace": "net:[4026532430]",
+    "namespace_device": 4,
+    "namespace_inode": 4026532430,
+    "node_executable_sha256": "f8b43ba1835215f6a0a57069fcef88809f71b41f04326c6fbb757a7f8ad4354f",
+    "observed_at": "2026-10-11T19:42:06.627251941Z",
+    "org_id": "01a1252d-34fe-72bb-a40b-222a0a0bf9a2",
+    "profile_id": "azure-active-active-bgp-ipv4-v1",
+    "sad_count": 4,
+    "scope": "Fresh whole-journal/process/VICI/kernel/XFRM/guard two-pass readback; no API readiness or packet inference",
+    "site_id": "01a1252d-3612-7a65-ad65-2dd5f4ebcd72",
+    "spd_count": 6,
+    "traffic_counters_monotonic_advanced": false,
+    "transport_seconds": 1.891,
+    "version": 1
+  },
+  "actual_receipt_sha256": "be649b6369e5acb7af66e3e8fef2925a6bdecad2158f485a8b14a525b45ff72b",
+  "failed_original_attempt_preserved": true,
+  "full_story_acceptance": false,
+  "node_started_at": "2026-10-11T19:06:16.205224164Z",
+  "observer_binary_sha256": "a3129888ce95c538c7e23b1e88ecc36b81ef37c2adec050b3b94c5562be9fa96",
+  "observer_wire_fix": {
+    "allowed_export_commands": [
+      "169.254.21.2",
+      "169.254.22.2"
+    ],
+    "integrated_race_tests": "PASS2.106s",
+    "production_files_changed": 0,
+    "shared_wire_unchanged": true
+  },
+  "scope": "Current live AA BGP exact customer LAN exports with complete native/guard/journal/history brackets; remaining profiles and full story acceptance stay open",
+  "source_commit": "2b88065f06bb5a3d684880296d881b5a96bdb43a",
+  "version": 1
+}

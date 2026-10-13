@@ -34,6 +34,7 @@ import (
 	"github.com/tunnexio/tunnex/apps/api/internal/k8s"
 	"github.com/tunnexio/tunnex/apps/api/internal/licence"
 	"github.com/tunnexio/tunnex/apps/api/internal/pgerr"
+	"github.com/tunnexio/tunnex/apps/api/internal/policy"
 	"github.com/tunnexio/tunnex/apps/api/internal/policyspec"
 	"github.com/tunnexio/tunnex/apps/api/internal/wgkey"
 )
@@ -1045,7 +1046,8 @@ type siteTopology struct {
 	subnets     map[uuid.UUID][]string // site_id -> approved subnet CIDRs
 	// dnsForwards (S8.4) is the org's cross-site DNS forwarding table — the union of every site's
 	// dns_forwarding entries, compiled onto EVERY gateway so any gateway can answer for any site's zone.
-	dnsForwards []policyspec.DNSForward
+	dnsForwards         []policyspec.DNSForward
+	dnsResolverProfiles map[uuid.UUID][]policy.IPsecDNSProfile
 	// hubMembers (S8.6 Slice 4) is the PERSISTED ACTIVE hub order (org_hub_set.members) resolved to gateway
 	// rows IN ORDER — the ONE truth the compiler consumes (a failover promotion changes it, flowing through
 	// the ordinary compile+push). Empty when org_hub_set has no row (a not-yet-reconciled org) → the
@@ -1125,6 +1127,18 @@ func (s *Service) loadSiteTopology(ctx context.Context, orgID uuid.UUID) (siteTo
 	sub := map[uuid.UUID][]string{}
 	for _, ss := range subs {
 		sub[ss.SiteID] = append(sub[ss.SiteID], ss.Cidr.String())
+	}
+	dnsProfileRows, err := s.q.ListIPsecDNSResolverProfiles(ctx, orgID)
+	if err != nil {
+		return siteTopology{}, err
+	}
+	dnsProfiles := map[uuid.UUID][]policy.IPsecDNSProfile{}
+	for _, row := range dnsProfileRows {
+		profile, err := policy.DecodeIPsecDNSProfile(row)
+		if err != nil {
+			return siteTopology{}, err
+		}
+		dnsProfiles[row.GatewayID] = append(dnsProfiles[row.GatewayID], profile)
 	}
 	// S8.4: union the sites' dns_forwarding JSONB into the org table. A malformed row is SKIPPED (never
 	// fail the whole topology load over one bad DNS blob — the agent's forwarder also skip-degrades).
@@ -1261,7 +1275,7 @@ func (s *Service) loadSiteTopology(ctx context.Context, orgID uuid.UUID) (siteTo
 		sort.Strings(c.vips)
 		connectors[id] = c
 	}
-	return siteTopology{clientGraph: clientGraph, gws: gws, subnets: sub, dnsForwards: fwds, hubMembers: hubMembers, poolCIDR: poolCIDR, vipMappings: vipMappings, k8sDNS: k8sDNS, k8sConnectors: connectors}, nil
+	return siteTopology{clientGraph: clientGraph, gws: gws, subnets: sub, dnsForwards: fwds, dnsResolverProfiles: dnsProfiles, hubMembers: hubMembers, poolCIDR: poolCIDR, vipMappings: vipMappings, k8sDNS: k8sDNS, k8sConnectors: connectors}, nil
 }
 
 // deriveActive is THE shared hub-order derivation (S8.6 REDUCE) — the ONE function every consumer reads
@@ -1915,6 +1929,20 @@ func k8sHandoffGraph(topo siteTopology, node sqlc.Node) ([]Peer, []policyspec.Ro
 // When policy is off, transport is carried by a synthesized mesh artifact.
 func (s *Service) finalizeArtifact(topo siteTopology, node sqlc.Node, pol *policyspec.Compiled) *policyspec.Compiled {
 	pol = s.finalizeSiteArtifact(topo, node, pol)
+	declared := topo.dnsResolverProfiles[node.ID]
+	if len(declared) > 0 {
+		if pol == nil {
+			pol = &policyspec.Compiled{NodeID: node.ID.String(), Mode: "off", Mesh: true}
+		}
+		pol.DNSResolverProfiles = nil
+		for _, profile := range declared {
+			pol.DNSResolverProfiles = append(pol.DNSResolverProfiles, policy.DNSProfileForAllowedTraffic(profile, pol.Allow))
+		}
+		sort.Slice(pol.DNSResolverProfiles, func(a, b int) bool {
+			return pol.DNSResolverProfiles[a].ProfileID < pol.DNSResolverProfiles[b].ProfileID
+		})
+		pol.Version = policyspec.RequiredVersion(*pol)
+	}
 	peers := topo.clientGraph.Peers(node.ID)
 	if len(peers) == 0 {
 		return pol
@@ -2130,15 +2158,24 @@ func (s *Service) ReportStatus(ctx context.Context, node sqlc.Node, stats []Peer
 // the control plane compares it against what it pushed — a gateway running stale
 // policy must be VISIBLE (a policy violation in slow motion), never silent.
 type AppliedPolicy struct {
-	AIVPNHTTPReady   bool   `json:"ai_vpn_http_ready"`
-	AIVPNHTTPAddress string `json:"ai_vpn_http_address"`
+	WireGuardAppliedMTU int    `json:"wireguard_applied_mtu"`
+	AIVPNHTTPReady      bool   `json:"ai_vpn_http_ready"`
+	AIVPNHTTPAddress    string `json:"ai_vpn_http_address"`
 	// IPsecConfigVersion is an authenticated configuration protocol assertion.
 	// Only exact version 1 is recognized; current shipped agents report zero.
-	IPsecConfigVersion   int    `json:"ipsec_config_version"`
-	IPsecRecoveryVersion int    `json:"ipsec_recovery_version"`
-	Version              int    `json:"policy_version"`
-	Hash                 string `json:"policy_hash"`
-	Error                string `json:"policy_error"`
+	IPsecConfigVersion                 int    `json:"ipsec_config_version"`
+	IPsecRecoveryVersion               int    `json:"ipsec_recovery_version"`
+	IPsecGCPClassicVersion             int    `json:"ipsec_gcp_classic_version"`
+	IPsecGCPHAVersion                  int    `json:"ipsec_gcp_ha_version"`
+	IPsecAzureProfileRecreationVersion int    `json:"ipsec_azure_profile_recreation_version"`
+	IPsecAzureBGPRecreationVersion     int    `json:"ipsec_azure_bgp_recreation_version"`
+	IPsecFQDNPolicyVersion             int    `json:"ipsec_fqdn_policy_version"`
+	IPsecAzureVersion                  int    `json:"ipsec_azure_version"`
+	IPsecBGPVersion                    int    `json:"ipsec_bgp_version"`
+	IPsecRetainedGuardVersion          int    `json:"ipsec_retained_guard_version"`
+	Version                            int    `json:"policy_version"`
+	Hash                               string `json:"policy_hash"`
+	Error                              string `json:"policy_error"`
 	// FailingSince (RFC3339, empty when healthy) is the agent-reported mismatch
 	// onset: when apply FIRST started failing. The stale alarm measures from here,
 	// so a normal push that applies cleanly never registers stale (finding #3).
@@ -2174,6 +2211,9 @@ type AppliedPolicy struct {
 	// capabilities projection so known older gateways are refused before a DNS
 	// request is queued, rather than being misclassified as a resolver timeout.
 	DNSResolveRPCVersion int `json:"dns_resolve_rpc_version"`
+	// DNSIPsecResolveVersion independently advertises the source-bound IPsec
+	// DNS transport. It is not implied by the legacy direct DNS RPC capability.
+	DNSIPsecResolveVersion int `json:"dns_ipsec_resolve_version"`
 	// FlowLogState is the gateway's bounded collector heartbeat. It describes
 	// instrumentation, not traffic: an active collector may legitimately have no
 	// events. Empty is an older agent and is persisted as unknown.
@@ -2224,8 +2264,35 @@ func (s *Service) ReportWGInfo(ctx context.Context, node sqlc.Node, publicKey, e
 	if applied.IPsecConfigVersion != 1 {
 		applied.IPsecConfigVersion = 0
 	}
+	applied.IPsecFQDNPolicyVersion = ipsecFQDNPolicyCapability(applied.IPsecConfigVersion, applied.IPsecFQDNPolicyVersion)
+	if applied.IPsecConfigVersion != 1 || applied.IPsecBGPVersion != 1 {
+		applied.IPsecBGPVersion = 0
+	}
+	if applied.IPsecConfigVersion != 1 || applied.IPsecAzureVersion != 1 || applied.IPsecBGPVersion != 1 || applied.IPsecRetainedGuardVersion != 1 || applied.IPsecAzureProfileRecreationVersion != 1 {
+		applied.IPsecAzureProfileRecreationVersion = 0
+	}
+	if applied.IPsecConfigVersion != 1 || applied.IPsecAzureVersion != 1 || applied.IPsecBGPVersion != 1 || applied.IPsecRetainedGuardVersion != 1 || applied.IPsecAzureBGPRecreationVersion != 1 {
+		applied.IPsecAzureBGPRecreationVersion = 0
+	}
+	if applied.IPsecConfigVersion != 1 || applied.IPsecAzureVersion != 1 {
+		applied.IPsecAzureVersion = 0
+	}
+	if applied.IPsecConfigVersion != 1 || applied.IPsecGCPClassicVersion != 1 {
+		applied.IPsecGCPClassicVersion = 0
+	}
+	if applied.IPsecBGPVersion != 1 || applied.IPsecGCPHAVersion != 1 {
+		applied.IPsecGCPHAVersion = 0
+	}
 	if applied.IPsecConfigVersion != 1 || applied.IPsecRecoveryVersion != 1 {
 		applied.IPsecRecoveryVersion = 0
+	}
+	if applied.IPsecConfigVersion != 1 || applied.IPsecRetainedGuardVersion != 1 {
+		applied.IPsecRetainedGuardVersion = 0
+	}
+	// Bound DNS needs both the RPC2 path contract and policy v11 private-zone
+	// declarations. Missing/unknown/inconsistent reports clear prior evidence.
+	if applied.DNSIPsecResolveVersion != 1 || applied.DNSResolveRPCVersion != 2 || applied.IPsecConfigVersion != 1 || applied.MaxSupportedVersion < 11 {
+		applied.DNSIPsecResolveVersion = 0
 	}
 	// Only canonical private IPv4 addresses can be advertised. Pool ownership is
 	// checked again when the AI endpoint is discovered or used. Old reports clear it.
@@ -2237,28 +2304,41 @@ func (s *Service) ReportWGInfo(ctx context.Context, node sqlc.Node, publicKey, e
 	// S7.2 applied-policy status). The column is a forward-compat JSONB map; we build
 	// it server-side from the typed report so a compromised agent can't inject
 	// arbitrary JSON. egress_nat gates full-tunnel device creation (gateway_no_egress).
+	if applied.WireGuardAppliedMTU < 1280 || applied.WireGuardAppliedMTU > 1420 {
+		applied.WireGuardAppliedMTU = 0
+	}
 	caps, err := json.Marshal(map[string]any{
-		"ai_vpn_http_ready":           applied.AIVPNHTTPReady,
-		"ai_vpn_http_address":         applied.AIVPNHTTPAddress,
-		"ipsec_config_version":        applied.IPsecConfigVersion,
-		"ipsec_recovery_version":      applied.IPsecRecoveryVersion,
-		"egress_nat":                  egressNAT,
-		"egress_ipv6":                 egressIPv6,
-		"policy_version":              applied.Version,
-		"policy_hash":                 applied.Hash,
-		"policy_error":                applied.Error,
-		"policy_failing_since":        applied.FailingSince,
-		"policy_refused_version":      applied.RefusedVersion,
-		"site_link_stale":             applied.SiteLinkStale, // VESTIGIAL (WF-B D-WFB-1b): still reported+persisted for backward-compat, but NO LONGER CONSUMED — the CP derives site-link health from the ONE liveness derivation (fillSiteLinkVerdict). Retire or re-adopt deliberately in an agent-vN; do not silently resurrect.
-		"site_subnet_unreachable":     applied.SiteSubnetUnreachable,
-		"conntrack_flush_unavailable": applied.ConntrackFlushUnavailable,
-		"k8s_endpoints_unavailable":   applied.K8sEndpointsUnavailable,
-		"max_policy_version":          applied.MaxSupportedVersion,
-		"ovpn_health":                 applied.OVPNHealth, // S9.1 4d
-		"dns_resolve_rpc_version":     applied.DNSResolveRPCVersion,
-		"flow_log_state":              applied.FlowLogState,
-		"flow_log_last_observed_at":   applied.FlowLogLastObservedAt,
-		"flow_log_last_delivered_at":  applied.FlowLogLastDeliveredAt,
+		"wireguard_applied_mtu":                  applied.WireGuardAppliedMTU,
+		"ai_vpn_http_ready":                      applied.AIVPNHTTPReady,
+		"ai_vpn_http_address":                    applied.AIVPNHTTPAddress,
+		"ipsec_config_version":                   applied.IPsecConfigVersion,
+		"ipsec_recovery_version":                 applied.IPsecRecoveryVersion,
+		"ipsec_bgp_version":                      applied.IPsecBGPVersion,
+		"ipsec_gcp_classic_version":              applied.IPsecGCPClassicVersion,
+		"ipsec_gcp_ha_version":                   applied.IPsecGCPHAVersion,
+		"ipsec_azure_version":                    applied.IPsecAzureVersion,
+		"ipsec_azure_bgp_recreation_version":     applied.IPsecAzureBGPRecreationVersion,
+		"ipsec_azure_profile_recreation_version": applied.IPsecAzureProfileRecreationVersion,
+		"ipsec_fqdn_policy_version":              applied.IPsecFQDNPolicyVersion,
+		"ipsec_retained_guard_version":           applied.IPsecRetainedGuardVersion,
+		"egress_nat":                             egressNAT,
+		"egress_ipv6":                            egressIPv6,
+		"policy_version":                         applied.Version,
+		"policy_hash":                            applied.Hash,
+		"policy_error":                           applied.Error,
+		"policy_failing_since":                   applied.FailingSince,
+		"policy_refused_version":                 applied.RefusedVersion,
+		"site_link_stale":                        applied.SiteLinkStale, // VESTIGIAL (WF-B D-WFB-1b): still reported+persisted for backward-compat, but NO LONGER CONSUMED — the CP derives site-link health from the ONE liveness derivation (fillSiteLinkVerdict). Retire or re-adopt deliberately in an agent-vN; do not silently resurrect.
+		"site_subnet_unreachable":                applied.SiteSubnetUnreachable,
+		"conntrack_flush_unavailable":            applied.ConntrackFlushUnavailable,
+		"k8s_endpoints_unavailable":              applied.K8sEndpointsUnavailable,
+		"max_policy_version":                     applied.MaxSupportedVersion,
+		"ovpn_health":                            applied.OVPNHealth, // S9.1 4d
+		"dns_resolve_rpc_version":                applied.DNSResolveRPCVersion,
+		"dns_ipsec_resolve_version":              applied.DNSIPsecResolveVersion,
+		"flow_log_state":                         applied.FlowLogState,
+		"flow_log_last_observed_at":              applied.FlowLogLastObservedAt,
+		"flow_log_last_delivered_at":             applied.FlowLogLastDeliveredAt,
 	})
 	if err != nil {
 		return err
@@ -2326,13 +2406,21 @@ type NodeCapabilities struct {
 	AIVPNHTTPReady   bool   `json:"ai_vpn_http_ready"`
 	AIVPNHTTPAddress string `json:"ai_vpn_http_address"`
 	// Freshness is the server-written policy_reported_at on the same node row.
-	IPsecConfigVersion   int    `json:"ipsec_config_version"`
-	IPsecRecoveryVersion int    `json:"ipsec_recovery_version"`
-	EgressNAT            bool   `json:"egress_nat"`
-	EgressIPv6           bool   `json:"egress_ipv6"`
-	PolicyVersion        int    `json:"policy_version"`
-	PolicyHash           string `json:"policy_hash"`
-	PolicyError          string `json:"policy_error"`
+	IPsecConfigVersion                 int    `json:"ipsec_config_version"`
+	IPsecRecoveryVersion               int    `json:"ipsec_recovery_version"`
+	IPsecGCPClassicVersion             int    `json:"ipsec_gcp_classic_version"`
+	IPsecGCPHAVersion                  int    `json:"ipsec_gcp_ha_version"`
+	IPsecAzureProfileRecreationVersion int    `json:"ipsec_azure_profile_recreation_version"`
+	IPsecAzureBGPRecreationVersion     int    `json:"ipsec_azure_bgp_recreation_version"`
+	IPsecFQDNPolicyVersion             int    `json:"ipsec_fqdn_policy_version"`
+	IPsecAzureVersion                  int    `json:"ipsec_azure_version"`
+	IPsecBGPVersion                    int    `json:"ipsec_bgp_version"`
+	IPsecRetainedGuardVersion          int    `json:"ipsec_retained_guard_version"`
+	EgressNAT                          bool   `json:"egress_nat"`
+	EgressIPv6                         bool   `json:"egress_ipv6"`
+	PolicyVersion                      int    `json:"policy_version"`
+	PolicyHash                         string `json:"policy_hash"`
+	PolicyError                        string `json:"policy_error"`
 	// PolicyFailingSince (RFC3339) is the agent-reported mismatch ONSET: when apply
 	// first started failing (empty when healthy). The stale window measures from
 	// here, not the applied-hash age -- so a normal push never false-alarms (#3).
@@ -2373,6 +2461,8 @@ type NodeCapabilities struct {
 	// before queueing a resolver request when this is below the required wire
 	// version.
 	DNSResolveRPCVersion int `json:"dns_resolve_rpc_version"`
+	// DNSIPsecResolveVersion is separate from legacy direct RPC support.
+	DNSIPsecResolveVersion int `json:"dns_ipsec_resolve_version"`
 }
 
 // SupportsDNSResolveRPC is deliberately a capability comparison rather than a
@@ -3215,4 +3305,11 @@ func (s *Service) allocateAgentDevice(ctx context.Context, q *sqlc.Queries, orgI
 func (s *Service) WithLicence(m *licence.Manager) *Service {
 	s.licence = m
 	return s
+}
+
+func ipsecFQDNPolicyCapability(configVersion, fqdnVersion int) int {
+	if configVersion == 1 && (fqdnVersion == 1 || fqdnVersion == 2) {
+		return fqdnVersion
+	}
+	return 0
 }

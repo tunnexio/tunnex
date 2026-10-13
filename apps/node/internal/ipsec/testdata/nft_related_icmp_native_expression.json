@@ -1,0 +1,95 @@
+[
+  {
+    "match": {
+      "op": "==",
+      "left": {
+        "payload": {
+          "protocol": "icmp",
+          "field": "type"
+        }
+      },
+      "right": "destination-unreachable"
+    }
+  },
+  {
+    "match": {
+      "op": "==",
+      "left": {
+        "payload": {
+          "protocol": "icmp",
+          "field": "code"
+        }
+      },
+      "right": 4
+    }
+  },
+  {
+    "match": {
+      "op": "in",
+      "left": {
+        "ct": {
+          "key": "state"
+        }
+      },
+      "right": "related"
+    }
+  },
+  {
+    "match": {
+      "op": "==",
+      "left": {
+        "ct": {
+          "key": "direction"
+        }
+      },
+      "right": "reply"
+    }
+  },
+  {
+    "match": {
+      "op": "==",
+      "left": {
+        "ct": {
+          "key": "protocol"
+        }
+      },
+      "right": "tcp"
+    }
+  },
+  {
+    "match": {
+      "op": "==",
+      "left": {
+        "ct": {
+          "key": "saddr",
+          "dir": "original"
+        }
+      },
+      "right": "10.10.0.1"
+    }
+  },
+  {
+    "match": {
+      "op": "==",
+      "left": {
+        "ct": {
+          "key": "daddr",
+          "dir": "original"
+        }
+      },
+      "right": "10.20.0.1"
+    }
+  },
+  {
+    "match": {
+      "op": "==",
+      "left": {
+        "ct": {
+          "key": "proto-dst",
+          "dir": "original"
+        }
+      },
+      "right": 8080
+    }
+  }
+]

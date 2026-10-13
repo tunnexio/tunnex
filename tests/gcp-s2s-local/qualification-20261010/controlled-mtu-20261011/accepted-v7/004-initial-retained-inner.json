@@ -1,0 +1,1 @@
+{"utc": 1791673111.881536, "observation": {"native_verified": true, "full_guard_verified": true, "denial_readback_verified": false, "controller_transition_pending": false, "inner_mtus": [1326, 1326, 1382], "all_three_xfrm_mtu": null, "gateway_mtu": 1460}}

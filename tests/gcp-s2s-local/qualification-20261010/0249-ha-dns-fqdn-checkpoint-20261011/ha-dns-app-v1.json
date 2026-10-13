@@ -1,0 +1,97 @@
+{
+  "started": true,
+  "profile": "ha",
+  "completed": true,
+  "utc": "2026-10-11T00:21:58Z",
+  "results": [
+    {
+      "profile": "ha",
+      "source": "10.70.0.2",
+      "resolver": "10.80.0.2",
+      "name": "app.ha.gcp.s2s-qa.tunnex.app.",
+      "query_has_edns": false,
+      "udp": {
+        "id": 53184,
+        "question": "app.ha.gcp.s2s-qa.tunnex.app.",
+        "rcode": 0,
+        "tc": false,
+        "answer_count": 1,
+        "a": [],
+        "cname": [],
+        "other_answers": []
+      },
+      "tcp_fallback_used": false,
+      "tcp_direct_used": false,
+      "full": {
+        "id": 53184,
+        "question": "app.ha.gcp.s2s-qa.tunnex.app.",
+        "rcode": 0,
+        "tc": false,
+        "answer_count": 1,
+        "a": [
+          {
+            "owner": "app.ha.gcp.s2s-qa.tunnex.app.",
+            "address": "10.80.0.10"
+          }
+        ],
+        "cname": [],
+        "other_answers": []
+      },
+      "accepted": true,
+      "scope": "ordinary fixed wire DNS only; separate API lease/guard/FQDN evidence required"
+    }
+  ],
+  "progress": [
+    {
+      "profile": "ha",
+      "source": "10.70.0.2",
+      "resolver": "10.80.0.2",
+      "name": "app.ha.gcp.s2s-qa.tunnex.app.",
+      "id": 53184,
+      "query_has_edns": false,
+      "tcp_direct_used": false,
+      "stage": "udp_bind"
+    },
+    {
+      "profile": "ha",
+      "source": "10.70.0.2",
+      "resolver": "10.80.0.2",
+      "name": "app.ha.gcp.s2s-qa.tunnex.app.",
+      "id": 53184,
+      "query_has_edns": false,
+      "tcp_direct_used": false,
+      "stage": "udp_send"
+    },
+    {
+      "profile": "ha",
+      "source": "10.70.0.2",
+      "resolver": "10.80.0.2",
+      "name": "app.ha.gcp.s2s-qa.tunnex.app.",
+      "id": 53184,
+      "query_has_edns": false,
+      "tcp_direct_used": false,
+      "stage": "udp_recv"
+    },
+    {
+      "profile": "ha",
+      "source": "10.70.0.2",
+      "resolver": "10.80.0.2",
+      "name": "app.ha.gcp.s2s-qa.tunnex.app.",
+      "id": 53184,
+      "query_has_edns": false,
+      "tcp_direct_used": false,
+      "stage": "udp_response_validated",
+      "udp": {
+        "id": 53184,
+        "question": "app.ha.gcp.s2s-qa.tunnex.app.",
+        "rcode": 0,
+        "tc": false,
+        "answer_count": 1,
+        "a": [],
+        "cname": [],
+        "other_answers": []
+      }
+    }
+  ],
+  "accepted": true
+}

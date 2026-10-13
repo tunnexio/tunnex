@@ -1,0 +1,13 @@
+{
+  "completed": true,
+  "aggregate_accepted": true,
+  "mutations": 0,
+  "cas_v1_overall_false_preserved": true,
+  "first_save200_stale409_draftclear": true,
+  "deleted_revision": 3,
+  "configuration_http_status": 200,
+  "metadata_only": true,
+  "baseline_preserved": true,
+  "tombstone_retained": true,
+  "private_original_sha256": "c98050a5b3a5e2fa6c25fdd1a0019eb24f15c350eebc8e3891c89f2a4d5eac28"
+}

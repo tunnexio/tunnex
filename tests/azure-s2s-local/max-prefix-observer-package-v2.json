@@ -1,0 +1,118 @@
+{
+  "version": 2,
+  "scope": "Fresh source-only wrapper package; preserve old staged3cc and all private states. No staging or execution.",
+  "files": [
+    {
+      "path": "tests/azure-s2s-local/qualify-max-prefix-api.py",
+      "sha256": "2301a64dc2bbd6475ee7158f11b5272c6689687a39b0dcdb8e258cddb6abe93d",
+      "bytes": 16150
+    },
+    {
+      "path": "tests/azure-s2s-local/transition-aa-static.py",
+      "sha256": "ff30c646911968117a501ac493cf214361cec198288e9ae17c52cab04714c9fb",
+      "bytes": 13525
+    },
+    {
+      "path": "tests/azure-s2s-local/rotate-bad-psk.py",
+      "sha256": "42bb1da24b0e70c08abbe6c192528e92bcfa8cd7e9d9d78eccb0fe624fd43f20",
+      "bytes": 8432
+    },
+    {
+      "path": "tests/azure-s2s-local/lifecycle-live.py",
+      "sha256": "2a092f209ef363e4d135293ed957c9d71570a354e1579a9b4e8cd4ab819e0be6",
+      "bytes": 8711
+    },
+    {
+      "path": "tests/azure-s2s-local/activate-live.py",
+      "sha256": "9c0cd48d6fa60d9b8abd23da9376724f50f3857f6b95ff8ba4c3f769851ce6de",
+      "bytes": 12205
+    },
+    {
+      "path": "tests/azure-s2s-local/enroll-local.py",
+      "sha256": "e4099a106ff3a2b6ab38fa0ade1941c0eda8f04e1ba3830f267fd7e58a00a971",
+      "bytes": 7177
+    },
+    {
+      "path": "tests/azure-s2s-local/rebind-profile-dns.py",
+      "sha256": "9418bc19209953bdbed8c7c2820f1e9918a1374873452159a5f21a623c8d56bd",
+      "bytes": 19989
+    },
+    {
+      "path": "tests/azure-s2s-local/qualify-lb-api.py",
+      "sha256": "50c72741607f580865437d58ac8a439ebd70e05dc2cbfa20925991f59886fbf0",
+      "bytes": 17119
+    },
+    {
+      "path": "tests/azure-s2s-local/qualify-dns-api.py",
+      "sha256": "11dc1322aac1e59a292cc8f334a775b4760e43512d1372cd3bc288caf66a6dfc",
+      "bytes": 9162
+    },
+    {
+      "path": "tests/azure-s2s-local/decode-owned-bgp-capture.py",
+      "sha256": "618a9bd6ca8b312c43ad9bc5aaae0cc9a1e11d7139e519af8007ec4da35366a8",
+      "bytes": 11076
+    },
+    {
+      "path": "tests/azure-s2s-local/max-prefix-execution-functions.sh",
+      "sha256": "8bacbb05f34bda0f9ed8efe56496eac170f30d0eebcc409f2463f773ae1fbd94",
+      "bytes": 2348
+    },
+    {
+      "path": "deploy/azure/qualify-owned-max-prefix.py",
+      "sha256": "566a6f6a1548a98ad2102aa94366202ef5b75033f3333adacfac7dd60cc2a0b9",
+      "bytes": 7286
+    },
+    {
+      "path": "deploy/azure/qualify-owned-unapproved-prefix.py",
+      "sha256": "cd9bab48dcb1ea3dc22df6473a43f154f87dfa1b872bdf1f8a3e9e3210de3b97",
+      "bytes": 12352
+    },
+    {
+      "path": "deploy/azure/collect-owned-prefix-ranges.py",
+      "sha256": "e9ebfa3efbca4e6f8723fae7296f84b03696eddfb51ab666ab0130ffa05894ad",
+      "bytes": 18503
+    },
+    {
+      "path": "deploy/azure/set-owned-responder-only.py",
+      "sha256": "e9f09fda65be4ec1090d8d5456b76fdfeca29d500fdb9fb6a3d048e99e5cb7e0",
+      "bytes": 7213
+    },
+    {
+      "path": "deploy/azure/discover-owned-profile.py",
+      "sha256": "9011af0eaed535a7472449e2cfa9864372549c62957c8ff20da8574a80bf03e8",
+      "bytes": 7982
+    },
+    {
+      "path": "tests/azure-s2s-local/prepare-max-prefix-observer.py",
+      "sha256": "5cfc58881dfd877774c62814f0de72cbb1f296900667542e5ca9461dc98177d5",
+      "bytes": 5696
+    },
+    {
+      "path": "tests/azure-s2s-local/run-max-prefix-observer.py",
+      "sha256": "bdf5371c1edf3a3c5bc3c232661b8a2a888b8f6420fc2e7bc5bf5c0ab985dbf7",
+      "bytes": 13217
+    },
+    {
+      "path": "tests/azure-s2s-local/max-prefix-observer-wrapper-review.md",
+      "sha256": "4cc969d07407b403482a925e1eadde818a92bff9abcd7700481c925a7fea0939",
+      "bytes": 8965
+    }
+  ],
+  "imports": "Original15 Python import closure plus prepare-max-prefix-observer.py imported by run-max-prefix-observer.py. Only standard library; preserve repository layout.",
+  "excluded": "No .runtime/env/accounts/keys/captures/binaries/private baselines or receipts. Root separately attests a55 binary.",
+  "validation": "All listed Python source AST parsed; offline qualification17 and observer10 tests pass.",
+  "reviewed_layout": "/home/ubuntu/tunnex-azure-lab/reviewed-max-prefix-observer-v2-669e541e",
+  "source_binding": "run-max-prefix-observer.py SOURCE points exclusively to this v2 layout. Complete closure includes corrected qualify-max-prefix-api.py. No old3cc fallback.",
+  "archive_source_commit": "8eb31c7e2915a7c2bbb45407085c0396d5486b0a",
+  "manifest_refresh": {
+    "original_manifest_sha256": "5ebe03255911cb097d9cb3ef7368de6180466ed6dc0100ea95f9bc808fff046b",
+    "root_HEAD_updates": [
+      {
+        "path": "tests/azure-s2s-local/qualify-lb-api.py",
+        "previous_sha256": "068354c4de9f05488c24f745efbf4d44e85dbc315dfa1e7cfbeb08048b1fdbbf",
+        "current_sha256": "50c72741607f580865437d58ac8a439ebd70e05dc2cbfa20925991f59886fbf0"
+      }
+    ],
+    "reason": "Current tracked LB helper adds existing lifecycle timestamp normalization import; import closure already includes lifecycle-live.py. Local manifest only; root unchanged."
+  }
+}

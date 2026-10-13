@@ -1,0 +1,61 @@
+{
+  "scope": "actual owned GCP QA zones only; no AWS operations",
+  "result": "PASS",
+  "execution": "designated bastion gcloud; strict exact resource and network readback",
+  "zones": [
+    {
+      "zone": "tn-gcps2s-20261010-ha-qa-zone",
+      "dns_name": "ha.gcp.s2s-qa.tunnex.app.",
+      "network": "tn-gcps2s-20261010-ha",
+      "network_id": "6379914247511756275",
+      "visibility": "private",
+      "records": [
+        {
+          "name": "app.ha.gcp.s2s-qa.tunnex.app.",
+          "type": "A",
+          "ttl": 30,
+          "rrdatas": [
+            "10.80.0.10"
+          ]
+        },
+        {
+          "name": "alias.ha.gcp.s2s-qa.tunnex.app.",
+          "type": "CNAME",
+          "ttl": 30,
+          "rrdatas": [
+            "app.ha.gcp.s2s-qa.tunnex.app."
+          ]
+        }
+      ]
+    },
+    {
+      "zone": "tn-gcps2s-20261010-classic-qa-zone",
+      "dns_name": "classic.gcp.s2s-qa.tunnex.app.",
+      "network": "tn-gcps2s-20261010-classic",
+      "network_id": "3397467516692614609",
+      "visibility": "private",
+      "records": [
+        {
+          "name": "app.classic.gcp.s2s-qa.tunnex.app.",
+          "type": "A",
+          "ttl": 30,
+          "rrdatas": [
+            "10.81.0.10"
+          ]
+        },
+        {
+          "name": "alias.classic.gcp.s2s-qa.tunnex.app.",
+          "type": "CNAME",
+          "ttl": 30,
+          "rrdatas": [
+            "app.classic.gcp.s2s-qa.tunnex.app."
+          ]
+        }
+      ]
+    }
+  ],
+  "historical_gcp_recordsets_unchanged": true,
+  "aws_scope": "No AWS operations or AWS record readback performed",
+  "provider_enablement": false,
+  "secrets_output": false
+}

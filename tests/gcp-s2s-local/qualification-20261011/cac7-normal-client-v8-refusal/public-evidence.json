@@ -1,0 +1,24 @@
+{
+  "completed": true,
+  "accepted": false,
+  "cleanup_errors": [],
+  "unknown_api_outcome": false,
+  "unknown_firewall_outcome": false,
+  "error_type": "ValueError",
+  "source": "cac7ffd17e162841f90fa8a7299587349e62d262",
+  "successful_allow_case_count": 7,
+  "denial_queries_executed": false,
+  "failed_case": "Classic large answer TCP continuation",
+  "failed_stage": "tcp_read_length",
+  "failure_type": "TimeoutError",
+  "udp_tc": true,
+  "udp_rcode": 0,
+  "udp_answer_count": 0,
+  "tcp_frame_length_received": false,
+  "receipt_sha256": {
+    "overall": "eac5d163f56950aefa80ba7827e4021f3f3f0438d5cf7075565039f9956cae85",
+    "failed_wire": "3a548b8d198f3b19662b683e8b6a921a0c96614e6b085303b9c969268257d48c"
+  },
+  "cause_proven": false,
+  "replayed": false
+}

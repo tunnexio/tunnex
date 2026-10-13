@@ -1,0 +1,21 @@
+{
+  "revision": 20,
+  "node_sha256": "ba3bd84657db5c84eebfb446d63f47124e419abdbe9920c02a7a148043bc9649",
+  "normal_status_before_and_after_applied": true,
+  "both_tunnels_up": true,
+  "both_bgp_established": true,
+  "strict_native_single_ike_and_installed_child_each": true,
+  "timings_ms": {
+    "daemon_inspect": 3,
+    "kernel_read": 4,
+    "xfrm_read": 3,
+    "environment_observe": 318,
+    "full_guard_check": 67
+  },
+  "component_reads_passed": true,
+  "result": "final_native_or_journal_refused",
+  "qualified_measurement": false,
+  "authority": false,
+  "in_memory_epoch_observed": false,
+  "scope": "One external diagnostic sample; refused final consistency check, no causal inference or readiness claim"
+}

@@ -1,0 +1,15 @@
+{
+  "scope": "exact reviewed HA target recovery source; attempted command never executed",
+  "wrapper_sha256": "f9c46841e0b9438622c7d044fb2fd349cfcfef394ff4efc4bcea57a3b5b8de17",
+  "staged_mode": "0600",
+  "source_staging_verified": true,
+  "ha_target_instance_id": "7595462031766211538",
+  "classic_target_instance_id": "139156170322758560",
+  "automatic_review": "rejected before process",
+  "reason": "genuine HA target VM reset risks service disruption and metadata loss; review did not consider trusted user messages explicit authorization for this exact reset",
+  "ha_cloud_actions_executed": false,
+  "classic_cloud_actions_executed": false,
+  "alternate_execution": false,
+  "automatic_retry": false,
+  "client_acceptance_preserved": true
+}

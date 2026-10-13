@@ -1,0 +1,88 @@
+{
+  "accepted_stories": 6,
+  "actual_native_projection": {
+    "actual_dns_rule_counts": {
+      "app_rules": 2,
+      "dns_rules": 4,
+      "fqdn_rules": 0,
+      "reverse_rules": 2
+    },
+    "actual_dns_setup_sha256": "2ff25dd82eb3a758c47d4c9fd6530a23c427460eb87a2e4ce601d22a30e0f191",
+    "actual_fqdn_resource_id": "01a12555-ccd4-7a39-b5ce-b70ad0e8caae",
+    "category": "actual_static_receipts_projected",
+    "native_receipts": [
+      {
+        "label": "absence",
+        "projection": {
+          "active_tunnel_count": 2,
+          "bgp_route_count": 0,
+          "configuration_revision": 1,
+          "connection_id": "8595cbe4-ebd8-4a02-ae12-9b031f370481",
+          "desired_revision": 3,
+          "entry_count": 31,
+          "gateway_id": "01a1252e-14d2-7edc-b181-903325c4c56a",
+          "guard_retained": true,
+          "historical_boot_entry_count": 1,
+          "ike_count": 0,
+          "kind": "owned_azure_profile_native_observation",
+          "mode": "absence",
+          "observed_at": "2026-10-11T23:17:05.711808733Z",
+          "org_id": "01a1252d-34fe-72bb-a40b-222a0a0bf9a2",
+          "owned_children": 0,
+          "owned_ike": 0,
+          "owned_interfaces": 0,
+          "owned_routes": 0,
+          "owned_sad": 0,
+          "owned_spd": 0,
+          "profile_id": "azure-active-active-static-ipv4-v1",
+          "sad_count": 0,
+          "site_id": "01a1252d-3612-7a65-ad65-2dd5f4ebcd72",
+          "spd_count": 0,
+          "version": 1
+        },
+        "receipt_sha256": "4de88d19f7665628907ef309a31d738c37635baba5dc0b1fbcc0fb077c62913b"
+      },
+      {
+        "label": "baseline_zero",
+        "projection": {
+          "active_tunnel_count": 2,
+          "bgp_route_count": 0,
+          "configuration_revision": 1,
+          "connection_id": "8595cbe4-ebd8-4a02-ae12-9b031f370481",
+          "desired_revision": 4,
+          "entry_count": 32,
+          "gateway_id": "01a1252e-14d2-7edc-b181-903325c4c56a",
+          "historical_boot_entry_count": 1,
+          "ike_count": 2,
+          "kind": "owned_azure_profile_native_observation",
+          "mode": "baseline",
+          "observed_at": "2026-10-11T23:18:47.825887819Z",
+          "org_id": "01a1252d-34fe-72bb-a40b-222a0a0bf9a2",
+          "profile_id": "azure-active-active-static-ipv4-v1",
+          "sad_count": 4,
+          "site_id": "01a1252d-3612-7a65-ad65-2dd5f4ebcd72",
+          "spd_count": 6,
+          "version": 1
+        },
+        "receipt_sha256": "eac67e008283eb97c3eaf121b4bf1db8d8f3a5e7b2ec1c3051511d792d92813e"
+      }
+    ],
+    "story_acceptance": false
+  },
+  "category": "actual_static_cleanup_and_revision4_native_baselines_passed",
+  "corrected_caller_sha256": "844f7b156ec4063263180e5c05a68cbeca6f20e95ff388c0b1878b8460e3e2f2",
+  "eight_policy_manifest_sha256": "00ed499bd94f1433cc6bd32dc7efa32445053431fd8835c4909ef987895cdf65",
+  "eight_policy_native_receipt_sha256": "767e535cfc7fb6b68e1fe8777312e5314091175b3932e40c36d2f58b2724661d",
+  "eight_policy_native_result": "/private/tmp/azure-static-native-0dda-v5-root-2a9a65c9-a4d0-4020-a5aa-3897df1ccd3e/result.json",
+  "native_baseline_passed": true,
+  "native_observer_sha256": "8817686f9143732b67093f7247ca70f67094b9449f9d23f09c37d819bef91d2c",
+  "new_enable_receipt_sha256": "ef3a180887e3b8b76d944c14933ba1062d4858403f9ec119c8a5b7ba8ceb63da",
+  "node_executable_sha256": "0dda48e7f09d7c03467b9f66df0fb4bb1eac8f458f99f0606d594307d4bc42a5",
+  "normal_dns_rebind_and_4_2_2_grants_completed": true,
+  "open_stories": 5,
+  "profile": "azure-active-active-static-ipv4-v1",
+  "scope": "Authentic current static full-history cleanup and two-tunnel native baselines, first with zero policies then exact eight normal API policies. No packet, DNS, rotation/rekey or remaining topology acceptance inferred.",
+  "static_packet_window_passed": false,
+  "sustained_dns_passed": false,
+  "version": 1
+}

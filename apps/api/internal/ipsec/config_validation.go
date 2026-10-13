@@ -4,7 +4,17 @@ import "net/netip"
 
 // StaticConfig is a nonpersisting preflight input, not an activation request.
 // Algorithms and engine text are deliberately absent from this bounded profile.
+type BGPConfig struct {
+	LocalASN        uint32 `json:"local_asn"`
+	RemoteASN       uint32 `json:"remote_asn"`
+	RouterID        string `json:"router_id"`
+	MaximumPrefixes int    `json:"maximum_prefixes"`
+}
+
 type StaticConfig struct {
+	Azure                  *AzureContract `json:"azure,omitempty"`
+	ProfileID              string         `json:"profile_id,omitempty"`
+	BGP                    *BGPConfig     `json:"bgp,omitempty"`
 	Mode                   string         `json:"mode"`
 	CustomerOutsideAddress string         `json:"customer_outside_address"`
 	LocalPrefixes          []string       `json:"local_prefixes"`
@@ -105,28 +115,16 @@ func awsStaticPSK(value string) bool {
 // assignment in AWS, an installed engine, or verified traffic. Addresses must
 // come from the customer's actual configuration; inside host order is explicit.
 func ValidateAWSStaticConfig(c StaticConfig) error {
-	if c.Mode != "ipv4-static" {
+	if c.Mode != "ipv4-static" || c.BGP != nil {
 		return configError("mode_unsupported", "mode", 0)
 	}
-	local, err := routedPrefixes(c.LocalPrefixes, "local_prefixes")
+	routes, err := validateRoutedIPv4Pair(c.LocalPrefixes, c.RemotePrefixes)
 	if err != nil {
 		return err
-	}
-	remote, err := routedPrefixes(c.RemotePrefixes, "remote_prefixes")
-	if err != nil {
-		return err
-	}
-	for _, l := range local {
-		for _, r := range remote {
-			if l.Overlaps(r) {
-				return configError("prefix_overlap", "remote_prefixes", 0)
-			}
-		}
 	}
 	if len(c.Tunnels) != 2 {
 		return configError("tunnel_count", "tunnels", 0)
 	}
-	routes := append(local, remote...)
 	customerOutside, ok := canonicalIPv4Address(c.CustomerOutsideAddress)
 	if !ok {
 		return configError("outside_invalid", "customer_outside_address", 0)
@@ -195,4 +193,55 @@ func ValidateAWSStaticConfig(c StaticConfig) error {
 		}
 	}
 	return nil
+}
+
+// ValidateAWSConfig admits bounded provider intent; it does not authorize activation.
+func ValidateAWSConfig(c StaticConfig) error {
+	if c.Mode == "ipv4-static" {
+		return ValidateAWSStaticConfig(c)
+	}
+	if c.Mode != "ipv4-bgp" {
+		return configError("mode_unsupported", "mode", 0)
+	}
+	if c.BGP == nil {
+		return configError("bgp_required", "bgp", 0)
+	}
+	base := c
+	base.Mode = "ipv4-static"
+	base.BGP = nil
+	if err := ValidateAWSStaticConfig(base); err != nil {
+		return err
+	}
+	return validateBGPParameters(c.BGP)
+}
+func validateBGPParameters(b *BGPConfig) error {
+	if b == nil {
+		return configError("bgp_required", "bgp", 0)
+	}
+	if !privateBGPASN(b.LocalASN) {
+		return configError("asn_invalid", "bgp.local_asn", 0)
+	}
+	if !(privateBGPASN(b.RemoteASN) || b.RemoteASN == 7224) || b.RemoteASN == b.LocalASN {
+		return configError("asn_invalid", "bgp.remote_asn", 0)
+	}
+	id, ok := canonicalIPv4Address(b.RouterID)
+	if !ok || id.As4()[0] == 0 || id.IsMulticast() || id.IsLoopback() || id.IsLinkLocalUnicast() || id.As4()[0] >= 240 {
+		return configError("router_id_invalid", "bgp.router_id", 0)
+	}
+	if b.MaximumPrefixes < 1 || b.MaximumPrefixes > 64 {
+		return configError("prefix_limit_invalid", "bgp.maximum_prefixes", 0)
+	}
+	return nil
+}
+func privateBGPASN(a uint32) bool {
+	return a >= 64512 && a <= 65534 || a >= 4200000000 && a <= 4294967294
+}
+func providerProfile(c StaticConfig) string {
+	if c.ProfileID != "" {
+		return c.ProfileID
+	}
+	if c.Mode == "ipv4-bgp" {
+		return "aws-bgp-ipv4-v1"
+	}
+	return "aws-static-ipv4-v1"
 }

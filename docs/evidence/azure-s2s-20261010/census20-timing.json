@@ -1,0 +1,23 @@
+{
+  "revision": 20,
+  "helper_source": "42f6a565",
+  "result": "read_only_measurement_complete",
+  "all_seven_final_checks": true,
+  "normal_before_and_after_applied20": true,
+  "timings_ms": {
+    "environment_observe": 179,
+    "full_guard": 34,
+    "extra_iptables_version": 0,
+    "extra_iptables_nat": 1,
+    "captured_hook_parser": 14,
+    "captured_docker_parser": 34
+  },
+  "extra_iptables_commands": 2,
+  "original_observe_commands_unchanged": 18,
+  "captured_hook_parser_result": false,
+  "captured_hook_refusal_expected_for_docker_fallback": true,
+  "captured_docker_parser_result": true,
+  "residual_census_and_parse_ms": 137,
+  "scope": "Separate extra commands and captured-snapshot parser timings; one passing sample, no pure cost attribution or DNS expiry causality claim",
+  "prior_attempt": "exact_current_entry_refused before measurements; original strict refusal preserved"
+}

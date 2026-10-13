@@ -1,0 +1,108 @@
+{
+  "scope": "actual configured Google API readback via designated bastion only; no negotiated SA or payload proof",
+  "project": "project-0048836f-6ba1-4a14-8da",
+  "region": "asia-south2",
+  "tunnels": [
+    {
+      "name": "tn-gcps2s-20261010-ha-0",
+      "ikeVersion": 2,
+      "peerIp": "34.131.136.132",
+      "cipherSuite": {
+        "phase1": {
+          "dh": [
+            "Group-14"
+          ],
+          "encryption": [
+            "AES-CBC-256"
+          ],
+          "integrity": [
+            "HMAC-SHA2-256-128"
+          ],
+          "prf": [
+            "PRF-HMAC-SHA2-256"
+          ]
+        },
+        "phase2": {
+          "encryption": [
+            "AES-CBC-256"
+          ],
+          "integrity": [
+            "HMAC-SHA2-256-128"
+          ],
+          "pfs": [
+            "Group-14"
+          ]
+        }
+      },
+      "status": "NO_INCOMING_PACKETS"
+    },
+    {
+      "name": "tn-gcps2s-20261010-ha-1",
+      "ikeVersion": 2,
+      "peerIp": "34.131.136.132",
+      "cipherSuite": {
+        "phase1": {
+          "dh": [
+            "Group-14"
+          ],
+          "encryption": [
+            "AES-CBC-256"
+          ],
+          "integrity": [
+            "HMAC-SHA2-256-128"
+          ],
+          "prf": [
+            "PRF-HMAC-SHA2-256"
+          ]
+        },
+        "phase2": {
+          "encryption": [
+            "AES-CBC-256"
+          ],
+          "integrity": [
+            "HMAC-SHA2-256-128"
+          ],
+          "pfs": [
+            "Group-14"
+          ]
+        }
+      },
+      "status": "NO_INCOMING_PACKETS"
+    },
+    {
+      "name": "tn-gcps2s-20261010-classic-0",
+      "ikeVersion": 2,
+      "peerIp": "34.131.136.132",
+      "cipherSuite": {
+        "phase1": {
+          "dh": [
+            "Group-14"
+          ],
+          "encryption": [
+            "AES-CBC-256"
+          ],
+          "integrity": [
+            "HMAC-SHA2-256-128"
+          ],
+          "prf": [
+            "PRF-HMAC-SHA2-256"
+          ]
+        },
+        "phase2": {
+          "encryption": [
+            "AES-CBC-256"
+          ],
+          "integrity": [
+            "HMAC-SHA2-256-128"
+          ],
+          "pfs": [
+            "Group-14"
+          ]
+        }
+      },
+      "status": "NO_INCOMING_PACKETS"
+    }
+  ],
+  "shared_secret_fields_selected": false,
+  "cloud_mutations": false
+}

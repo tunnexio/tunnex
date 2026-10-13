@@ -1,0 +1,93 @@
+{
+  "version": 1,
+  "kind": "azure_source_qualification_and_read_only_preparation",
+  "api_source": {
+    "root_commit": "46d6bb94",
+    "candidate_commit": "68df7f8a8005d37a1953f645194fb8f155452b4a",
+    "api_tree": "8affd6647f5efa66d6429c794924f6e279492d68",
+    "difference_from_deployed_c414444c": "mailbox completion transaction retry and two test files only",
+    "attempt_limit": 3,
+    "retry_only": "Typed PostgreSQL SQLSTATE40001 after previous transaction rollback; complete request/context/identity/deadline validation on every attempt",
+    "root_focused_race_seconds": 2.035,
+    "candidate_full_disposable_postgres17_race_seconds": 14.57,
+    "candidate_full_race_log_sha256": "fc255faf866b8f4b544621e3c1cda718bd03cd70b0adc8c17cda59f13a196d60",
+    "linux_amd64_binary_sha256": "70bf3b43812466135018bcae5bae61670836e9b4c6117063838889d3df7f985b",
+    "deployed": false
+  },
+  "native_status_source": {
+    "root_commit": "a7f77828",
+    "candidate_commit": "9d47b8459dde8433819539dc870fd4bb24ce4201",
+    "deployed": false,
+    "full_root_race_passed": false,
+    "full_root_race_seconds": 468.573,
+    "visible_failures": [
+      "Static namespace continuity fixture data race between daemon writes and XFRM reads",
+      "Unpublished successor committed proof deadline test",
+      "Guard command deadline timing test"
+    ],
+    "next_action": "Locally qualified only; live deployment and effect require separate actual measurement.",
+    "test_fixture_fix_root_commit": "8d170f50",
+    "test_fixture_fix_candidate_commit": "ece65ce3c1f4544662fabf4e867f04e8be146490",
+    "subsequent_full_root_race_passed": true,
+    "subsequent_full_root_race_seconds": 447.391,
+    "subsequent_full_root_race_log_sha256": "24b7435506662c2b85446a72c4a6a87e45223a88a8a195c74a6748e02da150fb",
+    "timing_failure_predecessor_comparison": "Both tests passed50repetitions on8eb31c7e and50on9d47candidate; neither calls new recovery helper. Earlier full-suite failures not reproduced or changed."
+  },
+  "maximum_prefix_source": {
+    "root_commit": "8371c0e4",
+    "candidate_commit": "c12b302eea13c7a537a660f979d7c3d3dba7b7a6",
+    "root_offline_tests_passed": 28,
+    "root_closure_files": 19,
+    "archive_members": 20,
+    "archive_sha256": "03b84cc9655bcaf6291cb7b7b6da70fbeec37e20697cd69c410e633ac907c352",
+    "staged_bastion": true,
+    "staged_peer": true,
+    "binary_sha256": "a55be0165ed8990906457efe0e1714971d7826516a9e579e6feebac329734d6a",
+    "native_binary_privately_staged": true,
+    "observer_executed": false,
+    "open_source_gap": "Current observer cannot refresh an absence proof after normal finalization; source-only fix under review before any grant withdrawal"
+  },
+  "read_only_actual_original_state": {
+    "observed_at": "2026-10-10T23:02:58.974291+00:00",
+    "saved_original_grants": 8,
+    "actual_matching_grants": 8,
+    "transition_stage": "prepared",
+    "settings_unchanged": true,
+    "entitlement_available": true,
+    "normal_revision": 54,
+    "normal_applied": true,
+    "normal_both_tunnels_up": true,
+    "grants_or_intent_changed": false
+  },
+  "api_deployment_read_only_preflight": {
+    "observed_at": "2026-10-10T23:01:46.218658+00:00",
+    "api_id": "693e00780062508d0620e5f7fdbba3cc5958007f428172ba633514df6898968f",
+    "api_image": "sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6",
+    "api_started_at": "2026-10-10T17:15:16.52944432Z",
+    "api_binary_sha256": "a40b3ba62152f1e1b5b44255245eb5f2286d7a08d5c6ebf7d748c0994805a163",
+    "host_binary_files": [
+      {
+        "path": "/home/ubuntu/tunnex-azure-lab/binaries/tunnex-api",
+        "uid": 0,
+        "mode": "0o755",
+        "sha256": "a40b3ba62152f1e1b5b44255245eb5f2286d7a08d5c6ebf7d748c0994805a163",
+        "bytes": 61389709
+      },
+      {
+        "path": "/tmp/azure-s2s-build/tunnex-api",
+        "uid": 0,
+        "mode": "0o755",
+        "sha256": "a40b3ba62152f1e1b5b44255245eb5f2286d7a08d5c6ebf7d748c0994805a163",
+        "bytes": 61389709
+      }
+    ],
+    "gateway_identity_unchanged": true,
+    "private_preflight_id": "api-mailbox-preflight-66df188b-e78c-403f-af9a-e9cd05241d48"
+  },
+  "limits": [
+    "Local retry qualification does not prove a deployed or live DNS stability fix.",
+    "Maximum-prefix grant/intent/cloud mutation has not started.",
+    "Original eight policies and normal revision54 remain active.",
+    "Timer approval remains pending after automatic review rejection."
+  ]
+}

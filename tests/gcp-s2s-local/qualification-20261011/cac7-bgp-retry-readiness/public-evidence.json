@@ -1,0 +1,59 @@
+{
+  "schema": "gcp-cac7-bounded-readiness-public-v1",
+  "source": "cac7ffd17e162841f90fa8a7299587349e62d262",
+  "image": "sha256:e42d38ab723dc56a1ba207b9c83f2636785f96567bb1c94318b24a9388b5443c",
+  "container": "19121dbc4b6b6dc9d173ba1c705fe10603f17b18d08e69528bd6e7ee1685079f",
+  "stop": {
+    "receipt_sha256": "84b1d45fb458a21e64791d1b248b278c1bbc015249d7de87225e9b82fde2a22b",
+    "running": false,
+    "exit_code": 0,
+    "immutable_journal_matches": true,
+    "retained_binding_matches": true,
+    "readback_errors_count": 0
+  },
+  "first_create_gate": {
+    "accepted": false,
+    "create_attempted": false,
+    "reason": "fresh production withdrawal qualification refused retained Classic leases",
+    "capture_sha256": "a8e0f7abaa6c69708da2754c0dd990c88cdeec6bb37f5bcf8cac06bc47567571"
+  },
+  "fresh_create_gate": {
+    "capture_sha256": "58b4208afa418ec26eeb363bbfeba40344d07823cf444083411ca3d3b1f05b25",
+    "prefix_verification_receipt_sha256": "1d3bc09be7f241a654984b89ded477858c5e196216814c3685006b75fb88c321",
+    "permit_sets_actually_empty": true,
+    "owned_table_prefix_refusal_verified": true,
+    "qualifier_source": "cac7ffd17e162841f90fa8a7299587349e62d262",
+    "wireguard_objects_removed": 24
+  },
+  "normal_start": {
+    "created_receipt_sha256": "b7966a60f0f9661765ab0d77bf509f014e0e73be5b43d2b52faafbfd2705605f",
+    "started_receipt_sha256": "752a061b47e85eab78236dc2428e07e821ed65d8961f5d33895d3b6606d89f5d"
+  },
+  "bounded_readiness": {
+    "result_sha256": "967ab42575970577ca7637612acb5af4d60853d98d0bcbb9224d43e4cea9d307",
+    "completed": true,
+    "elapsed_seconds": 13.074230333999992,
+    "api_generation_qualified": false,
+    "native_sad_count": 6,
+    "ha_installed_child_count": 2,
+    "classic_installed_child_count": 1,
+    "ha_bgp_established_count": 2,
+    "app_and_dns_guard_proofs_per_checkpoint": 8,
+    "native_and_guards_before_and_finally_after": true,
+    "fresh_ha_and_classic_tcp_udp": true
+  },
+  "limits": [
+    "no continuous availability or downtime claim",
+    "no automatic FQDN generation acceptance from this checker",
+    "no all-story acceptance, CI, merge or publication claim"
+  ],
+  "separate_normal_api_generation_point": {
+    "receipt_sha256": "5cfdc8bcd879ca48e6bdf786b5db4028460fcc83f42282565a687c976936d942",
+    "completed": true,
+    "generation_accepted": true,
+    "configured_count": 7,
+    "baseline_preserved": true,
+    "mutations": 0,
+    "scope": "separate fresh bounded point; earlier timeout retained; no sustained freshness claim"
+  }
+}

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/netip"
+	"slices"
 	"strings"
 	"sync"
 
@@ -428,6 +429,10 @@ func cloneDesiredState(in reconcile.DesiredState) reconcile.DesiredState {
 		request := *in.DNSResolveRequest
 		request.RecordTypes = append([]fqdnrpc.RecordType(nil), request.RecordTypes...)
 		request.ResolverEndpoints = append([]fqdnrpc.ResolverEndpoint(nil), request.ResolverEndpoints...)
+		if request.ResolverIPsecPath != nil {
+			path := *request.ResolverIPsecPath
+			request.ResolverIPsecPath = &path
+		}
 		out.DNSResolveRequest = &request
 	}
 	if in.KubernetesOwnershipBaseAuthority != nil {
@@ -449,7 +454,7 @@ func cloneDesiredState(in reconcile.DesiredState) reconcile.DesiredState {
 	}
 	if in.Policy != nil {
 		policy := *in.Policy
-		policy.Allow = append([]nodepolicy.AllowEntry(nil), in.Policy.Allow...)
+		policy.Allow = slices.Clone(in.Policy.Allow)
 		policy.Subjects = make([]nodepolicy.SubjectAttribution, len(in.Policy.Subjects))
 		for i, subject := range in.Policy.Subjects {
 			policy.Subjects[i] = subject
@@ -461,12 +466,21 @@ func cloneDesiredState(in reconcile.DesiredState) reconcile.DesiredState {
 		policy.Routes = append([]nodepolicy.Route(nil), in.Policy.Routes...)
 		policy.LocalSubnets = append([]string(nil), in.Policy.LocalSubnets...)
 		policy.DNSForwards = append([]nodepolicy.DNSForward(nil), in.Policy.DNSForwards...)
+		if in.Policy.DNSResolverProfiles != nil {
+			policy.DNSResolverProfiles = make([]nodepolicy.DNSResolverProfile, len(in.Policy.DNSResolverProfiles))
+			for i, profile := range in.Policy.DNSResolverProfiles {
+				policy.DNSResolverProfiles[i] = profile
+				policy.DNSResolverProfiles[i].ZoneSuffixes = slices.Clone(profile.ZoneSuffixes)
+				policy.DNSResolverProfiles[i].AllowedSources = slices.Clone(profile.AllowedSources)
+				policy.DNSResolverProfiles[i].Endpoints = slices.Clone(profile.Endpoints)
+			}
+		}
 		policy.VIPMappings = append([]nodepolicy.VIPMapping(nil), in.Policy.VIPMappings...)
 		policy.K8sDNSZones = append([]nodepolicy.K8sDNSZone(nil), in.Policy.K8sDNSZones...)
 		policy.FQDNGenerations = make([]nodepolicy.FQDNGeneration, len(in.Policy.FQDNGenerations))
 		for i, generation := range in.Policy.FQDNGenerations {
 			policy.FQDNGenerations[i] = generation
-			policy.FQDNGenerations[i].Answers = append([]string(nil), generation.Answers...)
+			policy.FQDNGenerations[i].Answers = slices.Clone(generation.Answers)
 		}
 		out.Policy = &policy
 	}

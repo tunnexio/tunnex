@@ -1,0 +1,325 @@
+{
+  "version": 1,
+  "kind": "maximum_prefix_saved_grant_withdrawal_and_preflight_refusal",
+  "root_checkpoint_source": "b6d05d53",
+  "staged_source_version": 4,
+  "preflight_first_attempt": {
+    "passed": false,
+    "stage": "manifest_read",
+    "reason": "local caller selected wrong manifest relative path; no API or mutation"
+  },
+  "preflight_corrected": [
+    {
+      "observed_at": "2026-10-10T23:46:22.971088+00:00",
+      "passed": true,
+      "source_closure_verified": 22,
+      "exact_original_eight_verified": true,
+      "settings_and_context_unchanged": true,
+      "genuine_entitlement_available": true,
+      "original_M_and_D_unchanged": true,
+      "M_sha256": "a895795cba732fea858b3a269fa2465a5ec51dca6fb00b906ae8a70986db3e9c",
+      "D_sha256": "f30f192072be70f2ad818c14f8c501235e31c2a7dce33641b79dbb64e34b272b",
+      "normal": {
+        "version": 1,
+        "phase": "read",
+        "purpose": "limit",
+        "observed_at": "2026-10-10T23:46:22.948913+00:00",
+        "connection": {
+          "id": "9bfa4090-d3ca-4a8e-9ef9-3b41bd91fe99",
+          "desired_revision": 54,
+          "desired_intent": "enabled",
+          "application_state": "applied",
+          "cleanup_state": "retained_guard"
+        },
+        "saved_stage": "prepared",
+        "scope": "Normal API readback only; no BGP/native/packet proof",
+        "normal_connection": {
+          "id": "9bfa4090-d3ca-4a8e-9ef9-3b41bd91fe99",
+          "configuration_revision": 1,
+          "profile_id": "azure-active-active-bgp-ipv4-v1",
+          "remote_prefixes": [
+            "10.231.0.0/16"
+          ],
+          "maximum_prefixes": 8,
+          "desired_revision": 54,
+          "desired_intent": "enabled",
+          "application_state": "applied",
+          "cleanup_state": "retained_guard"
+        },
+        "runtime": {
+          "observed_at": "2026-10-10T23:46:19.431935+00:00",
+          "tunnels": [
+            {
+              "id": "37c38c18-4eac-4396-ab38-2306c87fd250",
+              "slot": 1,
+              "status": "up",
+              "selected": false
+            },
+            {
+              "id": "67775fbe-8e9b-4364-857c-ba8911b442ff",
+              "slot": 2,
+              "status": "up",
+              "selected": false
+            }
+          ],
+          "bgp": {
+            "version": 1,
+            "sequence": 53035,
+            "peers": [
+              {
+                "slot": 1,
+                "state": "established",
+                "accepted_prefixes": 1,
+                "installed_prefixes": 1
+              },
+              {
+                "slot": 2,
+                "state": "established",
+                "accepted_prefixes": 1,
+                "installed_prefixes": 0
+              }
+            ],
+            "routes": [
+              {
+                "prefix": "10.231.0.0/16",
+                "slot": 1
+              }
+            ]
+          }
+        }
+      },
+      "scope": "Fresh owner API read-only maximum-prefix preflight; no policy, intent, cloud or timer mutation."
+    }
+  ],
+  "normal_grant_revoke_dispatch": [
+    {
+      "category": "phase_helper_returned_success_requires_actual_readback",
+      "phase": "dns-revoke",
+      "private_run_id": "max-prefix-phase-dns-revoke-afe1620d-ae2d-4da6-ab3f-e9da92eac9b9",
+      "scope": "No native cleanup, packet or cloud proof inferred"
+    }
+  ],
+  "normal_zero_policy_read_dispatch": [
+    {
+      "category": "phase_helper_returned_success_requires_actual_readback",
+      "phase": "restore-read",
+      "private_run_id": "max-prefix-phase-restore-read-459a10d4-2c73-4958-bccf-007a4527f9c1",
+      "scope": "No native cleanup, packet or cloud proof inferred"
+    }
+  ],
+  "independent_actual_grant_read": [
+    {
+      "observed_at": "2026-10-10T23:49:18.533602+00:00",
+      "policy_count": 0,
+      "saved_original_eight_retained": true,
+      "D_stage": "revoked",
+      "original_M_prepared_no_lifecycle_started": true,
+      "M_sha256": "a895795cba732fea858b3a269fa2465a5ec51dca6fb00b906ae8a70986db3e9c",
+      "actual_connection": {
+        "id": "9bfa4090-d3ca-4a8e-9ef9-3b41bd91fe99",
+        "desired_revision": 54,
+        "desired_intent": "enabled",
+        "application_state": "applied",
+        "cleanup_state": "retained_guard"
+      },
+      "normal_zero_policy_receipt": {
+        "version": 1,
+        "phase": "restore-read",
+        "purpose": "limit",
+        "observed_at": "2026-10-10T23:47:14.665584+00:00",
+        "connection": {
+          "id": "9bfa4090-d3ca-4a8e-9ef9-3b41bd91fe99",
+          "desired_revision": 54,
+          "desired_intent": "enabled",
+          "application_state": "applied",
+          "cleanup_state": "retained_guard"
+        },
+        "saved_stage": "prepared",
+        "scope": "Immutable normal connection/config/policy identity only; no runtime or readiness inference",
+        "policy_count": 0,
+        "normal_connection": {
+          "id": "9bfa4090-d3ca-4a8e-9ef9-3b41bd91fe99",
+          "configuration_revision": 1,
+          "profile_id": "azure-active-active-bgp-ipv4-v1",
+          "remote_prefixes": [
+            "10.231.0.0/16"
+          ],
+          "maximum_prefixes": 8,
+          "desired_revision": 54,
+          "desired_intent": "enabled",
+          "application_state": "applied",
+          "cleanup_state": "retained_guard"
+        },
+        "runtime_observation": "not_requested"
+      },
+      "scope": "Independent actual normal API grant withdrawal readback; native default-deny acceptance still separate."
+    }
+  ],
+  "v4_native_wrapper_refusal": [
+    {
+      "version": 1,
+      "category": "observer_wrapper_refused",
+      "stage": "preflight"
+    }
+  ],
+  "refusal_diagnosis": {
+    "binary_sha256": "a55be0165ed8990906457efe0e1714971d7826516a9e579e6feebac329734d6a",
+    "actual_binary_bytes": 13791412,
+    "binary_uid": 0,
+    "binary_mode": "0600",
+    "binary_parent_uid": 0,
+    "binary_parent_mode": "0700",
+    "read_owned_default_limit_bytes": 10485760,
+    "classification": "verified native test binary exceeds generic journal file cap; preflight before identity/native execution",
+    "repair": "source-only separate exact binary bound; fresh V5 closure pending root review/staging"
+  },
+  "first_packet_probe_refusal": {
+    "passed": false,
+    "stage": "host_source_hash",
+    "packets_executed": false,
+    "reason": "existing host probe did not match current reviewed source; caller refused before packets"
+  },
+  "current_source_actual_denial": [
+    {
+      "observed_at": "2026-10-10T23:50:02.833505+00:00",
+      "passed": true,
+      "packet_started_at": "2026-10-10T23:49:15.428599+00:00",
+      "packet_finished_at": "2026-10-10T23:49:27.448235+00:00",
+      "actual_seconds": 12.019659,
+      "counters": {
+        "fresh_tcp": {
+          "success": 0,
+          "failure": 6,
+          "maximum_observed_success_gap_seconds": 0,
+          "seconds_since_last_success_at_run_end": null
+        },
+        "existing_tcp": {
+          "success": 0,
+          "failure": 6,
+          "maximum_observed_success_gap_seconds": 0,
+          "seconds_since_last_success_at_run_end": null
+        },
+        "fresh_udp": {
+          "success": 0,
+          "failure": 6,
+          "maximum_observed_success_gap_seconds": 0,
+          "seconds_since_last_success_at_run_end": null
+        },
+        "existing_udp": {
+          "success": 0,
+          "failure": 6,
+          "maximum_observed_success_gap_seconds": 0,
+          "seconds_since_last_success_at_run_end": null
+        }
+      },
+      "sample_count": 24,
+      "private_receipt_sha256": "5e94f08768bdea01912b712321213afeae56022fcaf1e5fc32a754a701fde3cf",
+      "scope": "Actual current forward packet denial only; no successful pre-withdrawal existing flow, reverse/DNS or historical failure-cause proof."
+    }
+  ],
+  "pure_member_count_source": {
+    "root_commit": "b6d05d53",
+    "candidate_commit": "eac8a647549be874bd1f5c835eaa3b2e7d8e3145",
+    "source_sha256": "f2d02113952c39a1eaec5d5b72e612f93354fd24eef31a4b0b8205b675b3daa8",
+    "tests_sha256": "a153ccd2ccbb1fec5e46b5f06216663cfdcc5aae51368f436aad6ae27ac123c3",
+    "root_focused_race": {
+      "passed": true,
+      "seconds": 2.189
+    },
+    "live_staged_or_executed": false,
+    "production_validators_changed": false
+  },
+  "actual_lab_state": {
+    "original_connection": "9bfa4090-d3ca-4a8e-9ef9-3b41bd91fe99",
+    "desired_revision": 54,
+    "desired_intent": "enabled",
+    "policy_count": 0,
+    "M_stage": "prepared",
+    "D_stage": "revoked",
+    "saved_original_eight_restoration_snapshot": "retained",
+    "connection_disable_delete_create_enable": "not_executed",
+    "cloud_prefix_changes": 0,
+    "accelerated_timer_changes": 0
+  },
+  "limits": [
+    "Grant and packet observations do not replace complete native full-guard proof.",
+    "Zero successful current forward probes does not prove historical established-flow withdrawal or reverse/DNS denial.",
+    "Maximum-prefix advertisement/shutdown/withdrawal and restoration lifecycle remain unexecuted.",
+    "No forced adoption, bounds relaxation for journal/native data, unknown-outcome replay, cloud/timer mutation or original snapshot reprepare."
+  ],
+  "independent_post_revoke_whole_native_guard_baseline": [
+    {
+      "observed_at": "2026-10-10T23:50:39.558280+00:00",
+      "passed": true,
+      "return_code": 0,
+      "scope": "Independent read-only max-prefix baseline observer; no cloud, timer or policy mutation",
+      "helper_sha256": "371ac91b7c2dc84a3aeaf3d40fe9ee91165fd1f1ea37431adc44ca0aa00ef70f",
+      "observer_source_commit": "66fe04e059fa384e3565d4746a7084bfbd476e20",
+      "private_log_sha256": "8d007ada3a797fac666912b203b4b278019ca165930301a0ecca2e4e12e2706f",
+      "desired_revision": 54,
+      "namespace_device": 4,
+      "namespace_inode": 4026532430,
+      "native_receipt": {
+        "bgp": {
+          "peers": [
+            {
+              "accepted_prefixes": 1,
+              "slot": 1,
+              "state": "established"
+            },
+            {
+              "accepted_prefixes": 1,
+              "slot": 2,
+              "state": "established"
+            }
+          ],
+          "routes": [
+            "10.231.0.0/16"
+          ]
+        },
+        "configuration_revision": 1,
+        "connection_id": "9bfa4090-d3ca-4a8e-9ef9-3b41bd91fe99",
+        "desired_revision": 54,
+        "gateway_id": "01a1252e-14d2-7edc-b181-903325c4c56a",
+        "historical_boot_entry_count": 1,
+        "historical_proof_sha256": "d6ebe190917e77423dbb1199a5286c6d01894d9b6d2667e1e3fc4ec6771d906f",
+        "historical_stopped_journal_sha256": "92a80b5758cbcac11bb0c14f56787ee47eb58a1210b2c119b8304ac2196ddf79",
+        "host_machine_identity_source": "external_root_attestation",
+        "journal_entries": 26,
+        "journal_sha256": "7578503a8e07fe9b4201a5191222586cbd7d19d9ebf80f385e5d3998f30fc688",
+        "kind": "owned_max_prefix_baseline",
+        "namespace": {
+          "device": 4,
+          "inode": 4026532430
+        },
+        "native": {
+          "sad": 4,
+          "spd_fwd": 2,
+          "spd_in": 2,
+          "spd_out": 2
+        },
+        "observed_at": "2026-10-10T23:50:38.936129882Z",
+        "org_id": "01a1252d-34fe-72bb-a40b-222a0a0bf9a2",
+        "scope": "Independent bracketed native observation only; no authority, synthetic acknowledgement or packet readiness",
+        "site_id": "01a1252d-3612-7a65-ad65-2dd5f4ebcd72",
+        "traffic_counters_monotonic_advanced": false,
+        "tunnels": [
+          {
+            "owned_ike": 1,
+            "owned_installed_children": 1,
+            "slot": 1,
+            "state": "up"
+          },
+          {
+            "owned_ike": 1,
+            "owned_installed_children": 1,
+            "slot": 2,
+            "state": "up"
+          }
+        ],
+        "version": 1
+      }
+    }
+  ],
+  "independent_native_withdrawal_scope": "Actual zero-policy API read plus current forward denial and independent whole native/full guard baseline; no established pre-revoke flow or reverse/DNS denial proof."
+}

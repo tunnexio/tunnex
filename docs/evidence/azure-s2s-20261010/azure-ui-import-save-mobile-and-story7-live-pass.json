@@ -1,0 +1,118 @@
+{
+  "kind": "AZ-S2S-7_written_scope_acceptance",
+  "recorded_at": "2026-10-11T17:15:28.735024+00:00",
+  "root_head": "2b88065f",
+  "story": "AZ-S2S-7",
+  "accepted": true,
+  "accepted_story_ids": [
+    "AZ-S2S-0",
+    "AZ-S2S-1",
+    "AZ-S2S-2",
+    "AZ-S2S-7"
+  ],
+  "count": {
+    "accepted": 4,
+    "total": 11,
+    "open": 7
+  },
+  "actual_current_ui_only_receipt": {
+    "kind": "qualified_ui_saved_disabled_truth",
+    "version": 1,
+    "observed_at": "2026-10-11T17:13:38.444519Z",
+    "connection_id": "2d8d5f0a-ffdd-4781-b230-81901c4c3224",
+    "name": "Azure owned UI imported baseline 20261011",
+    "created_at": "2026-10-11T16:32:52.407957Z",
+    "desired_revision": 1,
+    "configuration_revision": 1,
+    "desired_intent": "disabled",
+    "application_state": "not_applied",
+    "policy_count": 0,
+    "profile_id": "azure-active-active-bgp-ipv4-v1",
+    "maximum_prefixes": 8,
+    "remote_prefixes": [
+      "10.231.0.0/16"
+    ],
+    "tunnels": [
+      {
+        "id": "29711c4a-f809-44bb-91e0-1a7916ca7733",
+        "slot": 1,
+        "status": "unknown",
+        "selected": false
+      },
+      {
+        "id": "1ab07244-dece-4127-869d-5f7d3ad4fe43",
+        "slot": 2,
+        "status": "unknown",
+        "selected": false
+      }
+    ],
+    "browser_save_window": {
+      "save_begin": "2026-10-11T16:32:51.869Z",
+      "save_end": "2026-10-11T16:33:12.983Z",
+      "screenshot_sha256": "6ca973e5b9677a01800cc37046b75a217a9de3307bbe94b8cc3cbb8db886595b"
+    },
+    "target_uuid_provenance": "actual owner GET correlated to unique browser Save name/created_at; no intercepted POST response",
+    "source_plan_sha256": "df28f1b728ba46f83f03893114ffc0c81548076fcdb17d8c0d37b8c8f1b11a0e",
+    "normal_public_readbacks_sha256": "6964f11e8f408e695ed5ac82687ea826a19770f34a07cfc1aed2c6ef63494360",
+    "static_complete_tree_sha256": "6c508b9e68beccdb03273974fbdba9eec834daf250bc70796473c60a41756bb3",
+    "static_package_manifest_sha256": "399f6005d9111f986b6c46804c4b36769be8c4ae541f0ec1093a81bd312d7d63",
+    "native_acceptance": false,
+    "native_absence": false,
+    "helper_state_written": false,
+    "connection_mutated": false,
+    "runtime_readiness_claimed": false
+  },
+  "source_kit": {
+    "root_kit": "/run/tunnex-qualification/azure-ui-only-truth-27817d71-afab-4aa4-b417-0a12d3902a08",
+    "plan_sha256": "df28f1b728ba46f83f03893114ffc0c81548076fcdb17d8c0d37b8c8f1b11a0e",
+    "controller_sha256": "45350dcede11e644afd9f95268ce99b3e7e3bdd189371850d5db4cdefc443d7b",
+    "no_connection_mutation": true,
+    "transport_seconds": 1.801
+  },
+  "served_archive_sha256": "a531fc8181f84cb6f7d178bdcaf3def0902015078d39fd857b19ecc92ab6c798",
+  "served_package_manifest_sha256": "399f6005d9111f986b6c46804c4b36769be8c4ae541f0ec1093a81bd312d7d63",
+  "local_mobile_fix_commit": "7c97fb1c2ee247a0da6ebc07bb0b6d2b1a61a520",
+  "browser_observation": {
+    "date": "2026-10-11",
+    "viewport_width": 390,
+    "main_scroll_width": 390,
+    "connection_choice_left": 24,
+    "connection_choice_right": 366,
+    "both_choices_fit": true,
+    "observation_exact_timestamp_not_recorded": true
+  },
+  "actual_save_screenshot": {
+    "path": "/private/tmp/azure-ui-import-save-live-20261011.jpg",
+    "sha256": "6ca973e5b9677a01800cc37046b75a217a9de3307bbe94b8cc3cbb8db886595b"
+  },
+  "prior_dated_evidence": {
+    "azure-ui-import-save-and-customer-runbook-local.json": "55009ca07716d2f6f571a3fbf569cd68077683d326b2a8ca7806adc45d4e937b",
+    "azure-ui-import-mobile-and-fqdn-source-status.json": "6cbb055bb28a5a80f5631876f4a2f42f3cecdab2b87cb8263f3fc537c15d7b5f",
+    "ui-actual-download-live.json": "cc1220e9c8e12c525b8e90bc622cf0ad0631684cc777119c2f787b1ff4d44600",
+    "ui2421-live-readback.json": "36e72d1a50275978f51675c658548296b5149ee93c088b434284d3ecafd612ac",
+    "azure-story-acceptance-reconciliation-20261011.json": "a9ce30c5bcb3d4aad5f44700dc38e4d49093a2205f339d8cb7ed8381ffcb9c54"
+  },
+  "scope": {
+    "owner_browser_import_save": "Actual UI file import followed by exactly one normal Save; actual owner GET correlates unique name/server created_at/UUID; no POST interception claimed",
+    "admin_member_roles": "Earlier actual role paths retained as separately dated evidence; not a fresh role mutation run",
+    "local_component_tests": "Prior147 component tests, zero skips; mocked API explicitly distinct from actual Save",
+    "native_or_runtime_readiness_claimed": false,
+    "other_cloud_profiles_live_claimed": false,
+    "helper_adoption_required_for_ui_acceptance": false,
+    "git_push": false
+  },
+  "preserved_refusals": [
+    "UI-only first stage refused mixed actual static metadata; no assets modified",
+    "Adoption same-clock rounding refusal corrected in source; actual five-field setup mismatch remains separate helper issue",
+    "Historical native publication-bracket refusals retained; separate fresh stable full29 native proof passed"
+  ],
+  "remaining_story_ids": [
+    "AZ-S2S-3",
+    "AZ-S2S-4",
+    "AZ-S2S-5",
+    "AZ-S2S-6",
+    "AZ-S2S-8",
+    "AZ-S2S-9",
+    "AZ-S2S-10"
+  ]
+}

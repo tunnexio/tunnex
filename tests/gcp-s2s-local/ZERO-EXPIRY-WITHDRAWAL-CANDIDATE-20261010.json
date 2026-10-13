@@ -1,0 +1,28 @@
+{
+  "source_base": "3d0951e84aa58ce78dcc6238bd2ecaf7d3f38fd9",
+  "scope": "isolated source candidate; modeled nft/link inputs with valid Classic contract4 single-slot and HA contract3 two-slot material; no native kernel, cloud, integration or deployment claim",
+  "red": "8 valid mixed profile permutations fail VerifyGuardWithdrawal on bounded zero observed expiry",
+  "green": "ZeroExpiry focused suite PASS 1.211s",
+  "race": "related guard withdrawal/readback and GCP profile focused race PASS 7.222s",
+  "preservation": "zero-expiry members retained; target nonempty refused as denied; positive readback remains strict; inactive Classic second ownership refused; foreign member/expiry/owner/rule/descriptor variants refused",
+  "logs": {
+    "/private/tmp/gcp-zero-expiry-red.log": {
+      "sha256": "7e55dbc1aa0202dd46becff177c44364cbf83c1c83aae116f31b08206358a514"
+    },
+    "/private/tmp/gcp-zero-expiry-green.log": {
+      "sha256": "6285e991d15e90059c8ed5ee3b34d50b44346278e3bb043414ee1d07324ac655"
+    },
+    "/private/tmp/gcp-zero-expiry-race.log": {
+      "sha256": "0025551f8f4361c075643309c32e2b33561a9618628799cb8822cc93353e73f2"
+    },
+    "/private/tmp/gcp-zero-expiry-full.log": {
+      "sha256": "82d10d72a1f7425ecde8320041e86288e9167c0b4cb21eb7545fd7cc9e276eec"
+    },
+    "/private/tmp/gcp-zero-expiry-full-permitted.log": {
+      "sha256": "67e3a14c3e10f05fc8553cf79c74512b446b542a16852aca402948b092c63bcc"
+    }
+  },
+  "external_candidate_sha256": "75eb95f1816845be08659a51b39530472f89c408e5c19a69bb0ac184cc3a0d60",
+  "full_suite_initial": "42.764s failed only local Unix-socket bind operation not permitted under sandbox; not a behavioral assertion failure",
+  "full_suite_permitted": "PASS 43.310s unchanged suite with local Unix-socket permission"
+}

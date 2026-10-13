@@ -30,7 +30,7 @@ func (s *ConnectionStore) rotatePSKs(ctx context.Context, org, actor, id uuid.UU
 	}
 	chosen := map[uuid.UUID]string{}
 	for _, r := range replacements {
-		if r.TunnelID == uuid.Nil || !awsStaticPSK(r.PSK) {
+		if r.TunnelID == uuid.Nil || (!validPSK(r.PSK) || len(r.PSK) < 8 || len(r.PSK) > 64) {
 			return Connection{}, ErrConnectionInvalid
 		}
 		if _, ok := chosen[r.TunnelID]; ok {
@@ -44,6 +44,20 @@ func (s *ConnectionStore) rotatePSKs(ctx context.Context, org, actor, id uuid.UU
 	}
 	defer tx.Rollback(ctx)
 	c := l.connection
+	var profile string
+	if err := tx.QueryRow(ctx, `SELECT COALESCE(provider_profile,'') FROM ipsec_connections WHERE id=$1 AND org_id=$2`, id, org).Scan(&profile); err != nil {
+		return Connection{}, ErrConnectionUnavailable
+	}
+	if isAzureProfile(profile) && !azureStandby(profile) && (len(replacements) != 2 || replacements[0].PSK != replacements[1].PSK) {
+		return Connection{}, ErrConnectionInvalid
+	}
+	if profile != GCPHAProfile && profile != GCPClassicProfile && !isAzureProfile(profile) {
+		for _, replacement := range replacements {
+			if !awsStaticPSK(replacement.PSK) {
+				return Connection{}, ErrConnectionInvalid
+			}
+		}
+	}
 	if c.DesiredRevision != revision || c.DesiredIntent != "disabled" || c.FinalizedAt != nil || l.state.cleanup != nil || runtimeRevision(l.state.delivered) != runtimeRevision(l.state.cleaned) {
 		return Connection{}, ErrConnectionConflict
 	}

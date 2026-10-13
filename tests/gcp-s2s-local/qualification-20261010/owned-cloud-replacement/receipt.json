@@ -1,0 +1,145 @@
+{
+  "scope": "Archived reviewed owned test-host deployment workflow and public observations; not a general installer, node authority, cleanup proof, restoration receipt or full GCP acceptance",
+  "source": "4143d866ab97386411ff1ac4705aaa0e4579bcf6",
+  "script_sha256": {
+    "replace-phased.py": "c186d4c930a505b09aaeec037b7fafdbe8ae8b66e2fa0eb4e1518b228e167519",
+    "replace-phased.remote.py": "fe71fc0e97a3f8a64e44917bfc4f1bdd669ceddeacaf58ee1b1b4bc25f3e75d3",
+    "continue-phased.py": "394e09cf1463b1a1382331d4f8cf8caaba12f1e12f28965ea5f90085d991cc0e",
+    "continue-phased.remote.py": "24e574bfac42b2690fee8309fee6dcda75b039d242dd0cc627f0511a88847eed",
+    "stage-qualifier.py": "92984082972c845bb46e59a5947c0f6682a2ac6b3c2b6f670fe5268aedb24e3b"
+  },
+  "actual_receipts": {
+    "receipt-preflight-1791646414003457000.json": {
+      "file_sha256": "d09ad72cdb61edd52313cf5bfa400d676b607169890ef851e4aa9ac985770dd4",
+      "public_projection": {
+        "phase": "preflight",
+        "receipt_sha256": "607948f94dcf7db53e341904ffc7f8aa8962ddad11470d1a6c05ed1f213fad15",
+        "native": {
+          "sad_count": 6,
+          "managed_processes": [
+            {
+              "pid": 2182,
+              "comm": "charon"
+            }
+          ],
+          "nft_sha256": "59f5e3273d2eccbc78a2d2d134eb886135617fae00ba3170d010662840e23993"
+        }
+      }
+    },
+    "receipt-stop-1791646544629144000.json": {
+      "file_sha256": "82f8e80a5641c0fd650f38aec5c1ac9d0f1d3f9c41436bae7b7b14afaf092835",
+      "public_projection": {
+        "phase": "stop",
+        "receipt_sha256": "102919b5f2ee2f9af4fee6a1ea02aa2c252bfacef3f683c50d3fcdabea97a307",
+        "exit_code": 0,
+        "readback_errors": [],
+        "native": {
+          "sad_count": 0,
+          "managed_processes": [],
+          "nft_sha256": "74d3577350eb1dc2f5cf9244b07fbb6d27fb9c54017d42c003841b1c43e218b5"
+        },
+        "create_start": "REQUIRES SEPARATE ROOT REVIEW; no automatic continuation"
+      }
+    },
+    "receipt-continue-create-start-1791647028130203000.json": {
+      "file_sha256": "596cac4442bc1b7996d5d5c29f8bfd2b17c80f0189d23efb2aafe2be58324811",
+      "public_projection": {
+        "phase": "continue-create-start",
+        "container_id": "5f77c5857fa78b0533eb4fddc46cc4a0e9c69369d8e7987ee068b88ec7ba8c2f",
+        "created_receipt_sha256": "c1e107f2d1ce0f555310c72105dda7353537603e21a6b24b8ed23c6fe31176da",
+        "status": "normal same-identity startup; independently verify readiness"
+      }
+    },
+    "post-start-boundary-first.json": {
+      "file_sha256": "81fa4b3912a833d4a43b0c7c38d3e1369c7549101dd7fade7c79e4510caf5717",
+      "public_projection": {
+        "container_id": "5f77c5857fa78b0533eb4fddc46cc4a0e9c69369d8e7987ee068b88ec7ba8c2f",
+        "image": "sha256:347bcb66318aa1b8ef1e949c6f57e28506e56a1497f2f4ae15b9ab74b8fed4c6",
+        "node_sha256": "e085ef4f608b37d6211904c634e3c6cef52cfdb5892e0ae7a8a2f18e8dd37132",
+        "health": {
+          "service": "tunnex-node",
+          "status": "ok"
+        },
+        "identity_presence": {
+          "cert.pem": true,
+          "key.pem": true,
+          "ca.pem": true
+        },
+        "boot": "9617762e-19db-4a21-bdee-909dfb31e501",
+        "namespace": "net:[4026531840]",
+        "wg0": [
+          {
+            "ifindex": 9,
+            "ifname": "wg0",
+            "flags": [
+              "POINTOPOINT",
+              "NOARP",
+              "UP",
+              "LOWER_UP"
+            ],
+            "mtu": 1420,
+            "qdisc": "noqueue",
+            "operstate": "UNKNOWN",
+            "linkmode": "DEFAULT",
+            "group": "default",
+            "txqlen": 1000,
+            "link_type": "none"
+          }
+        ],
+        "loaded_connection_names": [
+          "tnx-ipsec-8494b8ef-e6e8-4d8d-b964-fc6faec7cb72-d2-c1-s1"
+        ],
+        "journal_entries": [
+          {
+            "connection_id": "80c20667-8d84-4dd8-8e51-ae4a10445cbb",
+            "contract": 3,
+            "phase": "applied",
+            "restoration_present": false,
+            "restoration_epoch": null,
+            "bgp_routes_present": false,
+            "bgp_process_present": false,
+            "active_count": 2,
+            "inactive_zero": null
+          },
+          {
+            "connection_id": "b79d7eda-fafe-41cf-af2c-4115d4ef32c6",
+            "contract": 4,
+            "phase": "applied",
+            "restoration_present": true,
+            "restoration_epoch": 0,
+            "bgp_routes_present": false,
+            "bgp_process_present": false,
+            "active_count": 1,
+            "inactive_zero": true
+          }
+        ],
+        "sad_count": "SAD count 2"
+      }
+    }
+  },
+  "preserved_first_create_refusal": "retained_binding_matches false before any container create; original stopped receipt remains unchanged",
+  "continuation_cause": {
+    "cause_receipt_sha256": "c6590433c90e8b98e3a9f88fb4ddc6e347fbbd0c7b352ab0b9cc6e01087d1f10",
+    "single_source_owned_route_removed": {
+      "dst": "10.99.0.0/24",
+      "dev": "wg0",
+      "protocol": "kernel",
+      "scope": "link",
+      "prefsrc": "10.99.0.1",
+      "flags": []
+    },
+    "after_retained_routes_sha256": "d42d0673ad344a3a4465d1fa558723e09c32932b0aa1476d0187523bda1b4181",
+    "after_plus_historical_row_sha256": "9fd6abfe521a1a3a1e7dd8a6c266f7fadabb89cf31a94d1187b29afdbbf033d9",
+    "source_owned_tables_removed": [
+      "ip tunnex",
+      "ip6 tunnex"
+    ],
+    "complete20_base_objects_sha256": "b9f2cef2eec1a98de43e2d70fdbb4fa7db4f355c12b9188b44b6925f8b588460"
+  },
+  "post_start": "Classic real SA/static route returned; HA remained pending with configs absent, diagnosed separately. Replacement success does not mean HA qualified.",
+  "qualifier": {
+    "source_sha256": "f2656d09a3a36c408ae9254f8e2dbf7aee3bb6d3488b87da44f7623f5f88fadc",
+    "amd64_artifact_sha256": "62215f47601e225d9ed8a6ae98a5bc90e34c2dafa1e1808cf5fef02eee7b8047",
+    "proof_scope": "exact full known withdrawal structure plus all six actual permit/SA/reply sets empty and permanent exact prefix drops; observational owned-table snapshot only"
+  }
+}

@@ -1,0 +1,122 @@
+{
+  "observed_at": "2026-10-10T21:21:51.021682+00:00",
+  "source_commit": "611fe78e8d52e89900f81faa7a750ca51664c59e",
+  "capture_helper_sha256": "3df35905f9dfa75a783bb4f4b03cec43a6d5bfdb1d84189c83b99d639aecbf29",
+  "capture_return_code": 0,
+  "native_baseline": {
+    "observed_at": "2026-10-10T21:21:11.402037+00:00",
+    "passed": true,
+    "return_code": 0,
+    "scope": "Independent read-only max-prefix baseline observer; no cloud, timer or policy mutation",
+    "helper_sha256": "371ac91b7c2dc84a3aeaf3d40fe9ee91165fd1f1ea37431adc44ca0aa00ef70f",
+    "observer_source_commit": "66fe04e059fa384e3565d4746a7084bfbd476e20",
+    "private_log_sha256": "ef140cdd225aaeb92005f65a21a041fa86181f407101d6b87fef44389b3d3771",
+    "desired_revision": 46,
+    "namespace_device": 4,
+    "namespace_inode": 4026532430,
+    "native_receipt": {
+      "bgp": {
+        "peers": [
+          {
+            "accepted_prefixes": 1,
+            "slot": 1,
+            "state": "established"
+          },
+          {
+            "accepted_prefixes": 1,
+            "slot": 2,
+            "state": "established"
+          }
+        ],
+        "routes": [
+          "10.231.0.0/16"
+        ]
+      },
+      "configuration_revision": 1,
+      "connection_id": "9bfa4090-d3ca-4a8e-9ef9-3b41bd91fe99",
+      "desired_revision": 46,
+      "gateway_id": "01a1252e-14d2-7edc-b181-903325c4c56a",
+      "historical_boot_entry_count": 1,
+      "historical_proof_sha256": "d6ebe190917e77423dbb1199a5286c6d01894d9b6d2667e1e3fc4ec6771d906f",
+      "historical_stopped_journal_sha256": "92a80b5758cbcac11bb0c14f56787ee47eb58a1210b2c119b8304ac2196ddf79",
+      "host_machine_identity_source": "external_root_attestation",
+      "journal_entries": 22,
+      "journal_sha256": "4887c9966b8e9fbaa1961f3525bedde69042412b2ccee1ee4d131efc9f88c1ae",
+      "kind": "owned_max_prefix_baseline",
+      "namespace": {
+        "device": 4,
+        "inode": 4026532430
+      },
+      "native": {
+        "sad": 4,
+        "spd_fwd": 2,
+        "spd_in": 2,
+        "spd_out": 2
+      },
+      "observed_at": "2026-10-10T21:21:10.514961229Z",
+      "org_id": "01a1252d-34fe-72bb-a40b-222a0a0bf9a2",
+      "scope": "Independent bracketed native observation only; no authority, synthetic acknowledgement or packet readiness",
+      "site_id": "01a1252d-3612-7a65-ad65-2dd5f4ebcd72",
+      "traffic_counters_monotonic_advanced": true,
+      "tunnels": [
+        {
+          "owned_ike": 1,
+          "owned_installed_children": 1,
+          "slot": 1,
+          "state": "up"
+        },
+        {
+          "owned_ike": 1,
+          "owned_installed_children": 1,
+          "slot": 2,
+          "state": "up"
+        }
+      ],
+      "version": 1
+    }
+  },
+  "preserved_normal_grants": {
+    "dns": 4,
+    "application": 2,
+    "reverse": 2,
+    "exact_ids_match": true
+  },
+  "capture_private_output_sha256": "d9b55ed3c33ea7ae4321b15ea3d085f6b3755c140552a79c5ff43992bdd49815",
+  "capture": {
+    "version": 1,
+    "started_at": "2026-10-10T21:21:11.841924+00:00",
+    "ended_at": "2026-10-10T21:21:51.007930+00:00",
+    "scope": "Read-only natural RPC header correlation; no authority or readiness claim",
+    "packet_header_count": 74,
+    "socket_sample_count": 43,
+    "capture_sha256": [
+      "eea2e2d906058ea4702be197cd584a815688d9edd75f8469b60f9211c4d20fd5",
+      "4b759eb3c26535431ed9fc613cee7fb4e846fcf7d5861c290538b0a05b4c08e9",
+      "9f648f8632961129ff3eebe5fba65c71316022b2739a76e11d0572043dbb6bd6"
+    ],
+    "capture_health": [
+      {
+        "captured": 55,
+        "received": 55,
+        "dropped": 0
+      },
+      {
+        "captured": 19,
+        "received": 19,
+        "dropped": 0
+      },
+      {
+        "captured": 0,
+        "received": 0,
+        "dropped": 0
+      }
+    ],
+    "supporting_conntrack_available": false,
+    "correlations": []
+  },
+  "limits": [
+    "The second completed natural capture had zero drops and no matching logged three-second socket-timeout correlation; it cannot explain earlier timeouts.",
+    "Native byte counters advanced monotonically during this actual independent preflight; all strict identities and native/process/FRR/full-guard checks passed.",
+    "Raw packet headers, socket samples and logs remain private; conntrack was absent and not installed. No probes, timers or firewall changes were added."
+  ]
+}

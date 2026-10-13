@@ -1,0 +1,336 @@
+{
+  "scope": "key-free projections of original receipts; originals unchanged",
+  "receipts": {
+    "cycle-v1.jsonl": {
+      "original_sha256": "8677fc4b1782075e0103d82deca1be3662f59b4e92549d3f2eb724685c30fdca",
+      "events": [
+        {
+          "utc": "2026-10-10T16:53:36.446161+00:00",
+          "started": true,
+          "scope": "Only owned Classic TCP8080/UDP9000 normal API expiry; original two grants always restored; no HA or DNS expiry claim"
+        },
+        {
+          "utc": "2026-10-10T16:53:37.672000+00:00",
+          "stage": "native_fresh-pre-expiry",
+          "accepted": true,
+          "capture_sha256": "a55a4f368d30d651e31d71be28625acc71a6932935c8e5c79da5e55d3d9dd9e0"
+        },
+        {
+          "utc": "2026-10-10T16:53:37.837708+00:00",
+          "completed": false,
+          "error_type": "ValueError",
+          "expiry_packet_and_native_acceptance": false
+        },
+        {
+          "utc": "2026-10-10T16:53:37.925002+00:00",
+          "phase": "restore",
+          "completed": true,
+          "receipt_sha256": "ebaeec96f58c7b573dc52ee760659722cc7d9a246d0643c9b66bc08ebed5f934"
+        },
+        {
+          "utc": "2026-10-10T16:53:39.270938+00:00",
+          "stage": "native_restored-allow",
+          "accepted": true,
+          "capture_sha256": "0bf6c3d44ec98fcb24d7f9dba8322859262efefc72f0e7cddb624ca9586d2cc1"
+        },
+        {
+          "utc": "2026-10-10T16:53:40.874859+00:00",
+          "stage": "packet_restored-allow",
+          "accepted": true,
+          "receipt_sha256": "7a92222518af06e4c62cbf6305a87cd6c10179092c8645dada3b29800d4e6999"
+        },
+        {
+          "utc": "2026-10-10T16:53:41.016053+00:00",
+          "phase": "cleanup",
+          "completed": true,
+          "receipt_sha256": "c6ff6703154fe27990652bb15f912d41c6bdd73e8e463f693a720ea724233059"
+        },
+        {
+          "utc": "2026-10-10T16:53:41.019036+00:00",
+          "restoration_native_and_packets": true,
+          "expiry_packet_and_native_acceptance": false,
+          "completed": true,
+          "overall_acceptance": false
+        }
+      ]
+    },
+    "cycle-v2.jsonl": {
+      "original_sha256": "be1491d1064348200c7afac096a122e694886d1effa427ddeaa1232b2a785816",
+      "events": [
+        {
+          "utc": "2026-10-10T16:59:37.088893+00:00",
+          "started": true,
+          "scope": "Only owned Classic TCP8080/UDP9000 normal API expiry; original two grants always restored; no HA or DNS expiry claim"
+        },
+        {
+          "utc": "2026-10-10T16:59:38.331762+00:00",
+          "stage": "native_fresh-pre-expiry",
+          "accepted": true,
+          "capture_sha256": "a16e86a094c3a7f9770d10d25fdd06e5c27c3e8c34192147173d9ad0809edc5d"
+        },
+        {
+          "utc": "2026-10-10T16:59:38.495117+00:00",
+          "completed": false,
+          "error_type": "ValueError",
+          "expiry_packet_and_native_acceptance": false
+        },
+        {
+          "utc": "2026-10-10T16:59:38.573057+00:00",
+          "phase": "restore",
+          "completed": true,
+          "receipt_sha256": "ebaeec96f58c7b573dc52ee760659722cc7d9a246d0643c9b66bc08ebed5f934"
+        },
+        {
+          "utc": "2026-10-10T16:59:39.989241+00:00",
+          "stage": "native_restored-allow",
+          "accepted": false,
+          "capture_sha256": "bc3209bbfc047995f597f85092e8dbb4bd188b0fc4f4b7db134ef2ad2a14a724"
+        },
+        {
+          "utc": "2026-10-10T16:59:41.616287+00:00",
+          "stage": "packet_restored-allow",
+          "accepted": true,
+          "receipt_sha256": "9647ff342c7502185375a2693021f173e7c77fe015139bcbbd916f2b6d267269"
+        },
+        {
+          "utc": "2026-10-10T16:59:41.732161+00:00",
+          "completed": false,
+          "restore_incomplete_or_unverified": true,
+          "error_type": "ValueError"
+        }
+      ]
+    },
+    "cycle-v3.jsonl": {
+      "original_sha256": "7c92314b490e4b598f1036926abaeb891d3d8761b0be658fb4cdbecfeda1c0b6",
+      "events": [
+        {
+          "utc": "2026-10-10T17:08:04.449789+00:00",
+          "started": true,
+          "scope": "Only owned Classic TCP8080/UDP9000 normal API expiry; original two grants always restored; no HA or DNS expiry claim"
+        },
+        {
+          "utc": "2026-10-10T17:08:05.626040+00:00",
+          "stage": "native_fresh-pre-expiry",
+          "accepted": false,
+          "capture_sha256": "744c4cbf3e8353576dda2da3122deed0e9fe372b906d9023da02749d31daae5a"
+        },
+        {
+          "utc": "2026-10-10T17:08:05.626193+00:00",
+          "completed": false,
+          "error_type": "ValueError",
+          "expiry_packet_and_native_acceptance": false
+        }
+      ]
+    },
+    "lease-v1.jsonl": {
+      "original_sha256": "edca36bff2f8953577d1a97d31c5f1a620a0ccb1ececf08c5e6f753b36596e22",
+      "events": [
+        {
+          "phase": "lease",
+          "started": true
+        },
+        {
+          "disabled_original_id": "01a12659-c017-70c0-b02d-2fe6051f51a5"
+        },
+        {
+          "disabled_original_id": "01a1265a-3527-7b51-b8fc-e7a9404981f4"
+        },
+        {
+          "restored_original_id": "01a12659-c017-70c0-b02d-2fe6051f51a5"
+        },
+        {
+          "restored_original_id": "01a1265a-3527-7b51-b8fc-e7a9404981f4"
+        },
+        {
+          "original_resources_and_policies_preserved": true
+        },
+        {
+          "completed": false,
+          "error_type": "HTTPError"
+        }
+      ]
+    },
+    "lease-v2.jsonl": {
+      "original_sha256": "980e0feabac03be5083c2ed27206790dbc5f06f294ba1251b49baf6cd5b6a8db",
+      "events": [
+        {
+          "phase": "lease",
+          "started": true
+        },
+        {
+          "source_site_id": "01a12500-95ae-7728-b901-54f20df98cc1",
+          "verified_singleton_source_prefix": "10.70.0.0/24",
+          "temporary_source_kind": "cidr",
+          "original_source_kind": "site",
+          "effective_source_unchanged": true
+        },
+        {
+          "disabled_original_id": "01a12659-c017-70c0-b02d-2fe6051f51a5"
+        },
+        {
+          "disabled_original_id": "01a1265a-3527-7b51-b8fc-e7a9404981f4"
+        },
+        {
+          "created_temporary_id": "01a126c1-82c9-73a5-b0ec-0d1b932137b1",
+          "expires_at": "2026-10-10T17:01:08.397790Z"
+        },
+        {
+          "restored_original_id": "01a12659-c017-70c0-b02d-2fe6051f51a5"
+        },
+        {
+          "restored_original_id": "01a1265a-3527-7b51-b8fc-e7a9404981f4"
+        },
+        {
+          "original_resources_and_policies_preserved": true
+        },
+        {
+          "completed": false,
+          "error_type": "ValueError"
+        }
+      ]
+    },
+    "restore-v1.jsonl": {
+      "original_sha256": "ebaeec96f58c7b573dc52ee760659722cc7d9a246d0643c9b66bc08ebed5f934",
+      "events": [
+        {
+          "phase": "restore",
+          "started": true
+        },
+        {
+          "restored_original_id": "01a12659-c017-70c0-b02d-2fe6051f51a5"
+        },
+        {
+          "restored_original_id": "01a1265a-3527-7b51-b8fc-e7a9404981f4"
+        },
+        {
+          "original_resources_and_policies_preserved": true
+        },
+        {
+          "completed": true
+        }
+      ]
+    },
+    "restore-v2.jsonl": {
+      "original_sha256": "ebaeec96f58c7b573dc52ee760659722cc7d9a246d0643c9b66bc08ebed5f934",
+      "events": [
+        {
+          "phase": "restore",
+          "started": true
+        },
+        {
+          "restored_original_id": "01a12659-c017-70c0-b02d-2fe6051f51a5"
+        },
+        {
+          "restored_original_id": "01a1265a-3527-7b51-b8fc-e7a9404981f4"
+        },
+        {
+          "original_resources_and_policies_preserved": true
+        },
+        {
+          "completed": true
+        }
+      ]
+    },
+    "cleanup-after-sweep-v2.jsonl": {
+      "original_sha256": "6f799878ae09c7b205c5880003c92873289e09e650f583d5e8cb18c8142a9341",
+      "events": [
+        {
+          "phase": "cleanup",
+          "started": true
+        },
+        {
+          "restored_original_id": "01a12659-c017-70c0-b02d-2fe6051f51a5"
+        },
+        {
+          "restored_original_id": "01a1265a-3527-7b51-b8fc-e7a9404981f4"
+        },
+        {
+          "original_resources_and_policies_preserved": true
+        },
+        {
+          "temporary_id": "01a126c1-82c9-73a5-b0ec-0d1b932137b1",
+          "already_absent": true
+        },
+        {
+          "completed": true
+        }
+      ]
+    },
+    "restored-allow-packets-v1.json": {
+      "original_sha256": "7a92222518af06e4c62cbf6305a87cd6c10179092c8645dada3b29800d4e6999",
+      "completed": true,
+      "accepted": true,
+      "results": [
+        {
+          "protocol": "tcp",
+          "exact_response": true,
+          "elapsed_ms": 7.946,
+          "receiver_exact_payload_count": 1,
+          "capture_drops": 0,
+          "accepted": true
+        },
+        {
+          "protocol": "udp",
+          "exact_response": true,
+          "elapsed_ms": 5.065,
+          "receiver_exact_payload_count": 1,
+          "capture_drops": 0,
+          "accepted": true
+        }
+      ]
+    },
+    "restored-allow-packets-v2.json": {
+      "original_sha256": "9647ff342c7502185375a2693021f173e7c77fe015139bcbbd916f2b6d267269",
+      "completed": true,
+      "accepted": true,
+      "results": [
+        {
+          "protocol": "tcp",
+          "exact_response": true,
+          "elapsed_ms": 8.141,
+          "receiver_exact_payload_count": 1,
+          "capture_drops": 0,
+          "accepted": true
+        },
+        {
+          "protocol": "udp",
+          "exact_response": true,
+          "elapsed_ms": 5.01,
+          "receiver_exact_payload_count": 1,
+          "capture_drops": 0,
+          "accepted": true
+        }
+      ]
+    },
+    "restored-allow-tcp-observer-v1.json": {
+      "original_sha256": "7da88e8cac35187d6dacda26ace5ef54a4376bab42c1b6b012125991f023f13b",
+      "completed": true,
+      "error": null
+    },
+    "restored-allow-udp-observer-v1.json": {
+      "original_sha256": "a796111e0b7ef86c4ccdb4f7bf0b818a17c6fbb0884ab5f2378b976e0908fe1d",
+      "completed": true,
+      "error": null
+    },
+    "restored-allow-tcp-observer-v2.json": {
+      "original_sha256": "44e381a6625e2c6bbb44650f21a500687b86ad0725e8381a1a35b81efef3040d",
+      "completed": false,
+      "error": "expiry guard observation refused"
+    },
+    "restored-allow-udp-observer-v2.json": {
+      "original_sha256": "44e381a6625e2c6bbb44650f21a500687b86ad0725e8381a1a35b81efef3040d",
+      "completed": false,
+      "error": "expiry guard observation refused"
+    },
+    "fresh-pre-expiry-tcp-observer-v3.json": {
+      "original_sha256": "44e381a6625e2c6bbb44650f21a500687b86ad0725e8381a1a35b81efef3040d",
+      "completed": false,
+      "error": "expiry guard observation refused"
+    },
+    "fresh-pre-expiry-udp-observer-v3.json": {
+      "original_sha256": "44e381a6625e2c6bbb44650f21a500687b86ad0725e8381a1a35b81efef3040d",
+      "completed": false,
+      "error": "expiry guard observation refused"
+    }
+  }
+}

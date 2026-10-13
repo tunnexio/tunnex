@@ -1,0 +1,22 @@
+{
+  "started": true,
+  "completed": true,
+  "apply": true,
+  "phase": "tunnel-delete",
+  "requested_phase": "tunnel-delete",
+  "utc": "2026-10-10T23:37:10.815226+00:00",
+  "mutations_submitted": 1,
+  "mutation_attempted": true,
+  "operation": {
+    "id": "7956531106183344836",
+    "name": "operation-1791675434982-65d84f1daddc5-d20e87b6-2a8e6f3c",
+    "operationType": "delete",
+    "status": "DONE",
+    "targetLink": "https://www.googleapis.com/compute/v1/projects/project-0048836f-6ba1-4a14-8da/regions/asia-south2/vpnTunnels/tn-gcps2s-20261010-classic-0"
+  },
+  "api_secret_fields_privately_discarded": true,
+  "psk_file_read_attempted": false,
+  "native_and_normal_API_gates": "external ROOT responsibility; not supplied by this executor",
+  "private_original_sha256": "df1a819ccb6d1b6c5b647e4b97e81691c1ad928f799579965a52df6b7d95dc11",
+  "full_inventory_archived": false
+}

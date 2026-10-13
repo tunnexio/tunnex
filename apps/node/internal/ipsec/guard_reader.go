@@ -8,6 +8,9 @@ import (
 	"path/filepath"
 	"reflect"
 	"sort"
+	"time"
+
+	"github.com/google/uuid"
 )
 
 var ErrGuardRead = errors.New("IPsec guard could not be verified")
@@ -48,11 +51,89 @@ func NewGuardReader(nftPath string) (*GuardReader, error) {
 // listing bracketed by namespace/interface observations. The owning controller
 // must separately serialize mutations and check its monotonic lease deadline.
 func (r *GuardReader) Check(ctx context.Context, manifest GuardManifest) error {
+	return r.check(ctx, manifest, VerifyGuardReadbackWithInterfaces)
+}
+
+// checkConnection observes full owned structure but requires all three exact
+// target sets to remain positive. Other known members may naturally expire;
+// their absence can never supply authority for this target.
+func (r *GuardReader) checkConnection(ctx context.Context, manifest GuardManifest, id uuid.UUID) error {
+	if id == uuid.Nil {
+		return ErrGuardRead
+	}
+	return r.check(ctx, manifest, func(expected, observed []byte, links []GuardInterface) error {
+		return verifyGuardConnectionReadback(expected, observed, links, id)
+	})
+}
+
+// snapshot is created and consumed within one resolver proof. Exact raw binding
+// prevents using another template; it never retains parsed observed authority.
+type guardExpectedSnapshot struct {
+	raw     string
+	objects []any
+}
+
+func (r *GuardReader) checkConnectionSnapshot(ctx context.Context, manifest GuardManifest, id uuid.UUID, snapshot guardExpectedSnapshot) error {
+	return r.checkConnectionSnapshotObserved(ctx, manifest, id, snapshot, nil)
+}
+
+// Values describe one fresh bracket only, never forwarding authority.
+type guardReadTiming struct {
+	CommandMillis, VerificationMillis int64
+	FailureClass                      string
+}
+
+func (r *GuardReader) checkConnectionSnapshotObserved(ctx context.Context, manifest GuardManifest, id uuid.UUID, snapshot guardExpectedSnapshot, observe func(guardReadTiming)) error {
+	if id == uuid.Nil || snapshot.raw != manifest.ExpectedJSON || len(snapshot.objects) == 0 {
+		return ErrGuardRead
+	}
+	class := ""
+	var classify func(string)
+	if observe != nil {
+		classify = func(value string) { class = value }
+	}
+	wrapped := observe
+	if observe != nil {
+		wrapped = func(t guardReadTiming) {
+			if t.FailureClass == "structural_or_read" && class != "" {
+				t.FailureClass = class
+			}
+			observe(t)
+		}
+	}
+	return r.checkObserved(ctx, manifest, func(_, observed []byte, links []GuardInterface) error {
+		return verifyGuardConnectionObjectsReadbackClass(snapshot.objects, observed, links, id, classify)
+	}, wrapped)
+}
+
+func (r *GuardReader) check(ctx context.Context, manifest GuardManifest, verify func([]byte, []byte, []GuardInterface) error) error {
+	return r.checkObserved(ctx, manifest, verify, nil)
+}
+func (r *GuardReader) checkObserved(ctx context.Context, manifest GuardManifest, verify func([]byte, []byte, []GuardInterface) error, observe func(guardReadTiming)) (resultErr error) {
+	var timing guardReadTiming
+	ctx, cancel := context.WithTimeout(ctx, kernelReadTimeout)
+	defer cancel()
+	defer func() {
+		if observe == nil {
+			return
+		}
+		switch {
+		case ctx.Err() == context.DeadlineExceeded:
+			timing.FailureClass = "context_deadline"
+		case ctx.Err() != nil:
+			timing.FailureClass = "context_canceled"
+		case resultErr == errGuardConnectionNotPermitted:
+			timing.FailureClass = "target_not_permitted"
+		case resultErr != nil:
+			timing.FailureClass = "structural_or_read"
+		default:
+			timing.FailureClass = "none"
+		}
+		observe(timing)
+	}()
 	if r == nil || r.run == nil || r.namespace == nil || r.interfaces == nil || ctx.Err() != nil || !validKernelNamespace(manifest.Namespace) {
 		return ErrGuardRead
 	}
-	ctx, cancel := context.WithTimeout(ctx, kernelReadTimeout)
-	defer cancel()
 	before, err := r.namespace()
 	if err != nil || before != manifest.Namespace || ctx.Err() != nil {
 		return ErrGuardRead
@@ -61,7 +142,14 @@ func (r *GuardReader) Check(ctx context.Context, manifest GuardManifest) error {
 	if err != nil || len(links) > kernelEntryLimit || ctx.Err() != nil {
 		return ErrGuardRead
 	}
+	var commandStarted time.Time
+	if observe != nil {
+		commandStarted = time.Now()
+	}
 	observed, err := r.run(ctx, "-j", "list", "table", "inet", "tunnex_ipsec")
+	if observe != nil {
+		timing.CommandMillis = time.Since(commandStarted).Milliseconds()
+	}
 	if err != nil || len(observed) > kernelOutputLimit || ctx.Err() != nil {
 		return ErrGuardRead
 	}
@@ -75,7 +163,24 @@ func (r *GuardReader) Check(ctx context.Context, manifest GuardManifest) error {
 	}
 	sort.Slice(links, func(i, j int) bool { return links[i].Index < links[j].Index })
 	sort.Slice(afterLinks, func(i, j int) bool { return afterLinks[i].Index < afterLinks[j].Index })
-	if !reflect.DeepEqual(links, afterLinks) || VerifyGuardReadbackWithInterfaces([]byte(manifest.ExpectedJSON), observed, links) != nil || ctx.Err() != nil {
+	if !reflect.DeepEqual(links, afterLinks) || ctx.Err() != nil {
+		return ErrGuardRead
+	}
+	var verificationStarted time.Time
+	if observe != nil {
+		verificationStarted = time.Now()
+	}
+	verificationErr := verify([]byte(manifest.ExpectedJSON), observed, links)
+	if observe != nil {
+		timing.VerificationMillis = time.Since(verificationStarted).Milliseconds()
+	}
+	if err := verificationErr; err != nil {
+		if err == errGuardConnectionNotPermitted {
+			return err
+		}
+		return ErrGuardRead
+	}
+	if ctx.Err() != nil {
 		return ErrGuardRead
 	}
 	return nil

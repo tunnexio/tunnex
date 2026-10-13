@@ -1,0 +1,28 @@
+{
+  "id": null,
+  "name": "gcp-cloud-classic-1010",
+  "site_id": "01a12500-95ae-7728-b901-54f20df98cc1",
+  "gateway_node_id": null,
+  "tunnel_ids": [
+    null
+  ],
+  "configuration": {
+    "profile_id": "gcp-classic-static-ipv4-v1",
+    "mode": "ipv4-static",
+    "customer_outside_address": "34.131.136.132",
+    "local_prefixes": [
+      "10.70.0.0/24"
+    ],
+    "remote_prefixes": [
+      "10.81.0.0/24"
+    ],
+    "tunnels": [
+      {
+        "outside_address": "34.131.214.202",
+        "inside_cidr": "",
+        "customer_inside_address": "",
+        "cloud_inside_address": ""
+      }
+    ]
+  }
+}

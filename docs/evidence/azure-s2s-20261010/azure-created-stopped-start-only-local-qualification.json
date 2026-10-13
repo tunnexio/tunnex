@@ -1,0 +1,26 @@
+{
+  "approval_rejection_reason": "Sensitive source-code egress to bastion and peer lacked explicit payload and destination authorization",
+  "approval_status": "explicit_payload_and_destination_approval_requested_after_auto_review_rejection",
+  "category": "start_only_recovery_locally_qualified_transfer_not_authorized",
+  "created_container_id": "21833b87403bb637ad19c191608996bf2fb7614201cec39e28738f80710e1a95",
+  "default_readonly": true,
+  "destinations": [
+    "104.211.219.1",
+    "20.219.28.146"
+  ],
+  "files_transferred": false,
+  "local_tests_passed": 19,
+  "native_closure_unchanged": true,
+  "outer_closure_role_count": 26,
+  "outer_closure_sha256": "577197f06ba9a61a410d0d05f1db40cad691b8aa20e00b25ea6e4c71b55b6882",
+  "pure_model_sha256": "2582f2bac8c51a13a643e83050ab2e2b2a1f7188fa08b0516f37b592c08031d0",
+  "qualified_start_sha256": "0eed737b19be84e527fb58c86577387e3de1959ef1d5e14d12c19e51b84502ee",
+  "reviewed_template_sha256": "fc0ca701e8b9e10f2fb4fee08ddf4d7c22099b06eb40305a0d871cd796e7f41f",
+  "scope": "Four source/metadata files; no keys or saved private environment contents transferred; exact once START only after fresh full preflight; no CREATE replay",
+  "snapshot_sha256": "152a0dc4d1888f205f2cc5968ab19d5d1d861be19ff1ba215306290793009e1b",
+  "source_archive_bytes": 71680,
+  "source_archive_sha256": "5bc4af960abfc9d3ee83949a9f0aabc903711ed68b5f7810b6a42497b9f5e72b",
+  "start_dispatched": false,
+  "start_reserved": false,
+  "version": 1
+}
