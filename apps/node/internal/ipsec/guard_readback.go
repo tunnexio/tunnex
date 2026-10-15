@@ -41,10 +41,13 @@ func normalizedGuardObjectsWithInterfaces(raw []byte, interfaces map[string]int)
 // Withdrawal accepts a bounded zero remaining lifetime only as an exact known
 // member. It must not drop that member or supply a positive readback receipt.
 func normalizedGuardWithdrawalObjectsWithInterfaces(raw []byte, interfaces map[string]int) ([]any, bool) {
-	return normalizedGuardObservedObjects(raw, interfaces, true)
+	return normalizedGuardObservedObjectsWithOrphans(raw, interfaces, true, true)
 }
 
 func normalizedGuardObservedObjects(raw []byte, interfaces map[string]int, withdrawal bool) ([]any, bool) {
+	return normalizedGuardObservedObjectsWithOrphans(raw, interfaces, withdrawal, false)
+}
+func normalizedGuardObservedObjectsWithOrphans(raw []byte, interfaces map[string]int, withdrawal, allowOrphanedIndex bool) ([]any, bool) {
 	if len(raw) > kernelDumpLimit || !utf8.Valid(raw) {
 		return nil, false
 	}
@@ -107,7 +110,7 @@ func normalizedGuardObservedObjects(raw []byte, interfaces map[string]int, withd
 				return nil, false
 			}
 		case "set":
-			if !translateGuardSet(fields, interfaces) || !normalizeGuardSetObserved(fields, withdrawal) {
+			if !translateGuardSetObserved(fields, interfaces, allowOrphanedIndex) || !normalizeGuardSetObserved(fields, withdrawal) {
 				return nil, false
 			}
 		case "chain":
@@ -139,7 +142,7 @@ func normalizedGuardObservedObjects(raw []byte, interfaces map[string]int, withd
 				if !ok || len(expr) != 1 {
 					return nil, false
 				}
-				if !translateGuardMatch(expr, interfaces) {
+				if !translateGuardMatch(expr, interfaces, allowOrphanedIndex) {
 					return nil, false
 				}
 				if counter, present := expr["counter"]; present {
@@ -354,17 +357,28 @@ func VerifyGuardReadbackWithInterfaces(expected, observed []byte, links []GuardI
 	return nil
 }
 func translateGuardIndex(value any, links map[string]int) (any, bool) {
+	return translateGuardIndexObserved(value, links, false)
+}
+func translateGuardIndexObserved(value any, links map[string]int, withdrawal bool) (any, bool) {
 	name, isName := value.(string)
 	if !isName {
 		return value, true
 	}
-	index, ok := links[name]
-	if !ok {
-		return nil, false
+	if index, ok := links[name]; ok {
+		return json.Number(strconv.Itoa(index)), true
 	}
-	return json.Number(strconv.Itoa(index)), true
+	// nft renders a deleted interface index as a decimal string. Only exact
+	// journal-bound withdrawal may normalize it; positive readback still needs
+	// a live name mapping. Full object equality below proves the expected index.
+	if withdrawal {
+		index, err := strconv.ParseUint(name, 10, 31)
+		if err == nil && index > 0 && strconv.FormatUint(index, 10) == name {
+			return json.Number(name), true
+		}
+	}
+	return nil, false
 }
-func translateGuardMatch(expr map[string]any, links map[string]int) bool {
+func translateGuardMatch(expr map[string]any, links map[string]int, withdrawal bool) bool {
 	match, ok := expr["match"].(map[string]any)
 	if !ok {
 		return true
@@ -388,7 +402,7 @@ func translateGuardMatch(expr map[string]any, links map[string]int) bool {
 			return true
 		}
 		for i, value := range values {
-			converted, ok := translateGuardIndex(value, links)
+			converted, ok := translateGuardIndexObserved(value, links, withdrawal)
 			if !ok {
 				return false
 			}
@@ -396,7 +410,7 @@ func translateGuardMatch(expr map[string]any, links map[string]int) bool {
 		}
 		return true
 	}
-	converted, ok := translateGuardIndex(match["right"], links)
+	converted, ok := translateGuardIndexObserved(match["right"], links, withdrawal)
 	if !ok {
 		return false
 	}
@@ -404,6 +418,9 @@ func translateGuardMatch(expr map[string]any, links map[string]int) bool {
 	return true
 }
 func translateGuardSet(fields map[string]any, links map[string]int) bool {
+	return translateGuardSetObserved(fields, links, false)
+}
+func translateGuardSetObserved(fields map[string]any, links map[string]int, withdrawal bool) bool {
 	if fields["type"] != "iface_index" {
 		return true
 	}
@@ -417,7 +434,7 @@ func translateGuardSet(fields map[string]any, links map[string]int) bool {
 		if !ok {
 			return false
 		}
-		converted, ok := translateGuardIndex(element["val"], links)
+		converted, ok := translateGuardIndexObserved(element["val"], links, withdrawal)
 		if !ok {
 			return false
 		}
@@ -483,7 +500,7 @@ func verifyGuardConnectionObjectsReadbackClass(expected []any, observed []byte, 
 	if id == uuid.Nil || len(expected) == 0 {
 		return ErrGuardReadback
 	}
-	want, err := verifyGuardWithdrawalObjectsSnapshotClass(expected, observed, links, classify)
+	want, err := verifyGuardOwnershipObjectsSnapshotClass(expected, observed, links, classify, false)
 	if err != nil {
 		return ErrGuardReadback
 	}

@@ -82,6 +82,10 @@ func (c *RuntimeController) maintainIPsecRuntimeRecoveryObserved(ctx context.Con
 			if err != nil || connections[id] || deliveries[m.ID] {
 				return nil, ErrRuntimeController
 			}
+			c.publishDesktopNAT(id, grants[i])
+			if grants[i], err = c.observeDesktopGrants(ctx, grants[i]); err != nil {
+				return nil, ErrRuntimeController
+			}
 			connections[id], deliveries[m.ID] = true, true
 		}
 		// Match ordinary Apply: revoke changed published DNS inputs before any
@@ -104,10 +108,10 @@ func (c *RuntimeController) maintainIPsecRuntimeRecoveryObserved(ctx context.Con
 		}
 		return items, nil
 	}
-	return c.maintainIPsecRuntimeItems(ctx, len(materials), prepare, authority, bgpCurrent, publish, publishRecovery)
+	return c.maintainIPsecRuntimeItems(ctx, len(materials), prepare, authority, bgpCurrent, publish, publishRecovery, false)
 }
 
-func (c *RuntimeController) maintainIPsecRuntimeItems(ctx context.Context, count int, prepare func(string, []RuntimeJournalEntry, *string, *uuid.UUID) ([]maintenanceItem, error), authority func() *PermitLeaseAuthority, bgpCurrent func() bool, publish func(context.Context, RuntimeDelivery, RuntimeStatusReport) error, publishRecovery func(context.Context, RuntimeRecoveryHeartbeat) error) (resultOut []RuntimeMaintenanceResult, resultErr error) {
+func (c *RuntimeController) maintainIPsecRuntimeItems(ctx context.Context, count int, prepare func(string, []RuntimeJournalEntry, *string, *uuid.UUID) ([]maintenanceItem, error), authority func() *PermitLeaseAuthority, bgpCurrent func() bool, publish func(context.Context, RuntimeDelivery, RuntimeStatusReport) error, publishRecovery func(context.Context, RuntimeRecoveryHeartbeat) error, reconcileRetainedBGP bool) (resultOut []RuntimeMaintenanceResult, resultErr error) {
 	started := time.Now()
 	stage, connection := "maintenance_input", uuid.Nil
 	defer func() { c.emitRuntimeDiagnostic(ctx, "maintenance", stage, connection, started, resultErr != nil) }()
@@ -272,7 +276,34 @@ func (c *RuntimeController) maintainIPsecRuntimeItems(ctx context.Context, count
 				if eligible {
 					stage = "maintenance_eligibility_proof"
 					eligibilityStage = "eligibility_proof"
-					eligible = c.maintenanceCurrent(ctx, old, bgpCurrent) == nil
+					proofErr := c.maintenanceCurrent(ctx, old, bgpCurrent)
+					if reconcileRetainedBGP && errors.Is(proofErr, errMaintenanceBGPRouteChanged) {
+						// Priority renewal precedes ordinary route validation. Let a
+						// healthy changed RIB converge under its original finite lease
+						// instead of withdrawing its owner and stopping desktop exports.
+						stage = "maintenance_retained_bgp_reconcile"
+						c.refreshMaintenanceRecovery(ctx)
+						if pulseErr := c.refreshMaintenanceActiveRecovery(ctx, pulseAllowed, publishRecovery); pulseErr != nil {
+							return pulseFailure(pulseErr)
+						}
+						if ctx.Err() != nil || !c.qualification.current() || !c.config.DaemonAlive() || bgpCurrent == nil || !bgpCurrent() {
+							return fail()
+						}
+						reconcileCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+						reconcileErr := c.reconcileActiveBGP(reconcileCtx, entries)
+						if reconcileErr == nil && (reconcileCtx.Err() != nil || !bgpCurrent()) {
+							reconcileErr = ErrRuntimeController
+						}
+						cancel()
+						if reconcileErr != nil {
+							return fail()
+						}
+						// Re-read the journal and rebuild exact owner snapshots once.
+						// The reconciler leaves applications denied; only the normal
+						// fresh-lease commit restores them. Further RIB drift refuses.
+						return c.maintainIPsecRuntimeItems(ctx, count, prepare, authority, bgpCurrent, publish, publishRecovery, false)
+					}
+					eligible = proofErr == nil
 					c.refreshMaintenanceRecovery(ctx)
 					if pulseErr := c.refreshMaintenanceActiveRecovery(ctx, pulseAllowed, publishRecovery); pulseErr != nil {
 						return pulseFailure(pulseErr)
@@ -513,6 +544,8 @@ func (c *RuntimeController) maintainIPsecRuntimeItems(ctx context.Context, count
 	return result, nil
 }
 
+var errMaintenanceBGPRouteChanged = errors.New("IPsec maintenance BGP routes changed")
+
 // maintenanceCurrent is read-only: both original permit and scoped actual
 // native guard remain required. Fresh learned duties must equal the completed
 // BGP-owned tuples, otherwise ordinary Apply/reconciliation is required.
@@ -576,8 +609,11 @@ func (c *RuntimeController) maintenanceCurrentWithNativeProof(ctx context.Contex
 			}
 		}
 		stage = "maintenance_current_bgp_binding"
-		if !p.Alive() || !bgpCurrent() || !reflect.DeepEqual(target, e.BGPRoutes.Owned) {
+		if !p.Alive() || !bgpCurrent() {
 			return ErrRuntimeController
+		}
+		if !reflect.DeepEqual(target, e.BGPRoutes.Owned) {
+			return errMaintenanceBGPRouteChanged
 		}
 	}
 	stage = "maintenance_current_final_qualification"

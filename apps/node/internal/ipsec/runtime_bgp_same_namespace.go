@@ -7,11 +7,12 @@ import (
 )
 
 // An Applied journal and surviving links do not prove that a fresh daemon has
-// loaded configuration. This path only restages an absent GCP HA configuration
-// in the same independently observed namespace; it cannot recreate lost links.
+// loaded configuration. This path only restages absent AWS BGP or GCP HA
+// configurations in the same independently observed namespace and boot; it
+// cannot recreate lost links. AWS retains its legacy empty runtime profile.
 func (c *RuntimeController) bgpOrdinaryDaemonAbsent(ctx context.Context, e RuntimeJournalEntry, entries []RuntimeJournalEntry, authority *PermitLeaseAuthority, identity PermitLeaseIdentity, environment RuntimeEnvironment) (bool, bool, error) {
 	refuse := func() (bool, bool, error) { return false, false, ErrRuntimeController }
-	if ctx.Err() != nil || e.ContractVersion != 3 || e.Allocation.ProfileID != GCPHABGPProfile || e.Phase != RuntimeApplied || e.AbsenceOnly || !validJournalBGP(e) || c.config.Environment == nil || c.config.Daemon == nil || !c.qualification.current() || c.config.DaemonAlive == nil || !c.config.DaemonAlive() {
+	if ctx.Err() != nil || e.ContractVersion != 3 || (e.Allocation.ProfileID != "" && e.Allocation.ProfileID != GCPHABGPProfile) || e.Phase != RuntimeApplied || e.AbsenceOnly || !validJournalBGP(e) || c.config.Environment == nil || c.config.Daemon == nil || !c.qualification.current() || c.config.DaemonAlive == nil || !c.config.DaemonAlive() {
 		return refuse()
 	}
 	namespace, err := c.namespace()

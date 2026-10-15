@@ -1,7 +1,7 @@
-import { createElement, type FormEvent } from "react";
+import { createElement, useState, type FormEvent } from "react";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { EntityPicker } from "../src/components/EntityPicker";
+import { EntityPicker, type PickerOption } from "../src/components/EntityPicker";
 afterEach(cleanup);
 const options = [{ value: "a", kind: "provider", tag: "", label: "Anthropic", icon: createElement("img", { src: "/fixture.svg", alt: "" }) }, { value: "b", kind: "provider", tag: "", label: "Gemini", unavailable: "Unavailable now" }];
 describe("EntityPicker accessible selection", () => {
@@ -39,4 +39,21 @@ describe("EntityPicker accessible selection", () => {
     expect(submit).not.toHaveBeenCalled(); expect(select).not.toHaveBeenCalled();
   });
 
+});
+
+it.each(["click", "enter"])("displays a committed CIDR after %s and retains a named selection for an uncommitted query", method=>{
+ const home={value:"site-home",kind:"site",tag:"SITE",label:"Home lan"};
+ function Draft(){const [chosen,setChosen]=useState<PickerOption>(home);return <EntityPicker label="Source" options={[home]} value={chosen.value} acceptCidr onSelect={setChosen}/>}
+ render(<Draft/>);const input=screen.getByRole("combobox") as HTMLInputElement;
+ fireEvent.focus(input);fireEvent.change(input,{target:{value:"192.168.1.0/24"}});fireEvent.keyDown(input,{key:"Escape"});
+ expect(input.value).toBe("Home lan");
+ fireEvent.focus(input);fireEvent.change(input,{target:{value:"192.168.1.0/24"}});
+ if(method==="click")fireEvent.click(screen.getByRole("button",{name:/192.168.1.0\/24/}));else fireEvent.keyDown(input,{key:"Enter"});
+ expect(input.value).toBe("192.168.1.0/24");expect(input.getAttribute("aria-expanded")).toBe("false");
+});
+it("hydrates literal CIDRs only when the picker accepts them",()=>{
+ const {rerender}=render(<EntityPicker label="Source" options={[]} value="192.168.1.0/24" acceptCidr onSelect={()=>{}}/>);
+ expect((screen.getByRole("combobox") as HTMLInputElement).value).toBe("192.168.1.0/24");
+ rerender(<EntityPicker label="Destination" options={[]} value="missing-resource-id" onSelect={()=>{}}/>);
+ expect((screen.getByRole("combobox") as HTMLInputElement).value).toBe("");
 });

@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/tunnexio/tunnex/apps/api/internal/fqdn"
 )
 
 const (
@@ -93,9 +94,25 @@ type ResolverConfig struct {
 	ProfileProvider string             `json:"profile_provider"`
 	MatchedSuffix   string             `json:"matched_suffix"`
 	Endpoints       []ResolverEndpoint `json:"endpoints"`
+	StaticRecords   []StaticRecord     `json:"static_records,omitempty"`
 }
 
 func (c ResolverConfig) valid() bool {
+	if len(c.StaticRecords) > 0 {
+		if len(c.Endpoints) > 3 {
+			return false
+		}
+		seen := map[netip.Addr]bool{}
+		for _, endpoint := range c.Endpoints {
+			if !fqdn.PublicResolverIPv4(endpoint.Address) || endpoint.Port != 53 || (endpoint.Transport != "udp" && endpoint.Transport != "tcp") || seen[endpoint.Address] {
+				return false
+			}
+			seen[endpoint.Address] = true
+		}
+		// The scheduler still resolves only immutable local records. These endpoints
+		// authorize gateway DNS completion, never dynamic application generations.
+		return c.ID != "" && c.Version > 0 && c.ProfileID != "" && c.IPsecPath == nil && validStaticRecords(c.StaticRecords) && c.MatchedSuffix != ""
+	}
 	if !c.IPsecPath.valid() || c.ID == "" || c.Version < 1 || len(c.Endpoints) == 0 || len(c.Endpoints) > 8 {
 		return false
 	}
@@ -120,6 +137,7 @@ type ResolverProfile struct {
 	Provider      string             `json:"provider"`
 	ZoneSuffixes  []string           `json:"zone_suffixes"`
 	Endpoints     []ResolverEndpoint `json:"endpoints"`
+	StaticRecords []StaticRecord     `json:"static_records,omitempty"`
 	LegacyDefault bool               `json:"legacy_default"`
 }
 

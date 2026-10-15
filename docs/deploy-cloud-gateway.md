@@ -11,6 +11,24 @@ and policy hash before moving to the next gateway. To disable only access-event
 observation, recreate it with `TUNNEX_FLOWLOG_GROUP=0`; this does not change the
 allow/drop rules' verdicts.
 
+## Optional WireGuard MTU cap
+
+Set `TUNNEX_WG_MTU_CAP` in the gateway agent's deployment environment only when
+path testing establishes that a lower WireGuard MTU is needed. It accepts an
+integer from `1280` through `1420`; unset leaves the existing behavior unchanged,
+and an invalid value prevents agent startup. For example,
+`TUNNEX_WG_MTU_CAP=1380` is the value qualified for the current remote-client/AWS
+lab path, not a universal optimal MTU.
+
+Restart or replace the agent through the normal deployment procedure to apply
+the setting, preserving its enrolled state volume. The normal WireGuard owner
+uses the smallest of the desired MTU, this cap, and its physical-underlay limit.
+The control plane receives the actual verified interface readback, not the
+configured cap. Existing desktop clients must fetch and apply refreshed
+configuration; a reconnect in the same tunnel mode requires a client build with
+the same-mode reconnect refresh fix. Verify the client's applied MTU and
+application traffic after reconnecting.
+
 ## The endpoint field (D4a)
 At token creation, set **Public endpoint (ip:port)** to the VM's public `ip:51820` if this gateway should be **dialable** (a hub, or any reachable gateway). Leave it blank for a **NAT'd spoke** (it dials the hub; peers can't dial it). The emitted command includes `TUNNEX_NODE_ENDPOINT` iff you set it.
 

@@ -54,6 +54,7 @@ func (c *RuntimeController) startBGPSession(ctx context.Context, e RuntimeJourna
 	if err != nil {
 		return err
 	}
+	cfg.DesktopPrefixes = desktopExportPrefixes(c.bgpDesktopGrants[e.DeliveryID])
 	var process runtimeBGPSession
 	if c.bgpStart != nil {
 		process, err = c.bgpStart(ctx, e, cfg)
@@ -94,7 +95,16 @@ func (c *RuntimeController) startBGPSession(ctx context.Context, e RuntimeJourna
 			}
 			return ErrRuntimeJournal
 		}
-		if e.Allocation.ProfileID == GCPHABGPProfile {
+		if len(cfg.DesktopPrefixes) > 0 {
+			if len(environments) != 1 {
+				return ErrRuntimeController
+			}
+			proof, proofErr := c.desktopBGPLocalExportProof(e, cfg, environments[0], c.bgpDesktopGrants[e.DeliveryID])
+			if proofErr != nil {
+				return proofErr
+			}
+			process, err = startRuntimeBGPSessionWithLocalExportProof(ctx, c.config.JournalDir, e.DeliveryID, generation, cfg, checkpoint, proof)
+		} else if e.Allocation.ProfileID == GCPHABGPProfile {
 			if len(environments) != 1 {
 				return ErrRuntimeController
 			}
@@ -111,6 +121,10 @@ func (c *RuntimeController) startBGPSession(ctx context.Context, e RuntimeJourna
 		return ErrRuntimeController
 	}
 	c.bgpProcesses[e.DeliveryID] = process
+	if c.bgpDesktopExports == nil {
+		c.bgpDesktopExports = map[uuid.UUID][]netip.Prefix{}
+	}
+	c.bgpDesktopExports[e.DeliveryID] = append([]netip.Prefix(nil), cfg.DesktopPrefixes...)
 	return nil
 }
 func (c *RuntimeController) observedBGPStatus(ctx context.Context, e RuntimeJournalEntry) (*bgpengine.Status, error) {
@@ -270,6 +284,9 @@ func (c *RuntimeController) bgpGuard(ctx context.Context, a runtimeActive, remai
 
 func (c *RuntimeController) bgpGuardWithStatuses(ctx context.Context, a runtimeActive, remaining time.Duration, statuses [2]string) (GuardConnection, error) {
 	e := a.Entry
+	if err := c.proveDesktopGrants(ctx, a.Grants); err != nil {
+		return GuardConnection{}, err
+	}
 	g := GuardConnection{ID: e.Allocation.ConnectionID, Local: e.Engines[0].LocalPrefixes, Remote: e.Engines[0].RemotePrefixes, Tunnels: e.Observed, LocalIngressIndices: a.Environment.LocalIngressIndices, Grants: a.Grants, PermitFor: remaining}
 	if e.Allocation.activeTunnelCount() == 1 {
 		g.TunnelCount = 1
@@ -369,7 +386,7 @@ func (c *RuntimeController) reconcileActiveBGP(ctx context.Context, entries []Ru
 		permit := func() error { _, err := active.Authority.RemainingForApply(active.Identity, 5*time.Second); return err }
 		p := c.bgpProcesses[e.DeliveryID]
 		target := []RuntimeBGPRouteTuple{}
-		fresh := permit() == nil && p != nil && p.Alive()
+		fresh := permit() == nil && p != nil && p.Alive() && c.proveDesktopGrants(ctx, active.Grants) == nil
 		c.emitRuntimeDiagnostic(ctx, "bgp_reconcile", stage, id, permitStarted, !fresh)
 		if fresh {
 			stage = "peer_summary_observation"
@@ -635,13 +652,18 @@ func (c *RuntimeController) applyBGPProof(ctx context.Context, m RuntimeMaterial
 	}
 	// Transport-only leased guard permits exact peer sessions, with no application
 	// grants until fresh RIB reconciliation and exact route readback complete.
+	if c.bgpDesktopGrants == nil {
+		c.bgpDesktopGrants = map[uuid.UUID][]GuardGrant{}
+	}
+	c.bgpDesktopGrants[e.DeliveryID] = append([]GuardGrant(nil), grants...)
+	desktopChanged := !reflect.DeepEqual(c.bgpDesktopExports[e.DeliveryID], desktopExportPrefixes(grants))
 	stage = "active_continuity"
 	active, continuous, err := c.prepareBGPApplyActive(ctx, e, env, identity, authority, grants, entries)
 	if err != nil {
 		return fail()
 	}
 	stage = "session_cleanup"
-	if p := c.bgpProcesses[e.DeliveryID]; (p != nil && !p.Alive()) || (p == nil && e.BGPProcess != nil && e.BGPProcess.Stage != "cleaned") {
+	if p := c.bgpProcesses[e.DeliveryID]; (p != nil && (!p.Alive() || desktopChanged)) || (p == nil && e.BGPProcess != nil && e.BGPProcess.Stage != "cleaned") {
 		// Alive can change after the continuity checks. Revoke the retained
 		// application grant and prove denial before any dead-session cleanup.
 		continuous = false
@@ -826,7 +848,9 @@ func (c *RuntimeController) bgpRestoredTransportAbsent(ctx context.Context, e Ru
 	if e.Restoration != nil && !validRestoration(e) {
 		return false, false, ErrRuntimeController
 	}
-	if e.Allocation.ProfileID == GCPHABGPProfile && (e.Restoration == nil || e.Restoration.Epoch == 0) {
+	// The empty runtime profile is the legacy AWS journal representation.
+	// Contract v3 and validJournalBGP below distinguish it from AWS static.
+	if (e.Allocation.ProfileID == "" || e.Allocation.ProfileID == GCPHABGPProfile) && (e.Restoration == nil || e.Restoration.Epoch == 0) {
 		return c.bgpOrdinaryDaemonAbsent(ctx, e, entries, authority, identity, environment)
 	}
 	// Epoch zero only records the initial boot identity. It grants no reset

@@ -46,7 +46,7 @@ func TestPostgresResourceContractFailClosedAndBounded(t *testing.T) {
 	}()
 	testURL := *base
 	testURL.Path = "/" + name
-	if err := db.MigrateTo(testURL.String(), 219); err != nil {
+	if err := db.MigrateTo(testURL.String(), 228); err != nil {
 		t.Fatal(err)
 	}
 	pool, err := pgxpool.New(ctx, testURL.String())

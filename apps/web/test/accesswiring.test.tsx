@@ -328,6 +328,8 @@ describe("Access replacement edits preserve active-rule warnings", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Rule actions for r-enabled" }));
     fireEvent.click(screen.getByRole("menuitem", { name: "Edit" }));
     const dialog = screen.getByRole("dialog", { name: "Edit rule" });
+    fireEvent.keyDown(within(dialog).getByRole("combobox", { name: "Source" }), { key: "Escape" });
+    expect((within(dialog).getByRole("combobox", { name: "Source" }) as HTMLInputElement).value).toBe("10.99.0.0/24");
     const review = within(dialog).getByRole("button", { name: "Review rule" }) as HTMLButtonElement;
     expect(review.disabled).toBe(false);
     fireEvent.click(review);

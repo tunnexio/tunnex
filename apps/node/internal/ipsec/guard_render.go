@@ -25,6 +25,10 @@ const (
 // GuardGrant is explicit shared-policy authority. Configuration and SA selectors
 // never create a grant. FQDN-managed grants require authenticated current provenance.
 type GuardGrant struct {
+	DesktopDeviceID     uuid.UUID `json:",omitzero"`
+	DesktopPublicKey    string    `json:",omitempty"`
+	DesktopIngressIndex int       `json:",omitempty"`
+	DesktopExpiresAt    time.Time `json:",omitzero"`
 	Source, Destination netip.Prefix
 	Protocol            GuardProtocol
 	PortLow, PortHigh   uint16
@@ -190,13 +194,13 @@ func RenderGuard(intent GuardIntent) (GuardManifest, error) {
 		}
 		for _, g := range c.Grants {
 			addRemoteFragmentNeeded(c, g, &forward, &input)
-			outbound := withinPrefixes(g.Source, c.Local)
+			outbound := g.DesktopDeviceID != uuid.Nil || withinPrefixes(g.Source, c.Local)
 			if outbound && len(c.PermittedInterfaceIndices) > 0 {
 				for _, tunnel := range c.ReplyIngressIndices {
 					if g.HostOrigin {
 						input.add(guardAllow(g, tunnel, 0, true, guardReplyLeaseName(c.ID), "iif"))
 					} else {
-						for _, local := range c.LocalIngressIndices {
+						for _, local := range guardGrantIngress(c, g) {
 							forward.add(guardAllow(g, tunnel, local, true, guardReplyLeaseName(c.ID), "iif"))
 						}
 					}
@@ -207,7 +211,7 @@ func RenderGuard(intent GuardIntent) (GuardManifest, error) {
 			// grants and the same expiring authority still gate every packet.
 			if !outbound && len(c.ReplyIngressIndices) > 0 {
 				if len(c.PermittedInterfaceIndices) > 0 {
-					for _, local := range c.LocalIngressIndices {
+					for _, local := range guardGrantIngress(c, g) {
 						for _, tunnel := range c.ReplyIngressIndices {
 							forward.add(guardAllow(g, tunnel, local, false, guardReplyLeaseName(c.ID), "iif"))
 						}
@@ -226,7 +230,7 @@ func RenderGuard(intent GuardIntent) (GuardManifest, error) {
 					}
 					continue
 				}
-				for _, local := range c.LocalIngressIndices {
+				for _, local := range guardGrantIngress(c, g) {
 					ingress, egress := local, tunnel
 					if !outbound {
 						ingress, egress = tunnel, local
@@ -539,15 +543,18 @@ func canonicalGuard(in GuardIntent) (GuardIntent, bool) {
 		c.Grants = append([]GuardGrant(nil), c.Grants...)
 		seen := map[GuardGrant]bool{}
 		for _, g := range c.Grants {
+			if !validDesktopGuardGrant(g, c) {
+				return GuardIntent{}, false
+			}
 			if (g.FQDN.Version == 2 && (g.FQDNPermitFor < time.Second || g.FQDNPermitFor > 60*time.Second || g.FQDNPermitFor > g.FQDN.ExpiresAt.Sub(time.Now()))) || (g.FQDN.Version != 2 && g.FQDNPermitFor != 0) {
 				return GuardIntent{}, false
 			}
-			outbound := withinPrefixes(g.Source, c.Local) && withinPrefixes(g.Destination, c.Remote)
+			outbound := (g.DesktopDeviceID != uuid.Nil || withinPrefixes(g.Source, c.Local)) && withinPrefixes(g.Destination, c.Remote)
 			inbound := withinPrefixes(g.Source, c.Remote) && withinPrefixes(g.Destination, c.Local)
 			if g.DNSResolver != (DNSResolverBinding{}) && (!g.DNSResolver.valid() || g.DNSResolver.ConnectionID != c.ID || !g.HostOrigin || !outbound || g.Source.Bits() != 32 || g.Destination.Bits() != 32 || g.PortLow != 53 || g.PortHigh != 53 || g.Protocol != GuardUDP && g.Protocol != GuardTCP) {
 				return GuardIntent{}, false
 			}
-			if (g.FQDNManaged && (!g.FQDN.valid() || g.FQDN.SelectedGatewayID != in.OwnerID || g.FQDN.ConnectionID != c.ID || !outbound || g.HostOrigin || g.Destination.Bits() != 32 || g.DNSResolver != (DNSResolverBinding{}))) || (!g.FQDNManaged && g.FQDN != (FQDNGrantBinding{})) || seen[g] || !validGuardPrefix(g.Source) || !validGuardPrefix(g.Destination) || (!outbound && !inbound) || (g.HostOrigin && !outbound) || (!g.HostOrigin && len(c.LocalIngressIndices) == 0) {
+			if (g.FQDNManaged && (!g.FQDN.valid() || g.FQDN.SelectedGatewayID != in.OwnerID || g.FQDN.ConnectionID != c.ID || !outbound || g.HostOrigin || g.Destination.Bits() != 32 || g.DNSResolver != (DNSResolverBinding{}))) || (!g.FQDNManaged && g.FQDN != (FQDNGrantBinding{})) || seen[g] || !validGuardPrefix(g.Source) || !validGuardPrefix(g.Destination) || (!outbound && !inbound) || (g.HostOrigin && !outbound) || (!g.HostOrigin && len(guardGrantIngress(c, g)) == 0) {
 				return GuardIntent{}, false
 			}
 			switch g.Protocol {

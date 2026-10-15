@@ -13,12 +13,13 @@ func HashRuntimePolicy(result RuntimePolicy, input RuntimePolicyInput) (RuntimeP
 	// empty. Hash only canonical nonsecret forwarding authority, never PSKs.
 	raw, err := json.Marshal(struct {
 		Org, Node, Site, Connection uuid.UUID
+		DesktopGrants               []RuntimeDesktopGrant `json:"desktop_grants,omitempty"`
 		Grants                      []RuntimeGrant
 		DNSResolverGrants           []RuntimeDNSResolverGrant       `json:"dns_resolver_grants,omitempty"`
 		DNSResolverProfiles         []policyspec.DNSResolverProfile `json:"dns_resolver_profiles,omitempty"`
 		FQDNPolicyVersion           int                             `json:"fqdn_policy_version,omitempty"`
 		FQDNGrants                  []RuntimeFQDNGrant              `json:"fqdn_grants,omitempty"`
-	}{input.OrgID, input.NodeID, input.SiteID, input.ConnectionID, result.Grants, result.DNSResolverGrants, result.DNSResolverProfiles, result.FQDNPolicyVersion, result.FQDNGrants})
+	}{input.OrgID, input.NodeID, input.SiteID, input.ConnectionID, result.DesktopGrants, result.Grants, result.DNSResolverGrants, result.DNSResolverProfiles, result.FQDNPolicyVersion, result.FQDNGrants})
 	if err != nil {
 		return RuntimePolicy{}, ErrConnectionUnavailable
 	}

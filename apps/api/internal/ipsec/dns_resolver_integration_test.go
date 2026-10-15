@@ -23,7 +23,7 @@ func mustDNSAddr(t *testing.T, raw string) netip.Addr {
 }
 func TestIPsecDNSProfileOwnedRevisionAndLifecycle(t *testing.T) {
 	ctx, p, org, actor, sealer, req := providerFixture(t)
-	if err := db.MigrateTo(p.Config().ConnString(), 219); err != nil {
+	if err := db.MigrateTo(p.Config().ConnString(), 228); err != nil {
 		t.Fatal(err)
 	}
 	connections := ipsec.NewConnectionStore(p)

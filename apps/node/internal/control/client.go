@@ -19,6 +19,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/tunnexio/tunnex/apps/node/internal/dnsforward"
 	"github.com/tunnexio/tunnex/apps/node/internal/flowlog"
 	"github.com/tunnexio/tunnex/apps/node/internal/fqdnrpc"
 	"github.com/tunnexio/tunnex/apps/node/internal/ipsec"
@@ -86,6 +87,7 @@ func Enroll(ctx context.Context, apiURL, joinToken string, csrPEM []byte, nodeNa
 // The client certificate is served via GetClientCertificate reading an atomic
 // holder, so Renew can hot-swap it mid-flight without rebuilding the client.
 type Client struct {
+	dnsForwarder    atomic.Pointer[dnsforward.Forwarder]
 	ipsecController atomic.Pointer[ipsec.RuntimeController]
 	base            string
 	nodeName        string
@@ -239,6 +241,9 @@ type PolicyStatus struct {
 // endpoint (host:port that peer configs dial), its egress capabilities (whether
 // the gateway can source-NAT IPv4/IPv6 full-tunnel traffic — S3.7/S15),
 // and the applied Zero Trust policy status (S7.2 staleness).
+// SetDNSForwarder wires actual socket readback into authenticated status reports.
+func (c *Client) SetDNSForwarder(forwarder *dnsforward.Forwarder) { c.dnsForwarder.Store(forwarder) }
+
 func (c *Client) ReportInfo(ctx context.Context, publicKey, endpoint string, egressNAT, egressIPv6 bool, ps PolicyStatus) error {
 	payload := map[string]any{
 		"wireguard_applied_mtu": ps.WireGuardAppliedMTU,
@@ -257,6 +262,12 @@ func (c *Client) ReportInfo(ctx context.Context, publicKey, endpoint string, egr
 		"flow_log_state":            ps.FlowLogState.Bounded(),
 		"ai_vpn_http_ready":         ps.AIVPNHTTPReady,
 		"ai_vpn_http_address":       ps.AIVPNHTTPAddress,
+	}
+	if forwarder := c.dnsForwarder.Load(); forwarder != nil {
+		payload["dns_lan_listeners"] = forwarder.AppliedLANListeners()
+	}
+	if version := c.ipsecDesktopTransitCapability(); version == 1 {
+		payload["ipsec_desktop_transit_version"] = 1
 	}
 	if version := c.ipsecBGPCapability(); version == 1 {
 		payload["ipsec_bgp_version"] = version

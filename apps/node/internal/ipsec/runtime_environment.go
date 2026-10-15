@@ -285,7 +285,7 @@ func (r *runtimeEnvironmentInspector) observeWithCommands(ctx context.Context, a
 	return r.observeQualified(ctx, a, engines, observe, hookRun, false)
 }
 func (r *runtimeEnvironmentInspector) ObserveLocalExports(ctx context.Context, a KernelAllocation, engines [2]EngineTunnel) (RuntimeEnvironment, error) {
-	if a.ProfileID != GCPHABGPProfile || !a.BGP {
+	if (a.ProfileID != GCPHABGPProfile && a.ProfileID != "") || !a.BGP {
 		return RuntimeEnvironment{}, ErrRuntimeEnvironment
 	}
 	return r.observe(ctx, a, engines, true)

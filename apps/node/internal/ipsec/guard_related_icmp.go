@@ -2,6 +2,7 @@ package ipsec
 
 import (
 	"fmt"
+	"github.com/google/uuid"
 	"net/netip"
 	"strings"
 )
@@ -57,7 +58,7 @@ func guardCTPrefixJSON(p netip.Prefix) any {
 	return guardPrefixJSON(p)
 }
 func addRemoteFragmentNeeded(c GuardConnection, g GuardGrant, forward, input *guardChain) {
-	if c.PrefixOnly || c.PermitFor <= 0 || g.Protocol != GuardTCP || g.Source.Bits() != 32 || !withinPrefixes(g.Source, c.Local) || len(c.PermittedInterfaceIndices) == 0 {
+	if c.PrefixOnly || c.PermitFor <= 0 || g.Protocol != GuardTCP || g.Source.Bits() != 32 || !(g.DesktopDeviceID != uuid.Nil || withinPrefixes(g.Source, c.Local)) || len(c.PermittedInterfaceIndices) == 0 {
 		return
 	}
 	for _, tunnel := range c.ReplyIngressIndices {
@@ -65,7 +66,7 @@ func addRemoteFragmentNeeded(c GuardConnection, g GuardGrant, forward, input *gu
 			if g.HostOrigin {
 				input.add(guardRemoteFragmentNeeded(c, g, tunnel, 0, router))
 			} else {
-				for _, local := range c.LocalIngressIndices {
+				for _, local := range guardGrantIngress(c, g) {
 					forward.add(guardRemoteFragmentNeeded(c, g, tunnel, local, router))
 				}
 			}

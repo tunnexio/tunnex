@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/tunnexio/tunnex/apps/node/internal/flowlog"
+	"github.com/tunnexio/tunnex/apps/node/internal/ipsec"
 	"github.com/tunnexio/tunnex/apps/node/internal/k8snetprep"
 	"github.com/tunnexio/tunnex/apps/node/internal/nodepolicy"
 )
@@ -17,6 +18,8 @@ import (
 type Manager struct{}
 
 func New(_ string) *Manager { return &Manager{} }
+
+func (m *Manager) SetIPsecDesktopNATSource(*ipsec.DesktopNATSource) {}
 
 func (m *Manager) Reconcile(_ context.Context) (bool, bool, error) { return false, false, nil }
 

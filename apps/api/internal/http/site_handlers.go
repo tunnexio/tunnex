@@ -77,9 +77,21 @@ func (s apiServer) ListRoutedRanges(ctx context.Context, req api.ListRoutedRange
 		if derr != nil {
 			return nil, derr
 		}
+		if routes, ok := s.policy.(interface {
+			DeviceIPsecRoutedRanges(context.Context, uuid.UUID, uuid.UUID) ([]string, error)
+		}); ok {
+			cloud, routeErr := routes.DeviceIPsecRoutedRanges(ctx, req.OrgId, *req.Params.DeviceId)
+			if routeErr != nil {
+				return nil, routeErr
+			}
+			ranges = append(ranges, cloud...)
+			slices.Sort(ranges)
+			ranges = slices.Compact(ranges)
+			body.Ranges = ranges
+		}
 		// FQDN profiles are policy intent, not org-wide resolver inventory. Only
 		// after DeviceDial proves this caller owns this ACTIVE device do we derive
-		// the suffixes authorized by that device's matching FQDN parent rules.
+		// the suffixes authorized by that device's FQDN parent or private DNS rules.
 		// A nil policy port (open build) and older requests without device_id both
 		// receive no FQDN-derived forwards.
 		if s.policy != nil {
@@ -103,6 +115,11 @@ func (s apiServer) ListRoutedRanges(ctx context.Context, req api.ListRoutedRange
 			body.DialEndpoint = &ep
 			body.DialPubkey = &pk
 		}
+		// Private DNS uses the selected gateway's WG address. Carry an exact
+		// route when the range snapshot does not cover it, so clients can apply
+		// ranges before forwards without depending on their enrollment config.
+		// Only the final authorized, conflict-free resolver set gets routes.
+		body.Ranges = routedRangesWithResolverHosts(body.Ranges, fwds)
 	}
 	apiFwds := make([]api.DNSForward, 0, len(fwds))
 	for _, f := range fwds {
@@ -113,6 +130,30 @@ func (s apiServer) ListRoutedRanges(ctx context.Context, req api.ListRoutedRange
 		Body:    body,
 		Headers: api.ListRoutedRanges200ResponseHeaders{XRequestId: reqID(ctx)},
 	}, nil
+}
+
+// routedRangesWithResolverHosts adds only exact resolver destinations. DNS
+// entitlement does not add an upstream network or an application permission.
+func routedRangesWithResolverHosts(ranges []string, forwards []sitessvc.DNSForward) []string {
+	out := append([]string{}, ranges...)
+	prefixes := make([]netip.Prefix, 0, len(ranges))
+	for _, raw := range ranges {
+		if prefix, err := netip.ParsePrefix(raw); err == nil {
+			prefixes = append(prefixes, prefix.Masked())
+		}
+	}
+	for _, forward := range forwards {
+		address, err := netip.ParseAddr(forward.ResolverIP)
+		if err != nil || !address.Is4() || !address.IsGlobalUnicast() {
+			continue
+		}
+		if slices.ContainsFunc(prefixes, func(prefix netip.Prefix) bool { return prefix.Contains(address) }) {
+			continue
+		}
+		out = append(out, netip.PrefixFrom(address, 32).String())
+	}
+	slices.Sort(out)
+	return slices.Compact(out)
 }
 
 // RouteLAN POST /organizations/{orgId}/routed-lans — the S8.5 D1 one-screen affordance: route a LAN

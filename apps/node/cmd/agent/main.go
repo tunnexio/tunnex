@@ -62,6 +62,12 @@ func main() {
 	logger := slog.New(slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{Level: slog.LevelInfo}))
 	slog.SetDefault(logger)
 
+	wgMTUCap, err := configuredWireGuardMTUCap(os.Getenv("TUNNEX_WG_MTU_CAP"))
+	if err != nil {
+		logger.Error("agent_configuration_invalid", slog.String("error", err.Error()))
+		os.Exit(1)
+	}
+
 	apiURL := getenv("TUNNEX_API_URL", "http://api:8080")
 	agentURL := getenv("TUNNEX_AGENT_URL", "https://api:8443")
 	serverName := getenv("TUNNEX_AGENT_SERVERNAME", "tunnex-control")
@@ -221,16 +227,14 @@ func main() {
 	}
 	dnsTransport := &ipsec.DNSRuntimeTransport{}
 	fqdnPolicySource := &ipsec.RuntimeFQDNPolicySource{}
-	shutdownIPsec, err := startIPsecRuntime(ctx, client, certDir, logger, dnsTransport, fqdnPolicySource)
+	desktopNATSource := &ipsec.DesktopNATSource{}
+	shutdownIPsec, err := startIPsecRuntime(ctx, client, certDir, logger, dnsTransport, fqdnPolicySource, desktopNATSource)
 	if err != nil {
 		logger.Error("ipsec_saved_refusal_restore_failed")
 		os.Exit(1)
 	}
-	defer func() {
-		if err := shutdownIPsec(); err != nil {
-			logger.Error("ipsec_runtime_shutdown_incomplete")
-		}
-	}()
+	var shutdownWG func() error
+	defer func() { shutdownDataplane(shutdownIPsec, shutdownWG, logger) }()
 	// WireGuard key: generated locally and persisted; the private key never
 	// leaves the node. Re-key = delete the file -> a new key is generated and its
 	// pubkey re-reported.
@@ -264,6 +268,7 @@ func main() {
 	// review #6), then reconcile on an interval (heals a flushed table). Torn down on
 	// shutdown (full-sweep). No-op / not-capable off Linux.
 	egressMgr := egress.New(wgIface)
+	egressMgr.SetIPsecDesktopNATSource(desktopNATSource)
 	egressMgr.SetFQDNPolicyCallbacks(fqdnPolicySource.BeforePolicy, fqdnPolicySource.CommittedPolicy)
 	egressMgr.SetKubernetesMode(kubernetesMode)
 	if kubernetesMode {
@@ -298,6 +303,7 @@ func main() {
 	// S8.4: the in-agent cross-site DNS forwarder. Serve is best-effort — a bind/serve fault must NEVER
 	// affect the tunnel (DNS-down ≠ tunnel-down, D2/D5). The table is (re)programmed from every policy.
 	dnsFwd := dnsforward.New(logger, nil)
+	client.SetDNSForwarder(dnsFwd)
 	dnsFwd.SetResolverTransport(dnsTransport)
 	if err := dnsFwd.SetVPNHost(os.Getenv("TUNNEX_AI_VPN_HOSTNAME"), os.Getenv("TUNNEX_AI_VPN_ADDRESS")); err != nil {
 		logger.Error("invalid VPN AI DNS configuration")
@@ -369,7 +375,7 @@ func main() {
 	// read by the report loop — same shared-sink pattern (the report loop predates the OVPN manager).
 	var ovpnHealth atomic.Pointer[string]
 
-	backendOptions := reconcile.BackendOptions{}
+	backendOptions := reconcile.BackendOptions{WireGuardMTUCap: wgMTUCap}
 	if kubernetesMode {
 		backendOptions.PreserveInterfaceAlias = hostposture.WireGuardAlias
 	}
@@ -383,11 +389,7 @@ func main() {
 	// gateways delete their interface; Kubernetes posture-managed gateways drain
 	// keys/peers/address/routes while preserving only the manager-owned shell.
 	// Without this, host-network wg0 could forward headlessly after docker stop.
-	defer func() {
-		if err := backend.Close(context.Background()); err != nil {
-			logger.Error("agent_backend_shutdown_blocked", slog.String("error", err.Error()))
-		}
-	}()
+	shutdownWG = func() error { return backend.Close(context.Background()) }
 	r := reconcile.New(backend, wgPriv, wgPub, logger)
 	aiVPN := configureAIVPNRuntime(os.Getenv("TUNNEX_AI_VPN_AUTO"), wgBackend, wgIface, client, r.Healthy, func() {
 		select {
@@ -411,6 +413,7 @@ func main() {
 			dnsFwd.SetTable(dnsEntriesFrom(p)) // S8.4: reprogram the forwarding table (nil policy → empty → serves nothing)
 			dnsFwd.SetResolverProfiles(dnsResolverProfilesFrom(p))
 			dnsFwd.SetK8sAnswers(k8sAnswersFrom(p)) // S10.3 A1: reprogram the K8s direct-answer set (nil policy → empty → answers nothing)
+			dnsFwd.ReconcileK8sBinds(ctx, wgIface)  // withdraw removed LAN listeners and sessions on this same command lane
 			// ReconcileOnce itself runs on the serialized command lane. Apply policy
 			// substrates inline so revocation is complete before the desired-state
 			// command yields; endpoint/timer healing remains a producer below.

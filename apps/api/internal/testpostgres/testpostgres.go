@@ -105,8 +105,17 @@ func newDatabase(t testing.TB, dsn string, migrate func(string) error, template 
 			t.Fatalf("migrate disposable PostgreSQL database %s: %v", name, err)
 		}
 	}
-	childConfig := adminConfig.Copy()
-	childConfig.ConnConfig.Database = name
+	// Parse the owned URL so both live connections and Config().ConnString()
+	// identify this child. Copying a config and changing Database leaves pgx's
+	// original DSN intact, which can redirect a caller's later migration to admin.
+	childURL, err := databasePoolURL(dsn, name)
+	if err != nil {
+		t.Fatal("prepare test PostgreSQL child configuration")
+	}
+	childConfig, err := pgxpool.ParseConfig(childURL)
+	if err != nil {
+		t.Fatal("parse test PostgreSQL child configuration")
+	}
 	pool, err = pgxpool.NewWithConfig(ctx, childConfig)
 	if err != nil {
 		t.Fatal("create disposable PostgreSQL child pool")
@@ -121,6 +130,26 @@ func newDatabase(t testing.TB, dsn string, migrate func(string) error, template 
 // keyword form. A copied pgx config's ConnString still names the original DB,
 // and db.Up requires a URL, so neither string may be reused for migrations.
 func databaseURL(dsn, name string) (string, error) {
+	poolURL, err := databasePoolURL(dsn, name)
+	if err != nil {
+		return "", err
+	}
+	u, err := url.Parse(poolURL)
+	if err != nil {
+		return "", errors.New("invalid PostgreSQL URL")
+	}
+	values := u.Query()
+	// These pgx-only client settings are not PostgreSQL connection parameters.
+	for _, key := range []string{"pool_max_conns", "pool_min_conns", "pool_min_idle_conns", "pool_max_conn_lifetime", "pool_max_conn_lifetime_jitter", "pool_max_conn_idle_time", "pool_health_check_period", "statement_cache_capacity", "description_cache_capacity", "default_query_exec_mode"} {
+		values.Del(key)
+	}
+	u.RawQuery = values.Encode()
+	return u.String(), nil
+}
+
+// databasePoolURL retains pool and pgx client options for the returned fixture.
+// Its stored connection string must name the owned child as well as its config.
+func databasePoolURL(dsn, name string) (string, error) {
 	if !ownedNamePattern.MatchString(name) {
 		return "", errors.New("refuse non-fixture database name")
 	}
@@ -147,10 +176,6 @@ func databaseURL(dsn, name string) (string, error) {
 	// Remove both aliases: a query-string DB can override the URL path.
 	values.Del("dbname")
 	values.Del("database")
-	// These pgx-only client settings are not PostgreSQL connection parameters.
-	for _, key := range []string{"pool_max_conns", "pool_min_conns", "pool_min_idle_conns", "pool_max_conn_lifetime", "pool_max_conn_lifetime_jitter", "pool_max_conn_idle_time", "pool_health_check_period", "statement_cache_capacity", "description_cache_capacity", "default_query_exec_mode"} {
-		values.Del(key)
-	}
 	u.RawQuery = values.Encode()
 	return u.String(), nil
 }

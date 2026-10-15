@@ -65,6 +65,10 @@ func ActiveGenerationsWithQuery(ctx context.Context, query ActiveGenerationQuery
 SELECT g.org_id,g.resource_id,r.fqdn,r.protocol,r.port_low,r.port_high,
        g.generation,g.resolver_site_id,g.resolver_node_id,g.effective_ttl,g.resolved_at,
        cfg.id,cfg.version,profile.id,profile.name,profile.provider_hint,COALESCE(g.resolver_match_suffix,''),
+       COALESCE(to_jsonb(profile)->'static_records','[]'::jsonb),
+       (SELECT COALESCE(jsonb_agg(jsonb_build_object('id',owner.id,'zone_suffixes',
+          (SELECT COALESCE(jsonb_agg(s.suffix ORDER BY s.suffix),'[]'::jsonb) FROM fqdn_resolver_context_profile_suffixes s WHERE s.profile_id=owner.id AND s.org_id=owner.org_id)) ORDER BY owner.ordinal),'[]'::jsonb)
+          FROM fqdn_resolver_context_profiles owner WHERE owner.config_id=cfg.id AND owner.org_id=cfg.org_id),
        CASE WHEN profile.ipsec_connection_id IS NULL THEN NULL ELSE jsonb_build_object('connection_id',profile.ipsec_connection_id,'configuration_revision',profile.ipsec_configuration_revision,'source_address',host(profile.ipsec_source_address)) END,
        (SELECT COALESCE(jsonb_agg(jsonb_build_object('address',host(e.address),'port',e.port,'transport',e.transport) ORDER BY e.ordinal),'[]'::jsonb)
           FROM fqdn_resolver_context_profile_endpoints e
@@ -145,11 +149,11 @@ ORDER BY g.resource_id`, orgID)
 		var profile uuid.UUID
 		var configVersion int64
 		var profileName, profileProvider, matchedSuffix string
-		var endpointJSON, pathJSON []byte
+		var endpointJSON, pathJSON, staticJSON, ownershipJSON []byte
 		var raw []string
 		if err := rows.Scan(&g.OrgID, &g.ResourceID, &g.Hostname, &g.Protocol, &g.PortLow, &g.PortHigh,
 			&g.Sequence, &site, &gateway, &g.TTL, &g.ResolvedAt, &config, &configVersion,
-			&profile, &profileName, &profileProvider, &matchedSuffix, &pathJSON, &endpointJSON, &raw); err != nil {
+			&profile, &profileName, &profileProvider, &matchedSuffix, &staticJSON, &ownershipJSON, &pathJSON, &endpointJSON, &raw); err != nil {
 			return nil, err
 		}
 		g.Context = Context{ResolverID: site.String(), GatewayID: gateway.String()}
@@ -160,6 +164,18 @@ ORDER BY g.resource_id`, orgID)
 		if len(pathJSON) > 0 {
 			if err := json.Unmarshal(pathJSON, &g.ResolverConfig.IPsecPath); err != nil {
 				return nil, err
+			}
+		}
+		if err := json.Unmarshal(staticJSON, &g.ResolverConfig.StaticRecords); err != nil {
+			return nil, fmt.Errorf("invalid static FQDN generation %s", g.ResourceID)
+		}
+		if len(g.ResolverConfig.StaticRecords) > 0 {
+			var owners []ResolverProfile
+			if err := json.Unmarshal(ownershipJSON, &owners); err != nil {
+				return nil, fmt.Errorf("invalid static authority snapshot for %s", g.ResourceID)
+			}
+			if !staticProfileOwnsRecords(ResolverProfile{ID: g.ResolverConfig.ProfileID, StaticRecords: g.ResolverConfig.StaticRecords}, owners) {
+				continue
 			}
 		}
 		if err := json.Unmarshal(endpointJSON, &g.ResolverConfig.Endpoints); err != nil || !g.Context.valid() || !g.ResolverConfig.valid() || len(raw) == 0 || len(raw) > MaxAnswers {

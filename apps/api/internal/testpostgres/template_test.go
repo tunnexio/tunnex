@@ -9,7 +9,98 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/tunnexio/tunnex/apps/api/db"
 )
+
+func TestTemplateAtVersionKeepsBaselineAndParentIndependent(t *testing.T) {
+	ctx, parent := New(t)
+	var parentVersion int
+	var parentDirty bool
+	if err := parent.QueryRow(ctx, `SELECT version, dirty FROM schema_migrations`).Scan(&parentVersion, &parentDirty); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("TUNNEX_TEST_DATABASE_URL", parent.Config().ConnString())
+	template := NewTemplateAtVersion(160)
+	t.Cleanup(func() {
+		if err := template.Close(); err != nil {
+			t.Errorf("retire historical template: %v", err)
+		}
+	})
+	// Race first preparation without t.Parallel: this test temporarily points the
+	// fixture environment at its own parent, which parallel tests may not do.
+	type prepared struct {
+		name string
+		err  error
+	}
+	ready := make(chan prepared, 2)
+	start := make(chan struct{})
+	for range 2 {
+		go func() {
+			<-start
+			name, err := template.prepare(parent.Config().ConnString())
+			ready <- prepared{name, err}
+		}()
+	}
+	close(start)
+	for range 2 {
+		got := <-ready
+		if got.err != nil || got.name != template.name {
+			t.Fatal("concurrent preparation did not share one historical template")
+		}
+	}
+	var names sync.Map
+	t.Run("independent upgraded clones", func(t *testing.T) {
+		for range 2 {
+			t.Run("child", func(t *testing.T) {
+				childCtx, child := template.New(t)
+				var name string
+				var version int
+				var dirty bool
+				if err := child.QueryRow(childCtx, `SELECT current_database(), version, dirty FROM schema_migrations`).Scan(&name, &version, &dirty); err != nil {
+					t.Fatal(err)
+				}
+				if version != 160 || dirty {
+					t.Fatal("historical clone did not start at its clean baseline")
+				}
+				if _, duplicate := names.LoadOrStore(name, true); duplicate {
+					t.Fatal("concurrent fixtures shared a child database")
+				}
+				if err := db.MigrateTo(child.Config().ConnString(), 162); err != nil {
+					t.Fatal(err)
+				}
+				if _, err := child.Exec(childCtx, `CREATE TABLE fixture_child_only(value text); INSERT INTO fixture_child_only VALUES ('private child')`); err != nil {
+					t.Fatal(err)
+				}
+			})
+		}
+	})
+	childCtx, child := template.New(t)
+	var version int
+	var dirty, allowsConnections bool
+	var leakedTable *string
+	if err := child.QueryRow(childCtx, `SELECT version, dirty, to_regclass('fixture_child_only')::text, (SELECT datallowconn FROM pg_database WHERE datname=$1) FROM schema_migrations`, template.name).Scan(&version, &dirty, &leakedTable, &allowsConnections); err != nil {
+		t.Fatal(err)
+	}
+	if version != 160 || dirty || leakedTable != nil || allowsConnections {
+		t.Fatal("child migration or data changed the sealed historical baseline")
+	}
+	if err := parent.QueryRow(ctx, `SELECT version, dirty, to_regclass('fixture_child_only')::text FROM schema_migrations`).Scan(&version, &dirty, &leakedTable); err != nil {
+		t.Fatal(err)
+	}
+	if version != parentVersion || dirty != parentDirty || leakedTable != nil {
+		t.Fatal("historical template or child migration changed parent schema or data")
+	}
+	names.Range(func(name, _ any) bool {
+		var exists bool
+		if err := parent.QueryRow(ctx, `SELECT EXISTS(SELECT FROM pg_database WHERE datname=$1)`, name).Scan(&exists); err != nil {
+			t.Fatal(err)
+		}
+		if exists {
+			t.Fatal("historical clone remained after child cleanup")
+		}
+		return true
+	})
+}
 
 func TestTemplateClonesAreIndependentSealedAndRetired(t *testing.T) {
 	var template Template

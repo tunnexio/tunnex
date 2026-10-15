@@ -67,6 +67,6 @@ func (c *RuntimeController) renewActiveIPsecRuntimeObserved(ctx context.Context,
 	}
 	// The returned normal maintenance results are deliberately discarded: retained
 	// applied context cannot acknowledge a fresh pending delivery or cleanup.
-	_, err := c.maintainIPsecRuntimeItems(ctx, count, prepare, authority, bgpCurrent, publish, publishRecovery)
+	_, err := c.maintainIPsecRuntimeItems(ctx, count, prepare, authority, bgpCurrent, publish, publishRecovery, true)
 	return err
 }

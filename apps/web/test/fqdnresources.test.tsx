@@ -43,12 +43,12 @@ describe("FQDN resource operator index", () => {
     expect(screen.queryByRole("combobox", { name: "Resource type" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "FQDN" }));
     await waitFor(() => expect(screen.getByRole("button", { name: "FQDN" }).getAttribute("aria-current")).toBe("page"));
-    expect(await screen.findByRole("heading", { name: "Private DNS resolvers" })).toBeTruthy();
+    expect(await screen.findByRole("heading", { name: "DNS records and forwarding" })).toBeTruthy();
   });
 
   it("makes the one-time resolver setup discoverable from Resources and the FQDN empty state", async () => {
     page("/access/resources?type=fqdn");
-    expect((await screen.findByRole("link", { name: "Private DNS resolvers" })).getAttribute("href")).toBe("/access/resources?type=fqdn#private-dns-heading");
+    expect((await screen.findByRole("link", { name: "DNS records and forwarding" })).getAttribute("href")).toBe("/access/resources?type=fqdn#private-dns-heading");
     expect((await screen.findByRole("link", { name: "Configure private DNS resolver" })).getAttribute("href")).toBe("#private-dns-heading");
   });
 
@@ -83,7 +83,8 @@ describe("FQDN resource operator index", () => {
     expect(within(dialog).getByLabelText("Profile 1 endpoint 1 IP").parentElement?.className).toContain("minmax(0,1fr)");
     fireEvent.click(within(dialog).getByRole("button", { name: "Remove profile 1 endpoint 2" }));
     fireEvent.change(within(dialog).getByLabelText("Profile 1 DNS zone suffixes"), { target: { value: "internal.example.com" } });
-    fireEvent.click(within(dialog).getByRole("button", { name: "Add provider profile" }));
+    fireEvent.click(within(dialog).getByRole("button", { name: "Add DNS profile" }));
+    fireEvent.change(within(dialog).getByLabelText("Profile 2 DNS setup"), { target: { value: "direct" } });
     const names = within(dialog).getAllByLabelText("Profile name");
     fireEvent.change(names[1], { target: { value: "Azure private DNS" } });
     fireEvent.change(within(dialog).getByLabelText("Profile 2 provider"), { target: { value: "azure" } });
@@ -97,6 +98,54 @@ describe("FQDN resource operator index", () => {
     expect(body.profiles[1]).toMatchObject({ provider_hint: "azure", zone_suffixes: ["azure.internal.example.com"] });
   });
 
+  it("saves managed A and CNAME records without requiring a cloud resolver and preserves LAN settings", async () => {
+    resolverContext = { ...resolverContext, endpoints: [], profiles: [{ id: "static-a", name: "Office records", provider_hint: "on_premises", zone_suffixes: ["private.example"], endpoints: [], legacy_default: false, static_records: [{ name: "app.private.example", type: "A", value: "10.20.1.10", ttl: 300 }], lan_listener: { address: "192.168.1.39", interface: "eth0", allowed_sources: ["192.168.1.0/24"] } }] };
+    page("/access/resources?type=fqdn");
+    fireEvent.click(await screen.findByRole("button", { name: "Edit profiles" }));
+    const dialog = screen.getByRole("dialog");
+    expect((within(dialog).getByLabelText("Profile 1 DNS setup") as HTMLSelectElement).value).toBe("static");
+    expect(within(dialog).queryByLabelText("Profile 1 endpoint 1 IP")).toBeNull();
+    expect((within(dialog).getByLabelText("Profile 1 LAN DNS address") as HTMLInputElement).value).toBe("192.168.1.39");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Add record" }));
+    fireEvent.change(within(dialog).getByLabelText("Profile 1 record 2 name"), { target: { value: "alias.private.example" } });
+    fireEvent.change(within(dialog).getByLabelText("Profile 1 record 2 type"), { target: { value: "CNAME" } });
+    fireEvent.change(within(dialog).getByLabelText("Profile 1 record 2 value"), { target: { value: "app.private.example" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Activate profiles" }));
+    await waitFor(() => expect(vi.mocked(api.PUT)).toHaveBeenCalled());
+    const call = vi.mocked(api.PUT).mock.calls[0] as unknown as [string, { body: { profiles: Array<Record<string, unknown>> } }];
+    expect(call[1].body.profiles[0]).toMatchObject({ endpoints: [], static_records: [{ name: "app.private.example", type: "A", value: "10.20.1.10", ttl: 300 }, { name: "alias.private.example", type: "CNAME", value: "app.private.example", ttl: 300 }], lan_listener: { address: "192.168.1.39", interface: "eth0", allowed_sources: ["192.168.1.0/24"] } });
+    expect(call[1].body.profiles[0].ipsec_path).toBeUndefined();
+  });
+
+  it("requires explicit complete public upstreams and preserves them on activation", async () => {
+    resolverContext={...resolverContext,endpoints:[],profiles:[{id:"static-a",name:"Office",provider_hint:"on_premises",zone_suffixes:["office.test"],endpoints:[],legacy_default:false,static_records:[{name:"app.office.test",type:"A",value:"10.20.1.10",ttl:300}],lan_listener:{address:"192.168.1.39",interface:"eth0",allowed_sources:["192.168.1.0/24"],default_upstreams:["1.1.1.1"]}}]};
+    page("/access/resources?type=fqdn");fireEvent.click(await screen.findByRole("button",{name:"Edit profiles"}));
+    const dialog=within(screen.getByRole("dialog"));
+    expect((dialog.getByLabelText("Profile 1 public DNS upstreams") as HTMLInputElement).value).toBe("1.1.1.1");
+    fireEvent.change(dialog.getByLabelText("Profile 1 public DNS upstreams"),{target:{value:""}});
+    expect((dialog.getByRole("button",{name:"Activate profiles"}) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.change(dialog.getByLabelText("Profile 1 public DNS upstreams"),{target:{value:"1.1.1.1, 8.8.8.8"}});
+    fireEvent.click(dialog.getByRole("button",{name:"Activate profiles"}));
+    await waitFor(()=>expect(api.PUT).toHaveBeenCalled());
+    const call=vi.mocked(api.PUT).mock.calls[0] as any;
+    expect((call[1] as any).body.profiles[0].lan_listener.default_upstreams).toEqual(["1.1.1.1","8.8.8.8"]);
+  });
+
+  it("switches an upstream profile to static records and removes upstream endpoint authority", async () => {
+    page("/access/resources?type=fqdn");
+    fireEvent.click(await screen.findByRole("button", { name: "Edit profiles" }));
+    const dialog = screen.getByRole("dialog");
+    fireEvent.change(within(dialog).getByLabelText("Profile 1 DNS zone suffixes"), { target: { value: "private.example" } });
+    fireEvent.change(within(dialog).getByLabelText("Profile 1 DNS setup"), { target: { value: "static" } });
+    fireEvent.change(within(dialog).getByLabelText("Profile 1 record 1 name"), { target: { value: "app.private.example" } });
+    fireEvent.change(within(dialog).getByLabelText("Profile 1 record 1 value"), { target: { value: "10.20.1.10" } });
+    expect(within(dialog).queryByRole("button", { name: "Add endpoint" })).toBeNull();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Activate profiles" }));
+    await waitFor(() => expect(vi.mocked(api.PUT)).toHaveBeenCalled());
+    const call = vi.mocked(api.PUT).mock.calls[0] as unknown as [string, { body: { profiles: Array<Record<string, unknown>> } }];
+    expect(call[1].body.profiles[0]).toMatchObject({ endpoints: [], static_records: [{ name: "app.private.example", type: "A", value: "10.20.1.10", ttl: 300 }] });
+  });
+
   it("binds the current owned IPsec revision and documents separate office and WG proxy scope", async () => {
     connections = [
       { id: "ipsec-a", name: "AWS enabled", site_id: "site-a", gateway_node_id: "gw-a", desired_intent: "enabled", cleanup_state: "complete" },
@@ -104,12 +153,13 @@ describe("FQDN resource operator index", () => {
       { id: "ipsec-other", name: "Other site", site_id: "site-b", gateway_node_id: "gw-b", desired_intent: "enabled" },
     ];
     page("/access/resources?type=fqdn");
-    expect(await screen.findByText(/Existing office DNS:/)).toBeTruthy();
-    expect(screen.getByText(/this does not expose a DNS listener to the office LAN/)).toBeTruthy();
+    expect(await screen.findByText(/Keep your office DNS:/)).toBeTruthy();
+    expect(screen.getByText(/enable its LAN listener, allow your LAN CIDRs/)).toBeTruthy();
+    expect(screen.getByText(/set your DHCP server's DNS address to the gateway's LAN IP/)).toBeTruthy();
     fireEvent.click(await screen.findByRole("button", { name: "Edit profiles" }));
     const dialog = screen.getByRole("dialog");
     fireEvent.change(within(dialog).getByLabelText("Profile 1 DNS zone suffixes"), { target: { value: "private.example.test" } });
-    fireEvent.change(within(dialog).getByLabelText("Profile 1 DNS transport path"), { target: { value: "ipsec" } });
+    fireEvent.change(within(dialog).getByLabelText("Profile 1 DNS setup"), { target: { value: "ipsec" } });
     const picker = within(dialog).getByLabelText("Profile 1 IPsec connection");
     await within(picker).findByRole("option", { name: "AWS enabled" });
     expect(within(picker).queryByRole("option", { name: "AWS disabled" })).toBeNull();
@@ -143,7 +193,7 @@ describe("FQDN resource operator index", () => {
         fireEvent.click(await screen.findByRole("button", { name: "Edit profiles" }));
         const dialog = screen.getByRole("dialog");
         fireEvent.change(within(dialog).getByLabelText("Profile 1 DNS zone suffixes"), { target: { value: "private.example.test" } });
-        fireEvent.change(within(dialog).getByLabelText("Profile 1 DNS transport path"), { target: { value: "ipsec" } });
+        fireEvent.change(within(dialog).getByLabelText("Profile 1 DNS setup"), { target: { value: "ipsec" } });
         const picker = within(dialog).getByLabelText("Profile 1 IPsec connection");
         await within(picker).findByRole("option", { name: "GCP enabled" });
         fireEvent.change(picker, { target: { value: "ipsec-a" } });

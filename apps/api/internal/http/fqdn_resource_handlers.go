@@ -53,7 +53,7 @@ func toAPIFQDNResolverConfig(c fqdnresources.ResolverConfig) api.FQDNResolverCon
 		for j, endpoint := range profile.Endpoints {
 			profileEndpoints[j] = api.FQDNResolverEndpoint{Address: endpoint.Address, Port: endpoint.Port, Transport: api.FQDNResolverEndpointTransport(endpoint.Transport)}
 		}
-		profiles[i] = api.FQDNResolverProfile{Id: profile.ID, Name: profile.Name, ProviderHint: api.FQDNResolverProfileProviderHint(profile.ProviderHint), ZoneSuffixes: profile.ZoneSuffixes, Endpoints: profileEndpoints, LegacyDefault: profile.LegacyDefault, IpsecPath: toAPIFQDNIPsecPath(profile.IPsecPath)}
+		profiles[i] = api.FQDNResolverProfile{Id: profile.ID, Name: profile.Name, ProviderHint: api.FQDNResolverProfileProviderHint(profile.ProviderHint), ZoneSuffixes: profile.ZoneSuffixes, Endpoints: profileEndpoints, LegacyDefault: profile.LegacyDefault, IpsecPath: toAPIFQDNIPsecPath(profile.IPsecPath), StaticRecords: toAPIStaticRecords(profile.StaticRecords), LanListener: toAPILANListener(profile.LANListener)}
 	}
 	return api.FQDNResolverContextConfig{Id: c.ID, OrgId: c.OrgID, SiteId: c.SiteID, GatewayId: c.GatewayID, Version: c.Version, State: api.FQDNResolverContextConfigState(c.State), ProviderHint: (*api.FQDNResolverContextConfigProviderHint)(c.ProviderHint), Endpoints: endpoints, Profiles: profiles, CreatedAt: c.CreatedAt}
 }
@@ -73,7 +73,49 @@ func fromAPIFQDNIPsecPath(path *api.FQDNResolverIPsecPath) *fqdnresources.Resolv
 func fqdnResolverProfiles(in []api.FQDNResolverProfileRequest) []fqdnresources.ResolverProfile {
 	out := make([]fqdnresources.ResolverProfile, len(in))
 	for i, profile := range in {
-		out[i] = fqdnresources.ResolverProfile{Name: profile.Name, ProviderHint: string(profile.ProviderHint), ZoneSuffixes: append([]string(nil), profile.ZoneSuffixes...), Endpoints: fqdnResolverEndpoints(profile.Endpoints), IPsecPath: fromAPIFQDNIPsecPath(profile.IpsecPath)}
+		out[i] = fqdnresources.ResolverProfile{Name: profile.Name, ProviderHint: string(profile.ProviderHint), ZoneSuffixes: append([]string(nil), profile.ZoneSuffixes...), Endpoints: fqdnResolverEndpoints(profile.Endpoints), IPsecPath: fromAPIFQDNIPsecPath(profile.IpsecPath), StaticRecords: fromAPIStaticRecords(profile.StaticRecords), LANListener: fromAPILANListener(profile.LanListener)}
+	}
+	return out
+}
+
+func toAPIStaticRecords(records []fqdnresources.ResolverStaticRecord) *[]api.FQDNStaticRecord {
+	if len(records) == 0 {
+		return nil
+	}
+	out := make([]api.FQDNStaticRecord, len(records))
+	for i, r := range records {
+		out[i] = api.FQDNStaticRecord{Name: r.Name, Type: api.FQDNStaticRecordType(r.Type), Value: r.Value, Ttl: r.TTL}
+	}
+	return &out
+}
+func fromAPIStaticRecords(records *[]api.FQDNStaticRecord) []fqdnresources.ResolverStaticRecord {
+	if records == nil {
+		return nil
+	}
+	out := make([]fqdnresources.ResolverStaticRecord, len(*records))
+	for i, r := range *records {
+		out[i] = fqdnresources.ResolverStaticRecord{Name: r.Name, Type: string(r.Type), Value: r.Value, TTL: r.Ttl}
+	}
+	return out
+}
+func toAPILANListener(listener *fqdnresources.ResolverLANListener) *api.FQDNResolverLANListener {
+	if listener == nil {
+		return nil
+	}
+	out := &api.FQDNResolverLANListener{Address: listener.Address, Interface: listener.Interface, AllowedSources: append([]string(nil), listener.AllowedSources...)}
+	if len(listener.DefaultUpstreams) > 0 {
+		upstreams := append([]string(nil), listener.DefaultUpstreams...)
+		out.DefaultUpstreams = &upstreams
+	}
+	return out
+}
+func fromAPILANListener(listener *api.FQDNResolverLANListener) *fqdnresources.ResolverLANListener {
+	if listener == nil {
+		return nil
+	}
+	out := &fqdnresources.ResolverLANListener{Address: listener.Address, Interface: listener.Interface, AllowedSources: append([]string(nil), listener.AllowedSources...)}
+	if listener.DefaultUpstreams != nil {
+		out.DefaultUpstreams = append([]string(nil), (*listener.DefaultUpstreams)...)
 	}
 	return out
 }
@@ -310,6 +352,7 @@ func (s apiServer) SetFQDNResolverContextConfig(ctx context.Context, req api.Set
 	if err != nil {
 		return nil, err
 	}
+	s.notifyFQDNSettingCommitted(ctx, req.OrgId)
 	return api.SetFQDNResolverContextConfig200JSONResponse(toAPIFQDNResolverConfig(config)), nil
 }
 
@@ -325,5 +368,6 @@ func (s apiServer) DeleteFQDNResolverContextConfig(ctx context.Context, req api.
 	if err := svc.DeleteResolverConfig(ctx, req.OrgId, req.SiteId, req.GatewayId, uid, sys, cause); err != nil {
 		return nil, err
 	}
+	s.notifyFQDNSettingCommitted(ctx, req.OrgId)
 	return api.DeleteFQDNResolverContextConfig204Response{}, nil
 }

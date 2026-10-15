@@ -1,0 +1,21 @@
+import { Field, Input } from "./ui";
+
+type Listener = { address: string; interface: string; allowed_sources: string[]; default_upstreams?: string[] };
+type Props = { value?: Listener; onChange: (value: Listener | undefined) => void; profileIndex: number; disabled?: boolean };
+
+export function PrivateDNSLANListener({ value, onChange, profileIndex, disabled = false }: Props) {
+  const label = `Profile ${profileIndex + 1}`;
+  return <div className="space-y-3 rounded-inset border border-line p-3">
+    <label className="flex items-center gap-2 text-sm font-medium text-ink-heading"><input type="checkbox" disabled={disabled} checked={!!value} onChange={event => onChange(event.target.checked ? { address: "", interface: "", allowed_sources: [] } : undefined)} />Serve this profile to the office LAN</label>
+    <p className="text-xs text-ink-tertiary">Optional DNS-only access for devices without the Tunnex client. Use an address owned by this gateway on an approved Site subnet. Select static records or an IPsec transport path to enable this listener.</p>
+    {value && <>
+      <div className="grid gap-3 sm:grid-cols-2"><Field label="Gateway LAN DNS address"><Input aria-label={`${label} LAN DNS address`} placeholder="192.168.1.39" value={value.address} onChange={event => onChange({ ...value, address: event.target.value })} /></Field><Field label="Gateway LAN interface"><Input aria-label={`${label} LAN DNS interface`} placeholder="eth0" value={value.interface} onChange={event => onChange({ ...value, interface: event.target.value })} /></Field></div>
+      <Field label="Approved DNS client ranges"><Input aria-label={`${label} LAN DNS client ranges`} placeholder="192.168.1.0/24" value={value.allowed_sources.join(", ")} onChange={event => onChange({ ...value, allowed_sources: event.target.value.split(",").map(item => item.trim()).filter(Boolean) })} /></Field>
+      <p className="text-xs text-ink-tertiary">These approved Site ranges may query this profile on UDP and TCP 53. This grants DNS access only; application ports need separate Access Policies. Existing DNS on the gateway must leave this exact address and port available.</p>
+      <label className="flex items-center gap-2 text-sm font-medium text-ink-heading"><input type="checkbox" checked={value.default_upstreams !== undefined} onChange={event => onChange({ ...value, default_upstreams: event.target.checked ? [""] : undefined })} />Resolve other domains</label>
+      {value.default_upstreams !== undefined && <Field label="Public DNS upstreams"><Input aria-label={`${label} public DNS upstreams`} placeholder="1.1.1.1, 8.8.8.8" value={value.default_upstreams.join(", ")} onChange={event => onChange({ ...value, default_upstreams: event.target.value.split(",").map(item => item.trim()) })} /><p className="text-xs text-ink-tertiary">Enter 1–3 public IPv4 resolvers reachable from this gateway on UDP and TCP 53. This allows the client ranges above to resolve other domains. Profiles sharing this address and interface must use the same public upstreams. Private zones always stay on their configured path, including when that path fails.</p></Field>}
+      <p className="text-xs text-ink-tertiary"><strong>One office setup:</strong> {value.default_upstreams !== undefined ? "After testing private and public DNS, set your router or DHCP server’s DNS address once to this gateway LAN address. Clients use it after their DHCP lease renews. " : "This profile serves private zones. If no profile on this same DNS address and interface enables other-domain DNS for your client range, keep your existing office DNS server in DHCP and add conditional forwarders for the private zones to the gateway LAN address. "}Tunnex does not change router or DHCP settings automatically.</p>
+      <p className="text-xs text-ink-tertiary"><strong>Verify before rollout:</strong> check the listener status, then from an approved office device test a configured private name{value.default_upstreams !== undefined ? " and a public name" : ""} through the gateway on UDP and TCP. Verify private and public DNS from each intended client range before changing DHCP DNS. A ready listener confirms socket binding, not upstream reachability or application access.</p>
+    </>}
+  </div>;
+}

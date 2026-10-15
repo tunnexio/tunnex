@@ -11662,7 +11662,7 @@ components:
           nullable: true
           enum: [aws, azure, google_cloud, on_premises]
           description: "Operator-supplied display metadata only. It does not enable cloud discovery, credentials, hosted-zone import, or endpoint provisioning."
-        endpoints: { type: array, minItems: 1, maxItems: 8, items: { $ref: "#/components/schemas/FQDNResolverEndpoint" } }
+        endpoints: { type: array, minItems: 0, maxItems: 8, items: { $ref: "#/components/schemas/FQDNResolverEndpoint" } }
         profiles:
           type: array
           minItems: 1
@@ -11680,17 +11680,39 @@ components:
         configuration_revision: { type: integer, format: int64, minimum: 1 }
         source_address: { type: string, format: ipv4, description: "Private IPv4 address owned by the selected gateway, inside an approved local connection prefix. Runtime ownership and lease are verified before every DNS query." }
 
+    FQDNStaticRecord:
+      type: object
+      required: [name, type, value, ttl]
+      additionalProperties: false
+      properties:
+        name: { type: string, minLength: 1, maxLength: 253, description: "Exact hostname within this profile's DNS zone suffixes." }
+        type: { type: string, enum: [A, AAAA, CNAME] }
+        value: { type: string, minLength: 1, maxLength: 253, description: "Private IPv4 for A, private IPv6 for AAAA, hostname for CNAME. CNAME does not implicitly enable upstream recursion." }
+        ttl: { type: integer, minimum: 30, maximum: 86400, default: 300 }
+
+    FQDNResolverLANListener:
+      type: object
+      required: [address, interface, allowed_sources]
+      additionalProperties: false
+      properties:
+        address: { type: string, format: ipv4, description: "Private IPv4 address owned by this gateway on the selected interface, within an approved Site subnet. UDP/TCP port 53 only." }
+        interface: { type: string, minLength: 1, maxLength: 15, pattern: '^[a-zA-Z0-9_.-]+$' }
+        allowed_sources: { type: array, minItems: 1, maxItems: 32, items: { type: string }, description: "Explicit private IPv4 client CIDRs within approved Site subnets. DNS permission does not grant application access." }
+        default_upstreams: { type: array, maxItems: 3, uniqueItems: true, items: { type: string, format: ipv4 }, description: "Optional public IPv4 resolvers on UDP/TCP 53 for names outside every configured private zone. Empty or omitted keeps private-only behavior. Each opt-in grants other-domain DNS only to its allowed_sources. Opted-in profiles sharing a bind must use identical upstream sets. Requires gateway policy version 13." }
+
     FQDNResolverProfile:
       type: object
       required: [id, name, provider_hint, zone_suffixes, endpoints, legacy_default]
       additionalProperties: false
       properties:
         ipsec_path: { $ref: "#/components/schemas/FQDNResolverIPsecPath" }
+        static_records: { type: array, minItems: 1, maxItems: 128, items: { $ref: "#/components/schemas/FQDNStaticRecord" }, description: "Static private DNS authority. Exclusive with ipsec_path. Optional endpoints complete configured external CNAME targets only; records and endpoints share this immutable profile lifecycle." }
+        lan_listener: { $ref: "#/components/schemas/FQDNResolverLANListener" }
         id: { type: string, format: uuid, description: "Immutable profile provenance bound to gateway DNS requests and answer generations." }
         name: { type: string, minLength: 1, maxLength: 80 }
         provider_hint: { type: string, enum: [aws, azure, google_cloud, on_premises], description: "Display metadata only; no cloud discovery, IAM, or automatic endpoint provisioning." }
         zone_suffixes: { type: array, maxItems: 16, items: { type: string, minLength: 1, maxLength: 253 }, description: "Normalized DNS suffixes. The most-specific matching suffix selects this profile." }
-        endpoints: { type: array, minItems: 1, maxItems: 8, items: { $ref: "#/components/schemas/FQDNResolverEndpoint" } }
+        endpoints: { type: array, minItems: 0, maxItems: 8, items: { $ref: "#/components/schemas/FQDNResolverEndpoint" }, description: "For static profiles, optional 0 to 3 distinct public IPv4 resolvers on UDP or TCP port 53 complete only configured external CNAME targets. Requires fresh gateway policy capability 14; empty preserves static-only behavior. Does not grant application access or general DNS recursion. Other profiles require 1 to 8 private-zone resolver endpoints." }
         legacy_default: { type: boolean, description: "True only for a migrated legacy flat configuration. New profile-native configurations always require explicit suffixes." }
 
     FQDNResolverProfileRequest:
@@ -11699,10 +11721,12 @@ components:
       additionalProperties: false
       properties:
         ipsec_path: { $ref: "#/components/schemas/FQDNResolverIPsecPath" }
+        static_records: { type: array, minItems: 1, maxItems: 128, items: { $ref: "#/components/schemas/FQDNStaticRecord" }, description: "Static private DNS authority. Exclusive with ipsec_path. Optional endpoints complete configured external CNAME targets only; records and endpoints share this immutable profile lifecycle." }
+        lan_listener: { $ref: "#/components/schemas/FQDNResolverLANListener" }
         name: { type: string, minLength: 1, maxLength: 80 }
         provider_hint: { type: string, enum: [aws, azure, google_cloud, on_premises] }
         zone_suffixes: { type: array, minItems: 1, maxItems: 16, items: { type: string, minLength: 1, maxLength: 253 } }
-        endpoints: { type: array, minItems: 1, maxItems: 8, items: { $ref: "#/components/schemas/FQDNResolverEndpoint" } }
+        endpoints: { type: array, minItems: 0, maxItems: 8, items: { $ref: "#/components/schemas/FQDNResolverEndpoint" }, description: "For static profiles, optional 0 to 3 distinct public IPv4 resolvers on UDP or TCP port 53 complete only configured external CNAME targets. Requires fresh gateway policy capability 14; empty preserves static-only behavior. Does not grant application access or general DNS recursion. Other profiles require 1 to 8 private-zone resolver endpoints." }
 
     FQDNResolverProfileSelection:
       type: object
@@ -13218,6 +13242,17 @@ components:
         group_id: { type: string, format: uuid, nullable: true }
         group_name: { type: string, nullable: true }
 
+    DNSLANListenerStatus:
+      type: object
+      additionalProperties: false
+      required: [address, interface, ready, error, profile_ids]
+      properties:
+        address: { type: string, format: ipv4 }
+        interface: { type: string, maxLength: 15 }
+        ready: { type: boolean, description: Both UDP and TCP 53 sockets are bound on the owned interface. Does not prove upstream or application connectivity. }
+        error: { type: string, maxLength: 256 }
+        profile_ids: { type: array, maxItems: 16, items: { type: string, format: uuid } }
+
     Node:
       type: object
       required: [id, name, status, agent_version, enrolled_at]
@@ -13295,6 +13330,12 @@ components:
             S8.3 (D2/CH): the site this gateway is bound to (null = not a site gateway). The topology view
             joins nodes to sites by this field — a site's gateways are the nodes with this site_id, rendered
             as a LIST (many nodes → one site scales to future HA; the UI never assumes one-gateway-per-site).
+        dns_lan_listeners:
+          type: array
+          maxItems: 16
+          items: { $ref: '#/components/schemas/DNSLANListenerStatus' }
+          description: Authenticated gateway report of actual LAN DNS socket readiness. Missing or stale reports are unknown.
+        dns_lan_reported_at: { type: string, format: date-time, description: Control-plane receipt time of the gateway status report. }
         max_policy_version:
           type: integer
           nullable: true
