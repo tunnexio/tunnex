@@ -311,12 +311,19 @@ func TestStaticExternalCNAMEWithdrawsInflightAuthority(t *testing.T) {
 	}
 }
 func TestStaticExternalCNAMEEndpointValidationAndSharedLANDefaults(t *testing.T) {
-	for _, bad := range []fqdnrpc.ResolverEndpoint{{"10.0.0.53", 53, "udp"}, {"127.0.0.1", 53, "udp"}, {"192.0.2.1", 53, "udp"}, {"::ffff:1.1.1.1", 53, "udp"}, {"1.1.1.1", 5353, "udp"}, {"1.1.1.1", 53, "https"}} {
+	for _, bad := range []fqdnrpc.ResolverEndpoint{
+		{Address: "10.0.0.53", Port: 53, Transport: "udp"},
+		{Address: "127.0.0.1", Port: 53, Transport: "udp"},
+		{Address: "192.0.2.1", Port: 53, Transport: "udp"},
+		{Address: "::ffff:1.1.1.1", Port: 53, Transport: "udp"},
+		{Address: "1.1.1.1", Port: 5353, Transport: "udp"},
+		{Address: "1.1.1.1", Port: 53, Transport: "https"},
+	} {
 		if validStaticTargetEndpoints([]fqdnrpc.ResolverEndpoint{bad}) {
 			t.Fatal("unsafe endpoint accepted", bad)
 		}
 	}
-	if validStaticTargetEndpoints([]fqdnrpc.ResolverEndpoint{{"1.1.1.1", 53, "udp"}, {"1.1.1.1", 53, "tcp"}}) {
+	if validStaticTargetEndpoints([]fqdnrpc.ResolverEndpoint{{Address: "1.1.1.1", Port: 53, Transport: "udp"}, {Address: "1.1.1.1", Port: 53, Transport: "tcp"}}) {
 		t.Fatal("duplicate address accepted across transports")
 	}
 	if validStaticName("bad..example") != "" {
