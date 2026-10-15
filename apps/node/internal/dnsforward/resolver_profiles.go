@@ -7,6 +7,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/tunnexio/tunnex/apps/node/internal/fqdnrpc"
 	"golang.org/x/net/dns/dnsmessage"
 )
@@ -18,12 +19,16 @@ type ResolverProfile struct {
 	Config         fqdnrpc.ResolverConfig
 	ZoneSuffixes   []string
 	AllowedSources []string
+	StaticRecords  []StaticRecord
+	LANListener    *LANListener
 }
 type compiledResolverProfile struct {
 	config  fqdnrpc.ResolverConfig
 	zones   []string
 	sources []netip.Prefix
 	valid   bool
+	static  staticAnswers
+	lan     *compiledLANListener
 }
 type resolverProfiles struct{ entries []compiledResolverProfile }
 
@@ -44,12 +49,21 @@ func (f *Forwarder) SetResolverProfiles(entries []ResolverProfile) {
 				p.zones = append(p.zones, normalized)
 			}
 		}
+		if len(entry.StaticRecords) > 0 {
+			p.static, p.valid = compileStaticRecords(entry.StaticRecords, p.zones)
+			_, configErr := uuid.Parse(entry.Config.ID)
+			_, profileErr := uuid.Parse(entry.Config.ProfileID)
+			p.valid = p.valid && entry.Config.IPsecPath == nil && validStaticTargetEndpoints(entry.Config.Endpoints) && configErr == nil && profileErr == nil && entry.Config.Version > 0
+		}
+		if entry.LANListener != nil {
+			p.lan = compileLANListener(*entry.LANListener)
+		}
 		if len(p.zones) == 0 {
 			continue
 		}
 		for _, source := range entry.AllowedSources {
 			prefix, err := netip.ParsePrefix(source)
-			if err != nil || !prefix.Addr().Is4() || prefix != prefix.Masked() || prefix.Bits() == 0 {
+			if err != nil || (p.static == nil && !prefix.Addr().Is4()) || prefix != prefix.Masked() || prefix.Bits() == 0 {
 				p.valid = false
 				break
 			}
@@ -63,12 +77,9 @@ func (f *Forwarder) SetResolverProfiles(entries []ResolverProfile) {
 	f.profiles.Store(result)
 }
 
-func (f *Forwarder) answerResolverProfile(id uint16, query []byte, q dnsmessage.Question, source netip.Addr, transport string) ([]byte, bool) {
-	profiles := f.profiles.Load()
-	if profiles == nil {
-		return nil, false
-	}
-	name := strings.ToLower(q.Name.String())
+// match applies the same longest-suffix and ambiguity boundary to direct
+// questions and each local record traversed through a static alias.
+func (profiles *resolverProfiles) match(name string) (int, bool) {
 	selected := -1
 	length := -1
 	ambiguous := false
@@ -85,21 +96,54 @@ func (f *Forwarder) answerResolverProfile(id uint16, query []byte, q dnsmessage.
 			}
 		}
 	}
+	return selected, ambiguous
+}
+
+func (f *Forwarder) answerResolverProfile(id uint16, query []byte, q dnsmessage.Question, source netip.Addr, transport string) ([]byte, bool) {
+	return f.answerScopedResolverProfile(id, query, q, source, transport, nil)
+}
+
+func (f *Forwarder) answerScopedResolverProfile(id uint16, query []byte, q dnsmessage.Question, source netip.Addr, transport string, scope *lanBindKey) ([]byte, bool) {
+	profiles := f.profiles.Load()
+	if profiles == nil {
+		return nil, false
+	}
+	selected, ambiguous := profiles.match(strings.ToLower(q.Name.String()))
 	if selected < 0 {
 		return nil, false
 	}
 	p := profiles.entries[selected]
-	if !p.valid || ambiguous || f.transport == nil {
+	if scope != nil && (p.lan == nil || p.lan.key != *scope) {
+		return refuse(id, query), true
+	}
+	if !p.valid || ambiguous {
 		return servfail(id, query), true
 	}
 	allowed := false
-	for _, prefix := range p.sources {
+	sources := p.sources
+	if scope != nil {
+		sources = p.lan.sources
+	}
+	for _, prefix := range sources {
 		if prefix.Contains(source) {
 			allowed = true
 		}
 	}
 	if !allowed {
 		return refuse(id, query), true
+	}
+	if q.Class != dnsmessage.ClassINET {
+		return refuse(id, query), true
+	}
+	if p.static != nil {
+		response := f.answerStaticProfile(profiles, selected, id, query, q, transport)
+		if f.profiles.Load() != profiles {
+			return servfail(id, query), true
+		}
+		return response, true
+	}
+	if f.transport == nil {
+		return servfail(id, query), true
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()

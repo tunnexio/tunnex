@@ -38,7 +38,11 @@ const (
 // agent must refuse it rather than enforce FQDN tuples without selective
 // conntrack withdrawal capability. v10 adds cross-gateway client routing with
 // matching IPv4/IPv6 route families; older gateways must refuse this content.
-const MaxSupportedVersion = 11
+// v12 adds static DNS authority and explicit LAN DNS listeners; unchanged
+// IPsec-only profiles retain their v11 content version and canonical hash.
+// v13 adds explicitly configured public upstreams for allowed LAN DNS clients.
+// v14 adds explicit public resolver endpoints for static CNAME target completion.
+const MaxSupportedVersion = 14
 
 // AllowEntry is one compiled default-deny grant: SrcIP (a device /32 host) may reach
 // DstCIDR on Protocol within [PortLow,PortHigh]. PortLow==0 means all ports.
@@ -179,6 +183,24 @@ type DNSResolverProfile struct {
 	Endpoints            []DNSResolverEndpoint `json:"endpoints"`
 	IPsecPath            DNSResolverIPsecPath  `json:"ipsec_path"`
 	AllowedSources       []string              `json:"allowed_sources"`
+	StaticRecords        []DNSStaticRecord     `json:"static_records,omitempty"`
+	LANListener          *DNSLANListener       `json:"lan_listener,omitempty"`
+}
+
+// DNSStaticRecord is an exact authoritative answer, independent of IPsec transport.
+type DNSStaticRecord struct {
+	Name  string `json:"name"`
+	Type  string `json:"type"`
+	Value string `json:"value"`
+	TTL   uint32 `json:"ttl"`
+}
+
+// DNSLANListener is an explicit DNS-only ingress grant on an owned LAN interface.
+type DNSLANListener struct {
+	Address          string   `json:"address"`
+	Interface        string   `json:"interface"`
+	AllowedSources   []string `json:"allowed_sources"`
+	DefaultUpstreams []string `json:"default_upstreams,omitempty"`
 }
 type DNSResolverEndpoint struct {
 	Address   string `json:"address"`

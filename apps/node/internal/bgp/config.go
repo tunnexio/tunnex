@@ -29,6 +29,9 @@ type Peer struct {
 	Local, Remote netip.Addr
 }
 type Config struct {
+	// DesktopPrefixes are leased, independently peer/route-verified host exports.
+	// They never become a provider-wide VPN pool advertisement.
+	DesktopPrefixes               []netip.Prefix `json:",omitempty"`
 	TransportProfile              string
 	LocalASN, RemoteASN           uint32
 	RouterID                      netip.Addr
@@ -77,6 +80,20 @@ func (c Config) valid() bool {
 			seen = append(seen, p)
 		}
 	}
+	if len(c.DesktopPrefixes)+len(c.LocalPrefixes) > 64 {
+		return false
+	}
+	for _, p := range c.DesktopPrefixes {
+		if !p.IsValid() || !p.Addr().Is4() || p.Bits() != 32 || !p.Addr().IsGlobalUnicast() {
+			return false
+		}
+		for _, old := range seen {
+			if p.Overlaps(old) {
+				return false
+			}
+		}
+		seen = append(seen, p)
+	}
 	for i, p := range c.Peers[:c.activePeerCount()] {
 		if p.Slot != i+1 || !p.Local.Is4() || !p.Remote.Is4() || p.Local == p.Remote || !netip.MustParsePrefix("169.254.0.0/16").Contains(p.Local) || (!azure && !netip.PrefixFrom(p.Local, 30).Contains(p.Remote)) {
 			return false
@@ -106,7 +123,7 @@ func RenderConfig(c Config) (string, error) {
 	for _, policy := range []struct {
 		name     string
 		prefixes []netip.Prefix
-	}{{"TNX-IN", c.RemotePrefixes}, {"TNX-OUT", c.LocalPrefixes}} {
+	}{{"TNX-IN", c.RemotePrefixes}, {"TNX-OUT", c.exportPrefixes()}} {
 		name, prefixes := policy.name, policy.prefixes
 		for i, p := range prefixes {
 			fmt.Fprintf(&b, "ip prefix-list %s seq %d permit %s\n", name, (i+1)*10, p)
@@ -118,8 +135,13 @@ func RenderConfig(c Config) (string, error) {
 	for _, p := range c.Peers[:c.activePeerCount()] {
 		fmt.Fprintf(&b, " neighbor %s remote-as %d\n neighbor %s update-source %s\n neighbor %s timers 10 30\n neighbor %s disable-connected-check\n", p.Remote, c.RemoteASN, p.Remote, p.Local, p.Remote, p.Remote)
 	}
+	// Desktop peers may use a connected WG pool route rather than kernel /32s.
+	// The controller proves exact peer AllowedIPs plus selected return interface.
+	if len(c.DesktopPrefixes) > 0 {
+		b.WriteString(" no bgp network import-check\n")
+	}
 	b.WriteString(" address-family ipv4 unicast\n")
-	for _, p := range c.LocalPrefixes {
+	for _, p := range c.exportPrefixes() {
 		fmt.Fprintf(&b, "  network %s\n", p)
 	}
 	for _, p := range c.Peers[:c.activePeerCount()] {
@@ -127,4 +149,8 @@ func RenderConfig(c Config) (string, error) {
 	}
 	b.WriteString(" exit-address-family\n!\n")
 	return b.String(), nil
+}
+
+func (c Config) exportPrefixes() []netip.Prefix {
+	return append(append([]netip.Prefix(nil), c.LocalPrefixes...), c.DesktopPrefixes...)
 }

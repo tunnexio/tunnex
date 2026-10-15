@@ -3,6 +3,7 @@ package ipsec
 import (
 	"github.com/google/uuid"
 	"github.com/tunnexio/tunnex/apps/node/internal/nodepolicy"
+	"time"
 )
 
 // Private authenticated control-channel DTOs. Material is memory-only and must never enter logs or the journal.
@@ -14,7 +15,18 @@ type RuntimeGrant struct {
 	PortHigh    uint16 `json:"port_high"`
 	RuleID      string `json:"rule_id"`
 }
+
+// RuntimeDesktopGrant binds a human device's explicit policy grant to its enrolled
+// WireGuard peer identity. It is ephemeral policy authority, never a LAN selector.
+type RuntimeDesktopGrant struct {
+	RuntimeGrant
+	DeviceID  string     `json:"device_id"`
+	PublicKey string     `json:"public_key"`
+	ExpiresAt *time.Time `json:"expires_at,omitempty"`
+}
 type RuntimePolicy struct {
+	DesktopGrants []RuntimeDesktopGrant `json:"desktop_grants,omitempty"`
+
 	FQDNPolicyVersion   int                             `json:"fqdn_policy_version,omitempty"`
 	FQDNGrants          []RuntimeFQDNGrant              `json:"fqdn_grants,omitempty"`
 	Hash                string                          `json:"hash"`

@@ -8,17 +8,18 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/tunnexio/tunnex/apps/api/internal/policyspec"
+	"github.com/tunnexio/tunnex/apps/api/internal/sites"
 )
 
-// DeviceFQDNForwards projects only the FQDN resolver dependencies authorized
+// DeviceFQDNForwards projects the resolver dependencies and private DNS scopes authorized
 // for one active device. The caller owns device authentication; the routed-
 // ranges HTTP handler validates active ownership through nodes.DeviceDial before
 // invoking this method.
 //
 // The projection is derived from the same canonical snapshot as enforcement.
-// It never enumerates organization-wide resolver profiles and never persists a
-// synthetic resource or policy rule. A parent rule disappearing from the next
-// snapshot removes its resolver forward automatically.
+// Explicit user/group DNS grants also project active same-gateway private profiles.
+// This requires no FQDN application licence or parent resource. Neither path
+// persists a synthetic rule; withdrawing its authority withdraws the forward.
 func (s *Service) DeviceFQDNForwards(ctx context.Context, orgID, deviceID uuid.UUID, routedRanges []string) ([]policyspec.DNSForward, error) {
 	snapshot, err := s.BuildSnapshot(ctx, orgID)
 	if err != nil {
@@ -30,7 +31,21 @@ func (s *Service) DeviceFQDNForwards(ctx context.Context, orgID, deviceID uuid.U
 			prefixes = append(prefixes, prefix.Masked())
 		}
 	}
-	return deviceFQDNForwardsFromSnapshot(snapshot, deviceID, prefixes), nil
+	private, err := s.devicePrivateDNSForwards(ctx, orgID, deviceID)
+	if err != nil {
+		return nil, err
+	}
+	var joined []sites.DNSForward
+	for _, group := range [][]policyspec.DNSForward{deviceFQDNForwardsFromSnapshot(snapshot, deviceID, prefixes), private} {
+		for _, forward := range group {
+			joined = append(joined, sites.DNSForward{Domain: forward.Domain, ResolverIP: forward.ResolverIP})
+		}
+	}
+	out := []policyspec.DNSForward{}
+	for _, forward := range sites.MergeResolverForwardsFailClosed(joined) {
+		out = append(out, policyspec.DNSForward{Domain: forward.Domain, ResolverIP: forward.ResolverIP})
+	}
+	return out, nil
 }
 
 // deviceFQDNForwardsFromSnapshot is the pure per-device projection. Source

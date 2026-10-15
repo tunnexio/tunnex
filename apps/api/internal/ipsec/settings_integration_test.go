@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"math"
-	"net/url"
 	"os"
 	"sync"
 	"testing"
@@ -12,54 +11,27 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/tunnexio/tunnex/apps/api/db"
 	"github.com/tunnexio/tunnex/apps/api/internal/ipsec"
+	"github.com/tunnexio/tunnex/apps/api/internal/testpostgres"
 )
 
+var settingsTemplate = testpostgres.NewTemplateAtVersion(160)
+
+func TestMain(m *testing.M) {
+	os.Exit(settingsTemplate.Run(m))
+}
+
 // The caller supplies the guarded, isolated fixture admin database.
-// Each test creates and removes only its own uniquely named scratch database.
+// Each test owns a fresh clone at schema 160; later migrations affect only that
+// child. The sealed baseline avoids replaying migrations 1..160 for every test.
 func settingsFixture(t *testing.T) (context.Context, *pgxpool.Pool, uuid.UUID, uuid.UUID) {
 	t.Helper()
-	dsn := os.Getenv("TUNNEX_TEST_DATABASE_URL")
-	if dsn == "" {
-		t.Skip("set TUNNEX_TEST_DATABASE_URL to the isolated fixture database")
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
-	t.Cleanup(cancel)
-	admin, err := pgxpool.New(ctx, dsn)
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(admin.Close)
-	parsed, err := url.Parse(dsn)
-	if err != nil {
-		t.Fatal(err)
-	}
-	name := "tnx_ipsec_settings_" + uuid.NewString()[:8]
-	if _, err = admin.Exec(ctx, "CREATE DATABASE "+name); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() {
-		cleanup, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
-		if _, err := admin.Exec(cleanup, "DROP DATABASE "+name+" WITH (FORCE)"); err != nil {
-			t.Errorf("scratch database cleanup: %v", err)
-		}
-	})
-	parsed.Path = "/" + name
-	if err = db.MigrateTo(parsed.String(), 160); err != nil {
-		t.Fatal(err)
-	}
-	pool, err := pgxpool.New(ctx, parsed.String())
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(pool.Close)
+	ctx, pool := settingsTemplate.New(t)
 	org, actor := uuid.New(), uuid.New()
-	if _, err = pool.Exec(ctx, `INSERT INTO organizations(id,name,slug,pool_cidr) VALUES($1,'IPsec settings',$2,'10.199.0.0/24')`, org, "ipsec-"+org.String()); err != nil {
+	if _, err := pool.Exec(ctx, `INSERT INTO organizations(id,name,slug,pool_cidr) VALUES($1,'IPsec settings',$2,'10.199.0.0/24')`, org, "ipsec-"+org.String()); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = pool.Exec(ctx, `INSERT INTO users(id,email) VALUES($1,$2)`, actor, actor.String()+"@ipsec-settings.test"); err != nil {
+	if _, err := pool.Exec(ctx, `INSERT INTO users(id,email) VALUES($1,$2)`, actor, actor.String()+"@ipsec-settings.test"); err != nil {
 		t.Fatal(err)
 	}
 	return ctx, pool, org, actor

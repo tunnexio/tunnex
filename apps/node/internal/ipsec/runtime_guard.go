@@ -39,6 +39,12 @@ func verifyGuardWithdrawalObjectsSnapshot(want []any, observed []byte, links []G
 }
 
 func verifyGuardWithdrawalObjectsSnapshotClass(want []any, observed []byte, links []GuardInterface, classify func(string)) ([]any, error) {
+	return verifyGuardOwnershipObjectsSnapshotClass(want, observed, links, classify, true)
+}
+
+// Positive per-connection proof may tolerate another connection's expired
+// members, but must not inherit withdrawal-only orphaned-interface parsing.
+func verifyGuardOwnershipObjectsSnapshotClass(want []any, observed []byte, links []GuardInterface, classify func(string), allowOrphanedIndex bool) ([]any, error) {
 	mark := func(value string) {
 		if classify != nil {
 			classify(value)
@@ -54,7 +60,7 @@ func verifyGuardWithdrawalObjectsSnapshotClass(want []any, observed []byte, link
 		mapping[l.Name] = l.Index
 		indices[l.Index] = true
 	}
-	got, ok := normalizedGuardWithdrawalObjectsWithInterfaces(observed, mapping)
+	got, ok := normalizedGuardObservedObjectsWithOrphans(observed, mapping, true, allowOrphanedIndex)
 	if !ok {
 		mark("observed_invalid")
 		return nil, ErrGuardReadback

@@ -26,7 +26,8 @@ func ParseRoutes(raw []byte, c Config, status Status) ([]LearnedRoute, error) {
 			} `json:"nexthops"`
 		} `json:"routes"`
 	}
-	if json.Unmarshal(raw, &doc) != nil || doc.Routes == nil || len(doc.Routes) > len(c.LocalPrefixes)+len(c.RemotePrefixes) {
+	exports := c.exportPrefixes()
+	if json.Unmarshal(raw, &doc) != nil || doc.Routes == nil || len(doc.Routes) > len(exports)+len(c.RemotePrefixes) {
 		return nil, ErrPackage
 	}
 	approved := map[netip.Prefix]bool{}
@@ -34,7 +35,7 @@ func ParseRoutes(raw []byte, c Config, status Status) ([]LearnedRoute, error) {
 	for _, p := range c.RemotePrefixes {
 		approved[p] = true
 	}
-	for _, p := range c.LocalPrefixes {
+	for _, p := range exports {
 		local[p] = true
 	}
 	counts := [2]int{}

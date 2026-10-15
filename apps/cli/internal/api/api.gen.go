@@ -1214,6 +1214,13 @@ const (
 	FQDNResourceRuleReferenceSourceKindUser       FQDNResourceRuleReferenceSourceKind = "user"
 )
 
+// Defines values for FQDNStaticRecordType.
+const (
+	A     FQDNStaticRecordType = "A"
+	AAAA  FQDNStaticRecordType = "AAAA"
+	CNAME FQDNStaticRecordType = "CNAME"
+)
+
 // Defines values for HealthCheckKind.
 const (
 	DiskEncryption HealthCheckKind = "disk_encryption"
@@ -5124,6 +5131,17 @@ type DNSForward struct {
 	ResolverIp string `json:"resolver_ip"`
 }
 
+// DNSLANListenerStatus defines model for DNSLANListenerStatus.
+type DNSLANListenerStatus struct {
+	Address    string               `json:"address"`
+	Error      string               `json:"error"`
+	Interface  string               `json:"interface"`
+	ProfileIds []openapi_types.UUID `json:"profile_ids"`
+
+	// Ready Both UDP and TCP 53 sockets are bound on the owned interface. Does not prove upstream or application connectivity.
+	Ready bool `json:"ready"`
+}
+
 // DecideK8sClusterScopeMembershipRequest defines model for DecideK8sClusterScopeMembershipRequest.
 type DecideK8sClusterScopeMembershipRequest struct {
 	Decision DecideK8sClusterScopeMembershipRequestDecision `json:"decision"`
@@ -5410,13 +5428,28 @@ type FQDNResolverIPsecPath struct {
 	SourceAddress string `json:"source_address"`
 }
 
+// FQDNResolverLANListener defines model for FQDNResolverLANListener.
+type FQDNResolverLANListener struct {
+	// Address Private IPv4 address owned by this gateway on the selected interface, within an approved Site subnet. UDP/TCP port 53 only.
+	Address string `json:"address"`
+
+	// AllowedSources Explicit private IPv4 client CIDRs within approved Site subnets. DNS permission does not grant application access.
+	AllowedSources []string `json:"allowed_sources"`
+
+	// DefaultUpstreams Optional public IPv4 resolvers on UDP/TCP 53 for names outside every configured private zone. Empty or omitted keeps private-only behavior. Each opt-in grants other-domain DNS only to its allowed_sources. Opted-in profiles sharing a bind must use identical upstream sets. Requires gateway policy version 13.
+	DefaultUpstreams *[]string `json:"default_upstreams,omitempty"`
+	Interface        string    `json:"interface"`
+}
+
 // FQDNResolverProfile defines model for FQDNResolverProfile.
 type FQDNResolverProfile struct {
+	// Endpoints For static profiles, optional 0 to 3 distinct public IPv4 resolvers on UDP or TCP port 53 complete only configured external CNAME targets. Requires fresh gateway policy capability 14; empty preserves static-only behavior. Does not grant application access or general DNS recursion. Other profiles require 1 to 8 private-zone resolver endpoints.
 	Endpoints []FQDNResolverEndpoint `json:"endpoints"`
 
 	// Id Immutable profile provenance bound to gateway DNS requests and answer generations.
-	Id        openapi_types.UUID     `json:"id"`
-	IpsecPath *FQDNResolverIPsecPath `json:"ipsec_path,omitempty"`
+	Id          openapi_types.UUID       `json:"id"`
+	IpsecPath   *FQDNResolverIPsecPath   `json:"ipsec_path,omitempty"`
+	LanListener *FQDNResolverLANListener `json:"lan_listener,omitempty"`
 
 	// LegacyDefault True only for a migrated legacy flat configuration. New profile-native configurations always require explicit suffixes.
 	LegacyDefault bool   `json:"legacy_default"`
@@ -5424,6 +5457,9 @@ type FQDNResolverProfile struct {
 
 	// ProviderHint Display metadata only; no cloud discovery, IAM, or automatic endpoint provisioning.
 	ProviderHint FQDNResolverProfileProviderHint `json:"provider_hint"`
+
+	// StaticRecords Static private DNS authority. Exclusive with ipsec_path. Optional endpoints complete configured external CNAME targets only; records and endpoints share this immutable profile lifecycle.
+	StaticRecords *[]FQDNStaticRecord `json:"static_records,omitempty"`
 
 	// ZoneSuffixes Normalized DNS suffixes. The most-specific matching suffix selects this profile.
 	ZoneSuffixes []string `json:"zone_suffixes"`
@@ -5434,11 +5470,16 @@ type FQDNResolverProfileProviderHint string
 
 // FQDNResolverProfileRequest defines model for FQDNResolverProfileRequest.
 type FQDNResolverProfileRequest struct {
+	// Endpoints For static profiles, optional 0 to 3 distinct public IPv4 resolvers on UDP or TCP port 53 complete only configured external CNAME targets. Requires fresh gateway policy capability 14; empty preserves static-only behavior. Does not grant application access or general DNS recursion. Other profiles require 1 to 8 private-zone resolver endpoints.
 	Endpoints    []FQDNResolverEndpoint                 `json:"endpoints"`
 	IpsecPath    *FQDNResolverIPsecPath                 `json:"ipsec_path,omitempty"`
+	LanListener  *FQDNResolverLANListener               `json:"lan_listener,omitempty"`
 	Name         string                                 `json:"name"`
 	ProviderHint FQDNResolverProfileRequestProviderHint `json:"provider_hint"`
-	ZoneSuffixes []string                               `json:"zone_suffixes"`
+
+	// StaticRecords Static private DNS authority. Exclusive with ipsec_path. Optional endpoints complete configured external CNAME targets only; records and endpoints share this immutable profile lifecycle.
+	StaticRecords *[]FQDNStaticRecord `json:"static_records,omitempty"`
+	ZoneSuffixes  []string            `json:"zone_suffixes"`
 }
 
 // FQDNResolverProfileRequestProviderHint defines model for FQDNResolverProfileRequest.ProviderHint.
@@ -5632,6 +5673,20 @@ type FQDNResourceSettingImpact struct {
 	ExpectedImpactToken *string `json:"expected_impact_token"`
 	RuleIdsTruncated    bool    `json:"rule_ids_truncated"`
 }
+
+// FQDNStaticRecord defines model for FQDNStaticRecord.
+type FQDNStaticRecord struct {
+	// Name Exact hostname within this profile's DNS zone suffixes.
+	Name string               `json:"name"`
+	Ttl  int                  `json:"ttl"`
+	Type FQDNStaticRecordType `json:"type"`
+
+	// Value Private IPv4 for A, private IPv6 for AAAA, hostname for CNAME. CNAME does not implicitly enable upstream recursion.
+	Value string `json:"value"`
+}
+
+// FQDNStaticRecordType defines model for FQDNStaticRecord.Type.
+type FQDNStaticRecordType string
 
 // GatewayEndpoint defines model for GatewayEndpoint.
 type GatewayEndpoint struct {
@@ -6716,6 +6771,12 @@ type MintedMachineCredential struct {
 // Node defines model for Node.
 type Node struct {
 	AgentVersion string `json:"agent_version"`
+
+	// DnsLanListeners Authenticated gateway report of actual LAN DNS socket readiness. Missing or stale reports are unknown.
+	DnsLanListeners *[]DNSLANListenerStatus `json:"dns_lan_listeners,omitempty"`
+
+	// DnsLanReportedAt Control-plane receipt time of the gateway status report.
+	DnsLanReportedAt *time.Time `json:"dns_lan_reported_at,omitempty"`
 
 	// EgressMode Gateway egress capability used for newly generated profiles. dual_stack means verified IPv4 and IPv6 egress; ipv4_only means verified IPv4 egress with IPv6 blocked by the client kill-switch; checking means the gateway has not reported enough capability yet.
 	EgressMode *NodeEgressMode `json:"egress_mode"`

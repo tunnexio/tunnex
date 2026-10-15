@@ -8,6 +8,14 @@ const has = (value, key) => Object.hasOwn(value, key);
 const refuse = (message) => { throw new Error(message); };
 const text = (value) => typeof value === 'string' && value.length > 0;
 const index = (value) => Number.isSafeInteger(value) && value >= 0;
+const sha = (value) => typeof value === 'string' && /^[a-f0-9]{40}$/.test(value);
+const implicitSourceRoot = Symbol('CodeQL checkout source root');
+const sameFinding = (alert, ruleId, point) => alert.rule.id === ruleId &&
+  Object.entries(point).every(([key, value]) => alert.most_recent_instance.location[key] === value);
+const exactDismissal = (matches, context) => matches.length === 1 && matches[0].state === 'dismissed' &&
+  matches[0].dismissed_reason === 'false positive' && matches[0].most_recent_instance.state === 'dismissed' &&
+  matches[0].most_recent_instance.ref === context.ref && matches[0].most_recent_instance.commit_sha === context.sha &&
+  matches[0].most_recent_instance.category === context.category && matches[0].most_recent_instance.analysis_key === context.analysisKey;
 
 // SARIF 2.1.0 §§3.27.5–7, 3.52, 3.54: toolComponent.index addresses extensions,
 // while an absent component reference addresses the driver. Supplied selectors must agree.
@@ -106,34 +114,109 @@ export function fetchGitHubReview(env = process.env, execute = execFileSync) {
   try { checkoutSHA = execute('git', ['rev-parse', 'HEAD'], { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim(); }
   catch { refuse('Cannot verify analyzed checkout'); }
   if (checkoutSHA !== context.sha) refuse('Analyzed checkout does not match GITHUB_SHA');
-  const alerts = [];
-  for (const state of ['dismissed', 'open']) {
-    let pages;
-    try {
-      pages = JSON.parse(execute('gh', ['api', '--method', 'GET', '--paginate', '--slurp',
-        `repos/${context.repository}/code-scanning/alerts`, '-f', `ref=${context.ref}`,
-        '-f', `state=${state}`, '-f', 'tool_name=CodeQL', '-f', 'per_page=100'],
-      { encoding: 'utf8', timeout: 30000, maxBuffer: 32 * 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'] }));
-    } catch { refuse('Cannot read GitHub CodeQL dismissal metadata'); }
-    if (!Array.isArray(pages) || pages.length === 0 || pages.some((page) => !Array.isArray(page))) {
-      refuse('Malformed GitHub CodeQL dismissal metadata');
-    }
-    for (const alert of pages.flat()) {
-      if (!object(alert) || !Number.isSafeInteger(alert.number) || !object(alert.rule) || !text(alert.rule.id) ||
-          !object(alert.tool) || alert.tool.name !== 'CodeQL' || !['open', 'dismissed', 'fixed'].includes(alert.state) ||
-          !object(alert.most_recent_instance) || !object(alert.most_recent_instance.location)) {
-        refuse('Malformed GitHub CodeQL alert');
+  function fetchAlerts(ref) {
+    const alerts = [];
+    for (const state of ['dismissed', 'open']) {
+      let pages;
+      try {
+        pages = JSON.parse(execute('gh', ['api', '--method', 'GET', '--paginate', '--slurp',
+          `repos/${context.repository}/code-scanning/alerts`, '-f', `ref=${ref}`,
+          '-f', `state=${state}`, '-f', 'tool_name=CodeQL', '-f', 'per_page=100'],
+        { encoding: 'utf8', timeout: 30000, maxBuffer: 32 * 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'] }));
+      } catch { refuse('Cannot read GitHub CodeQL dismissal metadata'); }
+      if (!Array.isArray(pages) || pages.length === 0 || pages.some((page) => !Array.isArray(page))) {
+        refuse('Malformed GitHub CodeQL dismissal metadata');
       }
-      alerts.push(alert);
+      for (const alert of pages.flat()) {
+        if (!object(alert) || !Number.isSafeInteger(alert.number) || !object(alert.rule) || !text(alert.rule.id) ||
+            !object(alert.tool) || alert.tool.name !== 'CodeQL' || !['open', 'dismissed', 'fixed'].includes(alert.state) ||
+            !object(alert.most_recent_instance) || !object(alert.most_recent_instance.location)) {
+          refuse('Malformed GitHub CodeQL alert');
+        }
+        alerts.push(alert);
+      }
     }
+    return alerts;
   }
-  return { context, alerts };
+  const alerts = fetchAlerts(context.ref);
+  let baseline;
+  function verifyBaseline(ruleId, point, sourceBaseURI) {
+    const prNumber = /^refs\/pull\/([1-9]\d*)\/merge$/.exec(context.ref)?.[1];
+    if (!prNumber) return false;
+    const api = (endpoint, args = []) => {
+      try {
+        return JSON.parse(execute('gh', ['api', '--method', 'GET', `repos/${context.repository}/${endpoint}`, ...args],
+          { encoding: 'utf8', timeout: 30000, maxBuffer: 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'] }));
+      } catch { refuse('Cannot verify GitHub reviewed baseline provenance'); }
+    };
+    const git = (args) => {
+      try { return execute('git', args, { encoding: 'utf8', timeout: 30000, maxBuffer: 1024 * 1024, stdio: ['ignore', 'pipe', 'pipe'] }); }
+      catch { refuse('Cannot verify reviewed baseline source with Git'); }
+    };
+    if (!baseline) {
+      // GitHub's live PR metadata, not an arbitrary env ref, selects the trusted base.
+      // If the PR changes during analysis, refuse rather than guessing which base was analyzed.
+      const pr = api(`pulls/${prNumber}`);
+      if (!object(pr) || pr.number !== Number(prNumber) || pr.merge_commit_sha !== context.sha ||
+          pr.base?.repo?.full_name !== context.repository || !text(pr.base?.ref) ||
+          !sha(pr.base?.sha) || !sha(pr.head?.sha)) refuse('Invalid or changed GitHub PR baseline');
+      const header = git(['cat-file', '-p', context.sha]).split('\n\n', 1)[0];
+      const parents = [...header.matchAll(/^parent ([a-f0-9]{40})$/gm)].map((match) => match[1]);
+      if (parents.length !== 2 || parents[0] !== pr.base.sha || parents[1] !== pr.head.sha) {
+        refuse('Analyzed merge does not match the trusted PR base and head');
+      }
+      const baseContext = { ...context, ref: `refs/heads/${pr.base.ref}`, sha: pr.base.sha };
+      git(['check-ref-format', baseContext.ref]);
+      baseline = { context: baseContext, alerts: fetchAlerts(baseContext.ref) };
+    }
+    const matches = baseline.alerts.filter((alert) => sameFinding(alert, ruleId, point));
+    // Deliberately require a review instance on this exact base. Older snapshots need a new
+    // review/analysis; neither same rule nor matching line alone carries a dismissal forward.
+    if (!exactDismissal(matches, baseline.context)) return false;
+    if (sourceBaseURI !== undefined) {
+      const root = git(['rev-parse', '--show-toplevel']).trim();
+      if (!root.startsWith('/')) return false;
+      if (sourceBaseURI === implicitSourceRoot) {
+        // CodeQL's raw exporter omits originalUriBaseIds. Only resolve its known marker
+        // when the workflow explicitly binds analysis source-root to this checkout.
+        if (env.CODEQL_ANALYSIS_SOURCE_ROOT !== root || env.GITHUB_WORKSPACE !== root) return false;
+      } else if (pathToFileURL(`${root.replace(/\/+$/, '')}/`).href !== sourceBaseURI) return false;
+    }
+    git(['diff', '--quiet', 'HEAD', '--', point.path]);
+    const tree = git(['ls-tree', '-z', context.sha, '--', point.path]);
+    const entry = /^(100644|100755) blob ([a-f0-9]{40})\t([^\0]+)\0$/.exec(tree);
+    if (!entry || entry[3] !== point.path) refuse('Cannot verify analyzed source blob');
+    const path = point.path.split('/').map(encodeURIComponent).join('/');
+    const source = api(`contents/${path}`, ['-f', `ref=${baseline.context.sha}`, '--jq', '{type,path,sha}']);
+    if (!object(source) || source.type !== 'file' || source.path !== point.path || !sha(source.sha)) {
+      refuse('Invalid reviewed baseline source blob');
+    }
+    return entry[2] === source.sha;
+  }
+  return { context, alerts, verifyBaseline };
 }
 
-function reviewedFalsePositive(run, result, review) {
+function findingPoint(result) {
+  if (result.locations?.length !== 1) return undefined;
+  const physical = result.locations[0].physicalLocation;
+  if (!object(physical) || !object(physical.region) || !text(physical.artifactLocation?.uri)) return undefined;
+  let path;
+  try { path = decodeURIComponent(physical.artifactLocation.uri); } catch { return undefined; }
+  if (/^[a-z][a-z\d+.-]*:|[\\?#\u0000-\u001f\u007f]/i.test(path) ||
+      path.split('/').some((part) => !part || part === '.' || part === '..')) return undefined;
+  const region = physical.region;
+  const point = {
+    path, start_line: region.startLine, end_line: region.endLine ?? region.startLine,
+    start_column: region.startColumn, end_column: region.endColumn,
+  };
+  if (Object.entries(point).some(([key, value]) => key !== 'path' && (!Number.isSafeInteger(value) || value < 1))) return undefined;
+  return point;
+}
+
+function reviewedFalsePositive(run, result, review, currentRuns) {
   if (!review) return false;
   const { context, alerts } = review;
-  if (run.tool.driver.name !== 'CodeQL' || result.locations?.length !== 1) return false;
+  if (run.tool.driver.name !== 'CodeQL') return false;
   // Raw CodeQL SARIF may omit exporter-added provenance. The fetch binds checkout SHA;
   // source metadata, when present, must independently agree with that exact analysis.
   if (![context.category, `${context.category}/`].includes(run.automationDetails?.id)) return false;
@@ -141,32 +224,68 @@ function reviewedFalsePositive(run, result, review) {
       !run.versionControlProvenance.some((source) => source.revisionId === context.sha &&
         source.repositoryUri === `https://github.com/${context.repository}` &&
         (!has(source, 'branch') || source.branch === context.ref)))) return false;
-  const physical = result.locations[0].physicalLocation;
-  if (!object(physical) || !object(physical.region) || !text(physical.artifactLocation?.uri)) return false;
-  let path;
-  try { path = decodeURIComponent(physical.artifactLocation.uri); } catch { return false; }
-  if (path.startsWith('/') || path.includes('\\') || path.split('/').some((part) => !part || part === '.' || part === '..')) return false;
-  const region = physical.region;
-  const point = {
-    path, start_line: region.startLine, end_line: region.endLine ?? region.startLine,
-    start_column: region.startColumn, end_column: region.endColumn,
-  };
-  if (Object.entries(point).some(([key, value]) => key !== 'path' && (!Number.isSafeInteger(value) || value < 1))) return false;
+  const point = findingPoint(result);
+  if (!point) return false;
   const ruleId = result.rule?.id ?? result.ruleId;
-  const matches = alerts.filter((alert) => {
-    const instance = alert.most_recent_instance;
-    return alert.rule.id === ruleId && instance.ref === context.ref && instance.commit_sha === context.sha &&
-      instance.category === context.category && instance.analysis_key === context.analysisKey &&
-      Object.entries(point).every(([key, value]) => instance.location[key] === value);
-  });
-  return matches.length === 1 && matches[0].state === 'dismissed' &&
-    matches[0].dismissed_reason === 'false positive' && matches[0].most_recent_instance.state === 'dismissed';
+  const matches = alerts.filter((alert) => sameFinding(alert, ruleId, point));
+  // An open, stale or ambiguous current alert must never inherit a base dismissal.
+  if (matches.length) return exactDismissal(matches, context);
+  // A primary-file blob cannot prove a path/cross-file finding unchanged. Those require
+  // an exact current review, as do multiple current results sharing one reviewed location.
+  if (['codeFlows', 'relatedLocations', 'stacks', 'graphs', 'graphTraversals', 'analysisTarget']
+    .some((key) => has(result, key)) || result.provenance?.conversionSources !== undefined ||
+    has(result.locations[0], 'logicalLocations')) return false;
+  const currentMatches = currentRuns.filter((candidateRun) =>
+    [context.category, `${context.category}/`].includes(candidateRun?.automationDetails?.id))
+    .flatMap((candidateRun) => Array.isArray(candidateRun.results) ? candidateRun.results : [])
+    .filter((candidate) => object(candidate) && (candidate.rule?.id ?? candidate.ruleId) === ruleId &&
+      JSON.stringify(findingPoint(candidate)) === JSON.stringify(point));
+  if (currentMatches.length !== 1) return false;
+  const artifact = result.locations[0].physicalLocation.artifactLocation;
+  if (has(artifact, 'index')) {
+    const indexed = run.artifacts?.[artifact.index]?.location;
+    if (!index(artifact.index) || !object(indexed) || indexed.uri !== artifact.uri ||
+        indexed.uriBaseId !== artifact.uriBaseId) return false;
+  }
+  let sourceBaseURI;
+  if (has(artifact, 'uriBaseId')) {
+    if (artifact.uriBaseId !== '%SRCROOT%') return false;
+    if (!has(run, 'originalUriBaseIds')) sourceBaseURI = implicitSourceRoot;
+    else {
+      const base = run.originalUriBaseIds?.[artifact.uriBaseId];
+      if (!object(base) || !text(base.uri) || has(base, 'uriBaseId')) return false;
+      sourceBaseURI = base.uri;
+    }
+  }
+  return review.verifyBaseline?.(ruleId, point, sourceBaseURI) === true;
+}
+
+function blockingDiagnostic(run, result, rule, score) {
+  const physical = result.locations?.[0]?.physicalLocation;
+  const artifact = physical?.artifactLocation;
+  const uri = artifact?.uri ?? (index(artifact?.index) ? run.artifacts?.[artifact.index]?.location?.uri : undefined);
+  let path = null;
+  if (text(uri)) {
+    try {
+      const decoded = decodeURIComponent(uri);
+      // Only source paths belong in logs, never URL credentials/query strings or source snippets.
+      if (!/^[a-z][a-z\d+.-]*:|[\\?#\u0000-\u001f\u007f]/i.test(decoded) &&
+          !decoded.split('/').some((part) => !part || part === '.' || part === '..')) path = decoded;
+    } catch { /* Missing diagnostic paths must not change the blocking decision. */ }
+  }
+  const line = physical?.region?.startLine;
+  return {
+    ruleId: result.rule?.id ?? result.ruleId ?? rule.id,
+    securitySeverity: score === undefined ? null : score >= 9 ? 'critical' : score >= 7 ? 'high' : score >= 4 ? 'medium' : score > 0 ? 'low' : 'none',
+    securityScore: score ?? null, resultLevel: result.level ?? null,
+    path, line: Number.isSafeInteger(line) && line > 0 ? line : null,
+  };
 }
 
 // GitHub uses rule.properties.security-severity for High/Critical, independently
 // of result.level. Keep the previous gate's explicit error-level blocking as well.
 // https://docs.github.com/en/code-security/reference/code-scanning/sarif-files/sarif-support
-export function summarizeSarif(log, review) {
+export function summarizeSarif(log, review, reportBlocking, currentRuns = log?.runs) {
   if (!object(log) || log.version !== '2.1.0' || !Array.isArray(log.runs) || log.runs.length === 0) {
     refuse('Missing or invalid SARIF runs');
   }
@@ -180,13 +299,18 @@ export function summarizeSarif(log, review) {
       if (has(result, 'level') && !['none', 'note', 'warning', 'error'].includes(result.level)) {
         refuse('Invalid SARIF result level');
       }
-      const highCritical = securityScore(ruleForResult(run.tool, result)) >= 7;
+      const rule = ruleForResult(run.tool, result);
+      const score = securityScore(rule);
+      const highCritical = score >= 7;
       const errorLevel = result.level === 'error';
-      const reviewed = (highCritical || errorLevel) && reviewedFalsePositive(run, result, review);
+      const reviewed = (highCritical || errorLevel) && reviewedFalsePositive(run, result, review, currentRuns);
       counts.highCritical += Number(highCritical);
       counts.errorLevel += Number(errorLevel);
       counts.reviewedFalsePositives += Number(reviewed);
       counts.blocking += Number((highCritical || errorLevel) && !reviewed);
+      if ((highCritical || errorLevel) && !reviewed && reportBlocking) {
+        reportBlocking(blockingDiagnostic(run, result, rule, score));
+      }
     }
   }
   return counts;
@@ -195,11 +319,15 @@ export function summarizeSarif(log, review) {
 export function checkFiles(files, output = console.log, review) {
   if (files.length === 0) refuse('CodeQL ran but produced NO SARIF — the scan did not analyse anything');
   let blocking = 0;
-  for (const file of files) {
+  const inputs = files.map((file) => {
     let log;
     try { log = JSON.parse(readFileSync(file, 'utf8')); }
     catch { refuse(`Cannot read valid SARIF: ${basename(file)}`); }
-    const counts = summarizeSarif(log, review);
+    return { file, log };
+  });
+  const currentRuns = inputs.flatMap(({ log }) => Array.isArray(log?.runs) ? log.runs : []);
+  for (const { file, log } of inputs) {
+    const counts = summarizeSarif(log, review, (finding) => output(`blocking result: ${JSON.stringify(finding)}`), currentRuns);
     output(`  ${basename(file)}: ${counts.highCritical} high/critical security finding(s), ${counts.errorLevel} error-level result(s), ${counts.reviewedFalsePositives} exact reviewed false positive(s)`);
     blocking += counts.blocking;
   }

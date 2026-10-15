@@ -27,7 +27,7 @@ import (
 // capability JSON is injected by fixture SQL. Certificate state is supplied as
 // by the listener; this fixture does not claim a real TLS handshake.
 func TestAgentDNSIPsecReportActivatesOwnedProfilePostgresContract(t *testing.T) {
-	ctx, pool := testpostgres.NewAtVersion(t, 219)
+	ctx, pool := testpostgres.NewAtVersion(t, 228)
 	org, actor, site, gateway, other := uuid.New(), uuid.New(), uuid.New(), uuid.New(), uuid.New()
 	serial := new(big.Int).SetBytes(gateway[:])
 	for _, step := range []struct {

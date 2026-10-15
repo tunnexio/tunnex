@@ -1339,6 +1339,8 @@ type FqdnResolverContextProfile struct {
 	IpsecConnectionID          pgtype.UUID `json:"ipsec_connection_id"`
 	IpsecConfigurationRevision *int64      `json:"ipsec_configuration_revision"`
 	IpsecSourceAddress         *netip.Addr `json:"ipsec_source_address"`
+	StaticRecords              []byte      `json:"static_records"`
+	LanListener                []byte      `json:"lan_listener"`
 }
 
 type FqdnResolverContextProfileEndpoint struct {

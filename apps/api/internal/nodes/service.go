@@ -1935,8 +1935,15 @@ func (s *Service) finalizeArtifact(topo siteTopology, node sqlc.Node, pol *polic
 			pol = &policyspec.Compiled{NodeID: node.ID.String(), Mode: "off", Mesh: true}
 		}
 		pol.DNSResolverProfiles = nil
+		gatewayDNS := ""
+		if cidr, err := ipalloc.GatewayCIDR(topo.poolCIDR); err == nil {
+			if prefix, err := netip.ParsePrefix(cidr); err == nil {
+				gatewayDNS = prefix.Addr().String()
+			}
+		}
 		for _, profile := range declared {
-			pol.DNSResolverProfiles = append(pol.DNSResolverProfiles, policy.DNSProfileForAllowedTraffic(profile, pol.Allow))
+			profile = staticDNSCompletionForGateway(node, profile, time.Now())
+			pol.DNSResolverProfiles = append(pol.DNSResolverProfiles, policy.DNSProfileForAllowedTraffic(profile, pol.Allow, gatewayDNS))
 		}
 		sort.Slice(pol.DNSResolverProfiles, func(a, b int) bool {
 			return pol.DNSResolverProfiles[a].ProfileID < pol.DNSResolverProfiles[b].ProfileID
@@ -2158,9 +2165,10 @@ func (s *Service) ReportStatus(ctx context.Context, node sqlc.Node, stats []Peer
 // the control plane compares it against what it pushed — a gateway running stale
 // policy must be VISIBLE (a policy violation in slow motion), never silent.
 type AppliedPolicy struct {
-	WireGuardAppliedMTU int    `json:"wireguard_applied_mtu"`
-	AIVPNHTTPReady      bool   `json:"ai_vpn_http_ready"`
-	AIVPNHTTPAddress    string `json:"ai_vpn_http_address"`
+	DNSLANListeners     []DNSLANListenerState `json:"dns_lan_listeners"`
+	WireGuardAppliedMTU int                   `json:"wireguard_applied_mtu"`
+	AIVPNHTTPReady      bool                  `json:"ai_vpn_http_ready"`
+	AIVPNHTTPAddress    string                `json:"ai_vpn_http_address"`
 	// IPsecConfigVersion is an authenticated configuration protocol assertion.
 	// Only exact version 1 is recognized; current shipped agents report zero.
 	IPsecConfigVersion                 int    `json:"ipsec_config_version"`
@@ -2169,6 +2177,7 @@ type AppliedPolicy struct {
 	IPsecGCPHAVersion                  int    `json:"ipsec_gcp_ha_version"`
 	IPsecAzureProfileRecreationVersion int    `json:"ipsec_azure_profile_recreation_version"`
 	IPsecAzureBGPRecreationVersion     int    `json:"ipsec_azure_bgp_recreation_version"`
+	IPsecDesktopTransitVersion         int    `json:"ipsec_desktop_transit_version"`
 	IPsecFQDNPolicyVersion             int    `json:"ipsec_fqdn_policy_version"`
 	IPsecAzureVersion                  int    `json:"ipsec_azure_version"`
 	IPsecBGPVersion                    int    `json:"ipsec_bgp_version"`
@@ -2264,6 +2273,9 @@ func (s *Service) ReportWGInfo(ctx context.Context, node sqlc.Node, publicKey, e
 	if applied.IPsecConfigVersion != 1 {
 		applied.IPsecConfigVersion = 0
 	}
+	if applied.IPsecConfigVersion != 1 || applied.IPsecBGPVersion != 1 || applied.IPsecDesktopTransitVersion != 1 {
+		applied.IPsecDesktopTransitVersion = 0
+	}
 	applied.IPsecFQDNPolicyVersion = ipsecFQDNPolicyCapability(applied.IPsecConfigVersion, applied.IPsecFQDNPolicyVersion)
 	if applied.IPsecConfigVersion != 1 || applied.IPsecBGPVersion != 1 {
 		applied.IPsecBGPVersion = 0
@@ -2308,6 +2320,7 @@ func (s *Service) ReportWGInfo(ctx context.Context, node sqlc.Node, publicKey, e
 		applied.WireGuardAppliedMTU = 0
 	}
 	caps, err := json.Marshal(map[string]any{
+		"dns_lan_listeners":                      boundedDNSLANListenerStates(applied.DNSLANListeners),
 		"wireguard_applied_mtu":                  applied.WireGuardAppliedMTU,
 		"ai_vpn_http_ready":                      applied.AIVPNHTTPReady,
 		"ai_vpn_http_address":                    applied.AIVPNHTTPAddress,
@@ -2320,6 +2333,7 @@ func (s *Service) ReportWGInfo(ctx context.Context, node sqlc.Node, publicKey, e
 		"ipsec_azure_bgp_recreation_version":     applied.IPsecAzureBGPRecreationVersion,
 		"ipsec_azure_profile_recreation_version": applied.IPsecAzureProfileRecreationVersion,
 		"ipsec_fqdn_policy_version":              applied.IPsecFQDNPolicyVersion,
+		"ipsec_desktop_transit_version":          applied.IPsecDesktopTransitVersion,
 		"ipsec_retained_guard_version":           applied.IPsecRetainedGuardVersion,
 		"egress_nat":                             egressNAT,
 		"egress_ipv6":                            egressIPv6,
@@ -2403,8 +2417,9 @@ func (s *Service) trackDesync(ctx context.Context, node sqlc.Node, appliedHash s
 // control plane gates on a gateway's abilities (e.g. full-tunnel egress) or surfaces
 // its applied-policy status (S7.2 staleness).
 type NodeCapabilities struct {
-	AIVPNHTTPReady   bool   `json:"ai_vpn_http_ready"`
-	AIVPNHTTPAddress string `json:"ai_vpn_http_address"`
+	DNSLANListeners  []DNSLANListenerState `json:"dns_lan_listeners"`
+	AIVPNHTTPReady   bool                  `json:"ai_vpn_http_ready"`
+	AIVPNHTTPAddress string                `json:"ai_vpn_http_address"`
 	// Freshness is the server-written policy_reported_at on the same node row.
 	IPsecConfigVersion                 int    `json:"ipsec_config_version"`
 	IPsecRecoveryVersion               int    `json:"ipsec_recovery_version"`
@@ -2412,6 +2427,7 @@ type NodeCapabilities struct {
 	IPsecGCPHAVersion                  int    `json:"ipsec_gcp_ha_version"`
 	IPsecAzureProfileRecreationVersion int    `json:"ipsec_azure_profile_recreation_version"`
 	IPsecAzureBGPRecreationVersion     int    `json:"ipsec_azure_bgp_recreation_version"`
+	IPsecDesktopTransitVersion         int    `json:"ipsec_desktop_transit_version"`
 	IPsecFQDNPolicyVersion             int    `json:"ipsec_fqdn_policy_version"`
 	IPsecAzureVersion                  int    `json:"ipsec_azure_version"`
 	IPsecBGPVersion                    int    `json:"ipsec_bgp_version"`

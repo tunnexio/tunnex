@@ -473,6 +473,13 @@ func cloneDesiredState(in reconcile.DesiredState) reconcile.DesiredState {
 				policy.DNSResolverProfiles[i].ZoneSuffixes = slices.Clone(profile.ZoneSuffixes)
 				policy.DNSResolverProfiles[i].AllowedSources = slices.Clone(profile.AllowedSources)
 				policy.DNSResolverProfiles[i].Endpoints = slices.Clone(profile.Endpoints)
+				policy.DNSResolverProfiles[i].StaticRecords = slices.Clone(profile.StaticRecords)
+				if profile.LANListener != nil {
+					listener := *profile.LANListener
+					listener.AllowedSources = slices.Clone(profile.LANListener.AllowedSources)
+					listener.DefaultUpstreams = slices.Clone(profile.LANListener.DefaultUpstreams)
+					policy.DNSResolverProfiles[i].LANListener = &listener
+				}
 			}
 		}
 		policy.VIPMappings = append([]nodepolicy.VIPMapping(nil), in.Policy.VIPMappings...)

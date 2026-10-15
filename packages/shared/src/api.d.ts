@@ -10095,8 +10095,33 @@ export interface components {
              */
             source_address: string;
         };
+        FQDNStaticRecord: {
+            /** @description Exact hostname within this profile's DNS zone suffixes. */
+            name: string;
+            /** @enum {string} */
+            type: "A" | "AAAA" | "CNAME";
+            /** @description Private IPv4 for A, private IPv6 for AAAA, hostname for CNAME. CNAME does not implicitly enable upstream recursion. */
+            value: string;
+            /** @default 300 */
+            ttl: number;
+        };
+        FQDNResolverLANListener: {
+            /**
+             * Format: ipv4
+             * @description Private IPv4 address owned by this gateway on the selected interface, within an approved Site subnet. UDP/TCP port 53 only.
+             */
+            address: string;
+            interface: string;
+            /** @description Explicit private IPv4 client CIDRs within approved Site subnets. DNS permission does not grant application access. */
+            allowed_sources: string[];
+            /** @description Optional public IPv4 resolvers on UDP/TCP 53 for names outside every configured private zone. Empty or omitted keeps private-only behavior. Each opt-in grants other-domain DNS only to its allowed_sources. Opted-in profiles sharing a bind must use identical upstream sets. Requires gateway policy version 13. */
+            default_upstreams?: string[];
+        };
         FQDNResolverProfile: {
             ipsec_path?: components["schemas"]["FQDNResolverIPsecPath"];
+            /** @description Static private DNS authority. Exclusive with ipsec_path. Optional endpoints complete configured external CNAME targets only; records and endpoints share this immutable profile lifecycle. */
+            static_records?: components["schemas"]["FQDNStaticRecord"][];
+            lan_listener?: components["schemas"]["FQDNResolverLANListener"];
             /**
              * Format: uuid
              * @description Immutable profile provenance bound to gateway DNS requests and answer generations.
@@ -10110,16 +10135,21 @@ export interface components {
             provider_hint: "aws" | "azure" | "google_cloud" | "on_premises";
             /** @description Normalized DNS suffixes. The most-specific matching suffix selects this profile. */
             zone_suffixes: string[];
+            /** @description For static profiles, optional 0 to 3 distinct public IPv4 resolvers on UDP or TCP port 53 complete only configured external CNAME targets. Requires fresh gateway policy capability 14; empty preserves static-only behavior. Does not grant application access or general DNS recursion. Other profiles require 1 to 8 private-zone resolver endpoints. */
             endpoints: components["schemas"]["FQDNResolverEndpoint"][];
             /** @description True only for a migrated legacy flat configuration. New profile-native configurations always require explicit suffixes. */
             legacy_default: boolean;
         };
         FQDNResolverProfileRequest: {
             ipsec_path?: components["schemas"]["FQDNResolverIPsecPath"];
+            /** @description Static private DNS authority. Exclusive with ipsec_path. Optional endpoints complete configured external CNAME targets only; records and endpoints share this immutable profile lifecycle. */
+            static_records?: components["schemas"]["FQDNStaticRecord"][];
+            lan_listener?: components["schemas"]["FQDNResolverLANListener"];
             name: string;
             /** @enum {string} */
             provider_hint: "aws" | "azure" | "google_cloud" | "on_premises";
             zone_suffixes: string[];
+            /** @description For static profiles, optional 0 to 3 distinct public IPv4 resolvers on UDP or TCP port 53 complete only configured external CNAME targets. Requires fresh gateway policy capability 14; empty preserves static-only behavior. Does not grant application access or general DNS recursion. Other profiles require 1 to 8 private-zone resolver endpoints. */
             endpoints: components["schemas"]["FQDNResolverEndpoint"][];
         };
         FQDNResolverProfileSelection: {
@@ -11351,6 +11381,15 @@ export interface components {
             group_id?: string | null;
             group_name?: string | null;
         };
+        DNSLANListenerStatus: {
+            /** Format: ipv4 */
+            address: string;
+            interface: string;
+            /** @description Both UDP and TCP 53 sockets are bound on the owned interface. Does not prove upstream or application connectivity. */
+            ready: boolean;
+            error: string;
+            profile_ids: string[];
+        };
         Node: {
             /** Format: uuid */
             id: string;
@@ -11390,6 +11429,13 @@ export interface components {
              * @description S8.3 (D2/CH): the site this gateway is bound to (null = not a site gateway). The topology view joins nodes to sites by this field — a site's gateways are the nodes with this site_id, rendered as a LIST (many nodes → one site scales to future HA; the UI never assumes one-gateway-per-site).
              */
             site_id?: string | null;
+            /** @description Authenticated gateway report of actual LAN DNS socket readiness. Missing or stale reports are unknown. */
+            dns_lan_listeners?: components["schemas"]["DNSLANListenerStatus"][];
+            /**
+             * Format: date-time
+             * @description Control-plane receipt time of the gateway status report.
+             */
+            dns_lan_reported_at?: string;
             /** @description S8.3 (CW): the agent's REPORTED max-supported policy version — observability (a reported fact, OUTSIDE the compile hash; no ProtocolVersion bump). NULL = never reported (a pre-upgrade agent): absence reads as BELOW the current ceiling, never unknown-treated-as-ready (S7.5.3 absence-is- not-compliance, applied to version readiness). The UI's cross-site upgrade warning names the gateways whose max is below the ceiling. */
             max_policy_version?: number | null;
             /**

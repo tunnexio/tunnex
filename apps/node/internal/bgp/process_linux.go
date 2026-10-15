@@ -55,14 +55,14 @@ func StartObserver(ctx context.Context, dir string) (*Process, error) {
 	return startProcess(ctx, dir, Config{}, nil, true, nil)
 }
 func startProcess(ctx context.Context, dir string, c Config, checkpoint func(ProcessIdentity) error, observer bool, localExportProof LocalExportProof) (*Process, error) {
-	if (!observer && !c.valid()) || ProbePackage(ctx) != nil || !filepath.IsAbs(dir) || filepath.Clean(dir) != dir {
+	if (len(c.DesktopPrefixes) > 0 && localExportProof == nil) || (!observer && !c.valid()) || ProbePackage(ctx) != nil || !filepath.IsAbs(dir) || filepath.Clean(dir) != dir {
 		return nil, ErrPackage
 	}
 	if !observer {
 		if err := ProbePeerReachability(ctx, c.Peers); err != nil {
 			return nil, err
 		}
-		if err := proveProcessLocalExport(ctx, c.LocalPrefixes, localExportProof, ProbeLocalReachability); err != nil {
+		if err := proveProcessLocalExport(ctx, c.exportPrefixes(), localExportProof, ProbeLocalReachability); err != nil {
 			return nil, err
 		}
 	}

@@ -39,6 +39,7 @@ type RuntimeLeaseClient interface {
 	RenewIPsecLease(context.Context, uuid.UUID, RuntimeLeaseRequest) (RuntimeLease, error)
 }
 type RuntimeControllerConfig struct {
+	DesktopNAT                  *DesktopNATSource
 	FQDNPolicy                  *RuntimeFQDNPolicySource
 	Diagnostic                  func(RuntimeDiagnostic)
 	DNSReadTiming               bool
@@ -61,6 +62,9 @@ type runtimeActive struct {
 }
 
 type RuntimeController struct {
+	desktopObserve          func(context.Context, []GuardGrant) ([]GuardGrant, error)
+	bgpDesktopGrants        map[uuid.UUID][]GuardGrant
+	bgpDesktopExports       map[uuid.UUID][]netip.Prefix
 	bgpStaged               map[uuid.UUID]bool
 	bgpProcesses            map[uuid.UUID]runtimeBGPSession
 	bgpCheckpointBeforeSave func(bgpengine.ProcessIdentity) error
@@ -247,7 +251,11 @@ func (c *RuntimeController) refuse(ctx context.Context, entries []RuntimeJournal
 		seen[g.ID] = g
 		in.Connections = append(in.Connections, g)
 	}
-	return c.replace(ctx, in)
+	manifest, err := c.replace(ctx, in)
+	if err == nil {
+		err = c.stopUnleasedDesktopExports(entries, nil)
+	}
+	return manifest, err
 }
 func (c *RuntimeController) Apply(ctx context.Context, m RuntimeMaterial) (ackResult RuntimeAcknowledgement, resultErr error) {
 	stage := "input"
@@ -285,6 +293,10 @@ func (c *RuntimeController) Apply(ctx context.Context, m RuntimeMaterial) (ackRe
 	stage = "material_entry"
 	entry, grants, e := runtimeMaterialEntry(m, c.config.OrgID, c.config.GatewayID, ns)
 	if e != nil {
+		return fail()
+	}
+	c.publishDesktopNAT(m.Manifest.ConnectionID, grants)
+	if grants, e = c.observeDesktopGrants(ctx, grants); e != nil {
 		return fail()
 	}
 	c.withdrawChangedDNSMaterial(m, grants)
@@ -587,6 +599,7 @@ func (c *RuntimeController) Cleanup(ctx context.Context, cleanup RuntimeCleanup)
 	if !c.started || c.closed || ctx.Err() != nil || !cleanup.RetainGuard || !runtimeCleanupValid(cleanup, c.config.OrgID, c.config.GatewayID) || cleanup.CoversDeliveryRevision <= 0 || cleanup.CoversDeliveryRevision >= cleanup.DesiredRevision || len(cleanup.Lineage) == 0 || len(cleanup.Lineage) > 256 {
 		return fail()
 	}
+	c.config.DesktopNAT.Set(cleanup.Manifest.ConnectionID, nil)
 	delete(c.deniedClassicTransports, cleanup.Manifest.ConnectionID)
 	c.withdrawDNSOwnerView(cleanup.Manifest.ConnectionID)
 	stage = "cleanup_journal_read"
@@ -838,6 +851,9 @@ func (c *RuntimeController) installActiveCandidates(ctx context.Context, entries
 		proofStarted := time.Now()
 		proofCtx, proofCancel := context.WithTimeout(ctx, 5*time.Second)
 		proofErr := c.proveCurrent(proofCtx, a.Entry, a.Environment)
+		if proofErr == nil {
+			proofErr = c.proveDesktopGrants(proofCtx, a.Grants)
+		}
 		c.emitRuntimeDiagnostic(proofCtx, "install_active", stage, id, proofStarted, a.Entry.Allocation.Namespace != ns || proofErr != nil)
 		proofCancel()
 		if a.Entry.Allocation.Namespace != ns || proofErr != nil || !c.fqdnGrantsCurrent(a.Grants) {
@@ -987,6 +1003,10 @@ func (c *RuntimeController) installActiveCandidates(ctx context.Context, entries
 			delete(active, g.ID)
 			_, _ = c.refuse(ctx, entries)
 			return ErrRuntimeController
+		}
+		if err := c.proveDesktopGrants(commitCtx, g.Grants); err != nil {
+			_, _ = c.refuse(ctx, entries)
+			return err
 		}
 		stage = "entry_dns_source"
 		for _, grant := range g.Grants {
@@ -1140,6 +1160,9 @@ func (c *RuntimeController) installActiveCandidates(ctx context.Context, entries
 	stage = "combined_guard_candidate_qualification"
 	if candidateQualification != nil && !candidateQualification() {
 		return ErrRuntimeController
+	}
+	if err := c.stopUnleasedDesktopExports(entries, active); err != nil {
+		return err
 	}
 	c.active = active
 	c.publishDNSOwnerView(manifest)

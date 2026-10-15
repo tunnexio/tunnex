@@ -23,6 +23,7 @@ import (
 // idempotent against a dirty device.
 type wgctrlBackend struct {
 	appliedMTU             atomic.Int64
+	mtuCap                 int
 	iface                  string
 	logger                 *slog.Logger
 	preserveInterfaceAlias string
@@ -46,7 +47,7 @@ type wgctrlBackend struct {
 }
 
 func newWGCtrlBackend(iface string, logger *slog.Logger, options BackendOptions) (WGBackend, error) {
-	return &wgctrlBackend{iface: iface, logger: logger, preserveInterfaceAlias: options.PreserveInterfaceAlias, runFn: run}, nil
+	return &wgctrlBackend{iface: iface, logger: logger, preserveInterfaceAlias: options.PreserveInterfaceAlias, mtuCap: options.WireGuardMTUCap, runFn: run}, nil
 }
 
 func run(ctx context.Context, name string, args ...string) (string, error) {
@@ -139,6 +140,9 @@ func (b *wgctrlBackend) Configure(ctx context.Context, cfg InterfaceConfig) erro
 	mtu := cfg.MTU
 	if mtu <= 0 {
 		return b.ensureLinkUp(ctx, mtu)
+	}
+	if b.mtuCap > 0 && mtu > b.mtuCap {
+		mtu = b.mtuCap
 	}
 	underlay, err := b.underlayMTU(ctx)
 	if err != nil {

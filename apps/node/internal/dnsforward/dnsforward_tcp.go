@@ -81,6 +81,10 @@ func (f *Forwarder) closeTCPBinds() {
 // entitlement/rate limiter as UDP. Sessions have bounded concurrency, idle
 // duration, frame size and query count. Withdrawal closes accepted sessions.
 func (f *Forwarder) serveTCP(ctx context.Context, listener net.Listener) {
+	f.serveTCPWithHandler(ctx, listener, f.handleTransport)
+}
+
+func (f *Forwarder) serveTCPWithHandler(ctx context.Context, listener net.Listener, handler dnsHandler) {
 	var handlers sync.WaitGroup
 	defer handlers.Wait()
 	slots := make(chan struct{}, 64)
@@ -100,12 +104,16 @@ func (f *Forwarder) serveTCP(ctx context.Context, listener net.Listener) {
 			defer handlers.Done()
 			defer func() { <-slots }()
 			defer conn.Close()
-			f.serveTCPConn(ctx, conn)
+			f.serveTCPConnWithHandler(ctx, conn, handler)
 		}(conn)
 	}
 }
 
 func (f *Forwarder) serveTCPConn(ctx context.Context, conn net.Conn) {
+	f.serveTCPConnWithHandler(ctx, conn, f.handleTransport)
+}
+
+func (f *Forwarder) serveTCPConnWithHandler(ctx context.Context, conn net.Conn, handler dnsHandler) {
 	source, err := netip.ParseAddrPort(conn.RemoteAddr().String())
 	if err != nil {
 		return
@@ -129,7 +137,7 @@ func (f *Forwarder) serveTCPConn(ctx context.Context, conn net.Conn) {
 		if _, err := io.ReadFull(conn, query); err != nil {
 			return
 		}
-		response := f.handleTransport(query, source.Addr().Unmap(), "tcp")
+		response := handler(query, source.Addr().Unmap(), "tcp")
 		if len(response) < 12 || len(response) > 65535 {
 			return
 		}

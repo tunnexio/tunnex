@@ -68,7 +68,7 @@ func runtimeBuildEntry(m RuntimeMaterial, org, node uuid.UUID, ns string, secret
 	if !validAzureRecreationManifest(m.Manifest) {
 		return fail()
 	}
-	if !validRetainedGuardReferences(m.Manifest.RetainedGuardPredecessors, m.Manifest.ConnectionID, m.ID, bgp && m.Manifest.AzureBGPRecreationVersion == nil && m.Manifest.AzureProfileRecreationVersion == nil) || !runtimeDeliveryValid(m.RuntimeDelivery, org, node, "apply") || m.CoversDeliveryRevision != 0 || (secrets && !validDigest(m.Policy.Hash)) || len(m.Policy.Grants) > 128 {
+	if !validRetainedGuardReferences(m.Manifest.RetainedGuardPredecessors, m.Manifest.ConnectionID, m.ID, bgp && m.Manifest.AzureBGPRecreationVersion == nil && m.Manifest.AzureProfileRecreationVersion == nil) || !runtimeDeliveryValid(m.RuntimeDelivery, org, node, "apply") || m.CoversDeliveryRevision != 0 || (secrets && !validDigest(m.Policy.Hash)) || len(m.Policy.Grants)+len(m.Policy.DesktopGrants) > 128 {
 		return fail()
 	}
 	local, ok := runtimePrefixes(m.Manifest.LocalPrefixes)
@@ -184,6 +184,11 @@ func runtimeBuildEntry(m RuntimeMaterial, org, node uuid.UUID, ns string, secret
 		}
 		grants = append(grants, GuardGrant{Source: source, Destination: dest, Protocol: protocol, PortLow: g.PortLow, PortHigh: g.PortHigh})
 	}
+	desktop, desktopErr := runtimeDesktopGrants(m, local, remote)
+	if desktopErr != nil {
+		return fail()
+	}
+	grants = append(grants, desktop...)
 	return out, grants, nil
 }
 

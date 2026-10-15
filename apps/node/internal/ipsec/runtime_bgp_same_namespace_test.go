@@ -9,13 +9,21 @@ import (
 	"testing"
 )
 
-func TestGCPAppliedSameNamespaceMissingDaemonTransport(t *testing.T) {
-	for _, fault := range []string{"none", "initial boot", "foreign config", "partial config", "missing links", "environment drift", "cancelled", "expired lease", "wrong namespace", "loaded target", "foreign key", "one loaded slot", "AWS unchanged", "other bytes", "other SPI", "other rekey", "other unknown SA"} {
+func TestBGPAppliedSameNamespaceMissingDaemonTransport(t *testing.T) {
+	for _, profile := range []struct {
+		name     string
+		material func() RuntimeMaterial
+	}{{"AWS", bgpMaterialFixture}, {"GCP HA", gcpMaterialFixture}} {
+		t.Run(profile.name, func(t *testing.T) {
+			testBGPAppliedSameNamespaceMissingDaemonTransport(t, profile.material)
+		})
+	}
+}
+
+func testBGPAppliedSameNamespaceMissingDaemonTransport(t *testing.T, material func() RuntimeMaterial) {
+	for _, fault := range []string{"none", "initial boot", "foreign config", "partial config", "missing links", "environment drift", "cancelled", "expired lease", "wrong namespace", "loaded target", "foreign key", "one loaded slot", "unowned links", "changed link identity", "wrong boot", "denial failure", "unknown transport", "late foreign config", "other bytes", "other SPI", "other rekey", "other unknown SA"} {
 		t.Run(fault, func(t *testing.T) {
-			m := gcpMaterialFixture()
-			if fault == "AWS unchanged" {
-				m = bgpMaterialFixture()
-			}
+			m := material()
 			initial, _, err := runtimeMaterialEntry(m, m.Manifest.OrgID, m.Manifest.NodeID, "net:[4026531992]")
 			if err != nil {
 				t.Fatal(err)
@@ -123,6 +131,28 @@ func TestGCPAppliedSameNamespaceMissingDaemonTransport(t *testing.T) {
 					}
 					return request(ctx, command, event, message)
 				}
+			case "unowned links":
+				e.Observed = [2]Ownership{}
+			case "changed link identity":
+				e.Observed[0].InterfaceIndex++
+			case "wrong boot":
+				e.Restoration = &RuntimeRestoration{BootID: "0259d2d2-1111-4111-8111-111111111111"}
+			case "denial failure":
+				c.replace = func(context.Context, GuardIntent) (GuardManifest, error) { return GuardManifest{}, ErrGuardReadback }
+			case "unknown transport":
+				c.recoveryObserve = func(context.Context, RuntimeJournalEntry) [2]string { return [2]string{"unknown", "down"} }
+			case "late foreign config":
+				request := c.config.Daemon.request
+				reads := 0
+				c.config.Daemon.request = func(ctx context.Context, command, event string, message viciMessage) (viciMessage, []viciMessage, error) {
+					if command == "get-conns" {
+						reads++
+						if reads > 1 {
+							return viciMessage{"conns": viciList("foreign-connection")}, nil, nil
+						}
+					}
+					return request(ctx, command, event, message)
+				}
 			case "missing links":
 				f.deleted = [2]bool{true, true}
 				f.routes = [2]map[string]bool{{}, {}}
@@ -137,8 +167,14 @@ func TestGCPAppliedSameNamespaceMissingDaemonTransport(t *testing.T) {
 			case "wrong namespace":
 				c.namespace = func() (string, error) { return "net:[999]", nil }
 			}
+			persistedBefore, _ := c.journal.Entries()
+			kernelMutations := f.mutations
 			recreate, missing, err := c.bgpRestoredTransportAbsent(ctx, e, preparedEntries, active.Authority, active.Identity, active.Environment)
-			if fault == "AWS unchanged" || fault == "loaded target" {
+			persistedAfter, _ := c.journal.Entries()
+			if mutations != 0 || f.mutations != kernelMutations || !reflect.DeepEqual(persistedBefore, persistedAfter) {
+				t.Fatal("restart preparation mutated daemon, kernel or journal")
+			}
+			if fault == "loaded target" {
 				if err != nil || recreate || missing || *denied || mutations != 0 {
 					t.Fatal("existing transport path changed", fault, err)
 				}
@@ -159,7 +195,6 @@ func TestGCPAppliedSameNamespaceMissingDaemonTransport(t *testing.T) {
 			if fault == "other bytes" {
 				return
 			}
-			persistedBefore, _ := c.journal.Entries()
 			owned, err := c.kernel.Apply(ctx, e.Allocation, e.Observed)
 			if err != nil || owned != e.Observed {
 				t.Fatal("retained native ownership was replaced", err)
@@ -175,7 +210,7 @@ func TestGCPAppliedSameNamespaceMissingDaemonTransport(t *testing.T) {
 			if mutations != 4 {
 				t.Fatal("two normal load-shared/load-conn pairs missing", mutations)
 			}
-			persistedAfter, _ := c.journal.Entries()
+			persistedAfter, _ = c.journal.Entries()
 			if !reflect.DeepEqual(persistedBefore, persistedAfter) {
 				t.Fatal("preparation manufactured restoration or changed journal")
 			}
