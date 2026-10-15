@@ -2,6 +2,7 @@ package fqdnresources
 
 import (
 	"context"
+	"fmt"
 	"net/url"
 	"os"
 	"slices"
@@ -82,7 +83,7 @@ func TestPostgresSetResolverConfigReplacement(t *testing.T) {
 	t.Cleanup(func() { _, _ = admin.Exec(context.Background(), "DROP DATABASE IF EXISTS "+name+" WITH (FORCE)") })
 	testURL := *base
 	testURL.Path = "/" + name
-	if err := db.MigrateTo(testURL.String(), 219); err != nil {
+	if err := db.MigrateTo(testURL.String(), 228); err != nil {
 		t.Fatal(err)
 	}
 	pool, err := pgxpool.New(ctx, testURL.String())
@@ -148,5 +149,200 @@ func TestPostgresSetResolverConfigReplacement(t *testing.T) {
 	}
 	if invalidCommitted != 0 {
 		t.Fatalf("invalid resolver revisions committed: %d", invalidCommitted)
+	}
+	exec(`INSERT INTO site_subnets(site_id,cidr,status) VALUES($1,'192.168.1.0/24','approved')`, site)
+	static := []ResolverProfile{{Name: "Managed records", ProviderHint: "on_premises", ZoneSuffixes: []string{"private.example"}, StaticRecords: []ResolverStaticRecord{{Name: "app.private.example", Type: "A", Value: "10.20.1.10", TTL: 300}, {Name: "alias.private.example", Type: "CNAME", Value: "app.private.example", TTL: 300}}, LANListener: &ResolverLANListener{Address: "192.168.1.39", Interface: "eth0", AllowedSources: []string{"192.168.1.0/24"}}}}
+	for _, capability := range []struct {
+		version int
+		age     string
+	}{{11, "0 seconds"}, {12, "2 minutes"}} {
+		exec(`UPDATE nodes SET capabilities=jsonb_build_object('max_policy_version',$2::int),policy_reported_at=clock_timestamp()-$3::interval WHERE id=$1`, gateway, capability.version, capability.age)
+		if _, err := New(pool).SetResolverProfiles(ctx, org, site, gateway, uuid.Nil, "test", "unsupported static profile", static); err == nil {
+			t.Fatal("unsupported or stale gateway accepted static DNS")
+		}
+		retained, err := New(pool).ResolverConfig(ctx, org, site, gateway)
+		if err != nil || retained.ID != got.ID {
+			t.Fatalf("capability refusal retired previous profile: %+v %v", retained, err)
+		}
+	}
+	exec(`UPDATE nodes SET capabilities=jsonb_build_object('max_policy_version',12),policy_reported_at=clock_timestamp() WHERE id=$1`, gateway)
+	managed, err := New(pool).SetResolverProfiles(ctx, org, site, gateway, uuid.Nil, "test", "static profile proof", static)
+	if err != nil {
+		t.Fatalf("activate static records: %v", err)
+	}
+	read, err := New(pool).ResolverConfig(ctx, org, site, gateway)
+	if err != nil || read.ID != managed.ID || read.Version != 3 || len(read.Profiles) != 1 || len(read.Profiles[0].StaticRecords) != 2 || read.Profiles[0].LANListener == nil || read.Profiles[0].LANListener.Address != "192.168.1.39" {
+		t.Fatalf("static readback=%+v err=%v", read, err)
+	}
+	static[0].LANListener.DefaultUpstreams = []string{"8.8.8.8", "1.1.1.1"}
+	for _, capability := range []struct {
+		version int
+		age     string
+	}{{12, "0 seconds"}, {13, "2 minutes"}} {
+		exec(`UPDATE nodes SET capabilities=jsonb_build_object('max_policy_version',$2::int),policy_reported_at=clock_timestamp()-$3::interval WHERE id=$1`, gateway, capability.version, capability.age)
+		if _, err := New(pool).SetResolverProfiles(ctx, org, site, gateway, uuid.Nil, "test", "unsupported public DNS", static); err == nil {
+			t.Fatal("old or stale gateway accepted public DNS")
+		}
+		retained, err := New(pool).ResolverConfig(ctx, org, site, gateway)
+		if err != nil || retained.ID != managed.ID {
+			t.Fatalf("public DNS refusal changed current authority: %+v %v", retained, err)
+		}
+	}
+	exec(`UPDATE nodes SET capabilities=jsonb_build_object('max_policy_version',13),policy_reported_at=clock_timestamp() WHERE id=$1`, gateway)
+	managed, err = New(pool).SetResolverProfiles(ctx, org, site, gateway, uuid.Nil, "test", "explicit public DNS", static)
+	if err != nil {
+		t.Fatal(err)
+	}
+	read, err = New(pool).ResolverConfig(ctx, org, site, gateway)
+	if err != nil || read.Version != 4 || !slices.Equal(read.Profiles[0].LANListener.DefaultUpstreams, []string{"1.1.1.1", "8.8.8.8"}) {
+		t.Fatalf("public DNS readback=%+v err=%v", read, err)
+	}
+	staticResource := uuid.New()
+	exec(`INSERT INTO fqdn_resources(id,org_id,name,fqdn,resolver_site_id,resolver_node_id) VALUES($1,$2,'managed app','app.private.example',$3,$4)`, staticResource, org, site, gateway)
+	if detail, err := New(pool).Detail(ctx, org, staticResource); err != nil || detail.Resource.State != "resolving" {
+		t.Fatalf("static-only context readiness=%+v err=%v", detail, err)
+	}
+	if _, err := New(pool).ResolverConfig(ctx, uuid.New(), site, gateway); err == nil {
+		t.Fatal("cross-tenant read accepted")
+	}
+	if err := New(pool).DeleteResolverConfig(ctx, uuid.New(), site, gateway, uuid.Nil, "test", "foreign delete"); err == nil {
+		t.Fatal("cross-tenant delete accepted")
+	}
+	static[0].LANListener.AllowedSources = []string{"10.0.0.0/8"}
+	if _, err := New(pool).SetResolverProfiles(ctx, org, site, gateway, uuid.Nil, "test", "unapproved sources", static); err == nil {
+		t.Fatal("unapproved LAN sources accepted")
+	}
+	retained, err := New(pool).ResolverConfig(ctx, org, site, gateway)
+	if err != nil || retained.ID != managed.ID {
+		t.Fatalf("failed replacement retired valid profile: %+v %v", retained, err)
+	}
+	if err := New(pool).DeleteResolverConfig(ctx, org, site, gateway, uuid.Nil, "test", "static retirement proof"); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := New(pool).ResolverConfig(ctx, org, site, gateway); err == nil {
+		t.Fatal("retired static records remained active")
+	}
+	if detail, err := New(pool).Detail(ctx, org, staticResource); err != nil || detail.Resource.State != "unconfigured" {
+		t.Fatalf("retired static context readiness=%+v err=%v", detail, err)
+	}
+	var preserved int
+	if err := pool.QueryRow(ctx, `SELECT jsonb_array_length(static_records) FROM fqdn_resolver_context_profiles WHERE config_id=$1 AND org_id=$2`, managed.ID, org).Scan(&preserved); err != nil || preserved != 2 {
+		t.Fatalf("immutable provenance=%d err=%v", preserved, err)
+	}
+}
+
+func TestValidateStaticDNSProfiles(t *testing.T) {
+	base := func(records []ResolverStaticRecord) []ResolverProfile {
+		return []ResolverProfile{{Name: "Managed", ProviderHint: "on_premises", ZoneSuffixes: []string{"private.example"}, StaticRecords: records}}
+	}
+	valid := base([]ResolverStaticRecord{{Name: "APP.Private.Example.", Type: "a", Value: "10.20.1.10"}, {Name: "app.private.example", Type: "AAAA", Value: "fd00::10", TTL: 60}, {Name: "alias.private.example", Type: "CNAME", Value: "app.private.example", TTL: 60}, {Name: "external.private.example", Type: "CNAME", Value: "lb.example.com", TTL: 60}})
+	if err := validateProfiles(valid); err != nil {
+		t.Fatal(err)
+	}
+	if valid[0].StaticRecords[1].Name != "app.private.example" || valid[0].StaticRecords[1].TTL != 300 {
+		t.Fatalf("records not canonicalized: %+v", valid[0].StaticRecords)
+	}
+	for name, records := range map[string][]ResolverStaticRecord{
+		"public":       {{Name: "app.private.example", Type: "A", Value: "8.8.8.8"}},
+		"wrong family": {{Name: "app.private.example", Type: "AAAA", Value: "10.20.1.10"}},
+		"outside zone": {{Name: "private.example.evil", Type: "A", Value: "10.20.1.10"}},
+		"IP alias":     {{Name: "app.private.example", Type: "CNAME", Value: "10.20.1.10"}},
+		"self alias":   {{Name: "app.private.example", Type: "CNAME", Value: "app.private.example"}},
+		"cycle":        {{Name: "app.private.example", Type: "CNAME", Value: "other.private.example"}, {Name: "other.private.example", Type: "CNAME", Value: "app.private.example"}},
+		"coexistence":  {{Name: "app.private.example", Type: "CNAME", Value: "other.private.example"}, {Name: "app.private.example", Type: "A", Value: "10.20.1.10"}},
+		"duplicate":    {{Name: "app.private.example", Type: "A", Value: "10.20.1.10"}, {Name: "app.private.example", Type: "A", Value: "10.20.1.10"}},
+		"TTL mismatch": {{Name: "app.private.example", Type: "A", Value: "10.20.1.10", TTL: 30}, {Name: "app.private.example", Type: "A", Value: "10.20.1.11", TTL: 60}},
+		"TTL short":    {{Name: "app.private.example", Type: "A", Value: "10.20.1.10", TTL: 1}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if err := validateProfiles(base(records)); err == nil {
+				t.Fatal("invalid records accepted")
+			}
+		})
+	}
+	mixed := base([]ResolverStaticRecord{{Name: "app.private.example", Type: "A", Value: "10.20.1.10"}})
+	mixed[0].Endpoints = []ResolverEndpoint{{Address: "10.20.0.53", Transport: "udp"}}
+	if err := validateProfiles(mixed); err == nil {
+		t.Fatal("static/upstream ambiguity accepted")
+	}
+}
+
+func TestValidateDNSLANListener(t *testing.T) {
+	valid := &ResolverLANListener{Address: "192.168.1.39", Interface: "eth0", AllowedSources: []string{"192.168.1.0/24"}}
+	if err := validateLANListener(valid); err != nil {
+		t.Fatal(err)
+	}
+	for name, listener := range map[string]ResolverLANListener{
+		"IPv6 listener":             {Address: "fd00::53", Interface: "eth0", AllowedSources: []string{"fd00::/64"}},
+		"wildcard":                  {Address: "0.0.0.0", Interface: "eth0", AllowedSources: []string{"192.168.1.0/24"}},
+		"interface command":         {Address: "192.168.1.39", Interface: "eth0;id", AllowedSources: []string{"192.168.1.0/24"}},
+		"empty sources":             {Address: "192.168.1.39", Interface: "eth0"},
+		"all sources":               {Address: "192.168.1.39", Interface: "eth0", AllowedSources: []string{"0.0.0.0/0"}},
+		"private start public span": {Address: "192.168.1.39", Interface: "eth0", AllowedSources: []string{"192.0.0.0/8"}},
+		"host bits":                 {Address: "192.168.1.39", Interface: "eth0", AllowedSources: []string{"192.168.1.39/24"}},
+		"family mismatch":           {Address: "192.168.1.39", Interface: "eth0", AllowedSources: []string{"fd00::/64"}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			if err := validateLANListener(&listener); err == nil {
+				t.Fatal("invalid listener accepted")
+			}
+		})
+	}
+}
+
+func TestStaticDNSRejectsCrossProfileCyclesAndRuntimeBounds(t *testing.T) {
+	profiles := []ResolverProfile{
+		{Name: "One", ProviderHint: "on_premises", ZoneSuffixes: []string{"one.private"}, StaticRecords: []ResolverStaticRecord{{Name: "a.one.private", Type: "CNAME", Value: "b.two.private"}}},
+		{Name: "Two", ProviderHint: "on_premises", ZoneSuffixes: []string{"two.private"}, StaticRecords: []ResolverStaticRecord{{Name: "b.two.private", Type: "CNAME", Value: "a.one.private"}}},
+	}
+	if err := validateProfiles(profiles); err == nil {
+		t.Fatal("cross-profile CNAME cycle accepted")
+	}
+	var records []ResolverStaticRecord
+	for i := 1; i <= 33; i++ {
+		records = append(records, ResolverStaticRecord{Name: "app.private.example", Type: "A", Value: fmt.Sprintf("10.20.0.%d", i)})
+	}
+	if err := validateStaticRecords(records, []string{"private.example"}); err == nil {
+		t.Fatal("unusable address set accepted")
+	}
+}
+
+func TestLANDefaultUpstreamsValidation(t *testing.T) {
+	base := func(values ...string) *ResolverLANListener {
+		return &ResolverLANListener{Address: "192.168.1.39", Interface: "eth0", AllowedSources: []string{"192.168.1.0/24"}, DefaultUpstreams: values}
+	}
+	for _, value := range []string{"", "localhost", "1.1.1.1:53", "::ffff:1.1.1.1", "2001:4860:4860::8888", "0.1.2.3", "10.1.2.3", "100.64.0.1", "127.1.2.3", "169.254.1.1", "172.16.1.1", "192.0.0.9", "192.0.2.1", "192.88.99.1", "192.168.1.39", "198.18.1.1", "198.51.100.1", "203.0.113.1", "224.0.0.1", "240.0.0.1", "255.255.255.255"} {
+		t.Run(value, func(t *testing.T) {
+			if err := validateLANListener(base(value)); err == nil {
+				t.Fatalf("accepted nonpublic upstream %q", value)
+			}
+		})
+	}
+	for _, values := range [][]string{{"1.1.1.1", " 1.1.1.1 "}, {"1.1.1.1", "8.8.8.8", "9.9.9.9", "8.8.4.4"}} {
+		if err := validateLANListener(base(values...)); err == nil {
+			t.Fatal("accepted duplicate or excessive upstreams")
+		}
+	}
+	valid := base("8.8.8.8", " 1.1.1.1 ")
+	if err := validateLANListener(valid); err != nil || !slices.Equal(valid.DefaultUpstreams, []string{"1.1.1.1", "8.8.8.8"}) {
+		t.Fatalf("canonical upstreams %+v %v", valid, err)
+	}
+	first, second := base("1.1.1.1"), base("8.8.8.8")
+	profiles := []ResolverProfile{{LANListener: first}, {LANListener: second}}
+	if err := validateLANDefaultContexts(profiles); err == nil {
+		t.Fatal("conflicting public defaults accepted")
+	}
+	second.DefaultUpstreams = nil
+	second.AllowedSources = []string{"192.168.1.0/25"}
+	if err := validateLANDefaultContexts(profiles); err != nil {
+		t.Fatalf("private-only sibling changed: %v", err)
+	}
+	second.DefaultUpstreams = []string{"1.1.1.1"}
+	if err := validateLANDefaultContexts(profiles); err != nil {
+		t.Fatal(err)
+	}
+	profiles[1].Endpoints = []ResolverEndpoint{{Address: "1.1.1.1"}}
+	if err := validateLANDefaultContexts(profiles); err == nil {
+		t.Fatal("private endpoint also used for public recursion")
 	}
 }

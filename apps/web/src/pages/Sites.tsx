@@ -1,4 +1,5 @@
 import { NetworkDetailList } from "../components/NetworkDetailList";
+import { PrivateDNSResolvers } from "../components/PrivateDNSResolvers";
 import { ResourceSummary } from "../components/ResourceSummary";
 import { SiteToSiteNavigation } from "../components/SiteToSiteNavigation";
 import "../network-workspaces.css";
@@ -486,7 +487,7 @@ export default function Sites() {
               {!selectedCard && gate.canManage && <details className="sites-advanced s2s-disclosure"><summary>Advanced setup</summary><div className="s2s-disclosure-body">{unboundGatewayNodes.length > 0 && <Button variant="ghost" size="sm" onClick={() => setRoutingLan(true)}>Route a LAN</Button>}<Button variant="ghost" size="sm" onClick={() => setRegistering(true)}>Create empty location</Button><Button variant="ghost" size="sm" onClick={() => updateQuery({ section: "dns", site: null, gateway: null, q: null, dns: null })}>Review DNS forwarding</Button></div></details>}
 
               {selectedCard && <SiteCardView key={`${org.id}:${selectedCard.id}`}
-                card={selectedCard} canManage={gate.canManage} orgId={org.id}
+                card={selectedCard} canManage={gate.canManage} orgId={org.id} role={scopeCurrent ? myRole : undefined}
                 unboundNodes={unboundGatewayNodes} dnsFocus={dnsFocus} selectedGatewayId={selectedGatewayId}
                 step={detail} params={params} onStepChange={next => updateQuery({ detail: next === "overview" ? null : next, gateway: next === "gateways" ? selectedGatewayId : null, dns: next === "advanced" && dnsFocus ? "1" : null })}
                 onDone={reload}
@@ -912,8 +913,8 @@ function SiteList({
 }
 
 
-function SiteCardView({ card, canManage, orgId, unboundNodes, dnsFocus, selectedGatewayId, step, params, onStepChange, onDone }: {
-  card: SiteCard; canManage: boolean; orgId: string; unboundNodes: Node[]; dnsFocus: boolean;
+function SiteCardView({ card, canManage, orgId, role, unboundNodes, dnsFocus, selectedGatewayId, step, params, onStepChange, onDone }: {
+  card: SiteCard; canManage: boolean; orgId: string; role: Member["role"] | undefined; unboundNodes: Node[]; dnsFocus: boolean;
   selectedGatewayId: string | null; step: NetworkStep; params: URLSearchParams; onStepChange: (step: NetworkStep) => void; onDone: () => void;
 }) {
   const approved = card.subnets.filter(subnet => subnet.status === "approved");
@@ -923,6 +924,7 @@ function SiteCardView({ card, canManage, orgId, unboundNodes, dnsFocus, selected
   const resolverHint = approved[0] ? `Resolver IP inside ${approved[0].cidr}` : "Resolver IP inside an approved subnet";
   const [modal, setModal] = useState<"subnet" | "bind" | "unbind" | "delete" | null>(null);
   const [removing, setRemoving] = useState<{ id: string; cidr: string; status: string } | null>(null);
+  const [dnsOpen, setDNSOpen] = useState(false);
   const hasGateway = card.gateways.length > 0;
   const listParams = new URLSearchParams(params);
   for (const key of ["site", "gateway", "dns", "detail"]) listParams.delete(key);
@@ -946,6 +948,7 @@ function SiteCardView({ card, canManage, orgId, unboundNodes, dnsFocus, selected
         {step === "gateways" && (hasGateway ? <NetworkDetailList label="Gateways" items={card.gateways} searchText={gateway => `${gateway.name} ${gateway.status}`} renderItem={gateway => <GatewayRow key={gateway.id} g={gateway} />} /> : <div className="s2s-empty-state" role="status"><h3>No gateway assigned</h3><p>{canManage ? unboundNodes.length ? "Bind an available gateway to connect this network." : "Enroll a gateway before binding it to this network." : "An owner or admin can bind a gateway."}</p></div>)}
         {step === "ranges" && <><p className="s2s-operation-context">Approved ranges are routed. Access Policies control who can use them.</p>{card.subnets.length ? <NetworkDetailList label="Routed ranges" items={card.subnets} searchText={subnet => `${subnet.cidr} ${subnet.status}`} renderItem={subnet => <li key={subnet.id} role="listitem" aria-label={`${subnet.cidr}: ${subnet.status === "approved" ? "Approved, routed" : "Pending approval, not yet routed"}`} className="network-range-row"><span>{subnet.cidr}</span><Badge tone={subnet.status === "approved" ? "ok" : "warn"}>{subnet.status === "approved" ? "routed" : "pending"}</Badge>{canManage && <button type="button" className="s2s-text-link s2s-range-remove" aria-label={`Remove ${subnet.cidr}`} onClick={() => setRemoving({ id: subnet.id, cidr: subnet.cidr, status: subnet.status })}>Remove</button>}</li>} /> : <div className="s2s-empty-state" role="status"><h3>No ranges advertised</h3><p>{canManage ? "Advertise the private range behind this network’s gateway." : "An owner or admin can advertise a private range."}</p></div>}</>}
         {step === "advanced" && <div className="s2s-network-advanced">
+          {activeGateways.length > 0 && <details className="s2s-disclosure" open={dnsOpen} onToggle={event => setDNSOpen(event.currentTarget.open)}><summary>DNS records and forwarding</summary><div className="mt-3 space-y-3"><p className="text-sm text-ink-secondary">Manage private hostnames and DNS servers on this network's gateway. Desktop clients receive authorized DNS settings; office devices need one DHCP or office DNS setup.</p>{dnsOpen && <PrivateDNSResolvers orgId={orgId} role={role} scope={{ siteId: card.id }} />}</div></details>}
           {hasGateway && approved.length > 0 && <details className="s2s-disclosure"><summary>Advanced cloud routing</summary><div className="s2s-disclosure-body"><p>Enable IP forwarding on the gateway VM. On AWS, disable source/destination checks.</p><p>Point remote Site and device-pool CIDRs at this gateway. Update cloud route targets after cloud-side HA failover.</p><p>Operator reference: <span>docs/deploy-cloud-gateway.md</span></p></div></details>}
           {canManage && approved.length > 0 && <DNSForwardSection orgId={orgId} siteId={card.id} open={dnsFocus} resolverHint={resolverHint} />}
           {canManage && approved.length === 0 && <p className="s2s-operation-context">DNS forwarding requires an approved range in this network.</p>}

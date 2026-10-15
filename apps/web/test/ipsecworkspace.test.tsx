@@ -2,12 +2,14 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 const mock = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), put: vi.fn(), del: vi.fn() }));
 vi.mock("../src/lib/api", async (original) => ({ ...await original<object>(), api: { GET: mock.get, POST: mock.post, PUT: mock.put, DELETE: mock.del } }));
-import { IPsecWorkspace, azureSettingsReview } from "../src/components/IPsecWorkspace";
+vi.mock("../src/lib/auth", () => ({ useAuth: () => ({ state: { status: "authed", user: { id: "user-a", email_verified: true } } }) }));
+import { IPsecWorkspace, azureSettingsReview, type IPsecCreateProfile } from "../src/components/IPsecWorkspace";
+import { awsGeneric } from "./fixtures/awsGeneric";
 import { MemoryRouter } from "react-router-dom";
 import type { Site } from "../src/lib/api";
 const sites = [{ id: "site-a", name: "Office" }] as Site[];
 const record = { id: "connection-a", org_id: "org-a", name: "Office to cloud", site_id: null, gateway_node_id: null, historical_site_id: "site-a", historical_gateway_node_id: "gateway-a", desired_intent: "disabled", desired_revision: 1, application_state: "not_applied", cleanup_state: "not_required", deleted_at: null, finalized_at: null, created_at: "2026-10-08T10:00:00Z", updated_at: "2026-10-08T10:00:00Z" };
-const view = () => <MemoryRouter><IPsecWorkspace orgId="org-a" userId="user-a" emailVerified role="owner" sites={sites} /></MemoryRouter>;
+const view = (initialProfile: IPsecCreateProfile = "aws") => <MemoryRouter><IPsecWorkspace initialProfile={initialProfile} orgId="org-a" userId="user-a" emailVerified role="owner" sites={sites} /></MemoryRouter>;
 async function connectionMenu(name: string) {
  const trigger = await screen.findByRole("button", { name: `Connection actions for ${name}` });
  if (trigger.getAttribute("aria-expanded") !== "true") fireEvent.click(trigger);
@@ -30,6 +32,26 @@ it("loads stored disabled configurations and nonsecret readback", async () => {
  expect(screen.queryByLabelText("Tunnel 1 PSK")).toBeNull();
  const breadcrumb=screen.getByRole("navigation",{name:"IPsec connection breadcrumb"});expect(within(breadcrumb).getByText("Office to cloud").getAttribute("aria-current")).toBe("page");expect(screen.queryByRole("table",{name:"IPsec connections"})).toBeNull();
  fireEvent.click(within(breadcrumb).getByRole("button",{name:"Back to connections"}));expect(screen.getByRole("table",{name:"IPsec connections"})).toBeTruthy();expect(screen.getByRole("button",{name:"Office to cloud"})).toBeTruthy();expect(mock.post).not.toHaveBeenCalled();expect(mock.put).not.toHaveBeenCalled();expect(mock.del).not.toHaveBeenCalled();
+});
+it("opens the shared DNS editor inside connection details with its exact network and gateway", async () => {
+ const original = mock.get.getMockImplementation()!;
+ mock.get.mockImplementation(async (path: string, options: unknown) => {
+  if (path.endsWith("/connections")) return { data: { items: [{ ...record, site_id: "site-a", gateway_node_id: "gateway-a" }], next_cursor: null } };
+  if (path.endsWith("/sites")) return { data: [{ id: "other", name: "Another network" }, ...sites] };
+  if (path.includes("/fqdn-resolver-contexts/")) return { error: { error: { code: "fqdn_resolver_config_not_found" } } };
+  return original(path, options);
+ });
+ render(view()); fireEvent.click(await screen.findByRole("button", { name: "Office to cloud" }));
+ const disclosure = (await screen.findByText("DNS records and forwarding")).closest("details")!;
+ disclosure.open = true; fireEvent(disclosure, new Event("toggle"));
+ fireEvent.click(await screen.findByRole("button", { name: "Configure profiles" }));
+ expect((screen.getByLabelText("Site", { selector: "select" }) as HTMLSelectElement).value).toBe("site-a");
+ expect((screen.getByLabelText("Gateway", { selector: "select" }) as HTMLSelectElement).value).toBe("gateway-a");
+ expect((screen.getByLabelText("Site", { selector: "select" }) as HTMLSelectElement).disabled).toBe(true);
+ expect((screen.getByLabelText("Gateway", { selector: "select" }) as HTMLSelectElement).disabled).toBe(true);
+ expect((screen.getByLabelText("Profile 1 DNS setup") as HTMLSelectElement).value).toBe("static");
+ expect(mock.get.mock.calls.some(([path, options]) => path.includes("fqdn-resolver-contexts") && options.params.path.siteId === "site-a" && options.params.path.gatewayId === "gateway-a")).toBe(true);
+ expect(mock.put).not.toHaveBeenCalled();
 });
 it("refers disabled organization activation to Features without changing stored connection intent", async () => {
  mock.get.mockImplementation(async (path: string) => path.endsWith("/settings") ? { data: { enabled: false, revision: 4 } } : { data: { items: [], next_cursor: null } });
@@ -395,7 +417,7 @@ it("reads back BGP settings without showing credentials", async () => {
 });
 it("saves explicit GCP HA profile using common BGP fields and interface review", async () => {
  mock.post.mockImplementation(async (path:string, opts:any) => path.endsWith("configuration-check") ? {data:{valid:true}} : {data:{...record,id:opts.body.id}});
- render(view()); await prepareBGPForm();
+ render(view("gcp-ha-bgp-ipv4-v1")); await prepareBGPForm();
  fireEvent.change(screen.getByLabelText("Cloud VPN profile"),{target:{value:"gcp-ha-bgp-ipv4-v1"}});
  expect((screen.getByLabelText("Routing") as HTMLSelectElement).disabled).toBe(true);
  expect(screen.getByLabelText("Cloud Router ASN")).toBeTruthy();
@@ -412,7 +434,7 @@ it("saves explicit GCP HA profile using common BGP fields and interface review",
 });
 it("saves Classic with one real tunnel and no BGP or invented inside addresses",async()=>{
  mock.post.mockImplementation(async(path:string,opts:any)=>path.endsWith("configuration-check")?{data:{valid:true}}:{data:{...record,id:opts.body.id}});
- render(view());await prepareBGPForm();
+ render(view("gcp-ha-bgp-ipv4-v1"));await prepareBGPForm();
  fireEvent.change(screen.getByLabelText("Cloud VPN profile"),{target:{value:"gcp-classic-static-ipv4-v1"}});
  expect(screen.getByText(/Classic uses one route-based static tunnel/)).toBeTruthy();expect(screen.queryByLabelText("Cloud Router ASN")).toBeNull();
  fireEvent.click(screen.getByRole("button",{name:"Next: tunnels"}));
@@ -472,7 +494,7 @@ it("refuses Classic activation if public stored configuration contains two tunne
  render(view());await screen.findByRole("button",{name:"Office to cloud"});await waitFor(()=>expect(mock.get.mock.calls.some(([path])=>path.endsWith("/configuration"))).toBe(true));expect((await connectionMenu("Office to cloud")).queryByRole("menuitem",{name:"Enable Office to cloud"})).toBeNull();
 });
 it("switches Classic back to HA with two clean tunnel drafts",async()=>{
- render(view());await prepareBGPForm();fireEvent.change(screen.getByLabelText("Cloud VPN profile"),{target:{value:"gcp-classic-static-ipv4-v1"}});
+ render(view("gcp-ha-bgp-ipv4-v1"));await prepareBGPForm();fireEvent.change(screen.getByLabelText("Cloud VPN profile"),{target:{value:"gcp-classic-static-ipv4-v1"}});
  fireEvent.click(screen.getByRole("button",{name:"Next: tunnels"}));fireEvent.change(screen.getByLabelText("Tunnel 1 PSK"),{target:{value:"Synthetic.Classic1"}});fireEvent.click(screen.getByRole("button",{name:"Back"}));
  fireEvent.change(screen.getByLabelText("Cloud VPN profile"),{target:{value:"gcp-ha-bgp-ipv4-v1"}});fireEvent.click(screen.getByRole("button",{name:"Next: tunnels"}));
  expect(screen.getByLabelText("Tunnel 2 PSK")).toBeTruthy();expect(screen.getByLabelText("Tunnel 2 inside CIDR")).toBeTruthy();expect(screen.queryByDisplayValue("Synthetic.Classic1")).toBeNull();expect(mock.post).not.toHaveBeenCalled();
@@ -480,7 +502,7 @@ it("switches Classic back to HA with two clean tunnel drafts",async()=>{
 
 it.each(["azure-active-active-bgp-ipv4-v1", "azure-active-standby-bgp-ipv4-v1", "azure-active-active-static-ipv4-v1", "azure-active-standby-static-ipv4-v1"])("saves Azure %s with its independent topology and routing contract", async profile => {
  mock.post.mockImplementation(async (path:string, opts:any) => path.endsWith("configuration-check") ? {data:{valid:true}} : {data:{...record,id:opts.body.id}});
- render(view()); await prepareBGPForm();
+ render(view("azure-active-active-bgp-ipv4-v1")); await prepareBGPForm();
  fireEvent.change(screen.getByLabelText("Cloud VPN profile"), {target:{value:profile}});
  const dynamic = profile.includes("-bgp-"); const count = profile.includes("-standby-") ? 1 : 2;
  expect((screen.getByLabelText("Routing") as HTMLSelectElement).disabled).toBe(true);
@@ -513,7 +535,7 @@ it("refuses Azure enable from AWS or GCP BGP support alone", async () => {
 
 it("imports bounded Tunnex Azure JSON only after preflight without saving or exposing its secret", async () => {
  mock.post.mockResolvedValue({data:{valid:true}});
- render(view()); await prepareBGPForm();
+ render(view("azure-active-active-bgp-ipv4-v1")); await prepareBGPForm();
  const configuration={...bgpReadback.configuration, profile_id:"azure-active-standby-bgp-ipv4-v1", transport_version:1,tunnel_count:1,
  azure:{gateway_sku:"VpnGw2AZ",vpn_type:"RouteBased",ike_version:2,custom_policy:"aes256-sha256-dh14-pfs2048",use_policy_based_traffic_selectors:false,nat_enabled:false},
  tunnels:[{outside_address:"8.8.8.8",inside_cidr:"169.254.20.1/32",customer_inside_address:"169.254.20.1",cloud_inside_address:"169.254.21.2",psk:"Synthetic.Import.Secret"}]};
@@ -534,7 +556,7 @@ it("saves an imported Azure active-active draft only after a fresh check with ma
  mock.post.mockImplementation(async (path:string, opts:any) => path.endsWith("configuration-check") ? {data:{valid:true}} : {data:{...record,id:opts.body.id,name:opts.body.name}});
  const storage = vi.spyOn(Storage.prototype, "setItem");
  try {
-  render(view()); await prepareBGPForm();
+  render(view("azure-active-active-bgp-ipv4-v1")); await prepareBGPForm();
   const imported = {profile_id:"azure-active-active-bgp-ipv4-v1",mode:"ipv4-bgp",
    azure:{gateway_sku:"VpnGw3AZ",vpn_type:"RouteBased",ike_version:2,custom_policy:"aes256-sha256-dh14-pfs2048",use_policy_based_traffic_selectors:false,nat_enabled:false},
    bgp:{local_asn:65017,remote_asn:65515,router_id:"10.10.0.17",maximum_prefixes:32},
@@ -575,7 +597,7 @@ it("saves an imported Azure active-active draft only after a fresh check with ma
  } finally { storage.mockRestore(); }
 });
 it.each(["oversized", "foreign-prefix", "unsupported-profile", "bad-json"])("refuses %s Azure JSON without preflight or echoed contents", async kind => {
- render(view()); await prepareBGPForm();
+ render(view("azure-active-active-bgp-ipv4-v1")); await prepareBGPForm();
  const config={...bgpReadback.configuration,profile_id:"azure-active-standby-bgp-ipv4-v1",azure:{},local_prefixes:kind==="foreign-prefix"?["10.99.0.0/16"]:["10.10.0.0/16"]};
  if(kind==="unsupported-profile") config.profile_id="azure-unsupported";
  const text=kind==="bad-json"?"Synthetic.Private.Secret":JSON.stringify(config);
@@ -589,11 +611,165 @@ it("exports only explicit nonsecret Azure review fields, never arbitrary configu
  const text=JSON.stringify(azureSettingsReview(provider as any)); expect(text).not.toContain("secret"); expect(text).not.toContain("psk"); expect(text).toContain("VpnGw1AZ");
 });
 it.each(["psk", "customer-prefix"])("refuses inconsistent Azure active-active %s before preflight", async kind => {
- render(view()); await prepareBGPForm();
+ render(view("azure-active-active-bgp-ipv4-v1")); await prepareBGPForm();
  fireEvent.change(screen.getByLabelText("Cloud VPN profile"),{target:{value:"azure-active-active-bgp-ipv4-v1"}});
  fireEvent.click(screen.getByRole("button",{name:"Next: tunnels"})); fillBGPTunnels();
  if(kind==="customer-prefix") for(const n of [1,2]) fireEvent.change(screen.getByLabelText(`Tunnel ${n} PSK`),{target:{value:"Synthetic.SharedAzure"}});
  fireEvent.click(screen.getByRole("button",{name:"Save disabled connection"}));
  await screen.findByText(kind==="psk"?/must use the same PSK/:/same customer APIPA address and its \/32/);
  expect(mock.post).not.toHaveBeenCalled();
+});
+
+it("resets the creation draft if its provider context changes", async()=>{
+ const {rerender}=render(view("gcp-ha-bgp-ipv4-v1"));await prepareBGPForm();
+ expect((screen.getByLabelText("Name") as HTMLInputElement).value).toBe("Office BGP");
+ rerender(view("aws"));
+ expect((screen.getByLabelText("Name") as HTMLInputElement).value).toBe("");
+ expect((screen.getByLabelText("Local network") as HTMLSelectElement).value).toBe("");
+ expect(Array.from((screen.getByLabelText("Cloud VPN profile") as HTMLSelectElement).options).map(o=>o.value)).toEqual(["aws"]);
+ expect(screen.queryByLabelText("Import Tunnex Azure JSON")).toBeNull();
+ expect((screen.getByLabelText("Routing") as HTMLSelectElement).disabled).toBe(false);
+});
+
+
+async function uploadAWS(text = awsGeneric(), read?: () => Promise<string>) {
+ const file = new File([text], "synthetic-vpn.txt", { type: "text/plain" });
+ Object.defineProperty(file, "text", { value: read ?? (() => Promise.resolve(text)) });
+ fireEvent.change(screen.getByLabelText("Import AWS Generic configuration"), { target: { files: [file] } });
+}
+async function prepareAWSImport(mode: "bgp" | "static" = "bgp", matchingCrypto = false, peer = "Virtual Private Gateway") {
+ fireEvent.click(await screen.findByRole("button", { name: "New connection" }));
+ await uploadAWS(awsGeneric({ mode, matchingCrypto, peer }));
+ await screen.findByRole("region", { name: "AWS import review" });
+ fireEvent.change(screen.getByLabelText("Local network"), { target: { value: "site-a" } });
+ fireEvent.change(await screen.findByLabelText("Gateway"), { target: { value: "gateway-a" } });
+ fireEvent.click(await screen.findByLabelText("10.10.0.0/16"));
+ fireEvent.change(screen.getByLabelText("Remote network ranges"), { target: { value: "10.20.0.0/16" } });
+ await waitFor(() => expect(screen.getByRole("button", { name: "Next: tunnels" })).toHaveProperty("disabled", false));
+ fireEvent.click(screen.getByRole("button", { name: "Next: tunnels" }));
+}
+const awsAcknowledgment = /I have verified that both AWS tunnels allow/;
+it.each(["bgp", "static"] as const)("imports AWS Generic %s into a masked disabled draft with explicit ranges", async mode => {
+ const setStorage = vi.spyOn(Storage.prototype, "setItem");
+ mock.post.mockImplementation(async (path: string, opts: any) => path.endsWith("configuration-check") ? { data: { valid: true } } : { data: { ...record, id: opts.body.id, name: opts.body.name } });
+ render(view()); await prepareAWSImport(mode);
+ expect(screen.getByLabelText("Tunnel 1 PSK")).toHaveProperty("type", "password");
+ expect(screen.getByLabelText("Tunnel 1 PSK")).toHaveProperty("value", "Synthetic.PSK_1");
+ expect(screen.getByLabelText("Tunnel 2 cloud IP")).toHaveProperty("value", "169.254.12.1");
+ expect(screen.getByRole("region", { name: "AWS import review" }).textContent).toContain("algorithms different");
+ expect(screen.getByRole("region", { name: "Connection review" }).textContent).not.toContain("Synthetic");
+ expect(screen.getByRole("button", { name: "Create and connect…" })).toHaveProperty("disabled", true);
+ expect(mock.post).not.toHaveBeenCalled(); expect(mock.put).not.toHaveBeenCalled(); expect(setStorage).not.toHaveBeenCalled(); setStorage.mockRestore();
+ fireEvent.click(screen.getByRole("button", { name: "Save disabled connection" }));
+ await waitFor(() => expect(mock.post.mock.calls.filter(([path]) => path.endsWith("/connections"))).toHaveLength(1));
+ const configuration = mock.post.mock.calls.find(([path]) => path.endsWith("/connections"))![1].body.configuration;
+ expect(configuration.mode).toBe(`ipv4-${mode}`); expect(configuration.local_prefixes).toEqual(["10.10.0.0/16"]); expect(configuration.remote_prefixes).toEqual(["10.20.0.0/16"]);
+ if (mode === "bgp") expect(configuration.bgp).toEqual({ local_asn: 65010, remote_asn: 64512, router_id: "9.9.9.9", maximum_prefixes: 64 });
+ expect(configuration).not.toHaveProperty("crypto"); expect(configuration).not.toHaveProperty("attachment"); expect(mock.put).not.toHaveBeenCalled();
+ await waitFor(() => expect(screen.queryByLabelText("Tunnel 1 PSK")).toBeNull());
+});
+it("preserves chosen context, explicit name/router ID and scopes when importing", async () => {
+ render(view()); await prepareBGPForm();
+ await uploadAWS(); await screen.findByRole("region", { name: "AWS import review" });
+ expect(screen.getByLabelText("Name")).toHaveProperty("value", "Office BGP"); expect(screen.getByLabelText("Router ID")).toHaveProperty("value", "10.10.0.1");
+ expect(screen.getByLabelText("Local network")).toHaveProperty("value", "site-a"); expect(screen.getByLabelText("Gateway")).toHaveProperty("value", "gateway-a");
+ expect(screen.getByLabelText("10.10.0.0/16")).toHaveProperty("checked", true); expect(screen.getByLabelText("Remote network ranges")).toHaveProperty("value", "10.20.0.0/16");
+});
+it("requires explicit ranges after import, even for a static sample with a default route", async () => {
+ render(view()); fireEvent.click(await screen.findByRole("button", { name: "New connection" })); await uploadAWS(awsGeneric({ mode: "static" }));
+ await screen.findByRole("region", { name: "AWS import review" });
+ expect(screen.getByLabelText("Remote network ranges")).toHaveProperty("value", ""); expect(screen.getByLabelText("Local network")).toHaveProperty("value", "");
+ expect(screen.getByRole("button", { name: "Next: tunnels" })).toHaveProperty("disabled", true); expect(mock.post).not.toHaveBeenCalled();
+});
+it("requires acknowledgment even for matching algorithms and clears it after manual tunnel edits", async () => {
+ render(view()); await prepareAWSImport("static", true);
+ expect(screen.getByRole("region", { name: "AWS import review" }).textContent).toContain("Actual AWS tunnel options");
+ const connect = screen.getByRole("button", { name: "Create and connect…" }); expect(connect).toHaveProperty("disabled", true);
+ fireEvent.click(screen.getByLabelText(awsAcknowledgment)); expect(connect).toHaveProperty("disabled", false);
+ fireEvent.change(screen.getByLabelText("Tunnel 1 outside IP"), { target: { value: "8.8.4.4" } });
+ expect(screen.getByLabelText(awsAcknowledgment)).toHaveProperty("checked", false); expect(connect).toHaveProperty("disabled", true);
+});
+it("refuses stale import completion after local context changes or cancellation", async () => {
+ const deferred: { resolve?: (value: string) => void } = {};
+ const result = new Promise<string>(resolve => { deferred.resolve = resolve; });
+ render(view()); fireEvent.click(await screen.findByRole("button", { name: "New connection" }));
+ await uploadAWS(awsGeneric(), () => result);
+ fireEvent.change(screen.getByLabelText("Local network"), { target: { value: "site-a" } });
+ await act(async () => deferred.resolve!(awsGeneric()));
+ expect(screen.queryByRole("region", { name: "AWS import review" })).toBeNull(); expect(screen.getByLabelText("Customer public IP")).toHaveProperty("value", "");
+ let complete!: (value: string) => void;
+ await uploadAWS(awsGeneric(), () => new Promise(resolve => { complete = resolve; }));
+ fireEvent.click(screen.getByRole("button", { name: "Cancel" })); await act(async () => complete(awsGeneric()));
+ expect(screen.queryByLabelText("Tunnel 1 PSK")).toBeNull(); expect(mock.post).not.toHaveBeenCalled(); expect(mock.put).not.toHaveBeenCalled();
+});
+it("keeps prior draft and reports redacted error when a replacement upload fails", async () => {
+ render(view()); await prepareAWSImport("static"); fireEvent.click(screen.getByLabelText(awsAcknowledgment));
+ fireEvent.click(screen.getByRole("button", { name: "Back" }));
+ await uploadAWS(awsGeneric().replace("IKEv2", "secret-certificate"));
+ await screen.findByText(/Tunnex requires IKEv2 with pre-shared keys/);
+ expect(screen.getByLabelText("Routing")).toHaveProperty("value", "ipv4-static");
+ fireEvent.click(screen.getByRole("button", { name: "Next: tunnels" }));
+ expect(screen.getByLabelText("Tunnel 1 PSK")).toHaveProperty("value", "Synthetic.PSK_1"); expect(screen.getByLabelText(awsAcknowledgment)).toHaveProperty("checked", false);
+ expect(document.body.textContent).not.toContain("secret-certificate"); expect(mock.post).not.toHaveBeenCalled();
+});
+it.each(["success", "unsupported", "uncertain", "conflict"] as const)("keeps one saved ID through final AWS enable %s", async outcome => {
+ const original = mock.get.getMockImplementation()!;
+ let created: any; let ready = true;
+ mock.get.mockImplementation(async (path: string, opts: any) => {
+  if (path.endsWith("/eligibility")) return { data: { eligible: true, reason: "eligible", bgp: { eligible: ready, reason: ready ? "eligible" : "unsupported" } } };
+  if (path.endsWith("/configuration")) return { data: bgpReadback };
+  if (path.endsWith("/connections") && created) return { data: { items: [created], next_cursor: null } };
+  if (path.endsWith("/{connectionId}") && created) return { data: created };
+  return original(path, opts);
+ });
+ mock.post.mockImplementation(async (path: string, opts: any) => {
+  if (path.endsWith("configuration-check")) return { data: { valid: true } };
+  created = { ...record, id: opts.body.id, name: opts.body.name, site_id: "site-a", gateway_node_id: "gateway-a", desired_revision: 7 };
+  return { data: created };
+ });
+ mock.put.mockImplementation(async () => outcome === "success" ? { data: { ...created, desired_intent: "enabled", desired_revision: 8 } } : { error: {}, response: { status: outcome === "conflict" ? 409 : 503 } });
+ render(view()); await prepareAWSImport(); fireEvent.click(screen.getByLabelText(awsAcknowledgment));
+ fireEvent.click(screen.getByRole("button", { name: "Create and connect…" }));
+ const enable = await screen.findByRole("button", { name: "Enable connection" });
+ expect(screen.queryByLabelText("Tunnel 1 PSK")).toBeNull(); expect(mock.put).not.toHaveBeenCalled();
+ if (outcome === "unsupported") ready = false;
+ fireEvent.click(enable);
+ if (outcome === "unsupported") { await screen.findByText("Gateway readiness changed. Close and refresh before enabling."); expect(mock.put).not.toHaveBeenCalled(); }
+ else {
+  await waitFor(() => expect(mock.put).toHaveBeenCalledWith("/api/v1/organizations/{orgId}/ipsec/connections/{connectionId}/intent", { params: { path: { orgId: "org-a", connectionId: created.id }, header: { "If-Match": '\"7\"' } }, body: { intent: "enabled" } }));
+  if (outcome !== "success") { await screen.findByText("Could not confirm the change. Close and refresh before retrying."); expect(enable).toHaveProperty("disabled", true); fireEvent.click(enable); expect(mock.put).toHaveBeenCalledTimes(1); }
+ }
+ expect(mock.post.mock.calls.filter(([path]) => path.endsWith("/connections"))).toHaveLength(1); expect(screen.queryByText("Connected")).toBeNull();
+});
+it("recovers a lost create response into the saved connection's final enable review", async () => {
+ const original = mock.get.getMockImplementation()!; let created: any;
+ mock.get.mockImplementation(async (path: string, opts: any) => path.endsWith("/{connectionId}") && created ? { data: created } : original(path, opts));
+ mock.post.mockImplementation(async (path: string, opts: any) => {
+  if (path.endsWith("configuration-check")) return { data: { valid: true } };
+  created = { ...record, id: opts.body.id, name: opts.body.name, site_id: "site-a", gateway_node_id: "gateway-a" }; throw new Error("synthetic lost response");
+ });
+ render(view()); await prepareAWSImport("static"); fireEvent.click(screen.getByLabelText(awsAcknowledgment)); fireEvent.click(screen.getByRole("button", { name: "Create and connect…" }));
+ await screen.findByRole("button", { name: "Enable connection" });
+ expect(mock.post.mock.calls.filter(([path]) => path.endsWith("/connections"))).toHaveLength(1); expect(mock.put).not.toHaveBeenCalled(); expect(screen.queryByLabelText("Tunnel 1 PSK")).toBeNull();
+});
+
+it.each(["bgp", "static"] as const)("reviews a Transit Gateway labeled %s file without inventing attachment metadata", async mode => {
+ render(view()); await prepareAWSImport(mode, false, "Transit Gateway");
+ expect(screen.getByRole("region", { name: "Connection review" }).textContent).toContain(mode === "bgp" ? "Dynamic routing (BGP)" : "Static routes");
+ expect(screen.getByLabelText("Tunnel 1 cloud IP")).toHaveProperty("value", "169.254.11.1");
+ expect(screen.getByRole("button", { name: "Create and connect…" })).toHaveProperty("disabled", true); expect(mock.post).not.toHaveBeenCalled();
+});
+it("rejects oversized AWS input before reading it", async () => {
+ render(view()); fireEvent.click(await screen.findByRole("button", { name: "New connection" }));
+ const file = new File(["x".repeat(65537)], "too-large.txt", { type: "text/plain" }); const read = vi.fn(); Object.defineProperty(file, "text", { value: read });
+ fireEvent.change(screen.getByLabelText("Import AWS Generic configuration"), { target: { files: [file] } });
+ await screen.findByText("Choose a nonempty AWS Generic text file no larger than 64 KiB.");
+ expect(read).not.toHaveBeenCalled(); expect(mock.post).not.toHaveBeenCalled(); expect(screen.queryByRole("region", { name: "AWS import review" })).toBeNull();
+});
+it("uses the existing configuration validator before saving imported data", async () => {
+ mock.post.mockResolvedValue({ data: { valid: false }, error: {} }); render(view()); await prepareAWSImport("static");
+ fireEvent.click(screen.getByRole("button", { name: "Save disabled connection" }));
+ await screen.findByText("Check the addresses, ranges and credentials before saving.");
+ expect(mock.post.mock.calls.filter(([path]) => path.endsWith("/configuration-check"))).toHaveLength(1);
+ expect(mock.post.mock.calls.filter(([path]) => path.endsWith("/connections"))).toHaveLength(0); expect(mock.put).not.toHaveBeenCalled();
 });

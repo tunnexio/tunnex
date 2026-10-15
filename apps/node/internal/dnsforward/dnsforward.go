@@ -1,12 +1,12 @@
-// Package dnsforward is the in-agent cross-site DNS forwarder (S8.4 D2). It answers ONLY for the org's
-// declared zones (the compiled {domain -> resolver_ip} table) by relaying the query to that zone's internal
-// resolver over the tunnel; everything else is REFUSED (split-horizon — the client's scoped-resolver config
-// only sends matched-domain queries here). It is a small Go forwarder inside the agent's lifecycle — no
+// Package dnsforward is the in-agent cross-site DNS forwarder (S8.4 D2). WireGuard clients receive only
+// the org's declared zones. Explicitly enabled LAN listeners may also forward unmatched names to
+// configured public upstreams for allowed sources; private scopes always take precedence. It is a
+// small Go forwarder inside the agent's lifecycle — no
 // dnsmasq/CoreDNS process (external daemons are the EPIC-9 pattern).
 //
 // Discipline (S8.4 rulings):
-//   - BIND SCOPE (D2): binds ONLY wg-facing addresses — never a public interface. An open resolver on a
-//     cloud VM is an abuse vector. wgBindAddrs derives the bind set from the wg interface alone.
+//   - BIND SCOPE (D2): WireGuard addresses and explicitly authorized, interface-bound private LAN
+//     addresses only. LAN queries use explicit private/default grants and source ranges.
 //   - SKIP-DEGRADED (D2): a malformed table entry is skipped with a logged warning; the rest serve. One
 //     typo never takes down every site's names.
 //   - fail-static / SERVFAIL (D2): resolver unreachable -> SERVFAIL, the tunnel is untouched, the last-good
@@ -165,13 +165,21 @@ type exchangeFn func(resolver netip.Addr, query []byte) ([]byte, error)
 
 // Forwarder holds the atomic table + a per-source rate limiter. Serve() (real UDP) is thin over handle().
 type Forwarder struct {
-	profiles  atomic.Pointer[resolverProfiles]
-	transport fqdnrpc.BoundTransport
-	vpnHost   atomic.Pointer[vpnHostAnswer]
-	tbl       atomic.Pointer[table]
-	k8s       atomic.Pointer[k8sAnswers] // S10.3 A1: direct-answer set (FQDN → VIP + owned zones)
-	exchange  exchangeFn
-	log       *slog.Logger
+	lanListeners          map[lanBindKey]*lanBinding
+	lanErrors             map[lanBindKey]string
+	lanOwned              func(lanBindKey) error
+	lanListenUDP          func(netip.Addr, string) (udpListener, error)
+	lanListenTCP          func(netip.Addr, string) (net.Listener, error)
+	staticTargetTransport fqdnrpc.BoundTransport     // nil uses explicit profile upstreams; test seam only
+	lanDefaultTransport   fqdnrpc.BoundTransport     // nil uses the explicit upstream socket; test seam only
+	lanLocalAddresses     func() ([]net.Addr, error) // nil uses net.InterfaceAddrs
+	profiles              atomic.Pointer[resolverProfiles]
+	transport             fqdnrpc.BoundTransport
+	vpnHost               atomic.Pointer[vpnHostAnswer]
+	tbl                   atomic.Pointer[table]
+	k8s                   atomic.Pointer[k8sAnswers] // S10.3 A1: direct-answer set (FQDN → VIP + owned zones)
+	exchange              exchangeFn
+	log                   *slog.Logger
 
 	// F1 lifecycle seams (nil → real). Serve runs a BIND-RECONCILE loop that re-reads the wg interface's
 	// addresses every tick and reconciles its live listeners to match — so it binds when wg0 appears
@@ -201,6 +209,7 @@ func New(log *slog.Logger, exchange exchangeFn) *Forwarder {
 		exchange = udpExchange
 	}
 	f := &Forwarder{
+		lanListeners: map[lanBindKey]*lanBinding{}, lanErrors: map[lanBindKey]string{},
 		exchange: exchange, log: log, buckets: map[netip.Addr]*bucket{},
 		listeners: map[netip.Addr]boundListener{}, ownedLive: map[netip.Addr]context.CancelFunc{},
 		tcpListeners: map[netip.Addr]*dnsTCPBind{},

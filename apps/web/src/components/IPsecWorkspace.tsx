@@ -4,10 +4,12 @@ import { ResourceSummary } from "./ResourceSummary";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import type { components } from "@tunnex/shared";
-import { api, loadOne, type Node, type Site, type SiteSubnet } from "../lib/api";
+import { api, loadOne, type Member, type Node, type Site, type SiteSubnet } from "../lib/api";
+import { PrivateDNSResolvers } from "./PrivateDNSResolvers";
 import { Button, DataTable, ErrorText, Field, Input, Modal, Select, RefreshButton } from "./ui";
 import AppAccessRowMenu, { type AppAccessRowMenuAction } from "./AppAccessRowMenu";
 import { appAccessPageSizes } from "./AppAccessPagination";
+import { AWS_GENERIC_MAX_BYTES, AWS_REQUIRED_CRYPTO, AWSImportError, parseAWSGeneric } from "../lib/awsVpnImport";
 import { IPsecTunnelHealth } from "./IPsecTunnelHealth";
 import { IPsecRotateKeys, canRotateIPsecKeys } from "./IPsecRotateKeys";
 
@@ -35,6 +37,15 @@ function privateASN(value: string): boolean {
   return /^\d+$/.test(value) && Number.isSafeInteger(n) && ((n >= 64512 && n <= 65534) || (n >= 4200000000 && n <= 4294967294));
 }
 export type IPsecCreateProfile = "aws" | "gcp-ha-bgp-ipv4-v1" | "gcp-classic-static-ipv4-v1" | "azure-active-active-bgp-ipv4-v1" | "azure-active-active-static-ipv4-v1" | "azure-active-standby-bgp-ipv4-v1" | "azure-active-standby-static-ipv4-v1";
+const createProfiles: { id: IPsecCreateProfile; label: string }[] = [
+  { id: "aws", label: "AWS Site-to-Site VPN" },
+  { id: "gcp-ha-bgp-ipv4-v1", label: "Google Cloud HA VPN · BGP" },
+  { id: "gcp-classic-static-ipv4-v1", label: "Google Cloud Classic VPN · static" },
+  { id: "azure-active-active-bgp-ipv4-v1", label: "Azure active-active · BGP" },
+  { id: "azure-active-active-static-ipv4-v1", label: "Azure active-active · static" },
+  { id: "azure-active-standby-bgp-ipv4-v1", label: "Azure active-standby · BGP" },
+  { id: "azure-active-standby-static-ipv4-v1", label: "Azure active-standby · static" },
+];
 type AzureSKU = "VpnGw1" | "VpnGw2" | "VpnGw3" | "VpnGw4" | "VpnGw5" | "VpnGw1AZ" | "VpnGw2AZ" | "VpnGw3AZ" | "VpnGw4AZ" | "VpnGw5AZ";
 function singleTunnel(profile: string) { return profile === "gcp-classic-static-ipv4-v1" || profile.startsWith("azure-active-standby-"); }
 function initialMode(profile: string): Configuration["mode"] { return profile.endsWith("-bgp-ipv4-v1") ? "ipv4-bgp" : "ipv4-static"; }
@@ -183,7 +194,7 @@ function IPsecSession({ orgId, emailVerified, role, sites, initialProfile = "aws
   return <div className="network-management ipsec-workspace">
     <h2 className="sr-only">IPsec VPN connections</h2>
     {notice && <p role="status" className="text-sm text-ink-secondary">{notice}</p>}
-    {selected ? <ProviderReadback key={selected.id} orgId={orgId} id={selected.id} name={selected.name} onClose={() => setSelected(null)} /> : <>
+    {selected ? <ProviderReadback key={selected.id} orgId={orgId} id={selected.id} name={selected.name} role={role as Member["role"]} connection={items.find(item => item.id === selected.id)} onClose={() => setSelected(null)} /> : <>
       <div className="ipsec-toolbar">
         <div className="ipsec-inventory-toolbar">
           <Input aria-label="Search VPN connections" placeholder="Search this page…" value={search} onChange={event => setSearch(event.target.value)} />
@@ -222,16 +233,17 @@ function IPsecSession({ orgId, emailVerified, role, sites, initialProfile = "aws
       </nav>}
       </>}
     </>}
-    {manage && creating && settings?.enabled && <ConnectionForm initialProfile={initialProfile} orgId={orgId} sites={sites} onCancel={() => setCreating(false)} onSaved={(id, name) => { if (!alive.current) return; setCreating(false); setSelected({ id, name }); void refresh(); }} />}
+    {manage && creating && settings?.enabled && <ConnectionForm key={initialProfile} initialProfile={initialProfile} orgId={orgId} sites={sites} onCancel={() => setCreating(false)} onSaved={(id, name, enable) => { if (!alive.current) return; setCreating(false); setSelected({ id, name }); if (enable) setChanging(enable); void refresh(); }} />}
     {manage && changing && <ChangeIntent orgId={orgId} connection={changing} onClose={() => setChanging(null)} onChanged={() => { if (!alive.current) return; setChanging(null); void refresh(); }} />}
     {manage && rotating && <IPsecRotateKeys key={rotating.id} orgId={orgId} connection={rotating} onClose={() => setRotating(null)} onSaved={() => { if (!alive.current) return; setRotating(null); setNotice("Keys saved. Update your remote VPN, then enable this connection."); void refresh(); }} />}
     {manage && deleting && <DeleteConnection orgId={orgId} connection={deleting} onClose={() => setDeleting(null)} onDeleted={() => { if (!alive.current) return; setDeleting(null); setSelected(null); void refresh(); }} />}
   </div>;
 }
-function ProviderReadback({ orgId, id, name, onClose }: { orgId: string; id: string; name: string; onClose: () => void }) {
+function ProviderReadback({ orgId, id, name, role, connection, onClose }: { orgId: string; id: string; name: string; role: Member["role"] | undefined; connection?: Connection; onClose: () => void }) {
   const [result, setResult] = useState<Provider | null>(null);
   const [error, setError] = useState("");
   const [attempt, setAttempt] = useState(0);
+  const [dnsOpen, setDNSOpen] = useState(false);
   useEffect(() => { let cancelled = false; setResult(null); setError(""); void loadOne(() => api.GET("/api/v1/organizations/{orgId}/ipsec/connections/{connectionId}/configuration", { params: { path: { orgId, connectionId: id } } })).then(value => { if (cancelled) return; if (value.ok) setResult(value.data); else setError("No provider configuration could be loaded for this record."); }); return () => { cancelled = true; }; }, [orgId, id, attempt]);
   return <section className="ipsec-details" aria-label={`${name} details`}>
     <nav className="ipsec-breadcrumbs" aria-label="IPsec connection breadcrumb"><button onClick={onClose}>Back to connections</button><span aria-hidden="true">/</span><span aria-current="page">{name}</span></nav>
@@ -249,6 +261,12 @@ function ProviderReadback({ orgId, id, name, onClose }: { orgId: string; id: str
         </ResourceSummary>
         {result.profile_id.startsWith("azure-") && result.configuration.azure && <ResourceSummary title="Stored Azure gateway contract" headingLevel={4}><dl className="tnx-resource-facts tnx-resource-facts-three"><div><dt>Gateway SKU</dt><dd>{result.configuration.azure.gateway_sku}</dd></div><div><dt>VPN and IKE</dt><dd>{result.configuration.azure.vpn_type} · IKEv{result.configuration.azure.ike_version}</dd></div><div><dt>Custom policy</dt><dd>AES256 / SHA256 / DHGroup14 · ESP AES256 / SHA256 / PFS2048</dd></div><div><dt>Topology</dt><dd>{result.configuration.tunnels.length === 1 ? "Active-standby" : "Active-active"}</dd></div><div><dt>NAT rules</dt><dd>Disabled</dd></div><div><dt>Policy-based selectors</dt><dd>Disabled</dd></div></dl></ResourceSummary>}
         <div><IPsecTunnelHealth orgId={orgId} connectionId={id} tunnels={result.configuration.tunnels} mode={result.configuration.mode === "ipv4-bgp" ? "ipv4-bgp" : "ipv4-static"} approvedRemotePrefixes={result.configuration.remote_prefixes} profileId={result.profile_id} /></div>
+        {connection?.site_id && connection.gateway_node_id && connection.desired_intent !== "deleted" && <details className="s2s-disclosure" open={dnsOpen} onToggle={event => setDNSOpen(event.currentTarget.open)}>
+          <summary>DNS records and forwarding</summary>
+          <div className="mt-3 space-y-3"><p className="text-sm text-ink-secondary">Manage DNS for this connection's network and gateway. Use DNS records for an IP or load balancer hostname, or forward a private zone to its DNS server. DNS answers need separate application permissions and a working tunnel route.</p>
+            {dnsOpen && <PrivateDNSResolvers orgId={orgId} role={role} scope={{ siteId: connection.site_id, gatewayId: connection.gateway_node_id }} />}
+          </div>
+        </details>}
       </div>}</>}
   </section>;
 }
@@ -290,7 +308,7 @@ function DeleteConnection({ orgId, connection, onClose, onDeleted }: { orgId: st
   return <Modal title="Delete connection?" onDismiss={onClose} actions={<><Button variant="ghost" onClick={onClose}>Cancel</Button><Button variant="danger" disabled={busy || !!error || !Number.isSafeInteger(connection.desired_revision)} onClick={() => void remove()}>Delete connection</Button></>}><p>{connection.name}</p><p className="mt-2 text-sm text-ink-secondary">Removes the tunnel and credentials after gateway cleanup. Safety guards and reserved ranges remain for previously delivered tunnels.</p><ErrorText>{error}</ErrorText></Modal>;
 }
 const blankTunnel = (): Configuration["tunnels"][number] => ({ outside_address: "", inside_cidr: "", customer_inside_address: "", cloud_inside_address: "", psk: "" });
-function ConnectionForm({ orgId, sites, initialProfile = "aws", onCancel, onSaved }: { initialProfile?: IPsecCreateProfile; orgId: string; sites: Site[]; onCancel: () => void; onSaved: (id: string, name: string) => void }) {
+function ConnectionForm({ orgId, sites, initialProfile = "aws", onCancel, onSaved }: { initialProfile?: IPsecCreateProfile; orgId: string; sites: Site[]; onCancel: () => void; onSaved: (id: string, name: string, enable?: Connection) => void }) {
   const alive = useLifetime();
   const [ids] = useState(() => ({ id: crypto.randomUUID(), tunnels: [crypto.randomUUID(), crypto.randomUUID()] }));
   const [step, setStep] = useState(1); const [name, setName] = useState(""); const [site, setSite] = useState(""); const [gateway, setGateway] = useState("");
@@ -301,6 +319,9 @@ function ConnectionForm({ orgId, sites, initialProfile = "aws", onCancel, onSave
   const azure = profile.startsWith("azure-");
   const oneTunnel = singleTunnel(profile);
   const [importing, setImporting] = useState(false);
+  const [awsImport, setAWSImport] = useState<{ cryptoMatches: boolean } | null>(null);
+  const [awsAcknowledged, setAWSAcknowledged] = useState(false);
+  const connectAfterSave = useRef(false);
   const [azureSKU, setAzureSKU] = useState<AzureSKU>("VpnGw1AZ");
   const classic = profile === "gcp-classic-static-ipv4-v1";
   const [mode, setMode] = useState<Configuration["mode"]>(initialMode(initialProfile));
@@ -310,6 +331,8 @@ function ConnectionForm({ orgId, sites, initialProfile = "aws", onCancel, onSave
   const [error, setError] = useState(""); const [busy, setBusy] = useState(false); const [uncertain, setUncertain] = useState(false);
   const frozen = useRef<CreateInput | null>(null); const saving = useRef(false);
   const pair = `${site}:${gateway}`;
+  const importContext = useRef({ pair, revision: 0 });
+  if (importContext.current.pair !== pair) importContext.current = { pair, revision: importContext.current.revision + 1 };
   useEffect(() => { let cancelled = false; void loadOne(() => api.GET("/api/v1/organizations/{orgId}/nodes", { params: { path: { orgId } } })).then(result => { if (cancelled) return; if (result.ok) setNodes(result.data); else setError("Could not load gateways. Close and try again."); }); return () => { cancelled = true; }; }, [orgId]);
   useEffect(() => { let cancelled = false; setSubnets([]); setLocal([]); if (site) void loadOne(() => api.GET("/api/v1/organizations/{orgId}/sites/{siteId}/subnets", { params: { path: { orgId, siteId: site } } })).then(result => { if (cancelled) return; if (result.ok) setSubnets(result.data.filter(subnet => subnet.status === "approved")); else setError("Could not load approved ranges. Choose the network again."); }); return () => { cancelled = true; }; }, [orgId, site]);
   useEffect(() => { let cancelled = false; setEligibility(null); if (!site || !gateway) { setChecking(false); return; } setChecking(true); void loadOne(() => api.GET("/api/v1/organizations/{orgId}/ipsec/eligibility", { params: { path: { orgId }, query: { site_id: site, gateway_node_id: gateway } } })).then(result => { if (cancelled) return; setChecking(false); if (result.ok) setEligibility({ key: pair, value: result.data }); else setError("Could not check gateway support. Try again."); }); return () => { cancelled = true; }; }, [orgId, site, gateway, pair, checkAttempt]);
@@ -318,8 +341,27 @@ function ConnectionForm({ orgId, sites, initialProfile = "aws", onCancel, onSave
   const selectedGateways = nodes.filter(node => node.site_id === site && node.status === "active");
   const bgpPrepared = mode === "ipv4-static" || (privateASN(localASN) && (privateASN(remoteASN) || (profile === "aws" && remoteASN === "7224") || (azure && remoteASN === "65515")) && Number(localASN) !== Number(remoteASN) && routerID.trim() && /^\d+$/.test(maximumPrefixes) && Number(maximumPrefixes) >= 1 && Number(maximumPrefixes) <= 64);
   const prepared = name.trim() && site && selectedGateways.some(node => node.id === gateway) && local.length && customer && remote.trim() && bgpPrepared;
+  async function importAWS(file: File | undefined) {
+    if (profile !== "aws" || !file || importing) return;
+    const context = importContext.current.revision;
+    setError(""); setImporting(true); setAWSAcknowledged(false); connectAfterSave.current = false;
+    try {
+      if (!file.size || file.size > AWS_GENERIC_MAX_BYTES) throw new AWSImportError("Choose a nonempty AWS Generic text file no larger than 64 KiB.");
+      const imported = parseAWSGeneric(await file.text());
+      if (!alive.current || context !== importContext.current.revision) return;
+      setAWSImport({ cryptoMatches: imported.cryptoMatches });
+      setName(old => old.trim() ? old : imported.name);
+      setMode(imported.mode); setCustomer(imported.customerOutsideAddress); setTunnels(imported.tunnels);
+      if (imported.bgp) {
+        setLocalASN(String(imported.bgp.localASN)); setRemoteASN(String(imported.bgp.remoteASN));
+        setRouterID(old => old.trim() ? old : imported.customerOutsideAddress);
+      }
+    } catch (error) {
+      if (alive.current && context === importContext.current.revision) setError(error instanceof AWSImportError ? error.message : "AWS file could not be read. Choose the downloaded Generic text file or enter the settings manually.");
+    } finally { if (alive.current) setImporting(false); }
+  }
   async function importAzure(file: File | undefined) {
-    if (!file || importing || !site || !gateway) return;
+    if (!azure || !file || importing || !site || !gateway) return;
     setError(""); setImporting(true);
     try {
       if (file.size > 65536 || file.size === 0) throw new Error();
@@ -352,14 +394,28 @@ function ConnectionForm({ orgId, sites, initialProfile = "aws", onCancel, onSave
     finally { if (alive.current) setImporting(false); }
   }
   function cancel() { frozen.current = null; setTunnels(oneTunnel ? [blankTunnel()] : [blankTunnel(), blankTunnel()]); onCancel(); }
+  function finishSaved(connection: Connection) {
+    // Creation is finished before activation begins. The existing intent dialog owns
+    // all later retries, so an uncertain enable can never create another connection.
+    const requested = connectAfterSave.current;
+    const expected = frozen.current;
+    const enable = requested && connection.id === expected?.id && connection.org_id === orgId && connection.site_id === expected?.site_id && connection.gateway_node_id === expected?.gateway_node_id && connection.desired_intent === "disabled" && connection.cleanup_state === "not_required" && !connection.deleted_at ? connection : undefined;
+    frozen.current = null; connectAfterSave.current = false;
+    setTunnels(oneTunnel ? [blankTunnel()] : [blankTunnel(), blankTunnel()]);
+    onSaved(connection.id, connection.name, enable);
+  }
   async function recover(id: string) {
     const result = await loadOne(() => api.GET("/api/v1/organizations/{orgId}/ipsec/connections/{connectionId}", { params: { path: { orgId, connectionId: id } } }));
     if (!alive.current) return false;
-    if (result.ok) { frozen.current = null; setTunnels(oneTunnel ? [blankTunnel()] : [blankTunnel(), blankTunnel()]); onSaved(id, result.data.name); return true; }
+    if (result.ok) { finishSaved(result.data); return true; }
     return false;
   }
-  async function save() {
+  async function save(connect = false) {
     if (saving.current || (!uncertain && (!prepared || !currentEligibility?.eligible))) return;
+    if (!uncertain) {
+      if (connect && (!awsImport || !awsAcknowledged || (mode === "ipv4-bgp" && !currentEligibility?.bgp?.eligible))) return;
+      connectAfterSave.current = connect;
+    }
     if (!uncertain && azure && !oneTunnel && tunnels[0]?.psk !== tunnels[1]?.psk) { setError("Azure active-active tunnels share one connection and must use the same PSK."); return; }
     if (!uncertain && azure && mode === "ipv4-bgp" && tunnels.some(tunnel => tunnel.customer_inside_address !== tunnels[0]?.customer_inside_address || tunnel.inside_cidr !== `${tunnel.customer_inside_address}/32`)) { setError("Azure BGP requires the same customer APIPA address and its /32 on every tunnel, with distinct Azure peer addresses."); return; }
     saving.current = true; setBusy(true); setError("");
@@ -379,7 +435,7 @@ function ConnectionForm({ orgId, sites, initialProfile = "aws", onCancel, onSave
       frozen.current = input; posted = true;
       const result = await api.POST("/api/v1/organizations/{orgId}/ipsec/connections", { params: { path: { orgId } }, body: input });
       if (!alive.current) return;
-      if (result.data && !result.error) { frozen.current = null; setTunnels(oneTunnel ? [blankTunnel()] : [blankTunnel(), blankTunnel()]); onSaved(result.data.id, result.data.name); return; }
+      if (result.data && !result.error) { finishSaved(result.data); return; }
       if (result.response?.status === 409 && await recover(input.id)) return;
       if (!uncertain && result.response && result.response.status < 500 && result.response.status !== 409) { frozen.current = null; setUncertain(false); setError("Configuration was not saved. Review gateway support, network ownership and conflicts."); }
       else { setUncertain(true); setError("Save result unknown. Retry uses the same connection ID."); }
@@ -393,11 +449,12 @@ function ConnectionForm({ orgId, sites, initialProfile = "aws", onCancel, onSave
     <form onSubmit={event => { event.preventDefault(); if (step === 1) { if (prepared) setStep(2); } else void save(); }} autoComplete="off" className="ipsec-setup-form">
       <ol className="ipsec-setup-steps" aria-label="IPsec setup steps"><li aria-current={step === 1 ? "step" : undefined}><span aria-hidden="true">1</span>Networks</li><li aria-current={step === 2 ? "step" : undefined}><span aria-hidden="true">2</span>Tunnels</li></ol>
       <p className="ipsec-setup-intro">{step === 1 ? "Choose an approved local range and cloud VPN profile." : "Enter the cloud tunnel endpoints. This connection will be saved disabled."}</p>
-      <fieldset disabled={busy || uncertain || importing} className="ipsec-setup-fields">
+      <fieldset disabled={busy || uncertain || importing} className="ipsec-setup-fields" onChange={() => { setAWSAcknowledged(false); if (!uncertain) connectAfterSave.current = false; }}>
         {step === 1 ? <>
           <Field label="Name"><Input required value={name} maxLength={255} onChange={event => setName(event.target.value)} placeholder="Office to cloud" /></Field>
-          <Field label="Import Tunnex Azure JSON"><Input aria-label="Import Tunnex Azure JSON" type="file" accept=".json,application/json" disabled={!site || !gateway || importing} onChange={event => { const file = event.target.files?.[0]; event.target.value = ""; void importAzure(file); }} /><p className="text-xs text-ink-secondary">Select a network and gateway first. Imports are limited to 64 KiB and only prefill this disabled configuration draft. Native Azure exports are not supported.</p></Field>
-          <Field label="Cloud VPN profile"><Select value={profile} onChange={event => { const selected = event.target.value as typeof profile; setProfile(selected); setMode(initialMode(selected)); setRemoteASN(selected.startsWith("azure-") ? "65515" : "64512"); setTunnels(singleTunnel(selected) ? [blankTunnel()] : [blankTunnel(), blankTunnel()]); }}><option value="aws">AWS Site-to-Site VPN</option><option value="gcp-ha-bgp-ipv4-v1">Google Cloud HA VPN · BGP</option><option value="gcp-classic-static-ipv4-v1">Google Cloud Classic VPN · static</option><option value="azure-active-active-bgp-ipv4-v1">Azure active-active · BGP</option><option value="azure-active-active-static-ipv4-v1">Azure active-active · static</option><option value="azure-active-standby-bgp-ipv4-v1">Azure active-standby · BGP</option><option value="azure-active-standby-static-ipv4-v1">Azure active-standby · static</option></Select></Field>
+          {profile === "aws" && <Field label="Import AWS Generic configuration"><Input aria-label="Import AWS Generic configuration" type="file" accept=".txt,text/plain" onChange={event => { const file = event.target.files?.[0]; event.target.value = ""; void importAWS(file); }} /><p className="text-xs text-ink-secondary">Upload the AWS Generic .txt download (up to 64 KiB) to fill both tunnels and routing settings. Supports IPv4 static or BGP with a Virtual Private Gateway or Transit Gateway. Select your local network, approved ranges and remote ranges below; this upload does not create an AWS attachment.</p></Field>}
+          {azure && <Field label="Import Tunnex Azure JSON"><Input aria-label="Import Tunnex Azure JSON" type="file" accept=".json,application/json" disabled={!site || !gateway || importing} onChange={event => { const file = event.target.files?.[0]; event.target.value = ""; void importAzure(file); }} /><p className="text-xs text-ink-secondary">Select a network and gateway first. Imports are limited to 64 KiB and only prefill this disabled configuration draft. Native Azure exports are not supported.</p></Field>}
+          <Field label="Cloud VPN profile"><Select value={profile} onChange={event => { const selected = event.target.value as typeof profile; if (!createProfiles.some(option => option.id === selected && providerName(option.id) === providerName(initialProfile))) return; setProfile(selected); setMode(initialMode(selected)); setRemoteASN(selected.startsWith("azure-") ? "65515" : "64512"); setTunnels(singleTunnel(selected) ? [blankTunnel()] : [blankTunnel(), blankTunnel()]); }}>{createProfiles.filter(option => providerName(option.id) === providerName(initialProfile)).map(option => <option key={option.id} value={option.id}>{option.label}</option>)}</Select></Field>
           {gcp && <p className="text-xs text-ink-secondary">{classic ? "Classic uses one route-based static tunnel. Configure exact local and remote routes plus the cloud return route. Inside BGP addresses do not apply." : "Use two HA VPN tunnel endpoints, one on each Google Cloud interface (0 and 1), with Cloud Router BGP. A single local gateway does not provide host redundancy or an availability SLA."}</p>}
           {azure && <Field label="Azure VPN Gateway SKU"><Select value={azureSKU} onChange={event => setAzureSKU(event.target.value as AzureSKU)}>{["VpnGw1", "VpnGw2", "VpnGw3", "VpnGw4", "VpnGw5", "VpnGw1AZ", "VpnGw2AZ", "VpnGw3AZ", "VpnGw4AZ", "VpnGw5AZ"].map(sku => <option key={sku} value={sku}>{sku}</option>)}</Select></Field>}
           {azure && <p className="text-xs text-ink-secondary">Use a route-based Azure VPN Gateway with {oneTunnel ? "one public endpoint on an active-standby gateway" : "two public endpoints on an active-active gateway"}. Select the actual Azure gateway SKU. IKEv2, route-based selectors and no NAT rules are required. Match the custom IKE/IPsec policy: AES256, SHA256, DHGroup14; ESP AES256, SHA256, PFS2048. {mode === "ipv4-bgp" ? "Use one customer APIPA address with its /32 on both tunnels and a distinct Azure peer address per instance in 169.254.21.0–169.254.22.255. The peer addresses need not share a subnet. Tunnex initiates BGP." : "Inside addresses below are local Tunnex runtime /30 addresses; Azure does not assign them for static routing."} Active-active tunnels must use the same PSK because they share one Azure connection. A single Tunnex gateway does not provide host redundancy.</p>}
@@ -405,12 +462,12 @@ function ConnectionForm({ orgId, sites, initialProfile = "aws", onCancel, onSave
           <div className="ipsec-setup-grid"><Field label="Local network"><Select required value={site} onChange={event => { setSite(event.target.value); setGateway(""); setLocal([]); setSubnets([]); setEligibility(null); }}><option value="">Choose a network</option>{sites.map(value => <option key={value.id} value={value.id}>{value.name}</option>)}</Select></Field>
             <Field label="Gateway"><Select required value={gateway} onChange={event => { setGateway(event.target.value); setEligibility(null); }}><option value="">Choose a gateway</option>{selectedGateways.map(node => <option key={node.id} value={node.id}>{node.name}</option>)}</Select></Field></div>
           <fieldset className="ipsec-local-ranges"><legend>Approved local ranges</legend><div>{subnets.map(subnet => <label key={subnet.id}><input type="checkbox" checked={local.includes(subnet.cidr)} onChange={event => setLocal(old => event.target.checked ? [...old, subnet.cidr] : old.filter(value => value !== subnet.cidr))} />{subnet.cidr}</label>)}</div>{site && subnets.length === 0 && <p className="text-xs text-ink-secondary">No approved ranges available.</p>}</fieldset>
-          <div className="ipsec-setup-grid"><Field label="Customer public IP"><Input required value={customer} onChange={event => setCustomer(event.target.value)} placeholder="Public gateway or NAT IP" /></Field><Field label="Remote network ranges"><Input required value={remote} onChange={event => setRemote(event.target.value)} placeholder="CIDRs, separated by commas" /></Field></div>
+          <div className="ipsec-setup-grid"><Field label="Customer public IP"><Input required value={customer} onChange={event => setCustomer(event.target.value)} placeholder="Public gateway or NAT IP" /></Field><div><Field label="Remote network ranges"><Input required value={remote} onChange={event => setRemote(event.target.value)} placeholder="CIDRs, separated by commas" aria-describedby={`ipsec-remote-ranges-help-${ids.id}`} /></Field><p id={`ipsec-remote-ranges-help-${ids.id}`} className="mt-1 text-xs text-ink-secondary">Enter one or more CIDRs, separated by commas. Example: 10.180.0.0/16, 10.181.0.0/16.</p></div></div>
           {mode === "ipv4-bgp" && <fieldset className="space-y-3"><legend className="font-medium text-ink-heading">BGP settings</legend>
             <div className="ipsec-setup-grid">
               <Field label="Customer ASN"><Input type="number" required min={64512} max={4294967294} step={1} value={localASN} onChange={event => setLocalASN(event.target.value)} /></Field>
               <Field label={remoteASNLabel(profile)}><Input type="number" required min={1} max={4294967294} step={1} value={remoteASN} onChange={event => setRemoteASN(event.target.value)} /></Field>
-              <Field label="Router ID"><Input required maxLength={15} value={routerID} onChange={event => setRouterID(event.target.value)} placeholder="Stable IPv4 router ID" /></Field>
+              <Field label="Router ID"><Input aria-label="Router ID" required maxLength={15} value={routerID} onChange={event => setRouterID(event.target.value)} placeholder="Stable IPv4 router ID" />{awsImport && <p className="text-xs text-ink-secondary">Defaults to the imported customer public IP when empty. Keep a stable, unique IPv4 router ID.</p>}</Field>
               <Field label="Maximum prefixes per peer"><Input type="number" required min={1} max={64} step={1} value={maximumPrefixes} onChange={event => setMaximumPrefixes(event.target.value)} /></Field>
             </div>
             <p className="text-xs text-ink-secondary">Approved local ranges are advertised. Only the exact remote ranges above are accepted. Learning routes does not grant application access.</p>
@@ -424,13 +481,18 @@ function ConnectionForm({ orgId, sites, initialProfile = "aws", onCancel, onSave
           ["outside_address", "outside IP"], ["inside_cidr", "inside CIDR"], ["customer_inside_address", "customer IP"], ["cloud_inside_address", "cloud IP"], ["psk", "PSK"],
         ] as const).filter(([field]) => !classic || field === "outside_address" || field === "psk").map(([field, label]) => <Field key={field} label={`Tunnel ${i + 1} ${azure && mode === "ipv4-static" && field !== "outside_address" && field !== "psk" ? "Tunnex runtime " : ""}${label}`}><Input required type={field === "psk" ? "password" : "text"} autoComplete={field === "psk" ? "new-password" : "off"} spellCheck={false} value={tunnel[field]} onChange={event => setTunnels(old => old.map((value, n) => n === i ? { ...value, [field]: event.target.value } : value))} /></Field>)}</div>)}</div></>}
       </fieldset>
+      {awsImport && <section aria-label="AWS import review" className="space-y-2 rounded border border-line bg-surface-inset p-3 text-sm">
+        <p>{awsImport.cryptoMatches ? "The template lists Tunnex’s required algorithms. Actual AWS tunnel options and negotiated health still need verification." : "The template lists algorithms different from Tunnex’s required profile. AWS Generic downloads can describe minimum examples; those algorithms are not imported."}</p>
+        <p>Required profile: {AWS_REQUIRED_CRYPTO}. Tunnel addresses and PSKs were imported; access ranges remain your explicit choices.</p>
+        {step === 2 && <><label className="flex items-start gap-2"><input type="checkbox" checked={awsAcknowledged} disabled={busy || uncertain || importing} onChange={event => setAWSAcknowledged(event.target.checked)} /><span>I have verified that both AWS tunnels allow Tunnex’s required IKEv2, AES256, SHA256 and DH/PFS group 14 profile.</span></label><p className="text-xs text-ink-secondary">Save disabled, or choose Create and connect for a final enable confirmation. The saved connection remains available if enabling fails. Reported tunnel health confirms connection status.</p></>}
+      </section>}
       <div className="ipsec-setup-readiness"><p role="status" className="text-ink-secondary">{checking ? "Checking gateway support…" : currentEligibility ? eligibilityText[currentEligibility.reason] : "Choose a network and gateway to check support."}</p>{site && gateway && <Button type="button" variant="ghost" size="sm" disabled={busy || checking} onClick={() => setCheckAttempt(value => value + 1)}>Check support</Button>}</div>
       {mode === "ipv4-bgp" && currentEligibility?.eligible && !currentEligibility.bgp?.eligible && <p role="status" className="text-xs text-ink-secondary">You can save this BGP configuration disabled. Enabling requires a gateway with fresh BGP support.</p>}
       {gcp && !classic && currentEligibility?.eligible && !currentEligibility.gcp_ha?.eligible && <p role="status" className="text-xs text-ink-secondary">You can save this HA configuration disabled. Enabling requires fresh Google Cloud HA VPN support from this gateway.</p>}
       {classic && currentEligibility?.eligible && !currentEligibility.gcp_classic?.eligible && <p role="status" className="text-xs text-ink-secondary">You can save this Classic configuration disabled. Enabling requires fresh Google Cloud Classic VPN support from this gateway.</p>}
       {azure && currentEligibility?.eligible && !(mode === "ipv4-bgp" ? currentEligibility.azure_bgp?.eligible : currentEligibility.azure_static?.eligible) && <p role="status" className="text-xs text-ink-secondary">You can save this Azure configuration disabled. Enabling requires fresh Azure support from this gateway.</p>}
       <ErrorText>{error}</ErrorText>
-      <div className="ipsec-setup-actions"><Button type="button" variant="ghost" onClick={cancel}>Cancel</Button>{step === 2 && !uncertain && <Button type="button" variant="ghost" disabled={busy} onClick={() => setStep(1)}>Back</Button>}{step === 1 ? <Button type="submit" disabled={!prepared || busy || importing}>Next: tunnels</Button> : <Button type="submit" disabled={busy || importing || (!uncertain && (checking || !currentEligibility?.eligible))}>{busy ? "Saving…" : uncertain ? "Retry save" : "Save disabled connection"}</Button>}</div>
+      <div className="ipsec-setup-actions"><Button type="button" variant="ghost" onClick={cancel}>Cancel</Button>{step === 2 && !uncertain && <Button type="button" variant="ghost" disabled={busy} onClick={() => setStep(1)}>Back</Button>}{step === 1 ? <Button type="submit" disabled={!prepared || busy || importing}>Next: tunnels</Button> : <Button type="submit" disabled={busy || importing || (!uncertain && (checking || !currentEligibility?.eligible))}>{busy ? "Saving…" : uncertain ? "Retry save" : "Save disabled connection"}</Button>}{step === 2 && awsImport && !uncertain && <Button type="button" disabled={busy || importing || checking || !currentEligibility?.eligible || !awsAcknowledged || (mode === "ipv4-bgp" && !currentEligibility?.bgp?.eligible)} onClick={() => void save(true)}>Create and connect…</Button>}</div>
     </form>
   </Modal>;
 }

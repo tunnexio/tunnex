@@ -130,3 +130,14 @@ func azureProfileRecreationVersion(controller any) int {
 	}
 	return 1
 }
+
+func (c *Client) ipsecDesktopTransitCapability() int {
+	if c == nil {
+		return 0
+	}
+	controller := c.ipsecController.Load()
+	if controller == nil {
+		return 0
+	}
+	return controller.DesktopTransitCapability()
+}

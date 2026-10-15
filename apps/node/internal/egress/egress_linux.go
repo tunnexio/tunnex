@@ -33,6 +33,7 @@ import (
 
 	"github.com/tunnexio/tunnex/apps/node/internal/flowlog"
 	"github.com/tunnexio/tunnex/apps/node/internal/hostposture"
+	"github.com/tunnexio/tunnex/apps/node/internal/ipsec"
 	"github.com/tunnexio/tunnex/apps/node/internal/k8snetprep"
 	"github.com/tunnexio/tunnex/apps/node/internal/nodepolicy"
 )
@@ -71,7 +72,8 @@ const (
 // Mesh=true keeps the legacy blanket mesh, enforcing renders default-deny + the
 // compiled allow rules.
 type Manager struct {
-	wgIface string
+	wgIface    string
+	desktopNAT atomic.Pointer[ipsec.DesktopNATSource]
 	// ovpnTun is the co-terminated OpenVPN server's tun interface name (S9.1 Slice 3), threaded
 	// from the OVPN server lifecycle's config — the ONE truth for the tunnel-ingress set, never
 	// re-derived. Empty when no OVPN server is configured (a WireGuard-only deployment), in which
@@ -745,7 +747,7 @@ func (m *Manager) rulesetWith(subnet string, pol *nodepolicy.Compiled) string {
 		// reliable in postrouting) and by `oifname != <tunnel set>` — so traffic destined to ANY
 		// tunnel (spoke↔spoke, incl. device↔device ACROSS wg0/OVPN) stays un-NAT'd (the ZT chain
 		// needs the un-mangled source /32), and only true internet egress is masqueraded.
-		masq = fmt.Sprintf("    ip saddr %s %s masquerade\n", subnet, ifClause("oifname", tun, true))
+		masq = m.desktopNATRules(subnet) + fmt.Sprintf("    ip saddr %s %s masquerade\n", subnet, ifClause("oifname", tun, true))
 	}
 	if subnet6 := wgSubnet6(context.Background(), m.wgIface); subnet6 != "" {
 		masq6 = fmt.Sprintf("    ip6 saddr %s %s masquerade\n", subnet6, ifClause("oifname", tun, true))

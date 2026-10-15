@@ -189,8 +189,24 @@ func runtimeFQDNLeaseContinuity(current RuntimePolicy, request RuntimeLeaseReque
 // V1 cannot selectively time individual memberships, so its whole owner lease
 // ends at the earliest emitted answer/rule cutoff. V2 ordinary/DNS stay 60s.
 func runtimeFQDNWholeLeaseTTL(policy RuntimePolicy, observedAt time.Time, elapsed time.Duration) (int64, error) {
+	desktopTTL := int64(60000)
+	for _, grant := range policy.DesktopGrants {
+		if grant.ExpiresAt == nil {
+			continue
+		}
+		remaining := grant.ExpiresAt.Sub(observedAt) - elapsed
+		if observedAt.IsZero() || elapsed < 0 || remaining <= 0 {
+			return 0, ErrConnectionConflict
+		}
+		if remaining.Milliseconds() < desktopTTL {
+			desktopTTL = remaining.Milliseconds()
+		}
+	}
+	if desktopTTL <= 0 {
+		return 0, ErrConnectionConflict
+	}
 	if policy.FQDNPolicyVersion != 1 || len(policy.FQDNGrants) == 0 {
-		return 60000, nil
+		return desktopTTL, nil
 	}
 	if observedAt.IsZero() || elapsed < 0 || !policy.FQDNLeaseDeadline.After(observedAt) {
 		return 0, ErrConnectionConflict
@@ -205,6 +221,9 @@ func runtimeFQDNWholeLeaseTTL(policy RuntimePolicy, observedAt time.Time, elapse
 	}
 	if ttl > 60000 {
 		ttl = 60000
+	}
+	if desktopTTL < ttl {
+		ttl = desktopTTL
 	}
 	return ttl, nil
 }

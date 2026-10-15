@@ -62,7 +62,8 @@ export function EntityPicker({
   const [active, setActive] = useState(0);
   const box = useRef<HTMLDivElement>(null);
 
-  const selected = options.find((o) => o.value === value);
+  const selected = options.find((o) => o.value === value)
+    ?? (acceptCidr && isCidr(value) ? { value, kind: "cidr", tag: "CIDR", label: value } : undefined);
 
   const shown = useMemo(() => {
     const q = query.trim().toLowerCase();

@@ -262,6 +262,7 @@ func (f *Forwarder) ReconcileK8sBinds(ctx context.Context, wgIface string) {
 	}
 	f.reconcileBinds(ctx, src, lst, wgIface, f.ownedLive)
 	f.reconcileTCPBinds(src, wgIface)
+	f.reconcileLANBinds(wgIface)
 }
 
 func (f *Forwarder) closeOwnedBinds() {
@@ -273,6 +274,7 @@ func (f *Forwarder) closeOwnedBinds() {
 		delete(f.ownedLive, addr)
 	}
 	f.closeTCPBinds()
+	f.closeLANBinds()
 	f.listenerWG.Wait()
 }
 
@@ -383,7 +385,13 @@ func (f *Forwarder) reconcileBinds(
 	}
 }
 
+type dnsHandler func([]byte, netip.Addr, string) []byte
+
 func (f *Forwarder) serveConn(ctx context.Context, pc udpListener) {
+	f.serveConnWithHandler(ctx, pc, f.handleTransport)
+}
+
+func (f *Forwarder) serveConnWithHandler(ctx context.Context, pc udpListener, handler dnsHandler) {
 	stopCloser := make(chan struct{})
 	closerDone := make(chan struct{})
 	go func() {
@@ -418,7 +426,7 @@ func (f *Forwarder) serveConn(ctx context.Context, pc udpListener) {
 		go func() {
 			defer handlers.Done()
 			defer func() { <-slots }()
-			if resp := f.handle(q, srcAddr); resp != nil {
+			if resp := handler(q, srcAddr, "udp"); resp != nil {
 				if bounded := downstreamUDPResponse(q, resp); bounded != nil {
 					_, _ = pc.WriteToUDPAddrPort(bounded, src)
 				}

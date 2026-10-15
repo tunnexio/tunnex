@@ -239,6 +239,24 @@ func toAPINode(n sqlc.Node) api.Node {
 			}
 		}
 	}
+
+	if caps.DNSLANListeners != nil {
+		states := make([]api.DNSLANListenerStatus, 0, len(caps.DNSLANListeners))
+		for _, state := range caps.DNSLANListeners {
+			ids := []uuid.UUID{}
+			for _, raw := range state.ProfileIDs {
+				if id, err := uuid.Parse(raw); err == nil {
+					ids = append(ids, id)
+				}
+			}
+			states = append(states, api.DNSLANListenerStatus{Address: state.Address, Interface: state.Interface, Ready: state.Ready, Error: state.Error, ProfileIds: ids})
+		}
+		out.DnsLanListeners = &states
+		if n.PolicyReportedAt.Valid {
+			reported := n.PolicyReportedAt.Time
+			out.DnsLanReportedAt = &reported
+		}
+	}
 	out.EgressMode = &mode
 	if n.SiteID.Valid { // S8.3 D2/CH: the site binding the topology view joins on
 		sid := uuid.UUID(n.SiteID.Bytes)

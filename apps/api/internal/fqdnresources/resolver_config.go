@@ -2,6 +2,7 @@ package fqdnresources
 
 import (
 	"context"
+	"encoding/json"
 	"net/netip"
 	"sort"
 	"strconv"
@@ -45,8 +46,24 @@ type ResolverIPsecPath struct {
 	SourceAddress         string    `json:"source_address"`
 }
 
+type ResolverStaticRecord struct {
+	Name  string `json:"name"`
+	Type  string `json:"type"`
+	Value string `json:"value"`
+	TTL   int    `json:"ttl"`
+}
+
+type ResolverLANListener struct {
+	Address          string   `json:"address"`
+	Interface        string   `json:"interface"`
+	AllowedSources   []string `json:"allowed_sources"`
+	DefaultUpstreams []string `json:"default_upstreams,omitempty"`
+}
+
 type ResolverProfile struct {
-	IPsecPath     *ResolverIPsecPath `json:"ipsec_path,omitempty"`
+	StaticRecords []ResolverStaticRecord `json:"static_records,omitempty"`
+	LANListener   *ResolverLANListener   `json:"lan_listener,omitempty"`
+	IPsecPath     *ResolverIPsecPath     `json:"ipsec_path,omitempty"`
 	ID            uuid.UUID
 	Name          string
 	ProviderHint  string
@@ -128,7 +145,23 @@ func validateProfiles(in []ResolverProfile) error {
 				}
 			}
 		}
-		if err := validateEndpoints(in[i].Endpoints); err != nil {
+		if len(in[i].StaticRecords) > 0 {
+			if in[i].IPsecPath != nil || in[i].LegacyDefault {
+				return apierr.BadRequest("invalid_static_dns_profile", "static records require explicit zones and cannot also declare an IPsec resolver path")
+			}
+			if err := validateStaticEndpoints(in[i].Endpoints); err != nil {
+				return err
+			}
+		} else if err := validateEndpoints(in[i].Endpoints); err != nil {
+			return err
+		}
+		if in[i].LANListener != nil && len(in[i].StaticRecords) == 0 && in[i].IPsecPath == nil {
+			return apierr.BadRequest("invalid_dns_lan_listener", "LAN DNS requires managed static records or an IPsec resolver profile")
+		}
+		if in[i].LANListener != nil && in[i].LegacyDefault {
+			return apierr.BadRequest("invalid_dns_lan_listener", "LAN DNS requires explicit zone suffixes")
+		}
+		if err := validateLANListener(in[i].LANListener); err != nil {
 			return err
 		}
 		profileSeen := map[string]struct{}{}
@@ -147,6 +180,9 @@ func validateProfiles(in []ResolverProfile) error {
 			profileSeen[normalized] = struct{}{}
 			seenSuffix[normalized] = in[i].Name
 		}
+		if err := validateStaticRecords(in[i].StaticRecords, in[i].ZoneSuffixes); err != nil {
+			return err
+		}
 		sort.Strings(in[i].ZoneSuffixes)
 		sort.Slice(in[i].Endpoints, func(a, b int) bool {
 			left, right := in[i].Endpoints[a], in[i].Endpoints[b]
@@ -159,6 +195,48 @@ func validateProfiles(in []ResolverProfile) error {
 			return left.Transport < right.Transport
 		})
 	}
+	if err := validateLANDefaultContexts(in); err != nil {
+		return err
+	}
+	// All records must retain their effective owner when zones are nested. A broad
+	// profile cannot publish a locally shadowed record through a CNAME chain.
+	zoneSets := make([][]string, len(in))
+	for i, profile := range in {
+		zoneSets[i] = profile.ZoneSuffixes
+	}
+	for i, profile := range in {
+		names := make([]string, 0, len(profile.StaticRecords))
+		for _, record := range profile.StaticRecords {
+			names = append(names, record.Name)
+		}
+		if !fqdn.StaticNamesOwnedByProfile(i, names, zoneSets) {
+			return apierr.BadRequest("shadowed_static_dns_record", "Static record names must belong to this profile's most-specific DNS zone; move shadowed records to the profile that owns the narrower zone")
+		}
+	}
+	// Profiles share one authority revision, so aliases cannot evade cycle checks by crossing zone boundaries.
+	aliases := map[string]string{}
+	owners := map[string]int{}
+	for i, profile := range in {
+		for _, record := range profile.StaticRecords {
+			if owner, exists := owners[record.Name]; exists && owner != i {
+				return apierr.BadRequest("duplicate_static_dns_name", "static hostnames must belong to only one profile")
+			}
+			owners[record.Name] = i
+			if record.Type == "CNAME" {
+				aliases[record.Name] = record.Value
+			}
+		}
+	}
+	for name := range aliases {
+		visited := map[string]bool{}
+		for current := name; current != ""; current = aliases[current] {
+			if visited[current] || len(visited) >= 9 {
+				return apierr.BadRequest("invalid_static_dns_record", "CNAME chains must be acyclic and contain at most 8 aliases")
+			}
+			visited[current] = true
+		}
+	}
+
 	return nil
 }
 
@@ -233,7 +311,7 @@ func resolverConfig(ctx context.Context, q resolverConfigQuerier, org, site, gat
 }
 
 func configProfiles(ctx context.Context, q resolverConfigQuerier, configID, org uuid.UUID) ([]ResolverProfile, error) {
-	rows, err := q.Query(ctx, `SELECT id,name,provider_hint,legacy_default,ipsec_connection_id,ipsec_configuration_revision,host(ipsec_source_address) FROM fqdn_resolver_context_profiles WHERE config_id=$1 AND org_id=$2 ORDER BY ordinal`, configID, org)
+	rows, err := q.Query(ctx, `SELECT id,name,provider_hint,legacy_default,ipsec_connection_id,ipsec_configuration_revision,host(ipsec_source_address),static_records,lan_listener FROM fqdn_resolver_context_profiles WHERE config_id=$1 AND org_id=$2 ORDER BY ordinal`, configID, org)
 	if err != nil {
 		return nil, err
 	}
@@ -244,8 +322,17 @@ func configProfiles(ctx context.Context, q resolverConfigQuerier, configID, org 
 		var connection *uuid.UUID
 		var revision *int64
 		var source *string
-		if err := rows.Scan(&profile.ID, &profile.Name, &profile.ProviderHint, &profile.LegacyDefault, &connection, &revision, &source); err != nil {
+		var records, listener []byte
+		if err := rows.Scan(&profile.ID, &profile.Name, &profile.ProviderHint, &profile.LegacyDefault, &connection, &revision, &source, &records, &listener); err != nil {
 			return nil, err
+		}
+		if err := json.Unmarshal(records, &profile.StaticRecords); err != nil {
+			return nil, err
+		}
+		if len(listener) > 0 {
+			if err := json.Unmarshal(listener, &profile.LANListener); err != nil {
+				return nil, err
+			}
 		}
 		if connection != nil && revision != nil && source != nil {
 			profile.IPsecPath = &ResolverIPsecPath{ConnectionID: *connection, ConfigurationRevision: *revision, SourceAddress: *source}
@@ -330,7 +417,30 @@ func (s *Service) SetResolverProfiles(ctx context.Context, org, site, gateway, a
 	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1::text || ':' || $2::text || ':' || $3::text, 0))`, org, site, gateway); err != nil {
 		return ResolverConfig{}, err
 	}
+	minimumVersion := 0
 	for _, profile := range profiles {
+		if len(profile.StaticRecords) > 0 || profile.LANListener != nil {
+			minimumVersion = max(minimumVersion, 12)
+		}
+		if profile.LANListener != nil && len(profile.LANListener.DefaultUpstreams) > 0 {
+			minimumVersion = max(minimumVersion, 13)
+		}
+		if len(profile.StaticRecords) > 0 && len(profile.Endpoints) > 0 {
+			minimumVersion = 14
+		}
+	}
+	if minimumVersion > 0 {
+		if err := validateManagedDNSCapability(ctx, tx, org, site, gateway, minimumVersion); err != nil {
+			return ResolverConfig{}, err
+		}
+	}
+	for _, profile := range profiles {
+		if err := validateStaticEndpointOwnership(ctx, tx, org, site, gateway, profile); err != nil {
+			return ResolverConfig{}, err
+		}
+		if err := validateLANListenerOwnership(ctx, tx, org, site, gateway, profile.LANListener); err != nil {
+			return ResolverConfig{}, err
+		}
 		if profile.IPsecPath != nil {
 			if err := validateIPsecResolverPath(ctx, tx, org, site, gateway, profile); err != nil {
 				return ResolverConfig{}, err
@@ -369,7 +479,7 @@ func (s *Service) SetResolverProfiles(ctx context.Context, org, site, gateway, a
 			pathRevision = profile.IPsecPath.ConfigurationRevision
 			pathSource = profile.IPsecPath.SourceAddress
 		}
-		if _, err := tx.Exec(ctx, `INSERT INTO fqdn_resolver_context_profiles(id,config_id,org_id,ordinal,name,provider_hint,legacy_default,ipsec_connection_id,ipsec_configuration_revision,ipsec_source_address) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::inet)`, profile.ID, out.ID, org, ordinal, profile.Name, profile.ProviderHint, profile.LegacyDefault, pathConnection, pathRevision, pathSource); err != nil {
+		if _, err := tx.Exec(ctx, `INSERT INTO fqdn_resolver_context_profiles(id,config_id,org_id,ordinal,name,provider_hint,legacy_default,ipsec_connection_id,ipsec_configuration_revision,ipsec_source_address,static_records,lan_listener) VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::inet,$11::jsonb,$12::jsonb)`, profile.ID, out.ID, org, ordinal, profile.Name, profile.ProviderHint, profile.LegacyDefault, pathConnection, pathRevision, pathSource, recordsJSON(profile.StaticRecords), listenerJSON(profile.LANListener)); err != nil {
 			return ResolverConfig{}, writeErr(err)
 		}
 		for _, suffix := range profile.ZoneSuffixes {
@@ -386,12 +496,13 @@ func (s *Service) SetResolverProfiles(ctx context.Context, org, site, gateway, a
 	if _, err := tx.Exec(ctx, `UPDATE fqdn_resolver_context_configs SET state='active',retired_at=NULL WHERE id=$1 AND org_id=$2`, out.ID, org); err != nil {
 		return ResolverConfig{}, writeErr(err)
 	}
-	suffixCount, endpointCount := 0, 0
+	suffixCount, endpointCount, recordCount := 0, 0, 0
 	for _, profile := range profiles {
 		suffixCount += len(profile.ZoneSuffixes)
 		endpointCount += len(profile.Endpoints)
+		recordCount += len(profile.StaticRecords)
 	}
-	if err := writeAudit(ctx, tx, org, actor, actorSystem, cause, "fqdn_resolver_context.configured", out.ID, map[string]any{"intent": "replace_resolver_configuration", "outcome": "succeeded", "site_id": site, "gateway_id": gateway, "version": next, "provider_hint": rootProvider, "profile_count": len(profiles), "suffix_count": suffixCount, "endpoint_count": endpointCount}); err != nil {
+	if err := writeAudit(ctx, tx, org, actor, actorSystem, cause, "fqdn_resolver_context.configured", out.ID, map[string]any{"intent": "replace_resolver_configuration", "outcome": "succeeded", "site_id": site, "gateway_id": gateway, "version": next, "provider_hint": rootProvider, "profile_count": len(profiles), "suffix_count": suffixCount, "endpoint_count": endpointCount, "static_record_count": recordCount}); err != nil {
 		return ResolverConfig{}, err
 	}
 	if err := tx.Commit(ctx); err != nil {

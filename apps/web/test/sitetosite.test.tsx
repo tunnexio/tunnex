@@ -257,3 +257,16 @@ it("opens Google Cloud HA profile through the existing provider chooser", async 
   expect((screen.getByLabelText("Routing") as HTMLSelectElement).value).toBe("ipv4-bgp");
   expect(screen.getByLabelText("Cloud Router ASN")).toBeTruthy();
 });
+
+it.each([
+ {card:/AWS Site-to-Site/,options:["aws"],azure:false},
+ {card:/Google Cloud HA VPN/,options:["gcp-ha-bgp-ipv4-v1","gcp-classic-static-ipv4-v1"],azure:false},
+ {card:/Azure/,options:["azure-active-active-bgp-ipv4-v1","azure-active-active-static-ipv4-v1","azure-active-standby-bgp-ipv4-v1","azure-active-standby-static-ipv4-v1"],azure:true},
+])("keeps the selected provider context in the IPsec draft: $options",async({card,options,azure})=>{
+ mock.get.mockImplementation(async(path:string)=>path.endsWith("/members")?{data:[{user_id:"user",role:"owner"}]}:path.endsWith("/settings")?{data:{enabled:true,revision:1}}:path.endsWith("/connections")?{data:{items:[],next_cursor:null}}:{data:[]});
+ render(app());fireEvent.click(await screen.findByRole("button",{name:"Create connection"}));
+ fireEvent.click(within(screen.getByRole("dialog")).getByRole("button",{name:/IPsec/}));
+ fireEvent.click(screen.getByRole("button",{name:card}));await screen.findByRole("dialog",{name:"New IPsec connection"});
+ expect(Array.from((screen.getByLabelText("Cloud VPN profile") as HTMLSelectElement).options).map(option=>option.value)).toEqual(options);
+ expect(Boolean(screen.queryByLabelText("Import Tunnex Azure JSON"))).toBe(azure);
+});

@@ -212,7 +212,11 @@ type AffectedDevice struct {
 //
 // v10: optional cross-gateway client transport needs the gateway's updated host-route
 // reconciliation, including IPv6. Older agents must refuse its enforcement artifact.
-const ProtocolVersion = 11
+// v12 adds static DNS authority and explicit LAN DNS listeners; unchanged
+// IPsec-only profiles retain their v11 content version and canonical hash.
+// v13 adds explicit public default upstreams to opt-in LAN DNS listeners.
+// v14 adds explicit public resolver endpoints for static CNAME target completion.
+const ProtocolVersion = 14
 
 // SupportedWindow is the AGENT-VERSION CONTRACT the upgrade path commits to (S11 D1): the current protocol
 // version and the one before it. An agent at either must be able to run against this control plane, which is
@@ -242,6 +246,21 @@ const SupportedWindow = 2
 // leaves this function untouched is a silent-accept bug — the artifact would carry new content at an old
 // version and old agents would accept it. The D2 checklist asks "RequiredVersion updated? y/n".
 func RequiredVersion(c Compiled) int {
+	for _, profile := range c.DNSResolverProfiles {
+		if len(profile.StaticRecords) > 0 && len(profile.Endpoints) > 0 {
+			return 14
+		}
+	}
+	for _, profile := range c.DNSResolverProfiles {
+		if profile.LANListener != nil && len(profile.LANListener.DefaultUpstreams) > 0 {
+			return 13
+		}
+	}
+	for _, profile := range c.DNSResolverProfiles {
+		if len(profile.StaticRecords) > 0 || profile.LANListener != nil {
+			return 12
+		}
+	}
 	if len(c.DNSResolverProfiles) > 0 {
 		return 11
 	}
@@ -381,6 +400,24 @@ type DNSResolverProfile struct {
 	Endpoints            []DNSResolverEndpoint `json:"endpoints"`
 	IPsecPath            DNSResolverIPsecPath  `json:"ipsec_path"`
 	AllowedSources       []string              `json:"allowed_sources"`
+	StaticRecords        []DNSStaticRecord     `json:"static_records,omitempty"`
+	LANListener          *DNSLANListener       `json:"lan_listener,omitempty"`
+}
+
+// DNSStaticRecord is an exact authoritative answer, independent of IPsec transport.
+type DNSStaticRecord struct {
+	Name  string `json:"name"`
+	Type  string `json:"type"`
+	Value string `json:"value"`
+	TTL   uint32 `json:"ttl"`
+}
+
+// DNSLANListener is an explicit DNS-only ingress grant on an owned LAN interface.
+type DNSLANListener struct {
+	Address          string   `json:"address"`
+	Interface        string   `json:"interface"`
+	AllowedSources   []string `json:"allowed_sources"`
+	DefaultUpstreams []string `json:"default_upstreams,omitempty"`
 }
 
 type Compiled struct {

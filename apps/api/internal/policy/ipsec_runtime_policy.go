@@ -50,6 +50,11 @@ func compileIPsecRuntimePolicyWithEntitlement(ctx context.Context, q *sqlc.Queri
 		}
 		declared = append(declared, profile)
 	}
+	if input.DesktopTransitVersion == 1 {
+		if err := loadIPsecDesktopKeys(ctx, q, input.OrgID, &snapshot); err != nil {
+			return ipsec.RuntimePolicy{}, err
+		}
+	}
 	result, err := compileIPsecRuntimePolicy(snapshot, input)
 	if err != nil {
 		return result, err
@@ -87,7 +92,7 @@ func compileIPsecRuntimePolicy(snapshot Snapshot, input ipsec.RuntimePolicyInput
 	}
 	snapshot.SiteNodes = siteNodes
 	fqdnSnapshot := snapshot
-	result := ipsec.RuntimePolicy{Grants: []ipsec.RuntimeGrant{}}
+	result := ipsec.RuntimePolicy{Grants: []ipsec.RuntimeGrant{}, DesktopGrants: compileIPsecDesktopGrants(snapshot, input)}
 	// Isolate the supported shared-rule classes before compilation. Membership,
 	// FQDN generations, device owners and service discovery cannot widen this port.
 	rules := make([]Rule, 0, len(snapshot.Rules))
@@ -127,7 +132,7 @@ func compileIPsecRuntimePolicy(snapshot Snapshot, input ipsec.RuntimePolicyInput
 			}
 		}
 	}
-	if len(result.Grants)+len(result.FQDNGrants) > 128 {
+	if len(result.Grants)+len(result.FQDNGrants)+len(result.DesktopGrants) > 128 {
 		return ipsec.RuntimePolicy{}, ipsec.ErrConnectionIneligible
 	}
 	sort.Slice(result.Grants, func(a, b int) bool {
@@ -164,10 +169,11 @@ func runtimePolicyWithin(prefix netip.Prefix, ranges []string) bool {
 func runtimePolicyHashBytes(result ipsec.RuntimePolicy, input ipsec.RuntimePolicyInput) ([]byte, error) {
 	return json.Marshal(struct {
 		Org, Node, Site, Connection uuid.UUID
+		DesktopGrants               []ipsec.RuntimeDesktopGrant `json:"desktop_grants,omitempty"`
 		Grants                      []ipsec.RuntimeGrant
 		DNSResolverGrants           []ipsec.RuntimeDNSResolverGrant `json:"dns_resolver_grants,omitempty"`
 		DNSResolverProfiles         []policyspec.DNSResolverProfile `json:"dns_resolver_profiles,omitempty"`
 		FQDNPolicyVersion           int                             `json:"fqdn_policy_version,omitempty"`
 		FQDNGrants                  []ipsec.RuntimeFQDNGrant        `json:"fqdn_grants,omitempty"`
-	}{input.OrgID, input.NodeID, input.SiteID, input.ConnectionID, result.Grants, result.DNSResolverGrants, result.DNSResolverProfiles, result.FQDNPolicyVersion, result.FQDNGrants})
+	}{input.OrgID, input.NodeID, input.SiteID, input.ConnectionID, result.DesktopGrants, result.Grants, result.DNSResolverGrants, result.DNSResolverProfiles, result.FQDNPolicyVersion, result.FQDNGrants})
 }

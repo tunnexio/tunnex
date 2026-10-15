@@ -156,6 +156,7 @@ LEFT JOIN LATERAL (
          COALESCE((
            SELECT jsonb_agg(jsonb_build_object(
              'id',p.id,'name',p.name,'provider',p.provider_hint,'legacy_default',p.legacy_default,
+             'static_records',COALESCE(to_jsonb(p)->'static_records','[]'::jsonb),
              'ipsec_path',CASE WHEN p.ipsec_connection_id IS NULL THEN NULL ELSE jsonb_build_object('connection_id',p.ipsec_connection_id,'configuration_revision',p.ipsec_configuration_revision,'source_address',host(p.ipsec_source_address)) END,
              'zone_suffixes',COALESCE((SELECT jsonb_agg(s.suffix ORDER BY length(s.suffix) DESC,s.suffix) FROM fqdn_resolver_context_profile_suffixes s WHERE s.profile_id=p.id AND s.org_id=p.org_id),'[]'::jsonb),
              'endpoints',COALESCE((SELECT jsonb_agg(jsonb_build_object('address',host(pe.address),'port',pe.port,'transport',pe.transport) ORDER BY pe.ordinal) FROM fqdn_resolver_context_profile_endpoints pe WHERE pe.profile_id=p.id AND pe.org_id=p.org_id),'[]'::jsonb)
@@ -242,11 +243,17 @@ LIMIT $3`, now, s.retryAfter.String(), limit, headroom.String())
 				w.ResolverConfig.MatchedSuffix = suffix
 				w.ResolverConfig.Endpoints = append([]ResolverEndpoint(nil), profile.Endpoints...)
 				w.ResolverConfig.IPsecPath = profile.IPsecPath
+				w.ResolverConfig.StaticRecords = append([]StaticRecord(nil), profile.StaticRecords...)
+				if len(profile.StaticRecords) > 0 && !staticProfileOwnsRecords(profile, profiles) {
+					selectErr = ErrUnboundContext
+				}
 			}
 			if selectErr != nil || !w.ResolverConfig.valid() {
 				// A malformed persisted config is not a reason to consult another
 				// resolver. Leave the snapshot unusable so the scheduler withdraws.
-				w.ResolverConfig = ResolverConfig{}
+				// Preserve static identity (with no usable config or endpoints) so
+				// even an entirely shadowed profile cannot dispatch a gateway RPC.
+				w.ResolverConfig = ResolverConfig{StaticRecords: w.ResolverConfig.StaticRecords}
 			}
 		}
 		out = append(out, w)

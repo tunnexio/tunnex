@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/google/uuid"
 	"github.com/tunnexio/tunnex/apps/api/db/sqlc"
+	"github.com/tunnexio/tunnex/apps/api/internal/fqdn"
 	"github.com/tunnexio/tunnex/apps/api/internal/ipsec"
 	"github.com/tunnexio/tunnex/apps/api/internal/policyspec"
 	"net/netip"
@@ -33,6 +34,23 @@ func DecodeIPsecDNSProfile(row sqlc.ListIPsecDNSResolverProfilesRow) (IPsecDNSPr
 	if _, err := uuid.Parse(p.ProfileID); err != nil {
 		return out, err
 	}
+	if p.ContextConfigVersion < 1 || len(p.ZoneSuffixes) == 0 {
+		return out, fmt.Errorf("invalid DNS profile identity")
+	}
+	if len(p.StaticRecords) > 0 {
+		if len(p.StaticRecords) > 128 || len(p.Endpoints) > 3 || p.IPsecPath != (policyspec.DNSResolverIPsecPath{}) {
+			return out, fmt.Errorf("invalid static DNS profile")
+		}
+		seen := map[string]bool{}
+		for _, endpoint := range p.Endpoints {
+			ip, err := netip.ParseAddr(endpoint.Address)
+			if err != nil || !fqdn.PublicResolverIPv4(ip) || ip.String() != endpoint.Address || endpoint.Port != 53 || (endpoint.Transport != "udp" && endpoint.Transport != "tcp") || seen[endpoint.Address] {
+				return out, fmt.Errorf("invalid static DNS target resolver")
+			}
+			seen[endpoint.Address] = true
+		}
+		return out, nil
+	}
 	if _, err := uuid.Parse(p.IPsecPath.ConnectionID); err != nil {
 		return out, err
 	}
@@ -48,9 +66,37 @@ func DecodeIPsecDNSProfile(row sqlc.ListIPsecDNSResolverProfilesRow) (IPsecDNSPr
 	}
 	return out, nil
 }
-func DNSProfileForAllowedTraffic(declared IPsecDNSProfile, allows []policyspec.AllowEntry) policyspec.DNSResolverProfile {
+func DNSProfileForAllowedTraffic(declared IPsecDNSProfile, allows []policyspec.AllowEntry, gatewayDNSAddresses ...string) policyspec.DNSResolverProfile {
 	p := declared.Profile
 	p.AllowedSources = []string{}
+	endpoints := p.Endpoints
+	// A gateway-local DNS permission authorizes the proxy itself for either
+	// transport. Upstream IPsec host authority remains separately path-bound.
+	if len(gatewayDNSAddresses) > 0 {
+		gatewayProfile := declared
+		gatewayProfile.Profile.Endpoints = nil
+		for _, address := range gatewayDNSAddresses {
+			if parsed, err := netip.ParseAddr(address); err == nil && parsed.Is4() {
+				gatewayProfile.Profile.Endpoints = append(gatewayProfile.Profile.Endpoints, policyspec.DNSResolverEndpoint{Address: parsed.String(), Port: 53, Transport: "udp"})
+			}
+		}
+		gatewayProfile.Profile.StaticRecords = nil
+		if len(gatewayProfile.Profile.Endpoints) > 0 {
+			p.AllowedSources = DNSProfileForAllowedTraffic(gatewayProfile, allows).AllowedSources
+		}
+	}
+	gatewaySources := append([]string(nil), p.AllowedSources...)
+	if len(p.StaticRecords) > 0 {
+		endpoints = nil
+		for _, address := range gatewayDNSAddresses {
+			if parsed, err := netip.ParseAddr(address); err == nil {
+				endpoints = append(endpoints, policyspec.DNSResolverEndpoint{Address: parsed.String(), Port: 53, Transport: "udp"})
+			}
+		}
+		if len(endpoints) == 0 {
+			return p
+		}
+	}
 	candidates := map[string]bool{}
 	for _, allow := range allows {
 		source, ok := runtimePolicyPrefix(allow.SrcIP)
@@ -61,7 +107,7 @@ func DNSProfileForAllowedTraffic(declared IPsecDNSProfile, allows []policyspec.A
 	}
 	for source := range candidates {
 		authorized := true
-		for _, endpoint := range p.Endpoints {
+		for _, endpoint := range endpoints {
 			address, _ := netip.ParseAddr(endpoint.Address)
 			for _, protocol := range []policyspec.Protocol{"udp", "tcp"} {
 				found := false
@@ -92,6 +138,14 @@ func DNSProfileForAllowedTraffic(declared IPsecDNSProfile, allows []policyspec.A
 			p.AllowedSources = append(p.AllowedSources, source)
 		}
 	}
+	seen := map[string]bool{}
+	for _, source := range append(p.AllowedSources, gatewaySources...) {
+		seen[source] = true
+	}
+	p.AllowedSources = p.AllowedSources[:0]
+	for source := range seen {
+		p.AllowedSources = append(p.AllowedSources, source)
+	}
 	sort.Strings(p.AllowedSources)
 	return p
 }
@@ -112,7 +166,7 @@ func attachRuntimeDNSProfiles(policy *ipsec.RuntimePolicy, profiles []IPsecDNSPr
 			policy.DNSResolverGrants = append(policy.DNSResolverGrants, ipsec.RuntimeDNSResolverGrant{ContextConfigID: p.ContextConfigID, ContextConfigVersion: p.ContextConfigVersion, ProfileID: p.ProfileID, ConnectionID: p.IPsecPath.ConnectionID, ConfigurationRevision: p.IPsecPath.ConfigurationRevision, SourceAddress: p.IPsecPath.SourceAddress, ResolverAddress: endpoint.Address})
 		}
 	}
-	if len(policy.Grants)+len(policy.FQDNGrants)+2*len(policy.DNSResolverGrants) > 128 {
+	if len(policy.Grants)+len(policy.FQDNGrants)+len(policy.DesktopGrants)+2*len(policy.DNSResolverGrants) > 128 {
 		return ipsec.ErrConnectionIneligible
 	}
 	sort.Slice(policy.DNSResolverGrants, func(a, b int) bool {

@@ -114,6 +114,8 @@ vi.mock("../src/lib/api", async () => {
           const rows = dnsForwards[options?.params?.path?.siteId ?? ""];
           return rows === null ? { error: { message: "DNS read failed" } } : { data: rows ?? [] };
         }
+        if (path.includes("/fqdn-resolver-contexts/")) return { error: { error: { code: "fqdn_resolver_config_not_found" } } };
+        if (path.endsWith("/ipsec/connections")) return { data: { items: [], next_cursor: null } };
         return { data: [] };
       }),
       POST: vi.fn(async () => ({ data: {} })),
@@ -371,6 +373,20 @@ describe("Sites — URL-backed workspace state", () => {
     const resolver = await screen.findByLabelText("Forwarding target IP");
     expect(resolver.getAttribute("placeholder")).toBe("Resolver IP inside 172.31.0.0/16");
     expect((resolver as HTMLInputElement).value).toBe("");
+  });
+
+  it("keeps managed DNS configuration in the selected network Advanced route", async () => {
+    inventoryNodes = [{ id: "g1", name: "Office gateway", site_id: "s1", status: "active" }];
+    withAuth(<Sites />, ["/sites?site=s1&detail=advanced"]);
+    const disclosure = (await screen.findByText("DNS records and forwarding")).closest("details")!;
+    disclosure.open = true; fireEvent(disclosure, new Event("toggle"));
+    fireEvent.click(await screen.findByRole("button", { name: "Configure profiles" }));
+    expect((screen.getByLabelText("Site", { selector: "select" }) as HTMLSelectElement).value).toBe("s1");
+    expect((screen.getByLabelText("Site", { selector: "select" }) as HTMLSelectElement).disabled).toBe(true);
+    expect((screen.getByLabelText("Gateway", { selector: "select" }) as HTMLSelectElement).value).toBe("g1");
+    expect((screen.getByLabelText("Profile name") as HTMLInputElement).value).toBe("aws-site DNS");
+    expect(screen.getByTestId("location").textContent).toContain("site=s1");
+    expect(screen.getByTestId("location").textContent).toContain("detail=advanced");
   });
 
   it("keeps the selected network in context while focused sections retain existing mutation access", async () => {

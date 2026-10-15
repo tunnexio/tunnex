@@ -16,6 +16,7 @@ type RuntimePrincipal struct {
 }
 type RuntimePolicyInput struct {
 	OrgID, NodeID, SiteID, ConnectionID uuid.UUID
+	DesktopTransitVersion               int `json:"-"`
 	Config                              StaticConfig
 	ConfigurationRevision               int64     `json:"-"`
 	FQDNPolicyVersion                   int       `json:"-"`
@@ -60,7 +61,18 @@ type RuntimeDNSResolverGrant struct {
 	SourceAddress         string `json:"source_address"`
 	ResolverAddress       string `json:"resolver_address"`
 }
+
+// RuntimeDesktopGrant binds a human device's explicit policy grant to its enrolled
+// WireGuard peer identity. It is ephemeral policy authority, never a LAN selector.
+type RuntimeDesktopGrant struct {
+	RuntimeGrant
+	DeviceID  string     `json:"device_id"`
+	PublicKey string     `json:"public_key"`
+	ExpiresAt *time.Time `json:"expires_at,omitempty"`
+}
 type RuntimePolicy struct {
+	DesktopGrants []RuntimeDesktopGrant `json:"desktop_grants,omitempty"`
+
 	FQDNLeaseDeadline   time.Time                       `json:"-"`
 	SelectedFQDNVersion int                             `json:"-"`
 	FQDNPolicyVersion   int                             `json:"fqdn_policy_version,omitempty"`

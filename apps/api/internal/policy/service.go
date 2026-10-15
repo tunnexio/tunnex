@@ -1494,8 +1494,12 @@ func fqdnResourceFromActiveGeneration(g fqdnresolver.ActiveGeneration, routedPre
 	if g.ResourceID == uuid.Nil || g.Hostname == "" || len(g.Addresses) == 0 || len(g.Addresses) > fqdnresolver.MaxAnswers {
 		return FQDNResource{}, fmt.Errorf("invalid active FQDN generation %s", g.ResourceID)
 	}
+	static := len(g.ResolverConfig.StaticRecords) > 0
+	if static && !fqdnresolver.StaticGenerationMatches(g) {
+		return FQDNResource{}, fmt.Errorf("invalid fixed-record generation for active FQDN resource %s", g.ResourceID)
+	}
 	configID, err := uuid.Parse(g.ResolverConfig.ID)
-	if err != nil || configID == uuid.Nil || g.ResolverConfig.Version < 1 || len(g.ResolverConfig.Endpoints) == 0 || len(g.ResolverConfig.Endpoints) > 8 {
+	if err != nil || configID == uuid.Nil || g.ResolverConfig.Version < 1 || (!static && len(g.ResolverConfig.Endpoints) == 0) || len(g.ResolverConfig.Endpoints) > 8 {
 		return FQDNResource{}, fmt.Errorf("invalid resolver configuration snapshot for active FQDN generation %s", g.ResourceID)
 	}
 	profileID, err := uuid.Parse(g.ResolverConfig.ProfileID)
@@ -1511,7 +1515,8 @@ func fqdnResourceFromActiveGeneration(g fqdnresolver.ActiveGeneration, routedPre
 		// Preserve endpoint ordinal. The first routed UDP/53 endpoint is selected
 		// below, matching the desktop forward projection; TCP/53 is derived later
 		// for truncation/fallback on that same address.
-		if endpoint.Port == 53 && endpoint.Transport == "udp" {
+		// Static completion endpoints are gateway dependencies, never desktop resolver grants.
+		if !static && endpoint.Port == 53 && endpoint.Transport == "udp" {
 			prefix := netip.PrefixFrom(endpoint.Address, endpoint.Address.BitLen()).String()
 			resolverCandidates = append(resolverCandidates, prefix)
 		}

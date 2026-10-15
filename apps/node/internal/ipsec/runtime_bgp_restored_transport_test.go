@@ -77,7 +77,7 @@ func TestBGPTrustedRestoredAppliedTransportPreparation(t *testing.T) {
 	}
 }
 
-func TestBGPInitialBootRecordNeverAuthorizesRestaging(t *testing.T) {
+func TestBGPInitialBootRecordNeverAloneAuthorizesRestaging(t *testing.T) {
 	for _, fault := range []string{"observed", "unobserved", "invalid boot", "invented retired epoch"} {
 		t.Run(fault, func(t *testing.T) {
 			c, f, _, denied := bgpControllerFixture(t, false)
@@ -96,7 +96,7 @@ func TestBGPInitialBootRecordNeverAuthorizesRestaging(t *testing.T) {
 			mutations := f.mutations
 			active := c.active[e.Allocation.ConnectionID]
 			recreate, missing, err := c.bgpRestoredTransportAbsent(context.Background(), e, []RuntimeJournalEntry{e}, active.Authority, active.Identity, active.Environment)
-			if (err == nil) != (fault == "observed") || recreate || missing {
+			if err == nil || recreate || missing {
 				t.Fatal("initial boot became reset authority", err)
 			}
 			if *denied || f.mutations != mutations || !reflect.DeepEqual(before, e) {
