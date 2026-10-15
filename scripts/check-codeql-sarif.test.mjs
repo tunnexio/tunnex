@@ -35,6 +35,50 @@ test('High warning is blocked even though the previous error-only gate counted z
   assert.match(checked.stdout, /1 high\/critical/);
 });
 
+test('Blocking output identifies rules, severities and locations without source or messages', (t) => {
+  const log = sarif([descriptor('medium', '5.0'), descriptor('correctness', undefined)], [
+    { rule: { id: 'go/example-high', index: 0, toolComponent: { index: 0 } }, level: 'warning',
+      message: { text: 'MESSAGE_SECRET' }, locations: [{ physicalLocation: {
+        artifactLocation: { index: 0 }, region: { startLine: 42, snippet: { text: 'SOURCE_SECRET' } },
+      } }] },
+    { ruleId: 'medium', level: 'warning' },
+    { ruleId: 'correctness', level: 'error', locations: [{ physicalLocation: {
+      artifactLocation: { uri: 'src/other.go' }, region: { startLine: 9 },
+    } }] },
+  ], [{ name: 'go-pack', rules: [descriptor('go/example-high', '7.7')] }]);
+  log.runs[0].artifacts = [{ location: { uri: 'src/file%20name.go' } }];
+  const checked = cli(t, [log]);
+  assert.equal(checked.status, 1);
+  const diagnostics = checked.stdout.split('\n').filter((line) => line.startsWith('blocking result: '))
+    .map((line) => JSON.parse(line.slice('blocking result: '.length)));
+  assert.deepEqual(diagnostics, [
+    { ruleId: 'go/example-high', securitySeverity: 'high', securityScore: 7.7,
+      resultLevel: 'warning', path: 'src/file name.go', line: 42 },
+    { ruleId: 'correctness', securitySeverity: null, securityScore: null,
+      resultLevel: 'error', path: 'src/other.go', line: 9 },
+  ]);
+  assert.doesNotMatch(checked.stdout + checked.stderr, /MESSAGE_SECRET|SOURCE_SECRET/);
+  assert.match(checked.stdout, /blocking findings: 2/);
+});
+
+test('Missing or unsafe diagnostic locations do not hide blocking results or expose URI credentials', (t) => {
+  const log = sarif([descriptor('critical', '9.8')], [
+    { ruleIndex: 0, locations: [{ physicalLocation: { artifactLocation: {
+      uri: 'https://user:URI_SECRET@example.test/source.go?token=URI_SECRET',
+    }, region: { startLine: 4 } } }] },
+    { ruleIndex: 0 },
+  ]);
+  const checked = cli(t, [log]);
+  assert.equal(checked.status, 1);
+  const diagnostics = checked.stdout.split('\n').filter((line) => line.startsWith('blocking result: '))
+    .map((line) => JSON.parse(line.slice('blocking result: '.length)));
+  assert.equal(diagnostics.length, 2);
+  assert.ok(diagnostics.every((finding) => finding.ruleId === 'critical' && finding.securitySeverity === 'critical' && finding.path === null));
+  assert.equal(diagnostics[1].line, null);
+  assert.doesNotMatch(checked.stdout + checked.stderr, /URI_SECRET|example\.test/);
+  assert.match(checked.stdout, /blocking findings: 2/);
+});
+
 test('Medium and Low warnings pass; the exact High and Critical boundaries block', () => {
   for (const [severity, blocking] of [['0.0', 0], ['3.9', 0], ['6.9', 0], ['7.0', 1], [9, 1], ['9.8', 1], [10, 1]]) {
     assert.deepEqual(summarizeSarif(sarif([descriptor('js/file-system-race', severity)], [result()])), counts(blocking));
@@ -262,6 +306,7 @@ console.log(process.env.TEST_CHECKOUT_SHA ?? process.env.GITHUB_SHA);
   const accepted = run();
   assert.equal(accepted.status, 0, accepted.stdout + accepted.stderr);
   assert.match(accepted.stdout, /1 exact reviewed false positive/);
+  assert.doesNotMatch(accepted.stdout, /blocking result:/);
   assert.equal(run({ GITHUB_SHA: 'b'.repeat(40) }).status, 1);
   assert.equal(run({ TEST_CHECKOUT_SHA: 'b'.repeat(40) }).status, 1);
   const failedAPI = run({ TEST_GH_FAIL: '1' });
@@ -275,4 +320,5 @@ console.log(process.env.TEST_CHECKOUT_SHA ?? process.env.GITHUB_SHA);
   const blocked = run();
   assert.equal(blocked.status, 1);
   assert.match(blocked.stdout, /blocking findings: 1/);
+  assert.equal(blocked.stdout.split('\n').filter((line) => line.startsWith('blocking result: ')).length, 1);
 });

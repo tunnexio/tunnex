@@ -163,10 +163,32 @@ function reviewedFalsePositive(run, result, review) {
     matches[0].dismissed_reason === 'false positive' && matches[0].most_recent_instance.state === 'dismissed';
 }
 
+function blockingDiagnostic(run, result, rule, score) {
+  const physical = result.locations?.[0]?.physicalLocation;
+  const artifact = physical?.artifactLocation;
+  const uri = artifact?.uri ?? (index(artifact?.index) ? run.artifacts?.[artifact.index]?.location?.uri : undefined);
+  let path = null;
+  if (text(uri)) {
+    try {
+      const decoded = decodeURIComponent(uri);
+      // Only source paths belong in logs, never URL credentials/query strings or source snippets.
+      if (!/^[a-z][a-z\d+.-]*:|[\\?#\u0000-\u001f\u007f]/i.test(decoded) &&
+          !decoded.split('/').some((part) => !part || part === '.' || part === '..')) path = decoded;
+    } catch { /* Missing diagnostic paths must not change the blocking decision. */ }
+  }
+  const line = physical?.region?.startLine;
+  return {
+    ruleId: result.rule?.id ?? result.ruleId ?? rule.id,
+    securitySeverity: score === undefined ? null : score >= 9 ? 'critical' : score >= 7 ? 'high' : score >= 4 ? 'medium' : score > 0 ? 'low' : 'none',
+    securityScore: score ?? null, resultLevel: result.level ?? null,
+    path, line: Number.isSafeInteger(line) && line > 0 ? line : null,
+  };
+}
+
 // GitHub uses rule.properties.security-severity for High/Critical, independently
 // of result.level. Keep the previous gate's explicit error-level blocking as well.
 // https://docs.github.com/en/code-security/reference/code-scanning/sarif-files/sarif-support
-export function summarizeSarif(log, review) {
+export function summarizeSarif(log, review, reportBlocking) {
   if (!object(log) || log.version !== '2.1.0' || !Array.isArray(log.runs) || log.runs.length === 0) {
     refuse('Missing or invalid SARIF runs');
   }
@@ -180,13 +202,18 @@ export function summarizeSarif(log, review) {
       if (has(result, 'level') && !['none', 'note', 'warning', 'error'].includes(result.level)) {
         refuse('Invalid SARIF result level');
       }
-      const highCritical = securityScore(ruleForResult(run.tool, result)) >= 7;
+      const rule = ruleForResult(run.tool, result);
+      const score = securityScore(rule);
+      const highCritical = score >= 7;
       const errorLevel = result.level === 'error';
       const reviewed = (highCritical || errorLevel) && reviewedFalsePositive(run, result, review);
       counts.highCritical += Number(highCritical);
       counts.errorLevel += Number(errorLevel);
       counts.reviewedFalsePositives += Number(reviewed);
       counts.blocking += Number((highCritical || errorLevel) && !reviewed);
+      if ((highCritical || errorLevel) && !reviewed && reportBlocking) {
+        reportBlocking(blockingDiagnostic(run, result, rule, score));
+      }
     }
   }
   return counts;
@@ -199,7 +226,7 @@ export function checkFiles(files, output = console.log, review) {
     let log;
     try { log = JSON.parse(readFileSync(file, 'utf8')); }
     catch { refuse(`Cannot read valid SARIF: ${basename(file)}`); }
-    const counts = summarizeSarif(log, review);
+    const counts = summarizeSarif(log, review, (finding) => output(`blocking result: ${JSON.stringify(finding)}`));
     output(`  ${basename(file)}: ${counts.highCritical} high/critical security finding(s), ${counts.errorLevel} error-level result(s), ${counts.reviewedFalsePositives} exact reviewed false positive(s)`);
     blocking += counts.blocking;
   }
