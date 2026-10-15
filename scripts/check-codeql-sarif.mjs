@@ -9,6 +9,7 @@ const refuse = (message) => { throw new Error(message); };
 const text = (value) => typeof value === 'string' && value.length > 0;
 const index = (value) => Number.isSafeInteger(value) && value >= 0;
 const sha = (value) => typeof value === 'string' && /^[a-f0-9]{40}$/.test(value);
+const implicitSourceRoot = Symbol('CodeQL checkout source root');
 const sameFinding = (alert, ruleId, point) => alert.rule.id === ruleId &&
   Object.entries(point).every(([key, value]) => alert.most_recent_instance.location[key] === value);
 const exactDismissal = (matches, context) => matches.length === 1 && matches[0].state === 'dismissed' &&
@@ -174,7 +175,12 @@ export function fetchGitHubReview(env = process.env, execute = execFileSync) {
     if (!exactDismissal(matches, baseline.context)) return false;
     if (sourceBaseURI !== undefined) {
       const root = git(['rev-parse', '--show-toplevel']).trim();
-      if (!root.startsWith('/') || pathToFileURL(`${root.replace(/\/+$/, '')}/`).href !== sourceBaseURI) return false;
+      if (!root.startsWith('/')) return false;
+      if (sourceBaseURI === implicitSourceRoot) {
+        // CodeQL's raw exporter omits originalUriBaseIds. Only resolve its known marker
+        // when the workflow explicitly binds analysis source-root to this checkout.
+        if (env.CODEQL_ANALYSIS_SOURCE_ROOT !== root || env.GITHUB_WORKSPACE !== root) return false;
+      } else if (pathToFileURL(`${root.replace(/\/+$/, '')}/`).href !== sourceBaseURI) return false;
     }
     git(['diff', '--quiet', 'HEAD', '--', point.path]);
     const tree = git(['ls-tree', '-z', context.sha, '--', point.path]);
@@ -243,9 +249,13 @@ function reviewedFalsePositive(run, result, review, currentRuns) {
   }
   let sourceBaseURI;
   if (has(artifact, 'uriBaseId')) {
-    const base = run.originalUriBaseIds?.[artifact.uriBaseId];
-    if (artifact.uriBaseId !== '%SRCROOT%' || !object(base) || !text(base.uri) || has(base, 'uriBaseId')) return false;
-    sourceBaseURI = base.uri;
+    if (artifact.uriBaseId !== '%SRCROOT%') return false;
+    if (!has(run, 'originalUriBaseIds')) sourceBaseURI = implicitSourceRoot;
+    else {
+      const base = run.originalUriBaseIds?.[artifact.uriBaseId];
+      if (!object(base) || !text(base.uri) || has(base, 'uriBaseId')) return false;
+      sourceBaseURI = base.uri;
+    }
   }
   return review.verifyBaseline?.(ruleId, point, sourceBaseURI) === true;
 }

@@ -188,6 +188,8 @@ test('The workflow consumes the tested severity helper under its existing analys
   assert.match(workflow, /node scripts\/check-codeql-sarif\.mjs --github-dismissals "\$\{files\[@\]\}"/);
   assert.doesNotMatch(workflow, /select\(\.level == "error"\)/);
   assert.match(workflow, /queries: security-extended/);
+  assert.match(workflow, /source-root: \./);
+  assert.match(workflow, /CODEQL_ANALYSIS_SOURCE_ROOT: \$\{\{ github\.workspace \}\}/);
 });
 
 const githubContext = {
@@ -305,6 +307,7 @@ function baselineFixture({ context = githubContext, baseSHA = 'b'.repeat(40), he
   };
   const env = { GITHUB_REPOSITORY: context.repository, GITHUB_REF: context.ref,
     GITHUB_SHA: context.sha, CODEQL_ANALYSIS_CATEGORY: context.category, CODEQL_ANALYSIS_KEY: context.analysisKey };
+  fixture.env = env;
   fixture.fetch = () => fetchGitHubReview(env, (command, args) => {
     fixture.calls.push([command, args]);
     if (fixture.fail?.(command, args)) throw new Error('TEST_SECRET: unavailable');
@@ -422,6 +425,40 @@ test('Baseline source paths require a consistent artifact index and repository s
   }
   f.fail = (command, args) => command === 'git' && args.includes('--show-toplevel');
   assert.throws(() => summarizeSarif(f.log, f.fetch()), /Cannot verify/);
+});
+
+test('Raw CodeQL 2.27.2 SRCROOT without a map requires an explicit verified workflow source root', () => {
+  // Exact structural shape from PR109 Security attempt2's retained go.sarif: matching
+  // artifact index, SRCROOT marker, no originalUriBaseIds/provenance, omitted endLine.
+  const fixture = () => {
+    const f = baselineFixture(), run = f.log.runs[0];
+    delete run.versionControlProvenance;
+    const physical = run.results[0].locations[0].physicalLocation;
+    delete physical.region.endLine;
+    physical.artifactLocation = { uri: 'src/proxy.go', uriBaseId: '%SRCROOT%', index: 0 };
+    run.artifacts = [{ location: structuredClone(physical.artifactLocation) }];
+    f.env.GITHUB_WORKSPACE = '/checkout';
+    f.env.CODEQL_ANALYSIS_SOURCE_ROOT = '/checkout';
+    return f;
+  };
+  const f = fixture();
+  assert.deepEqual(summarizeSarif(f.log, f.fetch()), counts(0, 1, 0, 1));
+  for (const mutate of [
+    (x) => { delete x.env.CODEQL_ANALYSIS_SOURCE_ROOT; },
+    (x) => { delete x.env.GITHUB_WORKSPACE; },
+    (x) => { x.env.GITHUB_WORKSPACE = '/outside'; },
+    (x) => { x.env.CODEQL_ANALYSIS_SOURCE_ROOT = '/outside'; },
+    (x) => { x.log.runs[0].originalUriBaseIds = {}; },
+    (x) => { x.log.runs[0].originalUriBaseIds = null; },
+    (x) => { x.log.runs[0].originalUriBaseIds = { '%SRCROOT%': { uri: '%SRCROOT%' } }; },
+    (x) => { x.log.runs[0].originalUriBaseIds = { '%SRCROOT%': { uri: 'file:///outside/' } }; },
+    (x) => { x.log.runs[0].results[0].locations[0].physicalLocation.artifactLocation.uriBaseId = 'UNKNOWN'; },
+    (x) => { x.log.runs[0].artifacts[0].location.uriBaseId = 'UNKNOWN'; },
+    (x) => { x.contents.sha = 'e'.repeat(40); },
+  ]) {
+    const changed = fixture(); mutate(changed);
+    assert.deepEqual(summarizeSarif(changed.log, changed.fetch()), counts(1), mutate.toString());
+  }
 });
 
 test('Baseline reconciliation blocks changed source, location, rule, context and review ambiguity', () => {
