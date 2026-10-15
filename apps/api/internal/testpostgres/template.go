@@ -15,18 +15,27 @@ import (
 	"github.com/tunnexio/tunnex/apps/api/db"
 )
 
-// Template is an opt-in, package-owned, pristine latest-schema fixture. Its zero
-// value is ready for use. Each New clones it into an independently named database;
-// no test can connect to or mutate the template. Historical migration tests must
-// continue to use NewAtVersion, which always migrates a fresh database.
+// Template is an opt-in, package-owned, pristine schema fixture. Its zero value
+// uses the latest schema; NewTemplateAtVersion selects a fixed baseline. Each New
+// clones it into an independently named database; no test can connect to or mutate
+// the template. Tests of migration from an empty database must continue to use
+// NewAtVersion, which always migrates a fresh database.
 // A package using Template must call Run from TestMain to retire it after tests.
 // As with ordinary fixtures, an external owner must clean up after process kills.
 type Template struct {
-	mu     sync.Mutex
-	dsn    string
-	name   string
-	admin  *pgxpool.Pool
-	closed bool
+	mu      sync.Mutex
+	version *uint
+	dsn     string
+	name    string
+	admin   *pgxpool.Pool
+	closed  bool
+}
+
+// NewTemplateAtVersion creates a package-owned template at an exact schema
+// baseline. Tests may migrate their independent children forward or backward
+// without changing the starting schema of subsequent fixtures.
+func NewTemplateAtVersion(version uint) *Template {
+	return &Template{version: &version}
 }
 
 // Run executes a test package and reports template cleanup failures as a failing
@@ -110,10 +119,14 @@ func (s *Template) prepare(dsn string) (string, error) {
 		return "", fmt.Errorf("create fixture template %s: %w", name, err)
 	}
 	created = true
-	if err := db.Up(migrationURL); err != nil {
+	migrate := db.Up
+	if s.version != nil {
+		migrate = func(dsn string) error { return db.MigrateTo(dsn, *s.version) }
+	}
+	if err := migrate(migrationURL); err != nil {
 		return "", fmt.Errorf("migrate fixture template %s: %w", name, err)
 	}
-	// db.Up closes its migration connection. Refuse all subsequent connections to
+	// Migration closes its connection. Refuse all subsequent connections to
 	// this pristine source; PostgreSQL can still copy it into independent children.
 	if _, err := admin.Exec(ctx, "ALTER DATABASE "+pgx.Identifier{name}.Sanitize()+" ALLOW_CONNECTIONS false"); err != nil {
 		return "", fmt.Errorf("seal fixture template %s: %w", name, err)

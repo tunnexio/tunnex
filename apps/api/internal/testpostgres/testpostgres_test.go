@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/tunnexio/tunnex/apps/api/db"
 )
 
 func TestNewAtVersionPreservesParentSchema(t *testing.T) {
@@ -37,6 +38,24 @@ func TestNewAtVersionPreservesParentSchema(t *testing.T) {
 		}
 		if childName == parentName || version != 160 {
 			t.Fatalf("historical child has wrong database or schema: same database=%v, version=%d", childName == parentName, version)
+		}
+		for _, dsn := range []string{child.Config().ConnString(), child.Config().ConnConfig.ConnString()} {
+			config, err := pgxpool.ParseConfig(dsn)
+			if err != nil || config.ConnConfig.Database != childName {
+				t.Fatal("returned fixture connection string does not target its owned child")
+			}
+		}
+		// Callers such as the IPsec migration tests use the returned pool's DSN.
+		// Exercise that exact path rather than reconstructing a safe URL here.
+		if err := db.MigrateTo(child.Config().ConnString(), 162); err != nil {
+			t.Fatal(err)
+		}
+		var dirty bool
+		if err := child.QueryRow(childCtx, `SELECT version, dirty FROM schema_migrations`).Scan(&version, &dirty); err != nil {
+			t.Fatal(err)
+		}
+		if version != 162 || dirty {
+			t.Fatal("returned fixture connection string did not migrate its owned child")
 		}
 	})
 	var after int
@@ -115,6 +134,34 @@ func TestKeywordSettingsPreserveEscapesAndRefuseMalformedInput(t *testing.T) {
 	for _, dsn := range []string{"not a connection string", "password='unterminated", "host=trailing\\", "=missing_key"} {
 		if _, err := keywordSettings(dsn); err == nil {
 			t.Fatalf("accepted malformed keyword string %q", dsn)
+		}
+	}
+}
+
+func TestDatabasePoolURLPreservesClientSettings(t *testing.T) {
+	const name = "tnx_test_0123456789abcdef0123456789abcdef"
+	for _, dsn := range []string{
+		"postgres://alice:secret@localhost:5432/shared?sslmode=disable&connect_timeout=8&application_name=fixture&pool_max_conns=8&pool_min_conns=2&pool_min_idle_conns=1&pool_max_conn_lifetime=3m&pool_max_conn_lifetime_jitter=2s&pool_max_conn_idle_time=1m&pool_health_check_period=4s&statement_cache_capacity=12&description_cache_capacity=10&default_query_exec_mode=simple_protocol",
+		"host=localhost port=5432 user=alice password=secret dbname=shared sslmode=disable connect_timeout=8 application_name=fixture pool_max_conns=8 pool_min_conns=2 pool_min_idle_conns=1 pool_max_conn_lifetime=3m pool_max_conn_lifetime_jitter=2s pool_max_conn_idle_time=1m pool_health_check_period=4s statement_cache_capacity=12 description_cache_capacity=10 default_query_exec_mode=simple_protocol",
+	} {
+		got, err := databasePoolURL(dsn, name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		parent, err := pgxpool.ParseConfig(dsn)
+		if err != nil {
+			t.Fatal(err)
+		}
+		child, err := pgxpool.ParseConfig(got)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if child.ConnConfig.Database != name || child.MaxConns != parent.MaxConns || child.MinConns != parent.MinConns || child.MinIdleConns != parent.MinIdleConns || child.MaxConnLifetime != parent.MaxConnLifetime || child.MaxConnLifetimeJitter != parent.MaxConnLifetimeJitter || child.MaxConnIdleTime != parent.MaxConnIdleTime || child.HealthCheckPeriod != parent.HealthCheckPeriod {
+			t.Fatal("owned pool URL changed database identity or pool settings")
+		}
+		a, b := parent.ConnConfig, child.ConnConfig
+		if a.Host != b.Host || a.Port != b.Port || a.User != b.User || a.Password != b.Password || a.ConnectTimeout != b.ConnectTimeout || a.StatementCacheCapacity != b.StatementCacheCapacity || a.DescriptionCacheCapacity != b.DescriptionCacheCapacity || a.DefaultQueryExecMode != b.DefaultQueryExecMode || !reflect.DeepEqual(a.RuntimeParams, b.RuntimeParams) {
+			t.Fatal("owned pool URL changed connection or pgx client settings")
 		}
 	}
 }
