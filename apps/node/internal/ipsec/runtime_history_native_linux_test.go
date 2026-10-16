@@ -68,6 +68,17 @@ func TestHistoryTwentyRealFRRGenerationsNative(t *testing.T) {
 		}
 	}
 	defer exec.Command("/sbin/ip", "link", "del", "histlan").Run()
+	// Keep the no-peer lifecycle fixture self-contained in a network-none
+	// container. Exact TEST-NET outer routes use only the fixture-owned veth;
+	// deleting that link also removes its addresses and routes.
+	if out, err := exec.CommandContext(ctx, "/sbin/ip", "addr", "add", "192.0.2.1/24", "dev", "histlan").CombinedOutput(); err != nil {
+		t.Fatal(string(out), err)
+	}
+	for _, engine := range e.Engines {
+		if out, err := exec.CommandContext(ctx, "/sbin/ip", "route", "add", engine.RemoteAddress.String()+"/32", "via", "192.0.2.2", "dev", "histlan", "src", "192.0.2.1").CombinedOutput(); err != nil {
+			t.Fatal(string(out), err)
+		}
+	}
 	for _, phase := range []RuntimePhase{RuntimeReserved, RuntimeApplying, RuntimeApplied} {
 		e.Phase = phase
 		if err = c.journal.Save([]RuntimeJournalEntry{e}); err != nil {
@@ -101,7 +112,14 @@ func TestHistoryTwentyRealFRRGenerationsNative(t *testing.T) {
 	}
 	rows := []map[string]any{}
 	for n := uint64(1); n <= 20; n++ {
-		if err = c.startBGPSession(ctx, e); err != nil {
+		// The material-derived fixture retains the canonical allocation/engine
+		// identities. Each real FRR generation requires a fresh native network
+		// observation, just like the production managed-start path.
+		freshEnvironment, observeErr := env.Observe(ctx, e.Allocation, e.Engines)
+		if observeErr != nil {
+			t.Fatalf("generation%d environment:%v", n, observeErr)
+		}
+		if err = c.startBGPSession(ctx, e, freshEnvironment); err != nil {
 			t.Fatalf("generation%d:%v", n, err)
 		}
 		entries, _ := c.journal.Entries()

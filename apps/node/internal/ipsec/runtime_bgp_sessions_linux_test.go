@@ -116,6 +116,7 @@ func TestBGPManagedSessionsNative(t *testing.T) {
 			configs[i].LocalPrefixes = c.LocalPrefixes
 			configs[i].RemotePrefixes = c.RemotePrefixes
 			configs[i].BGP = true
+			configs[i].ProfileID = entry.Allocation.ProfileID
 			configs[i].XFRMID = KernelTunnelID(configs[i].TunnelID)
 			entry.Engines[i] = configs[i]
 			p := c.Peers[i]
@@ -186,7 +187,11 @@ func TestBGPManagedSessionsNative(t *testing.T) {
 		t.Log("BGP_NO_KERNEL_BEFORE_GO_WRITER")
 	}
 	if journal != nil && os.Getenv("TUNNEX_BGP_CRASH_LAB") == "1" {
-		controller := &RuntimeController{config: RuntimeControllerConfig{JournalDir: journalDir}, journal: journal, kernel: kernel, namespace: func() (string, error) { return os.Readlink("/proc/self/ns/net") }}
+		environment, err := NewRuntimeEnvironmentInspector("/sbin/ip", "/usr/sbin/nft")
+		if err != nil {
+			t.Fatal(err)
+		}
+		controller := &RuntimeController{config: RuntimeControllerConfig{JournalDir: journalDir, Environment: environment}, journal: journal, kernel: kernel, namespace: func() (string, error) { return os.Readlink("/proc/self/ns/net") }}
 		point := os.Getenv("TUNNEX_BGP_STARTUP_CRASH_POINT")
 		if point != "" && entry.BGPProcess == nil && len(entry.BGPProcessRetired) == 0 {
 			controller.bgpCheckpointBeforeSave = func(id bgpengine.ProcessIdentity) error {
@@ -216,7 +221,11 @@ func TestBGPManagedSessionsNative(t *testing.T) {
 				return ErrRuntimeController
 			}
 		}
-		if e = controller.startBGPSession(ctx, entry); e != nil {
+		freshEnvironment, err := environment.Observe(ctx, entry.Allocation, entry.Engines)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if e = controller.startBGPSession(ctx, entry, freshEnvironment); e != nil {
 			t.Fatal(e)
 		}
 		process = controller.bgpProcesses[entry.DeliveryID].(*bgpengine.Process)
