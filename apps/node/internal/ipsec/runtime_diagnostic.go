@@ -57,7 +57,7 @@ func validRuntimeDiagnostic(operation, stage string) bool {
 	default:
 		return false
 	}
-	if stage == "guard_docker_forward" || stage == "guard_docker_readback" {
+	if stage == "guard_docker_forward" || stage == "guard_docker_readback" || stage == "guard_legacy_refusal_fence" {
 		return operation == "guard_replace"
 	}
 	switch stage {

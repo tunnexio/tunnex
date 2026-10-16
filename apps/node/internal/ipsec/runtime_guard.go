@@ -296,11 +296,12 @@ func (a *RuntimeGuard) Replace(ctx context.Context, intent GuardIntent) (manifes
 		return fail()
 	}
 	stage = "journal_inventory"
-	templates, _, e := a.journal.guardTemplates()
+	templates, journalSequence, e := a.journal.guardTemplates()
 	if e != nil {
 		return fail()
 	}
 	var matched *runtimeGuardTemplate
+	legacyRefusal := false
 	stage = "guard_prior_ownership"
 	if present {
 		actual, e := a.reader.run(ctx, "-j", "list", "table", "inet", "tunnex_ipsec")
@@ -312,6 +313,21 @@ func (a *RuntimeGuard) Replace(ctx context.Context, intent GuardIntent) (manifes
 				copy := candidate
 				matched = &copy
 				break
+			}
+		}
+		if matched == nil {
+			// A known old native encoding can establish withdrawal ownership
+			// only for a complete permanent-refusal successor. It cannot be
+			// used by positive readback or an ordinary permitting replacement.
+			for _, candidate := range templates {
+				if verifyLegacyCTGuardRefusal(candidate, intent, m, actual, links) == nil {
+					if matched != nil {
+						return fail()
+					}
+					copy := candidate
+					matched = &copy
+					legacyRefusal = true
+				}
 			}
 		}
 		if matched == nil {
@@ -331,6 +347,23 @@ func (a *RuntimeGuard) Replace(ctx context.Context, intent GuardIntent) (manifes
 	sort.Slice(afterLinks, func(i, j int) bool { return afterLinks[i].Index < afterLinks[j].Index })
 	if !reflect.DeepEqual(links, afterLinks) {
 		return fail()
+	}
+	if legacyRefusal {
+		stage = "guard_legacy_refusal_fence"
+		// Independently repeat the complete candidate proof with the same
+		// interface identity and journal generation before resolving it.
+		if e = a.reader.check(ctx, m, func(_, actual []byte, current []GuardInterface) error {
+			if !reflect.DeepEqual(links, current) {
+				return ErrGuardReadback
+			}
+			return verifyLegacyCTGuardRefusal(*matched, intent, m, actual, current)
+		}); e != nil {
+			return fail()
+		}
+		current, sequence, err := a.journal.guardTemplates()
+		if err != nil || sequence != journalSequence || !reflect.DeepEqual(current, templates) || ctx.Err() != nil {
+			return fail()
+		}
 	}
 	// Resolve an interrupted atomic replacement to the independently observed
 	// candidate before reserving a successor. No packet permit is inferred here.
