@@ -138,7 +138,7 @@ func TestEnvironmentTimingPreservesEighteenCommands(t *testing.T) {
 	}
 }
 func TestEnvironmentTimingBounds(t *testing.T) {
-	for _, v := range []runtimeEnvironmentTiming{{CommandMillis: -1}, {CommandMillis: 60001}, {VerificationMillis: -1}, {VerificationMillis: 60001}, {CommandCount: -1}, {CommandCount: 19}} {
+	for _, v := range []runtimeEnvironmentTiming{{CommandMillis: -1}, {CommandMillis: 60001}, {VerificationMillis: -1}, {VerificationMillis: 60001}, {CommandCount: -1}, {CommandCount: runtimeEnvironmentCommandCeiling + 1}} {
 		if validDNSReadTiming(runtimeDNSReadTiming{Native: runtimeNativePhaseTiming{Environment: v}}) {
 			t.Fatal("invalid scalar accepted")
 		}

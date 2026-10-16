@@ -474,7 +474,7 @@ func (r *runtimeEnvironmentInspector) observeQualified(ctx context.Context, a Ke
 				f, ok := kernelFlags(flags)
 				// An unrelated, assigned Docker bridge may be down. It cannot
 				// supply LAN or underlay identity, and protected routes still refuse.
-				disjointBridge := gcp && len(f) == 1 && f[0] == "linkdown" && runtimeDisjointDownBridge(row, p, protected, downBridges, assigned)
+				disjointBridge := len(f) == 1 && f[0] == "linkdown" && runtimeDisjointDownBridge(row, p, protected, downBridges, assigned)
 				if !ok || (len(f) != 0 && !disjointBridge) {
 					return fail()
 				}
@@ -551,7 +551,7 @@ func (r *runtimeEnvironmentInspector) observeQualified(ctx context.Context, a Ke
 	// The first complete snapshot is fully validated before any second-snapshot read.
 	stage = "env_snapshot_after"
 	second, valid := readSnapshot()
-	if !valid || !bytes.Equal(second.links, links) || !bytes.Equal(second.rules, rules) || !bytes.Equal(second.routes, routes) || !runtimeAddressBracket(addresses, second.addresses, time.Since(addressReadStarted)) {
+	if !valid || !runtimeLinkBracket(links, second.links) || !bytes.Equal(second.rules, rules) || !bytes.Equal(second.routes, routes) || !runtimeAddressBracket(addresses, second.addresses, time.Since(addressReadStarted)) {
 		return fail()
 	}
 	for i := range engines[:engineTunnelCount(engines)] {

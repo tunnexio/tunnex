@@ -176,14 +176,16 @@ func guardNonsetMismatchClass(want, got map[string]any) string {
 	return "nonset_mismatch"
 }
 
-// RuntimeGuard owns only the journal-bound inet table. The journal stores prior
-// semantic templates for withdrawal, never authority to reinstall their permits.
+// RuntimeGuard owns the journal-bound inet table and exact grant-derived Docker
+// FORWARD exceptions. The journal stores prior semantic templates for withdrawal,
+// never authority to reinstall their permits or mutate any other firewall rule.
 type RuntimeGuard struct {
 	diagnostic func(RuntimeDiagnostic)
 	mu         sync.Mutex
 	journal    *RuntimeJournal
 	reader     *GuardReader
 	apply      func(context.Context, []byte) error
+	dockerNFT  string
 }
 
 func NewRuntimeGuard(j *RuntimeJournal, nftPath string) (*RuntimeGuard, error) {
@@ -194,7 +196,7 @@ func NewRuntimeGuard(j *RuntimeJournal, nftPath string) (*RuntimeGuard, error) {
 	if e != nil {
 		return nil, e
 	}
-	return &RuntimeGuard{journal: j, reader: r, apply: func(ctx context.Context, data []byte) error {
+	return &RuntimeGuard{journal: j, reader: r, dockerNFT: nftPath, apply: func(ctx context.Context, data []byte) error {
 		cmd := exec.CommandContext(ctx, nftPath, "-j", "-f", "-")
 		cmd.Stdin = bytes.NewReader(data)
 		cmd.Stderr = io.Discard
@@ -342,6 +344,20 @@ func (a *RuntimeGuard) Replace(ctx context.Context, intent GuardIntent) (manifes
 			return fail()
 		}
 	}
+	// Docker's independent FORWARD policy can still drop a packet accepted by
+	// the earlier lease guard. Reconcile only journal-derived structural tuples
+	// in the SAME transaction, after Docker's user-policy chains have run.
+	stage = "guard_docker_forward"
+	docker, e := a.prepareDockerForward(ctx, m, matched, links, intent)
+	if e != nil {
+		return fail()
+	}
+	if docker != nil {
+		m.NFTJSON, e = docker.transaction(m.NFTJSON)
+		if e != nil {
+			return fail()
+		}
+	}
 	stage = "guard_prepare_journal"
 	if e = a.journal.prepareGuard(m); e != nil {
 		return fail()
@@ -352,6 +368,10 @@ func (a *RuntimeGuard) Replace(ctx context.Context, intent GuardIntent) (manifes
 	}
 	stage = "guard_complete_readback"
 	if e = a.reader.Check(ctx, m); e != nil || ctx.Err() != nil {
+		return fail()
+	}
+	stage = "guard_docker_readback"
+	if docker != nil && a.checkDockerForward(ctx, docker, links) != nil {
 		return fail()
 	}
 	stage = "guard_finish_journal"

@@ -90,7 +90,9 @@ func runtimeEnvironmentReadPool(parent context.Context, tasks []func(context.Con
 	return !failed && ctx.Err() == nil && next == len(tasks)
 }
 
-const runtimeEnvironmentCommandCeiling = 18
+// Includes both independent Docker host firewall snapshots. This bounds
+// diagnostic storage only; authority still depends on every completed read.
+const runtimeEnvironmentCommandCeiling = 28
 
 type runtimeEnvironmentCommandInterval struct{ start, end time.Time }
 type runtimeEnvironmentCommandTiming struct {

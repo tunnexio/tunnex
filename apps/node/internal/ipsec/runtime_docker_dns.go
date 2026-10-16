@@ -13,7 +13,7 @@ import (
 )
 
 // Docker's opaque xt targets need independent nft-backed iptables semantics.
-// Only its complete loopback DNS topology is admitted; table names are not proof.
+// Only complete supported DNS or host topologies are admitted; names are not proof.
 func runtimeQualifiedHookCensus(ctx context.Context, nftPath string, raw []byte, protected []netip.Prefix) bool {
 	return runtimeQualifiedHookCensusWithCommands(ctx, nftPath, raw, protected, runKernelCommand)
 }
@@ -24,6 +24,16 @@ func runtimeQualifiedHookCensusWithCommands(ctx context.Context, nftPath string,
 	}
 	if runtimeHookCensusRows(rows, protected) {
 		return true
+	}
+	// Standalone Docker hosts have a distinct, strictly verified bridge/filter
+	// topology. Never pass these tables through the loopback-DNS exception.
+	for _, row := range rows {
+		if value, exists := row["table"]; exists {
+			o, ok := kernelObject(value)
+			if ok && runtimeDockerHostTableKey("table", o) == "ip/filter" {
+				return runtimeQualifiedDockerHostCensus(ctx, nftPath, rows, protected, run)
+			}
+		}
 	}
 	present := false
 	for _, row := range rows {
