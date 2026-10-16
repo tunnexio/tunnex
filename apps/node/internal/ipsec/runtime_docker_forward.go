@@ -267,10 +267,23 @@ func (a *RuntimeGuard) prepareDockerForward(ctx context.Context, manifest GuardM
 		protected = append(protected, connection.Local...)
 		protected = append(protected, connection.Remote...)
 	}
+	plan, err := runtimeDockerForwardPlanForSnapshot(manifest, prior, rows, links)
+	if err != nil {
+		return nil, err
+	}
+	if len(plan.rules) == 0 && runtimeDockerPermanentRefusal(intent, manifest, prior) {
+		view, ok := runtimeDockerWithdrawalViewForSnapshot(rows, manifest.OwnerID, plan.remove, links)
+		if ok && view.count > 0 {
+			if !a.qualifyDockerWithdrawal(ctx, manifest.Namespace, view, plan, links, protected) {
+				return nil, ErrGuardRead
+			}
+			return plan, nil
+		}
+	}
 	if !runtimeQualifiedHookCensus(ctx, a.dockerNFT, raw, protected) {
 		return nil, ErrGuardRead
 	}
-	return runtimeDockerForwardPlanForSnapshot(manifest, prior, rows, links)
+	return plan, nil
 }
 
 func runtimeDockerForwardPlanForSnapshot(manifest GuardManifest, prior *runtimeGuardTemplate, rows []map[string]json.RawMessage, links []GuardInterface) (*runtimeDockerForwardPlan, error) {
