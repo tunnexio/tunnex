@@ -487,7 +487,7 @@ func (r *runtimeEnvironmentInspector) observeQualified(ctx context.Context, a Ke
 				return fail()
 			}
 			if p.Bits() > prefix.Bits() {
-				if !gcp || !runtimeRoutedGatewayHost(row, p, prefix, routeRows, physical, assigned) {
+				if !(gcp && runtimeRoutedGatewayHost(row, p, prefix, routeRows, physical, assigned)) && !runtimeConnectedGatewayHost(row, p, prefix, routeRows, physical, assigned) {
 					return fail()
 				}
 				continue // A gateway host is never proof of prefix coverage.
@@ -595,6 +595,65 @@ func runtimeMainRoutePrefix(row map[string]json.RawMessage) (netip.Prefix, bool)
 		return netip.Prefix{}, false
 	}
 	return netip.PrefixFrom(a, 32), true
+}
+
+// DHCP may add an on-link gateway /32 alongside a directly connected subnet.
+// Accept only the unique host named by the matching DHCP default, backed by an
+// exact kernel/link route on the same physical interface and assigned source.
+// The host is supporting evidence only; it can never supply prefix coverage.
+func runtimeConnectedGatewayHost(host map[string]json.RawMessage, p, prefix netip.Prefix, rows []map[string]json.RawMessage, physical map[string]int, assigned map[string]map[netip.Addr]bool) bool {
+	if p.Bits() != 32 || !prefix.Contains(p.Addr()) {
+		return false
+	}
+	dev, _ := kernelString(host, "dev")
+	scope, _ := kernelString(host, "scope")
+	protocol, _ := kernelString(host, "protocol")
+	source, sourceOK := kernelString(host, "prefsrc")
+	src, err := netip.ParseAddr(source)
+	if scope != "link" || protocol != "dhcp" || physical[dev] == 0 || !sourceOK || err != nil || !src.Is4() || !prefix.Contains(src) || !assigned[dev][src] || assigned[dev][p.Addr()] {
+		return false
+	}
+	if _, via := host["gateway"]; via {
+		return false
+	}
+	defaults, covers, hosts := 0, 0, 0
+	for _, route := range rows {
+		dst, _ := kernelString(route, "dst")
+		routePrefix, valid := runtimeMainRoutePrefix(route)
+		if !valid {
+			return false
+		}
+		if routePrefix == p {
+			hosts++
+		}
+		if dst != "default" && routePrefix != prefix {
+			continue
+		}
+		routeDev, _ := kernelString(route, "dev")
+		routeSource, _ := kernelString(route, "prefsrc")
+		routeProtocol, _ := kernelString(route, "protocol")
+		routeScope, scopeOK := kernelString(route, "scope")
+		if routeDev != dev || routeSource != source {
+			return false
+		}
+		if dst == "default" {
+			gateway, _ := kernelString(route, "gateway")
+			gw, err := netip.ParseAddr(gateway)
+			if routeProtocol != "dhcp" || err != nil || gw != p.Addr() {
+				return false
+			}
+			if _, present := route["scope"]; present && (!scopeOK || routeScope != "global") {
+				return false
+			}
+			defaults++
+		} else {
+			if _, via := route["gateway"]; via || routeProtocol != "kernel" || routeScope != "link" {
+				return false
+			}
+			covers++
+		}
+	}
+	return defaults == 1 && covers == 1 && hosts == 1
 }
 
 // The only narrow GCP route exception is the on-link gateway for one exact
