@@ -104,11 +104,11 @@ func (c *RuntimeController) startBGPSession(ctx context.Context, e RuntimeJourna
 				return proofErr
 			}
 			process, err = startRuntimeBGPSessionWithLocalExportProof(ctx, c.config.JournalDir, e.DeliveryID, generation, cfg, checkpoint, proof)
-		} else if e.Allocation.ProfileID == GCPHABGPProfile {
+		} else if e.Allocation.ProfileID == "" || e.Allocation.ProfileID == GCPHABGPProfile {
 			if len(environments) != 1 {
 				return ErrRuntimeController
 			}
-			proof, proofErr := c.gcpBGPLocalExportProof(e, cfg, environments[0])
+			proof, proofErr := c.bgpLocalExportProof(e, cfg, environments[0])
 			if proofErr != nil {
 				return proofErr
 			}

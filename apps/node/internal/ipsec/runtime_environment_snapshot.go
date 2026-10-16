@@ -11,6 +11,7 @@ import (
 type runtimeEnvironmentSnapshot struct {
 	rules, links, routes, addresses []byte
 	peers                           [2][]byte
+	localExports                    [][]byte
 }
 
 func runtimeReadEnvironmentSnapshot(ctx context.Context, ip func(context.Context, ...string) ([]byte, error), nft func(context.Context) ([]byte, error), engines [2]EngineTunnel) (runtimeEnvironmentSnapshot, bool) {

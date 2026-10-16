@@ -49,7 +49,7 @@ func TestGCPBGPExactFreshLocalExportProof(t *testing.T) {
 	env := RuntimeEnvironment{Namespace: entry.Allocation.Namespace, LocalIngressIndices: []int{2}, Underlays: [2]RuntimeUnderlay{{InterfaceIndex: 2, LocalAddress: netip.MustParseAddr("10.70.0.2"), OuterMTU: 1460}, {InterfaceIndex: 2, LocalAddress: netip.MustParseAddr("10.70.0.2"), OuterMTU: 1460}}}
 	f := &gcpExportEnvironment{env: env, entry: entry}
 	c := &RuntimeController{config: RuntimeControllerConfig{Environment: f}}
-	proof, err := c.gcpBGPLocalExportProof(entry, cfg, env)
+	proof, err := c.bgpLocalExportProof(entry, cfg, env)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -86,21 +86,21 @@ func TestGCPBGPExactFreshLocalExportProof(t *testing.T) {
 	}
 	bad := cfg
 	bad.LocalPrefixes = []netip.Prefix{netip.MustParsePrefix("10.99.0.0/24")}
-	if _, err := c.gcpBGPLocalExportProof(entry, bad, env); err == nil {
+	if _, err := c.bgpLocalExportProof(entry, bad, env); err == nil {
 		t.Fatal("unbound config admitted")
 	}
 	wrongEnv := env
 	wrongEnv.Namespace = "net:[1]"
-	if _, err := c.gcpBGPLocalExportProof(entry, cfg, wrongEnv); err == nil {
+	if _, err := c.bgpLocalExportProof(entry, cfg, wrongEnv); err == nil {
 		t.Fatal("unbound namespace admitted")
 	}
 	aws := entry
 	aws.Allocation.ProfileID = ""
-	if _, err := c.gcpBGPLocalExportProof(aws, cfg, env); err == nil {
+	if _, err := c.bgpLocalExportProof(aws, cfg, env); err == nil {
 		t.Fatal("AWS gained GCP override")
 	}
 	c.config.Environment = nil
-	if _, err := c.gcpBGPLocalExportProof(entry, cfg, env); err == nil {
+	if _, err := c.bgpLocalExportProof(entry, cfg, env); err == nil {
 		t.Fatal("nil native inspector admitted")
 	}
 }
@@ -151,7 +151,7 @@ func TestGCPBGPProofReusesExactRoutedEnvironment(t *testing.T) {
 		t.Fatal(err)
 	}
 	c := &RuntimeController{config: RuntimeControllerConfig{Environment: inspector}}
-	proof, err := c.gcpBGPLocalExportProof(e, cfg, env)
+	proof, err := c.bgpLocalExportProof(e, cfg, env)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -360,13 +360,23 @@ func (r *runtimeEnvironmentInspector) observeQualified(ctx context.Context, a Ke
 		return ip(ctx, args...)
 	}
 	readSnapshot := func() (runtimeEnvironmentSnapshot, bool) {
-		return runtimeReadEnvironmentSnapshot(ctx, snapshotIP, func(c context.Context) ([]byte, error) {
+		snapshot, ok := runtimeReadEnvironmentSnapshot(ctx, snapshotIP, func(c context.Context) ([]byte, error) {
 			raw, err := nftRun(c, "-j", "list", "ruleset")
 			if err != nil || !runtimeQualifiedHookCensusWithCommands(c, r.nftPath, raw, protected, hookRun) {
 				return nil, ErrRuntimeEnvironment
 			}
 			return raw, nil
 		}, engines)
+		if ok && localExports && a.ProfileID == "" {
+			for _, prefix := range engines[0].LocalPrefixes {
+				raw, err := snapshotIP(ctx, "-j", "-4", "route", "get", prefix.Addr().String())
+				if err != nil {
+					return runtimeEnvironmentSnapshot{}, false
+				}
+				snapshot.localExports = append(snapshot.localExports, raw)
+			}
+		}
+		return snapshot, ok
 	}
 	stage = "env_snapshot_before"
 	first, valid := readSnapshot()
@@ -450,7 +460,7 @@ func (r *runtimeEnvironmentInspector) observeQualified(ctx context.Context, a Ke
 	stage = "env_local_coverage"
 	out := RuntimeEnvironment{Namespace: ns}
 	local := map[int]bool{}
-	for _, prefix := range engines[0].LocalPrefixes {
+	for exportIndex, prefix := range engines[0].LocalPrefixes {
 		if !prefix.IsValid() || !prefix.Addr().Is4() || prefix != prefix.Masked() {
 			return fail()
 		}
@@ -496,6 +506,9 @@ func (r *runtimeEnvironmentInspector) observeQualified(ctx context.Context, a Ke
 				return fail()
 			}
 			if localExports && (p != prefix || !runtimeLocalExportProtocol(row["protocol"])) {
+				return fail()
+			}
+			if localExports && a.ProfileID == "" && (!runtimePhysicalLocalExport(row, prefix, addressRows) || exportIndex >= len(first.localExports) || !runtimeSelectedLocalExport(first.localExports[exportIndex], row)) {
 				return fail()
 			}
 			if found != 0 && found != index {
@@ -558,6 +571,9 @@ func (r *runtimeEnvironmentInspector) observeQualified(ctx context.Context, a Ke
 		if !bytes.Equal(second.peers[i], peerReads[i]) {
 			return fail()
 		}
+	}
+	if !reflect.DeepEqual(first.localExports, second.localExports) {
+		return fail()
 	}
 	stage = "env_namespace_after"
 	after, e := r.namespace()
@@ -741,6 +757,90 @@ func runtimeLocalExportProtocol(raw json.RawMessage) bool {
 	}
 	n, ok := kernelNumber(raw, 32)
 	return ok && (n == 2 || n == 3 || n == 4 || n == 242)
+}
+
+// Preserve the generic BGP engine's physical export requirement for AWS: a
+// direct export must equal an assigned subnet, while a routed export requires
+// a next hop on an assigned subnet. Tunnex's GCP route protocol is not evidence.
+func runtimePhysicalLocalExport(route map[string]json.RawMessage, prefix netip.Prefix, addresses []map[string]json.RawMessage) bool {
+	var protocol string
+	if json.Unmarshal(route["protocol"], &protocol) == nil && protocol == "242" {
+		return false
+	}
+	if n, ok := kernelNumber(route["protocol"], 32); ok && n == 242 {
+		return false
+	}
+	dev, _ := kernelString(route, "dev")
+	source, sourceOK := kernelString(route, "prefsrc")
+	if _, present := route["prefsrc"]; present && !sourceOK {
+		return false
+	}
+	gateway, gatewayOK := kernelString(route, "gateway")
+	_, routed := route["gateway"]
+	gw, gatewayErr := netip.ParseAddr(gateway)
+	if routed && (!gatewayOK || gatewayErr != nil || !gw.Is4()) {
+		return false
+	}
+	for _, row := range addresses {
+		name, _ := kernelString(row, "ifname")
+		if name != dev {
+			continue
+		}
+		infos, ok := kernelObjects(row["addr_info"])
+		if !ok {
+			return false
+		}
+		for _, info := range infos {
+			value, ok := kernelString(info, "local")
+			addr, err := netip.ParseAddr(value)
+			bits, bitsOK := kernelNumber(info["prefixlen"], 6)
+			if !ok || err != nil || !addr.Is4() || !bitsOK || bits == 0 || bits > 32 {
+				return false
+			}
+			if sourceOK && source != value {
+				continue
+			}
+			assigned := netip.PrefixFrom(addr, int(bits))
+			if (!routed && assigned.Masked() == prefix) || (routed && assigned.Contains(gw) && addr != gw) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func runtimeSelectedLocalExport(raw []byte, route map[string]json.RawMessage) bool {
+	rows, ok := kernelObjects(raw)
+	if !ok || len(rows) != 1 {
+		return false
+	}
+	selected := rows[0]
+	for _, field := range []string{"encap", "encap_type", "nhid", "multipath", "nexthops"} {
+		if _, present := selected[field]; present {
+			return false
+		}
+	}
+	if typ, present := selected["type"]; present && string(typ) != `"unicast"` {
+		return false
+	}
+	if rawFlags, present := selected["flags"]; present {
+		flags, ok := kernelFlags(rawFlags)
+		if !ok || len(flags) != 0 {
+			return false
+		}
+	}
+	dev, valid := kernelString(selected, "dev")
+	expectedDev, _ := kernelString(route, "dev")
+	if !valid || dev != expectedDev {
+		return false
+	}
+	gateway, valid := kernelString(selected, "gateway")
+	_, present := selected["gateway"]
+	if present && !valid {
+		return false
+	}
+	expectedGateway, _ := kernelString(route, "gateway")
+	return gateway == expectedGateway
 }
 
 // Admit only the production S21 conntrack ownership transform, in its native
