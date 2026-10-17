@@ -101,3 +101,55 @@ func TestStaticCNAMEBrokeredRPCProfileChangeDuringAnswerRefuses(t *testing.T) {
 		t.Fatal("changed resolver context accepted an in-flight answer")
 	}
 }
+
+func TestStaticCNAMEBrokeredRPCSingleFamilyAndNoData(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		positive dnsmessage.Type
+		want     fqdnrpc.Status
+	}{
+		{"IPv4_only", dnsmessage.TypeA, fqdnrpc.StatusNoError},
+		{"IPv6_only", dnsmessage.TypeAAAA, fqdnrpc.StatusNoError},
+		{"both_NODATA", 0, fqdnrpc.StatusServFail},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			f := New(nil, nil)
+			p := externalProfileFixture()
+			f.SetResolverProfiles([]ResolverProfile{p})
+			var calls atomic.Int32
+			f.staticTargetTransport = privateProfileTransport(func(_ context.Context, _ fqdnrpc.ResolverConfig, _ fqdnrpc.ResolverEndpoint, wire []byte) ([]byte, error) {
+				calls.Add(1)
+				q := decodeDNS(t, wire).Questions[0]
+				if q.Name.String() != "internal.lb.example." {
+					t.Error("private alias leaked or external tail requeried", q.Name)
+				}
+				if q.Type != tc.positive {
+					return targetAnswer(wire), nil
+				}
+				return targetAnswer(wire, addressRecord(q.Name.String(), q.Type, 30)), nil
+			})
+			req := fqdnrpc.Request{Version: 2, RequestID: "55555555-5555-5555-5555-555555555555", OrgID: "11111111-1111-1111-1111-111111111111", ResourceID: "22222222-2222-2222-2222-222222222222", SiteID: "33333333-3333-3333-3333-333333333333", GatewayID: "44444444-4444-4444-4444-444444444444", Hostname: "external.office.test", RecordTypes: []fqdnrpc.RecordType{fqdnrpc.RecordA, fqdnrpc.RecordAAAA, fqdnrpc.RecordCNAME}, Deadline: time.Now().Add(10 * time.Second), ResolverConfigID: p.Config.ID, ResolverConfigVersion: p.Config.Version, ResolverProfileID: p.Config.ProfileID, ResolverMatchSuffix: "office.test", ResolverEndpoints: p.Config.Endpoints, ResolverKind: "static_cname"}
+			responder := fqdnrpc.NewResponder(fqdnrpc.DirectResolver{StaticTransport: f})
+			got := responder.Handle(context.Background(), req.GatewayID, req)
+			if got.Status != tc.want || calls.Load() != 2 {
+				t.Fatalf("status=%s calls=%d: %+v", got.Status, calls.Load(), got)
+			}
+			if tc.want == fqdnrpc.StatusNoError {
+				if len(got.Records) != 2 {
+					t.Fatal("expected exactly alias plus one terminal address", got.Records)
+				}
+				for _, r := range got.Records {
+					if r.Type != fqdnrpc.RecordCNAME && r.TTLSeconds != 30 {
+						t.Fatal("lost bounded TTL", r)
+					}
+				}
+				f.SetResolverProfiles(nil)
+				if replay := responder.Handle(context.Background(), req.GatewayID, req); replay.Status != fqdnrpc.StatusServFail || calls.Load() != 2 {
+					t.Fatal("revoked profile replayed", replay)
+				}
+			} else if len(got.Records) != 0 {
+				t.Fatal("NODATA supplied authority", got.Records)
+			}
+		})
+	}
+}

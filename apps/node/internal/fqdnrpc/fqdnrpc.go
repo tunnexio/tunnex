@@ -380,6 +380,14 @@ func (d DirectResolver) resolveEndpoint(ctx context.Context, config ResolverConf
 		}
 		step = canonicalRecords(step)
 		all = append(all, step...)
+		if config.Kind == "static_cname" {
+			// StaticTransport completes every requested type through the programmed
+			// alias's external tail. NODATA for one family is terminal too: querying
+			// that external name again would bypass the alias-only transport seam.
+			// StaticTransport validates the completed chain; ResolveBound still
+			// requires valid records, endpoint consensus and a positive address.
+			return canonicalRecords(all), nil
+		}
 		targets := map[string]bool{}
 		for _, record := range step {
 			if record.Type == RecordCNAME && record.Name == current {
