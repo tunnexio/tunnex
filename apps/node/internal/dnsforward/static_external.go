@@ -65,7 +65,14 @@ func (f *Forwarder) staticTargetEndpointsCurrent(profiles *resolverProfiles, p c
 }
 
 func (f *Forwarder) answerStaticProfile(profiles *resolverProfiles, selected int, id uint16, query []byte, q dnsmessage.Question, transport string) []byte {
+	return f.answerStaticProfileContext(context.Background(), profiles, selected, id, query, q, transport, nil)
+}
+
+func (f *Forwarder) answerStaticProfileContext(parent context.Context, profiles *resolverProfiles, selected int, id uint16, query []byte, q dnsmessage.Question, transport string, only *fqdnrpc.ResolverEndpoint) []byte {
 	p := profiles.entries[selected]
+	if only != nil {
+		p.config.Endpoints = []fqdnrpc.ResolverEndpoint{*only}
+	}
 	target := strings.ToLower(q.Name.String())
 	seen := map[string]bool{}
 	hops := 0
@@ -110,7 +117,7 @@ func (f *Forwarder) answerStaticProfile(profiles *resolverProfiles, selected int
 	if original.Unpack(query) != nil || original.Response || original.OpCode != 0 || len(original.Questions) != 1 {
 		return refuse(id, query)
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(parent, 5*time.Second)
 	defer cancel()
 	externalNames := map[string]bool{}
 	for {

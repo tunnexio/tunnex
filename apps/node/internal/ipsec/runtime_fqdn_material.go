@@ -25,11 +25,15 @@ type RuntimeFQDNGrant struct {
 	ResolverMatchSuffix   string `json:"resolver_match_suffix"`
 	ConnectionID          string `json:"connection_id"`
 	ConfigurationRevision int64  `json:"configuration_revision"`
+	DeviceID              string `json:"device_id,omitempty"`
+	PublicKey             string `json:"public_key,omitempty"`
+	ResolverKind          string `json:"resolver_kind,omitempty"`
 }
 
 // Comparable provenance stays in fresh in-memory grants. The journal carries no
 // answer permission, and a bare FQDNManaged bit can never qualify a renderer.
 type FQDNGrantBinding struct {
+	ResolverKind                                                    string    `json:",omitempty"`
 	Version                                                         int       `json:",omitzero"`
 	ExpiresAt                                                       time.Time `json:",omitzero"`
 	ResolverSourceAddress                                           string    `json:",omitzero"`
@@ -57,12 +61,13 @@ func validFQDNName(s string) bool {
 }
 func (b FQDNGrantBinding) valid() bool {
 	if b.Version == 0 {
-		if !b.ExpiresAt.IsZero() || b.ResolverSourceAddress != "" {
+		if !b.ExpiresAt.IsZero() || b.ResolverSourceAddress != "" || b.ResolverKind != "" {
 			return false
 		}
 	} else if b.Version == 2 {
 		a, err := netip.ParseAddr(b.ResolverSourceAddress)
-		if b.ExpiresAt.IsZero() || err != nil || !a.Is4() || !a.IsPrivate() || a.String() != b.ResolverSourceAddress {
+		static := b.ResolverKind == "static_cname" && b.ResolverSourceAddress == ""
+		if b.ExpiresAt.IsZero() || (!static && (b.ResolverKind != "" || err != nil || !a.Is4() || !a.IsPrivate() || a.String() != b.ResolverSourceAddress)) {
 			return false
 		}
 	} else {
@@ -71,7 +76,7 @@ func (b FQDNGrantBinding) valid() bool {
 	return b.ResourceID != uuid.Nil && b.ResolverConfigID != uuid.Nil && b.SelectedSiteID != uuid.Nil && b.SelectedGatewayID != uuid.Nil && b.ResolverProfileID != uuid.Nil && b.ConnectionID != uuid.Nil && b.RuleID != uuid.Nil && b.ResolverConfigVersion > 0 && b.ConfigurationRevision > 0 && validDigest(b.Generation) && validFQDNName(b.Name) && validFQDNName(b.ResolverMatchSuffix) && (b.Name == b.ResolverMatchSuffix || strings.HasSuffix(b.Name, "."+b.ResolverMatchSuffix))
 }
 func runtimeFQDNGrants(m RuntimeMaterial, local, remote []netip.Prefix) ([]GuardGrant, error) {
-	if (len(m.Policy.FQDNGrants) == 0 && m.Policy.FQDNPolicyVersion != 0) || (len(m.Policy.FQDNGrants) > 0 && (m.Policy.FQDNPolicyVersion != 1 && m.Policy.FQDNPolicyVersion != 2)) || len(m.Policy.FQDNGrants) > 128 || len(m.Policy.Grants)+2*len(m.Policy.DNSResolverGrants)+len(m.Policy.FQDNGrants) > 128 {
+	if (len(m.Policy.FQDNGrants) == 0 && m.Policy.FQDNPolicyVersion != 0) || (len(m.Policy.FQDNGrants) > 0 && (m.Policy.FQDNPolicyVersion != 1 && m.Policy.FQDNPolicyVersion != 2)) || len(m.Policy.FQDNGrants) > 128 || len(m.Policy.Grants)+len(m.Policy.DesktopGrants)+2*len(m.Policy.DNSResolverGrants)+len(m.Policy.FQDNGrants) > 128 {
 		return nil, ErrRuntimeController
 	}
 	var out []GuardGrant
@@ -85,12 +90,13 @@ func runtimeFQDNGrants(m RuntimeMaterial, local, remote []netip.Prefix) ([]Guard
 			return u
 		}
 		b := FQDNGrantBinding{ResourceID: parse(f.ResourceID), ResolverConfigID: parse(f.ResolverConfigID), SelectedSiteID: parse(f.SelectedSiteID), SelectedGatewayID: parse(f.SelectedGatewayID), ResolverProfileID: parse(f.ResolverProfileID), ConnectionID: parse(f.ConnectionID), RuleID: parse(f.RuleID), Name: f.Name, Generation: f.Generation, ResolverMatchSuffix: f.ResolverMatchSuffix, ResolverConfigVersion: f.ResolverConfigVersion, ConfigurationRevision: f.ConfigurationRevision}
+		b.ResolverKind = f.ResolverKind
 		if m.Policy.FQDNPolicyVersion == 2 {
 			b.Version = 2
 			b.ExpiresAt = f.ExpiresAt
 			b.ResolverSourceAddress = f.ResolverSourceAddress
 			a, err := netip.ParseAddr(f.ResolverSourceAddress)
-			if f.ExpiresAt.IsZero() || f.ExpiresAt.After(time.Now().Add(time.Hour)) || err != nil || !withinPrefixes(netip.PrefixFrom(a, 32), local) {
+			if f.ExpiresAt.IsZero() || f.ExpiresAt.After(time.Now().Add(time.Hour)) || (f.ResolverKind == "static_cname" && f.ResolverSourceAddress != "") || (f.ResolverKind != "static_cname" && (err != nil || !withinPrefixes(netip.PrefixFrom(a, 32), local))) {
 				return nil, ErrRuntimeController
 			}
 		} else if !f.ExpiresAt.IsZero() || f.ResolverSourceAddress != "" {
@@ -99,7 +105,18 @@ func runtimeFQDNGrants(m RuntimeMaterial, local, remote []netip.Prefix) ([]Guard
 		src, se := netip.ParsePrefix(f.Source)
 		dst, de := netip.ParsePrefix(f.Destination)
 		p := GuardProtocol(f.Protocol)
-		if !f.FQDNManaged || !b.valid() || b.SelectedSiteID != m.Manifest.SiteID || b.SelectedGatewayID != m.Manifest.NodeID || b.ConnectionID != m.Manifest.ConnectionID || b.ConfigurationRevision != m.Manifest.ConfigurationRevision || se != nil || de != nil || f.Source != src.String() || f.Destination != dst.String() || !validGuardPrefix(src) || !validGuardPrefix(dst) || dst.Bits() != 32 || !withinPrefixes(src, local) || !withinPrefixes(dst, remote) || (p != GuardAny && p != GuardTCP && p != GuardUDP) || (p == GuardAny && (f.PortLow != 0 || f.PortHigh != 0)) || (p != GuardAny && (f.PortLow == 0 || f.PortHigh < f.PortLow)) {
+		desktop := f.DeviceID != "" || f.PublicKey != ""
+		if desktop && (p != GuardTCP && p != GuardUDP || f.PortLow == 0) {
+			return nil, ErrRuntimeController
+		}
+		if desktop != (f.ResolverKind == "static_cname") {
+			return nil, ErrRuntimeController
+		}
+		device := parse(f.DeviceID)
+		if desktop && (m.Policy.FQDNPolicyVersion != 2 || m.Manifest.ProfileID != "aws-bgp-ipv4-v1" || m.Manifest.BGP == nil || device == uuid.Nil || !validDesktopKey(f.PublicKey) || se != nil || src.Bits() != 32 || !src.Addr().IsGlobalUnicast() || withinPrefixes(src, local) || withinPrefixes(src, remote)) {
+			return nil, ErrRuntimeController
+		}
+		if !f.FQDNManaged || !b.valid() || b.SelectedSiteID != m.Manifest.SiteID || b.SelectedGatewayID != m.Manifest.NodeID || b.ConnectionID != m.Manifest.ConnectionID || b.ConfigurationRevision != m.Manifest.ConfigurationRevision || se != nil || de != nil || f.Source != src.String() || f.Destination != dst.String() || !validGuardPrefix(src) || !validGuardPrefix(dst) || dst.Bits() != 32 || (!desktop && !withinPrefixes(src, local)) || !withinPrefixes(dst, remote) || (p != GuardAny && p != GuardTCP && p != GuardUDP) || (p == GuardAny && (f.PortLow != 0 || f.PortHigh != 0)) || (p != GuardAny && (f.PortLow == 0 || f.PortHigh < f.PortLow)) {
 			return nil, ErrRuntimeController
 		}
 		// Expired v2 authority is a selective withdrawal, not a connection failure.
@@ -107,6 +124,11 @@ func runtimeFQDNGrants(m RuntimeMaterial, local, remote []netip.Prefix) ([]Guard
 			continue
 		}
 		g := GuardGrant{Source: src, Destination: dst, Protocol: p, PortLow: f.PortLow, PortHigh: f.PortHigh, FQDNManaged: true, FQDN: b}
+		if desktop {
+			g.DesktopDeviceID = device
+			g.DesktopPublicKey = f.PublicKey
+			g.DesktopExpiresAt = f.ExpiresAt
+		}
 		if seen[g] {
 			return nil, ErrRuntimeController
 		}

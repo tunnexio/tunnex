@@ -15,6 +15,7 @@ type RuntimePrincipal struct {
 	CertificateSerial string
 }
 type RuntimePolicyInput struct {
+	DesktopFQDNVersion                  int `json:"-"`
 	OrgID, NodeID, SiteID, ConnectionID uuid.UUID
 	DesktopTransitVersion               int `json:"-"`
 	Config                              StaticConfig
@@ -50,6 +51,9 @@ type RuntimeFQDNGrant struct {
 	ResolverMatchSuffix   string `json:"resolver_match_suffix"`
 	ConnectionID          string `json:"connection_id"`
 	ConfigurationRevision int64  `json:"configuration_revision"`
+	DeviceID              string `json:"device_id,omitempty"`
+	PublicKey             string `json:"public_key,omitempty"`
+	ResolverKind          string `json:"resolver_kind,omitempty"`
 }
 
 type RuntimeDNSResolverGrant struct {
@@ -71,7 +75,9 @@ type RuntimeDesktopGrant struct {
 	ExpiresAt *time.Time `json:"expires_at,omitempty"`
 }
 type RuntimePolicy struct {
-	DesktopGrants []RuntimeDesktopGrant `json:"desktop_grants,omitempty"`
+	SelectedDesktopFQDNVersion    int                   `json:"-"`
+	SelectedDesktopTransitVersion int                   `json:"-"`
+	DesktopGrants                 []RuntimeDesktopGrant `json:"desktop_grants,omitempty"`
 
 	FQDNLeaseDeadline   time.Time                       `json:"-"`
 	SelectedFQDNVersion int                             `json:"-"`

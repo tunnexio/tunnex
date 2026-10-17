@@ -1,6 +1,6 @@
 # Desktop access through site-to-site IPsec
 
-An enrolled desktop can receive authorized cloud routes through its existing WireGuard gateway and reach approved resources through that gateway's AWS BGP IPsec connection. The source remains the desktop's assigned IPv4 address. The initial implementation supports `aws-bgp-ipv4-v1`, active human devices on the connection's exact gateway, and explicit user/group policies targeting IPv4/CIDR resources.
+An enrolled desktop can receive authorized cloud routes through its existing WireGuard gateway and reach approved resources through that gateway's AWS BGP IPsec connection. The source remains the desktop's assigned IPv4 address. This path supports `aws-bgp-ipv4-v1`, active human devices on the connection's exact gateway, and explicit user/group policies targeting IPv4/CIDR resources or the managed-CNAME hostname resources described below.
 
 ## Configure access
 
@@ -17,7 +17,25 @@ For the local lab, a desktop assigned `10.99.0.7` can be granted TCP 443 to a re
 
 Configure DNS beside the selected Site-to-site connection under **DNS records and forwarding**. Static A/AAAA records need no upstream. For CNAME targets available through normal DNS, optional public DNS target upstreams let a policy-version-14 gateway complete the answer without a paid cloud resolver. Existing alias-only profiles remain unchanged until explicitly enabled. Targets inside another private profile are refused; unpublished private zones still require their own resolver. These DNS choices do not change the application transit provider limits below. See [Private DNS profiles](private-dns-over-ipsec.md).
 
-A managed static record or forwarded private-zone answer may resolve to the approved resource address. Grant the user or group UDP and TCP 53 access to the selected gateway's WireGuard DNS address separately. The standalone desktop's existing poll automatically installs each authorized active profile suffix through that gateway; other clients need their own split-DNS helper or OS suffix rules. This projection requires a fresh capable gateway report and no FQDN application licence. DNS resolution does not create an application grant. Direct desktop authorization to an FQDN application resource is outside this initial IPsec path: use the explicit CIDR resource policy for application access. LAN DNS permissions do not authorize a WireGuard source, and WireGuard DNS permissions do not enable the LAN listener.
+A managed static record or forwarded private-zone answer may resolve to the approved resource address. For independent DNS access, grant the user or group UDP and TCP 53 access to the selected gateway's WireGuard DNS address. The standalone desktop's existing poll automatically installs each authorized active profile suffix through that gateway; other clients need their own split-DNS helper or OS suffix rules. This projection requires a fresh capable gateway report and no FQDN application licence. DNS resolution does not create an application grant. LAN DNS permissions do not authorize a WireGuard source, and WireGuard DNS permissions do not enable the LAN listener.
+
+## Access a changing service by hostname
+
+For an ECS service behind an internal load balancer, keep the load balancer's DNS name as the CNAME target. Task or load-balancer IP changes then do not require editing the user's policy.
+
+1. Open the AWS BGP connection and choose **Add hostname access** beside its DNS settings. For an existing managed CNAME, choose **Grant access** on that record.
+2. Enter the private hostname and target hostname. Select the service port (TCP 443 by default) and the users or groups who need access. The selected connection, site and gateway are already filled in.
+3. If requested, review the organization's FQDN and enforcement prerequisites in the same drawer. These switches are not silently enabled by saving a record.
+4. Save. This creates or reuses the DNS record, application-bound FQDN resource and explicit access rules. A partial save reports the confirmed stage; it does not claim that traffic already works.
+5. Wait for fresh DNS answers and gateway policy application. Connect an authorized desktop and test the hostname with normal certificate verification. The desktop receives the exact application routes and required private DNS suffix through its existing authenticated configuration poll.
+
+This flow requires the organization's FQDN feature entitlement and opt-in, enforcement enabled, and a fresh gateway reporting `ipsec_desktop_fqdn_version: 1` in addition to desktop transit and FQDN policy v2 support. It currently accepts managed CNAME records with configured target upstreams, AWS BGP, IPv4 application addresses inside the connection's approved remote ranges, and human devices on that gateway. Ordinary A/AAAA record editing and independent DNS permissions remain available separately.
+
+The gateway resolves the configured external CNAME target, and the control plane binds that authenticated answer to a finite generation. The selected user/group's application permission supplies a scoped DNS dependency; no broad DNS or subnet policy is silently created. When the answer changes, fresh addresses replace the prior generation. Failed refreshes cannot extend the old permission beyond its original validity. Resource, rule, device or connection withdrawal invalidates the corresponding authority. Cached client DNS may outlast a withdrawn application permission and does not reopen access.
+
+The DNS transport and application connection are separate: a normal DNS lookup for a load-balancer target does not require an IPsec resolver binding or a paid cloud resolver endpoint. Names published only in a private cloud DNS zone still need a reachable resolver for that zone. Cloud security rules and the AWS return route for the desktop source are still required.
+
+**Network permission is to resolved IP addresses and the selected port.** Hostnames sharing one load-balancer address and port share this network access. This feature does not provide HTTP hostname or TLS SNI isolation; use application-layer authorization when that separation is required.
 
 ## Identity, routing, and withdrawal
 
@@ -31,7 +49,7 @@ BGP exports only the unique verified desktop hosts plus the existing local expor
 
 Material refresh and priority renewal recheck device ownership. A revoked/blocked device, removed membership, disabled/expired rule, missing capability, or disabled connection withdraws desktop routed ranges and invalidates the old policy hash. Existing packet permits remain bounded by the original lease and rule expiry. Refusal commits packet denial before closing a BGP session carrying desktop exports. Changed export sets restart the owned BGP session through its existing durable cleanup path. Cleanup removes the desired no-SNAT tuples. Source NAT is never used as a return-routing workaround.
 
-Static IPsec, Azure, GCP, cross-gateway desktop routing, agents, IPv6 desktop transit, full-tunnel internet routing changes, and direct FQDN-resource desktop authorization are not qualified by this implementation. Unsupported profiles produce no desktop grant or route. Prefix-limit overflow fails closed; it does not truncate the authorized host list.
+Static IPsec, Azure, GCP, cross-gateway desktop routing, agents, IPv6 desktop transit and full-tunnel internet routing changes are not qualified by this implementation. Desktop FQDN grants are limited to the managed-CNAME path above. Unsupported profiles produce no desktop grant or route. Prefix-limit overflow fails closed; it does not truncate the authorized host list.
 
 ## Local evidence and live acceptance
 

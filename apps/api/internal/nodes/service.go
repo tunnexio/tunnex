@@ -2177,6 +2177,7 @@ type AppliedPolicy struct {
 	IPsecGCPHAVersion                  int    `json:"ipsec_gcp_ha_version"`
 	IPsecAzureProfileRecreationVersion int    `json:"ipsec_azure_profile_recreation_version"`
 	IPsecAzureBGPRecreationVersion     int    `json:"ipsec_azure_bgp_recreation_version"`
+	IPsecDesktopFQDNVersion            int    `json:"ipsec_desktop_fqdn_version"`
 	IPsecDesktopTransitVersion         int    `json:"ipsec_desktop_transit_version"`
 	IPsecFQDNPolicyVersion             int    `json:"ipsec_fqdn_policy_version"`
 	IPsecAzureVersion                  int    `json:"ipsec_azure_version"`
@@ -2277,6 +2278,9 @@ func (s *Service) ReportWGInfo(ctx context.Context, node sqlc.Node, publicKey, e
 		applied.IPsecDesktopTransitVersion = 0
 	}
 	applied.IPsecFQDNPolicyVersion = ipsecFQDNPolicyCapability(applied.IPsecConfigVersion, applied.IPsecFQDNPolicyVersion)
+	if applied.IPsecDesktopTransitVersion != 1 || applied.IPsecFQDNPolicyVersion != 2 || applied.IPsecDesktopFQDNVersion != 1 {
+		applied.IPsecDesktopFQDNVersion = 0
+	}
 	if applied.IPsecConfigVersion != 1 || applied.IPsecBGPVersion != 1 {
 		applied.IPsecBGPVersion = 0
 	}
@@ -2334,6 +2338,7 @@ func (s *Service) ReportWGInfo(ctx context.Context, node sqlc.Node, publicKey, e
 		"ipsec_azure_profile_recreation_version": applied.IPsecAzureProfileRecreationVersion,
 		"ipsec_fqdn_policy_version":              applied.IPsecFQDNPolicyVersion,
 		"ipsec_desktop_transit_version":          applied.IPsecDesktopTransitVersion,
+		"ipsec_desktop_fqdn_version":             applied.IPsecDesktopFQDNVersion,
 		"ipsec_retained_guard_version":           applied.IPsecRetainedGuardVersion,
 		"egress_nat":                             egressNAT,
 		"egress_ipv6":                            egressIPv6,
@@ -2427,6 +2432,7 @@ type NodeCapabilities struct {
 	IPsecGCPHAVersion                  int    `json:"ipsec_gcp_ha_version"`
 	IPsecAzureProfileRecreationVersion int    `json:"ipsec_azure_profile_recreation_version"`
 	IPsecAzureBGPRecreationVersion     int    `json:"ipsec_azure_bgp_recreation_version"`
+	IPsecDesktopFQDNVersion            int    `json:"ipsec_desktop_fqdn_version"`
 	IPsecDesktopTransitVersion         int    `json:"ipsec_desktop_transit_version"`
 	IPsecFQDNPolicyVersion             int    `json:"ipsec_fqdn_policy_version"`
 	IPsecAzureVersion                  int    `json:"ipsec_azure_version"`

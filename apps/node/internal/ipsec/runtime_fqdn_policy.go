@@ -38,6 +38,10 @@ func copyFQDNPolicy(p *nodepolicy.Compiled) *runtimeFQDNPolicyView {
 	v.policy.FQDNGenerations = append([]nodepolicy.FQDNGeneration(nil), p.FQDNGenerations...)
 	for i := range v.policy.FQDNGenerations {
 		v.policy.FQDNGenerations[i].Answers = append([]string(nil), v.policy.FQDNGenerations[i].Answers...)
+		if path := v.policy.FQDNGenerations[i].ApplicationIPsecPath; path != nil {
+			cloned := *path
+			v.policy.FQDNGenerations[i].ApplicationIPsecPath = &cloned
+		}
 	}
 	v.policy.DNSResolverProfiles = append([]nodepolicy.DNSResolverProfile(nil), p.DNSResolverProfiles...)
 	for i := range v.policy.DNSResolverProfiles {
@@ -45,6 +49,7 @@ func copyFQDNPolicy(p *nodepolicy.Compiled) *runtimeFQDNPolicyView {
 		r.ZoneSuffixes = append([]string(nil), r.ZoneSuffixes...)
 		r.Endpoints = append([]nodepolicy.DNSResolverEndpoint(nil), r.Endpoints...)
 		r.AllowedSources = append([]string(nil), r.AllowedSources...)
+		r.StaticRecords = append([]nodepolicy.DNSStaticRecord(nil), r.StaticRecords...)
 	}
 	return v
 }
@@ -108,19 +113,21 @@ func (v *runtimeFQDNPolicyView) matches(g GuardGrant) bool {
 	for _, f := range v.policy.FQDNGenerations {
 		if f.ResourceID == b.ResourceID.String() && f.Name == b.Name && f.Generation == b.Generation && f.ResolverConfigID == b.ResolverConfigID.String() && f.ResolverConfigVersion == b.ResolverConfigVersion {
 			for _, a := range f.Answers {
-				if a == g.Destination.String() {
+				path := f.ApplicationIPsecPath
+				bound := path != nil && path.ConnectionID == b.ConnectionID.String() && path.ConfigurationRevision == b.ConfigurationRevision
+				if a == g.Destination.String() && (bound || (path == nil && b.ResolverKind == "")) {
 					generation = true
 				}
 			}
 		}
 	}
 	for _, a := range v.policy.Allow {
-		if a.FQDNManaged && a.RuleID == b.RuleID.String() && a.SrcIP == g.Source.String() && a.DstCIDR == g.Destination.String() && a.Protocol == string(g.Protocol) && a.PortLow == int(g.PortLow) && a.PortHigh == int(g.PortHigh) {
+		if (g.DesktopDeviceID == uuid.Nil || (a.SrcDeviceID == g.DesktopDeviceID.String() && a.FQDNDeviceID == g.DesktopDeviceID.String())) && a.FQDNManaged && a.RuleID == b.RuleID.String() && fqdnPolicySourceMatches(a.SrcIP, g) && a.DstCIDR == g.Destination.String() && a.Protocol == string(g.Protocol) && a.PortLow == int(g.PortLow) && a.PortHigh == int(g.PortHigh) {
 			tuple = true
 		}
 	}
 	for _, p := range v.policy.DNSResolverProfiles {
-		if p.ContextConfigID == b.ResolverConfigID.String() && p.ContextConfigVersion == b.ResolverConfigVersion && p.ProfileID == b.ResolverProfileID.String() && p.IPsecPath.ConnectionID == b.ConnectionID.String() && p.IPsecPath.ConfigurationRevision == b.ConfigurationRevision && (b.Version == 0 || p.IPsecPath.SourceAddress == b.ResolverSourceAddress) {
+		if p.ContextConfigID == b.ResolverConfigID.String() && p.ContextConfigVersion == b.ResolverConfigVersion && p.ProfileID == b.ResolverProfileID.String() && fqdnResolverProfileMatches(p, b) {
 			for _, z := range p.ZoneSuffixes {
 				if z == b.ResolverMatchSuffix {
 					profile = true
@@ -258,4 +265,41 @@ func (c *RuntimeController) fqdnPolicyCapabilityFor(goos, goarch string) int {
 		return 2
 	}
 	return 1
+}
+
+// Static CNAME provenance is ordinary resolver configuration, never DNS transport authority.
+func fqdnResolverProfileMatches(p nodepolicy.DNSResolverProfile, b FQDNGrantBinding) bool {
+	if b.ResolverKind == "" {
+		return p.IPsecPath.ConnectionID == b.ConnectionID.String() && p.IPsecPath.ConfigurationRevision == b.ConfigurationRevision && (b.Version == 0 || p.IPsecPath.SourceAddress == b.ResolverSourceAddress)
+	}
+	if b.ResolverKind != "static_cname" || p.IPsecPath != (nodepolicy.DNSResolverIPsecPath{}) || b.ResolverSourceAddress != "" {
+		return false
+	}
+	matched := false
+	for _, r := range p.StaticRecords {
+		if r.Name != b.Name {
+			continue
+		}
+		if matched || r.Type != "CNAME" || !validFQDNName(r.Value) || r.TTL == 0 {
+			return false
+		}
+		matched = true
+	}
+	return matched
+}
+
+func (c *RuntimeController) DesktopFQDNCapability() int {
+	if c.DesktopTransitCapability() == 1 && c.FQDNPolicyCapability() == 2 {
+		return 1
+	}
+	return 0
+}
+
+// Ordinary human Allow entries use a bare IPv4 address; runtime descriptors use
+// its canonical /32. Accept only those two exact host encodings, never a subnet.
+func fqdnPolicySourceMatches(source string, g GuardGrant) bool {
+	if g.DesktopDeviceID == uuid.Nil {
+		return source == g.Source.String()
+	}
+	return g.Source.Bits() == 32 && (source == g.Source.String() || source == g.Source.Addr().String())
 }

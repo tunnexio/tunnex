@@ -128,7 +128,7 @@ func devicePrivateDNSForwardsFromSnapshot(snapshot Snapshot, deviceID, nodeID uu
 	}
 	allows := []policyspec.AllowEntry{}
 	for _, allow := range Compile(filtered)[nodeID].Allow {
-		if allow.SrcDeviceID == deviceID.String() && allow.SrcIP == selected.AssignedIP && !allow.FQDNManaged {
+		if allow.SrcDeviceID == deviceID.String() && allow.SrcIP == selected.AssignedIP && !allow.FQDNManaged && allow.DNSResolverProfileID == "" {
 			allows = append(allows, allow)
 		}
 	}

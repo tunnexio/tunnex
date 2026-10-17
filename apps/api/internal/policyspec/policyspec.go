@@ -338,7 +338,9 @@ type AllowEntry struct {
 	// gateway assigns the reserved S21 conntrack mark to those flows so a
 	// withdrawn generation can flush exactly its retired tuples. It is part of
 	// CanonicalHash: changing the provenance changes required recovery behavior.
-	FQDNManaged bool `json:"fqdn_managed,omitempty"`
+	FQDNManaged          bool   `json:"fqdn_managed,omitempty"`
+	DNSResolverProfileID string `json:"dns_resolver_profile_id,omitempty"`
+	FQDNDeviceID         string `json:"fqdn_device_id,omitempty"`
 }
 
 // SubjectAttribution is observability-only identity metadata captured in the
@@ -479,13 +481,19 @@ type Compiled struct {
 // resource. Answers are canonical host prefixes (/32 or /128), sorted and
 // deduplicated by the compiler. This is not a DNS forwarder or hostname ACL:
 // the agent still enforces only the expanded L3/L4 Allow tuples.
+type FQDNApplicationIPsecPath struct {
+	ConnectionID          string `json:"connection_id"`
+	ConfigurationRevision int64  `json:"configuration_revision"`
+}
+
 type FQDNGeneration struct {
-	ResourceID            string   `json:"resource_id"`
-	Name                  string   `json:"name"`
-	Generation            string   `json:"generation"`
-	ResolverConfigID      string   `json:"resolver_config_id"`
-	ResolverConfigVersion int64    `json:"resolver_config_version"`
-	Answers               []string `json:"answers"`
+	ResourceID            string                    `json:"resource_id"`
+	Name                  string                    `json:"name"`
+	Generation            string                    `json:"generation"`
+	ResolverConfigID      string                    `json:"resolver_config_id"`
+	ResolverConfigVersion int64                     `json:"resolver_config_version"`
+	Answers               []string                  `json:"answers"`
+	ApplicationIPsecPath  *FQDNApplicationIPsecPath `json:"application_ipsec_path,omitempty"`
 }
 
 // VIPMapping is one exposed K8s Service: clients reach VIP (a /32 in the cluster's synthetic range); the

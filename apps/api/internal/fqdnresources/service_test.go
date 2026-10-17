@@ -43,3 +43,19 @@ func TestMutationTokenCanonicalizesPorts(t *testing.T) {
 		t.Fatal("nil ports did not change token")
 	}
 }
+
+func TestValidApplicationPathRequiresClosedPorts(t *testing.T) {
+	base := Input{Name: "app", FQDN: "app.office.test", Protocol: "tcp", PortLow: intPtr(443), PortHigh: intPtr(443), Context: &Context{SiteID: uuid.New(), GatewayID: uuid.New()}, ApplicationIPsecPath: &ApplicationIPsecPath{ConnectionID: uuid.New(), ConfigurationRevision: 1}}
+	if err := valid(&base); err != nil {
+		t.Fatal(err)
+	}
+	for _, proto := range []string{"any", "tcp", "udp"} {
+		bad := base
+		bad.Protocol = proto
+		bad.PortLow = nil
+		bad.PortHigh = nil
+		if err := valid(&bad); err == nil {
+			t.Fatal("unbounded application service accepted", proto)
+		}
+	}
+}

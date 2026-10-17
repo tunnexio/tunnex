@@ -430,7 +430,7 @@ func main() {
 	// DirectResolver accepts only the immutable resolver endpoint snapshot bound
 	// into an authenticated gateway DNS RPC request. It never consults host DNS,
 	// resolv.conf, public DNS, or the control plane as a fallback.
-	dnsResponder := fqdnrpc.NewResponder(fqdnrpc.DirectResolver{Transport: dnsTransport})
+	dnsResponder := fqdnrpc.NewResponder(fqdnrpc.DirectResolver{Transport: dnsTransport, StaticTransport: dnsFwd})
 	fqdnTimingEnabled := os.Getenv("TUNNEX_FQDN_RPC_TIMING") == "true"
 	r.OnDNSResolve(func(ds reconcile.DesiredState) {
 		if ds.DNSResolveRequest == nil {

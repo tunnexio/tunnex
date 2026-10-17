@@ -22,6 +22,9 @@ func (s apiServer) fqdnService() (*fqdnresources.Service, error) {
 }
 func fqdnInput(in api.FQDNResourceRequest) fqdnresources.Input {
 	out := fqdnresources.Input{Name: in.Name, FQDN: in.Fqdn, Protocol: string(in.Protocol), PortLow: in.PortLow, PortHigh: in.PortHigh, Label: in.Label, ExpectedImpactToken: in.ExpectedImpactToken}
+	if p := in.ApplicationIpsecPath; p != nil {
+		out.ApplicationIPsecPath = &fqdnresources.ApplicationIPsecPath{ConnectionID: p.ConnectionId, ConfigurationRevision: p.ConfigurationRevision}
+	}
 	if in.ResolverContext != nil {
 		out.Context = &fqdnresources.Context{SiteID: in.ResolverContext.SiteId, GatewayID: in.ResolverContext.GatewayId}
 	}
@@ -29,6 +32,9 @@ func fqdnInput(in api.FQDNResourceRequest) fqdnresources.Input {
 }
 func toAPIFQDNResource(r fqdnresources.Resource) api.FQDNResource {
 	out := api.FQDNResource{Id: r.ID, OrgId: r.OrgID, Name: r.Name, Fqdn: r.FQDN, Protocol: api.FQDNResourceProtocol(r.Protocol), PortLow: r.PortLow, PortHigh: r.PortHigh, Label: r.Label, Generation: r.Generation, State: api.FQDNResourceState(r.State), AnswerCount: r.AnswerCount, EffectiveTtlSeconds: r.EffectiveTTLSeconds, RefreshedAt: r.RefreshedAt, LastGoodAt: r.LastGoodAt, CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt, DestinationKind: "fqdn"}
+	if p := r.ApplicationIPsecPath; p != nil {
+		out.ApplicationIpsecPath = &api.FQDNApplicationIPsecPath{ConnectionId: p.ConnectionID, ConfigurationRevision: p.ConfigurationRevision}
+	}
 	if r.Context != nil {
 		out.ResolverContext = &api.FQDNResolverContext{SiteId: r.Context.SiteID, GatewayId: r.Context.GatewayID, SiteName: r.Context.SiteName, GatewayName: r.Context.GatewayName}
 		if r.Context.Config != nil {

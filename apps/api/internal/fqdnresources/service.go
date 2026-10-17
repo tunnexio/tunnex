@@ -28,7 +28,12 @@ type Context struct {
 	SiteName, GatewayName string
 	Config                *ResolverConfig
 }
+type ApplicationIPsecPath struct {
+	ConnectionID          uuid.UUID
+	ConfigurationRevision int64
+}
 type Input struct {
+	ApplicationIPsecPath *ApplicationIPsecPath
 	Name, FQDN, Protocol string
 	PortLow, PortHigh    *int
 	Label                *string
@@ -36,6 +41,7 @@ type Input struct {
 	ExpectedImpactToken  *string
 }
 type Resource struct {
+	ApplicationIPsecPath    *ApplicationIPsecPath
 	ID, OrgID               uuid.UUID
 	Name, FQDN, Protocol    string
 	PortLow, PortHigh       *int
@@ -112,6 +118,9 @@ type Service struct{ pool *pgxpool.Pool }
 func New(pool *pgxpool.Pool) *Service { return &Service{pool: pool} }
 
 func valid(in *Input) error {
+	if p := in.ApplicationIPsecPath; p != nil && (p.ConnectionID == uuid.Nil || p.ConfigurationRevision != 1 || in.Context == nil || (in.Protocol != "tcp" && in.Protocol != "udp") || in.PortLow == nil || in.PortHigh == nil || *in.PortLow < 1 || *in.PortHigh < *in.PortLow) {
+		return apierr.BadRequest("fqdn_application_path_unavailable", "application path requires an AWS BGP connection revision and selected resolver context")
+	}
 	n, err := fqdn.Normalize(in.FQDN)
 	if err != nil {
 		return apierr.BadRequest("invalid_fqdn", "fqdn must be an exact normalized hostname")
@@ -156,7 +165,11 @@ func (s *Service) Create(ctx context.Context, org uuid.UUID, in Input, actor uui
 	if err := lockOrg(ctx, tx, org); err != nil {
 		return Resource{}, err
 	}
-	err = tx.QueryRow(ctx, `INSERT INTO fqdn_resources (org_id,name,fqdn,protocol,port_low,port_high,label,resolver_site_id,resolver_node_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id`, org, in.Name, in.FQDN, in.Protocol, in.PortLow, in.PortHigh, in.Label, site, gateway).Scan(&id)
+	if err := validateApplicationPath(ctx, tx, org, in); err != nil {
+		return Resource{}, err
+	}
+	appID, appRevision := applicationPathValues(in.ApplicationIPsecPath)
+	err = tx.QueryRow(ctx, `INSERT INTO fqdn_resources (org_id,name,fqdn,protocol,port_low,port_high,label,resolver_site_id,resolver_node_id,application_ipsec_connection_id,application_ipsec_configuration_revision) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING id`, org, in.Name, in.FQDN, in.Protocol, in.PortLow, in.PortHigh, in.Label, site, gateway, appID, appRevision).Scan(&id)
 	if err != nil {
 		return Resource{}, writeErr(err)
 	}
@@ -191,7 +204,7 @@ func (s *Service) Update(ctx context.Context, org, id uuid.UUID, in Input, actor
 		}
 		return Resource{}, err
 	}
-	changed := current.FQDN != in.FQDN || current.Protocol != in.Protocol || !samePorts(current.PortLow, in.PortLow) || !samePorts(current.PortHigh, in.PortHigh) || !sameContext(current.Context, in.Context)
+	changed := current.FQDN != in.FQDN || current.Protocol != in.Protocol || !samePorts(current.PortLow, in.PortLow) || !samePorts(current.PortHigh, in.PortHigh) || !sameContext(current.Context, in.Context) || !sameApplicationPath(current.ApplicationIPsecPath, in.ApplicationIPsecPath)
 	if changed {
 		impact, e := impactFor(ctx, tx, org, id)
 		if e != nil {
@@ -205,7 +218,11 @@ func (s *Service) Update(ctx context.Context, org, id uuid.UUID, in Input, actor
 			return Resource{}, apierr.Conflict("fqdn_resource_mutation_refused", "referenced resource enforcement inputs cannot be changed while rules or an eligible active generation exist")
 		}
 	}
-	ct, err := tx.Exec(ctx, `UPDATE fqdn_resources SET name=$3,fqdn=$4,protocol=$5,port_low=$6,port_high=$7,label=$8,resolver_site_id=$9,resolver_node_id=$10 WHERE id=$1 AND org_id=$2`, id, org, in.Name, in.FQDN, in.Protocol, in.PortLow, in.PortHigh, in.Label, site, gateway)
+	if err := validateApplicationPath(ctx, tx, org, in); err != nil {
+		return Resource{}, err
+	}
+	appID, appRevision := applicationPathValues(in.ApplicationIPsecPath)
+	ct, err := tx.Exec(ctx, `UPDATE fqdn_resources SET name=$3,fqdn=$4,protocol=$5,port_low=$6,port_high=$7,label=$8,resolver_site_id=$9,resolver_node_id=$10,application_ipsec_connection_id=$11,application_ipsec_configuration_revision=$12 WHERE id=$1 AND org_id=$2`, id, org, in.Name, in.FQDN, in.Protocol, in.PortLow, in.PortHigh, in.Label, site, gateway, appID, appRevision)
 	if err != nil {
 		return Resource{}, writeErr(err)
 	}
@@ -445,7 +462,7 @@ func (s *Service) Preview(ctx context.Context, org, id uuid.UUID, in Input) (Mut
 	if err != nil {
 		return MutationPreview{}, err
 	}
-	changed := current.FQDN != in.FQDN || current.Protocol != in.Protocol || !samePorts(current.PortLow, in.PortLow) || !samePorts(current.PortHigh, in.PortHigh) || !sameContext(current.Context, in.Context)
+	changed := current.FQDN != in.FQDN || current.Protocol != in.Protocol || !samePorts(current.PortLow, in.PortLow) || !samePorts(current.PortHigh, in.PortHigh) || !sameContext(current.Context, in.Context) || !sameApplicationPath(current.ApplicationIPsecPath, in.ApplicationIPsecPath)
 	p := MutationPreview{Impact: impact, EnforcementInputsChanged: changed, MutationAllowed: true}
 	if changed {
 		token := mutationToken(current, in, impact)
@@ -507,7 +524,7 @@ func eligibleRuleIDsSQL() string {
 }
 
 func mutationToken(current Resource, in Input, impact Impact) string {
-	return token("resource", current.ID, current.UpdatedAt.UTC().Format(time.RFC3339Nano), in.FQDN, in.Protocol, portToken(in.PortLow), portToken(in.PortHigh), contextToken(in.Context), impact.ReferencingRuleCount, impact.ReferencingRuleIDs, impact.RuleIDsTruncated, impact.GenerationWithdrawalRequired)
+	return token("resource", current.ID, current.UpdatedAt.UTC().Format(time.RFC3339Nano), in.FQDN, in.Protocol, portToken(in.PortLow), portToken(in.PortHigh), contextToken(in.Context), in.ApplicationIPsecPath, impact.ReferencingRuleCount, impact.ReferencingRuleIDs, impact.RuleIDsTruncated, impact.GenerationWithdrawalRequired)
 }
 func settingToken(i SettingImpact) string {
 	return token("setting", i.Enabled, i.EnforcementReadyRuleCount, i.EnforcementReadyRuleIDs, i.fingerprint)
@@ -649,7 +666,7 @@ func writeAudit(ctx context.Context, tx pgx.Tx, org, actor uuid.UUID, actorSyste
 // eligibility predicate for that exact row.  The latter intentionally matches
 // fqdnresolver.ActiveGenerations: current binding, active current config,
 // endpoint(s), active generation, and answer(s) are all required.
-const resourceQuery = `SELECT r.id,r.org_id,r.name,r.fqdn,r.protocol,r.port_low,r.port_high,r.label,r.created_at,r.updated_at,s.id,s.name,n.id,n.name,g.id,g.generation,g.state,g.failure_code,g.effective_ttl,g.resolved_at,g.last_good_at,COALESCE((SELECT count(*) FROM fqdn_resource_generation_answers a WHERE a.generation_id=g.id),0), EXISTS(SELECT 1 FROM fqdn_resolver_context_configs c WHERE c.org_id=r.org_id AND c.site_id=r.resolver_site_id AND c.gateway_id=r.resolver_node_id AND c.state='active' AND (EXISTS(SELECT 1 FROM fqdn_resolver_context_endpoints e WHERE e.config_id=c.id AND e.org_id=c.org_id) OR EXISTS(SELECT 1 FROM fqdn_resolver_context_profiles sp WHERE sp.config_id=c.id AND sp.org_id=c.org_id AND jsonb_array_length(COALESCE(to_jsonb(sp)->'static_records','[]'::jsonb))>0))), EXISTS(SELECT 1 FROM fqdn_resolver_context_configs c JOIN fqdn_resource_generation_answers a ON a.generation_id=g.id AND a.org_id=g.org_id WHERE g.id IS NOT NULL AND g.org_id=r.org_id AND g.resource_id=r.id AND g.state='active' AND g.resolver_site_id=r.resolver_site_id AND g.resolver_node_id=r.resolver_node_id AND c.id=g.resolver_config_id AND c.org_id=g.org_id AND c.site_id=g.resolver_site_id AND c.gateway_id=g.resolver_node_id AND c.state='active' AND (EXISTS(SELECT 1 FROM fqdn_resolver_context_endpoints e WHERE e.config_id=c.id AND e.org_id=c.org_id) OR EXISTS(SELECT 1 FROM fqdn_resolver_context_profiles sp WHERE sp.config_id=c.id AND sp.org_id=c.org_id AND jsonb_array_length(COALESCE(to_jsonb(sp)->'static_records','[]'::jsonb))>0))),g.resolver_profile_id,p.name,p.provider_hint,COALESCE(g.resolver_match_suffix,''),gc.version FROM fqdn_resources r LEFT JOIN sites s ON s.id=r.resolver_site_id LEFT JOIN nodes n ON n.id=r.resolver_node_id LEFT JOIN LATERAL (SELECT * FROM fqdn_resource_answer_generations x WHERE x.org_id=r.org_id AND x.resource_id=r.id ORDER BY x.generation DESC LIMIT 1) g ON true LEFT JOIN fqdn_resolver_context_profiles p ON p.id=g.resolver_profile_id AND p.org_id=g.org_id LEFT JOIN fqdn_resolver_context_configs gc ON gc.id=g.resolver_config_id AND gc.org_id=g.org_id`
+const resourceQuery = `SELECT r.id,r.org_id,r.name,r.fqdn,r.protocol,r.port_low,r.port_high,r.label,r.created_at,r.updated_at,s.id,s.name,n.id,n.name,g.id,g.generation,g.state,g.failure_code,g.effective_ttl,g.resolved_at,g.last_good_at,COALESCE((SELECT count(*) FROM fqdn_resource_generation_answers a WHERE a.generation_id=g.id),0), EXISTS(SELECT 1 FROM fqdn_resolver_context_configs c WHERE c.org_id=r.org_id AND c.site_id=r.resolver_site_id AND c.gateway_id=r.resolver_node_id AND c.state='active' AND (EXISTS(SELECT 1 FROM fqdn_resolver_context_endpoints e WHERE e.config_id=c.id AND e.org_id=c.org_id) OR EXISTS(SELECT 1 FROM fqdn_resolver_context_profiles sp WHERE sp.config_id=c.id AND sp.org_id=c.org_id AND jsonb_array_length(COALESCE(to_jsonb(sp)->'static_records','[]'::jsonb))>0))), EXISTS(SELECT 1 FROM fqdn_resolver_context_configs c JOIN fqdn_resource_generation_answers a ON a.generation_id=g.id AND a.org_id=g.org_id WHERE g.id IS NOT NULL AND g.org_id=r.org_id AND g.resource_id=r.id AND g.state='active' AND g.resolver_site_id=r.resolver_site_id AND g.resolver_node_id=r.resolver_node_id AND c.id=g.resolver_config_id AND c.org_id=g.org_id AND c.site_id=g.resolver_site_id AND c.gateway_id=g.resolver_node_id AND c.state='active' AND (EXISTS(SELECT 1 FROM fqdn_resolver_context_endpoints e WHERE e.config_id=c.id AND e.org_id=c.org_id) OR EXISTS(SELECT 1 FROM fqdn_resolver_context_profiles sp WHERE sp.config_id=c.id AND sp.org_id=c.org_id AND jsonb_array_length(COALESCE(to_jsonb(sp)->'static_records','[]'::jsonb))>0))),g.resolver_profile_id,p.name,p.provider_hint,COALESCE(g.resolver_match_suffix,''),gc.version,r.application_ipsec_connection_id,r.application_ipsec_configuration_revision FROM fqdn_resources r LEFT JOIN sites s ON s.id=r.resolver_site_id LEFT JOIN nodes n ON n.id=r.resolver_node_id LEFT JOIN LATERAL (SELECT * FROM fqdn_resource_answer_generations x WHERE x.org_id=r.org_id AND x.resource_id=r.id ORDER BY x.generation DESC LIMIT 1) g ON true LEFT JOIN fqdn_resolver_context_profiles p ON p.id=g.resolver_profile_id AND p.org_id=g.org_id LEFT JOIN fqdn_resolver_context_configs gc ON gc.id=g.resolver_config_id AND gc.org_id=g.org_id`
 
 type scanner interface{ Scan(...any) error }
 
@@ -663,9 +680,14 @@ func scan(row scanner) (Resource, error) {
 	var profileID *uuid.UUID
 	var profileName, profileProvider, matchedSuffix *string
 	var profileConfigVersion *int64
-	err := row.Scan(&r.ID, &r.OrgID, &r.Name, &r.FQDN, &r.Protocol, &r.PortLow, &r.PortHigh, &r.Label, &r.CreatedAt, &r.UpdatedAt, &siteID, &siteName, &gatewayID, &gatewayName, &r.latestGenerationID, &r.Generation, &state, &failure, &ttl, &refreshed, &r.LastGoodAt, &r.AnswerCount, &r.resolverConfigured, &r.generationEligible, &profileID, &profileName, &profileProvider, &matchedSuffix, &profileConfigVersion)
+	var appID *uuid.UUID
+	var appRevision *int64
+	err := row.Scan(&r.ID, &r.OrgID, &r.Name, &r.FQDN, &r.Protocol, &r.PortLow, &r.PortHigh, &r.Label, &r.CreatedAt, &r.UpdatedAt, &siteID, &siteName, &gatewayID, &gatewayName, &r.latestGenerationID, &r.Generation, &state, &failure, &ttl, &refreshed, &r.LastGoodAt, &r.AnswerCount, &r.resolverConfigured, &r.generationEligible, &profileID, &profileName, &profileProvider, &matchedSuffix, &profileConfigVersion, &appID, &appRevision)
 	if err != nil {
 		return r, err
+	}
+	if appID != nil && appRevision != nil {
+		r.ApplicationIPsecPath = &ApplicationIPsecPath{*appID, *appRevision}
 	}
 	if siteID != nil && gatewayID != nil {
 		r.Context = &Context{SiteID: *siteID, GatewayID: *gatewayID, SiteName: *siteName, GatewayName: *gatewayName}

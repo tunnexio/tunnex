@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/tunnexio/tunnex/apps/api/internal/ipalloc"
 	"log/slog"
 	"net/http"
 	"net/netip"
@@ -1012,6 +1013,11 @@ func appendActiveFQDNGenerations(ctx context.Context, snap *Snapshot, reader fqd
 		if err != nil {
 			return err
 		}
+		if resource.Active.ApplicationIPsecPath != nil {
+			if a, e := netip.ParseAddr(snap.GatewayDNSAddress); e == nil && a.Is4() {
+				resource.Active.ResolverAddresses = []string{netip.PrefixFrom(a, 32).String()}
+			}
+		}
 		snap.FQDNResources = append(snap.FQDNResources, resource)
 	}
 	return nil
@@ -1065,6 +1071,13 @@ func buildSnapshotWithQueries(ctx context.Context, q *sqlc.Queries, orgID uuid.U
 		return Snapshot{}, err
 	}
 	snap := Snapshot{Mode: settings.ZeroTrustMode, FQDNResourcesEnabled: settings.FqdnResourcesEnabled}
+	if org, e := q.GetOrganizationByID(ctx, orgID); e != nil {
+		return Snapshot{}, e
+	} else if cidr, e := ipalloc.GatewayCIDR(org.PoolCidr); e == nil {
+		if p, e := netip.ParsePrefix(cidr); e == nil {
+			snap.GatewayDNSAddress = p.Addr().String()
+		}
+	}
 	snap.CrossGatewayGraph, err = gatewaymesh.Load(ctx, q, orgID, settings.CrossGatewayClientsEnabled, settings.SandboxesEnabled)
 	if err != nil {
 		return Snapshot{}, err
@@ -1495,7 +1508,7 @@ func fqdnResourceFromActiveGeneration(g fqdnresolver.ActiveGeneration, routedPre
 		return FQDNResource{}, fmt.Errorf("invalid active FQDN generation %s", g.ResourceID)
 	}
 	static := len(g.ResolverConfig.StaticRecords) > 0
-	if static && !fqdnresolver.StaticGenerationMatches(g) {
+	if static && !fqdnresolver.StaticGenerationMatches(g) && !(g.ApplicationIPsecPath != nil && g.ResolverKind == "static_cname") {
 		return FQDNResource{}, fmt.Errorf("invalid fixed-record generation for active FQDN resource %s", g.ResourceID)
 	}
 	configID, err := uuid.Parse(g.ResolverConfig.ID)
@@ -1532,6 +1545,12 @@ func fqdnResourceFromActiveGeneration(g fqdnresolver.ActiveGeneration, routedPre
 		}
 		answers = append(answers, address.String())
 	}
+	staticCNAME := false
+	for _, r := range g.ResolverConfig.StaticRecords {
+		if r.Name == g.Hostname && r.Type == "CNAME" {
+			staticCNAME = true
+		}
+	}
 	var connectionID uuid.UUID
 	var configurationRevision int64
 	var sourceAddress string
@@ -1550,6 +1569,7 @@ func fqdnResourceFromActiveGeneration(g fqdnresolver.ActiveGeneration, routedPre
 		PortLow:  derefI32(g.PortLow),
 		PortHigh: derefI32(g.PortHigh),
 		Active: &FQDNGeneration{
+			ApplicationIPsecPath: g.ApplicationIPsecPath, StaticCNAME: staticCNAME,
 			FreshUntil:                 g.ResolvedAt.Add(g.TTL).UTC(),
 			ResolvedAt:                 g.ResolvedAt.UTC(),
 			ResourceID:                 g.ResourceID,

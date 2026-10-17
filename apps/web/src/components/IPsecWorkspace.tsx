@@ -264,7 +264,7 @@ function ProviderReadback({ orgId, id, name, role, connection, onClose }: { orgI
         {connection?.site_id && connection.gateway_node_id && connection.desired_intent !== "deleted" && <details className="s2s-disclosure" open={dnsOpen} onToggle={event => setDNSOpen(event.currentTarget.open)}>
           <summary>DNS records and forwarding</summary>
           <div className="mt-3 space-y-3"><p className="text-sm text-ink-secondary">Manage DNS for this connection's network and gateway. Use DNS records for an IP or load balancer hostname, or forward a private zone to its DNS server. DNS answers need separate application permissions and a working tunnel route.</p>
-            {dnsOpen && <PrivateDNSResolvers orgId={orgId} role={role} scope={{ siteId: connection.site_id, gatewayId: connection.gateway_node_id }} />}
+            {dnsOpen && <PrivateDNSResolvers orgId={orgId} role={role} scope={{ siteId: connection.site_id, gatewayId: connection.gateway_node_id, connectionId: connection.id }} />}
           </div>
         </details>}
       </div>}</>}

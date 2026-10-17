@@ -122,7 +122,24 @@ func compileIPsecRuntimePolicy(snapshot Snapshot, input ipsec.RuntimePolicyInput
 			result.Grants = append(result.Grants, ipsec.RuntimeGrant{Source: source.String(), Destination: destination.String(), Protocol: string(grant.Protocol), PortLow: uint16(grant.PortLow), PortHigh: uint16(grant.PortHigh), RuleID: grant.RuleID})
 		}
 	}
-	result.FQDNGrants = compileIPsecFQDNGrants(fqdnSnapshot, input)
+	result.FQDNGrants = append(compileIPsecFQDNGrants(fqdnSnapshot, input), compileIPsecDesktopFQDNGrants(fqdnSnapshot, input)...)
+	sort.Slice(result.FQDNGrants, func(i, j int) bool {
+		a, _ := json.Marshal(result.FQDNGrants[i])
+		b, _ := json.Marshal(result.FQDNGrants[j])
+		return string(a) < string(b)
+	})
+	exports := map[string]bool{}
+	for _, g := range result.DesktopGrants {
+		exports[g.Source] = true
+	}
+	for _, g := range result.FQDNGrants {
+		if g.DeviceID != "" {
+			exports[g.Source] = true
+		}
+	}
+	if len(exports)+len(input.Config.LocalPrefixes) > 64 {
+		return ipsec.RuntimePolicy{}, ipsec.ErrConnectionIneligible
+	}
 	if len(result.FQDNGrants) != 0 {
 		result.FQDNPolicyVersion = input.FQDNPolicyVersion
 		if input.FQDNPolicyVersion == 1 {

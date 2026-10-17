@@ -11578,6 +11578,10 @@ components:
         port_low: { type: integer, nullable: true, minimum: 1, maximum: 65535 }
         port_high: { type: integer, nullable: true, minimum: 1, maximum: 65535 }
         label: { type: string, nullable: true }
+        application_ipsec_path:
+          allOf: [{ $ref: "#/components/schemas/FQDNApplicationIPsecPath" }]
+          nullable: true
+          description: "Exact AWS BGP application connection; independent from DNS resolver transport."
         resolver_context:
           allOf: [{ $ref: "#/components/schemas/FQDNResolverContext" }]
           nullable: true
@@ -11606,6 +11610,10 @@ components:
         port_low: { type: integer, nullable: true, minimum: 1, maximum: 65535 }
         port_high: { type: integer, nullable: true, minimum: 1, maximum: 65535 }
         label: { type: string, nullable: true, maxLength: 60 }
+        application_ipsec_path:
+          allOf: [{ $ref: "#/components/schemas/FQDNApplicationIPsecPath" }]
+          nullable: true
+          description: "Exact AWS BGP application connection; independent from DNS resolver transport."
         resolver_context:
           allOf: [{ $ref: "#/components/schemas/FQDNResolverContextRequest" }]
           nullable: true
@@ -11614,6 +11622,14 @@ components:
           type: string
           nullable: true
           description: "Server-issued token from the immediately relevant impact preview. Required only for enforcement-changing PATCH operations."
+
+    FQDNApplicationIPsecPath:
+      type: object
+      additionalProperties: false
+      required: [connection_id, configuration_revision]
+      properties:
+        connection_id: { type: string, format: uuid }
+        configuration_revision: { type: integer, format: int64, minimum: 1, maximum: 1 }
 
     FQDNResolverContext:
       type: object
@@ -12307,6 +12323,7 @@ components:
       additionalProperties: false
       required: [eligible, reason]
       properties:
+        desktop_fqdn_supported: { type: boolean, description: "Fresh gateway capability for desktop static CNAME application authorization over AWS BGP." }
         eligible: { type: boolean }
         reason: { type: string, enum: [eligible, opt_in_required, gateway_unavailable, unsupported, report_stale] }
         bgp:

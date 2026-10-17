@@ -76,7 +76,7 @@ func validDesktopGuardGrant(g GuardGrant, c GuardConnection) bool {
 	if g.DesktopDeviceID == uuid.Nil {
 		return g.DesktopPublicKey == "" && g.DesktopIngressIndex == 0 && g.DesktopExpiresAt.IsZero()
 	}
-	if !validDesktopKey(g.DesktopPublicKey) || g.DesktopIngressIndex <= 0 || g.DesktopIngressIndex > 2147483647 || !g.Source.Addr().IsGlobalUnicast() || g.Source.Bits() != 32 || withinPrefixes(g.Source, c.Local) || withinPrefixes(g.Source, c.Remote) || !withinPrefixes(g.Destination, c.Remote) || g.HostOrigin || g.FQDNManaged || g.DNSResolver != (DNSResolverBinding{}) || !g.DesktopExpiresAt.IsZero() && !g.DesktopExpiresAt.After(time.Now()) {
+	if !validDesktopKey(g.DesktopPublicKey) || g.DesktopIngressIndex <= 0 || g.DesktopIngressIndex > 2147483647 || !g.Source.Addr().IsGlobalUnicast() || g.Source.Bits() != 32 || withinPrefixes(g.Source, c.Local) || withinPrefixes(g.Source, c.Remote) || !withinPrefixes(g.Destination, c.Remote) || g.HostOrigin || (g.FQDNManaged && (!g.FQDN.valid() || g.FQDN.Version != 2 || !g.DesktopExpiresAt.Equal(g.FQDN.ExpiresAt))) || g.DNSResolver != (DNSResolverBinding{}) || !g.DesktopExpiresAt.IsZero() && !g.DesktopExpiresAt.After(time.Now()) {
 		return false
 	}
 	for _, t := range c.Tunnels[:c.activeTunnelCount()] {

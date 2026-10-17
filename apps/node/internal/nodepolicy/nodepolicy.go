@@ -64,7 +64,9 @@ type AllowEntry struct {
 	// FQDNManaged is v9 enforcement provenance. It is set only for concrete
 	// tuples expanded from an active FQDN generation. Gateways reserve an S21
 	// conntrack ownership mark for these flows; ordinary CIDR grants never get it.
-	FQDNManaged bool `json:"fqdn_managed,omitempty"`
+	FQDNManaged          bool   `json:"fqdn_managed,omitempty"`
+	DNSResolverProfileID string `json:"dns_resolver_profile_id,omitempty"`
+	FQDNDeviceID         string `json:"fqdn_device_id,omitempty"`
 }
 
 // SubjectAttribution mirrors policyspec.SubjectAttribution. It is installed
@@ -124,12 +126,18 @@ type Compiled struct {
 // FQDNGeneration mirrors policyspec.FQDNGeneration. It participates in the
 // canonical hash, even though packet matching remains the expanded Allow set.
 type FQDNGeneration struct {
-	ResourceID            string   `json:"resource_id"`
-	Name                  string   `json:"name"`
-	Generation            string   `json:"generation"`
-	ResolverConfigID      string   `json:"resolver_config_id"`
-	ResolverConfigVersion int64    `json:"resolver_config_version"`
-	Answers               []string `json:"answers"`
+	ResourceID            string                    `json:"resource_id"`
+	Name                  string                    `json:"name"`
+	Generation            string                    `json:"generation"`
+	ResolverConfigID      string                    `json:"resolver_config_id"`
+	ResolverConfigVersion int64                     `json:"resolver_config_version"`
+	Answers               []string                  `json:"answers"`
+	ApplicationIPsecPath  *FQDNApplicationIPsecPath `json:"application_ipsec_path,omitempty"`
+}
+
+type FQDNApplicationIPsecPath struct {
+	ConnectionID          string `json:"connection_id"`
+	ConfigurationRevision int64  `json:"configuration_revision"`
 }
 
 // VIPMapping mirrors policyspec.VIPMapping — one exposed K8s Service (VIP -> Service identity the agent
@@ -218,12 +226,14 @@ type DNSResolverIPsecPath struct {
 // (rule_id) is DELIBERATELY ABSENT so staleness is metadata-blind and the v2 bump does
 // not disturb existing pushed/applied hashes. Field order + tags match the v1 shape.
 type hashAllow struct {
-	SrcIP       string `json:"src_ip"`
-	DstCIDR     string `json:"dst_cidr"`
-	Protocol    string `json:"protocol"`
-	PortLow     int    `json:"port_low,omitempty"`
-	PortHigh    int    `json:"port_high,omitempty"`
-	FQDNManaged bool   `json:"fqdn_managed,omitempty"`
+	SrcIP                string `json:"src_ip"`
+	DstCIDR              string `json:"dst_cidr"`
+	Protocol             string `json:"protocol"`
+	PortLow              int    `json:"port_low,omitempty"`
+	PortHigh             int    `json:"port_high,omitempty"`
+	FQDNManaged          bool   `json:"fqdn_managed,omitempty"`
+	DNSResolverProfileID string `json:"dns_resolver_profile_id,omitempty"`
+	FQDNDeviceID         string `json:"fqdn_device_id,omitempty"`
 }
 
 type hashView struct {
@@ -241,7 +251,7 @@ func projectForHash(c *Compiled) hashView {
 	if c.Allow != nil {
 		v.Allow = make([]hashAllow, len(c.Allow))
 		for i, e := range c.Allow {
-			v.Allow[i] = hashAllow{SrcIP: e.SrcIP, DstCIDR: e.DstCIDR, Protocol: e.Protocol, PortLow: e.PortLow, PortHigh: e.PortHigh, FQDNManaged: e.FQDNManaged}
+			v.Allow[i] = hashAllow{SrcIP: e.SrcIP, DstCIDR: e.DstCIDR, Protocol: e.Protocol, PortLow: e.PortLow, PortHigh: e.PortHigh, FQDNManaged: e.FQDNManaged, DNSResolverProfileID: e.DNSResolverProfileID, FQDNDeviceID: e.FQDNDeviceID}
 		}
 	}
 	if c.FQDNGenerations != nil {

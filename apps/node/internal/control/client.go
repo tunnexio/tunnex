@@ -266,6 +266,9 @@ func (c *Client) ReportInfo(ctx context.Context, publicKey, endpoint string, egr
 	if forwarder := c.dnsForwarder.Load(); forwarder != nil {
 		payload["dns_lan_listeners"] = forwarder.AppliedLANListeners()
 	}
+	if c.ipsecDesktopFQDNCapability() == 1 {
+		payload["ipsec_desktop_fqdn_version"] = 1
+	}
 	if version := c.ipsecDesktopTransitCapability(); version == 1 {
 		payload["ipsec_desktop_transit_version"] = 1
 	}

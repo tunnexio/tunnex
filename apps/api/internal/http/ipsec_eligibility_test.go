@@ -65,7 +65,7 @@ func TestIPsecEligibilityProjection(t *testing.T) {
 	w := httptest.NewRecorder()
 	r.ServeHTTP(w, httptest.NewRequest("GET", "/api/v1/organizations/"+org.String()+"/ipsec/eligibility?site_id="+site.String()+"&gateway_node_id="+gateway.String(), nil))
 	var out map[string]any
-	if err = json.Unmarshal(w.Body.Bytes(), &out); err != nil || w.Code != 200 || len(out) != 2 || out["eligible"] != true || out["reason"] != "eligible" || f.org != org || f.site != site || f.gateway != gateway {
+	if err = json.Unmarshal(w.Body.Bytes(), &out); err != nil || w.Code != 200 || len(out) != 3 || out["desktop_fqdn_supported"] != false || out["eligible"] != true || out["reason"] != "eligible" || f.org != org || f.site != site || f.gateway != gateway {
 		t.Fatalf("projection scope: %d %s", w.Code, w.Body.String())
 	}
 }

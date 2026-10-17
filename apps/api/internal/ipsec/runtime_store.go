@@ -239,15 +239,15 @@ func (s *ConnectionStore) compileRuntime(ctx context.Context, tx pgx.Tx, c Conne
 	if s.runtimePolicy == nil {
 		return RuntimePolicy{}, ErrConnectionIneligible
 	}
-	var fqdnVersion, desktopVersion int
+	var fqdnVersion, desktopVersion, desktopFQDNVersion int
 	var compiledAt time.Time
 	if e := tx.QueryRow(ctx, `SELECT CASE WHEN status='active' AND revoked_at IS NULL AND cert_serial<>'' AND capabilities->'ipsec_config_version'='1'::jsonb AND policy_reported_at BETWEEN clock_timestamp()-interval '90 seconds' AND clock_timestamp() THEN CASE capabilities->'ipsec_fqdn_policy_version' WHEN '2'::jsonb THEN 2 WHEN '1'::jsonb THEN 1 ELSE 0 END ELSE 0 END, clock_timestamp() FROM nodes WHERE id=$1 AND org_id=$2 AND site_id=$3`, c.HistoricalGatewayNodeID, c.OrgID, c.HistoricalSiteID).Scan(&fqdnVersion, &compiledAt); e != nil {
 		return RuntimePolicy{}, ErrConnectionUnavailable
 	}
-	if err := tx.QueryRow(ctx, `SELECT CASE WHEN capabilities->'ipsec_desktop_transit_version'='1'::jsonb THEN 1 ELSE 0 END FROM nodes WHERE id=$1 AND org_id=$2`, c.HistoricalGatewayNodeID, c.OrgID).Scan(&desktopVersion); err != nil {
+	if err := tx.QueryRow(ctx, `SELECT CASE WHEN capabilities->'ipsec_desktop_transit_version'='1'::jsonb THEN 1 ELSE 0 END, CASE WHEN capabilities->'ipsec_desktop_fqdn_version'='1'::jsonb THEN 1 ELSE 0 END FROM nodes WHERE id=$1 AND org_id=$2`, c.HistoricalGatewayNodeID, c.OrgID).Scan(&desktopVersion, &desktopFQDNVersion); err != nil {
 		return RuntimePolicy{}, ErrConnectionUnavailable
 	}
-	input := RuntimePolicyInput{DesktopTransitVersion: desktopVersion, OrgID: c.OrgID, NodeID: c.HistoricalGatewayNodeID, SiteID: c.HistoricalSiteID, ConnectionID: c.ID, Config: cfg, ConfigurationRevision: 1, FQDNPolicyVersion: fqdnVersion, Transaction: tx, CompiledAt: compiledAt}
+	input := RuntimePolicyInput{DesktopFQDNVersion: desktopFQDNVersion, DesktopTransitVersion: desktopVersion, OrgID: c.OrgID, NodeID: c.HistoricalGatewayNodeID, SiteID: c.HistoricalSiteID, ConnectionID: c.ID, Config: cfg, ConfigurationRevision: 1, FQDNPolicyVersion: fqdnVersion, Transaction: tx, CompiledAt: compiledAt}
 	policy, e := s.runtimePolicy(ctx, sqlc.New(tx), input)
 	if e != nil {
 		return RuntimePolicy{}, ErrConnectionUnavailable
@@ -294,6 +294,8 @@ func (s *ConnectionStore) compileRuntime(ctx context.Context, tx pgx.Tx, c Conne
 		policy.Grants = []RuntimeGrant{}
 	}
 	policy.SelectedFQDNVersion = fqdnVersion
+	policy.SelectedDesktopFQDNVersion = desktopFQDNVersion
+	policy.SelectedDesktopTransitVersion = desktopVersion
 	return policy, nil
 }
 func runtimeDigest(s string) bool {

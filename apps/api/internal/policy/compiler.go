@@ -143,6 +143,8 @@ type FQDNResource struct {
 }
 
 type FQDNGeneration struct {
+	ApplicationIPsecPath       *policyspec.FQDNApplicationIPsecPath
+	StaticCNAME                bool
 	FreshUntil                 time.Time
 	ResolvedAt                 time.Time
 	IPsecConnectionID          uuid.UUID
@@ -242,7 +244,8 @@ func subjectAttribution(devices []Device) []policyspec.SubjectAttribution {
 
 // Snapshot is the full org policy state the compiler consumes.
 type Snapshot struct {
-	Sandboxes []SandboxProjection
+	GatewayDNSAddress string
+	Sandboxes         []SandboxProjection
 
 	// CrossGatewayGraph supplies transport ownership, never a blanket grant.
 	CrossGatewayGraph *gatewaymesh.Graph
@@ -477,9 +480,10 @@ func Compile(s Snapshot) map[uuid.UUID]policyspec.Compiled {
 	// either way, so the hash is unaffected. Keying dedup on the full AllowEntry would
 	// wrongly emit a duplicate nft rule when two rules grant the same tuple.
 	type allowKey struct {
-		SrcIP, DstCIDR    string
-		Protocol          policyspec.Protocol
-		PortLow, PortHigh int
+		DNSResolverProfileID, FQDNDeviceID string
+		SrcIP, DstCIDR                     string
+		Protocol                           policyspec.Protocol
+		PortLow, PortHigh                  int
 	}
 	type nodeAcc struct {
 		set                  map[allowKey]int
@@ -496,7 +500,7 @@ func Compile(s Snapshot) map[uuid.UUID]policyspec.Compiled {
 		// see the F1 seed above; no lazy admit exists, so an unknown node here would be a programming
 		// error the acc lookup surfaces immediately, never a silent artifact for an unvetted node.
 		a := acc[nodeID]
-		k := allowKey{e.SrcIP, e.DstCIDR, e.Protocol, e.PortLow, e.PortHigh}
+		k := allowKey{e.DNSResolverProfileID, e.FQDNDeviceID, e.SrcIP, e.DstCIDR, e.Protocol, e.PortLow, e.PortHigh}
 		if index, exists := a.set[k]; exists {
 			// An active-generation-derived tuple wins observability provenance over
 			// a redundant manual CIDR tuple regardless of rule order. Concrete
@@ -680,6 +684,9 @@ func Compile(s Snapshot) map[uuid.UUID]policyspec.Compiled {
 				if !fqdnEnabled || !referenced || fqdnAmbiguousRule[r.ID] || !found || !active || !siteGateways[siteGateway{siteID: res.Active.SelectedSiteID, gatewayID: res.Active.SelectedGatewayID}] {
 					continue // missing, ambiguous, inactive, or withdrawn: default deny
 				}
+				if res.Active.ApplicationIPsecPath != nil && (d.Kind != "human" || d.NodeID != res.Active.SelectedGatewayID || (r.SrcKind != "user" && r.SrcKind != "group" && r.SrcKind != "")) {
+					continue
+				}
 				// The selected resolver gateway is also the destination-path authority
 				// for both the concrete answer and the DNS query. Both-enforce on the
 				// source edge, active hub, and exact selected gateway.
@@ -688,9 +695,16 @@ func Compile(s Snapshot) map[uuid.UUID]policyspec.Compiled {
 					enforceNodes[hubNode] = true
 				}
 				for node := range enforceNodes {
+					if res.Active.ApplicationIPsecPath != nil && node != res.Active.SelectedGatewayID {
+						continue
+					}
 					addGeneration(node, generation)
 					for _, answer := range answers {
-						add(node, policyspec.AllowEntry{SrcIP: d.AssignedIP, DstCIDR: answer, Protocol: normProto(res.Protocol), PortLow: res.PortLow, PortHigh: res.PortHigh, RuleID: r.ID.String(), SrcDeviceID: d.ID.String(), FQDNManaged: true})
+						entry := policyspec.AllowEntry{SrcIP: d.AssignedIP, DstCIDR: answer, Protocol: normProto(res.Protocol), PortLow: res.PortLow, PortHigh: res.PortHigh, RuleID: r.ID.String(), SrcDeviceID: d.ID.String(), FQDNManaged: true}
+						if res.Active.ApplicationIPsecPath != nil {
+							entry.FQDNDeviceID = d.ID.String()
+						}
+						add(node, entry)
 					}
 					matchedSuffix, _ := normalizeResolverMatchSuffix(res.Active.ResolverMatchSuffix)
 					resolver := ""
@@ -701,7 +715,12 @@ func Compile(s Snapshot) map[uuid.UUID]policyspec.Compiled {
 					}
 					if resolver != "" {
 						for _, proto := range []policyspec.Protocol{policyspec.ProtoUDP, policyspec.ProtoTCP} {
-							addResolverCarriage(node, policyspec.AllowEntry{SrcIP: d.AssignedIP, DstCIDR: resolver, Protocol: proto, PortLow: 53, PortHigh: 53, RuleID: r.ID.String(), SrcDeviceID: d.ID.String()})
+							entry := policyspec.AllowEntry{SrcIP: d.AssignedIP, DstCIDR: resolver, Protocol: proto, PortLow: 53, PortHigh: 53, RuleID: r.ID.String(), SrcDeviceID: d.ID.String()}
+							if res.Active.ApplicationIPsecPath != nil {
+								entry.DNSResolverProfileID = res.Active.ResolverProfileID.String()
+								entry.FQDNDeviceID = d.ID.String()
+							}
+							addResolverCarriage(node, entry)
 						}
 					}
 				}
@@ -879,7 +898,7 @@ func Compile(s Snapshot) map[uuid.UUID]policyspec.Compiled {
 			resourceID, referenced := fqdnReferenceForRule[r.ID]
 			res, found := fqdnResourceByID[resourceID]
 			generation, answers, resolvers, active := activeFQDNGeneration(res)
-			if fqdnEnabled && referenced && !fqdnAmbiguousRule[r.ID] && found && active && siteGateways[siteGateway{siteID: res.Active.SelectedSiteID, gatewayID: res.Active.SelectedGatewayID}] {
+			if fqdnEnabled && referenced && !fqdnAmbiguousRule[r.ID] && found && active && res.Active.ApplicationIPsecPath == nil && siteGateways[siteGateway{siteID: res.Active.SelectedSiteID, gatewayID: res.Active.SelectedGatewayID}] {
 				for _, answer := range answers {
 					dsts = append(dsts, policyspec.AllowEntry{DstCIDR: answer, Protocol: normProto(res.Protocol), PortLow: res.PortLow, PortHigh: res.PortHigh, FQDNManaged: true})
 				}
@@ -893,6 +912,9 @@ func Compile(s Snapshot) map[uuid.UUID]policyspec.Compiled {
 					enforceNodes[hubNode] = true
 				}
 				for node := range enforceNodes {
+					if res.Active.ApplicationIPsecPath != nil && node != res.Active.SelectedGatewayID {
+						continue
+					}
 					addGeneration(node, generation)
 				}
 			}
@@ -990,10 +1012,14 @@ func activeFQDNGeneration(r FQDNResource) (policyspec.FQDNGeneration, []string, 
 		return policyspec.FQDNGeneration{}, nil, nil, false
 	}
 	identity := FQDNGenerationIdentityWithResolverConfig(r.ID, name, r.Active.SelectedSiteID, r.Active.SelectedGatewayID, r.Active.ResolverConfigID, r.Active.ResolverProfileID, matchedSuffix, r.Active.ResolverConfigVersion, answers)
+	identity = fqdnApplicationGenerationIdentity(identity, r.Active.ApplicationIPsecPath)
+	if r.Active.ApplicationIPsecPath != nil && (!r.Active.StaticCNAME || r.Active.IPsecConnectionID != uuid.Nil || r.Active.IPsecSourceAddress != "") {
+		return policyspec.FQDNGeneration{}, nil, nil, false
+	}
 	if identity == "" {
 		return policyspec.FQDNGeneration{}, nil, nil, false
 	}
-	return policyspec.FQDNGeneration{ResourceID: r.ID.String(), Name: name, Generation: identity, ResolverConfigID: r.Active.ResolverConfigID.String(), ResolverConfigVersion: r.Active.ResolverConfigVersion, Answers: answers}, answers, resolvers, true
+	return policyspec.FQDNGeneration{ResourceID: r.ID.String(), Name: name, Generation: identity, ResolverConfigID: r.Active.ResolverConfigID.String(), ResolverConfigVersion: r.Active.ResolverConfigVersion, Answers: answers, ApplicationIPsecPath: r.Active.ApplicationIPsecPath}, answers, resolvers, true
 }
 
 // normalizeResolverMatchSuffix applies the same IDNA DNS-label normalization as
@@ -1175,6 +1201,12 @@ func sortAllows(a []policyspec.AllowEntry) {
 		}
 		if a[i].PortHigh != a[j].PortHigh {
 			return a[i].PortHigh < a[j].PortHigh
+		}
+		if a[i].DNSResolverProfileID != a[j].DNSResolverProfileID {
+			return a[i].DNSResolverProfileID < a[j].DNSResolverProfileID
+		}
+		if a[i].FQDNDeviceID != a[j].FQDNDeviceID {
+			return a[i].FQDNDeviceID < a[j].FQDNDeviceID
 		}
 		return !a[i].FQDNManaged && a[j].FQDNManaged
 	})

@@ -1284,26 +1284,28 @@ type DomainClaim struct {
 }
 
 type FqdnGatewayDnsRequest struct {
-	RequestID             uuid.UUID          `json:"request_id"`
-	ProtocolVersion       int16              `json:"protocol_version"`
-	OrgID                 uuid.UUID          `json:"org_id"`
-	ResourceID            uuid.UUID          `json:"resource_id"`
-	SiteID                uuid.UUID          `json:"site_id"`
-	GatewayID             uuid.UUID          `json:"gateway_id"`
-	Hostname              string             `json:"hostname"`
-	RecordTypes           []byte             `json:"record_types"`
-	Deadline              time.Time          `json:"deadline"`
-	State                 string             `json:"state"`
-	Response              []byte             `json:"response"`
-	CreatedAt             time.Time          `json:"created_at"`
-	CompletedAt           pgtype.Timestamptz `json:"completed_at"`
-	ExpiredAt             pgtype.Timestamptz `json:"expired_at"`
-	ResolverConfigID      pgtype.UUID        `json:"resolver_config_id"`
-	ResolverConfigVersion *int64             `json:"resolver_config_version"`
-	ResolverEndpoints     []byte             `json:"resolver_endpoints"`
-	ResolverProfileID     pgtype.UUID        `json:"resolver_profile_id"`
-	ResolverMatchSuffix   *string            `json:"resolver_match_suffix"`
-	ResolverIpsecPath     []byte             `json:"resolver_ipsec_path"`
+	RequestID                  uuid.UUID          `json:"request_id"`
+	ProtocolVersion            int16              `json:"protocol_version"`
+	OrgID                      uuid.UUID          `json:"org_id"`
+	ResourceID                 uuid.UUID          `json:"resource_id"`
+	SiteID                     uuid.UUID          `json:"site_id"`
+	GatewayID                  uuid.UUID          `json:"gateway_id"`
+	Hostname                   string             `json:"hostname"`
+	RecordTypes                []byte             `json:"record_types"`
+	Deadline                   time.Time          `json:"deadline"`
+	State                      string             `json:"state"`
+	Response                   []byte             `json:"response"`
+	CreatedAt                  time.Time          `json:"created_at"`
+	CompletedAt                pgtype.Timestamptz `json:"completed_at"`
+	ExpiredAt                  pgtype.Timestamptz `json:"expired_at"`
+	ResolverConfigID           pgtype.UUID        `json:"resolver_config_id"`
+	ResolverConfigVersion      *int64             `json:"resolver_config_version"`
+	ResolverEndpoints          []byte             `json:"resolver_endpoints"`
+	ResolverProfileID          pgtype.UUID        `json:"resolver_profile_id"`
+	ResolverMatchSuffix        *string            `json:"resolver_match_suffix"`
+	ResolverIpsecPath          []byte             `json:"resolver_ipsec_path"`
+	ResolverKind               string             `json:"resolver_kind"`
+	ApplicationDesiredRevision *int64             `json:"application_desired_revision"`
 }
 
 type FqdnResolverContextConfig struct {
@@ -1360,38 +1362,42 @@ type FqdnResolverContextProfileSuffix struct {
 }
 
 type FqdnResource struct {
-	ID             uuid.UUID   `json:"id"`
-	OrgID          uuid.UUID   `json:"org_id"`
-	Name           string      `json:"name"`
-	Fqdn           string      `json:"fqdn"`
-	Protocol       string      `json:"protocol"`
-	PortLow        *int32      `json:"port_low"`
-	PortHigh       *int32      `json:"port_high"`
-	ResolverNodeID pgtype.UUID `json:"resolver_node_id"`
-	CreatedAt      time.Time   `json:"created_at"`
-	UpdatedAt      time.Time   `json:"updated_at"`
-	Label          *string     `json:"label"`
-	ResolverSiteID pgtype.UUID `json:"resolver_site_id"`
+	ID                                    uuid.UUID   `json:"id"`
+	OrgID                                 uuid.UUID   `json:"org_id"`
+	Name                                  string      `json:"name"`
+	Fqdn                                  string      `json:"fqdn"`
+	Protocol                              string      `json:"protocol"`
+	PortLow                               *int32      `json:"port_low"`
+	PortHigh                              *int32      `json:"port_high"`
+	ResolverNodeID                        pgtype.UUID `json:"resolver_node_id"`
+	CreatedAt                             time.Time   `json:"created_at"`
+	UpdatedAt                             time.Time   `json:"updated_at"`
+	Label                                 *string     `json:"label"`
+	ResolverSiteID                        pgtype.UUID `json:"resolver_site_id"`
+	ApplicationIpsecConnectionID          pgtype.UUID `json:"application_ipsec_connection_id"`
+	ApplicationIpsecConfigurationRevision *int64      `json:"application_ipsec_configuration_revision"`
 }
 
 type FqdnResourceAnswerGeneration struct {
-	ID                  uuid.UUID          `json:"id"`
-	OrgID               uuid.UUID          `json:"org_id"`
-	ResourceID          uuid.UUID          `json:"resource_id"`
-	Generation          int64              `json:"generation"`
-	ResolverNodeID      uuid.UUID          `json:"resolver_node_id"`
-	State               string             `json:"state"`
-	EffectiveTtl        pgtype.Interval    `json:"effective_ttl"`
-	ResolvedAt          time.Time          `json:"resolved_at"`
-	LastGoodAt          pgtype.Timestamptz `json:"last_good_at"`
-	ActivatedAt         pgtype.Timestamptz `json:"activated_at"`
-	EndedAt             pgtype.Timestamptz `json:"ended_at"`
-	FailureCode         *string            `json:"failure_code"`
-	CreatedAt           time.Time          `json:"created_at"`
-	ResolverSiteID      pgtype.UUID        `json:"resolver_site_id"`
-	ResolverConfigID    pgtype.UUID        `json:"resolver_config_id"`
-	ResolverProfileID   pgtype.UUID        `json:"resolver_profile_id"`
-	ResolverMatchSuffix *string            `json:"resolver_match_suffix"`
+	ID                         uuid.UUID          `json:"id"`
+	OrgID                      uuid.UUID          `json:"org_id"`
+	ResourceID                 uuid.UUID          `json:"resource_id"`
+	Generation                 int64              `json:"generation"`
+	ResolverNodeID             uuid.UUID          `json:"resolver_node_id"`
+	State                      string             `json:"state"`
+	EffectiveTtl               pgtype.Interval    `json:"effective_ttl"`
+	ResolvedAt                 time.Time          `json:"resolved_at"`
+	LastGoodAt                 pgtype.Timestamptz `json:"last_good_at"`
+	ActivatedAt                pgtype.Timestamptz `json:"activated_at"`
+	EndedAt                    pgtype.Timestamptz `json:"ended_at"`
+	FailureCode                *string            `json:"failure_code"`
+	CreatedAt                  time.Time          `json:"created_at"`
+	ResolverSiteID             pgtype.UUID        `json:"resolver_site_id"`
+	ResolverConfigID           pgtype.UUID        `json:"resolver_config_id"`
+	ResolverProfileID          pgtype.UUID        `json:"resolver_profile_id"`
+	ResolverMatchSuffix        *string            `json:"resolver_match_suffix"`
+	ResolverKind               string             `json:"resolver_kind"`
+	ApplicationDesiredRevision *int64             `json:"application_desired_revision"`
 }
 
 type FqdnResourceGenerationAnswer struct {

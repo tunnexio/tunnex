@@ -488,6 +488,10 @@ func cloneDesiredState(in reconcile.DesiredState) reconcile.DesiredState {
 		for i, generation := range in.Policy.FQDNGenerations {
 			policy.FQDNGenerations[i] = generation
 			policy.FQDNGenerations[i].Answers = slices.Clone(generation.Answers)
+			if generation.ApplicationIPsecPath != nil {
+				path := *generation.ApplicationIPsecPath
+				policy.FQDNGenerations[i].ApplicationIPsecPath = &path
+			}
 		}
 		out.Policy = &policy
 	}

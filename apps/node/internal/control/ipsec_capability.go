@@ -141,3 +141,15 @@ func (c *Client) ipsecDesktopTransitCapability() int {
 	}
 	return controller.DesktopTransitCapability()
 }
+
+func (c *Client) ipsecDesktopFQDNCapability() int {
+	if c == nil {
+		return 0
+	}
+	controller := c.ipsecController.Load()
+	qualified, ok := any(controller).(interface{ DesktopFQDNCapability() int })
+	if !ok || controller == nil || c.dnsForwarder.Load() == nil || qualified.DesktopFQDNCapability() != 1 {
+		return 0
+	}
+	return 1
+}

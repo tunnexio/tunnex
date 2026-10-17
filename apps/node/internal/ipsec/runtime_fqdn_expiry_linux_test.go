@@ -11,6 +11,7 @@ import (
 	"os/exec"
 	"reflect"
 	"sort"
+	"strings"
 	"testing"
 	"time"
 )
@@ -19,6 +20,14 @@ import (
 // Run only in the disconnected disposable two-XFRM guard harness, never a
 // customer gateway namespace. It refuses every existing table before writes.
 func TestGuardFQDNV2ExpiryNativeReadback(t *testing.T) {
+	testGuardFQDNExpiryNativeReadback(t, false)
+}
+
+func TestGuardDesktopStaticFQDNExpiryNativeReadback(t *testing.T) {
+	testGuardFQDNExpiryNativeReadback(t, true)
+}
+
+func testGuardFQDNExpiryNativeReadback(t *testing.T, desktop bool) {
 	if os.Getenv("TUNNEX_IPSEC_FQDN_EXPIRY_LAB") != "1" {
 		t.Skip("disconnected owned guard component harness only")
 	}
@@ -58,6 +67,12 @@ func TestGuardFQDNV2ExpiryNativeReadback(t *testing.T) {
 	// The reqid set is a renderer/readback fixture, not an observed native SA.
 	c.EncryptedEgress = []GuardEncryptedEgress{{TunnelInterfaceIndex: inv.Links[0].Index, ReqID: 12345, Peer: netip.MustParseAddr("192.0.2.1"), UnderlayInterfaceIndex: 1}}
 	_, g, _ := v2FQDNFixture(t)
+	if desktop {
+		_, g, _ = desktopStaticFQDNFixture(t)
+		// Actual loopback is the disposable test ingress, never an enrolled peer.
+		// This component qualifies renderer/expiry/readback; runtime peer proof is separate.
+		g.DesktopIngressIndex = 1
+	}
 	g.FQDN.SelectedGatewayID = in.OwnerID
 	g.FQDN.ConnectionID = c.ID
 	g.FQDNPermitFor = 3 * time.Second
@@ -112,6 +127,27 @@ func TestGuardFQDNV2ExpiryNativeReadback(t *testing.T) {
 	actual := read()
 	if VerifyGuardReadbackWithInterfaces([]byte(m.ExpectedJSON), actual, links) != nil {
 		t.Fatal("native timed IPv4 member/readback mismatch")
+	}
+	if desktop {
+		oldSet := guardFQDNSetName(g)
+		g.Destination = netip.MustParsePrefix("10.20.0.10/32")
+		g.FQDN.Generation = strings.Repeat("b", 64)
+		c.Grants[len(c.Grants)-1] = g
+		in.Revision++
+		replacement, err := RenderGuard(in)
+		if err != nil {
+			t.Fatal(err)
+		}
+		tx, err := replaceOwnedFQDNSets(replacement.NFTJSON, m.ExpectedJSON)
+		if err != nil {
+			t.Fatal(err)
+		}
+		run(tx, "-j", "-f", "-")
+		actual = read()
+		if VerifyGuardReadbackWithInterfaces([]byte(replacement.ExpectedJSON), actual, links) != nil || bytes.Contains(actual, []byte(oldSet)) {
+			t.Fatal("generation switch retained old answer authority")
+		}
+		m = replacement
 	}
 	time.Sleep(3200 * time.Millisecond)
 	actual = read()

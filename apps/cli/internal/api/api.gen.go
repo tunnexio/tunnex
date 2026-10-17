@@ -5354,6 +5354,12 @@ type ExtendGrantRequest struct {
 	ExpiresAt time.Time `json:"expires_at"`
 }
 
+// FQDNApplicationIPsecPath defines model for FQDNApplicationIPsecPath.
+type FQDNApplicationIPsecPath struct {
+	ConfigurationRevision int64              `json:"configuration_revision"`
+	ConnectionId          openapi_types.UUID `json:"connection_id"`
+}
+
 // FQDNResolverContext defines model for FQDNResolverContext.
 type FQDNResolverContext struct {
 	GatewayId   openapi_types.UUID `json:"gateway_id"`
@@ -5502,8 +5508,11 @@ type FQDNResolverProfileSelectionProviderHint string
 // FQDNResource defines model for FQDNResource.
 type FQDNResource struct {
 	// AnswerCount Active-generation answer count; never an inferred DNS result.
-	AnswerCount int       `json:"answer_count"`
-	CreatedAt   time.Time `json:"created_at"`
+	AnswerCount int `json:"answer_count"`
+
+	// ApplicationIpsecPath Exact AWS BGP application connection; independent from DNS resolver transport.
+	ApplicationIpsecPath *FQDNApplicationIPsecPath `json:"application_ipsec_path"`
+	CreatedAt            time.Time                 `json:"created_at"`
 
 	// DestinationKind Exactly one destination kind. This contract is only for normalized FQDN destinations; static CIDR resources retain the existing Resource contract.
 	DestinationKind     FQDNResourceDestinationKind `json:"destination_kind"`
@@ -5620,6 +5629,9 @@ type FQDNResourceMutationPreview struct {
 
 // FQDNResourceRequest defines model for FQDNResourceRequest.
 type FQDNResourceRequest struct {
+	// ApplicationIpsecPath Exact AWS BGP application connection; independent from DNS resolver transport.
+	ApplicationIpsecPath *FQDNApplicationIPsecPath `json:"application_ipsec_path"`
+
 	// ExpectedImpactToken Server-issued token from the immediately relevant impact preview. Required only for enforcement-changing PATCH operations.
 	ExpectedImpactToken *string `json:"expected_impact_token"`
 
@@ -6000,8 +6012,11 @@ type IPsecEligibility struct {
 	AzureStatic *IPsecBGPEligibility `json:"azure_static,omitempty"`
 
 	// Bgp Advisory readiness to enable BGP, checked independently from storing disabled configurations. Enabling rechecks gateway capability and authority.
-	Bgp      *IPsecBGPEligibility `json:"bgp,omitempty"`
-	Eligible bool                 `json:"eligible"`
+	Bgp *IPsecBGPEligibility `json:"bgp,omitempty"`
+
+	// DesktopFqdnSupported Fresh gateway capability for desktop static CNAME application authorization over AWS BGP.
+	DesktopFqdnSupported *bool `json:"desktop_fqdn_supported,omitempty"`
+	Eligible             bool  `json:"eligible"`
 
 	// GcpClassic Advisory readiness to enable BGP, checked independently from storing disabled configurations. Enabling rechecks gateway capability and authority.
 	GcpClassic *IPsecBGPEligibility `json:"gcp_classic,omitempty"`

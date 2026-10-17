@@ -11,14 +11,15 @@ import (
 )
 
 type Eligibility struct {
-	Eligible           bool         `json:"eligible"`
-	Reason             string       `json:"reason"`
-	GCPClassic         *Eligibility `json:"gcp_classic,omitempty"`
-	AzureBGPRecreation *Eligibility `json:"azure_bgp_recreation,omitempty"`
-	AzureBGP           *Eligibility `json:"azure_bgp,omitempty"`
-	AzureStatic        *Eligibility `json:"azure_static,omitempty"`
-	GCPHA              *Eligibility `json:"gcp_ha,omitempty"`
-	BGP                *Eligibility `json:"bgp,omitempty"`
+	DesktopFQDNSupported bool         `json:"desktop_fqdn_supported"`
+	Eligible             bool         `json:"eligible"`
+	Reason               string       `json:"reason"`
+	GCPClassic           *Eligibility `json:"gcp_classic,omitempty"`
+	AzureBGPRecreation   *Eligibility `json:"azure_bgp_recreation,omitempty"`
+	AzureBGP             *Eligibility `json:"azure_bgp,omitempty"`
+	AzureStatic          *Eligibility `json:"azure_static,omitempty"`
+	GCPHA                *Eligibility `json:"gcp_ha,omitempty"`
+	BGP                  *Eligibility `json:"bgp,omitempty"`
 }
 
 // gatewayEligibilityReason is shared by advisory reads and locked creation.
@@ -102,6 +103,7 @@ func (s *ConnectionStore) ReadEligibility(ctx context.Context, org, site, gatewa
 	if gcpReason == "eligible" && (json.Unmarshal(caps, &cap) != nil || string(cap["ipsec_gcp_ha_version"]) != "1") {
 		gcpReason = "unsupported"
 	}
+	result.DesktopFQDNSupported = result.BGP.Eligible && string(cap["ipsec_desktop_transit_version"]) == "1" && string(cap["ipsec_fqdn_policy_version"]) == "2" && string(cap["ipsec_desktop_fqdn_version"]) == "1"
 	result.GCPHA = &Eligibility{Eligible: gcpReason == "eligible", Reason: gcpReason}
 	classicReason := reason
 	if classicReason == "eligible" && (json.Unmarshal(caps, &cap) != nil || string(cap["ipsec_gcp_classic_version"]) != "1") {

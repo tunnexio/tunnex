@@ -12,7 +12,7 @@ import (
 )
 
 func TestPostgresMailboxSerializationRetry(t *testing.T) {
-	ctx, pool := testpostgres.NewAtVersion(t, 219)
+	ctx, pool := testpostgres.NewAtVersion(t, 230)
 	exec := func(query string, args ...any) {
 		t.Helper()
 		if _, err := pool.Exec(ctx, query, args...); err != nil {
