@@ -12,7 +12,9 @@ import (
 // RenewActiveIPsecRuntimeObserved renews only exact process-local applied owners.
 // It obtains a new authoritative CP lease for each owner, proves the existing
 // native transport and atomically installs finite permits using normal maintenance.
-// It never fetches or caches private material, performs first Apply, or emits ACKs.
+// An exact FQDN expiry conflict may fetch bounded current normal material,
+// discarded immediately after validation. It never caches secrets, performs
+// first Apply, or emits ACKs.
 func (c *RuntimeController) RenewActiveIPsecRuntimeObserved(ctx context.Context, publish func(context.Context, RuntimeDelivery, RuntimeStatusReport) error, publishRecovery func(context.Context, RuntimeRecoveryHeartbeat) error) error {
 	if c == nil {
 		return ErrRuntimeController

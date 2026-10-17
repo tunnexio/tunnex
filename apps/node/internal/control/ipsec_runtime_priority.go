@@ -14,7 +14,8 @@ type IPsecRuntimeActiveRenewer interface {
 
 // RefreshIPsecRuntimePriority keeps finite renewal ahead of optional status and
 // discovery/material IO. Existing cleanup/polling still runs afterward; no ACK
-// or private material is obtained or retained by this step.
+// is emitted here. The controller may fetch current material only for a verified
+// FQDN expiry rollover; this caller never obtains or retains it.
 func RefreshIPsecRuntimePriority(ctx context.Context, client IPsecRuntimeTransport, controller IPsecRuntimeApplier) error {
 	failed := false
 	sequences := map[uuid.UUID]uint64{}
