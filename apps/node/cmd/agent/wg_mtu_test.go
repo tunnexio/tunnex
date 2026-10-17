@@ -25,7 +25,7 @@ func TestConfiguredWireGuardMTUCap(t *testing.T) {
 	for _, tc := range []struct {
 		raw  string
 		want int
-	}{{"", 0}, {"  ", 0}, {"1280", 1280}, {"1380", 1380}, {" 1392 ", 1392}, {"1420", 1420}} {
+	}{{"", 1380}, {"  ", 1380}, {"1280", 1280}, {"1380", 1380}, {" 1392 ", 1392}, {"1420", 1420}} {
 		got, err := configuredWireGuardMTUCap(tc.raw)
 		if err != nil || got != tc.want {
 			t.Fatalf("%q: got %d, %v; want %d", tc.raw, got, err, tc.want)

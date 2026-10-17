@@ -6,10 +6,15 @@ import (
 	"time"
 )
 
-const Default = 1420
+const (
+	// Default is a conservative configuration fallback, not a measured path MTU.
+	Default = 1380
+	// MaxApplied preserves explicit, freshly verified gateway configurations.
+	MaxApplied = 1420
+)
 
 // Report freshness matches the ordinary node freshness window. A missing,
-// malformed, future, or stale report keeps the legacy default; it is never
+// malformed, future, or stale report uses the conservative fallback; it is never
 // authority for policy, addresses, or grants.
 func Applied(capabilities []byte, reported time.Time, now time.Time) int {
 	if reported.IsZero() || reported.After(now) || now.Sub(reported) > 90*time.Second {
@@ -18,7 +23,7 @@ func Applied(capabilities []byte, reported time.Time, now time.Time) int {
 	var caps struct {
 		MTU int `json:"wireguard_applied_mtu"`
 	}
-	if json.Unmarshal(capabilities, &caps) != nil || caps.MTU < 1280 || caps.MTU > Default {
+	if json.Unmarshal(capabilities, &caps) != nil || caps.MTU < 1280 || caps.MTU > MaxApplied {
 		return Default
 	}
 	return caps.MTU
