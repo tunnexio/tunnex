@@ -36,10 +36,10 @@ type recoveryTestRig struct {
 	denyGuard           bool
 }
 
-func newRecoveryTestRig(t *testing.T) *recoveryTestRig {
+func newRecoveryTestRig(t *testing.T, connectionIDs ...uuid.UUID) *recoveryTestRig {
 	t.Helper()
 	r := &recoveryTestRig{status: [2]string{"down", "up"}, lease: &recoveryTestLease{ttl: 60000}}
-	r.m = runtimeMaterialFixture()
+	r.m = runtimeMaterialFixture(connectionIDs...)
 	version := 1
 	r.m.Manifest.RecoveryVersion = &version
 	runtimeReseal(&r.m)

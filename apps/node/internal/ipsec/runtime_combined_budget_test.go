@@ -48,12 +48,22 @@ func TestCombinedBudgetHealthyStaticContinuity(t *testing.T) {
 	}
 }
 
-func mixedBudgetFixture(t *testing.T) (*RuntimeController, []RuntimeJournalEntry, []uuid.UUID) {
+func mixedBudgetFixture(t *testing.T, connectionIDs ...uuid.UUID) (*RuntimeController, []RuntimeJournalEntry, []uuid.UUID) {
+	t.Helper()
+	if len(connectionIDs) != 0 && len(connectionIDs) != 5 {
+		t.Fatal("mixed fixture requires zero or five connection IDs")
+	}
+	identity := func(index int) []uuid.UUID {
+		if len(connectionIDs) == 0 {
+			return nil
+		}
+		return connectionIDs[index : index+1]
+	}
 	c, _, _, _ := bgpControllerFixture(t, true)
 	c.active = map[uuid.UUID]runtimeActive{}
 	entries := []RuntimeJournalEntry{}
 	for i := 0; i < 3; i++ {
-		b, _, _, _ := bgpControllerFixture(t, true)
+		b, _, _, _ := bgpControllerEntryFixture(t, true, bgpEntryFixture(t, identity(i)...))
 		for id, a := range b.active {
 			a.Grants = nil
 			c.bgpProcesses[a.Entry.DeliveryID] = b.bgpProcesses[a.Entry.DeliveryID]
@@ -63,7 +73,7 @@ func mixedBudgetFixture(t *testing.T) (*RuntimeController, []RuntimeJournalEntry
 	}
 	staticIDs := []uuid.UUID{}
 	for i := 0; i < 2; i++ {
-		r := newRecoveryTestRig(t)
+		r := newRecoveryTestRig(t, identity(3+i)...)
 		es, _ := r.c.journal.Entries()
 		e := es[0]
 		e.Allocation.Namespace = entries[0].Allocation.Namespace

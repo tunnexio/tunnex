@@ -10,9 +10,9 @@ import (
 	"github.com/google/uuid"
 )
 
-func priorityRenewalWindow(t *testing.T) (*renewalCycleRig, []RuntimeMaterial) {
+func priorityRenewalWindow(t *testing.T, connectionIDs ...uuid.UUID) (*renewalCycleRig, []RuntimeMaterial) {
 	t.Helper()
-	r, _ := maintainedMissingStandby(t, 2)
+	r, _ := maintainedMissingStandby(t, 2, connectionIDs...)
 	materials := maintenanceMaterials(r)
 	sort.Slice(materials, func(i, j int) bool {
 		return materials[i].Manifest.ConnectionID.String() < materials[j].Manifest.ConnectionID.String()
@@ -50,110 +50,135 @@ func allPriorityMembersLive(r *renewalCycleRig) bool {
 func TestPriorityActiveRenewalCallerContinuity(t *testing.T) {
 	for _, priority := range []bool{false, true} {
 		t.Run(fmt.Sprintf("priority_%t", priority), func(t *testing.T) {
-			r, materials := priorityRenewalWindow(t)
-			start := *r.now
-			commits := 0
-			lapse := false
-			firstCommit := time.Duration(0)
-			recoveryCallbacks := 0
-			beforeFirstCommitCallbacks := 0
-			check := func() {
-				if !allPriorityMembersLive(r) {
-					lapse = true
-				}
-			}
-			proof := r.c.prove
-			r.c.prove = func(ctx context.Context, e RuntimeJournalEntry, env RuntimeEnvironment) error {
-				err := proof(ctx, e, env)
-				check()
-				return err
-			}
-			observe := r.c.recoveryObserve
-			r.c.recoveryObserve = func(ctx context.Context, e RuntimeJournalEntry) [2]string {
-				out := observe(ctx, e)
-				check()
-				return out
-			}
-			replace := r.c.replace
-			r.c.replace = func(ctx context.Context, in GuardIntent) (GuardManifest, error) {
-				positive := 0
-				for _, g := range in.Connections {
-					if !g.PrefixOnly {
-						positive++
-					}
-				}
-				if positive > 0 {
-					check()
-					if commits == 0 {
-						firstCommit = *r.now - start
-						beforeFirstCommitCallbacks = recoveryCallbacks
-					}
-				}
-				out, err := replace(ctx, in)
-				if err == nil && positive > 0 {
-					commits++
-				}
-				return out, err
-			}
-			publish := func(context.Context, RuntimeDelivery, RuntimeStatusReport) error { return nil }
-			pulse := func(context.Context, RuntimeRecoveryHeartbeat) error { recoveryCallbacks++; check(); return nil }
-			optional := func() { r.charge("unchanged_optional_status_discovery_material", 12*time.Second); check() }
-			rounds := 1
-			if priority {
-				rounds = 2
-			}
-			for cycle := 0; cycle < rounds; cycle++ {
-				old := map[*PermitLeaseAuthority]time.Duration{}
-				for _, a := range r.c.active {
-					old[a.Authority] = a.Authority.deadline
-				}
-				if !priority {
-					optional()
-				}
-				r.phase = "maintenance"
-				var err error
-				if priority {
-					err = r.c.renewActiveIPsecRuntimeObserved(context.Background(), maintenanceAuthority(r), func() bool { return true }, publish, pulse)
-				} else {
-					_, err = runActiveCadenceMaintenance(r, materials, publish, pulse)
-				}
-				r.phase = ""
-				for a, d := range old {
-					if a.deadline != d {
-						t.Fatal("original CP deadline changed")
-					}
-				}
-				if priority {
-					if err != nil || !allPriorityMembersLive(r) {
-						t.Fatalf("priority cycle%d refused/lapsed: %v", cycle, err)
-					}
-					optional()
-					if !allPriorityMembersLive(r) {
-						t.Fatal("postrenewal optional IO lapsed finite member")
-					}
-					// The original authoritative page maintenance still runs
-					// after discovery/material IO. Include its real charged
-					// callbacks/proofs/commit, not a cached success or ACK.
-					r.phase = "maintenance"
-					normalResults, normalErr := runActiveCadenceMaintenance(r, materials, publish, pulse)
-					r.phase = ""
-					check()
-					if normalErr != nil || len(normalResults) != 5 || !allPriorityMembersLive(r) {
-						t.Fatal("ordinary pass after priority renewal refused/lapsed", normalErr, len(normalResults))
-					}
-
-				} else if err == nil && allPriorityMembersLive(r) && !lapse {
-					t.Fatal("baseline must expose late arrival native loss")
-				}
-			}
-			t.Logf("priority=%t elapsed=%s firstCommit=%s commits=%d recoveryCallbacksBeforeCommit=%d totalCallbacks=%d all15Live=%t lapse=%t freshNonces=%d costs=%v", priority, *r.now-start, firstCommit, commits, beforeFirstCommitCallbacks, recoveryCallbacks, allPriorityMembersLive(r), lapse, len(r.nonces), r.charged)
-			if priority && (lapse || commits != 4 || beforeFirstCommitCallbacks == 0) {
-				t.Fatal("priority lost continuity or original early callback ordering")
-			}
-			if !priority && !lapse {
-				t.Fatal("baseline did not reproduce finite loss")
-			}
+			assertPriorityActiveRenewalCallerContinuity(t, priority)
 		})
+	}
+}
+
+func assertPriorityActiveRenewalCallerContinuity(t *testing.T, priority bool, connectionIDs ...uuid.UUID) {
+	t.Helper()
+	r, materials := priorityRenewalWindow(t, connectionIDs...)
+	r.c.config.Diagnostic = func(d RuntimeDiagnostic) {
+		if d.Refused {
+			t.Logf("refused=%+v now=%s costs=%v", d, *r.now, r.charged)
+		}
+	}
+	start := *r.now
+	commits := 0
+	lapse := false
+	firstCommit := time.Duration(0)
+	recoveryCallbacks := 0
+	beforeFirstCommitCallbacks := 0
+	check := func() {
+		if !allPriorityMembersLive(r) {
+			lapse = true
+		}
+	}
+	proof := r.c.prove
+	r.c.prove = func(ctx context.Context, e RuntimeJournalEntry, env RuntimeEnvironment) error {
+		err := proof(ctx, e, env)
+		check()
+		return err
+	}
+	observe := r.c.recoveryObserve
+	r.c.recoveryObserve = func(ctx context.Context, e RuntimeJournalEntry) [2]string {
+		out := observe(ctx, e)
+		check()
+		return out
+	}
+	replace := r.c.replace
+	r.c.replace = func(ctx context.Context, in GuardIntent) (GuardManifest, error) {
+		positive := 0
+		for _, g := range in.Connections {
+			if !g.PrefixOnly {
+				positive++
+			}
+		}
+		if positive > 0 {
+			check()
+			if commits == 0 {
+				firstCommit = *r.now - start
+				beforeFirstCommitCallbacks = recoveryCallbacks
+			}
+		}
+		out, err := replace(ctx, in)
+		if err == nil && positive > 0 {
+			commits++
+		}
+		return out, err
+	}
+	publish := func(context.Context, RuntimeDelivery, RuntimeStatusReport) error { return nil }
+	var pulseTrace []string
+	freshCandidate := 0
+	newAuthority := maintenanceAuthority(r)
+	trackedAuthority := func() *PermitLeaseAuthority {
+		freshCandidate++
+		return newAuthority()
+	}
+	pulse := func(_ context.Context, report RuntimeRecoveryHeartbeat) error {
+		recoveryCallbacks++
+		if commits == 0 {
+			pulseTrace = append(pulseTrace, fmt.Sprintf("%s candidate=%d owner=%s at=%s", priorityRenewalPulseBoundary(), freshCandidate, report.ConnectionID, *r.now-start))
+		}
+		check()
+		return nil
+	}
+	optional := func() { r.charge("unchanged_optional_status_discovery_material", 12*time.Second); check() }
+	rounds := 1
+	if priority {
+		rounds = 2
+	}
+	for cycle := 0; cycle < rounds; cycle++ {
+		old := map[*PermitLeaseAuthority]time.Duration{}
+		for _, a := range r.c.active {
+			old[a.Authority] = a.Authority.deadline
+		}
+		if !priority {
+			optional()
+		}
+		r.phase = "maintenance"
+		var err error
+		if priority {
+			err = r.c.renewActiveIPsecRuntimeObserved(context.Background(), trackedAuthority, func() bool { return true }, publish, pulse)
+		} else {
+			_, err = runActiveCadenceMaintenance(r, materials, publish, pulse)
+		}
+		r.phase = ""
+		for a, d := range old {
+			if a.deadline != d {
+				t.Fatal("original CP deadline changed")
+			}
+		}
+		if priority {
+			if err != nil || !allPriorityMembersLive(r) {
+				t.Fatalf("priority cycle%d refused/lapsed: %v now=%s elapsed=%s pulses=%d costs=%v installed=%v trace=%v", cycle, err, *r.now, *r.now-start, recoveryCallbacks, r.charged, r.installed, pulseTrace)
+			}
+			optional()
+			if !allPriorityMembersLive(r) {
+				t.Fatal("postrenewal optional IO lapsed finite member")
+			}
+			// The original authoritative page maintenance still runs
+			// after discovery/material IO. Include its real charged
+			// callbacks/proofs/commit, not a cached success or ACK.
+			r.phase = "maintenance"
+			normalResults, normalErr := runActiveCadenceMaintenance(r, materials, publish, pulse)
+			r.phase = ""
+			check()
+			if normalErr != nil || len(normalResults) != 5 || !allPriorityMembersLive(r) {
+				t.Fatal("ordinary pass after priority renewal refused/lapsed", normalErr, len(normalResults))
+			}
+
+		} else if err == nil && allPriorityMembersLive(r) && !lapse {
+			t.Fatal("baseline must expose late arrival native loss")
+		}
+	}
+	t.Logf("precommit pulse trace=%v", pulseTrace)
+	t.Logf("priority=%t elapsed=%s firstCommit=%s commits=%d recoveryCallbacksBeforeCommit=%d totalCallbacks=%d all15Live=%t lapse=%t freshNonces=%d costs=%v", priority, *r.now-start, firstCommit, commits, beforeFirstCommitCallbacks, recoveryCallbacks, allPriorityMembersLive(r), lapse, len(r.nonces), r.charged)
+	if priority && (lapse || commits != 4 || beforeFirstCommitCallbacks == 0) {
+		t.Fatal("priority lost continuity or original early callback ordering")
+	}
+	if !priority && !lapse {
+		t.Fatal("baseline did not reproduce finite loss")
 	}
 }
 

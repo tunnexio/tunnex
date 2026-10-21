@@ -10,7 +10,7 @@ import (
 	"testing"
 )
 
-func runtimeMaterialFixture() RuntimeMaterial {
+func runtimeMaterialFixture(connectionIDs ...uuid.UUID) RuntimeMaterial {
 	e := journalFixture()
 	m := RuntimeMaterial{RuntimeDelivery: RuntimeDelivery{ID: e.DeliveryID, DesiredRevision: e.Engines[0].Binding.DesiredRevision, Kind: "apply"}, Policy: RuntimePolicy{Hash: strings.Repeat("b", 64)}}
 	b := e.Engines[0].Binding
@@ -19,6 +19,9 @@ func runtimeMaterialFixture() RuntimeMaterial {
 		inside := netip.MustParsePrefix([]string{"169.254.20.0/30", "169.254.20.4/30"}[i])
 		m.Manifest.Tunnels[i] = RuntimeTunnel{ID: t.TunnelID, Slot: i + 1, SecretRevision: 1, LinkName: KernelTunnelName(t.TunnelID), XFRMID: KernelTunnelID(t.TunnelID), ReqID: KernelTunnelID(t.TunnelID), OutsideAddress: []string{"198.51.100.1", "198.51.100.2"}[i], InsideCIDR: inside.String(), CustomerInsideAddress: inside.Addr().Next().String(), CloudInsideAddress: inside.Addr().Next().Next().String(), RouteTable: 254, RouteProtocol: 242, RouteMetric: uint32(50001 + i), Selected: i == 0}
 		m.Secrets[i] = RuntimeSecret{TunnelID: t.TunnelID, Revision: 1, PSK: "Synthetic_PSK_123"}
+	}
+	if len(connectionIDs) == 1 {
+		m.Manifest.ConnectionID = connectionIDs[0]
 	}
 	runtimeReseal(&m)
 	return m

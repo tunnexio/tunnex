@@ -11,9 +11,9 @@ import (
 
 // Reuse the canonical five-owner postqualification/native guard fixture. Native
 // status is the existing independent observation seam, not cached report data.
-func maintainedMissingStandby(t *testing.T, slot int) (*renewalCycleRig, uuid.UUID) {
+func maintainedMissingStandby(t *testing.T, slot int, connectionIDs ...uuid.UUID) (*renewalCycleRig, uuid.UUID) {
 	t.Helper()
-	r := newRenewalCycleRigInput(t, true)
+	r := newRenewalCycleRigWithIDs(t, true, connectionIDs)
 	materials := maintenanceMaterials(r)
 	target := materials[len(materials)-1].Manifest.ConnectionID
 	for i, e := range r.entries {

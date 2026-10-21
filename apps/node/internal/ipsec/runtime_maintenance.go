@@ -337,6 +337,43 @@ func (c *RuntimeController) maintainIPsecRuntimeItems(ctx context.Context, count
 		}
 		eligibleOwners = append(eligibleOwners, eligibleOwner{index: i, active: old})
 	}
+	deferral := c.beginMaintenancePulseDeferral(pulseAllowed, publishRecovery)
+	if publishRecovery != nil {
+		publishOriginal := publishRecovery
+		publishRecovery = func(ctx context.Context, report RuntimeRecoveryHeartbeat) error {
+			if !deferral.reportsCurrent(c) {
+				return ErrRuntimeController
+			}
+			if err := publishOriginal(ctx, report); err != nil {
+				return err
+			}
+			if !deferral.reportsCurrent(c) {
+				return ErrRuntimeController
+			}
+			return nil
+		}
+	}
+	if publish != nil {
+		publishOriginal := publish
+		publish = func(ctx context.Context, delivery RuntimeDelivery, report RuntimeStatusReport) error {
+			if !deferral.reportsCurrent(c) {
+				return ErrRuntimeController
+			}
+			if err := publishOriginal(ctx, delivery, report); err != nil {
+				return err
+			}
+			if !deferral.reportsCurrent(c) {
+				return ErrRuntimeController
+			}
+			return nil
+		}
+	}
+	collectionPulse := func() error {
+		if deferral.deferPulse(ctx, c) {
+			return nil
+		}
+		return c.refreshMaintenanceActiveRecovery(ctx, pulseAllowed, publishRecovery)
+	}
 	for _, owner := range eligibleOwners {
 		m, old := materials[owner.index], owner.active
 		id := m.Manifest.ConnectionID
@@ -377,7 +414,10 @@ func (c *RuntimeController) maintainIPsecRuntimeItems(ctx context.Context, count
 		}
 		stage = "maintenance_lease"
 		lease, leaseErr := c.client.RenewIPsecLease(ctx, id, RuntimeLeaseRequest{DeliveryID: m.ID, DesiredRevision: m.DesiredRevision, PolicyHash: m.PolicyHash, Nonce: request.Nonce, FQDNGrants: runtimeFQDNLeaseDescriptors(fqdnPolicy)})
-		if leaseErr != nil && reconcileRetainedBGP && maintenanceLeaseFailureStage(leaseErr) == "maintenance_lease_http_409_conflict" {
+		// A normal page can race the same DNS publication as a priority pass.
+		// Reuse the exact expiry-only material/nonce bridge once; a conflict
+		// alone never authorizes new content or extends the original lease.
+		if leaseErr != nil && len(old.FQDNLeaseDescriptors) > 0 && maintenanceLeaseFailureStage(leaseErr) == "maintenance_lease_http_409_conflict" {
 			stage = "maintenance_fqdn_expiry_material"
 			updated, updateErr := c.refreshFQDNExpiryMaterial(ctx, old)
 			if updateErr != nil {
@@ -422,7 +462,7 @@ func (c *RuntimeController) maintainIPsecRuntimeItems(ctx context.Context, count
 			return fail()
 		}
 		c.refreshMaintenanceRecovery(ctx)
-		if pulseErr := c.refreshMaintenanceActiveRecovery(ctx, pulseAllowed, publishRecovery); pulseErr != nil {
+		if pulseErr := collectionPulse(); pulseErr != nil {
 			return pulseFailure(pulseErr)
 		}
 		stage = "maintenance_lease_active"
@@ -444,7 +484,7 @@ func (c *RuntimeController) maintainIPsecRuntimeItems(ctx context.Context, count
 			continue
 		}
 		c.refreshMaintenanceRecovery(ctx)
-		if pulseErr := c.refreshMaintenanceActiveRecovery(ctx, pulseAllowed, publishRecovery); pulseErr != nil {
+		if pulseErr := collectionPulse(); pulseErr != nil {
 			return pulseFailure(pulseErr)
 		}
 		current, ok = c.active[id]
@@ -463,6 +503,7 @@ func (c *RuntimeController) maintainIPsecRuntimeItems(ctx context.Context, count
 		staged[id], candidates[id] = candidate, candidate
 		maintained = append(maintained, m.RuntimeDelivery)
 	}
+	deferral.finishCollection(staged)
 	if len(candidates) == 0 && !changed {
 		return nil, nil
 	}
@@ -477,7 +518,7 @@ func (c *RuntimeController) maintainIPsecRuntimeItems(ctx context.Context, count
 	haFreshnessFailed := false
 	stage, connection = "maintenance_combined_guard", uuid.Nil
 	if c.installActiveCandidates(ctx, entries, staged, candidates, c.active, func() bool {
-		if ctx.Err() != nil || !c.qualification.current() || !c.config.DaemonAlive() {
+		if ctx.Err() != nil || !c.qualification.current() || !c.config.DaemonAlive() || !deferral.reportsCurrent(c) {
 			return false
 		}
 		for _, a := range candidates {
@@ -576,7 +617,7 @@ func (c *RuntimeController) maintainIPsecRuntimeItems(ctx context.Context, count
 		connection, stage = m.Manifest.ConnectionID, "maintenance_final_binding"
 		candidate := candidates[m.Manifest.ConnectionID]
 		current, ok := c.active[m.Manifest.ConnectionID]
-		if !ok || current.Authority != candidate.Authority || !reflect.DeepEqual(current, candidate) || ctx.Err() != nil || !c.qualification.current() || !c.config.DaemonAlive() || (candidate.Entry.ContractVersion == 3 && (bgpCurrent == nil || !bgpCurrent())) {
+		if !ok || !deferral.reportsCurrent(c) || current.Authority != candidate.Authority || !reflect.DeepEqual(current, candidate) || ctx.Err() != nil || !c.qualification.current() || !c.config.DaemonAlive() || (candidate.Entry.ContractVersion == 3 && (bgpCurrent == nil || !bgpCurrent())) {
 			return fail()
 		}
 		c.refreshMaintenanceRecovery(ctx)
@@ -584,6 +625,11 @@ func (c *RuntimeController) maintainIPsecRuntimeItems(ctx context.Context, count
 		if _, err = candidate.Authority.RemainingForApply(candidate.Identity, time.Millisecond); err != nil {
 			return fail()
 		}
+	}
+	// The last inactive observation can consume report freshness too. No ACK
+	// escapes after that final blocking sample without the same actual clock proof.
+	if !deferral.reportsCurrent(c) {
+		return fail()
 	}
 	return result, nil
 }
