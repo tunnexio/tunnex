@@ -33,7 +33,7 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.useRealTimers(); Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" }); });
 
 describe("Tunnex Vault", () => {
-  it("opens only a masked password and Copy, then persists before releasing the value", async () => {
+  it("shows the generated password directly and persists before copying it", async () => {
     let finish!: (value: unknown) => void;
     mock.post.mockImplementation(() => new Promise(resolve => { finish = resolve; }));
     show(); await screen.findByRole("button", { name: personal.title });
@@ -44,7 +44,7 @@ describe("Tunnex Vault", () => {
     const password = dialog.getByLabelText("Generated password") as HTMLInputElement;
     const value = password.value;
     expect(value).toHaveLength(24);
-    expect(password.type).toBe("password");
+    expect(password.type).toBe("text");
     expect(password.readOnly).toBe(true);
     expect(element.querySelectorAll("input")).toHaveLength(1);
     expect(element.querySelectorAll("select")).toHaveLength(0);

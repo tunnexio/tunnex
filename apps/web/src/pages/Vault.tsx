@@ -176,8 +176,8 @@ function QuickPassword({ orgId, password, requestId, onDismiss, onPersisted, onC
       else setError("Could not save or copy this password. Try Copy again.");
     } finally { if (isCurrent()) { activeCopy.current = false; setBusy(false); } }
   }
-  return <Modal placement="right" title="Quick generate" size="wide" onDismiss={close} actions={<button type="button" className="beam-inline-link" onClick={close}>Close</button>}>
-    <div className="space-y-4"><Field label="Generated password"><Input type="password" readOnly autoFocus autoComplete="new-password" value={password} /></Field><button type="button" className="beam-inline-link disabled:opacity-50" disabled={busy} onClick={() => void copy()}>{busy ? "Saving and copying…" : "Copy"}</button><ErrorText>{error}</ErrorText></div>
+  return <Modal placement="right" title="Quick generate" onDismiss={close} actions={<><button type="button" className="beam-inline-link" onClick={close}>Close</button><button type="button" className="beam-inline-link disabled:opacity-50" disabled={busy} onClick={() => void copy()}>{busy ? "Saving and copying…" : "Copy"}</button></>}>
+    <div className="vault-quick-password"><Field label="Generated password"><Input type="text" readOnly autoFocus autoComplete="off" spellCheck={false} value={password} /></Field><ErrorText>{error}</ErrorText></div>
   </Modal>;
 }
 

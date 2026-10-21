@@ -33,4 +33,9 @@
 .vault-history-table time { white-space:nowrap; font-size:11px; }
 .vault-history-pagination { display:flex; align-items:center; flex-wrap:wrap; gap:8px; }
 .vault-history-pagination > span { margin-right:auto; color:var(--tnx-text-tertiary); font-size:11px; }
+.tnx-modal-overlay[data-placement="right"]:has(.vault-quick-password) { align-items:flex-start; }
+.tnx-modal-overlay[data-placement="right"] .tnx-modal-panel:has(.vault-quick-password) { width:min(100%,420px); max-width:420px; height:auto; max-height:100dvh; border-width:0 0 1px 1px; }
+.tnx-modal-overlay[data-placement="right"] .tnx-modal-panel:has(.vault-quick-password) .tnx-modal-body { flex:0 1 auto; }
+.tnx-modal-panel:has(.vault-quick-password) .tnx-modal-actions { margin-top:16px; padding-top:0; border-top:0; gap:20px; }
+.vault-quick-password { display:grid; gap:12px; }
 @media (max-width:700px) { .vault-credentials-table { min-width:850px; } .vault-form-grid,.vault-detail-facts { grid-template-columns:1fr; } .vault-history-table { min-width:450px; } }
