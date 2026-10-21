@@ -5,6 +5,7 @@ import (
 	"github.com/google/uuid"
 	"net/netip"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -215,7 +216,7 @@ func TestFQDNPolicyTransitionRejectsChangedOrdinaryOrTransport(t *testing.T) {
 
 func TestFQDNPolicyTransitionRejectsInvalidFreshAuthorization(t *testing.T) {
 	for _, priority := range []bool{false, true} {
-		for _, mode := range []string{"nonce", "hash", "delivery", "revision", "zero-ttl", "missing-fqdn-permit", "old-expires-during-lease", "new-policy-revoked", "valid-view-revoked-during-lease", "owner-changes"} {
+		for _, mode := range []string{"nonce", "hash", "delivery", "revision", "zero-ttl", "missing-fqdn-permit", "old-expires-during-lease", "new-policy-revoked", "owner-changes"} {
 			name := map[bool]string{false: "normal", true: "priority"}[priority] + "/" + mode
 			t.Run(name, func(t *testing.T) {
 				r, client := fqdnPolicyTransitionRig(t, true)
@@ -239,11 +240,6 @@ func TestFQDNPolicyTransitionRejectsInvalidFreshAuthorization(t *testing.T) {
 						*r.now = old.Authority.deadline
 					case "new-policy-revoked":
 						r.c.config.FQDNPolicy.CommittedPolicy(nil)
-					case "valid-view-revoked-during-lease":
-						p := r.c.config.FQDNPolicy.view.Load().policy
-						p.Mode = nodepolicy.ModeEnforcing
-						p.Allow, p.FQDNGenerations = nil, nil
-						r.c.config.FQDNPolicy.CommittedPolicy(&p)
 					case "owner-changes":
 						a := r.c.active[r.target]
 						a.Environment.Underlays[0].InterfaceIndex++
@@ -711,5 +707,683 @@ func TestFQDNPolicyTransitionDesktopPendingObservation(t *testing.T) {
 				t.Fatal("final failure was not reached after both pending tuples")
 			}
 		})
+	}
+}
+
+func TestFQDNPolicyTransitionPrecommitWithdrawalPreservesOrdinary(t *testing.T) {
+	for _, withdraw := range []bool{false, true} {
+		name := map[bool]string{false: "unchanged_control", true: "withdrawn_view_during_proof"}[withdraw]
+		t.Run(name, func(t *testing.T) {
+			r, client := fqdnExpiryTurnoverRig(t)
+			before := r.c.active[r.target]
+			deadline := before.Authority.deadline
+			process := r.c.bgpProcesses[before.Entry.DeliveryID]
+			injected := false
+			var diagnostics []RuntimeDiagnostic
+			r.c.config.Diagnostic = func(d RuntimeDiagnostic) {
+				if d.Refused {
+					diagnostics = append(diagnostics, d)
+					t.Logf("DIAGNOSTIC %s/%s at=%s", d.Operation, d.Stage, *r.now)
+				}
+			}
+			prove := r.c.prove
+			r.c.prove = func(ctx context.Context, e RuntimeJournalEntry, env RuntimeEnvironment) error {
+				err := prove(ctx, e, env)
+				if err == nil && !injected && e.Allocation.ConnectionID == r.target && pulseDeferralInCall("installActiveCandidatesFQDN") {
+					injected = true
+					if !r.c.qualification.current() || !process.Alive() {
+						t.Fatal("precondition lost physical qualification/process")
+					}
+					t.Logf("NATIVE_PROOF_OK original_remaining=%s old_fqdn_current=%t", deadline-*r.now, r.c.fqdnGrantsCurrent(before.Grants))
+					if withdraw {
+						p := r.c.config.FQDNPolicy.view.Load().policy
+						p.Mode = nodepolicy.ModeEnforcing
+						p.Allow = nil
+						p.FQDNGenerations = nil
+						// Exact conservative BeforePolicy publication while the serialized owner
+						// is busy in a valid native read; no nil/foreign policy or proof failure.
+						r.c.config.FQDNPolicy.view.Store(copyFQDNPolicy(&p))
+					}
+				}
+				return err
+			}
+			gap := false
+			replace := r.c.replace
+			r.c.replace = func(ctx context.Context, in GuardIntent) (GuardManifest, error) {
+				m, err := replace(ctx, in)
+				if err == nil {
+					for _, n := range []string{guardLeaseName(r.target), guardReplyLeaseName(r.target), guardSALeaseName(r.target)} {
+						if r.installed[n] <= *r.now {
+							gap = true
+						}
+					}
+				}
+				return m, err
+			}
+			result, err := r.c.maintainIPsecRuntime(context.Background(), []RuntimeMaterial{client.material}, maintenanceAuthority(r), func() bool { return true })
+			_, active := r.c.active[r.target]
+			t.Logf("RESULT injected=%t error=%v result=%d ordinary_gap=%t active=%t bgp_alive=%t qualified=%t original_remaining=%s original_deadline_unchanged=%t diagnostics=%v", injected, err, len(result), gap, active, process.Alive(), r.c.qualification.current(), deadline-*r.now, before.Authority.deadline == deadline, diagnostics)
+			if !injected {
+				t.Fatal("did not reach intended successful proof boundary")
+			}
+			if gap || !active || !process.Alive() {
+				t.Fatal("valid FQDN-only view retraction destroyed original finite ordinary authority")
+			}
+		})
+	}
+}
+
+func TestFQDNPolicyTransitionPrecommitWithdrawalBoundaries(t *testing.T) {
+	for _, path := range []string{"priority", "mixed", "retained-mixed", "final-desktop-proof", "after-replace", "stale-page-caller"} {
+		t.Run(path, func(t *testing.T) {
+			r, client := fqdnExpiryTurnoverRig(t)
+			originals := map[uuid.UUID]runtimeActive{}
+			deadlines := map[uuid.UUID]time.Duration{}
+			for id, a := range r.c.active {
+				originals[id] = cloneMaintenanceActive(a)
+				deadlines[id] = a.Authority.deadline
+			}
+			old := originals[r.target]
+			process := r.c.bgpProcesses[old.Entry.DeliveryID]
+			injected := false
+			desktopReads := 0
+			published := 0
+			gap := false
+			retract := func() {
+				p := r.c.config.FQDNPolicy.view.Load().policy
+				p.Mode = nodepolicy.ModeEnforcing
+				p.Allow = nil
+				p.FQDNGenerations = nil
+				r.c.config.FQDNPolicy.view.Store(copyFQDNPolicy(&p))
+				injected = true
+			}
+			prove := r.c.prove
+			r.c.prove = func(ctx context.Context, e RuntimeJournalEntry, env RuntimeEnvironment) error {
+				err := prove(ctx, e, env)
+				if err == nil && !injected && path != "final-desktop-proof" && path != "after-replace" && e.Allocation.ConnectionID == r.target && pulseDeferralInCall("installActiveCandidatesFQDN") {
+					retract()
+				}
+				return err
+			}
+			observe := r.c.desktopObserve
+			r.c.desktopObserve = func(ctx context.Context, gs []GuardGrant) ([]GuardGrant, error) {
+				out, err := observe(ctx, gs)
+				if err == nil && !injected && path == "final-desktop-proof" && pulseDeferralInCall("installActiveCandidatesFQDN") {
+					for _, g := range gs {
+						if g.FQDNManaged {
+							desktopReads++
+							if desktopReads == 2 {
+								retract()
+							}
+							break
+						}
+					}
+				}
+				return out, err
+			}
+			replace := r.c.replace
+			r.c.replace = func(ctx context.Context, in GuardIntent) (GuardManifest, error) {
+				out, err := replace(ctx, in)
+				if err == nil && path == "after-replace" && !injected && pulseDeferralInCall("installActiveCandidatesFQDN") {
+					retract()
+				}
+				if err == nil {
+					for id := range originals {
+						for _, n := range []string{guardLeaseName(id), guardReplyLeaseName(id), guardSALeaseName(id)} {
+							if r.installed[n] <= *r.now {
+								gap = true
+							}
+						}
+					}
+				}
+				return out, err
+			}
+			publish := func(context.Context, RuntimeDelivery, RuntimeStatusReport) error { published++; return nil }
+			page := []RuntimeMaterial{client.material}
+			if path == "mixed" || path == "retained-mixed" {
+				for _, m := range r.materials {
+					if m.Manifest.ConnectionID != r.target && r.c.active[m.Manifest.ConnectionID].Entry.ContractVersion == 2 {
+						page = append(page, m)
+						break
+					}
+				}
+				if len(page) != 2 {
+					t.Fatal("missing mixed candidate")
+				}
+				if path == "retained-mixed" {
+					page = page[1:]
+				}
+			}
+			var result []RuntimeMaintenanceResult
+			var err error
+			if path == "priority" {
+				err = r.c.renewActiveIPsecRuntimeObserved(context.Background(), maintenanceAuthority(r), func() bool { return true }, publish, nil)
+			} else {
+				result, err = r.c.maintainIPsecRuntimeObserved(context.Background(), page, maintenanceAuthority(r), func() bool { return true }, publish)
+			}
+			assertPreserved := func() {
+				t.Helper()
+				if gap || !process.Alive() || r.c.bgpProcesses[old.Entry.DeliveryID] != process || len(r.c.active) != len(originals) {
+					t.Fatal("ordinary owner/process lost")
+				}
+				for id, before := range originals {
+					after := r.c.active[id]
+					expected := cloneMaintenanceActive(before)
+					if id == r.target {
+						expected.Grants = make([]GuardGrant, 0, len(before.Grants))
+						for _, g := range before.Grants {
+							if !g.FQDNManaged {
+								expected.Grants = append(expected.Grants, g)
+							}
+						}
+					}
+					for _, n := range []string{guardLeaseName(id), guardReplyLeaseName(id), guardSALeaseName(id)} {
+						if r.installed[n] > deadlines[id] {
+							t.Fatal("corrected native timer exceeds original authority", id)
+						}
+					}
+					if !reflect.DeepEqual(after, expected) || before.Authority.deadline != deadlines[id] {
+						t.Fatal("original owner or deadline changed", id)
+					}
+				}
+				for name, end := range r.installed {
+					if strings.HasPrefix(name, "fqdn_") && end > *r.now {
+						t.Fatal("stale marked member survived")
+					}
+				}
+			}
+			if !injected || err != nil || len(result) != 0 || published != 0 {
+				t.Fatal("retraction not scoped/no-ACK", injected, err, len(result), published)
+			}
+			assertPreserved()
+			if path == "stale-page-caller" {
+				// The real normal caller observes status/recovery before falling back to
+				// Apply with the stale page. These calls must never restore old grants.
+				_, _ = r.c.ObserveIPsecStatus(context.Background(), client.material.RuntimeDelivery)
+				_ = r.c.RefreshIPsecRecovery(context.Background())
+				stage := ""
+				r.c.config.Diagnostic = func(d RuntimeDiagnostic) {
+					if d.Operation == "apply" && d.Refused {
+						stage = d.Stage
+					}
+				}
+				ack, e := r.c.Apply(context.Background(), client.material)
+				if e == nil || ack.Result != "" {
+					t.Fatal("stale page acknowledged")
+				}
+				if runtime.GOOS == "linux" && stage != "material_fqdn_current" {
+					t.Fatal("Linux stale Apply did not reach current-policy fence", stage)
+				}
+				// Validate's already-qualified core uses these same two canonical steps.
+				// The model cannot fabricate a native BGP preflight receipt for its public
+				// wrapper; actual qualification remains an independent Linux/native gate.
+				entries, e := r.c.journal.Entries()
+				if e != nil {
+					t.Fatal(e)
+				}
+				if e = r.c.reconcileActiveBGP(context.Background(), entries); e != nil {
+					t.Fatal("Validate route reconciliation", e)
+				}
+				if e = r.c.installActive(context.Background(), entries); e != nil {
+					t.Fatal("Validate canonical native assembly", e)
+				}
+				assertPreserved()
+			}
+		})
+	}
+}
+
+func TestFQDNPolicyTransitionPrecommitWithdrawalRejectsUnsafe(t *testing.T) {
+	for _, mode := range []string{"native-proof", "desktop-proof", "owner-change", "other-owner-change", "ordinary-expired", "nil-view", "foreign-view", "legacy-view", "qualification-lost", "bgp-lost", "rebuild-view-change", "postcommit-view-and-expiry"} {
+		t.Run(mode, func(t *testing.T) {
+			r, client := fqdnExpiryTurnoverRig(t)
+			old := r.c.active[r.target]
+			deadline := old.Authority.deadline
+			injected := false
+			rebuildChanged := false
+			published := 0
+			retract := func() {
+				p := r.c.config.FQDNPolicy.view.Load().policy
+				p.Mode = nodepolicy.ModeEnforcing
+				p.Allow = nil
+				p.FQDNGenerations = nil
+				r.c.config.FQDNPolicy.view.Store(copyFQDNPolicy(&p))
+				injected = true
+			}
+			prove := r.c.prove
+			r.c.prove = func(ctx context.Context, e RuntimeJournalEntry, env RuntimeEnvironment) error {
+				err := prove(ctx, e, env)
+				if err == nil && mode == "rebuild-view-change" && injected && !rebuildChanged && pulseDeferralInCall("retractFQDNOnly") {
+					rebuildChanged = true
+					r.c.config.FQDNPolicy.view.Store(nil)
+				}
+				if err == nil && !injected && mode != "postcommit-view-and-expiry" && e.Allocation.ConnectionID == r.target && pulseDeferralInCall("installActiveCandidatesFQDN") {
+					retract()
+					switch mode {
+					case "native-proof":
+						return ErrRuntimeController
+					case "owner-change":
+						a := r.c.active[r.target]
+						a.Environment.Underlays[0].InterfaceIndex++
+						r.c.active[r.target] = a
+					case "other-owner-change":
+						for id, a := range r.c.active {
+							if id != r.target {
+								a.Environment.Underlays[0].InterfaceIndex++
+								r.c.active[id] = a
+								break
+							}
+						}
+					case "ordinary-expired":
+						*r.now = deadline
+					case "nil-view":
+						r.c.config.FQDNPolicy.view.Store(nil)
+					case "foreign-view":
+						v := r.c.config.FQDNPolicy.view.Load()
+						p := v.policy
+						p.NodeID = uuid.NewString()
+						r.c.config.FQDNPolicy.view.Store(&runtimeFQDNPolicyView{policy: p})
+					case "legacy-view":
+						v := r.c.config.FQDNPolicy.view.Load()
+						p := v.policy
+						p.Version = 8
+						r.c.config.FQDNPolicy.view.Store(&runtimeFQDNPolicyView{policy: p})
+					case "qualification-lost":
+						r.c.qualification.invalid = true
+					case "bgp-lost":
+						r.c.bgpProcesses[old.Entry.DeliveryID].(*bgpSessionFixture).closed = true
+					}
+				}
+				return err
+			}
+			observe := r.c.desktopObserve
+			r.c.desktopObserve = func(ctx context.Context, gs []GuardGrant) ([]GuardGrant, error) {
+				if injected && mode == "desktop-proof" {
+					return nil, ErrRuntimeController
+				}
+				return observe(ctx, gs)
+			}
+			replace := r.c.replace
+			r.c.replace = func(ctx context.Context, in GuardIntent) (GuardManifest, error) {
+				out, err := replace(ctx, in)
+				if err == nil && !injected && mode == "postcommit-view-and-expiry" && pulseDeferralInCall("installActiveCandidatesFQDN") {
+					retract()
+					*r.now = deadline
+				}
+				return out, err
+			}
+			result, err := r.c.maintainIPsecRuntimeObserved(context.Background(), []RuntimeMaterial{client.material}, maintenanceAuthority(r), func() bool { return true }, func(context.Context, RuntimeDelivery, RuntimeStatusReport) error { published++; return nil })
+			if !injected || err == nil || len(result) != 0 || published != 0 {
+				t.Fatal("unsafe retraction accepted or injection missed", injected, err, len(result), published)
+			}
+			if mode == "rebuild-view-change" && !rebuildChanged {
+				t.Fatal("withdrawal rebuild boundary missed")
+			}
+			assertFQDNTransitionDenied(t, r, result)
+			if old.Authority.deadline != deadline {
+				t.Fatal("original authority extended")
+			}
+		})
+	}
+}
+
+func TestFQDNPolicyTransitionFollowupWithdrawalBoundaries(t *testing.T) {
+	for _, phase := range []string{"prepared", "lease-return", "native-proof", "after-replace", "after-status", "after-publication"} {
+		t.Run(phase, func(t *testing.T) {
+			r, client, _ := fqdnFollowupFixture(t)
+			client.publishAt = *r.now - time.Millisecond
+			before := cloneMaintenanceActive(r.c.active[r.target])
+			deadline := before.Authority.deadline
+			process := r.c.bgpProcesses[before.Entry.DeliveryID]
+			fresh, err := r.c.prepareFQDNExpiryMaterial(context.Background(), before, client.base.material)
+			if err != nil {
+				t.Fatal("prepare exact expiry", err)
+			}
+			injected := false
+			gap := false
+			published := 0
+			var committed runtimeActive
+			retract := func() {
+				p := r.c.config.FQDNPolicy.view.Load().policy
+				p.Mode = nodepolicy.ModeEnforcing
+				p.Allow = nil
+				p.FQDNGenerations = nil
+				r.c.config.FQDNPolicy.view.Store(copyFQDNPolicy(&p))
+				injected = true
+			}
+			if phase == "prepared" {
+				retract()
+			}
+			if phase == "lease-return" {
+				client.base.mutate = func(*RuntimeLease) { retract() }
+			}
+			prove := r.c.prove
+			r.c.prove = func(ctx context.Context, e RuntimeJournalEntry, env RuntimeEnvironment) error {
+				err := prove(ctx, e, env)
+				if err == nil && phase == "native-proof" && !injected && e.Allocation.ConnectionID == r.target && pulseDeferralInCall("installActiveCandidatesFQDN") {
+					retract()
+				}
+				return err
+			}
+			replace := r.c.replace
+			r.c.replace = func(ctx context.Context, in GuardIntent) (GuardManifest, error) {
+				out, err := replace(ctx, in)
+				if err == nil {
+					if phase == "after-replace" && !injected {
+						retract()
+					}
+					for _, n := range []string{guardLeaseName(r.target), guardReplyLeaseName(r.target), guardSALeaseName(r.target)} {
+						if r.installed[n] <= *r.now {
+							gap = true
+						}
+					}
+				}
+				return out, err
+			}
+			if phase == "after-status" {
+				r.c.config.IPPath = "/usr/bin/true"
+				r.c.config.Daemon = &DaemonClient{request: func(context.Context, string, string, viciMessage) (viciMessage, []viciMessage, error) {
+					if !injected {
+						committed = cloneMaintenanceActive(r.c.active[r.target])
+						retract()
+					}
+					// Advisory native telemetry is honestly unknown; it is not
+					// the independent current-proof fixture used by guard assembly.
+					return viciMessage{}, nil, ErrRuntimeController
+				}}
+			}
+			publish := func(context.Context, RuntimeDelivery, RuntimeStatusReport) error {
+				published++
+				if phase == "after-publication" && !injected {
+					committed = cloneMaintenanceActive(r.c.active[r.target])
+					retract()
+				}
+				return nil
+			}
+			err = r.c.commitFQDNFollowup(context.Background(), maintenanceAuthority(r), func() bool { return true }, map[uuid.UUID]maintenanceItem{r.target: fresh}, publish)
+			after, exists := r.c.active[r.target]
+			if !injected || err != nil || !exists || gap || !process.Alive() || r.c.bgpProcesses[before.Entry.DeliveryID] != process {
+				t.Fatal("followup policy-only withdrawal lost ordinary authority", injected, err, exists, gap, published)
+			}
+			expected := before
+			if phase == "after-status" || phase == "after-publication" {
+				expected = committed
+				if expected.Authority == nil || expected.Authority == before.Authority {
+					t.Fatal("late fixture missed candidate adoption")
+				}
+			}
+			priorGrants := expected.Grants
+			expected.Grants = make([]GuardGrant, 0, len(priorGrants))
+			for _, g := range priorGrants {
+				if !g.FQDNManaged {
+					expected.Grants = append(expected.Grants, g)
+				}
+			}
+			for _, g := range after.Grants {
+				if g.FQDNManaged {
+					t.Fatal("marked permission survived")
+				}
+			}
+			if !reflect.DeepEqual(after, expected) || before.Authority.deadline != deadline {
+				t.Fatal("ordinary committed/original identity changed")
+			}
+			if (phase == "after-publication" && published != 1) || (phase != "after-publication" && published != 0) {
+				t.Fatal("unexpected transport publication", phase, published)
+			}
+			for name, end := range r.installed {
+				if strings.HasPrefix(name, "fqdn_") && end > *r.now {
+					t.Fatal("stale native marked authority")
+				}
+			}
+			for _, n := range []string{guardLeaseName(r.target), guardReplyLeaseName(r.target), guardSALeaseName(r.target)} {
+				if r.installed[n] <= *r.now || r.installed[n] > after.Authority.deadline {
+					t.Fatal("ordinary native deadline invalid", n)
+				}
+			}
+		})
+	}
+}
+
+func TestFQDNPolicyTransitionValidationWithdrawal(t *testing.T) {
+	for _, withdraw := range []bool{false, true} {
+		t.Run(map[bool]string{false: "unchanged_control", true: "withdraw_during_native_proof"}[withdraw], func(t *testing.T) {
+			r, _ := fqdnExpiryTurnoverRig(t)
+			old := r.c.active[r.target]
+			deadline := old.Authority.deadline
+			process := r.c.bgpProcesses[old.Entry.DeliveryID]
+			injected, gap := false, false
+			r.c.config.Diagnostic = func(d RuntimeDiagnostic) {
+				if d.Refused {
+					t.Logf("DIAGNOSTIC %s/%s", d.Operation, d.Stage)
+				}
+			}
+			prove := r.c.prove
+			r.c.prove = func(ctx context.Context, e RuntimeJournalEntry, env RuntimeEnvironment) error {
+				err := prove(ctx, e, env)
+				if err == nil && !injected && e.Allocation.ConnectionID == r.target && pulseDeferralInCall("installActiveCandidatesFQDN") {
+					injected = true
+					if !r.c.qualification.current() || !process.Alive() {
+						t.Fatal("lost valid original proof")
+					}
+					t.Logf("VALID_PROOF old_remaining=%v policy_current=%v", deadline-*r.now, r.c.fqdnGrantsCurrent(old.Grants))
+					if withdraw {
+						p := r.c.config.FQDNPolicy.view.Load().policy
+						p.Mode = nodepolicy.ModeEnforcing
+						p.Allow = nil
+						p.FQDNGenerations = nil
+						r.c.config.FQDNPolicy.view.Store(copyFQDNPolicy(&p))
+					}
+				}
+				return err
+			}
+			replace := r.c.replace
+			r.c.replace = func(ctx context.Context, in GuardIntent) (GuardManifest, error) {
+				m, err := replace(ctx, in)
+				if err == nil {
+					for _, n := range []string{guardLeaseName(r.target), guardReplyLeaseName(r.target), guardSALeaseName(r.target)} {
+						if r.installed[n] <= *r.now {
+							gap = true
+						}
+					}
+				}
+				return m, err
+			}
+			entries, err := r.c.journal.Entries()
+			if err != nil {
+				t.Fatal(err)
+			}
+			err = r.c.installActive(context.Background(), entries)
+			_, active := r.c.active[r.target]
+			t.Logf("RESULT injected=%v error=%v ordinary_gap=%v active=%v bgp_alive=%v qualification=%v old_remaining=%v old_deadline_unchanged=%v", injected, err, gap, active, process.Alive(), r.c.qualification.current(), deadline-*r.now, old.Authority.deadline == deadline)
+			if withdraw {
+				current := r.c.active[r.target]
+				expected := cloneMaintenanceActive(old)
+				expected.Grants = make([]GuardGrant, 0, len(old.Grants))
+				for _, g := range old.Grants {
+					if !g.FQDNManaged {
+						expected.Grants = append(expected.Grants, g)
+					}
+				}
+				if err != nil || !reflect.DeepEqual(current, expected) || old.Authority.deadline != deadline {
+					t.Fatal("scoped withdrawal changed original owner")
+				}
+				for name, end := range r.installed {
+					if strings.HasPrefix(name, "fqdn_") && end > *r.now {
+						t.Fatal("marked grant survived")
+					}
+				}
+				for _, n := range []string{guardLeaseName(r.target), guardReplyLeaseName(r.target), guardSALeaseName(r.target)} {
+					if r.installed[n] <= *r.now || r.installed[n] > deadline {
+						t.Fatal("ordinary native authority invalid")
+					}
+				}
+			}
+			if !injected {
+				t.Fatal("native proof not reached")
+			}
+			if gap || !active || !process.Alive() {
+				t.Fatal("plain install policy retraction destroyed original finite ordinary authority")
+			}
+		})
+	}
+}
+
+func TestFQDNPolicyTransitionPreparationWithdrawal(t *testing.T) {
+	for _, withdraw := range []bool{false, true} {
+		t.Run(map[bool]string{false: "unchanged_control", true: "withdraw_after_desktop_observation"}[withdraw], func(t *testing.T) {
+			r, client := fqdnExpiryTurnoverRig(t)
+			old := r.c.active[r.target]
+			deadline := old.Authority.deadline
+			process := r.c.bgpProcesses[old.Entry.DeliveryID]
+			injected, gap := false, false
+			r.c.config.Diagnostic = func(d RuntimeDiagnostic) {
+				if d.Refused {
+					t.Logf("DIAGNOSTIC %s/%s", d.Operation, d.Stage)
+				}
+			}
+			observe := r.c.desktopObserve
+			r.c.desktopObserve = func(ctx context.Context, gs []GuardGrant) ([]GuardGrant, error) {
+				out, err := observe(ctx, gs)
+				if err == nil && !injected && !pulseDeferralInCall("installActiveCandidatesFQDN") {
+					marked := false
+					for _, g := range gs {
+						marked = marked || g.FQDNManaged
+					}
+					if marked {
+						injected = true
+						t.Logf("DESKTOP_PROOF_OK old_remaining=%v", deadline-*r.now)
+						if withdraw {
+							p := r.c.config.FQDNPolicy.view.Load().policy
+							p.Mode = nodepolicy.ModeEnforcing
+							p.Allow = nil
+							p.FQDNGenerations = nil
+							r.c.config.FQDNPolicy.view.Store(copyFQDNPolicy(&p))
+						}
+					}
+				}
+				return out, err
+			}
+			replace := r.c.replace
+			r.c.replace = func(ctx context.Context, in GuardIntent) (GuardManifest, error) {
+				m, err := replace(ctx, in)
+				if err == nil {
+					for _, n := range []string{guardLeaseName(r.target), guardReplyLeaseName(r.target), guardSALeaseName(r.target)} {
+						if r.installed[n] <= *r.now {
+							gap = true
+						}
+					}
+				}
+				return m, err
+			}
+			result, err := r.c.maintainIPsecRuntime(context.Background(), []RuntimeMaterial{client.material}, maintenanceAuthority(r), func() bool { return true })
+			_, active := r.c.active[r.target]
+			t.Logf("RESULT injected=%v error=%v results=%d ordinary_gap=%v active=%v bgp_alive=%v qualification=%v old_remaining=%v old_deadline_unchanged=%v", injected, err, len(result), gap, active, process.Alive(), r.c.qualification.current(), deadline-*r.now, old.Authority.deadline == deadline)
+			if withdraw {
+				if len(result) != 0 {
+					t.Fatal("withdrawn page acknowledged")
+				}
+				current := r.c.active[r.target]
+				expected := cloneMaintenanceActive(old)
+				expected.Grants = make([]GuardGrant, 0, len(old.Grants))
+				for _, g := range old.Grants {
+					if !g.FQDNManaged {
+						expected.Grants = append(expected.Grants, g)
+					}
+				}
+				if err != nil || !reflect.DeepEqual(current, expected) || old.Authority.deadline != deadline {
+					t.Fatal("scoped withdrawal changed original owner")
+				}
+				for name, end := range r.installed {
+					if strings.HasPrefix(name, "fqdn_") && end > *r.now {
+						t.Fatal("marked grant survived")
+					}
+				}
+				for _, n := range []string{guardLeaseName(r.target), guardReplyLeaseName(r.target), guardSALeaseName(r.target)} {
+					if r.installed[n] <= *r.now || r.installed[n] > deadline {
+						t.Fatal("ordinary native authority invalid")
+					}
+				}
+			}
+			if !injected {
+				t.Fatal("desktop preparation proof not reached")
+			}
+			if gap || !active || !process.Alive() {
+				t.Fatal("valid preparation view withdrawal destroyed original finite ordinary authority")
+			}
+		})
+	}
+}
+
+func TestFQDNPolicyTransitionRestorationRevokedDuringLease(t *testing.T) {
+	for _, priority := range []bool{false, true} {
+		t.Run(map[bool]string{false: "normal", true: "priority"}[priority], func(t *testing.T) {
+			r, client := fqdnPolicyTransitionRig(t, true)
+			old := cloneMaintenanceActive(r.c.active[r.target])
+			deadline := old.Authority.deadline
+			process := r.c.bgpProcesses[old.Entry.DeliveryID]
+			injected, gap := false, false
+			client.mutate = func(*RuntimeLease) {
+				p := r.c.config.FQDNPolicy.view.Load().policy
+				p.Mode = nodepolicy.ModeEnforcing
+				p.Allow = nil
+				p.FQDNGenerations = nil
+				r.c.config.FQDNPolicy.view.Store(copyFQDNPolicy(&p))
+				injected = true
+			}
+			replace := r.c.replace
+			r.c.replace = func(ctx context.Context, in GuardIntent) (GuardManifest, error) {
+				m, e := replace(ctx, in)
+				if e == nil {
+					for _, n := range []string{guardLeaseName(r.target), guardReplyLeaseName(r.target), guardSALeaseName(r.target)} {
+						if r.installed[n] <= *r.now {
+							gap = true
+						}
+					}
+				}
+				return m, e
+			}
+			var result []RuntimeMaintenanceResult
+			var err error
+			if priority {
+				err = r.c.renewActiveIPsecRuntimeObserved(context.Background(), maintenanceAuthority(r), func() bool { return true }, nil, nil)
+			} else {
+				result, err = r.c.maintainIPsecRuntime(context.Background(), []RuntimeMaterial{client.material}, maintenanceAuthority(r), func() bool { return true })
+			}
+			if !injected || err != nil || len(result) != 0 || gap || !reflect.DeepEqual(r.c.active[r.target], old) || old.Authority.deadline != deadline || !process.Alive() {
+				t.Fatal("revoked restoration affected ordinary authorization", injected, err, len(result), gap)
+			}
+			for name, end := range r.installed {
+				if strings.HasPrefix(name, "fqdn_") && end > *r.now {
+					t.Fatal("revoked restoration exposed marked authority")
+				}
+			}
+		})
+	}
+}
+
+func TestFQDNPolicyTransitionPlainInstallRetainsGenericInvalidation(t *testing.T) {
+	r, _ := fqdnExpiryTurnoverRig(t)
+	target := r.target
+	proofFailed, replacementFailed := false, false
+	prove := r.c.prove
+	r.c.prove = func(ctx context.Context, e RuntimeJournalEntry, env RuntimeEnvironment) error {
+		if e.Allocation.ConnectionID == target {
+			proofFailed = true
+			return ErrRuntimeController
+		}
+		return prove(ctx, e, env)
+	}
+	r.c.replace = func(context.Context, GuardIntent) (GuardManifest, error) {
+		replacementFailed = true
+		return GuardManifest{}, ErrRuntimeController
+	}
+	entries, err := r.c.journal.Entries()
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = r.c.installActive(context.Background(), entries)
+	_, exists := r.c.active[target]
+	if err == nil || !proofFailed || !replacementFailed || exists {
+		t.Fatal("generic proof invalidation was undone by later error", err, proofFailed, replacementFailed, exists)
 	}
 }

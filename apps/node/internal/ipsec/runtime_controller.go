@@ -827,7 +827,26 @@ func (c *RuntimeController) Cleanup(ctx context.Context, cleanup RuntimeCleanup)
 // Other connections keep only their original remaining deadlines; neither a
 // journal template nor this replacement renews their authority.
 func (c *RuntimeController) installActive(ctx context.Context, entries []RuntimeJournalEntry) error {
-	return c.installActiveCandidates(ctx, entries, c.active, nil, nil, nil)
+	original := map[uuid.UUID]runtimeActive{}
+	for id, a := range c.active {
+		original[id] = cloneMaintenanceActive(a)
+	}
+	// Preserve ordinary invalidation semantics: non-policy proof failures
+	// delete the live owner even if a later assembly step also fails.
+	staged := c.active
+	err := c.installActiveCandidates(ctx, entries, staged, nil, original, nil)
+	var retraction *runtimeFQDNPolicyRetraction
+	if errors.As(err, &retraction) {
+		current := func() bool {
+			return ctx.Err() == nil && c.qualification.current() && c.config.DaemonAlive != nil && c.config.DaemonAlive()
+		}
+		if c.retractFQDNOnly(ctx, retraction, original, staged, current) == nil {
+			return nil
+		}
+		c.active = nil
+		_, _ = c.refuse(ctx, entries)
+	}
+	return err
 }
 
 // installActiveCandidates uses the original collection and atomic commit. A
@@ -865,6 +884,10 @@ func (c *RuntimeController) installActiveCandidatesFQDN(ctx context.Context, ent
 		}
 		c.emitRuntimeDiagnostic(proofCtx, "install_active", stage, id, proofStarted, a.Entry.Allocation.Namespace != ns || proofErr != nil)
 		proofCancel()
+		if a.Entry.Allocation.Namespace == ns && proofErr == nil && !c.fqdnGrantsCurrent(a.Grants) && prior != nil && a.Authority != nil {
+			stage = "combined_guard_fqdn_retraction"
+			return &runtimeFQDNPolicyRetraction{connection: id}
+		}
 		if a.Entry.Allocation.Namespace != ns || proofErr != nil || !c.fqdnGrantsCurrent(a.Grants) {
 			c.withdrawDNSOwnerView(id)
 			delete(active, id)
@@ -1015,6 +1038,10 @@ func (c *RuntimeController) installActiveCandidatesFQDN(ctx context.Context, ent
 			return ErrRuntimeController
 		}
 		if !c.fqdnGrantsCurrent(a.Grants) {
+			if prior != nil && a.Authority != nil {
+				stage = "combined_guard_fqdn_retraction"
+				return &runtimeFQDNPolicyRetraction{connection: g.ID}
+			}
 			c.withdrawDNSOwnerView(g.ID)
 			delete(active, g.ID)
 			_, _ = c.refuse(ctx, entries)
@@ -1098,6 +1125,14 @@ func (c *RuntimeController) installActiveCandidatesFQDN(ctx context.Context, ent
 	if candidateQualification != nil && !candidateQualification() {
 		return ErrRuntimeController
 	}
+	// Recheck after the final native reads, while no positive replacement has
+	// happened. Postreplace policy retraction has a separate qualified signal.
+	for id, candidate := range active {
+		if prior != nil && !c.fqdnGrantsCurrent(candidate.Grants) {
+			stage, connection = "combined_guard_fqdn_retraction", id
+			return &runtimeFQDNPolicyRetraction{connection: id}
+		}
+	}
 	limited := limitFQDNGuardIntent(intent, time.Now(), 5*time.Second, func(id uuid.UUID, g GuardGrant, budget time.Duration) (time.Duration, error) {
 		a, ok := active[id]
 		if !ok || a.Authority == nil {
@@ -1141,6 +1176,7 @@ func (c *RuntimeController) installActiveCandidatesFQDN(ctx context.Context, ent
 		_, _ = c.refuse(ctx, entries)
 		return ErrRuntimeController
 	}
+	var policyRetraction *runtimeFQDNPolicyRetraction
 	for id, a := range active {
 		connection = id
 		stage = "combined_guard_final_lease"
@@ -1158,8 +1194,12 @@ func (c *RuntimeController) installActiveCandidatesFQDN(ctx context.Context, ent
 			}
 		}
 		if !c.fqdnGrantsCurrent(a.Grants) {
-			_, _ = c.refuse(ctx, entries)
-			return ErrRuntimeController
+			if prior != nil && a.Authority != nil {
+				policyRetraction = &runtimeFQDNPolicyRetraction{connection: id, nativeReplaced: true}
+			} else {
+				_, _ = c.refuse(ctx, entries)
+				return ErrRuntimeController
+			}
 		}
 		if _, e = a.Authority.RemainingForApply(a.Identity, time.Millisecond); e != nil {
 			_, _ = c.refuse(ctx, entries)
@@ -1168,7 +1208,7 @@ func (c *RuntimeController) installActiveCandidatesFQDN(ctx context.Context, ent
 	}
 	for id, candidate := range required {
 		connection = id
-		stage = "combined_guard_required_binding"
+		stage = "combined_guard_final_required_binding"
 		current, ok := active[id]
 		if !ok || current.Authority != candidate.Authority || !reflect.DeepEqual(current, candidate) {
 			return ErrRuntimeController
@@ -1186,6 +1226,18 @@ func (c *RuntimeController) installActiveCandidatesFQDN(ctx context.Context, ent
 	stage = "combined_guard_candidate_qualification"
 	if candidateQualification != nil && !candidateQualification() {
 		return ErrRuntimeController
+	}
+	// All native replacement, fresh permit, required/prior, and qualification
+	// checks succeeded. Only policy retraction may request scoped correction;
+	// no candidate has been adopted or acknowledged yet.
+	for id, candidate := range active {
+		if prior != nil && !c.fqdnGrantsCurrent(candidate.Grants) {
+			policyRetraction = &runtimeFQDNPolicyRetraction{connection: id, nativeReplaced: true}
+		}
+	}
+	if policyRetraction != nil {
+		stage, connection = "combined_guard_fqdn_retraction_after_replace", policyRetraction.connection
+		return policyRetraction
 	}
 	if err := c.stopUnleasedDesktopExports(entries, active); err != nil {
 		return err

@@ -45,7 +45,7 @@ func (c *RuntimeController) renewActiveIPsecRuntimeObserved(ctx context.Context,
 		for _, id := range ids {
 			a := c.active[id]
 			d, e := a.Delivery, a.Entry
-			if !runtimeDeliveryValid(d, c.config.OrgID, c.config.GatewayID, "apply") || d.CoversDeliveryRevision != 0 || d.Manifest.ConnectionID != id || d.ID != e.DeliveryID || d.OwnershipDigest != e.OwnershipDigest || d.DesiredRevision != e.Engines[0].Binding.DesiredRevision || e.Allocation.ConnectionID != id || e.Allocation.Namespace != ns || e.Phase != RuntimeApplied || (e.ContractVersion != 2 && e.ContractVersion != 3 && !(e.ContractVersion == 4 && e.Allocation.ProfileID == GCPClassicStaticProfile && validClassicJournal(e))) || a.Authority == nil || !validDigest(a.Identity.PolicyHash) || a.Identity != (PermitLeaseIdentity{DeliveryID: d.ID, Binding: e.Engines[0].Binding, PolicyHash: a.Identity.PolicyHash}) || !reflect.DeepEqual(a.Environment.Namespace, ns) || deliveries[d.ID] || !c.fqdnGrantsCurrent(a.Grants) {
+			if !runtimeDeliveryValid(d, c.config.OrgID, c.config.GatewayID, "apply") || d.CoversDeliveryRevision != 0 || d.Manifest.ConnectionID != id || d.ID != e.DeliveryID || d.OwnershipDigest != e.OwnershipDigest || d.DesiredRevision != e.Engines[0].Binding.DesiredRevision || e.Allocation.ConnectionID != id || e.Allocation.Namespace != ns || e.Phase != RuntimeApplied || (e.ContractVersion != 2 && e.ContractVersion != 3 && !(e.ContractVersion == 4 && e.Allocation.ProfileID == GCPClassicStaticProfile && validClassicJournal(e))) || a.Authority == nil || !validDigest(a.Identity.PolicyHash) || a.Identity != (PermitLeaseIdentity{DeliveryID: d.ID, Binding: e.Engines[0].Binding, PolicyHash: a.Identity.PolicyHash}) || !reflect.DeepEqual(a.Environment.Namespace, ns) || deliveries[d.ID] {
 				return nil, ErrRuntimeController
 			}
 			// A process-local record is not sufficient by itself: require its
@@ -61,6 +61,9 @@ func (c *RuntimeController) renewActiveIPsecRuntimeObserved(ctx context.Context,
 			}
 			if matches != 1 {
 				return nil, ErrRuntimeController
+			}
+			if !c.fqdnGrantsCurrent(a.Grants) {
+				return nil, &runtimeFQDNPolicyRetraction{connection: id}
 			}
 			deliveries[d.ID] = true
 			items = append(items, maintenanceItem{RuntimeDelivery: d, Entry: e, Grants: a.Grants, FQDNLeaseDescriptors: append([]RuntimeFQDNGrant(nil), a.FQDNLeaseDescriptors...), PolicyHash: a.Identity.PolicyHash})

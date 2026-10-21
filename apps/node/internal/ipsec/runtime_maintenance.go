@@ -116,7 +116,7 @@ func (c *RuntimeController) maintainIPsecRuntimeRecoveryObserved(ctx context.Con
 			}
 			*stage = "maintenance_material_current"
 			if !c.fqdnGrantsCurrent(grants[i]) {
-				return nil, ErrRuntimeController
+				return nil, &runtimeFQDNPolicyRetraction{connection: m.Manifest.ConnectionID}
 			}
 		}
 		items := make([]maintenanceItem, len(materials))
@@ -193,8 +193,21 @@ func (c *RuntimeController) maintainIPsecRuntimeItemsAttempt(ctx context.Context
 	if err := c.withdrawPendingFQDNPolicyLocked(ctx); err != nil {
 		return fail()
 	}
+	preparedOwners := map[uuid.UUID]runtimeActive{}
+	for id, a := range c.active {
+		preparedOwners[id] = cloneMaintenanceActive(a)
+	}
 	materials, prepareErr := prepare(ns, entries, &stage, &connection)
 	if prepareErr != nil || len(materials) != count {
+		var retraction *runtimeFQDNPolicyRetraction
+		if errors.As(prepareErr, &retraction) {
+			current := func() bool {
+				return ctx.Err() == nil && c.qualification.current() && c.config.DaemonAlive() && bgpCurrent != nil && bgpCurrent()
+			}
+			if c.retractFQDNPreparation(ctx, retraction, preparedOwners, current) == nil {
+				return nil, nil
+			}
+		}
 		return fail()
 	}
 	if len(materials) == 0 {
@@ -611,6 +624,10 @@ func (c *RuntimeController) maintainIPsecRuntimeItemsAttempt(ctx context.Context
 	}
 	haFreshnessFailed := false
 	stage, connection = "maintenance_combined_guard", uuid.Nil
+	originalOwners := make(map[uuid.UUID]runtimeActive, len(c.active))
+	for id, a := range c.active {
+		originalOwners[id] = cloneMaintenanceActive(a)
+	}
 	var assemblyPulseErr error
 	installErr := c.installActiveCandidatesFQDN(ctx, entries, staged, required, c.active, func() bool {
 		if ctx.Err() != nil || !c.qualification.current() || !c.config.DaemonAlive() || !deferral.reportsCurrent(c) || !pendingCurrent() {
@@ -633,6 +650,22 @@ func (c *RuntimeController) maintainIPsecRuntimeItemsAttempt(ctx context.Context
 	if installErr != nil {
 		if assemblyPulseErr != nil {
 			return pulseFailure(assemblyPulseErr)
+		}
+		var retraction *runtimeFQDNPolicyRetraction
+		if !changed && !nativeCommitted && errors.As(installErr, &retraction) {
+			stage = "maintenance_fqdn_retraction"
+			if retraction.nativeReplaced {
+				stage = "maintenance_fqdn_retraction_after_replace"
+			}
+			current := func() bool {
+				return ctx.Err() == nil && c.qualification.current() && c.config.DaemonAlive() && deferral.reportsCurrent(c) && pendingCurrent() && bgpCurrent != nil && bgpCurrent()
+			}
+			if c.retractFQDNOnly(ctx, retraction, originalOwners, staged, current) == nil {
+				// All fresh candidates are discarded. The ordinary caller may
+				// retry its page, but receives no positive acknowledgement here.
+				return nil, nil
+			}
+			return fail()
 		}
 		var cutoff *runtimeFQDNPrecommitCutoff
 		if allowFQDNCutoffRefresh && errors.As(installErr, &cutoff) {

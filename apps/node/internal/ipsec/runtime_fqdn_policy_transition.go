@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"reflect"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -183,4 +184,142 @@ func (c *RuntimeController) withdrawPendingFQDNPolicyLocked(ctx context.Context)
 // missing exact exemption. Retain no old marked tuple and adopt no new source.
 func (c *RuntimeController) fqdnRestorationPendingEligible(old runtimeActive, m maintenanceItem) bool {
 	return m.FQDNRestorePending && len(old.FQDNLeaseDescriptors) == 0 && len(m.FQDNLeaseDescriptors) > 0 && c.fqdnPolicyTransitionEligible(old, m)
+}
+
+// Only the canonical installer emits this at an explicitly qualified policy
+// boundary, before adopting candidates. nativeReplaced records native phase.
+// It is not a generic required-binding or native-proof error.
+type runtimeFQDNPolicyRetraction struct {
+	connection     uuid.UUID
+	nativeReplaced bool
+}
+
+func (*runtimeFQDNPolicyRetraction) Error() string {
+	return "FQDN policy retracted before maintenance commit"
+}
+
+func (c *RuntimeController) retractFQDNOnly(ctx context.Context, signal *runtimeFQDNPolicyRetraction, original, staged map[uuid.UUID]runtimeActive, current func() bool) error {
+	if signal == nil || signal.connection == uuid.Nil || current == nil || !current() || c.config.FQDNPolicy == nil || len(original) != len(c.active) || len(original) != len(staged) {
+		return ErrRuntimeController
+	}
+	view := c.config.FQDNPolicy.view.Load()
+	if view == nil || view.policy.NodeID != c.config.GatewayID.String() || view.policy.Version < 9 {
+		return ErrRuntimeController
+	}
+	expected := make(map[uuid.UUID]runtimeActive, len(original))
+	var ids []uuid.UUID
+	signaled := false
+	for id, old := range original {
+		live, ok := c.active[id]
+		candidate, stagedOK := staged[id]
+		if !ok || !stagedOK || old.Authority == nil || !reflect.DeepEqual(live, old) {
+			return ErrRuntimeController
+		}
+		if _, err := old.Authority.RemainingForApply(old.Identity, 5*time.Second); err != nil {
+			return ErrRuntimeController
+		}
+		if candidate.Authority == nil {
+			return ErrRuntimeController
+		}
+		if _, err := candidate.Authority.RemainingForApply(candidate.Identity, time.Millisecond); err != nil {
+			return ErrRuntimeController
+		}
+		if candidate.Authority != old.Authority {
+			for _, g := range candidate.Grants {
+				if g.FQDN.Version == 2 {
+					if _, err := candidate.Authority.RemainingFQDNForApply(candidate.Identity, guardFQDNGrantDigest(g), time.Millisecond); err != nil {
+						return ErrRuntimeController
+					}
+				}
+			}
+		}
+		// Fresh candidate authority is discarded, never transferred. Every original
+		// ordinary tuple and immutable owner binding must still be the same.
+		identity := candidate.Identity
+		identity.PolicyHash = old.Identity.PolicyHash
+		ordinary := func(gs []GuardGrant) []GuardGrant {
+			out := make([]GuardGrant, 0, len(gs))
+			for _, g := range gs {
+				if !g.FQDNManaged {
+					out = append(out, g)
+				}
+			}
+			return out
+		}
+		if identity != old.Identity || !reflect.DeepEqual(candidate.Entry, old.Entry) || !reflect.DeepEqual(candidate.Environment, old.Environment) || !reflect.DeepEqual(candidate.Delivery, old.Delivery) || !reflect.DeepEqual(ordinary(candidate.Grants), ordinary(old.Grants)) {
+			return ErrRuntimeController
+		}
+		stale := !c.fqdnGrantsCurrent(candidate.Grants) || !c.fqdnGrantsCurrent(old.Grants)
+		kept := cloneMaintenanceActive(old)
+		if stale {
+			if old.Entry.ContractVersion != 3 || !old.Entry.Allocation.BGP || old.Entry.Allocation.ProfileID != "" {
+				return ErrRuntimeController
+			}
+			for _, grants := range [][]GuardGrant{old.Grants, candidate.Grants} {
+				for _, g := range grants {
+					if g.FQDNManaged && (g.FQDN.Version != 2 || g.FQDN.ResolverKind != "static_cname" || g.DesktopDeviceID == uuid.Nil) {
+						return ErrRuntimeController
+					}
+				}
+			}
+			kept.Grants = make([]GuardGrant, 0, len(old.Grants))
+			for _, g := range old.Grants {
+				if !g.FQDNManaged || view.matches(g) {
+					kept.Grants = append(kept.Grants, g)
+				}
+			}
+			ids = append(ids, id)
+			signaled = signaled || id == signal.connection
+		}
+		expected[id] = kept
+	}
+	if !signaled || !current() || c.config.FQDNPolicy.view.Load() != view {
+		return ErrRuntimeController
+	}
+	// Existing scoped withdrawal performs a complete new native assembly under
+	// original finite authority, without exposing any candidate lease or ACK.
+	if err := c.withdrawFQDNActiveLockedMode(ctx, ids, false); err != nil {
+		return err
+	}
+	if !current() || c.config.FQDNPolicy.view.Load() != view || !reflect.DeepEqual(c.active, expected) {
+		return ErrRuntimeController
+	}
+	for _, old := range original {
+		if _, err := old.Authority.RemainingForApply(old.Identity, 5*time.Second); err != nil {
+			return ErrRuntimeController
+		}
+	}
+	return nil
+}
+
+// Preparation may have already pruned exactly the withdrawn marked tuples.
+// That is the only allowed difference from the pre-IO owner snapshot. It does
+// not adopt any input-page field or lease and produces no Apply result.
+func (c *RuntimeController) retractFQDNPreparation(ctx context.Context, signal *runtimeFQDNPolicyRetraction, before map[uuid.UUID]runtimeActive, current func() bool) error {
+	if c.config.FQDNPolicy == nil || len(before) != len(c.active) {
+		return ErrRuntimeController
+	}
+	view := c.config.FQDNPolicy.view.Load()
+	if view == nil {
+		return ErrRuntimeController
+	}
+	original := map[uuid.UUID]runtimeActive{}
+	for id, old := range before {
+		live, ok := c.active[id]
+		if !ok {
+			return ErrRuntimeController
+		}
+		pruned := cloneMaintenanceActive(old)
+		pruned.Grants = make([]GuardGrant, 0, len(old.Grants))
+		for _, g := range old.Grants {
+			if !g.FQDNManaged || view.matches(g) {
+				pruned.Grants = append(pruned.Grants, g)
+			}
+		}
+		if !reflect.DeepEqual(live, old) && !reflect.DeepEqual(live, pruned) {
+			return ErrRuntimeController
+		}
+		original[id] = cloneMaintenanceActive(live)
+	}
+	return c.retractFQDNOnly(ctx, signal, original, before, current)
 }

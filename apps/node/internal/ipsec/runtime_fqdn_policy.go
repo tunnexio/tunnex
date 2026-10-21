@@ -208,6 +208,12 @@ func (c *RuntimeController) withdrawUncommittedFQDN(ctx context.Context) error {
 	return c.withdrawFQDNActiveLocked(ctx, ids)
 }
 func (c *RuntimeController) withdrawFQDNActiveLocked(ctx context.Context, ids []uuid.UUID) error {
+	return c.withdrawFQDNActiveLockedMode(ctx, ids, true)
+}
+
+// Correction is bounded to one attempt. Its raw canonical rebuild cannot
+// recursively request another scoped correction if the policy changes again.
+func (c *RuntimeController) withdrawFQDNActiveLockedMode(ctx context.Context, ids []uuid.UUID, allowCorrection bool) error {
 	if len(ids) == 0 {
 		return nil
 	}
@@ -244,7 +250,12 @@ func (c *RuntimeController) withdrawFQDNActiveLocked(ctx context.Context, ids []
 	if e != nil {
 		return ErrRuntimeController
 	}
-	if e = c.installActive(ctx, entries); e != nil {
+	if allowCorrection {
+		e = c.installActive(ctx, entries)
+	} else {
+		e = c.installActiveCandidates(ctx, entries, c.active, nil, nil, nil)
+	}
+	if e != nil {
 		_, _ = c.refuse(ctx, entries)
 		return ErrRuntimeController
 	}

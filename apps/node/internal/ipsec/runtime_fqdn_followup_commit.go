@@ -2,6 +2,7 @@ package ipsec
 
 import (
 	"context"
+	"errors"
 	"github.com/google/uuid"
 	"os"
 	"path/filepath"
@@ -34,6 +35,10 @@ func (c *RuntimeController) commitFQDNFollowup(ctx context.Context, authority fu
 	if _, gateErr := os.Lstat(filepath.Join(c.config.JournalDir, "restoration-startup-gate")); !os.IsNotExist(gateErr) {
 		return fail()
 	}
+	original := make(map[uuid.UUID]runtimeActive, len(c.active))
+	for id, a := range c.active {
+		original[id] = cloneMaintenanceActive(a)
+	}
 	staged := make(map[uuid.UUID]runtimeActive, len(c.active))
 	for id, a := range c.active {
 		staged[id] = a
@@ -43,7 +48,7 @@ func (c *RuntimeController) commitFQDNFollowup(ctx context.Context, authority fu
 	for id, m := range refreshed {
 		old, ok := c.active[id]
 		window, known := c.fqdnNativeWindows[id]
-		if !ok || !known || old.Authority == nil || old.Entry.ContractVersion != 3 || old.Entry.AbsenceOnly || old.Entry.Phase != RuntimeApplied || old.Entry.BGPProcess == nil || old.Entry.BGPProcess.Stage != "ready" || old.Entry.BGPRoutes == nil || old.Entry.BGPRoutes.Stage != "completed" || !runtimeDeliveryValid(old.Delivery, c.config.OrgID, c.config.GatewayID, "apply") || old.Delivery.CoversDeliveryRevision != 0 || old.Identity != (PermitLeaseIdentity{DeliveryID: old.Delivery.ID, Binding: old.Entry.Engines[0].Binding, PolicyHash: old.Identity.PolicyHash}) || !validDigest(old.Identity.PolicyHash) || !validJournalBGP(old.Entry) || !reflect.DeepEqual(old, window.owner) || m.FQDNExpiryPriorHash != old.Identity.PolicyHash || !reflect.DeepEqual(m.RuntimeDelivery, old.Delivery) || !reflect.DeepEqual(m.Entry, old.Entry) || !c.fqdnGrantsCurrent(m.Grants) {
+		if !ok || !known || old.Authority == nil || old.Entry.ContractVersion != 3 || old.Entry.AbsenceOnly || old.Entry.Phase != RuntimeApplied || old.Entry.BGPProcess == nil || old.Entry.BGPProcess.Stage != "ready" || old.Entry.BGPRoutes == nil || old.Entry.BGPRoutes.Stage != "completed" || !runtimeDeliveryValid(old.Delivery, c.config.OrgID, c.config.GatewayID, "apply") || old.Delivery.CoversDeliveryRevision != 0 || old.Identity != (PermitLeaseIdentity{DeliveryID: old.Delivery.ID, Binding: old.Entry.Engines[0].Binding, PolicyHash: old.Identity.PolicyHash}) || !validDigest(old.Identity.PolicyHash) || !validJournalBGP(old.Entry) || !reflect.DeepEqual(old, window.owner) || m.FQDNExpiryPriorHash != old.Identity.PolicyHash || !reflect.DeepEqual(m.RuntimeDelivery, old.Delivery) || !reflect.DeepEqual(m.Entry, old.Entry) {
 			return fail()
 		}
 		matches := 0
@@ -61,6 +66,20 @@ func (c *RuntimeController) commitFQDNFollowup(ctx context.Context, authority fu
 			}
 		}
 		if matches != 1 || c.maintenanceCurrentWithNativeProof(ctx, old, bgpCurrent, false) != nil {
+			return fail()
+		}
+		if !c.fqdnGrantsCurrent(m.Grants) {
+			// Discovery was validated but its policy view was retracted before
+			// lease collection. Only the original finite owners can survive.
+			retracted := cloneMaintenanceActive(old)
+			retracted.Grants = m.Grants
+			staged[id] = retracted
+			health := func() bool {
+				return ctx.Err() == nil && c.qualification.current() && c.config.DaemonAlive != nil && c.config.DaemonAlive() && bgpCurrent()
+			}
+			if c.retractFQDNOnly(ctx, &runtimeFQDNPolicyRetraction{connection: id}, original, staged, health) == nil {
+				return nil
+			}
 			return fail()
 		}
 		fresh := authority()
@@ -94,26 +113,40 @@ func (c *RuntimeController) commitFQDNFollowup(ctx context.Context, authority fu
 	// Only the independently issued new nonce and exact fresh FQDN permits can
 	// authorize the new member. Keep ordinary authority and every current owner,
 	// transport and native proof fence independent of that scheduling deadline.
+	health := func() bool {
+		return ctx.Err() == nil && c.qualification.current() && c.config.DaemonAlive != nil && c.config.DaemonAlive() && bgpCurrent()
+	}
 	current := func() bool {
-		if ctx.Err() != nil || !c.qualification.current() || c.config.DaemonAlive == nil || !c.config.DaemonAlive() || !bgpCurrent() {
+		if !health() {
 			return false
 		}
 		for id, old := range prior {
-			if !reflect.DeepEqual(c.active[id], old) || !c.fqdnGrantsCurrent(required[id].Grants) {
+			if !reflect.DeepEqual(c.active[id], old) {
 				return false
 			}
 		}
 		return true
 	}
-	if !current() || c.installActiveCandidates(ctx, entries, staged, required, prior, current) != nil {
+	if !current() {
 		return fail()
+	}
+	if err := c.installActiveCandidates(ctx, entries, staged, required, prior, current); err != nil {
+		var retraction *runtimeFQDNPolicyRetraction
+		if errors.As(err, &retraction) && c.retractFQDNOnly(ctx, retraction, original, staged, health) == nil {
+			return nil
+		}
+		return fail()
+	}
+	committed := make(map[uuid.UUID]runtimeActive, len(c.active))
+	for id, a := range c.active {
+		committed[id] = cloneMaintenanceActive(a)
 	}
 	committedCurrent := func() bool {
 		if ctx.Err() != nil || !c.qualification.current() || c.config.DaemonAlive == nil || !c.config.DaemonAlive() || !bgpCurrent() {
 			return false
 		}
 		for id, a := range required {
-			if !reflect.DeepEqual(c.active[id], a) || !c.fqdnGrantsCurrent(a.Grants) {
+			if !reflect.DeepEqual(c.active[id], a) {
 				return false
 			}
 			if _, e := a.Authority.RemainingForApply(a.Identity, time.Millisecond); e != nil {
@@ -129,11 +162,29 @@ func (c *RuntimeController) commitFQDNFollowup(ctx context.Context, authority fu
 		}
 		return true
 	}
+	checkCommitted := func() (bool, error) {
+		if !committedCurrent() {
+			return false, ErrRuntimeController
+		}
+		for id, a := range required {
+			if !c.fqdnGrantsCurrent(a.Grants) {
+				// These owners already passed atomic adoption. Retain exactly
+				// their committed finite ordinary authority, never extend it.
+				err := c.retractFQDNOnly(ctx, &runtimeFQDNPolicyRetraction{connection: id, nativeReplaced: true}, committed, committed, func() bool {
+					return ctx.Err() == nil && c.qualification.current() && c.config.DaemonAlive != nil && c.config.DaemonAlive() && bgpCurrent()
+				})
+				return err == nil, err
+			}
+		}
+		return false, nil
+	}
 	// This path creates no Apply ACK. Publish fresh normal transport observations
 	// only after the ordinary atomic commit, with the same post-IO authority fence.
 	for _, a := range required {
-		if !committedCurrent() {
+		if withdrawn, err := checkCommitted(); err != nil {
 			return fail()
+		} else if withdrawn {
+			return nil
 		}
 		if publish != nil {
 			d := a.Delivery
@@ -142,16 +193,28 @@ func (c *RuntimeController) commitFQDNFollowup(ctx context.Context, authority fu
 				return fail()
 			}
 			report, err = c.observeIPsecStatusLocked(ctx, d, report, true, false)
-			if err != nil || !committedCurrent() || publish(ctx, d, report) != nil {
+			if err != nil {
+				return fail()
+			}
+			if withdrawn, err := checkCommitted(); err != nil {
+				return fail()
+			} else if withdrawn {
+				return nil
+			}
+			if publish(ctx, d, report) != nil {
 				return fail()
 			}
 		}
-		if !committedCurrent() {
+		if withdrawn, err := checkCommitted(); err != nil {
 			return fail()
+		} else if withdrawn {
+			return nil
 		}
 	}
-	if !committedCurrent() {
+	if withdrawn, err := checkCommitted(); err != nil {
 		return fail()
+	} else if withdrawn {
+		return nil
 	}
 	return nil
 }
