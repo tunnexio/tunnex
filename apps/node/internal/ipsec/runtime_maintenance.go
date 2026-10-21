@@ -79,12 +79,14 @@ func (c *RuntimeController) maintainIPsecRuntimeRecoveryObserved(ctx context.Con
 		*stage = "maintenance_material"
 		for i, m := range materials {
 			*connection = m.Manifest.ConnectionID
+			*stage = "maintenance_material"
 			input[i], grants[i], err = runtimeMaterialEntry(m, c.config.OrgID, c.config.GatewayID, ns)
 			id := m.Manifest.ConnectionID
 			if err != nil || connections[id] || deliveries[m.ID] {
 				return nil, ErrRuntimeController
 			}
 			c.publishDesktopNAT(id, grants[i])
+			*stage = "maintenance_desktop_observe"
 			if grants[i], err = c.observeDesktopGrants(ctx, grants[i]); err != nil {
 				return nil, ErrRuntimeController
 			}

@@ -89,6 +89,13 @@ func (s *RuntimeFQDNPolicySource) BeforePolicy(ctx context.Context, p *nodepolic
 			}
 		}
 	}
+	// No authority was removed. In particular, desired additions are still
+	// absent from this intersection until CommittedPolicy follows a successful
+	// ordinary apply. Do not delay the reconciler's next DNS callback behind
+	// the serialized IPsec owner when there is nothing to withdraw.
+	if reflect.DeepEqual(old, keep) {
+		return nil
+	}
 	// Publish only the old/next intersection before waiting on the runtime owner.
 	// A failed egress transaction retains this conservative withdrawal.
 	s.view.Store(keep)

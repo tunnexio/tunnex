@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/tunnexio/tunnex/apps/node/internal/nodepolicy"
 )
 
@@ -220,5 +221,38 @@ func TestDesktopStaticFQDNOnlyUsesDesktopExportAndNATLifecycle(t *testing.T) {
 	c.publishDesktopNAT(m.Manifest.ConnectionID, remaining)
 	if len(desktopExportPrefixes(remaining)) != 0 || len(nat.Snapshot()) != 0 {
 		t.Fatal("last expired FQDN retained desktop desired exports/NAT")
+	}
+}
+
+func TestDesktopStaticFQDNLeaseIdentityMatchesGuard(t *testing.T) {
+	m, g, _ := desktopStaticFQDNFixture(t)
+	wire := runtimeFQDNGrantDigest(m.Policy.FQDNGrants[0])
+	if wire != guardFQDNGrantDigest(g) {
+		t.Fatal("desktop/source resolver provenance lost between current wire lease and native guard")
+	}
+	a := NewPermitLeaseAuthority()
+	id := permitIdentity()
+	q, err := a.BeginFQDN(id, []string{wire})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = a.Accept(PermitLeaseResponse{PermitLeaseRequest: q, TTLMillis: 60000, FQDNPermits: []RuntimeFQDNPermit{{GrantDigest: wire, TTLMS: 30000}}}); err != nil {
+		t.Fatal(err)
+	}
+	intent := GuardIntent{Connections: []GuardConnection{{ID: g.FQDN.ConnectionID, PermitFor: time.Minute, Grants: []GuardGrant{g}}}}
+	qualified := limitFQDNGuardIntent(intent, time.Now(), 5*time.Second, func(_ uuid.UUID, g GuardGrant, b time.Duration) (time.Duration, error) {
+		return a.RemainingFQDNForApply(id, guardFQDNGrantDigest(g), b)
+	})
+	if len(qualified.Connections[0].Grants) != 1 || qualified.Connections[0].Grants[0].FQDNPermitFor <= 0 {
+		t.Fatal("valid desktop CP permit silently dropped its timed membership")
+	}
+	for name, change := range map[string]func(*GuardGrant){"device": func(g *GuardGrant) { g.DesktopDeviceID = uuid.New() }, "key": func(g *GuardGrant) { g.DesktopPublicKey += "wrong" }, "resolver": func(g *GuardGrant) { g.FQDN.ResolverKind = "" }} {
+		t.Run(name, func(t *testing.T) {
+			bad := g
+			change(&bad)
+			if _, err := a.RemainingFQDNForApply(id, guardFQDNGrantDigest(bad), time.Millisecond); err == nil {
+				t.Fatal("changed desktop identity reused issued permit")
+			}
+		})
 	}
 }

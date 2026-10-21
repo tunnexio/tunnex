@@ -5,6 +5,7 @@ package ipsec
 import (
 	"bytes"
 	"context"
+	"github.com/google/uuid"
 	"net"
 	"net/netip"
 	"os"
@@ -66,17 +67,40 @@ func testGuardFQDNExpiryNativeReadback(t *testing.T, desktop bool) {
 	c.PermitFor = 20 * time.Second
 	// The reqid set is a renderer/readback fixture, not an observed native SA.
 	c.EncryptedEgress = []GuardEncryptedEgress{{TunnelInterfaceIndex: inv.Links[0].Index, ReqID: 12345, Peer: netip.MustParseAddr("192.0.2.1"), UnderlayInterfaceIndex: 1}}
-	_, g, _ := v2FQDNFixture(t)
+	wireMaterial, g, _ := v2FQDNFixture(t)
 	if desktop {
-		_, g, _ = desktopStaticFQDNFixture(t)
+		wireMaterial, g, _ = desktopStaticFQDNFixture(t)
 		// Actual loopback is the disposable test ingress, never an enrolled peer.
 		// This component qualifies renderer/expiry/readback; runtime peer proof is separate.
 		g.DesktopIngressIndex = 1
 	}
 	g.FQDN.SelectedGatewayID = in.OwnerID
 	g.FQDN.ConnectionID = c.ID
-	g.FQDNPermitFor = 3 * time.Second
 	c.Grants = append(c.Grants, g)
+	// Exercise the real wire-descriptor -> issued finite permit -> guard digest
+	// bridge. Directly setting FQDNPermitFor would hide lost desktop provenance.
+	wire := wireMaterial.Policy.FQDNGrants[0]
+	wire.SelectedGatewayID, wire.ConnectionID = in.OwnerID.String(), c.ID.String()
+	key := runtimeFQDNGrantDigest(wire)
+	authority := NewPermitLeaseAuthority()
+	identity := permitIdentity()
+	request, err := authority.BeginFQDN(identity, []string{key})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = authority.Accept(PermitLeaseResponse{PermitLeaseRequest: request, TTLMillis: 20000, FQDNPermits: []RuntimeFQDNPermit{{GrantDigest: key, TTLMS: 5000}}}); err != nil {
+		t.Fatal(err)
+	}
+	// One-second component commit budget keeps this disconnected test finite;
+	// the production controller retains its unchanged five-second budget.
+	in = limitFQDNGuardIntent(in, time.Now(), time.Second, func(_ uuid.UUID, g GuardGrant, budget time.Duration) (time.Duration, error) {
+		return authority.RemainingFQDNForApply(identity, guardFQDNGrantDigest(g), budget)
+	})
+	c = &in.Connections[0]
+	if len(c.Grants) == 0 || !c.Grants[len(c.Grants)-1].FQDNManaged {
+		t.Fatal("issued desktop permit lost its native timed member")
+	}
+	g = c.Grants[len(c.Grants)-1]
 	m, err := RenderGuard(in)
 	if err != nil {
 		t.Fatal(err)
@@ -149,7 +173,7 @@ func testGuardFQDNExpiryNativeReadback(t *testing.T, desktop bool) {
 		}
 		m = replacement
 	}
-	time.Sleep(3200 * time.Millisecond)
+	time.Sleep(g.FQDNPermitFor + 200*time.Millisecond)
 	actual = read()
 	if VerifyGuardReadbackWithInterfaces([]byte(m.ExpectedJSON), actual, links) == nil {
 		t.Fatal("expired application member accepted as positive")

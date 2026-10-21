@@ -152,6 +152,11 @@ func runtimeFQDNLeaseKeys(p RuntimePolicy) []string {
 func guardFQDNGrantDigest(g GuardGrant) string {
 	b := g.FQDN
 	f := RuntimeFQDNGrant{ExpiresAt: b.ExpiresAt, ResolverSourceAddress: b.ResolverSourceAddress, RuntimeGrant: RuntimeGrant{Source: g.Source.String(), Destination: g.Destination.String(), Protocol: string(g.Protocol), PortLow: g.PortLow, PortHigh: g.PortHigh, RuleID: b.RuleID.String()}, FQDNManaged: g.FQDNManaged, ResourceID: b.ResourceID.String(), Name: b.Name, Generation: b.Generation, ResolverConfigID: b.ResolverConfigID.String(), ResolverConfigVersion: b.ResolverConfigVersion, SelectedSiteID: b.SelectedSiteID.String(), SelectedGatewayID: b.SelectedGatewayID.String(), ResolverProfileID: b.ResolverProfileID.String(), ResolverMatchSuffix: b.ResolverMatchSuffix, ConnectionID: b.ConnectionID.String(), ConfigurationRevision: b.ConfigurationRevision}
+	f.ResolverKind = b.ResolverKind
+	if g.DesktopDeviceID != uuid.Nil {
+		f.DeviceID = g.DesktopDeviceID.String()
+		f.PublicKey = g.DesktopPublicKey
+	}
 	return runtimeFQDNGrantDigest(f)
 }
 

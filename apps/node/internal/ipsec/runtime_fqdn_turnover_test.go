@@ -155,6 +155,16 @@ func TestPriorityFQDNExpiryOnlyTurnoverFreshMaterialAtomic(t *testing.T) {
 	if denied || client.fetched != 1 || len(client.requests) != 2 || client.requests[0].Nonce == client.requests[1].Nonce || after.Identity.PolicyHash != client.material.Policy.Hash || after.Authority == before.Authority || !reflect.DeepEqual(after.FQDNLeaseDescriptors, client.material.Policy.FQDNGrants) {
 		t.Fatal("lost atomic fresh authorization", denied, client.fetched, len(client.requests))
 	}
+	for _, g := range after.Grants {
+		if g.FQDNManaged {
+			if _, err := after.Authority.RemainingFQDNForApply(after.Identity, guardFQDNGrantDigest(g), time.Millisecond); err != nil {
+				t.Fatal("fresh desktop membership lacks matching CP-issued permit", err)
+			}
+			if _, present := r.installed[guardFQDNSetName(g)]; !present {
+				t.Fatal("new FQDN timed set was silently dropped")
+			}
+		}
+	}
 	if !reflect.DeepEqual(after.Entry, before.Entry) || !reflect.DeepEqual(after.Delivery, before.Delivery) {
 		t.Fatal("expiry-only turnover changed transport")
 	}

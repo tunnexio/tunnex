@@ -296,6 +296,7 @@ func (c *RuntimeController) Apply(ctx context.Context, m RuntimeMaterial) (ackRe
 		return fail()
 	}
 	c.publishDesktopNAT(m.Manifest.ConnectionID, grants)
+	stage = "material_desktop_observe"
 	if grants, e = c.observeDesktopGrants(ctx, grants); e != nil {
 		return fail()
 	}
