@@ -79,7 +79,8 @@ func PollIPsecRuntime(ctx context.Context, client IPsecRuntimeTransport, control
 }
 
 // IPsecRuntimeMaintainer handles only previously applied unchanged deliveries.
-// Missing results retain the ordinary Apply path and its material validation.
+// Missing results retain ordinary Apply. An exact deferred result skips only
+// that delivery for this pass; it carries no report, acknowledgement or authority.
 type IPsecRuntimeMaintainer interface {
 	MaintainIPsecRuntime(context.Context, []ipsec.RuntimeMaterial) ([]ipsec.RuntimeMaintenanceResult, error)
 }
@@ -416,16 +417,28 @@ func pollIPsecMaintainedPage(ctx context.Context, client IPsecRuntimeTransport, 
 		return 0, ErrIPsecControl
 	}
 	maintained := map[uuid.UUID]ipsec.RuntimeMaintenanceResult{}
+	deferred, seenResults := map[uuid.UUID]bool{}, map[uuid.UUID]bool{}
 	// Validate the entire result envelope before sending even the first ACK.
 	for _, result := range results {
+		if result.Deferred != nil {
+			delivery := *result.Deferred
+			index, known := byDelivery[delivery.ID]
+			_, observedPositive := observed[delivery.ID]
+			if !known || seenResults[delivery.ID] || !reflect.DeepEqual(delivery, materials[index].RuntimeDelivery) || result.Acknowledgement != (ipsec.RuntimeAcknowledgement{}) || !reflect.DeepEqual(result.Report, ipsec.RuntimeStatusReport{}) || observedPositive || published[delivery.ID] {
+				return 0, ErrIPsecControl
+			}
+			seenResults[delivery.ID], deferred[delivery.ID] = true, true
+			continue
+		}
 		ack := result.Acknowledgement
 		index, ok := byDelivery[ack.DeliveryID]
 		if !ok {
 			return 0, ErrIPsecControl
 		}
-		if _, duplicate := maintained[ack.DeliveryID]; duplicate {
+		if seenResults[ack.DeliveryID] {
 			return 0, ErrIPsecControl
 		}
+		seenResults[ack.DeliveryID] = true
 		m := materials[index]
 		if ack.Kind != "apply" || ack.Result != "applied" || ack.DesiredRevision != pending[index].DesiredRevision || ack.OwnershipDigest != m.OwnershipDigest || !runtimeStatusMatchesDelivery(m.RuntimeDelivery, result.Report) {
 			return 0, ErrIPsecControl
@@ -458,7 +471,7 @@ func pollIPsecMaintainedPage(ctx context.Context, client IPsecRuntimeTransport, 
 	// Publish the completed maintained commit before an ordinary fallback can
 	// replace or withdraw runtime state. Never report cached positive state after it.
 	for i, material := range materials {
-		if _, ok := maintained[material.ID]; ok {
+		if _, ok := maintained[material.ID]; ok || deferred[material.ID] {
 			continue
 		}
 		item := pending[i]
@@ -477,7 +490,7 @@ func pollIPsecMaintainedPage(ctx context.Context, client IPsecRuntimeTransport, 
 		}
 	}
 	if failed || ctx.Err() != nil {
-		return len(materials), ErrIPsecControl
+		return len(materials) - len(deferred), ErrIPsecControl
 	}
-	return len(materials), nil
+	return len(materials) - len(deferred), nil
 }

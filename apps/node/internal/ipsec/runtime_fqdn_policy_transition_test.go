@@ -433,10 +433,20 @@ func TestFQDNPolicyTransitionRestorationPendingNATPreservesOrdinary(t *testing.T
 				if err != nil || !ok || gap || !reflect.DeepEqual(after, before) || before.Authority.deadline != deadline || r.c.bgpProcesses[before.Entry.DeliveryID] != process {
 					t.Fatal("pending exemption destroyed or renewed old ordinary owner")
 				}
+				deferred := 0
 				for _, result := range results {
 					if result.Acknowledgement.DeliveryID == before.Entry.DeliveryID {
 						t.Fatal("pending application ACK")
 					}
+					if result.Deferred != nil {
+						deferred++
+						if !reflect.DeepEqual(*result.Deferred, before.Delivery) || result.Acknowledgement != (RuntimeAcknowledgement{}) || !reflect.DeepEqual(result.Report, RuntimeStatusReport{}) {
+							t.Fatal("pending result lost exact delivery or carried positive output")
+						}
+					}
+				}
+				if path != "priority" && deferred != 1 {
+					t.Fatal("pending owner not explicitly deferred", deferred)
 				}
 				for name, oldNative := range installed {
 					t.Logf("native %s original_emission=%v current_emission=%v original_authority=%v", name, oldNative, r.installed[name], deadline)

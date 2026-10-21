@@ -194,9 +194,12 @@ type RuntimeStatusReport struct {
 	Tunnels               [2]RuntimeTunnelStatus `json:"tunnels"`
 }
 
-// RuntimeMaintenanceResult can acknowledge only an exact previously applied
-// delivery after fresh native proof and a committed replacement lease.
+// RuntimeMaintenanceResult acknowledges only a freshly committed exact delivery.
+// Deferred is a mutually exclusive, process-local scheduling outcome: its original
+// finite authority was preserved while a new NAT exemption is pending. It grants
+// no permission and must never produce a status report or Apply acknowledgement.
 type RuntimeMaintenanceResult struct {
+	Deferred        *RuntimeDelivery `json:"-"`
 	Acknowledgement RuntimeAcknowledgement
 	Report          RuntimeStatusReport
 }

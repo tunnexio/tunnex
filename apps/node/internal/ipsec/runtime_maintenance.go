@@ -14,7 +14,8 @@ import (
 
 // MaintainIPsecRuntime renews only exact process-local, already applied intent.
 // It never performs first Apply, recreates transport or reconciles learned routes.
-// Omitted results require ordinary Apply; successful results repair the existing
+// Omitted results require ordinary Apply; explicit deferred results wait for
+// another normal discovery pass without an ACK. Successful results repair the existing
 // delivery acknowledgement even if an earlier CP acknowledgement was lost.
 func (c *RuntimeController) MaintainIPsecRuntime(ctx context.Context, materials []RuntimeMaterial) ([]RuntimeMaintenanceResult, error) {
 	return c.MaintainIPsecRuntimeObserved(ctx, materials, nil)
@@ -591,8 +592,16 @@ func (c *RuntimeController) maintainIPsecRuntimeItemsAttempt(ctx context.Context
 	if !pendingCurrent() {
 		return fail()
 	}
+	deferredResults := func() []RuntimeMaintenanceResult {
+		out := make([]RuntimeMaintenanceResult, 0, len(pending))
+		for _, old := range pending {
+			delivery := cloneMaintenanceActive(old).Delivery
+			out = append(out, RuntimeMaintenanceResult{Deferred: &delivery})
+		}
+		return out
+	}
 	if len(candidates) == 0 && !changed {
-		return nil, nil
+		return deferredResults(), nil
 	}
 	// Retained pending owners are required, but are not newly authorized
 	// candidates or ACK results. Another owner's commit cannot omit them.
@@ -791,7 +800,7 @@ func (c *RuntimeController) maintainIPsecRuntimeItemsAttempt(ctx context.Context
 	if !deferral.reportsCurrent(c) || !pendingCurrent() {
 		return fail()
 	}
-	return result, nil
+	return append(result, deferredResults()...), nil
 }
 
 var errMaintenanceBGPRouteChanged = errors.New("IPsec maintenance BGP routes changed")
