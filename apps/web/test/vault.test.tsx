@@ -33,6 +33,7 @@ describe("Tunnex Vault", () => {
   it("shows metadata only, reveals an explicit historical version, and reauthorizes copying", async () => {
     show();
     fireEvent.click(await screen.findByRole("button", { name: personal.title }));
+    expect(screen.getByRole("dialog", { name: personal.title }).closest(".tnx-modal-overlay")?.getAttribute("data-placement")).toBe("right");
     const dialog = within(screen.getByRole("dialog", { name: personal.title }));
     await dialog.findByRole("button", { name: "Reveal version 1" });
     expect(dialog.getByLabelText("Hidden secret").textContent).toBe("••••••••••••••••");
@@ -50,6 +51,7 @@ describe("Tunnex Vault", () => {
 
   it("lets members save private credentials without offering assignment administration", async () => {
     show(); fireEvent.click(await screen.findByRole("button", { name: "Add credential" }));
+    expect(screen.getByRole("dialog", { name: "Add credential" }).closest(".tnx-modal-overlay")?.getAttribute("data-placement")).toBe("right");
     const dialog = within(screen.getByRole("dialog", { name: "Add credential" }));
     await dialog.findByRole("option", { name: "Payments" });
     expect(dialog.queryByRole("option", { name: /Assigned/ })).toBeNull();
@@ -91,6 +93,7 @@ describe("Tunnex Vault", () => {
     show(); fireEvent.click(await screen.findByRole("button", { name: assigned.title }));
     fireEvent.click(within(screen.getByRole("dialog", { name: assigned.title })).getByRole("button", { name: "Change secret" }));
     const dialog = within(screen.getByRole("dialog", { name: "Change secret" }));
+    expect(screen.getByRole("dialog", { name: "Change secret" }).closest(".tnx-modal-overlay")?.getAttribute("data-placement")).toBe("right");
     fireEvent.change(dialog.getByLabelText("New secret"), { target: { value: "next-secret" } });
     fireEvent.click(dialog.getByRole("button", { name: "Save new version" }));
     await dialog.findByRole("alert");
@@ -110,6 +113,7 @@ describe("Tunnex Vault", () => {
     fireEvent.click(screen.getByRole("button", { name: personal.title }));
     fireEvent.click(within(screen.getByRole("dialog", { name: personal.title })).getByRole("button", { name: "Delete credential" }));
     const confirmation = within(screen.getByRole("dialog", { name: "Delete credential" }));
+    expect(screen.getByRole("dialog", { name: "Delete credential" }).closest(".tnx-modal-overlay")?.getAttribute("data-placement")).toBe("right");
     expect(confirmation.getByText(/and all 2 saved versions/)).toBeTruthy();
     expect(mock.remove).not.toHaveBeenCalled();
     fireEvent.click(confirmation.getByRole("button", { name: "Confirm deletion" }));
@@ -194,5 +198,21 @@ describe("Tunnex Vault", () => {
     await screen.findByRole("button", { name: "Retry Vault" });
     expect(screen.queryByText(/No credentials yet/)).toBeNull();
     expect((screen.getByRole("button", { name: "Add credential" }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it.each([["/vault", "No credentials yet"], ["/vault?q=missing", "No credentials match your search."]])("uses Local Sharing's shared empty state for %s", async (path, title) => {
+    entries = [];
+    show(path);
+    const heading = await screen.findByRole("heading", { name: title });
+    expect(heading.closest(".aa-empty-state")).toBeTruthy();
+    expect(screen.getByRole("link", { name: "My Vault" }).getAttribute("aria-current")).toBe("page");
+    expect(screen.queryByRole("table", { name: "Vault credentials" })).toBeNull();
+    if (path.includes("q=")) {
+      fireEvent.click(screen.getByRole("button", { name: "Clear filters" }));
+      await screen.findByRole("heading", { name: "No credentials yet" });
+    } else {
+      fireEvent.click(screen.getByRole("button", { name: "Add your first credential" }));
+      expect(screen.getByRole("dialog", { name: "Add credential" }).closest(".tnx-modal-overlay")?.getAttribute("data-placement")).toBe("right");
+    }
   });
 });

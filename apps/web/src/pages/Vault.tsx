@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState, type FormEvent } from "react";
 import type { components } from "@tunnex/shared";
-import { useSearchParams } from "react-router-dom";
-import { Button, Card, EmptyState, ErrorText, Field, Input, Loading, Modal, PageHeader, RefreshButton, Select } from "../components/ui";
+import { Link, useSearchParams } from "react-router-dom";
+import { Button, Card, ErrorText, Field, Input, Loading, Modal, PageHeader, RefreshButton, Select } from "../components/ui";
 import { Icon } from "../components/Icon";
+import AppAccessEmptyState from "../components/AppAccessEmptyState";
 import AppAccessPagination, { appAccessPageSize } from "../components/AppAccessPagination";
 import AppAccessRowMenu from "../components/AppAccessRowMenu";
 import { api, loadOne } from "../lib/api";
@@ -10,6 +11,7 @@ import { useAuth } from "../lib/auth";
 import { useOrg } from "../lib/useOrg";
 import { generateVaultPassword } from "../lib/vault";
 import "../app-access-workspace.css";
+import "../beam-workspace.css";
 import "../vault-workspace.css";
 
 type Entry = components["schemas"]["VaultEntry"];
@@ -28,6 +30,10 @@ const historyPath = "/api/v1/organizations/{orgId}/vault/entries/{entryId}/versi
 function dateLabel(value: string) {
   const date = new Date(value);
   return Number.isNaN(date.getTime()) ? "Time unavailable" : date.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+}
+
+function CredentialAvatar({ kind }: { kind: Entry["kind"] }) {
+  return <span className="beam-app-icon" data-color={kind === "api_key" ? "1" : "0"} aria-hidden="true"><Icon name={kind === "api_key" ? "key" : "shield-check"} size={19} /></span>;
 }
 
 export default function Vault() {
@@ -90,28 +96,36 @@ function VaultWorkspace({ orgId }: { orgId: string }) {
 
   function refreshed(message: string) { setNotice(message); setSelected(null); setReload(value => value + 1); }
   function openEditor(value: "new" | Entry) { setSelected(null); setEditor(value); }
-  return <section className="vault-workspace network-management min-w-0">
+  return <section className="beam-workspace vault-workspace network-management min-w-0 space-y-5">
     <PageHeader navigationTitle title="Tunnex Vault" />
-    <div className="vault-workspace-bar"><div><h2>My Vault{data && <span className="vault-count">{data.total}</span>}</h2><p>{data?.can_assign ? "Your personal credentials and organization assignments." : "Personal credentials and credentials assigned to you."}</p></div><Button disabled={!data} onClick={() => openEditor("new")}>Add credential</Button></div>
-    <form className="vault-toolbar" onSubmit={event => { event.preventDefault(); changeQuery({ q: query.trim(), page: 1 }); setNotice(""); }}>
-      <div className="vault-search"><Icon name="search" size={16} /><Input type="search" aria-label="Search Vault" placeholder="Search title, service or username…" maxLength={100} value={query} onChange={event => setQuery(event.target.value)} /></div>
-      <Button type="submit" variant="ghost">Search</Button>
-      <RefreshButton label="Refresh Vault" onClick={() => { setSelected(null); setReload(value => value + 1); }} />
-      {search && <Button type="button" variant="ghost" onClick={() => { setQuery(""); changeQuery({ q: "", page: 1 }); }}>Clear search</Button>}
+    <nav className="workspace-tabs" aria-label="Vault workspace"><Link to="/vault" aria-current="page">My Vault</Link></nav>
+    <section className="beam-inventory" aria-label="My Vault">
+    <div className="beam-workspace-bar"><p className="beam-list-summary vault-inventory-summary">{data ? `${data.total} ${data.total === 1 ? "credential" : "credentials"}` : "Credentials"} · {data?.can_assign ? "personal and organization assignments" : "personal and assigned to you"}</p><div className="beam-workspace-tools"><Button disabled={!data} onClick={() => openEditor("new")}><Icon name="key" size={15} />Add credential</Button></div></div>
+    <form className="beam-toolbar" onSubmit={event => { event.preventDefault(); changeQuery({ q: query.trim(), page: 1 }); setNotice(""); }}>
+      <div className="beam-search"><Icon name="search" size={17} /><Input type="search" aria-label="Search Vault" placeholder="Search title, service or username…" maxLength={100} value={query} onChange={event => setQuery(event.target.value)} /></div>
+      <Button type="submit" variant="ghost" size="sm">Search</Button>
+      <RefreshButton label="Refresh Vault" className="beam-refresh" onClick={() => { setSelected(null); setReload(value => value + 1); }} />
+      {search && <Button type="button" variant="ghost" size="sm" onClick={() => { setQuery(""); changeQuery({ q: "", page: 1 }); }}>Clear search</Button>}
     </form>
-    {notice && <p role="status" className="vault-notice">{notice}</p>}
-    {error ? <div className="vault-error"><ErrorText>{error}</ErrorText><Button variant="ghost" onClick={() => setReload(value => value + 1)}>Retry Vault</Button></div> : !data ? <Loading label="Loading credentials…" /> : !data.entries.length ? <EmptyState action={search ? <Button variant="ghost" onClick={() => { changeQuery({ q: "", page: 1 }); setQuery(""); }}>Clear search</Button> : <Button onClick={() => openEditor("new")}>Add your first credential</Button>}>{search ? "No credentials match your search." : "No credentials yet. Save a personal password or API key to get started."}</EmptyState> : <>
-      <div className="vault-table-wrap"><table className="vault-table"><caption className="sr-only">Vault credentials</caption><thead><tr><th>Credential</th><th>Username</th><th>Access</th><th>Version</th><th>Updated</th><th><span className="sr-only">Actions</span></th></tr></thead><tbody>{data.entries.map(entry => <tr key={entry.id}>
-        <td><div className="vault-entry-identity"><span className="vault-entry-icon" aria-hidden="true"><Icon name="key" size={17} /></span><div><button type="button" className="vault-entry-title" onClick={() => setSelected(entry)}>{entry.title}</button><p>{entry.service_name} · {entry.kind === "api_key" ? "API key" : "Password"}</p></div></div></td>
+    {notice && <p role="status" className="beam-notice">{notice}</p>}
+    {error ? <div className="beam-error"><ErrorText>{error}</ErrorText><Button onClick={() => setReload(value => value + 1)}>Retry Vault</Button></div> : !data ? <Loading label="Loading credentials…" /> : !data.entries.length ? <AppAccessEmptyState
+      icon={search ? "search" : "shield-check"}
+      title={search ? "No credentials match your search." : "No credentials yet"}
+      description={search ? "Try another title, service or username, or clear the search." : "Save a personal password or API key, or access a credential assigned to you. Each change keeps its own version history."}
+      action={search ? <Button variant="ghost" size="sm" onClick={() => { changeQuery({ q: "", page: 1 }); setQuery(""); }}>Clear filters</Button> : <button type="button" className="beam-inline-link" onClick={() => openEditor("new")}>Add your first credential<Icon name="chevron-right" size={14} /></button>}
+    /> : <>
+      <div className="beam-table-wrap"><table className="beam-inventory-table vault-credentials-table"><caption className="sr-only">Vault credentials</caption><thead><tr><th>Credential</th><th>Username</th><th>Access</th><th>Version</th><th>Updated</th><th><span className="sr-only">Actions</span></th></tr></thead><tbody>{data.entries.map(entry => <tr key={entry.id}>
+        <td><div className="beam-app-identity"><CredentialAvatar kind={entry.kind} /><div><h2><button type="button" className="vault-entry-title" onClick={() => setSelected(entry)}>{entry.title}</button></h2><p className="beam-url vault-service-label"><Icon name="server" size={12} />{entry.service_name} · {entry.kind === "api_key" ? "API key" : "Password"}</p></div></div></td>
         <td>{entry.username || <span className="vault-muted">Not set</span>}</td>
-        <td><span className="vault-access">{entry.visibility === "personal" ? "Personal" : entry.subject_name || "Assigned"}</span><span className="vault-cell-note">{entry.visibility === "personal" ? "Only you" : entry.subject_kind === "group" ? "Shared with group" : "Assigned credential"}</span></td>
-        <td><span className="vault-version">Version {entry.current_version}</span></td>
-        <td><time dateTime={entry.updated_at}>{dateLabel(entry.updated_at)}</time></td>
-        <td><AppAccessRowMenu label={`Actions for ${entry.title}`} actions={[{ key: "view", label: "View credential", onSelect: () => setSelected(entry) }, ...(entry.can_edit ? [{ key: "rotate", label: "Change secret", onSelect: () => openEditor(entry) }] : []), ...(entry.can_delete ? [{ key: "delete", label: "Delete credential", danger: true, onSelect: () => setDeleting(entry) }] : [])]} /></td>
+        <td><span className="vault-access"><Icon name={entry.visibility === "personal" ? "user" : entry.subject_kind === "group" ? "users-2" : "user-plus"} size={13} />{entry.visibility === "personal" ? "Personal" : entry.subject_name || "Assigned"}</span><span className="vault-cell-note">{entry.visibility === "personal" ? "Only you" : entry.subject_kind === "group" ? "Shared with group" : "Assigned credential"}</span></td>
+        <td><span className="vault-version"><Icon name="clock-3" size={13} />Version {entry.current_version}</span></td>
+        <td><time className="beam-expiry" dateTime={entry.updated_at}>{dateLabel(entry.updated_at)}</time></td>
+        <td><div className="beam-row-actions"><button type="button" className="beam-open-link" aria-label={`View ${entry.title}`} onClick={() => setSelected(entry)}>View<Icon name="chevron-right" size={15} /></button><AppAccessRowMenu label={`Actions for ${entry.title}`} actions={[{ key: "view", label: "View credential", icon: <Icon name="file-text" size={14} />, onSelect: () => setSelected(entry) }, ...(entry.can_edit ? [{ key: "rotate", label: "Change secret", icon: <Icon name="key" size={14} />, onSelect: () => openEditor(entry) }] : []), ...(entry.can_delete ? [{ key: "delete", label: "Delete credential", icon: <Icon name="x-circle" size={14} />, danger: true, onSelect: () => setDeleting(entry) }] : [])]} /></div></td>
       </tr>)}</tbody></table></div>
       <AppAccessPagination page={page} pageSize={pageSize} count={data.entries.length} hasNext={page * pageSize < data.total} onPageChange={setPage} onPageSizeChange={size => changeQuery({ pageSize: size, page: 1 })} />
     </>}
-    <p className="vault-footer-note"><Icon name="shield-check" size={14} /> Personal entries are visible only to you. Assigned entries are shared with their recipients and Vault administrators.</p>
+    <details className="beam-disclosure beam-publishing-help"><summary><Icon name="shield-check" size={14} />Vault access</summary><div><p>Personal entries and their version history are visible only to you. Assigned credentials are shared with current recipients and Vault administrators.</p><p>Saving a password or API key here does not change it in the external service.</p></div></details>
+    </section>
     {editor && <CredentialEditor key={editor === "new" ? "new" : editor.id} orgId={orgId} entry={editor === "new" ? undefined : editor} canAssign={data?.can_assign ?? false} services={services} serviceError={serviceError} onRetryServices={() => setServiceReload(value => value + 1)} onServiceAdded={service => setServices(current => [...(current ?? []).filter(value => value.id !== service.id), service].sort((a, b) => a.name.localeCompare(b.name)))} onDismiss={() => setEditor(null)} onSaved={() => { setEditor(null); refreshed(editor === "new" ? "Credential saved." : "New version saved. Earlier versions remain in history."); }} />}
     {selected && <CredentialDetails key={selected.id} orgId={orgId} entry={selected} onDismiss={() => setSelected(null)} onRotate={() => openEditor(selected)} onDelete={() => { setDeleting(selected); setSelected(null); }} />}
     {deleting && <DeleteCredential orgId={orgId} entry={deleting} onDismiss={() => setDeleting(null)} onDeleted={() => { setDeleting(null); refreshed("Credential and all of its versions deleted. The external service password or key was not changed."); }} />}
@@ -195,7 +209,7 @@ function CredentialEditor({ orgId, entry, canAssign, services, serviceError, onR
     finally { if (live.current) setBusy(false); }
   }
   const choices = subjectKind === "user" ? subjects?.users : subjects?.groups;
-  return <Modal title={entry ? "Change secret" : "Add credential"} size="wide" onDismiss={() => { if (!busy && !addingService) { setSecret(""); onDismiss(); } }} actions={<><Button variant="ghost" disabled={busy || addingService} onClick={() => { setSecret(""); onDismiss(); }}>Cancel</Button><Button type="submit" form="vault-credential-form" disabled={busy || addingService || conflict || (!entry && visibility === "assigned" && !subjects)}>{busy ? "Saving…" : entry ? "Save new version" : "Save credential"}</Button></>}>
+  return <Modal placement="right" title={entry ? "Change secret" : "Add credential"} size="wide" onDismiss={() => { if (!busy && !addingService) { setSecret(""); onDismiss(); } }} actions={<><Button variant="ghost" disabled={busy || addingService} onClick={() => { setSecret(""); onDismiss(); }}>Cancel</Button><Button type="submit" form="vault-credential-form" disabled={busy || addingService || conflict || (!entry && visibility === "assigned" && !subjects)}>{busy ? "Saving…" : entry ? "Save new version" : "Save credential"}</Button></>}>
     <form id="vault-credential-form" className="vault-form" onSubmit={submit} autoComplete="off">
       <ErrorText>{error}</ErrorText>
       {entry && <p className="vault-help">Saving creates version {entry.current_version + 1}. Earlier versions stay in history. Update the external service separately.</p>}
@@ -264,11 +278,11 @@ function CredentialDetails({ orgId, entry, onDismiss, onRotate, onDelete }: { or
     } catch { if (live.current && id === request.current) setError(copy ? "Could not copy the secret. Reveal it to select and copy it." : "Could not reveal this version. Try again."); }
     finally { if (live.current && id === request.current) setBusy(false); }
   }
-  return <Modal title={entry.title} size="wide" showClose onDismiss={close} actions={<><Button variant="ghost" onClick={close}>Close</Button>{entry.can_delete && <Button variant="danger" onClick={() => { conceal(); onDelete(); }}>Delete credential</Button>}{entry.can_edit && <Button onClick={() => { conceal(); onRotate(); }}>Change secret</Button>}</>}>
-    <div className="vault-detail"><dl className="vault-detail-facts"><div><dt>Service</dt><dd>{entry.service_name}</dd></div><div><dt>Type</dt><dd>{entry.kind === "api_key" ? "API key" : "Password"}</dd></div><div><dt>Username</dt><dd>{entry.username || "Not set"}</dd></div><div><dt>Access</dt><dd>{entry.visibility === "personal" ? "Personal · only you" : `Assigned · ${entry.subject_name || "recipients and administrators"}`}</dd></div></dl>
+  return <Modal placement="right" title={entry.title} size="wide" showClose onDismiss={close} actions={<><Button variant="ghost" onClick={close}>Close</Button>{entry.can_delete && <Button variant="danger" onClick={() => { conceal(); onDelete(); }}>Delete credential</Button>}{entry.can_edit && <Button onClick={() => { conceal(); onRotate(); }}>Change secret</Button>}</>}>
+    <div className="vault-detail"><div className="beam-workspace vault-drawer-identity"><div className="beam-app-identity"><CredentialAvatar kind={entry.kind} /><div><h2>{entry.kind === "api_key" ? "API key" : "Password"}</h2><p className="beam-url vault-service-label"><Icon name="server" size={12} />{entry.service_name}</p></div></div></div><dl className="vault-detail-facts"><div><dt>Service</dt><dd>{entry.service_name}</dd></div><div><dt>Type</dt><dd>{entry.kind === "api_key" ? "API key" : "Password"}</dd></div><div><dt>Username</dt><dd>{entry.username || "Not set"}</dd></div><div><dt>Access</dt><dd>{entry.visibility === "personal" ? "Personal · only you" : `Assigned · ${entry.subject_name || "recipients and administrators"}`}</dd></div></dl>
       <section className="vault-secret-panel" aria-label="Credential secret"><div className="vault-section-heading"><h3>{revealed ? `Version ${revealed.version}${revealed.version === (history?.current_version ?? entry.current_version) ? " · current" : " · historical"}` : "Secret hidden"}</h3>{revealed && <button type="button" className="vault-text-action" onClick={conceal}>Hide secret</button>}</div><code className="vault-secret-value" aria-label={revealed ? "Revealed secret" : "Hidden secret"}>{revealed?.value ?? "••••••••••••••••"}</code>{revealed && <p className="vault-help">Username in this version: {revealed.username || "Not set"}. Hidden automatically after 30 seconds.</p>}<div className="vault-inline-actions"><Button variant="ghost" size="sm" disabled={busy} onClick={() => void accessSecret()}>{busy ? "Checking access…" : "Reveal current secret"}</Button><Button variant="ghost" size="sm" disabled={busy} onClick={() => void accessSecret(revealed?.version, true)}>{revealed ? `Copy version ${revealed.version}` : "Copy current secret"}</Button></div><ErrorText>{error}</ErrorText>{notice && <p role="status" className="vault-help">{notice}</p>}</section>
-      <section className="vault-history" aria-label="Version history"><div className="vault-section-heading"><h3>Version history{history && <span className="vault-count">{history.total}</span>}</h3><RefreshButton label="Refresh version history" onClick={() => { conceal(); setReload(value => value + 1); }} /></div><p className="vault-help">Each saved change keeps its own version. Revealing or copying a value is recorded in the audit log.</p>
-        {historyError ? <div className="vault-inline-error"><ErrorText>Could not load version history.</ErrorText><Button variant="ghost" size="sm" onClick={() => setReload(value => value + 1)}>Retry history</Button></div> : !history ? <Loading label="Loading history…" /> : <><div className="vault-table-wrap"><table className="vault-table vault-history-table"><caption className="sr-only">Credential version history</caption><thead><tr><th>Version</th><th>Changed by</th><th>Saved</th><th><span className="sr-only">Actions</span></th></tr></thead><tbody>{history.versions.map(version => <tr key={version.version}><td>{version.version}{version.version === history.current_version && <span className="vault-cell-note">Current</span>}</td><td>{version.changed_by_name}</td><td><time dateTime={version.created_at}>{dateLabel(version.created_at)}</time></td><td><Button variant="ghost" size="sm" disabled={busy} aria-label={`Reveal version ${version.version}`} onClick={() => void accessSecret(version.version)}>Reveal</Button></td></tr>)}</tbody></table></div><div className="vault-history-pagination"><span>{history.total} {history.total === 1 ? "version" : "versions"}</span><Button variant="ghost" size="sm" disabled={page <= 1} onClick={() => { conceal(); setPage(value => value - 1); }}>Previous versions</Button><Button variant="ghost" size="sm" disabled={page * 10 >= history.total} onClick={() => { conceal(); setPage(value => value + 1); }}>Next versions</Button></div></>}
+      <section className="vault-history" aria-label="Version history"><div className="vault-section-heading"><h3><Icon name="clock-3" size={15} />Version history{history && <span className="vault-count">{history.total}</span>}</h3><RefreshButton label="Refresh version history" onClick={() => { conceal(); setReload(value => value + 1); }} /></div><p className="vault-help">Each saved change keeps its own version. Revealing or copying a value is recorded in the audit log.</p>
+        {historyError ? <div className="vault-inline-error"><ErrorText>Could not load version history.</ErrorText><Button variant="ghost" size="sm" onClick={() => setReload(value => value + 1)}>Retry history</Button></div> : !history ? <Loading label="Loading history…" /> : <><div className="beam-table-wrap"><table className="beam-inventory-table vault-history-table"><caption className="sr-only">Credential version history</caption><thead><tr><th>Version</th><th>Changed by</th><th>Saved</th><th><span className="sr-only">Actions</span></th></tr></thead><tbody>{history.versions.map(version => <tr key={version.version}><td>{version.version}{version.version === history.current_version && <span className="vault-cell-note">Current</span>}</td><td>{version.changed_by_name}</td><td><time dateTime={version.created_at}>{dateLabel(version.created_at)}</time></td><td><Button variant="ghost" size="sm" disabled={busy} aria-label={`Reveal version ${version.version}`} onClick={() => void accessSecret(version.version)}>Reveal</Button></td></tr>)}</tbody></table></div><div className="vault-history-pagination"><span>{history.total} {history.total === 1 ? "version" : "versions"}</span><Button variant="ghost" size="sm" disabled={page <= 1} onClick={() => { conceal(); setPage(value => value - 1); }}>Previous versions</Button><Button variant="ghost" size="sm" disabled={page * 10 >= history.total} onClick={() => { conceal(); setPage(value => value + 1); }}>Next versions</Button></div></>}
       </section>
     </div>
   </Modal>;
@@ -291,5 +305,5 @@ function DeleteCredential({ orgId, entry, onDismiss, onDeleted }: { orgId: strin
     } catch { if (live.current) { setError("Could not confirm deletion. Close this dialog and refresh Vault before retrying."); setUncertain(true); } }
     finally { if (live.current) setBusy(false); }
   }
-  return <Modal title="Delete credential" danger onDismiss={() => { if (!busy) onDismiss(); }} actions={<><Button variant="ghost" disabled={busy} onClick={onDismiss}>Cancel</Button><Button variant="danger" disabled={busy || uncertain} onClick={() => void remove()}>{busy ? "Deleting…" : "Confirm deletion"}</Button></>}><div className="vault-form"><ErrorText>{error}</ErrorText><p>Permanently delete <strong>{entry.title}</strong> and all {entry.current_version} saved versions from Vault{entry.visibility === "assigned" ? " for every recipient" : ""}?</p><p>This cannot be undone. The password or API key in the external service will remain unchanged. Audit records remain available.</p></div></Modal>;
+  return <Modal placement="right" title="Delete credential" danger onDismiss={() => { if (!busy) onDismiss(); }} actions={<><Button variant="ghost" disabled={busy} onClick={onDismiss}>Cancel</Button><Button variant="danger" disabled={busy || uncertain} onClick={() => void remove()}>{busy ? "Deleting…" : "Confirm deletion"}</Button></>}><div className="vault-form"><ErrorText>{error}</ErrorText><p>Permanently delete <strong>{entry.title}</strong> and all {entry.current_version} saved versions from Vault{entry.visibility === "assigned" ? " for every recipient" : ""}?</p><p>This cannot be undone. The password or API key in the external service will remain unchanged. Audit records remain available.</p></div></Modal>;
 }
