@@ -3,6 +3,7 @@ package http
 import (
 	"context"
 	"github.com/tunnexio/tunnex/apps/api/internal/serveraccess"
+	"github.com/tunnexio/tunnex/apps/api/internal/vault"
 	"net/http"
 	"net/url"
 	"strings"
@@ -194,6 +195,7 @@ func requireVerifiedSessionUser(ctx context.Context) (*authctx.Principal, error)
 // typed responses on success and plain errors on failure; the strict handler's
 // ResponseErrorHandlerFunc renders those errors as the standard envelope.
 type apiServer struct {
+	vault                    *vault.Service
 	sandboxModuleState       string
 	sandboxes                sandboxRepository
 	runnerEnrollment         sandboxRunnerEnrollmentRepository

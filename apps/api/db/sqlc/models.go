@@ -3033,3 +3033,37 @@ type UserTotp struct {
 	CreatedAt        time.Time          `json:"created_at"`
 	ConfirmedAt      pgtype.Timestamptz `json:"confirmed_at"`
 }
+
+type VaultEntry struct {
+	ID             uuid.UUID   `json:"id"`
+	OrgID          uuid.UUID   `json:"org_id"`
+	ServiceID      pgtype.UUID `json:"service_id"`
+	ServiceName    string      `json:"service_name"`
+	Title          string      `json:"title"`
+	Kind           string      `json:"kind"`
+	Username       string      `json:"username"`
+	Visibility     string      `json:"visibility"`
+	OwnerUserID    uuid.UUID   `json:"owner_user_id"`
+	SubjectKind    *string     `json:"subject_kind"`
+	SubjectID      pgtype.UUID `json:"subject_id"`
+	CurrentVersion int32       `json:"current_version"`
+	CreatedAt      time.Time   `json:"created_at"`
+	UpdatedAt      time.Time   `json:"updated_at"`
+}
+
+type VaultService struct {
+	ID        uuid.UUID `json:"id"`
+	OrgID     uuid.UUID `json:"org_id"`
+	Name      string    `json:"name"`
+	CreatedBy uuid.UUID `json:"created_by"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+type VaultVersion struct {
+	OrgID         uuid.UUID `json:"org_id"`
+	EntryID       uuid.UUID `json:"entry_id"`
+	Version       int32     `json:"version"`
+	SealedPayload string    `json:"sealed_payload"`
+	ChangedBy     uuid.UUID `json:"changed_by"`
+	CreatedAt     time.Time `json:"created_at"`
+}

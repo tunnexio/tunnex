@@ -73,7 +73,9 @@
     "server_access:session_manage",
     "server_access:use",
     "server_access:view",
-    "site:manage"
+    "site:manage",
+    "vault:assign",
+    "vault:use"
   ],
   "agent": [
     "org:view"
@@ -113,7 +115,8 @@
     "sandbox:manage",
     "sandbox:view",
     "server_access:replay",
-    "server_access:use"
+    "server_access:use",
+    "vault:use"
   ],
   "operator": [
     "agent:grant_access",
@@ -201,6 +204,8 @@
     "server_access:session_manage",
     "server_access:use",
     "server_access:view",
-    "site:manage"
+    "site:manage",
+    "vault:assign",
+    "vault:use"
   ]
 }

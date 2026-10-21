@@ -8729,6 +8729,122 @@ paths:
         '101': { description: Bounded SSH websocket; capability required in Authorization header. }
         default: { $ref: '#/components/responses/Error' }
 
+  /api/v1/organizations/{orgId}/vault/entries:
+    parameters:
+      - {name: orgId, in: path, required: true, schema: {type: string, format: uuid}}
+    get:
+      operationId: listVaultEntries
+      tags: [vault]
+      security: [{cookieAuth: []}]
+      summary: List personal and assigned entry metadata without secret values
+      description: Verified browser identity required. CLI, machine and agent credentials are refused until scoped Vault credentials are available.
+      parameters:
+        - {name: limit, in: query, schema: {type: integer, format: int32, minimum: 1, maximum: 100, default: 50}}
+        - {name: offset, in: query, schema: {type: integer, format: int32, minimum: 0, maximum: 100000, default: 0}}
+        - {name: q, in: query, schema: {type: string, maxLength: 100}}
+      responses:
+        '200': {description: Authorized Vault result, content: {application/json: {schema: {$ref: '#/components/schemas/VaultWorkspace'}}}}
+        default: {$ref: '#/components/responses/Error'}
+    post:
+      operationId: createVaultEntry
+      tags: [vault]
+      security: [{cookieAuth: []}]
+      summary: Create an encrypted personal or explicitly assigned entry
+      description: Verified browser identity required. CLI, machine and agent credentials are refused until scoped Vault credentials are available.
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/VaultCreateInput'}}}}
+      responses:
+        '201': {description: Authorized Vault result, content: {application/json: {schema: {$ref: '#/components/schemas/VaultEntry'}}}}
+        default: {$ref: '#/components/responses/Error'}
+  /api/v1/organizations/{orgId}/vault/entries/{entryId}:
+    parameters:
+      - {name: orgId, in: path, required: true, schema: {type: string, format: uuid}}
+      - {name: entryId, in: path, required: true, schema: {type: string, format: uuid}}
+    put:
+      operationId: updateVaultEntry
+      tags: [vault]
+      security: [{cookieAuth: []}]
+      summary: Append a new encrypted version with an expected-version precondition
+      description: Verified browser identity required. CLI, machine and agent credentials are refused until scoped Vault credentials are available.
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/VaultUpdateInput'}}}}
+      responses:
+        '200': {description: Authorized Vault result, content: {application/json: {schema: {$ref: '#/components/schemas/VaultEntry'}}}}
+        default: {$ref: '#/components/responses/Error'}
+    delete:
+      operationId: deleteVaultEntry
+      tags: [vault]
+      security: [{cookieAuth: []}]
+      summary: Delete an owned personal entry or an administered assignment
+      description: Verified browser identity required. CLI, machine and agent credentials are refused until scoped Vault credentials are available.
+      parameters:
+        - {name: expected_version, in: query, required: true, schema: {type: integer, minimum: 1}}
+      responses:
+        '204': {description: Deleted entry and its encrypted history}
+        default: {$ref: '#/components/responses/Error'}
+  /api/v1/organizations/{orgId}/vault/entries/{entryId}/versions:
+    parameters:
+      - {name: orgId, in: path, required: true, schema: {type: string, format: uuid}}
+      - {name: entryId, in: path, required: true, schema: {type: string, format: uuid}}
+    get:
+      operationId: listVaultVersions
+      tags: [vault]
+      security: [{cookieAuth: []}]
+      summary: List authorized version metadata without secret values
+      description: Verified browser identity required. CLI, machine and agent credentials are refused until scoped Vault credentials are available.
+      parameters:
+        - {name: limit, in: query, schema: {type: integer, format: int32, minimum: 1, maximum: 100, default: 50}}
+        - {name: offset, in: query, schema: {type: integer, format: int32, minimum: 0, maximum: 100000, default: 0}}
+      responses:
+        '200': {description: Authorized Vault result, content: {application/json: {schema: {$ref: '#/components/schemas/VaultHistory'}}}}
+        default: {$ref: '#/components/responses/Error'}
+  /api/v1/organizations/{orgId}/vault/entries/{entryId}/reveal:
+    parameters:
+      - {name: orgId, in: path, required: true, schema: {type: string, format: uuid}}
+      - {name: entryId, in: path, required: true, schema: {type: string, format: uuid}}
+    post:
+      operationId: revealVaultEntry
+      tags: [vault]
+      security: [{cookieAuth: []}]
+      summary: Explicitly reveal and audit the current or an earlier secret version
+      description: Verified browser identity required. CLI, machine and agent credentials are refused until scoped Vault credentials are available.
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/VaultRevealInput'}}}}
+      responses:
+        '200': {description: Authorized Vault result, content: {application/json: {schema: {$ref: '#/components/schemas/VaultSecret'}}}}
+        default: {$ref: '#/components/responses/Error'}
+  /api/v1/organizations/{orgId}/vault/services:
+    parameters:
+      - {name: orgId, in: path, required: true, schema: {type: string, format: uuid}}
+    get:
+      operationId: listVaultServices
+      tags: [vault]
+      security: [{cookieAuth: []}]
+      summary: List reusable organization service names
+      description: Verified browser identity required. CLI, machine and agent credentials are refused until scoped Vault credentials are available.
+      responses:
+        '200': {description: Authorized service catalog, content: {application/json: {schema: {type: array, items: {$ref: '#/components/schemas/VaultService'}}}}}
+        default: {$ref: '#/components/responses/Error'}
+    post:
+      operationId: createVaultService
+      tags: [vault]
+      security: [{cookieAuth: []}]
+      summary: Add a reusable service name with Vault assignment authority
+      description: Verified browser identity required. CLI, machine and agent credentials are refused until scoped Vault credentials are available.
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/VaultServiceInput'}}}}
+      responses:
+        '201': {description: Authorized Vault result, content: {application/json: {schema: {$ref: '#/components/schemas/VaultService'}}}}
+        default: {$ref: '#/components/responses/Error'}
+  /api/v1/organizations/{orgId}/vault/subjects:
+    parameters:
+      - {name: orgId, in: path, required: true, schema: {type: string, format: uuid}}
+    get:
+      operationId: listVaultSubjects
+      tags: [vault]
+      security: [{cookieAuth: []}]
+      summary: List current organization users and groups for Vault assignment
+      description: Verified browser identity required. CLI, machine and agent credentials are refused until scoped Vault credentials are available.
+      responses:
+        '200': {description: Authorized Vault result, content: {application/json: {schema: {$ref: '#/components/schemas/VaultSubjects'}}}}
+        default: {$ref: '#/components/responses/Error'}
+
 components:
   securitySchemes:
     aiBearerAuth:
@@ -8758,6 +8874,115 @@ components:
       required: true
 
   schemas:
+    VaultService:
+      type: object
+      additionalProperties: false
+      required: [id, name]
+      properties:
+        id: {type: string, format: uuid}
+        name: {type: string, minLength: 1, maxLength: 120}
+    VaultServiceInput:
+      type: object
+      additionalProperties: false
+      required: [name]
+      properties:
+        name: {type: string, minLength: 1, maxLength: 120}
+    VaultSubject:
+      type: object
+      additionalProperties: false
+      required: [id, name]
+      properties:
+        id: {type: string, format: uuid}
+        name: {type: string}
+    VaultSubjects:
+      type: object
+      additionalProperties: false
+      required: [users, groups]
+      properties:
+        users: {type: array, items: {$ref: '#/components/schemas/VaultSubject'}}
+        groups: {type: array, items: {$ref: '#/components/schemas/VaultSubject'}}
+    VaultEntry:
+      type: object
+      additionalProperties: false
+      required: [id, service_name, title, kind, username, visibility, owner_user_id, current_version, created_at, updated_at, can_edit, can_delete]
+      properties:
+        id: {type: string, format: uuid}
+        service_id: {type: string, format: uuid}
+        service_name: {type: string}
+        title: {type: string}
+        kind: {type: string, enum: [password, api_key]}
+        username: {type: string}
+        visibility: {type: string, enum: [personal, assigned]}
+        owner_user_id: {type: string, format: uuid}
+        subject_kind: {type: string, enum: [user, group]}
+        subject_id: {type: string, format: uuid}
+        subject_name: {type: string}
+        current_version: {type: integer, minimum: 1}
+        created_at: {type: string, format: date-time}
+        updated_at: {type: string, format: date-time}
+        can_edit: {type: boolean}
+        can_delete: {type: boolean}
+    VaultWorkspace:
+      type: object
+      additionalProperties: false
+      required: [entries, total, can_assign]
+      properties:
+        entries: {type: array, items: {$ref: '#/components/schemas/VaultEntry'}}
+        total: {type: integer, minimum: 0}
+        can_assign: {type: boolean}
+    VaultCreateInput:
+      type: object
+      additionalProperties: false
+      required: [title, kind, secret, visibility]
+      properties:
+        title: {type: string, minLength: 1, maxLength: 160}
+        kind: {type: string, enum: [password, api_key]}
+        secret: {type: string, minLength: 1, maxLength: 16384, writeOnly: true}
+        username: {type: string, maxLength: 320}
+        visibility: {type: string, enum: [personal, assigned]}
+        service_id: {type: string, format: uuid}
+        service_name: {type: string, minLength: 1, maxLength: 120, description: Private service label for personal entries only}
+        subject_kind: {type: string, enum: [user, group]}
+        subject_id: {type: string, format: uuid}
+    VaultUpdateInput:
+      type: object
+      additionalProperties: false
+      required: [title, secret, expected_version]
+      properties:
+        title: {type: string, minLength: 1, maxLength: 160}
+        secret: {type: string, minLength: 1, maxLength: 16384, writeOnly: true}
+        username: {type: string, maxLength: 320}
+        expected_version: {type: integer, minimum: 1}
+    VaultRevealInput:
+      type: object
+      additionalProperties: false
+      properties:
+        version: {type: integer, minimum: 1, description: Omit to reveal the current version}
+    VaultSecret:
+      type: object
+      additionalProperties: false
+      required: [value, username, version]
+      properties:
+        value: {type: string, description: Explicit authorized reveal only. Never cache or log.}
+        username: {type: string}
+        version: {type: integer, minimum: 1}
+    VaultVersion:
+      type: object
+      additionalProperties: false
+      required: [version, created_at, changed_by, changed_by_name]
+      properties:
+        version: {type: integer, minimum: 1}
+        created_at: {type: string, format: date-time}
+        changed_by: {type: string, format: uuid}
+        changed_by_name: {type: string}
+    VaultHistory:
+      type: object
+      additionalProperties: false
+      required: [versions, total, current_version]
+      properties:
+        versions: {type: array, items: {$ref: '#/components/schemas/VaultVersion'}}
+        total: {type: integer, minimum: 0}
+        current_version: {type: integer, minimum: 1}
     ServerAccessRecordingArchive:
       type: object
       additionalProperties: false

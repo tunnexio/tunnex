@@ -82,6 +82,7 @@ import (
 	"github.com/tunnexio/tunnex/apps/api/internal/session"
 	"github.com/tunnexio/tunnex/apps/api/internal/sites"
 	"github.com/tunnexio/tunnex/apps/api/internal/tenancy"
+	"github.com/tunnexio/tunnex/apps/api/internal/vault"
 	"github.com/tunnexio/tunnex/apps/api/internal/workflowprovenance"
 	"github.com/tunnexio/tunnex/packages/apptransport/restorebarrier"
 )
@@ -752,6 +753,7 @@ func main() {
 		SSO:                   apphttp.NewSSOPort(pool, sealer, sessions.Client(), cfg.AppBaseURL, licenceMgr, logger),
 		Policy:                apphttp.NewPolicyPortWithFQDN(pool, pushHub, licenceMgr),
 		ServerAccess:          terminalSvc,
+		Vault:                 vault.New(pool, sealer),
 		AppAccess:             appAccessSvc,
 		Beam:                  beamSvc,
 		FQDNResources:         fqdnresources.New(pool),
