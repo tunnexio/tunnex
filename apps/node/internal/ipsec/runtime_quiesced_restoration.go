@@ -113,7 +113,10 @@ func (c *RuntimeController) reserveColdQuiescedRestoration(ctx context.Context, 
 	if _, err = authority.RemainingForApply(identity, 5*time.Second); err != nil || !current(ctx, boot, ns) {
 		return ErrRuntimeController
 	}
-	next := cloneRuntimeEntries(entries)
+	next := make([]RuntimeJournalEntry, len(entries))
+	for i, entry := range entries {
+		next[i] = copyDNSEntry(entry)
+	}
 	next[pos] = candidate
 	if err = c.journal.Save(next); err != nil {
 		return fmt.Errorf("%w: cold quiesced reservation", err)
