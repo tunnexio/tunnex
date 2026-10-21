@@ -19,14 +19,19 @@ The [sanitized HTTP record](../walk-artifacts/tunnex-vault-20261021/live-http-re
 - Stale updates return conflict without appending a version; recipients cannot delete administrator assignments.
 - Listing/history/error/audit metadata and API logs exclude synthetic plaintext. Four encrypted version records remain in the fixture database.
 
-The final browser walk verified the corrected Local Sharing UI read-only, without revealing or saving a secret:
+The final browser walk verified the Local Sharing structure with the user's monochrome correction, without revealing a secret or changing server data:
 
-- [Beam-style inventory and row menus](../walk-artifacts/tunnex-vault-20261021/local-sharing-inventory.png)
+- [Monochrome inventory](../walk-artifacts/tunnex-vault-20261021/monochrome-inventory.png)
 - [Right-side Add credential drawer](../walk-artifacts/tunnex-vault-20261021/local-sharing-add-drawer.png)
-- [Right-side masked history drawer](../walk-artifacts/tunnex-vault-20261021/local-sharing-history-drawer.png)
-- [Shared no-results empty state](../walk-artifacts/tunnex-vault-20261021/local-sharing-empty-state.png)
+- [Monochrome masked history drawer](../walk-artifacts/tunnex-vault-20261021/monochrome-history-drawer.png)
+- [Monochrome no-results empty state](../walk-artifacts/tunnex-vault-20261021/monochrome-empty-state.png)
+- [Masked Quick generate drawer](../walk-artifacts/tunnex-vault-20261021/quick-generate-drawer.png)
 
-The source imports the actual Beam workspace stylesheet and table classes, shared `AppAccessEmptyState`, row menus and pagination. All Vault dialogs use the shared right-drawer placement. Password, API-key, service, access and history icons use the existing palette, including inside portaled drawer content. Earlier [inventory](../walk-artifacts/tunnex-vault-20261021/live-inventory.png), [history](../walk-artifacts/tunnex-vault-20261021/live-masked-history.png) and recovery screenshots predate this correction and are historical only.
+The source imports the actual Beam workspace stylesheet and table classes, shared `AppAccessEmptyState`, row menus and pagination. All Vault dialogs use the shared right-drawer placement. Colored avatars and decorative glyphs are removed; empty states omit their optional icon. Vault-only CSS removes table/section rules and redundant action outlines while preserving shared navigation, inputs, focus outlines and drawer structure. Existing monochrome tokens and shared utility icons remain. Earlier live, recovery and colored-avatar Local Sharing screenshots are historical only. The Add drawer screenshot remains current because that form is unchanged by these corrections.
+
+Quick generate adds a password-first entry point in the same drawer: the new 24-character password is masked, Copy is explicit and browser-only, and the user supplies service, visibility/assignment and optional username before Save. It does not create an entry or reveal an existing secret automatically. Saved-entry copy retains its authorized, audited API flow.
+
+The browser opened Quick generate once, verified the masked field and controls, then cancelled the unsaved draft. Copy, Show secret and Save were not used. Generation stayed local to the browser.
 
 ## Review-runner failure and recovery
 
@@ -34,10 +39,10 @@ During user review the temporary Docker UI process disappeared, leaving the rend
 
 Stopped the task-owned broad test lanes and replaced the UI runner with native Vite using the official checksum-verified Node 24.21.0 runtime and locked pnpm 10.34.5 dependencies. Reopened the real browser page and verified that data and service controls loaded. The [recovered native inventory](../walk-artifacts/tunnex-vault-20261021/restored-native-inventory.png) records that recovery before the subsequent user-requested Local Sharing layout correction.
 
-Final pinned native typecheck and production build passed. The corrected Vault/generator suite passed 21 tests; an independent Beam/Vault/glyph/census run passed 177 tests across 15 files. Pinned Linux builds and focused Vault/router suites passed for both API editions, the CLI module passed, and generated-artifact drift passed after the latest-main rebase. The broader API, web and Node-agent gates remain incomplete or inconclusive as detailed in the [development evidence](S-tunnex-vault-development.md).
+Final pinned native typecheck and all 24 Vault/generator tests passed after Quick generate and final spacing. The successful production build and independent 177-test/15-file Beam/Vault/glyph/census run precede the monochrome/rule cleanup and Quick generate follow-ups. Pinned Linux builds and focused Vault/router suites passed for both API editions, the CLI module passed, and generated-artifact drift passed after the latest-main rebase. The broader API, web and Node-agent gates remain incomplete or inconclusive as detailed in the [development evidence](S-tunnex-vault-development.md).
 
 ## Boundaries
 
-The final browser leg covers navigation, populated inventory, Add/history drawers and the no-results state; it performs no reveal or save. The zero-entry state uses the same shared component and is covered by component tests. Creation, rotation and permission checks were exercised over actual HTTP; their browser mutation wiring is covered by component tests. This record does not claim a complete browser mutation or production acceptance walk. Desktop/narrow checks from the earlier isolated component harness predate the final layout correction.
+The final browser leg covers navigation, populated inventory, Add/history drawers, the no-results state and local unsaved Quick generation; it performs no reveal, copy or save. The zero-entry state uses the same shared component and is covered by component tests. Creation, rotation and permission checks were exercised over actual HTTP; their browser mutation wiring is covered by component tests. This record does not claim a complete browser mutation or production acceptance walk. Desktop/narrow checks from the earlier isolated component harness predate the final layout correction.
 
 The disposable review workspace is available at `http://127.0.0.1:5178/vault` while its task-owned services remain running. It uses sample data and is independent of the existing local stacks. The public SDK, CLI automation and external-service provisioning remain deferred.

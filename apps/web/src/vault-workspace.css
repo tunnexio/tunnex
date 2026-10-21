@@ -1,13 +1,15 @@
-/* Inventory, search, avatars, empty states and drawers use Local Sharing's
+/* Inventory, search, empty states and drawers use Local Sharing's
  * shared classes and primitives. Keep only Vault's content-specific rules here. */
 .vault-inventory-summary { padding-bottom:0; }
-.vault-drawer-identity { padding-inline:0; }
+.vault-workspace .beam-inventory-table th,.vault-workspace .beam-inventory-table td,
+.vault-history-table th,.vault-history-table td { border:0; }
+.vault-workspace .aa-empty-state { border-bottom:0; }
+.vault-workspace .beam-disclosure { border-top:0; }
+.vault-workspace .beam-disclosure > summary { background:transparent; }
+.vault-workspace .beam-toolbar > button,.vault-workspace .beam-open-link { border-color:transparent; background:transparent; }
 .vault-entry-title { text-align:left; }
 .vault-entry-title:hover { text-decoration:underline; text-underline-offset:3px; }
-.vault-service-label { display:flex; align-items:center; flex-wrap:wrap; gap:5px; }
-.vault-service-label > svg { flex:none; }
-.vault-access,.vault-version { display:inline-flex; align-items:center; gap:6px; font-size:12px; white-space:nowrap; }
-.vault-access > svg,.vault-version > svg { flex:none; color:var(--tnx-text-secondary); }
+.vault-access,.vault-version { font-size:12px; white-space:nowrap; }
 .vault-cell-note { display:block; margin-top:4px; font-size:11px; color:var(--tnx-text-tertiary); }
 .vault-count { color:var(--tnx-text-secondary); font-size:11px; font-weight:400; }
 .vault-muted { color:var(--tnx-text-tertiary); }
@@ -22,7 +24,7 @@
 .vault-detail-facts { display:grid; grid-template-columns:1fr 1fr; gap:15px 22px; }
 .vault-detail-facts dt { color:var(--tnx-text-tertiary); font-size:11px; }
 .vault-detail-facts dd { color:var(--tnx-text-primary); font-size:13px; line-height:1.5; margin-top:4px; overflow-wrap:anywhere; }
-.vault-secret-panel,.vault-history { display:grid; gap:12px; padding-top:18px; border-top:1px solid var(--tnx-border); }
+.vault-secret-panel,.vault-history { display:grid; gap:12px; padding-top:18px; }
 .vault-section-heading { display:flex; align-items:center; justify-content:space-between; gap:12px; }
 .vault-section-heading h3 { display:flex; align-items:center; gap:8px; color:var(--tnx-text-heading); font-size:13px; font-weight:550; }
 .vault-secret-value { display:block; padding:13px 14px; min-height:48px; border:1px solid var(--tnx-border); border-radius:6px; background:var(--tnx-surface-inset); color:var(--tnx-text-primary); font-size:13px; line-height:1.7; white-space:pre-wrap; overflow-wrap:anywhere; user-select:all; }

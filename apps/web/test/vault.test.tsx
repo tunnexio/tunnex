@@ -30,6 +30,75 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.useRealTimers(); });
 
 describe("Tunnex Vault", () => {
+  it("generates a password in one click, copies explicitly, and waits for admin details before saving", async () => {
+    mock.canAssign = true;
+    show(); await screen.findByRole("button", { name: personal.title });
+    fireEvent.click(screen.getByRole("button", { name: "Quick generate" }));
+    const element = screen.getByRole("dialog", { name: "Quick generate" });
+    const dialog = within(element);
+    expect(element.closest(".tnx-modal-overlay")?.getAttribute("data-placement")).toBe("right");
+    const password = dialog.getByLabelText("Generated password") as HTMLInputElement;
+    const value = password.value;
+    expect(value).toHaveLength(24);
+    expect(password.type).toBe("password");
+    expect(element.querySelector("input")).toBe(password);
+    expect((dialog.getByLabelText("Credential type") as HTMLSelectElement).value).toBe("password");
+    expect((dialog.getByLabelText("Credential type") as HTMLSelectElement).disabled).toBe(true);
+    expect(mock.clipboard).not.toHaveBeenCalled();
+    expect(mock.post).not.toHaveBeenCalled();
+    fireEvent.click(dialog.getByRole("button", { name: "Save credential" }));
+    expect(mock.post).not.toHaveBeenCalled();
+    fireEvent.click(dialog.getByRole("button", { name: "Copy password" }));
+    await waitFor(() => expect(mock.clipboard).toHaveBeenCalledWith(value));
+    expect(mock.post).not.toHaveBeenCalled();
+    fireEvent.change(dialog.getByLabelText("Title"), { target: { value: "On-call account" } });
+    fireEvent.change(dialog.getByLabelText("Visibility"), { target: { value: "assigned" } });
+    await dialog.findByRole("option", { name: "Teammate" });
+    fireEvent.change(dialog.getByLabelText("Service"), { target: { value: "service-one" } });
+    fireEvent.change(dialog.getByLabelText("User"), { target: { value: "user-two" } });
+    fireEvent.change(dialog.getByLabelText("Username (optional)"), { target: { value: "oncall" } });
+    fireEvent.click(dialog.getByRole("button", { name: "Save credential" }));
+    await waitFor(() => expect(mock.post).toHaveBeenCalledWith(expect.stringContaining("/entries"), expect.objectContaining({ body: { title: "On-call account", kind: "password", username: "oncall", secret: value, visibility: "assigned", service_id: "service-one", subject_kind: "user", subject_id: "user-two" } })));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(screen.queryByDisplayValue(value)).toBeNull();
+    expect(mock.clipboard).toHaveBeenCalledTimes(1);
+  });
+
+  it("discards a quick password on close and organization change without prefilling manual Add", async () => {
+    const view = show(); await screen.findByRole("button", { name: personal.title });
+    fireEvent.click(screen.getByRole("button", { name: "Quick generate" }));
+    let dialog = within(screen.getByRole("dialog", { name: "Quick generate" }));
+    const first = (dialog.getByLabelText("Generated password") as HTMLInputElement).value;
+    fireEvent.click(dialog.getByRole("button", { name: "Cancel" }));
+    expect(screen.queryByDisplayValue(first)).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Add credential" }));
+    dialog = within(screen.getByRole("dialog", { name: "Add credential" }));
+    expect((dialog.getByLabelText("Secret") as HTMLInputElement).value).toBe("");
+    fireEvent.click(dialog.getByRole("button", { name: "Cancel" }));
+    fireEvent.click(screen.getByRole("button", { name: "Quick generate" }));
+    const pending = (within(screen.getByRole("dialog", { name: "Quick generate" })).getByLabelText("Generated password") as HTMLInputElement).value;
+    mock.org = "org-two"; entries = [];
+    view.rerender(<MemoryRouter><Vault /></MemoryRouter>);
+    await screen.findByRole("heading", { name: "No credentials yet" });
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(screen.queryByDisplayValue(pending)).toBeNull();
+    expect(mock.post).not.toHaveBeenCalled();
+    expect(mock.clipboard).not.toHaveBeenCalled();
+  });
+
+  it("keeps the quick draft available after a failed explicit copy without leaking the diagnostic", async () => {
+    mock.clipboard.mockRejectedValueOnce(new Error("private clipboard diagnostic"));
+    show(); await screen.findByRole("button", { name: personal.title });
+    fireEvent.click(screen.getByRole("button", { name: "Quick generate" }));
+    const dialog = within(screen.getByRole("dialog", { name: "Quick generate" }));
+    const value = (dialog.getByLabelText("Generated password") as HTMLInputElement).value;
+    fireEvent.click(dialog.getByRole("button", { name: "Copy password" }));
+    expect((await dialog.findByRole("alert")).textContent).toBe("Could not copy the password. Show it to select and copy it manually.");
+    expect((dialog.getByLabelText("Generated password") as HTMLInputElement).value).toBe(value);
+    expect(screen.queryByText("private clipboard diagnostic")).toBeNull();
+    expect(mock.post).not.toHaveBeenCalled();
+  });
+
   it("shows metadata only, reveals an explicit historical version, and reauthorizes copying", async () => {
     show();
     fireEvent.click(await screen.findByRole("button", { name: personal.title }));
