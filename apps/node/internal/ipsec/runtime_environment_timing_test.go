@@ -89,27 +89,31 @@ func TestEnvironmentTimingPreservesEighteenCommands(t *testing.T) {
 				}
 				got, err := inspector.observeWithCommands(ctx, e.Allocation, e.Engines, observe, hook)
 				if kind == "success" {
-					nftPhase := 0
+					// Version and NAT reads run concurrently within each census.
+					// Require exact membership and the snapshot barrier, not worker order.
+					snapshots := 0
+					versionSeen, natSeen := false, false
 					for _, command := range order {
 						switch command {
 						case "nft":
-							if nftPhase%3 != 0 {
+							if snapshots > 0 && (!versionSeen || !natSeen) {
 								t.Fatal("nft snapshots overlapped")
 							}
-							nftPhase++
+							snapshots++
+							versionSeen, natSeen = false, false
 						case "hook -V":
-							if nftPhase%3 != 1 {
-								t.Fatal("version read out of order")
+							if snapshots == 0 || versionSeen {
+								t.Fatal("version read missing census or duplicated")
 							}
-							nftPhase++
+							versionSeen = true
 						case "hook -t nat":
-							if nftPhase%3 != 2 {
-								t.Fatal("NAT read out of order")
+							if snapshots == 0 || natSeen {
+								t.Fatal("NAT read missing census or duplicated")
 							}
-							nftPhase++
+							natSeen = true
 						}
 					}
-					if nftPhase != 6 {
+					if snapshots != 2 || !versionSeen || !natSeen {
 						t.Fatal("missing census reads")
 					}
 				}

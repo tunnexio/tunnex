@@ -123,7 +123,11 @@ func (c *RuntimeController) maintainIPsecRuntimeRecoveryObserved(ctx context.Con
 	return c.maintainIPsecRuntimeItems(ctx, len(materials), prepare, authority, bgpCurrent, publish, publishRecovery, false)
 }
 
-func (c *RuntimeController) maintainIPsecRuntimeItems(ctx context.Context, count int, prepare func(string, []RuntimeJournalEntry, *string, *uuid.UUID) ([]maintenanceItem, error), authority func() *PermitLeaseAuthority, bgpCurrent func() bool, publish func(context.Context, RuntimeDelivery, RuntimeStatusReport) error, publishRecovery func(context.Context, RuntimeRecoveryHeartbeat) error, reconcileRetainedBGP bool) (resultOut []RuntimeMaintenanceResult, resultErr error) {
+func (c *RuntimeController) maintainIPsecRuntimeItems(ctx context.Context, count int, prepare func(string, []RuntimeJournalEntry, *string, *uuid.UUID) ([]maintenanceItem, error), authority func() *PermitLeaseAuthority, bgpCurrent func() bool, publish func(context.Context, RuntimeDelivery, RuntimeStatusReport) error, publishRecovery func(context.Context, RuntimeRecoveryHeartbeat) error, reconcileRetainedBGP bool) ([]RuntimeMaintenanceResult, error) {
+	return c.maintainIPsecRuntimeItemsAttempt(ctx, count, prepare, authority, bgpCurrent, publish, publishRecovery, reconcileRetainedBGP, true)
+}
+
+func (c *RuntimeController) maintainIPsecRuntimeItemsAttempt(ctx context.Context, count int, prepare func(string, []RuntimeJournalEntry, *string, *uuid.UUID) ([]maintenanceItem, error), authority func() *PermitLeaseAuthority, bgpCurrent func() bool, publish func(context.Context, RuntimeDelivery, RuntimeStatusReport) error, publishRecovery func(context.Context, RuntimeRecoveryHeartbeat) error, reconcileRetainedBGP, allowFQDNCutoffRefresh bool) (resultOut []RuntimeMaintenanceResult, resultErr error) {
 	started := time.Now()
 	stage, connection := "maintenance_input", uuid.Nil
 	defer func() { c.emitRuntimeDiagnostic(ctx, "maintenance", stage, connection, started, resultErr != nil) }()
@@ -316,7 +320,7 @@ func (c *RuntimeController) maintainIPsecRuntimeItems(ctx context.Context, count
 						// Re-read the journal and rebuild exact owner snapshots once.
 						// The reconciler leaves applications denied; only the normal
 						// fresh-lease commit restores them. Further RIB drift refuses.
-						return c.maintainIPsecRuntimeItems(ctx, count, prepare, authority, bgpCurrent, publish, publishRecovery, false)
+						return c.maintainIPsecRuntimeItemsAttempt(ctx, count, prepare, authority, bgpCurrent, publish, publishRecovery, false, allowFQDNCutoffRefresh)
 					}
 					eligible = proofErr == nil
 					c.refreshMaintenanceRecovery(ctx)
@@ -337,6 +341,7 @@ func (c *RuntimeController) maintainIPsecRuntimeItems(ctx context.Context, count
 		}
 		eligibleOwners = append(eligibleOwners, eligibleOwner{index: i, active: old})
 	}
+	retryPublish, retryPublishRecovery := publish, publishRecovery
 	deferral := c.beginMaintenancePulseDeferral(pulseAllowed, publishRecovery)
 	if publishRecovery != nil {
 		publishOriginal := publishRecovery
@@ -374,6 +379,7 @@ func (c *RuntimeController) maintainIPsecRuntimeItems(ctx context.Context, count
 		}
 		return c.refreshMaintenanceActiveRecovery(ctx, pulseAllowed, publishRecovery)
 	}
+	refreshedFQDN := map[uuid.UUID]bool{}
 	for _, owner := range eligibleOwners {
 		m, old := materials[owner.index], owner.active
 		id := m.Manifest.ConnectionID
@@ -417,12 +423,13 @@ func (c *RuntimeController) maintainIPsecRuntimeItems(ctx context.Context, count
 		// A normal page can race the same DNS publication as a priority pass.
 		// Reuse the exact expiry-only material/nonce bridge once; a conflict
 		// alone never authorizes new content or extends the original lease.
-		if leaseErr != nil && len(old.FQDNLeaseDescriptors) > 0 && maintenanceLeaseFailureStage(leaseErr) == "maintenance_lease_http_409_conflict" {
+		if leaseErr != nil && allowFQDNCutoffRefresh && len(old.FQDNLeaseDescriptors) > 0 && maintenanceLeaseFailureStage(leaseErr) == "maintenance_lease_http_409_conflict" {
 			stage = "maintenance_fqdn_expiry_material"
 			updated, updateErr := c.refreshFQDNExpiryMaterial(ctx, old)
 			if updateErr != nil {
 				return fail()
 			}
+			refreshedFQDN[id] = true
 			m = updated
 			identity.PolicyHash = m.PolicyHash
 			fqdnPolicy = retainedFQDNLeasePolicy(m.FQDNLeaseDescriptors)
@@ -500,6 +507,7 @@ func (c *RuntimeController) maintainIPsecRuntimeItems(ctx context.Context, count
 		candidate.Identity = identity
 		candidate.Grants = m.Grants
 		candidate.FQDNLeaseDescriptors = runtimeFQDNLeaseDescriptors(fqdnPolicy)
+		materials[owner.index] = m
 		staged[id], candidates[id] = candidate, candidate
 		maintained = append(maintained, m.RuntimeDelivery)
 	}
@@ -515,9 +523,19 @@ func (c *RuntimeController) maintainIPsecRuntimeItems(ctx context.Context, count
 			return failHAFreshness()
 		}
 	}
+	// A candidate already refreshed after a 409 has consumed its one normal
+	// material retry. The same bound applies to a cutoff recollection.
+	cutoffCandidates := map[uuid.UUID]runtimeActive{}
+	if allowFQDNCutoffRefresh {
+		for id, candidate := range candidates {
+			if !refreshedFQDN[id] {
+				cutoffCandidates[id] = candidate
+			}
+		}
+	}
 	haFreshnessFailed := false
 	stage, connection = "maintenance_combined_guard", uuid.Nil
-	if c.installActiveCandidates(ctx, entries, staged, candidates, c.active, func() bool {
+	installErr := c.installActiveCandidatesFQDN(ctx, entries, staged, candidates, c.active, func() bool {
 		if ctx.Err() != nil || !c.qualification.current() || !c.config.DaemonAlive() || !deferral.reportsCurrent(c) {
 			return false
 		}
@@ -528,7 +546,30 @@ func (c *RuntimeController) maintainIPsecRuntimeItems(ctx context.Context, count
 			}
 		}
 		return true
-	}) != nil {
+	}, cutoffCandidates)
+	if installErr != nil {
+		var cutoff *runtimeFQDNPrecommitCutoff
+		if allowFQDNCutoffRefresh && errors.As(installErr, &cutoff) {
+			stage = "maintenance_fqdn_cutoff_refresh"
+			// No candidate has been installed or published. Discard every staged
+			// lease and recollect once under the original finite authority.
+			retryMaterials, retryErr := c.prepareFQDNCutoffRetry(ctx, materials, cutoff)
+			if retryErr != nil || !deferral.reportsCurrent(c) {
+				return fail()
+			}
+			retryPrepare := func(retryNS string, _ []RuntimeJournalEntry, _ *string, _ *uuid.UUID) ([]maintenanceItem, error) {
+				if retryNS != ns {
+					return nil, ErrRuntimeController
+				}
+				for _, m := range retryMaterials {
+					if !c.fqdnGrantsCurrent(m.Grants) {
+						return nil, ErrRuntimeController
+					}
+				}
+				return retryMaterials, nil
+			}
+			return c.maintainIPsecRuntimeItemsAttempt(ctx, count, retryPrepare, authority, bgpCurrent, retryPublish, retryPublishRecovery, reconcileRetainedBGP, false)
+		}
 		if haFreshnessFailed && ctx.Err() == nil && c.qualification.current() && c.config.DaemonAlive() {
 			return failHAFreshness()
 		}

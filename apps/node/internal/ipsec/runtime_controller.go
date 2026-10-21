@@ -831,7 +831,13 @@ func (c *RuntimeController) installActive(ctx context.Context, entries []Runtime
 // installActiveCandidates uses the original collection and atomic commit. A
 // maintenance overlay remains owner-private until every required candidate
 // survives the complete native proof and final lease checks.
-func (c *RuntimeController) installActiveCandidates(ctx context.Context, entries []RuntimeJournalEntry, active map[uuid.UUID]runtimeActive, required map[uuid.UUID]runtimeActive, prior map[uuid.UUID]runtimeActive, candidateQualification func() bool) (resultErr error) {
+func (c *RuntimeController) installActiveCandidates(ctx context.Context, entries []RuntimeJournalEntry, active map[uuid.UUID]runtimeActive, required map[uuid.UUID]runtimeActive, prior map[uuid.UUID]runtimeActive, candidateQualification func() bool) error {
+	return c.installActiveCandidatesFQDN(ctx, entries, active, required, prior, candidateQualification, nil)
+}
+
+// Only maintenance may request one precommit recollection when an otherwise
+// successful finite lease would silently lose a required FQDN member.
+func (c *RuntimeController) installActiveCandidatesFQDN(ctx context.Context, entries []RuntimeJournalEntry, active map[uuid.UUID]runtimeActive, required map[uuid.UUID]runtimeActive, prior map[uuid.UUID]runtimeActive, candidateQualification func() bool, cutoffCandidates map[uuid.UUID]runtimeActive) (resultErr error) {
 	c.reconcileDNSOwnerView()
 	stage := "input"
 	connection := uuid.Nil
@@ -1083,13 +1089,20 @@ func (c *RuntimeController) installActiveCandidates(ctx context.Context, entries
 	if candidateQualification != nil && !candidateQualification() {
 		return ErrRuntimeController
 	}
-	intent = limitFQDNGuardIntent(intent, time.Now(), 5*time.Second, func(id uuid.UUID, g GuardGrant, budget time.Duration) (time.Duration, error) {
+	limited := limitFQDNGuardIntent(intent, time.Now(), 5*time.Second, func(id uuid.UUID, g GuardGrant, budget time.Duration) (time.Duration, error) {
 		a, ok := active[id]
 		if !ok || a.Authority == nil {
 			return 0, ErrPermitLease
 		}
 		return a.Authority.RemainingFQDNForApply(a.Identity, guardFQDNGrantDigest(g), budget)
 	})
+	if len(cutoffCandidates) > 0 {
+		if cutoff := runtimeFQDNRequiredCutoff(intent, limited, cutoffCandidates); cutoff != nil {
+			stage = "combined_guard_fqdn_cutoff"
+			return cutoff
+		}
+	}
+	intent = limited
 	stage = "combined_guard_replace"
 	publication := &runtimeDNSPublication{previous: c.dnsView.Load(), done: make(chan struct{})}
 	c.dnsPublication.Store(publication)

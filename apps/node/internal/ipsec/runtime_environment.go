@@ -497,10 +497,10 @@ func (r *runtimeEnvironmentInspector) observeQualified(ctx context.Context, a Ke
 				return fail()
 			}
 			if p.Bits() > prefix.Bits() {
-				if !(gcp && runtimeRoutedGatewayHost(row, p, prefix, routeRows, physical, assigned)) && !runtimeConnectedGatewayHost(row, p, prefix, routeRows, physical, assigned) {
+				if !(gcp && runtimeRoutedGatewayHost(row, p, prefix, routeRows, physical, assigned)) && !runtimeConnectedGatewayHost(row, p, prefix, routeRows, physical, assigned) && !runtimeRedundantDHCPHost(row, p, prefix, routeRows, physical, assigned, engines[0].RemotePrefixes) {
 					return fail()
 				}
-				continue // A gateway host is never proof of prefix coverage.
+				continue // A supporting host route is never proof of prefix coverage.
 			}
 			if _, routed := row["gateway"]; gcp && routed && !runtimeRoutedLocalPrefix(row, p, prefix, routeRows, physical, assigned) {
 				return fail()
@@ -670,6 +670,53 @@ func runtimeConnectedGatewayHost(host map[string]json.RawMessage, p, prefix neti
 		}
 	}
 	return defaults == 1 && covers == 1 && hosts == 1
+}
+
+// DHCP can also install an on-link DNS /32 inside an already connected LAN.
+// It is redundant only when it preserves the exact connected route's interface
+// and assigned source, and the original DHCP gateway/default anchor is intact.
+// This host never supplies coverage or changes any application authorization.
+func runtimeRedundantDHCPHost(host map[string]json.RawMessage, p, prefix netip.Prefix, rows []map[string]json.RawMessage, physical map[string]int, assigned map[string]map[netip.Addr]bool, remote []netip.Prefix) bool {
+	if p.Bits() != 32 || !prefix.Contains(p.Addr()) {
+		return false
+	}
+	for _, protected := range remote {
+		if prefix.Overlaps(protected) {
+			return false
+		}
+	}
+	dev, _ := kernelString(host, "dev")
+	scope, _ := kernelString(host, "scope")
+	protocol, _ := kernelString(host, "protocol")
+	source, sourceOK := kernelString(host, "prefsrc")
+	src, err := netip.ParseAddr(source)
+	if scope != "link" || protocol != "dhcp" || physical[dev] == 0 || !sourceOK || err != nil || !src.Is4() || !prefix.Contains(src) || !assigned[dev][src] || assigned[dev][p.Addr()] {
+		return false
+	}
+	if _, via := host["gateway"]; via {
+		return false
+	}
+	// The ordinary route scan rejects special types, flags and forwarding
+	// overrides on every row. Reuse its unchanged gateway-anchor proof here.
+	hosts, anchors := 0, 0
+	for _, route := range rows {
+		routePrefix, valid := runtimeMainRoutePrefix(route)
+		if !valid {
+			return false
+		}
+		if routePrefix == p {
+			hosts++
+		}
+		if routePrefix == p || routePrefix.Bits() != 32 || !prefix.Contains(routePrefix.Addr()) {
+			continue
+		}
+		routeDev, _ := kernelString(route, "dev")
+		routeSource, _ := kernelString(route, "prefsrc")
+		if routeDev == dev && routeSource == source && runtimeConnectedGatewayHost(route, routePrefix, prefix, rows, physical, assigned) {
+			anchors++
+		}
+	}
+	return hosts == 1 && anchors == 1
 }
 
 // The only narrow GCP route exception is the on-link gateway for one exact

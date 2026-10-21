@@ -247,7 +247,7 @@ func TestMaintenancePulseDeferralSlowIOAndFailure(t *testing.T) {
 			}
 			prove := r.c.prove
 			r.c.prove = func(ctx context.Context, e RuntimeJournalEntry, env RuntimeEnvironment) error {
-				if candidate == 5 && pulseDeferralInCall("installActiveCandidates") {
+				if candidate == 5 && pulseDeferralInCall("installActiveCandidatesFQDN") {
 					if err := inject("assembly"); err != nil {
 						return err
 					}
