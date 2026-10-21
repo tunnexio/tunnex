@@ -62,6 +62,7 @@ type maintenanceItem struct {
 	PolicyHash           string
 	FQDNExpiryPriorHash  string
 	FQDNPolicyPriorHash  string
+	FQDNRestorePending   bool
 }
 
 func (c *RuntimeController) maintainIPsecRuntimeObserved(ctx context.Context, materials []RuntimeMaterial, authority func() *PermitLeaseAuthority, bgpCurrent func() bool, publish func(context.Context, RuntimeDelivery, RuntimeStatusReport) error) ([]RuntimeMaintenanceResult, error) {
@@ -76,6 +77,7 @@ func (c *RuntimeController) maintainIPsecRuntimeRecoveryObserved(ctx context.Con
 		input := make([]RuntimeJournalEntry, len(materials))
 		grants := make([][]GuardGrant, len(materials))
 		expiryPriorHashes := make([]string, len(materials))
+		pendingNAT := make([]bool, len(materials))
 		connections, deliveries := map[uuid.UUID]bool{}, map[uuid.UUID]bool{}
 		*stage = "maintenance_material"
 		for i, m := range materials {
@@ -88,7 +90,9 @@ func (c *RuntimeController) maintainIPsecRuntimeRecoveryObserved(ctx context.Con
 			}
 			c.publishDesktopNAT(id, grants[i])
 			*stage = "maintenance_desktop_observe"
-			if grants[i], err = c.observeDesktopGrants(ctx, grants[i]); err != nil {
+			grants[i], err = c.observeDesktopGrants(ctx, grants[i])
+			pendingNAT[i] = errors.Is(err, errDesktopNATPending)
+			if err != nil && !pendingNAT[i] {
 				return nil, ErrRuntimeController
 			}
 			if old, ok := c.active[id]; ok && old.Identity.PolicyHash != m.Policy.Hash && len(old.FQDNLeaseDescriptors) > 0 {
@@ -117,7 +121,7 @@ func (c *RuntimeController) maintainIPsecRuntimeRecoveryObserved(ctx context.Con
 		}
 		items := make([]maintenanceItem, len(materials))
 		for i, m := range materials {
-			items[i] = maintenanceItem{RuntimeDelivery: m.RuntimeDelivery, Entry: input[i], Grants: grants[i], FQDNLeaseDescriptors: runtimeFQDNLeaseDescriptors(m.Policy), PolicyHash: m.Policy.Hash, FQDNExpiryPriorHash: expiryPriorHashes[i]}
+			items[i] = maintenanceItem{RuntimeDelivery: m.RuntimeDelivery, Entry: input[i], Grants: grants[i], FQDNLeaseDescriptors: runtimeFQDNLeaseDescriptors(m.Policy), PolicyHash: m.Policy.Hash, FQDNExpiryPriorHash: expiryPriorHashes[i], FQDNRestorePending: pendingNAT[i]}
 		}
 		return items, nil
 	}
@@ -207,6 +211,7 @@ func (c *RuntimeController) maintainIPsecRuntimeItemsAttempt(ctx context.Context
 		staged[id] = a
 	}
 	candidates := map[uuid.UUID]runtimeActive{}
+	pending := map[uuid.UUID]runtimeActive{}
 	maintained := make([]RuntimeDelivery, 0, len(materials))
 	changed := false
 	type eligibleOwner struct {
@@ -273,6 +278,9 @@ func (c *RuntimeController) maintainIPsecRuntimeItemsAttempt(ctx context.Context
 				identity := PermitLeaseIdentity{DeliveryID: m.ID, Binding: same.Engines[0].Binding, PolicyHash: m.PolicyHash}
 				expiryRollover := m.FQDNExpiryPriorHash != "" && m.FQDNExpiryPriorHash == old.Identity.PolicyHash
 				policyTransition := c.fqdnPolicyTransitionEligible(old, m)
+				if m.FQDNRestorePending && !c.fqdnRestorationPendingEligible(old, m) {
+					return fail()
+				}
 				priorIdentity := identity
 				priorIdentity.PolicyHash = old.Identity.PolicyHash
 				eligible = maintenanceEligibilityTerm(&eligibilityStage, "eligibility_observe", func() bool { return observeErr == nil }) &&
@@ -354,6 +362,16 @@ func (c *RuntimeController) maintainIPsecRuntimeItemsAttempt(ctx context.Context
 				c.withdrawDNSOwnerView(id)
 				changed = true
 			}
+			continue
+		}
+		if m.FQDNRestorePending {
+			// Exact eligibility and native old-owner proof succeeded. Leave its
+			// original deadline untouched and return no applied acknowledgement.
+			if !c.fqdnRestorationPendingEligible(old, m) {
+				return fail()
+			}
+			c.emitRuntimeDiagnostic(ctx, "maintenance", "maintenance_desktop_nat_pending", id, eligibilityStarted, true)
+			pending[id] = old
 			continue
 		}
 		if c.fqdnPolicyTransitionEligible(old, m) {
@@ -453,6 +471,14 @@ func (c *RuntimeController) maintainIPsecRuntimeItemsAttempt(ctx context.Context
 			if updateErr != nil {
 				return fail()
 			}
+			if updated.FQDNRestorePending {
+				if !reflect.DeepEqual(old, updatedOld) || !c.fqdnRestorationPendingEligible(old, updated) || c.maintenanceCurrent(ctx, old, bgpCurrent) != nil || !reflect.DeepEqual(c.active[id], old) || !c.fqdnRestorationPendingEligible(old, updated) {
+					return fail()
+				}
+				c.emitRuntimeDiagnostic(ctx, "maintenance", "maintenance_desktop_nat_pending", id, started, true)
+				pending[id] = old
+				continue
+			}
 			refreshedFQDN[id] = true
 			old = updatedOld
 			staged[id] = old
@@ -538,9 +564,33 @@ func (c *RuntimeController) maintainIPsecRuntimeItemsAttempt(ctx context.Context
 		maintained = append(maintained, m.RuntimeDelivery)
 	}
 	deferral.finishCollection(staged)
+	pendingCurrent := func() bool {
+		for id, old := range pending {
+			if ctx.Err() != nil || !c.qualification.current() || !c.config.DaemonAlive() || bgpCurrent == nil || !bgpCurrent() || !reflect.DeepEqual(c.active[id], old) || !c.fqdnGrantsCurrent(old.Grants) {
+				return false
+			}
+			if _, e := old.Authority.RemainingForApply(old.Identity, 5*time.Second); e != nil {
+				return false
+			}
+		}
+		return true
+	}
+	if !pendingCurrent() {
+		return fail()
+	}
 	if len(candidates) == 0 && !changed {
 		return nil, nil
 	}
+	// Retained pending owners are required, but are not newly authorized
+	// candidates or ACK results. Another owner's commit cannot omit them.
+	required := make(map[uuid.UUID]runtimeActive, len(candidates)+len(pending))
+	for id, a := range candidates {
+		required[id] = a
+	}
+	for id, a := range pending {
+		required[id] = a
+	}
+
 	// Original authorities remain untouched and externally visible until the
 	// exact combined guard transaction and final native/lease checks succeed.
 	stage, connection = "maintenance_bgp_freshness", uuid.Nil
@@ -561,8 +611,8 @@ func (c *RuntimeController) maintainIPsecRuntimeItemsAttempt(ctx context.Context
 	}
 	haFreshnessFailed := false
 	stage, connection = "maintenance_combined_guard", uuid.Nil
-	installErr := c.installActiveCandidatesFQDN(ctx, entries, staged, candidates, c.active, func() bool {
-		if ctx.Err() != nil || !c.qualification.current() || !c.config.DaemonAlive() || !deferral.reportsCurrent(c) {
+	installErr := c.installActiveCandidatesFQDN(ctx, entries, staged, required, c.active, func() bool {
+		if ctx.Err() != nil || !c.qualification.current() || !c.config.DaemonAlive() || !deferral.reportsCurrent(c) || !pendingCurrent() {
 			return false
 		}
 		for _, a := range candidates {
@@ -695,7 +745,7 @@ func (c *RuntimeController) maintainIPsecRuntimeItemsAttempt(ctx context.Context
 	}
 	// The last inactive observation can consume report freshness too. No ACK
 	// escapes after that final blocking sample without the same actual clock proof.
-	if !deferral.reportsCurrent(c) {
+	if !deferral.reportsCurrent(c) || !pendingCurrent() {
 		return fail()
 	}
 	return result, nil

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"github.com/google/uuid"
 	bgpengine "github.com/tunnexio/tunnex/apps/node/internal/bgp"
 	"net/netip"
@@ -112,6 +113,11 @@ func (c *RuntimeController) publishDesktopNAT(id uuid.UUID, grants []GuardGrant)
 	}
 	c.config.DesktopNAT.Set(id, entries)
 }
+
+// A pending exact exemption is only a scheduling signal. It never satisfies
+// proveDesktopGrants or authorizes a new application tuple.
+var errDesktopNATPending = errors.New("desktop no-SNAT exemption pending")
+
 func (c *RuntimeController) observeDesktopGrants(ctx context.Context, grants []GuardGrant) ([]GuardGrant, error) {
 	if len(desktopExportPrefixes(grants)) == 0 {
 		return grants, nil
@@ -127,6 +133,15 @@ func (c *RuntimeController) observeDesktopGrants(ctx context.Context, grants []G
 		return nil, ErrRuntimeController
 	}
 	read := func(path string, args ...string) ([]byte, error) { return runKernelCommand(ctx, path, args...) }
+	return c.observeDesktopGrantsWithRead(ctx, grants, wg, read)
+}
+
+// The caller supplies actual kernel commands; keeping the read sequence together
+// also permits deterministic tests of failures after a pending first tuple.
+func (c *RuntimeController) observeDesktopGrantsWithRead(ctx context.Context, grants []GuardGrant, wg string, read func(string, ...string) ([]byte, error)) ([]GuardGrant, error) {
+	if ctx.Err() != nil || read == nil {
+		return nil, ErrRuntimeController
+	}
 	peers, err := read(wg, "show", "all", "allowed-ips")
 	if err != nil {
 		return nil, ErrRuntimeController
@@ -137,6 +152,7 @@ func (c *RuntimeController) observeDesktopGrants(ctx context.Context, grants []G
 	}
 	out := append([]GuardGrant(nil), grants...)
 	observedPeers := map[string]int{}
+	pendingNAT := false
 	for i, g := range out {
 		if g.DesktopDeviceID == uuid.Nil {
 			continue
@@ -167,7 +183,10 @@ func (c *RuntimeController) observeDesktopGrants(ctx context.Context, grants []G
 			observedPeers[peerIdentity] = index
 		}
 		if !desktopNATExempt(rules, g.Source, g.Destination) {
-			return nil, ErrRuntimeController
+			if !g.FQDNManaged || !desktopNATExemptionPending(rules, g.Source, g.Destination, iface) {
+				return nil, ErrRuntimeController
+			}
+			pendingNAT = true
 		}
 		if g.DesktopIngressIndex != 0 && g.DesktopIngressIndex != index {
 			return nil, ErrRuntimeController
@@ -175,8 +194,11 @@ func (c *RuntimeController) observeDesktopGrants(ctx context.Context, grants []G
 		out[i].DesktopIngressIndex = index
 	}
 	after, err := read(wg, "show", "all", "allowed-ips")
-	if err != nil || string(after) != string(peers) {
+	if err != nil || string(after) != string(peers) || ctx.Err() != nil {
 		return nil, ErrRuntimeController
+	}
+	if pendingNAT {
+		return out, errDesktopNATPending
 	}
 	return out, nil
 }

@@ -2,6 +2,7 @@ package ipsec
 
 import (
 	"context"
+	"errors"
 	"reflect"
 
 	"github.com/google/uuid"
@@ -116,10 +117,11 @@ func (c *RuntimeController) refreshFQDNMaintenanceMaterial(ctx context.Context, 
 	}
 	c.publishDesktopNAT(old.Entry.Allocation.ConnectionID, grants)
 	grants, err = c.observeDesktopGrants(ctx, grants)
-	if err != nil || ctx.Err() != nil {
+	pending := errors.Is(err, errDesktopNATPending)
+	if (err != nil && !pending) || ctx.Err() != nil {
 		return maintenanceItem{}, old, ErrRuntimeController
 	}
-	item := maintenanceItem{RuntimeDelivery: m.RuntimeDelivery, Entry: entry, Grants: grants, FQDNLeaseDescriptors: runtimeFQDNLeaseDescriptors(m.Policy), PolicyHash: m.Policy.Hash, FQDNPolicyPriorHash: old.Identity.PolicyHash}
+	item := maintenanceItem{RuntimeDelivery: m.RuntimeDelivery, Entry: entry, Grants: grants, FQDNLeaseDescriptors: runtimeFQDNLeaseDescriptors(m.Policy), PolicyHash: m.Policy.Hash, FQDNPolicyPriorHash: old.Identity.PolicyHash, FQDNRestorePending: pending}
 	pruned := old
 	pruned.Grants = make([]GuardGrant, 0, len(old.Grants))
 	for _, g := range old.Grants {
@@ -131,6 +133,14 @@ func (c *RuntimeController) refreshFQDNMaintenanceMaterial(ctx context.Context, 
 	}
 	if !reflect.DeepEqual(c.active[old.Entry.Allocation.ConnectionID], old) || !c.fqdnPolicyTransitionEligible(pruned, item) {
 		return maintenanceItem{}, old, ErrRuntimeController
+	}
+	if pending {
+		// A completed ordinary-only owner may wait for its new exemption. The
+		// caller still proves its exact old native authority; no new lease or ACK.
+		if !c.fqdnRestorationPendingEligible(old, item) {
+			return maintenanceItem{}, old, ErrRuntimeController
+		}
+		return item, old, nil
 	}
 	if err = c.withdrawChangedFQDNMaterial(ctx, m, grants); err != nil {
 		return maintenanceItem{}, old, ErrRuntimeController
@@ -167,4 +177,10 @@ func (c *RuntimeController) withdrawPendingFQDNPolicyLocked(ctx context.Context)
 		ids = append(ids, id)
 	}
 	return c.withdrawFQDNActiveLocked(ctx, ids)
+}
+
+// This marker comes only from complete desktop observation with a recognized
+// missing exact exemption. Retain no old marked tuple and adopt no new source.
+func (c *RuntimeController) fqdnRestorationPendingEligible(old runtimeActive, m maintenanceItem) bool {
+	return m.FQDNRestorePending && len(old.FQDNLeaseDescriptors) == 0 && len(m.FQDNLeaseDescriptors) > 0 && c.fqdnPolicyTransitionEligible(old, m)
 }
