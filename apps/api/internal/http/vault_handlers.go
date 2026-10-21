@@ -138,6 +138,36 @@ func (s apiServer) CreateVaultEntry(ctx context.Context, req api.CreateVaultEntr
 	return api.CreateVaultEntry201JSONResponse(out), nil
 }
 
+func (s apiServer) QuickCreateVaultEntry(ctx context.Context, req api.QuickCreateVaultEntryRequestObject) (api.QuickCreateVaultEntryResponseObject, error) {
+	ctx, p, err := s.vaultContext(ctx, req.OrgId, rbac.PermVaultUse)
+	if err != nil {
+		return nil, err
+	}
+	if req.Body == nil {
+		return nil, apierr.BadRequest("invalid_vault_request", "Request body required")
+	}
+	out, err := s.vault.QuickCreate(ctx, req.OrgId, p.UserID, *req.Body)
+	if err != nil {
+		return nil, err
+	}
+	return api.QuickCreateVaultEntry200JSONResponse(out), nil
+}
+
+func (s apiServer) ConfigureVaultEntry(ctx context.Context, req api.ConfigureVaultEntryRequestObject) (api.ConfigureVaultEntryResponseObject, error) {
+	ctx, p, err := s.vaultContext(ctx, req.OrgId, rbac.PermVaultUse)
+	if err != nil {
+		return nil, err
+	}
+	if req.Body == nil {
+		return nil, apierr.BadRequest("invalid_vault_request", "Request body required")
+	}
+	out, err := s.vault.Configure(ctx, req.OrgId, p.UserID, req.EntryId, *req.Body)
+	if err != nil {
+		return nil, err
+	}
+	return api.ConfigureVaultEntry200JSONResponse(out), nil
+}
+
 func (s apiServer) UpdateVaultEntry(ctx context.Context, req api.UpdateVaultEntryRequestObject) (api.UpdateVaultEntryResponseObject, error) {
 	ctx, p, err := s.vaultContext(ctx, req.OrgId, rbac.PermVaultUse)
 	if err != nil {

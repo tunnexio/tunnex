@@ -8755,6 +8755,33 @@ paths:
       responses:
         '201': {description: Authorized Vault result, content: {application/json: {schema: {$ref: '#/components/schemas/VaultEntry'}}}}
         default: {$ref: '#/components/responses/Error'}
+  /api/v1/organizations/{orgId}/vault/entries/quick:
+    parameters:
+      - {name: orgId, in: path, required: true, schema: {type: string, format: uuid}}
+    post:
+      operationId: quickCreateVaultEntry
+      tags: [vault]
+      security: [{cookieAuth: []}]
+      summary: Save one private unconfigured password before copying it
+      description: The request UUID is scoped to the current organization and creator. Exact retries return the same entry without adding a version. Reusing a request UUID with another secret or after deleting its entry returns 409. No service or recipient metadata is created.
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/VaultQuickCreateInput'}}}}
+      responses:
+        '200': {description: Persisted private entry or exact authorized replay, content: {application/json: {schema: {$ref: '#/components/schemas/VaultEntry'}}}}
+        default: {$ref: '#/components/responses/Error'}
+  /api/v1/organizations/{orgId}/vault/entries/{entryId}/configure:
+    parameters:
+      - {name: orgId, in: path, required: true, schema: {type: string, format: uuid}}
+      - {name: entryId, in: path, required: true, schema: {type: string, format: uuid}}
+    post:
+      operationId: configureVaultEntry
+      tags: [vault]
+      security: [{cookieAuth: []}]
+      summary: Configure an owned quick entry once without replacing its password
+      description: Creator ownership and expected_version are required. Assigned visibility also requires vault assignment authority. Preserves the password and its initial encrypted version, appends a configured username snapshot, and atomically marks the entry configured. Already configured entries cannot be reassigned through this endpoint.
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/VaultConfigureInput'}}}}
+      responses:
+        '200': {description: Configured entry with a new encrypted version, content: {application/json: {schema: {$ref: '#/components/schemas/VaultEntry'}}}}
+        default: {$ref: '#/components/responses/Error'}
   /api/v1/organizations/{orgId}/vault/entries/{entryId}:
     parameters:
       - {name: orgId, in: path, required: true, schema: {type: string, format: uuid}}
@@ -8904,9 +8931,10 @@ components:
     VaultEntry:
       type: object
       additionalProperties: false
-      required: [id, service_name, title, kind, username, visibility, owner_user_id, current_version, created_at, updated_at, can_edit, can_delete]
+      required: [id, configured, service_name, title, kind, username, visibility, owner_user_id, current_version, created_at, updated_at, can_edit, can_delete]
       properties:
         id: {type: string, format: uuid}
+        configured: {type: boolean, description: False for a creator-private quick entry whose title and service metadata are not configured yet}
         service_id: {type: string, format: uuid}
         service_name: {type: string}
         title: {type: string}
@@ -8944,6 +8972,26 @@ components:
         service_name: {type: string, minLength: 1, maxLength: 120, description: Private service label for personal entries only}
         subject_kind: {type: string, enum: [user, group]}
         subject_id: {type: string, format: uuid}
+    VaultQuickCreateInput:
+      type: object
+      additionalProperties: false
+      required: [request_id, secret]
+      properties:
+        request_id: {type: string, format: uuid, description: One UUID per generated candidate; reuse unchanged for retries}
+        secret: {type: string, minLength: 1, maxLength: 16384, writeOnly: true}
+    VaultConfigureInput:
+      type: object
+      additionalProperties: false
+      required: [title, visibility, expected_version]
+      properties:
+        title: {type: string, minLength: 1, maxLength: 160}
+        username: {type: string, maxLength: 320}
+        visibility: {type: string, enum: [personal, assigned], x-enum-varnames: [VaultConfigurePersonal, VaultConfigureAssigned]}
+        service_id: {type: string, format: uuid}
+        service_name: {type: string, minLength: 1, maxLength: 120, description: Private service label for personal entries only}
+        subject_kind: {type: string, enum: [user, group], x-enum-varnames: [VaultConfigureSubjectUser, VaultConfigureSubjectGroup]}
+        subject_id: {type: string, format: uuid}
+        expected_version: {type: integer, minimum: 1}
     VaultUpdateInput:
       type: object
       additionalProperties: false

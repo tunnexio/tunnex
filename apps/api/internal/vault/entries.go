@@ -8,9 +8,10 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/tunnexio/tunnex/apps/api/internal/api"
+	"github.com/tunnexio/tunnex/apps/api/internal/apierr"
 )
 
-const entryColumns = `e.id,e.service_id,coalesce(s.name,e.service_name),e.title,e.kind,e.username,e.visibility,
+const entryColumns = `e.id,e.configured,e.service_id,coalesce(s.name,e.service_name),e.title,e.kind,e.username,e.visibility,
  e.owner_user_id,e.subject_kind,e.subject_id,
  CASE WHEN e.subject_kind='user' THEN coalesce(nullif(su.name,''),su.email::text,'Former user')
  WHEN e.subject_kind='group' THEN coalesce(sg.name,'Former group') ELSE NULL END,
@@ -28,7 +29,7 @@ type rowScanner interface{ Scan(...any) error }
 
 func scanEntry(row rowScanner, user uuid.UUID, a authority) (api.VaultEntry, error) {
 	var v api.VaultEntry
-	err := row.Scan(&v.Id, &v.ServiceId, &v.ServiceName, &v.Title, &v.Kind, &v.Username, &v.Visibility,
+	err := row.Scan(&v.Id, &v.Configured, &v.ServiceId, &v.ServiceName, &v.Title, &v.Kind, &v.Username, &v.Visibility,
 		&v.OwnerUserId, &v.SubjectKind, &v.SubjectId, &v.SubjectName, &v.CurrentVersion, &v.CreatedAt, &v.UpdatedAt)
 	if err != nil {
 		return v, err
@@ -183,30 +184,8 @@ func (s *Service) Create(ctx context.Context, org, user uuid.UUID, in api.VaultC
 	if string(in.Visibility) == "assigned" && !a.canAssign {
 		return api.VaultEntry{}, denied()
 	}
-	if in.ServiceId != nil {
-		var id uuid.UUID
-		err = tx.QueryRow(ctx, `SELECT id FROM vault_services WHERE org_id=$1 AND id=$2 FOR SHARE`, org, *in.ServiceId).Scan(&id)
-		if errors.Is(err, pgx.ErrNoRows) {
-			return api.VaultEntry{}, invalid()
-		}
-		if err != nil {
-			return api.VaultEntry{}, err
-		}
-	}
-	if string(in.Visibility) == "assigned" {
-		var id uuid.UUID
-		if subjectKind == "user" {
-			err = tx.QueryRow(ctx, `SELECT u.id FROM users u JOIN memberships m ON m.user_id=u.id
- WHERE m.org_id=$1 AND m.user_id=$2 AND m.access_revoked_at IS NULL AND u.status='active' AND u.deleted_at IS NULL FOR SHARE OF m,u`, org, *in.SubjectId).Scan(&id)
-		} else {
-			err = tx.QueryRow(ctx, `SELECT id FROM user_groups WHERE org_id=$1 AND id=$2 FOR SHARE`, org, *in.SubjectId).Scan(&id)
-		}
-		if errors.Is(err, pgx.ErrNoRows) {
-			return api.VaultEntry{}, invalid()
-		}
-		if err != nil {
-			return api.VaultEntry{}, err
-		}
+	if err = validateTargets(ctx, tx, org, in.ServiceId, in.SubjectId, subjectKind); err != nil {
+		return api.VaultEntry{}, err
 	}
 	id := uuid.New()
 	var subject any
@@ -234,6 +213,36 @@ func (s *Service) Create(ctx context.Context, org, user uuid.UUID, in api.VaultC
 	return v, nil
 }
 
+func validateTargets(ctx context.Context, tx pgx.Tx, org uuid.UUID, serviceID, subjectID *uuid.UUID, subjectKind string) error {
+	if serviceID != nil {
+		var id uuid.UUID
+		err := tx.QueryRow(ctx, `SELECT id FROM vault_services WHERE org_id=$1 AND id=$2 FOR SHARE`, org, *serviceID).Scan(&id)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return invalid()
+		}
+		if err != nil {
+			return err
+		}
+	}
+	if subjectKind != "" {
+		var id uuid.UUID
+		var err error
+		if subjectKind == "user" {
+			err = tx.QueryRow(ctx, `SELECT u.id FROM users u JOIN memberships m ON m.user_id=u.id
+ WHERE m.org_id=$1 AND m.user_id=$2 AND m.access_revoked_at IS NULL AND u.status='active' AND u.deleted_at IS NULL FOR SHARE OF m,u`, org, *subjectID).Scan(&id)
+		} else {
+			err = tx.QueryRow(ctx, `SELECT id FROM user_groups WHERE org_id=$1 AND id=$2 FOR SHARE`, org, *subjectID).Scan(&id)
+		}
+		if errors.Is(err, pgx.ErrNoRows) {
+			return invalid()
+		}
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
 func (s *Service) Update(ctx context.Context, org, user, id uuid.UUID, in api.VaultUpdateInput) (api.VaultEntry, error) {
 	title := strings.TrimSpace(in.Title)
 	username := ""
@@ -251,6 +260,9 @@ func (s *Service) Update(ctx context.Context, org, user, id uuid.UUID, in api.Va
 	v, err := readEntry(ctx, tx, org, user, id, a, true)
 	if err != nil {
 		return api.VaultEntry{}, err
+	}
+	if !v.Configured {
+		return api.VaultEntry{}, apierr.New(409, "vault_configuration_required", "Configure this entry before changing its password")
 	}
 	if v.CurrentVersion != in.ExpectedVersion {
 		return api.VaultEntry{}, conflict()

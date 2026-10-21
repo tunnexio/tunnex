@@ -3049,6 +3049,15 @@ type VaultEntry struct {
 	CurrentVersion int32       `json:"current_version"`
 	CreatedAt      time.Time   `json:"created_at"`
 	UpdatedAt      time.Time   `json:"updated_at"`
+	Configured     bool        `json:"configured"`
+}
+
+type VaultQuickRequest struct {
+	OrgID       uuid.UUID   `json:"org_id"`
+	OwnerUserID uuid.UUID   `json:"owner_user_id"`
+	RequestID   uuid.UUID   `json:"request_id"`
+	EntryID     pgtype.UUID `json:"entry_id"`
+	CreatedAt   time.Time   `json:"created_at"`
 }
 
 type VaultService struct {

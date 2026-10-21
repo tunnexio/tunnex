@@ -2151,6 +2151,18 @@ const (
 	Manual  UserGroupOrigin = "manual"
 )
 
+// Defines values for VaultConfigureInputSubjectKind.
+const (
+	VaultConfigureSubjectGroup VaultConfigureInputSubjectKind = "group"
+	VaultConfigureSubjectUser  VaultConfigureInputSubjectKind = "user"
+)
+
+// Defines values for VaultConfigureInputVisibility.
+const (
+	VaultConfigureAssigned VaultConfigureInputVisibility = "assigned"
+	VaultConfigurePersonal VaultConfigureInputVisibility = "personal"
+)
+
 // Defines values for VaultCreateInputKind.
 const (
 	VaultCreateInputKindApiKey   VaultCreateInputKind = "api_key"
@@ -8632,6 +8644,26 @@ type UserGroupIdpProvider string
 // UserGroupOrigin defines model for UserGroup.Origin.
 type UserGroupOrigin string
 
+// VaultConfigureInput defines model for VaultConfigureInput.
+type VaultConfigureInput struct {
+	ExpectedVersion int                 `json:"expected_version"`
+	ServiceId       *openapi_types.UUID `json:"service_id,omitempty"`
+
+	// ServiceName Private service label for personal entries only
+	ServiceName *string                         `json:"service_name,omitempty"`
+	SubjectId   *openapi_types.UUID             `json:"subject_id,omitempty"`
+	SubjectKind *VaultConfigureInputSubjectKind `json:"subject_kind,omitempty"`
+	Title       string                          `json:"title"`
+	Username    *string                         `json:"username,omitempty"`
+	Visibility  VaultConfigureInputVisibility   `json:"visibility"`
+}
+
+// VaultConfigureInputSubjectKind defines model for VaultConfigureInput.SubjectKind.
+type VaultConfigureInputSubjectKind string
+
+// VaultConfigureInputVisibility defines model for VaultConfigureInput.Visibility.
+type VaultConfigureInputVisibility string
+
 // VaultCreateInput defines model for VaultCreateInput.
 type VaultCreateInput struct {
 	Kind      VaultCreateInputKind `json:"kind"`
@@ -8658,8 +8690,11 @@ type VaultCreateInputVisibility string
 
 // VaultEntry defines model for VaultEntry.
 type VaultEntry struct {
-	CanDelete      bool                   `json:"can_delete"`
-	CanEdit        bool                   `json:"can_edit"`
+	CanDelete bool `json:"can_delete"`
+	CanEdit   bool `json:"can_edit"`
+
+	// Configured False for a creator-private quick entry whose title and service metadata are not configured yet
+	Configured     bool                   `json:"configured"`
 	CreatedAt      time.Time              `json:"created_at"`
 	CurrentVersion int                    `json:"current_version"`
 	Id             openapi_types.UUID     `json:"id"`
@@ -8690,6 +8725,13 @@ type VaultHistory struct {
 	CurrentVersion int            `json:"current_version"`
 	Total          int            `json:"total"`
 	Versions       []VaultVersion `json:"versions"`
+}
+
+// VaultQuickCreateInput defines model for VaultQuickCreateInput.
+type VaultQuickCreateInput struct {
+	// RequestId One UUID per generated candidate; reuse unchanged for retries
+	RequestId openapi_types.UUID `json:"request_id"`
+	Secret    *string            `json:"secret,omitempty"`
 }
 
 // VaultRevealInput defines model for VaultRevealInput.
@@ -9934,8 +9976,14 @@ type SetSsoConfigJSONRequestBody = SsoConfigRequest
 // CreateVaultEntryJSONRequestBody defines body for CreateVaultEntry for application/json ContentType.
 type CreateVaultEntryJSONRequestBody = VaultCreateInput
 
+// QuickCreateVaultEntryJSONRequestBody defines body for QuickCreateVaultEntry for application/json ContentType.
+type QuickCreateVaultEntryJSONRequestBody = VaultQuickCreateInput
+
 // UpdateVaultEntryJSONRequestBody defines body for UpdateVaultEntry for application/json ContentType.
 type UpdateVaultEntryJSONRequestBody = VaultUpdateInput
+
+// ConfigureVaultEntryJSONRequestBody defines body for ConfigureVaultEntry for application/json ContentType.
+type ConfigureVaultEntryJSONRequestBody = VaultConfigureInput
 
 // RevealVaultEntryJSONRequestBody defines body for RevealVaultEntry for application/json ContentType.
 type RevealVaultEntryJSONRequestBody = VaultRevealInput
@@ -11896,6 +11944,11 @@ type ClientInterface interface {
 
 	CreateVaultEntry(ctx context.Context, orgId openapi_types.UUID, body CreateVaultEntryJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// QuickCreateVaultEntryWithBody request with any body
+	QuickCreateVaultEntryWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	QuickCreateVaultEntry(ctx context.Context, orgId openapi_types.UUID, body QuickCreateVaultEntryJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// DeleteVaultEntry request
 	DeleteVaultEntry(ctx context.Context, orgId openapi_types.UUID, entryId openapi_types.UUID, params *DeleteVaultEntryParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -11903,6 +11956,11 @@ type ClientInterface interface {
 	UpdateVaultEntryWithBody(ctx context.Context, orgId openapi_types.UUID, entryId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	UpdateVaultEntry(ctx context.Context, orgId openapi_types.UUID, entryId openapi_types.UUID, body UpdateVaultEntryJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ConfigureVaultEntryWithBody request with any body
+	ConfigureVaultEntryWithBody(ctx context.Context, orgId openapi_types.UUID, entryId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	ConfigureVaultEntry(ctx context.Context, orgId openapi_types.UUID, entryId openapi_types.UUID, body ConfigureVaultEntryJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// RevealVaultEntryWithBody request with any body
 	RevealVaultEntryWithBody(ctx context.Context, orgId openapi_types.UUID, entryId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -20023,6 +20081,30 @@ func (c *Client) CreateVaultEntry(ctx context.Context, orgId openapi_types.UUID,
 	return c.Client.Do(req)
 }
 
+func (c *Client) QuickCreateVaultEntryWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewQuickCreateVaultEntryRequestWithBody(c.Server, orgId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) QuickCreateVaultEntry(ctx context.Context, orgId openapi_types.UUID, body QuickCreateVaultEntryJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewQuickCreateVaultEntryRequest(c.Server, orgId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 func (c *Client) DeleteVaultEntry(ctx context.Context, orgId openapi_types.UUID, entryId openapi_types.UUID, params *DeleteVaultEntryParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewDeleteVaultEntryRequest(c.Server, orgId, entryId, params)
 	if err != nil {
@@ -20049,6 +20131,30 @@ func (c *Client) UpdateVaultEntryWithBody(ctx context.Context, orgId openapi_typ
 
 func (c *Client) UpdateVaultEntry(ctx context.Context, orgId openapi_types.UUID, entryId openapi_types.UUID, body UpdateVaultEntryJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewUpdateVaultEntryRequest(c.Server, orgId, entryId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ConfigureVaultEntryWithBody(ctx context.Context, orgId openapi_types.UUID, entryId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewConfigureVaultEntryRequestWithBody(c.Server, orgId, entryId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ConfigureVaultEntry(ctx context.Context, orgId openapi_types.UUID, entryId openapi_types.UUID, body ConfigureVaultEntryJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewConfigureVaultEntryRequest(c.Server, orgId, entryId, body)
 	if err != nil {
 		return nil, err
 	}
@@ -42481,6 +42587,53 @@ func NewCreateVaultEntryRequestWithBody(server string, orgId openapi_types.UUID,
 	return req, nil
 }
 
+// NewQuickCreateVaultEntryRequest calls the generic QuickCreateVaultEntry builder with application/json body
+func NewQuickCreateVaultEntryRequest(server string, orgId openapi_types.UUID, body QuickCreateVaultEntryJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewQuickCreateVaultEntryRequestWithBody(server, orgId, "application/json", bodyReader)
+}
+
+// NewQuickCreateVaultEntryRequestWithBody generates requests for QuickCreateVaultEntry with any type of body
+func NewQuickCreateVaultEntryRequestWithBody(server string, orgId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/vault/entries/quick", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewDeleteVaultEntryRequest generates requests for DeleteVaultEntry
 func NewDeleteVaultEntryRequest(server string, orgId openapi_types.UUID, entryId openapi_types.UUID, params *DeleteVaultEntryParams) (*http.Request, error) {
 	var err error
@@ -42585,6 +42738,60 @@ func NewUpdateVaultEntryRequestWithBody(server string, orgId openapi_types.UUID,
 	}
 
 	req, err := http.NewRequest("PUT", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewConfigureVaultEntryRequest calls the generic ConfigureVaultEntry builder with application/json body
+func NewConfigureVaultEntryRequest(server string, orgId openapi_types.UUID, entryId openapi_types.UUID, body ConfigureVaultEntryJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewConfigureVaultEntryRequestWithBody(server, orgId, entryId, "application/json", bodyReader)
+}
+
+// NewConfigureVaultEntryRequestWithBody generates requests for ConfigureVaultEntry with any type of body
+func NewConfigureVaultEntryRequestWithBody(server string, orgId openapi_types.UUID, entryId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "entryId", runtime.ParamLocationPath, entryId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/vault/entries/%s/configure", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
 	if err != nil {
 		return nil, err
 	}
@@ -45091,6 +45298,11 @@ type ClientWithResponsesInterface interface {
 
 	CreateVaultEntryWithResponse(ctx context.Context, orgId openapi_types.UUID, body CreateVaultEntryJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateVaultEntryResponse, error)
 
+	// QuickCreateVaultEntryWithBodyWithResponse request with any body
+	QuickCreateVaultEntryWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*QuickCreateVaultEntryResponse, error)
+
+	QuickCreateVaultEntryWithResponse(ctx context.Context, orgId openapi_types.UUID, body QuickCreateVaultEntryJSONRequestBody, reqEditors ...RequestEditorFn) (*QuickCreateVaultEntryResponse, error)
+
 	// DeleteVaultEntryWithResponse request
 	DeleteVaultEntryWithResponse(ctx context.Context, orgId openapi_types.UUID, entryId openapi_types.UUID, params *DeleteVaultEntryParams, reqEditors ...RequestEditorFn) (*DeleteVaultEntryResponse, error)
 
@@ -45098,6 +45310,11 @@ type ClientWithResponsesInterface interface {
 	UpdateVaultEntryWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, entryId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateVaultEntryResponse, error)
 
 	UpdateVaultEntryWithResponse(ctx context.Context, orgId openapi_types.UUID, entryId openapi_types.UUID, body UpdateVaultEntryJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateVaultEntryResponse, error)
+
+	// ConfigureVaultEntryWithBodyWithResponse request with any body
+	ConfigureVaultEntryWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, entryId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ConfigureVaultEntryResponse, error)
+
+	ConfigureVaultEntryWithResponse(ctx context.Context, orgId openapi_types.UUID, entryId openapi_types.UUID, body ConfigureVaultEntryJSONRequestBody, reqEditors ...RequestEditorFn) (*ConfigureVaultEntryResponse, error)
 
 	// RevealVaultEntryWithBodyWithResponse request with any body
 	RevealVaultEntryWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, entryId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*RevealVaultEntryResponse, error)
@@ -55583,6 +55800,29 @@ func (r CreateVaultEntryResponse) StatusCode() int {
 	return 0
 }
 
+type QuickCreateVaultEntryResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *VaultEntry
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r QuickCreateVaultEntryResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r QuickCreateVaultEntryResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
 type DeleteVaultEntryResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -55622,6 +55862,29 @@ func (r UpdateVaultEntryResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r UpdateVaultEntryResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ConfigureVaultEntryResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *VaultEntry
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r ConfigureVaultEntryResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ConfigureVaultEntryResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -61817,6 +62080,23 @@ func (c *ClientWithResponses) CreateVaultEntryWithResponse(ctx context.Context, 
 	return ParseCreateVaultEntryResponse(rsp)
 }
 
+// QuickCreateVaultEntryWithBodyWithResponse request with arbitrary body returning *QuickCreateVaultEntryResponse
+func (c *ClientWithResponses) QuickCreateVaultEntryWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*QuickCreateVaultEntryResponse, error) {
+	rsp, err := c.QuickCreateVaultEntryWithBody(ctx, orgId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseQuickCreateVaultEntryResponse(rsp)
+}
+
+func (c *ClientWithResponses) QuickCreateVaultEntryWithResponse(ctx context.Context, orgId openapi_types.UUID, body QuickCreateVaultEntryJSONRequestBody, reqEditors ...RequestEditorFn) (*QuickCreateVaultEntryResponse, error) {
+	rsp, err := c.QuickCreateVaultEntry(ctx, orgId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseQuickCreateVaultEntryResponse(rsp)
+}
+
 // DeleteVaultEntryWithResponse request returning *DeleteVaultEntryResponse
 func (c *ClientWithResponses) DeleteVaultEntryWithResponse(ctx context.Context, orgId openapi_types.UUID, entryId openapi_types.UUID, params *DeleteVaultEntryParams, reqEditors ...RequestEditorFn) (*DeleteVaultEntryResponse, error) {
 	rsp, err := c.DeleteVaultEntry(ctx, orgId, entryId, params, reqEditors...)
@@ -61841,6 +62121,23 @@ func (c *ClientWithResponses) UpdateVaultEntryWithResponse(ctx context.Context, 
 		return nil, err
 	}
 	return ParseUpdateVaultEntryResponse(rsp)
+}
+
+// ConfigureVaultEntryWithBodyWithResponse request with arbitrary body returning *ConfigureVaultEntryResponse
+func (c *ClientWithResponses) ConfigureVaultEntryWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, entryId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ConfigureVaultEntryResponse, error) {
+	rsp, err := c.ConfigureVaultEntryWithBody(ctx, orgId, entryId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseConfigureVaultEntryResponse(rsp)
+}
+
+func (c *ClientWithResponses) ConfigureVaultEntryWithResponse(ctx context.Context, orgId openapi_types.UUID, entryId openapi_types.UUID, body ConfigureVaultEntryJSONRequestBody, reqEditors ...RequestEditorFn) (*ConfigureVaultEntryResponse, error) {
+	rsp, err := c.ConfigureVaultEntry(ctx, orgId, entryId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseConfigureVaultEntryResponse(rsp)
 }
 
 // RevealVaultEntryWithBodyWithResponse request with arbitrary body returning *RevealVaultEntryResponse
@@ -76720,6 +77017,39 @@ func ParseCreateVaultEntryResponse(rsp *http.Response) (*CreateVaultEntryRespons
 	return response, nil
 }
 
+// ParseQuickCreateVaultEntryResponse parses an HTTP response from a QuickCreateVaultEntryWithResponse call
+func ParseQuickCreateVaultEntryResponse(rsp *http.Response) (*QuickCreateVaultEntryResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &QuickCreateVaultEntryResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest VaultEntry
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseDeleteVaultEntryResponse parses an HTTP response from a DeleteVaultEntryWithResponse call
 func ParseDeleteVaultEntryResponse(rsp *http.Response) (*DeleteVaultEntryResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -76755,6 +77085,39 @@ func ParseUpdateVaultEntryResponse(rsp *http.Response) (*UpdateVaultEntryRespons
 	}
 
 	response := &UpdateVaultEntryResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest VaultEntry
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseConfigureVaultEntryResponse parses an HTTP response from a ConfigureVaultEntryWithResponse call
+func ParseConfigureVaultEntryResponse(rsp *http.Response) (*ConfigureVaultEntryResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ConfigureVaultEntryResponse{
 		Body:         bodyBytes,
 		HTTPResponse: rsp,
 	}

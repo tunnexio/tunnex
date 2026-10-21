@@ -53,6 +53,18 @@ func (s *Service) writeVersion(ctx context.Context, tx pgx.Tx, org, user, id uui
 	return err
 }
 
+func (s *Service) versionValue(ctx context.Context, tx pgx.Tx, org, id uuid.UUID, version int) (api.VaultSecret, error) {
+	var sealed string
+	err := tx.QueryRow(ctx, `SELECT sealed_payload FROM vault_versions WHERE org_id=$1 AND entry_id=$2 AND version=$3`, org, id, version).Scan(&sealed)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return api.VaultSecret{}, missing()
+	}
+	if err != nil {
+		return api.VaultSecret{}, err
+	}
+	return s.open(org, id, version, sealed)
+}
+
 func (s *Service) Versions(ctx context.Context, org, user, id uuid.UUID, limit, offset int32) (api.VaultHistory, error) {
 	out := api.VaultHistory{Versions: []api.VaultVersion{}}
 	limit, offset, err := pagination(limit, offset)
@@ -112,15 +124,7 @@ func (s *Service) Reveal(ctx context.Context, org, user, id uuid.UUID, version i
 	if version == 0 {
 		version = entry.CurrentVersion
 	}
-	var sealed string
-	err = tx.QueryRow(ctx, `SELECT sealed_payload FROM vault_versions WHERE org_id=$1 AND entry_id=$2 AND version=$3`, org, id, version).Scan(&sealed)
-	if errors.Is(err, pgx.ErrNoRows) {
-		return api.VaultSecret{}, missing()
-	}
-	if err != nil {
-		return api.VaultSecret{}, err
-	}
-	secret, err := s.open(org, id, version, sealed)
+	secret, err := s.versionValue(ctx, tx, org, id, version)
 	if err != nil {
 		return api.VaultSecret{}, err
 	}

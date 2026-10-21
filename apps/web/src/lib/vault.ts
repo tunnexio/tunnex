@@ -26,3 +26,47 @@ export function generateVaultPassword(length = 24, random: Crypto = globalThis.c
   }
   return characters.join("");
 }
+
+export class VaultCopyError extends Error {
+  constructor(readonly reason: "save_failed" | "copy_failed" | "cancelled") {
+    super(reason);
+    this.name = "VaultCopyError";
+  }
+}
+
+/** Reserve the clipboard during the click without releasing an unsaved secret.
+ * WebKit requires user activation, so the ClipboardItem contains a promise whose
+ * data becomes available only after the database confirms the save.
+ * https://webkit.org/blog/10855/async-clipboard-api/
+ */
+export async function copyVaultPasswordAfterSave(password: string, save: (() => Promise<void>) | undefined, isCurrent: () => boolean): Promise<void> {
+  let saving: Promise<void>;
+  try { saving = save ? save() : Promise.resolve(); }
+  catch { throw new VaultCopyError("save_failed"); }
+  const clipboard = globalThis.navigator?.clipboard;
+  if (typeof globalThis.ClipboardItem === "function" && typeof clipboard?.write === "function") {
+    const payload = saving.then(() => {
+      if (!isCurrent()) throw new VaultCopyError("cancelled");
+      return new Blob([password], { type: "text/plain" });
+    });
+    // The browser may refuse permission before consuming the promised payload.
+    void payload.catch(() => undefined);
+    let copying: Promise<void>;
+    try { copying = clipboard.write([new ClipboardItem({ "text/plain": payload })]); }
+    catch { copying = Promise.reject(new VaultCopyError("copy_failed")); }
+    const [saved, copied] = await Promise.allSettled([saving, copying]);
+    if (saved.status === "rejected") throw new VaultCopyError("save_failed");
+    if (!isCurrent()) throw new VaultCopyError("cancelled");
+    if (copied.status === "rejected") throw new VaultCopyError("copy_failed");
+    return;
+  }
+  if (save) {
+    try { await saving; } catch { throw new VaultCopyError("save_failed"); }
+  }
+  if (!isCurrent()) throw new VaultCopyError("cancelled");
+  try {
+    if (!clipboard?.writeText) throw new VaultCopyError("copy_failed");
+    await clipboard.writeText(password);
+  } catch { throw new VaultCopyError("copy_failed"); }
+  if (!isCurrent()) throw new VaultCopyError("cancelled");
+}

@@ -79,6 +79,8 @@ func TestVaultRouterRequiresVerifiedHumanBrowserIdentity(t *testing.T) {
 	paths := []struct{ method, path, body string }{
 		{"GET", "/entries", ""}, {"GET", "/services", ""},
 		{"POST", "/entries", `{"title":"Test","kind":"password","secret":"test-only-value","visibility":"personal","service_name":"Example"}`},
+		{"POST", "/entries/quick", `{"request_id":"` + uuid.NewString() + `","secret":"test-only-value"}`},
+		{"POST", "/entries/" + uuid.NewString() + "/configure", `{"title":"Test","visibility":"personal","service_name":"Example","expected_version":1}`},
 		{"POST", "/entries/" + uuid.NewString() + "/reveal", `{}`},
 		{"GET", "/entries/" + uuid.NewString() + "/versions", ""},
 	}
@@ -116,6 +118,8 @@ func TestVaultRouterRejectsUnsafeAndSecretBearingInvalidRequests(t *testing.T) {
 	base := "/api/v1/organizations/" + org.String() + "/vault"
 	for _, route := range []struct{ method, path, body string }{
 		{"POST", "/entries", `{"title":"Test","kind":"password","secret":"test-only-value","visibility":"personal","service_name":"Example"}`},
+		{"POST", "/entries/quick", `{"request_id":"` + uuid.NewString() + `","secret":"test-only-value"}`},
+		{"POST", "/entries/" + uuid.NewString() + "/configure", `{"title":"Test","visibility":"personal","service_name":"Example","expected_version":1}`},
 		{"POST", "/services", `{"name":"Example"}`},
 		{"POST", "/entries/" + uuid.NewString() + "/reveal", `{}`},
 		{"PUT", "/entries/" + uuid.NewString(), `{"title":"Test","secret":"test-only-value","expected_version":1}`},
@@ -144,6 +148,17 @@ func TestVaultRouterRejectsUnsafeAndSecretBearingInvalidRequests(t *testing.T) {
 				t.Fatal("secret leaked through validation response or request log")
 			}
 		})
+	}
+	for _, route := range []struct{ path, body string }{
+		{"/entries/quick", `{"request_id":"` + uuid.NewString() + `","secret":{"private":"` + marker + `"}}`},
+		{"/entries/quick", `{"request_id":"` + uuid.NewString() + `","secret":"` + marker + `","service_name":"Forbidden metadata"}`},
+		{"/entries/" + uuid.NewString() + "/configure", `{"title":"Test","visibility":"personal","service_name":"Example","expected_version":1,"secret":"` + marker + `"}`},
+		{"/entries/" + uuid.NewString() + "/configure", `{"title":"Test","visibility":"personal","service_name":"Example","expected_version":1,"kind":"api_key"}`},
+	} {
+		w := vaultSecurityRequest(h, "POST", base+route.path, route.body, true)
+		if w.Code != 400 || strings.Contains(w.Body.String(), marker) || strings.Contains(logs.String(), marker) {
+			t.Fatal("quick/configure invalid input was accepted or disclosed a secret")
+		}
 	}
 	// An unauthenticated caller must not reach the secret-bearing parser, even
 	// when the body would otherwise fail both syntax and size validation.
@@ -267,13 +282,40 @@ func TestVaultRouterPrivateAndAssignedVersionAuthority(t *testing.T) {
 	call(admin, "POST", assignedPath+"/reveal", map[string]any{"version": 1}, 200)
 	call(admin, "DELETE", assignedPath+"?expected_version=2", nil, 204)
 	call(admin, "POST", assignedPath+"/reveal", map[string]any{}, 404)
+	quickRequest := map[string]any{"request_id": uuid.NewString(), "secret": "vault-http-quick-original"}
+	quickBody := call(owner, "POST", "/entries/quick", quickRequest, 200)
+	var quick api.VaultEntry
+	if err = json.Unmarshal(quickBody, &quick); err != nil || quick.Configured || quick.Title != "" || quick.ServiceName != "" || bytes.Contains(quickBody, []byte("vault-http-quick-original")) {
+		t.Fatal("quick route did not return persisted secret-free unconfigured metadata")
+	}
+	replayed := call(owner, "POST", "/entries/quick", quickRequest, 200)
+	var replay api.VaultEntry
+	if err = json.Unmarshal(replayed, &replay); err != nil || replay.Id != quick.Id {
+		t.Fatal("quick route retry created another entry")
+	}
+	quickPath := "/entries/" + quick.Id.String()
+	configuration := map[string]any{"title": "Quick login", "visibility": "personal", "service_name": "Actual private service", "username": "quick-account", "expected_version": 1}
+	call(admin, "POST", quickPath+"/configure", configuration, 404)
+	configuredBody := call(owner, "POST", quickPath+"/configure", configuration, 200)
+	if err = json.Unmarshal(configuredBody, &quick); err != nil || !quick.Configured || quick.CurrentVersion != 2 {
+		t.Fatal("configure route did not append the configured version")
+	}
+	for version, username := range map[int]string{1: "", 2: "quick-account"} {
+		body := call(owner, "POST", quickPath+"/reveal", map[string]any{"version": version}, 200)
+		var secret api.VaultSecret
+		if err = json.Unmarshal(body, &secret); err != nil || secret.Value != "vault-http-quick-original" || secret.Username != username {
+			t.Fatal("configure route changed the saved password or lost username history")
+		}
+	}
+	call(owner, "POST", quickPath+"/configure", configuration, 409)
 	exec(`UPDATE memberships SET access_revoked_at=now() WHERE org_id=$1 AND user_id=$2`, org, owner)
 	call(owner, "POST", entryPath+"/reveal", map[string]any{}, 403)
+	call(owner, "POST", "/entries/quick", quickRequest, 403)
 	var audit string
 	if err = pool.QueryRow(ctx, `SELECT coalesce(string_agg(metadata::text,''),'') FROM audit_logs WHERE org_id=$1 AND action LIKE 'vault.%'`, org).Scan(&audit); err != nil {
 		t.Fatal(err)
 	}
-	for _, secret := range []string{first, second, "vault-http-assigned-api-key", "vault-http-assigned-rotated-key"} {
+	for _, secret := range []string{first, second, "vault-http-assigned-api-key", "vault-http-assigned-rotated-key", "vault-http-quick-original"} {
 		if strings.Contains(audit, secret) {
 			t.Fatal("audit metadata leaked secret")
 		}

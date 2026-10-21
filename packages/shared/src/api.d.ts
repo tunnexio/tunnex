@@ -7414,6 +7414,51 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/organizations/{orgId}/vault/entries/quick": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Save one private unconfigured password before copying it
+         * @description The request UUID is scoped to the current organization and creator. Exact retries return the same entry without adding a version. Reusing a request UUID with another secret or after deleting its entry returns 409. No service or recipient metadata is created.
+         */
+        post: operations["quickCreateVaultEntry"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/vault/entries/{entryId}/configure": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                entryId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Configure an owned quick entry once without replacing its password
+         * @description Creator ownership and expected_version are required. Assigned visibility also requires vault assignment authority. Preserves the password and its initial encrypted version, appends a configured username snapshot, and atomically marks the entry configured. Already configured entries cannot be reassigned through this endpoint.
+         */
+        post: operations["configureVaultEntry"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/organizations/{orgId}/vault/entries/{entryId}": {
         parameters: {
             query?: never;
@@ -7559,6 +7604,8 @@ export interface components {
         VaultEntry: {
             /** Format: uuid */
             id: string;
+            /** @description False for a creator-private quick entry whose title and service metadata are not configured yet */
+            configured: boolean;
             /** Format: uuid */
             service_id?: string;
             service_name: string;
@@ -7604,6 +7651,29 @@ export interface components {
             subject_kind?: "user" | "group";
             /** Format: uuid */
             subject_id?: string;
+        };
+        VaultQuickCreateInput: {
+            /**
+             * Format: uuid
+             * @description One UUID per generated candidate; reuse unchanged for retries
+             */
+            request_id: string;
+            secret: string;
+        };
+        VaultConfigureInput: {
+            title: string;
+            username?: string;
+            /** @enum {string} */
+            visibility: "personal" | "assigned";
+            /** Format: uuid */
+            service_id?: string;
+            /** @description Private service label for personal entries only */
+            service_name?: string;
+            /** @enum {string} */
+            subject_kind?: "user" | "group";
+            /** Format: uuid */
+            subject_id?: string;
+            expected_version: number;
         };
         VaultUpdateInput: {
             title: string;
@@ -25885,6 +25955,61 @@ export interface operations {
         responses: {
             /** @description Authorized Vault result */
             201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VaultEntry"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    quickCreateVaultEntry: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VaultQuickCreateInput"];
+            };
+        };
+        responses: {
+            /** @description Persisted private entry or exact authorized replay */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VaultEntry"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    configureVaultEntry: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                entryId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VaultConfigureInput"];
+            };
+        };
+        responses: {
+            /** @description Configured entry with a new encrypted version */
+            200: {
                 headers: {
                     [name: string]: unknown;
                 };
