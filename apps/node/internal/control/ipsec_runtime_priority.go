@@ -17,10 +17,43 @@ type IPsecRuntimeActiveRenewer interface {
 // is emitted here. The controller may fetch current material only for a verified
 // FQDN expiry rollover; this caller never obtains or retains it.
 func RefreshIPsecRuntimePriority(ctx context.Context, client IPsecRuntimeTransport, controller IPsecRuntimeApplier) error {
+	failed := refreshIPsecRuntimeRenewal(ctx, client, controller, false) != nil
+	if RefreshIPsecRuntimeFQDNFollowup(ctx, client, controller) != nil {
+		failed = true
+	}
+	// Discovery/cleanup and existing observations remain mandatory after a bounded follow-up.
+	if RefreshIPsecRuntimeStatus(ctx, client, controller) != nil {
+		failed = true
+	}
+	if failed {
+		return ErrIPsecControl
+	}
+	return nil
+}
+
+type IPsecRuntimeFQDNFollower interface {
+	FollowupFQDNMaintenanceObserved(context.Context, func(context.Context, ipsec.RuntimeDelivery, ipsec.RuntimeStatusReport) error, func(context.Context, ipsec.RuntimeRecoveryHeartbeat) error) error
+}
+
+func RefreshIPsecRuntimeFQDNFollowup(ctx context.Context, client IPsecRuntimeTransport, controller IPsecRuntimeApplier) error {
+	return refreshIPsecRuntimeRenewal(ctx, client, controller, true)
+}
+
+func refreshIPsecRuntimeRenewal(ctx context.Context, client IPsecRuntimeTransport, controller IPsecRuntimeApplier, followup bool) error {
 	failed := false
 	sequences := map[uuid.UUID]uint64{}
 	observed := map[uuid.UUID]bool{}
-	if renewer, ok := controller.(IPsecRuntimeActiveRenewer); ok {
+	renew := func(context.Context, func(context.Context, ipsec.RuntimeDelivery, ipsec.RuntimeStatusReport) error, func(context.Context, ipsec.RuntimeRecoveryHeartbeat) error) error {
+		return nil
+	}
+	if followup {
+		if next, ok := controller.(IPsecRuntimeFQDNFollower); ok {
+			renew = next.FollowupFQDNMaintenanceObserved
+		}
+	} else if next, ok := controller.(IPsecRuntimeActiveRenewer); ok {
+		renew = next.RenewActiveIPsecRuntimeObserved
+	}
+	{
 		send := func(parent context.Context, d ipsec.RuntimeDelivery, out ipsec.RuntimeStatusReport) error {
 			if ctx.Err() != nil || parent.Err() != nil || d.Kind != "apply" || d.Manifest.ConnectionID == uuid.Nil || !runtimeStatusMatchesDelivery(d, out) {
 				return ErrIPsecControl
@@ -52,14 +85,9 @@ func RefreshIPsecRuntimePriority(ctx context.Context, client IPsecRuntimeTranspo
 			sequences[v.Delivery.ID] = *v.Report.SelectionSequence
 			return send(parent, v.Delivery, v.Report)
 		}
-		if renewer.RenewActiveIPsecRuntimeObserved(ctx, publish, recovery) != nil {
+		if renew(ctx, publish, recovery) != nil {
 			failed = true
 		}
-	}
-	// Preserve the existing observation even after renewal refusal, and let the
-	// caller continue its ordinary authoritative discovery/cleanup path.
-	if RefreshIPsecRuntimeStatus(ctx, client, controller) != nil {
-		failed = true
 	}
 	if failed {
 		return ErrIPsecControl

@@ -32,7 +32,12 @@ func (c *RuntimeController) refreshFQDNExpiryMaterial(ctx context.Context, old r
 }
 
 func (c *RuntimeController) prepareFQDNExpiryMaterial(ctx context.Context, old runtimeActive, m RuntimeMaterial) (maintenanceItem, error) {
-	if ctx.Err() != nil || len(old.FQDNLeaseDescriptors) == 0 || !reflect.DeepEqual(m.RuntimeDelivery, old.Delivery) || m.Policy.Hash == old.Identity.PolicyHash {
+	return c.prepareFQDNFollowupMaterial(ctx, old, m, false)
+}
+
+// allowUnchanged only recognizes exact existing metadata; it does not authorize renewal.
+func (c *RuntimeController) prepareFQDNFollowupMaterial(ctx context.Context, old runtimeActive, m RuntimeMaterial, allowUnchanged bool) (maintenanceItem, error) {
+	if ctx.Err() != nil || len(old.FQDNLeaseDescriptors) == 0 || !reflect.DeepEqual(m.RuntimeDelivery, old.Delivery) || (!allowUnchanged && m.Policy.Hash == old.Identity.PolicyHash) {
 		return maintenanceItem{}, ErrRuntimeController
 	}
 	entry, grants, err := runtimeMaterialEntry(m, c.config.OrgID, c.config.GatewayID, old.Environment.Namespace)
@@ -74,7 +79,10 @@ func (c *RuntimeController) prepareFQDNExpiryMaterial(ctx context.Context, old r
 			return maintenanceItem{}, ErrRuntimeController
 		}
 	}
-	if !advanced {
+	if !advanced && (!allowUnchanged || m.Policy.Hash != old.Identity.PolicyHash) {
+		return maintenanceItem{}, ErrRuntimeController
+	}
+	if advanced && m.Policy.Hash == old.Identity.PolicyHash {
 		return maintenanceItem{}, ErrRuntimeController
 	}
 	// Fresh native peer/no-SNAT observations are still mandatory for desktop grants.

@@ -80,6 +80,7 @@ type RuntimeController struct {
 	qualification           *RuntimePlatformQualification
 	prove                   func(context.Context, RuntimeJournalEntry, RuntimeEnvironment) error
 	active                  map[uuid.UUID]runtimeActive
+	fqdnNativeWindows       map[uuid.UUID]runtimeFQDNNativeWindow
 	deniedClassicTransports map[uuid.UUID]runtimeDeniedClassicTransport
 	recoveryHistory         map[uuid.UUID]*recoveryDecision
 	recoveryPrepared        map[uuid.UUID]RuntimeEnvironment
@@ -221,6 +222,7 @@ func (c *RuntimeController) Start(ctx context.Context) error {
 	return nil
 }
 func (c *RuntimeController) refuse(ctx context.Context, entries []RuntimeJournalEntry) (GuardManifest, error) {
+	c.fqdnNativeWindows = nil
 	c.withdrawDNSOwnerView(uuid.Nil)
 	c.recoveryReportClocks = nil
 	ns, e := c.namespace()
@@ -1117,6 +1119,9 @@ func (c *RuntimeController) installActiveCandidatesFQDN(ctx context.Context, ent
 		return ErrRuntimeController
 	}
 	defer c.finishDNSGuardCommit(guardCommit)
+	// Advice uses the actual emitted duration anchored before native IO.
+	c.fqdnNativeWindows = nil
+	nativeStarted := c.recoveryNow()
 	manifest, replaceErr := c.replace(commitCtx, intent)
 	if replaceErr != nil {
 		return ErrRuntimeController
@@ -1179,6 +1184,7 @@ func (c *RuntimeController) installActiveCandidatesFQDN(ctx context.Context, ent
 		return err
 	}
 	c.active = active
+	c.rememberFQDNNativeWindows(intent, active, nativeStarted)
 	c.publishDNSOwnerView(manifest)
 	guardCommit.published = c.dnsView.Load()
 	return nil
