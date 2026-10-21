@@ -58,12 +58,75 @@ describe("Tunnex Vault", () => {
       params: { path: { orgId: mock.org } }, body: { request_id: expect.stringMatching(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/), secret: value },
     });
     expect(mock.clipboard).not.toHaveBeenCalled();
+    expect(dialog.getByRole("button", { name: "Regenerate" }).hasAttribute("disabled")).toBe(true);
     await act(async () => { entries = [...entries, unconfigured]; finish({ data: unconfigured, response: new Response("{}") }); });
     await waitFor(() => expect(mock.clipboard).toHaveBeenCalledWith(value));
     await screen.findByRole("button", { name: "Configure Unconfigured password" });
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(screen.queryByDisplayValue(value)).toBeNull();
     expect(screen.getByRole("status").textContent).toContain("copied and saved");
+  });
+
+  it("regenerates locally in the same drawer and copies only the new candidate", async () => {
+    show(); await screen.findByRole("button", { name: personal.title });
+    fireEvent.click(screen.getByRole("button", { name: "Quick generate" }));
+    const element = screen.getByRole("dialog", { name: "Quick generate" });
+    const dialog = within(element);
+    const password = dialog.getByLabelText("Generated password") as HTMLInputElement;
+    const first = password.value;
+    fireEvent.click(dialog.getByRole("button", { name: "Regenerate" }));
+    const next = password.value;
+    expect(screen.getByRole("dialog", { name: "Quick generate" })).toBe(element);
+    expect(next).toHaveLength(24);
+    expect(next).not.toBe(first);
+    expect(mock.post).not.toHaveBeenCalled();
+    expect(mock.clipboard).not.toHaveBeenCalled();
+    fireEvent.click(dialog.getByRole("button", { name: "Copy" }));
+    await waitFor(() => expect(mock.clipboard).toHaveBeenCalledWith(next));
+    expect(mock.post.mock.calls[0][1].body.secret).toBe(next);
+  });
+
+  it("starts a new save request after regenerating a confirmed but uncopied password", async () => {
+    mock.clipboard.mockRejectedValueOnce(new Error("clipboard refused"));
+    show(); await screen.findByRole("button", { name: personal.title });
+    fireEvent.click(screen.getByRole("button", { name: "Quick generate" }));
+    const dialog = within(screen.getByRole("dialog", { name: "Quick generate" }));
+    fireEvent.click(dialog.getByRole("button", { name: "Copy" }));
+    await dialog.findByRole("alert");
+    const previous = mock.post.mock.calls[0][1].body;
+    fireEvent.click(dialog.getByRole("button", { name: "Regenerate" }));
+    const next = (dialog.getByLabelText("Generated password") as HTMLInputElement).value;
+    expect(dialog.queryByRole("alert")).toBeNull();
+    fireEvent.click(dialog.getByRole("button", { name: "Copy" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(mock.post).toHaveBeenCalledTimes(2);
+    expect(mock.post.mock.calls[1][1].body.request_id).not.toBe(previous.request_id);
+    expect(mock.post.mock.calls[1][1].body.secret).toBe(next);
+    expect(next).not.toBe(previous.secret);
+    expect(mock.clipboard).toHaveBeenLastCalledWith(next);
+  });
+
+  it("does not let an older hidden-tab save mark a regenerated password as saved", async () => {
+    let finish!: (value: unknown) => void;
+    mock.post.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+    show(); await screen.findByRole("button", { name: personal.title });
+    fireEvent.click(screen.getByRole("button", { name: "Quick generate" }));
+    const dialog = within(screen.getByRole("dialog", { name: "Quick generate" }));
+    fireEvent.click(dialog.getByRole("button", { name: "Copy" }));
+    const previous = mock.post.mock.calls[0][1].body;
+    Object.defineProperty(document, "visibilityState", { configurable: true, value: "hidden" });
+    fireEvent(document, new Event("visibilitychange"));
+    Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" });
+    fireEvent(document, new Event("visibilitychange"));
+    fireEvent.click(dialog.getByRole("button", { name: "Regenerate" }));
+    const next = (dialog.getByLabelText("Generated password") as HTMLInputElement).value;
+    await act(async () => { finish({ data: unconfigured, response: new Response("{}") }); });
+    expect(mock.clipboard).not.toHaveBeenCalled();
+    fireEvent.click(dialog.getByRole("button", { name: "Copy" }));
+    await waitFor(() => expect(mock.clipboard).toHaveBeenCalledWith(next));
+    expect(mock.post).toHaveBeenCalledTimes(2);
+    expect(mock.post.mock.calls[1][1].body.request_id).not.toBe(previous.request_id);
+    expect(mock.post.mock.calls[1][1].body.secret).toBe(next);
   });
 
   it("discards a quick password on close and organization change without prefilling manual Add", async () => {

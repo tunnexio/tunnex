@@ -140,7 +140,9 @@ function VaultWorkspace({ orgId }: { orgId: string }) {
   </section>;
 }
 
-function QuickPassword({ orgId, password, requestId, onDismiss, onPersisted, onCopied }: { orgId: string; password: string; requestId: string; onDismiss: () => void; onPersisted: () => void; onCopied: () => void }) {
+function QuickPassword({ orgId, password: initialPassword, requestId: initialRequestId, onDismiss, onPersisted, onCopied }: { orgId: string; password: string; requestId: string; onDismiss: () => void; onPersisted: () => void; onCopied: () => void }) {
+  const [{ password, requestId }, setCandidate] = useState({ password: initialPassword, requestId: initialRequestId });
+  const currentRequestId = useRef(initialRequestId);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const saved = useRef<Entry | null>(null);
@@ -154,6 +156,18 @@ function QuickPassword({ orgId, password, requestId, onDismiss, onPersisted, onC
     return () => document.removeEventListener("visibilitychange", conceal);
   }, []);
   function close() { attempt.current++; onDismiss(); }
+  function regenerate() {
+    if (activeCopy.current) return;
+    try {
+      const password = generateVaultPassword();
+      const requestId = crypto.randomUUID();
+      attempt.current++;
+      currentRequestId.current = requestId;
+      saved.current = null;
+      setCandidate({ password, requestId });
+      setError("");
+    } catch { setError("Could not generate another password. Try again."); }
+  }
   async function copy() {
     if (activeCopy.current) return;
     const current = ++attempt.current;
@@ -162,7 +176,7 @@ function QuickPassword({ orgId, password, requestId, onDismiss, onPersisted, onC
     const persist = saved.current ? undefined : async () => {
       const result = await api.POST(quickPath, { params: { path: { orgId } }, body: { request_id: requestId, secret: password } });
       if (result.error || !result.data) throw new Error("save_failed");
-      saved.current = result.data;
+      if (currentRequestId.current === requestId) saved.current = result.data;
       // Metadata may refresh even if this drawer closed; the saved row stays recoverable.
       onPersisted();
     };
@@ -176,7 +190,7 @@ function QuickPassword({ orgId, password, requestId, onDismiss, onPersisted, onC
       else setError("Could not save or copy this password. Try Copy again.");
     } finally { if (isCurrent()) { activeCopy.current = false; setBusy(false); } }
   }
-  return <Modal placement="right" title="Quick generate" onDismiss={close} actions={<><button type="button" className="beam-inline-link" onClick={close}>Close</button><button type="button" className="beam-inline-link disabled:opacity-50" disabled={busy} onClick={() => void copy()}>{busy ? "Saving and copying…" : "Copy"}</button></>}>
+  return <Modal placement="right" title="Quick generate" onDismiss={close} actions={<><button type="button" className="beam-inline-link mr-auto disabled:opacity-50" disabled={busy} onClick={regenerate}>Regenerate</button><button type="button" className="beam-inline-link" onClick={close}>Close</button><button type="button" className="beam-inline-link disabled:opacity-50" disabled={busy} onClick={() => void copy()}>{busy ? "Saving and copying…" : "Copy"}</button></>}>
     <div className="vault-quick-password"><Field label="Generated password"><Input type="text" readOnly autoFocus autoComplete="off" spellCheck={false} value={password} /></Field><ErrorText>{error}</ErrorText></div>
   </Modal>;
 }
