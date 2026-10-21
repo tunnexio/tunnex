@@ -39,12 +39,11 @@ func (c *RuntimeController) commitFQDNFollowup(ctx context.Context, authority fu
 		staged[id] = a
 	}
 	prior := map[uuid.UUID]runtimeActive{}
-	deadlines := map[uuid.UUID]time.Duration{}
 	required := map[uuid.UUID]runtimeActive{}
 	for id, m := range refreshed {
 		old, ok := c.active[id]
 		window, known := c.fqdnNativeWindows[id]
-		if !ok || !known || old.Authority == nil || old.Entry.ContractVersion != 3 || old.Entry.AbsenceOnly || old.Entry.Phase != RuntimeApplied || old.Entry.BGPProcess == nil || old.Entry.BGPProcess.Stage != "ready" || old.Entry.BGPRoutes == nil || old.Entry.BGPRoutes.Stage != "completed" || !runtimeDeliveryValid(old.Delivery, c.config.OrgID, c.config.GatewayID, "apply") || old.Delivery.CoversDeliveryRevision != 0 || old.Identity != (PermitLeaseIdentity{DeliveryID: old.Delivery.ID, Binding: old.Entry.Engines[0].Binding, PolicyHash: old.Identity.PolicyHash}) || !validDigest(old.Identity.PolicyHash) || !validJournalBGP(old.Entry) || !reflect.DeepEqual(old, window.owner) || window.deadline <= c.recoveryNow() || m.FQDNExpiryPriorHash != old.Identity.PolicyHash || !reflect.DeepEqual(m.RuntimeDelivery, old.Delivery) || !reflect.DeepEqual(m.Entry, old.Entry) || !c.fqdnGrantsCurrent(m.Grants) {
+		if !ok || !known || old.Authority == nil || old.Entry.ContractVersion != 3 || old.Entry.AbsenceOnly || old.Entry.Phase != RuntimeApplied || old.Entry.BGPProcess == nil || old.Entry.BGPProcess.Stage != "ready" || old.Entry.BGPRoutes == nil || old.Entry.BGPRoutes.Stage != "completed" || !runtimeDeliveryValid(old.Delivery, c.config.OrgID, c.config.GatewayID, "apply") || old.Delivery.CoversDeliveryRevision != 0 || old.Identity != (PermitLeaseIdentity{DeliveryID: old.Delivery.ID, Binding: old.Entry.Engines[0].Binding, PolicyHash: old.Identity.PolicyHash}) || !validDigest(old.Identity.PolicyHash) || !validJournalBGP(old.Entry) || !reflect.DeepEqual(old, window.owner) || m.FQDNExpiryPriorHash != old.Identity.PolicyHash || !reflect.DeepEqual(m.RuntimeDelivery, old.Delivery) || !reflect.DeepEqual(m.Entry, old.Entry) || !c.fqdnGrantsCurrent(m.Grants) {
 			return fail()
 		}
 		matches := 0
@@ -89,14 +88,18 @@ func (c *RuntimeController) commitFQDNFollowup(ctx context.Context, authority fu
 		candidate.Authority, candidate.Identity = fresh, identity
 		candidate.Grants, candidate.FQDNLeaseDescriptors = m.Grants, runtimeFQDNLeaseDescriptors(policy)
 		prior[id], required[id], staged[id] = old, candidate, candidate
-		deadlines[id] = window.deadline
 	}
+	// The old native FQDN window schedules this attempt; it does not authorize
+	// the replacement. It may expire during fresh discovery or native proof.
+	// Only the independently issued new nonce and exact fresh FQDN permits can
+	// authorize the new member. Keep ordinary authority and every current owner,
+	// transport and native proof fence independent of that scheduling deadline.
 	current := func() bool {
 		if ctx.Err() != nil || !c.qualification.current() || c.config.DaemonAlive == nil || !c.config.DaemonAlive() || !bgpCurrent() {
 			return false
 		}
 		for id, old := range prior {
-			if deadlines[id] <= c.recoveryNow() || !reflect.DeepEqual(c.active[id], old) || !c.fqdnGrantsCurrent(required[id].Grants) {
+			if !reflect.DeepEqual(c.active[id], old) || !c.fqdnGrantsCurrent(required[id].Grants) {
 				return false
 			}
 		}
