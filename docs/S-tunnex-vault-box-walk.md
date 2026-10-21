@@ -24,6 +24,12 @@ Browser evidence:
 - [Real app inventory](../walk-artifacts/tunnex-vault-20261021/live-inventory.png)
 - [Real masked version history](../walk-artifacts/tunnex-vault-20261021/live-masked-history.png)
 
+## Review-runner failure and recovery
+
+During user review the temporary Docker UI process disappeared, leaving the rendered page unable to fetch Vault data. The API, Redis and separate smoke database remained healthy. The cause of that process exit was not established; other memory-killed validation runs are recorded separately.
+
+Stopped the task-owned broad test lanes and replaced the UI runner with native Vite using the official checksum-verified Node 24.21.0 runtime and locked pnpm 10.34.5 dependencies. No tracked dependency, product or layout changes were required. Reopened the real browser page and verified the populated inventory and enabled Add credential dialog with its loaded service controls. [Recovered native inventory](../walk-artifacts/tunnex-vault-20261021/restored-native-inventory.png) records the repaired review session.
+
 ## Boundaries
 
 The live browser leg covers login, navigation, the populated inventory and masked history. Creation, rotation and permission checks were exercised over actual HTTP; their browser mutation wiring is covered by component tests. This record does not claim a complete browser mutation or production acceptance walk. Desktop/narrow visual checks were also performed in the earlier isolated component harness.
