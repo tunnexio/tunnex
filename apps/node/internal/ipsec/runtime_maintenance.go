@@ -61,6 +61,7 @@ type maintenanceItem struct {
 	FQDNLeaseDescriptors []RuntimeFQDNGrant
 	PolicyHash           string
 	FQDNExpiryPriorHash  string
+	FQDNPolicyPriorHash  string
 }
 
 func (c *RuntimeController) maintainIPsecRuntimeObserved(ctx context.Context, materials []RuntimeMaterial, authority func() *PermitLeaseAuthority, bgpCurrent func() bool, publish func(context.Context, RuntimeDelivery, RuntimeStatusReport) error) ([]RuntimeMaintenanceResult, error) {
@@ -185,6 +186,9 @@ func (c *RuntimeController) maintainIPsecRuntimeItemsAttempt(ctx context.Context
 	if err != nil {
 		return fail()
 	}
+	if err := c.withdrawPendingFQDNPolicyLocked(ctx); err != nil {
+		return fail()
+	}
 	materials, prepareErr := prepare(ns, entries, &stage, &connection)
 	if prepareErr != nil || len(materials) != count {
 		return fail()
@@ -268,6 +272,7 @@ func (c *RuntimeController) maintainIPsecRuntimeItemsAttempt(ctx context.Context
 				}
 				identity := PermitLeaseIdentity{DeliveryID: m.ID, Binding: same.Engines[0].Binding, PolicyHash: m.PolicyHash}
 				expiryRollover := m.FQDNExpiryPriorHash != "" && m.FQDNExpiryPriorHash == old.Identity.PolicyHash
+				policyTransition := c.fqdnPolicyTransitionEligible(old, m)
 				priorIdentity := identity
 				priorIdentity.PolicyHash = old.Identity.PolicyHash
 				eligible = maintenanceEligibilityTerm(&eligibilityStage, "eligibility_observe", func() bool { return observeErr == nil }) &&
@@ -280,8 +285,10 @@ func (c *RuntimeController) maintainIPsecRuntimeItemsAttempt(ctx context.Context
 					maintenanceEligibilityTerm(&eligibilityStage, "eligibility_active_entry", func() bool { return reflect.DeepEqual(old.Entry, same) }) &&
 					maintenanceEligibilityTerm(&eligibilityStage, "eligibility_delivery", func() bool { return reflect.DeepEqual(old.Delivery, m.RuntimeDelivery) }) &&
 					maintenanceEligibilityTerm(&eligibilityStage, "eligibility_environment", func() bool { return reflect.DeepEqual(old.Environment, env) }) &&
-					maintenanceEligibilityTerm(&eligibilityStage, "eligibility_grants", func() bool { return reflect.DeepEqual(old.Grants, m.Grants) || expiryRollover }) &&
-					maintenanceEligibilityTerm(&eligibilityStage, "eligibility_identity", func() bool { return old.Identity == identity || (expiryRollover && old.Identity == priorIdentity) }) &&
+					maintenanceEligibilityTerm(&eligibilityStage, "eligibility_grants", func() bool { return reflect.DeepEqual(old.Grants, m.Grants) || expiryRollover || policyTransition }) &&
+					maintenanceEligibilityTerm(&eligibilityStage, "eligibility_identity", func() bool {
+						return old.Identity == identity || ((expiryRollover || policyTransition) && old.Identity == priorIdentity)
+					}) &&
 					maintenanceEligibilityTerm(&eligibilityStage, "eligibility_authority", func() bool { return old.Authority != nil })
 				if eligible {
 					if same.ContractVersion == 2 {
@@ -348,6 +355,10 @@ func (c *RuntimeController) maintainIPsecRuntimeItemsAttempt(ctx context.Context
 				changed = true
 			}
 			continue
+		}
+		if c.fqdnPolicyTransitionEligible(old, m) {
+			m.FQDNPolicyPriorHash = old.Identity.PolicyHash
+			materials[i] = m
 		}
 		eligibleOwners = append(eligibleOwners, eligibleOwner{index: i, active: old})
 	}
@@ -417,11 +428,14 @@ func (c *RuntimeController) maintainIPsecRuntimeItemsAttempt(ctx context.Context
 			return fail()
 		}
 		identity := old.Identity
-		if m.FQDNExpiryPriorHash != "" {
-			if m.FQDNExpiryPriorHash != old.Identity.PolicyHash {
+		if m.FQDNExpiryPriorHash != "" || m.FQDNPolicyPriorHash != "" {
+			if (m.FQDNExpiryPriorHash != "" && m.FQDNExpiryPriorHash != old.Identity.PolicyHash) || (m.FQDNPolicyPriorHash != "" && (m.FQDNPolicyPriorHash != old.Identity.PolicyHash || !c.fqdnPolicyTransitionEligible(old, m))) {
 				return fail()
 			}
 			identity.PolicyHash = m.PolicyHash
+		}
+		if identity.PolicyHash != m.PolicyHash {
+			return fail()
 		}
 		fqdnPolicy := retainedFQDNLeasePolicy(m.FQDNLeaseDescriptors)
 		request, beginErr := fresh.BeginFQDN(identity, runtimeFQDNLeaseKeys(fqdnPolicy))
@@ -431,15 +445,17 @@ func (c *RuntimeController) maintainIPsecRuntimeItemsAttempt(ctx context.Context
 		stage = "maintenance_lease"
 		lease, leaseErr := c.client.RenewIPsecLease(ctx, id, RuntimeLeaseRequest{DeliveryID: m.ID, DesiredRevision: m.DesiredRevision, PolicyHash: m.PolicyHash, Nonce: request.Nonce, FQDNGrants: runtimeFQDNLeaseDescriptors(fqdnPolicy)})
 		// A normal page can race the same DNS publication as a priority pass.
-		// Reuse the exact expiry-only material/nonce bridge once; a conflict
-		// alone never authorizes new content or extends the original lease.
-		if leaseErr != nil && allowFQDNCutoffRefresh && len(old.FQDNLeaseDescriptors) > 0 && maintenanceLeaseFailureStage(leaseErr) == "maintenance_lease_http_409_conflict" {
+		// Reuse exact expiry-only renewal or scoped removal/restoration once.
+		// A conflict alone never authorizes content or extends the original lease.
+		if leaseErr != nil && allowFQDNCutoffRefresh && (len(old.FQDNLeaseDescriptors) > 0 || (old.Entry.ContractVersion == 3 && len(c.bgpDesktopExports[old.Entry.DeliveryID]) > 0)) && maintenanceLeaseFailureStage(leaseErr) == "maintenance_lease_http_409_conflict" {
 			stage = "maintenance_fqdn_expiry_material"
-			updated, updateErr := c.refreshFQDNExpiryMaterial(ctx, old)
+			updated, updatedOld, updateErr := c.refreshFQDNMaintenanceMaterial(ctx, old)
 			if updateErr != nil {
 				return fail()
 			}
 			refreshedFQDN[id] = true
+			old = updatedOld
+			staged[id] = old
 			m = updated
 			identity.PolicyHash = m.PolicyHash
 			fqdnPolicy = retainedFQDNLeasePolicy(m.FQDNLeaseDescriptors)
