@@ -834,12 +834,12 @@ func (c *RuntimeController) installActive(ctx context.Context, entries []Runtime
 // maintenance overlay remains owner-private until every required candidate
 // survives the complete native proof and final lease checks.
 func (c *RuntimeController) installActiveCandidates(ctx context.Context, entries []RuntimeJournalEntry, active map[uuid.UUID]runtimeActive, required map[uuid.UUID]runtimeActive, prior map[uuid.UUID]runtimeActive, candidateQualification func() bool) error {
-	return c.installActiveCandidatesFQDN(ctx, entries, active, required, prior, candidateQualification, nil)
+	return c.installActiveCandidatesFQDN(ctx, entries, active, required, prior, candidateQualification, nil, nil)
 }
 
 // Only maintenance may request one precommit recollection when an otherwise
 // successful finite lease would silently lose a required FQDN member.
-func (c *RuntimeController) installActiveCandidatesFQDN(ctx context.Context, entries []RuntimeJournalEntry, active map[uuid.UUID]runtimeActive, required map[uuid.UUID]runtimeActive, prior map[uuid.UUID]runtimeActive, candidateQualification func() bool, cutoffCandidates map[uuid.UUID]runtimeActive) (resultErr error) {
+func (c *RuntimeController) installActiveCandidatesFQDN(ctx context.Context, entries []RuntimeJournalEntry, active map[uuid.UUID]runtimeActive, required map[uuid.UUID]runtimeActive, prior map[uuid.UUID]runtimeActive, candidateQualification func() bool, cutoffCandidates map[uuid.UUID]runtimeActive, collectionBoundary func(context.Context) error) (resultErr error) {
 	c.reconcileDNSOwnerView()
 	stage := "input"
 	connection := uuid.Nil
@@ -877,6 +877,13 @@ func (c *RuntimeController) installActiveCandidatesFQDN(ctx context.Context, ent
 		if e != nil {
 			c.withdrawDNSOwnerView(id)
 			delete(active, id)
+		}
+	}
+	// Optional maintenance telemetry completes before guard sequence capture.
+	// No returned status or native proof is reused by the assembly below.
+	if collectionBoundary != nil {
+		if err := collectionBoundary(ctx); err != nil {
+			return err
 		}
 	}
 	connection = uuid.Nil

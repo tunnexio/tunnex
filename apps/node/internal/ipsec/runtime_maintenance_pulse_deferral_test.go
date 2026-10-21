@@ -216,7 +216,7 @@ func TestMaintenancePulseDeferralSlowIOAndFailure(t *testing.T) {
 					return ErrRuntimeController
 				case strings.HasSuffix(scenario, "_expired"):
 					r.charge(scenario, 61*time.Second)
-				case scenario == "publish_stale" || scenario == "final_sample_stale":
+				case scenario == "publish_stale" || scenario == "final_sample_stale" || scenario == "assembly_stale" || scenario == "commit_stale":
 					r.charge(scenario, 11*time.Second)
 				case strings.HasSuffix(scenario, "_stale"):
 					r.charge(scenario, 3*time.Second)

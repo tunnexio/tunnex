@@ -611,6 +611,7 @@ func (c *RuntimeController) maintainIPsecRuntimeItemsAttempt(ctx context.Context
 	}
 	haFreshnessFailed := false
 	stage, connection = "maintenance_combined_guard", uuid.Nil
+	var assemblyPulseErr error
 	installErr := c.installActiveCandidatesFQDN(ctx, entries, staged, required, c.active, func() bool {
 		if ctx.Err() != nil || !c.qualification.current() || !c.config.DaemonAlive() || !deferral.reportsCurrent(c) || !pendingCurrent() {
 			return false
@@ -622,8 +623,17 @@ func (c *RuntimeController) maintainIPsecRuntimeItemsAttempt(ctx context.Context
 			}
 		}
 		return true
-	}, cutoffCandidates)
+	}, cutoffCandidates, func(ctx context.Context) error {
+		if len(candidates) == 0 {
+			return nil
+		}
+		assemblyPulseErr = deferral.pulseBeforeAssembly(ctx, c, publishRecovery)
+		return assemblyPulseErr
+	})
 	if installErr != nil {
+		if assemblyPulseErr != nil {
+			return pulseFailure(assemblyPulseErr)
+		}
 		var cutoff *runtimeFQDNPrecommitCutoff
 		if allowFQDNCutoffRefresh && errors.As(installErr, &cutoff) {
 			stage = "maintenance_fqdn_cutoff_refresh"
