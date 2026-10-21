@@ -49,6 +49,14 @@ The final UI follows the user's Local Sharing structure and monochrome correctio
 
 The real app was checked against an isolated local API, PostgreSQL and Redis workspace. Final browser evidence covers Unconfigured inventory, the Configure drawer, and an existing assigned entry's masked version-2 history preserved across migration. The latest Quick drawer was verified at 420px wide and content height, with its entire new value visible. Regenerate changed that value without closing the drawer; the candidate was then discarded without saving. Shared Add/no-results states were also checked; the zero-entry state is covered by component tests. No browser Copy, metadata Save, Reveal, delete or assignment mutation occurred. Save/configure/rotate/version pairing is proved by actual HTTP: the initial 43 assertions and final 129-assertion extension. Earlier component-harness, colored-avatar, metadata-first and full-height masked Quick screenshots are historical evidence. [Wire evidence and final screenshots](S-tunnex-vault-box-walk.md) record these boundaries.
 
+## CI security patch follow-up
+
+PR #111's initial head `6a94bf71250c0a0c8588119b8644d7928220fc21` passed the main CI gates, both API editions, tooling, full web, both end-to-end lanes and AI qualification. The local broad-suite limitations above are historical; this remote result covers that exact head. Four blocking govulncheck jobs failed on reachable stdlib issue GO-2026-6809 in Go 1.26.9, fixed in Go 1.26.10.
+
+The follow-up updates all six first-party module directives and their active build/image/workflow/devcontainer pins and version guards to 1.26.10. The official Alpine multi-platform index is `sha256:9ce231b28998b32e116927c61aa5c406183061d4f3f2d61b292c88e7f6bdf7ca`; the bookworm tag and official devcontainer installer version selection were verified. Scanner coverage is unchanged. The full patched Linux generated-artifact drift check passes without generated-file changes. Pin agreement, seven pin-guard tests, 64 CI contract tests (two existing skips), 41 sandbox CI fixtures and 18 Ubuntu delivery fixtures pass.
+
+Two bounded local Docker vulnerability-scan attempts were killed with exit 137 before returning results and are inconclusive. A checksum-verified native Go 1.26.10 fallback is being used for supplementary scans; the patched PR head must independently clear the GitHub security checks. No demo services or existing local stacks were restarted for this repair.
+
 ## Remaining boundaries
 
 - The original proof was completed locally on the feature branch. The user subsequently authorized branch publication and a PR using the Tunnex GitHub account. No merge, production deployment, existing local-stack migration or reset was performed.
