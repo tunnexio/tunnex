@@ -120,7 +120,9 @@ func (c *RuntimeController) maintainIPsecRuntimeRecoveryObserved(ctx context.Con
 		}
 		return items, nil
 	}
-	return c.maintainIPsecRuntimeItems(ctx, len(materials), prepare, authority, bgpCurrent, publish, publishRecovery, false)
+	// The RIB may converge after priority renewal but before this material page.
+	// Reuse the same single reconciliation attempt; its retry remains fail closed.
+	return c.maintainIPsecRuntimeItems(ctx, len(materials), prepare, authority, bgpCurrent, publish, publishRecovery, true)
 }
 
 func (c *RuntimeController) maintainIPsecRuntimeItems(ctx context.Context, count int, prepare func(string, []RuntimeJournalEntry, *string, *uuid.UUID) ([]maintenanceItem, error), authority func() *PermitLeaseAuthority, bgpCurrent func() bool, publish func(context.Context, RuntimeDelivery, RuntimeStatusReport) error, publishRecovery func(context.Context, RuntimeRecoveryHeartbeat) error, reconcileRetainedBGP bool) ([]RuntimeMaintenanceResult, error) {
@@ -296,9 +298,17 @@ func (c *RuntimeController) maintainIPsecRuntimeItemsAttempt(ctx context.Context
 					stage = "maintenance_eligibility_proof"
 					eligibilityStage = "eligibility_proof"
 					proofErr := c.maintenanceCurrent(ctx, old, bgpCurrent)
-					if reconcileRetainedBGP && errors.Is(proofErr, errMaintenanceBGPRouteChanged) {
-						// Priority renewal precedes ordinary route validation. Let a
-						// healthy changed RIB converge under its original finite lease
+					routeChanged := errors.Is(proofErr, errMaintenanceBGPRouteChanged)
+					if routeChanged {
+						decision := "route_change_ineligible"
+						if reconcileRetainedBGP {
+							decision = "route_change_reconcile_once"
+						}
+						c.emitRuntimeDiagnostic(ctx, "maintenance_bgp_route_change", decision, id, eligibilityStarted, !reconcileRetainedBGP)
+					}
+					if reconcileRetainedBGP && routeChanged {
+						// Both renewal paths can observe a newly converged RIB. Let
+						// that healthy change converge under its original finite lease
 						// instead of withdrawing its owner and stopping desktop exports.
 						stage = "maintenance_retained_bgp_reconcile"
 						c.refreshMaintenanceRecovery(ctx)
@@ -739,10 +749,15 @@ func (c *RuntimeController) maintenanceCurrentWithNativeProof(ctx context.Contex
 				target = append(target, RuntimeBGPRouteTuple{Prefix: r.Prefix, Slot: uint8(r.Slot), InterfaceIndex: e.Observed[r.Slot-1].InterfaceIndex, Table: 254, Protocol: 242, Metric: 50000 + uint32(r.Slot)})
 			}
 		}
-		stage = "maintenance_current_bgp_binding"
-		if !p.Alive() || !bgpCurrent() {
+		stage = "maintenance_current_bgp_process_after"
+		if !p.Alive() {
 			return ErrRuntimeController
 		}
+		stage = "maintenance_current_bgp_qualification_after"
+		if !bgpCurrent() {
+			return ErrRuntimeController
+		}
+		stage = "maintenance_current_bgp_route_changed"
 		if !reflect.DeepEqual(target, e.BGPRoutes.Owned) {
 			return errMaintenanceBGPRouteChanged
 		}

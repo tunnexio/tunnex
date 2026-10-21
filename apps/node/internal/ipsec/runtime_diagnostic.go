@@ -19,6 +19,9 @@ type RuntimeDiagnostic struct {
 }
 
 func validRuntimeDiagnostic(operation, stage string) bool {
+	if operation == "maintenance_bgp_route_change" {
+		return stage == "route_change_reconcile_once" || stage == "route_change_ineligible"
+	}
 	if operation == "maintenance_eligibility" {
 		switch stage {
 		case "eligibility_active", "eligibility_current", "eligibility_lineage", "eligibility_observe", "eligibility_namespace", "eligibility_phase", "eligibility_contract", "eligibility_entry_current", "eligibility_active_entry", "eligibility_delivery", "eligibility_environment", "eligibility_grants", "eligibility_identity", "eligibility_authority", "eligibility_recovery", "eligibility_bgp", "eligibility_proof":
@@ -38,7 +41,7 @@ func validRuntimeDiagnostic(operation, stage string) bool {
 	}
 	if operation == "maintenance_current" {
 		switch stage {
-		case "maintenance_current_authority_after", "maintenance_current_authority_before", "maintenance_current_bgp_binding", "maintenance_current_bgp_health", "maintenance_current_bgp_process", "maintenance_current_bgp_qualification", "maintenance_current_bgp_routes", "maintenance_current_bgp_status", "maintenance_current_final_qualification", "maintenance_current_guard", "maintenance_current_native":
+		case "maintenance_current_authority_after", "maintenance_current_authority_before", "maintenance_current_bgp_binding", "maintenance_current_bgp_process_after", "maintenance_current_bgp_qualification_after", "maintenance_current_bgp_route_changed", "maintenance_current_bgp_health", "maintenance_current_bgp_process", "maintenance_current_bgp_qualification", "maintenance_current_bgp_routes", "maintenance_current_bgp_status", "maintenance_current_final_qualification", "maintenance_current_guard", "maintenance_current_native":
 			return true
 		default:
 			return false
