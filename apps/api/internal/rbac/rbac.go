@@ -9,6 +9,9 @@ import "sort"
 type Permission string
 
 const (
+	// Vault authority is independent of resource/network access.
+	PermVaultUse                  Permission = "vault:use"
+	PermVaultAssign               Permission = "vault:assign"
 	PermServerAccessReplay        Permission = "server_access:replay"
 	PermServerAccessView          Permission = "server_access:view"
 	PermServerAccessManage        Permission = "server_access:manage"
@@ -248,6 +251,7 @@ var rolePermissions = map[string]map[Permission]bool{
 		PermAIProviderView: true, PermAIGatewayView: true,
 	},
 	RoleMember: {
+		PermVaultUse:   true,
 		PermBeamCreate: true, PermBeamUse: true, PermBeamManageOwn: true,
 		PermAppAccessUse: true, PermServerAccessUse: true, PermServerAccessReplay: true,
 		PermSandboxView: true, PermSandboxCreate: true, PermSandboxManage: true,
@@ -257,6 +261,7 @@ var rolePermissions = map[string]map[Permission]bool{
 		PermMemberList:      true,
 	},
 	RoleAdmin: {
+		PermVaultUse: true, PermVaultAssign: true,
 		PermBeamCreate: true, PermBeamUse: true, PermBeamManageOwn: true, PermBeamManageAll: true, PermBeamPolicyManage: true, PermBeamAuditView: true,
 		PermServerAccessView: true, PermServerAccessManage: true, PermServerAccessGrant: true, PermServerAccessUse: true, PermServerAccessReplay: true, PermServerAccessSessionManage: true,
 		PermSandboxAdmin: true, PermSandboxTemplateManage: true, PermSandboxDelegateManage: true, PermSandboxRunnerManage: true,
@@ -311,6 +316,7 @@ var rolePermissions = map[string]map[Permission]bool{
 		PermAgentMCPToolApprovalApprove: true,
 	},
 	RoleOwner: {
+		PermVaultUse: true, PermVaultAssign: true,
 		PermBeamCreate: true, PermBeamUse: true, PermBeamManageOwn: true, PermBeamManageAll: true, PermBeamPolicyManage: true, PermBeamAuditView: true,
 		PermServerAccessView: true, PermServerAccessManage: true, PermServerAccessGrant: true, PermServerAccessUse: true, PermServerAccessReplay: true, PermServerAccessSessionManage: true,
 		PermSandboxAdmin: true, PermSandboxTemplateManage: true, PermSandboxDelegateManage: true, PermSandboxRunnerManage: true,

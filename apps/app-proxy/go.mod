@@ -1,6 +1,6 @@
 module github.com/tunnexio/tunnex/apps/app-proxy
 
-go 1.26.9
+go 1.26.10
 
 require (
 	github.com/tunnexio/tunnex/packages/apptransport v0.0.0

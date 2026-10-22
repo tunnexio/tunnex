@@ -1,6 +1,6 @@
 # Supported runtime baseline
 
-Reviewed 2026-10-09. Prefer maintained LTS/stable lines and current security patches over automatic major-version upgrades.
+Runtime baseline reviewed 2026-10-09; first-party Go security patch updated 2026-10-21. Prefer maintained LTS/stable lines and current security patches over automatic major-version upgrades.
 
 | Component | Baseline | Rationale |
 | --- | --- | --- |
@@ -9,7 +9,7 @@ Reviewed 2026-10-09. Prefer maintained LTS/stable lines and current security pat
 | nginx | 1.30.5 stable | Updates both the edge proxy and SPA server together. |
 | First-party Alpine runtimes and IPsec builder | Alpine 3.24.2 | Replaces 3.20/3.22/3.23 with a release receiving both main and community package maintenance. |
 | AI inference runtime | Bifrost v2.0.0 with pinned Tunnex native extensions | One Go runtime; no Python bridge/proxy or Prisma dependency. The upstream modules require at least Go 1.27.0; the independent builder is pinned to patched Go 1.27.2. |
-| First-party Go | 1.26.9 | Current security patch on the supported release line; Go 1.27 is a separate compatibility upgrade, not required to remove an EOL runtime. |
+| First-party Go | 1.26.10 | Fixes reachable crypto/x509 vulnerability GO-2026-6809 on the supported release line; Go 1.27 remains a separate compatibility upgrade. |
 | PostgreSQL | 16 | Supported through November 2028. Keep data-directory major migrations separate. |
 
 Container references use registry-verified multi-platform digests. Node's exact local version is in `.nvmrc`; CI reads it. The package engine restricts execution to the tested Node 24 line. `packageManager` selects the exact pnpm version. CI caches include these pins.
@@ -28,4 +28,5 @@ Sources:
 - https://devguide.python.org/versions/
 - https://www.python.org/downloads/release/python-31214/
 - https://go.dev/doc/devel/release
+- https://pkg.go.dev/vuln/GO-2026-6809
 - https://www.postgresql.org/support/versioning/

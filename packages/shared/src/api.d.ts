@@ -7388,10 +7388,322 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/organizations/{orgId}/vault/entries": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * List personal and assigned entry metadata without secret values
+         * @description Verified browser identity required. CLI, machine and agent credentials are refused until scoped Vault credentials are available.
+         */
+        get: operations["listVaultEntries"];
+        put?: never;
+        /**
+         * Create an encrypted personal or explicitly assigned entry
+         * @description Verified browser identity required. CLI, machine and agent credentials are refused until scoped Vault credentials are available.
+         */
+        post: operations["createVaultEntry"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/vault/entries/quick": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Save one private unconfigured password before copying it
+         * @description The request UUID is scoped to the current organization and creator. Exact retries return the same entry without adding a version. Reusing a request UUID with another secret or after deleting its entry returns 409. No service or recipient metadata is created.
+         */
+        post: operations["quickCreateVaultEntry"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/vault/entries/{entryId}/configure": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                entryId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Configure an owned quick entry once without replacing its password
+         * @description Creator ownership and expected_version are required. Assigned visibility also requires vault assignment authority. Preserves the password and its initial encrypted version, appends a configured username snapshot, and atomically marks the entry configured. Already configured entries cannot be reassigned through this endpoint.
+         */
+        post: operations["configureVaultEntry"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/vault/entries/{entryId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                entryId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Append a new encrypted version with an expected-version precondition
+         * @description Verified browser identity required. CLI, machine and agent credentials are refused until scoped Vault credentials are available.
+         */
+        put: operations["updateVaultEntry"];
+        post?: never;
+        /**
+         * Delete an owned personal entry or an administered assignment
+         * @description Verified browser identity required. CLI, machine and agent credentials are refused until scoped Vault credentials are available.
+         */
+        delete: operations["deleteVaultEntry"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/vault/entries/{entryId}/versions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                entryId: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * List authorized version metadata without secret values
+         * @description Verified browser identity required. CLI, machine and agent credentials are refused until scoped Vault credentials are available.
+         */
+        get: operations["listVaultVersions"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/vault/entries/{entryId}/reveal": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                entryId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Explicitly reveal and audit the current or an earlier secret version
+         * @description Verified browser identity required. CLI, machine and agent credentials are refused until scoped Vault credentials are available.
+         */
+        post: operations["revealVaultEntry"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/vault/services": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * List reusable organization service names
+         * @description Verified browser identity required. CLI, machine and agent credentials are refused until scoped Vault credentials are available.
+         */
+        get: operations["listVaultServices"];
+        put?: never;
+        /**
+         * Add a reusable service name with Vault assignment authority
+         * @description Verified browser identity required. CLI, machine and agent credentials are refused until scoped Vault credentials are available.
+         */
+        post: operations["createVaultService"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/vault/subjects": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * List current organization users and groups for Vault assignment
+         * @description Verified browser identity required. CLI, machine and agent credentials are refused until scoped Vault credentials are available.
+         */
+        get: operations["listVaultSubjects"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        VaultService: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+        };
+        VaultServiceInput: {
+            name: string;
+        };
+        VaultSubject: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+        };
+        VaultSubjects: {
+            users: components["schemas"]["VaultSubject"][];
+            groups: components["schemas"]["VaultSubject"][];
+        };
+        VaultEntry: {
+            /** Format: uuid */
+            id: string;
+            /** @description False for a creator-private quick entry whose title and service metadata are not configured yet */
+            configured: boolean;
+            /** Format: uuid */
+            service_id?: string;
+            service_name: string;
+            title: string;
+            /** @enum {string} */
+            kind: "password" | "api_key";
+            username: string;
+            /** @enum {string} */
+            visibility: "personal" | "assigned";
+            /** Format: uuid */
+            owner_user_id: string;
+            /** @enum {string} */
+            subject_kind?: "user" | "group";
+            /** Format: uuid */
+            subject_id?: string;
+            subject_name?: string;
+            current_version: number;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+            can_edit: boolean;
+            can_delete: boolean;
+        };
+        VaultWorkspace: {
+            entries: components["schemas"]["VaultEntry"][];
+            total: number;
+            can_assign: boolean;
+        };
+        VaultCreateInput: {
+            title: string;
+            /** @enum {string} */
+            kind: "password" | "api_key";
+            secret: string;
+            username?: string;
+            /** @enum {string} */
+            visibility: "personal" | "assigned";
+            /** Format: uuid */
+            service_id?: string;
+            /** @description Private service label for personal entries only */
+            service_name?: string;
+            /** @enum {string} */
+            subject_kind?: "user" | "group";
+            /** Format: uuid */
+            subject_id?: string;
+        };
+        VaultQuickCreateInput: {
+            /**
+             * Format: uuid
+             * @description One UUID per generated candidate; reuse unchanged for retries
+             */
+            request_id: string;
+            secret: string;
+        };
+        VaultConfigureInput: {
+            title: string;
+            username?: string;
+            /** @enum {string} */
+            visibility: "personal" | "assigned";
+            /** Format: uuid */
+            service_id?: string;
+            /** @description Private service label for personal entries only */
+            service_name?: string;
+            /** @enum {string} */
+            subject_kind?: "user" | "group";
+            /** Format: uuid */
+            subject_id?: string;
+            expected_version: number;
+        };
+        VaultUpdateInput: {
+            title: string;
+            secret: string;
+            username?: string;
+            expected_version: number;
+        };
+        VaultRevealInput: {
+            /** @description Omit to reveal the current version */
+            version?: number;
+        };
+        VaultSecret: {
+            /** @description Explicit authorized reveal only. Never cache or log. */
+            value: string;
+            username: string;
+            version: number;
+        };
+        VaultVersion: {
+            version: number;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: uuid */
+            changed_by: string;
+            changed_by_name: string;
+        };
+        VaultHistory: {
+            versions: components["schemas"]["VaultVersion"][];
+            total: number;
+            current_version: number;
+        };
         ServerAccessRecordingArchive: {
             /** @description Enable automatic S3 archiving at retention expiry; manual export remains available with a saved connection */
             enabled: boolean;
@@ -25595,6 +25907,295 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listVaultEntries: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+                q?: string;
+            };
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Authorized Vault result */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VaultWorkspace"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    createVaultEntry: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VaultCreateInput"];
+            };
+        };
+        responses: {
+            /** @description Authorized Vault result */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VaultEntry"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    quickCreateVaultEntry: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VaultQuickCreateInput"];
+            };
+        };
+        responses: {
+            /** @description Persisted private entry or exact authorized replay */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VaultEntry"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    configureVaultEntry: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                entryId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VaultConfigureInput"];
+            };
+        };
+        responses: {
+            /** @description Configured entry with a new encrypted version */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VaultEntry"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    updateVaultEntry: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                entryId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VaultUpdateInput"];
+            };
+        };
+        responses: {
+            /** @description Authorized Vault result */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VaultEntry"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    deleteVaultEntry: {
+        parameters: {
+            query: {
+                expected_version: number;
+            };
+            header?: never;
+            path: {
+                orgId: string;
+                entryId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted entry and its encrypted history */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listVaultVersions: {
+        parameters: {
+            query?: {
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path: {
+                orgId: string;
+                entryId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Authorized Vault result */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VaultHistory"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    revealVaultEntry: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                entryId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VaultRevealInput"];
+            };
+        };
+        responses: {
+            /** @description Authorized Vault result */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VaultSecret"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listVaultServices: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Authorized service catalog */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VaultService"][];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    createVaultService: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VaultServiceInput"];
+            };
+        };
+        responses: {
+            /** @description Authorized Vault result */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VaultService"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listVaultSubjects: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Authorized Vault result */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VaultSubjects"];
+                };
             };
             default: components["responses"]["Error"];
         };
