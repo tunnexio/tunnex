@@ -72,6 +72,12 @@ func (m *PostgresGatewayDNSMailbox) Enqueue(ctx context.Context, request Gateway
 			return err
 		}
 		defer func() { _ = tx.Rollback(ctx) }()
+		// Match generation publication/withdrawal and runtime policy ordering.
+		// Otherwise this transaction can hold the joined node/site rows while
+		// waiting for a config held by a generation INSERT needing their FK locks.
+		if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1::text, 0))`, request.OrgID); err != nil {
+			return err
+		}
 		if err := validateCurrentMailboxContext(ctx, tx, request); err != nil {
 			return err
 		}
@@ -228,6 +234,11 @@ func (m *PostgresGatewayDNSMailbox) completeAttempt(ctx context.Context, authent
 			result = errors.Join(result, rollbackErr)
 		}
 	}()
+	// Take the same organization lock before even the request row: completion
+	// must not invert the lifecycle's organization -> resource -> config order.
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1::text, 0))`, authenticatedOrg); err != nil {
+		return err
+	}
 	var request GatewayDNSRequest
 	var types, endpoints, path []byte
 	err = tx.QueryRow(ctx, `
