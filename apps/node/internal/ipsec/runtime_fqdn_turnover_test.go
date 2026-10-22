@@ -222,8 +222,8 @@ func TestPriorityFQDNExpiryTurnoverRejectsUnsafeFreshMaterial(t *testing.T) {
 		},
 		"delivery": func(_ *renewalCycleRig, c *fqdnTurnoverClient) { c.material.ID = uuid.New() },
 		"revision": func(_ *renewalCycleRig, c *fqdnTurnoverClient) { c.material.DesiredRevision++ },
-		"shortened-expiry": func(r *renewalCycleRig, c *fqdnTurnoverClient) {
-			c.material.Policy.FQDNGrants[0].ExpiresAt = r.c.active[r.target].FQDNLeaseDescriptors[0].ExpiresAt.Add(-time.Second)
+		"expired-expiry": func(_ *renewalCycleRig, c *fqdnTurnoverClient) {
+			c.material.Policy.FQDNGrants[0].ExpiresAt = time.Now().Add(-time.Second)
 		},
 		"missing-current-policy": func(r *renewalCycleRig, _ *fqdnTurnoverClient) { r.c.config.FQDNPolicy.CommittedPolicy(nil) },
 	} {

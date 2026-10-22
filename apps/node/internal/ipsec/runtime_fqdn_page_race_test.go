@@ -84,8 +84,8 @@ func TestNormalPageFQDNPublicationRaceRejectsUnsafeRefresh(t *testing.T) {
 		"generation": func(_ *renewalCycleRig, c *fqdnTurnoverClient) {
 			c.material.Policy.FQDNGrants[0].Generation = strings.Repeat("d", 64)
 		},
-		"shortened-expiry": func(r *renewalCycleRig, c *fqdnTurnoverClient) {
-			c.material.Policy.FQDNGrants[0].ExpiresAt = r.c.active[r.target].FQDNLeaseDescriptors[0].ExpiresAt.Add(-time.Second)
+		"expired-expiry": func(_ *renewalCycleRig, c *fqdnTurnoverClient) {
+			c.material.Policy.FQDNGrants[0].ExpiresAt = time.Now().Add(-time.Second)
 		},
 		"new-nonce": func(_ *renewalCycleRig, c *fqdnTurnoverClient) {
 			c.mutate = func(l *RuntimeLease) { l.Nonce = "wrong" }

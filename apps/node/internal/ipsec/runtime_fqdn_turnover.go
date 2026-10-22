@@ -67,22 +67,24 @@ func (c *RuntimeController) prepareFQDNFollowupMaterial(ctx context.Context, old
 	if len(descriptors) != len(old.FQDNLeaseDescriptors) {
 		return maintenanceItem{}, ErrRuntimeController
 	}
-	advanced := false
+	// A cached DNS answer may renew to an earlier future deadline. Only the
+	// subsequent fresh nonce-bound permit can authorize that exact new deadline.
+	expiryChanged := false
 	for i, next := range descriptors {
 		prior := old.FQDNLeaseDescriptors[i]
-		if next.ExpiresAt.Before(prior.ExpiresAt) || !next.ExpiresAt.After(time.Now()) {
+		if !next.ExpiresAt.After(time.Now()) {
 			return maintenanceItem{}, ErrRuntimeController
 		}
-		advanced = advanced || next.ExpiresAt.After(prior.ExpiresAt)
+		expiryChanged = expiryChanged || !next.ExpiresAt.Equal(prior.ExpiresAt)
 		next.ExpiresAt, prior.ExpiresAt = time.Time{}, time.Time{}
 		if next != prior {
 			return maintenanceItem{}, ErrRuntimeController
 		}
 	}
-	if !advanced && (!allowUnchanged || m.Policy.Hash != old.Identity.PolicyHash) {
+	if !expiryChanged && (!allowUnchanged || m.Policy.Hash != old.Identity.PolicyHash) {
 		return maintenanceItem{}, ErrRuntimeController
 	}
-	if advanced && m.Policy.Hash == old.Identity.PolicyHash {
+	if expiryChanged && m.Policy.Hash == old.Identity.PolicyHash {
 		return maintenanceItem{}, ErrRuntimeController
 	}
 	// Fresh native peer/no-SNAT observations are still mandatory for desktop grants.
