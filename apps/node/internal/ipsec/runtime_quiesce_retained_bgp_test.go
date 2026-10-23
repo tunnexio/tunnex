@@ -321,6 +321,28 @@ func TestQuiescedRetainedBGPProductionBindingRequiresRealQualification(t *testin
 	}
 }
 
+func TestQuiescedRetainedBGPProviderRestrictionUsesValidMatchingPair(t *testing.T) {
+	c, entries, _, _, _, _ := quiescedRetainedRig(t)
+	old := cloneRuntimeEntries(entries[:1])[0]
+	next := cloneMaintenanceActive(c.active[old.Allocation.ConnectionID]).Entry
+	if !sameQuiescedBGPTransport(old, next) {
+		t.Fatal("AWS fixture does not qualify")
+	}
+	for _, e := range []*RuntimeJournalEntry{&old, &next} {
+		e.Allocation.ProfileID = GCPHABGPProfile
+		e.BGP.RemoteASN = 65001
+		for i := range e.Engines {
+			e.Engines[i].ProfileID = GCPHABGPProfile
+		}
+		if !validJournalBGP(*e) || !validBGPProcess(*e) || !validBGPRoutes(*e) || !validKernelAllocation(e.Allocation) {
+			t.Fatal("GCP pair must remain structurally valid")
+		}
+	}
+	if sameQuiescedBGPTransport(old, next) {
+		t.Fatal("AWS-only reuse exception admitted valid GCP pair")
+	}
+}
+
 func TestQuiescedReservationWithOtherOwnerSuccessorPreservesBothAuthorities(t *testing.T) {
 	for _, mode := range []string{"success", "target-survivor", "target-lease-expired"} {
 		t.Run(mode, func(t *testing.T) {
