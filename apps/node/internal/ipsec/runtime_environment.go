@@ -564,14 +564,32 @@ func (r *runtimeEnvironmentInspector) observeQualified(ctx context.Context, a Ke
 	// The first complete snapshot is fully validated before any second-snapshot read.
 	stage = "env_snapshot_after"
 	second, valid := readSnapshot()
-	if !valid || !runtimeLinkBracket(links, second.links) || !bytes.Equal(second.rules, rules) || !bytes.Equal(second.routes, routes) || !runtimeAddressBracket(addresses, second.addresses, time.Since(addressReadStarted)) {
+	if !valid {
 		return fail()
 	}
+	stage = "env_links_after"
+	if !runtimeLinkBracket(links, second.links) {
+		return fail()
+	}
+	stage = "env_rules_after"
+	if !bytes.Equal(second.rules, rules) {
+		return fail()
+	}
+	stage = "env_routes_after"
+	if !bytes.Equal(second.routes, routes) {
+		return fail()
+	}
+	stage = "env_addresses_after"
+	if !runtimeAddressBracket(addresses, second.addresses, time.Since(addressReadStarted)) {
+		return fail()
+	}
+	stage = "env_peer_routes_after"
 	for i := range engines[:engineTunnelCount(engines)] {
 		if !bytes.Equal(second.peers[i], peerReads[i]) {
 			return fail()
 		}
 	}
+	stage = "env_local_exports_after"
 	if !reflect.DeepEqual(first.localExports, second.localExports) {
 		return fail()
 	}

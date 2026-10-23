@@ -19,6 +19,9 @@ type RuntimeDiagnostic struct {
 }
 
 func validRuntimeDiagnostic(operation, stage string) bool {
+	if stage == "env_local_exports_after" {
+		return operation == "environment_observe"
+	}
 	if stage == "quiesced_transport" {
 		return operation == "bgp_apply"
 	}
