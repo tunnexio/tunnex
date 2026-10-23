@@ -531,6 +531,9 @@ func (c *RuntimeController) maintainIPsecRuntimeItemsAttempt(ctx context.Context
 		}
 		if leaseErr != nil {
 			stage = maintenanceLeaseFailureStage(leaseErr)
+			if stage == "maintenance_lease_http_409_conflict" && !changed && !nativeCommitted && c.withdrawMaintenanceConflict(ctx, old, entries, bgpCurrent) == nil {
+				return nil, &runtimeMaintenanceBatchAborted{}
+			}
 			return fail()
 		}
 		stage = "maintenance_lease_delivery"

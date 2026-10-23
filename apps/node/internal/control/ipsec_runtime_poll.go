@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"github.com/google/uuid"
 	"github.com/tunnexio/tunnex/apps/node/internal/ipsec"
 	"reflect"
@@ -409,6 +410,13 @@ func pollIPsecMaintainedPage(ctx context.Context, client IPsecRuntimeTransport, 
 	}
 	if err != nil {
 		if len(results) != 0 {
+			return 0, ErrIPsecControl
+		}
+		var aborted interface{ IPsecMaintenanceBatchAborted() bool }
+		if errors.As(err, &aborted) && aborted.IPsecMaintenanceBatchAborted() {
+			// Native target denial aborted this collection before publication.
+			// Do not replay its stale page through fallback Apply; the next
+			// ordinary discovery must fetch and validate current material.
 			return 0, ErrIPsecControl
 		}
 		failed = true
