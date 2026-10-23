@@ -794,9 +794,13 @@ func (c *RuntimeController) maintainIPsecRuntimeItemsAttempt(ctx context.Context
 		// Reuse its bounded standby retry without preempting the selected path;
 		// only fresh known-Up/Down evidence and the committed finite lease can
 		// initiate the spare. The full-set check below still gates every ACK.
-		if candidate.Entry.ContractVersion == 2 {
+		if candidate.Entry.ContractVersion == 2 || candidate.Entry.ContractVersion == 3 {
 			retryCtx, retryCancel := context.WithTimeout(ctx, 5*time.Second)
-			c.retryDownStandby(retryCtx, candidate.Entry, candidate.Authority, candidate.Identity)
+			if candidate.Entry.ContractVersion == 3 {
+				c.retryMissingBGPChild(retryCtx, candidate.Entry)
+			} else {
+				c.retryDownStandby(retryCtx, candidate.Entry, candidate.Authority, candidate.Identity)
+			}
 			retryCancel()
 		}
 		result = append(result, RuntimeMaintenanceResult{Acknowledgement: RuntimeAcknowledgement{DeliveryID: m.ID, DesiredRevision: m.DesiredRevision, Kind: "apply", Result: "applied", OwnershipDigest: m.OwnershipDigest}, Report: report})
