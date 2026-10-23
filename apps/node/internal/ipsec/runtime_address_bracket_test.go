@@ -37,21 +37,21 @@ func TestRuntimeAddressBracketRefusesUnrelatedDrift(t *testing.T) {
 		t.Fatal("countdown refused")
 	}
 	cases := map[string][]byte{
-		"unknown":                 bytes.Replace(after, []byte(`"x":1`), []byte(`"x":2`), 1),
-		"ifindex":                 bytes.Replace(after, []byte(`"ifindex":2`), []byte(`"ifindex":3`), 1),
-		"flags":                   bytes.Replace(after, []byte(`"UP"`), []byte(`"DOWN"`), 1),
-		"scope":                   bytes.Replace(after, []byte(`"global"`), []byte(`"link"`), 1),
-		"label":                   bytes.Replace(after, []byte(`"label":"ens4"`), []byte(`"label":"ens5"`), 1),
-		"local":                   bytes.Replace(after, []byte(`10.70.0.2`), []byte(`10.70.0.3`), 1),
-		"prefix":                  bytes.Replace(after, []byte(`"prefixlen":32`), []byte(`"prefixlen":24`), 1),
-		"expired":                 bytes.ReplaceAll(after, []byte("2186"), []byte("0")),
-		"negative":                bytes.ReplaceAll(after, []byte("2186"), []byte("-1")),
-		"malformed":               bytes.ReplaceAll(after, []byte("2186"), []byte(`"2186"`)),
-		"excess":                  bytes.ReplaceAll(after, []byte("2186"), []byte("2185")),
-		"renewal":                 bytes.ReplaceAll(after, []byte("2186"), []byte("2188")),
-		"preferred_exceeds_valid": bytes.Replace(after, []byte(`"preferred_life_time":2186`), []byte(`"preferred_life_time":2187`), 1),
-		"missing":                 bytes.Replace(after, []byte(`,"preferred_life_time":2186`), nil, 1),
-		"row_count":               append(append([]byte(nil), after[:len(after)-1]...), []byte(`,{}]`)...),
+		"unknown":                  bytes.Replace(after, []byte(`"x":1`), []byte(`"x":2`), 1),
+		"ifindex":                  bytes.Replace(after, []byte(`"ifindex":2`), []byte(`"ifindex":3`), 1),
+		"flags":                    bytes.Replace(after, []byte(`"UP"`), []byte(`"DOWN"`), 1),
+		"scope":                    bytes.Replace(after, []byte(`"global"`), []byte(`"link"`), 1),
+		"label":                    bytes.Replace(after, []byte(`"label":"ens4"`), []byte(`"label":"ens5"`), 1),
+		"local":                    bytes.Replace(after, []byte(`10.70.0.2`), []byte(`10.70.0.3`), 1),
+		"prefix":                   bytes.Replace(after, []byte(`"prefixlen":32`), []byte(`"prefixlen":24`), 1),
+		"expired":                  bytes.ReplaceAll(after, []byte("2186"), []byte("0")),
+		"negative":                 bytes.ReplaceAll(after, []byte("2186"), []byte("-1")),
+		"malformed":                bytes.ReplaceAll(after, []byte("2186"), []byte(`"2186"`)),
+		"excess":                   bytes.ReplaceAll(after, []byte("2186"), []byte("2185")),
+		"mixed_lifetime_direction": bytes.Replace(after, []byte(`"valid_life_time":2186`), []byte(`"valid_life_time":2188`), 1),
+		"preferred_exceeds_valid":  bytes.Replace(after, []byte(`"preferred_life_time":2186`), []byte(`"preferred_life_time":2187`), 1),
+		"missing":                  bytes.Replace(after, []byte(`,"preferred_life_time":2186`), nil, 1),
+		"row_count":                append(append([]byte(nil), after[:len(after)-1]...), []byte(`,{}]`)...),
 	}
 	for name, a := range cases {
 		t.Run(name, func(t *testing.T) {

@@ -1,0 +1,1 @@
+[{"ifindex":2,"ifname":"enp39s0","flags":["BROADCAST","MULTICAST","UP","LOWER_UP"],"mtu":9001,"qdisc":"mq","operstate":"UP","group":"default","txqlen":1000,"addr_info":[{"family":"inet","local":"10.181.10.40","prefixlen":24,"metric":100,"broadcast":"10.181.10.255","scope":"global","dynamic":true,"label":"enp39s0","valid_life_time":3438,"preferred_life_time":3438}]}]
