@@ -493,7 +493,10 @@ func pollIPsecMaintainedPage(ctx context.Context, client IPsecRuntimeTransport, 
 			}
 			cancel()
 		}
-		if pollIPsecApplyMaterial(ctx, client, controller, item, material) != nil {
+		// Maintenance and recovery observation can outlive an FQDN generation.
+		// Fetch current normal material after that work; the collected page is
+		// not fresh authority for an owner that still needs ordinary Apply.
+		if pollIPsecItem(ctx, client, controller, item) != nil {
 			failed = true
 		}
 	}
