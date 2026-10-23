@@ -213,7 +213,16 @@ func validRestorationSuccessor(before, after RuntimeJournalEntry) bool {
 // Current kernel boot ID is recorded only after a successful authorized apply.
 // This never manufactures a historical boot ID for an inaccessible old runtime.
 func (c *RuntimeController) recordRuntimeBoot(ctx context.Context, id uuid.UUID) error {
-	boot, err := resetBootID()
+	return c.recordRuntimeBootObserved(ctx, id, resetBootID)
+}
+
+// Production supplies the native boot reader; the private seam lets portable
+// tests exercise the same journal and active-owner transition.
+func (c *RuntimeController) recordRuntimeBootObserved(ctx context.Context, id uuid.UUID, readBoot func() (string, error)) error {
+	if readBoot == nil || ctx.Err() != nil {
+		return ErrRuntimeController
+	}
+	boot, err := readBoot()
 	if err != nil {
 		return err
 	}
@@ -232,6 +241,31 @@ func (c *RuntimeController) recordRuntimeBoot(ctx context.Context, id uuid.UUID)
 		if e.Allocation.Namespace != ns || e.Phase != RuntimeApplied || (e.ContractVersion != 2 && e.ContractVersion != 3 && e.ContractVersion != 4) {
 			return ErrRuntimeController
 		}
+		// Contract 2/3 Apply already published this exact owner before adding
+		// its first boot stamp. Preserve that owner's finite authority while
+		// committing only our own nil-to-current-boot metadata transition.
+		// Classic's caller performs its distinct Applying-to-Applied commit.
+		syncActive := e.ContractVersion == 2 || e.ContractVersion == 3
+		var before runtimeActive
+		var deadline time.Duration
+		unchanged := func() bool {
+			current, ok := c.active[e.Allocation.ConnectionID]
+			if ctx.Err() != nil || !ok || current.Authority != before.Authority || !reflect.DeepEqual(current, before) || before.Authority == nil || before.Authority.deadline != deadline {
+				return false
+			}
+			_, err := before.Authority.RemainingForApply(before.Identity, 5*time.Second)
+			return err == nil
+		}
+		if syncActive {
+			before = cloneMaintenanceActive(c.active[e.Allocation.ConnectionID])
+			if !reflect.DeepEqual(before.Entry, e) || before.Delivery.ID != id || before.Identity.DeliveryID != id || before.Identity.Binding != e.Engines[0].Binding || before.Authority == nil {
+				return ErrRuntimeController
+			}
+			deadline = before.Authority.deadline
+			if !unchanged() {
+				return ErrRuntimeController
+			}
+		}
 		if e.Restoration != nil {
 			if e.Restoration.BootID != boot {
 				return ErrRuntimeController
@@ -247,12 +281,28 @@ func (c *RuntimeController) recordRuntimeBoot(ctx context.Context, id uuid.UUID)
 		if err != nil || missing {
 			return ErrRuntimeController
 		}
-		after, err := resetBootID()
+		after, err := readBoot()
 		if err != nil || after != boot {
 			return ErrRuntimeController
 		}
+		if syncActive && !unchanged() {
+			return ErrRuntimeController
+		}
 		entries[i].Restoration = &RuntimeRestoration{BootID: boot}
-		return c.journal.Save(entries)
+		if err := c.journal.Save(entries); err != nil || !syncActive {
+			return err
+		}
+		after, err = readBoot()
+		if err != nil || after != boot || !unchanged() {
+			return ErrRuntimeController
+		}
+		committed, err := c.journal.cleanupSnapshot()
+		if err != nil || !reflect.DeepEqual(committed.Entries, entries) || !unchanged() {
+			return ErrRuntimeController
+		}
+		before.Entry = committed.Entries[i]
+		c.active[e.Allocation.ConnectionID] = before
+		return nil
 	}
 	return ErrRuntimeController
 }
