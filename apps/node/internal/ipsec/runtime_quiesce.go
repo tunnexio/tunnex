@@ -46,12 +46,8 @@ func (c *RuntimeController) proveQuiescedAbsent(ctx context.Context, e RuntimeJo
 	if err != nil {
 		return ErrRuntimeController
 	}
-	for _, historical := range entries {
-		if historical.Phase == RuntimeRetainedRefusal && historical.ContractVersion == 3 {
-			if c.proveAzureBGPDutiesAbsent(ctx, historical) != nil {
-				return ErrRuntimeController
-			}
-		}
+	if c.proveQuiescedRetainedBGPDuties(ctx, entries) != nil {
+		return ErrRuntimeController
 	}
 	if c.restorationAbsent(ctx, e, boot, ns) != nil || c.proveStoppedBGPDutiesAbsent(ctx, e) != nil {
 		return ErrRuntimeController

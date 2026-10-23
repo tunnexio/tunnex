@@ -19,6 +19,9 @@ type RuntimeDiagnostic struct {
 }
 
 func validRuntimeDiagnostic(operation, stage string) bool {
+	if stage == "quiesced_transport" {
+		return operation == "bgp_apply"
+	}
 	if operation == "maintenance_bgp_route_change" {
 		return stage == "route_change_reconcile_once" || stage == "route_change_ineligible"
 	}

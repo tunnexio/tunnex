@@ -43,6 +43,12 @@ func (c *RuntimeController) proveStoppedBGPDutiesAbsentInBoot(ctx context.Contex
 			return ErrRuntimeController
 		}
 	}
+	return c.proveStoppedBGPProcessesAbsentInBoot(ctx, e, boot, ns, bootDischarged)
+}
+
+// Process and compacted-history obligations are independent of transport IDs
+// legitimately reused by a newer, separately qualified same-owner delivery.
+func (c *RuntimeController) proveStoppedBGPProcessesAbsentInBoot(ctx context.Context, e RuntimeJournalEntry, boot, ns string, bootDischarged bool) error {
 	bootDischarged = bootDischarged || c.retainedResetBootDischarged(ctx, e, boot, ns)
 	if e.Restoration != nil && e.Restoration.BootID != boot && !bootDischarged {
 		return ErrRuntimeController
