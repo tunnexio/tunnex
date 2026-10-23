@@ -1703,7 +1703,32 @@ fi
 
 # The API prints the one-time credential to stdout. Surface that banner here because `up -d` is detached;
 # operators should not need to search container logs, and the API will also email it when SMTP is configured.
-CREDS="$(tunnex_compose logs api 2>/dev/null | sed -n '/TUNNEX - FIRST RUN/,/^.*=\{20,\}$/p' | tail -n +2 || true)"
+# BEGIN BOOTSTRAP BANNER CAPTURE
+extract_bootstrap_admin_banner() {
+    # The first separator AFTER the title is the header, not the end of the
+    # credential. Buffer through the closing frame; ignore absent/truncated banners.
+    awk '
+    {
+        line = $0
+        gsub(sprintf("%c", 27) "\\[[0-9;]*m", "", line)
+        content = line
+        sub(/^[^|]*\|[[:space:]]*/, "", content)
+        if (content ~ /^[[:space:]]*TUNNEX - FIRST RUN: ADMINISTRATOR ACCOUNT[[:space:]]*$/) {
+            capture = 1; separators = 0; email = 0; password = 0; banner = line ORS
+            next
+        }
+        if (!capture) next
+        banner = banner line ORS
+        if (content ~ /^[[:space:]]*email[[:space:]]+[^[:space:]]+[[:space:]]*$/) email++
+        if (content ~ /^[[:space:]]*password[[:space:]]+[^[:space:]]+[[:space:]]*$/) password++
+        if (content ~ /^[[:space:]]*={20,}[[:space:]]*$/ && ++separators == 2) {
+            if (email == 1 && password == 1) printf "%s", banner
+            capture = 0
+        }
+    }'
+}
+# END BOOTSTRAP BANNER CAPTURE
+CREDS="$(tunnex_compose logs api 2>/dev/null | extract_bootstrap_admin_banner || true)"
 if printf '%s' "$CREDS" | grep -q 'password'; then
 	say ''
 	say 'Your administrator credential (shown once):'
