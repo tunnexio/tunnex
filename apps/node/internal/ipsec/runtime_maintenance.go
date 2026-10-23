@@ -206,8 +206,12 @@ func (c *RuntimeController) maintainIPsecRuntimeItemsAttempt(ctx context.Context
 	for id, a := range c.active {
 		preparedOwners[id] = cloneMaintenanceActive(a)
 	}
+	stage, connection = "maintenance_prepare", uuid.Nil
 	materials, prepareErr := prepare(ns, entries, &stage, &connection)
 	if prepareErr != nil || len(materials) != count {
+		if prepareErr == nil {
+			stage, connection = "maintenance_prepare_count", uuid.Nil
+		}
 		var retraction *runtimeFQDNPolicyRetraction
 		if errors.As(prepareErr, &retraction) {
 			current := func() bool {

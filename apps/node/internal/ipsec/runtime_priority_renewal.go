@@ -34,7 +34,7 @@ func (c *RuntimeController) RenewActiveIPsecRuntimeObserved(ctx context.Context,
 
 func (c *RuntimeController) renewActiveIPsecRuntimeObserved(ctx context.Context, authority func() *PermitLeaseAuthority, bgpCurrent func() bool, publish func(context.Context, RuntimeDelivery, RuntimeStatusReport) error, publishRecovery func(context.Context, RuntimeRecoveryHeartbeat) error) error {
 	count := len(c.active)
-	prepare := func(ns string, entries []RuntimeJournalEntry, _ *string, _ *uuid.UUID) ([]maintenanceItem, error) {
+	prepare := func(ns string, entries []RuntimeJournalEntry, stage *string, connection *uuid.UUID) ([]maintenanceItem, error) {
 		ids := make([]uuid.UUID, 0, count)
 		for id := range c.active {
 			ids = append(ids, id)
@@ -43,6 +43,7 @@ func (c *RuntimeController) renewActiveIPsecRuntimeObserved(ctx context.Context,
 		items := make([]maintenanceItem, 0, count)
 		deliveries := map[uuid.UUID]bool{}
 		for _, id := range ids {
+			*stage, *connection = "maintenance_priority_owner", id
 			a := c.active[id]
 			d, e := a.Delivery, a.Entry
 			if !runtimeDeliveryValid(d, c.config.OrgID, c.config.GatewayID, "apply") || d.CoversDeliveryRevision != 0 || d.Manifest.ConnectionID != id || d.ID != e.DeliveryID || d.OwnershipDigest != e.OwnershipDigest || d.DesiredRevision != e.Engines[0].Binding.DesiredRevision || e.Allocation.ConnectionID != id || e.Allocation.Namespace != ns || e.Phase != RuntimeApplied || (e.ContractVersion != 2 && e.ContractVersion != 3 && !(e.ContractVersion == 4 && e.Allocation.ProfileID == GCPClassicStaticProfile && validClassicJournal(e))) || a.Authority == nil || !validDigest(a.Identity.PolicyHash) || a.Identity != (PermitLeaseIdentity{DeliveryID: d.ID, Binding: e.Engines[0].Binding, PolicyHash: a.Identity.PolicyHash}) || !reflect.DeepEqual(a.Environment.Namespace, ns) || deliveries[d.ID] {
@@ -50,18 +51,31 @@ func (c *RuntimeController) renewActiveIPsecRuntimeObserved(ctx context.Context,
 			}
 			// A process-local record is not sufficient by itself: require its
 			// exact complete applied entry in the trusted current journal.
+			*stage = "maintenance_priority_journal_binding"
 			matches := 0
 			for _, current := range entries {
 				if current.Allocation.ConnectionID == id && current.DeliveryID == d.ID {
 					if !reflect.DeepEqual(current, e) {
+						// Classify only the first differing mutable duty, without
+						// logging either journal value or changing the exact refusal.
+						switch {
+						case !reflect.DeepEqual(current.BGPProcess, e.BGPProcess):
+							*stage = "maintenance_priority_journal_process"
+						case !reflect.DeepEqual(current.BGPRoutes, e.BGPRoutes):
+							*stage = "maintenance_priority_journal_routes"
+						case !reflect.DeepEqual(current.Recovery, e.Recovery):
+							*stage = "maintenance_priority_journal_recovery"
+						}
 						return nil, ErrRuntimeController
 					}
 					matches++
 				}
 			}
+			*stage = "maintenance_priority_journal_count"
 			if matches != 1 {
 				return nil, ErrRuntimeController
 			}
+			*stage = "maintenance_priority_fqdn_current"
 			if !c.fqdnGrantsCurrent(a.Grants) {
 				return nil, &runtimeFQDNPolicyRetraction{connection: id}
 			}
