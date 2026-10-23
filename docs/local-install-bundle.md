@@ -83,8 +83,12 @@ Do not use an old platform image with a newly invented source field.
 Paths are relative, regular files without traversal or symlinks. Unknown fields,
 duplicate JSON keys, missing roles, wrong sizes/hashes, an internal key path,
 wrong signature or mismatched platform are refused. Loaded Docker image IDs and
-platforms are inspected before first startup. These are **Docker config image
-IDs**, not registry manifest digests; no tag resolution is necessary after load.
+platforms are inspected before first startup. Each image uses the **immutable
+loaded-engine image ID** reported by Docker: a config digest or an OCI manifest
+digest, depending on the image store. That exact ID must remain resolvable and
+match after archive load on the target engine; no tag resolution is used. A
+different loaded ID is refused, even when another backend identifies the same
+archive differently.
 
 ## Fresh server installation
 
