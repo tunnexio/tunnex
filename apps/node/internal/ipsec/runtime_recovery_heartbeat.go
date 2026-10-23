@@ -2,6 +2,7 @@ package ipsec
 
 import (
 	"context"
+	"errors"
 	"github.com/google/uuid"
 	"reflect"
 	"time"
@@ -15,6 +16,21 @@ type runtimeRecoveryOwnerWithdrawn struct{ connectionID uuid.UUID }
 func (e *runtimeRecoveryOwnerWithdrawn) Error() string                    { return ErrRuntimeController.Error() }
 func (e *runtimeRecoveryOwnerWithdrawn) Unwrap() error                    { return ErrRuntimeController }
 func (e *runtimeRecoveryOwnerWithdrawn) withdrawnConnectionID() uuid.UUID { return e.connectionID }
+
+type runtimeRecoveryLeaseConflict struct{}
+
+func (*runtimeRecoveryLeaseConflict) Error() string { return ErrRuntimeController.Error() }
+func (*runtimeRecoveryLeaseConflict) Unwrap() error { return ErrRuntimeController }
+
+// Preserve the existing precommit pulse gate and also prohibit stale-page Apply.
+// This signal is constructed only after exact owner denial and unrelated proof.
+type runtimeRecoveryConflictWithdrawn struct{ connectionID uuid.UUID }
+
+func (*runtimeRecoveryConflictWithdrawn) Error() string { return ErrRuntimeController.Error() }
+func (e *runtimeRecoveryConflictWithdrawn) Unwrap() error {
+	return &runtimeRecoveryOwnerWithdrawn{connectionID: e.connectionID}
+}
+func (*runtimeRecoveryConflictWithdrawn) IPsecMaintenanceBatchAborted() bool { return true }
 
 // RuntimeRecoveryHeartbeat carries independent telemetry and no Apply acknowledgement.
 // Its delivery is the original authenticated, secret-free Apply context.
@@ -77,6 +93,10 @@ func (c *RuntimeController) refreshIPsecActiveRecovery(ctx context.Context, seen
 // The caller owns c.mu. Maintenance alone can sequence an independently fresh
 // observation by saving the same trusted entries; no authority or NFT is renewed.
 func (c *RuntimeController) refreshIPsecActiveRecoveryLocked(ctx context.Context, seen map[uuid.UUID]bool, sequenceFresh bool, startedDiagnostic time.Time) (reportsResult []RuntimeRecoveryHeartbeat, resultErr error) {
+	return c.refreshIPsecActiveRecoveryLockedQualified(ctx, seen, sequenceFresh, startedDiagnostic, c.bgpQualificationCurrent)
+}
+
+func (c *RuntimeController) refreshIPsecActiveRecoveryLockedQualified(ctx context.Context, seen map[uuid.UUID]bool, sequenceFresh bool, startedDiagnostic time.Time, bgpCurrent func() bool) (reportsResult []RuntimeRecoveryHeartbeat, resultErr error) {
 	stage := "input"
 	connection := uuid.Nil
 	if c == nil {
@@ -170,8 +190,12 @@ func (c *RuntimeController) refreshIPsecActiveRecoveryLocked(ctx context.Context
 		return failConnection()
 	}
 	stage = "permit_lease"
-	authority, identity, err := c.recoveryLease(ctx, e, oldest.epoch.PolicyHash)
+	authority, identity, err := c.recoveryLeaseClassified(ctx, e, oldest.epoch.PolicyHash)
 	if err != nil {
+		var conflict *runtimeRecoveryLeaseConflict
+		if errors.As(err, &conflict) && c.withdrawMaintenanceConflict(ctx, a, entries, bgpCurrent) == nil {
+			return nil, &runtimeRecoveryConflictWithdrawn{connectionID: id}
+		}
 		return fail()
 	}
 	if _, err = authority.RemainingForApply(identity, 5*time.Second); err != nil {

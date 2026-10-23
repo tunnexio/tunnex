@@ -11,6 +11,10 @@ import (
 // the existing oldest-sample selection supplies fairness without a new goroutine.
 // The runtime owner already holds c.mu, outside any guard transaction.
 func (c *RuntimeController) refreshMaintenanceActiveRecovery(ctx context.Context, allowed map[uuid.UUID]bool, publish func(context.Context, RuntimeRecoveryHeartbeat) error) (resultErr error) {
+	return c.refreshMaintenanceActiveRecoveryQualified(ctx, allowed, publish, c.bgpQualificationCurrent)
+}
+
+func (c *RuntimeController) refreshMaintenanceActiveRecoveryQualified(ctx context.Context, allowed map[uuid.UUID]bool, publish func(context.Context, RuntimeRecoveryHeartbeat) error, bgpCurrent func() bool) (resultErr error) {
 	stage, connection := "input", uuid.Nil
 	startedDiagnostic := time.Now()
 	if publish == nil {
@@ -80,7 +84,7 @@ func (c *RuntimeController) refreshMaintenanceActiveRecovery(ctx context.Context
 	}
 	connection = uuid.Nil
 	stage = "sample"
-	reports, err := c.refreshIPsecActiveRecoveryLocked(ctx, seen, true, time.Now())
+	reports, err := c.refreshIPsecActiveRecoveryLockedQualified(ctx, seen, true, time.Now(), bgpCurrent)
 	if err != nil {
 		return err
 	}

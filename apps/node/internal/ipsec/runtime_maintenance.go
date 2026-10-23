@@ -159,7 +159,14 @@ func (c *RuntimeController) maintainIPsecRuntimeItemsAttempt(ctx context.Context
 		return nil, ErrRuntimeController
 	}
 	nativeCommitted := false
+	changed := false
 	pulseFailure := func(err error) ([]RuntimeMaintenanceResult, error) {
+		var conflict *runtimeRecoveryConflictWithdrawn
+		if changed && errors.As(err, &conflict) {
+			// Earlier ineligible owners may still await their native denial.
+			// Target conflict isolation cannot abandon that pending duty.
+			return fail()
+		}
 		var withdrawn *runtimeRecoveryOwnerWithdrawn
 		if !nativeCommitted && ctx.Err() == nil && c.qualification.current() && c.config.DaemonAlive() && errors.As(err, &withdrawn) && withdrawn.connectionID != uuid.Nil {
 			if _, present := c.active[withdrawn.connectionID]; !present {
@@ -227,7 +234,6 @@ func (c *RuntimeController) maintainIPsecRuntimeItemsAttempt(ctx context.Context
 	candidates := map[uuid.UUID]runtimeActive{}
 	pending := map[uuid.UUID]runtimeActive{}
 	maintained := make([]RuntimeDelivery, 0, len(materials))
-	changed := false
 	type eligibleOwner struct {
 		index  int
 		active runtimeActive
@@ -236,7 +242,7 @@ func (c *RuntimeController) maintainIPsecRuntimeItemsAttempt(ctx context.Context
 	// Complete all eligibility proof IO before beginning any fresh finite lease.
 	for i, m := range materials {
 		c.refreshMaintenanceRecovery(ctx)
-		if pulseErr := c.refreshMaintenanceActiveRecovery(ctx, pulseAllowed, publishRecovery); pulseErr != nil {
+		if pulseErr := c.refreshMaintenanceActiveRecoveryQualified(ctx, pulseAllowed, publishRecovery, bgpCurrent); pulseErr != nil {
 			return pulseFailure(pulseErr)
 		}
 		id := m.Manifest.ConnectionID
@@ -271,7 +277,7 @@ func (c *RuntimeController) maintainIPsecRuntimeItemsAttempt(ctx context.Context
 			if current != nil && lineage {
 				env, observeErr := c.config.Environment.Observe(ctx, m.Entry.Allocation, m.Entry.Engines)
 				c.refreshMaintenanceRecovery(ctx)
-				if pulseErr := c.refreshMaintenanceActiveRecovery(ctx, pulseAllowed, publishRecovery); pulseErr != nil {
+				if pulseErr := c.refreshMaintenanceActiveRecoveryQualified(ctx, pulseAllowed, publishRecovery, bgpCurrent); pulseErr != nil {
 					return pulseFailure(pulseErr)
 				}
 				same := m.Entry
@@ -341,7 +347,7 @@ func (c *RuntimeController) maintainIPsecRuntimeItemsAttempt(ctx context.Context
 						// instead of withdrawing its owner and stopping desktop exports.
 						stage = "maintenance_retained_bgp_reconcile"
 						c.refreshMaintenanceRecovery(ctx)
-						if pulseErr := c.refreshMaintenanceActiveRecovery(ctx, pulseAllowed, publishRecovery); pulseErr != nil {
+						if pulseErr := c.refreshMaintenanceActiveRecoveryQualified(ctx, pulseAllowed, publishRecovery, bgpCurrent); pulseErr != nil {
 							return pulseFailure(pulseErr)
 						}
 						if ctx.Err() != nil || !c.qualification.current() || !c.config.DaemonAlive() || bgpCurrent == nil || !bgpCurrent() {
@@ -382,7 +388,7 @@ func (c *RuntimeController) maintainIPsecRuntimeItemsAttempt(ctx context.Context
 					}
 					eligible = proofErr == nil
 					c.refreshMaintenanceRecovery(ctx)
-					if pulseErr := c.refreshMaintenanceActiveRecovery(ctx, pulseAllowed, publishRecovery); pulseErr != nil {
+					if pulseErr := c.refreshMaintenanceActiveRecoveryQualified(ctx, pulseAllowed, publishRecovery, bgpCurrent); pulseErr != nil {
 						return pulseFailure(pulseErr)
 					}
 				}
@@ -449,7 +455,7 @@ func (c *RuntimeController) maintainIPsecRuntimeItemsAttempt(ctx context.Context
 		if deferral.deferPulse(ctx, c) {
 			return nil
 		}
-		return c.refreshMaintenanceActiveRecovery(ctx, pulseAllowed, publishRecovery)
+		return c.refreshMaintenanceActiveRecoveryQualified(ctx, pulseAllowed, publishRecovery, bgpCurrent)
 	}
 	refreshedFQDN := map[uuid.UUID]bool{}
 	for _, owner := range eligibleOwners {
@@ -727,7 +733,7 @@ func (c *RuntimeController) maintainIPsecRuntimeItemsAttempt(ctx context.Context
 	}
 	nativeCommitted = true
 	c.refreshMaintenanceRecovery(ctx)
-	if pulseErr := c.refreshMaintenanceActiveRecovery(ctx, pulseAllowed, publishRecovery); pulseErr != nil {
+	if pulseErr := c.refreshMaintenanceActiveRecoveryQualified(ctx, pulseAllowed, publishRecovery, bgpCurrent); pulseErr != nil {
 		return pulseFailure(pulseErr)
 	}
 	result := make([]RuntimeMaintenanceResult, 0, len(maintained))
@@ -756,7 +762,7 @@ func (c *RuntimeController) maintainIPsecRuntimeItemsAttempt(ctx context.Context
 			report.Tunnels[i] = RuntimeTunnelStatus{ID: t.ID, Slot: t.Slot, Status: "unknown", Selected: t.Selected}
 		}
 		c.refreshMaintenanceRecovery(ctx)
-		if pulseErr := c.refreshMaintenanceActiveRecovery(ctx, pulseAllowed, publishRecovery); pulseErr != nil {
+		if pulseErr := c.refreshMaintenanceActiveRecoveryQualified(ctx, pulseAllowed, publishRecovery, bgpCurrent); pulseErr != nil {
 			return pulseFailure(pulseErr)
 		}
 		stage = "maintenance_status"
@@ -775,7 +781,7 @@ func (c *RuntimeController) maintainIPsecRuntimeItemsAttempt(ctx context.Context
 				return fail()
 			}
 			c.refreshMaintenanceRecovery(ctx)
-			if pulseErr := c.refreshMaintenanceActiveRecovery(ctx, pulseAllowed, publishRecovery); pulseErr != nil {
+			if pulseErr := c.refreshMaintenanceActiveRecoveryQualified(ctx, pulseAllowed, publishRecovery, bgpCurrent); pulseErr != nil {
 				return pulseFailure(pulseErr)
 			}
 			// External report IO cannot turn a now-expired or replaced candidate
