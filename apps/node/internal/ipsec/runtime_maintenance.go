@@ -198,6 +198,7 @@ func (c *RuntimeController) maintainIPsecRuntimeItemsAttempt(ctx context.Context
 	if err != nil {
 		return fail()
 	}
+	stage = "maintenance_pending_fqdn_withdraw"
 	if err := c.withdrawPendingFQDNPolicyLocked(ctx); err != nil {
 		return fail()
 	}

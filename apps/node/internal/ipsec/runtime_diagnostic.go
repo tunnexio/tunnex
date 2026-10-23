@@ -25,6 +25,14 @@ func validRuntimeDiagnostic(operation, stage string) bool {
 	if operation == "maintenance_bgp_route_change" {
 		return stage == "route_change_reconcile_once" || stage == "route_change_ineligible"
 	}
+	if operation == "maintenance_pending_fqdn" {
+		switch stage {
+		case "pending_owner_contract", "pending_owner_profile", "pending_policy_source", "pending_policy_view", "pending_policy_binding", "pending_grant_binding", "pending_guard_rebuild":
+			return true
+		default:
+			return false
+		}
+	}
 	if operation == "maintenance_eligibility" {
 		switch stage {
 		case "eligibility_active", "eligibility_current", "eligibility_lineage", "eligibility_observe", "eligibility_namespace", "eligibility_phase", "eligibility_contract", "eligibility_entry_current", "eligibility_active_entry", "eligibility_delivery", "eligibility_environment", "eligibility_grants", "eligibility_identity", "eligibility_authority", "eligibility_recovery", "eligibility_bgp", "eligibility_proof":
@@ -36,6 +44,8 @@ func validRuntimeDiagnostic(operation, stage string) bool {
 
 	if operation == "maintenance" {
 		switch stage {
+		case "maintenance_pending_fqdn_withdraw":
+			return true
 		case "maintenance_fqdn_retraction_after_replace", "maintenance_fqdn_retraction", "maintenance_desktop_nat_pending", "maintenance_fqdn_cutoff_refresh", "maintenance_desktop_observe", "maintenance_fqdn_expiry_material", "maintenance_fqdn_expiry_lease", "maintenance_authority", "maintenance_bgp_freshness", "maintenance_bridge_proof", "maintenance_candidate", "maintenance_candidate_authority", "maintenance_combined_guard", "maintenance_eligibility", "maintenance_eligibility_proof", "maintenance_final_binding", "maintenance_fresh_authority", "maintenance_input", "maintenance_journal", "maintenance_retained_bgp_reconcile", "maintenance_lease", "maintenance_lease_delivery", "maintenance_lease_revision", "maintenance_lease_policy", "maintenance_lease_nonce", "maintenance_lease_ttl", "maintenance_lease_active", "maintenance_lease_request", "maintenance_lease_parse", "maintenance_lease_transport_deadline", "maintenance_lease_transport_cancel", "maintenance_lease_transport_other", "maintenance_lease_http_400", "maintenance_lease_http_401", "maintenance_lease_http_403", "maintenance_lease_http_404", "maintenance_lease_http_409", "maintenance_lease_http_409_ineligible", "maintenance_lease_http_409_conflict", "maintenance_lease_http_429", "maintenance_lease_http_5xx", "maintenance_lease_http_other", "maintenance_material", "maintenance_material_current", "maintenance_material_withdraw", "maintenance_namespace", "maintenance_publish", "maintenance_publish_binding", "maintenance_report_contract", "maintenance_startup_gate", "maintenance_status":
 			return true
 		default:

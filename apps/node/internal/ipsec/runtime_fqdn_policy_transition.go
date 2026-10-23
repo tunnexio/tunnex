@@ -158,26 +158,49 @@ func (c *RuntimeController) refreshFQDNMaintenanceMaterial(ctx context.Context, 
 // scoped withdrawal before taking retained snapshots, rather than treating an
 // intentionally removed marked grant as failure of all ordinary authority.
 func (c *RuntimeController) withdrawPendingFQDNPolicyLocked(ctx context.Context) error {
+	started := time.Now()
+	fail := func(id uuid.UUID, stage string) error {
+		c.emitRuntimeDiagnostic(ctx, "maintenance_pending_fqdn", stage, id, started, true)
+		return ErrRuntimeController
+	}
 	var ids []uuid.UUID
 	for id, a := range c.active {
 		if c.fqdnGrantsCurrent(a.Grants) {
 			continue
 		}
-		if a.Entry.ContractVersion != 3 || a.Entry.Allocation.ProfileID != "" || c.config.FQDNPolicy == nil {
-			return ErrRuntimeController
+		if a.Entry.ContractVersion != 3 {
+			return fail(id, "pending_owner_contract")
+		}
+		if a.Entry.Allocation.ProfileID != "" {
+			return fail(id, "pending_owner_profile")
+		}
+		if c.config.FQDNPolicy == nil {
+			return fail(id, "pending_policy_source")
 		}
 		view := c.config.FQDNPolicy.view.Load()
-		if view == nil || view.policy.NodeID != c.config.GatewayID.String() {
-			return ErrRuntimeController
+		if view == nil {
+			return fail(id, "pending_policy_view")
+		}
+		if view.policy.NodeID != c.config.GatewayID.String() {
+			return fail(id, "pending_policy_binding")
 		}
 		for _, g := range a.Grants {
 			if g.FQDNManaged && (g.FQDN.Version != 2 || g.FQDN.ResolverKind != "static_cname" || g.DesktopDeviceID == uuid.Nil) {
-				return ErrRuntimeController
+				return fail(id, "pending_grant_binding")
 			}
 		}
 		ids = append(ids, id)
 	}
-	return c.withdrawFQDNActiveLocked(ctx, ids)
+	err := c.withdrawFQDNActiveLocked(ctx, ids)
+	if err != nil {
+		// This rebuild covers all pending owners. These IDs identify the affected
+		// owners, not the source of a shared native failure; inner diagnostics
+		// retain that failure's existing stage and binding.
+		for _, id := range ids {
+			c.emitRuntimeDiagnostic(ctx, "maintenance_pending_fqdn", "pending_guard_rebuild", id, started, true)
+		}
+	}
+	return err
 }
 
 // This marker comes only from complete desktop observation with a recognized
