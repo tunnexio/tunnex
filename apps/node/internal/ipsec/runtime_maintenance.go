@@ -347,6 +347,15 @@ func (c *RuntimeController) maintainIPsecRuntimeItemsAttempt(ctx context.Context
 						if ctx.Err() != nil || !c.qualification.current() || !c.config.DaemonAlive() || bgpCurrent == nil || !bgpCurrent() {
 							return fail()
 						}
+						// A permission-preserving selected-path switch need not replay
+						// already completed eligibility IO for every other owner. Capture
+						// only after the preceding publication callback has returned.
+						beforeSwitch := map[uuid.UUID]runtimeActive{}
+						for ownerID, a := range c.active {
+							beforeSwitch[ownerID] = cloneMaintenanceActive(a)
+						}
+						beforeTemplates, _, templateErr := c.journal.guardTemplates()
+						canContinue := templateErr == nil && !changed && reflect.DeepEqual(staged, beforeSwitch) && reflect.DeepEqual(old, beforeSwitch[id])
 						reconcileCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 						reconcileErr := c.reconcileActiveBGP(reconcileCtx, entries)
 						if reconcileErr == nil && (reconcileCtx.Err() != nil || !bgpCurrent()) {
@@ -356,10 +365,20 @@ func (c *RuntimeController) maintainIPsecRuntimeItemsAttempt(ctx context.Context
 						if reconcileErr != nil {
 							return fail()
 						}
-						// Re-read the journal and rebuild exact owner snapshots once.
-						// The reconciler leaves applications denied; only the normal
-						// fresh-lease commit restores them. Further RIB drift refuses.
-						return c.maintainIPsecRuntimeItemsAttempt(ctx, count, prepare, authority, bgpCurrent, publish, publishRecovery, false, allowFQDNCutoffRefresh)
+						latest, continued := c.bgpRouteSwitchMaintenanceCurrent(id, beforeSwitch, entries, beforeTemplates)
+						if canContinue && continued {
+							// No authority/native member changed. The reconciler supplied
+							// the complete fresh native/desktop/RIB/SA proof for this owner;
+							// collection and its canonical post-CP proofs still run below.
+							entries, old = latest, c.active[id]
+							staged[id] = old
+							m.Entry, materials[i].Entry = old.Entry, old.Entry
+							reconcileRetainedBGP, proofErr = false, nil
+						} else {
+							// Deny-first or another owner change requires the original full
+							// rebuild. A second route change never reconciles recursively.
+							return c.maintainIPsecRuntimeItemsAttempt(ctx, count, prepare, authority, bgpCurrent, publish, publishRecovery, false, allowFQDNCutoffRefresh)
+						}
 					}
 					eligible = proofErr == nil
 					c.refreshMaintenanceRecovery(ctx)

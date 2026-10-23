@@ -386,6 +386,7 @@ func (c *RuntimeController) reconcileActiveBGP(ctx context.Context, entries []Ru
 		permit := func() error { _, err := active.Authority.RemainingForApply(active.Identity, 5*time.Second); return err }
 		p := c.bgpProcesses[e.DeliveryID]
 		target := []RuntimeBGPRouteTuple{}
+		var health [2]string
 		fresh := permit() == nil && p != nil && p.Alive() && c.proveDesktopGrants(ctx, active.Grants) == nil
 		c.emitRuntimeDiagnostic(ctx, "bgp_reconcile", stage, id, permitStarted, !fresh)
 		if fresh {
@@ -405,7 +406,7 @@ func (c *RuntimeController) reconcileActiveBGP(ctx context.Context, entries []Ru
 				} else {
 					stage = "transport_status"
 					transportStarted := time.Now()
-					health := c.observeRecovery(ctx, e)
+					health = c.observeRecovery(ctx, e)
 					for _, state := range health {
 						if state != "up" && state != "down" {
 							fresh = false
@@ -433,6 +434,18 @@ func (c *RuntimeController) reconcileActiveBGP(ctx context.Context, entries []Ru
 			current = e.BGPRoutes.Owned
 		}
 		if reflect.DeepEqual(current, target) && fresh {
+			continue
+		}
+		// Existing permits already cover both healthy encrypted paths. Keep their
+		// exact native deadlines while moving only the selected route; all other
+		// changes retain the original deny-first reconciliation below.
+		if fresh && c.canPreserveBGPRouteSwitch(active, target, health) {
+			stage = "route_guard_continuity"
+			latest, err := c.preserveBGPRouteSwitch(ctx, entries, active, target)
+			if err != nil {
+				return err
+			}
+			entries = latest
 			continue
 		}
 		grants := active.Grants

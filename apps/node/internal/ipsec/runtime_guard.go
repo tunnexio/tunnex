@@ -429,8 +429,29 @@ func (a *RuntimeGuard) withdrawConnection(ctx context.Context, namespace string,
 	if err != nil || len(templates) != 1 || templates[0].Namespace != namespace {
 		return ErrGuardRead
 	}
-	template := templates[0]
-	manifest := GuardManifest{Namespace: namespace, ExpectedJSON: template.ExpectedJSON}
+	return a.withdrawConnectionTemplateLocked(ctx, templates[0], id, func() bool {
+		current, _, err := a.journal.guardTemplates()
+		return err == nil && reflect.DeepEqual(current, templates)
+	})
+}
+
+// The caller captured this trusted template under the controller's serialized
+// ownership before bounded route IO. A poisoned route journal cannot authorize
+// any repair, but it must not prevent a strictly proven removal of existing
+// members. This path neither adopts a template nor writes journal state.
+func (a *RuntimeGuard) withdrawConnectionCaptured(ctx context.Context, template runtimeGuardTemplate, id uuid.UUID) error {
+	if a == nil || a.reader == nil || a.apply == nil || id == uuid.Nil || template.Namespace == "" {
+		return ErrGuardRead
+	}
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	ctx, cancel := context.WithTimeout(ctx, kernelReadTimeout)
+	defer cancel()
+	return a.withdrawConnectionTemplateLocked(ctx, template, id, func() bool { return true })
+}
+
+func (a *RuntimeGuard) withdrawConnectionTemplateLocked(ctx context.Context, template runtimeGuardTemplate, id uuid.UUID, current func() bool) error {
+	manifest := GuardManifest{Namespace: template.Namespace, ExpectedJSON: template.ExpectedJSON}
 	names := map[string]bool{guardLeaseName(id): true, guardReplyLeaseName(id): true, guardSALeaseName(id): true}
 	verify := func(expected, observed []byte, links []GuardInterface, empty bool) error {
 		if VerifyGuardWithdrawal(expected, observed, links) != nil {
@@ -461,8 +482,7 @@ func (a *RuntimeGuard) withdrawConnection(ctx context.Context, namespace string,
 	if a.reader.check(ctx, manifest, func(e, o []byte, links []GuardInterface) error { return verify(e, o, links, false) }) != nil {
 		return ErrGuardRead
 	}
-	current, _, err := a.journal.guardTemplates()
-	if err != nil || !reflect.DeepEqual(current, templates) || ctx.Err() != nil {
+	if !current() || ctx.Err() != nil {
 		return ErrGuardRead
 	}
 	transaction := []any{}
@@ -476,8 +496,7 @@ func (a *RuntimeGuard) withdrawConnection(ctx context.Context, namespace string,
 	if a.reader.check(ctx, manifest, func(e, o []byte, links []GuardInterface) error { return verify(e, o, links, true) }) != nil {
 		return ErrGuardRead
 	}
-	current, _, err = a.journal.guardTemplates()
-	if err != nil || !reflect.DeepEqual(current, templates) || ctx.Err() != nil {
+	if !current() || ctx.Err() != nil {
 		return ErrGuardRead
 	}
 	return nil
