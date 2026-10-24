@@ -429,13 +429,22 @@ func (c *RuntimeController) maintainIPsecRuntimeItemsAttempt(ctx context.Context
 	if publishRecovery != nil {
 		publishOriginal := publishRecovery
 		publishRecovery = func(ctx context.Context, report RuntimeRecoveryHeartbeat) error {
-			if !deferral.reportsCurrentForRecovery(ctx, c, report) {
+			check := func() bool {
+				if reason := deferral.recoveryPublicationRefusal(ctx, c, report); reason != "" {
+					// ConnectionID identifies this publication's sampled owner;
+					// other_report_age explicitly denotes a tracked sibling.
+					c.emitRuntimeDiagnostic(ctx, "maintenance_report_freshness", reason, report.ConnectionID, time.Now(), true)
+					return false
+				}
+				return true
+			}
+			if !check() {
 				return ErrRuntimeController
 			}
 			if err := publishOriginal(ctx, report); err != nil {
 				return err
 			}
-			if !deferral.reportsCurrentForRecovery(ctx, c, report) {
+			if !check() {
 				return ErrRuntimeController
 			}
 			return nil
@@ -444,13 +453,13 @@ func (c *RuntimeController) maintainIPsecRuntimeItemsAttempt(ctx context.Context
 	if publish != nil {
 		publishOriginal := publish
 		publish = func(ctx context.Context, delivery RuntimeDelivery, report RuntimeStatusReport) error {
-			if !deferral.reportsCurrent(c) {
+			if !deferral.reportsCurrentObserved(ctx, c) {
 				return ErrRuntimeController
 			}
 			if err := publishOriginal(ctx, delivery, report); err != nil {
 				return err
 			}
-			if !deferral.reportsCurrent(c) {
+			if !deferral.reportsCurrentObserved(ctx, c) {
 				return ErrRuntimeController
 			}
 			return nil
@@ -672,7 +681,7 @@ func (c *RuntimeController) maintainIPsecRuntimeItemsAttempt(ctx context.Context
 	}
 	var assemblyPulseErr error
 	installErr := c.installActiveCandidatesFQDN(ctx, entries, staged, required, c.active, func() bool {
-		if ctx.Err() != nil || !c.qualification.current() || !c.config.DaemonAlive() || !deferral.reportsCurrent(c) || !pendingCurrent() {
+		if ctx.Err() != nil || !c.qualification.current() || !c.config.DaemonAlive() || !deferral.reportsCurrentObserved(ctx, c) || !pendingCurrent() {
 			return false
 		}
 		for _, a := range candidates {
@@ -700,7 +709,7 @@ func (c *RuntimeController) maintainIPsecRuntimeItemsAttempt(ctx context.Context
 				stage = "maintenance_fqdn_retraction_after_replace"
 			}
 			current := func() bool {
-				return ctx.Err() == nil && c.qualification.current() && c.config.DaemonAlive() && deferral.reportsCurrent(c) && pendingCurrent() && bgpCurrent != nil && bgpCurrent()
+				return ctx.Err() == nil && c.qualification.current() && c.config.DaemonAlive() && deferral.reportsCurrentObserved(ctx, c) && pendingCurrent() && bgpCurrent != nil && bgpCurrent()
 			}
 			if c.retractFQDNOnly(ctx, retraction, originalOwners, staged, current) == nil {
 				// All fresh candidates are discarded. The ordinary caller may
@@ -715,7 +724,7 @@ func (c *RuntimeController) maintainIPsecRuntimeItemsAttempt(ctx context.Context
 			// No candidate has been installed or published. Discard every staged
 			// lease and recollect once under the original finite authority.
 			retryMaterials, retryErr := c.prepareFQDNCutoffRetry(ctx, materials, cutoff)
-			if retryErr != nil || !deferral.reportsCurrent(c) {
+			if retryErr != nil || !deferral.reportsCurrentObserved(ctx, c) {
 				return fail()
 			}
 			retryPrepare := func(retryNS string, _ []RuntimeJournalEntry, _ *string, _ *uuid.UUID) ([]maintenanceItem, error) {
@@ -737,6 +746,10 @@ func (c *RuntimeController) maintainIPsecRuntimeItemsAttempt(ctx context.Context
 		return fail()
 	}
 	nativeCommitted = true
+	stage = "maintenance_committed_report_transfer"
+	if err := deferral.transferCommitted(ctx, c, originalOwners, candidates, staged); err != nil {
+		return fail()
+	}
 	c.refreshMaintenanceRecovery(ctx)
 	if pulseErr := c.refreshMaintenanceActiveRecoveryQualified(ctx, pulseAllowed, publishRecovery, bgpCurrent); pulseErr != nil {
 		return pulseFailure(pulseErr)
@@ -823,7 +836,7 @@ func (c *RuntimeController) maintainIPsecRuntimeItemsAttempt(ctx context.Context
 		connection, stage = m.Manifest.ConnectionID, "maintenance_final_binding"
 		candidate := candidates[m.Manifest.ConnectionID]
 		current, ok := c.active[m.Manifest.ConnectionID]
-		if !ok || !deferral.reportsCurrent(c) || current.Authority != candidate.Authority || !reflect.DeepEqual(current, candidate) || ctx.Err() != nil || !c.qualification.current() || !c.config.DaemonAlive() || (candidate.Entry.ContractVersion == 3 && (bgpCurrent == nil || !bgpCurrent())) {
+		if !ok || !deferral.reportsCurrentObserved(ctx, c) || current.Authority != candidate.Authority || !reflect.DeepEqual(current, candidate) || ctx.Err() != nil || !c.qualification.current() || !c.config.DaemonAlive() || (candidate.Entry.ContractVersion == 3 && (bgpCurrent == nil || !bgpCurrent())) {
 			return fail()
 		}
 		c.refreshMaintenanceRecovery(ctx)
@@ -834,7 +847,8 @@ func (c *RuntimeController) maintainIPsecRuntimeItemsAttempt(ctx context.Context
 	}
 	// The last inactive observation can consume report freshness too. No ACK
 	// escapes after that final blocking sample without the same actual clock proof.
-	if !deferral.reportsCurrent(c) || !pendingCurrent() {
+	stage = "maintenance_committed_reports"
+	if !deferral.reportsCurrentObserved(ctx, c) || !pendingCurrent() || !deferral.committedReportsCurrent(ctx, c) {
 		return fail()
 	}
 	return append(result, deferredResults()...), nil

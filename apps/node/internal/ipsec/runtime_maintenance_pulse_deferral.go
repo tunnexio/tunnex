@@ -19,10 +19,11 @@ type maintenancePulseSnapshot struct {
 // bounds the entire collection, not each owner. Every original lease, bridge and
 // combined native proof still runs against its real monotonic clock.
 type maintenancePulseDeferral struct {
-	started time.Duration
-	owners  map[uuid.UUID]maintenancePulseSnapshot
-	open    bool
-	used    bool
+	started   time.Duration
+	owners    map[uuid.UUID]maintenancePulseSnapshot
+	committed map[uuid.UUID]maintenanceCommittedRecoveryRequirement
+	open      bool
+	used      bool
 }
 
 func (c *RuntimeController) beginMaintenancePulseDeferral(allowed map[uuid.UUID]bool, publish func(context.Context, RuntimeRecoveryHeartbeat) error) *maintenancePulseDeferral {
@@ -86,6 +87,14 @@ func (d *maintenancePulseDeferral) reportsCurrent(c *RuntimeController) bool {
 	return d.reportsCurrentWithRecovery(c, nil)
 }
 
+func (d *maintenancePulseDeferral) reportsCurrentObserved(ctx context.Context, c *RuntimeController) bool {
+	if reason := d.reportRefusal(c, nil); reason != "" {
+		c.emitRuntimeDiagnostic(ctx, "maintenance_report_freshness", reason, uuid.Nil, time.Now(), true)
+		return false
+	}
+	return true
+}
+
 // A freshly sampled recovery report is published before rememberRecoveryReport
 // advances its returned clock. Its own previous report may cross the report-age
 // boundary during sampling. Qualify that exact pending observation without
@@ -94,24 +103,36 @@ func (d *maintenancePulseDeferral) reportsCurrent(c *RuntimeController) bool {
 // supplies the report directly from refreshIPsecActiveRecoveryLockedQualified;
 // there is no external or cached report ingress at this publication boundary.
 func (d *maintenancePulseDeferral) reportsCurrentForRecovery(ctx context.Context, c *RuntimeController, out RuntimeRecoveryHeartbeat) bool {
+	return d.recoveryPublicationRefusal(ctx, c, out) == ""
+}
+
+// Fixed reason names only: no report fields, policy, material or error bodies
+// enter diagnostics. The classifier and the admission predicate are identical.
+func (d *maintenancePulseDeferral) recoveryPublicationRefusal(ctx context.Context, c *RuntimeController, out RuntimeRecoveryHeartbeat) string {
 	if ctx.Err() != nil {
-		return false
+		return "context"
 	}
 	if d != nil && d.used {
 		if _, tracked := d.owners[out.ConnectionID]; !tracked {
-			return false
+			if !d.committedRecoveryPendingCurrent(ctx, c, out) {
+				return "owner_untracked"
+			}
 		}
 	}
-	return d.reportsCurrentWithRecovery(c, &out)
+	return d.reportRefusal(c, &out)
 }
 
 func (d *maintenancePulseDeferral) reportsCurrentWithRecovery(c *RuntimeController, pending *RuntimeRecoveryHeartbeat) bool {
+	return d.reportRefusal(c, pending) == ""
+}
+
+func (d *maintenancePulseDeferral) reportRefusal(c *RuntimeController, pending *RuntimeRecoveryHeartbeat) string {
 	if d == nil || !d.used {
-		return true
+		return ""
 	}
 	now := c.recoveryNow()
 	if now < d.started {
-		return false
+		return "clock_before_collection"
 	}
 	for id, before := range d.owners {
 		a, present := c.active[id]
@@ -119,41 +140,79 @@ func (d *maintenancePulseDeferral) reportsCurrentWithRecovery(c *RuntimeControll
 		h := c.recoveryHistory[id]
 		previous := before.active
 		previous.Authority = a.Authority // Only the completed finite renewal may replace authority.
-		if !present || !reflect.DeepEqual(a, previous) || a.Entry.Phase != RuntimeApplied || !validJournalRecovery(a.Entry) || a.Entry.Recovery.Stage != "completed" || !known || clock.sequence < before.clock.sequence || clock.returned < before.clock.returned || clock.epoch != before.clock.epoch || clock.digest != before.clock.digest || clock.current != before.clock.current || h == nil || !h.seen || h.epoch != clock.epoch || h.current != clock.current || now < h.lastNow || now < clock.returned {
-			return false
+		if !present || !reflect.DeepEqual(a, previous) {
+			return "owner_snapshot"
+		}
+		if a.Entry.Phase != RuntimeApplied || !validJournalRecovery(a.Entry) || a.Entry.Recovery.Stage != "completed" {
+			return "owner_recovery"
+		}
+		if !known {
+			return "report_missing"
+		}
+		if clock.sequence < before.clock.sequence || clock.returned < before.clock.returned {
+			return "report_regressed"
+		}
+		if clock.epoch != before.clock.epoch || clock.digest != before.clock.digest || clock.current != before.clock.current {
+			return "report_binding"
+		}
+		if h == nil || !h.seen || h.epoch != clock.epoch || h.current != clock.current {
+			return "history_binding"
+		}
+		if now < h.lastNow || now < clock.returned {
+			return "report_future"
 		}
 		if pending != nil && pending.ConnectionID == id {
-			if !maintenancePendingRecoveryCurrent(c, a, clock, h, now, *pending) {
-				return false
+			if reason := maintenancePendingRecoveryRefusal(c, a, clock, h, now, *pending); reason != "" {
+				return reason
 			}
 		} else if now-clock.returned > 10*time.Second {
-			return false
+			return "other_report_age"
 		}
 	}
-	return true
+	return ""
 }
 
 func maintenancePendingRecoveryCurrent(c *RuntimeController, a runtimeActive, clock runtimeRecoveryReportClock, h *recoveryDecision, now time.Duration, out RuntimeRecoveryHeartbeat) bool {
+	return maintenancePendingRecoveryRefusal(c, a, clock, h, now, out) == ""
+}
+
+func maintenancePendingRecoveryRefusal(c *RuntimeController, a runtimeActive, clock runtimeRecoveryReportClock, h *recoveryDecision, now time.Duration, out RuntimeRecoveryHeartbeat) string {
 	r, d := out.Report, out.Delivery
-	if !c.qualification.current() || c.config.DaemonAlive == nil || !c.config.DaemonAlive() || a.Authority == nil || out.ConnectionID != a.Entry.Allocation.ConnectionID || !reflect.DeepEqual(d, a.Delivery) || r.BGP != nil || r.TransportVersion != nil || r.TunnelCount != nil || r.DeliveryID != d.ID || r.DesiredRevision != d.DesiredRevision || r.ConfigurationRevision != d.Manifest.ConfigurationRevision || r.RecoveryVersion == nil || *r.RecoveryVersion != 1 || r.SelectionSequence == nil || *r.SelectionSequence == 0 || *r.SelectionSequence > 9007199254740991 || *r.SelectionSequence <= clock.sequence || *r.SelectionSequence != c.recoveryStatusSequence[d.ID] || h.lastAt < 0 || h.lastAt <= clock.returned || h.lastAt > h.lastNow || h.lastNow > now || now-h.lastAt > 5*time.Second {
-		return false
+	if !c.qualification.current() || c.config.DaemonAlive == nil || !c.config.DaemonAlive() {
+		return "pending_runtime"
+	}
+	if out.ConnectionID != a.Entry.Allocation.ConnectionID || !reflect.DeepEqual(d, a.Delivery) || r.BGP != nil || r.TransportVersion != nil || r.TunnelCount != nil || r.DeliveryID != d.ID || r.DesiredRevision != d.DesiredRevision || r.ConfigurationRevision != d.Manifest.ConfigurationRevision || r.RecoveryVersion == nil || *r.RecoveryVersion != 1 {
+		return "pending_binding"
+	}
+	if r.SelectionSequence == nil || *r.SelectionSequence == 0 || *r.SelectionSequence > 9007199254740991 || *r.SelectionSequence <= clock.sequence || *r.SelectionSequence != c.recoveryStatusSequence[d.ID] {
+		return "pending_sequence"
+	}
+	if h.lastAt < 0 || h.lastAt <= clock.returned || h.lastAt > h.lastNow || h.lastNow > now || now-h.lastAt > 5*time.Second {
+		return "pending_sample"
+	}
+	if a.Authority == nil {
+		return "pending_authority"
 	}
 	if _, err := a.Authority.RemainingForApply(a.Identity, 5*time.Second); err != nil {
-		return false
+		return "pending_authority"
 	}
 	for i, tunnel := range r.Tunnels {
 		if tunnel.ID != d.Manifest.Tunnels[i].ID || tunnel.Slot != i+1 || tunnel.Selected != d.Manifest.Tunnels[i].Selected || (tunnel.Status != "up" && tunnel.Status != "down") {
-			return false
+			return "pending_tunnel"
 		}
 	}
 	selected := int(selectedRuntimeSlot(a.Entry))
 	if selected < 1 || selected > len(r.Tunnels) {
-		return false
+		return "pending_slot"
 	}
 	if r.Tunnels[selected-1].Status == "up" {
-		return r.ActiveSlot != nil && *r.ActiveSlot == selected
+		if r.ActiveSlot == nil || *r.ActiveSlot != selected {
+			return "pending_slot"
+		}
+	} else if r.ActiveSlot != nil {
+		return "pending_slot"
 	}
-	return r.ActiveSlot == nil
+	return ""
 }
 
 // Only an owner already excluded by ordinary maintenance may leave tracking.
@@ -193,7 +252,7 @@ func (d *maintenancePulseDeferral) pulseBeforeAssembly(ctx context.Context, c *R
 	if d == nil || !d.used || len(d.owners) == 0 || publish == nil {
 		return nil
 	}
-	if !d.reportsCurrent(c) || ctx.Err() != nil {
+	if !d.reportsCurrentObserved(ctx, c) || ctx.Err() != nil {
 		return ErrRuntimeController
 	}
 	// A total budget at/above the lease ceiling cannot be funded. Skip optional
@@ -238,7 +297,7 @@ func (d *maintenancePulseDeferral) pulseBeforeAssembly(ctx context.Context, c *R
 		return true
 	}
 	for _, id := range ids {
-		if !d.reportsCurrent(c) || ctx.Err() != nil || !originalCurrent() {
+		if !d.reportsCurrentObserved(ctx, c) || ctx.Err() != nil || !originalCurrent() {
 			return ErrRuntimeController
 		}
 		if err := c.refreshMaintenanceActiveRecovery(ctx, map[uuid.UUID]bool{id: true}, publish); err != nil {
@@ -248,7 +307,7 @@ func (d *maintenancePulseDeferral) pulseBeforeAssembly(ctx context.Context, c *R
 			return ErrRuntimeController
 		}
 	}
-	if !d.reportsCurrent(c) || ctx.Err() != nil {
+	if !d.reportsCurrentObserved(ctx, c) || ctx.Err() != nil {
 		return ErrRuntimeController
 	}
 	return nil

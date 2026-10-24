@@ -874,6 +874,15 @@ func (c *RuntimeController) installActiveCandidatesFQDN(ctx context.Context, ent
 		c.active = nil
 	}
 	for id, a := range active {
+		// Native proof for several owners can consume the returned-report
+		// budget before the final assembly boundary. Maintenance may collect
+		// bounded telemetry here while no guard revision has been captured.
+		// The original finite authorities fund it; the proof below stays fresh.
+		if collectionBoundary != nil {
+			if err := collectionBoundary(ctx); err != nil {
+				return err
+			}
+		}
 		connection = id
 		stage = "entry_current_proof"
 		proofStarted := time.Now()

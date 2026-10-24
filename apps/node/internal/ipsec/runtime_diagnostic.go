@@ -19,6 +19,22 @@ type RuntimeDiagnostic struct {
 }
 
 func validRuntimeDiagnostic(operation, stage string) bool {
+	if operation == "maintenance_report_commit" {
+		switch stage {
+		case "input", "current_set", "candidate", "before", "transport", "policy", "authority", "history", "sequence":
+			return true
+		default:
+			return false
+		}
+	}
+	if operation == "maintenance_report_freshness" {
+		switch stage {
+		case "context", "owner_untracked", "clock_before_collection", "owner_snapshot", "owner_recovery", "report_missing", "report_regressed", "report_binding", "history_binding", "report_future", "other_report_age", "pending_runtime", "pending_binding", "pending_sequence", "pending_sample", "pending_authority", "pending_tunnel", "pending_slot":
+			return true
+		default:
+			return false
+		}
+	}
 	if stage == "permit_fqdn_expiry" {
 		return operation == "heartbeat"
 	}
@@ -50,6 +66,8 @@ func validRuntimeDiagnostic(operation, stage string) bool {
 
 	if operation == "maintenance" {
 		switch stage {
+		case "maintenance_committed_report_transfer", "maintenance_committed_reports":
+			return true
 		case "maintenance_prepare", "maintenance_prepare_count", "maintenance_priority_owner", "maintenance_priority_journal_binding", "maintenance_priority_journal_process", "maintenance_priority_journal_routes", "maintenance_priority_journal_recovery", "maintenance_priority_journal_count", "maintenance_priority_fqdn_current":
 			return true
 		case "maintenance_pending_fqdn_withdraw":
