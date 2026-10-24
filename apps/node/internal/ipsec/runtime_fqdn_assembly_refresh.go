@@ -14,12 +14,28 @@ import (
 // boundary. Nothing here is published or installed: every replacement is a new
 // nonce-bound candidate, with fresh native proof, before guard sequence capture.
 func (c *RuntimeController) refreshFQDNAssemblyCandidates(ctx context.Context, authority func() *PermitLeaseAuthority, bgpCurrent func() bool, prior, candidates, staged, required, cutoff map[uuid.UUID]runtimeActive, materials []maintenanceItem) error {
+	return c.refreshFQDNAssemblyCandidatesWithSiblings(ctx, authority, bgpCurrent, prior, candidates, staged, required, cutoff, materials, nil, nil)
+}
+
+// Exact refresh has already validated the complete selected owner set. A DNS
+// publication can split that pass: a sibling read just before publication is
+// unchanged while the next owner is fresh. Recheck all original short owners
+// at the same final boundary, so a now-fresh sibling need not wait through the
+// first transaction's status IO. Unchanged siblings never receive a new nonce.
+func (c *RuntimeController) refreshFQDNAssemblyCandidatesWithSiblings(ctx context.Context, authority func() *PermitLeaseAuthority, bgpCurrent func() bool, prior, candidates, staged, required, cutoff map[uuid.UUID]runtimeActive, materials []maintenanceItem, exactItems map[uuid.UUID]maintenanceItem, candidatePrior map[uuid.UUID]runtimeActive) error {
 	client, available := c.client.(runtimeCurrentMaterialClient)
 	if !available {
 		return nil
 	}
+	owners := candidates
+	if exactItems != nil {
+		if candidatePrior == nil || len(candidates) == 0 || !c.exactPageRefreshScope() {
+			return ErrRuntimeController
+		}
+		owners = prior
+	}
 	var ids []uuid.UUID
-	for id, a := range candidates {
+	for id, a := range owners {
 		if len(a.FQDNLeaseDescriptors) > 0 && c.fqdnNativeWindowNeedsRefresh(id, prior[id]) {
 			ids = append(ids, id)
 		}
@@ -62,12 +78,29 @@ func (c *RuntimeController) refreshFQDNAssemblyCandidates(ctx context.Context, a
 	if wait == nil {
 		wait = runtimeFQDNWait
 	}
+	// A candidate already collected from newer authenticated metadata need
+	// not wait for a second publication. Still read every selected sibling
+	// once, including a bounded immediate split-pass recheck.
+	newerCandidates := exactItems != nil
+	hasFQDNCandidate := false
+	for id, a := range candidates {
+		old := prior[id]
+		hasFQDNCandidate = hasFQDNCandidate || len(a.FQDNLeaseDescriptors) > 0
+		if len(a.FQDNLeaseDescriptors) > 0 && (a.Identity.PolicyHash == old.Identity.PolicyHash || reflect.DeepEqual(a.FQDNLeaseDescriptors, old.FQDNLeaseDescriptors)) {
+			newerCandidates = false
+		}
+	}
+	newerCandidates = newerCandidates && hasFQDNCandidate
+	rescanned := false
 	for attempt := 0; attempt < 9; attempt++ {
 		for _, id := range ids {
 			if _, ready := items[id]; ready {
 				continue
 			}
 			old, a := prior[id], candidates[id]
+			if _, candidate := candidates[id]; !candidate {
+				a = old
+			}
 			m, err := client.IPsecMaterial(fetchCtx, id, old.Delivery.DesiredRevision)
 			item, validateErr := c.prepareFQDNFollowupMaterial(fetchCtx, old, m, true)
 			for i := range m.Secrets {
@@ -80,7 +113,17 @@ func (c *RuntimeController) refreshFQDNAssemblyCandidates(ctx context.Context, a
 				items[id] = item
 			}
 		}
-		if len(items) == len(ids) {
+		if len(items) == len(ids) || (exactItems != nil && len(items) > 0) {
+			// A publication can split this final pass too. Re-read unchanged
+			// siblings once immediately, inside the same budget, then install
+			// the validated fresh subset without waiting for every owner.
+			if len(items) < len(ids) && !rescanned {
+				rescanned = true
+				continue
+			}
+			break
+		}
+		if newerCandidates {
 			break
 		}
 		// Keep the original candidate when normal publication has not changed.
@@ -99,6 +142,9 @@ func (c *RuntimeController) refreshFQDNAssemblyCandidates(ctx context.Context, a
 			continue
 		}
 		old, a := prior[id], candidates[id]
+		if _, candidate := candidates[id]; !candidate {
+			a = old
+		}
 		fresh := authority()
 		if fresh == nil {
 			return ErrRuntimeController
@@ -144,6 +190,10 @@ func (c *RuntimeController) refreshFQDNAssemblyCandidates(ctx context.Context, a
 	}
 	for id, a := range updates {
 		candidates[id], staged[id], required[id] = a, a, a
+		if exactItems != nil {
+			exactItems[id] = items[id]
+			candidatePrior[id] = prior[id]
+		}
 		delete(cutoff, id)
 		for i := range materials {
 			if materials[i].Manifest.ConnectionID == id {

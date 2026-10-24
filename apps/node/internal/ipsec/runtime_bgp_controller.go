@@ -360,7 +360,7 @@ func (c *RuntimeController) maintenanceBGPGuardObserved(ctx context.Context, a, 
 			target = append(target, RuntimeBGPRouteTuple{Prefix: route.Prefix, Slot: uint8(route.Slot), InterfaceIndex: e.Observed[route.Slot-1].InterfaceIndex, Table: 254, Protocol: 242, Metric: 50000 + uint32(route.Slot)})
 		}
 	}
-	if !p.Alive() || !current() || !reflect.DeepEqual(target, e.BGPRoutes.Owned) {
+	if !p.Alive() || !current() {
 		return fail()
 	}
 	if ctx.Err() != nil || !c.qualification.current() || !c.config.DaemonAlive() {
@@ -368,6 +368,21 @@ func (c *RuntimeController) maintenanceBGPGuardObserved(ctx context.Context, a, 
 	}
 	if _, err := old.Authority.RemainingForApply(old.Identity, 5*time.Second); err != nil {
 		return fail()
+	}
+	if !reflect.DeepEqual(target, e.BGPRoutes.Owned) {
+		// A known healthy RIB change needs the ordinary deny-first route
+		// reconciler, not session destruction. Unknown native/peer/MTU proof
+		// still refuses normally; this signal carries no replacement authority.
+		if _, err := c.bgpGuardWithStatuses(ctx, a, remaining, health); err != nil {
+			return fail()
+		}
+		if ctx.Err() != nil || !p.Alive() || !current() || !c.qualification.current() || !c.config.DaemonAlive() {
+			return fail()
+		}
+		if _, err := old.Authority.RemainingForApply(old.Identity, 5*time.Second); err != nil {
+			return fail()
+		}
+		return GuardConnection{}, errMaintenanceBGPRouteChanged
 	}
 	return c.bgpGuardWithStatuses(ctx, a, remaining, health)
 }

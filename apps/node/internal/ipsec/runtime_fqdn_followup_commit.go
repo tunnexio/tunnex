@@ -32,6 +32,10 @@ func (c *RuntimeController) commitFQDNFollowup(ctx context.Context, authority fu
 // already-applied page/priority validation. The flag never permits a policy,
 // transport, delivery, or grant change; a new CP nonce remains mandatory.
 func (c *RuntimeController) commitExactRuntimeRefresh(ctx context.Context, authority func() *PermitLeaseAuthority, bgpCurrent func() bool, refreshed map[uuid.UUID]maintenanceItem, publish func(context.Context, RuntimeDelivery, RuntimeStatusReport) error, allowUnchanged bool) error {
+	return c.commitExactRuntimeRefreshAttempt(ctx, authority, bgpCurrent, refreshed, publish, allowUnchanged, nil)
+}
+
+func (c *RuntimeController) commitExactRuntimeRefreshAttempt(ctx context.Context, authority func() *PermitLeaseAuthority, bgpCurrent func() bool, refreshed map[uuid.UUID]maintenanceItem, publish func(context.Context, RuntimeDelivery, RuntimeStatusReport) error, allowUnchanged bool, reconciledPrior map[uuid.UUID]runtimeActive) error {
 	entries, err := c.journal.Entries()
 	if err != nil {
 		c.deniedClassicTransports = nil
@@ -76,7 +80,12 @@ func (c *RuntimeController) commitExactRuntimeRefresh(ctx context.Context, autho
 		old, ok := c.active[id]
 		window, known := c.fqdnNativeWindows[id]
 		unchanged := allowUnchanged && m.PolicyHash == old.Identity.PolicyHash && reflect.DeepEqual(m.Grants, old.Grants) && reflect.DeepEqual(m.FQDNLeaseDescriptors, old.FQDNLeaseDescriptors) && m.FQDNPolicyPriorHash == "" && !m.FQDNRestorePending
-		expiry := known && reflect.DeepEqual(old, window.owner) && m.FQDNExpiryPriorHash == old.Identity.PolicyHash
+		// Canonical deny-first BGP reconciliation removes the old native
+		// scheduling window. Its exact surviving owner can still obtain a NEW
+		// nonce-bound permit; neither its old authority nor deadline is extended.
+		reconciled, wasReconciled := reconciledPrior[id]
+		expiryOwner := (known && reflect.DeepEqual(old, window.owner)) || (wasReconciled && reflect.DeepEqual(old, reconciled))
+		expiry := expiryOwner && m.FQDNExpiryPriorHash == old.Identity.PolicyHash
 		if !ok || (!unchanged && !expiry) || old.Authority == nil || !runtimeFQDNFollowupEntrySupported(old.Entry) || old.Entry.AbsenceOnly || old.Entry.Phase != RuntimeApplied || !runtimeDeliveryValid(old.Delivery, c.config.OrgID, c.config.GatewayID, "apply") || old.Delivery.CoversDeliveryRevision != 0 || old.Identity != (PermitLeaseIdentity{DeliveryID: old.Delivery.ID, Binding: old.Entry.Engines[0].Binding, PolicyHash: old.Identity.PolicyHash}) || !validDigest(old.Identity.PolicyHash) || !reflect.DeepEqual(m.RuntimeDelivery, old.Delivery) || !reflect.DeepEqual(m.Entry, old.Entry) {
 			return fail()
 		}
@@ -163,9 +172,22 @@ func (c *RuntimeController) commitExactRuntimeRefresh(ctx context.Context, autho
 	// Reuse the one bounded preassembly phase after preliminary proof, before
 	// any guard sequence is captured. Only uncommitted candidates can change.
 	beforeAssembly := func(boundary context.Context) error {
+		if c.exactPageRefreshScope() {
+			return c.refreshFQDNAssemblyCandidatesWithSiblings(boundary, authority, bgpCurrent, original, required, staged, required, nil, nil, refreshed, prior)
+		}
 		return c.refreshFQDNAssemblyCandidates(boundary, authority, bgpCurrent, original, required, staged, required, nil, nil)
 	}
 	if err := c.installActiveCandidatesFQDN(ctx, entries, staged, required, prior, current, nil, nil, beforeAssembly, true); err != nil {
+		if reconciledPrior == nil && errors.Is(err, errMaintenanceBGPRouteChanged) && c.exactPageRefreshScope() {
+			reconciled, reconcileErr := c.reconcileExactRefreshBGP(ctx, entries, original, refreshed, bgpCurrent)
+			if reconcileErr == nil {
+				// Refetched candidates start over. The normal bounded late
+				// boundary may still add another original owner, but only with
+				// its own fresh material, nonce and complete native proof.
+				return c.commitExactRuntimeRefreshAttempt(ctx, authority, bgpCurrent, refreshed, publish, allowUnchanged, reconciled)
+			}
+			return fail()
+		}
 		var retraction *runtimeFQDNPolicyRetraction
 		if errors.As(err, &retraction) && c.retractFQDNOnly(ctx, retraction, original, staged, health) == nil {
 			return nil

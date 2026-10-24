@@ -993,6 +993,12 @@ func (c *RuntimeController) installActiveCandidatesFQDN(ctx context.Context, ent
 						g, err = c.bgpGuard(observeCtx, a, remaining)
 					}
 					observeCancel()
+					if exactRefresh && errors.Is(err, errMaintenanceBGPRouteChanged) {
+						// No guard replacement has occurred. The exact caller may
+						// reconcile once under the original finite authority and
+						// rebuild every candidate and native snapshot from scratch.
+						return err
+					}
 					if err != nil {
 						c.withdrawDNSOwnerView(id)
 						delete(active, id)

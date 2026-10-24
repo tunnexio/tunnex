@@ -278,6 +278,11 @@ func TestExactPageRefreshZeroCandidatesRetainsOnlyAfterCompleteProof(t *testing.
 			installFQDNCadenceStatusReaders(t, r, nil)
 			materials := exactPageTestMaterials(t, r, client, false)
 			before := assemblyClone(r.c.active)
+			nativeBefore := maps.Clone(r.installed)
+			authorityBefore := map[uuid.UUID]time.Duration{}
+			for id, a := range before {
+				authorityBefore[id] = a.Authority.deadline
+			}
 			clocks := maps.Clone(r.c.recoveryReportClocks)
 			journal, err := os.ReadFile(filepath.Join(r.c.journal.dir, "journal.json"))
 			if err != nil {
@@ -372,6 +377,18 @@ func TestExactPageRefreshZeroCandidatesRetainsOnlyAfterCompleteProof(t *testing.
 				after, readErr := os.ReadFile(filepath.Join(r.c.journal.dir, "journal.json"))
 				if readErr != nil || !reflect.DeepEqual(journal, after) || !reflect.DeepEqual(before, r.c.active) || !reflect.DeepEqual(clocks, r.c.recoveryReportClocks) {
 					t.Fatal("validation changed durable authority/native report time")
+				}
+			} else if mode == "bgp-rib-changed" {
+				// No candidate work has begun. Only the typed, healthy RIB
+				// mismatch may fall through to canonical route reconciliation.
+				after, readErr := os.ReadFile(filepath.Join(r.c.journal.dir, "journal.json"))
+				if handled || err != nil || len(results) != 0 || writes != 0 || finalReads != 0 || readErr != nil || !reflect.DeepEqual(journal, after) || !reflect.DeepEqual(before, r.c.active) || !reflect.DeepEqual(nativeBefore, r.installed) || !reflect.DeepEqual(clocks, r.c.recoveryReportClocks) {
+					t.Fatal("known prework route change mutated authority or suppressed canonical maintenance", handled, err, writes)
+				}
+				for id, a := range before {
+					if a.Authority.deadline != authorityBefore[id] {
+						t.Fatal("route fallback changed original deadline")
+					}
 				}
 			} else {
 				var aborted interface{ IPsecMaintenanceBatchAborted() bool }

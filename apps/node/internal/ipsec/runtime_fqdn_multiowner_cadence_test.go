@@ -94,13 +94,22 @@ func (c *fqdnCadenceSubsetClient) RenewIPsecLease(ctx context.Context, id uuid.U
 		if remaining < 0 {
 			remaining = 0
 		}
+		// Match the CP's per-descriptor maximum; the request's absolute
+		// expiry still caps this response independently of the whole lease.
+		if remaining > time.Minute {
+			remaining = time.Minute
+		}
 		out.FQDNPermits = append(out.FQDNPermits, RuntimeFQDNPermit{GrantDigest: runtimeFQDNGrantDigest(g), TTLMS: remaining.Milliseconds()})
 	}
 	return out, nil
 }
 
-func fqdnMultiOwnerCadenceRig(t *testing.T) (*renewalCycleRig, *fqdnCadenceSubsetClient) {
+func fqdnMultiOwnerCadenceRig(t *testing.T, variants ...string) (*renewalCycleRig, *fqdnCadenceSubsetClient) {
 	t.Helper()
+	variant := ""
+	if len(variants) > 0 {
+		variant = variants[0]
+	}
 	ids := pulseDeferralIDs()
 	r := newRenewalCycleRigWithIDs(t, true, ids, desktopStaticTransportFixture, func(t *testing.T, c *RuntimeController, entries []RuntimeJournalEntry, materials []RuntimeMaterial) ([]RuntimeJournalEntry, []RuntimeMaterial) {
 		keep := map[uuid.UUID]bool{ids[0]: true, ids[3]: true, ids[4]: true}
@@ -179,7 +188,7 @@ func fqdnMultiOwnerCadenceRig(t *testing.T) (*renewalCycleRig, *fqdnCadenceSubse
 	for i, m := range r.materials {
 		id := m.Manifest.ConnectionID
 		a := r.c.active[id]
-		if a.Entry.ContractVersion == 3 {
+		if a.Entry.ContractVersion == 3 && variant == "" {
 			client.old[id], client.fresh[id] = m, m
 			continue
 		}
@@ -194,8 +203,27 @@ func fqdnMultiOwnerCadenceRig(t *testing.T) (*renewalCycleRig, *fqdnCadenceSubse
 		f.ConnectionID = id.String()
 		f.ConfigurationRevision = m.Manifest.ConfigurationRevision
 		f.ExpiresAt = time.Now().UTC().Add(30 * time.Second)
+		if variant == "live" && a.Entry.ContractVersion == 3 {
+			f.ExpiresAt = f.ExpiresAt.Add(30 * time.Second)
+		}
 		m.Policy.FQDNPolicyVersion = 2
 		m.Policy.FQDNGrants = []RuntimeFQDNGrant{f}
+		answers := []string{f.Destination}
+		if variant == "live" {
+			answers = append(answers, netip.PrefixFrom(netip.MustParsePrefix(f.Destination).Addr().Next(), 32).String())
+			m.Policy.FQDNGrants = nil
+			for device, source := range []string{"10.99.0.2/32", "10.99.0.3/32"} {
+				g := f
+				g.Source, g.DeviceID, g.RuleID = source, fmt.Sprintf("00000000-0000-4000-8000-%012d", device+20), uuid.NewString()
+				if device == 1 {
+					g.PublicKey = "AQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQEBAQE="
+				}
+				for _, answer := range answers {
+					g.Destination = answer
+					m.Policy.FQDNGrants = append(m.Policy.FQDNGrants, g)
+				}
+			}
+		}
 		_, grants, err := runtimeMaterialEntry(m, r.c.config.OrgID, r.c.config.GatewayID, a.Environment.Namespace)
 		if err != nil {
 			t.Fatal(err)
@@ -206,12 +234,16 @@ func fqdnMultiOwnerCadenceRig(t *testing.T) (*renewalCycleRig, *fqdnCadenceSubse
 		}
 		a.Grants = grants
 		a.FQDNLeaseDescriptors = runtimeFQDNLeaseDescriptors(m.Policy)
-		policy.Allow = append(policy.Allow, nodepolicy.AllowEntry{SrcIP: strings.TrimSuffix(f.Source, "/32"), SrcDeviceID: f.DeviceID, FQDNDeviceID: f.DeviceID, DstCIDR: f.Destination, Protocol: f.Protocol, PortLow: int(f.PortLow), PortHigh: int(f.PortHigh), RuleID: f.RuleID, FQDNManaged: true})
-		policy.FQDNGenerations = append(policy.FQDNGenerations, nodepolicy.FQDNGeneration{ResourceID: f.ResourceID, Name: f.Name, Generation: f.Generation, ResolverConfigID: f.ResolverConfigID, ResolverConfigVersion: f.ResolverConfigVersion, Answers: []string{f.Destination}, ApplicationIPsecPath: &nodepolicy.FQDNApplicationIPsecPath{ConnectionID: f.ConnectionID, ConfigurationRevision: f.ConfigurationRevision}})
+		for _, grant := range m.Policy.FQDNGrants {
+			policy.Allow = append(policy.Allow, nodepolicy.AllowEntry{SrcIP: strings.TrimSuffix(grant.Source, "/32"), SrcDeviceID: grant.DeviceID, FQDNDeviceID: grant.DeviceID, DstCIDR: grant.Destination, Protocol: grant.Protocol, PortLow: int(grant.PortLow), PortHigh: int(grant.PortHigh), RuleID: grant.RuleID, FQDNManaged: true})
+		}
+		policy.FQDNGenerations = append(policy.FQDNGenerations, nodepolicy.FQDNGeneration{ResourceID: f.ResourceID, Name: f.Name, Generation: f.Generation, ResolverConfigID: f.ResolverConfigID, ResolverConfigVersion: f.ResolverConfigVersion, Answers: answers, ApplicationIPsecPath: &nodepolicy.FQDNApplicationIPsecPath{ConnectionID: f.ConnectionID, ConfigurationRevision: f.ConfigurationRevision}})
 		policy.DNSResolverProfiles = append(policy.DNSResolverProfiles, nodepolicy.DNSResolverProfile{ContextConfigID: f.ResolverConfigID, ContextConfigVersion: f.ResolverConfigVersion, ProfileID: f.ResolverProfileID, ZoneSuffixes: []string{f.ResolverMatchSuffix}, StaticRecords: []nodepolicy.DNSStaticRecord{{Name: f.Name, Type: "CNAME", Value: "backend.example.net", TTL: 30}}})
 		fresh := m
 		fresh.Policy.FQDNGrants = append([]RuntimeFQDNGrant(nil), m.Policy.FQDNGrants...)
-		fresh.Policy.FQDNGrants[0].ExpiresAt = f.ExpiresAt.Add(15 * time.Second)
+		for i := range fresh.Policy.FQDNGrants {
+			fresh.Policy.FQDNGrants[i].ExpiresAt = fresh.Policy.FQDNGrants[i].ExpiresAt.Add(15 * time.Second)
+		}
 		fresh.Policy.Hash = fmt.Sprintf("%064x", i+101)
 		client.old[id], client.fresh[id] = m, fresh
 		r.materials[i] = m
@@ -232,13 +264,17 @@ func fqdnMultiOwnerCadenceRig(t *testing.T) (*renewalCycleRig, *fqdnCadenceSubse
 			t.Fatal(err)
 		}
 		permits := []RuntimeFQDNPermit{}
+		initial := 23 * time.Second
+		if variant == "live" && a.Entry.ContractVersion == 3 {
+			initial += 30 * time.Second
+		}
 		for _, f := range a.FQDNLeaseDescriptors {
 			key := runtimeFQDNGrantDigest(f)
-			permits = append(permits, RuntimeFQDNPermit{GrantDigest: key, TTLMS: 23000})
-			client.deadlines[key] = *r.now + 23*time.Second
+			permits = append(permits, RuntimeFQDNPermit{GrantDigest: key, TTLMS: initial.Milliseconds()})
+			client.deadlines[key] = *r.now + initial
 		}
 		for _, f := range client.fresh[id].Policy.FQDNGrants {
-			client.deadlines[runtimeFQDNGrantDigest(f)] = *r.now + 38*time.Second
+			client.deadlines[runtimeFQDNGrantDigest(f)] = *r.now + initial + 15*time.Second
 		}
 		if err = auth.Accept(PermitLeaseResponse{PermitLeaseRequest: q, TTLMillis: 60000, FQDNPermits: permits}); err != nil {
 			t.Fatal(err)
@@ -270,16 +306,20 @@ func TestFQDNMultiOwnerCadenceSameAnswerSubset(t *testing.T) {
 	}
 }
 
-func testFQDNMultiOwnerCadence(t *testing.T, phase time.Duration) {
-	r, client := fqdnMultiOwnerCadenceRig(t)
+func testFQDNMultiOwnerCadence(t *testing.T, phase time.Duration, variants ...string) {
+	r, client := fqdnMultiOwnerCadenceRig(t, variants...)
 	client.publishAt -= phase
 	client.phase = phase
 	old := map[uuid.UUID]runtimeActive{}
 	for id, a := range r.c.active {
 		old[id] = cloneMaintenanceActive(a)
+		emitted := 18 * time.Second
+		if len(variants) > 0 && variants[0] == "live" && a.Entry.ContractVersion == 3 {
+			emitted += 30 * time.Second
+		}
 		for _, g := range a.Grants {
-			if g.FQDNManaged && r.installed[guardFQDNSetName(g)]-*r.now != 18*time.Second {
-				t.Fatalf("expected18s emitted membership, got %s", r.installed[guardFQDNSetName(g)]-*r.now)
+			if g.FQDNManaged && r.installed[guardFQDNSetName(g)]-*r.now != emitted {
+				t.Fatalf("expected %s emitted membership, got %s", emitted, r.installed[guardFQDNSetName(g)]-*r.now)
 			}
 		}
 	}

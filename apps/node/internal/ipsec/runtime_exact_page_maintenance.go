@@ -2,6 +2,7 @@ package ipsec
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -109,7 +110,14 @@ func (c *RuntimeController) tryMaintainExactRuntimePage(ctx context.Context, mat
 			return nil, true, &runtimeMaintenanceBatchAborted{}
 		}
 		for _, a := range owners {
-			if c.maintenanceCurrent(ctx, a, bgpCurrent) != nil {
+			proofErr := c.maintenanceCurrent(ctx, a, bgpCurrent)
+			if errors.Is(proofErr, errMaintenanceBGPRouteChanged) {
+				// This branch has collected no nonce or changed any owner.
+				// Leave known route convergence to ordinary maintenance's
+				// existing bounded canonical reconciler.
+				return nil, false, nil
+			}
+			if proofErr != nil {
 				return fail()
 			}
 		}
