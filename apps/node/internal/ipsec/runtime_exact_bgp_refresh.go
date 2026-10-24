@@ -12,7 +12,16 @@ import (
 // A late, known-current RIB change is reconciled once under the original finite
 // authority. No candidate from the abandoned assembly, or its native snapshot,
 // survives this boundary. The caller must collect new nonce-bound permits.
-func (c *RuntimeController) reconcileExactRefreshBGP(ctx context.Context, entries []RuntimeJournalEntry, original map[uuid.UUID]runtimeActive, refreshed map[uuid.UUID]maintenanceItem, bgpCurrent func() bool) (map[uuid.UUID]runtimeActive, error) {
+func (c *RuntimeController) reconcileExactRefreshBGP(ctx context.Context, entries []RuntimeJournalEntry, original map[uuid.UUID]runtimeActive, refreshed map[uuid.UUID]maintenanceItem, bgpCurrent func() bool) (result map[uuid.UUID]runtimeActive, resultErr error) {
+	stage := "input"
+	connection := uuid.Nil
+	started := time.Now()
+	reported := false
+	defer func() {
+		if !reported {
+			c.emitRuntimeDiagnostic(ctx, "bgp_exact_refresh", stage, connection, started, resultErr != nil)
+		}
+	}()
 	client, ok := c.client.(runtimeCurrentMaterialClient)
 	healthy := func() bool {
 		return ctx.Err() == nil && c.qualification.current() && c.config.DaemonAlive != nil && c.config.DaemonAlive() && bgpCurrent != nil && bgpCurrent()
@@ -21,7 +30,8 @@ func (c *RuntimeController) reconcileExactRefreshBGP(ctx context.Context, entrie
 		return nil, ErrRuntimeController
 	}
 	processes := map[uuid.UUID]runtimeBGPSession{}
-	for _, a := range original {
+	for id, a := range original {
+		connection, stage = id, "original_permit"
 		if a.Authority == nil {
 			return nil, ErrRuntimeController
 		}
@@ -29,6 +39,7 @@ func (c *RuntimeController) reconcileExactRefreshBGP(ctx context.Context, entrie
 			return nil, ErrRuntimeController
 		}
 		if a.Entry.ContractVersion == 3 {
+			stage = "original_process"
 			p := c.bgpProcesses[a.Entry.DeliveryID]
 			if p == nil || !p.Alive() {
 				return nil, ErrRuntimeController
@@ -36,10 +47,17 @@ func (c *RuntimeController) reconcileExactRefreshBGP(ctx context.Context, entrie
 			processes[a.Entry.DeliveryID] = p
 		}
 	}
+	connection, stage = uuid.Nil, "route_reconcile"
 	reconcileCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	err := c.reconcileActiveBGP(reconcileCtx, entries)
 	if reconcileCtx.Err() != nil {
 		err = ErrRuntimeController
+	}
+	// Record child cancellation before cleanup; the outer diagnostic still
+	// identifies the complete retry phase without exposing an error payload.
+	if err != nil {
+		c.emitRuntimeDiagnostic(reconcileCtx, "bgp_exact_refresh", stage, connection, started, true)
+		reported = true
 	}
 	cancel()
 	if err != nil || !healthy() || len(c.active) != len(original) {
@@ -47,23 +65,28 @@ func (c *RuntimeController) reconcileExactRefreshBGP(ctx context.Context, entrie
 	}
 	reconciled := map[uuid.UUID]runtimeActive{}
 	for id, old := range original {
+		connection, stage = id, "reconciled_owner"
 		next, exists := c.active[id]
 		want := cloneMaintenanceActive(old)
 		if old.Entry.ContractVersion == 3 {
+			stage = "reconciled_process_routes"
 			p := processes[old.Entry.DeliveryID]
 			if p != c.bgpProcesses[old.Entry.DeliveryID] || !p.Alive() || next.Entry.BGPRoutes == nil || next.Entry.BGPRoutes.Stage != "completed" || !validJournalBGP(next.Entry) {
 				return nil, ErrRuntimeController
 			}
 			want.Entry.BGPRoutes = next.Entry.BGPRoutes
 		}
+		stage = "reconciled_owner"
 		if !exists || !reflect.DeepEqual(want, next) {
 			return nil, ErrRuntimeController
 		}
+		stage = "reconciled_permit"
 		if _, err := old.Authority.RemainingForApply(old.Identity, 5*time.Second); err != nil {
 			return nil, ErrRuntimeController
 		}
 		reconciled[id] = cloneMaintenanceActive(next)
 	}
+	connection, stage = uuid.Nil, "refresh_scope"
 	ids := make([]uuid.UUID, 0, len(refreshed))
 	for id := range refreshed {
 		if _, exists := reconciled[id]; !exists {
@@ -76,10 +99,12 @@ func (c *RuntimeController) reconcileExactRefreshBGP(ctx context.Context, entrie
 	defer fetchCancel()
 	prepared := map[uuid.UUID]maintenanceItem{}
 	for _, id := range ids {
+		connection, stage = id, "material_fetch"
 		old := reconciled[id]
 		m, fetchErr := client.IPsecMaterial(fetchCtx, id, old.Delivery.DesiredRevision)
 		var item maintenanceItem
 		if fetchErr == nil {
+			stage = "material_binding"
 			if len(old.FQDNLeaseDescriptors) > 0 {
 				item, fetchErr = c.prepareFQDNFollowupMaterial(fetchCtx, old, m, true)
 			} else {
@@ -88,6 +113,9 @@ func (c *RuntimeController) reconcileExactRefreshBGP(ctx context.Context, entrie
 		}
 		for i := range m.Secrets {
 			m.Secrets[i] = RuntimeSecret{}
+		}
+		if fetchErr == nil {
+			stage = "material_current"
 		}
 		if fetchErr != nil || fetchCtx.Err() != nil || !healthy() || !reflect.DeepEqual(c.active, reconciled) {
 			return nil, ErrRuntimeController
@@ -99,5 +127,6 @@ func (c *RuntimeController) reconcileExactRefreshBGP(ctx context.Context, entrie
 	for id, item := range prepared {
 		refreshed[id] = item
 	}
+	connection, stage = uuid.Nil, "ready_for_retry"
 	return reconciled, nil
 }

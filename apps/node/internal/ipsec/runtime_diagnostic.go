@@ -19,6 +19,25 @@ type RuntimeDiagnostic struct {
 }
 
 func validRuntimeDiagnostic(operation, stage string) bool {
+	if operation == "bgp_candidate_guard" {
+		switch stage {
+		case "prior_current", "prior_permit", "process", "peer_summary", "routes", "native_health", "current_after_observation", "context_after_observation", "permit_after_observation", "route_change_native_guard", "route_change_current", "route_change_permit", "route_change_required", "native_guard":
+			return true
+		default:
+			return false
+		}
+	}
+	if operation == "bgp_native_guard" {
+		return stage == "desktop_ownership" || stage == "native_health" || stage == "healthy_tunnel" || stage == "tunnel_mtu"
+	}
+	if operation == "bgp_exact_refresh" {
+		switch stage {
+		case "input", "original_permit", "original_process", "route_reconcile", "reconciled_owner", "reconciled_process_routes", "reconciled_permit", "refresh_scope", "material_fetch", "material_binding", "material_current", "ready_for_retry":
+			return true
+		default:
+			return false
+		}
+	}
 	if operation == "maintenance_report_commit" {
 		switch stage {
 		case "input", "current_set", "candidate", "before", "transport", "policy", "authority", "history", "sequence":

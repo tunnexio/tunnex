@@ -16,6 +16,10 @@ func ipsecDiagnosticSink(logger *slog.Logger, dnsLabTiming bool) func(ipsec.Runt
 		}
 		if event.Refused {
 			logger.Warn("ipsec_runtime_diagnostic_refused", attrs...)
+		} else if (event.Operation == "bgp_candidate_guard" && event.Stage == "route_change_required") || (event.Operation == "bgp_exact_refresh" && event.Stage == "ready_for_retry") {
+			// These rare fixed events distinguish a recoverable abandoned
+			// assembly from a native refusal without making routine success loud.
+			logger.Info("ipsec_runtime_diagnostic_completed", attrs...)
 		} else if dnsLabTiming && event.Operation == "dns_exchange" {
 			logger.Info("ipsec_runtime_diagnostic_completed", attrs...)
 		} else {

@@ -2,6 +2,7 @@ package ipsec
 
 import (
 	"context"
+	"errors"
 	"github.com/google/uuid"
 	bgpengine "github.com/tunnexio/tunnex/apps/node/internal/bgp"
 	"net/netip"
@@ -282,7 +283,14 @@ func (c *RuntimeController) bgpGuard(ctx context.Context, a runtimeActive, remai
 	return c.bgpGuardWithStatuses(ctx, a, remaining, c.observeRecovery(ctx, a.Entry))
 }
 
-func (c *RuntimeController) bgpGuardWithStatuses(ctx context.Context, a runtimeActive, remaining time.Duration, statuses [2]string) (GuardConnection, error) {
+func (c *RuntimeController) bgpGuardWithStatuses(ctx context.Context, a runtimeActive, remaining time.Duration, statuses [2]string) (result GuardConnection, resultErr error) {
+	stage := "desktop_ownership"
+	started := time.Now()
+	defer func() {
+		if resultErr != nil {
+			c.emitRuntimeDiagnostic(ctx, "bgp_native_guard", stage, a.Entry.Allocation.ConnectionID, started, true)
+		}
+	}()
 	e := a.Entry
 	if err := c.proveDesktopGrants(ctx, a.Grants); err != nil {
 		return GuardConnection{}, err
@@ -291,6 +299,7 @@ func (c *RuntimeController) bgpGuardWithStatuses(ctx context.Context, a runtimeA
 	if e.Allocation.activeTunnelCount() == 1 {
 		g.TunnelCount = 1
 	}
+	stage = "native_health"
 	for i, t := range e.Allocation.Tunnels[:e.Allocation.activeTunnelCount()] {
 		profile := ""
 		if IsAzureBGPProfile(e.Allocation.ProfileID) {
@@ -307,10 +316,12 @@ func (c *RuntimeController) bgpGuardWithStatuses(ctx context.Context, a runtimeA
 		}
 		g.BGPPeers = append(g.BGPPeers, peer)
 	}
+	stage = "healthy_tunnel"
 	if len(g.PermittedInterfaceIndices) == 0 {
 		return GuardConnection{}, ErrRuntimeController
 	}
 	if len(g.Grants) > 0 {
+		stage = "tunnel_mtu"
 		var err error
 		g.TunnelMTUs, err = c.guardTunnelMTUs(ctx, e, a.Environment, g.PermittedInterfaceIndices, g.ReplyIngressIndices)
 		if err != nil {
@@ -327,27 +338,41 @@ func (c *RuntimeController) maintenanceBGPGuard(ctx context.Context, a, old runt
 	return c.maintenanceBGPGuardObserved(ctx, a, old, remaining, current, func() [2]string { return c.observeRecovery(ctx, a.Entry) })
 }
 
-func (c *RuntimeController) maintenanceBGPGuardObserved(ctx context.Context, a, old runtimeActive, remaining time.Duration, current func() bool, observe func() [2]string) (GuardConnection, error) {
+func (c *RuntimeController) maintenanceBGPGuardObserved(ctx context.Context, a, old runtimeActive, remaining time.Duration, current func() bool, observe func() [2]string) (result GuardConnection, resultErr error) {
+	stage := "prior_current"
+	started := time.Now()
+	defer func() {
+		if resultErr != nil {
+			// A typed, recoverable route change abandons this assembly; it is
+			// distinct from a refusal of the independently proved native guard.
+			c.emitRuntimeDiagnostic(ctx, "bgp_candidate_guard", stage, a.Entry.Allocation.ConnectionID, started, !errors.Is(resultErr, errMaintenanceBGPRouteChanged))
+		}
+	}()
 	fail := func() (GuardConnection, error) { return GuardConnection{}, ErrRuntimeController }
 	if old.Authority == nil || current == nil || !current() {
 		return fail()
 	}
+	stage = "prior_permit"
 	if _, err := old.Authority.RemainingForApply(old.Identity, 5*time.Second); err != nil {
 		return fail()
 	}
 	e := a.Entry
+	stage = "process"
 	p := c.bgpProcesses[e.DeliveryID]
 	if p == nil || !p.Alive() {
 		return fail()
 	}
+	stage = "peer_summary"
 	status, err := p.Observe(ctx)
 	if err != nil {
 		return fail()
 	}
+	stage = "routes"
 	routes, err := p.ObserveRoutes(ctx, status)
 	if err != nil {
 		return fail()
 	}
+	stage = "native_health"
 	health := observe()
 	for _, state := range health[:e.Allocation.activeTunnelCount()] {
 		if state != "up" && state != "down" {
@@ -360,12 +385,15 @@ func (c *RuntimeController) maintenanceBGPGuardObserved(ctx context.Context, a, 
 			target = append(target, RuntimeBGPRouteTuple{Prefix: route.Prefix, Slot: uint8(route.Slot), InterfaceIndex: e.Observed[route.Slot-1].InterfaceIndex, Table: 254, Protocol: 242, Metric: 50000 + uint32(route.Slot)})
 		}
 	}
+	stage = "current_after_observation"
 	if !p.Alive() || !current() {
 		return fail()
 	}
+	stage = "context_after_observation"
 	if ctx.Err() != nil || !c.qualification.current() || !c.config.DaemonAlive() {
 		return fail()
 	}
+	stage = "permit_after_observation"
 	if _, err := old.Authority.RemainingForApply(old.Identity, 5*time.Second); err != nil {
 		return fail()
 	}
@@ -373,17 +401,22 @@ func (c *RuntimeController) maintenanceBGPGuardObserved(ctx context.Context, a, 
 		// A known healthy RIB change needs the ordinary deny-first route
 		// reconciler, not session destruction. Unknown native/peer/MTU proof
 		// still refuses normally; this signal carries no replacement authority.
+		stage = "route_change_native_guard"
 		if _, err := c.bgpGuardWithStatuses(ctx, a, remaining, health); err != nil {
 			return fail()
 		}
+		stage = "route_change_current"
 		if ctx.Err() != nil || !p.Alive() || !current() || !c.qualification.current() || !c.config.DaemonAlive() {
 			return fail()
 		}
+		stage = "route_change_permit"
 		if _, err := old.Authority.RemainingForApply(old.Identity, 5*time.Second); err != nil {
 			return fail()
 		}
+		stage = "route_change_required"
 		return GuardConnection{}, errMaintenanceBGPRouteChanged
 	}
+	stage = "native_guard"
 	return c.bgpGuardWithStatuses(ctx, a, remaining, health)
 }
 
