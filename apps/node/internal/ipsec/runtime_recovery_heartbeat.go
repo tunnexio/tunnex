@@ -191,14 +191,25 @@ func (c *RuntimeController) refreshIPsecActiveRecoveryLockedQualified(ctx contex
 	}
 	stage = "permit_lease"
 	authority, identity, err := c.recoveryLeaseClassified(ctx, e, oldest.epoch.PolicyHash)
+	var expiryCurrent func() bool
+	var conflict *runtimeRecoveryLeaseConflict
+	if errors.As(err, &conflict) && runtimeDesktopEntrySupported(e) && len(a.FQDNLeaseDescriptors) > 0 {
+		// DNS expiry metadata can turn over before ordinary maintenance reaches
+		// its own lease collection. A fresh, exact expiry-only policy may qualify
+		// this observation, but never renew the installed owner's authority.
+		stage = "permit_fqdn_expiry"
+		authority, identity, expiryCurrent, err = c.recoveryHeartbeatExpiryLease(ctx, a)
+	}
 	if err != nil {
-		var conflict *runtimeRecoveryLeaseConflict
 		if errors.As(err, &conflict) && c.withdrawMaintenanceConflict(ctx, a, entries, bgpCurrent) == nil {
 			return nil, &runtimeRecoveryConflictWithdrawn{connectionID: id}
 		}
 		return fail()
 	}
 	if _, err = authority.RemainingForApply(identity, 5*time.Second); err != nil {
+		return fail()
+	}
+	if expiryCurrent != nil && !expiryCurrent() {
 		return fail()
 	}
 	stage = "environment"
@@ -258,6 +269,9 @@ func (c *RuntimeController) refreshIPsecActiveRecoveryLockedQualified(ctx contex
 	if _, err = authority.RemainingForApply(identity, 5*time.Second); err != nil {
 		return fail()
 	}
+	if expiryCurrent != nil && !expiryCurrent() {
+		return fail()
+	}
 	// Standalone heartbeat reuses only a newer durable Apply/Validate sequence.
 	// Equal sequence is a CP retry that cannot refresh its observation time.
 	// Maintenance may durably sequence this independently fresh observation.
@@ -285,6 +299,9 @@ func (c *RuntimeController) refreshIPsecActiveRecoveryLockedQualified(ctx contex
 		if _, err = authority.RemainingForApply(identity, 5*time.Second); err != nil {
 			return fail()
 		}
+	}
+	if expiryCurrent != nil && !expiryCurrent() {
+		return fail()
 	}
 	oldest.observe(oldest.epoch, final, recoveryObservation{Epoch: oldest.epoch, Current: selectedRuntimeSlot(e), Status: statuses, Authorized: true, At: started})
 	if seq <= c.recoveryStatusSequence[e.DeliveryID] {

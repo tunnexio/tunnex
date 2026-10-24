@@ -19,6 +19,9 @@ type RuntimeDiagnostic struct {
 }
 
 func validRuntimeDiagnostic(operation, stage string) bool {
+	if stage == "permit_fqdn_expiry" {
+		return operation == "heartbeat"
+	}
 	if stage == "env_local_exports_after" {
 		return operation == "environment_observe"
 	}

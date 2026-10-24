@@ -1242,6 +1242,10 @@ func (c *RuntimeController) installActiveCandidatesFQDN(ctx context.Context, ent
 	if err := c.stopUnleasedDesktopExports(entries, active); err != nil {
 		return err
 	}
+	if err := c.resetCommittedRecoveryPolicyAdvice(active, prior); err != nil {
+		_, _ = c.refuse(ctx, entries)
+		return err
+	}
 	c.active = active
 	c.rememberFQDNNativeWindows(intent, active, nativeStarted)
 	c.publishDNSOwnerView(manifest)
