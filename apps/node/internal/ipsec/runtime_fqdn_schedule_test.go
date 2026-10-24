@@ -238,14 +238,14 @@ func TestFQDNFollowupTransportReportContract(t *testing.T) {
 	}
 }
 func TestFQDNNativeAdviceBoundaryAndIdentity(t *testing.T) {
-	for _, scenario := range []string{"ten", "eleven", "expired", "authority_changed", "owner_changed"} {
+	for _, scenario := range []string{"runway", "beyond_runway", "expired", "authority_changed", "owner_changed"} {
 		t.Run(scenario, func(t *testing.T) {
 			r, _, _ := fqdnFollowupFixture(t)
 			window := r.c.fqdnNativeWindows[r.target]
-			window.deadline = *r.now + 10*time.Second
+			window.deadline = *r.now + r.c.fqdnRenewalRunway()
 			switch scenario {
-			case "eleven":
-				window.deadline = *r.now + 11*time.Second
+			case "beyond_runway":
+				window.deadline = *r.now + r.c.fqdnRenewalRunway() + time.Second
 			case "expired":
 				window.deadline = *r.now
 			case "authority_changed":
@@ -259,7 +259,7 @@ func TestFQDNNativeAdviceBoundaryAndIdentity(t *testing.T) {
 			}
 			r.c.fqdnNativeWindows[r.target] = window
 			got := r.c.shortFQDNNativeOwners()
-			if (scenario == "ten") != (len(got) == 1) {
+			if (scenario == "runway") != (len(got) == 1) {
 				t.Fatal("incorrect deadline/owner advice", scenario, got)
 			}
 		})

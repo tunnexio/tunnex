@@ -26,7 +26,7 @@ func TestIPsecFQDNFollowupBeforeStatusDoesNotSuppressDiscovery(t *testing.T) {
 		if refused != (err != nil) {
 			t.Fatalf("refused=%v err=%v", refused, err)
 		}
-		if !reflect.DeepEqual(f.order, []string{"fresh_active_renewal", "bounded_fqdn_followup", "original_status"}) || f.acks != 0 || f.applyCount != 0 {
+		if !reflect.DeepEqual(f.order, []string{"bounded_fqdn_followup", "fresh_active_renewal", "bounded_fqdn_followup", "original_status"}) || f.acks != 0 || f.applyCount != 0 {
 			t.Fatal("followup altered ordinary caller order/authority", f.order)
 		}
 	}

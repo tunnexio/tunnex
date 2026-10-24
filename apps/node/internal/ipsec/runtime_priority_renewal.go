@@ -33,7 +33,20 @@ func (c *RuntimeController) RenewActiveIPsecRuntimeObserved(ctx context.Context,
 }
 
 func (c *RuntimeController) renewActiveIPsecRuntimeObserved(ctx context.Context, authority func() *PermitLeaseAuthority, bgpCurrent func() bool, publish func(context.Context, RuntimeDelivery, RuntimeStatusReport) error, publishRecovery func(context.Context, RuntimeRecoveryHeartbeat) error) error {
-	count := len(c.active)
+	// This retained-only scheduling choice is not validation and produces no
+	// ACK. Normal discovery/material reconciliation and status observation run
+	// afterward. Missing native emission advice always requests ordinary proof.
+	due := map[uuid.UUID]bool{}
+	dueScheduling := c.exactPageRefreshScope()
+	for id, a := range c.active {
+		due[id] = !dueScheduling || c.maintenanceRenewalDue(a)
+	}
+	count := 0
+	for _, needed := range due {
+		if needed {
+			count++
+		}
+	}
 	prepare := func(ns string, entries []RuntimeJournalEntry, stage *string, connection *uuid.UUID) ([]maintenanceItem, error) {
 		ids := make([]uuid.UUID, 0, count)
 		for id := range c.active {
@@ -80,9 +93,36 @@ func (c *RuntimeController) renewActiveIPsecRuntimeObserved(ctx context.Context,
 				return nil, &runtimeFQDNPolicyRetraction{connection: id}
 			}
 			deliveries[d.ID] = true
+			if !due[id] {
+				// Recheck after prior journal/policy work: crossing the immutable
+				// native runway must not silently omit a newly due owner.
+				if c.maintenanceRenewalDue(a) {
+					return nil, ErrRuntimeController
+				}
+				continue
+			}
 			items = append(items, maintenanceItem{RuntimeDelivery: d, Entry: e, Grants: a.Grants, FQDNLeaseDescriptors: append([]RuntimeFQDNGrant(nil), a.FQDNLeaseDescriptors...), PolicyHash: a.Identity.PolicyHash})
 		}
 		return items, nil
+	}
+	if count > 0 && c.exactPageRefreshScope() {
+		ns, nsErr := c.namespace()
+		entries, journalErr := c.journal.Entries()
+		if nsErr == nil && journalErr == nil {
+			stage, connection := "maintenance_priority_owner", uuid.Nil
+			items, err := prepare(ns, entries, &stage, &connection)
+			if err == nil && len(items) == count {
+				fresh := map[uuid.UUID]maintenanceItem{}
+				for _, item := range items {
+					fresh[item.Manifest.ConnectionID] = item
+				}
+				// Retained priority has no new delivery to acknowledge. Its exact
+				// due owners use the same fresh-nonce/full-native transaction.
+				return c.commitExactRuntimeRefresh(ctx, authority, bgpCurrent, fresh, publish, true)
+			}
+		}
+		// No candidate/native work has started. Preserve normal pending-policy
+		// withdrawal and refusal handling on a failed classification.
 	}
 	// The returned normal maintenance results are deliberately discarded: retained
 	// applied context cannot acknowledge a fresh pending delivery or cleanup.

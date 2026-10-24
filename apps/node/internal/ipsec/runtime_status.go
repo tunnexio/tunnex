@@ -118,7 +118,11 @@ func (c *RuntimeController) observeIPsecStatusLocked(ctx context.Context, d Runt
 	if e != nil {
 		return report, nil
 	}
-	statuses := runtimeObservedStatuses(ctx, *entry, runtimeStatusReaders{daemon: c.config.Daemon.Inspect, kernel: kr.Read, xfrm: xr.Read, alive: c.config.DaemonAlive})
+	readers := runtimeStatusReaders{daemon: c.config.Daemon.Inspect, kernel: kr.Read, xfrm: xr.Read, alive: c.config.DaemonAlive}
+	if c.statusReaders != nil {
+		readers = *c.statusReaders
+	}
+	statuses := runtimeObservedStatuses(ctx, *entry, readers)
 	for i, status := range statuses[:count] {
 		report.Tunnels[i].Status = status
 	}

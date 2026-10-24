@@ -25,6 +25,13 @@ func runtimeFQDNFollowupEntrySupported(e RuntimeJournalEntry) bool {
 // fresh native/environment/peer/RIB/MTU proof AFTER the new CP nonce. Repeating
 // that proof in a preliminary collection can consume the old native member.
 func (c *RuntimeController) commitFQDNFollowup(ctx context.Context, authority func() *PermitLeaseAuthority, bgpCurrent func() bool, refreshed map[uuid.UUID]maintenanceItem, publish func(context.Context, RuntimeDelivery, RuntimeStatusReport) error) error {
+	return c.commitExactRuntimeRefresh(ctx, authority, bgpCurrent, refreshed, publish, false)
+}
+
+// Ordinary candidates enter this same native transaction only after exact
+// already-applied page/priority validation. The flag never permits a policy,
+// transport, delivery, or grant change; a new CP nonce remains mandatory.
+func (c *RuntimeController) commitExactRuntimeRefresh(ctx context.Context, authority func() *PermitLeaseAuthority, bgpCurrent func() bool, refreshed map[uuid.UUID]maintenanceItem, publish func(context.Context, RuntimeDelivery, RuntimeStatusReport) error, allowUnchanged bool) error {
 	entries, err := c.journal.Entries()
 	if err != nil {
 		c.deniedClassicTransports = nil
@@ -68,7 +75,9 @@ func (c *RuntimeController) commitFQDNFollowup(ctx context.Context, authority fu
 	for id, m := range refreshed {
 		old, ok := c.active[id]
 		window, known := c.fqdnNativeWindows[id]
-		if !ok || !known || old.Authority == nil || !runtimeFQDNFollowupEntrySupported(old.Entry) || old.Entry.AbsenceOnly || old.Entry.Phase != RuntimeApplied || !runtimeDeliveryValid(old.Delivery, c.config.OrgID, c.config.GatewayID, "apply") || old.Delivery.CoversDeliveryRevision != 0 || old.Identity != (PermitLeaseIdentity{DeliveryID: old.Delivery.ID, Binding: old.Entry.Engines[0].Binding, PolicyHash: old.Identity.PolicyHash}) || !validDigest(old.Identity.PolicyHash) || !reflect.DeepEqual(old, window.owner) || m.FQDNExpiryPriorHash != old.Identity.PolicyHash || !reflect.DeepEqual(m.RuntimeDelivery, old.Delivery) || !reflect.DeepEqual(m.Entry, old.Entry) {
+		unchanged := allowUnchanged && m.PolicyHash == old.Identity.PolicyHash && reflect.DeepEqual(m.Grants, old.Grants) && reflect.DeepEqual(m.FQDNLeaseDescriptors, old.FQDNLeaseDescriptors) && m.FQDNPolicyPriorHash == "" && !m.FQDNRestorePending
+		expiry := known && reflect.DeepEqual(old, window.owner) && m.FQDNExpiryPriorHash == old.Identity.PolicyHash
+		if !ok || (!unchanged && !expiry) || old.Authority == nil || !runtimeFQDNFollowupEntrySupported(old.Entry) || old.Entry.AbsenceOnly || old.Entry.Phase != RuntimeApplied || !runtimeDeliveryValid(old.Delivery, c.config.OrgID, c.config.GatewayID, "apply") || old.Delivery.CoversDeliveryRevision != 0 || old.Identity != (PermitLeaseIdentity{DeliveryID: old.Delivery.ID, Binding: old.Entry.Engines[0].Binding, PolicyHash: old.Identity.PolicyHash}) || !validDigest(old.Identity.PolicyHash) || !reflect.DeepEqual(m.RuntimeDelivery, old.Delivery) || !reflect.DeepEqual(m.Entry, old.Entry) {
 			return fail()
 		}
 		matches := 0
@@ -150,7 +159,13 @@ func (c *RuntimeController) commitFQDNFollowup(ctx context.Context, authority fu
 	if !current() {
 		return fail()
 	}
-	if err := c.installActiveCandidates(ctx, entries, staged, required, prior, current); err != nil {
+	// The first nonce may already describe an older same-answer publication.
+	// Reuse the one bounded preassembly phase after preliminary proof, before
+	// any guard sequence is captured. Only uncommitted candidates can change.
+	beforeAssembly := func(boundary context.Context) error {
+		return c.refreshFQDNAssemblyCandidates(boundary, authority, bgpCurrent, original, required, staged, required, nil, nil)
+	}
+	if err := c.installActiveCandidatesFQDN(ctx, entries, staged, required, prior, current, nil, nil, beforeAssembly, true); err != nil {
 		var retraction *runtimeFQDNPolicyRetraction
 		if errors.As(err, &retraction) && c.retractFQDNOnly(ctx, retraction, original, staged, health) == nil {
 			return nil
@@ -212,7 +227,12 @@ func (c *RuntimeController) commitFQDNFollowup(ctx context.Context, authority fu
 			if transportErr != nil {
 				return fail()
 			}
-			report, err = c.observeIPsecStatusLocked(ctx, d, report, true, false)
+			bgp, bgpErr := runtimeBGPContract(d.Manifest)
+			recovery, recoveryErr := runtimeRecoveryContract(d.Manifest)
+			if bgpErr != nil || recoveryErr != nil {
+				return fail()
+			}
+			report, err = c.observeIPsecStatusLocked(ctx, d, report, bgp, recovery)
 			if err != nil {
 				return fail()
 			}

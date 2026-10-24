@@ -425,9 +425,19 @@ func pollIPsecMaintainedPage(ctx context.Context, client IPsecRuntimeTransport, 
 		return 0, ErrIPsecControl
 	}
 	maintained := map[uuid.UUID]ipsec.RuntimeMaintenanceResult{}
-	deferred, seenResults := map[uuid.UUID]bool{}, map[uuid.UUID]bool{}
+	deferred, retained, seenResults := map[uuid.UUID]bool{}, map[uuid.UUID]bool{}, map[uuid.UUID]bool{}
 	// Validate the entire result envelope before sending even the first ACK.
 	for _, result := range results {
+		if result.Retained != nil {
+			delivery := *result.Retained
+			index, known := byDelivery[delivery.ID]
+			_, observedPositive := observed[delivery.ID]
+			if !known || seenResults[delivery.ID] || result.Deferred != nil || !reflect.DeepEqual(delivery, materials[index].RuntimeDelivery) || result.Acknowledgement != (ipsec.RuntimeAcknowledgement{}) || !reflect.DeepEqual(result.Report, ipsec.RuntimeStatusReport{}) || observedPositive || published[delivery.ID] {
+				return 0, ErrIPsecControl
+			}
+			seenResults[delivery.ID], retained[delivery.ID] = true, true
+			continue
+		}
 		if result.Deferred != nil {
 			delivery := *result.Deferred
 			index, known := byDelivery[delivery.ID]
@@ -479,7 +489,7 @@ func pollIPsecMaintainedPage(ctx context.Context, client IPsecRuntimeTransport, 
 	// Publish the completed maintained commit before an ordinary fallback can
 	// replace or withdraw runtime state. Never report cached positive state after it.
 	for i, material := range materials {
-		if _, ok := maintained[material.ID]; ok || deferred[material.ID] {
+		if _, ok := maintained[material.ID]; ok || deferred[material.ID] || retained[material.ID] {
 			continue
 		}
 		item := pending[i]

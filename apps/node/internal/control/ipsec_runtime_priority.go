@@ -17,7 +17,14 @@ type IPsecRuntimeActiveRenewer interface {
 // is emitted here. The controller may fetch current material only for a verified
 // FQDN expiry rollover; this caller never obtains or retains it.
 func RefreshIPsecRuntimePriority(ctx context.Context, client IPsecRuntimeTransport, controller IPsecRuntimeApplier) error {
-	failed := refreshIPsecRuntimeRenewal(ctx, client, controller, false) != nil
+	// A short emitted DNS member can expire while unrelated ordinary owners
+	// are renewed. Service that existing finite deadline first; the follower
+	// still obtains current material, a fresh nonce and the complete native
+	// commit proof. The later follow-up handles short members emitted here.
+	failed := RefreshIPsecRuntimeFQDNFollowup(ctx, client, controller) != nil
+	if refreshIPsecRuntimeRenewal(ctx, client, controller, false) != nil {
+		failed = true
+	}
 	if RefreshIPsecRuntimeFQDNFollowup(ctx, client, controller) != nil {
 		failed = true
 	}

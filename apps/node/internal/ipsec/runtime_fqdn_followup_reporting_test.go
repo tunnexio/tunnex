@@ -16,6 +16,9 @@ import (
 func TestFQDNFollowupFinalReportFencesAllCandidates(t *testing.T) {
 	r, first := fqdnExpiryTurnoverRig(t)
 	r.c.config.JournalDir = r.c.journal.dir
+	// Native and lease time use the virtual clock; the bounded late-material
+	// wait must advance that same clock before reaching the reporting fence.
+	r.c.fqdnMaterialWait = fqdnTestWait(r)
 	firstOld := r.c.active[r.target]
 	var secondID uuid.UUID
 	var secondMaterial RuntimeMaterial

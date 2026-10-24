@@ -324,6 +324,10 @@ func (c *RuntimeController) bgpGuardWithStatuses(ctx context.Context, a runtimeA
 // post-CP route proof and guard assembly share one fresh same-owner health sample
 // within the caller's bounded assembly context; no observation is retained.
 func (c *RuntimeController) maintenanceBGPGuard(ctx context.Context, a, old runtimeActive, remaining time.Duration, current func() bool) (GuardConnection, error) {
+	return c.maintenanceBGPGuardObserved(ctx, a, old, remaining, current, func() [2]string { return c.observeRecovery(ctx, a.Entry) })
+}
+
+func (c *RuntimeController) maintenanceBGPGuardObserved(ctx context.Context, a, old runtimeActive, remaining time.Duration, current func() bool, observe func() [2]string) (GuardConnection, error) {
 	fail := func() (GuardConnection, error) { return GuardConnection{}, ErrRuntimeController }
 	if old.Authority == nil || current == nil || !current() {
 		return fail()
@@ -344,7 +348,7 @@ func (c *RuntimeController) maintenanceBGPGuard(ctx context.Context, a, old runt
 	if err != nil {
 		return fail()
 	}
-	health := c.observeRecovery(ctx, e)
+	health := observe()
 	for _, state := range health[:e.Allocation.activeTunnelCount()] {
 		if state != "up" && state != "down" {
 			return fail()

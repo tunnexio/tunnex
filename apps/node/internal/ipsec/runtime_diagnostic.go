@@ -38,6 +38,9 @@ func validRuntimeDiagnostic(operation, stage string) bool {
 	if stage == "permit_fqdn_expiry" {
 		return operation == "heartbeat"
 	}
+	if stage == "combined_guard_fqdn_refresh" {
+		return operation == "install_active"
+	}
 	if stage == "env_local_exports_after" {
 		return operation == "environment_observe"
 	}

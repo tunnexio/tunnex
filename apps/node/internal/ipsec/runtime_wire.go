@@ -200,7 +200,11 @@ type RuntimeStatusReport struct {
 // Deferred is a mutually exclusive, process-local scheduling outcome: its original
 // finite authority was preserved while a new NAT exemption is pending. It grants
 // no permission and must never produce a status report or Apply acknowledgement.
+// Retained is an exact already-applied delivery whose complete active owner set
+// passed fresh native eligibility and the final read-only authority/guard fence.
+// It counts as validated without a new lease, report, native write or Apply ACK.
 type RuntimeMaintenanceResult struct {
+	Retained        *RuntimeDelivery `json:"-"`
 	Deferred        *RuntimeDelivery `json:"-"`
 	Acknowledgement RuntimeAcknowledgement
 	Report          RuntimeStatusReport

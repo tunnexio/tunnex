@@ -71,6 +71,9 @@ func (c *RuntimeController) maintainIPsecRuntimeObserved(ctx context.Context, ma
 }
 
 func (c *RuntimeController) maintainIPsecRuntimeRecoveryObserved(ctx context.Context, materials []RuntimeMaterial, authority func() *PermitLeaseAuthority, bgpCurrent func() bool, publish func(context.Context, RuntimeDelivery, RuntimeStatusReport) error, publishRecovery func(context.Context, RuntimeRecoveryHeartbeat) error) ([]RuntimeMaintenanceResult, error) {
+	if result, handled, err := c.tryMaintainExactRuntimePage(ctx, materials, authority, bgpCurrent, publish); handled {
+		return result, err
+	}
 	prepare := func(ns string, _ []RuntimeJournalEntry, stage *string, connection *uuid.UUID) ([]maintenanceItem, error) {
 		var err error
 		// Validate every secret-bearing normal material and its unique page identity
@@ -238,12 +241,14 @@ func (c *RuntimeController) maintainIPsecRuntimeItemsAttempt(ctx context.Context
 	}
 	candidates := map[uuid.UUID]runtimeActive{}
 	pending := map[uuid.UUID]runtimeActive{}
+	notDue := map[uuid.UUID]runtimeActive{}
 	maintained := make([]RuntimeDelivery, 0, len(materials))
 	type eligibleOwner struct {
 		index  int
 		active runtimeActive
 	}
 	eligibleOwners := make([]eligibleOwner, 0, len(materials))
+	eligibilityProven := map[uuid.UUID]runtimeActive{}
 	// Complete all eligibility proof IO before beginning any fresh finite lease.
 	for i, m := range materials {
 		c.refreshMaintenanceRecovery(ctx)
@@ -408,6 +413,7 @@ func (c *RuntimeController) maintainIPsecRuntimeItemsAttempt(ctx context.Context
 			}
 			continue
 		}
+		eligibilityProven[id] = cloneMaintenanceActive(old)
 		if m.FQDNRestorePending {
 			// Exact eligibility and native old-owner proof succeeded. Leave its
 			// original deadline untouched and return no applied acknowledgement.
@@ -421,6 +427,14 @@ func (c *RuntimeController) maintainIPsecRuntimeItemsAttempt(ctx context.Context
 		if c.fqdnPolicyTransitionEligible(old, m) {
 			m.FQDNPolicyPriorHash = old.Identity.PolicyHash
 			materials[i] = m
+		}
+		// Exact current authority can remain installed after its fresh native
+		// eligibility proof. Normal discovery/revocation above still runs; a
+		// deferred result carries no new authority or applied acknowledgement.
+		if c.exactPageRefreshScope() && m.FQDNPolicyPriorHash == "" && !c.maintenanceRenewalDue(old) &&
+			old.Identity.PolicyHash == m.PolicyHash && reflect.DeepEqual(old.Grants, m.Grants) {
+			notDue[id] = old
+			continue
 		}
 		eligibleOwners = append(eligibleOwners, eligibleOwner{index: i, active: old})
 	}
@@ -621,6 +635,14 @@ func (c *RuntimeController) maintainIPsecRuntimeItemsAttempt(ctx context.Context
 	}
 	deferral.finishCollection(staged)
 	pendingCurrent := func() bool {
+		for id, old := range notDue {
+			if ctx.Err() != nil || !c.qualification.current() || !c.config.DaemonAlive() || !reflect.DeepEqual(c.active[id], old) || !c.fqdnGrantsCurrent(old.Grants) || old.Authority == nil || (old.Entry.ContractVersion == 3 && (bgpCurrent == nil || !bgpCurrent())) {
+				return false
+			}
+			if _, e := old.Authority.RemainingForApply(old.Identity, 5*time.Second); e != nil {
+				return false
+			}
+		}
 		for id, old := range pending {
 			if ctx.Err() != nil || !c.qualification.current() || !c.config.DaemonAlive() || bgpCurrent == nil || !bgpCurrent() || !reflect.DeepEqual(c.active[id], old) || !c.fqdnGrantsCurrent(old.Grants) {
 				return false
@@ -634,15 +656,32 @@ func (c *RuntimeController) maintainIPsecRuntimeItemsAttempt(ctx context.Context
 	if !pendingCurrent() {
 		return fail()
 	}
+	retainedValidated := false
 	deferredResults := func() []RuntimeMaintenanceResult {
 		out := make([]RuntimeMaintenanceResult, 0, len(pending))
 		for _, old := range pending {
 			delivery := cloneMaintenanceActive(old).Delivery
 			out = append(out, RuntimeMaintenanceResult{Deferred: &delivery})
 		}
+		for _, old := range notDue {
+			delivery := cloneMaintenanceActive(old).Delivery
+			if retainedValidated {
+				out = append(out, RuntimeMaintenanceResult{Retained: &delivery})
+			} else {
+				out = append(out, RuntimeMaintenanceResult{Deferred: &delivery})
+			}
+		}
 		return out
 	}
 	if len(candidates) == 0 && !changed {
+		// A partial page cannot certify owners it never freshly proved. Keep its
+		// original deferred outcome so the caller still validates independently.
+		if len(notDue) > 0 && len(eligibilityProven) == len(c.active) {
+			if c.retainedMaintenanceCurrent(ctx, eligibilityProven, bgpCurrent) != nil {
+				return fail()
+			}
+			retainedValidated = true
+		}
 		return deferredResults(), nil
 	}
 	// Retained pending owners are required, but are not newly authorized
@@ -652,6 +691,9 @@ func (c *RuntimeController) maintainIPsecRuntimeItemsAttempt(ctx context.Context
 		required[id] = a
 	}
 	for id, a := range pending {
+		required[id] = a
+	}
+	for id, a := range notDue {
 		required[id] = a
 	}
 
@@ -697,7 +739,14 @@ func (c *RuntimeController) maintainIPsecRuntimeItemsAttempt(ctx context.Context
 		}
 		assemblyPulseErr = deferral.pulseBeforeAssembly(ctx, c, publishRecovery)
 		return assemblyPulseErr
-	})
+	}, func(ctx context.Context) error {
+		// One late collection per normal operation; the existing cutoff retry
+		// has already consumed its recollection budget.
+		if !allowFQDNCutoffRefresh {
+			return nil
+		}
+		return c.refreshFQDNAssemblyCandidates(ctx, authority, bgpCurrent, originalOwners, candidates, staged, required, cutoffCandidates, materials)
+	}, false)
 	if installErr != nil {
 		if assemblyPulseErr != nil {
 			return pulseFailure(assemblyPulseErr)
@@ -850,6 +899,17 @@ func (c *RuntimeController) maintainIPsecRuntimeItemsAttempt(ctx context.Context
 	stage = "maintenance_committed_reports"
 	if !deferral.reportsCurrentObserved(ctx, c) || !pendingCurrent() || !deferral.committedReportsCurrent(ctx, c) {
 		return fail()
+	}
+	if len(notDue) > 0 {
+		// The completed combined commit supplied fresh proof for the whole set.
+		committed := map[uuid.UUID]runtimeActive{}
+		for id, owner := range c.active {
+			committed[id] = cloneMaintenanceActive(owner)
+		}
+		if c.retainedMaintenanceCurrent(ctx, committed, bgpCurrent) != nil {
+			return fail()
+		}
+		retainedValidated = true
 	}
 	return append(result, deferredResults()...), nil
 }

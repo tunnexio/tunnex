@@ -41,6 +41,13 @@ func (c *RuntimeController) rememberFQDNNativeWindows(in GuardIntent, active map
 
 func (c *RuntimeController) shortFQDNNativeOwners() []uuid.UUID {
 	now := c.recoveryNow()
+	// A follow-up runs before the next complete shared-owner renewal. Each
+	// owner may consume its existing five-second preproof and five-second
+	// assembly bounds, followed by the five-second atomic commit. Start the
+	// existing fresh-material path while the emitted window can still fund
+	// that work, rather than waiting for a fixed ten-second window regardless
+	// of owner count. This is scheduling advice, never a longer permit.
+	runway := c.fqdnRenewalRunway()
 	var ids []uuid.UUID
 	for id, window := range c.fqdnNativeWindows {
 		owner, ok := c.active[id]
@@ -48,12 +55,21 @@ func (c *RuntimeController) shortFQDNNativeOwners() []uuid.UUID {
 			delete(c.fqdnNativeWindows, id)
 			continue
 		}
-		if window.deadline-now <= 10*time.Second {
+		if window.deadline-now <= runway {
 			ids = append(ids, id)
 		}
 	}
 	sort.Slice(ids, func(i, j int) bool { return ids[i].String() < ids[j].String() })
 	return ids
+}
+
+func (c *RuntimeController) fqdnRenewalRunway() time.Duration {
+	return time.Duration(2*len(c.active)+1) * 5 * time.Second
+}
+
+func (c *RuntimeController) fqdnNativeWindowNeedsRefresh(id uuid.UUID, old runtimeActive) bool {
+	window, ok := c.fqdnNativeWindows[id]
+	return ok && old.Authority != nil && old.Authority == window.owner.Authority && reflect.DeepEqual(old, window.owner) && window.deadline > c.recoveryNow() && window.deadline-c.recoveryNow() <= c.fqdnRenewalRunway()
 }
 
 func runtimeFQDNWait(ctx context.Context, d time.Duration) error {
@@ -152,9 +168,12 @@ func (c *RuntimeController) followupFQDNMaintenance(ctx context.Context, authori
 				refreshed[id] = fresh
 			}
 		}
-		if len(refreshed) == len(ids) {
+		if len(refreshed) > 0 {
 			// Fresh metadata is not authority. All ordinary proofs and a new CP nonce
-			// are still required by the original atomic maintenance path.
+			// are still required by the original atomic maintenance path. Every
+			// selected owner was validated above; an unchanged sibling must not
+			// hold back a ready earlier deadline. Its original finite authority
+			// and the complete all-owner native proof remain mandatory.
 			return c.commitFQDNFollowup(ctx, authority, bgpCurrent, refreshed, publish)
 		}
 		remaining := until - c.recoveryNow()

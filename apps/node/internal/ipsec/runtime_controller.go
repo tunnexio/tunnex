@@ -81,11 +81,14 @@ type RuntimeController struct {
 	prove                   func(context.Context, RuntimeJournalEntry, RuntimeEnvironment) error
 	active                  map[uuid.UUID]runtimeActive
 	fqdnNativeWindows       map[uuid.UUID]runtimeFQDNNativeWindow
+	ordinaryNativeWindows   map[uuid.UUID]runtimeOrdinaryNativeWindow
+	fqdnMaterialWait        func(context.Context, time.Duration) error
 	deniedClassicTransports map[uuid.UUID]runtimeDeniedClassicTransport
 	recoveryHistory         map[uuid.UUID]*recoveryDecision
 	recoveryPrepared        map[uuid.UUID]RuntimeEnvironment
 	recoveryClock           func() time.Duration
 	recoveryObserve         func(context.Context, RuntimeJournalEntry) [2]string
+	statusReaders           *runtimeStatusReaders // private typed-reader test seam; production constructs fresh handles
 	recoverySwitch          func(context.Context, KernelAllocation, [2]Ownership, uint8) error
 	mu                      sync.Mutex
 	dnsView                 atomic.Pointer[runtimeDNSOwnerView]
@@ -853,12 +856,12 @@ func (c *RuntimeController) installActive(ctx context.Context, entries []Runtime
 // maintenance overlay remains owner-private until every required candidate
 // survives the complete native proof and final lease checks.
 func (c *RuntimeController) installActiveCandidates(ctx context.Context, entries []RuntimeJournalEntry, active map[uuid.UUID]runtimeActive, required map[uuid.UUID]runtimeActive, prior map[uuid.UUID]runtimeActive, candidateQualification func() bool) error {
-	return c.installActiveCandidatesFQDN(ctx, entries, active, required, prior, candidateQualification, nil, nil)
+	return c.installActiveCandidatesFQDN(ctx, entries, active, required, prior, candidateQualification, nil, nil, nil, false)
 }
 
 // Only maintenance may request one precommit recollection when an otherwise
 // successful finite lease would silently lose a required FQDN member.
-func (c *RuntimeController) installActiveCandidatesFQDN(ctx context.Context, entries []RuntimeJournalEntry, active map[uuid.UUID]runtimeActive, required map[uuid.UUID]runtimeActive, prior map[uuid.UUID]runtimeActive, candidateQualification func() bool, cutoffCandidates map[uuid.UUID]runtimeActive, collectionBoundary func(context.Context) error) (resultErr error) {
+func (c *RuntimeController) installActiveCandidatesFQDN(ctx context.Context, entries []RuntimeJournalEntry, active map[uuid.UUID]runtimeActive, required map[uuid.UUID]runtimeActive, prior map[uuid.UUID]runtimeActive, candidateQualification func() bool, cutoffCandidates map[uuid.UUID]runtimeActive, collectionBoundary func(context.Context) error, beforeAssembly func(context.Context) error, exactRefresh bool) (resultErr error) {
 	c.reconcileDNSOwnerView()
 	stage := "input"
 	connection := uuid.Nil
@@ -918,6 +921,12 @@ func (c *RuntimeController) installActiveCandidatesFQDN(ctx context.Context, ent
 			return err
 		}
 	}
+	if beforeAssembly != nil {
+		stage, connection = "combined_guard_fqdn_refresh", uuid.Nil
+		if err := beforeAssembly(ctx); err != nil {
+			return err
+		}
+	}
 	connection = uuid.Nil
 	stage = "journal_inventory"
 	_, seq, e := c.journal.guardTemplates()
@@ -930,6 +939,19 @@ func (c *RuntimeController) installActiveCandidatesFQDN(ctx context.Context, ent
 		return ErrRuntimeController
 	}
 	intent := GuardIntent{Namespace: ns, OwnerID: c.config.GatewayID, Revision: int64(seq) + 1, RetainedLeaseIDs: retired, RefusalPrefixes: retainedRefusalPrefixes(entries, projected, retired)}
+	// All authorization calls have finished. One transaction-local complete
+	// before/after inventory pair may cover the exact mixed AWS owner set;
+	// owner-specific FRR and MTU reads remain between those observations.
+	stage = "entry_static_observation"
+	var assemblySnapshot *runtimeAssemblySnapshot
+	var snapshotErr error
+	if exactRefresh && len(required) > 0 {
+		assemblySnapshot, snapshotErr = c.beginAssemblySnapshot(ctx, active)
+	}
+	if snapshotErr != nil {
+		_, _ = c.refuse(ctx, entries)
+		return snapshotErr
+	}
 	seen := map[uuid.UUID]bool{}
 	for _, entry := range projected {
 		id := entry.Allocation.ConnectionID
@@ -954,7 +976,18 @@ func (c *RuntimeController) installActiveCandidatesFQDN(ctx context.Context, ent
 				if a.Entry.ContractVersion == 3 {
 					observeCtx, observeCancel := context.WithTimeout(assemblyCtx, 5*time.Second)
 					stage = "entry_bgp_observation"
-					if _, candidate := required[id]; candidate {
+					if assemblySnapshot != nil {
+						health, healthErr := assemblySnapshot.statuses(a.Entry)
+						if healthErr != nil {
+							observeCancel()
+							return healthErr
+						}
+						if _, candidate := required[id]; candidate {
+							g, err = c.maintenanceBGPGuardObserved(observeCtx, a, prior[id], remaining, candidateQualification, func() [2]string { return health })
+						} else {
+							g, err = c.bgpGuardWithStatuses(observeCtx, a, remaining, health)
+						}
+					} else if _, candidate := required[id]; candidate {
 						g, err = c.maintenanceBGPGuard(observeCtx, a, prior[id], remaining, candidateQualification)
 					} else {
 						g, err = c.bgpGuard(observeCtx, a, remaining)
@@ -985,7 +1018,16 @@ func (c *RuntimeController) installActiveCandidatesFQDN(ctx context.Context, ent
 				g.PermittedInterfaceIndices = []int{a.Entry.Observed[index].InterfaceIndex}
 				observeCtx, observeCancel := context.WithTimeout(assemblyCtx, 5*time.Second)
 				stage = "entry_static_observation"
-				statuses := c.observeRecovery(observeCtx, a.Entry)
+				var statuses [2]string
+				if assemblySnapshot != nil {
+					statuses, err = assemblySnapshot.statuses(a.Entry)
+					if err != nil {
+						observeCancel()
+						return err
+					}
+				} else {
+					statuses = c.observeRecovery(observeCtx, a.Entry)
+				}
 				observeCancel()
 				// The installation observation can disagree with the earlier recovery
 				// decision. Withdraw existing authority before returning; empty reply
@@ -1023,6 +1065,13 @@ func (c *RuntimeController) installActiveCandidatesFQDN(ctx context.Context, ent
 			}
 		}
 		intent.Connections = append(intent.Connections, g)
+	}
+	if assemblySnapshot != nil {
+		stage = "entry_static_observation"
+		if err := assemblySnapshot.finish(ctx, active); err != nil {
+			_, _ = c.refuse(ctx, entries)
+			return err
+		}
 	}
 	connection = uuid.Nil
 	stage = "combined_guard_context"
@@ -1172,6 +1221,7 @@ func (c *RuntimeController) installActiveCandidatesFQDN(ctx context.Context, ent
 	defer c.finishDNSGuardCommit(guardCommit)
 	// Advice uses the actual emitted duration anchored before native IO.
 	c.fqdnNativeWindows = nil
+	c.ordinaryNativeWindows = nil
 	nativeStarted := c.recoveryNow()
 	manifest, replaceErr := c.replace(commitCtx, intent)
 	if replaceErr != nil {
@@ -1257,6 +1307,12 @@ func (c *RuntimeController) installActiveCandidatesFQDN(ctx context.Context, ent
 	}
 	c.active = active
 	c.rememberFQDNNativeWindows(intent, active, nativeStarted)
+	c.ordinaryNativeWindows = map[uuid.UUID]runtimeOrdinaryNativeWindow{}
+	for _, g := range intent.Connections {
+		if a, ok := active[g.ID]; ok && !g.PrefixOnly && g.PermitFor >= time.Second {
+			c.ordinaryNativeWindows[g.ID] = runtimeOrdinaryNativeWindow{owner: a, observedAt: nativeStarted, deadline: nativeStarted + g.PermitFor/time.Second*time.Second}
+		}
+	}
 	c.publishDNSOwnerView(manifest)
 	guardCommit.published = c.dnsView.Load()
 	return nil

@@ -29,6 +29,8 @@ func (c *RuntimeController) refreshMaintenanceActiveRecoveryQualified(ctx contex
 	}()
 	started := c.recoveryNow()
 	seen := map[uuid.UUID]bool{}
+	clocks := map[uuid.UUID]time.Duration{}
+	allClocksKnown := true
 	stage = "history"
 	for id, a := range c.active {
 		stage = "history"
@@ -53,6 +55,7 @@ func (c *RuntimeController) refreshMaintenanceActiveRecoveryQualified(ctx contex
 			// ordinary maintenance still requires fresh leases and exact native
 			// proofs, and ordinary Apply can establish new recovery advice.
 			if h == nil || !h.seen {
+				allClocksKnown = false
 				seen[id] = true
 				continue
 			}
@@ -68,6 +71,11 @@ func (c *RuntimeController) refreshMaintenanceActiveRecoveryQualified(ctx contex
 			if c.recoveryNow() < h.lastNow {
 				return ErrRuntimeController
 			}
+			if known {
+				clocks[id] = clock.returned
+			} else {
+				allClocksKnown = false
+			}
 			// Leave room for the next serial owner and the page's report/ACK
 			// handoff. A three-second debounce can exceed the ten-second report
 			// budget when the next standalone sample has no newer sequence.
@@ -80,6 +88,28 @@ func (c *RuntimeController) refreshMaintenanceActiveRecoveryQualified(ctx contex
 		stage = "history"
 		if !allowed[id] {
 			seen[id] = true
+		}
+	}
+	// A slow pulse can itself make the other owner due. Give ordinary
+	// maintenance useful work while every tracked report retains the full five-second sample
+	// reserve inside its unchanged ten-second freshness bound. This prevents
+	// serial A/B telemetry from consuming the entire finite application window.
+	// Missing/old clocks use the original scheduler; preassembly refresh and
+	// all report-age admission checks remain mandatory.
+	if allClocksKnown && len(clocks) > 1 {
+		now := c.recoveryNow()
+		oldest := now
+		shortFQDN := true
+		for id, returned := range clocks {
+			if returned < oldest {
+				oldest = returned
+			}
+			shortFQDN = shortFQDN && c.fqdnNativeWindowNeedsRefresh(id, c.active[id])
+		}
+		if shortFQDN && now-oldest < 5*time.Second {
+			for id := range clocks {
+				seen[id] = true
+			}
 		}
 	}
 	connection = uuid.Nil
