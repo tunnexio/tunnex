@@ -37,6 +37,9 @@ type IPsecActiveRecoveryRefresher interface {
 }
 
 func RefreshIPsecRuntimeStatus(ctx context.Context, client IPsecRuntimeTransport, controller IPsecRuntimeApplier) error {
+	if observer, ok := controller.(IPsecActiveRecoveryObservedRefresher); ok {
+		return refreshIPsecRuntimeStatusObserved(ctx, client, observer)
+	}
 	observer, ok := controller.(IPsecActiveRecoveryRefresher)
 	if !ok {
 		return nil
