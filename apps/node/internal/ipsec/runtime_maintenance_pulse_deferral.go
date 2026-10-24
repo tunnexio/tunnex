@@ -83,6 +83,29 @@ func (d *maintenancePulseDeferral) deferPulse(ctx context.Context, c *RuntimeCon
 // overrun refuses through the ordinary maintenance failure path. The clock can
 // advance only through an actual newer, exact-bound returned observation.
 func (d *maintenancePulseDeferral) reportsCurrent(c *RuntimeController) bool {
+	return d.reportsCurrentWithRecovery(c, nil)
+}
+
+// A freshly sampled recovery report is published before rememberRecoveryReport
+// advances its returned clock. Its own previous report may cross the report-age
+// boundary during sampling. Qualify that exact pending observation without
+// changing a clock or granting any forwarding authority; other owners still
+// require their already returned reports. The private caller holds c.mu and
+// supplies the report directly from refreshIPsecActiveRecoveryLockedQualified;
+// there is no external or cached report ingress at this publication boundary.
+func (d *maintenancePulseDeferral) reportsCurrentForRecovery(ctx context.Context, c *RuntimeController, out RuntimeRecoveryHeartbeat) bool {
+	if ctx.Err() != nil {
+		return false
+	}
+	if d != nil && d.used {
+		if _, tracked := d.owners[out.ConnectionID]; !tracked {
+			return false
+		}
+	}
+	return d.reportsCurrentWithRecovery(c, &out)
+}
+
+func (d *maintenancePulseDeferral) reportsCurrentWithRecovery(c *RuntimeController, pending *RuntimeRecoveryHeartbeat) bool {
 	if d == nil || !d.used {
 		return true
 	}
@@ -96,11 +119,41 @@ func (d *maintenancePulseDeferral) reportsCurrent(c *RuntimeController) bool {
 		h := c.recoveryHistory[id]
 		previous := before.active
 		previous.Authority = a.Authority // Only the completed finite renewal may replace authority.
-		if !present || !reflect.DeepEqual(a, previous) || a.Entry.Phase != RuntimeApplied || !validJournalRecovery(a.Entry) || a.Entry.Recovery.Stage != "completed" || !known || clock.sequence < before.clock.sequence || clock.returned < before.clock.returned || clock.epoch != before.clock.epoch || clock.digest != before.clock.digest || clock.current != before.clock.current || h == nil || !h.seen || h.epoch != clock.epoch || h.current != clock.current || now < h.lastNow || now < clock.returned || now-clock.returned > 10*time.Second {
+		if !present || !reflect.DeepEqual(a, previous) || a.Entry.Phase != RuntimeApplied || !validJournalRecovery(a.Entry) || a.Entry.Recovery.Stage != "completed" || !known || clock.sequence < before.clock.sequence || clock.returned < before.clock.returned || clock.epoch != before.clock.epoch || clock.digest != before.clock.digest || clock.current != before.clock.current || h == nil || !h.seen || h.epoch != clock.epoch || h.current != clock.current || now < h.lastNow || now < clock.returned {
+			return false
+		}
+		if pending != nil && pending.ConnectionID == id {
+			if !maintenancePendingRecoveryCurrent(c, a, clock, h, now, *pending) {
+				return false
+			}
+		} else if now-clock.returned > 10*time.Second {
 			return false
 		}
 	}
 	return true
+}
+
+func maintenancePendingRecoveryCurrent(c *RuntimeController, a runtimeActive, clock runtimeRecoveryReportClock, h *recoveryDecision, now time.Duration, out RuntimeRecoveryHeartbeat) bool {
+	r, d := out.Report, out.Delivery
+	if !c.qualification.current() || c.config.DaemonAlive == nil || !c.config.DaemonAlive() || a.Authority == nil || out.ConnectionID != a.Entry.Allocation.ConnectionID || !reflect.DeepEqual(d, a.Delivery) || r.BGP != nil || r.TransportVersion != nil || r.TunnelCount != nil || r.DeliveryID != d.ID || r.DesiredRevision != d.DesiredRevision || r.ConfigurationRevision != d.Manifest.ConfigurationRevision || r.RecoveryVersion == nil || *r.RecoveryVersion != 1 || r.SelectionSequence == nil || *r.SelectionSequence == 0 || *r.SelectionSequence > 9007199254740991 || *r.SelectionSequence <= clock.sequence || *r.SelectionSequence != c.recoveryStatusSequence[d.ID] || h.lastAt < 0 || h.lastAt <= clock.returned || h.lastAt > h.lastNow || h.lastNow > now || now-h.lastAt > 5*time.Second {
+		return false
+	}
+	if _, err := a.Authority.RemainingForApply(a.Identity, 5*time.Second); err != nil {
+		return false
+	}
+	for i, tunnel := range r.Tunnels {
+		if tunnel.ID != d.Manifest.Tunnels[i].ID || tunnel.Slot != i+1 || tunnel.Selected != d.Manifest.Tunnels[i].Selected || (tunnel.Status != "up" && tunnel.Status != "down") {
+			return false
+		}
+	}
+	selected := int(selectedRuntimeSlot(a.Entry))
+	if selected < 1 || selected > len(r.Tunnels) {
+		return false
+	}
+	if r.Tunnels[selected-1].Status == "up" {
+		return r.ActiveSlot != nil && *r.ActiveSlot == selected
+	}
+	return r.ActiveSlot == nil
 }
 
 // Only an owner already excluded by ordinary maintenance may leave tracking.

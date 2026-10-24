@@ -429,13 +429,13 @@ func (c *RuntimeController) maintainIPsecRuntimeItemsAttempt(ctx context.Context
 	if publishRecovery != nil {
 		publishOriginal := publishRecovery
 		publishRecovery = func(ctx context.Context, report RuntimeRecoveryHeartbeat) error {
-			if !deferral.reportsCurrent(c) {
+			if !deferral.reportsCurrentForRecovery(ctx, c, report) {
 				return ErrRuntimeController
 			}
 			if err := publishOriginal(ctx, report); err != nil {
 				return err
 			}
-			if !deferral.reportsCurrent(c) {
+			if !deferral.reportsCurrentForRecovery(ctx, c, report) {
 				return ErrRuntimeController
 			}
 			return nil
