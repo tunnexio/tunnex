@@ -231,8 +231,23 @@ func (c *RuntimeController) observeDesktopGrantsWithRead(ctx context.Context, gr
 	return out, nil
 }
 func (c *RuntimeController) proveDesktopGrants(ctx context.Context, grants []GuardGrant) error {
-	observed, err := c.observeDesktopGrants(ctx, grants)
-	if err != nil || !reflect.DeepEqual(observed, grants) {
+	// Retained FQDN descriptors may outlive their finite native membership. This
+	// boundary proves WireGuard/source/no-SNAT ownership, not answer permission:
+	// keep proving every tuple, but leave its absolute answer deadline to the
+	// unchanged final FQDN guard limiter. A private proof copy also covers expiry
+	// during kernel reads without changing any live grant, descriptor or lease.
+	proof := append([]GuardGrant(nil), grants...)
+	for i, g := range proof {
+		if g.DesktopDeviceID == uuid.Nil || !g.FQDNManaged {
+			continue
+		}
+		if g.FQDN.Version != 2 || g.FQDN.ResolverKind != "static_cname" || !g.FQDN.valid() || !g.DesktopExpiresAt.Equal(g.FQDN.ExpiresAt) {
+			return ErrRuntimeController
+		}
+		proof[i].DesktopExpiresAt = time.Time{}
+	}
+	observed, err := c.observeDesktopGrants(ctx, proof)
+	if err != nil || !reflect.DeepEqual(observed, proof) {
 		return ErrRuntimeController
 	}
 	return nil
