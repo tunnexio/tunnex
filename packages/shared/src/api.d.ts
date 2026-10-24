@@ -10790,6 +10790,10 @@ export interface components {
         IPsecEligibility: {
             /** @description Fresh gateway capability for desktop static CNAME application authorization over AWS BGP. */
             desktop_fqdn_supported?: boolean;
+            /** @description Fresh gateway capability for enrolled desktop access over AWS static IPsec. The cloud requires an explicit return route for each authorized desktop address. */
+            desktop_static_supported?: boolean;
+            /** @description Fresh gateway capability for managed CNAME desktop application authorization over AWS static IPsec. */
+            desktop_static_fqdn_supported?: boolean;
             eligible: boolean;
             /** @enum {string} */
             reason: "eligible" | "opt_in_required" | "gateway_unavailable" | "unsupported" | "report_stale";

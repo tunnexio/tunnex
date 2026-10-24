@@ -10,7 +10,17 @@ import (
 	"time"
 )
 
-// The short-member follow-up is an expiry-only update of an exact live BGP
+// Only a completed native owner may receive an expiry-only refresh. AWS static
+// keeps its durably selected recovery slot; existing BGP providers keep their
+// process and RIB qualification. Neither path can complete a pending switch.
+func runtimeFQDNFollowupEntrySupported(e RuntimeJournalEntry) bool {
+	if e.ContractVersion == 3 {
+		return e.BGPProcess != nil && e.BGPProcess.Stage == "ready" && e.BGPRoutes != nil && e.BGPRoutes.Stage == "completed" && validJournalBGP(e)
+	}
+	return runtimeDesktopEntrySupported(e)
+}
+
+// The short-member follow-up is an expiry-only update of an exact live
 // owner, not a general Apply. The combined installer already performs the full
 // fresh native/environment/peer/RIB/MTU proof AFTER the new CP nonce. Repeating
 // that proof in a preliminary collection can consume the old native member.
@@ -29,7 +39,17 @@ func (c *RuntimeController) commitFQDNFollowup(ctx context.Context, authority fu
 		_, _ = c.refuse(ctx, entries)
 		return ErrRuntimeController
 	}
-	if authority == nil || bgpCurrent == nil || !bgpCurrent() || ctx.Err() != nil || len(refreshed) == 0 || len(refreshed) > 256 {
+	// Static-only gateways do not need FRR. If any retained owner uses BGP,
+	// preserve its qualification throughout the shared atomic replacement.
+	transportCurrent := func() bool {
+		for _, owner := range c.active {
+			if owner.Entry.ContractVersion == 3 && (bgpCurrent == nil || !bgpCurrent()) {
+				return false
+			}
+		}
+		return true
+	}
+	if authority == nil || !transportCurrent() || ctx.Err() != nil || len(refreshed) == 0 || len(refreshed) > 256 {
 		return fail()
 	}
 	if _, gateErr := os.Lstat(filepath.Join(c.config.JournalDir, "restoration-startup-gate")); !os.IsNotExist(gateErr) {
@@ -48,7 +68,7 @@ func (c *RuntimeController) commitFQDNFollowup(ctx context.Context, authority fu
 	for id, m := range refreshed {
 		old, ok := c.active[id]
 		window, known := c.fqdnNativeWindows[id]
-		if !ok || !known || old.Authority == nil || old.Entry.ContractVersion != 3 || old.Entry.AbsenceOnly || old.Entry.Phase != RuntimeApplied || old.Entry.BGPProcess == nil || old.Entry.BGPProcess.Stage != "ready" || old.Entry.BGPRoutes == nil || old.Entry.BGPRoutes.Stage != "completed" || !runtimeDeliveryValid(old.Delivery, c.config.OrgID, c.config.GatewayID, "apply") || old.Delivery.CoversDeliveryRevision != 0 || old.Identity != (PermitLeaseIdentity{DeliveryID: old.Delivery.ID, Binding: old.Entry.Engines[0].Binding, PolicyHash: old.Identity.PolicyHash}) || !validDigest(old.Identity.PolicyHash) || !validJournalBGP(old.Entry) || !reflect.DeepEqual(old, window.owner) || m.FQDNExpiryPriorHash != old.Identity.PolicyHash || !reflect.DeepEqual(m.RuntimeDelivery, old.Delivery) || !reflect.DeepEqual(m.Entry, old.Entry) {
+		if !ok || !known || old.Authority == nil || !runtimeFQDNFollowupEntrySupported(old.Entry) || old.Entry.AbsenceOnly || old.Entry.Phase != RuntimeApplied || !runtimeDeliveryValid(old.Delivery, c.config.OrgID, c.config.GatewayID, "apply") || old.Delivery.CoversDeliveryRevision != 0 || old.Identity != (PermitLeaseIdentity{DeliveryID: old.Delivery.ID, Binding: old.Entry.Engines[0].Binding, PolicyHash: old.Identity.PolicyHash}) || !validDigest(old.Identity.PolicyHash) || !reflect.DeepEqual(old, window.owner) || m.FQDNExpiryPriorHash != old.Identity.PolicyHash || !reflect.DeepEqual(m.RuntimeDelivery, old.Delivery) || !reflect.DeepEqual(m.Entry, old.Entry) {
 			return fail()
 		}
 		matches := 0
@@ -75,7 +95,7 @@ func (c *RuntimeController) commitFQDNFollowup(ctx context.Context, authority fu
 			retracted.Grants = m.Grants
 			staged[id] = retracted
 			health := func() bool {
-				return ctx.Err() == nil && c.qualification.current() && c.config.DaemonAlive != nil && c.config.DaemonAlive() && bgpCurrent()
+				return ctx.Err() == nil && c.qualification.current() && c.config.DaemonAlive != nil && c.config.DaemonAlive() && transportCurrent()
 			}
 			if c.retractFQDNOnly(ctx, &runtimeFQDNPolicyRetraction{connection: id}, original, staged, health) == nil {
 				return nil
@@ -114,7 +134,7 @@ func (c *RuntimeController) commitFQDNFollowup(ctx context.Context, authority fu
 	// authorize the new member. Keep ordinary authority and every current owner,
 	// transport and native proof fence independent of that scheduling deadline.
 	health := func() bool {
-		return ctx.Err() == nil && c.qualification.current() && c.config.DaemonAlive != nil && c.config.DaemonAlive() && bgpCurrent()
+		return ctx.Err() == nil && c.qualification.current() && c.config.DaemonAlive != nil && c.config.DaemonAlive() && transportCurrent()
 	}
 	current := func() bool {
 		if !health() {
@@ -142,7 +162,7 @@ func (c *RuntimeController) commitFQDNFollowup(ctx context.Context, authority fu
 		committed[id] = cloneMaintenanceActive(a)
 	}
 	committedCurrent := func() bool {
-		if ctx.Err() != nil || !c.qualification.current() || c.config.DaemonAlive == nil || !c.config.DaemonAlive() || !bgpCurrent() {
+		if ctx.Err() != nil || !c.qualification.current() || c.config.DaemonAlive == nil || !c.config.DaemonAlive() || !transportCurrent() {
 			return false
 		}
 		for id, a := range required {
@@ -171,7 +191,7 @@ func (c *RuntimeController) commitFQDNFollowup(ctx context.Context, authority fu
 				// These owners already passed atomic adoption. Retain exactly
 				// their committed finite ordinary authority, never extend it.
 				err := c.retractFQDNOnly(ctx, &runtimeFQDNPolicyRetraction{connection: id, nativeReplaced: true}, committed, committed, func() bool {
-					return ctx.Err() == nil && c.qualification.current() && c.config.DaemonAlive != nil && c.config.DaemonAlive() && bgpCurrent()
+					return ctx.Err() == nil && c.qualification.current() && c.config.DaemonAlive != nil && c.config.DaemonAlive() && transportCurrent()
 				})
 				return err == nil, err
 			}
@@ -219,7 +239,7 @@ func (c *RuntimeController) commitFQDNFollowup(ctx context.Context, authority fu
 	return nil
 }
 
-// Preserve the normal transport report envelope for one- and two-tunnel BGP.
+// Preserve the normal transport report envelope for supported one- and two-tunnel owners.
 func runtimeFQDNFollowupReport(d RuntimeDelivery) (RuntimeStatusReport, error) {
 	count, err := runtimeTransportContract(d.Manifest)
 	if err != nil {

@@ -296,7 +296,7 @@ func (s *ConnectionStore) PermitLease(ctx context.Context, p RuntimePrincipal, i
 	if e = tx.QueryRow(ctx, `SELECT clock_timestamp()`).Scan(&observedAt); e != nil {
 		return RuntimeLease{}, createError(e)
 	}
-	policy, expired, e := runtimeFQDNLeaseContinuity(policy, r, RuntimePolicyInput{OrgID: c.OrgID, NodeID: p.NodeID, SiteID: c.HistoricalSiteID, ConnectionID: id, Config: cfg, ConfigurationRevision: 1, FQDNPolicyVersion: policy.SelectedFQDNVersion, DesktopFQDNVersion: policy.SelectedDesktopFQDNVersion, DesktopTransitVersion: policy.SelectedDesktopTransitVersion}, observedAt)
+	policy, expired, e := runtimeFQDNLeaseContinuity(policy, r, RuntimePolicyInput{OrgID: c.OrgID, NodeID: p.NodeID, SiteID: c.HistoricalSiteID, ConnectionID: id, Config: cfg, ConfigurationRevision: 1, FQDNPolicyVersion: policy.SelectedFQDNVersion, DesktopFQDNVersion: policy.SelectedDesktopFQDNVersion, DesktopTransitVersion: policy.SelectedDesktopTransitVersion, DesktopStaticVersion: policy.SelectedDesktopStaticVersion}, observedAt)
 	if e != nil {
 		slog.WarnContext(ctx, "ipsec_permit_lease_conflict", "stage", "policy_hash", "connection_id", id.String())
 		return RuntimeLease{}, e

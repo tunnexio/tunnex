@@ -6016,7 +6016,13 @@ type IPsecEligibility struct {
 
 	// DesktopFqdnSupported Fresh gateway capability for desktop static CNAME application authorization over AWS BGP.
 	DesktopFqdnSupported *bool `json:"desktop_fqdn_supported,omitempty"`
-	Eligible             bool  `json:"eligible"`
+
+	// DesktopStaticFqdnSupported Fresh gateway capability for managed CNAME desktop application authorization over AWS static IPsec.
+	DesktopStaticFqdnSupported *bool `json:"desktop_static_fqdn_supported,omitempty"`
+
+	// DesktopStaticSupported Fresh gateway capability for enrolled desktop access over AWS static IPsec. The cloud requires an explicit return route for each authorized desktop address.
+	DesktopStaticSupported *bool `json:"desktop_static_supported,omitempty"`
+	Eligible               bool  `json:"eligible"`
 
 	// GcpClassic Advisory readiness to enable BGP, checked independently from storing disabled configurations. Enabling rechecks gateway capability and authority.
 	GcpClassic *IPsecBGPEligibility `json:"gcp_classic,omitempty"`

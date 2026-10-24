@@ -22,7 +22,7 @@ func (c *RuntimeController) rememberFQDNNativeWindows(in GuardIntent, active map
 	windows := map[uuid.UUID]runtimeFQDNNativeWindow{}
 	for _, connection := range in.Connections {
 		owner, ok := active[connection.ID]
-		if !ok || connection.PrefixOnly || owner.Entry.ContractVersion != 3 {
+		if !ok || connection.PrefixOnly || (owner.Entry.ContractVersion != 3 && !runtimeDesktopEntrySupported(owner.Entry)) {
 			continue
 		}
 		for _, grant := range connection.Grants {

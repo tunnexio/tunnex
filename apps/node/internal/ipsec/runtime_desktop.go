@@ -19,11 +19,39 @@ func validDesktopKey(s string) bool {
 	key, e := base64.StdEncoding.DecodeString(s)
 	return e == nil && len(key) == 32 && s == base64.StdEncoding.EncodeToString(key)
 }
+
+// Desktop material remains an exact AWS contract. The cloud return route for a
+// static connection is configured independently; accepting a grant never creates
+// a route, translates the source, or supplies application authority by itself.
+func runtimeDesktopManifestSupported(m RuntimeManifest) bool {
+	switch m.ProfileID {
+	case "aws-bgp-ipv4-v1":
+		return m.BGP != nil
+	case "aws-static-ipv4-v1":
+		return m.BGP == nil && m.BGPVersion == nil && m.RecoveryVersion != nil && *m.RecoveryVersion == 1
+	default:
+		return false
+	}
+}
+
+// AWS uses the empty provider selector in the native allocation. Static
+// desktop maintenance is bound to completed recovery, including the selected
+// slot; an in-progress switch cannot be adopted by a permission refresh.
+func runtimeDesktopEntrySupported(e RuntimeJournalEntry) bool {
+	if e.Allocation.ProfileID != "" {
+		return false
+	}
+	if e.ContractVersion == 3 {
+		return e.Allocation.BGP && e.BGP != nil
+	}
+	return e.ContractVersion == 2 && !e.Allocation.BGP && e.BGP == nil && validJournalRecovery(e) && e.Recovery.Stage == "completed"
+}
+
 func runtimeDesktopGrants(m RuntimeMaterial, local, remote []netip.Prefix) ([]GuardGrant, error) {
 	if len(m.Policy.DesktopGrants) == 0 {
 		return nil, nil
 	}
-	if m.Manifest.ProfileID != "aws-bgp-ipv4-v1" || m.Manifest.BGP == nil {
+	if !runtimeDesktopManifestSupported(m.Manifest) {
 		return nil, ErrRuntimeController
 	}
 	var out []GuardGrant
@@ -443,4 +471,13 @@ func (c *RuntimeController) DesktopTransitCapability() int {
 		return 0
 	}
 	return c.BGPCapability()
+}
+
+// Static support is independently advertised by an upgraded source-preserving
+// controller. BGP capability alone never implies static desktop support.
+func (c *RuntimeController) DesktopStaticCapability() int {
+	if c == nil || c.config.DesktopNAT == nil {
+		return 0
+	}
+	return c.RecoveryCapability()
 }

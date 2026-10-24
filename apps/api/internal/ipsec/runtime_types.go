@@ -18,6 +18,7 @@ type RuntimePolicyInput struct {
 	DesktopFQDNVersion                  int `json:"-"`
 	OrgID, NodeID, SiteID, ConnectionID uuid.UUID
 	DesktopTransitVersion               int `json:"-"`
+	DesktopStaticVersion                int `json:"-"`
 	Config                              StaticConfig
 	ConfigurationRevision               int64     `json:"-"`
 	FQDNPolicyVersion                   int       `json:"-"`
@@ -77,6 +78,7 @@ type RuntimeDesktopGrant struct {
 type RuntimePolicy struct {
 	SelectedDesktopFQDNVersion    int                   `json:"-"`
 	SelectedDesktopTransitVersion int                   `json:"-"`
+	SelectedDesktopStaticVersion  int                   `json:"-"`
 	DesktopGrants                 []RuntimeDesktopGrant `json:"desktop_grants,omitempty"`
 
 	FQDNLeaseDeadline   time.Time                       `json:"-"`

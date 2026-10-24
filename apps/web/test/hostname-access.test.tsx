@@ -16,7 +16,8 @@ const record: HostnameRecord = { name: "app.office.example", type: "CNAME", valu
 const connection = { id: "connection-a", name: "AWS production", site_id: "site-a", gateway_node_id: "gw-a", desired_intent: "enabled", cleanup_state: "not_required", deleted_at: null, finalized_at: null };
 const provider = { profile_id: "aws-bgp-ipv4-v1", configuration_revision: 1, configuration: { mode: "ipv4-bgp", remote_prefixes: ["10.20.0.0/16"] } };
 let dns: FQDNResolverContextConfig | null;
-let resources: HostnameResource[], policies: PolicyRule[], supported: boolean;
+let resources: HostnameResource[], policies: PolicyRule[], supported: boolean, staticSupported: boolean | undefined;
+let currentProvider: typeof provider;
 const onClose = vi.fn(), onSaved = vi.fn();
 const profile = (id: string, zone: string, records: HostnameRecord[]) => ({ id, name: id, provider_hint: "on_premises" as const, zone_suffixes: [zone], endpoints: [{ address: "9.9.9.9", port: 53, transport: "udp" as const }], static_records: records, legacy_default: false });
 function resolverConfig() {
@@ -38,18 +39,18 @@ async function fill() {
   await person();
 }
 beforeEach(() => {
-  vi.clearAllMocks(); dns = null; resources = []; policies = []; supported = true;
+  vi.clearAllMocks(); dns = null; resources = []; policies = []; supported = true; staticSupported = undefined; currentProvider = provider;
   mocks.get.mockImplementation(async (path: string) => {
     if (path.endsWith("/members")) return { data: [{ user_id: "rajan", name: "Rajan", email: "rajan@example.com", status: "active" }, { user_id: "removed", name: "Removed user", email: "removed@example.com", status: "deactivated" }] };
     if (path.endsWith("/groups")) return { data: [{ id: "engineering", name: "Engineering" }] };
     if (path.endsWith("/sites")) return { data: [site] };
     if (path.endsWith("/nodes")) return { data: [gateway] };
-    if (path.endsWith("/eligibility")) return { data: { eligible: true, reason: "eligible", desktop_fqdn_supported: supported } };
+    if (path.endsWith("/eligibility")) return { data: { eligible: true, reason: "eligible", desktop_fqdn_supported: supported, desktop_static_fqdn_supported: staticSupported } };
     if (path.endsWith("/setting")) return { data: { enabled: true } };
     if (path.endsWith("/zero-trust-mode")) return { data: { mode: "enforcing" } };
     if (path.endsWith("/ipsec/connections")) return { data: { items: [connection], next_cursor: null } };
     if (path.endsWith("/ipsec/connections/{connectionId}")) return { data: connection };
-    if (path.endsWith("/configuration")) return { data: provider };
+    if (path.endsWith("/configuration")) return { data: currentProvider };
     if (path.includes("/fqdn-resolver-contexts/")) return dns ? { data: dns } : { error: { error: { code: "fqdn_resolver_config_not_found" } } };
     if (path.endsWith("/fqdn-resources")) return { data: resources };
     if (path.endsWith("/policies")) return { data: policies };
@@ -84,6 +85,61 @@ it("saves a scoped CNAME, TCP 443 resource and explicit user/group rules in one 
   expect(policies).toEqual([expect.objectContaining({ src_kind: "user", src_user_id: "rajan", dst_kind: "fqdn_resource", dst_fqdn_resource_id: "resource-a" }), expect.objectContaining({ src_kind: "group", src_group_id: "engineering", dst_kind: "fqdn_resource", dst_fqdn_resource_id: "resource-a" })]);
   expect(screen.getByText(/Saved rules still require fresh DNS answers/)).toBeTruthy();
   expect(screen.getByText("resolving")).toBeTruthy();
+});
+
+it("saves AWS static hostname access only with static support and explains both cloud return paths", async () => {
+  currentProvider = { ...provider, profile_id: "aws-static-ipv4-v1", configuration: { ...provider.configuration, mode: "ipv4-static" } };
+  supported = false; staticSupported = true;
+  mounted(); await fill();
+  expect(screen.getByText(/assigned VPN IPv4 address as a \/32/)).toBeTruthy();
+  expect(screen.getByText(/VGW: add the \/32/)).toBeTruthy();
+  expect(screen.getByText(/TGW: route the \/32/)).toBeTruthy();
+  expect(screen.getByRole("link", { name: "Devices" }).getAttribute("href")).toBe("/devices");
+  fireEvent.click(screen.getByRole("button", { name: "Save hostname access" }));
+  await screen.findByText("DNS, hostname resource and access rules saved.");
+  expect(resources[0]).toMatchObject({ application_ipsec_path: { connection_id: "connection-a", configuration_revision: 1 }, protocol: "tcp", port_low: 443, port_high: 443 });
+  expect(policies).toEqual([expect.objectContaining({ src_kind: "user", src_user_id: "rajan", dst_kind: "fqdn_resource" })]);
+});
+
+it.each([false, undefined])("blocks AWS static hostname access when its capability is %s even with BGP support", async value => {
+  currentProvider = { ...provider, profile_id: "aws-static-ipv4-v1", configuration: { ...provider.configuration, mode: "ipv4-static" } };
+  staticSupported = value;
+  mounted();
+  await screen.findByText(/has not reported current hostname-access support for AWS static routing/);
+  expect((screen.getByRole("button", { name: "Save hostname access" }) as HTMLButtonElement).disabled).toBe(true);
+  expect(mocks.put).not.toHaveBeenCalled(); expect(mocks.post).not.toHaveBeenCalled();
+});
+
+it.each(["gcp-classic-static-ipv4-v1", "azure-active-active-static-ipv4-v1", "azure-active-active-bgp-ipv4-v1"])("keeps %s outside desktop hostname access", async profileId => {
+  staticSupported = true;
+  currentProvider = { ...provider, profile_id: profileId, configuration: { ...provider.configuration, mode: profileId.includes("-static-") ? "ipv4-static" : "ipv4-bgp" } };
+  mounted(); await screen.findByText(/requires an AWS BGP or AWS static connection/);
+  expect((screen.getByRole("button", { name: "Save hostname access" }) as HTMLButtonElement).disabled).toBe(true);
+  expect(screen.queryByText(/assigned VPN IPv4 address as a \/32/)).toBeNull();
+  expect(mocks.put).not.toHaveBeenCalled(); expect(mocks.post).not.toHaveBeenCalled();
+});
+
+it("rechecks static hostname capability before changing DNS", async () => {
+  currentProvider = { ...provider, profile_id: "aws-static-ipv4-v1", configuration: { ...provider.configuration, mode: "ipv4-static" } };
+  staticSupported = true; mounted(); await fill(); staticSupported = false;
+  fireEvent.click(screen.getByRole("button", { name: "Save hostname access" }));
+  await screen.findByText(/has not reported current hostname-access support for AWS static routing/);
+  expect(mocks.put).not.toHaveBeenCalled(); expect(mocks.post).not.toHaveBeenCalled();
+});
+
+it("refuses a different AWS routing profile at save instead of reusing its initial capability", async () => {
+  currentProvider = { ...provider, profile_id: "aws-static-ipv4-v1", configuration: { ...provider.configuration, mode: "ipv4-static" } };
+  supported = false; staticSupported = true; mounted(); await fill(); currentProvider = provider;
+  fireEvent.click(screen.getByRole("button", { name: "Save hostname access" }));
+  await screen.findByText(/The connection configuration changed/);
+  expect(mocks.put).not.toHaveBeenCalled(); expect(mocks.post).not.toHaveBeenCalled();
+});
+
+it("refuses mismatched AWS static profile and BGP mode", async () => {
+  currentProvider = { ...provider, profile_id: "aws-static-ipv4-v1" }; staticSupported = true;
+  mounted(); await screen.findByText(/requires an AWS BGP or AWS static connection/);
+  expect((screen.getByRole("button", { name: "Save hostname access" }) as HTMLButtonElement).disabled).toBe(true);
+  expect(mocks.put).not.toHaveBeenCalled(); expect(mocks.post).not.toHaveBeenCalled();
 });
 
 it("exposes Grant access beside saved records and prefills its connection context", async () => {

@@ -15,9 +15,9 @@ import (
 
 // Exercise the real ordinary-policy withdrawal and normal-material path. Native
 // observations use the existing finite-clock WireGuard/FRR fixture.
-func fqdnPolicyTransitionRig(t *testing.T, restore bool) (*renewalCycleRig, *fqdnTurnoverClient) {
+func fqdnPolicyTransitionRig(t *testing.T, restore bool, static ...bool) (*renewalCycleRig, *fqdnTurnoverClient) {
 	t.Helper()
-	r, client := fqdnExpiryTurnoverRig(t)
+	r, client := fqdnExpiryTurnoverRig(t, static...)
 	source := r.c.config.FQDNPolicy
 	original := source.view.Load().policy
 	original.Mode = nodepolicy.ModeEnforcing

@@ -9,6 +9,7 @@ import { EntityPicker, type PickerOption } from "./EntityPicker";
 import { FQDNEnforcementSetting } from "./FQDNEnforcementSetting";
 import { ModeSection } from "../pages/Access";
 import { PrivateDNSCNAMEUpstreams, defaultCNAMEUpstreams, validCNAMEUpstreams } from "./PrivateDNSCNAMEUpstreams";
+import { IPsecStaticDesktopRoutes } from "./IPsecStaticDesktopRoutes";
 import { Button, ErrorText, Field, Input, Loading, Modal, Select } from "./ui";
 
 type Connection = components["schemas"]["IPsecConnection"];
@@ -17,8 +18,11 @@ type Subject = { kind: "user" | "group"; id: string; label: string };
 type Props = { orgId: string; role: Member["role"]; site: Site; gateway: Node; connectionId?: string; record?: HostnameRecord; onClose: () => void; onSaved: () => void; onEditDNS?: () => void };
 const enabledConnection = (item: Connection, site: string, gateway: string) => item.site_id === site && item.gateway_node_id === gateway
   && item.desired_intent === "enabled" && !item.deleted_at && !item.finalized_at && item.cleanup_state !== "pending";
-const supportedConfiguration = (value: Configuration | null) => value?.profile_id === "aws-bgp-ipv4-v1"
-  && value.configuration?.mode === "ipv4-bgp" && value.configuration_revision === 1;
+const staticConfiguration = (value: Configuration | null) => value?.profile_id === "aws-static-ipv4-v1"
+  && value.configuration?.mode === "ipv4-static" && value.configuration_revision === 1;
+const supportedConfiguration = (value: Configuration | null) => staticConfiguration(value) || (value?.profile_id === "aws-bgp-ipv4-v1"
+  && value.configuration?.mode === "ipv4-bgp" && value.configuration_revision === 1);
+const staticSupportMessage = "This gateway has not reported current hostname-access support for AWS static routing. Update the gateway, wait for its next report, then refresh prerequisites.";
 const matchingRule = (rule: PolicyRule, subject: Subject, id: string) => rule.dst_kind === "fqdn_resource" && rule.dst_fqdn_resource_id === id
   && rule.src_kind === subject.kind && (subject.kind === "user" ? rule.src_user_id === subject.id : rule.src_group_id === subject.id)
   && rule.enabled && (!rule.expires_at || Date.parse(rule.expires_at) > Date.now());
@@ -42,13 +46,15 @@ export function HostnameAccessDialog({ orgId, role, site, gateway, connectionId:
   const [members, setMembers] = useState<Member[]>([]), [groups, setGroups] = useState<UserGroup[]>([]), [subjects, setSubjects] = useState<Subject[]>([]);
   const [connections, setConnections] = useState<Connection[]>([]), [connectionId, setConnectionId] = useState(scopedConnection ?? ""), [configuration, setConfiguration] = useState<Configuration | null>(null);
   const [loading, setLoading] = useState(true), [pathLoading, setPathLoading] = useState(false), [loadError, setLoadError] = useState(""), [pathError, setPathError] = useState("");
-  const [supported, setSupported] = useState(false), [fqdnEnabled, setFQDNEnabled] = useState(false), [enforcing, setEnforcing] = useState(false);
+  const [bgpSupported, setBGPSupported] = useState(false), [staticSupported, setStaticSupported] = useState(false), [fqdnEnabled, setFQDNEnabled] = useState(false), [enforcing, setEnforcing] = useState(false);
+  const staticPath = staticConfiguration(configuration);
+  const supported = staticPath ? staticSupported : bgpSupported;
   const [busy, setBusy] = useState(false), [started, setStarted] = useState(false), [uncertain, setUncertain] = useState(false), [error, setError] = useState("");
   const [progress, setProgress] = useState(""), [resource, setResource] = useState<HostnameResource | null>(null), [complete, setComplete] = useState(false);
   const alive = useRef(true), saving = useRef(false), committedStage = useRef(false), inventoryEpoch = useRef(0), pathEpoch = useRef(0), resourceId = useRef<string | null>(null);
   useEffect(() => { alive.current = true; return () => { alive.current = false; inventoryEpoch.current++; pathEpoch.current++; }; }, []);
   const reload = useCallback(async () => {
-    const epoch = ++inventoryEpoch.current; setLoading(true); setLoadError(""); setSupported(false);
+    const epoch = ++inventoryEpoch.current; setLoading(true); setLoadError(""); setBGPSupported(false); setStaticSupported(false);
     try {
       const [people, teams, eligibility, setting, mode, dns] = await Promise.all([
         loadOne(() => api.GET("/api/v1/organizations/{orgId}/members", { params: { path: { orgId } } })),
@@ -64,7 +70,8 @@ export function HostnameAccessDialog({ orgId, role, site, gateway, connectionId:
       if ((dns.error && apiErrorCode(dns.error) !== "fqdn_resolver_config_not_found") || (!dns.error && !dns.data?.id)) throw new Error("Could not verify this gateway's DNS profiles. Refresh before saving.");
       setExistingDNS(dns.data ?? null);
       setMembers((people.data as Member[]).filter(member => member.status === "active")); setGroups(teams.data as UserGroup[]);
-      setSupported(eligibility.data.desktop_fqdn_supported === true);
+      setBGPSupported(eligibility.data.desktop_fqdn_supported === true);
+      setStaticSupported(eligibility.data.desktop_static_fqdn_supported === true);
       setFQDNEnabled(setting.data.enabled); setEnforcing(mode.data.mode === "enforcing");
       const rows: Connection[] = []; let after: string | undefined; const seen = new Set<string>();
       do {
@@ -123,7 +130,12 @@ export function HostnameAccessDialog({ orgId, role, site, gateway, connectionId:
       if (currentConnection.error || !currentConnection.data || currentConnection.data.id !== connectionId || !enabledConnection(currentConnection.data, site.id, gateway.id)) throw new Error("This connection is no longer enabled on the selected network and gateway. Close and reopen this drawer before saving.");
       const currentPath = await api.GET("/api/v1/organizations/{orgId}/ipsec/connections/{connectionId}/configuration", { params: { path: { orgId, connectionId } } });
       if (!alive.current) return;
-      if (currentPath.error || !supportedConfiguration(currentPath.data ?? null) || currentPath.data?.configuration_revision !== path.configuration_revision) throw new Error("The connection configuration changed. Close and reopen this drawer before saving.");
+      if (currentPath.error || !supportedConfiguration(currentPath.data ?? null) || currentPath.data?.configuration_revision !== path.configuration_revision || currentPath.data.profile_id !== configuration.profile_id || currentPath.data.configuration?.mode !== configuration.configuration?.mode) throw new Error("The connection configuration changed. Close and reopen this drawer before saving.");
+      if (staticConfiguration(currentPath.data)) {
+        const eligibility = await loadOne(() => api.GET("/api/v1/organizations/{orgId}/ipsec/eligibility", { params: { path: { orgId }, query: { site_id: site.id, gateway_node_id: gateway.id } } }));
+        if (!alive.current) return;
+        if (!eligibility.ok || eligibility.data.desktop_static_fqdn_supported !== true) throw new Error(staticSupportMessage);
+      }
       const dns = await api.GET("/api/v1/organizations/{orgId}/fqdn-resolver-contexts/{siteId}/{gatewayId}", { params: { path: contextPath } });
       if (!alive.current) return;
       if (dns.error && apiErrorCode(dns.error) !== "fqdn_resolver_config_not_found") throw new Error(failure(dns.error, "Could not verify current DNS records."));
@@ -178,11 +190,12 @@ export function HostnameAccessDialog({ orgId, role, site, gateway, connectionId:
     <div className="space-y-5">
       <p className="text-sm text-ink-tertiary">Give selected people access to a private hostname through this connection. DNS and access rules are saved together in this flow.</p>
       <div className="rounded-inset border border-line p-3 text-sm"><strong>{site.name}</strong><span className="text-ink-tertiary"> → {gateway.name}</span></div>
-      {loading ? <Loading label="Checking access prerequisites…" /> : loadError ? <ErrorText>{loadError}</ErrorText> : !supported ? <ErrorText>This gateway has not reported current hostname-access support. Update the gateway and wait for its next report, then refresh prerequisites.</ErrorText> : <p className="text-xs text-ink-tertiary">Gateway supports desktop hostname access. Traffic is limited to the connection's approved remote IPv4 ranges.</p>}
+      {loading ? <Loading label="Checking access prerequisites…" /> : loadError ? <ErrorText>{loadError}</ErrorText> : !supported ? <ErrorText>{staticPath ? staticSupportMessage : "This gateway has not reported current hostname-access support. Update the gateway and wait for its next report, then refresh prerequisites."}</ErrorText> : <p className="text-xs text-ink-tertiary">Gateway supports desktop hostname access. Traffic is limited to the connection's approved remote IPv4 ranges.</p>}
       {!busy && <Button size="sm" variant="ghost" onClick={() => void reload()}>Refresh prerequisites</Button>}
       <fieldset disabled={busy || started} className="space-y-4 disabled:opacity-75">
         <Field label="Connection"><Select value={connectionId} disabled={!!scopedConnection} onChange={event => setConnectionId(event.target.value)}><option value="">Select an enabled connection</option>{connections.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</Select></Field>
-        {pathLoading ? <Loading label="Checking connection…" /> : pathError ? <ErrorText>{pathError}</ErrorText> : configuration && !supportedConfiguration(configuration) ? <ErrorText>Desktop hostname access currently requires an AWS BGP connection.</ErrorText> : configuration && <p className="text-xs text-ink-tertiary">Approved application ranges: {configuration.configuration?.remote_prefixes.join(", ")}. The target must resolve to addresses within these ranges.</p>}
+        {pathLoading ? <Loading label="Checking connection…" /> : pathError ? <ErrorText>{pathError}</ErrorText> : configuration && !supportedConfiguration(configuration) ? <ErrorText>Desktop hostname access requires an AWS BGP or AWS static connection.</ErrorText> : configuration && <p className="text-xs text-ink-tertiary">Approved application ranges: {configuration.configuration?.remote_prefixes.join(", ")}. The target must resolve to addresses within these ranges.</p>}
+        {staticPath && <IPsecStaticDesktopRoutes />}
         <Field label="Display name"><Input value={name} maxLength={128} placeholder="Production web app" onChange={event => setName(event.target.value)} /></Field>
         <Field label="Private hostname"><Input value={hostname} disabled={!!record} placeholder="app.internal.example.com" onChange={event => { setHostname(event.target.value); if (!name || name === hostname) setName(event.target.value); }} /></Field>
         <Field label="Target hostname"><Input value={target} placeholder="internal-load-balancer.example.net" onChange={event => setTarget(event.target.value)} /></Field>

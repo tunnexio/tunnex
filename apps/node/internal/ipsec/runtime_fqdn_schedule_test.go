@@ -32,9 +32,9 @@ func (c *fqdnFollowupTestClient) IPsecMaterial(ctx context.Context, id uuid.UUID
 	}
 	return m, e
 }
-func fqdnFollowupFixture(t *testing.T) (*renewalCycleRig, *fqdnFollowupTestClient, string) {
+func fqdnFollowupFixture(t *testing.T, static ...bool) (*renewalCycleRig, *fqdnFollowupTestClient, string) {
 	t.Helper()
-	r, base, name := lateFQDNPublicationFixture(t)
+	r, base, name := lateFQDNPublicationFixture(t, static...)
 	r.c.config.JournalDir = r.c.journal.dir
 	if err := r.c.renewActiveIPsecRuntimeObserved(context.Background(), maintenanceAuthority(r), func() bool { return true }, nil, nil); err != nil {
 		t.Fatal(err)

@@ -11,6 +11,7 @@ import AppAccessRowMenu, { type AppAccessRowMenuAction } from "./AppAccessRowMen
 import { appAccessPageSizes } from "./AppAccessPagination";
 import { AWS_GENERIC_MAX_BYTES, AWS_REQUIRED_CRYPTO, AWSImportError, parseAWSGeneric } from "../lib/awsVpnImport";
 import { IPsecTunnelHealth } from "./IPsecTunnelHealth";
+import { IPsecStaticDesktopRoutes } from "./IPsecStaticDesktopRoutes";
 import { IPsecRotateKeys, canRotateIPsecKeys } from "./IPsecRotateKeys";
 
 type Connection = components["schemas"]["IPsecConnection"];
@@ -261,6 +262,7 @@ function ProviderReadback({ orgId, id, name, role, connection, onClose }: { orgI
         </ResourceSummary>
         {result.profile_id.startsWith("azure-") && result.configuration.azure && <ResourceSummary title="Stored Azure gateway contract" headingLevel={4}><dl className="tnx-resource-facts tnx-resource-facts-three"><div><dt>Gateway SKU</dt><dd>{result.configuration.azure.gateway_sku}</dd></div><div><dt>VPN and IKE</dt><dd>{result.configuration.azure.vpn_type} · IKEv{result.configuration.azure.ike_version}</dd></div><div><dt>Custom policy</dt><dd>AES256 / SHA256 / DHGroup14 · ESP AES256 / SHA256 / PFS2048</dd></div><div><dt>Topology</dt><dd>{result.configuration.tunnels.length === 1 ? "Active-standby" : "Active-active"}</dd></div><div><dt>NAT rules</dt><dd>Disabled</dd></div><div><dt>Policy-based selectors</dt><dd>Disabled</dd></div></dl></ResourceSummary>}
         <div><IPsecTunnelHealth orgId={orgId} connectionId={id} tunnels={result.configuration.tunnels} mode={result.configuration.mode === "ipv4-bgp" ? "ipv4-bgp" : "ipv4-static"} approvedRemotePrefixes={result.configuration.remote_prefixes} profileId={result.profile_id} /></div>
+        {result.profile_id === "aws-static-ipv4-v1" && result.configuration.mode === "ipv4-static" && <IPsecStaticDesktopRoutes />}
         {connection?.site_id && connection.gateway_node_id && connection.desired_intent !== "deleted" && <details className="s2s-disclosure" open={dnsOpen} onToggle={event => setDNSOpen(event.currentTarget.open)}>
           <summary>DNS records and forwarding</summary>
           <div className="mt-3 space-y-3"><p className="text-sm text-ink-secondary">Manage DNS for this connection's network and gateway. Use DNS records for an IP or load balancer hostname, or forward a private zone to its DNS server. DNS answers need separate application permissions and a working tunnel route.</p>

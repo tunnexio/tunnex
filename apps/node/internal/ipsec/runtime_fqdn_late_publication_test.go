@@ -72,9 +72,9 @@ func (c *lateFQDNPublicationClient) RenewIPsecLease(ctx context.Context, id uuid
 	return reply, nil
 }
 
-func lateFQDNPublicationFixture(t *testing.T) (*renewalCycleRig, *lateFQDNPublicationClient, string) {
+func lateFQDNPublicationFixture(t *testing.T, static ...bool) (*renewalCycleRig, *lateFQDNPublicationClient, string) {
 	t.Helper()
-	r, base := fqdnExpiryTurnoverRig(t)
+	r, base := fqdnExpiryTurnoverRig(t, static...)
 	original := r.c.active[r.target]
 	for id := range r.c.active {
 		if id != r.target {

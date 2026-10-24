@@ -50,7 +50,7 @@ func validRuntimeFQDNPolicyAt(policy RuntimePolicy, input RuntimePolicyInput, no
 		if desktop {
 			id, e := uuid.Parse(g.DeviceID)
 			key, ke := base64.StdEncoding.DecodeString(g.PublicKey)
-			if (g.Protocol != "tcp" && g.Protocol != "udp") || g.PortLow == 0 || input.DesktopFQDNVersion != 1 || input.DesktopTransitVersion != 1 || policy.FQDNPolicyVersion != 2 || input.Config.ProfileID != "aws-bgp-ipv4-v1" || input.Config.BGP == nil || e != nil || id == uuid.Nil || id.String() != g.DeviceID || ke != nil || len(key) != 32 || base64.StdEncoding.EncodeToString(key) != g.PublicKey || g.ResolverSourceAddress != "" {
+			if (g.Protocol != "tcp" && g.Protocol != "udp") || g.PortLow == 0 || input.DesktopFQDNVersion != 1 || input.DesktopTransitVersion != 1 || policy.FQDNPolicyVersion != 2 || !DesktopProfileSupported(input) || e != nil || id == uuid.Nil || id.String() != g.DeviceID || ke != nil || len(key) != 32 || base64.StdEncoding.EncodeToString(key) != g.PublicKey || g.ResolverSourceAddress != "" {
 				return false
 			}
 		} else if g.ResolverKind != "" || g.DeviceID != "" || g.PublicKey != "" {

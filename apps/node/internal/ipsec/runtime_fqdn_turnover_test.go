@@ -54,9 +54,15 @@ func (c *fqdnTurnoverClient) RenewIPsecLease(ctx context.Context, id uuid.UUID, 
 	}
 	return out, err
 }
-func fqdnExpiryTurnoverRig(t *testing.T) (*renewalCycleRig, *fqdnTurnoverClient) {
+func fqdnExpiryTurnoverRig(t *testing.T, static ...bool) (*renewalCycleRig, *fqdnTurnoverClient) {
 	t.Helper()
-	r, target, _, _ := desktopBGPRenewalRig(t, true)
+	var r *renewalCycleRig
+	var target uuid.UUID
+	if len(static) > 0 && static[0] {
+		r, target = desktopStaticRenewalRig(t)
+	} else {
+		r, target, _, _ = desktopBGPRenewalRig(t, true)
+	}
 	r.target = target
 	a := r.c.active[r.target]
 	var m RuntimeMaterial

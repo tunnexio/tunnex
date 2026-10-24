@@ -113,7 +113,7 @@ func runtimeFQDNGrants(m RuntimeMaterial, local, remote []netip.Prefix) ([]Guard
 			return nil, ErrRuntimeController
 		}
 		device := parse(f.DeviceID)
-		if desktop && (m.Policy.FQDNPolicyVersion != 2 || m.Manifest.ProfileID != "aws-bgp-ipv4-v1" || m.Manifest.BGP == nil || device == uuid.Nil || !validDesktopKey(f.PublicKey) || se != nil || src.Bits() != 32 || !src.Addr().IsGlobalUnicast() || withinPrefixes(src, local) || withinPrefixes(src, remote)) {
+		if desktop && (m.Policy.FQDNPolicyVersion != 2 || !runtimeDesktopManifestSupported(m.Manifest) || device == uuid.Nil || !validDesktopKey(f.PublicKey) || se != nil || src.Bits() != 32 || !src.Addr().IsGlobalUnicast() || withinPrefixes(src, local) || withinPrefixes(src, remote)) {
 			return nil, ErrRuntimeController
 		}
 		if !f.FQDNManaged || !b.valid() || b.SelectedSiteID != m.Manifest.SiteID || b.SelectedGatewayID != m.Manifest.NodeID || b.ConnectionID != m.Manifest.ConnectionID || b.ConfigurationRevision != m.Manifest.ConfigurationRevision || se != nil || de != nil || f.Source != src.String() || f.Destination != dst.String() || !validGuardPrefix(src) || !validGuardPrefix(dst) || dst.Bits() != 32 || (!desktop && !withinPrefixes(src, local)) || !withinPrefixes(dst, remote) || (p != GuardAny && p != GuardTCP && p != GuardUDP) || (p == GuardAny && (f.PortLow != 0 || f.PortHigh != 0)) || (p != GuardAny && (f.PortLow == 0 || f.PortHigh < f.PortLow)) {

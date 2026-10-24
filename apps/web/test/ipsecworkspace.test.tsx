@@ -29,6 +29,9 @@ it("loads stored disabled configurations and nonsecret readback", async () => {
  render(view()); fireEvent.click(await screen.findByRole("button", { name: "Office to cloud" }));
  fireEvent.click(await screen.findByText("Stored configuration"));
  await screen.findByText("9.9.9.9"); expect(screen.getByText("10.20.0.0/16")).toBeTruthy();
+ expect(screen.getByText("Desktop return routes in AWS")).toBeTruthy();
+ expect(screen.getByText(/VGW: add the \/32/)).toBeTruthy();
+ expect(screen.getByText(/TGW: route the \/32/)).toBeTruthy();
  expect(screen.queryByLabelText("Tunnel 1 PSK")).toBeNull();
  const breadcrumb=screen.getByRole("navigation",{name:"IPsec connection breadcrumb"});expect(within(breadcrumb).getByText("Office to cloud").getAttribute("aria-current")).toBe("page");expect(screen.queryByRole("table",{name:"IPsec connections"})).toBeNull();
  fireEvent.click(within(breadcrumb).getByRole("button",{name:"Back to connections"}));expect(screen.getByRole("table",{name:"IPsec connections"})).toBeTruthy();expect(screen.getByRole("button",{name:"Office to cloud"})).toBeTruthy();expect(mock.post).not.toHaveBeenCalled();expect(mock.put).not.toHaveBeenCalled();expect(mock.del).not.toHaveBeenCalled();

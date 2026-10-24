@@ -13,10 +13,11 @@ import (
 // changing any ordinary application or transport intent. This witness permits
 // collecting NEW authority only; it never transfers the old policy's lease.
 // Restrict it to removal of all desktop static-CNAME grants, or restoration
-// from none, on an already-exported AWS BGP desktop source. Changed nonempty
-// generations continue through the existing expiry-only/ordinary Apply paths.
+// from none, on a qualified AWS desktop owner. BGP sources must already be
+// exported; static sources still require fresh peer and no-SNAT proof.
+// Changed nonempty generations continue through the existing expiry-only/ordinary Apply paths.
 func (c *RuntimeController) fqdnPolicyTransitionEligible(old runtimeActive, m maintenanceItem) bool {
-	if old.Entry.ContractVersion != 3 || old.Entry.Allocation.ProfileID != "" || !old.Entry.Allocation.BGP || !validDigest(m.PolicyHash) || m.PolicyHash == old.Identity.PolicyHash || (len(old.FQDNLeaseDescriptors) == 0) == (len(m.FQDNLeaseDescriptors) == 0) {
+	if !runtimeDesktopEntrySupported(old.Entry) || !validDigest(m.PolicyHash) || m.PolicyHash == old.Identity.PolicyHash || (len(old.FQDNLeaseDescriptors) == 0) == (len(m.FQDNLeaseDescriptors) == 0) {
 		return false
 	}
 	if c.config.FQDNPolicy == nil {
@@ -59,9 +60,9 @@ func (c *RuntimeController) fqdnPolicyTransitionEligible(old runtimeActive, m ma
 		for _, prefix := range c.bgpDesktopExports[old.Entry.DeliveryID] {
 			known = known || prefix == g.Source
 		}
-		if !known {
+		if old.Entry.Allocation.BGP && !known {
 			return false
-		} // no new BGP export or source is adopted by maintenance
+		} // no new BGP export is adopted by maintenance
 		marked++
 	}
 	if len(old.Grants) != len(ordinary) {
@@ -112,6 +113,9 @@ func (c *RuntimeController) refreshFQDNMaintenanceMaterial(ctx context.Context, 
 	entry.Phase, entry.Observed = old.Entry.Phase, old.Entry.Observed
 	if entry.ContractVersion == 3 {
 		entry.BGPRoutes, entry.BGPProcess, entry.BGPProcessRetired, entry.BGPProcessHistory = old.Entry.BGPRoutes, old.Entry.BGPProcess, old.Entry.BGPProcessRetired, old.Entry.BGPProcessHistory
+	}
+	if entry.ContractVersion == 2 {
+		entry.Recovery = old.Entry.Recovery
 	}
 	if !reflect.DeepEqual(entry, old.Entry) {
 		return maintenanceItem{}, old, ErrRuntimeController
@@ -168,7 +172,7 @@ func (c *RuntimeController) withdrawPendingFQDNPolicyLocked(ctx context.Context)
 		if c.fqdnGrantsCurrent(a.Grants) {
 			continue
 		}
-		if a.Entry.ContractVersion != 3 {
+		if !runtimeDesktopEntrySupported(a.Entry) {
 			return fail(id, "pending_owner_contract")
 		}
 		if a.Entry.Allocation.ProfileID != "" {
@@ -275,7 +279,7 @@ func (c *RuntimeController) retractFQDNOnly(ctx context.Context, signal *runtime
 		stale := !c.fqdnGrantsCurrent(candidate.Grants) || !c.fqdnGrantsCurrent(old.Grants)
 		kept := cloneMaintenanceActive(old)
 		if stale {
-			if old.Entry.ContractVersion != 3 || !old.Entry.Allocation.BGP || old.Entry.Allocation.ProfileID != "" {
+			if !runtimeDesktopEntrySupported(old.Entry) {
 				return ErrRuntimeController
 			}
 			for _, grants := range [][]GuardGrant{old.Grants, candidate.Grants} {

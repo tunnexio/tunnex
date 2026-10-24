@@ -9,7 +9,7 @@ import (
 
 // A static CNAME supplies DNS provenance; this independent connection binding supplies application routing.
 func compileIPsecDesktopFQDNGrants(s Snapshot, in ipsec.RuntimePolicyInput) []ipsec.RuntimeFQDNGrant {
-	if s.Mode != ModeEnforcing || !s.FQDNResourcesLicensed || !s.FQDNResourcesEnabled || in.DesktopTransitVersion != 1 || in.DesktopFQDNVersion != 1 || in.FQDNPolicyVersion != 2 || in.ConfigurationRevision != 1 || in.Config.ProfileID != "aws-bgp-ipv4-v1" || in.Config.BGP == nil || in.CompiledAt.IsZero() {
+	if s.Mode != ModeEnforcing || !s.FQDNResourcesLicensed || !s.FQDNResourcesEnabled || in.DesktopTransitVersion != 1 || in.DesktopFQDNVersion != 1 || in.FQDNPolicyVersion != 2 || in.ConfigurationRevision != 1 || !ipsec.DesktopProfileSupported(in) || in.CompiledAt.IsZero() {
 		return nil
 	}
 	devices := ipsecDesktopDevices(s, in)

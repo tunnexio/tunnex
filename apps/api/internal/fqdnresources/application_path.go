@@ -28,12 +28,12 @@ func validateApplicationPath(ctx context.Context, q resolverConfigQuerier, org u
 		return apierr.BadRequest("fqdn_application_path_unavailable", "select the application resolver context")
 	}
 	var connection, ready bool
-	err := q.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM ipsec_connections c JOIN ipsec_org_settings s ON s.org_id=c.org_id AND s.enabled WHERE c.id=$1 AND c.org_id=$2 AND c.site_id=$3 AND c.gateway_node_id=$4 AND c.provider_profile='aws-bgp-ipv4-v1' AND c.desired_intent='enabled' AND c.deleted_at IS NULL),fqdn_application_ipsec_path_valid($2,$3,$4,$1,$5)`, p.ConnectionID, org, in.Context.SiteID, in.Context.GatewayID, p.ConfigurationRevision).Scan(&connection, &ready)
+	err := q.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM ipsec_connections c JOIN ipsec_org_settings s ON s.org_id=c.org_id AND s.enabled WHERE c.id=$1 AND c.org_id=$2 AND c.site_id=$3 AND c.gateway_node_id=$4 AND c.provider_profile IN ('aws-bgp-ipv4-v1','aws-static-ipv4-v1') AND c.desired_intent='enabled' AND c.deleted_at IS NULL),fqdn_application_ipsec_path_valid($2,$3,$4,$1,$5)`, p.ConnectionID, org, in.Context.SiteID, in.Context.GatewayID, p.ConfigurationRevision).Scan(&connection, &ready)
 	if err != nil {
 		return err
 	}
 	if !connection {
-		return apierr.BadRequest("fqdn_application_path_unavailable", "select an enabled AWS BGP connection on the resolver gateway")
+		return apierr.BadRequest("fqdn_application_path_unavailable", "select an enabled AWS BGP or static connection on the resolver gateway")
 	}
 	if !ready {
 		return apierr.Conflict("fqdn_application_gateway_unsupported", "gateway must freshly report desktop FQDN application support")

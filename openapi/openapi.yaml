@@ -12324,6 +12324,8 @@ components:
       required: [eligible, reason]
       properties:
         desktop_fqdn_supported: { type: boolean, description: "Fresh gateway capability for desktop static CNAME application authorization over AWS BGP." }
+        desktop_static_supported: { type: boolean, description: "Fresh gateway capability for enrolled desktop access over AWS static IPsec. The cloud requires an explicit return route for each authorized desktop address." }
+        desktop_static_fqdn_supported: { type: boolean, description: "Fresh gateway capability for managed CNAME desktop application authorization over AWS static IPsec." }
         eligible: { type: boolean }
         reason: { type: string, enum: [eligible, opt_in_required, gateway_unavailable, unsupported, report_stale] }
         bgp:

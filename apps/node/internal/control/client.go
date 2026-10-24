@@ -249,6 +249,7 @@ func (c *Client) ReportInfo(ctx context.Context, publicKey, endpoint string, egr
 		"wireguard_applied_mtu": ps.WireGuardAppliedMTU,
 		// Only the actual qualified controller may advertise this protocol.
 		"ipsec_config_version":         c.ipsecCapability(),
+		"ipsec_desktop_static_version": c.ipsecDesktopStaticCapability(),
 		"ipsec_recovery_version":       c.ipsecRecoveryCapability(),
 		"ipsec_retained_guard_version": c.ipsecRetainedGuardCapability(),
 		"public_key":                   publicKey, "endpoint": endpoint, "egress_nat": egressNAT, "egress_ipv6": egressIPv6,
