@@ -25,6 +25,9 @@ func TestAPIRuntimeManifestWireGolden(t *testing.T) {
 	v := 1
 	m.RecoveryVersion = &v
 	add("recovery")
+	m.DesktopStaticVersion = &v
+	add("static-desktop")
+	m.DesktopStaticVersion = nil
 	m.RecoveryVersion = nil
 	m.ProfileID = "aws-bgp-ipv4-v1"
 	m.BGP = &BGPConfig{LocalASN: 65000, RemoteASN: 7224, RouterID: "10.10.0.1", MaximumPrefixes: 64}

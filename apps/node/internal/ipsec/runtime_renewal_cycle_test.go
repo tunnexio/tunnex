@@ -65,6 +65,11 @@ func newRenewalCycleRigWithIDs(t *testing.T, canonical bool, connectionIDs []uui
 	c.journal.Close()
 	dir := journalDir(t)
 	payload := runtimeJournalPayload{Version: 10, OwnerID: c.config.GatewayID, Sequence: 1, Entries: entries}
+	for _, e := range entries {
+		if hasDesktopStaticTransport(e) {
+			payload.Version = 15
+		}
+	}
 	if !validJournalPayload(payload) {
 		t.Fatal("five-provider fixture invalid")
 	}

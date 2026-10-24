@@ -94,12 +94,13 @@ func TestDesktopStaticEligibilityIsExplicitAndFresh(t *testing.T) {
 		static, fqdn, bgp bool
 	}{
 		{"old BGP gateway", `{}`, false, false, true},
-		{"explicit static", `{"ipsec_desktop_static_version":1}`, true, true, true},
-		{"string version", `{"ipsec_desktop_static_version":"1"}`, false, false, true},
-		{"future version", `{"ipsec_desktop_static_version":2}`, false, false, true},
-		{"missing recovery", `{"ipsec_desktop_static_version":1,"ipsec_recovery_version":0}`, false, false, true},
-		{"missing transit", `{"ipsec_desktop_static_version":1,"ipsec_desktop_transit_version":0}`, false, false, false},
-		{"ordinary static only", `{"ipsec_desktop_static_version":1,"ipsec_desktop_fqdn_version":0}`, true, false, false},
+		{"unqualified first version", `{"ipsec_desktop_static_version":1}`, false, false, true},
+		{"explicit static", `{"ipsec_desktop_static_version":2}`, true, true, true},
+		{"string version", `{"ipsec_desktop_static_version":"2"}`, false, false, true},
+		{"future version", `{"ipsec_desktop_static_version":3}`, false, false, true},
+		{"missing recovery", `{"ipsec_desktop_static_version":2,"ipsec_recovery_version":0}`, false, false, true},
+		{"missing transit", `{"ipsec_desktop_static_version":2,"ipsec_desktop_transit_version":0}`, false, false, false},
+		{"ordinary static only", `{"ipsec_desktop_static_version":2,"ipsec_desktop_fqdn_version":0}`, true, false, false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			if _, e := p.Exec(ctx, `UPDATE nodes SET capabilities=$2::jsonb || $3::jsonb,policy_reported_at=clock_timestamp() WHERE id=$1`, r.GatewayID, base, tc.extra); e != nil {
@@ -112,7 +113,7 @@ func TestDesktopStaticEligibilityIsExplicitAndFresh(t *testing.T) {
 		})
 	}
 	for _, timestamp := range []string{"clock_timestamp()-interval '91 seconds'", "clock_timestamp()+interval '1 minute'"} {
-		if _, e := p.Exec(ctx, `UPDATE nodes SET capabilities=$2::jsonb || '{"ipsec_desktop_static_version":1}'::jsonb,policy_reported_at=`+timestamp+` WHERE id=$1`, r.GatewayID, base); e != nil {
+		if _, e := p.Exec(ctx, `UPDATE nodes SET capabilities=$2::jsonb || '{"ipsec_desktop_static_version":2}'::jsonb,policy_reported_at=`+timestamp+` WHERE id=$1`, r.GatewayID, base); e != nil {
 			t.Fatal(e)
 		}
 		got, e := store.ReadEligibility(ctx, org, r.SiteID, r.GatewayID)

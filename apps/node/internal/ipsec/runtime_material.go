@@ -10,7 +10,7 @@ import (
 
 func runtimeDeliveryValid(d RuntimeDelivery, org, node uuid.UUID, kind string) bool {
 	m := d.Manifest
-	if _, err := runtimeTransportContract(m); err != nil {
+	if _, err := runtimeTransportContract(m); err != nil || !validDesktopStaticManifest(m) {
 		return false
 	}
 	if d.ID == uuid.Nil || d.Kind != kind || d.DesiredRevision <= 0 || (kind == "apply" && m.DesiredRevision != d.DesiredRevision || kind == "cleanup" && (m.DesiredRevision <= 0 || m.DesiredRevision >= d.DesiredRevision)) || m.OrgID != org || m.NodeID != node || m.SiteID == uuid.Nil || m.ConnectionID == uuid.Nil || m.ConfigurationRevision <= 0 || (m.ProfileID != "aws-static-ipv4-v1" && m.ProfileID != "aws-bgp-ipv4-v1" && m.ProfileID != GCPHABGPProfile && m.ProfileID != GCPClassicStaticProfile && !IsAzureRuntimeProfile(m.ProfileID)) || !validDigest(d.OwnershipDigest) {
@@ -147,6 +147,9 @@ func runtimeBuildEntry(m RuntimeMaterial, org, node uuid.UUID, ns string, secret
 		}
 		out.Engines[i] = EngineTunnel{BGP: bgp, Binding: Binding{OrgID: org, GatewayID: node, ConnectionID: m.Manifest.ConnectionID, ConfigurationRevision: m.Manifest.ConfigurationRevision, DesiredRevision: m.DesiredRevision}, TunnelID: t.ID, SecretRevision: t.SecretRevision, XFRMID: t.XFRMID, ReqID: t.ReqID, LocalAddress: public, LocalIdentity: public, RemoteAddress: peer, RemoteIdentity: peer, LocalPrefixes: local, RemotePrefixes: remote}
 		out.Engines[i].ProfileID = out.Allocation.ProfileID
+		if m.Manifest.DesktopStaticVersion != nil {
+			out.Engines[i].DesktopStaticVersion = *m.Manifest.DesktopStaticVersion
+		}
 		if !validEngineTunnel(out.Engines[i]) || (secrets && (m.Secrets[i].TunnelID != t.ID || m.Secrets[i].Revision != t.SecretRevision || !validProfileEnginePSK(out.Engines[i].ProfileID, []byte(m.Secrets[i].PSK)))) {
 			return fail()
 		}

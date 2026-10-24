@@ -106,7 +106,7 @@ func (s *ConnectionStore) ReadEligibility(ctx context.Context, org, site, gatewa
 		gcpReason = "unsupported"
 	}
 	result.DesktopFQDNSupported = result.BGP.Eligible && string(cap["ipsec_desktop_transit_version"]) == "1" && string(cap["ipsec_fqdn_policy_version"]) == "2" && string(cap["ipsec_desktop_fqdn_version"]) == "1"
-	result.DesktopStaticSupported = result.Eligible && string(cap["ipsec_recovery_version"]) == "1" && string(cap["ipsec_desktop_transit_version"]) == "1" && string(cap["ipsec_desktop_static_version"]) == "1"
+	result.DesktopStaticSupported = result.Eligible && string(cap["ipsec_recovery_version"]) == "1" && string(cap["ipsec_desktop_transit_version"]) == "1" && string(cap["ipsec_desktop_static_version"]) == "2"
 	result.DesktopStaticFQDNSupported = result.DesktopStaticSupported && string(cap["ipsec_fqdn_policy_version"]) == "2" && string(cap["ipsec_desktop_fqdn_version"]) == "1"
 	result.GCPHA = &Eligibility{Eligible: gcpReason == "eligible", Reason: gcpReason}
 	classicReason := reason

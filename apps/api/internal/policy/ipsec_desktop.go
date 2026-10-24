@@ -97,7 +97,7 @@ func (s *Service) DeviceIPsecRoutedRanges(ctx context.Context, org, device uuid.
 	if err := appendActiveFQDNGenerations(ctx, &snapshot, runtimeFQDNGenerationReader{tx}, org); err != nil {
 		return nil, err
 	}
-	rows, err := tx.Query(ctx, `SELECT d.manifest,clock_timestamp(),CASE WHEN n.capabilities->'ipsec_desktop_fqdn_version'='1'::jsonb AND n.capabilities->'ipsec_fqdn_policy_version'='2'::jsonb THEN 1 ELSE 0 END,CASE WHEN n.capabilities->'ipsec_desktop_static_version'='1'::jsonb AND n.capabilities->'ipsec_recovery_version'='1'::jsonb AND d.manifest->'recovery_version'='1'::jsonb THEN 1 ELSE 0 END FROM ipsec_runtime_deliveries d
+	rows, err := tx.Query(ctx, `SELECT d.manifest,clock_timestamp(),CASE WHEN n.capabilities->'ipsec_desktop_fqdn_version'='1'::jsonb AND n.capabilities->'ipsec_fqdn_policy_version'='2'::jsonb THEN 1 ELSE 0 END,CASE WHEN n.capabilities->'ipsec_desktop_static_version'='2'::jsonb AND n.capabilities->'ipsec_recovery_version'='1'::jsonb AND d.manifest->'recovery_version'='1'::jsonb AND d.manifest->'desktop_static_version'='1'::jsonb THEN 2 ELSE 0 END FROM ipsec_runtime_deliveries d
  JOIN ipsec_connections c ON c.id=d.connection_id AND c.org_id=d.org_id AND c.desired_revision=d.desired_revision
  JOIN ipsec_org_settings s ON s.org_id=c.org_id AND s.enabled
  JOIN nodes n ON n.id=d.node_id AND n.org_id=d.org_id AND n.site_id=d.site_id

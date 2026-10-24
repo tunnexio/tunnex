@@ -84,7 +84,9 @@ type RuntimeManifest struct {
 	TransportVersion *int `json:"transport_version,omitempty"`
 	TunnelCount      *int `json:"tunnel_count,omitempty"`
 	// RecoveryVersion is explicit delivery authorization; nil preserves the legacy digest.
-	RecoveryVersion               *int                              `json:"recovery_version,omitempty"`
+	RecoveryVersion *int `json:"recovery_version,omitempty"`
+	// DesktopStaticVersion binds route-based AWS static selectors independently of grants.
+	DesktopStaticVersion          *int                              `json:"desktop_static_version,omitempty"`
 	BGP                           *BGPConfig                        `json:"bgp,omitempty"`
 	BGPVersion                    *int                              `json:"bgp_version,omitempty"`
 	RetainedGuardPredecessors     []RuntimeRetainedGuardPredecessor `json:"retained_guard_predecessors,omitempty"`

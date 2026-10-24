@@ -20,6 +20,7 @@ func desktopAWSStaticMaterial(t *testing.T, fqdn bool) RuntimeMaterial {
 	m.Manifest.ProfileID = "aws-static-ipv4-v1"
 	m.Manifest.BGP, m.Manifest.BGPVersion = nil, nil
 	m.Manifest.RecoveryVersion = &version
+	m.Manifest.DesktopStaticVersion = &version
 	m.Manifest.Tunnels[0].Selected = true
 	m.Manifest.Tunnels[1].Selected = false
 	if !fqdn {
@@ -42,9 +43,11 @@ func TestDesktopAWSStaticMaterialUsesAuthenticatedContract(t *testing.T) {
 				t.Fatal("static desktop contract refused or lost authenticated identity", err)
 			}
 			for label, mutate := range map[string]func(*RuntimeMaterial){
-				"legacy_fixed_slot": func(m *RuntimeMaterial) { m.Manifest.RecoveryVersion = nil },
-				"foreign_provider":  func(m *RuntimeMaterial) { m.Manifest.ProfileID = "gcp-classic-static-ipv4-v1" },
-				"bgp_mix":           func(m *RuntimeMaterial) { m.Manifest.BGP = &BGPConfig{} },
+				"legacy_narrow_transport": func(m *RuntimeMaterial) { m.Manifest.DesktopStaticVersion = nil },
+				"unsupported_transport":   func(m *RuntimeMaterial) { v := 2; m.Manifest.DesktopStaticVersion = &v },
+				"legacy_fixed_slot":       func(m *RuntimeMaterial) { m.Manifest.RecoveryVersion = nil },
+				"foreign_provider":        func(m *RuntimeMaterial) { m.Manifest.ProfileID = "gcp-classic-static-ipv4-v1" },
+				"bgp_mix":                 func(m *RuntimeMaterial) { m.Manifest.BGP = &BGPConfig{} },
 				"broad_source": func(m *RuntimeMaterial) {
 					if fqdn {
 						m.Policy.FQDNGrants[0].Source = "10.99.0.0/24"
@@ -97,7 +100,7 @@ func TestDesktopAWSStaticMaterialUsesAuthenticatedContract(t *testing.T) {
 // native WireGuard and tunnel observations use the existing deterministic seams.
 func desktopStaticRenewalRig(t *testing.T) (*renewalCycleRig, uuid.UUID) {
 	t.Helper()
-	r := newRenewalCycleRigInput(t, true)
+	r := newRenewalCycleRigInput(t, true, desktopStaticTransportFixture)
 	var id uuid.UUID
 	for i := range r.materials {
 		m := &r.materials[i]
@@ -209,7 +212,7 @@ func TestDesktopAWSStaticRenewalClosesLostAuthority(t *testing.T) {
 }
 
 func TestDesktopAWSStaticRecoveryMovesOnlyAfterDenialAndFreshProof(t *testing.T) {
-	r := newRecoveryTestRig(t)
+	r := newRecoveryTestRigTransport(t, true)
 	r.m.Policy.DesktopGrants = []RuntimeDesktopGrant{desktopGrantFixture()}
 	_, grants, err := runtimeMaterialEntry(r.m, r.m.Manifest.OrgID, r.m.Manifest.NodeID, r.env.Namespace)
 	if err != nil {
@@ -265,4 +268,27 @@ func TestDesktopAWSStaticRecoveryMovesOnlyAfterDenialAndFreshProof(t *testing.T)
 	if apply() == nil || len(r.c.active) != 0 {
 		t.Fatal("lost WireGuard identity survived recovery reuse")
 	}
+}
+
+// Construct the explicit transport contract before the journal is written. This
+// is a fresh delivery, never an in-place upgrade of legacy native ownership.
+func desktopStaticTransportFixture(t *testing.T, c *RuntimeController, entries []RuntimeJournalEntry, materials []RuntimeMaterial) ([]RuntimeJournalEntry, []RuntimeMaterial) {
+	t.Helper()
+	for i := range materials {
+		m := &materials[i]
+		if m.Manifest.ProfileID != "aws-static-ipv4-v1" {
+			continue
+		}
+		one := 1
+		m.Manifest.DesktopStaticVersion = &one
+		runtimeReseal(m)
+		entries[i].OwnershipDigest = m.OwnershipDigest
+		for j := range entries[i].Engines {
+			entries[i].Engines[j].DesktopStaticVersion = 1
+		}
+		a := c.active[m.Manifest.ConnectionID]
+		a.Entry, a.Delivery = entries[i], m.RuntimeDelivery
+		c.active[m.Manifest.ConnectionID] = a
+	}
+	return entries, materials
 }

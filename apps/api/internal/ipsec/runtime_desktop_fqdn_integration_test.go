@@ -2,6 +2,7 @@ package ipsec_test
 
 import (
 	"context"
+	"errors"
 	"github.com/google/uuid"
 	"github.com/tunnexio/tunnex/apps/api/db"
 	"github.com/tunnexio/tunnex/apps/api/internal/fqdnresolver"
@@ -55,7 +56,7 @@ func TestDesktopStaticCNAMETransactionalLifecycle(t *testing.T) {
 }
 func desktopCNAMETransactionalLifecycle(t *testing.T, profile string) {
 	ctx, p, org, actor, sealer, req := providerFixture(t)
-	if e := db.MigrateTo(p.Config().ConnString(), 231); e != nil {
+	if e := db.MigrateTo(p.Config().ConnString(), 232); e != nil {
 		t.Fatal(e)
 	}
 	exec := func(q string, args ...any) {
@@ -69,7 +70,7 @@ func desktopCNAMETransactionalLifecycle(t *testing.T, profile string) {
 	}
 	exec(`UPDATE organizations SET zero_trust_mode='enforcing',fqdn_resources_enabled=true WHERE id=$1`, org)
 	exec(`INSERT INTO memberships(org_id,user_id,role)VALUES($1,$2,'owner')`, org, actor)
-	exec(`UPDATE nodes SET capabilities=capabilities || '{"max_policy_version":14,"dns_resolve_rpc_version":2,"ipsec_recovery_version":1,"ipsec_bgp_version":1,"ipsec_desktop_transit_version":1,"ipsec_fqdn_policy_version":2,"ipsec_desktop_fqdn_version":1,"ipsec_desktop_static_version":1}'::jsonb,policy_reported_at=clock_timestamp() WHERE id=$1`, req.GatewayID)
+	exec(`UPDATE nodes SET capabilities=capabilities || '{"max_policy_version":14,"dns_resolve_rpc_version":2,"ipsec_recovery_version":1,"ipsec_bgp_version":1,"ipsec_desktop_transit_version":1,"ipsec_fqdn_policy_version":2,"ipsec_desktop_fqdn_version":1,"ipsec_desktop_static_version":2}'::jsonb,policy_reported_at=clock_timestamp() WHERE id=$1`, req.GatewayID)
 	device := uuid.New()
 	exec(`INSERT INTO devices(id,org_id,user_id,node_id,name,public_key,assigned_ip)VALUES($1,$2,$3,$4,'desktop','ZzN444nzLsFjGeLNmSE9lzuvLAWI7mGMU2Z3fLroWnc=','10.199.0.7')`, device, org, actor, req.GatewayID)
 	store := ipsec.NewConnectionStore(p)
@@ -94,7 +95,7 @@ func desktopCNAMETransactionalLifecycle(t *testing.T, profile string) {
 		if _, e := resources.Create(ctx, org, input, actor, "test", "legacy static denied"); e == nil {
 			t.Fatal("legacy gateway accepted static hostname application")
 		}
-		exec(`UPDATE nodes SET capabilities=capabilities || '{"ipsec_desktop_static_version":1}'::jsonb WHERE id=$1`, req.GatewayID)
+		exec(`UPDATE nodes SET capabilities=capabilities || '{"ipsec_desktop_static_version":2}'::jsonb WHERE id=$1`, req.GatewayID)
 	}
 	resource, e := resources.Create(ctx, org, input, actor, "test", "CNAME app")
 	if e != nil {
@@ -154,7 +155,7 @@ func desktopCNAMETransactionalLifecycle(t *testing.T, profile string) {
 		}
 	}
 	m := material()
-	if profile == "static" && (m.Manifest.RecoveryVersion == nil || *m.Manifest.RecoveryVersion != 1) {
+	if profile == "static" && (m.Manifest.RecoveryVersion == nil || *m.Manifest.RecoveryVersion != 1 || m.Manifest.DesktopStaticVersion == nil || *m.Manifest.DesktopStaticVersion != 1) {
 		t.Fatal("static application missing qualified recovery manifest")
 	}
 	if len(m.Policy.FQDNGrants) != 1 || len(m.Policy.DesktopGrants) != 0 || len(m.Policy.Grants) != 0 || len(m.Policy.DNSResolverGrants) != 0 {
@@ -167,7 +168,7 @@ func desktopCNAMETransactionalLifecycle(t *testing.T, profile string) {
 	check("10.20.0.8/32")
 	// Function-only rollback keeps all resource/generation history. Old readers
 	// deny static application authority; BGP behavior remains available.
-	if e := db.MigrateTo(p.Config().ConnString(), 230); e != nil {
+	if e := db.MigrateTo(p.Config().ConnString(), 231); e != nil {
 		t.Fatal(e)
 	}
 	if profile == "static" {
@@ -179,7 +180,7 @@ func desktopCNAMETransactionalLifecycle(t *testing.T, profile string) {
 	if e := p.QueryRow(ctx, `SELECT count(*) FROM fqdn_resources WHERE id=$1`, resource.ID).Scan(&retained); e != nil || retained != 1 {
 		t.Fatal("rollback discarded resource", e)
 	}
-	if e := db.MigrateTo(p.Config().ConnString(), 231); e != nil {
+	if e := db.MigrateTo(p.Config().ConnString(), 232); e != nil {
 		t.Fatal(e)
 	}
 	check("10.20.0.8/32")
@@ -190,14 +191,14 @@ func desktopCNAMETransactionalLifecycle(t *testing.T, profile string) {
 		if _, e := store.PermitLease(ctx, principal, conn.ID, previous); e == nil {
 			t.Fatal("old static capability renewed FQDN lease")
 		}
-		unsupported := material()
-		if len(unsupported.Policy.FQDNGrants) != 0 {
+		_, unsupported := store.Material(ctx, principal, conn.ID, conn.DesiredRevision, sealer)
+		if !errors.Is(unsupported, ipsec.ErrConnectionIneligible) {
 			t.Fatal("legacy static gateway received FQDN authority")
 		}
 		if rows, e := lifecycleStore.ActiveGenerations(ctx, org); e != nil || len(rows) != 0 {
 			t.Fatal("legacy gateway retained application snapshot", e)
 		}
-		exec(`UPDATE nodes SET capabilities=capabilities || '{"ipsec_desktop_static_version":1}'::jsonb WHERE id=$1`, req.GatewayID)
+		exec(`UPDATE nodes SET capabilities=capabilities || '{"ipsec_desktop_static_version":2}'::jsonb WHERE id=$1`, req.GatewayID)
 		check("10.20.0.8/32")
 	}
 	lease := ipsec.RuntimeLeaseRequest{DeliveryID: m.ID, DesiredRevision: conn.DesiredRevision, PolicyHash: m.Policy.Hash, Nonce: strings.Repeat("a", 64), FQDNGrants: m.Policy.FQDNGrants}
@@ -222,7 +223,7 @@ func desktopCNAMETransactionalLifecycle(t *testing.T, profile string) {
 	exec(`UPDATE devices SET health_blocked=false WHERE id=$1`, device)
 	exec(`UPDATE nodes SET capabilities=capabilities-'ipsec_desktop_fqdn_version' WHERE id=$1`, req.GatewayID)
 	check("")
-	exec(`UPDATE nodes SET capabilities=capabilities || '{"ipsec_desktop_fqdn_version":1,"ipsec_desktop_static_version":1}'::jsonb WHERE id=$1`, req.GatewayID)
+	exec(`UPDATE nodes SET capabilities=capabilities || '{"ipsec_desktop_fqdn_version":1,"ipsec_desktop_static_version":2}'::jsonb WHERE id=$1`, req.GatewayID)
 	oldWork, e := lifecycleStore.Due(ctx, time.Now().Add(time.Minute), 10)
 	if e != nil || len(oldWork) != 1 {
 		t.Fatal(e)

@@ -28,7 +28,7 @@ func runtimeDesktopManifestSupported(m RuntimeManifest) bool {
 	case "aws-bgp-ipv4-v1":
 		return m.BGP != nil
 	case "aws-static-ipv4-v1":
-		return m.BGP == nil && m.BGPVersion == nil && m.RecoveryVersion != nil && *m.RecoveryVersion == 1
+		return m.DesktopStaticVersion != nil && validDesktopStaticManifest(m)
 	default:
 		return false
 	}
@@ -44,7 +44,7 @@ func runtimeDesktopEntrySupported(e RuntimeJournalEntry) bool {
 	if e.ContractVersion == 3 {
 		return e.Allocation.BGP && e.BGP != nil
 	}
-	return e.ContractVersion == 2 && !e.Allocation.BGP && e.BGP == nil && validJournalRecovery(e) && e.Recovery.Stage == "completed"
+	return hasDesktopStaticTransport(e) && validDesktopStaticJournal(e) && validJournalRecovery(e) && e.Recovery.Stage == "completed"
 }
 
 func runtimeDesktopGrants(m RuntimeMaterial, local, remote []netip.Prefix) ([]GuardGrant, error) {
@@ -479,5 +479,8 @@ func (c *RuntimeController) DesktopStaticCapability() int {
 	if c == nil || c.config.DesktopNAT == nil {
 		return 0
 	}
-	return c.RecoveryCapability()
+	if c.RecoveryCapability() == 1 {
+		return 2
+	}
+	return 0
 }

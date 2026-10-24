@@ -424,6 +424,7 @@ func parseDaemonChild(m viciMessage) (DaemonChild, error) {
 type EngineTunnel struct {
 	ProfileID                                                  string `json:",omitempty"`
 	BGP                                                        bool   `json:",omitempty"`
+	DesktopStaticVersion                                       int    `json:",omitempty"`
 	Binding                                                    Binding
 	TunnelID                                                   uuid.UUID
 	SecretRevision                                             int64
@@ -440,6 +441,9 @@ func engineName(t EngineTunnel) string {
 // Engine configuration is not traffic authority. A policy revision is not
 // required here: production permits use the current CP policy hash separately.
 func validEngineTunnel(t EngineTunnel) bool {
+	if t.DesktopStaticVersion != 0 && (t.DesktopStaticVersion != 1 || t.ProfileID != "" || t.BGP) {
+		return false
+	}
 	if !validRuntimeProviderProfile(t.ProfileID) || t.Binding.OrgID == uuid.Nil || t.Binding.GatewayID == uuid.Nil || t.Binding.ConnectionID == uuid.Nil || t.Binding.DesiredRevision <= 0 || t.Binding.ConfigurationRevision <= 0 || t.TunnelID == uuid.Nil || t.SecretRevision <= 0 || t.XFRMID == 0 {
 		return false
 	}
@@ -476,7 +480,7 @@ func validEngineTunnel(t EngineTunnel) bool {
 	return true
 }
 func engineTransportPrefixes(t EngineTunnel, local bool) []netip.Prefix {
-	if t.BGP || t.ProfileID == GCPClassicStaticProfile || IsAzureRuntimeProfile(t.ProfileID) {
+	if t.BGP || t.DesktopStaticVersion == 1 || t.ProfileID == GCPClassicStaticProfile || IsAzureRuntimeProfile(t.ProfileID) {
 		return []netip.Prefix{netip.MustParsePrefix("0.0.0.0/0")}
 	}
 	if local {

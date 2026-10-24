@@ -5,12 +5,22 @@ import (
 	"github.com/tunnexio/tunnex/apps/api/db"
 	"github.com/tunnexio/tunnex/apps/api/internal/ipsec"
 	"github.com/tunnexio/tunnex/apps/api/internal/policy"
+	"strings"
 	"testing"
 )
 
 func TestDesktopStaticLegacyDeliveryPreservesLAN(t *testing.T) {
+	for _, recovery := range []bool{false, true} {
+		name := "fixed-slot"
+		if recovery {
+			name = "narrow-recovery-v1"
+		}
+		t.Run(name, func(t *testing.T) { desktopStaticLegacyDeliveryPreservesLAN(t, recovery) })
+	}
+}
+func desktopStaticLegacyDeliveryPreservesLAN(t *testing.T, recovery bool) {
 	ctx, p, org, actor, sealer, req := providerFixture(t)
-	if e := db.MigrateTo(p.Config().ConnString(), 231); e != nil {
+	if e := db.MigrateTo(p.Config().ConnString(), 232); e != nil {
 		t.Fatal(e)
 	}
 	exec := func(q string, args ...any) {
@@ -26,6 +36,9 @@ func TestDesktopStaticLegacyDeliveryPreservesLAN(t *testing.T) {
 	exec(`INSERT INTO resources(id,org_id,name,cidr,protocol,port_low,port_high)VALUES($1,$2,'app','10.20.0.8/32','tcp',443,443)`, resource, org)
 	exec(`INSERT INTO policy_rules(id,org_id,src_kind,src_user_id,dst_kind,dst_resource_id)VALUES($1,$2,'user',$3,'resource',$4)`, uuid.New(), org, actor, resource)
 	exec(`INSERT INTO policy_rules(id,org_id,src_kind,src_cidr,dst_kind,dst_resource_id)VALUES($1,$2,'cidr','10.10.0.2/32','resource',$3)`, uuid.New(), org, resource)
+	if recovery {
+		exec(`UPDATE nodes SET capabilities=capabilities || '{"ipsec_recovery_version":1,"ipsec_bgp_version":1,"ipsec_desktop_transit_version":1,"ipsec_desktop_static_version":1}'::jsonb,policy_reported_at=clock_timestamp() WHERE id=$1`, req.GatewayID)
+	}
 	store := ipsec.NewConnectionStore(p)
 	store.ConfigureRuntimePolicy(policy.CompileIPsecRuntimePolicy)
 	conn, e := store.CreateProviderDisabled(ctx, org, actor, sealer, req)
@@ -46,10 +59,10 @@ func TestDesktopStaticLegacyDeliveryPreservesLAN(t *testing.T) {
 		return m
 	}
 	legacy := material()
-	if legacy.Manifest.RecoveryVersion != nil || len(legacy.Policy.Grants) != 1 || len(legacy.Policy.DesktopGrants) != 0 {
+	if (legacy.Manifest.RecoveryVersion != nil) != recovery || legacy.Manifest.DesktopStaticVersion != nil || len(legacy.Policy.Grants) != 1 || len(legacy.Policy.DesktopGrants) != 0 {
 		t.Fatal("legacy fixture invalid")
 	}
-	exec(`UPDATE nodes SET capabilities=capabilities || '{"ipsec_recovery_version":1,"ipsec_bgp_version":1,"ipsec_desktop_transit_version":1,"ipsec_desktop_static_version":1,"ipsec_fqdn_policy_version":2,"ipsec_desktop_fqdn_version":1}'::jsonb,policy_reported_at=clock_timestamp() WHERE id=$1`, req.GatewayID)
+	exec(`UPDATE nodes SET capabilities=capabilities || '{"ipsec_recovery_version":1,"ipsec_bgp_version":1,"ipsec_desktop_transit_version":1,"ipsec_desktop_static_version":2,"ipsec_fqdn_policy_version":2,"ipsec_desktop_fqdn_version":1}'::jsonb,policy_reported_at=clock_timestamp() WHERE id=$1`, req.GatewayID)
 	upgraded := material()
 	if upgraded.OwnershipDigest != legacy.OwnershipDigest || upgraded.Policy.Hash != legacy.Policy.Hash || len(upgraded.Policy.Grants) != 1 || len(upgraded.Policy.DesktopGrants) != 0 {
 		t.Fatal("upgrade changed legacy LAN delivery or added unsupported desktop authority")
@@ -82,8 +95,28 @@ func TestDesktopStaticLegacyDeliveryPreservesLAN(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
+	// The route-based contract must not depend on whether a mutable desktop grant exists.
+	exec(`UPDATE policy_rules SET disabled=true WHERE org_id=$1 AND src_kind='user'`, org)
+	withoutDesktop := material()
+	if withoutDesktop.Manifest.DesktopStaticVersion == nil || *withoutDesktop.Manifest.DesktopStaticVersion != 1 || len(withoutDesktop.Policy.DesktopGrants) != 0 {
+		t.Fatal("fresh transport depended on mutable grants")
+	}
+	// Even a LAN-only policy cannot renew a marked transport on a downgraded gateway.
+	exec(`UPDATE nodes SET capabilities=jsonb_set(capabilities,'{ipsec_desktop_static_version}','1'::jsonb) WHERE id=$1`, req.GatewayID)
+	lease := ipsec.RuntimeLeaseRequest{DeliveryID: withoutDesktop.ID, DesiredRevision: conn.DesiredRevision, PolicyHash: withoutDesktop.Policy.Hash, Nonce: strings.Repeat("c", 64)}
+	if _, e := store.PermitLease(ctx, principal, conn.ID, lease); e == nil {
+		t.Fatal("unqualified gateway renewed marked transport with LAN-only policy")
+	}
+	exec(`UPDATE nodes SET capabilities=jsonb_set(capabilities,'{ipsec_desktop_static_version}','2'::jsonb) WHERE id=$1`, req.GatewayID)
+	if _, e := store.PermitLease(ctx, principal, conn.ID, lease); e != nil {
+		t.Fatal("qualified transport lease refused", e)
+	}
+	exec(`UPDATE policy_rules SET disabled=false WHERE org_id=$1 AND src_kind='user'`, org)
 	current := material()
-	if current.Manifest.RecoveryVersion == nil || *current.Manifest.RecoveryVersion != 1 || len(current.Policy.Grants) != 1 || len(current.Policy.DesktopGrants) != 1 {
+	if current.OwnershipDigest != withoutDesktop.OwnershipDigest {
+		t.Fatal("policy changed transport ownership")
+	}
+	if current.Manifest.DesktopStaticVersion == nil || *current.Manifest.DesktopStaticVersion != 1 || current.Manifest.RecoveryVersion == nil || *current.Manifest.RecoveryVersion != 1 || len(current.Policy.Grants) != 1 || len(current.Policy.DesktopGrants) != 1 {
 		t.Fatal("new static contract missing authority")
 	}
 	if got, e := routes.DeviceIPsecRoutedRanges(ctx, org, device); e != nil || len(got) != 1 || got[0] != "10.20.0.8/32" {

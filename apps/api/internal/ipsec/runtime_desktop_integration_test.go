@@ -1,6 +1,7 @@
 package ipsec_test
 
 import (
+	"errors"
 	"github.com/google/uuid"
 	"github.com/tunnexio/tunnex/apps/api/db"
 	"github.com/tunnexio/tunnex/apps/api/internal/fqdnresources"
@@ -17,7 +18,7 @@ func TestDesktopRoutedRangesAndLeaseLifecycle(t *testing.T) {
 }
 func desktopRoutedRangesLifecycle(t *testing.T, profile string) {
 	ctx, p, org, actor, sealer, req := providerFixture(t)
-	if err := db.MigrateTo(p.Config().ConnString(), 231); err != nil {
+	if err := db.MigrateTo(p.Config().ConnString(), 232); err != nil {
 		t.Fatal(err)
 	}
 	exec := func(sql string, args ...any) {
@@ -31,7 +32,7 @@ func desktopRoutedRangesLifecycle(t *testing.T, profile string) {
 	}
 	exec(`UPDATE organizations SET zero_trust_mode='enforcing' WHERE id=$1`, org)
 	exec(`INSERT INTO memberships(org_id,user_id,role) VALUES($1,$2,'owner')`, org, actor)
-	exec(`UPDATE nodes SET capabilities=capabilities || '{"ipsec_recovery_version":1,"ipsec_bgp_version":1,"ipsec_desktop_transit_version":1,"ipsec_desktop_static_version":1}'::jsonb,policy_reported_at=clock_timestamp() WHERE id=$1`, req.GatewayID)
+	exec(`UPDATE nodes SET capabilities=capabilities || '{"ipsec_recovery_version":1,"ipsec_bgp_version":1,"ipsec_desktop_transit_version":1,"ipsec_desktop_static_version":2}'::jsonb,policy_reported_at=clock_timestamp() WHERE id=$1`, req.GatewayID)
 	device, resource, rule := uuid.New(), uuid.New(), uuid.New()
 	exec(`INSERT INTO devices(id,org_id,user_id,node_id,name,public_key,assigned_ip) VALUES($1,$2,$3,$4,'desktop','ZzN444nzLsFjGeLNmSE9lzuvLAWI7mGMU2Z3fLroWnc=','10.199.0.7')`, device, org, actor, req.GatewayID)
 	exec(`INSERT INTO resources(id,org_id,name,cidr,protocol,port_low,port_high) VALUES($1,$2,'cloud app','10.20.0.8/32','tcp',443,443)`, resource, org)
@@ -66,7 +67,7 @@ func desktopRoutedRangesLifecycle(t *testing.T, profile string) {
 	}
 	check(true)
 	if profile == "static" {
-		if material.Manifest.BGP != nil || material.Manifest.ProfileID != "aws-static-ipv4-v1" || material.Manifest.RecoveryVersion == nil || *material.Manifest.RecoveryVersion != 1 {
+		if material.Manifest.BGP != nil || material.Manifest.ProfileID != "aws-static-ipv4-v1" || material.Manifest.RecoveryVersion == nil || *material.Manifest.RecoveryVersion != 1 || material.Manifest.DesktopStaticVersion == nil || *material.Manifest.DesktopStaticVersion != 1 {
 			t.Fatal("static manifest lost")
 		}
 		exec(`UPDATE nodes SET capabilities=capabilities-'ipsec_desktop_static_version' WHERE id=$1`, req.GatewayID)
@@ -75,11 +76,11 @@ func desktopRoutedRangesLifecycle(t *testing.T, profile string) {
 		if _, e := store.PermitLease(ctx, principal, connection.ID, previous); e == nil {
 			t.Fatal("old static capability renewed desktop lease")
 		}
-		legacy, e := store.Material(ctx, principal, connection.ID, connection.DesiredRevision, sealer)
-		if e != nil || len(legacy.Policy.DesktopGrants) != 0 {
+		_, e := store.Material(ctx, principal, connection.ID, connection.DesiredRevision, sealer)
+		if !errors.Is(e, ipsec.ErrConnectionIneligible) {
 			t.Fatal("old gateway got static desktop authority", e)
 		}
-		exec(`UPDATE nodes SET capabilities=capabilities || '{"ipsec_desktop_static_version":1}'::jsonb WHERE id=$1`, req.GatewayID)
+		exec(`UPDATE nodes SET capabilities=capabilities || '{"ipsec_desktop_static_version":2}'::jsonb WHERE id=$1`, req.GatewayID)
 		check(true)
 	}
 	// Ordinary private DNS is independently entitled and automatically points
@@ -153,7 +154,7 @@ func desktopRoutedRangesLifecycle(t *testing.T, profile string) {
 	check(true)
 	exec(`UPDATE nodes SET capabilities=capabilities-'ipsec_desktop_transit_version' WHERE id=$1`, req.GatewayID)
 	check(false)
-	exec(`UPDATE nodes SET capabilities=capabilities || '{"ipsec_desktop_transit_version":1,"ipsec_desktop_static_version":1}'::jsonb WHERE id=$1`, req.GatewayID)
+	exec(`UPDATE nodes SET capabilities=capabilities || '{"ipsec_desktop_transit_version":1,"ipsec_desktop_static_version":2}'::jsonb WHERE id=$1`, req.GatewayID)
 	check(true)
 	if _, err = store.SetIntent(ctx, org, actor, connection.ID, connection.DesiredRevision, "disabled"); err != nil {
 		t.Fatal(err)

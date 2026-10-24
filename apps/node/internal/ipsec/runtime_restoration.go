@@ -436,6 +436,9 @@ func (c *RuntimeController) reserveRestoration(ctx context.Context, m RuntimeMat
 }
 
 func retiredJournalVersion(e RuntimeJournalEntry) int {
+	if hasDesktopStaticTransport(e) {
+		return 15
+	}
 	if e.Phase == RuntimeQuiesced {
 		return 12
 	}

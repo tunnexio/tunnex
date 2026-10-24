@@ -53,8 +53,16 @@ func (s *ConnectionStore) Material(ctx context.Context, p RuntimePrincipal, id u
 		v := 1
 		manifest.RecoveryVersion = &v
 	}
+	if fresh && manifest.ProfileID == "aws-static-ipv4-v1" && manifest.BGP == nil && manifest.RecoveryVersion != nil && *manifest.RecoveryVersion == 1 && policy.SelectedDesktopStaticVersion == 2 {
+		v := 1
+		manifest.DesktopStaticVersion = &v
+	}
 	if !fresh {
 		manifest.RecoveryVersion = delivery.Manifest.RecoveryVersion
+		manifest.DesktopStaticVersion = delivery.Manifest.DesktopStaticVersion
+	}
+	if !runtimeDesktopStaticCompatible(manifest, policy.SelectedDesktopStaticVersion == 2) {
+		return invalid(ErrConnectionIneligible)
 	}
 	if isAzureProfile(manifest.ProfileID) && !locked.azureEligible || !runtimeRecoveryEligible(manifest, locked.recoveryEligible) || manifest.ProfileID == GCPClassicProfile && !classicManifestCompatible(manifest, locked.gcpClassicEligible) || !runtimeBGPCompatible(manifest, locked.bgpEligible && (manifest.ProfileID != GCPHAProfile || locked.gcpHAEligible) && (!isAzureProfile(manifest.ProfileID) || locked.azureEligible)) {
 		return invalid(ErrConnectionIneligible)
@@ -288,6 +296,9 @@ func (s *ConnectionStore) PermitLease(ctx context.Context, p RuntimePrincipal, i
 	policy, e := s.compileRuntime(ctx, tx, c, cfg)
 	if e != nil {
 		return RuntimeLease{}, e
+	}
+	if !runtimeDesktopStaticCompatible(manifest, policy.SelectedDesktopStaticVersion == 2) {
+		return RuntimeLease{}, ErrConnectionIneligible
 	}
 	// Fence before the independent authoritative clock query. Every subsequent
 	// query/validation/commit duration is charged, never replaced by API wall time.
