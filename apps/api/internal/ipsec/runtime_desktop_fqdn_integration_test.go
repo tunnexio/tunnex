@@ -2,6 +2,9 @@ package ipsec_test
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"github.com/google/uuid"
 	"github.com/tunnexio/tunnex/apps/api/db"
@@ -205,6 +208,30 @@ func desktopCNAMETransactionalLifecycle(t *testing.T, profile string) {
 	if _, e := store.PermitLease(ctx, principal, conn.ID, lease); e != nil {
 		t.Fatal("fresh timed lease", e)
 	}
+	// A normal same-answer refresh changes only the expiry. Renewing the
+	// already-issued narrower descriptor must retain its original cap/digest.
+	refresh()
+	advanced := material()
+	if len(advanced.Policy.FQDNGrants) != 1 || advanced.Policy.FQDNGrants[0].Generation != g.Generation || !advanced.Policy.FQDNGrants[0].ExpiresAt.After(g.ExpiresAt) || advanced.Policy.Hash == m.Policy.Hash {
+		t.Fatal("same-answer publication did not advance expiry independently")
+	}
+	var fence time.Time
+	if e := p.QueryRow(ctx, `SELECT clock_timestamp()`).Scan(&fence); e != nil {
+		t.Fatal(e)
+	}
+	subset, e := store.PermitLease(ctx, principal, conn.ID, lease)
+	wire, _ := json.Marshal(g)
+	digest := sha256.Sum256(wire)
+	if e != nil || subset.PolicyHash != lease.PolicyHash || subset.Nonce != lease.Nonce || len(subset.FQDNPermits) != 1 || subset.FQDNPermits[0].GrantDigest != hex.EncodeToString(digest[:]) || subset.FQDNPermits[0].TTLMS <= 0 || subset.FQDNPermits[0].TTLMS > g.ExpiresAt.Sub(fence).Milliseconds() {
+		t.Fatal("current-confirmed earlier expiry lost original authority bound", e, subset)
+	}
+	// A shorter CURRENT rule deadline is not a superset, even with identical
+	// answers and provenance. No earlier policy can override this retraction.
+	exec(`UPDATE policy_rules SET expires_at=clock_timestamp()+interval '2 seconds' WHERE id=$1`, rule)
+	if _, e := store.PermitLease(ctx, principal, conn.ID, lease); !errors.Is(e, ipsec.ErrConnectionConflict) {
+		t.Fatal("shortened current rule renewed earlier wider deadline", e)
+	}
+	exec(`UPDATE policy_rules SET expires_at=NULL WHERE id=$1`, rule)
 	mail.address = "10.20.0.9"
 	refresh()
 	next := material()

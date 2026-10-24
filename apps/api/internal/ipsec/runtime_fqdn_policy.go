@@ -168,9 +168,19 @@ func runtimeFQDNLeaseContinuity(current RuntimePolicy, request RuntimeLeaseReque
 		return RuntimePolicy{}, nil, ErrConnectionConflict
 	}
 	live := map[RuntimeFQDNGrant]bool{}
+	currentDesktop := map[RuntimeFQDNGrant]RuntimeFQDNGrant{}
 	for _, g := range current.FQDNGrants {
 		live[g] = true
+		if g.ResolverKind == "static_cname" {
+			key := g
+			key.ExpiresAt = time.Time{}
+			if _, duplicate := currentDesktop[key]; duplicate {
+				return RuntimePolicy{}, nil, ErrConnectionConflict
+			}
+			currentDesktop[key] = g
+		}
 	}
+	requestedDesktop := map[RuntimeFQDNGrant]bool{}
 	previous := ""
 	for _, g := range request.FQDNGrants {
 		raw, _ := json.Marshal(g)
@@ -178,8 +188,22 @@ func runtimeFQDNLeaseContinuity(current RuntimePolicy, request RuntimeLeaseReque
 			return RuntimePolicy{}, nil, ErrConnectionConflict
 		}
 		previous = string(raw)
+		key := g
+		key.ExpiresAt = time.Time{}
+		if g.ResolverKind == "static_cname" {
+			if requestedDesktop[key] {
+				return RuntimePolicy{}, nil, ErrConnectionConflict
+			}
+			requestedDesktop[key] = true
+		}
 		if live[g] {
 			delete(live, g)
+		} else if next, ok := currentDesktop[key]; g.ResolverKind == "static_cname" && ok && live[next] && next.ExpiresAt.After(fence) && !g.ExpiresAt.After(next.ExpiresAt) {
+			// The current compiler independently confirms every identity/tuple
+			// field. A refreshed answer may authorize this earlier deadline too,
+			// but never extends it: reconstructed descriptors, hash, permit
+			// digest and DB/monotonic TTL all retain the request's original expiry.
+			delete(live, next)
 		} else {
 			if g.ExpiresAt.After(fence) {
 				return RuntimePolicy{}, nil, ErrConnectionConflict
