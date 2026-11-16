@@ -3,7 +3,7 @@
 # Tunnex DB package, so it needs nothing from apps/api). VERSION is the git sha, stamped into main.version and
 # logged at startup for the walk's build-provenance census.
 # Compile on the native builder; Go targets each image architecture without QEMU.
-FROM --platform=$BUILDPLATFORM golang:1.26.10-alpine@sha256:9ce231b28998b32e116927c61aa5c406183061d4f3f2d61b292c88e7f6bdf7ca AS build
+FROM --platform=$BUILDPLATFORM golang:1.26.11-alpine@sha256:ecb67f987aa1a57794c91d19ade7ae0209f2f0f5496aaef9e6ae85ddf92d02ab AS build
 WORKDIR /src
 COPY go.mod go.sum ./
 RUN go mod download
