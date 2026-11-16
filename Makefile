@@ -317,7 +317,15 @@ test-node: ## Run the node-agent data-plane tests (reconcile idempotence, no DB)
 	# TODO: restore exclusive sandbox tests through docs/S-sandbox-shelved-main-reentry.md.
 	docker run --rm --cap-add=NET_ADMIN -v "$(PWD)":/repo -w /repo/apps/node $(GO_DOCKER_CACHE) -e GOFLAGS='-mod=readonly -buildvcs=false' \
 	  $(GO_IMAGE) sh -ec 'apk add --no-cache git openvpn nftables iptables; go build ./...; \
-	    packages=$$(sh /repo/deploy/ci-active-go-packages.sh node); set -f; go test -count=1 -timeout=30m $$packages'
+	    packages=$$(sh /repo/deploy/ci-active-go-packages.sh node | grep -vx 'github.com/tunnexio/tunnex/apps/node/internal/ipsec'); \
+	    set -f; go test -count=1 -timeout=30m $$packages'
+
+# The IPsec runtime package runs as IPSEC_SHARDS parallel lanes (test-node-ipsec-1..N);
+# deploy/ci-node-ipsec-shard.sh assigns every listed test to exactly one shard.
+IPSEC_SHARDS := 6
+test-node-ipsec-%: ## Run one shard of the node IPsec runtime tests (e.g. make test-node-ipsec-1)
+	docker run --rm --cap-add=NET_ADMIN -v "$(PWD)":/repo -w /repo/apps/node $(GO_DOCKER_CACHE) -e GOFLAGS='-mod=readonly -buildvcs=false' \
+	  $(GO_IMAGE) sh -ec 'apk add --no-cache git openvpn nftables iptables; sh /repo/deploy/ci-node-ipsec-shard.sh $* $(IPSEC_SHARDS)'
 
 .PHONY: test-apptransport
 test-apptransport: ## Test shared App Access transport and origin policy

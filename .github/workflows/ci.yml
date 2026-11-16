@@ -381,7 +381,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        target: [test-node, test-apptransport, test-app-proxy, test-operator, test-cli, test-sandbox-package, test-sandbox-image]
+        target: [test-node, test-node-ipsec-1, test-node-ipsec-2, test-node-ipsec-3, test-node-ipsec-4, test-node-ipsec-5, test-node-ipsec-6, test-apptransport, test-app-proxy, test-operator, test-cli, test-sandbox-package, test-sandbox-image]
     runs-on: ubuntu-latest
     timeout-minutes: 40
     steps:
