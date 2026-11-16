@@ -8,7 +8,10 @@ ROOT=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
 COMPOSE="$ROOT/deploy/tunnex.yml"
 
 grep -Fq 'TUNNEX_COOKIE_SECURE: ${TUNNEX_COOKIE_SECURE:-false}' "$COMPOSE"
-grep -Fq 'image: caddy@sha256:' "$COMPOSE"
+# The immutable digest is the default, with an explicit deployment override
+# for controlled image mirrors. Validate the full digest instead of requiring
+# the default to be the entire YAML value.
+grep -Eq '^    image: \$\{TUNNEX_CADDY_IMAGE:-caddy@sha256:[0-9a-f]{64}\}$' "$COMPOSE"
 grep -Fq '"80:80"' "$COMPOSE"
 grep -Fq '"443:443"' "$COMPOSE"
 grep -Fq 'TUNNEX_EDGE_LISTEN:?set by install.sh' "$COMPOSE"
