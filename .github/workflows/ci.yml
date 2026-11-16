@@ -383,7 +383,7 @@ jobs:
       matrix:
         target: [test-node, test-apptransport, test-app-proxy, test-operator, test-cli, test-sandbox-package, test-sandbox-image]
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 40
     steps:
       - if: matrix.target != 'test-sandbox-package' && matrix.target != 'test-sandbox-image'
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4

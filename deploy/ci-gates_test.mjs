@@ -122,6 +122,7 @@ test('shelved sandbox check contexts run only a notice', () => {
   const shelved = "matrix.target == 'test-sandbox-package' || matrix.target == 'test-sandbox-image'";
   assert.deepEqual(jobs.tooling.strategy.matrix.target, ['test-node', 'test-apptransport', 'test-app-proxy', 'test-operator', 'test-cli', 'test-sandbox-package', 'test-sandbox-image']);
   assert.equal(jobs.tooling.services, undefined);
+  assert.ok(jobs.tooling['timeout-minutes'] >= 35, 'test-node runs the IPsec suite with -timeout=30m');
   assert.equal(jobs.tooling.steps.length, 4);
   for (const step of jobs.tooling.steps.slice(0, 3)) assert.equal(step.if, ordinary);
   const notice = jobs.tooling.steps[3];
@@ -393,6 +394,8 @@ test('node lane preserves ordinary VPN checks without the dormant sandbox Unix f
   assert.match(nodeRecipe, /go build \.\/\.\.\./);
   assert.match(nodeRecipe, /GOFLAGS='-mod=readonly -buildvcs=false'/);
   assert.match(nodeRecipe, /ci-active-go-packages\.sh node/);
+  // The IPsec runtime suite exceeds go test's 10m default; the job limit must cover it.
+  assert.match(nodeRecipe, /go test -count=1 -timeout=30m \$\$packages/);
   assert.doesNotMatch(nodeRecipe, /sandboxnetwork\.test|TestInactiveCleanupActualUnixBoundary|su -s/);
   assert.doesNotMatch(nodeRecipe, /\|\| true|continue-on-error/);
 });

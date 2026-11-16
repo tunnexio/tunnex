@@ -317,7 +317,7 @@ test-node: ## Run the node-agent data-plane tests (reconcile idempotence, no DB)
 	# TODO: restore exclusive sandbox tests through docs/S-sandbox-shelved-main-reentry.md.
 	docker run --rm --cap-add=NET_ADMIN -v "$(PWD)":/repo -w /repo/apps/node $(GO_DOCKER_CACHE) -e GOFLAGS='-mod=readonly -buildvcs=false' \
 	  $(GO_IMAGE) sh -ec 'apk add --no-cache git openvpn nftables iptables; go build ./...; \
-	    packages=$$(sh /repo/deploy/ci-active-go-packages.sh node); set -f; go test -count=1 $$packages'
+	    packages=$$(sh /repo/deploy/ci-active-go-packages.sh node); set -f; go test -count=1 -timeout=30m $$packages'
 
 .PHONY: test-apptransport
 test-apptransport: ## Test shared App Access transport and origin policy
