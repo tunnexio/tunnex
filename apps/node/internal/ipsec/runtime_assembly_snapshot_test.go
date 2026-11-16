@@ -245,8 +245,7 @@ func TestAssemblySnapshotRejectsAuthorityCommitAndClockBoundaryChanges(t *testin
 			switch mode {
 			case "new-authority-pointer":
 				a := active[id]
-				fresh := *a.Authority
-				a.Authority = &fresh
+				a.Authority = clonePermitLeaseAuthorityForTest(a.Authority)
 				active[id] = a
 			case "candidate-policy":
 				a := active[id]
@@ -296,4 +295,12 @@ func TestAssemblySnapshotDoesNotReplaceOrdinaryValidation(t *testing.T) {
 	if err != nil || s != nil || x.reads != [3]int{} {
 		t.Fatal("ordinary validation borrowed transaction snapshot", s, err, x.reads)
 	}
+}
+
+// clonePermitLeaseAuthorityForTest returns an equal authority behind a new
+// pointer without copying its mutex.
+func clonePermitLeaseAuthorityForTest(a *PermitLeaseAuthority) *PermitLeaseAuthority {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	return &PermitLeaseAuthority{elapsed: a.elapsed, last: a.last, pending: a.pending, started: a.started, identity: a.identity, deadline: a.deadline, pendingFQDN: a.pendingFQDN, fqdnDeadlines: a.fqdnDeadlines}
 }

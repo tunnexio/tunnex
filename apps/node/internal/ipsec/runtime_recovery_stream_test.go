@@ -128,8 +128,7 @@ func TestStreamingHeartbeatPublicationFailureAndCancellation(t *testing.T) {
 					delete(r.c.active, first)
 				case "authority_replaced":
 					a := r.c.active[first]
-					replacement := *a.Authority
-					a.Authority = &replacement
+					a.Authority = clonePermitLeaseAuthorityForTest(a.Authority)
 					r.c.active[first] = a
 				case "parent_cancel":
 					cancel()
