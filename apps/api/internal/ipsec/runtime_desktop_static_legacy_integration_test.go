@@ -20,7 +20,7 @@ func TestDesktopStaticLegacyDeliveryPreservesLAN(t *testing.T) {
 }
 func desktopStaticLegacyDeliveryPreservesLAN(t *testing.T, recovery bool) {
 	ctx, p, org, actor, sealer, req := providerFixture(t)
-	if e := db.MigrateTo(p.Config().ConnString(), 232); e != nil {
+	if e := db.MigrateTo(p.Config().ConnString(), 234); e != nil {
 		t.Fatal(e)
 	}
 	exec := func(q string, args ...any) {

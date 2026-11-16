@@ -18,7 +18,7 @@ func TestDesktopRoutedRangesAndLeaseLifecycle(t *testing.T) {
 }
 func desktopRoutedRangesLifecycle(t *testing.T, profile string) {
 	ctx, p, org, actor, sealer, req := providerFixture(t)
-	if err := db.MigrateTo(p.Config().ConnString(), 232); err != nil {
+	if err := db.MigrateTo(p.Config().ConnString(), 234); err != nil {
 		t.Fatal(err)
 	}
 	exec := func(sql string, args ...any) {

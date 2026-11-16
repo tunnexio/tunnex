@@ -59,7 +59,7 @@ func TestDesktopStaticCNAMETransactionalLifecycle(t *testing.T) {
 }
 func desktopCNAMETransactionalLifecycle(t *testing.T, profile string) {
 	ctx, p, org, actor, sealer, req := providerFixture(t)
-	if e := db.MigrateTo(p.Config().ConnString(), 232); e != nil {
+	if e := db.MigrateTo(p.Config().ConnString(), 234); e != nil {
 		t.Fatal(e)
 	}
 	exec := func(q string, args ...any) {
@@ -171,7 +171,7 @@ func desktopCNAMETransactionalLifecycle(t *testing.T, profile string) {
 	check("10.20.0.8/32")
 	// Function-only rollback keeps all resource/generation history. Old readers
 	// deny static application authority; BGP behavior remains available.
-	if e := db.MigrateTo(p.Config().ConnString(), 231); e != nil {
+	if e := db.MigrateTo(p.Config().ConnString(), 233); e != nil {
 		t.Fatal(e)
 	}
 	if profile == "static" {
@@ -183,7 +183,7 @@ func desktopCNAMETransactionalLifecycle(t *testing.T, profile string) {
 	if e := p.QueryRow(ctx, `SELECT count(*) FROM fqdn_resources WHERE id=$1`, resource.ID).Scan(&retained); e != nil || retained != 1 {
 		t.Fatal("rollback discarded resource", e)
 	}
-	if e := db.MigrateTo(p.Config().ConnString(), 232); e != nil {
+	if e := db.MigrateTo(p.Config().ConnString(), 234); e != nil {
 		t.Fatal(e)
 	}
 	check("10.20.0.8/32")
@@ -284,7 +284,7 @@ func desktopCNAMETransactionalLifecycle(t *testing.T, profile string) {
 		t.Fatal("outside approved application prefix remained usable", e)
 	}
 	check("")
-	if e := db.MigrateTo(p.Config().ConnString(), 229); e == nil {
+	if e := db.MigrateTo(p.Config().ConnString(), 231); e == nil {
 		t.Fatal("destructive downgrade discarded application history")
 	}
 }
