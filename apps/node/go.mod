@@ -3,7 +3,7 @@ module github.com/tunnexio/tunnex/apps/node
 // GUARD: builds/tests use GOFLAGS=-mod=readonly so dependency resolution cannot
 // silently rewrite go.mod/go.sum. The module path matches the canonical repository.
 
-go 1.26.9
+go 1.26.10
 
 require (
 	github.com/florianl/go-conntrack v0.7.0

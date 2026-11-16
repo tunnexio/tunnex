@@ -229,7 +229,7 @@ test.skip('Ubuntu image delivery is a required existing tooling target with exac
   const { jobs } = JSON.parse(parsed.stdout);
   const setup = jobs.tooling.steps.find(step => step.name?.startsWith('Set up pinned host Go'));
   assert.equal(setup.if, "matrix.target == 'test-sandbox-image'");
-  assert.equal(setup.with['go-version'], '1.26.9');
+  assert.equal(setup.with['go-version'], '1.26.10');
   const upload = jobs.tooling.steps.find(step => step.name?.startsWith('Retain public Ubuntu AMD64'));
   assert.ok(upload.if.includes("matrix.target == 'test-sandbox-image'"));
   assert.ok(upload.if.includes("github.ref == 'refs/heads/main'"));

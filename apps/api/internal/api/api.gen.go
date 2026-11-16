@@ -2158,6 +2158,54 @@ const (
 	Manual  UserGroupOrigin = "manual"
 )
 
+// Defines values for VaultConfigureInputSubjectKind.
+const (
+	VaultConfigureSubjectGroup VaultConfigureInputSubjectKind = "group"
+	VaultConfigureSubjectUser  VaultConfigureInputSubjectKind = "user"
+)
+
+// Defines values for VaultConfigureInputVisibility.
+const (
+	VaultConfigureAssigned VaultConfigureInputVisibility = "assigned"
+	VaultConfigurePersonal VaultConfigureInputVisibility = "personal"
+)
+
+// Defines values for VaultCreateInputKind.
+const (
+	VaultCreateInputKindApiKey   VaultCreateInputKind = "api_key"
+	VaultCreateInputKindPassword VaultCreateInputKind = "password"
+)
+
+// Defines values for VaultCreateInputSubjectKind.
+const (
+	VaultCreateInputSubjectKindGroup VaultCreateInputSubjectKind = "group"
+	VaultCreateInputSubjectKindUser  VaultCreateInputSubjectKind = "user"
+)
+
+// Defines values for VaultCreateInputVisibility.
+const (
+	VaultCreateInputVisibilityAssigned VaultCreateInputVisibility = "assigned"
+	VaultCreateInputVisibilityPersonal VaultCreateInputVisibility = "personal"
+)
+
+// Defines values for VaultEntryKind.
+const (
+	VaultEntryKindApiKey   VaultEntryKind = "api_key"
+	VaultEntryKindPassword VaultEntryKind = "password"
+)
+
+// Defines values for VaultEntrySubjectKind.
+const (
+	Group VaultEntrySubjectKind = "group"
+	User  VaultEntrySubjectKind = "user"
+)
+
+// Defines values for VaultEntryVisibility.
+const (
+	VaultEntryVisibilityAssigned VaultEntryVisibility = "assigned"
+	VaultEntryVisibilityPersonal VaultEntryVisibility = "personal"
+)
+
 // Defines values for ZeroTrustModeMode.
 const (
 	ZeroTrustModeModeEnforcing ZeroTrustModeMode = "enforcing"
@@ -8624,6 +8672,157 @@ type UserGroupIdpProvider string
 // UserGroupOrigin defines model for UserGroup.Origin.
 type UserGroupOrigin string
 
+// VaultConfigureInput defines model for VaultConfigureInput.
+type VaultConfigureInput struct {
+	ExpectedVersion int                 `json:"expected_version"`
+	ServiceId       *openapi_types.UUID `json:"service_id,omitempty"`
+
+	// ServiceName Private service label for personal entries only
+	ServiceName *string                         `json:"service_name,omitempty"`
+	SubjectId   *openapi_types.UUID             `json:"subject_id,omitempty"`
+	SubjectKind *VaultConfigureInputSubjectKind `json:"subject_kind,omitempty"`
+	Title       string                          `json:"title"`
+	Username    *string                         `json:"username,omitempty"`
+	Visibility  VaultConfigureInputVisibility   `json:"visibility"`
+}
+
+// VaultConfigureInputSubjectKind defines model for VaultConfigureInput.SubjectKind.
+type VaultConfigureInputSubjectKind string
+
+// VaultConfigureInputVisibility defines model for VaultConfigureInput.Visibility.
+type VaultConfigureInputVisibility string
+
+// VaultCreateInput defines model for VaultCreateInput.
+type VaultCreateInput struct {
+	Kind      VaultCreateInputKind `json:"kind"`
+	Secret    *string              `json:"secret,omitempty"`
+	ServiceId *openapi_types.UUID  `json:"service_id,omitempty"`
+
+	// ServiceName Private service label for personal entries only
+	ServiceName *string                      `json:"service_name,omitempty"`
+	SubjectId   *openapi_types.UUID          `json:"subject_id,omitempty"`
+	SubjectKind *VaultCreateInputSubjectKind `json:"subject_kind,omitempty"`
+	Title       string                       `json:"title"`
+	Username    *string                      `json:"username,omitempty"`
+	Visibility  VaultCreateInputVisibility   `json:"visibility"`
+}
+
+// VaultCreateInputKind defines model for VaultCreateInput.Kind.
+type VaultCreateInputKind string
+
+// VaultCreateInputSubjectKind defines model for VaultCreateInput.SubjectKind.
+type VaultCreateInputSubjectKind string
+
+// VaultCreateInputVisibility defines model for VaultCreateInput.Visibility.
+type VaultCreateInputVisibility string
+
+// VaultEntry defines model for VaultEntry.
+type VaultEntry struct {
+	CanDelete bool `json:"can_delete"`
+	CanEdit   bool `json:"can_edit"`
+
+	// Configured False for a creator-private quick entry whose title and service metadata are not configured yet
+	Configured     bool                   `json:"configured"`
+	CreatedAt      time.Time              `json:"created_at"`
+	CurrentVersion int                    `json:"current_version"`
+	Id             openapi_types.UUID     `json:"id"`
+	Kind           VaultEntryKind         `json:"kind"`
+	OwnerUserId    openapi_types.UUID     `json:"owner_user_id"`
+	ServiceId      *openapi_types.UUID    `json:"service_id,omitempty"`
+	ServiceName    string                 `json:"service_name"`
+	SubjectId      *openapi_types.UUID    `json:"subject_id,omitempty"`
+	SubjectKind    *VaultEntrySubjectKind `json:"subject_kind,omitempty"`
+	SubjectName    *string                `json:"subject_name,omitempty"`
+	Title          string                 `json:"title"`
+	UpdatedAt      time.Time              `json:"updated_at"`
+	Username       string                 `json:"username"`
+	Visibility     VaultEntryVisibility   `json:"visibility"`
+}
+
+// VaultEntryKind defines model for VaultEntry.Kind.
+type VaultEntryKind string
+
+// VaultEntrySubjectKind defines model for VaultEntry.SubjectKind.
+type VaultEntrySubjectKind string
+
+// VaultEntryVisibility defines model for VaultEntry.Visibility.
+type VaultEntryVisibility string
+
+// VaultHistory defines model for VaultHistory.
+type VaultHistory struct {
+	CurrentVersion int            `json:"current_version"`
+	Total          int            `json:"total"`
+	Versions       []VaultVersion `json:"versions"`
+}
+
+// VaultQuickCreateInput defines model for VaultQuickCreateInput.
+type VaultQuickCreateInput struct {
+	// RequestId One UUID per generated candidate; reuse unchanged for retries
+	RequestId openapi_types.UUID `json:"request_id"`
+	Secret    *string            `json:"secret,omitempty"`
+}
+
+// VaultRevealInput defines model for VaultRevealInput.
+type VaultRevealInput struct {
+	// Version Omit to reveal the current version
+	Version *int `json:"version,omitempty"`
+}
+
+// VaultSecret defines model for VaultSecret.
+type VaultSecret struct {
+	Username string `json:"username"`
+
+	// Value Explicit authorized reveal only. Never cache or log.
+	Value   string `json:"value"`
+	Version int    `json:"version"`
+}
+
+// VaultService defines model for VaultService.
+type VaultService struct {
+	Id   openapi_types.UUID `json:"id"`
+	Name string             `json:"name"`
+}
+
+// VaultServiceInput defines model for VaultServiceInput.
+type VaultServiceInput struct {
+	Name string `json:"name"`
+}
+
+// VaultSubject defines model for VaultSubject.
+type VaultSubject struct {
+	Id   openapi_types.UUID `json:"id"`
+	Name string             `json:"name"`
+}
+
+// VaultSubjects defines model for VaultSubjects.
+type VaultSubjects struct {
+	Groups []VaultSubject `json:"groups"`
+	Users  []VaultSubject `json:"users"`
+}
+
+// VaultUpdateInput defines model for VaultUpdateInput.
+type VaultUpdateInput struct {
+	ExpectedVersion int     `json:"expected_version"`
+	Secret          *string `json:"secret,omitempty"`
+	Title           string  `json:"title"`
+	Username        *string `json:"username,omitempty"`
+}
+
+// VaultVersion defines model for VaultVersion.
+type VaultVersion struct {
+	ChangedBy     openapi_types.UUID `json:"changed_by"`
+	ChangedByName string             `json:"changed_by_name"`
+	CreatedAt     time.Time          `json:"created_at"`
+	Version       int                `json:"version"`
+}
+
+// VaultWorkspace defines model for VaultWorkspace.
+type VaultWorkspace struct {
+	CanAssign bool         `json:"can_assign"`
+	Entries   []VaultEntry `json:"entries"`
+	Total     int          `json:"total"`
+}
+
 // ZeroTrustMode defines model for ZeroTrustMode.
 type ZeroTrustMode struct {
 	// AffectedFullTunnelDevices On ENABLING enforcing (PUT only), the full-tunnel devices whose internet egress becomes policy-governed by the flip — the blast radius for the warn-and-confirm. The server obeys regardless; this is the honest count + names. Absent/empty when disabling or when none are affected. State name for these = egress_policy_denied (distinct from gateway_no_egress: the gateway CAN egress, policy is denying it).
@@ -9131,6 +9330,24 @@ type ImportServerAccessRecordingPackageJSONBody struct {
 // GetServerAccessRecordingParams defines parameters for GetServerAccessRecording.
 type GetServerAccessRecordingParams struct {
 	MetadataOnly *bool `form:"metadata_only,omitempty" json:"metadata_only,omitempty"`
+}
+
+// ListVaultEntriesParams defines parameters for ListVaultEntries.
+type ListVaultEntriesParams struct {
+	Limit  *int32  `form:"limit,omitempty" json:"limit,omitempty"`
+	Offset *int32  `form:"offset,omitempty" json:"offset,omitempty"`
+	Q      *string `form:"q,omitempty" json:"q,omitempty"`
+}
+
+// DeleteVaultEntryParams defines parameters for DeleteVaultEntry.
+type DeleteVaultEntryParams struct {
+	ExpectedVersion int `form:"expected_version" json:"expected_version"`
+}
+
+// ListVaultVersionsParams defines parameters for ListVaultVersions.
+type ListVaultVersionsParams struct {
+	Limit  *int32 `form:"limit,omitempty" json:"limit,omitempty"`
+	Offset *int32 `form:"offset,omitempty" json:"offset,omitempty"`
 }
 
 // AiAnthropicMessageJSONRequestBody defines body for AiAnthropicMessage for application/json ContentType.
@@ -9783,6 +10000,24 @@ type TestSsoConnectionJSONRequestBody = SsoConnectionTestRequest
 
 // SetSsoConfigJSONRequestBody defines body for SetSsoConfig for application/json ContentType.
 type SetSsoConfigJSONRequestBody = SsoConfigRequest
+
+// CreateVaultEntryJSONRequestBody defines body for CreateVaultEntry for application/json ContentType.
+type CreateVaultEntryJSONRequestBody = VaultCreateInput
+
+// QuickCreateVaultEntryJSONRequestBody defines body for QuickCreateVaultEntry for application/json ContentType.
+type QuickCreateVaultEntryJSONRequestBody = VaultQuickCreateInput
+
+// UpdateVaultEntryJSONRequestBody defines body for UpdateVaultEntry for application/json ContentType.
+type UpdateVaultEntryJSONRequestBody = VaultUpdateInput
+
+// ConfigureVaultEntryJSONRequestBody defines body for ConfigureVaultEntry for application/json ContentType.
+type ConfigureVaultEntryJSONRequestBody = VaultConfigureInput
+
+// RevealVaultEntryJSONRequestBody defines body for RevealVaultEntry for application/json ContentType.
+type RevealVaultEntryJSONRequestBody = VaultRevealInput
+
+// CreateVaultServiceJSONRequestBody defines body for CreateVaultService for application/json ContentType.
+type CreateVaultServiceJSONRequestBody = VaultServiceInput
 
 // SetZeroTrustModeJSONRequestBody defines body for SetZeroTrustMode for application/json ContentType.
 type SetZeroTrustModeJSONRequestBody = ZeroTrustMode
@@ -11228,6 +11463,39 @@ type ServerInterface interface {
 	// Configure an SSO provider for an organization (enterprise)
 	// (PUT /api/v1/organizations/{orgId}/sso/{provider})
 	SetSsoConfig(w http.ResponseWriter, r *http.Request, orgId openapi_types.UUID, provider string)
+	// List personal and assigned entry metadata without secret values
+	// (GET /api/v1/organizations/{orgId}/vault/entries)
+	ListVaultEntries(w http.ResponseWriter, r *http.Request, orgId openapi_types.UUID, params ListVaultEntriesParams)
+	// Create an encrypted personal or explicitly assigned entry
+	// (POST /api/v1/organizations/{orgId}/vault/entries)
+	CreateVaultEntry(w http.ResponseWriter, r *http.Request, orgId openapi_types.UUID)
+	// Save one private unconfigured password before copying it
+	// (POST /api/v1/organizations/{orgId}/vault/entries/quick)
+	QuickCreateVaultEntry(w http.ResponseWriter, r *http.Request, orgId openapi_types.UUID)
+	// Delete an owned personal entry or an administered assignment
+	// (DELETE /api/v1/organizations/{orgId}/vault/entries/{entryId})
+	DeleteVaultEntry(w http.ResponseWriter, r *http.Request, orgId openapi_types.UUID, entryId openapi_types.UUID, params DeleteVaultEntryParams)
+	// Append a new encrypted version with an expected-version precondition
+	// (PUT /api/v1/organizations/{orgId}/vault/entries/{entryId})
+	UpdateVaultEntry(w http.ResponseWriter, r *http.Request, orgId openapi_types.UUID, entryId openapi_types.UUID)
+	// Configure an owned quick entry once without replacing its password
+	// (POST /api/v1/organizations/{orgId}/vault/entries/{entryId}/configure)
+	ConfigureVaultEntry(w http.ResponseWriter, r *http.Request, orgId openapi_types.UUID, entryId openapi_types.UUID)
+	// Explicitly reveal and audit the current or an earlier secret version
+	// (POST /api/v1/organizations/{orgId}/vault/entries/{entryId}/reveal)
+	RevealVaultEntry(w http.ResponseWriter, r *http.Request, orgId openapi_types.UUID, entryId openapi_types.UUID)
+	// List authorized version metadata without secret values
+	// (GET /api/v1/organizations/{orgId}/vault/entries/{entryId}/versions)
+	ListVaultVersions(w http.ResponseWriter, r *http.Request, orgId openapi_types.UUID, entryId openapi_types.UUID, params ListVaultVersionsParams)
+	// List reusable organization service names
+	// (GET /api/v1/organizations/{orgId}/vault/services)
+	ListVaultServices(w http.ResponseWriter, r *http.Request, orgId openapi_types.UUID)
+	// Add a reusable service name with Vault assignment authority
+	// (POST /api/v1/organizations/{orgId}/vault/services)
+	CreateVaultService(w http.ResponseWriter, r *http.Request, orgId openapi_types.UUID)
+	// List current organization users and groups for Vault assignment
+	// (GET /api/v1/organizations/{orgId}/vault/subjects)
+	ListVaultSubjects(w http.ResponseWriter, r *http.Request, orgId openapi_types.UUID)
 	// Get the org enforcement mode (enterprise)
 	// (GET /api/v1/organizations/{orgId}/zero-trust-mode)
 	GetZeroTrustMode(w http.ResponseWriter, r *http.Request, orgId openapi_types.UUID)
@@ -13932,6 +14200,72 @@ func (_ Unimplemented) GetSsoConfig(w http.ResponseWriter, r *http.Request, orgI
 // Configure an SSO provider for an organization (enterprise)
 // (PUT /api/v1/organizations/{orgId}/sso/{provider})
 func (_ Unimplemented) SetSsoConfig(w http.ResponseWriter, r *http.Request, orgId openapi_types.UUID, provider string) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// List personal and assigned entry metadata without secret values
+// (GET /api/v1/organizations/{orgId}/vault/entries)
+func (_ Unimplemented) ListVaultEntries(w http.ResponseWriter, r *http.Request, orgId openapi_types.UUID, params ListVaultEntriesParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Create an encrypted personal or explicitly assigned entry
+// (POST /api/v1/organizations/{orgId}/vault/entries)
+func (_ Unimplemented) CreateVaultEntry(w http.ResponseWriter, r *http.Request, orgId openapi_types.UUID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Save one private unconfigured password before copying it
+// (POST /api/v1/organizations/{orgId}/vault/entries/quick)
+func (_ Unimplemented) QuickCreateVaultEntry(w http.ResponseWriter, r *http.Request, orgId openapi_types.UUID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Delete an owned personal entry or an administered assignment
+// (DELETE /api/v1/organizations/{orgId}/vault/entries/{entryId})
+func (_ Unimplemented) DeleteVaultEntry(w http.ResponseWriter, r *http.Request, orgId openapi_types.UUID, entryId openapi_types.UUID, params DeleteVaultEntryParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Append a new encrypted version with an expected-version precondition
+// (PUT /api/v1/organizations/{orgId}/vault/entries/{entryId})
+func (_ Unimplemented) UpdateVaultEntry(w http.ResponseWriter, r *http.Request, orgId openapi_types.UUID, entryId openapi_types.UUID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Configure an owned quick entry once without replacing its password
+// (POST /api/v1/organizations/{orgId}/vault/entries/{entryId}/configure)
+func (_ Unimplemented) ConfigureVaultEntry(w http.ResponseWriter, r *http.Request, orgId openapi_types.UUID, entryId openapi_types.UUID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Explicitly reveal and audit the current or an earlier secret version
+// (POST /api/v1/organizations/{orgId}/vault/entries/{entryId}/reveal)
+func (_ Unimplemented) RevealVaultEntry(w http.ResponseWriter, r *http.Request, orgId openapi_types.UUID, entryId openapi_types.UUID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// List authorized version metadata without secret values
+// (GET /api/v1/organizations/{orgId}/vault/entries/{entryId}/versions)
+func (_ Unimplemented) ListVaultVersions(w http.ResponseWriter, r *http.Request, orgId openapi_types.UUID, entryId openapi_types.UUID, params ListVaultVersionsParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// List reusable organization service names
+// (GET /api/v1/organizations/{orgId}/vault/services)
+func (_ Unimplemented) ListVaultServices(w http.ResponseWriter, r *http.Request, orgId openapi_types.UUID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Add a reusable service name with Vault assignment authority
+// (POST /api/v1/organizations/{orgId}/vault/services)
+func (_ Unimplemented) CreateVaultService(w http.ResponseWriter, r *http.Request, orgId openapi_types.UUID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// List current organization users and groups for Vault assignment
+// (GET /api/v1/organizations/{orgId}/vault/subjects)
+func (_ Unimplemented) ListVaultSubjects(w http.ResponseWriter, r *http.Request, orgId openapi_types.UUID) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -31715,6 +32049,456 @@ func (siw *ServerInterfaceWrapper) SetSsoConfig(w http.ResponseWriter, r *http.R
 	handler.ServeHTTP(w, r)
 }
 
+// ListVaultEntries operation middleware
+func (siw *ServerInterfaceWrapper) ListVaultEntries(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "orgId" -------------
+	var orgId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "orgId", chi.URLParam(r, "orgId"), &orgId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "orgId", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, CookieAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListVaultEntriesParams
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "limit", r.URL.Query(), &params.Limit)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "offset" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "offset", r.URL.Query(), &params.Offset)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "offset", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "q" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "q", r.URL.Query(), &params.Q)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "q", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListVaultEntries(w, r, orgId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateVaultEntry operation middleware
+func (siw *ServerInterfaceWrapper) CreateVaultEntry(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "orgId" -------------
+	var orgId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "orgId", chi.URLParam(r, "orgId"), &orgId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "orgId", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, CookieAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateVaultEntry(w, r, orgId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// QuickCreateVaultEntry operation middleware
+func (siw *ServerInterfaceWrapper) QuickCreateVaultEntry(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "orgId" -------------
+	var orgId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "orgId", chi.URLParam(r, "orgId"), &orgId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "orgId", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, CookieAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.QuickCreateVaultEntry(w, r, orgId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// DeleteVaultEntry operation middleware
+func (siw *ServerInterfaceWrapper) DeleteVaultEntry(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "orgId" -------------
+	var orgId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "orgId", chi.URLParam(r, "orgId"), &orgId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "orgId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "entryId" -------------
+	var entryId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "entryId", chi.URLParam(r, "entryId"), &entryId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "entryId", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, CookieAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params DeleteVaultEntryParams
+
+	// ------------- Required query parameter "expected_version" -------------
+
+	if paramValue := r.URL.Query().Get("expected_version"); paramValue != "" {
+
+	} else {
+		siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "expected_version"})
+		return
+	}
+
+	err = runtime.BindQueryParameter("form", true, true, "expected_version", r.URL.Query(), &params.ExpectedVersion)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "expected_version", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteVaultEntry(w, r, orgId, entryId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// UpdateVaultEntry operation middleware
+func (siw *ServerInterfaceWrapper) UpdateVaultEntry(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "orgId" -------------
+	var orgId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "orgId", chi.URLParam(r, "orgId"), &orgId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "orgId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "entryId" -------------
+	var entryId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "entryId", chi.URLParam(r, "entryId"), &entryId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "entryId", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, CookieAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateVaultEntry(w, r, orgId, entryId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ConfigureVaultEntry operation middleware
+func (siw *ServerInterfaceWrapper) ConfigureVaultEntry(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "orgId" -------------
+	var orgId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "orgId", chi.URLParam(r, "orgId"), &orgId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "orgId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "entryId" -------------
+	var entryId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "entryId", chi.URLParam(r, "entryId"), &entryId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "entryId", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, CookieAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ConfigureVaultEntry(w, r, orgId, entryId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// RevealVaultEntry operation middleware
+func (siw *ServerInterfaceWrapper) RevealVaultEntry(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "orgId" -------------
+	var orgId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "orgId", chi.URLParam(r, "orgId"), &orgId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "orgId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "entryId" -------------
+	var entryId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "entryId", chi.URLParam(r, "entryId"), &entryId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "entryId", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, CookieAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RevealVaultEntry(w, r, orgId, entryId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListVaultVersions operation middleware
+func (siw *ServerInterfaceWrapper) ListVaultVersions(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "orgId" -------------
+	var orgId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "orgId", chi.URLParam(r, "orgId"), &orgId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "orgId", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "entryId" -------------
+	var entryId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "entryId", chi.URLParam(r, "entryId"), &entryId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "entryId", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, CookieAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListVaultVersionsParams
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "limit", r.URL.Query(), &params.Limit)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "offset" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "offset", r.URL.Query(), &params.Offset)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "offset", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListVaultVersions(w, r, orgId, entryId, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListVaultServices operation middleware
+func (siw *ServerInterfaceWrapper) ListVaultServices(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "orgId" -------------
+	var orgId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "orgId", chi.URLParam(r, "orgId"), &orgId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "orgId", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, CookieAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListVaultServices(w, r, orgId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// CreateVaultService operation middleware
+func (siw *ServerInterfaceWrapper) CreateVaultService(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "orgId" -------------
+	var orgId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "orgId", chi.URLParam(r, "orgId"), &orgId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "orgId", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, CookieAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateVaultService(w, r, orgId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
+// ListVaultSubjects operation middleware
+func (siw *ServerInterfaceWrapper) ListVaultSubjects(w http.ResponseWriter, r *http.Request) {
+
+	var err error
+
+	// ------------- Path parameter "orgId" -------------
+	var orgId openapi_types.UUID
+
+	err = runtime.BindStyledParameterWithOptions("simple", "orgId", chi.URLParam(r, "orgId"), &orgId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "orgId", Err: err})
+		return
+	}
+
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, CookieAuthScopes, []string{})
+
+	r = r.WithContext(ctx)
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListVaultSubjects(w, r, orgId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r)
+}
+
 // GetZeroTrustMode operation middleware
 func (siw *ServerInterfaceWrapper) GetZeroTrustMode(w http.ResponseWriter, r *http.Request) {
 
@@ -33389,6 +34173,39 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Put(options.BaseURL+"/api/v1/organizations/{orgId}/sso/{provider}", wrapper.SetSsoConfig)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/organizations/{orgId}/vault/entries", wrapper.ListVaultEntries)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/organizations/{orgId}/vault/entries", wrapper.CreateVaultEntry)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/organizations/{orgId}/vault/entries/quick", wrapper.QuickCreateVaultEntry)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/api/v1/organizations/{orgId}/vault/entries/{entryId}", wrapper.DeleteVaultEntry)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/api/v1/organizations/{orgId}/vault/entries/{entryId}", wrapper.UpdateVaultEntry)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/organizations/{orgId}/vault/entries/{entryId}/configure", wrapper.ConfigureVaultEntry)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/organizations/{orgId}/vault/entries/{entryId}/reveal", wrapper.RevealVaultEntry)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/organizations/{orgId}/vault/entries/{entryId}/versions", wrapper.ListVaultVersions)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/organizations/{orgId}/vault/services", wrapper.ListVaultServices)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/api/v1/organizations/{orgId}/vault/services", wrapper.CreateVaultService)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/api/v1/organizations/{orgId}/vault/subjects", wrapper.ListVaultSubjects)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/api/v1/organizations/{orgId}/zero-trust-mode", wrapper.GetZeroTrustMode)
@@ -50934,6 +51751,360 @@ func (response SetSsoConfigdefaultJSONResponse) VisitSetSsoConfigResponse(w http
 	return json.NewEncoder(w).Encode(response.Body)
 }
 
+type ListVaultEntriesRequestObject struct {
+	OrgId  openapi_types.UUID `json:"orgId"`
+	Params ListVaultEntriesParams
+}
+
+type ListVaultEntriesResponseObject interface {
+	VisitListVaultEntriesResponse(w http.ResponseWriter) error
+}
+
+type ListVaultEntries200JSONResponse VaultWorkspace
+
+func (response ListVaultEntries200JSONResponse) VisitListVaultEntriesResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ListVaultEntriesdefaultJSONResponse struct {
+	Body       Error
+	Headers    ErrorResponseHeaders
+	StatusCode int
+}
+
+func (response ListVaultEntriesdefaultJSONResponse) VisitListVaultEntriesResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("X-Request-Id", fmt.Sprint(response.Headers.XRequestId))
+	w.WriteHeader(response.StatusCode)
+
+	return json.NewEncoder(w).Encode(response.Body)
+}
+
+type CreateVaultEntryRequestObject struct {
+	OrgId openapi_types.UUID `json:"orgId"`
+	Body  *CreateVaultEntryJSONRequestBody
+}
+
+type CreateVaultEntryResponseObject interface {
+	VisitCreateVaultEntryResponse(w http.ResponseWriter) error
+}
+
+type CreateVaultEntry201JSONResponse VaultEntry
+
+func (response CreateVaultEntry201JSONResponse) VisitCreateVaultEntryResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreateVaultEntrydefaultJSONResponse struct {
+	Body       Error
+	Headers    ErrorResponseHeaders
+	StatusCode int
+}
+
+func (response CreateVaultEntrydefaultJSONResponse) VisitCreateVaultEntryResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("X-Request-Id", fmt.Sprint(response.Headers.XRequestId))
+	w.WriteHeader(response.StatusCode)
+
+	return json.NewEncoder(w).Encode(response.Body)
+}
+
+type QuickCreateVaultEntryRequestObject struct {
+	OrgId openapi_types.UUID `json:"orgId"`
+	Body  *QuickCreateVaultEntryJSONRequestBody
+}
+
+type QuickCreateVaultEntryResponseObject interface {
+	VisitQuickCreateVaultEntryResponse(w http.ResponseWriter) error
+}
+
+type QuickCreateVaultEntry200JSONResponse VaultEntry
+
+func (response QuickCreateVaultEntry200JSONResponse) VisitQuickCreateVaultEntryResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type QuickCreateVaultEntrydefaultJSONResponse struct {
+	Body       Error
+	Headers    ErrorResponseHeaders
+	StatusCode int
+}
+
+func (response QuickCreateVaultEntrydefaultJSONResponse) VisitQuickCreateVaultEntryResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("X-Request-Id", fmt.Sprint(response.Headers.XRequestId))
+	w.WriteHeader(response.StatusCode)
+
+	return json.NewEncoder(w).Encode(response.Body)
+}
+
+type DeleteVaultEntryRequestObject struct {
+	OrgId   openapi_types.UUID `json:"orgId"`
+	EntryId openapi_types.UUID `json:"entryId"`
+	Params  DeleteVaultEntryParams
+}
+
+type DeleteVaultEntryResponseObject interface {
+	VisitDeleteVaultEntryResponse(w http.ResponseWriter) error
+}
+
+type DeleteVaultEntry204Response struct {
+}
+
+func (response DeleteVaultEntry204Response) VisitDeleteVaultEntryResponse(w http.ResponseWriter) error {
+	w.WriteHeader(204)
+	return nil
+}
+
+type DeleteVaultEntrydefaultJSONResponse struct {
+	Body       Error
+	Headers    ErrorResponseHeaders
+	StatusCode int
+}
+
+func (response DeleteVaultEntrydefaultJSONResponse) VisitDeleteVaultEntryResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("X-Request-Id", fmt.Sprint(response.Headers.XRequestId))
+	w.WriteHeader(response.StatusCode)
+
+	return json.NewEncoder(w).Encode(response.Body)
+}
+
+type UpdateVaultEntryRequestObject struct {
+	OrgId   openapi_types.UUID `json:"orgId"`
+	EntryId openapi_types.UUID `json:"entryId"`
+	Body    *UpdateVaultEntryJSONRequestBody
+}
+
+type UpdateVaultEntryResponseObject interface {
+	VisitUpdateVaultEntryResponse(w http.ResponseWriter) error
+}
+
+type UpdateVaultEntry200JSONResponse VaultEntry
+
+func (response UpdateVaultEntry200JSONResponse) VisitUpdateVaultEntryResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type UpdateVaultEntrydefaultJSONResponse struct {
+	Body       Error
+	Headers    ErrorResponseHeaders
+	StatusCode int
+}
+
+func (response UpdateVaultEntrydefaultJSONResponse) VisitUpdateVaultEntryResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("X-Request-Id", fmt.Sprint(response.Headers.XRequestId))
+	w.WriteHeader(response.StatusCode)
+
+	return json.NewEncoder(w).Encode(response.Body)
+}
+
+type ConfigureVaultEntryRequestObject struct {
+	OrgId   openapi_types.UUID `json:"orgId"`
+	EntryId openapi_types.UUID `json:"entryId"`
+	Body    *ConfigureVaultEntryJSONRequestBody
+}
+
+type ConfigureVaultEntryResponseObject interface {
+	VisitConfigureVaultEntryResponse(w http.ResponseWriter) error
+}
+
+type ConfigureVaultEntry200JSONResponse VaultEntry
+
+func (response ConfigureVaultEntry200JSONResponse) VisitConfigureVaultEntryResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ConfigureVaultEntrydefaultJSONResponse struct {
+	Body       Error
+	Headers    ErrorResponseHeaders
+	StatusCode int
+}
+
+func (response ConfigureVaultEntrydefaultJSONResponse) VisitConfigureVaultEntryResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("X-Request-Id", fmt.Sprint(response.Headers.XRequestId))
+	w.WriteHeader(response.StatusCode)
+
+	return json.NewEncoder(w).Encode(response.Body)
+}
+
+type RevealVaultEntryRequestObject struct {
+	OrgId   openapi_types.UUID `json:"orgId"`
+	EntryId openapi_types.UUID `json:"entryId"`
+	Body    *RevealVaultEntryJSONRequestBody
+}
+
+type RevealVaultEntryResponseObject interface {
+	VisitRevealVaultEntryResponse(w http.ResponseWriter) error
+}
+
+type RevealVaultEntry200JSONResponse VaultSecret
+
+func (response RevealVaultEntry200JSONResponse) VisitRevealVaultEntryResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type RevealVaultEntrydefaultJSONResponse struct {
+	Body       Error
+	Headers    ErrorResponseHeaders
+	StatusCode int
+}
+
+func (response RevealVaultEntrydefaultJSONResponse) VisitRevealVaultEntryResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("X-Request-Id", fmt.Sprint(response.Headers.XRequestId))
+	w.WriteHeader(response.StatusCode)
+
+	return json.NewEncoder(w).Encode(response.Body)
+}
+
+type ListVaultVersionsRequestObject struct {
+	OrgId   openapi_types.UUID `json:"orgId"`
+	EntryId openapi_types.UUID `json:"entryId"`
+	Params  ListVaultVersionsParams
+}
+
+type ListVaultVersionsResponseObject interface {
+	VisitListVaultVersionsResponse(w http.ResponseWriter) error
+}
+
+type ListVaultVersions200JSONResponse VaultHistory
+
+func (response ListVaultVersions200JSONResponse) VisitListVaultVersionsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ListVaultVersionsdefaultJSONResponse struct {
+	Body       Error
+	Headers    ErrorResponseHeaders
+	StatusCode int
+}
+
+func (response ListVaultVersionsdefaultJSONResponse) VisitListVaultVersionsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("X-Request-Id", fmt.Sprint(response.Headers.XRequestId))
+	w.WriteHeader(response.StatusCode)
+
+	return json.NewEncoder(w).Encode(response.Body)
+}
+
+type ListVaultServicesRequestObject struct {
+	OrgId openapi_types.UUID `json:"orgId"`
+}
+
+type ListVaultServicesResponseObject interface {
+	VisitListVaultServicesResponse(w http.ResponseWriter) error
+}
+
+type ListVaultServices200JSONResponse []VaultService
+
+func (response ListVaultServices200JSONResponse) VisitListVaultServicesResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ListVaultServicesdefaultJSONResponse struct {
+	Body       Error
+	Headers    ErrorResponseHeaders
+	StatusCode int
+}
+
+func (response ListVaultServicesdefaultJSONResponse) VisitListVaultServicesResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("X-Request-Id", fmt.Sprint(response.Headers.XRequestId))
+	w.WriteHeader(response.StatusCode)
+
+	return json.NewEncoder(w).Encode(response.Body)
+}
+
+type CreateVaultServiceRequestObject struct {
+	OrgId openapi_types.UUID `json:"orgId"`
+	Body  *CreateVaultServiceJSONRequestBody
+}
+
+type CreateVaultServiceResponseObject interface {
+	VisitCreateVaultServiceResponse(w http.ResponseWriter) error
+}
+
+type CreateVaultService201JSONResponse VaultService
+
+func (response CreateVaultService201JSONResponse) VisitCreateVaultServiceResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(201)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type CreateVaultServicedefaultJSONResponse struct {
+	Body       Error
+	Headers    ErrorResponseHeaders
+	StatusCode int
+}
+
+func (response CreateVaultServicedefaultJSONResponse) VisitCreateVaultServiceResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("X-Request-Id", fmt.Sprint(response.Headers.XRequestId))
+	w.WriteHeader(response.StatusCode)
+
+	return json.NewEncoder(w).Encode(response.Body)
+}
+
+type ListVaultSubjectsRequestObject struct {
+	OrgId openapi_types.UUID `json:"orgId"`
+}
+
+type ListVaultSubjectsResponseObject interface {
+	VisitListVaultSubjectsResponse(w http.ResponseWriter) error
+}
+
+type ListVaultSubjects200JSONResponse VaultSubjects
+
+func (response ListVaultSubjects200JSONResponse) VisitListVaultSubjectsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(200)
+
+	return json.NewEncoder(w).Encode(response)
+}
+
+type ListVaultSubjectsdefaultJSONResponse struct {
+	Body       Error
+	Headers    ErrorResponseHeaders
+	StatusCode int
+}
+
+func (response ListVaultSubjectsdefaultJSONResponse) VisitListVaultSubjectsResponse(w http.ResponseWriter) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("X-Request-Id", fmt.Sprint(response.Headers.XRequestId))
+	w.WriteHeader(response.StatusCode)
+
+	return json.NewEncoder(w).Encode(response.Body)
+}
+
 type GetZeroTrustModeRequestObject struct {
 	OrgId openapi_types.UUID `json:"orgId"`
 }
@@ -52697,6 +53868,39 @@ type StrictServerInterface interface {
 	// Configure an SSO provider for an organization (enterprise)
 	// (PUT /api/v1/organizations/{orgId}/sso/{provider})
 	SetSsoConfig(ctx context.Context, request SetSsoConfigRequestObject) (SetSsoConfigResponseObject, error)
+	// List personal and assigned entry metadata without secret values
+	// (GET /api/v1/organizations/{orgId}/vault/entries)
+	ListVaultEntries(ctx context.Context, request ListVaultEntriesRequestObject) (ListVaultEntriesResponseObject, error)
+	// Create an encrypted personal or explicitly assigned entry
+	// (POST /api/v1/organizations/{orgId}/vault/entries)
+	CreateVaultEntry(ctx context.Context, request CreateVaultEntryRequestObject) (CreateVaultEntryResponseObject, error)
+	// Save one private unconfigured password before copying it
+	// (POST /api/v1/organizations/{orgId}/vault/entries/quick)
+	QuickCreateVaultEntry(ctx context.Context, request QuickCreateVaultEntryRequestObject) (QuickCreateVaultEntryResponseObject, error)
+	// Delete an owned personal entry or an administered assignment
+	// (DELETE /api/v1/organizations/{orgId}/vault/entries/{entryId})
+	DeleteVaultEntry(ctx context.Context, request DeleteVaultEntryRequestObject) (DeleteVaultEntryResponseObject, error)
+	// Append a new encrypted version with an expected-version precondition
+	// (PUT /api/v1/organizations/{orgId}/vault/entries/{entryId})
+	UpdateVaultEntry(ctx context.Context, request UpdateVaultEntryRequestObject) (UpdateVaultEntryResponseObject, error)
+	// Configure an owned quick entry once without replacing its password
+	// (POST /api/v1/organizations/{orgId}/vault/entries/{entryId}/configure)
+	ConfigureVaultEntry(ctx context.Context, request ConfigureVaultEntryRequestObject) (ConfigureVaultEntryResponseObject, error)
+	// Explicitly reveal and audit the current or an earlier secret version
+	// (POST /api/v1/organizations/{orgId}/vault/entries/{entryId}/reveal)
+	RevealVaultEntry(ctx context.Context, request RevealVaultEntryRequestObject) (RevealVaultEntryResponseObject, error)
+	// List authorized version metadata without secret values
+	// (GET /api/v1/organizations/{orgId}/vault/entries/{entryId}/versions)
+	ListVaultVersions(ctx context.Context, request ListVaultVersionsRequestObject) (ListVaultVersionsResponseObject, error)
+	// List reusable organization service names
+	// (GET /api/v1/organizations/{orgId}/vault/services)
+	ListVaultServices(ctx context.Context, request ListVaultServicesRequestObject) (ListVaultServicesResponseObject, error)
+	// Add a reusable service name with Vault assignment authority
+	// (POST /api/v1/organizations/{orgId}/vault/services)
+	CreateVaultService(ctx context.Context, request CreateVaultServiceRequestObject) (CreateVaultServiceResponseObject, error)
+	// List current organization users and groups for Vault assignment
+	// (GET /api/v1/organizations/{orgId}/vault/subjects)
+	ListVaultSubjects(ctx context.Context, request ListVaultSubjectsRequestObject) (ListVaultSubjectsResponseObject, error)
 	// Get the org enforcement mode (enterprise)
 	// (GET /api/v1/organizations/{orgId}/zero-trust-mode)
 	GetZeroTrustMode(ctx context.Context, request GetZeroTrustModeRequestObject) (GetZeroTrustModeResponseObject, error)
@@ -66230,6 +67434,342 @@ func (sh *strictHandler) SetSsoConfig(w http.ResponseWriter, r *http.Request, or
 		sh.options.ResponseErrorHandlerFunc(w, r, err)
 	} else if validResponse, ok := response.(SetSsoConfigResponseObject); ok {
 		if err := validResponse.VisitSetSsoConfigResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListVaultEntries operation middleware
+func (sh *strictHandler) ListVaultEntries(w http.ResponseWriter, r *http.Request, orgId openapi_types.UUID, params ListVaultEntriesParams) {
+	var request ListVaultEntriesRequestObject
+
+	request.OrgId = orgId
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListVaultEntries(ctx, request.(ListVaultEntriesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListVaultEntries")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListVaultEntriesResponseObject); ok {
+		if err := validResponse.VisitListVaultEntriesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateVaultEntry operation middleware
+func (sh *strictHandler) CreateVaultEntry(w http.ResponseWriter, r *http.Request, orgId openapi_types.UUID) {
+	var request CreateVaultEntryRequestObject
+
+	request.OrgId = orgId
+
+	var body CreateVaultEntryJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateVaultEntry(ctx, request.(CreateVaultEntryRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateVaultEntry")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateVaultEntryResponseObject); ok {
+		if err := validResponse.VisitCreateVaultEntryResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// QuickCreateVaultEntry operation middleware
+func (sh *strictHandler) QuickCreateVaultEntry(w http.ResponseWriter, r *http.Request, orgId openapi_types.UUID) {
+	var request QuickCreateVaultEntryRequestObject
+
+	request.OrgId = orgId
+
+	var body QuickCreateVaultEntryJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.QuickCreateVaultEntry(ctx, request.(QuickCreateVaultEntryRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "QuickCreateVaultEntry")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(QuickCreateVaultEntryResponseObject); ok {
+		if err := validResponse.VisitQuickCreateVaultEntryResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// DeleteVaultEntry operation middleware
+func (sh *strictHandler) DeleteVaultEntry(w http.ResponseWriter, r *http.Request, orgId openapi_types.UUID, entryId openapi_types.UUID, params DeleteVaultEntryParams) {
+	var request DeleteVaultEntryRequestObject
+
+	request.OrgId = orgId
+	request.EntryId = entryId
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.DeleteVaultEntry(ctx, request.(DeleteVaultEntryRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "DeleteVaultEntry")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(DeleteVaultEntryResponseObject); ok {
+		if err := validResponse.VisitDeleteVaultEntryResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// UpdateVaultEntry operation middleware
+func (sh *strictHandler) UpdateVaultEntry(w http.ResponseWriter, r *http.Request, orgId openapi_types.UUID, entryId openapi_types.UUID) {
+	var request UpdateVaultEntryRequestObject
+
+	request.OrgId = orgId
+	request.EntryId = entryId
+
+	var body UpdateVaultEntryJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.UpdateVaultEntry(ctx, request.(UpdateVaultEntryRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "UpdateVaultEntry")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(UpdateVaultEntryResponseObject); ok {
+		if err := validResponse.VisitUpdateVaultEntryResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ConfigureVaultEntry operation middleware
+func (sh *strictHandler) ConfigureVaultEntry(w http.ResponseWriter, r *http.Request, orgId openapi_types.UUID, entryId openapi_types.UUID) {
+	var request ConfigureVaultEntryRequestObject
+
+	request.OrgId = orgId
+	request.EntryId = entryId
+
+	var body ConfigureVaultEntryJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ConfigureVaultEntry(ctx, request.(ConfigureVaultEntryRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ConfigureVaultEntry")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ConfigureVaultEntryResponseObject); ok {
+		if err := validResponse.VisitConfigureVaultEntryResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// RevealVaultEntry operation middleware
+func (sh *strictHandler) RevealVaultEntry(w http.ResponseWriter, r *http.Request, orgId openapi_types.UUID, entryId openapi_types.UUID) {
+	var request RevealVaultEntryRequestObject
+
+	request.OrgId = orgId
+	request.EntryId = entryId
+
+	var body RevealVaultEntryJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.RevealVaultEntry(ctx, request.(RevealVaultEntryRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "RevealVaultEntry")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(RevealVaultEntryResponseObject); ok {
+		if err := validResponse.VisitRevealVaultEntryResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListVaultVersions operation middleware
+func (sh *strictHandler) ListVaultVersions(w http.ResponseWriter, r *http.Request, orgId openapi_types.UUID, entryId openapi_types.UUID, params ListVaultVersionsParams) {
+	var request ListVaultVersionsRequestObject
+
+	request.OrgId = orgId
+	request.EntryId = entryId
+	request.Params = params
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListVaultVersions(ctx, request.(ListVaultVersionsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListVaultVersions")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListVaultVersionsResponseObject); ok {
+		if err := validResponse.VisitListVaultVersionsResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListVaultServices operation middleware
+func (sh *strictHandler) ListVaultServices(w http.ResponseWriter, r *http.Request, orgId openapi_types.UUID) {
+	var request ListVaultServicesRequestObject
+
+	request.OrgId = orgId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListVaultServices(ctx, request.(ListVaultServicesRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListVaultServices")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListVaultServicesResponseObject); ok {
+		if err := validResponse.VisitListVaultServicesResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// CreateVaultService operation middleware
+func (sh *strictHandler) CreateVaultService(w http.ResponseWriter, r *http.Request, orgId openapi_types.UUID) {
+	var request CreateVaultServiceRequestObject
+
+	request.OrgId = orgId
+
+	var body CreateVaultServiceJSONRequestBody
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		sh.options.RequestErrorHandlerFunc(w, r, fmt.Errorf("can't decode JSON body: %w", err))
+		return
+	}
+	request.Body = &body
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.CreateVaultService(ctx, request.(CreateVaultServiceRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "CreateVaultService")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(CreateVaultServiceResponseObject); ok {
+		if err := validResponse.VisitCreateVaultServiceResponse(w); err != nil {
+			sh.options.ResponseErrorHandlerFunc(w, r, err)
+		}
+	} else if response != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, fmt.Errorf("unexpected response type: %T", response))
+	}
+}
+
+// ListVaultSubjects operation middleware
+func (sh *strictHandler) ListVaultSubjects(w http.ResponseWriter, r *http.Request, orgId openapi_types.UUID) {
+	var request ListVaultSubjectsRequestObject
+
+	request.OrgId = orgId
+
+	handler := func(ctx context.Context, w http.ResponseWriter, r *http.Request, request interface{}) (interface{}, error) {
+		return sh.ssi.ListVaultSubjects(ctx, request.(ListVaultSubjectsRequestObject))
+	}
+	for _, middleware := range sh.middlewares {
+		handler = middleware(handler, "ListVaultSubjects")
+	}
+
+	response, err := handler(r.Context(), w, r, request)
+
+	if err != nil {
+		sh.options.ResponseErrorHandlerFunc(w, r, err)
+	} else if validResponse, ok := response.(ListVaultSubjectsResponseObject); ok {
+		if err := validResponse.VisitListVaultSubjectsResponse(w); err != nil {
 			sh.options.ResponseErrorHandlerFunc(w, r, err)
 		}
 	} else if response != nil {

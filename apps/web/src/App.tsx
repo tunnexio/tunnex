@@ -52,6 +52,7 @@ import BrowserTerminal from "./pages/BrowserTerminal";
 import EditorAuth from "./pages/EditorAuth";
 import { AppAccessLaunch } from "./pages/AppAccessMyApplications";
 import Users from "./pages/Users";
+import Vault from "./pages/Vault";
 import { LegacyWorkspaceRedirect } from "./components/LegacyWorkspaceRedirect";
 import { AgentModelAccess } from "./pages/AgentsAIGateway";
 import Settings from "./pages/Settings";
@@ -249,6 +250,7 @@ function ProductApp() {
             <Route path="/access/resources/fqdn/:resourceId" element={<FQDNResourceDetail />} />
             <Route path="/access/kubernetes-scopes" element={<AccessKubernetesScopes />} />
             <Route path="/users" element={<Users />} />
+            <Route path="/vault" element={<Vault />} />
             <Route path="/settings" element={<Settings />} />
             <Route path="/access-events" element={<AccessEventsRoute />} />
             <Route path="/audit" element={<AuditLog />} />

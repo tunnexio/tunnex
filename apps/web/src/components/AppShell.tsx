@@ -85,6 +85,7 @@ export const NAV_GROUPS: Array<{
       { to: "/app-access", label: "App Access", icon: "chrome" },
       { to: "/browser-access/terminal", label: "Server Access", icon: "browser-access" },
       { to: "/beam", label: "Local Sharing", icon: "local-sharing" },
+      { to: "/vault", label: "Tunnex Vault", icon: "key" },
     ],
   },
   {

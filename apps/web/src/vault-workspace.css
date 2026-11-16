@@ -1,0 +1,41 @@
+/* Inventory, search, empty states and drawers use Local Sharing's
+ * shared classes and primitives. Keep only Vault's content-specific rules here. */
+.vault-inventory-summary { padding-bottom:0; }
+.vault-workspace .beam-inventory-table th,.vault-workspace .beam-inventory-table td,
+.vault-history-table th,.vault-history-table td { border:0; }
+.vault-workspace .aa-empty-state { border-bottom:0; }
+.vault-workspace .beam-disclosure { border-top:0; }
+.vault-workspace .beam-disclosure > summary { background:transparent; }
+.vault-workspace .beam-toolbar > button,.vault-workspace .beam-open-link { border-color:transparent; background:transparent; }
+.vault-entry-title { text-align:left; }
+.vault-entry-title:hover { text-decoration:underline; text-underline-offset:3px; }
+.vault-access,.vault-version { font-size:12px; white-space:nowrap; }
+.vault-cell-note { display:block; margin-top:4px; font-size:11px; color:var(--tnx-text-tertiary); }
+.vault-count { color:var(--tnx-text-secondary); font-size:11px; font-weight:400; }
+.vault-muted { color:var(--tnx-text-tertiary); }
+.vault-help { color:var(--tnx-text-secondary); font-size:12px; line-height:1.6; }
+.vault-form,.vault-detail { display:grid; gap:16px; }
+.vault-form-grid { display:grid; grid-template-columns:1fr 1fr; gap:16px; }
+.vault-inline-actions { display:flex; flex-wrap:wrap; align-items:center; gap:8px; }
+.vault-inline-error { display:flex; flex-wrap:wrap; align-items:center; gap:12px; padding-block:14px; }
+.vault-text-action { color:var(--tnx-text-primary); font-size:12px; font-weight:500; text-align:left; }
+.vault-text-action:hover { text-decoration:underline; text-underline-offset:3px; }
+.vault-service-create,.vault-assignment { display:grid; gap:10px; }
+.vault-detail-facts { display:grid; grid-template-columns:1fr 1fr; gap:15px 22px; }
+.vault-detail-facts dt { color:var(--tnx-text-tertiary); font-size:11px; }
+.vault-detail-facts dd { color:var(--tnx-text-primary); font-size:13px; line-height:1.5; margin-top:4px; overflow-wrap:anywhere; }
+.vault-secret-panel,.vault-history { display:grid; gap:12px; padding-top:18px; }
+.vault-section-heading { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+.vault-section-heading h3 { display:flex; align-items:center; gap:8px; color:var(--tnx-text-heading); font-size:13px; font-weight:550; }
+.vault-secret-value { display:block; padding:13px 14px; min-height:48px; border:1px solid var(--tnx-border); border-radius:6px; background:var(--tnx-surface-inset); color:var(--tnx-text-primary); font-size:13px; line-height:1.7; white-space:pre-wrap; overflow-wrap:anywhere; user-select:all; }
+.vault-history-table { font-size:12px; }
+.vault-history-table td { padding-block:11px; }
+.vault-history-table time { white-space:nowrap; font-size:11px; }
+.vault-history-pagination { display:flex; align-items:center; flex-wrap:wrap; gap:8px; }
+.vault-history-pagination > span { margin-right:auto; color:var(--tnx-text-tertiary); font-size:11px; }
+.tnx-modal-overlay[data-placement="right"]:has(.vault-quick-password) { align-items:flex-start; }
+.tnx-modal-overlay[data-placement="right"] .tnx-modal-panel:has(.vault-quick-password) { width:min(100%,420px); max-width:420px; height:auto; max-height:100dvh; border-width:0 0 1px 1px; }
+.tnx-modal-overlay[data-placement="right"] .tnx-modal-panel:has(.vault-quick-password) .tnx-modal-body { flex:0 1 auto; }
+.tnx-modal-panel:has(.vault-quick-password) .tnx-modal-actions { margin-top:16px; padding-top:0; border-top:0; gap:20px; }
+.vault-quick-password { display:grid; gap:12px; }
+@media (max-width:700px) { .vault-credentials-table { min-width:850px; } .vault-form-grid,.vault-detail-facts { grid-template-columns:1fr; } .vault-history-table { min-width:450px; } }
