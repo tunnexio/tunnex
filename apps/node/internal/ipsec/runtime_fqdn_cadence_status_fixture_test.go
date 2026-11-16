@@ -63,7 +63,9 @@ func TestFQDNCadenceStatusFixtureSerializedHealthyAndUnknown(t *testing.T) {
 			r, _ := fqdnMultiOwnerCadenceRig(t)
 			installFQDNCadenceStatusReaders(t, r, nil)
 			if broken {
-				r.c.statusReaders.xfrm = func(context.Context) (XFRMInventory, error) { return XFRMInventory{Namespace: r.entries[0].Allocation.Namespace}, nil }
+				r.c.statusReaders.xfrm = func(context.Context) (XFRMInventory, error) {
+					return XFRMInventory{Namespace: r.entries[0].Allocation.Namespace}, nil
+				}
 			}
 			for _, a := range r.c.active {
 				if a.Entry.ContractVersion != 2 {
