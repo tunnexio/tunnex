@@ -172,11 +172,13 @@ func (c *RuntimeController) withdrawPendingFQDNPolicyLocked(ctx context.Context)
 		if c.fqdnGrantsCurrent(a.Grants) {
 			continue
 		}
-		if !runtimeDesktopEntrySupported(a.Entry) {
-			return fail(id, "pending_owner_contract")
-		}
+		// runtimeDesktopEntrySupported also refuses profiled owners; name the
+		// profile leaf first so each refusal keeps its own diagnostic stage.
 		if a.Entry.Allocation.ProfileID != "" {
 			return fail(id, "pending_owner_profile")
+		}
+		if !runtimeDesktopEntrySupported(a.Entry) {
+			return fail(id, "pending_owner_contract")
 		}
 		if c.config.FQDNPolicy == nil {
 			return fail(id, "pending_policy_source")
