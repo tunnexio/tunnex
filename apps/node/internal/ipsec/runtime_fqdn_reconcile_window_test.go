@@ -16,8 +16,9 @@ import (
 // canonical shared guard rendering/readback, and stateful route reconciliation.
 // Explicit synthetic command costs expose otherwise uncharged desktop/MTU IO.
 func TestFQDNGenericReconcileShortSiblingWindow(t *testing.T) {
-	for _, near := range []bool{false, true} {
-		t.Run(map[bool]string{false: "early_control", true: "short_sibling_cutoff"}[near], func(t *testing.T) {
+	for _, scenario := range []string{"early_control", "short_sibling_cutoff", "fresh_authorized_recovery"} {
+		near := scenario != "early_control"
+		t.Run(scenario, func(t *testing.T) {
 			r, client, id, process, kernel := exactPageBGPConvergenceRig(t, false)
 			// The shared cadence fixture has no ordinary application grant. Seed a
 			// normal TCP/80 desktop grant through its authenticated material normalizer
@@ -55,6 +56,12 @@ func TestFQDNGenericReconcileShortSiblingWindow(t *testing.T) {
 				}
 				a.Authority, a.Grants = auth, grants
 				r.c.active[owner] = a
+				// Setup changed the authenticated ordinary policy hash. Match the
+				// real successfully applied owner's recovery epoch before the
+				// later expiry-only commit; no observation is created here.
+				if h := r.c.recoveryHistory[owner]; h != nil {
+					h.epoch.PolicyHash = a.Identity.PolicyHash
+				}
 				client.old[owner] = m
 			}
 			// As in the shared fixture's initial seed, setup does not charge the
@@ -180,16 +187,50 @@ func TestFQDNGenericReconcileShortSiblingWindow(t *testing.T) {
 					t.Fatal("fixture crossed absolute FQDN deadline instead of early cutoff", *r.now, deadline)
 				}
 				for _, owner := range static {
-					if _, ok := r.c.fqdnNativeWindows[owner]; ok {
-						t.Fatal("omitted grant retained a scheduling window")
+					if w, ok := r.c.fqdnNativeWindows[owner]; ok && w.deadline > *r.now {
+						t.Fatal("omitted grant claimed a live native window")
 					}
 				}
-				reads, leases := client.reads, client.requests
+				if scenario == "fresh_authorized_recovery" {
+					client.publishAt = *r.now
+					reports := map[uuid.UUID]bool{}
+					publish := func(_ context.Context, d RuntimeDelivery, out RuntimeStatusReport) error {
+						if d.Manifest.BGP != nil || out.DeliveryID != d.ID || out.RecoveryVersion == nil || *out.RecoveryVersion != 1 || out.SelectionSequence == nil || *out.SelectionSequence == 0 || out.ActiveSlot == nil || out.Tunnels[0].Status != "up" || out.Tunnels[1].Status != "up" || reports[d.Manifest.ConnectionID] {
+							t.Fatal("recovered owner report lacked actual native recovery evidence")
+						}
+						reports[d.Manifest.ConnectionID] = true
+						return nil
+					}
+					if err := r.c.followupFQDNMaintenance(context.Background(), maintenanceAuthority(r), func() bool { return true }, publish, nil, fqdnTestWait(r)); err != nil {
+						t.Fatal("fresh current material could not recover cutoff sibling", err)
+					}
+					if client.reads == 0 || client.requests == 0 || process.closed || len(r.c.active) != 3 || len(reports) != 2 {
+						t.Fatal("missing native-window scheduling never requested fresh authority")
+					}
+					for _, owner := range static {
+						a := r.c.active[owner]
+						if a.Authority == originals[owner].Authority || a.Identity.PolicyHash == originals[owner].Identity.PolicyHash {
+							t.Fatal("recovery did not acquire distinct current nonce authority")
+						}
+						for _, g := range a.Grants {
+							if g.FQDNManaged && r.installed[guardFQDNSetName(g)] <= *r.now {
+								t.Fatal("fresh authenticated sibling was not restored")
+							}
+						}
+						if originals[owner].Authority.deadline != ordinaryEnds[owner] || !reflect.DeepEqual(originals[owner].Authority.fqdnDeadlines, fqdnEnds[owner]) {
+							t.Fatal("recovery extended the original authority")
+						}
+					}
+					t.Logf("actual followup recovered both cutoff siblings: material_reads=%d new_leases=%d", client.reads, client.requests)
+					return
+				}
+				client.publishAt = *r.now + time.Hour
+				leases := client.requests
 				if err := r.c.followupFQDNMaintenance(context.Background(), maintenanceAuthority(r), func() bool { return true }, nil, nil, fqdnTestWait(r)); err != nil {
 					t.Fatal(err)
 				}
-				if client.reads != reads || client.requests != leases {
-					t.Fatal("missing-window followup unexpectedly requested authority")
+				if client.requests != leases {
+					t.Fatal("unchanged missing-window followup requested authority")
 				}
 				for _, owner := range static {
 					for _, g := range originals[owner].Grants {

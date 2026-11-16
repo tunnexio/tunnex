@@ -2,7 +2,6 @@ package ipsec
 
 import (
 	"context"
-	"reflect"
 	"runtime"
 	"sort"
 	"time"
@@ -11,11 +10,13 @@ import (
 )
 
 // This process-local record is scheduling advice, never a permit. Its owner is
-// the exact successfully committed authority and its deadline uses the emitted
-// native timeout, conservatively anchored before replacement starts.
+// the exact successfully committed authority. An emitted deadline uses the
+// native timeout, conservatively anchored before replacement starts. Omitted
+// advice has no native deadline and can only schedule a fresh authorization.
 type runtimeFQDNNativeWindow struct {
 	owner    runtimeActive
 	deadline time.Duration
+	omitted  bool
 }
 
 func (c *RuntimeController) rememberFQDNNativeWindows(in GuardIntent, active map[uuid.UUID]runtimeActive, started time.Duration) {
@@ -35,6 +36,9 @@ func (c *RuntimeController) rememberFQDNNativeWindows(in GuardIntent, active map
 				windows[connection.ID] = runtimeFQDNNativeWindow{owner: owner, deadline: end}
 			}
 		}
+		if _, emitted := windows[connection.ID]; !emitted && c.fqdnOmittedWindowEligible(connection, owner) {
+			windows[connection.ID] = runtimeFQDNNativeWindow{owner: owner, omitted: true}
+		}
 	}
 	c.fqdnNativeWindows = windows
 }
@@ -51,11 +55,11 @@ func (c *RuntimeController) shortFQDNNativeOwners() []uuid.UUID {
 	var ids []uuid.UUID
 	for id, window := range c.fqdnNativeWindows {
 		owner, ok := c.active[id]
-		if !ok || owner.Authority == nil || owner.Authority != window.owner.Authority || !reflect.DeepEqual(owner, window.owner) || window.deadline <= now || !c.fqdnGrantsCurrent(owner.Grants) {
+		if !ok || !c.fqdnRefreshWindowCurrent(window, owner, now) || !c.fqdnGrantsCurrent(owner.Grants) {
 			delete(c.fqdnNativeWindows, id)
 			continue
 		}
-		if window.deadline-now <= runway {
+		if window.omitted || window.deadline-now <= runway {
 			ids = append(ids, id)
 		}
 	}
@@ -69,7 +73,8 @@ func (c *RuntimeController) fqdnRenewalRunway() time.Duration {
 
 func (c *RuntimeController) fqdnNativeWindowNeedsRefresh(id uuid.UUID, old runtimeActive) bool {
 	window, ok := c.fqdnNativeWindows[id]
-	return ok && old.Authority != nil && old.Authority == window.owner.Authority && reflect.DeepEqual(old, window.owner) && window.deadline > c.recoveryNow() && window.deadline-c.recoveryNow() <= c.fqdnRenewalRunway()
+	now := c.recoveryNow()
+	return ok && c.fqdnRefreshWindowCurrent(window, old, now) && (window.omitted || window.deadline-now <= c.fqdnRenewalRunway())
 }
 
 func runtimeFQDNWait(ctx context.Context, d time.Duration) error {
@@ -133,7 +138,7 @@ func (c *RuntimeController) followupFQDNMaintenance(ctx context.Context, authori
 			}
 			window, exists := c.fqdnNativeWindows[id]
 			old, active := c.active[id]
-			if !exists || !active || window.deadline <= c.recoveryNow() || !reflect.DeepEqual(old, window.owner) {
+			if !exists || !active || !c.fqdnRefreshWindowCurrent(window, old, c.recoveryNow()) {
 				return nil
 			}
 			if !c.fqdnGrantsCurrent(old.Grants) || !c.qualification.current() || c.config.DaemonAlive == nil || !c.config.DaemonAlive() {
