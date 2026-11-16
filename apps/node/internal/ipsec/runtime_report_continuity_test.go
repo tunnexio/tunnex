@@ -68,8 +68,11 @@ func TestMaintenanceReportContinuityBoundedCommit(t *testing.T) {
 			t.Fatal("original deadline changed")
 		}
 	}
-	t.Logf("RESULT err=%v commits=%d callbacks=%d alive=%t now=%s diagnostics=%v costs=%v", err, commits, callbacks, allPriorityMembersLive(r), *r.now-start, diagnostics, r.charged)
-	if err != nil || commits != 1 || assemblyCallbacks != 2 || !allPriorityMembersLive(r) {
+	t.Logf("RESULT assembly=%d err=%v commits=%d callbacks=%d alive=%t now=%s diagnostics=%v costs=%v", assemblyCallbacks, err, commits, callbacks, allPriorityMembersLive(r), *r.now-start, diagnostics, r.charged)
+	// Two returned reports at the original assembly boundary, plus the bounded
+	// per-owner collection boundary before each native proof in
+	// installActiveCandidatesFQDN.
+	if err != nil || commits != 1 || assemblyCallbacks != 4 || !allPriorityMembersLive(r) {
 		t.Fatal("bounded successful commit/report work lost finite ordinary authority")
 	}
 }
