@@ -101,6 +101,16 @@ func (c *RuntimeController) reconcileRecoveryRoutes(ctx context.Context, e Runti
 	return c.kernel.ReconcileSelection(ctx, e.Allocation, e.Observed, target)
 }
 func (c *RuntimeController) recoveryLease(ctx context.Context, e RuntimeJournalEntry, hash string, policies ...RuntimePolicy) (*PermitLeaseAuthority, PermitLeaseIdentity, error) {
+	authority, identity, err := c.recoveryLeaseClassified(ctx, e, hash, policies...)
+	if err != nil {
+		return nil, identity, ErrRuntimeController
+	}
+	return authority, identity, nil
+}
+
+// Only heartbeat owner withdrawal consumes the closed conflict classification.
+// Ordinary recovery callers retain their original generic fail-closed error.
+func (c *RuntimeController) recoveryLeaseClassified(ctx context.Context, e RuntimeJournalEntry, hash string, policies ...RuntimePolicy) (*PermitLeaseAuthority, PermitLeaseIdentity, error) {
 	authority := NewPermitLeaseAuthority()
 	identity := PermitLeaseIdentity{PolicyHash: hash, Binding: e.Engines[0].Binding, DeliveryID: e.DeliveryID}
 	// Material-bearing callers provide the exact original descriptors. Telemetry
@@ -122,6 +132,9 @@ func (c *RuntimeController) recoveryLease(ctx context.Context, e RuntimeJournalE
 		return nil, identity, ErrRuntimeController
 	}
 	lease, err := c.client.RenewIPsecLease(ctx, e.Allocation.ConnectionID, RuntimeLeaseRequest{DeliveryID: e.DeliveryID, DesiredRevision: e.Engines[0].Binding.DesiredRevision, PolicyHash: hash, Nonce: request.Nonce, FQDNGrants: runtimeFQDNLeaseDescriptors(policy)})
+	if err != nil && maintenanceLeaseFailureStage(err) == "maintenance_lease_http_409_conflict" {
+		return nil, identity, &runtimeRecoveryLeaseConflict{}
+	}
 	if err != nil || lease.DeliveryID != e.DeliveryID || lease.DesiredRevision != e.Engines[0].Binding.DesiredRevision || lease.PolicyHash != hash || lease.Nonce != request.Nonce || authority.Accept(PermitLeaseResponse{PermitLeaseRequest: request, TTLMillis: lease.TTLMS, FQDNPermits: lease.FQDNPermits}) != nil {
 		return nil, identity, ErrRuntimeController
 	}

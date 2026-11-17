@@ -471,6 +471,45 @@ host_is_portable_control_plane() {
 	esac
 }
 
+# Local bundles are explicitly selected, signed private artifacts. Published
+# installs continue to use the CI key and release descriptor below.
+LOCAL_BUNDLE=false
+LOCAL_BUNDLE_STAGE=''
+LOCAL_BUNDLE_HELPER=''
+local_bundle_value() { sed -n "s/^$1=//p" "$LOCAL_BUNDLE_STAGE/bundle.env" | head -1; }
+prepare_local_bundle() {
+    [ -n "${TUNNEX_LOCAL_BUNDLE_DIR:-}" ] || {
+        [ -z "${TUNNEX_LOCAL_BUNDLE_PUBLIC_KEY:-}" ] || die 'A local bundle key requires TUNNEX_LOCAL_BUNDLE_DIR.'
+        return 0
+    }
+    [ -n "${TUNNEX_LOCAL_BUNDLE_PUBLIC_KEY:-}" ] || die 'Supply an independently trusted PEM key with TUNNEX_LOCAL_BUNDLE_PUBLIC_KEY.'
+    command -v python3 >/dev/null 2>&1 && command -v openssl >/dev/null 2>&1 ||
+        die 'Local bundles require Python 3.11+ and OpenSSL with Ed25519 support before installation.'
+    python3 -c 'import sys; sys.exit(sys.version_info < (3, 11))' || die 'Local bundles require Python 3.11+.'
+    [ "$(uname -s)" = Linux ] || die 'This local bundle supports a Linux Docker host only.'
+    [ ! -e "$DIR/.env" ] && [ ! -e "$DIR/tunnex.yml" ] || die 'Local bundle mode is for a fresh installation directory only; existing deployments are preserved.'
+    LOCAL_BUNDLE_HELPER="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)/install-bundle.py"
+    [ -f "$LOCAL_BUNDLE_HELPER" ] || die 'Run the canonical installer from the signed bundle deploy directory.'
+    TUNNEX_LOCAL_BUNDLE_DIR="$(CDPATH= cd -- "$TUNNEX_LOCAL_BUNDLE_DIR" && pwd -P)"
+    TUNNEX_LOCAL_BUNDLE_PUBLIC_KEY="$(python3 -c 'from pathlib import Path; import sys; print(Path(sys.argv[1]).resolve(strict=True))' "$TUNNEX_LOCAL_BUNDLE_PUBLIC_KEY")"
+    LOCAL_BUNDLE_STAGE=$(mktemp -d "${TMPDIR:-/tmp}/tunnex-local-install.XXXXXX")
+    trap 'rm -rf "$LOCAL_BUNDLE_STAGE"; rm -f "$LOCAL_BUNDLE_STAGE.verify.json"' EXIT HUP INT TERM
+    python3 "$LOCAL_BUNDLE_HELPER" verify --bundle "$TUNNEX_LOCAL_BUNDLE_DIR" \
+        --public-key "$TUNNEX_LOCAL_BUNDLE_PUBLIC_KEY" --stage "$LOCAL_BUNDLE_STAGE" >"$LOCAL_BUNDLE_STAGE.verify.json" ||
+        die 'Local bundle verification failed; no images were loaded.'
+    mv "$LOCAL_BUNDLE_STAGE.verify.json" "$LOCAL_BUNDLE_STAGE/verification.json"
+    LOCAL_BUNDLE_SHA256=$(file_sha256 "$LOCAL_BUNDLE_STAGE/bundle.json")
+    LOCAL_BUNDLE=true
+    TUNNEX_VERSION=$(local_bundle_value TUNNEX_VERSION)
+    TUNNEX_SOURCE_REF=$(local_bundle_value TUNNEX_SOURCE_REF)
+    info 'Explicit signed local bundle; public release discovery and automatic upgrades are disabled.'
+}
+load_local_bundle_images() {
+    set -- "${1:-load}" --bundle "$TUNNEX_LOCAL_BUNDLE_DIR" --public-key "$TUNNEX_LOCAL_BUNDLE_PUBLIC_KEY" --expected-sha256 "$LOCAL_BUNDLE_SHA256"
+    [ "$DOCKER_AS_ROOT" != true ] || set -- "$@" --docker-sudo
+    python3 "$LOCAL_BUNDLE_HELPER" "$@" >"$LOCAL_BUNDLE_STAGE/loaded-images.json" || die 'Could not load and verify the signed local image set.'
+}
+
 # BEGIN INSTALL VERSION RESOLVER — the canonical installer owns release selection;
 # deploy/install-version-provenance_test.sh extracts and exercises this block directly.
 resolve_install_version() {
@@ -769,9 +808,11 @@ ui_preview() {
 AUTO_CONFIRM=false
 DRY_RUN=false
 UI_PREVIEW=false
+GATEWAY_BUNDLE=false
 for _arg in "$@"; do
 	case "$_arg" in
 	--ui-preview) UI_PREVIEW=true ;;
+	--gateway-bundle) GATEWAY_BUNDLE=true ;;
 	--yes|-y) AUTO_CONFIRM=true ;;
 	--dry-run|--preview) DRY_RUN=true ;;
 	*) die "unknown installer option: $_arg" ;;
@@ -811,10 +852,44 @@ info "${DEPLOYMENT_SHAPE}"
 
 # ── 1. resolve the newest published semantic release ────────────────────────────────────────────
 stage 2 "Selecting a verified Tunnex release"
-resolve_install_version
+prepare_local_bundle
+if [ "$LOCAL_BUNDLE" = true ]; then
+    VERSION=$TUNNEX_VERSION
+    SOURCE_REF=$TUNNEX_SOURCE_REF
+    SOURCE_COMMIT=$SOURCE_REF
+    VERSION_PROVENANCE="explicit signed local bundle (${SOURCE_REF}; linux/amd64)"
+else
+    resolve_install_version
+fi
 resolve_display_version
 info "Installing Tunnex ${DISPLAY_VERSION} (image tag ${VERSION})"
 info "Provenance: ${VERSION_PROVENANCE}"
+
+# Prepare a separate Linux gateway through the same verified entrypoint. This
+# installs dependencies and loads its pinned image before normal enrollment;
+# it does not mint a token, start a container, or edit an existing identity.
+if [ "$GATEWAY_BUNDLE" = true ]; then
+    [ "$LOCAL_BUNDLE" = true ] || die '--gateway-bundle requires an explicitly trusted signed local bundle.'
+    plan_start
+    plan_item 'Mode' 'Separate Linux gateway prerequisites and signed image'
+    plan_item 'Source' "$SOURCE_REF"
+    plan_item 'Image' "$(local_bundle_value TUNNEX_NODE_AGENT_IMAGE)"
+    plan_end
+    if [ "$DRY_RUN" = true ]; then success 'Preview complete; no gateway changes made.'; exit 0; fi
+    confirm_installation
+    ensure_docker_ready
+    _gateway_containers=$(docker_cli ps -aq --filter 'name=^/tunnex-node$') || die 'Could not inspect existing gateway containers.'
+    _gateway_volumes=$(docker_cli volume ls -q --filter 'name=^tunnex_node_state$') || die 'Could not inspect existing gateway identity volumes.'
+    [ -z "$_gateway_containers" ] && [ -z "$_gateway_volumes" ] ||
+        die 'An existing gateway container or identity volume is present; fresh gateway preparation refused.'
+    if [ ! -c /dev/net/tun ] && command -v modprobe >/dev/null 2>&1; then as_root modprobe tun; fi
+    [ -c /dev/net/tun ] || die 'This gateway requires Linux TUN support (/dev/net/tun); no enrollment was attempted.'
+    load_local_bundle_images gateway-load
+    success 'Gateway prerequisites and immutable image are ready.'
+    say "   Node image: $(local_bundle_value TUNNEX_NODE_AGENT_IMAGE)"
+    say '   Run the normal enrollment command from the dashboard of the server installed from this same bundle.'
+    exit 0
+fi
 
 # ── 2. public address — env override OR prompt; loopback refused at the SOURCE (both paths) ───────
 stage 3 "Configuring your Tunnex Server"
@@ -1066,7 +1141,9 @@ wait_for_local_gateway() {
 FIRST_ORG_SUPPORTED=true
 if [ ! -f "$DIR/.env" ]; then
 	_contract_file=$(mktemp "${TMPDIR:-/tmp}/tunnex-bootstrap-contract.XXXXXX")
-	if ! curl -fsSL "${RAW}/${SOURCE_REF}/deploy/tunnex.yml" -o "$_contract_file"; then
+	if [ "$LOCAL_BUNDLE" = true ]; then
+        cp "$LOCAL_BUNDLE_STAGE/deploy/tunnex.yml" "$_contract_file"
+    elif ! curl -fsSL "${RAW}/${SOURCE_REF}/deploy/tunnex.yml" -o "$_contract_file"; then
 		rm -f "$_contract_file"
 		die 'Could not verify setup capabilities in the selected release.'
 	fi
@@ -1183,6 +1260,12 @@ stage 5 "Installing and verifying Tunnex"
 info 'Preparing Docker Engine and Compose v2'
 ensure_docker_ready
 success 'Docker Engine and Compose v2 are ready.'
+if [ "$LOCAL_BUNDLE" = true ]; then
+    _project_containers=$(docker_cli ps -aq --filter "label=com.docker.compose.project=${INSTALL_COMPOSE_PROJECT}") || die 'Could not inspect existing Compose containers.'
+    _project_volumes=$(docker_cli volume ls -q --filter "label=com.docker.compose.project=${INSTALL_COMPOSE_PROJECT}") || die 'Could not inspect existing Compose volumes.'
+    [ -z "$_project_containers" ] || die 'The local bundle Compose project already has containers; use a fresh project and preserve the existing deployment.'
+    [ -z "$_project_volumes" ] || die 'The local bundle Compose project already has data volumes; use a fresh project and preserve existing data.'
+fi
 if [ -f "$DIR/.env" ] || [ -f "$DIR/tunnex.yml" ]; then
   _aa_install_directory=$(CDPATH= cd -- "$DIR" && pwd -P) || die 'Existing installation directory cannot be inspected.'
   refuse_existing_app_access "$INSTALL_COMPOSE_PROJECT" "$_aa_install_directory" || exit 13
@@ -1191,12 +1274,16 @@ fi
 mkdir -p "$DIR"
 cd "$DIR"
 STAGE_DIR=$(mktemp -d "$PWD/.tunnex-install.XXXXXX")
-trap 'rm -rf "$STAGE_DIR" .env.new tunnex-upgrade-runner.service.next tunnex-upgrade-runner.path.next 2>/dev/null' EXIT # never leave a half-written managed file behind on failure
+trap 'rm -rf "$STAGE_DIR" "$LOCAL_BUNDLE_STAGE" .env.new tunnex-upgrade-runner.service.next tunnex-upgrade-runner.path.next 2>/dev/null' EXIT # never leave a half-written managed file behind on failure
 
 # Fetch the complete host payload before replacing any managed file. The UI's
 # upgrade command is not usable when upgrade.sh is absent, so a partial download
 # must fail the install rather than leave a control plane that only looks ready.
-curl -fsSL "${RAW}/${SOURCE_REF}/deploy/tunnex.yml" -o "$STAGE_DIR/tunnex.yml" || die "could not download deploy/tunnex.yml at ${SOURCE_REF}"
+if [ "$LOCAL_BUNDLE" = true ]; then
+    cp "$LOCAL_BUNDLE_STAGE/deploy/tunnex.yml" "$STAGE_DIR/tunnex.yml"
+else
+    curl -fsSL "${RAW}/${SOURCE_REF}/deploy/tunnex.yml" -o "$STAGE_DIR/tunnex.yml" || die "could not download deploy/tunnex.yml at ${SOURCE_REF}"
+fi
 # Reinstallation preserves .env rather than applying the newly supplied URL.
 # Protect the installed transport as well as the requested fresh-install mode.
 IP_TLS_REQUIRED=false
@@ -1244,9 +1331,21 @@ if grep -Fq 'TUNNEX_EDGE_TRUSTED_PROXIES' "$STAGE_DIR/tunnex.yml" && [ "$_effect
   edge_trusted_proxies_ok "$EDGE_TRUSTED_PROXIES" ||
     die 'Externally terminated HTTPS requires TUNNEX_EDGE_TRUSTED_PROXIES with explicit load-balancer IPs/CIDRs (space-separated, no /0). Configure them before installing or upgrading.'
 fi
-curl -fsSL "${RAW}/${SOURCE_REF}/deploy/upgrade.sh" -o "$STAGE_DIR/upgrade.sh" || die "could not download deploy/upgrade.sh at ${SOURCE_REF}"
+if [ "$LOCAL_BUNDLE" = true ]; then
+    cp "$LOCAL_BUNDLE_STAGE/deploy/upgrade.sh" "$STAGE_DIR/upgrade.sh"
+else
+    curl -fsSL "${RAW}/${SOURCE_REF}/deploy/upgrade.sh" -o "$STAGE_DIR/upgrade.sh" || die "could not download deploy/upgrade.sh at ${SOURCE_REF}"
+fi
 sh -n "$STAGE_DIR/upgrade.sh" || die "downloaded deploy/upgrade.sh is not valid shell"
 
+if [ "$LOCAL_BUNDLE" = true ]; then
+    cp "$LOCAL_BUNDLE_STAGE/bundle.json" "$STAGE_DIR/release.json"
+    chmod 0644 "$STAGE_DIR/release.json"
+    RELEASE_ENV=$(cat "$LOCAL_BUNDLE_STAGE/bundle.env")
+    RUNNER_AVAILABLE=false
+    RUNNER_PAYLOAD_AVAILABLE=false
+    RUNNER_REQUIRED=false
+else
 # Published releases carry a signed descriptor. Bind its semantic release tag
 # to the exact resolved source commit before starting any image.
 case "$VERSION" in
@@ -1295,6 +1394,7 @@ if ! RELEASE_ENV="$(docker_cli run --rm --entrypoint releaseverify \
 	-expected-source-sha "$SOURCE_REF" -platform "$RELEASE_ARCH" -print-env)"; then
 	die "signed release verification failed; refusing to publish deployment files or privileged updater code"
 fi
+fi
 if [ "$DB_MODE" = external ]; then
 	grep -Fq 'TUNNEX_DATABASE_URL:' "$STAGE_DIR/tunnex.yml" && grep -Fq 'bundled-db' "$STAGE_DIR/tunnex.yml" ||
 		die 'The selected signed release does not support BYODB. Select a BYODB-capable release before installing.'
@@ -1307,9 +1407,17 @@ if grep -Fq 'TUNNEX_AI_ENGINE_IMAGE:' "$STAGE_DIR/tunnex.yml" || grep -Fq '${TUN
 	AI_BUNDLED=true
 	AI_IMAGE_PIN=$(printf '%s\n' "$RELEASE_ENV" | sed -n 's/^TUNNEX_AI_ENGINE_IMAGE=//p' | head -1)
 	[ -n "$AI_IMAGE_PIN" ] || die 'The selected release declares an AI backend but its signed image pin is missing.'
+    if [ "$LOCAL_BUNDLE" = true ]; then
+        cp "$LOCAL_BUNDLE_STAGE/deploy/ai-bootstrap.sh" "$STAGE_DIR/ai-bootstrap.sh"
+    else
 	curl -fsSL "${RAW}/${SOURCE_REF}/deploy/ai-bootstrap.sh" -o "$STAGE_DIR/ai-bootstrap.sh" || die 'Could not download the signed-source AI bootstrap helper.'
+    fi
 	sh -n "$STAGE_DIR/ai-bootstrap.sh" || die 'Downloaded AI bootstrap helper is not valid shell.'
+    if [ "$LOCAL_BUNDLE" = true ]; then
+        cp "$LOCAL_BUNDLE_STAGE/deploy/ai-gateway/config-managed.json" "$STAGE_DIR/ai-engine.json"
+    else
 	curl -fsSL "${RAW}/${SOURCE_REF}/deploy/ai-gateway/config-managed.json" -o "$STAGE_DIR/ai-engine.json" || die 'Could not download the signed-source managed AI configuration.'
+    fi
 	AI_ENV_FILE="$PWD/.env"
 	AI_COMPOSE_PROJECT=$INSTALL_COMPOSE_PROJECT
 	ai_fail() { die "$*"; }
@@ -1335,6 +1443,24 @@ if [ "$AI_BUNDLED" = true ]; then
 	chmod 0644 ai-engine.json ai-bootstrap.sh
 fi
 RELEASE_MANIFEST_PATH="/var/lib/tunnex/release.json"
+if [ "$LOCAL_BUNDLE" = true ]; then
+    # A local bundle is not a CI-signed public release. Retain its independently
+    # verified metadata without presenting it to the public release checker.
+    RELEASE_MANIFEST_PATH=''
+    TUNNEX_RELEASE_UPDATE_CHECK=false
+    mkdir -p local-bundle
+    cp "$LOCAL_BUNDLE_STAGE/bundle.json" "$LOCAL_BUNDLE_STAGE/bundle.json.sig" \
+       "$LOCAL_BUNDLE_STAGE/trusted-public-key.pem" "$LOCAL_BUNDLE_STAGE/verification.json" local-bundle/
+    CLIENT_PACKAGE=$(local_bundle_value TUNNEX_CLIENT_PACKAGE_PATH)
+    mkdir -p "local-bundle/$(dirname "$CLIENT_PACKAGE")"
+    cp "$LOCAL_BUNDLE_STAGE/$CLIENT_PACKAGE" "local-bundle/$CLIENT_PACKAGE"
+    cat >upgrade.sh <<'LOCAL_UPGRADE'
+#!/bin/sh
+printf '%s\n' 'This private local bundle has no published update channel. Keep its signed provenance and use a separately reviewed upgrade package.' >&2
+exit 1
+LOCAL_UPGRADE
+    chmod 0755 upgrade.sh
+fi
 TUNNEX_RELEASE_PUBLIC_KEY="${TUNNEX_RELEASE_PUBLIC_KEY:-$TRUSTED_RELEASE_PUBLIC_KEY}"
 
 # The API can write only a bounded request file; the root host runner owns the
@@ -1386,7 +1512,11 @@ EOF
 	as_root systemctl daemon-reload
 	as_root systemctl enable --now tunnex-upgrade-runner.path
 else
-	say ">> Dashboard host upgrades are unavailable on this runtime; verified upgrades remain available through ./upgrade.sh."
+	if [ "$LOCAL_BUNDLE" = true ]; then
+        say '>> Public and dashboard upgrades are disabled for this private local bundle.'
+    else
+        say ">> Dashboard host upgrades are unavailable on this runtime; verified upgrades remain available through ./upgrade.sh."
+    fi
 fi
 
 # ── 5. secrets — REUSE the existing DB password on a re-run (a new one won't match the volume) ────
@@ -1485,13 +1615,29 @@ set_dotenv() {
 
 # ── 7. pull + start ─────────────────────────────────────────────────────────────────────────────
 say ">> Signed release verified; pinning images…"
-for RELEASE_KEY in TUNNEX_API_IMAGE TUNNEX_WEB_IMAGE TUNNEX_NGINX_IMAGE TUNNEX_NODE_AGENT_IMAGE TUNNEX_MIGRATE_IMAGE TUNNEX_RELEASE_SEQUENCE TUNNEX_RELEASE_VERSION TUNNEX_RELEASE_SOURCE_SHA; do
+RELEASE_KEYS='TUNNEX_API_IMAGE TUNNEX_WEB_IMAGE TUNNEX_NGINX_IMAGE TUNNEX_NODE_AGENT_IMAGE TUNNEX_MIGRATE_IMAGE TUNNEX_RELEASE_SEQUENCE TUNNEX_RELEASE_VERSION TUNNEX_RELEASE_SOURCE_SHA'
+if [ "$LOCAL_BUNDLE" = true ]; then
+    RELEASE_KEYS='TUNNEX_API_IMAGE TUNNEX_WEB_IMAGE TUNNEX_NGINX_IMAGE TUNNEX_NODE_AGENT_IMAGE TUNNEX_POSTGRES_IMAGE TUNNEX_REDIS_IMAGE TUNNEX_CADDY_IMAGE TUNNEX_RELEASE_VERSION TUNNEX_RELEASE_SOURCE_SHA'
+fi
+for RELEASE_KEY in $RELEASE_KEYS; do
 	RELEASE_VALUE="$(printf '%s\n' "$RELEASE_ENV" | sed -n "s/^${RELEASE_KEY}=//p" | head -1)"
 	[ -n "$RELEASE_VALUE" ] || die "signed release verifier omitted ${RELEASE_KEY}"
 	set_dotenv "$RELEASE_KEY" "$RELEASE_VALUE"
+    if [ "$LOCAL_BUNDLE" = true ]; then export "$RELEASE_KEY=$RELEASE_VALUE"; fi
 done
 set_dotenv TUNNEX_VERSION "$VERSION"
 set_dotenv TUNNEX_SOURCE_REF "$SOURCE_REF"
+if [ "$LOCAL_BUNDLE" = true ]; then
+    set_dotenv TUNNEX_LOCAL_BUNDLE_SHA256 "$LOCAL_BUNDLE_SHA256"
+    set_dotenv TUNNEX_RELEASE_UPDATE_CHECK false
+    set_dotenv TUNNEX_RELEASE_CATALOG_URL ''
+    set_dotenv TUNNEX_RELEASE_KEY_ID local-bundle
+    set_dotenv TUNNEX_RELEASE_PUBLIC_KEY ''
+    export TUNNEX_RELEASE_MANIFEST_PATH=''
+    export TUNNEX_RELEASE_UPDATE_CHECK=false
+    export TUNNEX_RELEASE_CATALOG_URL=''
+    export TUNNEX_RELEASE_PUBLIC_KEY=''
+fi
 set_dotenv TUNNEX_COMPOSE_SHA256 "$(file_sha256 tunnex.yml)"
 set_dotenv TUNNEX_PORTABLE_CONTROL_PLANE "$CP_ONLY"
 if [ "$EDGE_TRUST_REQUIRED" = true ]; then
@@ -1520,10 +1666,29 @@ external) set_dotenv COMPOSE_PROFILES external-db ;;
 esac
 tunnex_compose() {
 	case "$DB_MODE" in external) _db_profile=external-db ;; *) _db_profile=bundled-db ;; esac
-	COMPOSE_PROFILES=$_db_profile docker_cli compose --project-name "$INSTALL_COMPOSE_PROJECT" --env-file .env -f tunnex.yml "$@"
+	if [ "$LOCAL_BUNDLE" = true ]; then
+        case "${1:-}" in
+            up|run) _compose_action=$1; shift; set -- "$_compose_action" --pull never "$@" ;;
+        esac
+    fi
+    COMPOSE_PROFILES=$_db_profile docker_cli compose --project-name "$INSTALL_COMPOSE_PROJECT" --env-file .env -f tunnex.yml "$@"
 }
-run_with_loader 'Pulling verified Tunnex images' tunnex_compose pull || die 'could not pull the verified Tunnex images'
-success 'Signed release verified; images pinned by digest.'
+if [ "$LOCAL_BUNDLE" = true ]; then
+    export TUNNEX_AI_ENGINE_IMAGE="$AI_IMAGE_PIN"
+    tunnex_compose config --format json >"$STAGE_DIR/compose.json" || die 'Could not resolve the complete local Compose configuration.'
+    set -- check-compose --bundle "$TUNNEX_LOCAL_BUNDLE_DIR" --public-key "$TUNNEX_LOCAL_BUNDLE_PUBLIC_KEY" \
+        --expected-sha256 "$LOCAL_BUNDLE_SHA256" --compose-json "$STAGE_DIR/compose.json"
+    [ "$DOCKER_AS_ROOT" != true ] || set -- "$@" --docker-sudo
+    python3 "$LOCAL_BUNDLE_HELPER" "$@" >local-bundle/compose-verification.json || die 'Local Compose image or fresh-volume verification failed.'
+    load_local_bundle_images
+    cp "$LOCAL_BUNDLE_STAGE/loaded-images.json" local-bundle/loaded-images.json
+    # Compose must never resolve a registry tag for this local artifact set.
+    # Every selected image was loaded and inspected before the first startup.
+    success 'Signed local bundle verified; all images pinned by immutable Docker image ID.'
+else
+    run_with_loader 'Pulling verified Tunnex images' tunnex_compose pull || die 'could not pull the verified Tunnex images'
+    success 'Signed release verified; images pinned by digest.'
+fi
 if [ "$DB_MODE" = external ]; then
 	run_with_loader 'Checking private PostgreSQL from the Tunnex Server network' tunnex_compose run --rm --no-deps --entrypoint preflight api --database-only ||
 		die 'External database preflight failed; Tunnex Server was not started. Fix the installed database configuration and rerun.'
@@ -1538,7 +1703,32 @@ fi
 
 # The API prints the one-time credential to stdout. Surface that banner here because `up -d` is detached;
 # operators should not need to search container logs, and the API will also email it when SMTP is configured.
-CREDS="$(tunnex_compose logs api 2>/dev/null | sed -n '/TUNNEX - FIRST RUN/,/^.*=\{20,\}$/p' | tail -n +2 || true)"
+# BEGIN BOOTSTRAP BANNER CAPTURE
+extract_bootstrap_admin_banner() {
+    # The first separator AFTER the title is the header, not the end of the
+    # credential. Buffer through the closing frame; ignore absent/truncated banners.
+    awk '
+    {
+        line = $0
+        gsub(sprintf("%c", 27) "\\[[0-9;]*m", "", line)
+        content = line
+        sub(/^[^|]*\|[[:space:]]*/, "", content)
+        if (content ~ /^[[:space:]]*TUNNEX - FIRST RUN: ADMINISTRATOR ACCOUNT[[:space:]]*$/) {
+            capture = 1; separators = 0; email = 0; password = 0; banner = line ORS
+            next
+        }
+        if (!capture) next
+        banner = banner line ORS
+        if (content ~ /^[[:space:]]*email[[:space:]]+[^[:space:]]+[[:space:]]*$/) email++
+        if (content ~ /^[[:space:]]*password[[:space:]]+[^[:space:]]+[[:space:]]*$/) password++
+        if (content ~ /^[[:space:]]*={20,}[[:space:]]*$/ && ++separators == 2) {
+            if (email == 1 && password == 1) printf "%s", banner
+            capture = 0
+        }
+    }'
+}
+# END BOOTSTRAP BANNER CAPTURE
+CREDS="$(tunnex_compose logs api 2>/dev/null | extract_bootstrap_admin_banner || true)"
 if printf '%s' "$CREDS" | grep -q 'password'; then
 	say ''
 	say 'Your administrator credential (shown once):'
@@ -1591,5 +1781,12 @@ say '   5. Configure private routes and access permissions, then invite users to
 say '      Split tunnel keeps normal internet traffic local. Full tunnel can be enabled later.'
 say ''
 say "   Config:   $(pwd)/.env       (edit values here; never hand-edit tunnex.yml)"
-say '   Upgrade:  use the dashboard when an update appears, or run ./upgrade.sh for a dry run.'
+if [ "$LOCAL_BUNDLE" = true ]; then
+    say "   Provenance: signed private local bundle ${LOCAL_BUNDLE_SHA256} (linux/amd64)."
+    say "   Mac client: $(pwd)/local-bundle/${CLIENT_PACKAGE} (verified package; install on the client separately)."
+    say '   Separate gateway: run this same installer with --gateway-bundle before its normal dashboard enrollment command.'
+    say '   Upgrade: public automatic updates are disabled; this bundle is not a published release.'
+else
+    say '   Upgrade:  use the dashboard when an update appears, or run ./upgrade.sh for a dry run.'
+fi
 printf '  %s────────────────────────────────────────%s\n' "$TUNNEX_DIM" "$TUNNEX_RESET"

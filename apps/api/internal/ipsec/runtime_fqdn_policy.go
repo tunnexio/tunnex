@@ -2,6 +2,7 @@ package ipsec
 
 import (
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"github.com/google/uuid"
@@ -45,8 +46,18 @@ func validRuntimeFQDNPolicyAt(policy RuntimePolicy, input RuntimePolicyInput, no
 		if err != nil || suffix != "resolver-root."+g.ResolverMatchSuffix || (name != g.ResolverMatchSuffix && !strings.HasSuffix(name, "."+g.ResolverMatchSuffix)) {
 			return false
 		}
+		desktop := g.ResolverKind == "static_cname"
+		if desktop {
+			id, e := uuid.Parse(g.DeviceID)
+			key, ke := base64.StdEncoding.DecodeString(g.PublicKey)
+			if (g.Protocol != "tcp" && g.Protocol != "udp") || g.PortLow == 0 || input.DesktopFQDNVersion != 1 || input.DesktopTransitVersion != 1 || policy.FQDNPolicyVersion != 2 || !DesktopProfileSupported(input) || e != nil || id == uuid.Nil || id.String() != g.DeviceID || ke != nil || len(key) != 32 || base64.StdEncoding.EncodeToString(key) != g.PublicKey || g.ResolverSourceAddress != "" {
+				return false
+			}
+		} else if g.ResolverKind != "" || g.DeviceID != "" || g.PublicKey != "" {
+			return false
+		}
 		source, err := netip.ParsePrefix(g.Source)
-		if err != nil || !source.Addr().Is4() || source != source.Masked() || source.String() != g.Source || !runtimeFQDNWithin(source, input.Config.LocalPrefixes) {
+		if err != nil || !source.Addr().Is4() || source != source.Masked() || source.String() != g.Source || (!desktop && !runtimeFQDNWithin(source, input.Config.LocalPrefixes)) || (desktop && (source.Bits() != 32 || !source.Addr().IsGlobalUnicast() || runtimeFQDNWithin(source, input.Config.LocalPrefixes) || runtimeFQDNWithin(source, input.Config.RemotePrefixes))) {
 			return false
 		}
 		destination, err := netip.ParsePrefix(g.Destination)
@@ -62,7 +73,7 @@ func validRuntimeFQDNPolicyAt(policy RuntimePolicy, input RuntimePolicyInput, no
 			}
 		} else {
 			source, err := netip.ParseAddr(g.ResolverSourceAddress)
-			if now.IsZero() || g.ExpiresAt.IsZero() || (!allowExpired && !g.ExpiresAt.After(now)) || g.ExpiresAt.After(now.Add(time.Hour)) || err != nil || source.String() != g.ResolverSourceAddress || !source.Is4() || !source.IsPrivate() || !runtimeFQDNWithin(netip.PrefixFrom(source, 32), input.Config.LocalPrefixes) {
+			if now.IsZero() || g.ExpiresAt.IsZero() || (!allowExpired && !g.ExpiresAt.After(now)) || g.ExpiresAt.After(now.Add(time.Hour)) || (!desktop && (err != nil || source.String() != g.ResolverSourceAddress || !source.Is4() || !source.IsPrivate() || !runtimeFQDNWithin(netip.PrefixFrom(source, 32), input.Config.LocalPrefixes))) {
 				return false
 			}
 		}
@@ -147,7 +158,7 @@ func runtimeFQDNLeaseContinuity(current RuntimePolicy, request RuntimeLeaseReque
 		}
 		return current, expired, nil
 	}
-	if input.FQDNPolicyVersion != 2 || fence.IsZero() || len(current.Grants)+len(request.FQDNGrants)+2*len(current.DNSResolverGrants) > 128 {
+	if input.FQDNPolicyVersion != 2 || fence.IsZero() || len(current.Grants)+len(current.DesktopGrants)+len(request.FQDNGrants)+2*len(current.DNSResolverGrants) > 128 {
 		return RuntimePolicy{}, nil, ErrConnectionConflict
 	}
 	reconstructed := current
@@ -157,9 +168,19 @@ func runtimeFQDNLeaseContinuity(current RuntimePolicy, request RuntimeLeaseReque
 		return RuntimePolicy{}, nil, ErrConnectionConflict
 	}
 	live := map[RuntimeFQDNGrant]bool{}
+	currentDesktop := map[RuntimeFQDNGrant]RuntimeFQDNGrant{}
 	for _, g := range current.FQDNGrants {
 		live[g] = true
+		if g.ResolverKind == "static_cname" {
+			key := g
+			key.ExpiresAt = time.Time{}
+			if _, duplicate := currentDesktop[key]; duplicate {
+				return RuntimePolicy{}, nil, ErrConnectionConflict
+			}
+			currentDesktop[key] = g
+		}
 	}
+	requestedDesktop := map[RuntimeFQDNGrant]bool{}
 	previous := ""
 	for _, g := range request.FQDNGrants {
 		raw, _ := json.Marshal(g)
@@ -167,8 +188,22 @@ func runtimeFQDNLeaseContinuity(current RuntimePolicy, request RuntimeLeaseReque
 			return RuntimePolicy{}, nil, ErrConnectionConflict
 		}
 		previous = string(raw)
+		key := g
+		key.ExpiresAt = time.Time{}
+		if g.ResolverKind == "static_cname" {
+			if requestedDesktop[key] {
+				return RuntimePolicy{}, nil, ErrConnectionConflict
+			}
+			requestedDesktop[key] = true
+		}
 		if live[g] {
 			delete(live, g)
+		} else if next, ok := currentDesktop[key]; g.ResolverKind == "static_cname" && ok && live[next] && next.ExpiresAt.After(fence) && !g.ExpiresAt.After(next.ExpiresAt) {
+			// The current compiler independently confirms every identity/tuple
+			// field. A refreshed answer may authorize this earlier deadline too,
+			// but never extends it: reconstructed descriptors, hash, permit
+			// digest and DB/monotonic TTL all retain the request's original expiry.
+			delete(live, next)
 		} else {
 			if g.ExpiresAt.After(fence) {
 				return RuntimePolicy{}, nil, ErrConnectionConflict

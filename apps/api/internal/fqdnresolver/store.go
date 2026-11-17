@@ -15,6 +15,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/tunnexio/tunnex/apps/api/internal/policyspec"
 )
 
 var ErrSuperseded = errors.New("fqdn resolver work was superseded")
@@ -23,9 +24,11 @@ var ErrSuperseded = errors.New("fqdn resolver work was superseded")
 // an API client or a DNS transport: Due reads the selected (site,gateway) pair
 // stored by Lane 1 and Publish/Withdraw check it again while holding the row.
 type Work struct {
-	OrgID, ResourceID uuid.UUID
-	Hostname          string
-	Context           Context
+	ApplicationIPsecPath       *policyspec.FQDNApplicationIPsecPath
+	ApplicationDesiredRevision int64
+	OrgID, ResourceID          uuid.UUID
+	Hostname                   string
+	Context                    Context
 	// ResolverConfig is the immutable endpoint snapshot selected by the server
 	// for this specific refresh. It stays outside Context so existing context
 	// identity comparisons remain exact and configuration changes are explicit.
@@ -148,7 +151,8 @@ func (s *PostgresStore) due(ctx context.Context, now time.Time, limit int, headr
 	rows, err := s.pool.Query(ctx, `
 SELECT r.org_id,r.id,r.fqdn,r.resolver_site_id,r.resolver_node_id,
        COALESCE((SELECT max(g.generation) FROM fqdn_resource_answer_generations g WHERE g.org_id=r.org_id AND g.resource_id=r.id),0),
-       cfg.id,cfg.version,cfg.profiles,cfg.legacy_endpoints
+       cfg.id,cfg.version,cfg.profiles,cfg.legacy_endpoints,
+ CASE WHEN r.application_ipsec_connection_id IS NULL THEN NULL ELSE jsonb_build_object('connection_id',r.application_ipsec_connection_id,'configuration_revision',r.application_ipsec_configuration_revision) END,COALESCE((SELECT desired_revision FROM ipsec_connections WHERE id=r.application_ipsec_connection_id AND org_id=r.org_id),0)
 FROM fqdn_resources r
 JOIN organizations o ON o.id=r.org_id AND o.deleted_at IS NULL AND o.fqdn_resources_enabled
 LEFT JOIN LATERAL (
@@ -215,9 +219,14 @@ LIMIT $3`, now, s.retryAfter.String(), limit, headroom.String())
 		var site, gateway uuid.UUID
 		var configID *uuid.UUID
 		var configVersion *int64
-		var profilesJSON, legacyEndpointsJSON []byte
-		if err := rows.Scan(&w.OrgID, &w.ResourceID, &w.Hostname, &site, &gateway, &w.ExpectedGeneration, &configID, &configVersion, &profilesJSON, &legacyEndpointsJSON); err != nil {
+		var profilesJSON, legacyEndpointsJSON, applicationJSON []byte
+		if err := rows.Scan(&w.OrgID, &w.ResourceID, &w.Hostname, &site, &gateway, &w.ExpectedGeneration, &configID, &configVersion, &profilesJSON, &legacyEndpointsJSON, &applicationJSON, &w.ApplicationDesiredRevision); err != nil {
 			return nil, err
+		}
+		if len(applicationJSON) > 0 {
+			if err := json.Unmarshal(applicationJSON, &w.ApplicationIPsecPath); err != nil {
+				return nil, err
+			}
 		}
 		w.Context = Context{ResolverID: site.String(), GatewayID: gateway.String()}
 		if configID != nil && configVersion != nil {
@@ -244,6 +253,9 @@ LIMIT $3`, now, s.retryAfter.String(), limit, headroom.String())
 				w.ResolverConfig.Endpoints = append([]ResolverEndpoint(nil), profile.Endpoints...)
 				w.ResolverConfig.IPsecPath = profile.IPsecPath
 				w.ResolverConfig.StaticRecords = append([]StaticRecord(nil), profile.StaticRecords...)
+				if w.ApplicationIPsecPath != nil {
+					w.ResolverConfig.ResolverKind = "static_cname"
+				}
 				if len(profile.StaticRecords) > 0 && !staticProfileOwnsRecords(profile, profiles) {
 					selectErr = ErrUnboundContext
 				}
@@ -266,12 +278,18 @@ func (s *PostgresStore) Publish(ctx context.Context, w Work, g Generation) error
 		return ErrUnboundContext
 	}
 	err := s.inTx(ctx, w, func(tx pgx.Tx, next int64, site, gateway, config uuid.UUID) error {
+		if w.ApplicationIPsecPath != nil {
+			var ready bool
+			if e := tx.QueryRow(ctx, `SELECT fqdn_application_ipsec_path_valid($1,$2,$3,$4,$5)`, w.OrgID, site, gateway, w.ApplicationIPsecPath.ConnectionID, w.ApplicationIPsecPath.ConfigurationRevision).Scan(&ready); e != nil || !ready {
+				return ErrSuperseded
+			}
+		}
 		var id uuid.UUID
 		profile, parseErr := uuid.Parse(w.ResolverConfig.ProfileID)
 		if parseErr != nil {
 			return ErrUnboundContext
 		}
-		err := tx.QueryRow(ctx, `INSERT INTO fqdn_resource_answer_generations (org_id,resource_id,generation,resolver_node_id,resolver_site_id,resolver_config_id,resolver_profile_id,resolver_match_suffix,state,effective_ttl,resolved_at) VALUES ($1,$2,$3,$4,$5,$6,$7,NULLIF($8,''),'pending',$9,$10) RETURNING id`, w.OrgID, w.ResourceID, next, gateway, site, config, profile, w.ResolverConfig.MatchedSuffix, g.TTL, g.ResolvedAt).Scan(&id)
+		err := tx.QueryRow(ctx, `INSERT INTO fqdn_resource_answer_generations (org_id,resource_id,generation,resolver_node_id,resolver_site_id,resolver_config_id,resolver_profile_id,resolver_match_suffix,state,effective_ttl,resolved_at,resolver_kind,application_desired_revision) VALUES ($1,$2,$3,$4,$5,$6,$7,NULLIF($8,''),'pending',$9,$10,$11,NULLIF($12,0)) RETURNING id`, w.OrgID, w.ResourceID, next, gateway, site, config, profile, w.ResolverConfig.MatchedSuffix, g.TTL, g.ResolvedAt, w.ResolverConfig.ResolverKind, w.ApplicationDesiredRevision).Scan(&id)
 		if err != nil {
 			return err
 		}
@@ -356,9 +374,16 @@ func (s *PostgresStore) inTxOnce(ctx context.Context, w Work, fn func(pgx.Tx, in
 		return err
 	}
 	var site, gateway uuid.UUID
-	err = tx.QueryRow(ctx, `SELECT resolver_site_id,resolver_node_id FROM fqdn_resources WHERE id=$1 AND org_id=$2 FOR UPDATE`, w.ResourceID, w.OrgID).Scan(&site, &gateway)
+	var hostname string
+	var appID *uuid.UUID
+	var appRevision *int64
+	var currentDesired int64
+	err = tx.QueryRow(ctx, `SELECT resolver_site_id,resolver_node_id,fqdn,application_ipsec_connection_id,application_ipsec_configuration_revision,COALESCE((SELECT desired_revision FROM ipsec_connections WHERE id=application_ipsec_connection_id),0) FROM fqdn_resources WHERE id=$1 AND org_id=$2 FOR UPDATE`, w.ResourceID, w.OrgID).Scan(&site, &gateway, &hostname, &appID, &appRevision, &currentDesired)
 	if err != nil {
 		return err
+	}
+	if currentDesired != w.ApplicationDesiredRevision || hostname != w.Hostname || (appID == nil) != (w.ApplicationIPsecPath == nil) || (appID != nil && (appRevision == nil || appID.String() != w.ApplicationIPsecPath.ConnectionID || *appRevision != w.ApplicationIPsecPath.ConfigurationRevision)) {
+		return ErrSuperseded
 	}
 	if site.String() != w.Context.ResolverID || gateway.String() != w.Context.GatewayID {
 		return ErrSuperseded

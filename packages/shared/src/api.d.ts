@@ -10305,6 +10305,8 @@ export interface components {
             port_low?: number | null;
             port_high?: number | null;
             label?: string | null;
+            /** @description Exact AWS BGP application connection; independent from DNS resolver transport. */
+            application_ipsec_path?: components["schemas"]["FQDNApplicationIPsecPath"] | null;
             /** @description Null means saved draft: it must not compile or authorize traffic. */
             resolver_context?: components["schemas"]["FQDNResolverContext"] | null;
             /** @description Server-recorded profile provenance for the latest answer lifecycle generation. Null means no profile has been selected or queried. */
@@ -10340,10 +10342,18 @@ export interface components {
             port_low?: number | null;
             port_high?: number | null;
             label?: string | null;
+            /** @description Exact AWS BGP application connection; independent from DNS resolver transport. */
+            application_ipsec_path?: components["schemas"]["FQDNApplicationIPsecPath"] | null;
             /** @description An explicit selected Site/Gateway resolver context. Null saves an unbound draft only. */
             resolver_context?: components["schemas"]["FQDNResolverContextRequest"] | null;
             /** @description Server-issued token from the immediately relevant impact preview. Required only for enforcement-changing PATCH operations. */
             expected_impact_token?: string | null;
+        };
+        FQDNApplicationIPsecPath: {
+            /** Format: uuid */
+            connection_id: string;
+            /** Format: int64 */
+            configuration_revision: number;
         };
         FQDNResolverContext: {
             /** Format: uuid */
@@ -11090,6 +11100,12 @@ export interface components {
             priority?: number | null;
         };
         IPsecEligibility: {
+            /** @description Fresh gateway capability for desktop static CNAME application authorization over AWS BGP. */
+            desktop_fqdn_supported?: boolean;
+            /** @description Fresh gateway capability for enrolled desktop access over AWS static IPsec. The cloud requires an explicit return route for each authorized desktop address. */
+            desktop_static_supported?: boolean;
+            /** @description Fresh gateway capability for managed CNAME desktop application authorization over AWS static IPsec. */
+            desktop_static_fqdn_supported?: boolean;
             eligible: boolean;
             /** @enum {string} */
             reason: "eligible" | "opt_in_required" | "gateway_unavailable" | "unsupported" | "report_stale";

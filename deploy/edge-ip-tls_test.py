@@ -20,7 +20,11 @@ class EdgeIPTLS(unittest.TestCase):
         stub.chmod(0o755)
         compose = Path(__file__).with_name('tunnex.yml').read_text()
         service = compose.split('\n  caddy:\n', 1)[1].split('\n  node-agent:\n', 1)[0]
-        self.image = service.split('    image: ', 1)[1].splitlines()[0]
+        image = service.split('    image: ', 1)[1].splitlines()[0]
+        # The default digest sits behind a ${TUNNEX_CADDY_IMAGE:-...} mirror override.
+        if image.startswith('${TUNNEX_CADDY_IMAGE:-') and image.endswith('}'):
+            image = image[len('${TUNNEX_CADDY_IMAGE:-'):-1]
+        self.image = image
         self.script = textwrap.dedent(service.split('    command:\n      - |\n', 1)[1].split('    ports:', 1)[0]).replace('$$', '$').replace('/tmp/tunnex-Caddyfile', str(self.config))
 
     def run_edge(self, origin, ip='', http_console='false', mode='', peers=''):

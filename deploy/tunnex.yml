@@ -13,7 +13,7 @@ name: tunnex
 services:
   postgres:
     profiles: [bundled-db]
-    image: postgres:16-alpine
+    image: ${TUNNEX_POSTGRES_IMAGE:-postgres:16-alpine}
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-tunnex}
@@ -28,7 +28,7 @@ services:
       retries: 5
 
   redis:
-    image: redis:7-alpine
+    image: ${TUNNEX_REDIS_IMAGE:-redis:7-alpine}
     restart: unless-stopped
     command: ["redis-server", "--save", "60", "1", "--loglevel", "warning"]
     volumes:
@@ -206,7 +206,7 @@ services:
     # Multi-architecture Caddy 2 Alpine manifest. Pin the external edge image
     # just like the signed Tunnex images; a future `2-alpine` tag move must not
     # silently change a customer's public TLS terminator.
-    image: caddy@sha256:5f5c8640aae01df9654968d946d8f1a56c497f1dd5c5cda4cf95ab7c14d58648
+    image: ${TUNNEX_CADDY_IMAGE:-caddy@sha256:5f5c8640aae01df9654968d946d8f1a56c497f1dd5c5cda4cf95ab7c14d58648}
     restart: unless-stopped
     environment:
       TUNNEX_EDGE_LISTEN: ${TUNNEX_EDGE_LISTEN:?set by install.sh}

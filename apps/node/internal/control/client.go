@@ -249,6 +249,7 @@ func (c *Client) ReportInfo(ctx context.Context, publicKey, endpoint string, egr
 		"wireguard_applied_mtu": ps.WireGuardAppliedMTU,
 		// Only the actual qualified controller may advertise this protocol.
 		"ipsec_config_version":         c.ipsecCapability(),
+		"ipsec_desktop_static_version": c.ipsecDesktopStaticCapability(),
 		"ipsec_recovery_version":       c.ipsecRecoveryCapability(),
 		"ipsec_retained_guard_version": c.ipsecRetainedGuardCapability(),
 		"public_key":                   publicKey, "endpoint": endpoint, "egress_nat": egressNAT, "egress_ipv6": egressIPv6,
@@ -265,6 +266,9 @@ func (c *Client) ReportInfo(ctx context.Context, publicKey, endpoint string, egr
 	}
 	if forwarder := c.dnsForwarder.Load(); forwarder != nil {
 		payload["dns_lan_listeners"] = forwarder.AppliedLANListeners()
+	}
+	if c.ipsecDesktopFQDNCapability() == 1 {
+		payload["ipsec_desktop_fqdn_version"] = 1
 	}
 	if version := c.ipsecDesktopTransitCapability(); version == 1 {
 		payload["ipsec_desktop_transit_version"] = 1

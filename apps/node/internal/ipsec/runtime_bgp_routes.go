@@ -99,6 +99,9 @@ func ReconcileBGPRoutes(ctx context.Context, j *RuntimeJournal, a *KernelApplier
 	return reconcileBGPRoutesPermit(ctx, j, a, deliveryID, target, nil)
 }
 func reconcileBGPRoutesPermit(ctx context.Context, j *RuntimeJournal, a *KernelApplier, deliveryID string, target []RuntimeBGPRouteTuple, permit func() error) error {
+	return reconcileBGPRoutesPermitMode(ctx, j, a, deliveryID, target, permit, false)
+}
+func reconcileBGPRoutesPermitMode(ctx context.Context, j *RuntimeJournal, a *KernelApplier, deliveryID string, target []RuntimeBGPRouteTuple, permit func() error, preserve bool) error {
 	entries, err := j.Entries()
 	if err != nil {
 		return err
@@ -144,7 +147,7 @@ func reconcileBGPRoutesPermit(ctx context.Context, j *RuntimeJournal, a *KernelA
 	if err = j.Save(entries); err != nil {
 		return err
 	}
-	if err = a.reconcileBGPRoutes(ctx, e, permit); err != nil {
+	if err = a.reconcileBGPRoutesMode(ctx, e, permit, preserve); err != nil {
 		return err
 	}
 	e.BGPRoutes = &RuntimeBGPRoutes{Sequence: seq, Stage: "completed", Owned: append([]RuntimeBGPRouteTuple{}, target...), Target: append([]RuntimeBGPRouteTuple{}, target...)}
@@ -172,6 +175,9 @@ func (a *KernelApplier) verifyBGPRoutes(ctx context.Context, p KernelAllocation,
 	return nil
 }
 func (a *KernelApplier) reconcileBGPRoutes(ctx context.Context, e RuntimeJournalEntry, permit func() error) error {
+	return a.reconcileBGPRoutesMode(ctx, e, permit, false)
+}
+func (a *KernelApplier) reconcileBGPRoutesMode(ctx context.Context, e RuntimeJournalEntry, permit func() error, preserve bool) error {
 	s := e.BGPRoutes
 	union := bgpRouteUnion(s)
 	if a.verifyBGPRoutes(ctx, e.Allocation, e.Observed, union, false) != nil {
@@ -186,11 +192,40 @@ func (a *KernelApplier) reconcileBGPRoutes(ctx context.Context, e RuntimeJournal
 		return false
 	}
 	mutate := func(r RuntimeBGPRouteTuple, action string) error {
-		if action == "add" && permit != nil && permit() != nil {
+		if (action == "add" || preserve) && permit != nil && permit() != nil {
 			return ErrKernelApply
 		}
 		t := e.Allocation.Tunnels[r.Slot-1]
 		return a.mutate(ctx, e.Allocation, "-4", "route", action, r.Prefix.String(), "dev", t.Name, "table", fmt.Sprint(r.Table), "proto", fmt.Sprint(r.Protocol), "metric", fmt.Sprint(r.Metric))
+	}
+	// Only the controller's independently proven finite same-prefix switch may
+	// add a new owned route before deleting its old equivalent. The pending
+	// journal already records both duties; any failed readback retains that union.
+	if preserve {
+		if permit == nil || !sameBGPRoutePrefixes(s.Owned, s.Target) {
+			return ErrKernelApply
+		}
+		for _, r := range s.Target {
+			fresh, err := a.snapshotBGPRoutes(ctx, e.Allocation, union)
+			if err != nil || !fresh.up[r.Slot-1] || permit() != nil {
+				return ErrKernelApply
+			}
+			if !contains(s.Owned, r) && mutate(r, "add") != nil {
+				return ErrKernelApply
+			}
+		}
+		if a.verifyBGPRoutes(ctx, e.Allocation, e.Observed, union, true) != nil || permit() != nil {
+			return ErrKernelApply
+		}
+		for _, r := range s.Owned {
+			if !contains(s.Target, r) && mutate(r, "del") != nil {
+				return ErrKernelApply
+			}
+		}
+		if a.verifyBGPRoutes(ctx, e.Allocation, e.Observed, s.Target, true) != nil || permit() != nil {
+			return ErrKernelApply
+		}
+		return nil
 	}
 	for _, r := range s.Owned {
 		if !contains(s.Target, r) {

@@ -14,7 +14,8 @@ import (
 
 // MaintainIPsecRuntime renews only exact process-local, already applied intent.
 // It never performs first Apply, recreates transport or reconciles learned routes.
-// Omitted results require ordinary Apply; successful results repair the existing
+// Omitted results require ordinary Apply; explicit deferred results wait for
+// another normal discovery pass without an ACK. Successful results repair the existing
 // delivery acknowledgement even if an earlier CP acknowledgement was lost.
 func (c *RuntimeController) MaintainIPsecRuntime(ctx context.Context, materials []RuntimeMaterial) ([]RuntimeMaintenanceResult, error) {
 	return c.MaintainIPsecRuntimeObserved(ctx, materials, nil)
@@ -60,6 +61,9 @@ type maintenanceItem struct {
 	Grants               []GuardGrant
 	FQDNLeaseDescriptors []RuntimeFQDNGrant
 	PolicyHash           string
+	FQDNExpiryPriorHash  string
+	FQDNPolicyPriorHash  string
+	FQDNRestorePending   bool
 }
 
 func (c *RuntimeController) maintainIPsecRuntimeObserved(ctx context.Context, materials []RuntimeMaterial, authority func() *PermitLeaseAuthority, bgpCurrent func() bool, publish func(context.Context, RuntimeDelivery, RuntimeStatusReport) error) ([]RuntimeMaintenanceResult, error) {
@@ -67,24 +71,39 @@ func (c *RuntimeController) maintainIPsecRuntimeObserved(ctx context.Context, ma
 }
 
 func (c *RuntimeController) maintainIPsecRuntimeRecoveryObserved(ctx context.Context, materials []RuntimeMaterial, authority func() *PermitLeaseAuthority, bgpCurrent func() bool, publish func(context.Context, RuntimeDelivery, RuntimeStatusReport) error, publishRecovery func(context.Context, RuntimeRecoveryHeartbeat) error) ([]RuntimeMaintenanceResult, error) {
+	if result, handled, err := c.tryMaintainExactRuntimePage(ctx, materials, authority, bgpCurrent, publish); handled {
+		return result, err
+	}
 	prepare := func(ns string, _ []RuntimeJournalEntry, stage *string, connection *uuid.UUID) ([]maintenanceItem, error) {
 		var err error
 		// Validate every secret-bearing normal material and its unique page identity
 		// before requesting any lease. No PSK is retained in a candidate or result.
 		input := make([]RuntimeJournalEntry, len(materials))
 		grants := make([][]GuardGrant, len(materials))
+		expiryPriorHashes := make([]string, len(materials))
+		pendingNAT := make([]bool, len(materials))
 		connections, deliveries := map[uuid.UUID]bool{}, map[uuid.UUID]bool{}
 		*stage = "maintenance_material"
 		for i, m := range materials {
 			*connection = m.Manifest.ConnectionID
+			*stage = "maintenance_material"
 			input[i], grants[i], err = runtimeMaterialEntry(m, c.config.OrgID, c.config.GatewayID, ns)
 			id := m.Manifest.ConnectionID
 			if err != nil || connections[id] || deliveries[m.ID] {
 				return nil, ErrRuntimeController
 			}
 			c.publishDesktopNAT(id, grants[i])
-			if grants[i], err = c.observeDesktopGrants(ctx, grants[i]); err != nil {
+			*stage = "maintenance_desktop_observe"
+			grants[i], err = c.observeDesktopGrants(ctx, grants[i])
+			pendingNAT[i] = errors.Is(err, errDesktopNATPending)
+			if err != nil && !pendingNAT[i] {
 				return nil, ErrRuntimeController
+			}
+			if old, ok := c.active[id]; ok && old.Identity.PolicyHash != m.Policy.Hash && len(old.FQDNLeaseDescriptors) > 0 {
+				if rollover, e := c.prepareFQDNExpiryMaterial(ctx, old, m); e == nil {
+					expiryPriorHashes[i] = rollover.FQDNExpiryPriorHash
+					grants[i] = rollover.Grants
+				}
 			}
 			connections[id], deliveries[m.ID] = true, true
 		}
@@ -94,24 +113,32 @@ func (c *RuntimeController) maintainIPsecRuntimeRecoveryObserved(ctx context.Con
 			*connection = m.Manifest.ConnectionID
 			*stage = "maintenance_material_withdraw"
 			c.withdrawChangedDNSMaterial(m, grants[i])
-			if err := c.withdrawChangedFQDNMaterial(ctx, m, grants[i]); err != nil {
-				return nil, ErrRuntimeController
+			if expiryPriorHashes[i] == "" {
+				if err := c.withdrawChangedFQDNMaterial(ctx, m, grants[i]); err != nil {
+					return nil, ErrRuntimeController
+				}
 			}
 			*stage = "maintenance_material_current"
 			if !c.fqdnGrantsCurrent(grants[i]) {
-				return nil, ErrRuntimeController
+				return nil, &runtimeFQDNPolicyRetraction{connection: m.Manifest.ConnectionID}
 			}
 		}
 		items := make([]maintenanceItem, len(materials))
 		for i, m := range materials {
-			items[i] = maintenanceItem{RuntimeDelivery: m.RuntimeDelivery, Entry: input[i], Grants: grants[i], FQDNLeaseDescriptors: runtimeFQDNLeaseDescriptors(m.Policy), PolicyHash: m.Policy.Hash}
+			items[i] = maintenanceItem{RuntimeDelivery: m.RuntimeDelivery, Entry: input[i], Grants: grants[i], FQDNLeaseDescriptors: runtimeFQDNLeaseDescriptors(m.Policy), PolicyHash: m.Policy.Hash, FQDNExpiryPriorHash: expiryPriorHashes[i], FQDNRestorePending: pendingNAT[i]}
 		}
 		return items, nil
 	}
-	return c.maintainIPsecRuntimeItems(ctx, len(materials), prepare, authority, bgpCurrent, publish, publishRecovery, false)
+	// The RIB may converge after priority renewal but before this material page.
+	// Reuse the same single reconciliation attempt; its retry remains fail closed.
+	return c.maintainIPsecRuntimeItems(ctx, len(materials), prepare, authority, bgpCurrent, publish, publishRecovery, true)
 }
 
-func (c *RuntimeController) maintainIPsecRuntimeItems(ctx context.Context, count int, prepare func(string, []RuntimeJournalEntry, *string, *uuid.UUID) ([]maintenanceItem, error), authority func() *PermitLeaseAuthority, bgpCurrent func() bool, publish func(context.Context, RuntimeDelivery, RuntimeStatusReport) error, publishRecovery func(context.Context, RuntimeRecoveryHeartbeat) error, reconcileRetainedBGP bool) (resultOut []RuntimeMaintenanceResult, resultErr error) {
+func (c *RuntimeController) maintainIPsecRuntimeItems(ctx context.Context, count int, prepare func(string, []RuntimeJournalEntry, *string, *uuid.UUID) ([]maintenanceItem, error), authority func() *PermitLeaseAuthority, bgpCurrent func() bool, publish func(context.Context, RuntimeDelivery, RuntimeStatusReport) error, publishRecovery func(context.Context, RuntimeRecoveryHeartbeat) error, reconcileRetainedBGP bool) ([]RuntimeMaintenanceResult, error) {
+	return c.maintainIPsecRuntimeItemsAttempt(ctx, count, prepare, authority, bgpCurrent, publish, publishRecovery, reconcileRetainedBGP, true)
+}
+
+func (c *RuntimeController) maintainIPsecRuntimeItemsAttempt(ctx context.Context, count int, prepare func(string, []RuntimeJournalEntry, *string, *uuid.UUID) ([]maintenanceItem, error), authority func() *PermitLeaseAuthority, bgpCurrent func() bool, publish func(context.Context, RuntimeDelivery, RuntimeStatusReport) error, publishRecovery func(context.Context, RuntimeRecoveryHeartbeat) error, reconcileRetainedBGP, allowFQDNCutoffRefresh bool) (resultOut []RuntimeMaintenanceResult, resultErr error) {
 	started := time.Now()
 	stage, connection := "maintenance_input", uuid.Nil
 	defer func() { c.emitRuntimeDiagnostic(ctx, "maintenance", stage, connection, started, resultErr != nil) }()
@@ -135,7 +162,14 @@ func (c *RuntimeController) maintainIPsecRuntimeItems(ctx context.Context, count
 		return nil, ErrRuntimeController
 	}
 	nativeCommitted := false
+	changed := false
 	pulseFailure := func(err error) ([]RuntimeMaintenanceResult, error) {
+		var conflict *runtimeRecoveryConflictWithdrawn
+		if changed && errors.As(err, &conflict) {
+			// Earlier ineligible owners may still await their native denial.
+			// Target conflict isolation cannot abandon that pending duty.
+			return fail()
+		}
 		var withdrawn *runtimeRecoveryOwnerWithdrawn
 		if !nativeCommitted && ctx.Err() == nil && c.qualification.current() && c.config.DaemonAlive() && errors.As(err, &withdrawn) && withdrawn.connectionID != uuid.Nil {
 			if _, present := c.active[withdrawn.connectionID]; !present {
@@ -167,8 +201,29 @@ func (c *RuntimeController) maintainIPsecRuntimeItems(ctx context.Context, count
 	if err != nil {
 		return fail()
 	}
+	stage = "maintenance_pending_fqdn_withdraw"
+	if err := c.withdrawPendingFQDNPolicyLocked(ctx); err != nil {
+		return fail()
+	}
+	preparedOwners := map[uuid.UUID]runtimeActive{}
+	for id, a := range c.active {
+		preparedOwners[id] = cloneMaintenanceActive(a)
+	}
+	stage, connection = "maintenance_prepare", uuid.Nil
 	materials, prepareErr := prepare(ns, entries, &stage, &connection)
 	if prepareErr != nil || len(materials) != count {
+		if prepareErr == nil {
+			stage, connection = "maintenance_prepare_count", uuid.Nil
+		}
+		var retraction *runtimeFQDNPolicyRetraction
+		if errors.As(prepareErr, &retraction) {
+			current := func() bool {
+				return ctx.Err() == nil && c.qualification.current() && c.config.DaemonAlive() && bgpCurrent != nil && bgpCurrent()
+			}
+			if c.retractFQDNPreparation(ctx, retraction, preparedOwners, current) == nil {
+				return nil, nil
+			}
+		}
 		return fail()
 	}
 	if len(materials) == 0 {
@@ -185,17 +240,19 @@ func (c *RuntimeController) maintainIPsecRuntimeItems(ctx context.Context, count
 		staged[id] = a
 	}
 	candidates := map[uuid.UUID]runtimeActive{}
+	pending := map[uuid.UUID]runtimeActive{}
+	notDue := map[uuid.UUID]runtimeActive{}
 	maintained := make([]RuntimeDelivery, 0, len(materials))
-	changed := false
 	type eligibleOwner struct {
 		index  int
 		active runtimeActive
 	}
 	eligibleOwners := make([]eligibleOwner, 0, len(materials))
+	eligibilityProven := map[uuid.UUID]runtimeActive{}
 	// Complete all eligibility proof IO before beginning any fresh finite lease.
 	for i, m := range materials {
 		c.refreshMaintenanceRecovery(ctx)
-		if pulseErr := c.refreshMaintenanceActiveRecovery(ctx, pulseAllowed, publishRecovery); pulseErr != nil {
+		if pulseErr := c.refreshMaintenanceActiveRecoveryQualified(ctx, pulseAllowed, publishRecovery, bgpCurrent); pulseErr != nil {
 			return pulseFailure(pulseErr)
 		}
 		id := m.Manifest.ConnectionID
@@ -230,7 +287,7 @@ func (c *RuntimeController) maintainIPsecRuntimeItems(ctx context.Context, count
 			if current != nil && lineage {
 				env, observeErr := c.config.Environment.Observe(ctx, m.Entry.Allocation, m.Entry.Engines)
 				c.refreshMaintenanceRecovery(ctx)
-				if pulseErr := c.refreshMaintenanceActiveRecovery(ctx, pulseAllowed, publishRecovery); pulseErr != nil {
+				if pulseErr := c.refreshMaintenanceActiveRecoveryQualified(ctx, pulseAllowed, publishRecovery, bgpCurrent); pulseErr != nil {
 					return pulseFailure(pulseErr)
 				}
 				same := m.Entry
@@ -249,6 +306,13 @@ func (c *RuntimeController) maintainIPsecRuntimeItems(ctx context.Context, count
 					same.Recovery = current.Recovery
 				}
 				identity := PermitLeaseIdentity{DeliveryID: m.ID, Binding: same.Engines[0].Binding, PolicyHash: m.PolicyHash}
+				expiryRollover := m.FQDNExpiryPriorHash != "" && m.FQDNExpiryPriorHash == old.Identity.PolicyHash
+				policyTransition := c.fqdnPolicyTransitionEligible(old, m)
+				if m.FQDNRestorePending && !c.fqdnRestorationPendingEligible(old, m) {
+					return fail()
+				}
+				priorIdentity := identity
+				priorIdentity.PolicyHash = old.Identity.PolicyHash
 				eligible = maintenanceEligibilityTerm(&eligibilityStage, "eligibility_observe", func() bool { return observeErr == nil }) &&
 					maintenanceEligibilityTerm(&eligibilityStage, "eligibility_namespace", func() bool { return env.Namespace == ns }) &&
 					maintenanceEligibilityTerm(&eligibilityStage, "eligibility_phase", func() bool { return same.Phase == RuntimeApplied }) &&
@@ -259,8 +323,10 @@ func (c *RuntimeController) maintainIPsecRuntimeItems(ctx context.Context, count
 					maintenanceEligibilityTerm(&eligibilityStage, "eligibility_active_entry", func() bool { return reflect.DeepEqual(old.Entry, same) }) &&
 					maintenanceEligibilityTerm(&eligibilityStage, "eligibility_delivery", func() bool { return reflect.DeepEqual(old.Delivery, m.RuntimeDelivery) }) &&
 					maintenanceEligibilityTerm(&eligibilityStage, "eligibility_environment", func() bool { return reflect.DeepEqual(old.Environment, env) }) &&
-					maintenanceEligibilityTerm(&eligibilityStage, "eligibility_grants", func() bool { return reflect.DeepEqual(old.Grants, m.Grants) }) &&
-					maintenanceEligibilityTerm(&eligibilityStage, "eligibility_identity", func() bool { return old.Identity == identity }) &&
+					maintenanceEligibilityTerm(&eligibilityStage, "eligibility_grants", func() bool { return reflect.DeepEqual(old.Grants, m.Grants) || expiryRollover || policyTransition }) &&
+					maintenanceEligibilityTerm(&eligibilityStage, "eligibility_identity", func() bool {
+						return old.Identity == identity || ((expiryRollover || policyTransition) && old.Identity == priorIdentity)
+					}) &&
 					maintenanceEligibilityTerm(&eligibilityStage, "eligibility_authority", func() bool { return old.Authority != nil })
 				if eligible {
 					if same.ContractVersion == 2 {
@@ -277,18 +343,35 @@ func (c *RuntimeController) maintainIPsecRuntimeItems(ctx context.Context, count
 					stage = "maintenance_eligibility_proof"
 					eligibilityStage = "eligibility_proof"
 					proofErr := c.maintenanceCurrent(ctx, old, bgpCurrent)
-					if reconcileRetainedBGP && errors.Is(proofErr, errMaintenanceBGPRouteChanged) {
-						// Priority renewal precedes ordinary route validation. Let a
-						// healthy changed RIB converge under its original finite lease
+					routeChanged := errors.Is(proofErr, errMaintenanceBGPRouteChanged)
+					if routeChanged {
+						decision := "route_change_ineligible"
+						if reconcileRetainedBGP {
+							decision = "route_change_reconcile_once"
+						}
+						c.emitRuntimeDiagnostic(ctx, "maintenance_bgp_route_change", decision, id, eligibilityStarted, !reconcileRetainedBGP)
+					}
+					if reconcileRetainedBGP && routeChanged {
+						// Both renewal paths can observe a newly converged RIB. Let
+						// that healthy change converge under its original finite lease
 						// instead of withdrawing its owner and stopping desktop exports.
 						stage = "maintenance_retained_bgp_reconcile"
 						c.refreshMaintenanceRecovery(ctx)
-						if pulseErr := c.refreshMaintenanceActiveRecovery(ctx, pulseAllowed, publishRecovery); pulseErr != nil {
+						if pulseErr := c.refreshMaintenanceActiveRecoveryQualified(ctx, pulseAllowed, publishRecovery, bgpCurrent); pulseErr != nil {
 							return pulseFailure(pulseErr)
 						}
 						if ctx.Err() != nil || !c.qualification.current() || !c.config.DaemonAlive() || bgpCurrent == nil || !bgpCurrent() {
 							return fail()
 						}
+						// A permission-preserving selected-path switch need not replay
+						// already completed eligibility IO for every other owner. Capture
+						// only after the preceding publication callback has returned.
+						beforeSwitch := map[uuid.UUID]runtimeActive{}
+						for ownerID, a := range c.active {
+							beforeSwitch[ownerID] = cloneMaintenanceActive(a)
+						}
+						beforeTemplates, _, templateErr := c.journal.guardTemplates()
+						canContinue := templateErr == nil && !changed && reflect.DeepEqual(staged, beforeSwitch) && reflect.DeepEqual(old, beforeSwitch[id])
 						reconcileCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 						reconcileErr := c.reconcileActiveBGP(reconcileCtx, entries)
 						if reconcileErr == nil && (reconcileCtx.Err() != nil || !bgpCurrent()) {
@@ -298,14 +381,24 @@ func (c *RuntimeController) maintainIPsecRuntimeItems(ctx context.Context, count
 						if reconcileErr != nil {
 							return fail()
 						}
-						// Re-read the journal and rebuild exact owner snapshots once.
-						// The reconciler leaves applications denied; only the normal
-						// fresh-lease commit restores them. Further RIB drift refuses.
-						return c.maintainIPsecRuntimeItems(ctx, count, prepare, authority, bgpCurrent, publish, publishRecovery, false)
+						latest, continued := c.bgpRouteSwitchMaintenanceCurrent(id, beforeSwitch, entries, beforeTemplates)
+						if canContinue && continued {
+							// No authority/native member changed. The reconciler supplied
+							// the complete fresh native/desktop/RIB/SA proof for this owner;
+							// collection and its canonical post-CP proofs still run below.
+							entries, old = latest, c.active[id]
+							staged[id] = old
+							m.Entry, materials[i].Entry = old.Entry, old.Entry
+							reconcileRetainedBGP, proofErr = false, nil
+						} else {
+							// Deny-first or another owner change requires the original full
+							// rebuild. A second route change never reconciles recursively.
+							return c.maintainIPsecRuntimeItemsAttempt(ctx, count, prepare, authority, bgpCurrent, publish, publishRecovery, false, allowFQDNCutoffRefresh)
+						}
 					}
 					eligible = proofErr == nil
 					c.refreshMaintenanceRecovery(ctx)
-					if pulseErr := c.refreshMaintenanceActiveRecovery(ctx, pulseAllowed, publishRecovery); pulseErr != nil {
+					if pulseErr := c.refreshMaintenanceActiveRecoveryQualified(ctx, pulseAllowed, publishRecovery, bgpCurrent); pulseErr != nil {
 						return pulseFailure(pulseErr)
 					}
 				}
@@ -320,8 +413,79 @@ func (c *RuntimeController) maintainIPsecRuntimeItems(ctx context.Context, count
 			}
 			continue
 		}
+		eligibilityProven[id] = cloneMaintenanceActive(old)
+		if m.FQDNRestorePending {
+			// Exact eligibility and native old-owner proof succeeded. Leave its
+			// original deadline untouched and return no applied acknowledgement.
+			if !c.fqdnRestorationPendingEligible(old, m) {
+				return fail()
+			}
+			c.emitRuntimeDiagnostic(ctx, "maintenance", "maintenance_desktop_nat_pending", id, eligibilityStarted, true)
+			pending[id] = old
+			continue
+		}
+		if c.fqdnPolicyTransitionEligible(old, m) {
+			m.FQDNPolicyPriorHash = old.Identity.PolicyHash
+			materials[i] = m
+		}
+		// Exact current authority can remain installed after its fresh native
+		// eligibility proof. Normal discovery/revocation above still runs; a
+		// deferred result carries no new authority or applied acknowledgement.
+		if c.exactPageRefreshScope() && m.FQDNPolicyPriorHash == "" && !c.maintenanceRenewalDue(old) &&
+			old.Identity.PolicyHash == m.PolicyHash && reflect.DeepEqual(old.Grants, m.Grants) {
+			notDue[id] = old
+			continue
+		}
 		eligibleOwners = append(eligibleOwners, eligibleOwner{index: i, active: old})
 	}
+	retryPublish, retryPublishRecovery := publish, publishRecovery
+	deferral := c.beginMaintenancePulseDeferral(pulseAllowed, publishRecovery)
+	if publishRecovery != nil {
+		publishOriginal := publishRecovery
+		publishRecovery = func(ctx context.Context, report RuntimeRecoveryHeartbeat) error {
+			check := func() bool {
+				if reason := deferral.recoveryPublicationRefusal(ctx, c, report); reason != "" {
+					// ConnectionID identifies this publication's sampled owner;
+					// other_report_age explicitly denotes a tracked sibling.
+					c.emitRuntimeDiagnostic(ctx, "maintenance_report_freshness", reason, report.ConnectionID, time.Now(), true)
+					return false
+				}
+				return true
+			}
+			if !check() {
+				return ErrRuntimeController
+			}
+			if err := publishOriginal(ctx, report); err != nil {
+				return err
+			}
+			if !check() {
+				return ErrRuntimeController
+			}
+			return nil
+		}
+	}
+	if publish != nil {
+		publishOriginal := publish
+		publish = func(ctx context.Context, delivery RuntimeDelivery, report RuntimeStatusReport) error {
+			if !deferral.reportsCurrentObserved(ctx, c) {
+				return ErrRuntimeController
+			}
+			if err := publishOriginal(ctx, delivery, report); err != nil {
+				return err
+			}
+			if !deferral.reportsCurrentObserved(ctx, c) {
+				return ErrRuntimeController
+			}
+			return nil
+		}
+	}
+	collectionPulse := func() error {
+		if deferral.deferPulse(ctx, c) {
+			return nil
+		}
+		return c.refreshMaintenanceActiveRecoveryQualified(ctx, pulseAllowed, publishRecovery, bgpCurrent)
+	}
+	refreshedFQDN := map[uuid.UUID]bool{}
 	for _, owner := range eligibleOwners {
 		m, old := materials[owner.index], owner.active
 		id := m.Manifest.ConnectionID
@@ -348,15 +512,62 @@ func (c *RuntimeController) maintainIPsecRuntimeItems(ctx context.Context, count
 		if ctx.Err() != nil || !c.qualification.current() || !c.config.DaemonAlive() || (old.Entry.ContractVersion == 3 && (bgpCurrent == nil || !bgpCurrent())) {
 			return fail()
 		}
+		identity := old.Identity
+		if m.FQDNExpiryPriorHash != "" || m.FQDNPolicyPriorHash != "" {
+			if (m.FQDNExpiryPriorHash != "" && m.FQDNExpiryPriorHash != old.Identity.PolicyHash) || (m.FQDNPolicyPriorHash != "" && (m.FQDNPolicyPriorHash != old.Identity.PolicyHash || !c.fqdnPolicyTransitionEligible(old, m))) {
+				return fail()
+			}
+			identity.PolicyHash = m.PolicyHash
+		}
+		if identity.PolicyHash != m.PolicyHash {
+			return fail()
+		}
 		fqdnPolicy := retainedFQDNLeasePolicy(m.FQDNLeaseDescriptors)
-		request, beginErr := fresh.BeginFQDN(old.Identity, runtimeFQDNLeaseKeys(fqdnPolicy))
+		request, beginErr := fresh.BeginFQDN(identity, runtimeFQDNLeaseKeys(fqdnPolicy))
 		if beginErr != nil {
 			return fail()
 		}
 		stage = "maintenance_lease"
 		lease, leaseErr := c.client.RenewIPsecLease(ctx, id, RuntimeLeaseRequest{DeliveryID: m.ID, DesiredRevision: m.DesiredRevision, PolicyHash: m.PolicyHash, Nonce: request.Nonce, FQDNGrants: runtimeFQDNLeaseDescriptors(fqdnPolicy)})
+		// A normal page can race the same DNS publication as a priority pass.
+		// Reuse exact expiry-only renewal or scoped removal/restoration once.
+		// A conflict alone never authorizes content or extends the original lease.
+		if leaseErr != nil && allowFQDNCutoffRefresh && (len(old.FQDNLeaseDescriptors) > 0 || (old.Entry.ContractVersion == 3 && len(c.bgpDesktopExports[old.Entry.DeliveryID]) > 0)) && maintenanceLeaseFailureStage(leaseErr) == "maintenance_lease_http_409_conflict" {
+			stage = "maintenance_fqdn_expiry_material"
+			updated, updatedOld, updateErr := c.refreshFQDNMaintenanceMaterial(ctx, old)
+			if updateErr != nil {
+				return fail()
+			}
+			if updated.FQDNRestorePending {
+				if !reflect.DeepEqual(old, updatedOld) || !c.fqdnRestorationPendingEligible(old, updated) || c.maintenanceCurrent(ctx, old, bgpCurrent) != nil || !reflect.DeepEqual(c.active[id], old) || !c.fqdnRestorationPendingEligible(old, updated) {
+					return fail()
+				}
+				c.emitRuntimeDiagnostic(ctx, "maintenance", "maintenance_desktop_nat_pending", id, started, true)
+				pending[id] = old
+				continue
+			}
+			refreshedFQDN[id] = true
+			old = updatedOld
+			staged[id] = old
+			m = updated
+			identity.PolicyHash = m.PolicyHash
+			fqdnPolicy = retainedFQDNLeasePolicy(m.FQDNLeaseDescriptors)
+			fresh = authority()
+			if fresh == nil {
+				return fail()
+			}
+			request, beginErr = fresh.BeginFQDN(identity, runtimeFQDNLeaseKeys(fqdnPolicy))
+			if beginErr != nil {
+				return fail()
+			}
+			stage = "maintenance_fqdn_expiry_lease"
+			lease, leaseErr = c.client.RenewIPsecLease(ctx, id, RuntimeLeaseRequest{DeliveryID: m.ID, DesiredRevision: m.DesiredRevision, PolicyHash: m.PolicyHash, Nonce: request.Nonce, FQDNGrants: runtimeFQDNLeaseDescriptors(fqdnPolicy)})
+		}
 		if leaseErr != nil {
 			stage = maintenanceLeaseFailureStage(leaseErr)
+			if stage == "maintenance_lease_http_409_conflict" && !changed && !nativeCommitted && c.withdrawMaintenanceConflict(ctx, old, entries, bgpCurrent) == nil {
+				return nil, &runtimeMaintenanceBatchAborted{}
+			}
 			return fail()
 		}
 		stage = "maintenance_lease_delivery"
@@ -380,7 +591,7 @@ func (c *RuntimeController) maintainIPsecRuntimeItems(ctx context.Context, count
 			return fail()
 		}
 		c.refreshMaintenanceRecovery(ctx)
-		if pulseErr := c.refreshMaintenanceActiveRecovery(ctx, pulseAllowed, publishRecovery); pulseErr != nil {
+		if pulseErr := collectionPulse(); pulseErr != nil {
 			return pulseFailure(pulseErr)
 		}
 		stage = "maintenance_lease_active"
@@ -402,7 +613,7 @@ func (c *RuntimeController) maintainIPsecRuntimeItems(ctx context.Context, count
 			continue
 		}
 		c.refreshMaintenanceRecovery(ctx)
-		if pulseErr := c.refreshMaintenanceActiveRecovery(ctx, pulseAllowed, publishRecovery); pulseErr != nil {
+		if pulseErr := collectionPulse(); pulseErr != nil {
 			return pulseFailure(pulseErr)
 		}
 		current, ok = c.active[id]
@@ -410,18 +621,82 @@ func (c *RuntimeController) maintainIPsecRuntimeItems(ctx context.Context, count
 			return fail()
 		}
 		stage = "maintenance_fresh_authority"
-		if _, err = fresh.RemainingForApply(old.Identity, 5*time.Second); err != nil {
+		if _, err = fresh.RemainingForApply(identity, 5*time.Second); err != nil {
 			return fail()
 		}
 		candidate := old
 		candidate.Authority = fresh
+		candidate.Identity = identity
+		candidate.Grants = m.Grants
 		candidate.FQDNLeaseDescriptors = runtimeFQDNLeaseDescriptors(fqdnPolicy)
+		materials[owner.index] = m
 		staged[id], candidates[id] = candidate, candidate
 		maintained = append(maintained, m.RuntimeDelivery)
 	}
-	if len(candidates) == 0 && !changed {
-		return nil, nil
+	deferral.finishCollection(staged)
+	pendingCurrent := func() bool {
+		for id, old := range notDue {
+			if ctx.Err() != nil || !c.qualification.current() || !c.config.DaemonAlive() || !reflect.DeepEqual(c.active[id], old) || !c.fqdnGrantsCurrent(old.Grants) || old.Authority == nil || (old.Entry.ContractVersion == 3 && (bgpCurrent == nil || !bgpCurrent())) {
+				return false
+			}
+			if _, e := old.Authority.RemainingForApply(old.Identity, 5*time.Second); e != nil {
+				return false
+			}
+		}
+		for id, old := range pending {
+			if ctx.Err() != nil || !c.qualification.current() || !c.config.DaemonAlive() || bgpCurrent == nil || !bgpCurrent() || !reflect.DeepEqual(c.active[id], old) || !c.fqdnGrantsCurrent(old.Grants) {
+				return false
+			}
+			if _, e := old.Authority.RemainingForApply(old.Identity, 5*time.Second); e != nil {
+				return false
+			}
+		}
+		return true
 	}
+	if !pendingCurrent() {
+		return fail()
+	}
+	retainedValidated := false
+	deferredResults := func() []RuntimeMaintenanceResult {
+		out := make([]RuntimeMaintenanceResult, 0, len(pending))
+		for _, old := range pending {
+			delivery := cloneMaintenanceActive(old).Delivery
+			out = append(out, RuntimeMaintenanceResult{Deferred: &delivery})
+		}
+		for _, old := range notDue {
+			delivery := cloneMaintenanceActive(old).Delivery
+			if retainedValidated {
+				out = append(out, RuntimeMaintenanceResult{Retained: &delivery})
+			} else {
+				out = append(out, RuntimeMaintenanceResult{Deferred: &delivery})
+			}
+		}
+		return out
+	}
+	if len(candidates) == 0 && !changed {
+		// A partial page cannot certify owners it never freshly proved. Keep its
+		// original deferred outcome so the caller still validates independently.
+		if len(notDue) > 0 && len(eligibilityProven) == len(c.active) {
+			if c.retainedMaintenanceCurrent(ctx, eligibilityProven, bgpCurrent) != nil {
+				return fail()
+			}
+			retainedValidated = true
+		}
+		return deferredResults(), nil
+	}
+	// Retained pending owners are required, but are not newly authorized
+	// candidates or ACK results. Another owner's commit cannot omit them.
+	required := make(map[uuid.UUID]runtimeActive, len(candidates)+len(pending))
+	for id, a := range candidates {
+		required[id] = a
+	}
+	for id, a := range pending {
+		required[id] = a
+	}
+	for id, a := range notDue {
+		required[id] = a
+	}
+
 	// Original authorities remain untouched and externally visible until the
 	// exact combined guard transaction and final native/lease checks succeed.
 	stage, connection = "maintenance_bgp_freshness", uuid.Nil
@@ -430,10 +705,25 @@ func (c *RuntimeController) maintainIPsecRuntimeItems(ctx context.Context, count
 			return failHAFreshness()
 		}
 	}
+	// A candidate already refreshed after a 409 has consumed its one normal
+	// material retry. The same bound applies to a cutoff recollection.
+	cutoffCandidates := map[uuid.UUID]runtimeActive{}
+	if allowFQDNCutoffRefresh {
+		for id, candidate := range candidates {
+			if !refreshedFQDN[id] {
+				cutoffCandidates[id] = candidate
+			}
+		}
+	}
 	haFreshnessFailed := false
 	stage, connection = "maintenance_combined_guard", uuid.Nil
-	if c.installActiveCandidates(ctx, entries, staged, candidates, c.active, func() bool {
-		if ctx.Err() != nil || !c.qualification.current() || !c.config.DaemonAlive() {
+	originalOwners := make(map[uuid.UUID]runtimeActive, len(c.active))
+	for id, a := range c.active {
+		originalOwners[id] = cloneMaintenanceActive(a)
+	}
+	var assemblyPulseErr error
+	installErr := c.installActiveCandidatesFQDN(ctx, entries, staged, required, c.active, func() bool {
+		if ctx.Err() != nil || !c.qualification.current() || !c.config.DaemonAlive() || !deferral.reportsCurrentObserved(ctx, c) || !pendingCurrent() {
 			return false
 		}
 		for _, a := range candidates {
@@ -443,15 +733,74 @@ func (c *RuntimeController) maintainIPsecRuntimeItems(ctx context.Context, count
 			}
 		}
 		return true
-	}) != nil {
+	}, cutoffCandidates, func(ctx context.Context) error {
+		if len(candidates) == 0 {
+			return nil
+		}
+		assemblyPulseErr = deferral.pulseBeforeAssembly(ctx, c, publishRecovery)
+		return assemblyPulseErr
+	}, func(ctx context.Context) error {
+		// One late collection per normal operation; the existing cutoff retry
+		// has already consumed its recollection budget.
+		if !allowFQDNCutoffRefresh {
+			return nil
+		}
+		return c.refreshFQDNAssemblyCandidates(ctx, authority, bgpCurrent, originalOwners, candidates, staged, required, cutoffCandidates, materials)
+	}, false)
+	if installErr != nil {
+		if assemblyPulseErr != nil {
+			return pulseFailure(assemblyPulseErr)
+		}
+		var retraction *runtimeFQDNPolicyRetraction
+		if !changed && !nativeCommitted && errors.As(installErr, &retraction) {
+			stage = "maintenance_fqdn_retraction"
+			if retraction.nativeReplaced {
+				stage = "maintenance_fqdn_retraction_after_replace"
+			}
+			current := func() bool {
+				return ctx.Err() == nil && c.qualification.current() && c.config.DaemonAlive() && deferral.reportsCurrentObserved(ctx, c) && pendingCurrent() && bgpCurrent != nil && bgpCurrent()
+			}
+			if c.retractFQDNOnly(ctx, retraction, originalOwners, staged, current) == nil {
+				// All fresh candidates are discarded. The ordinary caller may
+				// retry its page, but receives no positive acknowledgement here.
+				return nil, nil
+			}
+			return fail()
+		}
+		var cutoff *runtimeFQDNPrecommitCutoff
+		if allowFQDNCutoffRefresh && errors.As(installErr, &cutoff) {
+			stage = "maintenance_fqdn_cutoff_refresh"
+			// No candidate has been installed or published. Discard every staged
+			// lease and recollect once under the original finite authority.
+			retryMaterials, retryErr := c.prepareFQDNCutoffRetry(ctx, materials, cutoff)
+			if retryErr != nil || !deferral.reportsCurrentObserved(ctx, c) {
+				return fail()
+			}
+			retryPrepare := func(retryNS string, _ []RuntimeJournalEntry, _ *string, _ *uuid.UUID) ([]maintenanceItem, error) {
+				if retryNS != ns {
+					return nil, ErrRuntimeController
+				}
+				for _, m := range retryMaterials {
+					if !c.fqdnGrantsCurrent(m.Grants) {
+						return nil, ErrRuntimeController
+					}
+				}
+				return retryMaterials, nil
+			}
+			return c.maintainIPsecRuntimeItemsAttempt(ctx, count, retryPrepare, authority, bgpCurrent, retryPublish, retryPublishRecovery, reconcileRetainedBGP, false)
+		}
 		if haFreshnessFailed && ctx.Err() == nil && c.qualification.current() && c.config.DaemonAlive() {
 			return failHAFreshness()
 		}
 		return fail()
 	}
 	nativeCommitted = true
+	stage = "maintenance_committed_report_transfer"
+	if err := deferral.transferCommitted(ctx, c, originalOwners, candidates, staged); err != nil {
+		return fail()
+	}
 	c.refreshMaintenanceRecovery(ctx)
-	if pulseErr := c.refreshMaintenanceActiveRecovery(ctx, pulseAllowed, publishRecovery); pulseErr != nil {
+	if pulseErr := c.refreshMaintenanceActiveRecoveryQualified(ctx, pulseAllowed, publishRecovery, bgpCurrent); pulseErr != nil {
 		return pulseFailure(pulseErr)
 	}
 	result := make([]RuntimeMaintenanceResult, 0, len(maintained))
@@ -480,7 +829,7 @@ func (c *RuntimeController) maintainIPsecRuntimeItems(ctx context.Context, count
 			report.Tunnels[i] = RuntimeTunnelStatus{ID: t.ID, Slot: t.Slot, Status: "unknown", Selected: t.Selected}
 		}
 		c.refreshMaintenanceRecovery(ctx)
-		if pulseErr := c.refreshMaintenanceActiveRecovery(ctx, pulseAllowed, publishRecovery); pulseErr != nil {
+		if pulseErr := c.refreshMaintenanceActiveRecoveryQualified(ctx, pulseAllowed, publishRecovery, bgpCurrent); pulseErr != nil {
 			return pulseFailure(pulseErr)
 		}
 		stage = "maintenance_status"
@@ -499,7 +848,7 @@ func (c *RuntimeController) maintainIPsecRuntimeItems(ctx context.Context, count
 				return fail()
 			}
 			c.refreshMaintenanceRecovery(ctx)
-			if pulseErr := c.refreshMaintenanceActiveRecovery(ctx, pulseAllowed, publishRecovery); pulseErr != nil {
+			if pulseErr := c.refreshMaintenanceActiveRecoveryQualified(ctx, pulseAllowed, publishRecovery, bgpCurrent); pulseErr != nil {
 				return pulseFailure(pulseErr)
 			}
 			// External report IO cannot turn a now-expired or replaced candidate
@@ -518,9 +867,13 @@ func (c *RuntimeController) maintainIPsecRuntimeItems(ctx context.Context, count
 		// Reuse its bounded standby retry without preempting the selected path;
 		// only fresh known-Up/Down evidence and the committed finite lease can
 		// initiate the spare. The full-set check below still gates every ACK.
-		if candidate.Entry.ContractVersion == 2 {
+		if candidate.Entry.ContractVersion == 2 || candidate.Entry.ContractVersion == 3 {
 			retryCtx, retryCancel := context.WithTimeout(ctx, 5*time.Second)
-			c.retryDownStandby(retryCtx, candidate.Entry, candidate.Authority, candidate.Identity)
+			if candidate.Entry.ContractVersion == 3 {
+				c.retryMissingBGPChild(retryCtx, candidate.Entry)
+			} else {
+				c.retryDownStandby(retryCtx, candidate.Entry, candidate.Authority, candidate.Identity)
+			}
 			retryCancel()
 		}
 		result = append(result, RuntimeMaintenanceResult{Acknowledgement: RuntimeAcknowledgement{DeliveryID: m.ID, DesiredRevision: m.DesiredRevision, Kind: "apply", Result: "applied", OwnershipDigest: m.OwnershipDigest}, Report: report})
@@ -532,7 +885,7 @@ func (c *RuntimeController) maintainIPsecRuntimeItems(ctx context.Context, count
 		connection, stage = m.Manifest.ConnectionID, "maintenance_final_binding"
 		candidate := candidates[m.Manifest.ConnectionID]
 		current, ok := c.active[m.Manifest.ConnectionID]
-		if !ok || current.Authority != candidate.Authority || !reflect.DeepEqual(current, candidate) || ctx.Err() != nil || !c.qualification.current() || !c.config.DaemonAlive() || (candidate.Entry.ContractVersion == 3 && (bgpCurrent == nil || !bgpCurrent())) {
+		if !ok || !deferral.reportsCurrentObserved(ctx, c) || current.Authority != candidate.Authority || !reflect.DeepEqual(current, candidate) || ctx.Err() != nil || !c.qualification.current() || !c.config.DaemonAlive() || (candidate.Entry.ContractVersion == 3 && (bgpCurrent == nil || !bgpCurrent())) {
 			return fail()
 		}
 		c.refreshMaintenanceRecovery(ctx)
@@ -541,7 +894,24 @@ func (c *RuntimeController) maintainIPsecRuntimeItems(ctx context.Context, count
 			return fail()
 		}
 	}
-	return result, nil
+	// The last inactive observation can consume report freshness too. No ACK
+	// escapes after that final blocking sample without the same actual clock proof.
+	stage = "maintenance_committed_reports"
+	if !deferral.reportsCurrentObserved(ctx, c) || !pendingCurrent() || !deferral.committedReportsCurrent(ctx, c) {
+		return fail()
+	}
+	if len(notDue) > 0 {
+		// The completed combined commit supplied fresh proof for the whole set.
+		committed := map[uuid.UUID]runtimeActive{}
+		for id, owner := range c.active {
+			committed[id] = cloneMaintenanceActive(owner)
+		}
+		if c.retainedMaintenanceCurrent(ctx, committed, bgpCurrent) != nil {
+			return fail()
+		}
+		retainedValidated = true
+	}
+	return append(result, deferredResults()...), nil
 }
 
 var errMaintenanceBGPRouteChanged = errors.New("IPsec maintenance BGP routes changed")
@@ -608,10 +978,15 @@ func (c *RuntimeController) maintenanceCurrentWithNativeProof(ctx context.Contex
 				target = append(target, RuntimeBGPRouteTuple{Prefix: r.Prefix, Slot: uint8(r.Slot), InterfaceIndex: e.Observed[r.Slot-1].InterfaceIndex, Table: 254, Protocol: 242, Metric: 50000 + uint32(r.Slot)})
 			}
 		}
-		stage = "maintenance_current_bgp_binding"
-		if !p.Alive() || !bgpCurrent() {
+		stage = "maintenance_current_bgp_process_after"
+		if !p.Alive() {
 			return ErrRuntimeController
 		}
+		stage = "maintenance_current_bgp_qualification_after"
+		if !bgpCurrent() {
+			return ErrRuntimeController
+		}
+		stage = "maintenance_current_bgp_route_changed"
 		if !reflect.DeepEqual(target, e.BGPRoutes.Owned) {
 			return errMaintenanceBGPRouteChanged
 		}

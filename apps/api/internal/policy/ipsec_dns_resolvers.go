@@ -68,6 +68,13 @@ func DecodeIPsecDNSProfile(row sqlc.ListIPsecDNSResolverProfilesRow) (IPsecDNSPr
 }
 func DNSProfileForAllowedTraffic(declared IPsecDNSProfile, allows []policyspec.AllowEntry, gatewayDNSAddresses ...string) policyspec.DNSResolverProfile {
 	p := declared.Profile
+	scoped := make([]policyspec.AllowEntry, 0, len(allows))
+	for _, a := range allows {
+		if a.DNSResolverProfileID == "" || a.DNSResolverProfileID == p.ProfileID {
+			scoped = append(scoped, a)
+		}
+	}
+	allows = scoped
 	p.AllowedSources = []string{}
 	endpoints := p.Endpoints
 	// A gateway-local DNS permission authorizes the proxy itself for either

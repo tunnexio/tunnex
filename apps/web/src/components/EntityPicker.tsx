@@ -112,6 +112,11 @@ export function EntityPicker({
           setOpen(true);
           setQuery("");
         }}
+        onClick={() => {
+          // Selection keeps input focus for keyboard access. Clicking that
+          // already-focused input must reopen it for another choice.
+          if (!open) { setOpen(true); setQuery(""); setActive(0); }
+        }}
         onBlur={() => window.setTimeout(() => setOpen(false), 120)}
         onChange={(e) => {
           setQuery(e.target.value);

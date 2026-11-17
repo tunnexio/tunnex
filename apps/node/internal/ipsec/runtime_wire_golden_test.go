@@ -11,7 +11,7 @@ import (
 // The input bytes/digests are emitted independently by the API's actual typed
 // manifest. Hashing a node-generated fixture would miss field-order drift.
 func TestRuntimeManifestAPIGoldenWire(t *testing.T) {
-	testRuntimeManifestAPIGolden(t, "testdata/api_runtime_manifest_golden.json", 3)
+	testRuntimeManifestAPIGolden(t, "testdata/api_runtime_manifest_golden.json", 4)
 }
 func TestRuntimeManifestAPIGCPGoldenWire(t *testing.T) {
 	testRuntimeManifestAPIGolden(t, "testdata/api_gcp_runtime_manifest_golden.json", 2)

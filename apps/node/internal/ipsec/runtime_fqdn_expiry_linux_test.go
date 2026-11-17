@@ -5,12 +5,14 @@ package ipsec
 import (
 	"bytes"
 	"context"
+	"github.com/google/uuid"
 	"net"
 	"net/netip"
 	"os"
 	"os/exec"
 	"reflect"
 	"sort"
+	"strings"
 	"testing"
 	"time"
 )
@@ -19,6 +21,14 @@ import (
 // Run only in the disconnected disposable two-XFRM guard harness, never a
 // customer gateway namespace. It refuses every existing table before writes.
 func TestGuardFQDNV2ExpiryNativeReadback(t *testing.T) {
+	testGuardFQDNExpiryNativeReadback(t, false)
+}
+
+func TestGuardDesktopStaticFQDNExpiryNativeReadback(t *testing.T) {
+	testGuardFQDNExpiryNativeReadback(t, true)
+}
+
+func testGuardFQDNExpiryNativeReadback(t *testing.T, desktop bool) {
 	if os.Getenv("TUNNEX_IPSEC_FQDN_EXPIRY_LAB") != "1" {
 		t.Skip("disconnected owned guard component harness only")
 	}
@@ -57,11 +67,40 @@ func TestGuardFQDNV2ExpiryNativeReadback(t *testing.T) {
 	c.PermitFor = 20 * time.Second
 	// The reqid set is a renderer/readback fixture, not an observed native SA.
 	c.EncryptedEgress = []GuardEncryptedEgress{{TunnelInterfaceIndex: inv.Links[0].Index, ReqID: 12345, Peer: netip.MustParseAddr("192.0.2.1"), UnderlayInterfaceIndex: 1}}
-	_, g, _ := v2FQDNFixture(t)
+	wireMaterial, g, _ := v2FQDNFixture(t)
+	if desktop {
+		wireMaterial, g, _ = desktopStaticFQDNFixture(t)
+		// Actual loopback is the disposable test ingress, never an enrolled peer.
+		// This component qualifies renderer/expiry/readback; runtime peer proof is separate.
+		g.DesktopIngressIndex = 1
+	}
 	g.FQDN.SelectedGatewayID = in.OwnerID
 	g.FQDN.ConnectionID = c.ID
-	g.FQDNPermitFor = 3 * time.Second
 	c.Grants = append(c.Grants, g)
+	// Exercise the real wire-descriptor -> issued finite permit -> guard digest
+	// bridge. Directly setting FQDNPermitFor would hide lost desktop provenance.
+	wire := wireMaterial.Policy.FQDNGrants[0]
+	wire.SelectedGatewayID, wire.ConnectionID = in.OwnerID.String(), c.ID.String()
+	key := runtimeFQDNGrantDigest(wire)
+	authority := NewPermitLeaseAuthority()
+	identity := permitIdentity()
+	request, err := authority.BeginFQDN(identity, []string{key})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = authority.Accept(PermitLeaseResponse{PermitLeaseRequest: request, TTLMillis: 20000, FQDNPermits: []RuntimeFQDNPermit{{GrantDigest: key, TTLMS: 5000}}}); err != nil {
+		t.Fatal(err)
+	}
+	// One-second component commit budget keeps this disconnected test finite;
+	// the production controller retains its unchanged five-second budget.
+	in = limitFQDNGuardIntent(in, time.Now(), time.Second, func(_ uuid.UUID, g GuardGrant, budget time.Duration) (time.Duration, error) {
+		return authority.RemainingFQDNForApply(identity, guardFQDNGrantDigest(g), budget)
+	})
+	c = &in.Connections[0]
+	if len(c.Grants) == 0 || !c.Grants[len(c.Grants)-1].FQDNManaged {
+		t.Fatal("issued desktop permit lost its native timed member")
+	}
+	g = c.Grants[len(c.Grants)-1]
 	m, err := RenderGuard(in)
 	if err != nil {
 		t.Fatal(err)
@@ -113,7 +152,28 @@ func TestGuardFQDNV2ExpiryNativeReadback(t *testing.T) {
 	if VerifyGuardReadbackWithInterfaces([]byte(m.ExpectedJSON), actual, links) != nil {
 		t.Fatal("native timed IPv4 member/readback mismatch")
 	}
-	time.Sleep(3200 * time.Millisecond)
+	if desktop {
+		oldSet := guardFQDNSetName(g)
+		g.Destination = netip.MustParsePrefix("10.20.0.10/32")
+		g.FQDN.Generation = strings.Repeat("b", 64)
+		c.Grants[len(c.Grants)-1] = g
+		in.Revision++
+		replacement, err := RenderGuard(in)
+		if err != nil {
+			t.Fatal(err)
+		}
+		tx, err := replaceOwnedFQDNSets(replacement.NFTJSON, m.ExpectedJSON)
+		if err != nil {
+			t.Fatal(err)
+		}
+		run(tx, "-j", "-f", "-")
+		actual = read()
+		if VerifyGuardReadbackWithInterfaces([]byte(replacement.ExpectedJSON), actual, links) != nil || bytes.Contains(actual, []byte(oldSet)) {
+			t.Fatal("generation switch retained old answer authority")
+		}
+		m = replacement
+	}
+	time.Sleep(g.FQDNPermitFor + 200*time.Millisecond)
 	actual = read()
 	if VerifyGuardReadbackWithInterfaces([]byte(m.ExpectedJSON), actual, links) == nil {
 		t.Fatal("expired application member accepted as positive")

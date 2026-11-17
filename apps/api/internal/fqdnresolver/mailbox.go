@@ -72,14 +72,20 @@ func (m *PostgresGatewayDNSMailbox) Enqueue(ctx context.Context, request Gateway
 			return err
 		}
 		defer func() { _ = tx.Rollback(ctx) }()
+		// Match generation publication/withdrawal and runtime policy ordering.
+		// Otherwise this transaction can hold the joined node/site rows while
+		// waiting for a config held by a generation INSERT needing their FK locks.
+		if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1::text, 0))`, request.OrgID); err != nil {
+			return err
+		}
 		if err := validateCurrentMailboxContext(ctx, tx, request); err != nil {
 			return err
 		}
 		command, err := tx.Exec(ctx, `
 INSERT INTO fqdn_gateway_dns_requests
-  (request_id,protocol_version,org_id,resource_id,site_id,gateway_id,resolver_config_id,resolver_config_version,resolver_profile_id,resolver_match_suffix,resolver_endpoints,hostname,record_types,deadline,state,resolver_ipsec_path)
-VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,NULLIF($10,''),$11,$12,$13,$14,'pending',$15)
-ON CONFLICT (request_id) DO NOTHING`, request.RequestID, request.Version, request.OrgID, request.ResourceID, request.SiteID, request.GatewayID, request.ResolverConfigID, request.ResolverConfigVersion, request.ResolverProfileID, request.ResolverMatchSuffix, endpoints, request.Hostname, types, request.Deadline, path)
+  (request_id,protocol_version,org_id,resource_id,site_id,gateway_id,resolver_config_id,resolver_config_version,resolver_profile_id,resolver_match_suffix,resolver_endpoints,hostname,record_types,deadline,state,resolver_ipsec_path,resolver_kind,application_desired_revision)
+VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,NULLIF($10,''),$11,$12,$13,$14,'pending',$15,$16,NULLIF($17,0))
+ON CONFLICT (request_id) DO NOTHING`, request.RequestID, request.Version, request.OrgID, request.ResourceID, request.SiteID, request.GatewayID, request.ResolverConfigID, request.ResolverConfigVersion, request.ResolverProfileID, request.ResolverMatchSuffix, endpoints, request.Hostname, types, request.Deadline, path, request.ResolverKind, request.ApplicationDesiredRevision)
 		if err != nil {
 			return err
 		}
@@ -133,9 +139,9 @@ WHERE q.org_id=$1 AND q.gateway_id=$2 AND q.state='pending'
 		return nil, err
 	}
 	rows, err := m.pool.Query(ctx, `
-SELECT request_id,protocol_version,org_id,resource_id,site_id,gateway_id,resolver_config_id,resolver_config_version,resolver_profile_id,COALESCE(resolver_match_suffix,''),resolver_endpoints,hostname,record_types,deadline,resolver_ipsec_path
+SELECT request_id,protocol_version,org_id,resource_id,site_id,gateway_id,resolver_config_id,resolver_config_version,resolver_profile_id,COALESCE(resolver_match_suffix,''),resolver_endpoints,hostname,record_types,deadline,resolver_ipsec_path,resolver_kind,COALESCE(application_desired_revision,0)
 FROM fqdn_gateway_dns_requests
-WHERE org_id=$1 AND gateway_id=$2 AND state='pending' AND deadline>=now()
+WHERE org_id=$1 AND gateway_id=$2 AND state='pending' AND deadline>=now() AND (resolver_kind='' OR EXISTS(SELECT 1 FROM fqdn_resources r WHERE r.id=resource_id AND r.org_id=$1 AND application_desired_revision=(SELECT desired_revision FROM ipsec_connections WHERE id=r.application_ipsec_connection_id) AND fqdn_application_ipsec_path_valid(r.org_id,r.resolver_site_id,r.resolver_node_id,r.application_ipsec_connection_id,r.application_ipsec_configuration_revision)))
 ORDER BY created_at,request_id LIMIT $3`, orgID, gatewayID, limit)
 	if err != nil {
 		return nil, err
@@ -145,7 +151,7 @@ ORDER BY created_at,request_id LIMIT $3`, orgID, gatewayID, limit)
 	for rows.Next() {
 		var request GatewayDNSRequest
 		var types, endpoints, path []byte
-		if err := rows.Scan(&request.RequestID, &request.Version, &request.OrgID, &request.ResourceID, &request.SiteID, &request.GatewayID, &request.ResolverConfigID, &request.ResolverConfigVersion, &request.ResolverProfileID, &request.ResolverMatchSuffix, &endpoints, &request.Hostname, &types, &request.Deadline, &path); err != nil {
+		if err := rows.Scan(&request.RequestID, &request.Version, &request.OrgID, &request.ResourceID, &request.SiteID, &request.GatewayID, &request.ResolverConfigID, &request.ResolverConfigVersion, &request.ResolverProfileID, &request.ResolverMatchSuffix, &endpoints, &request.Hostname, &types, &request.Deadline, &path, &request.ResolverKind, &request.ApplicationDesiredRevision); err != nil {
 			return nil, err
 		}
 		if err := json.Unmarshal(types, &request.RecordTypes); err != nil {
@@ -228,12 +234,17 @@ func (m *PostgresGatewayDNSMailbox) completeAttempt(ctx context.Context, authent
 			result = errors.Join(result, rollbackErr)
 		}
 	}()
+	// Take the same organization lock before even the request row: completion
+	// must not invert the lifecycle's organization -> resource -> config order.
+	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock(hashtextextended($1::text, 0))`, authenticatedOrg); err != nil {
+		return err
+	}
 	var request GatewayDNSRequest
 	var types, endpoints, path []byte
 	err = tx.QueryRow(ctx, `
-SELECT request_id,protocol_version,org_id,resource_id,site_id,gateway_id,resolver_config_id,resolver_config_version,resolver_profile_id,COALESCE(resolver_match_suffix,''),resolver_endpoints,hostname,record_types,deadline,resolver_ipsec_path
+SELECT request_id,protocol_version,org_id,resource_id,site_id,gateway_id,resolver_config_id,resolver_config_version,resolver_profile_id,COALESCE(resolver_match_suffix,''),resolver_endpoints,hostname,record_types,deadline,resolver_ipsec_path,resolver_kind,COALESCE(application_desired_revision,0)
 FROM fqdn_gateway_dns_requests WHERE request_id=$1 FOR UPDATE`, response.RequestID).
-		Scan(&request.RequestID, &request.Version, &request.OrgID, &request.ResourceID, &request.SiteID, &request.GatewayID, &request.ResolverConfigID, &request.ResolverConfigVersion, &request.ResolverProfileID, &request.ResolverMatchSuffix, &endpoints, &request.Hostname, &types, &request.Deadline, &path)
+		Scan(&request.RequestID, &request.Version, &request.OrgID, &request.ResourceID, &request.SiteID, &request.GatewayID, &request.ResolverConfigID, &request.ResolverConfigVersion, &request.ResolverProfileID, &request.ResolverMatchSuffix, &endpoints, &request.Hostname, &types, &request.Deadline, &path, &request.ResolverKind, &request.ApplicationDesiredRevision)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return ErrGatewayDNSRPCReplay
 	}
@@ -303,6 +314,9 @@ func validateCurrentMailboxContext(ctx context.Context, tx pgx.Tx, request Gatew
 	var resourceOrg, selectedSite, selectedGateway, siteOrg, gatewayOrg, gatewaySite uuid.UUID
 	var rpcVersion int
 	var ipsecRPCVersion int
+	var staticReady bool
+	var currentHostname string
+	var currentDesired int64
 	err := tx.QueryRow(ctx, `
 SELECT r.org_id,r.resolver_site_id,r.resolver_node_id,s.org_id,n.org_id,n.site_id,
        CASE
@@ -311,12 +325,12 @@ SELECT r.org_id,r.resolver_site_id,r.resolver_node_id,s.org_id,n.org_id,n.site_i
          THEN (n.capabilities->>'dns_resolve_rpc_version')::integer
          ELSE 0
        END,
-       CASE WHEN n.capabilities->'dns_ipsec_resolve_version'='1'::jsonb THEN 1 ELSE 0 END
+       CASE WHEN n.capabilities->'dns_ipsec_resolve_version'='1'::jsonb THEN 1 ELSE 0 END, fqdn_application_ipsec_path_valid(r.org_id,r.resolver_site_id,r.resolver_node_id,r.application_ipsec_connection_id,r.application_ipsec_configuration_revision),r.fqdn,COALESCE((SELECT desired_revision FROM ipsec_connections WHERE id=r.application_ipsec_connection_id),0)
 FROM fqdn_resources r
 JOIN sites s ON s.id=r.resolver_site_id
 JOIN nodes n ON n.id=r.resolver_node_id
 WHERE r.id=$1 FOR UPDATE`, request.ResourceID).
-		Scan(&resourceOrg, &selectedSite, &selectedGateway, &siteOrg, &gatewayOrg, &gatewaySite, &rpcVersion, &ipsecRPCVersion)
+		Scan(&resourceOrg, &selectedSite, &selectedGateway, &siteOrg, &gatewayOrg, &gatewaySite, &rpcVersion, &ipsecRPCVersion, &staticReady, &currentHostname, &currentDesired)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return ErrSuperseded
 	}
@@ -324,6 +338,9 @@ WHERE r.id=$1 FOR UPDATE`, request.ResourceID).
 		return err
 	}
 	if resourceOrg != request.OrgID || siteOrg != request.OrgID || gatewayOrg != request.OrgID || selectedSite != request.SiteID || selectedGateway != request.GatewayID || gatewaySite != request.SiteID {
+		return ErrSuperseded
+	}
+	if request.Hostname != currentHostname || (request.ResolverKind == "static_cname" && (!staticReady || request.ApplicationDesiredRevision <= 0 || request.ApplicationDesiredRevision != currentDesired)) {
 		return ErrSuperseded
 	}
 	if rpcVersion < int(GatewayDNSRPCVersion) || (request.ResolverIPsecPath != nil && ipsecRPCVersion != 1) {
@@ -345,8 +362,9 @@ FOR UPDATE`, request.OrgID, request.SiteID, request.GatewayID).Scan(&configID, &
 	var legacyDefault bool
 	var currentPath []byte
 	var pathAvailable bool
+	var staticJSON []byte
 	err = tx.QueryRow(ctx, `SELECT legacy_default,CASE WHEN ipsec_connection_id IS NULL THEN NULL ELSE jsonb_build_object('connection_id',ipsec_connection_id,'configuration_revision',ipsec_configuration_revision,'source_address',host(ipsec_source_address)) END,
- (ipsec_connection_id IS NULL OR fqdn_ipsec_resolver_profile_valid(id,org_id)) FROM fqdn_resolver_context_profiles WHERE id=$1 AND config_id=$2 AND org_id=$3`, request.ResolverProfileID, configID, request.OrgID).Scan(&legacyDefault, &currentPath, &pathAvailable)
+ (ipsec_connection_id IS NULL OR fqdn_ipsec_resolver_profile_valid(id,org_id)),static_records FROM fqdn_resolver_context_profiles WHERE id=$1 AND config_id=$2 AND org_id=$3`, request.ResolverProfileID, configID, request.OrgID).Scan(&legacyDefault, &currentPath, &pathAvailable, &staticJSON)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return ErrSuperseded
 	}
@@ -360,6 +378,23 @@ FOR UPDATE`, request.OrgID, request.SiteID, request.GatewayID).Scan(&configID, &
 		}
 	}
 	if !pathAvailable || !sameIPsecPath(selectedPath, request.ResolverIPsecPath) {
+		return ErrSuperseded
+	}
+	if request.ResolverKind == "static_cname" {
+		var records []StaticRecord
+		if json.Unmarshal(staticJSON, &records) != nil || !validStaticRecords(records) {
+			return ErrSuperseded
+		}
+		found := false
+		for _, r := range records {
+			if r.Name == request.Hostname && r.Type == "CNAME" {
+				found = true
+			}
+		}
+		if !found || selectedPath != nil {
+			return ErrSuperseded
+		}
+	} else if string(staticJSON) != "[]" && string(staticJSON) != "null" && len(staticJSON) > 0 {
 		return ErrSuperseded
 	}
 	if legacyDefault {

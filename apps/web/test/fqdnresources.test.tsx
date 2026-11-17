@@ -36,6 +36,25 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("FQDN resource operator index", () => {
+  it("preserves a bound application connection through the existing impact-preview edit", async () => {
+    const binding = { connection_id: "connection-a", configuration_revision: 1 };
+    rows = [{ id: "resource-a", name: "Production app", fqdn: "app.internal.example.com", protocol: "tcp", port_low: 443, port_high: 443, state: "healthy", answer_count: 1, resolver_context: { site_id: "site-a", gateway_id: "gw-a" }, application_ipsec_path: binding }];
+    vi.mocked(api.POST).mockResolvedValueOnce({ data: { mutation_allowed: true, expected_impact_token: "preview-token" } } as never);
+    vi.mocked(api.PATCH).mockClear();
+    page("/access/resources?type=fqdn");
+    fireEvent.click(await screen.findByRole("button", { name: "Actions for Production app" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Edit Production app" }));
+    const dialog = within(screen.getByRole("dialog"));
+    await dialog.findByText(/resolver selected automatically/);
+    expect((dialog.getByLabelText("Site") as HTMLSelectElement).disabled).toBe(true);
+    expect(dialog.queryByRole("option", { name: "Any protocol" })).toBeNull();
+    expect(dialog.queryByRole("option", { name: "All ports" })).toBeNull();
+    fireEvent.change(dialog.getByLabelText("Name"), { target: { value: "Renamed app" } });
+    fireEvent.click(dialog.getByRole("button", { name: "Save resource" }));
+    await waitFor(() => expect(api.PATCH).toHaveBeenCalledTimes(1));
+    expect((vi.mocked(api.POST).mock.calls as unknown as Array<[string, { body: object }]>)[0][1].body).toMatchObject({ application_ipsec_path: binding });
+    expect((vi.mocked(api.PATCH).mock.calls as unknown as Array<[string, { body: object }]>)[0][1].body).toMatchObject({ application_ipsec_path: binding, expected_impact_token: "preview-token", name: "Renamed app" });
+  });
   it("uses CIDR and FQDN tabs instead of a resource-type select", async () => {
     page();
     const cidrTab = await screen.findByRole("button", { name: "CIDR" });

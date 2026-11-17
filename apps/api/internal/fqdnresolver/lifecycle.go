@@ -86,6 +86,7 @@ func sameIPsecPath(a, b *ResolverIPsecPath) bool {
 }
 
 type ResolverConfig struct {
+	ResolverKind    string             `json:"resolver_kind,omitempty"`
 	IPsecPath       *ResolverIPsecPath `json:"ipsec_path,omitempty"`
 	ID              string             `json:"id"`
 	Version         int64              `json:"version"`
@@ -98,6 +99,12 @@ type ResolverConfig struct {
 }
 
 func (c ResolverConfig) valid() bool {
+	if c.ResolverKind != "" && c.ResolverKind != "static_cname" {
+		return false
+	}
+	if c.ResolverKind == "static_cname" && (len(c.StaticRecords) == 0 || len(c.Endpoints) == 0 || c.IPsecPath != nil) {
+		return false
+	}
 	if len(c.StaticRecords) > 0 {
 		if len(c.Endpoints) > 3 {
 			return false

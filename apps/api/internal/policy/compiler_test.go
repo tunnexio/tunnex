@@ -1378,6 +1378,15 @@ func TestB1DeviceGrantIsTransportAgnostic(t *testing.T) {
 	want := map[string]bool{
 		"SrcIP": true, "DstCIDR": true, "Protocol": true, "PortLow": true, "PortHigh": true,
 		"RuleID": true, "SrcDeviceID": true, "FQDNManaged": true,
+		"DNSResolverProfileID": true, "FQDNDeviceID": true,
+	}
+	// These hash-covered provenance fields scope FQDN authority, not transport.
+	// Ordinary device grants leave both empty; the node renderer preserves the
+	// same L3/L4 predicate with or without these provenance fields.
+	for _, a := range got {
+		if a.DNSResolverProfileID != "" || a.FQDNDeviceID != "" {
+			t.Fatal("ordinary device grant acquired FQDN authority")
+		}
 	}
 	rt := reflect.TypeOf(policyspec.AllowEntry{})
 	for i := 0; i < rt.NumField(); i++ {

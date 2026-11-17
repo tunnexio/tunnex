@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"github.com/google/uuid"
 	"github.com/tunnexio/tunnex/apps/node/internal/ipsec"
 	"reflect"
@@ -36,6 +37,9 @@ type IPsecActiveRecoveryRefresher interface {
 }
 
 func RefreshIPsecRuntimeStatus(ctx context.Context, client IPsecRuntimeTransport, controller IPsecRuntimeApplier) error {
+	if observer, ok := controller.(IPsecActiveRecoveryObservedRefresher); ok {
+		return refreshIPsecRuntimeStatusObserved(ctx, client, observer)
+	}
 	observer, ok := controller.(IPsecActiveRecoveryRefresher)
 	if !ok {
 		return nil
@@ -79,7 +83,8 @@ func PollIPsecRuntime(ctx context.Context, client IPsecRuntimeTransport, control
 }
 
 // IPsecRuntimeMaintainer handles only previously applied unchanged deliveries.
-// Missing results retain the ordinary Apply path and its material validation.
+// Missing results retain ordinary Apply. An exact deferred result skips only
+// that delivery for this pass; it carries no report, acknowledgement or authority.
 type IPsecRuntimeMaintainer interface {
 	MaintainIPsecRuntime(context.Context, []ipsec.RuntimeMaterial) ([]ipsec.RuntimeMaintenanceResult, error)
 }
@@ -410,22 +415,51 @@ func pollIPsecMaintainedPage(ctx context.Context, client IPsecRuntimeTransport, 
 		if len(results) != 0 {
 			return 0, ErrIPsecControl
 		}
+		var aborted interface{ IPsecMaintenanceBatchAborted() bool }
+		if errors.As(err, &aborted) && aborted.IPsecMaintenanceBatchAborted() {
+			// Native target denial aborted this collection before publication.
+			// Do not replay its stale page through fallback Apply; the next
+			// ordinary discovery must fetch and validate current material.
+			return 0, ErrIPsecControl
+		}
 		failed = true
 	}
 	if ctx.Err() != nil || len(results) > len(materials) {
 		return 0, ErrIPsecControl
 	}
 	maintained := map[uuid.UUID]ipsec.RuntimeMaintenanceResult{}
+	deferred, retained, seenResults := map[uuid.UUID]bool{}, map[uuid.UUID]bool{}, map[uuid.UUID]bool{}
 	// Validate the entire result envelope before sending even the first ACK.
 	for _, result := range results {
+		if result.Retained != nil {
+			delivery := *result.Retained
+			index, known := byDelivery[delivery.ID]
+			_, observedPositive := observed[delivery.ID]
+			if !known || seenResults[delivery.ID] || result.Deferred != nil || !reflect.DeepEqual(delivery, materials[index].RuntimeDelivery) || result.Acknowledgement != (ipsec.RuntimeAcknowledgement{}) || !reflect.DeepEqual(result.Report, ipsec.RuntimeStatusReport{}) || observedPositive || published[delivery.ID] {
+				return 0, ErrIPsecControl
+			}
+			seenResults[delivery.ID], retained[delivery.ID] = true, true
+			continue
+		}
+		if result.Deferred != nil {
+			delivery := *result.Deferred
+			index, known := byDelivery[delivery.ID]
+			_, observedPositive := observed[delivery.ID]
+			if !known || seenResults[delivery.ID] || !reflect.DeepEqual(delivery, materials[index].RuntimeDelivery) || result.Acknowledgement != (ipsec.RuntimeAcknowledgement{}) || !reflect.DeepEqual(result.Report, ipsec.RuntimeStatusReport{}) || observedPositive || published[delivery.ID] {
+				return 0, ErrIPsecControl
+			}
+			seenResults[delivery.ID], deferred[delivery.ID] = true, true
+			continue
+		}
 		ack := result.Acknowledgement
 		index, ok := byDelivery[ack.DeliveryID]
 		if !ok {
 			return 0, ErrIPsecControl
 		}
-		if _, duplicate := maintained[ack.DeliveryID]; duplicate {
+		if seenResults[ack.DeliveryID] {
 			return 0, ErrIPsecControl
 		}
+		seenResults[ack.DeliveryID] = true
 		m := materials[index]
 		if ack.Kind != "apply" || ack.Result != "applied" || ack.DesiredRevision != pending[index].DesiredRevision || ack.OwnershipDigest != m.OwnershipDigest || !runtimeStatusMatchesDelivery(m.RuntimeDelivery, result.Report) {
 			return 0, ErrIPsecControl
@@ -458,7 +492,7 @@ func pollIPsecMaintainedPage(ctx context.Context, client IPsecRuntimeTransport, 
 	// Publish the completed maintained commit before an ordinary fallback can
 	// replace or withdraw runtime state. Never report cached positive state after it.
 	for i, material := range materials {
-		if _, ok := maintained[material.ID]; ok {
+		if _, ok := maintained[material.ID]; ok || deferred[material.ID] || retained[material.ID] {
 			continue
 		}
 		item := pending[i]
@@ -472,12 +506,15 @@ func pollIPsecMaintainedPage(ctx context.Context, client IPsecRuntimeTransport, 
 			}
 			cancel()
 		}
-		if pollIPsecApplyMaterial(ctx, client, controller, item, material) != nil {
+		// Maintenance and recovery observation can outlive an FQDN generation.
+		// Fetch current normal material after that work; the collected page is
+		// not fresh authority for an owner that still needs ordinary Apply.
+		if pollIPsecItem(ctx, client, controller, item) != nil {
 			failed = true
 		}
 	}
 	if failed || ctx.Err() != nil {
-		return len(materials), ErrIPsecControl
+		return len(materials) - len(deferred), ErrIPsecControl
 	}
-	return len(materials), nil
+	return len(materials) - len(deferred), nil
 }

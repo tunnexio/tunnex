@@ -84,7 +84,9 @@ type RuntimeManifest struct {
 	TransportVersion *int `json:"transport_version,omitempty"`
 	TunnelCount      *int `json:"tunnel_count,omitempty"`
 	// RecoveryVersion is explicit delivery authorization; nil preserves the legacy digest.
-	RecoveryVersion               *int                              `json:"recovery_version,omitempty"`
+	RecoveryVersion *int `json:"recovery_version,omitempty"`
+	// DesktopStaticVersion binds route-based AWS static selectors independently of grants.
+	DesktopStaticVersion          *int                              `json:"desktop_static_version,omitempty"`
 	BGP                           *BGPConfig                        `json:"bgp,omitempty"`
 	BGPVersion                    *int                              `json:"bgp_version,omitempty"`
 	RetainedGuardPredecessors     []RuntimeRetainedGuardPredecessor `json:"retained_guard_predecessors,omitempty"`
@@ -194,9 +196,16 @@ type RuntimeStatusReport struct {
 	Tunnels               [2]RuntimeTunnelStatus `json:"tunnels"`
 }
 
-// RuntimeMaintenanceResult can acknowledge only an exact previously applied
-// delivery after fresh native proof and a committed replacement lease.
+// RuntimeMaintenanceResult acknowledges only a freshly committed exact delivery.
+// Deferred is a mutually exclusive, process-local scheduling outcome: its original
+// finite authority was preserved while a new NAT exemption is pending. It grants
+// no permission and must never produce a status report or Apply acknowledgement.
+// Retained is an exact already-applied delivery whose complete active owner set
+// passed fresh native eligibility and the final read-only authority/guard fence.
+// It counts as validated without a new lease, report, native write or Apply ACK.
 type RuntimeMaintenanceResult struct {
+	Retained        *RuntimeDelivery `json:"-"`
+	Deferred        *RuntimeDelivery `json:"-"`
 	Acknowledgement RuntimeAcknowledgement
 	Report          RuntimeStatusReport
 }

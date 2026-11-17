@@ -248,7 +248,7 @@ function FQDNResources({ orgId, role, createToken }: { orgId: string; role: Memb
   const resolverProfileMatch = resolverConfig ? matchResolverProfile(fqdn, resolverConfig) : null;
   const parsedLow = portLow === "" ? null : Number(portLow);
   const parsedHigh = portHigh === "" ? null : Number(portHigh);
-  const portsValid = protocol === "any" || portScope === "all" || (Number.isInteger(parsedLow) && parsedLow! >= 1 && parsedLow! <= 65535 && (portScope === "single" || (Number.isInteger(parsedHigh) && parsedHigh! >= parsedLow! && parsedHigh! <= 65535)));
+  const portsValid = (!selected?.application_ipsec_path || (protocol !== "any" && portScope !== "all")) && (protocol === "any" || portScope === "all" || (Number.isInteger(parsedLow) && parsedLow! >= 1 && parsedLow! <= 65535 && (portScope === "single" || (Number.isInteger(parsedHigh) && parsedHigh! >= parsedLow! && parsedHigh! <= 65535))));
   const scope = protocol === "any" ? "Any protocol, all ports" : portScope === "all" ? `${protocol.toUpperCase()}, all ports` : portScope === "single" ? `${protocol.toUpperCase()} port ${portLow || "Not available"}` : `${protocol.toUpperCase()} ports ${portLow || "Not available"}–${portHigh || "Not available"}`;
   async function mutate(call: () => Promise<{ error?: unknown }>, fallback: string) {
     setBusy(true); setError("");
@@ -277,6 +277,7 @@ function FQDNResources({ orgId, role, createToken }: { orgId: string; role: Memb
           ? { port_low: parsedLow!, port_high: parsedLow! }
           : { port_low: parsedLow!, port_high: parsedHigh! }),
       resolver_context: { site_id: siteId, gateway_id: gatewayId },
+      ...(selected?.application_ipsec_path ? { application_ipsec_path: selected.application_ipsec_path } : {}),
       expected_impact_token: null,
     };
     let ok = false;
@@ -394,9 +395,9 @@ function FQDNResources({ orgId, role, createToken }: { orgId: string; role: Memb
           const next = event.target.value as "any" | "tcp" | "udp";
           setProtocol(next);
           if (next === "any") { setPortScope("all"); setPortLow(""); setPortHigh(""); }
-        }}><option value="any">Any protocol</option><option value="tcp">TCP</option><option value="udp">UDP</option></Select></Field>
+        }}>{!selected?.application_ipsec_path && <option value="any">Any protocol</option>}<option value="tcp">TCP</option><option value="udp">UDP</option></Select></Field>
         {protocol !== "any" && <>
-          <Field label="Port scope"><Select disabled={busy} value={portScope} onChange={(event) => setPortScope(event.target.value as "all" | "single" | "range")}><option value="all">All ports</option><option value="single">Single port</option><option value="range">Port range</option></Select></Field>
+          <Field label="Port scope"><Select disabled={busy} value={portScope} onChange={(event) => setPortScope(event.target.value as "all" | "single" | "range")}>{!selected?.application_ipsec_path && <option value="all">All ports</option>}<option value="single">Single port</option><option value="range">Port range</option></Select></Field>
           {portScope !== "all" && <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <Field label="Port"><Input disabled={busy} inputMode="numeric" value={portLow} onChange={(event) => setPortLow(event.target.value)} /></Field>
             {portScope === "range" && <Field label="Through"><Input disabled={busy} inputMode="numeric" value={portHigh} onChange={(event) => setPortHigh(event.target.value)} /></Field>}
@@ -407,9 +408,10 @@ function FQDNResources({ orgId, role, createToken }: { orgId: string; role: Memb
       </fieldset>
       <fieldset className="space-y-3">
         <legend className="text-sm font-semibold text-ink-heading">Private DNS path</legend>
+        {selected?.application_ipsec_path && <p className="text-xs text-ink-tertiary">This resource keeps its selected site-to-site application connection. Manage the connection and DNS record from its network's DNS editor.</p>}
         <div className="grid gap-3 sm:grid-cols-2">
-          <Field label="Site"><Select disabled={busy} value={siteId} onChange={(event) => setSiteId(event.target.value)}><option value="">Select a Site</option>{sites.map((site) => <option key={site.id} value={site.id}>{site.name}</option>)}</Select></Field>
-          <Field label="Gateway"><Select value={gatewayId} disabled={busy || !siteId} onChange={(event) => setGatewayId(event.target.value)}><option value="">Select a Gateway</option>{formGateways.map((gateway) => <option key={gateway.id} value={gateway.id}>{gateway.name}</option>)}</Select></Field>
+          <Field label="Site"><Select disabled={busy || !!selected?.application_ipsec_path} value={siteId} onChange={(event) => setSiteId(event.target.value)}><option value="">Select a Site</option>{sites.map((site) => <option key={site.id} value={site.id}>{site.name}</option>)}</Select></Field>
+          <Field label="Gateway"><Select value={gatewayId} disabled={busy || !siteId || !!selected?.application_ipsec_path} onChange={(event) => setGatewayId(event.target.value)}><option value="">Select a Gateway</option>{formGateways.map((gateway) => <option key={gateway.id} value={gateway.id}>{gateway.name}</option>)}</Select></Field>
         </div>
         {resolverLoading ? <Loading label="Finding the inherited resolver…" /> : resolverError ? <div><ErrorText>{resolverError}</ErrorText></div> : resolverConfig ? resolverProfileMatch ? <div className="access-resource-copy">
           <div className="flex items-center gap-3"><div><p className="font-medium text-ink-heading">{providerName(resolverProfileMatch.profile.provider_hint)} resolver selected automatically</p><p className="text-xs text-ink-tertiary">Profile {resolverProfileMatch.profile.name} · {resolverProfileMatch.matchedSuffix ? `matches ${resolverProfileMatch.matchedSuffix}` : "legacy catch-all"} · active version {resolverConfig.version} · {resolverProfileMatch.profile.endpoints.length} {resolverProfileMatch.profile.endpoints.length === 1 ? "endpoint" : "endpoints"}</p></div></div>

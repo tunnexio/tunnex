@@ -7,11 +7,12 @@ import (
 	"reflect"
 )
 
-// The generic FRR local-prefix probe stays strict. GCP's routed /32 topology
-// instead reuses the controller's complete independently observed environment,
-// bound to the exact provider-shaped allocation and immutable export config.
-func (c *RuntimeController) gcpBGPLocalExportProof(e RuntimeJournalEntry, cfg bgpengine.Config, env RuntimeEnvironment) (bgpengine.LocalExportProof, error) {
-	if c == nil || c.config.Environment == nil || e.Allocation.ProfileID != GCPHABGPProfile || e.ContractVersion != 3 || !validJournalBGP(e) {
+// The generic FRR local-prefix probe stays strict. Managed AWS and GCP gateways
+// reuse the controller's complete independently observed environment, bound to
+// the exact provider-shaped allocation and immutable export config. AWS keeps
+// physical address/subnet checks; only GCP permits its routed /32 topology.
+func (c *RuntimeController) bgpLocalExportProof(e RuntimeJournalEntry, cfg bgpengine.Config, env RuntimeEnvironment) (bgpengine.LocalExportProof, error) {
+	if c == nil || c.config.Environment == nil || (e.Allocation.ProfileID != "" && e.Allocation.ProfileID != GCPHABGPProfile) || e.ContractVersion != 3 || !validJournalBGP(e) {
 		return nil, ErrRuntimeController
 	}
 	inspector, ok := c.config.Environment.(interface {

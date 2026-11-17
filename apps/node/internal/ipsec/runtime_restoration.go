@@ -75,7 +75,7 @@ func validRestoration(r RuntimeJournalEntry) bool {
 		return false
 	}
 	for i, h := range v.Retired {
-		if h.Entry.Restoration != nil || h.Entry.ResetCleanup != nil || h.Entry.Phase != RuntimeApplied || !validBootID(h.NewBootID) || !validKernelNamespace(h.NewNamespace) || h.NewGeneration == uuid.Nil || h.NewGeneration == h.Entry.Allocation.Generation || !validDigest(h.EvidenceDigest) {
+		if h.Entry.Restoration != nil || h.Entry.ResetCleanup != nil || (h.Entry.Phase != RuntimeApplied && h.Entry.Phase != RuntimeQuiesced) || !validBootID(h.NewBootID) || !validKernelNamespace(h.NewNamespace) || h.NewGeneration == uuid.Nil || h.NewGeneration == h.Entry.Allocation.Generation || !validDigest(h.EvidenceDigest) {
 			return false
 		}
 		// A flattened history entry cannot resolve predecessor IDs by itself.
@@ -86,6 +86,17 @@ func validRestoration(r RuntimeJournalEntry) bool {
 		structural.RetainedGuardPredecessors = nil
 		structural.AzureBGPRecreationVersion = 0
 		structural.AzureProfileRecreationVersion = 0
+		if h.Entry.Phase == RuntimeQuiesced {
+			// Only the persisted epoch's original boot supplies this validation
+			// view. The stored negative entry remains flattened and unchanged.
+			if h.Termination != "kernel-boot-change" || !validBootID(h.BootID) || h.BootID == h.NewBootID {
+				return false
+			}
+			structural.Restoration = &RuntimeRestoration{BootID: h.BootID}
+			if !validQuiescedEntry(structural) {
+				return false
+			}
+		}
 		if !validJournalPayload(runtimeJournalPayload{Version: retiredJournalVersion(structural), OwnerID: r.Engines[0].Binding.GatewayID, Entries: []RuntimeJournalEntry{structural}}) {
 			return false
 		}
@@ -142,7 +153,12 @@ func validRestorationSuccessor(before, after RuntimeJournalEntry) bool {
 	if before.Restoration == nil && after.Restoration != nil && after.Restoration.Epoch == 0 {
 		return before.Phase == RuntimeApplied && after.Phase == RuntimeApplied && sameRestorationIntent(before, after)
 	}
-	if !restorationAdvanced(before, after) || before.Phase != RuntimeApplied || after.Phase != RuntimeApplied || before.ResetCleanup != nil || after.ResetCleanup != nil || after.Observed != ([2]Ownership{}) || !reflect.DeepEqual(before.Recovery, after.Recovery) || !sameRestorationIntent(before, after) {
+	cold := before.Phase == RuntimeQuiesced && after.Phase == RuntimeApplying && validQuiescedEntry(before) && before.Restoration != nil && after.Restoration != nil && before.Restoration.BootID != after.Restoration.BootID
+	comparison := after
+	if cold {
+		comparison.Phase = before.Phase // Comparison only; never a stored Applied checkpoint.
+	}
+	if !restorationAdvanced(before, after) || (!cold && (before.Phase != RuntimeApplied || after.Phase != RuntimeApplied)) || before.ResetCleanup != nil || after.ResetCleanup != nil || after.Observed != ([2]Ownership{}) || !reflect.DeepEqual(before.Recovery, after.Recovery) || !sameRestorationIntent(before, comparison) {
 		return false
 	}
 	v := after.Restoration
@@ -159,7 +175,13 @@ func validRestorationSuccessor(before, after RuntimeJournalEntry) bool {
 		if compactRestorationHistory(&expected) != nil {
 			return false
 		}
-		if !reflect.DeepEqual(expected.Compacted, v.Compacted) || !reflect.DeepEqual(expected.Retired, append([]RuntimeRetiredEpoch(nil), v.Retired[:len(v.Retired)-1]...)) {
+		priorRetired := expected.Retired
+		if cold && len(priorRetired) == 0 {
+			// A valid epoch-zero negative checkpoint may encode [] or null;
+			// neither contains an obligation. Nonempty history stays exact.
+			priorRetired = nil
+		}
+		if !reflect.DeepEqual(expected.Compacted, v.Compacted) || !reflect.DeepEqual(priorRetired, append([]RuntimeRetiredEpoch(nil), v.Retired[:len(v.Retired)-1]...)) {
 			return false
 		}
 	}
@@ -191,7 +213,16 @@ func validRestorationSuccessor(before, after RuntimeJournalEntry) bool {
 // Current kernel boot ID is recorded only after a successful authorized apply.
 // This never manufactures a historical boot ID for an inaccessible old runtime.
 func (c *RuntimeController) recordRuntimeBoot(ctx context.Context, id uuid.UUID) error {
-	boot, err := resetBootID()
+	return c.recordRuntimeBootObserved(ctx, id, resetBootID)
+}
+
+// Production supplies the native boot reader; the private seam lets portable
+// tests exercise the same journal and active-owner transition.
+func (c *RuntimeController) recordRuntimeBootObserved(ctx context.Context, id uuid.UUID, readBoot func() (string, error)) error {
+	if readBoot == nil || ctx.Err() != nil {
+		return ErrRuntimeController
+	}
+	boot, err := readBoot()
 	if err != nil {
 		return err
 	}
@@ -210,6 +241,31 @@ func (c *RuntimeController) recordRuntimeBoot(ctx context.Context, id uuid.UUID)
 		if e.Allocation.Namespace != ns || e.Phase != RuntimeApplied || (e.ContractVersion != 2 && e.ContractVersion != 3 && e.ContractVersion != 4) {
 			return ErrRuntimeController
 		}
+		// Contract 2/3 Apply already published this exact owner before adding
+		// its first boot stamp. Preserve that owner's finite authority while
+		// committing only our own nil-to-current-boot metadata transition.
+		// Classic's caller performs its distinct Applying-to-Applied commit.
+		syncActive := e.ContractVersion == 2 || e.ContractVersion == 3
+		var before runtimeActive
+		var deadline time.Duration
+		unchanged := func() bool {
+			current, ok := c.active[e.Allocation.ConnectionID]
+			if ctx.Err() != nil || !ok || current.Authority != before.Authority || !reflect.DeepEqual(current, before) || before.Authority == nil || before.Authority.deadline != deadline {
+				return false
+			}
+			_, err := before.Authority.RemainingForApply(before.Identity, 5*time.Second)
+			return err == nil
+		}
+		if syncActive {
+			before = cloneMaintenanceActive(c.active[e.Allocation.ConnectionID])
+			if !reflect.DeepEqual(before.Entry, e) || before.Delivery.ID != id || before.Identity.DeliveryID != id || before.Identity.Binding != e.Engines[0].Binding || before.Authority == nil {
+				return ErrRuntimeController
+			}
+			deadline = before.Authority.deadline
+			if !unchanged() {
+				return ErrRuntimeController
+			}
+		}
 		if e.Restoration != nil {
 			if e.Restoration.BootID != boot {
 				return ErrRuntimeController
@@ -225,12 +281,28 @@ func (c *RuntimeController) recordRuntimeBoot(ctx context.Context, id uuid.UUID)
 		if err != nil || missing {
 			return ErrRuntimeController
 		}
-		after, err := resetBootID()
+		after, err := readBoot()
 		if err != nil || after != boot {
 			return ErrRuntimeController
 		}
+		if syncActive && !unchanged() {
+			return ErrRuntimeController
+		}
 		entries[i].Restoration = &RuntimeRestoration{BootID: boot}
-		return c.journal.Save(entries)
+		if err := c.journal.Save(entries); err != nil || !syncActive {
+			return err
+		}
+		after, err = readBoot()
+		if err != nil || after != boot || !unchanged() {
+			return ErrRuntimeController
+		}
+		committed, err := c.journal.cleanupSnapshot()
+		if err != nil || !reflect.DeepEqual(committed.Entries, entries) || !unchanged() {
+			return ErrRuntimeController
+		}
+		before.Entry = committed.Entries[i]
+		c.active[e.Allocation.ConnectionID] = before
+		return nil
 	}
 	return ErrRuntimeController
 }
@@ -313,6 +385,9 @@ func (c *RuntimeController) restorationAbsent(ctx context.Context, e RuntimeJour
 }
 func (c *RuntimeController) reserveRestoration(ctx context.Context, m RuntimeMaterial, entries []RuntimeJournalEntry, pos int, candidate RuntimeJournalEntry, boot string) error {
 	old := entries[pos]
+	if old.Phase == RuntimeQuiesced {
+		return c.reserveColdQuiescedRestoration(ctx, m, entries, pos, candidate, boot, c.coldQuiescedRestorationAbsent, c.restorationCurrent)
+	}
 	candidate.Phase = old.Phase
 	candidate.Observed = old.Observed
 	candidate.Recovery = old.Recovery
@@ -343,15 +418,53 @@ func (c *RuntimeController) reserveRestoration(ctx context.Context, m RuntimeMat
 		if recoverRetiredRuntimeBGPProcess(*old.BGPProcess, boot, ns) != nil {
 			return fmt.Errorf("%w: restoration retired process", ErrRuntimeController)
 		}
+	}
+	if _, err = authority.RemainingForApply(identity, 5*time.Second); err != nil {
+		return err
+	}
+	candidate, err = restorationReservation(old, candidate, boot, ns, termination, digest)
+	if err != nil {
+		return err
+	}
+	entries[pos] = candidate
+	if c.journal.Save(entries) != nil {
+		return fmt.Errorf("%w: restoration journal commit", ErrRuntimeController)
+	}
+	delete(c.recoveryPrepared, old.DeliveryID)
+	delete(c.recoveryHistory, old.Allocation.ConnectionID)
+	return nil
+}
+
+func retiredJournalVersion(e RuntimeJournalEntry) int {
+	if hasDesktopStaticTransport(e) {
+		return 15
+	}
+	if e.Phase == RuntimeQuiesced {
+		return 12
+	}
+	// Classic single-slot shape requires the current reader even when flattened.
+	if e.ContractVersion == 4 {
+		return 10
+	}
+	if hasHistoryContinuation(e) {
+		return 8
+	}
+	if e.ContractVersion == 3 {
+		return 7
+	}
+	return 3
+}
+
+// The durable reservation preserves the exact predecessor and never carries a
+// permit. Both restoration paths use the same bounded history construction.
+func restorationReservation(old, candidate RuntimeJournalEntry, boot, ns, termination, digest string) (RuntimeJournalEntry, error) {
+	if old.ContractVersion == 3 && old.BGPProcess != nil {
 		if compactBGPProcessHistory(&candidate) != nil {
-			return ErrRuntimeJournal
+			return RuntimeJournalEntry{}, ErrRuntimeJournal
 		}
 		retired := *old.BGPProcess
 		retired.Stage = "cleaned"
 		candidate.BGPProcessRetired = append(append([]bgpengine.ProcessIdentity{}, candidate.BGPProcessRetired...), retired)
-	}
-	if _, err = authority.RemainingForApply(identity, 5*time.Second); err != nil {
-		return err
 	}
 	v := RuntimeRestoration{BootID: boot}
 	oldBoot := ""
@@ -362,7 +475,7 @@ func (c *RuntimeController) reserveRestoration(ctx context.Context, m RuntimeMat
 		oldBoot = old.Restoration.BootID
 	}
 	if v.Epoch == ^uint64(0) || compactRestorationHistory(&v) != nil {
-		return ErrRuntimeController
+		return RuntimeJournalEntry{}, ErrRuntimeController
 	}
 	candidate.Allocation.Generation = uuid.New()
 	for i := range candidate.Allocation.Tunnels[:candidate.Allocation.activeTunnelCount()] {
@@ -376,25 +489,8 @@ func (c *RuntimeController) reserveRestoration(ctx context.Context, m RuntimeMat
 	v.Epoch++
 	v.Retired = append(v.Retired, RuntimeRetiredEpoch{Entry: flattenedRestorationEntry(old), BootID: oldBoot, NewBootID: boot, NewNamespace: ns, NewGeneration: candidate.Allocation.Generation, Termination: termination, EvidenceDigest: digest})
 	candidate.Restoration = &v
-	entries[pos] = candidate
-	if c.journal.Save(entries) != nil {
-		return fmt.Errorf("%w: restoration journal commit", ErrRuntimeController)
+	if old.Phase == RuntimeQuiesced {
+		candidate.Phase = RuntimeApplying
 	}
-	delete(c.recoveryPrepared, old.DeliveryID)
-	delete(c.recoveryHistory, old.Allocation.ConnectionID)
-	return nil
-}
-
-func retiredJournalVersion(e RuntimeJournalEntry) int {
-	// Classic single-slot shape requires the current reader even when flattened.
-	if e.ContractVersion == 4 {
-		return 10
-	}
-	if hasHistoryContinuation(e) {
-		return 8
-	}
-	if e.ContractVersion == 3 {
-		return 7
-	}
-	return 3
+	return candidate, nil
 }

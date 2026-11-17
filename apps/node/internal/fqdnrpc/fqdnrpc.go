@@ -67,6 +67,7 @@ type Request struct {
 	ResolverMatchSuffix   string             `json:"resolver_match_suffix,omitempty"`
 	ResolverEndpoints     []ResolverEndpoint `json:"resolver_endpoints"`
 	ResolverIPsecPath     *IPsecPath         `json:"resolver_ipsec_path,omitempty"`
+	ResolverKind          string             `json:"resolver_kind,omitempty"`
 }
 
 type ResolverConfig struct {
@@ -76,6 +77,7 @@ type ResolverConfig struct {
 	MatchedSuffix string             `json:"matched_suffix"`
 	Endpoints     []ResolverEndpoint `json:"endpoints"`
 	IPsecPath     *IPsecPath         `json:"ipsec_path,omitempty"`
+	Kind          string             `json:"kind,omitempty"`
 }
 
 // IPsecPath is an immutable server-bound resolver transport selection. It
@@ -139,6 +141,7 @@ type Response struct {
 	ResolverProfileID     string       `json:"resolver_profile_id,omitempty"`
 	ResolverMatchSuffix   string       `json:"resolver_match_suffix,omitempty"`
 	ResolverIPsecPath     *IPsecPath   `json:"resolver_ipsec_path,omitempty"`
+	ResolverKind          string       `json:"resolver_kind,omitempty"`
 	Hostname              string       `json:"hostname"`
 	RecordTypes           []RecordType `json:"record_types"`
 	Status                Status       `json:"status"`
@@ -175,8 +178,9 @@ func (e resolverStatusError) Error() string { return string(e.status) }
 // malformed response, transport failure, or disagreement fails the request
 // closed. It deliberately has no net.Resolver field or system fallback.
 type DirectResolver struct {
-	exchange  func(context.Context, ResolverEndpoint, string, RecordType) ([]Record, error)
-	Transport BoundTransport
+	exchange        func(context.Context, ResolverEndpoint, string, RecordType) ([]Record, error)
+	Transport       BoundTransport
+	StaticTransport BoundTransport
 }
 
 func (d DirectResolver) ResolveBound(ctx context.Context, hostname string, types []RecordType, config ResolverConfig) (result []Record, resultErr error) {
@@ -266,6 +270,18 @@ func (d DirectResolver) ResolveBound(ctx context.Context, hostname string, types
 }
 
 func (d DirectResolver) ValidateBound(ctx context.Context, config ResolverConfig) error {
+	if config.Kind == "static_cname" {
+		validator, ok := d.StaticTransport.(BoundTransportValidator)
+		if !ok || !validResolverConfig(config) {
+			return errResolverConfig
+		}
+		for _, endpoint := range config.Endpoints {
+			if validator.ValidateDNSPath(ctx, config, endpoint) != nil {
+				return errResolverConfig
+			}
+		}
+		return nil
+	}
 	if config.IPsecPath == nil {
 		return nil
 	}
@@ -283,7 +299,14 @@ func (d DirectResolver) ValidateBound(ctx context.Context, config ResolverConfig
 
 func (d DirectResolver) resolveEndpoint(ctx context.Context, config ResolverConfig, endpoint ResolverEndpoint, hostname string, types []RecordType) ([]Record, error) {
 	exchange := d.exchange
-	if config.IPsecPath != nil {
+	if config.Kind == "static_cname" {
+		if d.StaticTransport == nil {
+			return nil, errResolverConfig
+		}
+		exchange = func(ctx context.Context, e ResolverEndpoint, name string, typ RecordType) ([]Record, error) {
+			return directBoundExchange(ctx, d.StaticTransport, config, e, name, typ)
+		}
+	} else if config.IPsecPath != nil {
 		// An injected ordinary resolver never bypasses a declared IPsec path.
 		if d.Transport == nil {
 			return nil, errResolverConfig
@@ -357,6 +380,14 @@ func (d DirectResolver) resolveEndpoint(ctx context.Context, config ResolverConf
 		}
 		step = canonicalRecords(step)
 		all = append(all, step...)
+		if config.Kind == "static_cname" {
+			// StaticTransport completes every requested type through the programmed
+			// alias's external tail. NODATA for one family is terminal too: querying
+			// that external name again would bypass the alias-only transport seam.
+			// StaticTransport validates the completed chain; ResolveBound still
+			// requires valid records, endpoint consensus and a positive address.
+			return canonicalRecords(all), nil
+		}
 		targets := map[string]bool{}
 		for _, record := range step {
 			if record.Type == RecordCNAME && record.Name == current {
@@ -428,6 +459,9 @@ func terminalWireAnswer(hostname string, typ RecordType, records []Record) (stri
 }
 
 func validResolverConfig(config ResolverConfig) bool {
+	if config.Kind != "" && (config.Kind != "static_cname" || config.IPsecPath != nil) {
+		return false
+	}
 	if !isUUID(config.ID) || !isUUID(config.ProfileID) || config.Version < 1 || len(config.Endpoints) == 0 || len(config.Endpoints) > 8 {
 		return false
 	}
@@ -766,8 +800,8 @@ func (r *Responder) Handle(ctx context.Context, gatewayID string, req Request) R
 	var records []Record
 	var err error
 	if bound, ok := r.resolver.(BoundResolver); ok {
-		records, err = bound.ResolveBound(lookupCtx, req.Hostname, req.RecordTypes, ResolverConfig{ID: req.ResolverConfigID, Version: req.ResolverConfigVersion, ProfileID: req.ResolverProfileID, MatchedSuffix: req.ResolverMatchSuffix, Endpoints: req.ResolverEndpoints, IPsecPath: req.ResolverIPsecPath})
-	} else if plain, ok := r.resolver.(Resolver); ok && req.ResolverIPsecPath == nil {
+		records, err = bound.ResolveBound(lookupCtx, req.Hostname, req.RecordTypes, ResolverConfig{ID: req.ResolverConfigID, Version: req.ResolverConfigVersion, ProfileID: req.ResolverProfileID, MatchedSuffix: req.ResolverMatchSuffix, Endpoints: req.ResolverEndpoints, IPsecPath: req.ResolverIPsecPath, Kind: req.ResolverKind})
+	} else if plain, ok := r.resolver.(Resolver); ok && req.ResolverIPsecPath == nil && req.ResolverKind == "" {
 		records, err = plain.Resolve(lookupCtx, req.Hostname, req.RecordTypes)
 	} else {
 		err = errResolverConfig
@@ -807,12 +841,12 @@ func (r *Responder) Handle(ctx context.Context, gatewayID string, req Request) R
 // A coalesced observation never supplies authority: every IPsec replay proves
 // the current binding independently, including followers after their wait.
 func (r *Responder) replay(ctx context.Context, req Request, resp Response, now time.Time) Response {
-	if req.ResolverIPsecPath != nil {
+	if req.ResolverIPsecPath != nil || req.ResolverKind != "" {
 		validator, ok := r.resolver.(interface {
 			ValidateBound(context.Context, ResolverConfig) error
 		})
 		lookupCtx, cancel := context.WithDeadline(ctx, req.Deadline)
-		valid := ok && validator.ValidateBound(lookupCtx, ResolverConfig{ID: req.ResolverConfigID, Version: req.ResolverConfigVersion, ProfileID: req.ResolverProfileID, MatchedSuffix: req.ResolverMatchSuffix, Endpoints: req.ResolverEndpoints, IPsecPath: req.ResolverIPsecPath}) == nil
+		valid := ok && validator.ValidateBound(lookupCtx, ResolverConfig{ID: req.ResolverConfigID, Version: req.ResolverConfigVersion, ProfileID: req.ResolverProfileID, MatchedSuffix: req.ResolverMatchSuffix, Endpoints: req.ResolverEndpoints, IPsecPath: req.ResolverIPsecPath, Kind: req.ResolverKind}) == nil
 		cancel()
 		if !valid {
 			return responseFor(req, StatusServFail, "resolver_unavailable", now)
@@ -836,12 +870,15 @@ func responseFor(req Request, status Status, code string, observed time.Time) Re
 		ResourceID: req.ResourceID, SiteID: req.SiteID, GatewayID: req.GatewayID,
 		ResolverConfigID: req.ResolverConfigID, ResolverConfigVersion: req.ResolverConfigVersion,
 		ResolverProfileID: req.ResolverProfileID, ResolverMatchSuffix: req.ResolverMatchSuffix,
-		ResolverIPsecPath: req.ResolverIPsecPath,
-		Hostname:          req.Hostname, RecordTypes: append([]RecordType(nil), req.RecordTypes...),
+		ResolverIPsecPath: req.ResolverIPsecPath, ResolverKind: req.ResolverKind,
+		Hostname: req.Hostname, RecordTypes: append([]RecordType(nil), req.RecordTypes...),
 		Status: status, ErrorCode: code, ObservedAt: observed}
 }
 
 func validateRequest(req Request, gatewayID string, now time.Time) string {
+	if req.ResolverKind != "" && (req.ResolverKind != "static_cname" || req.ResolverIPsecPath != nil) {
+		return "resolver_unavailable"
+	}
 	if req.Version != Version {
 		return "unsupported_version"
 	}
@@ -913,6 +950,9 @@ func requestFingerprint(req Request) string {
 	}
 	if req.ResolverIPsecPath != nil {
 		config += "|ipsec:" + req.ResolverIPsecPath.ConnectionID + ":" + strconv.FormatInt(req.ResolverIPsecPath.ConfigurationRevision, 10) + ":" + req.ResolverIPsecPath.SourceAddress
+	}
+	if req.ResolverKind != "" {
+		config += "|kind:" + req.ResolverKind
 	}
 	s := fmt.Sprintf("%d|%s|%s|%s|%s|%s|%s|%s|%s|%s", req.Version, req.OrgID, req.ResourceID,
 		req.SiteID, req.GatewayID, req.Hostname, strings.Join(recordTypeNames(req.RecordTypes), ","), req.Deadline.UTC().Format(time.RFC3339Nano), req.RequestID, config)

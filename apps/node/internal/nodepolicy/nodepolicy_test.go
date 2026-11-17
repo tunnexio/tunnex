@@ -177,3 +177,17 @@ func TestWireSrcDeviceIDCapturedButHashBlind(t *testing.T) {
 		t.Fatal("captured src_device_id must not perturb the applied-hash")
 	}
 }
+
+func TestFQDNDeviceAndResolverScopeAreEnforcementHash(t *testing.T) {
+	base := &nodepolicy.Compiled{Version: 14, Allow: []nodepolicy.AllowEntry{{SrcIP: "10.99.0.2/32", DstCIDR: "10.20.0.9/32", Protocol: "tcp", FQDNManaged: true, FQDNDeviceID: "device-a", DNSResolverProfileID: "profile-a"}}}
+	original := nodepolicy.CanonicalHash(base)
+	base.Allow[0].FQDNDeviceID = "device-b"
+	if nodepolicy.CanonicalHash(base) == original {
+		t.Fatal("device reenrollment kept enforcement hash")
+	}
+	base.Allow[0].FQDNDeviceID = "device-a"
+	base.Allow[0].DNSResolverProfileID = "profile-b"
+	if nodepolicy.CanonicalHash(base) == original {
+		t.Fatal("resolver profile scope kept enforcement hash")
+	}
+}

@@ -26,7 +26,14 @@ func guardRemoteFragmentNeeded(c GuardConnection, g GuardGrant, ingress, egress 
 		expr = append(expr, guardMatch("==", guardMeta("oif"), egress))
 	}
 	fmt.Fprintf(&b, "ip saddr %s ip daddr %s icmp type 3 icmp code 4 ct state related ct direction reply ct protocol tcp ct original ip saddr %s ct original ip daddr %s ", router, g.Source, g.Source, g.Destination)
-	expr = append(expr, guardMatch("==", guardPayload("ip", "saddr"), guardPrefixJSON(router)), guardMatch("==", guardPayload("ip", "daddr"), guardPrefixJSON(g.Source)), guardMatch("==", guardPayload("icmp", "type"), "destination-unreachable"), guardMatch("==", guardPayload("icmp", "code"), 4), guardMatch("in", guardCT("state"), "related"), guardMatch("==", guardCT("direction"), "reply"), guardMatch("==", guardCT("protocol"), "tcp"), guardMatch("==", guardOriginalCT("saddr", ""), guardCTPrefixJSON(g.Source)), guardMatch("==", guardOriginalCT("daddr", ""), guardCTPrefixJSON(g.Destination)))
+	// Unlike a scalar host, a JSON prefix needs an explicitly IPv4-typed CT
+	// selector. An untyped daddr silently compiles into a different host match.
+	// Keep the native scalar grammar for /32 destinations unchanged.
+	destinationKey := "daddr"
+	if g.Destination.Bits() != 32 {
+		destinationKey = "ip daddr"
+	}
+	expr = append(expr, guardMatch("==", guardPayload("ip", "saddr"), guardPrefixJSON(router)), guardMatch("==", guardPayload("ip", "daddr"), guardPrefixJSON(g.Source)), guardMatch("==", guardPayload("icmp", "type"), "destination-unreachable"), guardMatch("==", guardPayload("icmp", "code"), 4), guardMatch("in", guardCT("state"), "related"), guardMatch("==", guardCT("direction"), "reply"), guardMatch("==", guardCT("protocol"), "tcp"), guardMatch("==", guardOriginalCT("saddr", ""), guardCTPrefixJSON(g.Source)), guardMatch("==", guardOriginalCT(destinationKey, ""), guardCTPrefixJSON(g.Destination)))
 	var port any = g.PortLow
 	ports := fmt.Sprint(g.PortLow)
 	if g.PortHigh != g.PortLow {

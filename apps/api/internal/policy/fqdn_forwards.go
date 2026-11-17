@@ -138,6 +138,14 @@ func deviceFQDNForwardsFromSnapshot(snapshot Snapshot, deviceID uuid.UUID, route
 			continue // a legacy/default resolver has no honest scoped suffix to install
 		}
 		selected, reachable := selectFirstReachableResolverAddress(resolvers, routedPrefixes)
+		if resource.Active.ApplicationIPsecPath != nil {
+			if device.Kind != "human" || device.NodeID != resource.Active.SelectedGatewayID || (rule.SrcKind != "user" && rule.SrcKind != "group" && rule.SrcKind != "") {
+				continue
+			}
+			if len(resolvers) == 1 {
+				selected, reachable = resolvers[0], true
+			}
+		}
 		if !reachable {
 			continue
 		}

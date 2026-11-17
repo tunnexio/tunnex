@@ -3,13 +3,16 @@ package ipsec
 import (
 	"context"
 	"encoding/json"
+	"github.com/google/uuid"
 	"net/netip"
 	"strings"
 	"testing"
 )
 
-func bgpMaterialFixture() RuntimeMaterial {
-	m := runtimeMaterialFixture()
+func bgpMaterialFixture() RuntimeMaterial { return bgpMaterialFixtureWithIDs(nil) }
+
+func bgpMaterialFixtureWithIDs(connectionIDs []uuid.UUID) RuntimeMaterial {
+	m := runtimeMaterialFixture(connectionIDs...)
 	v := 1
 	m.Manifest.ProfileID = "aws-bgp-ipv4-v1"
 	m.Manifest.BGPVersion = &v
@@ -20,9 +23,9 @@ func bgpMaterialFixture() RuntimeMaterial {
 	runtimeReseal(&m)
 	return m
 }
-func bgpEntryFixture(t *testing.T) RuntimeJournalEntry {
+func bgpEntryFixture(t *testing.T, connectionIDs ...uuid.UUID) RuntimeJournalEntry {
 	t.Helper()
-	m := bgpMaterialFixture()
+	m := bgpMaterialFixtureWithIDs(connectionIDs)
 	e, _, err := runtimeMaterialEntry(m, m.Manifest.OrgID, m.Manifest.NodeID, "net:[4026531992]")
 	if err != nil {
 		t.Fatal(err)

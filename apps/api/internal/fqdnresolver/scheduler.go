@@ -183,7 +183,7 @@ func (s *Scheduler) refresh(parent context.Context, now time.Time, w Work) {
 	// retains it only in closed historical rows for diagnostics.
 	var l Lifecycle
 	resolver := s.resolver
-	if len(w.ResolverConfig.StaticRecords) > 0 {
+	if len(w.ResolverConfig.StaticRecords) > 0 && w.ResolverConfig.ResolverKind == "" {
 		resolver = resolverFunc(func(ctx context.Context, _ Context, _ string) ([]Response, error) {
 			return lookupStatic(ctx, w)
 		})

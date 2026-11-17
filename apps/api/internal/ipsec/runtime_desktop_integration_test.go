@@ -1,6 +1,7 @@
 package ipsec_test
 
 import (
+	"errors"
 	"github.com/google/uuid"
 	"github.com/tunnexio/tunnex/apps/api/db"
 	"github.com/tunnexio/tunnex/apps/api/internal/fqdnresources"
@@ -11,8 +12,13 @@ import (
 )
 
 func TestDesktopRoutedRangesAndLeaseLifecycle(t *testing.T) {
+	for _, profile := range []string{"bgp", "static"} {
+		t.Run(profile, func(t *testing.T) { desktopRoutedRangesLifecycle(t, profile) })
+	}
+}
+func desktopRoutedRangesLifecycle(t *testing.T, profile string) {
 	ctx, p, org, actor, sealer, req := providerFixture(t)
-	if err := db.MigrateTo(p.Config().ConnString(), 228); err != nil {
+	if err := db.MigrateTo(p.Config().ConnString(), 234); err != nil {
 		t.Fatal(err)
 	}
 	exec := func(sql string, args ...any) {
@@ -21,10 +27,12 @@ func TestDesktopRoutedRangesAndLeaseLifecycle(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	req.Config = bgpConfigFixture()
+	if profile == "bgp" {
+		req.Config = bgpConfigFixture()
+	}
 	exec(`UPDATE organizations SET zero_trust_mode='enforcing' WHERE id=$1`, org)
 	exec(`INSERT INTO memberships(org_id,user_id,role) VALUES($1,$2,'owner')`, org, actor)
-	exec(`UPDATE nodes SET capabilities=capabilities || '{"ipsec_bgp_version":1,"ipsec_desktop_transit_version":1}'::jsonb,policy_reported_at=clock_timestamp() WHERE id=$1`, req.GatewayID)
+	exec(`UPDATE nodes SET capabilities=capabilities || '{"ipsec_recovery_version":1,"ipsec_bgp_version":1,"ipsec_desktop_transit_version":1,"ipsec_desktop_static_version":2}'::jsonb,policy_reported_at=clock_timestamp() WHERE id=$1`, req.GatewayID)
 	device, resource, rule := uuid.New(), uuid.New(), uuid.New()
 	exec(`INSERT INTO devices(id,org_id,user_id,node_id,name,public_key,assigned_ip) VALUES($1,$2,$3,$4,'desktop','ZzN444nzLsFjGeLNmSE9lzuvLAWI7mGMU2Z3fLroWnc=','10.199.0.7')`, device, org, actor, req.GatewayID)
 	exec(`INSERT INTO resources(id,org_id,name,cidr,protocol,port_low,port_high) VALUES($1,$2,'cloud app','10.20.0.8/32','tcp',443,443)`, resource, org)
@@ -58,6 +66,23 @@ func TestDesktopRoutedRangesAndLeaseLifecycle(t *testing.T) {
 		t.Fatal("lost enrolled identity")
 	}
 	check(true)
+	if profile == "static" {
+		if material.Manifest.BGP != nil || material.Manifest.ProfileID != "aws-static-ipv4-v1" || material.Manifest.RecoveryVersion == nil || *material.Manifest.RecoveryVersion != 1 || material.Manifest.DesktopStaticVersion == nil || *material.Manifest.DesktopStaticVersion != 1 {
+			t.Fatal("static manifest lost")
+		}
+		exec(`UPDATE nodes SET capabilities=capabilities-'ipsec_desktop_static_version' WHERE id=$1`, req.GatewayID)
+		check(false)
+		previous := ipsec.RuntimeLeaseRequest{DeliveryID: material.ID, DesiredRevision: connection.DesiredRevision, PolicyHash: material.Policy.Hash, Nonce: strings.Repeat("b", 64)}
+		if _, e := store.PermitLease(ctx, principal, connection.ID, previous); e == nil {
+			t.Fatal("old static capability renewed desktop lease")
+		}
+		_, e := store.Material(ctx, principal, connection.ID, connection.DesiredRevision, sealer)
+		if !errors.Is(e, ipsec.ErrConnectionIneligible) {
+			t.Fatal("old gateway got static desktop authority", e)
+		}
+		exec(`UPDATE nodes SET capabilities=capabilities || '{"ipsec_desktop_static_version":2}'::jsonb WHERE id=$1`, req.GatewayID)
+		check(true)
+	}
 	// Ordinary private DNS is independently entitled and automatically points
 	// at this device's gateway; no FQDN resource/licence is required.
 	exec(`UPDATE nodes SET capabilities=capabilities || '{"max_policy_version":12,"dns_resolve_rpc_version":2,"dns_ipsec_resolve_version":1}'::jsonb WHERE id=$1`, req.GatewayID)
@@ -129,7 +154,7 @@ func TestDesktopRoutedRangesAndLeaseLifecycle(t *testing.T) {
 	check(true)
 	exec(`UPDATE nodes SET capabilities=capabilities-'ipsec_desktop_transit_version' WHERE id=$1`, req.GatewayID)
 	check(false)
-	exec(`UPDATE nodes SET capabilities=capabilities || '{"ipsec_desktop_transit_version":1}'::jsonb WHERE id=$1`, req.GatewayID)
+	exec(`UPDATE nodes SET capabilities=capabilities || '{"ipsec_desktop_transit_version":1,"ipsec_desktop_static_version":2}'::jsonb WHERE id=$1`, req.GatewayID)
 	check(true)
 	if _, err = store.SetIntent(ctx, org, actor, connection.ID, connection.DesiredRevision, "disabled"); err != nil {
 		t.Fatal(err)

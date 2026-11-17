@@ -45,7 +45,7 @@ func TestPostgresPublishSerializableRetryDesiredBehavior(t *testing.T) {
 	t.Cleanup(func() { _, _ = admin.Exec(context.Background(), "DROP DATABASE IF EXISTS "+name+" WITH (FORCE)") })
 	testURL := *base
 	testURL.Path = "/" + name
-	if err := db.MigrateTo(testURL.String(), 219); err != nil {
+	if err := db.MigrateTo(testURL.String(), 232); err != nil {
 		t.Fatal(err)
 	}
 	pool, err := pgxpool.New(ctx, testURL.String())
@@ -101,7 +101,7 @@ func TestPostgresPublishSerializableRetryDesiredBehavior(t *testing.T) {
 	defer ticker.Stop()
 	for {
 		var n int
-		err = pool.QueryRow(c, `SELECT count(*) FROM pg_stat_activity WHERE datname=current_database() AND $1=ANY(pg_blocking_pids(pid)) AND query LIKE '%SELECT resolver_site_id,resolver_node_id FROM fqdn_resources%'`, pid).Scan(&n)
+		err = pool.QueryRow(c, `SELECT count(*) FROM pg_stat_activity WHERE datname=current_database() AND $1=ANY(pg_blocking_pids(pid)) AND query LIKE '%SELECT resolver_site_id,resolver_node_id,%FROM fqdn_resources%'`, pid).Scan(&n)
 		if err != nil {
 			t.Fatal(err)
 		}

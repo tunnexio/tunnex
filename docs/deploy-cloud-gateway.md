@@ -11,14 +11,18 @@ and policy hash before moving to the next gateway. To disable only access-event
 observation, recreate it with `TUNNEX_FLOWLOG_GROUP=0`; this does not change the
 allow/drop rules' verdicts.
 
-## Optional WireGuard MTU cap
+## Automatic WireGuard MTU and optional override
 
-Set `TUNNEX_WG_MTU_CAP` in the gateway agent's deployment environment only when
-path testing establishes that a lower WireGuard MTU is needed. It accepts an
-integer from `1280` through `1420`; unset leaves the existing behavior unchanged,
-and an invalid value prevents agent startup. For example,
-`TUNNEX_WG_MTU_CAP=1380` is the value qualified for the current remote-client/AWS
-lab path, not a universal optimal MTU.
+Fresh gateways default to a WireGuard MTU cap of **1380**. The agent applies it
+through the normal interface owner, so no extra enrollment command is needed.
+This is a compatibility default for remote Internet paths, not measured PMTU or
+a guarantee for every network; a cloud VM's jumbo NIC does not establish the
+capacity of the complete client path.
+
+`TUNNEX_WG_MTU_CAP` optionally overrides this default with an integer from `1280`
+through `1420`. Use a higher value only after qualifying the complete path; an
+invalid value prevents agent startup. A smaller desired or physical-underlay
+limit still wins.
 
 Restart or replace the agent through the normal deployment procedure to apply
 the setting, preserving its enrolled state volume. The normal WireGuard owner

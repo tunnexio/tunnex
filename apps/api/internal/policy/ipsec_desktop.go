@@ -30,29 +30,13 @@ func loadIPsecDesktopKeys(ctx context.Context, q *sqlc.Queries, org uuid.UUID, s
 	return nil
 }
 
-// V1 intentionally enables AWS BGP only. Static/Azure/GCP require their own
-// return-routing qualification; the identity and policy seam is provider-neutral.
+// BGP and explicitly capable AWS static gateways share the same enrolled
+// desktop identity authority. Cloud return routes remain independently required.
 func compileIPsecDesktopGrants(s Snapshot, in ipsec.RuntimePolicyInput) []ipsec.RuntimeDesktopGrant {
-	if s.Mode != ModeEnforcing || in.DesktopTransitVersion != 1 || in.Config.ProfileID != "aws-bgp-ipv4-v1" || in.Config.BGP == nil {
+	if s.Mode != ModeEnforcing || !ipsec.DesktopProfileSupported(in) {
 		return nil
 	}
-	byID := map[string]Device{}
-	addresses := map[string]int{}
-	for _, d := range s.Devices {
-		addresses[d.AssignedIP]++
-	}
-	for _, d := range s.Devices {
-		a, err := netip.ParseAddr(d.AssignedIP)
-		key, keyErr := base64.StdEncoding.DecodeString(d.PublicKey)
-		if d.ID == uuid.Nil || d.UserID == uuid.Nil || d.NodeID != in.NodeID || d.Kind != "human" || err != nil || !a.Is4() || !a.IsGlobalUnicast() || keyErr != nil || len(key) != 32 || addresses[d.AssignedIP] != 1 {
-			continue
-		}
-		source := netip.PrefixFrom(a, 32)
-		if runtimePolicyWithin(source, in.Config.LocalPrefixes) || runtimePolicyWithin(source, in.Config.RemotePrefixes) {
-			continue
-		}
-		byID[d.ID.String()] = d
-	}
+	byID := ipsecDesktopDevices(s, in)
 	filtered := s
 	filtered.Rules = nil
 	expiries := map[string]Rule{}
@@ -109,7 +93,11 @@ func (s *Service) DeviceIPsecRoutedRanges(ctx context.Context, org, device uuid.
 	if err = loadIPsecDesktopKeys(ctx, q, org, &snapshot); err != nil {
 		return nil, err
 	}
-	rows, err := tx.Query(ctx, `SELECT d.manifest,clock_timestamp() FROM ipsec_runtime_deliveries d
+	snapshot.FQDNResourcesLicensed = s.fqdnEntitled != nil && s.fqdnEntitled()
+	if err := appendActiveFQDNGenerations(ctx, &snapshot, runtimeFQDNGenerationReader{tx}, org); err != nil {
+		return nil, err
+	}
+	rows, err := tx.Query(ctx, `SELECT d.manifest,clock_timestamp(),CASE WHEN n.capabilities->'ipsec_desktop_fqdn_version'='1'::jsonb AND n.capabilities->'ipsec_fqdn_policy_version'='2'::jsonb THEN 1 ELSE 0 END,CASE WHEN n.capabilities->'ipsec_desktop_static_version'='2'::jsonb AND n.capabilities->'ipsec_recovery_version'='1'::jsonb AND d.manifest->'recovery_version'='1'::jsonb AND d.manifest->'desktop_static_version'='1'::jsonb THEN 2 ELSE 0 END FROM ipsec_runtime_deliveries d
  JOIN ipsec_connections c ON c.id=d.connection_id AND c.org_id=d.org_id AND c.desired_revision=d.desired_revision
  JOIN ipsec_org_settings s ON s.org_id=c.org_id AND s.enabled
  JOIN nodes n ON n.id=d.node_id AND n.org_id=d.org_id AND n.site_id=d.site_id
@@ -123,7 +111,7 @@ func (s *Service) DeviceIPsecRoutedRanges(ctx context.Context, org, device uuid.
 	for rows.Next() {
 		var raw []byte
 		var in ipsec.RuntimePolicyInput
-		if err = rows.Scan(&raw, &in.CompiledAt); err != nil {
+		if err = rows.Scan(&raw, &in.CompiledAt, &in.DesktopFQDNVersion, &in.DesktopStaticVersion); err != nil {
 			rows.Close()
 			return nil, err
 		}
@@ -137,7 +125,14 @@ func (s *Service) DeviceIPsecRoutedRanges(ctx context.Context, org, device uuid.
 		in.SiteID = m.SiteID
 		in.ConnectionID = m.ConnectionID
 		in.DesktopTransitVersion = 1
+		in.FQDNPolicyVersion = 2
+		in.ConfigurationRevision = 1
 		in.Config = ipsec.StaticConfig{ProfileID: m.ProfileID, LocalPrefixes: m.LocalPrefixes, RemotePrefixes: m.RemotePrefixes, BGP: m.BGP}
+		for _, g := range compileIPsecDesktopFQDNGrants(snapshot, in) {
+			if g.DeviceID == device.String() {
+				seen[g.Destination] = true
+			}
+		}
 		for _, g := range compileIPsecDesktopGrants(snapshot, in) {
 			if g.DeviceID == device.String() {
 				seen[g.Destination] = true
@@ -158,4 +153,26 @@ func (s *Service) DeviceIPsecRoutedRanges(ctx context.Context, org, device uuid.
 	}
 	sort.Strings(out)
 	return out, nil
+}
+
+func ipsecDesktopDevices(s Snapshot, in ipsec.RuntimePolicyInput) map[string]Device {
+	byID := map[string]Device{}
+	addresses := map[string]int{}
+	for _, d := range s.Devices {
+		addresses[d.AssignedIP]++
+	}
+	for _, d := range s.Devices {
+		a, err := netip.ParseAddr(d.AssignedIP)
+		key, keyErr := base64.StdEncoding.DecodeString(d.PublicKey)
+		if d.ID == uuid.Nil || d.UserID == uuid.Nil || d.NodeID != in.NodeID || d.Kind != "human" || err != nil || !a.Is4() || !a.IsGlobalUnicast() || keyErr != nil || len(key) != 32 || addresses[d.AssignedIP] != 1 {
+			continue
+		}
+		source := netip.PrefixFrom(a, 32)
+		if runtimePolicyWithin(source, in.Config.LocalPrefixes) || runtimePolicyWithin(source, in.Config.RemotePrefixes) {
+			continue
+		}
+		byID[d.ID.String()] = d
+	}
+
+	return byID
 }

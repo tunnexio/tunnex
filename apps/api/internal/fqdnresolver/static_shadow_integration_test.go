@@ -16,7 +16,7 @@ func TestStaticHistoricalShadowedProfileNeverPublishesOrFallsBack(t *testing.T) 
 			name = "all records shadowed with public endpoints"
 		}
 		t.Run(name, func(t *testing.T) {
-			ctx, pool := testpostgres.NewAtVersion(t, 229)
+			ctx, pool := testpostgres.NewAtVersion(t, 232)
 			org, site, gateway, config, broad, narrow, resource, generation := uuid.New(), uuid.New(), uuid.New(), uuid.New(), uuid.New(), uuid.New(), uuid.New(), uuid.New()
 			exec := func(q string, args ...any) {
 				t.Helper()

@@ -30,7 +30,7 @@ func (s apiServer) GetIPsecEligibility(ctx context.Context, r api.GetIPsecEligib
 	if err != nil {
 		return nil, ipsecProviderError(err)
 	}
-	out := api.IPsecEligibility{Eligible: e.Eligible, Reason: api.IPsecEligibilityReason(e.Reason)}
+	out := api.IPsecEligibility{DesktopStaticSupported: &e.DesktopStaticSupported, DesktopStaticFqdnSupported: &e.DesktopStaticFQDNSupported, DesktopFqdnSupported: &e.DesktopFQDNSupported, Eligible: e.Eligible, Reason: api.IPsecEligibilityReason(e.Reason)}
 	if e.BGP != nil {
 		out.Bgp = &api.IPsecBGPEligibility{Eligible: e.BGP.Eligible, Reason: api.IPsecBGPEligibilityReason(e.BGP.Reason)}
 	}

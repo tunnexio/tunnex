@@ -48,7 +48,12 @@ type renewalCycleRig struct {
 func newRenewalCycleRig(t *testing.T) *renewalCycleRig { return newRenewalCycleRigInput(t, false) }
 func newRenewalCycleRigInput(t *testing.T, canonical bool, transform ...func(*testing.T, *RuntimeController, []RuntimeJournalEntry, []RuntimeMaterial) ([]RuntimeJournalEntry, []RuntimeMaterial)) *renewalCycleRig {
 	t.Helper()
-	c, entries, ids := mixedBudgetFixture(t)
+	return newRenewalCycleRigWithIDs(t, canonical, nil, transform...)
+}
+
+func newRenewalCycleRigWithIDs(t *testing.T, canonical bool, connectionIDs []uuid.UUID, transform ...func(*testing.T, *RuntimeController, []RuntimeJournalEntry, []RuntimeMaterial) ([]RuntimeJournalEntry, []RuntimeMaterial)) *renewalCycleRig {
+	t.Helper()
+	c, entries, ids := mixedBudgetFixture(t, connectionIDs...)
 	var materials []RuntimeMaterial
 	if canonical {
 		entries, materials = renewalCanonicalMaterials(t, c, entries)
@@ -60,6 +65,11 @@ func newRenewalCycleRigInput(t *testing.T, canonical bool, transform ...func(*te
 	c.journal.Close()
 	dir := journalDir(t)
 	payload := runtimeJournalPayload{Version: 10, OwnerID: c.config.GatewayID, Sequence: 1, Entries: entries}
+	for _, e := range entries {
+		if hasDesktopStaticTransport(e) {
+			payload.Version = 15
+		}
+	}
 	if !validJournalPayload(payload) {
 		t.Fatal("five-provider fixture invalid")
 	}

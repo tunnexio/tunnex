@@ -14,6 +14,7 @@ import (
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
+	"github.com/tunnexio/tunnex/apps/api/internal/policyspec"
 )
 
 // ActiveGeneration is an immutable, database-backed answer snapshot suitable
@@ -21,11 +22,13 @@ import (
 // the compiler derives its content identity from this selected-context answer
 // set so a timestamp or retry cannot masquerade as a policy change.
 type ActiveGeneration struct {
-	OrgID, ResourceID  uuid.UUID
-	Hostname, Protocol string
-	PortLow, PortHigh  *int32
-	Sequence           int64
-	Context            Context
+	ApplicationIPsecPath *policyspec.FQDNApplicationIPsecPath
+	ResolverKind         string
+	OrgID, ResourceID    uuid.UUID
+	Hostname, Protocol   string
+	PortLow, PortHigh    *int32
+	Sequence             int64
+	Context              Context
 	// ResolverConfig is the immutable direct-endpoint revision that produced
 	// this generation. Compiler consumers must reject an active row when its
 	// current context no longer has this exact active revision.
@@ -76,7 +79,8 @@ SELECT g.org_id,g.resource_id,r.fqdn,r.protocol,r.port_low,r.port_high,
        ARRAY(SELECT host(a.address)
                FROM fqdn_resource_generation_answers a
               WHERE a.generation_id=g.id AND a.org_id=g.org_id
-              ORDER BY a.address)
+              ORDER BY a.address),
+ CASE WHEN r.application_ipsec_connection_id IS NULL THEN NULL ELSE jsonb_build_object('connection_id',r.application_ipsec_connection_id,'configuration_revision',r.application_ipsec_configuration_revision) END,g.resolver_kind
 FROM fqdn_resource_answer_generations g
 JOIN fqdn_resources r
   ON r.id=g.resource_id AND r.org_id=g.org_id
@@ -91,7 +95,7 @@ JOIN fqdn_resolver_context_configs cfg
 JOIN fqdn_resolver_context_profiles profile
   ON profile.config_id=cfg.id AND profile.org_id=cfg.org_id
  AND profile.id=COALESCE(g.resolver_profile_id,cfg.id)
-WHERE g.org_id=$1 AND g.state='active' AND (profile.ipsec_connection_id IS NULL OR fqdn_ipsec_resolver_profile_valid(profile.id,profile.org_id))
+WHERE g.org_id=$1 AND (r.application_ipsec_connection_id IS NULL OR fqdn_application_ipsec_path_valid(r.org_id,r.resolver_site_id,r.resolver_node_id,r.application_ipsec_connection_id,r.application_ipsec_configuration_revision)) AND (r.application_ipsec_connection_id IS NULL OR (g.resolver_kind='static_cname' AND g.application_desired_revision=(SELECT desired_revision FROM ipsec_connections WHERE id=r.application_ipsec_connection_id AND org_id=r.org_id) AND NOT EXISTS(SELECT 1 FROM fqdn_resource_generation_answers a WHERE a.generation_id=g.id AND NOT EXISTS(SELECT 1 FROM ipsec_aws_remote_prefixes p WHERE p.connection_id=r.application_ipsec_connection_id AND p.org_id=r.org_id AND a.address <<= p.cidr)))) AND g.state='active' AND (profile.ipsec_connection_id IS NULL OR fqdn_ipsec_resolver_profile_valid(profile.id,profile.org_id))
   AND isfinite(g.resolved_at)
   AND g.effective_ttl BETWEEN interval '30 seconds' AND interval '1 hour'
   AND g.resolved_at <= clock_timestamp()
@@ -149,12 +153,17 @@ ORDER BY g.resource_id`, orgID)
 		var profile uuid.UUID
 		var configVersion int64
 		var profileName, profileProvider, matchedSuffix string
-		var endpointJSON, pathJSON, staticJSON, ownershipJSON []byte
+		var endpointJSON, pathJSON, staticJSON, ownershipJSON, applicationJSON []byte
 		var raw []string
 		if err := rows.Scan(&g.OrgID, &g.ResourceID, &g.Hostname, &g.Protocol, &g.PortLow, &g.PortHigh,
 			&g.Sequence, &site, &gateway, &g.TTL, &g.ResolvedAt, &config, &configVersion,
-			&profile, &profileName, &profileProvider, &matchedSuffix, &staticJSON, &ownershipJSON, &pathJSON, &endpointJSON, &raw); err != nil {
+			&profile, &profileName, &profileProvider, &matchedSuffix, &staticJSON, &ownershipJSON, &pathJSON, &endpointJSON, &raw, &applicationJSON, &g.ResolverKind); err != nil {
 			return nil, err
+		}
+		if len(applicationJSON) > 0 {
+			if err := json.Unmarshal(applicationJSON, &g.ApplicationIPsecPath); err != nil {
+				return nil, err
+			}
 		}
 		g.Context = Context{ResolverID: site.String(), GatewayID: gateway.String()}
 		g.ResolverConfig = ResolverConfig{

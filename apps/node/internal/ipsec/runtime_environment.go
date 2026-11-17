@@ -360,13 +360,23 @@ func (r *runtimeEnvironmentInspector) observeQualified(ctx context.Context, a Ke
 		return ip(ctx, args...)
 	}
 	readSnapshot := func() (runtimeEnvironmentSnapshot, bool) {
-		return runtimeReadEnvironmentSnapshot(ctx, snapshotIP, func(c context.Context) ([]byte, error) {
+		snapshot, ok := runtimeReadEnvironmentSnapshot(ctx, snapshotIP, func(c context.Context) ([]byte, error) {
 			raw, err := nftRun(c, "-j", "list", "ruleset")
 			if err != nil || !runtimeQualifiedHookCensusWithCommands(c, r.nftPath, raw, protected, hookRun) {
 				return nil, ErrRuntimeEnvironment
 			}
 			return raw, nil
 		}, engines)
+		if ok && localExports && a.ProfileID == "" {
+			for _, prefix := range engines[0].LocalPrefixes {
+				raw, err := snapshotIP(ctx, "-j", "-4", "route", "get", prefix.Addr().String())
+				if err != nil {
+					return runtimeEnvironmentSnapshot{}, false
+				}
+				snapshot.localExports = append(snapshot.localExports, raw)
+			}
+		}
+		return snapshot, ok
 	}
 	stage = "env_snapshot_before"
 	first, valid := readSnapshot()
@@ -450,7 +460,7 @@ func (r *runtimeEnvironmentInspector) observeQualified(ctx context.Context, a Ke
 	stage = "env_local_coverage"
 	out := RuntimeEnvironment{Namespace: ns}
 	local := map[int]bool{}
-	for _, prefix := range engines[0].LocalPrefixes {
+	for exportIndex, prefix := range engines[0].LocalPrefixes {
 		if !prefix.IsValid() || !prefix.Addr().Is4() || prefix != prefix.Masked() {
 			return fail()
 		}
@@ -474,7 +484,7 @@ func (r *runtimeEnvironmentInspector) observeQualified(ctx context.Context, a Ke
 				f, ok := kernelFlags(flags)
 				// An unrelated, assigned Docker bridge may be down. It cannot
 				// supply LAN or underlay identity, and protected routes still refuse.
-				disjointBridge := gcp && len(f) == 1 && f[0] == "linkdown" && runtimeDisjointDownBridge(row, p, protected, downBridges, assigned)
+				disjointBridge := len(f) == 1 && f[0] == "linkdown" && runtimeDisjointDownBridge(row, p, protected, downBridges, assigned)
 				if !ok || (len(f) != 0 && !disjointBridge) {
 					return fail()
 				}
@@ -487,15 +497,18 @@ func (r *runtimeEnvironmentInspector) observeQualified(ctx context.Context, a Ke
 				return fail()
 			}
 			if p.Bits() > prefix.Bits() {
-				if !gcp || !runtimeRoutedGatewayHost(row, p, prefix, routeRows, physical, assigned) {
+				if !(gcp && runtimeRoutedGatewayHost(row, p, prefix, routeRows, physical, assigned)) && !runtimeConnectedGatewayHost(row, p, prefix, routeRows, physical, assigned) && !runtimeRedundantDHCPHost(row, p, prefix, routeRows, physical, assigned, engines[0].RemotePrefixes) {
 					return fail()
 				}
-				continue // A gateway host is never proof of prefix coverage.
+				continue // A supporting host route is never proof of prefix coverage.
 			}
 			if _, routed := row["gateway"]; gcp && routed && !runtimeRoutedLocalPrefix(row, p, prefix, routeRows, physical, assigned) {
 				return fail()
 			}
 			if localExports && (p != prefix || !runtimeLocalExportProtocol(row["protocol"])) {
+				return fail()
+			}
+			if localExports && a.ProfileID == "" && (!runtimePhysicalLocalExport(row, prefix, addressRows) || exportIndex >= len(first.localExports) || !runtimeSelectedLocalExport(first.localExports[exportIndex], row)) {
 				return fail()
 			}
 			if found != 0 && found != index {
@@ -551,13 +564,34 @@ func (r *runtimeEnvironmentInspector) observeQualified(ctx context.Context, a Ke
 	// The first complete snapshot is fully validated before any second-snapshot read.
 	stage = "env_snapshot_after"
 	second, valid := readSnapshot()
-	if !valid || !bytes.Equal(second.links, links) || !bytes.Equal(second.rules, rules) || !bytes.Equal(second.routes, routes) || !runtimeAddressBracket(addresses, second.addresses, time.Since(addressReadStarted)) {
+	if !valid {
 		return fail()
 	}
+	stage = "env_links_after"
+	if !runtimeLinkBracket(links, second.links) {
+		return fail()
+	}
+	stage = "env_rules_after"
+	if !bytes.Equal(second.rules, rules) {
+		return fail()
+	}
+	stage = "env_routes_after"
+	if !bytes.Equal(second.routes, routes) {
+		return fail()
+	}
+	stage = "env_addresses_after"
+	if !runtimeAddressBracket(addresses, second.addresses, time.Since(addressReadStarted)) {
+		return fail()
+	}
+	stage = "env_peer_routes_after"
 	for i := range engines[:engineTunnelCount(engines)] {
 		if !bytes.Equal(second.peers[i], peerReads[i]) {
 			return fail()
 		}
+	}
+	stage = "env_local_exports_after"
+	if !reflect.DeepEqual(first.localExports, second.localExports) {
+		return fail()
 	}
 	stage = "env_namespace_after"
 	after, e := r.namespace()
@@ -595,6 +629,112 @@ func runtimeMainRoutePrefix(row map[string]json.RawMessage) (netip.Prefix, bool)
 		return netip.Prefix{}, false
 	}
 	return netip.PrefixFrom(a, 32), true
+}
+
+// DHCP may add an on-link gateway /32 alongside a directly connected subnet.
+// Accept only the unique host named by the matching DHCP default, backed by an
+// exact kernel/link route on the same physical interface and assigned source.
+// The host is supporting evidence only; it can never supply prefix coverage.
+func runtimeConnectedGatewayHost(host map[string]json.RawMessage, p, prefix netip.Prefix, rows []map[string]json.RawMessage, physical map[string]int, assigned map[string]map[netip.Addr]bool) bool {
+	if p.Bits() != 32 || !prefix.Contains(p.Addr()) {
+		return false
+	}
+	dev, _ := kernelString(host, "dev")
+	scope, _ := kernelString(host, "scope")
+	protocol, _ := kernelString(host, "protocol")
+	source, sourceOK := kernelString(host, "prefsrc")
+	src, err := netip.ParseAddr(source)
+	if scope != "link" || protocol != "dhcp" || physical[dev] == 0 || !sourceOK || err != nil || !src.Is4() || !prefix.Contains(src) || !assigned[dev][src] || assigned[dev][p.Addr()] {
+		return false
+	}
+	if _, via := host["gateway"]; via {
+		return false
+	}
+	defaults, covers, hosts := 0, 0, 0
+	for _, route := range rows {
+		dst, _ := kernelString(route, "dst")
+		routePrefix, valid := runtimeMainRoutePrefix(route)
+		if !valid {
+			return false
+		}
+		if routePrefix == p {
+			hosts++
+		}
+		if dst != "default" && routePrefix != prefix {
+			continue
+		}
+		routeDev, _ := kernelString(route, "dev")
+		routeSource, _ := kernelString(route, "prefsrc")
+		routeProtocol, _ := kernelString(route, "protocol")
+		routeScope, scopeOK := kernelString(route, "scope")
+		if routeDev != dev || routeSource != source {
+			return false
+		}
+		if dst == "default" {
+			gateway, _ := kernelString(route, "gateway")
+			gw, err := netip.ParseAddr(gateway)
+			if routeProtocol != "dhcp" || err != nil || gw != p.Addr() {
+				return false
+			}
+			if _, present := route["scope"]; present && (!scopeOK || routeScope != "global") {
+				return false
+			}
+			defaults++
+		} else {
+			if _, via := route["gateway"]; via || routeProtocol != "kernel" || routeScope != "link" {
+				return false
+			}
+			covers++
+		}
+	}
+	return defaults == 1 && covers == 1 && hosts == 1
+}
+
+// DHCP can also install an on-link DNS /32 inside an already connected LAN.
+// It is redundant only when it preserves the exact connected route's interface
+// and assigned source, and the original DHCP gateway/default anchor is intact.
+// This host never supplies coverage or changes any application authorization.
+func runtimeRedundantDHCPHost(host map[string]json.RawMessage, p, prefix netip.Prefix, rows []map[string]json.RawMessage, physical map[string]int, assigned map[string]map[netip.Addr]bool, remote []netip.Prefix) bool {
+	if p.Bits() != 32 || !prefix.Contains(p.Addr()) {
+		return false
+	}
+	for _, protected := range remote {
+		if prefix.Overlaps(protected) {
+			return false
+		}
+	}
+	dev, _ := kernelString(host, "dev")
+	scope, _ := kernelString(host, "scope")
+	protocol, _ := kernelString(host, "protocol")
+	source, sourceOK := kernelString(host, "prefsrc")
+	src, err := netip.ParseAddr(source)
+	if scope != "link" || protocol != "dhcp" || physical[dev] == 0 || !sourceOK || err != nil || !src.Is4() || !prefix.Contains(src) || !assigned[dev][src] || assigned[dev][p.Addr()] {
+		return false
+	}
+	if _, via := host["gateway"]; via {
+		return false
+	}
+	// The ordinary route scan rejects special types, flags and forwarding
+	// overrides on every row. Reuse its unchanged gateway-anchor proof here.
+	hosts, anchors := 0, 0
+	for _, route := range rows {
+		routePrefix, valid := runtimeMainRoutePrefix(route)
+		if !valid {
+			return false
+		}
+		if routePrefix == p {
+			hosts++
+		}
+		if routePrefix == p || routePrefix.Bits() != 32 || !prefix.Contains(routePrefix.Addr()) {
+			continue
+		}
+		routeDev, _ := kernelString(route, "dev")
+		routeSource, _ := kernelString(route, "prefsrc")
+		if routeDev == dev && routeSource == source && runtimeConnectedGatewayHost(route, routePrefix, prefix, rows, physical, assigned) {
+			anchors++
+		}
+	}
+	return hosts == 1 && anchors == 1
 }
 
 // The only narrow GCP route exception is the on-link gateway for one exact
@@ -682,6 +822,90 @@ func runtimeLocalExportProtocol(raw json.RawMessage) bool {
 	}
 	n, ok := kernelNumber(raw, 32)
 	return ok && (n == 2 || n == 3 || n == 4 || n == 242)
+}
+
+// Preserve the generic BGP engine's physical export requirement for AWS: a
+// direct export must equal an assigned subnet, while a routed export requires
+// a next hop on an assigned subnet. Tunnex's GCP route protocol is not evidence.
+func runtimePhysicalLocalExport(route map[string]json.RawMessage, prefix netip.Prefix, addresses []map[string]json.RawMessage) bool {
+	var protocol string
+	if json.Unmarshal(route["protocol"], &protocol) == nil && protocol == "242" {
+		return false
+	}
+	if n, ok := kernelNumber(route["protocol"], 32); ok && n == 242 {
+		return false
+	}
+	dev, _ := kernelString(route, "dev")
+	source, sourceOK := kernelString(route, "prefsrc")
+	if _, present := route["prefsrc"]; present && !sourceOK {
+		return false
+	}
+	gateway, gatewayOK := kernelString(route, "gateway")
+	_, routed := route["gateway"]
+	gw, gatewayErr := netip.ParseAddr(gateway)
+	if routed && (!gatewayOK || gatewayErr != nil || !gw.Is4()) {
+		return false
+	}
+	for _, row := range addresses {
+		name, _ := kernelString(row, "ifname")
+		if name != dev {
+			continue
+		}
+		infos, ok := kernelObjects(row["addr_info"])
+		if !ok {
+			return false
+		}
+		for _, info := range infos {
+			value, ok := kernelString(info, "local")
+			addr, err := netip.ParseAddr(value)
+			bits, bitsOK := kernelNumber(info["prefixlen"], 6)
+			if !ok || err != nil || !addr.Is4() || !bitsOK || bits == 0 || bits > 32 {
+				return false
+			}
+			if sourceOK && source != value {
+				continue
+			}
+			assigned := netip.PrefixFrom(addr, int(bits))
+			if (!routed && assigned.Masked() == prefix) || (routed && assigned.Contains(gw) && addr != gw) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func runtimeSelectedLocalExport(raw []byte, route map[string]json.RawMessage) bool {
+	rows, ok := kernelObjects(raw)
+	if !ok || len(rows) != 1 {
+		return false
+	}
+	selected := rows[0]
+	for _, field := range []string{"encap", "encap_type", "nhid", "multipath", "nexthops"} {
+		if _, present := selected[field]; present {
+			return false
+		}
+	}
+	if typ, present := selected["type"]; present && string(typ) != `"unicast"` {
+		return false
+	}
+	if rawFlags, present := selected["flags"]; present {
+		flags, ok := kernelFlags(rawFlags)
+		if !ok || len(flags) != 0 {
+			return false
+		}
+	}
+	dev, valid := kernelString(selected, "dev")
+	expectedDev, _ := kernelString(route, "dev")
+	if !valid || dev != expectedDev {
+		return false
+	}
+	gateway, valid := kernelString(selected, "gateway")
+	_, present := selected["gateway"]
+	if present && !valid {
+		return false
+	}
+	expectedGateway, _ := kernelString(route, "gateway")
+	return gateway == expectedGateway
 }
 
 // Admit only the production S21 conntrack ownership transform, in its native

@@ -36,12 +36,18 @@ type recoveryTestRig struct {
 	denyGuard           bool
 }
 
-func newRecoveryTestRig(t *testing.T) *recoveryTestRig {
+func newRecoveryTestRig(t *testing.T, connectionIDs ...uuid.UUID) *recoveryTestRig {
+	return newRecoveryTestRigTransport(t, false, connectionIDs...)
+}
+func newRecoveryTestRigTransport(t *testing.T, desktopStatic bool, connectionIDs ...uuid.UUID) *recoveryTestRig {
 	t.Helper()
 	r := &recoveryTestRig{status: [2]string{"down", "up"}, lease: &recoveryTestLease{ttl: 60000}}
-	r.m = runtimeMaterialFixture()
+	r.m = runtimeMaterialFixture(connectionIDs...)
 	version := 1
 	r.m.Manifest.RecoveryVersion = &version
+	if desktopStatic {
+		r.m.Manifest.DesktopStaticVersion = &version
+	}
 	runtimeReseal(&r.m)
 	entry, _, err := runtimeMaterialEntry(r.m, r.m.Manifest.OrgID, r.m.Manifest.NodeID, "net:[4026531992]")
 	if err != nil {

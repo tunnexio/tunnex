@@ -254,7 +254,7 @@ func validDigest(v string) bool {
 	return e == nil && len(b) == 32 && hex.EncodeToString(b) == v
 }
 func validJournalPayload(p runtimeJournalPayload) bool {
-	if (p.Version != 1 && p.Version != 2 && p.Version != 3 && p.Version != 4 && p.Version != 5 && p.Version != 6 && p.Version != 7 && p.Version != 8 && p.Version != 9 && p.Version != 10 && p.Version != 11 && p.Version != 12 && p.Version != 13) || p.OwnerID == uuid.Nil || len(p.Entries) > 256 || len(p.Guards) > 2 {
+	if (p.Version != 1 && p.Version != 2 && p.Version != 3 && p.Version != 4 && p.Version != 5 && p.Version != 6 && p.Version != 7 && p.Version != 8 && p.Version != 9 && p.Version != 10 && p.Version != 11 && p.Version != 12 && p.Version != 13 && p.Version != 14 && p.Version != 15) || p.OwnerID == uuid.Nil || len(p.Entries) > 256 || len(p.Guards) > 2 {
 		return false
 	}
 	for _, g := range p.Guards {
@@ -270,6 +270,12 @@ func validJournalPayload(p runtimeJournalPayload) bool {
 		return false
 	}
 	for _, r := range p.Entries {
+		if !validDesktopStaticJournal(r) || hasDesktopStaticTransport(r) && p.Version < 15 {
+			return false
+		}
+		if hasColdQuiescedRestoration(r) && p.Version < 14 {
+			return false
+		}
 		if r.Phase == RuntimeQuiesced && (p.Version < 12 || !validQuiescedEntry(r)) {
 			return false
 		}
@@ -336,8 +342,26 @@ func validJournalPayload(p runtimeJournalPayload) bool {
 	return true
 }
 func validJournalSuccessor(old, next runtimeJournalPayload) bool {
-	if next.Version < old.Version || next.Version > 13 || (next.Version > old.Version+1 && !(old.Version == 1 && next.Version == 3) && next.Version != 4 && next.Version != 5 && next.Version != 6 && next.Version != 7 && next.Version != 8 && next.Version != 9 && next.Version != 10 && next.Version != 11 && next.Version != 12 && next.Version != 13) {
+	if next.Version < old.Version || next.Version > 15 || (next.Version > old.Version+1 && !(old.Version == 1 && next.Version == 3) && next.Version != 4 && next.Version != 5 && next.Version != 6 && next.Version != 7 && next.Version != 8 && next.Version != 9 && next.Version != 10 && next.Version != 11 && next.Version != 12 && next.Version != 13 && next.Version != 14 && next.Version != 15) {
 		return false
+	}
+	if next.Version == 15 && old.Version < 15 {
+		upgrade := false
+		for _, r := range next.Entries {
+			upgrade = upgrade || hasDesktopStaticTransport(r)
+		}
+		if !upgrade {
+			return false
+		}
+	}
+	if next.Version == 14 && old.Version < 14 {
+		upgrade := false
+		for _, r := range next.Entries {
+			upgrade = upgrade || hasColdQuiescedRestoration(r)
+		}
+		if !upgrade {
+			return false
+		}
 	}
 	if next.Version == 13 && old.Version < 13 {
 		upgrade := false
@@ -544,6 +568,12 @@ func (j *RuntimeJournal) Save(entries []RuntimeJournalEntry) error {
 	next.Sequence++
 	next.Entries = entries
 	for _, entry := range entries {
+		if hasDesktopStaticTransport(entry) && next.Version < 15 {
+			next.Version = 15
+		}
+		if hasColdQuiescedRestoration(entry) && next.Version < 14 {
+			next.Version = 14
+		}
 		if entry.AzureProfileRecreationVersion == 1 && next.Version < 13 {
 			next.Version = 13
 		}

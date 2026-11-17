@@ -16,6 +16,9 @@ func TestPhysicalExportReachability(t *testing.T) {
 		good                                bool
 	}{
 		{"connected", baseLinks, baseAddr, baseRoutes, baseSelected, true},
+		// The generic process boundary deliberately stays strict. A managed
+		// gateway must supply its independently qualified export proof instead.
+		{"disjoint down bridge requires explicit proof", baseLinks, baseAddr, strings.TrimSuffix(baseRoutes, "]") + `,{"dst":"172.17.0.0/16","dev":"docker0","protocol":"kernel","scope":"link","prefsrc":"172.17.0.1","flags":["linkdown"]}]`, baseSelected, false},
 		{"routed", baseLinks, `[{"ifname":"eth0","addr_info":[{"local":"172.30.88.2","prefixlen":24}]}]`, `[{"dst":"10.10.0.0/24","dev":"eth0","gateway":"172.30.88.1","protocol":"static","flags":[]}]`, `[{"dev":"eth0","gateway":"172.30.88.1","flags":[]}]`, true},
 		{"linkdown", strings.Replace(baseLinks, `["UP"]`, `[]`, 1), baseAddr, baseRoutes, baseSelected, false},
 		{"XFRM", strings.Replace(baseLinks, `"veth"`, `"xfrm"`, 1), baseAddr, baseRoutes, baseSelected, false},

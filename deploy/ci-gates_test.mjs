@@ -120,8 +120,9 @@ test('shelved sandbox check contexts run only a notice', () => {
   const { jobs } = JSON.parse(parsed.stdout);
   const ordinary = "matrix.target != 'test-sandbox-package' && matrix.target != 'test-sandbox-image'";
   const shelved = "matrix.target == 'test-sandbox-package' || matrix.target == 'test-sandbox-image'";
-  assert.deepEqual(jobs.tooling.strategy.matrix.target, ['test-node', 'test-apptransport', 'test-app-proxy', 'test-operator', 'test-cli', 'test-sandbox-package', 'test-sandbox-image']);
+  assert.deepEqual(jobs.tooling.strategy.matrix.target, ['test-node', 'test-node-ipsec-1', 'test-node-ipsec-2', 'test-node-ipsec-3', 'test-node-ipsec-4', 'test-node-ipsec-5', 'test-node-ipsec-6', 'test-apptransport', 'test-app-proxy', 'test-operator', 'test-cli', 'test-sandbox-package', 'test-sandbox-image']);
   assert.equal(jobs.tooling.services, undefined);
+  assert.ok(jobs.tooling['timeout-minutes'] >= 35, 'test-node runs the IPsec suite with -timeout=30m');
   assert.equal(jobs.tooling.steps.length, 4);
   for (const step of jobs.tooling.steps.slice(0, 3)) assert.equal(step.if, ordinary);
   const notice = jobs.tooling.steps[3];
@@ -229,7 +230,7 @@ test.skip('Ubuntu image delivery is a required existing tooling target with exac
   const { jobs } = JSON.parse(parsed.stdout);
   const setup = jobs.tooling.steps.find(step => step.name?.startsWith('Set up pinned host Go'));
   assert.equal(setup.if, "matrix.target == 'test-sandbox-image'");
-  assert.equal(setup.with['go-version'], '1.26.10');
+  assert.equal(setup.with['go-version'], '1.26.11');
   const upload = jobs.tooling.steps.find(step => step.name?.startsWith('Retain public Ubuntu AMD64'));
   assert.ok(upload.if.includes("matrix.target == 'test-sandbox-image'"));
   assert.ok(upload.if.includes("github.ref == 'refs/heads/main'"));
@@ -393,6 +394,15 @@ test('node lane preserves ordinary VPN checks without the dormant sandbox Unix f
   assert.match(nodeRecipe, /go build \.\/\.\.\./);
   assert.match(nodeRecipe, /GOFLAGS='-mod=readonly -buildvcs=false'/);
   assert.match(nodeRecipe, /ci-active-go-packages\.sh node/);
+  // The IPsec runtime package runs in its own shards, never twice and never dropped.
+  assert.match(nodeRecipe, /grep -vx 'github\.com\/tunnexio\/tunnex\/apps\/node\/internal\/ipsec'/);
+  assert.match(nodeRecipe, /go test -count=1 -timeout=30m \$\$packages/);
+  const shardRecipe = makefile.match(/^test-node-ipsec-%:[\s\S]*?(?=^\.PHONY:)/m)?.[0];
+  assert.ok(shardRecipe);
+  assert.match(makefile, /^IPSEC_SHARDS := 6$/m);
+  assert.match(shardRecipe, /--cap-add=NET_ADMIN/);
+  assert.match(shardRecipe, /ci-node-ipsec-shard\.sh \$\* \$\(IPSEC_SHARDS\)/);
+  assert.doesNotMatch(shardRecipe, /\|\| true|continue-on-error/);
   assert.doesNotMatch(nodeRecipe, /sandboxnetwork\.test|TestInactiveCleanupActualUnixBoundary|su -s/);
   assert.doesNotMatch(nodeRecipe, /\|\| true|continue-on-error/);
 });
@@ -478,4 +488,30 @@ test('App Access shipping contracts run after Helm with an explicit isolated YAM
   assert.match(step.run, /-B -m unittest discover -s deploy\/app-access\/tests -p 'test_\*\.py' -v/);
   assert.ok(step.run.indexOf('pip install') < step.run.indexOf('unittest discover'));
   assert.doesNotMatch(step.run, /docker|kubectl|helm (?:install|upgrade)/);
+});
+
+test('IPsec shards cover every listed test exactly once and refuse vacuous runs', (t) => {
+  const dir = mkdtempSync(join(tmpdir(), 'ipsec-shard-'));
+  t.after(() => rmSync(dir, { recursive: true, force: true }));
+  const names = ['TestA', 'TestB', 'TestC', 'FuzzD', 'ExampleE', 'TestF', 'TestG'];
+  const fake = join(dir, 'go');
+  writeFileSync(fake, `#!/bin/sh
+if [ "$2" = "-list" ]; then [ -n "$FAKE_EMPTY" ] || printf '%s\\n' ${names.join(' ')}; echo 'ok  pkg 0.1s'; exit 0; fi
+printf '%s\\n' "$@" > "$FAKE_OUT"
+`, { mode: 0o755 });
+  const run = (args, extra = {}) => spawnSync('sh', ['deploy/ci-node-ipsec-shard.sh', ...args], { encoding: 'utf8', env: { ...process.env, PATH: `${dir}:${process.env.PATH}`, FAKE_OUT: join(dir, 'out'), ...extra } });
+  const seen = [];
+  for (let shard = 1; shard <= 3; shard++) {
+    const r = run([String(shard), '3']);
+    assert.equal(r.status, 0, r.stderr);
+    const args = readFileSync(join(dir, 'out'), 'utf8').trim().split('\n');
+    assert.ok(args.includes('-timeout=30m'));
+    const pattern = args[args.indexOf('-run') + 1];
+    assert.match(pattern, /^\^\(.+\)\$$/);
+    seen.push(...pattern.slice(2, -2).split('|'));
+  }
+  assert.deepEqual([...seen].sort(), [...names].sort());
+  for (const bad of [['0', '3'], ['4', '3'], ['1', '0'], ['x', '3'], ['1']]) assert.notEqual(run(bad).status, 0, bad.join('/'));
+  assert.notEqual(run(['1', '3'], { FAKE_EMPTY: '1' }).status, 0);
+  assert.notEqual(run(['8', '8'], {}).status, 0, 'a shard beyond the inventory must not pass vacuously');
 });

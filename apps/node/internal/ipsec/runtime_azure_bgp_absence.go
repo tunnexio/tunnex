@@ -26,6 +26,12 @@ func (c *RuntimeController) proveStoppedBGPDutiesAbsent(ctx context.Context, e R
 	if err != nil {
 		return ErrRuntimeController
 	}
+	return c.proveStoppedBGPDutiesAbsentInBoot(ctx, e, boot, ns, false)
+}
+
+// Callers establish boot discharge independently: the existing retained-reset
+// receipt, or the narrow cold-Quiesced transaction's genuine changed boot.
+func (c *RuntimeController) proveStoppedBGPDutiesAbsentInBoot(ctx context.Context, e RuntimeJournalEntry, boot, ns string, bootDischarged bool) error {
 	for pass := 0; pass < 2; pass++ {
 		before, err := c.namespace()
 		if err != nil || before != ns {
@@ -37,7 +43,13 @@ func (c *RuntimeController) proveStoppedBGPDutiesAbsent(ctx context.Context, e R
 			return ErrRuntimeController
 		}
 	}
-	bootDischarged := c.retainedResetBootDischarged(ctx, e, boot, ns)
+	return c.proveStoppedBGPProcessesAbsentInBoot(ctx, e, boot, ns, bootDischarged)
+}
+
+// Process and compacted-history obligations are independent of transport IDs
+// legitimately reused by a newer, separately qualified same-owner delivery.
+func (c *RuntimeController) proveStoppedBGPProcessesAbsentInBoot(ctx context.Context, e RuntimeJournalEntry, boot, ns string, bootDischarged bool) error {
+	bootDischarged = bootDischarged || c.retainedResetBootDischarged(ctx, e, boot, ns)
 	if e.Restoration != nil && e.Restoration.BootID != boot && !bootDischarged {
 		return ErrRuntimeController
 	}

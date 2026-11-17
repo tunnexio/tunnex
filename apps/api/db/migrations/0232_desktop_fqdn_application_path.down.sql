@@ -1,0 +1,10 @@
+LOCK TABLE fqdn_resources,fqdn_gateway_dns_requests,fqdn_resource_answer_generations IN ACCESS EXCLUSIVE MODE;
+DO $$ BEGIN IF EXISTS(SELECT 1 FROM fqdn_resources WHERE application_ipsec_connection_id IS NOT NULL) OR EXISTS(SELECT 1 FROM fqdn_gateway_dns_requests WHERE resolver_kind<>'') OR EXISTS(SELECT 1 FROM fqdn_resource_answer_generations WHERE resolver_kind<>'') THEN RAISE EXCEPTION 'desktop FQDN application history must be retained'; END IF; END $$;
+DROP TRIGGER fqdn_application_generation_kind_before_update ON fqdn_resource_answer_generations;
+DROP FUNCTION fqdn_application_generation_kind_immutable();
+DROP TRIGGER fqdn_application_binding_before_write ON fqdn_resources;
+DROP FUNCTION fqdn_application_binding_guard();
+DROP FUNCTION fqdn_application_ipsec_path_valid(uuid,uuid,uuid,uuid,bigint);
+ALTER TABLE fqdn_resources DROP COLUMN application_ipsec_connection_id,DROP COLUMN application_ipsec_configuration_revision;
+ALTER TABLE fqdn_gateway_dns_requests DROP COLUMN resolver_kind,DROP COLUMN application_desired_revision;
+ALTER TABLE fqdn_resource_answer_generations DROP COLUMN resolver_kind,DROP COLUMN application_desired_revision;

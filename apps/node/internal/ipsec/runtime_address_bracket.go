@@ -3,12 +3,14 @@ package ipsec
 import (
 	"bytes"
 	"encoding/json"
+	"net/netip"
 	"reflect"
 	"time"
 )
 
-// Address lifetimes count down while the independent reads run. Only a bounded
-// positive monotonic countdown may differ; every other captured field is exact.
+// Address lifetimes may count down or a dynamic IPv4 lease may renew while the
+// independent reads run. Only those finite lifetime changes may differ; every
+// other captured field remains exact. These are address lifetimes, not CP permits.
 func runtimeAddressBracket(before, after []byte, elapsed time.Duration) bool {
 	if bytes.Equal(before, after) {
 		return true
@@ -69,7 +71,8 @@ func runtimeAddressBracket(before, after []byte, elapsed time.Duration) bool {
 			if ((validBefore == uint64(^uint32(0)) || validAfter == uint64(^uint32(0))) && !bytes.Equal(xv, yv)) || ((preferredBefore == uint64(^uint32(0)) || preferredAfter == uint64(^uint32(0))) && !bytes.Equal(xp, yp)) {
 				return false
 			}
-			if !runtimeLifetimeCountdown(validBefore, validAfter, maxDrop) || !runtimeLifetimeCountdown(preferredBefore, preferredAfter, maxDrop) {
+			countdown := runtimeLifetimeCountdown(validBefore, validAfter, maxDrop) && runtimeLifetimeCountdown(preferredBefore, preferredAfter, maxDrop)
+			if !countdown && !runtimeIPv4AddressRenewal(x, validBefore, preferredBefore, validAfter, preferredAfter) {
 				return false
 			}
 			changed = true
@@ -90,4 +93,20 @@ func runtimeLifetimeCountdown(before, after, maxDrop uint64) bool {
 		return before == after
 	}
 	return after <= before && before-after <= maxDrop
+}
+
+// A same-address dynamic IPv4 renewal changes only its single finite lifetime.
+// The caller has already compared every other interface and address field and
+// bounded the read window. No route, ownership or permission lease is inferred.
+func runtimeIPv4AddressRenewal(row map[string]json.RawMessage, validBefore, preferredBefore, validAfter, preferredAfter uint64) bool {
+	forever := uint64(^uint32(0))
+	if validBefore == 0 || validBefore >= forever || validAfter >= forever || validAfter <= validBefore || preferredBefore != validBefore || preferredAfter != validAfter {
+		return false
+	}
+	family, familyOK := kernelString(row, "family")
+	scope, scopeOK := kernelString(row, "scope")
+	local, localOK := kernelString(row, "local")
+	address, err := netip.ParseAddr(local)
+	bits, bitsOK := kernelNumber(row["prefixlen"], 6)
+	return familyOK && family == "inet" && scopeOK && scope == "global" && bytes.Equal(row["dynamic"], []byte("true")) && localOK && err == nil && address.Is4() && address.IsGlobalUnicast() && bitsOK && bits > 0 && bits <= 32
 }

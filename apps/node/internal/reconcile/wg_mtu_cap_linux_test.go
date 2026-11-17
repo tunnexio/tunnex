@@ -15,8 +15,9 @@ func TestConfigureGatewayMTUCapUsesNormalOwnerAndReadback(t *testing.T) {
 		cap, requested, physical, want int
 		refuseWrite, wrongReadback     bool
 	}{
-		{name: "default unchanged", requested: 1420, physical: 1500, want: 1420},
+		{name: "uncapped backend", requested: 1420, physical: 1500, want: 1420},
 		{name: "explicit cap", cap: 1380, requested: 1420, physical: 1500, want: 1380},
+		{name: "cap limits jumbo underlay", cap: 1380, requested: 1420, physical: 9001, want: 1380},
 		{name: "minimum cap", cap: 1280, requested: 1420, physical: 1500, want: 1280},
 		{name: "maximum cap", cap: 1420, requested: 1420, physical: 1500, want: 1420},
 		{name: "physical remains stricter", cap: 1380, requested: 1420, physical: 1400, want: 1320},

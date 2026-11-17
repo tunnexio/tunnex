@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/tunnexio/tunnex/apps/api/internal/fqdn"
 )
 
 // GatewayDNSRPCVersion is the version carried by every brokered selected-
@@ -37,21 +38,23 @@ var (
 // RecordTypes deliberately request both independently usable address families
 // and CNAME chain data in one atomic selected-resolver observation.
 type GatewayDNSRequest struct {
-	ResolverIPsecPath     *ResolverIPsecPath `json:"resolver_ipsec_path,omitempty"`
-	Version               uint16             `json:"version"`
-	RequestID             uuid.UUID          `json:"request_id"`
-	OrgID                 uuid.UUID          `json:"org_id"`
-	ResourceID            uuid.UUID          `json:"resource_id"`
-	SiteID                uuid.UUID          `json:"site_id"`
-	GatewayID             uuid.UUID          `json:"gateway_id"`
-	ResolverConfigID      uuid.UUID          `json:"resolver_config_id"`
-	ResolverConfigVersion int64              `json:"resolver_config_version"`
-	ResolverProfileID     uuid.UUID          `json:"resolver_profile_id"`
-	ResolverMatchSuffix   string             `json:"resolver_match_suffix,omitempty"`
-	ResolverEndpoints     []ResolverEndpoint `json:"resolver_endpoints"`
-	Hostname              string             `json:"hostname"`
-	RecordTypes           []RecordType       `json:"record_types"`
-	Deadline              time.Time          `json:"deadline"`
+	ApplicationDesiredRevision int64              `json:"-"`
+	ResolverIPsecPath          *ResolverIPsecPath `json:"resolver_ipsec_path,omitempty"`
+	Version                    uint16             `json:"version"`
+	RequestID                  uuid.UUID          `json:"request_id"`
+	OrgID                      uuid.UUID          `json:"org_id"`
+	ResourceID                 uuid.UUID          `json:"resource_id"`
+	SiteID                     uuid.UUID          `json:"site_id"`
+	GatewayID                  uuid.UUID          `json:"gateway_id"`
+	ResolverConfigID           uuid.UUID          `json:"resolver_config_id"`
+	ResolverConfigVersion      int64              `json:"resolver_config_version"`
+	ResolverProfileID          uuid.UUID          `json:"resolver_profile_id"`
+	ResolverMatchSuffix        string             `json:"resolver_match_suffix,omitempty"`
+	ResolverEndpoints          []ResolverEndpoint `json:"resolver_endpoints"`
+	Hostname                   string             `json:"hostname"`
+	RecordTypes                []RecordType       `json:"record_types"`
+	Deadline                   time.Time          `json:"deadline"`
+	ResolverKind               string             `json:"resolver_kind,omitempty"`
 }
 
 // GatewayDNSResponse must echo every request identity. ObservedAt is generated
@@ -75,6 +78,7 @@ type GatewayDNSResponse struct {
 	Status                Status                 `json:"status"`
 	ErrorCode             GatewayDNSRPCErrorCode `json:"error_code,omitempty"`
 	Records               []GatewayDNSRecord     `json:"records"`
+	ResolverKind          string                 `json:"resolver_kind,omitempty"`
 }
 
 // GatewayDNSRPCErrorCode is the transport-level failure vocabulary mirrored by
@@ -162,7 +166,7 @@ func (t *GatewayDNSRPCTransport) LookupWork(ctx context.Context, w Work) ([]Resp
 		deadline = now.Add(5 * time.Second)
 	}
 	req := GatewayDNSRequest{
-		Version: GatewayDNSRPCVersion, RequestID: t.newRequestID(),
+		Version: GatewayDNSRPCVersion, RequestID: t.newRequestID(), ResolverKind: w.ResolverConfig.ResolverKind, ApplicationDesiredRevision: w.ApplicationDesiredRevision,
 		OrgID: w.OrgID, ResourceID: w.ResourceID, SiteID: site, GatewayID: gateway,
 		ResolverConfigVersion: w.ResolverConfig.Version,
 		ResolverMatchSuffix:   w.ResolverConfig.MatchedSuffix,
@@ -208,10 +212,41 @@ func (t *GatewayDNSRPCTransport) LookupWork(ctx context.Context, w Work) ([]Resp
 	if err != nil {
 		return nil, err
 	}
+	if w.ResolverConfig.ResolverKind == "static_cname" && response.Status == StatusNoError {
+		static, e := lookupStatic(ctx, w)
+		if e != nil || len(static) != 1 {
+			return nil, ErrGatewayDNSRPCMalformed
+		}
+		for _, want := range static[0].Records {
+			if want.Type != TypeCNAME {
+				continue
+			}
+			found := false
+			for _, got := range records {
+				if dnsName(got.Name) == dnsName(want.Name) && got.Type == TypeCNAME && dnsName(got.Target) == dnsName(want.Target) && got.TTL <= want.TTL {
+					found = true
+				}
+			}
+			if !found {
+				return nil, ErrGatewayDNSRPCIdentity
+			}
+		}
+	}
 	return []Response{{Status: response.Status, Records: records}}, nil
 }
 
 func validGatewayDNSResolverConfig(req GatewayDNSRequest) bool {
+	if req.ResolverKind != "" {
+		if req.ResolverKind != "static_cname" || req.ResolverIPsecPath != nil || req.ResolverMatchSuffix == "" || len(req.ResolverEndpoints) == 0 || len(req.ResolverEndpoints) > 3 {
+			return false
+		}
+		for _, e := range req.ResolverEndpoints {
+			if !fqdn.PublicResolverIPv4(e.Address) || e.Port != 53 || (e.Transport != "udp" && e.Transport != "tcp") {
+				return false
+			}
+		}
+	}
+
 	return req.ResolverConfigID != uuid.Nil && req.ResolverProfileID != uuid.Nil && req.ResolverConfigVersion > 0 && ResolverConfig{ID: req.ResolverConfigID.String(), Version: req.ResolverConfigVersion, ProfileID: req.ResolverProfileID.String(), MatchedSuffix: req.ResolverMatchSuffix, Endpoints: req.ResolverEndpoints, IPsecPath: req.ResolverIPsecPath}.valid()
 }
 
@@ -222,7 +257,7 @@ func validateGatewayDNSResponse(req GatewayDNSRequest, response GatewayDNSRespon
 	if response.RequestID != req.RequestID {
 		return nil, fmt.Errorf("%w: request id", ErrGatewayDNSRPCReplay)
 	}
-	if !sameIPsecPath(response.ResolverIPsecPath, req.ResolverIPsecPath) || response.OrgID != req.OrgID || response.ResourceID != req.ResourceID || response.SiteID != req.SiteID || response.GatewayID != req.GatewayID || response.ResolverConfigID != req.ResolverConfigID || response.ResolverConfigVersion != req.ResolverConfigVersion || response.ResolverProfileID != req.ResolverProfileID || dnsName(response.ResolverMatchSuffix) != dnsName(req.ResolverMatchSuffix) || dnsName(response.Hostname) != req.Hostname {
+	if response.ResolverKind != req.ResolverKind || !sameIPsecPath(response.ResolverIPsecPath, req.ResolverIPsecPath) || response.OrgID != req.OrgID || response.ResourceID != req.ResourceID || response.SiteID != req.SiteID || response.GatewayID != req.GatewayID || response.ResolverConfigID != req.ResolverConfigID || response.ResolverConfigVersion != req.ResolverConfigVersion || response.ResolverProfileID != req.ResolverProfileID || dnsName(response.ResolverMatchSuffix) != dnsName(req.ResolverMatchSuffix) || dnsName(response.Hostname) != req.Hostname {
 		return nil, ErrGatewayDNSRPCIdentity
 	}
 	if !sameRecordTypes(req.RecordTypes, response.RecordTypes) {

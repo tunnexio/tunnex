@@ -151,6 +151,14 @@ func startIPsecRuntime(ctx context.Context, client *control.Client, stateDir str
 					}
 				}
 			}
+			// Normal-page commits can also emit a short finite FQDN member. Give
+			// one bounded metadata follow-up the same priority as retained renewal.
+			if controller != nil && validated {
+				bound := &boundIPsecClient{Client: client, org: org, node: node}
+				if control.RefreshIPsecRuntimeFQDNFollowup(ctx, bound, controller) != nil {
+					logger.Warn("ipsec_runtime_fqdn_followup_refused")
+				}
+			}
 			// Ordinary Apply or unchanged maintenance already proved and committed
 			// the complete native guard. Failed, empty and cleanup-only passes still
 			// validate independently; CP loss can never extend existing deadlines.

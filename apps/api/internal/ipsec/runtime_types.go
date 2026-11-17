@@ -15,8 +15,10 @@ type RuntimePrincipal struct {
 	CertificateSerial string
 }
 type RuntimePolicyInput struct {
+	DesktopFQDNVersion                  int `json:"-"`
 	OrgID, NodeID, SiteID, ConnectionID uuid.UUID
 	DesktopTransitVersion               int `json:"-"`
+	DesktopStaticVersion                int `json:"-"`
 	Config                              StaticConfig
 	ConfigurationRevision               int64     `json:"-"`
 	FQDNPolicyVersion                   int       `json:"-"`
@@ -50,6 +52,9 @@ type RuntimeFQDNGrant struct {
 	ResolverMatchSuffix   string `json:"resolver_match_suffix"`
 	ConnectionID          string `json:"connection_id"`
 	ConfigurationRevision int64  `json:"configuration_revision"`
+	DeviceID              string `json:"device_id,omitempty"`
+	PublicKey             string `json:"public_key,omitempty"`
+	ResolverKind          string `json:"resolver_kind,omitempty"`
 }
 
 type RuntimeDNSResolverGrant struct {
@@ -71,7 +76,10 @@ type RuntimeDesktopGrant struct {
 	ExpiresAt *time.Time `json:"expires_at,omitempty"`
 }
 type RuntimePolicy struct {
-	DesktopGrants []RuntimeDesktopGrant `json:"desktop_grants,omitempty"`
+	SelectedDesktopFQDNVersion    int                   `json:"-"`
+	SelectedDesktopTransitVersion int                   `json:"-"`
+	SelectedDesktopStaticVersion  int                   `json:"-"`
+	DesktopGrants                 []RuntimeDesktopGrant `json:"desktop_grants,omitempty"`
 
 	FQDNLeaseDeadline   time.Time                       `json:"-"`
 	SelectedFQDNVersion int                             `json:"-"`
@@ -119,6 +127,7 @@ type RuntimeManifest struct {
 	TransportVersion              *int                              `json:"transport_version,omitempty"`
 	TunnelCount                   *int                              `json:"tunnel_count,omitempty"`
 	RecoveryVersion               *int                              `json:"recovery_version,omitempty"`
+	DesktopStaticVersion          *int                              `json:"desktop_static_version,omitempty"`
 	BGP                           *BGPConfig                        `json:"bgp,omitempty"`
 	BGPVersion                    *int                              `json:"bgp_version,omitempty"`
 	RetainedGuardPredecessors     []RuntimeRetainedGuardPredecessor `json:"retained_guard_predecessors,omitempty"`

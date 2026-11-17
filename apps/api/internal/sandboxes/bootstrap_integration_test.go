@@ -244,15 +244,15 @@ func TestSandboxPeerRosterPostgresWithdrawsWithAdmission(t *testing.T) {
 	}
 }
 
-func TestOrdinaryDevicePostgresRetains1420MTU(t *testing.T) {
+func TestOrdinaryDevicePostgresUsesConservativeFallbackMTU(t *testing.T) {
 	f := newFixture(t)
 	_, public, _ := wgkey.Generate()
 	if _, err := f.pool.Exec(f.ctx, `UPDATE nodes SET endpoint='127.0.0.1:51820',wg_public_key=$2 WHERE id=$1`, f.node, public); err != nil {
 		t.Fatal(err)
 	}
 	result, err := devices.NewService(f.pool, nil, nil).Create(f.ctx, devices.CreateInput{OrgID: f.org, ActorID: f.user, OwnerID: f.user, NodeID: f.node, Name: "ordinary-MTU"})
-	if err != nil || !strings.Contains(result.Config, "MTU = 1420\n") {
-		t.Fatal("ordinary device MTU changed", err)
+	if err != nil || !strings.Contains(result.Config, "MTU = 1380\n") {
+		t.Fatal("ordinary device did not use the conservative MTU fallback", err)
 	}
 	if _, err = devices.NewService(f.pool, nil, nil).Create(f.ctx, devices.CreateInput{OrgID: f.org, ActorID: f.user, OwnerID: f.user, NodeID: f.node, Name: "spoofed-MTU", Kind: "sandbox", PublicKey: public}); err == nil {
 		t.Fatal("unauthenticated sandbox identity admitted")

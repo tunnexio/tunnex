@@ -53,8 +53,16 @@ func (s *ConnectionStore) Material(ctx context.Context, p RuntimePrincipal, id u
 		v := 1
 		manifest.RecoveryVersion = &v
 	}
+	if fresh && manifest.ProfileID == "aws-static-ipv4-v1" && manifest.BGP == nil && manifest.RecoveryVersion != nil && *manifest.RecoveryVersion == 1 && policy.SelectedDesktopStaticVersion == 2 {
+		v := 1
+		manifest.DesktopStaticVersion = &v
+	}
 	if !fresh {
 		manifest.RecoveryVersion = delivery.Manifest.RecoveryVersion
+		manifest.DesktopStaticVersion = delivery.Manifest.DesktopStaticVersion
+	}
+	if !runtimeDesktopStaticCompatible(manifest, policy.SelectedDesktopStaticVersion == 2) {
+		return invalid(ErrConnectionIneligible)
 	}
 	if isAzureProfile(manifest.ProfileID) && !locked.azureEligible || !runtimeRecoveryEligible(manifest, locked.recoveryEligible) || manifest.ProfileID == GCPClassicProfile && !classicManifestCompatible(manifest, locked.gcpClassicEligible) || !runtimeBGPCompatible(manifest, locked.bgpEligible && (manifest.ProfileID != GCPHAProfile || locked.gcpHAEligible) && (!isAzureProfile(manifest.ProfileID) || locked.azureEligible)) {
 		return invalid(ErrConnectionIneligible)
@@ -289,6 +297,9 @@ func (s *ConnectionStore) PermitLease(ctx context.Context, p RuntimePrincipal, i
 	if e != nil {
 		return RuntimeLease{}, e
 	}
+	if !runtimeDesktopStaticCompatible(manifest, policy.SelectedDesktopStaticVersion == 2) {
+		return RuntimeLease{}, ErrConnectionIneligible
+	}
 	// Fence before the independent authoritative clock query. Every subsequent
 	// query/validation/commit duration is charged, never replaced by API wall time.
 	observedMono := time.Now()
@@ -296,7 +307,7 @@ func (s *ConnectionStore) PermitLease(ctx context.Context, p RuntimePrincipal, i
 	if e = tx.QueryRow(ctx, `SELECT clock_timestamp()`).Scan(&observedAt); e != nil {
 		return RuntimeLease{}, createError(e)
 	}
-	policy, expired, e := runtimeFQDNLeaseContinuity(policy, r, RuntimePolicyInput{OrgID: c.OrgID, NodeID: p.NodeID, SiteID: c.HistoricalSiteID, ConnectionID: id, Config: cfg, ConfigurationRevision: 1, FQDNPolicyVersion: policy.SelectedFQDNVersion}, observedAt)
+	policy, expired, e := runtimeFQDNLeaseContinuity(policy, r, RuntimePolicyInput{OrgID: c.OrgID, NodeID: p.NodeID, SiteID: c.HistoricalSiteID, ConnectionID: id, Config: cfg, ConfigurationRevision: 1, FQDNPolicyVersion: policy.SelectedFQDNVersion, DesktopFQDNVersion: policy.SelectedDesktopFQDNVersion, DesktopTransitVersion: policy.SelectedDesktopTransitVersion, DesktopStaticVersion: policy.SelectedDesktopStaticVersion}, observedAt)
 	if e != nil {
 		slog.WarnContext(ctx, "ipsec_permit_lease_conflict", "stage", "policy_hash", "connection_id", id.String())
 		return RuntimeLease{}, e

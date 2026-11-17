@@ -19,6 +19,64 @@ type RuntimeDiagnostic struct {
 }
 
 func validRuntimeDiagnostic(operation, stage string) bool {
+	if operation == "bgp_candidate_guard" {
+		switch stage {
+		case "prior_current", "prior_permit", "process", "peer_summary", "routes", "native_health", "current_after_observation", "context_after_observation", "permit_after_observation", "route_change_native_guard", "route_change_current", "route_change_permit", "route_change_required", "native_guard":
+			return true
+		default:
+			return false
+		}
+	}
+	if operation == "bgp_native_guard" {
+		return stage == "desktop_ownership" || stage == "native_health" || stage == "healthy_tunnel" || stage == "tunnel_mtu"
+	}
+	if operation == "bgp_exact_refresh" {
+		switch stage {
+		case "input", "original_permit", "original_process", "route_reconcile", "reconciled_owner", "reconciled_process_routes", "reconciled_permit", "refresh_scope", "material_fetch", "material_binding", "material_current", "ready_for_retry":
+			return true
+		default:
+			return false
+		}
+	}
+	if operation == "maintenance_report_commit" {
+		switch stage {
+		case "input", "current_set", "candidate", "before", "transport", "policy", "authority", "history", "sequence":
+			return true
+		default:
+			return false
+		}
+	}
+	if operation == "maintenance_report_freshness" {
+		switch stage {
+		case "context", "owner_untracked", "clock_before_collection", "owner_snapshot", "owner_recovery", "report_missing", "report_regressed", "report_binding", "history_binding", "report_future", "other_report_age", "pending_runtime", "pending_binding", "pending_sequence", "pending_sample", "pending_authority", "pending_tunnel", "pending_slot":
+			return true
+		default:
+			return false
+		}
+	}
+	if stage == "permit_fqdn_expiry" {
+		return operation == "heartbeat"
+	}
+	if stage == "combined_guard_fqdn_refresh" {
+		return operation == "install_active"
+	}
+	if stage == "env_local_exports_after" {
+		return operation == "environment_observe"
+	}
+	if stage == "quiesced_transport" {
+		return operation == "bgp_apply"
+	}
+	if operation == "maintenance_bgp_route_change" {
+		return stage == "route_change_reconcile_once" || stage == "route_change_ineligible"
+	}
+	if operation == "maintenance_pending_fqdn" {
+		switch stage {
+		case "pending_owner_contract", "pending_owner_profile", "pending_policy_source", "pending_policy_view", "pending_policy_binding", "pending_grant_binding", "pending_guard_rebuild":
+			return true
+		default:
+			return false
+		}
+	}
 	if operation == "maintenance_eligibility" {
 		switch stage {
 		case "eligibility_active", "eligibility_current", "eligibility_lineage", "eligibility_observe", "eligibility_namespace", "eligibility_phase", "eligibility_contract", "eligibility_entry_current", "eligibility_active_entry", "eligibility_delivery", "eligibility_environment", "eligibility_grants", "eligibility_identity", "eligibility_authority", "eligibility_recovery", "eligibility_bgp", "eligibility_proof":
@@ -30,7 +88,13 @@ func validRuntimeDiagnostic(operation, stage string) bool {
 
 	if operation == "maintenance" {
 		switch stage {
-		case "maintenance_authority", "maintenance_bgp_freshness", "maintenance_bridge_proof", "maintenance_candidate", "maintenance_candidate_authority", "maintenance_combined_guard", "maintenance_eligibility", "maintenance_eligibility_proof", "maintenance_final_binding", "maintenance_fresh_authority", "maintenance_input", "maintenance_journal", "maintenance_retained_bgp_reconcile", "maintenance_lease", "maintenance_lease_delivery", "maintenance_lease_revision", "maintenance_lease_policy", "maintenance_lease_nonce", "maintenance_lease_ttl", "maintenance_lease_active", "maintenance_lease_request", "maintenance_lease_parse", "maintenance_lease_transport_deadline", "maintenance_lease_transport_cancel", "maintenance_lease_transport_other", "maintenance_lease_http_400", "maintenance_lease_http_401", "maintenance_lease_http_403", "maintenance_lease_http_404", "maintenance_lease_http_409", "maintenance_lease_http_409_ineligible", "maintenance_lease_http_409_conflict", "maintenance_lease_http_429", "maintenance_lease_http_5xx", "maintenance_lease_http_other", "maintenance_material", "maintenance_material_current", "maintenance_material_withdraw", "maintenance_namespace", "maintenance_publish", "maintenance_publish_binding", "maintenance_report_contract", "maintenance_startup_gate", "maintenance_status":
+		case "maintenance_committed_report_transfer", "maintenance_committed_reports":
+			return true
+		case "maintenance_prepare", "maintenance_prepare_count", "maintenance_priority_owner", "maintenance_priority_journal_binding", "maintenance_priority_journal_process", "maintenance_priority_journal_routes", "maintenance_priority_journal_recovery", "maintenance_priority_journal_count", "maintenance_priority_fqdn_current":
+			return true
+		case "maintenance_pending_fqdn_withdraw":
+			return true
+		case "maintenance_fqdn_retraction_after_replace", "maintenance_fqdn_retraction", "maintenance_desktop_nat_pending", "maintenance_fqdn_cutoff_refresh", "maintenance_desktop_observe", "maintenance_fqdn_expiry_material", "maintenance_fqdn_expiry_lease", "maintenance_authority", "maintenance_bgp_freshness", "maintenance_bridge_proof", "maintenance_candidate", "maintenance_candidate_authority", "maintenance_combined_guard", "maintenance_eligibility", "maintenance_eligibility_proof", "maintenance_final_binding", "maintenance_fresh_authority", "maintenance_input", "maintenance_journal", "maintenance_retained_bgp_reconcile", "maintenance_lease", "maintenance_lease_delivery", "maintenance_lease_revision", "maintenance_lease_policy", "maintenance_lease_nonce", "maintenance_lease_ttl", "maintenance_lease_active", "maintenance_lease_request", "maintenance_lease_parse", "maintenance_lease_transport_deadline", "maintenance_lease_transport_cancel", "maintenance_lease_transport_other", "maintenance_lease_http_400", "maintenance_lease_http_401", "maintenance_lease_http_403", "maintenance_lease_http_404", "maintenance_lease_http_409", "maintenance_lease_http_409_ineligible", "maintenance_lease_http_409_conflict", "maintenance_lease_http_429", "maintenance_lease_http_5xx", "maintenance_lease_http_other", "maintenance_material", "maintenance_material_current", "maintenance_material_withdraw", "maintenance_namespace", "maintenance_publish", "maintenance_publish_binding", "maintenance_report_contract", "maintenance_startup_gate", "maintenance_status":
 			return true
 		default:
 			return false
@@ -38,7 +102,7 @@ func validRuntimeDiagnostic(operation, stage string) bool {
 	}
 	if operation == "maintenance_current" {
 		switch stage {
-		case "maintenance_current_authority_after", "maintenance_current_authority_before", "maintenance_current_bgp_binding", "maintenance_current_bgp_health", "maintenance_current_bgp_process", "maintenance_current_bgp_qualification", "maintenance_current_bgp_routes", "maintenance_current_bgp_status", "maintenance_current_final_qualification", "maintenance_current_guard", "maintenance_current_native":
+		case "maintenance_current_authority_after", "maintenance_current_authority_before", "maintenance_current_bgp_binding", "maintenance_current_bgp_process_after", "maintenance_current_bgp_qualification_after", "maintenance_current_bgp_route_changed", "maintenance_current_bgp_health", "maintenance_current_bgp_process", "maintenance_current_bgp_qualification", "maintenance_current_bgp_routes", "maintenance_current_bgp_status", "maintenance_current_final_qualification", "maintenance_current_guard", "maintenance_current_native":
 			return true
 		default:
 			return false
@@ -57,8 +121,11 @@ func validRuntimeDiagnostic(operation, stage string) bool {
 	default:
 		return false
 	}
+	if stage == "guard_docker_forward" || stage == "guard_docker_readback" || stage == "guard_legacy_refusal_fence" {
+		return operation == "guard_replace"
+	}
 	switch stage {
-	case "history", "history_entry", "history_epoch", "history_selection", "history_clock", "clock", "sample", "report_binding", "publish", "prior_reserve", "remember", "maintenance_qualification", "maintenance_candidate_qualification", "maintenance_candidate_report_reserve", "combined_guard_candidate_qualification", "combined_guard_final_prior_reserve", "combined_guard_prior_binding", "combined_guard_prior_reserve", "combined_guard_required_binding", "maintenance_active_pulse", "maintenance_authority_factory", "maintenance_begin", "maintenance_bgp_native_status", "maintenance_bgp_process", "maintenance_bgp_qualification", "maintenance_bgp_ready", "maintenance_bgp_routes", "maintenance_bgp_status", "maintenance_bgp_target", "maintenance_candidate_after_publish", "maintenance_candidate_binding", "maintenance_candidate_final", "maintenance_candidate_reserve", "maintenance_captured_owner", "maintenance_combined_install", "maintenance_current_after_fresh", "maintenance_current_before_fresh", "maintenance_exact_owner", "maintenance_final_context", "maintenance_final_prior_reserve", "maintenance_fresh_lease", "maintenance_journal_lineage", "maintenance_lease_accept", "maintenance_lease_binding", "maintenance_native_guard", "maintenance_native_proof", "maintenance_prior_reserve", "maintenance_publish", "maintenance_static_ready", "maintenance_status", "native_context_final", "native_daemon_alive", "native_environment_equal", "native_environment_observe", "native_inventory_after", "native_inventory_before", "native_kernel_after_equal", "native_kernel_after_read", "native_kernel_before_namespace", "native_kernel_before_read", "native_kernel_reader", "native_vici_after", "native_vici_before", "native_xfrm_after_equal", "native_xfrm_after_read", "native_xfrm_before_namespace", "native_xfrm_before_read", "native_xfrm_reader", "recovery_preparation", "transport_remove", "guard_fallback", "observation_window", "recovery_advice", "recovery_hold", "pending_target_observation", "route_selection", "active_install", "standby_retry", "inactive_history_inventory", "inactive_no_due_history", "inactive_no_denied_candidate", "prepared_binding", "input", "qualification", "material_contract", "journal_inventory", "startup_gate", "delivery_lineage", "environment", "journal_continuity", "bgp_apply", "static_apply", "bgp_qualification", "bgp_reconcile", "combined_guard", "permit_lease", "restored_transport", "transport_stage", "transport_initiate", "transport_retry", "native_current_proof", "journal_commit", "underlay_mtu", "active_continuity", "session_cleanup", "session_start", "route_initialization", "authority_binding", "remaining_authority", "native_status", "guard_denial_read", "native_current_proof_and_guard", "final_binding", "journal_sequence", "entry_current_proof", "entry_lease_remaining", "guard_projection", "entry_bgp_observation", "entry_static_observation", "entry_tunnel_mtu", "combined_guard_context", "combined_guard_authority", "entry_dns_source", "combined_guard_qualification", "entry_bgp_process", "combined_guard_replace", "combined_guard_final_binding", "combined_guard_final_lease", "guard_render", "guard_namespace", "guard_interfaces", "guard_table_read", "guard_prior_ownership", "guard_source_bracket", "guard_resolve_journal", "guard_prepare_journal", "guard_atomic_replace", "guard_complete_readback", "guard_finish_journal", "permit_freshness", "peer_summary_observation", "route_observation", "transport_status", "route_journal_binding", "route_guard_withdrawal", "route_commit_readback", "final_permit", "dns_input", "dns_endpoint", "dns_binding", "dns_owner", "dns_authority", "dns_grant", "dns_original_lease", "dns_native_proof", "dns_route_slot", "dns_guard", "dns_source_before", "dns_route", "dns_source_after", "dns_current_lease", "dns_epoch", "dns_latest_guard", "dns_before_proof", "dns_socket", "dns_socket_udp", "dns_socket_tcp", "dns_guard_template", "dns_guard_required", "dns_guard_full_read", "dns_guard_superseded_verified", "dns_guard_current_refused", "dns_after_proof", "dns_after_binding", "dns_latest_guard_stability", "dns_latest_guard_template", "dns_latest_guard_required", "dns_latest_guard_full_read", "dns_socket_tcp_input", "dns_socket_tcp_dial", "dns_socket_tcp_write", "dns_socket_tcp_length", "dns_socket_tcp_body", "dns_socket_tcp_complete", "dns_proof_before", "dns_proof_after", "dns_after_proof_refused", "dns_after_binding_refused", "dns_after_context_refused", "env_snapshot_before", "env_snapshot_after", "env_input", "env_namespace_before", "env_material", "env_hooks_before", "env_rules_before", "env_links_before", "env_routes_before", "env_addresses_before", "env_local_coverage", "env_peer_routes_before", "env_links_after", "env_rules_after", "env_hooks_after", "env_routes_after", "env_addresses_after", "env_peer_routes_after", "env_namespace_after", "env_complete", "proof_readers", "proof_xfrm_before", "proof_daemon_before", "proof_kernel_before", "proof_inventory_before", "proof_environment_observe", "proof_environment_binding", "proof_xfrm_after", "proof_daemon_after", "proof_kernel_after", "proof_complete", "proof_bgp_journal", "proof_bgp_routes", "proof_bgp_status", "proof_bgp_any_up", "mtu_dependencies", "mtu_environment_observe", "mtu_environment_binding", "mtu_kernel_snapshot", "mtu_owned_ceiling", "mtu_unchanged", "mtu_lowering", "mtu_final_environment_observe", "mtu_final_environment_binding", "mtu_lowered", "material_entry", "material_fqdn_withdraw", "material_fqdn_current", "material_bgp_qualification", "journal_handoff_refused", "journal_save_refused", "journal_boot_refused", "journal_restoration_refused", "journal_cleanup_phase_refused", "journal_retained_phase_refused", "journal_mismatch_lineage", "journal_mismatch_contract", "journal_mismatch_cleanup", "journal_mismatch_allocation", "journal_mismatch_engines", "journal_mismatch_history", "journal_mismatch_other", "cleanup_validation", "cleanup_journal_read", "cleanup_lineage", "cleanup_journal_commit", "cleanup_covered_lineage", "cleanup_install_active", "cleanup_environment", "cleanup_reset_receipt", "cleanup_prove_reset_absent", "cleanup_prove_absent", "cleanup_bgp_duties", "cleanup_remove_tunnel", "cleanup_kernel_remove", "cleanup_environment_drain", "cleanup_retained_guard_commit":
+	case "combined_guard_fqdn_retraction_after_replace", "combined_guard_final_required_binding", "combined_guard_fqdn_retraction", "combined_guard_fqdn_cutoff", "history", "history_entry", "history_epoch", "history_selection", "history_clock", "clock", "sample", "report_binding", "publish", "prior_reserve", "remember", "maintenance_qualification", "maintenance_candidate_qualification", "maintenance_candidate_report_reserve", "combined_guard_candidate_qualification", "combined_guard_final_prior_reserve", "combined_guard_prior_binding", "combined_guard_prior_reserve", "combined_guard_required_binding", "maintenance_active_pulse", "maintenance_authority_factory", "maintenance_begin", "maintenance_bgp_native_status", "maintenance_bgp_process", "maintenance_bgp_qualification", "maintenance_bgp_ready", "maintenance_bgp_routes", "maintenance_bgp_status", "maintenance_bgp_target", "maintenance_candidate_after_publish", "maintenance_candidate_binding", "maintenance_candidate_final", "maintenance_candidate_reserve", "maintenance_captured_owner", "maintenance_combined_install", "maintenance_current_after_fresh", "maintenance_current_before_fresh", "maintenance_exact_owner", "maintenance_final_context", "maintenance_final_prior_reserve", "maintenance_fresh_lease", "maintenance_journal_lineage", "maintenance_lease_accept", "maintenance_lease_binding", "maintenance_native_guard", "maintenance_native_proof", "maintenance_prior_reserve", "maintenance_publish", "maintenance_static_ready", "maintenance_status", "native_context_final", "native_daemon_alive", "native_environment_equal", "native_environment_observe", "native_inventory_after", "native_inventory_before", "native_kernel_after_equal", "native_kernel_after_read", "native_kernel_before_namespace", "native_kernel_before_read", "native_kernel_reader", "native_vici_after", "native_vici_before", "native_xfrm_after_equal", "native_xfrm_after_read", "native_xfrm_before_namespace", "native_xfrm_before_read", "native_xfrm_reader", "recovery_preparation", "transport_remove", "guard_fallback", "observation_window", "recovery_advice", "recovery_hold", "pending_target_observation", "route_selection", "active_install", "standby_retry", "inactive_history_inventory", "inactive_no_due_history", "inactive_no_denied_candidate", "prepared_binding", "input", "qualification", "material_contract", "journal_inventory", "startup_gate", "delivery_lineage", "environment", "journal_continuity", "bgp_apply", "static_apply", "bgp_qualification", "bgp_reconcile", "combined_guard", "permit_lease", "restored_transport", "transport_stage", "transport_initiate", "transport_retry", "native_current_proof", "journal_commit", "underlay_mtu", "active_continuity", "session_cleanup", "session_start", "route_initialization", "authority_binding", "remaining_authority", "native_status", "guard_denial_read", "native_current_proof_and_guard", "final_binding", "journal_sequence", "entry_current_proof", "entry_lease_remaining", "guard_projection", "entry_bgp_observation", "entry_static_observation", "entry_tunnel_mtu", "combined_guard_context", "combined_guard_authority", "entry_dns_source", "combined_guard_qualification", "entry_bgp_process", "combined_guard_replace", "combined_guard_final_binding", "combined_guard_final_lease", "guard_render", "guard_namespace", "guard_interfaces", "guard_table_read", "guard_prior_ownership", "guard_source_bracket", "guard_resolve_journal", "guard_prepare_journal", "guard_atomic_replace", "guard_complete_readback", "guard_finish_journal", "permit_freshness", "peer_summary_observation", "route_observation", "transport_status", "route_journal_binding", "route_guard_withdrawal", "route_guard_continuity", "route_commit_readback", "final_permit", "dns_input", "dns_endpoint", "dns_binding", "dns_owner", "dns_authority", "dns_grant", "dns_original_lease", "dns_native_proof", "dns_route_slot", "dns_guard", "dns_source_before", "dns_route", "dns_source_after", "dns_current_lease", "dns_epoch", "dns_latest_guard", "dns_before_proof", "dns_socket", "dns_socket_udp", "dns_socket_tcp", "dns_guard_template", "dns_guard_required", "dns_guard_full_read", "dns_guard_superseded_verified", "dns_guard_current_refused", "dns_after_proof", "dns_after_binding", "dns_latest_guard_stability", "dns_latest_guard_template", "dns_latest_guard_required", "dns_latest_guard_full_read", "dns_socket_tcp_input", "dns_socket_tcp_dial", "dns_socket_tcp_write", "dns_socket_tcp_length", "dns_socket_tcp_body", "dns_socket_tcp_complete", "dns_proof_before", "dns_proof_after", "dns_after_proof_refused", "dns_after_binding_refused", "dns_after_context_refused", "env_snapshot_before", "env_snapshot_after", "env_input", "env_namespace_before", "env_material", "env_hooks_before", "env_rules_before", "env_links_before", "env_routes_before", "env_addresses_before", "env_local_coverage", "env_peer_routes_before", "env_links_after", "env_rules_after", "env_hooks_after", "env_routes_after", "env_addresses_after", "env_peer_routes_after", "env_namespace_after", "env_complete", "proof_readers", "proof_xfrm_before", "proof_daemon_before", "proof_kernel_before", "proof_inventory_before", "proof_environment_observe", "proof_environment_binding", "proof_xfrm_after", "proof_daemon_after", "proof_kernel_after", "proof_complete", "proof_bgp_journal", "proof_bgp_routes", "proof_bgp_status", "proof_bgp_any_up", "mtu_dependencies", "mtu_environment_observe", "mtu_environment_binding", "mtu_kernel_snapshot", "mtu_owned_ceiling", "mtu_unchanged", "mtu_lowering", "mtu_final_environment_observe", "mtu_final_environment_binding", "mtu_lowered", "material_entry", "material_desktop_observe", "material_fqdn_withdraw", "material_fqdn_current", "material_bgp_qualification", "journal_handoff_refused", "journal_save_refused", "journal_boot_refused", "journal_restoration_refused", "journal_cleanup_phase_refused", "journal_retained_phase_refused", "journal_mismatch_lineage", "journal_mismatch_contract", "journal_mismatch_cleanup", "journal_mismatch_allocation", "journal_mismatch_engines", "journal_mismatch_history", "journal_mismatch_other", "cleanup_validation", "cleanup_journal_read", "cleanup_lineage", "cleanup_journal_commit", "cleanup_covered_lineage", "cleanup_install_active", "cleanup_environment", "cleanup_reset_receipt", "cleanup_prove_reset_absent", "cleanup_prove_absent", "cleanup_bgp_duties", "cleanup_remove_tunnel", "cleanup_kernel_remove", "cleanup_environment_drain", "cleanup_retained_guard_commit":
 		return true
 	}
 	return false
@@ -138,7 +205,7 @@ func (c *RuntimeController) emitDNSRuntimeDiagnostic(ctx context.Context, operat
 
 // This private telemetry can never contain an error body or DNS data.
 func validDNSReadTiming(t runtimeDNSReadTiming) bool {
-	if t.Native.Environment.CommandMillis < 0 || t.Native.Environment.CommandMillis > 60000 || t.Native.Environment.VerificationMillis < 0 || t.Native.Environment.VerificationMillis > 60000 || t.Native.Environment.CommandCount < 0 || t.Native.Environment.CommandCount > 18 {
+	if t.Native.Environment.CommandMillis < 0 || t.Native.Environment.CommandMillis > 60000 || t.Native.Environment.VerificationMillis < 0 || t.Native.Environment.VerificationMillis > 60000 || t.Native.Environment.CommandCount < 0 || t.Native.Environment.CommandCount > runtimeEnvironmentCommandCeiling {
 		return false
 	}
 	for _, value := range []int64{t.Native.RouteMillis, t.Native.RecoveryMillis, t.Native.EnvironmentMillis, t.Native.ElapsedMillis, t.Native.RemainingAtEntryMillis} {
