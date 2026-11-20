@@ -343,6 +343,11 @@ export interface Node {
   tone?: LinkTone;
   /** Why there is no link, or what is wrong with it. Rendered verbatim; never inferred from the tone. */
   note?: string;
+  /**
+   * SSI-11: an HA member the failover controller has passed over. It is NOT a healthy standby waiting its
+   * turn, and drawing it as one ("STANDBY", neutral ring) told the operator the pair was intact.
+   */
+  demoted?: boolean;
 }
 
 /**
@@ -405,7 +410,10 @@ export function nodeLinkLayout(nodes: Node[], targetAspect?: number): NodeLinkLa
   if (hubs.length === 1) {
     positions.set(hubs[0]!.id, { ...center, id: hubs[0]!.id, r: 34 });
   } else if (hubs.length > 1) {
-    const columns = hubs.length <= 2 ? 2 : Math.min(3, hubs.length);
+    // SSI-11: a PAIR stacks vertically (primary above its standby) so the Sites can sit left and right of
+    // it. Side by side, the pair pushed two Sites to the top and bottom: a tall, narrow figure that a wide
+    // panel scaled down to a thumbnail, and a primary link that had to route around the standby.
+    const columns = hubs.length === 2 ? 1 : Math.min(3, hubs.length);
     const rows = Math.ceil(hubs.length / columns);
     const gapX = 120;
     const gapY = 104;
@@ -428,7 +436,9 @@ export function nodeLinkLayout(nodes: Node[], targetAspect?: number): NodeLinkLa
     const rx = hubs.length > 1 ? 236 : k <= 1 ? 155 : k === 2 ? 185 : 200;
     const ry = hubs.length > 1 ? 155 : k <= 2 ? 0 : 105;
     spokes.forEach((spoke, i) => {
-      const a = k === 1 ? 0 : (i / k) * Math.PI * 2 - Math.PI / 2;
+      // Two Sites around an HA pair go LEFT and RIGHT (see the pair note above); every other count keeps
+      // the ring that starts at twelve o'clock.
+      const a = k === 1 ? 0 : k === 2 && hubs.length === 2 ? Math.PI + i * Math.PI : (i / k) * Math.PI * 2 - Math.PI / 2;
       const value = typeof spoke.value === "number" ? Math.max(0, spoke.value) : 0;
       positions.set(spoke.id, {
         id: spoke.id,
@@ -819,9 +829,9 @@ export function NodeLink({
           // faking a spread would be drawing a distribution we do not have.
           const r = p.r;
           const dim = selectedId && !isSel ? 0.3 : 1;
-          const state = n.tone ?? n.note ?? "no link";
+          const state = n.demoted ? "demoted" : n.tone ?? n.note ?? "no link";
           const visibleLabel = nodeLinkVisibleLabel(n.label);
-          const visibleSub = n.sub ? nodeLinkVisibleLabel(n.sub, 24) : undefined;
+          const visibleSub = n.sub ? nodeLinkVisibleLabel(n.sub, 34) : undefined;
           return (
             // ⛔ SELECTION LIVES ON THE NODE, and it is still keyboard-operable.
             //
@@ -886,8 +896,9 @@ export function NodeLink({
                   isHub ? "#1F1F1F" : n.tone ? NODE_FILL[n.tone] : "#171717"
                 }
                 stroke={
-                  isHub ? "#C9C9C4" : n.tone ? NODE_RING[n.tone] : "#3A3A3A"
+                  n.demoted ? NODE_RING.down : isHub ? "#C9C9C4" : n.tone ? NODE_RING[n.tone] : "#3A3A3A"
                 }
+                strokeDasharray={n.demoted ? "4 4" : undefined}
                 strokeWidth="1.6"
               />
               {/* The status dot at upper-right, coloured by the node's own worst link. Carried in the list
@@ -896,7 +907,7 @@ export function NodeLink({
                 cx={p.x + r * 0.66}
                 cy={p.y - r * 0.66}
                 r={4}
-                fill={n.tone ? NODE_DOT[n.tone] : "#5E5E5B"}
+                fill={n.demoted ? NODE_DOT.down : n.tone ? NODE_DOT[n.tone] : "#5E5E5B"}
                 stroke="var(--tnx-bg)"
                 strokeWidth="1.5"
               />
@@ -912,7 +923,7 @@ export function NodeLink({
                 {n.kind === "hub"
                   ? "PRIMARY"
                   : n.kind === "hub-standby"
-                    ? "STANDBY"
+                    ? n.demoted ? "DEMOTED" : "STANDBY"
                     : (n.value ?? "")}
               </text>
               <text

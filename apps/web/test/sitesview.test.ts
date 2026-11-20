@@ -391,6 +391,31 @@ describe("meshFrom — the sparse cases the wireframe never draws", () => {
     expect(m.links.filter((l) => !l.standby).map((l) => l.to).sort()).toEqual(["a", "b"]);
   });
 
+  it("SSI-11: after a failover the passed-over configured primary reads DEMOTED, not as a healthy standby", () => {
+    const a = { id: "p", name: "gw-1", status: "active" } as never;
+    const b = { id: "s", name: "gw-2", status: "active" } as never;
+    const m = meshFrom(
+      [mkCard("a", "hq-lan", [a, b])],
+      [{ id: "p", name: "gw-1", status: "active" } as Node, { id: "s", name: "gw-2", status: "active" } as Node],
+      // served order = ACTIVE order: gw-2 (pin 2) acts as primary, gw-1 (pin 1) was passed over
+      { generation: 3, members: [{ node_id: "s", role: "primary", hub_priority: 2 }, { node_id: "p", role: "standby", hub_priority: 1 }] },
+    );
+    const passedOver = m.nodes.find((n) => n.id === "__hub:p")!;
+    expect(passedOver.demoted).toBe(true);
+    expect(passedOver.sub).toBe("configured primary · demoted");
+    expect(m.nodes.find((n) => n.id === "__hub")!.label).toBe("gw-2");
+    expect(m.links.find((l) => l.standby)!.note).toBe("configured primary, demoted");
+  });
+
+  it("SSI-11: an intact pair has NO demoted member", () => {
+    const m = meshFrom(
+      [mkCard("a", "hq-lan", [{ id: "p", name: "gw-1", status: "active" } as never, { id: "s", name: "gw-2", status: "active" } as never])],
+      [{ id: "p", name: "gw-1", status: "active" } as Node, { id: "s", name: "gw-2", status: "active" } as Node],
+      { generation: 1, members: [{ node_id: "p", role: "primary", hub_priority: 1 }, { node_id: "s", role: "standby", hub_priority: 2 }] },
+    );
+    expect(m.nodes.some((n) => n.demoted)).toBe(false);
+  });
+
   it("SSI-11: a standby bound to no network gets no line (nothing to stand by for)", () => {
     const m = meshFrom(
       [mkCard("a", "hq-lan", [{ id: "p", name: "gw-1", status: "active" } as never])],
