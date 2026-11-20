@@ -2,8 +2,10 @@
 
 Epic: [EPIC-site-to-site-improvements.md](EPIC-site-to-site-improvements.md). Finding F2.
 
-Status: **HELD for Founder ruling. No product code.** A fork surfaced before the build; per the
-story protocol it is not resolved unilaterally.
+Status: **RULED 2026-11-20: option A now, option B next.** A fork surfaced before the build and was
+put to the Founder with the three options below; the recommendation was chosen. SSI-4 builds A.
+B is registered as **SSI-4b**, to start after SSI-8. C is rejected: it would turn enforcement on
+without an opt-in.
 
 ## The fork
 
