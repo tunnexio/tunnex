@@ -558,7 +558,7 @@ export default function Sites() {
         </div>
       )}
       {view === "body" && raw == null && (
-        <div className="s2s-network-state"><Loading label="Loading Sites…" /></div>
+        <div className="s2s-network-state"><Loading label="Loading networks…" /></div>
       )}
 
       {adding && org && gate.canManage && <ConnectionChooser
