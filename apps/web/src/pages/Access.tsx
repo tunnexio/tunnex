@@ -2460,8 +2460,10 @@ function RuleFormModal({
             form's job is that the operator cannot be SURPRISED by their own rule. */}
         {(() => {
           const srcLabel = sourceLabel || "Source unavailable";
-          const dstLabel = destinationLabel || "Destination unavailable";
-          if (!reviewable) return <div data-testid="rule-effect" className="rule-builder-preview"><span className="rule-preview-label">Access path</span><div className="rule-preview-path"><strong>{srcLabel}</strong><span aria-hidden="true">→</span><strong>{dstLabel}</strong></div><p role="status">Scope not reported. Choose a current source and destination before reviewing this rule.</p></div>;
+          // SSI-3: an unchosen destination is not a vanished one. "Unavailable" is kept for a rule whose
+          // saved destination no longer exists; a new rule that has none yet asks for one.
+          const dstLabel = destinationLabel || (destinationValue ? "Destination unavailable" : "Choose a destination");
+          if (!reviewable) return <div data-testid="rule-effect" className="rule-builder-preview"><span className="rule-preview-label">Access path</span><div className="rule-preview-path"><strong>{srcLabel}</strong><span aria-hidden="true">→</span><strong>{dstLabel}</strong></div><p role="status">{destinationValue || !sourceLabel ? "Scope not reported. Choose a current source and destination before reviewing this rule." : "Choose a destination to see what this rule allows."}</p></div>;
           const eff = ruleEffectSummary({
             srcKind,
             srcLabel,
