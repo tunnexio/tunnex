@@ -281,7 +281,7 @@ func (s *Service) failoverOrg(ctx context.Context, orgID uuid.UUID, now time.Tim
 		// for its Step; the site-link health surface reads the SAME function's output for the badge — no
 		// second freshness computation exists (the grep-red). A member with no living witness (!Observed)
 		// is absent from `freshness` → Step HOLDS (no verdict on silence).
-		liveness := deriveMemberLiveness(configured, pubkey, rows, current.Demoted, now)
+		liveness := deriveMemberLiveness(configured, pubkey, witnessRows(rows, gws), current.Demoted, now)
 		freshness = make(map[uuid.UUID]bool, len(configured))
 		ages = make(map[uuid.UUID]time.Duration, len(configured))
 		for _, id := range configured {

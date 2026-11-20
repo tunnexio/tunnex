@@ -1682,6 +1682,27 @@ type MemberLiveness struct {
 	Demoted  bool          // the failover controller has failed-over-PAST this member (in the demoted set)
 }
 
+// witnessRows keeps only the testimony of gateways that are witnesses NOW: bound to a network, so they
+// actually peer with the hubs (SSI-12). When a network is deleted or its gateway unbound, that gateway stops
+// reporting the hub and its last row freezes exactly as a dead hub's would. The box-walk deleted the only
+// other network and BOTH hubs were demoted within two minutes, with nobody left to restore them. A gateway
+// that no longer peers with a hub has nothing to say about it.
+func witnessRows(rows []sqlc.NodePeerStatus, gws []sqlc.ListSiteGatewaysForOrgRow) []sqlc.NodePeerStatus {
+	bound := make(map[uuid.UUID]bool, len(gws))
+	for i := range gws {
+		if gws[i].SiteID.Valid {
+			bound[gws[i].ID] = true
+		}
+	}
+	out := make([]sqlc.NodePeerStatus, 0, len(rows))
+	for _, r := range rows {
+		if bound[r.NodeID] {
+			out = append(out, r)
+		}
+	}
+	return out
+}
+
 // deriveMemberLiveness is THE ONE liveness derivation (WF-B D-WFB-1). Pure + clockless (now passed
 // in). GREP-RED (docs/WF-B-site-link-badge-decisions.md): no site-link freshness computation
 // (`now.Sub(…LastHandshakeAt) < failoverStaleWindow`) exists ANYWHERE outside this function — the
@@ -1812,7 +1833,7 @@ func (s *Service) GetHubSetView(ctx context.Context, orgID uuid.UUID) (HubSetVie
 		}
 	}
 	view := HubSetView{Generation: hs.Generation, Members: make([]HubMemberView, 0, len(active)), Timing: FailoverTimings()}
-	live := deriveMemberLiveness(active, keyByNode, rows, hs.Demoted, time.Now())
+	live := deriveMemberLiveness(active, keyByNode, witnessRows(rows, gws), hs.Demoted, time.Now())
 	for i, mid := range active {
 		mv := HubMemberView{NodeID: mid, Role: "standby", HubPriority: prioByNode[mid], Liveness: "unobserved"}
 		if ml := live[mid]; ml.Observed {
@@ -2807,7 +2828,7 @@ func (s *Service) fillSiteLinkVerdict(ctx context.Context, orgID uuid.UUID, b *S
 	if err != nil {
 		return // can't read the substrate → no verdict (never a false headline)
 	}
-	live := deriveMemberLiveness(members, pubkey, rows, demoted, now)
+	live := deriveMemberLiveness(members, pubkey, witnessRows(rows, b.topo.gws), demoted, now)
 	b.siteLinkHeadlineDown, b.demotedDeadPeer = siteLinkVerdictFrom(members, activePrimary, live)
 	// WF-C L2: surface the FULL per-member liveness from THE SAME map (no recompute) — the zombie-hub kind
 	// reads wire freshness AND the handshake age (for the WF-C-L2-1 settle) from it.
