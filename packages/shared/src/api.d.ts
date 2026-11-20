@@ -11348,8 +11348,18 @@ export interface components {
              * @description The set's version tag (S8.6 D5) — bumps on every membership/order change (a promotion event).
              */
             generation: number;
+            failover: components["schemas"]["HubFailoverTiming"];
             /** @description The ORDERED active hub set: members[0] = the acting primary, the rest = standbys. */
             members: components["schemas"]["HubMember"][];
+        };
+        /** @description SSI-11: the failover controller's own timings, so a client never keeps a second staleness clock. */
+        HubFailoverTiming: {
+            /** @description An observed handshake older than this counts as stale. */
+            stale_after_seconds: number;
+            /** @description How long a hub must stay stale before a standby is promoted past it. */
+            demote_after_seconds: number;
+            /** @description How long a demoted hub must stay fresh before it returns to its configured place. */
+            restore_after_seconds: number;
         };
         HubMember: {
             /** Format: uuid */

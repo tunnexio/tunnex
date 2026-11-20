@@ -49,6 +49,23 @@ const (
 	failoverStaleWindow = 240 * time.Second
 )
 
+// FailoverTiming is the controller's timing AS SERVED (SSI-11 D1). The dashboard used to keep its own 90s
+// staleness constant and called living hubs stale on every rekey cycle; it now reads these. Whole seconds.
+type FailoverTiming struct {
+	StaleAfterSeconds   int // failoverStaleWindow
+	DemoteAfterSeconds  int // failoverDemoteTicks consecutive stale ticks
+	RestoreAfterSeconds int // failoverRestoreTicks consecutive fresh ticks
+}
+
+// FailoverTimings derives the served timing from THE constants above — never a second set of numbers.
+func FailoverTimings() FailoverTiming {
+	return FailoverTiming{
+		StaleAfterSeconds:   int(failoverStaleWindow / time.Second),
+		DemoteAfterSeconds:  failoverDemoteTicks * int(FailoverTickInterval/time.Second),
+		RestoreAfterSeconds: failoverRestoreTicks * int(FailoverTickInterval/time.Second),
+	}
+}
+
 // The hub-set audit actions (S8.6 REDUCE #2, landing a — NAMED constants via the standard audit() path, the
 // closest to "typed" available since the product has no audit-action registry; a real typed registry + lint
 // is deferred to its own story). The promotion/failback kinds are the record of ACTIVE-ORDER transitions

@@ -5853,6 +5853,18 @@ type HostUpgradeStatus struct {
 // HostUpgradeStatusState defines model for HostUpgradeStatus.State.
 type HostUpgradeStatusState string
 
+// HubFailoverTiming SSI-11: the failover controller's own timings, so a client never keeps a second staleness clock.
+type HubFailoverTiming struct {
+	// DemoteAfterSeconds How long a hub must stay stale before a standby is promoted past it.
+	DemoteAfterSeconds int `json:"demote_after_seconds"`
+
+	// RestoreAfterSeconds How long a demoted hub must stay fresh before it returns to its configured place.
+	RestoreAfterSeconds int `json:"restore_after_seconds"`
+
+	// StaleAfterSeconds An observed handshake older than this counts as stale.
+	StaleAfterSeconds int `json:"stale_after_seconds"`
+}
+
 // HubMember defines model for HubMember.
 type HubMember struct {
 	// HubPriority The admin pin (the CONFIGURED order) — so the UI can show a promotion 'in effect' when the active order diverges. Null = unpinned.
@@ -5884,6 +5896,9 @@ type HubPriorityRequest struct {
 
 // HubSet defines model for HubSet.
 type HubSet struct {
+	// Failover SSI-11: the failover controller's own timings, so a client never keeps a second staleness clock.
+	Failover HubFailoverTiming `json:"failover"`
+
 	// Generation The set's version tag (S8.6 D5) — bumps on every membership/order change (a promotion event).
 	Generation int64 `json:"generation"`
 

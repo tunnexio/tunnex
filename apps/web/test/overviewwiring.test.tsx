@@ -157,7 +157,7 @@ vi.mock("../src/lib/api", async () => {
         if (path.endsWith("/hub-set"))
           return {
             data: {
-              generation: 1,
+              generation: 1, failover: { stale_after_seconds: 240, demote_after_seconds: 90, restore_after_seconds: 150 },
               members: [{ node_id: "gw-a", role: "primary", hub_priority: 1 }],
             },
           };
@@ -677,10 +677,10 @@ describe("Overview scope and refresh boundaries", () => {
   });
 
   it.each([
-    { generation: 1, members: {} },
-    { generation: 1, members: [null] },
-    { generation: 1, members: [{ node_id: "n1" }] },
-    { generation: 1, members: [{ node_id: "n1", role: "unreported-role" }] },
+    { generation: 1, failover: { stale_after_seconds: 240, demote_after_seconds: 90, restore_after_seconds: 150 }, members: {} },
+    { generation: 1, failover: { stale_after_seconds: 240, demote_after_seconds: 90, restore_after_seconds: 150 }, members: [null] },
+    { generation: 1, failover: { stale_after_seconds: 240, demote_after_seconds: 90, restore_after_seconds: 150 }, members: [{ node_id: "n1" }] },
+    { generation: 1, failover: { stale_after_seconds: 240, demote_after_seconds: 90, restore_after_seconds: 150 }, members: [{ node_id: "n1", role: "unreported-role" }] },
   ])("does not turn an unreadable HA hub set into a missing configuration (%j)", async response => {
     inventoryResponses.set("/hub-set", response);
     show();
