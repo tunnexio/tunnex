@@ -72,3 +72,32 @@ at once.
   with the standalone gateway container on UDP 51820. The failed container was removed.
 - The AWS gateway security group now admits TCP 8080 from `172.31.37.55/32`, the VPC route table has
   `10.70.0.10/32`, and the control-plane instance has its source/destination check off.
+
+## Gateway failover walk (2026-11-20)
+
+Setup: `aws-gateway` (primary, pin 1) and `aws-gateway-2` (standby, pin 2, another availability
+zone) in the first network; `gcp-gateway` in the second network as the only observer. A probe from a
+connected device requested the AWS app and the Google Cloud app every few seconds throughout.
+
+| Step | Measured | Notes |
+| --- | --- | --- |
+| Primary container stopped | 07:10:28 | |
+| Primary judged stale | at handshake age 4 min 05 s | stale window is 240 s |
+| Standby promoted | 07:15:33, about 5 min 5 s after the stop | third stale tick (`stale_n=3`) |
+| Device traffic back | at the next probe, within about 20 s of promotion | no client reconnect; the device re-homed from the routed-ranges poll |
+| Primary started again | restored as primary about 148 s later | five fresh ticks; generation 4, `demoted` cleared |
+| Traffic during failback | every probe 200 to both apps | no loss |
+
+Findings:
+
+1. **Five minutes is the outage a single gateway loss costs today.** Nearly all of it is the 240 s
+   stale window, which is sized to a passive WireGuard handshake report. An active probe from the
+   observer would allow a much shorter window. Not built; needs its own decision paper.
+2. **The dashboard and the controller disagree about "stale".** The gateway list marks a gateway
+   Stale after 90 s; the controller acts at 240 s plus three ticks. For about two and a half minutes
+   the dashboard shows a stale primary and nothing happening. Not fixed.
+3. **During the wait the Failover tab shows no pending state**, only the result once it has ruled.
+4. **No observer, no failover.** Same-network gateways do not peer, so an organisation with one
+   network has no witness and never fails over. The Failover tab now says so (`2ac849b4`); the
+   structural fix is not built.
+5. Not checked in this walk: whether a promotion writes an audit event or raises an alert.
