@@ -48,6 +48,10 @@
 .s2s-network-lifecycle button { flex:none; }
 .s2s-dns-form { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)) auto; gap:12px; align-items:end; margin-top:14px; }
 .s2s-dns-form input { height:34px; font-size:12px; }
+.s2s-forward-zone-form { grid-template-columns:repeat(3,minmax(0,1fr)) auto; margin-top:0; }
+.s2s-forward-zone-form > button { min-height:34px; white-space:nowrap; }
+.s2s-forward-zone-note { margin:10px 0 26px; }
+@media (max-width:900px) { .s2s-forward-zone-form { grid-template-columns:1fr; } }
 .s2s-unbound-gateway { font-size:11.5px; }
 .site-to-site-workspace .aa-empty-state { min-height:230px; padding:36px 20px; }
 .site-to-site-workspace .sites-advanced { border-top:1px solid var(--tnx-border); padding:0; }
