@@ -210,13 +210,22 @@ func runtimeHookCensusRows(rows []map[string]json.RawMessage, protected []netip.
 							protocol, _ := kernelString(payload, "protocol")
 							operation, _ := kernelString(m, "op")
 							if field == "saddr" && protocol == "ip" && operation == "==" {
-								right, _ := kernelObject(m["right"])
-								p, _ := kernelObject(right["prefix"])
-								address, _ := kernelString(p, "addr")
-								length, ok := kernelNumber(p["len"], 8)
-								a, err := netip.ParseAddr(address)
-								if ok && err == nil && a.Is4() && length <= 32 {
-									source = netip.PrefixFrom(a, int(length)).Masked()
+								// nft prints a /32 source as a bare address, not as a prefix object. A site that
+								// shares one host (the usual gateway-address range) produces exactly that rule.
+								var host string
+								if json.Unmarshal(m["right"], &host) == nil {
+									if a, err := netip.ParseAddr(host); err == nil && a.Is4() {
+										source = netip.PrefixFrom(a, 32)
+									}
+								} else {
+									right, _ := kernelObject(m["right"])
+									p, _ := kernelObject(right["prefix"])
+									address, _ := kernelString(p, "addr")
+									length, ok := kernelNumber(p["len"], 8)
+									a, err := netip.ParseAddr(address)
+									if ok && err == nil && a.Is4() && length <= 32 {
+										source = netip.PrefixFrom(a, int(length)).Masked()
+									}
 								}
 							}
 						case "mangle":
