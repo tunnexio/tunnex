@@ -3,7 +3,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import { api, apiErrorMessage, loadOne } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { useGatewayInventory } from "../lib/useGatewayInventory";
-import { siteGate } from "../lib/sitesview";
+import { siteGate, lanEgressOptions, type LanEgress } from "../lib/sitesview";
 import { siteLinkExposure, type EnforcementMode, type OtherNetwork } from "../lib/sitelinkview";
 import { setupReturnPath } from "../lib/setuproute";
 import { Gateways } from "../components/Gateways";
@@ -65,6 +65,12 @@ function NetworkSetupWorkspace({
   // as "there are none".
   const [linkContext, setLinkContext] = useState<{ mode: EnforcementMode; others: OtherNetwork[]; error: boolean } | null>(null);
   const [acknowledged, setAcknowledged] = useState(false);
+  // SSI-9: how the new network sees traffic from other networks. Offered only where it means something
+  // (there is a second side, the network is new, and its gateway can translate); Quick is the default.
+  const [lanEgress, setLanEgress] = useState<LanEgress>("gateway_address");
+  const [egressNote, setEgressNote] = useState<string | null>(null);
+  // What is in force after creation: null = there is no second side, so nothing to say.
+  const [appliedLanEgress, setAppliedLanEgress] = useState<LanEgress | null>(null);
   const orgId = org?.id;
   const nodes = state.nodes.filter(
     (node) =>
@@ -112,6 +118,11 @@ function NetworkSetupWorkspace({
       ? "I understand this may link to networks that could not be listed"
       : exposure?.acknowledgement ?? null;
   const awaitingAcknowledgement = step === 2 && (!linkContext || (acknowledgement !== null && !acknowledged));
+  // A gateway that reports no ceiling counts as "cannot": the server would refuse the setting anyway.
+  const canTranslate = (selected?.max_policy_version ?? 0) >= 15;
+  const linksToOthers = Boolean(linkContext) && (exposure !== null || Boolean(linkContext?.error));
+  const offerLanEgress = step === 2 && linksToOthers && !existingSite;
+  const chosenLanEgress: LanEgress = offerLanEgress && canTranslate ? lanEgress : "preserve_source";
   const siteName = existingSite ? state.siteNames?.[existingSite] || "Existing site" : name;
   if (!org) return null;
   async function apply() {
@@ -131,6 +142,26 @@ function NetworkSetupWorkspace({
           apiErrorMessage(result.error, "Could not create the network."),
         );
         return;
+      }
+      // SSI-9: the network exists now. Applying the routing mode is a second write; if it fails the
+      // network is NOT rolled back and is NOT reported as failed — the operator is told which mode is
+      // actually in force and where to change it.
+      if (chosenLanEgress === "gateway_address" && result.data?.id) {
+        try {
+          const egress = await api.PUT("/api/v1/organizations/{orgId}/sites/{siteId}/lan-egress", {
+            params: { path: { orgId: org.id, siteId: result.data.id } },
+            body: { lan_egress: "gateway_address" },
+          });
+          setEgressNote(egress.error
+            ? `Servers on this network will see the original address: ${apiErrorMessage(egress.error, "the gateway address mode could not be set")}. Change it under Advanced.`
+            : null);
+          setAppliedLanEgress(egress.error ? "preserve_source" : "gateway_address");
+        } catch {
+          setEgressNote("The gateway address mode may not have been set. Check it under Advanced.");
+          setAppliedLanEgress("preserve_source");
+        }
+      } else {
+        setAppliedLanEgress(offerLanEgress || existingSite ? "preserve_source" : null);
       }
       setDone(true);
     } catch {
@@ -169,6 +200,9 @@ function NetworkSetupWorkspace({
             Your site and approved route are saved. Next, choose who can access
             it and verify the connection from a device.
           </p>
+          {egressNote && <p role="status" className="rounded-md border border-warn/30 bg-warn/5 px-3 py-2 text-xs text-warn">{egressNote}</p>}
+          {appliedLanEgress === "gateway_address" && <p className="text-sm text-ink-secondary" data-testid="lan-egress-result">Servers on this network see the gateway's own address for traffic from other networks, so no cloud return route is needed.</p>}
+          {appliedLanEgress === "preserve_source" && !existingSite && <div className="text-sm text-ink-secondary" data-testid="lan-egress-result"><p>Servers on this network see the remote machine's real address. Before traffic from other networks can be answered, in your cloud:</p><ol className="mt-1 list-decimal pl-5"><li>Route each other network's range to this gateway.</li><li>Allow the gateway to forward packets that are not addressed to it (on AWS, turn off the source/destination check; on Google Cloud and Azure, enable IP forwarding).</li></ol></div>}
           <div className="network-actions">
             {embedded ? <Button onClick={onComplete}>Continue connection setup</Button> : <><Link to={fromGuide ? "/access?from=setup&purpose=vpn&setupStep=3" : "/access"} className="network-primary-link">
               Configure access →
@@ -309,6 +343,19 @@ function NetworkSetupWorkspace({
                       </ul>
                     </div>
                   )}
+                  {offerLanEgress && (canTranslate ? (
+                    <fieldset className="mt-3">
+                      <legend className="text-sm">Traffic from other networks arrives as</legend>
+                      {lanEgressOptions.map((option) => (
+                        <label key={option.value} className="mt-2 flex items-start gap-2 text-sm">
+                          <input type="radio" name="lan-egress" value={option.value} checked={lanEgress === option.value} disabled={busy || uncertain} onChange={() => setLanEgress(option.value)} />
+                          <span><strong>{option.label}</strong><span className="block text-ink-secondary">{option.sees} {option.needs}</span></span>
+                        </label>
+                      ))}
+                    </fieldset>
+                  ) : (
+                    <p className="network-hint" data-testid="lan-egress-unavailable">This gateway cannot translate traffic from other networks yet, so servers will see the remote machine's real address and your cloud must route the other networks' ranges to this gateway. Upgrade the gateway to remove that step.</p>
+                  ))}
                   {acknowledgement && (
                     <label className="mt-3 flex items-start gap-2 text-sm">
                       <input type="checkbox" checked={acknowledged} disabled={busy || uncertain} onChange={(event) => setAcknowledged(event.target.checked)} />
