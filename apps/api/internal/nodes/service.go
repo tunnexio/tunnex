@@ -1446,6 +1446,40 @@ func activeHubDialFrom(nodeID uuid.UUID, activeMembers []sqlc.ListSiteGatewaysFo
 	return "", "", false
 }
 
+// siteCarriers names, for every site, the ONE gateway that carries the site's ranges on a hub's peer set
+// (SSI-7b, finding F9). A site may hold several gateways. The carrier is the site's earliest member of the
+// ACTIVE hub order when it has one, so a promoted hub carries its own site and the choice follows the same
+// derivation as everything else; otherwise the lowest gateway id. PURE and independent of list order.
+func siteCarriers(gws []sqlc.ListSiteGatewaysForOrgRow, activeMembers []sqlc.ListSiteGatewaysForOrgRow) map[uuid.UUID]uuid.UUID {
+	rank := make(map[uuid.UUID]int, len(activeMembers))
+	for i := range activeMembers {
+		rank[activeMembers[i].ID] = i
+	}
+	better := func(a, b uuid.UUID) bool { // is a a better carrier than b
+		ra, aMember := rank[a]
+		rb, bMember := rank[b]
+		if aMember != bMember {
+			return aMember
+		}
+		if aMember && ra != rb {
+			return ra < rb
+		}
+		return a.String() < b.String()
+	}
+	out := map[uuid.UUID]uuid.UUID{}
+	for i := range gws {
+		g := &gws[i]
+		if !g.SiteID.Valid {
+			continue
+		}
+		site := uuid.UUID(g.SiteID.Bytes)
+		if cur, ok := out[site]; !ok || better(g.ID, cur) {
+			out[site] = g.ID
+		}
+	}
+	return out
+}
+
 // siteLinkGraphFrom builds a site-gateway node's site-link WG peers + kernel routes from a loaded
 // siteLinkKeepaliveSecs (S8.3 CK) is the persistent-keepalive interval on every site-link peer — the
 // wireguard-conventional 25s, comfortably under NAT UDP-mapping timeouts, so a NAT'd spoke stays dialable
@@ -1808,14 +1842,24 @@ func siteLinkGraphFrom(topo siteTopology, node sqlc.Node) ([]Peer, []policyspec.
 		// invariant — two gateways on one shared LAN need no tunnel between them (kills the spurious same-site
 		// hub↔hub link the single-node lift now makes possible). A CROSS-site member keeps its subnet-carrying
 		// link — in the data plane it IS a spoke, whatever the election calls it (so its subnets stay reachable).
+		carriers := siteCarriers(topo.gws, members)
 		for i := range topo.gws {
 			g := &topo.gws[i]
 			if g.ID == node.ID || uuid.UUID(g.SiteID.Bytes) == mySite {
 				continue
 			}
-			ips := append([]string(nil), topo.subnets[uuid.UUID(g.SiteID.Bytes)]...)
+			site := uuid.UUID(g.SiteID.Bytes)
+			ips := append([]string(nil), topo.subnets[site]...)
 			if len(ips) == 0 {
 				continue // a gateway advertising no subnets yet contributes no crypto-routing
+			}
+			if carriers[site] != g.ID {
+				// SSI-7b (finding F9): a remote site with more than one gateway gets its ranges on ONE peer.
+				// The others stay warm: endpoint + keepalive so the tunnel handshakes, AllowedIPs EMPTY so
+				// WireGuard can never crypto-route to them. Two peers with the same ranges is the
+				// undefined-which class the spoke side already avoids for a standby hub.
+				peers = append(peers, Peer{PublicKey: g.WgPublicKey, AllowedIPs: []string{}, Endpoint: g.Endpoint, SiteLink: true, PersistentKeepalive: siteLinkKeepaliveSecs})
+				continue
 			}
 			sort.Strings(ips)
 			peers = append(peers, Peer{PublicKey: g.WgPublicKey, AllowedIPs: ips, Endpoint: g.Endpoint, SiteLink: true, PersistentKeepalive: siteLinkKeepaliveSecs})
