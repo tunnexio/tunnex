@@ -16,7 +16,9 @@ func TestDeriveMemberLivenessRxProgress(t *testing.T) {
 	hub := uuid.New()
 	w1, w2 := uuid.New(), uuid.New()
 	const key = "hub-pubkey"
-	ts := func(ago time.Duration) pgtype.Timestamptz { return pgtype.Timestamptz{Time: now.Add(-ago), Valid: true} }
+	ts := func(ago time.Duration) pgtype.Timestamptz {
+		return pgtype.Timestamptz{Time: now.Add(-ago), Valid: true}
+	}
 	row := func(witness uuid.UUID, handshakeAgo, reportedAgo, rxAgo time.Duration, stalled int32) sqlc.NodePeerStatus {
 		return sqlc.NodePeerStatus{NodeID: witness, PublicKey: key, LastHandshakeAt: ts(handshakeAgo),
 			UpdatedAt: now.Add(-reportedAgo), RxAdvancedAt: ts(rxAgo), StalledReports: stalled}
