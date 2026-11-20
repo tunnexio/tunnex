@@ -480,3 +480,89 @@ export function meshFrom(
   }
   return out;
 }
+
+// ── SSI-13: the Networks list says who carries a network and how it is doing ─────────────────────────────
+//
+// The list showed ONE gateway per network and a status word for it. A second gateway's role lived only on
+// the Failover tab, so "standby for what?" had no answer where the network was. These are pure projections
+// of what the page already loads: the cards and the served hub set.
+
+export type GatewayRole = "primary" | "standby" | "not_answering";
+
+/** gatewayRoles maps each HA member to its role as SERVED: the acting order and the controller's verdict. */
+export function gatewayRoles(hubSet: Pick<HubSet, "members"> | null | undefined): Map<string, GatewayRole> {
+  const roles = new Map<string, GatewayRole>();
+  for (const member of hubSet?.members ?? []) {
+    roles.set(member.node_id, member.liveness === "stale" ? "not_answering" : member.role === "primary" ? "primary" : "standby");
+  }
+  return roles;
+}
+
+export interface NetworkStatus {
+  tone: "ok" | "warn" | "danger" | "neutral";
+  label: string;
+  /** One more fact, or "" when there is none worth a line. */
+  detail: string;
+  /** true when an operator should look at this network. */
+  attention: boolean;
+}
+
+/**
+ * networkStatus is one network's status line. It claims only what the page knows: a health badge the
+ * control plane raised, a gateway the failover controller reports silent, or the absence of both.
+ * With neither it says "No issues reported", never "healthy": absence of a report is not a measurement.
+ */
+export function networkStatus(card: SiteCard, roles: Map<string, GatewayRole>): NetworkStatus {
+  const active = card.gateways.filter((gateway) => gateway.status === "active");
+  if (active.length === 0) return { tone: "warn", label: "Needs a gateway", detail: "No gateway is assigned", attention: true };
+  const silent = active.filter((gateway) => roles.get(gateway.id) === "not_answering");
+  const answering = active.length - silent.length;
+  if (silent.length > 0) {
+    return answering > 0
+      ? { tone: "warn", label: "Running on standby", detail: `${silent.map((gateway) => gateway.name).join(", ")} not answering`, attention: true }
+      : { tone: "danger", label: "Not answering", detail: "No gateway of this network is answering", attention: true };
+  }
+  const badge = active.map((gateway) => gateway.health).find((health) => health != null);
+  if (badge) return { tone: badge.tone as NetworkStatus["tone"], label: badge.label, detail: "", attention: badge.tone === "danger" || badge.tone === "warn" };
+  const pair = active.filter((gateway) => roles.has(gateway.id)).length >= 2;
+  // ⛔ NOT "Healthy" AND NOT GREEN. No badge means nothing has been REPORTED wrong; it is not a measurement
+  // that traffic flows. The list said "Assigned" for the same reason before this story.
+  return { tone: "neutral", label: "No issues reported", detail: pair ? "Failover ready" : active.length >= 2 ? "Second gateway is not a failover candidate" : "One gateway, no standby", attention: false };
+}
+
+export interface NetworkSummary { networks: number; withStandby: number; pendingRanges: number; attention: number }
+
+/** networkSummary is the four counts above the list. */
+export function networkSummary(cards: SiteCard[], roles: Map<string, GatewayRole>): NetworkSummary {
+  return {
+    networks: cards.length,
+    withStandby: cards.filter((card) => card.gateways.filter((gateway) => gateway.status === "active" && roles.has(gateway.id)).length >= 2).length,
+    pendingRanges: cards.reduce((sum, card) => sum + card.subnets.filter((subnet) => subnet.status === "pending").length, 0),
+    attention: cards.filter((card) => networkStatus(card, roles).attention).length,
+  };
+}
+
+/** A cloud VPN (IPsec connection) as the network it belongs to shows it. */
+export interface CloudVpnLink { id: string; name: string; state: string }
+
+/**
+ * cloudVpnBySite groups the organisation's cloud VPNs under the network each belongs to. A removed
+ * connection is not a link. `state` is the CONFIGURATION state (applied / applying / off); tunnel status
+ * lives on the Cloud VPN tab, which asks for it per connection.
+ */
+export function cloudVpnBySite(connections: ReadonlyArray<{ id: string; name: string; site_id?: string | null; desired_intent: string; application_state: string }>): Map<string, CloudVpnLink[]> {
+  const out = new Map<string, CloudVpnLink[]>();
+  for (const connection of connections) {
+    if (!connection.site_id || connection.desired_intent === "deleted") continue;
+    const state = connection.desired_intent !== "enabled" ? "off" : connection.application_state === "applied" ? "applied" : "applying";
+    out.set(connection.site_id, [...(out.get(connection.site_id) ?? []), { id: connection.id, name: connection.name, state }]);
+  }
+  return out;
+}
+
+/** Every range of every network, pending first, for the Ranges tab. */
+export function allRanges(cards: SiteCard[]): Array<{ key: string; cidr: string; network: string; siteId: string; status: SubnetView["status"] }> {
+  return cards
+    .flatMap((card) => card.subnets.map((subnet) => ({ key: subnet.id, cidr: subnet.cidr, network: card.name, siteId: card.id, status: subnet.status })))
+    .sort((a, b) => Number(b.status === "pending") - Number(a.status === "pending") || a.network.localeCompare(b.network) || a.cidr.localeCompare(b.cidr));
+}
