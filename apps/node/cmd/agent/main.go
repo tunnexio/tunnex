@@ -405,6 +405,11 @@ func main() {
 	r.SetSiteLinkStaleSink(&siteLinkStale)
 	r.SetSiteSubnetUnreachableSink(&siteSubnetUnreachable) // D3: unreachable-advertised-subnet health signal
 	r.SetForwardBlockedFn(egressMgr.ForwardBlocked)        // WF-4: Docker FORWARD DROP swallowing the forward → same signal
+	// SSI-7: plan site routes against the networks this host is attached to. Only the kernel WireGuard
+	// backend has a real host to read; the memory backend keeps the address-containment behaviour.
+	if wgBackend == "wgctrl" {
+		r.SetHostNetworkProbe(reconcile.NewHostNetworkProbe(wgIface))
+	}
 	// Every desired-state fetch hands the compiled Zero Trust policy (nil = legacy
 	// mesh) to the egress manager and kicks an immediate forward-chain re-apply.
 	r.OnPolicy(func(p *nodepolicy.Compiled) {
