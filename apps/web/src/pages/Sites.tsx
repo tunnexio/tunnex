@@ -1,7 +1,7 @@
 import { NetworkDetailList } from "../components/NetworkDetailList";
 import { PrivateDNSResolvers } from "../components/PrivateDNSResolvers";
 import { ResourceSummary } from "../components/ResourceSummary";
-import { SiteToSiteNavigation } from "../components/SiteToSiteNavigation";
+import { SiteToSiteHint, SiteToSiteNavigation } from "../components/SiteToSiteNavigation";
 import "../network-workspaces.css";
 import "../site-to-site-workspace.css";
 import AppAccessPagination, { appAccessPageSize } from "../components/AppAccessPagination";
@@ -390,6 +390,7 @@ export default function Sites() {
         {view === "body" && <div className="s2s-networks-actions"><RefreshButton label="Refresh networks" onClick={() => void reload()} />{gate.canManage && <Button size="sm" onClick={() => setAdding(true)}>Add a network</Button>}</div>}
       </div>
 
+      {view === "body" && !selectedCard && <SiteToSiteHint active={section === "overview" ? (mapCollapsed ? "overview" : "topology") : (section as "ranges" | "ha" | "dns")} />}
       {view === "load_retry" && (
         <LoadRetry error={loadError ?? "Couldn't load."} onRetry={reload} />
       )}
@@ -493,7 +494,6 @@ export default function Sites() {
               </OperationalSection>}
               {!selectedCard && <SelectedSiteStrip canManage={gate.canManage} unboundGateway={unboundGatewayNodes.find((node) => node.id === selectedGatewayId) ?? null} onRouteLan={() => setRoutingLan(true)} />}
 
-              {!selectedCard && gate.canManage && <details className="sites-advanced s2s-disclosure"><summary>Advanced setup</summary><div className="s2s-disclosure-body">{unboundGatewayNodes.length > 0 && <Button variant="ghost" size="sm" onClick={() => setRoutingLan(true)}>Route a LAN</Button>}<Button variant="ghost" size="sm" onClick={() => setRegistering(true)}>Create empty location</Button><Button variant="ghost" size="sm" onClick={() => updateQuery({ section: "dns", site: null, gateway: null, q: null, dns: null })}>Review DNS forwarding</Button></div></details>}
 
               {selectedCard && <SiteCardView key={`${org.id}:${selectedCard.id}`}
                 card={selectedCard} canManage={gate.canManage} orgId={org.id} role={scopeCurrent ? myRole : undefined}
@@ -565,6 +565,8 @@ export default function Sites() {
         sites={raw?.sites ?? []}
         onClose={() => setAdding(false)}
         onNetworkAdded={() => { setAdding(false); void reload(); }}
+        onEmptyNetwork={() => { setAdding(false); setRegistering(true); }}
+        onExistingGateway={unboundGatewayNodes.length > 0 ? () => { setAdding(false); setRoutingLan(true); } : undefined}
         onAWS={() => navigate("/site-to-site?create=aws")}
         onGCP={() => navigate("/site-to-site?create=gcp")}
         onAzure={() => navigate("/site-to-site?create=azure")}

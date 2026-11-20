@@ -357,12 +357,14 @@ describe("Sites — URL-backed workspace state", () => {
     await waitFor(() => expect(screen.getByTestId("location").textContent).toBe("?section=ranges"));
   });
 
-  it("keeps DNS forwarding out of primary navigation and exposes it as advanced Site Networking", async () => {
+  it("SSI-13: DNS forwarding is one tab, with no second door in an Advanced setup drawer", async () => {
     withAuth(<Sites />, ["/sites"]);
-    fireEvent.click(await screen.findByText("Advanced setup"));
-    expect(await screen.findByRole("button", { name: "Review DNS forwarding" })).toBeTruthy();
+    await screen.findByRole("table", { name: "Networks" });
+    expect(screen.queryByText("Advanced setup")).toBeNull();
+    expect(screen.queryByRole("button", { name: "Review DNS forwarding" })).toBeNull();
     expect(screen.queryByRole("button", { name: "DNS overview" })).toBeNull();
-    fireEvent.click(screen.getByRole("button", { name: "Review DNS forwarding" }));
+    expect(screen.getByText("Your private networks. Each one has a Tunnex gateway running inside it.")).toBeTruthy();
+    fireEvent.click(screen.getByRole("link", { name: "DNS forwarding" }));
     await waitFor(() => expect(screen.getByTestId("location").textContent).toBe("?section=dns"));
     fireEvent.click(screen.getByText("About DNS forwarding"));
     expect(screen.getByText(/Private DNS Resolver remains the only primary configuration for FQDN access/)).toBeTruthy();
@@ -487,8 +489,11 @@ describe("Sites — Route a LAN carrier eligibility", () => {
   it("offers only a server-declared active gateway, never an AI Agent Node", async () => {
     routeLanTopology = true;
     withAuth(<Sites />);
-    await waitFor(() => expect(screen.getByRole("button", { name: "Route a LAN" })).toBeTruthy());
-    fireEvent.click(screen.getByRole("button", { name: "Route a LAN" }));
+    // SSI-13: the less common ways in live inside "Add a network", not in a drawer under the list.
+    fireEvent.click(await screen.findByRole("button", { name: "Add a network" }));
+    const dialog = within(screen.getByRole("dialog", { name: "Add a network" }));
+    expect(dialog.getByRole("button", { name: "Create a network with no gateway yet" })).toBeTruthy();
+    fireEvent.click(dialog.getByRole("button", { name: "Use a gateway that is already enrolled" }));
     expect(screen.getByRole("option", { name: "gw-unbound-1" })).toBeTruthy();
     expect(screen.queryByRole("option", { name: "mcp-agent-prod" })).toBeNull();
   });

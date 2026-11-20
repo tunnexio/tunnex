@@ -10,9 +10,12 @@ import "../connection-chooser.css";
 // to the existing network setup (it used to stop at a review of two networks, behind a button called
 // "Create connection" that created nothing); a cloud VPN goes to the existing provider step, unchanged.
 // ONE entry: every tab's "Add a network" opens this at the same first question.
-export function ConnectionChooser({ sites, orgId, onClose, onAWS, onGCP, onAzure, onNetworkAdded }: {
+export function ConnectionChooser({ sites, orgId, onClose, onAWS, onGCP, onAzure, onNetworkAdded, onEmptyNetwork, onExistingGateway }: {
   sites: Site[]; orgId?: string; onClose: () => void; onAWS: () => void; onGCP?: () => void; onAzure?: () => void;
   onNetworkAdded?: () => void;
+  /** The two less common ways in. They lived in an "Advanced setup" drawer under the list, away from the
+   *  one place a network is added. Offered only where the caller can act on them. */
+  onEmptyNetwork?: () => void; onExistingGateway?: () => void;
 }) {
   const [step, setStep] = useState<"method" | "ipsec" | "wireguard">("method");
   const [adding, setAdding] = useState(false);
@@ -40,6 +43,7 @@ export function ConnectionChooser({ sites, orgId, onClose, onAWS, onGCP, onAzure
       <p className="sts-chooser-question">What is on the other side?</p>
       <button className="sts-chooser-choice" onClick={() => { setStep("wireguard"); setAdding(true); }}><span className="sts-chooser-choice-copy"><strong>A machine where I can run a Tunnex gateway</strong><span>Any cloud, office or data center. The link forms by itself.</span></span><span className="sts-chooser-choice-meta">Tunnex link</span></button>
       <button className="sts-chooser-choice" onClick={() => setStep("ipsec")}><span className="sts-chooser-choice-copy"><strong>A cloud VPN gateway</strong><span>AWS, Google Cloud or Azure. You enter the tunnel details the provider gives you.</span></span><span className="sts-chooser-choice-meta">Cloud VPN · IPsec</span></button>
+      {(onEmptyNetwork || onExistingGateway) && <div className="sts-chooser-more"><span>Other ways:</span>{onExistingGateway && <button type="button" onClick={onExistingGateway}>Use a gateway that is already enrolled</button>}{onEmptyNetwork && <button type="button" onClick={onEmptyNetwork}>Create a network with no gateway yet</button>}</div>}
     </div>}
     {step === "ipsec" && <div className="sts-chooser-choices">
       <button className="sts-chooser-choice" onClick={onAWS}><span className="sts-chooser-provider-identity"><ProviderMark provider="aws" className="sts-chooser-provider-mark" /><span className="sts-chooser-choice-copy"><strong>AWS</strong><span>Site-to-Site VPN · Static / BGP IPv4</span></span></span><span className="sts-chooser-choice-meta">Configure</span></button>
