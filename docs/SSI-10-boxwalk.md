@@ -101,3 +101,31 @@ Findings:
    network has no witness and never fails over. The Failover tab now says so (`2ac849b4`); the
    structural fix is not built.
 5. Not checked in this walk: whether a promotion writes an audit event or raises an alert.
+
+## Second failover walk, on the SSI-11 build (2026-11-20)
+
+Control plane at `6c261a23` (API) and `7ee38aa5` (dashboard). Same three gateways.
+
+| Step | Measured |
+| --- | --- |
+| Primary stopped | 13:19:18 |
+| Failover tab: Stale badge and the pending notice appear | at handshake age 4 minutes, not before |
+| Standby promoted, device traffic back to both apps | 13:24:23 probe, about 5 min 5 s after the stop |
+| Primary started | 13:30:44 |
+| Failover tab: "answering again, returns after about 2.5 minutes" | within a minute of the start |
+| Restored as primary (generation 6) | by 13:33:40, about 2 min 55 s after the start |
+
+What SSI-11 changed, as seen on the box: a healthy hub at 3 minutes handshake age reads Recent (it
+read Stale before); the tab states the pending takeover and the pending return; the tab updates by
+itself; the topology draws the standby on a dotted line to its network and marks a passed-over
+primary as demoted.
+
+New findings:
+
+1. **Failback is not always free.** One probe to the Google Cloud app failed at the moment the primary
+   was restored (the AWS app answered throughout). The first walk saw none. Treat failback as "a pause
+   of a few seconds is possible", not "no loss". Not investigated further.
+2. **Failover audit events show "not recorded" as the actor**, in the warning colour, under a banner
+   that calls it a recording gap. `hub_set.promotion` and `hub_set.failback` are written by the
+   controller with no actor on purpose. The audit page has no way to say "the system did this". Not
+   fixed.
