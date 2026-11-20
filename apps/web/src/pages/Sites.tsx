@@ -26,7 +26,7 @@ import {
   type HubSet,
   type DNSForward,
 } from "../lib/api";
-import { hubSetView, unobservedHubs, type HubMemberRow, type ObserverSite } from "../lib/hubsetview";
+import { failoverNotices, hubSetView, roughDuration, spanWords, unobservedHubs, type HubMemberRow, type ObserverSite } from "../lib/hubsetview";
 import { mergeOrgForwards, type OrgForwardsView } from "../lib/dnsview";
 import { useAuth } from "../lib/auth";
 import { toast } from "../components/Toasts";
@@ -727,9 +727,26 @@ function HubSetSection({ orgId, canManage, hubSet, unavailable, gateways, observ
   const [busy, setBusy] = useState(false);
   const [managing, setManaging] = useState(false);
   const [report, setReport] = useState<HubMemberRow | null>(null);
-  const view = hubSetView(hubSet, Date.now());
+  // SSI-11 D3: this tab narrates a ruling that is minutes in the making; a verdict frozen at page load is
+  // worse than none. It re-reads ONLY the hub set, quietly, while the page is visible: the page-level
+  // reload clears the whole workspace to a loading state, which every 15s would be a strobe.
+  const [live, setLive] = useState<HubSet | null>(null);
+  useEffect(() => { setLive(null); }, [hubSet]);
+  useEffect(() => {
+    if (unavailable) return;
+    let cancelled = false;
+    const timer = window.setInterval(() => {
+      if (document.visibilityState !== "visible") return;
+      void api.GET("/api/v1/organizations/{orgId}/hub-set", { params: { path: { orgId } } })
+        .then(({ data }) => { if (!cancelled && data) setLive(data); })
+        .catch(() => { /* keep the last good read; the next tick retries */ });
+    }, 15_000);
+    return () => { cancelled = true; window.clearInterval(timer); };
+  }, [orgId, unavailable]);
+  const view = hubSetView(live ?? hubSet, Date.now());
   const unobserved = view ? unobservedHubs(view.members.map((member) => member.nodeId), observerSites) : [];
   const nameOf = (id: string) => gateways.find(gateway => gateway.id === id)?.name ?? id.slice(0, 8);
+  const notices = view ? failoverNotices(view, unobserved) : [];
   const priorities = new Map((hubSet?.members ?? []).map(member => [member.node_id, member.hub_priority ?? null]));
   const pins = [...priorities.values()].filter((value): value is number => value != null);
   const nextPin = pins.length ? Math.max(...pins) + 1 : 1;
@@ -763,6 +780,11 @@ function HubSetSection({ orgId, canManage, hubSet, unavailable, gateways, observ
     </div>
     {view?.promotionInEffect && <div className="s2s-operational-notice" role="status"><span>Standby promoted to acting primary.</span><Link to="/audit">View timeline</Link></div>}
     {view && view.members.length > 1 && unobserved.length > 0 && <div className="s2s-operational-notice" role="status" data-testid="hub-unobserved"><span>{unobserved.length === view.members.length ? "Automatic failover cannot trigger yet." : `Automatic failover cannot detect a failure of ${unobserved.map(nameOf).join(", ")}.`} A hub is demoted only when a gateway in another network reports it unreachable, and gateways of the same network do not watch each other. Add a network with its own gateway.</span></div>}
+    {notices.map((notice) => <div key={`${notice.kind}-${notice.nodeId}`} className="s2s-operational-notice" role="status" data-testid={`hub-${notice.kind}`}><span>{
+      notice.kind === "pending" ? `${nameOf(notice.nodeId)} has not answered for ${spanWords(notice.ageMs)}. If it stays unreachable, a standby takes over ${roughDuration(notice.remainingMs)}.`
+      : notice.kind === "no_standby" ? `${nameOf(notice.nodeId)} has not answered for ${spanWords(notice.ageMs)}. No standby is answering either, so there is nothing to promote.`
+      : `${nameOf(notice.nodeId)} is answering again. It returns to its configured place after about ${spanWords(notice.restoreAfterMs)} of steady handshakes.`
+    }</span></div>)}
     {view ? <div className="s2s-flat-table s2s-hub-table"><DataTable<HubMemberRow> caption="Transit hubs" rows={view.members} rowKey={member => member.nodeId} failed={false} filterable={false} pageSize={0} empty={null} variant="flat" columns={[
       { key: "gateway", header: "Gateway", cell: member => <Link className="s2s-name-link" to={`/gateways/${member.nodeId}`}>{nameOf(member.nodeId)}</Link> },
       { key: "role", header: "Acting role", cell: member => <div className="s2s-role-cell"><span>{member.role === "primary" ? "Primary" : "Standby"}</span>{member.demoted && <span className="s2s-muted">Configured primary · demoted</span>}</div> },
@@ -771,7 +793,7 @@ function HubSetSection({ orgId, canManage, hubSet, unavailable, gateways, observ
       { key: "actions", header: "Actions", cell: member => <AppAccessRowMenu label={`Hub actions for ${nameOf(member.nodeId)}`} actions={[{ key: "report", label: "Report details", onSelect: () => setReport(member) }]} /> },
     ]} /></div> : <div className="s2s-empty-state" role="status"><h2>{tooFewGateways ? "Add another gateway" : "Choose your transit hubs"}</h2><p>{tooFewGateways ? "Failover needs a primary and standby gateway. Assign another gateway to a network to begin." : "Pin a preferred primary and at least one standby."}</p>{tooFewGateways && <Link className="s2s-text-link" to="/gateways">View gateways</Link>}</div>}
     <ErrorText>{err}</ErrorText>
-    <details className="s2s-disclosure s2s-operations-help"><summary>How failover works</summary><div className="s2s-disclosure-body"><p>Lower pin numbers are preferred. The acting primary can change when a candidate becomes unavailable.</p><p>A recent handshake is a gateway report, not an application reachability check.</p><Link className="s2s-text-link" to="/site-to-site?method=ipsec">IPsec tunnel redundancy in Connections</Link></div></details>
+    <details className="s2s-disclosure s2s-operations-help"><summary>How failover works</summary><div className="s2s-disclosure-body"><p>Lower pin numbers are preferred.{view ? ` A hub that another network's gateway cannot reach for about ${spanWords(view.timing.staleAfterMs + view.timing.demoteAfterMs)} is passed over and the next one takes its place. Connected devices and networks follow on their own.` : " A hub that stops answering is passed over and the next one takes its place."}</p>{view && <p>When it answers again it returns after about {spanWords(view.timing.restoreAfterMs)} of steady handshakes, so a flapping gateway does not pull traffic back and forth.</p>}<p>A recent handshake is a gateway report, not an application reachability check.</p><Link className="s2s-text-link" to="/site-to-site?method=ipsec">IPsec tunnel redundancy in Connections</Link></div></details>
     {canManage && managing && <Modal placement="right" size="wide" showClose title="Hub candidates" onDismiss={busy ? () => {} : () => setManaging(false)} actions={<Button variant="ghost" disabled={busy} onClick={() => setManaging(false)}>Done</Button>}>
       <div className="s2s-candidate-editor"><p>Pin gateways in order of preference. The lowest number is the preferred primary.</p>
         <NetworkDetailList label="Hub candidates" items={gateways} searchText={gateway => `${gateway.name} ${priorities.get(gateway.id) ?? ""}`} renderItem={gateway => {

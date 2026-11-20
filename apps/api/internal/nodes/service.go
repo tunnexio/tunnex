@@ -1736,6 +1736,7 @@ type HubMemberView struct {
 type HubSetView struct {
 	Generation int64
 	Members    []HubMemberView
+	Timing     FailoverTiming
 }
 
 // GetHubSetView serves the persisted active hub set + per-member L1 metrics (node_peer_status). Empty when
@@ -1771,7 +1772,7 @@ func (s *Service) GetHubSetView(ctx context.Context, orgID uuid.UUID) (HubSetVie
 			active = append(active, mid)
 		}
 	}
-	view := HubSetView{Generation: hs.Generation, Members: make([]HubMemberView, 0, len(active))}
+	view := HubSetView{Generation: hs.Generation, Members: make([]HubMemberView, 0, len(active)), Timing: FailoverTimings()}
 	for i, mid := range active {
 		mv := HubMemberView{NodeID: mid, Role: "standby", HubPriority: prioByNode[mid]}
 		if i == 0 {

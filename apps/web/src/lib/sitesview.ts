@@ -450,5 +450,21 @@ export function meshFrom(
       note: localAttachment ? "local VPC attachment" : kind ?? undefined,
     });
   }
+  // SSI-11: attach each standby hub to the network it fronts. A standby carries no traffic, so this is NOT a
+  // link state; it is the answer to "standby for what?", which the map could not give while the standby
+  // floated on its own. Only a gateway that is actively bound to a network gets one.
+  for (const standby of standbyMembers) {
+    const home = cards.find((card) =>
+      card.gateways.some((gateway) => gateway.id === standby.member.node_id && gateway.status === "active"),
+    );
+    if (!home) continue;
+    out.links.push({
+      from: `__hub:${standby.member.node_id}`,
+      to: home.id,
+      tone: "linked",
+      standby: true,
+      note: "standby gateway for this network",
+    });
+  }
   return out;
 }
