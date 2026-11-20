@@ -313,3 +313,16 @@
   .site-to-site-workspace .connection-purpose-option > span { flex:1; min-width:0; width:auto; flex-direction:column; align-items:flex-start; gap:4px; }
   .site-to-site-workspace .connection-purpose-option small { white-space:normal; overflow-wrap:anywhere; }
 }
+
+/* SSI-13: the range checkboxes in the cloud VPN form had NO rule of their own, so each box took the form's
+   full-height input style and sat on top of its label. A range is a small chip with a normal checkbox. */
+.ipsec-local-ranges { min-width:0; margin:0; padding:0; border:0; }
+.ipsec-local-ranges legend { margin-bottom:8px; padding:0; color:var(--tnx-text-heading); font-size:13px; font-weight:500; }
+.ipsec-local-ranges > div { display:flex; flex-wrap:wrap; gap:8px; }
+.ipsec-local-ranges label { display:inline-flex; align-items:center; gap:8px; min-height:34px; padding:6px 12px; border:1px solid var(--tnx-border); border-radius:8px; color:var(--tnx-text-heading); font-size:13px; line-height:1.2; cursor:pointer; }
+.ipsec-local-ranges label:has(input:checked) { border-color:var(--tnx-text-heading); }
+.ipsec-local-ranges input[type="checkbox"] { flex:none; width:16px; height:16px; min-height:0; margin:0; padding:0; border-radius:4px; accent-color:var(--tnx-text-heading); }
+/* SSI-13: one line under the tabs saying what this tab holds. */
+.s2s-tab-hint { margin:10px 0 2px; color:var(--tnx-text-secondary); font-size:12.5px; }
+.sts-chooser-more { display:flex; flex-wrap:wrap; gap:6px 16px; align-items:center; margin-top:4px; color:var(--tnx-text-secondary); font-size:12.5px; }
+.sts-chooser-more button { padding:0; border:0; background:none; color:var(--tnx-text-heading); font:inherit; text-decoration:underline; text-underline-offset:3px; cursor:pointer; }

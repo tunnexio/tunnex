@@ -6,13 +6,19 @@ export type SiteToSiteTab = "overview" | "topology" | "ranges" | "ha" | "dns" | 
 // switch above a second row of tabs, so "how are my networks joined?" had two answers on two levels.
 // Existing URLs are kept: every tab but the last is a section of /sites, the last is /site-to-site.
 export const SITE_TO_SITE_TABS: ReadonlyArray<readonly [SiteToSiteTab, string, string, string]> = [
-  ["overview", "/sites", "Networks", "Your networks, their gateways and how they are linked"],
-  ["topology", "/sites?section=topology", "Map", "See how networks connect"],
-  ["ranges", "/sites?section=ranges", "Ranges", "Private ranges shared by your networks"],
-  ["ha", "/sites?section=ha", "Failover", "Primary and standby gateways"],
-  ["dns", "/sites?section=dns", "DNS forwarding", "Resolve private names across networks"],
-  ["cloud-vpn", "/site-to-site", "Cloud VPN", "IPsec tunnels to AWS, Google Cloud and Azure"],
+  ["overview", "/sites", "Networks", "Your private networks. Each one has a Tunnex gateway running inside it."],
+  ["topology", "/sites?section=topology", "Map", "How your networks are joined."],
+  ["ranges", "/sites?section=ranges", "Ranges", "The private addresses each network shares with the others."],
+  ["ha", "/sites?section=ha", "Failover", "Which gateway is primary and which one stands by."],
+  ["dns", "/sites?section=dns", "DNS forwarding", "Send private names to a resolver inside one of your networks."],
+  ["cloud-vpn", "/site-to-site", "Cloud VPN", "IPsec tunnels from one of your networks to a cloud provider's VPN gateway, where no Tunnex gateway runs."],
 ];
+
+/** One line under the tabs: what this tab holds. The two lists (Networks, Cloud VPN) differ in kind, and
+ *  nothing on screen said how. */
+export function SiteToSiteHint({ active }: { active: SiteToSiteTab }) {
+  return <p className="s2s-tab-hint">{SITE_TO_SITE_TABS.find(([id]) => id === active)?.[3]}</p>;
+}
 
 export function SiteToSiteNavigation({ active }: { active: SiteToSiteTab }) {
   return <nav aria-label="Site-to-site" className="sites-section-nav s2s-networks-sections">
