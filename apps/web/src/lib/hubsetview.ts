@@ -81,3 +81,38 @@ export function hubSetView(
   });
   return { generation: hs.generation, members, promotionInEffect };
 }
+
+// ── SSI-9: who can see a hub fail ────────────────────────────────────────────────────────────────────────
+//
+// The failover controller demotes a hub only on testimony: ANOTHER gateway reporting a stale handshake with
+// it. A hub's own report proves it reaches the control plane, never that its data plane serves. Gateways of
+// the SAME network do not peer with each other, so a primary and standby that share a network cannot
+// observe one another. With no gateway in any other network, nobody is watching, the controller holds its
+// counters ("no witness, no ruling") and a dead primary is never demoted — while this tab shows a tidy pair.
+//
+// PURE. It answers from the topology the page already has; it does not claim anyone IS observing right now
+// (the Handshake column is that), only whether anyone COULD.
+
+export interface ObserverSite {
+  id: string;
+  /** ACTIVE gateways bound to this network. */
+  gatewayIds: string[];
+  /** APPROVED ranges on this network: with none, other networks' gateways have nothing to dial it for. */
+  approvedRanges: number;
+}
+
+/**
+ * unobservedHubs returns the hub members that NO gateway in another network can observe, in member order.
+ * A member is observable when its own network has an approved range (so others peer with it) and at least
+ * one other network has an active gateway.
+ */
+export function unobservedHubs(memberIds: string[], sites: ObserverSite[]): string[] {
+  const siteOf = new Map<string, ObserverSite>();
+  for (const site of sites) for (const id of site.gatewayIds) siteOf.set(id, site);
+  return memberIds.filter((member) => {
+    const home = siteOf.get(member);
+    if (!home) return true; // a hub bound to no network peers with nobody
+    if (home.approvedRanges === 0) return true;
+    return !sites.some((other) => other.id !== home.id && other.gatewayIds.length > 0);
+  });
+}
