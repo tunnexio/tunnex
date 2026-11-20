@@ -382,7 +382,7 @@ describe("meshFrom — the sparse cases the wireframe never draws", () => {
         { id: "p", name: "gw-1", status: "active", is_site_hub: true } as Node,
         { id: "s", name: "gw-2", status: "active" } as Node,
       ],
-      { generation: 2, members: [{ node_id: "p", role: "primary", hub_priority: 1 }, { node_id: "s", role: "standby", hub_priority: 2 }] },
+      { generation: 2, members: [{ node_id: "p", role: "primary", liveness: "fresh", hub_priority: 1 }, { node_id: "s", role: "standby", liveness: "fresh", hub_priority: 2 }] },
     );
     expect(m.links.filter((l) => l.standby)).toEqual([
       { from: "__hub:s", to: "a", tone: "linked", standby: true, note: "standby gateway for this network" },
@@ -398,7 +398,7 @@ describe("meshFrom — the sparse cases the wireframe never draws", () => {
       [mkCard("a", "hq-lan", [a, b])],
       [{ id: "p", name: "gw-1", status: "active" } as Node, { id: "s", name: "gw-2", status: "active" } as Node],
       // served order = ACTIVE order: gw-2 (pin 2) acts as primary, gw-1 (pin 1) was passed over
-      { generation: 3, members: [{ node_id: "s", role: "primary", hub_priority: 2 }, { node_id: "p", role: "standby", hub_priority: 1 }] },
+      { generation: 3, members: [{ node_id: "s", role: "primary", liveness: "fresh", hub_priority: 2 }, { node_id: "p", role: "standby", liveness: "fresh", hub_priority: 1 }] },
     );
     const passedOver = m.nodes.find((n) => n.id === "__hub:p")!;
     expect(passedOver.demoted).toBe(true);
@@ -411,7 +411,7 @@ describe("meshFrom — the sparse cases the wireframe never draws", () => {
     const m = meshFrom(
       [mkCard("a", "hq-lan", [{ id: "p", name: "gw-1", status: "active" } as never, { id: "s", name: "gw-2", status: "active" } as never])],
       [{ id: "p", name: "gw-1", status: "active" } as Node, { id: "s", name: "gw-2", status: "active" } as Node],
-      { generation: 1, members: [{ node_id: "p", role: "primary", hub_priority: 1 }, { node_id: "s", role: "standby", hub_priority: 2 }] },
+      { generation: 1, members: [{ node_id: "p", role: "primary", liveness: "fresh", hub_priority: 1 }, { node_id: "s", role: "standby", liveness: "fresh", hub_priority: 2 }] },
     );
     expect(m.nodes.some((n) => n.demoted)).toBe(false);
   });
@@ -420,7 +420,7 @@ describe("meshFrom — the sparse cases the wireframe never draws", () => {
     const m = meshFrom(
       [mkCard("a", "hq-lan", [{ id: "p", name: "gw-1", status: "active" } as never])],
       [{ id: "p", name: "gw-1", status: "active" } as Node, { id: "s", name: "gw-2", status: "active" } as Node],
-      { generation: 2, members: [{ node_id: "p", role: "primary" }, { node_id: "s", role: "standby" }] },
+      { generation: 2, members: [{ node_id: "p", role: "primary", liveness: "fresh" }, { node_id: "s", role: "standby", liveness: "fresh" }] },
     );
     expect(m.links.some((l) => l.standby)).toBe(false);
   });
@@ -462,8 +462,8 @@ describe("meshFrom — the sparse cases the wireframe never draws", () => {
       {
         generation: 9,
         members: [
-          { node_id: "h1", role: "primary" },
-          { node_id: "h2", role: "standby" },
+          { node_id: "h1", role: "primary", liveness: "fresh" },
+          { node_id: "h2", role: "standby", liveness: "fresh" },
         ],
       } as never,
     );
@@ -489,7 +489,7 @@ describe("meshFrom — the sparse cases the wireframe never draws", () => {
         { id: "gw-0", name: "gateway-0", status: "active", is_site_hub: true } as Node,
         { id: "gw-1", name: "gateway-1", status: "active" } as Node,
       ],
-      { generation: 1, members: [{ node_id: "gw-0", role: "primary" }, { node_id: "gw-1", role: "standby" }] } as never,
+      { generation: 1, members: [{ node_id: "gw-0", role: "primary", liveness: "fresh" }, { node_id: "gw-1", role: "standby", liveness: "fresh" }] } as never,
     );
     expect(m.nodes).toHaveLength(6); // four Sites + two served HA members, never ten gateway circles
     expect(m.nodes.filter((node) => node.kind === "spoke")).toHaveLength(4);

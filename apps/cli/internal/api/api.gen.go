@@ -1258,6 +1258,13 @@ const (
 	HostUpgradeStatusStateVerifying   HostUpgradeStatusState = "verifying"
 )
 
+// Defines values for HubMemberLiveness.
+const (
+	Fresh      HubMemberLiveness = "fresh"
+	Stale      HubMemberLiveness = "stale"
+	Unobserved HubMemberLiveness = "unobserved"
+)
+
 // Defines values for HubMemberRole.
 const (
 	Primary HubMemberRole = "primary"
@@ -5870,11 +5877,20 @@ type HubMember struct {
 	// HubPriority The admin pin (the CONFIGURED order) — so the UI can show a promotion 'in effect' when the active order diverges. Null = unpinned.
 	HubPriority *int `json:"hub_priority"`
 
+	// Liveness SSI-12: the failover controller's own verdict on this member. `unobserved` = no gateway in another network is reporting on it, so the controller will not rule.
+	Liveness HubMemberLiveness `json:"liveness"`
+
 	// Metrics Latest node_peer_status observation, or ABSENT when this member is not reporting (distinct from an idle link with zero bytes).
 	Metrics *HubMemberMetrics  `json:"metrics"`
 	NodeId  openapi_types.UUID `json:"node_id"`
 	Role    HubMemberRole      `json:"role"`
+
+	// SilentSeconds Seconds since the evidence the verdict rests on (receive progress seen by a witness, else the last handshake). Absent when unobserved.
+	SilentSeconds *int `json:"silent_seconds,omitempty"`
 }
+
+// HubMemberLiveness SSI-12: the failover controller's own verdict on this member. `unobserved` = no gateway in another network is reporting on it, so the controller will not rule.
+type HubMemberLiveness string
 
 // HubMemberRole defines model for HubMember.Role.
 type HubMemberRole string

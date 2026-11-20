@@ -427,7 +427,11 @@ func (s apiServer) GetHubSet(ctx context.Context, req api.GetHubSetRequestObject
 	}
 	members := make([]api.HubMember, 0, len(view.Members))
 	for _, m := range view.Members {
-		hm := api.HubMember{NodeId: m.NodeID, Role: api.HubMemberRole(m.Role)}
+		hm := api.HubMember{NodeId: m.NodeID, Role: api.HubMemberRole(m.Role), Liveness: api.HubMemberLiveness(m.Liveness)}
+		if m.Liveness != "unobserved" {
+			v := m.SilentSeconds
+			hm.SilentSeconds = &v
+		}
 		if m.HubPriority != nil {
 			v := int(*m.HubPriority)
 			hm.HubPriority = &v

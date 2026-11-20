@@ -158,7 +158,7 @@ vi.mock("../src/lib/api", async () => {
           return {
             data: {
               generation: 1, failover: { stale_after_seconds: 240, demote_after_seconds: 90, restore_after_seconds: 150 },
-              members: [{ node_id: "gw-a", role: "primary", hub_priority: 1 }],
+              members: [{ node_id: "gw-a", role: "primary", liveness: "fresh", hub_priority: 1 }],
             },
           };
         if (path.endsWith("/nodes"))

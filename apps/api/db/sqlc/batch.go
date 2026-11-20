@@ -88,8 +88,8 @@ func (b *UpsertDeviceStatusBatchResults) Close() error {
 }
 
 const upsertNodePeerStatus = `-- name: UpsertNodePeerStatus :batchexec
-INSERT INTO node_peer_status (node_id, public_key, last_handshake_at, rx_bytes, tx_bytes, updated_at)
-SELECT $1, $2, $3, $4, $5, now()
+INSERT INTO node_peer_status (node_id, public_key, last_handshake_at, rx_bytes, tx_bytes, updated_at, rx_advanced_at, stalled_reports)
+SELECT $1, $2, $3, $4, $5, now(), now(), 0
 WHERE EXISTS (
     SELECT 1 FROM nodes peer
     WHERE peer.wg_public_key = $2
@@ -100,6 +100,8 @@ ON CONFLICT (node_id, public_key) DO UPDATE
 SET last_handshake_at = EXCLUDED.last_handshake_at,
     rx_bytes = EXCLUDED.rx_bytes,
     tx_bytes = EXCLUDED.tx_bytes,
+    rx_advanced_at = CASE WHEN EXCLUDED.rx_bytes <> node_peer_status.rx_bytes THEN now() ELSE node_peer_status.rx_advanced_at END,
+    stalled_reports = CASE WHEN EXCLUDED.rx_bytes <> node_peer_status.rx_bytes THEN 0 ELSE node_peer_status.stalled_reports + 1 END,
     updated_at = now()
 `
 
@@ -122,6 +124,9 @@ type UpsertNodePeerStatusParams struct {
 // (site-link peers). The EXISTS guard admits ONLY a pubkey that is ANOTHER node (a real gateway) in the
 // SAME org — a DEVICE pubkey matches no node, so it no-ops here (device peers land in device_status,
 // gateway peers land here; neither crosses). Batched (one round-trip per report). rx/tx are raw gauges.
+// SSI-12: the same write keeps the receive-progress memory. rx_advanced_at moves only when rx_bytes CHANGES
+// (a counter that went DOWN is an interface restart on the reporter, which is also "not frozen");
+// stalled_reports counts the reports since. A first sighting starts the clock now with zero stalls.
 func (q *Queries) UpsertNodePeerStatus(ctx context.Context, arg []UpsertNodePeerStatusParams) *UpsertNodePeerStatusBatchResults {
 	batch := &pgx.Batch{}
 	for _, a := range arg {

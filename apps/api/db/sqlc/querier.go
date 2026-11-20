@@ -2173,6 +2173,9 @@ type Querier interface {
 	// (site-link peers). The EXISTS guard admits ONLY a pubkey that is ANOTHER node (a real gateway) in the
 	// SAME org — a DEVICE pubkey matches no node, so it no-ops here (device peers land in device_status,
 	// gateway peers land here; neither crosses). Batched (one round-trip per report). rx/tx are raw gauges.
+	// SSI-12: the same write keeps the receive-progress memory. rx_advanced_at moves only when rx_bytes CHANGES
+	// (a counter that went DOWN is an interface restart on the reporter, which is also "not frozen");
+	// stalled_reports counts the reports since. A first sighting starts the clock now with zero stalls.
 	UpsertNodePeerStatus(ctx context.Context, arg []UpsertNodePeerStatusParams) *UpsertNodePeerStatusBatchResults
 	// Opt-in a check (or change its mode/param). A row's existence IS the opt-in
 	// (no row = off — the unlock-then-opt-in convention, default-off by construction).

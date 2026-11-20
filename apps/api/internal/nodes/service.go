@@ -1503,7 +1503,9 @@ func siteCarriers(gws []sqlc.ListSiteGatewaysForOrgRow, activeMembers []sqlc.Lis
 // siteLinkKeepaliveSecs (S8.3 CK) is the persistent-keepalive interval on every site-link peer — the
 // wireguard-conventional 25s, comfortably under NAT UDP-mapping timeouts, so a NAT'd spoke stays dialable
 // and an idle link never false-stales for want of a handshake.
-const siteLinkKeepaliveSecs = 25
+// SSI-12 D3: 25s → 10s. The failover controller reads a peer's RECEIVE counter as its heartbeat, and a
+// counter that moves only every 25s cannot support a short stall window. 32 bytes every 10s per link.
+const siteLinkKeepaliveSecs = 10
 
 // topology (S8.2 hub-and-spoke, Item 6/7) — PURE. Returns (nil, nil) when the node is not a site gateway
 // or there is no remote site to reach. HUB = the site gateway with a public endpoint (v1; deterministic
@@ -1674,8 +1676,9 @@ func latestByPubKey(rows []sqlc.NodePeerStatus) map[string]MemberMetrics {
 // seam; one pure function called twice cannot disagree with itself.
 type MemberLiveness struct {
 	Observed bool          // a living witness reported a VALID (non-NULL) handshake for this member (else NO verdict)
-	Fresh    bool          // Observed AND age < failoverStaleWindow (meaningless when !Observed)
+	Fresh    bool          // Observed AND alive by receive progress, else by handshake age (meaningless when !Observed)
 	Age      time.Duration // now − last handshake (valid only when Observed; for the controller's log line)
+	Silent   time.Duration // SSI-12: how long since the evidence the verdict rests on (receive progress, else the handshake)
 	Demoted  bool          // the failover controller has failed-over-PAST this member (in the demoted set)
 }
 
@@ -1689,13 +1692,46 @@ func deriveMemberLiveness(configured []uuid.UUID, pubkey map[uuid.UUID]string, r
 	for _, id := range demoted {
 		dem[id] = true
 	}
+	// SSI-12: fold each peer's RECEIVE-PROGRESS evidence across its witnesses. One pass over the rows.
+	type rxFold struct {
+		progress, stalled bool
+		silent            time.Duration // shortest silence any witness with evidence reports
+	}
+	rx := map[string]rxFold{}
+	for _, r := range rows {
+		// A witness testifies only while it is itself reporting, and only about a link that has been up at
+		// least once (a never-handshaked peer has a counter that never moves and means nothing).
+		if !r.RxAdvancedAt.Valid || !r.LastHandshakeAt.Valid || now.Sub(r.UpdatedAt) > witnessCurrentWindow {
+			continue
+		}
+		silent := now.Sub(r.RxAdvancedAt.Time)
+		f, seen := rx[r.PublicKey]
+		if !seen || silent < f.silent {
+			f.silent = silent
+		}
+		if int(r.StalledReports) >= rxStallReports && silent >= rxStallWindow {
+			f.stalled = true
+		} else {
+			f.progress = true
+		}
+		rx[r.PublicKey] = f
+	}
 	out := make(map[uuid.UUID]MemberLiveness, len(configured))
 	for _, id := range configured {
 		ml := MemberLiveness{Demoted: dem[id]}
 		if m, observed := latest[pubkey[id]]; observed { // latestByPubKey skips NULL handshakes → absence = no witness
 			ml.Observed = true
 			ml.Age = now.Sub(m.LastHandshakeAt)
+			ml.Silent = ml.Age
 			ml.Fresh = ml.Age < failoverStaleWindow
+			// Receive evidence, when a current witness has any, OVERRIDES the handshake age in both
+			// directions: progress seen by ANY witness is life (a 200s-old handshake on a link still
+			// passing keepalives is healthy); a counter frozen for EVERY witness is death, long before the
+			// handshake could say so.
+			if f, has := rx[pubkey[id]]; has {
+				ml.Silent = f.silent
+				ml.Fresh = f.progress
+			}
 		}
 		out[id] = ml
 	}
@@ -1728,6 +1764,9 @@ type HubMemberView struct {
 	Role        string
 	HubPriority *int32
 	Metrics     *MemberMetrics
+	// SSI-12 D5: the controller's own verdict, so the dashboard shows it instead of recomputing one.
+	Liveness      string // "fresh" | "stale" | "unobserved"
+	SilentSeconds int    // valid unless unobserved
 }
 
 // HubSetView is the org's persisted hub set as SERVED (S8.6 Slice 6): the D5 generation (the set's version
@@ -1773,8 +1812,15 @@ func (s *Service) GetHubSetView(ctx context.Context, orgID uuid.UUID) (HubSetVie
 		}
 	}
 	view := HubSetView{Generation: hs.Generation, Members: make([]HubMemberView, 0, len(active)), Timing: FailoverTimings()}
+	live := deriveMemberLiveness(active, keyByNode, rows, hs.Demoted, time.Now())
 	for i, mid := range active {
-		mv := HubMemberView{NodeID: mid, Role: "standby", HubPriority: prioByNode[mid]}
+		mv := HubMemberView{NodeID: mid, Role: "standby", HubPriority: prioByNode[mid], Liveness: "unobserved"}
+		if ml := live[mid]; ml.Observed {
+			mv.Liveness, mv.SilentSeconds = "stale", int(ml.Silent/time.Second)
+			if ml.Fresh {
+				mv.Liveness = "fresh"
+			}
+		}
 		if i == 0 {
 			mv.Role = "primary"
 		}

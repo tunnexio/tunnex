@@ -2259,6 +2259,8 @@ type NodePeerStatus struct {
 	RxBytes         int64              `json:"rx_bytes"`
 	TxBytes         int64              `json:"tx_bytes"`
 	UpdatedAt       time.Time          `json:"updated_at"`
+	RxAdvancedAt    pgtype.Timestamptz `json:"rx_advanced_at"`
+	StalledReports  int32              `json:"stalled_reports"`
 }
 
 type NodeRekeyChallenge struct {
