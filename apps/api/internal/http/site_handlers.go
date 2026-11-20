@@ -12,6 +12,7 @@ import (
 	"github.com/tunnexio/tunnex/apps/api/internal/api"
 	"github.com/tunnexio/tunnex/apps/api/internal/apierr"
 	"github.com/tunnexio/tunnex/apps/api/internal/authctx"
+	"github.com/tunnexio/tunnex/apps/api/internal/nodes"
 	"github.com/tunnexio/tunnex/apps/api/internal/rbac"
 	sitessvc "github.com/tunnexio/tunnex/apps/api/internal/sites"
 )
@@ -177,6 +178,12 @@ func (s apiServer) RouteLAN(ctx context.Context, req api.RouteLANRequestObject) 
 	}
 	p, _ := authctx.PrincipalFrom(ctx)
 	site, _, err := s.sites.RouteLAN(ctx, p.UserID, req.OrgId, req.Body.NodeId, name, cidr)
+	// SSI-6: converge even on a refusal. An overlap refusal still leaves the gateway BOUND to a site, which
+	// is a hub-set membership change exactly like an explicit bind; skipping it left an organization set
+	// up through this path with no persisted hub set at all.
+	if site.ID != uuid.Nil {
+		s.siteTopologyChanged(ctx, req.OrgId, "route_lan")
+	}
 	if err != nil {
 		return nil, err
 	}
@@ -232,10 +239,7 @@ func (s apiServer) BindSiteNode(ctx context.Context, req api.BindSiteNodeRequest
 		return nil, err
 	}
 	// S8.6: binding a gateway changes hub-set membership → re-elect + persist (the D5 generation bumps).
-	// Best-effort: a reconcile hiccup must not fail the bind (the set self-heals on the next reconcile).
-	if _, err := s.nodes.ReconcileHubSet(ctx, req.OrgId); err != nil {
-		slog.WarnContext(ctx, "hub_set_reconcile_failed", "op", "bind", "org_id", req.OrgId.String(), "error", err.Error())
-	}
+	s.siteTopologyChanged(ctx, req.OrgId, "bind")
 	return api.BindSiteNode204Response{}, nil
 }
 
@@ -255,10 +259,8 @@ func (s apiServer) UnbindSiteNode(ctx context.Context, req api.UnbindSiteNodeReq
 	if err := s.sites.UnbindSiteNode(ctx, p.UserID, req.OrgId, req.SiteId, nodeID); err != nil {
 		return nil, err
 	}
-	// S8.6: unbinding removes a gateway from the hub-set candidate pool → re-elect + persist (best-effort).
-	if _, err := s.nodes.ReconcileHubSet(ctx, req.OrgId); err != nil {
-		slog.WarnContext(ctx, "hub_set_reconcile_failed", "op", "unbind", "org_id", req.OrgId.String(), "error", err.Error())
-	}
+	// S8.6: unbinding removes a gateway from the hub-set candidate pool → re-elect + persist.
+	s.siteTopologyChanged(ctx, req.OrgId, "unbind")
 	return api.UnbindSiteNode204Response{}, nil
 }
 
@@ -301,6 +303,7 @@ func (s apiServer) ApproveSiteSubnet(ctx context.Context, req api.ApproveSiteSub
 	if err := s.sites.ApproveSubnet(ctx, p.UserID, req.OrgId, req.SubnetId); err != nil {
 		return nil, err
 	}
+	s.siteTopologyChanged(ctx, req.OrgId, "approve_subnet")
 	return api.ApproveSiteSubnet204Response{}, nil
 }
 
@@ -357,6 +360,7 @@ func (s apiServer) RemoveSiteSubnet(ctx context.Context, req api.RemoveSiteSubne
 	if err := s.sites.RemoveSubnet(ctx, p.UserID, req.OrgId, req.SubnetId); err != nil {
 		return nil, err
 	}
+	s.siteTopologyChanged(ctx, req.OrgId, "remove_subnet")
 	return api.RemoveSiteSubnet204Response{}, nil
 }
 
@@ -384,6 +388,7 @@ func (s apiServer) DeleteSite(ctx context.Context, req api.DeleteSiteRequestObje
 	if err := s.sites.DeleteSite(ctx, p.UserID, req.OrgId, req.SiteId); err != nil {
 		return nil, err
 	}
+	s.siteTopologyChanged(ctx, req.OrgId, "delete_site")
 	return api.DeleteSite204Response{}, nil
 }
 
@@ -436,4 +441,37 @@ func (s apiServer) GetHubSet(ctx context.Context, req api.GetHubSetRequestObject
 		Body:    api.HubSet{Generation: view.Generation, Members: members},
 		Headers: api.GetHubSet200ResponseHeaders{XRequestId: reqID(ctx)},
 	}, nil
+}
+
+// hubSetReconciler and orgNodePusher are the two halves of site convergence, named so the composition can
+// be exercised without a database.
+type hubSetReconciler interface {
+	ReconcileHubSet(ctx context.Context, orgID uuid.UUID) (nodes.HubSet, error)
+}
+
+type orgNodePusher interface {
+	PushOrgNodes(ctx context.Context, orgID uuid.UUID)
+}
+
+// siteTopologyChanged is called after EVERY committed site mutation that changes what gateways must carry
+// (SSI-6, findings F6 and F7): bind, unbind, the one-screen route, approve, remove and delete.
+func (s apiServer) siteTopologyChanged(ctx context.Context, orgID uuid.UUID, op string) {
+	convergeSiteTopology(ctx, s.nodes, s.devices, orgID, op)
+}
+
+// convergeSiteTopology re-derives and persists the hub set, then tells every gateway in the organization to
+// re-fetch.
+//
+// Both halves were missing somewhere. The one-screen route and site deletion never reconciled the hub set,
+// so an organization set up through the wizard had none persisted and its hub was re-elected from live
+// health on every compile, with no hysteresis and no audit. And NO site mutation pushed: a removed range or
+// a deleted site stayed routed until each gateway's own poll came round.
+//
+// The push is deliberately not conditional on the reconcile: a reconcile failure is logged and self-heals on
+// the failover tick, while the gateways still need the new ranges now.
+func convergeSiteTopology(ctx context.Context, hub hubSetReconciler, push orgNodePusher, orgID uuid.UUID, op string) {
+	if _, err := hub.ReconcileHubSet(ctx, orgID); err != nil {
+		slog.WarnContext(ctx, "hub_set_reconcile_failed", "op", op, "org_id", orgID.String(), "error", err.Error())
+	}
+	push.PushOrgNodes(ctx, orgID)
 }
