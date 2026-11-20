@@ -198,11 +198,11 @@ func (s *Service) RouteLAN(ctx context.Context, actor, orgID, nodeID uuid.UUID, 
 		if name == "" {
 			name = "LAN " + cidr.Masked().String()
 		}
-		site, err = s.RegisterSite(ctx, orgID, name)
+		site, err = s.RegisterSite(ctx, actor, orgID, name)
 		if err != nil {
 			return sqlc.Site{}, sqlc.SiteSubnet{}, err
 		}
-		if err := s.BindNode(ctx, orgID, site.ID, nodeID); err != nil {
+		if err := s.BindNode(ctx, actor, orgID, site.ID, nodeID); err != nil {
 			// SSI-1 (finding F11): the site was created a moment ago for THIS call and nothing references
 			// it yet. Leaving it would make the operator's retry fail with site_name_taken on a site they
 			// never saw. Remove it; the bind error is still what the caller gets.
@@ -215,7 +215,7 @@ func (s *Service) RouteLAN(ctx context.Context, actor, orgID, nodeID uuid.UUID, 
 
 	// Advertise + approve the target CIDR. A same-CIDR resume finds the surviving pending subnet (subnet_exists)
 	// and approves THAT rather than erroring — idempotent.
-	sub, err := s.AddSubnet(ctx, orgID, site.ID, cidr)
+	sub, err := s.AddSubnet(ctx, actor, orgID, site.ID, cidr)
 	if err != nil {
 		var ae *apierr.Error
 		if errors.As(err, &ae) && ae.Code == "subnet_exists" {

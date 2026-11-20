@@ -36,7 +36,7 @@ func TestProviderExistingWritersRespectReservations(t *testing.T) {
 	siteService := sites.NewService(p)
 	var pending []uuid.UUID
 	for _, cidr := range []string{"10.199.1.0/24", "9.9.9.0/24", "8.8.8.0/24"} {
-		sub, err := siteService.AddSubnet(ctx, org, req.SiteID, netip.MustParsePrefix(cidr))
+		sub, err := siteService.AddSubnet(ctx, uuid.Nil, org, req.SiteID, netip.MustParsePrefix(cidr))
 		if err != nil {
 			t.Fatalf("pending advertisement refused: %v", err)
 		}
@@ -172,7 +172,7 @@ func TestProviderWinningCreateBlocksOpposingWriters(t *testing.T) {
 				t.Fatal(err)
 			}
 			req.Config.RemotePrefixes = []string{"10.199.1.0/24"}
-			sub, err := sites.NewService(p).AddSubnet(ctx, org, req.SiteID, netip.MustParsePrefix("10.199.1.0/24"))
+			sub, err := sites.NewService(p).AddSubnet(ctx, uuid.Nil, org, req.SiteID, netip.MustParsePrefix("10.199.1.0/24"))
 			if err != nil {
 				t.Fatal(err)
 			}

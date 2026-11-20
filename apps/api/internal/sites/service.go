@@ -52,7 +52,7 @@ func (s *Service) auditTarget(ctx context.Context, q *sqlc.Queries, orgID, actor
 	b, _ := json.Marshal(meta)
 	_, err := q.InsertAuditLog(ctx, sqlc.InsertAuditLogParams{
 		OrgID:       pgtype.UUID{Bytes: orgID, Valid: true},
-		ActorUserID: pgtype.UUID{Bytes: actor, Valid: true},
+		ActorUserID: pgtype.UUID{Bytes: actor, Valid: actor != uuid.Nil},
 		Action:      action,
 		TargetType:  strptr(targetType),
 		TargetID:    strptr(targetID),
@@ -95,13 +95,26 @@ func admissibleRange(cidr netip.Prefix) error {
 	}
 }
 
-// RegisterSite creates a site entity in the org. A duplicate name in the org is a 409.
-func (s *Service) RegisterSite(ctx context.Context, orgID uuid.UUID, name string) (sqlc.Site, error) {
-	site, err := s.q.CreateSite(ctx, sqlc.CreateSiteParams{OrgID: orgID, Name: name})
+// RegisterSite creates a site entity in the org. A duplicate name in the org is a 409. The creation is
+// audited in the same transaction (SSI-5): a site is the anchor every route hangs from, and before this
+// the audit log showed a range being approved on a site that had no recorded origin.
+func (s *Service) RegisterSite(ctx context.Context, actor, orgID uuid.UUID, name string) (sqlc.Site, error) {
+	var site sqlc.Site
+	err := s.withTx(ctx, func(q *sqlc.Queries) error {
+		created, err := q.CreateSite(ctx, sqlc.CreateSiteParams{OrgID: orgID, Name: name})
+		if err != nil {
+			return err
+		}
+		site = created
+		return s.auditSite(ctx, q, orgID, actor, site.ID, "site.created", map[string]any{"name": site.Name})
+	})
 	if pgerr.IsUnique(err) {
 		return sqlc.Site{}, apierr.Conflict("site_name_taken", "a site with that name already exists in this organization")
 	}
-	return site, err
+	if err != nil {
+		return sqlc.Site{}, err
+	}
+	return site, nil
 }
 
 // ListSites returns the org's sites.
@@ -119,19 +132,33 @@ func (s *Service) GetSite(ctx context.Context, orgID, siteID uuid.UUID) (sqlc.Si
 }
 
 // AddSubnet attaches a routed subnet to a site (org-checked). Advertisement approval + pool
-// disjointness are Slice 4 — this is the model. A duplicate (site, cidr) is a 409.
-func (s *Service) AddSubnet(ctx context.Context, orgID, siteID uuid.UUID, cidr netip.Prefix) (sqlc.SiteSubnet, error) {
+// disjointness are Slice 4 — this is the model. A duplicate (site, cidr) is a 409. The advertisement is
+// audited in the same transaction (SSI-5).
+func (s *Service) AddSubnet(ctx context.Context, actor, orgID, siteID uuid.UUID, cidr netip.Prefix) (sqlc.SiteSubnet, error) {
 	if err := admissibleRange(cidr); err != nil {
 		return sqlc.SiteSubnet{}, err
 	}
 	if _, err := s.GetSite(ctx, orgID, siteID); err != nil {
 		return sqlc.SiteSubnet{}, err
 	}
-	sub, err := s.q.AddSiteSubnet(ctx, sqlc.AddSiteSubnetParams{SiteID: siteID, Cidr: cidr.Masked()})
+	var sub sqlc.SiteSubnet
+	err := s.withTx(ctx, func(q *sqlc.Queries) error {
+		added, err := q.AddSiteSubnet(ctx, sqlc.AddSiteSubnetParams{SiteID: siteID, Cidr: cidr.Masked()})
+		if err != nil {
+			return err
+		}
+		sub = added
+		return s.audit(ctx, q, orgID, actor, sub.ID, "site.subnet_advertised", map[string]any{
+			"cidr": sub.Cidr.String(), "site_id": siteID.String(),
+		})
+	})
 	if pgerr.IsUnique(err) {
 		return sqlc.SiteSubnet{}, apierr.Conflict("subnet_exists", "that subnet is already on the site")
 	}
-	return sub, err
+	if err != nil {
+		return sqlc.SiteSubnet{}, err
+	}
+	return sub, nil
 }
 
 // ListSubnets returns a site's routed subnets (org-checked).
@@ -149,55 +176,68 @@ func (s *Service) ListSubnets(ctx context.Context, orgID, siteID uuid.UUID) ([]s
 // S8.5 #2: REFUSE to silently re-home a gateway already bound to ANOTHER site (`node_already_bound_to_site`)
 // — an unconditional UPDATE would strand the prior site with no gateway (the RouteLAN retry orphan). A bind
 // to the SAME site is an idempotent no-op (RouteLAN's resume path relies on it).
-func (s *Service) BindNode(ctx context.Context, orgID, siteID, nodeID uuid.UUID) error {
+func (s *Service) BindNode(ctx context.Context, actor, orgID, siteID, nodeID uuid.UUID) error {
 	if err := s.requireGatewayCarrier(ctx, orgID, nodeID); err != nil {
 		return err
 	}
-	cur, err := s.q.GetNodeSiteBinding(ctx, sqlc.GetNodeSiteBindingParams{ID: nodeID, OrgID: orgID})
+	// SSI-5: the claim and its audit row commit together. An idempotent re-bind to the same site changes
+	// nothing and is not audited, so the log holds one row per real binding.
+	return s.withTx(ctx, func(q *sqlc.Queries) error {
+		changed, err := s.bindNode(ctx, q, orgID, siteID, nodeID)
+		if err != nil || !changed {
+			return err
+		}
+		return s.auditSite(ctx, q, orgID, actor, siteID, "site.gateway_bound", map[string]any{"node_id": nodeID.String()})
+	})
+}
+
+// bindNode is BindNode's claim, bound to the caller's transaction. It reports whether a binding was made.
+func (s *Service) bindNode(ctx context.Context, q *sqlc.Queries, orgID, siteID, nodeID uuid.UUID) (bool, error) {
+	cur, err := q.GetNodeSiteBinding(ctx, sqlc.GetNodeSiteBindingParams{ID: nodeID, OrgID: orgID})
 	if err == pgx.ErrNoRows {
-		return apierr.NotFound("node_or_site_not_found", "no such node in this organization, or the site is not in this organization")
+		return false, apierr.NotFound("node_or_site_not_found", "no such node in this organization, or the site is not in this organization")
 	}
 	if err != nil {
-		return err
+		return false, err
 	}
 	if cur.Valid {
 		if cur.Bytes == siteID {
-			return nil // already bound to THIS site — idempotent no-op (resume-safe)
+			return false, nil // already bound to THIS site — idempotent no-op (resume-safe)
 		}
-		return apierr.Conflict("node_already_bound_to_site", "this gateway is already bound to another site; unbind it first")
+		return false, apierr.Conflict("node_already_bound_to_site", "this gateway is already bound to another site; unbind it first")
 	}
 	// Unbound at read time → ATOMIC claim. The `site_id IS NULL` predicate in BindNodeToSite is the real
 	// guard: under a concurrent bind, only one UPDATE matches, so the read above can never be raced into a
 	// silent re-home. On 0 rows we lost the race (or the site is missing) → re-read to classify.
-	n, err := s.q.BindNodeToSite(ctx, sqlc.BindNodeToSiteParams{
+	n, err := q.BindNodeToSite(ctx, sqlc.BindNodeToSiteParams{
 		ID: nodeID, OrgID: orgID, SiteID: pgtype.UUID{Bytes: siteID, Valid: true},
 	})
 	if pgerr.IsUnique(err) {
-		return apierr.Conflict("site_has_gateway", "this site already has a gateway (single-node v1); unbind it first")
+		return false, apierr.Conflict("site_has_gateway", "this site already has a gateway (single-node v1); unbind it first")
 	}
 	if err != nil {
-		return err
+		return false, err
 	}
 	if n == 1 {
-		return nil
+		return true, nil
 	}
 	// 0 rows: a concurrent bind claimed the gateway first, or the site does not exist. Re-read to emit the
 	// right typed error — NEVER an orphaning silent success.
-	cur2, err := s.q.GetNodeSiteBinding(ctx, sqlc.GetNodeSiteBindingParams{ID: nodeID, OrgID: orgID})
+	cur2, err := q.GetNodeSiteBinding(ctx, sqlc.GetNodeSiteBindingParams{ID: nodeID, OrgID: orgID})
 	if err != nil {
 		if err == pgx.ErrNoRows {
-			return apierr.NotFound("node_or_site_not_found", "no such node in this organization, or the site is not in this organization")
+			return false, apierr.NotFound("node_or_site_not_found", "no such node in this organization, or the site is not in this organization")
 		}
-		return err
+		return false, err
 	}
 	if cur2.Valid {
 		if cur2.Bytes == siteID {
-			return nil // the racer bound us to THIS same site → idempotent no-op
+			return false, nil // the racer bound us to THIS same site → idempotent no-op
 		}
-		return apierr.Conflict("node_already_bound_to_site", "this gateway is already bound to another site; unbind it first")
+		return false, apierr.Conflict("node_already_bound_to_site", "this gateway is already bound to another site; unbind it first")
 	}
 	// Still unbound → the claim's EXISTS(site) clause failed: the site is not in this org.
-	return apierr.NotFound("node_or_site_not_found", "no such node in this organization, or the site is not in this organization")
+	return false, apierr.NotFound("node_or_site_not_found", "no such node in this organization, or the site is not in this organization")
 }
 
 // requireGatewayCarrier is the shared carrier boundary for both direct Site binding and
@@ -221,15 +261,25 @@ func (s *Service) requireGatewayCarrier(ctx context.Context, orgID, nodeID uuid.
 
 // UnbindNode detaches a node from its site — the SITE entity survives (the point of D6:
 // replace-node is unbind-old + bind-new; site identity + subnets are untouched).
-func (s *Service) UnbindNode(ctx context.Context, orgID, nodeID uuid.UUID) error {
-	n, err := s.q.UnbindNode(ctx, sqlc.UnbindNodeParams{ID: nodeID, OrgID: orgID})
-	if err != nil {
-		return ipsecguard.ResourceConflict(err)
-	}
-	if n == 0 {
-		return apierr.NotFound("node_not_found", "no such node in this organization")
-	}
-	return nil
+func (s *Service) UnbindNode(ctx context.Context, actor, orgID, nodeID uuid.UUID) error {
+	return s.withTx(ctx, func(q *sqlc.Queries) error {
+		// Read the binding first so the audit row names the site the gateway left (SSI-5).
+		cur, err := q.GetNodeSiteBinding(ctx, sqlc.GetNodeSiteBindingParams{ID: nodeID, OrgID: orgID})
+		if err != nil && err != pgx.ErrNoRows {
+			return err
+		}
+		n, err := q.UnbindNode(ctx, sqlc.UnbindNodeParams{ID: nodeID, OrgID: orgID})
+		if err != nil {
+			return ipsecguard.ResourceConflict(err)
+		}
+		if n == 0 {
+			return apierr.NotFound("node_not_found", "no such node in this organization")
+		}
+		if !cur.Valid {
+			return nil // it was bound to no site: nothing left a site, nothing to record
+		}
+		return s.auditSite(ctx, q, orgID, actor, cur.Bytes, "site.gateway_unbound", map[string]any{"node_id": nodeID.String()})
+	})
 }
 
 // UnbindSiteNode detaches a gateway node from the site (D6 replace-node = unbind-old then bind-new). S8.6 #3:
@@ -238,7 +288,7 @@ func (s *Service) UnbindNode(ctx context.Context, orgID, nodeID uuid.UUID) error
 // bodyless DELETE shape) resolves to the site's SOLE gateway; a multi-gateway site then requires an explicit
 // id (409). The exact scoped UPDATE (id + org + site) unbinds only the named node; 0 rows → a deterministic
 // 404.
-func (s *Service) UnbindSiteNode(ctx context.Context, orgID, siteID, nodeID uuid.UUID) error {
+func (s *Service) UnbindSiteNode(ctx context.Context, actor, orgID, siteID, nodeID uuid.UUID) error {
 	if _, err := s.GetSite(ctx, orgID, siteID); err != nil { // org-check the site
 		return err
 	}
@@ -258,16 +308,19 @@ func (s *Service) UnbindSiteNode(ctx context.Context, orgID, siteID, nodeID uuid
 			return apierr.Conflict("multiple_gateways", "this site has multiple gateways; specify node_id")
 		}
 	}
-	n, err := s.q.UnbindNodeFromSite(ctx, sqlc.UnbindNodeFromSiteParams{
-		NodeID: nodeID, OrgID: orgID, SiteID: pgtype.UUID{Bytes: siteID, Valid: true},
+	// SSI-5: the unbind and its audit row commit together.
+	return s.withTx(ctx, func(q *sqlc.Queries) error {
+		n, err := q.UnbindNodeFromSite(ctx, sqlc.UnbindNodeFromSiteParams{
+			NodeID: nodeID, OrgID: orgID, SiteID: pgtype.UUID{Bytes: siteID, Valid: true},
+		})
+		if err != nil {
+			return ipsecguard.ResourceConflict(err)
+		}
+		if n == 0 {
+			return apierr.NotFound("node_not_bound_to_site", "no such gateway bound to this site in this organization")
+		}
+		return s.auditSite(ctx, q, orgID, actor, siteID, "site.gateway_unbound", map[string]any{"node_id": nodeID.String()})
 	})
-	if err != nil {
-		return ipsecguard.ResourceConflict(err)
-	}
-	if n == 0 {
-		return apierr.NotFound("node_not_bound_to_site", "no such gateway bound to this site in this organization")
-	}
-	return nil
 }
 
 // SiteReferences is what points at a site: the counts the UI shows BEFORE a delete (D4 cascade preview)

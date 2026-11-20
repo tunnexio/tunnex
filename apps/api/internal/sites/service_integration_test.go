@@ -76,30 +76,30 @@ func TestReplaceNodePreservesSiteEntity(t *testing.T) {
 	ex(`INSERT INTO nodes (id, org_id, name, cert_serial, enrolled_kind) VALUES ($1,$2,'gw-b',$3,'gateway')`, nodeB, org, "cs-b-"+nodeB.String()[:8])
 	t.Cleanup(func() { _, _ = pool.Exec(context.Background(), `DELETE FROM organizations WHERE id=$1`, org) })
 
-	site, err := svc.RegisterSite(ctx, org, "hq")
+	site, err := svc.RegisterSite(ctx, uuid.Nil, org, "hq")
 	if err != nil {
 		t.Fatalf("register site: %v", err)
 	}
-	if err := svc.BindNode(ctx, org, site.ID, nodeA); err != nil {
+	if err := svc.BindNode(ctx, uuid.Nil, org, site.ID, nodeA); err != nil {
 		t.Fatalf("bind A: %v", err)
 	}
-	sub, err := svc.AddSubnet(ctx, org, site.ID, netip.MustParsePrefix("10.20.0.0/24"))
+	sub, err := svc.AddSubnet(ctx, uuid.Nil, org, site.ID, netip.MustParsePrefix("10.20.0.0/24"))
 	if err != nil {
 		t.Fatalf("add subnet: %v", err)
 	}
 
 	// S8.6 LIFT: binding a SECOND gateway to a site is now ALLOWED (the HA hub set — the single-node v1
 	// partial unique index was dropped in 0037 precisely so a site can hold primary + standby gateways).
-	if err := svc.BindNode(ctx, org, site.ID, nodeB); err != nil {
+	if err := svc.BindNode(ctx, uuid.Nil, org, site.ID, nodeB); err != nil {
 		t.Fatalf("S8.6: a site may now hold multiple gateways (HA hub set); bind B must succeed, got %v", err)
 	}
 
 	// REPLACE the node: unbind A, bind B (a same-site no-op now — B is already bound; the point is the site
 	// entity survives the node churn).
-	if err := svc.UnbindNode(ctx, org, nodeA); err != nil {
+	if err := svc.UnbindNode(ctx, uuid.Nil, org, nodeA); err != nil {
 		t.Fatalf("unbind A: %v", err)
 	}
-	if err := svc.BindNode(ctx, org, site.ID, nodeB); err != nil {
+	if err := svc.BindNode(ctx, uuid.Nil, org, site.ID, nodeB); err != nil {
 		t.Fatalf("bind B after unbind: %v", err)
 	}
 
@@ -140,14 +140,14 @@ func TestDeleteSiteCascadesAndAudits(t *testing.T) {
 	ex(`INSERT INTO user_groups (id, org_id, name) VALUES ($1,$2,'g')`, grp, org)
 	t.Cleanup(func() { _, _ = pool.Exec(context.Background(), `DELETE FROM organizations WHERE id=$1`, org) })
 
-	site, err := svc.RegisterSite(ctx, org, "hq")
+	site, err := svc.RegisterSite(ctx, uuid.Nil, org, "hq")
 	if err != nil {
 		t.Fatalf("register: %v", err)
 	}
-	if err := svc.BindNode(ctx, org, site.ID, node); err != nil {
+	if err := svc.BindNode(ctx, uuid.Nil, org, site.ID, node); err != nil {
 		t.Fatalf("bind: %v", err)
 	}
-	if _, err := svc.AddSubnet(ctx, org, site.ID, netip.MustParsePrefix("10.20.0.0/24")); err != nil {
+	if _, err := svc.AddSubnet(ctx, uuid.Nil, org, site.ID, netip.MustParsePrefix("10.20.0.0/24")); err != nil {
 		t.Fatalf("subnet: %v", err)
 	}
 	// A policy rule naming the site as dst → referenced (must cascade on delete).
@@ -209,12 +209,12 @@ func TestApproveSubnetDisjointness(t *testing.T) {
 		_, _ = pool.Exec(context.Background(), `DELETE FROM organizations WHERE id=$1`, org)
 		_, _ = pool.Exec(context.Background(), `DELETE FROM users WHERE id=$1`, actor)
 	})
-	site, err := svc.RegisterSite(ctx, org, "hq")
+	site, err := svc.RegisterSite(ctx, uuid.Nil, org, "hq")
 	if err != nil {
 		t.Fatalf("register: %v", err)
 	}
 	add := func(cidr string) sqlc.SiteSubnet {
-		s, e := svc.AddSubnet(ctx, org, site.ID, netip.MustParsePrefix(cidr))
+		s, e := svc.AddSubnet(ctx, uuid.Nil, org, site.ID, netip.MustParsePrefix(cidr))
 		if e != nil {
 			t.Fatalf("add %s: %v", cidr, e)
 		}
@@ -281,10 +281,10 @@ func TestApproveSubnetCrossSiteDuplicate(t *testing.T) {
 		_, _ = pool.Exec(context.Background(), `DELETE FROM organizations WHERE id=$1`, org)
 		_, _ = pool.Exec(context.Background(), `DELETE FROM users WHERE id=$1`, actor)
 	})
-	siteA, _ := svc.RegisterSite(ctx, org, "site-a")
-	siteB, _ := svc.RegisterSite(ctx, org, "site-b")
+	siteA, _ := svc.RegisterSite(ctx, uuid.Nil, org, "site-a")
+	siteB, _ := svc.RegisterSite(ctx, uuid.Nil, org, "site-b")
 	addTo := func(siteID uuid.UUID, cidr string) sqlc.SiteSubnet {
-		s, e := svc.AddSubnet(ctx, org, siteID, netip.MustParsePrefix(cidr))
+		s, e := svc.AddSubnet(ctx, uuid.Nil, org, siteID, netip.MustParsePrefix(cidr))
 		if e != nil {
 			t.Fatalf("add %s: %v", cidr, e)
 		}
@@ -330,15 +330,15 @@ func TestUnbindSiteNode(t *testing.T) {
 		}
 	}
 	t.Cleanup(func() { _, _ = pool.Exec(context.Background(), `DELETE FROM organizations WHERE id=$1`, org) })
-	site, _ := svc.RegisterSite(ctx, org, "hq")
-	if err := svc.BindNode(ctx, org, site.ID, nodeA); err != nil {
+	site, _ := svc.RegisterSite(ctx, uuid.Nil, org, "hq")
+	if err := svc.BindNode(ctx, uuid.Nil, org, site.ID, nodeA); err != nil {
 		t.Fatalf("bind A: %v", err)
 	}
-	if err := svc.BindNode(ctx, org, site.ID, nodeB); err != nil {
+	if err := svc.BindNode(ctx, uuid.Nil, org, site.ID, nodeB); err != nil {
 		t.Fatalf("bind B (a site may hold multiple gateways): %v", err)
 	}
 	// Unbind EXACTLY nodeA — nodeB must stay bound (the #3 proof: the named node, never an arbitrary pick).
-	if err := svc.UnbindSiteNode(ctx, org, site.ID, nodeA); err != nil {
+	if err := svc.UnbindSiteNode(ctx, uuid.Nil, org, site.ID, nodeA); err != nil {
 		t.Fatalf("unbind A: %v", err)
 	}
 	var aSite, bBound *uuid.UUID
@@ -351,7 +351,7 @@ func TestUnbindSiteNode(t *testing.T) {
 		t.Fatalf("nodeB must REMAIN bound to the site (only the named node unbinds), got %v", bBound)
 	}
 	// A second unbind of nodeA (no longer bound to this site) is a typed 404.
-	if err := svc.UnbindSiteNode(ctx, org, site.ID, nodeA); err == nil {
+	if err := svc.UnbindSiteNode(ctx, uuid.Nil, org, site.ID, nodeA); err == nil {
 		t.Fatal("unbinding a node not bound to this site must 404")
 	}
 }
@@ -373,11 +373,11 @@ func TestDNSForwardCRUD(t *testing.T) {
 		_, _ = pool.Exec(context.Background(), `DELETE FROM organizations WHERE id=$1`, org)
 		_, _ = pool.Exec(context.Background(), `DELETE FROM users WHERE id=$1`, actor)
 	})
-	siteA, err := svc.RegisterSite(ctx, org, "hq")
+	siteA, err := svc.RegisterSite(ctx, uuid.Nil, org, "hq")
 	if err != nil {
 		t.Fatalf("register A: %v", err)
 	}
-	sub, err := svc.AddSubnet(ctx, org, siteA.ID, netip.MustParsePrefix("10.20.0.0/24"))
+	sub, err := svc.AddSubnet(ctx, uuid.Nil, org, siteA.ID, netip.MustParsePrefix("10.20.0.0/24"))
 	if err != nil {
 		t.Fatalf("add subnet: %v", err)
 	}
@@ -404,8 +404,8 @@ func TestDNSForwardCRUD(t *testing.T) {
 	}
 
 	// Another site claiming the same domain (normalized) → conflict.
-	siteB, _ := svc.RegisterSite(ctx, org, "branch")
-	subB, _ := svc.AddSubnet(ctx, org, siteB.ID, netip.MustParsePrefix("10.30.0.0/24"))
+	siteB, _ := svc.RegisterSite(ctx, uuid.Nil, org, "branch")
+	subB, _ := svc.AddSubnet(ctx, uuid.Nil, org, siteB.ID, netip.MustParsePrefix("10.30.0.0/24"))
 	_ = svc.ApproveSubnet(ctx, actor, org, subB.ID)
 	if err := svc.SetDNSForward(ctx, actor, org, siteB.ID, "corp.local", "10.30.0.53"); err == nil {
 		t.Fatal("a domain already forwarded by another site must conflict (one zone → one resolver)")
@@ -444,8 +444,8 @@ func TestSetDNSForwardRejectsK8sZoneCollision(t *testing.T) {
 		_, _ = pool.Exec(context.Background(), `DELETE FROM organizations WHERE id=$1`, org)
 		_, _ = pool.Exec(context.Background(), `DELETE FROM users WHERE id=$1`, actor)
 	})
-	site, _ := svc.RegisterSite(ctx, org, "hq")
-	sub, _ := svc.AddSubnet(ctx, org, site.ID, netip.MustParsePrefix("10.20.0.0/24"))
+	site, _ := svc.RegisterSite(ctx, uuid.Nil, org, "hq")
+	sub, _ := svc.AddSubnet(ctx, uuid.Nil, org, site.ID, netip.MustParsePrefix("10.20.0.0/24"))
 	_ = svc.ApproveSubnet(ctx, actor, org, sub.ID)
 	// A K8s cluster owns zone prod.k8s.acme.com.
 	if _, e := pool.Exec(ctx, `INSERT INTO k8s_clusters (id,org_id,site_id,name,vip_range,dns_zone) VALUES ($1,$2,$3,'prod','100.64.0.0/16','k8s.acme.com')`, uuid.New(), org, site.ID); e != nil {
@@ -474,11 +474,11 @@ func TestRemoveSubnet(t *testing.T) {
 		_, _ = pool.Exec(context.Background(), `DELETE FROM organizations WHERE id=$1`, org)
 		_, _ = pool.Exec(context.Background(), `DELETE FROM users WHERE id=$1`, actor)
 	})
-	site, err := svc.RegisterSite(ctx, org, "hq")
+	site, err := svc.RegisterSite(ctx, uuid.Nil, org, "hq")
 	if err != nil {
 		t.Fatalf("register: %v", err)
 	}
-	sub, err := svc.AddSubnet(ctx, org, site.ID, netip.MustParsePrefix("10.20.0.0/24"))
+	sub, err := svc.AddSubnet(ctx, uuid.Nil, org, site.ID, netip.MustParsePrefix("10.20.0.0/24"))
 	if err != nil {
 		t.Fatalf("add: %v", err)
 	}
@@ -525,13 +525,13 @@ func TestRemoveSubnetSweepsDependentDNS(t *testing.T) {
 		_, _ = pool.Exec(context.Background(), `DELETE FROM organizations WHERE id=$1`, org)
 		_, _ = pool.Exec(context.Background(), `DELETE FROM users WHERE id=$1`, actor)
 	})
-	site, err := svc.RegisterSite(ctx, org, "hq")
+	site, err := svc.RegisterSite(ctx, uuid.Nil, org, "hq")
 	if err != nil {
 		t.Fatalf("register: %v", err)
 	}
 	// Two approved subnets; a forward resolver in each.
-	subA, _ := svc.AddSubnet(ctx, org, site.ID, netip.MustParsePrefix("10.20.0.0/24"))
-	subB, _ := svc.AddSubnet(ctx, org, site.ID, netip.MustParsePrefix("10.30.0.0/24"))
+	subA, _ := svc.AddSubnet(ctx, uuid.Nil, org, site.ID, netip.MustParsePrefix("10.20.0.0/24"))
+	subB, _ := svc.AddSubnet(ctx, uuid.Nil, org, site.ID, netip.MustParsePrefix("10.30.0.0/24"))
 	if err := svc.ApproveSubnet(ctx, actor, org, subA.ID); err != nil {
 		t.Fatalf("approve A: %v", err)
 	}
@@ -582,11 +582,11 @@ func TestListRoutedRanges(t *testing.T) {
 		_, _ = pool.Exec(context.Background(), `DELETE FROM users WHERE id=$1`, actor)
 	})
 	approve := func(org uuid.UUID, site string, cidr string) {
-		s, err := svc.RegisterSite(ctx, org, site)
+		s, err := svc.RegisterSite(ctx, uuid.Nil, org, site)
 		if err != nil {
 			t.Fatalf("register %s: %v", site, err)
 		}
-		sub, err := svc.AddSubnet(ctx, org, s.ID, netip.MustParsePrefix(cidr))
+		sub, err := svc.AddSubnet(ctx, uuid.Nil, org, s.ID, netip.MustParsePrefix(cidr))
 		if err != nil {
 			t.Fatalf("add %s: %v", cidr, err)
 		}
@@ -597,8 +597,8 @@ func TestListRoutedRanges(t *testing.T) {
 	// org A: two APPROVED (added out of sorted order) + one PENDING (advertised, NOT approved).
 	approve(orgA, "hq", "10.20.0.0/24")
 	approve(orgA, "dc", "10.10.0.0/24")
-	siteP, _ := svc.RegisterSite(ctx, orgA, "pending-site")
-	if _, err := svc.AddSubnet(ctx, orgA, siteP.ID, netip.MustParsePrefix("10.30.0.0/24")); err != nil {
+	siteP, _ := svc.RegisterSite(ctx, uuid.Nil, orgA, "pending-site")
+	if _, err := svc.AddSubnet(ctx, uuid.Nil, orgA, siteP.ID, netip.MustParsePrefix("10.30.0.0/24")); err != nil {
 		t.Fatalf("add pending: %v", err)
 	} // left pending
 	// org B: the SAME 10.20.0.0/24 (cross-org — allowed; disjointness is per-org) + one of its own.
@@ -653,11 +653,11 @@ func TestListRoutedForwardsGating(t *testing.T) {
 		_, _ = pool.Exec(context.Background(), `DELETE FROM users WHERE id=$1`, actor)
 	})
 	mkSite := func(name, cidr, domain, resolver string) {
-		s, err := svc.RegisterSite(ctx, org, name)
+		s, err := svc.RegisterSite(ctx, uuid.Nil, org, name)
 		if err != nil {
 			t.Fatalf("register %s: %v", name, err)
 		}
-		sub, err := svc.AddSubnet(ctx, org, s.ID, netip.MustParsePrefix(cidr))
+		sub, err := svc.AddSubnet(ctx, uuid.Nil, org, s.ID, netip.MustParsePrefix(cidr))
 		if err != nil {
 			t.Fatalf("add %s: %v", cidr, err)
 		}
@@ -818,14 +818,14 @@ func TestRouteLANByteIdentical(t *testing.T) {
 		t.Fatalf("routeLAN: %v", err)
 	}
 	// LONG path (org B): the four manual steps.
-	siteB, err := svc.RegisterSite(ctx, orgB, "hq")
+	siteB, err := svc.RegisterSite(ctx, uuid.Nil, orgB, "hq")
 	if err != nil {
 		t.Fatalf("register: %v", err)
 	}
-	if err := svc.BindNode(ctx, orgB, siteB.ID, nodeB); err != nil {
+	if err := svc.BindNode(ctx, uuid.Nil, orgB, siteB.ID, nodeB); err != nil {
 		t.Fatalf("bind: %v", err)
 	}
-	subB, err := svc.AddSubnet(ctx, orgB, siteB.ID, cidr)
+	subB, err := svc.AddSubnet(ctx, uuid.Nil, orgB, siteB.ID, cidr)
 	if err != nil {
 		t.Fatalf("advertise: %v", err)
 	}
@@ -896,11 +896,11 @@ func TestGatewayCarrierEligibility(t *testing.T) {
 		_, _ = pool.Exec(context.Background(), `DELETE FROM users WHERE id=$1`, actor)
 	})
 
-	site, err := svc.RegisterSite(ctx, org, "site")
+	site, err := svc.RegisterSite(ctx, uuid.Nil, org, "site")
 	if err != nil {
 		t.Fatalf("register: %v", err)
 	}
-	if err := svc.BindNode(ctx, org, site.ID, agent); !hasCode(err, "node_not_gateway_eligible") {
+	if err := svc.BindNode(ctx, uuid.Nil, org, site.ID, agent); !hasCode(err, "node_not_gateway_eligible") {
 		t.Fatalf("BindNode(agent) error = %v, want node_not_gateway_eligible", err)
 	}
 	if _, _, err := svc.RouteLAN(ctx, actor, org, agent, "agent-lan", netip.MustParsePrefix("10.88.0.0/24")); !hasCode(err, "node_not_gateway_eligible") {
@@ -936,17 +936,17 @@ func TestBindNodeRefusesRehome(t *testing.T) {
 	}
 	t.Cleanup(func() { _, _ = pool.Exec(context.Background(), `DELETE FROM organizations WHERE id=$1`, org) })
 
-	site1, _ := svc.RegisterSite(ctx, org, "s1")
-	site2, _ := svc.RegisterSite(ctx, org, "s2")
-	if err := svc.BindNode(ctx, org, site1.ID, node); err != nil {
+	site1, _ := svc.RegisterSite(ctx, uuid.Nil, org, "s1")
+	site2, _ := svc.RegisterSite(ctx, uuid.Nil, org, "s2")
+	if err := svc.BindNode(ctx, uuid.Nil, org, site1.ID, node); err != nil {
 		t.Fatalf("first bind: %v", err)
 	}
 	// Same-site re-bind: idempotent no-op.
-	if err := svc.BindNode(ctx, org, site1.ID, node); err != nil {
+	if err := svc.BindNode(ctx, uuid.Nil, org, site1.ID, node); err != nil {
 		t.Fatalf("same-site re-bind must be a no-op, got %v", err)
 	}
 	// Different-site bind: REFUSED, gateway stays on site1 (no silent re-home).
-	err := svc.BindNode(ctx, org, site2.ID, node)
+	err := svc.BindNode(ctx, uuid.Nil, org, site2.ID, node)
 	if err == nil {
 		t.Fatal("re-home must be refused")
 	}
@@ -1049,11 +1049,11 @@ func TestRouteLANResumeLeavesForeignPending(t *testing.T) {
 	})
 
 	// Long-path: a site on the gateway with a subnet advertised (PENDING, awaiting review — not approved).
-	site, _ := svc.RegisterSite(ctx, org, "long-path")
-	if err := svc.BindNode(ctx, org, site.ID, node); err != nil {
+	site, _ := svc.RegisterSite(ctx, uuid.Nil, org, "long-path")
+	if err := svc.BindNode(ctx, uuid.Nil, org, site.ID, node); err != nil {
 		t.Fatalf("bind: %v", err)
 	}
-	pend, err := svc.AddSubnet(ctx, org, site.ID, netip.MustParsePrefix("10.0.0.0/24"))
+	pend, err := svc.AddSubnet(ctx, uuid.Nil, org, site.ID, netip.MustParsePrefix("10.0.0.0/24"))
 	if err != nil {
 		t.Fatalf("advertise: %v", err)
 	}
@@ -1126,8 +1126,8 @@ func TestBindNodeConcurrentClaimNoOrphan(t *testing.T) {
 	}
 	t.Cleanup(func() { _, _ = pool.Exec(context.Background(), `DELETE FROM organizations WHERE id=$1`, org) })
 
-	siteX, _ := svc.RegisterSite(ctx, org, "X")
-	siteY, _ := svc.RegisterSite(ctx, org, "Y")
+	siteX, _ := svc.RegisterSite(ctx, uuid.Nil, org, "X")
+	siteY, _ := svc.RegisterSite(ctx, uuid.Nil, org, "Y")
 	var wg sync.WaitGroup
 	errs := make([]error, 2)
 	start := make(chan struct{})
@@ -1136,7 +1136,7 @@ func TestBindNodeConcurrentClaimNoOrphan(t *testing.T) {
 		go func(i int, sid uuid.UUID) {
 			defer wg.Done()
 			<-start // release both together to contend
-			errs[i] = svc.BindNode(ctx, org, sid, node)
+			errs[i] = svc.BindNode(ctx, uuid.Nil, org, sid, node)
 		}(i, sid)
 	}
 	close(start)
@@ -1186,12 +1186,12 @@ func TestUnbindSiteNodeBodyless(t *testing.T) {
 		}
 	}
 	t.Cleanup(func() { _, _ = pool.Exec(context.Background(), `DELETE FROM organizations WHERE id=$1`, org) })
-	site, _ := svc.RegisterSite(ctx, org, "hq")
-	if err := svc.BindNode(ctx, org, site.ID, nodeA); err != nil {
+	site, _ := svc.RegisterSite(ctx, uuid.Nil, org, "hq")
+	if err := svc.BindNode(ctx, uuid.Nil, org, site.ID, nodeA); err != nil {
 		t.Fatalf("bind A: %v", err)
 	}
 	// SOLE gateway → a bodyless unbind (nil node id) resolves + unbinds it.
-	if err := svc.UnbindSiteNode(ctx, org, site.ID, uuid.Nil); err != nil {
+	if err := svc.UnbindSiteNode(ctx, uuid.Nil, org, site.ID, uuid.Nil); err != nil {
 		t.Fatalf("bodyless unbind of the sole gateway must succeed, got %v", err)
 	}
 	var bound int
@@ -1200,13 +1200,13 @@ func TestUnbindSiteNodeBodyless(t *testing.T) {
 		t.Fatalf("the sole gateway must be unbound, still bound=%d", bound)
 	}
 	// Now TWO gateways → a bodyless unbind is ambiguous → 409 multiple_gateways.
-	if err := svc.BindNode(ctx, org, site.ID, nodeA); err != nil {
+	if err := svc.BindNode(ctx, uuid.Nil, org, site.ID, nodeA); err != nil {
 		t.Fatalf("rebind A: %v", err)
 	}
-	if err := svc.BindNode(ctx, org, site.ID, nodeB); err != nil {
+	if err := svc.BindNode(ctx, uuid.Nil, org, site.ID, nodeB); err != nil {
 		t.Fatalf("bind B: %v", err)
 	}
-	err := svc.UnbindSiteNode(ctx, org, site.ID, uuid.Nil)
+	err := svc.UnbindSiteNode(ctx, uuid.Nil, org, site.ID, uuid.Nil)
 	if err == nil {
 		t.Fatal("a bodyless unbind of a multi-gateway site must be refused (409 multiple_gateways)")
 	}
@@ -1279,18 +1279,18 @@ func TestAddSubnetRefusesInadmissibleRange(t *testing.T) {
 	svc := NewService(pool)
 	ctx := context.Background()
 	org, _, _ := seedGatewayOrg(t, pool, "ssi1b")
-	site, err := svc.RegisterSite(ctx, org, "hq")
+	site, err := svc.RegisterSite(ctx, uuid.Nil, org, "hq")
 	if err != nil {
 		t.Fatalf("register: %v", err)
 	}
-	if _, err := svc.AddSubnet(ctx, org, site.ID, netip.MustParsePrefix("203.0.113.0/24")); !hasCode(err, "range_not_private") {
+	if _, err := svc.AddSubnet(ctx, uuid.Nil, org, site.ID, netip.MustParsePrefix("203.0.113.0/24")); !hasCode(err, "range_not_private") {
 		t.Fatalf("AddSubnet(public) error = %v, want range_not_private", err)
 	}
 	subs, err := svc.ListSubnets(ctx, org, site.ID)
 	if err != nil || len(subs) != 0 {
 		t.Fatalf("a refused advertisement must not be stored: subs=%d err=%v", len(subs), err)
 	}
-	if _, err := svc.AddSubnet(ctx, org, site.ID, netip.MustParsePrefix("192.168.10.0/24")); err != nil {
+	if _, err := svc.AddSubnet(ctx, uuid.Nil, org, site.ID, netip.MustParsePrefix("192.168.10.0/24")); err != nil {
 		t.Fatalf("AddSubnet(private): %v", err)
 	}
 }
@@ -1302,7 +1302,7 @@ func TestApproveSubnetRefusesLegacyInadmissibleRange(t *testing.T) {
 	svc := NewService(pool)
 	ctx := context.Background()
 	org, actor, _ := seedGatewayOrg(t, pool, "ssi1c")
-	site, err := svc.RegisterSite(ctx, org, "hq")
+	site, err := svc.RegisterSite(ctx, uuid.Nil, org, "hq")
 	if err != nil {
 		t.Fatalf("register: %v", err)
 	}
@@ -1327,5 +1327,82 @@ func TestApproveSubnetRefusesLegacyInadmissibleRange(t *testing.T) {
 	}
 	if audited != 1 {
 		t.Fatalf("the refusal must be audited once, got %d", audited)
+	}
+}
+
+// TestSiteMutationsAreAudited (SSI-5, finding F5) — creating a site, advertising a range, binding and
+// unbinding a gateway each leave exactly one audit row, written with the mutation. Before SSI-5 only the
+// approval was recorded, so the log showed a route appearing on a site with no recorded origin, and a
+// gateway could be moved off a site without a trace.
+func TestSiteMutationsAreAudited(t *testing.T) {
+	pool := testPool(t)
+	svc := NewService(pool)
+	ctx := context.Background()
+	org, actor, node := seedGatewayOrg(t, pool, "ssi5")
+
+	count := func(action, targetType, targetID string) int {
+		t.Helper()
+		var n int
+		if e := pool.QueryRow(ctx, `SELECT count(*) FROM audit_logs WHERE org_id=$1 AND action=$2 AND target_type=$3 AND target_id=$4 AND actor_user_id=$5`,
+			org, action, targetType, targetID, actor).Scan(&n); e != nil {
+			t.Fatal(e)
+		}
+		return n
+	}
+
+	site, err := svc.RegisterSite(ctx, actor, org, "hq")
+	if err != nil {
+		t.Fatalf("register: %v", err)
+	}
+	if n := count("site.created", "site", site.ID.String()); n != 1 {
+		t.Fatalf("site.created rows = %d, want 1", n)
+	}
+	// A refused duplicate name writes nothing: the audit row rides the same transaction as the insert.
+	if _, err := svc.RegisterSite(ctx, actor, org, "hq"); !hasCode(err, "site_name_taken") {
+		t.Fatalf("duplicate name error = %v, want site_name_taken", err)
+	}
+	var created int
+	if e := pool.QueryRow(ctx, `SELECT count(*) FROM audit_logs WHERE org_id=$1 AND action='site.created'`, org).Scan(&created); e != nil {
+		t.Fatal(e)
+	}
+	if created != 1 {
+		t.Fatalf("a refused create must not be audited: site.created rows = %d", created)
+	}
+
+	sub, err := svc.AddSubnet(ctx, actor, org, site.ID, netip.MustParsePrefix("10.60.0.0/24"))
+	if err != nil {
+		t.Fatalf("advertise: %v", err)
+	}
+	if n := count("site.subnet_advertised", "site_subnet", sub.ID.String()); n != 1 {
+		t.Fatalf("site.subnet_advertised rows = %d, want 1", n)
+	}
+
+	if err := svc.BindNode(ctx, actor, org, site.ID, node); err != nil {
+		t.Fatalf("bind: %v", err)
+	}
+	// An idempotent re-bind to the same site changes nothing and is not audited.
+	if err := svc.BindNode(ctx, actor, org, site.ID, node); err != nil {
+		t.Fatalf("re-bind: %v", err)
+	}
+	if n := count("site.gateway_bound", "site", site.ID.String()); n != 1 {
+		t.Fatalf("site.gateway_bound rows = %d, want 1 (a no-op re-bind is not audited)", n)
+	}
+
+	if err := svc.UnbindSiteNode(ctx, actor, org, site.ID, node); err != nil {
+		t.Fatalf("unbind: %v", err)
+	}
+	if n := count("site.gateway_unbound", "site", site.ID.String()); n != 1 {
+		t.Fatalf("site.gateway_unbound rows = %d, want 1", n)
+	}
+
+	// The node-addressed unbind names the site the gateway left.
+	if err := svc.BindNode(ctx, actor, org, site.ID, node); err != nil {
+		t.Fatalf("bind again: %v", err)
+	}
+	if err := svc.UnbindNode(ctx, actor, org, node); err != nil {
+		t.Fatalf("unbind by node: %v", err)
+	}
+	if n := count("site.gateway_unbound", "site", site.ID.String()); n != 2 {
+		t.Fatalf("site.gateway_unbound rows = %d, want 2", n)
 	}
 }
