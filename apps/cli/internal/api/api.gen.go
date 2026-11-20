@@ -2056,9 +2056,21 @@ const (
 	SetK8sConnectorPoolHAModeRequestRequestedModeLegacy   SetK8sConnectorPoolHAModeRequestRequestedMode = "legacy"
 )
 
+// Defines values for SiteLanEgress.
+const (
+	SiteLanEgressGatewayAddress SiteLanEgress = "gateway_address"
+	SiteLanEgressPreserveSource SiteLanEgress = "preserve_source"
+)
+
 // Defines values for SiteLinkTransport.
 const (
 	Wireguard SiteLinkTransport = "wireguard"
+)
+
+// Defines values for SiteLanEgressRequestLanEgress.
+const (
+	SiteLanEgressRequestLanEgressGatewayAddress SiteLanEgressRequestLanEgress = "gateway_address"
+	SiteLanEgressRequestLanEgressPreserveSource SiteLanEgressRequestLanEgress = "preserve_source"
 )
 
 // Defines values for SiteSubnetStatus.
@@ -8373,15 +8385,29 @@ type SignupRequest struct {
 type Site struct {
 	CreatedAt time.Time          `json:"created_at"`
 	Id        openapi_types.UUID `json:"id"`
-	LinkMtu   *int               `json:"link_mtu"`
+
+	// LanEgress SSI-8: how this site's LAN sees traffic from other sites. preserve_source keeps the remote address (the LAN needs a return route to the gateway); gateway_address translates it to the gateway's own LAN address.
+	LanEgress SiteLanEgress `json:"lan_egress"`
+	LinkMtu   *int          `json:"link_mtu"`
 
 	// LinkTransport Reserved enum (D4); wireguard-only in v1.
 	LinkTransport SiteLinkTransport `json:"link_transport"`
 	Name          string            `json:"name"`
 }
 
+// SiteLanEgress SSI-8: how this site's LAN sees traffic from other sites. preserve_source keeps the remote address (the LAN needs a return route to the gateway); gateway_address translates it to the gateway's own LAN address.
+type SiteLanEgress string
+
 // SiteLinkTransport Reserved enum (D4); wireguard-only in v1.
 type SiteLinkTransport string
+
+// SiteLanEgressRequest defines model for SiteLanEgressRequest.
+type SiteLanEgressRequest struct {
+	LanEgress SiteLanEgressRequestLanEgress `json:"lan_egress"`
+}
+
+// SiteLanEgressRequestLanEgress defines model for SiteLanEgressRequest.LanEgress.
+type SiteLanEgressRequestLanEgress string
 
 // SiteReferences S8.3 D1/D4: what references a site — the delete cascade preview + the reverse-link count.
 type SiteReferences struct {
@@ -9978,6 +10004,9 @@ type BindSiteNodeJSONRequestBody = BindSiteNodeRequest
 
 // SetSiteDNSForwardJSONRequestBody defines body for SetSiteDNSForward for application/json ContentType.
 type SetSiteDNSForwardJSONRequestBody = DNSForward
+
+// SetSiteLanEgressJSONRequestBody defines body for SetSiteLanEgress for application/json ContentType.
+type SetSiteLanEgressJSONRequestBody = SiteLanEgressRequest
 
 // AddSiteSubnetJSONRequestBody defines body for AddSiteSubnet for application/json ContentType.
 type AddSiteSubnetJSONRequestBody = AddSiteSubnetRequest
@@ -11916,6 +11945,11 @@ type ClientInterface interface {
 
 	// RemoveSiteDNSForward request
 	RemoveSiteDNSForward(ctx context.Context, orgId openapi_types.UUID, siteId openapi_types.UUID, domain string, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SetSiteLanEgressWithBody request with any body
+	SetSiteLanEgressWithBody(ctx context.Context, orgId openapi_types.UUID, siteId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	SetSiteLanEgress(ctx context.Context, orgId openapi_types.UUID, siteId openapi_types.UUID, body SetSiteLanEgressJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListSiteSubnets request
 	ListSiteSubnets(ctx context.Context, orgId openapi_types.UUID, siteId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -19876,6 +19910,30 @@ func (c *Client) SetSiteDNSForward(ctx context.Context, orgId openapi_types.UUID
 
 func (c *Client) RemoveSiteDNSForward(ctx context.Context, orgId openapi_types.UUID, siteId openapi_types.UUID, domain string, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewRemoveSiteDNSForwardRequest(c.Server, orgId, siteId, domain)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) SetSiteLanEgressWithBody(ctx context.Context, orgId openapi_types.UUID, siteId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSetSiteLanEgressRequestWithBody(c.Server, orgId, siteId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) SetSiteLanEgress(ctx context.Context, orgId openapi_types.UUID, siteId openapi_types.UUID, body SetSiteLanEgressJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSetSiteLanEgressRequest(c.Server, orgId, siteId, body)
 	if err != nil {
 		return nil, err
 	}
@@ -42012,6 +42070,60 @@ func NewRemoveSiteDNSForwardRequest(server string, orgId openapi_types.UUID, sit
 	return req, nil
 }
 
+// NewSetSiteLanEgressRequest calls the generic SetSiteLanEgress builder with application/json body
+func NewSetSiteLanEgressRequest(server string, orgId openapi_types.UUID, siteId openapi_types.UUID, body SetSiteLanEgressJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewSetSiteLanEgressRequestWithBody(server, orgId, siteId, "application/json", bodyReader)
+}
+
+// NewSetSiteLanEgressRequestWithBody generates requests for SetSiteLanEgress with any type of body
+func NewSetSiteLanEgressRequestWithBody(server string, orgId openapi_types.UUID, siteId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "siteId", runtime.ParamLocationPath, siteId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/sites/%s/lan-egress", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("PUT", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewListSiteSubnetsRequest generates requests for ListSiteSubnets
 func NewListSiteSubnetsRequest(server string, orgId openapi_types.UUID, siteId openapi_types.UUID) (*http.Request, error) {
 	var err error
@@ -45270,6 +45382,11 @@ type ClientWithResponsesInterface interface {
 
 	// RemoveSiteDNSForwardWithResponse request
 	RemoveSiteDNSForwardWithResponse(ctx context.Context, orgId openapi_types.UUID, siteId openapi_types.UUID, domain string, reqEditors ...RequestEditorFn) (*RemoveSiteDNSForwardResponse, error)
+
+	// SetSiteLanEgressWithBodyWithResponse request with any body
+	SetSiteLanEgressWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, siteId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetSiteLanEgressResponse, error)
+
+	SetSiteLanEgressWithResponse(ctx context.Context, orgId openapi_types.UUID, siteId openapi_types.UUID, body SetSiteLanEgressJSONRequestBody, reqEditors ...RequestEditorFn) (*SetSiteLanEgressResponse, error)
 
 	// ListSiteSubnetsWithResponse request
 	ListSiteSubnetsWithResponse(ctx context.Context, orgId openapi_types.UUID, siteId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ListSiteSubnetsResponse, error)
@@ -55546,6 +55663,29 @@ func (r RemoveSiteDNSForwardResponse) StatusCode() int {
 	return 0
 }
 
+type SetSiteLanEgressResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *Site
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r SetSiteLanEgressResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r SetSiteLanEgressResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
 type ListSiteSubnetsResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -61943,6 +62083,23 @@ func (c *ClientWithResponses) RemoveSiteDNSForwardWithResponse(ctx context.Conte
 		return nil, err
 	}
 	return ParseRemoveSiteDNSForwardResponse(rsp)
+}
+
+// SetSiteLanEgressWithBodyWithResponse request with arbitrary body returning *SetSiteLanEgressResponse
+func (c *ClientWithResponses) SetSiteLanEgressWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, siteId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetSiteLanEgressResponse, error) {
+	rsp, err := c.SetSiteLanEgressWithBody(ctx, orgId, siteId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSetSiteLanEgressResponse(rsp)
+}
+
+func (c *ClientWithResponses) SetSiteLanEgressWithResponse(ctx context.Context, orgId openapi_types.UUID, siteId openapi_types.UUID, body SetSiteLanEgressJSONRequestBody, reqEditors ...RequestEditorFn) (*SetSiteLanEgressResponse, error) {
+	rsp, err := c.SetSiteLanEgress(ctx, orgId, siteId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSetSiteLanEgressResponse(rsp)
 }
 
 // ListSiteSubnetsWithResponse request returning *ListSiteSubnetsResponse
@@ -76637,6 +76794,39 @@ func ParseRemoveSiteDNSForwardResponse(rsp *http.Response) (*RemoveSiteDNSForwar
 	}
 
 	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseSetSiteLanEgressResponse parses an HTTP response from a SetSiteLanEgressWithResponse call
+func ParseSetSiteLanEgressResponse(rsp *http.Response) (*SetSiteLanEgressResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &SetSiteLanEgressResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest Site
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
 		var dest Error
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {

@@ -3433,6 +3433,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/organizations/{orgId}/sites/{siteId}/lan-egress": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                siteId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * Choose how a site's LAN sees traffic from other sites (SSI-8; site:manage)
+         * @description `preserve_source` keeps the remote address, so the LAN needs a return route to the gateway. `gateway_address` makes the site's gateways translate remote-site traffic to their own LAN address, so no return route is needed and the LAN host sees the gateway. Access rules match the original source in both modes. Refused with `gateway_upgrade_required` while an active gateway of the site cannot translate.
+         */
+        put: operations["setSiteLanEgress"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/organizations/{orgId}/ipsec/configuration-check": {
         parameters: {
             query?: never;
@@ -10722,8 +10745,17 @@ export interface components {
              */
             link_transport: "wireguard";
             link_mtu?: number | null;
+            /**
+             * @description SSI-8: how this site's LAN sees traffic from other sites. preserve_source keeps the remote address (the LAN needs a return route to the gateway); gateway_address translates it to the gateway's own LAN address.
+             * @enum {string}
+             */
+            lan_egress: "preserve_source" | "gateway_address";
             /** Format: date-time */
             created_at: string;
+        };
+        SiteLanEgressRequest: {
+            /** @enum {string} */
+            lan_egress: "preserve_source" | "gateway_address";
         };
         DNSForward: {
             /** @description The forwarded zone (e.g. corp.local). */
@@ -18862,6 +18894,35 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    setSiteLanEgress: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                siteId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SiteLanEgressRequest"];
+            };
+        };
+        responses: {
+            /** @description The site with its LAN egress mode. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Site"];
+                };
             };
             default: components["responses"]["Error"];
         };

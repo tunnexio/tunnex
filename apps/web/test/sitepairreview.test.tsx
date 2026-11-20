@@ -5,7 +5,7 @@ import type { HubSet, Loaded, Node, Site } from "../src/lib/api";
 const mock = vi.hoisted(() => ({ get: vi.fn() }));
 vi.mock("../src/lib/api", async original => ({ ...await original<object>(), api: { GET: mock.get } }));
 import { SitePairReview, SitePairDetails, SitePairConfigurationView } from "../src/components/SitePairReview";
-const a: Site = { id: "a", name: "Office", link_transport: "wireguard", created_at: "2026-09-24T00:00:00Z" };
+const a: Site = { id: "a", name: "Office", link_transport: "wireguard", lan_egress: "preserve_source", created_at: "2026-09-24T00:00:00Z" };
 const b: Site = { ...a, id: "b", name: "Cloud" };
 const c: Site = { ...a, id: "c", name: "Another office" };
 afterEach(cleanup);

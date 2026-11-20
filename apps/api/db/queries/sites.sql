@@ -151,3 +151,18 @@ FROM site_subnets ss
 JOIN sites s ON s.id = ss.site_id
 WHERE s.org_id = $1 AND ss.status = 'pending'
 ORDER BY ss.created_at;
+
+-- name: SetSiteLANEgress :one
+-- SSI-8: choose how the site's LAN sees remote-site traffic. Org-scoped; no row = not in this org.
+UPDATE sites SET lan_egress = sqlc.arg(lan_egress)
+WHERE id = sqlc.arg(id) AND org_id = sqlc.arg(org_id)
+RETURNING *;
+
+-- name: ListSiteGatewayPolicyVersions :many
+-- SSI-8: the highest artifact version each ACTIVE gateway of a site reports it can apply. 0 when a
+-- gateway has reported nothing yet, which the caller treats as "cannot" (never as "can").
+SELECT n.id, n.name,
+       COALESCE((n.capabilities->>'max_policy_version')::int, 0)::int AS max_policy_version
+FROM nodes n
+WHERE n.org_id = sqlc.arg(org_id) AND n.site_id = sqlc.arg(site_id) AND n.status = 'active'
+ORDER BY n.id;

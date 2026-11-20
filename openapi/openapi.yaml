@@ -3825,6 +3825,38 @@ paths:
           headers: { X-Request-Id: { $ref: "#/components/headers/RequestId" } }
         default: { $ref: "#/components/responses/Error" }
 
+  /api/v1/organizations/{orgId}/sites/{siteId}/lan-egress:
+    parameters:
+      - name: orgId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+      - name: siteId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    put:
+      operationId: setSiteLanEgress
+      summary: Choose how a site's LAN sees traffic from other sites (SSI-8; site:manage)
+      description: >-
+        `preserve_source` keeps the remote address, so the LAN needs a return route to the gateway.
+        `gateway_address` makes the site's gateways translate remote-site traffic to their own LAN
+        address, so no return route is needed and the LAN host sees the gateway. Access rules match the
+        original source in both modes. Refused with `gateway_upgrade_required` while an active gateway of
+        the site cannot translate.
+      tags: [sites]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/SiteLanEgressRequest" }
+      responses:
+        "200":
+          description: The site with its LAN egress mode.
+          headers: { X-Request-Id: { $ref: "#/components/headers/RequestId" } }
+          content: { application/json: { schema: { $ref: "#/components/schemas/Site" } } }
+        default: { $ref: "#/components/responses/Error" }
+
   /api/v1/organizations/{orgId}/ipsec/configuration-check:
     parameters:
       - name: orgId
@@ -12212,14 +12244,24 @@ components:
     # ── S8.1 site-to-site ──
     Site:
       type: object
-      required: [id, name, link_transport, created_at]
+      required: [id, name, link_transport, lan_egress, created_at]
       additionalProperties: false
       properties:
         id: { type: string, format: uuid }
         name: { type: string }
         link_transport: { type: string, enum: [wireguard], description: "Reserved enum (D4); wireguard-only in v1." }
         link_mtu: { type: integer, nullable: true }
+        lan_egress:
+          type: string
+          enum: [preserve_source, gateway_address]
+          description: "SSI-8: how this site's LAN sees traffic from other sites. preserve_source keeps the remote address (the LAN needs a return route to the gateway); gateway_address translates it to the gateway's own LAN address."
         created_at: { type: string, format: date-time }
+    SiteLanEgressRequest:
+      type: object
+      required: [lan_egress]
+      additionalProperties: false
+      properties:
+        lan_egress: { type: string, enum: [preserve_source, gateway_address] }
     DNSForward:
       type: object
       required: [domain, resolver_ip]

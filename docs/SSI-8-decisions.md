@@ -2,7 +2,7 @@
 
 Epic: [EPIC-site-to-site-improvements.md](EPIC-site-to-site-improvements.md). Finding F12.
 
-Status: **slice 1 built (artifact and gateway). Slices 2 and 3 not started.**
+Status: **built: artifact and gateway, control plane, dashboard.** The guided flow that offers it for new links is SSI-9; the wire proof is SSI-10.
 
 ## What is wrong
 
@@ -41,8 +41,8 @@ routes; SSI-9 shows the exact steps for that mode.
 | Slice | Content | State |
 | --- | --- | --- |
 | 1 | Artifact field, version rule, gateway render, tests | Built |
-| 2 | Migration, service method with audit and convergence, capability report and guard, OpenAPI, compile-time stapling | Not started |
-| 3 | The setting on the network page, with one sentence on what the LAN host will see | Not started |
+| 2 | Migration `0235`, `SetLANEgress` with audit and convergence, capability guard, `PUT /sites/{siteId}/lan-egress`, compile-time stapling | Built |
+| 3 | The setting on the network page, under Advanced | Built |
 
 ## Tests (slice 1)
 
@@ -58,3 +58,40 @@ routes; SSI-9 shows the exact steps for that mode.
 capability check. It now asserts a floor (`< 14`), like the v13 check beside it.
 
 Wire proof: SSI-10, a real LAN host answering through a gateway with no cloud return route.
+
+## Slice 2 as built
+
+| Item | Decision |
+| --- | --- |
+| Column | `sites.lan_egress`, `NOT NULL DEFAULT 'preserve_source'`, checked. Every existing site keeps today's behaviour. |
+| Capability | No new report was needed: agents already report `max_policy_version`. `gateway_address` is refused with `gateway_upgrade_required`, naming the gateway, while any active gateway of the site reports less than 15. A gateway that has reported nothing counts as "cannot". |
+| Returning to `preserve_source` | Always allowed, whatever the gateways report. |
+| Audit | `site.lan_egress_changed` with `from` and `to`, in the same transaction. A repeat of the current value writes nothing. |
+| Convergence | The handler goes through the SSI-6 seam and is in its census, so the gateways are told at once. |
+| Stapling | The flag rides with the remote routes in `finalizeSiteArtifact`, for both the enforcing and the mesh artifact. A site with nothing remote to translate carries no flag and no version raise. |
+| Response shape | `Site.lan_egress` is a required field of the served site. |
+
+## Slice 3 as built
+
+| Item | Decision |
+| --- | --- |
+| Where | Network → Advanced → "Traffic from other networks", above "Advanced cloud routing". |
+| Wording | Each option says what servers on the network will see and what the operator must do: "Gateway address … No cloud return route is needed." and "Original address … Your cloud must route the other networks' ranges to this gateway and allow it to forward." One line above both: access rules match the remote machine's real address either way. |
+| Saving | Explicit Save. A radio that applied itself would turn an exploratory click into a production change. |
+| What "current" means | The value the server last confirmed, not the last click; a refusal leaves it where it was and shows the server's reason. |
+| Read-only | Without site management access the radios are disabled and there is no Save. |
+| Styling | Existing disclosure, context and secondary-text classes. No new colour. |
+
+## Tests (slices 2 and 3)
+
+| Test | Proves |
+| --- | --- |
+| `sites.TestSetLANEgress` | Unknown mode and cross-organization refused; unreported and older gateways refused and not audited; capable gateway accepted; repeat is a no-op; audit records old → new; return to `preserve_source` always allowed. |
+| `nodes.TestArtifactCarriesSiteLANMasquerade` | The opted-in site's gateway carries the flag at v15, in enforcing and mesh; the other site's artifact keeps its version and hash; a single-site gateway carries nothing. |
+| `http.TestEverySiteTopologyMutationConverges` | The new handler is in the convergence census. |
+| `sitelanegress.test.tsx` | Applied mode shown; nothing sent on click; Save sends the choice; a refusal shows the server's reason and keeps "current" on the confirmed value; read-only without permission. |
+
+Seen on the local stack on 2026-11-20: enabling on a network whose demo gateways report no
+capability returns `gateway_upgrade_required` naming the gateway; after marking them capable in the
+local database the change is accepted, audited `preserve_source → gateway_address`, and the page
+shows "Gateway address · current". No traffic was sent: the demo gateways are fixtures.

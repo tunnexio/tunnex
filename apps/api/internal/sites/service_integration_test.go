@@ -1406,3 +1406,78 @@ func TestSiteMutationsAreAudited(t *testing.T) {
 		t.Fatalf("site.gateway_unbound rows = %d, want 2", n)
 	}
 }
+
+// TestSetLANEgress (SSI-8) — the setting is audited old→new, a no-op writes nothing, an unknown mode is
+// refused, and gateway_address is refused while an active gateway of the site cannot render it: letting it
+// through would make that gateway refuse its whole artifact and deny everything.
+func TestSetLANEgress(t *testing.T) {
+	pool := testPool(t)
+	svc := NewService(pool)
+	ctx := context.Background()
+	org, actor, node := seedGatewayOrg(t, pool, "ssi8")
+	site, _, err := svc.RouteLAN(ctx, actor, org, node, "hq", netip.MustParsePrefix("10.61.0.0/24"))
+	if err != nil {
+		t.Fatalf("route: %v", err)
+	}
+	if site.LanEgress != LANEgressPreserveSource {
+		t.Fatalf("a new site starts on preserve_source, got %q", site.LanEgress)
+	}
+	if _, err := svc.SetLANEgress(ctx, actor, org, site.ID, "nat"); !hasCode(err, "invalid_lan_egress") {
+		t.Fatalf("unknown mode error = %v, want invalid_lan_egress", err)
+	}
+	if _, err := svc.SetLANEgress(ctx, actor, uuid.New(), site.ID, LANEgressGatewayAddress); !hasCode(err, "site_not_found") {
+		t.Fatalf("cross-organization error = %v, want site_not_found", err)
+	}
+
+	setMax := func(v int) {
+		t.Helper()
+		if _, e := pool.Exec(ctx, `UPDATE nodes SET capabilities = jsonb_build_object('max_policy_version', $2::int) WHERE id=$1`, node, v); e != nil {
+			t.Fatalf("set capability: %v", e)
+		}
+	}
+	audits := func() int {
+		t.Helper()
+		var n int
+		if e := pool.QueryRow(ctx, `SELECT count(*) FROM audit_logs WHERE org_id=$1 AND action='site.lan_egress_changed' AND target_id=$2`, org, site.ID.String()).Scan(&n); e != nil {
+			t.Fatal(e)
+		}
+		return n
+	}
+
+	// The gateway has reported nothing, then an older ceiling: both mean "cannot", never "can".
+	if _, err := svc.SetLANEgress(ctx, actor, org, site.ID, LANEgressGatewayAddress); !hasCode(err, "gateway_upgrade_required") {
+		t.Fatalf("unreported capability error = %v, want gateway_upgrade_required", err)
+	}
+	setMax(14)
+	if _, err := svc.SetLANEgress(ctx, actor, org, site.ID, LANEgressGatewayAddress); !hasCode(err, "gateway_upgrade_required") {
+		t.Fatalf("older gateway error = %v, want gateway_upgrade_required", err)
+	}
+	if audits() != 0 {
+		t.Fatal("a refused change must not be audited")
+	}
+
+	setMax(15)
+	got, err := svc.SetLANEgress(ctx, actor, org, site.ID, LANEgressGatewayAddress)
+	if err != nil || got.LanEgress != LANEgressGatewayAddress {
+		t.Fatalf("capable gateway: site=%+v err=%v", got, err)
+	}
+	// Repeating it changes nothing and writes nothing.
+	if _, err := svc.SetLANEgress(ctx, actor, org, site.ID, LANEgressGatewayAddress); err != nil {
+		t.Fatalf("repeat: %v", err)
+	}
+	if audits() != 1 {
+		t.Fatalf("one change, one audit row; got %d", audits())
+	}
+	var from, to string
+	if e := pool.QueryRow(ctx, `SELECT metadata->>'from', metadata->>'to' FROM audit_logs WHERE org_id=$1 AND action='site.lan_egress_changed'`, org).Scan(&from, &to); e != nil {
+		t.Fatal(e)
+	}
+	if from != LANEgressPreserveSource || to != LANEgressGatewayAddress {
+		t.Fatalf("audit must record old→new, got %s→%s", from, to)
+	}
+	// Going back is always allowed, whatever the gateways report.
+	setMax(14)
+	if back, err := svc.SetLANEgress(ctx, actor, org, site.ID, LANEgressPreserveSource); err != nil || back.LanEgress != LANEgressPreserveSource {
+		t.Fatalf("return to preserve_source: site=%+v err=%v", back, err)
+	}
+}

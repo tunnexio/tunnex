@@ -56,7 +56,7 @@ func TestEverySiteTopologyMutationConverges(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	must := []string{"RouteLAN", "BindSiteNode", "UnbindSiteNode", "ApproveSiteSubnet", "RemoveSiteSubnet", "DeleteSite"}
+	must := []string{"RouteLAN", "BindSiteNode", "UnbindSiteNode", "ApproveSiteSubnet", "RemoveSiteSubnet", "DeleteSite", "SetSiteLanEgress"}
 	funcRE := regexp.MustCompile(`(?m)^func \(s apiServer\) (\w+)\(`)
 	locs := funcRE.FindAllSubmatchIndex(src, -1)
 	bodies := map[string]string{}

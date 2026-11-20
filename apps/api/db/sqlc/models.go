@@ -2943,6 +2943,7 @@ type Site struct {
 	DnsForwarding []byte    `json:"dns_forwarding"`
 	CreatedAt     time.Time `json:"created_at"`
 	UpdatedAt     time.Time `json:"updated_at"`
+	LanEgress     string    `json:"lan_egress"`
 }
 
 type SiteSubnet struct {
