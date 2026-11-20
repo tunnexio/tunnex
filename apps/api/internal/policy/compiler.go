@@ -879,8 +879,9 @@ func Compile(s Snapshot) map[uuid.UUID]policyspec.Compiled {
 				enforceNodes[n] = true
 			}
 			// B1: the transit HUB forwards spoke↔spoke traffic, so it needs the grant too. The map dedups
-			// when the hub IS the src or dst gateway (no duplicate emission). Site→site only — a
-			// site→resource/group source egresses via its own gateway, never the hub.
+			// when the hub IS the src or dst gateway (no duplicate emission). A site→resource rule whose
+			// resource lives in another site gets the same placement below (SSI-2); a site→group source
+			// egresses via its own gateway, never the hub.
 			if hubNode != uuid.Nil {
 				enforceNodes[hubNode] = true
 			}
@@ -892,6 +893,22 @@ func Compile(s Snapshot) map[uuid.UUID]policyspec.Compiled {
 			if res, ok := resourceByID[r.DstResourceID]; ok {
 				if res.CIDR != "" {
 					dsts = append(dsts, policyspec.AllowEntry{DstCIDR: res.CIDR, Protocol: normProto(res.Protocol), PortLow: res.PortLow, PortHigh: res.PortHigh})
+					// SSI-2 (finding F3): a resource that lives in ANOTHER site is reached across the link,
+					// so the destination site's gateway and the transit hub forward it and, being
+					// default-deny, need the grant too. This is the device rule's far placement
+					// (devGrantNodes) applied to a site source. Before it, only the source gateway held the
+					// grant: the rule read as active and the far side dropped the traffic, which left
+					// "site → site, every port" as the only site rule that worked. The entry stays the
+					// resource's own protocol and ports on every node. A resource in no site, or in the
+					// source site itself, never crosses a link and keeps source-gateway-only placement.
+					if owner := siteOwning(res.CIDR); !ipsecSource && owner != uuid.Nil && owner != srcSite {
+						if n := siteNode[owner]; n != uuid.Nil {
+							enforceNodes[n] = true
+						}
+						if hubNode != uuid.Nil {
+							enforceNodes[hubNode] = true
+						}
+					}
 				}
 			}
 		case "fqdn_resource":
