@@ -2,7 +2,7 @@
 
 Epic: [EPIC-site-to-site-improvements.md](EPIC-site-to-site-improvements.md). Findings F12 and F13.
 
-Status: **slice 1 built. Slices 2 to 4 not started.**
+Status: **slice 1 built; the Failover note from slice 4 built. Slices 2 and 3 and the rest of 4 not started.**
 
 ## Shape
 
@@ -32,3 +32,23 @@ second network is the guided link. Each slice adds one thing that flow did not s
 | Test | Proves |
 | --- | --- |
 | `networksetup.test.tsx` › how the new network sees other networks | Default is gateway address and it is applied after creation; original address sends nothing more and lists the cloud steps; an incapable gateway is offered no choice and told what that costs; a failed second write keeps the network and tells the truth; the first network is offered nothing. |
+
+## Slice 4, Failover note, as built
+
+| Item | Decision |
+| --- | --- |
+| Rule | A hub is observable when its own network has an approved range and at least one other network has an active gateway. Gateways of the same network do not peer, so they never count. |
+| What is shown | On the Failover tab, when there is more than one hub and any is unobservable: "Automatic failover cannot trigger yet" (all of them) or which hubs cannot be detected failing (some), why, and what to add. |
+| What it does not claim | That a gateway **is** observing now. The Handshake column says that. This says only whether anyone could. |
+| Source | The topology the page already loads. No API change. |
+
+| Test | Proves |
+| --- | --- |
+| `hubsetview.test.ts` › `unobservedHubs` | A same-network pair alone is unobserved; one gateway in another network satisfies it; a network with no active gateway does not; a hub with no approved range or bound to no network is unobserved; hubs in different networks are judged separately. |
+
+## Why the firewall check is not in slice 2 yet
+
+The walk found that the initiating side's gateway firewall has to admit the server's traffic. A
+preflight cannot see a cloud firewall from the gateway: the packets it would look for never arrive.
+Only a probe sent **from** the server side, or a cloud connector (SCX-3), can tell. Until slice 3
+ships the probe, the wizard and the network page name the requirement in words.
