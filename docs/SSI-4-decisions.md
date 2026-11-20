@@ -41,3 +41,32 @@ A new artifact field must not reach an agent that cannot interpret it: an agent 
 artifact version denies everything. The control plane therefore has to emit the gated form only to
 agents that report the capability, the way `egress_nat` is reported today, and show the rest as not
 yet gating.
+
+## Built: option A
+
+| Item | Decision |
+| --- | --- |
+| Where | The Review step of Set up a network, the only place a range is approved in one action. |
+| What it reads | The organization's enforcement mode and the approved ranges of every other site. Pending ranges are left out: they are routed nowhere. The gateway's own site is left out: it is not a second side. |
+| Enforcement off | A warning names the other networks and their ranges and says every address reaches every address, both directions, every port. Create network stays disabled until the operator ticks "I understand this link is open in both directions". |
+| Enforcement on | One neutral line: nothing crosses the link until an access rule allows it. No acknowledgement. |
+| First network | Nothing is shown; there is no second side. |
+| Mode unreadable | Said as such, and treated like off: an acknowledgement is required. The safe mode is never guessed. |
+| Other networks unlistable | Said as such, with its own acknowledgement. An unread list is not an empty one. |
+| While reading | Create network is disabled until the read finishes, so a slow response cannot be used to skip the notice. |
+| No API change | Three existing read endpoints. No data-plane change: the link is exactly as open as before, and now the operator is told. |
+| Colour | The existing warning tone for off and unknown; the neutral secondary tone for on. No new token. |
+
+Not built here: the same statement on the Connections page, per link. It belongs with SSI-9, which
+rebuilds that page.
+
+## Tests
+
+| Test | Proves |
+| --- | --- |
+| `sitelinkview.test.ts` | The projection for off, on, unknown, no second side, and stable ordering. |
+| `networksetup.test.tsx` › what the range will be linked to | Create is blocked until acknowledged when open; nothing asked when enforcing; nothing shown for the first network; an unlisted set and an unread mode are both said and both require acknowledgement; the gateway's own site is excluded. |
+
+Seen on the local stack on 2026-11-20 with the seeded demo organization (enforcement off, three
+other networks): the warning lists `ap-lan`, `eu-lan` and `us-east-dc` with their ranges and Create
+network is disabled until the box is ticked.
