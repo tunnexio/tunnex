@@ -22,9 +22,11 @@ describe("SiteLanEgress", () => {
   it("shows the applied mode and says what each choice means for the operator", () => {
     show("preserve_source");
     expect(radio(/Original address/).checked).toBe(true);
-    expect(screen.getByText(/No cloud return route is needed/)).toBeTruthy();
-    expect(screen.getByText(/Your cloud must route the other networks' ranges to this gateway/)).toBeTruthy();
+    expect(screen.getByText(/Nothing to set up in this network's cloud for traffic that arrives here/)).toBeTruthy();
+    expect(screen.getByText(/This network's cloud must route the other networks' ranges to this gateway/)).toBeTruthy();
     expect(screen.getByText(/Access rules match the remote machine's real address either way/)).toBeTruthy();
+    // Neither mode removes the outbound side, and the note says so beside both (found on the AWS ↔ GCP walk).
+    expect(screen.getByTestId("lan-egress-outbound-note").textContent).toContain("the gateway's firewall allowing that server's traffic in");
     // Nothing to save until the choice differs from what is applied.
     expect((screen.getByRole("button", { name: "Save" }) as HTMLButtonElement).disabled).toBe(true);
   });
