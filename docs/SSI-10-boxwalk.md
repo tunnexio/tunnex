@@ -129,3 +129,29 @@ New findings:
    that calls it a recording gap. `hub_set.promotion` and `hub_set.failback` are written by the
    controller with no actor on purpose. The audit page has no way to say "the system did this". Not
    fixed.
+
+## Failover walks on the SSI-12 build (2026-11-20)
+
+Control plane at `ad9c23ea`. Gateways unchanged (agent `eaca5cf8`); the new 10 s site-link keepalive
+arrived as ordinary desired state. A probe from a connected device requested both private apps about
+every three seconds.
+
+| Run | Observer report interval | Primary stopped → standby promoted | Device downtime |
+| --- | --- | --- | --- |
+| before SSI-12 | 30 s (default) | about 5 min 5 s | about 4 min 55 s |
+| A | 30 s (default) | 97 s | about 1 min 50 s |
+| B | 10 s (`TUNNEX_AGENT_STATUS_INTERVAL=10s` on the observing gateway) | 51 s | about 1 min 6 s |
+
+Failback after each run: the primary returned to its place 160 to 190 s after it was started.
+Between runs the controller logged no stale tick for either hub: the faster rule did not misjudge a
+healthy link in this lab. That is a few minutes of one topology, not a soak.
+
+After promotion, devices took about 15 s more to move (their routed-ranges poll). That poll is now
+the largest remaining piece of the downtime in run B.
+
+Seen on the dashboard: the pending notice ("has not answered for 36 seconds... a standby takes over
+within a minute") appears about 40 s after the stop; failover audit rows read `failover-controller`
+as the actor.
+
+Left as is: the Failover tab still titles the column "Handshake" and counts "stale handshake
+reports", though the verdict now comes from receive progress.
