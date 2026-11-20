@@ -3,7 +3,8 @@ import { allRanges, cloudVpnBySite, gatewayRoles, networkStatus, networkSummary,
 import { MAP_DIAGRAM_MAX, networkMapLayout } from "../src/lib/networkmapview";
 
 // SSI-13 — the Networks list and the map read the same pure projections of what the page already loads.
-const gw = (id: string, name = id, extra: Record<string, unknown> = {}) => ({ id, name, status: "active", isHub: false, health: null, ...extra }) as never;
+const NOW = Date.parse("2026-11-20T12:00:00Z");
+const gw = (id: string, name = id, extra: Record<string, unknown> = {}) => ({ id, name, status: "active", isHub: false, health: null, lastSeenAt: "2026-11-20T11:59:50Z", ...extra }) as never;
 const card = (id: string, gateways: unknown[], subnets: Array<[string, "approved" | "pending"]> = [["10.0.0.0/24", "approved"]]): SiteCard =>
   ({ id, name: id, gateways, subnets: subnets.map(([cidr, status], i) => ({ id: `${id}-${i}`, cidr, status })), lanEgress: "preserve_source" }) as never;
 const hub = (...members: Array<[string, "primary" | "standby", "fresh" | "stale" | "unobserved"]>) =>
@@ -19,24 +20,30 @@ describe("gatewayRoles", () => {
 
 describe("networkStatus", () => {
   const roles = gatewayRoles(hub(["p", "primary", "fresh"], ["s", "standby", "fresh"]));
-  it("no badge is 'No issues reported', neutral, never 'Healthy'", () => {
-    expect(networkStatus(card("n", [gw("p"), gw("s")]), roles)).toEqual({ tone: "neutral", label: "No issues reported", detail: "Failover ready", attention: false });
-    expect(networkStatus(card("n", [gw("x")]), roles).detail).toBe("One gateway, no standby");
+  it("every gateway reporting is 'Gateways online': what was measured, never 'Healthy' or 'Up'", () => {
+    expect(networkStatus(card("n", [gw("p"), gw("s")]), roles, NOW)).toEqual({ tone: "ok", label: "Gateways online", detail: "Failover ready", attention: false });
+    expect(networkStatus(card("n", [gw("x")]), roles, NOW).detail).toBe("One gateway, no standby");
   });
   it("two gateways that are not both failover candidates are not called a pair", () => {
-    expect(networkStatus(card("n", [gw("p"), gw("x")]), roles).detail).toBe("Second gateway is not a failover candidate");
+    expect(networkStatus(card("n", [gw("p"), gw("x")]), roles, NOW).detail).toBe("Second gateway is not a failover candidate");
+  });
+  it("a gateway that stopped reporting is offline, by the same clock as the Gateways page", () => {
+    const old = { lastSeenAt: "2026-11-20T11:50:00Z" };
+    expect(networkStatus(card("n", [gw("x", "gw-x", old)]), roles, NOW)).toMatchObject({ tone: "danger", label: "Offline", attention: true });
+    expect(networkStatus(card("n", [gw("x", "gw-x", old), gw("y")]), roles, NOW)).toMatchObject({ tone: "warn", label: "Gateway offline", detail: "gw-x has not reported recently" });
+    expect(networkStatus(card("n", [gw("x", "gw-x", { lastSeenAt: null })]), roles, NOW).label).toBe("Offline");
   });
   it("no gateway needs one", () => {
-    expect(networkStatus(card("n", []), roles)).toMatchObject({ label: "Needs a gateway", attention: true });
+    expect(networkStatus(card("n", []), roles, NOW)).toMatchObject({ label: "Needs a gateway", attention: true });
   });
   it("a silent gateway with another answering is 'Running on standby'; all silent is 'Not answering'", () => {
     const failed = gatewayRoles(hub(["s", "primary", "fresh"], ["p", "standby", "stale"]));
-    expect(networkStatus(card("n", [gw("p", "gw-1"), gw("s", "gw-2")]), failed)).toMatchObject({ tone: "warn", label: "Running on standby", detail: "gw-1 not answering", attention: true });
+    expect(networkStatus(card("n", [gw("p", "gw-1"), gw("s", "gw-2")]), failed, NOW)).toMatchObject({ tone: "warn", label: "Running on standby", detail: "gw-1 not answering", attention: true });
     const dead = gatewayRoles(hub(["p", "primary", "stale"]));
-    expect(networkStatus(card("n", [gw("p")]), dead)).toMatchObject({ tone: "danger", label: "Not answering" });
+    expect(networkStatus(card("n", [gw("p")]), dead, NOW)).toMatchObject({ tone: "danger", label: "Not answering" });
   });
   it("a raised health badge is shown as it is", () => {
-    expect(networkStatus(card("n", [gw("x", "x", { health: { label: "site link down", tone: "danger" } })]), new Map())).toMatchObject({ tone: "danger", label: "site link down", attention: true });
+    expect(networkStatus(card("n", [gw("x", "x", { health: { label: "site link down", tone: "danger" } })]), new Map(), NOW)).toMatchObject({ tone: "danger", label: "site link down", attention: true });
   });
 });
 
@@ -44,7 +51,7 @@ describe("networkSummary, cloudVpnBySite, allRanges", () => {
   const roles = gatewayRoles(hub(["p", "primary", "fresh"], ["s", "standby", "fresh"]));
   const cards = [card("a", [gw("p"), gw("s")]), card("b", [gw("x")], [["10.1.0.0/24", "pending"], ["10.2.0.0/24", "approved"]]), card("c", [], [])];
   it("counts what the list shows", () => {
-    expect(networkSummary(cards, roles)).toEqual({ networks: 3, withStandby: 1, pendingRanges: 1, attention: 1 });
+    expect(networkSummary(cards, roles, NOW)).toEqual({ networks: 3, withStandby: 1, pendingRanges: 1, attention: 1 });
   });
   it("groups cloud VPNs under their network, drops removed ones, and names the configuration state", () => {
     const by = cloudVpnBySite([
