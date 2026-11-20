@@ -8,6 +8,7 @@ package sites
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/netip"
 
@@ -67,6 +68,33 @@ func (s *Service) audit(ctx context.Context, q *sqlc.Queries, orgID, actor, subn
 
 func strptr(s string) *string { return &s }
 
+// admissibleRange is the SSI-1 gate (finding F1): a site range must lie wholly inside private or shared
+// address space. It is asked at EVERY seam that can introduce a range (advertise, the one-screen route,
+// approve) and BEFORE any row is written, so a refused range leaves no site, binding or pending subnet
+// behind. The disjointness validator cannot stand in for it: a public range is disjoint from everything
+// an organization owns.
+func admissibleRange(cidr netip.Prefix) error {
+	refusal, ok := subnetguard.Admissible(cidr)
+	if ok {
+		return nil
+	}
+	blocks := ""
+	for i, b := range subnetguard.RoutableBlocks() {
+		if i > 0 {
+			blocks += ", "
+		}
+		blocks += b.String()
+	}
+	switch refusal {
+	case subnetguard.RefusalTooWide:
+		return apierr.BadRequest(string(refusal), cidr.Masked().String()+" is wider than a private address block; a site range must lie inside one of "+blocks+".")
+	case subnetguard.RefusalNotPrivate:
+		return apierr.BadRequest(string(refusal), cidr.Masked().String()+" is not private address space; a site range must lie inside one of "+blocks+".")
+	default:
+		return apierr.BadRequest(string(refusal), "a site range must be an IPv4 CIDR inside one of "+blocks+".")
+	}
+}
+
 // RegisterSite creates a site entity in the org. A duplicate name in the org is a 409.
 func (s *Service) RegisterSite(ctx context.Context, orgID uuid.UUID, name string) (sqlc.Site, error) {
 	site, err := s.q.CreateSite(ctx, sqlc.CreateSiteParams{OrgID: orgID, Name: name})
@@ -93,6 +121,9 @@ func (s *Service) GetSite(ctx context.Context, orgID, siteID uuid.UUID) (sqlc.Si
 // AddSubnet attaches a routed subnet to a site (org-checked). Advertisement approval + pool
 // disjointness are Slice 4 — this is the model. A duplicate (site, cidr) is a 409.
 func (s *Service) AddSubnet(ctx context.Context, orgID, siteID uuid.UUID, cidr netip.Prefix) (sqlc.SiteSubnet, error) {
+	if err := admissibleRange(cidr); err != nil {
+		return sqlc.SiteSubnet{}, err
+	}
 	if _, err := s.GetSite(ctx, orgID, siteID); err != nil {
 		return sqlc.SiteSubnet{}, err
 	}
@@ -326,6 +357,8 @@ func (s *Service) ListPendingSubnets(ctx context.Context, orgID uuid.UUID) ([]sq
 // (v1 reserved ranges = none — a seam; the validator already takes the third input.)
 func (s *Service) ApproveSubnet(ctx context.Context, actor, orgID, subnetID uuid.UUID) error {
 	var refusal *subnetguard.Overlap
+	var inadmissible error
+	var inadmissibleCIDR string
 	err := s.withTx(ctx, func(q *sqlc.Queries) error {
 		if e := q.LockDeviceKey(ctx, orgID.String()); e != nil {
 			return e
@@ -343,6 +376,13 @@ func (s *Service) ApproveSubnet(ctx context.Context, actor, orgID, subnetID uuid
 		}
 		if sub.Status == "approved" {
 			return nil // idempotent no-op
+		}
+		// SSI-1: a range advertised before the admissibility gate existed may still be pending. It is
+		// refused here, typed, and stays pending for the operator to remove; nothing is approved.
+		if e := admissibleRange(sub.Cidr); e != nil {
+			inadmissible = e
+			inadmissibleCIDR = sub.Cidr.String()
+			return nil
 		}
 		// M6: serialize the disjointness read against every other range-writing seam (ResizePool +
 		// k8s.RegisterCluster) with the SAME org advisory lock. Without it, a subnet-approval racing a
@@ -379,6 +419,17 @@ func (s *Service) ApproveSubnet(ctx context.Context, actor, orgID, subnetID uuid
 	})
 	if err != nil {
 		return subnetsrc.ProviderConflict(err)
+	}
+	if inadmissible != nil {
+		// Audited outside the tx for the same reason as an overlap refusal: the record must survive it.
+		code := "range_refused"
+		var ae *apierr.Error
+		if errors.As(inadmissible, &ae) {
+			code = ae.Code
+		}
+		_ = s.audit(ctx, s.q, orgID, actor, subnetID, "site.subnet_approval_refused",
+			map[string]any{"reason": code, "cidr": inadmissibleCIDR})
+		return inadmissible
 	}
 	if refusal != nil {
 		// AUDIT the refusal in its own committed op (it must survive the refusal), then return typed.
