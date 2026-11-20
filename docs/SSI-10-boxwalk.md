@@ -187,3 +187,18 @@ zone forwarded from the DNS forwarding tab; laptop connected with the desktop cl
 Changes made from this walk: the form lives on the tab (it used to hide in a network's Advanced settings);
 adding or removing a zone pushes to gateways at once; the access-rule note is always shown under the form;
 the list can stop forwarding a zone directly; the count reads "1 forward".
+
+### Same walk against Route 53 (2026-11-20)
+
+The stand-in DNS server was replaced by what an AWS network really uses: a Route 53 private hosted zone
+`corp.internal` attached to the VPC, answered by the VPC resolver at `172.31.0.2`.
+
+| Step | Result |
+| --- | --- |
+| Share `172.31.0.2/32` from "AWS private" and approve it | Routed |
+| Forward `corp.internal` to `172.31.0.2` | Laptop received the zone in seconds |
+| Resources for `172.31.0.2/32` on UDP 53 and TCP 53, a rule each | UDP and TCP lookups both answer |
+| `app` (beside the gateway), `stage` (peered network), `gcp` (other cloud, over the site link) by name from the laptop | All three return 200 |
+
+The VPC resolver answers because the gateway sends device traffic into the VPC from its own address.
+Friction noted, not changed: one resource holds one protocol, so DNS needs two resources and two rules.
