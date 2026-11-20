@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { hubSetView, formatBytes } from "../src/lib/hubsetview";
+import { hubSetView, formatBytes, unobservedHubs } from "../src/lib/hubsetview";
 import type { HubSet } from "../src/lib/api";
 
 const now = Date.parse("2026-07-20T12:00:00Z");
@@ -115,5 +115,36 @@ describe("formatBytes", () => {
     expect(formatBytes(512)).toBe("512 B");
     expect(formatBytes(2048)).toBe("2.0 KB");
     expect(formatBytes(5 * 1024 * 1024)).toBe("5.0 MB");
+  });
+});
+
+// SSI-9 (finding F13): a hub is demoted only on another gateway's testimony, and gateways of the same
+// network do not peer. The Failover tab must say when nobody could be watching.
+describe("unobservedHubs", () => {
+  const aws = { id: "aws", gatewayIds: ["gw-1", "gw-2"], approvedRanges: 2 };
+  const gcp = { id: "gcp", gatewayIds: ["gw-3"], approvedRanges: 1 };
+
+  it("reports a same-network pair with no other network as unobserved", () => {
+    expect(unobservedHubs(["gw-1", "gw-2"], [aws])).toEqual(["gw-1", "gw-2"]);
+  });
+
+  it("is satisfied by one gateway in another network", () => {
+    expect(unobservedHubs(["gw-1", "gw-2"], [aws, gcp])).toEqual([]);
+  });
+
+  it("does not count another network that has no active gateway", () => {
+    expect(unobservedHubs(["gw-1", "gw-2"], [aws, { id: "empty", gatewayIds: [], approvedRanges: 1 }])).toEqual(["gw-1", "gw-2"]);
+  });
+
+  it("reports a hub whose own network has no approved range: nobody dials it", () => {
+    expect(unobservedHubs(["gw-1"], [{ ...aws, approvedRanges: 0 }, gcp])).toEqual(["gw-1"]);
+  });
+
+  it("reports a hub bound to no network", () => {
+    expect(unobservedHubs(["gw-9", "gw-3"], [aws, gcp])).toEqual(["gw-9"]);
+  });
+
+  it("judges hubs in different networks each by its own neighbours", () => {
+    expect(unobservedHubs(["gw-1", "gw-3"], [aws, gcp])).toEqual([]);
   });
 });

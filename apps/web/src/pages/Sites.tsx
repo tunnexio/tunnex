@@ -26,7 +26,7 @@ import {
   type HubSet,
   type DNSForward,
 } from "../lib/api";
-import { hubSetView, type HubMemberRow } from "../lib/hubsetview";
+import { hubSetView, unobservedHubs, type HubMemberRow, type ObserverSite } from "../lib/hubsetview";
 import { mergeOrgForwards, type OrgForwardsView } from "../lib/dnsview";
 import { useAuth } from "../lib/auth";
 import { toast } from "../components/Toasts";
@@ -521,6 +521,11 @@ export default function Sites() {
               hubSet={raw.hubSet}
               unavailable={raw.hubSetUnavailable}
               gateways={allGateways}
+              observerSites={cards.map((card) => ({
+                id: card.id,
+                gatewayIds: card.gateways.filter((gateway) => gateway.status === "active").map((gateway) => gateway.id),
+                approvedRanges: card.subnets.filter((subnet) => subnet.status === "approved").length,
+              }))}
               onDone={reload}
             />
           )}
@@ -714,15 +719,16 @@ function RouteLANModal({
 // link shows "—", NEVER 0; an idle link shows its real 0 bytes), and the generation as the set's version
 // tag. When the active order diverges from the configured pins a failover is IN EFFECT — stated, with the
 // demoted member marked and an audit pointer. Member-readable; the pin control is manage-gated.
-function HubSetSection({ orgId, canManage, hubSet, unavailable, gateways, onDone }: {
+function HubSetSection({ orgId, canManage, hubSet, unavailable, gateways, observerSites, onDone }: {
   orgId: string; canManage: boolean; hubSet: HubSet | null; unavailable: boolean;
-  gateways: GatewayView[]; onDone: () => void;
+  gateways: GatewayView[]; observerSites: ObserverSite[]; onDone: () => void;
 }) {
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [managing, setManaging] = useState(false);
   const [report, setReport] = useState<HubMemberRow | null>(null);
   const view = hubSetView(hubSet, Date.now());
+  const unobserved = view ? unobservedHubs(view.members.map((member) => member.nodeId), observerSites) : [];
   const nameOf = (id: string) => gateways.find(gateway => gateway.id === id)?.name ?? id.slice(0, 8);
   const priorities = new Map((hubSet?.members ?? []).map(member => [member.node_id, member.hub_priority ?? null]));
   const pins = [...priorities.values()].filter((value): value is number => value != null);
@@ -756,6 +762,7 @@ function HubSetSection({ orgId, canManage, hubSet, unavailable, gateways, onDone
       {canManage && !tooFewGateways && <Button size="sm" onClick={() => setManaging(true)}>Manage candidates</Button>}
     </div>
     {view?.promotionInEffect && <div className="s2s-operational-notice" role="status"><span>Standby promoted to acting primary.</span><Link to="/audit">View timeline</Link></div>}
+    {view && view.members.length > 1 && unobserved.length > 0 && <div className="s2s-operational-notice" role="status" data-testid="hub-unobserved"><span>{unobserved.length === view.members.length ? "Automatic failover cannot trigger yet." : `Automatic failover cannot detect a failure of ${unobserved.map(nameOf).join(", ")}.`} A hub is demoted only when a gateway in another network reports it unreachable, and gateways of the same network do not watch each other. Add a network with its own gateway.</span></div>}
     {view ? <div className="s2s-flat-table s2s-hub-table"><DataTable<HubMemberRow> caption="Transit hubs" rows={view.members} rowKey={member => member.nodeId} failed={false} filterable={false} pageSize={0} empty={null} variant="flat" columns={[
       { key: "gateway", header: "Gateway", cell: member => <Link className="s2s-name-link" to={`/gateways/${member.nodeId}`}>{nameOf(member.nodeId)}</Link> },
       { key: "role", header: "Acting role", cell: member => <div className="s2s-role-cell"><span>{member.role === "primary" ? "Primary" : "Standby"}</span>{member.demoted && <span className="s2s-muted">Configured primary · demoted</span>}</div> },
