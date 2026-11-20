@@ -546,7 +546,15 @@ describe("Access — F06 agent sources are first-class", () => {
     expect((add as HTMLButtonElement).disabled).toBe(false);
     fireEvent.click(add);
     const createDialog = screen.getByRole("dialog", { name: "Add rule" });
-    fireEvent.click(within(createDialog).getByRole("button", { name: "Review rule" }));
+    // SSI-3: a new rule opens with NO destination, so there is nothing to review until the operator
+    // chooses one. It used to open on the first resource and reach Create in two clicks.
+    const review = within(createDialog).getByRole("button", { name: "Review rule" });
+    expect((review as HTMLButtonElement).disabled).toBe(true);
+    expect((within(createDialog).getByRole("combobox", { name: "Destination" }) as HTMLInputElement).value).toBe("");
+    fireEvent.focus(within(createDialog).getByRole("combobox", { name: "Destination" }));
+    fireEvent.click(await within(createDialog).findByRole("button", { name: /10\.0\.0\.0\/24/ }));
+    expect((review as HTMLButtonElement).disabled).toBe(false);
+    fireEvent.click(review);
     expect(postedBodies).toHaveLength(0);
     const create = within(createDialog).getByRole("button", { name: "Create" });
     expect((create as HTMLButtonElement).disabled).toBe(false);

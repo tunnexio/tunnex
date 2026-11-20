@@ -65,6 +65,7 @@ import {
   ruleBody,
   defaultSrcKind,
   defaultDstKind,
+  initialDestinationId,
   extendErrorCopy,
   activeMembers,
   canEditRuleInModal,
@@ -2220,19 +2221,19 @@ function RuleFormModal({
         }),
   );
   const [dstGroup, setDstGroup] = useState(
-    editing?.dst_group_id ?? groups[0]?.id ?? "",
+    initialDestinationId(editing?.dst_group_id),
   );
   const [dstResource, setDstResource] = useState(
-    editing?.dst_resource_id ?? resources[0]?.id ?? "",
+    initialDestinationId(editing?.dst_resource_id),
   );
   const [dstSite, setDstSite] = useState(
-    editing?.dst_site_id ?? sites[0]?.id ?? "",
+    initialDestinationId(editing?.dst_site_id),
   );
   const [dstK8sService, setDstK8sService] = useState(
-    editing?.dst_k8s_service_id ?? services[0]?.id ?? "",
+    initialDestinationId(editing?.dst_k8s_service_id),
   ); // S10.3
   const [dstFQDNResource, setDstFQDNResource] = useState(
-    editing?.dst_fqdn_resource_id ?? fqdnResources[0]?.id ?? "",
+    initialDestinationId(editing?.dst_fqdn_resource_id),
   );
   // Temporary grant: an optional expiry (datetime-local). Empty = permanent.
   // Expiry is a CREATE-only field ([2]/[3] fix): editing a rule is create-then-delete, and a
