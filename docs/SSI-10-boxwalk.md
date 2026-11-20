@@ -155,3 +155,17 @@ as the actor.
 
 Left as is: the Failover tab still titles the column "Handshake" and counts "stale handshake
 reports", though the verdict now comes from receive progress.
+
+## Found while re-recording on the SSI-13 dashboard (2026-11-20)
+
+**Deleting the only other network demoted both hubs.** With "GCP private" deleted, its gateway stopped
+reporting the hubs and its last rows froze, exactly as a dead hub's would. Both hubs were ruled stale
+and demoted within two minutes (generation 22), and with no witness left nothing could restore them.
+Fixed in `e7bf68ee`: only gateways bound to a network testify (`witnessRows`). After the fix the
+controller logged `no-observation` for both hubs, and they were restored once the network existed
+again (generation 23, none demoted).
+
+Left as is: the dashboard's embedded setup still says "site" in a few sentences ("Your site and
+approved route are saved", "This creates a site"), the range form labels its field "LAN CIDR", the
+range-approvals table has a "Site" column, and the confirm button of "Remove range" rendered with no
+visible label.
