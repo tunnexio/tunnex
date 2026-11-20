@@ -50,6 +50,19 @@ func resourceFixture(t *testing.T) (context.Context, *pgxpool.Pool, uuid.UUID, u
 	if err = db.MigrateTo(parsed.String(), 159); err != nil {
 		t.Fatal(err)
 	}
+	// The site services below are current code and read whole site rows. SSI-8 added sites.lan_egress
+	// (migration 0235), which this pinned schema predates; without it every site read fails and surfaces as
+	// site_not_found before the IPsec reference guard under test is reached. Add just that column, exactly
+	// as the migration does, and keep the rest of the schema pinned.
+	scratch, err := pgxpool.New(ctx, parsed.String())
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = scratch.Exec(ctx, `ALTER TABLE sites ADD COLUMN lan_egress text NOT NULL DEFAULT 'preserve_source'`)
+	scratch.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
 	pool, err := pgxpool.New(ctx, parsed.String())
 	if err != nil {
 		t.Fatal(err)
