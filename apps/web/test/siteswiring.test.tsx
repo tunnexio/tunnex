@@ -755,6 +755,21 @@ describe("Networks — complete DNS projection and focused handoff", () => {
     expect(api.DELETE).not.toHaveBeenCalled();
   });
 
+  it("stops forwarding a zone from its row, after a confirmation", async () => {
+    inventorySites = [{ id: "s1", name: "Loaded network" }];
+    dnsForwards = { s1: [{ domain: "corp.test", resolver_ip: "10.1.0.53" }] };
+    withAuth(<Sites />, ["/sites?section=dns"]);
+    await screen.findByRole("table", { name: "DNS forwarding" });
+    await chooseRowAction("DNS actions for corp.test in Loaded network", "Stop forwarding");
+    expect(api.DELETE).not.toHaveBeenCalled();
+    const dialog = screen.getByRole("dialog", { name: "Stop forwarding corp.test?" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Stop forwarding" }));
+    await waitFor(() => expect(api.DELETE).toHaveBeenCalledWith(
+      "/api/v1/organizations/{orgId}/sites/{siteId}/dns-forwards/{domain}",
+      expect.objectContaining({ params: { path: expect.objectContaining({ siteId: "s1", domain: "corp.test" }) } }),
+    ));
+  });
+
   it("names failed reads above the remaining records and never claims an empty or conflict-free complete list", async () => {
     inventorySites = [{ id: "s1", name: "Loaded network" }, { id: "failed", name: "Unavailable network" }];
     dnsForwards = { s1: [{ domain: "corp.test", resolver_ip: "10.1.0.53" }], failed: null };
