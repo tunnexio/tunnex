@@ -106,13 +106,13 @@ func TestResourceServicesRefuseIPsecReferences(t *testing.T) {
 	}
 	for name, op := range map[string]func() error{
 		"site delete":     func() error { return ss.DeleteSite(ctx, actor, org, site) },
-		"node unbind":     func() error { return ss.UnbindNode(ctx, org, node) },
-		"explicit unbind": func() error { return ss.UnbindSiteNode(ctx, org, site, node) },
-		"bodyless unbind": func() error { return ss.UnbindSiteNode(ctx, org, site, uuid.Nil) },
+		"node unbind":     func() error { return ss.UnbindNode(ctx, uuid.Nil, org, node) },
+		"explicit unbind": func() error { return ss.UnbindSiteNode(ctx, uuid.Nil, org, site, node) },
+		"bodyless unbind": func() error { return ss.UnbindSiteNode(ctx, uuid.Nil, org, site, uuid.Nil) },
 	} {
 		t.Run(name, func(t *testing.T) { check(t, op(), 409, "ipsec_connection_in_use") })
 	}
-	check(t, ss.UnbindNode(ctx, uuid.New(), node), 404, "node_not_found")
+	check(t, ss.UnbindNode(ctx, uuid.Nil, uuid.New(), node), 404, "node_not_found")
 	check(t, ss.DeleteSite(ctx, actor, uuid.New(), site), 404, "site_not_found")
 	// Security revocation stays possible; physical deletion then refuses atomically.
 	exec(`UPDATE nodes SET status='revoked',revoked_at=now() WHERE id=$1`, node)
@@ -143,7 +143,7 @@ func TestResourceServicesRefuseIPsecReferences(t *testing.T) {
 	if err = tx.Commit(ctx); err != nil {
 		t.Fatal(err)
 	}
-	if err = ss.UnbindSiteNode(ctx, org, site, node); err != nil {
+	if err = ss.UnbindSiteNode(ctx, uuid.Nil, org, site, node); err != nil {
 		t.Fatal(err)
 	}
 	if err = ns.DeleteRevokedNode(ctx, actor, org, node); err != nil {

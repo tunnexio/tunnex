@@ -190,7 +190,8 @@ func (s apiServer) RegisterSite(ctx context.Context, req api.RegisterSiteRequest
 	if req.Body == nil || req.Body.Name == "" {
 		return nil, apierr.BadRequest("name_required", "a site name is required")
 	}
-	site, err := s.sites.RegisterSite(ctx, req.OrgId, req.Body.Name)
+	p, _ := authctx.PrincipalFrom(ctx)
+	site, err := s.sites.RegisterSite(ctx, p.UserID, req.OrgId, req.Body.Name)
 	if err != nil {
 		return nil, err
 	}
@@ -208,7 +209,8 @@ func (s apiServer) AddSiteSubnet(ctx context.Context, req api.AddSiteSubnetReque
 	if err != nil || !cidr.Addr().Is4() {
 		return nil, apierr.BadRequest("invalid_cidr", "cidr must be a valid IPv4 CIDR")
 	}
-	sub, err := s.sites.AddSubnet(ctx, req.OrgId, req.SiteId, cidr)
+	p, _ := authctx.PrincipalFrom(ctx)
+	sub, err := s.sites.AddSubnet(ctx, p.UserID, req.OrgId, req.SiteId, cidr)
 	if err != nil {
 		return nil, err
 	}
@@ -225,7 +227,8 @@ func (s apiServer) BindSiteNode(ctx context.Context, req api.BindSiteNodeRequest
 	if req.Body == nil {
 		return nil, apierr.BadRequest("invalid_request", "request body is required")
 	}
-	if err := s.sites.BindNode(ctx, req.OrgId, req.SiteId, req.Body.NodeId); err != nil {
+	p, _ := authctx.PrincipalFrom(ctx)
+	if err := s.sites.BindNode(ctx, p.UserID, req.OrgId, req.SiteId, req.Body.NodeId); err != nil {
 		return nil, err
 	}
 	// S8.6: binding a gateway changes hub-set membership → re-elect + persist (the D5 generation bumps).
@@ -248,7 +251,8 @@ func (s apiServer) UnbindSiteNode(ctx context.Context, req api.UnbindSiteNodeReq
 	if req.Body != nil && req.Body.NodeId != nil {
 		nodeID = *req.Body.NodeId
 	}
-	if err := s.sites.UnbindSiteNode(ctx, req.OrgId, req.SiteId, nodeID); err != nil {
+	p, _ := authctx.PrincipalFrom(ctx)
+	if err := s.sites.UnbindSiteNode(ctx, p.UserID, req.OrgId, req.SiteId, nodeID); err != nil {
 		return nil, err
 	}
 	// S8.6: unbinding removes a gateway from the hub-set candidate pool → re-elect + persist (best-effort).
