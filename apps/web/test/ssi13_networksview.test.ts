@@ -72,7 +72,7 @@ describe("networkSummary, cloudVpnBySite, allRanges", () => {
 describe("networkMapLayout", () => {
   const roles = gatewayRoles(hub(["p", "primary", "fresh"], ["s", "standby", "fresh"]));
   it("the network holding the acting primary is the hub; every other network with a gateway links to it", () => {
-    const layout = networkMapLayout([card("aws", [gw("p"), gw("s")]), card("gcp", [gw("g")]), card("empty", [])], roles, new Map());
+    const layout = networkMapLayout([card("aws", [gw("p"), gw("s")]), card("gcp", [gw("g")]), card("empty", [])], roles, new Map(), NOW);
     expect(layout.mode).toBe("diagram");
     expect(layout.hubId).toBe("aws");
     expect(layout.links).toEqual([{ from: "aws", to: "gcp", tone: "linked" }]); // a network with no gateway has NO link, not a red one
@@ -81,14 +81,14 @@ describe("networkMapLayout", () => {
   });
   it("gateways are inside their network with their role, and a cloud VPN adds height to its box", () => {
     const vpns = new Map([["aws", [{ id: "1", name: "to-azure", state: "applied" }]]]);
-    const withVpn = networkMapLayout([card("aws", [gw("p"), gw("s")]), card("gcp", [gw("g")])], roles, vpns);
-    const without = networkMapLayout([card("aws", [gw("p"), gw("s")]), card("gcp", [gw("g")])], roles, new Map());
+    const withVpn = networkMapLayout([card("aws", [gw("p"), gw("s")]), card("gcp", [gw("g")])], roles, vpns, NOW);
+    const without = networkMapLayout([card("aws", [gw("p"), gw("s")]), card("gcp", [gw("g")])], roles, new Map(), NOW);
     expect(withVpn.networks.find((n) => n.id === "aws")!.gateways.map((g) => g.role)).toEqual(["primary", "standby"]);
     expect(withVpn.boxes.get("aws")!.height).toBeGreaterThan(without.boxes.get("aws")!.height);
   });
   it("more than four other networks go on both sides of the hub, and no two boxes overlap", () => {
     const cards = [card("hub", [gw("p")]), ...Array.from({ length: 7 }, (_, i) => card(`n${i}`, [gw(`g${i}`)]))];
-    const layout = networkMapLayout(cards, roles, new Map());
+    const layout = networkMapLayout(cards, roles, new Map(), NOW);
     const boxes = [...layout.boxes.values()];
     expect(boxes.some((b) => b.x < layout.boxes.get("hub")!.x)).toBe(true);
     expect(boxes.some((b) => b.x > layout.boxes.get("hub")!.x)).toBe(true);
@@ -99,17 +99,17 @@ describe("networkMapLayout", () => {
   });
   it("a failed hub turns its links down; a network on its standby is degraded", () => {
     const failed = gatewayRoles(hub(["p", "primary", "stale"]));
-    expect(networkMapLayout([card("aws", [gw("p")]), card("gcp", [gw("g")])], failed, new Map()).links[0].tone).toBe("down");
+    expect(networkMapLayout([card("aws", [gw("p")]), card("gcp", [gw("g")])], failed, new Map(), NOW).links[0].tone).toBe("down");
   });
   it("above the diagram limit the map becomes a grid: no boxes, no links, problems first", () => {
     const many = Array.from({ length: MAP_DIAGRAM_MAX + 1 }, (_, i) => card(`n${String(i).padStart(2, "0")}`, i === 5 ? [] : [gw(`g${i}`)]));
-    const layout = networkMapLayout(many, roles, new Map());
+    const layout = networkMapLayout(many, roles, new Map(), NOW);
     expect(layout.mode).toBe("grid");
     expect(layout.boxes.size).toBe(0);
     expect(layout.links).toEqual([]);
     expect(layout.networks[0].id).toBe("n05");
   });
   it("no networks is empty, not a blank diagram", () => {
-    expect(networkMapLayout([], roles, new Map()).mode).toBe("empty");
+    expect(networkMapLayout([], roles, new Map(), NOW).mode).toBe("empty");
   });
 });

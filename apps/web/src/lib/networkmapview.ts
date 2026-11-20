@@ -43,7 +43,7 @@ export function mapBoxHeight(network: Pick<MapNetwork, "gateways" | "vpns">): nu
   return 58 + Math.max(1, network.gateways.length) * 26 + network.vpns.length * 22 + 26;
 }
 
-export function networkMapLayout(cards: SiteCard[], roles: Map<string, GatewayRole>, vpns: Map<string, CloudVpnLink[]>): MapLayout {
+export function networkMapLayout(cards: SiteCard[], roles: Map<string, GatewayRole>, vpns: Map<string, CloudVpnLink[]>, nowMs: number = Date.now()): MapLayout {
   const networks: MapNetwork[] = cards
     .map((card) => ({
       id: card.id,
@@ -51,7 +51,7 @@ export function networkMapLayout(cards: SiteCard[], roles: Map<string, GatewayRo
       ranges: card.subnets.filter((subnet) => subnet.status === "approved").map((subnet) => subnet.cidr),
       gateways: card.gateways.filter((gateway) => gateway.status === "active").map((gateway) => ({ id: gateway.id, name: gateway.name, role: roles.get(gateway.id) ?? null })),
       vpns: vpns.get(card.id) ?? [],
-      status: networkStatus(card, roles),
+      status: networkStatus(card, roles, nowMs),
     }))
     .sort((a, b) => Number(b.status.attention) - Number(a.status.attention) || a.name.localeCompare(b.name));
   const empty: MapLayout = { mode: "empty", networks, hubId: null, boxes: new Map(), links: [], width: 0, height: 0 };
