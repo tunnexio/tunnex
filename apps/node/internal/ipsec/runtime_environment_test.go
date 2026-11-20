@@ -207,3 +207,23 @@ func TestRuntimeEnvironmentCapturedNativeInventory(t *testing.T) {
 		t.Fatal("native inventory rejected", e)
 	}
 }
+
+// A range of one host (the usual gateway-address share) makes nft print the masquerade source as a bare
+// address. The census used to read only prefix objects, so one such range refused every IPsec apply.
+func TestRuntimeEnvironmentHookCensusAcceptsHostSourceMasquerade(t *testing.T) {
+	ruleset := func(source string) []byte {
+		return []byte(`{"nftables":[{"table":{"family":"ip","name":"tunnex"}},{"chain":{"family":"ip","table":"tunnex","name":"postrouting","type":"nat","hook":"postrouting","prio":99,"policy":"accept"}},{"rule":{"family":"ip","table":"tunnex","chain":"postrouting","expr":[{"match":{"op":"==","left":{"payload":{"protocol":"ip","field":"saddr"}},"right":` + source + `}},{"match":{"op":"!=","left":{"meta":{"key":"oifname"}},"right":"wg0"}},{"masquerade":null}]}}]}`)
+	}
+	protected := []netip.Prefix{netip.MustParsePrefix("10.70.0.10/32"), netip.MustParsePrefix("10.50.2.0/24")}
+	if !runtimeHookCensus(ruleset(`"172.31.37.55"`), protected) {
+		t.Fatal("a host source disjoint from the protected ranges must pass")
+	}
+	if !runtimeHookCensus(ruleset(`{"prefix":{"addr":"10.50.1.0","len":24}}`), protected) {
+		t.Fatal("a prefix source disjoint from the protected ranges must still pass")
+	}
+	for name, source := range map[string]string{"protected host": `"10.70.0.10"`, "host inside a protected range": `"10.50.2.9"`, "not an address": `"wg0"`, "ipv6 host": `"fd00::1"`} {
+		if runtimeHookCensus(ruleset(source), protected) {
+			t.Fatalf("%s must be refused", name)
+		}
+	}
+}
