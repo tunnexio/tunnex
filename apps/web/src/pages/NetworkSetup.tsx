@@ -184,7 +184,7 @@ function NetworkSetupWorkspace({
           </Link>
         }
       />}
-      {embedded && !done && <div><Button variant="ghost" disabled={busy || uncertain} onClick={onCancel}>Back to locations</Button></div>}
+      {embedded && !done && <div><Button variant="ghost" disabled={busy || uncertain} onClick={onCancel}>Start over</Button></div>}
       {done ? (
         <Card>
           <div className="network-complete">
@@ -231,7 +231,7 @@ function NetworkSetupWorkspace({
                 <>
                   <h2>Where will this network connect?</h2>
                   <p className="network-hint">
-                    {embedded ? "Choose an unassigned gateway for this location." : "Choose an active gateway. Gateways already connected to a site will add the private range to that site."}
+                    {embedded ? "Choose the gateway that runs inside this network." : "Choose an active gateway. Gateways already connected to a site will add the private range to that site."}
                   </p>
                   <div
                     className="network-gateways"
@@ -247,7 +247,7 @@ function NetworkSetupWorkspace({
                         <span>
                           <strong>{node.name}</strong>
                           <small>
-                            {node.site_id ? `Site: ${state.siteNames?.[node.site_id] || "Existing site"}` : "New site"} · {node.endpoint || "No public endpoint configured"}
+                            {node.site_id ? `Network: ${state.siteNames?.[node.site_id] || "Existing network"}` : "New network"} · {node.endpoint || "No public endpoint configured"}
                           </small>
                         </span>
                         <span aria-hidden="true">
@@ -258,7 +258,7 @@ function NetworkSetupWorkspace({
                   </div>
                   {!nodes.length && (
                     <p className="network-hint">
-                      {embedded ? "No unassigned gateways. Enroll one for this location, then refresh." : "No active gateways found. Enroll one here, then refresh when it has joined."}
+                      {embedded ? "No gateway is free. Enroll one in this network, then refresh." : "No active gateways found. Enroll one here, then refresh when it has joined."}
                     </p>
                   )}
                   <div className="network-actions">
