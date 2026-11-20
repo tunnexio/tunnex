@@ -87,7 +87,7 @@ export function NetworkMap({ cards, roles, vpns, selectedId, onSelect }: {
             })}
             {network.gateways.length === 0 && (y += 26, null)}
             {network.vpns.map((vpn) => { const rowY = y; y += 22; return <text key={vpn.id} x={box.x + 14} y={rowY - 2} fill="#8CC0FF" fontSize="11">{clip(`Cloud VPN · ${vpn.name}${vpn.state !== "applied" ? ` · ${vpn.state}` : ""}`, 38)}</text>; })}
-            <text x={box.x + 14} y={box.y + box.height - 12} fill={TONE_TEXT[network.status.tone]} fontSize="11">{clip(network.status.detail ? `${network.status.label} · ${network.status.detail}` : network.status.label, 40)}</text>
+            <text x={box.x + 14} y={box.y + box.height - 12} fill={TONE_TEXT[network.status.tone]} fontSize="11">{clip(network.status.detail ? `${network.status.label} · ${network.status.detail}` : network.status.label, 46)}</text>
           </g>;
         })}
       </svg>
