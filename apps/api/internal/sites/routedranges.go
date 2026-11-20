@@ -160,6 +160,12 @@ func (s *Service) ListRoutedForwards(ctx context.Context, orgID uuid.UUID, range
 // byte-identical to the long path's advertise-then-refused state — and the typed refusal (with its S8.5
 // teaching text) is returned. name is optional: blank derives a sensible default from the CIDR.
 func (s *Service) RouteLAN(ctx context.Context, actor, orgID, nodeID uuid.UUID, name string, cidr netip.Prefix) (sqlc.Site, sqlc.SiteSubnet, error) {
+	// SSI-1: an inadmissible range is refused before ANY row is written. This is deliberately unlike an
+	// overlap refusal (which persists site+bind+pending as the resume target): an overlap can be cured by
+	// changing the other side, a public or over-wide range never can, so there is nothing to resume.
+	if err := admissibleRange(cidr); err != nil {
+		return sqlc.Site{}, sqlc.SiteSubnet{}, err
+	}
 	if err := s.requireGatewayCarrier(ctx, orgID, nodeID); err != nil {
 		return sqlc.Site{}, sqlc.SiteSubnet{}, err
 	}
@@ -197,7 +203,13 @@ func (s *Service) RouteLAN(ctx context.Context, actor, orgID, nodeID uuid.UUID, 
 			return sqlc.Site{}, sqlc.SiteSubnet{}, err
 		}
 		if err := s.BindNode(ctx, orgID, site.ID, nodeID); err != nil {
-			return site, sqlc.SiteSubnet{}, err
+			// SSI-1 (finding F11): the site was created a moment ago for THIS call and nothing references
+			// it yet. Leaving it would make the operator's retry fail with site_name_taken on a site they
+			// never saw. Remove it; the bind error is still what the caller gets.
+			if _, derr := s.q.DeleteSite(ctx, sqlc.DeleteSiteParams{ID: site.ID, OrgID: orgID}); derr != nil {
+				return site, sqlc.SiteSubnet{}, errors.Join(err, derr)
+			}
+			return sqlc.Site{}, sqlc.SiteSubnet{}, err
 		}
 	}
 
