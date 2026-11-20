@@ -269,7 +269,18 @@ type Reconciler struct {
 	// condition: a Docker host whose FORWARD DROP swallows forwarded site traffic the agent couldn't
 	// clear. OR'd into siteSubnetUnreachable so a can't-forward gateway surfaces LOUD, never green.
 	forwardBlockedFn func() bool
+	// hostNet (SSI-7) reads the networks the gateway host is attached to. When set, site routes are planned
+	// against that snapshot (planSiteRoutes): a remote range that collides with a host network is refused,
+	// and a local range counts as deliverable when the kernel routes it out of the LAN. nil keeps the
+	// address-containment behaviour, which is all a backend without a real host (tests, the memory backend)
+	// can offer.
+	hostNet *HostNetworkProbe
+	// routePlanLogged is the last degraded plan logged, so a standing condition logs once per onset.
+	routePlanLogged string
 }
+
+// SetHostNetworkProbe wires the host-network probe (SSI-7). Optional; call before Run.
+func (r *Reconciler) SetHostNetworkProbe(p *HostNetworkProbe) { r.hostNet = p }
 
 // SetForwardBlockedFn wires the egress Docker-FORWARD-blocked probe into the D3 signal (WF-4). Optional.
 func (r *Reconciler) SetForwardBlockedFn(f func() bool) { r.forwardBlockedFn = f }
@@ -472,6 +483,10 @@ func (r *Reconciler) ApplyRoutesDesired(ctx context.Context, ds DesiredState) er
 		}
 		localSubnets = ds.Policy.LocalSubnets // D2: the gateway's own approved subnets → route src-hint
 	}
+	fwdBlocked := r.forwardBlockedFn != nil && r.forwardBlockedFn()
+	if r.hostNet != nil && r.hostNet.Networks != nil {
+		return r.applyPlannedRoutes(ctx, routes, localSubnets, fwdBlocked)
+	}
 	// D2 + D3, ONE host-addr snapshot per tick (review #6): derive the route src-hint AND the
 	// unreachable-subnet signal from the SAME view. srcOK → src-hint (D2). hadSubnets && !srcOK → the
 	// gateway fronts a subnet it isn't on (bridge-trapped wg0 / misconfig) → D3 site_subnet_unreachable
@@ -486,7 +501,6 @@ func (r *Reconciler) ApplyRoutesDesired(ctx context.Context, ds DesiredState) er
 	if r.siteSubnetUnreachable != nil {
 		// D3 (host not on the advertised subnet) OR WF-4 (Docker FORWARD DROP swallows the forward) —
 		// both mean "this gateway can't actually deliver its advertised site subnet". Surface either LOUD.
-		fwdBlocked := r.forwardBlockedFn != nil && r.forwardBlockedFn()
 		r.siteSubnetUnreachable.Store((hadSubnets && !srcOK) || fwdBlocked)
 	}
 	if hadSubnets && !srcOK {
@@ -502,6 +516,38 @@ func (r *Reconciler) ApplyRoutesDesired(ctx context.Context, ds DesiredState) er
 		srcHint = src.String()
 	}
 	if err := r.backend.ApplyRoutes(ctx, routes, srcHint); err != nil {
+		r.healthy.Store(false)
+		return err
+	}
+	return nil
+}
+
+// applyPlannedRoutes is ApplyRoutesDesired with a host snapshot (SSI-7). The source hint, the refused
+// routes and the health signal all come from ONE reading of the host, as the legacy path's single
+// host-address snapshot did.
+func (r *Reconciler) applyPlannedRoutes(ctx context.Context, routes, localSubnets []string, fwdBlocked bool) error {
+	var nets []HostNetwork
+	if len(routes) > 0 || len(localSubnets) > 0 { // the common non-site node pays for no enumeration
+		nets = r.hostNet.Networks()
+	}
+	plan := planSiteRoutes(routes, localSubnets, nets, r.hostNet.RouteDev)
+	if r.siteSubnetUnreachable != nil {
+		r.siteSubnetUnreachable.Store(plan.degraded() || fwdBlocked)
+	}
+	if sig := plan.signature(); sig != r.routePlanLogged {
+		for _, c := range plan.Conflicts {
+			r.logger.Warn("site_route_refused_host_network", "cidr", c.CIDR, "host_network", c.Network, "iface", c.Iface)
+		}
+		for _, l := range plan.LocalUnreachable {
+			r.logger.Warn("site_local_range_undeliverable", "cidr", l)
+		}
+		r.routePlanLogged = sig // onset-only; an empty signature re-arms it
+	}
+	srcHint := ""
+	if plan.SrcOK {
+		srcHint = plan.Src.String()
+	}
+	if err := r.backend.ApplyRoutes(ctx, plan.Routes, srcHint); err != nil {
 		r.healthy.Store(false)
 		return err
 	}
