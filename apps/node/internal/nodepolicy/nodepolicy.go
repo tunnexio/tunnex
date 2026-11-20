@@ -42,7 +42,8 @@ const (
 // IPsec-only profiles retain their v11 content version and canonical hash.
 // v13 adds explicitly configured public upstreams for allowed LAN DNS clients.
 // v14 adds explicit public resolver endpoints for static CNAME target completion.
-const MaxSupportedVersion = 14
+// v15 (SSI-8): this agent renders SiteLANMasquerade (source NAT of remote-site traffic at the LAN edge).
+const MaxSupportedVersion = 15
 
 // AllowEntry is one compiled default-deny grant: SrcIP (a device /32 host) may reach
 // DstCIDR on Protocol within [PortLow,PortHigh]. PortLow==0 means all ports.
@@ -121,6 +122,9 @@ type Compiled struct {
 	FQDNGenerations     []FQDNGeneration     `json:"fqdn_generations,omitempty"`
 	DNSResolverProfiles []DNSResolverProfile `json:"dns_resolver_profiles,omitempty"`
 	CrossGatewayClients bool                 `json:"cross_gateway_clients,omitempty"`
+	// SiteLANMasquerade (v15, SSI-8) — masquerade traffic sourced from a remote site range (Routes) as it
+	// leaves a non-tunnel interface. Out-of-hash PLUMBING; mirror of policyspec.Compiled.SiteLANMasquerade.
+	SiteLANMasquerade bool `json:"site_lan_masquerade,omitempty"`
 }
 
 // FQDNGeneration mirrors policyspec.FQDNGeneration. It participates in the
