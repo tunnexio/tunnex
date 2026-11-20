@@ -547,6 +547,7 @@ export default function Sites() {
             <div className="s2s-dns-workspace">
               {gate.canManage && <ForwardZoneForm orgId={org.id} cards={cards} onDone={reload} />}
               <DNSForwardsPanel
+                orgId={org.id}
                 view={raw.forwards}
                 siteCount={raw.sites.length}
                 canManage={gate.canManage}
@@ -597,13 +598,33 @@ export default function Sites() {
 // The wireframe lists zones across the org with a `via <site>` column. Our endpoint is per-site, so this is
 // an N+1 — founder-ruled and accepted, because the invariant it exists to show (one zone maps to one
 // resolver ORG-WIDE) cannot be seen from inside any single site.
-function DNSForwardsPanel({ view, siteCount, canManage, onManageSite, onRetry }: {
-  view: OrgForwardsView; siteCount: number; canManage: boolean;
+function DNSForwardsPanel({ orgId, view, siteCount, canManage, onManageSite, onRetry }: {
+  orgId: string; view: OrgForwardsView; siteCount: number; canManage: boolean;
   onManageSite: (siteId: string) => void; onRetry: () => void;
 }) {
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState("all");
   const [zone, setZone] = useState<string | null>(null);
+  const [removing, setRemoving] = useState<OrgForwardsView["rows"][number] | null>(null);
+  const [removeBusy, setRemoveBusy] = useState(false);
+  // Removing a zone used to mean opening the network's settings; the list is where people look for it.
+  async function removeForward() {
+    if (!removing) return;
+    setRemoveBusy(true);
+    try {
+      const { error } = await api.DELETE("/api/v1/organizations/{orgId}/sites/{siteId}/dns-forwards/{domain}", {
+        params: { path: { orgId, siteId: removing.siteId, domain: removing.domain } },
+      });
+      if (error) { toast.error(apiErrorMessage(error, "Could not remove the forward.")); return; }
+      toast.success(`${removing.domain} is no longer forwarded`);
+      setRemoving(null);
+      onRetry();
+    } catch { toast.error("Could not remove the forward. Refresh before trying again."); }
+    finally { setRemoveBusy(false); }
+  }
+  const removeDialog = removing && <Modal title={`Stop forwarding ${removing.domain}?`} onDismiss={removeBusy ? () => {} : () => setRemoving(null)} actions={<><Button variant="ghost" disabled={removeBusy} onClick={() => setRemoving(null)}>Cancel</Button><Button variant="danger" className="!text-white" disabled={removeBusy} onClick={() => void removeForward()}>Stop forwarding</Button></>}>
+    <p className="text-cell text-ink-tertiary">Connected devices stop asking {removing.resolverIp} for names in {removing.domain}. The resolver and its access rule stay as they are.</p>
+  </Modal>;
   const conflictRows = view.rows.filter(row => view.conflicts.includes(row.domain));
   const filtered = view.rows.filter(row => (filter !== "conflicts" || view.conflicts.includes(row.domain)) && `${row.domain} ${row.resolverIp} ${row.siteName}`.toLowerCase().includes(query.trim().toLowerCase()));
   const pagination = useNetworkListPage(filtered.length);
@@ -616,7 +637,7 @@ function DNSForwardsPanel({ view, siteCount, canManage, onManageSite, onRetry }:
   const partialNotice = view.failedSites.length > 0 && <div role="status" className="s2s-operational-notice s2s-partial-notice"><p>Could not read zones from {view.failedSites.join(", ")}. This list is incomplete, so conflicts cannot be ruled out.</p><Button size="sm" variant="ghost" onClick={onRetry}>Retry DNS reads</Button></div>;
   const rowMenu = (row: OrgForwardsView["rows"][number], includeDetails = true) => <AppAccessRowMenu label={`DNS actions for ${row.domain} in ${row.siteName}`} actions={[
     ...(includeDetails ? [{ key: "details", label: "Zone details", onSelect: () => openZone(row.domain) }] : []),
-    ...(canManage ? [{ key: "edit", label: `Edit forwarding in ${row.siteName}`, onSelect: () => onManageSite(row.siteId) }] : []),
+    ...(canManage ? [{ key: "edit", label: `Edit forwarding in ${row.siteName}`, onSelect: () => onManageSite(row.siteId) }, { key: "remove", label: "Stop forwarding", danger: true, onSelect: () => setRemoving(row) }] : []),
   ]} />;
   if (zone !== null) return <section className="s2s-dns-detail" aria-label={`${zone} forwarding`}>
     <nav className="s2s-network-breadcrumb" aria-label="DNS forwarding breadcrumb"><button type="button" onClick={() => setZone(null)}>Back to DNS forwarding</button><span aria-hidden="true">/</span><span aria-current="page">{zone}</span></nav>
@@ -630,6 +651,7 @@ function DNSForwardsPanel({ view, siteCount, canManage, onManageSite, onRetry }:
     ]} /></div>}
     <AppAccessPagination maxOffset={null} page={selectedPagination.page} pageSize={selectedPagination.pageSize} count={selectedPageRows.length} hasNext={selectedPagination.hasNext} onPageChange={selectedPagination.onPageChange} onPageSizeChange={selectedPagination.onPageSizeChange} previousLabel="Previous resolver targets" nextLabel="Next resolver targets" />
     <p className="s2s-operation-context s2s-dns-detail-note">{canManage ? "Use a network’s row menu to edit its forwarding settings." : "An owner or admin can edit forwarding settings."}</p>
+    {removeDialog}
   </section>;
   return <section className="s2s-dns-workspace" aria-label="Cross-site DNS forwarding">
     <h2 className="sr-only">Cross-site DNS forwarding</h2>
@@ -647,6 +669,7 @@ function DNSForwardsPanel({ view, siteCount, canManage, onManageSite, onRetry }:
     ]} /></div>}
     <AppAccessPagination maxOffset={null} page={pagination.page} pageSize={pagination.pageSize} count={pageRows.length} hasNext={pagination.hasNext} onPageChange={pagination.onPageChange} onPageSizeChange={pagination.onPageSizeChange} previousLabel="Previous DNS forwards" nextLabel="Next DNS forwards" />
     <details className="s2s-disclosure s2s-operations-help"><summary>About DNS forwarding</summary><div className="s2s-disclosure-body"><p>A zone is forwarded to one DNS server, which must sit inside a range its network shares. One zone has one resolver across the organization.</p><p>Connected devices ask that resolver for names in the zone. They can, once an access rule lets them reach it on port 53.</p><p>A server in another network does not get this automatically: point it at the resolver's address.</p><p>Private DNS Resolver remains the only primary configuration for FQDN access. Manage it in <Link className="s2s-text-link" to="/access/resources?type=fqdn#private-dns-heading">Private DNS Resolvers</Link>.</p></div></details>
+    {removeDialog}
   </section>;
 }
 
