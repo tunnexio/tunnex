@@ -636,7 +636,7 @@ function DNSForwardsPanel({ view, siteCount, canManage, onManageSite, onRetry }:
     {partialNotice}
     <div className="s2s-operations-toolbar">
       <div className="s2s-operations-filters"><Input aria-label="Search DNS forwards" placeholder="Search zones, resolvers or networks…" value={query} onChange={event => { setQuery(event.target.value); pagination.onPageChange(1); }} /><Select aria-label="DNS forwarding status" width="auto" value={filter} onChange={event => { setFilter(event.target.value); pagination.onPageChange(1); }}><option value="all">All forwards</option><option value="conflicts">Conflicts ({conflictRows.length})</option></Select></div>
-      <div className="s2s-operations-summary"><span>{filtered.length}{view.conflictsAreComplete ? " forwards" : " loaded forwards"}</span>{view.conflicts.length > 0 && <button className="s2s-conflict-filter" type="button" aria-label="Show conflicting forwards" onClick={() => { setFilter("conflicts"); setQuery(""); pagination.onPageChange(1); }}>{view.conflicts.length} zone conflict{view.conflicts.length === 1 ? "" : "s"}</button>}</div>
+      <div className="s2s-operations-summary"><span>{filtered.length}{view.conflictsAreComplete ? "" : " loaded"} {filtered.length === 1 ? "forward" : "forwards"}</span>{view.conflicts.length > 0 && <button className="s2s-conflict-filter" type="button" aria-label="Show conflicting forwards" onClick={() => { setFilter("conflicts"); setQuery(""); pagination.onPageChange(1); }}>{view.conflicts.length} zone conflict{view.conflicts.length === 1 ? "" : "s"}</button>}</div>
     </div>
     {!pageRows.length ? <div className="s2s-empty-state" role="status"><h3>{query || filter !== "all" ? "No matching forwards" : siteCount === 0 ? "No networks yet" : view.conflictsAreComplete ? "No forwarded zones" : "No records loaded"}</h3><p>{query || filter !== "all" ? "Try another zone, resolver or network." : siteCount === 0 ? "Add a network before configuring zone forwarding." : view.conflictsAreComplete ? "Forward a zone above to start." : "Retry the unavailable networks to read their zones."}</p>{(query || filter !== "all") && <Button size="sm" variant="ghost" onClick={clearFilters}>Clear filters</Button>}</div> : <div className="s2s-flat-table s2s-dns-table"><DataTable caption="DNS forwarding" rows={pageRows} rowKey={row => `${row.siteId}-${row.domain}`} failed={false} empty={null} filterable={false} pageSize={0} variant="flat" columns={[
       { key: "zone", header: "Zone", cell: row => <button type="button" className="s2s-name-link" onClick={() => openZone(row.domain)}>{row.domain}</button> },
@@ -2002,7 +2002,6 @@ function ForwardZoneForm({ orgId, cards, onDone }: { orgId: string; cards: SiteC
   const [resolverIp, setResolverIp] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
-  const [added, setAdded] = useState<{ domain: string; resolverIp: string } | null>(null);
   const chosen = eligible.find((card) => card.id === siteId) ?? (eligible.length === 1 ? eligible[0] : null);
   const ranges = chosen ? chosen.subnets.filter((subnet) => subnet.status === "approved").map((subnet) => subnet.cidr) : [];
   async function add() {
@@ -2014,7 +2013,7 @@ function ForwardZoneForm({ orgId, cards, onDone }: { orgId: string; cards: SiteC
         params: { path: { orgId, siteId: chosen.id } }, body: { domain: zone, resolver_ip: ip },
       });
       if (error) { setErr(apiErrorMessage(error, "Could not forward the zone.")); return; }
-      setAdded({ domain: zone, resolverIp: ip }); setDomain(""); setResolverIp("");
+      setDomain(""); setResolverIp("");
       toast.success(`${zone} is forwarded to ${ip}`);
       onDone();
     } catch { setErr("Could not forward the zone. Refresh before trying again."); }
@@ -2022,8 +2021,8 @@ function ForwardZoneForm({ orgId, cards, onDone }: { orgId: string; cards: SiteC
   }
   if (eligible.length === 0) return <OperationalSection title="Forward a zone"><p className="text-cell text-ink-tertiary">A resolver must sit inside a range a network shares. Add a range to a network first.</p></OperationalSection>;
   return <OperationalSection title="Forward a zone">
-    <div className="s2s-dns-form" style={{ gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))" }}>
-      <Field label="Network the DNS server is in">
+    <div className="s2s-dns-form s2s-forward-zone-form">
+      <Field label="Resolver's network">
         <Select aria-label="Network the DNS server is in" value={chosen?.id ?? ""} onChange={(event) => setSiteId(event.target.value)}>
           {eligible.length > 1 && <option value="">Choose a network</option>}
           {eligible.map((card) => <option key={card.id} value={card.id}>{card.name}</option>)}
@@ -2035,6 +2034,6 @@ function ForwardZoneForm({ orgId, cards, onDone }: { orgId: string; cards: SiteC
     </div>
     {chosen && <p className="text-micro text-ink-tertiary">The resolver must be inside a range {chosen.name} shares: {ranges.join(", ")}.</p>}
     <ErrorText>{err}</ErrorText>
-    {added && <div className="s2s-operational-notice" role="status"><span>{added.domain} is forwarded. With Zero Trust enforcement on, nobody can resolve it until an access rule allows {added.resolverIp} on port 53 (UDP and TCP).</span><Link to="/access">Add a rule</Link></div>}
+    <p className="s2s-forward-zone-note text-micro text-ink-tertiary">Names resolve only for people allowed to reach the resolver. With Zero Trust enforcement on, <Link className="s2s-text-link" to="/access">add an access rule</Link> for the resolver on port 53 (UDP and TCP).</p>
   </OperationalSection>;
 }
