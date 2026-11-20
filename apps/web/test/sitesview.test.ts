@@ -373,6 +373,33 @@ describe("meshFrom — the sparse cases the wireframe never draws", () => {
     expect(m.nodes.find((n) => n.label === "hq-lan")?.value).toBe(0);
   });
 
+  it("SSI-11: a standby hub is attached to the network it fronts, as a standby line and never a live link", () => {
+    const primary = { id: "p", name: "gw-1", status: "active" } as never;
+    const standby = { id: "s", name: "gw-2", status: "active" } as never;
+    const m = meshFrom(
+      [mkCard("a", "hq-lan", [primary, standby]), mkCard("b", "branch", [{ id: "x", name: "gw-b", status: "active" } as never])],
+      [
+        { id: "p", name: "gw-1", status: "active", is_site_hub: true } as Node,
+        { id: "s", name: "gw-2", status: "active" } as Node,
+      ],
+      { generation: 2, members: [{ node_id: "p", role: "primary", hub_priority: 1 }, { node_id: "s", role: "standby", hub_priority: 2 }] },
+    );
+    expect(m.links.filter((l) => l.standby)).toEqual([
+      { from: "__hub:s", to: "a", tone: "linked", standby: true, note: "standby gateway for this network" },
+    ]);
+    // the live links are untouched: the primary still reaches both networks
+    expect(m.links.filter((l) => !l.standby).map((l) => l.to).sort()).toEqual(["a", "b"]);
+  });
+
+  it("SSI-11: a standby bound to no network gets no line (nothing to stand by for)", () => {
+    const m = meshFrom(
+      [mkCard("a", "hq-lan", [{ id: "p", name: "gw-1", status: "active" } as never])],
+      [{ id: "p", name: "gw-1", status: "active" } as Node, { id: "s", name: "gw-2", status: "active" } as Node],
+      { generation: 2, members: [{ node_id: "p", role: "primary" }, { node_id: "s", role: "standby" }] },
+    );
+    expect(m.links.some((l) => l.standby)).toBe(false);
+  });
+
   it("a lone site whose gateway IS the hub draws a local-VPC attachment marker", () => {
     const gw = { id: "h", name: "gw-local-1", status: "active" } as never;
     const m = meshFrom(
@@ -441,7 +468,9 @@ describe("meshFrom — the sparse cases the wireframe never draws", () => {
     );
     expect(m.nodes).toHaveLength(6); // four Sites + two served HA members, never ten gateway circles
     expect(m.nodes.filter((node) => node.kind === "spoke")).toHaveLength(4);
-    expect(m.links).toHaveLength(4);
+    expect(m.links.filter((link) => !link.standby)).toHaveLength(4);
+    // SSI-11: plus exactly one standby attachment (gw-1 to the Site it fronts), still not a gateway mesh
+    expect(m.links.filter((link) => link.standby)).toHaveLength(1);
   });
 });
 

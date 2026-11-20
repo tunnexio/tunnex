@@ -10,8 +10,12 @@ import type { HubSet } from "./api";
 // value" by anyone who has not been told it means that -- it reads as a dash, or as a minus, or as nothing
 // at all to a screen reader. "n/a" says the thing.
 
-// HUB_STALE_MS — a member not handshook within this reads STALE (mirrors GATEWAY_OFFLINE_MS, one clock).
-export const HUB_STALE_MS = 90_000;
+// SSI-11 D1 — THE STALENESS WINDOW IS SERVED, NOT OWNED HERE. This file used to carry a 90s constant
+// "mirroring" the gateway-offline clock. The failover controller abandoned 90s for 240s because a healthy
+// WireGuard link's handshake age reaches ~200s between rekeys, so this tab called living hubs stale on
+// every cycle and showed a dead one as stale for minutes while the controller correctly waited. The window
+// now arrives on the hub set itself (`failover.stale_after_seconds`), computed from the controller's own
+// constants.
 
 // formatBytes renders a RAW gauge (display only, never summed as monotonic — S11.1). Absent → the caller
 // substitutes "n/a"; this only formats a real number.
@@ -35,12 +39,14 @@ export interface HubMemberRow {
   rx: string; // formatBytes(rx_bytes) or "n/a"
   tx: string;
   warm: boolean | null; // fresh handshake? null when NOT reporting (unknown ≠ cold)
+  ageMs: number | null; // now − last handshake; null when not reporting or unparseable
   demoted: boolean; // the CONFIGURED primary (lowest hub_priority) but NOT the acting primary → a failover
 }
 
 export interface HubSetViewModel {
   generation: number;
   members: HubMemberRow[];
+  timing: { staleAfterMs: number; demoteAfterMs: number; restoreAfterMs: number };
   promotionInEffect: boolean; // the active primary (members[0]) ≠ the configured primary (lowest pin)
 }
 
@@ -64,6 +70,11 @@ export function hubSetView(
   const activePrimary = hs.members[0].node_id;
   const promotionInEffect =
     configuredPrimary != null && configuredPrimary !== activePrimary;
+  const timing = {
+    staleAfterMs: hs.failover.stale_after_seconds * 1000,
+    demoteAfterMs: hs.failover.demote_after_seconds * 1000,
+    restoreAfterMs: hs.failover.restore_after_seconds * 1000,
+  };
   const members = hs.members.map((m): HubMemberRow => {
     const met = m.metrics;
     const reporting = met != null;
@@ -75,11 +86,66 @@ export function hubSetView(
       handshakeAge: reporting ? relativeAge(met!.last_handshake_at) : "n/a",
       rx: reporting ? formatBytes(met!.rx_bytes) : "n/a",
       tx: reporting ? formatBytes(met!.tx_bytes) : "n/a",
-      warm: reporting ? !Number.isNaN(t) && nowMs - t < HUB_STALE_MS : null,
+      warm: reporting ? !Number.isNaN(t) && nowMs - t < timing.staleAfterMs : null,
+      ageMs: reporting && !Number.isNaN(t) ? Math.max(0, nowMs - t) : null,
       demoted: promotionInEffect && m.node_id === configuredPrimary,
     };
   });
-  return { generation: hs.generation, members, promotionInEffect };
+  return { generation: hs.generation, members, promotionInEffect, timing };
+}
+
+// ── SSI-11 D2: the pending ruling, as an estimate ────────────────────────────────────────────────────────
+//
+// The tab used to show a stale primary and nothing else for the whole detection window. These notices say
+// what the controller will do with what is on screen. ESTIMATES, worded "about": the controller's tick
+// counters are in memory, restart with the control plane and hold while no observer reports, so an exact
+// countdown is a promise this page cannot keep.
+
+export type FailoverNotice =
+  | { kind: "pending"; nodeId: string; ageMs: number; remainingMs: number }
+  | { kind: "no_standby"; nodeId: string; ageMs: number }
+  | { kind: "recovering"; nodeId: string; restoreAfterMs: number };
+
+/**
+ * failoverNotices reads the view-model and returns what is about to happen, in member order.
+ * `unobserved` are hubs nobody can watch (unobservedHubs): no notice for those, the controller will not
+ * rule on them and a countdown would be false.
+ */
+export function failoverNotices(view: HubSetViewModel, unobserved: string[] = []): FailoverNotice[] {
+  const blind = new Set(unobserved);
+  const acting = view.members.filter((member) => !member.demoted);
+  const out: FailoverNotice[] = [];
+  for (const member of view.members) {
+    if (blind.has(member.nodeId) || member.ageMs == null) continue;
+    if (member.demoted) {
+      if (member.warm === true) out.push({ kind: "recovering", nodeId: member.nodeId, restoreAfterMs: view.timing.restoreAfterMs });
+      continue;
+    }
+    if (member.warm !== false) continue;
+    const standbyAnswering = acting.some((other) => other.nodeId !== member.nodeId && other.warm === true);
+    if (!standbyAnswering) {
+      out.push({ kind: "no_standby", nodeId: member.nodeId, ageMs: member.ageMs });
+      continue;
+    }
+    const remainingMs = Math.max(0, view.timing.staleAfterMs + view.timing.demoteAfterMs - member.ageMs);
+    out.push({ kind: "pending", nodeId: member.nodeId, ageMs: member.ageMs, remainingMs });
+  }
+  return out;
+}
+
+/** roughDuration words a span for a notice: "within a minute", "about 2 minutes", "about 4 minutes". */
+export function roughDuration(ms: number): string {
+  if (ms < 60_000) return "within a minute";
+  const half = Math.round(ms / 30_000) / 2; // nearest half minute
+  const whole = Number.isInteger(half);
+  return `in about ${whole ? half : half.toFixed(1)} minute${half === 1 ? "" : "s"}`;
+}
+
+/** spanWords words an elapsed span: "45 seconds", "4 minutes", "2.5 minutes". */
+export function spanWords(ms: number): string {
+  if (ms < 90_000) return `${Math.round(ms / 1000)} seconds`;
+  const half = Math.round(ms / 30_000) / 2;
+  return `${Number.isInteger(half) ? half : half.toFixed(1)} minutes`;
 }
 
 // ── SSI-9: who can see a hub fail ────────────────────────────────────────────────────────────────────────

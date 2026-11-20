@@ -363,7 +363,18 @@ export interface Link {
   tone: LinkTone;
   /** Why it is not `linked`. Rendered verbatim in the list; never inferred from the tone. */
   note?: string;
+  /**
+   * SSI-11: a STANDBY gateway's attachment to the network it fronts. It carries no traffic, so it is not a
+   * link STATE (linked/degraded/down say how a live link is doing) but a different relationship: drawn
+   * faint and dotted, never animated. Without it a standby floated on the map attached to nothing, and the
+   * picture could not answer "standby for what?".
+   */
+  standby?: boolean;
 }
+
+// The standby attachment: fainter than any live link and dotted, so it reads as "present, idle".
+export const STANDBY_STROKE = "#6F6F6B";
+export const STANDBY_DASH = "1 6";
 
 export interface PositionedNode {
   id: string;
@@ -750,18 +761,18 @@ export function NodeLink({
               <path
                 // Entry only: EVERY edge draws itself in, healthy or dead. `tnx-draw` sets its own
                 // stroke-dasharray, so a tone that wants a dash pattern keeps it via the overlay below.
-                className={LINK_DASH[l.tone] ? undefined : "tnx-draw"}
+                className={l.standby || LINK_DASH[l.tone] ? undefined : "tnx-draw"}
                 d={edge.path}
                 fill="none"
-                stroke={LINK_STROKE[l.tone]}
-                strokeDasharray={LINK_DASH[l.tone]}
-                strokeWidth={w}
+                stroke={l.standby ? STANDBY_STROKE : LINK_STROKE[l.tone]}
+                strokeDasharray={l.standby ? STANDBY_DASH : LINK_DASH[l.tone]}
+                strokeWidth={l.standby ? 1.5 : w}
                 strokeLinecap="round"
               />
               {/* ⛔ ONLY A `linked` EDGE FLOWS. A crawling dash on a degraded or down link would animate a
                   fault as if it were alive — the loudest possible version of the reassuring-green defect.
                   Motion is reserved for the one state that is genuinely current. */}
-              {l.tone === "linked" && (
+              {l.tone === "linked" && !l.standby && (
                 <>
                   <path
                     className="tnx-edge"
@@ -953,6 +964,12 @@ export function NodeLink({
               {tone}
             </span>
           ))}
+        {links.some((l) => l.standby) && (
+          <span className="flex items-center gap-1.5 font-mono text-micro text-ink-tertiary">
+            <svg aria-hidden width="20" height="6" viewBox="0 0 20 6"><path d="M 0 3 L 20 3" fill="none" stroke={STANDBY_STROKE} strokeWidth="2" strokeDasharray={STANDBY_DASH} strokeLinecap="round" /></svg>
+            standby
+          </span>
+        )}
         <span className="flex-1" />
         {interactive && (
           // OCCUPIES ITS SPACE WHETHER OR NOT ANYTHING IS SELECTED: a readout that APPEARS on selection
@@ -985,7 +1002,7 @@ export function NodeLink({
           </li>
         ))}
         {links
-          .filter((l) => l.tone !== "linked")
+          .filter((l) => l.tone !== "linked" || l.standby)
           .map((l) => (
             <li key={`${l.from}-${l.to}-d`}>
               {l.from} to {l.to}: {l.note ?? l.tone}

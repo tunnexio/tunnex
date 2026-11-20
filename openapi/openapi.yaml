@@ -12893,17 +12893,33 @@ components:
         expected_revision: { type: integer, format: int64, minimum: 0 }
     HubSet:
       type: object
-      required: [generation, members]
+      required: [generation, members, failover]
       additionalProperties: false
       properties:
         generation:
           type: integer
           format: int64
           description: "The set's version tag (S8.6 D5) — bumps on every membership/order change (a promotion event)."
+        failover: { $ref: "#/components/schemas/HubFailoverTiming" }
         members:
           type: array
           items: { $ref: "#/components/schemas/HubMember" }
           description: "The ORDERED active hub set: members[0] = the acting primary, the rest = standbys."
+    HubFailoverTiming:
+      type: object
+      required: [stale_after_seconds, demote_after_seconds, restore_after_seconds]
+      additionalProperties: false
+      description: "SSI-11: the failover controller's own timings, so a client never keeps a second staleness clock."
+      properties:
+        stale_after_seconds:
+          type: integer
+          description: "An observed handshake older than this counts as stale."
+        demote_after_seconds:
+          type: integer
+          description: "How long a hub must stay stale before a standby is promoted past it."
+        restore_after_seconds:
+          type: integer
+          description: "How long a demoted hub must stay fresh before it returns to its configured place."
     HubMember:
       type: object
       required: [node_id, role]

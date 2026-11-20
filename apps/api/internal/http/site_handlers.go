@@ -438,7 +438,10 @@ func (s apiServer) GetHubSet(ctx context.Context, req api.GetHubSetRequestObject
 		members = append(members, hm)
 	}
 	return api.GetHubSet200JSONResponse{
-		Body:    api.HubSet{Generation: view.Generation, Members: members},
+		Body: api.HubSet{Generation: view.Generation, Members: members, Failover: api.HubFailoverTiming{
+			StaleAfterSeconds: view.Timing.StaleAfterSeconds, DemoteAfterSeconds: view.Timing.DemoteAfterSeconds,
+			RestoreAfterSeconds: view.Timing.RestoreAfterSeconds,
+		}},
 		Headers: api.GetHubSet200ResponseHeaders{XRequestId: reqID(ctx)},
 	}, nil
 }

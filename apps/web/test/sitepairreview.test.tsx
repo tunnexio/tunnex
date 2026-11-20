@@ -21,7 +21,7 @@ it("requires distinct sites and clears the other selection when it becomes ident
   expect((screen.getByLabelText("Second network") as HTMLSelectElement).value).toBe("");
 });
 it("keeps unavailable data distinct from absent gateways and ranges", () => {
-  render(<MemoryRouter><SitePairConfigurationView first={a} second={b} onRetry={()=>{}} data={{hubSet:{ok:true,data:{generation:0,members:[]}},nodes:{ok:false,error:"Unavailable"},firstRanges:{ok:false,error:"Unavailable"},secondRanges:{ok:true,data:[]}}}/></MemoryRouter>);
+  render(<MemoryRouter><SitePairConfigurationView first={a} second={b} onRetry={()=>{}} data={{hubSet:{ok:true,data:{generation:0, failover: { stale_after_seconds: 240, demote_after_seconds: 90, restore_after_seconds: 150 },members:[]}},nodes:{ok:false,error:"Unavailable"},firstRanges:{ok:false,error:"Unavailable"},secondRanges:{ok:true,data:[]}}}/></MemoryRouter>);
   expect(screen.queryByText("No gateway assigned.")).toBeNull();
   const office = screen.getByRole("region",{name:"Office configuration"});
   expect(within(office).queryByText("No network ranges advertised.")).toBeNull();
@@ -32,7 +32,7 @@ it("reads only selected subnet lists and retries failed configuration", async ()
   let failing = true;
   mock.get.mockImplementation(async (path:string,opts:{params:{path:{siteId?:string}}}) => path.endsWith("/nodes")
     ? {data:[]}
-    : path.endsWith("/hub-set") ? {data:{generation:0,members:[]}}
+    : path.endsWith("/hub-set") ? {data:{generation:0, failover: { stale_after_seconds: 240, demote_after_seconds: 90, restore_after_seconds: 150 },members:[]}}
     : failing ? {error:{}} : {data:[{id:'range',site_id:opts.params.path.siteId,cidr:'10.20.0.0/24',status:'approved'}]});
   render(<MemoryRouter><SitePairDetails orgId="org" first={a} second={b}/></MemoryRouter>);
   await screen.findByRole("button",{name:"Retry configuration"});
@@ -46,7 +46,7 @@ it("discards old pair results when selection changes", async () => {
   let resolveA: (value: unknown)=>void = ()=>{};
   mock.get.mockImplementation((path:string,opts:{params:{path:{siteId?:string}}}) => {
     if(path.endsWith('/nodes')) return Promise.resolve({data:[]});
-    if(path.endsWith('/hub-set')) return Promise.resolve({data:{generation:0,members:[]}});
+    if(path.endsWith('/hub-set')) return Promise.resolve({data:{generation:0, failover: { stale_after_seconds: 240, demote_after_seconds: 90, restore_after_seconds: 150 },members:[]}});
     if(opts.params.path.siteId==='a') return new Promise(resolve=>{resolveA=resolve;});
     return Promise.resolve({data:[]});
   });
@@ -62,7 +62,7 @@ function renderGateway(diagnostics: Partial<Node> = {}) {
   const gateway = { id: "gateway", name: "Office gateway", site_id: a.id, status: "active", ...diagnostics } as Node;
   render(<MemoryRouter><SitePairConfigurationView first={a} second={b} onRetry={() => {}} data={{
     nodes: { ok: true, data: [gateway] },
-    hubSet: { ok: true, data: { generation: 0, members: [] } },
+    hubSet: { ok: true, data: { generation: 0, failover: { stale_after_seconds: 240, demote_after_seconds: 90, restore_after_seconds: 150 }, members: [] } },
     firstRanges: { ok: true, data: [] },
     secondRanges: { ok: true, data: [] },
   }} /></MemoryRouter>);
@@ -118,7 +118,7 @@ function renderHubs(hubSet: Loaded<HubSet>, nodes: Loaded<Node[]> = { ok: true, 
 }
 
 it("shows served transit roles even when names and configured priorities suggest otherwise", () => {
-  const hubs = renderHubs({ ok: true, data: { generation: 4, members: [
+  const hubs = renderHubs({ ok: true, data: { generation: 4, failover: { stale_after_seconds: 240, demote_after_seconds: 90, restore_after_seconds: 150 }, members: [
     { node_id: "standby-id", role: "standby", hub_priority: 1 },
     { node_id: "primary-id", role: "primary", hub_priority: 2 },
   ] } }, { ok: true, data: [
@@ -133,14 +133,14 @@ it("shows served transit roles even when names and configured priorities suggest
 });
 
 it("distinguishes a successfully empty hub set from a failed hub read", () => {
-  const hubs = renderHubs({ ok: true, data: { generation: 0, members: [] } });
+  const hubs = renderHubs({ ok: true, data: { generation: 0, failover: { stale_after_seconds: 240, demote_after_seconds: 90, restore_after_seconds: 150 }, members: [] } });
   expect(hubs.getByText("No transit hub set reported.")).toBeTruthy();
   expect(hubs.queryByText(/Could not load transit hubs/)).toBeNull();
   expect(screen.queryByRole("button", { name: "Retry configuration" })).toBeNull();
 });
 
 it.each(["missing", "unavailable"])("preserves served hub role and ID when gateway details are %s", kind => {
-  const hubs = renderHubs({ ok: true, data: { generation: 1, members: [{ node_id: "unresolved-hub", role: "primary" }] } },
+  const hubs = renderHubs({ ok: true, data: { generation: 1, failover: { stale_after_seconds: 240, demote_after_seconds: 90, restore_after_seconds: 150 }, members: [{ node_id: "unresolved-hub", role: "primary" }] } },
     kind === "missing" ? { ok: true, data: [] } : { ok: false, error: "Unavailable" });
   expect(hubs.getByText("unresolved-hub")).toBeTruthy();
   expect(hubs.getByText(/Primary/)).toBeTruthy();
@@ -149,7 +149,7 @@ it.each(["missing", "unavailable"])("preserves served hub role and ID when gatew
 });
 
 it("retains a revoked gateway state when a served hub set still names it", () => {
-  const hubs = renderHubs({ ok: true, data: { generation: 1, members: [{ node_id: "retired", role: "standby" }] } },
+  const hubs = renderHubs({ ok: true, data: { generation: 1, failover: { stale_after_seconds: 240, demote_after_seconds: 90, restore_after_seconds: 150 }, members: [{ node_id: "retired", role: "standby" }] } },
     { ok: true, data: [{ id: "retired", name: "Retired hub", status: "revoked" } as Node] });
   expect(hubs.getByText("Retired hub")).toBeTruthy();
   expect(hubs.getByText(/Standby/)).toBeTruthy();
@@ -160,7 +160,7 @@ it("retains a revoked gateway state when a served hub set still names it", () =>
 it("preserves site facts on hub read failure and retries the hub read", async () => {
   let failing = true;
   mock.get.mockImplementation(async (path: string, opts: { params: { path: { siteId?: string } } }) => {
-    if (path.endsWith("/hub-set")) return failing ? { error: {} } : { data: { generation: 1, members: [{ node_id: "hub", role: "primary" }] } };
+    if (path.endsWith("/hub-set")) return failing ? { error: {} } : { data: { generation: 1, failover: { stale_after_seconds: 240, demote_after_seconds: 90, restore_after_seconds: 150 }, members: [{ node_id: "hub", role: "primary" }] } };
     if (path.endsWith("/nodes")) return { data: [{ id: "hub", name: "Office hub", status: "active", site_id: "a" }] };
     return { data: [{ id: "range", site_id: opts.params.path.siteId, cidr: "10.20.0.0/24", status: "approved" }] };
   });
@@ -183,14 +183,14 @@ it.each(["organization", "pair"])("discards a late hub response after the %s cha
   mock.get.mockImplementation((path: string) => {
     if (path.endsWith("/hub-set")) return ++hubReads === 1
       ? new Promise(resolve => { finishPrevious = resolve; })
-      : Promise.resolve({ data: { generation: 2, members: [{ node_id: "current-hub", role: "primary" }] } });
+      : Promise.resolve({ data: { generation: 2, failover: { stale_after_seconds: 240, demote_after_seconds: 90, restore_after_seconds: 150 }, members: [{ node_id: "current-hub", role: "primary" }] } });
     return Promise.resolve({ data: [] });
   });
   const view = render(<MemoryRouter><SitePairDetails orgId="org" first={a} second={b} /></MemoryRouter>);
   expect(mock.get.mock.calls.some(([path]) => path.endsWith("/hub-set"))).toBe(true);
   view.rerender(<MemoryRouter><SitePairDetails orgId={change === "organization" ? "new-org" : "org"} first={change === "pair" ? c : a} second={b} /></MemoryRouter>);
   await screen.findByText("current-hub");
-  await act(async () => finishPrevious({ data: { generation: 1, members: [{ node_id: "old-hub", role: "standby" }] } }));
+  await act(async () => finishPrevious({ data: { generation: 1, failover: { stale_after_seconds: 240, demote_after_seconds: 90, restore_after_seconds: 150 }, members: [{ node_id: "old-hub", role: "standby" }] } }));
   expect(screen.queryByText("old-hub")).toBeNull();
   expect(screen.getByText("current-hub")).toBeTruthy();
 });
