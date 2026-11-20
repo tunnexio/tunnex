@@ -202,3 +202,21 @@ The stand-in DNS server was replaced by what an AWS network really uses: a Route
 
 The VPC resolver answers because the gateway sends device traffic into the VPC from its own address.
 Friction noted, not changed: one resource holds one protocol, so DNS needs two resources and two rules.
+
+## Cloud VPN walk: AWS Site-to-Site VPN ending on a gateway in Google Cloud (2026-11-20, in progress)
+
+First live tunnel on the demo. AWS VPN (static, IKEv2 / AES256 / SHA2-256 / DH14) on a VPC with no Tunnex gateway;
+the customer gateway is `gcp-gateway`. Import of the AWS Generic file filled both tunnels.
+
+| Finding | State |
+| --- | --- |
+| Every apply was refused at `environment` / `env_snapshot_before`. Cause: a /32 range shared by another network makes a masquerade rule whose source nft prints as a bare address; the hook census read only prefix objects | Fixed in the agent (`839fd8ef`), with a test |
+| After the fix both tunnels came up; the dashboard and AWS both show Up | Works |
+| A test container started on the gateway host left an empty `ip raw` table; the platform check refuses any extra table, and the dashboard says only "does not support IPsec yet" | Open: the reason is not shown to the operator |
+| The gateway that shares the control-plane host can never pass the platform check (Docker networks of the stack) | Open: needs a dedicated gateway host; not explained in the dashboard |
+| `env_local_coverage` refused on a Google Cloud VM: the VM has only a default route, so the local range has no covering route. A manual host route was added | Open: needs a product answer for Google Cloud gateways |
+| Tunnel traffic keeps its source address, so the local network must route the remote range back to the gateway (Google Cloud: IP forwarding on the VM, a route, a firewall rule) | By design; the setup flow does not say so |
+| A device reaches the remote range only when it is enrolled on the gateway that ends the tunnel (`d.NodeID != in.NodeID`) | By design; the demo laptop is on another gateway |
+| While enabling, the connection page shows "Unknown / Waiting for a fresh gateway report" with no reason when the gateway refuses | Open |
+| A rule from the remote range shows "Outside ranges" although it is what the tunnel needs | Open: misleading |
+| Create dialog: footer buttons clip at the bottom, fields clip under the scrollbar; the algorithm warning shows even when the AWS tunnels match | Open |
