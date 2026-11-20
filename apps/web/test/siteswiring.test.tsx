@@ -763,7 +763,7 @@ describe("Networks — complete DNS projection and focused handoff", () => {
     const notice = screen.getByText(/Could not read zones from Unavailable network/).closest('[role="status"]')!;
     expect(notice.textContent).toContain("conflicts cannot be ruled out");
     expect(notice.compareDocumentPosition(table) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
-    expect(screen.getByText("1 loaded forwards")).toBeTruthy();
+    expect(screen.getByText("1 loaded forward")).toBeTruthy();
     expect(screen.queryByText(/No conflicts/)).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "corp.test" }));
     expect(screen.getByRole("region", { name: "corp.test forwarding" }).textContent).toContain("conflicts cannot be ruled out");
@@ -772,7 +772,7 @@ describe("Networks — complete DNS projection and focused handoff", () => {
     fireEvent.click(screen.getByRole("button", { name: "Retry DNS reads" }));
     await waitFor(() => expect(screen.getAllByRole("cell", { name: "Conflict" })).toHaveLength(2));
     expect(screen.queryByText(/Could not read zones from/)).toBeNull();
-    expect(screen.queryByText("1 loaded forwards")).toBeNull();
+    expect(screen.queryByText("1 loaded forward")).toBeNull();
     expect(api.POST).not.toHaveBeenCalled();
     expect(api.PUT).not.toHaveBeenCalled();
     expect(api.DELETE).not.toHaveBeenCalled();
