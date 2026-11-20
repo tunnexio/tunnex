@@ -510,9 +510,9 @@ export interface NetworkStatus {
 /**
  * networkStatus is one network's status line. It claims only what the page knows: a health badge the
  * control plane raised, a gateway the failover controller reports silent, or the absence of both.
- * With neither it says "No issues reported", never "healthy": absence of a report is not a measurement.
+ * With none of those it says "Gateways online": what was measured, not a claim about application traffic.
  */
-export function networkStatus(card: SiteCard, roles: Map<string, GatewayRole>): NetworkStatus {
+export function networkStatus(card: SiteCard, roles: Map<string, GatewayRole>, nowMs: number = Date.now()): NetworkStatus {
   const active = card.gateways.filter((gateway) => gateway.status === "active");
   if (active.length === 0) return { tone: "warn", label: "Needs a gateway", detail: "No gateway is assigned", attention: true };
   const silent = active.filter((gateway) => roles.get(gateway.id) === "not_answering");
@@ -522,23 +522,28 @@ export function networkStatus(card: SiteCard, roles: Map<string, GatewayRole>): 
       ? { tone: "warn", label: "Running on standby", detail: `${silent.map((gateway) => gateway.name).join(", ")} not answering`, attention: true }
       : { tone: "danger", label: "Not answering", detail: "No gateway of this network is answering", attention: true };
   }
+  // The SAME clock the Gateways page uses: a gateway that has not reported recently is offline. This is a
+  // measured fact (the gateway's own report to the control plane), so its opposite may be stated too.
+  const offline = active.filter((gateway) => gatewayLiveness(gateway.lastSeenAt, nowMs).offline);
+  if (offline.length === active.length) return { tone: "danger", label: "Offline", detail: "No gateway has reported recently", attention: true };
+  if (offline.length > 0) return { tone: "warn", label: "Gateway offline", detail: `${offline.map((gateway) => gateway.name).join(", ")} has not reported recently`, attention: true };
   const badge = active.map((gateway) => gateway.health).find((health) => health != null);
   if (badge) return { tone: badge.tone as NetworkStatus["tone"], label: badge.label, detail: "", attention: badge.tone === "danger" || badge.tone === "warn" };
   const pair = active.filter((gateway) => roles.has(gateway.id)).length >= 2;
-  // ⛔ NOT "Healthy" AND NOT GREEN. No badge means nothing has been REPORTED wrong; it is not a measurement
-  // that traffic flows. The list said "Assigned" for the same reason before this story.
-  return { tone: "neutral", label: "No issues reported", detail: pair ? "Failover ready" : active.length >= 2 ? "Second gateway is not a failover candidate" : "One gateway, no standby", attention: false };
+  // ⛔ "Gateways online", NOT "Healthy" or "Up". It says what was measured (every gateway is reporting) and
+  // nothing about whether application traffic flows, which this page does not measure.
+  return { tone: "ok", label: "Gateways online", detail: pair ? "Failover ready" : active.length >= 2 ? "Second gateway is not a failover candidate" : "One gateway, no standby", attention: false };
 }
 
 export interface NetworkSummary { networks: number; withStandby: number; pendingRanges: number; attention: number }
 
 /** networkSummary is the four counts above the list. */
-export function networkSummary(cards: SiteCard[], roles: Map<string, GatewayRole>): NetworkSummary {
+export function networkSummary(cards: SiteCard[], roles: Map<string, GatewayRole>, nowMs: number = Date.now()): NetworkSummary {
   return {
     networks: cards.length,
     withStandby: cards.filter((card) => card.gateways.filter((gateway) => gateway.status === "active" && roles.has(gateway.id)).length >= 2).length,
     pendingRanges: cards.reduce((sum, card) => sum + card.subnets.filter((subnet) => subnet.status === "pending").length, 0),
-    attention: cards.filter((card) => networkStatus(card, roles).attention).length,
+    attention: cards.filter((card) => networkStatus(card, roles, nowMs).attention).length,
   };
 }
 
