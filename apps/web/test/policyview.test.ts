@@ -947,6 +947,7 @@ describe("ruleRow — a site-dst rule renders as a site, NEVER a broken 'deleted
 
 import {
   defaultDstKind,
+  initialDestinationId,
   defaultSrcKind,
   ruleSourceReady,
 } from "../src/lib/policyview";
@@ -1603,5 +1604,17 @@ describe("cascadeConfirmCopy — names only server-owned impact", () => {
     expect(cascadeConfirmSatisfied("", "Interns")).toBe(false);
     // a trailing space is a typo, not a refusal
     expect(cascadeConfirmSatisfied("  Interns  ", "Interns")).toBe(true);
+  });
+});
+
+// SSI-3 (finding F4): a NEW rule opens with no destination. It used to open on the first item of the list,
+// so an organization with groups got "<first group> → <first group>, every port" one click from Create.
+describe("initialDestinationId", () => {
+  it("starts a new rule with no destination", () => {
+    expect(initialDestinationId(undefined)).toBe("");
+    expect(initialDestinationId(null)).toBe("");
+  });
+  it("keeps the destination of the rule being edited", () => {
+    expect(initialDestinationId("9d3c6a2e-0000-4000-8000-000000000001")).toBe("9d3c6a2e-0000-4000-8000-000000000001");
   });
 });

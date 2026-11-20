@@ -689,6 +689,16 @@ export function defaultDstKind(i: {
   return "group"; // empty org — the modal isn't reachable (Add-rule gated), so any value is inert
 }
 
+// initialDestinationId is the destination a rule editor OPENS with (SSI-3, finding F4): the rule being edited
+// keeps its own destination; a NEW rule starts with none. It used to start on the first item of the list,
+// which for an organization with groups meant a new rule opened as "<first group> → <first group>, every
+// port" and one click on Review then Create saved it. A destination is the scope of a grant, so the
+// operator must choose it. This is not the dead end defaultDstKind guards against: that was a kind with NO
+// options; here the options exist and the picker shows its placeholder until one is chosen.
+export function initialDestinationId(editingId: string | null | undefined): string {
+  return editingId ?? "";
+}
+
 export function defaultSrcKind(i: {
   editingKind?: "group" | "user" | "site" | "cidr" | "agent";
   hasGroups: boolean;
