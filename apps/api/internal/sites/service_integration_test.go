@@ -1211,3 +1211,121 @@ func TestUnbindSiteNodeBodyless(t *testing.T) {
 		t.Fatal("a bodyless unbind of a multi-gateway site must be refused (409 multiple_gateways)")
 	}
 }
+
+// seedGatewayOrg creates an organization with one active gateway node and an actor, and removes them when
+// the test ends (SSI-1 helpers).
+func seedGatewayOrg(t *testing.T, pool *pgxpool.Pool, tag string) (org, actor, node uuid.UUID) {
+	t.Helper()
+	ctx := context.Background()
+	org, actor, node = uuid.New(), uuid.New(), uuid.New()
+	if _, e := pool.Exec(ctx, `INSERT INTO organizations (id,name,slug,pool_cidr) VALUES ($1,'S',$2,'10.99.0.0/24')`, org, tag+"-"+org.String()[:8]); e != nil {
+		t.Fatalf("seed org: %v", e)
+	}
+	if _, e := pool.Exec(ctx, `INSERT INTO users (id,email) VALUES ($1,$2)`, actor, "a-"+actor.String()[:8]+"@ex.com"); e != nil {
+		t.Fatalf("seed actor: %v", e)
+	}
+	if _, e := pool.Exec(ctx, `INSERT INTO nodes (id,org_id,name,cert_serial,enrolled_kind) VALUES ($1,$2,'gw',$3,'gateway')`, node, org, "cs-"+node.String()[:8]); e != nil {
+		t.Fatalf("seed node: %v", e)
+	}
+	t.Cleanup(func() {
+		_, _ = pool.Exec(context.Background(), `DELETE FROM organizations WHERE id=$1`, org)
+		_, _ = pool.Exec(context.Background(), `DELETE FROM users WHERE id=$1`, actor)
+	})
+	return org, actor, node
+}
+
+// TestRouteLANRefusesInadmissibleRange (SSI-1, finding F1) — a public or over-wide range is refused by the
+// one-screen route BEFORE any row is written. Unlike an overlap refusal there is nothing to resume, so the
+// organization is left with no site, no binding and no pending subnet.
+func TestRouteLANRefusesInadmissibleRange(t *testing.T) {
+	pool := testPool(t)
+	svc := NewService(pool)
+	ctx := context.Background()
+	org, actor, node := seedGatewayOrg(t, pool, "ssi1a")
+
+	for _, c := range []struct{ cidr, code string }{
+		{"128.0.0.0/1", "range_too_wide"},
+		{"10.0.0.0/7", "range_too_wide"},
+		{"8.8.8.0/24", "range_not_private"},
+		{"169.254.0.0/16", "range_not_private"},
+	} {
+		_, _, err := svc.RouteLAN(ctx, actor, org, node, "hq", netip.MustParsePrefix(c.cidr))
+		if !hasCode(err, c.code) {
+			t.Fatalf("RouteLAN(%s) error = %v, want %s", c.cidr, err, c.code)
+		}
+	}
+	var sites, bound, subnets int
+	if e := pool.QueryRow(ctx, `SELECT count(*) FROM sites WHERE org_id=$1`, org).Scan(&sites); e != nil {
+		t.Fatal(e)
+	}
+	if e := pool.QueryRow(ctx, `SELECT count(*) FROM nodes WHERE org_id=$1 AND site_id IS NOT NULL`, org).Scan(&bound); e != nil {
+		t.Fatal(e)
+	}
+	if e := pool.QueryRow(ctx, `SELECT count(*) FROM site_subnets ss JOIN sites s ON s.id=ss.site_id WHERE s.org_id=$1`, org).Scan(&subnets); e != nil {
+		t.Fatal(e)
+	}
+	if sites != 0 || bound != 0 || subnets != 0 {
+		t.Fatalf("a refused range must leave nothing behind: sites=%d bound=%d subnets=%d", sites, bound, subnets)
+	}
+	// The same gateway still routes an admissible range afterwards: the refusal poisoned nothing.
+	if _, _, err := svc.RouteLAN(ctx, actor, org, node, "hq", netip.MustParsePrefix("10.50.1.0/24")); err != nil {
+		t.Fatalf("an admissible range after refusals: %v", err)
+	}
+}
+
+// TestAddSubnetRefusesInadmissibleRange (SSI-1) — the explicit advertise seam applies the same gate.
+func TestAddSubnetRefusesInadmissibleRange(t *testing.T) {
+	pool := testPool(t)
+	svc := NewService(pool)
+	ctx := context.Background()
+	org, _, _ := seedGatewayOrg(t, pool, "ssi1b")
+	site, err := svc.RegisterSite(ctx, org, "hq")
+	if err != nil {
+		t.Fatalf("register: %v", err)
+	}
+	if _, err := svc.AddSubnet(ctx, org, site.ID, netip.MustParsePrefix("203.0.113.0/24")); !hasCode(err, "range_not_private") {
+		t.Fatalf("AddSubnet(public) error = %v, want range_not_private", err)
+	}
+	subs, err := svc.ListSubnets(ctx, org, site.ID)
+	if err != nil || len(subs) != 0 {
+		t.Fatalf("a refused advertisement must not be stored: subs=%d err=%v", len(subs), err)
+	}
+	if _, err := svc.AddSubnet(ctx, org, site.ID, netip.MustParsePrefix("192.168.10.0/24")); err != nil {
+		t.Fatalf("AddSubnet(private): %v", err)
+	}
+}
+
+// TestApproveSubnetRefusesLegacyInadmissibleRange (SSI-1) — a range advertised before the gate existed can
+// still be pending. Approval refuses it, typed and audited, and it stays pending for the operator to remove.
+func TestApproveSubnetRefusesLegacyInadmissibleRange(t *testing.T) {
+	pool := testPool(t)
+	svc := NewService(pool)
+	ctx := context.Background()
+	org, actor, _ := seedGatewayOrg(t, pool, "ssi1c")
+	site, err := svc.RegisterSite(ctx, org, "hq")
+	if err != nil {
+		t.Fatalf("register: %v", err)
+	}
+	var subnetID uuid.UUID
+	// Written directly, as a row from before the gate would be: AddSubnet now refuses it.
+	if e := pool.QueryRow(ctx, `INSERT INTO site_subnets (site_id, cidr) VALUES ($1, '8.8.8.0/24') RETURNING id`, site.ID).Scan(&subnetID); e != nil {
+		t.Fatalf("seed legacy subnet: %v", e)
+	}
+	if err := svc.ApproveSubnet(ctx, actor, org, subnetID); !hasCode(err, "range_not_private") {
+		t.Fatalf("ApproveSubnet(legacy public) error = %v, want range_not_private", err)
+	}
+	var status string
+	if e := pool.QueryRow(ctx, `SELECT status FROM site_subnets WHERE id=$1`, subnetID).Scan(&status); e != nil {
+		t.Fatal(e)
+	}
+	if status != "pending" {
+		t.Fatalf("a refused legacy range must stay pending, got %q", status)
+	}
+	var audited int
+	if e := pool.QueryRow(ctx, `SELECT count(*) FROM audit_logs WHERE org_id=$1 AND action='site.subnet_approval_refused' AND target_id=$2 AND metadata->>'reason'='range_not_private'`, org, subnetID.String()).Scan(&audited); e != nil {
+		t.Fatal(e)
+	}
+	if audited != 1 {
+		t.Fatalf("the refusal must be audited once, got %d", audited)
+	}
+}
