@@ -197,7 +197,7 @@ function NetworkSetupWorkspace({
             </p>
           </div>
           <p className="text-sm text-ink-secondary">
-            Your site and approved route are saved. Next, choose who can access
+            Your network and its range are saved. Next, choose who can access
             it and verify the connection from a device.
           </p>
           {egressNote && <p role="status" className="rounded-md border border-warn/30 bg-warn/5 px-3 py-2 text-xs text-warn">{egressNote}</p>}
@@ -309,7 +309,7 @@ function NetworkSetupWorkspace({
                     />
                   </Field>
                   <p className="network-hint">
-                    The range must not overlap an existing site or device pool.
+                    The range must not overlap another network or the device pool.
                     Tunnex validates it when you create the network.
                   </p>
                 </>
@@ -318,7 +318,7 @@ function NetworkSetupWorkspace({
                 <>
                   <h2>Ready to create your network?</h2>
                   <p className="network-hint">
-                    {existingSite ? "This adds the private range to the gateway’s existing site and approves it for distribution to devices." : "This creates a site, assigns the gateway, and approves the private route for distribution to devices."}
+                    {existingSite ? "This adds the private range to the gateway’s existing network and approves it." : "This creates the network, assigns the gateway, and approves the private route for distribution to devices."}
                   </p>
                   <dl className="network-review tnx-resource-facts">
                     <div>
