@@ -335,6 +335,9 @@ func (s apiServer) SetSiteDNSForward(ctx context.Context, req api.SetSiteDNSForw
 	if err := s.sites.SetDNSForward(ctx, p.UserID, req.OrgId, req.SiteId, req.Body.Domain, req.Body.ResolverIp); err != nil {
 		return nil, err
 	}
+	// The forward table rides the gateway artifact. Without this a new zone reached each gateway only when
+	// its own poll came round, and the admin watched a name fail that they had just configured.
+	s.siteTopologyChanged(ctx, req.OrgId, "set_dns_forward")
 	return api.SetSiteDNSForward204Response{}, nil
 }
 
@@ -347,6 +350,7 @@ func (s apiServer) RemoveSiteDNSForward(ctx context.Context, req api.RemoveSiteD
 	if err := s.sites.RemoveDNSForward(ctx, p.UserID, req.OrgId, req.SiteId, req.Domain); err != nil {
 		return nil, err
 	}
+	s.siteTopologyChanged(ctx, req.OrgId, "remove_dns_forward")
 	return api.RemoveSiteDNSForward204Response{}, nil
 }
 

@@ -357,6 +357,18 @@ describe("Sites — URL-backed workspace state", () => {
     await waitFor(() => expect(screen.getByTestId("location").textContent).toBe("?section=ranges"));
   });
 
+  it("SSI-13: the DNS forwarding tab can forward a zone itself, and says an access rule is needed", async () => {
+    withAuth(<Sites />, ["/sites?section=dns"]);
+    const form = within(await screen.findByRole("region", { name: "Forward a zone" }));
+    expect(form.getByLabelText("Network the DNS server is in")).toBeTruthy();
+    expect(form.getByLabelText("Zone")).toBeTruthy();
+    expect(form.getByLabelText("Resolver IP")).toBeTruthy();
+    expect((form.getByRole("button", { name: "Forward zone" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.queryByText(/Add a zone in a network/)).toBeNull();
+    fireEvent.click(screen.getByText("About DNS forwarding"));
+    expect(screen.getByText(/once an access rule lets them reach it on port 53/)).toBeTruthy();
+  });
+
   it("SSI-13: DNS forwarding is one tab, with no second door in an Advanced setup drawer", async () => {
     withAuth(<Sites />, ["/sites"]);
     await screen.findByRole("table", { name: "Networks" });
@@ -372,7 +384,7 @@ describe("Sites — URL-backed workspace state", () => {
 
   it("uses selected-Site approved-range guidance for the DNS resolver without prefilling it", async () => {
     withAuth(<Sites />, ["/sites?section=overview&site=s1&dns=1"]);
-    const resolver = await screen.findByLabelText("Forwarding target IP");
+    const resolver = await screen.findByLabelText("Resolver IP");
     expect(resolver.getAttribute("placeholder")).toBe("Resolver IP inside 172.31.0.0/16");
     expect((resolver as HTMLInputElement).value).toBe("");
   });
@@ -415,7 +427,7 @@ describe("Sites — URL-backed workspace state", () => {
     expect(screen.getByRole("button", { name: "Delete site" })).toBeTruthy();
     expect(screen.getByText("Danger zone")).toBeTruthy();
     expect(screen.getByText("Advanced cloud routing").closest("details")?.hasAttribute("open")).toBe(false);
-    expect(screen.getByText("Advanced Site DNS forwarding").closest("details")?.hasAttribute("open")).toBe(false);
+    expect(screen.getByText("Forward a private zone").closest("details")?.hasAttribute("open")).toBe(false);
     expect(api.POST).not.toHaveBeenCalled();
     expect(api.DELETE).not.toHaveBeenCalled();
     fireEvent.click(within(breadcrumb).getByRole("link", { name: "Networks" }));
@@ -703,7 +715,7 @@ describe("Networks — complete DNS projection and focused handoff", () => {
     await chooseRowAction("DNS actions for shared.test in Network 020", "Edit forwarding in Network 020");
     const selected = await screen.findByRole("region", { name: "Selected Site: Network 020" });
     expect(within(selected).getByRole("button", { name: "Advanced" }).getAttribute("aria-current")).toBe("page");
-    expect(within(selected).getByText("Advanced Site DNS forwarding").closest("details")?.hasAttribute("open")).toBe(true);
+    expect(within(selected).getByText("Forward a private zone").closest("details")?.hasAttribute("open")).toBe(true);
     expect(screen.getByTestId("location").textContent).toContain("site=dns-site-20");
     expect(screen.getByTestId("location").textContent).toContain("dns=1");
     expect(screen.getByTestId("location").textContent).toContain("section=overview");
