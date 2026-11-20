@@ -27,7 +27,7 @@ func toAPISite(s sqlc.Site) api.Site {
 		v := int(*s.LinkMtu)
 		mtu = &v
 	}
-	return api.Site{Id: s.ID, Name: s.Name, LinkTransport: api.SiteLinkTransport(s.LinkTransport), LinkMtu: mtu, CreatedAt: s.CreatedAt}
+	return api.Site{Id: s.ID, Name: s.Name, LinkTransport: api.SiteLinkTransport(s.LinkTransport), LinkMtu: mtu, LanEgress: api.SiteLanEgress(s.LanEgress), CreatedAt: s.CreatedAt}
 }
 
 func (s apiServer) ListSites(ctx context.Context, req api.ListSitesRequestObject) (api.ListSitesResponseObject, error) {
@@ -441,6 +441,25 @@ func (s apiServer) GetHubSet(ctx context.Context, req api.GetHubSetRequestObject
 		Body:    api.HubSet{Generation: view.Generation, Members: members},
 		Headers: api.GetHubSet200ResponseHeaders{XRequestId: reqID(ctx)},
 	}, nil
+}
+
+// SetSiteLanEgress PUT /sites/{siteId}/lan-egress — choose how the site's LAN sees remote-site traffic
+// (SSI-8). site:manage: it changes what every gateway of the site does to forwarded traffic. Audited
+// old→new in the service. The gateways are told at once, like any other site topology change.
+func (s apiServer) SetSiteLanEgress(ctx context.Context, req api.SetSiteLanEgressRequestObject) (api.SetSiteLanEgressResponseObject, error) {
+	if _, err := authorize(ctx, req.OrgId, rbac.PermSiteManage); err != nil {
+		return nil, err
+	}
+	if req.Body == nil {
+		return nil, apierr.BadRequest("invalid_request", "request body is required")
+	}
+	p, _ := authctx.PrincipalFrom(ctx)
+	site, err := s.sites.SetLANEgress(ctx, p.UserID, req.OrgId, req.SiteId, string(req.Body.LanEgress))
+	if err != nil {
+		return nil, err
+	}
+	s.siteTopologyChanged(ctx, req.OrgId, "lan_egress")
+	return api.SetSiteLanEgress200JSONResponse{Body: toAPISite(site), Headers: api.SetSiteLanEgress200ResponseHeaders{XRequestId: reqID(ctx)}}, nil
 }
 
 // hubSetReconciler and orgNodePusher are the two halves of site convergence, named so the composition can

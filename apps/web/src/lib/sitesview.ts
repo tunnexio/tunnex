@@ -140,6 +140,34 @@ export interface SiteCard {
   // so this is usually length 1 (or 0 when no gateway is bound yet), but the shape does not foreclose HA.
   gateways: GatewayView[];
   subnets: SubnetView[];
+  // SSI-8: how this network's LAN sees traffic from other networks.
+  lanEgress: LanEgress;
+}
+
+export type LanEgress = "preserve_source" | "gateway_address";
+
+// lanEgressOptions is the SSI-8 choice as the operator reads it. Each option says what the LAN host will
+// SEE and what the operator must DO, because those are the two things that differ; the mechanism (source
+// NAT) is named once, for the reader who is looking for it. PURE, and in a fixed order.
+export const lanEgressOptions: Array<{ value: LanEgress; label: string; sees: string; needs: string }> = [
+  {
+    value: "gateway_address",
+    label: "Gateway address",
+    sees: "Servers on this network see the gateway's own address (source NAT).",
+    needs: "No cloud return route is needed.",
+  },
+  {
+    value: "preserve_source",
+    label: "Original address",
+    sees: "Servers on this network see the remote machine's real address.",
+    needs: "Your cloud must route the other networks' ranges to this gateway and allow it to forward.",
+  },
+];
+
+// lanEgressOf reads the mode off a served site. An absent or unknown value is preserve_source: that is what
+// every gateway does unless told otherwise, so it is the only value that cannot overstate what is applied.
+export function lanEgressOf(site: { lan_egress?: string | null }): LanEgress {
+  return site.lan_egress === "gateway_address" ? "gateway_address" : "preserve_source";
 }
 
 // ── mutation-surface decisions (Slice 3, all PURE) ───────────────────────────────────
@@ -242,6 +270,7 @@ export function assembleTopology(
   return sites.map((s) => ({
     id: s.id,
     name: s.name,
+    lanEgress: lanEgressOf(s),
     gateways: nodes
       .filter((n) => n.site_id === s.id)
       .map((n) => ({
