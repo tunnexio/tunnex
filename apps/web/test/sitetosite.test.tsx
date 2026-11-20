@@ -46,14 +46,15 @@ it("hides setup when membership cannot be established", async () => {
   mock.get.mockImplementation(async (path: string) => path.endsWith("/members") ? { error: {} } : { data: [] });
   render(app());
   await screen.findByText("No networks configured yet.");
-  expect(screen.queryByRole("button", { name: "Add a cloud VPN" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "Add a network" })).toBeNull();
 });
 it("lets a verified owner reuse existing network setup", async () => {
   mock.get.mockImplementation(async (path: string) => path.endsWith("/members") ? { data: [{ user_id: "user", role: "owner" }] } : { data: [] });
   render(app());
-  const link = await screen.findByRole("button", { name: "Add a cloud VPN" });
+  const link = await screen.findByRole("button", { name: "Add a network" });
   fireEvent.click(link);
-  expect(screen.getByRole("dialog", { name: "Choose your cloud VPN" })).toBeTruthy();
+  expect(screen.getByRole("dialog", { name: "Add a network" })).toBeTruthy();
+  expect(screen.getByText("What is on the other side?")).toBeTruthy();
 });
 it("removes already rendered site data while the next organization loads", async () => {
   mock.get.mockImplementation((path: string, opts: { params: { path: { orgId: string } } }) => {
@@ -79,7 +80,7 @@ it("recovers membership failure without presenting it as denied permission", asy
   expect(screen.queryByText(/Contact your administrator/)).toBeNull();
   unavailable = false;
   fireEvent.click(screen.getByRole("button", { name: "Retry permissions" }));
-  await screen.findByRole("button", { name: "Add a cloud VPN" });
+  await screen.findByRole("button", { name: "Add a network" });
 });
 it("offers page reload for organization discovery failure rather than network retry", async () => {
   mock.org = null; mock.failed = true;
@@ -91,11 +92,11 @@ it("offers page reload for organization discovery failure rather than network re
 it("withdraws setup immediately when email verification is lost", async () => {
   mock.get.mockImplementation(async (path: string) => path.endsWith("/members") ? { data: [{ user_id: "user", role: "owner" }] } : { data: [] });
   const view = render(app());
-  await screen.findByRole("button", { name: "Add a cloud VPN" });
+  await screen.findByRole("button", { name: "Add a network" });
   mock.verified = false; view.rerender(app());
-  expect(screen.queryByRole("button", { name: "Add a cloud VPN" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "Add a network" })).toBeNull();
   await screen.findByText("No networks configured yet.");
-  expect(screen.queryByRole("button", { name: "Add a cloud VPN" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "Add a network" })).toBeNull();
 });
 it("resets the selected pair on user switch and ignores the previous user's pending configuration", async () => {
   let finishPrevious: (value: unknown) => void = () => {};
@@ -120,12 +121,12 @@ it("resets the selected pair on user switch and ignores the previous user's pend
 
   mock.userId = "another-user";
   view.rerender(app());
-  expect(screen.queryByRole("button", { name: "Add a cloud VPN" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "Add a network" })).toBeNull();
   expect(screen.queryByLabelText("First network")).toBeNull();
   await screen.findByLabelText("First network");
   expect((screen.getByLabelText("First network") as HTMLSelectElement).value).toBe("");
   expect((screen.getByLabelText("Second network") as HTMLSelectElement).value).toBe("");
-  expect(screen.queryByRole("button", { name: "Add a cloud VPN" })).toBeNull();
+  expect(screen.queryByRole("button", { name: "Add a network" })).toBeNull();
 
   fireEvent.change(screen.getByLabelText("First network"), { target: { value: "office" } });
   fireEvent.change(screen.getByLabelText("Second network"), { target: { value: "cloud" } });
@@ -151,16 +152,16 @@ it("SSI-13: the page is the Cloud VPN tab; the pair review at ?method=wireguard 
  render(<MemoryRouter initialEntries={["/site-to-site"]}><SiteToSite /></MemoryRouter>);
  await screen.findByRole("link", { name: "Manage in Features" });
  expect(screen.getByRole("link", { name: "Cloud VPN" }).getAttribute("aria-current")).toBe("page");
- expect(screen.getByRole("button", { name: "Add a cloud VPN" })).toBeTruthy();
+ expect(screen.getByRole("button", { name: "Add a network" })).toBeTruthy();
 });
 it("withdraws IPsec on the first commit of same-organization loading", async () => {
  mock.get.mockImplementation(async(path:string)=>path.endsWith("/members")?{data:[{user_id:"user",role:"owner"}]}:path.endsWith("/settings")?{data:{enabled:true,revision:1}}:path.endsWith("/connections")?{data:{items:[],next_cursor:null}}:{data:[]});
  let leaked=false;
- function Probe(){useLayoutEffect(()=>{if(mock.loading) leaked=!!screen.queryByRole("button",{name:"Add a cloud VPN"});});return app();}
+ function Probe(){useLayoutEffect(()=>{if(mock.loading) leaked=!!screen.queryByRole("button",{name:"Add a network"});});return app();}
  const result=render(<Probe/>);await screen.findByText("No networks configured yet.");
- await screen.findByRole("button",{name:"Add a cloud VPN"});
+ await screen.findByRole("button",{name:"Add a network"});
  mock.loading=true;result.rerender(<Probe/>);expect(leaked).toBe(false);
- expect(screen.queryByRole("button",{name:"Add a cloud VPN"})).toBeNull();
+ expect(screen.queryByRole("button",{name:"Add a network"})).toBeNull();
 });
 
 it("shows no links for one network without duplicating network inventory", async () => {
@@ -185,7 +186,8 @@ it("routes AWS through provider selection and does not reopen a cancelled draft 
     return { data: [] };
   });
   render(app());
-  fireEvent.click(await screen.findByRole("button", { name: "Add a cloud VPN" }));
+  fireEvent.click(await screen.findByRole("button", { name: "Add a network" }));
+  fireEvent.click(within(screen.getByRole("dialog")).getByRole("button", { name: /A cloud VPN gateway/ }));
   const providerDialog = screen.getByRole("dialog", { name: "Choose your cloud VPN" });
   for (const [name, provider] of [
     [/AWS Site-to-Site/, "aws"], [/Azure/, "azure"],
@@ -248,7 +250,8 @@ it("opens Google Cloud HA profile through the existing provider chooser", async 
     if(path.endsWith("/connections"))return {data:{items:[],next_cursor:null}};
     return {data:[]};
   });
-  render(app());fireEvent.click(await screen.findByRole("button",{name:"Add a cloud VPN"}));
+  render(app());fireEvent.click(await screen.findByRole("button",{name:"Add a network"}));
+  fireEvent.click(within(screen.getByRole("dialog")).getByRole("button",{name:/A cloud VPN gateway/}));
    fireEvent.click(screen.getByRole("button",{name:/Google Cloud HA VPN/}));
   await screen.findByRole("dialog",{name:"New IPsec connection"});
   expect((screen.getByLabelText("Cloud VPN profile") as HTMLSelectElement).value).toBe("gcp-ha-bgp-ipv4-v1");
@@ -262,7 +265,8 @@ it.each([
  {card:/Azure/,options:["azure-active-active-bgp-ipv4-v1","azure-active-active-static-ipv4-v1","azure-active-standby-bgp-ipv4-v1","azure-active-standby-static-ipv4-v1"],azure:true},
 ])("keeps the selected provider context in the IPsec draft: $options",async({card,options,azure})=>{
  mock.get.mockImplementation(async(path:string)=>path.endsWith("/members")?{data:[{user_id:"user",role:"owner"}]}:path.endsWith("/settings")?{data:{enabled:true,revision:1}}:path.endsWith("/connections")?{data:{items:[],next_cursor:null}}:{data:[]});
- render(app());fireEvent.click(await screen.findByRole("button",{name:"Add a cloud VPN"}));
+ render(app());fireEvent.click(await screen.findByRole("button",{name:"Add a network"}));
+  fireEvent.click(within(screen.getByRole("dialog")).getByRole("button",{name:/A cloud VPN gateway/}));
  fireEvent.click(screen.getByRole("button",{name:card}));await screen.findByRole("dialog",{name:"New IPsec connection"});
  expect(Array.from((screen.getByLabelText("Cloud VPN profile") as HTMLSelectElement).options).map(option=>option.value)).toEqual(options);
  expect(Boolean(screen.queryByLabelText("Import Tunnex Azure JSON"))).toBe(azure);

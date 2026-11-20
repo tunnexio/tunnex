@@ -9,12 +9,12 @@ import "../connection-chooser.css";
 // SSI-13 D3 — "Add a network" asks ONE question: what is on the other side. A Tunnex gateway goes straight
 // to the existing network setup (it used to stop at a review of two networks, behind a button called
 // "Create connection" that created nothing); a cloud VPN goes to the existing provider step, unchanged.
-// `start="ipsec"` opens on the provider step for the Cloud VPN tab, where the question is already answered.
-export function ConnectionChooser({ sites, orgId, onClose, onAWS, onGCP, onAzure, start = "method", onNetworkAdded }: {
+// ONE entry: every tab's "Add a network" opens this at the same first question.
+export function ConnectionChooser({ sites, orgId, onClose, onAWS, onGCP, onAzure, onNetworkAdded }: {
   sites: Site[]; orgId?: string; onClose: () => void; onAWS: () => void; onGCP?: () => void; onAzure?: () => void;
-  start?: "method" | "ipsec"; onNetworkAdded?: () => void;
+  onNetworkAdded?: () => void;
 }) {
-  const [step, setStep] = useState<"method" | "ipsec" | "wireguard">(start);
+  const [step, setStep] = useState<"method" | "ipsec" | "wireguard">("method");
   const [adding, setAdding] = useState(false);
   const [busy, setBusy] = useState(false);
   const [networks, setNetworks] = useState(sites);
@@ -30,7 +30,7 @@ export function ConnectionChooser({ sites, orgId, onClose, onAWS, onGCP, onAzure
     if (result.ok) { setNetworks(result.data); setAdding(false); onNetworkAdded?.(); }
     else setError("Could not refresh networks. Try again.");
   }
-  return <Modal title={adding ? "Add a network" : step === "method" ? "Add a network" : step === "ipsec" ? "Choose your cloud VPN" : "Your networks"} size={step === "wireguard" ? "workspace" : "wide"} onDismiss={busy ? () => {} : onClose} actions={adding ? undefined : <><Button disabled={busy} variant="ghost" onClick={step === start ? onClose : () => { setAdding(false); setStep("method"); }}>{step === start ? "Cancel" : "Back"}</Button></>}>
+  return <Modal title={adding ? "Add a network" : step === "method" ? "Add a network" : step === "ipsec" ? "Choose your cloud VPN" : "Your networks"} size={step === "wireguard" ? "workspace" : "wide"} onDismiss={busy ? () => {} : onClose} actions={adding ? undefined : <><Button disabled={busy} variant="ghost" onClick={step === "method" ? onClose : () => { setAdding(false); setStep("method"); }}>{step === "method" ? "Cancel" : "Back"}</Button></>}>
     <div className="sts-chooser">
     {!adding && <ol className="sts-chooser-steps" aria-label="Connection setup steps">
       <li aria-current={step === "method" ? "step" : undefined}><span aria-hidden="true">1</span>Other side</li>

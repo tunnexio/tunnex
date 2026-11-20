@@ -10,7 +10,7 @@ import { SitePairReview, SitePairDetails } from "../components/SitePairReview";
 import { useOrg } from "../lib/useOrg";
 import { useAuth } from "../lib/auth";
 import { siteGate } from "../lib/sitesview";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { ConnectionChooser } from "../components/ConnectionChooser";
 import AppAccessEmptyState from "../components/AppAccessEmptyState";
 import { Button, Loading, PageHeader } from "../components/ui";
@@ -59,6 +59,7 @@ export default function SiteToSite() {
 
 export function SiteToSiteView({ orgId, state, onRetry, renderDetails, ipsecWorkspace, renderIPsecWorkspace }: { orgId?: string; ipsecWorkspace?: ReactNode; renderIPsecWorkspace?: (request: number, onCreate: () => void, onHandled: () => void, profile?: IPsecCreateProfile) => ReactNode; state: SiteToSiteState; onRetry: () => void; renderDetails?: (first: Site, second: Site) => ReactNode }) {
   const [params, setParams] = useSearchParams();
+  const navigate = useNavigate();
   const [createProfile, setCreateProfile] = useState<IPsecCreateProfile>("aws");
   // SSI-13 D2: this page IS the Cloud VPN tab. The WireGuard pair review is no longer offered here (a
   // "connection" that created nothing); it stays reachable at ?method=wireguard for existing links.
@@ -75,11 +76,13 @@ export function SiteToSiteView({ orgId, state, onRetry, renderDetails, ipsecWork
   const [createRequest, setCreateRequest] = useState(0);
   return <div className="site-to-site-workspace s2s-connections-workspace network-management">
     <PageHeader navigationTitle title="Site-to-site" />
-    <div className="s2s-workspace-toolbar">
+    {/* SSI-13 D3: the SAME bar as the Networks page, with the SAME one button. This tab LISTS cloud VPNs;
+        it had its own "Add a cloud VPN", which made two ways to add the same thing. */}
+    <div className="s2s-networks-topbar">
       <SiteToSiteNavigation active="cloud-vpn" />
-      <div className="s2s-toolbar-actions">
+      <div className="s2s-networks-actions">
         {method === "wireguard" && <ActionButton size="sm" variant="ghost" disabled={state.kind === "loading"} onClick={onRetry}>Refresh</ActionButton>}
-        {state.canManage && <ActionButton size="sm" onClick={() => setChoosing(true)}>Add a cloud VPN</ActionButton>}
+        {state.canManage && <ActionButton size="sm" onClick={() => setChoosing(true)}>Add a network</ActionButton>}
       </div>
     </div>
     {method === "ipsec" ? (renderIPsecWorkspace ? renderIPsecWorkspace(createRequest, () => setChoosing(true), () => setCreateRequest(0), createProfile) : ipsecWorkspace) ?? <section className="s2s-connection-state"><p>Load your networks to view IPsec.</p><Button onClick={onRetry}>Retry</Button></section> : <>
@@ -97,6 +100,6 @@ export function SiteToSiteView({ orgId, state, onRetry, renderDetails, ipsecWork
       <p className="mt-2">A gateway and approved ranges at each location, one reachable public WireGuard hub, access policies and return routes. Links are configured automatically.</p>
     </details>
     </>}
-    {state.canManage && choosing && <ConnectionChooser start="ipsec" orgId={orgId} sites={state.sites} onClose={() => setChoosing(false)} onAzure={() => { setCreateProfile("azure-active-active-bgp-ipv4-v1"); setChoosing(false); setMethod("ipsec"); setCreateRequest(value => value + 1); }} onGCP={() => { setCreateProfile("gcp-ha-bgp-ipv4-v1"); setChoosing(false); setMethod("ipsec"); setCreateRequest(value => value + 1); }} onAWS={() => { setCreateProfile("aws"); setChoosing(false); setMethod("ipsec"); setCreateRequest(value => value + 1); }} />}
+    {state.canManage && choosing && <ConnectionChooser onNetworkAdded={() => navigate("/sites")} orgId={orgId} sites={state.sites} onClose={() => setChoosing(false)} onAzure={() => { setCreateProfile("azure-active-active-bgp-ipv4-v1"); setChoosing(false); setMethod("ipsec"); setCreateRequest(value => value + 1); }} onGCP={() => { setCreateProfile("gcp-ha-bgp-ipv4-v1"); setChoosing(false); setMethod("ipsec"); setCreateRequest(value => value + 1); }} onAWS={() => { setCreateProfile("aws"); setChoosing(false); setMethod("ipsec"); setCreateRequest(value => value + 1); }} />}
   </div>;
 }

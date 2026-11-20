@@ -214,7 +214,7 @@ function IPsecSession({ orgId, emailVerified, role, sites, initialProfile = "aws
       {visible.length === 0 ? <div className="ipsec-empty" role="status">
         <h3>{search || filter !== "all" ? "No connections match your filters." : cursors.length > 1 ? "No connections on this page" : "No IPsec connections configured."}</h3>
         {search || filter !== "all" ? <Button variant="ghost" onClick={() => { setSearch(""); setFilter("all"); }}>Clear filters</Button> : <>
-          <p>{cursors.length > 1 ? "Return to the previous page or refresh the inventory." : !manage ? "An administrator can configure a cloud VPN." : !settings?.enabled ? "Enable IPsec to add a cloud VPN." : onRequestCreate ? "Use Create connection to choose an IPsec provider." : "Choose a local gateway and enter your cloud VPN details. New connections are saved disabled."}</p>
+          <p>{cursors.length > 1 ? "Return to the previous page or refresh the inventory." : !manage ? "An administrator can configure a cloud VPN." : !settings?.enabled ? "Enable IPsec to add a cloud VPN." : onRequestCreate ? "Use Add a network and choose a cloud VPN gateway." : "Choose a local gateway and enter your cloud VPN details. New connections are saved disabled."}</p>
           {manage && settings?.enabled && !onRequestCreate && <Button variant="ghost" onClick={() => setCreating(true)}>Create IPsec connection</Button>}
         </>}
       </div> : <div className="ipsec-inventory">
