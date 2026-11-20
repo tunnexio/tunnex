@@ -3,7 +3,7 @@ import "../app-access-workspace.css";
 import "../site-to-site-workspace.css";
 import { Button as ActionButton } from "../components/ui/button";
 import { IPsecWorkspace, type IPsecCreateProfile } from "../components/IPsecWorkspace";
-import { SiteToSiteNavigation } from "../components/SiteToSiteNavigation";
+import { SiteToSiteHint, SiteToSiteNavigation } from "../components/SiteToSiteNavigation";
 import { useEffect, useState, type ReactNode } from "react";
 import { api, loadOne, type Site, type Member } from "../lib/api";
 import { SitePairReview, SitePairDetails } from "../components/SitePairReview";
@@ -85,6 +85,7 @@ export function SiteToSiteView({ orgId, state, onRetry, renderDetails, ipsecWork
         {state.canManage && <ActionButton size="sm" onClick={() => setChoosing(true)}>Add a network</ActionButton>}
       </div>
     </div>
+    <SiteToSiteHint active="cloud-vpn" />
     {method === "ipsec" ? (renderIPsecWorkspace ? renderIPsecWorkspace(createRequest, () => setChoosing(true), () => setCreateRequest(0), createProfile) : ipsecWorkspace) ?? <section className="s2s-connection-state"><p>Load your networks to view IPsec.</p><Button onClick={onRetry}>Retry</Button></section> : <>
     <section className="s2s-connection-content">
       {state.kind === "loading" && <Loading label="Loading networks…" />}
