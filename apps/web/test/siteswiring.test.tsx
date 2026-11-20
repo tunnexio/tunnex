@@ -404,7 +404,7 @@ describe("Sites — URL-backed workspace state", () => {
     const sections = screen.getByRole("navigation", { name: "Network detail sections" });
     expect(within(sections).getByRole("button", { name: "Overview" }).getAttribute("aria-current")).toBe("page");
     fireEvent.click(within(sections).getByRole("button", { name: "Ranges" }));
-    expect(screen.getByRole("button", { name: "Advertise subnet" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Add a range" })).toBeTruthy();
     expect(screen.getByRole("heading", { level: 2, name: "Ranges" })).toBeTruthy();
     expect(screen.getByTestId("location").textContent).toContain("detail=ranges");
     fireEvent.click(within(sections).getByRole("button", { name: "Gateways" }));
