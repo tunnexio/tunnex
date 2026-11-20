@@ -13,11 +13,14 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/tunnexio/tunnex/apps/api/db"
+	"github.com/tunnexio/tunnex/apps/api/db/sqlc"
 	"github.com/tunnexio/tunnex/apps/api/internal/apierr"
 	"github.com/tunnexio/tunnex/apps/api/internal/devices"
 	"github.com/tunnexio/tunnex/apps/api/internal/ipsec"
 	"github.com/tunnexio/tunnex/apps/api/internal/k8s"
 	"github.com/tunnexio/tunnex/apps/api/internal/sites"
+	"github.com/tunnexio/tunnex/apps/api/internal/subnetguard"
+	"github.com/tunnexio/tunnex/apps/api/internal/subnetsrc"
 )
 
 func TestProviderExistingWritersRespectReservations(t *testing.T) {
@@ -35,7 +38,31 @@ func TestProviderExistingWritersRespectReservations(t *testing.T) {
 	}
 	siteService := sites.NewService(p)
 	var pending []uuid.UUID
-	for _, cidr := range []string{"10.199.1.0/24", "9.9.9.0/24", "8.8.8.0/24"} {
+	// SSI-1: the two ranges covering the tunnel's public outside addresses can no longer be advertised as
+	// site ranges at all. They used to reach approval and be refused there by the underlay reservation;
+	// the admissibility gate now refuses them first, before a pending row exists. The reservation itself
+	// is still exercised below by the private remote prefix, and by subnetguard's own underlay tests.
+	for _, cidr := range []string{"9.9.9.0/24", "8.8.8.0/24"} {
+		_, err := siteService.AddSubnet(ctx, uuid.Nil, org, req.SiteID, netip.MustParsePrefix(cidr))
+		var ae *apierr.Error
+		if !errors.As(err, &ae) || ae.Code != "range_not_private" {
+			t.Fatalf("public underlay range %s must be refused at advertisement, got %v", cidr, err)
+		}
+	}
+	// The underlay reservation is still held while the connection exists: asked of the shared validator
+	// directly, since a site range can no longer carry the question.
+	underlayReserved := func() (subnetguard.Overlap, bool) {
+		t.Helper()
+		ranges, err := subnetguard.Collect(ctx, subnetsrc.Source{Q: sqlc.New(p)}, org)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return subnetguard.Check(netip.MustParsePrefix("9.9.9.0/24"), ranges)
+	}
+	if ov, ok := underlayReserved(); ok || !strings.HasPrefix(string(ov.Class), "ipsec") {
+		t.Fatalf("underlay reservation missing while the connection exists: %+v ok=%v", ov, ok)
+	}
+	for _, cidr := range []string{"10.199.1.0/24"} {
 		sub, err := siteService.AddSubnet(ctx, uuid.Nil, org, req.SiteID, netip.MustParsePrefix(cidr))
 		if err != nil {
 			t.Fatalf("pending advertisement refused: %v", err)
@@ -75,8 +102,8 @@ func TestProviderExistingWritersRespectReservations(t *testing.T) {
 	if err := siteService.ApproveSubnet(ctx, actor, org, pending[0]); err != nil {
 		t.Fatalf("remote reservation not released: %v", err)
 	}
-	if err := siteService.ApproveSubnet(ctx, actor, org, pending[1]); err != nil {
-		t.Fatalf("underlay reservation not released: %v", err)
+	if ov, ok := underlayReserved(); !ok {
+		t.Fatalf("underlay reservation not released: %+v", ov)
 	}
 	if err := siteService.RemoveSubnet(ctx, actor, org, localID); err != nil {
 		t.Fatalf("local reference not released: %v", err)
