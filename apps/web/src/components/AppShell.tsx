@@ -53,7 +53,9 @@ export const NAV_GROUPS: Array<{
       // S14.7: Routed Ranges was BUILD, not REDESIGN — `/routed-ranges` has been served since S8.5 and
       // nothing rendered it. The answer to "does my LAN traffic go down the tunnel" was reachable only by
       // reading a device's AllowedIPs.
-      { to: "/routed-ranges", label: "Routed ranges", icon: "route" },
+      // SSI-13 D4: no sidebar entry any more. The page is a read-only projection of the ranges approved
+      // under Site-to-site, so it showed the same ranges in a second place. It is linked from the Ranges
+      // tab and still served at /routed-ranges.
       { to: "/kubernetes", label: "Kubernetes", icon: "boxes" },
 
     ],
@@ -132,7 +134,7 @@ function badgeFor(to: string, c: NavCounts): string | null {
 }
 
 export function isNavDestinationActive(to: string, pathname: string): boolean {
-  return pathname === to || pathname.startsWith(`${to}/`) || (to === "/sites" && (pathname === "/site-to-site" || pathname.startsWith("/site-to-site/")));
+  return pathname === to || pathname.startsWith(`${to}/`) || (to === "/sites" && (pathname === "/site-to-site" || pathname.startsWith("/site-to-site/") || pathname === "/routed-ranges"));
 }
 
 function NavGroups({

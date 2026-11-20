@@ -280,27 +280,27 @@ describe("Sites — served HA topology", () => {
   it("renders the fixture-shaped primary and standby as distinct keyboard-reachable topology members", async () => {
     haTopology = true;
     withAuth(<Sites />);
-    fireEvent.click(await screen.findByRole("link", { name: /^Topology/ }));
+    fireEvent.click(await screen.findByRole("link", { name: /^Map/ }));
 
+    // SSI-13 D5: a network is a box and its gateways are INSIDE it, each with its role in words.
     await waitFor(() => {
-      expect(screen.getByRole("button", { name: /gw-us-east.*primary/i })).toBeTruthy();
-      expect(screen.getByRole("button", { name: /gw-eu-west.*standby/i })).toBeTruthy();
+      expect(screen.getByRole("button", { name: /gw-us-east primary/i })).toBeTruthy();
+      expect(screen.getByRole("button", { name: /gw-eu-west standby/i })).toBeTruthy();
     });
-    expect(document.querySelectorAll('[data-node-kind="hub"]')).toHaveLength(1);
-    expect(document.querySelectorAll('[data-node-kind="hub-standby"]')).toHaveLength(1);
-    expect(document.querySelectorAll('[data-node-kind="spoke"]')).toHaveLength(4);
-    fireEvent.click(screen.getByRole("link", { name: /^Inventory/ }));
-    expect(screen.queryByRole("figure", { name: "Site topology" })).toBeNull();
-    expect(screen.getByRole("link", { name: /^Inventory/ }).getAttribute("aria-current")).toBe("page");
-    expect(screen.getByRole("table", { name: "Sites" })).toBeTruthy();
+    expect(document.querySelectorAll("[data-network-id]")).toHaveLength(4);
+    expect(document.querySelectorAll('[data-node-kind]')).toHaveLength(0); // the circle map is gone from this page
+    fireEvent.click(screen.getByRole("link", { name: /^Networks/ }));
+    expect(screen.queryByRole("group", { name: "Networks and the links between them" })).toBeNull();
+    expect(screen.getByRole("link", { name: /^Networks/ }).getAttribute("aria-current")).toBe("page");
+    expect(screen.getByRole("table", { name: "Networks" })).toBeTruthy();
   });
 });
 
 describe("Sites map search is an observable focus interaction", () => {
   it("lists a Site result and keyboard-selects it into URL-backed context", async () => {
     withAuth(<Sites />, ["/sites"]);
-    fireEvent.click(await screen.findByRole("link", { name: /^Topology/ }));
-    const input = await screen.findByRole("combobox", { name: "Search Sites or Gateways" });
+    fireEvent.click(await screen.findByRole("link", { name: /^Map/ }));
+    const input = await screen.findByRole("combobox", { name: "Search networks or gateways" });
     fireEvent.change(input, { target: { value: "aws" } });
     const result = await screen.findByRole("option", { name: /aws-site.*Site/ });
     expect(result).toBeTruthy();
@@ -312,8 +312,8 @@ describe("Sites map search is an observable focus interaction", () => {
   it("names an eligible unbound Gateway instead of inventing a topology location", async () => {
     routeLanTopology = true;
     withAuth(<Sites />, ["/sites"]);
-    fireEvent.click(await screen.findByRole("link", { name: /^Topology/ }));
-    const input = await screen.findByRole("combobox", { name: "Search Sites or Gateways" });
+    fireEvent.click(await screen.findByRole("link", { name: /^Map/ }));
+    const input = await screen.findByRole("combobox", { name: "Search networks or gateways" });
     fireEvent.change(input, { target: { value: "unbound" } });
     expect(await screen.findByRole("option", { name: /gw-unbound-1.*Eligible unbound Gateway/ })).toBeTruthy();
     fireEvent.keyDown(input, { key: "Enter" });
@@ -353,8 +353,8 @@ describe("Sites — URL-backed workspace state", () => {
   it("clears Overview-only context when changing to an operational section", async () => {
     withAuth(<Sites />, ["/sites?site=s1&gateway=g1&q=aws&dns=1"]);
     fireEvent.click(within(await screen.findByRole("navigation", { name: "Network breadcrumb" })).getByRole("link", { name: "Networks" }));
-    fireEvent.click(await screen.findByRole("link", { name: /^Range approvals/ }));
-    await waitFor(() => expect(screen.getByTestId("location").textContent).toBe("?section=approvals"));
+    fireEvent.click(await screen.findByRole("link", { name: /^Ranges/ }));
+    await waitFor(() => expect(screen.getByTestId("location").textContent).toBe("?section=ranges"));
   });
 
   it("keeps DNS forwarding out of primary navigation and exposes it as advanced Site Networking", async () => {
@@ -420,7 +420,7 @@ describe("Sites — URL-backed workspace state", () => {
     await waitFor(() => expect(screen.queryByRole("region", { name: "Selected Site: us-east-dc" })).toBeNull());
     expect(screen.getByTestId("location").textContent).not.toContain("site=");
     expect(screen.getByTestId("location").textContent).not.toContain("detail=");
-    expect(screen.getByRole("table", { name: "Sites" })).toBeTruthy();
+    expect(screen.getByRole("table", { name: "Networks" })).toBeTruthy();
     expect(screen.queryByText("Select a Site")).toBeNull();
   });
 });
@@ -449,7 +449,7 @@ describe("Networks — inventory paging", () => {
   it("uses real 20, 10 and 50 row limits and resets paging when the search changes", async () => {
     inventorySites = Array.from({ length: 55 }, (_, index) => ({ id: `site-${index}`, name: `Network ${String(index).padStart(3, "0")}` }));
     withAuth(<Sites />, ["/sites"]);
-    const table = await screen.findByRole("table", { name: "Sites" });
+    const table = await screen.findByRole("table", { name: "Networks" });
     expect(within(table).getAllByRole("row")).toHaveLength(21);
     expect(screen.getByRole("button", { name: "Network 000" })).toBeTruthy();
     fireEvent.change(screen.getByRole("combobox", { name: "Rows per page" }), { target: { value: "10" } });
@@ -512,10 +512,14 @@ describe("Networks — gateway assignment is not tunnel health", () => {
   it("shows assignment without claiming a live connection when health is missing", async () => {
     haTopology = true;
     withAuth(<Sites />, ["/sites"]);
-    expect(await screen.findByRole("columnheader", { name: "Gateway status" })).toBeTruthy();
-    expect(screen.getAllByRole("cell", { name: "Assigned" }).length).toBeGreaterThan(0);
+    expect(await screen.findByRole("columnheader", { name: "Status" })).toBeTruthy();
+    // No badge is "nothing reported wrong", never a claim that traffic flows.
+    expect(screen.getAllByText("No issues reported").length).toBeGreaterThan(0);
+    expect(screen.queryByText("Healthy")).toBeNull();
     expect(screen.queryByRole("cell", { name: "linked" })).toBeNull();
-    expect(screen.getByRole("link", { name: /Set up a network/ }).getAttribute("href")).toBe("/network/setup");
+    // SSI-13 D3: one way in.
+    expect(screen.getByRole("button", { name: "Add a network" })).toBeTruthy();
+    expect(screen.queryByRole("link", { name: /Set up a network/ })).toBeNull();
   });
 });
 
