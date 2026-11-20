@@ -749,6 +749,7 @@ func (m *Manager) rulesetWith(subnet string, pol *nodepolicy.Compiled) string {
 		// needs the un-mangled source /32), and only true internet egress is masqueraded.
 		masq = m.desktopNATRules(subnet) + fmt.Sprintf("    ip saddr %s %s masquerade\n", subnet, ifClause("oifname", tun, true))
 	}
+	masq += siteLANMasqueradeRules(pol, tun)
 	if subnet6 := wgSubnet6(context.Background(), m.wgIface); subnet6 != "" {
 		masq6 = fmt.Sprintf("    ip6 saddr %s %s masquerade\n", subnet6, ifClause("oifname", tun, true))
 	}
@@ -1789,4 +1790,38 @@ func ensureIPForward6() error {
 
 func writeSysctl(key, val string) error {
 	return os.WriteFile("/proc/sys/"+key, []byte(val), 0o644)
+}
+
+// siteLANMasqueradeRules renders the SSI-8 source NAT: traffic sourced from a REMOTE site range that leaves
+// this gateway by a non-tunnel interface takes the gateway's own address on that interface.
+//
+// Without it a site link preserves the remote source, so the LAN host answers to an address its own
+// network cannot route: the operator must add a return route to the gateway in the cloud and disable
+// source/destination checking, on both sides, before anything works. With it the reply comes back to the
+// gateway by itself.
+//
+// Scoped by SOURCE (reliable in postrouting) and by `oifname != <tunnel set>`, exactly like the device
+// pool's masquerade: traffic this gateway merely transits to ANOTHER tunnel is never translated, so a
+// hub forwards spoke-to-spoke traffic with its source intact and the destination gateway's own forward
+// chain still sees it. The forward hook runs before postrouting, so policy on this gateway matched the
+// original source too. Canonically re-emitted (netip) so nothing injects nft statements.
+func siteLANMasqueradeRules(pol *nodepolicy.Compiled, tun []string) string {
+	if pol == nil || !pol.SiteLANMasquerade {
+		return ""
+	}
+	var out strings.Builder
+	seen := map[string]bool{}
+	for _, rt := range pol.Routes {
+		p, err := netip.ParsePrefix(rt.DstCIDR)
+		if err != nil || !p.Addr().Is4() {
+			continue
+		}
+		c := p.Masked().String()
+		if seen[c] {
+			continue
+		}
+		seen[c] = true
+		fmt.Fprintf(&out, "    ip saddr %s %s masquerade comment \"tunnex_site_lan_masquerade\"\n", c, ifClause("oifname", tun, true))
+	}
+	return out.String()
 }

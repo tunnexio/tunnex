@@ -37,13 +37,14 @@ func TestNMinusOneAgentsCanStillApply(t *testing.T) {
 	// And the artifact must not be stamped ABOVE the CP's own protocol version — an artifact no agent could
 	// ever apply, including a brand-new one.
 	for name, c := range map[string]Compiled{
-		"zero-config":       zeroConfig,
-		"site-source":       {Allow: []AllowEntry{{SrcIP: "10.1.0.0/24", DstCIDR: "10.2.0.0/24", Protocol: "any"}}},
-		"with-routes":       {Routes: []Route{{DstCIDR: "10.5.0.0/24"}}},
-		"with-pool":         {PoolCIDR: "10.99.0.0/24"},
-		"with-k8s-vip":      {VIPMappings: []VIPMapping{{VIP: "100.64.0.3"}}},
-		"with-fqdn":         {FQDNGenerations: []FQDNGeneration{{ResourceID: "resource", Name: "api.example.test", Generation: "content", Answers: []string{"10.99.0.9/32"}}}},
-		"with-fqdn-managed": {Allow: []AllowEntry{{SrcIP: "10.99.0.7", DstCIDR: "10.99.0.9/32", Protocol: ProtoTCP, PortLow: 443, PortHigh: 443, FQDNManaged: true}}},
+		"zero-config":        zeroConfig,
+		"site-source":        {Allow: []AllowEntry{{SrcIP: "10.1.0.0/24", DstCIDR: "10.2.0.0/24", Protocol: "any"}}},
+		"with-routes":        {Routes: []Route{{DstCIDR: "10.5.0.0/24"}}},
+		"with-pool":          {PoolCIDR: "10.99.0.0/24"},
+		"with-k8s-vip":       {VIPMappings: []VIPMapping{{VIP: "100.64.0.3"}}},
+		"with-fqdn":          {FQDNGenerations: []FQDNGeneration{{ResourceID: "resource", Name: "api.example.test", Generation: "content", Answers: []string{"10.99.0.9/32"}}}},
+		"with-fqdn-managed":  {Allow: []AllowEntry{{SrcIP: "10.99.0.7", DstCIDR: "10.99.0.9/32", Protocol: ProtoTCP, PortLow: 443, PortHigh: 443, FQDNManaged: true}}},
+		"with-site-lan-masq": {Routes: []Route{{DstCIDR: "10.5.0.0/24"}}, SiteLANMasquerade: true},
 	} {
 		v := RequiredVersion(c)
 		if v > ProtocolVersion {
@@ -64,13 +65,14 @@ func TestNMinusOneAgentsCanStillApply(t *testing.T) {
 func TestNewContentRaisesRequiredVersion(t *testing.T) {
 	base := RequiredVersion(Compiled{Allow: []AllowEntry{{SrcIP: "10.99.0.7", DstCIDR: "10.99.0.9/32"}}})
 	for name, c := range map[string]Compiled{
-		"site source (v5)":      {Allow: []AllowEntry{{SrcIP: "10.1.0.0/24", DstCIDR: "10.2.0.0/24"}}},
-		"routes (v5)":           {Routes: []Route{{DstCIDR: "10.5.0.0/24"}}},
-		"pool cidr (v6)":        {PoolCIDR: "10.99.0.0/24"},
-		"k8s vip map (v7)":      {VIPMappings: []VIPMapping{{VIP: "100.64.0.3"}}},
-		"k8s dns zone (v7)":     {K8sDNSZones: []K8sDNSZone{{Zone: "prod.k8s.local", ListenVIP: "100.64.0.2"}}},
-		"fqdn generations (v8)": {FQDNGenerations: []FQDNGeneration{{ResourceID: "resource", Name: "api.example.test", Generation: "content", Answers: []string{"10.99.0.9/32"}}}},
-		"fqdn ownership (v9)":   {Allow: []AllowEntry{{SrcIP: "10.99.0.7", DstCIDR: "10.99.0.9/32", Protocol: ProtoTCP, PortLow: 443, PortHigh: 443, FQDNManaged: true}}},
+		"site source (v5)":          {Allow: []AllowEntry{{SrcIP: "10.1.0.0/24", DstCIDR: "10.2.0.0/24"}}},
+		"routes (v5)":               {Routes: []Route{{DstCIDR: "10.5.0.0/24"}}},
+		"pool cidr (v6)":            {PoolCIDR: "10.99.0.0/24"},
+		"k8s vip map (v7)":          {VIPMappings: []VIPMapping{{VIP: "100.64.0.3"}}},
+		"k8s dns zone (v7)":         {K8sDNSZones: []K8sDNSZone{{Zone: "prod.k8s.local", ListenVIP: "100.64.0.2"}}},
+		"fqdn generations (v8)":     {FQDNGenerations: []FQDNGeneration{{ResourceID: "resource", Name: "api.example.test", Generation: "content", Answers: []string{"10.99.0.9/32"}}}},
+		"fqdn ownership (v9)":       {Allow: []AllowEntry{{SrcIP: "10.99.0.7", DstCIDR: "10.99.0.9/32", Protocol: ProtoTCP, PortLow: 443, PortHigh: 443, FQDNManaged: true}}},
+		"site lan masquerade (v15)": {Routes: []Route{{DstCIDR: "10.5.0.0/24"}}, SiteLANMasquerade: true},
 	} {
 		if got := RequiredVersion(c); got <= base {
 			t.Fatalf("%s does not raise RequiredVersion above the baseline v%d (got v%d) — an old agent "+
@@ -122,5 +124,24 @@ func TestCrossGatewayContentRequiresUpdatedGateway(t *testing.T) {
 	legacy.CrossGatewayClients = true
 	if got := RequiredVersion(legacy); got != 10 {
 		t.Fatalf("cross-gateway requires v10, got %d", got)
+	}
+}
+
+// TestSiteLANMasqueradeIsContentDerived — SSI-8. The flag raises the artifact to v15 so an agent that cannot
+// render the source NAT refuses it rather than forwarding un-translated traffic the LAN cannot answer. A site
+// left on preserve-source carries no flag and keeps the version, and therefore the hash, it had before.
+func TestSiteLANMasqueradeIsContentDerived(t *testing.T) {
+	plain := Compiled{NodeID: "node-a", Mode: "enforcing", Routes: []Route{{DstCIDR: "10.5.0.0/24"}}}
+	flagged := plain
+	flagged.SiteLANMasquerade = true
+	if got := RequiredVersion(flagged); got != 15 {
+		t.Fatalf("a site LAN masquerade artifact requires v15, got v%d", got)
+	}
+	if got := RequiredVersion(plain); got != 5 {
+		t.Fatalf("without the flag a routes-only artifact stays at v5, got v%d", got)
+	}
+	plain.Version, flagged.Version = RequiredVersion(plain), RequiredVersion(flagged)
+	if CanonicalHash(plain) == CanonicalHash(flagged) {
+		t.Fatal("toggling the flag must change the hash (through Version), or the gateway would never re-converge")
 	}
 }
