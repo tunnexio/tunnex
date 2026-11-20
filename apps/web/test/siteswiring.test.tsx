@@ -531,7 +531,7 @@ describe("Networks — Failover reports and protected candidates", () => {
       generation: 12, failover: { stale_after_seconds: 240, demote_after_seconds: 90, restore_after_seconds: 150 },
       members: [
         { node_id: "hub-primary", role: "primary", liveness: "fresh", hub_priority: 2, metrics: { last_handshake_at: new Date().toISOString(), rx_bytes: 0, tx_bytes: 0 } },
-        { node_id: "hub-standby", role: "standby", liveness: "fresh", hub_priority: 1 },
+        { node_id: "hub-standby", role: "standby", liveness: "unobserved", hub_priority: 1 },
       ],
     };
     withAuth(<Sites />, ["/sites?section=ha"]);
@@ -539,7 +539,8 @@ describe("Networks — Failover reports and protected candidates", () => {
     const actingPrimary = within(table).getByRole("link", { name: "gw-us-east" }).closest("tr")!;
     const configuredPrimary = within(table).getByRole("link", { name: "gw-eu-west" }).closest("tr")!;
     expect(within(actingPrimary).getByRole("cell", { name: "Primary" })).toBeTruthy();
-    expect(within(actingPrimary).getByRole("cell", { name: "Recent" })).toBeTruthy();
+    expect(within(actingPrimary).getByRole("cell", { name: "Answering" })).toBeTruthy();
+    expect(within(table).getByRole("columnheader", { name: "Status" })).toBeTruthy();
     expect(within(configuredPrimary).getByText("Configured primary · demoted")).toBeTruthy();
     expect(screen.getByText("Standby promoted to acting primary.")).toBeTruthy();
     expect(screen.queryByText("0 B")).toBeNull();
