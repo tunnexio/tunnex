@@ -4,6 +4,8 @@ import { ResourceSummary } from "../components/ResourceSummary";
 import { SiteToSiteHint, SiteToSiteNavigation } from "../components/SiteToSiteNavigation";
 import "../network-workspaces.css";
 import "../site-to-site-workspace.css";
+import "../gateway-workspace.css";
+import { Icon } from "../components/Icon";
 import AppAccessPagination, { appAccessPageSize } from "../components/AppAccessPagination";
 import AppAccessRowMenu from "../components/AppAccessRowMenu";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -33,7 +35,7 @@ import { failoverNotices, hubSetView, roughDuration, spanWords, unobservedHubs, 
 import { mergeOrgForwards, type OrgForwardsView } from "../lib/dnsview";
 import { useAuth } from "../lib/auth";
 import { toast } from "../components/Toasts";
-import { Badge, Button, DataTable, EmptyState, ErrorText, Field, Input, Loading, Modal, Select, RefreshButton } from "../components/ui";
+import { Badge, Button, DataTable, EmptyState, ErrorText, Field, Input, Loading, Modal, Select, RefreshButton, StatusDot } from "../components/ui";
 import { SiteLanEgress } from "../components/SiteLanEgress";
 import { LoadRetry } from "../components/LoadRetry";
 import { badgeClass } from "../lib/healthview";
@@ -326,14 +328,26 @@ export default function Sites() {
   const allGateways = useMemo(() => cards.flatMap((c) => c.gateways), [cards]);
 
   const selectedCard = cards.find(c => selectedSiteId ? c.id === selectedSiteId : selectedGatewayId ? c.gateways.some(gateway => gateway.id === selectedGatewayId) : false) ?? null;
+  // SSI-13: who carries each network (roles from the served hub set), what is linked to it, and the counts.
+  const roles = useMemo(() => gatewayRoles(raw?.hubSet), [raw]);
+  const vpns = useMemo(() => cloudVpnBySite(raw?.cloudVpns ?? []), [raw]);
+  const summary = useMemo(() => networkSummary(cards, roles), [cards, roles]);
+  const onStandby = cards.filter((card) => networkStatus(card, roles).label === "Running on standby");
+  // The same inventory controls as the Gateways page: a filter with counts, a search, a sort.
+  const show = params.get("show") === "attention" ? "attention" : params.get("show") === "standby" ? "standby" : "all";
+  const sort = params.get("sort") === "status" ? "status" : "name";
+  const dir = params.get("dir") === "desc" ? "desc" : "asc";
   const visibleCards = useMemo(() => {
     const needle = query.trim().toLowerCase();
-    if (!needle) return cards;
-    return cards.filter((card) =>
-      card.name.toLowerCase().includes(needle) ||
-      card.gateways.some((gateway) => gateway.name.toLowerCase().includes(needle)),
+    const matched = cards.filter((card) =>
+      (!needle || card.name.toLowerCase().includes(needle) || card.gateways.some((gateway) => gateway.name.toLowerCase().includes(needle))) &&
+      (show === "all" || (show === "attention" ? networkStatus(card, roles).attention : card.gateways.filter((gateway) => gateway.status === "active" && roles.has(gateway.id)).length >= 2)),
     );
-  }, [cards, query]);
+    const sorted = [...matched].sort((a, b) => sort === "status"
+      ? Number(networkStatus(b, roles).attention) - Number(networkStatus(a, roles).attention) || a.name.localeCompare(b.name)
+      : a.name.localeCompare(b.name));
+    return dir === "desc" ? sorted.reverse() : sorted;
+  }, [cards, query, show, sort, dir, roles]);
 
   const inventoryPage = Math.min(Math.floor(requestedInventoryPage), Math.max(1, Math.ceil(visibleCards.length / inventoryPageSize)));
   const inventoryRows = visibleCards.slice((inventoryPage - 1) * inventoryPageSize, inventoryPage * inventoryPageSize);
@@ -376,11 +390,6 @@ export default function Sites() {
     [updateQuery],
   );
 
-  // SSI-13: who carries each network (roles from the served hub set), what is linked to it, and the counts.
-  const roles = useMemo(() => gatewayRoles(raw?.hubSet), [raw]);
-  const vpns = useMemo(() => cloudVpnBySite(raw?.cloudVpns ?? []), [raw]);
-  const summary = useMemo(() => networkSummary(cards, roles), [cards, roles]);
-  const onStandby = cards.filter((card) => networkStatus(card, roles).label === "Running on standby");
 
   return (
     <div className="site-to-site-workspace network-management sites-workspace s2s-networks-workspace">
@@ -403,23 +412,15 @@ export default function Sites() {
           <div className="sites-section-content">
           {section === "overview" && (
             <div className="flex min-w-0 flex-col gap-3">
-              {!selectedCard && mapCollapsed && cards.length > 0 && <dl className="grid grid-cols-2 gap-2.5 sm:grid-cols-4" aria-label="Networks at a glance">
-                {([
-                  ["Networks", summary.networks, "", "/sites"],
-                  ["With a standby gateway", `${summary.withStandby} of ${summary.networks}`, "", "/sites?section=ha"],
-                  ["Ranges waiting for approval", summary.pendingRanges, summary.pendingRanges > 0 ? "text-warn" : "", "/sites?section=ranges"],
-                  ["Need attention", summary.attention, summary.attention > 0 ? "text-warn" : "text-ok", "/sites"],
-                ] as const).map(([label, value, tone, to]) => <Link key={label} to={to} className="rounded-lg border border-line bg-ink-800 px-3.5 py-2.5 no-underline">
-                  <dd className={`m-0 text-xl font-semibold leading-tight ${tone || "text-ink-heading"}`}>{value}</dd>
-                  <dt className="text-micro text-ink-secondary">{label}</dt>
-                </Link>)}
-              </dl>}
               {!selectedCard && mapCollapsed && onStandby.length > 0 && <div className="s2s-operational-notice" role="status"><span>{onStandby.map((card) => card.name).join(", ")} {onStandby.length === 1 ? "is" : "are"} running on a standby gateway.</span><Link to="/sites?section=ha">See what happened</Link></div>}
               {!selectedCard && mapCollapsed && <SiteList
                 roles={roles}
                 vpns={vpns}
+                summary={summary}
+                show={show} sort={sort} dir={dir}
+                onControl={(key, value) => updateQuery({ [key]: value, page: null })}
                 linked={cards.filter((card) => card.gateways.some((gateway) => gateway.status === "active")).length >= 2}
-                toolbar={<Input aria-label="Search networks" placeholder="Search networks…" value={query} onChange={event => updateQuery({ q: event.target.value, site: null, gateway: null, dns: null, detail: null })} className="sites-search" />}
+                toolbar={<div className="gw-search"><Icon name="search" size={16} /><input aria-label="Search networks" placeholder="Search networks…" value={query} onChange={event => updateQuery({ q: event.target.value, site: null, gateway: null, dns: null, detail: null })} /></div>}
                 cards={inventoryRows}
                 total={visibleCards.length}
                 page={inventoryPage}
@@ -865,9 +866,12 @@ function SiteList({
   canManage,
   query,
   selectedId,
-  onSelect, onRanges, total, page, pageSize, onPageChange, onPageSizeChange, onClearSearch, roles, vpns, linked,
+  onSelect, onRanges, total, page, pageSize, onPageChange, onPageSizeChange, onClearSearch, roles, vpns, linked, summary, show, sort, dir, onControl,
 }: {
   roles: Map<string, GatewayRole>; vpns: Map<string, CloudVpnLink[]>; linked: boolean;
+  summary: { networks: number; withStandby: number; pendingRanges: number; attention: number };
+  show: "all" | "attention" | "standby"; sort: "name" | "status"; dir: "asc" | "desc";
+  onControl: (key: "show" | "sort" | "dir", value: string | null) => void;
   toolbar: import("react").ReactNode;
   cards: SiteCard[];
   canManage: boolean;
@@ -882,16 +886,14 @@ function SiteList({
     {
       key: "name",
       header: "Network",
-      cell: (c: SiteCard) => (
-        <button
-          type="button"
-          aria-pressed={c.id === selectedId}
-          onClick={() => onSelect(c.id === selectedId ? null : c.id)}
-          className="s2s-network-name"
-        >
-          {c.name}
-        </button>
-      ),
+      // The SAME cell as the Gateways page: the name, and one quiet line under it.
+      cell: (c: SiteCard) => {
+        const active = c.gateways.filter((g) => g.status === "active").length;
+        return <div className="gw-gateway-name"><div>
+          <button type="button" aria-pressed={c.id === selectedId} onClick={() => onSelect(c.id === selectedId ? null : c.id)} className="s2s-network-name gw-name-link">{c.name}</button>
+          <span className="gw-secondary">{active} gateway{active === 1 ? "" : "s"} · {c.subnets.length} range{c.subnets.length === 1 ? "" : "s"}</span>
+        </div></div>;
+      },
     },
     {
       // SSI-13 D5: EVERY active gateway of the network, each with its role. One name and a HUB badge left
@@ -903,9 +905,9 @@ function SiteList({
         if (active.length === 0) return <span className="text-ink-faint">Not assigned</span>;
         return <span className="flex flex-col gap-1">{active.map((gw) => {
           const role = roles.get(gw.id);
-          return <span key={gw.id} className="flex items-center gap-1.5 whitespace-nowrap">
-            <span className="font-sans text-ink-body">{gw.name}</span>
-            {role && <Badge tone={role === "not_answering" ? "danger" : "neutral"}>{role === "primary" ? "PRIMARY" : role === "standby" ? "STANDBY" : "NOT ANSWERING"}</Badge>}
+          return <span key={gw.id} className="flex items-baseline gap-2 whitespace-nowrap">
+            <Link className="gw-text-link" style={{ color: "var(--tnx-text-primary)", fontSize: 12 }} to={`/gateways/${gw.id}`}>{gw.name}</Link>
+            {role && <span className="text-micro" style={{ color: role === "not_answering" ? "var(--tnx-danger)" : "var(--tnx-text-secondary)" }}>{role === "primary" ? "Primary" : role === "standby" ? "Standby" : "Not answering"}</span>}
           </span>;
         })}</span>;
       },
@@ -962,14 +964,37 @@ function SiteList({
       header: "Status",
       cell: (c: SiteCard) => {
         const status = networkStatus(c, roles);
-        return <span className="flex flex-col gap-0.5"><Badge tone={status.tone}>{status.label}</Badge>{status.detail && <span className="text-micro text-ink-tertiary">{status.detail}</span>}</span>;
+        return <div><span className="gw-status"><StatusDot tone={status.tone === "ok" ? "on" : status.tone === "neutral" ? "off" : "warn"} /><span>{status.label}</span></span>{status.detail && <span className="gw-secondary">{status.detail}</span>}</div>;
       },
+    },
+    {
+      key: "actions",
+      header: "Actions",
+      cell: (c: SiteCard) => <AppAccessRowMenu label={`Actions for ${c.name}`} actions={[
+        { key: "open", label: "Open network", onSelect: () => onSelect(c.id) },
+        { key: "ranges", label: "Ranges", onSelect: () => onRanges(c.id) },
+        { key: "failover", label: "Failover", href: "/sites?section=ha" },
+        { key: "map", label: "Show on map", href: `/sites?section=topology&site=${c.id}` },
+      ]} />,
     },
   ];
 
-  return <section className="s2s-networks-inventory" aria-label="Network inventory">
-    <div className="s2s-network-toolbar">{toolbar}<span>{total} network{total === 1 ? "" : "s"}</span></div>
-    {cards.length ? <div className="s2s-network-table"><DataTable caption="Networks" columns={columns} rows={cards} rowKey={(card: SiteCard) => card.id} empty={null} failed={false} filterable={false} pageSize={0} variant="flat" /></div> : <div className="s2s-empty-state" role="status"><h3>{query.trim() ? "No matching networks" : "No networks yet"}</h3><p>{query.trim() ? "No networks or gateways match this search." : canManage ? "Set up a network to assign gateways and route its private ranges." : "An owner or admin can add a network."}</p>{query.trim() && <Button size="sm" variant="ghost" onClick={onClearSearch}>Clear search</Button>}</div>}
+  return <section className="gw-inventory s2s-networks-inventory" aria-label="Network inventory">
+    <div role="group" aria-label="Filter networks" className="gw-filter-tabs" style={{ borderBottom: "1px solid var(--tnx-border)", marginBottom: 14 }}>
+      {([["all", "All", summary.networks], ["attention", "Needs attention", summary.attention], ["standby", "With a standby", summary.withStandby]] as const).map(([value, label, count]) =>
+        <button key={value} type="button" aria-pressed={show === value} onClick={() => onControl("show", value === "all" ? null : value)}>{label}<span>{count}</span></button>)}
+    </div>
+    <div className="gw-inventory-toolbar">
+      {toolbar}
+      {summary.pendingRanges > 0 && <Link className="gw-text-link" style={{ color: "var(--tnx-warn)" }} to="/sites?section=ranges">{summary.pendingRanges} range{summary.pendingRanges === 1 ? "" : "s"} waiting for approval</Link>}
+      <span className="gw-inventory-count">{total === summary.networks ? `${total} network${total === 1 ? "" : "s"}` : `${total} of ${summary.networks}`}</span>
+      <div className="gw-sort-controls">
+        <label className="sr-only" htmlFor="network-sort">Sort networks</label>
+        <select id="network-sort" value={sort} onChange={event => onControl("sort", event.target.value === "name" ? null : event.target.value)}><option value="name">Name</option><option value="status">Status</option></select>
+        <button type="button" aria-label={dir === "asc" ? "Ascending" : "Descending"} title={dir === "asc" ? "Sort ascending" : "Sort descending"} onClick={() => onControl("dir", dir === "asc" ? "desc" : null)}><span aria-hidden="true">{dir === "asc" ? "↑" : "↓"}</span></button>
+      </div>
+    </div>
+    {cards.length ? <div className="gw-inventory-table s2s-network-table"><DataTable caption="Networks" columns={columns} rows={cards} rowKey={(card: SiteCard) => card.id} empty={null} failed={false} filterable={false} pageSize={0} variant="flat" /></div> : <div className="s2s-empty-state" role="status"><h3>{query.trim() ? "No matching networks" : "No networks yet"}</h3><p>{query.trim() ? "No networks or gateways match this search." : canManage ? "Set up a network to assign gateways and route its private ranges." : "An owner or admin can add a network."}</p>{query.trim() && <Button size="sm" variant="ghost" onClick={onClearSearch}>Clear search</Button>}</div>}
     <AppAccessPagination maxOffset={null} page={page} pageSize={pageSize} count={cards.length} hasNext={page * pageSize < total} previousLabel="Previous networks" nextLabel="Next networks" onPageChange={onPageChange} onPageSizeChange={onPageSizeChange} />
   </section>;
 }

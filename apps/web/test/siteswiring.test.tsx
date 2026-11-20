@@ -518,9 +518,13 @@ describe("Networks — gateway assignment is not tunnel health", () => {
     haTopology = true;
     withAuth(<Sites />, ["/sites"]);
     expect(await screen.findByRole("columnheader", { name: "Status" })).toBeTruthy();
-    // No badge is "nothing reported wrong", never a claim that traffic flows.
-    expect(screen.getAllByText("No issues reported").length).toBeGreaterThan(0);
+    // The status says what was MEASURED about the gateways (reporting or not), never that traffic flows.
+    expect(screen.getAllByText(/^(Gateways online|Offline|Gateway offline|Needs a gateway)$/).length).toBeGreaterThan(0);
     expect(screen.queryByText("Healthy")).toBeNull();
+    expect(screen.queryByText("Up")).toBeNull();
+    // Same inventory controls as the Gateways page.
+    expect(screen.getByRole("group", { name: "Filter networks" })).toBeTruthy();
+    expect(screen.getByLabelText("Sort networks")).toBeTruthy();
     expect(screen.queryByRole("cell", { name: "linked" })).toBeNull();
     // SSI-13 D3: one way in.
     expect(screen.getByRole("button", { name: "Add a network" })).toBeTruthy();
