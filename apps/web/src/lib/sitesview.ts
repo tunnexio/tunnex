@@ -363,6 +363,15 @@ export function meshFrom(
   const standbyMembers = servedMembers.filter(
     ({ member }) => member.node_id !== primary?.member.node_id,
   );
+  // SSI-11: the CONFIGURED primary is the lowest pin. When it is not the acting primary, the controller has
+  // passed it over; the map must say so rather than draw it as a calm standby.
+  let configuredPrimary: string | null = null;
+  let lowestPin = Infinity;
+  for (const { member } of servedMembers) {
+    const pin = (member as { hub_priority?: number | null }).hub_priority;
+    if (pin != null && pin < lowestPin) { lowestPin = pin; configuredPrimary = member.node_id; }
+  }
+  const demotedId = configuredPrimary && primary && configuredPrimary !== primary.member.node_id ? configuredPrimary : null;
   const out: Mesh = { nodes: [], links: [] };
   if (primary) {
     out.nodes.push({
@@ -377,7 +386,10 @@ export function meshFrom(
       id: `__hub:${standby.member.node_id}`,
       label: standby.node?.name ?? `Gateway ${standby.member.node_id.slice(0, 8)}`,
       kind: "hub-standby",
-      sub: hubSet ? `standby · HA set gen ${hubSet.generation}` : "standby",
+      sub: standby.member.node_id === demotedId
+        ? "configured primary · demoted"
+        : hubSet ? `standby · HA set gen ${hubSet.generation}` : "standby",
+      ...(standby.member.node_id === demotedId ? { demoted: true } : {}),
     });
   }
   for (const c of cards) {
@@ -463,7 +475,7 @@ export function meshFrom(
       to: home.id,
       tone: "linked",
       standby: true,
-      note: "standby gateway for this network",
+      note: standby.member.node_id === demotedId ? "configured primary, demoted" : "standby gateway for this network",
     });
   }
   return out;
