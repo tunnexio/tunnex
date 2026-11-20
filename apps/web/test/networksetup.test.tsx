@@ -203,7 +203,7 @@ it("embedded setup reports uncertain writes so its parent cannot silently discar
   await create();
   await screen.findByText(/response was interrupted/);
   expect(onBusyChange).toHaveBeenLastCalledWith(true);
-  expect((screen.getByRole("button", { name: "Back to locations" }) as HTMLButtonElement).disabled).toBe(true);
+  expect((screen.getByRole("button", { name: "Start over" }) as HTMLButtonElement).disabled).toBe(true);
 });
 
 // SSI-4 (finding F2): the wizard says what a new range will be linked to, and when the link is open it will
