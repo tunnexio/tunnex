@@ -6,7 +6,7 @@ import (
 )
 
 func TestStaticCNAMECompletionWireAndHash(t *testing.T) {
-	if MaxSupportedVersion != 14 {
+	if MaxSupportedVersion < 14 { // a capability floor, like the v13 check beside it: later versions keep it
 		t.Fatal("static completion capability missing")
 	}
 	wire := `{"version":14,"node_id":"node-dns","mode":"enforcing","mesh":false,"allow":[],"dns_resolver_profiles":[{"context_config_id":"11111111-1111-4111-8111-111111111111","context_config_version":4,"profile_id":"22222222-2222-4222-8222-222222222222","zone_suffixes":["office.test"],"endpoints":[{"address":"1.1.1.1","port":53,"transport":"tcp"}],"ipsec_path":{"connection_id":"","configuration_revision":0,"source_address":""},"allowed_sources":["10.99.0.2/32"],"static_records":[{"name":"app.office.test","type":"CNAME","value":"outside.example","ttl":300}]}]}`

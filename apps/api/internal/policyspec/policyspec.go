@@ -216,7 +216,14 @@ type AffectedDevice struct {
 // IPsec-only profiles retain their v11 content version and canonical hash.
 // v13 adds explicit public default upstreams to opt-in LAN DNS listeners.
 // v14 adds explicit public resolver endpoints for static CNAME target completion.
-const ProtocolVersion = 14
+//
+// v15 (SSI-8): SiteLANMasquerade — a site's gateway source-NATs traffic from REMOTE sites as it leaves the
+// gateway's LAN interface, so the LAN needs no return route to the gateway. An old agent has no such
+// render: it would forward the traffic un-translated and the LAN host's replies would go to the cloud
+// router and vanish, with the link reporting green (the dead-while-green class again). Presence therefore
+// triggers RequiredVersion=15 and an old gated agent refuses loudly. Content-derived: a site left on
+// preserve-source emits no flag and keeps its earlier version and hash.
+const ProtocolVersion = 15
 
 // SupportedWindow is the AGENT-VERSION CONTRACT the upgrade path commits to (S11 D1): the current protocol
 // version and the one before it. An agent at either must be able to run against this control plane, which is
@@ -246,6 +253,9 @@ const SupportedWindow = 2
 // leaves this function untouched is a silent-accept bug — the artifact would carry new content at an old
 // version and old agents would accept it. The D2 checklist asks "RequiredVersion updated? y/n".
 func RequiredVersion(c Compiled) int {
+	if c.SiteLANMasquerade {
+		return 15
+	}
 	for _, profile := range c.DNSResolverProfiles {
 		if len(profile.StaticRecords) > 0 && len(profile.Endpoints) > 0 {
 			return 14
@@ -475,6 +485,12 @@ type Compiled struct {
 	FQDNGenerations []FQDNGeneration `json:"fqdn_generations,omitempty"`
 	// CrossGatewayClients requires family-aware host routing supported from v10.
 	CrossGatewayClients bool `json:"cross_gateway_clients,omitempty"`
+	// SiteLANMasquerade (v15, SSI-8) — this gateway's site chose "the LAN sees the gateway's address":
+	// traffic sourced from a REMOTE site range (Routes) is masqueraded as it leaves a non-tunnel interface.
+	// The forward chain adjudicates BEFORE the translation, so every gateway still enforces and records the
+	// original source; only the LAN host sees the gateway. Out-of-hash PLUMBING like PoolCIDR; presence
+	// triggers RequiredVersion=15, and Version is in the hash, so toggling it re-converges the gateway.
+	SiteLANMasquerade bool `json:"site_lan_masquerade,omitempty"`
 }
 
 // FQDNGeneration is the active, selected-context answer set for one FQDN
