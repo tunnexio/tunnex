@@ -169,3 +169,21 @@ Left as is: the dashboard's embedded setup still says "site" in a few sentences 
 approved route are saved", "This creates a site"), the range form labels its field "LAN CIDR", the
 range-approvals table has a "Site" column, and the confirm button of "Remove range" rendered with no
 visible label.
+
+## DNS forwarding walk (2026-11-20, AWS demo control plane)
+
+Setup: a small DNS server for `corp.internal` on `172.31.37.55` (inside a range "AWS private" shares);
+zone forwarded from the DNS forwarding tab; laptop connected with the desktop client.
+
+| Step | Result |
+| --- | --- |
+| Forward `corp.internal` to `172.31.37.55` from the tab's form | Laptop received the zone in about 5 s (`/etc/resolver/corp.internal`) |
+| Query with enforcement on and no access rule | Timed out. Default-deny holds; forwarding grants nothing by itself |
+| Add resource `172.31.37.55/32` UDP 53 and a rule for the group | `app.corp.internal` resolves; `curl http://app.corp.internal:8080` returns 200 |
+| TCP lookup with a UDP-only resource | Timed out. The rule needs TCP 53 too for large answers; the form's note says UDP and TCP |
+| "Stop forwarding" from the row menu | Laptop dropped the zone within about 25 s |
+| Server in the other network (`10.70.0.10`) | Does not resolve the zone: servers do not receive forwards, and no site rule allows port 53. Point the server at the resolver and add a site rule |
+
+Changes made from this walk: the form lives on the tab (it used to hide in a network's Advanced settings);
+adding or removing a zone pushes to gateways at once; the access-rule note is always shown under the form;
+the list can stop forwarding a zone directly; the count reads "1 forward".
