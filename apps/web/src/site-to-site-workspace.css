@@ -326,3 +326,6 @@
 .s2s-tab-hint { margin:10px 0 2px; color:var(--tnx-text-secondary); font-size:12.5px; }
 .sts-chooser-more { display:flex; flex-wrap:wrap; gap:6px 16px; align-items:center; margin-top:4px; color:var(--tnx-text-secondary); font-size:12.5px; }
 .sts-chooser-more button { padding:0; border:0; background:none; color:var(--tnx-text-heading); font:inherit; text-decoration:underline; text-underline-offset:3px; cursor:pointer; }
+/* SSI-13: the same header band as the Gateways inventory, on every Site-to-site table. These tables had
+   made the header transparent, so two lists one click apart looked like two products. */
+.site-to-site-workspace .s2s-network-table thead tr,.site-to-site-workspace .s2s-flat-table thead tr,.site-to-site-workspace .ipsec-inventory thead tr { background:var(--tnx-surface-inset); }
