@@ -324,14 +324,24 @@ func Compile(s Snapshot) map[uuid.UUID]policyspec.Compiled {
 	// one last-write-wins entry.  The generation names an exact Site/Gateway
 	// authority, so retain the exact active membership supplied by SiteNodes.
 	siteGateways := map[siteGateway]bool{}
+	siteGatewayList := map[uuid.UUID][]uuid.UUID{}
 	for _, sn := range s.SiteNodes {
 		if sn.SiteID == uuid.Nil || sn.NodeID == uuid.Nil {
 			continue
 		}
 		siteNode[sn.SiteID] = sn.NodeID
+		if !siteGateways[siteGateway{siteID: sn.SiteID, gatewayID: sn.NodeID}] {
+			siteGatewayList[sn.SiteID] = append(siteGatewayList[sn.SiteID], sn.NodeID)
+		}
 		siteGateways[siteGateway{siteID: sn.SiteID, gatewayID: sn.NodeID}] = true
 		nodeSet[sn.NodeID] = true
 	}
+	// gatewaysOf returns EVERY gateway bound to a site (SSI-7b, finding F9). siteNode above is
+	// last-write-wins and is kept only as the "does this site have a gateway at all" predicate: using it
+	// for PLACEMENT granted a site rule on one arbitrary gateway of a multi-gateway site and left the
+	// others, default-deny, dropping the same flow. Which gateway carries a site's traffic is a data-plane
+	// choice that changes on promotion, so the grant goes on all of them.
+	gatewaysOf := func(site uuid.UUID) []uuid.UUID { return siteGatewayList[site] }
 	for _, svc := range s.ExposedServices {
 		if svc.handoffReady() && svc.ConnectorNodeID != uuid.Nil {
 			nodeSet[svc.ConnectorNodeID] = true
@@ -609,9 +619,7 @@ func Compile(s Snapshot) map[uuid.UUID]policyspec.Compiled {
 	devGrantNodes := func(deviceNode uuid.UUID, dstSite uuid.UUID) []uuid.UUID {
 		nodes := []uuid.UUID{deviceNode}
 		if dstSite != uuid.Nil {
-			if n := siteNode[dstSite]; n != uuid.Nil {
-				nodes = append(nodes, n)
-			}
+			nodes = append(nodes, gatewaysOf(dstSite)...)
 			if hubNode != uuid.Nil {
 				nodes = append(nodes, hubNode)
 			}
@@ -874,8 +882,13 @@ func Compile(s Snapshot) map[uuid.UUID]policyspec.Compiled {
 			continue
 		}
 		enforceNodes := map[uuid.UUID]bool{srcGw: true}
+		if !ipsecSource {
+			for _, n := range gatewaysOf(srcSite) { // SSI-7b: every gateway of the source site
+				enforceNodes[n] = true
+			}
+		}
 		if !ipsecSource && r.DstKind == "site" {
-			if n := siteNode[r.DstSiteID]; n != uuid.Nil {
+			for _, n := range gatewaysOf(r.DstSiteID) {
 				enforceNodes[n] = true
 			}
 			// B1: the transit HUB forwards spoke↔spoke traffic, so it needs the grant too. The map dedups
@@ -902,7 +915,7 @@ func Compile(s Snapshot) map[uuid.UUID]policyspec.Compiled {
 					// resource's own protocol and ports on every node. A resource in no site, or in the
 					// source site itself, never crosses a link and keeps source-gateway-only placement.
 					if owner := siteOwning(res.CIDR); !ipsecSource && owner != uuid.Nil && owner != srcSite {
-						if n := siteNode[owner]; n != uuid.Nil {
+						for _, n := range gatewaysOf(owner) {
 							enforceNodes[n] = true
 						}
 						if hubNode != uuid.Nil {
