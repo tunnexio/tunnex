@@ -10,6 +10,9 @@ import { MemoryRouter } from "react-router-dom";
 type SubnetFixture = { cidr: string; status: string };
 const mock = vi.hoisted(() => ({
   post: vi.fn(),
+  put: vi.fn(),
+  // SSI-9: the highest artifact version the Sydney gateway reports; 15 is the first that can translate.
+  sydneyMaxPolicy: undefined as number | undefined,
   role: "owner",
   // SSI-4: what the Review step reads to say what a new range will be linked to.
   mode: "enforcing" as string | null,
@@ -19,6 +22,7 @@ const mock = vi.hoisted(() => ({
 vi.mock("../src/lib/api", () => ({
   api: {
     POST: mock.post,
+    PUT: mock.put,
     GET: async (path: string, options: { params: { path: { siteId?: string } } }) => {
       if (path.endsWith("/zero-trust-mode")) return mock.mode === null ? { error: {} } : { data: { mode: mock.mode } };
       if (path.endsWith("/sites")) return mock.sites === null ? { error: {} } : { data: mock.sites };
@@ -49,6 +53,7 @@ vi.mock("../src/lib/useGatewayInventory", () => ({
           name: "Sydney",
           enrolled_kind: "gateway",
           status: "active",
+          get max_policy_version() { return mock.sydneyMaxPolicy; },
         },
         {
           id: "gw-b",
@@ -74,6 +79,8 @@ import NetworkSetup from "../src/pages/NetworkSetup";
 afterEach(cleanup);
 beforeEach(() => {
   mock.post.mockReset();
+  mock.put.mockReset();
+  mock.sydneyMaxPolicy = undefined;
   mock.role = "owner";
   mock.mode = "enforcing";
   mock.sites = [];
@@ -283,5 +290,79 @@ describe("Network setup — what the range will be linked to", () => {
     const notice = await screen.findByTestId("site-link-exposure");
     expect(notice.textContent).toContain("to 1 other network");
     expect(notice.textContent).not.toContain("172.31.0.0/16");
+  });
+});
+
+// SSI-9: the wizard offers how the new network sees traffic from other networks, defaults to the mode that
+// needs no cloud route, and says afterwards which mode is actually in force.
+describe("Network setup — how the new network sees other networks", () => {
+  beforeEach(() => {
+    mock.sites = [{ id: "s1", name: "Head office" }];
+    mock.subnets = { s1: [{ cidr: "172.31.0.0/16", status: "approved" }] };
+    mock.post.mockResolvedValue({ data: { id: "site-new" } });
+    mock.put.mockResolvedValue({ data: { lan_egress: "gateway_address" } });
+    mock.sydneyMaxPolicy = 15;
+  });
+  const egressPut = ["/api/v1/organizations/{orgId}/sites/{siteId}/lan-egress", {
+    params: { path: { orgId: "org-a", siteId: "site-new" } },
+    body: { lan_egress: "gateway_address" },
+  }];
+
+  it("defaults to the gateway address and applies it after the network is created", async () => {
+    show();
+    review();
+    await screen.findByTestId("site-link-exposure");
+    expect((screen.getByRole("radio", { name: /Gateway address/ }) as HTMLInputElement).checked).toBe(true);
+    await create();
+    await screen.findByText("Network created");
+    expect(mock.put).toHaveBeenCalledWith(...egressPut);
+    expect(screen.getByTestId("lan-egress-result").textContent).toContain("no cloud return route is needed");
+  });
+
+  it("with the original address chosen, sends nothing more and lists the cloud steps", async () => {
+    show();
+    review();
+    await screen.findByTestId("site-link-exposure");
+    fireEvent.click(screen.getByRole("radio", { name: /Original address/ }));
+    await create();
+    await screen.findByText("Network created");
+    expect(mock.put).not.toHaveBeenCalled();
+    const result = screen.getByTestId("lan-egress-result").textContent ?? "";
+    expect(result).toContain("Route each other network's range to this gateway");
+    expect(result).toContain("source/destination check");
+  });
+
+  it("does not offer a mode the gateway cannot apply, and says what that costs", async () => {
+    mock.sydneyMaxPolicy = 14;
+    show();
+    review();
+    await screen.findByTestId("site-link-exposure");
+    expect(screen.queryByRole("radio")).toBeNull();
+    expect(screen.getByTestId("lan-egress-unavailable").textContent).toContain("Upgrade the gateway");
+    await create();
+    await screen.findByText("Network created");
+    expect(mock.put).not.toHaveBeenCalled();
+    expect(screen.getByTestId("lan-egress-result").textContent).toContain("Route each other network's range");
+  });
+
+  it("keeps the network and tells the truth when the mode could not be set", async () => {
+    mock.put.mockResolvedValue({ error: {} });
+    show();
+    review();
+    await screen.findByTestId("site-link-exposure");
+    await create();
+    await screen.findByText("Network created");
+    expect(screen.getByText(/Servers on this network will see the original address/)).toBeTruthy();
+    expect(screen.getByTestId("lan-egress-result").textContent).toContain("Route each other network's range");
+  });
+
+  it("offers nothing for the first network", async () => {
+    mock.sites = [];
+    show();
+    review();
+    await create();
+    await screen.findByText("Network created");
+    expect(mock.put).not.toHaveBeenCalled();
+    expect(screen.queryByTestId("lan-egress-result")).toBeNull();
   });
 });
