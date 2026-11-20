@@ -7,7 +7,9 @@ import "../site-to-site-workspace.css";
 import AppAccessPagination, { appAccessPageSize } from "../components/AppAccessPagination";
 import AppAccessRowMenu from "../components/AppAccessRowMenu";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
+import { ConnectionChooser } from "../components/ConnectionChooser";
+import { NetworkMap } from "../components/NetworkMap";
 import { useOrg } from "../lib/useOrg";
 import {
   api,
@@ -26,13 +28,13 @@ import {
   type HubSet,
   type DNSForward,
 } from "../lib/api";
+import { allRanges, cloudVpnBySite, gatewayRoles, networkStatus, networkSummary, type CloudVpnLink, type GatewayRole } from "../lib/sitesview";
 import { failoverNotices, hubSetView, roughDuration, spanWords, unobservedHubs, type HubMemberRow, type ObserverSite } from "../lib/hubsetview";
 import { mergeOrgForwards, type OrgForwardsView } from "../lib/dnsview";
 import { useAuth } from "../lib/auth";
 import { toast } from "../components/Toasts";
 import { Badge, Button, DataTable, EmptyState, ErrorText, Field, Input, Loading, Modal, Select, RefreshButton } from "../components/ui";
 import { SiteLanEgress } from "../components/SiteLanEgress";
-import { NodeLink } from "../components/viz";
 import { LoadRetry } from "../components/LoadRetry";
 import { badgeClass } from "../lib/healthview";
 import { roleFromMembers } from "../lib/policyview";
@@ -44,7 +46,6 @@ import {
   disjointRefusal,
   forwardsInSubnet,
   nameMatchesExactly,
-  meshFrom,
   siteGate,
   sitesView,
   subCeilingGateways,
@@ -57,12 +58,18 @@ import {
 // audit trail). The pending queue + every mutation affordance are canManage-gated (D5: a member sees the
 // read-only topology, never the queue).
 
+type CloudVpnRow = { id: string; name: string; site_id?: string | null; desired_intent: string; application_state: string };
+
 interface Raw {
   sites: Site[];
   nodes: Node[];
   subnetsBySite: Record<string, SiteSubnet[]>;
   hubSet: HubSet | null; // The persisted HA hub set; failed reads are distinguished below from an unconfigured set.
   hubSetUnavailable: boolean;
+  // SSI-13 D2: the cloud VPNs, to show each on the network it belongs to. NON-FATAL and best-effort (first
+  // page only): the Cloud VPN tab is the authority, this is a pointer to it. Empty when the read fails or
+  // the feature is off.
+  cloudVpns: CloudVpnRow[];
   // S14.5 D1 — the ORG-WIDE zone list, fanned out one request per site. Carries its own per-site failure
   // record, because a short list on a conflict view reads as "no conflict".
   forwards: OrgForwardsView;
@@ -119,9 +126,12 @@ export default function Sites() {
   const requestedInventoryPage = Math.max(1, Number(params.get("page")) || 1);
   const detail = dnsFocus ? "advanced" : selectedGatewayId ? "gateways" : networkStep(params.get("detail"));
   const requestedSection = params.get("section") ?? "overview";
-  const section = ["overview", "approvals", "ha", "dns"].includes(requestedSection)
+  // SSI-13 D4: "approvals" is the old name of the Ranges tab; existing links keep working.
+  const section = requestedSection === "approvals" ? "ranges" : ["overview", "ranges", "ha", "dns"].includes(requestedSection)
     ? requestedSection
     : "overview";
+  const [adding, setAdding] = useState(false);
+  const navigate = useNavigate();
 
   const updateQuery = useCallback((next: { site?: string | null; gateway?: string | null; q?: string | null; section?: string | null; dns?: string | null; detail?: string | null; page?: string | null; page_size?: string | null }) => {
     setParams((current) => {
@@ -251,6 +261,10 @@ export default function Sites() {
     // partial topology is a wrong topology; a failed forwards load is recorded and NAMED instead, because
     // one unreachable site must not hide the zones of the others. `mergeOrgForwards` carries which sites
     // failed so the panel can refuse to claim a clean bill of health.
+    const vpnRes = await loadOne(() => api.GET("/api/v1/organizations/{orgId}/ipsec/connections", { params: { path: { orgId: first.id }, query: { limit: 100 } } }));
+    if (!isCurrent()) return;
+    const vpnItems = vpnRes.ok ? (vpnRes.data as { items?: unknown }).items : null;
+    const cloudVpns: CloudVpnRow[] = Array.isArray(vpnItems) ? (vpnItems as CloudVpnRow[]).filter((item) => item && typeof item.id === "string" && typeof item.name === "string") : [];
     const fwdResults = (await Promise.all(
       sRes.data.map((site) =>
         loadOne(() =>
@@ -267,6 +281,7 @@ export default function Sites() {
       subnetsBySite,
       hubSet: hRes.ok ? hRes.data : null,
       hubSetUnavailable: !hRes.ok,
+      cloudVpns,
       forwards: mergeOrgForwards(
         sRes.data.map((site, i) => ({ site, res: fwdResults[i] })),
       ),
@@ -361,45 +376,48 @@ export default function Sites() {
     [updateQuery],
   );
 
-  const mesh = useMemo(
-    () => meshFrom(cards, raw?.nodes ?? [], raw?.hubSet),
-    [cards, raw],
-  );
+  // SSI-13: who carries each network (roles from the served hub set), what is linked to it, and the counts.
+  const roles = useMemo(() => gatewayRoles(raw?.hubSet), [raw]);
+  const vpns = useMemo(() => cloudVpnBySite(raw?.cloudVpns ?? []), [raw]);
+  const summary = useMemo(() => networkSummary(cards, roles), [cards, roles]);
+  const onStandby = cards.filter((card) => networkStatus(card, roles).label === "Running on standby");
 
   return (
     <div className="site-to-site-workspace network-management sites-workspace s2s-networks-workspace">
       {!selectedCard && <h1 className="sr-only">Site-to-site</h1>}
       <div className="s2s-networks-topbar">
-        <SiteToSiteNavigation active="networks" />
-        {view === "body" && <div className="s2s-networks-actions"><RefreshButton label="Refresh networks" onClick={() => void reload()} />{gate.canManage && <Link className="sites-primary-action" to="/network/setup">Set up a network</Link>}</div>}
+        <SiteToSiteNavigation active={section === "overview" ? (mapCollapsed ? "overview" : "topology") : (section as "ranges" | "ha" | "dns")} />
+        {view === "body" && <div className="s2s-networks-actions"><RefreshButton label="Refresh networks" onClick={() => void reload()} />{gate.canManage && <Button size="sm" onClick={() => setAdding(true)}>Add a network</Button>}</div>}
       </div>
 
       {view === "load_retry" && (
         <LoadRetry error={loadError ?? "Couldn't load."} onRetry={reload} />
       )}
       {view === "loading" && (
-        <div className="s2s-network-state"><Loading label="Loading Sites…" /></div>
+        <div className="s2s-network-state"><Loading label="Loading networks…" /></div>
       )}
 
       {view === "body" && raw != null && org != null && (
         <div className="sites-layout">
-          <nav className="sites-section-nav s2s-networks-sections" aria-label="Network management">
-            {[
-              ["overview", "Inventory", "Your networks and gateways"],
-              ["topology", "Topology", "See how networks connect"],
-              ["approvals", "Range approvals", "Review advertised IP ranges"],
-              ["ha", "Failover", "WireGuard primary and standby"],
-              ["dns", "DNS forwarding", "Resolve names across sites"],
-            ].map(([key, label, description]) => (
-              <Link key={key} title={description} to={`?section=${key}`} aria-current={(section === "overview" && !mapCollapsed ? "topology" : section) === key ? "page" : undefined}>
-                <span>{label}</span>
-              </Link>
-            ))}
-          </nav>
           <div className="sites-section-content">
           {section === "overview" && (
             <div className="flex min-w-0 flex-col gap-3">
+              {!selectedCard && mapCollapsed && cards.length > 0 && <dl className="grid grid-cols-2 gap-2.5 sm:grid-cols-4" aria-label="Networks at a glance">
+                {([
+                  ["Networks", summary.networks, "", "/sites"],
+                  ["With a standby gateway", `${summary.withStandby} of ${summary.networks}`, "", "/sites?section=ha"],
+                  ["Ranges waiting for approval", summary.pendingRanges, summary.pendingRanges > 0 ? "text-warn" : "", "/sites?section=ranges"],
+                  ["Need attention", summary.attention, summary.attention > 0 ? "text-warn" : "text-ok", "/sites"],
+                ] as const).map(([label, value, tone, to]) => <Link key={label} to={to} className="rounded-lg border border-line bg-ink-800 px-3.5 py-2.5 no-underline">
+                  <dd className={`m-0 text-xl font-semibold leading-tight ${tone || "text-ink-heading"}`}>{value}</dd>
+                  <dt className="text-micro text-ink-secondary">{label}</dt>
+                </Link>)}
+              </dl>}
+              {!selectedCard && mapCollapsed && onStandby.length > 0 && <div className="s2s-operational-notice" role="status"><span>{onStandby.map((card) => card.name).join(", ")} {onStandby.length === 1 ? "is" : "are"} running on a standby gateway.</span><Link to="/sites?section=ha">See what happened</Link></div>}
               {!selectedCard && mapCollapsed && <SiteList
+                roles={roles}
+                vpns={vpns}
+                linked={cards.filter((card) => card.gateways.some((gateway) => gateway.status === "active")).length >= 2}
                 toolbar={<Input aria-label="Search networks" placeholder="Search networks…" value={query} onChange={event => updateQuery({ q: event.target.value, site: null, gateway: null, dns: null, detail: null })} className="sites-search" />}
                 cards={inventoryRows}
                 total={visibleCards.length}
@@ -415,7 +433,7 @@ export default function Sites() {
                 onRanges={site => updateQuery({ site, gateway: null, dns: null, detail: "ranges" })}
               />}
               {!selectedCard && !mapCollapsed && <OperationalSection
-                title="WireGuard topology"
+                title="Map"
                 className="min-w-0"
                 actions={
                   /* D2 (ruled): scoped to the MAP, not the page. The mesh's edges are handshake-derived, so
@@ -432,7 +450,7 @@ export default function Sites() {
                     component does not have is the same class of lie as a chart with no source. */}
                 <div className="mb-1.5 flex flex-wrap items-center gap-2">
                   <Input
-                    aria-label="Search Sites or Gateways"
+                    aria-label="Search networks or gateways"
                     role="combobox"
                     aria-expanded={searchOpen && query.trim().length > 0}
                     aria-controls="site-search-results"
@@ -454,7 +472,7 @@ export default function Sites() {
                         if (result) { event.preventDefault(); selectSearchResult(result); }
                       }
                     }}
-                    placeholder="Find a Site or Gateway"
+                    placeholder="Find a network or gateway"
                     className="max-w-sm"
                   />
                   <Button variant="ghost" onClick={() => { updateQuery({ q: null, site: null, gateway: null }); setSearchOpen(false); }}>
@@ -462,26 +480,16 @@ export default function Sites() {
                   </Button>
                 </div>
                 {searchOpen && query.trim() && (
-                  <div id="site-search-results" role="listbox" aria-label="Site and Gateway search results" className="mb-3 max-w-xl overflow-hidden rounded-lg border border-line bg-ink-800">
+                  <div id="site-search-results" role="listbox" aria-label="Network and gateway search results" className="mb-3 max-w-xl overflow-hidden rounded-lg border border-line bg-ink-800">
                     {searchResults.length ? searchResults.map((result, index) => (
                       <button key={result.id} type="button" role="option" aria-selected={index === searchIndex} onMouseDown={(event) => event.preventDefault()} onClick={() => selectSearchResult(result)} className={`flex w-full items-center justify-between gap-3 border-b border-line px-3 py-2 text-left text-cell last:border-0 ${index === searchIndex ? "bg-ink-700 text-ink-heading" : "text-ink-body hover:bg-ink-700"}`}>
                         <span className="font-medium">{result.label}</span><span className="text-micro text-ink-tertiary">{result.detail}</span>
                       </button>
-                    )) : <p className="px-3 py-2 text-cell text-ink-tertiary">No Sites or loaded Gateways match. Clear the search to restore the overview.</p>}
+                    )) : <p className="px-3 py-2 text-cell text-ink-tertiary">No networks or gateways match. Clear the search to restore the map.</p>}
                   </div>
                 )}
-                <NodeLink
-                  label="Site topology"
-                  source={{ endpoint: "/api/v1/organizations/{orgId}/sites" }}
-                  failed={false}
-                  nodes={mesh.nodes}
-                  links={mesh.links}
-                  selectedId={selectedSiteId}
-                  onSelect={selectSite}
-                  maxHeight={360}
-                  empty="Route a LAN to draw your first site here."
-                />
-                <p className="text-micro text-ink-faint">WireGuard links only. View Connections for IPsec tunnel status.</p>
+                <NetworkMap cards={cards} roles={roles} vpns={vpns} selectedId={selectedSiteId} onSelect={selectSite} />
+                <p className="text-micro text-ink-faint">Lines are Tunnex links. A cloud VPN is shown inside the network it belongs to; its tunnels are on the Cloud VPN tab.</p>
               </OperationalSection>}
               {!selectedCard && <SelectedSiteStrip canManage={gate.canManage} unboundGateway={unboundGatewayNodes.find((node) => node.id === selectedGatewayId) ?? null} onRouteLan={() => setRoutingLan(true)} />}
 
@@ -497,21 +505,25 @@ export default function Sites() {
             </div>
           )}
 
-          {section === "approvals" && (
-            gate.canManage ? (
-              <PendingQueue
-                orgId={org.id}
-                approvedCountBySite={approvedCountBySite}
-                allGateways={allGateways}
-                ceiling={meta?.protocol_version ?? 0}
-                siteNames={Object.fromEntries(raw.sites.map((site) => [site.id, site.name]))}
-                onDone={reload}
-              />
-            ) : (
-              <OperationalSection title="Range approvals">
-                <p className="text-cell text-ink-tertiary">You can view Sites, but approving routed ranges requires site:manage and a verified email.</p>
-              </OperationalSection>
-            )
+          {section === "ranges" && (
+            <div className="flex min-w-0 flex-col gap-4">
+              {gate.canManage ? (
+                <PendingQueue
+                  orgId={org.id}
+                  approvedCountBySite={approvedCountBySite}
+                  allGateways={allGateways}
+                  ceiling={meta?.protocol_version ?? 0}
+                  siteNames={Object.fromEntries(raw.sites.map((site) => [site.id, site.name]))}
+                  onDone={reload}
+                />
+              ) : (
+                <OperationalSection title="Range approvals">
+                  <p className="text-cell text-ink-tertiary">You can view networks, but approving ranges requires site:manage and a verified email.</p>
+                </OperationalSection>
+              )}
+              <AllRangesTable cards={cards} onOpen={site => updateQuery({ section: null, site, gateway: null, dns: null, detail: "ranges" })} />
+              <p className="text-micro text-ink-faint">A range is reachable only where an access rule allows it. <Link className="s2s-text-link" to="/routed-ranges">What connected devices receive</Link></p>
+            </div>
           )}
 
           {section === "ha" && (
@@ -548,6 +560,15 @@ export default function Sites() {
         <div className="s2s-network-state"><Loading label="Loading Sites…" /></div>
       )}
 
+      {adding && org && gate.canManage && <ConnectionChooser
+        orgId={org.id}
+        sites={raw?.sites ?? []}
+        onClose={() => setAdding(false)}
+        onNetworkAdded={() => { setAdding(false); void reload(); }}
+        onAWS={() => navigate("/site-to-site?create=aws")}
+        onGCP={() => navigate("/site-to-site?create=gcp")}
+        onAzure={() => navigate("/site-to-site?create=azure")}
+      />}
       {registering && org && gate.canManage && (
         <RegisterSiteModal
           orgId={org.id}
@@ -842,8 +863,9 @@ function SiteList({
   canManage,
   query,
   selectedId,
-  onSelect, onRanges, total, page, pageSize, onPageChange, onPageSizeChange, onClearSearch,
+  onSelect, onRanges, total, page, pageSize, onPageChange, onPageSizeChange, onClearSearch, roles, vpns, linked,
 }: {
+  roles: Map<string, GatewayRole>; vpns: Map<string, CloudVpnLink[]>; linked: boolean;
   toolbar: import("react").ReactNode;
   cards: SiteCard[];
   canManage: boolean;
@@ -870,39 +892,25 @@ function SiteList({
       ),
     },
     {
+      // SSI-13 D5: EVERY active gateway of the network, each with its role. One name and a HUB badge left
+      // a second gateway invisible here, so "standby for what?" could only be answered on another tab.
       key: "gw",
-      header: "Gateway",
+      header: "Gateways",
       cell: (c: SiteCard) => {
-        const gw = c.gateways.find((g) => g.status === "active");
-        return gw ? (
-          <span className="flex items-center gap-1.5">
+        const active = c.gateways.filter((g) => g.status === "active");
+        if (active.length === 0) return <span className="text-ink-faint">Not assigned</span>;
+        return <span className="flex flex-col gap-1">{active.map((gw) => {
+          const role = roles.get(gw.id);
+          return <span key={gw.id} className="flex items-center gap-1.5 whitespace-nowrap">
             <span className="font-sans text-ink-body">{gw.name}</span>
-            {gw.isHub && <Badge tone="neutral">HUB</Badge>}
-          </span>
-        ) : (
-          // NOT an empty cell: "no gateway bound" is a fact, and a blank would read as missing data.
-          <span className="text-ink-faint">Not assigned</span>
-        );
-      },
-    },
-    {
-      key: "health",
-      header: "Gateway status",
-      cell: (c: SiteCard) => {
-        const gw = c.gateways.find((g) => g.status === "active");
-        if (!gw) return <span className="text-ink-faint">Needs a gateway</span>;
-        return gw.health ? (
-          <Badge tone={gw.health.tone as "ok" | "warn" | "danger" | "neutral"}>
-            {gw.health.label}
-          </Badge>
-        ) : (
-          <Badge tone="neutral">Assigned</Badge>
-        );
+            {role && <Badge tone={role === "not_answering" ? "danger" : "neutral"}>{role === "primary" ? "PRIMARY" : role === "standby" ? "STANDBY" : "NOT ANSWERING"}</Badge>}
+          </span>;
+        })}</span>;
       },
     },
     {
       key: "ranges",
-      header: "Local IP ranges",
+      header: "Ranges shared",
       cell: (c: SiteCard) =>
         c.subnets.length === 0 ? (
           <span className="text-ink-faint">none</span>
@@ -933,11 +941,33 @@ function SiteList({
           </span>{c.subnets.length > 3 && <button type="button" className="s2s-text-link" aria-label={`View ${c.subnets.length - 3} more ranges for ${c.name}`} onClick={() => onRanges(c.id)}>+{c.subnets.length - 3} more</button>}</span>
         ),
     },
+    {
+      // SSI-13 D2: how this network is joined to the others. A Tunnex link is automatic once two networks
+      // have a gateway; a cloud VPN is a stored object and links to its own tab.
+      key: "linked",
+      header: "Linked by",
+      cell: (c: SiteCard) => {
+        const hasGateway = c.gateways.some((g) => g.status === "active");
+        const cloud = vpns.get(c.id) ?? [];
+        return <span className="flex flex-col gap-1">
+          {hasGateway && linked ? <Link className="s2s-text-link" to="/sites?section=topology">Tunnex link</Link> : cloud.length === 0 && <span className="text-ink-faint">{hasGateway ? "Not linked yet" : "Needs a gateway"}</span>}
+          {cloud.map((vpn) => <Link key={vpn.id} className="s2s-text-link" to="/site-to-site" aria-label={`Cloud VPN ${vpn.name}, ${vpn.state}`}>Cloud VPN · {vpn.name}{vpn.state !== "applied" && ` · ${vpn.state}`}</Link>)}
+        </span>;
+      },
+    },
+    {
+      key: "health",
+      header: "Status",
+      cell: (c: SiteCard) => {
+        const status = networkStatus(c, roles);
+        return <span className="flex flex-col gap-0.5"><Badge tone={status.tone}>{status.label}</Badge>{status.detail && <span className="text-micro text-ink-tertiary">{status.detail}</span>}</span>;
+      },
+    },
   ];
 
   return <section className="s2s-networks-inventory" aria-label="Network inventory">
     <div className="s2s-network-toolbar">{toolbar}<span>{total} network{total === 1 ? "" : "s"}</span></div>
-    {cards.length ? <div className="s2s-network-table"><DataTable caption="Sites" columns={columns} rows={cards} rowKey={(card: SiteCard) => card.id} empty={null} failed={false} filterable={false} pageSize={0} variant="flat" /></div> : <div className="s2s-empty-state" role="status"><h3>{query.trim() ? "No matching networks" : "No networks yet"}</h3><p>{query.trim() ? "No Sites or Gateways match this search." : canManage ? "Set up a network to assign gateways and route its private ranges." : "An owner or admin can add a network."}</p>{query.trim() && <Button size="sm" variant="ghost" onClick={onClearSearch}>Clear search</Button>}</div>}
+    {cards.length ? <div className="s2s-network-table"><DataTable caption="Networks" columns={columns} rows={cards} rowKey={(card: SiteCard) => card.id} empty={null} failed={false} filterable={false} pageSize={0} variant="flat" /></div> : <div className="s2s-empty-state" role="status"><h3>{query.trim() ? "No matching networks" : "No networks yet"}</h3><p>{query.trim() ? "No networks or gateways match this search." : canManage ? "Set up a network to assign gateways and route its private ranges." : "An owner or admin can add a network."}</p>{query.trim() && <Button size="sm" variant="ghost" onClick={onClearSearch}>Clear search</Button>}</div>}
     <AppAccessPagination maxOffset={null} page={page} pageSize={pageSize} count={cards.length} hasNext={page * pageSize < total} previousLabel="Previous networks" nextLabel="Next networks" onPageChange={onPageChange} onPageSizeChange={onPageSizeChange} />
   </section>;
 }
@@ -1913,4 +1943,22 @@ function PendingQueue({
       )}
     </OperationalSection>
   );
+}
+
+// SSI-13 D4 — every range of every network in ONE table, waiting ones first. The same ranges used to be
+// reachable three ways (a network's detail, the approvals queue, and a "Routed ranges" page in the
+// sidebar), none of which showed them all with their status.
+function AllRangesTable({ cards, onOpen }: { cards: SiteCard[]; onOpen: (siteId: string) => void }) {
+  const [query, setQuery] = useState("");
+  const rows = allRanges(cards).filter((row) => `${row.cidr} ${row.network}`.toLowerCase().includes(query.trim().toLowerCase()));
+  const pagination = useNetworkListPage(rows.length);
+  const pageRows = rows.slice(pagination.start, pagination.end);
+  return <OperationalSection title="All ranges" actions={<Input aria-label="Search ranges" placeholder="Search ranges or networks…" value={query} onChange={(event) => { setQuery(event.target.value); pagination.onPageChange(1); }} className="sites-search" />}>
+    {rows.length === 0 ? <div className="s2s-empty-state" role="status"><h3>{query.trim() ? "No matching ranges" : "No ranges yet"}</h3><p>{query.trim() ? "No range or network matches this search." : "A network shares a range when you add one to it."}</p></div> : <div className="s2s-flat-table"><DataTable caption="All ranges" rows={pageRows} rowKey={(row) => row.key} failed={false} empty={null} pageSize={0} filterable={false} variant="flat" columns={[
+      { key: "range", header: "Range", cell: (row) => <span className="font-mono">{row.cidr}</span> },
+      { key: "network", header: "Network", cell: (row) => <button type="button" className="s2s-text-link" onClick={() => onOpen(row.siteId)}>{row.network}</button> },
+      { key: "status", header: "Status", cell: (row) => <Badge tone={row.status === "approved" ? "ok" : "warn"}>{row.status === "approved" ? "Approved" : "Waiting for approval"}</Badge> },
+    ]} /></div>}
+    <AppAccessPagination maxOffset={null} page={pagination.page} pageSize={pagination.pageSize} count={pageRows.length} hasNext={pagination.hasNext} onPageChange={pagination.onPageChange} onPageSizeChange={pagination.onPageSizeChange} previousLabel="Previous ranges" nextLabel="Next ranges" />
+  </OperationalSection>;
 }
