@@ -1025,7 +1025,7 @@ function SiteCardView({ card, canManage, orgId, role, unboundNodes, dnsFocus, se
       <ResourceSummary className="s2s-network-stage" headingLevel={2} headingId="network-stage-heading" title={step === "overview" ? "Network settings" : networkSteps[stepIndex].label} actions={<div className="s2s-network-stage-actions">
           {step === "gateways" && canManage && unboundNodes.length > 0 && <Button size="sm" onClick={() => setModal("bind")}>Bind gateway</Button>}
           {step === "gateways" && canManage && hasGateway && <Button size="sm" variant="ghost" onClick={() => setModal("unbind")}>Unbind gateway</Button>}
-          {step === "ranges" && canManage && <Button size="sm" onClick={() => setModal("subnet")}>Advertise subnet</Button>}
+          {step === "ranges" && canManage && <Button size="sm" onClick={() => setModal("subnet")}>Add a range</Button>}
         </div>} footer={<>{stepIndex > 0 ? <Button size="sm" variant="ghost" onClick={() => onStepChange(networkSteps[stepIndex - 1].id)}>Back to {networkSteps[stepIndex - 1].label.toLowerCase()}</Button> : <span />}{stepIndex < networkSteps.length - 1 && <Button size="sm" onClick={() => onStepChange(networkSteps[stepIndex + 1].id)}>Continue to {networkSteps[stepIndex + 1].label.toLowerCase()}</Button>}</>}>
         {step === "overview" && <dl className="s2s-network-overview-facts tnx-resource-facts">
           <div className="s2s-network-assignment"><dt>Gateway assignment</dt><dd>{activeGateways.length ? activeGateways.map(gateway => <Link key={gateway.id} to={`/gateways/${gateway.id}`}><span>{gateway.name}</span>{gateway.isHub && <small> · hub</small>}</Link>) : "No active gateway assigned"}</dd></div>
@@ -1206,7 +1206,7 @@ function RegisterSiteModal({
       }
     >
       <div className="s2s-setup-form">
-      <p className="text-cell text-ink-tertiary">Create the location first, then bind gateways and advertise its private ranges.</p>
+      <p className="text-cell text-ink-tertiary">Create the network first, then assign gateways and add its private ranges.</p>
       <Field label="Site name">
         <Input
           value={name}
@@ -1247,19 +1247,19 @@ function AddSubnetModal({
     );
     setBusy(false);
     if (error) {
-      const msg = apiErrorMessage(error, "Could not advertise the subnet.");
+      const msg = apiErrorMessage(error, "Could not add the range.");
       setErr(msg);
       toast.error(msg);
       return;
     }
-    toast.success(`Subnet ${cidr} advertised`);
+    toast.success(`Range ${cidr} added`);
     onClose();
     onDone();
   }
   return (
     <Modal
       placement="right" showClose
-      title="Advertise a subnet"
+      title="Add a range"
       onDismiss={onClose}
       actions={
         <>
@@ -1267,7 +1267,7 @@ function AddSubnetModal({
             Cancel
           </Button>
           <Button onClick={submit} disabled={busy || cidr.trim() === ""}>
-            Advertise
+            Add range
           </Button>
         </>
       }
