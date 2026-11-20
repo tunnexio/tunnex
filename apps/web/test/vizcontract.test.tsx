@@ -305,6 +305,30 @@ describe("NodeLink responsive fit", () => {
   });
 });
 
+describe("SSI-11 — an HA pair with two Sites reads left to right", () => {
+  const pair = [
+    { id: "primary", label: "gw-1", kind: "hub" as const },
+    { id: "standby", label: "gw-2", kind: "hub-standby" as const },
+    { id: "a", label: "site-a", kind: "spoke" as const, value: 2 },
+    { id: "b", label: "site-b", kind: "spoke" as const, value: 1 },
+  ];
+  it("stacks the pair (primary above standby) and puts the Sites left and right, so the figure is wide", () => {
+    const layout = nodeLinkLayout(pair);
+    const at = (id: string) => layout.positions.get(id)!;
+    expect(at("primary").x).toBe(at("standby").x);
+    expect(at("primary").y).toBeLessThan(at("standby").y);
+    expect(at("a").x).toBeLessThan(at("primary").x);
+    expect(at("b").x).toBeGreaterThan(at("primary").x);
+    expect(at("a").y).toBeCloseTo(at("b").y);
+    expect(layout.box.width).toBeGreaterThan(layout.box.height * 1.5);
+  });
+  it("a third Site keeps the ring (only the two-Site pair is special-cased)", () => {
+    const layout = nodeLinkLayout([...pair, { id: "c", label: "site-c", kind: "spoke" as const, value: 1 }]);
+    const ys = ["a", "b", "c"].map((id) => layout.positions.get(id)!.y);
+    expect(new Set(ys.map((y) => Math.round(y))).size).toBeGreaterThan(1);
+  });
+});
+
 describe("NodeLink — deterministic HA hub layout", () => {
   const haNodes = [
     { id: "primary", label: "gateway-primary-with-a-long-name", kind: "hub" as const, sub: "primary · HA set gen 9" },
@@ -368,25 +392,29 @@ describe("NodeLink — deterministic HA hub layout", () => {
   });
 
   it("routes every Site edge clear of unrelated HA cards, badges, and labels", () => {
+    // SSI-11: the pair is stacked now, so WHICH Site needs the detour changed (the one beyond the standby,
+    // not the one beside it). The invariant did not: no primary edge may cross the standby's readable card.
     const layout = nodeLinkLayout(haNodes);
     const primary = layout.positions.get("primary")!;
     const standby = layout.positions.get("standby")!;
-    const euSite = layout.positions.get("s2")!;
-    const route = nodeLinkRoute(primary, euSite, [primary, standby]);
-
-    expect(route.points).toHaveLength(4);
-    for (let i = 1; i < route.points.length; i++) {
-      const start = route.points[i - 1]!;
-      const end = route.points[i]!;
-      const dx = end.x - start.x;
-      const dy = end.y - start.y;
-      const lengthSquared = dx * dx + dy * dy;
-      const t = Math.max(0, Math.min(1, ((standby.x - start.x) * dx + (standby.y - start.y) * dy) / lengthSquared));
-      const clearance = Math.hypot(standby.x - (start.x + t * dx), standby.y - (start.y + t * dy));
-      // ring + badge/label envelope: the line must clear the whole readable standby card, not merely its ring.
-      expect(clearance).toBeGreaterThanOrEqual(standby.r + 48);
+    let detours = 0;
+    for (const id of ["s1", "s2", "s3", "s4"]) {
+      const route = nodeLinkRoute(primary, layout.positions.get(id)!, [primary, standby]);
+      if (route.points.length > 2) detours++;
+      for (let i = 1; i < route.points.length; i++) {
+        const start = route.points[i - 1]!;
+        const end = route.points[i]!;
+        const dx = end.x - start.x;
+        const dy = end.y - start.y;
+        const lengthSquared = dx * dx + dy * dy;
+        const t = Math.max(0, Math.min(1, ((standby.x - start.x) * dx + (standby.y - start.y) * dy) / lengthSquared));
+        const clearance = Math.hypot(standby.x - (start.x + t * dx), standby.y - (start.y + t * dy));
+        // ring + badge/label envelope: the line must clear the whole readable standby card, not merely its ring.
+        expect(clearance).toBeGreaterThanOrEqual(standby.r + 48);
+      }
     }
-    expect(route.path).toMatch(/^M .* L .* L .* L /);
+    // the Site directly beyond the standby cannot be reached in a straight line: at least one edge detours
+    expect(detours).toBeGreaterThanOrEqual(1);
   });
 });
 
