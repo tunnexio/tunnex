@@ -20,12 +20,12 @@ import (
 
 const (
 	// FailoverTickInterval is the CP tick cadence (rides the accesslog-sweep goroutine pattern).
-	FailoverTickInterval = 30 * time.Second
+	FailoverTickInterval = 10 * time.Second // SSI-12 D4: was 30s
 	// failoverDemoteTicks (N) — consecutive stale ticks before a member is PROMOTED-PAST (fail-over FAST).
-	failoverDemoteTicks = 3
+	failoverDemoteTicks = 2 // SSI-12 D4: 2 × 10s. The stall rule already needs two frozen reports.
 	// failoverRestoreTicks (M > N) — consecutive fresh ticks (the hold window) before a demoted member is
 	// RESTORED (fail-back SLOW). The asymmetry lives entirely in N vs M.
-	failoverRestoreTicks = 5
+	failoverRestoreTicks = 15 // SSI-12 D4: 15 × 10s = the same 150s hold as before
 	// failoverStaleWindow — an OBSERVED handshake older than this marks a member STALE for THIS tick (N such
 	// ticks demote it). DERIVED FROM THE WIREGUARD PROTOCOL CADENCE, deliberately NOT a round guess (the
 	// narrowing-was-incidental lesson — the next reader must know why it is NOT 90s):
@@ -47,12 +47,26 @@ const (
 	// transit hub — the costlier error), so it sits ABOVE the agent's badge window by design. If WG's cadence
 	// ever changes, BOTH move; these paired comments are the cross-reference so neither drifts silently.
 	failoverStaleWindow = 240 * time.Second
+
+	// SSI-12 — RECEIVE PROGRESS, the fast signal (docs/SSI-12-decisions.md). Every site-link peer sends a
+	// keepalive every siteLinkKeepaliveSecs, so a living hub moves its witnesses' receive counters and a
+	// dead one never does.
+	//
+	// rxStallWindow: a counter frozen at least this long, three keepalives plus slack.
+	rxStallWindow = 35 * time.Second
+	// rxStallReports: AND frozen across this many consecutive reports. One report with an unchanged
+	// counter is a coincidence of timing; two is a pattern. It also makes the rule follow the gateway's
+	// report cadence without knowing it.
+	rxStallReports = 2
+	// witnessCurrentWindow: a witness that has not reported within this vouches for nothing. Three
+	// default (30s) report intervals plus slack.
+	witnessCurrentWindow = 100 * time.Second
 )
 
 // FailoverTiming is the controller's timing AS SERVED (SSI-11 D1). The dashboard used to keep its own 90s
 // staleness constant and called living hubs stale on every rekey cycle; it now reads these. Whole seconds.
 type FailoverTiming struct {
-	StaleAfterSeconds   int // failoverStaleWindow
+	StaleAfterSeconds   int // rxStallWindow (the receive-progress window; the handshake fallback is slower)
 	DemoteAfterSeconds  int // failoverDemoteTicks consecutive stale ticks
 	RestoreAfterSeconds int // failoverRestoreTicks consecutive fresh ticks
 }
@@ -60,7 +74,7 @@ type FailoverTiming struct {
 // FailoverTimings derives the served timing from THE constants above — never a second set of numbers.
 func FailoverTimings() FailoverTiming {
 	return FailoverTiming{
-		StaleAfterSeconds:   int(failoverStaleWindow / time.Second),
+		StaleAfterSeconds:   int(rxStallWindow / time.Second), // SSI-12: the fast window is the one an operator meets
 		DemoteAfterSeconds:  failoverDemoteTicks * int(FailoverTickInterval/time.Second),
 		RestoreAfterSeconds: failoverRestoreTicks * int(FailoverTickInterval/time.Second),
 	}
@@ -76,6 +90,11 @@ const (
 	auditHubFailback   = "hub_set.failback"   // the controller RESTORED a member (active-order transition, recovery)
 	auditHubMembership = "hub_set.membership" // ReconcileHubSet changed the CONFIGURED membership (not a failover)
 )
+
+// failoverActorSystem names the controller as the audit actor (SSI-12). These events were written with no
+// actor at all, so the audit page showed "not recorded" in the warning colour under a banner calling it a
+// recording gap, for the one class of event where the system acting on its own IS the whole story.
+const failoverActorSystem = "failover-controller"
 
 // FailoverController holds ONE org's in-memory hysteresis state: per-member consecutive stale/fresh tick
 // counts + the demoted set. RESTART CONTRACT (S8.6 #1 — both halves): the COUNTERS are not persisted — a
@@ -306,7 +325,7 @@ func (s *Service) failoverOrg(ctx context.Context, orgID uuid.UUID, now time.Tim
 			if err != nil {
 				return err
 			}
-			if err := audit(ctx, q, orgID, nil, auditHubMembership, "org", orgID.String(), map[string]any{
+			if err := auditAttributed(ctx, q, orgID, uuid.Nil, failoverActorSystem, "", auditHubMembership, "org", orgID.String(), map[string]any{
 				"configured": idsToStrings(configured), "generation": row.Generation, "cause": "failover_corrector",
 			}); err != nil {
 				return err
@@ -318,7 +337,7 @@ func (s *Service) failoverOrg(ctx context.Context, orgID uuid.UUID, now time.Tim
 				return err
 			}
 			if len(added) > 0 {
-				if err := audit(ctx, q, orgID, nil, auditHubPromotion, "org", orgID.String(), map[string]any{
+				if err := auditAttributed(ctx, q, orgID, uuid.Nil, failoverActorSystem, "", auditHubPromotion, "org", orgID.String(), map[string]any{
 					"demoted": idsToStrings(added), "old_primary": primaryOf(oldActive), "new_primary": primaryOf(newActive),
 					"generation": row.Generation, "condition": "primary_stale",
 				}); err != nil {
@@ -326,7 +345,7 @@ func (s *Service) failoverOrg(ctx context.Context, orgID uuid.UUID, now time.Tim
 				}
 			}
 			if len(restored) > 0 {
-				if err := audit(ctx, q, orgID, nil, auditHubFailback, "org", orgID.String(), map[string]any{
+				if err := auditAttributed(ctx, q, orgID, uuid.Nil, failoverActorSystem, "", auditHubFailback, "org", orgID.String(), map[string]any{
 					"restored": idsToStrings(restored), "old_primary": primaryOf(oldActive), "new_primary": primaryOf(newActive),
 					"generation": row.Generation, "condition": "recovered",
 				}); err != nil {

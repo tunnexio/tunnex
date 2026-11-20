@@ -9,7 +9,7 @@ import (
 // controller, the dashboard follows without a second edit; if someone hard-codes a number here, this fails.
 func TestFailoverTimingDerivesFromControllerConstants(t *testing.T) {
 	got := FailoverTimings()
-	if want := int(failoverStaleWindow / time.Second); got.StaleAfterSeconds != want {
+	if want := int(rxStallWindow / time.Second); got.StaleAfterSeconds != want {
 		t.Fatalf("stale_after = %d, want %d", got.StaleAfterSeconds, want)
 	}
 	if want := failoverDemoteTicks * int(FailoverTickInterval/time.Second); got.DemoteAfterSeconds != want {

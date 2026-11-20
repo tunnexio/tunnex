@@ -11366,6 +11366,13 @@ export interface components {
             node_id: string;
             /** @enum {string} */
             role: "primary" | "standby";
+            /**
+             * @description SSI-12: the failover controller's own verdict on this member. `unobserved` = no gateway in another network is reporting on it, so the controller will not rule.
+             * @enum {string}
+             */
+            liveness: "fresh" | "stale" | "unobserved";
+            /** @description Seconds since the evidence the verdict rests on (receive progress seen by a witness, else the last handshake). Absent when unobserved. */
+            silent_seconds?: number;
             /** @description The admin pin (the CONFIGURED order) — so the UI can show a promotion 'in effect' when the active order diverges. Null = unpinned. */
             hub_priority?: number | null;
             /** @description Latest node_peer_status observation, or ABSENT when this member is not reporting (distinct from an idle link with zero bytes). */

@@ -56,7 +56,8 @@ export interface HubSetViewModel {
 // configured-primary member renders as demoted.
 export function hubSetView(
   hs: HubSet | null | undefined,
-  nowMs: number,
+  // Kept for callers; the verdict is served now (SSI-12), so nothing here reads the clock.
+  _nowMs: number,
 ): HubSetViewModel | null {
   if (!hs || hs.members.length === 0) return null;
   let configuredPrimary: string | null = null;
@@ -78,7 +79,6 @@ export function hubSetView(
   const members = hs.members.map((m): HubMemberRow => {
     const met = m.metrics;
     const reporting = met != null;
-    const t = reporting ? Date.parse(met!.last_handshake_at) : NaN;
     return {
       nodeId: m.node_id,
       role: m.role,
@@ -86,8 +86,11 @@ export function hubSetView(
       handshakeAge: reporting ? relativeAge(met!.last_handshake_at) : "n/a",
       rx: reporting ? formatBytes(met!.rx_bytes) : "n/a",
       tx: reporting ? formatBytes(met!.tx_bytes) : "n/a",
-      warm: reporting ? !Number.isNaN(t) && nowMs - t < timing.staleAfterMs : null,
-      ageMs: reporting && !Number.isNaN(t) ? Math.max(0, nowMs - t) : null,
+      // SSI-12 D5: the VERDICT is the controller's, served. This file no longer decides who is stale: it
+      // used to compare a handshake age to a window, which is not how the controller rules any more (a
+      // frozen receive counter demotes a hub whose handshake is still young).
+      warm: m.liveness === "fresh" ? true : m.liveness === "stale" ? false : null,
+      ageMs: m.liveness !== "unobserved" && m.silent_seconds != null ? m.silent_seconds * 1000 : null,
       demoted: promotionInEffect && m.node_id === configuredPrimary,
     };
   });
