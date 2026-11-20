@@ -1,9 +1,10 @@
 import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { api, apiErrorMessage } from "../lib/api";
+import { api, apiErrorMessage, loadOne } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { useGatewayInventory } from "../lib/useGatewayInventory";
 import { siteGate } from "../lib/sitesview";
+import { siteLinkExposure, type EnforcementMode, type OtherNetwork } from "../lib/sitelinkview";
 import { setupReturnPath } from "../lib/setuproute";
 import { Gateways } from "../components/Gateways";
 import "../resource-summary.css";
@@ -59,6 +60,12 @@ function NetworkSetupWorkspace({
   const [done, setDone] = useState(false);
   const [uncertain, setUncertain] = useState(false);
   useEffect(() => { onBusyChange?.(busy || uncertain); }, [busy, uncertain, onBusyChange]);
+  // SSI-4: what this range will be linked to, read when the operator reaches Review. `null` = still
+  // reading; `error` = the other networks could not be listed, which is said out loud rather than read
+  // as "there are none".
+  const [linkContext, setLinkContext] = useState<{ mode: EnforcementMode; others: OtherNetwork[]; error: boolean } | null>(null);
+  const [acknowledged, setAcknowledged] = useState(false);
+  const orgId = org?.id;
   const nodes = state.nodes.filter(
     (node) =>
       node.status === "active" &&
@@ -66,6 +73,45 @@ function NetworkSetupWorkspace({
   );
   const selected = nodes.find((node) => node.id === nodeId);
   const existingSite = selected?.site_id;
+  useEffect(() => {
+    if (step !== 2 || !orgId) return;
+    let current = true;
+    setLinkContext(null);
+    setAcknowledged(false);
+    void (async () => {
+      const [modeRes, sitesRes] = await Promise.all([
+        loadOne(() => api.GET("/api/v1/organizations/{orgId}/zero-trust-mode", { params: { path: { orgId } } })),
+        loadOne(() => api.GET("/api/v1/organizations/{orgId}/sites", { params: { path: { orgId } } })),
+      ]);
+      const read = modeRes.ok ? (modeRes.data as { mode?: string }).mode : undefined;
+      const mode: EnforcementMode = read === "off" || read === "enforcing" ? read : "unknown";
+      if (!sitesRes.ok) {
+        if (current) setLinkContext({ mode, others: [], error: true });
+        return;
+      }
+      const otherSites = (sitesRes.data as Array<{ id: string; name: string }>).filter((site) => site.id !== existingSite);
+      const subnetResults = await Promise.all(otherSites.map((site) =>
+        loadOne(() => api.GET("/api/v1/organizations/{orgId}/sites/{siteId}/subnets", { params: { path: { orgId, siteId: site.id } } })),
+      ));
+      if (!current) return;
+      const others = otherSites.map((site, index) => {
+        const result = subnetResults[index];
+        const subnets = result.ok ? (result.data as Array<{ cidr: string; status: string }>) : [];
+        return { name: site.name, ranges: subnets.filter((subnet) => subnet.status === "approved").map((subnet) => subnet.cidr) };
+      });
+      setLinkContext({ mode, others, error: subnetResults.some((result) => !result.ok) });
+    })();
+    return () => { current = false; };
+  }, [step, orgId, existingSite]);
+  const exposure = linkContext ? siteLinkExposure({ mode: linkContext.mode, newRange: cidr, others: linkContext.others }) : null;
+  // Until the link context is read, and whenever it could not be read in full, the operator must
+  // acknowledge: an unread list is not an empty one.
+  const acknowledgement = !linkContext
+    ? null
+    : linkContext.error
+      ? "I understand this may link to networks that could not be listed"
+      : exposure?.acknowledgement ?? null;
+  const awaitingAcknowledgement = step === 2 && (!linkContext || (acknowledgement !== null && !acknowledged));
   const siteName = existingSite ? state.siteNames?.[existingSite] || "Existing site" : name;
   if (!org) return null;
   async function apply() {
@@ -252,9 +298,25 @@ function NetworkSetupWorkspace({
                     <dd>{cidr}</dd>
                     </div>
                   </dl>
+                  {!linkContext && <p className="network-hint" role="status">Checking what this range will be linked to…</p>}
+                  {linkContext?.error && <p role="status" className="rounded-md border border-warn/30 bg-warn/5 px-3 py-2 text-xs text-warn">Your other networks could not be listed, so Tunnex cannot say what this range will be linked to.</p>}
+                  {exposure && (
+                    <div role="status" data-testid="site-link-exposure" className={exposure.kind === "rules" ? "rounded-md border border-line px-3 py-2 text-xs text-ink-secondary" : "rounded-md border border-warn/30 bg-warn/5 px-3 py-2 text-xs text-warn"}>
+                      <strong className="block text-sm">{exposure.heading}</strong>
+                      <p className="mt-1">{exposure.body}</p>
+                      <ul className="mt-2">
+                        {exposure.networks.map((network) => <li key={network.name}><span>{network.name}</span> <span className="font-mono">{network.ranges.join(", ")}</span></li>)}
+                      </ul>
+                    </div>
+                  )}
+                  {acknowledgement && (
+                    <label className="mt-3 flex items-start gap-2 text-sm">
+                      <input type="checkbox" checked={acknowledged} disabled={busy || uncertain} onChange={(event) => setAcknowledged(event.target.checked)} />
+                      <span>{acknowledgement}</span>
+                    </label>
+                  )}
                   <p className="network-hint">
-                    Existing access policies still apply. This step does not
-                    create access grants or verify reachability.
+                    {exposure || linkContext?.error ? "This step does not create access grants or verify reachability." : "Existing access policies still apply. This step does not create access grants or verify reachability."}
                   </p>
                 </>
               )}
@@ -284,7 +346,7 @@ function NetworkSetupWorkspace({
                   </Button>
                 ) : (
                   <Button
-                    disabled={busy || !selected || uncertain}
+                    disabled={busy || !selected || uncertain || awaitingAcknowledgement}
                     onClick={apply}
                   >
                     {busy ? "Creating network…" : "Create network"}
