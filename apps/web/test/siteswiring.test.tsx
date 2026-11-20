@@ -103,8 +103,8 @@ vi.mock("../src/lib/api", async () => {
                 data: {
                   generation: 9, failover: { stale_after_seconds: 240, demote_after_seconds: 90, restore_after_seconds: 150 },
                   members: [
-                    { node_id: "hub-primary", role: "primary" },
-                    { node_id: "hub-standby", role: "standby" },
+                    { node_id: "hub-primary", role: "primary", liveness: "fresh" },
+                    { node_id: "hub-standby", role: "standby", liveness: "fresh" },
                   ],
                 },
               }
@@ -530,8 +530,8 @@ describe("Networks — Failover reports and protected candidates", () => {
     servedHubSet = {
       generation: 12, failover: { stale_after_seconds: 240, demote_after_seconds: 90, restore_after_seconds: 150 },
       members: [
-        { node_id: "hub-primary", role: "primary", hub_priority: 2, metrics: { last_handshake_at: new Date().toISOString(), rx_bytes: 0, tx_bytes: 0 } },
-        { node_id: "hub-standby", role: "standby", hub_priority: 1 },
+        { node_id: "hub-primary", role: "primary", liveness: "fresh", hub_priority: 2, metrics: { last_handshake_at: new Date().toISOString(), rx_bytes: 0, tx_bytes: 0 } },
+        { node_id: "hub-standby", role: "standby", liveness: "fresh", hub_priority: 1 },
       ],
     };
     withAuth(<Sites />, ["/sites?section=ha"]);
@@ -561,7 +561,7 @@ describe("Networks — Failover reports and protected candidates", () => {
 
   it("pages actual candidates and calculates the next pin from the full hub set after filtering", async () => {
     inventoryNodes = Array.from({ length: 55 }, (_, index) => ({ id: `candidate-${index}`, name: `Gateway ${String(index).padStart(3, "0")}`, site_id: "s1", status: "active" as const }));
-    servedHubSet = { generation: 7, failover: { stale_after_seconds: 240, demote_after_seconds: 90, restore_after_seconds: 150 }, members: [{ node_id: "candidate-0", role: "primary", hub_priority: 1 }, { node_id: "candidate-1", role: "standby", hub_priority: 8 }] };
+    servedHubSet = { generation: 7, failover: { stale_after_seconds: 240, demote_after_seconds: 90, restore_after_seconds: 150 }, members: [{ node_id: "candidate-0", role: "primary", liveness: "fresh", hub_priority: 1 }, { node_id: "candidate-1", role: "standby", liveness: "fresh", hub_priority: 8 }] };
     withAuth(<Sites />, ["/sites?section=ha"]);
     fireEvent.click(await screen.findByRole("button", { name: "Manage candidates" }));
     const dialog = screen.getByRole("dialog", { name: "Hub candidates" });
@@ -593,7 +593,7 @@ describe("Networks — Failover reports and protected candidates", () => {
   it("allows members to read reports without candidate mutations, even when only one gateway remains", async () => {
     viewerRole = "member";
     inventoryNodes = [{ id: "hub-primary", name: "Remaining hub", status: "active", site_id: "s1" }];
-    servedHubSet = { generation: 5, failover: { stale_after_seconds: 240, demote_after_seconds: 90, restore_after_seconds: 150 }, members: [{ node_id: "hub-primary", role: "primary", hub_priority: 1 }] };
+    servedHubSet = { generation: 5, failover: { stale_after_seconds: 240, demote_after_seconds: 90, restore_after_seconds: 150 }, members: [{ node_id: "hub-primary", role: "primary", liveness: "fresh", hub_priority: 1 }] };
     withAuth(<Sites />, ["/sites?section=ha"]);
     expect(await screen.findByRole("table", { name: "Transit hubs" })).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Manage candidates" })).toBeNull();
@@ -605,7 +605,7 @@ describe("Networks — Failover reports and protected candidates", () => {
 
   it("blocks repeated candidate writes while busy and retains the failed preference for an explicit retry", async () => {
     haTopology = true;
-    servedHubSet = { generation: 4, failover: { stale_after_seconds: 240, demote_after_seconds: 90, restore_after_seconds: 150 }, members: [{ node_id: "hub-primary", role: "primary", hub_priority: 1 }, { node_id: "hub-standby", role: "standby", hub_priority: 2 }] };
+    servedHubSet = { generation: 4, failover: { stale_after_seconds: 240, demote_after_seconds: 90, restore_after_seconds: 150 }, members: [{ node_id: "hub-primary", role: "primary", liveness: "fresh", hub_priority: 1 }, { node_id: "hub-standby", role: "standby", liveness: "fresh", hub_priority: 2 }] };
     holdPin = true;
     withAuth(<Sites />, ["/sites?section=ha"]);
     fireEvent.click(await screen.findByRole("button", { name: "Manage candidates" }));

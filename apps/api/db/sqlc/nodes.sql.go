@@ -977,7 +977,7 @@ func (q *Queries) ListNodeOwnerEmails(ctx context.Context, orgID uuid.UUID) ([]L
 }
 
 const listNodePeerStatusForOrg = `-- name: ListNodePeerStatusForOrg :many
-SELECT nps.node_id, nps.public_key, nps.last_handshake_at, nps.rx_bytes, nps.tx_bytes, nps.updated_at
+SELECT nps.node_id, nps.public_key, nps.last_handshake_at, nps.rx_bytes, nps.tx_bytes, nps.updated_at, nps.rx_advanced_at, nps.stalled_reports
 FROM node_peer_status nps
 JOIN nodes n ON n.id = nps.node_id
 WHERE n.org_id = $1
@@ -1002,6 +1002,8 @@ func (q *Queries) ListNodePeerStatusForOrg(ctx context.Context, orgID uuid.UUID)
 			&i.RxBytes,
 			&i.TxBytes,
 			&i.UpdatedAt,
+			&i.RxAdvancedAt,
+			&i.StalledReports,
 		); err != nil {
 			return nil, err
 		}

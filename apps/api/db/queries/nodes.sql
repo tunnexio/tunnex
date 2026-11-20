@@ -199,8 +199,11 @@ UPDATE nodes SET policy_desync_since = NULL WHERE id = $1 AND org_id = $2 AND po
 -- (site-link peers). The EXISTS guard admits ONLY a pubkey that is ANOTHER node (a real gateway) in the
 -- SAME org — a DEVICE pubkey matches no node, so it no-ops here (device peers land in device_status,
 -- gateway peers land here; neither crosses). Batched (one round-trip per report). rx/tx are raw gauges.
-INSERT INTO node_peer_status (node_id, public_key, last_handshake_at, rx_bytes, tx_bytes, updated_at)
-SELECT @node_id, @public_key, @last_handshake_at, @rx_bytes, @tx_bytes, now()
+-- SSI-12: the same write keeps the receive-progress memory. rx_advanced_at moves only when rx_bytes CHANGES
+-- (a counter that went DOWN is an interface restart on the reporter, which is also "not frozen");
+-- stalled_reports counts the reports since. A first sighting starts the clock now with zero stalls.
+INSERT INTO node_peer_status (node_id, public_key, last_handshake_at, rx_bytes, tx_bytes, updated_at, rx_advanced_at, stalled_reports)
+SELECT @node_id, @public_key, @last_handshake_at, @rx_bytes, @tx_bytes, now(), now(), 0
 WHERE EXISTS (
     SELECT 1 FROM nodes peer
     WHERE peer.wg_public_key = @public_key
@@ -211,13 +214,15 @@ ON CONFLICT (node_id, public_key) DO UPDATE
 SET last_handshake_at = EXCLUDED.last_handshake_at,
     rx_bytes = EXCLUDED.rx_bytes,
     tx_bytes = EXCLUDED.tx_bytes,
+    rx_advanced_at = CASE WHEN EXCLUDED.rx_bytes <> node_peer_status.rx_bytes THEN now() ELSE node_peer_status.rx_advanced_at END,
+    stalled_reports = CASE WHEN EXCLUDED.rx_bytes <> node_peer_status.rx_bytes THEN 0 ELSE node_peer_status.stalled_reports + 1 END,
     updated_at = now();
 
 -- name: ListNodePeerStatusForOrg :many
 -- lint:cross-org — org-scoped via the reporting node's org. Every gateway's node-peer telemetry for the
 -- org: the input to D3's per-hub freshness clock + the S8.5 L1 site-link card metrics (read path defined
 -- with the storage, consumed by S8.6 Slice 4 + Slice 6).
-SELECT nps.node_id, nps.public_key, nps.last_handshake_at, nps.rx_bytes, nps.tx_bytes, nps.updated_at
+SELECT nps.node_id, nps.public_key, nps.last_handshake_at, nps.rx_bytes, nps.tx_bytes, nps.updated_at, nps.rx_advanced_at, nps.stalled_reports
 FROM node_peer_status nps
 JOIN nodes n ON n.id = nps.node_id
 WHERE n.org_id = @org_id;

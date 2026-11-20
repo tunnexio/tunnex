@@ -12922,11 +12922,18 @@ components:
           description: "How long a demoted hub must stay fresh before it returns to its configured place."
     HubMember:
       type: object
-      required: [node_id, role]
+      required: [node_id, role, liveness]
       additionalProperties: false
       properties:
         node_id: { type: string, format: uuid }
         role: { type: string, enum: [primary, standby] }
+        liveness:
+          type: string
+          enum: [fresh, stale, unobserved]
+          description: "SSI-12: the failover controller's own verdict on this member. `unobserved` = no gateway in another network is reporting on it, so the controller will not rule."
+        silent_seconds:
+          type: integer
+          description: "Seconds since the evidence the verdict rests on (receive progress seen by a witness, else the last handshake). Absent when unobserved."
         hub_priority:
           type: integer
           nullable: true

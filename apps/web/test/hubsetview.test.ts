@@ -18,11 +18,11 @@ describe("hubSetView (S8.6 HA surface view-model)", () => {
       members: [
         {
           node_id: "a",
-          role: "primary",
+          role: "primary", liveness: "fresh",
           hub_priority: 1,
           metrics: { last_handshake_at: fresh, rx_bytes: 2048, tx_bytes: 0 },
         },
-        { node_id: "b", role: "standby", hub_priority: 2 },
+        { node_id: "b", role: "standby", liveness: "fresh", hub_priority: 2 },
       ],
     };
     const v = hubSetView(hs, now)!;
@@ -37,11 +37,11 @@ describe("hubSetView (S8.6 HA surface view-model)", () => {
       members: [
         {
           node_id: "a",
-          role: "primary",
+          role: "primary", liveness: "fresh",
           hub_priority: 1,
           metrics: { last_handshake_at: fresh, rx_bytes: 0, tx_bytes: 0 },
         }, // idle
-        { node_id: "b", role: "standby", hub_priority: 2 }, // NOT reporting (no metrics)
+        { node_id: "b", role: "standby", liveness: "unobserved", hub_priority: 2 }, // NOT reporting (no metrics)
       ],
     };
     const v = hubSetView(hs, now)!;
@@ -55,19 +55,13 @@ describe("hubSetView (S8.6 HA surface view-model)", () => {
     expect(v.members[1].warm).toBeNull(); // unknown ≠ cold
   });
 
-  it("warm reflects the handshake clock: fresh → true, stale → false", () => {
-    const hs: HubSet = {
-      generation: 1, failover: { stale_after_seconds: 240, demote_after_seconds: 90, restore_after_seconds: 150 },
-      members: [
-        {
-          node_id: "a",
-          role: "primary",
-          hub_priority: 1,
-          metrics: { last_handshake_at: stale, rx_bytes: 5, tx_bytes: 5 },
-        },
-      ],
-    };
-    expect(hubSetView(hs, now)!.members[0].warm).toBe(false);
+  it("warm is the SERVED verdict (SSI-12), never recomputed from the handshake age", () => {
+    const one = (liveness: "fresh" | "stale", at: string): HubSet => ({
+      generation: 1, failover: { stale_after_seconds: 35, demote_after_seconds: 20, restore_after_seconds: 150 },
+      members: [{ node_id: "a", role: "primary", liveness, silent_seconds: 5, hub_priority: 1, metrics: { last_handshake_at: at, rx_bytes: 5, tx_bytes: 5 } }],
+    });
+    expect(hubSetView(one("stale", fresh), now)!.members[0].warm).toBe(false); // young handshake, frozen counter
+    expect(hubSetView(one("fresh", stale), now)!.members[0].warm).toBe(true); // old handshake, still receiving
   });
 
   it("promotion in effect: the acting primary ≠ the configured primary (lowest pin) → demoted flag on the config primary", () => {
@@ -77,13 +71,13 @@ describe("hubSetView (S8.6 HA surface view-model)", () => {
       members: [
         {
           node_id: "a",
-          role: "primary",
+          role: "primary", liveness: "fresh",
           hub_priority: 2,
           metrics: { last_handshake_at: fresh, rx_bytes: 1, tx_bytes: 1 },
         },
         {
           node_id: "b",
-          role: "standby",
+          role: "standby", liveness: "fresh",
           hub_priority: 1,
           metrics: { last_handshake_at: stale, rx_bytes: 1, tx_bytes: 1 },
         },
@@ -99,8 +93,8 @@ describe("hubSetView (S8.6 HA surface view-model)", () => {
     const hs: HubSet = {
       generation: 4, failover: { stale_after_seconds: 240, demote_after_seconds: 90, restore_after_seconds: 150 },
       members: [
-        { node_id: "a", role: "primary", hub_priority: 1 },
-        { node_id: "b", role: "standby", hub_priority: 2 },
+        { node_id: "a", role: "primary", liveness: "fresh", hub_priority: 1 },
+        { node_id: "b", role: "standby", liveness: "fresh", hub_priority: 2 },
       ],
     };
     const v = hubSetView(hs, now)!;
@@ -149,55 +143,58 @@ describe("unobservedHubs", () => {
   });
 });
 
-// SSI-11 — the tab reads the controller's window and states the pending ruling.
-describe("SSI-11 failover timing and notices", () => {
-  const failover = { stale_after_seconds: 240, demote_after_seconds: 90, restore_after_seconds: 150 };
-  const at = (secondsAgo: number) => new Date(now - secondsAgo * 1000).toISOString();
-  const member = (id: string, role: "primary" | "standby", prio: number, secondsAgo: number | null) => ({
-    node_id: id, role, hub_priority: prio,
-    ...(secondsAgo == null ? {} : { metrics: { last_handshake_at: at(secondsAgo), rx_bytes: 1, tx_bytes: 1 } }),
+// SSI-11 / SSI-12 — the tab shows the controller's served verdict and states the pending ruling.
+describe("failover verdict and notices (SSI-11, SSI-12)", () => {
+  const failover = { stale_after_seconds: 35, demote_after_seconds: 20, restore_after_seconds: 150 };
+  type Verdict = "fresh" | "stale" | "unobserved";
+  const member = (id: string, role: "primary" | "standby", prio: number, liveness: Verdict, silent?: number) => ({
+    node_id: id, role, hub_priority: prio, liveness,
+    ...(silent == null ? {} : { silent_seconds: silent, metrics: { last_handshake_at: new Date(now - 60_000).toISOString(), rx_bytes: 1, tx_bytes: 1 } }),
+  });
+  const hs = (generation: number, ...members: ReturnType<typeof member>[]): HubSet => ({ generation, failover, members });
+
+  it("the badge is the SERVED verdict: a young handshake does not make a stale hub look alive", () => {
+    // handshake 60s old (the helper), verdict stale: the receive counter froze. The old code said Recent.
+    const v = hubSetView(hs(1, member("a", "primary", 1, "stale", 50), member("b", "standby", 2, "fresh", 4)), now)!;
+    expect(v.members[0].warm).toBe(false);
+    expect(v.members[1].warm).toBe(true);
   });
 
-  it("a handshake 200s old is RECENT: a healthy link sawtooths that high between rekeys (the old 90s clock said stale)", () => {
-    const v = hubSetView({ generation: 1, failover, members: [member("a", "primary", 1, 200), member("b", "standby", 2, 10)] }, now)!;
-    expect(v.members[0].warm).toBe(true);
+  it("unobserved is neither warm nor cold, and gets no notice", () => {
+    const v = hubSetView(hs(1, member("a", "primary", 1, "unobserved"), member("b", "standby", 2, "fresh", 4)), now)!;
+    expect(v.members[0].warm).toBeNull();
     expect(failoverNotices(v)).toEqual([]);
   });
 
-  it("the window is the SERVED one, not a constant in the bundle", () => {
-    const hs: HubSet = { generation: 1, failover: { ...failover, stale_after_seconds: 60 }, members: [member("a", "primary", 1, 200), member("b", "standby", 2, 10)] };
-    expect(hubSetView(hs, now)!.members[0].warm).toBe(false);
-  });
-
   it("a stale acting hub with an answering standby: pending, with the time left", () => {
-    const v = hubSetView({ generation: 1, failover, members: [member("a", "primary", 1, 270), member("b", "standby", 2, 10)] }, now)!;
-    expect(failoverNotices(v)).toEqual([{ kind: "pending", nodeId: "a", ageMs: 270_000, remainingMs: 60_000 }]);
+    const v = hubSetView(hs(1, member("a", "primary", 1, "stale", 40), member("b", "standby", 2, "fresh", 4)), now)!;
+    expect(failoverNotices(v)).toEqual([{ kind: "pending", nodeId: "a", ageMs: 40_000, remainingMs: 15_000 }]);
   });
 
   it("time left never goes negative when the ruling is overdue", () => {
-    const v = hubSetView({ generation: 1, failover, members: [member("a", "primary", 1, 900), member("b", "standby", 2, 10)] }, now)!;
+    const v = hubSetView(hs(1, member("a", "primary", 1, "stale", 900), member("b", "standby", 2, "fresh", 4)), now)!;
     expect(failoverNotices(v)[0]).toMatchObject({ kind: "pending", remainingMs: 0 });
   });
 
   it("no standby answering: says there is nothing to promote, promises no takeover", () => {
-    const v = hubSetView({ generation: 1, failover, members: [member("a", "primary", 1, 300), member("b", "standby", 2, 400)] }, now)!;
+    const v = hubSetView(hs(1, member("a", "primary", 1, "stale", 60), member("b", "standby", 2, "stale", 70)), now)!;
     expect(failoverNotices(v).map((n) => n.kind)).toEqual(["no_standby", "no_standby"]);
   });
 
   it("a demoted hub answering again: recovering, with the hold time", () => {
     // b acts as primary (served first), a is the configured primary and demoted.
-    const v = hubSetView({ generation: 2, failover, members: [member("b", "primary", 2, 10), member("a", "standby", 1, 20)] }, now)!;
+    const v = hubSetView(hs(2, member("b", "primary", 2, "fresh", 3), member("a", "standby", 1, "fresh", 5)), now)!;
     expect(v.members[1].demoted).toBe(true);
     expect(failoverNotices(v)).toEqual([{ kind: "recovering", nodeId: "a", restoreAfterMs: 150_000 }]);
   });
 
   it("a demoted hub still silent: no notice, the promotion banner already says it", () => {
-    const v = hubSetView({ generation: 2, failover, members: [member("b", "primary", 2, 10), member("a", "standby", 1, 900)] }, now)!;
+    const v = hubSetView(hs(2, member("b", "primary", 2, "fresh", 3), member("a", "standby", 1, "stale", 900)), now)!;
     expect(failoverNotices(v)).toEqual([]);
   });
 
-  it("nothing for a hub nobody can observe, and nothing for one that is not reporting", () => {
-    const v = hubSetView({ generation: 1, failover, members: [member("a", "primary", 1, 300), member("b", "standby", 2, 10), member("c", "standby", 3, null)] }, now)!;
+  it("nothing for a hub nobody can observe", () => {
+    const v = hubSetView(hs(1, member("a", "primary", 1, "stale", 60), member("b", "standby", 2, "fresh", 4)), now)!;
     expect(failoverNotices(v, ["a"])).toEqual([]);
   });
 

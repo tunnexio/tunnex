@@ -234,6 +234,40 @@ func TestReportStatusNodePeerSibling(t *testing.T) {
 	if devStatus != 1 {
 		t.Fatalf("the device peer must still land in device_status (behavior unchanged), got %d", devStatus)
 	}
+
+	// SSI-12: the same upsert keeps receive-progress memory. An unchanged counter counts a stall and
+	// leaves rx_advanced_at alone; a changed one (up OR down: a restart is not a freeze) resets it.
+	const spokeKey = "5JvSqr+WZoVEq5LYgT0Wg/0xODukgcYGkR/IrMUWFVc="
+	progress := func() (stalls int32, advanced time.Time) {
+		t.Helper()
+		if err := tx.QueryRow(ctx, "SELECT stalled_reports, rx_advanced_at FROM node_peer_status WHERE node_id=$1 AND public_key=$2", hub, spokeKey).Scan(&stalls, &advanced); err != nil {
+			t.Fatalf("progress: %v", err)
+		}
+		return
+	}
+	report := func(rx int64) {
+		t.Helper()
+		if err := svc.ReportStatus(ctx, hubRow, []PeerStatus{{PublicKey: spokeKey, LastHandshake: hs, RxBytes: rx, TxBytes: 40}}); err != nil {
+			t.Fatalf("report: %v", err)
+		}
+	}
+	if stalls, _ := progress(); stalls != 0 {
+		t.Fatalf("a first sighting starts with zero stalls, got %d", stalls)
+	}
+	report(30)
+	report(30)
+	if stalls, _ := progress(); stalls != 2 {
+		t.Fatalf("two reports with the same rx must count two stalls, got %d", stalls)
+	}
+	report(62) // one keepalive arrived
+	if stalls, _ := progress(); stalls != 0 {
+		t.Fatalf("a moved counter must clear the stalls, got %d", stalls)
+	}
+	report(62)
+	report(4) // the reporter's interface restarted: lower, but not frozen
+	if stalls, _ := progress(); stalls != 0 {
+		t.Fatalf("a counter that went DOWN is a change, not a stall, got %d", stalls)
+	}
 	_ = tx.QueryRow(ctx, "SELECT count(*) FROM device_status ds JOIN devices d ON d.id=ds.device_id WHERE d.public_key='5JvSqr+WZoVEq5LYgT0Wg/0xODukgcYGkR/IrMUWFVc='").Scan(&gwInDevice)
 	if gwInDevice != 0 {
 		t.Fatal("a GATEWAY peer must NOT land in device_status (neither crosses)")
