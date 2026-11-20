@@ -3,7 +3,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import { api, apiErrorMessage, loadOne } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { useGatewayInventory } from "../lib/useGatewayInventory";
-import { siteGate, lanEgressOptions, type LanEgress } from "../lib/sitesview";
+import { siteGate, lanEgressOptions, lanEgressOutboundNote, type LanEgress } from "../lib/sitesview";
 import { siteLinkExposure, type EnforcementMode, type OtherNetwork } from "../lib/sitelinkview";
 import { setupReturnPath } from "../lib/setuproute";
 import { Gateways } from "../components/Gateways";
@@ -201,7 +201,7 @@ function NetworkSetupWorkspace({
             it and verify the connection from a device.
           </p>
           {egressNote && <p role="status" className="rounded-md border border-warn/30 bg-warn/5 px-3 py-2 text-xs text-warn">{egressNote}</p>}
-          {appliedLanEgress === "gateway_address" && <p className="text-sm text-ink-secondary" data-testid="lan-egress-result">Servers on this network see the gateway's own address for traffic from other networks, so no cloud return route is needed.</p>}
+          {appliedLanEgress === "gateway_address" && <p className="text-sm text-ink-secondary" data-testid="lan-egress-result">Servers on this network see the gateway's own address for traffic from other networks, so nothing needs setting up in this network's cloud for traffic that arrives here. {lanEgressOutboundNote}</p>}
           {appliedLanEgress === "preserve_source" && !existingSite && <div className="text-sm text-ink-secondary" data-testid="lan-egress-result"><p>Servers on this network see the remote machine's real address. Before traffic from other networks can be answered, in your cloud:</p><ol className="mt-1 list-decimal pl-5"><li>Route each other network's range to this gateway.</li><li>Allow the gateway to forward packets that are not addressed to it (on AWS, turn off the source/destination check; on Google Cloud and Azure, enable IP forwarding).</li></ol></div>}
           <div className="network-actions">
             {embedded ? <Button onClick={onComplete}>Continue connection setup</Button> : <><Link to={fromGuide ? "/access?from=setup&purpose=vpn&setupStep=3" : "/access"} className="network-primary-link">
@@ -352,6 +352,7 @@ function NetworkSetupWorkspace({
                           <span><strong>{option.label}</strong><span className="block text-ink-secondary">{option.sees} {option.needs}</span></span>
                         </label>
                       ))}
+                      <p className="network-hint" data-testid="lan-egress-outbound-note">{lanEgressOutboundNote}</p>
                     </fieldset>
                   ) : (
                     <p className="network-hint" data-testid="lan-egress-unavailable">This gateway cannot translate traffic from other networks yet, so servers will see the remote machine's real address and your cloud must route the other networks' ranges to this gateway. Upgrade the gateway to remove that step.</p>

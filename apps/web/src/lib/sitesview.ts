@@ -154,15 +154,26 @@ export const lanEgressOptions: Array<{ value: LanEgress; label: string; sees: st
     value: "gateway_address",
     label: "Gateway address",
     sees: "Servers on this network see the gateway's own address (source NAT).",
-    needs: "No cloud return route is needed.",
+    needs: "Nothing to set up in this network's cloud for traffic that arrives here.",
   },
   {
     value: "preserve_source",
     label: "Original address",
     sees: "Servers on this network see the remote machine's real address.",
-    needs: "Your cloud must route the other networks' ranges to this gateway and allow it to forward.",
+    needs: "This network's cloud must route the other networks' ranges to this gateway and allow it to forward.",
   },
 ];
+
+// lanEgressOutboundNote is what NEITHER mode removes, said beside both. The AWS ↔ Google Cloud walk on
+// 2026-11-20 found the first wording ("No cloud return route is needed") true and misleading: it reads as
+// "nothing to do in the cloud", but a server that STARTS a connection to another network still has to get
+// its packets to its own gateway. On AWS that took three things, and the third was found only by a packet
+// capture showing nothing arriving: the gateway's security group.
+export const lanEgressOutboundNote =
+  "Either way, a server on this network that starts a connection to another network needs three things in " +
+  "this network's cloud: a route for the other range to this gateway, permission for the gateway to forward " +
+  "(source/destination check off on AWS, IP forwarding on Google Cloud and Azure), and the gateway's firewall " +
+  "allowing that server's traffic in. Devices need none of this.";
 
 // lanEgressOf reads the mode off a served site. An absent or unknown value is preserve_source: that is what
 // every gateway does unless told otherwise, so it is the only value that cannot overstate what is applied.

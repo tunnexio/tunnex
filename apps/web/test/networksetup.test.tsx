@@ -316,7 +316,7 @@ describe("Network setup — how the new network sees other networks", () => {
     await create();
     await screen.findByText("Network created");
     expect(mock.put).toHaveBeenCalledWith(...egressPut);
-    expect(screen.getByTestId("lan-egress-result").textContent).toContain("no cloud return route is needed");
+    expect(screen.getByTestId("lan-egress-result").textContent).toContain("nothing needs setting up in this network's cloud for traffic that arrives here");
   });
 
   it("with the original address chosen, sends nothing more and lists the cloud steps", async () => {

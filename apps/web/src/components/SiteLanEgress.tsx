@@ -1,6 +1,6 @@
 import { useEffect, useId, useState } from "react";
 import { api, apiErrorMessage } from "../lib/api";
-import { lanEgressOptions, type LanEgress } from "../lib/sitesview";
+import { lanEgressOptions, lanEgressOutboundNote, type LanEgress } from "../lib/sitesview";
 import { Button, ErrorText } from "./ui";
 
 // SiteLanEgress (SSI-8) — how this network's LAN sees traffic from other networks.
@@ -65,6 +65,7 @@ export function SiteLanEgress({ orgId, siteId, current, canManage, onSaved }: {
           </span>
         </label>
       ))}
+      <p className="s2s-operation-context mt-2" data-testid="lan-egress-outbound-note">{lanEgressOutboundNote}</p>
       <ErrorText>{error}</ErrorText>
       {canManage && <div className="mt-3"><Button size="sm" disabled={busy || choice === applied} onClick={() => void save()}>{busy ? "Saving…" : "Save"}</Button></div>}
     </fieldset>
