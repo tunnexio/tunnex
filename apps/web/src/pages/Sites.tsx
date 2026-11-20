@@ -716,7 +716,7 @@ function RouteLANModal({
           ))}
         </Select>
       </Field>
-      <Field label="LAN CIDR">
+      <Field label="Private range (CIDR)">
         <Input
           value={cidr}
           onChange={(e) => setCidr(e.target.value)}
@@ -1275,7 +1275,7 @@ function AddSubnetModal({
       <div className="s2s-setup-form">
       <p className="text-cell text-ink-tertiary">The range stays inactive until an owner or admin approves it.</p>
       <div>
-        <Field label="LAN CIDR">
+        <Field label="Private range (CIDR)">
           <Input
             value={cidr}
             onChange={(e) => setCidr(e.target.value)}
@@ -1498,7 +1498,7 @@ function RemoveSubnetConfirm({
           </Button>
           <Button
             variant="danger"
-            className="bg-danger hover:bg-danger"
+            className="bg-danger hover:bg-danger !text-white"
             onClick={submit}
             disabled={busy}
           >
@@ -1752,7 +1752,7 @@ function DeleteSiteModal({
           </Button>
           <Button
             variant="primary"
-            className="bg-danger hover:bg-danger"
+            className="bg-danger hover:bg-danger !text-white"
             onClick={submit}
             disabled={
               busy ||
@@ -1910,13 +1910,13 @@ function PendingQueue({
   return (
     <OperationalSection title="Range approvals">
       <p className="mt-1 text-xs text-slate-500">
-        Approve local IP ranges advertised by gateways so they can be routed. Access Policies control who can use them.
+        A range added to a network waits here until an owner or admin approves it. Access Policies control who can use it.
       </p>
       <div className="s2s-flat-table">
         <div className="min-w-[520px]">
           <div className="s2s-approval-columns">
-            <span>CIDR</span>
-            <span>Site</span>
+            <span>Range</span>
+            <span>Network</span>
             <span>State</span>
             <span>Action</span>
           </div>
