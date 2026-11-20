@@ -558,3 +558,61 @@ func (s *Service) RemoveSubnet(ctx context.Context, actor, orgID, subnetID uuid.
 	})
 	return subnetsrc.ProviderConflict(err)
 }
+
+// LAN egress modes (SSI-8): how a site's LAN sees traffic that arrives from other sites.
+const (
+	LANEgressPreserveSource = "preserve_source" // the remote address is kept; the LAN needs a return route
+	LANEgressGatewayAddress = "gateway_address" // the site's gateways translate it to their own LAN address
+)
+
+// LANEgressMinPolicyVersion is the first artifact version that carries the translation. A gateway that
+// reports a lower ceiling would REFUSE the artifact and deny everything, so the setting is refused first.
+const LANEgressMinPolicyVersion = 15
+
+// SetLANEgress chooses how the site's LAN sees remote-site traffic (SSI-8). Audited old→new in the same
+// transaction; a no-op change writes nothing. Choosing gateway_address is REFUSED while any active gateway
+// of the site cannot render it: the alternative is that gateway refusing its whole artifact, which is a
+// site outage the operator did not ask for. Returning to preserve_source is always allowed.
+func (s *Service) SetLANEgress(ctx context.Context, actor, orgID, siteID uuid.UUID, mode string) (sqlc.Site, error) {
+	if mode != LANEgressPreserveSource && mode != LANEgressGatewayAddress {
+		return sqlc.Site{}, apierr.BadRequest("invalid_lan_egress", "lan_egress must be preserve_source or gateway_address")
+	}
+	var out sqlc.Site
+	err := s.withTx(ctx, func(q *sqlc.Queries) error {
+		cur, err := q.GetSite(ctx, sqlc.GetSiteParams{ID: siteID, OrgID: orgID})
+		if err != nil {
+			if err == pgx.ErrNoRows {
+				return apierr.NotFound("site_not_found", "no such site in this organization")
+			}
+			return err
+		}
+		if cur.LanEgress == mode {
+			out = cur
+			return nil
+		}
+		if mode == LANEgressGatewayAddress {
+			gateways, err := q.ListSiteGatewayPolicyVersions(ctx, sqlc.ListSiteGatewayPolicyVersionsParams{
+				OrgID: orgID, SiteID: pgtype.UUID{Bytes: siteID, Valid: true},
+			})
+			if err != nil {
+				return err
+			}
+			for _, g := range gateways {
+				if g.MaxPolicyVersion < LANEgressMinPolicyVersion {
+					return apierr.Conflict("gateway_upgrade_required",
+						"gateway "+g.Name+" cannot translate site traffic yet; upgrade it before choosing the gateway address for this network")
+				}
+			}
+		}
+		updated, err := q.SetSiteLANEgress(ctx, sqlc.SetSiteLANEgressParams{ID: siteID, OrgID: orgID, LanEgress: mode})
+		if err != nil {
+			return err
+		}
+		out = updated
+		return s.auditSite(ctx, q, orgID, actor, siteID, "site.lan_egress_changed", map[string]any{"from": cur.LanEgress, "to": mode})
+	})
+	if err != nil {
+		return sqlc.Site{}, err
+	}
+	return out, nil
+}

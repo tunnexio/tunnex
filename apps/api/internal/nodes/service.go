@@ -1044,6 +1044,9 @@ type siteTopology struct {
 	clientGraph *gatewaymesh.Graph
 	gws         []sqlc.ListSiteGatewaysForOrgRow
 	subnets     map[uuid.UUID][]string // site_id -> approved subnet CIDRs
+	// lanMasquerade (SSI-8) is the set of sites that chose lan_egress='gateway_address': their gateways
+	// source-NAT remote-site traffic at the LAN edge. Absent = preserve_source, the behaviour before SSI-8.
+	lanMasquerade map[uuid.UUID]bool
 	// dnsForwards (S8.4) is the org's cross-site DNS forwarding table — the union of every site's
 	// dns_forwarding entries, compiled onto EVERY gateway so any gateway can answer for any site's zone.
 	dnsForwards         []policyspec.DNSForward
@@ -1123,6 +1126,18 @@ func (s *Service) loadSiteTopology(ctx context.Context, orgID uuid.UUID) (siteTo
 	subs, err := s.q.ListSiteSubnetsForOrg(ctx, orgID) // approved (site_id, cidr)
 	if err != nil {
 		return siteTopology{}, err
+	}
+	// SSI-8: which sites translate remote-site traffic at their LAN edge. Read with the rest of the
+	// topology so a setting change reaches the artifact on the next compile, like an approved range.
+	siteRows, err := s.q.ListSitesByOrg(ctx, orgID)
+	if err != nil {
+		return siteTopology{}, err
+	}
+	lanMasquerade := map[uuid.UUID]bool{}
+	for _, site := range siteRows {
+		if site.LanEgress == sitesLANEgressGatewayAddress {
+			lanMasquerade[site.ID] = true
+		}
 	}
 	sub := map[uuid.UUID][]string{}
 	for _, ss := range subs {
@@ -1275,7 +1290,7 @@ func (s *Service) loadSiteTopology(ctx context.Context, orgID uuid.UUID) (siteTo
 		sort.Strings(c.vips)
 		connectors[id] = c
 	}
-	return siteTopology{clientGraph: clientGraph, gws: gws, subnets: sub, dnsForwards: fwds, dnsResolverProfiles: dnsProfiles, hubMembers: hubMembers, poolCIDR: poolCIDR, vipMappings: vipMappings, k8sDNS: k8sDNS, k8sConnectors: connectors}, nil
+	return siteTopology{clientGraph: clientGraph, gws: gws, subnets: sub, lanMasquerade: lanMasquerade, dnsForwards: fwds, dnsResolverProfiles: dnsProfiles, hubMembers: hubMembers, poolCIDR: poolCIDR, vipMappings: vipMappings, k8sDNS: k8sDNS, k8sConnectors: connectors}, nil
 }
 
 // deriveActive is THE shared hub-order derivation (S8.6 REDUCE) — the ONE function every consumer reads
@@ -1445,6 +1460,10 @@ func activeHubDialFrom(nodeID uuid.UUID, activeMembers []sqlc.ListSiteGatewaysFo
 	}
 	return "", "", false
 }
+
+// sitesLANEgressGatewayAddress mirrors sites.LANEgressGatewayAddress (the sites package imports nothing
+// from here, and this package must not import it back). The value is the sites.lan_egress column's.
+const sitesLANEgressGatewayAddress = "gateway_address"
 
 // siteCarriers names, for every site, the ONE gateway that carries the site's ranges on a hub's peer set
 // (SSI-7b, finding F9). A site may hold several gateways. The carrier is the site's earliest member of the
@@ -2054,6 +2073,9 @@ func (s *Service) finalizeSiteArtifact(topo siteTopology, node sqlc.Node, pol *p
 			pol.LocalSubnets = local
 			pol.DNSForwards = dns
 			pol.PoolCIDR = topo.poolCIDR
+			// SSI-8: rides WITH routes, so a site with nothing remote to translate carries no flag and
+			// keeps its earlier version. Presence triggers RequiredVersion=15.
+			pol.SiteLANMasquerade = topo.lanMasquerade[uuid.UUID(node.SiteID.Bytes)]
 		}
 		pol.VIPMappings = vips     // S10.3 (triggers RequiredVersion=7 when present)
 		pol.K8sDNSZones = dnsZones // S10.3 (A1) — DNS-listen table, same v7 trigger
@@ -2066,6 +2088,7 @@ func (s *Service) finalizeSiteArtifact(topo siteTopology, node sqlc.Node, pol *p
 		c.LocalSubnets = local
 		c.DNSForwards = dns
 		c.PoolCIDR = topo.poolCIDR
+		c.SiteLANMasquerade = topo.lanMasquerade[uuid.UUID(node.SiteID.Bytes)] // SSI-8, as above
 	}
 	c.Version = policyspec.RequiredVersion(c)
 	return &c

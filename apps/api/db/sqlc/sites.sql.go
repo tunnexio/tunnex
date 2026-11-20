@@ -106,7 +106,7 @@ func (q *Queries) CountPolicyRulesReferencingSite(ctx context.Context, arg Count
 
 const createSite = `-- name: CreateSite :one
 INSERT INTO sites (org_id, name) VALUES ($1, $2)
-RETURNING id, org_id, name, link_transport, link_mtu, dns_forwarding, created_at, updated_at
+RETURNING id, org_id, name, link_transport, link_mtu, dns_forwarding, created_at, updated_at, lan_egress
 `
 
 type CreateSiteParams struct {
@@ -126,6 +126,7 @@ func (q *Queries) CreateSite(ctx context.Context, arg CreateSiteParams) (Site, e
 		&i.DnsForwarding,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.LanEgress,
 	)
 	return i, err
 }
@@ -180,7 +181,7 @@ func (q *Queries) GetNodeSiteBinding(ctx context.Context, arg GetNodeSiteBinding
 }
 
 const getSite = `-- name: GetSite :one
-SELECT id, org_id, name, link_transport, link_mtu, dns_forwarding, created_at, updated_at FROM sites WHERE id = $1 AND org_id = $2
+SELECT id, org_id, name, link_transport, link_mtu, dns_forwarding, created_at, updated_at, lan_egress FROM sites WHERE id = $1 AND org_id = $2
 `
 
 type GetSiteParams struct {
@@ -200,6 +201,7 @@ func (q *Queries) GetSite(ctx context.Context, arg GetSiteParams) (Site, error) 
 		&i.DnsForwarding,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.LanEgress,
 	)
 	return i, err
 }
@@ -328,6 +330,47 @@ func (q *Queries) ListSiteDNSForwardsForOrg(ctx context.Context, orgID uuid.UUID
 			return nil, err
 		}
 		items = append(items, dns_forwarding)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listSiteGatewayPolicyVersions = `-- name: ListSiteGatewayPolicyVersions :many
+SELECT n.id, n.name,
+       COALESCE((n.capabilities->>'max_policy_version')::int, 0)::int AS max_policy_version
+FROM nodes n
+WHERE n.org_id = $1 AND n.site_id = $2 AND n.status = 'active'
+ORDER BY n.id
+`
+
+type ListSiteGatewayPolicyVersionsParams struct {
+	OrgID  uuid.UUID   `json:"org_id"`
+	SiteID pgtype.UUID `json:"site_id"`
+}
+
+type ListSiteGatewayPolicyVersionsRow struct {
+	ID               uuid.UUID `json:"id"`
+	Name             string    `json:"name"`
+	MaxPolicyVersion int32     `json:"max_policy_version"`
+}
+
+// SSI-8: the highest artifact version each ACTIVE gateway of a site reports it can apply. 0 when a
+// gateway has reported nothing yet, which the caller treats as "cannot" (never as "can").
+func (q *Queries) ListSiteGatewayPolicyVersions(ctx context.Context, arg ListSiteGatewayPolicyVersionsParams) ([]ListSiteGatewayPolicyVersionsRow, error) {
+	rows, err := q.db.Query(ctx, listSiteGatewayPolicyVersions, arg.OrgID, arg.SiteID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListSiteGatewayPolicyVersionsRow{}
+	for rows.Next() {
+		var i ListSiteGatewayPolicyVersionsRow
+		if err := rows.Scan(&i.ID, &i.Name, &i.MaxPolicyVersion); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
 	}
 	if err := rows.Err(); err != nil {
 		return nil, err
@@ -512,7 +555,7 @@ func (q *Queries) ListSiteSubnetsForOrg(ctx context.Context, orgID uuid.UUID) ([
 }
 
 const listSitesByOrg = `-- name: ListSitesByOrg :many
-SELECT id, org_id, name, link_transport, link_mtu, dns_forwarding, created_at, updated_at FROM sites WHERE org_id = $1 ORDER BY created_at
+SELECT id, org_id, name, link_transport, link_mtu, dns_forwarding, created_at, updated_at, lan_egress FROM sites WHERE org_id = $1 ORDER BY created_at
 `
 
 func (q *Queries) ListSitesByOrg(ctx context.Context, orgID uuid.UUID) ([]Site, error) {
@@ -533,6 +576,7 @@ func (q *Queries) ListSitesByOrg(ctx context.Context, orgID uuid.UUID) ([]Site, 
 			&i.DnsForwarding,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.LanEgress,
 		); err != nil {
 			return nil, err
 		}
@@ -557,6 +601,36 @@ type SetSiteDNSForwardingParams struct {
 func (q *Queries) SetSiteDNSForwarding(ctx context.Context, arg SetSiteDNSForwardingParams) error {
 	_, err := q.db.Exec(ctx, setSiteDNSForwarding, arg.ID, arg.DnsForwarding)
 	return err
+}
+
+const setSiteLANEgress = `-- name: SetSiteLANEgress :one
+UPDATE sites SET lan_egress = $1
+WHERE id = $2 AND org_id = $3
+RETURNING id, org_id, name, link_transport, link_mtu, dns_forwarding, created_at, updated_at, lan_egress
+`
+
+type SetSiteLANEgressParams struct {
+	LanEgress string    `json:"lan_egress"`
+	ID        uuid.UUID `json:"id"`
+	OrgID     uuid.UUID `json:"org_id"`
+}
+
+// SSI-8: choose how the site's LAN sees remote-site traffic. Org-scoped; no row = not in this org.
+func (q *Queries) SetSiteLANEgress(ctx context.Context, arg SetSiteLANEgressParams) (Site, error) {
+	row := q.db.QueryRow(ctx, setSiteLANEgress, arg.LanEgress, arg.ID, arg.OrgID)
+	var i Site
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.Name,
+		&i.LinkTransport,
+		&i.LinkMtu,
+		&i.DnsForwarding,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.LanEgress,
+	)
+	return i, err
 }
 
 const unbindNode = `-- name: UnbindNode :execrows

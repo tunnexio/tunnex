@@ -1537,6 +1537,9 @@ type Querier interface {
 	// lint:cross-org — org-scoped directly. S8.4: each site's dns_forwarding JSONB ([{domain,resolver_ip}]),
 	// unioned CP-side into the org forwarding table compiled onto every gateway.
 	ListSiteDNSForwardsForOrg(ctx context.Context, orgID uuid.UUID) ([][]byte, error)
+	// SSI-8: the highest artifact version each ACTIVE gateway of a site reports it can apply. 0 when a
+	// gateway has reported nothing yet, which the caller treats as "cannot" (never as "can").
+	ListSiteGatewayPolicyVersions(ctx context.Context, arg ListSiteGatewayPolicyVersionsParams) ([]ListSiteGatewayPolicyVersionsRow, error)
 	// S8.2: every site-bound gateway that has reported a WG key, with its site + public endpoint — the
 	// input to the hub-and-spoke site-link peer graph + per-node route set. A gateway with no wg_public_key
 	// yet can't be a peer, so it is excluded. endpoint is '' for a NAT'd spoke (it dials out).
@@ -2024,6 +2027,8 @@ type Querier interface {
 	SetPolicyRuleEnabled(ctx context.Context, arg SetPolicyRuleEnabledParams) (PolicyRule, error)
 	// lint:cross-org — the site is org-checked via GetSite before this write (S8.4 D7 CRUD).
 	SetSiteDNSForwarding(ctx context.Context, arg SetSiteDNSForwardingParams) error
+	// SSI-8: choose how the site's LAN sees remote-site traffic. Org-scoped; no row = not in this org.
+	SetSiteLANEgress(ctx context.Context, arg SetSiteLANEgressParams) (Site, error)
 	// lint:cross-org — user-scoped credential.
 	// Replay guard: advance the last-accepted timestep after a successful verify.
 	SetTOTPLastTimestep(ctx context.Context, arg SetTOTPLastTimestepParams) error
