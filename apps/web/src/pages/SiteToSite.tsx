@@ -65,12 +65,15 @@ export function SiteToSiteView({ orgId, state, onRetry, renderDetails, ipsecWork
   // "connection" that created nothing); it stays reachable at ?method=wireguard for existing links.
   const method = params.get("method") === "wireguard" ? "wireguard" : "ipsec";
   const createParam = params.get("create");
+  // Wait until the networks are loaded: the workspace that shows the form mounts only then, and a request
+  // raised before it exists was consumed by nobody (the form never opened when arriving from another tab).
+  const ready = state.kind === "ready";
   useEffect(() => {
-    if (!createParam) return;
+    if (!createParam || !ready) return;
     setCreateProfile(createParam === "azure" ? "azure-active-active-bgp-ipv4-v1" : createParam === "gcp" ? "gcp-ha-bgp-ipv4-v1" : "aws");
     setCreateRequest(value => value + 1);
     setParams(previous => { const next = new URLSearchParams(previous); next.delete("create"); return next; }, { replace: true });
-  }, [createParam, setParams]);
+  }, [createParam, ready, setParams]);
   const setMethod = (value: "wireguard" | "ipsec") => setParams(previous => { const next = new URLSearchParams(previous); next.set("method", value); return next; });
   const [choosing, setChoosing] = useState(false);
   const [createRequest, setCreateRequest] = useState(0);

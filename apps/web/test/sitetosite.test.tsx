@@ -271,3 +271,15 @@ it.each([
  expect(Array.from((screen.getByLabelText("Cloud VPN profile") as HTMLSelectElement).options).map(option=>option.value)).toEqual(options);
  expect(Boolean(screen.queryByLabelText("Import Tunnex Azure JSON"))).toBe(azure);
 });
+
+it("SSI-13: arriving with ?create= opens the provider's form once the page has loaded", async () => {
+  mock.get.mockImplementation(async (path: string) => {
+    if (path.endsWith("/members")) return { data: [{ user_id: "user", role: "owner" }] };
+    if (path.endsWith("/settings")) return { data: { enabled: true, revision: 1 } };
+    if (path.endsWith("/connections")) return { data: { items: [], next_cursor: null } };
+    return { data: [] };
+  });
+  render(<MemoryRouter initialEntries={["/site-to-site?create=gcp"]}><SiteToSite /></MemoryRouter>);
+  await screen.findByRole("dialog", { name: "New IPsec connection" });
+  expect((screen.getByLabelText("Cloud VPN profile") as HTMLSelectElement).value).toBe("gcp-ha-bgp-ipv4-v1");
+});
