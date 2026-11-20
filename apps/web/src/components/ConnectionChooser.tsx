@@ -54,7 +54,7 @@ export function ConnectionChooser({ sites, orgId, onClose, onAWS, onGCP, onAzure
       ] as const).map(provider => <button key={provider.mark} disabled className="sts-chooser-choice"><span className="sts-chooser-provider-identity"><ProviderMark provider={provider.mark} className="sts-chooser-provider-mark" /><span className="sts-chooser-choice-copy"><strong>{provider.name}</strong></span></span><span className="sts-chooser-choice-meta">Not available yet</span></button>)}
     </div>}
     {step === "wireguard" && <div className="sts-chooser-wireguard">
-      {adding ? <NetworkSetup embedded onBusyChange={setBusy} onCancel={() => setAdding(false)} onComplete={() => void reloadNetworks()} /> : <>
+      {adding ? <NetworkSetup embedded onBusyChange={setBusy} onCancel={() => { setAdding(false); setStep("method"); }} onComplete={() => void reloadNetworks()} /> : <>
         <div className="sts-chooser-wireguard-toolbar"><p>Each network needs a Tunnex gateway.</p><Button onClick={() => setAdding(true)}>Add a network</Button></div>
         {networks.length < 2 ? <div className="sts-chooser-empty"><h3>{networks.length === 0 ? "Add two networks" : "Add a second network"}</h3>{networks.length === 1 && <p>Existing network: {networks[0].name}.</p>}</div> : orgId ? <SitePairReview sites={networks} renderDetails={(first, second) => <SitePairDetails orgId={orgId} first={first} second={second} />} /> : <p role="alert">Organization unavailable. Close and retry.</p>}
       </>}
