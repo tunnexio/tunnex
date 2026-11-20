@@ -86,3 +86,18 @@ func TestDeriveMemberLivenessRxProgress(t *testing.T) {
 		}
 	})
 }
+
+// The box-walk deleted the only other network: its gateway stopped reporting the hubs, its rows froze like a
+// dead hub's, and both hubs were demoted with nobody left to restore them. An unbound gateway is no witness.
+func TestWitnessRowsDropsGatewaysThatNoLongerPeer(t *testing.T) {
+	bound, unbound := uuid.New(), uuid.New()
+	site := pgtype.UUID{Bytes: uuid.New(), Valid: true}
+	rows := []sqlc.NodePeerStatus{{NodeID: bound, PublicKey: "hub"}, {NodeID: unbound, PublicKey: "hub"}}
+	got := witnessRows(rows, []sqlc.ListSiteGatewaysForOrgRow{{ID: bound, SiteID: site}, {ID: unbound}})
+	if len(got) != 1 || got[0].NodeID != bound {
+		t.Fatalf("want only the bound gateway's row, got %+v", got)
+	}
+	if left := witnessRows(rows, nil); len(left) != 0 {
+		t.Fatalf("with no bound gateway there is no witness, got %+v", left)
+	}
+}
