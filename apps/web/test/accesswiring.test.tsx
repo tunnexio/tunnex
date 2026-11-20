@@ -551,6 +551,8 @@ describe("Access — F06 agent sources are first-class", () => {
     const review = within(createDialog).getByRole("button", { name: "Review rule" });
     expect((review as HTMLButtonElement).disabled).toBe(true);
     expect((within(createDialog).getByRole("combobox", { name: "Destination" }) as HTMLInputElement).value).toBe("");
+    expect(within(createDialog).getByText("Choose a destination")).toBeTruthy();
+    expect(within(createDialog).getByText("Choose a destination to see what this rule allows.")).toBeTruthy();
     fireEvent.focus(within(createDialog).getByRole("combobox", { name: "Destination" }));
     fireEvent.click(await within(createDialog).findByRole("button", { name: /10\.0\.0\.0\/24/ }));
     expect((review as HTMLButtonElement).disabled).toBe(false);
