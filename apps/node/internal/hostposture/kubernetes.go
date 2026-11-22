@@ -314,7 +314,7 @@ func validateGatewayAuthority(labels, annotations map[string]string, serviceAcco
 	if gateway == nil || boolValue(gateway.SecurityContext.Privileged) ||
 		gateway.SecurityContext.AllowPrivilegeEscalation == nil || *gateway.SecurityContext.AllowPrivilegeEscalation ||
 		gateway.SecurityContext.RunAsNonRoot == nil || *gateway.SecurityContext.RunAsNonRoot || gateway.SecurityContext.SeccompProfile.Type != "RuntimeDefault" ||
-		!equalStringSet(gateway.SecurityContext.Capabilities.Add, []string{"NET_ADMIN", "NET_BIND_SERVICE"}) ||
+		!equalStringSet(gateway.SecurityContext.Capabilities.Add, gatewayCapabilities(hasExactLiteralEnv(gateway.Env, "TUNNEX_AI_VPN_AUTO", "true"))) ||
 		!equalStringSet(gateway.SecurityContext.Capabilities.Drop, []string{"ALL"}) {
 		return fmt.Errorf("gateway NET_ADMIN security contract is missing")
 	}
@@ -324,6 +324,16 @@ func validateGatewayAuthority(labels, annotations map[string]string, serviceAcco
 		return fmt.Errorf("gateway host dataplane contract is missing")
 	}
 	return nil
+}
+
+// gatewayCapabilities is the exact capability set the gateway chart renders:
+// NET_RAW is present only when VPN inference is on, which the chart states
+// with the literal TUNNEX_AI_VPN_AUTO=true. The set must match its mode.
+func gatewayCapabilities(vpnInference bool) []string {
+	if vpnInference {
+		return []string{"NET_ADMIN", "NET_BIND_SERVICE", "NET_RAW"}
+	}
+	return []string{"NET_ADMIN", "NET_BIND_SERVICE"}
 }
 
 func equalStrings(a, b []string) bool {
