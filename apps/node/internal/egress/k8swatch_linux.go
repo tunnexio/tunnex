@@ -58,7 +58,14 @@ const (
 	servicePath   = "/api/v1/services"
 	saTokenPath   = "/var/run/secrets/kubernetes.io/serviceaccount/token"
 	saCAPath      = "/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
-	watchIdleWait = 2 * time.Second // backoff after a FAILED list before retrying (never with a stale view — the list clears first)
+	watchIdleWait = 2 * time.Second // backoff after a FAILED list before retrying
+	// apiOutageGrace (K8L-9) is how long the last complete view keeps serving after the Kubernetes API stops
+	// answering. An API server restart, an etcd leader change or a control-plane upgrade lasts seconds; pods
+	// and their addresses do not change because of it. Clearing the view at once blackholed every exposed
+	// Service and took the gateway out of its load balancer for an event the workloads never noticed.
+	// kube-proxy keeps its last rules indefinitely in the same situation. The bound exists because an address
+	// can be reused by a different pod: beyond it the view is cleared, exactly as before.
+	apiOutageGrace = 60 * time.Second
 	// H2 (dead-while-green): a watch must be BOUNDED. timeoutSeconds asks the API server to close the stream
 	// (server-side), and watchMaxDuration is the CLIENT backstop for a SILENT partition (no FIN/RST) where the
 	// server never closes — without it sc.Scan() blocks for the TCP-keepalive window (minutes) while the 30s
@@ -156,6 +163,10 @@ type K8sWatcher struct {
 	// readiness evidence.
 	servicesWatching bool
 	slicesWatching   bool
+	// *LostAt is when the corresponding live watch was lost; zero while it is live. A synced view stays
+	// usable for apiOutageGrace after that moment.
+	servicesLostAt time.Time
+	slicesLostAt   time.Time
 }
 
 // NewInClusterWatcher returns a watcher wired to the pod's ServiceAccount, or (nil,nil) when NOT running in
@@ -300,7 +311,30 @@ func (w *K8sWatcher) LiveSnapshotReady() bool {
 }
 
 func (w *K8sWatcher) liveSnapshotLocked() bool {
-	return w.servicesSynced && w.slicesSynced && w.servicesWatching && w.slicesWatching
+	now := w.nowTime()
+	return w.servicesSynced && w.slicesSynced &&
+		watchUsable(w.servicesWatching, w.servicesLostAt, now) && watchUsable(w.slicesWatching, w.slicesLostAt, now)
+}
+
+// watchUsable reports whether a synced view may still back traffic: its watch is live, or it was lost less
+// than apiOutageGrace ago.
+func watchUsable(watching bool, lostAt, now time.Time) bool {
+	return watching || (!lostAt.IsZero() && now.Sub(lostAt) < apiOutageGrace)
+}
+
+// withinOutageGrace reports whether path's view was complete and its watch was lost recently enough that
+// the view should be kept rather than cleared.
+func (w *K8sWatcher) withinOutageGrace(path string) bool {
+	w.mu.RLock()
+	defer w.mu.RUnlock()
+	now := w.nowTime()
+	switch path {
+	case servicePath:
+		return w.servicesSynced && !w.servicesLostAt.IsZero() && now.Sub(w.servicesLostAt) < apiOutageGrace
+	case epSlicePath:
+		return w.slicesSynced && !w.slicesLostAt.IsZero() && now.Sub(w.slicesLostAt) < apiOutageGrace
+	}
+	return false
 }
 
 // normalizeServiceProtocol implements Kubernetes' omitted-protocol default but
@@ -416,8 +450,18 @@ func (w *K8sWatcher) loop(
 	for ctx.Err() == nil {
 		rv, err := list(ctx)
 		if err != nil {
+			// The relist after a planned renewal can be the first sign of an outage: mark the loss so the
+			// grace is measured from here.
+			w.setWatching(path, false)
+			if w.withinOutageGrace(path) {
+				// The API is not answering, but the view was complete moments ago. Keep serving it.
+				w.logf("k8s_watch_list_failed_keeping_last_view", "path", path, "err", err.Error())
+				w.kick()
+				sleepCtx(ctx, watchIdleWait)
+				continue
+			}
 			w.logf("k8s_watch_list_failed", "path", path, "err", err.Error())
-			clear() // fail-closed: a failed read must not leave a stale view backing a DNAT
+			clear() // beyond the grace (or never synced): a stale view must not back a DNAT
 			w.kick()
 			sleepCtx(ctx, watchIdleWait)
 			continue
@@ -532,18 +576,33 @@ func (w *K8sWatcher) nowTime() time.Time {
 func (w *K8sWatcher) setWatching(path string, watching bool) {
 	w.mu.Lock()
 	changed := false
+	now := w.nowTime()
 	switch path {
 	case servicePath:
 		changed = w.servicesWatching != watching
 		w.servicesWatching = watching
+		w.servicesLostAt = lostAtAfter(w.servicesLostAt, watching, now)
 	case epSlicePath:
 		changed = w.slicesWatching != watching
 		w.slicesWatching = watching
+		w.slicesLostAt = lostAtAfter(w.slicesLostAt, watching, now)
 	}
 	w.mu.Unlock()
 	if changed && w.kick != nil {
 		w.kick()
 	}
+}
+
+// lostAtAfter keeps the moment a watch was FIRST lost: a live watch clears it, a lost one keeps the earlier
+// time, so repeated failures during one outage cannot extend the grace.
+func lostAtAfter(prior time.Time, watching bool, now time.Time) time.Time {
+	if watching {
+		return time.Time{}
+	}
+	if prior.IsZero() {
+		return now
+	}
+	return prior
 }
 
 // ── list + event application ──────────────────────────────────────────────────────────────────────────
@@ -689,6 +748,7 @@ func (w *K8sWatcher) clearServices() {
 	w.uidTombstones = map[string]string{}
 	w.servicesSynced = false
 	w.servicesWatching = false
+	w.servicesLostAt = time.Time{}
 	w.mu.Unlock()
 }
 func (w *K8sWatcher) clearSlices() {
@@ -696,6 +756,7 @@ func (w *K8sWatcher) clearSlices() {
 	w.slices = map[string]map[string]epGroup{}
 	w.slicesSynced = false
 	w.slicesWatching = false
+	w.slicesLostAt = time.Time{}
 	w.mu.Unlock()
 }
 

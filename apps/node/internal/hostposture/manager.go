@@ -42,6 +42,8 @@ type Manager struct {
 	now    func() time.Time
 	log    *slog.Logger
 	seq    uint64
+	// ownersReadAt is when the owner set was last read successfully from the Kubernetes API.
+	ownersReadAt time.Time
 }
 
 func NewManager(config Config, source OwnerSource, kernel Kernel, store journalStore, log *slog.Logger) (*Manager, error) {
@@ -75,6 +77,12 @@ func NewManager(config Config, source OwnerSource, kernel Kernel, store journalS
 	}
 	return &Manager{config: config, source: source, kernel: kernel, store: store, now: time.Now, log: log}, nil
 }
+
+// apiFaultGrace bounds how long the last successfully read owner set keeps its authority while the
+// Kubernetes API is failing. It matches the gateway's own grace for endpoints (egress.apiOutageGrace): both
+// exist so a short control-plane outage is not a data-plane outage. A manager that has not read the owners
+// since it started has no grace.
+const apiFaultGrace = 60 * time.Second
 
 func (m *Manager) Run(ctx context.Context) error {
 	ticker := time.NewTicker(m.config.ReconcileInterval)
@@ -134,9 +142,21 @@ func (m *Manager) ReconcileOnce(ctx context.Context) error {
 			if err := m.kernel.Enforce(ctx, journal); err != nil {
 				return m.block(now, journal.Owners, fmt.Errorf("enforce retained ownership during API fault: %w", err))
 			}
+			// K8L-9: the owner set was read successfully moments ago and has just been enforced again. A
+			// Kubernetes API that stops answering for a few seconds (restart, leader change, upgrade) does
+			// not change which pod owns the host posture, so authority continues for apiFaultGrace. Without
+			// this, every API blip made the gateway on this node report not-ready, and a cloud load balancer
+			// then took it out of service although nothing about it had changed.
+			if journal.State == StateActive && !m.ownersReadAt.IsZero() && now.Sub(m.ownersReadAt) < apiFaultGrace {
+				m.log.Warn("k8s_host_posture_owner_list_failed_keeping_last", "error", boundedReason(sourceErr.Error()), "since_last_read", now.Sub(m.ownersReadAt).Round(time.Second).String())
+				// Stamp the heartbeat NOW, not when this pass began: the failed read above may have waited
+				// its whole timeout, and a heartbeat dated before that wait is already stale to the gateway.
+				return m.heartbeat(m.now().UTC(), HeartbeatActive, journal.Owners, "", &journal)
+			}
 		}
 		return m.block(now, ownerFallback(journal, haveJournal), fmt.Errorf("authoritative live owner readback failed: %w", sourceErr))
 	}
+	m.ownersReadAt = now
 	owners = canonicalOwners(owners)
 	// Once teardown intent is durable, finish that exact old epoch before
 	// considering a newly observed owner. This makes every already-absent exact

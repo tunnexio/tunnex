@@ -219,10 +219,32 @@ func TestManagerAPIFaultRetainsAndEnforcesLastDurableOwnersWithoutCleanup(t *tes
 	if err := manager.ReconcileOnce(t.Context()); err != nil {
 		t.Fatal(err)
 	}
+	clock := time.Unix(5_000, 0)
+	manager.now = func() time.Time { return clock }
+	if err := manager.ReconcileOnce(t.Context()); err != nil { // a successful read at the fake clock
+		t.Fatal(err)
+	}
 	source.owners, source.err = nil, errors.New("API partition")
+
+	// K8L-9: inside the grace the just-verified owner keeps its authority. Nothing is cleaned up, the
+	// retained ownership is enforced again, and the heartbeat stays ACTIVE so the gateway stays ready.
+	clock = clock.Add(apiFaultGrace - time.Second)
+	if err := manager.ReconcileOnce(t.Context()); err != nil || kernel.restore != 0 || kernel.enforce != 3 ||
+		store.journal.State != StateActive || len(store.journal.Owners) != 1 || store.heartbeat.State != HeartbeatActive || len(store.heartbeat.Owners) != 1 {
+		t.Fatalf("fault inside the grace: err=%v kernel=%+v journal=%+v heartbeat=%+v", err, kernel, store.journal, store.heartbeat)
+	}
+
+	// Beyond it: blocked, exactly as before — still enforced, still never cleaned up.
+	clock = clock.Add(2 * time.Second)
 	err := manager.ReconcileOnce(t.Context())
-	if err == nil || kernel.restore != 0 || kernel.enforce != 2 || store.journal.State != StateActive || len(store.journal.Owners) != 1 || store.heartbeat.State != HeartbeatBlocked {
-		t.Fatalf("fault err=%v kernel=%+v journal=%+v heartbeat=%+v", err, kernel, store.journal, store.heartbeat)
+	if err == nil || kernel.restore != 0 || kernel.enforce != 4 || store.journal.State != StateActive || len(store.journal.Owners) != 1 || store.heartbeat.State != HeartbeatBlocked {
+		t.Fatalf("fault beyond the grace: err=%v kernel=%+v journal=%+v heartbeat=%+v", err, kernel, store.journal, store.heartbeat)
+	}
+
+	// A manager that has not read the owners since it started has no grace at all.
+	fresh := newTestManager(t, source, store, kernel)
+	if err := fresh.ReconcileOnce(t.Context()); err == nil || store.heartbeat.State != HeartbeatBlocked {
+		t.Fatalf("a manager with no successful read kept authority: err=%v heartbeat=%+v", err, store.heartbeat)
 	}
 }
 
