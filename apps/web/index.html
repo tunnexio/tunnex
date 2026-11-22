@@ -14,7 +14,18 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
   </head>
   <body>
-    <div id="root"></div>
+    <!-- Shown until the application script has loaded and rendered, so a slow link never looks like a
+         broken page. React replaces everything inside #root on its first render. -->
+    <style>
+      html, body { margin: 0; height: 100%; background: #0a0a0a; }
+      .boot { display: flex; height: 100%; flex-direction: column; align-items: center; justify-content: center; gap: 14px; color: #a3a3a3; font: 13px/1.5 system-ui, sans-serif; }
+      .boot-track { position: relative; width: 44px; height: 8px; }
+      .boot-track::before { content: ""; position: absolute; inset: 3px 0; border-radius: 1px; background: #262626; }
+      .boot-track::after { content: ""; position: absolute; top: 0; left: 0; width: 8px; height: 8px; border-radius: 50%; background: #c2444f; animation: bootTravel 1.1s cubic-bezier(.65, 0, .35, 1) infinite alternate; }
+      @keyframes bootTravel { to { transform: translateX(36px); } }
+      @media (prefers-reduced-motion: reduce) { .boot-track::after { animation: none; left: 18px; } }
+    </style>
+    <div id="root"><div class="boot" role="status"><span class="boot-track" aria-hidden="true"></span>Loading Tunnex…</div></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
