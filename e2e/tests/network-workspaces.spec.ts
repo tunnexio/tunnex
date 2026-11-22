@@ -45,8 +45,14 @@ async function inventory(page: Page) {
       // and status are explicitly local to the displayed page, not server filters.
       const limit = Number(url.searchParams.get("limit"));
       const after = url.searchParams.get("after");
-      connectionReads.push({ limit, after });
       expect([...url.searchParams.keys()].sort()).toEqual(after ? ["after", "limit"] : ["limit"]);
+      // The Networks list reads one full page (the API maximum) to name each network's cloud VPN.
+      // Only the Cloud VPN tab's own pager reads are recorded and held to its page sizes.
+      if (limit === 100 && !after) {
+        await route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify({ items: connections, next_cursor: null }) });
+        return;
+      }
+      connectionReads.push({ limit, after });
       expect([10, 20, 50]).toContain(limit);
       const cursorIndex = after ? connections.findIndex(item => connectionCursor(item.id) === after) : -1;
       expect(!after || cursorIndex >= 0).toBe(true);
@@ -77,16 +83,17 @@ for (const width of [1440, 390]) {
 
     test("network sections survive reload and keep detail lists bounded", async ({ page }) => {
       await page.goto("/sites");
-      const nav = page.getByRole("navigation", { name: "Network management" });
-      await expect(nav.getByRole("link")).toHaveCount(5);
-      await nav.getByRole("link", { name: "Topology", exact: true }).click();
+      // One tab row for the whole area: Networks, Map, Ranges, Failover, DNS forwarding, Cloud VPN.
+      const nav = page.getByRole("navigation", { name: "Site-to-site", exact: true });
+      await expect(nav.getByRole("link")).toHaveCount(6);
+      await nav.getByRole("link", { name: "Map", exact: true }).click();
       await expect(page).toHaveURL(/section=topology/);
       await page.reload();
-      await expect(nav.getByRole("link", { name: "Topology", exact: true })).toHaveAttribute("aria-current", "page");
-      await expect(page.getByRole("figure", { name: "Site topology" })).toBeVisible();
-      await nav.getByRole("link", { name: "Inventory", exact: true }).click();
-      await page.getByRole("textbox", { name: "Search networks" }).fill("Office");
-      await page.getByRole("table", { name: "Sites", exact: true }).getByRole("button", { name: "Office", exact: true }).click();
+      await expect(nav.getByRole("link", { name: "Map", exact: true })).toHaveAttribute("aria-current", "page");
+      await expect(page.getByRole("region", { name: "Network map", exact: true })).toBeVisible();
+      await nav.getByRole("link", { name: "Networks", exact: true }).click();
+      await page.getByRole("textbox", { name: "Search networks", exact: true }).fill("Office");
+      await page.getByRole("table", { name: "Networks", exact: true }).getByRole("button", { name: "Office", exact: true }).click();
       const detail = page.getByRole("region", { name: "Selected Site: Office", exact: true });
       await detail.getByRole("navigation", { name: "Network detail sections" }).getByRole("button", { name: "Ranges", exact: true }).click();
       await expect(page).toHaveURL(/detail=ranges/);
@@ -113,20 +120,21 @@ for (const width of [1440, 390]) {
       await expect(pager).toHaveCount(0);
       await noOverflow(page);
       await detail.getByRole("navigation", { name: "Network breadcrumb" }).getByRole("link", { name: "Networks", exact: true }).click();
-      await expect(page.getByRole("textbox", { name: "Search networks" })).toHaveValue("Office");
-      await expect(page.getByRole("table", { name: "Sites", exact: true }).getByRole("button", { name: "Office", exact: true })).toBeVisible();
+      await expect(page.getByRole("textbox", { name: "Search networks", exact: true })).toHaveValue("Office");
+      await expect(page.getByRole("table", { name: "Networks", exact: true }).getByRole("button", { name: "Office", exact: true })).toBeVisible();
     });
 
     test("connection choices preserve URLs and IPsec cursor pages have no gaps", async ({ page }) => {
+      // The pair review is no longer a choice on this tab; old links to it still open it.
       await page.goto("/site-to-site?method=wireguard");
-      await expect(page.getByRole("radio", { name: /^Between your networks/ })).toBeChecked();
+      await expect(page.getByRole("radio")).toHaveCount(0);
       await page.getByRole("combobox", { name: "First network", exact: true }).selectOption(sites[0].id);
       await page.getByRole("combobox", { name: "Second network", exact: true }).selectOption(sites[1].id);
       await expect(page.getByRole("region", { name: "Office configuration" })).toBeVisible();
       await page.getByRole("link", { name: "View network topology", exact: true }).click();
       await expect(page).toHaveURL(/section=topology/);
       await page.goto("/site-to-site?method=ipsec");
-      await expect(page.getByRole("radio", { name: /^To a cloud VPN/ })).toBeChecked();
+      await expect(page.getByRole("navigation", { name: "Site-to-site", exact: true }).getByRole("link", { name: "Cloud VPN", exact: true })).toHaveAttribute("aria-current", "page");
       const rows = page.getByRole("table", { name: "IPsec connections", exact: true }).getByRole("button", { name: /^Cloud connection \d+$/ });
       const pager = page.getByRole("navigation", { name: "IPsec connection pagination", exact: true });
       await expect(rows).toHaveCount(20);
@@ -181,7 +189,7 @@ for (const width of [1440, 390]) {
       await expect(pager.getByRole("button", { name: "Previous connections", exact: true })).toHaveCount(0);
       await expect(pager.getByRole("button", { name: "Next connections", exact: true })).toHaveCount(0);
       await page.reload();
-      await expect(page.getByRole("radio", { name: /^To a cloud VPN/ })).toBeChecked();
+      await expect(page.getByRole("navigation", { name: "Site-to-site", exact: true }).getByRole("link", { name: "Cloud VPN", exact: true })).toHaveAttribute("aria-current", "page");
       await expect(rows).toHaveText(firstConnections);
       expect(connectionReads.at(-1)).toEqual({ limit: 20, after: null });
       await noOverflow(page);
