@@ -7,5 +7,5 @@ export function AccessTabRail({ actions, includeKubernetesScopes = false }: { ac
     { href: "/access", label: "Rules" },
     { href: "/access/resources", label: "Resources" },
     ...(includeKubernetesScopes ? [{ href: "/access/kubernetes-scopes", label: "Kubernetes scopes" }] : []),
-  ]} />{actions && <div className="access-workspace-actions">{actions}</div>}</div>;
+  ]} /><div className="access-workspace-actions">{actions}<span data-access-primary-slot className="contents" /></div></div>;
 }
