@@ -436,9 +436,10 @@ export function nodeLinkLayout(nodes: Node[], targetAspect?: number): NodeLinkLa
     const rx = hubs.length > 1 ? 236 : k <= 1 ? 155 : k === 2 ? 185 : 200;
     const ry = hubs.length > 1 ? 155 : k <= 2 ? 0 : 105;
     spokes.forEach((spoke, i) => {
-      // Two Sites around an HA pair go LEFT and RIGHT (see the pair note above); every other count keeps
-      // the ring that starts at twelve o'clock.
-      const a = k === 1 ? 0 : k === 2 && hubs.length === 2 ? Math.PI + i * Math.PI : (i / k) * Math.PI * 2 - Math.PI / 2;
+      // Three or more Sites keep the ring that starts at twelve o'clock.
+      // Two Sites always sit left and right. The ring's twelve and six o'clock have no vertical radius at
+      // this count, so the ring formula placed both Sites on top of the hub.
+      const a = k === 1 ? 0 : k === 2 && hubs.length <= 2 ? Math.PI + i * Math.PI : (i / k) * Math.PI * 2 - Math.PI / 2;
       const value = typeof spoke.value === "number" ? Math.max(0, spoke.value) : 0;
       positions.set(spoke.id, {
         id: spoke.id,

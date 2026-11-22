@@ -17,7 +17,7 @@ import {
 import { EmptyState, ErrorText, Loading, Section, RefreshButton } from "../components/ui";
 import { attributionBadge, gatewayHealthRow, policyHealthBadge } from "../lib/healthview";
 import { agentSummary, type AgentRow } from "../lib/agentview";
-import { isFreshOrg, peerSlices, postureSplit, statFrom, statText, type StatState } from "../lib/overviewview";
+import { attentionItems, isFreshOrg, peerSlices, postureSplit, statFrom, statText, type StatState } from "../lib/overviewview";
 
 type Slice = { label: string; value: number; tone: "ok" | "warn" | "danger" | "neutral" };
 
@@ -135,6 +135,14 @@ function OverviewContent({ orgId, orgName }: { orgId: string; orgName: string })
           {pendingRes?.ok && <Stat label="Approvals" to="/devices/approvals" value={pending} sub={pending.state === "ok" && pending.value > 0 ? "needs review" : null} subTone="warn" />}
         </div>
       </section>
+      {!fresh && <Attention loading={[pendingRes, nodesRes, devicesRes, rulesRes, ztRes].some(result => result === null)} {...attentionItems({
+        pendingApprovals: pendingRes?.ok ? pendingRes.data.length : null,
+        unhealthyGateways: nodesRes?.ok ? nodesRes.data.map(gatewayHealthRow).filter(verdict => verdict.tone !== "ok" && verdict.label !== "revoked").length : null,
+        unownedGateways: nodesRes?.ok ? nodesRes.data.filter(node => attributionBadge(node) !== null).length : null,
+        blockedDevices: devicesRes?.ok ? postureSplit(devicesRes.data).blocked : null,
+        zeroTrust,
+        rules: rulesRes?.ok ? rulesRes.data.length : null,
+      })} />}
       {fresh && <Section title="Get started" className="scan-onboarding"><SetupChoices /></Section>}
       <div className="scan-health">
         <Section title="Gateway Health" className="scan-gateways" actions={<Link to="/gateways" className="scan-text-link">View gateways</Link>}>
@@ -164,6 +172,28 @@ function OverviewContent({ orgId, orgName }: { orgId: string; orgName: string })
       </Section>
     </>}
   </>;
+}
+
+function Attention({ items, unread, loading }: ReturnType<typeof attentionItems> & { loading: boolean }) {
+  // While reads are in flight the line keeps its place but says nothing: no verdict before the facts.
+  if (!items.length && loading) return <p className="scan-attention-clear" aria-hidden="true">&nbsp;</p>;
+  if (!items.length) return <p className="scan-attention-clear" data-state={unread ? "partial" : "clear"}>
+    <span className="scan-dot" data-tone={unread ? "neutral" : "ok"} aria-hidden="true" />
+    {unread ? "Some checks could not be read, so this is not a clean bill of health." : "All checks read. Nothing is waiting for you."}
+  </p>;
+  return <section aria-label="Waiting for you" className="scan-attention">
+    <h2>Waiting for you<span>{items.length}</span></h2>
+    <ul>
+      {items.map(item => <li key={item.key}>
+        <Link to={item.to} data-tone={item.tone}>
+          <span className="scan-dot" data-tone={item.tone} aria-hidden="true" />
+          <span className="scan-attention-text">{item.text}</span>
+          <span className="scan-attention-action">{item.action}<span aria-hidden="true"> →</span></span>
+        </Link>
+      </li>)}
+    </ul>
+    {unread > 0 && !loading && <p className="scan-attention-note">Some checks could not be read.</p>}
+  </section>;
 }
 
 function GatewayHealth({ result }: { result: Loaded<Node[]> | null }) {
