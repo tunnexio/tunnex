@@ -2,6 +2,9 @@ package controllers
 
 import (
 	"context"
+	"fmt"
+	"net/netip"
+	"strings"
 
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
@@ -78,24 +81,15 @@ func (r *TunnexClusterReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		return ctrl.Result{RequeueAfter: clientErrRequeue}, nil
 	}
 
-	// Idempotent: find-by-name before create (reconcile runs repeatedly; never double-register).
-	clusters, err := r.CP.ListClusters(ctx)
-	if err != nil {
-		return ctrl.Result{}, err // keep-last
-	}
+	// OWNERSHIP. Once this CR holds a ClusterID, that row is confirmed by id. Before that, a cluster with
+	// the same name is adopted only if the operator's credential created it and no other CR owns it:
+	// adopting a dashboard-created cluster would let deleting this CR deregister it, with its Services and
+	// grants (K8L-8).
 	var reg *cp.Cluster
-	for i := range clusters {
-		if clusters[i].Name == cr.Spec.Name {
-			reg = &clusters[i]
-			break
-		}
-	}
-	// DRIFT: find-by-name missed but we hold a ClusterID. C2 confirm-by-ID before recreating — a single-row
-	// GET can't be fooled by a spuriously-empty LIST the way find-by-name can. If it's still there, the list
-	// was stale: adopt it, no drift, no duplicate. If authoritatively 404, it was deleted out-of-band → drift
-	// (recreate from the CR, the one truth about intent). A transport failure keeps-last (never a false gone).
 	drift := false
-	if reg == nil && cr.Status.ClusterID != "" {
+	if cr.Status.ClusterID != "" {
+		// A single-row GET cannot be fooled by a spuriously-empty LIST. Still there → ours. Authoritative
+		// 404 → deleted out of band → drift (recreate from the CR). Transport failure → keep-last.
 		existing, found, err := r.CP.GetCluster(ctx, cr.Status.ClusterID)
 		if err != nil {
 			return ctrl.Result{}, err // keep-last
@@ -104,6 +98,29 @@ func (r *TunnexClusterReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 			reg = &existing
 		} else {
 			drift = true
+		}
+	}
+	if reg == nil {
+		clusters, err := r.CP.ListClusters(ctx)
+		if err != nil {
+			return ctrl.Result{}, err // keep-last
+		}
+		for i := range clusters {
+			if clusters[i].Name == cr.Spec.Name {
+				reg = &clusters[i]
+				break
+			}
+		}
+		if reg != nil && !reg.ManagedByOperator {
+			return r.notReady(ctx, &cr, reasonUnmanaged,
+				"a cluster named "+cr.Spec.Name+" is already registered outside the operator; this resource will not adopt or remove it", gen)
+		}
+		if reg != nil {
+			if other, err := r.claimedByAnother(ctx, &cr, reg.ID); err != nil {
+				return ctrl.Result{}, err
+			} else if other != "" {
+				return r.notReady(ctx, &cr, reasonDuplicate, "resource "+other+" already declares cluster "+cr.Spec.Name, gen)
+			}
 		}
 	}
 	created := false
@@ -146,6 +163,29 @@ func (r *TunnexClusterReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		reg = &updated
 	}
 
+	// SPEC EDITS. The control plane can replace a cluster's connector; it cannot rename a cluster or move
+	// its address range, Service network, DNS zone or site. Reporting Ready for such an edit would claim
+	// the new values are live while the old ones still serve traffic.
+	if !created {
+		if field, live := clusterSpecMismatch(&cr, reg, siteID); field != "" {
+			return r.notReady(ctx, &cr, reasonSpecChange, fmt.Sprintf(
+				"spec.%s cannot be changed after registration (the registered cluster uses %s); restore it, or delete this resource and create a new one",
+				field, live), gen)
+		}
+		if reg.ConnectorNodeID == nil || *reg.ConnectorNodeID != connectorID {
+			cause := crRef("tunnexcluster", cr.Namespace, cr.Name)
+			err := r.CP.SetClusterConnector(ctx, reg.ID, connectorID, cause)
+			if res, e, handled, persist := onCPError(&cr.Status.Conditions, err, gen); handled {
+				if persist {
+					if u := r.Status().Update(ctx, &cr); u != nil {
+						return ctrl.Result{}, u
+					}
+				}
+				return res, e
+			}
+		}
+	}
+
 	// Accepted — mirror the CP's DERIVED truth into status.
 	cr.Status.ClusterID = reg.ID
 	cr.Status.DNSVIP = reg.DnsVip
@@ -158,7 +198,59 @@ func (r *TunnexClusterReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		setDrift(&cr.Status.Conditions, false, "in sync with the control plane", gen)
 	}
 	setReady(&cr.Status.Conditions, metav1.ConditionTrue, "Accepted", "control plane registered the cluster", gen)
-	return ctrl.Result{}, r.Status().Update(ctx, &cr)
+	return ctrl.Result{RequeueAfter: resyncReady}, r.Status().Update(ctx, &cr)
+}
+
+// clusterSpecMismatch names the first spec field that differs from the registered cluster and cannot be
+// changed in place, with the live value; "" when the immutable part of the spec matches. Address ranges are
+// compared as networks, so 100.64.0.0/16 and 100.64.0.1/16 are the same range.
+func clusterSpecMismatch(cr *tunnexv1.TunnexCluster, reg *cp.Cluster, siteID string) (field, live string) {
+	sameRange := func(a, b string) bool {
+		pa, ea := netip.ParsePrefix(strings.TrimSpace(a))
+		pb, eb := netip.ParsePrefix(strings.TrimSpace(b))
+		if ea != nil || eb != nil {
+			return strings.TrimSpace(a) == strings.TrimSpace(b)
+		}
+		return pa.Masked() == pb.Masked()
+	}
+	switch {
+	case reg.Name != "" && reg.Name != cr.Spec.Name:
+		return "name", reg.Name
+	case reg.SiteID != "" && reg.SiteID != siteID:
+		return "site", "another site"
+	case reg.VipRange != "" && !sameRange(reg.VipRange, cr.Spec.VIPRange):
+		return "vipRange", reg.VipRange
+	case reg.ServiceCidr != "" && !sameRange(reg.ServiceCidr, cr.Spec.ServiceCIDR):
+		return "serviceCIDR", reg.ServiceCidr
+	case reg.DnsZone != "" && !strings.EqualFold(reg.DnsZone, cr.Spec.DNSZone):
+		return "dnsZone", reg.DnsZone
+	}
+	return "", ""
+}
+
+// notReady records an honest Ready=False for this generation and retries slowly.
+func (r *TunnexClusterReconciler) notReady(ctx context.Context, cr *tunnexv1.TunnexCluster, reason, msg string, gen int64) (ctrl.Result, error) {
+	setReady(&cr.Status.Conditions, metav1.ConditionFalse, reason, msg, gen)
+	if err := r.Status().Update(ctx, cr); err != nil {
+		return ctrl.Result{}, err
+	}
+	return ctrl.Result{RequeueAfter: clientErrRequeue}, nil
+}
+
+// claimedByAnother returns the namespace/name of a different TunnexCluster that already holds the
+// control-plane cluster id, or "".
+func (r *TunnexClusterReconciler) claimedByAnother(ctx context.Context, cr *tunnexv1.TunnexCluster, clusterID string) (string, error) {
+	var all tunnexv1.TunnexClusterList
+	if err := r.List(ctx, &all); err != nil {
+		return "", err
+	}
+	for i := range all.Items {
+		other := &all.Items[i]
+		if other.UID != cr.UID && other.Status.ClusterID == clusterID && other.DeletionTimestamp.IsZero() {
+			return other.Namespace + "/" + other.Name, nil
+		}
+	}
+	return "", nil
 }
 
 // finalize deregisters the cluster CP-side through the AUDITED verb (cascade counts + the CR as cause), then

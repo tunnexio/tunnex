@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
@@ -42,11 +43,26 @@ func fakeK8s(t *testing.T, objs ...client.Object) client.Client {
 		Build()
 }
 
+// connectorPuts records, per test name, each PUT .../connector the operator made.
+var connectorPuts sync.Map
+
 func testCP(t *testing.T, h http.HandlerFunc) *cp.Client {
 	t.Helper()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/nodes") {
 			json.NewEncoder(w).Encode([]map[string]string{{"id": "node-1", "name": "edge-gw", "site_id": "site-1", "status": "active"}})
+			return
+		}
+		// Older fixtures describe a cluster without its connector, so the operator selects the one the CR
+		// names. Record the call and accept it; tests about connector changes read connectorPuts.
+		if r.Method == http.MethodPut && strings.HasSuffix(r.URL.Path, "/connector") {
+			var body struct {
+				NodeID string `json:"node_id"`
+			}
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			prior, _ := connectorPuts.LoadOrStore(t.Name(), []string{})
+			connectorPuts.Store(t.Name(), append(prior.([]string), body.NodeID+" cause="+r.Header.Get("X-Tunnex-Cause")))
+			w.WriteHeader(http.StatusNoContent)
 			return
 		}
 		h(w, r)
@@ -153,10 +169,7 @@ func TestClusterReconcileCorrectsExplicitProviderMetadata(t *testing.T) {
 		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/sites"):
 			json.NewEncoder(w).Encode([]map[string]string{{"id": "site-1", "name": "edge"}})
 		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/k8s/clusters"):
-			json.NewEncoder(w).Encode([]map[string]string{{
-				"id": "clu-1", "name": "prod", "dns_vip": "100.64.0.53",
-				"provider": "unknown", "platform": "unknown",
-			}})
+			json.NewEncoder(w).Encode([]map[string]any{{"id": "clu-1", "name": "prod", "dns_vip": "100.64.0.53", "provider": "unknown", "platform": "unknown", "managed_by_operator": true}})
 		case r.Method == http.MethodPut && strings.HasSuffix(r.URL.Path, "/k8s/clusters/clu-1/provider-metadata"):
 			putCalls++
 			cause = r.Header.Get("X-Tunnex-Cause")
@@ -204,7 +217,7 @@ func TestClusterReconcileProviderMetadataRejectionIsNotReady(t *testing.T) {
 		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/sites"):
 			json.NewEncoder(w).Encode([]map[string]string{{"id": "site-1", "name": "edge"}})
 		case r.Method == http.MethodGet && strings.HasSuffix(r.URL.Path, "/k8s/clusters"):
-			json.NewEncoder(w).Encode([]map[string]string{{"id": "clu-1", "name": "prod", "provider": "unknown", "platform": "unknown"}})
+			json.NewEncoder(w).Encode([]map[string]any{{"id": "clu-1", "name": "prod", "provider": "unknown", "platform": "unknown", "managed_by_operator": true}})
 		case r.Method == http.MethodPut:
 			w.WriteHeader(http.StatusConflict)
 			io.WriteString(w, `{"error":{"code":"provider_metadata_conflict","message":"metadata correction refused"}}`)
@@ -749,6 +762,9 @@ func TestDriftHealEmitsEvent(t *testing.T) {
 		switch {
 		case strings.HasSuffix(r.URL.Path, "/sites"):
 			json.NewEncoder(w).Encode([]map[string]string{{"id": "site-1", "name": "edge"}})
+		case r.Method == "GET" && strings.HasSuffix(r.URL.Path, "/k8s/clusters/clu-2"):
+			// pass 2 confirms the recreated cluster by the id it now holds
+			json.NewEncoder(w).Encode(map[string]any{"id": "clu-2", "name": "prod", "dns_vip": "100.64.0.53", "managed_by_operator": true})
 		case r.Method == "GET" && strings.HasSuffix(r.URL.Path, "/k8s/clusters/stale-1"):
 			w.WriteHeader(404) // confirm-by-ID: authoritatively gone → real drift
 			w.Write([]byte(`{"error":{"code":"cluster_not_found","message":"gone"}}`))
@@ -759,7 +775,7 @@ func TestDriftHealEmitsEvent(t *testing.T) {
 				return
 			}
 			// pass 2: present again → the condition goes InSync, and the Event must outlive it
-			json.NewEncoder(w).Encode([]map[string]string{{"id": "clu-2", "name": "prod", "dns_vip": "100.64.0.53"}})
+			json.NewEncoder(w).Encode([]map[string]any{{"id": "clu-2", "name": "prod", "dns_vip": "100.64.0.53", "managed_by_operator": true}})
 		case r.Method == "POST" && strings.HasSuffix(r.URL.Path, "/k8s/clusters"):
 			json.NewEncoder(w).Encode(map[string]string{"id": "clu-2", "dns_vip": "100.64.0.53"})
 		default:

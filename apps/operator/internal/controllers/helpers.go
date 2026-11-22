@@ -67,6 +67,14 @@ func matchGrant(rules []cp.Rule, greq cp.CreateGrantRequest) string {
 	return ""
 }
 
+// sameGrant reports whether an existing rule is exactly the grant greq describes: same destination Service
+// and same source subject. Ownership is not part of it; the caller already holds the rule's id.
+func sameGrant(r *cp.Rule, greq cp.CreateGrantRequest) bool {
+	return r.DstKind == greq.DstKind && ptrEq(r.DstK8sServiceID, greq.DstK8sServiceID) && r.SrcKind == greq.SrcKind &&
+		ptrEq(r.SrcUserID, greq.SrcUserID) && ptrEq(r.SrcGroupID, greq.SrcGroupID) &&
+		ptrEq(r.SrcSiteID, greq.SrcSiteID) && ptrEq(r.SrcCidr, greq.SrcCidr)
+}
+
 func ptrEq(a, b *string) bool {
 	if a == nil || b == nil {
 		return a == b

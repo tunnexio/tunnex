@@ -150,6 +150,10 @@ type Cluster struct {
 	SiteID      string `json:"site_id"`
 	Provider    string `json:"provider"`
 	Platform    string `json:"platform"`
+	// ConnectorNodeID is the gateway that currently serves the cluster; nil means none.
+	ConnectorNodeID *string `json:"connector_node_id"`
+	// ManagedByOperator is true only for a cluster created with the operator's machine credential.
+	ManagedByOperator bool `json:"managed_by_operator"`
 }
 
 // Node is the deliberately small shape needed to resolve a TunnexCluster's
@@ -168,6 +172,12 @@ type Service struct {
 	Namespace string `json:"namespace"`
 	Vip       string `json:"vip"`
 	Fqdn      string `json:"fqdn"`
+	// One exposure is one Service port: the control plane stores a row per (protocol, port).
+	Protocol string `json:"protocol"`
+	PortLow  *int32 `json:"port_low"`
+	PortHigh *int32 `json:"port_high"`
+	// ManagedByOperator is true only for an exposure created with the operator's machine credential.
+	ManagedByOperator bool `json:"managed_by_operator"`
 }
 
 // Member / Group / Site are the READ-ONLY lookup shapes the grant + cluster reconcilers use to resolve a
@@ -198,6 +208,9 @@ type Rule struct {
 	DstKind           string  `json:"dst_kind"`
 	DstK8sServiceID   *string `json:"dst_k8s_service_id"`
 	ManagedByOperator bool    `json:"managed_by_operator"`
+	// Enabled is a pointer so a response that omits the field is not read as "disabled".
+	Enabled   *bool   `json:"enabled"`
+	ExpiresAt *string `json:"expires_at"`
 }
 
 type RegisterClusterRequest struct {
@@ -257,6 +270,13 @@ func (c *Client) SetClusterProviderMetadata(ctx context.Context, clusterID, prov
 	request := ProviderMetadataRequest{Provider: provider, Platform: platform}
 	path := c.orgPath("/k8s/clusters/" + clusterID + "/provider-metadata")
 	return out, c.do(ctx, http.MethodPut, path, cause, request, &out)
+}
+
+// SetClusterConnector selects the gateway that serves the cluster (audited CP-side; cause names the CR).
+// The control plane requires an active gateway already bound to the cluster's site.
+func (c *Client) SetClusterConnector(ctx context.Context, clusterID, nodeID, cause string) error {
+	body := map[string]string{"node_id": nodeID}
+	return c.do(ctx, http.MethodPut, c.orgPath("/k8s/clusters/"+clusterID+"/connector"), cause, body, nil)
 }
 
 // GetCluster fetches one cluster by id — the AUTHORITATIVE confirm-by-ID (S10.2 C2): found=false ONLY on a
