@@ -14,7 +14,9 @@ image:
   web: tunnex-web
   edge: tunnex-nginx      # the reverse proxy that routes / -> web and /api -> api
   migrate: tunnex-migrate # the one-shot schema migrator (cmd/migrate)
-  tag: "0.2.0"
+  # Empty means this chart's appVersion, which release packaging sets to the Tunnex release (for example
+  # v0.1.44). The old default named a version that was never published, so a plain install could not pull.
+  tag: ""
   pullPolicy: IfNotPresent
   pullSecrets: []
 
@@ -70,7 +72,8 @@ appBaseURL: ""            # e.g. https://vpn.acme.com   (REQUIRED for working em
 env: production
 logLevel: info
 # The gateway agent image the dashboard bakes into its emitted enroll command.
-nodeAgentImage: ghcr.io/tunnexio/tunnex-node-agent:0.2.0
+# The gateway image the control plane hands to gateways. Empty means the same release as this chart.
+nodeAgentImage: ""
 # Exact-origin CORS allowlist (desktop app). Leave default unless customizing.
 corsAllowedOrigins: "app://tunnex"
 

@@ -24,7 +24,7 @@ app.kubernetes.io/managed-by: {{ .Release.Service }}
 img renders a full image ref. Usage: include "tunnex-cp.img" (dict "root" $ "repo" .Values.image.api)
 */}}
 {{- define "tunnex-cp.img" -}}
-{{- printf "%s/%s:%s" .root.Values.image.registry .repo .root.Values.image.tag -}}
+{{- printf "%s/%s:%s" .root.Values.image.registry .repo (default .root.Chart.AppVersion .root.Values.image.tag) -}}
 {{- end -}}
 
 {{/* A headless peer identity resolves edge pod addresses, not its ClusterIP. */}}
@@ -40,4 +40,12 @@ img renders a full image ref. Usage: include "tunnex-cp.img" (dict "root" $ "rep
 {{- if not $value -}}{{- fail (printf "appAccess.%s is required; this chart never generates trust or credentials" $name) -}}{{- end -}}
 {{- end -}}
 {{- end -}}
+{{- end -}}
+
+{{/*
+The gateway image the control plane tells gateways to run. Empty means the image of this chart's own
+release, so the control plane and the gateways it installs are the same version by default.
+*/}}
+{{- define "tunnex-cp.nodeAgentImage" -}}
+{{- default (printf "%s/tunnex-node-agent:%s" .Values.image.registry (default .Chart.AppVersion .Values.image.tag)) .Values.nodeAgentImage -}}
 {{- end -}}
