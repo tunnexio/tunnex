@@ -593,7 +593,7 @@ export function AppShell() {
                 className="hidden items-center gap-2 rounded-input border border-line bg-surface-inset px-3 py-[7px] text-cell text-ink-secondary hover:text-ink-body md:flex"
               >
                 <Icon name="search" size={13} />
-                <span>Go to a page…</span>
+                <span>Search or go to…</span>
                 <span className="ml-2 font-mono text-badge text-ink-secondary">
                   ⌘K
                 </span>

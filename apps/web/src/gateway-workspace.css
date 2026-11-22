@@ -1,5 +1,5 @@
 /* Gateways share the compact inventory and focused detail pattern used by access. */
-.gateway-workspace { width:100%; max-width:1320px; margin-inline:auto; padding-inline:8px; color:var(--tnx-text-primary); }
+.gateway-workspace { width:100%; max-width:1320px; margin-inline:auto; color:var(--tnx-text-primary); }
 .gateway-workspace.gw-inventory-workspace { display:grid; gap:18px; }
 .gw-topbar { display:flex; align-items:center; justify-content:space-between; gap:20px; min-height:48px; border-bottom:1px solid var(--tnx-border); }
 .gw-filter-tabs { display:flex; gap:24px; min-width:0; align-self:stretch; }

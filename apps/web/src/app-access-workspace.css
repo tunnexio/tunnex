@@ -70,7 +70,7 @@
 }
 
 /* A quiet inventory: identity first, actions on demand, no surrounding card. */
-.app-access-inventory-workspace { position:relative; max-width:1320px; padding-inline:8px; }
+.app-access-inventory-workspace { position:relative; max-width:1320px; }
 .app-access-inventory-workspace .app-access-heading h1 { font-size:30px; line-height:1.2; letter-spacing:-.035em; }
 .app-access-inventory-workspace .app-access-heading p { margin-top:8px; font-size:14px; color:var(--tnx-text-secondary); }
 .app-access-inventory-workspace > .app-access-heading,

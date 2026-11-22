@@ -4,6 +4,9 @@ import { useSandboxModuleState } from "../lib/deploymentMeta";
 import { NAV_DESTINATIONS } from "./AppShell";
 import { motionAllowed } from "../lib/motion";
 import { useMotionPreference } from "./MotionProvider";
+import { useOrg } from "../lib/useOrg";
+import { api, listItems } from "../lib/api";
+import { entityResults, type PaletteInventory } from "../lib/palettesearch";
 
 // S14.3 SLICE B — THE COMMAND PALETTE. ⌘K / Ctrl-K, plus `g` sequences.
 //
@@ -39,7 +42,26 @@ export function CommandPalette() {
   const reduced = useMotionPreference();
 
   const sandboxState = useSandboxModuleState();
-  const results = useMemo(() => {
+  // Entities are READ when the palette opens and dropped when it closes: a result is never older than the
+  // moment the operator asked. A read that fails contributes nothing rather than an error in a dialog.
+  const { org } = useOrg();
+  const orgId = org?.id;
+  const [inventory, setInventory] = useState<PaletteInventory>({});
+  useEffect(() => {
+    if (!open || !orgId) { setInventory({}); return; }
+    let cancelled = false;
+    const path = { orgId };
+    const put = (key: keyof PaletteInventory) => (result: { data?: unknown }) => {
+      const rows = listItems(result.data as never) as unknown[];
+      if (!cancelled && Array.isArray(rows)) setInventory(current => ({ ...current, [key]: rows.filter(row => !!row && typeof row === "object") }));
+    };
+    void api.GET("/api/v1/organizations/{orgId}/nodes", { params: { path } }).then(put("gateways")).catch(() => {});
+    void api.GET("/api/v1/organizations/{orgId}/devices", { params: { path } }).then(put("devices")).catch(() => {});
+    void api.GET("/api/v1/organizations/{orgId}/members", { params: { path } }).then(put("people")).catch(() => {});
+    void api.GET("/api/v1/organizations/{orgId}/k8s/clusters", { params: { path } }).then(put("clusters")).catch(() => {});
+    return () => { cancelled = true; };
+  }, [open, orgId]);
+  const pages = useMemo(() => {
     const destinations = NAV_DESTINATIONS.filter(item => item.to !== "/sandboxes" || sandboxState === "enabled" || sandboxState === "draining");
     const q = query.trim().toLowerCase();
     if (!q) return destinations;
@@ -47,6 +69,13 @@ export function CommandPalette() {
       (d) => d.label.toLowerCase().includes(q) || d.to.includes(q),
     );
   }, [query, sandboxState]);
+  const results = useMemo(
+    () => [
+      ...pages.map(page => ({ key: page.to, to: page.to, label: page.label, kind: undefined as string | undefined, detail: undefined as string | undefined })),
+      ...entityResults(query, inventory),
+    ],
+    [pages, query, inventory],
+  );
 
   useEffect(() => {
     let pendingG = false;
@@ -112,7 +141,7 @@ export function CommandPalette() {
         role="dialog"
         aria-modal="true"
         aria-label="Command palette"
-        className="w-full max-w-lg rounded-xl border border-white/10 bg-ink-800 p-3 shadow-xl"
+        className="w-full max-w-xl rounded-xl border border-white/10 bg-ink-800 p-3 shadow-xl"
         onClick={(e) => e.stopPropagation()}
         onKeyDown={(e) => {
           if (e.key === "Escape") return close();
@@ -134,7 +163,7 @@ export function CommandPalette() {
           aria-controls="palette-results"
           aria-label="Go to"
           className="w-full rounded-md border border-white/10 bg-ink-900 px-3 py-2 text-sm text-white placeholder:text-slate-600"
-          placeholder="Go to…"
+          placeholder="Go to a page, or find a gateway, device, person or cluster…"
           value={query}
           onChange={(e) => {
             setQuery(e.target.value);
@@ -148,7 +177,7 @@ export function CommandPalette() {
           className="mt-2 max-h-72 overflow-y-auto"
         >
           {results.map((d, i) => (
-            <li key={d.to} role="option" aria-selected={i === active}>
+            <li key={d.key} role="option" aria-selected={i === active}>
               <button
                 type="button"
                 onClick={() => go(d.to)}
@@ -158,6 +187,7 @@ export function CommandPalette() {
                 }`}
               >
                 {d.label}
+                {d.kind && <span className="ml-2 text-[12px] text-ink-tertiary">{d.kind}{d.detail ? ` · ${d.detail}` : ""}</span>}
               </button>
             </li>
           ))}

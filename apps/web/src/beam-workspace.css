@@ -1,4 +1,4 @@
-.beam-workspace { --sharing-lilac:#B4A3E7; --sharing-blue:#91B4E7; --sharing-teal:#80C5BC; --sharing-sand:#D8B487; position:relative; min-width:0; width:100%; max-width:1320px; margin-inline:auto; padding-inline:8px; overflow-wrap:anywhere; }
+.beam-workspace { --sharing-lilac:#B4A3E7; --sharing-blue:#91B4E7; --sharing-teal:#80C5BC; --sharing-sand:#D8B487; position:relative; min-width:0; width:100%; max-width:1320px; margin-inline:auto; overflow-wrap:anywhere; }
 .beam-workspace :focus-visible { outline:2px solid var(--tnx-focus); outline-offset:3px; }
 .beam-workspace > .tnx-navigation-header { position:absolute; top:12px; right:8px; margin:0; pointer-events:none; }
 .beam-workspace .tnx-navigation-header > div { pointer-events:auto; }
