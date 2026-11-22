@@ -995,8 +995,10 @@ func runToolContextPreflight(ctx context.Context, deps k8sDeps, requestedContext
 	return contextName, nil
 }
 
+// gatewayPodSelector matches every pod of the release: the gateway itself and
+// the pre-install preflight hook, which fails first when a pod cannot be placed.
 func gatewayPodSelector(release string) string {
-	return "app.kubernetes.io/instance=" + release + ",app.kubernetes.io/component=gateway"
+	return "app.kubernetes.io/instance=" + release
 }
 
 func verifyHelmClient(ctx context.Context, runner k8sRunner) error {
