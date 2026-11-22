@@ -1,3 +1,4 @@
+import { createPortal } from "react-dom";
 import "../rule-builder.css";
 import "../access-policies-workspace.css";
 import "../network-workspaces.css";
@@ -686,9 +687,26 @@ function AgentJITAccessSection({
   );
 }
 
+/**
+ * Places the page's primary action at the end of the tab row, where every other page has it. Until the
+ * tab row is mounted (and wherever it is absent) the action renders in place, so it is never missing.
+ */
+function PrimaryActionSlot({ children }: { children: ReactNode }) {
+  const [slot, setSlot] = useState<Element | null>(null);
+  useEffect(() => { setSlot(document.querySelector("[data-access-primary-slot]")); }, []);
+  return slot ? createPortal(children, slot) : <>{children}</>;
+}
+
 function TestAccessSection({ orgId }: { orgId: string }) {
   const [agents, setAgents] = useState<TestableAgent[] | null>(null);
   const [agentId, setAgentId] = useState("");
+  // People's devices are tested through their own endpoint (UIX-1). `null` = not read yet.
+  const [devices, setDevices] = useState<Array<TestableAgent & { owner?: string }> | null>(null);
+  const [deviceId, setDeviceId] = useState("");
+  const [subject, setSubject] = useState<"device" | "agent">("agent");
+  // Names of exposed cluster Services, as the control plane lists them. A person types the name they
+  // use; the test needs the private address behind it.
+  const [serviceAddresses, setServiceAddresses] = useState<Record<string, string>>({});
   const [destination, setDestination] = useState("");
   const [protocol, setProtocol] = useState<"tcp" | "udp">("tcp");
   const [port, setPort] = useState("443");
@@ -698,7 +716,8 @@ function TestAccessSection({ orgId }: { orgId: string }) {
   const [open, setOpen] = useState(false);
   const loadEpoch = useRef(0);
   const runEpoch = useRef(0);
-  const tupleKey = `${orgId}\u0000${agentId}\u0000${destination.trim()}\u0000${protocol}\u0000${port}`;
+  const subjectId = subject === "device" ? deviceId : agentId;
+  const tupleKey = `${orgId}\u0000${subject}\u0000${subjectId}\u0000${destination.trim()}\u0000${protocol}\u0000${port}`;
   const tupleKeyRef = useRef(tupleKey);
   tupleKeyRef.current = tupleKey;
 
@@ -706,8 +725,26 @@ function TestAccessSection({ orgId }: { orgId: string }) {
     const epoch = ++loadEpoch.current;
     setAgents(null);
     setAgentId("");
+    setDevices(null);
+    setDeviceId("");
+    setSubject("agent");
     setResult(null);
     setError(null);
+    void loadOne(() => api.GET("/api/v1/organizations/{orgId}/k8s/services", { params: { path: { orgId } } })).then(listed => {
+      if (epoch !== loadEpoch.current || !listed.ok || !Array.isArray(listed.data)) return;
+      setServiceAddresses(Object.fromEntries(listed.data.filter(service => !!service && typeof service.fqdn === "string" && typeof service.vip === "string")
+        .map(service => [service.fqdn.toLowerCase().replace(/\.$/, ""), service.vip])));
+    });
+    void (async () => {
+      const listedDevices = await loadOne(() => api.GET("/api/v1/organizations/{orgId}/devices", { params: { path: { orgId } } }));
+      if (epoch !== loadEpoch.current) return;
+      const people = listedDevices.ok && Array.isArray(listedDevices.data)
+        ? listedDevices.data.filter(device => !!device && typeof device.id === "string" && device.kind !== "agent" && device.status !== "revoked")
+            .map(device => ({ device_id: device.id, name: device.name || device.id.slice(0, 8), owner: device.owner_email ?? undefined }))
+        : [];
+      setDevices(people);
+      if (people.length) { setDeviceId(people[0]!.device_id); setSubject("device"); }
+    })();
     void (async () => {
       const listed = await loadOne(() =>
         api.GET("/api/v1/organizations/{orgId}/agents", {
@@ -742,32 +779,35 @@ function TestAccessSection({ orgId }: { orgId: string }) {
     setBusy(false);
     setResult(null);
     setError(null);
-  }, [orgId, agentId, destination, protocol, port]);
+  }, [orgId, subject, agentId, deviceId, destination, protocol, port]);
 
-  if (!agents || agents.length === 0) return null;
+  const hasAgents = !!agents && agents.length > 0;
+  const hasDevices = !!devices && devices.length > 0;
+  if (!hasAgents && !hasDevices) return null;
 
   const numericPort = Number(port);
   const runnable =
-    agentId !== "" && destination.trim() !== "" && Number.isInteger(numericPort) && numericPort >= 1 && numericPort <= 65535;
+    subjectId !== "" && destination.trim() !== "" && Number.isInteger(numericPort) && numericPort >= 1 && numericPort <= 65535;
 
   async function run() {
     if (!runnable) return;
     const epoch = ++runEpoch.current;
     const requestedTupleKey = tupleKey;
-    const tuple = { agentId, destination: destination.trim(), protocol, port: numericPort };
+    const typed = destination.trim();
+    // Only a person's device is tested by Service name; the agent test keeps its own hostname rules.
+    const serviceAddress = subject === "device" ? serviceAddresses[typed.toLowerCase().replace(/\.$/, "")] : undefined;
+    const tuple = { subject, subjectId, destination: serviceAddress ?? typed, protocol, port: numericPort };
     setBusy(true);
     setResult(null);
     setError(null);
     try {
-      const response = await api.GET(
-        "/api/v1/organizations/{orgId}/agents/{deviceId}/test-access",
-        {
-          params: {
-            path: { orgId, deviceId: tuple.agentId },
-            query: { destination: tuple.destination, protocol: tuple.protocol, port: tuple.port },
-          },
-        },
-      );
+      const params = {
+        path: { orgId, deviceId: tuple.subjectId },
+        query: { destination: tuple.destination, protocol: tuple.protocol, port: tuple.port },
+      };
+      const response = tuple.subject === "device"
+        ? await api.GET("/api/v1/organizations/{orgId}/devices/{deviceId}/test-access", { params })
+        : await api.GET("/api/v1/organizations/{orgId}/agents/{deviceId}/test-access", { params });
       if (epoch !== runEpoch.current || requestedTupleKey !== tupleKeyRef.current) return;
       if (response.error || !response.data) setError(apiErrorMessage(response.error, "Could not test access."));
       else setResult(response.data);
@@ -785,13 +825,24 @@ function TestAccessSection({ orgId }: { orgId: string }) {
         <div className="access-test-editor">
         <p>Check current policy intent. No traffic is sent.</p>
         <div className="access-test-fields">
-          <Field label="Agent">
+          {hasAgents && hasDevices && <Field label="Test for">
+            <Select value={subject} onChange={(e) => setSubject(e.target.value as "device" | "agent")}>
+              <option value="device">A person's device</option><option value="agent">An AI agent</option>
+            </Select>
+          </Field>}
+          {subject === "device" && hasDevices ? <Field label="Device">
+            <Select value={deviceId} onChange={(e) => setDeviceId(e.target.value)}>
+              {devices!.map((device) => (
+                <option key={device.device_id} value={device.device_id}>{device.owner ? `${device.name} · ${device.owner}` : device.name}</option>
+              ))}
+            </Select>
+          </Field> : <Field label="Agent">
             <Select value={agentId} onChange={(e) => setAgentId(e.target.value)}>
-              {agents.map((agent) => (
+              {(agents ?? []).map((agent) => (
                 <option key={agent.device_id} value={agent.device_id}>{agent.name}</option>
               ))}
             </Select>
-          </Field>
+          </Field>}
           <Field label="Destination IP or hostname">
             <Input value={destination} placeholder="10.20.0.15" onChange={(e) => setDestination(e.target.value)} />
           </Field>
@@ -810,6 +861,7 @@ function TestAccessSection({ orgId }: { orgId: string }) {
           <p className="text-sm font-medium text-slate-200">
             {result.overall === "allowed" ? "Allowed by current Tunnex intent" : result.overall === "denied" ? "Blocked by current Tunnex intent" : "Inconclusive from current evidence"}
           </p>
+          {result.destination !== destination.trim() && <p className="mt-1 text-xs text-slate-400">{destination.trim()} is the exposed Service at {result.destination}; that address was tested.</p>}
           {result.first_blocker && <p className="mt-1 text-xs text-amber-300">First blocker: {result.first_blocker}</p>}
           <ol className="access-test-checks">
             {result.checks.map((check, index) => (
@@ -1610,7 +1662,7 @@ function RulesSection({
       ) : (
         <div className="ap-rules-heading">
           <div><h2 id="access-rules-heading">Rules</h2><span className="ap-rules-count">{rulesResult?.ok ? `${rulesResult.data} total · ${rules.filter(rule => rule.enabled).length} enabled` : "Loading rule inventory…"}</span></div>
-          {canManage && !view.showRetry && <ComposeGate surface="Access rules"><Button size="sm" disabled={ruleBusy || !rulesAuthoritative || (groups.length === 0 && sites.length === 0 && visibleAgents.length === 0)} onClick={() => setCreating(true)}>Add rule</Button></ComposeGate>}
+          {canManage && !view.showRetry && <PrimaryActionSlot><ComposeGate surface="Access rules"><Button size="sm" disabled={ruleBusy || !rulesAuthoritative || (groups.length === 0 && sites.length === 0 && visibleAgents.length === 0)} onClick={() => setCreating(true)}>Add rule</Button></ComposeGate></PrimaryActionSlot>}
         </div>
       )}
       {/* S8.3 CP: the posture summary line. enforcing+0 is LOUD (a live default-deny with no rules); a
