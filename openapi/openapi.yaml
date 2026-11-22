@@ -4725,6 +4725,48 @@ paths:
             application/json: { schema: { $ref: "#/components/schemas/Error" } }
         default: { $ref: "#/components/responses/Error" }
 
+  /api/v1/organizations/{orgId}/devices/{deviceId}/test-access:
+    parameters:
+      - name: orgId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+      - name: deviceId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      operationId: testDeviceAccess
+      summary: Explain one device's access path without probing or changing it
+      description: >-
+        Read-only diagnostic for one ordinary (non-agent) device. It evaluates the device's lifecycle and
+        posture, its home gateway's freshness and compiled routes, and the exact compiled policy of that
+        home gateway. It never resolves DNS from the control plane, sends traffic or changes policy, and it
+        returns no key, configuration or credential. `allowed` means the rules and routes permit the flow,
+        not that the service answered. An agent device id answers 404; use the agent diagnostic for those.
+      tags: [devices]
+      parameters:
+        - name: destination
+          in: query
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 253 }
+        - name: protocol
+          in: query
+          required: true
+          schema: { type: string, enum: [tcp, udp] }
+        - name: port
+          in: query
+          required: true
+          schema: { type: integer, minimum: 1, maximum: 65535 }
+      responses:
+        "200":
+          description: Ordered read-only diagnostic; inconclusive facts are explicit.
+          headers: { X-Request-Id: { $ref: "#/components/headers/RequestId" } }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/DeviceAccessDiagnostic" }
+        default: { $ref: "#/components/responses/Error" }
+
   # ── Device approval (S7.3) ──────────────────────────────────────────────────
   # An org-level approval gate: new devices enroll PENDING (blocked) until approved.
   # Community core; RBAC: device:approve.
@@ -14568,6 +14610,23 @@ components:
           type: array
           minItems: 7
           maxItems: 7
+          items: { $ref: "#/components/schemas/AgentAccessCheck" }
+
+    DeviceAccessDiagnostic:
+      type: object
+      required: [device_id, destination, protocol, port, overall, checks]
+      additionalProperties: false
+      properties:
+        device_id: { type: string, format: uuid }
+        destination: { type: string }
+        protocol: { type: string, enum: [tcp, udp] }
+        port: { type: integer, minimum: 1, maximum: 65535 }
+        overall: { type: string, enum: [allowed, denied, inconclusive] }
+        first_blocker: { type: string, nullable: true }
+        checks:
+          type: array
+          minItems: 1
+          maxItems: 8
           items: { $ref: "#/components/schemas/AgentAccessCheck" }
 
     AgentBootstrapTokenRequest:

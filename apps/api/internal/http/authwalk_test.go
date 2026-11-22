@@ -198,6 +198,7 @@ var walkQueries = map[string]string{
 	"publishconnectivitysnapshot":             "?generation=1",
 	"closeconnectivitysession":                "?generation=1",
 	"testagentaccess":                         "?destination=192.0.2.10&protocol=tcp&port=443",
+	"testdeviceaccess":                        "?destination=192.0.2.10&protocol=tcp&port=443",
 	"getagentpolicytemplatedestinationimpact": "?destination_kind=resource&destination_id=00000000-0000-0000-0000-000000000000",
 	"deletek8sclusterscope":                   "?expected_revision=1",
 }

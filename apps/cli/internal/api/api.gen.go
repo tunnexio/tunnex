@@ -1060,6 +1060,19 @@ const (
 	DeviceStatusSuspended DeviceStatus = "suspended"
 )
 
+// Defines values for DeviceAccessDiagnosticOverall.
+const (
+	DeviceAccessDiagnosticOverallAllowed      DeviceAccessDiagnosticOverall = "allowed"
+	DeviceAccessDiagnosticOverallDenied       DeviceAccessDiagnosticOverall = "denied"
+	DeviceAccessDiagnosticOverallInconclusive DeviceAccessDiagnosticOverall = "inconclusive"
+)
+
+// Defines values for DeviceAccessDiagnosticProtocol.
+const (
+	DeviceAccessDiagnosticProtocolTcp DeviceAccessDiagnosticProtocol = "tcp"
+	DeviceAccessDiagnosticProtocolUdp DeviceAccessDiagnosticProtocol = "udp"
+)
+
 // Defines values for DeviceApprovalMode.
 const (
 	DeviceApprovalModeOff DeviceApprovalMode = "off"
@@ -1817,9 +1830,9 @@ const (
 
 // Defines values for SandboxActionDesiredState.
 const (
-	SandboxActionDesiredStateDeleted SandboxActionDesiredState = "deleted"
-	SandboxActionDesiredStateStarted SandboxActionDesiredState = "started"
-	SandboxActionDesiredStateStopped SandboxActionDesiredState = "stopped"
+	Deleted SandboxActionDesiredState = "deleted"
+	Started SandboxActionDesiredState = "started"
+	Stopped SandboxActionDesiredState = "stopped"
 )
 
 // Defines values for SandboxBoundedRuntimeLimitsReservationState.
@@ -2346,6 +2359,12 @@ const (
 	GrantFilterRevoked            ListAppAccessGrantsParamsStatus = "revoked"
 	GrantFilterScheduled          ListAppAccessGrantsParamsStatus = "scheduled"
 	GrantFilterSubjectUnavailable ListAppAccessGrantsParamsStatus = "subject_unavailable"
+)
+
+// Defines values for TestDeviceAccessParamsProtocol.
+const (
+	TestDeviceAccessParamsProtocolTcp TestDeviceAccessParamsProtocol = "tcp"
+	TestDeviceAccessParamsProtocolUdp TestDeviceAccessParamsProtocol = "udp"
 )
 
 // Defines values for SetIPsecConnectionIntentJSONBodyIntent.
@@ -5271,6 +5290,23 @@ type DeviceKind string
 
 // DeviceStatus defines model for Device.Status.
 type DeviceStatus string
+
+// DeviceAccessDiagnostic defines model for DeviceAccessDiagnostic.
+type DeviceAccessDiagnostic struct {
+	Checks       []AgentAccessCheck             `json:"checks"`
+	Destination  string                         `json:"destination"`
+	DeviceId     openapi_types.UUID             `json:"device_id"`
+	FirstBlocker *string                        `json:"first_blocker"`
+	Overall      DeviceAccessDiagnosticOverall  `json:"overall"`
+	Port         int                            `json:"port"`
+	Protocol     DeviceAccessDiagnosticProtocol `json:"protocol"`
+}
+
+// DeviceAccessDiagnosticOverall defines model for DeviceAccessDiagnostic.Overall.
+type DeviceAccessDiagnosticOverall string
+
+// DeviceAccessDiagnosticProtocol defines model for DeviceAccessDiagnostic.Protocol.
+type DeviceAccessDiagnosticProtocol string
 
 // DeviceApproval defines model for DeviceApproval.
 type DeviceApproval struct {
@@ -9281,6 +9317,16 @@ type UpdateDeviceModeParams struct {
 	FullTunnel *bool `form:"full_tunnel,omitempty" json:"full_tunnel,omitempty"`
 }
 
+// TestDeviceAccessParams defines parameters for TestDeviceAccess.
+type TestDeviceAccessParams struct {
+	Destination string                         `form:"destination" json:"destination"`
+	Protocol    TestDeviceAccessParamsProtocol `form:"protocol" json:"protocol"`
+	Port        int                            `form:"port" json:"port"`
+}
+
+// TestDeviceAccessParamsProtocol defines parameters for TestDeviceAccess.
+type TestDeviceAccessParamsProtocol string
+
 // ListIPsecConnectionsParams defines parameters for ListIPsecConnections.
 type ListIPsecConnectionsParams struct {
 	Limit *int                `form:"limit,omitempty" json:"limit,omitempty"`
@@ -11230,6 +11276,9 @@ type ClientInterface interface {
 
 	// RevokeDevice request
 	RevokeDevice(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// TestDeviceAccess request
+	TestDeviceAccess(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, params *TestDeviceAccessParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// DeleteFQDNResolverContextConfig request
 	DeleteFQDNResolverContextConfig(ctx context.Context, orgId openapi_types.UUID, siteId openapi_types.UUID, gatewayId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -16605,6 +16654,18 @@ func (c *Client) RejectDevice(ctx context.Context, orgId openapi_types.UUID, dev
 
 func (c *Client) RevokeDevice(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewRevokeDeviceRequest(c.Server, orgId, deviceId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) TestDeviceAccess(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, params *TestDeviceAccessParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewTestDeviceAccessRequest(c.Server, orgId, deviceId, params)
 	if err != nil {
 		return nil, err
 	}
@@ -33225,6 +33286,89 @@ func NewRevokeDeviceRequest(server string, orgId openapi_types.UUID, deviceId op
 	return req, nil
 }
 
+// NewTestDeviceAccessRequest generates requests for TestDeviceAccess
+func NewTestDeviceAccessRequest(server string, orgId openapi_types.UUID, deviceId openapi_types.UUID, params *TestDeviceAccessParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "deviceId", runtime.ParamLocationPath, deviceId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/devices/%s/test-access", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if queryFrag, err := runtime.StyleParamWithLocation("form", true, "destination", runtime.ParamLocationQuery, params.Destination); err != nil {
+			return nil, err
+		} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+			return nil, err
+		} else {
+			for k, v := range parsed {
+				for _, v2 := range v {
+					queryValues.Add(k, v2)
+				}
+			}
+		}
+
+		if queryFrag, err := runtime.StyleParamWithLocation("form", true, "protocol", runtime.ParamLocationQuery, params.Protocol); err != nil {
+			return nil, err
+		} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+			return nil, err
+		} else {
+			for k, v := range parsed {
+				for _, v2 := range v {
+					queryValues.Add(k, v2)
+				}
+			}
+		}
+
+		if queryFrag, err := runtime.StyleParamWithLocation("form", true, "port", runtime.ParamLocationQuery, params.Port); err != nil {
+			return nil, err
+		} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+			return nil, err
+		} else {
+			for k, v := range parsed {
+				for _, v2 := range v {
+					queryValues.Add(k, v2)
+				}
+			}
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewDeleteFQDNResolverContextConfigRequest generates requests for DeleteFQDNResolverContextConfig
 func NewDeleteFQDNResolverContextConfigRequest(server string, orgId openapi_types.UUID, siteId openapi_types.UUID, gatewayId openapi_types.UUID) (*http.Request, error) {
 	var err error
@@ -44668,6 +44812,9 @@ type ClientWithResponsesInterface interface {
 	// RevokeDeviceWithResponse request
 	RevokeDeviceWithResponse(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*RevokeDeviceResponse, error)
 
+	// TestDeviceAccessWithResponse request
+	TestDeviceAccessWithResponse(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, params *TestDeviceAccessParams, reqEditors ...RequestEditorFn) (*TestDeviceAccessResponse, error)
+
 	// DeleteFQDNResolverContextConfigWithResponse request
 	DeleteFQDNResolverContextConfigWithResponse(ctx context.Context, orgId openapi_types.UUID, siteId openapi_types.UUID, gatewayId openapi_types.UUID, reqEditors ...RequestEditorFn) (*DeleteFQDNResolverContextConfigResponse, error)
 
@@ -51347,6 +51494,29 @@ func (r RevokeDeviceResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r RevokeDeviceResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type TestDeviceAccessResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *DeviceAccessDiagnostic
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r TestDeviceAccessResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r TestDeviceAccessResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -59700,6 +59870,15 @@ func (c *ClientWithResponses) RevokeDeviceWithResponse(ctx context.Context, orgI
 		return nil, err
 	}
 	return ParseRevokeDeviceResponse(rsp)
+}
+
+// TestDeviceAccessWithResponse request returning *TestDeviceAccessResponse
+func (c *ClientWithResponses) TestDeviceAccessWithResponse(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, params *TestDeviceAccessParams, reqEditors ...RequestEditorFn) (*TestDeviceAccessResponse, error) {
+	rsp, err := c.TestDeviceAccess(ctx, orgId, deviceId, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseTestDeviceAccessResponse(rsp)
 }
 
 // DeleteFQDNResolverContextConfigWithResponse request returning *DeleteFQDNResolverContextConfigResponse
@@ -70782,6 +70961,39 @@ func ParseRevokeDeviceResponse(rsp *http.Response) (*RevokeDeviceResponse, error
 	}
 
 	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseTestDeviceAccessResponse parses an HTTP response from a TestDeviceAccessWithResponse call
+func ParseTestDeviceAccessResponse(rsp *http.Response) (*TestDeviceAccessResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &TestDeviceAccessResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest DeviceAccessDiagnostic
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
 		var dest Error
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
