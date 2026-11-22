@@ -4,7 +4,7 @@
 .ur-filter-tabs { display:flex; align-items:center; gap:18px; }
 .ur-filter-tabs button { padding:9px 0; border-bottom:1px solid transparent; font-size:12px; color:var(--tnx-text-secondary); white-space:nowrap; }
 .ur-filter-tabs button > span { margin-left:3px; font-size:12px; font-variant-numeric:tabular-nums; }
-.ur-filter-tabs button[aria-pressed=true] { border-bottom-color:var(--tnx-text-primary); color:var(--tnx-text-heading); }
+.ur-filter-tabs button[aria-pressed=true] { border-bottom-color:var(--tnx-focus); color:var(--tnx-text-heading); }
 .ur-filter-tabs button:hover { color:var(--tnx-text-heading); }
 .ur-result-count { margin-left:auto; color:var(--tnx-text-secondary); font-size:12px; font-variant-numeric:tabular-nums; white-space:nowrap; }
 .ur-table-scroll { min-width:0; overflow-x:auto; }

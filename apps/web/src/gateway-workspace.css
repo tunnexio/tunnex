@@ -5,7 +5,7 @@
 .gw-filter-tabs { display:flex; gap:24px; min-width:0; align-self:stretch; }
 .gw-filter-tabs button { display:flex; align-items:center; gap:7px; padding:11px 0 14px; border-bottom:2px solid transparent; font-size:12px; color:var(--tnx-text-secondary); white-space:nowrap; }
 .gw-filter-tabs button span { font-size:12px; font-variant-numeric:tabular-nums; color:var(--tnx-text-secondary); }
-.gw-filter-tabs button[aria-pressed=true] { border-bottom-color:var(--tnx-text-primary); color:var(--tnx-text-heading); }
+.gw-filter-tabs button[aria-pressed=true] { border-bottom-color:var(--tnx-focus); color:var(--tnx-text-heading); }
 .gw-filter-tabs button:hover { color:var(--tnx-text-heading); }
 .gw-topbar-actions { display:flex; align-items:center; justify-content:flex-end; gap:10px; margin-left:auto; padding-bottom:7px; }
 .gw-topbar-actions > button { min-height:32px; padding:6px 10px; font-size:12px; }
@@ -106,7 +106,7 @@
 .tnx-modal-body .gw-enroll { padding:0; }
 .gw-enroll-steps { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:18px; margin:0 0 20px; list-style:none; border-bottom:1px solid var(--tnx-border); }
 .gw-enroll-step { display:flex; align-items:center; gap:9px; padding:0 0 14px; border-bottom:2px solid transparent; font-size:12px; color:var(--tnx-text-secondary); }
-.gw-enroll-step[data-current=true] { border-bottom-color:var(--tnx-text-primary); color:var(--tnx-text-heading); }
+.gw-enroll-step[data-current=true] { border-bottom-color:var(--tnx-focus); color:var(--tnx-text-heading); }
 .gw-enroll-step-number { display:grid; place-items:center; width:22px; height:22px; border:1px solid var(--tnx-border); border-radius:50%; font-size:12px; }
 .gw-enroll-step[data-current=true] .gw-enroll-step-number { border-color:var(--tnx-text-secondary); }
 .gw-enroll-intro { margin:0 0 20px; color:var(--tnx-text-secondary); font-size:12px; line-height:1.65; }

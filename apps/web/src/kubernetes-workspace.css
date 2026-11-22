@@ -3,7 +3,7 @@
 .kubernetes-workspace-toolbar { display:flex; align-items:center; justify-content:space-between; gap:18px; border-bottom:1px solid var(--tnx-border); min-height:48px; }
 .kubernetes-tabs { display:flex; align-self:stretch; gap:28px; }
 .kubernetes-tabs button { white-space:nowrap; min-height:48px; padding:10px 0 14px; font-size:13px; font-weight:400; color:var(--tnx-text-secondary); border-bottom:2px solid transparent; }
-.kubernetes-tabs button[aria-current=page] { color:var(--tnx-text-heading); border-bottom-color:var(--tnx-text-primary); }
+.kubernetes-tabs button[aria-current=page] { color:var(--tnx-text-heading); border-bottom-color:var(--tnx-focus); }
 .kubernetes-tabs button:hover { color:var(--tnx-text-heading); }
 .kubernetes-toolbar-actions { display:flex; align-items:center; gap:10px; padding-bottom:7px; }
 .kubernetes-toolbar-actions button { min-height:32px; padding:6px 10px; font-size:12px; }
@@ -90,7 +90,7 @@
 .kubernetes-command-guide > p { color:var(--tnx-text-secondary); font-size:12px; }
 .kubernetes-command-methods { display:flex; gap:24px; border-bottom:1px solid var(--tnx-border); }
 .kubernetes-command-methods button { padding:0 0 12px; border-bottom:2px solid transparent; font-size:12px; color:var(--tnx-text-secondary); }
-.kubernetes-command-methods button[aria-current=page] { color:var(--tnx-text-heading); border-bottom-color:var(--tnx-text-primary); }
+.kubernetes-command-methods button[aria-current=page] { color:var(--tnx-text-heading); border-bottom-color:var(--tnx-focus); }
 .kubernetes-command-steps { display:flex; justify-content:space-between; gap:12px; }
 .kubernetes-command-steps button { display:flex; align-items:center; gap:7px; padding:6px 0; font-size:12px; color:var(--tnx-text-secondary); }
 .kubernetes-command-steps button span { display:flex; align-items:center; justify-content:center; width:21px; height:21px; border:1px solid var(--tnx-border); border-radius:50%; font-size:12px; }

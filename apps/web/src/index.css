@@ -492,3 +492,10 @@ main.tnx-page[data-columns] > :not(.fixed):not([role=dialog]):not([aria-modal]) 
 @keyframes tnxPageIn { from { opacity:0; } }
 /* Search fields advertise the "/" shortcut where there is room for it. */
 main .tnx-table-toolbar input[type="search"]::placeholder { text-overflow:ellipsis; }
+
+/* One toolbar per list: search, then its filters, then count and sort. Filters are not a second tab bar. */
+.gw-inventory-toolbar .gw-filter-tabs,.dm-inventory-toolbar .dm-filter-tabs { align-self:center; gap:18px; margin-inline:4px; }
+.gw-inventory-toolbar .gw-filter-tabs button,.dm-inventory-toolbar .dm-filter-tabs button { padding:8px 0; }
+.dm-inventory-toolbar > .tnx-refresh-button,.dm-inventory-toolbar > button:last-child { margin-left:0; }
+/* The current page in the sidebar keeps its focus ring inside its own box, where the rail cannot clip it. */
+nav a[aria-current=page]:focus-visible,aside a:focus-visible { outline-offset:-2px; }

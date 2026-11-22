@@ -77,7 +77,7 @@
 .ai-gateway-editor .ai-wizard-steps li { min-width:0; }
 .ai-gateway-editor .ai-wizard-steps button { width:100%; display:flex; flex-direction:column; align-items:flex-start; gap:7px; padding:0 0 12px; border-bottom:2px solid var(--tnx-border); font-size:12px; color:var(--tnx-text-secondary); text-align:left; }
 .ai-gateway-editor .ai-wizard-steps button > span { font-size:12px; color:var(--tnx-text-secondary); }
-.ai-gateway-editor .ai-wizard-steps button[aria-current=step] { color:var(--tnx-text-heading); border-bottom-color:var(--tnx-text-primary); }
+.ai-gateway-editor .ai-wizard-steps button[aria-current=step] { color:var(--tnx-text-heading); border-bottom-color:var(--tnx-focus); }
 .ai-gateway-editor .ai-wizard-steps button:disabled { opacity:.5; }
 .ai-gateway-editor .ai-wizard-section:not([hidden]) { gap:16px; }
 .tnx-modal-body .ai-gateway-editor .block,.tnx-modal-body .ai-gateway-editor .ai-provider-form-grid > .block,.tnx-modal-body .ai-gateway-editor .ai-provider-picker > .relative { display:block; }
