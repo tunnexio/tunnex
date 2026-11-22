@@ -35,7 +35,7 @@ function selectStep(name: "1. Provider" | "2. Connection" | "3. Network" | "4. R
 }
 
 describe("ProviderFirstEnrollmentModal", () => {
-  it("starts with an explicit provider choice and keeps continuation blocked until its platform is selected", () => {
+  it("starts with an explicit provider choice, which also selects its one Kubernetes service", () => {
     const submit = vi.fn();
     renderModal({ onSubmit: submit });
     expect(screen.getAllByRole("radio")).toHaveLength(4);
@@ -54,8 +54,7 @@ describe("ProviderFirstEnrollmentModal", () => {
     expect(screen.getByRole("button", { name: "1. Provider" }).getAttribute("aria-current")).toBe("step");
     expect(screen.getByRole("button", { name: "Continue" })).toHaveProperty("disabled", true);
     fireEvent.click(screen.getByRole("radio", { name: /Amazon Web Services/i }));
-    expect(screen.getByRole("combobox", { name: "Kubernetes service" })).toHaveProperty("value", "");
-    expect(screen.getByRole("button", { name: "Continue" })).toHaveProperty("disabled", true);
+    expect(screen.getByRole("combobox", { name: "Kubernetes service" })).toHaveProperty("value", "eks");
     fireEvent.change(screen.getByRole("combobox", { name: "Kubernetes service" }), { target: { value: "eks" } });
     expect(screen.getByRole("button", { name: "Continue" })).toHaveProperty("disabled", false);
     expect(submit).not.toHaveBeenCalled();
@@ -74,10 +73,10 @@ describe("ProviderFirstEnrollmentModal", () => {
     });
 
     selectStep("3. Network");
-    expect((screen.getByLabelText("Kubernetes Service CIDR") as HTMLInputElement).value).toBe("");
+    expect((screen.getByLabelText("Cluster's Service network") as HTMLInputElement).value).toBe("");
     selectStep("1. Provider");
     fireEvent.click(screen.getByRole("radio", { name: /Microsoft Azure/i }));
-    expect((screen.getByLabelText("Kubernetes service") as HTMLSelectElement).value).toBe("");
+    expect((screen.getByLabelText("Kubernetes service") as HTMLSelectElement).value).toBe("aks");
     selectStep("2. Connection");
     expect((screen.getByLabelText("Fronting Site") as HTMLSelectElement).value).toBe("");
     expect((screen.getByLabelText("In-cluster connector") as HTMLSelectElement).value).toBe("");
@@ -146,11 +145,12 @@ describe("ProviderFirstEnrollmentModal", () => {
     fireEvent.change(screen.getByLabelText("Cluster name"), { target: { value: "prod-eks" } });
     fireEvent.click(screen.getByRole("button", { name: "Continue" }));
     expect(screen.getByRole("button", { name: "3. Network" }).getAttribute("aria-current")).toBe("step");
-    expect(screen.getByLabelText("Synthetic VIP range")).toHaveProperty("value", "");
-    expect(screen.getByLabelText("Kubernetes Service CIDR")).toHaveProperty("value", "");
-    expect(screen.getByLabelText("DNS zone")).toHaveProperty("value", "");
-    fireEvent.change(screen.getByLabelText("Synthetic VIP range"), { target: { value: "100.64.32.0/20" } });
-    fireEvent.change(screen.getByLabelText("Kubernetes Service CIDR"), { target: { value: "10.96.0.0/12" } });
+    // Tunnex fills the two values it can choose; the cluster's own Service network is never guessed.
+    expect(screen.getByLabelText("Addresses for exposed Services")).toHaveProperty("value", "100.64.0.0/16");
+    expect(screen.getByLabelText("Cluster's Service network")).toHaveProperty("value", "");
+    expect(screen.getByLabelText("DNS zone")).toHaveProperty("value", "k8s.internal");
+    fireEvent.change(screen.getByLabelText("Addresses for exposed Services"), { target: { value: "100.64.32.0/20" } });
+    fireEvent.change(screen.getByLabelText("Cluster's Service network"), { target: { value: "10.96.0.0/12" } });
     fireEvent.change(screen.getByLabelText("DNS zone"), { target: { value: "k8s.example.test" } });
     fireEvent.click(screen.getByRole("button", { name: "Continue" }));
     expect(screen.getByRole("button", { name: "4. Review" }).getAttribute("aria-current")).toBe("step");

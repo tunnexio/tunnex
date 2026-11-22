@@ -297,8 +297,8 @@ describe("Kubernetes — ownership, confirmation, and URL contracts", () => {
     fireEvent.change(within(dialog).getByLabelText("In-cluster connector"), { target: { value: "n1" } });
     fireEvent.change(within(dialog).getByLabelText("Cluster name"), { target: { value: "prod-eks" } });
     fireEvent.click(within(dialog).getByRole("button", { name: "Continue" }));
-    fireEvent.change(within(dialog).getByLabelText("Synthetic VIP range"), { target: { value: "100.64.32.0/20" } });
-    fireEvent.change(within(dialog).getByLabelText("Kubernetes Service CIDR"), { target: { value: "10.96.0.0/12" } });
+    fireEvent.change(within(dialog).getByLabelText("Addresses for exposed Services"), { target: { value: "100.64.32.0/20" } });
+    fireEvent.change(within(dialog).getByLabelText("Cluster's Service network"), { target: { value: "10.96.0.0/12" } });
     fireEvent.change(within(dialog).getByLabelText("DNS zone"), { target: { value: "k8s.example.test" } });
     fireEvent.click(within(dialog).getByRole("button", { name: "Continue" }));
     fireEvent.click(within(dialog).getByRole("button", { name: "Enroll cluster" }));

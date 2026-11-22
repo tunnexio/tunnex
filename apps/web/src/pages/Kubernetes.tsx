@@ -511,6 +511,7 @@ tunnex k8s install --org ${orgId ?? "<organization-id>"} --node-name <gateway-na
           nodes={raw.nodes}
           sitesError={raw.sitesError}
           nodesError={raw.nodesError}
+          existingClusters={raw.clusters}
           onDismiss={() => setRegistering(false)}
           onSubmit={async (draft) => {
             if (!draft.provider || !draft.platform || !providerPlatformEntry(draft.provider, draft.platform)) {

@@ -5,6 +5,9 @@ import {
   K8S_PROVIDER_CATALOG,
   catalogEntry,
   changeEnrollmentProvider,
+  serviceNetworkHelp,
+  suggestedDnsZone,
+  suggestedVipRange,
   enrollmentComplete,
   enrollmentValidation,
   providerPlatformEntry,
@@ -29,6 +32,7 @@ export function ProviderFirstEnrollmentModal({
   sitesError,
   nodesError,
   initialDraft,
+  existingClusters,
   onDismiss,
   onSubmit,
   onDone,
@@ -38,6 +42,8 @@ export function ProviderFirstEnrollmentModal({
   sitesError?: string | null;
   nodesError?: string | null;
   initialDraft?: Partial<EnrollmentDraft>;
+  /** Clusters already registered, so the suggested address range and DNS zone do not collide. */
+  existingClusters?: readonly { vip_range?: string | null; dns_zone?: string | null }[];
   /** Retained for callers of the former form; network values are now a required step. */
   initialAdvancedOpen?: boolean;
   onDismiss: () => void;
@@ -92,7 +98,16 @@ export function ProviderFirstEnrollmentModal({
   };
 
   const goTo = (next: number) => {
-    if (!submitting.current) setStep(next);
+    if (submitting.current) return;
+    if (next === 2) {
+      // Fill the two values Tunnex can choose. Anything the person already typed is kept.
+      setDraft((current) => ({
+        ...current,
+        vipRange: current.vipRange.trim() ? current.vipRange : suggestedVipRange((existingClusters ?? []).map((cluster) => cluster.vip_range ?? "")),
+        dnsZone: current.dnsZone.trim() ? current.dnsZone : suggestedDnsZone((existingClusters ?? []).map((cluster) => cluster.dns_zone ?? "")),
+      }));
+    }
+    setStep(next);
   };
 
   async function submit() {
@@ -202,16 +217,19 @@ export function ProviderFirstEnrollmentModal({
           </>}
 
           {step === 2 && <>
-            <p className="k8s-enrollment-note">Enter the network values for this cluster. None are filled from the provider.</p>
+            <p className="k8s-enrollment-note">Tunnex gives every Service you expose its own private address and name. The first and last values are filled in for you; change them only if they clash with something you already use.</p>
             <div className="k8s-enrollment-fields">
-              <Field label="Synthetic VIP range" help="Addresses assigned to exposed services.">
+              <Field label="Addresses for exposed Services" help="A private range Tunnex hands out from, one address per exposed Service. It must not overlap your office, cloud or cluster networks.">
                 <Input value={draft.vipRange} disabled={busy} onChange={(event) => update("vipRange", event.target.value)} placeholder="e.g. 100.64.0.0/16" />
               </Field>
-              <Field label="Kubernetes Service CIDR" help="The Service network already configured in this cluster.">
-                <Input value={draft.serviceCidr} disabled={busy} onChange={(event) => update("serviceCidr", event.target.value)} placeholder="e.g. 10.96.0.0/12" />
-              </Field>
               <div>
-                <Field label="DNS zone" help="Domain used for exposed services.">
+                <Field label="Cluster's Service network" help={`The range your cluster already uses for Service addresses (${serviceNetworkHelp(draft.platform).typical}). Tunnex reads it; it does not change it.`}>
+                  <Input value={draft.serviceCidr} disabled={busy} onChange={(event) => update("serviceCidr", event.target.value)} placeholder="e.g. 10.96.0.0/12" />
+                </Field>
+                <p className="k8s-enrollment-note">Not sure? This prints it: <code>{serviceNetworkHelp(draft.platform).command}</code></p>
+              </div>
+              <div>
+                <Field label="DNS zone" help="Exposed Services get names under this domain, like orders.shop.svc.CLUSTER.ZONE. It does not have to exist publicly.">
                   <Input value={draft.dnsZone} disabled={busy} aria-invalid={validation.dnsZone ? true : undefined} aria-describedby={validation.dnsZone ? "k8s-dns-zone-error" : undefined} onChange={(event) => update("dnsZone", event.target.value)} placeholder="e.g. k8s.acme.com" />
                 </Field>
                 {validation.dnsZone && <div id="k8s-dns-zone-error"><ErrorText>{validation.dnsZone}</ErrorText></div>}
@@ -227,8 +245,8 @@ export function ProviderFirstEnrollmentModal({
               <div><dt>Kubernetes service</dt><dd>{providerComplete ? selectedCatalog?.platformLabel : "Not selected"}</dd></div>
               <div><dt>Fronting Site</dt><dd>{selectedSite?.name ?? (sites === null ? "Inventory unavailable" : "Not selected")}</dd></div>
               <div><dt>In-cluster connector</dt><dd>{selectedConnector?.name ?? (nodes === null ? "Inventory unavailable" : "Not selected")}</dd></div>
-              <div><dt>Synthetic VIP range</dt><dd>{draft.vipRange.trim() || "Not entered"}</dd></div>
-              <div><dt>Kubernetes Service CIDR</dt><dd>{draft.serviceCidr.trim() || "Not entered"}</dd></div>
+              <div><dt>Addresses for exposed Services</dt><dd>{draft.vipRange.trim() || "Not entered"}</dd></div>
+              <div><dt>Cluster's Service network</dt><dd>{draft.serviceCidr.trim() || "Not entered"}</dd></div>
               <div><dt>DNS zone</dt><dd>{draft.dnsZone.trim() || "Not entered"}</dd></div>
             </dl>
             {!complete && <p role="status" className="k8s-enrollment-note">{!providerComplete ? "Choose a supported provider and service in Provider." : !connectionComplete ? "Complete Connection with a valid name, Site and eligible connector." : !networkComplete ? "Complete all Network values with a valid DNS zone." : "Complete each step before enrollment."}</p>}
