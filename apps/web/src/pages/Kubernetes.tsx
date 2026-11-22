@@ -818,6 +818,34 @@ export function ExposeServiceModal({
     }
   }
 
+  // currentInventoryChoice re-reads the cluster inventory and returns the references the current report
+  // gives to the same Service (namespace + name) and the same ports (protocol + number + name). null when
+  // the Service or any chosen port is no longer there.
+  async function currentInventoryChoice(chosen: InventoryService, chosenPortRefs: string[]): Promise<{ inventoryRef: string; portRefs: string[] } | null> {
+    const wanted = chosen.ports.filter((port) => chosenPortRefs.includes(port.port_ref));
+    let cursor: string | undefined;
+    for (let page = 0; page < 20; page += 1) {
+      const result = await loadOne(() => api.GET(
+        "/api/v1/organizations/{orgId}/k8s/clusters/{clusterId}/inventory",
+        { params: { path: { orgId, clusterId }, query: { cursor, limit: 100 } } },
+      ));
+      if (!result.ok || !result.data || !Array.isArray(result.data.items)) return null;
+      const match = result.data.items.find((item) => item.namespace === chosen.namespace && item.service === chosen.service);
+      if (match) {
+        const portRefs: string[] = [];
+        for (const want of wanted) {
+          const port = match.ports.find((candidate) => candidate.protocol === want.protocol && candidate.service_port === want.service_port && candidate.name === want.name);
+          if (!port) return null;
+          portRefs.push(port.port_ref);
+        }
+        return { inventoryRef: match.inventory_ref, portRefs };
+      }
+      if (!result.data.next_cursor) return null;
+      cursor = result.data.next_cursor;
+    }
+    return null;
+  }
+
   async function exposeInventory() {
     if (manualOpen || inventoryState !== "ready" || !selectedInventory || selectedPortRefs.length === 0 || busy || inventoryBusy) return;
     setInventoryBusy(true);
@@ -827,17 +855,31 @@ export function ExposeServiceModal({
         await onFixtureExpose(selectedInventory.inventory_ref, selectedPortRefs);
         return;
       }
-      const response = await api.POST(
+      const post = (inventoryRef: string, portRefs: string[]) => api.POST(
         "/api/v1/organizations/{orgId}/k8s/clusters/{clusterId}/inventory/{inventoryRef}/expose",
-        {
-          params: { path: { orgId, clusterId, inventoryRef: selectedInventory.inventory_ref } },
-          body: { port_refs: selectedPortRefs },
-        },
+        { params: { path: { orgId, clusterId, inventoryRef } }, body: { port_refs: portRefs } },
       );
+      const isStale = (error: unknown) => {
+        const code = apiErrorCode(error) ?? "";
+        return code.includes("stale") || code.includes("inventory");
+      };
+      let response = await post(selectedInventory.inventory_ref, selectedPortRefs);
+      if (response.error && isStale(response.error)) {
+        // The gateway reports its inventory every 30 seconds and each report gets new references, so a
+        // choice made a moment ago can be "stale" by the time it is submitted. Read the current report,
+        // find the SAME Service and ports in it, and submit once more. The server still verifies the
+        // exact current inventory; nothing unverified is sent.
+        const current = await currentInventoryChoice(selectedInventory, selectedPortRefs);
+        if (!current) {
+          await loadInventory();
+          setInventoryError("This Service or one of its ports changed in the cluster. The list is now current. Choose it again.");
+          return;
+        }
+        response = await post(current.inventoryRef, current.portRefs);
+      }
       if (response.error) {
-        const code = apiErrorCode(response.error) ?? "";
         setInventoryError(apiErrorMessage(response.error, "Could not atomically expose the selected Service ports."));
-        if (code.includes("stale") || code.includes("inventory")) setInventoryState("stale");
+        if (isStale(response.error)) setInventoryState("stale");
         return;
       }
       onClose();
@@ -907,6 +949,7 @@ export function ExposeServiceModal({
                   </div>
                 ) }
       } />
+      {inventoryError && (inventoryState === "empty" || inventoryState === "unavailable") && <ErrorText>{inventoryError}</ErrorText>}
 
       {(inventoryState === "stale" || inventoryState === "error") && <div className="mt-2"><Button variant="ghost" size="sm" disabled={inventoryBusy || busy} onClick={() => void loadInventory()}>Retry inventory</Button></div>}
 
