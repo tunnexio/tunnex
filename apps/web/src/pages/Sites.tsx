@@ -1004,12 +1004,12 @@ function SiteList({
   ];
 
   return <section className="gw-inventory s2s-networks-inventory" aria-label="Network inventory">
-    <div role="group" aria-label="Filter networks" className="gw-filter-tabs" style={{ borderBottom: "1px solid var(--tnx-border)", marginBottom: 14 }}>
-      {([["all", "All", summary.networks], ["attention", "Needs attention", summary.attention], ["standby", "With a standby", summary.withStandby]] as const).map(([value, label, count]) =>
-        <button key={value} type="button" aria-pressed={show === value} onClick={() => onControl("show", value === "all" ? null : value)}>{label}<span>{count}</span></button>)}
-    </div>
     <div className="gw-inventory-toolbar">
       {toolbar}
+      <div role="group" aria-label="Filter networks" className="gw-filter-tabs">
+        {([["all", "All", summary.networks], ["attention", "Needs attention", summary.attention], ["standby", "With a standby", summary.withStandby]] as const).map(([value, label, count]) =>
+          <button key={value} type="button" aria-pressed={show === value} onClick={() => onControl("show", value === "all" ? null : value)}>{label}<span>{count}</span></button>)}
+      </div>
       {summary.pendingRanges > 0 && <Link className="gw-text-link" style={{ color: "var(--tnx-warn)" }} to="/sites?section=ranges">{summary.pendingRanges} range{summary.pendingRanges === 1 ? "" : "s"} waiting for approval</Link>}
       <span className="gw-inventory-count">{total === summary.networks ? `${total} network${total === 1 ? "" : "s"}` : `${total} of ${summary.networks}`}</span>
       <div className="gw-sort-controls">

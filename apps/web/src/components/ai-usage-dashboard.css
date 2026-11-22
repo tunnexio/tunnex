@@ -46,7 +46,7 @@
 .tnx-ai-usage .ai-usage-panel-title > span { color:var(--tnx-text-secondary); font-size:12px; }
 .tnx-ai-usage .ai-usage-chart-switch { display:flex; gap:16px; align-items:center; }
 .tnx-ai-usage .ai-usage-chart-switch button { padding:4px 0 7px; border-bottom:1px solid transparent; color:var(--tnx-text-secondary); font-size:12px; }
-.tnx-ai-usage .ai-usage-chart-switch button[aria-pressed=true] { color:var(--tnx-text-heading); border-color:var(--tnx-text-primary); }
+.tnx-ai-usage .ai-usage-chart-switch button[aria-pressed=true] { color:var(--tnx-text-heading); border-color:var(--tnx-focus); }
 .tnx-ai-usage .ai-usage-plot { height:164px; display:flex; gap:8px; margin-top:20px; }
 .tnx-ai-usage .ai-usage-chart-y { display:flex; flex-direction:column; justify-content:space-between; min-width:44px; padding-bottom:24px; color:var(--tnx-text-secondary); font-size:12px; }
 .tnx-ai-usage .ai-usage-chart-bars { display:flex; flex:1; min-width:0; gap:4px; background:repeating-linear-gradient(to top,transparent 0,transparent calc(50% - 1px),var(--tnx-divider) calc(50% - 1px),var(--tnx-divider) 50%); border-bottom:1px solid var(--tnx-border); }
@@ -63,7 +63,7 @@
 .tnx-ai-usage .ai-usage-table-details > summary { padding:11px 22px 11px 0; color:var(--tnx-text-secondary); font-size:12px; }
 .tnx-ai-usage .ai-usage-tabs { display:flex; flex-wrap:wrap; gap:17px; border-bottom:1px solid var(--tnx-border); margin:0 0 12px; }
 .tnx-ai-usage .ai-usage-tabs button { margin-bottom:-1px; padding:0 0 11px; border-bottom:1px solid transparent; color:var(--tnx-text-secondary); font-size:12px; white-space:nowrap; }
-.tnx-ai-usage .ai-usage-tabs button[aria-selected=true] { color:var(--tnx-text-heading); border-color:var(--tnx-text-primary); }
+.tnx-ai-usage .ai-usage-tabs button[aria-selected=true] { color:var(--tnx-text-heading); border-color:var(--tnx-focus); }
 .tnx-ai-usage .ai-usage-rank-panel > .ai-usage-panel-title,.tnx-ai-usage .ai-usage-workload-breakdown .ai-usage-panel-title { justify-content:flex-end; margin:0 0 5px; min-height:17px; }
 .tnx-ai-usage .ai-usage-muted { padding:18px 0; font-size:12px; line-height:1.7; color:var(--tnx-text-secondary); }
 .tnx-ai-usage .ai-usage-table-scroll,.ai-usage-workload-breakdown .ai-usage-table-scroll { min-width:0; overflow-x:auto; }

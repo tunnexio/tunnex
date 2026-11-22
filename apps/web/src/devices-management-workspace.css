@@ -7,7 +7,7 @@
 .dm-filter-tabs { display:flex; align-items:stretch; gap:24px; }
 .dm-filter-tabs button { padding:8px 0 13px; border-bottom:2px solid transparent; font-size:12px; color:var(--tnx-text-secondary); white-space:nowrap; }
 .dm-filter-tabs button > span { margin-left:4px; font-size:12px; font-variant-numeric:tabular-nums; color:var(--tnx-text-secondary); }
-.dm-filter-tabs button[aria-pressed=true] { border-bottom-color:var(--tnx-text-primary); color:var(--tnx-text-heading); }
+.dm-filter-tabs button[aria-pressed=true] { border-bottom-color:var(--tnx-focus); color:var(--tnx-text-heading); }
 .dm-filter-tabs button:hover { color:var(--tnx-text-heading); }
 .dm-inventory-topbar > button { min-height:30px; padding:5px 9px; margin-bottom:7px; font-size:12px; }
 .dm-inventory-toolbar { display:flex; align-items:center; gap:18px; margin:18px 0 12px; }

@@ -125,7 +125,8 @@ export default function DevicesInventory({ devices, nodes, ownerEmail, busy, can
 
   return <section className="devices-management-inventory" aria-label="Device inventory">
     {gatewayId && <div className="dm-gateway-context"><span>Gateway: <strong>{gateway?.name ?? "Gateway details unavailable"}</strong></span><Link to={clearGatewayTarget}>Show all gateways</Link></div>}
-    <div className="dm-inventory-topbar">
+    <div className="dm-inventory-toolbar">
+      <Input aria-label="Search devices" placeholder="Search devices…" value={query} onChange={event => { setQuery(event.target.value); setPage(1); }} />
       <nav className="dm-filter-tabs" aria-label="Device inventory filters">
         {([
           ["all", "All", counts.all],
@@ -133,12 +134,9 @@ export default function DevicesInventory({ devices, nodes, ownerEmail, busy, can
           ["revoked", "Revoked", counts.revoked],
         ] as Array<[DeviceFilter, string, number]>).map(([key, label, count]) => <button key={key} type="button" aria-pressed={filter === key} onClick={() => { setFilter(key); setPage(1); }}>{label} <span>({count})</span></button>)}
       </nav>
-      <RefreshButton label="Refresh devices" disabled={busy} onClick={onRefresh} />
-    </div>
-    <div className="dm-inventory-toolbar">
-      <Input aria-label="Search devices" placeholder="Search devices…" value={query} onChange={event => { setQuery(event.target.value); setPage(1); }} />
       {pendingCount > 0 && <Link className="dm-approvals-link" to="/devices/approvals" aria-label={`Review ${pendingCount} pending device${pendingCount === 1 ? "" : "s"}`}>Awaiting approval <span>{pendingCount}</span></Link>}
       <span className="dm-result-count">{query.trim() ? `${filteredDevices.length} matching` : `${filteredDevices.length} device${filteredDevices.length === 1 ? "" : "s"}`}</span>
+      <RefreshButton label="Refresh devices" disabled={busy} onClick={onRefresh} />
     </div>
     {!canMutate && <p className="dm-mutation-note">Verify your email to manage devices.</p>}
 

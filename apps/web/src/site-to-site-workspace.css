@@ -3,7 +3,7 @@
 .site-to-site-workspace .s2s-workspace-toolbar,.s2s-networks-topbar { display:flex; align-items:center; justify-content:space-between; gap:18px; min-height:48px; border-bottom:1px solid var(--tnx-border); }
 .site-to-site-workspace .s2s-workspace-switch { align-self:stretch; display:flex; gap:28px; padding:0; border:0; border-radius:0; background:transparent; }
 .site-to-site-workspace .s2s-workspace-switch a { display:flex; align-items:center; min-height:48px; padding:10px 0 14px; border-bottom:2px solid transparent; border-radius:0; background:transparent; box-shadow:none; font-size:13px; font-weight:400; color:var(--tnx-text-secondary); }
-.site-to-site-workspace .s2s-workspace-switch a[aria-current=page] { color:var(--tnx-text-heading); border-bottom-color:var(--tnx-text-primary); }
+.site-to-site-workspace .s2s-workspace-switch a[aria-current=page] { color:var(--tnx-text-heading); border-bottom-color:var(--tnx-focus); }
 .site-to-site-workspace .s2s-workspace-switch a:hover { color:var(--tnx-text-heading); }
 .s2s-toolbar-actions,.s2s-networks-actions { display:flex; align-items:center; justify-content:flex-end; gap:10px; margin-left:auto; padding-bottom:7px; }
 .s2s-toolbar-actions button,.s2s-networks-actions button,.s2s-networks-actions > a { min-height:32px; padding:6px 10px; font-size:12px; }
@@ -324,7 +324,7 @@
 .ipsec-local-ranges legend { margin-bottom:8px; padding:0; color:var(--tnx-text-heading); font-size:13px; font-weight:500; }
 .ipsec-local-ranges > div { display:flex; flex-wrap:wrap; gap:8px; }
 .ipsec-local-ranges label { display:inline-flex; align-items:center; gap:8px; min-height:34px; padding:6px 12px; border:1px solid var(--tnx-border); border-radius:8px; color:var(--tnx-text-heading); font-size:13px; line-height:1.2; cursor:pointer; }
-.ipsec-local-ranges label:has(input:checked) { border-color:var(--tnx-text-heading); }
+.ipsec-local-ranges label:has(input:checked) { border-color:var(--tnx-focus); }
 .ipsec-local-ranges input[type="checkbox"] { flex:none; width:16px; height:16px; min-height:0; margin:0; padding:0; border-radius:4px; accent-color:var(--tnx-text-heading); }
 /* SSI-13: one line under the tabs saying what this tab holds. */
 .s2s-tab-hint { margin:10px 0 2px; color:var(--tnx-text-secondary); font-size:12.5px; }
