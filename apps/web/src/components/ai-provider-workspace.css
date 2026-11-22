@@ -231,7 +231,7 @@ body:has(.ai-workspace) .tnx-modal-body .ai-connection-details{padding:0;border:
 
 .ai-code-editor{border:1px solid #3c3c3c;border-radius:8px;overflow:hidden;background:#1e1e1e}
 .ai-code-title{display:flex;align-items:center;gap:8px;width:fit-content;padding:10px 16px;border-top:1px solid #007acc;border-right:1px solid #3c3c3c;background:#1e1e1e;color:#ccc;font-size:12px}
-.ai-code-title span{color:#dcdcaa;font-size:10px;font-weight:600}
+.ai-code-title span{color:#dcdcaa;font-size:12px;font-weight:600}
 .ai-code-editor:has(.ai-code-title){background:#252526}
 .ai-connection-details .ai-connect-example .ai-code-editor pre{margin:0;border:0;border-top:1px solid #303030;border-radius:0;background:#1e1e1e;color:#d4d4d4;overflow:auto;padding:16px;scrollbar-color:#555 #1e1e1e}
 .ai-code-editor code{font:inherit;white-space:pre}
@@ -252,7 +252,7 @@ body:has(.ai-workspace) .tnx-modal-body .ai-connection-details{padding:0;border:
 .ai-code-tabbar .ai-code-tabs{border:0;gap:0}
 .ai-code-tabbar .ai-code-tabs button{display:flex;align-items:center;gap:8px;padding:11px 14px;background:#2d2d2d;border:0;border-top:1px solid transparent;border-right:1px solid #252526;color:#969696}
 .ai-code-tabbar .ai-code-tabs button[aria-selected=true]{background:#1e1e1e;color:#fff;border-top-color:#007acc}
-.ai-file-icon{font-size:10px;font-weight:600;line-height:16px;color:#9cdcfe}
+.ai-file-icon{font-size:12px;font-weight:600;line-height:16px;color:#9cdcfe}
 .ai-file-python,.ai-file-javascript{color:#dcdcaa}
 .ai-file-typescript,.ai-file-go{color:#4fc1ff}
 .ai-file-ruby,.ai-file-java{color:#ce9178}
@@ -282,7 +282,7 @@ body:has(.ai-workspace) .tnx-modal-body .ai-connection-details{padding:0;border:
 /* Even tab rows keep every language visible without a scrolling strip. */
 .ai-code-tabbar{padding-right:0;position:relative;background:#252526}
 .ai-code-tabbar .ai-code-tabs{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));flex:1;gap:1px;background:#343434;padding-right:32px}
-.ai-code-tabbar .ai-code-tabs button{justify-content:center;min-width:0;padding:9px 6px;font-size:11px;line-height:18px;border:0;border-top:2px solid transparent;background:#252526;color:#aeb2bb;white-space:normal;text-align:center}
+.ai-code-tabbar .ai-code-tabs button{justify-content:center;min-width:0;padding:9px 6px;font-size:12px;line-height:18px;border:0;border-top:2px solid transparent;background:#252526;color:#aeb2bb;white-space:normal;text-align:center}
 .ai-code-tabbar .ai-code-tabs button:hover{background:#303030;color:#eee}
 .ai-code-tabbar .ai-code-tabs button[aria-selected=true]{background:#1e1e1e;border-top-color:#3794ff;color:#fff}
 .ai-code-tabbar .ai-file-icon{display:none}
@@ -296,7 +296,7 @@ body:has(.ai-workspace) .tnx-modal-body .ai-connection-details{padding:0;border:
 .ai-code-tabbar .ai-code-tabs{padding-right:0;flex:1}
 .ai-code-tabbar .ai-code-tabs button{position:relative;width:auto;flex:1 1 34px;min-width:34px;gap:7px}
 .ai-code-tabbar .ai-code-tabs button[aria-selected=true]{flex:2 1 auto;padding-inline:12px}
-.ai-tab-language{display:none;font-size:11px;white-space:nowrap}
+.ai-tab-language{display:none;font-size:12px;white-space:nowrap}
 .ai-code-tabs button[aria-selected=true] .ai-tab-language{display:inline}
 .ai-code-tabbar>.ai-help{position:relative;right:auto;top:auto;align-self:center;margin:0 8px;flex-shrink:0}
 .ai-code-tabs button:not([aria-selected=true]):hover .ai-tab-language,
@@ -304,7 +304,7 @@ body:has(.ai-workspace) .tnx-modal-body .ai-connection-details{padding:0;border:
 .ai-code-workbench{overflow:visible}
 .ai-code-tabbar{border-radius:8px 8px 0 0}
 .ai-python-style{display:flex;gap:4px;padding:8px 12px;border-bottom:1px solid #303030;background:#1e1e1e}
-.ai-python-style button{font-size:11px;padding:5px 9px;color:#999;border-radius:4px}
+.ai-python-style button{font-size:12px;padding:5px 9px;color:#999;border-radius:4px}
 .ai-python-style button[aria-pressed=true]{background:#343434;color:#eee}
 .ai-python-style button:focus-visible{outline:1px solid #3794ff}
 .ai-credential-table .ai-inventory-actions{flex-wrap:wrap}

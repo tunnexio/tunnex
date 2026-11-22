@@ -14,11 +14,11 @@
 .routed-summary { display:flex; flex-wrap:wrap; gap:12px 28px; }
 .routed-workspace .routed-summary > div { padding:0; display:flex; align-items:baseline; gap:8px; }
 .routed-summary .text-title { font-size:14px; font-weight:600; }
-.routed-summary .text-micro { font-size:11px; }
+.routed-summary .text-micro { font-size:12px; }
 .routed-summary-item > div { margin:0; }
 .routed-summary-item > div > span:last-child { display:none; }
 .routed-summary-item:has(.text-warn) .text-title { color:var(--tnx-warn); }
-.routed-view-choice { font-size:11px; padding:4px 0; color:var(--tnx-text-secondary); border-bottom:1px solid transparent; }
+.routed-view-choice { font-size:12px; padding:4px 0; color:var(--tnx-text-secondary); border-bottom:1px solid transparent; }
 .routed-view-choice[aria-pressed=true] { color:var(--tnx-text-heading); border-color:var(--tnx-focus); }
 .routed-explainer:empty { display:none; }
 .routed-workspace #address-space-details { margin-top:12px; padding-top:12px; }

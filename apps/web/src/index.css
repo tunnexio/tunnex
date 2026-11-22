@@ -58,11 +58,11 @@ details:not(.ai-row-menu):not(:has(> .absolute))[open] > summary + :not(summary)
 .tnx-inline-mfa-icon { display:grid; place-items:center; flex:none; width:32px; height:32px; border:1px solid var(--tnx-border); border-radius:8px; color:var(--tnx-text-secondary); background:var(--tnx-surface-inset); }
 .tnx-inline-mfa h3 { font-size:13px; font-weight:550; color:var(--tnx-text-heading); }
 .tnx-inline-mfa-context { margin-top:4px; font-size:12px; line-height:1.5; color:var(--tnx-text-primary); }
-.tnx-inline-mfa-policy { margin:12px 0 0; font-size:11px; line-height:1.5; color:var(--tnx-text-secondary); }
+.tnx-inline-mfa-policy { margin:12px 0 0; font-size:12px; line-height:1.5; color:var(--tnx-text-secondary); }
 .tnx-inline-mfa-form { margin-top:16px; }
 .tnx-inline-mfa-entry { display:flex; align-items:flex-end; flex-wrap:wrap; gap:10px 16px; }
 .tnx-inline-mfa-entry > .block { flex:0 1 280px; min-width:220px; }
-.tnx-inline-mfa-entry > .block > label { font-size:11.5px; color:var(--tnx-text-secondary); }
+.tnx-inline-mfa-entry > .block > label { font-size:12px; color:var(--tnx-text-secondary); }
 .tnx-inline-mfa-entry input { height:36px; min-height:36px; font-size:13px; }
 .tnx-inline-mfa-actions { display:flex; align-items:center; flex-wrap:wrap; gap:8px; }
 .tnx-inline-mfa-actions > button { min-height:36px; padding:7px 12px; font-size:12px; }
@@ -307,9 +307,9 @@ body {
 .tnx-datatable th { padding:14px 18px; border-bottom:1px solid var(--tnx-border); font-size:12px; font-weight:500; white-space:nowrap; }
 .tnx-datatable th button { font-size:inherit; font-weight:inherit; letter-spacing:normal; text-transform:none; min-height:24px; }
 .tnx-datatable td { padding:16px 18px; border-bottom:1px solid var(--tnx-divider); vertical-align:middle; }
-.tnx-datatable tbody tr { background:transparent; }
-.tnx-datatable tbody tr:hover { background:rgba(255,255,255,.035); }
-.tnx-datatable tbody tr[data-selected] { background:rgba(168,199,240,.075); }
+.tnx-datatable tbody tr { background:transparent; transition:background-color .12s cubic-bezier(.2,.8,.2,1); }
+.tnx-datatable tbody tr:hover { background:rgba(255,255,255,.045); transition-duration:.15s; }
+.tnx-datatable tbody tr[data-selected] { background:color-mix(in srgb,var(--tnx-focus) 9%,transparent); }
 .tnx-datatable tbody tr[data-selected] td:first-child { box-shadow:inset 2px 0 0 var(--tnx-focus); }
 .tnx-datatable tbody tr[data-expanded] { background:var(--tnx-surface-inset); }
 .tnx-datatable tbody tr:last-child td { border-bottom:0; }
@@ -472,3 +472,10 @@ body:has(.tnx-modal-overlay[data-placement="right"]) { overflow:hidden; }
   white-space:nowrap;
   border:0;
 }
+
+/* Product-wide interaction floor: every link and button answers the pointer and the keyboard the same
+ * way. Hover in 150ms, out 120ms; the focus ring is drawn at once, never animated. */
+a,button,summary,[role=tab],[role=button] { transition:color .12s cubic-bezier(.2,.8,.2,1),background-color .12s cubic-bezier(.2,.8,.2,1),border-color .12s cubic-bezier(.2,.8,.2,1),opacity .12s cubic-bezier(.2,.8,.2,1); }
+a:hover,button:hover,summary:hover,[role=tab]:hover,[role=button]:hover { transition-duration:.15s; }
+:where(a,button,summary,select,input,textarea,[role=tab],[role=button],[tabindex]):focus-visible { outline:2px solid var(--tnx-focus); outline-offset:2px; }
+@media (prefers-reduced-motion:reduce) { *,*::before,*::after { animation-duration:.01ms!important; animation-iteration-count:1!important; scroll-behavior:auto!important; } }

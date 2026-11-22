@@ -1294,7 +1294,7 @@ export function DataTable<T>({
                 scrolling past it turns every cell into an unlabelled string. */}
             <tr
               className={
-                "sticky top-0 z-10 text-[11px] uppercase tracking-wide text-slate-500 " +
+                "sticky top-0 z-10 text-[12px] uppercase tracking-wide text-slate-500 " +
                 (variant === "flat" ? "bg-white/[.025]" : "bg-ink-900")
               }
             >
@@ -1466,7 +1466,7 @@ export function DataTable<T>({
           or when a FILTER is narrowing (the "3 of 47" that stops a filtered view reading as a short one).
           On a table that fits and is unfiltered it renders nothing at all. */}
       {paged && (lastPage > 0 || query.trim() !== "") && (
-        <div className="tnx-table-footer mt-2 flex flex-wrap items-center justify-between gap-3 border-t border-white/5 pt-2 text-[11px] text-ink-secondary">
+        <div className="tnx-table-footer mt-2 flex flex-wrap items-center justify-between gap-3 border-t border-white/5 pt-2 text-[12px] text-ink-secondary">
           {/* ⚠ ABSENT WHEN EVERYTHING FITS — changing "rows per page" on a table showing all of them does
               nothing, and a control whose every value produces the same screen teaches that the controls
               here are decorative. */}
@@ -1482,7 +1482,7 @@ export function DataTable<T>({
                   // interpretation that cannot land the operator past the end.
                   setPage(0);
                 }}
-                className="rounded border border-white/10 bg-white/5 px-1.5 py-0.5 text-[11px] text-slate-300 focus:outline-none"
+                className="rounded border border-white/10 bg-white/5 px-1.5 py-0.5 text-[12px] text-slate-300 focus:outline-none"
               >
                 {[10, 25, 50, 100].map((n) => (
                   <option key={n} value={n}>

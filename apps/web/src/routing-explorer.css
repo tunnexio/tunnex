@@ -4,12 +4,12 @@
 .routing-explorer-canvas { min-width:0; }
 .routing-branch { display:grid; grid-template-columns:180px minmax(0,1fr); gap:20px; padding:10px 0!important; border-top:1px solid var(--tnx-border); }
 .routing-owner { padding:9px 0; font-size:12px; color:var(--tnx-text-heading); overflow-wrap:anywhere; }
-.routing-owner small { display:block; color:var(--tnx-text-secondary); font-size:11px; margin-top:4px; }
+.routing-owner small { display:block; color:var(--tnx-text-secondary); font-size:12px; margin-top:4px; }
 .routing-branch-ranges { display:flex; flex-direction:column; min-width:0; }
 .routing-range-node { display:flex; justify-content:space-between; align-items:center; gap:12px; padding:9px 12px; border-radius:5px; text-align:left; min-width:0; }
 .routing-range-node > span:first-child { display:flex; align-items:center; justify-content:space-between; flex:1; gap:12px; min-width:0; }
 .routing-range-node strong { font-family:var(--font-mono,monospace); font-size:12px; color:var(--tnx-text-heading); font-weight:400; overflow-wrap:anywhere; }
-.routing-range-node small { font-size:11px; color:var(--tnx-text-secondary); }
+.routing-range-node small { font-size:12px; color:var(--tnx-text-secondary); }
 .routing-range-node small:before { content:""; display:inline-block; width:5px; height:5px; border-radius:50%; background:var(--tnx-neutral); margin-right:7px; vertical-align:middle; }
 .routing-range-node[data-kind=approved] small:before { background:var(--tnx-ok); }
 .routing-range-node[data-kind=pending] small:before { background:var(--tnx-warn); }
@@ -20,16 +20,16 @@
 .routing-inspector { position:relative; padding:18px; margin-top:16px; border:1px solid var(--tnx-border); border-radius:8px; font-size:12px; line-height:1.6; background:var(--tnx-surface-inset); }
 .routing-detail-close { position:absolute; right:12px; top:8px; font-size:22px; padding:4px 8px; }
 .routing-inspector h3 { font-size:16px; margin:4px 0; }
-.routing-inspector-label,.routing-inspector dt { color:var(--tnx-text-secondary); font-size:11px; }
+.routing-inspector-label,.routing-inspector dt { color:var(--tnx-text-secondary); font-size:12px; }
 .routing-inspector dl { display:grid; grid-template-columns:70px minmax(0,1fr); gap:6px; margin:12px 0; }
 .routing-inspector a { display:inline-block; margin-top:8px; text-decoration:underline; text-underline-offset:3px; }
-.routing-pages { display:flex; justify-content:space-between; align-items:center; padding-top:12px; border-top:1px solid var(--tnx-border); font-size:11px; color:var(--tnx-text-secondary); }
+.routing-pages { display:flex; justify-content:space-between; align-items:center; padding-top:12px; border-top:1px solid var(--tnx-border); font-size:12px; color:var(--tnx-text-secondary); }
 .routing-pages button { padding:6px 10px; }
 .routing-pages button:disabled { opacity:.35; }
 @media(max-width:600px) { .routing-branch { grid-template-columns:minmax(0,1fr); gap:2px; } .routing-explorer-tools { flex-wrap:wrap; } .routing-explorer-tools input { flex-basis:100%; } .routing-owner { display:flex; justify-content:space-between; gap:8px; } }
 .routing-attention { display:flex; width:100%; justify-content:space-between; align-items:center; gap:16px; text-align:left; padding:12px 14px; margin-bottom:16px; border-radius:6px; background:var(--tnx-surface-inset); border-left:2px solid var(--tnx-warn); font-size:12px; }
 .routing-attention strong { font-weight:500; color:var(--tnx-text-heading); }
-.routing-attention small { display:block; font-size:11px; color:var(--tnx-text-secondary); margin-top:3px; }
+.routing-attention small { display:block; font-size:12px; color:var(--tnx-text-secondary); margin-top:3px; }
 .routing-view-context { font-size:12px; line-height:1.6; color:var(--tnx-text-secondary); margin-bottom:12px; }
 .routing-context { border-top:1px solid var(--tnx-border); padding-top:12px; margin-top:12px; }
 .routing-context strong { font-weight:500; }
@@ -48,12 +48,12 @@
 .route-visual-wire svg { background:var(--tnx-surface); color:var(--tnx-text-secondary); }
 .route-visual[data-kind=pending] .route-visual-step:nth-child(2) .route-visual-icon { color:var(--tnx-warn); border-color:var(--tnx-warn); }
 .route-visual[data-kind=pending] .route-visual-step:nth-child(3) .route-visual-wire { background:none; border-top:1px dashed var(--tnx-border); }
-.route-visual figcaption { text-align:center; min-height:30px; margin-top:8px; font-size:11px; line-height:1.5; color:var(--tnx-text-secondary); }
+.route-visual figcaption { text-align:center; min-height:30px; margin-top:8px; font-size:12px; line-height:1.5; color:var(--tnx-text-secondary); }
 .routing-inspector .route-visual { border:0; padding:12px 0 4px; }
 .routing-inspector { animation:route-reveal 180ms ease-out both; }
-.route-more { font-size:11px; color:var(--tnx-text-secondary); margin-top:8px; }
+.route-more { font-size:12px; color:var(--tnx-text-secondary); margin-top:8px; }
 .route-more summary { cursor:pointer; }
 .routing-owner-note { display:block; margin-top:8px; color:var(--tnx-text-secondary); }
 @keyframes route-reveal { from { opacity:0; transform:translateY(5px); } to { opacity:1; transform:translateY(0); } }
 @media(prefers-reduced-motion:reduce) { .route-visual-icon,.routing-inspector { animation:none; } }
-.route-visual-range { font-family:var(--font-mono,monospace); font-size:11px; color:var(--tnx-text-secondary); }
+.route-visual-range { font-family:var(--font-mono,monospace); font-size:12px; color:var(--tnx-text-secondary); }

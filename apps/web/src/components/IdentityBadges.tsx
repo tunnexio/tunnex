@@ -96,7 +96,7 @@ export function IdentityBadges({
     const values = [edition, role].filter((value): value is string => Boolean(value));
     if (values.length === 0) return null;
     return (
-      <span className="flex min-w-0 items-center gap-1.5 text-[10px] font-medium uppercase tracking-[0.12em] text-slate-400">
+      <span className="flex min-w-0 items-center gap-1.5 text-[12px] font-medium uppercase tracking-[0.12em] text-slate-400">
         {values.map((value, index) => (
           <span key={value} className="contents">
             {index > 0 && <span aria-hidden="true" className="text-slate-600">·</span>}

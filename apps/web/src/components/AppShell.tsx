@@ -157,7 +157,7 @@ function NavGroups({
           {/* ⛔ HEADERS GO, DESTINATIONS STAY. A rail that dropped a destination would make it
               unreachable rather than compact — the collapse is a presentation, never a filter. */}
           {g.group && shows.sectionHeaders && (
-            <p className="flex items-center gap-2 px-3 pb-1 text-[11px] font-semibold uppercase tracking-wider text-ink-tertiary">
+            <p className="flex items-center gap-2 px-3 pb-1 text-[12px] font-semibold uppercase tracking-wider text-ink-tertiary">
               {g.icon && <Icon name={g.icon} className="h-3.5 w-3.5" />}
               {g.group}
             </p>
@@ -297,14 +297,14 @@ function SidebarFooterProfile({
         }`}
       >
           <div className="flex min-h-12 items-center gap-2.5 px-2.5 py-2">
-            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent-400/70 font-mono text-[11px] font-semibold text-white">
+            <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent-400/70 font-mono text-[12px] font-semibold text-white">
               {initials}
             </div>
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-medium text-slate-100">
                 {displayName}
               </p>
-              <p className="mt-0.5 truncate text-[11px] text-slate-400">
+              <p className="mt-0.5 truncate text-[12px] text-slate-400">
                 {email}
               </p>
             </div>
@@ -345,7 +345,7 @@ function SidebarFooterProfile({
             aria-label={`Signed in as ${email}`}
             aria-expanded={open}
             aria-controls="account-menu"
-            className="flex h-8 w-8 items-center justify-center rounded-full bg-accent-400/70 text-[11px] font-semibold text-white transition-colors hover:bg-accent-400/85 focus-visible:outline focus-visible:outline-1 focus-visible:outline-slate-300"
+            className="flex h-8 w-8 items-center justify-center rounded-full bg-accent-400/70 text-[12px] font-semibold text-white transition-colors hover:bg-accent-400/85 focus-visible:outline focus-visible:outline-1 focus-visible:outline-slate-300"
           >
             {initials}
           </button>
@@ -359,7 +359,7 @@ function SidebarFooterProfile({
           aria-label="User profile menu"
           className="group flex min-h-11 w-full items-center gap-2.5 rounded-lg bg-white/[0.025] px-1.5 py-1.5 text-left ring-1 ring-inset ring-white/[0.06] transition-colors hover:bg-white/[0.05] focus-visible:outline-none focus-visible:ring-white/[0.16]"
         >
-          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent-400/70 font-mono text-[11px] font-semibold text-white">
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent-400/70 font-mono text-[12px] font-semibold text-white">
             {initials}
           </div>
           <div className="min-w-0 flex-1">
