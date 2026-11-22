@@ -1136,6 +1136,40 @@ func TestVerifyHelmClientMinimumVersion(t *testing.T) {
 	}
 }
 
+// Helm 4 renamed --atomic to --rollback-on-failure and rejects the old name on
+// install, so the CLI must speak the installed client's dialect.
+func TestHelmRollbackOnFailureFollowsTheInstalledHelm(t *testing.T) {
+	args := []string{"install", "gw-a", "chart.tgz", "--atomic", "--wait"}
+	for _, tc := range []struct{ version, want string }{
+		{"v3.14.0+gfixture", "--atomic"},
+		{"v3.17.3+ge4da497", "--atomic"},
+		{"v4.0.5", "--rollback-on-failure"},
+		{"v4.3", "--rollback-on-failure"},
+		{"not a version", "--atomic"},
+	} {
+		runner := &fakeK8sRunner{handler: func(command k8sCommand) (k8sCommandResult, error) {
+			return stdout(tc.version + "\n"), nil
+		}}
+		got := helmArgsForClient(context.Background(), runner, args)
+		if got[3] != tc.want || len(got) != len(args) || got[0] != "install" || got[4] != "--wait" {
+			t.Errorf("Helm %s: args = %v, want %s", tc.version, got, tc.want)
+		}
+	}
+	if args[3] != "--atomic" {
+		t.Fatal("caller's arguments were modified in place")
+	}
+	// Helm 4 lists every status by default and has no --all.
+	list := []string{"list", "--all", "--namespace", "tunnex", "--output", "json"}
+	helm4 := &fakeK8sRunner{handler: func(k8sCommand) (k8sCommandResult, error) { return stdout("v4.3\n"), nil }}
+	if got := strings.Join(helmArgsForClient(context.Background(), helm4, list), " "); got != "list --namespace tunnex --output json" {
+		t.Errorf("Helm 4 list args = %q", got)
+	}
+	helm3 := &fakeK8sRunner{handler: func(k8sCommand) (k8sCommandResult, error) { return stdout("v3.17.3\n"), nil }}
+	if got := strings.Join(helmArgsForClient(context.Background(), helm3, list), " "); got != strings.Join(list, " ") {
+		t.Errorf("Helm 3 list args = %q", got)
+	}
+}
+
 func TestDeriveControlPlaneEndpointsRequiresHTTPSOutsideLoopback(t *testing.T) {
 	for _, tc := range []struct {
 		name string

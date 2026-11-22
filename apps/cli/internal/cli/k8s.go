@@ -996,21 +996,55 @@ func runToolContextPreflight(ctx context.Context, deps k8sDeps, requestedContext
 }
 
 func verifyHelmClient(ctx context.Context, runner k8sRunner) error {
-	result, err := runChecked(ctx, runner, "read Helm client version", k8sCommand{name: "helm", args: []string{"version", "--short"}})
+	major, minor, version, err := helmClientVersion(ctx, runner)
 	if err != nil {
 		return err
 	}
-	version := strings.TrimSpace(string(result.stdout))
-	match := regexp.MustCompile(`^v?([0-9]+)\.([0-9]+)(?:\.[0-9]+)?(?:[-+].*)?$`).FindStringSubmatch(version)
-	if len(match) != 3 {
-		return fmt.Errorf("could not parse Helm client version %q", version)
-	}
-	major, _ := strconv.Atoi(match[1])
-	minor, _ := strconv.Atoi(match[2])
 	if major < 3 || (major == 3 && minor < 14) {
 		return fmt.Errorf("Helm 3.14 or newer is required for safe gateway lifecycle value merging; client reported %q", version)
 	}
 	return nil
+}
+
+func helmClientVersion(ctx context.Context, runner k8sRunner) (int, int, string, error) {
+	result, err := runChecked(ctx, runner, "read Helm client version", k8sCommand{name: "helm", args: []string{"version", "--short"}})
+	if err != nil {
+		return 0, 0, "", err
+	}
+	version := strings.TrimSpace(string(result.stdout))
+	match := regexp.MustCompile(`^v?([0-9]+)\.([0-9]+)(?:\.[0-9]+)?(?:[-+].*)?$`).FindStringSubmatch(version)
+	if len(match) != 3 {
+		return 0, 0, "", fmt.Errorf("could not parse Helm client version %q", version)
+	}
+	major, _ := strconv.Atoi(match[1])
+	minor, _ := strconv.Atoi(match[2])
+	return major, minor, version, nil
+}
+
+// helmArgsForClient rewrites the two flags Helm 4 changed, so one set of
+// arguments works with either major version:
+//   - --atomic became --rollback-on-failure (same behavior: undo the release
+//     when the operation fails), and install rejects the old name;
+//   - list --all was removed because listing every status is now the default.
+//
+// If the version cannot be read here the Helm 3 spelling is kept; the
+// preflight has already refused clients older than 3.14.
+func helmArgsForClient(ctx context.Context, runner k8sRunner, args []string) []string {
+	major, _, _, err := helmClientVersion(ctx, runner)
+	if err != nil || major < 4 {
+		return args
+	}
+	out := make([]string, 0, len(args))
+	for _, arg := range args {
+		switch {
+		case arg == "--atomic":
+			out = append(out, "--rollback-on-failure")
+		case arg == "--all" && len(args) > 0 && args[0] == "list":
+		default:
+			out = append(out, arg)
+		}
+	}
+	return out
 }
 
 func selectStorageClass(raw []byte, requested string) (string, string, string, error) {
@@ -1930,6 +1964,7 @@ func runK8sInstall(ctx context.Context, args []string, deps k8sDeps) (retErr err
 	if commandErr != nil {
 		return commandErr
 	}
+	helmCommand.args = helmArgsForClient(ctx, deps.runner, helmCommand.args)
 	mutationCtx := ctx
 	if installMonitor != nil {
 		mutationCtx = installMonitor.mutationCtx
