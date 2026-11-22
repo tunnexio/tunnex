@@ -1,0 +1,1782 @@
+{
+ "nftables": [
+  {
+   "chain": {
+    "family": "ip",
+    "table": "nat",
+    "name": "KUBE-KUBELET-CANARY",
+    "handle": 1
+   }
+  },
+  {
+   "chain": {
+    "family": "ip",
+    "table": "nat",
+    "name": "KUBE-PROXY-CANARY",
+    "handle": 2
+   }
+  },
+  {
+   "chain": {
+    "family": "ip",
+    "table": "nat",
+    "name": "KUBE-SERVICES",
+    "handle": 3
+   }
+  },
+  {
+   "chain": {
+    "family": "ip",
+    "table": "nat",
+    "name": "OUTPUT",
+    "handle": 4,
+    "type": "nat",
+    "hook": "output",
+    "prio": -100,
+    "policy": "accept"
+   }
+  },
+  {
+   "chain": {
+    "family": "ip",
+    "table": "nat",
+    "name": "PREROUTING",
+    "handle": 6,
+    "type": "nat",
+    "hook": "prerouting",
+    "prio": -100,
+    "policy": "accept"
+   }
+  },
+  {
+   "chain": {
+    "family": "ip",
+    "table": "nat",
+    "name": "KUBE-POSTROUTING",
+    "handle": 8
+   }
+  },
+  {
+   "chain": {
+    "family": "ip",
+    "table": "nat",
+    "name": "POSTROUTING",
+    "handle": 9,
+    "type": "nat",
+    "hook": "postrouting",
+    "prio": 100,
+    "policy": "accept"
+   }
+  },
+  {
+   "chain": {
+    "family": "ip",
+    "table": "nat",
+    "name": "KUBE-NODEPORTS",
+    "handle": 11
+   }
+  },
+  {
+   "chain": {
+    "family": "ip",
+    "table": "nat",
+    "name": "KUBE-MARK-MASQ",
+    "handle": 12
+   }
+  },
+  {
+   "chain": {
+    "family": "ip",
+    "table": "nat",
+    "name": "FLANNEL-POSTRTG",
+    "handle": 43
+   }
+  },
+  {
+   "chain": {
+    "family": "ip",
+    "table": "nat",
+    "name": "CNI-HOSTPORT-SETMARK",
+    "handle": 122
+   }
+  },
+  {
+   "chain": {
+    "family": "ip",
+    "table": "nat",
+    "name": "CNI-HOSTPORT-MASQ",
+    "handle": 124
+   }
+  },
+  {
+   "chain": {
+    "family": "ip",
+    "table": "nat",
+    "name": "CNI-HOSTPORT-DNAT",
+    "handle": 127
+   }
+  },
+  {
+   "rule": {
+    "family": "ip",
+    "table": "nat",
+    "chain": "KUBE-SERVICES",
+    "handle": 543,
+    "expr": [
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "payload": {
+         "protocol": "ip",
+         "field": "daddr"
+        }
+       },
+       "right": "10.43.205.158"
+      }
+     },
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "payload": {
+         "protocol": "ip",
+         "field": "protocol"
+        }
+       },
+       "right": "tcp"
+      }
+     },
+     {
+      "xt": {
+       "type": "match",
+       "name": "comment"
+      }
+     },
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "payload": {
+         "protocol": "tcp",
+         "field": "dport"
+        }
+       },
+       "right": 80
+      }
+     },
+     {
+      "counter": {
+       "packets": 0,
+       "bytes": 0
+      }
+     },
+     {
+      "jump": {
+       "target": "KUBE-SVC-UQMCRMJZLI3FTLDP"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "ip",
+    "table": "nat",
+    "chain": "KUBE-SERVICES",
+    "handle": 544,
+    "expr": [
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "payload": {
+         "protocol": "ip",
+         "field": "daddr"
+        }
+       },
+       "right": "10.80.0.2"
+      }
+     },
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "payload": {
+         "protocol": "ip",
+         "field": "protocol"
+        }
+       },
+       "right": "tcp"
+      }
+     },
+     {
+      "xt": {
+       "type": "match",
+       "name": "comment"
+      }
+     },
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "payload": {
+         "protocol": "tcp",
+         "field": "dport"
+        }
+       },
+       "right": 80
+      }
+     },
+     {
+      "counter": {
+       "packets": 0,
+       "bytes": 0
+      }
+     },
+     {
+      "jump": {
+       "target": "KUBE-EXT-UQMCRMJZLI3FTLDP"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "ip",
+    "table": "nat",
+    "chain": "KUBE-SERVICES",
+    "handle": 547,
+    "expr": [
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "payload": {
+         "protocol": "ip",
+         "field": "daddr"
+        }
+       },
+       "right": "10.43.205.158"
+      }
+     },
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "payload": {
+         "protocol": "ip",
+         "field": "protocol"
+        }
+       },
+       "right": "tcp"
+      }
+     },
+     {
+      "xt": {
+       "type": "match",
+       "name": "comment"
+      }
+     },
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "payload": {
+         "protocol": "tcp",
+         "field": "dport"
+        }
+       },
+       "right": 443
+      }
+     },
+     {
+      "counter": {
+       "packets": 0,
+       "bytes": 0
+      }
+     },
+     {
+      "jump": {
+       "target": "KUBE-SVC-CVG3OEGEH7H5P3HQ"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "ip",
+    "table": "nat",
+    "chain": "KUBE-SERVICES",
+    "handle": 548,
+    "expr": [
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "payload": {
+         "protocol": "ip",
+         "field": "daddr"
+        }
+       },
+       "right": "10.80.0.2"
+      }
+     },
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "payload": {
+         "protocol": "ip",
+         "field": "protocol"
+        }
+       },
+       "right": "tcp"
+      }
+     },
+     {
+      "xt": {
+       "type": "match",
+       "name": "comment"
+      }
+     },
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "payload": {
+         "protocol": "tcp",
+         "field": "dport"
+        }
+       },
+       "right": 443
+      }
+     },
+     {
+      "counter": {
+       "packets": 0,
+       "bytes": 0
+      }
+     },
+     {
+      "jump": {
+       "target": "KUBE-EXT-CVG3OEGEH7H5P3HQ"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "ip",
+    "table": "nat",
+    "chain": "KUBE-SERVICES",
+    "handle": 551,
+    "expr": [
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "payload": {
+         "protocol": "ip",
+         "field": "daddr"
+        }
+       },
+       "right": "10.43.0.1"
+      }
+     },
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "payload": {
+         "protocol": "ip",
+         "field": "protocol"
+        }
+       },
+       "right": "tcp"
+      }
+     },
+     {
+      "xt": {
+       "type": "match",
+       "name": "comment"
+      }
+     },
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "payload": {
+         "protocol": "tcp",
+         "field": "dport"
+        }
+       },
+       "right": 443
+      }
+     },
+     {
+      "counter": {
+       "packets": 0,
+       "bytes": 0
+      }
+     },
+     {
+      "jump": {
+       "target": "KUBE-SVC-NPX46M4PTMTKRN6Y"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "ip",
+    "table": "nat",
+    "chain": "KUBE-SERVICES",
+    "handle": 552,
+    "expr": [
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "payload": {
+         "protocol": "ip",
+         "field": "daddr"
+        }
+       },
+       "right": "10.43.0.10"
+      }
+     },
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "payload": {
+         "protocol": "ip",
+         "field": "protocol"
+        }
+       },
+       "right": "udp"
+      }
+     },
+     {
+      "xt": {
+       "type": "match",
+       "name": "comment"
+      }
+     },
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "payload": {
+         "protocol": "udp",
+         "field": "dport"
+        }
+       },
+       "right": 53
+      }
+     },
+     {
+      "counter": {
+       "packets": 0,
+       "bytes": 0
+      }
+     },
+     {
+      "jump": {
+       "target": "KUBE-SVC-TCOU7JCQXEZGVUNU"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "ip",
+    "table": "nat",
+    "chain": "KUBE-SERVICES",
+    "handle": 553,
+    "expr": [
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "payload": {
+         "protocol": "ip",
+         "field": "daddr"
+        }
+       },
+       "right": "10.43.0.10"
+      }
+     },
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "payload": {
+         "protocol": "ip",
+         "field": "protocol"
+        }
+       },
+       "right": "tcp"
+      }
+     },
+     {
+      "xt": {
+       "type": "match",
+       "name": "comment"
+      }
+     },
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "payload": {
+         "protocol": "tcp",
+         "field": "dport"
+        }
+       },
+       "right": 53
+      }
+     },
+     {
+      "counter": {
+       "packets": 0,
+       "bytes": 0
+      }
+     },
+     {
+      "jump": {
+       "target": "KUBE-SVC-ERIFXISQEP7F7OF4"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "ip",
+    "table": "nat",
+    "chain": "KUBE-SERVICES",
+    "handle": 554,
+    "expr": [
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "payload": {
+         "protocol": "ip",
+         "field": "daddr"
+        }
+       },
+       "right": "10.43.0.10"
+      }
+     },
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "payload": {
+         "protocol": "ip",
+         "field": "protocol"
+        }
+       },
+       "right": "tcp"
+      }
+     },
+     {
+      "xt": {
+       "type": "match",
+       "name": "comment"
+      }
+     },
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "payload": {
+         "protocol": "tcp",
+         "field": "dport"
+        }
+       },
+       "right": 9153
+      }
+     },
+     {
+      "counter": {
+       "packets": 0,
+       "bytes": 0
+      }
+     },
+     {
+      "jump": {
+       "target": "KUBE-SVC-JD5MR3NA4I4DYORP"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "ip",
+    "table": "nat",
+    "chain": "KUBE-SERVICES",
+    "handle": 555,
+    "expr": [
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "payload": {
+         "protocol": "ip",
+         "field": "daddr"
+        }
+       },
+       "right": "10.43.236.194"
+      }
+     },
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "payload": {
+         "protocol": "ip",
+         "field": "protocol"
+        }
+       },
+       "right": "tcp"
+      }
+     },
+     {
+      "xt": {
+       "type": "match",
+       "name": "comment"
+      }
+     },
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "payload": {
+         "protocol": "tcp",
+         "field": "dport"
+        }
+       },
+       "right": 443
+      }
+     },
+     {
+      "counter": {
+       "packets": 0,
+       "bytes": 0
+      }
+     },
+     {
+      "jump": {
+       "target": "KUBE-SVC-Z4ANX4WAEWEBLCTM"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "ip",
+    "table": "nat",
+    "chain": "KUBE-SERVICES",
+    "handle": 556,
+    "expr": [
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "payload": {
+         "protocol": "ip",
+         "field": "daddr"
+        }
+       },
+       "right": "10.43.97.203"
+      }
+     },
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "payload": {
+         "protocol": "ip",
+         "field": "protocol"
+        }
+       },
+       "right": "tcp"
+      }
+     },
+     {
+      "xt": {
+       "type": "match",
+       "name": "comment"
+      }
+     },
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "payload": {
+         "protocol": "tcp",
+         "field": "dport"
+        }
+       },
+       "right": 80
+      }
+     },
+     {
+      "counter": {
+       "packets": 0,
+       "bytes": 0
+      }
+     },
+     {
+      "jump": {
+       "target": "KUBE-SVC-LB7WH76ELV6HGCHZ"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "ip",
+    "table": "nat",
+    "chain": "KUBE-SERVICES",
+    "handle": 557,
+    "expr": [
+     {
+      "xt": {
+       "type": "match",
+       "name": "comment"
+      }
+     },
+     {
+      "xt": {
+       "type": "match",
+       "name": "addrtype"
+      }
+     },
+     {
+      "counter": {
+       "packets": 5,
+       "bytes": 376
+      }
+     },
+     {
+      "jump": {
+       "target": "KUBE-NODEPORTS"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "ip",
+    "table": "nat",
+    "chain": "OUTPUT",
+    "handle": 5,
+    "expr": [
+     {
+      "xt": {
+       "type": "match",
+       "name": "comment"
+      }
+     },
+     {
+      "counter": {
+       "packets": 8409,
+       "bytes": 559694
+      }
+     },
+     {
+      "jump": {
+       "target": "KUBE-SERVICES"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "ip",
+    "table": "nat",
+    "chain": "OUTPUT",
+    "handle": 129,
+    "expr": [
+     {
+      "xt": {
+       "type": "match",
+       "name": "addrtype"
+      }
+     },
+     {
+      "counter": {
+       "packets": 1153,
+       "bytes": 74253
+      }
+     },
+     {
+      "jump": {
+       "target": "CNI-HOSTPORT-DNAT"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "ip",
+    "table": "nat",
+    "chain": "PREROUTING",
+    "handle": 7,
+    "expr": [
+     {
+      "xt": {
+       "type": "match",
+       "name": "comment"
+      }
+     },
+     {
+      "counter": {
+       "packets": 198,
+       "bytes": 17756
+      }
+     },
+     {
+      "jump": {
+       "target": "KUBE-SERVICES"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "ip",
+    "table": "nat",
+    "chain": "PREROUTING",
+    "handle": 128,
+    "expr": [
+     {
+      "xt": {
+       "type": "match",
+       "name": "addrtype"
+      }
+     },
+     {
+      "counter": {
+       "packets": 31,
+       "bytes": 1969
+      }
+     },
+     {
+      "jump": {
+       "target": "CNI-HOSTPORT-DNAT"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "ip",
+    "table": "nat",
+    "chain": "KUBE-POSTROUTING",
+    "handle": 539,
+    "expr": [
+     {
+      "match": {
+       "op": "!=",
+       "left": {
+        "&": [
+         {
+          "meta": {
+           "key": "mark"
+          }
+         },
+         16384
+        ]
+       },
+       "right": 16384
+      }
+     },
+     {
+      "counter": {
+       "packets": 273,
+       "bytes": 16859
+      }
+     },
+     {
+      "return": null
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "ip",
+    "table": "nat",
+    "chain": "KUBE-POSTROUTING",
+    "handle": 540,
+    "expr": [
+     {
+      "counter": {
+       "packets": 0,
+       "bytes": 0
+      }
+     },
+     {
+      "xt": {
+       "type": "target",
+       "name": "MARK"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "ip",
+    "table": "nat",
+    "chain": "KUBE-POSTROUTING",
+    "handle": 541,
+    "expr": [
+     {
+      "xt": {
+       "type": "match",
+       "name": "comment"
+      }
+     },
+     {
+      "counter": {
+       "packets": 0,
+       "bytes": 0
+      }
+     },
+     {
+      "xt": {
+       "type": "target",
+       "name": "MASQUERADE"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "ip",
+    "table": "nat",
+    "chain": "POSTROUTING",
+    "handle": 126,
+    "expr": [
+     {
+      "xt": {
+       "type": "match",
+       "name": "comment"
+      }
+     },
+     {
+      "counter": {
+       "packets": 8202,
+       "bytes": 548310
+      }
+     },
+     {
+      "jump": {
+       "target": "CNI-HOSTPORT-MASQ"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "ip",
+    "table": "nat",
+    "chain": "POSTROUTING",
+    "handle": 10,
+    "expr": [
+     {
+      "xt": {
+       "type": "match",
+       "name": "comment"
+      }
+     },
+     {
+      "counter": {
+       "packets": 8493,
+       "bytes": 568301
+      }
+     },
+     {
+      "jump": {
+       "target": "KUBE-POSTROUTING"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "ip",
+    "table": "nat",
+    "chain": "POSTROUTING",
+    "handle": 44,
+    "expr": [
+     {
+      "xt": {
+       "type": "match",
+       "name": "comment"
+      }
+     },
+     {
+      "counter": {
+       "packets": 7382,
+       "bytes": 463494
+      }
+     },
+     {
+      "jump": {
+       "target": "FLANNEL-POSTRTG"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "ip",
+    "table": "nat",
+    "chain": "KUBE-NODEPORTS",
+    "handle": 545,
+    "expr": [
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "payload": {
+         "protocol": "ip",
+         "field": "daddr"
+        }
+       },
+       "right": {
+        "prefix": {
+         "addr": "127.0.0.0",
+         "len": 8
+        }
+       }
+      }
+     },
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "payload": {
+         "protocol": "ip",
+         "field": "protocol"
+        }
+       },
+       "right": "tcp"
+      }
+     },
+     {
+      "xt": {
+       "type": "match",
+       "name": "comment"
+      }
+     },
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "payload": {
+         "protocol": "tcp",
+         "field": "dport"
+        }
+       },
+       "right": 31500
+      }
+     },
+     {
+      "xt": {
+       "type": "match",
+       "name": "nfacct"
+      }
+     },
+     {
+      "counter": {
+       "packets": 0,
+       "bytes": 0
+      }
+     },
+     {
+      "jump": {
+       "target": "KUBE-EXT-UQMCRMJZLI3FTLDP"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "ip",
+    "table": "nat",
+    "chain": "KUBE-NODEPORTS",
+    "handle": 546,
+    "expr": [
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "payload": {
+         "protocol": "ip",
+         "field": "protocol"
+        }
+       },
+       "right": "tcp"
+      }
+     },
+     {
+      "xt": {
+       "type": "match",
+       "name": "comment"
+      }
+     },
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "payload": {
+         "protocol": "tcp",
+         "field": "dport"
+        }
+       },
+       "right": 31500
+      }
+     },
+     {
+      "counter": {
+       "packets": 0,
+       "bytes": 0
+      }
+     },
+     {
+      "jump": {
+       "target": "KUBE-EXT-UQMCRMJZLI3FTLDP"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "ip",
+    "table": "nat",
+    "chain": "KUBE-NODEPORTS",
+    "handle": 549,
+    "expr": [
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "payload": {
+         "protocol": "ip",
+         "field": "daddr"
+        }
+       },
+       "right": {
+        "prefix": {
+         "addr": "127.0.0.0",
+         "len": 8
+        }
+       }
+      }
+     },
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "payload": {
+         "protocol": "ip",
+         "field": "protocol"
+        }
+       },
+       "right": "tcp"
+      }
+     },
+     {
+      "xt": {
+       "type": "match",
+       "name": "comment"
+      }
+     },
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "payload": {
+         "protocol": "tcp",
+         "field": "dport"
+        }
+       },
+       "right": 31125
+      }
+     },
+     {
+      "xt": {
+       "type": "match",
+       "name": "nfacct"
+      }
+     },
+     {
+      "counter": {
+       "packets": 0,
+       "bytes": 0
+      }
+     },
+     {
+      "jump": {
+       "target": "KUBE-EXT-CVG3OEGEH7H5P3HQ"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "ip",
+    "table": "nat",
+    "chain": "KUBE-NODEPORTS",
+    "handle": 550,
+    "expr": [
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "payload": {
+         "protocol": "ip",
+         "field": "protocol"
+        }
+       },
+       "right": "tcp"
+      }
+     },
+     {
+      "xt": {
+       "type": "match",
+       "name": "comment"
+      }
+     },
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "payload": {
+         "protocol": "tcp",
+         "field": "dport"
+        }
+       },
+       "right": 31125
+      }
+     },
+     {
+      "counter": {
+       "packets": 0,
+       "bytes": 0
+      }
+     },
+     {
+      "jump": {
+       "target": "KUBE-EXT-CVG3OEGEH7H5P3HQ"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "ip",
+    "table": "nat",
+    "chain": "KUBE-MARK-MASQ",
+    "handle": 542,
+    "expr": [
+     {
+      "counter": {
+       "packets": 0,
+       "bytes": 0
+      }
+     },
+     {
+      "xt": {
+       "type": "target",
+       "name": "MARK"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "ip",
+    "table": "nat",
+    "chain": "FLANNEL-POSTRTG",
+    "handle": 45,
+    "expr": [
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "&": [
+         {
+          "meta": {
+           "key": "mark"
+          }
+         },
+         16384
+        ]
+       },
+       "right": 16384
+      }
+     },
+     {
+      "xt": {
+       "type": "match",
+       "name": "comment"
+      }
+     },
+     {
+      "counter": {
+       "packets": 0,
+       "bytes": 0
+      }
+     },
+     {
+      "return": null
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "ip",
+    "table": "nat",
+    "chain": "FLANNEL-POSTRTG",
+    "handle": 46,
+    "expr": [
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "payload": {
+         "protocol": "ip",
+         "field": "saddr"
+        }
+       },
+       "right": {
+        "prefix": {
+         "addr": "10.42.0.0",
+         "len": 24
+        }
+       }
+      }
+     },
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "payload": {
+         "protocol": "ip",
+         "field": "daddr"
+        }
+       },
+       "right": {
+        "prefix": {
+         "addr": "10.42.0.0",
+         "len": 16
+        }
+       }
+      }
+     },
+     {
+      "xt": {
+       "type": "match",
+       "name": "comment"
+      }
+     },
+     {
+      "counter": {
+       "packets": 5004,
+       "bytes": 301330
+      }
+     },
+     {
+      "return": null
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "ip",
+    "table": "nat",
+    "chain": "FLANNEL-POSTRTG",
+    "handle": 47,
+    "expr": [
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "payload": {
+         "protocol": "ip",
+         "field": "saddr"
+        }
+       },
+       "right": {
+        "prefix": {
+         "addr": "10.42.0.0",
+         "len": 16
+        }
+       }
+      }
+     },
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "payload": {
+         "protocol": "ip",
+         "field": "daddr"
+        }
+       },
+       "right": {
+        "prefix": {
+         "addr": "10.42.0.0",
+         "len": 24
+        }
+       }
+      }
+     },
+     {
+      "xt": {
+       "type": "match",
+       "name": "comment"
+      }
+     },
+     {
+      "counter": {
+       "packets": 0,
+       "bytes": 0
+      }
+     },
+     {
+      "return": null
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "ip",
+    "table": "nat",
+    "chain": "FLANNEL-POSTRTG",
+    "handle": 48,
+    "expr": [
+     {
+      "match": {
+       "op": "!=",
+       "left": {
+        "payload": {
+         "protocol": "ip",
+         "field": "saddr"
+        }
+       },
+       "right": {
+        "prefix": {
+         "addr": "10.42.0.0",
+         "len": 16
+        }
+       }
+      }
+     },
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "payload": {
+         "protocol": "ip",
+         "field": "daddr"
+        }
+       },
+       "right": {
+        "prefix": {
+         "addr": "10.42.0.0",
+         "len": 24
+        }
+       }
+      }
+     },
+     {
+      "xt": {
+       "type": "match",
+       "name": "comment"
+      }
+     },
+     {
+      "counter": {
+       "packets": 0,
+       "bytes": 0
+      }
+     },
+     {
+      "return": null
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "ip",
+    "table": "nat",
+    "chain": "FLANNEL-POSTRTG",
+    "handle": 49,
+    "expr": [
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "payload": {
+         "protocol": "ip",
+         "field": "saddr"
+        }
+       },
+       "right": {
+        "prefix": {
+         "addr": "10.42.0.0",
+         "len": 16
+        }
+       }
+      }
+     },
+     {
+      "match": {
+       "op": "!=",
+       "left": {
+        "payload": {
+         "protocol": "ip",
+         "field": "daddr"
+        }
+       },
+       "right": {
+        "prefix": {
+         "addr": "224.0.0.0",
+         "len": 4
+        }
+       }
+      }
+     },
+     {
+      "xt": {
+       "type": "match",
+       "name": "comment"
+      }
+     },
+     {
+      "counter": {
+       "packets": 56,
+       "bytes": 5837
+      }
+     },
+     {
+      "xt": {
+       "type": "target",
+       "name": "MASQUERADE"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "ip",
+    "table": "nat",
+    "chain": "FLANNEL-POSTRTG",
+    "handle": 50,
+    "expr": [
+     {
+      "match": {
+       "op": "!=",
+       "left": {
+        "payload": {
+         "protocol": "ip",
+         "field": "saddr"
+        }
+       },
+       "right": {
+        "prefix": {
+         "addr": "10.42.0.0",
+         "len": 16
+        }
+       }
+      }
+     },
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "payload": {
+         "protocol": "ip",
+         "field": "daddr"
+        }
+       },
+       "right": {
+        "prefix": {
+         "addr": "10.42.0.0",
+         "len": 16
+        }
+       }
+      }
+     },
+     {
+      "xt": {
+       "type": "match",
+       "name": "comment"
+      }
+     },
+     {
+      "counter": {
+       "packets": 0,
+       "bytes": 0
+      }
+     },
+     {
+      "xt": {
+       "type": "target",
+       "name": "MASQUERADE"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "ip",
+    "table": "nat",
+    "chain": "CNI-HOSTPORT-SETMARK",
+    "handle": 123,
+    "expr": [
+     {
+      "xt": {
+       "type": "match",
+       "name": "comment"
+      }
+     },
+     {
+      "counter": {
+       "packets": 0,
+       "bytes": 0
+      }
+     },
+     {
+      "xt": {
+       "type": "target",
+       "name": "MARK"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "ip",
+    "table": "nat",
+    "chain": "CNI-HOSTPORT-MASQ",
+    "handle": 125,
+    "expr": [
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "&": [
+         {
+          "meta": {
+           "key": "mark"
+          }
+         },
+         8192
+        ]
+       },
+       "right": 8192
+      }
+     },
+     {
+      "counter": {
+       "packets": 0,
+       "bytes": 0
+      }
+     },
+     {
+      "xt": {
+       "type": "target",
+       "name": "MASQUERADE"
+      }
+     }
+    ]
+   }
+  },
+  {
+   "rule": {
+    "family": "ip",
+    "table": "nat",
+    "chain": "CNI-HOSTPORT-DNAT",
+    "handle": 137,
+    "expr": [
+     {
+      "match": {
+       "op": "==",
+       "left": {
+        "payload": {
+         "protocol": "ip",
+         "field": "protocol"
+        }
+       },
+       "right": "tcp"
+      }
+     },
+     {
+      "xt": {
+       "type": "match",
+       "name": "comment"
+      }
+     },
+     {
+      "xt": {
+       "type": "match",
+       "name": "multiport"
+      }
+     },
+     {
+      "counter": {
+       "packets": 0,
+       "bytes": 0
+      }
+     },
+     {
+      "jump": {
+       "target": "CNI-DN-2bf4f7f6427e124bf1913"
+      }
+     }
+    ]
+   }
+  }
+ ]
+}

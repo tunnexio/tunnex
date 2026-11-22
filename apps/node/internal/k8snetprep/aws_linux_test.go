@@ -882,8 +882,16 @@ func TestAWSNoRecognizedMechanismAndDetachedAWSChainRemainBlocked(t *testing.T) 
 				f.removeChain("KUBE-POSTROUTING")
 			}
 			r := awsTestReconciler(t, f, ScopeIPMasqAndAWS)
-			if _, err := r.Reconcile(t.Context(), "10.99.0.0/24"); err == nil {
-				t.Fatal("absent/detached CNI became ready")
+			status, err := r.Reconcile(t.Context(), "10.99.0.0/24")
+			if detached && err == nil {
+				t.Fatal("detached CNI became ready")
+			}
+			if !detached {
+				// No mechanism at all: nothing on this node can rewrite tunnel-bound
+				// traffic, so the gateway is ready as observed and owns no rule.
+				if err != nil || len(status.Adapters) == 0 || status.Adapters[0].Name != ObservedAdapterName || status.Adapters[0].State != StateReady {
+					t.Fatalf("node without a CNI masquerade mechanism was refused: %+v %v", status, err)
+				}
 			}
 			if len(f.mutations) != 0 {
 				t.Fatal("absent/detached mechanism mutated")

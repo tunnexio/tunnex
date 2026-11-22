@@ -120,10 +120,20 @@ func (r *Reconciler) reconcileWithAuthority(ctx context.Context, cidr string) (R
 	if err := snapshot.validateOwnedAuthorityScope(grant.Scope); err != nil {
 		return awsBlocked(err)
 	}
-	if !snapshot.hasChain(ipMasqChain) && !snapshot.hasChain(awsChain) {
-		return awsBlocked(errors.New(ReasonNoRegisteredAdapter))
-	}
 	status := ReconcileStatus{Host: ComponentStatus{Name: "wireguard_rp_filter", State: StateReady}}
+	if snapshot.hasChain(ipMasqChain) || snapshot.hasChain(awsChain) {
+		r.registeredSeen = true
+	} else if r.registeredSeen {
+		// A mechanism this process was reconciling has vanished. That is a
+		// controller change in progress, not a node without one.
+		return awsBlocked(errors.New("registered CNI mechanism disappeared"))
+	}
+	if !snapshot.hasChain(ipMasqChain) && !snapshot.hasChain(awsChain) {
+		// No mechanism to edit. observeRegisteredMechanisms already proved that
+		// the node's live NAT rules cannot rewrite tunnel-bound traffic, so the
+		// gateway owns no CNI rule here and is ready as observed.
+		status.Adapters = append(status.Adapters, ComponentStatus{Name: ObservedAdapterName, State: StateReady, Reason: ReasonObservedNoTunnelSourceNAT})
+	}
 	for _, adapter := range []struct{ name, chain, marker string }{{ipMasqAdapterName, ipMasqChain, ownedRuleComment}, {awsAdapterName, awsChain, AWSOwnedRuleComment}} {
 		if !snapshot.hasChain(adapter.chain) {
 			status.Adapters = append(status.Adapters, ComponentStatus{Name: adapter.name, State: StateNotApplicable, Reason: "exact chain absent"})
@@ -781,6 +791,13 @@ func (s *cniSnapshot) validateHookCoverage(iface, cidr string) error {
 		if len(expr) == 2 && nftXT(expr[0], "match", "comment") && s.hasChain(awsChain) {
 			expr = expr[1:]
 		}
+		// The AWS VPC CNI graph is proved rule by rule and keeps its exact shape.
+		// Elsewhere only entries to a mechanism this binary edits are exact; every
+		// other rule is accepted only if the walk below proves it cannot
+		// source-NAT tunnel-bound traffic.
+		if !s.hasChain(awsChain) && !jumpsToRegisteredChain(rule.Expr) {
+			continue
+		}
 		if len(expr) != 1 || len(expr[0]) != 1 {
 			return errors.New("unknown NAT POSTROUTING rule coverage")
 		}
@@ -794,6 +811,11 @@ func (s *cniSnapshot) validateHookCoverage(iface, cidr string) error {
 		}
 		seen[target] = true
 	}
+	if postOK && cidr != "" && !s.hasChain(awsChain) {
+		if err := s.proveObservedNAT(cidr); err != nil {
+			return err
+		}
+	}
 	for _, chain := range []string{ipMasqChain, awsChain} {
 		if s.hasChain(chain) != seen[chain] {
 			return errors.New("registered CNI chain has ambiguous reachability")
@@ -806,6 +828,43 @@ func (s *cniSnapshot) validateHookCoverage(iface, cidr string) error {
 		}
 	}
 	return nil
+}
+
+// jumpsToRegisteredChain reports whether a rule transfers control to a chain
+// whose owned rules this binary edits; those entries keep their exact shape.
+func jumpsToRegisteredChain(expr []map[string]any) bool {
+	for _, item := range expr {
+		for _, verdict := range []string{"jump", "goto"} {
+			if target, ok := item[verdict].(map[string]any); ok && (target["target"] == ipMasqChain || target["target"] == awsChain) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// proveObservedNAT applies the provider-neutral walk to every ip nat rule that
+// is not an entry to a registered mechanism.
+func (s *cniSnapshot) proveObservedNAT(cidr string) error {
+	tunnel, err := netip.ParsePrefix(cidr)
+	if err != nil {
+		return errors.New("invalid IPv4 tunnel CIDR")
+	}
+	chains := map[string]bool{}
+	rules := map[string][][]map[string]any{}
+	for _, chain := range s.chains {
+		if chain.Family == "ip" && chain.Table == "nat" {
+			chains[chain.Name] = true
+		}
+	}
+	for _, list := range s.rules {
+		for _, rule := range list {
+			if rule.Family == "ip" && rule.Table == "nat" {
+				rules[rule.Chain] = append(rules[rule.Chain], withoutCounters(rule.Expr))
+			}
+		}
+	}
+	return proveNoTunnelSourceNAT(chains, rules, "POSTROUTING", tunnel, map[string]bool{ipMasqChain: true, awsChain: true})
 }
 
 func (s *cniSnapshot) validateTunnexPostrouting(iface, cidr string) error {

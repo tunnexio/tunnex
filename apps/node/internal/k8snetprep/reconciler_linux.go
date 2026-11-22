@@ -48,6 +48,10 @@ type Reconciler struct {
 	awsAware    bool
 	runIPTables IPTablesRunner
 	guard       AuthorityGuard
+	// registeredSeen records that this process has reconciled a registered CNI
+	// mechanism, so its later absence is a change in progress and not a node
+	// that never had one.
+	registeredSeen bool
 }
 
 // New returns a provider-neutral reconciler for one WireGuard interface.
