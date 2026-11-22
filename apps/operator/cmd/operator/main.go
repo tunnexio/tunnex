@@ -17,6 +17,7 @@ import (
 	"net/url"
 	"os"
 	"regexp"
+	"sync"
 	"time"
 
 	"k8s.io/apimachinery/pkg/runtime"
@@ -68,12 +69,48 @@ func validateControlPlaneConfig(cpURL, orgID string) error {
 	return nil
 }
 
+// controlPlaneReady is the pod's readiness: can it reach the control plane with its credential, for its
+// organization. The kubelet only reports "not ready", so the reason is logged here — once when it starts
+// failing or changes, and once when it recovers, never every probe. Without this the pod sat not-ready with
+// nothing in its log (K8L-8 live walk: a credential with no owner is refused with a bare 401).
 func controlPlaneReady(client *cp.Client) healthz.Checker {
+	log := ctrl.Log.WithName("readiness")
+	var mu sync.Mutex
+	last := ""
 	return func(_ *http.Request) error {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer cancel()
-		return client.CheckAccess(ctx)
+		err := client.CheckAccess(ctx)
+		reason := readinessReason(err)
+		mu.Lock()
+		changed := reason != last
+		last = reason
+		mu.Unlock()
+		if changed && err != nil {
+			log.Info("control plane is not usable yet", "reason", reason)
+		} else if changed {
+			log.Info("control plane is reachable and the credential is accepted")
+		}
+		return err
 	}
+}
+
+// readinessReason turns the control plane's answer into something an operator can act on. The control plane
+// deliberately does not say WHY a credential is refused, so every cause of a 401 is listed.
+func readinessReason(err error) string {
+	if err == nil {
+		return ""
+	}
+	if e := cp.AsAPIError(err); e != nil {
+		switch e.Status {
+		case http.StatusUnauthorized:
+			return "the control plane refused the credential (401): the token in the Secret is wrong or incomplete, the credential was revoked, it has no owner assigned yet (Settings, GitOps operator credentials, Assign owner), or its owner is deactivated"
+		case http.StatusForbidden, http.StatusNotFound:
+			return fmt.Sprintf("the credential is not valid for this organization (%d %s): check controlPlane.organizationID", e.Status, e.Code)
+		}
+		return fmt.Sprintf("control plane answered %d %s: %s", e.Status, e.Code, e.Message)
+	}
+	return "cannot reach the control plane: " + err.Error()
 }
 
 func main() {
