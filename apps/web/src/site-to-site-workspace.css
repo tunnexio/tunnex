@@ -333,3 +333,16 @@
 /* SSI-13: the same header band as the Gateways inventory, on every Site-to-site table. These tables had
    made the header transparent, so two lists one click apart looked like two products. */
 .site-to-site-workspace .s2s-network-table thead tr,.site-to-site-workspace .s2s-flat-table thead tr,.site-to-site-workspace .ipsec-inventory thead tr { background:var(--tnx-surface-inset); }
+
+/* Phone width: the Networks toolbar kept everything on one row, which squeezed the search box down to
+   its icon (nothing could be typed) and let the tab row collide with the action buttons. */
+@media (max-width:640px) {
+  .s2s-networks-topbar { flex-wrap:wrap; gap:8px; }
+  .s2s-networks-actions { margin-left:0; }
+  .s2s-networks-inventory .gw-inventory-toolbar { flex-wrap:wrap; gap:10px; }
+  .s2s-networks-inventory .gw-search { flex:1 0 100%; width:100%; }
+  .s2s-networks-inventory .gw-inventory-count { margin-left:0; }
+  .s2s-networks-inventory .gw-sort-controls { margin-left:auto; }
+  .site-to-site-workspace .s2s-network-table .tnx-table-scroll { overflow-x:auto; }
+  .site-to-site-workspace .s2s-network-table table { min-width:680px; }
+}
