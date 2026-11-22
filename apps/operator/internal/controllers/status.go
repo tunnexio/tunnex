@@ -48,6 +48,19 @@ const (
 	// subject appears once created) WITHOUT hot-spinning on a genuinely bad spec. A spec edit re-triggers
 	// immediately regardless.
 	clientErrRequeue = 60 * time.Second
+	// resyncReady re-checks an accepted resource against the control plane. Kubernetes only tells the
+	// operator about changes to the CR; a rule deleted or a Service unexposed in the dashboard produces no
+	// event, so Ready would stay True for hours without this (K8L-8).
+	resyncReady = 5 * time.Minute
+
+	// reasonSpecChange names a spec edit the control plane cannot apply to an existing object. The CR is
+	// NOT Ready for that generation: what is live is still the earlier spec.
+	reasonSpecChange = "spec_change_unsupported"
+	// reasonUnmanaged names an object with this identity that the operator did not create. It is neither
+	// adopted nor ever deleted by the CR.
+	reasonUnmanaged = "exists_outside_operator"
+	// reasonDuplicate names a second CR declaring an object another CR already owns.
+	reasonDuplicate = "declared_by_another_resource"
 )
 
 // setReady flips the CR's Ready condition, pinning it to the spec generation the reconcile acted on.

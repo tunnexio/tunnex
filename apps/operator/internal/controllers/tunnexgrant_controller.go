@@ -5,7 +5,6 @@ import (
 	"time"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
-	"k8s.io/apimachinery/pkg/api/meta"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime"
 	"k8s.io/client-go/tools/record"
@@ -71,17 +70,6 @@ func (r *TunnexGrantReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	}
 	serviceID := svc.Status.ServiceID
 
-	// Idempotent: policy rules aren't named, so once we hold a RuleID we consider the grant placed (drift
-	// reconcile is Slice 4). A create-then-status-write failure could double-place; identical grants are
-	// same-effect (default-deny + idempotent allow) — the residual is registered in the paper.
-	if cr.Status.RuleID != "" {
-		if !meta.IsStatusConditionTrue(cr.Status.Conditions, condReady) {
-			setReady(&cr.Status.Conditions, metav1.ConditionTrue, "Accepted", "grant placed", gen)
-			return ctrl.Result{}, r.Status().Update(ctx, &cr)
-		}
-		return ctrl.Result{}, nil
-	}
-
 	// Resolve the friendly subject -> the CP's src fields. A subject that doesn't resolve is HONEST non-Ready.
 	greq := cp.CreateGrantRequest{SrcKind: cr.Spec.SubjectKind, DstKind: "k8s_service", DstK8sServiceID: &serviceID}
 	switch cr.Spec.SubjectKind {
@@ -121,6 +109,12 @@ func (r *TunnexGrantReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	if cr.Spec.ExpiresAt != nil {
 		s := cr.Spec.ExpiresAt.UTC().Format(time.RFC3339)
 		greq.ExpiresAt = &s
+		if !cr.Spec.ExpiresAt.After(time.Now()) {
+			// The control plane stops enforcing an expired rule. "Ready, grant placed" would be untrue.
+			setReady(&cr.Status.Conditions, metav1.ConditionFalse, "Expired",
+				"spec.expiresAt has passed; this grant no longer gives access", gen)
+			return ctrl.Result{}, r.Status().Update(ctx, &cr)
+		}
 	}
 
 	// M2 idempotence-by-identity: policy rules are unnamed, so a status-write failure after a prior create
@@ -137,10 +131,54 @@ func (r *TunnexGrantReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 		}
 		return res, e
 	}
+	// THE RULE WE HOLD. A rule id recorded earlier is re-checked every pass (K8L-8): a rule removed or
+	// switched off in the dashboard, or one still pointing at a Service that has since been recreated under
+	// a new id, gives no access — and the CR used to keep saying "Ready, grant placed".
+	drift := false
+	if cr.Status.RuleID != "" {
+		var held *cp.Rule
+		for i := range rules {
+			if rules[i].ID == cr.Status.RuleID {
+				held = &rules[i]
+				break
+			}
+		}
+		switch {
+		case held == nil:
+			drift = true // removed out of band: place it again from the CR
+		case !sameGrant(held, greq):
+			if ptrEq(held.DstK8sServiceID, greq.DstK8sServiceID) {
+				// Same Service, different subject: the spec was edited. A rule's subject is its identity.
+				setReady(&cr.Status.Conditions, metav1.ConditionFalse, reasonSpecChange,
+					"the subject of an existing grant cannot be changed in place; restore the spec, or delete this resource and create a new one", gen)
+				if e := r.Status().Update(ctx, &cr); e != nil {
+					return ctrl.Result{}, e
+				}
+				return ctrl.Result{RequeueAfter: clientErrRequeue}, nil
+			}
+			// The Service was recreated and has a new id; the held rule points at nothing. Replace it.
+			cause := crRef("tunnexgrant", cr.Namespace, cr.Name)
+			if err := ignoreCPNotFound(r.CP.DeleteGrant(ctx, held.ID, cause)); err != nil {
+				return ctrl.Result{}, err // keep-last
+			}
+			drift = true
+		case held.Enabled != nil && !*held.Enabled:
+			setReady(&cr.Status.Conditions, metav1.ConditionFalse, "rule_disabled",
+				"the rule for this grant is switched off in the control plane; it gives no access until it is enabled there", gen)
+			if e := r.Status().Update(ctx, &cr); e != nil {
+				return ctrl.Result{}, e
+			}
+			return ctrl.Result{RequeueAfter: clientErrRequeue}, nil
+		default:
+			setReady(&cr.Status.Conditions, metav1.ConditionTrue, "Accepted", "grant placed", gen)
+			return ctrl.Result{RequeueAfter: resyncReady}, r.Status().Update(ctx, &cr)
+		}
+		cr.Status.RuleID = ""
+	}
 	if id := matchGrant(rules, greq); id != "" {
 		cr.Status.RuleID = id
 		setReady(&cr.Status.Conditions, metav1.ConditionTrue, "Accepted", "grant placed (adopted existing)", gen)
-		return ctrl.Result{}, r.Status().Update(ctx, &cr)
+		return ctrl.Result{RequeueAfter: resyncReady}, r.Status().Update(ctx, &cr)
 	}
 
 	rule, err := r.CP.CreateGrant(ctx, greq)
@@ -154,8 +192,14 @@ func (r *TunnexGrantReconciler) Reconcile(ctx context.Context, req ctrl.Request)
 	}
 
 	cr.Status.RuleID = rule.ID
-	setReady(&cr.Status.Conditions, metav1.ConditionTrue, "Accepted", "control plane created the grant", gen)
-	return ctrl.Result{}, r.Status().Update(ctx, &cr)
+	if drift {
+		const driftMsg = "control-plane rule was absent or pointed at a removed Service; recreated from the CR"
+		recordDriftHealed(r.Recorder, &cr, driftMsg)
+		setReady(&cr.Status.Conditions, metav1.ConditionTrue, "Accepted", "control plane re-created the grant", gen)
+	} else {
+		setReady(&cr.Status.Conditions, metav1.ConditionTrue, "Accepted", "control plane created the grant", gen)
+	}
+	return ctrl.Result{RequeueAfter: resyncReady}, r.Status().Update(ctx, &cr)
 }
 
 // finalize deletes the grant CP-side through the AUDITED policy verb — revocation on the wire (the flow that

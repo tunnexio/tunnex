@@ -2,6 +2,9 @@ package controllers
 
 import (
 	"context"
+	"fmt"
+	"strconv"
+	"strings"
 
 	apierrors "k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -68,32 +71,63 @@ func (r *TunnexExposedServiceReconciler) Reconcile(ctx context.Context, req ctrl
 	}
 	clusterID := cluster.Status.ClusterID
 
-	// Idempotent: find-by (cluster, namespace, name) before exposing.
-	services, err := r.CP.ListServices(ctx)
-	if err != nil {
-		return ctrl.Result{}, err // keep-last
+	// IDENTITY. One exposure is one Service PORT: the control plane keeps a row per (cluster, namespace,
+	// name, protocol, port). Matching on less made a second CR for another port of the same Service adopt
+	// the first CR's row and report Ready for a port that was never exposed (K8L-8).
+	matches := func(s *cp.Service) bool {
+		return s.ClusterID == clusterID && s.Namespace == cr.Spec.Namespace && s.Name == cr.Spec.Service &&
+			strings.EqualFold(s.Protocol, cr.Spec.Protocol) && s.PortLow != nil && *s.PortLow == cr.Spec.Port
 	}
 	var exp *cp.Service
-	for i := range services {
-		s := &services[i]
-		if s.ClusterID == clusterID && s.Namespace == cr.Spec.Namespace && s.Name == cr.Spec.Service {
-			exp = s
-			break
-		}
-	}
-	// DRIFT: find-by (cluster,ns,name) missed but we hold a ServiceID — C2 confirm-by-ID before recreating
-	// (a single-row GET can't be fooled by a spuriously-empty list). Still there → adopt (stale list, no
-	// drift, no duplicate VIP); authoritatively 404 → drift; transport failure → keep-last.
 	drift := false
-	if exp == nil && cr.Status.ServiceID != "" {
+	if cr.Status.ServiceID != "" {
+		// We already own a row: confirm THAT row by id (a single-row GET cannot be fooled by a stale or
+		// empty list). Authoritative 404 → it was removed out of band → drift, recreate from the CR.
 		existing, found, err := r.CP.GetService(ctx, cr.Status.ServiceID)
 		if err != nil {
 			return ctrl.Result{}, err // keep-last
 		}
-		if found {
-			exp = &existing
-		} else {
+		switch {
+		case !found:
 			drift = true
+		case !matches(&existing):
+			// The spec was edited after the exposure was made. An exposure's cluster, namespace, name,
+			// protocol and port are its identity; the control plane has no "change port" verb. Saying Ready
+			// would claim the new port is open while the old one still is.
+			port := "none"
+			if existing.PortLow != nil {
+				port = strconv.Itoa(int(*existing.PortLow))
+			}
+			return r.notReady(ctx, &cr, reasonSpecChange, fmt.Sprintf(
+				"this resource exposes %s/%s %s %s and cannot be changed in place; restore the spec, or delete this resource and create a new one",
+				existing.Namespace, existing.Name, strings.ToUpper(existing.Protocol), port), gen)
+		default:
+			exp = &existing
+		}
+	}
+	if exp == nil {
+		services, err := r.CP.ListServices(ctx)
+		if err != nil {
+			return ctrl.Result{}, err // keep-last
+		}
+		for i := range services {
+			if matches(&services[i]) {
+				exp = &services[i]
+				break
+			}
+		}
+		if exp != nil && !exp.ManagedByOperator {
+			// Exposed from the dashboard or the API. Adopting it would let deleting this CR unexpose
+			// something the operator never created.
+			return r.notReady(ctx, &cr, reasonUnmanaged,
+				"this Service port is already exposed outside the operator; unexpose it there first, or remove this resource", gen)
+		}
+		if exp != nil {
+			if other, err := r.claimedByAnother(ctx, &cr, exp.ID); err != nil {
+				return ctrl.Result{}, err
+			} else if other != "" {
+				return r.notReady(ctx, &cr, reasonDuplicate, "resource "+other+" already declares this Service port", gen)
+			}
 		}
 	}
 	if exp == nil {
@@ -124,7 +158,33 @@ func (r *TunnexExposedServiceReconciler) Reconcile(ctx context.Context, req ctrl
 		setDrift(&cr.Status.Conditions, false, "in sync with the control plane", gen)
 	}
 	setReady(&cr.Status.Conditions, metav1.ConditionTrue, "Accepted", "control plane exposed the service", gen)
-	return ctrl.Result{}, r.Status().Update(ctx, &cr)
+	return ctrl.Result{RequeueAfter: resyncReady}, r.Status().Update(ctx, &cr)
+}
+
+// notReady records an honest Ready=False for this generation and retries slowly.
+func (r *TunnexExposedServiceReconciler) notReady(ctx context.Context, cr *tunnexv1.TunnexExposedService, reason, msg string, gen int64) (ctrl.Result, error) {
+	setReady(&cr.Status.Conditions, metav1.ConditionFalse, reason, msg, gen)
+	if err := r.Status().Update(ctx, cr); err != nil {
+		return ctrl.Result{}, err
+	}
+	return ctrl.Result{RequeueAfter: clientErrRequeue}, nil
+}
+
+// claimedByAnother returns the namespace/name of a different TunnexExposedService that already holds the
+// control-plane exposure id, or "". Two CRs for one exposure would each believe they own it, and deleting
+// either would unexpose it for both.
+func (r *TunnexExposedServiceReconciler) claimedByAnother(ctx context.Context, cr *tunnexv1.TunnexExposedService, serviceID string) (string, error) {
+	var all tunnexv1.TunnexExposedServiceList
+	if err := r.List(ctx, &all); err != nil {
+		return "", err
+	}
+	for i := range all.Items {
+		other := &all.Items[i]
+		if other.UID != cr.UID && other.Status.ServiceID == serviceID && other.DeletionTimestamp.IsZero() {
+			return other.Namespace + "/" + other.Name, nil
+		}
+	}
+	return "", nil
 }
 
 // finalize unexposes the service CP-side through the AUDITED verb (CR as cause), then releases the finalizer.

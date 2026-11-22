@@ -8,6 +8,10 @@ metadata:
     {{- include "tunnex-operator.labels" . | nindent 4 }}
 spec:
   replicas: {{ .Values.replicaCount }}
+  # One operator at a time. With RollingUpdate the old and the new pod overlap during an upgrade and both
+  # reconcile the same resources; the control plane has no lock between them.
+  strategy:
+    type: Recreate
   selector:
     matchLabels:
       {{- include "tunnex-operator.selectorLabels" . | nindent 6 }}
