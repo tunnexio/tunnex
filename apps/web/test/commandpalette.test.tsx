@@ -123,3 +123,28 @@ describe("filtering narrows, and says so when nothing matches", () => {
     expect(screen.queryAllByRole("option")).toHaveLength(0);
   });
 });
+
+describe('"/" focuses the search field of the current list', () => {
+  it("focuses a search field inside main and leaves typing alone", () => {
+    const main = document.createElement("main");
+    main.innerHTML = '<input aria-label="Search devices" />';
+    document.body.appendChild(main);
+    render(
+      <MemoryRouter>
+        <OrgProvider>
+          <MotionProvider value={true}>
+            <DeploymentMetaProvider value={{ edition: "open", protocol_version: 1, sso_providers: [], sandbox_module_state: "enabled" }}><CommandPalette /></DeploymentMetaProvider>
+          </MotionProvider>
+        </OrgProvider>
+      </MemoryRouter>,
+    );
+    const field = main.querySelector("input")!;
+    act(() => { fireEvent.keyDown(window, { key: "/" }); });
+    expect(document.activeElement).toBe(field);
+    // Once focused, "/" is a character, not a shortcut.
+    const event = new KeyboardEvent("keydown", { key: "/", cancelable: true });
+    act(() => { window.dispatchEvent(event); });
+    expect(event.defaultPrevented).toBe(false);
+    main.remove();
+  });
+});

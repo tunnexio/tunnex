@@ -96,6 +96,15 @@ export function CommandPalette() {
         el instanceof HTMLTextAreaElement ||
         (el as HTMLElement)?.isContentEditable;
       if (typing) return;
+      // "/" jumps to the search field of the list the operator is looking at, the way it does in most
+      // consoles. It only fires outside a field, and does nothing on a page that has no search.
+      if (e.key === "/" && !e.metaKey && !e.ctrlKey && !e.altKey) {
+        const field = document.querySelector<HTMLInputElement>(
+          'main input[type="search"], main input[aria-label^="Search" i], main input[aria-label^="Filter" i], main input[placeholder^="Search" i]',
+        );
+        if (field) { e.preventDefault(); field.focus(); field.select(); }
+        return;
+      }
       if (pendingG) {
         pendingG = false;
         const to = G_KEYS[e.key.toLowerCase()];
