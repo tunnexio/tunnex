@@ -77,7 +77,7 @@ type helmReleaseSummary struct {
 
 func listHelmReleases(ctx context.Context, runner k8sRunner, kubeContext, namespace, release string) ([]helmReleaseSummary, error) {
 	args := []string{"list", "--all", "--namespace", namespace, "--filter", "^" + regexp.QuoteMeta(release) + "$", "--output", "json"}
-	args = appendHelmContext(args, kubeContext)
+	args = helmArgsForClient(ctx, runner, appendHelmContext(args, kubeContext))
 	result, err := runChecked(ctx, runner, "read Helm release", k8sCommand{name: "helm", args: args})
 	if err != nil {
 		return nil, err
@@ -1383,6 +1383,7 @@ func runK8sUpgrade(ctx context.Context, args []string, deps k8sDeps) (retErr err
 	}
 	helmArgs := []string{"upgrade", o.release, artifact.Path, "--namespace", o.namespace, "--description", zeroTouchContract, "--reset-then-reuse-values", "--atomic", "--wait", "--timeout", o.timeout, "--values", "-"}
 	helmArgs = appendHelmContext(helmArgs, o.kubeContext)
+	helmArgs = helmArgsForClient(ctx, deps.runner, helmArgs)
 	pullSecrets := make([]map[string]string, 0, len(targetRuntime.ImagePullSecrets))
 	for _, name := range targetRuntime.ImagePullSecrets {
 		pullSecrets = append(pullSecrets, map[string]string{"name": name})

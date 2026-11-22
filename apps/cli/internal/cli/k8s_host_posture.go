@@ -320,7 +320,7 @@ func listAllHelmReleasesBounded(ctx context.Context, runner k8sRunner, kubeConte
 			return nil, fmt.Errorf("cluster-wide Helm release inventory reached the fail-closed limit of %d; no privileged singleton mutation is safe", hostPostureHelmMaxItems)
 		}
 		args := []string{"list", "--all-namespaces", "--all", "--output", "json", "--max", strconv.Itoa(hostPostureHelmPageSize), "--offset", strconv.Itoa(offset)}
-		result, err := runChecked(ctx, runner, "discover cluster-wide host posture managers page", k8sCommand{name: "helm", args: appendHelmContext(args, kubeContext)})
+		result, err := runChecked(ctx, runner, "discover cluster-wide host posture managers page", k8sCommand{name: "helm", args: helmArgsForClient(ctx, runner, appendHelmContext(args, kubeContext))})
 		if err != nil {
 			return nil, err
 		}
@@ -880,6 +880,7 @@ func ensureHostPostureManager(ctx context.Context, deps k8sDeps, prepared prepar
 		if err != nil {
 			return err
 		}
+		command.args = helmArgsForClient(ctx, deps.runner, command.args)
 		if _, err := runChecked(ctx, deps.runner, "install or upgrade cluster-wide host posture manager", command); err != nil {
 			return err
 		}
