@@ -4101,6 +4101,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/organizations/{orgId}/devices/{deviceId}/test-access": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                deviceId: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Explain one device's access path without probing or changing it
+         * @description Read-only diagnostic for one ordinary (non-agent) device. It evaluates the device's lifecycle and posture, its home gateway's freshness and compiled routes, and the exact compiled policy of that home gateway. It never resolves DNS from the control plane, sends traffic or changes policy, and it returns no key, configuration or credential. `allowed` means the rules and routes permit the flow, not that the service answered. An agent device id answers 404; use the agent diagnostic for those.
+         */
+        get: operations["testDeviceAccess"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/organizations/{orgId}/devices/pending": {
         parameters: {
             query?: never;
@@ -12447,6 +12470,18 @@ export interface components {
             first_blocker?: string | null;
             checks: components["schemas"]["AgentAccessCheck"][];
         };
+        DeviceAccessDiagnostic: {
+            /** Format: uuid */
+            device_id: string;
+            destination: string;
+            /** @enum {string} */
+            protocol: "tcp" | "udp";
+            port: number;
+            /** @enum {string} */
+            overall: "allowed" | "denied" | "inconclusive";
+            first_blocker?: string | null;
+            checks: components["schemas"]["AgentAccessCheck"][];
+        };
         AgentBootstrapTokenRequest: {
             name: string;
             /** Format: uuid */
@@ -19943,6 +19978,35 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Error"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    testDeviceAccess: {
+        parameters: {
+            query: {
+                destination: string;
+                protocol: "tcp" | "udp";
+                port: number;
+            };
+            header?: never;
+            path: {
+                orgId: string;
+                deviceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Ordered read-only diagnostic; inconclusive facts are explicit. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeviceAccessDiagnostic"];
                 };
             };
             default: components["responses"]["Error"];

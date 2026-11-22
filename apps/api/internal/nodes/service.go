@@ -2788,28 +2788,77 @@ func (s *Service) LoadSiteTopoBatch(ctx context.Context, orgID uuid.UUID, nodes 
 // active-hub choice and finalizeArtifact seam as DesiredState/PolicyHealth, so
 // diagnostics cannot invent a second hash or route model. It is read-only.
 func (s *Service) EvaluateAgentAccess(ctx context.Context, orgID, deviceID uuid.UUID, node sqlc.Node, sourceIP, destination, protocol string, port int, pre ...SiteTopoBatch) (policyspec.AccessEvaluation, []string, error) {
-	if s == nil || s.policy == nil || node.ID == uuid.Nil || node.OrgID != orgID {
-		return policyspec.AccessEvaluation{}, nil, errors.New("agent policy unavailable")
-	}
-	b := s.siteTopoBatchFor(ctx, orgID, []sqlc.Node{node}, pre)
-	if !b.ok {
-		return policyspec.AccessEvaluation{}, nil, errors.New("agent policy topology unavailable")
-	}
-	artifacts, err := s.policy.CompiledArtifactsForNodes(ctx, orgID, []uuid.UUID{node.ID}, b.hubID)
-	if err != nil {
-		return policyspec.AccessEvaluation{}, nil, err
-	}
-	final := s.finalizeArtifact(b.topo, node, artifacts[node.ID])
-	if final == nil {
-		// Off-mode mesh is intentionally nil on the wire. For explanation it is
-		// permitted-without-enforcement, not a missing grant.
-		return policyspec.AccessEvaluation{Allowed: true, Mode: "off"}, nil, nil
+	result, final, _, err := s.evaluateCompiledAccess(ctx, orgID, deviceID, node, sourceIP, destination, protocol, port, pre)
+	if err != nil || final == nil {
+		return result, nil, err
 	}
 	routes := make([]string, 0, len(final.Routes))
 	for _, route := range final.Routes {
 		routes = append(routes, route.DstCIDR)
 	}
-	return policyspec.EvaluateAccess(final, deviceID, sourceIP, destination, protocol, port), routes, nil
+	return result, routes, nil
+}
+
+// evaluateCompiledAccess is the one finalized-artifact evaluation behind both
+// access diagnostics. A nil artifact with a nil error is the off-mode mesh.
+func (s *Service) evaluateCompiledAccess(ctx context.Context, orgID, deviceID uuid.UUID, node sqlc.Node, sourceIP, destination, protocol string, port int, pre []SiteTopoBatch) (policyspec.AccessEvaluation, *policyspec.Compiled, SiteTopoBatch, error) {
+	if s == nil || s.policy == nil || node.ID == uuid.Nil || node.OrgID != orgID {
+		return policyspec.AccessEvaluation{}, nil, SiteTopoBatch{}, errors.New("agent policy unavailable")
+	}
+	b := s.siteTopoBatchFor(ctx, orgID, []sqlc.Node{node}, pre)
+	if !b.ok {
+		return policyspec.AccessEvaluation{}, nil, b, errors.New("agent policy topology unavailable")
+	}
+	artifacts, err := s.policy.CompiledArtifactsForNodes(ctx, orgID, []uuid.UUID{node.ID}, b.hubID)
+	if err != nil {
+		return policyspec.AccessEvaluation{}, nil, b, err
+	}
+	final := s.finalizeArtifact(b.topo, node, artifacts[node.ID])
+	if final == nil {
+		// Off-mode mesh is intentionally nil on the wire. For explanation it is
+		// permitted-without-enforcement, not a missing grant.
+		return policyspec.AccessEvaluation{Allowed: true, Mode: "off"}, nil, b, nil
+	}
+	return policyspec.EvaluateAccess(final, deviceID, sourceIP, destination, protocol, port), final, b, nil
+}
+
+// GatewayReach is what one gateway carries for the devices homed on it: the
+// organization device pool, the subnets of its own site, and the compiled
+// routes to remote sites and peer gateways. It is routing plumbing, never a
+// permission.
+type GatewayReach struct {
+	PoolCIDR     string
+	LocalSubnets []string
+	Routes       []string
+}
+
+// EvaluateDeviceAccess evaluates one device tuple against the finalized
+// artifact of its home gateway, exactly as EvaluateAgentAccess does, and
+// returns that gateway's reach alongside. It is read-only.
+func (s *Service) EvaluateDeviceAccess(ctx context.Context, orgID, deviceID uuid.UUID, node sqlc.Node, sourceIP, destination, protocol string, port int, pre ...SiteTopoBatch) (policyspec.AccessEvaluation, GatewayReach, error) {
+	result, final, b, err := s.evaluateCompiledAccess(ctx, orgID, deviceID, node, sourceIP, destination, protocol, port, pre)
+	if err != nil {
+		return result, GatewayReach{}, err
+	}
+	reach := GatewayReach{PoolCIDR: b.topo.poolCIDR}
+	if reach.PoolCIDR == "" && s.q != nil {
+		// The topology is only loaded for site or cross-gateway organizations.
+		if org, orgErr := s.q.GetOrganizationByID(ctx, orgID); orgErr == nil {
+			reach.PoolCIDR = org.PoolCidr
+		}
+	}
+	if node.SiteID.Valid {
+		// Everything this site answers for: its approved ranges and the service addresses of the
+		// clusters it serves. A cluster address on the device's own gateway is as local as a subnet.
+		reach.LocalSubnets = append(reach.LocalSubnets, b.topo.siteAdvertised(uuid.UUID(node.SiteID.Bytes))...)
+		sort.Strings(reach.LocalSubnets)
+	}
+	if final != nil {
+		for _, route := range final.Routes {
+			reach.Routes = append(reach.Routes, route.DstCIDR)
+		}
+	}
+	return result, reach, nil
 }
 
 // fillSiteLinkVerdict derives the ORG-LEVEL site-link health (WF-B) from THE ONE liveness derivation
