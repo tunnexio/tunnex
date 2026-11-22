@@ -187,12 +187,32 @@ func TestLiveSnapshotDistinguishesZeroReadyPodsFromAPIUnavailable(t *testing.T) 
 		t.Fatalf("zero ready pods must be a live empty result, got ok=%v targets=%+v", ok, targets)
 	}
 
+	// K8L-9: a lost watch keeps the last complete view for apiOutageGrace, then fails closed.
+	clock := time.Unix(1_000, 0)
+	w.now = func() time.Time { return clock }
 	w.setWatching(epSlicePath, false)
+	if !w.LiveSnapshotReady() {
+		t.Fatal("a watch lost a moment ago withdrew a complete view at once")
+	}
+	if _, ok := w.Targets("prod", "api", "tcp", 80); !ok {
+		t.Fatal("the last complete view must stay readable inside the outage grace")
+	}
+	clock = clock.Add(apiOutageGrace - time.Second)
+	w.setWatching(epSlicePath, false) // a repeated failure must not move the start of the grace
+	if !w.LiveSnapshotReady() {
+		t.Fatal("the view was withdrawn before the grace ended")
+	}
+	clock = clock.Add(2 * time.Second)
 	if w.LiveSnapshotReady() {
-		t.Fatal("lost EndpointSlice watch retained live snapshot readiness")
+		t.Fatal("lost EndpointSlice watch retained live snapshot readiness beyond the grace")
 	}
 	if targets, ok := w.Targets("prod", "api", "tcp", 80); ok || len(targets) != 0 {
-		t.Fatalf("API-unavailable snapshot must fail closed, got ok=%v targets=%+v", ok, targets)
+		t.Fatalf("API-unavailable snapshot must fail closed after the grace, got ok=%v targets=%+v", ok, targets)
+	}
+	// The watch returning restores it and resets the clock for the next outage.
+	w.setWatching(epSlicePath, true)
+	if !w.LiveSnapshotReady() {
+		t.Fatal("a restored watch did not restore the live snapshot")
 	}
 }
 
@@ -268,8 +288,13 @@ func TestEarlyCleanWatchEOFRetractsLiveSnapshot(t *testing.T) {
 	if err := <-done; err == nil {
 		t.Fatal("early clean EOF was accepted as the planned Kubernetes watch timeout")
 	}
+	// The loss is recorded at once; the view is withdrawn when the outage grace ends.
+	if !w.LiveSnapshotReady() {
+		t.Fatal("early clean EOF withdrew a complete view inside the outage grace")
+	}
+	clockNanos.Store(int64(time.Second + apiOutageGrace))
 	if w.LiveSnapshotReady() {
-		t.Fatal("early clean EOF retained stale snapshot readiness")
+		t.Fatal("early clean EOF retained stale snapshot readiness beyond the grace")
 	}
 }
 
@@ -300,8 +325,12 @@ func TestWatchDecodeErrorRetractsLiveSnapshot(t *testing.T) {
 	if err := <-done; err == nil {
 		t.Fatal("malformed watch event was accepted as a clean renewal")
 	}
+	if !w.LiveSnapshotReady() {
+		t.Fatal("watch decode failure withdrew a complete view inside the outage grace")
+	}
+	w.now = func() time.Time { return time.Now().Add(apiOutageGrace + time.Second) }
 	if w.LiveSnapshotReady() {
-		t.Fatal("watch decode failure retained stale snapshot readiness")
+		t.Fatal("watch decode failure retained stale snapshot readiness beyond the grace")
 	}
 }
 
@@ -522,15 +551,17 @@ func TestWatchRelistOn410ReflectsCurrent(t *testing.T) {
 	}
 }
 
-// Fail-closed (WF-K5 condition 1): a list FAILURE clears the view so no stale endpoint can back a DNAT.
-func TestListFailureClearsView(t *testing.T) {
+// K8L-9: while the API fails every read, the last complete view keeps serving for apiOutageGrace, and is
+// then CLEARED so no stale endpoint can back a DNAT (WF-K5 condition 1, now bounded instead of instant).
+func TestListFailureKeepsTheViewForTheGraceThenClearsIt(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusInternalServerError) // the API is failing every read
 	}))
 	defer srv.Close()
 
 	w := newTestWatcher(srv.URL, srv.Client(), func() {})
-	// Pre-populate a good, SYNCED view (ok=true), then let the failing loop CLEAR it (synced→false → ok=false).
+	var offset atomic.Int64
+	w.now = func() time.Time { return time.Unix(1_000, 0).Add(time.Duration(offset.Load())) }
 	w.services["prod/api"] = serviceInfo{ports: svcPorts{{protocol: "tcp", port: 80}: ""}}
 	w.servicesSynced = true
 	w.slices["prod/api"] = map[string]epGroup{"s1": {ready: []string{"10.42.0.14"}, ports: map[endpointPortKey]int{{protocol: "tcp", name: ""}: 8080}}}
@@ -544,14 +575,22 @@ func TestListFailureClearsView(t *testing.T) {
 	defer cancel()
 	go w.loop(ctx, epSlicePath, w.listSlices, w.applySliceEvent, w.clearSlices)
 
-	deadline := time.After(3 * time.Second)
+	// Inside the grace: the failing list has run, and the view is still there.
+	time.Sleep(300 * time.Millisecond)
+	if ts, ok := w.Targets("prod", "api", "tcp", 80); !ok || len(ts) != 1 {
+		t.Fatalf("a failing API inside the grace must keep the last view, got ok=%v %+v", ok, ts)
+	}
+
+	// Beyond the grace: the next failed list clears it.
+	offset.Store(int64(apiOutageGrace + time.Second))
+	deadline := time.After(2*watchIdleWait + 2*time.Second)
 	for {
 		if _, ok := w.Targets("prod", "api", "tcp", 80); !ok {
-			return // the failing list cleared the slice view → fail-closed
+			return
 		}
 		select {
 		case <-deadline:
-			t.Fatal("a persistent list failure must CLEAR the endpoint view (fail-closed), it did not")
+			t.Fatal("a list failure that outlasts the grace must CLEAR the endpoint view, it did not")
 		case <-time.After(15 * time.Millisecond):
 		}
 	}

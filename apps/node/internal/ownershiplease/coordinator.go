@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"reflect"
+	"slices"
 	"sort"
 	"sync"
 	"time"
@@ -690,7 +691,9 @@ func (c *Coordinator) withdrawAll(_ context.Context, desired reconcile.DesiredSt
 		return nil
 	}
 	if finalReadErr == nil && !reflect.DeepEqual(canonicalDomainState(actual), want) {
-		finalReadErr = ErrDomainReadbackMismatch
+		// Say WHAT differs. This path ends a gateway's startup, and the bare sentinel left a crash loop
+		// with nothing to act on.
+		finalReadErr = fmt.Errorf("%w: %s", ErrDomainReadbackMismatch, domainReadbackDifference(canonicalDomainState(actual), want))
 	}
 	return errors.Join(first, passErr, readErr, retryErr, finalReadErr)
 }
@@ -800,6 +803,10 @@ func canonicalDomainState(state AppliedDomainState) AppliedDomainState {
 	sort.Slice(state.DNSAnswers, func(i, j int) bool {
 		return state.DNSAnswers[i].Name+"\x00"+state.DNSAnswers[i].VIP < state.DNSAnswers[j].Name+"\x00"+state.DNSAnswers[j].VIP
 	})
+	// One Service exposed on several ports is several VIP mappings with the SAME name and address. The
+	// resolver holds one answer per name, so the expectation must too: without this a two-port Service made
+	// every readback differ in dns_answers, and a gateway holding one could not start again (K8L-9).
+	state.DNSAnswers = slices.Compact(state.DNSAnswers)
 	sort.Strings(state.DNSVIPs)
 	sort.Strings(state.DNSListeners)
 	sort.Slice(state.OVPN.Clients, func(i, j int) bool { return state.OVPN.Clients[i].CommonName < state.OVPN.Clients[j].CommonName })
