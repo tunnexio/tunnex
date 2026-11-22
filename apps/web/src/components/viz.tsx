@@ -213,14 +213,14 @@ export function Donut({
               {total}
             </span>
             {centreLabel && (
-              <span className="mt-1 text-[9px] text-ink-tertiary">
+              <span className="mt-1 text-[12px] text-ink-tertiary">
                 {centreLabel}
               </span>
             )}
           </div>
         </div>
         {/* The legend. This is what the tier queries and what a screen reader announces. */}
-        <ul className="min-w-0 flex-1 space-y-1.5 text-[11px]">
+        <ul className="min-w-0 flex-1 space-y-1.5 text-[12px]">
           {slices.map((s) => (
             <li key={s.label} className="flex items-center gap-2 text-ink-body">
               <span
@@ -1209,7 +1209,7 @@ export function AreaChart({
       </svg>
 
       {/* Same rule as every other primitive here: the picture is the accelerant, the text is the content. */}
-      <ul className="mt-1 flex flex-wrap gap-4 text-[11px]">
+      <ul className="mt-1 flex flex-wrap gap-4 text-[12px]">
         {series.map((s) => (
           <li key={s.label} className="flex items-center gap-2 text-ink-body">
             <span

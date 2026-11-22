@@ -1139,7 +1139,7 @@ export function GatewayRow({ g }: { g: GatewayView }) {
       </a>
       <div className="network-gateway-status">
       {g.isHub && (
-        <span className="shrink-0 rounded bg-sky-500/10 px-1.5 py-0.5 text-[10px] uppercase tracking-wide text-sky-300">
+        <span className="shrink-0 rounded bg-sky-500/10 px-1.5 py-0.5 text-[12px] uppercase tracking-wide text-sky-300">
           hub
         </span>
       )}

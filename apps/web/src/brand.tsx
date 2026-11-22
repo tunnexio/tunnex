@@ -91,7 +91,7 @@ export const TAGLINE = ["Connect Everything.", "Trust Nothing."] as const;
 export function Tagline({ className = "" }: { className?: string }) {
   return (
     <span
-      className={`block text-[8.5px] leading-[1.6] tracking-[.04em] text-ink-secondary ${className}`}
+      className={`block text-[12px] leading-[1.6] tracking-[.04em] text-ink-secondary ${className}`}
     >
       {TAGLINE[0]}
       <br />

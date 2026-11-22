@@ -621,7 +621,7 @@ function AgentJITAccessSection({
               <option value="14400">4 hours</option>
               <option value="86400">24 hours</option>
             </Select>
-            <p className="mt-1 text-[10px] text-slate-500">
+            <p className="mt-1 text-[12px] text-slate-500">
               Requested window; exact expiry is calculated when approved.
             </p>
           </Field>
@@ -655,7 +655,7 @@ function AgentJITAccessSection({
                   <p className="text-sm text-slate-300">{request.agent_name} → {request.destination_name}</p>
                   <p className="mt-1 text-xs text-slate-500">{request.reason} · {request.state} · requested {relativeAge(request.requested_at)}</p>
                   {request.approved_expires_at && <p className="mt-1 text-xs text-amber-300">Expires {new Date(request.approved_expires_at).toLocaleString()}</p>}
-                  {history[request.id] && <p className="mt-1 font-mono text-[10px] text-slate-500">{history[request.id].join(" → ")}</p>}
+                  {history[request.id] && <p className="mt-1 font-mono text-[12px] text-slate-500">{history[request.id].join(" → ")}</p>}
                 </div>
                 <AppAccessRowMenu label={`Request actions for ${request.agent_name} to ${request.destination_name}`} actions={[
                   { key:"history", label:"History", disabledReason:busy ? "Wait for the current request." : undefined, onSelect:() => void showHistory(request.id) },
@@ -1336,7 +1336,7 @@ function RulesSection({
       ) : (
         /* F3: a disabled rule is shown DISTINCTLY, never hidden — the list must not lie
            about what is enforcing. */
-        <span className="tnx-status rounded-full border border-slate-700 bg-slate-800/80 px-2 py-0.5 font-mono text-[10px] font-semibold text-slate-400">
+        <span className="tnx-status rounded-full border border-slate-700 bg-slate-800/80 px-2 py-0.5 font-mono text-[12px] font-semibold text-slate-400">
             Disabled
           </span>
       ),
@@ -1377,13 +1377,13 @@ function RulesSection({
          withheld in the actions column. */
       if (row.managedByAgentAccess)
         return (
-          <a href={row.agentAccessRequestId ? `#jit-request-${row.agentAccessRequestId}` : undefined} className="tnx-status rounded-full border border-violet-800/50 bg-violet-950/40 px-2 py-0.5 font-mono text-[10px] font-semibold text-violet-300">
+          <a href={row.agentAccessRequestId ? `#jit-request-${row.agentAccessRequestId}` : undefined} className="tnx-status rounded-full border border-violet-800/50 bg-violet-950/40 px-2 py-0.5 font-mono text-[12px] font-semibold text-violet-300">
             JIT access
           </a>
         );
       if (row.managedByAgentTemplate)
         return (
-          <span className="tnx-status rounded-full border border-sky-800/50 bg-sky-950/40 px-2 py-0.5 font-mono text-[10px] font-semibold text-sky-300">
+          <span className="tnx-status rounded-full border border-sky-800/50 bg-sky-950/40 px-2 py-0.5 font-mono text-[12px] font-semibold text-sky-300">
             Managed by agent template
           </span>
         );
@@ -1395,7 +1395,7 @@ function RulesSection({
         /* S7.5.4 linger model: a temporary grant shows its window; an EXPIRED grant stays
            visible (audit history), rendered distinctly — never hidden. */
         <span
-          className={`tnx-status rounded-full border px-2 py-0.5 font-mono text-[10px] font-semibold ${exp.state === "expired" ? "border-rose-800/50 bg-rose-950/40 text-rose-400" : "border-amber-800/50 bg-amber-950/40 text-amber-300"}`}
+          className={`tnx-status rounded-full border px-2 py-0.5 font-mono text-[12px] font-semibold ${exp.state === "expired" ? "border-rose-800/50 bg-rose-950/40 text-rose-400" : "border-amber-800/50 bg-amber-950/40 text-amber-300"}`}
         >
           Temporary · {exp.label}
         </span>
@@ -1465,7 +1465,7 @@ function RulesSection({
               a CIDR rule matching no current org range. Self-clears when a range lands. */}
           {row.cidrOutsideRanges && (
             <span
-              className="tnx-status rounded-full border border-amber-800/50 bg-amber-950/40 px-2 py-0.5 font-mono text-[10px] font-semibold text-amber-400"
+              className="tnx-status rounded-full border border-amber-800/50 bg-amber-950/40 px-2 py-0.5 font-mono text-[12px] font-semibold text-amber-400"
               title="This CIDR is inside no current site subnet. the rule matches nothing until the range is declared."
             >
               Outside ranges
@@ -1475,7 +1475,7 @@ function RulesSection({
               deregistered, so the grant compiles to nothing. Self-clears if it returns. */}
           {row.k8sServiceVanished && (
             <span
-              className="tnx-status rounded-full border border-rose-800/50 bg-rose-950/40 px-2 py-0.5 font-mono text-[10px] font-semibold text-rose-400"
+              className="tnx-status rounded-full border border-rose-800/50 bg-rose-950/40 px-2 py-0.5 font-mono text-[12px] font-semibold text-rose-400"
               title="The Kubernetes Service this rule reaches is no longer exposed. the grant matches nothing until it is re-exposed."
             >
               Vanished
@@ -1484,14 +1484,14 @@ function RulesSection({
           {fqdn && (row.fqdnDestinationStatus === "opt_in_disabled" ? (
             <Link
               to="/settings?section=features&feature=fqdn"
-              className={`tnx-status rounded-full border px-2 py-0.5 font-mono text-[10px] font-semibold hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent-400 ${fqdnDestinationBadgeClass(fqdn.tone)}`}
+              className={`tnx-status rounded-full border px-2 py-0.5 font-mono text-[12px] font-semibold hover:underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-accent-400 ${fqdnDestinationBadgeClass(fqdn.tone)}`}
               title={`${fqdn.title} Open the organization setting.`}
             >
               {fqdn.label}
             </Link>
           ) : (
             <span
-              className={`tnx-status rounded-full border px-2 py-0.5 font-mono text-[10px] font-semibold ${fqdnDestinationBadgeClass(fqdn.tone)}`}
+              className={`tnx-status rounded-full border px-2 py-0.5 font-mono text-[12px] font-semibold ${fqdnDestinationBadgeClass(fqdn.tone)}`}
               title={fqdn.title}
             >
               {fqdn.label}
@@ -1504,7 +1504,7 @@ function RulesSection({
               "empty". */}
           {emptyBadge && (
             <span
-              className="tnx-status rounded-full border border-warn/40 bg-warn/10 px-2 py-0.5 font-mono text-[10px] font-semibold text-warn"
+              className="tnx-status rounded-full border border-warn/40 bg-warn/10 px-2 py-0.5 font-mono text-[12px] font-semibold text-warn"
               title={
                 srcGroupEmptyExplain(
                   srcGroupEmptyWarn(
@@ -1843,7 +1843,7 @@ function RulesSection({
                   {srcs.map((n, i) => node(n, i, true))}
                   {dsts.map((n, i) => node(n, i, false))}
                 </svg>
-                <div className="mx-auto mt-1 flex max-w-[600px] items-center justify-between text-[10px] text-slate-500">
+                <div className="mx-auto mt-1 flex max-w-[600px] items-center justify-between text-[12px] text-slate-500">
                   <span>
                     <span className="text-slate-300">Not available</span>{" "}
                     allow&nbsp;&nbsp;

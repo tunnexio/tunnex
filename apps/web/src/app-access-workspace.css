@@ -132,7 +132,7 @@
 .aa-inventory-menu-item:hover:not(:disabled),.aa-inventory-menu-item:focus-visible { background:var(--tnx-badge-bg); outline:2px solid var(--tnx-focus); outline-offset:-2px; }
 .aa-inventory-menu-item:disabled { color:var(--tnx-text-disabled); cursor:default; }
 .aa-inventory-menu-item-danger:not(:disabled) { color:var(--tnx-danger); }
-.aa-inventory-menu-note { margin:0 10px 8px 36px; color:var(--tnx-text-secondary); font-size:11px; line-height:1.5; }
+.aa-inventory-menu-note { margin:0 10px 8px 36px; color:var(--tnx-text-secondary); font-size:12px; line-height:1.5; }
 
 /* Desktop setup follows a single path instead of stacking every settings surface. */
 .app-access-detail-workspace { max-width:1120px; padding-inline:8px; }
@@ -182,7 +182,7 @@
 .aa-editor-heading h1 { font-size:26px; }
 .aa-editor-layout { display:grid; grid-template-columns:180px minmax(0,1fr); gap:32px; align-items:start; padding-top:8px; }
 .aa-editor-rail { position:sticky; top:8px; min-width:0; min-height:480px; align-self:start; }
-.aa-editor-rail-label { margin-bottom:16px; color:var(--tnx-text-secondary); font-size:11px; font-weight:500; letter-spacing:.06em; text-transform:uppercase; }
+.aa-editor-rail-label { margin-bottom:16px; color:var(--tnx-text-secondary); font-size:12px; font-weight:500; letter-spacing:.06em; text-transform:uppercase; }
 .aa-editor .aa-editor-rail .aa-editor-steps { display:flex; flex-direction:column; gap:6px; border:0; }
 .aa-editor .aa-editor-rail .aa-editor-steps button { justify-content:flex-start; gap:10px; min-height:48px; padding:9px 8px; border:0; border-left:2px solid transparent; border-radius:0; white-space:normal; text-align:left; font-size:13px; }
 .aa-editor .aa-editor-rail .aa-editor-steps button[aria-current="step"] { border-left-color:var(--tnx-text-heading); font-weight:500; }
@@ -266,7 +266,7 @@
 .aa-publication-optional > div { width:100%; }
 .aa-publication-optional > button { min-height:34px; font-size:12px; }
 .aa-publication-maintenance-actions { display:flex; flex-wrap:wrap; gap:12px; }
-.aa-publication-activity-links { display:flex; align-items:center; flex-wrap:wrap; gap:16px; color:var(--tnx-text-secondary); font-size:11px; }
+.aa-publication-activity-links { display:flex; align-items:center; flex-wrap:wrap; gap:16px; color:var(--tnx-text-secondary); font-size:12px; }
 .aa-publication .app-access-data-list { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:20px 32px; }
 .aa-publication .app-access-data-row { display:flex; flex-direction:column; align-items:flex-start; gap:8px; padding:0; border:0; }
 .aa-publication-session-limits { display:grid; gap:18px; }
@@ -324,7 +324,7 @@
 .aa-domain-shortcut { min-height:34px; border:0; background:transparent; box-shadow:none; color:var(--tnx-text-secondary); font-size:12px; }
 .aa-domain-settings { min-width:0; font-size:13px; line-height:1.7; }
 .aa-domain-heading { display:flex; align-items:flex-start; justify-content:space-between; gap:20px; padding-bottom:20px; border-bottom:1px solid var(--tnx-divider); color:var(--tnx-text-secondary); font-size:12px; }
-.aa-domain-heading > span { flex:none; font-size:11px; }
+.aa-domain-heading > span { flex:none; font-size:12px; }
 .aa-domain-form { display:flex; flex-direction:column; gap:20px; margin-top:24px; }
 .aa-domain-fields { display:flex; flex-direction:column; gap:24px; }
 .aa-domain-fields label { color:var(--tnx-text-primary); font-size:13px; }
@@ -397,7 +397,7 @@
 .app-access-launch-copy h2 { color:var(--tnx-text-heading); font-size:14px; font-weight:500; }
 .app-access-launch-copy > p { margin-top:5px; color:var(--tnx-text-secondary); font-size:12px; line-height:1.6; }
 .app-access-launch-description { max-width:560px; }
-.app-access-launch-assurance { display:flex; flex-direction:column; align-items:flex-start; flex:0 1 190px; gap:5px; color:var(--tnx-text-secondary); font-size:11px; }
+.app-access-launch-assurance { display:flex; flex-direction:column; align-items:flex-start; flex:0 1 190px; gap:5px; color:var(--tnx-text-secondary); font-size:12px; }
 .app-access-launch-assurance:empty { display:none; }
 .app-access-launch-action { display:inline-flex; align-items:center; flex:none; gap:8px; padding:8px 0; color:var(--tnx-text-primary); font-size:13px; }
 .app-access-launch-action:hover { text-decoration:underline; }
@@ -408,7 +408,7 @@
 .aa-access-focus { gap:18px; }
 .aa-access-panel { gap:12px; }
 .aa-access-focus .tnx-datatable td { padding-block:13px; }
-.aa-access-view-help,.aa-access-notice { font-size:11px; }
+.aa-access-view-help,.aa-access-notice { font-size:12px; }
 .aa-requests-table .tnx-datatable td { padding-block:14px; }
 .aa-grant-editor { display:flex; flex-direction:column; gap:20px; min-width:0; }
 .aa-grant-context { display:flex; flex-direction:column; gap:12px; padding:14px 0; border-top:1px solid var(--tnx-divider); border-bottom:1px solid var(--tnx-divider); }

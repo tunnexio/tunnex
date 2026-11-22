@@ -157,7 +157,7 @@ export function EntityPicker({
           ambiguous between a site and a group with the same name. */}
       {!open && selected?.icon && <span className="pointer-events-none absolute left-3 top-[2.05rem]">{selected.icon}</span>}
       {!open && selected?.tag && (
-        <span className="pointer-events-none absolute right-3 top-[2.05rem] rounded border border-white/10 bg-white/[.04] px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wide text-slate-400">
+        <span className="pointer-events-none absolute right-3 top-[2.05rem] rounded border border-white/10 bg-white/[.04] px-1.5 py-0.5 font-mono text-[12px] uppercase tracking-wide text-slate-400">
           {selected.tag}
         </span>
       )}
@@ -189,7 +189,7 @@ export function EntityPicker({
               {o.section && o.section !== shown[idx - 1]?.section && (
                 <div
                   role="presentation"
-                  className="sticky top-0 z-10 bg-surface px-2.5 pb-1 pt-2 font-mono text-[9px] uppercase tracking-[.14em] text-ink-tertiary"
+                  className="sticky top-0 z-10 bg-surface px-2.5 pb-1 pt-2 font-mono text-[12px] uppercase tracking-[.14em] text-ink-tertiary"
                 >
                   {o.section}
                 </div>
@@ -214,11 +214,11 @@ export function EntityPicker({
                 }`}
               >
                 <span className="flex min-w-0 items-center gap-3">{o.icon}<span className="min-w-0"><span className="block truncate font-medium">{o.label}</span>{o.detail && <span className="mt-0.5 block truncate text-xs text-ink-tertiary">{o.detail}</span>}</span></span>
-                {o.tag && <span className="rounded border border-white/10 bg-white/[.035] px-1.5 py-0.5 font-mono text-[9px] uppercase tracking-wide text-slate-400">{o.tag}</span>}
+                {o.tag && <span className="rounded border border-white/10 bg-white/[.035] px-1.5 py-0.5 font-mono text-[12px] uppercase tracking-wide text-slate-400">{o.tag}</span>}
                 {/* ⛔ THE REASON IS SHOWN IN THE ROW, not only on hover. A disabled option whose
                     explanation requires a mouse is no explanation on a touch screen or to a reader. */}
                 {o.unavailable && (
-                  <span className="col-span-2 mt-1 text-[10px] text-warn">
+                  <span className="col-span-2 mt-1 text-[12px] text-warn">
                     {o.unavailable}
                   </span>
                 )}

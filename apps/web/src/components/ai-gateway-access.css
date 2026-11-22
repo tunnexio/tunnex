@@ -7,7 +7,7 @@
 .ai-workload-detail .tnx-card-surface { padding:0!important; border:0; border-radius:0; background:transparent; box-shadow:none; }
 .ai-secondary-table-scroll { overflow-x:auto; min-width:0; }
 .ai-secondary-workspace .ai-compact-table { width:100%; table-layout:fixed; border-collapse:collapse; font-size:13px; }
-.ai-secondary-workspace .ai-compact-table th { padding:11px 12px; background:transparent; color:var(--tnx-text-secondary); font-size:11px; font-weight:500; text-align:left; border-bottom:1px solid var(--tnx-border); }
+.ai-secondary-workspace .ai-compact-table th { padding:11px 12px; background:transparent; color:var(--tnx-text-secondary); font-size:12px; font-weight:500; text-align:left; border-bottom:1px solid var(--tnx-border); }
 .ai-secondary-workspace .ai-compact-table thead tr { background:transparent; }
 .ai-secondary-workspace .ai-compact-table td { padding:13px 12px; border-bottom:1px solid var(--tnx-divider); vertical-align:middle; overflow-wrap:anywhere; color:var(--tnx-text-primary); }
 .ai-secondary-workspace .ai-compact-table th:first-child,
@@ -18,7 +18,7 @@
 .ai-secondary-workspace .tnx-table-scroll { border:0; border-radius:0; background:transparent; }
 .ai-secondary-workspace .tnx-datatable { min-width:0; font-size:12px; }
 .ai-secondary-workspace .tnx-datatable thead tr { background:transparent; }
-.ai-secondary-workspace .tnx-datatable th { padding:10px 12px; font-size:11px; }
+.ai-secondary-workspace .tnx-datatable th { padding:10px 12px; font-size:12px; }
 .ai-secondary-workspace .tnx-datatable td { padding:13px 12px; font-size:12px; }
 .ai-secondary-workspace .tnx-datatable th:first-child,
 .ai-secondary-workspace .tnx-datatable td:first-child { padding-left:0; }
@@ -46,7 +46,7 @@
 .ai-workload-editor .block > label,
 .ai-workload-key-editor .block > label { font-size:12px; }
 .ai-access-connection { min-width:0; }
-.ai-access-connection pre { max-width:100%; font-size:11px; }
+.ai-access-connection pre { max-width:100%; font-size:12px; }
 .ai-access-connection .ai-file-icon { display:none; }
 .ai-access-connection .ai-code-tabs button { padding:9px 10px; font-size:12px; }
 .ai-workload-detail { min-width:0; }
@@ -65,10 +65,10 @@
 .ai-workload-detail .tnx-card-surface > p,
 .ai-workload-detail .tnx-card-surface > div > p { font-size:12px; line-height:1.7; }
 .ai-workload-detail .tnx-card-surface:has(> h3) { padding-top:20px!important; border-top:1px solid var(--tnx-divider); }
-.ai-workload-detail .tnx-datatable code { font-size:11px; }
+.ai-workload-detail .tnx-datatable code { font-size:12px; }
 .ai-workload-model-picker { display:grid; gap:8px; }
 .ai-workload-model-picker > label { display:flex; align-items:flex-start; gap:10px; padding:10px 0; border-bottom:1px solid var(--tnx-divider); font-size:12px; }
-.ai-workload-model-picker small { display:block; margin-top:4px; font-size:11px; line-height:1.5; color:var(--tnx-text-secondary); }
+.ai-workload-model-picker small { display:block; margin-top:4px; font-size:12px; line-height:1.5; color:var(--tnx-text-secondary); }
 .ai-workload-editor .ai-provider-notice { font-size:12px; line-height:1.7; }
 .ai-secondary-settings.tnx-card-surface { padding:0!important; border:0; background:transparent; box-shadow:none; border-radius:0; }
 .ai-secondary-settings .ai-setting-row { padding:0 0 16px; }

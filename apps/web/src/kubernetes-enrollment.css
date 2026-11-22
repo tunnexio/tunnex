@@ -68,7 +68,7 @@
   flex-direction:column;
   align-items:flex-start;
   gap:4px;
-  font-size:11px;
+  font-size:12px;
   line-height:1.55;
   color:var(--tnx-text-secondary);
 }
@@ -77,7 +77,7 @@
   min-height:38px;
   font-size:13px;
 }
-.k8s-enrollment-fields .block > p { margin-top:5px; font-size:11px; line-height:1.55; }
+.k8s-enrollment-fields .block > p { margin-top:5px; font-size:12px; line-height:1.55; }
 .k8s-provider-fieldset { margin-top:18px; }
 .k8s-provider-fieldset > legend { font-size:12px; font-weight:500; color:var(--tnx-text-primary); }
 .k8s-provider-options { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; margin-top:9px; }
@@ -101,7 +101,7 @@
 .k8s-provider-option > .k8s-provider-mark { display:block; width:24px; height:24px; flex:none; }
 .k8s-provider-option > span { display:flex; min-width:0; flex-direction:column; gap:2px; }
 .k8s-provider-option strong { font-size:12px; font-weight:500; color:var(--tnx-text-heading); }
-.k8s-provider-option small { font-size:11px; color:var(--tnx-text-secondary); }
+.k8s-provider-option small { font-size:12px; color:var(--tnx-text-secondary); }
 dl.k8s-enrollment-review.tnx-resource-facts { margin:16px 0; }
 .k8s-enrollment-feedback:empty { display:none; }
 .k8s-enrollment-feedback { margin-top:12px; }

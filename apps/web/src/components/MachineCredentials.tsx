@@ -321,7 +321,7 @@ export function MachineCredentials({
                 cell: (c) => (
                   <span className="flex flex-col">
                     <span className="text-slate-200">{c.name}</span>
-                    <span className="font-mono text-[10px] text-slate-500">
+                    <span className="font-mono text-[12px] text-slate-500">
                       {c.fingerprint}
                     </span>
                   </span>
@@ -343,7 +343,7 @@ export function MachineCredentials({
                   ) : (
                     <span
                       data-badge="refused"
-                      className="rounded border border-danger/40 px-1.5 py-0.5 text-[10px] text-danger"
+                      className="rounded border border-danger/40 px-1.5 py-0.5 text-[12px] text-danger"
                     >
                       no owner, refused
                     </span>
@@ -438,7 +438,7 @@ export function MachineCredentials({
           {/* The refusal is stated ABOVE the rows now. What is left here is the thing that genuinely
               belongs under the list: why there is nothing to pre-select. */}
           {canManage && creds.data.some((c) => !c.owner_user_id) && (
-            <p className="mt-2 text-[11px] text-ink-secondary">
+            <p className="mt-2 text-[12px] text-ink-secondary">
               Tunnex does not record who minted a credential, so it cannot
               suggest an owner, choose the person accountable for what this
               credential does.
@@ -463,7 +463,7 @@ export function MachineCredentials({
               <span className="mt-1 block">
                 2. Store it in the cluster the operator runs in (paste the token when asked; it is not echoed):
               </span>
-              <code className="mt-1 block whitespace-pre-wrap break-all rounded border border-line bg-surface-inset px-2 py-1 font-mono text-[11px]">
+              <code className="mt-1 block whitespace-pre-wrap break-all rounded border border-line bg-surface-inset px-2 py-1 font-mono text-[12px]">
                 {OPERATOR_SECRET_COMMAND}
               </code>
             </>
