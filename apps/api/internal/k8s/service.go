@@ -339,7 +339,7 @@ func (s *Service) registerCluster(ctx context.Context, orgID, siteID, connectorN
 			Provider:         provider, Platform: platform,
 		})
 		if pgerr.IsUnique(e) {
-			return apierr.Conflict("cluster_exists", "a cluster with that name or VIP range already exists in this organization")
+			return registerClusterConflict(pgerr.UniqueConstraint(e))
 		}
 		if e != nil {
 			return e
@@ -725,4 +725,19 @@ func (s *Service) DeregisterCluster(ctx context.Context, actorUserID uuid.UUID, 
 		s.pushOrg(ctx, orgID) // M5: a deregister cascade-deletes grants — propagate at push speed, not ~25s
 	}
 	return err
+}
+
+// registerClusterConflict names which uniqueness rule a new cluster broke. Three different rules used to
+// share one message ("name or VIP range already exists"), which was wrong for the third and sent the
+// operator looking at the wrong field (K8L-8 live walk).
+func registerClusterConflict(constraint string) error {
+	switch constraint {
+	case "k8s_clusters_connector_node_unique":
+		return apierr.Conflict("connector_in_use", "this gateway already serves another cluster; one in-cluster gateway serves one cluster. Choose another gateway, or deregister the cluster that uses this one")
+	case "k8s_clusters_org_id_name_key":
+		return apierr.Conflict("cluster_exists", "a cluster with that name already exists in this organization")
+	case "k8s_clusters_org_id_vip_range_key":
+		return apierr.Conflict("cluster_exists", "a cluster with that address range already exists in this organization")
+	}
+	return apierr.Conflict("cluster_exists", "a cluster with that name or VIP range already exists in this organization")
 }
