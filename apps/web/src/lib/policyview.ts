@@ -1427,11 +1427,17 @@ export function sourceOptions(i: {
   ];
 }
 
+function k8sServiceDetail(s: { fqdn?: string | null; namespace?: string | null; protocol?: string | null; port_low?: number | null }): string | undefined {
+  const where = s.fqdn?.trim() || s.namespace?.trim() || "";
+  const port = s.protocol && s.port_low ? `${s.protocol.toUpperCase()} ${s.port_low}` : "";
+  return [where, port].filter(Boolean).join(" · ") || undefined;
+}
+
 export function destinationOptions(i: {
   groups: Array<{ id: string; name: string }>;
   resources: Array<{ id: string; name: string }>;
   sites: Array<{ id: string; name: string }>;
-  services: Array<{ id: string; name: string }>;
+  services: Array<{ id: string; name: string; fqdn?: string | null; namespace?: string | null; protocol?: string | null; port_low?: number | null }>;
   fqdnResources?: Array<{ id: string; name: string; fqdn: string; state: string }>;
   srcKind: string;
   srcSite: string;
@@ -1450,6 +1456,9 @@ export function destinationOptions(i: {
       kind: "k8s_service",
       tag: "k8s",
       label: s.name,
+      // Two clusters often expose a Service with the same name. The full name carries the namespace
+      // and the cluster, and the port is what the rule will actually open.
+      detail: k8sServiceDetail(s),
       section: DST_SCOPED,
     })),
     ...(i.fqdnResources ?? []).map((resource) => ({

@@ -250,3 +250,22 @@ describe("option sections — where port scope becomes visible", () => {
     expect(src.find((o) => o.kind === "site")!.section).toBe("Networks");
   });
 });
+
+describe("K8L: two clusters exposing the same Service name stay distinguishable", () => {
+  it("shows each Kubernetes Service's full name and port under its label", () => {
+    const dst = destinationOptions({
+      groups: [], resources: [], sites: [], srcKind: "user", srcSite: "",
+      services: [
+        { id: "a", name: "orders", fqdn: "orders.shop.svc.onprem.k8s.corp.internal", namespace: "shop", protocol: "tcp", port_low: 80 },
+        { id: "b", name: "orders", fqdn: "orders.shop.svc.gke.k8s.corp.internal", namespace: "shop", protocol: "tcp", port_low: 80 },
+        { id: "c", name: "legacy" },
+      ],
+    });
+    const byId = Object.fromEntries(dst.filter((o) => o.kind === "k8s_service").map((o) => [o.value, o.detail]));
+    expect(byId.a).toBe("orders.shop.svc.onprem.k8s.corp.internal · TCP 80");
+    expect(byId.b).toBe("orders.shop.svc.gke.k8s.corp.internal · TCP 80");
+    expect(byId.a).not.toBe(byId.b);
+    expect(byId.c).toBeUndefined();
+  });
+});
+
