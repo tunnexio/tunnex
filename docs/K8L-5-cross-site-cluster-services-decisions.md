@@ -65,3 +65,13 @@ reach. Which gateway they landed on must not decide it.
 
   This is also the first proof of the GKE Standard data path (Container-Optimized OS, kube-proxy
   iptables, `IP-MASQ`): device to gateway to pod and back.
+
+- Live with enforcement on (default-deny), same laptop, same single connection:
+
+      no rules                         on-prem 000, GKE 000, 10.70.0.2:22 blocked
+      one rule: admin -> GKE orders    GKE by name 200, GKE by address 200
+                                       on-prem orders still 000
+                                       GKE address on port 443 (not granted) blocked
+                                       10.70.0.2:22 still blocked
+
+  So the cross-site path carries reachability only: the rule decides, per Service and per port.
