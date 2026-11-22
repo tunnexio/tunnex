@@ -73,7 +73,7 @@ export const NAV_GROUPS: Array<{
     ],
   },
   {
-    group: "ACCESS",
+    group: "ACCESS CONTROL",
     items: [
       { to: "/access", label: "Access Policies", icon: "shield" },
       { to: "/devices", label: "Devices", icon: "laptop" },
@@ -81,7 +81,7 @@ export const NAV_GROUPS: Array<{
     ],
   },
   {
-    group: "Access & Sharing",
+    group: "APPS & SHARING",
     icon: "passport",
     items: [
       { to: "/app-access", label: "App Access", icon: "chrome" },
