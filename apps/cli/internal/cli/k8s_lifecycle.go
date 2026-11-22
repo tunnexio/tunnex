@@ -1402,7 +1402,9 @@ func runK8sUpgrade(ctx context.Context, args []string, deps k8sDeps) (retErr err
 	if err != nil {
 		return err
 	}
-	if _, err := runChecked(ctx, deps.runner, "upgrade gateway release", k8sCommand{name: "helm", args: helmArgs, stdin: valuesJSON}); err != nil {
+	upgradePods := startPodObserver(ctx, deps.runner, o.kubeContext, o.namespace, gatewayPodSelector(o.release))
+	_, upgradeErr := runChecked(ctx, deps.runner, "upgrade gateway release", k8sCommand{name: "helm", args: helmArgs, stdin: valuesJSON})
+	if err := upgradePods.explain(upgradeErr); err != nil {
 		return err
 	}
 	helmMutationConfirmed = true
