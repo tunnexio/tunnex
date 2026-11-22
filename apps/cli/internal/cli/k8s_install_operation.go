@@ -658,7 +658,8 @@ func prepareLifecycleInstallAuthority(ctx context.Context, deps k8sDeps, prepare
 	} else {
 		if !validCanonicalOperationID(anchor.installOperationID) || anchor.installIntentDigest != intentDigest ||
 			anchor.installOperationDurationSeconds != requestedSeconds || anchor.releaseNamespace != prepared.options.namespace || anchor.releaseName != prepared.options.release {
-			return lifecycleInstallAuthority{}, errors.New("persisted lifecycle install operation is bound to different approved inputs")
+			return lifecycleInstallAuthority{}, fmt.Errorf("persisted lifecycle install operation is bound to different approved inputs\nAn earlier install of release %q is still recorded with other flags (for example another --image or --timeout). Run the install again with exactly the earlier flags, or discard that attempt first:\n  tunnex k8s abort-install --release %s --namespace %s --claim %s --confirm \"ABORT %s\"",
+				prepared.options.release, prepared.options.release, prepared.options.namespace, anchor.lifecycleClaim, anchor.lifecycleClaim)
 		}
 		if anchor.state == "acknowledged" && (anchor.installOperationEpoch != 0 || !anchor.installOperationNotAfter.IsZero()) {
 			return lifecycleInstallAuthority{}, errors.New("pre-Begin lifecycle anchor contains an epoch or deadline")

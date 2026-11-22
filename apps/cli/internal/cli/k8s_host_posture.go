@@ -881,7 +881,9 @@ func ensureHostPostureManager(ctx context.Context, deps k8sDeps, prepared prepar
 			return err
 		}
 		command.args = helmArgsForClient(ctx, deps.runner, command.args)
-		if _, err := runChecked(ctx, deps.runner, "install or upgrade cluster-wide host posture manager", command); err != nil {
+		managerPods := startPodObserver(ctx, deps.runner, prepared.options.kubeContext, defaultHostPostureNamespace, "app.kubernetes.io/component=host-posture")
+		_, err = runChecked(ctx, deps.runner, "install or upgrade cluster-wide host posture manager", command)
+		if err = managerPods.explain(err); err != nil {
 			return err
 		}
 		if onHelmMutation != nil {

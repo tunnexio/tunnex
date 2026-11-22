@@ -995,6 +995,10 @@ func runToolContextPreflight(ctx context.Context, deps k8sDeps, requestedContext
 	return contextName, nil
 }
 
+func gatewayPodSelector(release string) string {
+	return "app.kubernetes.io/instance=" + release + ",app.kubernetes.io/component=gateway"
+}
+
 func verifyHelmClient(ctx context.Context, runner k8sRunner) error {
 	major, minor, version, err := helmClientVersion(ctx, runner)
 	if err != nil {
@@ -1977,7 +1981,9 @@ func runK8sInstall(ctx context.Context, args []string, deps k8sDeps) (retErr err
 	// mutation context remains authoritative for abort, authority loss, and the
 	// separately budgeted hard deadline; an equal-time outer deadline would kill
 	// Helm before it can remove a failed pending-install revision.
+	gatewayPods := startPodObserver(mutationCtx, deps.runner, o.kubeContext, o.namespace, gatewayPodSelector(o.release), token)
 	_, helmErr := runCheckedSecrets(mutationCtx, deps.runner, "install gateway release", helmCommand, token)
+	helmErr = gatewayPods.explain(helmErr)
 	mutationCause := context.Cause(mutationCtx)
 	if helmErr != nil {
 		installHolderStopped = errors.Is(mutationCause, errLifecycleInstallAbortRequested) || errors.Is(mutationCause, errLifecycleInstallDeadline)

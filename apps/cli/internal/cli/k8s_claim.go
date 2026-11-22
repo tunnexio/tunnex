@@ -363,7 +363,7 @@ func ensureLifecycleBootstrap(ctx context.Context, deps k8sDeps, prepared prepar
 			return nil, lifecycleAnchorMetadata{}, "", err
 		}
 		if status.state != "issued" && status.state != "acknowledged" {
-			return nil, lifecycleAnchorMetadata{}, "", fmt.Errorf("control-plane lifecycle claim is %q, not retry-safe", status.state)
+			return nil, lifecycleAnchorMetadata{}, "", lifecycleClaimNotRetrySafe(status.state, prepared.options, prepared.state.pvcName)
 		}
 		if anchor.state == "installing" {
 			if status.state != "acknowledged" {
@@ -1286,4 +1286,20 @@ func lifecycleClaimStatusFingerprint(status k8sLifecycleClaimStatus) string {
 		status.expiresAt.UTC().Format(time.RFC3339Nano), formatOptionalTime(status.acknowledgedAt),
 		formatOptionalTime(status.consumedAt), formatOptionalTime(status.abortedAt), status.nodeID,
 	}, "\x00")
+}
+
+// lifecycleClaimNotRetrySafe explains why an install cannot simply be run
+// again, and what to run instead. "consumed" means the earlier attempt got as
+// far as enrolling the gateway: its identity is in the retained state claim,
+// so the way forward is to reuse that claim, not to issue a second token.
+func lifecycleClaimNotRetrySafe(state string, o installOptions, claim string) error {
+	base := fmt.Errorf("control-plane lifecycle claim is %q, not retry-safe", state)
+	if state != "consumed" {
+		return fmt.Errorf("%w\nTo discard this attempt, run: tunnex k8s abort-install --release %s --namespace %s --claim <claim id printed in the plan>", base, o.release, o.namespace)
+	}
+	if claim == "" {
+		claim = o.release + "-tunnex-gateway-state"
+	}
+	return fmt.Errorf("%w\nThe earlier attempt already enrolled gateway %q, and its identity is kept in the state claim %q. Finish the install by reusing it, with the same placement flags as before:\n  tunnex k8s install --node-name %s --release %s --namespace %s --mode reuse --existing-claim %s ...\n(check the claim name with: kubectl -n %s get pvc)",
+		base, o.nodeName, claim, o.nodeName, o.release, o.namespace, claim, o.namespace)
 }
