@@ -38,6 +38,7 @@ import {
   ProviderMetadataCorrectionModal,
 } from "../components/K8sEnrollment";
 import { K8sServiceInventoryStatus } from "../components/K8sServiceInventoryStatus";
+import { MachineCredentials } from "../components/MachineCredentials";
 import { K8sHAActivationPanel } from "../components/K8sHAActivationPanel";
 import { K8sConnectorPoolPanel } from "../components/K8sConnectorPoolPanel";
 import { providerPlatformEntry } from "../lib/k8senrollment";
@@ -429,7 +430,7 @@ kubectl wait --for=condition=Established --timeout=120s \\
       <h1 className="sr-only">Kubernetes</h1>
       <div className="kubernetes-workspace-toolbar">
         <nav aria-label="Kubernetes workspace" className="kubernetes-tabs">
-          {([["clusters", "Clusters"], ["services", "Exposed services"], ["operations", "Operations"]] as const).map(([id, label]) => <button type="button" key={id} aria-current={section === id ? "page" : undefined} onClick={() => updateQuery({ section: id, cluster: null, detail: null, q: null })}>{label}</button>)}
+          {([["clusters", "Clusters"], ["services", "Exposed services"], ["operations", "Setup"]] as const).map(([id, label]) => <button type="button" key={id} aria-current={section === id ? "page" : undefined} onClick={() => updateQuery({ section: id, cluster: null, detail: null, q: null })}>{label}</button>)}
         </nav>
         <div className="kubernetes-toolbar-actions"><RefreshButton label="Refresh Kubernetes" onClick={() => void reload()} />{currentRaw && gate.canManage && (currentRaw.sites?.length ?? 0) > 0 && <Button size="sm" onClick={() => setRegistering(true)}>Register cluster</Button>}</div>
       </div>
@@ -473,11 +474,28 @@ kubectl wait --for=condition=Established --timeout=120s \\
             </div>
           </section>}
           {section === "operations" && <div className="kubernetes-operations">
-            <SettingGroup title="Kubernetes configuration">
-              <SettingRow label="Traffic path" description="Service name → VIP → connector → ready pod"><Button size="sm" variant="ghost" onClick={() => setTrafficPathOpen(true)}>View path</Button></SettingRow>
+            {/* Ordered as the work is done: connect a cluster, optionally manage it from Git, optionally make
+                it highly available, and last how traffic flows. It used to be one flat list of internal
+                terms ("Connector HA activation", "Machine credentials") with no hint of what came first. */}
+            <SettingGroup title="Connect a cluster">
+              <SettingRow label="1. Install the gateway in your cluster" description="One command with the Tunnex CLI. It runs on Amazon EKS, Azure AKS, Google GKE Standard and clusters you manage yourself. Each cluster needs its own gateway."><Button size="sm" variant="ghost" onClick={() => { setCommandKind("gateway"); setCommandStep(0); setCommandsOpen(true); }}>View commands</Button></SettingRow>
+              <SettingRow label="2. Add the gateway to a network" description="The gateway appears under Gateways once it is running. Put it in the network it serves."><Link to="/sites" className="tnx-link text-cell">Open networks</Link></SettingRow>
+              <SettingRow label="3. Register the cluster and expose Services" description="Choose the gateway, then pick the Services people should reach. Each one gets a private address and name; access rules decide who may use it.">{gate.canManage && (currentRaw.sites?.length ?? 0) > 0 ? <Button size="sm" variant="ghost" onClick={() => setRegistering(true)}>Register a cluster</Button> : <SettingValue>Needs a network first</SettingValue>}</SettingRow>
+            </SettingGroup>
+            <SettingGroup title="Manage from Git (optional)">
+              <SettingRow label="GitOps operator" description="For teams that keep their setup in Git: declare clusters, exposed Services and access as YAML, and the operator applies them here. You do not need it if you use this dashboard."><Button size="sm" variant="ghost" onClick={() => { setCommandKind("operator"); setCommandStep(0); setCommandsOpen(true); }}>View operator steps</Button></SettingRow>
+              {/* The operator's credentials live next to the operator's setup steps, not under the licence.
+                  Owner-only: for anyone else the endpoint answers 403, which used to render as an outage. */}
+              {orgId && can(myRole, "machine:manage")
+                ? <MachineCredentials orgId={orgId} canManage />
+                : <SettingRow label="GitOps operator credentials" description="What the Tunnex Kubernetes operator signs in with."><SettingValue>Only an organization owner can manage these</SettingValue></SettingRow>}
+            </SettingGroup>
+            <SettingGroup title="High availability (advanced)">
+              <SettingRow label="What this is" description="Run a second gateway for the same cluster, so access continues if a gateway or its node fails. Off unless you set it up; a single gateway needs none of the settings below."><SettingValue>Optional</SettingValue></SettingRow>
               {orgId && <K8sHAActivationPanel orgId={orgId} role={myRole} emailVerified={emailVerified} />}
-              <SettingRow label="Operator and connector setup" description="Install a connector or the optional GitOps operator."><Button size="sm" variant="ghost" onClick={() => { setCommandKind("gateway"); setCommandStep(0); setCommandsOpen(true); }}>View commands</Button></SettingRow>
-              <SettingRow label="Machine credentials"><SettingValue>{currentRaw.machineCreds === null ? "Credentials unavailable" : `${currentRaw.machineCreds} machine ${currentRaw.machineCreds === 1 ? "credential" : "credentials"}`}</SettingValue></SettingRow>
+            </SettingGroup>
+            <SettingGroup title="How it works">
+              <SettingRow label="Traffic path" description="Device → Service name → Tunnex address → gateway in the cluster → a ready pod"><Button size="sm" variant="ghost" onClick={() => setTrafficPathOpen(true)}>View path</Button></SettingRow>
             </SettingGroup>
           </div>}
         </>}
@@ -494,11 +512,14 @@ kubectl wait --for=condition=Established --timeout=120s \\
       {scopeCurrent && commandsOpen && <Modal placement="right" showClose title="Operator and connector setup" onDismiss={() => setCommandsOpen(false)} actions={<Button variant="ghost" onClick={() => setCommandsOpen(false)}>Close</Button>}>
         <div className="kubernetes-command-guide">
           <nav aria-label="Setup method" className="kubernetes-command-methods"><button type="button" aria-current={commandKind === "gateway" ? "page" : undefined} onClick={() => setCommandKind("gateway")}>Gateway</button><button type="button" aria-current={commandKind === "operator" ? "page" : undefined} onClick={() => { setCommandKind("operator"); setCommandStep(0); }}>GitOps operator</button></nav>
-          {commandKind === "gateway" ? <><h3>Install the connector</h3><p>Use the logged-in, version-matched CLI. Review the plan before installing.</p><pre>{`tunnex k8s plan --org ${orgId ?? "<organization-id>"} --node-name <gateway-name>
-tunnex k8s install --org ${orgId ?? "<organization-id>"} --node-name <gateway-name> --yes`}</pre><details><summary>Credential handling</summary><p>The CLI streams the single-use token on stdin and removes the consumed bootstrap Secret after readiness.</p></details></> : <>
+          {commandKind === "gateway" ? <><h3>Install the gateway in your cluster</h3><p>Use the logged-in, version-matched CLI (<code>tunnex login --server https://your-tunnex-server</code>), with kubectl pointing at the cluster. Review the plan before installing.</p><pre>{`tunnex k8s plan --org ${orgId ?? "<organization-id>"} --node-name <gateway-name>
+tunnex k8s install --org ${orgId ?? "<organization-id>"} --node-name <gateway-name> --yes`}</pre><h3>Which address will people connect to?</h3><p><strong>EKS, AKS, GKE:</strong> nothing to add. The cluster gives the gateway a load balancer and the CLI waits for its address.</p><p><strong>A cluster you run yourself, with no load balancer:</strong> publish a node port and say which address reaches it:</p><pre>{`tunnex k8s install --node-name <gateway-name> \\
+  --service-type NodePort --node-port 31820 \\
+  --endpoint <node-public-address>:31820 \\
+  --gateway-node-selector kubernetes.io/hostname=<that-node> --yes`}</pre><p>Allow that UDP port in your firewall, and TCP 8443 from the cluster to your Tunnex server.</p><h3>Then</h3><p>Add the gateway to a network, then register the cluster. Both are on the Setup tab.</p><details><summary>Credential handling</summary><p>The CLI streams the single-use token on stdin and removes the consumed bootstrap Secret after readiness.</p></details></> : <>
             <nav className="kubernetes-command-steps" aria-label="Operator setup steps">{["Prepare", "Install CRDs", "Install operator"].map((label, index) => <button type="button" key={label} aria-current={commandStep === index ? "step" : undefined} onClick={() => setCommandStep(index)}><span>{index + 1}</span>{label}</button>)}</nav>
             <h3>{["Prepare the environment", "Upgrade the CRDs", "Install the operator"][commandStep]}</h3>
-            <p>{commandStep === 0 ? "Create the machine credential as Kubernetes Secret tunnex-operator-credential in tunnex-system. Set these variables, then run all steps in the same shell." : commandStep === 1 ? "Upgrade retained CRDs before the operator. Adoption accepts only an exact approved legacy Tunnex schema; unknown ownerless schemas fail before apply." : "The chart reads the existing Secret. This upgrade waits for readiness and rolls back on failure."}</p>
+            <p>{commandStep === 0 ? "Mint a credential on the Setup tab and assign it an owner (it is refused until it has one). Store it as Kubernetes Secret tunnex-operator-credential in tunnex-system; the mint dialog shows the command. Set these variables, then run all steps in the same shell." : commandStep === 1 ? "Upgrade retained CRDs before the operator. Adoption accepts only an exact approved legacy Tunnex schema; unknown ownerless schemas fail before apply." : "The chart reads the existing Secret. This upgrade waits for readiness and rolls back on failure."}</p>
             <pre>{operatorCommands[commandStep]}</pre>
             <div className="kubernetes-command-footer"><Button variant="ghost" disabled={commandStep === 0} onClick={() => setCommandStep(step => step - 1)}>Back</Button>{commandStep < 2 && <Button onClick={() => setCommandStep(step => step + 1)}>Continue</Button>}</div>
           </>}

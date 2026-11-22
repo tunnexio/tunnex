@@ -45,6 +45,14 @@ export type MachineCredentialsCache = {
   entries: Map<string, MachineCredentialsCacheEntry>;
 };
 
+/**
+ * Stores the credential as the Secret the operator chart reads, without the token ever appearing in the
+ * command line, the shell history or the terminal. Same Secret name and key as docs/kubernetes-zero-touch.md.
+ */
+export const OPERATOR_SECRET_COMMAND =
+  "kubectl create namespace tunnex-system --dry-run=client -o yaml | kubectl apply -f - && " +
+  "read -rs TOKEN && printf '%s' \"$TOKEN\" | kubectl -n tunnex-system create secret generic tunnex-operator-credential --from-file=token=/dev/stdin; unset TOKEN";
+
 export function MachineCredentials({
   orgId,
   canManage,
@@ -173,7 +181,8 @@ export function MachineCredentials({
     // transactions, and they belong behind an explicit open rather than permanently on the page.
     <SettingDialogRow
       label="GitOps operator credentials"
-      description="Credentials for the Tunnex Kubernetes operator. Shown once at mint."
+      description="What the Tunnex Kubernetes operator signs in with. Each one is shown once, and works only after an owner is assigned."
+      dialogSize="workspace"
       value={
         // ⚠ THREE STATES. `null` is not-loaded and a failed read is not "0 credentials" — a count is a
         // claim, and claiming zero over an unread list is the same class of lie as an off switch over an
@@ -445,8 +454,18 @@ export function MachineCredentials({
             <>
               This is the operator&rsquo;s bearer token. It is shown{" "}
               <span className="font-semibold">exactly once</span> and can never
-              be retrieved again, save it into the operator&rsquo;s Secret now.
-              If lost, revoke and re-mint.
+              be retrieved again. If lost, revoke and re-mint.
+              <span className="mt-3 block font-semibold text-ink-heading">Two steps before the operator can use it</span>
+              <span className="mt-1 block">
+                1. Close this and <span className="font-semibold">assign an owner</span> to the credential in
+                the list. Until it has one, Tunnex refuses it and the operator stays not ready.
+              </span>
+              <span className="mt-1 block">
+                2. Store it in the cluster the operator runs in (paste the token when asked; it is not echoed):
+              </span>
+              <code className="mt-1 block whitespace-pre-wrap break-all rounded border border-line bg-surface-inset px-2 py-1 font-mono text-[11px]">
+                {OPERATOR_SECRET_COMMAND}
+              </code>
             </>
           }
           secret={secret}

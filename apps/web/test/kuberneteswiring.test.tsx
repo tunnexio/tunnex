@@ -449,8 +449,14 @@ describe("Kubernetes — ownership, confirmation, and URL contracts", () => {
     rendered.unmount();
 
     withAuth(<Kubernetes />, "/kubernetes?section=operations");
-    expect(await screen.findByText("Operator and connector setup")).toBeTruthy();
-    expect(screen.getByRole("button", { name: "Operations" }).getAttribute("aria-current")).toBe("page");
+    // The tab is an ordered setup page: connect a cluster, optionally Git, optionally HA, how it works.
+    expect(await screen.findByText("1. Install the gateway in your cluster")).toBeTruthy();
+    for (const heading of ["Connect a cluster", "Manage from Git (optional)", "High availability (advanced)", "How it works"]) {
+      expect(screen.getByRole("heading", { name: heading })).toBeTruthy();
+    }
+    expect(screen.getByText("2. Add the gateway to a network")).toBeTruthy();
+    expect(screen.getByText("3. Register the cluster and expose Services")).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Setup" }).getAttribute("aria-current")).toBe("page");
   });
 
   it("shows only real zero-touch gateway and operator install surfaces", async () => {
@@ -461,6 +467,9 @@ describe("Kubernetes — ownership, confirmation, and URL contracts", () => {
     const dialog = await screen.findByRole("dialog", { name: "Operator and connector setup" });
     expect(dialog.textContent).toContain("tunnex k8s plan --org org-1 --node-name <gateway-name>");
     expect(dialog.textContent).toContain("tunnex k8s install --org org-1 --node-name <gateway-name> --yes");
+    // A self-managed cluster has no load balancer; the dialog says what to add and which ports to open.
+    expect(dialog.textContent).toContain("--service-type NodePort --node-port 31820");
+    expect(dialog.textContent).toContain("TCP 8443");
     fireEvent.click(within(dialog).getByRole("button", { name: "GitOps operator" }));
     expect(within(dialog).getByRole("navigation", { name: "Operator setup steps" })).toBeTruthy();
     expect(dialog.textContent).toContain("tunnex-operator-credential");
