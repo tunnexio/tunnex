@@ -1,6 +1,12 @@
 package main
 
-import "testing"
+import (
+	"errors"
+	"strings"
+	"testing"
+
+	"github.com/tunnexio/tunnex/apps/operator/internal/cp"
+)
 
 func TestValidateControlPlaneConfig(t *testing.T) {
 	validOrg := "11111111-1111-1111-1111-111111111111"
@@ -26,5 +32,24 @@ func TestValidateControlPlaneConfig(t *testing.T) {
 				t.Fatal("invalid config accepted")
 			}
 		})
+	}
+}
+
+// The pod's log must say why it is not ready; a 401 has four causes and the control plane names none.
+func TestReadinessReasonNamesWhatToCheck(t *testing.T) {
+	if got := readinessReason(nil); got != "" {
+		t.Fatalf("ready reported a reason: %q", got)
+	}
+	unauthorized := readinessReason(&cp.APIError{Status: 401, Code: "unauthenticated"})
+	for _, want := range []string{"401", "no owner assigned", "revoked", "wrong or incomplete"} {
+		if !strings.Contains(unauthorized, want) {
+			t.Errorf("401 reason lacks %q: %s", want, unauthorized)
+		}
+	}
+	if got := readinessReason(&cp.APIError{Status: 404, Code: "org_not_found"}); !strings.Contains(got, "organizationID") {
+		t.Errorf("404 reason: %s", got)
+	}
+	if got := readinessReason(errors.New("dial tcp: i/o timeout")); !strings.Contains(got, "cannot reach the control plane") {
+		t.Errorf("transport reason: %s", got)
 	}
 }
