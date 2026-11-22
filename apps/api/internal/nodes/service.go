@@ -14,6 +14,7 @@ import (
 	"log/slog"
 	"net"
 	"net/netip"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -1077,6 +1078,11 @@ type siteTopology struct {
 	// routing, while this graph carries only synthetic K8s VIP /32s between an
 	// edge hub and its connector.
 	k8sConnectors map[uuid.UUID]k8sConnector
+	// siteVIPs (K8L-5) is site_id -> the exposed-Service VIP and DNS VIP /32s served inside that site. The
+	// site link carries them exactly like the site's approved subnets, so a device homed on any site's
+	// gateway reaches a cluster in another site. Same fail-closed inputs as k8sConnectors: an address with
+	// no resolved, reachable connector is absent here too.
+	siteVIPs map[uuid.UUID][]string
 }
 
 type k8sConnector struct {
@@ -1286,11 +1292,17 @@ func (s *Service) loadSiteTopology(ctx context.Context, orgID uuid.UUID) (siteTo
 		}
 		connectors[connectorID] = c
 	}
+	siteVIPs := map[uuid.UUID][]string{}
 	for id, c := range connectors {
 		sort.Strings(c.vips)
 		connectors[id] = c
+		siteVIPs[c.siteID] = append(siteVIPs[c.siteID], c.vips...)
 	}
-	return siteTopology{clientGraph: clientGraph, gws: gws, subnets: sub, lanMasquerade: lanMasquerade, dnsForwards: fwds, dnsResolverProfiles: dnsProfiles, hubMembers: hubMembers, poolCIDR: poolCIDR, vipMappings: vipMappings, k8sDNS: k8sDNS, k8sConnectors: connectors}, nil
+	for site, vips := range siteVIPs {
+		sort.Strings(vips)
+		siteVIPs[site] = slices.Compact(vips)
+	}
+	return siteTopology{clientGraph: clientGraph, gws: gws, subnets: sub, lanMasquerade: lanMasquerade, dnsForwards: fwds, dnsResolverProfiles: dnsProfiles, hubMembers: hubMembers, poolCIDR: poolCIDR, vipMappings: vipMappings, k8sDNS: k8sDNS, k8sConnectors: connectors, siteVIPs: siteVIPs}, nil
 }
 
 // deriveActive is THE shared hub-order derivation (S8.6 REDUCE) — the ONE function every consumer reads
@@ -1900,7 +1912,7 @@ func siteLinkGraphFrom(topo siteTopology, node sqlc.Node) ([]Peer, []policyspec.
 		if uuid.UUID(g.SiteID.Bytes) == mySite {
 			continue
 		}
-		for _, c := range topo.subnets[uuid.UUID(g.SiteID.Bytes)] {
+		for _, c := range topo.siteAdvertised(uuid.UUID(g.SiteID.Bytes)) {
 			if !routeSeen[c] {
 				routeSeen[c] = true
 				routeCIDRs = append(routeCIDRs, c)
@@ -1936,7 +1948,7 @@ func siteLinkGraphFrom(topo siteTopology, node sqlc.Node) ([]Peer, []policyspec.
 				continue
 			}
 			site := uuid.UUID(g.SiteID.Bytes)
-			ips := append([]string(nil), topo.subnets[site]...)
+			ips := topo.siteAdvertised(site)
 			if len(ips) == 0 {
 				continue // a gateway advertising no subnets yet contributes no crypto-routing
 			}
@@ -1978,6 +1990,13 @@ func siteLinkGraphFrom(topo siteTopology, node sqlc.Node) ([]Peer, []policyspec.
 	}
 	sort.Slice(peers, func(i, j int) bool { return peers[i].PublicKey < peers[j].PublicKey })
 	return peers, routes
+}
+
+// siteAdvertised is what a site contributes to the site link: its approved subnets plus the Kubernetes
+// Service addresses served inside it (K8L-5). A fresh slice, so callers may sort or extend it.
+func (t siteTopology) siteAdvertised(site uuid.UUID) []string {
+	out := append([]string(nil), t.subnets[site]...)
+	return append(out, t.siteVIPs[site]...)
 }
 
 // k8sHandoffGraph compiles the private service path between a connector and the
