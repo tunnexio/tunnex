@@ -74,4 +74,28 @@ A team using it trusts `Ready=True`. It could be false in five ways.
   recreated Service is replaced; a switched-off rule and an expired grant are not Ready; a healthy
   grant is re-checked on the timer. The earlier suite passes with fixtures updated for ownership.
 - Chart contract test passes with the `Recreate` strategy.
-- Live walk on the k3s cluster: recorded below when run.
+## Live walk, 2026-11-22, k3s 1.37, operator built from this branch
+
+Installed from the local `tunnex-operator-crds` and `tunnex-operator` charts with a credential minted
+in the dashboard.
+
+| Step | Result |
+| --- | --- |
+| Credential with no owner, then a wrongly pasted token | Pod not ready; before the fix its log was empty. Now: `control plane is not usable yet: the control plane refused the credential (401): the token in the Secret is wrong or incomplete, the credential was revoked, it has no owner assigned yet ..., or its owner is deactivated` |
+| `TunnexCluster` naming the dashboard-registered cluster `onprem` | `Ready=False exists_outside_operator: ... will not adopt or remove it`. Deleting the resource left the cluster untouched. |
+| `TunnexCluster` `gitops` on a gateway that already served `onprem` | Refused by the control plane. Its message said "name or VIP range already exists"; the real rule is one cluster per in-cluster gateway. Fixed: code `connector_in_use` with that sentence. |
+| After the dashboard cluster was deregistered | `gitops` Ready, DNS address `100.66.0.2`. |
+| Two resources for Service `shop/web`, ports 80 and 8080 | Two exposures, both Ready, one address `100.66.0.3`. Before the fix the second was never made. |
+| `TunnexGrant` for port 80 to the admin | Ready. From a laptop connected through the gateway in the OTHER network: port 80 by name and by address 200; port 8080 (exposed, not granted) blocked. |
+| Port edited 8080 → 9090 | `Ready=False spec_change_unsupported: this resource exposes shop/web TCP 8080 and cannot be changed in place ...`. Restored → Ready. |
+| Cluster range edited | `Ready=False spec_change_unsupported: spec.vipRange cannot be changed after registration (the registered cluster uses 100.66.0.0/16) ...`. Restored → Ready. |
+| Grant subject edited | `Ready=False spec_change_unsupported: the subject of an existing grant cannot be changed in place ...`. Restored → Ready. |
+| A second resource for port 80 | `Ready=False declared_by_another_resource: resource tunnex-gitops/web-http already declares this Service port`. |
+| Resource for port 8080 deleted | Only the 8080 exposure was withdrawn; port 80 stayed exposed and reachable. |
+
+Not walked live: a rule removed behind the operator's back. The dashboard refuses to delete a
+GitOps-managed rule ("Change its owning GitOps object"), so it can only happen through the API; the
+unit tests cover it. A connector change was not walked either (the test site has one gateway).
+
+Also found: a freshly minted operator credential is refused until an owner is assigned, and the
+install steps in `docs/kubernetes-zero-touch.md` do not say so.
