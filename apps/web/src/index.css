@@ -483,3 +483,12 @@ a:hover,button:hover,summary:hover,[role=tab]:hover,[role=button]:hover { transi
 /* One content measure. Every page sits in the same centred column, so moving between pages never shifts
  * the left edge the eye is tracking. Pages may be narrower; none is wider. */
 main.tnx-page[data-columns] > :not(.fixed):not([role=dialog]):not([aria-modal]) { width:100%; max-width:1320px; margin-inline:auto; }
+
+/* A page arrives with a short fade, so a navigation reads as one change instead of a flash. Opacity
+ * only: a transform here would re-anchor every fixed overlay inside the page. */
+@media (prefers-reduced-motion:no-preference) {
+  main.tnx-page[data-columns] > :not(.fixed):not([role=dialog]):not([aria-modal]) { animation:tnxPageIn .2s cubic-bezier(.22,1,.36,1) both; }
+}
+@keyframes tnxPageIn { from { opacity:0; } }
+/* Search fields advertise the "/" shortcut where there is room for it. */
+main .tnx-table-toolbar input[type="search"]::placeholder { text-overflow:ellipsis; }
