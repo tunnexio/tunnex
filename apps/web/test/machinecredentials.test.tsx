@@ -6,7 +6,7 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
-import { MachineCredentials } from "../src/components/MachineCredentials";
+import { MachineCredentials, OPERATOR_SECRET_COMMAND } from "../src/components/MachineCredentials";
 import * as apiMod from "../src/lib/api";
 
 // ⛔ THE THREE EMPTY STATES ARE THE POINT OF THIS SCREEN, AND THE THIRD IS WHY IT IS HARD.
@@ -387,4 +387,24 @@ describe("the row tells the truth about what it knows", () => {
       expect(screen.queryByText(banned)).toBeNull();
     }
   });
+
+  // K8L-8 live walk: a minted credential was pasted into the cluster and the operator sat not ready,
+  // because nothing at mint time said an owner is required. The one-time dialog now says both steps.
+  it("tells the person what is left to do right after minting", async () => {
+    stubGet({ [LIST]: [], [MEMBERS]: [] });
+    vi.spyOn(apiMod.api, "POST").mockResolvedValue({ data: { token: "tnxm_example-not-a-real-token" } } as never);
+    render(<MachineCredentials orgId={ORG} canManage />);
+    await open();
+    fireEvent.change(screen.getByLabelText("Credential name"), { target: { value: "gitops" } });
+    fireEvent.click(screen.getByRole("button", { name: "Mint credential" }));
+    await waitFor(() => expect(screen.getByText(/Two steps before the operator can use it/)).toBeTruthy());
+    expect(screen.getByText(/assign an owner/i)).toBeTruthy();
+    expect(document.body.textContent).toContain("Until it has one, Tunnex refuses it");
+    expect(document.body.textContent).toContain(OPERATOR_SECRET_COMMAND);
+    // The command never contains the token: it is read without echo and piped in.
+    expect(OPERATOR_SECRET_COMMAND).toContain("read -rs TOKEN");
+    expect(OPERATOR_SECRET_COMMAND).not.toContain("tnxm_");
+    expect(OPERATOR_SECRET_COMMAND).toContain("tunnex-operator-credential --from-file=token=/dev/stdin");
+  });
 });
+

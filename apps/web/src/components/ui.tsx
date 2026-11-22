@@ -542,12 +542,15 @@ export function SettingDialogRow({
   value,
   actionLabel = "Edit",
   dialogTitle,
+  dialogSize = "default",
   disabled = false,
   error,
   "data-testid": testId,
   children,
   actions,
 }: {
+  /** `workspace` for a dialog that holds a table; the default width makes a five-column table scroll. */
+  dialogSize?: "default" | "wide" | "workspace";
   label: string;
   description?: string;
   /** What the setting is set to right now, shown on the row. */
@@ -581,6 +584,7 @@ export function SettingDialogRow({
       {open && (
         <Modal
           title={dialogTitle ?? label}
+          size={dialogSize}
           onDismiss={close}
           actions={actions(close)}
         >

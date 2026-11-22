@@ -14,7 +14,7 @@ import { WorkspaceFeatureControl } from "../components/WorkspaceFeatureControl";
 import "../network-workspaces.css";
 import "../settings-workspace.css";
 import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
-import { useLocation } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import {
   api,
   apiErrorCode,
@@ -78,7 +78,6 @@ import {
 } from "../components/ui";
 import { LicenceCard, type LicenceCardCache } from "../components/LicenceCard";
 import { MfaSettings } from "../components/MfaSettings";
-import { MachineCredentials, type MachineCredentialsCache } from "../components/MachineCredentials";
 import {
   AgentQuotaCard,
   AgentRuntimeSettingCard,
@@ -122,9 +121,6 @@ function SettingsWorkspace() {
   // values here prevents section navigation from re-fetching unchanged configuration while mutations still
   // refresh their own cache entries.
   const licenceCache = useRef<LicenceCardCache>({ status: null }).current;
-  const machineCredentialsCache = useRef<MachineCredentialsCache>({
-    entries: new Map(),
-  }).current;
 
   useEffect(() => {
     let cancelled = false;
@@ -508,13 +504,12 @@ function SettingsWorkspace() {
           <SettingGroup id="licence" title="Licence &amp; plan"
             tabpanel>
             <LicenceCard canManage={myRole === "owner"} cache={licenceCache} />
+            {/* The operator's credentials moved to Kubernetes, Operations, beside the operator's setup steps.
+                A pointer stays here because this is where they used to be. */}
             {isAdmin && canMachines && (
-              <MachineCredentials
-                orgId={org.id}
-                canManage={canMachines}
-                members={members ?? []}
-                cache={machineCredentialsCache}
-              />
+              <SettingRow label="GitOps operator credentials" description="Moved next to the operator setup steps.">
+                <Link to="/kubernetes?section=operations" className="tnx-link text-cell">Open in Kubernetes, Operations</Link>
+              </SettingRow>
             )}
           </SettingGroup>
         )}

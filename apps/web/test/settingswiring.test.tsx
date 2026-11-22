@@ -500,8 +500,10 @@ describe("Settings — URL-backed section rail", () => {
       ).toBe(licenceReadsBefore + 1);
       expect(
         getPaths().filter((path) => path.endsWith("/machine-credentials")).length,
-      ).toBe(credentialReadsBefore + 1);
+      ).toBe(credentialReadsBefore);
     });
+    // The operator's credentials moved to Kubernetes, Operations. Licence keeps a pointer and reads nothing.
+    expect(screen.getByRole("link", { name: "Open in Kubernetes, Operations" }).getAttribute("href")).toBe("/kubernetes?section=operations");
     const memberReads = getPaths().filter((path) => path.endsWith("/members")).length;
 
     fireEvent.click(screen.getByRole("tab", { name: "Authentication" }));
@@ -513,7 +515,7 @@ describe("Settings — URL-backed section rail", () => {
     ).toBe(licenceReadsBefore + 1);
     expect(
       getPaths().filter((path) => path.endsWith("/machine-credentials")).length,
-    ).toBe(credentialReadsBefore + 1);
+    ).toBe(credentialReadsBefore);
     expect(
       getPaths().filter((path) => path.endsWith("/members")).length,
     ).toBe(memberReads);
