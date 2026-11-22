@@ -185,3 +185,43 @@ export function postureSplit(devices: Device[]): PostureSplit {
     percent: reported === 0 ? null : Math.round((compliant / reported) * 100),
   };
 }
+
+
+/** One thing on the Overview that is waiting for the operator, and where to act on it. */
+export type AttentionItem = { key: string; text: string; to: string; action: string; tone: "warn" | "danger" };
+
+/**
+ * What needs the operator, read from inventories the Overview already loaded.
+ *
+ * `unread` counts the sources that are still loading or failed. A clear list is only a clean bill of
+ * health when it is zero: "nothing needs attention" must never be said about a check nobody completed.
+ */
+export function attentionItems(input: {
+  pendingApprovals: number | null;
+  unhealthyGateways: number | null;
+  unownedGateways: number | null;
+  blockedDevices: number | null;
+  zeroTrust: "enforcing" | "not enforced" | null;
+  rules: number | null;
+}): { items: AttentionItem[]; unread: number } {
+  const plural = (count: number, one: string, many: string) => `${count} ${count === 1 ? one : many}`;
+  const items: AttentionItem[] = [];
+  if (input.unhealthyGateways)
+    items.push({ key: "gateways", tone: "danger", to: "/gateways", action: "Review gateways",
+      text: `${plural(input.unhealthyGateways, "gateway reports", "gateways report")} a health problem` });
+  if (input.blockedDevices)
+    items.push({ key: "blocked", tone: "danger", to: "/devices", action: "Review devices",
+      text: `${plural(input.blockedDevices, "device is", "devices are")} blocked by posture` });
+  if (input.pendingApprovals)
+    items.push({ key: "approvals", tone: "warn", to: "/devices/approvals", action: "Review requests",
+      text: `${plural(input.pendingApprovals, "device is", "devices are")} waiting for approval` });
+  if (input.zeroTrust === "not enforced" && input.rules)
+    items.push({ key: "zero-trust", tone: "warn", to: "/access", action: "Open access policies",
+      text: `${plural(input.rules, "access rule is", "access rules are")} written but not enforced` });
+  if (input.unownedGateways)
+    items.push({ key: "owners", tone: "warn", to: "/gateways", action: "Assign owners",
+      text: `${plural(input.unownedGateways, "gateway has", "gateways have")} no recorded owner` });
+  const unread = [input.pendingApprovals, input.unhealthyGateways, input.unownedGateways, input.blockedDevices, input.zeroTrust, input.rules]
+    .filter(value => value === null).length;
+  return { items, unread };
+}

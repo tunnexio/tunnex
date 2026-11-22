@@ -329,6 +329,23 @@ describe("SSI-11 — an HA pair with two Sites reads left to right", () => {
   });
 });
 
+describe("two Sites never land on the hub", () => {
+  const sites = [
+    { id: "a", label: "site-a", kind: "spoke" as const, value: 1 },
+    { id: "b", label: "site-b", kind: "spoke" as const, value: 1 },
+  ];
+  it.each([
+    ["one hub", [{ id: "hub", label: "gw-1", kind: "hub" as const }, ...sites]],
+    ["no hub", sites],
+  ])("%s: every node is clear of every other", (_name, nodes) => {
+    const placed = [...nodeLinkLayout(nodes).positions.values()];
+    expect(placed).toHaveLength(nodes.length);
+    for (let i = 0; i < placed.length; i++)
+      for (let j = i + 1; j < placed.length; j++)
+        expect(Math.hypot(placed[i]!.x - placed[j]!.x, placed[i]!.y - placed[j]!.y)).toBeGreaterThan(placed[i]!.r + placed[j]!.r + 12);
+  });
+});
+
 describe("NodeLink — deterministic HA hub layout", () => {
   const haNodes = [
     { id: "primary", label: "gateway-primary-with-a-long-name", kind: "hub" as const, sub: "primary · HA set gen 9" },

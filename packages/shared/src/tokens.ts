@@ -123,7 +123,11 @@ const mono: Theme = {
   danger: "#F87171",
   neutral: "#A3A3A3",
   accent: "#FAFAFA",
-  focus: "#A3A3A3",
+  // The brand crimson, lifted from the website's #B03A45 until it clears 3:1 on both `surface` and
+  // `surface-inset`. It marks where the operator IS (current page, selected tab, keyboard focus) and is
+  // deliberately darker and bluer than `danger`, so "selected" never reads as "failed". Text links keep
+  // `accent`: crimson small text would both fail 4.5:1 and look like an error.
+  focus: "#C2444F",
 };
 
 /** `mono` — the second theme, present to PROVE the mechanism is n-theme. Hue stripped, contrast preserved. */
@@ -519,4 +523,6 @@ export const CONTRAST_PAIRS: Array<{
     floor: 3,
     why: "focus ring / active affordance",
   },
+  { fg: "focus", bg: "surface", floor: 3, why: "brand selection/focus mark on a page" },
+  { fg: "focus", bg: "surface-inset", floor: 3, why: "brand selection/focus mark on an inset panel" },
 ];

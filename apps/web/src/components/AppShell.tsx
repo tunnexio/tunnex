@@ -157,7 +157,7 @@ function NavGroups({
           {/* ⛔ HEADERS GO, DESTINATIONS STAY. A rail that dropped a destination would make it
               unreachable rather than compact — the collapse is a presentation, never a filter. */}
           {g.group && shows.sectionHeaders && (
-            <p className="flex items-center gap-2 px-3 pb-1 text-[10px] font-semibold uppercase tracking-wider text-slate-600">
+            <p className="flex items-center gap-2 px-3 pb-1 text-[11px] font-semibold uppercase tracking-wider text-ink-tertiary">
               {g.icon && <Icon name={g.icon} className="h-3.5 w-3.5" />}
               {g.group}
             </p>
@@ -180,7 +180,7 @@ function NavGroups({
                       collapsed ? "justify-center py-[9px]" : "px-3 py-[7px]"
                     } ${
                       isNavDestinationActive(item.to, pathname)
-                        ? "bg-white/[.12] text-ink-heading"
+                        ? "bg-white/[.08] text-ink-heading before:absolute before:left-0 before:top-1/2 before:h-4 before:w-[3px] before:-translate-y-1/2 before:rounded-full before:bg-focus"
                         : "text-ink-body hover:translate-x-[2px] hover:bg-white/[.06] hover:text-ink-primary"
                     }`
                   }
