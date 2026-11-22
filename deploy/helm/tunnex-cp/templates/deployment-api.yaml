@@ -57,6 +57,10 @@ spec:
               value: {{ .Values.serverAccess.enabled | quote }}
             - name: TUNNEX_ENV
               value: {{ .Values.env | quote }}
+            {{- with .Values.admin.email }}
+            - name: TUNNEX_ADMIN_EMAIL
+              value: {{ . | quote }}
+            {{- end }}
             - name: TUNNEX_LOG_LEVEL
               value: {{ .Values.logLevel | quote }}
             {{- if .Values.appAccess.enabled }}

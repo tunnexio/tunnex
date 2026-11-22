@@ -65,6 +65,14 @@ sessionSecret:
   existingSecret: ""
   key: session.key
 
+# ─── FIRST ADMINISTRATOR ─────────────────────────────────────────────────────────
+# Created once, on an empty database. Its one-time password is printed in the API
+# pod's log and is not stored anywhere else: read it right after the install (the
+# install notes give the command) and sign in before that pod is ever replaced.
+# There is no way to print it again.
+admin:
+  email: ""               # e.g. owner@acme.com. Empty: admin@<host of appBaseURL>
+
 # ─── APP ─────────────────────────────────────────────────────────────────────────
 # Public base URL for email links (verify/reset/invite). MUST be the address users
 # reach — a localhost default on a real deploy sends unreachable links.

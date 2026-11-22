@@ -1,6 +1,23 @@
 Tunnex control plane installed: {{ .Release.Name }} (namespace {{ .Release.Namespace }}).
 
 ────────────────────────────────────────────────────────────────────────────────
+0. SIGN IN NOW — THE FIRST PASSWORD IS SHOWN ONCE, IN A POD LOG
+────────────────────────────────────────────────────────────────────────────────
+On an empty database the API creates the first administrator{{ with .Values.admin.email }} ({{ . }}){{ end }} and
+prints a one-time password in its log. It is stored only as a hash. If that pod is
+replaced before you read it (an upgrade, a node drain, a restart) the password is
+gone, and the only way back in is a fresh database.
+
+Read it now:
+  kubectl -n {{ .Release.Namespace }} logs deploy/api | grep -A 8 'FIRST RUN: ADMINISTRATOR'
+Then open {{ .Values.appBaseURL | default "the dashboard" }}, sign in, and set your own password.
+{{- if not .Values.admin.email }}
+
+No admin.email was set, so the account is admin@<the host of appBaseURL>. Set
+admin.email at install time to choose it.
+{{- end }}
+
+────────────────────────────────────────────────────────────────────────────────
 1. THE AGENT PORT (8443) MUST NEVER BE TLS-TERMINATED  ← most likely misconfig
 ────────────────────────────────────────────────────────────────────────────────
 Gateways dial https://<cp>:8443 with a PINNED certificate and SNI=tunnex-control.
