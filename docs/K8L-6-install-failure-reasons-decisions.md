@@ -46,4 +46,13 @@ semantics and needs its own paper.
   failing init container, unschedulable, healthy, unreadable); log-line bounding and redaction;
   the observer is inert for an unmarked runner and for success; both refusal texts. Suite passes
   with the race detector.
-- Live: recorded in the walk when the next deliberate failure is run.
+- Live, 2026-11-22, k3s: an install pinned to a node that does not exist
+  (`--gateway-node-selector kubernetes.io/hostname=no-such-node --timeout 60s`) now ends with
+
+      * timed out waiting for the condition
+      Last seen before the rollback: pod could not be scheduled: 0/1 nodes are available: 1 node(s)
+      didn't match Pod's node affinity/selector. ...
+
+  The first live run printed nothing extra: the pod that fails first is the chart's pre-install
+  preflight hook, which carries `component: preflight`, so the observer selects on the release
+  instance alone and sees both it and the gateway.
