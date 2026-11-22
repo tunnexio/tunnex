@@ -1,3 +1,4 @@
+import { useLocation } from "react-router-dom";
 import "../users-inventory.css";
 import { useEffect, useId, useMemo, useState } from "react";
 import type { Device, Member, Role } from "../lib/api";
@@ -33,7 +34,9 @@ const accountActionLabel: Record<AccountAction, string> = {
 
 /** The page owns roster reads, confirmations, role editing and account mutations. */
 export default function UsersInventory({ members, devices, actorId, actorRole, emailVerified, busy, view, onInspect, onRequestAction, ownerCount }: UsersInventoryProps) {
-  const [query, setQuery] = useState("");
+  const linkedQuery = new URLSearchParams(useLocation().search).get("q") ?? "";
+  const [query, setQuery] = useState(linkedQuery);
+  useEffect(() => { if (linkedQuery) setQuery(linkedQuery); }, [linkedQuery]);
   const [filter, setFilter] = useState<MemberFilter>("all");
   const [sort, setSort] = useState<{ key: SortKey; descending: boolean } | null>(null);
   const [page, setPage] = useState(1);

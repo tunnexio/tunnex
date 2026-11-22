@@ -1,5 +1,5 @@
 /* A focused, text-first agent workspace; state comes from the control plane. */
-.agent-detail-workspace { width:100%; max-width:1320px; min-width:0; margin-inline:auto; padding-inline:8px; color:var(--tnx-text-primary); }
+.agent-detail-workspace { width:100%; max-width:1320px; min-width:0; margin-inline:auto; color:var(--tnx-text-primary); }
 .agent-detail-breadcrumb { display:flex; align-items:center; gap:10px; min-width:0; color:var(--tnx-text-secondary); font-size:12px; }
 .agent-detail-breadcrumb > span:last-child { color:var(--tnx-text-heading); overflow-wrap:anywhere; }
 .agent-detail-breadcrumb a:hover { color:var(--tnx-text-heading); }

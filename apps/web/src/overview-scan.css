@@ -1,5 +1,5 @@
 /* Overview uses a quiet metric strip, a shared operational surface, and one bounded map. */
-.overview-scan { width:100%; max-width:1320px; margin-inline:auto; padding-inline:8px; color:var(--tnx-text-primary); }
+.overview-scan { width:100%; max-width:1320px; margin-inline:auto; color:var(--tnx-text-primary); }
 .scan-toolbar { display:flex; align-items:center; justify-content:space-between; gap:24px; padding:5px 0 22px; }
 .scan-org { font-size:18px; line-height:1.4; font-weight:500; letter-spacing:-.025em; color:var(--tnx-text-heading); }
 .scan-org > span { display:block; margin-top:4px; font-size:13px; font-weight:400; letter-spacing:0; color:var(--tnx-text-secondary); }

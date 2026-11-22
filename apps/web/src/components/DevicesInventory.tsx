@@ -36,7 +36,10 @@ export default function DevicesInventory({ devices, nodes, ownerEmail, busy, can
   const location = useLocation();
   const gatewayId = new URLSearchParams(location.search).get("gateway") ?? "";
   const [filter, setFilter] = useState<DeviceFilter>("all");
-  const [query, setQuery] = useState("");
+  const linkedQuery = new URLSearchParams(location.search).get("q") ?? "";
+  const [query, setQuery] = useState(linkedQuery);
+  // A search result that lands here while the page is already open still applies its query.
+  useEffect(() => { if (linkedQuery) setQuery(linkedQuery); }, [linkedQuery]);
   const [sort, setSort] = useState<{ key: SortKey; descending: boolean } | null>(null);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
