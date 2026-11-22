@@ -1,5 +1,5 @@
 /* Shared management workspace rhythm, matching Network setup. */
-.network-management { width:100%; max-width:1440px; margin-inline:auto; }
+.network-management { width:100%; max-width:1320px; margin-inline:auto; }
 .network-header-actions { display:flex; flex-wrap:wrap; align-items:center; gap:12px; }
 .network-setup-link { display:inline-flex; align-items:center; min-height:36px; padding:8px 14px; border:1px solid var(--tnx-border); border-radius:8px; background:var(--tnx-surface); color:var(--tnx-text-heading); font-size:13px; }
 .network-setup-link:hover { border-color:var(--tnx-focus); }

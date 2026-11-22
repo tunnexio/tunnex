@@ -1,5 +1,5 @@
 /* App Access uses the same neutral cards, typography and tab rhythm as Users and Settings. */
-.app-access-workspace { min-width:0; width:100%; max-width:1440px; margin-inline:auto; overflow-wrap:anywhere; }
+.app-access-workspace { min-width:0; width:100%; max-width:1320px; margin-inline:auto; overflow-wrap:anywhere; }
 .app-access-workspace > .workspace-tabs { margin-bottom:24px; }
 .app-access-panel-header { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; flex-wrap:wrap; margin-bottom:20px; min-width:0; }
 .app-access-panel-header h2,.app-access-panel-header h3 { color:var(--tnx-text-heading); font-size:17px; font-weight:600; letter-spacing:-.02em; }

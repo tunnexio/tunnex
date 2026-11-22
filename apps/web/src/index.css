@@ -479,3 +479,7 @@ a,button,summary,[role=tab],[role=button] { transition:color .12s cubic-bezier(.
 a:hover,button:hover,summary:hover,[role=tab]:hover,[role=button]:hover { transition-duration:.15s; }
 :where(a,button,summary,select,input,textarea,[role=tab],[role=button],[tabindex]):focus-visible { outline:2px solid var(--tnx-focus); outline-offset:2px; }
 @media (prefers-reduced-motion:reduce) { *,*::before,*::after { animation-duration:.01ms!important; animation-iteration-count:1!important; scroll-behavior:auto!important; } }
+
+/* One content measure. Every page sits in the same centred column, so moving between pages never shifts
+ * the left edge the eye is tracking. Pages may be narrower; none is wider. */
+main.tnx-page[data-columns] > :not(.fixed):not([role=dialog]):not([aria-modal]) { width:100%; max-width:1320px; margin-inline:auto; }
