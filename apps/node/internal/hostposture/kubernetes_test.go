@@ -186,6 +186,48 @@ func TestKubernetesOwnerSourceIgnoresExpandedGatewayCapabilities(t *testing.T) {
 	}
 }
 
+// The released chart adds NET_RAW when VPN inference is on (its default) and
+// says so with TUNNEX_AI_VPN_AUTO=true. That pod is the real gateway.
+func TestKubernetesOwnerSourceAcceptsVPNInferenceGatewayCapabilities(t *testing.T) {
+	pod := authoritativePodFixture()
+	gateway := pod["spec"].(map[string]any)["containers"].([]any)[0].(map[string]any)
+	gateway["securityContext"].(map[string]any)["capabilities"].(map[string]any)["add"] = []string{"NET_ADMIN", "NET_BIND_SERVICE", "NET_RAW"}
+	gateway["env"] = append(gateway["env"].([]any), map[string]any{"name": "TUNNEX_AI_VPN_AUTO", "value": "true"})
+	response := marshalPodList(t, pod)
+	source := newOwnerSourceFixture(t, &response)
+	owners, err := source.List(t.Context(), "worker-a", 4)
+	if err != nil || len(owners) != 1 || len(source.ignored) != 0 {
+		t.Fatalf("default-chart gateway was not recognised: owners=%+v ignored=%v err=%v", owners, source.ignored, err)
+	}
+}
+
+func TestKubernetesOwnerSourceIgnoresNetRawWithoutVPNInference(t *testing.T) {
+	for _, env := range [][]any{nil, {map[string]any{"name": "TUNNEX_AI_VPN_AUTO", "value": "false"}}} {
+		pod := authoritativePodFixture()
+		gateway := pod["spec"].(map[string]any)["containers"].([]any)[0].(map[string]any)
+		gateway["securityContext"].(map[string]any)["capabilities"].(map[string]any)["add"] = []string{"NET_ADMIN", "NET_BIND_SERVICE", "NET_RAW"}
+		gateway["env"] = append(gateway["env"].([]any), env...)
+		response := marshalPodList(t, pod)
+		source := newOwnerSourceFixture(t, &response)
+		owners, err := source.List(t.Context(), "worker-a", 4)
+		if err != nil || len(owners) != 0 || len(source.ignored) != 1 {
+			t.Fatalf("NET_RAW without VPN inference gained authority: owners=%+v ignored=%v err=%v", owners, source.ignored, err)
+		}
+	}
+}
+
+func TestKubernetesOwnerSourceIgnoresVPNInferenceWithoutNetRaw(t *testing.T) {
+	pod := authoritativePodFixture()
+	gateway := pod["spec"].(map[string]any)["containers"].([]any)[0].(map[string]any)
+	gateway["env"] = append(gateway["env"].([]any), map[string]any{"name": "TUNNEX_AI_VPN_AUTO", "value": "true"})
+	response := marshalPodList(t, pod)
+	source := newOwnerSourceFixture(t, &response)
+	owners, err := source.List(t.Context(), "worker-a", 4)
+	if err != nil || len(owners) != 0 || len(source.ignored) != 1 {
+		t.Fatalf("capability set that does not match its mode gained authority: owners=%+v ignored=%v err=%v", owners, source.ignored, err)
+	}
+}
+
 func TestKubernetesOwnerSourceIgnoresWritableOrCredentialedAdmissionInit(t *testing.T) {
 	for _, mutate := range []func(map[string]any){
 		func(init map[string]any) { init["volumeMounts"].([]any)[0].(map[string]any)["readOnly"] = false },
