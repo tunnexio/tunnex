@@ -12,8 +12,10 @@ const toggle = () => screen.getByRole("switch", { name: "Cross-gateway client co
 beforeEach(() => { vi.resetAllMocks(); });
 afterEach(cleanup);
 
-it("defaults off and explains connectivity prerequisites and retained policy", () => {
+it("shows the saved state and explains connectivity prerequisites and retained policy", () => {
   show(); expect(toggle().getAttribute("aria-checked")).toBe("false");
+  expect(screen.getByText(/connects once and reaches every network and cluster/)).toBeTruthy();
+  expect(screen.getByText(/On by default/)).toBeTruthy();
   expect(screen.getByText(/Connect clients across gateways/).textContent).toContain("Zero Trust rules still apply");
   expect(screen.getByText(/a reachable WireGuard endpoint is required/)).toBeTruthy();
   expect(api.PUT).not.toHaveBeenCalled();

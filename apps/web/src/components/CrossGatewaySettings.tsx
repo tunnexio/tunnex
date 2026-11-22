@@ -49,7 +49,7 @@ export function CrossGatewaySettings({ org, canEdit, onSaved }: {
     }
   }
   return <SettingRow label="Cross-gateway client connectivity"
-    description="Connect clients across gateways. Zero Trust rules still apply; a reachable WireGuard endpoint is required."
+    description="Connect clients across gateways: a person connects once and reaches every network and cluster their access rules allow, whichever gateway they connected through. On by default. Zero Trust rules still apply; a reachable WireGuard endpoint is required."
     error={error}>
     {unknown || typeof org.cross_gateway_clients_enabled !== "boolean" ? <SettingValue>Unavailable</SettingValue> : <Switch label="Cross-gateway client connectivity" checked={org.cross_gateway_clients_enabled} disabled={busy || !canEdit || !!error} onChange={toggle} />}
     {(error || typeof org.cross_gateway_clients_enabled !== "boolean") && <Button variant="ghost" disabled={busy} onClick={() => void reload()}>Reload connectivity setting</Button>}
