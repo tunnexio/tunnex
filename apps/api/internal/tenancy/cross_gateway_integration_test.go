@@ -26,11 +26,12 @@ func TestCrossGatewaySettingDatabaseAtomicityAndMigration(t *testing.T) {
 	ctx = authctx.WithPrincipal(ctx, &authctx.Principal{UserID: actor})
 	q := sqlc.New(pool)
 	initial, err := q.GetOrganizationByID(ctx, org)
-	if err != nil || initial.CrossGatewayClientsEnabled {
-		t.Fatalf("default not disabled: %+v %v", initial, err)
+	// K8L-7 (0237): on by default, so one connection reaches every network the rules allow.
+	if err != nil || !initial.CrossGatewayClientsEnabled {
+		t.Fatalf("default not enabled: %+v %v", initial, err)
 	}
 	svc := NewService(pool)
-	for _, enabled := range []bool{true, false} {
+	for _, enabled := range []bool{false, true, false} {
 		saved, err := svc.SetCrossGatewayClientsEnabled(ctx, org, enabled)
 		if err != nil || saved.CrossGatewayClientsEnabled != enabled {
 			t.Fatalf("save: %+v %v", saved, err)
@@ -51,13 +52,13 @@ func TestCrossGatewaySettingDatabaseAtomicityAndMigration(t *testing.T) {
 		if err := json.Unmarshal(raw, &metadata); err != nil {
 			t.Fatal(err)
 		}
-		if who != actor || metadata.From != (count == 1) || metadata.To != (count == 0) {
+		if who != actor || metadata.From != (count%2 == 0) || metadata.To != (count%2 == 1) {
 			t.Fatalf("wrong audit: %s", raw)
 		}
 		count++
 	}
 	rows.Close()
-	if rows.Err() != nil || count != 2 {
+	if rows.Err() != nil || count != 3 {
 		t.Fatalf("audit count=%d err=%v", count, rows.Err())
 	}
 	// Hold a competing update open: the audited "from" value must be read
@@ -106,10 +107,12 @@ func TestCrossGatewaySettingDatabaseAtomicityAndMigration(t *testing.T) {
 	if _, err := svc.SetCrossGatewayClientsEnabled(ctx, org, true); err == nil {
 		t.Fatal("audit failure accepted")
 	}
-	for _, id := range []uuid.UUID{org, other} {
+	// The failed write leaves this organization off (rolled back). The other organization was never
+	// written, so it still has the default, which is on since 0237.
+	for id, want := range map[uuid.UUID]bool{org: false, other: true} {
 		got, err := q.GetOrganizationByID(ctx, id)
-		if err != nil || got.CrossGatewayClientsEnabled {
-			t.Fatalf("rollback or tenant isolation failed: %v %v", got, err)
+		if err != nil || got.CrossGatewayClientsEnabled != want {
+			t.Fatalf("rollback or tenant isolation failed (want %t): %v %v", want, got, err)
 		}
 	}
 	// Execute the exact reversible migration in this disposable fixture only.
