@@ -440,8 +440,35 @@ Decisions taken while building, for the founder to confirm:
   of its own is left. The CRD manifest is read and its admission rules checked for presence.
 - Dashboard: component and view tests for the three dialogs and the GitOps mark.
 - **Substitutes, not satisfied.** Nothing ran against a live cluster: no gateway sent a version 2
-  report to a control plane, no API server evaluated the CRD's CEL rules or its immutability, no
-  operator pod reconciled a real resource, and no machine token was sent over HTTP to the rule
-  endpoints (the service layer was tested with a machine principal). Trigger for the real proof:
-  the next live Kubernetes walk on `story/kubernetes-next`, which should include a gateway older
-  than version 2 beside a selector rule.
+  report to a control plane, no API server evaluated the CRD's CEL rules or its immutability, and
+  no operator pod reconciled a real resource. Trigger for the real proof: the next live Kubernetes
+  walk on `story/kubernetes-next`, which should include a gateway older than version 2 beside a
+  selector rule.
+
+### Gaps closed afterwards (branch `k8n/expose-gaps`)
+
+Tests only; no behaviour changed.
+
+- **`withdrawal_blocked` for a Service that is gone** (the exclusion case was already covered).
+  Database-backed: a pending agent access request pins a vanished Service's exposure; inside the
+  wait it is only marked; past the wait the rule shows `withdrawal_blocked` and names the Service,
+  the exposure and its mark stay and nothing is audited as withdrawn; a later pass says the same;
+  the pass after the request is closed withdraws it, audited once. A second test pins with an agent
+  policy template version: only the pinned exposure stays, another vanished Service of the same
+  rule is withdrawn on the same pass, and a Service that returns clears the block.
+- **`scope_review_limit`.** Database-backed: 16 active cluster scopes and a Service with 32 ports
+  (512 pending reviews, limit 500). None of the namespace's two missing Services is exposed, also
+  not the small one the pass reached first; no exposure row, review or audit entry is kept; the
+  rule records the status, the Service and the count waiting, on that pass and the next. With 31
+  ports the next pass exposes both.
+- **The operator's machine credential over HTTP.** Through the production router, its validator
+  and `MachineAuth` reading a `tnxm_` token from the database: the operator creates, changes and
+  removes its own rules (marked `managed_by_operator`, audited as `operator:<name>` with the
+  resource as cause) and gets 409 `rule_not_managed_by_operator` on a person's rule; a person gets
+  409 `managed_by_operator` on editing the operator's rule and may remove it; a machine credential
+  without `k8s:manage` is 403 on every write; an unknown or revoked token is 401; another
+  organization's operator is 404.
+- **Still not satisfied: CRD admission.** No `kube-apiserver` or `setup-envtest` binary was on the
+  build machine and none was downloaded, so the CRD's CEL rules, immutability and patterns are
+  still checked for presence only. Trigger unchanged: the next live walk, or a CI job that has
+  envtest binaries.
