@@ -105,6 +105,63 @@ func TestExposureSpecEditIsNotReportedAsReady(t *testing.T) {
 	}
 }
 
+// K8N-3: default/kubernetes is the cluster's API server. A resource declaring it is not Ready and says
+// why; the control plane is never asked to expose it.
+func TestAPIServerExposureIsRefusedWithTheReason(t *testing.T) {
+	cp := testCP(t, func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == "GET" && strings.HasSuffix(r.URL.Path, "/k8s/services"):
+			json.NewEncoder(w).Encode([]map[string]any{})
+		default:
+			t.Errorf("the API server must never be sent to the control plane as an exposure: %s %s", r.Method, r.URL.Path)
+		}
+	})
+	cr := exposure("kube-api", 443, "")
+	cr.Spec.Namespace, cr.Spec.Service = "default", "kubernetes"
+	r := &TunnexExposedServiceReconciler{Client: fakeK8s(t, readyCluster(), cr), CP: cp}
+	res, err := r.Reconcile(context.Background(), req("ns", "kube-api"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := getExposure(t, r, "kube-api")
+	c := readyCond(t, got.Status.Conditions)
+	if c == nil || c.Status != metav1.ConditionFalse || c.Reason != reasonAPIServer || !strings.Contains(c.Message, "API access") {
+		t.Fatalf("want Ready=False/%s pointing at API access, got %+v", reasonAPIServer, c)
+	}
+	if got.Status.ServiceID != "" || got.Status.VIP != "" || res.RequeueAfter != clientErrRequeue {
+		t.Fatalf("nothing may be recorded as exposed: id=%q vip=%q res=%+v", got.Status.ServiceID, got.Status.VIP, res)
+	}
+	// A Service that merely shares the name in another namespace is an ordinary Service.
+	if isAPIServerService("prod", "kubernetes") || isAPIServerService("default", "api") || !isAPIServerService("default", "kubernetes") {
+		t.Fatal("only default/kubernetes is the API server")
+	}
+}
+
+// A resource that already owns an exposure of default/kubernetes, made before the refusal existed, is
+// left as it is: still Ready, nothing removed, nothing re-created.
+func TestExistingAPIServerExposureIsLeftInPlace(t *testing.T) {
+	existing := map[string]any{"id": "svc-kube", "cluster_id": "clu-1", "namespace": "default", "name": "kubernetes", "protocol": "tcp",
+		"port_low": 443, "port_high": 443, "vip": "100.64.0.7", "fqdn": "kubernetes.default.svc.prod.k8s.acme.com", "managed_by_operator": true}
+	cp := testCP(t, func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == "GET" && strings.HasSuffix(r.URL.Path, "/k8s/services/svc-kube"):
+			json.NewEncoder(w).Encode(existing)
+		default:
+			t.Errorf("an existing exposure must not be changed: %s %s", r.Method, r.URL.Path)
+		}
+	})
+	cr := exposure("kube-api", 443, "svc-kube")
+	cr.Spec.Namespace, cr.Spec.Service = "default", "kubernetes"
+	r := &TunnexExposedServiceReconciler{Client: fakeK8s(t, readyCluster(), cr), CP: cp}
+	if _, err := r.Reconcile(context.Background(), req("ns", "kube-api")); err != nil {
+		t.Fatal(err)
+	}
+	got := getExposure(t, r, "kube-api")
+	if c := readyCond(t, got.Status.Conditions); c == nil || c.Status != metav1.ConditionTrue || got.Status.ServiceID != "svc-kube" {
+		t.Fatalf("an exposure that already exists stays Ready and owned, got %+v id=%q", c, got.Status.ServiceID)
+	}
+}
+
 // A port exposed from the dashboard is not adopted, so deleting the resource can never unexpose it.
 func TestDashboardExposureIsNeitherAdoptedNorRemoved(t *testing.T) {
 	cp := testCP(t, func(w http.ResponseWriter, r *http.Request) {

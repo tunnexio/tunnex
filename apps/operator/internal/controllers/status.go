@@ -61,7 +61,16 @@ const (
 	reasonUnmanaged = "exists_outside_operator"
 	// reasonDuplicate names a second CR declaring an object another CR already owns.
 	reasonDuplicate = "declared_by_another_resource"
+	// reasonAPIServer names a TunnexExposedService that declares default/kubernetes, the cluster's own API
+	// server (K8N-3). It is the control plane's error code for the same refusal: the API is reached through
+	// the cluster's API access in Tunnex, never as an exposed Service, and there is no resource for it.
+	reasonAPIServer = "k8s_api_server_not_a_service"
 )
+
+// isAPIServerService reports whether a namespace/name is the cluster's own API server Service.
+func isAPIServerService(namespace, name string) bool {
+	return namespace == "default" && name == "kubernetes"
+}
 
 // setReady flips the CR's Ready condition, pinning it to the spec generation the reconcile acted on.
 func setReady(conds *[]metav1.Condition, status metav1.ConditionStatus, reason, msg string, gen int64) {
