@@ -402,6 +402,42 @@ export function namespaceRuleExclusionImpact(
   return { added, removed, withdrawPorts: rows.length, withdrawServices: new Set(rows.map((row) => row.name)).size };
 }
 
+const LABEL_NAME = /^[A-Za-z0-9]([-A-Za-z0-9_.]{0,61}[A-Za-z0-9])?$/;
+const LABEL_PREFIX = /^[a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*$/;
+
+/** A rule's selector as text: "app=web, tier=frontend". Empty for a whole-namespace rule. */
+export function selectorText(selector: Record<string, string>): string {
+  return Object.keys(selector).sort().map((key) => `${key}=${selector[key]}`).join(", ");
+}
+
+/**
+ * Reads "key=value, key=value". Equality only: the server has no set operators, negation or wildcards,
+ * so those are refused here with the reason rather than sent. The server still decides.
+ */
+export function parseSelector(text: string): { selector: Record<string, string>; error: string | null } {
+  const selector: Record<string, string> = {};
+  const fail = (error: string) => ({ selector: {}, error });
+  for (const raw of text.split(",")) {
+    const pair = raw.trim();
+    if (pair === "") continue;
+    const at = pair.indexOf("=");
+    if (at <= 0) return fail(`"${pair}" is not key=value. A selector is key=value pairs separated by commas.`);
+    const key = pair.slice(0, at).trim();
+    const value = pair.slice(at + 1).trim();
+    const slash = key.lastIndexOf("/");
+    const name = slash >= 0 ? key.slice(slash + 1) : key;
+    const prefix = slash >= 0 ? key.slice(0, slash) : null;
+    if (!LABEL_NAME.test(name) || (prefix !== null && (!LABEL_PREFIX.test(prefix) || prefix.length > 253)))
+      return fail(`"${key}" is not a Kubernetes label key. Operators such as !=, in and ! are not supported.`);
+    if (value !== "" && !LABEL_NAME.test(value))
+      return fail(`"${value}" is not a Kubernetes label value. Wildcards and lists are not supported.`);
+    if (key in selector) return fail(`The key ${key} is given twice.`);
+    selector[key] = value;
+  }
+  if (Object.keys(selector).length > 8) return fail("A selector can have at most 8 key=value pairs.");
+  return { selector, error: null };
+}
+
 /** The rule's state in words. Anything but "applied" is a rule that is NOT fully in effect, with the reason. */
 export function namespaceRuleStatus(rule: Pick<K8sNamespaceRule, "status" | "status_message" | "waiting_services">): {
   tone: "ok" | "warn" | "danger" | "neutral";
@@ -424,6 +460,10 @@ export function namespaceRuleStatus(rule: Pick<K8sNamespaceRule, "status" | "sta
       return { tone: "danger", label: `Review limit reached · ${rule.waiting_services} waiting`, message };
     case "withdrawal_blocked":
       return { tone: "warn", label: "Withdrawal blocked", message };
+    case "gateway_too_old":
+      return { tone: "danger", label: "Gateway too old for label selectors", message: message ?? "The cluster's gateway reports Services without labels. Upgrade the gateway; until then this rule exposes nothing." };
+    case "labels_incomplete":
+      return { tone: "warn", label: "Some Services cannot be matched", message };
     default:
       return { tone: "danger", label: "Not applied", message };
   }

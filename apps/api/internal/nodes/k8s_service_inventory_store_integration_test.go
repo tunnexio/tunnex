@@ -243,3 +243,69 @@ func TestPostgresK8sServiceInventoryStoreRetainsTwentyUnreferencedAndDurableEvid
 		t.Fatalf("0125 up/down/up lost referenced report count=%d err=%v", evidence, err)
 	}
 }
+
+// K8N-4 slice B: a version 2 report stores each Service's labels beside the snapshot; a version 1
+// report (an old gateway) is stored as before and leaves no label row, which is what "labels unknown"
+// means to a namespace rule's selector.
+func TestPostgresK8sServiceInventoryStoreKeepsLabelsOnlyForVersion2(t *testing.T) {
+	admin := os.Getenv("TUNNEX_TEST_DATABASE_URL")
+	if admin == "" {
+		t.Skip("set TUNNEX_TEST_DATABASE_URL to run inventory PostgreSQL proof")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	defer cancel()
+	pool := newHandoffEndToEndTestDB(t, ctx, admin)
+	fixture := seedHandoffBootstrapIntegration(t, ctx, pool)
+	if err := db.MigrateTo(pool.Config().ConnString(), 241); err != nil {
+		t.Fatalf("migrate through 0241: %v", err)
+	}
+	scope := K8sServiceUIDObservationScope{OrgID: fixture.scope.OrgID, SiteID: fixture.scope.SiteID, ClusterID: fixture.scope.ClusterID, ConnectorNodeID: fixture.active}
+	if _, err := pool.Exec(ctx, `UPDATE k8s_service_uid_observation_replay_states SET scope_identity=$1 WHERE org_id=$2 AND cluster_id=$3 AND connector_node_id=$4`, k8sServiceUIDObservationScopeIdentity(scope), scope.OrgID, scope.ClusterID, scope.ConnectorNodeID); err != nil {
+		t.Fatal(err)
+	}
+	agent := K8sServiceUIDObservationAgent{OrgID: scope.OrgID, NodeID: scope.ConnectorNodeID}
+	store := NewPostgresK8sServiceInventoryStore(pool)
+	now := time.Now().UTC()
+	ports := []K8sServiceInventoryPort{{Name: "https", Protocol: "tcp", Port: 443}}
+	labelRows := func(reportID any) (rows int, labels string, truncated bool) {
+		t.Helper()
+		if err := pool.QueryRow(ctx, `SELECT count(*),COALESCE(min(l.labels::text) FILTER (WHERE i.service='api'),''),COALESCE(bool_or(l.truncated) FILTER (WHERE i.service='api'),false)
+			FROM k8s_service_inventory_item_labels l JOIN k8s_service_inventory_items i ON i.report_id=l.report_id AND i.inventory_ref=l.inventory_ref
+			WHERE l.report_id=$1`, reportID).Scan(&rows, &labels, &truncated); err != nil {
+			t.Fatal(err)
+		}
+		return rows, labels, truncated
+	}
+
+	old := K8sServiceInventoryReport{Version: 1, Sequence: 2, ObservedAt: now, Services: []K8sServiceInventoryService{{Namespace: "default", Service: "api", UID: "uid-api-v2", Ports: ports}}}
+	old.Digest = K8sServiceInventoryReportDigest(old)
+	first, err := store.WriteK8sServiceInventory(ctx, agent, old, now)
+	if err != nil {
+		t.Fatalf("a version 1 report must still be stored: %v", err)
+	}
+	if rows, _, _ := labelRows(first.ReportID); rows != 0 {
+		t.Fatalf("a version 1 report left %d label rows; its labels are unknown, not empty", rows)
+	}
+
+	labelled := K8sServiceInventoryReport{Version: 2, Sequence: 3, ObservedAt: now, Services: []K8sServiceInventoryService{
+		{Namespace: "default", Service: "api", UID: "uid-api-v2", Ports: ports, Labels: map[string]string{"app": "api", "tier": "backend"}, LabelsTruncated: true},
+		{Namespace: "default", Service: "bare", UID: "uid-bare", Ports: ports},
+	}}
+	labelled.Digest = K8sServiceInventoryReportDigest(labelled)
+	second, err := store.WriteK8sServiceInventory(ctx, agent, labelled, now)
+	if err != nil {
+		t.Fatalf("version 2 report: %v", err)
+	}
+	rows, labels, truncated := labelRows(second.ReportID)
+	if rows != 2 || labels != `{"app": "api", "tier": "backend"}` || !truncated {
+		t.Fatalf("label rows=%d labels=%s truncated=%v; a Service without labels still gets a row", rows, labels, truncated)
+	}
+	// A version 2 report whose labels were changed after the digest was taken is refused.
+	tampered := labelled
+	tampered.Sequence = 4
+	tampered.Digest = K8sServiceInventoryReportDigest(tampered)
+	tampered.Services = []K8sServiceInventoryService{{Namespace: "default", Service: "api", UID: "uid-api-v2", Ports: ports, Labels: map[string]string{"app": "other"}}}
+	if _, err := store.WriteK8sServiceInventory(ctx, agent, tampered, now); err == nil {
+		t.Fatal("a version 2 report with labels outside its digest was stored")
+	}
+}

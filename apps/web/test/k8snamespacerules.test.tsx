@@ -28,7 +28,7 @@ const INVENTORY = {
   ],
 };
 const RULE = {
-  id: "rule-1", cluster_id: "cluster", namespace: "billing", excluded_services: [] as string[], status: "applied" as const, status_message: "",
+  id: "rule-1", cluster_id: "cluster", namespace: "billing", excluded_services: [] as string[], selector: {} as Record<string, string>, status: "applied" as const, status_message: "",
   waiting_services: 0, exposed_services: 1, exposed_ports: 1, last_reconciled_at: "2026-11-23T06:00:00Z", created_at: "2026-11-23T05:00:00Z",
 };
 
@@ -179,6 +179,68 @@ describe("namespace rules panel (K8N-4)", () => {
     expect(await within(dialog).findByText(/The exclusions were saved but are not applied yet\. the cluster's gateway has not reported/)).toBeTruthy();
   });
 
+  it("creates a rule with a label selector and says there is no count (slice B)", async () => {
+    post.mockResolvedValue({ data: { ...RULE, id: "rule-2", namespace: "shop", selector: { app: "web", tier: "frontend" } } } as never);
+    panel();
+    fireEvent.click(await screen.findByRole("button", { name: "Expose every Service in a namespace…" }));
+    const dialog = screen.getByRole("dialog");
+    fireEvent.change(within(dialog).getByRole("combobox", { name: "Namespace" }), { target: { value: "shop" } });
+    const selector = within(dialog).getByRole("textbox", { name: "Only Services with these labels (optional)" });
+
+    // A wildcard or an operator is refused with the reason, and the consequences are not offered.
+    fireEvent.change(selector, { target: { value: "app=*" } });
+    expect(within(dialog).getByText(/Wildcards and lists are not supported/)).toBeTruthy();
+    expect(within(dialog).queryByLabelText("What this rule will do")).toBeNull();
+    fireEvent.change(selector, { target: { value: "app!=web" } });
+    expect(within(dialog).getByText(/Operators such as !=, in and ! are not supported/)).toBeTruthy();
+
+    fireEvent.change(selector, { target: { value: "tier=frontend, app=web" } });
+    const impact = within(dialog).getByLabelText("What this rule will do");
+    expect(impact.textContent).toContain("labelled app=web, tier=frontend is exposed");
+    expect(impact.textContent).toContain("The number is not shown here: the dashboard does not read Service labels");
+    expect(impact.textContent).toContain("When a Service's labels stop matching for 10 minutes, its exposure is withdrawn");
+    expect(impact.textContent).toContain("Nobody gains access.");
+    const create = within(dialog).getByRole("button", { name: "Create namespace rule" });
+    expect(create).toHaveProperty("disabled", true);
+    fireEvent.click(within(dialog).getByRole("checkbox", { name: "Expose every Service in shop labelled app=web, tier=frontend, including Services added or labelled later" }));
+    fireEvent.click(create);
+    await waitFor(() => expect(post).toHaveBeenCalledTimes(1));
+    expect(post.mock.calls[0]?.[1]).toMatchObject({ body: { namespace: "shop", selector: { app: "web", tier: "frontend" } } });
+  });
+
+  it("shows a selector rule on an old gateway as not applied, never as healthy (slice B)", async () => {
+    get.mockResolvedValue({ data: [{ ...RULE, selector: { app: "web" }, status: "gateway_too_old", status_message: "the cluster's gateway reports Services without labels: it is older than label selectors. Upgrade the gateway.", exposed_services: 0, exposed_ports: 0 }] } as never);
+    panel();
+    expect(await screen.findByText("Gateway too old for label selectors")).toBeTruthy();
+    expect(screen.getByRole("status").textContent).toContain("Upgrade the gateway");
+    expect(screen.getByText("app=web")).toBeTruthy();
+    expect(screen.queryByText("Applied")).toBeNull();
+  });
+
+  it("states that a changed selector withdraws after the wait and needs a tick (slice B)", async () => {
+    const shop = { ...RULE, id: "rule-shop", namespace: "shop", selector: { app: "web" } };
+    get.mockResolvedValue({ data: [shop] } as never);
+    patch.mockResolvedValue({ data: { ...shop, selector: {} } } as never);
+    panel();
+    fireEvent.click(await screen.findByRole("button", { name: "Selector for shop" }));
+    const dialog = screen.getByRole("dialog");
+    const input = within(dialog).getByRole("textbox", { name: "Only Services with these labels" });
+    expect(input).toHaveProperty("value", "app=web");
+    const save = within(dialog).getByRole("button", { name: "Save selector" });
+    expect(save).toHaveProperty("disabled", true);
+
+    fireEvent.change(input, { target: { value: "" } });
+    const impact = within(dialog).getByLabelText("What this change will do");
+    expect(impact.textContent).toContain("every Service in shop that is not exposed yet is exposed");
+    expect(impact.textContent).toContain("In 10 minutes: exposures this rule made for Services that no longer match are withdrawn");
+    expect(save).toHaveProperty("disabled", true);
+    fireEvent.click(within(dialog).getByRole("checkbox", { name: "Cover every Service in shop" }));
+    fireEvent.click(save);
+    await waitFor(() => expect(patch).toHaveBeenCalledTimes(1));
+    expect(patch.mock.calls[0]?.[1]).toMatchObject({ params: { path: { ruleId: "rule-shop" } }, body: { selector: {} } });
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  });
+
   it("offers no control without the manage permission", async () => {
     get.mockResolvedValue({ data: [RULE] } as never);
     panel({ canManage: false });
@@ -186,5 +248,6 @@ describe("namespace rules panel (K8N-4)", () => {
     expect(screen.queryByRole("button", { name: "Expose every Service in a namespace…" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Remove rule" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Exclusions for billing" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Selector for billing" })).toBeNull();
   });
 });

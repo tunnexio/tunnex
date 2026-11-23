@@ -1978,6 +1978,7 @@ type K8sNamespaceExposureRule struct {
 	CreatedAt        time.Time          `json:"created_at"`
 	UpdatedAt        time.Time          `json:"updated_at"`
 	ExcludedServices []string           `json:"excluded_services"`
+	Selector         []byte             `json:"selector"`
 }
 
 type K8sNamespaceRuleExposure struct {
@@ -2057,6 +2058,13 @@ type K8sServiceInventoryItem struct {
 	ServiceUid   string    `json:"service_uid"`
 	PortCount    int32     `json:"port_count"`
 	CreatedAt    time.Time `json:"created_at"`
+}
+
+type K8sServiceInventoryItemLabel struct {
+	ReportID     uuid.UUID `json:"report_id"`
+	InventoryRef uuid.UUID `json:"inventory_ref"`
+	Labels       []byte    `json:"labels"`
+	Truncated    bool      `json:"truncated"`
 }
 
 type K8sServiceInventoryPort struct {

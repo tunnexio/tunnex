@@ -13,6 +13,8 @@ import (
 	"unicode/utf8"
 
 	"github.com/google/uuid"
+
+	"github.com/tunnexio/tunnex/apps/api/internal/k8s"
 )
 
 const K8sServiceInventoryVersion = 1
@@ -41,6 +43,9 @@ type K8sServiceInventoryService struct {
 	Service   string                    `json:"service"`
 	UID       string                    `json:"uid"`
 	Ports     []K8sServiceInventoryPort `json:"ports"`
+	// Version 2 only. LabelsTruncated means the Service has more labels than Labels holds.
+	Labels          map[string]string `json:"labels,omitempty"`
+	LabelsTruncated bool              `json:"labels_truncated,omitempty"`
 }
 
 type K8sServiceInventoryPort struct {
@@ -60,13 +65,16 @@ type K8sServiceInventoryStore interface {
 }
 
 func ValidateK8sServiceInventoryReport(report K8sServiceInventoryReport) (K8sServiceInventoryReport, error) {
-	if report.Version != K8sServiceInventoryVersion || report.Sequence == 0 || report.ObservedAt.IsZero() || len(report.Services) > maxK8sServiceInventoryServices {
+	if (report.Version != K8sServiceInventoryVersion && report.Version != K8sServiceInventoryVersionLabels) || report.Sequence == 0 || report.ObservedAt.IsZero() || len(report.Services) > maxK8sServiceInventoryServices {
 		return K8sServiceInventoryReport{}, ErrK8sServiceInventoryInvalid
 	}
 	services := canonicalK8sServiceInventory(report.Services)
 	seenServices := map[string]bool{}
 	for _, service := range services {
 		if !validK8sServiceUIDDNSLabel(service.Namespace) || !validK8sServiceUIDDNSLabel(service.Service) || !validK8sServiceInventoryUID(service.UID) || len(service.Ports) == 0 || len(service.Ports) > maxK8sServiceInventoryPorts {
+			return K8sServiceInventoryReport{}, ErrK8sServiceInventoryInvalid
+		}
+		if !validK8sServiceInventoryVersionLabels(report.Version, service) {
 			return K8sServiceInventoryReport{}, ErrK8sServiceInventoryInvalid
 		}
 		serviceKey := service.Namespace + "\x00" + service.Service
@@ -87,7 +95,7 @@ func ValidateK8sServiceInventoryReport(report K8sServiceInventoryReport) (K8sSer
 		}
 	}
 	canonical := K8sServiceInventoryReport{Version: report.Version, Sequence: report.Sequence, ObservedAt: report.ObservedAt.UTC(), Digest: report.Digest, Services: services}
-	if report.Digest != K8sServiceInventoryDigest(canonical.Sequence, canonical.ObservedAt, canonical.Services) {
+	if report.Digest != K8sServiceInventoryReportDigest(canonical) {
 		return K8sServiceInventoryReport{}, ErrK8sServiceInventoryInvalid
 	}
 	body, err := json.Marshal(canonical)
@@ -141,4 +149,81 @@ func validK8sServiceInventoryUID(value string) bool {
 
 func validK8sServiceInventoryPortName(value string) bool {
 	return value == "" || (len(value) <= 63 && utf8.ValidString(value) && !strings.ContainsFunc(value, func(r rune) bool { return r < 0x20 || r == 0x7f }))
+}
+
+// Version 2 adds each Service's labels so the control plane can match a namespace rule's selector
+// (K8N-4 slice B). The bounds are per Service; a Service with more is reported with what fits, in key
+// order, and LabelsTruncated set.
+const (
+	K8sServiceInventoryVersionLabels = 2
+	MaxK8sServiceInventoryLabels     = 32
+	MaxK8sServiceInventoryLabelBytes = 2048
+)
+
+// ValidK8sLabelKey and ValidK8sLabelValue are Kubernetes label syntax, shared with the namespace rule's
+// selector so a selector can never name a label the report could not carry.
+func ValidK8sLabelKey(key string) bool     { return k8s.ValidLabelKey(key) }
+func ValidK8sLabelValue(value string) bool { return k8s.ValidLabelValue(value) }
+
+func validK8sServiceInventoryLabels(labels map[string]string) bool {
+	if len(labels) > MaxK8sServiceInventoryLabels {
+		return false
+	}
+	total := 0
+	for key, value := range labels {
+		if !ValidK8sLabelKey(key) || !ValidK8sLabelValue(value) {
+			return false
+		}
+		total += len(key) + len(value)
+	}
+	return total <= MaxK8sServiceInventoryLabelBytes
+}
+
+func sortedK8sLabelKeys(labels map[string]string) []string {
+	keys := make([]string, 0, len(labels))
+	for key := range labels {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return keys
+}
+
+// K8sServiceInventoryDigestV2 is the version 2 digest: the version 1 lines under a new prefix, plus each
+// Service's labels in key order and whether they were truncated.
+func K8sServiceInventoryDigestV2(sequence uint64, observedAt time.Time, services []K8sServiceInventoryService) string {
+	entries := canonicalK8sServiceInventory(services)
+	h := sha256.New()
+	_, _ = h.Write([]byte("tunnex.k8s-service-inventory.v2\n"))
+	_, _ = h.Write([]byte(strconv.FormatUint(sequence, 10) + "\n"))
+	_, _ = h.Write([]byte(observedAt.UTC().Format(time.RFC3339Nano) + "\n"))
+	for _, service := range entries {
+		_, _ = h.Write([]byte(strconv.Quote(service.Namespace) + "\t" + strconv.Quote(service.Service) + "\t" + strconv.Quote(service.UID) + "\n"))
+		for _, port := range service.Ports {
+			_, _ = h.Write([]byte("\t" + port.Protocol + "\t" + strconv.Itoa(port.Port) + "\t" + strconv.Quote(port.Name) + "\n"))
+		}
+		for _, key := range sortedK8sLabelKeys(service.Labels) {
+			_, _ = h.Write([]byte("\tlabel\t" + strconv.Quote(key) + "\t" + strconv.Quote(service.Labels[key]) + "\n"))
+		}
+		if service.LabelsTruncated {
+			_, _ = h.Write([]byte("\ttruncated\n"))
+		}
+	}
+	return hex.EncodeToString(h.Sum(nil))
+}
+
+// K8sServiceInventoryReportDigest is the digest for the report's own version.
+func K8sServiceInventoryReportDigest(report K8sServiceInventoryReport) string {
+	if report.Version == K8sServiceInventoryVersionLabels {
+		return K8sServiceInventoryDigestV2(report.Sequence, report.ObservedAt, report.Services)
+	}
+	return K8sServiceInventoryDigest(report.Sequence, report.ObservedAt, report.Services)
+}
+
+// validK8sServiceInventoryVersionLabels: version 1 carries no labels at all; version 2 carries bounded,
+// well-formed ones.
+func validK8sServiceInventoryVersionLabels(version int, service K8sServiceInventoryService) bool {
+	if version == K8sServiceInventoryVersion {
+		return len(service.Labels) == 0 && !service.LabelsTruncated
+	}
+	return validK8sServiceInventoryLabels(service.Labels)
 }

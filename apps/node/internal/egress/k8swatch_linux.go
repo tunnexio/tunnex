@@ -96,6 +96,9 @@ type svcPorts map[svcPortKey]string
 type serviceInfo struct {
 	ports svcPorts
 	uid   string // opaque metadata.uid; never endpoint or cluster authority
+	// metadata.labels, as the API server sent them. Only the inventory report reads them (K8N-4 slice
+	// B: a namespace rule's selector); nothing on the data path does.
+	labels map[string]string
 }
 
 // ServiceUIDObservation is the watcher's deliberately narrow identity view.
@@ -120,6 +123,8 @@ type ServiceInventoryItem struct {
 	Service   string
 	UID       string
 	Ports     []ServiceInventoryPort
+	// Labels is every label of the Service. The reporter bounds what it sends.
+	Labels map[string]string
 }
 
 type ServiceInventoryPort struct {
@@ -407,7 +412,11 @@ func (w *K8sWatcher) ServiceInventory() ([]ServiceInventoryItem, bool) {
 			}
 			return ports[i].Name < ports[j].Name
 		})
-		items = append(items, ServiceInventoryItem{Namespace: parts[0], Service: parts[1], UID: info.uid, Ports: ports})
+		labels := make(map[string]string, len(info.labels))
+		for key, value := range info.labels {
+			labels[key] = value
+		}
+		items = append(items, ServiceInventoryItem{Namespace: parts[0], Service: parts[1], UID: info.uid, Ports: ports, Labels: labels})
 	}
 	if len(items) > maxServiceInventoryServices {
 		return nil, false
@@ -766,8 +775,9 @@ func parseService(raw json.RawMessage) (key string, info serviceInfo, ok bool) {
 	var s struct {
 		Metadata struct {
 			Name      string `json:"name"`
-			Namespace string `json:"namespace"`
-			UID       string `json:"uid"`
+			Namespace string            `json:"namespace"`
+			UID       string            `json:"uid"`
+			Labels    map[string]string `json:"labels"`
 		} `json:"metadata"`
 		Spec struct {
 			Ports []struct {
@@ -782,6 +792,7 @@ func parseService(raw json.RawMessage) (key string, info serviceInfo, ok bool) {
 	}
 	info.ports = svcPorts{}
 	info.uid = s.Metadata.UID
+	info.labels = s.Metadata.Labels
 	for _, p := range s.Spec.Ports {
 		if protocol, supported := normalizeServiceProtocol(p.Protocol); supported {
 			info.ports[svcPortKey{protocol: protocol, port: p.Port}] = p.Name

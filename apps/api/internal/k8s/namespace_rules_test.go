@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"reflect"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -202,4 +203,133 @@ func TestNormalizeExcludedServices(t *testing.T) {
 	if _, err := normalizeExcludedServices(many[:MaxNamespaceRuleExclusions]); err != nil {
 		t.Fatalf("exactly the limit must be accepted: %v", err)
 	}
+}
+
+func TestMatchSelector(t *testing.T) {
+	selector := map[string]string{"app": "web", "tier": "frontend"}
+	known := func(truncated bool, labels map[string]string) reportedService {
+		return reportedService{LabelsKnown: true, LabelsTruncated: truncated, Labels: labels}
+	}
+	for name, tc := range map[string]struct {
+		selector map[string]string
+		svc      reportedService
+		want     selectorMatch
+	}{
+		"no selector reads no labels, even unknown ones": {nil, reportedService{}, selectorMatches},
+		"every pair equal":                              {selector, known(false, map[string]string{"app": "web", "tier": "frontend", "extra": "x"}), selectorMatches},
+		"every pair equal though truncated":             {selector, known(true, map[string]string{"app": "web", "tier": "frontend"}), selectorMatches},
+		"one pair differs":                              {selector, known(false, map[string]string{"app": "web", "tier": "backend"}), selectorDoesNotMatch},
+		"a key is absent and the labels are complete":   {selector, known(false, map[string]string{"app": "web"}), selectorDoesNotMatch},
+		"a Service with no labels at all":               {selector, known(false, map[string]string{}), selectorDoesNotMatch},
+		"a key is absent and the labels were truncated": {selector, known(true, map[string]string{"app": "web"}), selectorLabelsIncomplete},
+		"truncated, but a present pair already differs": {selector, known(true, map[string]string{"app": "api"}), selectorDoesNotMatch},
+		"an old gateway: labels unknown":                {selector, reportedService{Labels: nil}, selectorLabelsUnknown},
+		"an empty value must equal an empty value":      {map[string]string{"canary": ""}, known(false, map[string]string{"canary": ""}), selectorMatches},
+		"an empty value is not an absent label":         {map[string]string{"canary": ""}, known(false, map[string]string{}), selectorDoesNotMatch},
+		"values are case sensitive":                     {map[string]string{"app": "web"}, known(false, map[string]string{"app": "Web"}), selectorDoesNotMatch},
+	} {
+		if got := matchSelector(tc.selector, tc.svc); got != tc.want {
+			t.Errorf("%s: got %d want %d", name, got, tc.want)
+		}
+	}
+}
+
+func TestPlanNamespaceRuleSelector(t *testing.T) {
+	rule := uuid.New()
+	now := time.Date(2026, 11, 23, 12, 0, 0, 0, time.UTC)
+	recently, longAgo := now.Add(-2*time.Minute), now.Add(-NamespaceRuleWithdrawWait)
+	labelled := func(name string, port int32, truncated bool, labels map[string]string) reportedService {
+		return reportedService{Service: name, UID: "uid-" + name, Ports: []inventoryExposurePort{tcp(port)}, LabelsKnown: true, LabelsTruncated: truncated, Labels: labels}
+	}
+	web := map[string]string{"app": "web"}
+	other := map[string]string{"app": "api"}
+	ids := map[string]uuid.UUID{}
+	owned := func(name string, port int32, missing *time.Time) exposedPort {
+		ids[name] = uuid.New()
+		return exposedPort{ID: ids[name], Service: name, Protocol: "tcp", Port: port, VIP: "100.66.0.9", RuleID: rule, MissingSince: missing}
+	}
+	reported := []reportedService{
+		labelled("match-new", 1, false, web),
+		labelled("nomatch-new", 2, false, other),
+		labelled("big-new", 3, true, map[string]string{"zz": "1"}),
+		labelled("relabelled", 4, false, other),             // the rule's, labels changed: first seen now
+		labelled("relabelled-long", 5, false, other),        // the rule's, not matching for the whole wait
+		labelled("matches-again", 6, false, web),            // the rule's, was marked, matches again
+		labelled("big-owned", 7, true, map[string]string{}), // the rule's, cannot tell: left as it is
+		labelled("excluded", 8, false, web),
+		{Service: "kubernetes", UID: "uid-k", Ports: []inventoryExposurePort{tcp(443)}, APIServer: true, LabelsKnown: true, Labels: web},
+	}
+	exposed := []exposedPort{
+		owned("relabelled", 4, nil), owned("relabelled-long", 5, &longAgo), owned("matches-again", 6, &recently),
+		owned("big-owned", 7, &recently), owned("kubernetes", 443, nil),
+		// made by hand, does not match: never the rule's business.
+		{ID: uuid.New(), Service: "nomatch-manual", Protocol: "tcp", Port: 9, VIP: "100.66.0.8"},
+	}
+	spec := namespaceRuleSpec{ID: rule, Selector: map[string]string{"app": "web"}, Excluded: map[string]bool{"excluded": true}}
+	plan := planNamespaceRule(spec, reported, exposed, now, NamespaceRuleWithdrawWait)
+
+	if len(plan.Expose) != 1 || plan.Expose[0].Service != "match-new" {
+		t.Fatalf("only the matching Service is exposed (not a mismatch, an undecided one, an excluded one or the API server): %+v", plan.Expose)
+	}
+	if !reflect.DeepEqual(plan.MarkMissing, []uuid.UUID{ids["relabelled"]}) {
+		t.Fatalf("a Service that stopped matching is marked, not withdrawn: %v", plan.MarkMissing)
+	}
+	if !reflect.DeepEqual(plan.Withdraw, []uuid.UUID{ids["relabelled-long"]}) {
+		t.Fatalf("withdrawn only after the wait: %v", plan.Withdraw)
+	}
+	// big-owned was marked earlier; "cannot tell" counts as still there, so the mark is cleared too.
+	cleared := map[uuid.UUID]bool{}
+	for _, id := range plan.ClearMissing {
+		cleared[id] = true
+	}
+	if len(cleared) != 2 || !cleared[ids["matches-again"]] || !cleared[ids["big-owned"]] {
+		t.Fatalf("ClearMissing = %v", plan.ClearMissing)
+	}
+	if plan.LabelsUnknown || !reflect.DeepEqual(plan.LabelsIncomplete, []string{"big-new", "big-owned"}) || len(plan.WithdrawExcluded) != 0 {
+		t.Fatalf("plan = %+v", plan)
+	}
+
+	// An old gateway: no labels at all. Nothing is exposed and nothing is marked or withdrawn for its
+	// labels; a rule with a selector never becomes a whole-namespace rule.
+	var bare []reportedService
+	for _, svc := range reported {
+		svc.LabelsKnown, svc.LabelsTruncated, svc.Labels = false, false, nil
+		bare = append(bare, svc)
+	}
+	old := planNamespaceRule(spec, bare, exposed[:2], now, NamespaceRuleWithdrawWait)
+	if !old.LabelsUnknown || len(old.Expose) != 0 || len(old.MarkMissing) != 0 || len(old.Withdraw) != 0 {
+		t.Fatalf("plan against a report without labels = %+v", old)
+	}
+	// A Service that is gone is gone whatever the labels: the wait still runs under an old gateway.
+	gone := planNamespaceRule(spec, bare[:1], []exposedPort{owned("vanished", 99, &longAgo)}, now, NamespaceRuleWithdrawWait)
+	if !reflect.DeepEqual(gone.Withdraw, []uuid.UUID{ids["vanished"]}) {
+		t.Fatalf("a vanished Service under an old gateway: %+v", gone)
+	}
+	// The same report under a rule with no selector exposes every Service: old gateways keep working.
+	plain := planNamespaceRule(namespaceRuleSpec{ID: rule}, bare, nil, now, NamespaceRuleWithdrawWait)
+	if plain.LabelsUnknown || len(plain.Expose) != 8 {
+		t.Fatalf("a plain rule must not need labels: %+v", plain)
+	}
+}
+
+func TestNormalizeSelector(t *testing.T) {
+	got, err := normalizeSelector(map[string]string{"app": "web", "app.kubernetes.io/part-of": "Shop_v2", "canary": ""})
+	if err != nil || len(got) != 3 || selectorText(got) != "app=web,app.kubernetes.io/part-of=Shop_v2,canary=" {
+		t.Fatalf("got %v err=%v", got, err)
+	}
+	if got, err := normalizeSelector(nil); err != nil || got == nil || len(got) != 0 {
+		t.Fatalf("no selector is valid and stored as an empty object: %v %v", got, err)
+	}
+	for _, bad := range []map[string]string{
+		{"app": "*"}, {"app": "web,api"}, {"app in (web)": ""}, {"!app": ""}, {"": "web"}, {"app": "a b"}, {"app": strings.Repeat("a", 64)}, {"a/b/c": "x"},
+	} {
+		_, err := normalizeSelector(bad)
+		assertScopeAPIError(t, err, http.StatusBadRequest, "invalid_selector")
+	}
+	many := map[string]string{}
+	for i := 0; i <= MaxNamespaceRuleSelectorPairs; i++ {
+		many["k"+strconv.Itoa(i)] = "v"
+	}
+	_, err = normalizeSelector(many)
+	assertScopeAPIError(t, err, http.StatusBadRequest, "selector_limit")
 }

@@ -5799,7 +5799,7 @@ export interface paths {
         put?: never;
         /**
          * Expose every Service in one namespace, now and as Services are added (K8N-4; human k8s:manage)
-         * @description Records the opt-in for one namespace and applies it each time the cluster's gateway reports its Services. Exposure gives a Service an address and a name; it never grants access. 400 namespace_not_eligible for kube-system, kube-public, kube-node-lease and Tunnex's own namespaces; 409 namespace_rule_exists. excluded_services names Services of the namespace the rule must not expose.
+         * @description Records the opt-in for one namespace and applies it each time the cluster's gateway reports its Services. Exposure gives a Service an address and a name; it never grants access. 400 namespace_not_eligible for kube-system, kube-public, kube-node-lease and Tunnex's own namespaces; 409 namespace_rule_exists. excluded_services names Services of the namespace the rule must not expose. selector limits the rule to Services whose labels equal every key=value pair; it needs a gateway that reports labels, and a rule with a selector never falls back to the whole namespace (status gateway_too_old).
          */
         post: operations["createK8sNamespaceRule"];
         delete?: never;
@@ -5830,8 +5830,8 @@ export interface paths {
         options?: never;
         head?: never;
         /**
-         * Change which Services a namespace rule leaves out (K8N-4; human k8s:manage)
-         * @description excluded_services replaces the rule's exclusion list. The rule stops exposing an excluded Service and withdraws the exposures it made for one on the pass that runs with this call, without the wait that applies to a vanished Service; access rules that pointed at them are kept and allow nothing. A name taken off the list is exposed again as a new exposure. Like every pass this needs a current Service report: without one the change is stored and applied on the gateway's next report. Exposures made by hand or by the operator are never touched.
+         * Change which Services a namespace rule leaves out or selects (K8N-4; human k8s:manage)
+         * @description excluded_services replaces the rule's exclusion list. The rule stops exposing an excluded Service and withdraws the exposures it made for one on the pass that runs with this call, without the wait that applies to a vanished Service; access rules that pointed at them are kept and allow nothing. A name taken off the list is exposed again as a new exposure. Like every pass this needs a current Service report: without one the change is stored and applied on the gateway's next report. Exposures made by hand or by the operator are never touched. selector replaces the label selector ({} clears it): Services that now match are exposed on this pass; Services that no longer match are withdrawn after the same 10-minute wait as a Service that is gone.
          */
         patch: operations["updateK8sNamespaceRule"];
         trace?: never;
@@ -10932,7 +10932,7 @@ export interface components {
             fqdn: string;
             /**
              * Format: uuid
-             * @description Set when a namespace rule created this exposure (K8N-4). Remove the rule to unexpose it.
+             * @description Set when a namespace rule created this exposure (K8N-4). Exclude the Service from the rule, or remove the rule, to unexpose it.
              */
             namespace_rule_id?: string | null;
         };
@@ -10966,11 +10966,12 @@ export interface components {
             namespace: string;
             /** @description Services of the namespace this rule never exposes, sorted by name. */
             excluded_services: string[];
+            selector: components["schemas"]["K8sNamespaceRuleSelector"];
             /**
              * @description applied = fully applied on the last pass. Anything else: the rule is not fully applied and status_message says why.
              * @enum {string}
              */
-            status: "pending" | "applied" | "inventory_stale" | "inventory_unavailable" | "vip_range_exhausted" | "scope_review_limit" | "withdrawal_blocked" | "error";
+            status: "pending" | "applied" | "inventory_stale" | "inventory_unavailable" | "vip_range_exhausted" | "scope_review_limit" | "withdrawal_blocked" | "error" | "gateway_too_old" | "labels_incomplete";
             status_message: string;
             /** @description Services of the namespace the last pass could not expose. */
             waiting_services: number;
@@ -10987,10 +10988,16 @@ export interface components {
             namespace: string;
             /** @description Exact Service names the rule must not expose. No patterns. */
             excluded_services?: string[];
+            selector?: components["schemas"]["K8sNamespaceRuleSelector"];
         };
         UpdateK8sNamespaceRuleRequest: {
             /** @description Replaces the exclusion list. Omit to leave it unchanged. */
             excluded_services?: string[];
+            selector?: components["schemas"]["K8sNamespaceRuleSelector"];
+        };
+        /** @description Label selector: every key=value pair must equal the Service's label. Empty = every Service of the namespace. Equality only: no set operators, negation or wildcards. */
+        K8sNamespaceRuleSelector: {
+            [key: string]: string;
         };
         RegisterK8sClusterRequest: {
             /**

@@ -73,6 +73,34 @@ func TestK8sServiceInventoryForAgentUsesAuthenticatedScope(t *testing.T) {
 	}
 }
 
+// K8N-4 slice B: the channel takes a version 2 report with labels, still takes a version 1 report, and
+// refuses label data on version 1 with the one answer every refused report gets.
+func TestK8sServiceInventoryForAgentAcceptsLabelsOnlyAsVersion2(t *testing.T) {
+	post := func(report nodes.K8sServiceInventoryReport) (int, *recordingInventoryStore) {
+		report.Digest = nodes.K8sServiceInventoryReportDigest(report)
+		body, _ := json.Marshal(report)
+		store := &recordingInventoryStore{}
+		channel := &AgentChannel{serviceInventoryStore: store}
+		recorder := httptest.NewRecorder()
+		channel.k8sServiceInventoryForAgent(recorder, httptest.NewRequest(stdhttp.MethodPost, "/agent/k8s-service-inventory", bytes.NewReader(body)), nodes.K8sServiceUIDObservationAgent{NodeID: uuid.New(), OrgID: uuid.New()})
+		return recorder.Code, store
+	}
+	service := nodes.K8sServiceInventoryService{Namespace: "prod", Service: "api", UID: "opaque-uid", Ports: []nodes.K8sServiceInventoryPort{{Protocol: "tcp", Port: 443}},
+		Labels: map[string]string{"app": "api"}, LabelsTruncated: true}
+	now := time.Now().UTC()
+	code, store := post(nodes.K8sServiceInventoryReport{Version: 2, Sequence: 7, ObservedAt: now, Services: []nodes.K8sServiceInventoryService{service}})
+	if code != stdhttp.StatusNoContent || store.report.Version != 2 || store.report.Services[0].Labels["app"] != "api" || !store.report.Services[0].LabelsTruncated {
+		t.Fatalf("version 2: code=%d report=%+v", code, store.report)
+	}
+	if code, store := post(nodes.K8sServiceInventoryReport{Version: 1, Sequence: 7, ObservedAt: now, Services: []nodes.K8sServiceInventoryService{service}}); code != stdhttp.StatusBadRequest || store.report.Sequence != 0 {
+		t.Fatalf("version 1 with labels: code=%d stored=%+v", code, store.report)
+	}
+	service.Labels, service.LabelsTruncated = nil, false
+	if code, store := post(nodes.K8sServiceInventoryReport{Version: 1, Sequence: 7, ObservedAt: now, Services: []nodes.K8sServiceInventoryService{service}}); code != stdhttp.StatusNoContent || store.report.Version != 1 {
+		t.Fatalf("an old gateway's report: code=%d report=%+v", code, store.report)
+	}
+}
+
 func TestK8sServiceInventoryForAgentRejectsUnknownFields(t *testing.T) {
 	channel := &AgentChannel{serviceInventoryStore: &recordingInventoryStore{}}
 	req := httptest.NewRequest(stdhttp.MethodPost, "/agent/k8s-service-inventory", bytes.NewBufferString(`{"version":1,"sequence":1,"observed_at":"2026-08-28T00:00:00Z","digest":"x","services":[],"org_id":"forbidden"}`))

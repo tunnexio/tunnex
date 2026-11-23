@@ -383,3 +383,24 @@ describe("namespace rule exclusions (K8N-4 slice A)", () => {
     expect(excludedServiceReason("x", Array.from({ length: 100 }, (_, i) => `s${i}`))).toMatch(/at most 100/);
   });
 });
+
+import { parseSelector, selectorText } from "../src/lib/k8sview";
+
+describe("namespace rule selector (K8N-4 slice B)", () => {
+  it("reads key=value pairs and nothing else", () => {
+    expect(parseSelector("")).toEqual({ selector: {}, error: null });
+    expect(parseSelector(" tier=frontend , app=web ")).toEqual({ selector: { tier: "frontend", app: "web" }, error: null });
+    expect(parseSelector("app.kubernetes.io/name=My_App.v2,canary=")).toEqual({ selector: { "app.kubernetes.io/name": "My_App.v2", canary: "" }, error: null });
+    for (const bad of ["app", "=web", "app=*", "app!=web", "app in (web)", "!app=x", "app=a b", "app=web,app=api", "Bad.Prefix/app=x", `app=${"a".repeat(64)}`])
+      expect(parseSelector(bad).error, bad).not.toBeNull();
+    expect(parseSelector(Array.from({ length: 9 }, (_, i) => `k${i}=v`).join(",")).error).toMatch(/at most 8/);
+  });
+
+  it("prints a selector in key order and gives the two selector states a reason", () => {
+    expect(selectorText({ tier: "frontend", app: "web" })).toBe("app=web, tier=frontend");
+    expect(selectorText({})).toBe("");
+    for (const status of ["gateway_too_old", "labels_incomplete"] as const)
+      expect(namespaceRuleStatus({ status, status_message: "why", waiting_services: 0 }).tone, status).not.toBe("ok");
+    expect(namespaceRuleStatus({ status: "gateway_too_old", status_message: "", waiting_services: 0 }).message).toMatch(/Upgrade the gateway/);
+  });
+});
