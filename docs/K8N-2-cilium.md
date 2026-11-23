@@ -323,3 +323,18 @@ Other:
 
 - [S9] bpftool, https://github.com/libbpf/bpftool `src/map.c` (`do_dump`, `print_entry_json`) and
   `src/common.c` (`print_hex_data_json`), main branch.
+
+## Founder ruling, 2026-11-23
+
+"Do the recommended." Recorded against the open questions above:
+
+1. eBPF mode without a destination exclusion is **not** accepted on the strength of Cilium's code. The
+   device range must be inside an exclusion Tunnex can read, or the node is refused with the
+   instruction to add it.
+2. The pinned map is read with `bpftool` in the gateway image, not with hand-written `bpf()` calls.
+3. The two extra read-only host paths are mounted only when the chart value for Cilium is set, which
+   the installer sets when it sees Cilium. They are not mounted on other clusters.
+
+Questions 4 to 6 keep the paper's written default: egress gateway stays refused, an unknown field in
+the masquerade report is refused, and no general guard for unknown eBPF programs is added in this
+item.
