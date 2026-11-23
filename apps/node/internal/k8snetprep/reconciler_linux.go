@@ -52,6 +52,9 @@ type Reconciler struct {
 	// listLinks lists network device names for the Cilium guard; nil means
 	// the real devices.
 	listLinks func() ([]string, error)
+	// hostFacts, when set, replaces this process's own iptables-nft-save and
+	// ipset reads for the observed proof (K8N-1, Decision 9).
+	hostFacts HostFactsSource
 	// registeredSeen records that this process has reconciled a registered CNI
 	// mechanism, so its later absence is a change in progress and not a node
 	// that never had one.

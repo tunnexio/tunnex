@@ -1378,17 +1378,30 @@ func (m *Manager) SetKubernetesMode(enabled bool) {
 // before producers start. VM/site mode never acquires host-posture authority.
 // The guard holds the node-local CNI operation lock through each observation
 // and mutation; an unavailable proof cannot fall back to an unguarded adapter.
-func (m *Manager) SetKubernetesCNIAuthority(guard k8snetprep.AuthorityGuard) {
+//
+// hostFacts is where the observed proof takes the saved rule text and set
+// members the gateway container cannot read (K8N-1, Decision 9): the
+// host-posture manager's receipt. In Kubernetes the gateway never runs
+// iptables-nft-save or ipset for that proof itself, so a missing source
+// refuses instead of falling back.
+func (m *Manager) SetKubernetesCNIAuthority(guard k8snetprep.AuthorityGuard, hostFacts k8snetprep.HostFactsSource) {
 	if !m.kubernetesMode.Load() {
 		return
 	}
+	if hostFacts == nil {
+		hostFacts = func(context.Context) (k8snetprep.HostNetFacts, error) {
+			return k8snetprep.HostNetFacts{}, fmt.Errorf("no host-posture facts source is configured")
+		}
+	}
 	m.k8sNetPrepReady.Store(false)
-	m.k8sNetPrep = k8snetprep.NewWithAWS(m.wgIface, func(ctx context.Context, args ...string) (string, error) {
+	reconciler := k8snetprep.NewWithAWS(m.wgIface, func(ctx context.Context, args ...string) (string, error) {
 		if m.nftRun == nil {
 			return "", fmt.Errorf("nft runner unavailable")
 		}
 		return m.nftRun(ctx, args...)
 	}, nil, guard)
+	reconciler.UseHostFacts(hostFacts)
+	m.k8sNetPrep = reconciler
 }
 
 // ReconcileK8sNetPrep refreshes common host/CNI truth independently of the

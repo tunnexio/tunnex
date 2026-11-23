@@ -30,7 +30,7 @@ func (m *Manager) K8sNetPrepReady() bool { return false }
 func (m *Manager) SetKubernetesMode(bool) {}
 
 // SetKubernetesCNIAuthority cannot enable a non-Linux gateway data plane.
-func (m *Manager) SetKubernetesCNIAuthority(k8snetprep.AuthorityGuard) {}
+func (m *Manager) SetKubernetesCNIAuthority(k8snetprep.AuthorityGuard, k8snetprep.HostFactsSource) {}
 
 // ReconcileK8sNetPrep fails closed off Linux; the gateway data plane is Linux-only.
 func (m *Manager) ReconcileK8sNetPrep(context.Context) error {

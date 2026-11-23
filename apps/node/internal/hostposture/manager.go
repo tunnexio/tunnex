@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"log/slog"
 	"time"
+
+	"github.com/tunnexio/tunnex/apps/node/internal/k8snetprep"
 )
 
 type Kernel interface {
@@ -22,6 +24,7 @@ type journalStore interface {
 	SaveJournal(Journal) error
 	SaveHeartbeat(Heartbeat) error
 	SaveCNIAuthority(CNIAuthority) error
+	SaveHostFacts(HostFacts) error
 	RevokeCNIAuthority() error
 	AcquireCNIOperationLock(context.Context) (func(), error)
 }
@@ -44,7 +47,22 @@ type Manager struct {
 	seq    uint64
 	// ownersReadAt is when the owner set was last read successfully from the Kubernetes API.
 	ownersReadAt time.Time
+	// facts is the optional privileged reader of what a gateway cannot read
+	// itself. pendingFacts is what this pass read, published with its heartbeat.
+	facts        HostFactsReader
+	pendingFacts *pendingHostFacts
+	factsSummary string
 }
+
+type pendingHostFacts struct {
+	observedAt time.Time
+	facts      k8snetprep.HostNetFacts
+}
+
+// SetHostFactsReader installs the reader whose facts are published beside
+// every active heartbeat. It is set once, before Run. Without it the manager
+// publishes no facts and a gateway that needs them stays not ready.
+func (m *Manager) SetHostFactsReader(reader HostFactsReader) { m.facts = reader }
 
 func NewManager(config Config, source OwnerSource, kernel Kernel, store journalStore, log *slog.Logger) (*Manager, error) {
 	if !validNodeName(config.NodeName) || !uidRE.MatchString(config.ManagerUID) || len(config.ManagerUID) > MaxOwnerUIDBytes {
@@ -102,6 +120,14 @@ func (m *Manager) Run(ctx context.Context) error {
 func (m *Manager) ReconcileOnce(ctx context.Context) error {
 	now := m.now().UTC()
 	owners, sourceErr := m.source.List(ctx, m.config.NodeName, m.config.MaxOwners)
+	// Like the API read, the facts read does not hold the lock: it only
+	// observes. It runs when a gateway may own this node, never on an idle one,
+	// and what it read is published under the lock with this pass's heartbeat.
+	m.pendingFacts = nil
+	if m.facts != nil && (sourceErr != nil || len(owners) > 0) {
+		observedAt := m.now().UTC()
+		m.pendingFacts = &pendingHostFacts{observedAt: observedAt, facts: m.facts.Read(ctx)}
+	}
 	// API waits deliberately do not hold this lock. It serializes only the
 	// manager's state/kernel transitions with a gateway's CNI operation.
 	release, err := m.store.AcquireCNIOperationLock(ctx)
@@ -307,5 +333,40 @@ func (m *Manager) heartbeat(now time.Time, state string, owners []Owner, reason 
 	if err != nil {
 		return err
 	}
-	return m.store.SaveCNIAuthority(authority)
+	if err := m.store.SaveCNIAuthority(authority); err != nil {
+		return err
+	}
+	return m.publishHostFacts(heartbeat)
+}
+
+// publishHostFacts writes what this pass read as the receipt of this
+// heartbeat. A pass that read nothing writes nothing: the previous receipt
+// then belongs to an older sequence and no gateway accepts it.
+func (m *Manager) publishHostFacts(heartbeat Heartbeat) error {
+	if m.pendingFacts == nil {
+		return nil
+	}
+	receipt, err := SealHostFacts(heartbeat, m.pendingFacts.observedAt, m.pendingFacts.facts)
+	if err != nil {
+		return err
+	}
+	if err := m.store.SaveHostFacts(receipt); err != nil {
+		return fmt.Errorf("publish host facts: %w", err)
+	}
+	summary := hostFactsSummary(receipt.Netfilter)
+	if summary != m.factsSummary {
+		m.factsSummary = summary
+		m.log.Info("k8s_host_posture_facts", "state", summary)
+	}
+	return nil
+}
+
+func hostFactsSummary(facts k8snetprep.HostNetFacts) string {
+	part := func(name string, table k8snetprep.SavedTableFacts) string {
+		if table.Reason != "" {
+			return fmt.Sprintf("%s=%s (%s)", name, table.State, table.Reason)
+		}
+		return fmt.Sprintf("%s=%s chains=%d", name, table.State, len(table.Chains))
+	}
+	return boundedReason(fmt.Sprintf("%s; %s; sets=%d", part("nat", facts.NAT), part("mangle", facts.Mangle), len(facts.Sets)))
 }
