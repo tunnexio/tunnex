@@ -1,0 +1,241 @@
+---
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  annotations:
+    controller-gen.kubebuilder.io/version: v0.17.1
+    helm.sh/resource-policy: keep
+    tunnex.io/schema-generation: "2"
+  name: tunnexnamespaceexposures.tunnex.io
+spec:
+  group: tunnex.io
+  names:
+    kind: TunnexNamespaceExposure
+    listKind: TunnexNamespaceExposureList
+    plural: tunnexnamespaceexposures
+    singular: tunnexnamespaceexposure
+  scope: Namespaced
+  versions:
+  - additionalPrinterColumns:
+    - jsonPath: .spec.cluster
+      name: Cluster
+      type: string
+    - jsonPath: .spec.namespace
+      name: Namespace
+      type: string
+    - jsonPath: .status.ruleStatus
+      name: Rule
+      type: string
+    - jsonPath: .status.exposedServices
+      name: Services
+      type: integer
+    - jsonPath: .status.conditions[?(@.type=="Ready")].status
+      name: Ready
+      type: string
+    - jsonPath: .spec.deletionPolicy
+      name: On delete
+      type: string
+    name: v1alpha1
+    schema:
+      openAPIV3Schema:
+        description: |-
+          TunnexNamespaceExposure exposes every Service of one namespace on the Tunnex fabric through a
+          control-plane namespace rule.
+        properties:
+          apiVersion:
+            description: |-
+              APIVersion defines the versioned schema of this representation of an object.
+              Servers should convert recognized schemas to the latest internal value, and
+              may reject unrecognized values.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#resources
+            type: string
+          kind:
+            description: |-
+              Kind is a string value representing the REST resource this object represents.
+              Servers may infer this from the endpoint the client submits requests to.
+              Cannot be updated.
+              In CamelCase.
+              More info: https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#types-kinds
+            type: string
+          metadata:
+            type: object
+          spec:
+            description: |-
+              TunnexNamespaceExposureSpec declares a control-plane namespace rule (K8N-4): "expose every Service in
+              this namespace of this cluster, now and as Services are added". Exposure gives a Service an address and
+              a name on the fabric. It NEVER grants access: a TunnexGrant, or an access rule in Tunnex, does that.
+
+              The operator does not list or expose Services itself. It keeps the control plane's rule equal to this
+              spec; the control plane applies the rule each time the cluster's gateway reports its Services.
+            properties:
+              cluster:
+                description: |-
+                  Cluster is the name of the TunnexCluster resource (same namespace as this resource) whose Services
+                  are exposed. It cannot be changed: delete this resource and create another.
+                maxLength: 253
+                minLength: 1
+                type: string
+                x-kubernetes-validations:
+                - message: cluster cannot be changed; delete this resource and create
+                    a new one
+                  rule: self == oldSelf
+              deletionPolicy:
+                default: Keep
+                description: |-
+                  DeletionPolicy says what happens to the exposures the rule made when THIS RESOURCE is deleted.
+
+                  Keep (the default): the rule is removed and its exposures stay, as ordinary exposures an
+                  administrator unexposes one at a time. Nothing new is exposed afterwards.
+
+                  Withdraw: the rule and every exposure it made are removed in one step. Access rules that pointed
+                  at them are kept but allow nothing, and they do not come back if the Services are exposed again.
+
+                  Keep is the default because a resource is deleted for many reasons that are not a decision to cut
+                  access (a Git revert, a pruning sync, an uninstall, a mistake) and withdrawing cannot be undone.
+                enum:
+                - Keep
+                - Withdraw
+                type: string
+              excludedServices:
+                description: |-
+                  ExcludedServices are exact Service names of the namespace that the rule must not expose. Adding a
+                  name withdraws, at once, the exposures the rule made for that Service; access rules that pointed
+                  at them are kept and allow nothing.
+                items:
+                  description: ServiceName is a Kubernetes Service name, exactly;
+                    no patterns.
+                  maxLength: 63
+                  minLength: 1
+                  pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+                  type: string
+                maxItems: 100
+                type: array
+                x-kubernetes-list-type: set
+              namespace:
+                description: |-
+                  Namespace is the ONE Kubernetes namespace whose Services are exposed. There is no wildcard and no
+                  all-namespaces rule. kube-system, kube-public, kube-node-lease and Tunnex's own namespaces (tunnex,
+                  tunnex-*) are never eligible. It cannot be changed.
+                maxLength: 63
+                pattern: ^[a-z0-9]([-a-z0-9]*[a-z0-9])?$
+                type: string
+                x-kubernetes-validations:
+                - message: namespace cannot be changed; delete this resource and create
+                    a new one
+                  rule: self == oldSelf
+                - message: Kubernetes system namespaces cannot be exposed by a namespace
+                    rule
+                  rule: '!(self in [''kube-system'', ''kube-public'', ''kube-node-lease''])'
+                - message: Tunnex's own namespaces cannot be exposed by a namespace
+                    rule
+                  rule: self != 'tunnex' && !self.startsWith('tunnex-')
+              selector:
+                additionalProperties:
+                  description: SelectorValue is a Kubernetes label value.
+                  maxLength: 63
+                  pattern: ^([A-Za-z0-9]([-A-Za-z0-9_.]*[A-Za-z0-9])?)?$
+                  type: string
+                description: |-
+                  Selector limits the rule to Services whose labels equal EVERY key=value pair. Omit it for every
+                  Service of the namespace. It is a flat map on purpose: there are no set operators, no negation and
+                  no wildcards, and nothing here can be silently dropped. It needs a gateway that reports Service
+                  labels; with an older gateway the rule exposes nothing and this resource is not Ready
+                  (gateway_too_old). A Service that stops matching is withdrawn after 10 minutes.
+                maxProperties: 8
+                type: object
+            required:
+            - cluster
+            - namespace
+            type: object
+          status:
+            description: TunnexNamespaceExposureStatus reflects the control plane's
+              rule. DERIVED truth, never spec.
+            properties:
+              conditions:
+                description: |-
+                  Conditions carry Ready with the rule's status as reason and the control plane's sentence as
+                  message, Drift, and TeardownBlocked when a delete could not complete.
+                items:
+                  description: Condition contains details for one aspect of the current
+                    state of this API Resource.
+                  properties:
+                    lastTransitionTime:
+                      description: |-
+                        lastTransitionTime is the last time the condition transitioned from one status to another.
+                        This should be when the underlying condition changed.  If that is not known, then using the time when the API field changed is acceptable.
+                      format: date-time
+                      type: string
+                    message:
+                      description: |-
+                        message is a human readable message indicating details about the transition.
+                        This may be an empty string.
+                      maxLength: 32768
+                      type: string
+                    observedGeneration:
+                      description: |-
+                        observedGeneration represents the .metadata.generation that the condition was set based upon.
+                        For instance, if .metadata.generation is currently 12, but the .status.conditions[x].observedGeneration is 9, the condition is out of date
+                        with respect to the current state of the instance.
+                      format: int64
+                      minimum: 0
+                      type: integer
+                    reason:
+                      description: |-
+                        reason contains a programmatic identifier indicating the reason for the condition's last transition.
+                        Producers of specific condition types may define expected values and meanings for this field,
+                        and whether the values are considered a guaranteed API.
+                        The value should be a CamelCase string.
+                        This field may not be empty.
+                      maxLength: 1024
+                      minLength: 1
+                      pattern: ^[A-Za-z]([A-Za-z0-9_,:]*[A-Za-z0-9_])?$
+                      type: string
+                    status:
+                      description: status of the condition, one of True, False, Unknown.
+                      enum:
+                      - "True"
+                      - "False"
+                      - Unknown
+                      type: string
+                    type:
+                      description: type of condition in CamelCase or in foo.example.com/CamelCase.
+                      maxLength: 316
+                      pattern: ^([a-z0-9]([-a-z0-9]*[a-z0-9])?(\.[a-z0-9]([-a-z0-9]*[a-z0-9])?)*/)?(([A-Za-z0-9][-A-Za-z0-9_.]*)?[A-Za-z0-9])$
+                      type: string
+                  required:
+                  - lastTransitionTime
+                  - message
+                  - reason
+                  - status
+                  - type
+                  type: object
+                type: array
+              exposedPorts:
+                format: int32
+                type: integer
+              exposedServices:
+                description: ExposedServices and ExposedPorts count what the rule
+                  exposes right now.
+                format: int32
+                type: integer
+              ruleId:
+                description: RuleID is the control-plane id of the namespace rule
+                  this resource declares.
+                type: string
+              ruleStatus:
+                description: |-
+                  RuleStatus is the control plane's outcome of the rule's last pass, verbatim: applied, pending,
+                  inventory_stale, inventory_unavailable, vip_range_exhausted, scope_review_limit,
+                  withdrawal_blocked, gateway_too_old, labels_incomplete or error. Ready is True only for applied.
+                type: string
+              waitingServices:
+                description: WaitingServices counts Services the last pass could not
+                  expose (a limit was reached).
+                format: int32
+                type: integer
+            type: object
+        type: object
+    served: true
+    storage: true
+    subresources:
+      status: {}

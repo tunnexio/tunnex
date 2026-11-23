@@ -10,6 +10,7 @@ rules:
   - tunnexclusters
   - tunnexexposedservices
   - tunnexgrants
+  - tunnexnamespaceexposures
   verbs:
   - get
   - list
@@ -29,6 +30,7 @@ rules:
   - tunnexclusters/status
   - tunnexexposedservices/status
   - tunnexgrants/status
+  - tunnexnamespaceexposures/status
   verbs:
   - get
   - patch

@@ -244,9 +244,15 @@ func TestNamespaceRuleRefusals(t *testing.T) {
 			t.Fatalf("database accepted a rule for %s", namespace)
 		}
 	}
-	machine := &authctx.Principal{MachineID: uuid.New(), MachineName: "gitops", OwnerUserID: f.actor.UserID, AuthMethod: authctx.AuthMachine}
-	_, err := f.svc.CreateNamespaceRule(ctx, f.org, f.cluster, NamespaceRuleInput{Namespace: "shop"}, machine)
-	assertScopeAPIError(t, err, http.StatusForbidden, "human_actor_required")
+	// A machine credential with no current owner, an agent and a gateway never create a rule. (What an
+	// owned operator credential may do is slice C's test.)
+	ownerless := &authctx.Principal{MachineID: uuid.New(), MachineName: "gitops", AuthMethod: authctx.AuthMachine}
+	_, err := f.svc.CreateNamespaceRule(ctx, f.org, f.cluster, NamespaceRuleInput{Namespace: "shop"}, ownerless)
+	assertScopeAPIError(t, err, http.StatusForbidden, "actor_required")
+	for _, notAnAdmin := range []*authctx.Principal{nil, {UserID: f.actor.UserID, EmailVerified: true, AuthMethod: authctx.AuthAgent}, {UserID: f.actor.UserID, EmailVerified: true, NodeID: uuid.New()}, {}} {
+		_, err = f.svc.CreateNamespaceRule(ctx, f.org, f.cluster, NamespaceRuleInput{Namespace: "shop"}, notAnAdmin)
+		assertScopeAPIError(t, err, http.StatusForbidden, "human_actor_required")
+	}
 	_, err = f.svc.CreateNamespaceRule(ctx, f.org, f.cluster, NamespaceRuleInput{Namespace: "shop"}, &authctx.Principal{UserID: f.actor.UserID})
 	assertScopeAPIError(t, err, http.StatusForbidden, "email_not_verified")
 	_, err = f.svc.CreateNamespaceRule(ctx, f.org, uuid.New(), NamespaceRuleInput{Namespace: "shop"}, f.actor)
@@ -439,7 +445,7 @@ func TestDeleteNamespaceRuleKeepOrWithdraw(t *testing.T) {
 		t.Fatal(err)
 	}
 	machine := &authctx.Principal{MachineID: uuid.New(), MachineName: "gitops", AuthMethod: authctx.AuthMachine}
-	assertScopeAPIError(t, f.svc.DeleteNamespaceRule(ctx, f.org, f.cluster, shop.ID, true, machine), http.StatusForbidden, "human_actor_required")
+	assertScopeAPIError(t, f.svc.DeleteNamespaceRule(ctx, f.org, f.cluster, shop.ID, true, machine), http.StatusForbidden, "actor_required")
 	assertScopeAPIError(t, f.svc.DeleteNamespaceRule(ctx, f.org, f.cluster, uuid.New(), true, f.actor), http.StatusNotFound, "namespace_rule_not_found")
 
 	// keep: the rule is gone, its exposures stay as ordinary exposures and can be removed by hand.

@@ -6695,7 +6695,10 @@ type K8sNamespaceRule struct {
 	ExposedServices  int                `json:"exposed_services"`
 	Id               openapi_types.UUID `json:"id"`
 	LastReconciledAt *time.Time         `json:"last_reconciled_at"`
-	Namespace        string             `json:"namespace"`
+
+	// ManagedByOperator True when a TunnexNamespaceExposure resource declares this rule (it was created with the operator's machine credential). It is edited only through that resource.
+	ManagedByOperator bool   `json:"managed_by_operator"`
+	Namespace         string `json:"namespace"`
 
 	// Selector Label selector: every key=value pair must equal the Service's label. Empty = every Service of the namespace. Equality only: no set operators, negation or wildcards.
 	Selector K8sNamespaceRuleSelector `json:"selector"`

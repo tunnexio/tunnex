@@ -28,7 +28,7 @@ const INVENTORY = {
   ],
 };
 const RULE = {
-  id: "rule-1", cluster_id: "cluster", namespace: "billing", excluded_services: [] as string[], selector: {} as Record<string, string>, status: "applied" as const, status_message: "",
+  id: "rule-1", cluster_id: "cluster", namespace: "billing", excluded_services: [] as string[], selector: {} as Record<string, string>, managed_by_operator: false, status: "applied" as const, status_message: "",
   waiting_services: 0, exposed_services: 1, exposed_ports: 1, last_reconciled_at: "2026-11-23T06:00:00Z", created_at: "2026-11-23T05:00:00Z",
 };
 
@@ -105,7 +105,7 @@ describe("namespace rules panel (K8N-4)", () => {
     get.mockResolvedValue({ data: [RULE] } as never);
     del.mockResolvedValue({} as never);
     const onChanged = panel();
-    fireEvent.click(await screen.findByRole("button", { name: "Remove rule" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Remove rule for billing" }));
     const dialog = screen.getByRole("dialog");
     const remove = within(dialog).getByRole("button", { name: "Remove rule" });
     expect(remove).toHaveProperty("disabled", true);
@@ -241,12 +241,32 @@ describe("namespace rules panel (K8N-4)", () => {
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
   });
 
+  it("withholds edits of a rule declared in Git and warns before removing it (slice C)", async () => {
+    get.mockResolvedValue({ data: [{ ...RULE, id: "rule-git", namespace: "shop", managed_by_operator: true }, RULE] } as never);
+    panel();
+    expect(await screen.findByText("Managed by GitOps")).toBeTruthy();
+    expect(screen.getByText(/Declared by a TunnexNamespaceExposure resource/)).toBeTruthy();
+    // The operator would undo an edit made here, so none is offered for its rule; the dashboard rule keeps both.
+    expect(screen.queryByRole("button", { name: "Selector for shop" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Exclusions for shop" })).toBeNull();
+    expect(screen.getByRole("button", { name: "Selector for billing" })).toBeTruthy();
+    expect(screen.getByRole("button", { name: "Exclusions for billing" })).toBeTruthy();
+
+    // Removing stays possible (the way out when the operator is gone) and says what the operator will do.
+    fireEvent.click(screen.getByRole("button", { name: "Remove rule for shop" }));
+    const dialog = screen.getByRole("dialog");
+    expect(within(dialog).getByRole("note").textContent).toContain("the GitOps operator creates the rule again within five minutes");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Cancel" }));
+    fireEvent.click(screen.getByRole("button", { name: "Remove rule for billing" }));
+    expect(within(screen.getByRole("dialog")).queryByRole("note")).toBeNull();
+  });
+
   it("offers no control without the manage permission", async () => {
     get.mockResolvedValue({ data: [RULE] } as never);
     panel({ canManage: false });
     expect(await screen.findByText("billing")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Expose every Service in a namespace…" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "Remove rule" })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Remove rule/ })).toBeNull();
     expect(screen.queryByRole("button", { name: "Exclusions for billing" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Selector for billing" })).toBeNull();
   });

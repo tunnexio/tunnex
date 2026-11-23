@@ -76,15 +76,17 @@ func toAPIK8sNamespaceRule(rule k8ssvc.NamespaceRule) api.K8sNamespaceRule {
 	return api.K8sNamespaceRule{
 		Id: rule.ID, ClusterId: rule.ClusterID, Namespace: rule.Namespace,
 		ExcludedServices: rule.ExcludedServices, Selector: rule.Selector,
-		Status: api.K8sNamespaceRuleStatus(rule.Status), StatusMessage: rule.StatusMessage,
+		ManagedByOperator: rule.ManagedByOperator, // slice C: declared by a TunnexNamespaceExposure
+		Status:            api.K8sNamespaceRuleStatus(rule.Status), StatusMessage: rule.StatusMessage,
 		WaitingServices: rule.WaitingServices, ExposedServices: rule.ExposedServices, ExposedPorts: rule.ExposedPorts,
 		LastReconciledAt: rule.LastReconciledAt, CreatedAt: rule.CreatedAt,
 	}
 }
 
 // K8N-4 namespace rules: "expose every Service in this namespace". Reads are org:view like the Service
-// list; create and delete are k8s:manage, the same capability as exposing a Service by hand, and need a
-// signed-in human (the service refuses a machine credential).
+// list; create, change and delete are k8s:manage, the same capability as exposing a Service by hand. The
+// caller is a signed-in human or, for rules a TunnexNamespaceExposure declares, the operator's machine
+// credential; the service keeps the two from changing each other's rules.
 
 func (s apiServer) ListK8sNamespaceRules(ctx context.Context, req api.ListK8sNamespaceRulesRequestObject) (api.ListK8sNamespaceRulesResponseObject, error) {
 	if _, err := authorize(ctx, req.OrgId, rbac.PermOrgView); err != nil {

@@ -5798,8 +5798,8 @@ export interface paths {
         get: operations["listK8sNamespaceRules"];
         put?: never;
         /**
-         * Expose every Service in one namespace, now and as Services are added (K8N-4; human k8s:manage)
-         * @description Records the opt-in for one namespace and applies it each time the cluster's gateway reports its Services. Exposure gives a Service an address and a name; it never grants access. 400 namespace_not_eligible for kube-system, kube-public, kube-node-lease and Tunnex's own namespaces; 409 namespace_rule_exists. excluded_services names Services of the namespace the rule must not expose. selector limits the rule to Services whose labels equal every key=value pair; it needs a gateway that reports labels, and a rule with a selector never falls back to the whole namespace (status gateway_too_old).
+         * Expose every Service in one namespace, now and as Services are added (K8N-4; k8s:manage)
+         * @description Records the opt-in for one namespace and applies it each time the cluster's gateway reports its Services. Exposure gives a Service an address and a name; it never grants access. 400 namespace_not_eligible for kube-system, kube-public, kube-node-lease and Tunnex's own namespaces; 409 namespace_rule_exists. excluded_services names Services of the namespace the rule must not expose. selector limits the rule to Services whose labels equal every key=value pair; it needs a gateway that reports labels, and a rule with a selector never falls back to the whole namespace (status gateway_too_old). A rule created with the GitOps operator's machine credential is marked managed_by_operator.
          */
         post: operations["createK8sNamespaceRule"];
         delete?: never;
@@ -5823,15 +5823,15 @@ export interface paths {
         put?: never;
         post?: never;
         /**
-         * Remove a namespace rule, keeping or withdrawing the exposures it created (K8N-4; human k8s:manage)
-         * @description exposures=keep leaves the rule's exposures in place as ordinary dashboard exposures. exposures=withdraw withdraws every one in the same step; access rules that pointed at them are kept and allow nothing. If any one cannot be withdrawn nothing is changed.
+         * Remove a namespace rule, keeping or withdrawing the exposures it created (K8N-4; k8s:manage)
+         * @description exposures=keep leaves the rule's exposures in place as ordinary dashboard exposures. exposures=withdraw withdraws every one in the same step; access rules that pointed at them are kept and allow nothing. If any one cannot be withdrawn nothing is changed. A person may remove a rule the operator declares (the operator creates it again while its resource exists); the operator's credential may remove only rules it created (409 rule_not_managed_by_operator).
          */
         delete: operations["deleteK8sNamespaceRule"];
         options?: never;
         head?: never;
         /**
-         * Change which Services a namespace rule leaves out or selects (K8N-4; human k8s:manage)
-         * @description excluded_services replaces the rule's exclusion list. The rule stops exposing an excluded Service and withdraws the exposures it made for one on the pass that runs with this call, without the wait that applies to a vanished Service; access rules that pointed at them are kept and allow nothing. A name taken off the list is exposed again as a new exposure. Like every pass this needs a current Service report: without one the change is stored and applied on the gateway's next report. Exposures made by hand or by the operator are never touched. selector replaces the label selector ({} clears it): Services that now match are exposed on this pass; Services that no longer match are withdrawn after the same 10-minute wait as a Service that is gone.
+         * Change which Services a namespace rule leaves out or selects (K8N-4; k8s:manage)
+         * @description excluded_services replaces the rule's exclusion list. The rule stops exposing an excluded Service and withdraws the exposures it made for one on the pass that runs with this call, without the wait that applies to a vanished Service; access rules that pointed at them are kept and allow nothing. A name taken off the list is exposed again as a new exposure. Like every pass this needs a current Service report: without one the change is stored and applied on the gateway's next report. Exposures made by hand or by the operator are never touched. selector replaces the label selector ({} clears it): Services that now match are exposed on this pass; Services that no longer match are withdrawn after the same 10-minute wait as a Service that is gone. 409 managed_by_operator when a person edits a rule a TunnexNamespaceExposure resource declares; 409 rule_not_managed_by_operator when the operator's credential is asked to change a rule made in Tunnex.
          */
         patch: operations["updateK8sNamespaceRule"];
         trace?: never;
@@ -10967,6 +10967,8 @@ export interface components {
             /** @description Services of the namespace this rule never exposes, sorted by name. */
             excluded_services: string[];
             selector: components["schemas"]["K8sNamespaceRuleSelector"];
+            /** @description True when a TunnexNamespaceExposure resource declares this rule (it was created with the operator's machine credential). It is edited only through that resource. */
+            managed_by_operator: boolean;
             /**
              * @description applied = fully applied on the last pass. Anything else: the rule is not fully applied and status_message says why.
              * @enum {string}
