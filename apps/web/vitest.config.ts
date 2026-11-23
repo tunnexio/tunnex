@@ -34,7 +34,7 @@ export default defineConfig({
   test: {
     projects: [
       { test: { name: "unit", environment: "node", include: ["test/**/*.test.ts"], exclude: activeTestExclusions } },
-      { test: { name: "components", environment: "jsdom", include: ["test/**/*.test.tsx"], exclude: activeTestExclusions } },
+      { test: { name: "components", environment: "jsdom", include: ["test/**/*.test.tsx"], exclude: activeTestExclusions, setupFiles: ["test/flush-on-teardown.ts"] } },
     ],
   },
 });
