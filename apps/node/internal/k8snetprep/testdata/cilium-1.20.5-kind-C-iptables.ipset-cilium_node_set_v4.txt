@@ -1,0 +1,2 @@
+create cilium_node_set_v4 hash:ip family inet hashsize 1024 maxelem 65536 bucketsize 12 initval 0xecc1fd8d
+add cilium_node_set_v4 172.21.0.2

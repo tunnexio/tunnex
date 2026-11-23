@@ -5,7 +5,7 @@ Story branch: `story/kubernetes-next`, work branch `k8n/cilium`. Second half of 
 
 Facts about Cilium come from its documentation and from its source at tag `v1.20.5` (the release
 the "stable" docs describe today); each carries a reference like [D1] or [S3], listed at the end.
-One configuration was then run on a real node; what that confirmed is in "Live capture,
+Three configurations were then run on a real node; what that confirmed is in "Live capture,
 2026-11-23" and is marked [L]. Anything confirmed neither way is in "Not confirmed".
 
 ## What happens today
@@ -14,7 +14,14 @@ The host-posture check must prove, before the gateway carries traffic, that **no
 can rewrite the source address of a packet bound for the tunnel range**. `k8snetprep/observed.go`
 does that by reading every rule reachable from `ip nat POSTROUTING`.
 
-On a Cilium node, reading the code against Cilium's rule shapes [S5][S6], the expected result is:
+**Corrected by the live capture: on this branch a Cilium node is no longer refused. The rule
+check reports all three captured nodes ready as `observed_cni`, including the eBPF-masquerade
+node on which a pod's packet to the device range was seen rewritten [L]. The mangle hook is
+accepted since K8N-1 taught the check to prove it sets no reserved mark, and Cilium's chains are
+empty in eBPF mode. The "false ready" below is therefore the normal case today, not a corner
+case, and wiring step 3 is what closes it.** The original reading, kept for the record:
+
+On a Cilium node, reading the code against Cilium's rule shapes [S5][S6], the expected result was:
 
 - **Refused, without naming a NAT chain.** Cilium hooks its own `CILIUM_POST_mangle` chain into
   `mangle POSTROUTING` [S6]. `validateHookCoverage` refuses any postrouting hook it does not know
@@ -229,8 +236,9 @@ Nothing calls them yet.
   `cilium.go` is executed. The status fixtures are written from the API model [S2] and the map
   dumps from `bpftool`'s source [S9]; none is captured.
 - From the live capture: `cilium_live_test.go` runs the captured status, device list, chain list,
-  pinned-map list and `bpftool` output of one eBPF-masquerade node through the same functions, and
-  `cilium_live_linux_test.go` runs today's hook check on the captured ruleset.
+  pinned-map list and `bpftool` output of the three configurations through the same functions
+  (A refused, B proved by the map entry, C deferring to the walk), and
+  `cilium_live_linux_test.go` runs today's whole rule check on the captured rulesets.
 - With the wiring: fixtures captured on real nodes (below) replace the written ones; Flannel,
   kube-proxy, GKE, EKS and Calico fixtures must pass unchanged; a Flannel node must report no
   `cilium_masquerade` adapter.
@@ -264,16 +272,17 @@ Items settled by the live capture moved to "Live capture, 2026-11-23". Still ope
    whether `anetd` uses the same socket path, status fields, map name and pin path.
 2. AKS: which masquerade settings AKS chooses, and whether its own ip-masq-agent is present.
 3. Cilium older than v1.20.5 (AKS ships 1.16 to 1.19 [D3]): same status fields, map name and layout.
-4. The `cilium_ipmasq_v4` map itself: never dumped on a real node. Its pin path, the byte order of
-   its key as `bpftool` prints it, and the status with `ip-masq-agent` true are still from source.
-5. The status and rules in iptables masquerade mode, and the nft JSON form of Cilium's masquerade
-   rules (interface wildcards, mark and conntrack matches). The capture has eBPF mode only, where
-   `CILIUM_POST_nat` and `CILIUM_POST_mangle` are empty.
-6. Whether Cilium removes a pinned map when its feature is turned off. Only the first half is
-   known: on a node where the ip-masq-agent was never on, the map is not pinned [L].
+4. Tunnel routing mode (the capture is native routing only), eBPF masquerade with kube-proxy still
+   present, and a multi-node cluster.
+5. A big-endian host. The key's prefix length is in host byte order; only arm64 was captured.
+6. Whether a pin can outlive its feature in other ways (agent not restarted, agent crash, an
+   egress-gateway map). Seen once: ip-masq-agent off plus an agent restart removes the pin [L].
 7. A host whose Cilium uses legacy iptables: `nft` would not show those rules at all. This is a
    general gap in the walk, not specific to Cilium. (The kind node uses the nf_tables backend.)
-8. The customer command for turning the ip-masq-agent on, which was not run.
+8. The exact customer command of "What the customer does" (`--reuse-values --set ...`). The
+   capture used a values file with the same three settings, which worked.
+9. Traffic opened from a device towards a pod or Service, and the reply. Only a pod's own packet
+   to the device range was observed.
 
 ## Open questions
 
@@ -345,88 +354,129 @@ item.
 
 ## Live capture, 2026-11-23
 
-One node, one configuration. `kind` v0.31.0, node image `kindest/node:v1.35.0`, Docker Desktop
+One node, three configurations. `kind` v0.31.0, node image `kindest/node:v1.35.0`, Docker Desktop
 kernel `6.8.0-117-generic` (arm64), no default CNI, no kube-proxy. Cilium **1.20.5** by Helm:
 `kubeProxyReplacement=true`, `routingMode=native`, `ipv4NativeRoutingCIDR=10.244.0.0/16`,
-`autoDirectNodeRoutes=true`, `ipam.mode=kubernetes`, `bpf.masquerade=true`, ip-masq-agent off. eBPF
-masquerade works on this kernel. Everything was read from a separate pod (Alpine 3.24.2, host
-network, privileged, root, `RuntimeDefault` seccomp profile requested) with **read-only** host
-mounts of `/var/run/cilium` and `/sys/fs/bpf`, using `curl`, `bpftool` v7.8.0, `nft` 1.1.6 and
-`iptables-nft-save` 1.8.13. The files are in
-`apps/node/internal/k8snetprep/testdata/cilium-1.20.5-kind-A-bpf.*`.
+`autoDirectNodeRoutes=true`, `ipam.mode=kubernetes`, and:
 
-The run was stopped for lack of disk on the development machine before the ip-masq-agent
-configuration and the iptables masquerade configuration were installed. Nothing below speaks for
-them, for GKE Dataplane V2 or for AKS.
+- **A** `bpf.masquerade=true`, ip-masq-agent off.
+- **B** A plus `ipMasqAgent.enabled=true`, `nonMasqueradeCIDRs: [100.96.0.0/24]`,
+  `masqLinkLocal: true`. Then the ip-masq-agent was turned off again and the agent restarted.
+- **C** `bpf.masquerade=false` (iptables masquerade), ip-masq-agent off.
+
+eBPF masquerade works on this kernel. Everything was read from a separate pod (Alpine 3.24.2, host
+network, privileged, root, `RuntimeDefault` seccomp profile requested) with **read-only** host
+mounts of `/var/run/cilium` and `/sys/fs/bpf`, using `curl`, `bpftool` v7.8.0, `nft` 1.1.6,
+`iptables-nft-save` 1.8.13 and `ipset`. A `wg0` of type `wireguard` with `100.96.0.1/24` and no
+peer stood in for the tunnel; a pod pinged `100.96.0.5` and `tcpdump` on `wg0` showed the source.
+The files are in `apps/node/internal/k8snetprep/testdata/cilium-1.20.5-kind-*`. Nothing below
+speaks for GKE Dataplane V2 or AKS.
+
+| | Status `masquerading` | `cilium_ipmasq_v4` | Pod packet on `wg0` | Cilium proof, range `100.96.0.0/24` | Rule check today |
+| --- | --- | --- | --- | --- | --- |
+| A | `mode: BPF`, no `ip-masq-agent` | not pinned | source `100.96.0.1` (rewritten) | refused | **ready** |
+| B | `mode: BPF`, `ip-masq-agent: true` | pinned, one entry | source is the pod's | proved by the map entry | ready |
+| B, agent off again | as A | pin removed | rewritten again | refused | not run |
+| C | `mode: iptables`, no `ip-masq-agent` | not pinned | source `100.96.0.1` (rewritten) | defers to the walk | ready |
 
 Confirmed [L]:
 
 - **Status.** `GET /v1/healthz` returns the `masquerading` object exactly as modelled:
-  `enabled`, `enabledProtocols.ipv4`, `mode` `"BPF"`, `snat-exclusion-cidr` and
-  `snat-exclusion-cidr-v4` (both the native-routing range); `ip-masq-agent` is omitted when false;
-  there is no `stale` member. `parseCiliumStatus` reads it unchanged. No change to `cilium.go` was
-  needed.
+  `enabled`, `enabledProtocols.ipv4`, `mode` (`"BPF"` or `"iptables"`), `ip-masq-agent` (present
+  only when true), `snat-exclusion-cidr` and `snat-exclusion-cidr-v4` (both the native-routing
+  range, in every configuration); there is no `stale` member. `parseCiliumStatus` reads all three.
+- **Map dump.** `bpftool --json map dump pinned /sys/fs/bpf/tc/globals/cilium_ipmasq_v4` printed
+  `[{"key":["0x18","0x00","0x00","0x00","0x64","0x60","0x00","0x00"],"value":["0x00"]}]`: the
+  prefix length as a little-endian 32-bit number, then the address, and a one-byte value, as
+  `decodeCiliumIPMasqKeys` assumed. This map has no `formatted` member. `bpftool map show` reports
+  it as `lpm_trie`, key 8 bytes, value 1 byte, `max_entries` 16384, kernel name `cilium_ipmasq_v`.
+  With `masqLinkLocal: true` the map holds only the listed range. `cilium-dbg bpf ipmasq list`
+  inside the agent's pod showed the same single range.
+- **The exclusion is real.** With the range in the map the pod's packet left `wg0` unchanged; with
+  the map gone it was rewritten to the node's `wg0` address.
+- **Turning the ip-masq-agent off removes the pin**, after the agent restart that the change needs.
+  A map that was never enabled is not pinned either. `bpftool` then prints
+  `{"error":"bpf obj get (<path>): No such file or directory"}` on standard output and exits 255;
+  the parser refuses that as a map.
 - **Socket.** `/var/run/cilium/cilium.sock`, mode `0660 root:root`, directory `0755`. Root in
   another pod connects through a read-only host-path mount (HTTP 200); the mount refuses writes.
 - **Seccomp.** A privileged container has no seccomp filter even when `RuntimeDefault` is asked
   for (`Seccomp: 0` in `/proc/self/status`), and `bpf()` works.
-- **bpftool through a read-only mount of `/sys/fs/bpf`.** It opens and dumps a pinned map
-  (`cilium_runtime_config` was dumped). Each entry is an object with `key` and `value` as arrays
-  of `"0xNN"` strings plus `formatted`, the shape `parseBPFToolMapDump` expects. A path that is
-  not pinned prints `{"error":"bpf obj get (<path>): No such file or directory"}` on standard
-  output and exits 255; the parser refuses it (fixture `ipmasq-v4.bpftool.json`).
-- **Kernel map names are cut to 15 characters**: `bpftool map show pinned
-  .../cilium_snat_v4_external` reports the name `cilium_snat_v4_`. Only the pin path identifies a
-  map.
-- **The ip-masq-agent map is not pinned when the feature was never on.** Of 43 pins under
-  `/sys/fs/bpf/tc/globals`, none is `cilium_ipmasq_v4`.
+- **Kernel map names are cut to 15 characters** (`cilium_snat_v4_`, `cilium_ipmasq_v`). Only the
+  pin path identifies a map.
 - **Egress gateway off: no `cilium_egress_gw_policy_v4*` pin.** A map named
   `cilium_egresscall_policy` is always pinned and is unrelated; the prefix test does not match it.
-- **Today's refusal.** Cilium's feeder rule makes iptables create the base chain
-  `ip mangle POSTROUTING` (type `filter`, priority -150). That base chain, not
-  `CILIUM_POST_mangle`, is the hook `validateHookCoverage` does not know. Its only rule is an
-  opaque `xt` comment match and a jump to `CILIUM_POST_mangle`, which is empty in eBPF mode.
-  (Derived from the captured ruleset; the test for it compiles for Linux but has not been run.)
-- **NAT in eBPF mode with kube-proxy replaced.** `ip nat POSTROUTING` has one Cilium rule, an
-  `xt` comment match and a jump to an empty `CILIUM_POST_nat`. `CILIUM_PRE_nat` and
-  `CILIUM_OUTPUT_nat` exist too. The other NAT rules on the node are kind's own DNS rules.
+- **Hooks.** Cilium's feeder rule makes iptables create the base chain `ip mangle POSTROUTING`
+  (type `filter`, priority -150) with one rule: an opaque `xt` comment match and a jump to
+  `CILIUM_POST_mangle`. That chain is **empty in all three configurations**, so the mangle mark
+  proof passes without reading any saved text.
+- **eBPF mode rules.** `ip nat POSTROUTING` has one Cilium rule, an `xt` comment match and a jump
+  to an empty `CILIUM_POST_nat`. The walk reads it and finds nothing.
+- **iptables mode rules** (`CILIUM_POST_nat`, as saved):
+
+      -s 10.244.0.0/24 -m set --match-set cilium_node_set_v4 dst -j ACCEPT
+      -s 10.244.0.0/24 ! -d 10.244.0.0/16 ! -o cilium_+ -j MASQUERADE
+      -m mark --mark 0xa00/0xe00 -j ACCEPT
+      -s 127.0.0.1/32 -o cilium_host -j SNAT --to-source <cilium_host address>
+      -o cilium_host -m mark --mark 0xf00/0xf00 -m conntrack --ctstate DNAT -j SNAT --to-source <same>
+
+  In nft JSON: `oifname != "cilium_*"` for the wildcard, `oifname == "cilium_host"`, the marks as
+  `meta mark & mask == value`, and `set`, `conntrack`, `comment`, `MASQUERADE`, `SNAT` as opaque
+  `xt` descriptors. **Today's walk accepts this node** for `100.96.0.0/24` with `wg0` as the
+  tunnel interface: the masquerade is limited to the node's pod range as its source, and both
+  `SNAT` rules are bound to the exact interface `cilium_host`. It reads no set (the set match is
+  on an `ACCEPT`). It refuses when the tunnel interface is unknown or is `cilium_host`, and when
+  the tunnel range contains the node's pod range and reaches outside `10.244.0.0/16`.
+- **The accepted masquerade is not idle.** In C the pod's packet to `100.96.0.5` left `wg0`
+  rewritten, by the pod-source rule the walk accepts. That is the same exception the walk grants
+  Flannel, and the opposite of the by-destination rule this paper sets for eBPF mode: a device
+  sees the node's address, not the pod's, for connections a pod opens. Whether that asymmetry is
+  wanted is a question for the founder, not settled here.
 - **iptables backend** on the kind node is nf_tables (`iptables v1.8.9 (nf_tables)`); the legacy
   tables hold no rules.
-- **Cilium attaches to the WireGuard interface.** Two seconds after a `wg0` of type `wireguard`
-  with `100.96.0.1/24` came up, the agent logged `Devices changed ... [eth0 wg0]`, attached
-  `cil_from_netdev` and `cil_to_netdev` to it with tcx, and listed it in the status. It also made
-  the `wg0` address a NodePort address.
-- **And it does rewrite.** A pod (`10.244.0.10`) pinging `100.96.0.5` was seen on `wg0` with
-  source `100.96.0.1`. With the range outside the native-routing range and no ip-masq-agent, the
-  refusal by `proveCiliumNoTunnelMasquerade` describes a real rewrite.
+- **Cilium attaches to the WireGuard interface**, in every configuration including iptables
+  masquerade. Two seconds after `wg0` came up the agent logged `Devices changed ... [eth0 wg0]`,
+  attached `cil_from_netdev` and `cil_to_netdev` to it with tcx, and listed it in the status. It
+  also made the `wg0` address a NodePort address.
 
-Refuted: nothing. No field name, encoding or shape seen differs from what `cilium.go` assumed.
+Refuted:
+
+- **"A Cilium node is refused today."** True when the paper was written; no longer true on this
+  branch. See the correction under "What happens today".
+- **"iptables masquerade mode would be refused by the walk"** (output interface not read). The
+  walk now reads exact `oifname` conditions and accepts the real rules.
+- Nothing in `cilium.go`: no field name, key encoding or JSON shape seen differs from what it
+  assumed, and it is unchanged.
 
 ## Wiring checklist, corrected by the live capture
 
-The six steps of "Wiring still to do" stand. Corrections and additions:
+Of the six steps in "Wiring still to do", steps 1 and 2 are already done on this branch by K8N-1
+(mangle mark proof, exact `oifname`) and hold on the real Cilium rules. What remains, in order:
 
-1. **Hook coverage.** The chain to admit is the base chain `ip mangle POSTROUTING` (type
-   `filter`, priority -150), then the `CILIUM_POST_mangle` it jumps to. Accept only: one rule in
-   the base chain, an `xt` comment match plus that jump, and a target chain that is empty or
-   proved not to set a reserved mark. Non-empty contents are not yet captured (iptables mode).
-2. **The walk must read an `xt` comment match in front of a jump** in `ip nat POSTROUTING`
-   (`cilium-feeder: CILIUM_POST_nat`), as it appears in nft JSON with no text. Whether today's
-   walk accepts it was not run, because the hook check refuses first; run the captured ruleset
-   through it once step 1 is in.
-3. **Detection inputs.** Link names from `ip -o link` carry a peer suffix
-   (`cilium_net@cilium_host`); the prefix test holds, but strip the suffix where names are
-   compared exactly. The pinned-map list is `/sys/fs/bpf/tc/globals`; `/sys/fs/bpf/cilium/devices`
-   also names every device with a program, including `wg0`.
-4. **Reader.** Root, read-only mounts of `/var/run/cilium` and `/sys/fs/bpf`, nothing else. Treat
-   `bpftool` exit status and output together: an `{"error":...}` object is a read error, to be
-   carried in the receipt as such, never as an empty map. When the status says the ip-masq-agent
-   is off, a missing pin is expected and is not an error.
-5. **Egress detection** stays an exact prefix test on `cilium_egress_gw_policy_v4`; do not widen
+1. **Guard first** (`aws_linux.go`, `reconcileWithAuthority`). Until it exists, every Cilium node
+   with eBPF masquerade is reported ready whatever the device range. After the snapshot, call
+   `ciliumPresent`; the `ip nat` chain names the check already holds are enough to see Cilium
+   (`CILIUM_POST_nat` is there in all three configurations), so detection needs no new read. If
+   present and there is no fresh receipt: refuse. A guard that only refuses can ship before the
+   reader does, and returns Cilium nodes to "not ready" in the meantime.
+2. **Reader and receipt** (`hostposture`). Root, read-only mounts of `/var/run/cilium` and
+   `/sys/fs/bpf`, nothing else. One `GET /v1/healthz`; list `/sys/fs/bpf/tc/globals`; dump
+   `cilium_ipmasq_v4` only when the status says `ip-masq-agent` is true. Treat `bpftool`'s exit
+   status and output together: an `{"error":...}` object is a read error, carried in the receipt
+   as such, never as an empty map. With the ip-masq-agent off a missing pin is expected.
+3. **Decision in the gateway.** `proveCiliumNoTunnelMasquerade`, then: mode `iptables` → the rule
+   walk's result stands (it accepts the real rules); mode `BPF` → both must hold, and the walk
+   always holds there because Cilium's chains are empty.
+4. **Egress detection** stays an exact prefix test on `cilium_egress_gw_policy_v4`; do not widen
    it to `cilium_egress`, which would match `cilium_egresscall_policy` on every node.
-6. **Image.** Alpine 3.24's `bpftool` package (binary reports v7.8.0) reads the pins.
-7. **Before wiring**, repeat the capture for the two configurations that did not run: ip-masq-agent
-   on with the device range listed (dump of `cilium_ipmasq_v4`, status with `ip-masq-agent` true,
-   then off again to see whether the pin stays), and iptables masquerade mode.
-8. **Outside this item, to raise:** Cilium serves NodePort on the `wg0` address once it selects
-   the device.
+5. **Detection inputs.** Link names from `ip -o link` carry a peer suffix
+   (`cilium_net@cilium_host`); the prefix test holds, but strip the suffix where names are
+   compared exactly.
+6. **Chart and image** as planned. Alpine 3.24's `bpftool` package (binary reports v7.8.0) reads
+   the pins; a privileged container needs no seccomp exception.
+7. **Freshness.** The map changes without an agent restart when the ConfigMap changes, and the pin
+   disappears when the feature is turned off; in both cases traffic was rewritten again at once.
+   The receipt must be re-read every interval and a stale one refused, as planned.
+8. **To raise outside this item:** Cilium serves NodePort on the `wg0` address once it selects the
+   device; and in iptables mode a pod's own connection to a device is masqueraded, which the walk
+   accepts (see "The accepted masquerade is not idle").
