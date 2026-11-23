@@ -105,6 +105,9 @@ export default function Setup() {
                 {row.operationalState !== "healthy" && <Link className="setup-text-link" to={destination(`/gateways/${row.id}?tab=health`)}>Check gateway health</Link>}
               </div>)}
               {networkTask && <p>Use a gateway at each location, or a supported cloud VPN.</p>}
+              {/* A cluster is reached by a gateway that runs INSIDE it, installed with the CLI. Without
+                  saying so, this step sends a Kubernetes customer to enrol a VM they do not need. */}
+              {clusterTask && <p>For Kubernetes the gateway runs inside your cluster, one per cluster. Install it with the Tunnex CLI and it appears in this list. <Link className="setup-text-link" to={destination("/kubernetes?section=operations")}>See the install command →</Link></p>}
               <div className="setup-actions">
                 {inventory.canEnroll && !enrolling && <Button variant={gateways.length ? "ghost" : "primary"} onClick={() => setEnrolling(true)}>{gateways.length ? "Add another gateway" : "Register a gateway"}</Button>}
                 {!enrolling && <RefreshButton label="Refresh gateway status" onClick={refresh} />}
@@ -116,7 +119,7 @@ export default function Setup() {
                 {currentRanges === null ? <p>Loading private networks…</p> : currentRanges.error ? <><ErrorText>{currentRanges.error}</ErrorText><Button variant="ghost" onClick={() => setAttempt(value => value + 1)}>Retry private networks</Button></> : currentRanges.values.length ? <><p>Your configured private ranges:</p><div className="flex flex-wrap gap-2">{currentRanges.values.map(range => <span className="setup-range" key={range}>{range}</span>)}</div></> : <p>Add the private IP ranges employees need. Normal internet traffic stays on their own connection.</p>}
                 {gateways.length ? <Link className="setup-primary-link" to={destination("/network/setup")}>Set up a private network →</Link> : <div className="setup-help"><p>Register a gateway before adding a private network.</p><Button variant="ghost" onClick={() => goToStep(1)}>Go to gateway step</Button></div>}
                 <Link className="setup-text-link" to={destination("/routed-ranges")}>Review all routed ranges →</Link>
-              </> : networkTask ? <><p>Choose the two locations and the private ranges to connect.</p><Link className="setup-primary-link" to={destination("/site-to-site")}>Open connection setup →</Link></> : <><p>Connect your cluster, then select the private services users can reach.</p><Link className="setup-primary-link" to={destination("/kubernetes")}>Open Kubernetes setup →</Link><p className="setup-note">Your Tunnex Server stays where it is.</p></>}
+              </> : networkTask ? <><p>Choose the two locations and the private ranges to connect.</p><Link className="setup-primary-link" to={destination("/site-to-site")}>Open connection setup →</Link></> : <><p>Register the cluster with the gateway you installed in it, then choose the Services people may reach.</p><Link className="setup-primary-link" to={destination("/kubernetes?section=operations")}>Open Kubernetes setup →</Link><p className="setup-note">Your Tunnex Server stays where it is.</p></>}
             </>}
             {step === 3 && <>
               {networkTask ? <><p>Check routes, gateway forwarding and cloud firewall rules on both sides.</p><Link className="setup-primary-link" to={destination("/site-to-site")}>Review connection settings →</Link></> : <>
