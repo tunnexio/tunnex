@@ -31,6 +31,13 @@ const (
 	AWSTransitOwnedRuleComment                = "tunnex_k8s_aws_snat_transit_bypass"
 )
 
+// APIReturnRuleComment marks the one source-NAT rule besides the device-pool
+// rule that the gateway may hold in `ip tunnex postrouting` (K8N-3, "Return path
+// for the API server"): a masquerade of the flows forwarded to the cluster's
+// API server. The egress renderer writes it; validateTunnexPostrouting accepts
+// the marker on that exact shape only.
+const APIReturnRuleComment = "tunnex_k8s_api_return"
+
 // AuthorityGuard holds the node-local operation lock and validates the current
 // correlated manager authority. The caller holds the returned release function
 // across observation AND mutation. Lock order is guard, then Reconciler.mu.

@@ -746,19 +746,22 @@ replaced together.
 - *API access turned off, the mapping removed, or no ready endpoint.* The next pass renders the table
   without the rule. The atomic replacement removes it together with the rewrite. Nothing is deleted
   rule by rule.
-- *Gateway stopped normally.* Shutdown already reduces both `tunnex` tables to the ownership marker.
-  The rule goes with everything else.
+- *Gateway stopped normally.* Shutdown already flushes both `tunnex` tables and writes back only the
+  ownership marker. The rule goes with every other rule.
 - *Emergency withdrawal* (`EmergencyWithdrawK8s`) flushes the rewrite chain only. The return rule stays
   until the next full pass. Without its rewrite nothing is forwarded to the API server, so the rule
   grants nothing; the check still accepts it.
 - *Gateway killed.* The rule is left in the kernel until the next gateway process replaces the table.
 - *Downgrade to a build that does not know the rule.* An older check refuses the rule wherever it
-  reads it. Read in the code before this change: every fatal check sits inside `Manager.Reconcile`,
-  after that build has replaced the table with its own rendering, which has no such rule. The single
-  read of a leftover table before the first replacement (`ResolveK8sVIPs`) only logs
-  `k8s_netprep_reconcile_failed`. So an older build is expected to remove a leftover rule on its first
-  pass and not to crash-loop on it. The crash loop of the first attempt was a build refusing the rule
-  it rendered itself, which is a different thing.
+  reads it. In the code before this change every fatal check sits inside `Manager.Reconcile`, after
+  that build has replaced the table with its own rendering, which has no such rule. The single read of
+  a leftover table before the first replacement (`ResolveK8sVIPs`) only logs
+  `k8s_netprep_reconcile_failed`. So an older build removes a leftover rule on its first pass and does
+  not crash-loop on it. This was run, once, by hand: the code at `ad59275f`, in a container, over a
+  kernel that held the table of the new build with API access still on. Its check refused the table
+  (`unknown Tunnex source-NAT rule`, not ready), its first pass replaced the table, the OpenVPN stage of
+  the startup pass succeeded, and it was ready with only the device-pool rule left. The crash loop of
+  the first attempt was a build refusing the rule it rendered itself, which is a different thing.
 - *Before a downgrade:* turn API access off for the cluster. Not because of the leftover rule, but
   because an older gateway still receives the mapping (no artifact version change) and forwards to the
   API server with no return path: `kubectl` times out for every device outside the gateway's own range
@@ -771,6 +774,33 @@ A site that turns on the site-LAN option and also has an in-cluster gateway with
 meet the same refusal as the first attempt did. That is a separate defect and is not fixed here. In the
 other direction, the IPsec desktop recipe (`ipsec/runtime_desktop_nat_pending.go`) accepts only its own
 exemptions followed by the device-pool rule, so it refuses a chain that also holds an API return rule.
+
+Seen while verifying, not caused by this change and not touched: after a normal stop the flushed
+`ip tunnex` table keeps its chains, and one of them is `forward`, hooked, with policy drop and no rule.
+In a container (nft 1.1.6) a router that forwarded between two plain interfaces before and with the
+gateway's table dropped that traffic after the marker-only table was loaded. If a node behaves the
+same, pod traffic through a node is dropped from the moment its gateway stops until a gateway loads
+the table again or the table is removed. Not looked into further.
+
+**As built, and what was run.** Substitute, not satisfied: no cluster.
+
+- Renderer: `k8sAPIReturnRules` in `egress/egress_linux.go`, from the resolved mappings flagged as the
+  API's (`dnat_linux.go`). Check: `validateTunnexPostrouting` in `k8snetprep/aws_linux.go`. The marker
+  is one constant, `k8snetprep.APIReturnRuleComment`, used by both.
+- The check's fixtures (`k8snetprep/testdata/k8n3-api-return*.nft-ruleset.json`) are a kernel's own
+  listing of the renderer's own output, saved next to that output (`*.rendered.nft`). A test in the
+  egress package fails if the NAT chain is ever rendered differently from what the check was proved on.
+- `TestK8sAPIReturnPathKernel` (egress package, opt-in, privileged container, own network namespaces)
+  runs the real manager, real `nft`, the real check on that kernel's JSON, and real packets. Without the
+  rule the request reaches a control plane that has no route to the device and the call times out; with
+  it the answer returns and the control plane sees the node's address; a Service next to it still sees
+  the device's address. A second gateway process over the first one's table passes the check before
+  loading anything and passes the startup order that crash-looped the first attempt. Four foreign rules
+  written into the live chain are each refused with the expected reason. With an OpenVPN interface the
+  set form is accepted. With API access off the rule is gone and the address no longer answers.
+- What that is not: wg0 is a veth, the control plane is a TCP listener, the node has no CNI rules, there
+  is no TLS, no `kubectl` and no control plane of ours. The startup order is the manager's calls in the
+  order `cmd/agent` makes them, not the agent binary.
 
 **Still not confirmed.** Nothing here has run on GKE or any other cluster. To walk: the device's call
 returns the API server's answer; `kubectl get`, `exec`, `logs -f`; the same after a gateway restart

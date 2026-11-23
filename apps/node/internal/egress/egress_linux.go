@@ -753,6 +753,7 @@ func (m *Manager) rulesetWith(subnet string, pol *nodepolicy.Compiled) string {
 		masq = m.desktopNATRules(subnet) + fmt.Sprintf("    ip saddr %s %s masquerade\n", subnet, ifClause("oifname", tun, true))
 	}
 	masq += siteLANMasqueradeRules(pol, tun)
+	masq += m.k8sAPIReturnRules(tun)
 	if subnet6 := wgSubnet6(context.Background(), m.wgIface); subnet6 != "" {
 		masq6 = fmt.Sprintf("    ip6 saddr %s %s masquerade\n", subnet6, ifClause("oifname", tun, true))
 	}
@@ -1845,4 +1846,51 @@ func siteLANMasqueradeRules(pol *nodepolicy.Compiled, tun []string) string {
 		fmt.Fprintf(&out, "    ip saddr %s %s masquerade comment \"tunnex_site_lan_masquerade\"\n", c, ifClause("oifname", tun, true))
 	}
 	return out.String()
+}
+
+// k8sAPIReturnRules renders one masquerade per tunnel address that is forwarded to the cluster's API
+// server (K8N-3, docs/K8N-3-kubectl-access.md "Return path for the API server").
+//
+// A Service's pods answer a device directly, because every node carries a return route to the tunnel
+// range. The API server of a managed cluster is not a node: it has no such route, so its reply to a
+// device that is outside this gateway's own tunnel range is lost and kubectl times out (seen on GKE: the
+// request reached the API server's address, nothing came back). Leaving through the node's own address
+// is the only return path that exists, and it is what K8N-3 states: the cluster sees every Tunnex user as
+// the gateway node.
+//
+// The match is the flow's ORIGINAL destination, so it covers the forwarded API flows and no Service flow.
+// Tunnel-bound traffic is excluded exactly as in the device-pool rule. Rendered from the same resolved
+// snapshot as the DNAT chain, so the two appear and disappear together in one atomic table replace.
+//
+// THE SHAPE IS A CONTRACT. k8snetprep's validateTunnexPostrouting reads this chain back from the kernel
+// on every pass, at startup fatally, and refuses any rule that is not exactly the device-pool rule or
+// exactly this one, marker included. Change both or neither.
+func (m *Manager) k8sAPIReturnRules(tun []string) string {
+	rs := m.resolvedVIPs.Load()
+	if rs == nil {
+		return ""
+	}
+	seen := map[string]struct{}{}
+	var vips []string
+	for _, r := range *rs {
+		if !r.apiServer {
+			continue
+		}
+		// resolvedVIPs are classifier-validated; parse and re-emit anyway because this is root ruleset text.
+		a, err := netip.ParseAddr(r.vip)
+		if err != nil || !a.Is4() {
+			continue
+		}
+		if _, dup := seen[a.String()]; dup {
+			continue
+		}
+		seen[a.String()] = struct{}{}
+		vips = append(vips, a.String())
+	}
+	sort.Strings(vips) // byte-stable → a steady-state reconcile renders the same text
+	var b strings.Builder
+	for _, vip := range vips {
+		fmt.Fprintf(&b, "    ct original ip daddr %s %s masquerade comment \"%s\"\n", vip, ifClause("oifname", tun, true), k8snetprep.APIReturnRuleComment)
+	}
+	return b.String()
 }
