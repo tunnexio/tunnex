@@ -537,3 +537,23 @@ Read 2026-11-23.
 - [S13] Kubernetes blog, Streaming transitions from SPDY to WebSockets (1.31):
   https://kubernetes.io/blog/2024/08/20/websockets-transition/
 - [S14] k3s, server CLI reference: https://docs.k3s.io/cli/server
+
+## Founder ruling, 2026-11-23
+
+"Do the recommended." Recorded against the decisions above, where the paper made a recommendation:
+
+- Stage 1 (network reach only, no cluster identity held by Tunnex) goes ahead as written.
+- Grants are for people and groups only. Sites, address ranges and AI agents are not grantable in
+  stage 1.
+- A separate `k8s_api:manage` permission, not `k8s:manage`.
+- Tunnex never generates a kubeconfig that contains a credential.
+- New exposures of `default/kubernetes` as an ordinary Service are refused; existing ones are left in
+  place and not converted.
+
+Still open, because the paper made no recommendation and only the founder can decide: which edition
+carries the feature, whether "no MFA at the moment of use" is acceptable for stage 1, the stage 2
+trust model, and priority against the other items. The one-day manual walk on real clusters comes
+before any stage 1 code, as the paper says.
+
+Naming: the identity-mapping paper this document calls "K8N-4" will be K8N-5. K8N-4 is
+`docs/K8N-4-expose-by-namespace.md`.
