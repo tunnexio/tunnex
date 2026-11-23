@@ -123,7 +123,7 @@ export default function Setup() {
             </>}
             {step === 3 && <>
               {networkTask ? <><p>Check routes, gateway forwarding and cloud firewall rules on both sides.</p><Link className="setup-primary-link" to={destination("/site-to-site")}>Review connection settings →</Link></> : <>
-                <p>Choose who can reach your private resources, then invite your users.</p>
+                <p>{clusterTask ? "Choose who can reach each exposed Service, then invite your users. Nobody reaches a Service until a rule allows it." : "Choose who can reach your private resources, then invite your users."}</p>
                 <div className="setup-actions"><Link className="setup-primary-link" to={destination("/access")}>Review access policies →</Link><Link className="setup-text-link" to={destination("/users")}>Invite users →</Link></div>
                 <details className="setup-details"><summary>Email invitations</summary><p>If email delivery is off, share invitation links manually.</p>{auth.status === "authed" && auth.user.cp_admin && <Link className="setup-text-link" to={destination("/settings?section=email-delivery")}>Configure email delivery →</Link>}</details>
               </>}
@@ -131,6 +131,9 @@ export default function Setup() {
             {step === 4 && <>
               {networkTask ? <><p>From either network, open an allowed resource on the other side and verify the reply path.</p><p className="setup-note">Connection test pending. A tunnel handshake alone does not prove resource access.</p></> : <>
                 <ClientConnection key={`${orgId}:${userId}`} organization={inventory.org.name} compact />
+                {/* The guide ends on proof, not on a client download: once a device is connected, the
+                    administrator can ask whether it reaches a destination and why not. */}
+                <p className="setup-note">After a device connects, check that it reaches what you intended. <Link className="setup-text-link" to={destination("/access")}>Open Test access →</Link></p>
                 {pending.length > 0 && <div className="setup-help"><p>{pending.length} device{pending.length === 1 ? "" : "s"} awaiting approval</p><Link className="setup-text-link" to={destination("/devices/approvals")}>Review device approvals →</Link></div>}
                 <details className="setup-details"><summary>Connection status</summary>
                   {devices === null ? <p>Device status unavailable. Refresh to check again.</p> : observed.length ? <p>Handshake observed on {observed.length} active device{observed.length === 1 ? "" : "s"}. Latest observation: {relativeAge(observed.map(device => device.last_handshake_at!).sort().at(-1)!)}.</p> : <p>No client handshake observed yet.</p>}
