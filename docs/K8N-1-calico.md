@@ -282,7 +282,7 @@ masquerade would rewrite tunnel traffic. Membership is what decides.
   - one with the manager's security context (privileged, root, read-only root filesystem,
     128Mi limit): the real manager loop with the real reader and the real commands. Only the
     Kubernetes API read and the kernel mutations were replaced, so nothing on the node changed
-    but the state directory. One pass took 60 to 67 ms and the container used 8 to 17 MB; the
+    but the state directory. One pass took 60 to 70 ms and the container used 8 to 17 MB; the
     receipt was 1.9 KiB: `cali-nat-outgoing` (one rule), `cali-POSTROUTING` of the mangle table
     (five rules) and the one set.
   - one with the gateway's security context without VPN inference (root, drop ALL, add
@@ -296,6 +296,9 @@ masquerade would rewrite tunnel traffic. Membership is what decides.
     the tunnel range 100.96.0.0/24") while 10.200.0.0/16 stayed ready.
   - With the manager stopped, the gateway was refused after the freshness window ("host-posture
     heartbeat is stale"), although the last receipt was still in the directory.
+
+  The check was repeated with the Cilium guard of K8N-2 in the binary; it does not trip on a
+  Calico node (devices `lo`, `eth0`, `tunl0`, `cali*`).
 
   Not part of this check: the `rp_filter` read-back of `wg0` (the node had no `wg0`; the test
   points that one read at a file), the manager's own Kubernetes and kernel work, and the real
