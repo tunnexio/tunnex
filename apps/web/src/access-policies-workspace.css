@@ -67,3 +67,7 @@
 
 .access-disclosure > dl.tnx-resource-facts { padding:16px 0; }
 .rule-builder .access-rule-scope-facts.tnx-resource-facts { margin-top:18px; }
+
+.access-test-subject { display:flex; gap:20px; grid-column:1 / -1; border-bottom:1px solid var(--tnx-border); }
+.access-test-subject button { padding:8px 2px 10px; border-bottom:2px solid transparent; font-size:13px; color:var(--tnx-text-secondary); }
+.access-test-subject button[aria-pressed=true] { border-bottom-color:var(--tnx-focus); color:var(--tnx-text-heading); }

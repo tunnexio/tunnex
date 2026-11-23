@@ -15,6 +15,7 @@ import {
 import AppAccessEmptyState from "./AppAccessEmptyState";
 import AppAccessPagination from "./AppAccessPagination";
 import AppAccessRowMenu from "./AppAccessRowMenu";
+import { accessTestLink } from "../lib/accesstest";
 import { Button, Input, RefreshButton } from "./ui";
 
 export type DevicesInventoryProps = {
@@ -166,6 +167,7 @@ export default function DevicesInventory({ devices, nodes, ownerEmail, busy, can
         <td data-column="posture"><span className="dm-posture-label" data-tone={pb.tone}>{pb.label}</span>{failed && <span className="dm-secondary dm-posture-failure" data-posture-failure={device.id} title={failed}>{failed}</span>}</td>
         <td className="dm-actions"><AppAccessRowMenu label={`Device actions for ${device.name}`} actions={[
           { key: "inspect", label: "View details", disabledReason: busy ? "Wait for the current device operation." : null, onSelect: () => onInspect(device.id) },
+          ...(device.status === "active" && device.kind !== "agent" ? [{ key: "test-access", label: "Test access", href: accessTestLink({ kind: "device", id: device.id }), disabledReason: null }] : []),
           ...(device.status === "pending" ? [{ key: "approval", label: "Review approval", href: "/devices/approvals", disabledReason: busy ? "Wait for the current device operation." : null }] : []),
           ...(canMutate ? [
             { key: "revoke", label: "Revoke", danger: true, disabledReason: unavailable(device, "revoke"), onSelect: () => requestAction("revoke", [device]) },

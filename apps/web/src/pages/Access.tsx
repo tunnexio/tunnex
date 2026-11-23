@@ -6,6 +6,7 @@ import "../app-access-workspace.css";
 import "../access-policies-inventory.css";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
+import { blockerAdvice, parseAccessTest } from "../lib/accesstest";
 import { useOrg } from "../lib/useOrg";
 import {
   api,
@@ -707,13 +708,15 @@ function TestAccessSection({ orgId }: { orgId: string }) {
   // Names of exposed cluster Services, as the control plane lists them. A person types the name they
   // use; the test needs the private address behind it.
   const [serviceAddresses, setServiceAddresses] = useState<Record<string, string>>({});
-  const [destination, setDestination] = useState("");
-  const [protocol, setProtocol] = useState<"tcp" | "udp">("tcp");
-  const [port, setPort] = useState("443");
+  // A link from a device row or a denied event names who and what to test; it is read once.
+  const [requested] = useState(() => parseAccessTest(window.location.search));
+  const [destination, setDestination] = useState(requested?.destination ?? "");
+  const [protocol, setProtocol] = useState<"tcp" | "udp">(requested?.protocol ?? "tcp");
+  const [port, setPort] = useState(requested?.port ? String(requested.port) : "443");
   const [result, setResult] = useState<AgentAccessDiagnostic | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [open, setOpen] = useState(false);
+  const [open, setOpen] = useState(requested !== null);
   const loadEpoch = useRef(0);
   const runEpoch = useRef(0);
   const subjectId = subject === "device" ? deviceId : agentId;
@@ -743,7 +746,9 @@ function TestAccessSection({ orgId }: { orgId: string }) {
             .map(device => ({ device_id: device.id, name: device.name || device.id.slice(0, 8), owner: device.owner_email ?? undefined }))
         : [];
       setDevices(people);
-      if (people.length) { setDeviceId(people[0]!.device_id); setSubject("device"); }
+      const wanted = requested?.kind === "device" ? people.find(device => device.device_id === requested.id) : undefined;
+      if (people.length && requested?.kind !== "agent") { setDeviceId((wanted ?? people[0]!).device_id); setSubject("device"); }
+      else if (people.length) setDeviceId(people[0]!.device_id);
     })();
     void (async () => {
       const listed = await loadOne(() =>
@@ -766,7 +771,9 @@ function TestAccessSection({ orgId }: { orgId: string }) {
       if (epoch !== loadEpoch.current) return;
       const scoped = visible.filter((v): v is TestableAgent => v != null);
       setAgents(scoped);
-      setAgentId(scoped[0]?.device_id ?? "");
+      const wantedAgent = requested?.kind === "agent" ? scoped.find(agent => agent.device_id === requested.id) : undefined;
+      setAgentId((wantedAgent ?? scoped[0])?.device_id ?? "");
+      if (wantedAgent) setSubject("agent");
     })();
     return () => {
       loadEpoch.current += 1;
@@ -825,11 +832,10 @@ function TestAccessSection({ orgId }: { orgId: string }) {
         <div className="access-test-editor">
         <p>Check current policy intent. No traffic is sent.</p>
         <div className="access-test-fields">
-          {hasAgents && hasDevices && <Field label="Test for">
-            <Select value={subject} onChange={(e) => setSubject(e.target.value as "device" | "agent")}>
-              <option value="device">A person's device</option><option value="agent">An AI agent</option>
-            </Select>
-          </Field>}
+          {hasAgents && hasDevices && <div role="group" aria-label="Test for" className="access-test-subject">
+            <button type="button" aria-pressed={subject === "device"} onClick={() => setSubject("device")}>A person's device</button>
+            <button type="button" aria-pressed={subject === "agent"} onClick={() => setSubject("agent")}>An AI agent</button>
+          </div>}
           {subject === "device" && hasDevices ? <Field label="Device">
             <Select value={deviceId} onChange={(e) => setDeviceId(e.target.value)}>
               {devices!.map((device) => (
@@ -862,7 +868,13 @@ function TestAccessSection({ orgId }: { orgId: string }) {
             {result.overall === "allowed" ? "Allowed by current Tunnex intent" : result.overall === "denied" ? "Blocked by current Tunnex intent" : "Inconclusive from current evidence"}
           </p>
           {result.destination !== destination.trim() && <p className="mt-1 text-xs text-slate-400">{destination.trim()} is the exposed Service at {result.destination}; that address was tested.</p>}
-          {result.first_blocker && <p className="mt-1 text-xs text-amber-300">First blocker: {result.first_blocker}</p>}
+          {result.first_blocker && (() => {
+            const advice = blockerAdvice(result.first_blocker);
+            return <>
+              {advice && <p className="mt-2 text-sm text-slate-200" data-testid="test-access-advice">{advice.text}{advice.action && <> <Link className="text-accent-400 underline underline-offset-4" to={advice.action.to} onClick={() => setOpen(false)}>{advice.action.label}</Link></>}</p>}
+              <p className="mt-1 text-xs text-amber-300">First blocker: {result.first_blocker}</p>
+            </>;
+          })()}
           <ol className="access-test-checks">
             {result.checks.map((check, index) => (
               <li key={`${index}-${check.code}`}>
