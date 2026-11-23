@@ -648,3 +648,131 @@ access; support for a gateway on a control-plane node (it is refused and now sai
 Also still open from "Not confirmed": item 9, whether access events label Service flows with their
 Service. Nothing was changed there, so API flows are recorded as any allowed or denied flow is, with
 device, person, rule, time and port.
+
+## Return path for the API server — decision, 2026-11-23
+
+Found on the first live walk (GKE Standard, in-cluster gateway on the host network, node 10.70.0.6).
+Stage 1 as built does not work on a managed cluster: the API server's reply never comes back.
+
+**Observed.**
+
+- API access is on. The tunnel address 100.65.0.4:443 is mapped to `default/kubernetes`, whose
+  EndpointSlice holds the managed control plane's address, 10.70.0.3:443. That address is not a node.
+- The gateway rendered `ip daddr 100.65.0.4 tcp dport 443 dnat to 10.70.0.3:443` and the access rule
+  `ip saddr 10.99.0.2 ct original ip daddr 100.65.0.4 ... accept`. The access rule's counter rose while
+  a connected device (tunnel address 10.99.0.2) called `https://100.65.0.4/version`: the device's
+  packets arrive, are accepted and are forwarded.
+- From inside the gateway container, `https://10.70.0.3/version` answered 401: the node reaches the API
+  server.
+- The device's call times out. The only source-NAT rule in `ip tunnex postrouting` was
+  `ip saddr 100.65.0.2 oifname != "wg0" masquerade`, and 100.65.0.2 is the gateway's own tunnel
+  address. The device is connected to another gateway and arrives through the hub (K8L-7), so its
+  address is outside that range and the forwarded flow leaves the node with source 10.99.0.2.
+- A Service's pods answer such a device, because every node carries a return route to the tunnel
+  range (host posture). The managed API server is not a node and has no such route. Its reply is lost.
+
+This corrects two sentences above. "Device traffic leaving the gateway node on a non-tunnel interface
+is masqueraded to the node's address" is true only for a source inside the gateway's own tunnel range.
+"The packet leaves masqueraded as the node" was therefore wrong for a device on another gateway. It
+was item 2 of "Not confirmed", and it is the assumption that failed. Item 1 is settled for GKE Standard
+only: one ready endpoint, the control plane's address, port 443.
+
+**Decision.** The gateway source-NATs exactly the flows it forwards to the API server, one rule per
+mapped address, in `ip tunnex postrouting`:
+
+    ct original ip daddr <API address> oifname != <tunnel interfaces> masquerade comment "tunnex_k8s_api_return"
+
+- *Why the original destination.* After the rewrite the packet is addressed to the API server, which
+  the node and every pod also talk to natively; matching that would translate traffic that is not
+  Tunnex's. The source cannot be used: this gateway does not know the ranges of devices that belong to
+  other gateways. The address the client dialled is a Tunnex address, the forward chain already
+  decides on it (`ct original ip daddr`), and no native traffic has it as its original destination.
+  The match is therefore the forwarded API flows and nothing else. A Service has a different address,
+  so Service flows keep the device's source, as today.
+- *Why this is not new behaviour to the customer.* This paper already states that the cluster sees
+  every Tunnex user as the gateway node (design A, "Costs"; "Risks", "One client address"). The rule
+  makes that statement true for every device instead of only for devices in the gateway's own range.
+- *Why the invariant holds.* "Tunnex never source-NATs traffic bound for the tunnel" is what the
+  ownership check protects (K8L-2, K8N-1): a translated tunnel-bound packet breaks the return half of
+  every forwarded flow. The new rule carries the same `oifname != <tunnel interfaces>` exclusion as the
+  device-pool rule, and the check refuses the rule without it. A packet leaving by `wg0`, or by the
+  OpenVPN interface when one is co-terminated, never matches. Replies are not evaluated by NAT rules at
+  all; conntrack reverses the binding made by the first packet.
+- *When it is rendered.* From the same resolved mapping as the rewrite itself, in the same atomic
+  replacement of the table: only for a mapping whose Service is `default/kubernetes`, only when that
+  mapping has a ready endpoint that is not the gateway's own address (so only next to its `dnat`
+  rule), only for a valid IPv4 address.
+
+**How the startup check recognises the rule.** `validateTunnexPostrouting`
+(`apps/node/internal/k8snetprep/aws_linux.go`) reads the live `nft -j -a list ruleset` on every pass
+and required every rule in `ip tunnex postrouting` to be the device-pool rule. The first attempt
+(`fc2c4786`, reverted by `ad59275f`) rendered the new rule and did not teach the check. The gateway
+then refused its own ruleset on every pass. In the running loop that is a warning and "not ready"; in
+the startup ownership pass (`ownership_startup_withdraw`, OpenVPN stage, which re-applies the table) it
+is fatal, so the pod crash-looped with `Tunnex source-NAT CIDR differs from current tunnel`. Unit tests
+of the renderer alone could not see it.
+
+The check now accepts exactly two shapes and still refuses everything else:
+
+1. The device-pool rule, unchanged: no comment; `ip saddr` equal to the current tunnel range;
+   `oifname !=` the WireGuard interface or a set that contains it; `masquerade`.
+2. The API return rule: the comment is exactly `tunnex_k8s_api_return`; exactly three statements; the
+   first is `ct original ip daddr ==` one IPv4 address in canonical form; the second is the same tunnel
+   exclusion as in shape 1; the third is a bare `masquerade`. The same address twice is refused.
+
+Refused, among others: the marker on any other shape; this shape without the marker or with another
+comment; `ip saddr`, `ip daddr`, `ct original ip saddr` or `ct reply ip daddr` in place of the original
+destination; `!=`; a prefix, a set or a range instead of one address; an IPv6 address (nft itself
+refuses `ct original ip6 daddr` in an `ip` table); a missing or different interface exclusion; `snat`,
+or `masquerade` with flags or ports; any further statement; any other rule in the chain.
+
+*What the check cannot know.* It is given the WireGuard interface, the tunnel range and the kernel's
+listing. Which address is mapped to `default/kubernetes` exists only in the policy the control plane
+sent, held in memory by the egress manager; after a restart the check runs before that is known again.
+So the check binds the shape and the marker, not the address. The address is bound by the renderer:
+the whole `ip tunnex` table is replaced from the current mapping on every pass (every 30 seconds by
+default, and at once on a policy or endpoint change), so a rule for any other address does not outlive
+one pass.
+
+*Residual risk.* Whoever is root on the node can write a rule with this marker for another address,
+and the check accepts it until the next pass replaces the table. Such a rule translates flows whose
+original destination is that one address and that leave by a non-tunnel interface. It cannot touch
+tunnel-bound traffic, which is what the check exists for, and root on the node can already do more.
+The check also does not prove that the matching `dnat` rule exists; the two are rendered together and
+replaced together.
+
+**A leftover rule.**
+
+- *API access turned off, the mapping removed, or no ready endpoint.* The next pass renders the table
+  without the rule. The atomic replacement removes it together with the rewrite. Nothing is deleted
+  rule by rule.
+- *Gateway stopped normally.* Shutdown already reduces both `tunnex` tables to the ownership marker.
+  The rule goes with everything else.
+- *Emergency withdrawal* (`EmergencyWithdrawK8s`) flushes the rewrite chain only. The return rule stays
+  until the next full pass. Without its rewrite nothing is forwarded to the API server, so the rule
+  grants nothing; the check still accepts it.
+- *Gateway killed.* The rule is left in the kernel until the next gateway process replaces the table.
+- *Downgrade to a build that does not know the rule.* An older check refuses the rule wherever it
+  reads it. Read in the code before this change: every fatal check sits inside `Manager.Reconcile`,
+  after that build has replaced the table with its own rendering, which has no such rule. The single
+  read of a leftover table before the first replacement (`ResolveK8sVIPs`) only logs
+  `k8s_netprep_reconcile_failed`. So an older build is expected to remove a leftover rule on its first
+  pass and not to crash-loop on it. The crash loop of the first attempt was a build refusing the rule
+  it rendered itself, which is a different thing.
+- *Before a downgrade:* turn API access off for the cluster. Not because of the leftover rule, but
+  because an older gateway still receives the mapping (no artifact version change) and forwards to the
+  API server with no return path: `kubectl` times out for every device outside the gateway's own range
+  while "Test access" says allowed. The build of the first attempt must not be deployed at all.
+
+**Not changed, and adjacent.** The check still refuses every other rule in that chain. That includes
+two rules this agent can render on a gateway that is not in a cluster: the site-LAN masquerade
+(`tunnex_site_lan_masquerade`, SSI-8) and the IPsec desktop exemption (`tunnex_ipsec_desktop_no_snat`).
+A site that turns on the site-LAN option and also has an in-cluster gateway with remote routes would
+meet the same refusal as the first attempt did. That is a separate defect and is not fixed here. In the
+other direction, the IPsec desktop recipe (`ipsec/runtime_desktop_nat_pending.go`) accepts only its own
+exemptions followed by the device-pool rule, so it refuses a chain that also holds an API return rule.
+
+**Still not confirmed.** Nothing here has run on GKE or any other cluster. To walk: the device's call
+returns the API server's answer; `kubectl get`, `exec`, `logs -f`; the same after a gateway restart
+and after a kill; the rule is gone after API access is turned off; the cluster's audit log shows the
+node's address. Items 3 to 11 of "Not confirmed" stand.
