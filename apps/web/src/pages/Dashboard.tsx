@@ -1,6 +1,6 @@
 import { SetupChoices } from "./Setup";
 import "../overview-scan.css";
-import { useEffect, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { useOrg } from "../lib/useOrg";
 import { useAuth } from "../lib/auth";
@@ -42,6 +42,17 @@ function OverviewContent({ orgId, orgName }: { orgId: string; orgName: string })
   const [error, setError] = useState<string | null>(null);
   const [reading, setReading] = useState(true);
   const [attempt, setAttempt] = useState(0);
+  const [readAt, setReadAt] = useState<Date | null>(null);
+  const backgroundRead = useRef(false);
+  // Re-read once a minute while the tab is in front, so a wall display or a tab left open stays true.
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      if (document.visibilityState !== "visible") return;
+      backgroundRead.current = true;
+      setAttempt(value => value + 1);
+    }, 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
   const [sitesRes, setSitesRes] = useState<Loaded<Site[]> | null>(null);
   const [pendingRes, setPendingRes] = useState<Loaded<Device[]> | null>(null);
   const [nodesRes, setNodesRes] = useState<Loaded<Node[]> | null>(null);
@@ -56,10 +67,19 @@ function OverviewContent({ orgId, orgName }: { orgId: string; orgName: string })
 
   useEffect(() => {
     let cancelled = false;
-    setReading(true); setData(null); setError(null);
-    setSitesRes(null); setPendingRes(null); setNodesRes(null); setAgentsRes(null);
-    setAgentsPartial(false); setRulesRes(null); setDevicesRes(null); setHubSetRes(null);
-    setK8sClustersRes(null); setK8sServicesRes(null); setZtRes(null);
+    // A person who ASKS for a refresh gets the old figures withdrawn until the new ones arrive, so an
+    // old count is never read as the answer to their request. The once-a-minute background reading is
+    // different: nobody asked, the figures stay in place under their "Updated" time, and each is
+    // replaced as its new reading arrives.
+    const background = backgroundRead.current;
+    backgroundRead.current = false;
+    setReading(true); setError(null);
+    if (!background) {
+      setData(null);
+      setSitesRes(null); setPendingRes(null); setNodesRes(null); setAgentsRes(null);
+      setAgentsPartial(false); setRulesRes(null); setDevicesRes(null); setHubSetRes(null);
+      setK8sClustersRes(null); setK8sServicesRes(null); setZtRes(null);
+    }
     const path = { orgId };
     // Each read owns its state. Failure is unavailable, never an invented zero or healthy verdict.
     void loadOne(() => api.GET("/api/v1/organizations/{orgId}/devices/pending", { params: { path } }))
@@ -74,7 +94,9 @@ function OverviewContent({ orgId, orgName }: { orgId: string; orgName: string })
       .then(r => !cancelled && setNodesRes(inventoryResult<Node>(r)));
     void loadOne(() => api.GET("/api/v1/organizations/{orgId}/agents", { params: { path, query: { limit: 100 } } }))
       .then(r => {
-        if (cancelled || !r.ok || (!Array.isArray(r.data) && !Array.isArray(r.data?.items)) || !listItems(r.ok ? r.data : undefined).every(row => !!row && typeof row.device_id === "string")) return;
+        if (cancelled) return;
+        // An unreadable agent list ends the wait: the tile is removed rather than left pending forever.
+        if (!r.ok || (!Array.isArray(r.data) && !Array.isArray(r.data?.items)) || !listItems(r.ok ? r.data : undefined).every(row => !!row && typeof row.device_id === "string")) { setAgentsRes({ ok: false, error: "Could not read the agents." }); return; }
         const partial = !Array.isArray(r.data) && !!r.data.next_cursor;
         setAgentsPartial(partial);
         setAgentsRes({ ok: true, data: listItems(r.data) as AgentRow[] });
@@ -91,11 +113,12 @@ function OverviewContent({ orgId, orgName }: { orgId: string; orgName: string })
       .then(({ data: overview, error: loadError }) => {
         if (cancelled) return;
         const valid = overview && [overview.members, overview.devices, overview.nodes].every(value => Number.isSafeInteger(value) && value >= 0);
-        if (loadError || !valid) setError(apiErrorMessage(loadError, "Could not load the overview."));
-        else setData(overview);
+        // A failed reading removes the old figures: stale counts beside an error would read as current.
+        if (loadError || !valid) { setData(null); setError(apiErrorMessage(loadError, "Could not load the overview.")); }
+        else { setData(overview); setReadAt(new Date()); }
         setReading(false);
       }).catch(() => {
-        if (!cancelled) { setError("Could not reach the API."); setReading(false); }
+        if (!cancelled) { setData(null); setError("Could not reach the API."); setReading(false); }
       });
     return () => { cancelled = true; };
   }, [orgId, attempt]);
@@ -116,13 +139,14 @@ function OverviewContent({ orgId, orgName }: { orgId: string; orgName: string })
     <div className="scan-toolbar">
       <div className="scan-org">{orgName}<span>Network at a glance</span></div>
       <div className="scan-toolbar-actions">
+        {readAt && <span className="scan-read-at" title="Refreshes every minute while this tab is open">Updated {readAt.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</span>}
         <Link to="/setup" className="scan-text-link">Setup guide</Link>
-        <RefreshButton label="Refresh overview" disabled={reading} onClick={() => setAttempt(value => value + 1)} />
+        <RefreshButton label="Refresh overview" disabled={reading} onClick={() => { backgroundRead.current = false; setAttempt(value => value + 1); }} />
       </div>
     </div>
     <UpgradeCenter />
     <ErrorText>{error}</ErrorText>
-    {reading && <div className="scan-loading"><Loading label="Loading your overview…" /></div>}
+    {reading && !data && <div className="scan-loading"><Loading label="Loading your overview…" /></div>}
     {data && <>
       <section aria-label="Fleet summary" className="scan-fleet">
         <div aria-label="Fleet summary metrics" className="scan-metrics">
@@ -130,9 +154,9 @@ function OverviewContent({ orgId, orgName }: { orgId: string; orgName: string })
           <Stat label="Gateways" to="/gateways" value={gateways} sub={degraded ? `${degraded} degraded` : null} subTone="danger" />
           <Stat label="Sites" to="/sites" value={sites} />
           <Stat label="Members" to="/users" value={members} />
-          {agentsRes?.ok && <Stat label="AI Agents" to="/agents" value={statFrom(agentsRes, r => r.length)} partial={agentsPartial} sub={agentsPartial ? "Loaded agents" : agentSummary(agentsRes.data).note} subTone="warn" />}
-          {rulesRes?.ok && <Stat label="Access Rules" to="/access" value={statFrom(rulesRes, r => r.length)} sub={zeroTrust} subTone={zeroTrust === "not enforced" ? "warn" : "neutral"} />}
-          {pendingRes?.ok && <Stat label="Approvals" to="/devices/approvals" value={pending} sub={pending.state === "ok" && pending.value > 0 ? "needs review" : null} subTone="warn" />}
+          {agentsRes === null ? <StatPlaceholder label="AI Agents" /> : agentsRes.ok && <Stat label="AI Agents" to="/agents" value={statFrom(agentsRes, r => r.length)} partial={agentsPartial} sub={agentsPartial ? "Loaded agents" : agentSummary(agentsRes.data).note} subTone="warn" />}
+          {rulesRes === null ? <StatPlaceholder label="Access Rules" /> : rulesRes.ok && <Stat label="Access Rules" to="/access" value={statFrom(rulesRes, r => r.length)} sub={zeroTrust} subTone={zeroTrust === "not enforced" ? "warn" : "neutral"} />}
+          {pendingRes === null ? <StatPlaceholder label="Approvals" /> : pendingRes.ok && <Stat label="Approvals" to="/devices/approvals" value={pending} sub={pending.state === "ok" && pending.value > 0 ? "needs review" : null} subTone="warn" />}
         </div>
       </section>
       {!fresh && <Attention loading={[pendingRes, nodesRes, devicesRes, rulesRes, ztRes].some(result => result === null)} {...attentionItems({
@@ -305,6 +329,13 @@ function Stat({ label, to, value, sub, subTone = "neutral", partial = false }: {
       <span className="scan-metric-value font-bold" title={value.state === "failed" ? "Could not load this count." : undefined}>{text === null ? value.state === "failed" ? "n/a" : "…" : `${text}${partial ? "+" : ""}`}</span>
       <span className="scan-metric-note" data-tone={value.state === "failed" ? "danger" : subTone}>{value.state === "failed" ? "could not load" : sub}</span>
     </Link>
+  </div>;
+}
+
+/** Holds a tile's place while its count is being read, so later tiles never jump sideways. */
+function StatPlaceholder({ label }: { label: string }) {
+  return <div className="scan-metric" aria-hidden="true">
+    <span className="scan-metric-pending"><span className="scan-metric-label">{label}</span><span className="scan-metric-value">…</span><span className="scan-metric-note" /></span>
   </div>;
 }
 
