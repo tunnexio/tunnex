@@ -2,8 +2,10 @@ package k8s
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"net/netip"
+	"sync"
 	"testing"
 	"time"
 
@@ -364,5 +366,53 @@ func TestResolveAPIDestination(t *testing.T) {
 		if got, ok, err := other.svc.ResolveAPIDestination(ctx, other.org, destination); err != nil || (ok && got.ClusterID == f.cluster) {
 			t.Fatalf("cross-organization resolution of %q: %+v ok=%v err=%v", destination, got, ok, err)
 		}
+	}
+}
+
+// Address allocation in one cluster is serialized on the cluster row, so the API's address and a
+// Service's address can never be the same one however the requests interleave.
+func TestAPIAccessAndServiceExposureNeverShareAnAddress(t *testing.T) {
+	f := newNSRuleFixture(t, "100.66.0.0/24")
+	ctx := context.Background()
+	const services = 24
+	errs := make(chan error, services+8)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		// Toggle API access while Services are being exposed; it ends on.
+		for _, enabled := range []bool{true, false, true, false, true} {
+			if _, err := f.svc.SetAPIAccess(ctx, f.org, f.cluster, enabled, f.actor); err != nil {
+				errs <- err
+			}
+		}
+	}()
+	var wg sync.WaitGroup
+	for i := 0; i < services; i++ {
+		wg.Add(1)
+		go func(i int) {
+			defer wg.Done()
+			if _, err := f.svc.ExposeService(ctx, f.org, f.cluster, fmt.Sprintf("svc-%d", i), "shop", "tcp", p32(80), p32(80), uuid.Nil, f.actor.UserID, "", ""); err != nil {
+				errs <- err
+			}
+		}(i)
+	}
+	wg.Wait()
+	<-done
+	close(errs)
+	for err := range errs {
+		t.Fatalf("a serialized allocation must not fail: %v", err)
+	}
+	state, err := f.svc.GetAPIAccess(ctx, f.org, f.cluster)
+	if err != nil || !state.Enabled {
+		t.Fatalf("state = %+v err=%v", state, err)
+	}
+	if n := f.count(`SELECT count(*) FROM k8s_services WHERE cluster_id=$1 AND deleted_at IS NULL`, f.cluster); n != services {
+		t.Fatalf("exposed %d Services, want %d", n, services)
+	}
+	if n := f.count(`SELECT count(DISTINCT host(vip)) FROM k8s_services WHERE cluster_id=$1 AND deleted_at IS NULL`, f.cluster); n != services {
+		t.Fatalf("Services share addresses: %d distinct for %d Services", n, services)
+	}
+	if n := f.count(`SELECT count(*) FROM k8s_services WHERE cluster_id=$1 AND deleted_at IS NULL AND host(vip)=$2`, f.cluster, state.VIP); n != 0 {
+		t.Fatalf("a Service shares the API's address %s", state.VIP)
 	}
 }

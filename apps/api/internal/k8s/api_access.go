@@ -139,13 +139,11 @@ func (s *Service) SetAPIAccess(ctx context.Context, orgID, clusterID uuid.UUID, 
 	changed := false
 	err = s.withTxRaw(ctx, func(q *sqlc.Queries, tx pgx.Tx) error {
 		// The cluster row is the lock every address allocation in this cluster takes (ExposeService,
-		// ExposeInventoryService, a namespace rule's pass). It is written, not only locked, so a
-		// serializable allocation that started before this one fails on the row instead of allocating
-		// from a snapshot that cannot see the API's address.
+		// ExposeInventoryService, a namespace rule's pass).
 		var vipRange string
 		var dnsVIP *string
 		var poolBound bool
-		if e := tx.QueryRow(ctx, `UPDATE k8s_clusters SET updated_at=now() WHERE id=$1 AND org_id=$2 RETURNING vip_range::text, host(dns_vip), connector_pool_id IS NOT NULL`, clusterID, orgID).
+		if e := tx.QueryRow(ctx, `SELECT vip_range::text, host(dns_vip), connector_pool_id IS NOT NULL FROM k8s_clusters WHERE id=$1 AND org_id=$2 FOR UPDATE`, clusterID, orgID).
 			Scan(&vipRange, &dnsVIP, &poolBound); errors.Is(e, pgx.ErrNoRows) {
 			return apierr.NotFound("cluster_not_found", "no such cluster in this organization")
 		} else if e != nil {
@@ -175,6 +173,12 @@ func (s *Service) SetAPIAccess(ctx context.Context, orgID, clusterID uuid.UUID, 
 		if current.OrdinaryExposure {
 			return apierr.Conflict("k8s_api_ordinary_exposure_exists",
 				"default/kubernetes is already exposed as an ordinary Service in this cluster. Unexpose it first, then turn on API access: two addresses cannot answer to "+current.FQDN)
+		}
+		// The row is written, not only locked, before an address is taken: a serializable allocation
+		// (the inventory exposure path, a namespace rule's pass) that started before this transaction
+		// then fails on the row instead of allocating from a snapshot that cannot see the API's address.
+		if _, e := tx.Exec(ctx, `UPDATE k8s_clusters SET updated_at=now() WHERE id=$1 AND org_id=$2`, clusterID, orgID); e != nil {
+			return e
 		}
 		// The used-set: every live exposure and the reserved DNS address. (The API's own address is not
 		// in it: this branch runs only while API access is off, when it has none.)
@@ -232,6 +236,10 @@ type APIEndpointRef struct {
 
 // APIEndpointsForOrg returns every cluster API endpoint of the organization, on or off.
 func (s *Service) APIEndpointsForOrg(ctx context.Context, orgID uuid.UUID) ([]APIEndpointRef, error) {
+	// "Test access" asks this for every destination, so it must also answer on a schema older than 0239.
+	if present, err := s.q.K8sAPIAccessSchemaPresent(ctx); err != nil || !present {
+		return nil, err
+	}
 	rows, err := s.q.ListK8sAPIEndpointsForOrg(ctx, orgID)
 	if err != nil {
 		return nil, err
