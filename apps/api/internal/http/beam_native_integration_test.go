@@ -59,7 +59,7 @@ func TestBeamNativePersistentJourney(t *testing.T) {
 		t.Fatal("BEAM_PROXY_BINARY and BEAM_CLIENT_WORKTREE are required once native integration is invoked")
 	}
 	if _, e := os.Stat(binary); e != nil {
-		t.Fatal("Built native Beam proxy required")
+		t.Fatal("Built native Local Sharing proxy required")
 	}
 	for _, withdrawal := range []string{"stop", "pause", "expiry", "grant-removal", "reviewer-logout", "reviewer-membership", "reviewer-group", "publisher-group", "publisher-credential", "policy-disable", "policy-mfa", "fresh-generation", "restore-barrier", "supported-restore", "authority-down", "installation-disable", "installation-domain", "readiness-failed", "readiness-expired", "session-store-down", "proxy-restart", "publisher-status", "publisher-role", "publisher-credential-expiry", "organization-deleted", "reviewer-parent-expiry", "reviewer-auth-epoch", "mfa-freshness", "mfa-future-proof", "authority-clock-ahead", "authority-clock-behind"} {
 		t.Run(withdrawal, func(t *testing.T) { beamNativeJourney(t, binary, clientPath, node, withdrawal) })
@@ -155,7 +155,7 @@ func beamNativeJourney(t *testing.T, binary, clientPath, node, withdrawal string
 		t.Fatal(e)
 	}
 	appAccess := appaccess.NewService(pool, appaccess.Config{})
-	_, proxyCredential, e := appAccess.IssueProxyCredential(ctx, "native Beam fixture")
+	_, proxyCredential, e := appAccess.IssueProxyCredential(ctx, "native Local Sharing fixture")
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -586,7 +586,7 @@ func beamNativeJourney(t *testing.T, binary, clientPath, node, withdrawal string
 	if denied.StatusCode == 200 {
 		t.Fatal("withdrawn native share stillserved")
 	}
-	t.Logf("Real durable Beam authority -> dedicated proxy -> native connector passed HTTP/SSE/WebSocket and %s withdrawal in %s", withdrawal, withdrawalTime)
+	t.Logf("Real durable Local Sharing authority -> dedicated proxy -> native connector passed HTTP/SSE/WebSocket and %s withdrawal in %s", withdrawal, withdrawalTime)
 }
 
 type nativeLog struct {
@@ -647,7 +647,7 @@ func nativeAPI(t *testing.T, base string, org uuid.UUID, path, token, sessionID 
 	defer res.Body.Close()
 	if res.StatusCode != 200 {
 		body, _ := io.ReadAll(io.LimitReader(res.Body, 2048))
-		t.Fatalf("Beam native API %s status%d %s", path, res.StatusCode, body)
+		t.Fatalf("Local Sharing native API %s status%d %s", path, res.StatusCode, body)
 	}
 	if e = json.NewDecoder(res.Body).Decode(out); e != nil {
 		t.Fatal(e)

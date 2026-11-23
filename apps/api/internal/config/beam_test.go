@@ -8,11 +8,11 @@ func TestBeamConfigDefaultOffAndRestoreFence(t *testing.T) {
 	t.Setenv("TUNNEX_BEAM_DOMAIN_READY", "")
 	c := Load()
 	if c.BeamBaseDomain != "" || c.BeamProxyURL != "" || c.BeamDomainReady {
-		t.Fatal("Beam mustdefaultoff")
+		t.Fatal("Local Sharing mustdefaultoff")
 	}
 	for _, c := range []Config{{BeamBaseDomain: "beam.example.net"}, {BeamProxyURL: "https://connector.example.net"}} {
 		if c.ValidateAppAccessRestoreMarker() == nil {
-			t.Fatal("Beam enabledwithoutrestorefence")
+			t.Fatal("Local Sharing enabledwithoutrestorefence")
 		}
 		c.AppAccessRestoreMarker = "/private/restore/pending.json"
 		if c.ValidateAppAccessRestoreMarker() != nil {

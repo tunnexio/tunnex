@@ -13,7 +13,7 @@ import { NetworkFeatureControl } from "../components/NetworkFeatureControl";
 import { WorkspaceFeatureControl } from "../components/WorkspaceFeatureControl";
 import "../network-workspaces.css";
 import "../settings-workspace.css";
-import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { Link, useLocation } from "react-router-dom";
 import {
   api,
@@ -1892,6 +1892,15 @@ function sectionFromLocation() {
   return new URLSearchParams(window.location.search).get("section") ?? RAIL[0].id;
 }
 
+const SETTINGS_GROUPS = ["Organization", "Sign-in & security", "Network & delivery", "Apps & sharing", "AI"] as const;
+const SETTINGS_GROUP_OF: Record<string, number> = {
+  organization: 0, licence: 0, features: 0,
+  authentication: 1, directory: 1, "access-security": 1, "data-retention": 1,
+  network: 2, "email-delivery": 2,
+  "app-access-domains": 3, beam: 3, "beam-serving": 3,
+  "ai-agents": 4, "ai-transport": 4,
+};
+
 function SettingsRail({
   sections,
   active,
@@ -1903,7 +1912,14 @@ function SettingsRail({
   onSelect: (id: string) => void;
 }) {
   const [query, setQuery] = useState("");
-  const matching = sections.filter(section => `${section.label} ${section.hint}`.toLowerCase().includes(query.trim().toLowerCase()));
+  // The rail is read in groups: who the organisation is, how people sign in, how traffic and mail
+  // leave, what is shared, AI, then the irreversible. Related sections sit together instead of in
+  // the order they were built.
+  const matching = sections
+    .filter(section => `${section.label} ${section.hint}`.toLowerCase().includes(query.trim().toLowerCase()))
+    .map((section, index) => ({ section, index, group: SETTINGS_GROUP_OF[section.id] ?? SETTINGS_GROUPS.length }))
+    .sort((a, b) => a.group - b.group || a.index - b.index)
+    .map(entry => entry.section);
   return (
     <aside className="settings-navigation">
       <Input type="search" aria-label="Find settings section" placeholder="Find a section…" value={query} onChange={event => setQuery(event.target.value)} />
@@ -1914,11 +1930,14 @@ function SettingsRail({
       aria-label="Settings sections"
       className="flex gap-1.5 overflow-x-auto pb-1 lg:sticky lg:top-6 lg:flex-col lg:overflow-visible lg:rounded-xl lg:border lg:border-white/[0.07] lg:bg-white/[0.018] lg:p-1.5"
     >
-      {matching.map((s) => {
+      {matching.map((s, position) => {
         const on = s.id === active;
+        const group = SETTINGS_GROUPS[SETTINGS_GROUP_OF[s.id] ?? -1];
+        const previous = position > 0 ? SETTINGS_GROUPS[SETTINGS_GROUP_OF[matching[position - 1]!.id] ?? -1] : undefined;
         return (
+          <Fragment key={s.id}>
+          {group && group !== previous && <span role="presentation" className="hidden px-3 pb-0.5 pt-3 text-[12px] font-semibold uppercase tracking-wider text-ink-tertiary first:pt-1 lg:block">{group}</span>}
           <button
-            key={s.id}
             type="button"
             role="tab"
             id={`${s.id}-tab`}
@@ -1950,6 +1969,7 @@ function SettingsRail({
               {s.label}
             </span>
           </button>
+          </Fragment>
         );
       })}
     </div>

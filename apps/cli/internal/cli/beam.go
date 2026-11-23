@@ -100,7 +100,7 @@ func parseBeam(args []string, out io.Writer) (beamCommand, error) {
 	switch o.verb {
 	case "policy", "audience", "list", "get", "publish", "resume", "pause", "stop", "extend":
 	default:
-		return o, errors.New("unknown Beam command; run 'tunnex beam --help'")
+		return o, errors.New("unknown Local Sharing command; run 'tunnex beam --help'")
 	}
 	f := flag.NewFlagSet("beam "+o.verb, flag.ContinueOnError)
 	f.SetOutput(io.Discard)
@@ -133,10 +133,10 @@ func parseBeam(args []string, out io.Writer) (beamCommand, error) {
 			_, e = io.WriteString(out, beamUsage)
 			return beamCommand{}, e
 		}
-		return o, errors.New("invalid Beam flags; run 'tunnex beam --help'")
+		return o, errors.New("invalid Local Sharing flags; run 'tunnex beam --help'")
 	}
 	if f.NArg() != 0 {
-		return o, errors.New("unexpected Beam arguments; run 'tunnex beam --help'")
+		return o, errors.New("unexpected Local Sharing arguments; run 'tunnex beam --help'")
 	}
 	var e error
 	o.org, e = beamUUID(o.org)
@@ -337,11 +337,11 @@ func runBeam(ctx context.Context, args []string, out io.Writer, build string, d 
 		return e
 	}
 	if !policy.Enabled || !policy.DomainReady || !policy.CanPublish {
-		return errors.New("Beam publishing is unavailable under current organization policy or serving-domain readiness")
+		return errors.New("Local Sharing publishing is unavailable under current organization policy or serving-domain readiness")
 	}
 	if strings.TrimSpace(build) == "dev" {
-		if _, e = fmt.Fprintln(out, "Development build: Beam protocol 1; no released CLI version is declared."); e != nil {
-			return errors.New("could not write Beam development status")
+		if _, e = fmt.Fprintln(out, "Development build: Local Sharing protocol 1; no released CLI version is declared."); e != nil {
+			return errors.New("could not write Local Sharing development status")
 		}
 	}
 	key, csr, e := d.makeKey()
@@ -356,10 +356,10 @@ func runBeam(ctx context.Context, args []string, out io.Writer, build string, d 
 	resumed := false
 	if o.verb == "publish" {
 		if o.project != "" && !slices.Contains(policy.Capabilities, "saved_projects_v1") {
-			return errors.New("server update required: Beam saved projects are unsupported")
+			return errors.New("server update required: Local Sharing saved projects are unsupported")
 		}
 		if len(o.target.Routes) > 0 && !slices.Contains(policy.Capabilities, beamtransport.PathRoutesCapability) {
-			return errors.New("server update required: Beam path routes are unsupported")
+			return errors.New("server update required: Local Sharing path routes are unsupported")
 		}
 		if int(o.duration/time.Second) > policy.MaxDuration {
 			return errors.New("requested duration exceeds the organization sharing policy")
@@ -400,7 +400,7 @@ func runBeam(ctx context.Context, args []string, out io.Writer, build string, d 
 		}
 		o.target = *share.Target
 		if len(o.target.Routes) > 0 && !slices.Contains(policy.Capabilities, beamtransport.PathRoutesCapability) {
-			return errors.New("server update required: Beam path routes are unsupported")
+			return errors.New("server update required: Local Sharing path routes are unsupported")
 		}
 		if !beamValidTarget(o.target) {
 			return errors.New("the original share target is invalid")
@@ -425,7 +425,7 @@ func runBeam(ctx context.Context, args []string, out io.Writer, build string, d 
 		}
 	}
 	if share.ID == "" || share.OrgID != o.org || !share.ExpiresAt.After(d.clock()) {
-		return errors.New("invalid Beam share response")
+		return errors.New("invalid share response")
 	}
 	if e = beamCheckLogin(d, cred); e != nil {
 		return e
@@ -440,14 +440,14 @@ func runBeam(ctx context.Context, args []string, out io.Writer, build string, d 
 		return nil
 	}
 	if share.Target == nil || beamTargetDigest(*share.Target) != beamTargetDigest(o.target) {
-		return errors.Join(errors.New("Beam target authority changed; serving refused"), rollback(share.Version))
+		return errors.Join(errors.New("Local Sharing target authority changed; serving refused"), rollback(share.Version))
 	}
 	connector, e := api.Issue(ctx, o.org, share.ID, share.Version, csr)
 	if e != nil {
 		return errors.Join(e, rollback(share.Version))
 	}
 	if !beamConnectorMatches(connector, share, d.clock()) {
-		return errors.Join(errors.New("invalid Beam connector authority response"), rollback(share.Version))
+		return errors.Join(errors.New("invalid Local Sharing connector authority response"), rollback(share.Version))
 	}
 	if e = beamCheckLogin(d, cred); e != nil {
 		return e
@@ -458,7 +458,7 @@ func runBeam(ctx context.Context, args []string, out io.Writer, build string, d 
 		if o.verb == "resume" {
 			action = "pause"
 		}
-		return errors.Join(errors.New("could not establish the verified Beam connector"), beamCleanupAction(api, d, cred, o.org, share.ID, connector.ShareVersion, action))
+		return errors.Join(errors.New("could not establish the verified Local Sharing connector"), beamCleanupAction(api, d, cred, o.org, share.ID, connector.ShareVersion, action))
 	}
 	key = ""
 	csr = ""
@@ -548,11 +548,11 @@ func beamVersion(s string) ([3]int, bool, bool) {
 }
 func beamCompatible(p beamPolicy, build string) error {
 	if p.ProtocolVersion != 1 {
-		return errors.New("unsupported Beam protocol; update the CLI and control plane")
+		return errors.New("unsupported Local Sharing protocol; update the CLI and control plane")
 	}
 	minimum, _, ok := beamVersion(p.MinClientVersion)
 	if !ok {
-		return errors.New("invalid Beam client-version policy")
+		return errors.New("invalid Local Sharing client-version policy")
 	}
 	development := strings.TrimSpace(build) == "dev"
 	if development {
@@ -567,18 +567,18 @@ func beamCompatible(p beamPolicy, build string) error {
 			return nil
 		}
 		if actual[i] < minimum[i] {
-			return errors.New("CLI update required by Beam sharing policy")
+			return errors.New("CLI update required by Local Sharing sharing policy")
 		}
 	}
 	if pre {
-		return errors.New("CLI update required by Beam sharing policy")
+		return errors.New("CLI update required by Local Sharing sharing policy")
 	}
 	return nil
 }
 func beamCanonicalURL(s beamShare) (string, error) {
 	u, e := url.Parse(s.URL)
 	if e != nil || u.Scheme != "https" || u.Hostname() != s.Hostname || u.Port() != "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" || (u.Path != "" && u.Path != "/") {
-		return "", errors.New("invalid canonical Beam share URL")
+		return "", errors.New("invalid canonical share URL")
 	}
 	return u.String(), nil
 }

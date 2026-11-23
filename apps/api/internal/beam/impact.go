@@ -50,13 +50,13 @@ func (s *Service) preparePolicy(ctx context.Context, org uuid.UUID, a Actor, in 
 		return nil, p, e
 	}
 	if in.Enabled && !p.DomainReady {
-		return nil, p, invalid("Configure and verify the installation Beam domain before enabling organization policy")
+		return nil, p, invalid("Configure and verify the installation Local Sharing domain before enabling organization policy")
 	}
 	if p.Version != in.ExpectedVersion {
 		return nil, p, conflict()
 	}
 	if in.Enabled && !nextPolicy(p, in).OpenForAllUsers && len(in.PublisherGroups) == 0 {
-		return nil, p, invalid("Select at least one publisher group or open Beam for all users")
+		return nil, p, invalid("Select at least one publisher group or open Local Sharing for all users")
 	}
 	for _, ids := range [][]uuid.UUID{in.PublisherGroups, in.ReviewerGroups} {
 		for _, id := range ids {

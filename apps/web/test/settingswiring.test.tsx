@@ -420,7 +420,9 @@ describe("Settings — URL-backed section rail", () => {
       tab.getAttribute("aria-label"),
     );
     expect(labels.indexOf("Data retention")).toBe(labels.indexOf("Access & security") + 1);
-    expect(labels.indexOf("Features")).toBe(labels.indexOf("Data retention") + 1);
+    // Sections are grouped: retention closes "Sign-in & security", and Features sits with the
+    // organisation's own sections rather than after whatever was built before it.
+    expect(labels.indexOf("Features")).toBeLessThan(labels.indexOf("Authentication"));
   });
 
   it("wires both access-event and audit-log policies into Data retention", async () => {
@@ -451,8 +453,8 @@ describe("Settings — URL-backed section rail", () => {
 
     await waitFor(() =>
       expect(screen.getAllByRole("tab").map((tab) => tab.getAttribute("aria-label"))).toEqual([
-        "Authentication",
         "Licence & plan",
+        "Authentication",
       ]),
     );
     expect(screen.queryByRole("tab", { name: "Organization" })).toBeNull();

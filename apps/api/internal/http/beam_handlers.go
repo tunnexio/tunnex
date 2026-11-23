@@ -42,7 +42,7 @@ func beamMiddleware(service *beam.Service) func(http.Handler) http.Handler {
 					apierr.Write(w, r, e)
 					return
 				}
-				apierr.Write(w, r, apierr.Forbidden("human_browser_session_required", "Beam access evidence requires a current human browser session"))
+				apierr.Write(w, r, apierr.Forbidden("human_browser_session_required", "Local Sharing access evidence requires a current human browser session"))
 				return
 			}
 			if len(parts) < 5 || parts[0] != "api" || parts[1] != "v1" || parts[2] != "organizations" || parts[4] != "beam" {
@@ -55,7 +55,7 @@ func beamMiddleware(service *beam.Service) func(http.Handler) http.Handler {
 				return
 			}
 			if service == nil {
-				apierr.Write(w, r, apierr.New(503, "beam_unavailable", "Beam service unavailable"))
+				apierr.Write(w, r, apierr.New(503, "beam_unavailable", "Local Sharing service unavailable"))
 				return
 			}
 			path := strings.Join(parts[5:], "/")
@@ -77,7 +77,7 @@ func beamMiddleware(service *beam.Service) func(http.Handler) http.Handler {
 			}
 			p, _ := authctx.PrincipalFrom(ctx)
 			if p.UserID == uuid.Nil || p.IsMachine() || p.IsAgent() || (p.AuthMethod != authctx.AuthBearer && p.SessionID == "") {
-				apierr.Write(w, r, apierr.Forbidden("human_session_required", "Beam requires a current human login"))
+				apierr.Write(w, r, apierr.Forbidden("human_session_required", "Local Sharing requires a current human login"))
 				return
 			}
 			if len(r.Header.Values("Authorization")) > 0 && p.AuthMethod != authctx.AuthBearer {
@@ -143,9 +143,9 @@ func beamDecodeLimit(w http.ResponseWriter, r *http.Request, out any, limit int6
 	}
 	var max *http.MaxBytesError
 	if errors.As(e, &max) {
-		return apierr.New(413, "request_body_too_large", "Beam request exceeds the allowed size")
+		return apierr.New(413, "request_body_too_large", "Local Sharing request exceeds the allowed size")
 	}
-	return apierr.BadRequest("beam_invalid", "Invalid Beam request")
+	return apierr.BadRequest("beam_invalid", "Invalid Local Sharing request")
 }
 func beamPage(r *http.Request) (int, int, error) {
 	limit, offset := 50, 0
@@ -308,7 +308,7 @@ func serveBeam(ctx context.Context, w http.ResponseWriter, r *http.Request, s *b
 			}
 		}
 	}
-	return nil, apierr.New(405, "method_not_allowed", "Beam operation not available")
+	return nil, apierr.New(405, "method_not_allowed", "Local Sharing operation not available")
 }
 
 func beamEventFilter(r *http.Request) (beam.EventFilter, error) {

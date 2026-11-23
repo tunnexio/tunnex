@@ -60,7 +60,7 @@ func TestBeamTargetAndDomainBoundaries(t *testing.T) {
 	s.config.ProxyURL = "https://proxy.other.net"
 	s.config.BaseDomain = strings.Repeat("a", 63) + "." + strings.Repeat("b", 63) + "." + strings.Repeat("c", 63) + "." + strings.Repeat("d", 22) + ".net"
 	if !s.domainReady() {
-		t.Fatal("refused the maximum valid Beam hostname length")
+		t.Fatal("refused the maximum valid Local Sharing hostname length")
 	}
 	s.config.BaseDomain = strings.Replace(s.config.BaseDomain, strings.Repeat("d", 22), strings.Repeat("d", 23), 1)
 	if s.domainReady() {

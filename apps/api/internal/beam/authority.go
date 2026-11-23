@@ -84,7 +84,7 @@ func (s *Service) parent(ctx context.Context, q reader, org, user uuid.UUID, id 
 		return time.Time{}, e
 	}
 	if requireMFA && (!session.ValidMFAAssurance(sess.MFAVerifiedAt, sess.MFAAssuranceSource, time.Now()) || sess.MFAVerifiedAt.Before(time.Now().Add(-5*time.Minute))) {
-		return time.Time{}, apierr.Forbidden("mfa_step_up_required", "Verify MFA to open this Beam share")
+		return time.Time{}, apierr.Forbidden("mfa_step_up_required", "Verify MFA to open this share")
 	}
 	return deadline, nil
 }
