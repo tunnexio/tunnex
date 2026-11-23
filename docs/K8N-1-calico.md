@@ -117,8 +117,8 @@ nothing in Calico's chains.
    hook (`ip mangle POSTROUTING`, type filter, priority -150, policy accept) is read this way.
 
 9. **Added after the founder's ruling: the host-posture manager reads what the gateway cannot.**
-   The gateway keeps its capabilities (`NET_ADMIN`, `NET_BIND_SERVICE`, and `NET_RAW` only with VPN
-   inference). It no longer runs `iptables-nft-save -t nat|-t mangle` or `ipset` for this proof.
+   The gateway keeps its capabilities (`NET_ADMIN`, `NET_BIND_SERVICE`, and `NET_RAW` with VPN
+   inference, which is on by default; only `aiVPN.enabled=false` leaves it out). It no longer runs `iptables-nft-save -t nat|-t mangle` or `ipset` for this proof.
    The privileged manager reads, publishes the facts, and the gateway decides, as K8N-2 does for
    Cilium. The manager never learns the tunnel range and never publishes a verdict.
 
@@ -252,7 +252,7 @@ masquerade would rewrite tunnel traffic. Membership is what decides.
     masquerade rule, for `-t nat` and `-t mangle` alike. With `NET_RAW` added, or privileged (the
     host-posture container), it works. `ipset save` works with `NET_ADMIN` alone. So the check is
     ready on a Calico node only where `NET_RAW` is held: today the host-posture container, and the
-    gateway only with VPN inference on. The refusal is closed (the command fails, and the cut text
+    gateway with VPN inference on (the chart's default, as the live install below found). The refusal is closed (the command fails, and the cut text
     is refused on its own), but **the gateway on Calico is not ready until this is decided**:
     grant the gateway `NET_RAW` on such clusters, or have it rely on the host-posture reading.
     Decided and built since: Decision 9, and *Live check of Decision 9* below.
@@ -484,6 +484,17 @@ dead manager.
    the node's rules only while a gateway may own the node. This is normal and is now said in
    the host-posture chart's notes. A `host-facts.json` left on a node whose gateway is gone
    belongs to an older heartbeat and is not used.
+
+5. **Found while running the chart contract on Linux.** The host-posture contract test compared
+   the lines `cilium.enabled=true` adds with a fixed text, in the order `diff` printed them.
+   `type: Directory` already ends a default volume, so which of two identical lines is "added"
+   is the tool's choice: the BSD `diff` of macOS passed, GNU `diff` (CI) failed, on the tree
+   before this section too. The test now compares the added lines as a set and checks each
+   mount and each volume in order by itself.
+
+Verified for this section: both chart contract scripts under Helm 3.18.4 (the version CI pins)
+with GNU `diff`, `helm lint` and `helm template` with `cilium.enabled` off and on, and the
+installer's unit tests. Not verified: any of it on a cluster.
 
 Not changed: the 2 s pass, the 10 s freshness, the exec probe command, the memory limit, and
 the manager's code.

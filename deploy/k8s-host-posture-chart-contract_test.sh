@@ -143,21 +143,50 @@ test "$(grep -Fc 'command: ["/usr/local/bin/tunnex-node", "k8s-host-posture-chec
   echo 'host-posture manager must render exactly one liveness heartbeat probe' >&2
   exit 1
 }
-test "$(grep -Ec '^[[:space:]]+timeoutSeconds: 2$' "${TMP}/daemonset.yaml")" -eq 3 || {
-  echo 'host-posture manager probes must all use the fixed two-second timeout' >&2
+# K8N-1, "Hardening after the live install": each probe starts the whole binary,
+# and a 2 s timeout restarted the manager on a busy node. The exact numbers are
+# also what `tunnex k8s install` verifies (hostPostureCurrentProbes).
+probe_block() {
+  awk -v probe="$1" '
+    $0 ~ "^          " probe ":$" { selected = 1; next }
+    selected && /^          [A-Za-z]/ { exit }
+    selected { print }
+  ' "${TMP}/daemonset.yaml" | sed -E 's/^[[:space:]]+//' | grep -Ev '^(exec:|command:)' | tr '\n' ' '
+}
+test "$(probe_block startupProbe)" = 'periodSeconds: 2 timeoutSeconds: 5 failureThreshold: 45 ' || {
+  echo "host-posture startup probe must be period 2 s, timeout 5 s, 45 failures; got: $(probe_block startupProbe)" >&2
   exit 1
 }
-require "${TMP}/daemonset.yaml" 'failureThreshold: 45' 'bounded startup heartbeat budget'
-test "$(grep -Ec '^[[:space:]]+failureThreshold: 3$' "${TMP}/daemonset.yaml")" -eq 2 || {
-  echo 'host-posture readiness and liveness failure thresholds must stay exact' >&2
+test "$(probe_block readinessProbe)" = 'periodSeconds: 5 timeoutSeconds: 5 failureThreshold: 3 ' || {
+  echo "host-posture readiness probe must be period 5 s, timeout 5 s, 3 failures; got: $(probe_block readinessProbe)" >&2
   exit 1
 }
+test "$(probe_block livenessProbe)" = 'periodSeconds: 10 timeoutSeconds: 5 failureThreshold: 6 ' || {
+  echo "host-posture liveness probe must be period 10 s, timeout 5 s, 6 failures; got: $(probe_block livenessProbe)" >&2
+  exit 1
+}
+reject "${TMP}/daemonset.yaml" 'initialDelaySeconds:|successThreshold:' 'probe field outside the fixed health contract'
 reject "${TMP}/daemonset.yaml" 'httpGet:|tcpSocket:|grpc:' 'alternate manager health handler'
+
+# Requests follow the measured use (K8N-1, "Hardening after the live install");
+# the memory limit is unchanged and there is no CPU limit.
+resources_block() {
+  awk '
+    /^          resources:$/ { selected = 1; next }
+    selected && /^      [A-Za-z]/ { exit }
+    selected { print }
+  ' "$1" | sed -E 's/^[[:space:]]+//' | tr '\n' ' '
+}
+test "$(resources_block "${TMP}/daemonset.yaml")" = 'limits: memory: 128Mi requests: cpu: 40m memory: 48Mi ' || {
+  echo "host-posture default resources are not the measured contract; got: $(resources_block "${TMP}/daemonset.yaml")" >&2
+  exit 1
+}
 
 # K8N-2: the two Cilium host paths. Off by default, so a cluster without Cilium
 # gets exactly the mounts it had. With cilium.enabled=true the DaemonSet gains
-# exactly two hostPath volumes, both mounted read-only, and nothing else in the
-# rendered release changes: no capability, no environment, no RBAC.
+# exactly two hostPath volumes, both mounted read-only, and its requests become
+# the ones measured with bpftool running. Nothing else in the rendered release
+# changes: no capability, no environment, no RBAC, no limit.
 reject "${TMP}/rendered.yaml" '[Cc]ilium|/sys/fs/bpf' 'Cilium host path or name without cilium.enabled'
 test "$(grep -Ec '^[[:space:]]+hostPath:$' "${TMP}/daemonset.yaml")" -eq 2 || {
   echo 'host-posture manager must render exactly two hostPath volumes by default' >&2
@@ -168,13 +197,31 @@ cmp -s "${TMP}/rendered.yaml" "${TMP}/cilium-off.yaml" || {
   echo 'cilium.enabled=false must render exactly the default release' >&2
   exit 1
 }
-helm template tunnex-host-posture "${CHART}" "${BASE[@]}" --set cilium.enabled=true >"${TMP}/cilium-on.yaml"
-if diff "${TMP}/rendered.yaml" "${TMP}/cilium-on.yaml" | grep -E '^<' >"${TMP}/cilium-removed.txt"; then
+helm template tunnex-host-posture "${CHART}" "${BASE[@]}" --set cilium.enabled=true >"${TMP}/cilium-on-raw.yaml"
+test "$(resources_block "${TMP}/cilium-on-raw.yaml")" = 'limits: memory: 128Mi requests: cpu: 50m memory: 96Mi ' || {
+  echo "host-posture Cilium resources are not the measured contract; got: $(resources_block "${TMP}/cilium-on-raw.yaml")" >&2
+  exit 1
+}
+# The two request lines are the only lines allowed to differ; they were checked
+# exactly above, so exactly those two are taken out of each side. The limit
+# stays in the comparison.
+strip_requests() {
+  local file=$1 cpu=$2 memory=$3
+  test "$(grep -Ec "^              (cpu: ${cpu}|memory: ${memory})\$" "${file}")" -eq 2 || {
+    echo "host-posture manager must render exactly one ${cpu} CPU request and one ${memory} memory request in ${file##*/}" >&2
+    exit 1
+  }
+  grep -Ev "^              (cpu: ${cpu}|memory: ${memory})\$" "${file}"
+}
+strip_requests "${TMP}/rendered.yaml" 40m 48Mi >"${TMP}/rendered-no-requests.yaml"
+strip_requests "${TMP}/cilium-on-raw.yaml" 50m 96Mi >"${TMP}/cilium-on.yaml"
+reject "${TMP}/cilium-on-raw.yaml" '^[[:space:]]+cpu: (40m)$|^[[:space:]]+memory: (48Mi)$' 'default request on a Cilium cluster'
+if diff "${TMP}/rendered-no-requests.yaml" "${TMP}/cilium-on.yaml" | grep -E '^<' >"${TMP}/cilium-removed.txt"; then
   echo 'cilium.enabled=true removed or changed a line of the default release:' >&2
   cat "${TMP}/cilium-removed.txt" >&2
   exit 1
 fi
-diff "${TMP}/rendered.yaml" "${TMP}/cilium-on.yaml" | sed -n 's/^> //p' | grep -Ev '^[[:space:]]*#' >"${TMP}/cilium-added.txt" || true
+diff "${TMP}/rendered-no-requests.yaml" "${TMP}/cilium-on.yaml" | sed -n 's/^> //p' | grep -Ev '^[[:space:]]*#' >"${TMP}/cilium-added.txt" || true
 cat >"${TMP}/cilium-expected.txt" <<'CILIUM'
             - name: cilium-run
               mountPath: /var/run/cilium
@@ -192,9 +239,25 @@ cat >"${TMP}/cilium-expected.txt" <<'CILIUM'
             path: /sys/fs/bpf
             type: Directory
 CILIUM
-cmp -s "${TMP}/cilium-added.txt" "${TMP}/cilium-expected.txt" || {
+# `type: Directory` already ends a default volume, so which of two identical
+# lines counts as "added" is the diff tool's choice: GNU diff and the BSD diff
+# of macOS choose differently. Compare the added lines as a set of lines, and
+# prove the order of each mount and volume separately below.
+LC_ALL=C sort "${TMP}/cilium-added.txt" >"${TMP}/cilium-added-sorted.txt"
+LC_ALL=C sort "${TMP}/cilium-expected.txt" >"${TMP}/cilium-expected-sorted.txt"
+cmp -s "${TMP}/cilium-added-sorted.txt" "${TMP}/cilium-expected-sorted.txt" || {
   echo 'cilium.enabled=true must add exactly the two read-only Cilium host paths:' >&2
-  diff "${TMP}/cilium-expected.txt" "${TMP}/cilium-added.txt" >&2 || true
+  diff "${TMP}/cilium-expected-sorted.txt" "${TMP}/cilium-added-sorted.txt" >&2 || true
+  exit 1
+}
+cilium_entry() {
+  grep -A "$2" -- "^$1\$" "${TMP}/cilium-on.yaml" | grep -Ev '^[[:space:]]*#' | sed -E 's/^[[:space:]]+//' | tr '\n' ' '
+}
+test "$(cilium_entry '            - name: cilium-run' 2)" = '- name: cilium-run mountPath: /var/run/cilium readOnly: true ' &&
+  test "$(cilium_entry '            - name: host-bpf' 5)" = '- name: host-bpf mountPath: /sys/fs/bpf readOnly: true mountPropagation: HostToContainer ' &&
+  test "$(cilium_entry '        - name: cilium-run' 3)" = '- name: cilium-run hostPath: path: /var/run/cilium type: Directory ' &&
+  test "$(cilium_entry '        - name: host-bpf' 3)" = '- name: host-bpf hostPath: path: /sys/fs/bpf type: Directory ' || {
+  echo 'each Cilium host path must be an existing host Directory mounted read-only at its own path' >&2
   exit 1
 }
 test "$(grep -Ec '^[[:space:]]+privileged: true$' "${TMP}/cilium-on.yaml")" -eq 1 || {
@@ -203,6 +266,10 @@ test "$(grep -Ec '^[[:space:]]+privileged: true$' "${TMP}/cilium-on.yaml")" -eq 
 }
 reject "${TMP}/cilium-on.yaml" 'mountPropagation: Bidirectional' 'mount that propagates from the manager to the host'
 expect_fail cilium-not-boolean 'cilium.*enabled.*(boolean|got string)' "${BASE[@]}" --set-string cilium.enabled=yes
+expect_fail cilium-resources-not-object 'cilium.*resources.*(object|got string)' "${BASE[@]}" --set-string cilium.resources=none
+# An operator who finds heartbeat.json and no host-facts.json on a node without
+# a gateway must be told, where they look, that this is normal.
+require "${CHART}/templates/NOTES.txt" 'heartbeat\.json \(state "idle"\) and no host-facts\.json' 'idle-manager sentence in the install notes'
 expect_fail cilium-unknown-key 'additional propert(y|ies).*socket' "${BASE[@]}" --set-string cilium.socket=/run/other.sock
 
 # The privileged manager has one fixed identity across the entire cluster. A

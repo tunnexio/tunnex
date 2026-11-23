@@ -78,24 +78,30 @@ spec:
               value: {{ .Values.apiRequestTimeout | quote }}
             - name: TUNNEX_HOST_POSTURE_MAX_OWNERS
               value: {{ .Values.maxOwners | quote }}
+          # Each probe starts the whole binary, which took more than 2 s on a
+          # busy node. A gateway reads the heartbeat itself (10 s freshness) and
+          # an exited manager is restarted without any probe, so these timings
+          # only decide when a hung manager is restarted (at most 75 s after
+          # its last heartbeat) and when the pod counts as ready. `tunnex k8s
+          # install` verifies these exact numbers: change both together.
           startupProbe:
             exec:
               command: ["/usr/local/bin/tunnex-node", "k8s-host-posture-check", "--ready"]
             periodSeconds: 2
-            timeoutSeconds: 2
+            timeoutSeconds: 5
             failureThreshold: 45
           readinessProbe:
             exec:
               command: ["/usr/local/bin/tunnex-node", "k8s-host-posture-check", "--ready"]
-            periodSeconds: 2
-            timeoutSeconds: 2
+            periodSeconds: 5
+            timeoutSeconds: 5
             failureThreshold: 3
           livenessProbe:
             exec:
               command: ["/usr/local/bin/tunnex-node", "k8s-host-posture-check", "--live"]
             periodSeconds: 10
-            timeoutSeconds: 2
-            failureThreshold: 3
+            timeoutSeconds: 5
+            failureThreshold: 6
           volumeMounts:
             - name: host-posture-state
               mountPath: /var/lib/tunnex/host-posture/v1
@@ -119,7 +125,11 @@ spec:
               mountPropagation: HostToContainer
             {{- end }}
           resources:
+            {{- if .Values.cilium.enabled }}
+            {{- toYaml .Values.cilium.resources | nindent 12 }}
+            {{- else }}
             {{- toYaml .Values.resources | nindent 12 }}
+            {{- end }}
       volumes:
         - name: host-posture-state
           hostPath:
