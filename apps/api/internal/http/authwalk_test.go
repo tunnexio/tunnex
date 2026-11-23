@@ -146,6 +146,7 @@ var walkBodies = map[string]string{
 	"setk8sclusterscopeactive":          `{"active":false,"expected_revision":1}`,
 	"decidek8sclusterscopemembership":   `{"decision":"rejected"}`,
 	"exposek8sinventoryservice":         `{"port_refs":["00000000-0000-0000-0000-000000000000"]}`,
+	"createk8snamespacerule":            `{"namespace":"shop"}`,
 	"remintnodelifecycleclaim":          `{"node_name":"walk-gateway","expected_generation":1,"request_id":"00000000-0000-4000-8000-000000000001"}`,
 	"acknowledgenodelifecycleclaim":     `{"expected_generation":1,"request_id":"00000000-0000-4000-8000-000000000001"}`,
 	"abortnodelifecycleclaim":           `{"expected_generation":1,"request_id":"00000000-0000-4000-8000-000000000001"}`,
@@ -201,6 +202,7 @@ var walkQueries = map[string]string{
 	"testdeviceaccess":                        "?destination=192.0.2.10&protocol=tcp&port=443",
 	"getagentpolicytemplatedestinationimpact": "?destination_kind=resource&destination_id=00000000-0000-0000-0000-000000000000",
 	"deletek8sclusterscope":                   "?expected_revision=1",
+	"deletek8snamespacerule":                  "?exposures=keep",
 }
 
 // TestSessionlessMutationsAre401 walks EVERY operation in the OpenAPI spec and

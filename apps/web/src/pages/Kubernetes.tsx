@@ -27,6 +27,7 @@ import {
   k8sGate,
   managedEditWarning,
   objectControls,
+  serviceOwner,
   type ClusterCard,
   type ServiceRow,
 } from "../lib/k8sview";
@@ -38,6 +39,7 @@ import {
   ProviderMetadataCorrectionModal,
 } from "../components/K8sEnrollment";
 import { K8sServiceInventoryStatus } from "../components/K8sServiceInventoryStatus";
+import { K8sNamespaceRulesPanel } from "../components/K8sNamespaceRules";
 import { MachineCredentials } from "../components/MachineCredentials";
 import { K8sHAActivationPanel } from "../components/K8sHAActivationPanel";
 import { K8sConnectorPoolPanel } from "../components/K8sConnectorPoolPanel";
@@ -366,10 +368,10 @@ export default function Kubernetes() {
     { key: "service", header: "Service", cell: (row: SvcRow) => <div className="kubernetes-cell-stack"><button type="button" className="kubernetes-name-link" aria-label={row.fqdn} title={row.fqdn} onClick={() => setInspectedService(row)}>{row.name}</button><span className="kubernetes-muted">{row.namespace}</span></div> },
     { key: "cluster", header: "Cluster", cell: (row: SvcRow) => <button type="button" className="kubernetes-text-link" onClick={() => { const card = cards.find(card => card.id === row.clusterId); if (card) openCluster(card); }}>{row.clusterName}</button> },
     { key: "vip", header: "VIP · port", cell: (row: SvcRow) => <div className="kubernetes-cell-stack"><span>{row.vip}</span><span className="kubernetes-muted">{row.protocol.toUpperCase()} {row.ports}</span></div> },
-    { key: "owner", header: "Managed by", cell: (row: SvcRow) => <span aria-label={row.managedByOperator ? managedEditWarning("Service") : undefined}>{row.managedByOperator ? "GitOps" : "Dashboard"}</span> },
+    { key: "owner", header: "Managed by", cell: (row: SvcRow) => { const owner = serviceOwner(row); return <span aria-label={owner.why ?? undefined} title={owner.why ?? undefined}>{owner.label === "Namespace rule" ? <Badge tone="neutral">{owner.label}</Badge> : owner.label}</span>; } },
     { key: "actions", header: "Actions", cell: (row: SvcRow) => <AppAccessRowMenu label={`Service actions for ${row.fqdn}`} actions={[
       { key: "view", label: "View service", onSelect: () => setInspectedService(row) },
-      ...(gate.canManage && !objectControls(row.managedByOperator).withheld ? [{ key: "remove", label: "Unexpose", danger: true, onSelect: () => setUnexposeFor(row) }] : []),
+      ...(gate.canManage && !serviceOwner(row).withheld ? [{ key: "remove", label: "Unexpose", danger: true, onSelect: () => setUnexposeFor(row) }] : []),
     ]} /> },
   ];
   const filteredServices = serviceRows.filter(row => (!selectedId || row.clusterId === selectedId) && `${row.fqdn} ${row.namespace} ${row.name} ${row.clusterName}`.toLowerCase().includes(query.trim().toLowerCase()));
@@ -391,6 +393,7 @@ export default function Kubernetes() {
       <span className="kubernetes-list-count">{filteredServices.length} service{filteredServices.length === 1 ? "" : "s"}</span>
       {selected && editable(selected) && <Button size="sm" onClick={() => setExposeFor(selected)}>Expose service</Button>}
     </div>
+    {selected && orgId && <K8sNamespaceRulesPanel orgId={orgId} cluster={selected} canManage={gate.canManage} exposed={selected.services} onChanged={reload} />}
     {pagedServices.length ? <div className="kubernetes-flat-table kubernetes-service-table" data-scoped={section === "clusters" ? "true" : undefined}><DataTable caption="Exposed Kubernetes Services" columns={section === "clusters" ? serviceColumns.filter(column => column.key !== "cluster") : serviceColumns} rows={pagedServices} rowKey={row => row.id} empty={null} failed={false} filterable={false} pageSize={0} variant="flat" /></div> : <div className="kubernetes-empty-state" role="status"><h3>{query ? "No matching services" : "No exposed services"}</h3><p>{query ? "Try another service or namespace." : selected ? "Choose a service from this cluster’s connector inventory." : "Select a cluster to expose its first service."}</p>{query && <Button size="sm" variant="ghost" onClick={resetSearch}>Clear search</Button>}</div>}
     {pagination}
   </section>;
@@ -500,8 +503,8 @@ kubectl wait --for=condition=Established --timeout=120s \\
           </div>}
         </>}
       </>}
-      {scopeCurrent && inspectedService && <Modal placement="right" showClose title={inspectedService.name} onDismiss={() => setInspectedService(null)} actions={<><Button variant="ghost" onClick={() => { const card = cards.find(card => card.id === inspectedService.clusterId); if (card) openCluster(card); setInspectedService(null); }}>View cluster</Button>{gate.canManage && !inspectedService.managedByOperator && <Button variant="danger" onClick={() => { setUnexposeFor(inspectedService); setInspectedService(null); }}>Unexpose</Button>}</>}>
-        <ResourceSummary title="Service details" description={inspectedService.fqdn} className="kubernetes-service-inspection"><dl className="kubernetes-facts tnx-resource-facts tnx-resource-facts-single">{[["Cluster", inspectedService.clusterName], ["Namespace", inspectedService.namespace], ["VIP", inspectedService.vip], ["Protocol", inspectedService.protocol.toUpperCase()], ["Port", inspectedService.ports], ["Managed by", inspectedService.managedByOperator ? "GitOps operator" : "Dashboard"]].map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>{inspectedService.managedByOperator && <p className="kubernetes-context" aria-label={managedEditWarning("Service")}>Edit the Service CR to change exposure.</p>}</ResourceSummary>
+      {scopeCurrent && inspectedService && <Modal placement="right" showClose title={inspectedService.name} onDismiss={() => setInspectedService(null)} actions={<><Button variant="ghost" onClick={() => { const card = cards.find(card => card.id === inspectedService.clusterId); if (card) openCluster(card); setInspectedService(null); }}>View cluster</Button>{gate.canManage && !serviceOwner(inspectedService).withheld && <Button variant="danger" onClick={() => { setUnexposeFor(inspectedService); setInspectedService(null); }}>Unexpose</Button>}</>}>
+        <ResourceSummary title="Service details" description={inspectedService.fqdn} className="kubernetes-service-inspection"><dl className="kubernetes-facts tnx-resource-facts tnx-resource-facts-single">{[["Cluster", inspectedService.clusterName], ["Namespace", inspectedService.namespace], ["VIP", inspectedService.vip], ["Protocol", inspectedService.protocol.toUpperCase()], ["Port", inspectedService.ports], ["Managed by", inspectedService.managedByOperator ? "GitOps operator" : inspectedService.namespaceRuleId !== null ? `Namespace rule for ${inspectedService.namespace}: remove the rule to unexpose it` : "Dashboard"]].map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>{inspectedService.managedByOperator && <p className="kubernetes-context" aria-label={managedEditWarning("Service")}>Edit the Service CR to change exposure.</p>}</ResourceSummary>
       </Modal>}
       {scopeCurrent && trafficPathOpen && (
         <Modal placement="right" showClose title="Kubernetes traffic path" onDismiss={() => setTrafficPathOpen(false)} actions={<Button variant="ghost" onClick={() => setTrafficPathOpen(false)}>Close</Button>}>

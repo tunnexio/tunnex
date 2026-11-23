@@ -1,3 +1,4 @@
+import type { components } from "@tunnex/shared";
 import type { K8sCluster, K8sService, Role } from "./api";
 import { can } from "./rbac";
 
@@ -34,6 +35,7 @@ export interface ServiceRow {
   vip: string;
   fqdn: string; // READ from the server (never constructed here)
   managedByOperator: boolean; // S10.2 D2 cond 1: GitOps-managed → badge + warn (edit the CR, not here)
+  namespaceRuleId: string | null; // K8N-4: set when a namespace rule created this exposure
 }
 
 export interface ClusterCard {
@@ -92,6 +94,7 @@ function serviceRow(s: K8sService): ServiceRow {
     vip: s.vip,
     fqdn: s.fqdn,
     managedByOperator: s.managed_by_operator,
+    namespaceRuleId: s.namespace_rule_id ?? null,
   };
 }
 
@@ -270,4 +273,126 @@ export function serviceSlices(clusters: ClusterCard[]): Array<{
       value: c.services.length,
       tone: TONES[i % TONES.length],
     }));
+}
+
+// ── K8N-4: namespace rules ("expose every Service in this namespace") ───────────────────────────────────
+//
+// A rule gives every Service of ONE namespace an address and a name, now and as Services are added. It
+// never grants access. The server decides everything; what is here is the wording, the withhold decision
+// and the "what will happen" arithmetic shown BEFORE the administrator confirms.
+
+export type K8sNamespaceRule = components["schemas"]["K8sNamespaceRule"];
+type InventoryService = components["schemas"]["K8sInventoryService"];
+
+export const NAMESPACE_RULE_BADGE = "Namespace rule";
+
+/** Who owns an exposure row. A row is the operator's, a rule's, or was made by hand in the dashboard. */
+export function serviceOwner(row: Pick<ServiceRow, "managedByOperator" | "namespaceRuleId" | "namespace">): {
+  label: "GitOps" | typeof NAMESPACE_RULE_BADGE | "Dashboard";
+  /** true = the dashboard must not offer Unexpose for this row. */
+  withheld: boolean;
+  why: string | null;
+} {
+  if (row.managedByOperator)
+    return { label: "GitOps", withheld: true, why: managedEditWarning("Service") };
+  if (row.namespaceRuleId !== null)
+    return {
+      label: NAMESPACE_RULE_BADGE,
+      withheld: true,
+      why: `This Service is exposed by the namespace rule for ${row.namespace}. Remove the rule to unexpose it; removing it here would be undone on the gateway's next report.`,
+    };
+  return { label: "Dashboard", withheld: false, why: null };
+}
+
+/**
+ * Mirrors the server's refusal so the reason shows while typing. The server (and the database) still
+ * decide; a namespace this lets through can be refused there.
+ */
+export function namespaceIneligibleReason(namespace: string): string | null {
+  const ns = namespace.trim();
+  if (ns === "") return "Choose one namespace.";
+  if (!/^[a-z0-9]([-a-z0-9]*[a-z0-9])?$/.test(ns) || ns.length > 63)
+    return "Name one namespace: lowercase letters, digits and hyphens. There is no wildcard and no all-namespaces rule.";
+  if (ns === "kube-system" || ns === "kube-public" || ns === "kube-node-lease")
+    return `${ns} is a Kubernetes system namespace and cannot be exposed by a namespace rule.`;
+  if (ns === "tunnex" || ns.startsWith("tunnex-"))
+    return `${ns} is Tunnex's own namespace and cannot be exposed by a namespace rule.`;
+  return null;
+}
+
+/** Namespaces from the gateway's report that a rule may name and that have no rule yet. */
+export function ruleableNamespaces(
+  inventory: Pick<InventoryService, "namespace">[],
+  existingRules: Pick<K8sNamespaceRule, "namespace">[],
+): string[] {
+  const taken = new Set(existingRules.map((rule) => rule.namespace));
+  return [...new Set(inventory.map((item) => item.namespace))]
+    .filter((ns) => !taken.has(ns) && namespaceIneligibleReason(ns) === null)
+    .sort();
+}
+
+export interface NamespaceRulePreview {
+  services: number; // Services the gateway reports in the namespace right now
+  ports: number;
+  portsAlreadyExposed: number; // left exactly as they are
+  servicesToExpose: number; // Services that get at least one new exposure
+  portsToExpose: number;
+  newAddresses: number; // Services with no exposure yet: each takes one address from the cluster's range
+}
+
+/** What creating the rule would do with the Services reported right now. Later Services follow the same rule. */
+export function namespaceRulePreview(
+  inventory: InventoryService[],
+  exposed: Pick<ServiceRow, "namespace" | "name" | "protocol" | "ports">[],
+  namespace: string,
+): NamespaceRulePreview {
+  const inNamespace = exposed.filter((row) => row.namespace === namespace);
+  const out: NamespaceRulePreview = { services: 0, ports: 0, portsAlreadyExposed: 0, servicesToExpose: 0, portsToExpose: 0, newAddresses: 0 };
+  for (const item of inventory) {
+    if (item.namespace !== namespace) continue;
+    out.services += 1;
+    const rows = inNamespace.filter((row) => row.name === item.service);
+    let missing = 0;
+    for (const port of item.ports) {
+      out.ports += 1;
+      const covered = rows.some(
+        (row) => row.ports === "any" || (row.ports === String(port.service_port) && (row.protocol === port.protocol || row.protocol === "any")),
+      );
+      if (covered) out.portsAlreadyExposed += 1;
+      else missing += 1;
+    }
+    if (missing > 0) {
+      out.servicesToExpose += 1;
+      out.portsToExpose += missing;
+      if (rows.length === 0) out.newAddresses += 1;
+    }
+  }
+  return out;
+}
+
+/** The rule's state in words. Anything but "applied" is a rule that is NOT fully in effect, with the reason. */
+export function namespaceRuleStatus(rule: Pick<K8sNamespaceRule, "status" | "status_message" | "waiting_services">): {
+  tone: "ok" | "warn" | "danger" | "neutral";
+  label: string;
+  message: string | null;
+} {
+  const message = rule.status_message.trim() === "" ? null : rule.status_message;
+  switch (rule.status) {
+    case "applied":
+      return { tone: "ok", label: "Applied", message };
+    case "pending":
+      return { tone: "neutral", label: "Waiting for first report", message: message ?? "Nothing is exposed until the cluster's gateway reports its Services." };
+    case "inventory_stale":
+      return { tone: "warn", label: "Report is stale", message };
+    case "inventory_unavailable":
+      return { tone: "warn", label: "No current report", message };
+    case "vip_range_exhausted":
+      return { tone: "danger", label: `Address range full · ${rule.waiting_services} waiting`, message };
+    case "scope_review_limit":
+      return { tone: "danger", label: `Review limit reached · ${rule.waiting_services} waiting`, message };
+    case "withdrawal_blocked":
+      return { tone: "warn", label: "Withdrawal blocked", message };
+    default:
+      return { tone: "danger", label: "Not applied", message };
+  }
 }

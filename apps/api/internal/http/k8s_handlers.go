@@ -57,14 +57,81 @@ func toAPIK8sCluster(c sqlc.K8sCluster) api.K8sCluster {
 	}
 }
 
-func toAPIK8sService(svc sqlc.K8sService, fqdn string) api.K8sService {
+func toAPIK8sService(svc sqlc.K8sService, fqdn string, namespaceRule uuid.UUID) api.K8sService {
+	var namespaceRuleID *uuid.UUID
+	if namespaceRule != uuid.Nil {
+		namespaceRuleID = &namespaceRule
+	}
 	return api.K8sService{
 		Id: svc.ID, ClusterId: svc.ClusterID, Name: svc.Name, Namespace: svc.Namespace,
 		Protocol: api.K8sServiceProtocol(svc.Protocol),
 		PortLow:  ptrInt32ToInt(svc.PortLow), PortHigh: ptrInt32ToInt(svc.PortHigh),
 		Vip: svc.Vip.String(), Fqdn: fqdn,
 		ManagedByOperator: svc.ManagedByMachine.Valid, // D2 cond 1
+		NamespaceRuleId:   namespaceRuleID,            // K8N-4: made by a namespace rule
 	}
+}
+
+func toAPIK8sNamespaceRule(rule k8ssvc.NamespaceRule) api.K8sNamespaceRule {
+	return api.K8sNamespaceRule{
+		Id: rule.ID, ClusterId: rule.ClusterID, Namespace: rule.Namespace,
+		Status: api.K8sNamespaceRuleStatus(rule.Status), StatusMessage: rule.StatusMessage,
+		WaitingServices: rule.WaitingServices, ExposedServices: rule.ExposedServices, ExposedPorts: rule.ExposedPorts,
+		LastReconciledAt: rule.LastReconciledAt, CreatedAt: rule.CreatedAt,
+	}
+}
+
+// K8N-4 namespace rules: "expose every Service in this namespace". Reads are org:view like the Service
+// list; create and delete are k8s:manage, the same capability as exposing a Service by hand, and need a
+// signed-in human (the service refuses a machine credential).
+
+func (s apiServer) ListK8sNamespaceRules(ctx context.Context, req api.ListK8sNamespaceRulesRequestObject) (api.ListK8sNamespaceRulesResponseObject, error) {
+	if _, err := authorize(ctx, req.OrgId, rbac.PermOrgView); err != nil {
+		return nil, err
+	}
+	rules, err := s.k8s.ListNamespaceRules(ctx, req.OrgId, req.ClusterId)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]api.K8sNamespaceRule, len(rules))
+	for i, rule := range rules {
+		out[i] = toAPIK8sNamespaceRule(rule)
+	}
+	return api.ListK8sNamespaceRules200JSONResponse{Body: out, Headers: api.ListK8sNamespaceRules200ResponseHeaders{XRequestId: reqID(ctx)}}, nil
+}
+
+func (s apiServer) CreateK8sNamespaceRule(ctx context.Context, req api.CreateK8sNamespaceRuleRequestObject) (api.CreateK8sNamespaceRuleResponseObject, error) {
+	if _, err := authorize(ctx, req.OrgId, rbac.PermK8sManage); err != nil {
+		return nil, err
+	}
+	if req.Body == nil {
+		return nil, apierr.BadRequest("invalid_request", "a request body is required")
+	}
+	actor, _ := authctx.PrincipalFrom(ctx)
+	rule, err := s.k8s.CreateNamespaceRule(ctx, req.OrgId, req.ClusterId, req.Body.Namespace, actor)
+	if err != nil {
+		return nil, err
+	}
+	return api.CreateK8sNamespaceRule201JSONResponse{Body: toAPIK8sNamespaceRule(rule), Headers: api.CreateK8sNamespaceRule201ResponseHeaders{XRequestId: reqID(ctx)}}, nil
+}
+
+func (s apiServer) DeleteK8sNamespaceRule(ctx context.Context, req api.DeleteK8sNamespaceRuleRequestObject) (api.DeleteK8sNamespaceRuleResponseObject, error) {
+	if _, err := authorize(ctx, req.OrgId, rbac.PermK8sManage); err != nil {
+		return nil, err
+	}
+	var withdraw bool
+	switch req.Params.Exposures {
+	case api.K8sNamespaceRuleExposuresKeep:
+	case api.K8sNamespaceRuleExposuresWithdraw:
+		withdraw = true
+	default:
+		return nil, apierr.BadRequest("invalid_request", "exposures must be keep or withdraw")
+	}
+	actor, _ := authctx.PrincipalFrom(ctx)
+	if err := s.k8s.DeleteNamespaceRule(ctx, req.OrgId, req.ClusterId, req.RuleId, withdraw, actor); err != nil {
+		return nil, err
+	}
+	return api.DeleteK8sNamespaceRule204Response{}, nil
 }
 
 func (s apiServer) ListK8sClusters(ctx context.Context, req api.ListK8sClustersRequestObject) (api.ListK8sClustersResponseObject, error) {
@@ -106,7 +173,11 @@ func (s apiServer) GetK8sService(ctx context.Context, req api.GetK8sServiceReque
 		return nil, err
 	}
 	fqdn := k8ssvc.FQDN(svc.Name, svc.Namespace, cluster.Name, cluster.DnsZone)
-	return api.GetK8sService200JSONResponse{Body: toAPIK8sService(svc, fqdn), Headers: api.GetK8sService200ResponseHeaders{XRequestId: reqID(ctx)}}, nil
+	namespaceRule, err := s.k8s.NamespaceRuleForService(ctx, req.OrgId, svc.ID)
+	if err != nil {
+		return nil, err
+	}
+	return api.GetK8sService200JSONResponse{Body: toAPIK8sService(svc, fqdn, namespaceRule), Headers: api.GetK8sService200ResponseHeaders{XRequestId: reqID(ctx)}}, nil
 }
 
 func (s apiServer) RegisterK8sCluster(ctx context.Context, req api.RegisterK8sClusterRequestObject) (api.RegisterK8sClusterResponseObject, error) {
@@ -196,7 +267,7 @@ func (s apiServer) ListK8sServices(ctx context.Context, req api.ListK8sServicesR
 	}
 	out := make([]api.K8sService, len(views))
 	for i, v := range views {
-		out[i] = toAPIK8sService(v.Svc, v.FQDN)
+		out[i] = toAPIK8sService(v.Svc, v.FQDN, v.NamespaceRuleID)
 	}
 	return api.ListK8sServices200JSONResponse{Body: out, Headers: api.ListK8sServices200ResponseHeaders{XRequestId: reqID(ctx)}}, nil
 }
@@ -211,7 +282,7 @@ func (s apiServer) ListK8sServicesForOrg(ctx context.Context, req api.ListK8sSer
 	}
 	out := make([]api.K8sService, len(views))
 	for i, v := range views {
-		out[i] = toAPIK8sService(v.Svc, v.FQDN)
+		out[i] = toAPIK8sService(v.Svc, v.FQDN, v.NamespaceRuleID)
 	}
 	return api.ListK8sServicesForOrg200JSONResponse{Body: out, Headers: api.ListK8sServicesForOrg200ResponseHeaders{XRequestId: reqID(ctx)}}, nil
 }
@@ -239,7 +310,7 @@ func (s apiServer) ExposeK8sService(ctx context.Context, req api.ExposeK8sServic
 		return nil, err
 	}
 	fqdn := k8ssvc.FQDN(svc.Name, svc.Namespace, cluster.Name, cluster.DnsZone)
-	return api.ExposeK8sService201JSONResponse{Body: toAPIK8sService(svc, fqdn), Headers: api.ExposeK8sService201ResponseHeaders{XRequestId: reqID(ctx)}}, nil
+	return api.ExposeK8sService201JSONResponse{Body: toAPIK8sService(svc, fqdn, uuid.Nil), Headers: api.ExposeK8sService201ResponseHeaders{XRequestId: reqID(ctx)}}, nil
 }
 
 func (s apiServer) UnexposeK8sService(ctx context.Context, req api.UnexposeK8sServiceRequestObject) (api.UnexposeK8sServiceResponseObject, error) {

@@ -1,0 +1,700 @@
+package k8s
+
+import (
+	"context"
+	"errors"
+	"fmt"
+	"sort"
+	"strings"
+	"time"
+
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+
+	"github.com/tunnexio/tunnex/apps/api/db/sqlc"
+	"github.com/tunnexio/tunnex/apps/api/internal/apierr"
+	"github.com/tunnexio/tunnex/apps/api/internal/authctx"
+	"github.com/tunnexio/tunnex/apps/api/internal/ipalloc"
+	"github.com/tunnexio/tunnex/apps/api/internal/k8s/scopeapproval"
+	"github.com/tunnexio/tunnex/apps/api/internal/pgerr"
+)
+
+// K8N-4: "expose every Service in this namespace" (docs/K8N-4-expose-by-namespace.md).
+//
+// A namespace rule names one cluster and one namespace. Each time the cluster's gateway reports its
+// Services the control plane exposes the namespace's Service ports that are not exposed yet and, after
+// a wait, withdraws the exposures IT created whose Service is gone. It never creates an access rule and
+// never touches an exposure made by hand or by the operator.
+
+const (
+	// NamespaceRuleWithdrawWait is how long a rule-created exposure's Service port must stay missing
+	// from fresh reports before the exposure is withdrawn. Withdrawing is not reversible for the access
+	// rules that point at the exposure, so a Service recreated by a deploy must not trigger it.
+	NamespaceRuleWithdrawWait = 10 * time.Minute
+
+	namespaceRuleActorSystem    = "k8s-namespace-rule"
+	maxNamespaceRulesPerCluster = 50
+)
+
+// The outcome of a rule's last pass. Anything but NamespaceRuleOK means the rule is not fully applied,
+// and the message says why.
+const (
+	NamespaceRulePending              = "pending"
+	NamespaceRuleOK                   = "applied"
+	NamespaceRuleInventoryStale       = "inventory_stale"
+	NamespaceRuleInventoryUnavailable = "inventory_unavailable"
+	NamespaceRuleVIPRangeExhausted    = "vip_range_exhausted"
+	NamespaceRuleScopeReviewLimit     = "scope_review_limit"
+	NamespaceRuleWithdrawalBlocked    = "withdrawal_blocked"
+	NamespaceRuleError                = "error"
+)
+
+// NamespaceRule is one rule with the result of its last pass.
+type NamespaceRule struct {
+	ID               uuid.UUID
+	OrgID            uuid.UUID
+	ClusterID        uuid.UUID
+	Namespace        string
+	Status           string
+	StatusMessage    string
+	WaitingServices  int
+	ExposedServices  int
+	ExposedPorts     int
+	LastReconciledAt *time.Time
+	CreatedAt        time.Time
+}
+
+// NamespaceEligible refuses the namespaces a rule may never name: Kubernetes' own, and Tunnex's.
+func NamespaceEligible(namespace string) error {
+	if !validDNSLabel(namespace) {
+		return apierr.BadRequest("invalid_namespace", "name one Kubernetes namespace (lowercase letters, digits and hyphens)")
+	}
+	switch namespace {
+	case "kube-system", "kube-public", "kube-node-lease":
+		return apierr.BadRequest("namespace_not_eligible", "the Kubernetes system namespace "+namespace+" cannot be exposed by a namespace rule; expose a Service in it by hand if you need one")
+	}
+	if namespace == "tunnex" || strings.HasPrefix(namespace, "tunnex-") {
+		return apierr.BadRequest("namespace_not_eligible", "Tunnex's own namespace "+namespace+" cannot be exposed by a namespace rule")
+	}
+	return nil
+}
+
+// ── the planner: pure, no database ───────────────────────────────────────────────────────────────────
+
+// reportedService is one Service of the rule's namespace in the current report.
+type reportedService struct {
+	Service string
+	UID     string
+	Ports   []inventoryExposurePort
+}
+
+// exposedPort is one live exposure in the rule's namespace, whoever made it.
+type exposedPort struct {
+	ID           uuid.UUID
+	Service      string
+	Protocol     string // tcp | udp | any (legacy)
+	Port         int32  // 0 = a legacy all-ports exposure
+	VIP          string
+	RuleID       uuid.UUID // uuid.Nil = made by hand or by the operator
+	MissingSince *time.Time
+}
+
+type plannedExposure struct {
+	Service string
+	UID     string
+	Ports   []inventoryExposurePort
+	VIP     string // the Service's existing address, "" = allocate one
+}
+
+type namespaceRulePlan struct {
+	Expose       []plannedExposure
+	MarkMissing  []uuid.UUID
+	ClearMissing []uuid.UUID
+	Withdraw     []uuid.UUID
+}
+
+func (p namespaceRulePlan) empty() bool {
+	return len(p.Expose) == 0 && len(p.MarkMissing) == 0 && len(p.ClearMissing) == 0 && len(p.Withdraw) == 0
+}
+
+// planNamespaceRule compares what the gateway reported for the namespace with the exposures that exist.
+//   - A reported port nobody exposed is exposed. A port already exposed by anyone is left alone.
+//   - Only rows carrying ruleID can be marked missing or withdrawn; rows made by hand, by the operator
+//     or by another rule are never returned in any list.
+func planNamespaceRule(ruleID uuid.UUID, reported []reportedService, exposed []exposedPort, now time.Time, wait time.Duration) namespaceRulePlan {
+	type portKey struct {
+		service  string
+		protocol string
+		port     int32
+	}
+	covered := map[portKey]bool{}
+	allPorts := map[string]bool{}
+	vipOf := map[string]string{}
+	for _, row := range exposed {
+		if _, ok := vipOf[row.Service]; !ok {
+			vipOf[row.Service] = row.VIP
+		}
+		if row.Port == 0 {
+			allPorts[row.Service] = true
+			continue
+		}
+		covered[portKey{row.Service, row.Protocol, row.Port}] = true
+	}
+	var plan namespaceRulePlan
+	reportedPorts := map[portKey]bool{}
+	for _, svc := range reported {
+		var missing []inventoryExposurePort
+		for _, port := range svc.Ports {
+			reportedPorts[portKey{svc.Service, string(port.Protocol), port.Port}] = true
+			if allPorts[svc.Service] || covered[portKey{svc.Service, string(port.Protocol), port.Port}] || covered[portKey{svc.Service, "any", port.Port}] {
+				continue
+			}
+			missing = append(missing, port)
+		}
+		if len(missing) > 0 {
+			plan.Expose = append(plan.Expose, plannedExposure{Service: svc.Service, UID: svc.UID, Ports: missing, VIP: vipOf[svc.Service]})
+		}
+	}
+	for _, row := range exposed {
+		if ruleID == uuid.Nil || row.RuleID != ruleID {
+			continue
+		}
+		present := reportedPorts[portKey{row.Service, row.Protocol, row.Port}]
+		switch {
+		case present && row.MissingSince != nil:
+			plan.ClearMissing = append(plan.ClearMissing, row.ID)
+		case present:
+		case row.MissingSince == nil:
+			plan.MarkMissing = append(plan.MarkMissing, row.ID)
+		case now.Sub(*row.MissingSince) >= wait:
+			plan.Withdraw = append(plan.Withdraw, row.ID)
+		}
+	}
+	sort.Slice(plan.Expose, func(i, j int) bool { return plan.Expose[i].Service < plan.Expose[j].Service })
+	return plan
+}
+
+// ── create / list / delete ───────────────────────────────────────────────────────────────────────────
+
+func requireNamespaceRuleHuman(actor *authctx.Principal) (uuid.UUID, error) {
+	if actor == nil || actor.UserID == uuid.Nil || actor.IsMachine() || actor.AuthMethod == authctx.AuthAgent || actor.NodeID != uuid.Nil {
+		return uuid.Nil, apierr.Forbidden("human_actor_required", "a namespace rule is created and removed by a signed-in administrator")
+	}
+	if !actor.EmailVerified {
+		return uuid.Nil, apierr.Forbidden("email_not_verified", "verify your email before changing which Kubernetes Services are exposed")
+	}
+	return actor.UserID, nil
+}
+
+// CreateNamespaceRule records the opt-in for one namespace of one cluster and runs the first pass. The
+// rule is returned with that pass's outcome; a pass that could not run (no current report) leaves the
+// rule in place, waiting for the gateway's next report.
+func (s *Service) CreateNamespaceRule(ctx context.Context, orgID, clusterID uuid.UUID, namespace string, actor *authctx.Principal) (NamespaceRule, error) {
+	actorID, err := requireNamespaceRuleHuman(actor)
+	if err != nil {
+		return NamespaceRule{}, err
+	}
+	if err := NamespaceEligible(namespace); err != nil {
+		return NamespaceRule{}, err
+	}
+	var ruleID uuid.UUID
+	err = s.withTxRaw(ctx, func(q *sqlc.Queries, tx pgx.Tx) error {
+		var exists bool
+		if e := tx.QueryRow(ctx, `SELECT true FROM k8s_clusters WHERE id=$1 AND org_id=$2 FOR UPDATE`, clusterID, orgID).Scan(&exists); errors.Is(e, pgx.ErrNoRows) {
+			return apierr.NotFound("cluster_not_found", "no such cluster in this organization")
+		} else if e != nil {
+			return e
+		}
+		var count int
+		var duplicate bool
+		if e := tx.QueryRow(ctx, `SELECT count(*), COALESCE(bool_or(namespace=$3), false) FROM k8s_namespace_exposure_rules WHERE org_id=$1 AND cluster_id=$2`, orgID, clusterID, namespace).Scan(&count, &duplicate); e != nil {
+			return e
+		}
+		if duplicate {
+			return apierr.Conflict("namespace_rule_exists", "this cluster already has a namespace rule for "+namespace)
+		}
+		if count >= maxNamespaceRulesPerCluster {
+			return apierr.Conflict("namespace_rule_limit", fmt.Sprintf("a cluster can have at most %d namespace rules", maxNamespaceRulesPerCluster))
+		}
+		if e := tx.QueryRow(ctx, `INSERT INTO k8s_namespace_exposure_rules(org_id,cluster_id,namespace,created_by_user_id) VALUES($1,$2,$3,$4) RETURNING id`,
+			orgID, clusterID, namespace, pgUUID(actorID, true)).Scan(&ruleID); e != nil {
+			if pgerr.IsUnique(e) {
+				return apierr.Conflict("namespace_rule_exists", "this cluster already has a namespace rule for "+namespace)
+			}
+			return e
+		}
+		return s.audit(ctx, q, orgID, actorID, "", "", "k8s_namespace_rule", ruleID.String(), "k8s.namespace_rule_created",
+			map[string]any{"cluster_id": clusterID.String(), "namespace": namespace})
+	})
+	if err != nil {
+		return NamespaceRule{}, err
+	}
+	// The first pass. Its outcome is on the rule; a failure here is not a failure to create the rule.
+	_ = s.ReconcileNamespaceRules(ctx, orgID, clusterID)
+	rules, err := s.ListNamespaceRules(ctx, orgID, clusterID)
+	if err != nil {
+		return NamespaceRule{}, err
+	}
+	for _, rule := range rules {
+		if rule.ID == ruleID {
+			return rule, nil
+		}
+	}
+	return NamespaceRule{}, apierr.NotFound("namespace_rule_not_found", "the namespace rule was removed")
+}
+
+// ListNamespaceRules returns a cluster's rules. A rule whose cluster has no current report is shown as
+// stale or unavailable whatever its last pass said: without a report nothing is being applied.
+func (s *Service) ListNamespaceRules(ctx context.Context, orgID, clusterID uuid.UUID) ([]NamespaceRule, error) {
+	if _, err := s.GetCluster(ctx, orgID, clusterID); err != nil {
+		return nil, err
+	}
+	rows, err := s.pool.Query(ctx, `
+		SELECT r.id,r.org_id,r.cluster_id,r.namespace,r.status,r.status_message,r.waiting_services,r.last_reconciled_at,r.created_at,
+		       (SELECT count(DISTINCT s.name) FROM k8s_namespace_rule_exposures e JOIN k8s_services s ON s.id=e.service_id WHERE e.rule_id=r.id AND s.deleted_at IS NULL),
+		       (SELECT count(*) FROM k8s_namespace_rule_exposures e JOIN k8s_services s ON s.id=e.service_id WHERE e.rule_id=r.id AND s.deleted_at IS NULL)
+		FROM k8s_namespace_exposure_rules r
+		WHERE r.org_id=$1 AND r.cluster_id=$2
+		ORDER BY r.namespace`, orgID, clusterID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make([]NamespaceRule, 0)
+	for rows.Next() {
+		var rule NamespaceRule
+		if err := rows.Scan(&rule.ID, &rule.OrgID, &rule.ClusterID, &rule.Namespace, &rule.Status, &rule.StatusMessage, &rule.WaitingServices,
+			&rule.LastReconciledAt, &rule.CreatedAt, &rule.ExposedServices, &rule.ExposedPorts); err != nil {
+			return nil, err
+		}
+		out = append(out, rule)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if len(out) == 0 {
+		return out, nil
+	}
+	if _, err := currentInventoryReport(ctx, s.pool, orgID, clusterID, false); err != nil {
+		status, message, ok := namespaceRuleInventoryStatus(err)
+		if !ok {
+			return nil, err
+		}
+		for i := range out {
+			out[i].Status, out[i].StatusMessage = status, message
+		}
+	}
+	return out, nil
+}
+
+func namespaceRuleInventoryStatus(err error) (status, message string, ok bool) {
+	switch {
+	case errors.Is(err, scopeapproval.ErrInventoryStale):
+		return NamespaceRuleInventoryStale, "the cluster's gateway has not reported its Services recently; nothing is exposed or withdrawn until it does", true
+	case errors.Is(err, scopeapproval.ErrInventoryUnavailable):
+		return NamespaceRuleInventoryUnavailable, "there is no current Service report from the cluster's gateway (it sends none above 500 Services); nothing is exposed or withdrawn until there is", true
+	}
+	return "", "", false
+}
+
+// DeleteNamespaceRule removes a rule. withdraw=false keeps its exposures as ordinary dashboard
+// exposures; withdraw=true withdraws every one in the same transaction, or changes nothing if any one
+// is refused.
+func (s *Service) DeleteNamespaceRule(ctx context.Context, orgID, clusterID, ruleID uuid.UUID, withdraw bool, actor *authctx.Principal) error {
+	actorID, err := requireNamespaceRuleHuman(actor)
+	if err != nil {
+		return err
+	}
+	err = s.withTxRaw(ctx, func(q *sqlc.Queries, tx pgx.Tx) error {
+		var namespace string
+		if e := tx.QueryRow(ctx, `SELECT namespace FROM k8s_namespace_exposure_rules WHERE id=$1 AND org_id=$2 AND cluster_id=$3 FOR UPDATE`, ruleID, orgID, clusterID).Scan(&namespace); errors.Is(e, pgx.ErrNoRows) {
+			return apierr.NotFound("namespace_rule_not_found", "no such namespace rule on this cluster")
+		} else if e != nil {
+			return e
+		}
+		ids, e := namespaceRuleExposureIDs(ctx, tx, orgID, ruleID)
+		if e != nil {
+			return e
+		}
+		if withdraw {
+			for _, id := range ids {
+				svc, e := q.GetK8sService(ctx, sqlc.GetK8sServiceParams{OrgID: orgID, ID: id})
+				if e != nil {
+					return e
+				}
+				if e := s.unexposeServiceTx(ctx, q, tx, svc, actorID, "", "", map[string]any{"namespace_rule_id": ruleID.String(), "namespace_rule_removed": true}); e != nil {
+					var apiError *apierr.Error
+					if errors.As(e, &apiError) {
+						return apierr.Conflict(apiError.Code, svc.Namespace+"/"+svc.Name+" cannot be withdrawn: "+apiError.Message+". Nothing was changed.")
+					}
+					return e
+				}
+			}
+		}
+		// The cascade removes the rule's ownership rows: kept exposures become ordinary dashboard exposures.
+		if _, e := tx.Exec(ctx, `DELETE FROM k8s_namespace_exposure_rules WHERE id=$1 AND org_id=$2`, ruleID, orgID); e != nil {
+			return e
+		}
+		exposures := "kept"
+		if withdraw {
+			exposures = "withdrawn"
+		}
+		return s.audit(ctx, q, orgID, actorID, "", "", "k8s_namespace_rule", ruleID.String(), "k8s.namespace_rule_deleted",
+			map[string]any{"cluster_id": clusterID.String(), "namespace": namespace, "exposures": exposures, "exposure_count": len(ids)})
+	})
+	if err == nil && withdraw {
+		s.pushOrg(ctx, orgID)
+	}
+	return err
+}
+
+func namespaceRuleExposureIDs(ctx context.Context, tx pgx.Tx, orgID, ruleID uuid.UUID) ([]uuid.UUID, error) {
+	rows, err := tx.Query(ctx, `SELECT s.id FROM k8s_namespace_rule_exposures e JOIN k8s_services s ON s.id=e.service_id
+		WHERE e.org_id=$1 AND e.rule_id=$2 AND s.deleted_at IS NULL ORDER BY s.namespace,s.name,s.protocol,s.port_low,s.id`, orgID, ruleID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var ids []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		ids = append(ids, id)
+	}
+	return ids, rows.Err()
+}
+
+// ── the pass ─────────────────────────────────────────────────────────────────────────────────────────
+
+// ReconcileNamespaceRulesForOrg applies every namespace rule of the organization. It is called after a
+// gateway's Service report is accepted; an organization with no rule costs one query.
+func (s *Service) ReconcileNamespaceRulesForOrg(ctx context.Context, orgID uuid.UUID) error {
+	rows, err := s.pool.Query(ctx, `SELECT DISTINCT cluster_id FROM k8s_namespace_exposure_rules WHERE org_id=$1`, orgID)
+	if err != nil {
+		return err
+	}
+	var clusters []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			rows.Close()
+			return err
+		}
+		clusters = append(clusters, id)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return err
+	}
+	var first error
+	for _, clusterID := range clusters {
+		if err := s.ReconcileNamespaceRules(ctx, orgID, clusterID); err != nil && first == nil {
+			first = err
+		}
+	}
+	return first
+}
+
+// ReconcileNamespaceRules applies one cluster's rules against its current Service report.
+func (s *Service) ReconcileNamespaceRules(ctx context.Context, orgID, clusterID uuid.UUID) error {
+	return s.reconcileNamespaceRulesAt(ctx, orgID, clusterID, time.Now().UTC())
+}
+
+type namespaceRuleRow struct {
+	ID        uuid.UUID
+	Namespace string
+}
+
+func (s *Service) reconcileNamespaceRulesAt(ctx context.Context, orgID, clusterID uuid.UUID, now time.Time) error {
+	tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.Serializable})
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+
+	var vipRange string
+	var dnsVIP *string
+	if err := tx.QueryRow(ctx, `SELECT vip_range::text,host(dns_vip) FROM k8s_clusters WHERE id=$1 AND org_id=$2 FOR UPDATE`, clusterID, orgID).Scan(&vipRange, &dnsVIP); errors.Is(err, pgx.ErrNoRows) {
+		return nil
+	} else if err != nil {
+		return err
+	}
+	ruleRows, err := tx.Query(ctx, `SELECT id,namespace FROM k8s_namespace_exposure_rules WHERE org_id=$1 AND cluster_id=$2 ORDER BY namespace FOR UPDATE`, orgID, clusterID)
+	if err != nil {
+		return err
+	}
+	var rules []namespaceRuleRow
+	for ruleRows.Next() {
+		var rule namespaceRuleRow
+		if err := ruleRows.Scan(&rule.ID, &rule.Namespace); err != nil {
+			ruleRows.Close()
+			return err
+		}
+		rules = append(rules, rule)
+	}
+	ruleRows.Close()
+	if err := ruleRows.Err(); err != nil {
+		return err
+	}
+	if len(rules) == 0 {
+		return nil
+	}
+
+	report, err := currentInventoryReport(ctx, tx, orgID, clusterID, true)
+	if err != nil {
+		status, message, ok := namespaceRuleInventoryStatus(err)
+		if !ok {
+			return err
+		}
+		// No current report: record why, expose nothing, withdraw nothing.
+		if _, err := tx.Exec(ctx, `UPDATE k8s_namespace_exposure_rules SET status=$3,status_message=$4 WHERE org_id=$1 AND cluster_id=$2`, orgID, clusterID, status, message); err != nil {
+			return err
+		}
+		return tx.Commit(ctx)
+	}
+
+	used, err := queryStrings(ctx, tx, `SELECT host(vip) FROM k8s_services WHERE org_id=$1 AND cluster_id=$2 AND deleted_at IS NULL`, orgID, clusterID)
+	if err != nil {
+		return err
+	}
+	if dnsVIP != nil {
+		used = append(used, *dnsVIP)
+	}
+
+	changed := false
+	for _, rule := range rules {
+		reported, err := reportedNamespaceServices(ctx, tx, report.ID, orgID, clusterID, rule.Namespace)
+		if err != nil {
+			return err
+		}
+		exposed, err := exposedNamespacePorts(ctx, tx, orgID, clusterID, rule.Namespace)
+		if err != nil {
+			return err
+		}
+		plan := planNamespaceRule(rule.ID, reported, exposed, now, NamespaceRuleWithdrawWait)
+		cause := "namespace_rule:" + rule.ID.String()
+		status, message, waiting := NamespaceRuleOK, "", 0
+
+		if len(plan.ClearMissing) > 0 {
+			if _, err := tx.Exec(ctx, `UPDATE k8s_namespace_rule_exposures SET missing_since=NULL WHERE org_id=$1 AND service_id=ANY($2::uuid[])`, orgID, plan.ClearMissing); err != nil {
+				return err
+			}
+		}
+		if len(plan.MarkMissing) > 0 {
+			if _, err := tx.Exec(ctx, `UPDATE k8s_namespace_rule_exposures SET missing_since=$3 WHERE org_id=$1 AND service_id=ANY($2::uuid[]) AND missing_since IS NULL`, orgID, plan.MarkMissing, now); err != nil {
+				return err
+			}
+		}
+
+		for _, id := range plan.Withdraw {
+			blockedBy, err := s.withdrawNamespaceRuleExposure(ctx, tx, orgID, rule.ID, id, cause)
+			if err != nil {
+				return err
+			}
+			if blockedBy != "" {
+				status, message = NamespaceRuleWithdrawalBlocked, blockedBy
+				continue
+			}
+			changed = true
+		}
+
+		if len(plan.Expose) > 0 {
+			failStatus, failMessage, nextUsed, err := s.exposeNamespaceRuleServices(ctx, tx, orgID, clusterID, rule.ID, rule.Namespace, vipRange, used, plan.Expose, cause)
+			if err != nil {
+				return err
+			}
+			if failStatus != "" {
+				// All of the namespace's missing Services, or none: nothing from this pass is kept.
+				status, message, waiting = failStatus, failMessage, len(plan.Expose)
+			} else {
+				used, changed = nextUsed, true
+			}
+		}
+
+		if _, err := tx.Exec(ctx, `UPDATE k8s_namespace_exposure_rules SET status=$3,status_message=$4,waiting_services=$5,last_reconciled_at=$6 WHERE org_id=$1 AND id=$2`,
+			orgID, rule.ID, status, message, waiting, now); err != nil {
+			return err
+		}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return err
+	}
+	if changed {
+		s.pushOrg(ctx, orgID)
+	}
+	return nil
+}
+
+// withdrawNamespaceRuleExposure withdraws one exposure inside a savepoint. A refusal (an agent access
+// request or a template version points at it) is returned as text and leaves the exposure in place.
+func (s *Service) withdrawNamespaceRuleExposure(ctx context.Context, tx pgx.Tx, orgID, ruleID, serviceID uuid.UUID, cause string) (blockedBy string, err error) {
+	nested, err := tx.Begin(ctx)
+	if err != nil {
+		return "", err
+	}
+	q := sqlc.New(nested)
+	svc, err := q.GetK8sService(ctx, sqlc.GetK8sServiceParams{OrgID: orgID, ID: serviceID})
+	if err == nil {
+		err = s.unexposeServiceTx(ctx, q, nested, svc, uuid.Nil, namespaceRuleActorSystem, cause,
+			map[string]any{"namespace_rule_id": ruleID.String(), "namespace": svc.Namespace, "name": svc.Name, "reason": "service_not_reported"})
+	}
+	if err != nil {
+		_ = nested.Rollback(ctx)
+		var apiError *apierr.Error
+		if errors.As(err, &apiError) {
+			return svc.Namespace + "/" + svc.Name + " is gone from the cluster but its exposure cannot be withdrawn: " + apiError.Message, nil
+		}
+		return "", err
+	}
+	return "", nested.Commit(ctx)
+}
+
+// exposeNamespaceRuleServices exposes every planned Service inside one savepoint. On a limit it rolls
+// the savepoint back and returns the status to record; nothing from the pass is kept.
+func (s *Service) exposeNamespaceRuleServices(ctx context.Context, tx pgx.Tx, orgID, clusterID, ruleID uuid.UUID, namespace, vipRange string, used []string, planned []plannedExposure, cause string) (failStatus, failMessage string, nextUsed []string, err error) {
+	nested, err := tx.Begin(ctx)
+	if err != nil {
+		return "", "", nil, err
+	}
+	nextUsed = append([]string(nil), used...)
+	fail := func(status, message string) (string, string, []string, error) {
+		_ = nested.Rollback(ctx)
+		return status, message, nil, nil
+	}
+	for _, exposure := range planned {
+		vip := exposure.VIP
+		if vip == "" {
+			vip, err = ipalloc.Allocate(vipRange, nextUsed)
+			if errors.Is(err, ipalloc.ErrPoolExhausted) {
+				return fail(NamespaceRuleVIPRangeExhausted, fmt.Sprintf(
+					"the cluster's address range %s is full: %d Services in %s are waiting and none was exposed. Unexpose Services you no longer need, or register the cluster again with a larger range.",
+					vipRange, len(planned), namespace))
+			}
+			if err != nil {
+				_ = nested.Rollback(ctx)
+				return "", "", nil, err
+			}
+			nextUsed = append(nextUsed, vip)
+		}
+		_, _, err := s.insertInventoryExposures(ctx, nested, inventoryExposureInsert{
+			OrgID: orgID, ClusterID: clusterID, Namespace: namespace, Service: exposure.Service, ServiceUID: exposure.UID,
+			Ports: exposure.Ports, VIP: vip, NamespaceRuleID: ruleID, ActorSystem: namespaceRuleActorSystem, Cause: cause,
+		})
+		if err != nil {
+			var apiError *apierr.Error
+			if !errors.As(err, &apiError) {
+				_ = nested.Rollback(ctx)
+				return "", "", nil, err
+			}
+			status := NamespaceRuleError
+			if apiError.Code == "k8s_cluster_scope_pending_fanout_limit" || apiError.Code == "k8s_cluster_scope_limit_reached" {
+				status = NamespaceRuleScopeReviewLimit
+			}
+			return fail(status, fmt.Sprintf("%s/%s could not be exposed (%s), so none of the %d waiting Services in %s was exposed.",
+				namespace, exposure.Service, apiError.Message, len(planned), namespace))
+		}
+	}
+	if err := nested.Commit(ctx); err != nil {
+		return "", "", nil, err
+	}
+	return "", "", nextUsed, nil
+}
+
+func reportedNamespaceServices(ctx context.Context, tx pgx.Tx, reportID, orgID, clusterID uuid.UUID, namespace string) ([]reportedService, error) {
+	rows, err := tx.Query(ctx, `
+		SELECT i.service,i.service_uid,p.protocol,p.service_port
+		FROM k8s_service_inventory_items i
+		JOIN k8s_service_inventory_ports p ON p.report_id=i.report_id AND p.inventory_ref=i.inventory_ref
+		WHERE i.report_id=$1 AND i.org_id=$2 AND i.cluster_id=$3 AND i.namespace=$4
+		ORDER BY i.service,p.protocol,p.service_port`, reportID, orgID, clusterID, namespace)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []reportedService
+	for rows.Next() {
+		var service, uid, protocol string
+		var port int32
+		if err := rows.Scan(&service, &uid, &protocol, &port); err != nil {
+			return nil, err
+		}
+		if len(out) == 0 || out[len(out)-1].Service != service {
+			out = append(out, reportedService{Service: service, UID: uid})
+		}
+		last := &out[len(out)-1]
+		last.Ports = append(last.Ports, inventoryExposurePort{Protocol: scopeapproval.Protocol(protocol), Port: port})
+	}
+	return out, rows.Err()
+}
+
+func exposedNamespacePorts(ctx context.Context, tx pgx.Tx, orgID, clusterID uuid.UUID, namespace string) ([]exposedPort, error) {
+	rows, err := tx.Query(ctx, `
+		SELECT s.id,s.name,s.protocol,COALESCE(s.port_low,0),host(s.vip),e.rule_id,e.missing_since
+		FROM k8s_services s
+		LEFT JOIN k8s_namespace_rule_exposures e ON e.service_id=s.id
+		WHERE s.org_id=$1 AND s.cluster_id=$2 AND s.namespace=$3 AND s.deleted_at IS NULL
+		ORDER BY s.name,s.protocol,s.port_low,s.id`, orgID, clusterID, namespace)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []exposedPort
+	for rows.Next() {
+		var row exposedPort
+		var ruleID *uuid.UUID
+		if err := rows.Scan(&row.ID, &row.Service, &row.Protocol, &row.Port, &row.VIP, &ruleID, &row.MissingSince); err != nil {
+			return nil, err
+		}
+		if ruleID != nil {
+			row.RuleID = *ruleID
+		}
+		out = append(out, row)
+	}
+	return out, rows.Err()
+}
+
+func queryStrings(ctx context.Context, tx pgx.Tx, query string, args ...any) ([]string, error) {
+	rows, err := tx.Query(ctx, query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := make([]string, 0)
+	for rows.Next() {
+		var value string
+		if err := rows.Scan(&value); err != nil {
+			return nil, err
+		}
+		out = append(out, value)
+	}
+	return out, rows.Err()
+}
+
+// namespaceRuleByService maps live exposures to the namespace rule that created them. serviceID
+// uuid.Nil = every exposure of the organization.
+func (s *Service) namespaceRuleByService(ctx context.Context, orgID, serviceID uuid.UUID) (map[uuid.UUID]uuid.UUID, error) {
+	rows, err := s.pool.Query(ctx, `SELECT e.service_id,e.rule_id FROM k8s_namespace_rule_exposures e
+		JOIN k8s_services s ON s.id=e.service_id
+		WHERE e.org_id=$1 AND s.deleted_at IS NULL AND ($2::uuid IS NULL OR e.service_id=$2)`, orgID, pgUUID(serviceID, serviceID != uuid.Nil))
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := map[uuid.UUID]uuid.UUID{}
+	for rows.Next() {
+		var service, rule uuid.UUID
+		if err := rows.Scan(&service, &rule); err != nil {
+			return nil, err
+		}
+		out[service] = rule
+	}
+	return out, rows.Err()
+}
+
+// NamespaceRuleForService returns the namespace rule that created one exposure, or uuid.Nil.
+func (s *Service) NamespaceRuleForService(ctx context.Context, orgID, serviceID uuid.UUID) (uuid.UUID, error) {
+	rules, err := s.namespaceRuleByService(ctx, orgID, serviceID)
+	return rules[serviceID], err
+}

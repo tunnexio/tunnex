@@ -5757,6 +5757,54 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/organizations/{orgId}/k8s/clusters/{clusterId}/namespace-rules": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                clusterId: string;
+            };
+            cookie?: never;
+        };
+        /** List a cluster's namespace rules with the outcome of their last pass (K8N-4; org:view) */
+        get: operations["listK8sNamespaceRules"];
+        put?: never;
+        /**
+         * Expose every Service in one namespace, now and as Services are added (K8N-4; human k8s:manage)
+         * @description Records the opt-in for one namespace and applies it each time the cluster's gateway reports its Services. Exposure gives a Service an address and a name; it never grants access. 400 namespace_not_eligible for kube-system, kube-public, kube-node-lease and Tunnex's own namespaces; 409 namespace_rule_exists.
+         */
+        post: operations["createK8sNamespaceRule"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/k8s/clusters/{clusterId}/namespace-rules/{ruleId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                clusterId: string;
+                ruleId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Remove a namespace rule, keeping or withdrawing the exposures it created (K8N-4; human k8s:manage)
+         * @description exposures=keep leaves the rule's exposures in place as ordinary dashboard exposures. exposures=withdraw withdraws every one in the same step; access rules that pointed at them are kept and allow nothing. If any one cannot be withdrawn nothing is changed.
+         */
+        delete: operations["deleteK8sNamespaceRule"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/organizations/{orgId}/k8s/cluster-scope-settings": {
         parameters: {
             query?: never;
@@ -10839,6 +10887,37 @@ export interface components {
             vip: string;
             /** @description The in-tunnel hostname clients use: <service>.<namespace>.svc.<cluster>.<zone> (copy, don't construct). */
             fqdn: string;
+            /**
+             * Format: uuid
+             * @description Set when a namespace rule created this exposure (K8N-4). Remove the rule to unexpose it.
+             */
+            namespace_rule_id?: string | null;
+        };
+        K8sNamespaceRule: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            cluster_id: string;
+            namespace: string;
+            /**
+             * @description applied = fully applied on the last pass. Anything else: the rule is not fully applied and status_message says why.
+             * @enum {string}
+             */
+            status: "pending" | "applied" | "inventory_stale" | "inventory_unavailable" | "vip_range_exhausted" | "scope_review_limit" | "withdrawal_blocked" | "error";
+            status_message: string;
+            /** @description Services of the namespace the last pass could not expose. */
+            waiting_services: number;
+            /** @description Services currently exposed because of this rule. */
+            exposed_services: number;
+            exposed_ports: number;
+            /** Format: date-time */
+            last_reconciled_at?: string | null;
+            /** Format: date-time */
+            created_at: string;
+        };
+        CreateK8sNamespaceRuleRequest: {
+            /** @description One namespace. There is no wildcard and no all-namespaces rule. */
+            namespace: string;
         };
         RegisterK8sClusterRequest: {
             /**
@@ -23049,6 +23128,85 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["K8sService"];
                 };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listK8sNamespaceRules: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                clusterId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The cluster's namespace rules. A rule that is not fully applied says why in status. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["K8sNamespaceRule"][];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    createK8sNamespaceRule: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                clusterId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateK8sNamespaceRuleRequest"];
+            };
+        };
+        responses: {
+            /** @description The rule, with the outcome of its first pass. */
+            201: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["K8sNamespaceRule"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    deleteK8sNamespaceRule: {
+        parameters: {
+            query: {
+                exposures: "keep" | "withdraw";
+            };
+            header?: never;
+            path: {
+                orgId: string;
+                clusterId: string;
+                ruleId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Removed. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             default: components["responses"]["Error"];
         };

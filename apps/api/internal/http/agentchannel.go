@@ -58,6 +58,7 @@ type AgentChannel struct {
 	baseAuthorityStore         nodes.KubernetesOwnershipBaseAuthorityStore
 	serviceUIDObservationStore nodes.K8sServiceUIDObservationStore
 	serviceInventoryStore      nodes.K8sServiceInventoryStore
+	serviceInventoryAccepted   func(ctx context.Context, orgID uuid.UUID) error
 	policyReportNotify         func()
 }
 
@@ -112,6 +113,14 @@ func (a *AgentChannel) SetK8sServiceUIDObservationStore(store nodes.K8sServiceUI
 // writer. nil refuses reports; there is no in-memory authority fallback.
 func (a *AgentChannel) SetK8sServiceInventoryStore(store nodes.K8sServiceInventoryStore) {
 	a.serviceInventoryStore = store
+}
+
+// SetK8sServiceInventoryAccepted attaches what runs after a NEW inventory
+// report is stored (K8N-4: apply the organization's namespace rules). nil does
+// nothing. A failure never fails the report; it is logged and the next report
+// runs it again.
+func (a *AgentChannel) SetK8sServiceInventoryAccepted(fn func(ctx context.Context, orgID uuid.UUID) error) {
+	a.serviceInventoryAccepted = fn
 }
 
 // NotifyGatewayDNSRequest is the mailbox's post-commit convergence hint. The

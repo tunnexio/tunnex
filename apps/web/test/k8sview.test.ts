@@ -271,3 +271,87 @@ describe("serviceRowClass", () => {
     expect(serviceRowClass(false)).not.toBe("");
   });
 });
+
+// ── K8N-4: namespace rules ─────────────────────────────────────────────────────────────────────────────
+import {
+  namespaceIneligibleReason,
+  namespaceRulePreview,
+  namespaceRuleStatus,
+  ruleableNamespaces,
+  serviceOwner,
+} from "../src/lib/k8sview";
+
+const INV = (namespace: string, service: string, ports: number[]) => ({
+  inventory_ref: `${namespace}-${service}`,
+  namespace,
+  service,
+  ports: ports.map((p) => ({ port_ref: `${namespace}-${service}-${p}`, name: null, protocol: "tcp" as const, service_port: p })),
+});
+
+describe("namespace rules (K8N-4)", () => {
+  it("carries the rule id from the wire onto the row", () => {
+    const cards = assembleClusters(
+      [CL("c1", "prod")],
+      [
+        { ...SVC("k1", "c1", "web", "web.shop.svc.prod.k8s.acme.com"), namespace_rule_id: "rule-1" } as K8sService,
+        SVC("k2", "c1", "db", "db.shop.svc.prod.k8s.acme.com"),
+      ],
+    );
+    expect(cards[0].services.find((s) => s.id === "k1")!.namespaceRuleId).toBe("rule-1");
+    expect(cards[0].services.find((s) => s.id === "k2")!.namespaceRuleId).toBeNull();
+  });
+
+  it("marks a rule-made row and withholds Unexpose, without taking the operator's mark", () => {
+    const rule = serviceOwner({ managedByOperator: false, namespaceRuleId: "r", namespace: "shop" });
+    expect(rule.label).toBe("Namespace rule");
+    expect(rule.withheld).toBe(true);
+    expect(rule.why).toMatch(/namespace rule for shop/);
+    expect(rule.why).toMatch(/Remove the rule/);
+
+    const operator = serviceOwner({ managedByOperator: true, namespaceRuleId: null, namespace: "shop" });
+    expect(operator.label).toBe("GitOps");
+    expect(operator.withheld).toBe(true);
+
+    const manual = serviceOwner({ managedByOperator: false, namespaceRuleId: null, namespace: "shop" });
+    expect(manual).toEqual({ label: "Dashboard", withheld: false, why: null });
+  });
+
+  it("refuses system namespaces, Tunnex's own, wildcards and lists", () => {
+    for (const ns of ["kube-system", "kube-public", "kube-node-lease", "tunnex", "tunnex-system", "tunnex-gitops", "*", "a,b", "Shop", ""])
+      expect(namespaceIneligibleReason(ns), ns).not.toBeNull();
+    for (const ns of ["shop", "default", "payments-eu", "tunnexish"])
+      expect(namespaceIneligibleReason(ns), ns).toBeNull();
+  });
+
+  it("offers only reported namespaces that are eligible and have no rule yet", () => {
+    const inventory = [INV("shop", "web", [80]), INV("shop", "api", [8080]), INV("billing", "ledger", [5432]), INV("kube-system", "kube-dns", [53]), INV("tunnex-system", "gateway", [443])];
+    expect(ruleableNamespaces(inventory, [])).toEqual(["billing", "shop"]);
+    expect(ruleableNamespaces(inventory, [{ namespace: "shop" }])).toEqual(["billing"]);
+  });
+
+  it("previews what the rule exposes now, leaving existing exposures alone", () => {
+    const inventory = [INV("shop", "web", [80, 443]), INV("shop", "api", [8080]), INV("shop", "cart", [9090]), INV("billing", "ledger", [5432])];
+    const exposed = [
+      { namespace: "shop", name: "web", protocol: "tcp" as const, ports: "80" }, // by hand: stays, web keeps its address
+      { namespace: "shop", name: "cart", protocol: "any" as const, ports: "any" }, // legacy all-ports: covers cart
+      { namespace: "billing", name: "api", protocol: "tcp" as const, ports: "8080" }, // another namespace: irrelevant
+    ];
+    expect(namespaceRulePreview(inventory, exposed, "shop")).toEqual({
+      services: 3, ports: 4, portsAlreadyExposed: 2, servicesToExpose: 2, portsToExpose: 2, newAddresses: 1,
+    });
+    expect(namespaceRulePreview(inventory, exposed, "empty")).toEqual({
+      services: 0, ports: 0, portsAlreadyExposed: 0, servicesToExpose: 0, portsToExpose: 0, newAddresses: 0,
+    });
+  });
+
+  it("never shows a rule that is not applied as healthy", () => {
+    expect(namespaceRuleStatus({ status: "applied", status_message: "", waiting_services: 0 })).toEqual({ tone: "ok", label: "Applied", message: null });
+    const full = namespaceRuleStatus({ status: "vip_range_exhausted", status_message: "the range is full", waiting_services: 6 });
+    expect(full.tone).toBe("danger");
+    expect(full.label).toMatch(/Address range full · 6 waiting/);
+    expect(full.message).toBe("the range is full");
+    for (const status of ["pending", "inventory_stale", "inventory_unavailable", "scope_review_limit", "withdrawal_blocked", "error"] as const)
+      expect(namespaceRuleStatus({ status, status_message: "why", waiting_services: 1 }).tone, status).not.toBe("ok");
+    expect(namespaceRuleStatus({ status: "pending", status_message: "", waiting_services: 0 }).message).toMatch(/Nothing is exposed until/);
+  });
+});
