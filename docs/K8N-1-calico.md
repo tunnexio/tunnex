@@ -116,6 +116,88 @@ nothing in Calico's chains.
    ...), a native nft statement, or text that does not pair is refused. Only the iptables mangle
    hook (`ip mangle POSTROUTING`, type filter, priority -150, policy accept) is read this way.
 
+9. **Added after the founder's ruling: the host-posture manager reads what the gateway cannot.**
+   The gateway keeps its capabilities (`NET_ADMIN`, `NET_BIND_SERVICE`, and `NET_RAW` only with VPN
+   inference). It no longer runs `iptables-nft-save -t nat|-t mangle` or `ipset` for this proof.
+   The privileged manager reads, publishes the facts, and the gateway decides, as K8N-2 does for
+   Cilium. The manager never learns the tunnel range and never publishes a verdict.
+
+   *What the manager reads*, each pass in which a gateway owns the node, before it takes the
+   operation lock (like its API read):
+
+   - `iptables-nft-save -t mangle`, and `iptables-nft-save -t nat` only when the kernel has at
+     least one ipset (`/sys/module/ip_set` present and `ipset list -n` not empty). Without an
+     ipset no rule can carry a `set` match, so a Flannel, GKE or EKS node pays for no NAT save.
+   - From each text, only the chains a proof can need: NAT chains with a `set` match, mangle
+     chains with a `MARK` target. Their rule lines are carried word for word, in order. The whole
+     text must first be one complete table with no warning, as before.
+   - `ipset save NAME` for exactly the sets named by a non-negated, source-only match on a
+     `MASQUERADE` or `SNAT` rule of those chains. This does not depend on the tunnel range, so it
+     is the smallest list that covers every range; Calico's negated destination set is still
+     never read.
+   - For every carried chain, `nft -j -a list chain ip TABLE CHAIN` before and after the reads.
+     The two listings must be equal; their SHA-256 (chain and rules with handles, counters
+     removed) is carried as the chain's *listing digest*.
+
+   *The receipt.* `host-facts.json` in the shared state directory
+   (`/var/lib/tunnex/host-posture/v1`), mode 0644, replaced atomically under the operation lock
+   together with the heartbeat and the CNI authority receipt. Strict JSON:
+
+       schema_version 1, contract "tunnex-host-posture-facts/v1"
+       node_name, manager_uid, manager_boot_id, sequence   (those of the heartbeat it was written with)
+       observed_at                                         (when the manager began reading)
+       netfilter:
+         nat, mangle: state read | not_needed | unreadable, reason,
+                      chains [ { name, listing, rules [ "-A ..." ] } ]
+         sets [ { name, state, reason, saved } ]           (saved = what `ipset save NAME` printed)
+       digest                                              (SHA-256 of all of the above)
+
+   It holds rule text and set members only. K8N-2 adds its own section beside `netfilter` under
+   the same identity, freshness and digest.
+
+   *Bounds.* 256 KiB for the file; 64 chains per table; 4096 bytes per rule; 16 sets; 240 bytes
+   per reason; 3 s for one read. Facts that do not fit are published as `unreadable` with the
+   reason, never cut.
+
+   *How the gateway uses it.* Inside the existing guard, with the operation lock held: nft JSON,
+   then the receipt, then nft JSON again; the two listings must still be equal ("CNI rules changed
+   across semantic observation"). The receipt is taken only if
+
+   - the heartbeat is fresh, active and for this node, and the receipt carries the same node,
+     manager, manager boot and sequence: a receipt of another node, of an earlier manager process
+     or of an earlier pass is refused;
+   - `observed_at` is not in the future and not older than the heartbeat freshness window (10 s);
+   - the digest and every bound hold;
+   - every carried chain has, in the gateway's own first listing, the listing digest the manager
+     recorded, and every chain of that listing that has a `set` match (NAT) or a `MARK` target
+     (mangle) is carried.
+
+   The last point is what keeps Decision 4 true across two processes. The manager proved the
+   chain did not change while its text was read; the gateway proves its two listings show that
+   same chain, handles included. A rule replaced between the manager's read and the gateway's
+   listing gets a new handle, the digests differ, and the node is refused until the next pass.
+   Unrelated churn (kube-proxy's Service chains, the gateway's own tables) does not enter the
+   digest. Set members are as old as the receipt: a pool added after the read is seen on the next
+   pass, as before.
+
+   The gateway then runs the unchanged parsers and the unchanged pure proofs on the carried text.
+
+   *Failure is a refusal with its reason.* No receipt, an unreadable or oversized one, a wrong
+   node, manager, boot or sequence, a stale one, a wrong digest, a chain that changed, a chain or
+   set that was not read, or a manager-side read error: each leaves the gateway not ready and says
+   which. Nothing is assumed, and there is no fall-back to reading directly.
+
+   *What it does not protect against.* The digest detects damage, not forgery: whoever can write
+   the state directory is root on the node and could change the rules themselves. The directory
+   stays writable by the manager only and read-only in the gateway, as for the heartbeat.
+
+   *Scope.* Only the two reads of this paper move. The manager's own baseline and cleanup, and the
+   EKS adapter's `iptables-nft-save -t nat` cross-check, run as before. Outside Kubernetes nothing
+   changes.
+
+   *Charts.* No change: the gateway already mounts the state directory read-only and the manager
+   read-write, and the manager is privileged.
+
 ### Why not trust the set's name
 
 `cali40masq-ipam-pools` is Calico's name for its pools today. A name is not a proof: a pool that
