@@ -362,14 +362,14 @@ func proveCiliumNoTunnelMasquerade(obs ciliumObservation, tunnel netip.Prefix) (
 		return "", errors.New("Cilium IPv4 exclusion range is not understood")
 	}
 	if obs.EgressGateway {
-		return "", errors.New("Cilium egress gateway is enabled; its policies are applied before any masquerade exclusion and are not read")
+		return "", errCiliumEgressGateway
 	}
 	exclusion := masq.Exclusion.Masked()
 	if ciliumPrefixCovers(exclusion, tunnel) {
 		return bounded(fmt.Sprintf("tunnel range is inside Cilium's native-routing range %s", exclusion), maxReasonBytes), nil
 	}
 	if !masq.IPMasqAgent {
-		return "", fmt.Errorf("Cilium eBPF masquerade can rewrite traffic to the tunnel range %s: it is outside the native-routing range %s and ip-masq-agent is off", tunnel, exclusion)
+		return "", &ciliumTunnelNotExcludedError{Tunnel: tunnel, Exclusion: exclusion}
 	}
 	if !obs.NonMasqueradeRead {
 		return "", errors.New("Cilium ip-masq-agent is enabled but its map was not read")
@@ -388,9 +388,31 @@ func proveCiliumNoTunnelMasquerade(obs ciliumObservation, tunnel netip.Prefix) (
 		}
 	}
 	if !widest.IsValid() {
-		return "", fmt.Errorf("Cilium eBPF masquerade can rewrite traffic to the tunnel range %s: no ip-masq-agent nonMasqueradeCIDRs entry contains it", tunnel)
+		return "", &ciliumTunnelNotExcludedError{Tunnel: tunnel, Exclusion: exclusion, IPMasqAgent: true}
 	}
 	return bounded(fmt.Sprintf("tunnel range is inside Cilium ip-masq-agent range %s", widest), maxReasonBytes), nil
+}
+
+// errCiliumEgressGateway refuses a node whose agent runs the egress gateway.
+var errCiliumEgressGateway = errors.New("Cilium egress gateway is enabled; its policies are applied before any masquerade exclusion and are not read")
+
+// ciliumTunnelNotExcludedError is the one refusal the customer can lift: the
+// agent masquerades in eBPF and the tunnel range is in no range it excludes.
+// Everything else the proof refuses is something this code could not read or
+// does not understand.
+type ciliumTunnelNotExcludedError struct {
+	Tunnel    netip.Prefix
+	Exclusion netip.Prefix
+	// IPMasqAgent says the ip-masq-agent is on, so one more entry in its list
+	// is enough; otherwise the feature has to be enabled first.
+	IPMasqAgent bool
+}
+
+func (e *ciliumTunnelNotExcludedError) Error() string {
+	if e.IPMasqAgent {
+		return fmt.Sprintf("Cilium eBPF masquerade can rewrite traffic to the tunnel range %s: no ip-masq-agent nonMasqueradeCIDRs entry contains it", e.Tunnel)
+	}
+	return fmt.Sprintf("Cilium eBPF masquerade can rewrite traffic to the tunnel range %s: it is outside the native-routing range %s and ip-masq-agent is off", e.Tunnel, e.Exclusion)
 }
 
 // ciliumPrefixCovers reports whether every address of inner is inside outer. Both

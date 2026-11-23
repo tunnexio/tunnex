@@ -49,12 +49,15 @@ type Reconciler struct {
 	runIPTables IPTablesRunner
 	runIPSet    IPSetRunner
 	guard       AuthorityGuard
-	// listLinks lists network device names for the Cilium guard; nil means
+	// listLinks lists network device names for Cilium detection; nil means
 	// the real devices.
 	listLinks func() ([]string, error)
 	// hostFacts, when set, replaces this process's own iptables-nft-save and
 	// ipset reads for the observed proof (K8N-1, Decision 9).
 	hostFacts HostFactsSource
+	// ciliumFacts, when set, is where the Cilium proof takes the manager's
+	// `cilium` section (K8N-2). Without it a node that shows Cilium is refused.
+	ciliumFacts CiliumFactsSource
 	// registeredSeen records that this process has reconciled a registered CNI
 	// mechanism, so its later absence is a change in progress and not a node
 	// that never had one.

@@ -71,6 +71,9 @@ func runK8sHostPostureManager(args []string, out io.Writer) int {
 	// K8N-1, Decision 9: the manager reads the saved rule text and set members a
 	// gateway container cannot read, and publishes them beside its heartbeat.
 	manager.SetHostFactsReader(k8snetprep.NewHostFactsReader(nil, nil, nil))
+	// K8N-2: on a node that shows Cilium it also reads the agent's own report
+	// of its masquerading and publishes it in the same receipt.
+	manager.SetCiliumFactsReader(k8snetprep.NewCiliumFactsReader(nil, nil, nil, nil))
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 	logger.Info("k8s_host_posture_manager_started", "contract", hostposture.Contract, "node", nodeName)
@@ -131,6 +134,21 @@ func newKubernetesHostFactsSource(stateDir, nodeName string) (k8snetprep.HostFac
 	}
 	return func(context.Context) (k8snetprep.HostNetFacts, error) {
 		return store.HostNetFacts(nodeName, time.Now())
+	}, nil
+}
+
+// The Cilium proof takes the `cilium` section of that same receipt, under the
+// same rules. The source is called with the CNI operation lock held.
+func newKubernetesCiliumFactsSource(stateDir, nodeName string) (k8snetprep.CiliumFactsSource, error) {
+	if strings.TrimSpace(nodeName) == "" {
+		return nil, fmt.Errorf("exact Kubernetes node is required for host facts")
+	}
+	store, err := hostposture.OpenStore(stateDir)
+	if err != nil {
+		return nil, err
+	}
+	return func(context.Context) (*k8snetprep.CiliumFacts, error) {
+		return store.CiliumFacts(nodeName, time.Now())
 	}, nil
 }
 
