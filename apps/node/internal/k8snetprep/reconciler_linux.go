@@ -47,6 +47,7 @@ type Reconciler struct {
 	runNFT      NFTRunner
 	awsAware    bool
 	runIPTables IPTablesRunner
+	runIPSet    IPSetRunner
 	guard       AuthorityGuard
 	// registeredSeen records that this process has reconciled a registered CNI
 	// mechanism, so its later absence is a change in progress and not a node

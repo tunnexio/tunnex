@@ -50,9 +50,25 @@ nothing in Calico's chains.
    opaque `set` match, find the same rule in the saved text (same chain, same position) and read each
    `--match-set <name> <src|dst>` with its negation. A rule that cannot be paired is unreadable, as
    today.
+
+   *As built.* The saved text is read only when the walk meets a source-NAT rule behind a `set`
+   match that nothing else already excuses; a node whose rules need no set proof runs no new
+   command. A chain is paired as a whole: it must have the same number of rules in both readings,
+   and rule N of both must have the same number of `set` matches and end in the same target
+   (`MASQUERADE`, `RETURN`, a chain name, ...). Position alone would let two rules that each carry
+   one set match swap places unnoticed; the target check catches that. The saved text must also be
+   one complete `*nat ... COMMIT` block with no warning lines.
 2. **Read membership with `ipset save <name>`**, read-only, bounded in size, for exactly the sets
    named by NAT rules reachable from POSTROUTING. Accept only `hash:net` and `hash:ip` IPv4 sets;
    any other type is unreadable.
+
+   *As built.* "Named by NAT rules reachable from POSTROUTING" is taken at its narrowest: the sets
+   of non-negated, source-only matches on source-NAT rules that tunnel-bound traffic can reach.
+   Those are the only sets whose members can decide anything, so Calico's second (negated,
+   destination) set is never read. At most 16 sets, 256 KiB and 4096 members each, 5 s per read.
+   A set name must match `[A-Za-z0-9_.:-]`, be at most 31 bytes and not start with `-` (ipset would
+   read that as an option); any other name is refused. A set that does not exist, cannot be read,
+   or has another type refuses the node.
 3. **Proof rule.** A source-NAT rule is accepted when it carries a non-negated `set ... src` match
    whose every member is disjoint from the tunnel range. That sets `sourceLimited`, the existing
    concept. A negated source match, a destination-only match, or a set overlapping the tunnel range
@@ -60,10 +76,22 @@ nothing in Calico's chains.
 4. **Two readings must agree.** The nft JSON and the saved text are read at different instants. Read
    JSON, then text and sets, then JSON again; if the two JSON readings differ, report "rules changed
    during observation" and retry on the next cycle, as the existing semantic-observation guard does.
+
+   *As built.* This is the existing guard itself (`observeRegisteredMechanisms`): the saved text
+   and the sets are read between its two JSON listings, and its message is unchanged, "CNI rules
+   changed across semantic observation". The guard compares rules, not set members: a pool added
+   after the set was read is seen on the next cycle, like any later rule change.
 5. **Image:** add the `ipset` package to `deploy/docker/node.Dockerfile` and verify it at build time
    the way `iptables-nft-save -V` is verified.
+
+   *As built.* The build runs `ipset help`, not `ipset version`: the version command asks the
+   kernel over netlink and exits 1 in an unprivileged image build.
 6. **Report:** the adapter stays `observed_cni`. Its reason names the sets that carried the proof, so
    an operator can see why the node was accepted.
+
+   *As built.* `node NAT rules cannot rewrite traffic to the tunnel range; masquerade sources are
+   limited by sets outside it: cali40masq-ipam-pools` (at most three names, then "and N more",
+   240 bytes in all). Without a set proof the reason is the unchanged first clause.
 
 ### Why not trust the set's name
 
@@ -84,6 +112,14 @@ masquerade would rewrite tunnel traffic. Membership is what decides.
   the accepted case; then mutations of it: overlapping pool, negated source match, destination-only
   match, unknown set type, missing set, rule order differing between the two readings, text that
   does not pair with the JSON.
+
+  *State.* Every case above is covered (`observed_calico_test.go`, `observed_calico_linux_test.go`),
+  but **not yet from a real Calico node**: the rule text is modelled on Calico's documented
+  masquerade rule. The same rule, installed by hand with `iptables-nft` and `ipset` in a throwaway
+  container (nft 1.1.6, iptables 1.8.13, ipset 7.24), printed exactly the modelled shapes and was
+  accepted and, with an overlapping range, refused. That shows the three tools agree with the
+  parser; it says nothing about what a Calico version actually installs. Captured fixtures are
+  still owed by the live walk below.
 - Existing Flannel, kube-proxy, GKE and EKS fixtures must still pass unchanged.
 - Live walk on a cluster running Calico (iptables dataplane): gateway ready, a Service reached by
   address and by name from a connected device, and the readiness reason naming the sets. Then a
