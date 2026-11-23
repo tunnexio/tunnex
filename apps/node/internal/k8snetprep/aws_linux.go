@@ -149,6 +149,9 @@ func (r *Reconciler) reconcileWithAuthority(ctx context.Context, cidr string) (R
 	if err != nil {
 		return awsBlocked(err)
 	}
+	if err := r.refuseCilium(snapshot); err != nil {
+		return awsBlocked(err)
+	}
 	if snapshot.hasChain(awsChain) && grant.Scope == ScopeIPMasqOnly {
 		return awsBlocked(errors.New("AWS CNI requires a new journal epoch with AWS authority"))
 	}

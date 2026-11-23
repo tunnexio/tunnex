@@ -49,6 +49,9 @@ type Reconciler struct {
 	runIPTables IPTablesRunner
 	runIPSet    IPSetRunner
 	guard       AuthorityGuard
+	// listLinks lists network device names for the Cilium guard; nil means
+	// the real devices.
+	listLinks func() ([]string, error)
 	// registeredSeen records that this process has reconciled a registered CNI
 	// mechanism, so its later absence is a change in progress and not a node
 	// that never had one.
