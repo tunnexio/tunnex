@@ -95,7 +95,8 @@ The administrator must choose one of two, and the dashboard states both before c
   consequences above. If any one cannot be withdrawn, nothing is changed and the reason is returned.
 
 Removing one rule-created exposure on its own is refused (`managed_by_namespace_rule`): the rule
-would expose it again thirty seconds later. Excluding single Services from a rule is not built.
+would expose it again thirty seconds later. To take one Service out of a rule, exclude it (slice A
+below).
 
 ### Limits fail closed, with a reason
 
@@ -155,6 +156,43 @@ the human.
   anyone who may manage Kubernetes, also on a cluster registered by the operator: the rule's
   exposures are separate objects from the operator's.
 
+## Slice A — exclude one Service from a rule
+
+Story branch: `k8n/expose-slices`. A rule carries a list of Service names it must not expose.
+
+- **What is stored.** `excluded_services` on the rule (migration `0240`): Service names of the
+  rule's namespace, each a Kubernetes name, no duplicates, at most 100. A name that matches no
+  Service today is accepted, so a Service can be excluded before it is deployed. The 101st name is
+  refused (`excluded_services_limit`); there are no patterns and no wildcards.
+- **What an exclusion does.** The rule never exposes that Service. Exposures of it that the rule
+  made are withdrawn on the next pass, and a pass runs as part of the change. There is **no
+  10-minute wait**: the wait protects against a Service that a deploy deletes and recreates, and an
+  exclusion is an administrator's stated decision, confirmed in a dialog that states the
+  consequences. Everything else is the withdrawal a vanished Service gets: access rules that pointed
+  at the exposure are kept and allow nothing; a withdrawal is refused while an agent access request
+  or an agent policy template version points at the exposure, the rule then shows
+  `withdrawal_blocked` with the Service's name and tries again on every report; the withdrawal is
+  audited as the system actor with the rule as cause and reason `service_excluded`.
+- **Like every pass, it needs a current report.** If the gateway is not reporting when the exclusion
+  is saved, the exclusion is stored, the rule shows `inventory_stale` or `inventory_unavailable`,
+  and the exposure is withdrawn on the gateway's next report. Nothing new is exposed in between
+  either. *Rejected:* withdrawing without a report. It would be the only thing a rule does blind,
+  and "no fresh report, no action" is easier to state and to trust than a rule with one exception.
+- **What it does not touch.** An exposure of the excluded Service made by hand or by the operator
+  stays exactly as it is. An excluded Service can be exposed by hand, with chosen ports; that is the
+  way to have "the whole namespace, except this one I manage myself".
+- **Taking a name off the list** exposes the Service again on the next pass, as a new exposure with
+  a new id. Access rules that pointed at the old one do not come back.
+- **`default/kubernetes`** stays never-exposed by a rule whether or not it is listed.
+- **API.** `excluded_services` is optional when creating a rule and is returned on the rule.
+  `PATCH …/namespace-rules/{ruleId}` replaces the list and returns the rule after the pass. Same
+  gate as creating a rule: `k8s:manage`, verified email, human session. The change is audited with
+  the human, naming what was added and removed.
+- **Dashboard.** Each rule has "Exclusions…". The dialog lists what is excluded, lets the
+  administrator add a Service of the namespace (those the rule exposes are offered; any name can be
+  typed) or take one back, and states before confirming how many exposed ports will be withdrawn
+  and what that does to access rules. Confirming needs a tick whenever something will be withdrawn.
+
 ## Not in this slice
 
 - **Label selector.** The gateway's report carries no labels. Adding them changes the report format
@@ -163,7 +201,6 @@ the human.
 - **Operator resource** (`TunnexNamespaceExposure`) so a rule can live in Git. It needs a CRD
   version in `deploy/helm/tunnex-operator-crds`, with that chart's generation and downgrade guards,
   and lets a machine credential create a rule. It creates this same control-plane rule.
-- **Excluding one Service** from a rule.
 - **Recognising Tunnex's namespace when it was installed under another name.** The control plane is
   not told the gateway's namespace; the refusal is by name (`tunnex`, `tunnex-system`, `tunnex-*`).
 
