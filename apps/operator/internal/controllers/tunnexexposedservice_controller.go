@@ -131,6 +131,13 @@ func (r *TunnexExposedServiceReconciler) Reconcile(ctx context.Context, req ctrl
 		}
 	}
 	if exp == nil {
+		// K8N-3: a NEW exposure of the cluster's API server is refused, here and by the control plane. A
+		// resource that already owns such an exposure (made before the refusal existed) took the branch
+		// above and stays as it is; the control plane is not asked to remove anything.
+		if isAPIServerService(cr.Spec.Namespace, cr.Spec.Service) {
+			return r.notReady(ctx, &cr, reasonAPIServer,
+				"default/kubernetes is the cluster's API server and cannot be exposed as a Service; turn on API access for the cluster in Tunnex instead", gen)
+		}
 		s, err := r.CP.ExposeService(ctx, clusterID, cp.ExposeServiceRequest{
 			Name: cr.Spec.Service, Namespace: cr.Spec.Namespace, Protocol: cr.Spec.Protocol,
 			PortLow: cr.Spec.Port, PortHigh: cr.Spec.Port, // single specific port (CP refuses all-ports)
