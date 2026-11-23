@@ -14,7 +14,7 @@ const reasons: Record<Diagnostics["reason"], string> = {
 export function beamHealthNextStep(data: Pick<Diagnostics, "reason" | "connectivity">): string {
   if (data.reason === "share_ended") return "Publish a new session from the CLI or desktop client. An ended link cannot be restarted.";
   if (data.reason === "share_paused") return "Resume this share from its management controls, then keep the publisher running.";
-  if (data.reason === "domain_unavailable") return "Ask your installation operator to open Settings → Local Sharing setup and check DNS, HTTPS certificates and the connector endpoint.";
+  if (data.reason === "domain_unavailable") return "Ask your installation operator to open Settings → Local Sharing domain and check DNS, HTTPS certificates and the connector endpoint.";
   if (data.reason === "publisher_authority_unavailable") return "Check that your publisher account still has permission. Sign in to the correct control plane before creating a new session.";
   if (data.connectivity === "origin_unavailable") return "Start your local app on the port you published. Open it on your own computer first, then keep both the app and publisher running.";
   if (data.reason === "connector_offline" || ["offline", "reconnecting"].includes(data.connectivity)) return "Check your internet connection and the publishing terminal or desktop client. Reconnect with the original login before the share expires.";
