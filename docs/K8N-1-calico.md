@@ -382,6 +382,112 @@ masquerade would rewrite tunnel traffic. Membership is what decides.
   address and by name from a connected device, and the readiness reason naming the sets. Then a
   deliberately overlapping pool, to see the refusal and its message.
 
+## Hardening after the live install
+
+Changes to the two charts and the installer that follow from *Live install of the real image and
+the real chart* above and from K8N-2, "Live install" and "Decisions to confirm", 7. Nothing in
+the proof changes. **None of these settings has run on a cluster yet**; the numbers come from
+the measurements of 2026-11-23 and from arithmetic.
+
+What the probes are for. A manager whose process exits is restarted by the kubelet at once,
+with or without probes. A gateway does not wait for a probe either: it reads the heartbeat
+itself and refuses when it is older than 10 s (`HeartbeatFreshness`). So the probes decide only
+two things: when a manager that still runs but no longer writes its heartbeat is restarted
+(liveness), and when the DaemonSet counts a pod as ready, which `tunnex k8s install`,
+`helm --wait` and a rollout wait for (readiness). Slower probes do not let a gateway stand on a
+dead manager.
+
+1. **Probes.** All three stay `exec` runs of `tunnex-node k8s-host-posture-check`.
+
+   | Probe | Before (period / timeout / failures) | Now |
+   | --- | --- | --- |
+   | startup, `--ready` | 2 s / 2 s / 45 | 2 s / **5 s** / 45 |
+   | readiness, `--ready` | 2 s / 2 s / 3 | **5 s** / **5 s** / 3 |
+   | liveness, `--live` | 10 s / 2 s / 3 | 10 s / **5 s** / **6** |
+
+   - *Why.* On the busy VM the kubelet recorded two liveness and five readiness failures in a
+     minute, all `command timed out ... after 2s`, and one restart. A restart does not make a
+     busy node faster, and it interrupts every gateway on the node while the new manager proves
+     itself. The check is a file read; what took more than 2 s was starting the 15 MB binary.
+   - *Load now tolerated.* One probe run may take up to 5 s instead of 2 s. The manager is
+     restarted only after six failed liveness runs in a row, about 60 s of continuous failure
+     (before: three, about 30 s). It is counted not ready after three failed readiness runs in
+     a row, about 15 s (before: about 6 s). Whether 5 s is enough at a load average of 30 to 90
+     on 2 CPUs was not measured; the run duration of the probe under that load was never
+     captured, only that it exceeded 2 s.
+   - *Worst case for a manager that hangs* (process alive, no heartbeat written). The heartbeat
+     is stale 10 s after its last write. Liveness: up to 10 s to the next run, five more runs
+     10 s apart, each failing at once or after the 5 s timeout: the kill is ordered **at most
+     75 s after the last heartbeat** (before: 42 s), then the 10 s termination grace.
+     Readiness: 10 s + up to 5 s + two more runs + 5 s: not ready **at most 30 s** after the last
+     heartbeat (before: 18 s). The gateways on that node are not ready after 10 s in both
+     cases, by their own reading.
+   - *Startup.* The budget is still 45 runs: at least 90 s as before, and up to 225 s when every
+     run times out. A startup failure kills the container, so a slow node gets more time here,
+     not less.
+   - *Readiness runs less often*: 12 process starts a minute instead of 30. This should lower
+     the CPU the probes cost (they are part of the measured 25 millicores); not measured.
+   - *A cheaper liveness check was considered and not built.* The binary has no health check
+     other than this subcommand, and the manager has no listener. A shell test on the
+     heartbeat file's age would be a second, weaker definition of "alive" outside the binary,
+     and the installer verifies the exact probe command. K8N-2's decision 7 names the real
+     alternative, the manager answering its probes without a new process; that is a listener
+     on a privileged host-network pod and stays a decision to take.
+   - *Installer.* `tunnex k8s install` verifies the probes of the live manager as a fixed
+     shape. It now accepts exactly two shapes: the one above and the previous one. A manager
+     with the previous probes is still recognised as ours, is planned as `upgrade` rather than
+     `reuse` even when the chart version is the same, and after the apply only the shape above
+     is accepted. Any other probe is refused as before. Without this a new CLI would refuse
+     every cluster that already runs the manager.
+
+2. **Requests and limits.** Measured with one gateway on the node, from the manager's cgroup.
+
+   | | Before | Now, default | Now, `cilium.enabled=true` |
+   | --- | --- | --- | --- |
+   | CPU request | 20m | **40m** | **50m** |
+   | Memory request | 32Mi | **48Mi** | **96Mi** |
+   | Memory limit | 128Mi | 128Mi | 128Mi |
+   | CPU limit | none | none | none |
+
+   - *CPU.* Measured 25 millicores on Calico and 33 on Cilium, both above the 20m request; idle
+     3.6. The new requests are 1.6 and 1.5 times the measurement. They are not higher because
+     the DaemonSet runs on every Linux node and is idle on most of them, so every millicore
+     requested is reserved once per node. No CPU limit: throttling the manager would produce
+     the very probe timeouts this section removes.
+   - *Memory, default.* 26 to 27 MB charged, peak 35 MB. The old request (32Mi) was below the
+     peak. 48Mi is 1.4 times the peak.
+   - *Memory, Cilium.* 76 MB charged, peak 83 MB, the runtime reporting 69 MB for the
+     container; about 68 MB of it is the page cache of `libLLVM`, which `bpftool` maps every
+     pass. 96Mi covers the peak with about a fifth to spare. Under node memory pressure the
+     kubelet ranks pods by use above their request, and at 32Mi the manager sat at more than
+     twice its request.
+   - *The limit stays 128Mi.* The peak is 83 MB, no OOM kill was seen, and most of the charge
+     on Cilium is page cache the kernel can reclaim before the limit kills anything. That
+     reclaim was not forced (K8N-2, "Still not confirmed", 9); if it fails, the answer is
+     decision 1 there (a `bpftool` without LLVM), not a larger limit on every node.
+   - *How the chart says it.* `resources` is used without Cilium and `cilium.resources` with
+     it. A cluster that overrides `resources` and runs Cilium must override `cilium.resources`
+     instead. The installer sets neither, and an upgrade keeps values the customer set.
+   - *Not known.* The cost with more than one gateway on a node (up to 32 are allowed), and on
+     a node with a large NAT table (see "Not known yet").
+
+3. **What a default gateway holds.** The gateway chart's notes and description named `NET_RAW`
+   as the exception. It is the default: `aiVPN.enabled` is `true` unless the customer turns it
+   off, and `tunnex k8s install` does not set it. A default install therefore holds
+   `NET_ADMIN`, `NET_BIND_SERVICE` and `NET_RAW`; only `aiVPN.enabled=false` gives the profile
+   with two capabilities. The notes, the chart description and the places in this paper and in
+   K8N-2 that read otherwise now say so. Decision 9 is unchanged: the gateway does not use
+   `NET_RAW` for this proof in either profile.
+
+4. **An idle manager has a heartbeat and no receipt.** On a node with no gateway pod the state
+   directory holds `heartbeat.json` (`state: idle`) and no `host-facts.json`; the manager reads
+   the node's rules only while a gateway may own the node. This is normal and is now said in
+   the host-posture chart's notes. A `host-facts.json` left on a node whose gateway is gone
+   belongs to an older heartbeat and is not used.
+
+Not changed: the 2 s pass, the 10 s freshness, the exec probe command, the memory limit, and
+the manager's code.
+
 ## Not known yet
 
 - ~~Whether `ipset save` needs a capability the host-posture container does not already hold.~~
@@ -410,8 +516,9 @@ masquerade would rewrite tunnel traffic. Membership is what decides.
   node). The real image, the real host-posture chart installed by Helm, the manager's own
   Kubernetes and kernel work, the real admission init and the gateway chart's pod profile are
   no longer on this list: see *Live install of the real image and the real chart* above.
-- Whether the manager's 20m CPU request and its 2 s exec probes are right. Measured once: 25
-  millicores with one gateway, and probe runs that timed out when the node was busy.
+- ~~Whether the manager's 20m CPU request and its 2 s exec probes are right.~~ Changed: see
+  *Hardening after the live install*. The new values have not run on a cluster, and the cost
+  with more than one gateway on a node is not measured.
 
 ## Rollback
 
