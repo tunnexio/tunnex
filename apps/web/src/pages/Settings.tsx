@@ -14,7 +14,7 @@ import { WorkspaceFeatureControl } from "../components/WorkspaceFeatureControl";
 import "../network-workspaces.css";
 import "../settings-workspace.css";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from "react";
-import { Link, useLocation } from "react-router-dom";
+import { useLocation } from "react-router-dom";
 import {
   api,
   apiErrorCode,
@@ -240,7 +240,6 @@ function SettingsWorkspace() {
     if (orgLoading || !org || myRole === undefined || !active || active === section) return;
     selectSection(active, true);
   }, [active, myRole, org, orgLoading, section, selectSection]);
-  const canMachines = can(myRole, "machine:manage"); // owner-only — the GitOps operator credential panel
 
   async function reconcileOrganization(saved: Org) {
     if (!alive.current || saved.id !== currentOrg?.id) return;
@@ -347,12 +346,12 @@ function SettingsWorkspace() {
           </SettingGroup>
         )}
         {serverAdmin && active === "app-access-domains" && state.status === "authed" && (
-          <SettingGroup id="app-access-domains" title="Applications domains" tabpanel>
+          <SettingGroup id="app-access-domains" title="Application domains" tabpanel>
             <AppAccessDomainsSettings key={state.user.id} canEdit={emailVerified && !state.user.must_change_password} />
           </SettingGroup>
         )}
         {serverAdmin && active === "beam-serving" && state.status === "authed" && (
-          <SettingGroup id="beam-serving" title="Local Sharing setup" tabpanel>
+          <SettingGroup id="beam-serving" title="Local Sharing domain" tabpanel>
             <BeamDomainReadinessSettings key={state.user.id} canEdit={emailVerified && !state.user.must_change_password} />
           </SettingGroup>
         )}
@@ -504,13 +503,6 @@ function SettingsWorkspace() {
           <SettingGroup id="licence" title="Licence &amp; plan"
             tabpanel>
             <LicenceCard canManage={myRole === "owner"} cache={licenceCache} />
-            {/* The operator's credentials moved to Kubernetes, Operations, beside the operator's setup steps.
-                A pointer stays here because this is where they used to be. */}
-            {isAdmin && canMachines && (
-              <SettingRow label="GitOps operator credentials" description="Moved next to the operator setup steps.">
-                <Link to="/kubernetes?section=operations" className="tnx-link text-cell">Open in Kubernetes, Operations</Link>
-              </SettingRow>
-            )}
           </SettingGroup>
         )}
 
@@ -1876,8 +1868,8 @@ const RAIL: ReadonlyArray<{
   { id: "beam", needsOrg: true, label: "Local Sharing", hint: "Delegate local app sharing and bound reviewer access.", requiredPermission: "beam:policy_manage" },
   { id: "email-delivery", label: "Email delivery", hint: "Server-wide email configuration. Only server administrators can manage it.", serverAdminOnly: true },
   { id: "ai-transport", label: "AI Gateway transport", hint: "Server-wide HTTP access policy for AI Gateway. Only server administrators can manage it.", serverAdminOnly: true },
-  { id: "app-access-domains", label: "Applications domains", hint: "Server-wide portal and application addresses. Only server administrators can manage them.", serverAdminOnly: true },
-  { id: "beam-serving", label: "Local Sharing setup", hint: "Measure installation DNS and TLS readiness. Only server administrators can run checks.", serverAdminOnly: true },
+  { id: "app-access-domains", label: "Application domains", hint: "Server-wide portal and application addresses. Only server administrators can manage them.", serverAdminOnly: true },
+  { id: "beam-serving", label: "Local Sharing domain", hint: "Measure installation DNS and TLS readiness. Only server administrators can run checks.", serverAdminOnly: true },
   {
     id: "danger",
     needsOrg: true,
@@ -1892,13 +1884,16 @@ function sectionFromLocation() {
   return new URLSearchParams(window.location.search).get("section") ?? RAIL[0].id;
 }
 
-const SETTINGS_GROUPS = ["Organization", "Sign-in & security", "Network & delivery", "Apps & sharing", "AI"] as const;
+// The last group is not this organisation's: those sections configure the whole installation and
+// only a server administrator can change them, so they are kept apart and named for what they are.
+const SETTINGS_GROUPS = ["Organization", "Sign-in & security", "Network", "Sharing", "AI", "Installation · all organizations"] as const;
 const SETTINGS_GROUP_OF: Record<string, number> = {
   organization: 0, licence: 0, features: 0,
   authentication: 1, directory: 1, "access-security": 1, "data-retention": 1,
-  network: 2, "email-delivery": 2,
-  "app-access-domains": 3, beam: 3, "beam-serving": 3,
-  "ai-agents": 4, "ai-transport": 4,
+  network: 2,
+  beam: 3,
+  "ai-agents": 4,
+  "email-delivery": 5, "app-access-domains": 5, "beam-serving": 5, "ai-transport": 5,
 };
 
 function SettingsRail({

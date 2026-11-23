@@ -31,7 +31,7 @@ export function AppAccessDomainsSettings({ canEdit, onSaved, onSavingChange }: {
     setBusy("load"); setError(null); setResult(null);
     void api.GET(endpoint).then(({ data, error }) => {
       if (!current) return;
-      if (error || !data) setError(apiErrorMessage(error, "Could not load Applications domains."));
+      if (error || !data) setError(apiErrorMessage(error, "Could not load Application domains."));
       else {
         setSaved(data); setPortal(data.portal_url); setBase(data.app_base_domain);
         setNeedsReload(false);
@@ -54,10 +54,10 @@ export function AppAccessDomainsSettings({ canEdit, onSaved, onSavingChange }: {
         if (apiErrorCode(response.error) === "app_domains_changed") {
           setNeedsReload(true);
           setError("These settings changed on the server. Your edits are still shown. Reload saved settings before saving again; reloading will replace your edits.");
-        } else setError(apiErrorMessage(response.error, "Could not save Applications domains."));
+        } else setError(apiErrorMessage(response.error, "Could not save Application domains."));
       } else {
         setSaved(response.data); setPortal(response.data.portal_url); setBase(response.data.app_base_domain);
-        setResult("Applications domains saved. New application addresses use this domain. Existing application hostnames are preserved.");
+        setResult("Application domains saved. New application addresses use this domain. Existing application hostnames are preserved.");
         onSaved?.();
       }
     } catch {
@@ -71,7 +71,7 @@ export function AppAccessDomainsSettings({ canEdit, onSaved, onSavingChange }: {
     }
   }
 
-  if (!saved && busy === "load") return <Loading label="Loading Applications domains…" />;
+  if (!saved && busy === "load") return <Loading label="Loading Application domains…" />;
   if (!saved) return <div className="space-y-3"><ErrorText>{error}</ErrorText><Button variant="ghost" onClick={() => setAttempt(value => value + 1)}>Retry domain settings</Button></div>;
   const disabled = !canEdit || busy !== null;
   const previewBase = base.trim().toLowerCase();

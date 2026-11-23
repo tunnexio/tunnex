@@ -504,8 +504,8 @@ describe("Settings — URL-backed section rail", () => {
         getPaths().filter((path) => path.endsWith("/machine-credentials")).length,
       ).toBe(credentialReadsBefore);
     });
-    // The operator's credentials moved to Kubernetes, Operations. Licence keeps a pointer and reads nothing.
-    expect(screen.getByRole("link", { name: "Open in Kubernetes, Operations" }).getAttribute("href")).toBe("/kubernetes?section=operations");
+    // The operator's credentials live on Kubernetes, Setup. Licence no longer mentions them and reads nothing.
+    expect(screen.queryByRole("link", { name: "Open in Kubernetes, Operations" })).toBeNull();
     const memberReads = getPaths().filter((path) => path.endsWith("/members")).length;
 
     fireEvent.click(screen.getByRole("tab", { name: "Authentication" }));
@@ -892,19 +892,19 @@ describe("Settings — server Applications domain permission", () => {
     window.history.replaceState({}, "", "/settings?section=app-access-domains");
     withAuth(<Settings />);
     await screen.findByRole("tab", { name: "Organization" });
-    expect(screen.queryByRole("tab", { name: "Applications domains" })).toBeNull();
+    expect(screen.queryByRole("tab", { name: "Application domains" })).toBeNull();
     expect(screen.queryByLabelText("Portal URL")).toBeNull();
     const reads = vi.mocked(api.GET).mock.calls as unknown as Array<[string, ...unknown[]]>;
     expect(reads.some(([path]) => path === "/api/v1/admin/app-access/domains")).toBe(false);
   });
 
-  it("opens the Applications domains deep link for a server administrator", async () => {
+  it("opens the Application domains deep link for a server administrator", async () => {
     serverAdmin = true;
     window.history.replaceState({}, "", "/settings?section=app-access-domains");
     withAuth(<Settings />);
     await screen.findByLabelText("Portal URL");
     expect(screen.getByRole("tabpanel").id).toBe("app-access-domains");
-    expect(screen.getByRole("tab", { name: "Applications domains" }).getAttribute("aria-selected")).toBe("true");
+    expect(screen.getByRole("tab", { name: "Application domains" }).getAttribute("aria-selected")).toBe("true");
   });
 
   it("keeps server-wide domains available without an organization", async () => {
@@ -926,7 +926,7 @@ describe("Settings — Beam installation checks stay operator scoped", () => {
       window.history.replaceState({}, "", "/settings?section=beam-serving");
       withAuth(<Settings />);
       await screen.findByRole("tab", { name: "Organization" });
-      expect(screen.queryByRole("tab", { name: "Local Sharing setup" })).toBeNull();
+      expect(screen.queryByRole("tab", { name: "Local Sharing domain" })).toBeNull();
       expect(read).not.toHaveBeenCalled();
     } finally { read.mockRestore(); }
   });
