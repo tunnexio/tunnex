@@ -51,6 +51,20 @@ device, the same effect the walk already accepts for Flannel. Item 10 is of a di
    to exactly `tunnex-ovpn` is exempted today. Fix: pass every tunnel interface to the walk and
    exempt a rule only when its name is in none of them. Unknown: whether the control plane ever
    enables OpenVPN on an in-cluster gateway.
+   **Fixed** — `fix(k8s): excuse no masquerade bound to any tunnel interface (K8N review 3)`.
+   The gateway's reconciler now reads the agent's own tunnel set (`tunnelIfaces()`) at every
+   observation, and a rule is excused only when its exact name is none of them. Tests:
+   `TestObservedExcusesNoRuleBoundToAnyTunnelInterface`,
+   `TestLiveCalicoNodeIsRefusedWhenAMasqueradeIsBoundToASecondTunnelInterface` (whole reconcile,
+   direct and receipt path), `TestK8sCNIAuthorityWiringHandsTheProofTheLiveTunnelInterfaces`
+   (the agent's wiring). On the unknown: the code can do it — the Kubernetes owner surface
+   (`ownershiplease/production_k8s_surface.go`) reconciles an OpenVPN server and its tunnel
+   interface when the desired state enables it; whether the control plane ever sends that to an
+   in-cluster gateway was not checked. Not changed, and seen while fixing: the rules Tunnex owns
+   in a registered mechanism (`ip daddr TUNNEL oifname wg0 return` in `IP-MASQ-AGENT` and
+   `AWS-SNAT-CHAIN-0`) name the WireGuard interface only, so on GKE or EKS a pod's own connection
+   to an OpenVPN client is still masqueraded by the node's rule, the same effect as the walk's
+   pod-source exception. See K8N-1, "After the review".
 
 4. **Medium — "tunnel-bound traffic never carries a Kubernetes mark" is assumed, not enforced.**
    Only `ip mangle POSTROUTING` is proved unable to set 0x2000/0x4000/0x8000. Inside the NAT walk an

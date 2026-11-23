@@ -26,6 +26,8 @@ func NewWithAWS(string, NFTRunner, IPTablesRunner, AuthorityGuard) *Reconciler {
 	return &Reconciler{awsAware: true}
 }
 
+func (*Reconciler) UseTunnelInterfaces(func() []string) {}
+
 func (r *Reconciler) Reconcile(context.Context, string) (ReconcileStatus, error) {
 	status := blockedStatusOther()
 	return status, fmt.Errorf("Kubernetes network preparation requires Linux")

@@ -137,6 +137,11 @@ func (r *Reconciler) reconcileWithAuthority(ctx context.Context, cidr string) (R
 	if grant.Scope == ScopeIPMasqAndAWSTransit && r.iface != "wg0" {
 		return awsBlocked(errors.New("AWS transit requires the exact journal-owned wg0 interface"))
 	}
+	// Every observation reads the tunnel interfaces again; a list that cannot
+	// be used refuses here, before anything is read.
+	if _, err := r.otherTunnelInterfaces(); err != nil {
+		return awsBlocked(err)
+	}
 	prefix, err := netip.ParsePrefix(cidr)
 	if err != nil || !prefix.Addr().Is4() {
 		return awsBlocked(errors.New("invalid IPv4 tunnel CIDR"))
@@ -457,6 +462,12 @@ type cniSnapshot struct {
 	// mangleSaved is the saved form of the ip mangle table, read only when a
 	// mangle POSTROUTING hook sets a mark whose value the listing hides.
 	mangleSaved map[string][]savedRule
+
+	// tunnelIfaces names the tunnel interfaces the agent owns besides the
+	// WireGuard interface, as they were when this listing was taken. The
+	// observed proof excuses no rule bound to one of them. Not part of the
+	// fingerprint.
+	tunnelIfaces []string
 
 	// tables holds the handle of every table the listing declares, by
 	// "family/name". Only chainListingDigest reads it; like the facts above it
@@ -782,6 +793,9 @@ func (r *Reconciler) observeRegisteredMechanisms(ctx context.Context, cidr strin
 	if err != nil {
 		return nil, err
 	}
+	if before.tunnelIfaces, err = r.otherTunnelInterfaces(); err != nil {
+		return nil, err
+	}
 	err = before.validateHookCoverage(r.iface, cidr)
 	// With a host-facts source (the gateway in Kubernetes) the two reads below
 	// are not commands of this process: the facts are taken once, between the
@@ -908,7 +922,7 @@ func (r *Reconciler) readNATSetFacts(ctx context.Context, s *cniSnapshot, cidr s
 		return nil, err
 	}
 	chains, rules := s.observedNATInput()
-	names, err := setsNeededForProof(chains, rules, "POSTROUTING", tunnel, r.iface, observedHandledChains, saved)
+	names, err := setsNeededForProof(chains, rules, "POSTROUTING", tunnel, r.iface, observedHandledChains, saved, s.tunnelIfaces...)
 	if err != nil {
 		return nil, err
 	}
@@ -1058,7 +1072,7 @@ func (s *cniSnapshot) proveObservedNAT(iface, cidr string) error {
 		return errors.New("invalid IPv4 tunnel CIDR")
 	}
 	chains, rules := s.observedNATInput()
-	proofSets, err := proveNoTunnelSourceNATWithSets(chains, rules, "POSTROUTING", tunnel, iface, observedHandledChains, s.setFacts)
+	proofSets, err := proveNoTunnelSourceNATWithSets(chains, rules, "POSTROUTING", tunnel, iface, observedHandledChains, s.setFacts, s.tunnelIfaces...)
 	if err != nil {
 		return err
 	}

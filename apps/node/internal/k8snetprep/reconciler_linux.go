@@ -58,6 +58,10 @@ type Reconciler struct {
 	// ciliumFacts, when set, is where the Cilium proof takes the manager's
 	// `cilium` section (K8N-2). Without it a node that shows Cilium is refused.
 	ciliumFacts CiliumFactsSource
+	// tunnelIfaces, when set, lists every tunnel interface the agent owns
+	// right now (the WireGuard interface and, while it serves, the OpenVPN
+	// server's). The observed proof excuses no rule bound to one of them.
+	tunnelIfaces func() []string
 	// registeredSeen records that this process has reconciled a registered CNI
 	// mechanism, so its later absence is a change in progress and not a node
 	// that never had one.
@@ -70,6 +74,39 @@ func New(iface string, runNFT NFTRunner) *Reconciler {
 		runNFT = realNFTRunner
 	}
 	return &Reconciler{iface: iface, procSys: "/proc/sys", runNFT: runNFT}
+}
+
+// UseTunnelInterfaces tells the observed proof where to read the tunnel
+// interfaces the agent owns. Devices behind every one of them draw from the
+// tunnel range, so a source-NAT rule bound to any of them by its exact output
+// interface is refused like one bound to the WireGuard interface. The source
+// is asked at every observation. Without one, only the WireGuard interface
+// this reconciler was built for is a tunnel interface. It is set once, before
+// the first Reconcile.
+func (r *Reconciler) UseTunnelInterfaces(source func() []string) { r.tunnelIfaces = source }
+
+// otherTunnelInterfaces returns what the source lists besides r.iface. A name
+// that could not be an interface refuses the observation: dropping it would
+// excuse rules bound to the interface the caller meant.
+func (r *Reconciler) otherTunnelInterfaces() ([]string, error) {
+	if r.tunnelIfaces == nil {
+		return nil, nil
+	}
+	seen := map[string]bool{r.iface: true}
+	var others []string
+	for _, name := range r.tunnelIfaces() {
+		if !interfaceNameRE.MatchString(name) {
+			return nil, errors.New("invalid tunnel interface name")
+		}
+		if !seen[name] {
+			seen[name] = true
+			others = append(others, name)
+		}
+	}
+	if len(others) > maxTunnelInterfaces {
+		return nil, errors.New("too many tunnel interfaces")
+	}
+	return others, nil
 }
 
 func realNFTRunner(ctx context.Context, args ...string) (string, error) {

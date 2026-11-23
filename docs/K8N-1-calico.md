@@ -543,6 +543,38 @@ still counted as a member, which refuses more, never less.
 The captured sets (`cali40masq-ipam-pools`, `cali40all-ipam-pools`, Cilium's
 `cilium_node_set_v4`) read exactly as before.
 
+### Every tunnel interface the agent owns (review finding 3)
+
+Decision 7 excuses a source-NAT rule that requires an exact output interface other than the
+WireGuard interface. The agent can own a second tunnel interface: the OpenVPN server's
+(`tunnex-ovpn`), whose clients draw from the same device range. The walk knew only `wg0`, so a
+masquerade bound to exactly `tunnex-ovpn` was excused although it applies to traffic entering
+a tunnel.
+
+- The gateway's reconciler is given the agent's own set (`egress.Manager.tunnelIfaces()`, the
+  one the forward chain and Tunnex's NAT rule are rendered from) as a function, and reads it
+  at every observation: `Reconciler.UseTunnelInterfaces`. A rule is excused only when its
+  exact name is in none of them. `wg0` is always one of them.
+- The set is live, not a fixed list of names the agent might ever use: the OpenVPN interface
+  is in it while the server serves. The pass that adds the interface to the forward chain
+  (`ReconcileOVPNTunnel`) runs this check with the new set in the same call.
+- A name in the set that could not be an interface (a wildcard, an empty name) refuses the
+  node before anything is read; it is never dropped. At most 16 names.
+- Unchanged: with no tunnel interface known nothing is excused; a wildcard, a set of names,
+  `!=` and `iifname` prove nothing. The manager's own reconciler (baseline census, cleanup)
+  is given no set and decides nothing with this walk.
+
+Not changed here, and to be decided if OpenVPN is offered on in-cluster gateways:
+
+- The rules Tunnex owns in a registered mechanism (`ip daddr TUNNEL oifname wg0 return` in
+  `IP-MASQ-AGENT` and `AWS-SNAT-CHAIN-0`) name the WireGuard interface only. On such a node a
+  pod's own connection to an OpenVPN client is masqueraded by the node's rule: the device
+  sees the node's address. Replies to connections a device opened are not affected.
+- The check of Tunnex's own NAT chain (`validateTunnexPostrouting`) requires the WireGuard
+  interface in the `oifname !=` set, not every tunnel interface. The agent renders that set
+  from the same `tunnelIfaces()` in one transaction, so a table without the second interface
+  is a table from before the interface existed.
+
 ## Not known yet
 
 - ~~Whether `ipset save` needs a capability the host-posture container does not already hold.~~
