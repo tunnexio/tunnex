@@ -32,8 +32,11 @@ export function parseAccessTest(search: string): AccessTestRequest | null {
   return request;
 }
 
-/** What a blocker means to an administrator, and where it is fixed. Unknown codes get no advice. */
-export function blockerAdvice(code: string): { text: string; action?: { label: string; to: string } } | null {
+/**
+ * What a blocker means to an administrator, and where it is fixed. Unknown codes get no advice.
+ * `facts` are the blocking check's own evidence; a few blockers read one of them (the gateway's reason).
+ */
+export function blockerAdvice(code: string, facts?: Record<string, string> | null): { text: string; action?: { label: string; to: string } } | null {
   switch (code) {
     case "no_matching_grant":
       return { text: "No access rule allows this person or device to reach this destination on this port.", action: { label: "Open access rules", to: "/access" } };
@@ -63,6 +66,17 @@ export function blockerAdvice(code: string): { text: string; action?: { label: s
       return { text: "The agent's managed runtime has not applied its current configuration.", action: { label: "Open agents", to: "/agents" } };
     case "route_intent_unavailable":
       return { text: "The agent's route configuration could not be read. Try again in a moment." };
+    // K8N-3: the destination is a cluster's Kubernetes API.
+    case "k8s_api_not_enabled":
+      return { text: "API access is off for that cluster, so its Kubernetes API has no address in the tunnel. Turn it on on the cluster's page.", action: { label: "Open Kubernetes", to: "/kubernetes" } };
+    case "k8s_api_endpoint_unavailable":
+      return facts?.reason === "endpoints_on_gateway_node"
+        ? { text: "The cluster's gateway cannot forward to the API server. The gateway runs on the cluster's only control-plane node; it must run on a worker node.", action: { label: "Open Kubernetes", to: "/kubernetes" } }
+        : facts?.reason === "no_gateway"
+          ? { text: "The cluster has no gateway assigned, so nothing forwards to its API server. Select a connector on the cluster's page.", action: { label: "Open Kubernetes", to: "/kubernetes" } }
+          : { text: "The cluster's gateway cannot forward to the API server.", action: { label: "Open gateways", to: "/gateways" } };
+    case "k8s_api_endpoint_not_observed":
+      return { text: "The cluster's gateway has not reported whether it can reach the API server, so this step cannot be confirmed. An older gateway never reports it.", action: { label: "Open gateways", to: "/gateways" } };
   }
   return null;
 }

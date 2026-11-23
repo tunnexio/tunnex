@@ -17,6 +17,7 @@
 // smaller half. The larger half is what discarding it CONCEALS.
 
 import type { Member } from "./api";
+import { k8sApiLabel, ruleCountPhrase } from "./k8sapiaccess";
 
 export type AuditRow = {
   actor_id?: string | null;
@@ -135,4 +136,85 @@ export function systemActors(rows: AuditRow[]): string[] {
 /** How many rows on this page cannot say who acted. Counted, never estimated. */
 export function unattributedCount(rows: AuditRow[]): number {
   return rows.filter((r) => resolveActor(r, []).gap).length;
+}
+
+// ── what changed ─────────────────────────────────────────────────────────────────────────
+
+type AuditChange = Pick<AuditRow, "action" | "details">;
+
+function detailText(row: AuditChange, key: string): string | null {
+  const value = row.details?.[key];
+  return typeof value === "string" && value.trim() !== "" ? value.trim() : null;
+}
+
+function detailCount(row: AuditChange, key: string): number | null {
+  const value = row.details?.[key];
+  return typeof value === "number" && Number.isInteger(value) && value >= 0 ? value : null;
+}
+
+/** The action's last segment as words: "policy.rule_created" reads "Rule created". */
+function actionWords(action: string): string {
+  const leaf = action.split(".").at(-1) ?? action;
+  const words = leaf.replace(/[_-]+/g, " ");
+  return words.charAt(0).toUpperCase() + words.slice(1);
+}
+
+// The rule actions that carry their destination in the metadata when it is a cluster's Kubernetes API.
+const RULE_ACTIONS = new Set([
+  "policy.rule_created",
+  "policy.rule_deleted",
+  "policy.rule_enabled",
+  "policy.rule_disabled",
+  "policy.grant_expired",
+]);
+
+/**
+ * The destination a rule event names, when the row says it is a cluster's Kubernetes API (K8N-3).
+ * Read from the row's own metadata, never looked up: the cluster may be gone by the time this is read.
+ */
+export function auditK8sApiDestination(row: AuditChange): string | null {
+  if (!RULE_ACTIONS.has(row.action)) return null;
+  const cluster = detailText(row, "dst_k8s_api_cluster");
+  if (cluster) return k8sApiLabel(cluster);
+  return row.details?.["dst_kind"] === "k8s_api" ? k8sApiLabel("a cluster whose name was not recorded") : null;
+}
+
+/**
+ * An action as words where there is no event to read, such as the action filter's suggestions. It names
+ * no cluster, because none is involved yet.
+ */
+export function auditActionLabel(action: string): string {
+  if (action === "k8s.api_access_enabled") return "Kubernetes API access turned on";
+  if (action === "k8s.api_access_disabled") return "Kubernetes API access turned off";
+  return actionWords(action);
+}
+
+/**
+ * What changed, in words. Every action reads as its own last segment, as before; the two API access
+ * actions name the cluster, and a rule event whose destination is a cluster's Kubernetes API says so.
+ */
+export function auditChangeLabel(row: AuditChange): string {
+  if (row.action === "k8s.api_access_enabled" || row.action === "k8s.api_access_disabled") {
+    const cluster = detailText(row, "cluster") ?? "a cluster whose name was not recorded";
+    return `${auditActionLabel(row.action)} for ${cluster}`;
+  }
+  const destination = auditK8sApiDestination(row);
+  return destination ? `${actionWords(row.action)} · ${destination}` : actionWords(row.action);
+}
+
+/** One sentence of consequence for the detail view, from the recorded counts. null when there is none. */
+export function auditChangeConsequence(row: AuditChange): string | null {
+  if (row.action === "k8s.api_access_enabled") {
+    const n = detailCount(row, "rules_taking_effect");
+    if (n === null) return null;
+    return n === 0 ? "No access rule named this cluster's API, so nobody could reach it yet."
+      : `${ruleCountPhrase(n)} that already named this cluster's API took effect again.`;
+  }
+  if (row.action === "k8s.api_access_disabled") {
+    const n = detailCount(row, "rules_kept");
+    if (n === null) return null;
+    return n === 0 ? "No access rule named this cluster's API."
+      : `${ruleCountPhrase(n)} that named this cluster's API ${n === 1 ? "was" : "were"} kept and allow${n === 1 ? "s" : ""} nothing until API access is turned on again.`;
+  }
+  return null;
 }
