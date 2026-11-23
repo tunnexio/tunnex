@@ -170,6 +170,21 @@ func ciliumNotVerified(detail string) error {
 	return fmt.Errorf("%w: %s", errCiliumNotVerified, bounded(detail, maxReasonBytes))
 }
 
+// ReasonCiliumReportedRangeNotProof starts the other refusal the customer can
+// lift: the ip-masq-agent is on and the tunnel range is inside the
+// native-routing range the agent reports, but in no entry of its list. With
+// the ip-masq-agent on that reported range is applied only when it was set
+// explicitly, which the report does not say, so the range has to be listed.
+const ReasonCiliumReportedRangeNotProof = "Cilium's ip-masq-agent is on: its reported native-routing range"
+
+// ciliumLiftableRefusal is a refusal the customer can lift with one change in
+// Cilium whose text does not begin with ReasonCiliumTunnelMasqueraded. It is
+// of the same kind for errors.Is.
+type ciliumLiftableRefusal string
+
+func (e ciliumLiftableRefusal) Error() string      { return string(e) }
+func (ciliumLiftableRefusal) Is(target error) bool { return target == errCiliumTunnelMasqueraded }
+
 // ciliumInstruction is what the customer changes in Cilium so that the tunnel
 // range is excluded (docs/K8N-2-cilium.md, "What the customer does").
 func ciliumInstruction(e *ciliumTunnelNotExcludedError) string {
@@ -177,6 +192,17 @@ func ciliumInstruction(e *ciliumTunnelNotExcludedError) string {
 		return fmt.Sprintf("Add %s to nonMasqueradeCIDRs in the ip-masq-agent ConfigMap (namespace kube-system, key config); no restart is needed, allow about a minute", e.Tunnel)
 	}
 	return fmt.Sprintf("Enable Cilium's ip-masq-agent (Helm ipMasqAgent.enabled=true) with %s in nonMasqueradeCIDRs, then restart the Cilium agents", e.Tunnel)
+}
+
+// ciliumNotExcludedReason is the whole customer-facing refusal for a tunnel
+// range that no exclusion Tunnex can read contains. Every form fits the
+// reason bound for any two IPv4 ranges.
+func ciliumNotExcludedReason(e *ciliumTunnelNotExcludedError) error {
+	if e.IPMasqAgent && e.InsideReported {
+		return ciliumLiftableRefusal(fmt.Sprintf("%s %s does not prove %s is not masqueraded. Add %s to nonMasqueradeCIDRs in the ip-masq-agent ConfigMap (kube-system, key config)",
+			ReasonCiliumReportedRangeNotProof, e.Exclusion, e.Tunnel, e.Tunnel))
+	}
+	return fmt.Errorf("%w %s. %s", errCiliumTunnelMasqueraded, e.Tunnel, ciliumInstruction(e))
 }
 
 // decideCiliumMasquerade is the gateway's decision on a node that shows
@@ -230,7 +256,7 @@ func decideCiliumMasquerade(facts *CiliumFacts, tunnel netip.Prefix) (string, er
 	case err == nil:
 		return reason, nil
 	case errors.As(err, &notExcluded):
-		return "", fmt.Errorf("%w %s. %s", errCiliumTunnelMasqueraded, notExcluded.Tunnel, ciliumInstruction(notExcluded))
+		return "", ciliumNotExcludedReason(notExcluded)
 	case errors.Is(err, errCiliumEgressGateway):
 		return "", err
 	default:

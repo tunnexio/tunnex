@@ -5,6 +5,9 @@ Independent read-only review of `apps/node/internal/k8snetprep` on `story/kubern
 was run on a cluster; packet-level claims come from reading code and the public Cilium v1.20.5
 source. Each item is open until its fix and refusal test are merged.
 
+The fixes are on branch `k8n/review-fixes`, one commit per finding; each item below says what was
+done, with the commit subject and the refusal test. None of the fixes ran on a cluster.
+
 Scale: Tunnex's forward chain drops flows opened towards a tunnel, and Cilium's eBPF program only
 masquerades pod-sourced packets. Most items below therefore rewrite a pod-opened connection to a
 device, the same effect the walk already accepts for Flannel. Item 10 is of a different kind.
@@ -19,6 +22,16 @@ device, the same effect the walk already accepts for Flannel. Item 10 is of a di
    Fix: accept the status exclusion only when ip-masq-agent is off; with it on, only a map entry
    proves. Refusal tests in `cilium_test.go` and `cilium_facts_test.go`. Needs a live capture with
    the agent on and no explicit native-routing range, and a check on Cilium 1.16–1.19.
+   **Fixed** — `fix(k8s): accept Cilium's reported native-routing range only with ip-masq-agent
+   off (K8N review 1)`. Tests: `TestProveCiliumReportedRangeProvesOnlyWithTheIPMasqAgentOff`,
+   `TestCiliumFactsReportedRangeIsNotAProofWithTheIPMasqAgentOn`,
+   `TestCiliumLiveNodeWithIPMasqAgentOnIsNotReadyOnTheReportedRange` (whole reconcile). The
+   source reading was checked at tag v1.20.5 (`pkg/datapath/linux/config/config.go`,
+   `pkg/status/status_collector.go`). One captured case changes verdict on purpose: node B
+   (ip-masq-agent on) with a range inside the reported `10.244.0.0/16` and not in the map was
+   ready and is now refused with the line to add; on that node the range was set explicitly, so
+   the refusal is stricter than the datapath. See K8N-2, "After the review". Still owed: the
+   live capture and Cilium 1.16–1.19.
 
 2. **Medium — ipset proof ignores `netmask`/`bitmask` on `hash:ip`.** Such a set matches whole
    networks, but its members are read as /32. Confirmed with a scratch test. Calico uses `hash:net`,

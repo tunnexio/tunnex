@@ -2,6 +2,7 @@ package k8snetprep
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/netip"
 	"reflect"
@@ -319,7 +320,7 @@ func TestProveCiliumNoTunnelMasqueradeAccepted(t *testing.T) {
 		{"inside the native-routing range", ciliumObservation{Masquerade: bpf("10.0.0.0/8", false)}, "10.99.0.0/16", "tunnel range is inside Cilium's native-routing range 10.0.0.0/8"},
 		{"equal to the native-routing range", ciliumObservation{Masquerade: bpf("10.99.0.0/16", false)}, "10.99.0.0/16", "tunnel range is inside Cilium's native-routing range 10.99.0.0/16"},
 		{"native-routing range covers everything", ciliumObservation{Masquerade: bpf("0.0.0.0/0", false)}, "172.20.0.0/24", "tunnel range is inside Cilium's native-routing range 0.0.0.0/0"},
-		{"native-routing range wins without reading the map", ciliumObservation{Masquerade: bpf("10.0.0.0/8", true)}, "10.99.0.0/16", "tunnel range is inside Cilium's native-routing range 10.0.0.0/8"},
+		{"ip-masq-agent on, inside the reported range and inside an entry: the entry carries the proof", ciliumObservation{Masquerade: bpf("10.0.0.0/8", true), NonMasquerade: ciliumPrefixes("10.99.0.0/16"), NonMasqueradeRead: true}, "10.99.0.0/16", "tunnel range is inside Cilium ip-masq-agent range 10.99.0.0/16"},
 		{"inside a default ip-masq-agent range", ciliumObservation{Masquerade: bpf("10.0.0.0/16", true), NonMasquerade: defaults, NonMasqueradeRead: true}, "100.96.0.0/16", "tunnel range is inside Cilium ip-masq-agent range 100.64.0.0/10"},
 		{"equal to an ip-masq-agent entry", ciliumObservation{Masquerade: bpf("10.0.0.0/16", true), NonMasquerade: ciliumPrefixes("172.20.0.0/24"), NonMasqueradeRead: true}, "172.20.0.0/24", "tunnel range is inside Cilium ip-masq-agent range 172.20.0.0/24"},
 		{"the widest containing entry is named, in any order", ciliumObservation{Masquerade: bpf("10.0.0.0/16", true), NonMasquerade: ciliumPrefixes("172.20.0.0/24", "172.16.0.0/12", "172.20.0.0/16"), NonMasqueradeRead: true}, "172.20.0.0/24", "tunnel range is inside Cilium ip-masq-agent range 172.16.0.0/12"},
@@ -364,6 +365,14 @@ func TestProveCiliumNoTunnelMasqueradeRefused(t *testing.T) {
 		{"outside, agent off", ciliumObservation{Masquerade: bpf("10.0.0.0/8", false)}, tunnel, "ip-masq-agent is off"},
 		{"outside, agent off, a map was read anyway", ciliumObservation{Masquerade: bpf("10.0.0.0/8", false), NonMasquerade: ciliumPrefixes("172.16.0.0/12"), NonMasqueradeRead: true}, tunnel, "ip-masq-agent is off"},
 		{"tunnel wider than the native-routing range", ciliumObservation{Masquerade: bpf("172.20.0.0/25", false)}, tunnel, "ip-masq-agent is off"},
+		// Review finding 1. With the ip-masq-agent on the datapath applies the
+		// reported range only when ipv4-native-routing-cidr was set explicitly,
+		// and the status does not say whether it was. Only a map entry proves.
+		{"agent on, inside the reported range, map not read", ciliumObservation{Masquerade: bpf("10.0.0.0/8", true)}, netip.MustParsePrefix("10.99.0.0/16"), "map was not read"},
+		{"agent on, inside the reported range, map empty", ciliumObservation{Masquerade: bpf("10.0.0.0/8", true), NonMasquerade: []netip.Prefix{}, NonMasqueradeRead: true}, netip.MustParsePrefix("10.99.0.0/16"), "is applied only when it is set explicitly"},
+		{"agent on, inside the reported range, no entry contains it", ciliumObservation{Masquerade: bpf("172.16.0.0/12", true), NonMasquerade: ciliumPrefixes("10.0.0.0/8", "172.20.0.0/25"), NonMasqueradeRead: true}, tunnel, "is applied only when it is set explicitly"},
+		{"agent on, equal to the reported range, no entry", ciliumObservation{Masquerade: bpf("172.20.0.0/24", true), NonMasquerade: ciliumPrefixes("100.64.0.0/10"), NonMasqueradeRead: true}, tunnel, "is applied only when it is set explicitly"},
+		{"agent on, reported range covers everything, no entry", ciliumObservation{Masquerade: bpf("0.0.0.0/0", true), NonMasquerade: ciliumPrefixes("100.64.0.0/10"), NonMasqueradeRead: true}, tunnel, "is applied only when it is set explicitly"},
 		{"agent on, map not read", ciliumObservation{Masquerade: bpf("10.0.0.0/8", true)}, tunnel, "map was not read"},
 		{"agent on, map not read, stale members present", ciliumObservation{Masquerade: bpf("10.0.0.0/8", true), NonMasquerade: ciliumPrefixes("172.16.0.0/12")}, tunnel, "map was not read"},
 		{"agent on, map empty", ciliumObservation{Masquerade: bpf("10.0.0.0/8", true), NonMasquerade: []netip.Prefix{}, NonMasqueradeRead: true}, tunnel, "no ip-masq-agent nonMasqueradeCIDRs entry contains it"},
@@ -396,6 +405,40 @@ func TestProveCiliumRefusalNamesTheRangeToExclude(t *testing.T) {
 	}
 	if len(err.Error()) > maxReasonBytes {
 		t.Fatalf("refusal is %d bytes; a status reason would cut it", len(err.Error()))
+	}
+}
+
+// Review finding 1, as one statement: the same report and the same tunnel
+// range are accepted with the ip-masq-agent off and refused with it on, and
+// with it on a map entry is the only thing that changes the answer.
+func TestProveCiliumReportedRangeProvesOnlyWithTheIPMasqAgentOff(t *testing.T) {
+	tunnel := netip.MustParsePrefix("10.99.0.0/16")
+	report := func(agent bool) ciliumMasquerade {
+		return ciliumMasquerade{Mode: ciliumMasqBPF, Exclusion: netip.MustParsePrefix("10.0.0.0/8"), IPMasqAgent: agent}
+	}
+	if reason, err := proveCiliumNoTunnelMasquerade(ciliumObservation{Masquerade: report(false)}, tunnel); err != nil || reason != "tunnel range is inside Cilium's native-routing range 10.0.0.0/8" {
+		t.Fatalf("agent off: reason = %q, err = %v", reason, err)
+	}
+	on := ciliumObservation{Masquerade: report(true), NonMasquerade: ciliumPrefixes("192.168.0.0/16"), NonMasqueradeRead: true}
+	reason, err := proveCiliumNoTunnelMasquerade(on, tunnel)
+	var notExcluded *ciliumTunnelNotExcludedError
+	if err == nil || reason != "" || !errors.As(err, &notExcluded) {
+		t.Fatalf("agent on, range only in the report: reason = %q, err = %v", reason, err)
+	}
+	if !notExcluded.IPMasqAgent || !notExcluded.InsideReported || notExcluded.Tunnel != tunnel || notExcluded.Exclusion != netip.MustParsePrefix("10.0.0.0/8") {
+		t.Fatalf("refusal = %+v", notExcluded)
+	}
+	if len(err.Error()) > maxReasonBytes {
+		t.Fatalf("refusal is %d bytes", len(err.Error()))
+	}
+	// Outside the reported range too: the plain refusal, not this one.
+	_, err = proveCiliumNoTunnelMasquerade(on, netip.MustParsePrefix("172.20.0.0/24"))
+	if !errors.As(err, &notExcluded) || notExcluded.InsideReported {
+		t.Fatalf("outside both: %v", err)
+	}
+	on.NonMasquerade = ciliumPrefixes("192.168.0.0/16", "10.99.0.0/16")
+	if reason, err := proveCiliumNoTunnelMasquerade(on, tunnel); err != nil || reason != "tunnel range is inside Cilium ip-masq-agent range 10.99.0.0/16" {
+		t.Fatalf("agent on, range listed: reason = %q, err = %v", reason, err)
 	}
 }
 

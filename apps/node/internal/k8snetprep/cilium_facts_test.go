@@ -66,6 +66,9 @@ func ciliumFactsC(t *testing.T) *CiliumFacts {
 const (
 	ciliumWantEnable = "Cilium eBPF masquerade would rewrite traffic to the tunnel range 100.96.0.0/24. Enable Cilium's ip-masq-agent (Helm ipMasqAgent.enabled=true) with 100.96.0.0/24 in nonMasqueradeCIDRs, then restart the Cilium agents"
 	ciliumWantAdd    = "Cilium eBPF masquerade would rewrite traffic to the tunnel range 100.96.1.0/24. Add 100.96.1.0/24 to nonMasqueradeCIDRs in the ip-masq-agent ConfigMap (namespace kube-system, key config); no restart is needed, allow about a minute"
+	// The ip-masq-agent is on and the range is only inside the range the agent
+	// reports: the customer is told why that is not enough and what to add.
+	ciliumWantList = "Cilium's ip-masq-agent is on: its reported native-routing range 10.244.0.0/16 does not prove 10.244.200.0/24 is not masqueraded. Add 10.244.200.0/24 to nonMasqueradeCIDRs in the ip-masq-agent ConfigMap (kube-system, key config)"
 )
 
 func TestCiliumFactsDecisionOnTheRealCaptures(t *testing.T) {
@@ -78,10 +81,12 @@ func TestCiliumFactsDecisionOnTheRealCaptures(t *testing.T) {
 		"A, range outside every exclusion": {facts: ciliumFactsA(t), tunnel: "100.96.0.0/24", refuse: ciliumWantEnable},
 		"A, range inside native routing":   {facts: ciliumFactsA(t), tunnel: "10.244.200.0/24", reason: "tunnel range is inside Cilium's native-routing range 10.244.0.0/16"},
 		"B, range listed":                  {facts: ciliumFactsB(t), tunnel: "100.96.0.0/24", reason: "tunnel range is inside Cilium ip-masq-agent range 100.96.0.0/24"},
-		"B, range inside native routing":   {facts: ciliumFactsB(t), tunnel: "10.244.200.0/24", reason: "tunnel range is inside Cilium's native-routing range 10.244.0.0/16"},
-		"B, another range":                 {facts: ciliumFactsB(t), tunnel: "100.96.1.0/24", refuse: ciliumWantAdd},
-		"B then off":                       {facts: ciliumFactsBThenOff(t), tunnel: "100.96.0.0/24", refuse: ciliumWantEnable},
-		"C, the walk decides":              {facts: ciliumFactsC(t), tunnel: "100.96.0.0/24", reason: ReasonCiliumIPTablesMasquerade},
+		// Review finding 1: with the ip-masq-agent on, the reported range is
+		// not a proof. (Before the fix this case was ready.)
+		"B, range inside the reported native-routing range only": {facts: ciliumFactsB(t), tunnel: "10.244.200.0/24", refuse: ciliumWantList},
+		"B, another range":    {facts: ciliumFactsB(t), tunnel: "100.96.1.0/24", refuse: ciliumWantAdd},
+		"B then off":          {facts: ciliumFactsBThenOff(t), tunnel: "100.96.0.0/24", refuse: ciliumWantEnable},
+		"C, the walk decides": {facts: ciliumFactsC(t), tunnel: "100.96.0.0/24", reason: ReasonCiliumIPTablesMasquerade},
 	} {
 		reason, err := decideCiliumMasquerade(tc.facts, netip.MustParsePrefix(tc.tunnel))
 		if tc.refuse != "" {
@@ -264,6 +269,65 @@ func TestCiliumInstructionsFitTheReasonBound(t *testing.T) {
 		}
 		if bounded(reason, maxReasonBytes) != reason || strings.Count(reason, tunnel.String()) != 2 {
 			t.Errorf("reason = %q", reason)
+		}
+	}
+}
+
+// The refusal of review finding 1 fits the bound for the longest two ranges
+// that can be written, names the range to add twice and the reported range
+// once, and is of the kind the customer can lift.
+func TestCiliumReportedRangeRefusalFitsTheReasonBound(t *testing.T) {
+	tunnel, reported := netip.MustParsePrefix("100.100.100.100/32"), netip.MustParsePrefix("100.100.100.100/31")
+	err := ciliumNotExcludedReason(&ciliumTunnelNotExcludedError{Tunnel: tunnel, Exclusion: reported, IPMasqAgent: true, InsideReported: true})
+	reason := err.Error()
+	if len(reason) > maxReasonBytes || bounded(reason, maxReasonBytes) != reason {
+		t.Fatalf("%d bytes: %s", len(reason), reason)
+	}
+	if strings.Count(reason, tunnel.String()) != 2 || strings.Count(reason, reported.String()) != 1 || !strings.HasPrefix(reason, ReasonCiliumReportedRangeNotProof+" ") {
+		t.Fatalf("reason = %q", reason)
+	}
+	if !errors.Is(err, errCiliumTunnelMasqueraded) || errors.Is(err, errCiliumNotVerified) {
+		t.Fatalf("wrong kind of refusal: %v", err)
+	}
+	// Outside the reported range the unchanged instruction is given.
+	plain := ciliumNotExcludedReason(&ciliumTunnelNotExcludedError{Tunnel: tunnel, Exclusion: reported, IPMasqAgent: true})
+	if !strings.HasPrefix(plain.Error(), ReasonCiliumTunnelMasqueraded+" ") || !errors.Is(plain, errCiliumTunnelMasqueraded) {
+		t.Fatalf("plain refusal = %v", plain)
+	}
+}
+
+// Review finding 1 on the receipt: the reported range decides only with the
+// ip-masq-agent off. With it on, a tunnel range inside that range is refused
+// until an entry of the dumped map contains it, whatever else the map holds.
+func TestCiliumFactsReportedRangeIsNotAProofWithTheIPMasqAgentOn(t *testing.T) {
+	tunnel := netip.MustParsePrefix("10.244.200.0/24")
+	if reason, err := decideCiliumMasquerade(ciliumFactsA(t), tunnel); err != nil || reason != "tunnel range is inside Cilium's native-routing range 10.244.0.0/16" {
+		t.Fatalf("ip-masq-agent off: reason = %q, err = %v", reason, err)
+	}
+	for name, dump := range map[string]string{
+		"the captured map (100.96.0.0/24)": ciliumFactsB(t).IPMasqMap.Text,
+		"an empty map":                     `[]`,
+		"an entry for half of the range":   string(ciliumIPMasqDump("10.244.200.0/25")),
+		"an entry beside the range":        string(ciliumIPMasqDump("10.244.201.0/24", "10.245.0.0/16")),
+	} {
+		facts := ciliumFactsB(t)
+		facts.IPMasqMap.Text = dump
+		reason, err := decideCiliumMasquerade(facts, tunnel)
+		if err == nil || err.Error() != ciliumWantList || reason != "" || !errors.Is(err, errCiliumTunnelMasqueraded) || errors.Is(err, errCiliumNotVerified) {
+			t.Errorf("%s: reason = %q, err = %v", name, reason, err)
+		}
+	}
+	// The map could not be read: not verified, and never the reported range.
+	facts := ciliumFactsB(t)
+	facts.IPMasqMap = CiliumTextFact{State: FactsUnreadable, Reason: "bpftool: permission denied"}
+	if _, err := decideCiliumMasquerade(facts, tunnel); err == nil || !errors.Is(err, errCiliumNotVerified) {
+		t.Fatalf("map unreadable: %v", err)
+	}
+	for _, listed := range []string{"10.244.200.0/24", "10.244.0.0/16", "10.0.0.0/8"} {
+		facts := ciliumFactsB(t)
+		facts.IPMasqMap.Text = string(ciliumIPMasqDump("100.96.0.0/24", listed))
+		if reason, err := decideCiliumMasquerade(facts, tunnel); err != nil || reason != "tunnel range is inside Cilium ip-masq-agent range "+listed {
+			t.Errorf("listed as %s: reason = %q, err = %v", listed, reason, err)
 		}
 	}
 }
