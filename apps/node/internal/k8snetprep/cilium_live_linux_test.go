@@ -170,7 +170,7 @@ func TestCiliumLiveIPTablesNodeIsRefusedByTheWalkNotByTheFacts(t *testing.T) {
 // there to decide on: no source, no receipt, a receipt without the section, or
 // a section that says the agent could not be read. All modes, both ranges.
 func TestCiliumLiveNodesAreRefusedWithoutUsableFacts(t *testing.T) {
-	unread := UnreadableCiliumFacts("no agent socket at /var/run/cilium/cilium.sock; set cilium.enabled=true on the tunnex-host-posture chart")
+	unread := UnreadableCiliumFacts("/var/run/cilium is not mounted in the host-posture manager; set cilium.enabled=true on the tunnex-host-posture chart")
 	for name, tc := range map[string]struct {
 		source CiliumFactsSource
 		want   string
@@ -192,7 +192,7 @@ func TestCiliumLiveNodesAreRefusedWithoutUsableFacts(t *testing.T) {
 		},
 		"agent not readable": {
 			source: constantCiliumFacts(unread, nil),
-			want:   "Cilium masquerade on this node is not verified: the host-posture manager could not read the Cilium agent status: no agent socket at /var/run/cilium/cilium.sock; set cilium.enabled=true on the tunnex-host-posture chart",
+			want:   "Cilium masquerade on this node is not verified: the host-posture manager could not read the Cilium agent status: /var/run/cilium is not mounted in the host-posture manager; set cilium.enabled=true on the tunnex-host-posture chart",
 		},
 	} {
 		for _, prefix := range []string{ciliumLiveA, ciliumLiveB, ciliumLiveC} {

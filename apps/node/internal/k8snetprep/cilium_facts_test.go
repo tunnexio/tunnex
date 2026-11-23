@@ -116,7 +116,7 @@ func TestCiliumFactsThatProveNothingAreRefused(t *testing.T) {
 		out.Status.Text = `{"masquerading":` + masquerading + `}`
 		return &out
 	}
-	unreadable := CiliumTextFact{State: FactsUnreadable, Reason: "no agent socket at /var/run/cilium/cilium.sock; set cilium.enabled=true on the tunnex-host-posture chart"}
+	unreadable := CiliumTextFact{State: FactsUnreadable, Reason: "/var/run/cilium is not mounted in the host-posture manager; set cilium.enabled=true on the tunnex-host-posture chart"}
 	for name, tc := range map[string]struct {
 		facts *CiliumFacts
 		want  string
@@ -130,7 +130,7 @@ func TestCiliumFactsThatProveNothingAreRefused(t *testing.T) {
 		},
 		"socket not mounted": {
 			facts: &CiliumFacts{Status: unreadable, PinnedMaps: CiliumPinFacts{State: FactsUnreadable, Reason: "no pinned maps"}, IPMasqMap: CiliumTextFact{State: FactsUnreadable, Reason: "the agent status was not read"}},
-			want:  "could not read the Cilium agent status: no agent socket at /var/run/cilium/cilium.sock; set cilium.enabled=true on the tunnex-host-posture chart",
+			want:  "could not read the Cilium agent status: /var/run/cilium is not mounted in the host-posture manager; set cilium.enabled=true on the tunnex-host-posture chart",
 		},
 		"status without a masquerading section": {
 			facts: func() *CiliumFacts { f := *ciliumFactsA(t); f.Status.Text = `{}`; return &f }(),

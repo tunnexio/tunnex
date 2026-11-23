@@ -191,7 +191,7 @@ func (r *CiliumFactsReader) Read(ctx context.Context) *CiliumFacts {
 	understood := false
 	switch raw, err := r.getStatus(ctx); {
 	case errors.Is(err, fs.ErrNotExist):
-		facts.Status = unreadableCiliumText(fmt.Sprintf("no agent socket at %s; %s", r.socket, ciliumMountHint))
+		facts.Status = unreadableCiliumText(r.noSocketReason())
 	case err != nil:
 		facts.Status = unreadableCiliumText("GET /v1/healthz on the agent socket: " + bounded(err.Error(), 120))
 	default:
@@ -221,6 +221,17 @@ func (r *CiliumFactsReader) Read(ctx context.Context) *CiliumFacts {
 		return UnreadableCiliumFacts(err.Error())
 	}
 	return facts
+}
+
+// noSocketReason tells a manager that was not given the agent's directory from
+// an agent that is not running: with the mount the directory is there even
+// while the agent restarts and its socket is gone for a few seconds.
+func (r *CiliumFactsReader) noSocketReason() string {
+	dir := filepath.Dir(r.socket)
+	if _, err := os.Stat(dir); errors.Is(err, fs.ErrNotExist) {
+		return fmt.Sprintf("%s is not mounted in the host-posture manager; %s", dir, ciliumMountHint)
+	}
+	return fmt.Sprintf("no agent socket at %s; the Cilium agent is not running or is restarting", r.socket)
 }
 
 func unreadableCiliumText(reason string) CiliumTextFact {
