@@ -760,11 +760,24 @@ func (r *Reconciler) observeRegisteredMechanisms(ctx context.Context, cidr strin
 		return nil, err
 	}
 	err = before.validateHookCoverage(r.iface, cidr)
+	// With a host-facts source (the gateway in Kubernetes) the two reads below
+	// are not commands of this process: the facts are taken once, between the
+	// two listings, and each fact is bound to the first listing by its chain's
+	// listing digest. The second listing must still equal the first.
+	var hostFacts *HostNetFacts
 	if errors.Is(err, errMarkFactsNeeded) {
 		// A mangle POSTROUTING hook sets a mark. Read its value from the saved
 		// form and prove again. Like the set reads below, this sits between the
 		// two listings compared at the end.
-		saved, savedErr := r.readSavedMangle(ctx)
+		var saved map[string][]savedRule
+		var savedErr error
+		if r.hostFacts != nil {
+			if hostFacts, savedErr = r.takeHostFacts(ctx, &hostFacts); savedErr == nil {
+				saved, savedErr = before.savedRulesFromFacts("mangle", hostFacts.Mangle)
+			}
+		} else {
+			saved, savedErr = r.readSavedMangle(ctx)
+		}
 		if savedErr != nil {
 			return nil, savedErr
 		}
@@ -775,7 +788,15 @@ func (r *Reconciler) observeRegisteredMechanisms(ctx context.Context, cidr strin
 		// A masquerade is conditioned on a kernel set. Read what the listing
 		// cannot say and prove again. These reads sit between the two listings
 		// compared below, so a rule that changed meanwhile is caught there.
-		facts, factsErr := r.readNATSetFacts(ctx, before, cidr)
+		var facts *natSetFacts
+		var factsErr error
+		if r.hostFacts != nil {
+			if hostFacts, factsErr = r.takeHostFacts(ctx, &hostFacts); factsErr == nil {
+				facts, factsErr = r.natSetFactsFromHostFacts(before, hostFacts, cidr)
+			}
+		} else {
+			facts, factsErr = r.readNATSetFacts(ctx, before, cidr)
+		}
 		if factsErr != nil {
 			return nil, factsErr
 		}

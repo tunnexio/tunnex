@@ -29,6 +29,8 @@ type fakePostureStore struct {
 	lockErr      error
 	lockHeld     bool
 	saveStates   []string
+	facts        []HostFacts
+	factsErr     error
 	saveOwners   [][]Owner
 }
 
@@ -64,6 +66,16 @@ func (f *fakePostureStore) SaveCNIAuthority(authority CNIAuthority) error {
 		return f.authorityErr
 	}
 	f.authority = authority
+	return nil
+}
+func (f *fakePostureStore) SaveHostFacts(receipt HostFacts) error {
+	if !f.lockHeld {
+		return fmt.Errorf("host facts publication without operation lock")
+	}
+	if f.factsErr != nil {
+		return f.factsErr
+	}
+	f.facts = append(f.facts, receipt)
 	return nil
 }
 func (f *fakePostureStore) RevokeCNIAuthority() error {

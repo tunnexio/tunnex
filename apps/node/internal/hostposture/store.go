@@ -71,6 +71,7 @@ func (s *Store) HeartbeatPath() string        { return filepath.Join(s.dir, hear
 func (s *Store) LockPath() string             { return filepath.Join(s.dir, lockFile) }
 func (s *Store) CNIAuthorityPath() string     { return filepath.Join(s.dir, cniAuthorityFile) }
 func (s *Store) CNIOperationLockPath() string { return filepath.Join(s.dir, cniOperationLockFile) }
+func (s *Store) HostFactsPath() string        { return filepath.Join(s.dir, hostFactsFile) }
 
 func (s *Store) LoadJournal() (Journal, error) {
 	var value Journal
@@ -100,13 +101,17 @@ func (s *Store) SaveHeartbeat(value Heartbeat) error {
 }
 
 func (s *Store) atomicJSON(name string, value any, mode os.FileMode) error {
+	return s.atomicBoundedJSON(name, value, mode, maxJournal)
+}
+
+func (s *Store) atomicBoundedJSON(name string, value any, mode os.FileMode, max int) error {
 	var body bytes.Buffer
 	enc := json.NewEncoder(&body)
 	enc.SetEscapeHTML(false)
 	if err := enc.Encode(value); err != nil {
 		return fmt.Errorf("encode %s: %w", name, err)
 	}
-	if body.Len() > maxJournal {
+	if body.Len() > max {
 		return fmt.Errorf("encoded %s exceeds bounded size", name)
 	}
 	tmp, err := os.CreateTemp(s.dir, "."+name+".*.tmp")

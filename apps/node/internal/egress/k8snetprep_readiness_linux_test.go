@@ -81,7 +81,7 @@ func TestK8sCNIAuthorityWiringNeverEnablesVMOrFallsBackAfterRefusal(t *testing.T
 		guardCalls++
 		return k8snetprep.AuthorityGrant{}, nil, errors.New("test authority refused")
 	}
-	m.SetKubernetesCNIAuthority(guard)
+	m.SetKubernetesCNIAuthority(guard, nil)
 	if m.k8sNetPrep != legacy || guardCalls != 0 {
 		t.Fatal("legacy VM mode acquired Kubernetes CNI authority")
 	}
@@ -90,7 +90,7 @@ func TestK8sCNIAuthorityWiringNeverEnablesVMOrFallsBackAfterRefusal(t *testing.T
 		nftCalls++
 		return "", errors.New("must not inspect or mutate nft after refusal")
 	}
-	m.SetKubernetesCNIAuthority(guard)
+	m.SetKubernetesCNIAuthority(guard, nil)
 	if err := m.reconcileK8sNetPrep(t.Context(), "10.99.0.0/24"); err == nil {
 		t.Fatal("missing journal authority fell back to an unguarded reconciler")
 	}
