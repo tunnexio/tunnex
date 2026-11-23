@@ -33,6 +33,9 @@ type resolvedVIP struct {
 	proto   string // tcp | udp (allowlisted; never interpolated raw)
 	svcPort int    // the exposed service port the client dials at the VIP (0 = any → address-only)
 	targets []k8sTarget
+	// apiServer (K8N-3) is true only for the mapping of default/kubernetes. Flows to such an address are
+	// masqueraded on the way out (k8sAPIReturnRules); every other mapping keeps the client's source.
+	apiServer bool
 }
 
 // refusedVIP is a mapping that did NOT program a DNAT, with the reason (surfaced for the operator).
@@ -199,7 +202,8 @@ func (m *Manager) ResolveK8sVIPs(ctx context.Context) {
 			apiEndpoint = &state
 		}
 		if ok {
-			resolved = append(resolved, resolvedVIP{vip: vm.VIP, proto: normProto(vm.Protocol), svcPort: vm.PortLow, targets: out})
+			resolved = append(resolved, resolvedVIP{vip: vm.VIP, proto: normProto(vm.Protocol), svcPort: vm.PortLow, targets: out,
+				apiServer: vm.Namespace == k8sAPIServiceNamespace && vm.Service == k8sAPIServiceName})
 			if m.log != nil {
 				m.log.Info("k8s_vip_resolved", "vip", vm.VIP, "service", vm.Namespace+"/"+vm.Service, "ready_endpoints", len(out))
 			}

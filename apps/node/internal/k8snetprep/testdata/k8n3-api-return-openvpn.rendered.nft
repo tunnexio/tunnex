@@ -1,0 +1,48 @@
+add table ip tunnex
+flush table ip tunnex
+table ip tunnex {
+  chain tunnex_posture_owner {
+    counter comment "tunnex_host_posture_v1"
+  }
+
+  chain prerouting {
+    type nat hook prerouting priority -101; policy accept;
+    ip daddr 100.65.0.3 tcp dport 80 dnat to 10.70.0.9:80 comment "tunnex_k8s_vip:98275f68176067e113a65286c980972b4d0e8b9a18740c092ca6b4ac189bc502"
+    ip daddr 100.65.0.4 tcp dport 443 dnat to 10.70.0.3:443 comment "tunnex_k8s_vip:efb921177ab3bb620bcd98fd183db11cb04bca460608aab22b440aba760d380f"
+  }
+  chain postrouting {
+    type nat hook postrouting priority srcnat - 1; policy accept;
+    ip saddr 100.65.0.2/32 oifname != { "wg0", "tun0" } masquerade
+    ct original ip daddr 100.65.0.4 oifname != { "wg0", "tun0" } masquerade comment "tunnex_k8s_api_return"
+  }
+  chain forward {
+    type filter hook forward priority filter; policy drop;
+    ct state established,related accept
+    ct state invalid counter drop comment "tunnex_ct_invalid_drop"
+    iifname != { "wg0", "tun0" } oifname != { "wg0", "tun0" } ct original ip daddr != { 100.65.0.3, 100.65.0.4 } counter accept comment "tunnex_native_forward_passthrough"
+
+    iifname { "wg0", "tun0" } oifname { "wg0", "tun0" } tcp flags syn tcp option maxseg size set rt mtu
+    ip saddr 10.99.0.2 ct original ip daddr 100.65.0.3/32 meta l4proto tcp ct original proto-dst 80 counter accept
+    ip saddr 10.99.0.2 ct original ip daddr 100.65.0.4/32 meta l4proto tcp ct original proto-dst 443 counter accept
+    counter comment "tunnex_default_drop"
+  }
+}
+add table ip6 tunnex
+flush table ip6 tunnex
+table ip6 tunnex {
+  chain tunnex_posture_owner {
+    counter comment "tunnex_host_posture_v1"
+  }
+
+  chain postrouting {
+    type nat hook postrouting priority srcnat - 1; policy accept;
+  }
+  chain forward {
+    type filter hook forward priority filter; policy drop;
+    ct state established,related accept
+    ct state invalid counter drop comment "tunnex_ct_invalid_drop"
+    iifname != { "wg0", "tun0" } oifname != { "wg0", "tun0" } counter accept comment "tunnex_native_forward_passthrough"
+
+    counter comment "tunnex_default_drop"
+  }
+}

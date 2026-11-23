@@ -1097,6 +1097,19 @@ func (s *cniSnapshot) proveMangleMarks() error {
 	return proveCannotSetReservedMarks(chains, rules, "POSTROUTING", s.mangleSaved)
 }
 
+// validateTunnexPostrouting proves that the gateway's own NAT hook, which runs
+// one priority before the CNI's, cannot source-NAT traffic bound for the
+// tunnel. It accepts exactly two rule shapes and refuses every other rule:
+//
+//   - the device-pool rule: no comment, `ip saddr <current tunnel range>
+//     oifname != <tunnel interfaces> masquerade`;
+//   - the API return rule (K8N-3): comment APIReturnRuleComment, `ct original
+//     ip daddr <one IPv4 address> oifname != <tunnel interfaces> masquerade`.
+//
+// It is not told which address the control plane mapped to the cluster's API,
+// so it binds the second shape and its marker, not the address. The renderer
+// binds the address: the table is replaced from the current mapping on every
+// egress pass.
 func (s *cniSnapshot) validateTunnexPostrouting(iface, cidr string) error {
 	ownerKey := nftKey("ip", "tunnex", "tunnex_posture_owner")
 	owner, ok := s.chains[ownerKey]
@@ -1104,37 +1117,81 @@ func (s *cniSnapshot) validateTunnexPostrouting(iface, cidr string) error {
 	if !ok || owner.Hook != "" || len(markers) != 1 || markers[0].Comment != "tunnex_host_posture_v1" || len(markers[0].Expr) != 1 || len(withoutCounters(markers[0].Expr)) != 0 {
 		return errors.New("Tunnex NAT hook lacks its exact posture ownership marker")
 	}
+	apiReturn := map[string]bool{}
 	for _, rule := range s.rules[nftKey("ip", "tunnex", "postrouting")] {
 		expr := withoutCounters(rule.Expr)
+		if rule.Comment == APIReturnRuleComment {
+			address, err := tunnexAPIReturnRule(expr, iface)
+			if err != nil {
+				return err
+			}
+			if apiReturn[address] {
+				return errors.New("Tunnex API return rule is duplicated")
+			}
+			apiReturn[address] = true
+			continue
+		}
 		if len(expr) != 3 || rule.Comment != "" || !reflect.DeepEqual(expr[2], map[string]any{"masquerade": nil}) {
 			return errors.New("unknown Tunnex source-NAT rule")
 		}
 		if actual, ok := nftAddressMatch(expr[0], "saddr"); !ok || actual != cidr {
 			return errors.New("Tunnex source-NAT CIDR differs from current tunnel")
 		}
-		right, ok := nftMatch(expr[1], "!=", map[string]any{"meta": map[string]any{"key": "oifname"}})
-		if !ok {
-			return errors.New("Tunnex source-NAT lacks exact tunnel egress exclusion")
+		if err := tunnexNATExcludesTunnel(expr[1], iface); err != nil {
+			return err
 		}
-		excluded := right == iface
-		if set, ok := right.(map[string]any); ok && len(set) == 1 {
-			members, ok := set["set"].([]any)
-			if !ok || len(members) == 0 || len(members) > 16 {
-				return errors.New("Tunnex NAT interface set is unsupported")
+	}
+	return nil
+}
+
+// tunnexAPIReturnRule accepts the exact API return rule and returns the one
+// address it matches. Anything else under the marker is refused: the marker
+// identifies the rule, it does not excuse a different one.
+func tunnexAPIReturnRule(expr []map[string]any, iface string) (string, error) {
+	if len(expr) != 3 || !reflect.DeepEqual(expr[2], map[string]any{"masquerade": nil}) {
+		return "", errors.New("Tunnex API return rule is not the exact registered masquerade")
+	}
+	// The flow's ORIGINAL destination: the tunnel address the client dialled.
+	// A string is one address; a prefix, a set or a range is an object.
+	right, ok := nftMatch(expr[0], "==", map[string]any{"ct": map[string]any{"key": "ip daddr", "dir": "original"}})
+	address, isString := right.(string)
+	if !ok || !isString {
+		return "", errors.New("Tunnex API return rule does not match one original IPv4 destination")
+	}
+	if addr, err := netip.ParseAddr(address); err != nil || !addr.Is4() || addr.String() != address {
+		return "", errors.New("Tunnex API return rule does not match one original IPv4 destination")
+	}
+	if err := tunnexNATExcludesTunnel(expr[1], iface); err != nil {
+		return "", err
+	}
+	return address, nil
+}
+
+// tunnexNATExcludesTunnel requires `oifname != iface`, or `oifname != { ... }`
+// over a small set of valid interface names that contains iface.
+func tunnexNATExcludesTunnel(expr map[string]any, iface string) error {
+	right, ok := nftMatch(expr, "!=", map[string]any{"meta": map[string]any{"key": "oifname"}})
+	if !ok {
+		return errors.New("Tunnex source-NAT lacks exact tunnel egress exclusion")
+	}
+	excluded := right == iface
+	if set, ok := right.(map[string]any); ok && len(set) == 1 {
+		members, ok := set["set"].([]any)
+		if !ok || len(members) == 0 || len(members) > 16 {
+			return errors.New("Tunnex NAT interface set is unsupported")
+		}
+		for _, member := range members {
+			name, ok := member.(string)
+			if !ok || !interfaceNameRE.MatchString(name) {
+				return errors.New("Tunnex NAT interface set is invalid")
 			}
-			for _, member := range members {
-				name, ok := member.(string)
-				if !ok || !interfaceNameRE.MatchString(name) {
-					return errors.New("Tunnex NAT interface set is invalid")
-				}
-				if name == iface {
-					excluded = true
-				}
+			if name == iface {
+				excluded = true
 			}
 		}
-		if !excluded {
-			return errors.New("Tunnex NAT could bind traffic returning to WireGuard")
-		}
+	}
+	if !excluded {
+		return errors.New("Tunnex NAT could bind traffic returning to WireGuard")
 	}
 	return nil
 }
