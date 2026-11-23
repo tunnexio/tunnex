@@ -18,8 +18,9 @@ does that by reading every rule reachable from `ip nat POSTROUTING`.
 check reports all three captured nodes ready as `observed_cni`, including the eBPF-masquerade
 node on which a pod's packet to the device range was seen rewritten [L]. The mangle hook is
 accepted since K8N-1 taught the check to prove it sets no reserved mark, and Cilium's chains are
-empty in eBPF mode. The "false ready" below is therefore the normal case today, not a corner
-case, and wiring step 3 is what closes it.** The original reading, kept for the record:
+empty in eBPF mode. The "false ready" below was therefore the normal case, not a corner case.
+It is closed by the guard described in "The guard, built": a node that shows Cilium is now
+refused in every mode.** The original reading, kept for the record:
 
 On a Cilium node, reading the code against Cilium's rule shapes [S5][S6], the expected result was:
 
@@ -448,17 +449,49 @@ Refuted:
 - Nothing in `cilium.go`: no field name, key encoding or JSON shape seen differs from what it
   assumed, and it is unchanged.
 
+## The guard, built
+
+`apps/node/internal/k8snetprep/cilium_guard_linux.go`, called once in `reconcileWithAuthority`
+right after the first rule check and before anything is written.
+
+- **What it does.** If the node shows Cilium, the reconcile is refused: every component is
+  blocked, no `observed_cni` adapter is reported, nothing is written. The reason is bounded and
+  names what was found, for example: `Cilium runs on this node and its eBPF masquerade cannot be
+  verified yet (K8N-2); the gateway is not ready on Cilium nodes (found iptables chain
+  CILIUM_OUTPUT_nat)`.
+- **Signals read**, both with what the gateway already has (no socket, no `bpftool`, no new mount,
+  privilege, chart or image change):
+  1. the names of the network devices in the gateway's (the host's) network namespace, from the
+     kernel's device list: any name starting with `cilium_` (`cilium_host`, `cilium_net`);
+  2. the names of every IPv4 iptables chain in the nft listing the rule check has just read, in
+     any table: any name starting with `CILIUM_`.
+- **Signal not read:** Cilium's pinned maps. The gateway container does not see the host's
+  `/sys/fs/bpf`. The device names cover the case the maps were meant for, a Cilium told to
+  install no iptables rules.
+- **When detection cannot be done** (the device list cannot be read, or is empty) the node is
+  refused with a reason starting `Cilium detection`; it is never taken as "no Cilium".
+- **All modes are refused, iptables masquerade included.** The live capture shows today's walk
+  would accept the real iptables-mode rules, and it is right about them; the node is refused
+  anyway because the gateway cannot yet read which mode the agent is in, and the same chains
+  exist in eBPF mode. This lasts **only until the reader exists** (checklist steps 2 and 3): then
+  mode `iptables` hands the decision back to the walk, and mode `BPF` needs the Cilium proof.
+- **Other nodes are unaffected.** The Flannel, kube-proxy/GKE, EKS and Calico fixtures and tests
+  pass unchanged.
+- Tests (`cilium_live_linux_test.go`): the whole reconcile on the real A, B and C captures is
+  refused with this reason; device names alone are enough; a node without Cilium stays ready;
+  unreadable or empty device lists are refused.
+
+Not covered: a Cilium-derived dataplane that uses neither a `cilium_` device nor a `CILIUM_`
+chain. Whether GKE Dataplane V2 or AKS show these names has not been checked on those platforms.
+
 ## Wiring checklist, corrected by the live capture
 
 Of the six steps in "Wiring still to do", steps 1 and 2 are already done on this branch by K8N-1
 (mangle mark proof, exact `oifname`) and hold on the real Cilium rules. What remains, in order:
 
-1. **Guard first** (`aws_linux.go`, `reconcileWithAuthority`). Until it exists, every Cilium node
-   with eBPF masquerade is reported ready whatever the device range. After the snapshot, call
-   `ciliumPresent`; the `ip nat` chain names the check already holds are enough to see Cilium
-   (`CILIUM_POST_nat` is there in all three configurations), so detection needs no new read. If
-   present and there is no fresh receipt: refuse. A guard that only refuses can ship before the
-   reader does, and returns Cilium nodes to "not ready" in the meantime.
+1. **Guard: done**, refuse-only (see "The guard, built"). When the reader exists, the guard's
+   refusal becomes "Cilium is present and there is no fresh receipt", and a fresh receipt lets
+   step 3 decide.
 2. **Reader and receipt** (`hostposture`). Root, read-only mounts of `/var/run/cilium` and
    `/sys/fs/bpf`, nothing else. One `GET /v1/healthz`; list `/sys/fs/bpf/tc/globals`; dump
    `cilium_ipmasq_v4` only when the status says `ip-masq-agent` is true. Treat `bpftool`'s exit
