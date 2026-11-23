@@ -303,6 +303,80 @@ masquerade would rewrite tunnel traffic. Membership is what decides.
   Not part of this check: the `rp_filter` read-back of `wg0` (the node had no `wg0`; the test
   points that one read at a file), the manager's own Kubernetes and kernel work, and the real
   images and charts.
+- *Live install of the real image and the real chart* (2026-11-23, branch `k8n/live-install`;
+  one-node kind v0.31.0, Kubernetes v1.35.0, kernel 6.8.0-117 arm64, containerd 2.2.0, Calico
+  v3.31.2 from its unchanged `calico.yaml`, pool 192.168.0.0/16 with IPIP and natOutgoing,
+  kube-proxy present; a Docker VM with 2 CPUs and 3.8 GiB shared with other work). No control
+  plane was involved.
+
+  - **Image.** `deploy/docker/node.Dockerfile` built from this tree: 433 MB as Docker reports it
+    (119 MB compressed, 298 MB of files). The build took 43 s, but 20 of its steps came from the
+    build cache, so this is not a cold build time.
+  - **Manager: the chart itself, installed by Helm.** `helm upgrade --install tunnex-host-posture
+    ... --namespace tunnex-system --atomic --wait` with the values `tunnex k8s install` sets
+    (`acknowledgePrivileged`, `rolloutRevision`, the fixed placement values) and the image
+    pointed at the loaded one. Ready 3 s after the install; `Running`, 0 restarts, no OOM, for
+    the six minutes the cluster lived. Root filesystem read-only (`touch /x` refused), no seccomp
+    filter (privileged), the projected token read. Its whole log was three lines: started; one
+    `k8s_host_posture_facts` (`nat=read chains=1; mangle=read chains=1; sets=1`); one blocked
+    pass (below).
+  - **An idle manager publishes no receipt.** With no gateway pod on the node the state
+    directory held `heartbeat.json` (296 bytes, `state: idle`, `owners: null`),
+    `cni-authority.json` (`state: revoked`) and two lock files; no `host-facts.json`. The reader
+    runs only when a gateway may own the node. Nothing was written by hand to change that.
+  - **Gateway side: the gateway chart's pod, with the reconciler's test binary in it.** The real
+    binary reaches the CNI check only after enrollment, so it has no step that can be run without
+    a control plane. Instead `helm template` of `tunnex-gateway` (the installer's values, a
+    control-plane address that does not exist) gave the Deployment's pod template, and that
+    template was created as a Pod unchanged: labels, annotations, the init container, the
+    gateway container's security context, environment, mounts and volumes. Only three things
+    differ: the gateway container runs `k8snetprep.test -test.run TestLiveCiliumGateway` (the
+    real reconciler, the real authority guard and both real facts sources, once a second)
+    instead of `tunnex-node`; its HTTP probes are removed; the state volume is an `emptyDir`.
+  - **The real manager adopted that pod through the Kubernetes API** (its shape passes
+    `validateGatewayAuthority`), wrote `journal.json` (1276 bytes, schema 4, `active`, epoch 1),
+    created `wg0` (type `wireguard`, alias `tunnex-host-posture/v1`, down, `rp_filter` 0),
+    granted authority (`scope: ip_masq_and_aws_transit`) and published `host-facts.json`: 1868
+    bytes, contract `tunnex-host-posture-facts/v1`, `netfilter.nat` with `cali-nat-outgoing`
+    (one rule), `netfilter.mangle` with `cali-POSTROUTING` (five rules), the one set
+    `cali40masq-ipam-pools`, a digest, and no `cilium` member. The same content as the earlier
+    check.
+  - **The real init container admitted it**: `tunnex-node k8s-host-posture-check --wait` as user
+    65532 with every capability dropped and a read-only root printed `"status":"ready"` and
+    exited 0 two seconds after it started.
+  - **Decisions**, first one 7 s after the pod was created: ready for 100.96.0.0/24 and
+    10.200.0.0/16 (`... masquerade sources are limited by sets outside it:
+    cali40masq-ipam-pools`), refused for 192.168.7.0/24 and 192.168.0.0/16 (`NAT chain
+    cali-nat-outgoing masquerades sources in set cali40masq-ipam-pools, which overlaps the
+    tunnel range ...`). A second pool 100.96.0.0/16 with `natOutgoing` turned 100.96.0.0/24 to
+    refused within about two seconds, and deleting it turned it ready again within about three.
+  - **Differs from the earlier check: by default the gateway holds `NET_RAW`.** The chart's
+    `aiVPN.enabled` is `true` by default and the installer does not set it, so the rendered
+    gateway container adds `NET_ADMIN`, `NET_BIND_SERVICE` and `NET_RAW` (effective `0x3400`,
+    seccomp filter on). There `iptables-nft-save -t nat` exits 0. The earlier check used the
+    profile without VPN inference; that was repeated here with `aiVPN.enabled=false` (`0x1400`,
+    `iptables-nft-save` exits 1 with `Can't open socket to ipset.`). The four decisions were the
+    same in both.
+  - **When the pod was deleted** the manager removed `wg0`, set the journal to `restored`, the
+    heartbeat to `idle` and the authority to `revoked` within the next five seconds. The last
+    `host-facts.json` stays in the directory; it belongs to an older heartbeat.
+  - **Cost of the manager with one gateway on the node**, read from its cgroup on the node: 26
+    to 27 MB charged (8 MB of it anonymous, 18 MB the page cache of the binary), peak 35 MB,
+    against the 128Mi limit; resident set 15 MB; 2.96 s of CPU in 120 s, that is 25 millicores,
+    more than the chart's 20m request. That figure includes the two exec probes, which start
+    the 15 MB binary every 2 s and every 10 s.
+  - **Seen once, cause not established.** About a minute in, one manager pass failed with
+    `acquire host-posture CNI transition lock: wait for CNI operation lock: context deadline
+    exceeded` (the 5 s bound), and the kubelet recorded two readiness and one liveness failure
+    with `host-posture heartbeat is stale or from the future`; a `kubectl` call from outside got
+    a TLS handshake timeout from the API server in the same seconds, so the whole VM probably
+    stalled. Two probe runs had also timed out (2 s) at the moment the first gateway pod was
+    adopted. No restart followed. See K8N-2, "Live install", on the exec probes under load.
+
+  Not part of this check, because it needs a control plane: enrollment, the real `tunnex-node`
+  agent running its own reconcile loop and `/readyz`, WireGuard up with a peer, a Service
+  reached from a device, and `tunnex k8s install` itself (its plan, its Helm calls for the
+  gateway release, the preflight hook). Also not run: more than one node.
 - Existing Flannel, kube-proxy, GKE and EKS fixtures must still pass unchanged.
 - Live walk on a cluster running Calico (iptables dataplane): gateway ready, a Service reached by
   address and by name from a connected device, and the readiness reason naming the sets. Then a
@@ -330,8 +404,14 @@ masquerade would rewrite tunnel traffic. Membership is what decides.
 - Calico features that add rules: egress DSCP fills `cali-egress-dscp` in the mangle table with a
   `DSCP` target, which the mark proof refuses; host endpoints and floating IPs fill chains that were
   empty in the capture. None was exercised.
-- Still owed from the live walk: the gateway itself installed on a Calico cluster, a Service
-  reached from a device, and a multi-node cluster (the capture is one node).
+- Still owed from the live walk, and all of it needs a control plane: the gateway itself
+  enrolled and installed by `tunnex k8s install` on a Calico cluster, its own `/readyz`, WireGuard
+  up, a Service reached from a device. Also a multi-node cluster (every check so far is one
+  node). The real image, the real host-posture chart installed by Helm, the manager's own
+  Kubernetes and kernel work, the real admission init and the gateway chart's pod profile are
+  no longer on this list: see *Live install of the real image and the real chart* above.
+- Whether the manager's 20m CPU request and its 2 s exec probes are right. Measured once: 25
+  millicores with one gateway, and probe runs that timed out when the node was busy.
 
 ## Rollback
 
