@@ -737,6 +737,69 @@ Not part of this check: packets (the capture above saw them; this check did not 
 real images and both charts installed by `tunnex k8s install`, the real manager's Kubernetes and
 kernel work, a `wg0` on the node (the `rp_filter` read-back was pointed at a file).
 
+## Live install of the real image and the real chart, 2026-11-23
+
+Branch `k8n/live-install`. What the check above left out: the image built from
+`deploy/docker/node.Dockerfile` (433 MB), started by the `tunnex-host-posture` chart installed
+with Helm, with no control plane anywhere. One-node `kind` v0.31.0, Kubernetes v1.35.0, kernel
+6.8.0-117 (arm64), no default CNI, no kube-proxy, Cilium **1.20.5** by Helm with the values of
+the capture (and `envoy.enabled=false`, to keep the node small). The Docker VM has 2 CPUs and
+3.8 GiB and is shared with other work. The method and the Calico half are in K8N-1, *Live
+install of the real image and the real chart*.
+
+- **Installer's detection.** `kubectl get daemonset cilium --namespace kube-system
+  --ignore-not-found=true --output name` printed `daemonset.apps/cilium`, so the installer would
+  set `cilium.enabled=true`. The installer itself was not run (it needs a control plane).
+- **Manager: the chart itself.** `helm upgrade --install tunnex-host-posture ... --atomic --wait`
+  with the installer's values and `cilium.enabled=true`. Ready 4 s after the install; `Running`,
+  0 restarts, no OOM, no probe failure in the seven minutes of the run. Both Cilium paths are
+  read-only in the pod (`touch` refused in each), `cilium.sock` is visible, 43 names under
+  `/sys/fs/bpf/tc/globals`, no seccomp filter. NOTES print the two Cilium lines.
+- **Idle, it publishes no receipt and reads nothing from Cilium**: `heartbeat.json` (295 bytes,
+  `idle`), a revoked `cni-authority.json`, two lock files. 17 to 18 MB charged, 3.6 millicores.
+- **Gateway side**: the gateway chart's pod template as a Pod, with the reconciler's test binary
+  in the gateway container (default render: `NET_ADMIN`, `NET_BIND_SERVICE`, `NET_RAW`, effective
+  `0x3400`; no path to `/var/run/cilium`). The real `tunnex-node` has no decision step that runs
+  before enrollment. The real manager adopted the pod through the API, wrote its journal,
+  created `wg0` and published the receipt; the real admission init printed `ready`.
+
+| Cilium | 100.96.0.0/24 | 10.244.200.0/24 |
+| --- | --- | --- |
+| A: eBPF masquerade, ip-masq-agent off | not ready, "Enable Cilium's ip-masq-agent (Helm ipMasqAgent.enabled=true) with 100.96.0.0/24 in nonMasqueradeCIDRs, then restart the Cilium agents" | ready, `tunnel range is inside Cilium's native-routing range 10.244.0.0/16` |
+| ip-masq-agent on, list `[100.64.99.0/24]` | not ready, "Add 100.96.0.0/24 to nonMasqueradeCIDRs in the ip-masq-agent ConfigMap (namespace kube-system, key config); no restart is needed, allow about a minute" | ready |
+| `100.96.0.0/24` added to the ConfigMap | **ready**, `tunnel range is inside Cilium ip-masq-agent range 100.96.0.0/24` | ready |
+
+- **Timings**, by the node's clock. First decision 5.6 s after the pod was created. The
+  ConfigMap change was seen after **48 s** (patched 13:57:45.1, ready 13:58:33.4), as the 49 s of
+  the earlier check. The agent restart that turns the ip-masq-agent on made both ranges not
+  ready for 8.4 s (`no agent socket ...`); once in that window the reason was `CNI rules changed
+  across semantic observation` instead.
+- **The receipt.** 1611 bytes in A, 1791 bytes with the two-entry map. `netfilter.nat` is
+  `not_needed` (the manager logs `the kernel has no ipset, so no NAT rule can match one`),
+  `netfilter.mangle` carries `CILIUM_PRE_mangle` (three rules), and `cilium` has `status` (the
+  `masquerading` object, 150 to 180 bytes), `pinned_maps` (`total` 43, then 44, no egress
+  gateway) and `ip_masq_map` (`not_needed` with its reason, then `bpftool`'s array). The manager
+  logs one `k8s_host_posture_facts` line when the summary changes: four lines in the whole run.
+- **Cost with one gateway and the ip-masq-agent on**, from the manager's cgroup on the node:
+  **76 MB charged, peak 83 MB, of the 128Mi limit**; 8 MB of it is anonymous and 68 MB is page
+  cache, almost all of it `libLLVM` mapped by `bpftool` every 2 s. The runtime reports 69 MB
+  for the container against a 32Mi request. Resident set of the manager itself 14 MB. CPU 4.0 s
+  in 121 s, that is **33 millicores against a 20m request** (25 on Calico). The earlier check's
+  "about 15 MB" was the process, not the container with its tools.
+- **Not run here**: the range removed again, iptables masquerade (C), the manager without
+  `cilium.enabled`, and the gateway profile without `NET_RAW` (`aiVPN.enabled=false`). The
+  earlier check covered the first three with the test binary on both sides.
+
+**A first attempt of this run was lost to load, and showed something.** With another workload
+busy on the same VM (load average 30 to 90 on 2 CPUs, CPU pressure 80 to 92 %) the same chart
+took 49 s from scheduling to container start, the kubelet recorded two liveness and five
+readiness failures in the first minute, all `command timed out ... after 2s`, and the manager
+container was restarted once within the hour. The reason for that restart was not captured
+before the cluster had to be deleted. Both probes are `exec` probes that start the 15 MB
+binary with a 2 s timeout; three missed liveness runs restart the manager, and a restarted or
+not-ready manager makes every gateway on the node not ready. On an idle VM none of this
+happened. See "Decisions to confirm", 7.
+
 ## Still not confirmed
 
 Nothing here speaks for them; on each the gateway stays not ready unless the proof holds:
@@ -757,6 +820,15 @@ Nothing here speaks for them; on each the gateway stays not ready unless the pro
    than about 390 ranges (refused as too large, by the receipt bound).
 7. Whether a real device sees the pod's address through a gateway that is ready by the map
    entry: the capture saw it on a stand-in `wg0`, no real gateway has carried it.
+8. Everything that needs a control plane. The real image and the real host-posture chart have
+   now run on a Cilium node, with the manager's own Kubernetes and kernel work and the real
+   admission init ("Live install" above). Still not run: `tunnex k8s install` itself (its plan
+   with `"cilium_host_paths": true`, its Helm call for the gateway release, the preflight hook),
+   enrollment, the real `tunnex-node` agent making this decision in its own loop and answering
+   `/readyz`, WireGuard up with a peer (Cilium attaches to `wg0` once it is up; here it stayed
+   down), and a Service reached from a device.
+9. The manager under memory pressure on a Cilium node. Its 76 MB is mostly reclaimable page
+   cache; whether the kernel reclaims it before the 128Mi limit matters was not forced.
 
 ## Decisions to confirm
 
@@ -776,3 +848,8 @@ Nothing here speaks for them; on each the gateway stays not ready unless the pro
    longer than about 390 ranges is refused rather than carried in a denser form.
 6. **In iptables mode a pod's own connection to a device is still masqueraded** (the walk's
    pod-source exception; checklist step 8). Unchanged by this work, and still to be ruled on.
+7. **The manager's requests and probes.** Measured with one gateway: 33 millicores on Cilium
+   and 25 on Calico against a 20m request, and 69 MB reported on Cilium against a 32Mi request
+   (the `bpftool`/LLVM cost of decision 1 again, now in memory). The probes are `exec` runs of
+   the whole binary with a 2 s timeout, and they timed out on a busy node. Raise the requests
+   and the probe timeout, or let the manager answer its probes without a new process.
