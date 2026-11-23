@@ -147,6 +147,7 @@ var walkBodies = map[string]string{
 	"decidek8sclusterscopemembership":   `{"decision":"rejected"}`,
 	"exposek8sinventoryservice":         `{"port_refs":["00000000-0000-0000-0000-000000000000"]}`,
 	"createk8snamespacerule":            `{"namespace":"shop"}`,
+	"setk8sclusterapiaccess":            `{"enabled":true}`,
 	"remintnodelifecycleclaim":          `{"node_name":"walk-gateway","expected_generation":1,"request_id":"00000000-0000-4000-8000-000000000001"}`,
 	"acknowledgenodelifecycleclaim":     `{"expected_generation":1,"request_id":"00000000-0000-4000-8000-000000000001"}`,
 	"abortnodelifecycleclaim":           `{"expected_generation":1,"request_id":"00000000-0000-4000-8000-000000000001"}`,

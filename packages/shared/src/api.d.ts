@@ -4113,7 +4113,7 @@ export interface paths {
         };
         /**
          * Explain one device's access path without probing or changing it
-         * @description Read-only diagnostic for one ordinary (non-agent) device. It evaluates the device's lifecycle and posture, its home gateway's freshness and compiled routes, and the exact compiled policy of that home gateway. It never resolves DNS from the control plane, sends traffic or changes policy, and it returns no key, configuration or credential. `allowed` means the rules and routes permit the flow, not that the service answered. An agent device id answers 404; use the agent diagnostic for those.
+         * @description Read-only diagnostic for one ordinary (non-agent) device. It evaluates the device's lifecycle and posture, its home gateway's freshness and compiled routes, and the exact compiled policy of that home gateway. It never resolves DNS from the control plane, sends traffic or changes policy, and it returns no key, configuration or credential. `allowed` means the rules and routes permit the flow, not that the service answered. An agent device id answers 404; use the agent diagnostic for those. A destination that is a cluster's Kubernetes API (its tunnel name or its address, K8N-3) is recognised: `k8s_api_not_enabled` when API access is off for that cluster, and one more check on the cluster's gateway, `k8s_api_endpoint_ready` or `k8s_api_endpoint_unavailable` with the gateway's reason (`endpoints_on_gateway_node` when the gateway runs on the cluster's only control-plane node), or `k8s_api_endpoint_not_observed` when the gateway has not reported it.
          */
         get: operations["testDeviceAccess"];
         put?: never;
@@ -5751,6 +5751,33 @@ export interface paths {
          * @description Allocates a /32 VIP from the cluster's range and records the Service (a stable identity). Clients reach the VIP; the gateway DNATs it to the Service's real ClusterIP. 409 vip_range_exhausted when the range is full, 409 service_exists when that namespace/name is already exposed.
          */
         post: operations["exposeK8sService"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/k8s/clusters/{clusterId}/api-access": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                clusterId: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Read whether a cluster's Kubernetes API is reachable through Tunnex (K8N-3; org:view)
+         * @description API access is off by default. The response always carries the name the cluster's API has in the tunnel, so the two kubeconfig lines can be shown before anything is turned on. It never contains a kubeconfig, a token, a certificate or any other cluster credential: Tunnex holds none.
+         */
+        get: operations["getK8sClusterApiAccess"];
+        /**
+         * Turn a cluster's Kubernetes API access on or off (K8N-3; human k8s_api:manage)
+         * @description On allocates one address from the cluster's range and maps it to the Service default/kubernetes on TCP 443; nobody can reach it until a rule with dst_kind=k8s_api grants a person or a group. Off gives the address back and keeps those rules, which then allow nothing. Both are written to the audit log. Tunnex only carries the connection: the user's own cluster credential still decides what they may do. With Zero Trust enforcement off, an enabled API address is reachable by every connected device. 409 k8s_api_ordinary_exposure_exists when default/kubernetes is already exposed as an ordinary Service; 409 k8s_api_connector_pool_unsupported for a cluster served by a connector pool; 409 vip_range_exhausted when the cluster's range is full.
+         */
+        put: operations["setK8sClusterApiAccess"];
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -10715,7 +10742,7 @@ export interface components {
             src_agent_group_id?: string | null;
             cidr_outside_org_ranges: boolean;
             /** @enum {string} */
-            dst_kind: "resource" | "group" | "site" | "k8s_service" | "k8s_cluster_scope" | "fqdn_resource";
+            dst_kind: "resource" | "group" | "site" | "k8s_service" | "k8s_cluster_scope" | "fqdn_resource" | "k8s_api";
             /** Format: uuid */
             dst_resource_id?: string | null;
             /** Format: uuid */
@@ -10737,6 +10764,13 @@ export interface components {
              * @description Set when dst_kind=fqdn_resource: a same-organization resolver-backed FQDN destination. It is stored as an identity; enforcement remains feature and organization-opt-in gated.
              */
             dst_fqdn_resource_id?: string | null;
+            /**
+             * Format: uuid
+             * @description Set when dst_kind=k8s_api (K8N-3): the cluster whose Kubernetes API the rule reaches, on TCP 443. Only a person or a group can be its source.
+             */
+            dst_k8s_api_cluster_id?: string | null;
+            /** @description True when dst_kind=k8s_api and API access is off for that cluster: the rule is kept and allows nothing until API access is turned on again. Derived at read time. */
+            dst_k8s_api_access_off?: boolean;
             /**
              * @description Truthful server projection for an FQDN destination. active_generation means the entitled, opted-in organization has a current active selected-resolver generation. generation_withdrawn and generation_unavailable grant no traffic. projection_unavailable means the server could not read the authoritative FQDN projection and never implies traffic is granted.
              * @enum {string}
@@ -10774,7 +10808,7 @@ export interface components {
              */
             src_device_id?: string | null;
             /** @enum {string} */
-            dst_kind: "resource" | "group" | "site" | "k8s_service" | "fqdn_resource";
+            dst_kind: "resource" | "group" | "site" | "k8s_service" | "fqdn_resource" | "k8s_api";
             /**
              * Format: uuid
              * @description Required when dst_kind=resource.
@@ -10800,6 +10834,11 @@ export interface components {
              * @description Required when dst_kind=fqdn_resource. Must name an FQDN resource in this organization.
              */
             dst_fqdn_resource_id?: string | null;
+            /**
+             * Format: uuid
+             * @description Required when dst_kind=k8s_api (K8N-3): a cluster in this organization whose API access is on (400 k8s_api_not_enabled otherwise). src_kind must be group or user; a site, an address range or an agent is refused with 400 k8s_api_source_not_allowed.
+             */
+            dst_k8s_api_cluster_id?: string | null;
             /**
              * Format: date-time
              * @description Set = a temporary grant that expires at this time (must be future); omit for a permanent grant.
@@ -10892,6 +10931,28 @@ export interface components {
              * @description Set when a namespace rule created this exposure (K8N-4). Remove the rule to unexpose it.
              */
             namespace_rule_id?: string | null;
+        };
+        /** @description A cluster's Kubernetes API as a destination (K8N-3). Network reach only: no field here is, or contains, a cluster credential. */
+        K8sApiAccess: {
+            /** Format: uuid */
+            cluster_id: string;
+            /** @description Off by default. */
+            enabled: boolean;
+            /** @description The name the cluster's API has in the tunnel: kubernetes.default.svc.<cluster>.<zone>. Known before enabling. It goes on the kubeconfig's server line; tls-server-name keeps the host from the original server line. */
+            fqdn: string;
+            /** @description Always 443. */
+            port: number;
+            /** @description The address allocated from the cluster's range; null while off. */
+            vip?: string | null;
+            /** @description Rules that name this cluster's API, whatever their state. They are kept when API access is turned off and take effect again when it is turned back on. */
+            rule_count: number;
+            /** @description True when default/kubernetes is already exposed as an ordinary Service in this cluster (made before K8N-3). It is left in place and must be unexposed before API access can be turned on. */
+            ordinary_exposure: boolean;
+            /** Format: date-time */
+            enabled_at?: string | null;
+        };
+        SetK8sApiAccessRequest: {
+            enabled: boolean;
         };
         K8sNamespaceRule: {
             /** Format: uuid */
@@ -12559,6 +12620,8 @@ export interface components {
             /** @enum {string} */
             overall: "allowed" | "denied" | "inconclusive";
             first_blocker?: string | null;
+            /** @description A fixed sentence that qualifies the result. Set when the destination is a cluster's Kubernetes API and the result is allowed (K8N-3): Tunnex allows the connection, and a 401 or 403 from kubectl is the cluster's answer, not Tunnex's. */
+            note?: string | null;
             checks: components["schemas"]["AgentAccessCheck"][];
         };
         AgentBootstrapTokenRequest: {
@@ -23127,6 +23190,60 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["K8sService"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getK8sClusterApiAccess: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                clusterId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The cluster's API access. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["K8sApiAccess"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    setK8sClusterApiAccess: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                clusterId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SetK8sApiAccessRequest"];
+            };
+        };
+        responses: {
+            /** @description The cluster's API access after the change. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["K8sApiAccess"];
                 };
             };
             default: components["responses"]["Error"];

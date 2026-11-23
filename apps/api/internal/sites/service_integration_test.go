@@ -1481,3 +1481,61 @@ func TestSetLANEgress(t *testing.T) {
 		t.Fatalf("return to preserve_source: site=%+v err=%v", back, err)
 	}
 }
+
+// TestRoutedChannelServesAnAPIOnlyCluster — K8N-3: a cluster with NO exposed Service but with API access
+// on is served by its gateway (the API's name lives in the cluster's zone), so the client is handed the
+// zone's resolver. Off again, and with no Service, the forward is withdrawn — the client is never handed
+// a resolver for a zone the gateway would refuse.
+func TestRoutedChannelServesAnAPIOnlyCluster(t *testing.T) {
+	pool := testPool(t)
+	svc := NewService(pool)
+	ctx := context.Background()
+	org, site, connID, clusterID, endpoint := uuid.New(), uuid.New(), uuid.New(), uuid.New(), uuid.New()
+	ex := func(q string, a ...any) {
+		t.Helper()
+		if _, e := pool.Exec(ctx, q, a...); e != nil {
+			t.Fatalf("seed %q: %v", q, e)
+		}
+	}
+	ex(`INSERT INTO organizations (id,name,slug,pool_cidr) VALUES ($1,'K',$2,'10.99.0.0/24')`, org, "k8sapi-"+org.String()[:8])
+	ex(`INSERT INTO sites (id,org_id,name) VALUES ($1,$2,'s')`, site, org)
+	ex(`INSERT INTO nodes (id,org_id,site_id,name,cert_serial,enrolled_kind) VALUES ($1,$2,$3,$4,$5,'gateway')`, connID, org, site, "k8s-connector-"+connID.String()[:8], connID.String())
+	ex(`INSERT INTO k8s_clusters (id,org_id,connector_node_id,site_id,name,vip_range,service_cidr,dns_zone,dns_vip) VALUES ($1,$2,$3,$4,'prod','100.64.0.0/16','10.96.0.0/12','k8s.acme.com','100.64.0.2')`, clusterID, org, connID, site)
+	t.Cleanup(func() { _, _ = pool.Exec(context.Background(), `DELETE FROM organizations WHERE id=$1`, org) })
+
+	ranges, err := svc.ListRoutedRanges(ctx, org)
+	if err != nil {
+		t.Fatal(err)
+	}
+	zoneForwards := func() int {
+		t.Helper()
+		fwds, err := svc.ListRoutedForwards(ctx, org, ranges)
+		if err != nil {
+			t.Fatal(err)
+		}
+		n := 0
+		for _, f := range fwds {
+			if f.Domain == "prod.k8s.acme.com" && f.ResolverIP == "100.64.0.2" {
+				n++
+			}
+		}
+		return n
+	}
+	if zoneForwards() != 0 {
+		t.Fatal("no Service and API access off: the client must be handed no resolver for the zone")
+	}
+	ex(`INSERT INTO k8s_api_endpoints (id,org_id,cluster_id,enabled,vip,enabled_at) VALUES ($1,$2,$3,true,'100.64.0.3',now())`, endpoint, org, clusterID)
+	if zoneForwards() != 1 {
+		t.Fatal("API access on: the cluster zone must forward to its DNS address so the API's name resolves")
+	}
+	// With a Service exposed as well the zone is still handed over exactly once.
+	ex(`INSERT INTO k8s_services (id,org_id,cluster_id,name,namespace,protocol,vip) VALUES ($1,$2,$3,'api','prod','tcp','100.64.0.5')`, uuid.New(), org, clusterID)
+	if zoneForwards() != 1 {
+		t.Fatalf("Service and API access together: want the zone once, got %d", zoneForwards())
+	}
+	ex(`UPDATE k8s_services SET deleted_at=now() WHERE cluster_id=$1`, clusterID)
+	ex(`UPDATE k8s_api_endpoints SET enabled=false, vip=NULL WHERE id=$1`, endpoint)
+	if zoneForwards() != 0 {
+		t.Fatal("API access off and no Service: the forward must be withdrawn")
+	}
+}

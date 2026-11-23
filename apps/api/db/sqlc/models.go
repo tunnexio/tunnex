@@ -1676,6 +1676,18 @@ type IpsecTunnelStatus struct {
 	Tunnels               []byte    `json:"tunnels"`
 }
 
+type K8sApiEndpoint struct {
+	ID              uuid.UUID          `json:"id"`
+	OrgID           uuid.UUID          `json:"org_id"`
+	ClusterID       uuid.UUID          `json:"cluster_id"`
+	Enabled         bool               `json:"enabled"`
+	Vip             *netip.Addr        `json:"vip"`
+	EnabledAt       pgtype.Timestamptz `json:"enabled_at"`
+	EnabledByUserID pgtype.UUID        `json:"enabled_by_user_id"`
+	CreatedAt       time.Time          `json:"created_at"`
+	UpdatedAt       time.Time          `json:"updated_at"`
+}
+
 type K8sBaseAuthorityAckReceipt struct {
 	DeliveryID         uuid.UUID `json:"delivery_id"`
 	OrgID              uuid.UUID `json:"org_id"`
@@ -2392,26 +2404,27 @@ type PlatformSecret struct {
 }
 
 type PolicyRule struct {
-	ID                uuid.UUID          `json:"id"`
-	OrgID             uuid.UUID          `json:"org_id"`
-	SrcGroupID        pgtype.UUID        `json:"src_group_id"`
-	DstKind           string             `json:"dst_kind"`
-	DstResourceID     pgtype.UUID        `json:"dst_resource_id"`
-	DstGroupID        pgtype.UUID        `json:"dst_group_id"`
-	CreatedAt         time.Time          `json:"created_at"`
-	SrcKind           string             `json:"src_kind"`
-	SrcUserID         pgtype.UUID        `json:"src_user_id"`
-	ExpiresAt         pgtype.Timestamptz `json:"expires_at"`
-	DstSiteID         pgtype.UUID        `json:"dst_site_id"`
-	SrcSiteID         pgtype.UUID        `json:"src_site_id"`
-	SrcCidr           *string            `json:"src_cidr"`
-	Disabled          bool               `json:"disabled"`
-	DstK8sServiceID   pgtype.UUID        `json:"dst_k8s_service_id"`
-	ManagedByMachine  pgtype.UUID        `json:"managed_by_machine"`
-	SrcDeviceID       pgtype.UUID        `json:"src_device_id"`
-	DstK8sClusterID   pgtype.UUID        `json:"dst_k8s_cluster_id"`
-	SrcAgentGroupID   pgtype.UUID        `json:"src_agent_group_id"`
-	DstFqdnResourceID pgtype.UUID        `json:"dst_fqdn_resource_id"`
+	ID                  uuid.UUID          `json:"id"`
+	OrgID               uuid.UUID          `json:"org_id"`
+	SrcGroupID          pgtype.UUID        `json:"src_group_id"`
+	DstKind             string             `json:"dst_kind"`
+	DstResourceID       pgtype.UUID        `json:"dst_resource_id"`
+	DstGroupID          pgtype.UUID        `json:"dst_group_id"`
+	CreatedAt           time.Time          `json:"created_at"`
+	SrcKind             string             `json:"src_kind"`
+	SrcUserID           pgtype.UUID        `json:"src_user_id"`
+	ExpiresAt           pgtype.Timestamptz `json:"expires_at"`
+	DstSiteID           pgtype.UUID        `json:"dst_site_id"`
+	SrcSiteID           pgtype.UUID        `json:"src_site_id"`
+	SrcCidr             *string            `json:"src_cidr"`
+	Disabled            bool               `json:"disabled"`
+	DstK8sServiceID     pgtype.UUID        `json:"dst_k8s_service_id"`
+	ManagedByMachine    pgtype.UUID        `json:"managed_by_machine"`
+	SrcDeviceID         pgtype.UUID        `json:"src_device_id"`
+	DstK8sClusterID     pgtype.UUID        `json:"dst_k8s_cluster_id"`
+	SrcAgentGroupID     pgtype.UUID        `json:"src_agent_group_id"`
+	DstFqdnResourceID   pgtype.UUID        `json:"dst_fqdn_resource_id"`
+	DstK8sApiEndpointID pgtype.UUID        `json:"dst_k8s_api_endpoint_id"`
 }
 
 type PoolVipOwnershipDelivery struct {

@@ -103,6 +103,14 @@ INSERT INTO policy_rules (org_id, src_kind, src_group_id, src_user_id, src_site_
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
 RETURNING *;
 
+-- name: CreateK8sAPIPolicyRule :one
+-- K8N-3: a rule whose destination is a cluster's Kubernetes API. Its own statement so the ordinary
+-- CreatePolicyRule keeps naming exactly the columns it named before 0239. People and groups only: the
+-- source is a group or a user, never a site, an address range or an agent (the 0239 CHECK backstops it).
+INSERT INTO policy_rules (org_id, src_kind, src_group_id, src_user_id, dst_kind, dst_k8s_api_endpoint_id, expires_at, managed_by_machine)
+VALUES ($1, $2, $3, $4, 'k8s_api', $5, $6, $7)
+RETURNING id;
+
 -- name: CreateAgentJITPolicyRule :one
 -- F10's approval path must remain executable against the historical 0098
 -- schema. It deliberately names only the agent-access identity and destination
@@ -126,7 +134,8 @@ SELECT p.id, p.org_id, p.src_group_id, p.dst_kind, p.dst_resource_id,
        p.dst_site_id, p.src_site_id, p.src_cidr, p.disabled,
        p.dst_k8s_service_id, p.managed_by_machine, p.src_device_id,
        p.dst_k8s_cluster_id, p.src_agent_group_id,
-       NULLIF(to_jsonb(p) ->> 'dst_fqdn_resource_id', '')::uuid AS dst_fqdn_resource_id
+       NULLIF(to_jsonb(p) ->> 'dst_fqdn_resource_id', '')::uuid AS dst_fqdn_resource_id,
+       NULLIF(to_jsonb(p) ->> 'dst_k8s_api_endpoint_id', '')::uuid AS dst_k8s_api_endpoint_id
 FROM policy_rules p
 WHERE p.org_id = $1
 ORDER BY p.created_at;
@@ -144,7 +153,8 @@ SELECT p.id, p.org_id, p.src_group_id, p.dst_kind, p.dst_resource_id,
        p.dst_site_id, p.src_site_id, p.src_cidr, p.disabled,
        p.dst_k8s_service_id, p.managed_by_machine, p.src_device_id,
        p.dst_k8s_cluster_id, p.src_agent_group_id,
-       NULLIF(to_jsonb(p) ->> 'dst_fqdn_resource_id', '')::uuid AS dst_fqdn_resource_id
+       NULLIF(to_jsonb(p) ->> 'dst_fqdn_resource_id', '')::uuid AS dst_fqdn_resource_id,
+       NULLIF(to_jsonb(p) ->> 'dst_k8s_api_endpoint_id', '')::uuid AS dst_k8s_api_endpoint_id
 FROM policy_rules p
 WHERE p.org_id = $1 AND (p.expires_at IS NULL OR p.expires_at > now())
 ORDER BY p.created_at, p.id;
@@ -258,6 +268,21 @@ ORDER BY rule.id,child.id;
 DELETE FROM policy_rules
 WHERE id = $1 AND org_id = $2;
 
+-- name: DeletePolicyRuleReturningDestination :many
+-- The dashboard/CLI/operator delete. It returns what the rule pointed at so the audit entry of a
+-- Kubernetes API rule can name its cluster (K8N-3). The API column is read through JSONB so the statement
+-- also runs where the column does not exist yet.
+DELETE FROM policy_rules
+WHERE id = $1 AND org_id = $2
+RETURNING dst_kind, NULLIF(to_jsonb(policy_rules) ->> 'dst_k8s_api_endpoint_id', '')::uuid AS dst_k8s_api_endpoint_id;
+
+-- name: GetK8sAPIEndpointCluster :one
+-- The cluster behind one API endpoint, for naming a Kubernetes API rule's destination in the audit log.
+SELECT e.cluster_id, c.name AS cluster_name
+FROM k8s_api_endpoints e
+JOIN k8s_clusters c ON c.id = e.cluster_id AND c.org_id = e.org_id
+WHERE e.org_id = $1 AND e.id = $2;
+
 -- name: SetPolicyRuleEnabled :one
 -- F3: toggle a rule's disabled flag. RETURNING * so the API echoes the new state; the caller (mutate)
 -- recompiles + pushes — disabling changes the compiled artifact's CONTENT (in-hash, ordinary push).
@@ -293,7 +318,7 @@ WHERE expires_at IS NOT NULL AND expires_at <= now()
         AND ar.policy_rule_id=policy_rules.id
         AND ar.state='approved'
   )
-RETURNING id, org_id;
+RETURNING id, org_id, dst_kind, NULLIF(to_jsonb(policy_rules) ->> 'dst_k8s_api_endpoint_id', '')::uuid AS dst_k8s_api_endpoint_id;
 
 -- ── compiler inputs ─────────────────────────────────────────────────────────────
 -- name: ListActiveDevicesForOrg :many

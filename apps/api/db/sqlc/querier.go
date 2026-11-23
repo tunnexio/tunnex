@@ -263,6 +263,9 @@ type Querier interface {
 	CountDevicesForUserCap(ctx context.Context, arg CountDevicesForUserCapParams) (int64, error)
 	// Any origin — the refuse-unless-empty guard (D1) must see a hand-added member too.
 	CountGroupMembers(ctx context.Context, arg CountGroupMembersParams) (int64, error)
+	// CountK8sAPIPolicyRulesForCluster (K8N-3): the rules that name this cluster's API. Deregistering the
+	// cluster removes its API endpoint and, by cascade, these rules; the audit entry counts them.
+	CountK8sAPIPolicyRulesForCluster(ctx context.Context, arg CountK8sAPIPolicyRulesForClusterParams) (int64, error)
 	CountLiveAICredentials(ctx context.Context, arg CountLiveAICredentialsParams) (int64, error)
 	CountLiveAgentAccessRequests(ctx context.Context, orgID uuid.UUID) (int64, error)
 	CountLiveAgentAccessRequestsByDestination(ctx context.Context, arg CountLiveAgentAccessRequestsByDestinationParams) (int64, error)
@@ -429,6 +432,10 @@ type Querier interface {
 	// ⚠ `enrols_kind` is the OPERATOR'S DECLARATION, captured at the same instant as the issuer. Absence is
 	// the CLOSED state: the column defaults to 'gateway', so a caller that omits it mints a plain gateway.
 	CreateJoinToken(ctx context.Context, arg CreateJoinTokenParams) (NodeJoinToken, error)
+	// K8N-3: a rule whose destination is a cluster's Kubernetes API. Its own statement so the ordinary
+	// CreatePolicyRule keeps naming exactly the columns it named before 0239. People and groups only: the
+	// source is a group or a user, never a site, an address range or an agent (the 0239 CHECK backstops it).
+	CreateK8sAPIPolicyRule(ctx context.Context, arg CreateK8sAPIPolicyRuleParams) (uuid.UUID, error)
 	CreateK8sCluster(ctx context.Context, arg CreateK8sClusterParams) (K8sCluster, error)
 	CreateK8sConnectorPool(ctx context.Context, arg CreateK8sConnectorPoolParams) (CreateK8sConnectorPoolRow, error)
 	// A configuration may create only from the legacy single-selected-connector
@@ -544,6 +551,10 @@ type Querier interface {
 	// Turn a check OFF (delete the opt-in row).
 	DeleteOrgHealthCheck(ctx context.Context, arg DeleteOrgHealthCheckParams) (int64, error)
 	DeletePolicyRule(ctx context.Context, arg DeletePolicyRuleParams) (int64, error)
+	// The dashboard/CLI/operator delete. It returns what the rule pointed at so the audit entry of a
+	// Kubernetes API rule can name its cluster (K8N-3). The API column is read through JSONB so the statement
+	// also runs where the column does not exist yet.
+	DeletePolicyRuleReturningDestination(ctx context.Context, arg DeletePolicyRuleReturningDestinationParams) ([]DeletePolicyRuleReturningDestinationRow, error)
 	// lint:cross-org — user-scoped credential.
 	DeleteRecoveryCodesForUser(ctx context.Context, userID uuid.UUID) error
 	DeleteResource(ctx context.Context, arg DeleteResourceParams) (int64, error)
@@ -733,6 +744,9 @@ type Querier interface {
 	// lint:cross-org — the token hash IS the authorization key; lookup is by token,
 	// not org. Callers must still check expires_at/accepted_at/revoked_at (single-use).
 	GetInvitationByTokenHash(ctx context.Context, tokenHash []byte) (Invitation, error)
+	// The cluster behind one API endpoint, for naming a Kubernetes API rule's destination in the audit log.
+	GetK8sAPIEndpointCluster(ctx context.Context, arg GetK8sAPIEndpointClusterParams) (GetK8sAPIEndpointClusterRow, error)
+	GetK8sAPIEndpointForCluster(ctx context.Context, arg GetK8sAPIEndpointForClusterParams) (K8sApiEndpoint, error)
 	GetK8sCluster(ctx context.Context, arg GetK8sClusterParams) (K8sCluster, error)
 	// Basic cluster API projection. A pool-bound cluster resolves its active
 	// connector only through the exact org/site/cluster-owned pool join. The
@@ -1011,6 +1025,10 @@ type Querier interface {
 	IsDirectoryImportedIdentity(ctx context.Context, arg IsDirectoryImportedIdentityParams) (bool, error)
 	// lint:cross-org — checks whether the already selected exact connection is directory managed; callers validate owner or server-side callback flow first.
 	IsDirectoryManagedConnection(ctx context.Context, ssoConnectionID pgtype.UUID) (bool, error)
+	// K8sAPIAccessSchemaPresent says whether this database has the 0239 API access table. The control plane
+	// also runs against a schema that has not been migrated that far; there the feature simply has no data,
+	// and the shared paths (compiler snapshot, topology, address allocation) must not name the table.
+	K8sAPIAccessSchemaPresent(ctx context.Context) (bool, error)
 	LastAppAccessPublicationOperation(ctx context.Context, arg LastAppAccessPublicationOperationParams) (AppAccessPublicationOperation, error)
 	LatestOwnAppAccessRequest(ctx context.Context, arg LatestOwnAppAccessRequestParams) (uuid.UUID, error)
 	LinkSSOConnectionIdentity(ctx context.Context, arg LinkSSOConnectionIdentityParams) error
@@ -1289,6 +1307,12 @@ type Querier interface {
 	// background poller iterates all tenants; each config is reconciled org-scoped downstream.
 	// lint:cross-org
 	ListEnabledIdpSyncConfigs(ctx context.Context) ([]IdpSyncConfig, error)
+	// ListEnabledK8sAPIEndpointsForOrg (K8N-3) is the cluster API's counterpart of ListActiveK8sServicesForOrg:
+	// one row per cluster whose API access is on, with the SAME connector resolution columns, so the topology
+	// and the compiler treat the API address exactly as they treat a Service address. It is a separate query
+	// on purpose: the API endpoint is never a k8s_services row, so it cannot reach a cluster scope, an agent
+	// access request or an agent template.
+	ListEnabledK8sAPIEndpointsForOrg(ctx context.Context, orgID uuid.UUID) ([]ListEnabledK8sAPIEndpointsForOrgRow, error)
 	// lint:cross-org — SSO start has NO org context: the login page must not ask a human to
 	// type their tenant, so an omitted slug resolves the SOLE org with this provider enabled.
 	// ⛔ LIMIT 2, NEVER `ORDER BY ... LIMIT 1`. One row is the answer; two rows are AMBIGUITY and
@@ -1334,6 +1358,17 @@ type Querier interface {
 	// kinds of deletion would render differently for no reason a user could explain — and the soft
 	// one would keep publishing the address of an account we were asked to remove.
 	ListInvitations(ctx context.Context, orgID uuid.UUID) ([]ListInvitationsRow, error)
+	// K8N-3: the address of the cluster's API while API access is on. Every address allocation in the cluster
+	// works around it as well as around ListUsedVIPsInCluster, so a Service is never handed it. A statement of
+	// its own, read only where the 0239 table exists, so ListUsedVIPsInCluster stays as it was.
+	ListK8sAPIEndpointVIPsInCluster(ctx context.Context, arg ListK8sAPIEndpointVIPsInClusterParams) ([]string, error)
+	// ListK8sAPIEndpointsForOrg names every cluster API endpoint of the org, on or off, with its cluster: what
+	// a rule list needs to say "Kubernetes API of <cluster>" and whether that rule currently allows anything.
+	ListK8sAPIEndpointsForOrg(ctx context.Context, orgID uuid.UUID) ([]ListK8sAPIEndpointsForOrgRow, error)
+	// ListK8sAPIServedZonesForOrg (K8N-3) is ListK8sServedZonesForOrg for a cluster whose API access is on: its
+	// gateway answers for the cluster's zone even when no Service is exposed, because the API's name lives in
+	// it. Same connector resolution. A separate statement so the query above stays as it was.
+	ListK8sAPIServedZonesForOrg(ctx context.Context, orgID uuid.UUID) ([]ListK8sAPIServedZonesForOrgRow, error)
 	// One org-scoped query for the cluster list; handlers never do a per-cluster
 	// pool lookup. Malformed pool-bound rows are returned only as an unresolved
 	// join and are rejected fail-closed by the service before any partial list is

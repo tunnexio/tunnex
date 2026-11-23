@@ -499,6 +499,26 @@ func (q *Queries) CountClusterCascade(ctx context.Context, arg CountClusterCasca
 	return i, err
 }
 
+const countK8sAPIPolicyRulesForCluster = `-- name: CountK8sAPIPolicyRulesForCluster :one
+SELECT count(*) FROM policy_rules r
+JOIN k8s_api_endpoints e ON e.id = r.dst_k8s_api_endpoint_id AND e.org_id = r.org_id
+WHERE r.org_id = $1 AND e.cluster_id = $2 AND r.dst_kind = 'k8s_api'
+`
+
+type CountK8sAPIPolicyRulesForClusterParams struct {
+	OrgID     uuid.UUID `json:"org_id"`
+	ClusterID uuid.UUID `json:"cluster_id"`
+}
+
+// CountK8sAPIPolicyRulesForCluster (K8N-3): the rules that name this cluster's API. Deregistering the
+// cluster removes its API endpoint and, by cascade, these rules; the audit entry counts them.
+func (q *Queries) CountK8sAPIPolicyRulesForCluster(ctx context.Context, arg CountK8sAPIPolicyRulesForClusterParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countK8sAPIPolicyRulesForCluster, arg.OrgID, arg.ClusterID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
 const createK8sCluster = `-- name: CreateK8sCluster :one
 INSERT INTO k8s_clusters (org_id, site_id, connector_node_id, name, vip_range, service_cidr, dns_zone, dns_vip, managed_by_machine, provider, platform)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
@@ -1150,6 +1170,32 @@ func (q *Queries) DeleteK8sConnectorPoolMemberForConfig(ctx context.Context, arg
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const getK8sAPIEndpointForCluster = `-- name: GetK8sAPIEndpointForCluster :one
+SELECT id, org_id, cluster_id, enabled, vip, enabled_at, enabled_by_user_id, created_at, updated_at FROM k8s_api_endpoints WHERE org_id = $1 AND cluster_id = $2
+`
+
+type GetK8sAPIEndpointForClusterParams struct {
+	OrgID     uuid.UUID `json:"org_id"`
+	ClusterID uuid.UUID `json:"cluster_id"`
+}
+
+func (q *Queries) GetK8sAPIEndpointForCluster(ctx context.Context, arg GetK8sAPIEndpointForClusterParams) (K8sApiEndpoint, error) {
+	row := q.db.QueryRow(ctx, getK8sAPIEndpointForCluster, arg.OrgID, arg.ClusterID)
+	var i K8sApiEndpoint
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.ClusterID,
+		&i.Enabled,
+		&i.Vip,
+		&i.EnabledAt,
+		&i.EnabledByUserID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
 }
 
 const getK8sCluster = `-- name: GetK8sCluster :one
@@ -1869,6 +1915,20 @@ func (q *Queries) GetPoolVIPOwnershipFreshHandoffEnvelopeBodies(ctx context.Cont
 	return i, err
 }
 
+const k8sAPIAccessSchemaPresent = `-- name: K8sAPIAccessSchemaPresent :one
+SELECT (to_regclass('k8s_api_endpoints') IS NOT NULL)::boolean AS present
+`
+
+// K8sAPIAccessSchemaPresent says whether this database has the 0239 API access table. The control plane
+// also runs against a schema that has not been migrated that far; there the feature simply has no data,
+// and the shared paths (compiler snapshot, topology, address allocation) must not name the table.
+func (q *Queries) K8sAPIAccessSchemaPresent(ctx context.Context) (bool, error) {
+	row := q.db.QueryRow(ctx, k8sAPIAccessSchemaPresent)
+	var present bool
+	err := row.Scan(&present)
+	return present, err
+}
+
 const listActiveK8sServicesForOrg = `-- name: ListActiveK8sServicesForOrg :many
 SELECT s.id, s.cluster_id, s.name, s.namespace, s.protocol, s.port_low, s.port_high, s.managed_by_machine,
        host(s.vip) AS vip, c.site_id, c.connector_pool_id,
@@ -1972,6 +2032,254 @@ func (q *Queries) ListActiveK8sServicesForOrg(ctx context.Context, orgID uuid.UU
 			&i.DnsZone,
 			&i.DnsVip,
 		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listEnabledK8sAPIEndpointsForOrg = `-- name: ListEnabledK8sAPIEndpointsForOrg :many
+SELECT e.id, e.cluster_id, host(e.vip) AS vip, c.site_id, c.connector_pool_id,
+       c.connector_node_id AS legacy_connector_node_id,
+       p.active_node_id AS pool_active_node_id,
+       COALESCE(
+         p.generation > 0
+         AND connector.id IS NOT NULL
+         AND (
+           p.generation = 1
+           OR EXISTS (
+             SELECT 1
+             FROM k8s_connector_handoff_operations hop
+             WHERE hop.org_id = p.org_id
+               AND hop.site_id = p.site_id
+               AND hop.cluster_id = p.cluster_id
+               AND hop.pool_id = p.id
+               AND hop.new_node_id = p.active_node_id
+               AND hop.target_generation = p.generation
+               AND hop.phase = 'complete'
+           )
+         ), false
+       )::boolean AS pool_connector_eligible,
+       p.generation AS connector_generation,
+       c.service_cidr::text AS service_cidr,
+       c.name AS cluster_name, c.dns_zone, COALESCE(host(c.dns_vip), '')::text AS dns_vip
+FROM k8s_api_endpoints e
+JOIN k8s_clusters c ON c.id = e.cluster_id AND c.org_id = e.org_id
+LEFT JOIN k8s_connector_pools p
+  ON p.id = c.connector_pool_id
+ AND p.org_id = c.org_id
+ AND p.site_id = c.site_id
+ AND p.cluster_id = c.id
+LEFT JOIN nodes connector
+  ON connector.id = p.active_node_id
+ AND connector.org_id = p.org_id
+ AND connector.site_id = p.site_id
+ AND connector.status = 'active'
+ AND connector.revoked_at IS NULL
+ AND connector.wg_public_key ~ '^[A-Za-z0-9+/]{43}=$'
+ AND btrim(connector.endpoint) <> ''
+WHERE e.org_id = $1 AND e.enabled AND e.vip IS NOT NULL
+ORDER BY e.id
+`
+
+type ListEnabledK8sAPIEndpointsForOrgRow struct {
+	ID                    uuid.UUID   `json:"id"`
+	ClusterID             uuid.UUID   `json:"cluster_id"`
+	Vip                   string      `json:"vip"`
+	SiteID                uuid.UUID   `json:"site_id"`
+	ConnectorPoolID       pgtype.UUID `json:"connector_pool_id"`
+	LegacyConnectorNodeID pgtype.UUID `json:"legacy_connector_node_id"`
+	PoolActiveNodeID      pgtype.UUID `json:"pool_active_node_id"`
+	PoolConnectorEligible bool        `json:"pool_connector_eligible"`
+	ConnectorGeneration   *int64      `json:"connector_generation"`
+	ServiceCidr           string      `json:"service_cidr"`
+	ClusterName           string      `json:"cluster_name"`
+	DnsZone               string      `json:"dns_zone"`
+	DnsVip                string      `json:"dns_vip"`
+}
+
+// ListEnabledK8sAPIEndpointsForOrg (K8N-3) is the cluster API's counterpart of ListActiveK8sServicesForOrg:
+// one row per cluster whose API access is on, with the SAME connector resolution columns, so the topology
+// and the compiler treat the API address exactly as they treat a Service address. It is a separate query
+// on purpose: the API endpoint is never a k8s_services row, so it cannot reach a cluster scope, an agent
+// access request or an agent template.
+func (q *Queries) ListEnabledK8sAPIEndpointsForOrg(ctx context.Context, orgID uuid.UUID) ([]ListEnabledK8sAPIEndpointsForOrgRow, error) {
+	rows, err := q.db.Query(ctx, listEnabledK8sAPIEndpointsForOrg, orgID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListEnabledK8sAPIEndpointsForOrgRow{}
+	for rows.Next() {
+		var i ListEnabledK8sAPIEndpointsForOrgRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.ClusterID,
+			&i.Vip,
+			&i.SiteID,
+			&i.ConnectorPoolID,
+			&i.LegacyConnectorNodeID,
+			&i.PoolActiveNodeID,
+			&i.PoolConnectorEligible,
+			&i.ConnectorGeneration,
+			&i.ServiceCidr,
+			&i.ClusterName,
+			&i.DnsZone,
+			&i.DnsVip,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listK8sAPIEndpointVIPsInCluster = `-- name: ListK8sAPIEndpointVIPsInCluster :many
+SELECT host(e.vip) AS vip FROM k8s_api_endpoints e
+WHERE e.org_id = $1 AND e.cluster_id = $2 AND e.vip IS NOT NULL
+`
+
+type ListK8sAPIEndpointVIPsInClusterParams struct {
+	OrgID     uuid.UUID `json:"org_id"`
+	ClusterID uuid.UUID `json:"cluster_id"`
+}
+
+// K8N-3: the address of the cluster's API while API access is on. Every address allocation in the cluster
+// works around it as well as around ListUsedVIPsInCluster, so a Service is never handed it. A statement of
+// its own, read only where the 0239 table exists, so ListUsedVIPsInCluster stays as it was.
+func (q *Queries) ListK8sAPIEndpointVIPsInCluster(ctx context.Context, arg ListK8sAPIEndpointVIPsInClusterParams) ([]string, error) {
+	rows, err := q.db.Query(ctx, listK8sAPIEndpointVIPsInCluster, arg.OrgID, arg.ClusterID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []string{}
+	for rows.Next() {
+		var vip string
+		if err := rows.Scan(&vip); err != nil {
+			return nil, err
+		}
+		items = append(items, vip)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listK8sAPIEndpointsForOrg = `-- name: ListK8sAPIEndpointsForOrg :many
+SELECT e.id, e.cluster_id, e.enabled, COALESCE(host(e.vip), '')::text AS vip,
+       c.name AS cluster_name, c.dns_zone
+FROM k8s_api_endpoints e
+JOIN k8s_clusters c ON c.id = e.cluster_id AND c.org_id = e.org_id
+WHERE e.org_id = $1
+ORDER BY e.id
+`
+
+type ListK8sAPIEndpointsForOrgRow struct {
+	ID          uuid.UUID `json:"id"`
+	ClusterID   uuid.UUID `json:"cluster_id"`
+	Enabled     bool      `json:"enabled"`
+	Vip         string    `json:"vip"`
+	ClusterName string    `json:"cluster_name"`
+	DnsZone     string    `json:"dns_zone"`
+}
+
+// ListK8sAPIEndpointsForOrg names every cluster API endpoint of the org, on or off, with its cluster: what
+// a rule list needs to say "Kubernetes API of <cluster>" and whether that rule currently allows anything.
+func (q *Queries) ListK8sAPIEndpointsForOrg(ctx context.Context, orgID uuid.UUID) ([]ListK8sAPIEndpointsForOrgRow, error) {
+	rows, err := q.db.Query(ctx, listK8sAPIEndpointsForOrg, orgID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListK8sAPIEndpointsForOrgRow{}
+	for rows.Next() {
+		var i ListK8sAPIEndpointsForOrgRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.ClusterID,
+			&i.Enabled,
+			&i.Vip,
+			&i.ClusterName,
+			&i.DnsZone,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listK8sAPIServedZonesForOrg = `-- name: ListK8sAPIServedZonesForOrg :many
+SELECT DISTINCT c.name, c.dns_zone, COALESCE(host(c.dns_vip), '')::text AS dns_vip
+FROM k8s_clusters c
+JOIN k8s_api_endpoints e ON e.cluster_id = c.id AND e.org_id = c.org_id AND e.enabled
+LEFT JOIN k8s_connector_pools p
+  ON p.id = c.connector_pool_id
+ AND p.org_id = c.org_id
+ AND p.site_id = c.site_id
+ AND p.cluster_id = c.id
+LEFT JOIN nodes connector
+  ON connector.id = p.active_node_id
+ AND connector.org_id = p.org_id
+ AND connector.site_id = p.site_id
+ AND connector.status = 'active'
+ AND connector.revoked_at IS NULL
+ AND connector.wg_public_key ~ '^[A-Za-z0-9+/]{43}=$'
+ AND btrim(connector.endpoint) <> ''
+WHERE c.org_id = $1
+  AND (
+    (c.connector_pool_id IS NULL AND c.connector_node_id IS NOT NULL)
+    OR (
+      c.connector_pool_id IS NOT NULL AND connector.id IS NOT NULL AND p.generation > 0
+      AND (
+        p.generation = 1
+        OR EXISTS (
+          SELECT 1
+          FROM k8s_connector_handoff_operations hop
+          WHERE hop.org_id = p.org_id
+            AND hop.site_id = p.site_id
+            AND hop.cluster_id = p.cluster_id
+            AND hop.pool_id = p.id
+            AND hop.new_node_id = p.active_node_id
+            AND hop.target_generation = p.generation
+            AND hop.phase = 'complete'
+        )
+      )
+    )
+  )
+`
+
+type ListK8sAPIServedZonesForOrgRow struct {
+	Name    string `json:"name"`
+	DnsZone string `json:"dns_zone"`
+	DnsVip  string `json:"dns_vip"`
+}
+
+// ListK8sAPIServedZonesForOrg (K8N-3) is ListK8sServedZonesForOrg for a cluster whose API access is on: its
+// gateway answers for the cluster's zone even when no Service is exposed, because the API's name lives in
+// it. Same connector resolution. A separate statement so the query above stays as it was.
+func (q *Queries) ListK8sAPIServedZonesForOrg(ctx context.Context, orgID uuid.UUID) ([]ListK8sAPIServedZonesForOrgRow, error) {
+	rows, err := q.db.Query(ctx, listK8sAPIServedZonesForOrg, orgID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListK8sAPIServedZonesForOrgRow{}
+	for rows.Next() {
+		var i ListK8sAPIServedZonesForOrgRow
+		if err := rows.Scan(&i.Name, &i.DnsZone, &i.DnsVip); err != nil {
 			return nil, err
 		}
 		items = append(items, i)

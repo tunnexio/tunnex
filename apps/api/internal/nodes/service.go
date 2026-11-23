@@ -33,6 +33,7 @@ import (
 	"github.com/tunnexio/tunnex/apps/api/internal/gatewaymesh"
 	"github.com/tunnexio/tunnex/apps/api/internal/ipalloc"
 	"github.com/tunnexio/tunnex/apps/api/internal/k8s"
+	"github.com/tunnexio/tunnex/apps/api/internal/k8sapiaccess"
 	"github.com/tunnexio/tunnex/apps/api/internal/licence"
 	"github.com/tunnexio/tunnex/apps/api/internal/pgerr"
 	"github.com/tunnexio/tunnex/apps/api/internal/policy"
@@ -1234,6 +1235,25 @@ func (s *Service) loadSiteTopology(ctx context.Context, orgID uuid.UUID) (siteTo
 	if kerr != nil {
 		return siteTopology{}, kerr
 	}
+	// K8N-3: a cluster whose API access is on has one more address, mapped to default/kubernetes on TCP 443.
+	// It travels the same loop as an exposed Service, so the gateway forwards it, answers DNS for it and
+	// routes it exactly as it does a Service address. The mapping's id is the API endpoint's, never a
+	// k8s_services id.
+	apiEndpoints, aerr := k8sapiaccess.EnabledEndpoints(ctx, s.q, orgID)
+	if aerr != nil {
+		return siteTopology{}, aerr
+	}
+	for _, e := range apiEndpoints {
+		port := int32(k8s.APIServicePort)
+		exposed = append(exposed, sqlc.ListActiveK8sServicesForOrgRow{
+			ID: e.ID, ClusterID: e.ClusterID, Name: k8s.APIServiceName, Namespace: k8s.APIServiceNamespace,
+			Protocol: "tcp", PortLow: &port, PortHigh: &port, Vip: e.Vip, SiteID: e.SiteID,
+			ConnectorPoolID: e.ConnectorPoolID, LegacyConnectorNodeID: e.LegacyConnectorNodeID,
+			PoolActiveNodeID: e.PoolActiveNodeID, PoolConnectorEligible: e.PoolConnectorEligible,
+			ConnectorGeneration: e.ConnectorGeneration, ServiceCidr: e.ServiceCidr,
+			ClusterName: e.ClusterName, DnsZone: e.DnsZone, DnsVip: e.DnsVip,
+		})
+	}
 	for _, e := range exposed {
 		if e.ConnectorPoolID.Valid && !e.PoolConnectorEligible {
 			continue // exact pool owner is ineligible: withdraw topology and DNS together
@@ -2364,6 +2384,10 @@ type AppliedPolicy struct {
 	// / RBAC-denied / watch not synced), so exposed Services can't be DNAT-programmed (fail-closed). Drives
 	// the k8s_endpoints_unavailable health kind.
 	K8sEndpointsUnavailable bool `json:"k8s_endpoints_unavailable"`
+	// K8sAPIEndpoint (K8N-3) — agent-reported: what the gateway did with the cluster's API (its mapping of
+	// default/kubernetes). "ready", a refusal reason, or "" when the gateway maps no cluster API or is too
+	// old to say. Read by "Test access"; it decides nothing.
+	K8sAPIEndpoint string `json:"k8s_api_endpoint"`
 	// MaxSupportedVersion (S8.3 CW) is the highest artifact Version the agent can apply. Observability
 	// (outside the hash); stored so the UI can warn which gateways would deny-all on a version bump.
 	MaxSupportedVersion int `json:"max_policy_version"`
@@ -2508,6 +2532,7 @@ func (s *Service) ReportWGInfo(ctx context.Context, node sqlc.Node, publicKey, e
 		"site_subnet_unreachable":                applied.SiteSubnetUnreachable,
 		"conntrack_flush_unavailable":            applied.ConntrackFlushUnavailable,
 		"k8s_endpoints_unavailable":              applied.K8sEndpointsUnavailable,
+		"k8s_api_endpoint":                       NormalizeK8sAPIEndpointState(applied.K8sAPIEndpoint),
 		"max_policy_version":                     applied.MaxSupportedVersion,
 		"ovpn_health":                            applied.OVPNHealth, // S9.1 4d
 		"dns_resolve_rpc_version":                applied.DNSResolveRPCVersion,
@@ -2621,6 +2646,8 @@ type NodeCapabilities struct {
 	// unreachable / RBAC-denied / watch not synced) → exposed-Service DNAT unprogrammed (fail-closed). Drives
 	// the k8s_endpoints_unavailable health kind.
 	K8sEndpointsUnavailable bool `json:"k8s_endpoints_unavailable"`
+	// K8sAPIEndpoint (K8N-3) — see AppliedPolicy.K8sAPIEndpoint. Already normalised to a known value.
+	K8sAPIEndpoint string `json:"k8s_api_endpoint"`
 	// MaxPolicyVersion (S8.3 CW) — the agent's reported max-supported policy version. 0 = never reported
 	// (a pre-CW/pre-upgrade agent): read as BELOW the ceiling, never unknown-treated-as-ready (S7.5.3
 	// absence-is-not-compliance). Surfaced on the Node API for the cross-site upgrade warning.
@@ -3268,6 +3295,26 @@ func Capabilities(raw []byte) NodeCapabilities {
 		_ = json.Unmarshal(raw, &c)
 	}
 	return c
+}
+
+// The states a gateway reports for the cluster's API (K8N-3). They mirror the reasons of the gateway's
+// classify step (apps/node/internal/egress/dnat_linux.go).
+const (
+	K8sAPIEndpointReady         = "ready"
+	K8sAPIEndpointOnGatewayNode = "endpoints_on_gateway_node"
+	K8sAPIEndpointUnknown       = "unknown"
+)
+
+// NormalizeK8sAPIEndpointState keeps only the values the gateway is known to send, so an agent can never
+// write free text into a node's capabilities. "" stays "" (no cluster API on this gateway, or an older
+// gateway); anything unrecognised becomes "unknown".
+func NormalizeK8sAPIEndpointState(reported string) string {
+	switch reported {
+	case "", K8sAPIEndpointReady, K8sAPIEndpointOnGatewayNode, "no_ready_endpoints", "endpoints_unavailable",
+		"invalid_vip", "invalid_port", "all_ports_unsupported", "port_range_unsupported":
+		return reported
+	}
+	return K8sAPIEndpointUnknown
 }
 
 // K8sEndpointViewEvidence distinguishes an explicit false report from absent,

@@ -24,6 +24,7 @@ import (
 	"github.com/tunnexio/tunnex/apps/api/internal/authctx"
 	"github.com/tunnexio/tunnex/apps/api/internal/fqdnresolver"
 	"github.com/tunnexio/tunnex/apps/api/internal/gatewaymesh"
+	"github.com/tunnexio/tunnex/apps/api/internal/k8sapiaccess"
 	"github.com/tunnexio/tunnex/apps/api/internal/policyspec"
 )
 
@@ -378,6 +379,8 @@ func (s *Service) ListPolicyRules(ctx context.Context, orgID uuid.UUID) ([]sqlc.
 			DstK8sClusterID:   row.DstK8sClusterID,
 			SrcAgentGroupID:   row.SrcAgentGroupID,
 			DstFqdnResourceID: fqdn,
+			// K8N-3: projected through JSONB like the FQDN column, so uuid.Nil is "not an API rule".
+			DstK8sApiEndpointID: pgtype.UUID{Bytes: row.DstK8sApiEndpointID, Valid: row.DstK8sApiEndpointID != uuid.Nil},
 		})
 	}
 	return out, nil
@@ -538,8 +541,21 @@ func (s *Service) CreatePolicyRule(ctx context.Context, orgID uuid.UUID, in poli
 		if in.DstFQDNResourceID == nil || in.DstResourceID != nil || in.DstGroupID != nil || in.DstSiteID != nil || in.DstK8sServiceID != nil {
 			return sqlc.PolicyRule{}, apierr.BadRequest("invalid_request", "dst_kind=fqdn_resource requires dst_fqdn_resource_id (and no other dst_ id)")
 		}
+	case "k8s_api": // K8N-3: a cluster's Kubernetes API, TCP 443
+		if in.DstK8sAPIClusterID == nil || in.DstResourceID != nil || in.DstGroupID != nil || in.DstSiteID != nil || in.DstK8sServiceID != nil || in.DstFQDNResourceID != nil {
+			return sqlc.PolicyRule{}, apierr.BadRequest("invalid_request", "dst_kind=k8s_api requires dst_k8s_api_cluster_id (and no other dst_ id)")
+		}
+		// Founder ruling 2026-11-23: people and groups only. Refused here, where the dashboard, the CLI
+		// and the operator all arrive; the 0239 CHECK and the compiler refuse it again.
+		if srcKind != "group" && srcKind != "user" {
+			return sqlc.PolicyRule{}, apierr.BadRequest("k8s_api_source_not_allowed",
+				"a Kubernetes API rule can only be granted to a person or a group; sites, address ranges and AI agents cannot be given the cluster's API")
+		}
 	default:
-		return sqlc.PolicyRule{}, apierr.BadRequest("invalid_request", "dst_kind must be resource, group, site, k8s_service, or fqdn_resource")
+		return sqlc.PolicyRule{}, apierr.BadRequest("invalid_request", "dst_kind must be resource, group, site, k8s_service, fqdn_resource, or k8s_api")
+	}
+	if in.DstKind != "k8s_api" && in.DstK8sAPIClusterID != nil {
+		return sqlc.PolicyRule{}, apierr.BadRequest("invalid_request", "dst_k8s_api_cluster_id is only valid with dst_kind=k8s_api")
 	}
 	// ⛔ THE FIRST CROSS-FIELD CHECK THIS FUNCTION HAS EVER HAD, AND ITS ABSENCE WAS THE DEFECT.
 	//
@@ -669,6 +685,44 @@ func (s *Service) CreatePolicyRule(ctx context.Context, orgID uuid.UUID, in poli
 				return e
 			}
 		}
+		meta := map[string]any{"src_kind": srcKind, "dst_kind": in.DstKind}
+		if in.DstKind == "k8s_api" {
+			// The cluster must be in THIS org and its API access must be on: a rule for an API that is
+			// off would allow nothing and look like a working grant.
+			endpoint, e := q.GetK8sAPIEndpointForCluster(ctx, sqlc.GetK8sAPIEndpointForClusterParams{OrgID: orgID, ClusterID: *in.DstK8sAPIClusterID})
+			if errors.Is(e, pgx.ErrNoRows) || (e == nil && !endpoint.Enabled) {
+				if _, ce := q.GetK8sCluster(ctx, sqlc.GetK8sClusterParams{OrgID: orgID, ID: *in.DstK8sAPIClusterID}); ce != nil {
+					return apierr.BadRequest("k8s_cluster_not_found", "dst Kubernetes cluster not found")
+				}
+				return apierr.BadRequest("k8s_api_not_enabled", "API access is off for this cluster; turn it on for the cluster before granting it")
+			}
+			if e != nil {
+				return e
+			}
+			id, e := q.CreateK8sAPIPolicyRule(ctx, sqlc.CreateK8sAPIPolicyRuleParams{
+				OrgID: orgID, SrcKind: srcKind, SrcGroupID: toPgUUIDVal(in.SrcGroupID), SrcUserID: toPgUUID(in.SrcUserID),
+				DstK8sApiEndpointID: pgtype.UUID{Bytes: endpoint.ID, Valid: true}, ExpiresAt: toPgTimestamptz(in.ExpiresAt),
+				ManagedByMachine: pgtype.UUID{Bytes: managedByMachine, Valid: managedByMachine != uuid.Nil},
+			})
+			if e != nil {
+				return conflictIfDup(e, "an identical rule already exists")
+			}
+			if r, e = q.GetPolicyRuleForOrg(ctx, sqlc.GetPolicyRuleForOrgParams{ID: id, OrgID: orgID}); e != nil {
+				return e
+			}
+			if meta, e = k8sAPIDestinationMeta(ctx, q, orgID, "k8s_api", endpoint.ID, meta); e != nil {
+				return e
+			}
+			if srcKind == "user" {
+				meta["src_user_id"] = in.SrcUserID.String()
+			} else {
+				meta["src_group_id"] = in.SrcGroupID.String()
+			}
+			if in.ExpiresAt != nil {
+				meta["expires_at"] = in.ExpiresAt.UTC().Format(time.RFC3339)
+			}
+			return writeAuditAs(ctx, q, orgID, actorUserID, actorSystem, cause, "policy.rule_created", "policy_rule", r.ID.String(), meta)
+		}
 		var e error
 		r, e = q.CreatePolicyRule(ctx, sqlc.CreatePolicyRuleParams{
 			OrgID: orgID, SrcKind: srcKind, SrcGroupID: toPgUUIDVal(in.SrcGroupID), SrcUserID: toPgUUID(in.SrcUserID),
@@ -681,7 +735,6 @@ func (s *Service) CreatePolicyRule(ctx context.Context, orgID uuid.UUID, in poli
 		if e != nil {
 			return conflictIfDup(e, "an identical rule already exists")
 		}
-		meta := map[string]any{"src_kind": srcKind, "dst_kind": in.DstKind}
 		switch srcKind { // M6: a site source must audit its src_site_id, never a nil-UUID group (misattribution)
 		case "user":
 			meta["src_user_id"] = in.SrcUserID.String()
@@ -703,16 +756,21 @@ func (s *Service) DeletePolicyRule(ctx context.Context, orgID, ruleID, actorUser
 		if err := refuseWorkflowManagedRule(ctx, q, orgID, ruleID); err != nil {
 			return err
 		}
-		n, e := q.DeletePolicyRule(ctx, sqlc.DeletePolicyRuleParams{ID: ruleID, OrgID: orgID})
+		deleted, e := q.DeletePolicyRuleReturningDestination(ctx, sqlc.DeletePolicyRuleReturningDestinationParams{ID: ruleID, OrgID: orgID})
 		if e != nil {
 			return e
 		}
-		if n == 0 {
+		if len(deleted) == 0 {
 			return apierr.NotFound("rule_not_found", "rule not found")
+		}
+		// K8N-3: a Kubernetes API rule's audit entry names the cluster it reached.
+		meta, e := k8sAPIDestinationMeta(ctx, q, orgID, deleted[0].DstKind, deleted[0].DstK8sApiEndpointID, nil)
+		if e != nil {
+			return e
 		}
 		// M1b (S10.2): honor the caller's attribution — a machine (the operator revoking a grant) records
 		// actor_system=operator:<name> + the CR as cause, NOT a zero user-id. This is the walk's Leg 6 audit.
-		return writeAuditAs(ctx, q, orgID, actorUserID, actorSystem, cause, "policy.rule_deleted", "policy_rule", ruleID.String(), nil)
+		return writeAuditAs(ctx, q, orgID, actorUserID, actorSystem, cause, "policy.rule_deleted", "policy_rule", ruleID.String(), meta)
 	})
 }
 
@@ -759,7 +817,11 @@ func (s *Service) SetPolicyRuleEnabled(ctx context.Context, orgID, ruleID uuid.U
 		if enabled {
 			action = "policy.rule_enabled"
 		}
-		return writeAudit(ctx, q, orgID, action, "policy_rule", ruleID.String(), nil)
+		meta, e := k8sAPIDestinationMeta(ctx, q, orgID, r.DstKind, fromPgUUID(r.DstK8sApiEndpointID), nil)
+		if e != nil {
+			return e
+		}
+		return writeAudit(ctx, q, orgID, action, "policy_rule", ruleID.String(), meta)
 	})
 	return r, err
 }
@@ -843,8 +905,11 @@ func (s *Service) SweepExpiredGrants(ctx context.Context) (int, error) {
 		}
 		expired = rows
 		for _, r := range rows {
-			if e := writeSystemAudit(ctx, q, r.OrgID, "policy.grant_expired", "policy_rule", r.ID.String(),
-				map[string]any{"cause": "grant_expired"}); e != nil {
+			meta, e := k8sAPIDestinationMeta(ctx, q, r.OrgID, r.DstKind, r.DstK8sApiEndpointID, map[string]any{"cause": "grant_expired"})
+			if e != nil {
+				return e
+			}
+			if e := writeSystemAudit(ctx, q, r.OrgID, "policy.grant_expired", "policy_rule", r.ID.String(), meta); e != nil {
 				return e
 			}
 		}
@@ -1096,6 +1161,8 @@ func buildSnapshotWithQueries(ctx context.Context, q *sqlc.Queries, orgID uuid.U
 			DstSiteID:       fromPgUUID(r.DstSiteID),
 			DstK8sServiceID: fromPgUUID(r.DstK8sServiceID), // S10.3: dst_kind='k8s_service' resolution
 			Disabled:        r.Disabled,                    // F3: carried to the compiler, which OWNS the skip
+			// K8N-3: dst_kind='k8s_api'. uuid.Nil on every other kind and on a pre-0239 schema.
+			DstK8sAPIEndpointID: r.DstK8sApiEndpointID,
 		}
 		if r.ExpiresAt.Valid {
 			expiry := r.ExpiresAt.Time.UTC()
@@ -1165,6 +1232,28 @@ func buildSnapshotWithQueries(ctx context.Context, q *sqlc.Queries, orgID uuid.U
 		snap.ExposedServices = append(snap.ExposedServices, ExposedService{
 			ID: e.ID, VIP: e.Vip, DNSVIP: e.DnsVip, Protocol: e.Protocol,
 			PortLow: derefI32(e.PortLow), PortHigh: derefI32(e.PortHigh), SiteID: e.SiteID,
+			ConnectorNodeID: fromPgUUID(connector),
+			PoolBound:       e.ConnectorPoolID.Valid, ConnectorGeneration: derefI64(e.ConnectorGeneration),
+		})
+	}
+	// K8N-3: cluster API endpoints whose API access is on (id -> current address) for dst_kind='k8s_api'.
+	// Loaded like the exposed Services above, so the cluster's gateway gets an artifact for an API-only
+	// cluster exactly as it does for a cluster with exposed Services.
+	apiEndpoints, err := k8sapiaccess.EnabledEndpoints(ctx, q, orgID)
+	if err != nil {
+		return Snapshot{}, err
+	}
+	for _, e := range apiEndpoints {
+		connector := e.LegacyConnectorNodeID
+		if e.ConnectorPoolID.Valid {
+			connector = pgtype.UUID{}
+			if e.PoolConnectorEligible {
+				connector = e.PoolActiveNodeID // pool mode never falls back to legacy ownership
+			}
+		}
+		snap.APIEndpoints = append(snap.APIEndpoints, ExposedService{
+			ID: e.ID, VIP: e.Vip, DNSVIP: e.DnsVip, Protocol: "tcp",
+			PortLow: k8sAPIPort, PortHigh: k8sAPIPort, SiteID: e.SiteID,
 			ConnectorNodeID: fromPgUUID(connector),
 			PoolBound:       e.ConnectorPoolID.Valid, ConnectorGeneration: derefI64(e.ConnectorGeneration),
 		})
@@ -1294,6 +1383,33 @@ func (s *Service) mutate(ctx context.Context, orgID uuid.UUID, fn func(*sqlc.Que
 	s.pushOrg(ctx, orgID)
 	return nil
 }
+
+// k8sAPIDestinationMeta names the destination of a Kubernetes API rule in an audit entry (K8N-3): the
+// rule list, "Test access" and the audit log must all say "Kubernetes API of cluster X". For any other
+// destination kind it returns meta unchanged and reads nothing.
+func k8sAPIDestinationMeta(ctx context.Context, q *sqlc.Queries, orgID uuid.UUID, dstKind string, endpointID uuid.UUID, meta map[string]any) (map[string]any, error) {
+	if dstKind != "k8s_api" || endpointID == uuid.Nil {
+		return meta, nil
+	}
+	target, err := q.GetK8sAPIEndpointCluster(ctx, sqlc.GetK8sAPIEndpointClusterParams{OrgID: orgID, ID: endpointID})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return meta, nil
+	}
+	if err != nil {
+		return nil, err
+	}
+	if meta == nil {
+		meta = map[string]any{}
+	}
+	meta["dst_kind"] = "k8s_api"
+	meta["dst_k8s_api_cluster_id"] = target.ClusterID.String()
+	meta["dst_k8s_api_cluster"] = target.ClusterName
+	return meta, nil
+}
+
+// k8sAPIPort is the Service port of default/kubernetes, the only port a k8s_api rule opens (K8N-3). The
+// policy package does not import the k8s package; k8s.APIServicePort is the same number.
+const k8sAPIPort = 443
 
 func (s *Service) withOrgTx(ctx context.Context, orgID uuid.UUID, fn func(*sqlc.Queries) error) error {
 	tx, err := s.pool.Begin(ctx)

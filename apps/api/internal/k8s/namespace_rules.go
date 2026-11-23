@@ -16,6 +16,7 @@ import (
 	"github.com/tunnexio/tunnex/apps/api/internal/authctx"
 	"github.com/tunnexio/tunnex/apps/api/internal/ipalloc"
 	"github.com/tunnexio/tunnex/apps/api/internal/k8s/scopeapproval"
+	"github.com/tunnexio/tunnex/apps/api/internal/k8sapiaccess"
 	"github.com/tunnexio/tunnex/apps/api/internal/pgerr"
 )
 
@@ -86,6 +87,10 @@ type reportedService struct {
 	Service string
 	UID     string
 	Ports   []inventoryExposurePort
+	// APIServer marks default/kubernetes (K8N-3). A rule never exposes it: the cluster's API is reached
+	// through API access. It still counts as reported, so an exposure of it that a rule made before this
+	// refusal existed is left in place rather than read as "gone" and withdrawn.
+	APIServer bool
 }
 
 // exposedPort is one live exposure in the rule's namespace, whoever made it.
@@ -146,6 +151,9 @@ func planNamespaceRule(ruleID uuid.UUID, reported []reportedService, exposed []e
 		var missing []inventoryExposurePort
 		for _, port := range svc.Ports {
 			reportedPorts[portKey{svc.Service, string(port.Protocol), port.Port}] = true
+			if svc.APIServer {
+				continue
+			}
 			if allPorts[svc.Service] || covered[portKey{svc.Service, string(port.Protocol), port.Port}] || covered[portKey{svc.Service, "any", port.Port}] {
 				continue
 			}
@@ -462,6 +470,12 @@ func (s *Service) reconcileNamespaceRulesAt(ctx context.Context, orgID, clusterI
 	if dnsVIP != nil {
 		used = append(used, *dnsVIP)
 	}
+	// K8N-3: and around the cluster API's address while API access is on.
+	apiVIPs, err := k8sapiaccess.EndpointVIPs(ctx, sqlc.New(tx), orgID, clusterID)
+	if err != nil {
+		return err
+	}
+	used = append(used, apiVIPs...)
 
 	changed := false
 	for _, rule := range rules {
@@ -621,7 +635,7 @@ func reportedNamespaceServices(ctx context.Context, tx pgx.Tx, reportID, orgID, 
 			return nil, err
 		}
 		if len(out) == 0 || out[len(out)-1].Service != service {
-			out = append(out, reportedService{Service: service, UID: uid})
+			out = append(out, reportedService{Service: service, UID: uid, APIServer: IsAPIServerService(namespace, service)})
 		}
 		last := &out[len(out)-1]
 		last.Ports = append(last.Ports, inventoryExposurePort{Protocol: scopeapproval.Protocol(protocol), Port: port})

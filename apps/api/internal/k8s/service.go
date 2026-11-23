@@ -27,6 +27,7 @@ import (
 	"github.com/tunnexio/tunnex/apps/api/internal/agentaccessguard"
 	"github.com/tunnexio/tunnex/apps/api/internal/apierr"
 	"github.com/tunnexio/tunnex/apps/api/internal/ipalloc"
+	"github.com/tunnexio/tunnex/apps/api/internal/k8sapiaccess"
 	"github.com/tunnexio/tunnex/apps/api/internal/pgerr"
 	"github.com/tunnexio/tunnex/apps/api/internal/sites"
 	"github.com/tunnexio/tunnex/apps/api/internal/subnetguard"
@@ -475,8 +476,20 @@ func (s *Service) ExposeService(ctx context.Context, orgID, clusterID uuid.UUID,
 		return sqlc.K8sService{}, apierr.BadRequest("service_port_range_unsupported",
 			"expose a single specific port, not a range: the gateway DNATs one port per exposed Service (Kubernetes Service ports are discrete)")
 	}
+	// K8N-3: the cluster's API server is not a Service to expose. It is reached through API access, which
+	// has its own permission, rule kind and audit entry. Refused here so the dashboard, the CLI and the
+	// operator all get the same answer; an exposure made before this refusal existed is left as it is.
+	if IsAPIServerService(namespace, name) {
+		return sqlc.K8sService{}, ErrAPIServerNotAService()
+	}
 	var out sqlc.K8sService
-	err := s.withTx(ctx, func(q *sqlc.Queries) error {
+	err := s.withTxRaw(ctx, func(q *sqlc.Queries, tx pgx.Tx) error {
+		// The cluster row serializes address allocation in this cluster with the inventory exposure path,
+		// a namespace rule's pass and turning API access on (K8N-3), all of which take the same lock.
+		var locked bool
+		if e := tx.QueryRow(ctx, `SELECT true FROM k8s_clusters WHERE id=$1 AND org_id=$2 FOR UPDATE`, clusterID, orgID).Scan(&locked); e != nil {
+			return apierr.NotFound("cluster_not_found", "no such cluster in this organization")
+		}
 		cluster, e := q.GetK8sCluster(ctx, sqlc.GetK8sClusterParams{OrgID: orgID, ID: clusterID})
 		if e != nil {
 			return apierr.NotFound("cluster_not_found", "no such cluster in this organization")
@@ -490,6 +503,12 @@ func (s *Service) ExposeService(ctx context.Context, orgID, clusterID uuid.UUID,
 		if cluster.DnsVip != nil {
 			used = append(used, cluster.DnsVip.String())
 		}
+		// K8N-3: and neither the address of the cluster's API while API access is on.
+		apiVIPs, e := k8sapiaccess.EndpointVIPs(ctx, q, orgID, clusterID)
+		if e != nil {
+			return e
+		}
+		used = append(used, apiVIPs...)
 		vipStr, e := ipalloc.Allocate(cluster.VipRange.String(), used)
 		if errors.Is(e, ipalloc.ErrPoolExhausted) {
 			return apierr.Conflict("vip_range_exhausted",
@@ -745,11 +764,23 @@ func (s *Service) DeregisterCluster(ctx context.Context, actorUserID uuid.UUID, 
 		if e != nil {
 			return e
 		}
+		// K8N-3: the cascade also removes the cluster's API endpoint and every rule that names it.
+		apiAccessOn, e := k8sapiaccess.Enabled(ctx, q, orgID, clusterID)
+		if e != nil {
+			return e
+		}
+		apiRules, e := k8sapiaccess.RuleCount(ctx, q, orgID, clusterID)
+		if e != nil {
+			return e
+		}
 		if e := q.DeleteK8sCluster(ctx, sqlc.DeleteK8sClusterParams{OrgID: orgID, ID: clusterID}); e != nil {
 			return e
 		}
-		return s.audit(ctx, q, orgID, actorUserID, actorSystem, cause, "k8s_cluster", clusterID.String(), "k8s.cluster_deregistered",
-			map[string]any{"name": cluster.Name, "services_deleted": casc.ServiceCount, "grants_deleted": casc.GrantCount})
+		meta := map[string]any{"name": cluster.Name, "services_deleted": casc.ServiceCount, "grants_deleted": casc.GrantCount}
+		if apiAccessOn || apiRules != 0 {
+			meta["api_access_was_on"], meta["api_rules_deleted"] = apiAccessOn, apiRules
+		}
+		return s.audit(ctx, q, orgID, actorUserID, actorSystem, cause, "k8s_cluster", clusterID.String(), "k8s.cluster_deregistered", meta)
 	})
 	if err == nil {
 		s.pushOrg(ctx, orgID) // M5: a deregister cascade-deletes grants — propagate at push speed, not ~25s

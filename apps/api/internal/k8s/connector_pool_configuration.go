@@ -11,6 +11,7 @@ import (
 
 	"github.com/tunnexio/tunnex/apps/api/db/sqlc"
 	"github.com/tunnexio/tunnex/apps/api/internal/apierr"
+	"github.com/tunnexio/tunnex/apps/api/internal/k8sapiaccess"
 	"github.com/tunnexio/tunnex/apps/api/internal/pgerr"
 )
 
@@ -102,6 +103,13 @@ func (s *Service) ConfigureConnectorPool(ctx context.Context, orgID, siteID uuid
 			return err
 		}
 		if !poolExists {
+			// K8N-3: the mirror of SetAPIAccess's refusal. A pool's handoff plan does not carry the API
+			// address, so a cluster with API access on keeps its single gateway.
+			if apiAccessOn, e := k8sapiaccess.Enabled(ctx, q, orgID, req.ClusterID); e != nil {
+				return e
+			} else if apiAccessOn {
+				return apierr.Conflict("k8s_api_access_enabled", "turn off API access for this cluster before configuring a connector pool: a handoff between pool members does not carry the API address")
+			}
 			if !cluster.ConnectorNodeID.Valid {
 				return apierr.Conflict("connector_pool_initial_connector_required", "the cluster needs its currently selected connector before a pool can be configured")
 			}

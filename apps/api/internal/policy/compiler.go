@@ -97,7 +97,10 @@ type Rule struct {
 	DstGroupID      uuid.UUID
 	DstSiteID       uuid.UUID // S8.1: dst_kind='site' — resolved to the site's subnet CIDRs
 	DstK8sServiceID uuid.UUID // S10.3: dst_kind='k8s_service' — resolved to the Service's CURRENT VIP/32
-	Disabled        bool      // F3: a disabled rule compiles to ZERO AllowEntries (the skip below) — its allow is
+	// DstK8sAPIEndpointID (K8N-3): dst_kind='k8s_api' — a cluster's Kubernetes API, resolved to the
+	// endpoint's CURRENT address on TCP 443. Never looked up among ExposedServices.
+	DstK8sAPIEndpointID uuid.UUID
+	Disabled            bool // F3: a disabled rule compiles to ZERO AllowEntries (the skip below) — its allow is
 	//                        withdrawn, so under default-deny it's "as if the rule weren't there". Not a deny.
 }
 
@@ -197,6 +200,13 @@ func (s ExposedService) handoffReady() bool {
 	return !s.PoolBound || (s.ConnectorNodeID != uuid.Nil && s.ConnectorGeneration > 0)
 }
 
+// k8sAPISourceAllowed is the founder ruling of 2026-11-23 at the compiler: a Kubernetes API rule is
+// for a person or a group. A site, an address range, an agent or an agent group as its source compiles
+// to nothing even if such a row were ever written.
+func k8sAPISourceAllowed(srcKind string) bool {
+	return srcKind == "user" || srcKind == "group" || srcKind == ""
+}
+
 // Membership is one (group, user) pair.
 type Membership struct {
 	GroupID uuid.UUID
@@ -262,6 +272,11 @@ type Snapshot struct {
 	FQDNResourcesLicensed bool
 	FQDNResourcesEnabled  bool
 	ExposedServices       []ExposedService // S10.3: dst_kind='k8s_service' resolution (id → current VIP)
+	// APIEndpoints (K8N-3): the cluster API endpoints whose API access is ON, keyed by endpoint id, for
+	// dst_kind='k8s_api'. A separate list from ExposedServices on purpose: a k8s_service rule can never
+	// resolve to a cluster's API and a k8s_api rule can never resolve to a Service. A cluster whose API
+	// access is off is simply absent, so its rules compile to nothing.
+	APIEndpoints          []ExposedService
 	Memberships           []Membership
 	AgentGroupMemberships []AgentGroupMembership
 	Devices               []Device
@@ -342,7 +357,9 @@ func Compile(s Snapshot) map[uuid.UUID]policyspec.Compiled {
 	// others, default-deny, dropping the same flow. Which gateway carries a site's traffic is a data-plane
 	// choice that changes on promotion, so the grant goes on all of them.
 	gatewaysOf := func(site uuid.UUID) []uuid.UUID { return siteGatewayList[site] }
-	for _, svc := range s.ExposedServices {
+	// K8N-3: a cluster's API endpoint is served by the same connector as its Services, so it seeds the
+	// same way — one write for both.
+	for _, svc := range append(append([]ExposedService(nil), s.ExposedServices...), s.APIEndpoints...) {
 		if svc.handoffReady() && svc.ConnectorNodeID != uuid.Nil {
 			nodeSet[svc.ConnectorNodeID] = true
 		}
@@ -432,6 +449,14 @@ func Compile(s Snapshot) map[uuid.UUID]policyspec.Compiled {
 			continue // unresolved pool: no client, connector, VIP, or DNS policy widening
 		}
 		serviceByID[es.ID] = es
+	}
+	// K8N-3: cluster API endpoints, in their own map (see Snapshot.APIEndpoints).
+	apiEndpointByID := make(map[uuid.UUID]ExposedService, len(s.APIEndpoints))
+	for _, endpoint := range s.APIEndpoints {
+		if !endpoint.handoffReady() {
+			continue
+		}
+		apiEndpointByID[endpoint.ID] = endpoint
 	}
 
 	// site -> sorted, de-duplicated subnet CIDRs (destination resolution for dst_kind='site', S8.1).
@@ -762,12 +787,23 @@ func Compile(s Snapshot) map[uuid.UUID]policyspec.Compiled {
 						})
 					}
 				}
-			case "k8s_service":
+			case "k8s_service", "k8s_api":
 				// S10.3: resolve the Service's STABLE id -> its CURRENT VIP (never a snapshotted address).
 				// An absent/deleted Service compiles to NOTHING — the honest "rule points at a vanished
 				// Service" surface is the API/web slice. The device edge and explicit connector both enforce;
 				// an unassigned cluster intentionally has no connector destination.
 				svc, ok := serviceByID[r.DstK8sServiceID]
+				if r.DstKind == "k8s_api" {
+					// K8N-3: a cluster's Kubernetes API. Same emission as a Service (its address on its
+					// port, plus the cluster's DNS address, on the device's gateway and the cluster's
+					// gateway), resolved from the API endpoints only. People and groups only: a rule with
+					// any other source, or a device that is not a person's (an AI agent owned by a
+					// granted person), gets nothing. API access off = no endpoint here = nothing.
+					if !k8sAPISourceAllowed(r.SrcKind) || d.Kind == "agent" || d.Kind == "sandbox" {
+						continue
+					}
+					svc, ok = apiEndpointByID[r.DstK8sAPIEndpointID]
+				}
 				if !ok || svc.VIP == "" {
 					continue
 				}

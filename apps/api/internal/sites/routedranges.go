@@ -11,6 +11,7 @@ import (
 
 	"github.com/tunnexio/tunnex/apps/api/db/sqlc"
 	"github.com/tunnexio/tunnex/apps/api/internal/apierr"
+	"github.com/tunnexio/tunnex/apps/api/internal/k8sapiaccess"
 )
 
 // ListRoutedRanges returns the org's DECLARED routed LAN ranges for split-tunnel device AllowedIPs
@@ -118,6 +119,24 @@ func (s *Service) ListRoutedForwards(ctx context.Context, orgID uuid.UUID, range
 	czones, err := s.q.ListK8sServedZonesForOrg(ctx, orgID)
 	if err != nil {
 		return nil, err
+	}
+	// K8N-3: a cluster whose API access is on is served too, even with no Service exposed: the API's name
+	// lives in the cluster's zone and its gateway answers for it. A zone already listed is not repeated.
+	apiZones, err := k8sapiaccess.ServedZones(ctx, s.q, orgID)
+	if err != nil {
+		return nil, err
+	}
+	for _, apiZone := range apiZones {
+		listed := false
+		for _, z := range czones {
+			if z.Name == apiZone.Name && z.DnsZone == apiZone.DnsZone {
+				listed = true
+				break
+			}
+		}
+		if !listed {
+			czones = append(czones, sqlc.ListK8sServedZonesForOrgRow{Name: apiZone.Name, DnsZone: apiZone.DnsZone, DnsVip: apiZone.DnsVip})
+		}
 	}
 	for _, z := range czones {
 		if z.DnsVip == "" {

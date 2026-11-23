@@ -7,9 +7,12 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/google/uuid"
+
 	"github.com/tunnexio/tunnex/apps/api/db/sqlc"
 	"github.com/tunnexio/tunnex/apps/api/internal/api"
 	"github.com/tunnexio/tunnex/apps/api/internal/apierr"
+	k8ssvc "github.com/tunnexio/tunnex/apps/api/internal/k8s"
 	"github.com/tunnexio/tunnex/apps/api/internal/nodes"
 	"github.com/tunnexio/tunnex/apps/api/internal/policyspec"
 	"github.com/tunnexio/tunnex/apps/api/internal/rbac"
@@ -28,6 +31,8 @@ type deviceAccessFacts struct {
 	gatewayFresh  bool
 
 	destination string
+	// k8sAPI is set when the destination is a cluster's Kubernetes API (K8N-3).
+	k8sAPI *deviceAccessK8sAPI
 
 	policyErr    error
 	policy       policyspec.AccessEvaluation
@@ -36,8 +41,54 @@ type deviceAccessFacts struct {
 	policyReport bool
 }
 
+// deviceAccessK8sAPI is what the diagnostic knows about a destination that is a cluster's Kubernetes API.
+type deviceAccessK8sAPI struct {
+	cluster string
+	name    string // the API's name in the tunnel
+	enabled bool
+	address string // the API's address; "" while API access is off
+
+	// What the cluster's own gateway says about forwarding to the API server.
+	gatewayAssigned bool
+	gatewayName     string
+	gatewayFresh    bool   // active and seen recently
+	endpointState   string // "ready", a refusal reason, or "" when the gateway has not said
+}
+
+// k8sAPIAllowedNote is the fixed sentence returned when Tunnex allows a connection to a cluster's API.
+// Tunnex decides the network path only; it holds no cluster credential and cannot see what the cluster
+// answers.
+const k8sAPIAllowedNote = "Tunnex allows the connection. The cluster still decides what you may do: a 401 or 403 from kubectl is the cluster's answer, not Tunnex's."
+
+// k8sAPIEndpointCheck writes the endpoint check: whether the cluster's gateway can forward to the
+// cluster's API server at all. It is the gateway's own report; nothing is probed.
+func k8sAPIEndpointCheck(b *accessCheckBuilder, k deviceAccessK8sAPI) {
+	facts := map[string]string{"cluster": k.cluster}
+	if k.gatewayName != "" {
+		facts["gateway"] = k.gatewayName
+	}
+	switch {
+	case !k.gatewayAssigned:
+		facts["reason"] = "no_gateway"
+		b.add(api.AgentAccessCheckStatusFail, "k8s_api_endpoint_unavailable", "The cluster has no gateway assigned, so nothing forwards to its API server.", facts)
+	case !k.gatewayFresh:
+		b.add(api.AgentAccessCheckStatusInconclusive, "k8s_api_endpoint_not_observed", "The cluster's gateway is not active or has not been seen recently, so its path to the API server is not known.", facts)
+	case k.endpointState == "":
+		b.add(api.AgentAccessCheckStatusInconclusive, "k8s_api_endpoint_not_observed", "The cluster's gateway has not reported whether it can forward to the API server yet. A gateway older than this feature never reports it.", facts)
+	case k.endpointState == nodes.K8sAPIEndpointReady:
+		b.add(api.AgentAccessCheckStatusPass, "k8s_api_endpoint_ready", "The cluster's gateway forwards to the cluster's API server.", facts)
+	case k.endpointState == nodes.K8sAPIEndpointOnGatewayNode:
+		facts["reason"] = k.endpointState
+		b.add(api.AgentAccessCheckStatusFail, "k8s_api_endpoint_unavailable", "The cluster's gateway runs on the cluster's only control-plane node and cannot forward to the API server on its own node. Run the gateway on a worker node.", facts)
+	default:
+		facts["reason"] = k.endpointState
+		b.add(api.AgentAccessCheckStatusFail, "k8s_api_endpoint_unavailable", "The cluster's gateway cannot forward to the cluster's API server.", facts)
+	}
+}
+
 // deviceAccessChecks writes the UIX-1 checks in their fixed order: device,
-// posture, gateway, destination, route, rule, applied.
+// posture, gateway, destination, route, rule, applied. A destination that is a
+// cluster's Kubernetes API adds one more, endpoint (K8N-3).
 func deviceAccessChecks(f deviceAccessFacts) accessCheckBuilder {
 	b := accessCheckBuilder{}
 
@@ -70,7 +121,23 @@ func deviceAccessChecks(f deviceAccessFacts) accessCheckBuilder {
 	literal := dstErr == nil
 	unresolved := !literal && f.policyErr == nil && len(f.policy.DestinationAnswers) == 0
 	destinations := []netip.Addr{}
+	apiAddress := netip.Addr{}
+	if f.k8sAPI != nil && f.k8sAPI.enabled {
+		// The API's name resolves to exactly one address, the one API access allocated. The policy was
+		// evaluated against it, so the route and rule checks below read as for a literal address.
+		apiAddress, _ = netip.ParseAddr(f.k8sAPI.address)
+	}
 	switch {
+	case f.k8sAPI != nil && !f.k8sAPI.enabled:
+		// API access is off: the name has no address and no rule can match it.
+		literal, unresolved = false, f.policyErr == nil
+		b.add(api.AgentAccessCheckStatusFail, "k8s_api_not_enabled", "API access is off for cluster "+f.k8sAPI.cluster+", so its Kubernetes API has no address in the tunnel. Turn on API access for the cluster.",
+			map[string]string{"cluster": f.k8sAPI.cluster, "name": f.k8sAPI.name})
+	case f.k8sAPI != nil && apiAddress.IsValid():
+		literal, unresolved = true, false
+		destinations = append(destinations, apiAddress)
+		b.add(api.AgentAccessCheckStatusPass, "k8s_api_destination", "Destination is the Kubernetes API of cluster "+f.k8sAPI.cluster+".",
+			map[string]string{"cluster": f.k8sAPI.cluster, "name": f.k8sAPI.name, "address": apiAddress.String()})
 	case literal:
 		destinations = append(destinations, dstIP)
 		b.add(api.AgentAccessCheckStatusPass, "destination_ip", "Destination is a literal IP; DNS is not required.", map[string]string{"ip": dstIP.String()})
@@ -125,7 +192,11 @@ func deviceAccessChecks(f deviceAccessFacts) accessCheckBuilder {
 				}
 				b.add(api.AgentAccessCheckStatusPass, code, message, policyFacts(f.policy))
 			} else {
-				b.add(api.AgentAccessCheckStatusFail, "no_matching_grant", "No active compiled grant permits this tuple.", policyFacts(f.policy))
+				message := "No active compiled grant permits this tuple."
+				if f.k8sAPI != nil {
+					message = "No rule lets this device reach the Kubernetes API of " + f.k8sAPI.cluster + "."
+				}
+				b.add(api.AgentAccessCheckStatusFail, "no_matching_grant", message, policyFacts(f.policy))
 			}
 		}
 	}
@@ -138,6 +209,9 @@ func deviceAccessChecks(f deviceAccessFacts) accessCheckBuilder {
 		b.add(api.AgentAccessCheckStatusFail, "applied_policy_mismatch", "Home gateway applied policy does not agree with the current compiled policy.", map[string]string{"health": string(f.health.Kind)})
 	} else {
 		b.add(api.AgentAccessCheckStatusPass, "applied_policy_current", "Home gateway reports the current compiled policy in force.", map[string]string{"policy_hash": f.health.PushedHash})
+	}
+	if f.k8sAPI != nil && f.k8sAPI.enabled {
+		k8sAPIEndpointCheck(&b, *f.k8sAPI)
 	}
 	return b
 }
@@ -186,6 +260,25 @@ func (s apiServer) TestDeviceAccess(ctx context.Context, req api.TestDeviceAcces
 		facts.deviceAddress = *dev.AssignedIp
 	}
 
+	// K8N-3: a destination that is a cluster's Kubernetes API (its tunnel name, or the address of an API
+	// whose access is on) is evaluated against that address and gets the endpoint check.
+	evaluated := destination
+	var apiDestination k8ssvc.APIDestination
+	if s.k8s != nil {
+		resolved, isAPI, err := s.k8s.ResolveAPIDestination(ctx, req.OrgId, destination)
+		if err != nil {
+			return nil, err
+		}
+		if isAPI {
+			apiDestination = resolved
+			facts.k8sAPI = &deviceAccessK8sAPI{cluster: resolved.ClusterName, name: resolved.FQDN, enabled: resolved.Enabled, address: resolved.VIP,
+				gatewayAssigned: resolved.ConnectorNodeID != uuid.Nil}
+			if resolved.Enabled {
+				evaluated = resolved.VIP
+			}
+		}
+	}
+
 	nodeRows, nodeErr := s.nodes.ListNodes(ctx, req.OrgId)
 	facts.policyErr = nodeErr
 	if nodeErr == nil {
@@ -206,12 +299,29 @@ func (s apiServer) TestDeviceAccess(ctx context.Context, req api.TestDeviceAcces
 			batch := s.nodes.LoadSiteTopoBatch(ctx, req.OrgId, nodeRows)
 			health := s.nodes.PolicyHealthForNodes(ctx, req.OrgId, nodeRows, batch)[home.ID]
 			facts.health = &health
-			facts.policy, facts.reach, facts.policyErr = s.nodes.EvaluateDeviceAccess(ctx, req.OrgId, dev.ID, *home, facts.deviceAddress, destination, protocol, req.Params.Port, batch)
+			facts.policy, facts.reach, facts.policyErr = s.nodes.EvaluateDeviceAccess(ctx, req.OrgId, dev.ID, *home, facts.deviceAddress, evaluated, protocol, req.Params.Port, batch)
+		}
+		if facts.k8sAPI != nil && facts.k8sAPI.gatewayAssigned {
+			facts.k8sAPI.gatewayAssigned = false // true again only if the node still exists
+			for i := range nodeRows {
+				if nodeRows[i].ID != apiDestination.ConnectorNodeID {
+					continue
+				}
+				gateway := nodeRows[i]
+				facts.k8sAPI.gatewayAssigned, facts.k8sAPI.gatewayName = true, gateway.Name
+				facts.k8sAPI.gatewayFresh = gateway.Status == "active" && !gateway.RevokedAt.Valid && gateway.LastSeenAt.Valid && deviceOnline(&gateway.LastSeenAt.Time)
+				facts.k8sAPI.endpointState = nodes.Capabilities(gateway.Capabilities).K8sAPIEndpoint
+				break
+			}
 		}
 	}
 
 	b := deviceAccessChecks(facts)
 	body := api.DeviceAccessDiagnostic{DeviceId: dev.ID, Destination: destination, Protocol: api.DeviceAccessDiagnosticProtocol(protocol), Port: req.Params.Port,
 		Overall: api.DeviceAccessDiagnosticOverall(b.overall()), FirstBlocker: b.firstBlocker, Checks: b.checks}
+	if facts.k8sAPI != nil && body.Overall == api.DeviceAccessDiagnosticOverallAllowed {
+		note := k8sAPIAllowedNote
+		body.Note = &note
+	}
 	return api.TestDeviceAccess200JSONResponse{Body: body, Headers: api.TestDeviceAccess200ResponseHeaders{XRequestId: reqID(ctx)}}, nil
 }
