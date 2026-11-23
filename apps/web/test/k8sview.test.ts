@@ -306,7 +306,7 @@ describe("namespace rules (K8N-4)", () => {
     expect(rule.label).toBe("Namespace rule");
     expect(rule.withheld).toBe(true);
     expect(rule.why).toMatch(/namespace rule for shop/);
-    expect(rule.why).toMatch(/Remove the rule/);
+    expect(rule.why).toMatch(/Exclude it from the rule, or remove the rule/);
 
     const operator = serviceOwner({ managedByOperator: true, namespaceRuleId: null, namespace: "shop" });
     expect(operator.label).toBe("GitOps");
@@ -353,5 +353,33 @@ describe("namespace rules (K8N-4)", () => {
     for (const status of ["pending", "inventory_stale", "inventory_unavailable", "scope_review_limit", "withdrawal_blocked", "error"] as const)
       expect(namespaceRuleStatus({ status, status_message: "why", waiting_services: 1 }).tone, status).not.toBe("ok");
     expect(namespaceRuleStatus({ status: "pending", status_message: "", waiting_services: 0 }).message).toMatch(/Nothing is exposed until/);
+  });
+});
+
+import { excludedServiceReason, namespaceRuleExclusionImpact } from "../src/lib/k8sview";
+
+describe("namespace rule exclusions (K8N-4 slice A)", () => {
+  const rule = { id: "r1", namespace: "shop", excluded_services: ["legacy"] };
+  const exposed = [
+    { namespace: "shop", name: "web", namespaceRuleId: "r1" },
+    { namespace: "shop", name: "web", namespaceRuleId: "r1" },
+    { namespace: "shop", name: "web", namespaceRuleId: null }, // made by hand: never the rule's to withdraw
+    { namespace: "shop", name: "api", namespaceRuleId: "r1" },
+    { namespace: "billing", name: "web", namespaceRuleId: "r2" }, // another rule, another namespace
+  ];
+
+  it("counts only the rule's own exposures of newly excluded Services", () => {
+    expect(namespaceRuleExclusionImpact(rule, exposed, ["legacy", "web"])).toEqual({ added: ["web"], removed: [], withdrawPorts: 2, withdrawServices: 1 });
+    expect(namespaceRuleExclusionImpact(rule, exposed, ["api", "web", "later"])).toEqual({ added: ["api", "later", "web"], removed: ["legacy"], withdrawPorts: 3, withdrawServices: 2 });
+    expect(namespaceRuleExclusionImpact(rule, exposed, ["legacy"])).toEqual({ added: [], removed: [], withdrawPorts: 0, withdrawServices: 0 });
+  });
+
+  it("refuses patterns, duplicates and the 101st name while typing", () => {
+    expect(excludedServiceReason("web", [])).toBeNull();
+    expect(excludedServiceReason("", [])).toBeNull();
+    expect(excludedServiceReason("web-*", [])).toMatch(/Patterns are not supported/);
+    expect(excludedServiceReason("Web", [])).toMatch(/exactly/);
+    expect(excludedServiceReason("web", ["web"])).toMatch(/already excluded/);
+    expect(excludedServiceReason("x", Array.from({ length: 100 }, (_, i) => `s${i}`))).toMatch(/at most 100/);
   });
 });

@@ -661,7 +661,7 @@ func (s *Service) UnexposeService(ctx context.Context, actorUserID uuid.UUID, ac
 		}
 		if ruleOwned {
 			return apierr.Conflict("managed_by_namespace_rule",
-				"this Service is exposed by the namespace rule for "+svc.Namespace+"; remove the rule to unexpose it")
+				"this Service is exposed by the namespace rule for "+svc.Namespace+"; exclude it from the rule, or remove the rule, to unexpose it")
 		}
 		return s.unexposeServiceTx(ctx, q, tx, svc, actorUserID, actorSystem, cause, nil)
 	})

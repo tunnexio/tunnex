@@ -5799,7 +5799,7 @@ export interface paths {
         put?: never;
         /**
          * Expose every Service in one namespace, now and as Services are added (K8N-4; human k8s:manage)
-         * @description Records the opt-in for one namespace and applies it each time the cluster's gateway reports its Services. Exposure gives a Service an address and a name; it never grants access. 400 namespace_not_eligible for kube-system, kube-public, kube-node-lease and Tunnex's own namespaces; 409 namespace_rule_exists.
+         * @description Records the opt-in for one namespace and applies it each time the cluster's gateway reports its Services. Exposure gives a Service an address and a name; it never grants access. 400 namespace_not_eligible for kube-system, kube-public, kube-node-lease and Tunnex's own namespaces; 409 namespace_rule_exists. excluded_services names Services of the namespace the rule must not expose.
          */
         post: operations["createK8sNamespaceRule"];
         delete?: never;
@@ -5829,7 +5829,11 @@ export interface paths {
         delete: operations["deleteK8sNamespaceRule"];
         options?: never;
         head?: never;
-        patch?: never;
+        /**
+         * Change which Services a namespace rule leaves out (K8N-4; human k8s:manage)
+         * @description excluded_services replaces the rule's exclusion list. The rule stops exposing an excluded Service and withdraws the exposures it made for one on the pass that runs with this call, without the wait that applies to a vanished Service; access rules that pointed at them are kept and allow nothing. A name taken off the list is exposed again as a new exposure. Like every pass this needs a current Service report: without one the change is stored and applied on the gateway's next report. Exposures made by hand or by the operator are never touched.
+         */
+        patch: operations["updateK8sNamespaceRule"];
         trace?: never;
     };
     "/api/v1/organizations/{orgId}/k8s/cluster-scope-settings": {
@@ -10960,6 +10964,8 @@ export interface components {
             /** Format: uuid */
             cluster_id: string;
             namespace: string;
+            /** @description Services of the namespace this rule never exposes, sorted by name. */
+            excluded_services: string[];
             /**
              * @description applied = fully applied on the last pass. Anything else: the rule is not fully applied and status_message says why.
              * @enum {string}
@@ -10979,6 +10985,12 @@ export interface components {
         CreateK8sNamespaceRuleRequest: {
             /** @description One namespace. There is no wildcard and no all-namespaces rule. */
             namespace: string;
+            /** @description Exact Service names the rule must not expose. No patterns. */
+            excluded_services?: string[];
+        };
+        UpdateK8sNamespaceRuleRequest: {
+            /** @description Replaces the exclusion list. Omit to leave it unchanged. */
+            excluded_services?: string[];
         };
         RegisterK8sClusterRequest: {
             /**
@@ -23324,6 +23336,36 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    updateK8sNamespaceRule: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                clusterId: string;
+                ruleId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateK8sNamespaceRuleRequest"];
+            };
+        };
+        responses: {
+            /** @description The rule, with the outcome of the pass that applied the change. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["K8sNamespaceRule"];
+                };
             };
             default: components["responses"]["Error"];
         };

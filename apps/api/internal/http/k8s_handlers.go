@@ -75,6 +75,7 @@ func toAPIK8sService(svc sqlc.K8sService, fqdn string, namespaceRule uuid.UUID) 
 func toAPIK8sNamespaceRule(rule k8ssvc.NamespaceRule) api.K8sNamespaceRule {
 	return api.K8sNamespaceRule{
 		Id: rule.ID, ClusterId: rule.ClusterID, Namespace: rule.Namespace,
+		ExcludedServices: rule.ExcludedServices,
 		Status: api.K8sNamespaceRuleStatus(rule.Status), StatusMessage: rule.StatusMessage,
 		WaitingServices: rule.WaitingServices, ExposedServices: rule.ExposedServices, ExposedPorts: rule.ExposedPorts,
 		LastReconciledAt: rule.LastReconciledAt, CreatedAt: rule.CreatedAt,
@@ -108,11 +109,30 @@ func (s apiServer) CreateK8sNamespaceRule(ctx context.Context, req api.CreateK8s
 		return nil, apierr.BadRequest("invalid_request", "a request body is required")
 	}
 	actor, _ := authctx.PrincipalFrom(ctx)
-	rule, err := s.k8s.CreateNamespaceRule(ctx, req.OrgId, req.ClusterId, req.Body.Namespace, actor)
+	in := k8ssvc.NamespaceRuleInput{Namespace: req.Body.Namespace}
+	if req.Body.ExcludedServices != nil {
+		in.ExcludedServices = *req.Body.ExcludedServices
+	}
+	rule, err := s.k8s.CreateNamespaceRule(ctx, req.OrgId, req.ClusterId, in, actor)
 	if err != nil {
 		return nil, err
 	}
 	return api.CreateK8sNamespaceRule201JSONResponse{Body: toAPIK8sNamespaceRule(rule), Headers: api.CreateK8sNamespaceRule201ResponseHeaders{XRequestId: reqID(ctx)}}, nil
+}
+
+func (s apiServer) UpdateK8sNamespaceRule(ctx context.Context, req api.UpdateK8sNamespaceRuleRequestObject) (api.UpdateK8sNamespaceRuleResponseObject, error) {
+	if _, err := authorize(ctx, req.OrgId, rbac.PermK8sManage); err != nil {
+		return nil, err
+	}
+	if req.Body == nil {
+		return nil, apierr.BadRequest("invalid_request", "a request body is required")
+	}
+	actor, _ := authctx.PrincipalFrom(ctx)
+	rule, err := s.k8s.UpdateNamespaceRule(ctx, req.OrgId, req.ClusterId, req.RuleId, k8ssvc.NamespaceRuleUpdate{ExcludedServices: req.Body.ExcludedServices}, actor)
+	if err != nil {
+		return nil, err
+	}
+	return api.UpdateK8sNamespaceRule200JSONResponse{Body: toAPIK8sNamespaceRule(rule), Headers: api.UpdateK8sNamespaceRule200ResponseHeaders{XRequestId: reqID(ctx)}}, nil
 }
 
 func (s apiServer) DeleteK8sNamespaceRule(ctx context.Context, req api.DeleteK8sNamespaceRuleRequestObject) (api.DeleteK8sNamespaceRuleResponseObject, error) {

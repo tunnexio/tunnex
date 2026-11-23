@@ -299,7 +299,7 @@ export function serviceOwner(row: Pick<ServiceRow, "managedByOperator" | "namesp
     return {
       label: NAMESPACE_RULE_BADGE,
       withheld: true,
-      why: `This Service is exposed by the namespace rule for ${row.namespace}. Remove the rule to unexpose it; removing it here would be undone on the gateway's next report.`,
+      why: `This Service is exposed by the namespace rule for ${row.namespace}. Exclude it from the rule, or remove the rule, to unexpose it; removing it here would be undone on the gateway's next report.`,
     };
   return { label: "Dashboard", withheld: false, why: null };
 }
@@ -368,6 +368,38 @@ export function namespaceRulePreview(
     }
   }
   return out;
+}
+
+/** Mirrors the server's refusal of an excluded Service name. Exact names only; the server still decides. */
+export function excludedServiceReason(name: string, alreadyExcluded: string[]): string | null {
+  const svc = name.trim();
+  if (svc === "") return null;
+  if (!/^[a-z0-9]([-a-z0-9]*[a-z0-9])?$/.test(svc) || svc.length > 63)
+    return "Name one Service exactly: lowercase letters, digits and hyphens. Patterns are not supported.";
+  if (alreadyExcluded.includes(svc)) return `${svc} is already excluded.`;
+  if (alreadyExcluded.length >= 100) return "A namespace rule can exclude at most 100 Services.";
+  return null;
+}
+
+export interface NamespaceRuleExclusionImpact {
+  added: string[]; // names newly excluded
+  removed: string[]; // names taken off the list: exposed again as NEW exposures
+  withdrawPorts: number; // exposures THIS rule made that the change withdraws
+  withdrawServices: number;
+}
+
+/** What saving a new exclusion list would do, from the exposures shown right now. Only the rule's own rows count. */
+export function namespaceRuleExclusionImpact(
+  rule: Pick<K8sNamespaceRule, "id" | "namespace" | "excluded_services">,
+  exposed: { namespace: string; name: string; namespaceRuleId?: string | null }[],
+  next: string[],
+): NamespaceRuleExclusionImpact {
+  const before = new Set(rule.excluded_services);
+  const after = new Set(next);
+  const added = next.filter((name) => !before.has(name)).sort();
+  const removed = rule.excluded_services.filter((name) => !after.has(name)).sort();
+  const rows = exposed.filter((row) => row.namespace === rule.namespace && row.namespaceRuleId === rule.id && added.includes(row.name));
+  return { added, removed, withdrawPorts: rows.length, withdrawServices: new Set(rows.map((row) => row.name)).size };
 }
 
 /** The rule's state in words. Anything but "applied" is a rule that is NOT fully in effect, with the reason. */

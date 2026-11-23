@@ -5175,6 +5175,9 @@ type CreateK8sClusterScopeSourceKind string
 
 // CreateK8sNamespaceRuleRequest defines model for CreateK8sNamespaceRuleRequest.
 type CreateK8sNamespaceRuleRequest struct {
+	// ExcludedServices Exact Service names the rule must not expose. No patterns.
+	ExcludedServices *[]string `json:"excluded_services,omitempty"`
+
 	// Namespace One namespace. There is no wildcard and no all-namespaces rule.
 	Namespace string `json:"namespace"`
 }
@@ -6676,9 +6679,12 @@ type K8sInventoryService struct {
 
 // K8sNamespaceRule defines model for K8sNamespaceRule.
 type K8sNamespaceRule struct {
-	ClusterId    openapi_types.UUID `json:"cluster_id"`
-	CreatedAt    time.Time          `json:"created_at"`
-	ExposedPorts int                `json:"exposed_ports"`
+	ClusterId openapi_types.UUID `json:"cluster_id"`
+	CreatedAt time.Time          `json:"created_at"`
+
+	// ExcludedServices Services of the namespace this rule never exposes, sorted by name.
+	ExcludedServices []string `json:"excluded_services"`
+	ExposedPorts     int      `json:"exposed_ports"`
 
 	// ExposedServices Services currently exposed because of this rule.
 	ExposedServices  int                `json:"exposed_services"`
@@ -8780,6 +8786,12 @@ type UpdateGatewayEndpointRequest struct {
 	Url string `json:"url"`
 }
 
+// UpdateK8sNamespaceRuleRequest defines model for UpdateK8sNamespaceRuleRequest.
+type UpdateK8sNamespaceRuleRequest struct {
+	// ExcludedServices Replaces the exclusion list. Omit to leave it unchanged.
+	ExcludedServices *[]string `json:"excluded_services,omitempty"`
+}
+
 // UpdateNodeRequest defines model for UpdateNodeRequest.
 type UpdateNodeRequest struct {
 	// Name The gateway's display name. A label: nothing consumes it structurally, which is why it is the one field safe to edit.
@@ -10005,6 +10017,9 @@ type ExposeK8sInventoryServiceJSONRequestBody = ExposeK8sInventoryServiceRequest
 
 // CreateK8sNamespaceRuleJSONRequestBody defines body for CreateK8sNamespaceRule for application/json ContentType.
 type CreateK8sNamespaceRuleJSONRequestBody = CreateK8sNamespaceRuleRequest
+
+// UpdateK8sNamespaceRuleJSONRequestBody defines body for UpdateK8sNamespaceRule for application/json ContentType.
+type UpdateK8sNamespaceRuleJSONRequestBody = UpdateK8sNamespaceRuleRequest
 
 // SetK8sClusterProviderMetadataJSONRequestBody defines body for SetK8sClusterProviderMetadata for application/json ContentType.
 type SetK8sClusterProviderMetadataJSONRequestBody = K8sClusterProviderMetadataRequest
@@ -11654,6 +11669,11 @@ type ClientInterface interface {
 
 	// DeleteK8sNamespaceRule request
 	DeleteK8sNamespaceRule(ctx context.Context, orgId openapi_types.UUID, clusterId openapi_types.UUID, ruleId openapi_types.UUID, params *DeleteK8sNamespaceRuleParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateK8sNamespaceRuleWithBody request with any body
+	UpdateK8sNamespaceRuleWithBody(ctx context.Context, orgId openapi_types.UUID, clusterId openapi_types.UUID, ruleId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	UpdateK8sNamespaceRule(ctx context.Context, orgId openapi_types.UUID, clusterId openapi_types.UUID, ruleId openapi_types.UUID, body UpdateK8sNamespaceRuleJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// SetK8sClusterProviderMetadataWithBody request with any body
 	SetK8sClusterProviderMetadataWithBody(ctx context.Context, orgId openapi_types.UUID, clusterId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -17980,6 +18000,30 @@ func (c *Client) CreateK8sNamespaceRule(ctx context.Context, orgId openapi_types
 
 func (c *Client) DeleteK8sNamespaceRule(ctx context.Context, orgId openapi_types.UUID, clusterId openapi_types.UUID, ruleId openapi_types.UUID, params *DeleteK8sNamespaceRuleParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewDeleteK8sNamespaceRuleRequest(c.Server, orgId, clusterId, ruleId, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) UpdateK8sNamespaceRuleWithBody(ctx context.Context, orgId openapi_types.UUID, clusterId openapi_types.UUID, ruleId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateK8sNamespaceRuleRequestWithBody(c.Server, orgId, clusterId, ruleId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) UpdateK8sNamespaceRule(ctx context.Context, orgId openapi_types.UUID, clusterId openapi_types.UUID, ruleId openapi_types.UUID, body UpdateK8sNamespaceRuleJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateK8sNamespaceRuleRequest(c.Server, orgId, clusterId, ruleId, body)
 	if err != nil {
 		return nil, err
 	}
@@ -36982,6 +37026,67 @@ func NewDeleteK8sNamespaceRuleRequest(server string, orgId openapi_types.UUID, c
 	return req, nil
 }
 
+// NewUpdateK8sNamespaceRuleRequest calls the generic UpdateK8sNamespaceRule builder with application/json body
+func NewUpdateK8sNamespaceRuleRequest(server string, orgId openapi_types.UUID, clusterId openapi_types.UUID, ruleId openapi_types.UUID, body UpdateK8sNamespaceRuleJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewUpdateK8sNamespaceRuleRequestWithBody(server, orgId, clusterId, ruleId, "application/json", bodyReader)
+}
+
+// NewUpdateK8sNamespaceRuleRequestWithBody generates requests for UpdateK8sNamespaceRule with any type of body
+func NewUpdateK8sNamespaceRuleRequestWithBody(server string, orgId openapi_types.UUID, clusterId openapi_types.UUID, ruleId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "clusterId", runtime.ParamLocationPath, clusterId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam2 string
+
+	pathParam2, err = runtime.StyleParamWithLocation("simple", false, "ruleId", runtime.ParamLocationPath, ruleId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/k8s/clusters/%s/namespace-rules/%s", pathParam0, pathParam1, pathParam2)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("PATCH", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewSetK8sClusterProviderMetadataRequest calls the generic SetK8sClusterProviderMetadata builder with application/json body
 func NewSetK8sClusterProviderMetadataRequest(server string, orgId openapi_types.UUID, clusterId openapi_types.UUID, body SetK8sClusterProviderMetadataJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
@@ -45549,6 +45654,11 @@ type ClientWithResponsesInterface interface {
 	// DeleteK8sNamespaceRuleWithResponse request
 	DeleteK8sNamespaceRuleWithResponse(ctx context.Context, orgId openapi_types.UUID, clusterId openapi_types.UUID, ruleId openapi_types.UUID, params *DeleteK8sNamespaceRuleParams, reqEditors ...RequestEditorFn) (*DeleteK8sNamespaceRuleResponse, error)
 
+	// UpdateK8sNamespaceRuleWithBodyWithResponse request with any body
+	UpdateK8sNamespaceRuleWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, clusterId openapi_types.UUID, ruleId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateK8sNamespaceRuleResponse, error)
+
+	UpdateK8sNamespaceRuleWithResponse(ctx context.Context, orgId openapi_types.UUID, clusterId openapi_types.UUID, ruleId openapi_types.UUID, body UpdateK8sNamespaceRuleJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateK8sNamespaceRuleResponse, error)
+
 	// SetK8sClusterProviderMetadataWithBodyWithResponse request with any body
 	SetK8sClusterProviderMetadataWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, clusterId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetK8sClusterProviderMetadataResponse, error)
 
@@ -53606,6 +53716,29 @@ func (r DeleteK8sNamespaceRuleResponse) StatusCode() int {
 	return 0
 }
 
+type UpdateK8sNamespaceRuleResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *K8sNamespaceRule
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r UpdateK8sNamespaceRuleResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r UpdateK8sNamespaceRuleResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
 type SetK8sClusterProviderMetadataResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -61340,6 +61473,23 @@ func (c *ClientWithResponses) DeleteK8sNamespaceRuleWithResponse(ctx context.Con
 		return nil, err
 	}
 	return ParseDeleteK8sNamespaceRuleResponse(rsp)
+}
+
+// UpdateK8sNamespaceRuleWithBodyWithResponse request with arbitrary body returning *UpdateK8sNamespaceRuleResponse
+func (c *ClientWithResponses) UpdateK8sNamespaceRuleWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, clusterId openapi_types.UUID, ruleId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateK8sNamespaceRuleResponse, error) {
+	rsp, err := c.UpdateK8sNamespaceRuleWithBody(ctx, orgId, clusterId, ruleId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateK8sNamespaceRuleResponse(rsp)
+}
+
+func (c *ClientWithResponses) UpdateK8sNamespaceRuleWithResponse(ctx context.Context, orgId openapi_types.UUID, clusterId openapi_types.UUID, ruleId openapi_types.UUID, body UpdateK8sNamespaceRuleJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateK8sNamespaceRuleResponse, error) {
+	rsp, err := c.UpdateK8sNamespaceRule(ctx, orgId, clusterId, ruleId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateK8sNamespaceRuleResponse(rsp)
 }
 
 // SetK8sClusterProviderMetadataWithBodyWithResponse request with arbitrary body returning *SetK8sClusterProviderMetadataResponse
@@ -73880,6 +74030,39 @@ func ParseDeleteK8sNamespaceRuleResponse(rsp *http.Response) (*DeleteK8sNamespac
 	}
 
 	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseUpdateK8sNamespaceRuleResponse parses an HTTP response from a UpdateK8sNamespaceRuleWithResponse call
+func ParseUpdateK8sNamespaceRuleResponse(rsp *http.Response) (*UpdateK8sNamespaceRuleResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UpdateK8sNamespaceRuleResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest K8sNamespaceRule
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
 		var dest Error
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {

@@ -2,7 +2,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { components } from "@tunnex/shared";
 import { api, apiErrorMessage, loadOne } from "../lib/api";
 import {
+  excludedServiceReason,
   namespaceIneligibleReason,
+  namespaceRuleExclusionImpact,
   namespaceRulePreview,
   namespaceRuleStatus,
   ruleableNamespaces,
@@ -19,7 +21,7 @@ import { Badge, Button, ErrorText, Field, Input, Modal, Select } from "./ui";
 
 type InventoryService = components["schemas"]["K8sInventoryService"];
 type InventoryPage = components["schemas"]["K8sInventoryPage"];
-type ExposedRow = Pick<ServiceRow, "namespace" | "name" | "protocol" | "ports">;
+type ExposedRow = Pick<ServiceRow, "namespace" | "name" | "protocol" | "ports"> & { namespaceRuleId?: string | null };
 
 const RULES_PATH = "/api/v1/organizations/{orgId}/k8s/clusters/{clusterId}/namespace-rules" as const;
 
@@ -43,6 +45,7 @@ export function K8sNamespaceRulesPanel({
   const [error, setError] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [removing, setRemoving] = useState<K8sNamespaceRule | null>(null);
+  const [excluding, setExcluding] = useState<K8sNamespaceRule | null>(null);
   const epoch = useRef(0);
 
   const load = useCallback(async () => {
@@ -91,9 +94,15 @@ export function K8sNamespaceRulesPanel({
                     {rule.exposed_services} Service{rule.exposed_services === 1 ? "" : "s"} · {rule.exposed_ports} port{rule.exposed_ports === 1 ? "" : "s"} exposed by this rule
                     {rule.last_reconciled_at ? ` · last applied ${new Date(rule.last_reconciled_at).toLocaleString()}` : ""}
                   </span>
+                  {rule.excluded_services.length > 0 && <span className="kubernetes-muted">Excluded, never exposed by this rule: {rule.excluded_services.join(", ")}</span>}
                   {status.message && <span className={status.tone === "ok" ? "kubernetes-muted" : "text-warn"} role={status.tone === "ok" ? undefined : "status"}>{status.message}</span>}
                 </div>
-                {canManage && <Button size="sm" variant="ghost" onClick={() => setRemoving(rule)}>Remove rule</Button>}
+                {canManage && (
+                  <span className="kubernetes-row-actions">
+                    <Button size="sm" variant="ghost" aria-label={`Exclusions for ${rule.namespace}`} onClick={() => setExcluding(rule)}>Exclusions…</Button>
+                    <Button size="sm" variant="ghost" onClick={() => setRemoving(rule)}>Remove rule</Button>
+                  </span>
+                )}
               </li>
             );
           })}
@@ -109,6 +118,9 @@ export function K8sNamespaceRulesPanel({
           onClose={() => setCreating(false)}
           onDone={changed}
         />
+      )}
+      {canManage && excluding && (
+        <NamespaceRuleExclusionsModal orgId={orgId} clusterId={cluster.id} rule={excluding} exposed={exposed} onClose={() => setExcluding(null)} onDone={changed} />
       )}
       {canManage && removing && (
         <RemoveNamespaceRuleModal orgId={orgId} clusterId={cluster.id} rule={removing} onClose={() => setRemoving(null)} onDone={changed} />
@@ -324,6 +336,139 @@ export function RemoveNamespaceRuleModal({
             <strong>Withdraw all of them.</strong> Their addresses and names stop working at once. Access rules that point at them are kept but allow nothing, and exposing the Services again later does not bring those rules back. If any one cannot be withdrawn, nothing is changed.
           </label>
         </fieldset>
+      </div>
+      <ErrorText>{err}</ErrorText>
+    </Modal>
+  );
+}
+
+/** Slice A: choose the Services a rule leaves out. The consequences are stated before confirming. */
+export function NamespaceRuleExclusionsModal({
+  orgId,
+  clusterId,
+  rule,
+  exposed,
+  onClose,
+  onDone,
+}: {
+  orgId: string;
+  clusterId: string;
+  rule: K8sNamespaceRule;
+  exposed: ExposedRow[];
+  onClose: () => void;
+  onDone: () => void | Promise<void>;
+}) {
+  const [list, setList] = useState<string[]>(rule.excluded_services);
+  const [name, setName] = useState("");
+  const [understood, setUnderstood] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  // Services this rule exposes right now and that are not on the list yet.
+  const offered = useMemo(
+    () => [...new Set(exposed.filter((row) => row.namespace === rule.namespace && row.namespaceRuleId === rule.id).map((row) => row.name))]
+      .filter((svc) => !list.includes(svc)).sort(),
+    [exposed, rule.namespace, rule.id, list],
+  );
+  const typed = name.trim();
+  const reason = excludedServiceReason(typed, list);
+  const impact = namespaceRuleExclusionImpact(rule, exposed, list);
+  const dirty = impact.added.length > 0 || impact.removed.length > 0;
+  const needsTick = impact.withdrawPorts > 0;
+  const ready = dirty && !busy && (!needsTick || understood);
+
+  function add(svc: string) {
+    if (svc === "" || excludedServiceReason(svc, list) !== null) return;
+    setList([...list, svc].sort());
+    setName("");
+    setUnderstood(false);
+  }
+
+  async function submit() {
+    if (!ready) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      const { data, error } = await api.PATCH(
+        "/api/v1/organizations/{orgId}/k8s/clusters/{clusterId}/namespace-rules/{ruleId}",
+        { params: { path: { orgId, clusterId, ruleId: rule.id } }, body: { excluded_services: list } },
+      );
+      if (error || !data) return setErr(apiErrorMessage(error, "Could not change the rule's exclusions."));
+      await onDone();
+      const status = namespaceRuleStatus(data);
+      // The list is saved either way. If the pass did not apply it, keep the dialog open and say why.
+      if (data.status !== "applied" && status.message) return setErr(`The exclusions were saved but are not applied yet. ${status.message}`);
+      onClose();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal
+      placement="right" showClose
+      title={`Services the namespace rule for ${rule.namespace} leaves out`}
+      onDismiss={busy ? () => {} : onClose}
+      actions={
+        <>
+          <Button variant="ghost" onClick={onClose} disabled={busy}>Cancel</Button>
+          <Button variant={needsTick ? "danger" : "primary"} onClick={() => void submit()} disabled={!ready}>
+            {busy ? "Saving…" : needsTick ? `Save and withdraw ${impact.withdrawPorts} exposed port${impact.withdrawPorts === 1 ? "" : "s"}` : "Save exclusions"}
+          </Button>
+        </>
+      }
+    >
+      <div className="kubernetes-action-form">
+        <p>The rule exposes every Service in <strong>{rule.namespace}</strong> except the ones listed here. An excluded Service can still be exposed by hand.</p>
+        {list.length === 0 ? <p className="kubernetes-muted">No Service is excluded.</p> : (
+          <ul className="kubernetes-namespace-rule-list" aria-label="Excluded Services">
+            {list.map((svc) => (
+              <li key={svc}>
+                <span><strong>{svc}</strong>{!rule.excluded_services.includes(svc) && <> <Badge tone="warn">will be excluded</Badge></>}</span>
+                <Button size="sm" variant="ghost" aria-label={`Stop excluding ${svc}`} disabled={busy} onClick={() => { setList(list.filter((item) => item !== svc)); setUnderstood(false); }}>Stop excluding</Button>
+              </li>
+            ))}
+          </ul>
+        )}
+        {offered.length > 0 && (
+          <Field label="Exclude a Service this rule exposes">
+            <Select value="" onChange={(event) => add(event.target.value)}>
+              <option value="">Choose a Service…</option>
+              {offered.map((svc) => <option key={svc} value={svc}>{svc}</option>)}
+            </Select>
+          </Field>
+        )}
+        <Field label="Or name a Service">
+          <Input value={name} placeholder="exact Service name" onChange={(event) => setName(event.target.value)} />
+        </Field>
+        <Button size="sm" variant="ghost" disabled={typed === "" || reason !== null || busy} onClick={() => add(typed)}>Add to the list</Button>
+        {reason && <ErrorText>{reason}</ErrorText>}
+        <p className="kubernetes-muted">Exact names only, at most 100. A name with no Service yet is kept for when one appears.</p>
+
+        {dirty && (
+          <div className="kubernetes-action-impact" aria-label="What this change will do">
+            <p><strong>What happens when you save</strong></p>
+            <ul>
+              {impact.added.length > 0 && (
+                <li>
+                  <strong>{impact.added.join(", ")}:</strong>{" "}
+                  {impact.withdrawPorts > 0
+                    ? `${impact.withdrawPorts} port${impact.withdrawPorts === 1 ? "" : "s"} of ${impact.withdrawServices} Service${impact.withdrawServices === 1 ? "" : "s"} this rule exposed ${impact.withdrawPorts === 1 ? "is" : "are"} withdrawn at once, with no waiting period. Their addresses and names stop working. Access rules that point at them are kept but allow nothing, and they do not come back if you stop excluding the Service.`
+                    : "this rule exposes nothing of it now, so nothing is withdrawn. The rule will not expose it."}
+                </li>
+              )}
+              {impact.added.length > 0 && <li>Exposures of an excluded Service made by hand or by the GitOps operator are not changed.</li>}
+              {impact.removed.length > 0 && <li><strong>{impact.removed.join(", ")}:</strong> exposed again by the rule as a new exposure, all ports. Nobody gains access; earlier access rules do not come back.</li>}
+              <li>If the cluster's gateway is not reporting, the list is saved and applied on its next report.</li>
+            </ul>
+            {needsTick && (
+              <label className="kubernetes-confirm-check">
+                <input type="checkbox" checked={understood} onChange={(event) => setUnderstood(event.target.checked)} />{" "}
+                Withdraw {impact.withdrawPorts} exposed port{impact.withdrawPorts === 1 ? "" : "s"} now
+              </label>
+            )}
+          </div>
+        )}
       </div>
       <ErrorText>{err}</ErrorText>
     </Modal>
