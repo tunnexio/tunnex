@@ -557,3 +557,94 @@ before any stage 1 code, as the paper says.
 
 Naming: the identity-mapping paper this document calls "K8N-4" will be K8N-5. K8N-4 is
 `docs/K8N-4-expose-by-namespace.md`.
+
+## As built — stage 1, 2026-11-23
+
+Branch `k8n/kubectl-stage1`, from `story/kubernetes-next`. Stage 1 is built as scoped above. Where the
+paper and the code disagreed, or the paper was silent, the smallest correct choice was taken; each one
+is listed here.
+
+**Built before the walk.** The ruling says the one-day walk on real clusters comes before any stage 1
+code. This code was written first, on instruction. Nothing in it has run against a cluster. Every item
+under "Not confirmed" is still not confirmed, and the choice of A1 over A2 is still an assumption.
+Substitute, not satisfied: unit tests and database-backed tests with seeded gateway reports. Trigger for
+the real proof: the next live Kubernetes walk on `story/kubernetes-next`, with the matrix under "Live
+walk".
+
+What is built, and where it differs:
+
+1. **Shape.** Table `k8s_api_endpoints` (one row per cluster: enabled, address) and column
+   `policy_rules.dst_k8s_api_endpoint_id`, migration `0239`. The rule points at the endpoint row; the API
+   takes and returns the cluster (`dst_k8s_api_cluster_id`), because that is what a person names.
+   The endpoint is never a `k8s_services` row. That is what keeps it out of scopes, agent access
+   requests and agent templates: all three key on `k8s_services` and have their own destination checks,
+   which do not know the kind.
+2. **Off keeps the rules, and on brings them back.** Turning API access off gives the address back and
+   keeps the endpoint row, so its rules stay and compile to nothing, as the paper says. It follows that
+   turning it on again makes those rules effective again. The response carries `rule_count`, and the
+   enable and disable dialogs say how many rules are affected. Deregistering the cluster removes the
+   endpoint and its rules by cascade; the deregistration audit entry counts them.
+3. **An existing `default/kubernetes` exposure blocks enabling.** Existing exposures are left in place
+   and not converted. With one in place, API access cannot be turned on for that cluster (409
+   `k8s_api_ordinary_exposure_exists`): two addresses would answer to one name. The administrator
+   unexposes it first. Whether it should instead be converted is the founder's decision 8, ruled "not
+   converted".
+4. **Not available with a connector pool.** A pool's handoff plan is built from `k8s_services` alone, so
+   the API's address would not follow a handoff. API access is refused for a cluster served by a pool
+   (409 `k8s_api_connector_pool_unsupported`), and a pool cannot be configured while API access is on
+   (409 `k8s_api_access_enabled`). The paper only says a second gateway is a preview.
+5. **A human turns it on.** `k8s_api:manage` is held by owner and admin. The machine operator role does
+   not hold it, and a machine credential is refused even with the permission. This is "no GitOps
+   resource for API access" made unreachable rather than merely unbuilt.
+6. **People and groups only, in three places.** The API refuses any other source (400
+   `k8s_api_source_not_allowed`), the database refuses it (check `policy_rules_k8s_api_people_only`),
+   and the compiler emits nothing for it. One step further than the paper: a rule that grants a person
+   does not reach an AI agent that person owns. Other destination kinds do reach it; this one does not.
+7. **The gateway's reason is general.** `classify` reports `endpoints_on_gateway_node` for any Service
+   whose ready endpoints are all the gateway's own addresses, not only for the API. One existing
+   assertion in `dnat_linux_test.go` changed from `no_ready_endpoints` to the new reason; it was
+   asserting exactly the wording this item replaces. The reason is only logged and reported; nothing
+   keys on it.
+8. **The gateway reports one new field.** Per-address refusals were never sent to the control plane,
+   only logged. "Test access" could not have shown the gateway's reason. The gateway now reports
+   `k8s_api_endpoint` (`ready`, a refusal reason, or nothing) with its usual status. The control plane
+   keeps only known values. A gateway older than this reports nothing, and "Test access" then says so
+   (`k8s_api_endpoint_not_observed`, inconclusive) instead of guessing.
+9. **"Test access" codes.** As specified: `k8s_api_not_enabled`, `k8s_api_endpoint_unavailable` with the
+   reason, the cluster named in `no_matching_grant`, and the fixed sentence, returned in a new `note`
+   field. Added because three states cannot be said with two codes: `k8s_api_destination` (the
+   destination was recognised), `k8s_api_endpoint_ready`, `k8s_api_endpoint_not_observed`. The cluster's
+   API is recognised by its tunnel name or by its address. Only the device diagnostic has it; agents
+   cannot be granted the API.
+10. **Refusal of `default/kubernetes`.** `ExposeService`, the inventory exposure path, the shared insert
+    path, the namespace rule's planner and the operator all refuse it (400
+    `k8s_api_server_not_a_service`; operator `Ready=False` with that reason). It is left out of the
+    inventory listing and of a new scope's candidates. The gateway still reports it; the filter is in
+    the control plane, so an older gateway is covered. Existing rows are untouched: an exposure a
+    namespace rule already owns is still read as reported and is never withdrawn for this reason; an
+    existing scope membership is read as it was.
+11. **Audit names the destination.** `k8s.api_access_enabled` and `k8s.api_access_disabled` name the
+    person and the cluster. For a rule whose destination is a cluster's API, the created, deleted,
+    enabled, disabled and expired entries carry the cluster. Other rules' entries are unchanged.
+12. **Address allocation.** Every allocation in a cluster now takes the cluster row lock, including
+    `ExposeService`, which did not before, and works around the API's address. Two database triggers
+    are the backstop: the API's address must be in the range and not the DNS or a Service address, and a
+    Service is never given the API's address.
+13. **Older schemas.** This repository runs today's code against earlier schema versions in its tests.
+    The policy snapshot, the gateway topology, address allocation and the client resolver push
+    therefore ask whether the `0239` table exists before reading it (`internal/k8sapiaccess`). The
+    existing queries they already ran are unchanged.
+14. **No edition gate.** Which edition carries the feature is still open. Nothing was added: the switch
+    is available wherever cluster registration is, and a rule is subject to what the policy API
+    already requires.
+15. **A device on another gateway.** The rule is placed where a Service rule is placed: on the device's
+    gateway and on the cluster's gateway. A device whose home gateway has no route to the cluster's
+    range is told so by the existing route check. Nothing new was built for that path.
+
+Not built, as the paper says: any cluster identity; issuing, storing or proxying a credential; records
+of verbs; MFA at the moment of use; kubeconfig generation; a CLI helper; a GitOps resource for API
+access; support for a gateway on a control-plane node (it is refused and now said plainly).
+
+Also still open from "Not confirmed": item 9, whether access events label Service flows with their
+Service. Nothing was changed there, so API flows are recorded as any allowed or denied flow is, with
+device, person, rule, time and port.
