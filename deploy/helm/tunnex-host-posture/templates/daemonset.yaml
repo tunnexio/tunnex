@@ -104,6 +104,20 @@ spec:
             - name: k8s-api-token
               mountPath: /var/run/secrets/kubernetes.io/serviceaccount
               readOnly: true
+            {{- if .Values.cilium.enabled }}
+            # K8N-2: read-only, and only on a cluster that runs Cilium. The
+            # manager sends one GET /v1/healthz to the agent socket and dumps
+            # one pinned map; it writes to neither path.
+            - name: cilium-run
+              mountPath: /var/run/cilium
+              readOnly: true
+            - name: host-bpf
+              mountPath: /sys/fs/bpf
+              readOnly: true
+              # The BPF filesystem may be mounted on the host after this pod
+              # started; follow the host, never the other way round.
+              mountPropagation: HostToContainer
+            {{- end }}
           resources:
             {{- toYaml .Values.resources | nindent 12 }}
       volumes:
@@ -115,6 +129,16 @@ spec:
           hostPath:
             path: /proc/sys
             type: Directory
+        {{- if .Values.cilium.enabled }}
+        - name: cilium-run
+          hostPath:
+            path: /var/run/cilium
+            type: Directory
+        - name: host-bpf
+          hostPath:
+            path: /sys/fs/bpf
+            type: Directory
+        {{- end }}
         - name: k8s-api-token
           projected:
             defaultMode: 420

@@ -5,6 +5,10 @@ Helm release: tunnex-host-posture (fixed)
 Namespace: tunnex-system (fixed)
 DaemonSet: {{ include "tunnex-host-posture.fullname" . }}
 Journal: /var/lib/tunnex/host-posture/v1 (node-local hostPath)
+{{- if .Values.cilium.enabled }}
+Cilium: /var/run/cilium and /sys/fs/bpf are mounted read-only, so the manager
+can read what Cilium itself reports about masquerading.
+{{- end }}
 
 Install gateway releases only after every eligible DaemonSet pod is Ready.
 Individual gateway uninstall must not remove this shared release. Remove it only

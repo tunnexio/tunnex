@@ -32,6 +32,61 @@ type lifecycleHostPosture struct {
 	Contract         string   `json:"contract"`
 	Image            string   `json:"image"`
 	ImagePullSecrets []string `json:"image_pull_secrets,omitempty"`
+	// CiliumHostPaths says the manager also mounts, read-only, the Cilium
+	// agent's socket directory and the host's pinned BPF maps (K8N-2). It is
+	// planned only for a cluster that runs Cilium, and is absent from the plan
+	// of every other cluster.
+	CiliumHostPaths bool `json:"cilium_host_paths,omitempty"`
+}
+
+// The Cilium agent's DaemonSet, as Cilium's own chart and the managed
+// distributions that ship that chart install it. A cluster that has it gets
+// the two extra read-only host paths on the host-posture manager.
+const (
+	ciliumAgentNamespace = "kube-system"
+	ciliumAgentDaemonSet = "cilium"
+)
+
+// The two read-only host paths the manager needs on a Cilium node, as the
+// chart value cilium.enabled renders them.
+var hostPostureCiliumVolumes = map[string]string{
+	"cilium-run": "/var/run/cilium",
+	"host-bpf":   "/sys/fs/bpf",
+}
+
+// discoverCiliumAgent reports whether the cluster runs a Cilium agent. It reads
+// one name and nothing of Cilium's configuration: which mode the agent is in
+// is for the manager to read on each node, not for the installer to guess.
+func discoverCiliumAgent(ctx context.Context, runner k8sRunner, kubeContext string) (bool, error) {
+	result, err := runChecked(ctx, runner, "look for a Cilium agent DaemonSet", k8sCommand{
+		name: "kubectl", args: kubectlArgs(kubeContext, "get", "daemonset", ciliumAgentDaemonSet, "--namespace", ciliumAgentNamespace, "--ignore-not-found=true", "--output", "name"),
+	})
+	if err != nil {
+		return false, err
+	}
+	switch name := strings.TrimSpace(string(result.stdout)); name {
+	case "":
+		return false, nil
+	case "daemonset.apps/" + ciliumAgentDaemonSet:
+		return true, nil
+	default:
+		return false, fmt.Errorf("unexpected answer %q while looking for the Cilium agent DaemonSet", name)
+	}
+}
+
+// hostPostureCiliumHostPaths reports whether a live manager DaemonSet mounts
+// the Cilium host paths. The fixed-shape check has already accepted either
+// none or exactly both of them.
+func hostPostureCiliumHostPaths(ds *hostPostureDaemonSet) bool {
+	if ds == nil {
+		return false
+	}
+	for _, volume := range ds.Spec.Template.Spec.Volumes {
+		if _, ok := hostPostureCiliumVolumes[volume.Name]; ok {
+			return true
+		}
+	}
+	return false
 }
 
 type hostPostureDaemonSet struct {
@@ -103,9 +158,10 @@ type hostPostureDaemonSet struct {
 						} `json:"valueFrom"`
 					} `json:"env"`
 					VolumeMounts []struct {
-						Name      string `json:"name"`
-						MountPath string `json:"mountPath"`
-						ReadOnly  bool   `json:"readOnly"`
+						Name             string `json:"name"`
+						MountPath        string `json:"mountPath"`
+						ReadOnly         bool   `json:"readOnly"`
+						MountPropagation string `json:"mountPropagation"`
 					} `json:"volumeMounts"`
 					StartupProbe   hostPostureProbe `json:"startupProbe"`
 					ReadinessProbe hostPostureProbe `json:"readinessProbe"`
@@ -469,13 +525,29 @@ func verifyHostPostureFixedShape(ds *hostPostureDaemonSet) error {
 		"host-proc-sys":      {path: "/host/proc/sys"},
 		"k8s-api-token":      {path: "/var/run/secrets/kubernetes.io/serviceaccount", readOnly: true},
 	}
+	// On a Cilium cluster the manager also mounts, read-only, exactly the two
+	// Cilium host paths. Either both are there or neither is.
+	withCilium := hostPostureCiliumHostPaths(ds)
+	if withCilium {
+		for name, path := range hostPostureCiliumVolumes {
+			wantMounts[name] = struct {
+				path     string
+				readOnly bool
+			}{path: path, readOnly: true}
+		}
+	}
 	if len(container.VolumeMounts) != len(wantMounts) {
-		return errors.New("host posture manager must mount exactly its state, host proc/sys, and projected API token")
+		return errors.New("host posture manager must mount exactly its state, host proc/sys, and projected API token, and on a Cilium cluster the two read-only Cilium host paths")
 	}
 	for _, mount := range container.VolumeMounts {
 		want, ok := wantMounts[mount.Name]
 		if !ok || mount.MountPath != want.path || mount.ReadOnly != want.readOnly {
 			return fmt.Errorf("host posture manager volume mount %q does not match the fixed host contract", mount.Name)
+		}
+		// Only the pinned-map mount follows a filesystem the host mounts later;
+		// nothing may propagate from the container to the host.
+		if mount.MountPropagation != "" && mount.MountPropagation != "None" && !(mount.Name == "host-bpf" && mount.MountPropagation == "HostToContainer") {
+			return fmt.Errorf("host posture manager volume mount %q has mount propagation %q outside the fixed host contract", mount.Name, mount.MountPropagation)
 		}
 		delete(wantMounts, mount.Name)
 	}
@@ -543,11 +615,26 @@ func verifyHostPostureVolumes(volumes []struct {
 		} `json:"sources"`
 	} `json:"projected"`
 }) error {
-	if len(volumes) != 3 {
-		return errors.New("host posture DaemonSet must define exactly three fixed volumes")
+	foundCilium := 0
+	for _, volume := range volumes {
+		if path, ok := hostPostureCiliumVolumes[volume.Name]; ok {
+			if volume.HostPath == nil || volume.HostPath.Path != path || volume.HostPath.Type != "Directory" || volume.Projected != nil {
+				return fmt.Errorf("host posture DaemonSet Cilium volume %q is not the exact read-only host path", volume.Name)
+			}
+			foundCilium++
+		}
+	}
+	if foundCilium != 0 && foundCilium != len(hostPostureCiliumVolumes) {
+		return errors.New("host posture DaemonSet must define both Cilium host paths or neither")
+	}
+	if len(volumes) != 3+foundCilium {
+		return errors.New("host posture DaemonSet must define exactly three fixed volumes, and on a Cilium cluster the two Cilium host paths")
 	}
 	foundState, foundProc, foundToken := false, false, false
 	for _, volume := range volumes {
+		if _, ok := hostPostureCiliumVolumes[volume.Name]; ok {
+			continue
+		}
 		switch volume.Name {
 		case "host-posture-state":
 			foundState = volume.HostPath != nil && volume.HostPath.Path == "/var/lib/tunnex/host-posture/v1" && volume.HostPath.Type == "DirectoryOrCreate" && volume.Projected == nil
@@ -686,7 +773,7 @@ func hostPostureImagePullSecrets(ds *hostPostureDaemonSet) []string {
 	return actualSecrets
 }
 
-func planHostPosture(o installOptions, state hostPostureState, image imageValues, metadata chartMetadata, artifactSHA256 string) (lifecycleHostPosture, error) {
+func planHostPosture(o installOptions, state hostPostureState, image imageValues, metadata chartMetadata, artifactSHA256 string, ciliumHostPaths bool) (lifecycleHostPosture, error) {
 	action := "install"
 	desiredImage := resolvedImageReference(image, metadata.AppVersion)
 	if desiredImage == "" {
@@ -706,7 +793,10 @@ func planHostPosture(o installOptions, state hostPostureState, image imageValues
 		}
 		action = "upgrade"
 		desiredChart := "tunnex-host-posture-" + o.hostPostureVersion
-		if state.release.Status == "deployed" && (o.hostPostureVersion == "" || state.release.Chart == desiredChart) && verifyHostPostureDaemonSet(state.daemonSet, desiredImage, o.imagePullSecrets) == nil {
+		// A manager that lacks the Cilium host paths on a Cilium cluster, or
+		// still has them on a cluster without Cilium, is upgraded, not reused.
+		if state.release.Status == "deployed" && (o.hostPostureVersion == "" || state.release.Chart == desiredChart) && verifyHostPostureDaemonSet(state.daemonSet, desiredImage, o.imagePullSecrets) == nil &&
+			hostPostureCiliumHostPaths(state.daemonSet) == ciliumHostPaths {
 			action = "reuse"
 		}
 	}
@@ -714,6 +804,7 @@ func planHostPosture(o installOptions, state hostPostureState, image imageValues
 		Action: action, Release: defaultHostPostureRelease, Namespace: defaultHostPostureNamespace, DaemonSet: hostPostureDaemonSetName,
 		Chart: o.hostPostureChart, ChartName: metadata.Name, Version: metadata.Version, AppVersion: metadata.AppVersion, ArtifactSHA256: artifactSHA256, Contract: hostPostureContractValue, Image: desiredImage,
 		ImagePullSecrets: append([]string(nil), o.imagePullSecrets...),
+		CiliumHostPaths:  ciliumHostPaths,
 	}, nil
 }
 
@@ -738,6 +829,7 @@ func planExistingHostPostureCleanup(state hostPostureState) (lifecycleHostPostur
 		Chart: state.release.Chart, ChartName: metadata.Name, Version: metadata.Version, AppVersion: metadata.AppVersion,
 		Contract: state.daemonSet.Metadata.Annotations[hostPostureContractKey], Image: container.Image,
 		ImagePullSecrets: hostPostureImagePullSecrets(state.daemonSet),
+		CiliumHostPaths:  hostPostureCiliumHostPaths(state.daemonSet),
 	}, metadata, nil
 }
 
@@ -848,6 +940,14 @@ func hostPostureHelmCommand(prepared preparedInstall) (k8sCommand, error) {
 	}
 	values["image"] = map[string]any{"pullSecrets": pullSecrets}
 	appendImageValues(values, prepared.image)
+	// The Cilium host paths are stated only where they are wanted or have to be
+	// taken away again: an upgrade keeps the previous release's values, and a
+	// chart from before this value does not know it.
+	if prepared.plan.HostPosture.CiliumHostPaths {
+		values["cilium"] = map[string]any{"enabled": true}
+	} else if hostPostureCiliumHostPaths(prepared.hostPosture.daemonSet) {
+		values["cilium"] = map[string]any{"enabled": false}
+	}
 	encoded, err := json.Marshal(values)
 	if err != nil {
 		return k8sCommand{}, err
@@ -911,6 +1011,9 @@ func ensureHostPostureManager(ctx context.Context, deps k8sDeps, prepared prepar
 	if err := verifyHostPostureDaemonSet(after.daemonSet, prepared.plan.HostPosture.Image, prepared.options.imagePullSecrets); err != nil {
 		return err
 	}
+	if got := hostPostureCiliumHostPaths(after.daemonSet); got != prepared.plan.HostPosture.CiliumHostPaths {
+		return fmt.Errorf("host posture manager Cilium host paths are mounted=%t after apply, expected approved %t", got, prepared.plan.HostPosture.CiliumHostPaths)
+	}
 	return nil
 }
 
@@ -923,6 +1026,7 @@ type hostPostureStatusOutput struct {
 	Contract         string   `json:"contract"`
 	Image            string   `json:"image"`
 	ImagePullSecrets []string `json:"image_pull_secrets,omitempty"`
+	CiliumHostPaths  bool     `json:"cilium_host_paths,omitempty"`
 	Desired          int32    `json:"desired"`
 	Ready            int32    `json:"ready"`
 	Unavailable      int32    `json:"unavailable"`
@@ -940,7 +1044,7 @@ func collectHostPostureStatus(ctx context.Context, runner k8sRunner, kubeContext
 	status := hostPostureStatusOutput{
 		Release: defaultHostPostureRelease, Namespace: defaultHostPostureNamespace, Revision: state.release.Revision, Chart: state.release.Chart,
 		DaemonSet: ds.Metadata.Name, Contract: ds.Metadata.Annotations[hostPostureContractKey], Image: ds.Spec.Template.Spec.Containers[0].Image,
-		ImagePullSecrets: hostPostureImagePullSecrets(ds), Desired: ds.Status.DesiredNumberScheduled, Ready: ds.Status.NumberReady, Unavailable: ds.Status.NumberUnavailable,
+		ImagePullSecrets: hostPostureImagePullSecrets(ds), CiliumHostPaths: hostPostureCiliumHostPaths(ds), Desired: ds.Status.DesiredNumberScheduled, Ready: ds.Status.NumberReady, Unavailable: ds.Status.NumberUnavailable,
 	}
 	if state.release.Status != "deployed" {
 		return state, status, fmt.Errorf("host posture Helm release status is %q, expected deployed", state.release.Status)

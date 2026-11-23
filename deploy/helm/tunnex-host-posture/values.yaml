@@ -31,6 +31,18 @@ tolerations:
   - operator: Exists
 affinity: {}
 
+# Cilium (K8N-2). Cilium can masquerade in eBPF, where no NAT rule shows it. On
+# a cluster that runs Cilium the manager therefore also reads Cilium's own
+# report: the agent's status on its local socket and its pinned ip-masq-agent
+# map. That needs two more host paths, both mounted READ-ONLY:
+#   /var/run/cilium   the agent's socket directory
+#   /sys/fs/bpf       the host's pinned BPF maps
+# Off by default, so no other cluster gets these mounts. `tunnex k8s install`
+# sets it when the cluster has the Cilium agent DaemonSet (kube-system/cilium).
+# Without it a gateway on a Cilium node stays not ready and says so.
+cilium:
+  enabled: false
+
 reconcileInterval: "2s"
 apiRequestTimeout: "10s"
 maxOwners: 32
