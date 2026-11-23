@@ -130,6 +130,9 @@ type Manager struct {
 	resolvedVIPs   atomic.Pointer[[]resolvedVIP]
 	refusedK8sVIPs atomic.Pointer[[]refusedVIP]
 	k8sUnavailable atomic.Bool
+	// k8sAPIEndpoint (K8N-3) is the last outcome for the cluster API's mapping (default/kubernetes): nil
+	// when this gateway has none, else "ready" or the refusal reason.
+	k8sAPIEndpoint atomic.Pointer[string]
 	// localIPs (WF-K5 M6) returns THIS gateway's own addresses; classify refuses a DNAT target in this set (a
 	// hostNetwork endpoint on this node would DNAT->local->INPUT, bypassing the forward grant chain).
 	// Injectable so the M6 red drives the refusal without real host interfaces.
