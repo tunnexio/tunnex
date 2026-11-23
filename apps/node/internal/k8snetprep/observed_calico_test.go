@@ -14,9 +14,10 @@ import (
 // pools set, destination not in the all-pools set, MASQUERADE. They were not
 // captured from a live Calico node. The nft form assumes what iptables-nft
 // produces for the other fixtures in this package: `-m set` and the MASQUERADE
-// target as typed xt descriptors. Fixtures from a real node, and the exact rule
-// text across Calico versions, are still owed by the live walk in
-// docs/K8N-1-calico.md.
+// target as typed xt descriptors. A real node (Calico v3.31.2) printed exactly
+// this rule; its captures and the tests on them are in
+// observed_calico_live_linux_test.go. These modelled rules stay for the
+// mutations, which need rules a real node does not have.
 
 const (
 	xtSet        = `{"xt":{"type":"match","name":"set"}}`
@@ -104,13 +105,13 @@ func TestObservedAcceptsCalicoMasqueradeLimitedToPodPools(t *testing.T) {
 	// Only the set that can carry the proof is asked for: the negated
 	// destination set narrows the rule and is never read.
 	facts := calicoFacts(t, save, nil)
-	needed, err := setsNeededForProof(chains, rules, "POSTROUTING", calicoTunnel, nil, facts.saved)
+	needed, err := setsNeededForProof(chains, rules, "POSTROUTING", calicoTunnel, "", nil, facts.saved)
 	if err != nil || !reflect.DeepEqual(needed, []string{calicoMasq}) {
 		t.Fatalf("sets needed = %v, %v", needed, err)
 	}
 
 	facts = calicoFacts(t, save, map[string][]string{calicoMasq: {"192.168.0.0/16", "10.42.0.0/16"}})
-	proof, err := proveNoTunnelSourceNATWithSets(chains, rules, "POSTROUTING", calicoTunnel, nil, facts)
+	proof, err := proveNoTunnelSourceNATWithSets(chains, rules, "POSTROUTING", calicoTunnel, "", nil, facts)
 	if err != nil || !reflect.DeepEqual(proof, []string{calicoMasq}) {
 		t.Fatalf("Calico rules were refused: %v %v", proof, err)
 	}
@@ -188,7 +189,7 @@ func TestObservedRefusesCalicoRulesThatProveNothing(t *testing.T) {
 	} {
 		chains, rules := observedRules(t, tc.nft)
 		facts := calicoFacts(t, tc.save, tc.members)
-		proof, err := proveNoTunnelSourceNATWithSets(chains, rules, "POSTROUTING", calicoTunnel, nil, facts)
+		proof, err := proveNoTunnelSourceNATWithSets(chains, rules, "POSTROUTING", calicoTunnel, "", nil, facts)
 		if err == nil || !strings.Contains(err.Error(), tc.want) {
 			t.Errorf("%s: proof %v, error %v", name, proof, err)
 		}
@@ -211,7 +212,7 @@ func TestObservedPairsRulesByPosition(t *testing.T) {
 		`-m set --match-set `+calicoAll+` dst -j RETURN`,
 		`-m comment --comment "cali:flqWnvo8yq4ULQLa" -m set --match-set `+calicoMasq+` src -j MASQUERADE --random-fully`),
 		map[string][]string{calicoMasq: {"192.168.0.0/16"}})
-	proof, err := proveNoTunnelSourceNATWithSets(chains, rules, "POSTROUTING", calicoTunnel, nil, facts)
+	proof, err := proveNoTunnelSourceNATWithSets(chains, rules, "POSTROUTING", calicoTunnel, "", nil, facts)
 	if err != nil || !reflect.DeepEqual(proof, []string{calicoMasq}) {
 		t.Fatalf("paired chain was refused: %v %v", proof, err)
 	}
@@ -228,7 +229,7 @@ func TestObservedSetFactsDoNotExcuseOtherMasquerades(t *testing.T) {
 		nft["cali-nat-outgoing"] = append(nft["cali-nat-outgoing"], rule)
 		chains, rules := observedRules(t, nft)
 		facts := calicoFacts(t, calicoSave(calicoOutgoing(calicoMasqOK), "-j MASQUERADE"), map[string][]string{calicoMasq: {"192.168.0.0/16"}})
-		if _, err := proveNoTunnelSourceNATWithSets(chains, rules, "POSTROUTING", calicoTunnel, nil, facts); err == nil {
+		if _, err := proveNoTunnelSourceNATWithSets(chains, rules, "POSTROUTING", calicoTunnel, "", nil, facts); err == nil {
 			t.Errorf("%s: accepted", name)
 		}
 	}
@@ -246,7 +247,7 @@ func TestSetsNeededForProofIsBounded(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := setsNeededForProof(chains, rules, "POSTROUTING", calicoTunnel, nil, saved); err == nil {
+	if _, err := setsNeededForProof(chains, rules, "POSTROUTING", calicoTunnel, "", nil, saved); err == nil {
 		t.Fatal("unbounded set reads were accepted")
 	}
 }
@@ -292,7 +293,7 @@ func TestObservedExistingFixtureNeedsNoSetFacts(t *testing.T) {
 		t.Fatal(err)
 	}
 	chains, rules := observedFixture(t, listing)
-	proof, err := proveNoTunnelSourceNATWithSets(chains, rules, "POSTROUTING", netip.MustParsePrefix("100.96.0.0/24"), nil, nil)
+	proof, err := proveNoTunnelSourceNATWithSets(chains, rules, "POSTROUTING", netip.MustParsePrefix("100.96.0.0/24"), "", nil, nil)
 	if err != nil || len(proof) != 0 || observedReadyReason(proof) != ReasonObservedNoTunnelSourceNAT {
 		t.Fatalf("k3s Flannel fixture: %v %v", proof, err)
 	}

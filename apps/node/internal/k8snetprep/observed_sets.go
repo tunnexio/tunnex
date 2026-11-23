@@ -85,11 +85,12 @@ func parseSavedSetMatches(saved string) (map[string][][]setMatch, error) {
 }
 
 // savedRule is what one `-A` line of iptables-nft-save says that the nft
-// listing may hide: its set matches, and the target it ends in (empty when the
-// rule has none).
+// listing may hide: its set matches, the target it ends in (empty when the
+// rule has none) and that target's arguments.
 type savedRule struct {
 	Sets   []setMatch
 	Target string
+	Args   []string
 }
 
 // parseSavedRules reads iptables-nft-save output for one table and returns
@@ -108,12 +109,15 @@ func parseSavedRules(saved string) (map[string][]savedRule, error) {
 		// parseSavedSetMatches accepted this line, so it has a chain.
 		fields := strings.Fields(line)
 		chain, target := fields[1], ""
+		var args []string
 		for i := 2; i+1 < len(fields); i++ {
 			if fields[i] == "-j" || fields[i] == "-g" {
-				target = fields[i+1]
+				// The last one wins: text inside a comment that looks like a
+				// target always precedes the real one.
+				target, args = fields[i+1], fields[i+2:]
 			}
 		}
-		out[chain] = append(out[chain], savedRule{Sets: sets[chain][len(out[chain])], Target: target})
+		out[chain] = append(out[chain], savedRule{Sets: sets[chain][len(out[chain])], Target: target, Args: args})
 	}
 	return out, nil
 }

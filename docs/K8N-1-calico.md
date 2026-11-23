@@ -93,6 +93,29 @@ nothing in Calico's chains.
    limited by sets outside it: cali40masq-ipam-pools` (at most three names, then "and N more",
    240 bytes in all). Without a set proof the reason is the unchanged first clause.
 
+7. **Added after the live capture: the masquerade on the overlay interface.** A real node has a
+   second masquerade the paper did not know (see *State*): `-o tunl0 ... -j MASQUERADE` in IPIP mode,
+   `-o vxlan.calico ...` in VXLAN mode. No set limits it. It is excused by its output interface: the
+   walk is now told the WireGuard interface, and a source-NAT rule that requires another **exact**
+   output interface (`oifname == "tunl0"` in the nft JSON, no wildcard, not negated, not a set of
+   names) cannot apply to traffic that leaves through the WireGuard interface.
+
+   This states the protected traffic more precisely than before: traffic for the tunnel range
+   **that leaves through the WireGuard interface**. It is the scope the rules Tunnex owns already
+   use (`ip daddr TUNNEL oifname wg0 return`, and its own masquerade excludes `oifname wg0`). A
+   packet for the tunnel range that leaves through any other interface is not entering the tunnel
+   on this node. Without a known WireGuard interface the condition excuses nothing.
+8. **Added after the live capture: Calico's mangle hook.** Calico hooks `ip mangle POSTROUTING`.
+   Any postrouting hook other than `ip nat POSTROUTING` was refused outright, because a chain that
+   runs before NAT could set a Kubernetes mark (0x2000, 0x4000, 0x8000) and so select a masquerade
+   the NAT proof believes unreachable. The hook is now accepted only when every rule reachable from
+   it is proved unable to change one of those bits: conditions, `RETURN`/`ACCEPT`/`DROP`, jumps to
+   known chains, and `MARK`, whose value is read from `iptables-nft-save -t mangle` (paired by
+   chain, position and target, like the set matches) and must leave the three bits alone in both
+   value and mask. Calico's is `--set-xmark 0x0/0x1b0000`. Any other target (`DSCP`, `CONNMARK`,
+   ...), a native nft statement, or text that does not pair is refused. Only the iptables mangle
+   hook (`ip mangle POSTROUTING`, type filter, priority -150, policy accept) is read this way.
+
 ### Why not trust the set's name
 
 `cali40masq-ipam-pools` is Calico's name for its pools today. A name is not a proof: a pool that
@@ -113,13 +136,44 @@ masquerade would rewrite tunnel traffic. Membership is what decides.
   match, unknown set type, missing set, rule order differing between the two readings, text that
   does not pair with the JSON.
 
-  *State.* Every case above is covered (`observed_calico_test.go`, `observed_calico_linux_test.go`),
-  but **not yet from a real Calico node**: the rule text is modelled on Calico's documented
-  masquerade rule. The same rule, installed by hand with `iptables-nft` and `ipset` in a throwaway
-  container (nft 1.1.6, iptables 1.8.13, ipset 7.24), printed exactly the modelled shapes and was
-  accepted and, with an overlapping range, refused. That shows the three tools agree with the
-  parser; it says nothing about what a Calico version actually installs. Captured fixtures are
-  still owed by the live walk below.
+  *State.* Every case above is covered (`observed_calico_test.go`, `observed_calico_linux_test.go`)
+  on rules modelled on Calico's documented masquerade rule, and **now also on captures from a real
+  node** (`observed_calico_live_linux_test.go`, `testdata/calico-v3.31.2-kind.*`, provenance in
+  `testdata/README.md`): Calico v3.31.2, unchanged manifest, iptables dataplane on the nft backend,
+  default pool 192.168.0.0/16 with IPIP and natOutgoing, on a one-node kind cluster, read with the
+  gateway image's tool versions (nft 1.1.6, iptables-nft-save 1.8.13, ipset 7.24).
+
+  What the live capture showed:
+
+  - **The modelled rule was right.** The real `cali-nat-outgoing` rule is the modelled one word for
+    word (comment, `set ... src`, `set ! ... dst`, `MASQUERADE --random-fully`); in nft JSON it is
+    comment, two opaque `set` matches and an opaque `MASQUERADE` target. All 29 chains of the real
+    nat table pair with the saved text. `ipset save` printed `hash:net family inet` and one member.
+    With the other rules of the node out of the way the proof accepted 100.96.0.0/24, naming
+    `cali40masq-ipam-pools`, and refused ranges inside the pool.
+  - **The node as a whole was still refused, for two reasons the model did not have**, both fixed
+    here (Decision 7 and 8): a second masquerade on the overlay interface, and the `ip mangle
+    POSTROUTING` hook, which stopped the check before the NAT walk began.
+  - **The gateway container cannot read the saved text.** `iptables-nft-save` opens a raw socket to
+    resolve a `set` match's name. With the gateway's capabilities (`NET_ADMIN`,
+    `NET_BIND_SERVICE`) it prints `Can't open socket to ipset.`, exits 1 and stops inside the
+    masquerade rule, for `-t nat` and `-t mangle` alike. With `NET_RAW` added, or privileged (the
+    host-posture container), it works. `ipset save` works with `NET_ADMIN` alone. So the check is
+    ready on a Calico node only where `NET_RAW` is held: today the host-posture container, and the
+    gateway only with VPN inference on. The refusal is closed (the command fails, and the cut text
+    is refused on its own), but **the gateway on Calico is not ready until this is decided**:
+    grant the gateway `NET_RAW` on such clusters, or have it rely on the host-posture reading.
+    Not changed here.
+  - No iptables-legacy table existed on the node; Calico wrote through the nft backend. (Running
+    any `iptables-legacy*` command on a node creates one, after which `iptables-nft-save` prints a
+    warning on stderr that the reader refuses.)
+  - kube-proxy's rules did not interfere: `KUBE-POSTROUTING` returns on the unset mark, as on the
+    other fixtures. kind's own `DOCKER_POSTROUTING` SNAT is limited to source 127.0.0.11.
+
+  With both fixes, the code's own observation (two nft listings around the reads, real runners) was
+  run on the live node from a pod with the host-posture security context and from one with the
+  gateway's plus `NET_RAW`: 100.96.0.0/24 accepted with the reason naming the set, 192.168.7.0/24
+  refused naming the set. The same held after switching the pool to VXLAN (`-o vxlan.calico`).
 - Existing Flannel, kube-proxy, GKE and EKS fixtures must still pass unchanged.
 - Live walk on a cluster running Calico (iptables dataplane): gateway ready, a Service reached by
   address and by name from a connected device, and the readiness reason naming the sets. Then a
@@ -127,11 +181,19 @@ masquerade would rewrite tunnel traffic. Membership is what decides.
 
 ## Not known yet
 
-- Whether `ipset save` needs a capability the host-posture container does not already hold
-  (`NET_ADMIN` is expected to be enough; to be confirmed on the live cluster).
-- The exact rule text across Calico versions. Fixtures will come from the version the live cluster
-  runs; the parser pairs by structure, not by Calico's chain names, so a renamed chain does not break
-  it, but a new match type would be refused rather than misread.
+- ~~Whether `ipset save` needs a capability the host-posture container does not already hold.~~
+  Answered on the live node: `ipset save` needs only `NET_ADMIN`; it is `iptables-nft-save` that
+  needs `NET_RAW` whenever a rule has a `set` match (see *State*).
+- The exact rule text across Calico versions. Fixtures are from v3.31.2 only; the parser pairs by
+  structure, not by Calico's chain names, so a renamed chain does not break it, but a new match type
+  would be refused rather than misread. Other versions may install a different mangle hook or
+  none.
+- Whether the gateway should hold `NET_RAW` on Calico clusters (see *State*).
+- Calico features that add rules: egress DSCP fills `cali-egress-dscp` in the mangle table with a
+  `DSCP` target, which the mark proof refuses; host endpoints and floating IPs fill chains that were
+  empty in the capture. None was exercised.
+- Still owed from the live walk: the gateway itself installed on a Calico cluster, a Service
+  reached from a device, and a multi-node cluster (the capture is one node).
 
 ## Rollback
 
