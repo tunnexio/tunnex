@@ -822,9 +822,10 @@ func (r *Reconciler) observeRegisteredMechanisms(ctx context.Context, cidr strin
 		err = before.validateHookCoverage(r.iface, cidr)
 	}
 	if errors.Is(err, errSetFactsNeeded) {
-		// A masquerade is conditioned on a kernel set. Read what the listing
-		// cannot say and prove again. These reads sit between the two listings
-		// compared below, so a rule that changed meanwhile is caught there.
+		// A masquerade is conditioned on a kernel set, or a MARK target sits
+		// where tunnel-bound traffic passes. Read what the listing cannot say
+		// and prove again. These reads sit between the two listings compared
+		// below, so a rule that changed meanwhile is caught there.
 		var facts *natSetFacts
 		var factsErr error
 		if r.hostFacts != nil {
@@ -835,6 +836,11 @@ func (r *Reconciler) observeRegisteredMechanisms(ctx context.Context, cidr strin
 			facts, factsErr = r.readNATSetFacts(ctx, before, cidr)
 		}
 		if factsErr != nil {
+			// Say what the saved text was needed for when it is not a set.
+			var mark *natMarkNotReadError
+			if errors.As(err, &mark) {
+				return nil, fmt.Errorf("%s: %w", mark.Error(), factsErr)
+			}
 			return nil, factsErr
 		}
 		before.setFacts = facts

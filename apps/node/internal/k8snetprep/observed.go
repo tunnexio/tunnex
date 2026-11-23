@@ -66,6 +66,15 @@ func observedReadyReason(proofSets []string) string {
 // the CNI portmap plugin's host-port masquerade (0x2000). Tunnex never sets
 // them, and it delivers to pod addresses directly, so traffic bound for the
 // tunnel range does not carry them.
+//
+// That last sentence is an assumption, not something read from the node, for
+// every hook a packet passes before NAT POSTROUTING. What is enforced: nothing
+// reachable from `ip mangle POSTROUTING` (proveCannotSetReservedMarks) and
+// nothing tunnel-bound traffic can reach inside the NAT walk itself
+// (proveMarkTarget, nativeMarkStatement) can set one. What is not: marks set
+// earlier, in PREROUTING, OUTPUT or FORWARD. kube-proxy sets 0x4000 there on
+// Service traffic, so a Service endpoint inside the tunnel range breaks the
+// assumption; see docs/K8N-1-calico.md, "Assumption A1".
 var kubeMarks = map[float64]bool{0x2000: true, 0x4000: true, 0x8000: true}
 
 type observedNAT struct {
@@ -244,9 +253,128 @@ func (o *observedNAT) walk(chain string, depth int) (bool, error) {
 			if err := o.proveBySets(chain, n); err != nil {
 				return false, err
 			}
+		case "mark":
+			if err := o.proveMarkTarget(chain, n); err != nil {
+				return false, err
+			}
 		}
 	}
 	return false, nil
+}
+
+// natMarkNotReadError refuses a MARK target that tunnel-bound traffic can
+// reach inside the NAT table while its value is not at hand. Like a set
+// match, the value is only in the saved rule text, so the caller may read
+// that text and prove again.
+type natMarkNotReadError struct{ chain string }
+
+func (e *natMarkNotReadError) Error() string {
+	return fmt.Sprintf("NAT chain %s sets a mark whose value was not read", e.chain)
+}
+
+func (e *natMarkNotReadError) Is(target error) bool { return target == errSetFactsNeeded }
+
+// proveMarkTarget decides an iptables MARK target that tunnel-bound traffic
+// can reach on its way through the NAT table. The walk relies on that traffic
+// carrying no Kubernetes mark (kubeMarks) when it meets a rule that tests
+// one, so a mark set here, before such a rule, is accepted only when its
+// saved value is read and leaves those bits alone, exactly as for the mangle
+// hook (proveCannotSetReservedMarks). The nft listing does not show the value.
+func (o *observedNAT) proveMarkTarget(chain string, n int) error {
+	if o.facts == nil {
+		return &natMarkNotReadError{chain: chain}
+	}
+	if _, carried := o.facts.saved[chain]; !carried {
+		// The saved text at hand does not hold this chain (the host-posture
+		// manager carries NAT chains for their set matches only).
+		return fmt.Errorf("NAT chain %s sets a mark whose value was not read: its saved rules are not at hand", chain)
+	}
+	if err := o.pair(chain); err != nil {
+		return err
+	}
+	changed, ok := savedMarkChange(o.facts.saved[chain][n].Args)
+	if !ok {
+		return fmt.Errorf("NAT chain %s has a MARK target that is not understood", chain)
+	}
+	if changed&reservedMarkBits != 0 {
+		return fmt.Errorf("NAT chain %s can set a Kubernetes mark that selects a masquerade", chain)
+	}
+	return nil
+}
+
+// nativeMarkStatement reads an nft `mangle` statement found in the NAT table.
+// The only one accepted is `meta mark set VALUE` where VALUE cannot turn on a
+// Kubernetes mark bit that was off. Every other mangle statement (`ip saddr
+// set`, `ip daddr set`, `ct mark set`, `meta priority set`, ...) rewrites
+// something this walk does not model and is refused.
+func nativeMarkStatement(statement any) error {
+	body, ok := statement.(map[string]any)
+	if !ok || len(body) != 2 || !reflect.DeepEqual(body["key"], map[string]any{"meta": map[string]any{"key": "mark"}}) {
+		return errors.New("rewrites a packet field with a statement that is not understood")
+	}
+	value, present := body["value"]
+	if !present {
+		return errors.New("sets a mark to a value that is not understood")
+	}
+	turnsOn, ok := markBitsTurnedOn(value, 0)
+	if !ok {
+		return errors.New("sets a mark to a value that is not understood")
+	}
+	if turnsOn&reservedMarkBits != 0 {
+		return errors.New("can set a Kubernetes mark that selects a masquerade")
+	}
+	return nil
+}
+
+// maxMarkValueDepth bounds the nesting of a mark value (`mark & M | C` is 2).
+const maxMarkValueDepth = 4
+
+// markBitsTurnedOn returns every bit that the value of a `meta mark set`
+// statement can have set where the packet's mark had it clear:
+//
+//	N                 every bit of N
+//	meta mark         none (the old mark)
+//	A | B, A ^ B      what A or B can turn on
+//	A & B             only what both can turn on
+//
+// Anything else (ct mark, a map, numgen, a shift, a hash, a negative or
+// fractional number) is not understood.
+func markBitsTurnedOn(value any, depth int) (uint32, bool) {
+	if depth > maxMarkValueDepth {
+		return 0, false
+	}
+	if number, ok := value.(float64); ok {
+		if number < 0 || number > float64(^uint32(0)) || number != float64(uint32(number)) {
+			return 0, false
+		}
+		return uint32(number), true
+	}
+	object, ok := value.(map[string]any)
+	if !ok || len(object) != 1 {
+		return 0, false
+	}
+	if reflect.DeepEqual(object, map[string]any{"meta": map[string]any{"key": "mark"}}) {
+		return 0, true
+	}
+	for _, operator := range []string{"|", "^", "&"} {
+		operands, ok := object[operator].([]any)
+		if !ok {
+			continue
+		}
+		if len(operands) != 2 {
+			return 0, false
+		}
+		left, leftOK := markBitsTurnedOn(operands[0], depth+1)
+		right, rightOK := markBitsTurnedOn(operands[1], depth+1)
+		if !leftOK || !rightOK {
+			return 0, false
+		}
+		if operator == "&" {
+			return left & right, true
+		}
+		return left | right, true
+	}
+	return 0, false
 }
 
 // proveBySets decides a source-NAT rule that no readable nft condition limits.
@@ -389,7 +517,9 @@ func (o *observedNAT) read(chain string, exprs []map[string]any) (observedRule, 
 			case kind == "target" && last && (name == "MASQUERADE" || name == "SNAT"):
 				view.verdict = "nat"
 			case kind == "target" && last && name == "MARK":
-				view.verdict = "noop"
+				// Its value is not in the listing: the walk reads it from the
+				// saved rule, if tunnel-bound traffic can reach the rule.
+				view.verdict = "mark"
 			default:
 				// Untyped (older nft), misplaced, or unknown: not readable.
 				return view, fmt.Errorf("NAT chain %s has an extension that is not understood", chain)
@@ -400,10 +530,16 @@ func (o *observedNAT) read(chain string, exprs []map[string]any) (observedRule, 
 			o.readMatch(match, &view)
 			continue
 		}
-		if !last {
-			if _, ok := expr["mangle"]; ok {
-				continue
+		if statement, ok := expr["mangle"]; ok {
+			// Decided here, whatever the rule's conditions say: a statement
+			// takes effect before the conditions that follow it in the same
+			// rule, so a rule may set a mark and then match on it.
+			if err := nativeMarkStatement(statement); err != nil {
+				return view, fmt.Errorf("NAT chain %s %w", chain, err)
 			}
+			continue
+		}
+		if !last {
 			return view, fmt.Errorf("NAT chain %s has a statement before the end of a rule that is not understood", chain)
 		}
 		switch {
@@ -415,8 +551,6 @@ func (o *observedNAT) read(chain string, exprs []map[string]any) (observedRule, 
 			view.verdict = "drop"
 		case hasKey(expr, "masquerade"), hasKey(expr, "snat"):
 			view.verdict = "nat"
-		case hasKey(expr, "mangle"):
-			view.verdict = "noop"
 		case hasKey(expr, "jump"), hasKey(expr, "goto"):
 			verdict := "jump"
 			if hasKey(expr, "goto") {
