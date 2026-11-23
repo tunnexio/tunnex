@@ -50,6 +50,7 @@ type Manager struct {
 	// facts is the optional privileged reader of what a gateway cannot read
 	// itself. pendingFacts is what this pass read, published with its heartbeat.
 	facts        HostFactsReader
+	ciliumFacts  CiliumFactsReader
 	pendingFacts *pendingHostFacts
 	factsSummary string
 }
@@ -57,12 +58,19 @@ type Manager struct {
 type pendingHostFacts struct {
 	observedAt time.Time
 	facts      k8snetprep.HostNetFacts
+	cilium     *k8snetprep.CiliumFacts
 }
 
 // SetHostFactsReader installs the reader whose facts are published beside
 // every active heartbeat. It is set once, before Run. Without it the manager
 // publishes no facts and a gateway that needs them stays not ready.
 func (m *Manager) SetHostFactsReader(reader HostFactsReader) { m.facts = reader }
+
+// SetCiliumFactsReader installs the reader of Cilium's own report (K8N-2). Its
+// facts are published as the `cilium` section of the same receipt, in the same
+// pass, when the node shows Cilium. It is set once, before Run, and takes
+// effect only together with a host-facts reader.
+func (m *Manager) SetCiliumFactsReader(reader CiliumFactsReader) { m.ciliumFacts = reader }
 
 func NewManager(config Config, source OwnerSource, kernel Kernel, store journalStore, log *slog.Logger) (*Manager, error) {
 	if !validNodeName(config.NodeName) || !uidRE.MatchString(config.ManagerUID) || len(config.ManagerUID) > MaxOwnerUIDBytes {
@@ -127,6 +135,9 @@ func (m *Manager) ReconcileOnce(ctx context.Context) error {
 	if m.facts != nil && (sourceErr != nil || len(owners) > 0) {
 		observedAt := m.now().UTC()
 		m.pendingFacts = &pendingHostFacts{observedAt: observedAt, facts: m.facts.Read(ctx)}
+		if m.ciliumFacts != nil {
+			m.pendingFacts.cilium = m.ciliumFacts.Read(ctx)
+		}
 	}
 	// API waits deliberately do not hold this lock. It serializes only the
 	// manager's state/kernel transitions with a gateway's CNI operation.
@@ -346,7 +357,7 @@ func (m *Manager) publishHostFacts(heartbeat Heartbeat) error {
 	if m.pendingFacts == nil {
 		return nil
 	}
-	receipt, err := SealHostFacts(heartbeat, m.pendingFacts.observedAt, m.pendingFacts.facts)
+	receipt, err := SealHostFactsWithCilium(heartbeat, m.pendingFacts.observedAt, m.pendingFacts.facts, m.pendingFacts.cilium)
 	if err != nil {
 		return err
 	}
@@ -354,6 +365,9 @@ func (m *Manager) publishHostFacts(heartbeat Heartbeat) error {
 		return fmt.Errorf("publish host facts: %w", err)
 	}
 	summary := hostFactsSummary(receipt.Netfilter)
+	if receipt.Cilium != nil {
+		summary = boundedReason(summary + "; cilium: " + receipt.Cilium.Summary())
+	}
 	if summary != m.factsSummary {
 		m.factsSummary = summary
 		m.log.Info("k8s_host_posture_facts", "state", summary)

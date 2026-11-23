@@ -149,7 +149,10 @@ func (r *Reconciler) reconcileWithAuthority(ctx context.Context, cidr string) (R
 	if err != nil {
 		return awsBlocked(err)
 	}
-	if err := r.refuseCilium(snapshot); err != nil {
+	// The rule check has passed. On a node that shows Cilium that is half of
+	// the proof: Cilium's own masquerade, which may be in eBPF, is the other.
+	ciliumAdapter, err := r.proveCilium(ctx, snapshot, prefix.Masked())
+	if err != nil {
 		return awsBlocked(err)
 	}
 	if snapshot.hasChain(awsChain) && grant.Scope == ScopeIPMasqOnly {
@@ -171,6 +174,9 @@ func (r *Reconciler) reconcileWithAuthority(ctx context.Context, cidr string) (R
 		// the node's live NAT rules cannot rewrite tunnel-bound traffic, so the
 		// gateway owns no CNI rule here and is ready as observed.
 		status.Adapters = append(status.Adapters, ComponentStatus{Name: ObservedAdapterName, State: StateReady, Reason: observedReadyReason(snapshot.proofSets)})
+	}
+	if ciliumAdapter != nil {
+		status.Adapters = append(status.Adapters, *ciliumAdapter)
 	}
 	for _, adapter := range []struct{ name, chain, marker string }{{ipMasqAdapterName, ipMasqChain, ownedRuleComment}, {awsAdapterName, awsChain, AWSOwnedRuleComment}} {
 		if !snapshot.hasChain(adapter.chain) {

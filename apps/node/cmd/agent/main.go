@@ -286,7 +286,14 @@ func main() {
 			logger.Error("k8s_host_facts_unavailable", slog.String("error", err.Error()))
 			return
 		}
-		egressMgr.SetKubernetesCNIAuthority(guard, hostFacts)
+		ciliumFacts, err := newKubernetesCiliumFactsSource(
+			getenv("TUNNEX_HOST_POSTURE_STATE_DIR", hostposture.DefaultStateDir),
+			os.Getenv("TUNNEX_HOST_POSTURE_NODE_NAME"))
+		if err != nil {
+			logger.Error("k8s_host_facts_unavailable", slog.String("error", err.Error()))
+			return
+		}
+		egressMgr.SetKubernetesCNIAuthority(guard, hostFacts, ciliumFacts)
 		// Init and runtime must independently earn two advancing observations.
 		// Starting mandatory ownership withdrawal after only one observation
 		// exits before the regular reconciliation loops can ever earn the next.

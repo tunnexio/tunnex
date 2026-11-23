@@ -41,6 +41,10 @@ type HostFacts struct {
 	Sequence      uint64                  `json:"sequence"`
 	ObservedAt    time.Time               `json:"observed_at"`
 	Netfilter     k8snetprep.HostNetFacts `json:"netfilter"`
+	// Cilium is present only when the manager saw a trace of Cilium on the
+	// node (K8N-2). It is under the same identity, freshness and digest as the
+	// rest. A node without Cilium publishes the receipt exactly as before.
+	Cilium *k8snetprep.CiliumFacts `json:"cilium,omitempty"`
 	// Digest is the SHA-256 of the receipt encoded with this field empty. It
 	// detects a damaged or partly rewritten file. It is not a signature: the
 	// directory is writable by root on the node only.
@@ -50,6 +54,12 @@ type HostFacts struct {
 // HostFactsReader is the manager's privileged reader.
 type HostFactsReader interface {
 	Read(context.Context) k8snetprep.HostNetFacts
+}
+
+// CiliumFactsReader is the manager's reader of Cilium's own report. It
+// returns nil on a node that shows no Cilium.
+type CiliumFactsReader interface {
+	Read(context.Context) *k8snetprep.CiliumFacts
 }
 
 func hostFactsDigest(receipt HostFacts) (string, error) {
@@ -68,13 +78,25 @@ func hostFactsDigest(receipt HostFacts) (string, error) {
 // heartbeat. Facts that are malformed or would not fit the file are replaced
 // by the statement that they could not be published; they are never cut.
 func SealHostFacts(heartbeat Heartbeat, observedAt time.Time, facts k8snetprep.HostNetFacts) (HostFacts, error) {
+	return SealHostFactsWithCilium(heartbeat, observedAt, facts, nil)
+}
+
+// SealHostFactsWithCilium is SealHostFacts with the `cilium` section of a node
+// that shows Cilium. The same rule holds for it: a section that is malformed
+// or does not fit is replaced by the statement that it could not be published.
+func SealHostFactsWithCilium(heartbeat Heartbeat, observedAt time.Time, facts k8snetprep.HostNetFacts, cilium *k8snetprep.CiliumFacts) (HostFacts, error) {
 	if err := facts.Validate(); err != nil {
 		facts = k8snetprep.UnreadableHostNetFacts(err.Error())
+	}
+	if cilium != nil {
+		if err := cilium.Validate(); err != nil {
+			cilium = k8snetprep.UnreadableCiliumFacts(err.Error())
+		}
 	}
 	receipt := HostFacts{
 		SchemaVersion: HostFactsSchemaVersion, Contract: HostFactsContract,
 		NodeName: heartbeat.NodeName, ManagerUID: heartbeat.ManagerUID, ManagerBootID: heartbeat.ManagerBootID,
-		Sequence: heartbeat.Sequence, ObservedAt: observedAt.UTC(), Netfilter: facts,
+		Sequence: heartbeat.Sequence, ObservedAt: observedAt.UTC(), Netfilter: facts, Cilium: cilium,
 	}
 	for attempt := 0; ; attempt++ {
 		digest, err := hostFactsDigest(receipt)
@@ -94,6 +116,9 @@ func SealHostFacts(heartbeat Heartbeat, observedAt time.Time, facts k8snetprep.H
 			return HostFacts{}, fmt.Errorf("host facts receipt exceeds bounded size")
 		}
 		receipt.Netfilter = k8snetprep.UnreadableHostNetFacts(fmt.Sprintf("host facts exceed %d bytes", maxHostFacts))
+		if receipt.Cilium != nil {
+			receipt.Cilium = k8snetprep.UnreadableCiliumFacts(fmt.Sprintf("host facts exceed %d bytes", maxHostFacts))
+		}
 		receipt.Digest = ""
 	}
 }
@@ -129,6 +154,11 @@ func validateHostFacts(receipt HostFacts, heartbeat Heartbeat, node string, now 
 	if err := receipt.Netfilter.Validate(); err != nil {
 		return err
 	}
+	if receipt.Cilium != nil {
+		if err := receipt.Cilium.Validate(); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -155,19 +185,39 @@ func (s *Store) SaveHostFacts(receipt HostFacts) error {
 // holds the CNI operation lock, under which the manager writes both files, so
 // the two are read as one publication.
 func (s *Store) HostNetFacts(node string, now time.Time) (k8snetprep.HostNetFacts, error) {
-	if !validNodeName(node) {
-		return k8snetprep.HostNetFacts{}, fmt.Errorf("gateway host facts identity is invalid")
-	}
-	heartbeat, err := s.LoadHeartbeat()
+	receipt, err := s.liveHostFacts(node, now)
 	if err != nil {
-		return k8snetprep.HostNetFacts{}, err
-	}
-	receipt, err := s.LoadHostFacts()
-	if err != nil {
-		return k8snetprep.HostNetFacts{}, err
-	}
-	if err := validateHostFacts(receipt, heartbeat, node, now); err != nil {
 		return k8snetprep.HostNetFacts{}, err
 	}
 	return receipt.Netfilter, nil
+}
+
+// CiliumFacts is the gateway's side for the `cilium` section: the section of
+// the receipt that belongs to the live heartbeat of this node, nil when that
+// receipt has none, or the reason there is no such receipt. The receipt is
+// accepted under exactly the rules of HostNetFacts, with the same lock held.
+func (s *Store) CiliumFacts(node string, now time.Time) (*k8snetprep.CiliumFacts, error) {
+	receipt, err := s.liveHostFacts(node, now)
+	if err != nil {
+		return nil, err
+	}
+	return receipt.Cilium, nil
+}
+
+func (s *Store) liveHostFacts(node string, now time.Time) (HostFacts, error) {
+	if !validNodeName(node) {
+		return HostFacts{}, fmt.Errorf("gateway host facts identity is invalid")
+	}
+	heartbeat, err := s.LoadHeartbeat()
+	if err != nil {
+		return HostFacts{}, err
+	}
+	receipt, err := s.LoadHostFacts()
+	if err != nil {
+		return HostFacts{}, err
+	}
+	if err := validateHostFacts(receipt, heartbeat, node, now); err != nil {
+		return HostFacts{}, err
+	}
+	return receipt, nil
 }

@@ -1384,7 +1384,11 @@ func (m *Manager) SetKubernetesMode(enabled bool) {
 // host-posture manager's receipt. In Kubernetes the gateway never runs
 // iptables-nft-save or ipset for that proof itself, so a missing source
 // refuses instead of falling back.
-func (m *Manager) SetKubernetesCNIAuthority(guard k8snetprep.AuthorityGuard, hostFacts k8snetprep.HostFactsSource) {
+//
+// ciliumFacts is the `cilium` section of that same receipt (K8N-2). A node
+// that shows Cilium is ready only on what it proves; without a source such a
+// node is refused.
+func (m *Manager) SetKubernetesCNIAuthority(guard k8snetprep.AuthorityGuard, hostFacts k8snetprep.HostFactsSource, ciliumFacts k8snetprep.CiliumFactsSource) {
 	if !m.kubernetesMode.Load() {
 		return
 	}
@@ -1401,6 +1405,7 @@ func (m *Manager) SetKubernetesCNIAuthority(guard k8snetprep.AuthorityGuard, hos
 		return m.nftRun(ctx, args...)
 	}, nil, guard)
 	reconciler.UseHostFacts(hostFacts)
+	reconciler.UseCiliumFacts(ciliumFacts)
 	m.k8sNetPrep = reconciler
 }
 

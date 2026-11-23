@@ -274,6 +274,9 @@ func newE2EGateway(t *testing.T, stateDir, node, ownerUID string, nft k8snetprep
 	r.UseHostFacts(func(context.Context) (k8snetprep.HostNetFacts, error) {
 		return store.HostNetFacts(node, time.Now())
 	})
+	r.UseCiliumFacts(func(context.Context) (*k8snetprep.CiliumFacts, error) {
+		return store.CiliumFacts(node, time.Now())
+	})
 	// The rp_filter read-back is not what this test is about.
 	procSys := t.TempDir()
 	path := filepath.Join(procSys, "net", "ipv4", "conf", "wg0", "rp_filter")

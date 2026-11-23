@@ -3,9 +3,11 @@
 package k8snetprep
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"net/netip"
+	"reflect"
 	"strings"
 	"testing"
 )
@@ -52,71 +54,216 @@ func TestCiliumLiveNodesPassTheRuleCheckAlone(t *testing.T) {
 	}
 }
 
-// So the guard refuses every node that shows Cilium, in every mode, until the
-// gateway can read Cilium's own report. The whole reconcile on each real
-// capture is refused with that reason, names what it found, reports no ready
-// adapter and writes nothing. The test container has no Cilium device, so the
+// constantCiliumFacts is a facts source that always has the same section, and
+// counts how often the reconciler asked for it.
+func constantCiliumFacts(facts *CiliumFacts, calls *int) CiliumFactsSource {
+	return func(context.Context) (*CiliumFacts, error) {
+		if calls != nil {
+			*calls++
+		}
+		return facts, nil
+	}
+}
+
+func wantCiliumRefusal(t *testing.T, name string, f *calicoTestKernel, status ReconcileStatus, err error, want string) {
+	t.Helper()
+	if err == nil || !strings.Contains(err.Error(), want) {
+		t.Fatalf("%s: status %+v, error %v, want %q", name, status, err, want)
+	}
+	if status.Host.State != StateBlocked || status.Host.Reason != bounded(err.Error(), maxReasonBytes) {
+		t.Errorf("%s: host = %+v", name, status.Host)
+	}
+	for _, adapter := range status.Adapters {
+		if adapter.State != StateBlocked || adapter.Name == ObservedAdapterName || adapter.Name == CiliumAdapterName {
+			t.Errorf("%s: adapter = %+v", name, adapter)
+		}
+	}
+	if len(f.mutations) != 0 {
+		t.Errorf("%s: refusal mutated: %v", name, f.mutations)
+	}
+}
+
+// The whole reconcile on the real captures, with the section the manager
+// would publish for each. The test container has no Cilium device, so the
 // chains in the capture carry the detection here.
-func TestCiliumLiveNodesAreRefusedByTheGuard(t *testing.T) {
-	for _, prefix := range []string{ciliumLiveA, ciliumLiveB, ciliumLiveC} {
-		for _, tunnel := range []string{"100.96.0.0/24", "10.244.200.0/24"} {
-			f, r := liveCiliumKernel(t, prefix)
-			status, err := r.Reconcile(t.Context(), tunnel)
-			if !errors.Is(err, errCiliumNotVerified) {
-				t.Fatalf("%s %s: %+v %v", prefix, tunnel, status, err)
+//
+//	A  eBPF masquerade, ip-masq-agent off: refused, and the customer is told
+//	   what to add; ready only for a range inside the native-routing range.
+//	B  eBPF masquerade, the range in the ip-masq-agent map: ready, proved by
+//	   the map entry.
+//	B, then the ip-masq-agent turned off: refused again.
+//	C  iptables masquerade: the rule walk decides, and it accepts the real
+//	   rules.
+func TestCiliumLiveNodesReconcileOnTheManagersFacts(t *testing.T) {
+	for name, tc := range map[string]struct {
+		prefix string
+		facts  *CiliumFacts
+		tunnel string
+		// reason is the ready cilium_masquerade reason; refuse is the refusal.
+		reason string
+		refuse string
+	}{
+		"A":                     {prefix: ciliumLiveA, facts: ciliumFactsA(t), tunnel: "100.96.0.0/24", refuse: ciliumWantEnable},
+		"A, native routing":     {prefix: ciliumLiveA, facts: ciliumFactsA(t), tunnel: "10.244.200.0/24", reason: "tunnel range is inside Cilium's native-routing range 10.244.0.0/16"},
+		"B":                     {prefix: ciliumLiveB, facts: ciliumFactsB(t), tunnel: "100.96.0.0/24", reason: "tunnel range is inside Cilium ip-masq-agent range 100.96.0.0/24"},
+		"B, range not listed":   {prefix: ciliumLiveB, facts: ciliumFactsB(t), tunnel: "100.96.1.0/24", refuse: ciliumWantAdd},
+		"B then off":            {prefix: ciliumLiveA, facts: ciliumFactsBThenOff(t), tunnel: "100.96.0.0/24", refuse: ciliumWantEnable},
+		"C":                     {prefix: ciliumLiveC, facts: ciliumFactsC(t), tunnel: "100.96.0.0/24", reason: ReasonCiliumIPTablesMasquerade},
+		"C, inside pod routing": {prefix: ciliumLiveC, facts: ciliumFactsC(t), tunnel: "10.244.200.0/24", reason: ReasonCiliumIPTablesMasquerade},
+	} {
+		f, r := liveCiliumKernel(t, tc.prefix)
+		calls := 0
+		r.UseCiliumFacts(constantCiliumFacts(tc.facts, &calls))
+		status, err := r.Reconcile(t.Context(), tc.tunnel)
+		if calls != 1 {
+			t.Errorf("%s: the facts were taken %d times", name, calls)
+		}
+		if tc.refuse != "" {
+			wantCiliumRefusal(t, name, f, status, err, tc.refuse)
+			if err.Error() != tc.refuse || !errors.Is(err, errCiliumTunnelMasqueraded) {
+				t.Errorf("%s: refusal = %q", name, err)
 			}
-			if !strings.HasPrefix(err.Error(), ReasonCiliumNotVerified) || !strings.Contains(err.Error(), "found iptables chain CILIUM_") {
-				t.Errorf("%s: reason %q", prefix, err)
-			}
-			if len(err.Error()) > maxReasonBytes {
-				t.Errorf("reason is %d bytes", len(err.Error()))
-			}
-			if status.Host.State != StateBlocked || status.Host.Reason != err.Error() {
-				t.Errorf("%s: host = %+v", prefix, status.Host)
-			}
-			for _, adapter := range status.Adapters {
-				if adapter.State != StateBlocked || adapter.Name == ObservedAdapterName {
-					t.Errorf("%s: adapter = %+v", prefix, adapter)
+			continue
+		}
+		if err != nil {
+			t.Errorf("%s: %+v %v", name, status, err)
+			continue
+		}
+		want := []ComponentStatus{
+			{Name: ObservedAdapterName, State: StateReady, Reason: ReasonObservedNoTunnelSourceNAT},
+			{Name: CiliumAdapterName, State: StateReady, Reason: tc.reason},
+			{Name: ipMasqAdapterName, State: StateNotApplicable, Reason: "exact chain absent"},
+			{Name: awsAdapterName, State: StateNotApplicable, Reason: "exact chain absent"},
+		}
+		if status.Host.State != StateReady || !reflect.DeepEqual(status.Adapters, want) {
+			t.Errorf("%s: status = %+v", name, status)
+		}
+		if len(f.mutations) != 0 {
+			t.Errorf("%s: mutations: %v", name, f.mutations)
+		}
+	}
+}
+
+// In iptables mode the Cilium proof only says who decides. A tunnel range the
+// walk refuses stays refused by the walk, naming Cilium's chain, and the
+// manager's facts are not even asked for.
+func TestCiliumLiveIPTablesNodeIsRefusedByTheWalkNotByTheFacts(t *testing.T) {
+	for _, tunnel := range []string{"10.0.0.0/8", "10.240.0.0/12"} {
+		f, r := liveCiliumKernel(t, ciliumLiveC)
+		calls := 0
+		r.UseCiliumFacts(constantCiliumFacts(ciliumFactsC(t), &calls))
+		status, err := r.Reconcile(t.Context(), tunnel)
+		wantCiliumRefusal(t, tunnel, f, status, err, "CILIUM_POST_nat")
+		if errors.Is(err, errCiliumNotVerified) || errors.Is(err, errCiliumTunnelMasqueraded) || calls != 0 {
+			t.Errorf("%s: %v, facts taken %d times", tunnel, err, calls)
+		}
+	}
+	// The same node reported as eBPF mode would need the eBPF proof: the mode
+	// comes from the agent, never from the look of the rules.
+	f, r := liveCiliumKernel(t, ciliumLiveC)
+	r.UseCiliumFacts(constantCiliumFacts(ciliumFactsA(t), nil))
+	status, err := r.Reconcile(t.Context(), "100.96.0.0/24")
+	wantCiliumRefusal(t, "C rules, eBPF report", f, status, err, ciliumWantEnable)
+}
+
+// A node that shows Cilium is refused whenever the reader's section is not
+// there to decide on: no source, no receipt, a receipt without the section, or
+// a section that says the agent could not be read. All modes, both ranges.
+func TestCiliumLiveNodesAreRefusedWithoutUsableFacts(t *testing.T) {
+	unread := UnreadableCiliumFacts("no agent socket at /var/run/cilium/cilium.sock; set cilium.enabled=true on the tunnex-host-posture chart")
+	for name, tc := range map[string]struct {
+		source CiliumFactsSource
+		want   string
+	}{
+		"no source": {want: "Cilium masquerade on this node is not verified: no host-posture facts source is configured (found iptables chain CILIUM_"},
+		"no receipt": {
+			source: func(context.Context) (*CiliumFacts, error) { return nil, errors.New("host facts receipt is missing") },
+			want:   "Cilium masquerade on this node is not verified: host facts receipt is missing (found iptables chain CILIUM_",
+		},
+		"stale receipt": {
+			source: func(context.Context) (*CiliumFacts, error) {
+				return nil, errors.New("host facts receipt is stale or from the future")
+			},
+			want: "Cilium masquerade on this node is not verified: host facts receipt is stale or from the future (found iptables chain CILIUM_",
+		},
+		"receipt without the section": {
+			source: constantCiliumFacts(nil, nil),
+			want:   "Cilium masquerade on this node is not verified: the host-posture manager published no Cilium facts (found iptables chain CILIUM_",
+		},
+		"agent not readable": {
+			source: constantCiliumFacts(unread, nil),
+			want:   "Cilium masquerade on this node is not verified: the host-posture manager could not read the Cilium agent status: no agent socket at /var/run/cilium/cilium.sock; set cilium.enabled=true on the tunnex-host-posture chart",
+		},
+	} {
+		for _, prefix := range []string{ciliumLiveA, ciliumLiveB, ciliumLiveC} {
+			for _, tunnel := range []string{"100.96.0.0/24", "10.244.200.0/24"} {
+				f, r := liveCiliumKernel(t, prefix)
+				r.UseCiliumFacts(tc.source)
+				status, err := r.Reconcile(t.Context(), tunnel)
+				wantCiliumRefusal(t, name+" "+prefix, f, status, err, tc.want)
+				if !errors.Is(err, errCiliumNotVerified) || !strings.HasPrefix(err.Error(), ReasonCiliumNotVerified+": ") {
+					t.Errorf("%s: %v", name, err)
 				}
-			}
-			if len(f.mutations) != 0 {
-				t.Errorf("%s: refusal mutated: %v", prefix, f.mutations)
+				if len(status.Host.Reason) > maxReasonBytes {
+					t.Errorf("%s: reason is %d bytes", name, len(status.Host.Reason))
+				}
 			}
 		}
 	}
 }
 
 // The real device names alone are enough: a Cilium told to install no iptables
-// rules leaves no chain, but its devices remain.
+// rules leaves no chain, but its devices remain. Such a node needs the same
+// proof.
 func TestCiliumGuardDetectsDevicesWithoutChains(t *testing.T) {
 	var links []string
 	for _, name := range strings.Fields(string(ciliumLiveRead(t, ciliumLiveA+"links.txt"))) {
 		name, _, _ = strings.Cut(name, "@")
 		links = append(links, name)
 	}
-	_, r := liveFlannelKernel(t)
+	f, r := liveFlannelKernel(t)
 	r.listLinks = func() ([]string, error) { return links, nil }
 	status, err := r.Reconcile(t.Context(), "100.96.0.0/24")
-	if !errors.Is(err, errCiliumNotVerified) || !strings.Contains(err.Error(), "found network device cilium_host") {
-		t.Fatalf("%+v %v", status, err)
+	wantCiliumRefusal(t, "no source", f, status, err, "no host-posture facts source is configured (found network device cilium_host)")
+	if !errors.Is(err, errCiliumNotVerified) {
+		t.Fatalf("%v", err)
+	}
+	r.UseCiliumFacts(constantCiliumFacts(ciliumFactsA(t), nil))
+	status, err = r.Reconcile(t.Context(), "100.96.0.0/24")
+	wantCiliumRefusal(t, "A facts", f, status, err, ciliumWantEnable)
+	r.UseCiliumFacts(constantCiliumFacts(ciliumFactsB(t), nil))
+	status, err = r.Reconcile(t.Context(), "100.96.0.0/24")
+	if err != nil || len(status.Adapters) < 2 || status.Adapters[1].Name != CiliumAdapterName || status.Adapters[1].State != StateReady {
+		t.Fatalf("B facts: %+v %v", status, err)
 	}
 }
 
-// A node with no Cilium signal is unaffected, and a node whose devices cannot
-// be listed is not assumed free of Cilium.
+// A node with no Cilium signal is unaffected: it reports no cilium_masquerade
+// adapter and its facts source is never asked. A node whose devices cannot be
+// listed is not assumed free of Cilium.
 func TestCiliumGuardWithoutCilium(t *testing.T) {
 	f, r := liveFlannelKernel(t)
+	calls := 0
+	r.UseCiliumFacts(func(context.Context) (*CiliumFacts, error) {
+		calls++
+		return nil, errors.New("must not be asked on a node without Cilium")
+	})
 	r.listLinks = func() ([]string, error) { return []string{"lo", "eth0", "flannel.1", "cni0", "wg0"}, nil }
 	status, err := r.Reconcile(t.Context(), "100.96.0.0/24")
 	if err != nil || status.Adapters[0].Name != ObservedAdapterName || status.Adapters[0].State != StateReady {
 		t.Fatalf("node without Cilium: %+v %v", status, err)
 	}
-	if len(f.mutations) != 0 {
-		t.Fatalf("mutations: %v", f.mutations)
+	for _, adapter := range status.Adapters {
+		if adapter.Name == CiliumAdapterName {
+			t.Fatalf("a node without Cilium reports %+v", adapter)
+		}
+	}
+	if len(f.mutations) != 0 || calls != 0 {
+		t.Fatalf("mutations: %v, facts taken %d times", f.mutations, calls)
 	}
 	// Names that merely contain the word are not Cilium's.
 	r.listLinks = func() ([]string, error) { return []string{"lo", "mycilium_0", "Cilium_host"}, nil }
-	if _, err := r.Reconcile(t.Context(), "100.96.0.0/24"); err != nil {
+	if _, err := r.Reconcile(t.Context(), "100.96.0.0/24"); err != nil || calls != 0 {
 		t.Fatalf("unrelated device names refused: %v", err)
 	}
 	for name, list := range map[string]func() ([]string, error){
@@ -124,6 +271,7 @@ func TestCiliumGuardWithoutCilium(t *testing.T) {
 		"empty": func() ([]string, error) { return nil, nil },
 	} {
 		_, r := liveFlannelKernel(t)
+		r.UseCiliumFacts(constantCiliumFacts(ciliumFactsB(t), nil))
 		r.listLinks = list
 		status, err := r.Reconcile(t.Context(), "100.96.0.0/24")
 		if err == nil || errors.Is(err, errCiliumNotVerified) || !strings.Contains(err.Error(), "Cilium detection") {
@@ -135,7 +283,7 @@ func TestCiliumGuardWithoutCilium(t *testing.T) {
 			}
 		}
 	}
-	if err := (&Reconciler{}).refuseCilium(nil); err == nil {
+	if _, err := (&Reconciler{}).detectCilium(nil); err == nil {
 		t.Error("no listing accepted")
 	}
 	// The real device list of the test host is readable and shows no Cilium.
@@ -163,7 +311,7 @@ func liveFlannelKernel(t *testing.T) (*calicoTestKernel, *Reconciler) {
 //	-s 127.0.0.1/32 -o cilium_host -j SNAT
 //	-o cilium_host -m mark --mark 0xf00/0xf00 -m conntrack --ctstate DNAT -j SNAT
 //
-// What the walk refuses on it, for when the guard gives way to the reader.
+// What the walk refuses on it.
 func TestCiliumLiveIPTablesNodeRefusals(t *testing.T) {
 	s, err := parseCNISnapshot(string(ciliumLiveRead(t, ciliumLiveC+"nft-ruleset.json")))
 	if err != nil {
