@@ -27,6 +27,10 @@ COPY deploy/bgp/build_observer.sh /build_observer.sh
 COPY deploy/bgp/zebra-no-sys-admin.patch /build/zebra-no-sys-admin.patch
 RUN sh /build_observer.sh
 
+# K8N-2: Alpine's own bpftool binary, taken out of its package (see the runtime stage).
+FROM alpine:3.24.2@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6 AS bpftool
+RUN apk add --no-cache bpftool && test -x /usr/sbin/bpftool && /usr/sbin/bpftool version
+
 FROM alpine:3.24.2@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6
 # WireGuard data plane (S3.2): wg/wg-quick + ip (iproute2) drive the kernel
 # WireGuard module (present in most modern kernels incl. Docker's LinuxKit VM).
@@ -45,12 +49,20 @@ FROM alpine:3.24.2@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4c
 # binary and its library without a netlink socket.
 # On a Cilium node the host-posture manager reads Cilium's pinned ip-masq-agent map with
 # `bpftool --json map dump pinned PATH` (K8N-2), the command an operator can run to see what
-# Tunnex saw. It is only ever used to read, and only in that privileged container. `bpftool
-# version` loads the binary and its libraries without a bpf() call, so it runs in the build.
-RUN apk add --no-cache ca-certificates wireguard-tools iproute2 nftables iptables ipset bpftool openvpn libcrypto3 libssl3 \
+# Tunnex saw. It is only ever used to read, and only in that privileged container.
+# Alpine's bpftool package cannot be installed here as it is: it depends on perf, cpupower and
+# the other kernel tools, and through perf on python3, which the runtime check below refuses
+# as a build tool. So only its one binary is taken, from the same pinned Alpine release, and
+# the libraries that binary is linked against are installed by name. libLLVM is one of them
+# (the package is built with the LLVM disassembler) and is by far the largest part of what
+# this adds to the image. `bpftool version` loads the binary and every library without a
+# bpf() call, so it runs in the build and fails it if the closure is not complete.
+RUN apk add --no-cache ca-certificates wireguard-tools iproute2 nftables iptables ipset openvpn libcrypto3 libssl3 \
+        libelf libcap2 zlib llvm22-libs \
     && iptables-nft-save -V \
-    && ipset help >/dev/null \
-    && bpftool version
+    && ipset help >/dev/null
+COPY --from=bpftool /usr/sbin/bpftool /usr/sbin/bpftool
+RUN bpftool version
 COPY deploy/bgp/install.sh deploy/bgp/PROVENANCE.json deploy/bgp/NOTICE /usr/share/tunnex-bgp/
 RUN sh /usr/share/tunnex-bgp/install.sh
 COPY --from=bgp-observer-build /stage/opt/tunnex-bgp /opt/tunnex-bgp

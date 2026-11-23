@@ -34,6 +34,8 @@ type capturedCiliumNode struct {
 	dump      string
 	dumpErr   error
 	ran       []string
+	// noSocketDir stands for a manager without the /var/run/cilium mount.
+	noSocketDir bool
 }
 
 func newCapturedCiliumNode(t *testing.T, prefix string) *capturedCiliumNode {
@@ -155,6 +157,14 @@ func TestCiliumReaderStatesWhatItCouldNotRead(t *testing.T) {
 			},
 			want: want{status: "unreadable: no agent socket at ", ipmasq: "unreadable: the agent status was not read"},
 		},
+		"socket directory not mounted": {
+			prefix: ciliumLiveB,
+			mutate: func(n *capturedCiliumNode) {
+				n.statusErr = &net.OpError{Op: "dial", Net: "unix", Err: fs.ErrNotExist}
+				n.noSocketDir = true
+			},
+			want: want{status: "unreadable: /nonexistent-cilium-run is not mounted in the host-posture manager; set cilium.enabled=true on the tunnex-host-posture chart", ipmasq: "unreadable: the agent status was not read"},
+		},
 		"agent does not answer": {
 			prefix: ciliumLiveB,
 			mutate: func(n *capturedCiliumNode) {
@@ -240,7 +250,14 @@ func TestCiliumReaderStatesWhatItCouldNotRead(t *testing.T) {
 	} {
 		node := newCapturedCiliumNode(t, tc.prefix)
 		tc.mutate(node)
-		facts := node.reader().Read(t.Context())
+		reader := node.reader()
+		if node.noSocketDir {
+			reader.socket = "/nonexistent-cilium-run/cilium.sock"
+		}
+		facts := reader.Read(t.Context())
+		if name == "socket not there" && facts != nil && !strings.HasSuffix(facts.Status.Reason, "the Cilium agent is not running or is restarting") {
+			t.Errorf("%s: reason = %q", name, facts.Status.Reason)
+		}
 		if facts == nil {
 			t.Errorf("%s: no facts", name)
 			continue
