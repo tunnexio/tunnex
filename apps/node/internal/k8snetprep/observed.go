@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/netip"
 	"reflect"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -20,6 +21,10 @@ const ObservedAdapterName = "observed_cni"
 const ReasonObservedNoTunnelSourceNAT = "node NAT rules cannot rewrite traffic to the tunnel range"
 
 const maxObservedChainDepth = 8
+
+// exactInterfaceNameRE is an interface name with no wildcard, as nft prints an
+// exact `oifname` comparison.
+var exactInterfaceNameRE = regexp.MustCompile(`^[A-Za-z0-9._-]{1,15}$`)
 
 // maxProofSets bounds how many kernel sets one proof may ask to read.
 const maxProofSets = 16
@@ -68,6 +73,7 @@ type observedNAT struct {
 	rules   map[string][][]map[string]any
 	handled map[string]bool
 	tunnel  netip.Prefix
+	egress  string
 	active  map[string]bool
 
 	// facts is nil when no set facts were read. collect makes the walk gather
@@ -90,7 +96,7 @@ type observedNAT struct {
 // deliberately small: any statement or jump target it does not understand is
 // an error, never an assumption.
 func proveNoTunnelSourceNAT(chains map[string]bool, rules map[string][][]map[string]any, base string, tunnel netip.Prefix, handled map[string]bool) error {
-	_, err := proveNoTunnelSourceNATWithSets(chains, rules, base, tunnel, handled, nil)
+	_, err := proveNoTunnelSourceNATWithSets(chains, rules, base, tunnel, "", handled, nil)
 	return err
 }
 
@@ -103,8 +109,15 @@ func proveNoTunnelSourceNAT(chains map[string]bool, rules map[string][][]map[str
 // With facts nil such a rule is refused with errSetFactsNeeded. A rule that
 // does not pair, a needed set that was not read, and a set overlapping tunnel
 // are errors.
-func proveNoTunnelSourceNATWithSets(chains map[string]bool, rules map[string][][]map[string]any, base string, tunnel netip.Prefix, handled map[string]bool, facts *natSetFacts) ([]string, error) {
-	o, err := newObservedNAT(chains, rules, tunnel, handled)
+//
+// egress, when not empty, is the interface through which traffic enters the
+// tunnel (the WireGuard interface). The traffic the proof protects is then
+// traffic for tunnel that leaves through egress, the same scope as the rules
+// this package owns (`ip daddr TUNNEL oifname EGRESS return`): a rule that
+// requires another exact output interface cannot apply to it. With egress
+// empty an output-interface condition excuses nothing.
+func proveNoTunnelSourceNATWithSets(chains map[string]bool, rules map[string][][]map[string]any, base string, tunnel netip.Prefix, egress string, handled map[string]bool, facts *natSetFacts) ([]string, error) {
+	o, err := newObservedNAT(chains, rules, tunnel, egress, handled)
 	if err != nil {
 		return nil, err
 	}
@@ -120,8 +133,8 @@ func proveNoTunnelSourceNATWithSets(chains map[string]bool, rules map[string][][
 // of non-negated, source-only matches on source-NAT rules that tunnel-bound
 // traffic can reach from base. Every other refusal of the walk, including a
 // rule that does not pair with saved, is returned as an error.
-func setsNeededForProof(chains map[string]bool, rules map[string][][]map[string]any, base string, tunnel netip.Prefix, handled map[string]bool, saved map[string][]savedRule) ([]string, error) {
-	o, err := newObservedNAT(chains, rules, tunnel, handled)
+func setsNeededForProof(chains map[string]bool, rules map[string][][]map[string]any, base string, tunnel netip.Prefix, egress string, handled map[string]bool, saved map[string][]savedRule) ([]string, error) {
+	o, err := newObservedNAT(chains, rules, tunnel, egress, handled)
 	if err != nil {
 		return nil, err
 	}
@@ -135,11 +148,14 @@ func setsNeededForProof(chains map[string]bool, rules map[string][][]map[string]
 	return sortedNames(o.needed), nil
 }
 
-func newObservedNAT(chains map[string]bool, rules map[string][][]map[string]any, tunnel netip.Prefix, handled map[string]bool) (*observedNAT, error) {
+func newObservedNAT(chains map[string]bool, rules map[string][][]map[string]any, tunnel netip.Prefix, egress string, handled map[string]bool) (*observedNAT, error) {
 	if !tunnel.IsValid() || !tunnel.Addr().Is4() {
 		return nil, errors.New("invalid IPv4 tunnel range")
 	}
-	return &observedNAT{chains: chains, rules: rules, handled: handled, tunnel: tunnel.Masked(), active: map[string]bool{},
+	if egress != "" && !exactInterfaceNameRE.MatchString(egress) {
+		return nil, errors.New("invalid tunnel interface name")
+	}
+	return &observedNAT{chains: chains, rules: rules, handled: handled, tunnel: tunnel.Masked(), egress: egress, active: map[string]bool{},
 		paired: map[string]bool{}, needed: map[string]bool{}, proof: map[string]bool{}}, nil
 }
 
@@ -429,6 +445,20 @@ func (o *observedNAT) readMatch(match map[string]any, view *observedRule) {
 		default:
 			view.certain = false
 		}
+		return
+	}
+	if reflect.DeepEqual(match["left"], map[string]any{"meta": map[string]any{"key": "oifname"}}) {
+		// `oifname == "tunl0"`: the rule applies only to packets leaving
+		// through that one interface. Traffic entering the tunnel leaves
+		// through egress, so a rule bound to another exact name never sees
+		// it. A wildcard ("tunl*"), a set of names, "!=" and an unknown
+		// egress prove nothing.
+		name, isName := match["right"].(string)
+		if op == "==" && isName && o.egress != "" && exactInterfaceNameRE.MatchString(name) && name != o.egress {
+			view.cannotMatch = true
+			return
+		}
+		view.certain = false
 		return
 	}
 	if mask, ok := markMask(match["left"]); ok {

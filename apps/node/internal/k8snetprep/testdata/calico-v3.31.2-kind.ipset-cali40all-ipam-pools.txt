@@ -1,0 +1,2 @@
+create cali40all-ipam-pools hash:net family inet hashsize 1024 maxelem 1048576 bucketsize 12 initval 0xf0118b17
+add cali40all-ipam-pools 192.168.0.0/16

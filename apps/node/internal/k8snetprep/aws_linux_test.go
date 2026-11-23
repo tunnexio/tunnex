@@ -39,6 +39,7 @@ type awsTestKernel struct {
 		NFTables []map[string]json.RawMessage `json:"nftables"`
 	}
 	save          string
+	saveMangle    string
 	version       string
 	next          uint64
 	mutations     []string
@@ -156,6 +157,9 @@ func (f *awsTestKernel) iptables(_ context.Context, args ...string) (string, err
 	f.commands = append(f.commands, "iptables-nft-save "+strings.Join(args, " "))
 	if strings.Join(args, " ") == "-V" {
 		return f.version, nil
+	}
+	if strings.Join(args, " ") == "-t mangle" && f.saveMangle != "" {
+		return f.saveMangle, nil
 	}
 	if strings.Join(args, " ") != "-t nat" {
 		return "", errors.New("unexpected compat command")

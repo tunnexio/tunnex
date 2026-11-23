@@ -71,7 +71,7 @@ func realIPSetRunner(ctx context.Context, args ...string) (string, error) {
 
 func realIPTablesRunner(ctx context.Context, args ...string) (string, error) {
 	// No alternative-selected wrapper and no restore/write command is allowed.
-	if strings.Join(args, " ") != "-V" && strings.Join(args, " ") != "-t nat" {
+	if command := strings.Join(args, " "); command != "-V" && command != "-t nat" && command != "-t mangle" {
 		return "", errors.New("unsupported iptables-nft-save inspection")
 	}
 	out, err := exec.CommandContext(ctx, "iptables-nft-save", args...).CombinedOutput()
@@ -444,6 +444,10 @@ type cniSnapshot struct {
 	// of the fingerprint: they describe this listing, they are not rules.
 	setFacts  *natSetFacts
 	proofSets []string
+
+	// mangleSaved is the saved form of the ip mangle table, read only when a
+	// mangle POSTROUTING hook sets a mark whose value the listing hides.
+	mangleSaved map[string][]savedRule
 }
 
 func nftKey(family, table, chain string) string { return family + "/" + table + "/" + chain }
@@ -753,6 +757,17 @@ func (r *Reconciler) observeRegisteredMechanisms(ctx context.Context, cidr strin
 		return nil, err
 	}
 	err = before.validateHookCoverage(r.iface, cidr)
+	if errors.Is(err, errMarkFactsNeeded) {
+		// A mangle POSTROUTING hook sets a mark. Read its value from the saved
+		// form and prove again. Like the set reads below, this sits between the
+		// two listings compared at the end.
+		saved, savedErr := r.readSavedMangle(ctx)
+		if savedErr != nil {
+			return nil, savedErr
+		}
+		before.mangleSaved = saved
+		err = before.validateHookCoverage(r.iface, cidr)
+	}
 	if errors.Is(err, errSetFactsNeeded) {
 		// A masquerade is conditioned on a kernel set. Read what the listing
 		// cannot say and prove again. These reads sit between the two listings
@@ -796,6 +811,33 @@ func (r *Reconciler) observeRegisteredMechanisms(ctx context.Context, cidr strin
 	return after, nil
 }
 
+// readSavedMangle reads the saved form of the ip mangle table. It changes
+// nothing.
+func (r *Reconciler) readSavedMangle(ctx context.Context) (map[string][]savedRule, error) {
+	if r.runIPTables == nil {
+		return nil, errors.New("mangle mark inspection is unavailable")
+	}
+	if err := operationContextErr(ctx); err != nil {
+		return nil, err
+	}
+	version, err := r.runIPTables(ctx, "-V")
+	if err != nil || !strings.HasPrefix(strings.TrimSpace(version), "iptables-nft-save v") || !strings.Contains(version, "(nf_tables)") {
+		return nil, errors.New("explicit nft-backed iptables-nft-save is unavailable or incompatible")
+	}
+	listing, err := r.runIPTables(ctx, "-t", "mangle")
+	if err != nil {
+		return nil, fmt.Errorf("read saved mangle rules: %s", bounded(err.Error(), 120))
+	}
+	if err := operationContextErr(ctx); err != nil {
+		return nil, err
+	}
+	// Refuse a truncated or ambiguous save before reading rule positions from it.
+	if _, err := parseNFTSaveTable(listing, "mangle"); err != nil {
+		return nil, fmt.Errorf("read saved mangle rules: %w", err)
+	}
+	return parseSavedRules(listing)
+}
+
 // readNATSetFacts reads the saved form of the NAT rules and the members of
 // exactly the sets the observed proof depends on. It changes nothing.
 func (r *Reconciler) readNATSetFacts(ctx context.Context, s *cniSnapshot, cidr string) (*natSetFacts, error) {
@@ -819,7 +861,7 @@ func (r *Reconciler) readNATSetFacts(ctx context.Context, s *cniSnapshot, cidr s
 		return nil, err
 	}
 	chains, rules := s.observedNATInput()
-	names, err := setsNeededForProof(chains, rules, "POSTROUTING", tunnel, observedHandledChains, saved)
+	names, err := setsNeededForProof(chains, rules, "POSTROUTING", tunnel, r.iface, observedHandledChains, saved)
 	if err != nil {
 		return nil, err
 	}
@@ -887,7 +929,15 @@ func (s *cniSnapshot) validateHookCoverage(iface, cidr string) error {
 			continue
 		}
 		// A foreign postrouting filter can set marks that select an earlier NAT
-		// binding too; merely checking its type would miss that coverage.
+		// binding too; merely checking its type would miss that coverage. The
+		// iptables mangle hook (Calico installs one) is accepted only when it is
+		// proved unable to set a Kubernetes mark.
+		if chain.Family == "ip" && chain.Table == "mangle" && chain.Name == "POSTROUTING" && chain.Type == "filter" && chain.Priority == -150 && chain.Policy == "accept" {
+			if err := s.proveMangleMarks(); err != nil {
+				return err
+			}
+			continue
+		}
 		return errors.New("unknown IPv4 postrouting hook coverage")
 	}
 	seen := map[string]bool{}
@@ -918,7 +968,7 @@ func (s *cniSnapshot) validateHookCoverage(iface, cidr string) error {
 		seen[target] = true
 	}
 	if postOK && cidr != "" && !s.hasChain(awsChain) {
-		if err := s.proveObservedNAT(cidr); err != nil {
+		if err := s.proveObservedNAT(iface, cidr); err != nil {
 			return err
 		}
 	}
@@ -955,13 +1005,13 @@ var observedHandledChains = map[string]bool{ipMasqChain: true, awsChain: true}
 // proveObservedNAT applies the provider-neutral walk to every ip nat rule that
 // is not an entry to a registered mechanism. It uses s.setFacts when they were
 // read and records the sets that carried the proof.
-func (s *cniSnapshot) proveObservedNAT(cidr string) error {
+func (s *cniSnapshot) proveObservedNAT(iface, cidr string) error {
 	tunnel, err := netip.ParsePrefix(cidr)
 	if err != nil {
 		return errors.New("invalid IPv4 tunnel CIDR")
 	}
 	chains, rules := s.observedNATInput()
-	proofSets, err := proveNoTunnelSourceNATWithSets(chains, rules, "POSTROUTING", tunnel, observedHandledChains, s.setFacts)
+	proofSets, err := proveNoTunnelSourceNATWithSets(chains, rules, "POSTROUTING", tunnel, iface, observedHandledChains, s.setFacts)
 	if err != nil {
 		return err
 	}
@@ -972,21 +1022,32 @@ func (s *cniSnapshot) proveObservedNAT(cidr string) error {
 // observedNATInput is the ip nat table as the walk reads it: chain names, and
 // each chain's rules in listing order with counters removed.
 func (s *cniSnapshot) observedNATInput() (map[string]bool, map[string][][]map[string]any) {
+	return s.observedTableInput("nat")
+}
+
+func (s *cniSnapshot) observedTableInput(table string) (map[string]bool, map[string][][]map[string]any) {
 	chains := map[string]bool{}
 	rules := map[string][][]map[string]any{}
 	for _, chain := range s.chains {
-		if chain.Family == "ip" && chain.Table == "nat" {
+		if chain.Family == "ip" && chain.Table == table {
 			chains[chain.Name] = true
 		}
 	}
 	for _, list := range s.rules {
 		for _, rule := range list {
-			if rule.Family == "ip" && rule.Table == "nat" {
+			if rule.Family == "ip" && rule.Table == table {
 				rules[rule.Chain] = append(rules[rule.Chain], withoutCounters(rule.Expr))
 			}
 		}
 	}
 	return chains, rules
+}
+
+// proveMangleMarks proves that nothing reachable from ip mangle POSTROUTING
+// can set a Kubernetes mark. It uses s.mangleSaved when that was read.
+func (s *cniSnapshot) proveMangleMarks() error {
+	chains, rules := s.observedTableInput("mangle")
+	return proveCannotSetReservedMarks(chains, rules, "POSTROUTING", s.mangleSaved)
 }
 
 func (s *cniSnapshot) validateTunnexPostrouting(iface, cidr string) error {
@@ -1169,6 +1230,12 @@ func (s *cniSnapshot) validateAWSCompat(listing string) error {
 }
 
 func parseNFTSaveNAT(listing string) (map[string][]string, error) {
+	return parseNFTSaveTable(listing, "nat")
+}
+
+// parseNFTSaveTable reads one table of iptables-nft-save output and refuses a
+// listing that is truncated, carries a warning, or holds the table twice.
+func parseNFTSaveTable(listing, table string) (map[string][]string, error) {
 	if len(listing) > maxCNISnapshotBytes {
 		return nil, errors.New("compat CNI snapshot exceeds bound")
 	}
@@ -1186,10 +1253,10 @@ func parseNFTSaveNAT(listing string) (map[string][]string, error) {
 			return nil, errors.New("unrecognized compat inspection warning")
 		}
 		if strings.HasPrefix(line, "*") {
-			if inNAT || (line == "*nat" && found) {
+			if inNAT || (line == "*"+table && found) {
 				return nil, errors.New("ambiguous compat NAT table")
 			}
-			inNAT = line == "*nat"
+			inNAT = line == "*"+table
 			if inNAT {
 				found = true
 			}
