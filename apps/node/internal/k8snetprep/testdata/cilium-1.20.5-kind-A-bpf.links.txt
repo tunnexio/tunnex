@@ -1,0 +1,8 @@
+lo
+eth0@if584
+cilium_net@cilium_host
+cilium_host@cilium_net
+lxc_health@if5
+lxc5eed7e179cb0@if7
+lxcd74d982215ee@if9
+lxc33c65e4c2f7a@if11

@@ -29,3 +29,15 @@ witnessed xt descriptors at compat-proven positions in the larger worker
 snapshot. All foreign packet semantics remain checked against the unchanged
 explicit save output. Negative tests alter each of those nine positions to
 reject unknown types/names, misplaced known descriptors, and extra fields.
+
+## Cilium 1.20.5, live capture
+
+`cilium-1.20.5-kind-A-bpf.*` are unedited captures from one kind node
+(kindest/node v1.35.0, kernel 6.8.0-117-generic, arm64) running Cilium 1.20.5
+with kube-proxy replacement, native routing and eBPF masquerade, ip-masq-agent
+off, taken on 2026-11-23 from a privileged pod with read-only host mounts
+(bpftool v7.8.0, nft 1.1.6, iptables-nft-save 1.8.13). `healthz.json` is
+`GET /v1/healthz` on the agent socket; `ipmasq-v4.bpftool.json` is what
+`bpftool --json map dump pinned` prints for the map that is not pinned in this
+configuration. `bpftool-net.json` was taken before the test `wg0` existed. See
+`docs/K8N-2-cilium.md`, "Live capture".
