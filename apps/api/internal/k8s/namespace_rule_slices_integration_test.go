@@ -225,3 +225,222 @@ func (f *nsRuleFixture) blockWithdrawal(serviceID uuid.UUID) {
 	f.exec(`INSERT INTO agent_policy_template_versions (id,org_id,template_id,version,created_by_user_id) VALUES ($1,$2,$3,1,$4)`, versionID, f.org, templateID, f.actor.UserID)
 	f.exec(`INSERT INTO agent_policy_template_version_items (org_id,template_version_id,ordinal,dst_kind,dst_k8s_service_id) VALUES ($1,$2,1,'k8s_service',$3)`, f.org, versionID, serviceID)
 }
+
+// ── slice B: label selector ──────────────────────────────────────────────────────────────────────────
+
+// nsLabels is one Service's labels as a version 2 report carries them.
+type nsLabels struct {
+	labels    map[string]string
+	truncated bool
+}
+
+// labelLatestReport makes the cluster's newest report a version 2 report: one label row per Service of
+// the namespace. A Service not named in labels gets an empty, complete label set, as the real writer
+// stores it. Without this call a report is a version 1 report: labels unknown.
+func (f *nsRuleFixture) labelLatestReport(namespace string, labels map[string]nsLabels) {
+	f.t.Helper()
+	ctx := context.Background()
+	rows, err := f.pool.Query(ctx, `SELECT i.report_id,i.inventory_ref,i.service FROM k8s_service_inventory_items i
+		WHERE i.namespace=$2 AND i.report_id=(SELECT id FROM k8s_service_inventory_reports WHERE cluster_id=$1 ORDER BY replay_sequence DESC LIMIT 1)`, f.cluster, namespace)
+	if err != nil {
+		f.t.Fatal(err)
+	}
+	type item struct {
+		report, ref uuid.UUID
+		service     string
+	}
+	var items []item
+	for rows.Next() {
+		var it item
+		if err := rows.Scan(&it.report, &it.ref, &it.service); err != nil {
+			f.t.Fatal(err)
+		}
+		items = append(items, it)
+	}
+	rows.Close()
+	for _, it := range items {
+		entry := labels[it.service]
+		if entry.labels == nil {
+			entry.labels = map[string]string{}
+		}
+		f.exec(`INSERT INTO k8s_service_inventory_item_labels(report_id,inventory_ref,labels,truncated) VALUES($1,$2,$3,$4)`, it.report, it.ref, entry.labels, entry.truncated)
+	}
+}
+
+func TestNamespaceRuleSelectorExposesOnlyMatchesAndWithdrawsAfterTheWait(t *testing.T) {
+	f := newNSRuleFixture(t, "100.66.0.0/24")
+	ctx := context.Background()
+	all := []nsSvc{{"shop", "web", []int32{80}}, {"shop", "api", []int32{8080}}, {"shop", "db", []int32{5432}}, {"shop", "bare", []int32{1}}, {"billing", "ledger", []int32{5432}}}
+	public := map[string]nsLabels{
+		"web": {labels: map[string]string{"exposure": "public", "app": "web"}},
+		"api": {labels: map[string]string{"exposure": "public", "app": "api"}},
+		"db":  {labels: map[string]string{"exposure": "internal"}},
+	}
+	f.report(0, all...)
+	f.labelLatestReport("shop", public)
+	f.labelLatestReport("billing", map[string]nsLabels{"ledger": {labels: map[string]string{"exposure": "public"}}})
+
+	_, err := f.svc.CreateNamespaceRule(ctx, f.org, f.cluster, NamespaceRuleInput{Namespace: "shop", Selector: map[string]string{"exposure": "*"}}, f.actor)
+	assertScopeAPIError(t, err, http.StatusBadRequest, "invalid_selector")
+	rule, err := f.svc.CreateNamespaceRule(ctx, f.org, f.cluster, NamespaceRuleInput{Namespace: "shop", Selector: map[string]string{"exposure": "public"}}, f.actor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// db is labelled otherwise, bare has no labels, billing is another namespace: none is exposed.
+	if got := f.liveKeys(); got != "shop/api:8080=rule shop/web:80=rule" {
+		t.Fatalf("after create: %q", got)
+	}
+	if rule.Status != NamespaceRuleOK || rule.Selector["exposure"] != "public" || len(rule.Selector) != 1 {
+		t.Fatalf("rule = %+v", rule)
+	}
+	if n := f.count(`SELECT count(*) FROM policy_rules WHERE org_id=$1`, f.org); n != 0 {
+		t.Fatalf("a selector rule created %d access rules", n)
+	}
+
+	// api is relabelled in the cluster. Marked on the first report, kept inside the wait, withdrawn after.
+	relabelled := map[string]nsLabels{"web": public["web"], "api": {labels: map[string]string{"exposure": "internal"}}, "db": public["db"]}
+	t0 := time.Now().UTC()
+	f.report(0, all...)
+	f.labelLatestReport("shop", relabelled)
+	f.reconcileAt(t0)
+	f.reconcileAt(t0.Add(NamespaceRuleWithdrawWait - time.Minute))
+	if got := f.liveKeys(); got != "shop/api:8080=rule shop/web:80=rule" {
+		t.Fatalf("inside the wait a relabelled Service keeps its exposure: %q", got)
+	}
+	f.reconcileAt(t0.Add(NamespaceRuleWithdrawWait + time.Second))
+	if got := f.liveKeys(); got != "shop/web:80=rule" {
+		t.Fatalf("after the wait: %q", got)
+	}
+	if n := f.count(`SELECT count(*) FROM audit_logs WHERE org_id=$1 AND action='k8s.service_unexposed' AND actor_system='k8s-namespace-rule' AND metadata->>'name'='api'`, f.org); n != 1 {
+		t.Fatalf("system-actor withdrawal of the relabelled Service = %d", n)
+	}
+
+	// The selector is changed to app=web|… : db now matches a new selector, web no longer does.
+	internal := map[string]string{"exposure": "internal"}
+	rule, err = f.svc.UpdateNamespaceRule(ctx, f.org, f.cluster, rule.ID, NamespaceRuleUpdate{Selector: &internal}, f.actor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// What now matches (api, db) is exposed at once; web, which stopped matching, is NOT withdrawn yet.
+	if got := f.liveKeys(); got != "shop/api:8080=rule shop/db:5432=rule shop/web:80=rule" || rule.Selector["exposure"] != "internal" {
+		t.Fatalf("right after a selector change: %q rule=%+v", got, rule)
+	}
+	if n := f.count(`SELECT count(*) FROM k8s_namespace_rule_exposures e JOIN k8s_services s ON s.id=e.service_id WHERE s.name='web' AND s.cluster_id=$1 AND e.missing_since IS NOT NULL`, f.cluster); n != 1 {
+		t.Fatal("the Service that stopped matching must be marked")
+	}
+	if n := f.count(`SELECT count(*) FROM audit_logs WHERE org_id=$1 AND action='k8s.namespace_rule_updated' AND actor_user_id=$2
+		AND metadata->>'selector_before'='exposure=public' AND metadata->>'selector'='exposure=internal'`, f.org, f.actor.UserID); n != 1 {
+		t.Fatalf("selector-change audits = %d", n)
+	}
+	// Put right inside the wait: web keeps its exposure id and loses the mark.
+	webID := f.serviceID("web", 80)
+	public2 := map[string]string{"exposure": "public"}
+	if _, err = f.svc.UpdateNamespaceRule(ctx, f.org, f.cluster, rule.ID, NamespaceRuleUpdate{Selector: &public2}, f.actor); err != nil {
+		t.Fatal(err)
+	}
+	if f.serviceID("web", 80) != webID || f.count(`SELECT count(*) FROM k8s_namespace_rule_exposures WHERE service_id=$1 AND missing_since IS NULL`, webID) != 1 {
+		t.Fatal("a selector put right inside the wait must keep the exposure and clear the mark")
+	}
+
+	// Clearing the selector makes it a whole-namespace rule again: everything in shop, nothing else.
+	none := map[string]string{}
+	if rule, err = f.svc.UpdateNamespaceRule(ctx, f.org, f.cluster, rule.ID, NamespaceRuleUpdate{Selector: &none}, f.actor); err != nil {
+		t.Fatal(err)
+	}
+	if got := f.liveKeys(); got != "shop/api:8080=rule shop/bare:1=rule shop/db:5432=rule shop/web:80=rule" || len(rule.Selector) != 0 {
+		t.Fatalf("after clearing the selector: %q rule=%+v", got, rule)
+	}
+}
+
+// An old gateway sends no labels. A selector rule on such a cluster says so and exposes NOTHING; it
+// never matches everything. A plain rule on the same cluster keeps working.
+func TestNamespaceRuleSelectorOnAnOldGatewaySaysSoAndMatchesNothing(t *testing.T) {
+	f := newNSRuleFixture(t, "100.66.0.0/24")
+	ctx := context.Background()
+	all := []nsSvc{{"shop", "web", []int32{80}}, {"shop", "api", []int32{8080}}, {"billing", "ledger", []int32{5432}}}
+	f.report(0, all...) // version 1: no label rows
+	rule, err := f.svc.CreateNamespaceRule(ctx, f.org, f.cluster, NamespaceRuleInput{Namespace: "shop", Selector: map[string]string{"app": "web"}}, f.actor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rule.Status != NamespaceRuleGatewayTooOld || !strings.Contains(rule.StatusMessage, "reports Services without labels") || !strings.Contains(rule.StatusMessage, "Upgrade the gateway") || !strings.Contains(rule.StatusMessage, "app=web") {
+		t.Fatalf("rule on an old gateway = %q %q", rule.Status, rule.StatusMessage)
+	}
+	if got := f.liveKeys(); got != "" {
+		t.Fatalf("a selector rule on an old gateway exposed %q", got)
+	}
+	plain, err := f.svc.CreateNamespaceRule(ctx, f.org, f.cluster, NamespaceRuleInput{Namespace: "billing"}, f.actor)
+	if err != nil || plain.Status != NamespaceRuleOK || f.liveKeys() != "billing/ledger:5432=rule" {
+		t.Fatalf("a plain rule must keep working on an old gateway: %+v err=%v live=%q", plain, err, f.liveKeys())
+	}
+
+	// The gateway is upgraded: its next report carries labels and the rule applies.
+	f.report(0, all...)
+	f.labelLatestReport("shop", map[string]nsLabels{"web": {labels: map[string]string{"app": "web"}}, "api": {labels: map[string]string{"app": "api"}}})
+	f.labelLatestReport("billing", nil)
+	if err := f.svc.ReconcileNamespaceRulesForOrg(ctx, f.org); err != nil {
+		t.Fatal(err)
+	}
+	if got := f.liveKeys(); got != "billing/ledger:5432=rule shop/web:80=rule" || f.rule("shop").Status != NamespaceRuleOK {
+		t.Fatalf("after the gateway upgrade: %q status=%q", got, f.rule("shop").Status)
+	}
+
+	// The gateway is rolled back (version 1 again): the exposure the rule made is NOT withdrawn because
+	// its labels became unknown, however long that lasts, and nothing new is exposed.
+	f.report(0, all...)
+	later := time.Now().UTC()
+	f.reconcileAt(later)
+	f.reconcileAt(later.Add(3 * NamespaceRuleWithdrawWait))
+	if got := f.liveKeys(); got != "billing/ledger:5432=rule shop/web:80=rule" || f.rule("shop").Status != NamespaceRuleGatewayTooOld {
+		t.Fatalf("after a gateway rollback: %q status=%q", got, f.rule("shop").Status)
+	}
+	// But a Service that is really gone is still withdrawn after the wait, labels or not.
+	f.report(0, nsSvc{"shop", "api", []int32{8080}}, nsSvc{"billing", "ledger", []int32{5432}})
+	gone := later.Add(time.Hour)
+	f.reconcileAt(gone)
+	f.reconcileAt(gone.Add(NamespaceRuleWithdrawWait))
+	if got := f.liveKeys(); got != "billing/ledger:5432=rule" {
+		t.Fatalf("a vanished Service under an old gateway: %q", got)
+	}
+}
+
+// A Service with more labels than the report carries cannot be decided: it is not exposed, an exposure
+// the rule made for it is left alone, and the rule names it.
+func TestNamespaceRuleSelectorTruncatedLabelsAreLeftAloneAndNamed(t *testing.T) {
+	f := newNSRuleFixture(t, "100.66.0.0/24")
+	ctx := context.Background()
+	all := []nsSvc{{"shop", "web", []int32{80}}, {"shop", "wide", []int32{81}}, {"shop", "wide-other", []int32{82}}}
+	labels := map[string]nsLabels{
+		"web":        {labels: map[string]string{"zone": "edge"}},
+		"wide":       {labels: map[string]string{"zone": "edge", "a": "1"}, truncated: true}, // the pair is there: a match
+		"wide-other": {labels: map[string]string{"a": "1"}, truncated: true},                 // the key may have been cut off
+	}
+	f.report(0, all...)
+	f.labelLatestReport("shop", labels)
+	rule, err := f.svc.CreateNamespaceRule(ctx, f.org, f.cluster, NamespaceRuleInput{Namespace: "shop", Selector: map[string]string{"zone": "edge"}}, f.actor)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := f.liveKeys(); got != "shop/web:80=rule shop/wide:81=rule" {
+		t.Fatalf("live = %q", got)
+	}
+	if rule.Status != NamespaceRuleLabelsIncomplete || !strings.Contains(rule.StatusMessage, "wide-other") || !strings.Contains(rule.StatusMessage, "Expose them by hand, or exclude them") {
+		t.Fatalf("rule = %q %q", rule.Status, rule.StatusMessage)
+	}
+	// wide loses the visible pair to truncation later: undecided now, so its exposure stays for good.
+	labels["wide"] = nsLabels{labels: map[string]string{"a": "1"}, truncated: true}
+	f.report(0, all...)
+	f.labelLatestReport("shop", labels)
+	later := time.Now().UTC()
+	f.reconcileAt(later)
+	f.reconcileAt(later.Add(3 * NamespaceRuleWithdrawWait))
+	if got := f.liveKeys(); got != "shop/web:80=rule shop/wide:81=rule" {
+		t.Fatalf("an undecided Service was withdrawn: %q", got)
+	}
+	// Excluding the undecided Services settles it: the rule is applied again.
+	excluded := []string{"wide", "wide-other"}
+	rule, err = f.svc.UpdateNamespaceRule(ctx, f.org, f.cluster, rule.ID, NamespaceRuleUpdate{ExcludedServices: &excluded}, f.actor)
+	if err != nil || rule.Status != NamespaceRuleOK || f.liveKeys() != "shop/web:80=rule" || rule.Selector["zone"] != "edge" {
+		t.Fatalf("after excluding them: %+v err=%v live=%q", rule, err, f.liveKeys())
+	}
+}

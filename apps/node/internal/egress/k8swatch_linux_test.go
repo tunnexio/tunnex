@@ -595,3 +595,26 @@ func TestListFailureKeepsTheViewForTheGraceThenClearsIt(t *testing.T) {
 		}
 	}
 }
+
+// K8N-4 slice B: the inventory carries a Service's labels and follows a relabel; a Service without
+// labels has an empty set, and the returned map is a copy.
+func TestServiceInventoryCarriesLabelsAndFollowsARelabel(t *testing.T) {
+	w := newTestWatcher("", nil, func() {})
+	w.servicesSynced = true
+	w.servicesWatching = true
+	w.applyServiceEvent("ADDED", json.RawMessage(`{"metadata":{"name":"web","namespace":"shop","uid":"uid-web","labels":{"app":"web","tier":"frontend"}},"spec":{"ports":[{"port":80}]}}`))
+	w.applyServiceEvent("ADDED", json.RawMessage(`{"metadata":{"name":"bare","namespace":"shop","uid":"uid-bare"},"spec":{"ports":[{"port":81}]}}`))
+	items, ok := w.ServiceInventory()
+	if !ok || len(items) != 2 || items[0].Service != "bare" || len(items[0].Labels) != 0 || items[0].Labels == nil {
+		t.Fatalf("inventory ok=%v items=%+v", ok, items)
+	}
+	if len(items[1].Labels) != 2 || items[1].Labels["app"] != "web" || items[1].Labels["tier"] != "frontend" {
+		t.Fatalf("labels=%v", items[1].Labels)
+	}
+	items[1].Labels["app"] = "changed-by-caller"
+	w.applyServiceEvent("MODIFIED", json.RawMessage(`{"metadata":{"name":"web","namespace":"shop","uid":"uid-web","labels":{"app":"web","tier":"backend"}},"spec":{"ports":[{"port":80}]}}`))
+	items, ok = w.ServiceInventory()
+	if !ok || items[1].Labels["tier"] != "backend" || items[1].Labels["app"] != "web" {
+		t.Fatalf("after a relabel ok=%v labels=%v", ok, items[1].Labels)
+	}
+}

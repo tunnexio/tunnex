@@ -7023,7 +7023,9 @@ paths:
         Records the opt-in for one namespace and applies it each time the cluster's gateway reports its Services.
         Exposure gives a Service an address and a name; it never grants access. 400 namespace_not_eligible for
         kube-system, kube-public, kube-node-lease and Tunnex's own namespaces; 409 namespace_rule_exists.
-        excluded_services names Services of the namespace the rule must not expose.
+        excluded_services names Services of the namespace the rule must not expose. selector limits the rule
+        to Services whose labels equal every key=value pair; it needs a gateway that reports labels, and a
+        rule with a selector never falls back to the whole namespace (status gateway_too_old).
       tags: [k8s]
       requestBody:
         required: true
@@ -7042,14 +7044,16 @@ paths:
       - { name: ruleId, in: path, required: true, schema: { type: string, format: uuid } }
     patch:
       operationId: updateK8sNamespaceRule
-      summary: Change which Services a namespace rule leaves out (K8N-4; human k8s:manage)
+      summary: Change which Services a namespace rule leaves out or selects (K8N-4; human k8s:manage)
       description: >-
         excluded_services replaces the rule's exclusion list. The rule stops exposing an excluded Service and
         withdraws the exposures it made for one on the pass that runs with this call, without the wait that
         applies to a vanished Service; access rules that pointed at them are kept and allow nothing. A name
         taken off the list is exposed again as a new exposure. Like every pass this needs a current Service
         report: without one the change is stored and applied on the gateway's next report. Exposures made by
-        hand or by the operator are never touched.
+        hand or by the operator are never touched. selector replaces the label selector ({} clears it):
+        Services that now match are exposed on this pass; Services that no longer match are withdrawn after
+        the same 10-minute wait as a Service that is gone.
       tags: [k8s]
       requestBody:
         required: true
@@ -12470,7 +12474,7 @@ components:
         port_high: { type: integer, nullable: true }
         vip: { type: string, description: "The synthetic /32 clients reach; DNAT'd to the ClusterIP at the gateway." }
         fqdn: { type: string, description: "The in-tunnel hostname clients use: <service>.<namespace>.svc.<cluster>.<zone> (copy, don't construct)." }
-        namespace_rule_id: { type: string, format: uuid, nullable: true, description: "Set when a namespace rule created this exposure (K8N-4). Remove the rule to unexpose it." }
+        namespace_rule_id: { type: string, format: uuid, nullable: true, description: "Set when a namespace rule created this exposure (K8N-4). Exclude the Service from the rule, or remove the rule, to unexpose it." }
     K8sApiAccess:
       type: object
       required: [cluster_id, enabled, fqdn, port, rule_count, ordinary_exposure]
@@ -12493,17 +12497,18 @@ components:
         enabled: { type: boolean }
     K8sNamespaceRule:
       type: object
-      required: [id, cluster_id, namespace, excluded_services, status, status_message, waiting_services, exposed_services, exposed_ports, created_at]
+      required: [id, cluster_id, namespace, excluded_services, selector, status, status_message, waiting_services, exposed_services, exposed_ports, created_at]
       additionalProperties: false
       properties:
         id: { type: string, format: uuid }
         cluster_id: { type: string, format: uuid }
         namespace: { type: string }
         excluded_services: { type: array, maxItems: 100, items: { type: string }, description: "Services of the namespace this rule never exposes, sorted by name." }
+        selector: { $ref: "#/components/schemas/K8sNamespaceRuleSelector" }
         status:
           type: string
-          enum: [pending, applied, inventory_stale, inventory_unavailable, vip_range_exhausted, scope_review_limit, withdrawal_blocked, error]
-          x-enum-varnames: [K8sNamespaceRulePending, K8sNamespaceRuleApplied, K8sNamespaceRuleInventoryStale, K8sNamespaceRuleInventoryUnavailable, K8sNamespaceRuleVipRangeExhausted, K8sNamespaceRuleScopeReviewLimit, K8sNamespaceRuleWithdrawalBlocked, K8sNamespaceRuleError]
+          enum: [pending, applied, inventory_stale, inventory_unavailable, vip_range_exhausted, scope_review_limit, withdrawal_blocked, error, gateway_too_old, labels_incomplete]
+          x-enum-varnames: [K8sNamespaceRulePending, K8sNamespaceRuleApplied, K8sNamespaceRuleInventoryStale, K8sNamespaceRuleInventoryUnavailable, K8sNamespaceRuleVipRangeExhausted, K8sNamespaceRuleScopeReviewLimit, K8sNamespaceRuleWithdrawalBlocked, K8sNamespaceRuleError, K8sNamespaceRuleGatewayTooOld, K8sNamespaceRuleLabelsIncomplete]
           description: "applied = fully applied on the last pass. Anything else: the rule is not fully applied and status_message says why."
         status_message: { type: string }
         waiting_services: { type: integer, minimum: 0, description: "Services of the namespace the last pass could not expose." }
@@ -12518,11 +12523,18 @@ components:
       properties:
         namespace: { type: string, minLength: 1, maxLength: 63, description: "One namespace. There is no wildcard and no all-namespaces rule." }
         excluded_services: { type: array, maxItems: 100, items: { type: string, minLength: 1, maxLength: 63 }, description: "Exact Service names the rule must not expose. No patterns." }
+        selector: { $ref: "#/components/schemas/K8sNamespaceRuleSelector" }
     UpdateK8sNamespaceRuleRequest:
       type: object
       additionalProperties: false
       properties:
         excluded_services: { type: array, maxItems: 100, items: { type: string, minLength: 1, maxLength: 63 }, description: "Replaces the exclusion list. Omit to leave it unchanged." }
+        selector: { $ref: "#/components/schemas/K8sNamespaceRuleSelector" }
+    K8sNamespaceRuleSelector:
+      type: object
+      maxProperties: 8
+      additionalProperties: { type: string, maxLength: 63 }
+      description: "Label selector: every key=value pair must equal the Service's label. Empty = every Service of the namespace. Equality only: no set operators, negation or wildcards."
     RegisterK8sClusterRequest:
       type: object
       required: [site_id, name, vip_range, service_cidr, dns_zone]

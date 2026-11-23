@@ -1574,8 +1574,10 @@ const (
 const (
 	K8sNamespaceRuleApplied              K8sNamespaceRuleStatus = "applied"
 	K8sNamespaceRuleError                K8sNamespaceRuleStatus = "error"
+	K8sNamespaceRuleGatewayTooOld        K8sNamespaceRuleStatus = "gateway_too_old"
 	K8sNamespaceRuleInventoryStale       K8sNamespaceRuleStatus = "inventory_stale"
 	K8sNamespaceRuleInventoryUnavailable K8sNamespaceRuleStatus = "inventory_unavailable"
+	K8sNamespaceRuleLabelsIncomplete     K8sNamespaceRuleStatus = "labels_incomplete"
 	K8sNamespaceRulePending              K8sNamespaceRuleStatus = "pending"
 	K8sNamespaceRuleScopeReviewLimit     K8sNamespaceRuleStatus = "scope_review_limit"
 	K8sNamespaceRuleVipRangeExhausted    K8sNamespaceRuleStatus = "vip_range_exhausted"
@@ -5180,6 +5182,9 @@ type CreateK8sNamespaceRuleRequest struct {
 
 	// Namespace One namespace. There is no wildcard and no all-namespaces rule.
 	Namespace string `json:"namespace"`
+
+	// Selector Label selector: every key=value pair must equal the Service's label. Empty = every Service of the namespace. Equality only: no set operators, negation or wildcards.
+	Selector *K8sNamespaceRuleSelector `json:"selector,omitempty"`
 }
 
 // CreateOrganizationRequest defines model for CreateOrganizationRequest.
@@ -6692,6 +6697,9 @@ type K8sNamespaceRule struct {
 	LastReconciledAt *time.Time         `json:"last_reconciled_at"`
 	Namespace        string             `json:"namespace"`
 
+	// Selector Label selector: every key=value pair must equal the Service's label. Empty = every Service of the namespace. Equality only: no set operators, negation or wildcards.
+	Selector K8sNamespaceRuleSelector `json:"selector"`
+
 	// Status applied = fully applied on the last pass. Anything else: the rule is not fully applied and status_message says why.
 	Status        K8sNamespaceRuleStatus `json:"status"`
 	StatusMessage string                 `json:"status_message"`
@@ -6702,6 +6710,9 @@ type K8sNamespaceRule struct {
 
 // K8sNamespaceRuleStatus applied = fully applied on the last pass. Anything else: the rule is not fully applied and status_message says why.
 type K8sNamespaceRuleStatus string
+
+// K8sNamespaceRuleSelector Label selector: every key=value pair must equal the Service's label. Empty = every Service of the namespace. Equality only: no set operators, negation or wildcards.
+type K8sNamespaceRuleSelector map[string]string
 
 // K8sService defines model for K8sService.
 type K8sService struct {
@@ -6714,7 +6725,7 @@ type K8sService struct {
 	Name              string             `json:"name"`
 	Namespace         string             `json:"namespace"`
 
-	// NamespaceRuleId Set when a namespace rule created this exposure (K8N-4). Remove the rule to unexpose it.
+	// NamespaceRuleId Set when a namespace rule created this exposure (K8N-4). Exclude the Service from the rule, or remove the rule, to unexpose it.
 	NamespaceRuleId *openapi_types.UUID `json:"namespace_rule_id"`
 	PortHigh        *int                `json:"port_high"`
 	PortLow         *int                `json:"port_low"`
@@ -8790,6 +8801,9 @@ type UpdateGatewayEndpointRequest struct {
 type UpdateK8sNamespaceRuleRequest struct {
 	// ExcludedServices Replaces the exclusion list. Omit to leave it unchanged.
 	ExcludedServices *[]string `json:"excluded_services,omitempty"`
+
+	// Selector Label selector: every key=value pair must equal the Service's label. Empty = every Service of the namespace. Equality only: no set operators, negation or wildcards.
+	Selector *K8sNamespaceRuleSelector `json:"selector,omitempty"`
 }
 
 // UpdateNodeRequest defines model for UpdateNodeRequest.

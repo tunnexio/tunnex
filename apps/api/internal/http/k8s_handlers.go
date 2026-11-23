@@ -75,7 +75,7 @@ func toAPIK8sService(svc sqlc.K8sService, fqdn string, namespaceRule uuid.UUID) 
 func toAPIK8sNamespaceRule(rule k8ssvc.NamespaceRule) api.K8sNamespaceRule {
 	return api.K8sNamespaceRule{
 		Id: rule.ID, ClusterId: rule.ClusterID, Namespace: rule.Namespace,
-		ExcludedServices: rule.ExcludedServices,
+		ExcludedServices: rule.ExcludedServices, Selector: rule.Selector,
 		Status: api.K8sNamespaceRuleStatus(rule.Status), StatusMessage: rule.StatusMessage,
 		WaitingServices: rule.WaitingServices, ExposedServices: rule.ExposedServices, ExposedPorts: rule.ExposedPorts,
 		LastReconciledAt: rule.LastReconciledAt, CreatedAt: rule.CreatedAt,
@@ -113,6 +113,9 @@ func (s apiServer) CreateK8sNamespaceRule(ctx context.Context, req api.CreateK8s
 	if req.Body.ExcludedServices != nil {
 		in.ExcludedServices = *req.Body.ExcludedServices
 	}
+	if req.Body.Selector != nil {
+		in.Selector = *req.Body.Selector
+	}
 	rule, err := s.k8s.CreateNamespaceRule(ctx, req.OrgId, req.ClusterId, in, actor)
 	if err != nil {
 		return nil, err
@@ -128,7 +131,12 @@ func (s apiServer) UpdateK8sNamespaceRule(ctx context.Context, req api.UpdateK8s
 		return nil, apierr.BadRequest("invalid_request", "a request body is required")
 	}
 	actor, _ := authctx.PrincipalFrom(ctx)
-	rule, err := s.k8s.UpdateNamespaceRule(ctx, req.OrgId, req.ClusterId, req.RuleId, k8ssvc.NamespaceRuleUpdate{ExcludedServices: req.Body.ExcludedServices}, actor)
+	update := k8ssvc.NamespaceRuleUpdate{ExcludedServices: req.Body.ExcludedServices}
+	if req.Body.Selector != nil {
+		selector := map[string]string(*req.Body.Selector)
+		update.Selector = &selector
+	}
+	rule, err := s.k8s.UpdateNamespaceRule(ctx, req.OrgId, req.ClusterId, req.RuleId, update, actor)
 	if err != nil {
 		return nil, err
 	}

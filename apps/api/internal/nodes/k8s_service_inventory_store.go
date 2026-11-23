@@ -115,6 +115,17 @@ func (s *PostgresK8sServiceInventoryStore) WriteK8sServiceInventory(ctx context.
 			VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`, reportID, scope.OrgID, scope.ClusterID, inventoryRef, service.Namespace, service.Service, service.UID, len(service.Ports)); err != nil {
 			return K8sServiceInventoryWriteResult{}, err
 		}
+		if canonical.Version == K8sServiceInventoryVersionLabels {
+			// K8N-4 slice B: a row here, even an empty one, is what says this Service's labels are known.
+			labels := service.Labels
+			if labels == nil {
+				labels = map[string]string{}
+			}
+			if _, err := tx.Exec(ctx, `INSERT INTO k8s_service_inventory_item_labels(report_id,inventory_ref,labels,truncated) VALUES ($1,$2,$3,$4)`,
+				reportID, inventoryRef, labels, service.LabelsTruncated); err != nil {
+				return K8sServiceInventoryWriteResult{}, err
+			}
+		}
 		for _, port := range service.Ports {
 			var name any
 			if port.Name != "" {

@@ -37,6 +37,8 @@ const (
 	maxNamespaceRulesPerCluster = 50
 	// MaxNamespaceRuleExclusions bounds the Service names one rule can leave out.
 	MaxNamespaceRuleExclusions = 100
+	// MaxNamespaceRuleSelectorPairs bounds a rule's label selector.
+	MaxNamespaceRuleSelectorPairs = 8
 )
 
 // Why a pass withdrew an exposure; recorded in the audit entry.
@@ -56,6 +58,10 @@ const (
 	NamespaceRuleScopeReviewLimit     = "scope_review_limit"
 	NamespaceRuleWithdrawalBlocked    = "withdrawal_blocked"
 	NamespaceRuleError                = "error"
+	// The gateway's report carries no labels, so a selector cannot be evaluated (slice B).
+	NamespaceRuleGatewayTooOld = "gateway_too_old"
+	// Some Services have more labels than the report carries, so the selector cannot decide them.
+	NamespaceRuleLabelsIncomplete = "labels_incomplete"
 )
 
 // NamespaceRule is one rule with the result of its last pass.
@@ -65,6 +71,8 @@ type NamespaceRule struct {
 	ClusterID        uuid.UUID
 	Namespace        string
 	ExcludedServices []string
+	// Selector is the rule's label selector; empty = every Service of the namespace.
+	Selector         map[string]string
 	Status           string
 	StatusMessage    string
 	WaitingServices  int
@@ -94,11 +102,58 @@ type NamespaceRuleInput struct {
 	Namespace string
 	// ExcludedServices are Services of the namespace the rule must not expose (slice A).
 	ExcludedServices []string
+	// Selector limits the rule to Services whose labels equal every pair (slice B). Empty = all.
+	Selector map[string]string
 }
 
 // NamespaceRuleUpdate changes a rule in place. A nil field is left as it is.
 type NamespaceRuleUpdate struct {
 	ExcludedServices *[]string
+	// Selector replaces the selector; a pointer to an empty map clears it.
+	Selector *map[string]string
+}
+
+// normalizeSelector validates a label selector: equality pairs only, Kubernetes label syntax, bounded.
+func normalizeSelector(selector map[string]string) (map[string]string, error) {
+	if len(selector) > MaxNamespaceRuleSelectorPairs {
+		return nil, apierr.BadRequest("selector_limit", fmt.Sprintf("a namespace rule's selector can have at most %d key=value pairs", MaxNamespaceRuleSelectorPairs))
+	}
+	out := make(map[string]string, len(selector))
+	for key, value := range selector {
+		if !ValidLabelKey(key) {
+			return nil, apierr.BadRequest("invalid_selector", fmt.Sprintf("%q is not a Kubernetes label key; a selector is key=value pairs and has no wildcards or operators", key))
+		}
+		if !ValidLabelValue(value) {
+			return nil, apierr.BadRequest("invalid_selector", fmt.Sprintf("%q is not a Kubernetes label value (key %s); a selector is key=value pairs and has no wildcards or operators", value, key))
+		}
+		out[key] = value
+	}
+	return out, nil
+}
+
+func selectorText(selector map[string]string) string {
+	keys := make([]string, 0, len(selector))
+	for key := range selector {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	pairs := make([]string, len(keys))
+	for i, key := range keys {
+		pairs[i] = key + "=" + selector[key]
+	}
+	return strings.Join(pairs, ",")
+}
+
+func sameSelector(a, b map[string]string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for key, value := range a {
+		if other, ok := b[key]; !ok || other != value {
+			return false
+		}
+	}
+	return true
 }
 
 // normalizeExcludedServices validates an exclusion list and returns it sorted. Names only: a Service is
@@ -134,6 +189,52 @@ type reportedService struct {
 	// through API access. It still counts as reported, so an exposure of it that a rule made before this
 	// refusal existed is left in place rather than read as "gone" and withdrawn.
 	APIServer bool
+	// LabelsKnown is false for a Service of a report that carries no labels (an old gateway).
+	// LabelsTruncated means the Service has more labels than Labels holds.
+	LabelsKnown     bool
+	LabelsTruncated bool
+	Labels          map[string]string
+}
+
+// What a rule's selector says about one reported Service.
+type selectorMatch int
+
+const (
+	selectorMatches selectorMatch = iota
+	selectorDoesNotMatch
+	// selectorLabelsUnknown: the report has no labels for the Service. Never read as a match, never as
+	// a mismatch.
+	selectorLabelsUnknown
+	// selectorLabelsIncomplete: a selector key is absent from labels that were truncated.
+	selectorLabelsIncomplete
+)
+
+// matchSelector decides one Service. An empty selector matches everything and reads no labels. A pair
+// present with another value is a mismatch whatever else is unknown: no further label can change that.
+func matchSelector(selector map[string]string, svc reportedService) selectorMatch {
+	if len(selector) == 0 {
+		return selectorMatches
+	}
+	if !svc.LabelsKnown {
+		return selectorLabelsUnknown
+	}
+	absent := false
+	for key, want := range selector {
+		got, ok := svc.Labels[key]
+		if ok && got != want {
+			return selectorDoesNotMatch
+		}
+		if !ok {
+			absent = true
+		}
+	}
+	switch {
+	case !absent:
+		return selectorMatches
+	case svc.LabelsTruncated:
+		return selectorLabelsIncomplete
+	}
+	return selectorDoesNotMatch
 }
 
 // exposedPort is one live exposure in the rule's namespace, whoever made it.
@@ -162,6 +263,11 @@ type namespaceRulePlan struct {
 	// WithdrawExcluded are the rule's own exposures of Services the administrator excluded. They are
 	// withdrawn without the wait: an exclusion is a stated decision, not a Service that may come back.
 	WithdrawExcluded []uuid.UUID
+	// LabelsUnknown is set when the selector could not be evaluated for at least one Service because
+	// the report carries no labels. LabelsIncomplete names the Services whose truncated labels left
+	// the selector undecided. Neither is exposed, and neither is withdrawn.
+	LabelsUnknown    bool
+	LabelsIncomplete []string
 }
 
 func (p namespaceRulePlan) empty() bool {
@@ -172,6 +278,7 @@ func (p namespaceRulePlan) empty() bool {
 type namespaceRuleSpec struct {
 	ID       uuid.UUID
 	Excluded map[string]bool
+	Selector map[string]string
 }
 
 // planNamespaceRule compares what the gateway reported for the namespace with the exposures that exist.
@@ -179,6 +286,9 @@ type namespaceRuleSpec struct {
 //   - Only rows carrying the rule's id can be marked missing or withdrawn; rows made by hand, by the
 //     operator or by another rule are never returned in any list.
 //   - An excluded Service is never exposed, and the rule's own exposures of it are withdrawn at once.
+//   - With a selector, a Service that does not match is treated as not there: never exposed, and the
+//     rule's own exposure of it is marked and withdrawn after the wait. A Service the selector cannot
+//     decide (no labels reported, or truncated) is never exposed and its exposure is left as it is.
 func planNamespaceRule(rule namespaceRuleSpec, reported []reportedService, exposed []exposedPort, now time.Time, wait time.Duration) namespaceRulePlan {
 	ruleID := rule.ID
 	type portKey struct {
@@ -202,10 +312,25 @@ func planNamespaceRule(rule namespaceRuleSpec, reported []reportedService, expos
 	var plan namespaceRulePlan
 	reportedPorts := map[portKey]bool{}
 	for _, svc := range reported {
+		// The API server is never exposed and an exposure of it a rule once made is kept (K8N-3), so the
+		// selector is not asked about it. An excluded Service is decided by the exclusion alone.
+		match := selectorMatches
+		if !svc.APIServer && !rule.Excluded[svc.Service] {
+			match = matchSelector(rule.Selector, svc)
+		}
+		switch match {
+		case selectorLabelsUnknown:
+			plan.LabelsUnknown = true
+		case selectorLabelsIncomplete:
+			plan.LabelsIncomplete = append(plan.LabelsIncomplete, svc.Service)
+		}
 		var missing []inventoryExposurePort
 		for _, port := range svc.Ports {
-			reportedPorts[portKey{svc.Service, string(port.Protocol), port.Port}] = true
-			if svc.APIServer || rule.Excluded[svc.Service] {
+			if match != selectorDoesNotMatch {
+				// "Still there" for the rule's own exposures: a match, or a Service it cannot decide.
+				reportedPorts[portKey{svc.Service, string(port.Protocol), port.Port}] = true
+			}
+			if svc.APIServer || rule.Excluded[svc.Service] || match != selectorMatches {
 				continue
 			}
 			if allPorts[svc.Service] || covered[portKey{svc.Service, string(port.Protocol), port.Port}] || covered[portKey{svc.Service, "any", port.Port}] {
@@ -237,6 +362,7 @@ func planNamespaceRule(rule namespaceRuleSpec, reported []reportedService, expos
 		}
 	}
 	sort.Slice(plan.Expose, func(i, j int) bool { return plan.Expose[i].Service < plan.Expose[j].Service })
+	sort.Strings(plan.LabelsIncomplete)
 	return plan
 }
 
@@ -268,6 +394,10 @@ func (s *Service) CreateNamespaceRule(ctx context.Context, orgID, clusterID uuid
 	if err != nil {
 		return NamespaceRule{}, err
 	}
+	selector, err := normalizeSelector(in.Selector)
+	if err != nil {
+		return NamespaceRule{}, err
+	}
 	var ruleID uuid.UUID
 	err = s.withTxRaw(ctx, func(q *sqlc.Queries, tx pgx.Tx) error {
 		var exists bool
@@ -287,15 +417,15 @@ func (s *Service) CreateNamespaceRule(ctx context.Context, orgID, clusterID uuid
 		if count >= maxNamespaceRulesPerCluster {
 			return apierr.Conflict("namespace_rule_limit", fmt.Sprintf("a cluster can have at most %d namespace rules", maxNamespaceRulesPerCluster))
 		}
-		if e := tx.QueryRow(ctx, `INSERT INTO k8s_namespace_exposure_rules(org_id,cluster_id,namespace,created_by_user_id,excluded_services) VALUES($1,$2,$3,$4,$5) RETURNING id`,
-			orgID, clusterID, namespace, pgUUID(actorID, true), excluded).Scan(&ruleID); e != nil {
+		if e := tx.QueryRow(ctx, `INSERT INTO k8s_namespace_exposure_rules(org_id,cluster_id,namespace,created_by_user_id,excluded_services,selector) VALUES($1,$2,$3,$4,$5,$6) RETURNING id`,
+			orgID, clusterID, namespace, pgUUID(actorID, true), excluded, selector).Scan(&ruleID); e != nil {
 			if pgerr.IsUnique(e) {
 				return apierr.Conflict("namespace_rule_exists", "this cluster already has a namespace rule for "+namespace)
 			}
 			return e
 		}
 		return s.audit(ctx, q, orgID, actorID, "", "", "k8s_namespace_rule", ruleID.String(), "k8s.namespace_rule_created",
-			map[string]any{"cluster_id": clusterID.String(), "namespace": namespace, "excluded_services": excluded})
+			map[string]any{"cluster_id": clusterID.String(), "namespace": namespace, "excluded_services": excluded, "selector": selectorText(selector)})
 	})
 	if err != nil {
 		return NamespaceRule{}, err
@@ -318,9 +448,11 @@ func (s *Service) namespaceRuleByID(ctx context.Context, orgID, clusterID, ruleI
 	return NamespaceRule{}, apierr.NotFound("namespace_rule_not_found", "no such namespace rule on this cluster")
 }
 
-// UpdateNamespaceRule changes what a rule leaves out and runs a pass. Excluding a Service withdraws the
-// exposures the rule made for it on that pass (no wait); taking a name off the list exposes the Service
-// again as a new exposure. The rule is returned with the pass's outcome.
+// UpdateNamespaceRule changes what a rule leaves out or selects and runs a pass. Excluding a Service
+// withdraws the exposures the rule made for it on that pass (no wait); taking a name off the list
+// exposes the Service again as a new exposure. A changed selector exposes what now matches on that pass;
+// what no longer matches is withdrawn after the same wait as a Service that is gone. The rule is
+// returned with the pass's outcome.
 func (s *Service) UpdateNamespaceRule(ctx context.Context, orgID, clusterID, ruleID uuid.UUID, update NamespaceRuleUpdate, actor *authctx.Principal) (NamespaceRule, error) {
 	actorID, err := requireNamespaceRuleHuman(actor)
 	if err != nil {
@@ -332,26 +464,45 @@ func (s *Service) UpdateNamespaceRule(ctx context.Context, orgID, clusterID, rul
 			return NamespaceRule{}, err
 		}
 	}
+	var selector map[string]string
+	if update.Selector != nil {
+		if selector, err = normalizeSelector(*update.Selector); err != nil {
+			return NamespaceRule{}, err
+		}
+	}
 	err = s.withTxRaw(ctx, func(q *sqlc.Queries, tx pgx.Tx) error {
 		var namespace string
 		var before []string
-		if e := tx.QueryRow(ctx, `SELECT namespace,excluded_services FROM k8s_namespace_exposure_rules WHERE id=$1 AND org_id=$2 AND cluster_id=$3 FOR UPDATE`, ruleID, orgID, clusterID).Scan(&namespace, &before); errors.Is(e, pgx.ErrNoRows) {
+		var selectorBefore map[string]string
+		if e := tx.QueryRow(ctx, `SELECT namespace,excluded_services,selector FROM k8s_namespace_exposure_rules WHERE id=$1 AND org_id=$2 AND cluster_id=$3 FOR UPDATE`, ruleID, orgID, clusterID).Scan(&namespace, &before, &selectorBefore); errors.Is(e, pgx.ErrNoRows) {
 			return apierr.NotFound("namespace_rule_not_found", "no such namespace rule on this cluster")
 		} else if e != nil {
 			return e
 		}
-		if update.ExcludedServices == nil {
+		meta := map[string]any{"cluster_id": clusterID.String(), "namespace": namespace}
+		changed := false
+		if update.ExcludedServices != nil {
+			added, removed := stringSetDiff(before, excluded)
+			if len(added) != 0 || len(removed) != 0 {
+				changed = true
+				meta["excluded_services_added"], meta["excluded_services_removed"] = added, removed
+			}
+		} else {
+			excluded = before
+		}
+		if update.Selector != nil && !sameSelector(selectorBefore, selector) {
+			changed = true
+			meta["selector_before"], meta["selector"] = selectorText(selectorBefore), selectorText(selector)
+		} else {
+			selector = selectorBefore
+		}
+		if !changed {
 			return nil
 		}
-		added, removed := stringSetDiff(before, excluded)
-		if len(added) == 0 && len(removed) == 0 {
-			return nil
-		}
-		if _, e := tx.Exec(ctx, `UPDATE k8s_namespace_exposure_rules SET excluded_services=$3 WHERE id=$1 AND org_id=$2`, ruleID, orgID, excluded); e != nil {
+		if _, e := tx.Exec(ctx, `UPDATE k8s_namespace_exposure_rules SET excluded_services=$3,selector=$4 WHERE id=$1 AND org_id=$2`, ruleID, orgID, excluded, selector); e != nil {
 			return e
 		}
-		return s.audit(ctx, q, orgID, actorID, "", "", "k8s_namespace_rule", ruleID.String(), "k8s.namespace_rule_updated",
-			map[string]any{"cluster_id": clusterID.String(), "namespace": namespace, "excluded_services_added": added, "excluded_services_removed": removed})
+		return s.audit(ctx, q, orgID, actorID, "", "", "k8s_namespace_rule", ruleID.String(), "k8s.namespace_rule_updated", meta)
 	})
 	if err != nil {
 		return NamespaceRule{}, err
@@ -393,7 +544,7 @@ func (s *Service) ListNamespaceRules(ctx context.Context, orgID, clusterID uuid.
 		return nil, err
 	}
 	rows, err := s.pool.Query(ctx, `
-		SELECT r.id,r.org_id,r.cluster_id,r.namespace,r.excluded_services,r.status,r.status_message,r.waiting_services,r.last_reconciled_at,r.created_at,
+		SELECT r.id,r.org_id,r.cluster_id,r.namespace,r.excluded_services,r.selector,r.status,r.status_message,r.waiting_services,r.last_reconciled_at,r.created_at,
 		       (SELECT count(DISTINCT s.name) FROM k8s_namespace_rule_exposures e JOIN k8s_services s ON s.id=e.service_id WHERE e.rule_id=r.id AND s.deleted_at IS NULL),
 		       (SELECT count(*) FROM k8s_namespace_rule_exposures e JOIN k8s_services s ON s.id=e.service_id WHERE e.rule_id=r.id AND s.deleted_at IS NULL)
 		FROM k8s_namespace_exposure_rules r
@@ -406,12 +557,15 @@ func (s *Service) ListNamespaceRules(ctx context.Context, orgID, clusterID uuid.
 	out := make([]NamespaceRule, 0)
 	for rows.Next() {
 		var rule NamespaceRule
-		if err := rows.Scan(&rule.ID, &rule.OrgID, &rule.ClusterID, &rule.Namespace, &rule.ExcludedServices, &rule.Status, &rule.StatusMessage, &rule.WaitingServices,
+		if err := rows.Scan(&rule.ID, &rule.OrgID, &rule.ClusterID, &rule.Namespace, &rule.ExcludedServices, &rule.Selector, &rule.Status, &rule.StatusMessage, &rule.WaitingServices,
 			&rule.LastReconciledAt, &rule.CreatedAt, &rule.ExposedServices, &rule.ExposedPorts); err != nil {
 			return nil, err
 		}
 		if rule.ExcludedServices == nil {
 			rule.ExcludedServices = []string{}
+		}
+		if rule.Selector == nil {
+			rule.Selector = map[string]string{}
 		}
 		out = append(out, rule)
 	}
@@ -552,10 +706,11 @@ type namespaceRuleRow struct {
 	ID        uuid.UUID
 	Namespace string
 	Excluded  []string
+	Selector  map[string]string
 }
 
 func (r namespaceRuleRow) spec() namespaceRuleSpec {
-	spec := namespaceRuleSpec{ID: r.ID, Excluded: make(map[string]bool, len(r.Excluded))}
+	spec := namespaceRuleSpec{ID: r.ID, Excluded: make(map[string]bool, len(r.Excluded)), Selector: r.Selector}
 	for _, name := range r.Excluded {
 		spec.Excluded[name] = true
 	}
@@ -576,14 +731,14 @@ func (s *Service) reconcileNamespaceRulesAt(ctx context.Context, orgID, clusterI
 	} else if err != nil {
 		return err
 	}
-	ruleRows, err := tx.Query(ctx, `SELECT id,namespace,excluded_services FROM k8s_namespace_exposure_rules WHERE org_id=$1 AND cluster_id=$2 ORDER BY namespace FOR UPDATE`, orgID, clusterID)
+	ruleRows, err := tx.Query(ctx, `SELECT id,namespace,excluded_services,selector FROM k8s_namespace_exposure_rules WHERE org_id=$1 AND cluster_id=$2 ORDER BY namespace FOR UPDATE`, orgID, clusterID)
 	if err != nil {
 		return err
 	}
 	var rules []namespaceRuleRow
 	for ruleRows.Next() {
 		var rule namespaceRuleRow
-		if err := ruleRows.Scan(&rule.ID, &rule.Namespace, &rule.Excluded); err != nil {
+		if err := ruleRows.Scan(&rule.ID, &rule.Namespace, &rule.Excluded, &rule.Selector); err != nil {
 			ruleRows.Close()
 			return err
 		}
@@ -637,6 +792,17 @@ func (s *Service) reconcileNamespaceRulesAt(ctx context.Context, orgID, clusterI
 		plan := planNamespaceRule(rule.spec(), reported, exposed, now, NamespaceRuleWithdrawWait)
 		cause := "namespace_rule:" + rule.ID.String()
 		status, message, waiting := NamespaceRuleOK, "", 0
+		// What the selector could not decide is stated first; a failed withdrawal or exposure below
+		// replaces it, being the more urgent thing to read.
+		switch {
+		case plan.LabelsUnknown:
+			status = NamespaceRuleGatewayTooOld
+			message = "this rule selects Services by label (" + selectorText(rule.Selector) + ") but the cluster's gateway reports Services without labels: it is older than label selectors. Upgrade the gateway. Until then the rule exposes no Service and withdraws none for its labels."
+		case len(plan.LabelsIncomplete) > 0:
+			status = NamespaceRuleLabelsIncomplete
+			message = fmt.Sprintf("%d Service(s) in %s have more labels than the gateway reports (%s), so the rule cannot tell whether they match %s and leaves them as they are. Expose them by hand, or exclude them from the rule.",
+				len(plan.LabelsIncomplete), rule.Namespace, namesPreview(plan.LabelsIncomplete, 5), selectorText(rule.Selector))
+		}
 
 		if len(plan.ClearMissing) > 0 {
 			if _, err := tx.Exec(ctx, `UPDATE k8s_namespace_rule_exposures SET missing_since=NULL WHERE org_id=$1 AND service_id=ANY($2::uuid[])`, orgID, plan.ClearMissing); err != nil {
@@ -774,9 +940,10 @@ func (s *Service) exposeNamespaceRuleServices(ctx context.Context, tx pgx.Tx, or
 
 func reportedNamespaceServices(ctx context.Context, tx pgx.Tx, reportID, orgID, clusterID uuid.UUID, namespace string) ([]reportedService, error) {
 	rows, err := tx.Query(ctx, `
-		SELECT i.service,i.service_uid,p.protocol,p.service_port
+		SELECT i.service,i.service_uid,p.protocol,p.service_port,l.labels,COALESCE(l.truncated,false)
 		FROM k8s_service_inventory_items i
 		JOIN k8s_service_inventory_ports p ON p.report_id=i.report_id AND p.inventory_ref=i.inventory_ref
+		LEFT JOIN k8s_service_inventory_item_labels l ON l.report_id=i.report_id AND l.inventory_ref=i.inventory_ref
 		WHERE i.report_id=$1 AND i.org_id=$2 AND i.cluster_id=$3 AND i.namespace=$4
 		ORDER BY i.service,p.protocol,p.service_port`, reportID, orgID, clusterID, namespace)
 	if err != nil {
@@ -787,11 +954,15 @@ func reportedNamespaceServices(ctx context.Context, tx pgx.Tx, reportID, orgID, 
 	for rows.Next() {
 		var service, uid, protocol string
 		var port int32
-		if err := rows.Scan(&service, &uid, &protocol, &port); err != nil {
+		// labels is NULL when the report carried none for this Service: unknown, not "no labels".
+		var labels map[string]string
+		var truncated bool
+		if err := rows.Scan(&service, &uid, &protocol, &port, &labels, &truncated); err != nil {
 			return nil, err
 		}
 		if len(out) == 0 || out[len(out)-1].Service != service {
-			out = append(out, reportedService{Service: service, UID: uid, APIServer: IsAPIServerService(namespace, service)})
+			out = append(out, reportedService{Service: service, UID: uid, APIServer: IsAPIServerService(namespace, service),
+				LabelsKnown: labels != nil, LabelsTruncated: truncated, Labels: labels})
 		}
 		last := &out[len(out)-1]
 		last.Ports = append(last.Ports, inventoryExposurePort{Protocol: scopeapproval.Protocol(protocol), Port: port})
@@ -867,4 +1038,12 @@ func (s *Service) namespaceRuleByService(ctx context.Context, orgID, serviceID u
 func (s *Service) NamespaceRuleForService(ctx context.Context, orgID, serviceID uuid.UUID) (uuid.UUID, error) {
 	rules, err := s.namespaceRuleByService(ctx, orgID, serviceID)
 	return rules[serviceID], err
+}
+
+// namesPreview lists up to limit names and says how many more there are.
+func namesPreview(names []string, limit int) string {
+	if len(names) <= limit {
+		return strings.Join(names, ", ")
+	}
+	return strings.Join(names[:limit], ", ") + fmt.Sprintf(" and %d more", len(names)-limit)
 }

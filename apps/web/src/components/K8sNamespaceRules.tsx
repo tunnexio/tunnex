@@ -7,7 +7,9 @@ import {
   namespaceRuleExclusionImpact,
   namespaceRulePreview,
   namespaceRuleStatus,
+  parseSelector,
   ruleableNamespaces,
+  selectorText,
   type K8sNamespaceRule,
   type ServiceRow,
 } from "../lib/k8sview";
@@ -46,6 +48,7 @@ export function K8sNamespaceRulesPanel({
   const [creating, setCreating] = useState(false);
   const [removing, setRemoving] = useState<K8sNamespaceRule | null>(null);
   const [excluding, setExcluding] = useState<K8sNamespaceRule | null>(null);
+  const [selecting, setSelecting] = useState<K8sNamespaceRule | null>(null);
   const epoch = useRef(0);
 
   const load = useCallback(async () => {
@@ -94,11 +97,13 @@ export function K8sNamespaceRulesPanel({
                     {rule.exposed_services} Service{rule.exposed_services === 1 ? "" : "s"} · {rule.exposed_ports} port{rule.exposed_ports === 1 ? "" : "s"} exposed by this rule
                     {rule.last_reconciled_at ? ` · last applied ${new Date(rule.last_reconciled_at).toLocaleString()}` : ""}
                   </span>
+                  {Object.keys(rule.selector).length > 0 && <span className="kubernetes-muted">Only Services labelled <code>{selectorText(rule.selector)}</code></span>}
                   {rule.excluded_services.length > 0 && <span className="kubernetes-muted">Excluded, never exposed by this rule: {rule.excluded_services.join(", ")}</span>}
                   {status.message && <span className={status.tone === "ok" ? "kubernetes-muted" : "text-warn"} role={status.tone === "ok" ? undefined : "status"}>{status.message}</span>}
                 </div>
                 {canManage && (
                   <span className="kubernetes-row-actions">
+                    <Button size="sm" variant="ghost" aria-label={`Selector for ${rule.namespace}`} onClick={() => setSelecting(rule)}>Selector…</Button>
                     <Button size="sm" variant="ghost" aria-label={`Exclusions for ${rule.namespace}`} onClick={() => setExcluding(rule)}>Exclusions…</Button>
                     <Button size="sm" variant="ghost" onClick={() => setRemoving(rule)}>Remove rule</Button>
                   </span>
@@ -118,6 +123,9 @@ export function K8sNamespaceRulesPanel({
           onClose={() => setCreating(false)}
           onDone={changed}
         />
+      )}
+      {canManage && selecting && (
+        <NamespaceRuleSelectorModal orgId={orgId} clusterId={cluster.id} rule={selecting} onClose={() => setSelecting(null)} onDone={changed} />
       )}
       {canManage && excluding && (
         <NamespaceRuleExclusionsModal orgId={orgId} clusterId={cluster.id} rule={excluding} exposed={exposed} onClose={() => setExcluding(null)} onDone={changed} />
@@ -150,6 +158,7 @@ export function ExposeNamespaceModal({
   const [inventory, setInventory] = useState<InventoryService[] | "unavailable" | null>(fixtureInventory ? fixtureInventory.items : null);
   const [inventoryNote, setInventoryNote] = useState<string | null>(null);
   const [namespace, setNamespace] = useState("");
+  const [selectorInput, setSelectorInput] = useState("");
   const [understood, setUnderstood] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -186,15 +195,20 @@ export function ExposeNamespaceModal({
   const ns = namespace.trim();
   const taken = existingRules.some((rule) => rule.namespace === ns);
   const reason = ns === "" ? null : taken ? `This cluster already has a namespace rule for ${ns}.` : namespaceIneligibleReason(ns);
-  const preview = reported && ns !== "" && reason === null ? namespaceRulePreview(inventory, exposed, ns) : null;
-  const ready = ns !== "" && reason === null && understood && !busy && inventory !== null;
+  const parsed = parseSelector(selectorInput);
+  const selected = Object.keys(parsed.selector).length > 0;
+  const labels = selectorText(parsed.selector);
+  // With a selector there is no count: the dashboard does not read Service labels.
+  const preview = reported && ns !== "" && reason === null && !selected ? namespaceRulePreview(inventory, exposed, ns) : null;
+  const ready = ns !== "" && reason === null && parsed.error === null && understood && !busy && inventory !== null;
+  const which = selected ? <>every Service in <strong>{ns}</strong> labelled <code>{labels}</code></> : <>every Service in <strong>{ns}</strong></>;
 
   async function submit() {
     if (!ready) return;
     setBusy(true);
     setErr(null);
     try {
-      const { data, error } = await api.POST(RULES_PATH, { params: { path: { orgId, clusterId: cluster.id } }, body: { namespace: ns } });
+      const { data, error } = await api.POST(RULES_PATH, { params: { path: { orgId, clusterId: cluster.id } }, body: selected ? { namespace: ns, selector: parsed.selector } : { namespace: ns } });
       if (error || !data) return setErr(apiErrorMessage(error, "Could not create the namespace rule."));
       await onDone();
       const status = namespaceRuleStatus(data);
@@ -242,8 +256,13 @@ export function ExposeNamespaceModal({
         {reported && namespaces.length === 0 && <p className="kubernetes-muted">The gateway reports no namespace that can take a new rule. You can name one that does not exist yet.</p>}
         <p className="kubernetes-muted">One namespace per rule. There is no all-namespaces rule; kube-system, kube-public, kube-node-lease and Tunnex's own namespaces cannot be chosen.</p>
         {reason && <ErrorText>{reason}</ErrorText>}
+        <Field label="Only Services with these labels (optional)">
+          <Input value={selectorInput} placeholder="for example app=web, tier=frontend" onChange={(event) => { setSelectorInput(event.target.value); setUnderstood(false); }} />
+        </Field>
+        <p className="kubernetes-muted">key=value pairs, all of which must match. Leave empty for the whole namespace. Needs a gateway that reports Service labels; with an older gateway the rule exposes nothing and says so.</p>
+        {parsed.error && <ErrorText>{parsed.error}</ErrorText>}
 
-        {ns !== "" && reason === null && (
+        {ns !== "" && reason === null && parsed.error === null && (
           <div className="kubernetes-action-impact" aria-label="What this rule will do">
             <p><strong>What happens when you confirm</strong></p>
             <ul>
@@ -253,10 +272,13 @@ export function ExposeNamespaceModal({
                   {preview.portsAlreadyExposed > 0 && ` ${preview.portsAlreadyExposed} port${preview.portsAlreadyExposed === 1 ? " is" : "s are"} already exposed and stay${preview.portsAlreadyExposed === 1 ? "s" : ""} exactly as ${preview.portsAlreadyExposed === 1 ? "it is" : "they are"}.`}
                   {preview.services === 0 && " The gateway reports no Service in this namespace yet."}
                 </li>
+              ) : selected ? (
+                <li><strong>Now:</strong> {which} is exposed, all of its TCP and UDP ports. The number is not shown here: the dashboard does not read Service labels. The rule shows what it exposed once created.</li>
               ) : (
                 <li><strong>Now:</strong> nothing, until the gateway reports. Then every Service in <strong>{ns}</strong> is exposed.</li>
               )}
-              <li><strong>From now on:</strong> every Service added to <strong>{ns}</strong> is exposed automatically, all of its TCP and UDP ports, within about a minute.</li>
+              <li><strong>From now on:</strong> {selected ? <>every Service in <strong>{ns}</strong> that gets the labels <code>{labels}</code></> : <>every Service added to <strong>{ns}</strong></>} is exposed automatically, all of its TCP and UDP ports, within about a minute.</li>
+              {selected && <li><strong>When a Service's labels stop matching</strong> for 10 minutes, its exposure is withdrawn, exactly as if the Service had been deleted.</li>}
               <li><strong>Nobody gains access.</strong> Exposure gives a Service an address and a name. Access rules still decide who can reach it; this creates none.</li>
               <li><strong>When a Service is deleted</strong> and stays gone for 10 minutes, its exposure is withdrawn. Access rules that pointed at it are kept but allow nothing, and they do not come back if the Service returns.</li>
               <li><strong>If the address range is full,</strong> nothing new is exposed and the rule says so here.</li>
@@ -264,7 +286,7 @@ export function ExposeNamespaceModal({
             </ul>
             <label className="kubernetes-confirm-check">
               <input type="checkbox" checked={understood} onChange={(event) => setUnderstood(event.target.checked)} />{" "}
-              Expose every Service in {ns}, including Services added later
+              {selected ? `Expose every Service in ${ns} labelled ${labels}, including Services added or labelled later` : `Expose every Service in ${ns}, including Services added later`}
             </label>
           </div>
         )}
@@ -467,6 +489,89 @@ export function NamespaceRuleExclusionsModal({
                 Withdraw {impact.withdrawPorts} exposed port{impact.withdrawPorts === 1 ? "" : "s"} now
               </label>
             )}
+          </div>
+        )}
+      </div>
+      <ErrorText>{err}</ErrorText>
+    </Modal>
+  );
+}
+
+/** Slice B: change a rule's label selector. What stops matching is withdrawn after the wait, not at once. */
+export function NamespaceRuleSelectorModal({
+  orgId,
+  clusterId,
+  rule,
+  onClose,
+  onDone,
+}: {
+  orgId: string;
+  clusterId: string;
+  rule: K8sNamespaceRule;
+  onClose: () => void;
+  onDone: () => void | Promise<void>;
+}) {
+  const before = selectorText(rule.selector);
+  const [input, setInput] = useState(before);
+  const [understood, setUnderstood] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+  const parsed = parseSelector(input);
+  const after = selectorText(parsed.selector);
+  const dirty = parsed.error === null && after !== before;
+  const ready = dirty && understood && !busy;
+
+  async function submit() {
+    if (!ready) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      const { data, error } = await api.PATCH(
+        "/api/v1/organizations/{orgId}/k8s/clusters/{clusterId}/namespace-rules/{ruleId}",
+        { params: { path: { orgId, clusterId, ruleId: rule.id } }, body: { selector: parsed.selector } },
+      );
+      if (error || !data) return setErr(apiErrorMessage(error, "Could not change the rule's selector."));
+      await onDone();
+      const status = namespaceRuleStatus(data);
+      if (data.status !== "applied" && status.message) return setErr(`The selector was saved but the rule is not applied. ${status.message}`);
+      onClose();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Modal
+      placement="right" showClose
+      title={`Label selector of the namespace rule for ${rule.namespace}`}
+      onDismiss={busy ? () => {} : onClose}
+      actions={
+        <>
+          <Button variant="ghost" onClick={onClose} disabled={busy}>Cancel</Button>
+          <Button onClick={() => void submit()} disabled={!ready}>{busy ? "Saving…" : "Save selector"}</Button>
+        </>
+      }
+    >
+      <div className="kubernetes-action-form">
+        <p>{before === "" ? <>The rule covers every Service in <strong>{rule.namespace}</strong>.</> : <>The rule covers Services in <strong>{rule.namespace}</strong> labelled <code>{before}</code>.</>}</p>
+        <Field label="Only Services with these labels">
+          <Input value={input} placeholder="for example app=web, tier=frontend" onChange={(event) => { setInput(event.target.value); setUnderstood(false); }} />
+        </Field>
+        <p className="kubernetes-muted">key=value pairs, all of which must match. Leave empty for the whole namespace.</p>
+        {parsed.error && <ErrorText>{parsed.error}</ErrorText>}
+        {dirty && (
+          <div className="kubernetes-action-impact" aria-label="What this change will do">
+            <p><strong>What happens when you save</strong></p>
+            <ul>
+              <li><strong>Now:</strong> {after === "" ? <>every Service in <strong>{rule.namespace}</strong></> : <>every Service in <strong>{rule.namespace}</strong> labelled <code>{after}</code></>} that is not exposed yet is exposed, all ports. Nobody gains access.</li>
+              <li><strong>In 10 minutes:</strong> exposures this rule made for Services that no longer match are withdrawn. Access rules that point at them are kept but allow nothing, and they do not come back. Until then you can put the selector back and nothing is lost.</li>
+              <li>The number of Services is not shown here: the dashboard does not read Service labels.</li>
+              <li>Excluded Services stay excluded. Services exposed by hand or by the GitOps operator are not changed.</li>
+            </ul>
+            <label className="kubernetes-confirm-check">
+              <input type="checkbox" checked={understood} onChange={(event) => setUnderstood(event.target.checked)} />{" "}
+              {after === "" ? `Cover every Service in ${rule.namespace}` : `Cover only Services labelled ${after}`}
+            </label>
           </div>
         )}
       </div>
