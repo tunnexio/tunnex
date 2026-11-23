@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/netip"
 	"os/exec"
 	"path/filepath"
@@ -30,8 +31,42 @@ func NewWithAWS(iface string, nft NFTRunner, iptables IPTablesRunner, guard Auth
 	if iptables == nil {
 		iptables = realIPTablesRunner
 	}
-	r.awsAware, r.runIPTables, r.guard = true, iptables, guard
+	r.awsAware, r.runIPTables, r.runIPSet, r.guard = true, iptables, realIPSetRunner, guard
 	return r
+}
+
+// ipsetReadTimeout bounds one set listing inside the operation budget.
+const ipsetReadTimeout = 5 * time.Second
+
+// realIPSetRunner lists one kernel set. `ipset save NAME` only prints; no
+// other ipset command, and no name outside setNameRE, can be run through it.
+func realIPSetRunner(ctx context.Context, args ...string) (string, error) {
+	if len(args) != 2 || args[0] != "save" || !validSetName(args[1]) {
+		return "", errors.New("unsupported ipset inspection")
+	}
+	ctx, cancel := context.WithTimeout(ctx, ipsetReadTimeout)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, "ipset", "save", args[1])
+	stdout, err := cmd.StdoutPipe()
+	if err != nil {
+		return "", fmt.Errorf("ipset inspection: %w", err)
+	}
+	if err := cmd.Start(); err != nil {
+		return "", fmt.Errorf("ipset inspection: %w", err)
+	}
+	out, readErr := io.ReadAll(io.LimitReader(stdout, maxSetSaveBytes+1))
+	if len(out) > maxSetSaveBytes {
+		cancel()
+		_ = cmd.Wait()
+		return "", errors.New("ipset inspection exceeds bound")
+	}
+	if err := cmd.Wait(); err != nil {
+		return "", fmt.Errorf("ipset inspection: %w", err)
+	}
+	if readErr != nil {
+		return "", fmt.Errorf("ipset inspection: %w", readErr)
+	}
+	return string(out), nil
 }
 
 func realIPTablesRunner(ctx context.Context, args ...string) (string, error) {
@@ -132,7 +167,7 @@ func (r *Reconciler) reconcileWithAuthority(ctx context.Context, cidr string) (R
 		// No mechanism to edit. observeRegisteredMechanisms already proved that
 		// the node's live NAT rules cannot rewrite tunnel-bound traffic, so the
 		// gateway owns no CNI rule here and is ready as observed.
-		status.Adapters = append(status.Adapters, ComponentStatus{Name: ObservedAdapterName, State: StateReady, Reason: ReasonObservedNoTunnelSourceNAT})
+		status.Adapters = append(status.Adapters, ComponentStatus{Name: ObservedAdapterName, State: StateReady, Reason: observedReadyReason(snapshot.proofSets)})
 	}
 	for _, adapter := range []struct{ name, chain, marker string }{{ipMasqAdapterName, ipMasqChain, ownedRuleComment}, {awsAdapterName, awsChain, AWSOwnedRuleComment}} {
 		if !snapshot.hasChain(adapter.chain) {
@@ -403,6 +438,12 @@ type cniSnapshot struct {
 	chains map[string]nftChainView
 	rules  map[string][]nftRuleView
 	owned  map[string][]ownedRule
+
+	// setFacts is read beside the listing only when the observed proof needs
+	// it; proofSets names the sets that then carried the proof. Neither is part
+	// of the fingerprint: they describe this listing, they are not rules.
+	setFacts  *natSetFacts
+	proofSets []string
 }
 
 func nftKey(family, table, chain string) string { return family + "/" + table + "/" + chain }
@@ -711,7 +752,19 @@ func (r *Reconciler) observeRegisteredMechanisms(ctx context.Context, cidr strin
 	if err != nil {
 		return nil, err
 	}
-	if err := before.validateHookCoverage(r.iface, cidr); err != nil {
+	err = before.validateHookCoverage(r.iface, cidr)
+	if errors.Is(err, errSetFactsNeeded) {
+		// A masquerade is conditioned on a kernel set. Read what the listing
+		// cannot say and prove again. These reads sit between the two listings
+		// compared below, so a rule that changed meanwhile is caught there.
+		facts, factsErr := r.readNATSetFacts(ctx, before, cidr)
+		if factsErr != nil {
+			return nil, factsErr
+		}
+		before.setFacts = facts
+		err = before.validateHookCoverage(r.iface, cidr)
+	}
+	if err != nil {
 		return nil, err
 	}
 	if before.hasChain(ipMasqChain) {
@@ -738,7 +791,60 @@ func (r *Reconciler) observeRegisteredMechanisms(ctx context.Context, cidr strin
 	if before.fingerprint() != after.fingerprint() {
 		return nil, errors.New("CNI rules changed across semantic observation")
 	}
+	// The listings are equal, so what was proved of one holds for the other.
+	after.proofSets = before.proofSets
 	return after, nil
+}
+
+// readNATSetFacts reads the saved form of the NAT rules and the members of
+// exactly the sets the observed proof depends on. It changes nothing.
+func (r *Reconciler) readNATSetFacts(ctx context.Context, s *cniSnapshot, cidr string) (*natSetFacts, error) {
+	tunnel, err := netip.ParsePrefix(cidr)
+	if err != nil {
+		return nil, errors.New("invalid IPv4 tunnel CIDR")
+	}
+	if r.runIPTables == nil || r.runIPSet == nil {
+		return nil, errors.New("NAT set inspection is unavailable")
+	}
+	listing, err := r.readAWSCompat(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("read saved NAT rules: %w", err)
+	}
+	// Refuse a truncated or ambiguous save before reading rule positions from it.
+	if _, err := parseNFTSaveNAT(listing); err != nil {
+		return nil, fmt.Errorf("read saved NAT rules: %w", err)
+	}
+	saved, err := parseSavedRules(listing)
+	if err != nil {
+		return nil, err
+	}
+	chains, rules := s.observedNATInput()
+	names, err := setsNeededForProof(chains, rules, "POSTROUTING", tunnel, observedHandledChains, saved)
+	if err != nil {
+		return nil, err
+	}
+	facts := &natSetFacts{saved: saved, members: map[string][]netip.Prefix{}}
+	for _, name := range names {
+		if err := operationContextErr(ctx); err != nil {
+			return nil, err
+		}
+		if !validSetName(name) {
+			return nil, errors.New("NAT rule names an invalid set")
+		}
+		out, err := r.runIPSet(ctx, "save", name)
+		if err != nil {
+			return nil, fmt.Errorf("read set %s: %s", name, bounded(err.Error(), 120))
+		}
+		members, err := parseIPSetSave(name, out)
+		if err != nil {
+			return nil, err
+		}
+		facts.members[name] = members
+	}
+	if err := operationContextErr(ctx); err != nil {
+		return nil, err
+	}
+	return facts, nil
 }
 
 func (s *cniSnapshot) validateHookCoverage(iface, cidr string) error {
@@ -843,13 +949,29 @@ func jumpsToRegisteredChain(expr []map[string]any) bool {
 	return false
 }
 
+// observedHandledChains are proved by their own adapters, not by the walk.
+var observedHandledChains = map[string]bool{ipMasqChain: true, awsChain: true}
+
 // proveObservedNAT applies the provider-neutral walk to every ip nat rule that
-// is not an entry to a registered mechanism.
+// is not an entry to a registered mechanism. It uses s.setFacts when they were
+// read and records the sets that carried the proof.
 func (s *cniSnapshot) proveObservedNAT(cidr string) error {
 	tunnel, err := netip.ParsePrefix(cidr)
 	if err != nil {
 		return errors.New("invalid IPv4 tunnel CIDR")
 	}
+	chains, rules := s.observedNATInput()
+	proofSets, err := proveNoTunnelSourceNATWithSets(chains, rules, "POSTROUTING", tunnel, observedHandledChains, s.setFacts)
+	if err != nil {
+		return err
+	}
+	s.proofSets = proofSets
+	return nil
+}
+
+// observedNATInput is the ip nat table as the walk reads it: chain names, and
+// each chain's rules in listing order with counters removed.
+func (s *cniSnapshot) observedNATInput() (map[string]bool, map[string][][]map[string]any) {
 	chains := map[string]bool{}
 	rules := map[string][][]map[string]any{}
 	for _, chain := range s.chains {
@@ -864,7 +986,7 @@ func (s *cniSnapshot) proveObservedNAT(cidr string) error {
 			}
 		}
 	}
-	return proveNoTunnelSourceNAT(chains, rules, "POSTROUTING", tunnel, map[string]bool{ipMasqChain: true, awsChain: true})
+	return chains, rules
 }
 
 func (s *cniSnapshot) validateTunnexPostrouting(iface, cidr string) error {

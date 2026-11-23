@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net/netip"
+	"regexp"
 	"strings"
 )
 
@@ -18,6 +19,13 @@ const (
 	maxSetSaveBytes   = 256 << 10
 	maxSavedRuleBytes = 4096
 )
+
+// setNameRE is the only shape of set name this package reads, passes to ipset
+// or reports. Any other name is refused, never quoted or escaped. A leading
+// "-" is refused as well: ipset would read it as an option, not a name.
+var setNameRE = regexp.MustCompile(`^[A-Za-z0-9_.:][A-Za-z0-9_.:-]{0,30}$`)
+
+func validSetName(name string) bool { return setNameRE.MatchString(name) }
 
 // setMatch is one `-m set [!] --match-set NAME DIRS` of a saved rule.
 type setMatch struct {
@@ -60,7 +68,7 @@ func parseSavedSetMatches(saved string) (map[string][][]setMatch, error) {
 				return nil, fmt.Errorf("saved NAT rule in %s has a set match that is not understood", chain)
 			}
 			name, dirs := fields[j+1], strings.Split(fields[j+2], ",")
-			if name == "" || len(name) > maxSetNameBytes {
+			if len(name) > maxSetNameBytes || !validSetName(name) {
 				return nil, fmt.Errorf("saved NAT rule in %s names an invalid set", chain)
 			}
 			for _, dir := range dirs {
@@ -72,6 +80,40 @@ func parseSavedSetMatches(saved string) (map[string][][]setMatch, error) {
 			i = j + 2
 		}
 		out[chain] = append(out[chain], matches)
+	}
+	return out, nil
+}
+
+// savedRule is what one `-A` line of iptables-nft-save says that the nft
+// listing may hide: its set matches, and the target it ends in (empty when the
+// rule has none).
+type savedRule struct {
+	Sets   []setMatch
+	Target string
+}
+
+// parseSavedRules reads iptables-nft-save output for one table and returns
+// each chain's rules in rule order.
+func parseSavedRules(saved string) (map[string][]savedRule, error) {
+	sets, err := parseSavedSetMatches(saved)
+	if err != nil {
+		return nil, err
+	}
+	out := map[string][]savedRule{}
+	for _, line := range strings.Split(saved, "\n") {
+		line = strings.TrimSpace(line)
+		if !strings.HasPrefix(line, "-A ") {
+			continue
+		}
+		// parseSavedSetMatches accepted this line, so it has a chain.
+		fields := strings.Fields(line)
+		chain, target := fields[1], ""
+		for i := 2; i+1 < len(fields); i++ {
+			if fields[i] == "-j" || fields[i] == "-g" {
+				target = fields[i+1]
+			}
+		}
+		out[chain] = append(out[chain], savedRule{Sets: sets[chain][len(out[chain])], Target: target})
 	}
 	return out, nil
 }

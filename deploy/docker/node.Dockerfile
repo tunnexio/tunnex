@@ -39,8 +39,13 @@ FROM alpine:3.24.2@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4c
 # (refuse-loudly on the health surface), never a crash.
 # AWS compat-rule inspection uses the explicit iptables-nft-save binary only;
 # the alternative-selected iptables wrapper is never part of the authority proof.
-RUN apk add --no-cache ca-certificates wireguard-tools iproute2 nftables iptables openvpn libcrypto3 libssl3 \
-    && iptables-nft-save -V
+# The observed CNI proof reads kernel set members with `ipset save NAME` (K8N-1); nft
+# cannot list those sets. It is only ever used to read. `ipset version` asks the kernel
+# and fails in an unprivileged build, so the build runs `ipset help`, which loads the
+# binary and its library without a netlink socket.
+RUN apk add --no-cache ca-certificates wireguard-tools iproute2 nftables iptables ipset openvpn libcrypto3 libssl3 \
+    && iptables-nft-save -V \
+    && ipset help >/dev/null
 COPY deploy/bgp/install.sh deploy/bgp/PROVENANCE.json deploy/bgp/NOTICE /usr/share/tunnex-bgp/
 RUN sh /usr/share/tunnex-bgp/install.sh
 COPY --from=bgp-observer-build /stage/opt/tunnex-bgp /opt/tunnex-bgp

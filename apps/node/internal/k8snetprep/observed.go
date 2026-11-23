@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"net/netip"
 	"reflect"
+	"sort"
 	"strconv"
+	"strings"
 )
 
 // ObservedAdapterName is the adapter reported when the node has no registered
@@ -18,6 +20,41 @@ const ObservedAdapterName = "observed_cni"
 const ReasonObservedNoTunnelSourceNAT = "node NAT rules cannot rewrite traffic to the tunnel range"
 
 const maxObservedChainDepth = 8
+
+// maxProofSets bounds how many kernel sets one proof may ask to read.
+const maxProofSets = 16
+
+// errSetFactsNeeded marks a refusal that exists only because a source-NAT rule
+// is conditioned on a kernel set the nft listing cannot describe. The caller
+// may read those facts (natSetFacts) and prove again; without them the rule
+// stays refused.
+var errSetFactsNeeded = errors.New("set match not read")
+
+// natSetFacts is what the nft listing cannot say about `-m set` matches: the
+// saved form of every NAT rule (from iptables-nft-save) and the members of the
+// sets the proof depends on (from ipset). Both are read by the caller; the
+// proof itself runs no command.
+type natSetFacts struct {
+	saved   map[string][]savedRule
+	members map[string][]netip.Prefix
+}
+
+// observedReadyReason is the bounded reason of a ready observed adapter. When
+// kernel sets carried the proof it names them, so an operator can see why a
+// masquerade rule was accepted.
+func observedReadyReason(proofSets []string) string {
+	if len(proofSets) == 0 {
+		return ReasonObservedNoTunnelSourceNAT
+	}
+	const shown = 3
+	names := proofSets
+	more := ""
+	if len(names) > shown {
+		more = fmt.Sprintf(" and %d more", len(names)-shown)
+		names = names[:shown]
+	}
+	return bounded(ReasonObservedNoTunnelSourceNAT+"; masquerade sources are limited by sets outside it: "+strings.Join(names, ", ")+more, maxReasonBytes)
+}
 
 // kubeMarks are the packet-mark bits Kubernetes components reserve to select
 // their own NAT rules: kube-proxy masquerade (0x4000) and drop (0x8000), and
@@ -32,6 +69,14 @@ type observedNAT struct {
 	handled map[string]bool
 	tunnel  netip.Prefix
 	active  map[string]bool
+
+	// facts is nil when no set facts were read. collect makes the walk gather
+	// the sets it would need (needed) instead of judging their members.
+	facts   *natSetFacts
+	collect bool
+	paired  map[string]bool
+	needed  map[string]bool
+	proof   map[string]bool
 }
 
 // proveNoTunnelSourceNAT walks every rule reachable from base (the ip nat
@@ -45,12 +90,66 @@ type observedNAT struct {
 // deliberately small: any statement or jump target it does not understand is
 // an error, never an assumption.
 func proveNoTunnelSourceNAT(chains map[string]bool, rules map[string][][]map[string]any, base string, tunnel netip.Prefix, handled map[string]bool) error {
-	if !tunnel.IsValid() || !tunnel.Addr().Is4() {
-		return errors.New("invalid IPv4 tunnel range")
-	}
-	o := &observedNAT{chains: chains, rules: rules, handled: handled, tunnel: tunnel.Masked(), active: map[string]bool{}}
-	_, err := o.walk(base, 0)
+	_, err := proveNoTunnelSourceNATWithSets(chains, rules, base, tunnel, handled, nil)
 	return err
+}
+
+// proveNoTunnelSourceNATWithSets is the same walk, given the set facts read
+// beside the nft listing. A source-NAT rule behind opaque `set` matches is then
+// accepted exactly when it pairs with its saved form and that form carries a
+// non-negated, source-only match on a set whose every member is outside
+// tunnel. It returns the sorted names of the sets that carried the proof.
+//
+// With facts nil such a rule is refused with errSetFactsNeeded. A rule that
+// does not pair, a needed set that was not read, and a set overlapping tunnel
+// are errors.
+func proveNoTunnelSourceNATWithSets(chains map[string]bool, rules map[string][][]map[string]any, base string, tunnel netip.Prefix, handled map[string]bool, facts *natSetFacts) ([]string, error) {
+	o, err := newObservedNAT(chains, rules, tunnel, handled)
+	if err != nil {
+		return nil, err
+	}
+	o.facts = facts
+	if _, err := o.walk(base, 0); err != nil {
+		return nil, err
+	}
+	return sortedNames(o.proof), nil
+}
+
+// setsNeededForProof runs the walk without judging membership and returns the
+// sorted names of exactly the sets whose members the proof depends on: those
+// of non-negated, source-only matches on source-NAT rules that tunnel-bound
+// traffic can reach from base. Every other refusal of the walk, including a
+// rule that does not pair with saved, is returned as an error.
+func setsNeededForProof(chains map[string]bool, rules map[string][][]map[string]any, base string, tunnel netip.Prefix, handled map[string]bool, saved map[string][]savedRule) ([]string, error) {
+	o, err := newObservedNAT(chains, rules, tunnel, handled)
+	if err != nil {
+		return nil, err
+	}
+	o.facts, o.collect = &natSetFacts{saved: saved}, true
+	if _, err := o.walk(base, 0); err != nil {
+		return nil, err
+	}
+	if len(o.needed) > maxProofSets {
+		return nil, errors.New("NAT rules depend on too many sets")
+	}
+	return sortedNames(o.needed), nil
+}
+
+func newObservedNAT(chains map[string]bool, rules map[string][][]map[string]any, tunnel netip.Prefix, handled map[string]bool) (*observedNAT, error) {
+	if !tunnel.IsValid() || !tunnel.Addr().Is4() {
+		return nil, errors.New("invalid IPv4 tunnel range")
+	}
+	return &observedNAT{chains: chains, rules: rules, handled: handled, tunnel: tunnel.Masked(), active: map[string]bool{},
+		paired: map[string]bool{}, needed: map[string]bool{}, proof: map[string]bool{}}, nil
+}
+
+func sortedNames(set map[string]bool) []string {
+	names := make([]string, 0, len(set))
+	for name := range set {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
 }
 
 // walk reports whether tunnel-bound traffic certainly leaves the hook inside
@@ -64,7 +163,7 @@ func (o *observedNAT) walk(chain string, depth int) (bool, error) {
 	}
 	o.active[chain] = true
 	defer delete(o.active, chain)
-	for _, rule := range o.rules[chain] {
+	for n, rule := range o.rules[chain] {
 		view, err := o.read(chain, rule)
 		if err != nil {
 			return false, err
@@ -94,12 +193,130 @@ func (o *observedNAT) walk(chain string, depth int) (bool, error) {
 				return done, nil
 			}
 		case "nat":
-			if !view.sourceLimited {
-				return false, fmt.Errorf("NAT chain %s can rewrite the source of traffic to the tunnel range %s", chain, o.tunnel)
+			if view.sourceLimited {
+				continue
+			}
+			if err := o.proveBySets(chain, n); err != nil {
+				return false, err
 			}
 		}
 	}
 	return false, nil
+}
+
+// proveBySets decides a source-NAT rule that no readable nft condition limits.
+// It returns nil only when the rule's saved form limits the source to a set
+// that lies outside the tunnel range.
+func (o *observedNAT) proveBySets(chain string, n int) error {
+	refused := fmt.Errorf("NAT chain %s can rewrite the source of traffic to the tunnel range %s", chain, o.tunnel)
+	if opaqueSetMatches(o.rules[chain][n]) == 0 {
+		return refused
+	}
+	if o.facts == nil {
+		return fmt.Errorf("%w: %w", refused, errSetFactsNeeded)
+	}
+	if err := o.pair(chain); err != nil {
+		return err
+	}
+	matches := o.facts.saved[chain][n].Sets
+	candidates := 0
+	for _, match := range matches {
+		if match.Negated || len(match.Dirs) != 1 || match.Dirs[0] != "src" {
+			continue
+		}
+		candidates++
+		if o.collect {
+			o.needed[match.Name] = true
+			continue
+		}
+		if _, read := o.facts.members[match.Name]; !read {
+			return fmt.Errorf("NAT chain %s depends on set %s, which was not read", chain, match.Name)
+		}
+	}
+	if candidates == 0 {
+		// Only negated or destination set matches: nothing limits the source.
+		return refused
+	}
+	if o.collect {
+		return nil
+	}
+	ok, proof := setsLimitSourceOutside(matches, o.facts.members, o.tunnel)
+	if !ok {
+		for _, match := range matches {
+			if !match.Negated && len(match.Dirs) == 1 && match.Dirs[0] == "src" {
+				return fmt.Errorf("NAT chain %s masquerades sources in set %s, which overlaps the tunnel range %s", chain, match.Name, o.tunnel)
+			}
+		}
+		return refused
+	}
+	for _, name := range proof {
+		o.proof[name] = true
+	}
+	return nil
+}
+
+// pair checks that the saved text describes the same chain as the nft
+// listing: the same number of rules, and for rule N of both the same number of
+// set matches and the same target. Only then may set match K of saved rule N be
+// read as the K-th opaque set match of nft rule N.
+func (o *observedNAT) pair(chain string) error {
+	if o.paired[chain] {
+		return nil
+	}
+	rules, saved := o.rules[chain], o.facts.saved[chain]
+	if len(rules) != len(saved) {
+		return fmt.Errorf("NAT chain %s has %d rules but %d saved rules; its set matches cannot be read", chain, len(rules), len(saved))
+	}
+	for n, rule := range rules {
+		if opaqueSetMatches(rule) != len(saved[n].Sets) || ruleTarget(rule) != saved[n].Target {
+			return fmt.Errorf("NAT chain %s rule %d does not pair with its saved rule; its set matches cannot be read", chain, n+1)
+		}
+	}
+	o.paired[chain] = true
+	return nil
+}
+
+// opaqueSetMatches counts the `-m set` matches nft shows without their content.
+func opaqueSetMatches(exprs []map[string]any) int {
+	count := 0
+	for _, expr := range exprs {
+		if xt, ok := expr["xt"]; ok && len(expr) == 1 {
+			if kind, name := xtDescriptor(xt); kind == "match" && name == "set" {
+				count++
+			}
+		}
+	}
+	return count
+}
+
+// ruleTarget names what a rule ends in, in the vocabulary iptables-nft-save
+// uses after -j or -g. It is empty for a rule with no target.
+func ruleTarget(exprs []map[string]any) string {
+	if len(exprs) == 0 {
+		return ""
+	}
+	last := exprs[len(exprs)-1]
+	if len(last) != 1 {
+		return ""
+	}
+	if xt, ok := last["xt"]; ok {
+		if kind, name := xtDescriptor(xt); kind == "target" {
+			return name
+		}
+		return ""
+	}
+	for key, name := range map[string]string{"return": "RETURN", "accept": "ACCEPT", "drop": "DROP", "masquerade": "MASQUERADE", "snat": "SNAT"} {
+		if hasKey(last, key) {
+			return name
+		}
+	}
+	for _, verdict := range []string{"jump", "goto"} {
+		if body, ok := last[verdict].(map[string]any); ok {
+			target, _ := body["target"].(string)
+			return target
+		}
+	}
+	return ""
 }
 
 type observedRule struct {

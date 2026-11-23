@@ -40,6 +40,10 @@ type AuthorityGuard func(context.Context) (AuthorityGrant, func(), error)
 // it never mutates iptables and never invokes the auto-selecting wrapper.
 type IPTablesRunner func(context.Context, ...string) (string, error)
 
+// IPSetRunner lists one kernel set with `save NAME`. It never creates, changes
+// or destroys a set.
+type IPSetRunner func(context.Context, ...string) (string, error)
+
 // State is the finite outcome vocabulary shared by host preparation and CNI
 // adapters. NotApplicable is a successful observation that a mechanism is not
 // installed; Blocked means the mechanism could not be observed or reconciled.
