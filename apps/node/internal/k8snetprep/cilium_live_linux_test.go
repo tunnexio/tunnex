@@ -103,13 +103,15 @@ func TestCiliumLiveNodesReconcileOnTheManagersFacts(t *testing.T) {
 		reason string
 		refuse string
 	}{
-		"A":                     {prefix: ciliumLiveA, facts: ciliumFactsA(t), tunnel: "100.96.0.0/24", refuse: ciliumWantEnable},
-		"A, native routing":     {prefix: ciliumLiveA, facts: ciliumFactsA(t), tunnel: "10.244.200.0/24", reason: "tunnel range is inside Cilium's native-routing range 10.244.0.0/16"},
-		"B":                     {prefix: ciliumLiveB, facts: ciliumFactsB(t), tunnel: "100.96.0.0/24", reason: "tunnel range is inside Cilium ip-masq-agent range 100.96.0.0/24"},
-		"B, range not listed":   {prefix: ciliumLiveB, facts: ciliumFactsB(t), tunnel: "100.96.1.0/24", refuse: ciliumWantAdd},
-		"B then off":            {prefix: ciliumLiveA, facts: ciliumFactsBThenOff(t), tunnel: "100.96.0.0/24", refuse: ciliumWantEnable},
-		"C":                     {prefix: ciliumLiveC, facts: ciliumFactsC(t), tunnel: "100.96.0.0/24", reason: ReasonCiliumIPTablesMasquerade},
-		"C, inside pod routing": {prefix: ciliumLiveC, facts: ciliumFactsC(t), tunnel: "10.244.200.0/24", reason: ReasonCiliumIPTablesMasquerade},
+		"A":                   {prefix: ciliumLiveA, facts: ciliumFactsA(t), tunnel: "100.96.0.0/24", refuse: ciliumWantEnable},
+		"A, native routing":   {prefix: ciliumLiveA, facts: ciliumFactsA(t), tunnel: "10.244.200.0/24", reason: "tunnel range is inside Cilium's native-routing range 10.244.0.0/16"},
+		"B":                   {prefix: ciliumLiveB, facts: ciliumFactsB(t), tunnel: "100.96.0.0/24", reason: "tunnel range is inside Cilium ip-masq-agent range 100.96.0.0/24"},
+		"B, range not listed": {prefix: ciliumLiveB, facts: ciliumFactsB(t), tunnel: "100.96.1.0/24", refuse: ciliumWantAdd},
+		// Review finding 1: with the ip-masq-agent on the reported range is no proof.
+		"B, reported range only": {prefix: ciliumLiveB, facts: ciliumFactsB(t), tunnel: "10.244.200.0/24", refuse: ciliumWantList},
+		"B then off":             {prefix: ciliumLiveA, facts: ciliumFactsBThenOff(t), tunnel: "100.96.0.0/24", refuse: ciliumWantEnable},
+		"C":                      {prefix: ciliumLiveC, facts: ciliumFactsC(t), tunnel: "100.96.0.0/24", reason: ReasonCiliumIPTablesMasquerade},
+		"C, inside pod routing":  {prefix: ciliumLiveC, facts: ciliumFactsC(t), tunnel: "10.244.200.0/24", reason: ReasonCiliumIPTablesMasquerade},
 	} {
 		f, r := liveCiliumKernel(t, tc.prefix)
 		calls := 0
@@ -141,6 +143,50 @@ func TestCiliumLiveNodesReconcileOnTheManagersFacts(t *testing.T) {
 		if len(f.mutations) != 0 {
 			t.Errorf("%s: mutations: %v", name, f.mutations)
 		}
+	}
+}
+
+// Review finding 1, on the whole reconcile. The captured B node runs eBPF
+// masquerade with the ip-masq-agent on and reports the native-routing range
+// 10.244.0.0/16. A tunnel range inside that range is not ready on the report:
+// with the ip-masq-agent on, Cilium applies the range only when it was set
+// explicitly, and the report reads the same when it was not (the node's pod
+// range, or a range the IPAM detected, which the program then does not
+// exclude). The gateway is ready only once an entry of the live map contains
+// the tunnel range, and it writes nothing while refused.
+func TestCiliumLiveNodeWithIPMasqAgentOnIsNotReadyOnTheReportedRange(t *testing.T) {
+	const tunnel = "10.244.200.0/24"
+	f, r := liveCiliumKernel(t, ciliumLiveB)
+	r.UseCiliumFacts(constantCiliumFacts(ciliumFactsB(t), nil))
+	status, err := r.Reconcile(t.Context(), tunnel)
+	wantCiliumRefusal(t, "reported range only", f, status, err, ciliumWantList)
+	if err.Error() != ciliumWantList || !errors.Is(err, errCiliumTunnelMasqueraded) || errors.Is(err, errCiliumNotVerified) {
+		t.Fatalf("refusal = %q", err)
+	}
+	if len(status.Host.Reason) > maxReasonBytes || status.Host.Reason != ciliumWantList {
+		t.Fatalf("the customer does not read the whole instruction: %q", status.Host.Reason)
+	}
+
+	// The same rules and the same range with the ip-masq-agent off: there the
+	// reported range is what the program was compiled with.
+	f, r = liveCiliumKernel(t, ciliumLiveB)
+	r.UseCiliumFacts(constantCiliumFacts(ciliumFactsA(t), nil))
+	status, err = r.Reconcile(t.Context(), tunnel)
+	if err != nil || len(status.Adapters) < 2 || status.Adapters[1] != (ComponentStatus{Name: CiliumAdapterName, State: StateReady, Reason: "tunnel range is inside Cilium's native-routing range 10.244.0.0/16"}) {
+		t.Fatalf("ip-masq-agent off: %+v %v", status, err)
+	}
+
+	// The customer follows the instruction: the range is in the live map.
+	listed := ciliumFactsB(t)
+	listed.IPMasqMap.Text = string(ciliumIPMasqDump("100.96.0.0/24", tunnel))
+	f, r = liveCiliumKernel(t, ciliumLiveB)
+	r.UseCiliumFacts(constantCiliumFacts(listed, nil))
+	status, err = r.Reconcile(t.Context(), tunnel)
+	if err != nil || len(status.Adapters) < 2 || status.Adapters[1] != (ComponentStatus{Name: CiliumAdapterName, State: StateReady, Reason: "tunnel range is inside Cilium ip-masq-agent range " + tunnel}) {
+		t.Fatalf("range listed: %+v %v", status, err)
+	}
+	if len(f.mutations) != 0 {
+		t.Fatalf("mutations: %v", f.mutations)
 	}
 }
 

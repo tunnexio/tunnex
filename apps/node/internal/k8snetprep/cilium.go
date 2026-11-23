@@ -57,9 +57,10 @@ const (
 // The zero value is not a valid report and proves nothing.
 type ciliumMasquerade struct {
 	Mode ciliumMasqMode
-	// Exclusion is the destination range the agent never masquerades to
-	// (ipv4-native-routing-cidr when set, otherwise the node's pod range).
-	// It is valid whenever Mode is not off.
+	// Exclusion is the range the agent reports as snat-exclusion-cidr-v4
+	// (ipv4-native-routing-cidr when set, otherwise the node's pod range). It
+	// is valid whenever Mode is not off. It is the datapath's own exclusion
+	// only while IPMasqAgent is false; see proveCiliumNoTunnelMasquerade.
 	Exclusion netip.Prefix
 	// IPMasqAgent says the eBPF ip-masq-agent is compiled into the datapath,
 	// so the ip-masq-agent map is consulted. Only possible in eBPF mode.
@@ -331,8 +332,13 @@ type ciliumObservation struct {
 //   - it masquerades with iptables rules (the caller's NAT rule walk must then
 //     pass on its own; this function does not replace it); or
 //   - it masquerades in eBPF and tunnel lies wholly inside a destination range
-//     the agent reports it never masquerades to: its native-routing range, or,
-//     with the ip-masq-agent enabled, one entry of the live map.
+//     it never masquerades to: with the ip-masq-agent off, the native-routing
+//     range the agent reports; with it on, one entry of the live map, and
+//     nothing else.
+//
+// With the ip-masq-agent on the reported native-routing range is not accepted:
+// the datapath then excludes it only when ipv4-native-routing-cidr was set
+// explicitly, and the status shows the same field either way.
 //
 // In eBPF mode an egress-gateway policy is applied before either exclusion, so
 // a node with the egress gateway enabled is refused. A range covered only by
@@ -365,12 +371,23 @@ func proveCiliumNoTunnelMasquerade(obs ciliumObservation, tunnel netip.Prefix) (
 		return "", errCiliumEgressGateway
 	}
 	exclusion := masq.Exclusion.Masked()
-	if ciliumPrefixCovers(exclusion, tunnel) {
-		return bounded(fmt.Sprintf("tunnel range is inside Cilium's native-routing range %s", exclusion), maxReasonBytes), nil
-	}
 	if !masq.IPMasqAgent {
+		// Without the ip-masq-agent the program is compiled with the range the
+		// status reports (the explicit ipv4-native-routing-cidr, otherwise the
+		// node's pod range), so the status is the datapath's own exclusion.
+		if ciliumPrefixCovers(exclusion, tunnel) {
+			return bounded(fmt.Sprintf("tunnel range is inside Cilium's native-routing range %s", exclusion), maxReasonBytes), nil
+		}
 		return "", &ciliumTunnelNotExcludedError{Tunnel: tunnel, Exclusion: exclusion}
 	}
+	// With the ip-masq-agent on the program is compiled with the explicit
+	// ipv4-native-routing-cidr option only, and with no exclusion when that
+	// option is unset (Cilium v1.20.5, pkg/datapath/linux/config/config.go:
+	// "native-routing-cidr is optional with ip-masq-agent and may be nil").
+	// The status still reports the range it reports with the agent off: the
+	// option, or else the node's pod range or one the IPAM detected
+	// (pkg/status/status_collector.go). It cannot say which of them it shows,
+	// so here it proves nothing: only an entry of the live map does.
 	if !obs.NonMasqueradeRead {
 		return "", errors.New("Cilium ip-masq-agent is enabled but its map was not read")
 	}
@@ -388,7 +405,7 @@ func proveCiliumNoTunnelMasquerade(obs ciliumObservation, tunnel netip.Prefix) (
 		}
 	}
 	if !widest.IsValid() {
-		return "", &ciliumTunnelNotExcludedError{Tunnel: tunnel, Exclusion: exclusion, IPMasqAgent: true}
+		return "", &ciliumTunnelNotExcludedError{Tunnel: tunnel, Exclusion: exclusion, IPMasqAgent: true, InsideReported: ciliumPrefixCovers(exclusion, tunnel)}
 	}
 	return bounded(fmt.Sprintf("tunnel range is inside Cilium ip-masq-agent range %s", widest), maxReasonBytes), nil
 }
@@ -406,10 +423,17 @@ type ciliumTunnelNotExcludedError struct {
 	// IPMasqAgent says the ip-masq-agent is on, so one more entry in its list
 	// is enough; otherwise the feature has to be enabled first.
 	IPMasqAgent bool
+	// InsideReported says the tunnel range lies inside the range the status
+	// reports, which is no proof while the ip-masq-agent is on. The customer
+	// is then told why a range that looks excluded still has to be listed.
+	InsideReported bool
 }
 
 func (e *ciliumTunnelNotExcludedError) Error() string {
-	if e.IPMasqAgent {
+	switch {
+	case e.IPMasqAgent && e.InsideReported:
+		return fmt.Sprintf("Cilium eBPF masquerade is not proved to exclude the tunnel range %s: with ip-masq-agent on, the reported native-routing range %s is applied only when it is set explicitly, and no nonMasqueradeCIDRs entry contains it", e.Tunnel, e.Exclusion)
+	case e.IPMasqAgent:
 		return fmt.Sprintf("Cilium eBPF masquerade can rewrite traffic to the tunnel range %s: no ip-masq-agent nonMasqueradeCIDRs entry contains it", e.Tunnel)
 	}
 	return fmt.Sprintf("Cilium eBPF masquerade can rewrite traffic to the tunnel range %s: it is outside the native-routing range %s and ip-masq-agent is off", e.Tunnel, e.Exclusion)

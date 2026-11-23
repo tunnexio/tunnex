@@ -112,6 +112,8 @@ What the two Tunnex containers can reach today:
    - mode `iptables` → nothing more to prove here; the walk decides.
    - mode `BPF` → proved only if the tunnel range lies wholly inside `snat-exclusion-cidr-v4`, or
      the ip-masq-agent is enabled and one entry of the live map contains the whole range.
+     *Narrowed after the review, 2026-11-24:* with the ip-masq-agent on, `snat-exclusion-cidr-v4`
+     is no longer accepted; only a map entry proves. See "After the review".
    - mode `BPF` with an egress-gateway policy map pinned → refused (see "What stays refused").
    - Anything else — no report, a stale one, an unknown mode, an unknown field inside the
      `masquerading` object, fields that contradict each other, a map that was not read — is a
@@ -171,7 +173,8 @@ masqueraded [D1]). Then restart the agents.
 
 The three options are the documented ones [D1]; the command around them is ours and must be run
 once in the live walk before it goes into customer documentation. The native-routing range stays
-excluded with the ip-masq-agent on [S1].
+excluded with the ip-masq-agent on [S1] **only when `ipv4-native-routing-cidr` is set
+explicitly** [S12]; Tunnex cannot read whether it is, and does not rely on it ("After the review").
 
 **GKE Dataplane V2.** Add the device range to `nonMasqueradeCIDRs` in the `ip-masq-agent`
 ConfigMap in `kube-system`; a custom list "must at least include the cluster's node and Pod IP
@@ -335,6 +338,11 @@ Cilium source, https://github.com/cilium/cilium at tag `v1.20.5`:
   `install/kubernetes/cilium/templates/cilium-agent/daemonset.yaml` — the agent's host paths.
 - [S10] `pkg/maps/egressmap/policy.go` — `cilium_egress_gw_policy_v4` and `..._v4_v2`.
 - [S11] `pkg/option/config.go` — `install-iptables-rules`.
+- [S12] `pkg/datapath/linux/config/config.go` — with `EnableIPMasqAgent` the exclusion compiled
+  into the program is `option.Config.IPv4NativeRoutingCIDR` ("native-routing-cidr is optional with
+  ip-masq-agent and may be nil"), otherwise the node's `NativeRoutingCIDRIPv4`; and
+  `pkg/status/status_collector.go`, `getMasqueradingStatus` — `snat-exclusion-cidr-v4` is
+  `RemoteSNATDstAddrExclusionCIDRv4()` in both cases. Read at the tag on 2026-11-24.
 
 Other:
 
@@ -565,9 +573,11 @@ Branch `k8n/cilium-wiring`. Checklist steps 1 to 7 above are done; step 8 is sti
   rules as the netfilter facts, and runs the unchanged parsers and `proveCiliumNoTunnelMasquerade`:
   - masquerade off, or mode `iptables`: ready; in `iptables` mode the reason says the rule walk
     decides, and that walk has just passed on the live rules;
-  - mode `BPF`: ready only if the tunnel range is inside the native-routing range or inside one
-    entry of the dumped map; the pinned-map listing is required (egress gateway), and the map dump
-    is required when the agent reports the ip-masq-agent on;
+  - mode `BPF`, ip-masq-agent off: ready only if the tunnel range is inside the native-routing
+    range the agent reports; mode `BPF`, ip-masq-agent on: ready only if the tunnel range is
+    inside one entry of the dumped map, and the reported range decides nothing (changed after
+    the review, see "After the review"); the pinned-map listing is required (egress gateway),
+    and the map dump is required when the agent reports the ip-masq-agent on;
   - anything else is a refusal, and nothing is written.
 
   A ready node reports the adapter `cilium_masquerade` after `observed_cni`. A node without
@@ -590,6 +600,11 @@ Not ready, and the customer can lift it (both fit the 240-byte bound for any ran
 - ip-masq-agent on: `Cilium eBPF masquerade would rewrite traffic to the tunnel range
   100.96.0.0/24. Add 100.96.0.0/24 to nonMasqueradeCIDRs in the ip-masq-agent ConfigMap (namespace
   kube-system, key config); no restart is needed, allow about a minute`
+- ip-masq-agent on, and the range is inside the native-routing range the agent reports but in
+  no entry of the list (added after the review): `Cilium's ip-masq-agent is on: its reported
+  native-routing range 10.244.0.0/16 does not prove 10.244.200.0/24 is not masqueraded. Add
+  10.244.200.0/24 to nonMasqueradeCIDRs in the ip-masq-agent ConfigMap (kube-system, key config)`.
+  239 bytes for the longest two ranges that can be written.
 
 Not ready, something could not be read or was not understood. Each starts with `Cilium masquerade
 on this node is not verified: ` and, where it fits, ends with what made this a Cilium node, for
@@ -946,3 +961,54 @@ Not run on a cluster: the map was made by bpftool, not by Cilium.
 `cilium.resources` in `deploy/helm/tunnex-host-posture/values.yaml`, and the memory reasoning in
 decision 7, were measured with the LLVM-linked bpftool. Both need re-measuring on the next
 cluster run with this image.
+
+## After the review, 2026-11-24
+
+Changes that follow from `docs/K8N-review-false-ready.md`. Nothing here ran on a cluster.
+
+### The reported range is a proof only with the ip-masq-agent off (review finding 1)
+
+What was wrong. The proof accepted the status's `snat-exclusion-cidr-v4` before it looked at
+`ip-masq-agent`. Cilium v1.20.5 fills that status field the same way in every configuration:
+`ipv4-native-routing-cidr` when it is set, otherwise the node's own range [S12]. The program is
+compiled differently: with the ip-masq-agent **off** it gets that same range; with it **on** it
+gets only the explicit option, and no exclusion at all when the option is unset [S12]. So with
+the ip-masq-agent on and no explicit native-routing range, the status names a range the program
+does not exclude, and the gateway said `tunnel range is inside Cilium's native-routing range`
+while a pod's packet to a device would be rewritten. The status cannot tell the two cases apart.
+
+What the proof does now (`proveCiliumNoTunnelMasquerade`):
+
+- ip-masq-agent off: unchanged. Inside the reported range → ready; outside → the "Enable ..."
+  instruction.
+- ip-masq-agent on: the reported range decides nothing. One entry of the live map must contain
+  the tunnel range. An unread map refuses, also for a range inside the reported range (before,
+  such a range was ready without the map).
+- New refusal text when the range is inside the reported range only, so the customer sees why a
+  range that looks excluded has to be listed: see "What the customer reads".
+
+**This refuses a configuration that is in fact safe**: ip-masq-agent on with
+`ipv4-native-routing-cidr` set explicitly and the device pool inside it and not in
+`nonMasqueradeCIDRs`. That is the captured configuration B for the range `10.244.200.0/24`, and
+the second row of both live tables above ("ip-masq-agent on, list `[100.64.99.0/24]`":
+`10.244.200.0/24` was ready by the native-routing range). **Those two cells would now read "not
+ready, Add 10.244.200.0/24 ...".** They were not run again. The customer's fix is one line in
+the ConfigMap, with no restart. Accepting it without that line would need a fact Tunnex can
+read that says the option is explicit; the status has none, and the ConfigMap is intent, not
+proof ("Evidence on the node").
+
+Tests: `TestProveCiliumReportedRangeProvesOnlyWithTheIPMasqAgentOff` and the new rows of
+`TestProveCiliumNoTunnelMasqueradeRefused` (`cilium_test.go`);
+`TestCiliumFactsReportedRangeIsNotAProofWithTheIPMasqAgentOn`,
+`TestCiliumReportedRangeRefusalFitsTheReasonBound` and the row "B, range inside the reported
+native-routing range only" of `TestCiliumFactsDecisionOnTheRealCaptures` (`cilium_facts_test.go`);
+`TestCiliumLiveNodeWithIPMasqAgentOnIsNotReadyOnTheReportedRange`, the whole reconcile on the
+captured B node (`cilium_live_linux_test.go`); one step of
+`TestCapturedCiliumNodeFollowsTheIPMasqAgentThroughTheReceipt` (`cilium_e2e_linux_test.go`).
+Each fails when the old acceptance is put back.
+
+Still not known: Cilium 1.16 to 1.19 (AKS). The refusal does not depend on the answer: a
+release in which the two values agree is refused for the same range and lifted by the same line.
+A live capture with the ip-masq-agent on and no explicit native-routing range is still owed, to
+see the rewrite the review predicts from the source.
+

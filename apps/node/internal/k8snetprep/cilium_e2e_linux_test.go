@@ -209,6 +209,10 @@ func TestCapturedCiliumNodeFollowsTheIPMasqAgentThroughTheReceipt(t *testing.T) 
 	e.pass()
 	e.ready("100.96.0.0/24", "tunnel range is inside Cilium ip-masq-agent range 100.96.0.0/24")
 	e.refused("100.96.1.0/24", "Add 100.96.1.0/24 to nonMasqueradeCIDRs in the ip-masq-agent ConfigMap (namespace kube-system, key config); no restart is needed, allow about a minute")
+	// Review finding 1: the range that was ready on the agent's report a
+	// moment ago is not ready on it now. With the ip-masq-agent on the report
+	// is no proof, and the customer is told to list the range.
+	e.refused("10.244.200.0/24", "Cilium's ip-masq-agent is on: its reported native-routing range 10.244.0.0/16 does not prove 10.244.200.0/24 is not masqueraded. Add 10.244.200.0/24 to nonMasqueradeCIDRs in the ip-masq-agent ConfigMap (kube-system, key config)")
 
 	// What is on disk: a public, bounded file. The whole 12 KiB status is not
 	// in it, the tunnel range and the owner are not in it.

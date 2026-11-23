@@ -164,6 +164,14 @@ func TestCiliumLiveIPMasqAgentRangeIsProved(t *testing.T) {
 			t.Errorf("%s is not inside the listed range but was accepted", tunnel)
 		}
 	}
+	// Review finding 1. The status of this node reports 10.244.0.0/16, and on
+	// this node that range was set explicitly, so the datapath does exclude
+	// it. The status does not say so, and with the ip-masq-agent on an
+	// unset option means no exclusion at all: the report is not accepted.
+	_, err = proveCiliumNoTunnelMasquerade(obs, netip.MustParsePrefix("10.244.200.0/24"))
+	if err == nil || !strings.Contains(err.Error(), "is applied only when it is set explicitly") {
+		t.Fatalf("inside the reported range only, ip-masq-agent on: %v", err)
+	}
 	// The same node with the map unread stays refused.
 	obs.NonMasquerade, obs.NonMasqueradeRead = nil, false
 	if _, err := proveCiliumNoTunnelMasquerade(obs, netip.MustParsePrefix("100.96.0.0/24")); err == nil {
