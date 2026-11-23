@@ -94,8 +94,11 @@ type nftName struct {
 // The manager's commands: every one succeeds, as in the privileged container.
 func (n *capturedNode) managerNFT(_ context.Context, args ...string) (string, error) {
 	n.managerRan = append(n.managerRan, "nft "+strings.Join(args, " "))
+	if strings.Join(args, " ") == "-j -a list tables" {
+		return n.listing(func(entry nftEntry) bool { _, ok := entry["table"]; return ok }), nil
+	}
 	if len(args) != 7 || strings.Join(args[:5], " ") != "-j -a list chain ip" {
-		return "", errors.New("manager ran an nft command that is not one chain listing")
+		return "", errors.New("manager ran an nft command that is not a table or chain listing")
 	}
 	found := false
 	out := n.listing(func(entry nftEntry) bool {
@@ -183,6 +186,29 @@ func (n *capturedNode) replaceRule(table, chain string) {
 		}
 	}
 	n.t.Fatalf("no rule in %s %s", table, chain)
+}
+
+// recreateTable gives one ip table a new handle and leaves every chain and rule
+// handle as it was, which is what deleting a table and building it again the
+// same way produces.
+func (n *capturedNode) recreateTable(name string) {
+	for i, entry := range n.entries {
+		raw, ok := entry["table"]
+		if !ok {
+			continue
+		}
+		var table map[string]any
+		if err := json.Unmarshal(raw, &table); err != nil {
+			n.t.Fatal(err)
+		}
+		if table["family"] == "ip" && table["name"] == name {
+			table["handle"] = table["handle"].(float64) + 1000
+			encoded, _ := json.Marshal(table)
+			n.entries[i] = nftEntry{"table": encoded}
+			return
+		}
+	}
+	n.t.Fatalf("no ip %s table", name)
 }
 
 type oneOwner struct{ uid string }
@@ -411,6 +437,13 @@ func TestCapturedCalicoNodeBecomesReadyThroughTheHostFactsReceipt(t *testing.T) 
 	// same words under a new handle. The gateway refuses until the next pass.
 	node.replaceRule("nat", "cali-nat-outgoing")
 	refused("100.96.0.0/24", "nat chain cali-nat-outgoing changed after the host-posture manager read it")
+	pass()
+	ready("100.96.0.0/24")
+
+	// The mangle table is deleted and built again exactly as it was: every
+	// chain and rule handle repeats, only the table's own handle is new.
+	node.recreateTable("mangle")
+	refused("100.96.0.0/24", "mangle chain cali-POSTROUTING changed after the host-posture manager read it")
 	pass()
 	ready("100.96.0.0/24")
 

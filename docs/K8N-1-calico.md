@@ -135,9 +135,10 @@ nothing in Calico's chains.
      `MASQUERADE` or `SNAT` rule of those chains. This does not depend on the tunnel range, so it
      is the smallest list that covers every range; Calico's negated destination set is still
      never read.
-   - For every carried chain, `nft -j -a list chain ip TABLE CHAIN` before and after the reads.
-     The two listings must be equal; their SHA-256 (chain and rules with handles, counters
-     removed) is carried as the chain's *listing digest*.
+   - For every carried chain, `nft -j -a list tables` and `nft -j -a list chain ip TABLE CHAIN`
+     before and after the reads. The two listings must be equal; their SHA-256 (the table's
+     handle, the chain, and its rules with their handles, counters removed) is carried as the
+     chain's *listing digest*. The manager never lists the whole ruleset.
 
    *The receipt.* `host-facts.json` in the shared state directory
    (`/var/lib/tunnex/host-posture/v1`), mode 0644, replaced atomically under the operation lock
@@ -155,9 +156,10 @@ nothing in Calico's chains.
    It holds rule text and set members only. K8N-2 adds its own section beside `netfilter` under
    the same identity, freshness and digest.
 
-   *Bounds.* 256 KiB for the file; 64 chains per table; 4096 bytes per rule; 16 sets; 240 bytes
-   per reason; 3 s for one read. Facts that do not fit are published as `unreadable` with the
-   reason, never cut.
+   *Bounds.* 256 KiB for the file and 192 KiB for the text in it; 64 chains per table; 1024 rules
+   per chain; 4096 bytes per rule; 16 sets; 240 bytes per reason; 3 s for one read. Facts that do
+   not fit are published as `unreadable` with the reason, never cut. A chain name the manager
+   could not pass to `nft` unquoted (`[A-Za-z_.][A-Za-z0-9_.-]*`, 64 bytes) is `unreadable` too.
 
    *How the gateway uses it.* Inside the existing guard, with the operation lock held: nft JSON,
    then the receipt, then nft JSON again; the two listings must still be equal ("CNI rules changed
@@ -176,6 +178,8 @@ nothing in Calico's chains.
    chain did not change while its text was read; the gateway proves its two listings show that
    same chain, handles included. A rule replaced between the manager's read and the gateway's
    listing gets a new handle, the digests differ, and the node is refused until the next pass.
+   A table that is deleted and built again repeats its chain and rule handles (seen with
+   nft 1.1.6), but gets a new table handle, which is why that handle is in the digest.
    Unrelated churn (kube-proxy's Service chains, the gateway's own tables) does not enter the
    digest. Set members are as old as the receipt: a pool added after the read is seen on the next
    pass, as before.
@@ -196,7 +200,13 @@ nothing in Calico's chains.
    changes.
 
    *Charts.* No change: the gateway already mounts the state directory read-only and the manager
-   read-write, and the manager is privileged.
+   read-write, and the manager is privileged. The manager's memory limit (128Mi) now also covers
+   one `iptables-nft-save -t nat` per pass on nodes that have ipsets; see *Not known yet*.
+
+   *Versions.* A gateway from before this decision ignores the file. A gateway with it next to a
+   manager without it finds no receipt and stays not ready on Calico, as it was. The digest is
+   computed from each side's own `nft` output, so a manager and a gateway whose `nft` versions
+   print a chain differently refuse each other until both run the same image.
 
 ### Why not trust the set's name
 
@@ -245,7 +255,7 @@ masquerade would rewrite tunnel traffic. Membership is what decides.
     gateway only with VPN inference on. The refusal is closed (the command fails, and the cut text
     is refused on its own), but **the gateway on Calico is not ready until this is decided**:
     grant the gateway `NET_RAW` on such clusters, or have it rely on the host-posture reading.
-    Not changed here.
+    Decided and built since: Decision 9, and *Live check of Decision 9* below.
   - No iptables-legacy table existed on the node; Calico wrote through the nft backend. (Running
     any `iptables-legacy*` command on a node creates one, after which `iptables-nft-save` prints a
     warning on stderr that the reader refuses.)
@@ -256,6 +266,40 @@ masquerade would rewrite tunnel traffic. Membership is what decides.
   run on the live node from a pod with the host-posture security context and from one with the
   gateway's plus `NET_RAW`: 100.96.0.0/24 accepted with the reason naming the set, 192.168.7.0/24
   refused naming the set. The same held after switching the pool to VXLAN (`-o vxlan.calico`).
+- Decision 9: the reader, the receipt and the gateway's use of it each have unit tests on the
+  captured node (`k8snetprep/hostfacts_linux_test.go`, `hostposture/host_facts_test.go`): what is
+  carried and what is never read, and a refusal for a missing, stale, truncated, edited,
+  oversized, wrong-node, wrong-manager and wrong-pass receipt, for a chain or table that changed
+  after the read, and for text that no longer pairs. `k8snetprep/hostfacts_e2e_linux_test.go`
+  runs the real manager and a real gateway reconciler over one state directory with the captured
+  node between them; the gateway's own `iptables-nft-save` and `ipset` fail there as they do
+  without `NET_RAW` and are never tried.
+- *Live check of Decision 9* (2026-11-23, one-node kind v0.31.0, Kubernetes v1.35.0, kernel 6.8,
+  Calico v3.31.2 from its unchanged `calico.yaml`; tools nft 1.1.6, iptables-nft-save 1.8.13,
+  ipset 7.24). The package's test binary ran in two `hostNetwork` pods sharing
+  `/var/lib/tunnex/host-posture/v1` as the charts mount it:
+
+  - one with the manager's security context (privileged, root, read-only root filesystem,
+    128Mi limit): the real manager loop with the real reader and the real commands. Only the
+    Kubernetes API read and the kernel mutations were replaced, so nothing on the node changed
+    but the state directory. One pass took 60 to 67 ms and the container used 8 to 17 MB; the
+    receipt was 1.9 KiB: `cali-nat-outgoing` (one rule), `cali-POSTROUTING` of the mangle table
+    (five rules) and the one set.
+  - one with the gateway's security context without VPN inference (root, drop ALL, add
+    `NET_ADMIN` and `NET_BIND_SERVICE`; effective capabilities `0x1400`), the directory mounted
+    read-only: `iptables-nft-save -t nat` and `-t mangle` exit 1 there, and the real reconciler
+    with the real authority guard and the real facts source became ready for 100.96.0.0/24 and
+    10.200.0.0/16, naming `cali40masq-ipam-pools`, and was refused for 192.168.7.0/24 and
+    192.168.0.0/16, naming the set and the range.
+  - A second IP pool 100.96.0.0/16 with `natOutgoing` was then added: within one pass
+    100.96.0.0/24 was refused ("masquerades sources in set cali40masq-ipam-pools, which overlaps
+    the tunnel range 100.96.0.0/24") while 10.200.0.0/16 stayed ready.
+  - With the manager stopped, the gateway was refused after the freshness window ("host-posture
+    heartbeat is stale"), although the last receipt was still in the directory.
+
+  Not part of this check: the `rp_filter` read-back of `wg0` (the node had no `wg0`; the test
+  points that one read at a file), the manager's own Kubernetes and kernel work, and the real
+  images and charts.
 - Existing Flannel, kube-proxy, GKE and EKS fixtures must still pass unchanged.
 - Live walk on a cluster running Calico (iptables dataplane): gateway ready, a Service reached by
   address and by name from a connected device, and the readiness reason naming the sets. Then a
@@ -270,7 +314,16 @@ masquerade would rewrite tunnel traffic. Membership is what decides.
   structure, not by Calico's chain names, so a renamed chain does not break it, but a new match type
   would be refused rather than misread. Other versions may install a different mangle hook or
   none.
-- Whether the gateway should hold `NET_RAW` on Calico clusters (see *State*).
+- ~~Whether the gateway should hold `NET_RAW` on Calico clusters.~~ Ruled: it does not;
+  Decision 9.
+- What Decision 9 costs the manager on a large node. Where ipsets exist it saves the whole NAT
+  table every pass (2 s) inside a 128Mi limit, where before only the gateway (256Mi) would have.
+  That includes nodes that have ipsets for another reason (Calico for policy only, kube-proxy in
+  IPVS mode) and carry no set match in NAT. Measured only on the one-node capture above. If it is
+  too much, the text of an unchanged chain can be kept between passes, since its listing digest
+  says when it changed; not built.
+- Decision 9 across a version skew of `nft` between the manager and the gateway image, and on a
+  multi-node cluster.
 - Calico features that add rules: egress DSCP fills `cali-egress-dscp` in the mangle table with a
   `DSCP` target, which the mark proof refuses; host endpoints and floating IPs fill chains that were
   empty in the capture. None was exercised.

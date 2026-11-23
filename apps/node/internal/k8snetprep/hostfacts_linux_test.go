@@ -21,14 +21,23 @@ import (
 // factsNFT answers the manager's `list chain` from the same document the
 // gateway lists as a whole.
 func (f *calicoTestKernel) factsNFT(ctx context.Context, args ...string) (string, error) {
-	if len(args) != 7 || strings.Join(args[:5], " ") != "-j -a list chain ip" {
-		return "", errors.New("the facts reader ran an nft command that is not a chain listing")
-	}
-	f.commands = append(f.commands, "nft "+strings.Join(args, " "))
 	var out struct {
 		NFTables []map[string]json.RawMessage `json:"nftables"`
 	}
 	out.NFTables = []map[string]json.RawMessage{}
+	f.commands = append(f.commands, "nft "+strings.Join(args, " "))
+	if strings.Join(args, " ") == "-j -a list tables" {
+		for _, entry := range f.doc.NFTables {
+			if _, ok := entry["table"]; ok {
+				out.NFTables = append(out.NFTables, entry)
+			}
+		}
+		encoded, _ := json.Marshal(out)
+		return string(encoded), nil
+	}
+	if len(args) != 7 || strings.Join(args[:5], " ") != "-j -a list chain ip" {
+		return "", errors.New("the facts reader ran an nft command that is not a table or chain listing")
+	}
 	for _, entry := range f.doc.NFTables {
 		var chain nftChainView
 		if raw, ok := entry["chain"]; ok && json.Unmarshal(raw, &chain) == nil && chain.Family == "ip" && chain.Table == args[5] && chain.Name == args[6] {
@@ -44,6 +53,29 @@ func (f *calicoTestKernel) factsNFT(ctx context.Context, args ...string) (string
 	}
 	encoded, _ := json.Marshal(out)
 	return string(encoded), nil
+}
+
+// setTableHandle rewrites one ip table's handle in the listing; zero removes
+// the table entry.
+func (f *calicoTestKernel) setTableHandle(t *testing.T, name string, handle uint64) {
+	t.Helper()
+	for i, entry := range f.doc.NFTables {
+		var table struct {
+			Family string `json:"family"`
+			Name   string `json:"name"`
+			Handle uint64 `json:"handle"`
+		}
+		if raw, ok := entry["table"]; ok && json.Unmarshal(raw, &table) == nil && table.Family == "ip" && table.Name == name {
+			if handle == 0 {
+				f.doc.NFTables = append(f.doc.NFTables[:i], f.doc.NFTables[i+1:]...)
+				return
+			}
+			table.Handle = handle
+			f.doc.NFTables[i] = rawEntry("table", table)
+			return
+		}
+	}
+	t.Fatalf("no ip %s table in the listing", name)
 }
 
 func (f *calicoTestKernel) factsIPSet(ctx context.Context, args ...string) (string, error) {
@@ -285,9 +317,24 @@ func TestHostFactsReaderStatesWhatItCouldNotRead(t *testing.T) {
 			wantNAT: "nat rules changed while they were read",
 			mangle:  FactsRead,
 		},
+		// The table is deleted and created again while its text is read.
+		"table created again while it is read": {
+			mutate: func(f *calicoTestKernel, _ *HostFactsReader) {
+				f.onIPSet = func() { f.onIPSet = nil; f.setTableHandle(t, "nat", 99) }
+			},
+			nat:     FactsUnreadable,
+			wantNAT: "nat rules changed while they were read",
+			mangle:  FactsRead,
+		},
 		"a carried chain cannot be listed": {
 			mutate: func(f *calicoTestKernel, r *HostFactsReader) {
-				r.runNFT = func(context.Context, ...string) (string, error) { return "", errors.New("exit status 1") }
+				tables := r.runNFT
+				r.runNFT = func(ctx context.Context, args ...string) (string, error) {
+					if strings.Join(args, " ") == "-j -a list tables" {
+						return tables(ctx, args...)
+					}
+					return "", errors.New("exit status 1")
+				}
 			},
 			nat:        FactsUnreadable,
 			wantNAT:    "nat rules",
@@ -507,6 +554,16 @@ func TestGatewayRefusesHostFactsThatDoNotHold(t *testing.T) {
 			},
 			want: "nat chain cali-nat-outgoing changed after the host-posture manager read it",
 		},
+		// The table was deleted and created again: its chains and rules count
+		// from one again and can look exactly as before. Its handle cannot.
+		"table created again since the manager read it": {
+			gateway: func(f *calicoTestKernel) { f.setTableHandle(t, "nat", 99) },
+			want:    "nat chain cali-nat-outgoing changed after the host-posture manager read it",
+		},
+		"listing that does not state its tables": {
+			gateway: func(f *calicoTestKernel) { f.setTableHandle(t, "mangle", 0) },
+			want:    "mangle chain cali-POSTROUTING changed after the host-posture manager read it",
+		},
 		"set not carried": {
 			mutate: func(f *HostNetFacts) { f.Sets = nil },
 			want:   "do not carry set " + calicoMasq,
@@ -693,6 +750,8 @@ func TestGatewayAsksForNoFactsOnANodeThatNeedsNone(t *testing.T) {
 func TestClosedFactsRunnersRefuseEverythingElse(t *testing.T) {
 	for _, args := range [][]string{
 		{"-j", "-a", "list", "ruleset"},
+		{"-j", "-a", "list", "tables", "ip"},
+		{"list", "tables"},
 		{"-j", "-a", "list", "chain", "ip", "filter", "INPUT"},
 		{"-j", "-a", "list", "chain", "ip6", "nat", "POSTROUTING"},
 		{"-j", "-a", "list", "chain", "ip", "nat", "x;flush ruleset"},

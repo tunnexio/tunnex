@@ -28,7 +28,8 @@ const maxSetNamesBytes = 64 << 10
 
 // HostFactsReader is the privileged side of Decision 9. It runs only read
 // commands: `iptables-nft-save -V|-t nat|-t mangle`, `ipset list -n`,
-// `ipset save NAME` and `nft -j -a list chain ip nat|mangle CHAIN`.
+// `ipset save NAME`, `nft -j -a list tables` and
+// `nft -j -a list chain ip nat|mangle CHAIN`.
 type HostFactsReader struct {
 	runNFT      NFTRunner
 	runIPTables IPTablesRunner
@@ -56,8 +57,12 @@ func NewHostFactsReader(nft NFTRunner, iptables IPTablesRunner, ipset IPSetRunne
 	return &HostFactsReader{runNFT: nft, runIPTables: iptables, runIPSet: ipset, sysModule: "/sys/module", remembered: map[string][]string{}}
 }
 
-// realFactsNFTRunner lists one chain of the ip nat or ip mangle table.
+// realFactsNFTRunner lists the tables, or one chain of the ip nat or ip mangle
+// table.
 func realFactsNFTRunner(ctx context.Context, args ...string) (string, error) {
+	if strings.Join(args, " ") == "-j -a list tables" {
+		return runBoundedRead(ctx, maxCNISnapshotBytes, "nft", args...)
+	}
 	if len(args) != 7 || strings.Join(args[:5], " ") != "-j -a list chain ip" || (args[5] != "nat" && args[5] != "mangle") || !factChainNameRE.MatchString(args[6]) {
 		return "", errors.New("unsupported nft inspection")
 	}
@@ -214,6 +219,18 @@ func (r *HostFactsReader) readTable(ctx context.Context, table string) (SavedTab
 
 func (r *HostFactsReader) listingDigests(ctx context.Context, table string, chains []string) (map[string]string, error) {
 	digests := map[string]string{}
+	if len(chains) == 0 {
+		return digests, nil
+	}
+	// A chain listing does not state its table's handle; the table listing does.
+	listing, err := r.runNFT(ctx, "-j", "-a", "list", "tables")
+	if err != nil {
+		return nil, fmt.Errorf("list tables: %s", bounded(err.Error(), 120))
+	}
+	tables, err := parseCNISnapshot(listing)
+	if err != nil {
+		return nil, fmt.Errorf("list tables: %w", err)
+	}
 	for _, chain := range chains {
 		listing, err := r.runNFT(ctx, "-j", "-a", "list", "chain", "ip", table, chain)
 		if err != nil {
@@ -223,9 +240,10 @@ func (r *HostFactsReader) listingDigests(ctx context.Context, table string, chai
 		if err != nil {
 			return nil, fmt.Errorf("list %s chain %s: %w", table, chain, err)
 		}
+		snapshot.tables = tables.tables
 		digest, ok := snapshot.chainListingDigest(table, chain)
 		if !ok {
-			return nil, fmt.Errorf("list %s chain %s: chain is not in its own listing", table, chain)
+			return nil, fmt.Errorf("list %s chain %s: the chain or its table is not in the listing", table, chain)
 		}
 		digests[chain] = digest
 	}
@@ -255,13 +273,17 @@ func (r *HostFactsReader) readSets(ctx context.Context, saved map[string][]saved
 	return sets, nil
 }
 
-// chainListingDigest identifies one chain of a listing: its declaration and its
-// rules with their handles, counters removed. A rule that is replaced gets a
-// new handle, so equal digests mean the same rules, not merely equal ones.
+// chainListingDigest identifies one chain of a listing: its table's handle,
+// its declaration, and its rules with their handles, counters removed. A rule
+// that is replaced gets a new handle, and a table that is deleted and created
+// again gets a new table handle even though its chains and rules start
+// counting from one again. So equal digests mean the same rules, not merely
+// equal ones.
 func (s *cniSnapshot) chainListingDigest(table, chain string) (string, bool) {
 	key := nftKey("ip", table, chain)
 	view, ok := s.chains[key]
-	if !ok {
+	tableHandle := s.tables["ip/"+table]
+	if !ok || tableHandle == 0 {
 		return "", false
 	}
 	rules := make([]nftRuleView, 0, len(s.rules[key]))
@@ -270,9 +292,10 @@ func (s *cniSnapshot) chainListingDigest(table, chain string) (string, bool) {
 		rules = append(rules, rule)
 	}
 	encoded, err := json.Marshal(struct {
+		Table uint64
 		Chain nftChainView
 		Rules []nftRuleView
-	}{view, rules})
+	}{tableHandle, view, rules})
 	if err != nil {
 		return "", false
 	}

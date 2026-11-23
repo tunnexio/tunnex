@@ -451,6 +451,11 @@ type cniSnapshot struct {
 	// mangleSaved is the saved form of the ip mangle table, read only when a
 	// mangle POSTROUTING hook sets a mark whose value the listing hides.
 	mangleSaved map[string][]savedRule
+
+	// tables holds the handle of every table the listing declares, by
+	// "family/name". Only chainListingDigest reads it; like the facts above it
+	// is not part of the fingerprint.
+	tables map[string]uint64
 }
 
 func nftKey(family, table, chain string) string { return family + "/" + table + "/" + chain }
@@ -583,9 +588,21 @@ func parseCNISnapshot(listing string) (*cniSnapshot, error) {
 	if err := json.Unmarshal([]byte(listing), &doc); err != nil || doc.NFTables == nil {
 		return nil, errors.New("invalid nft CNI ruleset JSON")
 	}
-	s := &cniSnapshot{chains: map[string]nftChainView{}, rules: map[string][]nftRuleView{}, owned: map[string][]ownedRule{}}
+	s := &cniSnapshot{chains: map[string]nftChainView{}, rules: map[string][]nftRuleView{}, owned: map[string][]ownedRule{}, tables: map[string]uint64{}}
 	handles := map[string]bool{}
 	for _, entry := range doc.NFTables {
+		if raw, ok := entry["table"]; ok {
+			var table struct {
+				Family string `json:"family"`
+				Name   string `json:"name"`
+				Handle uint64 `json:"handle"`
+			}
+			// A table entry that cannot be read is simply not recorded: a
+			// listing digest that needs it is then unavailable.
+			if json.Unmarshal(raw, &table) == nil && table.Handle != 0 {
+				s.tables[table.Family+"/"+table.Name] = table.Handle
+			}
+		}
 		if raw, ok := entry["chain"]; ok {
 			var chain nftChainView
 			if err := json.Unmarshal(raw, &chain); err != nil || chain.Handle == 0 {
