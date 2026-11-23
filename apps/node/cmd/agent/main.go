@@ -977,6 +977,7 @@ func reportKeyLoop(ctx context.Context, client *control.Client, pubKey string, e
 			SiteSubnetUnreachable:     siteSubnetUnreachable.Load(),
 			ConntrackFlushUnavailable: egressMgr.ConntrackFlushFailing(),
 			K8sEndpointsUnavailable:   egressMgr.EndpointsUnavailable(),
+			K8sAPIEndpoint:            egressMgr.K8sAPIEndpointState(),
 			MaxSupportedVersion:       nodepolicy.MaxSupportedVersion,
 			OVPNHealth:                ovpnH,
 			DNSResolveRPCVersion:      fqdnrpc.Version,

@@ -205,6 +205,10 @@ type PolicyStatus struct {
 	// from the CoreDNS-era k8s_cluster_dns_unreachable — WF-K5 moved target resolution from CoreDNS to the API
 	// watch; endpoint DNAT needs pod IPs, which CoreDNS can't give.)
 	K8sEndpointsUnavailable bool
+	// K8sAPIEndpoint (K8N-3) — what this gateway did with the cluster's API (the mapping of
+	// default/kubernetes): "ready", a refusal reason such as "endpoints_on_gateway_node", or "" when it
+	// maps no cluster API. Surfaced by the control plane's "Test access".
+	K8sAPIEndpoint string
 	// MaxSupportedVersion (S8.3 CW) is the highest compiled-artifact Version this agent can APPLY
 	// (nodepolicy.MaxSupportedVersion). Observability — a reported fact, OUTSIDE the compile hash, no
 	// version bump. The control plane uses it to warn, BEFORE an org goes multi-site, which gateways
@@ -257,6 +261,7 @@ func (c *Client) ReportInfo(ctx context.Context, publicKey, endpoint string, egr
 		"policy_failing_since": ps.FailingSince, "policy_refused_version": ps.RefusedVersion,
 		"site_link_stale": ps.SiteLinkStale, "site_subnet_unreachable": ps.SiteSubnetUnreachable,
 		"conntrack_flush_unavailable": ps.ConntrackFlushUnavailable, "k8s_endpoints_unavailable": ps.K8sEndpointsUnavailable, "max_policy_version": ps.MaxSupportedVersion,
+		"k8s_api_endpoint":          ps.K8sAPIEndpoint,
 		"ovpn_health":               ps.OVPNHealth,
 		"dns_resolve_rpc_version":   ps.DNSResolveRPCVersion,
 		"dns_ipsec_resolve_version": ps.DNSIPsecResolveVersion,

@@ -75,6 +75,7 @@ func classify(m nodepolicy.VIPMapping, targets []k8sTarget, sourceOK bool, isLoc
 	}
 	// Validate + dedup the endpoint targets (from the K8s API — validated anyway, the never-interpolate rule).
 	seen := map[string]struct{}{}
+	droppedLocal := 0
 	for _, t := range targets {
 		a, e := netip.ParseAddr(t.ip)
 		if e != nil || !a.Is4() {
@@ -84,6 +85,7 @@ func classify(m nodepolicy.VIPMapping, targets []k8sTarget, sourceOK bool, isLoc
 			continue // M5: an out-of-range target port would render invalid nft — drop it
 		}
 		if isLocal != nil && isLocal(a) {
+			droppedLocal++
 			continue // M6: a gateway-local endpoint would DNAT to a local addr → INPUT → grant-chain bypass
 		}
 		key := a.String() + ":" + strconv.Itoa(t.port)
@@ -94,11 +96,30 @@ func classify(m nodepolicy.VIPMapping, targets []k8sTarget, sourceOK bool, isLoc
 		out = append(out, k8sTarget{ip: a.String(), port: t.port})
 	}
 	if len(out) == 0 {
+		if droppedLocal > 0 {
+			// K8N-3: there ARE ready endpoints, and every one of them is this gateway's own address. That
+			// is the gateway running on the cluster's only control-plane node (default/kubernetes points
+			// at the node itself), or a hostNetwork Service whose only pods are on this node. It is not
+			// "no ready endpoints": nothing will become ready, the gateway has to run somewhere else.
+			return nil, false, ReasonEndpointsOnGatewayNode
+		}
 		return nil, false, "no_ready_endpoints" // Service exists but no ready, valid, non-local pod backs it
 	}
 	// THE ONLY SUCCESS: a valid v4 VIP, a single specific port, >=1 ready non-local endpoint. Program it.
 	return out, true, ""
 }
+
+// ReasonEndpointsOnGatewayNode is the refusal for a Service whose ready endpoints are all this gateway's
+// own addresses (K8N-3). Reported for the cluster's API as k8s_api_endpoint.
+const ReasonEndpointsOnGatewayNode = "endpoints_on_gateway_node"
+
+// The Service every cluster publishes its API server under, and the state reported for it when the
+// gateway can forward to it.
+const (
+	k8sAPIServiceNamespace = "default"
+	k8sAPIServiceName      = "kubernetes"
+	K8sAPIEndpointReady    = "ready"
+)
 
 // normProto restricts the CP-supplied protocol to an nft-safe allowlist (never interpolate raw). Empty/any
 // defaults to tcp — Services default to TCP and a port-DNAT needs an L4 context.
@@ -142,6 +163,7 @@ func (m *Manager) ResolveK8sVIPs(ctx context.Context) {
 		m.resolvedVIPs.Store(&[]resolvedVIP{})
 		m.refusedK8sVIPs.Store(&[]refusedVIP{})
 		m.k8sUnavailable.Store(false)
+		m.k8sAPIEndpoint.Store(nil)
 		return
 	}
 	src := m.source
@@ -155,6 +177,7 @@ func (m *Manager) ResolveK8sVIPs(ctx context.Context) {
 	isLocal := func(a netip.Addr) bool { _, ok := local[a.Unmap()]; return ok }
 	var resolved []resolvedVIP
 	var refused []refusedVIP
+	var apiEndpoint *string // K8N-3: what happened to default/kubernetes, if this gateway maps it
 	haveView, noView := 0, 0
 	for _, vm := range p.VIPMappings {
 		var targets []k8sTarget
@@ -168,6 +191,13 @@ func (m *Manager) ResolveK8sVIPs(ctx context.Context) {
 			noView++
 		}
 		out, ok, reason := classify(vm, targets, sourceOK, isLocal)
+		if vm.Namespace == k8sAPIServiceNamespace && vm.Service == k8sAPIServiceName && (apiEndpoint == nil || *apiEndpoint != K8sAPIEndpointReady) {
+			state := reason
+			if ok {
+				state = K8sAPIEndpointReady
+			}
+			apiEndpoint = &state
+		}
 		if ok {
 			resolved = append(resolved, resolvedVIP{vip: vm.VIP, proto: normProto(vm.Protocol), svcPort: vm.PortLow, targets: out})
 			if m.log != nil {
@@ -189,6 +219,7 @@ func (m *Manager) ResolveK8sVIPs(ctx context.Context) {
 	m.k8sUnavailable.Store(noView > 0 && haveView == 0)
 	m.resolvedVIPs.Store(&resolved)
 	m.refusedK8sVIPs.Store(&refused)
+	m.k8sAPIEndpoint.Store(apiEndpoint)
 }
 
 // runIP is the real `ip` runner (a single command, discarded output — errors carry the exit status).
@@ -512,3 +543,15 @@ func (m *Manager) interfaceAlreadyAbsent(err error) bool {
 // fail-closed). Reported to the CP so an operator sees WHY no Service is reachable. (Renamed from the CoreDNS-
 // era DNSUnreachable — WF-K5 moved target resolution from CoreDNS to the API watch.)
 func (m *Manager) EndpointsUnavailable() bool { return m.k8sUnavailable.Load() }
+
+// K8sAPIEndpointState reports what this gateway did with the cluster's API (the mapping of
+// default/kubernetes, K8N-3): "ready" when it forwards to at least one API endpoint, the refusal reason
+// when it does not ("endpoints_on_gateway_node" when the gateway runs on the only control-plane node),
+// and "" when the gateway has no such mapping. Reported to the control plane as k8s_api_endpoint so
+// "Test access" can say why kubectl has no path.
+func (m *Manager) K8sAPIEndpointState() string {
+	if state := m.k8sAPIEndpoint.Load(); state != nil {
+		return *state
+	}
+	return ""
+}

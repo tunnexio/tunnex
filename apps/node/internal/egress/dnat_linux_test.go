@@ -170,10 +170,11 @@ func TestClassifyFailsClosedExceptReadyEndpoint(t *testing.T) {
 		t.Fatalf("an out-of-range target port must be dropped → no_ready_endpoints, got ok=%v reason=%q", ok, r)
 	}
 	// M6: a gateway-LOCAL endpoint (a hostNetwork pod on this node) is dropped — DNAT-ing to it would divert
-	// to INPUT and bypass the forward grant chain. Only-local → fail closed.
+	// to INPUT and bypass the forward grant chain. Only-local → fail closed. K8N-3: the reason says so
+	// (endpoints_on_gateway_node), because "no ready endpoints" is not what happened.
 	isLocal := func(a netip.Addr) bool { return a == netip.MustParseAddr("10.42.0.14") }
-	if _, ok, r := classify(vm, ready, true, isLocal); ok || r != "no_ready_endpoints" {
-		t.Fatalf("a gateway-local endpoint must be dropped → no_ready_endpoints, got ok=%v reason=%q", ok, r)
+	if _, ok, r := classify(vm, ready, true, isLocal); ok || r != ReasonEndpointsOnGatewayNode {
+		t.Fatalf("a gateway-local endpoint must be dropped → endpoints_on_gateway_node, got ok=%v reason=%q", ok, r)
 	}
 }
 
@@ -396,5 +397,86 @@ func TestReconcileDNSVIPsAssignsAndSweeps(t *testing.T) {
 	_ = m.ReconcileDNSVIPs(context.Background())
 	if !strings.Contains(strings.Join(cmds, "\n"), "addr replace 100.64.0.2/32 dev wg0") {
 		t.Fatalf("a previously-FAILED assign must be retried (never recorded as applied), got:\n%s", strings.Join(cmds, "\n"))
+	}
+}
+
+// K8N-3: the cluster's API is the Service default/kubernetes, and on a single-node control plane its only
+// endpoint is the node the gateway runs on. That is refused (a rewrite to a local address would skip the
+// forward chain where rules are enforced) and it is reported as what it is, not as "no ready endpoints".
+func TestClusterAPIOnTheGatewayNodeHasItsOwnReason(t *testing.T) {
+	api := nodepolicy.VIPMapping{VIP: "100.64.0.9", Namespace: "default", Service: "kubernetes", PortLow: 443, PortHigh: 443, Protocol: "tcp"}
+	node := netip.MustParseAddr("172.31.20.10")
+	isLocal := func(a netip.Addr) bool { return a == node }
+
+	// Single-node control plane: every API endpoint is the gateway's own address.
+	if out, ok, reason := classify(api, []k8sTarget{{ip: "172.31.20.10", port: 6443}}, true, isLocal); ok || len(out) != 0 || reason != ReasonEndpointsOnGatewayNode {
+		t.Fatalf("an API server on the gateway's own node must be refused as %q, got ok=%v reason=%q out=%v", ReasonEndpointsOnGatewayNode, ok, reason, out)
+	}
+	// Three control-plane nodes: the local one is dropped and the others serve.
+	out, ok, reason := classify(api, []k8sTarget{{ip: "172.31.20.10", port: 6443}, {ip: "172.31.20.11", port: 6443}, {ip: "172.31.20.12", port: 6443}}, true, isLocal)
+	if !ok || reason != "" || len(out) != 2 {
+		t.Fatalf("the other control-plane nodes must serve, got ok=%v reason=%q out=%v", ok, reason, out)
+	}
+	for _, target := range out {
+		if target.ip == node.String() {
+			t.Fatalf("the gateway's own address must never be a rewrite target: %v", out)
+		}
+	}
+	// No endpoint at all is still the generic reason: nothing was dropped as local.
+	if _, ok, reason := classify(api, nil, true, isLocal); ok || reason != "no_ready_endpoints" {
+		t.Fatalf("an API Service with no endpoints is no_ready_endpoints, got ok=%v reason=%q", ok, reason)
+	}
+	// And no view of the API is still endpoints_unavailable.
+	if _, ok, reason := classify(api, nil, false, isLocal); ok || reason != "endpoints_unavailable" {
+		t.Fatalf("no endpoint view is endpoints_unavailable, got ok=%v reason=%q", ok, reason)
+	}
+}
+
+// The gateway reports the outcome for the cluster API's mapping, and only for that mapping.
+func TestK8sAPIEndpointStateIsReported(t *testing.T) {
+	api := nodepolicy.VIPMapping{VIP: "100.64.0.9", Namespace: "default", Service: "kubernetes", PortLow: 443, PortHigh: 443, Protocol: "tcp"}
+	web := nodepolicy.VIPMapping{VIP: "100.64.0.5", Namespace: "prod", Service: "api", PortLow: 80, Protocol: "tcp"}
+	node := netip.MustParseAddr("172.31.20.10")
+	build := func(mappings []nodepolicy.VIPMapping, src endpointSource) *Manager {
+		m := New("wg0")
+		m.localIPs = func() map[netip.Addr]struct{} { return map[netip.Addr]struct{}{node: {}} }
+		m.SetEndpointSource(src)
+		m.SetPolicy(&nodepolicy.Compiled{Version: 7, Mode: "enforcing", VIPMappings: mappings})
+		m.ResolveK8sVIPs(context.Background())
+		return m
+	}
+
+	single := &fakeSource{m: map[string]fakeEntry{
+		"default/kubernetes": {ok: true, targets: []k8sTarget{{ip: "172.31.20.10", port: 6443}}},
+		"prod/api":           {ok: true, targets: []k8sTarget{{ip: "10.42.0.14", port: 8080}}},
+	}}
+	m := build([]nodepolicy.VIPMapping{web, api}, single)
+	if got := m.K8sAPIEndpointState(); got != ReasonEndpointsOnGatewayNode {
+		t.Fatalf("gateway on the only control-plane node: reported %q, want %q", got, ReasonEndpointsOnGatewayNode)
+	}
+	if rules := m.ruleset("10.99.0.1/24"); strings.Contains(rules, "100.64.0.9") || !strings.Contains(rules, "100.64.0.5") {
+		t.Fatalf("the API address must program no rewrite while the Service beside it still does:\n%s", rules)
+	}
+
+	managed := &fakeSource{m: map[string]fakeEntry{"default/kubernetes": {ok: true, targets: []k8sTarget{{ip: "10.0.140.20", port: 443}}}}}
+	m = build([]nodepolicy.VIPMapping{api}, managed)
+	if got := m.K8sAPIEndpointState(); got != K8sAPIEndpointReady {
+		t.Fatalf("an API endpoint outside the node must be reported ready, got %q", got)
+	}
+	if rules := m.ruleset("10.99.0.1/24"); !strings.Contains(rules, "100.64.0.9") || !strings.Contains(rules, "10.0.140.20") {
+		t.Fatalf("the API address must be rewritten to the API endpoint:\n%s", rules)
+	}
+
+	// A gateway that maps no cluster API reports nothing, whatever its Services do.
+	m = build([]nodepolicy.VIPMapping{web}, single)
+	if got := m.K8sAPIEndpointState(); got != "" {
+		t.Fatalf("no API mapping must report nothing, got %q", got)
+	}
+	// And the report is withdrawn when the mapping goes away (API access turned off).
+	m = build([]nodepolicy.VIPMapping{api}, managed)
+	m.SetPolicy(&nodepolicy.Compiled{Version: 7, Mode: "enforcing"})
+	m.ResolveK8sVIPs(context.Background())
+	if got := m.K8sAPIEndpointState(); got != "" {
+		t.Fatalf("turning API access off must withdraw the report, got %q", got)
 	}
 }
