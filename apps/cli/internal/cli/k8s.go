@@ -1505,12 +1505,21 @@ func prepareInstall(ctx context.Context, o installOptions, deps k8sDeps) (prepar
 			return preparedInstall{}, err
 		}
 	} else {
-		hostPosturePlan, err = planHostPosture(o, hostPostureState, image, hostPostureChart, artifacts.hostPosture.SHA256)
+		// K8N-2: on a cluster that runs Cilium the manager also needs, read-only,
+		// the agent's socket directory and the host's pinned BPF maps.
+		ciliumHostPaths, err := discoverCiliumAgent(ctx, deps.runner, o.kubeContext)
+		if err != nil {
+			return preparedInstall{}, err
+		}
+		hostPosturePlan, err = planHostPosture(o, hostPostureState, image, hostPostureChart, artifacts.hostPosture.SHA256, ciliumHostPaths)
 		if err != nil {
 			return preparedInstall{}, err
 		}
 		if hostPosturePlan.Action != "reuse" {
 			hostPostureOperation = hostPosturePlan.Action + " exact cluster-wide host posture manager before gateway enrollment"
+			if hostPosturePlan.CiliumHostPaths {
+				hostPostureOperation += ", with read-only host mounts of /var/run/cilium and /sys/fs/bpf because this cluster runs Cilium"
+			}
 		}
 	}
 	if state.completedReplay {

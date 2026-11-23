@@ -154,6 +154,57 @@ test "$(grep -Ec '^[[:space:]]+failureThreshold: 3$' "${TMP}/daemonset.yaml")" -
 }
 reject "${TMP}/daemonset.yaml" 'httpGet:|tcpSocket:|grpc:' 'alternate manager health handler'
 
+# K8N-2: the two Cilium host paths. Off by default, so a cluster without Cilium
+# gets exactly the mounts it had. With cilium.enabled=true the DaemonSet gains
+# exactly two hostPath volumes, both mounted read-only, and nothing else in the
+# rendered release changes: no capability, no environment, no RBAC.
+reject "${TMP}/rendered.yaml" '[Cc]ilium|/sys/fs/bpf' 'Cilium host path or name without cilium.enabled'
+test "$(grep -Ec '^[[:space:]]+hostPath:$' "${TMP}/daemonset.yaml")" -eq 2 || {
+  echo 'host-posture manager must render exactly two hostPath volumes by default' >&2
+  exit 1
+}
+helm template tunnex-host-posture "${CHART}" "${BASE[@]}" --set cilium.enabled=false >"${TMP}/cilium-off.yaml"
+cmp -s "${TMP}/rendered.yaml" "${TMP}/cilium-off.yaml" || {
+  echo 'cilium.enabled=false must render exactly the default release' >&2
+  exit 1
+}
+helm template tunnex-host-posture "${CHART}" "${BASE[@]}" --set cilium.enabled=true >"${TMP}/cilium-on.yaml"
+if diff "${TMP}/rendered.yaml" "${TMP}/cilium-on.yaml" | grep -E '^<' >"${TMP}/cilium-removed.txt"; then
+  echo 'cilium.enabled=true removed or changed a line of the default release:' >&2
+  cat "${TMP}/cilium-removed.txt" >&2
+  exit 1
+fi
+diff "${TMP}/rendered.yaml" "${TMP}/cilium-on.yaml" | sed -n 's/^> //p' | grep -Ev '^[[:space:]]*#' >"${TMP}/cilium-added.txt" || true
+cat >"${TMP}/cilium-expected.txt" <<'CILIUM'
+            - name: cilium-run
+              mountPath: /var/run/cilium
+              readOnly: true
+            - name: host-bpf
+              mountPath: /sys/fs/bpf
+              readOnly: true
+              mountPropagation: HostToContainer
+        - name: cilium-run
+          hostPath:
+            path: /var/run/cilium
+            type: Directory
+        - name: host-bpf
+          hostPath:
+            path: /sys/fs/bpf
+            type: Directory
+CILIUM
+cmp -s "${TMP}/cilium-added.txt" "${TMP}/cilium-expected.txt" || {
+  echo 'cilium.enabled=true must add exactly the two read-only Cilium host paths:' >&2
+  diff "${TMP}/cilium-expected.txt" "${TMP}/cilium-added.txt" >&2 || true
+  exit 1
+}
+test "$(grep -Ec '^[[:space:]]+privileged: true$' "${TMP}/cilium-on.yaml")" -eq 1 || {
+  echo 'cilium.enabled=true must not render another privileged container' >&2
+  exit 1
+}
+reject "${TMP}/cilium-on.yaml" 'mountPropagation: Bidirectional' 'mount that propagates from the manager to the host'
+expect_fail cilium-not-boolean 'cilium.*enabled.*(boolean|got string)' "${BASE[@]}" --set-string cilium.enabled=yes
+expect_fail cilium-unknown-key 'additional propert(y|ies).*socket' "${BASE[@]}" --set-string cilium.socket=/run/other.sock
+
 # The privileged manager has one fixed identity across the entire cluster. A
 # second Helm release/name/namespace must be rejected before it can create a
 # second DaemonSet that only contends on the host flock.
@@ -223,6 +274,9 @@ for gateway in "${TMP}/gateway-a.yaml" "${TMP}/gateway-b.yaml"; do
   require "${gateway}" 'fieldPath: metadata.uid' 'live gateway Pod UID registration'
   require "${gateway}" 'k8s-host-posture-check", "--wait"' 'shared manager readiness admission'
   reject "${gateway}" '^kind: DaemonSet$|^kind: ClusterRole$|^kind: ClusterRoleBinding$' 'per-gateway manager singleton resources'
+  # K8N-2: only the manager reads Cilium. The gateway gets no path to the
+  # agent socket or to the pinned maps; it decides on the manager's receipt.
+  reject "${gateway}" 'path: /var/run/cilium|path: /sys/fs/bpf|mountPath: /sys/fs/bpf|cilium\.sock' 'Cilium host path in a gateway'
 done
 
 # The manager contract remains mechanism-based. A literal observed chain or
