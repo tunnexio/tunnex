@@ -24,11 +24,20 @@ func TestManagedByOperatorSurfaced(t *testing.T) {
 		t.Fatal("human-created cluster must surface managed_by_operator=false")
 	}
 
-	if !toAPIK8sService(sqlc.K8sService{ManagedByMachine: owned}, "svc.ns.svc.c.z").ManagedByOperator {
+	if !toAPIK8sService(sqlc.K8sService{ManagedByMachine: owned}, "svc.ns.svc.c.z", uuid.Nil).ManagedByOperator {
 		t.Fatal("machine-owned service must surface managed_by_operator=true")
 	}
-	if toAPIK8sService(sqlc.K8sService{ManagedByMachine: none}, "").ManagedByOperator {
+	if toAPIK8sService(sqlc.K8sService{ManagedByMachine: none}, "", uuid.Nil).ManagedByOperator {
 		t.Fatal("human-created service must surface managed_by_operator=false")
+	}
+	// K8N-4: an exposure made by a namespace rule names the rule; one made by hand names none. Neither
+	// is the operator's.
+	rule := uuid.New()
+	if got := toAPIK8sService(sqlc.K8sService{ManagedByMachine: none}, "", rule); got.NamespaceRuleId == nil || *got.NamespaceRuleId != rule || got.ManagedByOperator {
+		t.Fatalf("rule-made service must surface namespace_rule_id and not managed_by_operator: %+v", got)
+	}
+	if toAPIK8sService(sqlc.K8sService{ManagedByMachine: none}, "", uuid.Nil).NamespaceRuleId != nil {
+		t.Fatal("hand-made service must surface namespace_rule_id=null")
 	}
 
 	if !toAPIRule(sqlc.PolicyRule{ManagedByMachine: owned}, false, false).ManagedByOperator {

@@ -109,3 +109,12 @@
 .kubernetes-action-form label { font-size:12px; }
 .kubernetes-action-form select { height:36px; min-height:36px; font-size:12px; }
 .tnx-modal-overlay[data-placement=right] .tnx-modal-panel:has(.kubernetes-command-guide),.tnx-modal-overlay[data-placement=right] .tnx-modal-panel:has(.kubernetes-action-form) { width:min(100%,560px); max-width:560px; }
+
+/* K8N-4: namespace rules ("expose every Service in a namespace"). */
+.kubernetes-namespace-rules { margin:0 0 18px; padding:12px 14px; border:1px solid var(--tnx-border); border-radius:7px; font-size:12px; }
+.kubernetes-namespace-rules .kubernetes-list-toolbar { justify-content:space-between; margin:0 0 8px; }
+.kubernetes-namespace-rule-list { display:flex; flex-direction:column; margin:0; padding:0; list-style:none; }
+.kubernetes-namespace-rule-list li { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; padding:10px 0; border-top:1px solid var(--tnx-border); }
+.kubernetes-action-impact ul { display:flex; flex-direction:column; gap:8px; margin:8px 0 12px; padding-left:18px; list-style:disc; font-size:12px; line-height:1.6; }
+.kubernetes-confirm-check,.kubernetes-choice-list label { display:block; font-size:12px; line-height:1.6; }
+.kubernetes-choice-list { display:flex; flex-direction:column; gap:12px; margin:12px 0 0; padding:0; border:0; }

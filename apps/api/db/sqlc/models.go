@@ -1953,6 +1953,28 @@ type K8sLifecycleInstallOperationUsage struct {
 	FirstPersistedAt time.Time `json:"first_persisted_at"`
 }
 
+type K8sNamespaceExposureRule struct {
+	ID               uuid.UUID          `json:"id"`
+	OrgID            uuid.UUID          `json:"org_id"`
+	ClusterID        uuid.UUID          `json:"cluster_id"`
+	Namespace        string             `json:"namespace"`
+	CreatedByUserID  pgtype.UUID        `json:"created_by_user_id"`
+	Status           string             `json:"status"`
+	StatusMessage    string             `json:"status_message"`
+	WaitingServices  int32              `json:"waiting_services"`
+	LastReconciledAt pgtype.Timestamptz `json:"last_reconciled_at"`
+	CreatedAt        time.Time          `json:"created_at"`
+	UpdatedAt        time.Time          `json:"updated_at"`
+}
+
+type K8sNamespaceRuleExposure struct {
+	ServiceID    uuid.UUID          `json:"service_id"`
+	OrgID        uuid.UUID          `json:"org_id"`
+	RuleID       uuid.UUID          `json:"rule_id"`
+	MissingSince pgtype.Timestamptz `json:"missing_since"`
+	CreatedAt    time.Time          `json:"created_at"`
+}
+
 type K8sPoolOwnershipV2Capability struct {
 	OrgID         uuid.UUID `json:"org_id"`
 	SiteID        uuid.UUID `json:"site_id"`

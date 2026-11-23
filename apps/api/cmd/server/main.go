@@ -821,6 +821,8 @@ func main() {
 	agentCh.SetKubernetesOwnershipBaseAuthorityStore(baseAuthorityStore)
 	agentCh.SetK8sServiceUIDObservationStore(nodes.NewPostgresK8sServiceUIDObservationStore(pool))
 	agentCh.SetK8sServiceInventoryStore(nodes.NewPostgresK8sServiceInventoryStore(pool))
+	// K8N-4: each new Service report applies the organization's namespace rules.
+	agentCh.SetK8sServiceInventoryAccepted(k8sSvc.ReconcileNamespaceRulesForOrg)
 	// S7.5.1 flow-event ingest: the PG hot-window (queryable access-event store), wired onto the
 	// SAME mTLS channel (node identity = client cert). (S7.5.1b) the JSONL on-disk source-of-truth
 	// + verbatim export are DEFERRED — v1 is PG-only.

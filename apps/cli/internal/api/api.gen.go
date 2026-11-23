@@ -1569,6 +1569,18 @@ const (
 	K8sInventoryPortProtocolUdp K8sInventoryPortProtocol = "udp"
 )
 
+// Defines values for K8sNamespaceRuleStatus.
+const (
+	K8sNamespaceRuleApplied              K8sNamespaceRuleStatus = "applied"
+	K8sNamespaceRuleError                K8sNamespaceRuleStatus = "error"
+	K8sNamespaceRuleInventoryStale       K8sNamespaceRuleStatus = "inventory_stale"
+	K8sNamespaceRuleInventoryUnavailable K8sNamespaceRuleStatus = "inventory_unavailable"
+	K8sNamespaceRulePending              K8sNamespaceRuleStatus = "pending"
+	K8sNamespaceRuleScopeReviewLimit     K8sNamespaceRuleStatus = "scope_review_limit"
+	K8sNamespaceRuleVipRangeExhausted    K8sNamespaceRuleStatus = "vip_range_exhausted"
+	K8sNamespaceRuleWithdrawalBlocked    K8sNamespaceRuleStatus = "withdrawal_blocked"
+)
+
 // Defines values for K8sServiceProtocol.
 const (
 	K8sServiceProtocolAny K8sServiceProtocol = "any"
@@ -2371,6 +2383,12 @@ const (
 const (
 	IPsecIntentDisabled SetIPsecConnectionIntentJSONBodyIntent = "disabled"
 	IPsecIntentEnabled  SetIPsecConnectionIntentJSONBodyIntent = "enabled"
+)
+
+// Defines values for DeleteK8sNamespaceRuleParamsExposures.
+const (
+	K8sNamespaceRuleExposuresKeep     DeleteK8sNamespaceRuleParamsExposures = "keep"
+	K8sNamespaceRuleExposuresWithdraw DeleteK8sNamespaceRuleParamsExposures = "withdraw"
 )
 
 // AIAssignment defines model for AIAssignment.
@@ -5153,6 +5171,12 @@ type CreateK8sClusterScopeSource struct {
 // CreateK8sClusterScopeSourceKind defines model for CreateK8sClusterScopeSource.Kind.
 type CreateK8sClusterScopeSourceKind string
 
+// CreateK8sNamespaceRuleRequest defines model for CreateK8sNamespaceRuleRequest.
+type CreateK8sNamespaceRuleRequest struct {
+	// Namespace One namespace. There is no wildcard and no all-namespaces rule.
+	Namespace string `json:"namespace"`
+}
+
 // CreateOrganizationRequest defines model for CreateOrganizationRequest.
 type CreateOrganizationRequest struct {
 	Name string `json:"name"`
@@ -6618,6 +6642,29 @@ type K8sInventoryService struct {
 	Service      string             `json:"service"`
 }
 
+// K8sNamespaceRule defines model for K8sNamespaceRule.
+type K8sNamespaceRule struct {
+	ClusterId    openapi_types.UUID `json:"cluster_id"`
+	CreatedAt    time.Time          `json:"created_at"`
+	ExposedPorts int                `json:"exposed_ports"`
+
+	// ExposedServices Services currently exposed because of this rule.
+	ExposedServices  int                `json:"exposed_services"`
+	Id               openapi_types.UUID `json:"id"`
+	LastReconciledAt *time.Time         `json:"last_reconciled_at"`
+	Namespace        string             `json:"namespace"`
+
+	// Status applied = fully applied on the last pass. Anything else: the rule is not fully applied and status_message says why.
+	Status        K8sNamespaceRuleStatus `json:"status"`
+	StatusMessage string                 `json:"status_message"`
+
+	// WaitingServices Services of the namespace the last pass could not expose.
+	WaitingServices int `json:"waiting_services"`
+}
+
+// K8sNamespaceRuleStatus applied = fully applied on the last pass. Anything else: the rule is not fully applied and status_message says why.
+type K8sNamespaceRuleStatus string
+
 // K8sService defines model for K8sService.
 type K8sService struct {
 	ClusterId openapi_types.UUID `json:"cluster_id"`
@@ -6628,9 +6675,12 @@ type K8sService struct {
 	ManagedByOperator bool               `json:"managed_by_operator"`
 	Name              string             `json:"name"`
 	Namespace         string             `json:"namespace"`
-	PortHigh          *int               `json:"port_high"`
-	PortLow           *int               `json:"port_low"`
-	Protocol          K8sServiceProtocol `json:"protocol"`
+
+	// NamespaceRuleId Set when a namespace rule created this exposure (K8N-4). Remove the rule to unexpose it.
+	NamespaceRuleId *openapi_types.UUID `json:"namespace_rule_id"`
+	PortHigh        *int                `json:"port_high"`
+	PortLow         *int                `json:"port_low"`
+	Protocol        K8sServiceProtocol  `json:"protocol"`
 
 	// Vip The synthetic /32 clients reach; DNAT'd to the ClusterIP at the gateway.
 	Vip string `json:"vip"`
@@ -9386,6 +9436,14 @@ type ListK8sClusterInventoryParams struct {
 	Limit  *int    `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
+// DeleteK8sNamespaceRuleParams defines parameters for DeleteK8sNamespaceRule.
+type DeleteK8sNamespaceRuleParams struct {
+	Exposures DeleteK8sNamespaceRuleParamsExposures `form:"exposures" json:"exposures"`
+}
+
+// DeleteK8sNamespaceRuleParamsExposures defines parameters for DeleteK8sNamespaceRule.
+type DeleteK8sNamespaceRuleParamsExposures string
+
 // ListRoutedRangesParams defines parameters for ListRoutedRanges.
 type ListRoutedRangesParams struct {
 	// DeviceId WF-A: when present, the response ALSO carries this device's dial (endpoint + gateway pubkey) derived from the org's ACTIVE HUB, so a running device re-homes on promotion via the SAME poll. The device MUST belong to the calling org AND be owned by the authenticated user — a device fetches only its OWN dial (cross-org/cross-device is refused). Omit for the pre-WF-A ranges-only behavior.
@@ -9898,6 +9956,9 @@ type ConfigureK8sConnectorPoolJSONRequestBody = ConfigureK8sConnectorPoolRequest
 
 // ExposeK8sInventoryServiceJSONRequestBody defines body for ExposeK8sInventoryService for application/json ContentType.
 type ExposeK8sInventoryServiceJSONRequestBody = ExposeK8sInventoryServiceRequest
+
+// CreateK8sNamespaceRuleJSONRequestBody defines body for CreateK8sNamespaceRule for application/json ContentType.
+type CreateK8sNamespaceRuleJSONRequestBody = CreateK8sNamespaceRuleRequest
 
 // SetK8sClusterProviderMetadataJSONRequestBody defines body for SetK8sClusterProviderMetadata for application/json ContentType.
 type SetK8sClusterProviderMetadataJSONRequestBody = K8sClusterProviderMetadataRequest
@@ -11528,6 +11589,17 @@ type ClientInterface interface {
 	ExposeK8sInventoryServiceWithBody(ctx context.Context, orgId openapi_types.UUID, clusterId openapi_types.UUID, inventoryRef openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	ExposeK8sInventoryService(ctx context.Context, orgId openapi_types.UUID, clusterId openapi_types.UUID, inventoryRef openapi_types.UUID, body ExposeK8sInventoryServiceJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListK8sNamespaceRules request
+	ListK8sNamespaceRules(ctx context.Context, orgId openapi_types.UUID, clusterId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateK8sNamespaceRuleWithBody request with any body
+	CreateK8sNamespaceRuleWithBody(ctx context.Context, orgId openapi_types.UUID, clusterId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	CreateK8sNamespaceRule(ctx context.Context, orgId openapi_types.UUID, clusterId openapi_types.UUID, body CreateK8sNamespaceRuleJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DeleteK8sNamespaceRule request
+	DeleteK8sNamespaceRule(ctx context.Context, orgId openapi_types.UUID, clusterId openapi_types.UUID, ruleId openapi_types.UUID, params *DeleteK8sNamespaceRuleParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// SetK8sClusterProviderMetadataWithBody request with any body
 	SetK8sClusterProviderMetadataWithBody(ctx context.Context, orgId openapi_types.UUID, clusterId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -17770,6 +17842,54 @@ func (c *Client) ExposeK8sInventoryServiceWithBody(ctx context.Context, orgId op
 
 func (c *Client) ExposeK8sInventoryService(ctx context.Context, orgId openapi_types.UUID, clusterId openapi_types.UUID, inventoryRef openapi_types.UUID, body ExposeK8sInventoryServiceJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewExposeK8sInventoryServiceRequest(c.Server, orgId, clusterId, inventoryRef, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ListK8sNamespaceRules(ctx context.Context, orgId openapi_types.UUID, clusterId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListK8sNamespaceRulesRequest(c.Server, orgId, clusterId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CreateK8sNamespaceRuleWithBody(ctx context.Context, orgId openapi_types.UUID, clusterId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateK8sNamespaceRuleRequestWithBody(c.Server, orgId, clusterId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CreateK8sNamespaceRule(ctx context.Context, orgId openapi_types.UUID, clusterId openapi_types.UUID, body CreateK8sNamespaceRuleJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateK8sNamespaceRuleRequest(c.Server, orgId, clusterId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) DeleteK8sNamespaceRule(ctx context.Context, orgId openapi_types.UUID, clusterId openapi_types.UUID, ruleId openapi_types.UUID, params *DeleteK8sNamespaceRuleParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteK8sNamespaceRuleRequest(c.Server, orgId, clusterId, ruleId, params)
 	if err != nil {
 		return nil, err
 	}
@@ -36516,6 +36636,167 @@ func NewExposeK8sInventoryServiceRequestWithBody(server string, orgId openapi_ty
 	return req, nil
 }
 
+// NewListK8sNamespaceRulesRequest generates requests for ListK8sNamespaceRules
+func NewListK8sNamespaceRulesRequest(server string, orgId openapi_types.UUID, clusterId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "clusterId", runtime.ParamLocationPath, clusterId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/k8s/clusters/%s/namespace-rules", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewCreateK8sNamespaceRuleRequest calls the generic CreateK8sNamespaceRule builder with application/json body
+func NewCreateK8sNamespaceRuleRequest(server string, orgId openapi_types.UUID, clusterId openapi_types.UUID, body CreateK8sNamespaceRuleJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreateK8sNamespaceRuleRequestWithBody(server, orgId, clusterId, "application/json", bodyReader)
+}
+
+// NewCreateK8sNamespaceRuleRequestWithBody generates requests for CreateK8sNamespaceRule with any type of body
+func NewCreateK8sNamespaceRuleRequestWithBody(server string, orgId openapi_types.UUID, clusterId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "clusterId", runtime.ParamLocationPath, clusterId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/k8s/clusters/%s/namespace-rules", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewDeleteK8sNamespaceRuleRequest generates requests for DeleteK8sNamespaceRule
+func NewDeleteK8sNamespaceRuleRequest(server string, orgId openapi_types.UUID, clusterId openapi_types.UUID, ruleId openapi_types.UUID, params *DeleteK8sNamespaceRuleParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "clusterId", runtime.ParamLocationPath, clusterId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam2 string
+
+	pathParam2, err = runtime.StyleParamWithLocation("simple", false, "ruleId", runtime.ParamLocationPath, ruleId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/k8s/clusters/%s/namespace-rules/%s", pathParam0, pathParam1, pathParam2)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if queryFrag, err := runtime.StyleParamWithLocation("form", true, "exposures", runtime.ParamLocationQuery, params.Exposures); err != nil {
+			return nil, err
+		} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+			return nil, err
+		} else {
+			for k, v := range parsed {
+				for _, v2 := range v {
+					queryValues.Add(k, v2)
+				}
+			}
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
+	}
+
+	req, err := http.NewRequest("DELETE", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewSetK8sClusterProviderMetadataRequest calls the generic SetK8sClusterProviderMetadata builder with application/json body
 func NewSetK8sClusterProviderMetadataRequest(server string, orgId openapi_types.UUID, clusterId openapi_types.UUID, body SetK8sClusterProviderMetadataJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
@@ -45064,6 +45345,17 @@ type ClientWithResponsesInterface interface {
 
 	ExposeK8sInventoryServiceWithResponse(ctx context.Context, orgId openapi_types.UUID, clusterId openapi_types.UUID, inventoryRef openapi_types.UUID, body ExposeK8sInventoryServiceJSONRequestBody, reqEditors ...RequestEditorFn) (*ExposeK8sInventoryServiceResponse, error)
 
+	// ListK8sNamespaceRulesWithResponse request
+	ListK8sNamespaceRulesWithResponse(ctx context.Context, orgId openapi_types.UUID, clusterId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ListK8sNamespaceRulesResponse, error)
+
+	// CreateK8sNamespaceRuleWithBodyWithResponse request with any body
+	CreateK8sNamespaceRuleWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, clusterId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateK8sNamespaceRuleResponse, error)
+
+	CreateK8sNamespaceRuleWithResponse(ctx context.Context, orgId openapi_types.UUID, clusterId openapi_types.UUID, body CreateK8sNamespaceRuleJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateK8sNamespaceRuleResponse, error)
+
+	// DeleteK8sNamespaceRuleWithResponse request
+	DeleteK8sNamespaceRuleWithResponse(ctx context.Context, orgId openapi_types.UUID, clusterId openapi_types.UUID, ruleId openapi_types.UUID, params *DeleteK8sNamespaceRuleParams, reqEditors ...RequestEditorFn) (*DeleteK8sNamespaceRuleResponse, error)
+
 	// SetK8sClusterProviderMetadataWithBodyWithResponse request with any body
 	SetK8sClusterProviderMetadataWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, clusterId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetK8sClusterProviderMetadataResponse, error)
 
@@ -53007,6 +53299,74 @@ func (r ExposeK8sInventoryServiceResponse) StatusCode() int {
 	return 0
 }
 
+type ListK8sNamespaceRulesResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *[]K8sNamespaceRule
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r ListK8sNamespaceRulesResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListK8sNamespaceRulesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type CreateK8sNamespaceRuleResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON201      *K8sNamespaceRule
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateK8sNamespaceRuleResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateK8sNamespaceRuleResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type DeleteK8sNamespaceRuleResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r DeleteK8sNamespaceRuleResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeleteK8sNamespaceRuleResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
 type SetK8sClusterProviderMetadataResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -60680,6 +61040,41 @@ func (c *ClientWithResponses) ExposeK8sInventoryServiceWithResponse(ctx context.
 		return nil, err
 	}
 	return ParseExposeK8sInventoryServiceResponse(rsp)
+}
+
+// ListK8sNamespaceRulesWithResponse request returning *ListK8sNamespaceRulesResponse
+func (c *ClientWithResponses) ListK8sNamespaceRulesWithResponse(ctx context.Context, orgId openapi_types.UUID, clusterId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ListK8sNamespaceRulesResponse, error) {
+	rsp, err := c.ListK8sNamespaceRules(ctx, orgId, clusterId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListK8sNamespaceRulesResponse(rsp)
+}
+
+// CreateK8sNamespaceRuleWithBodyWithResponse request with arbitrary body returning *CreateK8sNamespaceRuleResponse
+func (c *ClientWithResponses) CreateK8sNamespaceRuleWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, clusterId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateK8sNamespaceRuleResponse, error) {
+	rsp, err := c.CreateK8sNamespaceRuleWithBody(ctx, orgId, clusterId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateK8sNamespaceRuleResponse(rsp)
+}
+
+func (c *ClientWithResponses) CreateK8sNamespaceRuleWithResponse(ctx context.Context, orgId openapi_types.UUID, clusterId openapi_types.UUID, body CreateK8sNamespaceRuleJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateK8sNamespaceRuleResponse, error) {
+	rsp, err := c.CreateK8sNamespaceRule(ctx, orgId, clusterId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateK8sNamespaceRuleResponse(rsp)
+}
+
+// DeleteK8sNamespaceRuleWithResponse request returning *DeleteK8sNamespaceRuleResponse
+func (c *ClientWithResponses) DeleteK8sNamespaceRuleWithResponse(ctx context.Context, orgId openapi_types.UUID, clusterId openapi_types.UUID, ruleId openapi_types.UUID, params *DeleteK8sNamespaceRuleParams, reqEditors ...RequestEditorFn) (*DeleteK8sNamespaceRuleResponse, error) {
+	rsp, err := c.DeleteK8sNamespaceRule(ctx, orgId, clusterId, ruleId, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteK8sNamespaceRuleResponse(rsp)
 }
 
 // SetK8sClusterProviderMetadataWithBodyWithResponse request with arbitrary body returning *SetK8sClusterProviderMetadataResponse
@@ -73062,6 +73457,98 @@ func ParseExposeK8sInventoryServiceResponse(rsp *http.Response) (*ExposeK8sInven
 		}
 		response.JSON201 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListK8sNamespaceRulesResponse parses an HTTP response from a ListK8sNamespaceRulesWithResponse call
+func ParseListK8sNamespaceRulesResponse(rsp *http.Response) (*ListK8sNamespaceRulesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListK8sNamespaceRulesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest []K8sNamespaceRule
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCreateK8sNamespaceRuleResponse parses an HTTP response from a CreateK8sNamespaceRuleWithResponse call
+func ParseCreateK8sNamespaceRuleResponse(rsp *http.Response) (*CreateK8sNamespaceRuleResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateK8sNamespaceRuleResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest K8sNamespaceRule
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDeleteK8sNamespaceRuleResponse parses an HTTP response from a DeleteK8sNamespaceRuleWithResponse call
+func ParseDeleteK8sNamespaceRuleResponse(rsp *http.Response) (*DeleteK8sNamespaceRuleResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteK8sNamespaceRuleResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
 		var dest Error
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {

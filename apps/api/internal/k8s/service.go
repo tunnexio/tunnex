@@ -530,10 +530,13 @@ func FQDN(service, namespace, cluster, zone string) string {
 
 // ServiceView is an exposed Service joined with its cluster's naming (the resolvable FQDN), for the read APIs.
 type ServiceView struct {
-	Svc     sqlc.K8sService
-	FQDN    string
-	Cluster string
-	Zone    string
+	Svc sqlc.K8sService
+	// NamespaceRuleID is the namespace rule that created this exposure (K8N-4); uuid.Nil for an
+	// exposure made by hand or by the operator.
+	NamespaceRuleID uuid.UUID
+	FQDN            string
+	Cluster         string
+	Zone            string
 }
 
 // GetCluster returns one cluster (org-scoped) — the read for building a Service's FQDN + the config UI.
@@ -581,10 +584,15 @@ func (s *Service) ListServicesForOrg(ctx context.Context, orgID uuid.UUID) ([]Se
 	if err != nil {
 		return nil, err
 	}
+	ruleOf, err := s.namespaceRuleByService(ctx, orgID, uuid.Nil)
+	if err != nil {
+		return nil, err
+	}
 	out := make([]ServiceView, 0, len(rows))
 	for _, r := range rows {
 		vip, _ := netip.ParseAddr(r.Vip)
 		out = append(out, ServiceView{
+			NamespaceRuleID: ruleOf[r.ID],
 			Svc: sqlc.K8sService{
 				ID: r.ID, ClusterID: r.ClusterID, OrgID: orgID, Name: r.Name, Namespace: r.Namespace,
 				Protocol: r.Protocol, PortLow: r.PortLow, PortHigh: r.PortHigh, Vip: vip,
@@ -626,47 +634,69 @@ func (s *Service) UnexposeService(ctx context.Context, actorUserID uuid.UUID, ac
 		if e != nil {
 			return apierr.NotFound("service_not_found", "no such exposed Service in this organization")
 		}
-		if _, e := agentaccessguard.LockDestination(ctx, q, orgID, "k8s_service", serviceID); e != nil {
+		// K8N-4: a namespace rule would expose this Service again on the gateway's next report, so
+		// removing one of its exposures by hand is refused rather than silently undone.
+		var ruleOwned bool
+		if e := tx.QueryRow(ctx, `SELECT EXISTS (SELECT 1 FROM k8s_namespace_rule_exposures WHERE service_id=$1 AND org_id=$2)`, serviceID, orgID).Scan(&ruleOwned); e != nil {
 			return e
 		}
-		live, e := agentaccessguard.LiveDestinationRequests(ctx, q, orgID, "k8s_service", serviceID)
-		if e != nil {
-			return e
+		if ruleOwned {
+			return apierr.Conflict("managed_by_namespace_rule",
+				"this Service is exposed by the namespace rule for "+svc.Namespace+"; remove the rule to unexpose it")
 		}
-		if live != 0 {
-			return apierr.Conflict("agent_access_destination_in_use", fmt.Sprintf("%d pending or approved agent access requests reference this Service", live))
-		}
-		templateVersions, e := q.CountAgentPolicyTemplateK8sServiceReferences(ctx, sqlc.CountAgentPolicyTemplateK8sServiceReferencesParams{OrgID: orgID, DstK8sServiceID: pgtype.UUID{Bytes: serviceID, Valid: true}})
-		if e != nil {
-			return e
-		}
-		if templateVersions != 0 {
-			return apierr.Conflict("agent_policy_template_destination", fmt.Sprintf("%d immutable agent policy template versions reference this Service", templateVersions))
-		}
-		if e := q.SoftDeleteK8sService(ctx, sqlc.SoftDeleteK8sServiceParams{OrgID: orgID, ID: serviceID}); e != nil {
-			return e
-		}
-		var liveSiblings, retainedMemberships int
-		var logicalVIPReleased bool
-		if svc.IdentityID.Valid {
-			identityID := uuid.UUID(svc.IdentityID.Bytes)
-			if e := tx.QueryRow(ctx, `SELECT
-				(SELECT count(*) FROM k8s_services WHERE org_id=$1 AND identity_id=$2 AND deleted_at IS NULL),
-				EXISTS (SELECT 1 FROM k8s_service_identities WHERE org_id=$1 AND id=$2 AND deleted_at IS NOT NULL),
-				(SELECT count(*) FROM k8s_cluster_scope_memberships WHERE org_id=$1 AND service_child_id=$3)`,
-				orgID, identityID, serviceID).Scan(&liveSiblings, &logicalVIPReleased, &retainedMemberships); e != nil {
-				return e
-			}
-		}
-		// H2: audit the unexpose (a network-exposed Service leaving the fabric) — the RemoveSubnet analogue.
-		return s.audit(ctx, q, orgID, actorUserID, actorSystem, cause, "k8s_service", serviceID.String(), "k8s.service_unexposed",
-			map[string]any{"cluster_id": svc.ClusterID.String(), "live_sibling_children": liveSiblings,
-				"logical_vip_released": logicalVIPReleased, "scope_memberships_retained": retainedMemberships})
+		return s.unexposeServiceTx(ctx, q, tx, svc, actorUserID, actorSystem, cause, nil)
 	})
 	if err == nil {
 		s.pushOrg(ctx, orgID) // M5: propagate at push speed, not the ~25s long-poll
 	}
 	return err
+}
+
+// unexposeServiceTx is the one soft-delete path for an exposure, shared by the
+// dashboard/operator call and a namespace rule's withdrawal (K8N-4). It keeps
+// every refusal: a live agent access request or an immutable template version
+// that points at the exposure blocks it.
+func (s *Service) unexposeServiceTx(ctx context.Context, q *sqlc.Queries, tx pgx.Tx, svc sqlc.K8sService, actorUserID uuid.UUID, actorSystem, cause string, extraMeta map[string]any) error {
+	orgID, serviceID := svc.OrgID, svc.ID
+	if _, e := agentaccessguard.LockDestination(ctx, q, orgID, "k8s_service", serviceID); e != nil {
+		return e
+	}
+	live, e := agentaccessguard.LiveDestinationRequests(ctx, q, orgID, "k8s_service", serviceID)
+	if e != nil {
+		return e
+	}
+	if live != 0 {
+		return apierr.Conflict("agent_access_destination_in_use", fmt.Sprintf("%d pending or approved agent access requests reference this Service", live))
+	}
+	templateVersions, e := q.CountAgentPolicyTemplateK8sServiceReferences(ctx, sqlc.CountAgentPolicyTemplateK8sServiceReferencesParams{OrgID: orgID, DstK8sServiceID: pgtype.UUID{Bytes: serviceID, Valid: true}})
+	if e != nil {
+		return e
+	}
+	if templateVersions != 0 {
+		return apierr.Conflict("agent_policy_template_destination", fmt.Sprintf("%d immutable agent policy template versions reference this Service", templateVersions))
+	}
+	if e := q.SoftDeleteK8sService(ctx, sqlc.SoftDeleteK8sServiceParams{OrgID: orgID, ID: serviceID}); e != nil {
+		return e
+	}
+	var liveSiblings, retainedMemberships int
+	var logicalVIPReleased bool
+	if svc.IdentityID.Valid {
+		identityID := uuid.UUID(svc.IdentityID.Bytes)
+		if e := tx.QueryRow(ctx, `SELECT
+			(SELECT count(*) FROM k8s_services WHERE org_id=$1 AND identity_id=$2 AND deleted_at IS NULL),
+			EXISTS (SELECT 1 FROM k8s_service_identities WHERE org_id=$1 AND id=$2 AND deleted_at IS NOT NULL),
+			(SELECT count(*) FROM k8s_cluster_scope_memberships WHERE org_id=$1 AND service_child_id=$3)`,
+			orgID, identityID, serviceID).Scan(&liveSiblings, &logicalVIPReleased, &retainedMemberships); e != nil {
+			return e
+		}
+	}
+	meta := map[string]any{"cluster_id": svc.ClusterID.String(), "live_sibling_children": liveSiblings,
+		"logical_vip_released": logicalVIPReleased, "scope_memberships_retained": retainedMemberships}
+	for k, v := range extraMeta {
+		meta[k] = v
+	}
+	// H2: audit the unexpose (a network-exposed Service leaving the fabric) — the RemoveSubnet analogue.
+	return s.audit(ctx, q, orgID, actorUserID, actorSystem, cause, "k8s_service", serviceID.String(), "k8s.service_unexposed", meta)
 }
 
 // DeregisterCluster removes a cluster (S10.3 sweep). Full-sweep: the FK CASCADE deletes its exposed Services

@@ -1,6 +1,7 @@
 package http
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"io"
@@ -53,6 +54,18 @@ func (a *AgentChannel) k8sServiceInventoryForAgent(w http.ResponseWriter, r *htt
 			slog.String("org_id", agent.OrgID.String()),
 			slog.String("node_id", agent.NodeID.String()),
 			slog.Int64("pruned_snapshots", result.PrunedSnapshots))
+	}
+	if !result.Duplicate && a.serviceInventoryAccepted != nil {
+		// The report is stored whatever happens here. Detached from the request so a gateway that hangs
+		// up cannot leave a pass half-decided; bounded so a slow pass cannot hold the channel.
+		ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), 15*time.Second)
+		if err := a.serviceInventoryAccepted(ctx, agent.OrgID); err != nil && a.logger != nil {
+			a.logger.Warn("k8s_namespace_rules_reconcile_failed",
+				slog.String("org_id", agent.OrgID.String()),
+				slog.String("node_id", agent.NodeID.String()),
+				slog.String("error", err.Error()))
+		}
+		cancel()
 	}
 	w.WriteHeader(http.StatusNoContent)
 }

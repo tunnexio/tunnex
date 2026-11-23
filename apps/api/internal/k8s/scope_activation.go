@@ -1024,73 +1024,16 @@ func (s *Service) ExposeInventoryService(ctx context.Context, in ExposeInventory
 	if err != nil {
 		return ExposeInventoryServiceResult{}, err
 	}
-	activeRows, err := tx.Query(ctx, `SELECT rule_id FROM k8s_cluster_scope_grants WHERE org_id=$1 AND cluster_id=$2 AND active ORDER BY rule_id FOR UPDATE`, in.OrgID, in.ClusterID)
+	exposurePorts := make([]inventoryExposurePort, len(ports))
+	for i, port := range ports {
+		exposurePorts[i] = inventoryExposurePort{Protocol: port.Protocol, Port: port.Port}
+	}
+	children, pendingRows, err := s.insertInventoryExposures(ctx, tx, inventoryExposureInsert{
+		OrgID: in.OrgID, ClusterID: in.ClusterID, Namespace: namespace, Service: service, ServiceUID: serviceUID,
+		Ports: exposurePorts, VIP: vip, ActorID: actorID, ActorSystem: actorSystem, Cause: actorCause,
+	})
 	if err != nil {
 		return ExposeInventoryServiceResult{}, err
-	}
-	activeScopeIDs := make([]uuid.UUID, 0)
-	for activeRows.Next() {
-		var id uuid.UUID
-		if err := activeRows.Scan(&id); err != nil {
-			activeRows.Close()
-			return ExposeInventoryServiceResult{}, err
-		}
-		activeScopeIDs = append(activeScopeIDs, id)
-	}
-	activeRows.Close()
-	if err := activeRows.Err(); err != nil {
-		return ExposeInventoryServiceResult{}, err
-	}
-	pendingRows := len(activeScopeIDs) * len(ports)
-	if pendingRows > clusterScopePendingFanoutLimit {
-		return ExposeInventoryServiceResult{}, apierr.Conflict("k8s_cluster_scope_pending_fanout_limit", "exposing these ports would create more than 500 pending scope reviews")
-	}
-	children := make([]scopeapproval.ExactPortChild, 0, len(ports))
-	for _, port := range ports {
-		var childID uuid.UUID
-		if err := tx.QueryRow(ctx, `INSERT INTO k8s_services(org_id,cluster_id,name,namespace,protocol,port_low,port_high,vip) VALUES($1,$2,$3,$4,$5,$6,$6,$7::inet) RETURNING id`,
-			in.OrgID, in.ClusterID, service, namespace, string(port.Protocol), port.Port, vip).Scan(&childID); err != nil {
-			if pgerr.IsUnique(err) {
-				return ExposeInventoryServiceResult{}, apierr.Conflict("k8s_service_port_already_exposed", "one or more selected Service ports are already exposed")
-			}
-			return ExposeInventoryServiceResult{}, err
-		}
-		children = append(children, scopeapproval.ExactPortChild{Identity: scopeapproval.ExactChildIdentity{
-			ChildID: childID, OrgID: in.OrgID, ClusterID: in.ClusterID, Namespace: namespace,
-			ServiceUID: serviceUID, Protocol: port.Protocol, ServicePort: port.Port,
-		}, Live: true, UIDAttributionCurrent: true})
-	}
-	for _, scopeID := range activeScopeIDs {
-		domainScope, active, err := loadDomainScopeForUpdate(ctx, tx, in.OrgID, scopeID)
-		if err != nil {
-			return ExposeInventoryServiceResult{}, err
-		}
-		if !active {
-			return ExposeInventoryServiceResult{}, apierr.Conflict("k8s_cluster_scope_changed", "a Kubernetes cluster scope changed; retry the exposure")
-		}
-		for _, child := range children {
-			next, err := scopeapproval.AddLaterExposure(domainScope, child, scopeapproval.ProductionLimits())
-			if err != nil {
-				return ExposeInventoryServiceResult{}, scopeActivationError(err)
-			}
-			membership, _ := findScopeMembership(next.Memberships, child.Identity.ChildID)
-			if err := insertScopeMembership(ctx, tx, membership); err != nil {
-				return ExposeInventoryServiceResult{}, err
-			}
-			if err := s.audit(ctx, sqlc.New(tx), in.OrgID, actorID, actorSystem, actorCause, "k8s_service", child.Identity.ChildID.String(), "k8s.cluster_scope_later_child_pending", map[string]any{
-				"rule_id": scopeID.String(), "origin": "later",
-			}); err != nil {
-				return ExposeInventoryServiceResult{}, err
-			}
-			domainScope = next
-		}
-	}
-	for _, child := range children {
-		if err := s.audit(ctx, sqlc.New(tx), in.OrgID, actorID, actorSystem, actorCause, "k8s_service", child.Identity.ChildID.String(), "k8s.service_exposed", map[string]any{
-			"cluster_id": in.ClusterID.String(), "pending_scope_reviews": len(activeScopeIDs),
-		}); err != nil {
-			return ExposeInventoryServiceResult{}, err
-		}
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return ExposeInventoryServiceResult{}, err
@@ -1101,6 +1044,112 @@ func (s *Service) ExposeInventoryService(ctx context.Context, in ExposeInventory
 		ids[i] = child.Identity.ChildID
 	}
 	return ExposeInventoryServiceResult{ServiceChildIDs: ids, PendingRows: pendingRows}, nil
+}
+
+type inventoryExposurePort struct {
+	Protocol scopeapproval.Protocol
+	Port     int32
+}
+
+// inventoryExposureInsert is one reported Service and the exact ports to
+// expose. NamespaceRuleID is uuid.Nil for a hand-made exposure.
+type inventoryExposureInsert struct {
+	OrgID           uuid.UUID
+	ClusterID       uuid.UUID
+	Namespace       string
+	Service         string
+	ServiceUID      string
+	Ports           []inventoryExposurePort
+	VIP             string
+	NamespaceRuleID uuid.UUID
+	ActorID         uuid.UUID
+	ActorSystem     string
+	Cause           string
+}
+
+// insertInventoryExposures is the one insert path for exposures made from the
+// reported inventory, by hand or by a namespace rule (K8N-4). It adds one
+// pending membership per active cluster scope: an exposure never approves
+// access. The caller owns the transaction and has locked the cluster row.
+func (s *Service) insertInventoryExposures(ctx context.Context, tx pgx.Tx, in inventoryExposureInsert) ([]scopeapproval.ExactPortChild, int, error) {
+	activeRows, err := tx.Query(ctx, `SELECT rule_id FROM k8s_cluster_scope_grants WHERE org_id=$1 AND cluster_id=$2 AND active ORDER BY rule_id FOR UPDATE`, in.OrgID, in.ClusterID)
+	if err != nil {
+		return nil, 0, err
+	}
+	activeScopeIDs := make([]uuid.UUID, 0)
+	for activeRows.Next() {
+		var id uuid.UUID
+		if err := activeRows.Scan(&id); err != nil {
+			activeRows.Close()
+			return nil, 0, err
+		}
+		activeScopeIDs = append(activeScopeIDs, id)
+	}
+	activeRows.Close()
+	if err := activeRows.Err(); err != nil {
+		return nil, 0, err
+	}
+	pendingRows := len(activeScopeIDs) * len(in.Ports)
+	if pendingRows > clusterScopePendingFanoutLimit {
+		return nil, 0, apierr.Conflict("k8s_cluster_scope_pending_fanout_limit", "exposing these ports would create more than 500 pending scope reviews")
+	}
+	children := make([]scopeapproval.ExactPortChild, 0, len(in.Ports))
+	for _, port := range in.Ports {
+		var childID uuid.UUID
+		if err := tx.QueryRow(ctx, `INSERT INTO k8s_services(org_id,cluster_id,name,namespace,protocol,port_low,port_high,vip) VALUES($1,$2,$3,$4,$5,$6,$6,$7::inet) RETURNING id`,
+			in.OrgID, in.ClusterID, in.Service, in.Namespace, string(port.Protocol), port.Port, in.VIP).Scan(&childID); err != nil {
+			if pgerr.IsUnique(err) {
+				return nil, 0, apierr.Conflict("k8s_service_port_already_exposed", "one or more selected Service ports are already exposed")
+			}
+			return nil, 0, err
+		}
+		if in.NamespaceRuleID != uuid.Nil {
+			// K8N-4: this row is what makes the exposure the rule's.
+			if _, err := tx.Exec(ctx, `INSERT INTO k8s_namespace_rule_exposures(service_id,org_id,rule_id) VALUES($1,$2,$3)`, childID, in.OrgID, in.NamespaceRuleID); err != nil {
+				return nil, 0, err
+			}
+		}
+		children = append(children, scopeapproval.ExactPortChild{Identity: scopeapproval.ExactChildIdentity{
+			ChildID: childID, OrgID: in.OrgID, ClusterID: in.ClusterID, Namespace: in.Namespace,
+			ServiceUID: in.ServiceUID, Protocol: port.Protocol, ServicePort: port.Port,
+		}, Live: true, UIDAttributionCurrent: true})
+	}
+	for _, scopeID := range activeScopeIDs {
+		domainScope, active, err := loadDomainScopeForUpdate(ctx, tx, in.OrgID, scopeID)
+		if err != nil {
+			return nil, 0, err
+		}
+		if !active {
+			return nil, 0, apierr.Conflict("k8s_cluster_scope_changed", "a Kubernetes cluster scope changed; retry the exposure")
+		}
+		for _, child := range children {
+			next, err := scopeapproval.AddLaterExposure(domainScope, child, scopeapproval.ProductionLimits())
+			if err != nil {
+				return nil, 0, scopeActivationError(err)
+			}
+			membership, _ := findScopeMembership(next.Memberships, child.Identity.ChildID)
+			if err := insertScopeMembership(ctx, tx, membership); err != nil {
+				return nil, 0, err
+			}
+			if err := s.audit(ctx, sqlc.New(tx), in.OrgID, in.ActorID, in.ActorSystem, in.Cause, "k8s_service", child.Identity.ChildID.String(), "k8s.cluster_scope_later_child_pending", map[string]any{
+				"rule_id": scopeID.String(), "origin": "later",
+			}); err != nil {
+				return nil, 0, err
+			}
+			domainScope = next
+		}
+	}
+	for _, child := range children {
+		meta := map[string]any{"cluster_id": in.ClusterID.String(), "pending_scope_reviews": len(activeScopeIDs)}
+		if in.NamespaceRuleID != uuid.Nil {
+			meta["namespace_rule_id"] = in.NamespaceRuleID.String()
+			meta["namespace"], meta["name"] = in.Namespace, in.Service
+		}
+		if err := s.audit(ctx, sqlc.New(tx), in.OrgID, in.ActorID, in.ActorSystem, in.Cause, "k8s_service", child.Identity.ChildID.String(), "k8s.service_exposed", meta); err != nil {
+			return nil, 0, err
+		}
+	}
+	return children, pendingRows, nil
 }
 
 func clusterScopeExposureActor(actor *authctx.Principal, requestedCause string) (actorUserID uuid.UUID, actorSystem string, memberUserID uuid.UUID, cause string, err error) {

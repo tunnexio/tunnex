@@ -52,7 +52,7 @@ is a later slice (below); it would create the same control-plane rule, not a sec
    and any namespace whose name starts with `tunnex-`. Refused at creation and again by the database.
 3. **On every accepted report** (and once when the rule is created) the control plane compares the
    namespace's reported Services with the exposures that exist:
-   - a reported Service port with no exposure is exposed, and the row records the rule that made it;
+   - a reported Service port with no exposure is exposed, and the rule is recorded as its maker;
    - a port that someone already exposed, in the dashboard or through the operator, is left exactly
      as it is. The rule does not adopt it, change it or remove it.
 4. **All ports** of each Service are exposed (every TCP and UDP port the gateway reports). Choosing
@@ -111,8 +111,10 @@ For one rule in one pass, either every missing Service of the namespace is expos
   enforce. If one is added it belongs in the shared exposure path, where a refusal is recorded on
   the rule like the two above.
 
-The status is stored on the rule, returned by the API and shown in the dashboard. A rule whose last
-pass succeeded but whose cluster has no current report is shown as stale, not as healthy.
+The status is stored on the rule, returned by the API and shown in the dashboard: `applied` when the
+last pass did everything, otherwise one of the reasons above (or `pending` before the first pass,
+`error` for anything else, with the message). A rule whose last pass succeeded but whose cluster has
+no current report is shown as stale, not as applied.
 
 ### Dashboard and operator do not fight
 
@@ -137,14 +139,21 @@ the human.
 
 ## What is built
 
-- Migration `0238`: table `k8s_namespace_exposure_rules`; `k8s_services.namespace_rule_id` and
-  `namespace_rule_missing_since`.
+- Migration `0238`: table `k8s_namespace_exposure_rules`, and `k8s_namespace_rule_exposures`, which
+  records which exposures a rule made and since when one is missing. `k8s_services` itself is not
+  changed. A first draft added two columns to it; that broke the tests that run today's code against
+  an older schema, because every query that reads an exposure would have named the new columns. A
+  side table leaves the exposure row, the policy compiler's query and the operator's view of it
+  exactly as they were. Removing a rule deletes its side rows, which is what "keep" means.
 - `apps/api/internal/k8s/namespace_rules.go`: a pure planner (reported Services + existing rows →
   expose / mark missing / clear / withdraw) and the pass that applies it in one transaction per
   cluster. Manual and automatic exposure share one insert path.
 - API: list, create and delete a rule; `namespace_rule_id` on an exposed Service.
-- Dashboard: "Expose every Service in a namespace…" on a cluster, a confirmation that states the
-  consequences, the cluster's rules with their status, and a "Namespace rule" mark on rows.
+- Dashboard: "Expose every Service in a namespace…" on a cluster's Services, a confirmation that
+  states the consequences and needs a tick before it can be confirmed, the cluster's rules with their
+  status, and a "Namespace rule" mark on rows (with Unexpose withheld). The action is offered to
+  anyone who may manage Kubernetes, also on a cluster registered by the operator: the rule's
+  exposures are separate objects from the operator's.
 
 ## Not in this slice
 
