@@ -1007,6 +1007,7 @@ const (
 const (
 	CreatePolicyRuleRequestDstKindFqdnResource CreatePolicyRuleRequestDstKind = "fqdn_resource"
 	CreatePolicyRuleRequestDstKindGroup        CreatePolicyRuleRequestDstKind = "group"
+	CreatePolicyRuleRequestDstKindK8sApi       CreatePolicyRuleRequestDstKind = "k8s_api"
 	CreatePolicyRuleRequestDstKindK8sService   CreatePolicyRuleRequestDstKind = "k8s_service"
 	CreatePolicyRuleRequestDstKindResource     CreatePolicyRuleRequestDstKind = "resource"
 	CreatePolicyRuleRequestDstKindSite         CreatePolicyRuleRequestDstKind = "site"
@@ -1752,6 +1753,7 @@ const (
 const (
 	PolicyRuleDstKindFqdnResource    PolicyRuleDstKind = "fqdn_resource"
 	PolicyRuleDstKindGroup           PolicyRuleDstKind = "group"
+	PolicyRuleDstKindK8sApi          PolicyRuleDstKind = "k8s_api"
 	PolicyRuleDstKindK8sClusterScope PolicyRuleDstKind = "k8s_cluster_scope"
 	PolicyRuleDstKindK8sService      PolicyRuleDstKind = "k8s_service"
 	PolicyRuleDstKindResource        PolicyRuleDstKind = "resource"
@@ -5191,6 +5193,9 @@ type CreatePolicyRuleRequest struct {
 	// DstGroupId Required when dst_kind=group.
 	DstGroupId *openapi_types.UUID `json:"dst_group_id"`
 
+	// DstK8sApiClusterId Required when dst_kind=k8s_api (K8N-3): a cluster in this organization whose API access is on (400 k8s_api_not_enabled otherwise). src_kind must be group or user; a site, an address range or an agent is refused with 400 k8s_api_source_not_allowed.
+	DstK8sApiClusterId *openapi_types.UUID `json:"dst_k8s_api_cluster_id"`
+
 	// DstK8sServiceId Required when dst_kind=k8s_service (S10.3); the compiler resolves it to the exposed Service's CURRENT VIP.
 	DstK8sServiceId *openapi_types.UUID            `json:"dst_k8s_service_id"`
 	DstKind         CreatePolicyRuleRequestDstKind `json:"dst_kind"`
@@ -5317,13 +5322,16 @@ type DeviceStatus string
 
 // DeviceAccessDiagnostic defines model for DeviceAccessDiagnostic.
 type DeviceAccessDiagnostic struct {
-	Checks       []AgentAccessCheck             `json:"checks"`
-	Destination  string                         `json:"destination"`
-	DeviceId     openapi_types.UUID             `json:"device_id"`
-	FirstBlocker *string                        `json:"first_blocker"`
-	Overall      DeviceAccessDiagnosticOverall  `json:"overall"`
-	Port         int                            `json:"port"`
-	Protocol     DeviceAccessDiagnosticProtocol `json:"protocol"`
+	Checks       []AgentAccessCheck `json:"checks"`
+	Destination  string             `json:"destination"`
+	DeviceId     openapi_types.UUID `json:"device_id"`
+	FirstBlocker *string            `json:"first_blocker"`
+
+	// Note A fixed sentence that qualifies the result. Set when the destination is a cluster's Kubernetes API and the result is allowed (K8N-3): Tunnex allows the connection, and a 401 or 403 from kubectl is the cluster's answer, not Tunnex's.
+	Note     *string                        `json:"note"`
+	Overall  DeviceAccessDiagnosticOverall  `json:"overall"`
+	Port     int                            `json:"port"`
+	Protocol DeviceAccessDiagnosticProtocol `json:"protocol"`
 }
 
 // DeviceAccessDiagnosticOverall defines model for DeviceAccessDiagnostic.Overall.
@@ -6397,6 +6405,30 @@ type JoinTokenResponse struct {
 	JoinToken string `json:"join_token"`
 }
 
+// K8sApiAccess A cluster's Kubernetes API as a destination (K8N-3). Network reach only: no field here is, or contains, a cluster credential.
+type K8sApiAccess struct {
+	ClusterId openapi_types.UUID `json:"cluster_id"`
+
+	// Enabled Off by default.
+	Enabled   bool       `json:"enabled"`
+	EnabledAt *time.Time `json:"enabled_at"`
+
+	// Fqdn The name the cluster's API has in the tunnel: kubernetes.default.svc.<cluster>.<zone>. Known before enabling. It goes on the kubeconfig's server line; tls-server-name keeps the host from the original server line.
+	Fqdn string `json:"fqdn"`
+
+	// OrdinaryExposure True when default/kubernetes is already exposed as an ordinary Service in this cluster (made before K8N-3). It is left in place and must be unexposed before API access can be turned on.
+	OrdinaryExposure bool `json:"ordinary_exposure"`
+
+	// Port Always 443.
+	Port int `json:"port"`
+
+	// RuleCount Rules that name this cluster's API, whatever their state. They are kept when API access is turned off and take effect again when it is turned back on.
+	RuleCount int `json:"rule_count"`
+
+	// Vip The address allocated from the cluster's range; null while off.
+	Vip *string `json:"vip"`
+}
+
 // K8sCluster defines model for K8sCluster.
 type K8sCluster struct {
 	// ConnectorNodeId The explicit in-cluster gateway that resolves ready endpoints and DNATs service VIPs; null means the cluster is not serving traffic.
@@ -7260,6 +7292,12 @@ type PolicyRule struct {
 	// DstFqdnResourceId Set when dst_kind=fqdn_resource: a same-organization resolver-backed FQDN destination. It is stored as an identity; enforcement remains feature and organization-opt-in gated.
 	DstFqdnResourceId *openapi_types.UUID `json:"dst_fqdn_resource_id"`
 	DstGroupId        *openapi_types.UUID `json:"dst_group_id"`
+
+	// DstK8sApiAccessOff True when dst_kind=k8s_api and API access is off for that cluster: the rule is kept and allows nothing until API access is turned on again. Derived at read time.
+	DstK8sApiAccessOff *bool `json:"dst_k8s_api_access_off,omitempty"`
+
+	// DstK8sApiClusterId Set when dst_kind=k8s_api (K8N-3): the cluster whose Kubernetes API the rule reaches, on TCP 443. Only a person or a group can be its source.
+	DstK8sApiClusterId *openapi_types.UUID `json:"dst_k8s_api_cluster_id"`
 
 	// DstK8sClusterId Set when dst_kind=k8s_cluster_scope: the cluster whose approved exact-port memberships this specialized rule owns.
 	DstK8sClusterId *openapi_types.UUID `json:"dst_k8s_cluster_id"`
@@ -8450,6 +8488,11 @@ type SetAgentGroupMCPProfileRequest struct {
 
 // SetAgentJITAccessSettingRequest defines model for SetAgentJITAccessSettingRequest.
 type SetAgentJITAccessSettingRequest struct {
+	Enabled bool `json:"enabled"`
+}
+
+// SetK8sApiAccessRequest defines model for SetK8sApiAccessRequest.
+type SetK8sApiAccessRequest struct {
 	Enabled bool `json:"enabled"`
 }
 
@@ -9947,6 +9990,9 @@ type DecideK8sClusterScopeMembershipJSONRequestBody = DecideK8sClusterScopeMembe
 
 // RegisterK8sClusterJSONRequestBody defines body for RegisterK8sCluster for application/json ContentType.
 type RegisterK8sClusterJSONRequestBody = RegisterK8sClusterRequest
+
+// SetK8sClusterApiAccessJSONRequestBody defines body for SetK8sClusterApiAccess for application/json ContentType.
+type SetK8sClusterApiAccessJSONRequestBody = SetK8sApiAccessRequest
 
 // SetK8sClusterConnectorJSONRequestBody defines body for SetK8sClusterConnector for application/json ContentType.
 type SetK8sClusterConnectorJSONRequestBody = BindSiteNodeRequest
@@ -11568,6 +11614,14 @@ type ClientInterface interface {
 
 	// GetK8sCluster request
 	GetK8sCluster(ctx context.Context, orgId openapi_types.UUID, clusterId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetK8sClusterApiAccess request
+	GetK8sClusterApiAccess(ctx context.Context, orgId openapi_types.UUID, clusterId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SetK8sClusterApiAccessWithBody request with any body
+	SetK8sClusterApiAccessWithBody(ctx context.Context, orgId openapi_types.UUID, clusterId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	SetK8sClusterApiAccess(ctx context.Context, orgId openapi_types.UUID, clusterId openapi_types.UUID, body SetK8sClusterApiAccessJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// SetK8sClusterConnectorWithBody request with any body
 	SetK8sClusterConnectorWithBody(ctx context.Context, orgId openapi_types.UUID, clusterId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -17746,6 +17800,42 @@ func (c *Client) DeregisterK8sCluster(ctx context.Context, orgId openapi_types.U
 
 func (c *Client) GetK8sCluster(ctx context.Context, orgId openapi_types.UUID, clusterId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetK8sClusterRequest(c.Server, orgId, clusterId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetK8sClusterApiAccess(ctx context.Context, orgId openapi_types.UUID, clusterId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetK8sClusterApiAccessRequest(c.Server, orgId, clusterId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) SetK8sClusterApiAccessWithBody(ctx context.Context, orgId openapi_types.UUID, clusterId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSetK8sClusterApiAccessRequestWithBody(c.Server, orgId, clusterId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) SetK8sClusterApiAccess(ctx context.Context, orgId openapi_types.UUID, clusterId openapi_types.UUID, body SetK8sClusterApiAccessJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSetK8sClusterApiAccessRequest(c.Server, orgId, clusterId, body)
 	if err != nil {
 		return nil, err
 	}
@@ -36347,6 +36437,101 @@ func NewGetK8sClusterRequest(server string, orgId openapi_types.UUID, clusterId 
 	return req, nil
 }
 
+// NewGetK8sClusterApiAccessRequest generates requests for GetK8sClusterApiAccess
+func NewGetK8sClusterApiAccessRequest(server string, orgId openapi_types.UUID, clusterId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "clusterId", runtime.ParamLocationPath, clusterId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/k8s/clusters/%s/api-access", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewSetK8sClusterApiAccessRequest calls the generic SetK8sClusterApiAccess builder with application/json body
+func NewSetK8sClusterApiAccessRequest(server string, orgId openapi_types.UUID, clusterId openapi_types.UUID, body SetK8sClusterApiAccessJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewSetK8sClusterApiAccessRequestWithBody(server, orgId, clusterId, "application/json", bodyReader)
+}
+
+// NewSetK8sClusterApiAccessRequestWithBody generates requests for SetK8sClusterApiAccess with any type of body
+func NewSetK8sClusterApiAccessRequestWithBody(server string, orgId openapi_types.UUID, clusterId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "clusterId", runtime.ParamLocationPath, clusterId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/k8s/clusters/%s/api-access", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("PUT", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewSetK8sClusterConnectorRequest calls the generic SetK8sClusterConnector builder with application/json body
 func NewSetK8sClusterConnectorRequest(server string, orgId openapi_types.UUID, clusterId openapi_types.UUID, body SetK8sClusterConnectorJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
@@ -45324,6 +45509,14 @@ type ClientWithResponsesInterface interface {
 	// GetK8sClusterWithResponse request
 	GetK8sClusterWithResponse(ctx context.Context, orgId openapi_types.UUID, clusterId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetK8sClusterResponse, error)
 
+	// GetK8sClusterApiAccessWithResponse request
+	GetK8sClusterApiAccessWithResponse(ctx context.Context, orgId openapi_types.UUID, clusterId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetK8sClusterApiAccessResponse, error)
+
+	// SetK8sClusterApiAccessWithBodyWithResponse request with any body
+	SetK8sClusterApiAccessWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, clusterId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetK8sClusterApiAccessResponse, error)
+
+	SetK8sClusterApiAccessWithResponse(ctx context.Context, orgId openapi_types.UUID, clusterId openapi_types.UUID, body SetK8sClusterApiAccessJSONRequestBody, reqEditors ...RequestEditorFn) (*SetK8sClusterApiAccessResponse, error)
+
 	// SetK8sClusterConnectorWithBodyWithResponse request with any body
 	SetK8sClusterConnectorWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, clusterId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetK8sClusterConnectorResponse, error)
 
@@ -53185,6 +53378,52 @@ func (r GetK8sClusterResponse) StatusCode() int {
 	return 0
 }
 
+type GetK8sClusterApiAccessResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *K8sApiAccess
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r GetK8sClusterApiAccessResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetK8sClusterApiAccessResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type SetK8sClusterApiAccessResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *K8sApiAccess
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r SetK8sClusterApiAccessResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r SetK8sClusterApiAccessResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
 type SetK8sClusterConnectorResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -60971,6 +61210,32 @@ func (c *ClientWithResponses) GetK8sClusterWithResponse(ctx context.Context, org
 		return nil, err
 	}
 	return ParseGetK8sClusterResponse(rsp)
+}
+
+// GetK8sClusterApiAccessWithResponse request returning *GetK8sClusterApiAccessResponse
+func (c *ClientWithResponses) GetK8sClusterApiAccessWithResponse(ctx context.Context, orgId openapi_types.UUID, clusterId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetK8sClusterApiAccessResponse, error) {
+	rsp, err := c.GetK8sClusterApiAccess(ctx, orgId, clusterId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetK8sClusterApiAccessResponse(rsp)
+}
+
+// SetK8sClusterApiAccessWithBodyWithResponse request with arbitrary body returning *SetK8sClusterApiAccessResponse
+func (c *ClientWithResponses) SetK8sClusterApiAccessWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, clusterId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetK8sClusterApiAccessResponse, error) {
+	rsp, err := c.SetK8sClusterApiAccessWithBody(ctx, orgId, clusterId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSetK8sClusterApiAccessResponse(rsp)
+}
+
+func (c *ClientWithResponses) SetK8sClusterApiAccessWithResponse(ctx context.Context, orgId openapi_types.UUID, clusterId openapi_types.UUID, body SetK8sClusterApiAccessJSONRequestBody, reqEditors ...RequestEditorFn) (*SetK8sClusterApiAccessResponse, error) {
+	rsp, err := c.SetK8sClusterApiAccess(ctx, orgId, clusterId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSetK8sClusterApiAccessResponse(rsp)
 }
 
 // SetK8sClusterConnectorWithBodyWithResponse request with arbitrary body returning *SetK8sClusterConnectorResponse
@@ -73294,6 +73559,72 @@ func ParseGetK8sClusterResponse(rsp *http.Response) (*GetK8sClusterResponse, err
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest K8sCluster
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetK8sClusterApiAccessResponse parses an HTTP response from a GetK8sClusterApiAccessWithResponse call
+func ParseGetK8sClusterApiAccessResponse(rsp *http.Response) (*GetK8sClusterApiAccessResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetK8sClusterApiAccessResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest K8sApiAccess
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseSetK8sClusterApiAccessResponse parses an HTTP response from a SetK8sClusterApiAccessWithResponse call
+func ParseSetK8sClusterApiAccessResponse(rsp *http.Response) (*SetK8sClusterApiAccessResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &SetK8sClusterApiAccessResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest K8sApiAccess
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}

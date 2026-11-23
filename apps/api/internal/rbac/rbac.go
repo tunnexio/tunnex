@@ -150,6 +150,12 @@ const (
 	PermK8sScopeView    Permission = "k8s_scope:view"
 	PermK8sScopeManage  Permission = "k8s_scope:manage"
 	PermK8sScopeApprove Permission = "k8s_scope:approve"
+	// PermK8sAPIManage (K8N-3) governs turning a cluster's Kubernetes API access on and off: giving the
+	// API server an address in the tunnel. Named per feature and NOT k8s:manage (founder ruling
+	// 2026-11-23): someone who may expose Services may not expose the control plane. Owner/admin, human
+	// only — the machine operator role does not hold it, so no GitOps resource can switch it on. A rule
+	// that then grants the API to a person or a group is policy:manage, as for any rule.
+	PermK8sAPIManage Permission = "k8s_api:manage"
 	// PermMachineManage governs MACHINE CREDENTIALS (S10.2, EPIC 10): minting/revoking a first-class
 	// NON-USER org principal (the GitOps operator's identity). OWNER-ONLY grain — a machine credential is
 	// a non-human caller that can register clusters, expose Services, and (enterprise) create grants, so
@@ -297,6 +303,7 @@ var rolePermissions = map[string]map[Permission]bool{
 		PermK8sScopeView:                true,
 		PermK8sScopeManage:              true,
 		PermK8sScopeApprove:             true,
+		PermK8sAPIManage:                true,
 		PermAgentRuntimeManage:          true,
 		PermAIProviderView:              true,
 		PermAIProviderManage:            true,
@@ -353,6 +360,7 @@ var rolePermissions = map[string]map[Permission]bool{
 		PermK8sScopeView:                true,
 		PermK8sScopeManage:              true,
 		PermK8sScopeApprove:             true,
+		PermK8sAPIManage:                true,
 		PermLicenseManage:               true,
 		PermMachineManage:               true, // owner-only: minting a non-human org principal is org-delete-grade
 		PermAgentRuntimeManage:          true,

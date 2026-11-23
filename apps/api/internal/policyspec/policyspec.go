@@ -149,7 +149,10 @@ type RuleInput struct {
 	DstSiteID         *uuid.UUID // S8.1: set iff DstKind=="site"
 	DstK8sServiceID   *uuid.UUID // S10.3: set iff DstKind=="k8s_service"
 	DstFQDNResourceID *uuid.UUID // S21: set iff DstKind=="fqdn_resource"; resolver-backed destination identity
-	ExpiresAt         *time.Time // nil = permanent; set = temporary grant
+	// DstK8sAPIClusterID (K8N-3): set iff DstKind=="k8s_api" — the cluster whose Kubernetes API is granted.
+	// The source must be a group or a user.
+	DstK8sAPIClusterID *uuid.UUID
+	ExpiresAt          *time.Time // nil = permanent; set = temporary grant
 
 }
 

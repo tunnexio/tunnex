@@ -18,6 +18,7 @@ import (
 	"github.com/tunnexio/tunnex/apps/api/internal/authctx"
 	"github.com/tunnexio/tunnex/apps/api/internal/ipalloc"
 	"github.com/tunnexio/tunnex/apps/api/internal/k8s/scopeapproval"
+	"github.com/tunnexio/tunnex/apps/api/internal/k8sapiaccess"
 	"github.com/tunnexio/tunnex/apps/api/internal/pgerr"
 )
 
@@ -366,7 +367,9 @@ func (s *Service) CreateClusterScope(ctx context.Context, in CreateClusterScopeI
 	if err != nil {
 		return ClusterScopeRecord{}, scopeActivationError(err)
 	}
-	children, err := currentExposedInventoryChildren(ctx, tx, report.ID, in.OrgID, in.ClusterID)
+	// K8N-3: a new scope never offers the API server as a member, even where an exposure of
+	// default/kubernetes made before the refusal still exists.
+	children, err := currentExposedInventoryChildren(ctx, tx, report.ID, in.OrgID, in.ClusterID, true)
 	if err != nil {
 		return ClusterScopeRecord{}, err
 	}
@@ -871,9 +874,10 @@ func (s *Service) ListClusterScopeInventory(ctx context.Context, orgID, clusterI
 		FROM k8s_service_inventory_items i
 		JOIN k8s_service_inventory_ports p ON p.report_id=i.report_id AND p.inventory_ref=i.inventory_ref
 		WHERE i.report_id=$1 AND (i.namespace,i.service,i.inventory_ref)>($2,$3,$4)
+		  AND NOT (i.namespace=$6 AND i.service=$7)
 		GROUP BY i.inventory_ref,i.namespace,i.service
 		ORDER BY i.namespace,i.service,i.inventory_ref
-		LIMIT $5`, report.ID, cur.Namespace, cur.Service, cur.InventoryRef, limit+1)
+		LIMIT $5`, report.ID, cur.Namespace, cur.Service, cur.InventoryRef, limit+1, APIServiceNamespace, APIServiceName)
 	if err != nil {
 		return ClusterScopeInventoryPage{}, err
 	}
@@ -962,6 +966,10 @@ func (s *Service) ExposeInventoryService(ctx context.Context, in ExposeInventory
 	} else if err != nil {
 		return ExposeInventoryServiceResult{}, err
 	}
+	// K8N-3: the listing leaves the API server out; a reference to it obtained another way is refused.
+	if IsAPIServerService(namespace, service) {
+		return ExposeInventoryServiceResult{}, ErrAPIServerNotAService()
+	}
 	type selectedPort struct {
 		Ref      uuid.UUID
 		Protocol scopeapproval.Protocol
@@ -1017,6 +1025,12 @@ func (s *Service) ExposeInventoryService(ctx context.Context, in ExposeInventory
 	if dnsVIP != nil {
 		used = append(used, *dnsVIP)
 	}
+	// K8N-3: and around the cluster API's address while API access is on.
+	apiVIPs, err := k8sapiaccess.EndpointVIPs(ctx, sqlc.New(tx), in.OrgID, in.ClusterID)
+	if err != nil {
+		return ExposeInventoryServiceResult{}, err
+	}
+	used = append(used, apiVIPs...)
 	vip, err := ipalloc.Allocate(vipRange, used)
 	if errors.Is(err, ipalloc.ErrPoolExhausted) {
 		return ExposeInventoryServiceResult{}, apierr.Conflict("vip_range_exhausted", "the cluster VIP range is full")
@@ -1072,6 +1086,10 @@ type inventoryExposureInsert struct {
 // pending membership per active cluster scope: an exposure never approves
 // access. The caller owns the transaction and has locked the cluster row.
 func (s *Service) insertInventoryExposures(ctx context.Context, tx pgx.Tx, in inventoryExposureInsert) ([]scopeapproval.ExactPortChild, int, error) {
+	// K8N-3: both callers refuse the API server before they get here; the one insert path refuses it too.
+	if IsAPIServerService(in.Namespace, in.Service) {
+		return nil, 0, ErrAPIServerNotAService()
+	}
 	activeRows, err := tx.Query(ctx, `SELECT rule_id FROM k8s_cluster_scope_grants WHERE org_id=$1 AND cluster_id=$2 AND active ORDER BY rule_id FOR UPDATE`, in.OrgID, in.ClusterID)
 	if err != nil {
 		return nil, 0, err
@@ -1441,7 +1459,9 @@ func currentInventoryReport(ctx context.Context, db scopeDB, orgID, clusterID uu
 	return inventoryReport{}, scopeapproval.ErrInventoryUnavailable
 }
 
-func currentExposedInventoryChildren(ctx context.Context, db scopeDB, reportID, orgID, clusterID uuid.UUID) ([]scopeapproval.ExactPortChild, error) {
+// currentExposedInventoryChildren returns the cluster's live exposures that the current report still
+// backs. withoutAPIServer leaves out default/kubernetes: it is how a new scope's candidates are built.
+func currentExposedInventoryChildren(ctx context.Context, db scopeDB, reportID, orgID, clusterID uuid.UUID, withoutAPIServer bool) ([]scopeapproval.ExactPortChild, error) {
 	rows, err := db.Query(ctx, `
 		SELECT service_child.id,service_child.org_id,service_child.cluster_id,item.namespace,item.service_uid,
 		       port.protocol,port.service_port
@@ -1468,7 +1488,9 @@ func currentExposedInventoryChildren(ctx context.Context, db scopeDB, reportID, 
 		 AND attribution.namespace=current_uid.namespace AND attribution.service=current_uid.service
 		 AND attribution.replay_state_id=report.replay_state_id AND attribution.replay_sequence=report.replay_sequence
 		WHERE report.id=$1 AND report.org_id=$2 AND report.cluster_id=$3
-		ORDER BY item.namespace,item.service_uid,port.protocol,port.service_port,service_child.id`, reportID, orgID, clusterID)
+		  AND NOT ($4::boolean AND item.namespace=$5 AND item.service=$6)
+		ORDER BY item.namespace,item.service_uid,port.protocol,port.service_port,service_child.id`, reportID, orgID, clusterID,
+		withoutAPIServer, APIServiceNamespace, APIServiceName)
 	if err != nil {
 		return nil, err
 	}
@@ -1504,7 +1526,8 @@ func loadClusterScopeCurrentChildren(ctx context.Context, db scopeDB, orgID, clu
 	if err != nil {
 		return clusterScopeCurrentChildren{}, err
 	}
-	children, err := currentExposedInventoryChildren(ctx, db, report.ID, orgID, clusterID)
+	// Existing memberships are read as they are: nothing here hides a row that already exists.
+	children, err := currentExposedInventoryChildren(ctx, db, report.ID, orgID, clusterID, false)
 	if err != nil {
 		return clusterScopeCurrentChildren{}, err
 	}

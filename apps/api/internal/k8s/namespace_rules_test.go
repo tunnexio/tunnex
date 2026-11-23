@@ -100,3 +100,39 @@ func TestPlanNamespaceRuleSettledNamespaceIsEmpty(t *testing.T) {
 		t.Fatalf("empty namespace planned %+v", plan)
 	}
 }
+
+// K8N-3: a namespace rule never exposes default/kubernetes, the cluster's API server. An exposure of it
+// that a rule made before this refusal existed is still "reported", so it is neither marked missing nor
+// withdrawn: existing rows are left in place.
+func TestPlanNamespaceRuleNeverExposesTheAPIServer(t *testing.T) {
+	rule := uuid.New()
+	now := time.Date(2026, 11, 23, 12, 0, 0, 0, time.UTC)
+	longAgo := now.Add(-2 * NamespaceRuleWithdrawWait)
+	reported := []reportedService{
+		{Service: "kubernetes", UID: "uid-kubernetes", Ports: []inventoryExposurePort{tcp(443)}, APIServer: true},
+		{Service: "web", UID: "uid-web", Ports: []inventoryExposurePort{tcp(80)}},
+	}
+
+	// Nothing exposed yet: only the ordinary Service is planned.
+	plan := planNamespaceRule(rule, reported, nil, now, NamespaceRuleWithdrawWait)
+	if len(plan.Expose) != 1 || plan.Expose[0].Service != "web" {
+		t.Fatalf("only web may be exposed, got %+v", plan.Expose)
+	}
+
+	// The rule exposed the API server before the refusal existed. It is still reported, so it stays.
+	legacy := uuid.New()
+	exposed := []exposedPort{{ID: legacy, Service: "kubernetes", Protocol: "tcp", Port: 443, VIP: "100.66.0.9", RuleID: rule}}
+	plan = planNamespaceRule(rule, reported, exposed, now, NamespaceRuleWithdrawWait)
+	if len(plan.MarkMissing) != 0 || len(plan.Withdraw) != 0 {
+		t.Fatalf("an existing API server exposure must be left in place, got mark=%v withdraw=%v", plan.MarkMissing, plan.Withdraw)
+	}
+	// Even one already marked missing long ago is cleared, not withdrawn, while the Service is reported.
+	exposed[0].MissingSince = &longAgo
+	plan = planNamespaceRule(rule, reported, exposed, now, NamespaceRuleWithdrawWait)
+	if len(plan.Withdraw) != 0 || !reflect.DeepEqual(plan.ClearMissing, []uuid.UUID{legacy}) {
+		t.Fatalf("a reported API server exposure is cleared, never withdrawn: %+v", plan)
+	}
+	if !IsAPIServerService("default", "kubernetes") || IsAPIServerService("prod", "kubernetes") || IsAPIServerService("default", "kubernetes-dashboard") {
+		t.Fatal("only default/kubernetes is the API server")
+	}
+}

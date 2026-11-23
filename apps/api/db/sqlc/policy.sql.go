@@ -75,10 +75,44 @@ func (q *Queries) CreateAgentJITPolicyRule(ctx context.Context, arg CreateAgentJ
 	return id, err
 }
 
+const createK8sAPIPolicyRule = `-- name: CreateK8sAPIPolicyRule :one
+INSERT INTO policy_rules (org_id, src_kind, src_group_id, src_user_id, dst_kind, dst_k8s_api_endpoint_id, expires_at, managed_by_machine)
+VALUES ($1, $2, $3, $4, 'k8s_api', $5, $6, $7)
+RETURNING id
+`
+
+type CreateK8sAPIPolicyRuleParams struct {
+	OrgID               uuid.UUID          `json:"org_id"`
+	SrcKind             string             `json:"src_kind"`
+	SrcGroupID          pgtype.UUID        `json:"src_group_id"`
+	SrcUserID           pgtype.UUID        `json:"src_user_id"`
+	DstK8sApiEndpointID pgtype.UUID        `json:"dst_k8s_api_endpoint_id"`
+	ExpiresAt           pgtype.Timestamptz `json:"expires_at"`
+	ManagedByMachine    pgtype.UUID        `json:"managed_by_machine"`
+}
+
+// K8N-3: a rule whose destination is a cluster's Kubernetes API. Its own statement so the ordinary
+// CreatePolicyRule keeps naming exactly the columns it named before 0239. People and groups only: the
+// source is a group or a user, never a site, an address range or an agent (the 0239 CHECK backstops it).
+func (q *Queries) CreateK8sAPIPolicyRule(ctx context.Context, arg CreateK8sAPIPolicyRuleParams) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, createK8sAPIPolicyRule,
+		arg.OrgID,
+		arg.SrcKind,
+		arg.SrcGroupID,
+		arg.SrcUserID,
+		arg.DstK8sApiEndpointID,
+		arg.ExpiresAt,
+		arg.ManagedByMachine,
+	)
+	var id uuid.UUID
+	err := row.Scan(&id)
+	return id, err
+}
+
 const createPolicyRule = `-- name: CreatePolicyRule :one
 INSERT INTO policy_rules (org_id, src_kind, src_group_id, src_user_id, src_site_id, src_cidr, src_device_id, dst_kind, dst_resource_id, dst_group_id, dst_site_id, dst_k8s_service_id, dst_fqdn_resource_id, expires_at, managed_by_machine)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
-RETURNING id, org_id, src_group_id, dst_kind, dst_resource_id, dst_group_id, created_at, src_kind, src_user_id, expires_at, dst_site_id, src_site_id, src_cidr, disabled, dst_k8s_service_id, managed_by_machine, src_device_id, dst_k8s_cluster_id, src_agent_group_id, dst_fqdn_resource_id
+RETURNING id, org_id, src_group_id, dst_kind, dst_resource_id, dst_group_id, created_at, src_kind, src_user_id, expires_at, dst_site_id, src_site_id, src_cidr, disabled, dst_k8s_service_id, managed_by_machine, src_device_id, dst_k8s_cluster_id, src_agent_group_id, dst_fqdn_resource_id, dst_k8s_api_endpoint_id
 `
 
 type CreatePolicyRuleParams struct {
@@ -143,6 +177,7 @@ func (q *Queries) CreatePolicyRule(ctx context.Context, arg CreatePolicyRulePara
 		&i.DstK8sClusterID,
 		&i.SrcAgentGroupID,
 		&i.DstFqdnResourceID,
+		&i.DstK8sApiEndpointID,
 	)
 	return i, err
 }
@@ -235,12 +270,14 @@ WHERE expires_at IS NOT NULL AND expires_at <= now()
         AND ar.policy_rule_id=policy_rules.id
         AND ar.state='approved'
   )
-RETURNING id, org_id
+RETURNING id, org_id, dst_kind, NULLIF(to_jsonb(policy_rules) ->> 'dst_k8s_api_endpoint_id', '')::uuid AS dst_k8s_api_endpoint_id
 `
 
 type DeleteExpiredGrantsRow struct {
-	ID    uuid.UUID `json:"id"`
-	OrgID uuid.UUID `json:"org_id"`
+	ID                  uuid.UUID `json:"id"`
+	OrgID               uuid.UUID `json:"org_id"`
+	DstKind             string    `json:"dst_kind"`
+	DstK8sApiEndpointID uuid.UUID `json:"dst_k8s_api_endpoint_id"`
 }
 
 // The expiry sweeper (S7.5.4 story-end AMENDMENT — delete-on-sweep, replaced linger). A
@@ -259,7 +296,12 @@ func (q *Queries) DeleteExpiredGrants(ctx context.Context) ([]DeleteExpiredGrant
 	items := []DeleteExpiredGrantsRow{}
 	for rows.Next() {
 		var i DeleteExpiredGrantsRow
-		if err := rows.Scan(&i.ID, &i.OrgID); err != nil {
+		if err := rows.Scan(
+			&i.ID,
+			&i.OrgID,
+			&i.DstKind,
+			&i.DstK8sApiEndpointID,
+		); err != nil {
 			return nil, err
 		}
 		items = append(items, i)
@@ -286,6 +328,45 @@ func (q *Queries) DeletePolicyRule(ctx context.Context, arg DeletePolicyRulePara
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const deletePolicyRuleReturningDestination = `-- name: DeletePolicyRuleReturningDestination :many
+DELETE FROM policy_rules
+WHERE id = $1 AND org_id = $2
+RETURNING dst_kind, NULLIF(to_jsonb(policy_rules) ->> 'dst_k8s_api_endpoint_id', '')::uuid AS dst_k8s_api_endpoint_id
+`
+
+type DeletePolicyRuleReturningDestinationParams struct {
+	ID    uuid.UUID `json:"id"`
+	OrgID uuid.UUID `json:"org_id"`
+}
+
+type DeletePolicyRuleReturningDestinationRow struct {
+	DstKind             string    `json:"dst_kind"`
+	DstK8sApiEndpointID uuid.UUID `json:"dst_k8s_api_endpoint_id"`
+}
+
+// The dashboard/CLI/operator delete. It returns what the rule pointed at so the audit entry of a
+// Kubernetes API rule can name its cluster (K8N-3). The API column is read through JSONB so the statement
+// also runs where the column does not exist yet.
+func (q *Queries) DeletePolicyRuleReturningDestination(ctx context.Context, arg DeletePolicyRuleReturningDestinationParams) ([]DeletePolicyRuleReturningDestinationRow, error) {
+	rows, err := q.db.Query(ctx, deletePolicyRuleReturningDestination, arg.ID, arg.OrgID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []DeletePolicyRuleReturningDestinationRow{}
+	for rows.Next() {
+		var i DeletePolicyRuleReturningDestinationRow
+		if err := rows.Scan(&i.DstKind, &i.DstK8sApiEndpointID); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const deleteResource = `-- name: DeleteResource :execrows
@@ -328,7 +409,7 @@ const extendPolicyRule = `-- name: ExtendPolicyRule :one
 UPDATE policy_rules
 SET expires_at = $3
 WHERE id = $1 AND org_id = $2 AND expires_at IS NOT NULL AND expires_at > now()
-RETURNING id, org_id, src_group_id, dst_kind, dst_resource_id, dst_group_id, created_at, src_kind, src_user_id, expires_at, dst_site_id, src_site_id, src_cidr, disabled, dst_k8s_service_id, managed_by_machine, src_device_id, dst_k8s_cluster_id, src_agent_group_id, dst_fqdn_resource_id
+RETURNING id, org_id, src_group_id, dst_kind, dst_resource_id, dst_group_id, created_at, src_kind, src_user_id, expires_at, dst_site_id, src_site_id, src_cidr, disabled, dst_k8s_service_id, managed_by_machine, src_device_id, dst_k8s_cluster_id, src_agent_group_id, dst_fqdn_resource_id, dst_k8s_api_endpoint_id
 `
 
 type ExtendPolicyRuleParams struct {
@@ -367,6 +448,7 @@ func (q *Queries) ExtendPolicyRule(ctx context.Context, arg ExtendPolicyRulePara
 		&i.DstK8sClusterID,
 		&i.SrcAgentGroupID,
 		&i.DstFqdnResourceID,
+		&i.DstK8sApiEndpointID,
 	)
 	return i, err
 }
@@ -390,8 +472,33 @@ func (q *Queries) GetFQDNResourceForPolicy(ctx context.Context, arg GetFQDNResou
 	return id, err
 }
 
+const getK8sAPIEndpointCluster = `-- name: GetK8sAPIEndpointCluster :one
+SELECT e.cluster_id, c.name AS cluster_name
+FROM k8s_api_endpoints e
+JOIN k8s_clusters c ON c.id = e.cluster_id AND c.org_id = e.org_id
+WHERE e.org_id = $1 AND e.id = $2
+`
+
+type GetK8sAPIEndpointClusterParams struct {
+	OrgID uuid.UUID `json:"org_id"`
+	ID    uuid.UUID `json:"id"`
+}
+
+type GetK8sAPIEndpointClusterRow struct {
+	ClusterID   uuid.UUID `json:"cluster_id"`
+	ClusterName string    `json:"cluster_name"`
+}
+
+// The cluster behind one API endpoint, for naming a Kubernetes API rule's destination in the audit log.
+func (q *Queries) GetK8sAPIEndpointCluster(ctx context.Context, arg GetK8sAPIEndpointClusterParams) (GetK8sAPIEndpointClusterRow, error) {
+	row := q.db.QueryRow(ctx, getK8sAPIEndpointCluster, arg.OrgID, arg.ID)
+	var i GetK8sAPIEndpointClusterRow
+	err := row.Scan(&i.ClusterID, &i.ClusterName)
+	return i, err
+}
+
 const getPolicyRuleForOrg = `-- name: GetPolicyRuleForOrg :one
-SELECT id, org_id, src_group_id, dst_kind, dst_resource_id, dst_group_id, created_at, src_kind, src_user_id, expires_at, dst_site_id, src_site_id, src_cidr, disabled, dst_k8s_service_id, managed_by_machine, src_device_id, dst_k8s_cluster_id, src_agent_group_id, dst_fqdn_resource_id FROM policy_rules WHERE id = $1 AND org_id = $2
+SELECT id, org_id, src_group_id, dst_kind, dst_resource_id, dst_group_id, created_at, src_kind, src_user_id, expires_at, dst_site_id, src_site_id, src_cidr, disabled, dst_k8s_service_id, managed_by_machine, src_device_id, dst_k8s_cluster_id, src_agent_group_id, dst_fqdn_resource_id, dst_k8s_api_endpoint_id FROM policy_rules WHERE id = $1 AND org_id = $2
 `
 
 type GetPolicyRuleForOrgParams struct {
@@ -426,12 +533,13 @@ func (q *Queries) GetPolicyRuleForOrg(ctx context.Context, arg GetPolicyRuleForO
 		&i.DstK8sClusterID,
 		&i.SrcAgentGroupID,
 		&i.DstFqdnResourceID,
+		&i.DstK8sApiEndpointID,
 	)
 	return i, err
 }
 
 const getPolicyRuleForUpdate = `-- name: GetPolicyRuleForUpdate :one
-SELECT id, org_id, src_group_id, dst_kind, dst_resource_id, dst_group_id, created_at, src_kind, src_user_id, expires_at, dst_site_id, src_site_id, src_cidr, disabled, dst_k8s_service_id, managed_by_machine, src_device_id, dst_k8s_cluster_id, src_agent_group_id, dst_fqdn_resource_id FROM policy_rules WHERE id = $1 AND org_id = $2 FOR UPDATE
+SELECT id, org_id, src_group_id, dst_kind, dst_resource_id, dst_group_id, created_at, src_kind, src_user_id, expires_at, dst_site_id, src_site_id, src_cidr, disabled, dst_k8s_service_id, managed_by_machine, src_device_id, dst_k8s_cluster_id, src_agent_group_id, dst_fqdn_resource_id, dst_k8s_api_endpoint_id FROM policy_rules WHERE id = $1 AND org_id = $2 FOR UPDATE
 `
 
 type GetPolicyRuleForUpdateParams struct {
@@ -467,6 +575,7 @@ func (q *Queries) GetPolicyRuleForUpdate(ctx context.Context, arg GetPolicyRuleF
 		&i.DstK8sClusterID,
 		&i.SrcAgentGroupID,
 		&i.DstFqdnResourceID,
+		&i.DstK8sApiEndpointID,
 	)
 	return i, err
 }
@@ -590,33 +699,35 @@ SELECT p.id, p.org_id, p.src_group_id, p.dst_kind, p.dst_resource_id,
        p.dst_site_id, p.src_site_id, p.src_cidr, p.disabled,
        p.dst_k8s_service_id, p.managed_by_machine, p.src_device_id,
        p.dst_k8s_cluster_id, p.src_agent_group_id,
-       NULLIF(to_jsonb(p) ->> 'dst_fqdn_resource_id', '')::uuid AS dst_fqdn_resource_id
+       NULLIF(to_jsonb(p) ->> 'dst_fqdn_resource_id', '')::uuid AS dst_fqdn_resource_id,
+       NULLIF(to_jsonb(p) ->> 'dst_k8s_api_endpoint_id', '')::uuid AS dst_k8s_api_endpoint_id
 FROM policy_rules p
 WHERE p.org_id = $1 AND (p.expires_at IS NULL OR p.expires_at > now())
 ORDER BY p.created_at, p.id
 `
 
 type ListActivePolicyRulesForOrgRow struct {
-	ID                uuid.UUID          `json:"id"`
-	OrgID             uuid.UUID          `json:"org_id"`
-	SrcGroupID        pgtype.UUID        `json:"src_group_id"`
-	DstKind           string             `json:"dst_kind"`
-	DstResourceID     pgtype.UUID        `json:"dst_resource_id"`
-	DstGroupID        pgtype.UUID        `json:"dst_group_id"`
-	CreatedAt         time.Time          `json:"created_at"`
-	SrcKind           string             `json:"src_kind"`
-	SrcUserID         pgtype.UUID        `json:"src_user_id"`
-	ExpiresAt         pgtype.Timestamptz `json:"expires_at"`
-	DstSiteID         pgtype.UUID        `json:"dst_site_id"`
-	SrcSiteID         pgtype.UUID        `json:"src_site_id"`
-	SrcCidr           *string            `json:"src_cidr"`
-	Disabled          bool               `json:"disabled"`
-	DstK8sServiceID   pgtype.UUID        `json:"dst_k8s_service_id"`
-	ManagedByMachine  pgtype.UUID        `json:"managed_by_machine"`
-	SrcDeviceID       pgtype.UUID        `json:"src_device_id"`
-	DstK8sClusterID   pgtype.UUID        `json:"dst_k8s_cluster_id"`
-	SrcAgentGroupID   pgtype.UUID        `json:"src_agent_group_id"`
-	DstFqdnResourceID uuid.UUID          `json:"dst_fqdn_resource_id"`
+	ID                  uuid.UUID          `json:"id"`
+	OrgID               uuid.UUID          `json:"org_id"`
+	SrcGroupID          pgtype.UUID        `json:"src_group_id"`
+	DstKind             string             `json:"dst_kind"`
+	DstResourceID       pgtype.UUID        `json:"dst_resource_id"`
+	DstGroupID          pgtype.UUID        `json:"dst_group_id"`
+	CreatedAt           time.Time          `json:"created_at"`
+	SrcKind             string             `json:"src_kind"`
+	SrcUserID           pgtype.UUID        `json:"src_user_id"`
+	ExpiresAt           pgtype.Timestamptz `json:"expires_at"`
+	DstSiteID           pgtype.UUID        `json:"dst_site_id"`
+	SrcSiteID           pgtype.UUID        `json:"src_site_id"`
+	SrcCidr             *string            `json:"src_cidr"`
+	Disabled            bool               `json:"disabled"`
+	DstK8sServiceID     pgtype.UUID        `json:"dst_k8s_service_id"`
+	ManagedByMachine    pgtype.UUID        `json:"managed_by_machine"`
+	SrcDeviceID         pgtype.UUID        `json:"src_device_id"`
+	DstK8sClusterID     pgtype.UUID        `json:"dst_k8s_cluster_id"`
+	SrcAgentGroupID     pgtype.UUID        `json:"src_agent_group_id"`
+	DstFqdnResourceID   uuid.UUID          `json:"dst_fqdn_resource_id"`
+	DstK8sApiEndpointID uuid.UUID          `json:"dst_k8s_api_endpoint_id"`
 }
 
 // COMPILER INPUT — excludes EXPIRED temporary grants (the expiry correctness backstop:
@@ -656,6 +767,7 @@ func (q *Queries) ListActivePolicyRulesForOrg(ctx context.Context, orgID uuid.UU
 			&i.DstK8sClusterID,
 			&i.SrcAgentGroupID,
 			&i.DstFqdnResourceID,
+			&i.DstK8sApiEndpointID,
 		); err != nil {
 			return nil, err
 		}
@@ -882,33 +994,35 @@ SELECT p.id, p.org_id, p.src_group_id, p.dst_kind, p.dst_resource_id,
        p.dst_site_id, p.src_site_id, p.src_cidr, p.disabled,
        p.dst_k8s_service_id, p.managed_by_machine, p.src_device_id,
        p.dst_k8s_cluster_id, p.src_agent_group_id,
-       NULLIF(to_jsonb(p) ->> 'dst_fqdn_resource_id', '')::uuid AS dst_fqdn_resource_id
+       NULLIF(to_jsonb(p) ->> 'dst_fqdn_resource_id', '')::uuid AS dst_fqdn_resource_id,
+       NULLIF(to_jsonb(p) ->> 'dst_k8s_api_endpoint_id', '')::uuid AS dst_k8s_api_endpoint_id
 FROM policy_rules p
 WHERE p.org_id = $1
 ORDER BY p.created_at
 `
 
 type ListPolicyRulesByOrgRow struct {
-	ID                uuid.UUID          `json:"id"`
-	OrgID             uuid.UUID          `json:"org_id"`
-	SrcGroupID        pgtype.UUID        `json:"src_group_id"`
-	DstKind           string             `json:"dst_kind"`
-	DstResourceID     pgtype.UUID        `json:"dst_resource_id"`
-	DstGroupID        pgtype.UUID        `json:"dst_group_id"`
-	CreatedAt         time.Time          `json:"created_at"`
-	SrcKind           string             `json:"src_kind"`
-	SrcUserID         pgtype.UUID        `json:"src_user_id"`
-	ExpiresAt         pgtype.Timestamptz `json:"expires_at"`
-	DstSiteID         pgtype.UUID        `json:"dst_site_id"`
-	SrcSiteID         pgtype.UUID        `json:"src_site_id"`
-	SrcCidr           *string            `json:"src_cidr"`
-	Disabled          bool               `json:"disabled"`
-	DstK8sServiceID   pgtype.UUID        `json:"dst_k8s_service_id"`
-	ManagedByMachine  pgtype.UUID        `json:"managed_by_machine"`
-	SrcDeviceID       pgtype.UUID        `json:"src_device_id"`
-	DstK8sClusterID   pgtype.UUID        `json:"dst_k8s_cluster_id"`
-	SrcAgentGroupID   pgtype.UUID        `json:"src_agent_group_id"`
-	DstFqdnResourceID uuid.UUID          `json:"dst_fqdn_resource_id"`
+	ID                  uuid.UUID          `json:"id"`
+	OrgID               uuid.UUID          `json:"org_id"`
+	SrcGroupID          pgtype.UUID        `json:"src_group_id"`
+	DstKind             string             `json:"dst_kind"`
+	DstResourceID       pgtype.UUID        `json:"dst_resource_id"`
+	DstGroupID          pgtype.UUID        `json:"dst_group_id"`
+	CreatedAt           time.Time          `json:"created_at"`
+	SrcKind             string             `json:"src_kind"`
+	SrcUserID           pgtype.UUID        `json:"src_user_id"`
+	ExpiresAt           pgtype.Timestamptz `json:"expires_at"`
+	DstSiteID           pgtype.UUID        `json:"dst_site_id"`
+	SrcSiteID           pgtype.UUID        `json:"src_site_id"`
+	SrcCidr             *string            `json:"src_cidr"`
+	Disabled            bool               `json:"disabled"`
+	DstK8sServiceID     pgtype.UUID        `json:"dst_k8s_service_id"`
+	ManagedByMachine    pgtype.UUID        `json:"managed_by_machine"`
+	SrcDeviceID         pgtype.UUID        `json:"src_device_id"`
+	DstK8sClusterID     pgtype.UUID        `json:"dst_k8s_cluster_id"`
+	SrcAgentGroupID     pgtype.UUID        `json:"src_agent_group_id"`
+	DstFqdnResourceID   uuid.UUID          `json:"dst_fqdn_resource_id"`
+	DstK8sApiEndpointID uuid.UUID          `json:"dst_k8s_api_endpoint_id"`
 }
 
 // Admin LIST — every rule incl. expired ones (the UI shows a lapsed grant distinctly).
@@ -947,6 +1061,7 @@ func (q *Queries) ListPolicyRulesByOrg(ctx context.Context, orgID uuid.UUID) ([]
 			&i.DstK8sClusterID,
 			&i.SrcAgentGroupID,
 			&i.DstFqdnResourceID,
+			&i.DstK8sApiEndpointID,
 		); err != nil {
 			return nil, err
 		}
@@ -1121,7 +1236,7 @@ func (q *Queries) SetOrgZeroTrustMode(ctx context.Context, arg SetOrgZeroTrustMo
 const setPolicyRuleEnabled = `-- name: SetPolicyRuleEnabled :one
 UPDATE policy_rules SET disabled = $3
 WHERE id = $1 AND org_id = $2
-RETURNING id, org_id, src_group_id, dst_kind, dst_resource_id, dst_group_id, created_at, src_kind, src_user_id, expires_at, dst_site_id, src_site_id, src_cidr, disabled, dst_k8s_service_id, managed_by_machine, src_device_id, dst_k8s_cluster_id, src_agent_group_id, dst_fqdn_resource_id
+RETURNING id, org_id, src_group_id, dst_kind, dst_resource_id, dst_group_id, created_at, src_kind, src_user_id, expires_at, dst_site_id, src_site_id, src_cidr, disabled, dst_k8s_service_id, managed_by_machine, src_device_id, dst_k8s_cluster_id, src_agent_group_id, dst_fqdn_resource_id, dst_k8s_api_endpoint_id
 `
 
 type SetPolicyRuleEnabledParams struct {
@@ -1156,6 +1271,7 @@ func (q *Queries) SetPolicyRuleEnabled(ctx context.Context, arg SetPolicyRuleEna
 		&i.DstK8sClusterID,
 		&i.SrcAgentGroupID,
 		&i.DstFqdnResourceID,
+		&i.DstK8sApiEndpointID,
 	)
 	return i, err
 }

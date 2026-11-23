@@ -286,6 +286,48 @@ WHERE c.org_id = $1
     )
   );
 
+-- ListK8sAPIServedZonesForOrg (K8N-3) is ListK8sServedZonesForOrg for a cluster whose API access is on: its
+-- gateway answers for the cluster's zone even when no Service is exposed, because the API's name lives in
+-- it. Same connector resolution. A separate statement so the query above stays as it was.
+-- name: ListK8sAPIServedZonesForOrg :many
+SELECT DISTINCT c.name, c.dns_zone, COALESCE(host(c.dns_vip), '')::text AS dns_vip
+FROM k8s_clusters c
+JOIN k8s_api_endpoints e ON e.cluster_id = c.id AND e.org_id = c.org_id AND e.enabled
+LEFT JOIN k8s_connector_pools p
+  ON p.id = c.connector_pool_id
+ AND p.org_id = c.org_id
+ AND p.site_id = c.site_id
+ AND p.cluster_id = c.id
+LEFT JOIN nodes connector
+  ON connector.id = p.active_node_id
+ AND connector.org_id = p.org_id
+ AND connector.site_id = p.site_id
+ AND connector.status = 'active'
+ AND connector.revoked_at IS NULL
+ AND connector.wg_public_key ~ '^[A-Za-z0-9+/]{43}=$'
+ AND btrim(connector.endpoint) <> ''
+WHERE c.org_id = $1
+  AND (
+    (c.connector_pool_id IS NULL AND c.connector_node_id IS NOT NULL)
+    OR (
+      c.connector_pool_id IS NOT NULL AND connector.id IS NOT NULL AND p.generation > 0
+      AND (
+        p.generation = 1
+        OR EXISTS (
+          SELECT 1
+          FROM k8s_connector_handoff_operations hop
+          WHERE hop.org_id = p.org_id
+            AND hop.site_id = p.site_id
+            AND hop.cluster_id = p.cluster_id
+            AND hop.pool_id = p.id
+            AND hop.new_node_id = p.active_node_id
+            AND hop.target_generation = p.generation
+            AND hop.phase = 'complete'
+        )
+      )
+    )
+  );
+
 -- name: CreateK8sService :one
 INSERT INTO k8s_services (org_id, cluster_id, name, namespace, protocol, port_low, port_high, vip, managed_by_machine)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
@@ -306,6 +348,26 @@ WHERE org_id = $1 AND dst_k8s_service_id = $2;
 -- org_id-scoped for tenant isolation (defence-in-depth; the caller already authorized the cluster).
 -- name: ListUsedVIPsInCluster :many
 SELECT host(vip) AS vip FROM k8s_services WHERE org_id = $1 AND cluster_id = $2 AND deleted_at IS NULL;
+
+-- K8N-3: the address of the cluster's API while API access is on. Every address allocation in the cluster
+-- works around it as well as around ListUsedVIPsInCluster, so a Service is never handed it. A statement of
+-- its own, read only where the 0239 table exists, so ListUsedVIPsInCluster stays as it was.
+-- name: ListK8sAPIEndpointVIPsInCluster :many
+SELECT host(e.vip) AS vip FROM k8s_api_endpoints e
+WHERE e.org_id = $1 AND e.cluster_id = $2 AND e.vip IS NOT NULL;
+
+-- CountK8sAPIPolicyRulesForCluster (K8N-3): the rules that name this cluster's API. Deregistering the
+-- cluster removes its API endpoint and, by cascade, these rules; the audit entry counts them.
+-- name: CountK8sAPIPolicyRulesForCluster :one
+SELECT count(*) FROM policy_rules r
+JOIN k8s_api_endpoints e ON e.id = r.dst_k8s_api_endpoint_id AND e.org_id = r.org_id
+WHERE r.org_id = $1 AND e.cluster_id = $2 AND r.dst_kind = 'k8s_api';
+
+-- K8sAPIAccessSchemaPresent says whether this database has the 0239 API access table. The control plane
+-- also runs against a schema that has not been migrated that far; there the feature simply has no data,
+-- and the shared paths (compiler snapshot, topology, address allocation) must not name the table.
+-- name: K8sAPIAccessSchemaPresent :one
+SELECT (to_regclass('k8s_api_endpoints') IS NOT NULL)::boolean AS present;
 
 -- ListActiveK8sServicesForOrg is the compiler's resolution source: id -> current VIP (+ proto/ports), LIVE
 -- only. A soft-deleted Service is absent, so a grant referencing it compiles to nothing (honest, not silent).
@@ -354,6 +416,67 @@ LEFT JOIN nodes connector
  AND btrim(connector.endpoint) <> ''
 WHERE s.org_id = $1 AND s.deleted_at IS NULL
 ORDER BY s.id;
+
+-- name: GetK8sAPIEndpointForCluster :one
+SELECT * FROM k8s_api_endpoints WHERE org_id = $1 AND cluster_id = $2;
+
+-- ListK8sAPIEndpointsForOrg names every cluster API endpoint of the org, on or off, with its cluster: what
+-- a rule list needs to say "Kubernetes API of <cluster>" and whether that rule currently allows anything.
+-- name: ListK8sAPIEndpointsForOrg :many
+SELECT e.id, e.cluster_id, e.enabled, COALESCE(host(e.vip), '')::text AS vip,
+       c.name AS cluster_name, c.dns_zone
+FROM k8s_api_endpoints e
+JOIN k8s_clusters c ON c.id = e.cluster_id AND c.org_id = e.org_id
+WHERE e.org_id = $1
+ORDER BY e.id;
+
+-- ListEnabledK8sAPIEndpointsForOrg (K8N-3) is the cluster API's counterpart of ListActiveK8sServicesForOrg:
+-- one row per cluster whose API access is on, with the SAME connector resolution columns, so the topology
+-- and the compiler treat the API address exactly as they treat a Service address. It is a separate query
+-- on purpose: the API endpoint is never a k8s_services row, so it cannot reach a cluster scope, an agent
+-- access request or an agent template.
+-- name: ListEnabledK8sAPIEndpointsForOrg :many
+SELECT e.id, e.cluster_id, host(e.vip) AS vip, c.site_id, c.connector_pool_id,
+       c.connector_node_id AS legacy_connector_node_id,
+       p.active_node_id AS pool_active_node_id,
+       COALESCE(
+         p.generation > 0
+         AND connector.id IS NOT NULL
+         AND (
+           p.generation = 1
+           OR EXISTS (
+             SELECT 1
+             FROM k8s_connector_handoff_operations hop
+             WHERE hop.org_id = p.org_id
+               AND hop.site_id = p.site_id
+               AND hop.cluster_id = p.cluster_id
+               AND hop.pool_id = p.id
+               AND hop.new_node_id = p.active_node_id
+               AND hop.target_generation = p.generation
+               AND hop.phase = 'complete'
+           )
+         ), false
+       )::boolean AS pool_connector_eligible,
+       p.generation AS connector_generation,
+       c.service_cidr::text AS service_cidr,
+       c.name AS cluster_name, c.dns_zone, COALESCE(host(c.dns_vip), '')::text AS dns_vip
+FROM k8s_api_endpoints e
+JOIN k8s_clusters c ON c.id = e.cluster_id AND c.org_id = e.org_id
+LEFT JOIN k8s_connector_pools p
+  ON p.id = c.connector_pool_id
+ AND p.org_id = c.org_id
+ AND p.site_id = c.site_id
+ AND p.cluster_id = c.id
+LEFT JOIN nodes connector
+  ON connector.id = p.active_node_id
+ AND connector.org_id = p.org_id
+ AND connector.site_id = p.site_id
+ AND connector.status = 'active'
+ AND connector.revoked_at IS NULL
+ AND connector.wg_public_key ~ '^[A-Za-z0-9+/]{43}=$'
+ AND btrim(connector.endpoint) <> ''
+WHERE e.org_id = $1 AND e.enabled AND e.vip IS NOT NULL
+ORDER BY e.id;
 
 -- ListK8sHandoffGraphPoolMembersForOrg keeps every eligible fenced-HA pool
 -- member in the private handoff graph. VIP ownership remains a separate,

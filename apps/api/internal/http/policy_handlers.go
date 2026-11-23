@@ -358,11 +358,16 @@ func (s apiServer) ListPolicyRules(ctx context.Context, req api.ListPolicyRulesR
 		return nil, err
 	}
 	fqdnStatus := s.fqdnDestinationStatusMap(ctx, req.OrgId, rs)
+	apiTargets, err := s.k8sAPIRuleTargets(ctx, req.OrgId, rs) // K8N-3: "Kubernetes API of <cluster>"
+	if err != nil {
+		return nil, err
+	}
 	out := make([]api.PolicyRule, 0, len(rs))
 	for _, r := range rs {
-		out = append(out, toAPIRuleWithFQDNStatus(r, warn[r.ID], vanished[r.ID], fqdnStatus[r.ID], policyRuleOwnership{
+		target, isAPI := apiTargets[r.ID]
+		out = append(out, withK8sAPITarget(toAPIRuleWithFQDNStatus(r, warn[r.ID], vanished[r.ID], fqdnStatus[r.ID], policyRuleOwnership{
 			agentTemplate: templateManaged[r.ID], agentAccessRequestID: jitManaged[r.ID],
-		}))
+		}), target, isAPI))
 	}
 	return api.ListPolicyRules200JSONResponse{Body: out, Headers: api.ListPolicyRules200ResponseHeaders{XRequestId: reqID(ctx)}}, nil
 }
@@ -393,7 +398,9 @@ func (s apiServer) CreatePolicyRule(ctx context.Context, req api.CreatePolicyRul
 		DstSiteID:         req.Body.DstSiteId,       // S8.1: dst_kind=site
 		DstK8sServiceID:   req.Body.DstK8sServiceId, // S10.3: dst_kind=k8s_service
 		DstFQDNResourceID: req.Body.DstFqdnResourceId,
-		ExpiresAt:         req.Body.ExpiresAt,
+		// K8N-3: dst_kind=k8s_api names the cluster whose Kubernetes API is granted.
+		DstK8sAPIClusterID: req.Body.DstK8sApiClusterId,
+		ExpiresAt:          req.Body.ExpiresAt,
 	}
 	if req.Body.SrcKind != nil {
 		in.SrcKind = string(*req.Body.SrcKind)
@@ -415,7 +422,12 @@ func (s apiServer) CreatePolicyRule(ctx context.Context, req api.CreatePolicyRul
 		return nil, err
 	}
 	fqdnStatus := s.fqdnDestinationStatusMap(ctx, req.OrgId, []sqlc.PolicyRule{r})
-	return api.CreatePolicyRule201JSONResponse{Body: toAPIRuleWithFQDNStatus(r, warn[r.ID], van[r.ID], fqdnStatus[r.ID]), Headers: api.CreatePolicyRule201ResponseHeaders{XRequestId: reqID(ctx)}}, nil
+	apiTargets, err := s.k8sAPIRuleTargets(ctx, req.OrgId, []sqlc.PolicyRule{r})
+	if err != nil {
+		return nil, err
+	}
+	apiTarget, isAPI := apiTargets[r.ID]
+	return api.CreatePolicyRule201JSONResponse{Body: withK8sAPITarget(toAPIRuleWithFQDNStatus(r, warn[r.ID], van[r.ID], fqdnStatus[r.ID]), apiTarget, isAPI), Headers: api.CreatePolicyRule201ResponseHeaders{XRequestId: reqID(ctx)}}, nil
 }
 
 func (s apiServer) DeletePolicyRule(ctx context.Context, req api.DeletePolicyRuleRequestObject) (api.DeletePolicyRuleResponseObject, error) {
@@ -462,7 +474,12 @@ func (s apiServer) ExtendGrant(ctx context.Context, req api.ExtendGrantRequestOb
 		return nil, err
 	}
 	fqdnStatus := s.fqdnDestinationStatusMap(ctx, req.OrgId, []sqlc.PolicyRule{r})
-	return api.ExtendGrant200JSONResponse{Body: toAPIRuleWithFQDNStatus(r, warn[r.ID], van[r.ID], fqdnStatus[r.ID]), Headers: api.ExtendGrant200ResponseHeaders{XRequestId: reqID(ctx)}}, nil
+	apiTargets, err := s.k8sAPIRuleTargets(ctx, req.OrgId, []sqlc.PolicyRule{r})
+	if err != nil {
+		return nil, err
+	}
+	apiTarget, isAPI := apiTargets[r.ID]
+	return api.ExtendGrant200JSONResponse{Body: withK8sAPITarget(toAPIRuleWithFQDNStatus(r, warn[r.ID], van[r.ID], fqdnStatus[r.ID]), apiTarget, isAPI), Headers: api.ExtendGrant200ResponseHeaders{XRequestId: reqID(ctx)}}, nil
 }
 
 // SetPolicyRuleEnabled (F3) — enable/disable a rule without deleting it. policy:manage;
@@ -493,7 +510,12 @@ func (s apiServer) SetPolicyRuleEnabled(ctx context.Context, req api.SetPolicyRu
 		return nil, err
 	}
 	fqdnStatus := s.fqdnDestinationStatusMap(ctx, req.OrgId, []sqlc.PolicyRule{r})
-	return api.SetPolicyRuleEnabled200JSONResponse{Body: toAPIRuleWithFQDNStatus(r, warn[r.ID], van[r.ID], fqdnStatus[r.ID]), Headers: api.SetPolicyRuleEnabled200ResponseHeaders{XRequestId: reqID(ctx)}}, nil
+	apiTargets, err := s.k8sAPIRuleTargets(ctx, req.OrgId, []sqlc.PolicyRule{r})
+	if err != nil {
+		return nil, err
+	}
+	apiTarget, isAPI := apiTargets[r.ID]
+	return api.SetPolicyRuleEnabled200JSONResponse{Body: withK8sAPITarget(toAPIRuleWithFQDNStatus(r, warn[r.ID], van[r.ID], fqdnStatus[r.ID]), apiTarget, isAPI), Headers: api.SetPolicyRuleEnabled200ResponseHeaders{XRequestId: reqID(ctx)}}, nil
 }
 
 // ── enforcement mode ──────────────────────────────────────────────────────────

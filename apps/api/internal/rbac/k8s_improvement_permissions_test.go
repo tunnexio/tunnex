@@ -34,3 +34,28 @@ func TestK8sImprovementPermissionsStaySeparated(t *testing.T) {
 		}
 	}
 }
+
+// K8N-3: turning a cluster's Kubernetes API access on is its own capability. It is not k8s:manage, the
+// machine operator does not hold it (no GitOps resource may switch it on), and it keeps the verified-human
+// gate every mutating permission has.
+func TestK8sAPIManageIsItsOwnHumanPermission(t *testing.T) {
+	if PermK8sAPIManage == PermK8sManage || string(PermK8sAPIManage) != "k8s_api:manage" {
+		t.Fatalf("k8s_api:manage must be a distinct permission, got %q", PermK8sAPIManage)
+	}
+	for _, role := range []string{RoleOwner, RoleAdmin} {
+		if !Can(role, PermK8sAPIManage) {
+			t.Fatalf("%s must hold k8s_api:manage", role)
+		}
+	}
+	for _, role := range []string{RoleOperator, RoleMember, RoleAgent} {
+		if Can(role, PermK8sAPIManage) {
+			t.Fatalf("%s must not hold k8s_api:manage", role)
+		}
+	}
+	if !Can(RoleOperator, PermK8sManage) {
+		t.Fatal("the operator keeps k8s:manage; the two permissions are separate")
+	}
+	if !IsMutating(PermK8sAPIManage) {
+		t.Fatal("k8s_api:manage must keep the verified-email mutation gate")
+	}
+}
