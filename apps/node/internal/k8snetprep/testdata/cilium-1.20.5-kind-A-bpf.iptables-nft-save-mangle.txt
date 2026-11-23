@@ -1,0 +1,16 @@
+*mangle
+:PREROUTING ACCEPT [0:0]
+:INPUT ACCEPT [0:0]
+:FORWARD ACCEPT [0:0]
+:OUTPUT ACCEPT [0:0]
+:POSTROUTING ACCEPT [0:0]
+:CILIUM_POST_mangle - [0:0]
+:CILIUM_PRE_mangle - [0:0]
+:KUBE-IPTABLES-HINT - [0:0]
+:KUBE-KUBELET-CANARY - [0:0]
+-A PREROUTING -m comment --comment "cilium-feeder: CILIUM_PRE_mangle" -j CILIUM_PRE_mangle
+-A POSTROUTING -m comment --comment "cilium-feeder: CILIUM_POST_mangle" -j CILIUM_POST_mangle
+-A CILIUM_PRE_mangle ! -o lo -m socket --transparent -m mark ! --mark 0xe00/0xf00 -m mark ! --mark 0x800/0xf00 -m comment --comment "cilium: any->pod redirect proxied traffic to host proxy" -j MARK --set-xmark 0x200/0xffffffff
+-A CILIUM_PRE_mangle -p tcp -m mark --mark 0x1da50200 -m comment --comment "cilium: TPROXY to host cilium-dns-egress proxy" -j TPROXY --on-port 42269 --on-ip 127.0.0.1 --tproxy-mark 0x200/0xffffffff
+-A CILIUM_PRE_mangle -p udp -m mark --mark 0x1da50200 -m comment --comment "cilium: TPROXY to host cilium-dns-egress proxy" -j TPROXY --on-port 42269 --on-ip 127.0.0.1 --tproxy-mark 0x200/0xffffffff
+COMMIT
