@@ -3,6 +3,7 @@ package k8s
 import (
 	"net/http"
 	"reflect"
+	"strconv"
 	"testing"
 	"time"
 
@@ -68,7 +69,7 @@ func TestPlanNamespaceRule(t *testing.T) {
 		{ID: id("other-rule-gone"), Service: "other-gone", Protocol: "tcp", Port: 80, VIP: "100.66.0.11", RuleID: otherRule, MissingSince: &longAgo},
 	}
 
-	plan := planNamespaceRule(rule, reported, exposed, now, NamespaceRuleWithdrawWait)
+	plan := planNamespaceRule(namespaceRuleSpec{ID: rule}, reported, exposed, now, NamespaceRuleWithdrawWait)
 
 	wantExpose := []plannedExposure{
 		{Service: "new", UID: "uid-new", Ports: []inventoryExposurePort{tcp(7000)}},
@@ -92,11 +93,11 @@ func TestPlanNamespaceRuleSettledNamespaceIsEmpty(t *testing.T) {
 	rule := uuid.New()
 	reported := []reportedService{{Service: "web", UID: "u", Ports: []inventoryExposurePort{tcp(80)}}}
 	exposed := []exposedPort{{ID: uuid.New(), Service: "web", Protocol: "tcp", Port: 80, VIP: "100.66.0.3", RuleID: rule}}
-	if plan := planNamespaceRule(rule, reported, exposed, time.Now(), NamespaceRuleWithdrawWait); !plan.empty() {
+	if plan := planNamespaceRule(namespaceRuleSpec{ID: rule}, reported, exposed, time.Now(), NamespaceRuleWithdrawWait); !plan.empty() {
 		t.Fatalf("a settled namespace must plan nothing: %+v", plan)
 	}
 	// An empty namespace exposes nothing and, with no rows of its own, withdraws nothing.
-	if plan := planNamespaceRule(rule, nil, nil, time.Now(), NamespaceRuleWithdrawWait); !plan.empty() {
+	if plan := planNamespaceRule(namespaceRuleSpec{ID: rule}, nil, nil, time.Now(), NamespaceRuleWithdrawWait); !plan.empty() {
 		t.Fatalf("empty namespace planned %+v", plan)
 	}
 }
@@ -114,7 +115,7 @@ func TestPlanNamespaceRuleNeverExposesTheAPIServer(t *testing.T) {
 	}
 
 	// Nothing exposed yet: only the ordinary Service is planned.
-	plan := planNamespaceRule(rule, reported, nil, now, NamespaceRuleWithdrawWait)
+	plan := planNamespaceRule(namespaceRuleSpec{ID: rule}, reported, nil, now, NamespaceRuleWithdrawWait)
 	if len(plan.Expose) != 1 || plan.Expose[0].Service != "web" {
 		t.Fatalf("only web may be exposed, got %+v", plan.Expose)
 	}
@@ -122,17 +123,83 @@ func TestPlanNamespaceRuleNeverExposesTheAPIServer(t *testing.T) {
 	// The rule exposed the API server before the refusal existed. It is still reported, so it stays.
 	legacy := uuid.New()
 	exposed := []exposedPort{{ID: legacy, Service: "kubernetes", Protocol: "tcp", Port: 443, VIP: "100.66.0.9", RuleID: rule}}
-	plan = planNamespaceRule(rule, reported, exposed, now, NamespaceRuleWithdrawWait)
+	plan = planNamespaceRule(namespaceRuleSpec{ID: rule}, reported, exposed, now, NamespaceRuleWithdrawWait)
 	if len(plan.MarkMissing) != 0 || len(plan.Withdraw) != 0 {
 		t.Fatalf("an existing API server exposure must be left in place, got mark=%v withdraw=%v", plan.MarkMissing, plan.Withdraw)
 	}
 	// Even one already marked missing long ago is cleared, not withdrawn, while the Service is reported.
 	exposed[0].MissingSince = &longAgo
-	plan = planNamespaceRule(rule, reported, exposed, now, NamespaceRuleWithdrawWait)
+	plan = planNamespaceRule(namespaceRuleSpec{ID: rule}, reported, exposed, now, NamespaceRuleWithdrawWait)
 	if len(plan.Withdraw) != 0 || !reflect.DeepEqual(plan.ClearMissing, []uuid.UUID{legacy}) {
 		t.Fatalf("a reported API server exposure is cleared, never withdrawn: %+v", plan)
 	}
 	if !IsAPIServerService("default", "kubernetes") || IsAPIServerService("prod", "kubernetes") || IsAPIServerService("default", "kubernetes-dashboard") {
 		t.Fatal("only default/kubernetes is the API server")
+	}
+}
+
+func TestPlanNamespaceRuleExclusions(t *testing.T) {
+	rule, other := uuid.New(), uuid.New()
+	now := time.Date(2026, 11, 23, 12, 0, 0, 0, time.UTC)
+	webRule, webManual, apiRule, goneRule, otherRule := uuid.New(), uuid.New(), uuid.New(), uuid.New(), uuid.New()
+	reported := []reportedService{
+		{Service: "web", UID: "uid-web", Ports: []inventoryExposurePort{tcp(80), tcp(443), tcp(8443)}},
+		{Service: "api", UID: "uid-api", Ports: []inventoryExposurePort{tcp(8080)}},
+		{Service: "new", UID: "uid-new", Ports: []inventoryExposurePort{tcp(7000)}},
+		{Service: "skip", UID: "uid-skip", Ports: []inventoryExposurePort{tcp(1)}},
+	}
+	exposed := []exposedPort{
+		{ID: webRule, Service: "web", Protocol: "tcp", Port: 80, VIP: "100.66.0.3", RuleID: rule},
+		{ID: webManual, Service: "web", Protocol: "tcp", Port: 443, VIP: "100.66.0.3"},
+		{ID: apiRule, Service: "api", Protocol: "tcp", Port: 8080, VIP: "100.66.0.4", RuleID: rule},
+		// excluded and already gone from the report: still withdrawn at once, not after the wait.
+		{ID: goneRule, Service: "gone", Protocol: "tcp", Port: 9, VIP: "100.66.0.5", RuleID: rule},
+		// another rule's exposure of an excluded name is never this rule's to withdraw.
+		{ID: otherRule, Service: "skip", Protocol: "tcp", Port: 2, VIP: "100.66.0.6", RuleID: other},
+	}
+	spec := namespaceRuleSpec{ID: rule, Excluded: map[string]bool{"web": true, "gone": true, "skip": true, "not-deployed-yet": true}}
+	plan := planNamespaceRule(spec, reported, exposed, now, NamespaceRuleWithdrawWait)
+
+	if len(plan.Expose) != 1 || plan.Expose[0].Service != "new" {
+		t.Fatalf("only the Service that is not excluded is exposed (web:8443 and skip:1 are not): %+v", plan.Expose)
+	}
+	got := map[uuid.UUID]bool{}
+	for _, id := range plan.WithdrawExcluded {
+		got[id] = true
+	}
+	if len(got) != 2 || !got[webRule] || !got[goneRule] {
+		t.Fatalf("exactly the rule's own exposures of excluded Services are withdrawn: %v", plan.WithdrawExcluded)
+	}
+	if len(plan.Withdraw) != 0 || len(plan.MarkMissing) != 0 || len(plan.ClearMissing) != 0 {
+		t.Fatalf("an exclusion uses neither the missing mark nor the wait: %+v", plan)
+	}
+
+	// Without the exclusion the same inputs withdraw nothing at once and fill web's gap.
+	plain := planNamespaceRule(namespaceRuleSpec{ID: rule}, reported, exposed, now, NamespaceRuleWithdrawWait)
+	if len(plain.WithdrawExcluded) != 0 || len(plain.Expose) != 3 {
+		t.Fatalf("plan without exclusions = %+v", plain)
+	}
+}
+
+func TestNormalizeExcludedServices(t *testing.T) {
+	got, err := normalizeExcludedServices([]string{"web", "api", "a-1"})
+	if err != nil || len(got) != 3 || got[0] != "a-1" || got[1] != "api" || got[2] != "web" {
+		t.Fatalf("got %v err=%v", got, err)
+	}
+	if got, err := normalizeExcludedServices(nil); err != nil || got == nil || len(got) != 0 {
+		t.Fatalf("an empty list is valid and not nil: %v %v", got, err)
+	}
+	for _, bad := range [][]string{{"web", "web"}, {"*"}, {"web-*"}, {""}, {"Web"}, {"a/b"}, {"a,b"}} {
+		_, err := normalizeExcludedServices(bad)
+		assertScopeAPIError(t, err, http.StatusBadRequest, "invalid_excluded_service")
+	}
+	many := make([]string, MaxNamespaceRuleExclusions+1)
+	for i := range many {
+		many[i] = "svc-" + strconv.Itoa(i)
+	}
+	_, err = normalizeExcludedServices(many)
+	assertScopeAPIError(t, err, http.StatusBadRequest, "excluded_services_limit")
+	if _, err := normalizeExcludedServices(many[:MaxNamespaceRuleExclusions]); err != nil {
+		t.Fatalf("exactly the limit must be accepted: %v", err)
 	}
 }

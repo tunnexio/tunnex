@@ -3,7 +3,7 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 
 vi.mock("../src/lib/api", async (importOriginal) => {
   const actual = await importOriginal<typeof import("../src/lib/api")>();
-  return { ...actual, api: { ...actual.api, GET: vi.fn(), POST: vi.fn(), DELETE: vi.fn() } };
+  return { ...actual, api: { ...actual.api, GET: vi.fn(), POST: vi.fn(), PATCH: vi.fn(), DELETE: vi.fn() } };
 });
 
 import { K8sNamespaceRulesPanel } from "../src/components/K8sNamespaceRules";
@@ -12,6 +12,7 @@ import { api } from "../src/lib/api";
 const get = vi.mocked(api.GET);
 const post = vi.mocked(api.POST);
 const del = vi.mocked(api.DELETE);
+const patch = vi.mocked(api.PATCH);
 
 const CLUSTER = { id: "cluster", name: "prod", vipRange: "100.66.0.0/24" };
 const PORT = (ref: string, port: number) => ({ port_ref: ref, name: null, protocol: "tcp" as const, service_port: port });
@@ -27,7 +28,7 @@ const INVENTORY = {
   ],
 };
 const RULE = {
-  id: "rule-1", cluster_id: "cluster", namespace: "billing", status: "applied" as const, status_message: "",
+  id: "rule-1", cluster_id: "cluster", namespace: "billing", excluded_services: [] as string[], status: "applied" as const, status_message: "",
   waiting_services: 0, exposed_services: 1, exposed_ports: 1, last_reconciled_at: "2026-11-23T06:00:00Z", created_at: "2026-11-23T05:00:00Z",
 };
 
@@ -120,11 +121,70 @@ describe("namespace rules panel (K8N-4)", () => {
     await waitFor(() => expect(onChanged).toHaveBeenCalled());
   });
 
+  it("states what excluding a Service withdraws and needs a tick before saving (slice A)", async () => {
+    const shop = { ...RULE, id: "rule-shop", namespace: "shop", excluded_services: ["legacy"], exposed_services: 2, exposed_ports: 3 };
+    get.mockResolvedValue({ data: [shop] } as never);
+    patch.mockResolvedValue({ data: { ...shop, excluded_services: ["web"], exposed_services: 1, exposed_ports: 1 } } as never);
+    const onChanged = panel({
+      exposed: [
+        { namespace: "shop", name: "web", protocol: "tcp", ports: "80", namespaceRuleId: "rule-shop" },
+        { namespace: "shop", name: "web", protocol: "tcp", ports: "443", namespaceRuleId: "rule-shop" },
+        { namespace: "shop", name: "api", protocol: "tcp", ports: "8080", namespaceRuleId: "rule-shop" },
+        { namespace: "shop", name: "manual", protocol: "tcp", ports: "1", namespaceRuleId: null },
+      ],
+    });
+    expect(await screen.findByText("Excluded, never exposed by this rule: legacy")).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Exclusions for shop" }));
+    const dialog = screen.getByRole("dialog");
+    const save = () => within(dialog).getByRole("button", { name: /^Save/ });
+    expect(save()).toHaveProperty("disabled", true);
+
+    // Only Services this rule exposes are offered; a hand-made exposure is not the rule's to withdraw.
+    const select = within(dialog).getByRole("combobox", { name: "Exclude a Service this rule exposes" });
+    expect(within(select).getAllByRole("option").map((option) => option.textContent)).toEqual(["Choose a Service…", "api", "web"]);
+    fireEvent.change(select, { target: { value: "web" } });
+    const impact = within(dialog).getByLabelText("What this change will do");
+    expect(impact.textContent).toContain("2 ports of 1 Service this rule exposed are withdrawn at once, with no waiting period");
+    expect(impact.textContent).toContain("Access rules that point at them are kept but allow nothing");
+    expect(save().textContent).toBe("Save and withdraw 2 exposed ports");
+    expect(save()).toHaveProperty("disabled", true);
+
+    // Taking a name off the list is stated too. A pattern is refused while typing.
+    fireEvent.click(within(dialog).getByRole("button", { name: "Stop excluding legacy" }));
+    expect(impact.textContent).toContain("legacy: exposed again by the rule as a new exposure");
+    fireEvent.change(within(dialog).getByRole("textbox", { name: "Or name a Service" }), { target: { value: "web-*" } });
+    expect(within(dialog).getByText(/Patterns are not supported/)).toBeTruthy();
+    expect(within(dialog).getByRole("button", { name: "Add to the list" })).toHaveProperty("disabled", true);
+
+    fireEvent.click(within(dialog).getByRole("checkbox", { name: "Withdraw 2 exposed ports now" }));
+    fireEvent.click(save());
+    await waitFor(() => expect(patch).toHaveBeenCalledTimes(1));
+    expect(patch.mock.calls[0]?.[1]).toMatchObject({ params: { path: { orgId: "org", clusterId: "cluster", ruleId: "rule-shop" } }, body: { excluded_services: ["web"] } });
+    await waitFor(() => expect(onChanged).toHaveBeenCalled());
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+  });
+
+  it("keeps the exclusions dialog open with the reason when the change could not be applied (slice A)", async () => {
+    const shop = { ...RULE, id: "rule-shop", namespace: "shop" };
+    get.mockResolvedValue({ data: [shop] } as never);
+    patch.mockResolvedValue({ data: { ...shop, excluded_services: ["later"], status: "inventory_stale", status_message: "the cluster's gateway has not reported its Services recently" } } as never);
+    panel();
+    fireEvent.click(await screen.findByRole("button", { name: "Exclusions for shop" }));
+    const dialog = screen.getByRole("dialog");
+    fireEvent.change(within(dialog).getByRole("textbox", { name: "Or name a Service" }), { target: { value: "later" } });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Add to the list" }));
+    // Nothing of "later" is exposed by the rule, so nothing is withdrawn and no tick is asked for.
+    expect(within(dialog).getByLabelText("What this change will do").textContent).toContain("nothing is withdrawn");
+    fireEvent.click(within(dialog).getByRole("button", { name: "Save exclusions" }));
+    expect(await within(dialog).findByText(/The exclusions were saved but are not applied yet\. the cluster's gateway has not reported/)).toBeTruthy();
+  });
+
   it("offers no control without the manage permission", async () => {
     get.mockResolvedValue({ data: [RULE] } as never);
     panel({ canManage: false });
     expect(await screen.findByText("billing")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Expose every Service in a namespace…" })).toBeNull();
     expect(screen.queryByRole("button", { name: "Remove rule" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Exclusions for billing" })).toBeNull();
   });
 });

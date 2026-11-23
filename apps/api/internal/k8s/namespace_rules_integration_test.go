@@ -177,7 +177,7 @@ func TestNamespaceRuleExposesOnlyItsNamespaceAndGrantsNothing(t *testing.T) {
 		nsSvc{"shop", "web", []int32{80, 443}}, nsSvc{"shop", "api", []int32{8080}},
 		nsSvc{"billing", "ledger", []int32{5432}}, nsSvc{"kube-system", "kube-dns", []int32{53}})
 
-	rule, err := f.svc.CreateNamespaceRule(ctx, f.org, f.cluster, "shop", f.actor)
+	rule, err := f.svc.CreateNamespaceRule(ctx, f.org, f.cluster, NamespaceRuleInput{Namespace: "shop"}, f.actor)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -231,11 +231,11 @@ func TestNamespaceRuleRefusals(t *testing.T) {
 	f := newNSRuleFixture(t, "100.66.0.0/24")
 	ctx := context.Background()
 	for _, namespace := range []string{"kube-system", "kube-public", "kube-node-lease", "tunnex-system", "tunnex", "tunnex-gitops"} {
-		_, err := f.svc.CreateNamespaceRule(ctx, f.org, f.cluster, namespace, f.actor)
+		_, err := f.svc.CreateNamespaceRule(ctx, f.org, f.cluster, NamespaceRuleInput{Namespace: namespace}, f.actor)
 		assertScopeAPIError(t, err, http.StatusBadRequest, "namespace_not_eligible")
 	}
 	for _, namespace := range []string{"", "*", "shop,billing"} {
-		_, err := f.svc.CreateNamespaceRule(ctx, f.org, f.cluster, namespace, f.actor)
+		_, err := f.svc.CreateNamespaceRule(ctx, f.org, f.cluster, NamespaceRuleInput{Namespace: namespace}, f.actor)
 		assertScopeAPIError(t, err, http.StatusBadRequest, "invalid_namespace")
 	}
 	// The database refuses a system namespace even past the API.
@@ -245,22 +245,22 @@ func TestNamespaceRuleRefusals(t *testing.T) {
 		}
 	}
 	machine := &authctx.Principal{MachineID: uuid.New(), MachineName: "gitops", OwnerUserID: f.actor.UserID, AuthMethod: authctx.AuthMachine}
-	_, err := f.svc.CreateNamespaceRule(ctx, f.org, f.cluster, "shop", machine)
+	_, err := f.svc.CreateNamespaceRule(ctx, f.org, f.cluster, NamespaceRuleInput{Namespace: "shop"}, machine)
 	assertScopeAPIError(t, err, http.StatusForbidden, "human_actor_required")
-	_, err = f.svc.CreateNamespaceRule(ctx, f.org, f.cluster, "shop", &authctx.Principal{UserID: f.actor.UserID})
+	_, err = f.svc.CreateNamespaceRule(ctx, f.org, f.cluster, NamespaceRuleInput{Namespace: "shop"}, &authctx.Principal{UserID: f.actor.UserID})
 	assertScopeAPIError(t, err, http.StatusForbidden, "email_not_verified")
-	_, err = f.svc.CreateNamespaceRule(ctx, f.org, uuid.New(), "shop", f.actor)
+	_, err = f.svc.CreateNamespaceRule(ctx, f.org, uuid.New(), NamespaceRuleInput{Namespace: "shop"}, f.actor)
 	assertScopeAPIError(t, err, http.StatusNotFound, "cluster_not_found")
 
 	// No report yet: the rule exists, says why nothing happened, and exposed nothing.
-	rule, err := f.svc.CreateNamespaceRule(ctx, f.org, f.cluster, "shop", f.actor)
+	rule, err := f.svc.CreateNamespaceRule(ctx, f.org, f.cluster, NamespaceRuleInput{Namespace: "shop"}, f.actor)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if rule.Status != NamespaceRuleInventoryUnavailable || rule.StatusMessage == "" || len(f.live()) != 0 {
 		t.Fatalf("rule without a report = %+v live=%v", rule, f.live())
 	}
-	_, err = f.svc.CreateNamespaceRule(ctx, f.org, f.cluster, "shop", f.actor)
+	_, err = f.svc.CreateNamespaceRule(ctx, f.org, f.cluster, NamespaceRuleInput{Namespace: "shop"}, f.actor)
 	assertScopeAPIError(t, err, http.StatusConflict, "namespace_rule_exists")
 }
 
@@ -280,7 +280,7 @@ func TestNamespaceRuleWithdrawsOnlyItsOwnAfterTheWaitAndKeepsAccessRules(t *test
 	}
 	all := []nsSvc{{"shop", "web", []int32{80, 443}}, {"shop", "metrics", []int32{9100}}, {"shop", "api", []int32{8080}}}
 	f.report(0, all...)
-	rule, err := f.svc.CreateNamespaceRule(ctx, f.org, f.cluster, "shop", f.actor)
+	rule, err := f.svc.CreateNamespaceRule(ctx, f.org, f.cluster, NamespaceRuleInput{Namespace: "shop"}, f.actor)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -378,7 +378,7 @@ func TestNamespaceRuleFullRangeExposesNothingAndSaysWhy(t *testing.T) {
 	ctx := context.Background()
 	six := []nsSvc{{"shop", "a", []int32{80}}, {"shop", "b", []int32{80}}, {"shop", "c", []int32{80}}, {"shop", "d", []int32{80}}, {"shop", "e", []int32{80}}, {"shop", "f", []int32{80}}}
 	f.report(0, six...)
-	rule, err := f.svc.CreateNamespaceRule(ctx, f.org, f.cluster, "shop", f.actor)
+	rule, err := f.svc.CreateNamespaceRule(ctx, f.org, f.cluster, NamespaceRuleInput{Namespace: "shop"}, f.actor)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -404,7 +404,7 @@ func TestNamespaceRuleDoesNothingWithoutAFreshReport(t *testing.T) {
 	f := newNSRuleFixture(t, "100.66.0.0/24")
 	ctx := context.Background()
 	f.report(0, nsSvc{"shop", "web", []int32{80}})
-	if _, err := f.svc.CreateNamespaceRule(ctx, f.org, f.cluster, "shop", f.actor); err != nil {
+	if _, err := f.svc.CreateNamespaceRule(ctx, f.org, f.cluster, NamespaceRuleInput{Namespace: "shop"}, f.actor); err != nil {
 		t.Fatal(err)
 	}
 	// The newest report is ten minutes old and lists nothing. It is not current, so it proves nothing:
@@ -430,11 +430,11 @@ func TestDeleteNamespaceRuleKeepOrWithdraw(t *testing.T) {
 	f := newNSRuleFixture(t, "100.66.0.0/24")
 	ctx := context.Background()
 	f.report(0, nsSvc{"shop", "web", []int32{80}}, nsSvc{"shop", "api", []int32{8080}}, nsSvc{"billing", "ledger", []int32{5432}})
-	shop, err := f.svc.CreateNamespaceRule(ctx, f.org, f.cluster, "shop", f.actor)
+	shop, err := f.svc.CreateNamespaceRule(ctx, f.org, f.cluster, NamespaceRuleInput{Namespace: "shop"}, f.actor)
 	if err != nil {
 		t.Fatal(err)
 	}
-	billing, err := f.svc.CreateNamespaceRule(ctx, f.org, f.cluster, "billing", f.actor)
+	billing, err := f.svc.CreateNamespaceRule(ctx, f.org, f.cluster, NamespaceRuleInput{Namespace: "billing"}, f.actor)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -507,7 +507,7 @@ func TestNamespaceRuleExposureIsPendingInActiveClusterScopes(t *testing.T) {
 		t.Fatal(err)
 	}
 	f.report(0, nsSvc{"shop", "web", []int32{80, 443}}, nsSvc{"billing", "ledger", []int32{5432}})
-	rule, err := f.svc.CreateNamespaceRule(ctx, f.org, f.cluster, "shop", f.actor)
+	rule, err := f.svc.CreateNamespaceRule(ctx, f.org, f.cluster, NamespaceRuleInput{Namespace: "shop"}, f.actor)
 	if err != nil {
 		t.Fatal(err)
 	}

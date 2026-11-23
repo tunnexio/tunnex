@@ -184,7 +184,7 @@ func TestAPIServerIsRefusedAsAnOrdinaryExposureEverywhere(t *testing.T) {
 	assertScopeAPIError(t, err, http.StatusBadRequest, "k8s_api_server_not_a_service")
 
 	// 4. A namespace rule for default exposes the namespace's other Services and never the API server.
-	rule, err := f.svc.CreateNamespaceRule(ctx, f.org, f.cluster, "default", f.actor)
+	rule, err := f.svc.CreateNamespaceRule(ctx, f.org, f.cluster, NamespaceRuleInput{Namespace: "default"}, f.actor)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -215,7 +215,7 @@ func TestAnExistingAPIServerExposureSurvives(t *testing.T) {
 	// A namespace rule that owns it (as a rule made before the refusal would) keeps it through passes,
 	// however long the wait has run, because the Service is still reported.
 	f.report(0, nsSvc{"default", "kubernetes", []int32{443}})
-	rule, err := f.svc.CreateNamespaceRule(ctx, f.org, f.cluster, "default", f.actor)
+	rule, err := f.svc.CreateNamespaceRule(ctx, f.org, f.cluster, NamespaceRuleInput{Namespace: "default"}, f.actor)
 	if err != nil {
 		t.Fatal(err)
 	}

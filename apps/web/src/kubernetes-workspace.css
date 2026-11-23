@@ -115,6 +115,7 @@
 .kubernetes-namespace-rules .kubernetes-list-toolbar { justify-content:space-between; margin:0 0 8px; }
 .kubernetes-namespace-rule-list { display:flex; flex-direction:column; margin:0; padding:0; list-style:none; }
 .kubernetes-namespace-rule-list li { display:flex; align-items:flex-start; justify-content:space-between; gap:16px; padding:10px 0; border-top:1px solid var(--tnx-border); }
+.kubernetes-row-actions { display:flex; flex-shrink:0; gap:4px; }
 .kubernetes-action-impact ul { display:flex; flex-direction:column; gap:8px; margin:8px 0 12px; padding-left:18px; list-style:disc; font-size:12px; line-height:1.6; }
 .kubernetes-confirm-check,.kubernetes-choice-list label { display:block; font-size:12px; line-height:1.6; }
 .kubernetes-choice-list { display:flex; flex-direction:column; gap:12px; margin:12px 0 0; padding:0; border:0; }

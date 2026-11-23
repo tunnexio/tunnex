@@ -1977,6 +1977,7 @@ type K8sNamespaceExposureRule struct {
 	LastReconciledAt pgtype.Timestamptz `json:"last_reconciled_at"`
 	CreatedAt        time.Time          `json:"created_at"`
 	UpdatedAt        time.Time          `json:"updated_at"`
+	ExcludedServices []string           `json:"excluded_services"`
 }
 
 type K8sNamespaceRuleExposure struct {
