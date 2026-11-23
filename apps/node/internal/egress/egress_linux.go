@@ -133,6 +133,9 @@ type Manager struct {
 	// k8sAPIEndpoint (K8N-3) is the last outcome for the cluster API's mapping (default/kubernetes): nil
 	// when this gateway has none, else "ready" or the refusal reason.
 	k8sAPIEndpoint atomic.Pointer[string]
+	// k8sAPIVIPs (K8N-3) are the tunnel addresses currently forwarded to the cluster's API server. Flows
+	// to them are masqueraded on the way out: see k8sAPIMasqueradeRules.
+	k8sAPIVIPs atomic.Pointer[[]string]
 	// localIPs (WF-K5 M6) returns THIS gateway's own addresses; classify refuses a DNAT target in this set (a
 	// hostNetwork endpoint on this node would DNAT->local->INPUT, bypassing the forward grant chain).
 	// Injectable so the M6 red drives the refusal without real host interfaces.
@@ -753,6 +756,7 @@ func (m *Manager) rulesetWith(subnet string, pol *nodepolicy.Compiled) string {
 		masq = m.desktopNATRules(subnet) + fmt.Sprintf("    ip saddr %s %s masquerade\n", subnet, ifClause("oifname", tun, true))
 	}
 	masq += siteLANMasqueradeRules(pol, tun)
+	masq += m.k8sAPIMasqueradeRules(tun)
 	if subnet6 := wgSubnet6(context.Background(), m.wgIface); subnet6 != "" {
 		masq6 = fmt.Sprintf("    ip6 saddr %s %s masquerade\n", subnet6, ifClause("oifname", tun, true))
 	}
@@ -1845,4 +1849,31 @@ func siteLANMasqueradeRules(pol *nodepolicy.Compiled, tun []string) string {
 		fmt.Fprintf(&out, "    ip saddr %s %s masquerade comment \"tunnex_site_lan_masquerade\"\n", c, ifClause("oifname", tun, true))
 	}
 	return out.String()
+}
+
+// k8sAPIMasqueradeRules renders one masquerade per tunnel address that is forwarded to the cluster's
+// API server (K8N-3).
+//
+// A Service's pods answer a device directly, because every node carries a return route to the tunnel
+// range. The API server of a managed cluster is not a node: it has no such route, so its reply to a
+// device address is lost and kubectl times out (seen on GKE: the request reached the API server's
+// address, nothing came back). Leaving through the node's own address is the only return path that
+// exists, and it is what K8N-3 states: the cluster sees every Tunnex user as the gateway node.
+//
+// The match is the flow's ORIGINAL destination, so it covers exactly the forwarded API flows and no
+// Service flow; tunnel-bound traffic is excluded as everywhere else in this table.
+func (m *Manager) k8sAPIMasqueradeRules(tun []string) string {
+	vips := m.k8sAPIVIPs.Load()
+	if vips == nil {
+		return ""
+	}
+	var b strings.Builder
+	for _, vip := range *vips {
+		addr, err := netip.ParseAddr(vip)
+		if err != nil || !addr.Is4() {
+			continue
+		}
+		fmt.Fprintf(&b, "    ct original ip daddr %s %s masquerade\n", addr, ifClause("oifname", tun, true))
+	}
+	return b.String()
 }

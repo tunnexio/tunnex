@@ -164,6 +164,7 @@ func (m *Manager) ResolveK8sVIPs(ctx context.Context) {
 		m.refusedK8sVIPs.Store(&[]refusedVIP{})
 		m.k8sUnavailable.Store(false)
 		m.k8sAPIEndpoint.Store(nil)
+		m.k8sAPIVIPs.Store(nil)
 		return
 	}
 	src := m.source
@@ -178,6 +179,7 @@ func (m *Manager) ResolveK8sVIPs(ctx context.Context) {
 	var resolved []resolvedVIP
 	var refused []refusedVIP
 	var apiEndpoint *string // K8N-3: what happened to default/kubernetes, if this gateway maps it
+	var apiVIPs []string    // K8N-3: addresses forwarded to the API server; their flows are masqueraded
 	haveView, noView := 0, 0
 	for _, vm := range p.VIPMappings {
 		var targets []k8sTarget
@@ -200,6 +202,9 @@ func (m *Manager) ResolveK8sVIPs(ctx context.Context) {
 		}
 		if ok {
 			resolved = append(resolved, resolvedVIP{vip: vm.VIP, proto: normProto(vm.Protocol), svcPort: vm.PortLow, targets: out})
+			if vm.Namespace == k8sAPIServiceNamespace && vm.Service == k8sAPIServiceName {
+				apiVIPs = append(apiVIPs, vm.VIP)
+			}
 			if m.log != nil {
 				m.log.Info("k8s_vip_resolved", "vip", vm.VIP, "service", vm.Namespace+"/"+vm.Service, "ready_endpoints", len(out))
 			}
@@ -220,6 +225,8 @@ func (m *Manager) ResolveK8sVIPs(ctx context.Context) {
 	m.resolvedVIPs.Store(&resolved)
 	m.refusedK8sVIPs.Store(&refused)
 	m.k8sAPIEndpoint.Store(apiEndpoint)
+	sort.Strings(apiVIPs)
+	m.k8sAPIVIPs.Store(&apiVIPs)
 }
 
 // runIP is the real `ip` runner (a single command, discarded output — errors carry the exit status).
