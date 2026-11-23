@@ -126,14 +126,17 @@ no current report is shown as stale, not as applied.
 | Operator (`managed_by_operator`) | never touches it | owns it | marked "Managed by GitOps" (unchanged) |
 | Dashboard, by hand | never touches it | never touches it | unchanged |
 
+The rule itself has an owner too (slice C): a rule declared by a `TunnexNamespaceExposure` is edited
+only through that resource, and the operator never touches a rule made in the dashboard.
+
 A `TunnexExposedService` for a port a rule already exposed is therefore not Ready and says why. That
 is K8L-8's rule, unchanged. The rule and the operator never write the same row.
 
 ### Who may do it
 
 Creating and removing a rule needs `k8s:manage`, a verified email and a human session. It is the
-same capability as exposing Services by hand, so no new permission. The operator's machine
-credential cannot create a rule in this slice.
+same capability as exposing Services by hand, so no new permission. Since slice C the operator's
+machine credential can too, for rules it declares (see below).
 
 Every automatic exposure and withdrawal is written to the audit log as a system actor
 (`k8s-namespace-rule`) with the rule's id as the cause; creating and removing a rule is audited with
@@ -270,11 +273,103 @@ Services by accident. The change is audited with the human, with the selector be
   dashboard does not read labels. Each rule shows its selector and has "Selector…" to change it,
   with the same statement before confirming.
 
+## Slice C — `TunnexNamespaceExposure`, the rule in Git
+
+A fourth operator resource. It declares one namespace rule and the operator turns it into the same
+control-plane rule the dashboard makes. It is not a second mechanism: the operator lists no
+Services, exposes nothing itself and needs no new permission in the cluster beyond reading its own
+resource kind.
+
+```yaml
+apiVersion: tunnex.io/v1alpha1
+kind: TunnexNamespaceExposure
+metadata: { name: shop, namespace: tunnex-gitops }
+spec:
+  cluster: prod              # name of the TunnexCluster resource in the same namespace
+  namespace: shop            # the Kubernetes namespace whose Services are exposed
+  selector: { app: web }     # optional; key=value pairs, all must match
+  excludedServices: [admin]  # optional; exact Service names
+  deletionPolicy: Keep       # Keep (default) | Withdraw
+```
+
+### What the control plane allows a machine credential to do
+
+Until now only a signed-in human could create, change or remove a rule. Now the operator's machine
+credential can too, under the same `k8s:manage` it already uses to expose Services one at a time.
+It is the same capability reached from Git rather than a new one, so no new permission; founder to
+confirm. The credential must have a current human owner, as for every other operator write.
+
+- A rule made with a machine credential is marked `managed_by_operator` (column
+  `managed_by_machine`, migration `0242`; the same marker clusters, exposures and access rules have).
+- **A machine credential may change or remove only rules so marked.** Asked to touch a dashboard
+  rule, the control plane answers 409 `rule_not_managed_by_operator`.
+- **A human may not edit a marked rule** through the API or the dashboard (409 `managed_by_operator`:
+  "change its TunnexNamespaceExposure resource"). The operator would put the edit back within five
+  minutes; refusing it is the honest answer.
+- **A human may remove a marked rule.** That is the way out when the operator is gone. The dialog
+  says that the operator creates the rule again within five minutes if its resource still exists.
+- Operator changes are audited as the system actor `operator:<credential>` with the resource as
+  cause (`tunnexnamespaceexposure:<namespace>/<name>`). The exposures and withdrawals a rule then
+  makes are audited as the rule's, as before.
+
+### What the operator does (K8L-8's rules)
+
+- **Ownership.** A resource that holds a rule id confirms that rule by id. One that does not looks
+  for the cluster's rule for its namespace: none → it creates one; one marked `managed_by_operator`
+  that no other resource holds → it adopts it; one made in the dashboard → `Ready=False`,
+  `exists_outside_operator`, and the resource never changes or removes it; one another resource
+  holds → `declared_by_another_resource`.
+- **Edits.** `selector` and `excludedServices` are applied in place with one call, and have exactly
+  the effect they have in the dashboard: an added exclusion withdraws at once, a Service that stops
+  matching is withdrawn after 10 minutes. `cluster` and `namespace` are the rule's identity; the CRD
+  refuses an edit when it is applied, and if one gets through the resource is `Ready=False`,
+  `spec_change_unsupported`, naming what is live. Nothing is written.
+- **Ready is the rule's own status.** `Ready=True` only while the control plane reports the rule
+  `applied`. Anything else is `Ready=False` with the rule's status as reason
+  (`vip_range_exhausted`, `gateway_too_old`, `inventory_stale`, `withdrawal_blocked`, …) and the
+  control plane's sentence as message. The resource's status also carries the rule id and the counts
+  of Services and ports the rule exposes and Services waiting. A rule that is not applied is
+  re-read every minute, an applied one every five.
+- **Drift.** A rule removed behind the operator's back is created again from the resource, with a
+  `DriftHealed` Event. Its former exposures were kept or withdrawn by whoever removed it; kept ones
+  are ordinary dashboard exposures now and the new rule does not adopt them.
+- **Never eligible, refused three times:** by the CRD when the resource is applied (`kube-system`,
+  `kube-public`, `kube-node-lease`, `tunnex`, `tunnex-*`), by the control plane, by the database.
+
+### Deleting the resource: `deletionPolicy`
+
+Deleting a rule has two outcomes and neither is implied. The resource states which:
+
+- **`Keep` (the default).** The rule is removed; the exposures it made stay, as ordinary dashboard
+  exposures. Nothing new is exposed afterwards.
+- **`Withdraw`.** The rule and every exposure it made are removed in one step. If one cannot be
+  withdrawn nothing is changed, the resource stays (`TeardownBlocked`, with the Service's name) and
+  the operator retries.
+
+**Why `Keep` is the default.** A resource is deleted for many reasons that are not a decision to cut
+access: a Git revert, a pruning sync, a namespace clean-up, an operator uninstall, a mistake.
+Withdrawing is the one outcome that cannot be undone (access rules that pointed at the exposures
+are kept but never work again). Keeping grants nothing new and leaves an administrator able to
+unexpose each Service by hand. So the destructive outcome has to be written down. The operator
+records which one it carried out in an Event on the resource.
+
+If the rule is no longer the operator's when the resource is deleted (its credential was replaced,
+or the rule was removed and made again in the dashboard), the resource is released and the rule is
+left alone.
+
+### CRD and chart
+
+- Schema validation at admission: namespace syntax and the never-eligible list, `cluster` and
+  `namespace` immutable, at most 8 selector pairs with label-value syntax, at most 100 unique
+  excluded names, `deletionPolicy` one of two values. `selector` is a flat map on purpose: a
+  `matchExpressions` block cannot be written and silently dropped, which would turn a selective
+  rule into a whole-namespace one.
+- `deploy/helm/tunnex-operator-crds` gains the fourth CRD and moves every CRD to schema
+  generation 2, so an older chart cannot be installed over it. The operator chart's role gains the
+  new kind.
+
 ## Not in this slice
 
-- **Operator resource** (`TunnexNamespaceExposure`) so a rule can live in Git. It needs a CRD
-  version in `deploy/helm/tunnex-operator-crds`, with that chart's generation and downgrade guards,
-  and lets a machine credential create a rule. It creates this same control-plane rule.
 - **Recognising Tunnex's namespace when it was installed under another name.** The control plane is
   not told the gateway's namespace; the refusal is by name (`tunnex`, `tunnex-system`, `tunnex-*`).
 
