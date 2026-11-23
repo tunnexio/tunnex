@@ -92,20 +92,22 @@ export function K8sNamespaceRulesPanel({
             return (
               <li key={rule.id} data-status={rule.status}>
                 <div className="kubernetes-cell-stack">
-                  <span><strong>{rule.namespace}</strong> <Badge tone={status.tone}>{status.label}</Badge></span>
+                  <span><strong>{rule.namespace}</strong> <Badge tone={status.tone}>{status.label}</Badge>{rule.managed_by_operator && <> <Badge tone="neutral">Managed by GitOps</Badge></>}</span>
                   <span className="kubernetes-muted">
                     {rule.exposed_services} Service{rule.exposed_services === 1 ? "" : "s"} · {rule.exposed_ports} port{rule.exposed_ports === 1 ? "" : "s"} exposed by this rule
                     {rule.last_reconciled_at ? ` · last applied ${new Date(rule.last_reconciled_at).toLocaleString()}` : ""}
                   </span>
                   {Object.keys(rule.selector).length > 0 && <span className="kubernetes-muted">Only Services labelled <code>{selectorText(rule.selector)}</code></span>}
                   {rule.excluded_services.length > 0 && <span className="kubernetes-muted">Excluded, never exposed by this rule: {rule.excluded_services.join(", ")}</span>}
+                  {rule.managed_by_operator && <span className="kubernetes-muted">Declared by a TunnexNamespaceExposure resource. Change its selector and exclusions in that resource.</span>}
                   {status.message && <span className={status.tone === "ok" ? "kubernetes-muted" : "text-warn"} role={status.tone === "ok" ? undefined : "status"}>{status.message}</span>}
                 </div>
                 {canManage && (
                   <span className="kubernetes-row-actions">
-                    <Button size="sm" variant="ghost" aria-label={`Selector for ${rule.namespace}`} onClick={() => setSelecting(rule)}>Selector…</Button>
-                    <Button size="sm" variant="ghost" aria-label={`Exclusions for ${rule.namespace}`} onClick={() => setExcluding(rule)}>Exclusions…</Button>
-                    <Button size="sm" variant="ghost" onClick={() => setRemoving(rule)}>Remove rule</Button>
+                    {/* A rule declared in Git is edited there: the operator would undo an edit made here. */}
+                    {!rule.managed_by_operator && <Button size="sm" variant="ghost" aria-label={`Selector for ${rule.namespace}`} onClick={() => setSelecting(rule)}>Selector…</Button>}
+                    {!rule.managed_by_operator && <Button size="sm" variant="ghost" aria-label={`Exclusions for ${rule.namespace}`} onClick={() => setExcluding(rule)}>Exclusions…</Button>}
+                    <Button size="sm" variant="ghost" aria-label={`Remove rule for ${rule.namespace}`} onClick={() => setRemoving(rule)}>Remove rule</Button>
                   </span>
                 )}
               </li>
@@ -347,6 +349,11 @@ export function RemoveNamespaceRuleModal({
     >
       <div className="kubernetes-action-form">
         <p>Services added to <strong>{rule.namespace}</strong> will no longer be exposed automatically. Choose what happens to the {count} this rule created.</p>
+        {rule.managed_by_operator && (
+          <p role="note" className="text-warn">
+            This rule is declared by a TunnexNamespaceExposure resource. If that resource still exists, the GitOps operator creates the rule again within five minutes and exposes the namespace's Services again. To remove it for good, delete the resource; its deletionPolicy then decides what happens to the exposures.
+          </p>
+        )}
         <fieldset className="kubernetes-choice-list">
           <legend className="sr-only">Exposures created by this rule</legend>
           <label>

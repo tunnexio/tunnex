@@ -5,7 +5,7 @@ metadata:
   annotations:
     controller-gen.kubebuilder.io/version: v0.17.1
     helm.sh/resource-policy: keep
-    tunnex.io/schema-generation: "1"
+    tunnex.io/schema-generation: "2"
   name: tunnexexposedservices.tunnex.io
 spec:
   group: tunnex.io

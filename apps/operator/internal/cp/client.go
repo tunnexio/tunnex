@@ -384,3 +384,65 @@ func (c *Client) ListGroups(ctx context.Context) ([]Group, error) {
 	var out []Group
 	return out, c.do(ctx, http.MethodGet, c.orgPath("/groups"), "", nil, &out)
 }
+
+// ── namespace rules (K8N-4 slice C) ─────────────────────────────────────────────────────────────────────
+
+// NamespaceRule is the control plane's "expose every Service in this namespace" rule with the outcome of
+// its last pass. Status is anything but "applied" while the rule is not fully in effect, and
+// StatusMessage says why.
+type NamespaceRule struct {
+	ID               string            `json:"id"`
+	ClusterID        string            `json:"cluster_id"`
+	Namespace        string            `json:"namespace"`
+	Selector         map[string]string `json:"selector"`
+	ExcludedServices []string          `json:"excluded_services"`
+	Status           string            `json:"status"`
+	StatusMessage    string            `json:"status_message"`
+	WaitingServices  int32             `json:"waiting_services"`
+	ExposedServices  int32             `json:"exposed_services"`
+	ExposedPorts     int32             `json:"exposed_ports"`
+	// ManagedByOperator is true only for a rule created with the operator's machine credential.
+	ManagedByOperator bool `json:"managed_by_operator"`
+}
+
+// NamespaceRuleRequest is the part of a rule a TunnexNamespaceExposure declares. Namespace is sent only
+// on create; Selector and ExcludedServices are always sent whole, never nil, so an emptied list in the
+// resource empties it in the control plane.
+type NamespaceRuleRequest struct {
+	Namespace        string            `json:"namespace,omitempty"`
+	Selector         map[string]string `json:"selector"`
+	ExcludedServices []string          `json:"excluded_services"`
+}
+
+// ListNamespaceRules returns a cluster's namespace rules. found=false means the cluster itself is gone.
+func (c *Client) ListNamespaceRules(ctx context.Context, clusterID string) (rules []NamespaceRule, found bool, err error) {
+	err = c.do(ctx, http.MethodGet, c.orgPath("/k8s/clusters/"+clusterID+"/namespace-rules"), "", nil, &rules)
+	if e := AsAPIError(err); e != nil && e.Status == http.StatusNotFound {
+		return nil, false, nil
+	}
+	return rules, err == nil, err
+}
+
+// CreateNamespaceRule creates a rule; the control plane marks it managed by the operator and runs its
+// first pass. cause names the resource that declares it.
+func (c *Client) CreateNamespaceRule(ctx context.Context, clusterID string, r NamespaceRuleRequest, cause string) (NamespaceRule, error) {
+	var out NamespaceRule
+	return out, c.do(ctx, http.MethodPost, c.orgPath("/k8s/clusters/"+clusterID+"/namespace-rules"), cause, r, &out)
+}
+
+// UpdateNamespaceRule replaces a rule's selector and exclusions.
+func (c *Client) UpdateNamespaceRule(ctx context.Context, clusterID, ruleID string, r NamespaceRuleRequest, cause string) (NamespaceRule, error) {
+	var out NamespaceRule
+	r.Namespace = ""
+	return out, c.do(ctx, http.MethodPatch, c.orgPath("/k8s/clusters/"+clusterID+"/namespace-rules/"+ruleID), cause, r, &out)
+}
+
+// DeleteNamespaceRule removes a rule. withdraw=false keeps the exposures it made as ordinary exposures;
+// withdraw=true withdraws every one in the same step, or changes nothing if one is refused.
+func (c *Client) DeleteNamespaceRule(ctx context.Context, clusterID, ruleID string, withdraw bool, cause string) error {
+	exposures := "keep"
+	if withdraw {
+		exposures = "withdraw"
+	}
+	return c.do(ctx, http.MethodDelete, c.orgPath("/k8s/clusters/"+clusterID+"/namespace-rules/"+ruleID+"?exposures="+exposures), cause, nil, nil)
+}

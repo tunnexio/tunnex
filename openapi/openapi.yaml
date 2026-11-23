@@ -7018,14 +7018,15 @@ paths:
         default: { $ref: "#/components/responses/Error" }
     post:
       operationId: createK8sNamespaceRule
-      summary: Expose every Service in one namespace, now and as Services are added (K8N-4; human k8s:manage)
+      summary: Expose every Service in one namespace, now and as Services are added (K8N-4; k8s:manage)
       description: >-
         Records the opt-in for one namespace and applies it each time the cluster's gateway reports its Services.
         Exposure gives a Service an address and a name; it never grants access. 400 namespace_not_eligible for
         kube-system, kube-public, kube-node-lease and Tunnex's own namespaces; 409 namespace_rule_exists.
         excluded_services names Services of the namespace the rule must not expose. selector limits the rule
         to Services whose labels equal every key=value pair; it needs a gateway that reports labels, and a
-        rule with a selector never falls back to the whole namespace (status gateway_too_old).
+        rule with a selector never falls back to the whole namespace (status gateway_too_old). A rule created
+        with the GitOps operator's machine credential is marked managed_by_operator.
       tags: [k8s]
       requestBody:
         required: true
@@ -7044,7 +7045,7 @@ paths:
       - { name: ruleId, in: path, required: true, schema: { type: string, format: uuid } }
     patch:
       operationId: updateK8sNamespaceRule
-      summary: Change which Services a namespace rule leaves out or selects (K8N-4; human k8s:manage)
+      summary: Change which Services a namespace rule leaves out or selects (K8N-4; k8s:manage)
       description: >-
         excluded_services replaces the rule's exclusion list. The rule stops exposing an excluded Service and
         withdraws the exposures it made for one on the pass that runs with this call, without the wait that
@@ -7053,7 +7054,9 @@ paths:
         report: without one the change is stored and applied on the gateway's next report. Exposures made by
         hand or by the operator are never touched. selector replaces the label selector ({} clears it):
         Services that now match are exposed on this pass; Services that no longer match are withdrawn after
-        the same 10-minute wait as a Service that is gone.
+        the same 10-minute wait as a Service that is gone. 409 managed_by_operator when a person edits a
+        rule a TunnexNamespaceExposure resource declares; 409 rule_not_managed_by_operator when the
+        operator's credential is asked to change a rule made in Tunnex.
       tags: [k8s]
       requestBody:
         required: true
@@ -7066,11 +7069,13 @@ paths:
         default: { $ref: "#/components/responses/Error" }
     delete:
       operationId: deleteK8sNamespaceRule
-      summary: Remove a namespace rule, keeping or withdrawing the exposures it created (K8N-4; human k8s:manage)
+      summary: Remove a namespace rule, keeping or withdrawing the exposures it created (K8N-4; k8s:manage)
       description: >-
         exposures=keep leaves the rule's exposures in place as ordinary dashboard exposures. exposures=withdraw
         withdraws every one in the same step; access rules that pointed at them are kept and allow nothing. If
-        any one cannot be withdrawn nothing is changed.
+        any one cannot be withdrawn nothing is changed. A person may remove a rule the operator declares
+        (the operator creates it again while its resource exists); the operator's credential may remove only
+        rules it created (409 rule_not_managed_by_operator).
       tags: [k8s]
       parameters:
         - { name: exposures, in: query, required: true, schema: { type: string, enum: [keep, withdraw], x-enum-varnames: [K8sNamespaceRuleExposuresKeep, K8sNamespaceRuleExposuresWithdraw] } }
@@ -12497,7 +12502,7 @@ components:
         enabled: { type: boolean }
     K8sNamespaceRule:
       type: object
-      required: [id, cluster_id, namespace, excluded_services, selector, status, status_message, waiting_services, exposed_services, exposed_ports, created_at]
+      required: [id, cluster_id, namespace, excluded_services, selector, managed_by_operator, status, status_message, waiting_services, exposed_services, exposed_ports, created_at]
       additionalProperties: false
       properties:
         id: { type: string, format: uuid }
@@ -12505,6 +12510,7 @@ components:
         namespace: { type: string }
         excluded_services: { type: array, maxItems: 100, items: { type: string }, description: "Services of the namespace this rule never exposes, sorted by name." }
         selector: { $ref: "#/components/schemas/K8sNamespaceRuleSelector" }
+        managed_by_operator: { type: boolean, description: "True when a TunnexNamespaceExposure resource declares this rule (it was created with the operator's machine credential). It is edited only through that resource." }
         status:
           type: string
           enum: [pending, applied, inventory_stale, inventory_unavailable, vip_range_exhausted, scope_review_limit, withdrawal_blocked, error, gateway_too_old, labels_incomplete]

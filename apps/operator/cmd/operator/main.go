@@ -159,6 +159,11 @@ func main() {
 		os.Exit(1)
 	}
 
+	if err := (&controllers.TunnexNamespaceExposureReconciler{Client: mgr.GetClient(), Scheme: mgr.GetScheme(), CP: cpClient, Recorder: rec}).SetupWithManager(mgr); err != nil {
+		log.Error(err, "unable to set up controller", "controller", "TunnexNamespaceExposure")
+		os.Exit(1)
+	}
+
 	if err := mgr.Start(ctrl.SetupSignalHandler()); err != nil {
 		log.Error(err, "manager exited non-zero")
 		os.Exit(1)

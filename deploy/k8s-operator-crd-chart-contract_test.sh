@@ -30,23 +30,23 @@ if helm template tunnex-operator-crds "${CHART}" --kube-version 1.28.9 >"${TMP}/
 fi
 grep -Eq 'kubeVersion|Kubernetes' "${TMP}/old-kube.out"
 
-test "$(grep -c '^kind: CustomResourceDefinition$' "${TMP}/rendered.yaml")" -eq 3 || {
-  echo 'CRD chart must render exactly the three Tunnex operator CRDs' >&2
+test "$(grep -c '^kind: CustomResourceDefinition$' "${TMP}/rendered.yaml")" -eq 4 || {
+  echo 'CRD chart must render exactly the four Tunnex operator CRDs' >&2
   exit 1
 }
-test "$(grep -c 'helm.sh/resource-policy: keep' "${TMP}/rendered.yaml")" -eq 3 || {
+test "$(grep -c 'helm.sh/resource-policy: keep' "${TMP}/rendered.yaml")" -eq 4 || {
   echo 'CRD chart must retain every CRD on uninstall' >&2
   exit 1
 }
-test "$(grep -c 'tunnex.io/schema-generation: "1"' "${TMP}/rendered.yaml")" -eq 3 || {
+test "$(grep -c 'tunnex.io/schema-generation: "2"' "${TMP}/rendered.yaml")" -eq 4 || {
   echo 'CRD chart must give every CRD the same monotonic schema generation' >&2
   exit 1
 }
 
-for crd in tunnex.io_tunnexclusters.yaml tunnex.io_tunnexexposedservices.yaml tunnex.io_tunnexgrants.yaml; do
+for crd in tunnex.io_tunnexclusters.yaml tunnex.io_tunnexexposedservices.yaml tunnex.io_tunnexgrants.yaml tunnex.io_tunnexnamespaceexposures.yaml; do
   sed \
     -e '/^[[:space:]]*helm.sh\/resource-policy: keep$/d' \
-    -e '/^[[:space:]]*tunnex.io\/schema-generation: "1"$/d' \
+    -e '/^[[:space:]]*tunnex.io\/schema-generation: "2"$/d' \
     "${CHART}/templates/${crd}" >"${TMP}/${crd}"
   cmp "${ROOT}/apps/operator/config/crd/${crd}" "${TMP}/${crd}" || {
     echo "managed CRD source drift: ${crd}" >&2
@@ -148,7 +148,8 @@ helm template tunnex-operator-crds "${CHART}" \
 assert_crd_lookup_paths "${READONLY_API_REQUEST_LOG}" \
   "${CRD_LOOKUP_BASE}/tunnexclusters.tunnex.io" \
   "${CRD_LOOKUP_BASE}/tunnexexposedservices.tunnex.io" \
-  "${CRD_LOOKUP_BASE}/tunnexgrants.tunnex.io"
+  "${CRD_LOOKUP_BASE}/tunnexgrants.tunnex.io" \
+  "${CRD_LOOKUP_BASE}/tunnexnamespaceexposures.tunnex.io"
 stop_readonly_api
 
 start_readonly_api \
@@ -196,7 +197,7 @@ if helm template tunnex-operator-crds "${CHART}" \
   echo 'real CRD preflight must reject a sane newer schema generation' >&2
   exit 1
 fi
-grep -q 'schema generation 2 is newer than chart generation 1; refusing downgrade' \
+grep -q 'schema generation 3 is newer than chart generation 2; refusing downgrade' \
   "${TMP}/newer-generation.out"
 assert_crd_lookup_paths "${READONLY_API_REQUEST_LOG}" \
   "${CRD_LOOKUP_BASE}/tunnexclusters.tunnex.io"
@@ -217,7 +218,8 @@ for descriptive_case in same-release-drifted-generation legacy-owner-drifted-gen
   assert_crd_lookup_paths "${READONLY_API_REQUEST_LOG}" \
     "${CRD_LOOKUP_BASE}/tunnexclusters.tunnex.io" \
     "${CRD_LOOKUP_BASE}/tunnexexposedservices.tunnex.io" \
-    "${CRD_LOOKUP_BASE}/tunnexgrants.tunnex.io"
+    "${CRD_LOOKUP_BASE}/tunnexgrants.tunnex.io" \
+    "${CRD_LOOKUP_BASE}/tunnexnamespaceexposures.tunnex.io"
   stop_readonly_api
 done
 

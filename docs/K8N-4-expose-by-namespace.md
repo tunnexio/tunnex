@@ -384,3 +384,64 @@ left alone.
   change; manual unexpose of a rule row is refused.
 - **Substitute, not satisfied:** nothing here ran against a live cluster. Trigger for the real
   proof: the next live Kubernetes walk on `story/kubernetes-next`.
+
+## Slices A, B and C as built
+
+Branch `k8n/expose-slices`. Migrations `0240` (exclusions), `0241` (selector, Service labels beside
+the snapshot), `0242` (the operator's mark on a rule).
+
+- **A.** `excluded_services` on the rule; `PATCH …/namespace-rules/{ruleId}`; "Exclusions…" in the
+  dashboard. The planner returns the rule's own exposures of excluded Services as a separate list
+  that is withdrawn without the wait.
+- **B.** Report version 2 with bounded labels (gateway: `apps/node/internal/control`, the watcher
+  and the reporter with its fall back to version 1); `k8s_service_inventory_item_labels`; a
+  three-way selector match in the planner; `gateway_too_old` and `labels_incomplete`; the selector
+  on create and in "Selector…".
+- **C.** `TunnexNamespaceExposure` (types, CRD, controller, chart at schema generation 2, role);
+  the control plane accepts the operator's credential for rules it marks, and keeps people and the
+  operator from changing each other's rules.
+
+Decisions taken while building, for the founder to confirm:
+
+1. An exclusion withdraws at once; a selector change withdraws after the 10-minute wait.
+2. An exclusion saved while the gateway is silent is applied on the next report, not blind.
+3. Version 2 reports send the labels of every reported Service to the control plane.
+4. A selector is equality pairs only, at most 8; an exclusion list is at most 100 exact names.
+5. A Service with more than 32 labels (or 2048 bytes of them) may be undecidable; it is left as it
+   is and named, never guessed.
+6. The operator's credential may manage namespace rules under `k8s:manage`, with no new permission.
+7. A person can remove, but not edit, a rule declared in Git.
+8. `deletionPolicy` defaults to `Keep`.
+9. The CRD's selector is a flat map, not Kubernetes' `matchLabels`/`matchExpressions` shape.
+10. The CRD chart moves to schema generation 2. The CRD does not validate selector *keys* (a map's
+    keys cannot be pattern-checked without an unbounded CEL rule); the control plane refuses a bad
+    key and the resource is then `Ready=False`, `invalid_selector`.
+
+### Proof
+
+- Unit: the planner with exclusions and with a selector (match, mismatch, unknown labels, truncated
+  labels, the API server, another rule's rows); selector and exclusion validation; report version 2
+  digest (one golden value shared by gateway and control plane), bounds and the refusal of labels
+  on version 1; the gateway's sender (version 2, fall back to version 1 for 20 reports, no fall
+  back on other failures); the watcher keeping and following labels.
+- Database-backed, seeded reports: exclusion at creation and by edit, withdrawn at once and only
+  the rule's own, access rule kept, blocked withdrawal named and retried, no report means no
+  change; selector exposes only matches, relabelled Service withdrawn after the wait, selector
+  change marks and a correction inside the wait clears, an old gateway exposes nothing and says so
+  while a plain rule keeps working, a rolled-back gateway withdraws nothing, truncated labels left
+  alone; operator-made rules marked, the two owners refused on each other's rules, a person's
+  removal of an operator rule, a deleted credential; the store keeps labels only for version 2;
+  migrations down and up with data.
+- Operator, against a fake control plane: create with cause, no write when settled, Ready only
+  while `applied` with the control plane's status and sentence otherwise, a dashboard rule never
+  adopted or removed, adoption only of an unclaimed operator rule, edits applied in place, a
+  namespace edit refused, a removed rule recreated but not over a dashboard one, each
+  `deletionPolicy` with its Event, a blocked withdraw holding the finalizer, release when nothing
+  of its own is left. The CRD manifest is read and its admission rules checked for presence.
+- Dashboard: component and view tests for the three dialogs and the GitOps mark.
+- **Substitutes, not satisfied.** Nothing ran against a live cluster: no gateway sent a version 2
+  report to a control plane, no API server evaluated the CRD's CEL rules or its immutability, no
+  operator pod reconciled a real resource, and no machine token was sent over HTTP to the rule
+  endpoints (the service layer was tested with a machine principal). Trigger for the real proof:
+  the next live Kubernetes walk on `story/kubernetes-next`, which should include a gateway older
+  than version 2 beside a selector rule.

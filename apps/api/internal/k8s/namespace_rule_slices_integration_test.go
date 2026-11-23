@@ -135,8 +135,8 @@ func TestNamespaceRuleExclusionRefusalsAndNoReport(t *testing.T) {
 		t.Fatal(err)
 	}
 	web := []string{"web"}
-	machine := &authctx.Principal{MachineID: uuid.New(), MachineName: "gitops", OwnerUserID: f.actor.UserID, AuthMethod: authctx.AuthMachine}
-	_, err = f.svc.UpdateNamespaceRule(ctx, f.org, f.cluster, rule.ID, NamespaceRuleUpdate{ExcludedServices: &web}, machine)
+	agent := &authctx.Principal{UserID: f.actor.UserID, EmailVerified: true, AuthMethod: authctx.AuthAgent}
+	_, err = f.svc.UpdateNamespaceRule(ctx, f.org, f.cluster, rule.ID, NamespaceRuleUpdate{ExcludedServices: &web}, agent)
 	assertScopeAPIError(t, err, http.StatusForbidden, "human_actor_required")
 	_, err = f.svc.UpdateNamespaceRule(ctx, f.org, f.cluster, uuid.New(), NamespaceRuleUpdate{ExcludedServices: &web}, f.actor)
 	assertScopeAPIError(t, err, http.StatusNotFound, "namespace_rule_not_found")
@@ -442,5 +442,134 @@ func TestNamespaceRuleSelectorTruncatedLabelsAreLeftAloneAndNamed(t *testing.T) 
 	rule, err = f.svc.UpdateNamespaceRule(ctx, f.org, f.cluster, rule.ID, NamespaceRuleUpdate{ExcludedServices: &excluded}, f.actor)
 	if err != nil || rule.Status != NamespaceRuleOK || f.liveKeys() != "shop/web:80=rule" || rule.Selector["zone"] != "edge" {
 		t.Fatalf("after excluding them: %+v err=%v live=%q", rule, err, f.liveKeys())
+	}
+}
+
+// ── slice C: a rule declared by the operator ─────────────────────────────────────────────────────────
+
+func (f *nsRuleFixture) operator(cause string) *authctx.Principal {
+	f.t.Helper()
+	machine := uuid.New()
+	f.exec(`INSERT INTO machine_credentials(id,org_id,name,token_hash,fingerprint) VALUES($1,$2,$3,$4,$5)`, machine, f.org, "gitops-"+machine.String()[:8], machine[:], "fp-"+machine.String())
+	return &authctx.Principal{MachineID: machine, MachineName: "gitops", OwnerUserID: f.actor.UserID, AuthMethod: authctx.AuthMachine, Cause: cause}
+}
+
+// The operator's credential creates, changes and removes the rules it declares, audited as the operator
+// with the resource as cause. It never touches a rule a person made, and a person cannot edit its rule.
+func TestNamespaceRuleDeclaredByTheOperatorIsOwnedByIt(t *testing.T) {
+	f := newNSRuleFixture(t, "100.66.0.0/24")
+	ctx := context.Background()
+	const cause = "tunnexnamespaceexposure:tunnex-gitops/shop"
+	op := f.operator(cause)
+	f.report(0, nsSvc{"shop", "web", []int32{80}}, nsSvc{"shop", "admin", []int32{9000}}, nsSvc{"billing", "ledger", []int32{5432}})
+
+	// The never-eligible namespaces are refused for the operator exactly as for a person.
+	for _, namespace := range []string{"kube-system", "kube-public", "kube-node-lease", "tunnex", "tunnex-gitops"} {
+		_, err := f.svc.CreateNamespaceRule(ctx, f.org, f.cluster, NamespaceRuleInput{Namespace: namespace}, op)
+		assertScopeAPIError(t, err, http.StatusBadRequest, "namespace_not_eligible")
+	}
+	rule, err := f.svc.CreateNamespaceRule(ctx, f.org, f.cluster, NamespaceRuleInput{Namespace: "shop", ExcludedServices: []string{"admin"}}, op)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !rule.ManagedByOperator || rule.Status != NamespaceRuleOK || f.liveKeys() != "shop/web:80=rule" {
+		t.Fatalf("operator rule = %+v live=%q", rule, f.liveKeys())
+	}
+	// Exposure still grants nothing, and the exposures are the RULE's (not operator-managed rows): a
+	// TunnexExposedService for the same port would be told exists_outside_operator.
+	if n := f.count(`SELECT count(*) FROM policy_rules WHERE org_id=$1`, f.org); n != 0 {
+		t.Fatalf("an operator rule created %d access rules", n)
+	}
+	if n := f.count(`SELECT count(*) FROM k8s_services WHERE cluster_id=$1 AND managed_by_machine IS NOT NULL`, f.cluster); n != 0 {
+		t.Fatal("a rule's exposures must not be marked as the operator's own exposures")
+	}
+	if n := f.count(`SELECT count(*) FROM audit_logs WHERE org_id=$1 AND action='k8s.namespace_rule_created' AND actor_user_id IS NULL
+		AND actor_system='operator:gitops' AND metadata->>'cause'=$2 AND metadata->>'managed_by_operator'='true'`, f.org, cause); n != 1 {
+		t.Fatalf("operator rule-created audits = %d", n)
+	}
+	human, err := f.svc.CreateNamespaceRule(ctx, f.org, f.cluster, NamespaceRuleInput{Namespace: "billing"}, f.actor)
+	if err != nil || human.ManagedByOperator {
+		t.Fatalf("a dashboard rule = %+v err=%v", human, err)
+	}
+
+	// A person cannot edit the operator's rule; the operator cannot edit or remove the person's.
+	none := []string{}
+	_, err = f.svc.UpdateNamespaceRule(ctx, f.org, f.cluster, rule.ID, NamespaceRuleUpdate{ExcludedServices: &none}, f.actor)
+	assertScopeAPIError(t, err, http.StatusConflict, "managed_by_operator")
+	_, err = f.svc.UpdateNamespaceRule(ctx, f.org, f.cluster, human.ID, NamespaceRuleUpdate{ExcludedServices: &none}, op)
+	assertScopeAPIError(t, err, http.StatusConflict, "rule_not_managed_by_operator")
+	assertScopeAPIError(t, f.svc.DeleteNamespaceRule(ctx, f.org, f.cluster, human.ID, true, op), http.StatusConflict, "rule_not_managed_by_operator")
+	assertScopeAPIError(t, f.svc.DeleteNamespaceRule(ctx, f.org, f.cluster, human.ID, false, op), http.StatusConflict, "rule_not_managed_by_operator")
+	if got := f.liveKeys(); got != "billing/ledger:5432=rule shop/web:80=rule" {
+		t.Fatalf("a refused change touched exposures: %q", got)
+	}
+
+	// The operator applies an edit from Git: admin comes off the list and is exposed.
+	updated, err := f.svc.UpdateNamespaceRule(ctx, f.org, f.cluster, rule.ID, NamespaceRuleUpdate{ExcludedServices: &none}, op)
+	if err != nil || len(updated.ExcludedServices) != 0 || f.liveKeys() != "billing/ledger:5432=rule shop/admin:9000=rule shop/web:80=rule" {
+		t.Fatalf("operator edit: %+v err=%v live=%q", updated, err, f.liveKeys())
+	}
+	if n := f.count(`SELECT count(*) FROM audit_logs WHERE org_id=$1 AND action='k8s.namespace_rule_updated' AND actor_system='operator:gitops' AND metadata->>'cause'=$2`, f.org, cause); n != 1 {
+		t.Fatalf("operator rule-updated audits = %d", n)
+	}
+
+	// Removing with withdraw: every exposure of the rule goes, attributed to the operator and the resource.
+	if err := f.svc.DeleteNamespaceRule(ctx, f.org, f.cluster, rule.ID, true, op); err != nil {
+		t.Fatal(err)
+	}
+	if got := f.liveKeys(); got != "billing/ledger:5432=rule" {
+		t.Fatalf("after the operator withdrew its rule: %q", got)
+	}
+	if n := f.count(`SELECT count(*) FROM audit_logs WHERE org_id=$1 AND action='k8s.service_unexposed' AND actor_system='operator:gitops'
+		AND actor_user_id IS NULL AND metadata->>'cause'=$2 AND metadata->>'namespace_rule_removed'='true'`, f.org, cause); n != 2 {
+		t.Fatalf("operator withdrawal audits = %d, want 2", n)
+	}
+
+	// Keep: the rule goes, its exposures stay as ordinary exposures.
+	again, err := f.svc.CreateNamespaceRule(ctx, f.org, f.cluster, NamespaceRuleInput{Namespace: "shop"}, op)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := f.svc.DeleteNamespaceRule(ctx, f.org, f.cluster, again.ID, false, op); err != nil {
+		t.Fatal(err)
+	}
+	if got := f.liveKeys(); got != "billing/ledger:5432=rule shop/admin:9000=manual shop/web:80=manual" {
+		t.Fatalf("after the operator removed its rule with keep: %q", got)
+	}
+}
+
+// The way out when the operator is gone: a person may remove the operator's rule. And when the operator's
+// credential is deleted its rule stays, as a dashboard rule the operator no longer touches.
+func TestNamespaceRuleOfTheOperatorCanBeRemovedByAPersonAndOutlivesItsCredential(t *testing.T) {
+	f := newNSRuleFixture(t, "100.66.0.0/24")
+	ctx := context.Background()
+	op := f.operator("tunnexnamespaceexposure:tunnex-gitops/shop")
+	f.report(0, nsSvc{"shop", "web", []int32{80}}, nsSvc{"billing", "ledger", []int32{5432}})
+	shop, err := f.svc.CreateNamespaceRule(ctx, f.org, f.cluster, NamespaceRuleInput{Namespace: "shop"}, op)
+	if err != nil {
+		t.Fatal(err)
+	}
+	billing, err := f.svc.CreateNamespaceRule(ctx, f.org, f.cluster, NamespaceRuleInput{Namespace: "billing"}, op)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := f.svc.DeleteNamespaceRule(ctx, f.org, f.cluster, shop.ID, false, f.actor); err != nil {
+		t.Fatalf("a person must be able to remove the operator's rule: %v", err)
+	}
+	if n := f.count(`SELECT count(*) FROM audit_logs WHERE org_id=$1 AND action='k8s.namespace_rule_deleted' AND actor_user_id=$2 AND metadata->>'managed_by_operator'='true'`, f.org, f.actor.UserID); n != 1 {
+		t.Fatalf("human removal of an operator rule audits = %d", n)
+	}
+
+	f.exec(`DELETE FROM machine_credentials WHERE id=$1`, op.MachineID)
+	rule := f.rule("billing")
+	if rule.ID != billing.ID || rule.ManagedByOperator || f.liveKeys() != "billing/ledger:5432=rule shop/web:80=manual" {
+		t.Fatalf("after the credential was deleted: %+v live=%q", rule, f.liveKeys())
+	}
+	// A new operator credential does not inherit it; a person can now edit it.
+	successor := f.operator("tunnexnamespaceexposure:tunnex-gitops/billing")
+	assertScopeAPIError(t, f.svc.DeleteNamespaceRule(ctx, f.org, f.cluster, billing.ID, true, successor), http.StatusConflict, "rule_not_managed_by_operator")
+	excluded := []string{"ledger"}
+	if _, err := f.svc.UpdateNamespaceRule(ctx, f.org, f.cluster, billing.ID, NamespaceRuleUpdate{ExcludedServices: &excluded}, f.actor); err != nil {
+		t.Fatalf("a person must be able to edit a rule that is no longer the operator's: %v", err)
 	}
 }

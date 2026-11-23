@@ -1979,6 +1979,7 @@ type K8sNamespaceExposureRule struct {
 	UpdatedAt        time.Time          `json:"updated_at"`
 	ExcludedServices []string           `json:"excluded_services"`
 	Selector         []byte             `json:"selector"`
+	ManagedByMachine pgtype.UUID        `json:"managed_by_machine"`
 }
 
 type K8sNamespaceRuleExposure struct {

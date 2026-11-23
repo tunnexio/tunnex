@@ -8,7 +8,7 @@
         "annotations": {
           "meta.helm.sh/release-name": "tunnex-operator-crds",
           "meta.helm.sh/release-namespace": "tunnex-system",
-          "tunnex.io/schema-generation": "2"
+          "tunnex.io/schema-generation": "3"
         }
       },
       "spec": {}

@@ -95,9 +95,9 @@ require_role() {
     exit 1
   fi
 }
-require_role 'resources: \["tunnexclusters", "tunnexexposedservices", "tunnexgrants"\]' 'CR read resources'
+require_role 'resources: \["tunnexclusters", "tunnexexposedservices", "tunnexgrants", "tunnexnamespaceexposures"\]' 'CR read resources'
 require_role 'verbs: \["get", "list", "watch", "patch", "update"\]' 'CR read/write verbs'
-require_role 'resources: \["tunnexclusters/status", "tunnexexposedservices/status", "tunnexgrants/status"\]' 'status resources'
+require_role 'resources: \["tunnexclusters/status", "tunnexexposedservices/status", "tunnexgrants/status", "tunnexnamespaceexposures/status"\]' 'status resources'
 require_role 'verbs: \["get", "patch", "update"\]' 'status verbs'
 require_role 'resources: \["events"\]' 'Event resource'
 require_role 'verbs: \["create", "patch"\]' 'Event verbs'

@@ -72,14 +72,16 @@ type NamespaceRule struct {
 	Namespace        string
 	ExcludedServices []string
 	// Selector is the rule's label selector; empty = every Service of the namespace.
-	Selector         map[string]string
-	Status           string
-	StatusMessage    string
-	WaitingServices  int
-	ExposedServices  int
-	ExposedPorts     int
-	LastReconciledAt *time.Time
-	CreatedAt        time.Time
+	Selector map[string]string
+	// ManagedByOperator: declared by a TunnexNamespaceExposure resource (slice C). Edited only there.
+	ManagedByOperator bool
+	Status            string
+	StatusMessage     string
+	WaitingServices   int
+	ExposedServices   int
+	ExposedPorts      int
+	LastReconciledAt  *time.Time
+	CreatedAt         time.Time
 }
 
 // NamespaceEligible refuses the namespaces a rule may never name: Kubernetes' own, and Tunnex's.
@@ -368,21 +370,62 @@ func planNamespaceRule(rule namespaceRuleSpec, reported []reportedService, expos
 
 // ── create / list / delete ───────────────────────────────────────────────────────────────────────────
 
-func requireNamespaceRuleHuman(actor *authctx.Principal) (uuid.UUID, error) {
-	if actor == nil || actor.UserID == uuid.Nil || actor.IsMachine() || actor.AuthMethod == authctx.AuthAgent || actor.NodeID != uuid.Nil {
-		return uuid.Nil, apierr.Forbidden("human_actor_required", "a namespace rule is created and removed by a signed-in administrator")
+// namespaceRuleActor is who is changing a rule: a signed-in administrator, or the operator's machine
+// credential on behalf of a TunnexNamespaceExposure resource (slice C).
+type namespaceRuleActor struct {
+	UserID uuid.UUID // the human; uuid.Nil for a machine
+	System string    // audit actor_system for a machine, "" for a human
+	Cause  string    // the resource that drove a machine's change
+	// MachineID is the credential a machine-made rule is marked with; uuid.Nil for a human.
+	MachineID uuid.UUID
+}
+
+func (a namespaceRuleActor) machine() bool { return a.MachineID != uuid.Nil }
+
+// resolveNamespaceRuleActor accepts a verified human session or a machine credential with a current human
+// owner. Agents and gateways never change a rule.
+func resolveNamespaceRuleActor(actor *authctx.Principal) (namespaceRuleActor, error) {
+	if actor == nil || actor.AuthMethod == authctx.AuthAgent || actor.NodeID != uuid.Nil {
+		return namespaceRuleActor{}, apierr.Forbidden("human_actor_required", "a namespace rule is created and removed by a signed-in administrator or by the GitOps operator")
+	}
+	if actor.IsMachine() {
+		if actor.OwnerUserID == uuid.Nil {
+			return namespaceRuleActor{}, apierr.Forbidden("actor_required", "the machine credential must have a current human owner")
+		}
+		_, system, cause := actor.AuditActor()
+		if system == "" {
+			return namespaceRuleActor{}, apierr.Forbidden("actor_required", "the machine credential audit identity is invalid")
+		}
+		return namespaceRuleActor{System: system, Cause: cause, MachineID: actor.MachineID}, nil
+	}
+	if actor.UserID == uuid.Nil {
+		return namespaceRuleActor{}, apierr.Forbidden("human_actor_required", "a namespace rule is created and removed by a signed-in administrator or by the GitOps operator")
 	}
 	if !actor.EmailVerified {
-		return uuid.Nil, apierr.Forbidden("email_not_verified", "verify your email before changing which Kubernetes Services are exposed")
+		return namespaceRuleActor{}, apierr.Forbidden("email_not_verified", "verify your email before changing which Kubernetes Services are exposed")
 	}
-	return actor.UserID, nil
+	return namespaceRuleActor{UserID: actor.UserID}, nil
+}
+
+// namespaceRuleOwnership refuses a change by the wrong owner. A rule declared in Git is edited only there:
+// the operator would undo a dashboard edit within minutes. And the operator's credential never touches a
+// rule a person made. A person may still REMOVE an operator's rule (the way out when the operator is
+// gone); that is not an edit and is not checked here.
+func namespaceRuleOwnership(who namespaceRuleActor, managedByMachine bool, namespace string, edit bool) error {
+	switch {
+	case who.machine() && !managedByMachine:
+		return apierr.Conflict("rule_not_managed_by_operator", "the namespace rule for "+namespace+" was made outside the GitOps operator and can only be changed or removed in Tunnex")
+	case !who.machine() && managedByMachine && edit:
+		return apierr.Conflict("managed_by_operator", "the namespace rule for "+namespace+" is declared by a TunnexNamespaceExposure resource; change that resource instead")
+	}
+	return nil
 }
 
 // CreateNamespaceRule records the opt-in for one namespace of one cluster and runs the first pass. The
 // rule is returned with that pass's outcome; a pass that could not run (no current report) leaves the
 // rule in place, waiting for the gateway's next report.
 func (s *Service) CreateNamespaceRule(ctx context.Context, orgID, clusterID uuid.UUID, in NamespaceRuleInput, actor *authctx.Principal) (NamespaceRule, error) {
-	actorID, err := requireNamespaceRuleHuman(actor)
+	who, err := resolveNamespaceRuleActor(actor)
 	if err != nil {
 		return NamespaceRule{}, err
 	}
@@ -417,15 +460,15 @@ func (s *Service) CreateNamespaceRule(ctx context.Context, orgID, clusterID uuid
 		if count >= maxNamespaceRulesPerCluster {
 			return apierr.Conflict("namespace_rule_limit", fmt.Sprintf("a cluster can have at most %d namespace rules", maxNamespaceRulesPerCluster))
 		}
-		if e := tx.QueryRow(ctx, `INSERT INTO k8s_namespace_exposure_rules(org_id,cluster_id,namespace,created_by_user_id,excluded_services,selector) VALUES($1,$2,$3,$4,$5,$6) RETURNING id`,
-			orgID, clusterID, namespace, pgUUID(actorID, true), excluded, selector).Scan(&ruleID); e != nil {
+		if e := tx.QueryRow(ctx, `INSERT INTO k8s_namespace_exposure_rules(org_id,cluster_id,namespace,created_by_user_id,excluded_services,selector,managed_by_machine) VALUES($1,$2,$3,$4,$5,$6,$7) RETURNING id`,
+			orgID, clusterID, namespace, pgUUID(who.UserID, who.UserID != uuid.Nil), excluded, selector, pgUUID(who.MachineID, who.machine())).Scan(&ruleID); e != nil {
 			if pgerr.IsUnique(e) {
 				return apierr.Conflict("namespace_rule_exists", "this cluster already has a namespace rule for "+namespace)
 			}
 			return e
 		}
-		return s.audit(ctx, q, orgID, actorID, "", "", "k8s_namespace_rule", ruleID.String(), "k8s.namespace_rule_created",
-			map[string]any{"cluster_id": clusterID.String(), "namespace": namespace, "excluded_services": excluded, "selector": selectorText(selector)})
+		return s.audit(ctx, q, orgID, who.UserID, who.System, who.Cause, "k8s_namespace_rule", ruleID.String(), "k8s.namespace_rule_created",
+			map[string]any{"cluster_id": clusterID.String(), "namespace": namespace, "excluded_services": excluded, "selector": selectorText(selector), "managed_by_operator": who.machine()})
 	})
 	if err != nil {
 		return NamespaceRule{}, err
@@ -454,7 +497,7 @@ func (s *Service) namespaceRuleByID(ctx context.Context, orgID, clusterID, ruleI
 // what no longer matches is withdrawn after the same wait as a Service that is gone. The rule is
 // returned with the pass's outcome.
 func (s *Service) UpdateNamespaceRule(ctx context.Context, orgID, clusterID, ruleID uuid.UUID, update NamespaceRuleUpdate, actor *authctx.Principal) (NamespaceRule, error) {
-	actorID, err := requireNamespaceRuleHuman(actor)
+	who, err := resolveNamespaceRuleActor(actor)
 	if err != nil {
 		return NamespaceRule{}, err
 	}
@@ -474,9 +517,13 @@ func (s *Service) UpdateNamespaceRule(ctx context.Context, orgID, clusterID, rul
 		var namespace string
 		var before []string
 		var selectorBefore map[string]string
-		if e := tx.QueryRow(ctx, `SELECT namespace,excluded_services,selector FROM k8s_namespace_exposure_rules WHERE id=$1 AND org_id=$2 AND cluster_id=$3 FOR UPDATE`, ruleID, orgID, clusterID).Scan(&namespace, &before, &selectorBefore); errors.Is(e, pgx.ErrNoRows) {
+		var managed bool
+		if e := tx.QueryRow(ctx, `SELECT namespace,excluded_services,selector,managed_by_machine IS NOT NULL FROM k8s_namespace_exposure_rules WHERE id=$1 AND org_id=$2 AND cluster_id=$3 FOR UPDATE`, ruleID, orgID, clusterID).Scan(&namespace, &before, &selectorBefore, &managed); errors.Is(e, pgx.ErrNoRows) {
 			return apierr.NotFound("namespace_rule_not_found", "no such namespace rule on this cluster")
 		} else if e != nil {
+			return e
+		}
+		if e := namespaceRuleOwnership(who, managed, namespace, true); e != nil {
 			return e
 		}
 		meta := map[string]any{"cluster_id": clusterID.String(), "namespace": namespace}
@@ -502,7 +549,7 @@ func (s *Service) UpdateNamespaceRule(ctx context.Context, orgID, clusterID, rul
 		if _, e := tx.Exec(ctx, `UPDATE k8s_namespace_exposure_rules SET excluded_services=$3,selector=$4 WHERE id=$1 AND org_id=$2`, ruleID, orgID, excluded, selector); e != nil {
 			return e
 		}
-		return s.audit(ctx, q, orgID, actorID, "", "", "k8s_namespace_rule", ruleID.String(), "k8s.namespace_rule_updated", meta)
+		return s.audit(ctx, q, orgID, who.UserID, who.System, who.Cause, "k8s_namespace_rule", ruleID.String(), "k8s.namespace_rule_updated", meta)
 	})
 	if err != nil {
 		return NamespaceRule{}, err
@@ -544,7 +591,7 @@ func (s *Service) ListNamespaceRules(ctx context.Context, orgID, clusterID uuid.
 		return nil, err
 	}
 	rows, err := s.pool.Query(ctx, `
-		SELECT r.id,r.org_id,r.cluster_id,r.namespace,r.excluded_services,r.selector,r.status,r.status_message,r.waiting_services,r.last_reconciled_at,r.created_at,
+		SELECT r.id,r.org_id,r.cluster_id,r.namespace,r.excluded_services,r.selector,r.managed_by_machine IS NOT NULL,r.status,r.status_message,r.waiting_services,r.last_reconciled_at,r.created_at,
 		       (SELECT count(DISTINCT s.name) FROM k8s_namespace_rule_exposures e JOIN k8s_services s ON s.id=e.service_id WHERE e.rule_id=r.id AND s.deleted_at IS NULL),
 		       (SELECT count(*) FROM k8s_namespace_rule_exposures e JOIN k8s_services s ON s.id=e.service_id WHERE e.rule_id=r.id AND s.deleted_at IS NULL)
 		FROM k8s_namespace_exposure_rules r
@@ -557,7 +604,7 @@ func (s *Service) ListNamespaceRules(ctx context.Context, orgID, clusterID uuid.
 	out := make([]NamespaceRule, 0)
 	for rows.Next() {
 		var rule NamespaceRule
-		if err := rows.Scan(&rule.ID, &rule.OrgID, &rule.ClusterID, &rule.Namespace, &rule.ExcludedServices, &rule.Selector, &rule.Status, &rule.StatusMessage, &rule.WaitingServices,
+		if err := rows.Scan(&rule.ID, &rule.OrgID, &rule.ClusterID, &rule.Namespace, &rule.ExcludedServices, &rule.Selector, &rule.ManagedByOperator, &rule.Status, &rule.StatusMessage, &rule.WaitingServices,
 			&rule.LastReconciledAt, &rule.CreatedAt, &rule.ExposedServices, &rule.ExposedPorts); err != nil {
 			return nil, err
 		}
@@ -601,15 +648,19 @@ func namespaceRuleInventoryStatus(err error) (status, message string, ok bool) {
 // exposures; withdraw=true withdraws every one in the same transaction, or changes nothing if any one
 // is refused.
 func (s *Service) DeleteNamespaceRule(ctx context.Context, orgID, clusterID, ruleID uuid.UUID, withdraw bool, actor *authctx.Principal) error {
-	actorID, err := requireNamespaceRuleHuman(actor)
+	who, err := resolveNamespaceRuleActor(actor)
 	if err != nil {
 		return err
 	}
 	err = s.withTxRaw(ctx, func(q *sqlc.Queries, tx pgx.Tx) error {
 		var namespace string
-		if e := tx.QueryRow(ctx, `SELECT namespace FROM k8s_namespace_exposure_rules WHERE id=$1 AND org_id=$2 AND cluster_id=$3 FOR UPDATE`, ruleID, orgID, clusterID).Scan(&namespace); errors.Is(e, pgx.ErrNoRows) {
+		var managed bool
+		if e := tx.QueryRow(ctx, `SELECT namespace,managed_by_machine IS NOT NULL FROM k8s_namespace_exposure_rules WHERE id=$1 AND org_id=$2 AND cluster_id=$3 FOR UPDATE`, ruleID, orgID, clusterID).Scan(&namespace, &managed); errors.Is(e, pgx.ErrNoRows) {
 			return apierr.NotFound("namespace_rule_not_found", "no such namespace rule on this cluster")
 		} else if e != nil {
+			return e
+		}
+		if e := namespaceRuleOwnership(who, managed, namespace, false); e != nil {
 			return e
 		}
 		ids, e := namespaceRuleExposureIDs(ctx, tx, orgID, ruleID)
@@ -622,7 +673,7 @@ func (s *Service) DeleteNamespaceRule(ctx context.Context, orgID, clusterID, rul
 				if e != nil {
 					return e
 				}
-				if e := s.unexposeServiceTx(ctx, q, tx, svc, actorID, "", "", map[string]any{"namespace_rule_id": ruleID.String(), "namespace_rule_removed": true}); e != nil {
+				if e := s.unexposeServiceTx(ctx, q, tx, svc, who.UserID, who.System, who.Cause, map[string]any{"namespace_rule_id": ruleID.String(), "namespace_rule_removed": true}); e != nil {
 					var apiError *apierr.Error
 					if errors.As(e, &apiError) {
 						return apierr.Conflict(apiError.Code, svc.Namespace+"/"+svc.Name+" cannot be withdrawn: "+apiError.Message+". Nothing was changed.")
@@ -639,8 +690,8 @@ func (s *Service) DeleteNamespaceRule(ctx context.Context, orgID, clusterID, rul
 		if withdraw {
 			exposures = "withdrawn"
 		}
-		return s.audit(ctx, q, orgID, actorID, "", "", "k8s_namespace_rule", ruleID.String(), "k8s.namespace_rule_deleted",
-			map[string]any{"cluster_id": clusterID.String(), "namespace": namespace, "exposures": exposures, "exposure_count": len(ids)})
+		return s.audit(ctx, q, orgID, who.UserID, who.System, who.Cause, "k8s_namespace_rule", ruleID.String(), "k8s.namespace_rule_deleted",
+			map[string]any{"cluster_id": clusterID.String(), "namespace": namespace, "exposures": exposures, "exposure_count": len(ids), "managed_by_operator": managed})
 	})
 	if err == nil && withdraw {
 		s.pushOrg(ctx, orgID)

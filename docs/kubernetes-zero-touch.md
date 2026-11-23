@@ -321,7 +321,10 @@ overridden by this flag.
 ## Optional GitOps operator
 
 The operator uses a separate monotonic CRD chart for `TunnexCluster`,
-`TunnexExposedService`, and `TunnexGrant`. It is an API client only: it receives
+`TunnexExposedService`, `TunnexGrant`, and `TunnexNamespaceExposure` (expose
+every Service of one namespace; see `docs/K8N-4-expose-by-namespace.md`).
+Upgrade the CRD chart before the operator: it is at schema generation 2 and
+an operator that knows the fourth kind needs its CRD. It is an API client only: it receives
 no data-plane privileges and its ClusterRole is limited to those CRDs, their
 status, and Events. The CRDs are retained when the operator is uninstalled.
 The optional GitOps lifecycle requires Kubernetes 1.29 or newer so the CRD's

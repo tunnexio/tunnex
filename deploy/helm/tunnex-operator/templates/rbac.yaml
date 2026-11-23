@@ -7,10 +7,10 @@ metadata:
     {{- include "tunnex-operator.labels" . | nindent 4 }}
 rules:
   - apiGroups: ["tunnex.io"]
-    resources: ["tunnexclusters", "tunnexexposedservices", "tunnexgrants"]
+    resources: ["tunnexclusters", "tunnexexposedservices", "tunnexgrants", "tunnexnamespaceexposures"]
     verbs: ["get", "list", "watch", "patch", "update"]
   - apiGroups: ["tunnex.io"]
-    resources: ["tunnexclusters/status", "tunnexexposedservices/status", "tunnexgrants/status"]
+    resources: ["tunnexclusters/status", "tunnexexposedservices/status", "tunnexgrants/status", "tunnexnamespaceexposures/status"]
     verbs: ["get", "patch", "update"]
   - apiGroups: [""]
     resources: ["events"]
