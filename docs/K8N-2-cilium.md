@@ -19,8 +19,10 @@ check reports all three captured nodes ready as `observed_cni`, including the eB
 node on which a pod's packet to the device range was seen rewritten [L]. The mangle hook is
 accepted since K8N-1 taught the check to prove it sets no reserved mark, and Cilium's chains are
 empty in eBPF mode. The "false ready" below was therefore the normal case, not a corner case.
-It is closed by the guard described in "The guard, built": a node that shows Cilium is now
-refused in every mode.** The original reading, kept for the record:
+It was first closed by the guard described in "The guard, built", which refused a node that shows
+Cilium in every mode, and is now closed by the proof itself: see "As built" at the end. A node
+that shows Cilium is ready exactly when that proof holds.** The original reading, kept for the
+record:
 
 On a Cilium node, reading the code against Cilium's rule shapes [S5][S6], the expected result was:
 
@@ -451,6 +453,10 @@ Refuted:
 
 ## The guard, built
 
+**Replaced.** This section describes the refuse-only guard as it stood before the reader existed.
+Its detection is kept unchanged; its refusal is now the decision of "As built". Kept for the
+record.
+
 `apps/node/internal/k8snetprep/cilium_guard_linux.go`, called once in `reconcileWithAuthority`
 right after the first rule check and before anything is written.
 
@@ -513,3 +519,260 @@ Of the six steps in "Wiring still to do", steps 1 and 2 are already done on this
 8. **To raise outside this item:** Cilium serves NodePort on the `wg0` address once it selects the
    device; and in iptables mode a pod's own connection to a device is masqueraded, which the walk
    accepts (see "The accepted masquerade is not idle").
+
+## As built, 2026-11-23
+
+Branch `k8n/cilium-wiring`. Checklist steps 1 to 7 above are done; step 8 is still to be raised.
+
+### Who reads what
+
+- **The manager** (`k8snetprep/cilium_reader_linux.go`, wired in `cmd/agent/k8s_host_posture.go`).
+  Each pass, after its netfilter read, on a node that shows a trace of Cilium (a `cilium_` network
+  device, a `cilium_` pinned map, or the agent's socket):
+  1. `GET /v1/healthz` on `/var/run/cilium/cilium.sock`. The runner takes no argument: not the
+     method, not the path, not the socket. No redirect is followed, the body is bounded (4 MiB).
+  2. the names under `/sys/fs/bpf/tc/globals` (a directory listing, at most 16384 names; nothing
+     inside is opened);
+  3. only when the status says `ip-masq-agent` is on:
+     `bpftool --json map dump pinned /sys/fs/bpf/tc/globals/cilium_ipmasq_v4`. The runner accepts
+     no other argument vector. Exit status and output are read together: a failed run, an
+     `{"error":...}` object or anything that is not a JSON array is a read error.
+
+  One read is bounded to 2 s. On a node with no trace of Cilium nothing is read past the device
+  list, the directory listing and one `lstat` of the socket, and nothing is published.
+- **The receipt.** The facts go into the existing `host-facts.json` as a `cilium` member beside
+  `netfilter`, under the same node, manager, boot, sequence, `observed_at` and digest:
+
+      cilium:
+        status       state read | unreadable, reason, text
+        pinned_maps  state read | unreadable, reason, total, egress_gateway [names]
+        ip_masq_map  state read | not_needed | unreadable, reason, text
+
+  `status.text` is not the whole status (11 to 14 KiB, dozens of members): it is one JSON object
+  with the `masquerading` member and, when the agent sent one, the `stale` member, byte for byte
+  compacted. `parseCiliumStatus` reads it exactly as it reads the full status. `ip_masq_map.text`
+  is what `bpftool` printed. `egress_gateway` lists the pinned names that start with
+  `cilium_egress_gw_policy_v4`. Bounds: 8 KiB for the status text, 32 KiB for the map dump (about
+  390 ranges), 8 egress-gateway names, 240 bytes per reason. What does not fit is published as
+  `unreadable` with the reason, never cut; if the whole receipt would not fit, both sections are
+  replaced by that statement. Nothing in it is a verdict, and the tunnel range is not in it.
+  **A node without Cilium publishes the receipt exactly as before**: the member is absent, so an
+  older gateway beside a newer manager is unaffected there.
+- **The gateway** (`cilium_guard_linux.go`, `cilium_facts.go`). After the rule check has passed
+  and before anything is written: detection as before (device names, chain names). If the node
+  shows Cilium, the gateway takes the `cilium` section through the same store, under the same
+  rules as the netfilter facts, and runs the unchanged parsers and `proveCiliumNoTunnelMasquerade`:
+  - masquerade off, or mode `iptables`: ready; in `iptables` mode the reason says the rule walk
+    decides, and that walk has just passed on the live rules;
+  - mode `BPF`: ready only if the tunnel range is inside the native-routing range or inside one
+    entry of the dumped map; the pinned-map listing is required (egress gateway), and the map dump
+    is required when the agent reports the ip-masq-agent on;
+  - anything else is a refusal, and nothing is written.
+
+  A ready node reports the adapter `cilium_masquerade` after `observed_cni`. A node without
+  Cilium reports no such adapter and its facts source is never asked.
+
+### What the customer reads
+
+Ready (`cilium_masquerade`):
+
+- `tunnel range is inside Cilium's native-routing range 10.244.0.0/16`
+- `tunnel range is inside Cilium ip-masq-agent range 100.96.0.0/24`
+- `Cilium masquerades with iptables rules; the NAT rule walk decides`
+- `Cilium does not masquerade IPv4 traffic`
+
+Not ready, and the customer can lift it (both fit the 240-byte bound for any range):
+
+- ip-masq-agent off: `Cilium eBPF masquerade would rewrite traffic to the tunnel range
+  100.96.0.0/24. Enable Cilium's ip-masq-agent (Helm ipMasqAgent.enabled=true) with 100.96.0.0/24
+  in nonMasqueradeCIDRs, then restart the Cilium agents`
+- ip-masq-agent on: `Cilium eBPF masquerade would rewrite traffic to the tunnel range
+  100.96.0.0/24. Add 100.96.0.0/24 to nonMasqueradeCIDRs in the ip-masq-agent ConfigMap (namespace
+  kube-system, key config); no restart is needed, allow about a minute`
+
+Not ready, something could not be read or was not understood. Each starts with `Cilium masquerade
+on this node is not verified: ` and, where it fits, ends with what made this a Cilium node, for
+example `(found network device cilium_host)`:
+
+- `no host-posture facts source is configured`
+- `host facts receipt is missing` / `... is stale or from the future` / `... is from another node`
+  / `... does not belong to the live heartbeat` / `... is damaged: its digest does not match` /
+  `host-posture heartbeat is stale`
+- `the host-posture manager published no Cilium facts` (a manager from before this change)
+- `the host-posture manager could not read the Cilium agent status: /var/run/cilium is not mounted
+  in the host-posture manager; set cilium.enabled=true on the tunnex-host-posture chart`
+- `the host-posture manager could not read the Cilium agent status: no agent socket at
+  /var/run/cilium/cilium.sock; the Cilium agent is not running or is restarting`
+- `the host-posture manager could not list Cilium's pinned maps: ...`
+- `the host-posture manager could not read the ip-masq-agent map: bpftool: bpf obj get (...): No
+  such file or directory`
+- `Cilium masquerading status is not understood` (an unknown field), `... mode is not understood`,
+  `... is stale`, `... is inconsistent`
+
+Not ready, by ruling: `Cilium egress gateway is enabled; its policies are applied before any
+masquerade exclusion and are not read`.
+
+### Chart, installer, image
+
+- **Chart** `tunnex-host-posture`: value `cilium.enabled`, default `false`. With it the manager
+  gets two more `hostPath` volumes, type `Directory`, both mounted `readOnly: true`:
+  `/var/run/cilium` and `/sys/fs/bpf` (the latter with `mountPropagation: HostToContainer`, as
+  Cilium's own agent mounts it, so a BPF filesystem mounted after the pod started is still seen).
+  Nothing else in the rendered release changes; the contract test compares the two renders line
+  by line. The gateway chart is unchanged and its contract test now refuses any Cilium path in it.
+- **Installer** (`tunnex k8s plan` / `install`): looks for the DaemonSet `cilium` in `kube-system`
+  (`kubectl get daemonset cilium --namespace kube-system --ignore-not-found=true --output name`).
+  If it is there the plan says `"cilium_host_paths": true`, names the two mounts in its
+  operations, and sets `cilium.enabled=true`. A manager whose mounts do not match what the cluster
+  needs is upgraded, not reused; the value is set to `false` only where the mounts have to be
+  taken away. The fixed-shape check of the live DaemonSet accepts exactly none or both of the
+  paths, read-only, with these host paths and types. `tunnex k8s upgrade` upgrades a gateway and
+  has never changed the shared manager; it does not set the value.
+  GKE's `anetd` is deliberately not matched: nothing is known about its paths.
+- **Image** (`deploy/docker/node.Dockerfile`): see "Found while building the image" below.
+
+### Found while building the image
+
+Alpine 3.24's `bpftool` package (7.1.5-r0, binary reports v7.8.0) cannot simply be added:
+
+- it depends on `perf`, `cpupower`, `linux-tools-gpio` and `linux-tools-iio`, and through `perf` on
+  `python3`. The image's own runtime check (`deploy/ipsec/verify_runtime.sh`) refuses `python3` as a
+  build tool, so the build fails;
+- the binary is linked against `libLLVM.so.22.1`. `llvm22-libs` is 167 MiB installed.
+
+Measured on the pinned base with today's runtime packages: 31 MB of files; with `llvm22-libs`
+203 MB; with the whole `bpftool` package 264 MB.
+
+As built, the Dockerfile takes the one binary `/usr/sbin/bpftool` from a stage of the same pinned
+Alpine release and installs the libraries it is linked against by name (`libelf`, `libcap2`,
+`zlib`, `llvm22-libs`); `bpftool version` runs in the build and fails it if a library is missing.
+That keeps every byte from Alpine's signed packages and passes the runtime check. The whole
+Dockerfile was built this way (arm64): the build passes, `bpftool version` prints v7.8.0 in the
+image, and neither `python3` nor the `bpftool` or `perf` packages are in it. The image is 433 MB
+as Docker reports it, against 182 MB for the last image built on this machine without it (an
+earlier build of another branch, so not an exact before and after); `libLLVM.so.22.1` alone is
+168 MB of it. **This cost was not known when the founder ruled
+for `bpftool`; it needs a second look.** The alternatives: build `bpftool` from its upstream
+source without LLVM (under 1 MB; a new pinned source, as the FRR observer already is; not tried
+here), or read the one map with `bpf()` calls in Go (ruled out on 2026-11-23, before this was
+known).
+
+### Tests
+
+- `k8snetprep/cilium_facts_test.go`: the section's shape and bounds; the decision on the real
+  captures (A refused with the instruction, B proved by the map entry, B then off refused, C
+  deferring to the walk); every refusal by name; both instructions within the reason bound.
+- `k8snetprep/cilium_reader_linux_test.go`: the reader builds exactly that section from the
+  captured node; publishes nothing without Cilium; states what it could not read (no socket, no
+  mount, agent down, oversized, not JSON, unlisted pins, `bpftool`'s error object, a map over the
+  bound); the real status runner against a real unix socket sends exactly `GET /v1/healthz`,
+  follows no redirect and bounds the body; the real runners refuse every other argument vector.
+- `k8snetprep/cilium_live_linux_test.go`: the whole `Reconcile` on the real captures with those
+  sections; refused without a source, without a receipt, without the section; an iptables-mode
+  range the walk refuses stays refused by the walk; a Flannel node reports no `cilium_masquerade`
+  and its facts source is never asked.
+- `k8snetprep/cilium_e2e_linux_test.go`: the real manager with both real readers and a real
+  gateway reconciler over one state directory, the captured node between them: A, then B, then the
+  range removed, the pin gone, the ip-masq-agent off, an egress-gateway pin, an unknown field;
+  and a missing, earlier, truncated, edited, oversized and foreign-node receipt, and a manager
+  that publishes no section.
+- `hostposture/host_facts_cilium_test.go`: the section under the receipt's identity, freshness
+  and digest; an edit of the section after sealing is refused for both kinds of facts.
+- `apps/cli/internal/cli/k8s_host_posture_cilium_test.go`: the installer's six cases, the plan
+  text, the shape drift refusals. `deploy/k8s-host-posture-chart-contract_test.sh`: the value off
+  and on.
+- The Flannel, kube-proxy, GKE, EKS and Calico fixtures and tests, including the Calico receipt
+  path, pass unchanged.
+
+## Live check of the wiring, 2026-11-23
+
+One-node `kind` v0.31.0, Kubernetes v1.35.0, kernel 6.8.0-117-generic (arm64), containerd 2.2.0,
+no default CNI, no kube-proxy; Cilium **1.20.5** by Helm with the values of the capture above.
+Tools in the pods: bpftool v7.8.0, nft 1.1.6, iptables-nft-save 1.8.13, ipset 7.24 (Alpine
+3.24.2). The package's test binary ran in two `hostNetwork` pods sharing
+`/var/lib/tunnex/host-posture/v1`:
+
+- **the manager's pod was the chart itself**: `helm template` of `tunnex-host-posture` with
+  `cilium.enabled=true`, with only the image and the command replaced. Privileged, root,
+  read-only root filesystem, 128Mi limit, the two Cilium paths read-only (`touch` in either:
+  `Read-only file system`). In it ran the real manager loop with the real netfilter reader and
+  the real Cilium reader with their real, closed runners. Only the Kubernetes API read and the
+  kernel mutations were replaced, so nothing on the node changed but the state directory.
+- **the gateway's pod** had the gateway container's security context (root, drop ALL, add
+  `NET_ADMIN` and `NET_BIND_SERVICE`; effective capabilities `0x1400`; seccomp filter active), the
+  state directory read-only, and no path to `/var/run/cilium` or the host's `/sys/fs/bpf`. In it
+  ran the real reconciler with the real authority guard and both real facts sources, once a
+  second, for 100.96.0.0/24 and 10.244.200.0/24.
+
+Neither Tunnex pod was restarted between the first three rows (0 restarts, same start time).
+
+| Cilium | 100.96.0.0/24 | 10.244.200.0/24 |
+| --- | --- | --- |
+| A: eBPF masquerade, ip-masq-agent off | not ready, "Enable Cilium's ip-masq-agent ..." | ready, native-routing range |
+| ip-masq-agent on, list `[100.64.99.0/24]` | not ready, "Add 100.96.0.0/24 to nonMasqueradeCIDRs ..." | ready, native-routing range |
+| B: `100.96.0.0/24` added to the ConfigMap | **ready**, `tunnel range is inside Cilium ip-masq-agent range 100.96.0.0/24` | ready |
+| the range removed from the ConfigMap | not ready, "Add ..." | ready |
+| ip-masq-agent off again, agent restarted | not ready, "Enable ..."; no `cilium_ipmasq_v4` pin | ready |
+| C: iptables masquerade | **ready**, `Cilium masquerades with iptables rules; the NAT rule walk decides` | ready, same |
+| C, manager without `cilium.enabled` | not ready, "/var/run/cilium is not mounted ... set cilium.enabled=true ..." | not ready, same |
+
+Timings, by the node's clock:
+
+- **A ConfigMap change took 49 s to be seen, both ways** (added 09:15:46.4, ready 09:16:35.6;
+  removed 09:16:48.2, not ready 09:17:36.9). Almost all of it is before Cilium changes its map
+  (the kubelet's ConfigMap sync and the agent's watch): the manager's pass that first carried the
+  new map was at 09:16:35.0 and the gateway was ready 0.6 s later. Tunnex's own share is at most
+  one manager interval (2 s) plus one gateway pass (2 s in the agent, 1 s in this check). Because
+  the manager reads the live map, the gateway turns not ready when Cilium starts to masquerade
+  again, not when the ConfigMap is edited.
+- **Every restart of the Cilium agent makes the gateway not ready for its duration**, 8 to 10 s
+  here: the socket is gone, the reason says `no agent socket ...; the Cilium agent is not running
+  or is restarting`, for every range including those inside the native-routing range. Cilium's
+  programs keep forwarding while the agent restarts; Tunnex has no fresh report to stand on and
+  does not keep the last one. See "Decisions to confirm".
+- One manager pass took 15 to 110 ms (225 to 280 ms in the pass right after an agent restart);
+  the receipt was 1.5 to 2.5 KiB; each of the two processes used about 15 MB.
+
+Not part of this check: packets (the capture above saw them; this check did not look again), the
+real images and both charts installed by `tunnex k8s install`, the real manager's Kubernetes and
+kernel work, a `wg0` on the node (the `rp_filter` read-back was pointed at a file).
+
+## Still not confirmed
+
+Nothing here speaks for them; on each the gateway stays not ready unless the proof holds:
+
+1. **GKE Dataplane V2.** Whether `anetd` shows `cilium_` devices or `CILIUM_` chains, whether it
+   serves the same socket and status, and whether its map has this name and pin. The installer
+   does not set `cilium.enabled` there (it looks for `kube-system/cilium`).
+2. **AKS, Azure CNI powered by Cilium.** Whether its DaemonSet is `kube-system/cilium` with the
+   usual host paths (then the installer mounts them), and what its agent reports.
+3. **Cilium older than 1.20.5.** Status fields, map name, key layout. An unknown field in the
+   masquerading report refuses.
+4. Tunnel routing mode, eBPF masquerade with kube-proxy still present, a multi-node cluster, a
+   big-endian host, legacy iptables: as in "Not confirmed" above, unchanged.
+5. A node whose `/var/run/cilium` does not exist yet when the manager pod starts (the volume is
+   `type: Directory`): the kubelet is expected to retry the mount until Cilium has created it;
+   not exercised.
+6. The egress gateway refusal on a real cluster with the feature on; an ip-masq-agent list longer
+   than about 390 ranges (refused as too large, by the receipt bound).
+7. Whether a real device sees the pod's address through a gateway that is ready by the map
+   entry: the capture saw it on a stand-in `wg0`, no real gateway has carried it.
+
+## Decisions to confirm
+
+1. **`bpftool` costs about 170 MB of image** because Alpine links it against LLVM; see "Found
+   while building the image". Keep it, build it from source without LLVM, or reopen the `bpf()`
+   read.
+2. **Not ready during every Cilium agent restart** (8 to 10 s here). The alternative is a short
+   grace on the last good report, as `apiFaultGrace` does for the Kubernetes API; not built,
+   because it would be the first place the gateway stands on a report it cannot refresh.
+3. **Detection by `kube-system/cilium` only.** Cilium installed in another namespace, or under
+   another name, gets no mounts from the installer; the gateway then says which chart value to
+   set. Matching the label `k8s-app=cilium` in every namespace would also match GKE's `anetd`.
+4. **`hostPath` type `Directory` for `/var/run/cilium`.** Nothing is created on the host, and a
+   manager pod waits where the directory does not exist. `DirectoryOrCreate` (what Cilium's own
+   chart uses) would never wait but creates the directory on such a node.
+5. **The ip-masq-agent list is carried as `bpftool` printed it**, bounded to 32 KiB. A list
+   longer than about 390 ranges is refused rather than carried in a denser form.
+6. **In iptables mode a pod's own connection to a device is still masqueraded** (the walk's
+   pod-source exception; checklist step 8). Unchanged by this work, and still to be ruled on.
