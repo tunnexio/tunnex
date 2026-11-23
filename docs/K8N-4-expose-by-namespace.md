@@ -83,8 +83,9 @@ Only exposures the rule itself created are ever withdrawn by it.
 - A withdrawal is refused, as today, while an approved or pending agent access request or an agent
   policy template version points at the exposure. The rule then shows `withdrawal_blocked` and tries
   again on the next report.
-- There is no label selector yet, so "stops matching" today means "no longer reported in the
-  namespace". See "Not in this slice".
+- With a label selector (slice B below) "stops matching" has a second meaning: the Service is still
+  there but its labels, or the rule's selector, changed. It is handled exactly like a Service that
+  is gone, wait included.
 
 ### Removing a rule
 
@@ -193,11 +194,84 @@ Story branch: `k8n/expose-slices`. A rule carries a list of Service names it mus
   typed) or take one back, and states before confirming how many exposed ports will be withdrawn
   and what that does to access rules. Confirming needs a tick whenever something will be withdrawn.
 
+## Slice B — label selector
+
+A rule may carry a selector: `key=value` pairs, **all** of which a Service's labels must equal.
+No selector means the whole namespace, as before. There is no set-based matching (`in`, `notin`,
+`exists`), no negation and no wildcard; at most 8 pairs.
+
+### The gateway reports labels: report version 2
+
+- Version 2 of the Service report adds, per Service, `labels` and `labels_truncated`. Its digest
+  uses a new prefix and covers both. Nothing else changes: same endpoint, same sequence, same 500
+  Service and 4 MB limits.
+- **Bounded.** At most 32 labels and 2048 bytes of keys plus values per Service, taken in key
+  order. A Service with more is reported with what fits and `labels_truncated: true`. The worst
+  case adds about 1 MB to a report, so a cluster that reports today still reports. Keys and values
+  must have Kubernetes label syntax; the control plane refuses a report that breaks any bound.
+- **The control plane accepts both versions.** A version 1 report is validated and stored exactly
+  as before; one that carries labels is refused. Labels are stored beside the snapshot
+  (`k8s_service_inventory_item_labels`, migration `0241`), one row per reported Service of a
+  version 2 report, so the snapshot tables and everything that reads them are unchanged. **A Service
+  with no row there has unknown labels**: that is what a version 1 report looks like.
+- **New gateway, old control plane.** An old control plane refuses version 2 with the same 400 it
+  gives every refused report. The gateway then sends the same Services as version 1 at once and
+  keeps to version 1 for 20 reports (10 minutes) before trying version 2 again. So upgrading the
+  gateway first does not lose the Service list. The cost is one extra request per report from a
+  gateway whose reports are refused for another reason (a standby), and up to 10 minutes of
+  "labels unknown" after a refusal that had another cause.
+- **What leaves the cluster.** Until now the report carried names, UIDs and ports. From version 2 it
+  also carries the labels of every reported Service in every namespace, because the gateway is not
+  told which namespaces have a selector rule. Labels are not returned by any API and are not shown
+  in the dashboard; they are read only to match selectors. *Rejected for this slice:* telling the
+  gateway which keys are wanted. It needs a second channel to the gateway and makes a selector
+  change wait for it. Founder to confirm that sending all Service labels is acceptable.
+
+### Matching
+
+For each reported Service of the namespace the rule decides one of three things:
+
+| Labels known | Result |
+| --- | --- |
+| every selector pair is present and equal | **matches**: exposed like any Service of a plain rule |
+| a selector key is present with another value, or absent and the labels are complete | **does not match**: never exposed; an exposure the rule made is treated as a Service that is gone (marked, withdrawn after 10 minutes, cleared if it matches again sooner) |
+| labels unknown (version 1 report), or a selector key is absent and the labels were truncated | **cannot tell**: not exposed; an exposure the rule made is left exactly as it is |
+
+"Cannot tell" never exposes and never withdraws, and it is visible:
+
+- `gateway_too_old` — the cluster's gateway reports Services without labels. The message says to
+  upgrade the gateway and that until then the rule exposes nothing new and withdraws nothing for
+  label reasons. A rule with a selector never falls back to the whole namespace.
+- `labels_incomplete` — names how many Services have more labels than the report carries and says
+  to expose them by hand or exclude them.
+
+A Service that is absent from the report is gone whatever the labels say, so the 10-minute
+withdrawal of a vanished Service still works under both statuses. Exclusions are applied first and
+do not depend on labels. `default/kubernetes` is never exposed, whatever its labels.
+
+### Changing a selector
+
+`PATCH …/namespace-rules/{ruleId}` takes `selector` (replaces it; `{}` clears it back to the whole
+namespace). Services that now match are exposed on the pass that runs with the call. Services that
+no longer match are **not** withdrawn at once: they get the same 10-minute wait as a relabelled or
+deleted Service, which is also the administrator's window to put a mistyped selector right before
+anything irreversible happens. *Rejected:* a separate immediate path for selector edits; one
+"stops matching" rule is easier to state, and unlike an exclusion a selector edit can take out many
+Services by accident. The change is audited with the human, with the selector before and after.
+
+### API and dashboard
+
+- `selector` is optional on create, returned on the rule, and accepted by `PATCH`. Two new values
+  of `status`: `gateway_too_old`, `labels_incomplete`. Same gate as the rest: `k8s:manage`,
+  verified email, human session.
+- Dashboard: the create dialog has an optional "Only Services with these labels" field
+  (`app=web, tier=frontend`) and states that Services which stop matching are withdrawn after 10
+  minutes. With a selector the dialog gives no count of what will be exposed, and says so: the
+  dashboard does not read labels. Each rule shows its selector and has "Selector…" to change it,
+  with the same statement before confirming.
+
 ## Not in this slice
 
-- **Label selector.** The gateway's report carries no labels. Adding them changes the report format
-  (version 2), the gateway image and the stored snapshot; the rule then gains an optional selector
-  and "stops matching" gains its second meaning. Next slice. Until then a rule is a whole namespace.
 - **Operator resource** (`TunnexNamespaceExposure`) so a rule can live in Git. It needs a CRD
   version in `deploy/helm/tunnex-operator-crds`, with that chart's generation and downgrade guards,
   and lets a machine credential create a rule. It creates this same control-plane rule.
