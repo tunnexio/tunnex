@@ -74,6 +74,20 @@ device, the same effect the walk already accepts for Flannel. Item 10 is of a di
    Fix: in the NAT walk accept `mangle` only for `meta mark` with a value clear of the three bits and
    refuse `xt MARK` unless its saved value is read; and either refuse a Service endpoint inside the
    tunnel range or record the assumption as a stated limit. Needs a live capture.
+   **Fixed in the walk; the Service-endpoint part is recorded, not fixed** — `fix(k8s): prove
+   marks set inside the NAT walk (K8N review 4)`. A native `mangle` statement is accepted only
+   as `meta mark set` with a value that cannot turn a reserved bit on; `ip saddr set` and every
+   other mangle statement refuse. An `xt MARK` that tunnel-bound traffic can reach is read from
+   the saved rule, paired like a set match, and must leave the three bits alone; unread, it
+   refuses. Tests: `TestObservedNATWalkReadsANativeMarkStatement`,
+   `TestObservedNATWalkReadsAMarkTargetFromItsSavedRule`,
+   `TestObservedNATWalkDoesNotReadAMarkItCannotReach`,
+   `TestNodeIsRefusedWhenANATRuleSetsAKubernetesMark` (whole reconcile),
+   `TestGatewayOnHostFactsRefusesANATMarkItCannotRead` (through the receipt). Limit: the
+   manager carries NAT chains for their set matches only, so through the receipt a `MARK` in any
+   other NAT chain is refused, never proved. No captured node has one on that path. The
+   Service-endpoint scenario is **Assumption A1** in K8N-1, "After the review", with the
+   options; it needs a ruling. Still owed: the live capture.
 
 5. **Medium, predates this branch — legacy iptables is invisible.** A node whose CNI or kube-proxy
    writes with `iptables-legacy` shows nothing in `nft`, so it is ready with no walk. The manager's

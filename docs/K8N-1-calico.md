@@ -115,6 +115,8 @@ nothing in Calico's chains.
    value and mask. Calico's is `--set-xmark 0x0/0x1b0000`. Any other target (`DSCP`, `CONNMARK`,
    ...), a native nft statement, or text that does not pair is refused. Only the iptables mangle
    hook (`ip mangle POSTROUTING`, type filter, priority -150, policy accept) is read this way.
+   *After the review:* marks set inside the NAT table are now proved too, and what is still
+   assumed is named: "After the review", "Marks set inside the NAT walk" and "Assumption A1".
 
 9. **Added after the founder's ruling: the host-posture manager reads what the gateway cannot.**
    The gateway keeps its capabilities (`NET_ADMIN`, `NET_BIND_SERVICE`, and `NET_RAW` with VPN
@@ -574,6 +576,91 @@ Not changed here, and to be decided if OpenVPN is offered on in-cluster gateways
   interface in the `oifname !=` set, not every tunnel interface. The agent renders that set
   from the same `tunnelIfaces()` in one transaction, so a table without the second interface
   is a table from before the interface existed.
+
+### Marks set inside the NAT walk (review finding 4)
+
+The walk skips kube-proxy's masquerade because of one sentence in the code: traffic bound for
+the tunnel range carries none of the marks `0x2000`, `0x4000`, `0x8000` when it meets a rule
+that tests one (`-m mark ! --mark 0x4000/0x4000 -j RETURN`). Decision 8 enforces that for `ip
+mangle POSTROUTING`. Inside the NAT table itself nothing did: an `xt MARK` target and a native
+`mangle` statement were read as doing nothing, whatever they set, and `ip saddr set` was read
+as "a mangle statement" too. A rule ahead of kube-proxy's chain that sets `0x4000` makes
+kube-proxy masquerade everything, and the node was ready.
+
+What the walk does now, for every rule traffic bound for the tunnel range can reach from `ip
+nat POSTROUTING`:
+
+- **Native `mangle` statement.** Accepted only as `meta mark set VALUE` where `VALUE` cannot
+  turn on a reserved bit that was off. `VALUE` is read in the forms nft 1.1.6 prints: a
+  number; `meta mark`; `A | B` and `A ^ B` (what either can turn on); `A & B` (only what both
+  can turn on), nested at most four deep. So `mark set mark | 0x100`, `mark set mark &
+  0xffffbfff` (which clears kube-proxy's mark) and `mark set 0x1` pass; `mark set 0x4000`,
+  `mark | 0x4000`, `mark ^ 0x4000` refuse; `ct mark`, a map, `numgen`, a shift refuse as not
+  understood. Every other mangle statement (`ip saddr set`, `ip daddr set`, `ip dscp set`,
+  `ct mark set`, `meta priority set`) refuses. This is decided for the statement whatever the
+  rule's conditions say: a statement takes effect before the conditions that follow it in the
+  same rule, so a rule can set a mark and then match on it.
+- **`xt MARK` target.** Its value is not in the nft listing. It is read from the rule's saved
+  text exactly as Decision 8 does (paired by chain, position and target; `--set-xmark
+  VALUE/MASK`; neither value nor mask may touch a reserved bit, so clearing one refuses as
+  well) and only then accepted. A `MARK` that tunnel-bound traffic cannot reach is not read:
+  kube-proxy's own `MARK` in `KUBE-POSTROUTING` sits behind its certain `RETURN`, and
+  `KUBE-MARK-MASQ` and `CNI-HOSTPORT-SETMARK` are not reachable from POSTROUTING. Every
+  captured node (k3s Flannel, Calico, Cilium A/B/C, the Alpine runtime captures) is decided as
+  before, with no new read.
+- **Where the saved text comes from.** The same read that serves the set matches
+  (`iptables-nft-save -t nat` on the direct path; the receipt in Kubernetes). **Through the
+  receipt this is a refusal more often than a proof**: the manager carries NAT chains that
+  have a `set` match and reads the NAT table only where the kernel has an ipset (Decision 9).
+  A reachable `MARK` in any other NAT chain is refused with `NAT chain X sets a mark whose
+  value was not read: ...`. Carrying those chains too would put `KUBE-POSTROUTING` and
+  `KUBE-MARK-MASQ` in every receipt and a NAT save on every node; not built, because no
+  captured node has a `MARK` on that path.
+
+### Assumption A1: no Kubernetes-marked packet is bound for the tunnel range
+
+**For the founder to rule on.** The fix above closes the NAT table. The sentence the walk
+rests on is still an assumption for everything a packet passes *before* POSTROUTING, and one
+ordinary Kubernetes object breaks it.
+
+*The assumption, as the code states it* (`observed.go`, `kubeMarks`): "Tunnex never sets
+them, and it delivers to pod addresses directly, so traffic bound for the tunnel range does
+not carry them." Enforced: nothing in `ip mangle POSTROUTING` and nothing on the walked NAT
+path sets one. Not enforced, not read: any rule in PREROUTING, OUTPUT, INPUT or FORWARD, in
+any table.
+
+*The scenario.* kube-proxy itself sets `0x4000` (`KUBE-MARK-MASQ`) in nat PREROUTING and
+OUTPUT, on Service traffic it wants masqueraded: NodePort and LoadBalancer traffic under
+`externalTrafficPolicy: Cluster`, traffic to a ClusterIP from outside the cluster range,
+hairpin traffic. It then rewrites the destination to an endpoint. Someone who may write
+EndpointSlices (or a Service without a selector) in any namespace lists **a device's address**
+as an endpoint; that is the documented way to point a Service at something outside the
+cluster and needs no access to the node. A marked packet to that Service is now bound for the
+tunnel range through `wg0` with `0x4000` set, `KUBE-POSTROUTING` does not return, and its
+`MASQUERADE` rewrites the source: the device sees the gateway node's address. The node is
+ready, and its reason says the NAT rules cannot do that.
+
+*What limits it.* It takes a connection opened towards a device through a Service; replies to
+connections a device opened are not rewritten (conntrack). The review notes that Tunnex's
+forward chain drops flows opened towards a tunnel, which would stop forwarded packets before
+POSTROUTING; packets the node itself originates do not pass FORWARD. Neither was run. The
+CNI portmap mark `0x2000` would need a pod address inside the tunnel range, which the walk
+already refuses for a masquerade rule.
+
+*The choices.*
+
+1. **State it as a limit** (what the code does today): readiness says nothing about Services
+   whose endpoints are devices; write that in the customer documentation.
+2. **Refuse it**: the gateway already reads Services and EndpointSlices; a node (or the
+   gateway) is not ready while any EndpointSlice endpoint lies inside the tunnel range, with a
+   reason naming the Service. This makes a cluster object able to take a gateway out of
+   service, cluster-wide, by one write in any namespace.
+3. **Prove more hooks**: extend the mark proof to every chain that runs before POSTROUTING.
+   kube-proxy's own chains set the mark by design, so this cannot pass on a kube-proxy node
+   without reasoning about which destinations they mark; it is the scenario again.
+
+Not attempted here, by instruction. A live capture is owed either way: a Service with a
+device endpoint, a NodePort call, and the source address the device sees.
 
 ## Not known yet
 
