@@ -7,6 +7,18 @@ import "../access-policies-inventory.css";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { blockerAdvice, parseAccessTest } from "../lib/accesstest";
+import {
+  K8S_API_ACCESS_OFF_BADGE,
+  K8S_API_ACCESS_OFF_EXPLAIN,
+  K8S_API_ACCESS_PATH,
+  K8S_API_KIND_LABEL,
+  K8S_API_PORT_LABEL,
+  K8S_API_SOURCE_REASON,
+  isK8sApiAccess,
+  k8sApiSourceAllowed,
+  k8sApiUnavailable,
+  type K8sApiTarget,
+} from "../lib/k8sapiaccess";
 import { useOrg } from "../lib/useOrg";
 import {
   api,
@@ -24,6 +36,7 @@ import {
   type FQDNResource,
   type Site,
   type K8sService,
+  type K8sCluster,
   type PolicyRule,
   type ZeroTrustMode,
   type CreatePolicyRuleRequest,
@@ -713,7 +726,8 @@ function TestAccessSection({ orgId }: { orgId: string }) {
   const [destination, setDestination] = useState(requested?.destination ?? "");
   const [protocol, setProtocol] = useState<"tcp" | "udp">(requested?.protocol ?? "tcp");
   const [port, setPort] = useState(requested?.port ? String(requested.port) : "443");
-  const [result, setResult] = useState<AgentAccessDiagnostic | null>(null);
+  // A person's device answers with one more optional field, `note` (K8N-3); the agent test never sets it.
+  const [result, setResult] = useState<(AgentAccessDiagnostic & { note?: string | null }) | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [open, setOpen] = useState(requested !== null);
@@ -868,8 +882,13 @@ function TestAccessSection({ orgId }: { orgId: string }) {
             {result.overall === "allowed" ? "Allowed by current Tunnex intent" : result.overall === "denied" ? "Blocked by current Tunnex intent" : "Inconclusive from current evidence"}
           </p>
           {result.destination !== destination.trim() && <p className="mt-1 text-xs text-slate-400">{destination.trim()} is the exposed Service at {result.destination}; that address was tested.</p>}
+          {/* K8N-3: the server's fixed sentence for an allowed connection to a cluster's Kubernetes API,
+              shown as it was sent. Tunnex decides the network path; the cluster decides the rest. */}
+          {result.note && <p className="mt-2 text-sm text-slate-200" data-testid="test-access-note">{result.note}</p>}
           {result.first_blocker && (() => {
-            const advice = blockerAdvice(result.first_blocker);
+            // The blocking check's own evidence: a few blockers are explained by one of its facts.
+            const blocker = result.checks.find(check => check.code === result.first_blocker && check.status !== "pass");
+            const advice = blockerAdvice(result.first_blocker, blocker?.facts);
             return <>
               {advice && <p className="mt-2 text-sm text-slate-200" data-testid="test-access-advice">{advice.text}{advice.action && <> <Link className="text-accent-400 underline underline-offset-4" to={advice.action.to} onClick={() => setOpen(false)}>{advice.action.label}</Link></>}</p>}
               <p className="mt-1 text-xs text-amber-300">First blocker: {result.first_blocker}</p>
@@ -1019,6 +1038,9 @@ function RulesSection({
   const [members, setMembers] = useState<Member[]>([]);
   const [sites, setSites] = useState<Site[]>([]); // S8.2c D5: site rule subjects
   const [services, setServices] = useState<K8sService[]>([]); // S10.3: k8s_service dst subjects
+  // K8N-3: every registered cluster with what was read of its API access (k8s_api dst subjects).
+  const [k8sApis, setK8sApis] = useState<K8sApiTarget[]>([]);
+  const k8sClusters = useMemo(() => k8sApis.map((target) => ({ id: target.clusterId, name: target.clusterName })), [k8sApis]);
   const [agents, setAgents] = useState<
     Array<{ device_id: string; name: string; gateway_name: string }>
   >([]);
@@ -1092,7 +1114,7 @@ function RulesSection({
     ruleSites: Site[],
     ruleLoaded: LoadState,
     ruleServices: K8sService[] = [],
-  ) => resolveRuleRow(rule, ruleGroups, ruleResources, ruleMembers, ruleSites, ruleLoaded, ruleServices, fqdnResources), [fqdnResources]);
+  ) => resolveRuleRow(rule, ruleGroups, ruleResources, ruleMembers, ruleSites, ruleLoaded, ruleServices, fqdnResources, k8sClusters), [fqdnResources, k8sClusters]);
 
   const load = useCallback(async () => {
     const scope = readScope;
@@ -1106,7 +1128,7 @@ function RulesSection({
       agentsLoaded: false,
       agents: [],
     }));
-    const [rr, gr, resr, fr, mr, mo, sr, ksr, ar, agr] = await Promise.all([
+    const [rr, gr, resr, fr, mr, mo, sr, ksr, ar, agr, kcr] = await Promise.all([
       loadOne(() =>
         api.GET("/api/v1/organizations/{orgId}/policies", {
           params: { path: { orgId } },
@@ -1164,7 +1186,23 @@ function RulesSection({
             ok: false as const,
             error: "Agent groups are disabled or unavailable for this role.",
           }),
+      loadOne(() =>
+        api.GET("/api/v1/organizations/{orgId}/k8s/clusters", {
+          params: { path: { orgId } },
+        }),
+      ), // K8N-3: k8s_api dst subjects
     ]);
+    if (!isCurrent()) return;
+    // K8N-3: one read per registered cluster says whether its Kubernetes API can be granted. A read that
+    // fails is carried as "could not be read", never as "off".
+    const clustersLoaded = kcr.ok && Array.isArray(kcr.data);
+    const clusterList = clustersLoaded
+      ? (kcr.data as K8sCluster[]).filter((cluster) => !!cluster && typeof cluster.id === "string" && typeof cluster.name === "string")
+      : [];
+    const apiTargets: K8sApiTarget[] = await Promise.all(clusterList.map(async (cluster) => {
+      const read = await loadOne(() => api.GET(K8S_API_ACCESS_PATH, { params: { path: { orgId, clusterId: cluster.id } } }));
+      return { clusterId: cluster.id, clusterName: cluster.name, access: read.ok && isK8sApiAccess(read.data) ? read.data : null };
+    }));
     if (!isCurrent()) return;
     // Summary inputs — set from the SAME results (a rules-load failure → summary shows "failed", never 0).
     setRulesResult(
@@ -1207,6 +1245,7 @@ function RulesSection({
     setMembers((mr.ok ? (mr.data as Member[]) : []) as Member[]);
     setSites((sr.ok ? (sr.data as Site[]) : []) as Site[]); // D5
     setServices((ksr.ok ? (ksr.data as K8sService[]) : []) as K8sService[]); // S10.3: k8s_service dst subjects
+    setK8sApis(apiTargets);
     const loadedAgents = ar.ok
       ? (listItems(ar.data) as Array<{
           device_id: string;
@@ -1225,6 +1264,7 @@ function RulesSection({
       membersLoaded: mr.ok,
       sitesLoaded: sr.ok,
       k8sServicesLoaded: ksr.ok,
+      k8sClustersLoaded: clustersLoaded,
       agentsLoaded: ar.ok,
       agents: loadedAgents,
       agentGroupsLoaded: agr.ok,
@@ -1238,6 +1278,8 @@ function RulesSection({
         sr.ok &&
         ksr.ok &&
         ar.ok &&
+        // K8N-3: an unread cluster list only costs a name where a rule reaches a cluster's API.
+        (clustersLoaded || !freshRules.some((rule) => rule.dst_kind === "k8s_api")) &&
         (!(canManageAgentTemplates && agentGroupsEnabled) || agr.ok)
         ? null
         : "Some groups/resources/FQDN resources/members/sites/services/agents failed to load. names may show as unavailable. Refresh.",
@@ -1279,7 +1321,9 @@ function RulesSection({
       return [row.src.label, row.dst.label, rule.src_kind, rule.dst_kind,
         rule.enabled ? "enabled active" : "disabled", expiry.state, expiry.label,
         row.managedByAgentAccess ? "JIT access" : row.managedByAgentTemplate ? "Managed by agent template" : row.managedByOperator ? "Managed by GitOps" : "Manual",
-        row.cidrOutsideRanges ? "outside ranges" : "", row.k8sServiceVanished ? "vanished" : "", fqdn?.searchText, empty]
+        row.cidrOutsideRanges ? "outside ranges" : "", row.k8sServiceVanished ? "vanished" : "", fqdn?.searchText, empty,
+        rule.dst_kind === "k8s_api" ? `Kubernetes API ${K8S_API_PORT_LABEL}` : "",
+        row.k8sApiAccessOff ? K8S_API_ACCESS_OFF_BADGE : ""]
         .filter(Boolean)
         .some((value) => String(value).toLowerCase().includes(query));
     });
@@ -1384,6 +1428,8 @@ function RulesSection({
           <RefText label={row.src.label} broken={row.src.state !== "ok"} />
           <span aria-hidden="true" className="text-ink-faint">→</span>
           <RefText label={row.dst.label} broken={row.dst.state !== "ok"} />
+          {/* K8N-3: a cluster's Kubernetes API is one port, and says so next to its name. */}
+          {r.dst_kind === "k8s_api" && <span className="text-xs font-normal text-ink-tertiary">{K8S_API_PORT_LABEL}</span>}
         </div>
       );
     },
@@ -1496,6 +1542,7 @@ function RulesSection({
       return [
         row.cidrOutsideRanges ? "outside ranges" : "",
         row.k8sServiceVanished ? "vanished" : "",
+        row.k8sApiAccessOff ? K8S_API_ACCESS_OFF_BADGE : "",
         fqdn?.searchText ?? "",
         empty ?? "",
       ]
@@ -1543,6 +1590,16 @@ function RulesSection({
               title="The Kubernetes Service this rule reaches is no longer exposed. the grant matches nothing until it is re-exposed."
             >
               Vanished
+            </span>
+          )}
+          {/* K8N-3 warn-not-refuse: API access is off for the cluster this rule names. The rule is
+              kept and allows nothing until it is turned on again. The server's own field. */}
+          {row.k8sApiAccessOff && (
+            <span
+              className="tnx-status rounded-full border border-rose-800/50 bg-rose-950/40 px-2 py-0.5 font-mono text-[12px] font-semibold text-rose-400"
+              title={K8S_API_ACCESS_OFF_EXPLAIN}
+            >
+              {K8S_API_ACCESS_OFF_BADGE}
             </span>
           )}
           {fqdn && (row.fqdnDestinationStatus === "opt_in_disabled" ? (
@@ -1606,6 +1663,11 @@ function RulesSection({
     ? services.find(service => service.id === inspectedRule?.dst_k8s_service_id) : undefined;
   const destinationFQDN = destinationKind === "fqdn_resource" && loaded.fqdnResourcesLoaded
     ? fqdnResources.find(resource => resource.id === inspectedRule?.dst_fqdn_resource_id) : undefined;
+  // K8N-3: the cluster whose Kubernetes API the inspected rule reaches, with what was read of its API access.
+  const destinationK8sApi = destinationKind === "k8s_api"
+    ? k8sApis.find(target => target.clusterId === inspectedRule?.dst_k8s_api_cluster_id) : undefined;
+  // The kind as a word. A cluster's Kubernetes API is never spelled as the wire value.
+  const destinationKindWord = destinationKind === "k8s_api" ? K8S_API_KIND_LABEL : destinationKind;
   const destinationPortScope = (destination: { protocol?: string; port_low?: number | null; port_high?: number | null } | undefined) => {
     if (!destination || !["any", "tcp", "udp"].includes(destination.protocol ?? "")) return "Not reported";
     if (destination.protocol === "any") return "Any protocol · all ports";
@@ -1667,7 +1729,7 @@ function RulesSection({
             <span aria-current="page">{inspectedRow.src.label} → {inspectedRow.dst.label}</span>
           </nav>
           <div className="ap-rule-detail-header">
-            <div><h2 id="access-rules-heading">{inspectedRow.src.label} → {inspectedRow.dst.label}</h2><p>{inspectedRule.enabled ? "Enabled rule" : "Disabled rule"} · {inspectedRule.src_kind ?? "group"} to {inspectedRule.dst_kind ?? "resource"}</p></div>
+            <div><h2 id="access-rules-heading">{inspectedRow.src.label} → {inspectedRow.dst.label}</h2><p>{inspectedRule.enabled ? "Enabled rule" : "Disabled rule"} · {inspectedRule.src_kind ?? "group"} to {destinationKindWord}</p></div>
             <AppAccessRowMenu label={`Rule actions for ${inspectedRule.id}`} actions={rowActions(inspectedRule)} />
           </div>
         </>
@@ -1725,7 +1787,7 @@ function RulesSection({
               <>
                 <dl className="ap-rule-facts tnx-resource-facts tnx-resource-facts-three">
                   <div><dt>Source</dt><dd><RefText label={inspectedRow.src.label} broken={inspectedRow.src.state !== "ok"} /><small>{inspectedRule.src_kind ?? "group"}</small></dd></div>
-                  <div><dt>Destination</dt><dd><RefText label={inspectedRow.dst.label} broken={inspectedRow.dst.state !== "ok"} /><small>{inspectedRule.dst_kind ?? "resource"}</small></dd></div>
+                  <div><dt>Destination</dt><dd><RefText label={inspectedRow.dst.label} broken={inspectedRow.dst.state !== "ok"} /><small>{destinationKind === "k8s_api" ? `${K8S_API_KIND_LABEL} · ${K8S_API_PORT_LABEL}` : destinationKindWord}</small></dd></div>
                   <div><dt>State</dt><dd>{ruleColumns[1].cell(inspectedRule)}</dd></div>
                   <div><dt>Managed by</dt><dd>{ruleColumns[2].cell(inspectedRule)}</dd></div>
                   <div><dt>Expiry</dt><dd>{inspectedRule.expires_at ? <>{grantExpiry(inspectedRule, Date.now()).label}<small>{new Date(inspectedRule.expires_at).toLocaleString()}</small></> : "No expiry"}</dd></div>
@@ -1751,9 +1813,15 @@ function RulesSection({
                     <div><dt>Hostname</dt><dd>{destinationFQDN?.fqdn || "Not reported"}{!destinationFQDN && <small>{loaded.fqdnResourcesLoaded ? "FQDN resource details unavailable." : "FQDN resource inventory unavailable."}</small>}</dd></div>
                     <div><dt>Protocol &amp; ports</dt><dd>{destinationPortScope(destinationFQDN)}</dd></div>
                   </>}
+                  {destinationKind === "k8s_api" && <>
+                    <div><dt>Name in the tunnel</dt><dd>{destinationK8sApi?.access?.fqdn || "Not reported"}{!destinationK8sApi?.access && <small>{!loaded.k8sClustersLoaded ? "Cluster inventory unavailable." : !destinationK8sApi ? "Cluster details unavailable." : "API access for this cluster could not be read."}</small>}</dd></div>
+                    <div><dt>Address</dt><dd>{destinationK8sApi?.access?.vip || (inspectedRow.k8sApiAccessOff ? "None while API access is off" : "Not reported")}</dd></div>
+                    <div><dt>Protocol &amp; ports</dt><dd>TCP · port 443</dd></div>
+                  </>}
                   <div><dt>Rule state</dt><dd>{inspectedRule.enabled ? "Enabled" : "Disabled"}{grantExpiry(inspectedRule, Date.now()).state === "expired" && " · Expired"}</dd></div>
                 </dl>
-                <p className="ap-rule-context">{!inspectedRule.enabled ? "This rule is disabled and does not grant access." : grantExpiry(inspectedRule, Date.now()).state === "expired" ? "This temporary grant has expired. It remains visible for audit history." : modeResult?.ok && modeResult.data === "off" ? "Enforcement is off. Stored rules do not restrict traffic." : !modeResult?.ok ? "Enforcement status is unavailable. Refresh before assessing this rule's effect." : "An enabled allow rule applies while enforcement is on and its expiry has not passed."}</p>
+                {destinationKind === "k8s_api" && <p className="ap-rule-context">This rule opens a network path to the cluster's Kubernetes API. Each person's own cluster credential still decides what they may do.</p>}
+                <p className="ap-rule-context">{!inspectedRule.enabled ? "This rule is disabled and does not grant access." : grantExpiry(inspectedRule, Date.now()).state === "expired" ? "This temporary grant has expired. It remains visible for audit history." : inspectedRow.k8sApiAccessOff ? K8S_API_ACCESS_OFF_EXPLAIN : modeResult?.ok && modeResult.data === "off" ? "Enforcement is off. Stored rules do not restrict traffic." : !modeResult?.ok ? "Enforcement status is unavailable. Refresh before assessing this rule's effect." : "An enabled allow rule applies while enforcement is on and its expiry has not passed."}</p>
                 <div className="ap-rule-attention"><h4>Attention</h4>{ruleColumns[3].sortValue(inspectedRule) ? ruleColumns[3].cell(inspectedRule) : <p>No additional warnings reported.</p>}</div>
               </>
             )}
@@ -1955,6 +2023,7 @@ function RulesSection({
           members={activeMembers(members)}
           sites={sites}
           services={services}
+          k8sApis={k8sApis}
           agents={visibleAgents}
           editing={editing}
           onClose={() => {
@@ -2204,6 +2273,7 @@ function RuleFormModal({
   members,
   sites,
   services,
+  k8sApis,
   agents,
   editing,
   onClose,
@@ -2216,6 +2286,7 @@ function RuleFormModal({
   members: Member[];
   sites: Site[];
   services: K8sService[];
+  k8sApis: K8sApiTarget[]; // K8N-3: clusters whose Kubernetes API can be a destination
   agents: Array<{ device_id: string; name: string; gateway_name: string }>;
   editing: PolicyRule | null;
   onClose: () => void;
@@ -2265,10 +2336,12 @@ function RuleFormModal({
   // Default to the first dst kind that HAS options (re-review #4: the src-side fix left the dst side able to
   // dead-end — a no-groups org with resources/sites opened on "group" with an empty select, un-submittable).
   const [dstKind, setDstKind] = useState<
-    "group" | "resource" | "site" | "k8s_service" | "fqdn_resource"
+    "group" | "resource" | "site" | "k8s_service" | "fqdn_resource" | "k8s_api"
   >(
     editing?.dst_kind === "k8s_service"
       ? "k8s_service"
+      : editing?.dst_kind === "k8s_api" // K8N-3: never coerced into another kind by the editor
+        ? "k8s_api"
       : editing?.dst_kind === "fqdn_resource"
         ? "fqdn_resource"
       : defaultDstKind({
@@ -2299,6 +2372,9 @@ function RuleFormModal({
   const [dstFQDNResource, setDstFQDNResource] = useState(
     initialDestinationId(editing?.dst_fqdn_resource_id),
   );
+  const [dstK8sApi, setDstK8sApi] = useState(
+    initialDestinationId(editing?.dst_k8s_api_cluster_id),
+  ); // K8N-3: the cluster whose Kubernetes API the rule reaches
   // Temporary grant: an optional expiry (datetime-local). Empty = permanent.
   // Expiry is a CREATE-only field ([2]/[3] fix): editing a rule is create-then-delete, and a
   // same-(src,dst) edit carrying an expiry collides on the unique index (or resubmits a past
@@ -2311,10 +2387,16 @@ function RuleFormModal({
   const submitting = useRef(false);
   useEffect(() => { editorAlive.current = true; return () => { editorAlive.current = false; }; }, []);
   const sourceValue = srcKind === "group" ? src : srcKind === "user" ? srcUser : srcKind === "site" ? srcSite : srcKind === "agent" ? srcAgent : srcCidr;
-  const destinationValue = dstKind === "group" ? dstGroup : dstKind === "resource" ? dstResource : dstKind === "site" ? dstSite : dstKind === "k8s_service" ? dstK8sService : dstFQDNResource;
+  const destinationValue = dstKind === "group" ? dstGroup : dstKind === "resource" ? dstResource : dstKind === "site" ? dstSite : dstKind === "k8s_service" ? dstK8sService : dstKind === "k8s_api" ? dstK8sApi : dstFQDNResource;
   const sourceLabel = sourceOptions({ groups, members, sites, agents: visibleAgents, dstKind, dstSite }).find(option => option.kind === srcKind && option.value === sourceValue)?.label ?? (srcKind === "cidr" ? srcCidr : "");
-  const destinationLabel = destinationOptions({ groups, resources, sites, services, fqdnResources, srcKind, srcSite }).find(option => option.kind === dstKind && option.value === destinationValue)?.label ?? "";
-  const reviewable = Boolean(sourceLabel && destinationLabel);
+  const destinationLabel = destinationOptions({ groups, resources, sites, services, fqdnResources, k8sApis, srcKind, srcSite }).find(option => option.kind === dstKind && option.value === destinationValue)?.label ?? "";
+  // K8N-3: a cluster's Kubernetes API is granted to a person or a group, and only while API access is on.
+  // The server refuses anything else; the form says why and never sends it.
+  const chosenK8sApi = dstKind === "k8s_api" ? k8sApis.find(target => target.clusterId === dstK8sApi) : undefined;
+  const k8sApiRefusal = dstKind !== "k8s_api" ? null
+    : !k8sApiSourceAllowed(srcKind) ? `${K8S_API_SOURCE_REASON} Choose a person or a group as the source.`
+      : chosenK8sApi ? k8sApiUnavailable(chosenK8sApi, srcKind) ?? null : null;
+  const reviewable = Boolean(sourceLabel && destinationLabel) && k8sApiRefusal === null;
 
   function bodyFor(): CreatePolicyRuleRequest {
     return ruleBody({
@@ -2330,6 +2412,7 @@ function RuleFormModal({
       dstSite,
       dstK8sService,
       dstFQDNResource,
+      dstK8sApiCluster: dstK8sApi,
       expiresAt,
       editing: !!editing,
     });
@@ -2416,6 +2499,8 @@ function RuleFormModal({
                   ? !dstResource
                   : dstKind === "k8s_service"
                     ? !dstK8sService
+                    : dstKind === "k8s_api"
+                      ? !dstK8sApi
                     : dstKind === "fqdn_resource"
                       ? !dstFQDNResource
                       : !dstSite)
@@ -2488,6 +2573,8 @@ function RuleFormModal({
                   ? dstSite
                   : dstKind === "k8s_service"
                     ? dstK8sService
+                    : dstKind === "k8s_api"
+                      ? dstK8sApi
                     : dstFQDNResource
           }
           options={destinationOptions({
@@ -2496,6 +2583,7 @@ function RuleFormModal({
             sites,
             services,
             fqdnResources,
+            k8sApis,
             srcKind,
             srcSite,
           })}
@@ -2505,6 +2593,7 @@ function RuleFormModal({
             else if (o.kind === "resource") setDstResource(o.value);
             else if (o.kind === "site") setDstSite(o.value);
             else if (o.kind === "k8s_service") setDstK8sService(o.value);
+            else if (o.kind === "k8s_api") setDstK8sApi(o.value);
             else setDstFQDNResource(o.value);
           }}
         /></div>
@@ -2527,7 +2616,7 @@ function RuleFormModal({
           // SSI-3: an unchosen destination is not a vanished one. "Unavailable" is kept for a rule whose
           // saved destination no longer exists; a new rule that has none yet asks for one.
           const dstLabel = destinationLabel || (destinationValue ? "Destination unavailable" : "Choose a destination");
-          if (!reviewable) return <div data-testid="rule-effect" className="rule-builder-preview"><span className="rule-preview-label">Access path</span><div className="rule-preview-path"><strong>{srcLabel}</strong><span aria-hidden="true">→</span><strong>{dstLabel}</strong></div><p role="status">{destinationValue || !sourceLabel ? "Scope not reported. Choose a current source and destination before reviewing this rule." : "Choose a destination to see what this rule allows."}</p></div>;
+          if (!reviewable) return <div data-testid="rule-effect" className="rule-builder-preview"><span className="rule-preview-label">Access path</span><div className="rule-preview-path"><strong>{srcLabel}</strong><span aria-hidden="true">→</span><strong>{dstLabel}</strong></div><p role="status" data-testid={k8sApiRefusal ? "k8s-api-refusal" : undefined}>{k8sApiRefusal ?? (destinationValue || !sourceLabel ? "Scope not reported. Choose a current source and destination before reviewing this rule." : "Choose a destination to see what this rule allows.")}</p></div>;
           const eff = ruleEffectSummary({
             srcKind,
             srcLabel,
@@ -2549,6 +2638,8 @@ function RuleFormModal({
               <span className="rule-preview-label">Access scope</span>
               {eff.text}
               {bounded && <dl className="access-rule-scope-facts tnx-resource-facts"><div><dt>Destination</dt><dd>{"cidr" in bounded ? bounded.cidr || "Not reported" : bounded.fqdn || "Not reported"}</dd></div><div><dt>Protocol & ports</dt><dd>{ports}</dd></div></dl>}
+              {/* K8N-3: a cluster's Kubernetes API is always its tunnel name on TCP 443. */}
+              {chosenK8sApi?.access && <dl className="access-rule-scope-facts tnx-resource-facts"><div><dt>Destination</dt><dd>{chosenK8sApi.access.fqdn}</dd></div><div><dt>Protocol & ports</dt><dd>TCP · port 443</dd></div></dl>}
               {/* ⚠ THE EXTRA SENTENCE FOR THE ONE SHAPE THAT IS USUALLY A MISTAKE — attached to it alone,
                   because a caution on every rule is a caution nobody reads. */}
               {caution && (

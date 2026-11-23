@@ -118,3 +118,19 @@
 .kubernetes-action-impact ul { display:flex; flex-direction:column; gap:8px; margin:8px 0 12px; padding-left:18px; list-style:disc; font-size:12px; line-height:1.6; }
 .kubernetes-confirm-check,.kubernetes-choice-list label { display:block; font-size:12px; line-height:1.6; }
 .kubernetes-choice-list { display:flex; flex-direction:column; gap:12px; margin:12px 0 0; padding:0; border:0; }
+
+/* K8N-3: a cluster's Kubernetes API as a named destination ("API access"). */
+.kubernetes-api-access { display:grid; gap:12px; margin:18px 0 0; padding:12px 14px; border:1px solid var(--tnx-border); border-radius:7px; font-size:12px; line-height:1.65; }
+.kubernetes-api-access .kubernetes-list-toolbar { justify-content:space-between; align-items:flex-start; margin:0; }
+.kubernetes-api-access .kubernetes-list-toolbar button { flex:none; }
+.kubernetes-api-access strong { font-weight:500; color:var(--tnx-text-heading); overflow-wrap:anywhere; }
+.kubernetes-api-notice { padding:10px 12px; border:1px solid var(--tnx-border); border-radius:7px; color:var(--tnx-text-heading); }
+.kubernetes-api-grant { color:var(--tnx-text-secondary); }
+.kubernetes-api-kubeconfig { display:grid; gap:10px; }
+.kubernetes-api-kubeconfig-heading { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:10px; }
+.kubernetes-api-kubeconfig pre { padding:12px 14px; border:1px solid var(--tnx-border); border-radius:7px; background:var(--tnx-surface-inset); font-family:var(--font-mono,monospace); font-size:12px; line-height:1.75; white-space:pre-wrap; overflow-wrap:anywhere; }
+.kubernetes-api-kubeconfig ul { display:flex; flex-direction:column; gap:6px; margin:0; padding-left:18px; list-style:disc; color:var(--tnx-text-secondary); }
+.kubernetes-api-kubeconfig code { font-family:var(--font-mono,monospace); color:var(--tnx-text-heading); }
+.kubernetes-api-copy { display:inline-flex; align-items:center; gap:8px; color:var(--tnx-text-secondary); }
+.kubernetes-action-form .kubernetes-api-open-mesh { padding:10px 12px; border:1px solid var(--tnx-warn); border-radius:7px; color:var(--tnx-warn); }
+.kubernetes-action-form .kubernetes-api-open-mesh strong { color:var(--tnx-warn); font-weight:600; }

@@ -40,6 +40,8 @@ import {
 } from "../components/K8sEnrollment";
 import { K8sServiceInventoryStatus } from "../components/K8sServiceInventoryStatus";
 import { K8sNamespaceRulesPanel } from "../components/K8sNamespaceRules";
+import { K8sApiAccessPanel } from "../components/K8sApiAccess";
+import { k8sApiGate } from "../lib/k8sapiaccess";
 import { MachineCredentials } from "../components/MachineCredentials";
 import { K8sHAActivationPanel } from "../components/K8sHAActivationPanel";
 import { K8sConnectorPoolPanel } from "../components/K8sConnectorPoolPanel";
@@ -238,6 +240,8 @@ export default function Kubernetes() {
   }, [reload]);
 
   const gate = k8sGate({ role: scopeCurrent ? myRole : undefined, emailVerified });
+  // K8N-3: turning a cluster's API access on or off is its own permission. k8s:manage is not enough.
+  const apiGate = k8sApiGate({ role: scopeCurrent ? myRole : undefined, emailVerified });
   const cards: ClusterCard[] = useMemo(
     () => (raw && scopeCurrent ? assembleClusters(raw.clusters, raw.services) : []),
     [raw, scopeCurrent],
@@ -461,6 +465,7 @@ kubectl wait --for=condition=Established --timeout=120s \\
                 {detail === "overview" && <>
                   <dl className="kubernetes-facts tnx-resource-facts"><div><dt>Network</dt><dd>{siteName.has(selected.siteId) ? <Link to={`/sites?section=overview&site=${selected.siteId}`}>{siteName.get(selected.siteId)}</Link> : "Site record unavailable"}</dd></div><div><dt>Connector</dt><dd>{connectorCell(selected)}</dd></div><div><dt>Managed by</dt><dd aria-label={selected.managedByOperator ? managedEditWarning("cluster") : undefined}>{selected.managedByOperator ? "GitOps operator" : "Dashboard"}</dd></div></dl>
                   {selected.managedByOperator && <p className="kubernetes-context">Edit the cluster CR to change its configuration.</p>}
+                  {orgId && <K8sApiAccessPanel orgId={orgId} cluster={selected} gate={apiGate} />}
                 </>}
                 {detail === "connection" && <>
                   <div className="kubernetes-connection-context">

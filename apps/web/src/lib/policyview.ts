@@ -3,6 +3,13 @@
 // unit-tested directly (kit-minimum — no component-render harness). The Access page
 // and its sections are thin shells that call these.
 import { can } from "./rbac";
+import {
+  K8S_API_PORT_LABEL,
+  K8S_API_SOURCE_REASON,
+  k8sApiLabel,
+  k8sApiUnavailable,
+  type K8sApiTarget,
+} from "./k8sapiaccess";
 import type {
   Role,
   UserGroup,
@@ -208,6 +215,12 @@ export interface RuleRow {
    */
   k8sServiceVanished: boolean;
   /**
+   * K8N-3 warn-not-refuse: the SERVER's read-time judgment that a dst_kind='k8s_api' rule names a cluster
+   * whose API access is OFF. The rule is kept and allows nothing until API access is turned on again.
+   * Rendered VERBATIM from `dst_k8s_api_access_off`; the UI never re-derives it.
+   */
+  k8sApiAccessOff: boolean;
+  /**
    * Server-owned FQDN destination projection. `active_generation` means that the
    * selected resolver has a current generation; it does not by itself claim a
    * connection is permitted. Every other FQDN state is rendered explicitly so
@@ -322,6 +335,7 @@ export interface LoadState {
   membersLoaded?: boolean; // S7.5.4: for resolving a per-user subject to a member name
   sitesLoaded?: boolean; // S8.2c WF-8: for resolving a site subject to its NAME (not the raw UUID)
   k8sServicesLoaded?: boolean; // S10.3: for resolving a k8s_service dst to its FQDN
+  k8sClustersLoaded?: boolean; // K8N-3: for resolving a k8s_api dst to its cluster's name
   agentsLoaded?: boolean; // F06: for resolving a managed-agent policy source honestly
   agents?: Array<{ device_id: string; name: string; gateway_name: string }>;
   agentGroupsLoaded?: boolean;
@@ -441,6 +455,22 @@ function resolveK8sService(
   return { id, label: `removed service ${short(id)}`, state: "deleted" };
 }
 
+// resolveK8sApi (K8N-3): a rule that reaches a cluster's Kubernetes API reads "Kubernetes API of <cluster>".
+// It is never rendered through the Service or the resource branch, and never as an id alone: an unread or
+// removed cluster still says that the destination is a cluster's Kubernetes API.
+function resolveK8sApi(
+  id: string,
+  clusters: Array<{ id: string; name: string }>,
+  loaded: boolean,
+): RefLabel {
+  const cluster = clusters.find((x) => x.id === id);
+  if (cluster) return { id, label: k8sApiLabel(cluster.name), state: "ok" };
+  if (id === "") return { id, label: k8sApiLabel("an unnamed cluster"), state: "unresolved" };
+  if (!loaded)
+    return { id, label: `${k8sApiLabel(`cluster ${short(id)}`)}. refresh`, state: "unresolved" };
+  return { id, label: k8sApiLabel(`removed cluster ${short(id)}`), state: "deleted" };
+}
+
 function resolveAgent(
   id: string,
   agents: Array<{ device_id: string; name: string }>,
@@ -478,6 +508,7 @@ export function ruleRow(
   loaded: LoadState,
   services: K8sService[] = [],
   fqdnResources: FQDNResource[] = [],
+  clusters: Array<{ id: string; name: string }> = [],
 ): RuleRow {
   // S7.5.4: a rule's source is a group OR a single user (S8.2: OR a site) — resolve each to a NAME,
   // honestly (a removed-user / deleted-group / deleted-site ref shows distinctly, never mislabeled).
@@ -537,6 +568,12 @@ export function ruleRow(
                 fqdnResources,
                 loaded.fqdnResourcesLoaded ?? false,
               )
+          : rule.dst_kind === "k8s_api" // K8N-3: a cluster's Kubernetes API, never the Service or resource branch
+            ? resolveK8sApi(
+                rule.dst_k8s_api_cluster_id ?? "",
+                clusters,
+                loaded.k8sClustersLoaded ?? false,
+              )
           : resolveResource(
               rule.dst_resource_id ?? "",
               resources,
@@ -550,6 +587,7 @@ export function ruleRow(
     broken: src.state !== "ok" || dst.state !== "ok",
     cidrOutsideRanges: rule.cidr_outside_org_ranges,
     k8sServiceVanished: rule.dst_k8s_service_vanished,
+    k8sApiAccessOff: rule.dst_kind === "k8s_api" && rule.dst_k8s_api_access_off === true,
     // Lane 3 owns the generated API union. The explicit compatibility cast lets
     // this isolated console lane render the new server values before its client
     // artifact is integrated, without treating an unknown value as active.
@@ -736,7 +774,7 @@ export function ruleSourceReady(i: {
 
 export interface RuleBodyInput {
   srcKind: "group" | "user" | "site" | "cidr" | "agent";
-  dstKind: "group" | "resource" | "site" | "k8s_service" | "fqdn_resource";
+  dstKind: "group" | "resource" | "site" | "k8s_service" | "fqdn_resource" | "k8s_api";
   src: string; // group id
   srcUser: string;
   srcSite: string;
@@ -747,6 +785,7 @@ export interface RuleBodyInput {
   dstSite: string;
   dstK8sService: string; // S10.3: exposed-Service id (dst_kind='k8s_service')
   dstFQDNResource?: string;
+  dstK8sApiCluster?: string; // K8N-3: the cluster whose Kubernetes API the rule reaches (dst_kind='k8s_api')
   expiresAt: string; // datetime-local, "" = permanent
   editing: boolean; // expiry is create-only
 }
@@ -778,6 +817,11 @@ export function ruleBody(i: RuleBodyInput): CreatePolicyRuleRequest {
             ? {
                 dst_kind: "fqdn_resource" as const,
                 dst_fqdn_resource_id: i.dstFQDNResource,
+              }
+          : i.dstKind === "k8s_api" // K8N-3: TCP 443 to one cluster's Kubernetes API; the server fixes the port
+            ? {
+                dst_kind: "k8s_api" as const,
+                dst_k8s_api_cluster_id: i.dstK8sApiCluster,
               }
           : { dst_kind: "resource" as const, dst_resource_id: i.dstResource };
   const expiry =
@@ -1085,7 +1129,7 @@ export const FLOW_MIN_COVERAGE = 0.5;
 //   A WRONG TYPE TAG IS NOT STYLING. It is a FALSE CLAIM ABOUT WHAT A RULE POINTS AT.
 // `policy_rules` already enforces the union in two CHECK constraints; read it instead of inferring it.
 export type FlowKind =
-  "group" | "user" | "site" | "cidr" | "resource" | "k8s_service";
+  "group" | "user" | "site" | "cidr" | "resource" | "k8s_service" | "k8s_api";
 export interface FlowEdge {
   id: string;
   src: string;
@@ -1110,12 +1154,14 @@ export function flowGlyph(k: FlowKind): string {
       return "R";
     case "k8s_service":
       return "K";
+    case "k8s_api": // K8N-3: a cluster's Kubernetes API is not a Service and does not share its glyph
+      return "A";
   }
 }
 
 /** The tag line under the name. */
 export function flowTag(k: FlowKind): string {
-  return k === "k8s_service" ? "K8S SERVICE" : k.toUpperCase();
+  return k === "k8s_service" ? "K8S SERVICE" : k === "k8s_api" ? "K8S API" : k.toUpperCase();
 }
 export interface FlowNode {
   label: string;
@@ -1412,7 +1458,9 @@ export function sourceOptions(i: {
       unavailable:
         i.dstKind === "site" && i.dstSite === s.id
           ? SELF_SITE_REASON
-          : undefined,
+          : i.dstKind === "k8s_api" // K8N-3: the server refuses a site source (k8s_api_source_not_allowed)
+            ? K8S_API_SOURCE_REASON
+            : undefined,
     })),
     ...i.agents.map((a) => ({
       value: a.device_id,
@@ -1420,6 +1468,7 @@ export function sourceOptions(i: {
       tag: "agent",
       label: a.name,
       detail: `via ${a.gateway_name}`,
+      unavailable: i.dstKind === "k8s_api" ? K8S_API_SOURCE_REASON : undefined, // K8N-3: nor an agent
       // ⛔ ITS OWN SECTION. An agent is a MACHINE principal and exactly one device — filing it under People
       // would suggest it has an owner carrying it, and filing it under Networks would suggest a subnet.
       section: "Machines",
@@ -1439,6 +1488,8 @@ export function destinationOptions(i: {
   sites: Array<{ id: string; name: string }>;
   services: Array<{ id: string; name: string; fqdn?: string | null; namespace?: string | null; protocol?: string | null; port_low?: number | null }>;
   fqdnResources?: Array<{ id: string; name: string; fqdn: string; state: string }>;
+  /** K8N-3: every registered cluster with what was read of its API access. */
+  k8sApis?: K8sApiTarget[];
   srcKind: string;
   srcSite: string;
 }): RuleOption[] {
@@ -1468,6 +1519,17 @@ export function destinationOptions(i: {
       label: resource.name,
       detail: `${resource.fqdn} · ${resource.state}`,
       section: DST_SCOPED,
+    })),
+    // K8N-3: a cluster's Kubernetes API is its own kind, never one more Service. It can be chosen only for
+    // a person or a group, and only while API access is on for the cluster; otherwise the row says why.
+    ...(i.k8sApis ?? []).map((target) => ({
+      value: target.clusterId,
+      kind: "k8s_api",
+      tag: "k8s api",
+      label: k8sApiLabel(target.clusterName),
+      detail: [target.access?.fqdn, K8S_API_PORT_LABEL].filter(Boolean).join(" · "),
+      section: DST_SCOPED,
+      unavailable: k8sApiUnavailable(target, i.srcKind),
     })),
     ...i.groups.map((g) => ({
       value: g.id,
@@ -1529,6 +1591,13 @@ export function ruleEffectSummary(i: {
   if (i.dstKind === "fqdn_resource") {
     return {
       text: `${subject} → FQDN resource ${i.dstLabel} will be stored as a rule reference. The server resolves and projects generation status after save; this preview does not claim enforcement or traffic availability.`,
+      wide: false,
+    };
+  }
+  if (i.dstKind === "k8s_api") {
+    // K8N-3: reach, on one port. What a person may do in the cluster is the cluster's decision.
+    return {
+      text: `${subject} will be able to reach the ${i.dstLabel} on ${K8S_API_PORT_LABEL} only. This is a network path: each person's own cluster credential still decides what they may do.`,
       wide: false,
     };
   }
