@@ -32,46 +32,21 @@ reject unknown types/names, misplaced known descriptors, and extra fields.
 
 ## Cilium 1.20.5, live capture
 
-`cilium-1.20.5-kind-A-bpf.*` are unedited captures from one kind node
-(kindest/node v1.35.0, kernel 6.8.0-117-generic, arm64) running Cilium 1.20.5
-with kube-proxy replacement, native routing and eBPF masquerade, ip-masq-agent
-off, taken on 2026-11-23 from a privileged pod with read-only host mounts
-(bpftool v7.8.0, nft 1.1.6, iptables-nft-save 1.8.13). `healthz.json` is
-`GET /v1/healthz` on the agent socket; `ipmasq-v4.bpftool.json` is what
-`bpftool --json map dump pinned` prints for the map that is not pinned in this
-configuration. `bpftool-net.json` was taken before the test `wg0` existed. See
-`docs/K8N-2-cilium.md`, "Live capture".
+`cilium-1.20.5-kind-*` are captures from one kind node (kind v0.31.0,
+kindest/node v1.35.0, kernel 6.8.0-117-generic, arm64) running Cilium 1.20.5
+with kube-proxy replacement and native routing, taken on 2026-11-23 from a
+privileged pod with read-only host mounts (bpftool v7.8.0, nft 1.1.6,
+iptables-nft-save 1.8.13). They are stored as read, except that the `#` comment
+lines of `iptables-nft-save` (version and date) were dropped.
 
-## Calico v3.31.2 (K8N-1)
+- `A-bpf`: eBPF masquerade, ip-masq-agent off. `bpftool-net.json` was taken
+  before the test `wg0` existed; the other A files likewise.
+- `B-bpf-ipmasq`: eBPF masquerade, ip-masq-agent on with
+  `nonMasqueradeCIDRs: [100.96.0.0/24]`. `B-then-ipmasq-off.pinned-maps.txt` is
+  the pin list after the ip-masq-agent was turned off and the agent restarted.
+- `C-iptables`: iptables masquerade.
 
-`calico-v3.31.2-kind.*` were captured from a live node on 2026-11-23 and are
-stored byte for byte. Never edit them; tests mutate copies in memory.
-
-- Cluster: one-node kind v0.31.0 (Kubernetes v1.35.0, kernel 6.8, arm64),
-  default CNI disabled, pod subnet 192.168.0.0/16.
-- Calico v3.31.2 from its unchanged `manifests/calico.yaml`: iptables dataplane
-  (not eBPF, not its nftables mode), backend detected as nft, default pool
-  192.168.0.0/16 with IPIP `Always` and `natOutgoing`.
-- Read in the node's network namespace from a `hostNetwork` pod built from the
-  gateway image's base and packages (Alpine 3.24.2: nft 1.1.6,
-  iptables-nft-save 1.8.13, ipset 7.24), with the commands the code runs:
-  `nft -j -a list ruleset`, `iptables-nft-save -t nat`,
-  `iptables-nft-save -t mangle`, `ipset save NAME`. The nft listing was the
-  same before and after the other reads, counters aside.
-- The node had no iptables-legacy table (`/proc/net/ip_tables_names` empty).
-- `DOCKER_OUTPUT`/`DOCKER_POSTROUTING` are kind's own (Docker's embedded DNS),
-  not Calico's.
-- `.iptables-nft-save.no-net-raw.txt` is stdout and stderr of the same command
-  in a container holding only `NET_ADMIN` and `NET_BIND_SERVICE`: it exits 1 and
-  stops inside the first rule with a `set` match.
-- `.ipset-cali40all-ipam-pools.txt` is the negated destination set. The proof
-  never reads it; it is kept as evidence of what the rule names.
-
-```text
-ee82462ca805040d4cb96b2e8aa6e172cceb77fc281a581678c90f3b5a4e5dbd  calico-v3.31.2-kind.ipset-cali40all-ipam-pools.txt
-c51e132749fc9ccf15d3b46b320328726cd3e5caa17b86a245a4956c3216e2c7  calico-v3.31.2-kind.ipset-cali40masq-ipam-pools.txt
-55f8799ae9070cffcb768caceb3c0a336246c29b2f464a07dca8a298ca5ffd5b  calico-v3.31.2-kind.iptables-nft-save-mangle.txt
-2dc051515341a5780aa75771899ec1bb72586fb8e823baeb0cc1e870c51929a8  calico-v3.31.2-kind.iptables-nft-save.no-net-raw.txt
-637e78360ee1d9c3a079dc9aff3e6511ac94b992badc0a0a101649979d9935c8  calico-v3.31.2-kind.iptables-nft-save.txt
-c53b87635a455bd02e8eae714f814b5723bdf5ea4e32669ef38220b2a67e72f5  calico-v3.31.2-kind.nft.json
-```
+`healthz.json` is `GET /v1/healthz` on the agent socket; `ipmasq-v4.bpftool.json`
+is what `bpftool --json map dump pinned .../cilium_ipmasq_v4` printed (an error
+object in A, where the map is not pinned). See `docs/K8N-2-cilium.md`, "Live
+capture".

@@ -1,0 +1,27 @@
+*nat
+:PREROUTING ACCEPT [109:6540]
+:INPUT ACCEPT [109:6540]
+:OUTPUT ACCEPT [1397:83756]
+:POSTROUTING ACCEPT [1436:86472]
+:CILIUM_OUTPUT_nat - [0:0]
+:CILIUM_POST_nat - [0:0]
+:CILIUM_PRE_nat - [0:0]
+:DOCKER_OUTPUT - [0:0]
+:DOCKER_POSTROUTING - [0:0]
+:KUBE-KUBELET-CANARY - [0:0]
+-A PREROUTING -m comment --comment "cilium-feeder: CILIUM_PRE_nat" -j CILIUM_PRE_nat
+-A PREROUTING -d 192.168.5.2/32 -j DOCKER_OUTPUT
+-A OUTPUT -m comment --comment "cilium-feeder: CILIUM_OUTPUT_nat" -j CILIUM_OUTPUT_nat
+-A OUTPUT -d 192.168.5.2/32 -j DOCKER_OUTPUT
+-A POSTROUTING -m comment --comment "cilium-feeder: CILIUM_POST_nat" -j CILIUM_POST_nat
+-A POSTROUTING -d 192.168.5.2/32 -j DOCKER_POSTROUTING
+-A CILIUM_POST_nat -s 10.244.0.0/24 -m set --match-set cilium_node_set_v4 dst -m comment --comment "exclude traffic to cluster nodes from masquerade" -j ACCEPT
+-A CILIUM_POST_nat -s 10.244.0.0/24 ! -d 10.244.0.0/16 ! -o cilium_+ -m comment --comment "cilium masquerade non-cluster" -j MASQUERADE
+-A CILIUM_POST_nat -m mark --mark 0xa00/0xe00 -m comment --comment "exclude proxy return traffic from masquerade" -j ACCEPT
+-A CILIUM_POST_nat -s 127.0.0.1/32 -o cilium_host -m comment --comment "cilium host->cluster from 127.0.0.1 masquerade" -j SNAT --to-source 10.244.0.186
+-A CILIUM_POST_nat -o cilium_host -m mark --mark 0xf00/0xf00 -m conntrack --ctstate DNAT -m comment --comment "hairpin traffic that originated from a local pod" -j SNAT --to-source 10.244.0.186
+-A DOCKER_OUTPUT -d 192.168.5.2/32 -p tcp -m tcp --dport 53 -j DNAT --to-destination 127.0.0.11:34023
+-A DOCKER_OUTPUT -d 192.168.5.2/32 -p udp -m udp --dport 53 -j DNAT --to-destination 127.0.0.11:52330
+-A DOCKER_POSTROUTING -s 127.0.0.11/32 -p tcp -m tcp --sport 34023 -j SNAT --to-source 192.168.5.2:53
+-A DOCKER_POSTROUTING -s 127.0.0.11/32 -p udp -m udp --sport 52330 -j SNAT --to-source 192.168.5.2:53
+COMMIT
