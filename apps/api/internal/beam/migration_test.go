@@ -48,7 +48,7 @@ func TestBeamMigrationFreshUpgradeDowngradePreservesParent(t *testing.T) {
 		var version int
 		var dirty bool
 		if e := fresh.QueryRow(freshCtx, `SELECT version,dirty FROM schema_migrations`).Scan(&version, &dirty); e != nil || version < 210 || dirty {
-			t.Fatal("fresh Beam schema is incomplete", version, dirty, e)
+			t.Fatal("fresh Local Sharing schema is incomplete", version, dirty, e)
 		}
 	})
 	t.Run("upgrade-drain-down-up", func(t *testing.T) {
@@ -75,7 +75,7 @@ func TestBeamMigrationFreshUpgradeDowngradePreservesParent(t *testing.T) {
 			t.Fatal(e)
 		}
 		if e = db.MigrateTo(ownedDSN, 210); e != nil {
-			t.Fatal("Beam upgrade failed", e)
+			t.Fatal("Local Sharing upgrade failed", e)
 		}
 		share := uuid.New()
 		if _, e = child.Exec(childCtx, `INSERT INTO beam_shares(id,org_id,publisher_id,name,hostname,target,digest,idempotency_key,request_digest,expires_at) VALUES($1,$2,$3,'Migration share','p-fixture.beam.example.net','{}',$4,$5,$4,now()+interval '1 hour')`, share, org, user, strings.Repeat("a", 64), uuid.New()); e != nil {
@@ -97,12 +97,12 @@ func TestBeamMigrationFreshUpgradeDowngradePreservesParent(t *testing.T) {
 			t.Fatal("drained downgrade failed", e)
 		}
 		if e = db.MigrateTo(ownedDSN, 210); e != nil {
-			t.Fatal("Beam re-upgrade failed", e)
+			t.Fatal("Local Sharing re-upgrade failed", e)
 		}
 		var version, organizations, users, shares int
 		var dirty bool
 		if e = child.QueryRow(childCtx, `SELECT version,dirty,(SELECT count(*) FROM organizations WHERE id=$1),(SELECT count(*) FROM users WHERE id=$2),(SELECT count(*) FROM beam_shares) FROM schema_migrations`, org, user).Scan(&version, &dirty, &organizations, &users, &shares); e != nil || version != 210 || dirty || organizations != 1 || users != 1 || shares != 0 {
-			t.Fatal("re-upgrade lost unrelated data or restored old Beam authority", version, dirty, organizations, users, shares, e)
+			t.Fatal("re-upgrade lost unrelated data or restored old Local Sharing authority", version, dirty, organizations, users, shares, e)
 		}
 	})
 }
@@ -148,7 +148,7 @@ func TestBeamInstallationMigrationUpgradeDefaultOffAndGuardedRollback(t *testing
 	}
 	var preserved bool
 	if e = pool.QueryRow(ctx, `SELECT to_regclass('public.beam_shares') IS NOT NULL AND to_regclass('public.beam_installation_settings') IS NULL`).Scan(&preserved); e != nil || !preserved {
-		t.Fatal("registry rollback altered independent Beam resources", e)
+		t.Fatal("registry rollback altered independent Local Sharing resources", e)
 	}
 	if e = db.MigrateTo(owned, 211); e != nil {
 		t.Fatal(e)

@@ -238,10 +238,10 @@ type Quota struct {
 }
 
 func deny() error {
-	return apierr.Forbidden("beam_authority_unavailable", "Beam authority is unavailable")
+	return apierr.Forbidden("beam_authority_unavailable", "Local Sharing authority is unavailable")
 }
 func unavailable() error {
-	return apierr.New(503, "beam_unavailable", "Beam is not configured or enabled")
+	return apierr.New(503, "beam_unavailable", "Local Sharing is not configured or enabled")
 }
 func conflict() error {
 	return apierr.Conflict("beam_version_conflict", "Share or policy changed; refresh and retry")

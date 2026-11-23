@@ -124,7 +124,7 @@ func TestBeamOpenModeStillRequiresEligibleMembersAndServingSetup(t *testing.T) {
 	}
 	p.Enabled = false
 	if e = f.s.publisher(f.ctx, f.pool, f.org, f.outsider, p); e == nil {
-		t.Fatal("disabled Beam published")
+		t.Fatal("disabled Local Sharing published")
 	}
 	p.Enabled = true
 	p.DomainReady = false

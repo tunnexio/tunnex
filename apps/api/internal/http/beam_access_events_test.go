@@ -54,7 +54,7 @@ func TestBeamAccessEventsPreserveFiltersAndSafeProjection(t *testing.T) {
 		t.Fatal(e)
 	}
 	if port.calls != 1 || network.calls != 0 || port.org != org || port.actor.ID != p.UserID || port.actor.SessionID != p.SessionID || port.user != &reviewer || port.share != &share || !port.denies || port.before != cursorTS || port.beforeID != cursorID || port.limit != limit {
-		t.Fatalf("Beam query lost its boundary: %+v networkCalls=%d", port, network.calls)
+		t.Fatalf("Local Sharing query lost its boundary: %+v networkCalls=%d", port, network.calls)
 	}
 	rows := response.(api.ListAccessEvents200JSONResponse).Body
 	if len(rows) != 1 || rows[0].Decision != api.Deny || rows[0].Beam == nil || rows[0].Beam.ShareId != share || rows[0].Beam.Action != api.BeamAccessDenied || rows[0].Beam.Reason != "authority_unavailable" || rows[0].SrcUserId == nil || *rows[0].SrcUserId != reviewer || rows[0].Seq != 0 || rows[0].SrcIp != "" || rows[0].DstIp != "" || rows[0].Protocol != "" || rows[0].NodeId != nil || rows[0].SrcDeviceId != nil || rows[0].DstResourceId != nil {
@@ -96,7 +96,7 @@ func TestBeamAccessEventsRejectUnauthorizedReadersAndIdentityCombinations(t *tes
 	port := &beamEvidenceCapture{}
 	response, e := (apiServer{beam: port}).ListAccessEvents(authctx.WithPrincipal(context.Background(), evidencePrincipal(org, "owner")), api.ListAccessEventsRequestObject{OrgId: org, Params: api.ListAccessEventsParams{Source: ptr(api.Beam), SrcDeviceId: &identity}})
 	if e != nil || len(response.(api.ListAccessEvents200JSONResponse).Body) != 0 || port.calls != 0 {
-		t.Fatal("Beam device filter invented source attribution", response, e)
+		t.Fatal("Local Sharing device filter invented source attribution", response, e)
 	}
 }
 

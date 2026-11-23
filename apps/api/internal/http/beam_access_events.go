@@ -24,10 +24,10 @@ func (s apiServer) listBeamAccessEvents(ctx context.Context, req api.ListAccessE
 	}
 	p, ok := authctx.PrincipalFrom(ctx)
 	if !ok || p.UserID == uuid.Nil || p.IsMachine() || p.IsAgent() || p.SessionID == "" || p.AuthMethod == authctx.AuthBearer {
-		return nil, apierr.Forbidden("human_browser_session_required", "Beam access evidence requires a current human browser session")
+		return nil, apierr.Forbidden("human_browser_session_required", "Local Sharing access evidence requires a current human browser session")
 	}
 	if s.beam == nil {
-		return nil, apierr.New(503, "beam_unavailable", "Beam service unavailable")
+		return nil, apierr.New(503, "beam_unavailable", "Local Sharing service unavailable")
 	}
 	count := 0
 	for _, id := range []*uuid.UUID{req.Params.SrcAgentId, req.Params.SrcDeviceId, req.Params.SrcUserId} {

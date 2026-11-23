@@ -198,7 +198,7 @@ func beamAwait(t *testing.T, condition func() bool) {
 	until := time.Now().Add(2 * time.Second)
 	for !condition() {
 		if time.Now().After(until) {
-			t.Fatal("timed out waiting for Beam state")
+			t.Fatal("timed out waiting for Local Sharing state")
 		}
 		time.Sleep(time.Millisecond)
 	}

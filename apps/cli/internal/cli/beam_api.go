@@ -164,26 +164,26 @@ type beamAPIError struct {
 func (e *beamAPIError) Error() string {
 	switch e.status {
 	case 401:
-		return "Beam login is no longer valid; run 'tunnex login'"
+		return "Local Sharing login is no longer valid; run 'tunnex login'"
 	case 403:
-		return "Beam access denied by current sharing policy or publishing authority"
+		return "Local Sharing access denied by current sharing policy or publishing authority"
 	case 404:
-		return "Beam share unavailable to this login; resume requires the original publishing credential"
+		return "Share unavailable to this login; resume requires the original publishing credential"
 	case 409:
-		return "Beam state changed; fetch the current share before trying again"
+		return "Local Sharing state changed; fetch the current share before trying again"
 	case 429:
 		if e.code == "beam_quota_reached" {
-			return "Beam share limit reached; stop an old share or wait for its expiry"
+			return "Share limit reached; stop an old share or wait for its expiry"
 		}
-		return "Beam capacity reached; wait before retrying"
+		return "Local Sharing capacity reached; wait before retrying"
 	}
 	if e.status == 400 {
-		return "Beam request rejected; check the target, reviewers, duration and sharing policy"
+		return "Local Sharing request rejected; check the target, reviewers, duration and sharing policy"
 	}
 	if e.status >= 500 {
-		return "Beam authority is temporarily unavailable; serving has no local authorization fallback"
+		return "Local Sharing authority is temporarily unavailable; serving has no local authorization fallback"
 	}
-	return fmt.Sprintf("Beam request failed (HTTP %d)", e.status)
+	return fmt.Sprintf("Local Sharing request failed (HTTP %d)", e.status)
 }
 func beamTransient(e error) bool {
 	var a *beamAPIError
@@ -193,23 +193,23 @@ func beamTransient(e error) bool {
 	return errors.Is(e, errBeamNetwork)
 }
 
-var errBeamNetwork = errors.New("could not reach Beam authority")
+var errBeamNetwork = errors.New("could not reach Local Sharing authority")
 
 func (a *beamHTTPAPI) request(ctx context.Context, method, path string, input, output any) error {
 	var body io.Reader
 	if input != nil {
 		b, e := json.Marshal(input)
 		if e != nil {
-			return errors.New("invalid Beam request")
+			return errors.New("invalid Local Sharing request")
 		}
 		if len(b) > 32<<10 {
-			return errors.New("Beam request exceeded the safe size limit")
+			return errors.New("Local Sharing request exceeded the safe size limit")
 		}
 		body = bytes.NewReader(b)
 	}
 	req, e := http.NewRequestWithContext(ctx, method, strings.TrimRight(a.credential.Server, "/")+path, body)
 	if e != nil {
-		return errors.New("invalid Beam server")
+		return errors.New("invalid Local Sharing server")
 	}
 	req.Header.Set("Authorization", "Bearer "+a.credential.Token)
 	req.Header.Set("Accept", "application/json")
@@ -226,7 +226,7 @@ func (a *beamHTTPAPI) request(ctx context.Context, method, path string, input, o
 		return errBeamNetwork
 	}
 	if len(b) > 2<<20 {
-		return errors.New("Beam response exceeded the safe size limit")
+		return errors.New("Local Sharing response exceeded the safe size limit")
 	}
 	if res.StatusCode < 200 || res.StatusCode >= 300 {
 		var env envelope
@@ -237,7 +237,7 @@ func (a *beamHTTPAPI) request(ctx context.Context, method, path string, input, o
 		return nil
 	}
 	if json.Unmarshal(b, output) != nil {
-		return errors.New("invalid Beam response")
+		return errors.New("invalid Local Sharing response")
 	}
 	return nil
 }
@@ -262,13 +262,13 @@ func (a *beamHTTPAPI) Create(c context.Context, o string, i beamCreate) (v beamS
 	for _, g := range i.Grants {
 		id, err := uuid.Parse(g.ID)
 		if err != nil {
-			return v, errors.New("invalid Beam reviewer")
+			return v, errors.New("invalid Local Sharing reviewer")
 		}
 		grants = append(grants, beamapi.BeamGrant{SubjectId: id, SubjectKind: beamapi.BeamGrantSubjectKind(g.Kind)})
 	}
 	_, err := uuid.Parse(i.IdempotencyKey)
 	if err != nil {
-		return v, errors.New("invalid Beam idempotency key")
+		return v, errors.New("invalid Local Sharing idempotency key")
 	}
 	if err := beamtransport.ValidateTarget(i.Target.transport()); err != nil {
 		return v, err
@@ -283,7 +283,7 @@ func (a *beamHTTPAPI) Create(c context.Context, o string, i beamCreate) (v beamS
 }
 func (a *beamHTTPAPI) Action(c context.Context, o, id string, i beamAction) (v beamShare, e error) {
 	if i.ExpectedVersion <= 0 || int64(int(i.ExpectedVersion)) != i.ExpectedVersion {
-		return v, errors.New("invalid Beam share revision")
+		return v, errors.New("invalid share revision")
 	}
 	e = a.request(c, "POST", beamPath(o)+"/shares/"+url.PathEscape(id)+"/actions", beamapi.BeamActionInput{Action: beamapi.BeamActionInputAction(i.Action), ExpectedVersion: int(i.ExpectedVersion), ExpiresAt: i.ExpiresAt}, &v)
 	return
@@ -295,7 +295,7 @@ func (a *beamHTTPAPI) Issue(c context.Context, o, id string, version int64, csr 
 func (a *beamHTTPAPI) Heartbeat(c context.Context, o, id, g string, ready bool) (v beamShare, e error) {
 	generation, err := uuid.Parse(g)
 	if err != nil {
-		return v, errors.New("invalid Beam generation")
+		return v, errors.New("invalid Local Sharing generation")
 	}
 	e = a.request(c, "POST", beamPath(o)+"/shares/"+url.PathEscape(id)+"/heartbeat", beamapi.BeamHeartbeatInput{Generation: generation, OriginReady: ready}, &v)
 	return

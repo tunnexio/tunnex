@@ -101,7 +101,7 @@ func (s *Service) UpdateDomainSettings(ctx context.Context, actor uuid.UUID, in 
 		}
 	}
 	if in.OperatorEnabled && (s.inspector == nil || !filepath.IsAbs(s.config.RestoreMarker)) {
-		return DomainSettings{}, invalid("Configure the installation restore barrier and trusted readiness inspector before enabling Beam")
+		return DomainSettings{}, invalid("Configure the installation restore barrier and trusted readiness inspector before enabling Local Sharing")
 	}
 	tx, e := s.pool.Begin(ctx)
 	if e != nil {
@@ -131,7 +131,7 @@ func (s *Service) UpdateDomainSettings(ctx context.Context, actor uuid.UUID, in 
 		return DomainSettings{}, e
 	}
 	if count > 0 && !in.ConfirmEndActiveShares {
-		return DomainSettings{}, apierr.Conflict("beam_settings_drain_confirmation_required", "Confirm ending active Beam shares before changing installation settings")
+		return DomainSettings{}, apierr.Conflict("beam_settings_drain_confirmation_required", "Confirm ending active shares before changing installation settings")
 	}
 	if _, e = tx.Exec(ctx, `UPDATE beam_shares SET state='revoked',certificate_serial=NULL,origin_ready=false,generation=uuid_generate_v7(),version=version+1,authority_version=authority_version+1 WHERE state IN ('starting','active','paused')`); e != nil {
 		return DomainSettings{}, e

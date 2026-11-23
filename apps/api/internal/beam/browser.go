@@ -200,7 +200,7 @@ func (s *Service) browser(ctx context.Context, q reader, b Binding, tokenHash []
 	var until time.Time
 	e = q.QueryRow(ctx, `SELECT user_id,parent_session_id,expires_at FROM beam_browser_sessions WHERE org_id=$1 AND share_id=$2 AND token_hash=$3 AND expires_at>now()`, b.OrgID, b.AppID, tokenHash).Scan(&user, &parent, &until)
 	if errors.Is(e, pgx.ErrNoRows) {
-		return r, time.Time{}, apierr.Forbidden("beam_session_invalid", "Beam browser session expired")
+		return r, time.Time{}, apierr.Forbidden("beam_session_invalid", "Local Sharing browser session expired")
 	}
 	if e != nil {
 		return r, time.Time{}, e
@@ -210,7 +210,7 @@ func (s *Service) browser(ctx context.Context, q reader, b Binding, tokenHash []
 	}
 	parentUntil, e := s.parent(ctx, q, r.OrgID, user, parent, p.RequireMFA)
 	if e != nil {
-		return r, time.Time{}, apierr.Forbidden("beam_session_invalid", "Beam browser login is no longer valid")
+		return r, time.Time{}, apierr.Forbidden("beam_session_invalid", "Local Sharing browser login is no longer valid")
 	}
 	for _, t := range []time.Time{until, parentUntil} {
 		if t.Before(deadline) {
@@ -228,7 +228,7 @@ func (s *Service) Authorize(ctx context.Context, b Binding, token string, m Meta
 	started := time.Now()
 	var out Decision
 	if !strings.HasPrefix(token, "tnxbs_") || len(token) != 49 {
-		return out, apierr.Forbidden("beam_session_invalid", "Beam browser session is invalid")
+		return out, apierr.Forbidden("beam_session_invalid", "Local Sharing browser session is invalid")
 	}
 	if !relative(m.Path) || len(m.Method) > 12 {
 		return out, deny()

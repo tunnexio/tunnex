@@ -10,7 +10,7 @@ import (
 // BeamDevelopmentTrust loads a fixed operator-owned fixture trust file. It never
 // disables TLS verification or accepts roots or probe targets from API callers.
 func (c Config) BeamDevelopmentTrust() ([]byte, bool, error) {
-	invalid := errors.New("invalid Beam development trust configuration")
+	invalid := errors.New("invalid Local Sharing development trust configuration")
 	if !c.BeamDevAllowLoopback && c.BeamDevPublicCAFile == "" {
 		return nil, false, nil
 	}

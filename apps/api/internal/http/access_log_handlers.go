@@ -68,7 +68,7 @@ func (s apiServer) ListAccessEvents(ctx context.Context, req api.ListAccessEvent
 		return nil, apierr.BadRequest("invalid_access_event_source", "Unknown access-event source")
 	}
 	if req.Params.ShareId != nil {
-		return nil, apierr.BadRequest("invalid_access_event_source", "share_id requires the Beam source")
+		return nil, apierr.BadRequest("invalid_access_event_source", "share_id requires the Local Sharing source")
 	}
 	deniesOnly := req.Params.DeniesOnly != nil && *req.Params.DeniesOnly
 	cursorTS := time.Now().Add(24 * time.Hour) // first page: a far-future cursor

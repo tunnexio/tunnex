@@ -17,7 +17,7 @@ type beamBeat struct {
 func beamCheckLogin(d beamDependencies, c Credential) error {
 	current, e := d.loadCredential()
 	if e != nil || !beamSameCredential(current, c) {
-		return errors.New("Beam login changed or was removed; serving stopped")
+		return errors.New("Local Sharing login changed or was removed; serving stopped")
 	}
 	if !c.ExpiresAt.After(d.clock()) {
 		return ErrCredentialExpired
@@ -34,7 +34,7 @@ func beamCleanupAction(api beamAPI, d beamDependencies, credential Credential, o
 	// Only an invocation-owned observed version may be changed. Never refresh or
 	// retry on conflict into another connector's generation.
 	uncertain := func() error {
-		return fmt.Errorf("Beam connector is closed; server %s was not confirmed. Check 'tunnex beam get --org %s --share %s'", action, org, id)
+		return fmt.Errorf("Local Sharing connector is closed; server %s was not confirmed. Check 'tunnex beam get --org %s --share %s'", action, org, id)
 	}
 	current, e := d.loadCredential()
 	if e != nil || !beamSameCredential(current, credential) {
@@ -117,7 +117,7 @@ func beamForeground(ctx context.Context, api beamAPI, d beamDependencies, creden
 		case <-poolStopped:
 			return beamCleanup(api, d, credential, o.org, original.ID, observedVersion)
 		case <-time.After(time.Second):
-			return errors.New("could not confirm Beam channel shutdown; check the share state before retrying Stop")
+			return errors.New("could not confirm Local Sharing channel shutdown; check the share state before retrying Stop")
 		}
 	}
 	for {
@@ -130,7 +130,7 @@ func beamForeground(ctx context.Context, api beamAPI, d beamDependencies, creden
 				return stopOwned()
 			}
 			_ = e // Raw native/TLS errors may include upstream addresses; do not expose them.
-			return errors.New("Beam connector ended; fetch the share before explicitly resuming")
+			return errors.New("Local Sharing connector ended; fetch the share before explicitly resuming")
 		case event := <-beats:
 			if event.err != nil {
 				var remote *beamAPIError
@@ -143,10 +143,10 @@ func beamForeground(ctx context.Context, api beamAPI, d beamDependencies, creden
 			}
 			s := event.share
 			if s.ID != original.ID || s.OrgID != o.org || s.Version < observedVersion || s.AuthorityVersion < observedAuthority || s.Hostname != original.Hostname || s.Target == nil || beamTargetDigest(*s.Target) != beamTargetDigest(o.target) {
-				return errors.New("Beam authority changed; serving stopped")
+				return errors.New("Local Sharing authority changed; serving stopped")
 			}
 			if beamTerminal(s.State) || s.State == "paused" || !s.ExpiresAt.After(d.clock()) {
-				return errors.New("Beam share ended or was paused; serving stopped")
+				return errors.New("Share ended or was paused; serving stopped")
 			}
 			lastAuthority = d.clock()
 			observedVersion = s.Version
@@ -166,7 +166,7 @@ func beamForeground(ctx context.Context, api beamAPI, d beamDependencies, creden
 					return e
 				}
 				if _, e = fmt.Fprintf(out, "Share: %s\nURL: %s\nExpires: %s\nKeep this process running. Ctrl+C stops this share.\n", s.ID, canonical, s.ExpiresAt.UTC().Format(time.RFC3339)); e != nil {
-					return errors.New("could not write Beam publication status")
+					return errors.New("could not write Local Sharing publication status")
 				}
 				readyPrinted = true
 			}
@@ -174,13 +174,13 @@ func beamForeground(ctx context.Context, api beamAPI, d beamDependencies, creden
 			at := d.clock()
 			current, e := d.loadCredential()
 			if e != nil || !beamSameCredential(current, credential) {
-				return errors.New("Beam login changed or was removed; serving stopped")
+				return errors.New("Local Sharing login changed or was removed; serving stopped")
 			}
 			if !credential.ExpiresAt.After(at) || !expiry.After(at) {
-				return errors.New("Beam share or publishing authority expired; serving stopped")
+				return errors.New("Share or publishing authority expired; serving stopped")
 			}
 			if at.Sub(lastAuthority) >= d.uncertainty {
-				return errors.New("Beam control-plane authority could not be refreshed; serving stopped")
+				return errors.New("Local Sharing control-plane authority could not be refreshed; serving stopped")
 			}
 		}
 	}

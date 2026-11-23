@@ -18,7 +18,7 @@ func beamOperator(r *http.Request) (uuid.UUID, error) {
 }
 func beamOperatorService(s *beam.Service) error {
 	if s == nil {
-		return apierr.New(503, "beam_unavailable", "Beam service unavailable")
+		return apierr.New(503, "beam_unavailable", "Local Sharing service unavailable")
 	}
 	return nil
 }
