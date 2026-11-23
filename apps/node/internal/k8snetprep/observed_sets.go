@@ -123,8 +123,14 @@ func parseSavedRules(saved string) (map[string][]savedRule, error) {
 }
 
 // parseIPSetSave reads `ipset save NAME` and returns the set's IPv4 members.
-// Only hash:net and hash:ip sets of family inet are understood; anything else
-// is an error, never an empty set.
+// Only hash:net and hash:ip sets of family inet are understood, and only with
+// a header whose every option is known not to change what a member matches
+// (checkSetHeader); anything else is an error, never an empty set.
+//
+// A member line is read by its address or network alone. What may follow it
+// (timeout, packets, bytes, comment, skbmark, skbprio, skbqueue, nomatch) can
+// only make the set match less: a `nomatch` network is an exception cut out
+// of a wider member and is still counted here as a member.
 func parseIPSetSave(name, saved string) ([]netip.Prefix, error) {
 	if len(saved) > maxSetSaveBytes {
 		return nil, fmt.Errorf("set %s exceeds bound", name)
@@ -141,13 +147,14 @@ func parseIPSetSave(name, saved string) ([]netip.Prefix, error) {
 			if len(fields) < 3 || fields[1] != name {
 				return nil, fmt.Errorf("set listing is not for %s", name)
 			}
+			if created {
+				return nil, fmt.Errorf("set %s is listed twice", name)
+			}
 			if fields[2] != "hash:net" && fields[2] != "hash:ip" {
 				return nil, fmt.Errorf("set %s has type %s, which is not understood", name, fields[2])
 			}
-			for i := 3; i+1 < len(fields); i++ {
-				if fields[i] == "family" && fields[i+1] != "inet" {
-					return nil, fmt.Errorf("set %s is not IPv4", name)
-				}
+			if err := checkSetHeader(name, fields[3:]); err != nil {
+				return nil, err
 			}
 			created = true
 		case "add":
@@ -170,6 +177,75 @@ func parseIPSetSave(name, saved string) ([]netip.Prefix, error) {
 		return nil, fmt.Errorf("set %s was not listed", name)
 	}
 	return members, nil
+}
+
+// setHeaderOptions is every option this package accepts after the type on the
+// `create` line of a hash:net or hash:ip set, with the form of its value ("" for
+// an option that takes none). It is what ipset 7.24 prints for such a set, less
+// the two options that change what a listed member matches:
+//
+//	family inet       required; inet6 is refused
+//	hashsize, maxelem, bucketsize, initval
+//	                  how the kernel stores the set
+//	timeout           members expire by themselves: the set can only match less
+//	counters, comment, skbinfo
+//	                  per-member extras; skbinfo is used by the SET target with
+//	                  --map-set, never by a `-m set` match
+//	forceadd          a full set evicts a member to take a new one
+//	netmask 32        an address is stored as itself (ipset does not print it)
+//
+// Refused: `netmask N` below 32 and any `bitmask`. A hash:ip set created with
+// one stores and prints the masked address, so the member `10.5.6.0` of a
+// `netmask 24` set matches all of 10.5.6.0/24, and with a bitmask the matching
+// addresses need not even be one range. Refused as well: every option not
+// listed here, an option given twice, and a value of another form.
+var setHeaderOptions = map[string]*regexp.Regexp{
+	"family":     regexp.MustCompile(`^inet6?$`),
+	"hashsize":   setHeaderNumberRE,
+	"maxelem":    setHeaderNumberRE,
+	"bucketsize": setHeaderNumberRE,
+	"timeout":    setHeaderNumberRE,
+	"netmask":    setHeaderNumberRE,
+	"initval":    regexp.MustCompile(`^0x[0-9a-fA-F]{1,8}$`),
+	"counters":   nil,
+	"comment":    nil,
+	"skbinfo":    nil,
+	"forceadd":   nil,
+}
+
+var setHeaderNumberRE = regexp.MustCompile(`^[0-9]{1,10}$`)
+
+// checkSetHeader reads the options of a `create` line, after the set's type.
+func checkSetHeader(name string, options []string) error {
+	seen := map[string]bool{}
+	for i := 0; i < len(options); i++ {
+		option := options[i]
+		if option == "bitmask" {
+			return fmt.Errorf("set %s has a bitmask: its members match more addresses than are listed", name)
+		}
+		form, known := setHeaderOptions[option]
+		if !known || seen[option] {
+			return fmt.Errorf("set %s has a header option that is not understood", name)
+		}
+		seen[option] = true
+		if form == nil {
+			continue
+		}
+		i++
+		if i >= len(options) || !form.MatchString(options[i]) {
+			return fmt.Errorf("set %s has a header option that is not understood", name)
+		}
+		switch {
+		case option == "family" && options[i] != "inet":
+			return fmt.Errorf("set %s is not IPv4", name)
+		case option == "netmask" && options[i] != "32":
+			return fmt.Errorf("set %s has netmask %s: its members match whole networks, not the addresses listed", name, options[i])
+		}
+	}
+	if !seen["family"] {
+		return fmt.Errorf("set %s does not state its family", name)
+	}
+	return nil
 }
 
 func parseSetMember(raw string) (netip.Prefix, error) {

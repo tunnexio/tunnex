@@ -584,6 +584,20 @@ func TestGatewayRefusesHostFactsThatDoNotHold(t *testing.T) {
 			},
 			want: "type hash:net,port, which is not understood",
 		},
+		// Review finding 2, through the receipt: the member is one address
+		// outside the tunnel range, and the set matches the /10 around it.
+		"set that matches whole networks": {
+			mutate: func(f *HostNetFacts) {
+				f.Sets[0].Saved = "create " + calicoMasq + " hash:ip family inet hashsize 1024 maxelem 65536 netmask 10 bucketsize 12 initval 0x1\nadd " + calicoMasq + " 100.64.0.0\n"
+			},
+			want: "set " + calicoMasq + " has netmask 10: its members match whole networks",
+		},
+		"set with a bitmask": {
+			mutate: func(f *HostNetFacts) {
+				f.Sets[0].Saved = "create " + calicoMasq + " hash:ip family inet bitmask 255.192.0.0\nadd " + calicoMasq + " 100.64.0.0\n"
+			},
+			want: "set " + calicoMasq + " has a bitmask",
+		},
 		"pool overlaps the tunnel range": {
 			mutate: func(f *HostNetFacts) { f.Sets[0].Saved += "add " + calicoMasq + " 100.64.0.0/10\n" },
 			want:   "which overlaps the tunnel range 100.96.0.0/24",

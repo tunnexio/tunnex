@@ -499,6 +499,50 @@ installer's unit tests. Not verified: any of it on a cluster.
 Not changed: the 2 s pass, the 10 s freshness, the exec probe command, the memory limit, and
 the manager's code.
 
+## After the review, 2026-11-24
+
+Changes that follow from `docs/K8N-review-false-ready.md`. None of them ran on a cluster.
+
+### The set's `create` line is an allow-list (review finding 2)
+
+Decision 2 read a set's members and looked at nothing on its `create` line but the type and
+the family. A `hash:ip` set created with `netmask N` stores and prints the masked address:
+ipset 7.24 (kernel 6.8) saved the member `10.5.6.7` of a `netmask 24` set as `add t 10.5.6.0`,
+and the set matches all of `10.5.6.0/24`. Read as the one address it prints, such a member
+looks disjoint from a tunnel range the set covers. With `bitmask` the matching addresses need
+not even be one range. Calico's sets are `hash:net`, which has neither option, so this needed
+somebody's own rule; it was a false proof all the same.
+
+`parseIPSetSave` now accepts a `create` line only when every option after the type is one of
+these, each at most once and with a value of the right form:
+
+| Option | Decision | Why |
+| --- | --- | --- |
+| `family inet` | required | `inet6` refuses (as before); a line without a family refuses |
+| `hashsize`, `maxelem`, `bucketsize`, `initval` | accepted, not read | how the kernel stores the set |
+| `timeout` | accepted, not read | members expire by themselves: the set can only match less |
+| `counters`, `comment` | accepted, not read | per-member extras |
+| `skbinfo` | accepted, not read | read by the `SET` target with `--map-set`, never by a `-m set` match; that target is refused wherever the walk meets it |
+| `forceadd` | accepted, not read | a full set evicts a member to take a new one |
+| `netmask 32` | accepted | an address stored as itself (ipset 7.24 does not print it) |
+| `netmask` below 32 | **refused** | a listed member is a whole network |
+| `bitmask`, any value | **refused** | a listed member is a pattern of addresses |
+| anything else (`markmask`, `range`, an option of a later ipset) | **refused** | not decided on |
+
+The list was taken from what ipset 7.24 printed for `hash:net` and `hash:ip` sets created with
+every option it accepts, in a scratch network namespace: `family inet hashsize N maxelem N
+[netmask N] [bitmask A.B.C.D] [timeout N] [counters] [comment] [skbinfo] bucketsize N initval
+0x...`. (It accepted `forceadd` on create and did not print it.) A second `create` line in one
+listing refuses too.
+
+Member lines are unchanged: a member is read by its address or network alone. What may follow
+it (`timeout`, `packets`, `bytes`, `comment`, `skbmark`, `skbprio`, `skbqueue`, `nomatch`) can
+only make the set match less. A `nomatch` network is an exception inside a wider member and is
+still counted as a member, which refuses more, never less.
+
+The captured sets (`cali40masq-ipam-pools`, `cali40all-ipam-pools`, Cilium's
+`cilium_node_set_v4`) read exactly as before.
+
 ## Not known yet
 
 - ~~Whether `ipset save` needs a capability the host-posture container does not already hold.~~
