@@ -358,6 +358,17 @@ helm template gw-legacy "${TMP}/legacy-chart" "${BASE[@]}" \
   --set-string joinToken=legacy-contract-token >"${TMP}/legacy.yaml"
 require "${TMP}/legacy.yaml" '^kind: Secret$' 'legacy raw-token compatibility Secret'
 require "${TMP}/legacy.yaml" 'INSECURE LEGACY' 'legacy raw-token warning'
+# The notes must say what THIS release holds. A default install holds NET_RAW
+# (aiVPN.enabled defaults to true); only aiVPN.enabled=false does not.
+require "${TMP}/legacy.yaml" 'NET_ADMIN, NET_BIND_SERVICE and NET_RAW\. This is the default profile' 'default capability set stated in the notes'
+reject "${TMP}/legacy.yaml" 'NET_RAW is NOT held' 'no-NET_RAW wording in the notes of a default install'
+helm template gw-legacy "${TMP}/legacy-chart" "${BASE[@]}" \
+  --set enrollment.mode=enroll \
+  --set nodeName=legacy-gateway \
+  --set-string joinToken=legacy-contract-token \
+  --set aiVPN.enabled=false >"${TMP}/legacy-ai-disabled.yaml"
+require "${TMP}/legacy-ai-disabled.yaml" 'NET_ADMIN and NET_BIND_SERVICE only\. NET_RAW is NOT held' 'two-capability profile stated in the notes when VPN inference is off'
+reject "${TMP}/legacy-ai-disabled.yaml" 'This is the default profile' 'default-profile wording in the notes when VPN inference is off'
 
 helm template gw-legacy-secret "${CHART}" "${BASE[@]}" \
   --set enrollment.mode=enroll \

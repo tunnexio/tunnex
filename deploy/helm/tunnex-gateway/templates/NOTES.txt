@@ -6,18 +6,28 @@ INSTALL CONTRACT
   runs `helm install --atomic --wait`, verifies
   /readyz, and deletes the consumed Secret only after success.
 
-  This chart requires hostNetwork, NET_ADMIN + NET_BIND_SERVICE on the ordinary
-  gateway, NET_RAW when aiVPN.enabled=true, /dev/net/tun, and the separate
-  cluster-singleton tunnex-host-posture
+  This chart requires hostNetwork, /dev/net/tun, the capabilities NET_ADMIN,
+  NET_BIND_SERVICE and (unless aiVPN.enabled=false) NET_RAW on the gateway,
+  and the separate cluster-singleton tunnex-host-posture
   manager. The manager owns privileged host preparation. The unprivileged
   gateway admission init only reads its heartbeat and receives NO
   service-account token, join token, or identity state volume.
 
 Security posture (for your security team's review):
-  - Capabilities: the pod drops the ENTIRE default set and adds back NET_ADMIN and
-    NET_BIND_SERVICE, plus NET_RAW only when aiVPN.enabled=true for the exact-interface
-    VPN inference listener (not privileged:true; allowPrivilegeEscalation:false;
-    seccompProfile RuntimeDefault).
+  - Capabilities: the pod drops the ENTIRE default set and adds back
+    {{- if .Values.aiVPN.enabled }}
+    NET_ADMIN, NET_BIND_SERVICE and NET_RAW. This is the default profile:
+    aiVPN.enabled is true unless you set it to false, and `tunnex k8s install`
+    does not change it. NET_RAW is held for the exact-interface VPN inference
+    listener; with aiVPN.enabled=false the gateway holds only NET_ADMIN and
+    NET_BIND_SERVICE.
+    {{- else }}
+    NET_ADMIN and NET_BIND_SERVICE only. NET_RAW is NOT held, because this
+    release sets aiVPN.enabled=false; the chart default (aiVPN.enabled=true)
+    adds NET_RAW for the VPN inference listener.
+    {{- end }}
+    In both profiles: not privileged:true; allowPrivilegeEscalation:false;
+    seccompProfile RuntimeDefault.
   - VPN inference: aiVPN.enabled={{ .Values.aiVPN.enabled }}. The listener uses only
     the private WireGuard address/interface; no AI Service or public port is created.
     Current user/device identity, model grants, organization enablement and the saved

@@ -29,6 +29,9 @@ image:
 # VPN inference binds only the actual WireGuard address and interface. No AI
 # Service/host port is published. Access still requires current device identity,
 # model grants, organization enablement and the saved control-plane HTTP policy.
+# On by default, and while it is on the gateway container holds NET_RAW in
+# addition to NET_ADMIN and NET_BIND_SERVICE. Set false for the two-capability
+# profile; `tunnex k8s install` leaves this value alone.
 aiVPN:
   enabled: true
 

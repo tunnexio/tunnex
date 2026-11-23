@@ -85,7 +85,8 @@ What the two Tunnex containers can reach today:
 - **Host-posture manager** (`deploy/helm/tunnex-host-posture`): privileged, root, host network. It
   mounts only its state directory and `/proc/sys`; its service account may only read Pods. It has
   the capability to read BPF maps, but no path to Cilium's socket or pinned maps, and no `bpftool`.
-- **Gateway**: host network, `NET_ADMIN` only, not privileged; reads Services and EndpointSlices;
+- **Gateway**: host network, not privileged, `NET_ADMIN` and `NET_BIND_SERVICE`, plus `NET_RAW`
+  in a default install (`aiVPN.enabled` defaults to true); reads Services and EndpointSlices;
   mounts the posture state directory read-only. It runs the NAT walk itself (`nft` is enough).
 
 | Candidate | What it is | Verdict |
@@ -612,6 +613,10 @@ example `(found network device cilium_host)`:
 Not ready, by ruling: `Cilium egress gateway is enabled; its policies are applied before any
 masquerade exclusion and are not read`.
 
+On a node with no gateway pod the manager is idle: its state directory has `heartbeat.json` and
+no `host-facts.json`, and it reads nothing from Cilium. That is normal (the chart's notes say it
+too).
+
 ### Chart, installer, image
 
 - **Chart** `tunnex-host-posture`: value `cilium.enabled`, default `false`. With it the manager
@@ -853,3 +858,7 @@ Nothing here speaks for them; on each the gateway stays not ready unless the pro
    (the `bpftool`/LLVM cost of decision 1 again, now in memory). The probes are `exec` runs of
    the whole binary with a 2 s timeout, and they timed out on a busy node. Raise the requests
    and the probe timeout, or let the manager answer its probes without a new process.
+   *Taken, 2026-11-23:* requests and probe timeouts raised, with separate requests where
+   `cilium.enabled` is set; the values and their reasons are in K8N-1, "Hardening after the
+   live install". Answering probes without a new process is still open. Not yet run on a
+   cluster.

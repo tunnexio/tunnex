@@ -512,9 +512,11 @@ func verifyHostPostureFixedShape(ds *hostPostureDaemonSet) error {
 	if err := verifyHostPostureEnvironment(container.Env); err != nil {
 		return err
 	}
-	if !hostPostureProbeEquals(container.StartupProbe, "k8s-host-posture-check", "--ready", 2, 2, 45) ||
-		!hostPostureProbeEquals(container.ReadinessProbe, "k8s-host-posture-check", "--ready", 2, 2, 3) ||
-		!hostPostureProbeEquals(container.LivenessProbe, "k8s-host-posture-check", "--live", 10, 2, 3) {
+	// Exactly two probe shapes are ours: the current one, and the one every
+	// manager installed before it carries. The second is accepted only so that
+	// such a manager can be recognised and upgraded; it is never reused.
+	if !hostPostureProbesMatch(container.StartupProbe, container.ReadinessProbe, container.LivenessProbe, hostPostureCurrentProbes) &&
+		!hostPostureProbesMatch(container.StartupProbe, container.ReadinessProbe, container.LivenessProbe, hostPosturePreviousProbes) {
 		return errors.New("host posture manager startup/readiness/liveness probes are not the exact executable health contract")
 	}
 	wantMounts := map[string]struct {
@@ -558,6 +560,46 @@ func verifyHostPostureFixedShape(ds *hostPostureDaemonSet) error {
 		return err
 	}
 	return nil
+}
+
+// hostPostureProbeTiming is period, timeout (both seconds) and failure
+// threshold of one exec probe.
+type hostPostureProbeTiming struct{ period, timeout, failures int32 }
+
+type hostPostureProbeTimings struct{ startup, readiness, liveness hostPostureProbeTiming }
+
+// The chart's probes (deploy/helm/tunnex-host-posture/templates/daemonset.yaml;
+// K8N-1, "Hardening after the live install"). Every probe starts the whole
+// binary, so the timeout allows for a busy node, and a restart needs a minute
+// of consecutive liveness failures. Change the chart and this together.
+var hostPostureCurrentProbes = hostPostureProbeTimings{
+	startup:   hostPostureProbeTiming{period: 2, timeout: 5, failures: 45},
+	readiness: hostPostureProbeTiming{period: 5, timeout: 5, failures: 3},
+	liveness:  hostPostureProbeTiming{period: 10, timeout: 5, failures: 6},
+}
+
+// The probes of every chart before that change: a 2 s timeout throughout.
+var hostPosturePreviousProbes = hostPostureProbeTimings{
+	startup:   hostPostureProbeTiming{period: 2, timeout: 2, failures: 45},
+	readiness: hostPostureProbeTiming{period: 2, timeout: 2, failures: 3},
+	liveness:  hostPostureProbeTiming{period: 10, timeout: 2, failures: 3},
+}
+
+func hostPostureProbesMatch(startup, readiness, liveness hostPostureProbe, want hostPostureProbeTimings) bool {
+	return hostPostureProbeEquals(startup, "k8s-host-posture-check", "--ready", want.startup.period, want.startup.timeout, want.startup.failures) &&
+		hostPostureProbeEquals(readiness, "k8s-host-posture-check", "--ready", want.readiness.period, want.readiness.timeout, want.readiness.failures) &&
+		hostPostureProbeEquals(liveness, "k8s-host-posture-check", "--live", want.liveness.period, want.liveness.timeout, want.liveness.failures)
+}
+
+// hostPostureHasCurrentProbes reports whether a live manager DaemonSet carries
+// the current probes. The fixed-shape check has already accepted either these
+// or the previous ones; a manager with the previous ones is upgraded.
+func hostPostureHasCurrentProbes(ds *hostPostureDaemonSet) bool {
+	if ds == nil || len(ds.Spec.Template.Spec.Containers) != 1 {
+		return false
+	}
+	container := ds.Spec.Template.Spec.Containers[0]
+	return hostPostureProbesMatch(container.StartupProbe, container.ReadinessProbe, container.LivenessProbe, hostPostureCurrentProbes)
 }
 
 func hostPostureProbeEquals(probe hostPostureProbe, verb, mode string, period, timeout, failures int32) bool {
@@ -795,8 +837,9 @@ func planHostPosture(o installOptions, state hostPostureState, image imageValues
 		desiredChart := "tunnex-host-posture-" + o.hostPostureVersion
 		// A manager that lacks the Cilium host paths on a Cilium cluster, or
 		// still has them on a cluster without Cilium, is upgraded, not reused.
+		// So is one that still carries the previous probes.
 		if state.release.Status == "deployed" && (o.hostPostureVersion == "" || state.release.Chart == desiredChart) && verifyHostPostureDaemonSet(state.daemonSet, desiredImage, o.imagePullSecrets) == nil &&
-			hostPostureCiliumHostPaths(state.daemonSet) == ciliumHostPaths {
+			hostPostureCiliumHostPaths(state.daemonSet) == ciliumHostPaths && hostPostureHasCurrentProbes(state.daemonSet) {
 			action = "reuse"
 		}
 	}
@@ -1010,6 +1053,9 @@ func ensureHostPostureManager(ctx context.Context, deps k8sDeps, prepared prepar
 	}
 	if err := verifyHostPostureDaemonSet(after.daemonSet, prepared.plan.HostPosture.Image, prepared.options.imagePullSecrets); err != nil {
 		return err
+	}
+	if !hostPostureHasCurrentProbes(after.daemonSet) {
+		return errors.New("host posture manager still carries the previous 2s health probes after apply; the approved chart sets a 5s probe timeout")
 	}
 	if got := hostPostureCiliumHostPaths(after.daemonSet); got != prepared.plan.HostPosture.CiliumHostPaths {
 		return fmt.Errorf("host posture manager Cilium host paths are mounted=%t after apply, expected approved %t", got, prepared.plan.HostPosture.CiliumHostPaths)

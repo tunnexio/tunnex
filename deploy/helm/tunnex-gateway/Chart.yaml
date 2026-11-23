@@ -5,10 +5,11 @@ description: >-
   cluster on the fabric, DNATing synthetic Service VIPs to ready pod endpoints
   and answering the cluster's DNS zone. A credentialless init admits the Pod
   only after the separate cluster-singleton host-posture manager proves this
-  exact live Pod UID on the selected node; the ordinary hostNetwork gateway
+  exact live Pod UID on the selected node; the hostNetwork gateway
   retains NET_ADMIN, NET_BIND_SERVICE, /dev/net/tun, and read-only
-  Service/EndpointSlice access. VPN-only AI inference additionally requires
-  NET_RAW to bind its listener to the WireGuard interface.
+  Service/EndpointSlice access. By default it also holds NET_RAW, which
+  VPN-only AI inference (aiVPN.enabled, on by default) needs to bind its
+  listener to the WireGuard interface; aiVPN.enabled=false removes it.
   Retained identity state and explicit enroll/reuse modes make install, upgrade,
   rollback, and uninstall lifecycle-safe across Kubernetes providers.
 type: application

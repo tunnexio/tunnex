@@ -10,6 +10,10 @@ Cilium: /var/run/cilium and /sys/fs/bpf are mounted read-only, so the manager
 can read what Cilium itself reports about masquerading.
 {{- end }}
 
+A manager on a node with no gateway pod is idle: its state directory holds
+heartbeat.json (state "idle") and no host-facts.json. That is normal; the
+receipt is written only while a gateway runs on that node.
+
 Install gateway releases only after every eligible DaemonSet pod is Ready.
 Individual gateway uninstall must not remove this shared release. Remove it only
 through the guarded cluster lifecycle after a cluster-wide readback proves that

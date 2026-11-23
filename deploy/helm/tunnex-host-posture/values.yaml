@@ -42,15 +42,30 @@ affinity: {}
 # Without it a gateway on a Cilium node stays not ready and says so.
 cilium:
   enabled: false
+  # Used INSTEAD of the top-level `resources` when cilium.enabled is true. The
+  # manager then runs bpftool every pass, whose LLVM library is charged to the
+  # container as page cache: measured 76 MB (peak 83 MB) and 33 millicores with
+  # one gateway on the node. To change the manager's resources on a Cilium
+  # cluster, override this block, not `resources`.
+  resources:
+    requests:
+      cpu: 50m
+      memory: 96Mi
+    limits:
+      memory: 128Mi
 
 reconcileInterval: "2s"
 apiRequestTimeout: "10s"
 maxOwners: 32
 
+# The manager without Cilium (with it: cilium.resources above). Measured with
+# one gateway on the node: 25 millicores, 26 to 27 MB, peak 35 MB; idle 3.6
+# millicores. Requests are reserved on every Linux node, so they carry modest
+# headroom. No CPU limit: throttling would make the exec probes time out.
 resources:
   requests:
-    cpu: 20m
-    memory: 32Mi
+    cpu: 40m
+    memory: 48Mi
   limits:
     memory: 128Mi
 
