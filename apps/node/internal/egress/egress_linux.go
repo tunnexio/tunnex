@@ -1410,6 +1410,10 @@ func (m *Manager) SetKubernetesCNIAuthority(guard k8snetprep.AuthorityGuard, hos
 	}, nil, guard)
 	reconciler.UseHostFacts(hostFacts)
 	reconciler.UseCiliumFacts(ciliumFacts)
+	// The proof excuses a foreign masquerade bound to one exact output
+	// interface only when that interface is none of the tunnel interfaces.
+	// It reads the same set the forward and NAT rules are rendered from.
+	reconciler.UseTunnelInterfaces(m.tunnelIfaces)
 	m.k8sNetPrep = reconciler
 }
 

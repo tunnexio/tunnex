@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/tunnexio/tunnex/apps/node/internal/k8snetprep"
 )
@@ -96,6 +97,49 @@ func TestK8sCNIAuthorityWiringNeverEnablesVMOrFallsBackAfterRefusal(t *testing.T
 	}
 	if guardCalls != 1 || nftCalls != 0 || m.K8sNetPrepReady() {
 		t.Fatalf("refusal boundary: guard=%d nft=%d ready=%v", guardCalls, nftCalls, m.K8sNetPrepReady())
+	}
+}
+
+// K8N review, finding 3: the CNI proof excuses a foreign masquerade bound to
+// one exact output interface only when that interface is none of the tunnel
+// interfaces, so it must be told the same live set the forward and NAT rules
+// are rendered from. The reconciler validates that set before it reads
+// anything, which is how this test sees that the set it was given is the
+// manager's own, read again at every pass.
+func TestK8sCNIAuthorityWiringHandsTheProofTheLiveTunnelInterfaces(t *testing.T) {
+	m := New("wg0")
+	m.SetKubernetesMode(true)
+	nftCalls := 0
+	m.nftRun = func(context.Context, ...string) (string, error) {
+		nftCalls++
+		return "", errors.New("the listing is not reached in this test")
+	}
+	m.SetKubernetesCNIAuthority(func(context.Context) (k8snetprep.AuthorityGrant, func(), error) {
+		return k8snetprep.AuthorityGrant{Scope: k8snetprep.ScopeIPMasqAndAWS, NotAfter: time.Now().Add(k8snetprep.CNIOperationBudget)}, func() {}, nil
+	}, nil, nil)
+
+	// WireGuard only, then with the OpenVPN server's interface: both are
+	// usable names, so the pass goes on to the rp_filter read-back (which this
+	// host cannot satisfy for wg0).
+	for _, tun := range []string{"", "tunnex-ovpn"} {
+		m.SetOVPNTun(tun)
+		err := m.reconcileK8sNetPrep(t.Context(), "10.99.0.0/24")
+		if err == nil || strings.Contains(err.Error(), "tunnel interface") || !strings.Contains(err.Error(), "rp_filter") {
+			t.Fatalf("OpenVPN interface %q: %v", tun, err)
+		}
+	}
+	// A second tunnel interface the proof cannot use reaches it and refuses.
+	m.SetOVPNTun("tunnex-*")
+	if err := m.reconcileK8sNetPrep(t.Context(), "10.99.0.0/24"); err == nil || !strings.Contains(err.Error(), "invalid tunnel interface name") || m.K8sNetPrepReady() {
+		t.Fatalf("the proof was not told the manager's tunnel interfaces: %v", err)
+	}
+	// The set is read at every pass, not once at wiring time.
+	m.SetOVPNTun("")
+	if err := m.reconcileK8sNetPrep(t.Context(), "10.99.0.0/24"); err == nil || strings.Contains(err.Error(), "tunnel interface") {
+		t.Fatalf("after the OpenVPN interface went away: %v", err)
+	}
+	if nftCalls != 0 {
+		t.Fatalf("nft ran %d times before the host check passed", nftCalls)
 	}
 }
 

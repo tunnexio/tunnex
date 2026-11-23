@@ -218,6 +218,64 @@ func TestLiveCalicoNodeReconcilesReadyAndNamesItsPool(t *testing.T) {
 	}
 }
 
+// Review finding 3, on the whole reconcile. The captured node masquerades on
+// its overlay interface (`-o tunl0 ... -j MASQUERADE`), and only that exact
+// output interface excuses the rule. The gateway is told every tunnel
+// interface the agent owns, at every observation. While that interface is not
+// one of them the node is ready; once the agent owns it (here by giving the
+// second tunnel interface the overlay's name) the same rule is refused, on
+// the direct path and on the receipt path alike, and nothing is written.
+func TestLiveCalicoNodeIsRefusedWhenAMasqueradeIsBoundToASecondTunnelInterface(t *testing.T) {
+	for name, build := range map[string]func(*testing.T) (*calicoTestKernel, *Reconciler){
+		"direct reads": liveCalicoKernel,
+		"host facts": func(t *testing.T) (*calicoTestKernel, *Reconciler) {
+			return gatewayOnLiveCalico(t, constantFacts(liveCalicoHostFacts(t)))
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			f, r := build(t)
+			owned := []string{"wg0", "tunnex-ovpn"}
+			asked := 0
+			r.UseTunnelInterfaces(func() []string { asked++; return owned })
+			status, err := r.Reconcile(t.Context(), "100.96.0.0/24")
+			if err != nil || status.Adapters[0].Name != ObservedAdapterName || status.Adapters[0].State != StateReady {
+				t.Fatalf("an unrelated second tunnel interface refused the node: %+v %v", status, err)
+			}
+			if asked < 2 {
+				t.Fatalf("the tunnel interfaces were read %d times; every observation must read them", asked)
+			}
+
+			// The OpenVPN server starts on the interface the masquerade names.
+			owned = []string{"wg0", "tunl0"}
+			status, err = r.Reconcile(t.Context(), "100.96.0.0/24")
+			if err == nil || !strings.Contains(err.Error(), "NAT chain cali-POSTROUTING can rewrite the source of traffic to the tunnel range 100.96.0.0/24") {
+				t.Fatalf("masquerade bound to a tunnel interface: %+v %v", status, err)
+			}
+			for _, adapter := range status.Adapters {
+				if adapter.State == StateReady {
+					t.Fatalf("refused node reports a ready adapter: %+v", status)
+				}
+			}
+			if status.Host.State != StateBlocked || len(f.mutations) != 0 {
+				t.Fatalf("status %+v, mutations %v", status, f.mutations)
+			}
+
+			// And stops again: the node is ready on the next pass.
+			owned = []string{"wg0"}
+			if status, err = r.Reconcile(t.Context(), "100.96.0.0/24"); err != nil {
+				t.Fatalf("after the second tunnel interface went away: %+v %v", status, err)
+			}
+
+			// A list the proof cannot use refuses before anything is read.
+			f.commands = nil
+			owned = []string{"wg0", "tunnex-*"}
+			if status, err = r.Reconcile(t.Context(), "100.96.0.0/24"); err == nil || !strings.Contains(err.Error(), "invalid tunnel interface name") || len(f.commands) != 0 {
+				t.Fatalf("wildcard tunnel interface: %+v %v, ran %v", status, err, f.commands)
+			}
+		})
+	}
+}
+
 func TestLiveCalicoNodeReconcileRefusals(t *testing.T) {
 	t.Run("tunnel range inside the pool", func(t *testing.T) {
 		f, r := liveCalicoKernel(t)

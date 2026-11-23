@@ -40,6 +40,57 @@ func TestObservedReadsExactOutputInterface(t *testing.T) {
 	}
 }
 
+// Review finding 3. The agent may own more than one tunnel interface: the
+// OpenVPN server's clients draw from the same range as WireGuard devices. A
+// masquerade bound to exactly that second interface applies to traffic that
+// enters a tunnel, so it is excused only when the walk does not know the
+// interface is one. A rule is excused when its exact name is none of them.
+func TestObservedExcusesNoRuleBoundToAnyTunnelInterface(t *testing.T) {
+	tunnel := netip.MustParsePrefix("100.96.0.0/24")
+	for _, tc := range []struct {
+		name, rule, egress string
+		also               []string
+		accepted           bool
+	}{
+		{"bound to the second tunnel interface", oifname("==", "tunnex-ovpn"), "wg0", []string{"tunnex-ovpn"}, false},
+		{"the same rule while only WireGuard is a tunnel", oifname("==", "tunnex-ovpn"), "wg0", nil, true},
+		{"bound to the first with a second known", oifname("==", "wg0"), "wg0", []string{"tunnex-ovpn"}, false},
+		{"bound to neither", oifname("==", "tunl0"), "wg0", []string{"tunnex-ovpn"}, true},
+		{"bound to the third of three", oifname("==", "tun9"), "wg0", []string{"tunnex-ovpn", "tun9"}, false},
+		{"second listed twice and the first again", oifname("==", "tunnex-ovpn"), "wg0", []string{"wg0", "tunnex-ovpn", "tunnex-ovpn"}, false},
+		{"wildcard that covers the second", oifname("==", "tunnex-*"), "wg0", []string{"tunnex-ovpn"}, false},
+		{"negated second", oifname("!=", "tunnex-ovpn"), "wg0", []string{"tunnex-ovpn"}, false},
+		{"first not known, second known", oifname("==", "tunl0"), "", []string{"tunnex-ovpn"}, false},
+	} {
+		names, rules := observedRules(t, map[string][]string{"POSTROUTING": {`[` + tc.rule + `,` + xtAddrtype + `,` + xtMasquerade + `]`}})
+		_, err := proveNoTunnelSourceNATWithSets(names, rules, "POSTROUTING", tunnel, tc.egress, nil, nil, tc.also...)
+		if (err == nil) != tc.accepted {
+			t.Errorf("%s: accepted=%v, err=%v", tc.name, err == nil, err)
+		}
+	}
+	// A name that cannot be an interface is never dropped silently, and the
+	// list is bounded.
+	names, rules := observedRules(t, map[string][]string{"POSTROUTING": nil})
+	for _, also := range [][]string{{"tunnex-*"}, {""}, {"tunnex-ovpn", "a b"}, {"sixteen-letters-x"}, make([]string, maxTunnelInterfaces+1)} {
+		if _, err := proveNoTunnelSourceNATWithSets(names, rules, "POSTROUTING", tunnel, "wg0", nil, nil, also...); err == nil {
+			t.Errorf("tunnel interfaces %q were accepted", also)
+		}
+		if _, err := setsNeededForProof(names, rules, "POSTROUTING", tunnel, "wg0", nil, nil, also...); err == nil {
+			t.Errorf("tunnel interfaces %q were accepted when collecting sets", also)
+		}
+	}
+	// The set collection walks the same way: a set-limited masquerade bound to
+	// the second tunnel interface still needs its set read.
+	names, rules = observedRules(t, map[string][]string{"POSTROUTING": {`[` + oifname("==", "tunnex-ovpn") + `,` + xtSet + `,` + xtMasquerade + `]`}})
+	saved := mangleSaved(t, "-A POSTROUTING -o tunnex-ovpn -m set --match-set pods src -j MASQUERADE")
+	if needed, err := setsNeededForProof(names, rules, "POSTROUTING", tunnel, "wg0", nil, saved); err != nil || len(needed) != 0 {
+		t.Errorf("one tunnel interface: needed %v, err %v", needed, err)
+	}
+	if needed, err := setsNeededForProof(names, rules, "POSTROUTING", tunnel, "wg0", nil, saved, "tunnex-ovpn"); err != nil || len(needed) != 1 || needed[0] != "pods" {
+		t.Errorf("two tunnel interfaces: needed %v, err %v", needed, err)
+	}
+}
+
 func mangleSaved(t *testing.T, lines string) map[string][]savedRule {
 	t.Helper()
 	saved, err := parseSavedRules(lines)

@@ -74,6 +74,9 @@ type observedNAT struct {
 	handled map[string]bool
 	tunnel  netip.Prefix
 	egress  string
+	// tunnels holds egress and every other interface through which traffic
+	// enters a tunnel on this node. It is empty when egress is.
+	tunnels map[string]bool
 	active  map[string]bool
 
 	// facts is nil when no set facts were read. collect makes the walk gather
@@ -116,8 +119,14 @@ func proveNoTunnelSourceNAT(chains map[string]bool, rules map[string][][]map[str
 // this package owns (`ip daddr TUNNEL oifname EGRESS return`): a rule that
 // requires another exact output interface cannot apply to it. With egress
 // empty an output-interface condition excuses nothing.
-func proveNoTunnelSourceNATWithSets(chains map[string]bool, rules map[string][][]map[string]any, base string, tunnel netip.Prefix, egress string, handled map[string]bool, facts *natSetFacts) ([]string, error) {
-	o, err := newObservedNAT(chains, rules, tunnel, egress, handled)
+//
+// alsoTunnel names every other interface through which traffic enters a
+// tunnel on this node (the OpenVPN server's, when it serves). Devices behind
+// any of them draw from the same range, so a rule bound to one of them is not
+// excused either: a rule is excused only when the exact name it requires is
+// none of the tunnel interfaces.
+func proveNoTunnelSourceNATWithSets(chains map[string]bool, rules map[string][][]map[string]any, base string, tunnel netip.Prefix, egress string, handled map[string]bool, facts *natSetFacts, alsoTunnel ...string) ([]string, error) {
+	o, err := newObservedNAT(chains, rules, tunnel, egress, handled, alsoTunnel)
 	if err != nil {
 		return nil, err
 	}
@@ -133,8 +142,8 @@ func proveNoTunnelSourceNATWithSets(chains map[string]bool, rules map[string][][
 // of non-negated, source-only matches on source-NAT rules that tunnel-bound
 // traffic can reach from base. Every other refusal of the walk, including a
 // rule that does not pair with saved, is returned as an error.
-func setsNeededForProof(chains map[string]bool, rules map[string][][]map[string]any, base string, tunnel netip.Prefix, egress string, handled map[string]bool, saved map[string][]savedRule) ([]string, error) {
-	o, err := newObservedNAT(chains, rules, tunnel, egress, handled)
+func setsNeededForProof(chains map[string]bool, rules map[string][][]map[string]any, base string, tunnel netip.Prefix, egress string, handled map[string]bool, saved map[string][]savedRule, alsoTunnel ...string) ([]string, error) {
+	o, err := newObservedNAT(chains, rules, tunnel, egress, handled, alsoTunnel)
 	if err != nil {
 		return nil, err
 	}
@@ -148,14 +157,34 @@ func setsNeededForProof(chains map[string]bool, rules map[string][][]map[string]
 	return sortedNames(o.needed), nil
 }
 
-func newObservedNAT(chains map[string]bool, rules map[string][][]map[string]any, tunnel netip.Prefix, egress string, handled map[string]bool) (*observedNAT, error) {
+// maxTunnelInterfaces bounds how many tunnel interfaces one proof may be told.
+const maxTunnelInterfaces = 16
+
+func newObservedNAT(chains map[string]bool, rules map[string][][]map[string]any, tunnel netip.Prefix, egress string, handled map[string]bool, alsoTunnel []string) (*observedNAT, error) {
 	if !tunnel.IsValid() || !tunnel.Addr().Is4() {
 		return nil, errors.New("invalid IPv4 tunnel range")
+	}
+	if len(alsoTunnel) > maxTunnelInterfaces {
+		return nil, errors.New("too many tunnel interfaces")
 	}
 	if egress != "" && !exactInterfaceNameRE.MatchString(egress) {
 		return nil, errors.New("invalid tunnel interface name")
 	}
-	return &observedNAT{chains: chains, rules: rules, handled: handled, tunnel: tunnel.Masked(), egress: egress, active: map[string]bool{},
+	tunnels := map[string]bool{}
+	if egress != "" {
+		tunnels[egress] = true
+	}
+	for _, name := range alsoTunnel {
+		// A name that could not be an interface is never dropped: the caller
+		// meant an interface this proof would otherwise excuse rules for.
+		if !exactInterfaceNameRE.MatchString(name) {
+			return nil, errors.New("invalid tunnel interface name")
+		}
+		if egress != "" {
+			tunnels[name] = true
+		}
+	}
+	return &observedNAT{chains: chains, rules: rules, handled: handled, tunnel: tunnel.Masked(), egress: egress, tunnels: tunnels, active: map[string]bool{},
 		paired: map[string]bool{}, needed: map[string]bool{}, proof: map[string]bool{}}, nil
 }
 
@@ -449,12 +478,12 @@ func (o *observedNAT) readMatch(match map[string]any, view *observedRule) {
 	}
 	if reflect.DeepEqual(match["left"], map[string]any{"meta": map[string]any{"key": "oifname"}}) {
 		// `oifname == "tunl0"`: the rule applies only to packets leaving
-		// through that one interface. Traffic entering the tunnel leaves
-		// through egress, so a rule bound to another exact name never sees
-		// it. A wildcard ("tunl*"), a set of names, "!=" and an unknown
-		// egress prove nothing.
+		// through that one interface. Traffic entering a tunnel leaves
+		// through one of the tunnel interfaces, so a rule bound to an exact
+		// name that is none of them never sees it. A wildcard ("tunl*"), a
+		// set of names, "!=" and an unknown egress prove nothing.
 		name, isName := match["right"].(string)
-		if op == "==" && isName && o.egress != "" && exactInterfaceNameRE.MatchString(name) && name != o.egress {
+		if op == "==" && isName && o.egress != "" && exactInterfaceNameRE.MatchString(name) && !o.tunnels[name] {
 			view.cannotMatch = true
 			return
 		}

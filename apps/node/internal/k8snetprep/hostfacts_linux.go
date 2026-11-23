@@ -414,7 +414,7 @@ func (r *Reconciler) natSetFactsFromHostFacts(s *cniSnapshot, facts *HostNetFact
 		return nil, err
 	}
 	chains, rules := s.observedNATInput()
-	names, err := setsNeededForProof(chains, rules, "POSTROUTING", tunnel, r.iface, observedHandledChains, saved)
+	names, err := setsNeededForProof(chains, rules, "POSTROUTING", tunnel, r.iface, observedHandledChains, saved, s.tunnelIfaces...)
 	if err != nil {
 		return nil, err
 	}
