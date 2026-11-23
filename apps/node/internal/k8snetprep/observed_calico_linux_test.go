@@ -131,6 +131,27 @@ func TestCalicoNodeRefusals(t *testing.T) {
 			},
 			want: "type hash:net,port, which is not understood",
 		},
+		// Review finding 2. A hash:ip set with a netmask lists one address per
+		// network it matches: the member 100.64.0.0 of a `netmask 10` set is
+		// every address of 100.64.0.0/10, which contains the tunnel range.
+		"source set that matches whole networks": {
+			mutate: func(f *calicoTestKernel) {
+				f.sets[calicoMasq] = "create " + calicoMasq + " hash:ip family inet hashsize 1024 maxelem 65536 netmask 10 bucketsize 12 initval 0x1\nadd " + calicoMasq + " 100.64.0.0\n"
+			},
+			want: "set " + calicoMasq + " has netmask 10: its members match whole networks",
+		},
+		"source set with a bitmask": {
+			mutate: func(f *calicoTestKernel) {
+				f.sets[calicoMasq] = "create " + calicoMasq + " hash:ip family inet hashsize 1024 maxelem 65536 bitmask 255.192.0.0 bucketsize 12 initval 0x1\nadd " + calicoMasq + " 100.64.0.0\n"
+			},
+			want: "set " + calicoMasq + " has a bitmask",
+		},
+		"source set with an option that is not known": {
+			mutate: func(f *calicoTestKernel) {
+				f.sets[calicoMasq] = "create " + calicoMasq + " hash:net family inet hashsize 1024 maxelem 65536 wildcard\nadd " + calicoMasq + " 192.168.0.0/16\n"
+			},
+			want: "header option that is not understood",
+		},
 		"IPv6 pool": {
 			mutate: func(f *calicoTestKernel) {
 				f.sets[calicoMasq] = "create " + calicoMasq + " hash:net family inet6\nadd " + calicoMasq + " fd00::/64\n"

@@ -37,6 +37,14 @@ device, the same effect the walk already accepts for Flannel. Item 10 is of a di
    networks, but its members are read as /32. Confirmed with a scratch test. Calico uses `hash:net`,
    so this needs someone's own rule. Fix: refuse a `create` line carrying `netmask` other than 32 or
    `bitmask`; better, allow-list the header tokens.
+   **Fixed** — `fix(k8s): read an ipset only when every header option is known (K8N review 2)`.
+   The `create` line is now an allow-list (K8N-1, "After the review", has the table): `netmask`
+   other than 32 and any `bitmask` refuse, and so does every option not decided on. Tests:
+   `TestParseIPSetSaveRefusesASetThatMatchesMoreThanItLists`,
+   `TestParseIPSetSaveHeaderIsAnAllowList`, the rows "source set that matches whole networks"
+   and "source set with a bitmask" of `TestCalicoNodeRefusals` (whole reconcile) and "set that
+   matches whole networks" of `TestGatewayRefusesHostFactsThatDoNotHold` (through the receipt).
+   The captured Calico and Cilium sets read as before (`TestParseIPSetSaveReadsTheCapturedSets`).
 
 3. **Medium/low — the exact-`oifname` exemption knows one tunnel interface.** The agent's tunnel set
    is `{wg0, tunnex-ovpn}`, and OpenVPN clients draw from the same device pool. A masquerade bound
