@@ -774,7 +774,7 @@ func (w *K8sWatcher) clearSlices() {
 func parseService(raw json.RawMessage) (key string, info serviceInfo, ok bool) {
 	var s struct {
 		Metadata struct {
-			Name      string `json:"name"`
+			Name      string            `json:"name"`
 			Namespace string            `json:"namespace"`
 			UID       string            `json:"uid"`
 			Labels    map[string]string `json:"labels"`
