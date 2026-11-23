@@ -5592,7 +5592,7 @@ export interface paths {
         post?: never;
         /**
          * Deregister a cluster — full-sweep of its Services + rules (S10.3; k8s:manage)
-         * @description Removes the cluster; ON DELETE CASCADE removes its exposed Services and any policy rule reaching one, and frees the whole VIP range (incl the reserved DNS VIP) + the DNS zone for reuse.
+         * @description Removes the cluster; ON DELETE CASCADE removes its exposed Services and any policy rule reaching one, and frees the whole VIP range (incl the reserved DNS VIP) + the DNS zone for reuse. It also removes the cluster's API access (K8N-3) and every rule that names the cluster's Kubernetes API; the audit entry counts them.
          */
         delete: operations["deregisterK8sCluster"];
         options?: never;
