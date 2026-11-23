@@ -499,3 +499,20 @@ main .tnx-table-toolbar input[type="search"]::placeholder { text-overflow:ellips
 .dm-inventory-toolbar > .tnx-refresh-button,.dm-inventory-toolbar > button:last-child { margin-left:0; }
 /* The current page in the sidebar keeps its focus ring inside its own box, where the rail cannot clip it. */
 nav a[aria-current=page]:focus-visible,aside a:focus-visible { outline-offset:-2px; }
+/* Narrow screens: a toolbar that now carries search, filters, count and sort wraps instead of
+ * pushing the page sideways; filters scroll within their own row. */
+@media (max-width:760px) {
+  .gw-inventory-toolbar,.dm-inventory-toolbar { flex-wrap:wrap; row-gap:10px; }
+  .gw-inventory-toolbar .gw-filter-tabs,.dm-inventory-toolbar .dm-filter-tabs { order:3; flex:1 0 100%; margin-inline:0; overflow-x:auto; }
+  .gw-inventory-toolbar .gw-search,.dm-inventory-toolbar > input,.dm-inventory-toolbar > .block { flex:1 1 180px; min-width:0; width:auto; }
+  .access-test-subject { gap:14px; }
+}
+/* A focused text field is neutral, not crimson. Crimson around an empty field reads as "this is
+ * wrong" before the person has typed anything; fields keep red for an actual validation error. */
+input:not([type=checkbox]):not([type=radio]):not([type=range]):not([aria-invalid=true]):focus-visible,
+select:not([aria-invalid=true]):focus-visible,
+textarea:not([aria-invalid=true]):focus-visible {
+  outline-color:var(--tnx-text-secondary)!important;
+  border-color:var(--tnx-text-secondary)!important;
+  --tw-ring-color:var(--tnx-text-secondary)!important;
+}
