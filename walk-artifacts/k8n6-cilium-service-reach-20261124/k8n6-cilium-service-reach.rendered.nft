@@ -1,0 +1,40 @@
+add table ip tunnex
+flush table ip tunnex
+table ip tunnex {
+  chain tunnex_posture_owner {
+    counter comment "tunnex_host_posture_v1"
+  }
+
+  chain postrouting {
+    type nat hook postrouting priority srcnat - 1; policy accept;
+    ip saddr 10.99.0.1/24 oifname != "wg0" masquerade
+  }
+  chain forward {
+    type filter hook forward priority filter; policy drop;
+    ct state established,related accept
+    ct state invalid counter drop comment "tunnex_ct_invalid_drop"
+    iifname != "wg0" oifname != "wg0" counter accept comment "tunnex_native_forward_passthrough"
+
+    iifname "wg0" oifname "wg0" tcp flags syn tcp option maxseg size set rt mtu
+    counter comment "tunnex_default_drop"
+  }
+}
+add table ip6 tunnex
+flush table ip6 tunnex
+table ip6 tunnex {
+  chain tunnex_posture_owner {
+    counter comment "tunnex_host_posture_v1"
+  }
+
+  chain postrouting {
+    type nat hook postrouting priority srcnat - 1; policy accept;
+  }
+  chain forward {
+    type filter hook forward priority filter; policy drop;
+    ct state established,related accept
+    ct state invalid counter drop comment "tunnex_ct_invalid_drop"
+    iifname != "wg0" oifname != "wg0" counter accept comment "tunnex_native_forward_passthrough"
+
+    counter comment "tunnex_default_drop"
+  }
+}

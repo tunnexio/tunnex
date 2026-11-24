@@ -1,0 +1,4 @@
+http://10.99.0.1:30080/clientip -> 10.99.0.2:60070 http_code=200
+http://10.244.0.35:8080/clientip -> 10.99.0.2:40958 http_code=200
+http://10.96.229.86:80/clientip ->  http_code=000
+		ip saddr 10.99.0.2 counter packets 0 bytes 0 drop

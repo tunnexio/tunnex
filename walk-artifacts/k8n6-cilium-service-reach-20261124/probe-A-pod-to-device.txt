@@ -1,0 +1,6 @@
+pod web (10.244.0.35) -> device 10.99.0.2:8000, agnhost connect exit 0
+00:55:16.237757 IP 10.244.0.35.36636 > 10.99.0.2.8000: Flags [S], seq 2590117491, win 64860, options [mss 1380,sackOK,TS val 2008991799 ecr 0,nop,wscale 7], length 0
+00:55:16.238327 IP 10.99.0.2.8000 > 10.244.0.35.36636: Flags [S.], seq 215275225, ack 2590117492, win 64296, options [mss 1380,sackOK,TS val 3134258727 ecr 2008991799,nop,wscale 7], length 0
+00:55:16.238388 IP 10.244.0.35.36636 > 10.99.0.2.8000: Flags [.], ack 1, win 507, options [nop,nop,TS val 2008991800 ecr 3134258727], length 0
+00:55:16.239467 IP 10.244.0.35.36636 > 10.99.0.2.8000: Flags [F.], seq 1, ack 1, win 507, options [nop,nop,TS val 2008991801 ecr 3134258727], length 0
+tunnex_default_drop unchanged at 3 packets before and after

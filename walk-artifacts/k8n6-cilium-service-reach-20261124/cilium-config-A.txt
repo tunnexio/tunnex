@@ -1,0 +1,7 @@
+  devices: ""
+  enable-bpf-masquerade: "true"
+  enable-ip-masq-agent: "true"
+  kube-proxy-replacement: "true"
+  kube-proxy-replacement-healthz-bind-address: ""
+  nodeport-addresses: ""
+  routing-mode: native

@@ -1,0 +1,14 @@
+=== E-kube-proxy: pod web (10.244.0.35) -> device 10.99.0.2:8000
+agnhost connect: TIMEOUT
+command terminated with exit code 1
+exit=1
+tunnex_default_drop before: packets 54 bytes 3240 comment "tunnex_default_drop"
+tunnex_default_drop after:  packets 57 bytes 3420 comment "tunnex_default_drop"
+--- tcpdump wg0
+
+--- nft trace (prerouting -350, daddr 10.99.0.2 dport 8000), tunnex lines:
+trace id 56a507ee ip tunnex forward packet: iif "lxc14fcf69d02cb" oif "wg0" ether saddr 82:81:a7:af:6b:c4 ether daddr d2:57:59:a7:91:8f ip saddr 10.244.0.35 ip daddr 10.99.0.2 ip dscp cs0 ip ecn not-ect ip ttl 63 ip id 48593 ip length 60 tcp sport 52446 tcp dport 8000 tcp flags == syn tcp window 64860 
+trace id 56a507ee ip tunnex forward rule counter packets 54 bytes 3240 comment "tunnex_default_drop" (verdict continue)
+trace id 56a507ee ip tunnex forward policy drop meta mark 0x0da00f00 
+trace id 42cbb1a4 ip tunnex forward packet: iif "lxc14fcf69d02cb" oif "wg0" ether saddr 82:81:a7:af:6b:c4 ether daddr d2:57:59:a7:91:8f ip saddr 10.244.0.35 ip daddr 10.99.0.2 ip dscp cs0 ip ecn not-ect ip ttl 63 ip id 48594 ip length 60 tcp sport 52446 tcp dport 8000 tcp flags == syn tcp window 64860 
+trace lines: 48

@@ -1,0 +1,5 @@
+routing {"inter-host-routing-mode": "Native", "intra-host-routing-mode": "BPF"}
+kube-proxy-replacement.devices ["eth0", "wg0"]
+kube-proxy-replacement.deviceList [{"ip": ["", "", "", "172.21.0.2", "fc00:f853:ccd:e793::2", "fe80::e893:c1ff:fe40:f4aa"], "name": "eth0"}, {"ip": ["", "10.99.0.1"], "name": "wg0"}]
+masquerading {"enabled": true, "enabledProtocols": {"ipv4": true}, "ip-masq-agent": true, "mode": "BPF", "snat-exclusion-cidr": "10.244.0.0/16", "snat-exclusion-cidr-v4": "10.244.0.0/16"}
+host-firewall {"devices": ["eth0", "wg0"], "mode": "Disabled"}

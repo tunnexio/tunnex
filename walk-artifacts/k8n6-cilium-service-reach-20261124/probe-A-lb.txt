@@ -1,0 +1,26 @@
+=== LoadBalancer IP (Cilium LB-IPAM): http://172.31.250.0:80/clientip
+--- tunnex forward counters before
+counter packets 0 drop comment "tunnex_ct_invalid_drop"
+counter packets 0 accept comment "tunnex_native_forward_passthrough"
+counter packets 3 comment "tunnex_default_drop"
+curl: http_code=200
+body: 10.99.0.2:36338
+--- tunnex forward counters after
+counter packets 0 drop comment "tunnex_ct_invalid_drop"
+counter packets 0 accept comment "tunnex_native_forward_passthrough"
+counter packets 3 comment "tunnex_default_drop"
+--- tcpdump wg0 (before tc ingress)
+00:54:34.441175 IP 10.99.0.2.36338 > 172.31.250.0.80: Flags [S], seq 157233441, win 64860, options [mss 1380,sackOK,TS val 3684902763 ecr 0,nop,wscale 7], length 0
+00:54:34.441472 IP 172.31.250.0.80 > 10.99.0.2.36338: Flags [S.], seq 3014883792, ack 157233442, win 64296, options [mss 1380,sackOK,TS val 2008950003 ecr 3684902763,nop,wscale 7], length 0
+00:54:34.441860 IP 10.99.0.2.36338 > 172.31.250.0.80: Flags [.], ack 1, win 507, options [nop,nop,TS val 3684902763 ecr 2008950003], length 0
+00:54:34.442210 IP 10.99.0.2.36338 > 172.31.250.0.80: Flags [P.], seq 1:85, ack 1, win 507, options [nop,nop,TS val 3684902764 ecr 2008950003], length 84: HTTP: GET /clientip HTTP/1.1
+--- tcpdump lxc14fcf69d02cb (pod side)
+00:54:34.441400 IP 10.244.0.35.8080 > 10.99.0.2.36338: Flags [S.], seq 3014883792, ack 157233442, win 64296, options [mss 1380,sackOK,TS val 2008950003 ecr 3684902763,nop,wscale 7], length 0
+00:54:34.442240 IP 10.244.0.35.8080 > 10.99.0.2.36338: Flags [.], ack 85, win 502, options [nop,nop,TS val 2008950004 ecr 3684902764], length 0
+00:54:34.452845 IP 10.244.0.35.8080 > 10.99.0.2.36338: Flags [P.], seq 1:133, ack 85, win 502, options [nop,nop,TS val 2008950015 ecr 3684902764], length 132: HTTP: HTTP/1.1 200 OK
+00:54:34.456636 IP 10.244.0.35.8080 > 10.99.0.2.36338: Flags [F.], seq 133, ack 86, win 502, options [nop,nop,TS val 2008950018 ecr 3684902775], length 0
+--- nft monitor trace (prerouting priority -350, iifname wg0 saddr 10.99.0.2)
+(tunnex/filter verdict lines:)
+trace lines: 0
+--- netfilter conntrack for 10.99.0.2
+conntrack v1.4.9 (conntrack-tools): 0 flow entries have been shown.

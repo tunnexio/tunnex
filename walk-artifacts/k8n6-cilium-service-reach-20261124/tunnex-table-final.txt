@@ -1,0 +1,19 @@
+table ip tunnex { # handle 9
+	chain tunnex_posture_owner { # handle 1
+		counter packets 0 bytes 0 comment "tunnex_host_posture_v1" # handle 11
+	}
+
+	chain postrouting { # handle 2
+		type nat hook postrouting priority srcnat - 1; policy accept;
+		ip saddr 10.99.0.0/24 oifname != "wg0" masquerade # handle 12
+	}
+
+	chain forward { # handle 3
+		type filter hook forward priority filter; policy drop;
+		ct state established,related accept # handle 13
+		ct state invalid counter packets 7 bytes 420 drop comment "tunnex_ct_invalid_drop" # handle 14
+		iifname != "wg0" oifname != "wg0" counter packets 0 bytes 0 accept comment "tunnex_native_forward_passthrough" # handle 15
+		iifname "wg0" oifname "wg0" tcp flags syn tcp option maxseg size set rt mtu # handle 16
+		counter packets 72 bytes 4320 comment "tunnex_default_drop" # handle 17
+	}
+}

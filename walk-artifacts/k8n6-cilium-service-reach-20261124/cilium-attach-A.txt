@@ -1,0 +1,32 @@
+# bpftool net show dev wg0 (config A, Cilium 1.20.5, wg0 type wireguard)
+xdp:
+
+tc:
+wg0(16) tcx/ingress cil_from_netdev prog_id 9324 link_id 181 
+wg0(16) tcx/egress cil_to_netdev prog_id 9327 link_id 200 
+
+flow_dissector:
+
+netfilter:
+
+# ip -d link show wg0
+16: wg0: <POINTOPOINT,NOARP,UP,LOWER_UP> mtu 1420 qdisc noqueue state UNKNOWN mode DEFAULT group default qlen 1000
+    link/none  promiscuity 0 allmulti 0 minmtu 0 maxmtu 2147483552 
+    wireguard addrgenmode none numtxqueues 1 numrxqueues 1 gso_max_size 65536 gso_max_segs 65535 tso_max_size 65536 tso_max_segs 65535 gro_max_size 65536 gso_ipv4_max_size 65536 gro_ipv4_max_size 65536 
+# cilium-dbg status --verbose (excerpt)
+KubeProxyReplacement:   True   [eth0    172.21.0.2 fc00:f853:ccd:e793::2 fe80::e893:c1ff:fe40:f4aa (Direct Routing), wg0  10.99.0.1]
+Cilium:                 Ok   1.20.5 (v1.20.5-15012141)
+Routing:                Network: Native   Host: BPF
+Masquerading:           BPF (ip-masq-agent)   [eth0, wg0]   10.244.0.0/16  [IPv4: Enabled, IPv6: Disabled]
+KubeProxyReplacement Details:
+  Socket LB:            Enabled
+  Devices:              eth0    172.21.0.2 fc00:f853:ccd:e793::2 fe80::e893:c1ff:fe40:f4aa (Direct Routing), wg0  10.99.0.1
+  - NodePort:       Enabled (Range: 30000-32767) 
+# cilium-dbg service list
+ID   Frontend                Service Type   Backend                               
+6    10.96.229.86:80/TCP     ClusterIP      1 => 10.244.0.35:8080/TCP (active)    
+13   0.0.0.0:31526/TCP       NodePort       1 => 10.244.0.35:8080/TCP (active)    
+16   172.31.250.0:80/TCP     LoadBalancer   1 => 10.244.0.35:8080/TCP (active)    
+17   0.0.0.0:30080/TCP       NodePort       1 => 10.244.0.35:8080/TCP (active)    
+# agent log, wg0
+time=2026-11-24T01:05:58.016282561Z level=info msg="Node addresses updated" addresses="10.99.0.1 (primary, nodeport)" device=wg0

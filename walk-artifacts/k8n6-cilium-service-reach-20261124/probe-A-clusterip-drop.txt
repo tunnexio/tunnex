@@ -1,0 +1,7 @@
+Listening for events on 2 CPUs with 64x4096 of shared memory
+Press Ctrl-C to quit
+time=2026-11-24T00:54:42.031915443Z level=info msg="Initializing dissection cache..."
+xx drop (Is a ClusterIP) flow 0x0 to endpoint 0, ifindex 16, file bpf_host.c:995, , identity world->unknown: 10.99.0.2:38890 -> 10.96.229.86:80 tcp SYN
+xx drop (Is a ClusterIP) flow 0x0 to endpoint 0, ifindex 16, file bpf_host.c:995, , identity world->unknown: 10.99.0.2:38890 -> 10.96.229.86:80 tcp SYN
+xx drop (Is a ClusterIP) flow 0x0 to endpoint 0, ifindex 16, file bpf_host.c:995, , identity world->unknown: 10.99.0.2:38890 -> 10.96.229.86:80 tcp SYN
+command terminated with exit code 124
