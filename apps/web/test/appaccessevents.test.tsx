@@ -50,14 +50,14 @@ it("discards a previous organization's late event response", async () => {
   page.rerender(<MemoryRouter><AppAccessEvents /></MemoryRouter>);
   await screen.findByText("No application events match this view.");
   await act(async () => release({ data: { items: [{ id: session, app_id: app, installation_generation: app, created_at: "2026-10-03T00:00:00Z", kind: "request_denied", outcome: "denied", reason: "session_invalid" }], telemetry: { available: true, emitted: 99, dropped: 99, storage_failures: 99 } } }));
-  expect(screen.queryByText("session invalid")).toBeNull();
+  expect(screen.queryByText("Sign-in for the app was not valid")).toBeNull();
   expect(screen.queryByText(/99 recorded/)).toBeNull();
   expect(api.GET).toHaveBeenLastCalledWith(expect.any(String), expect.objectContaining({ params: expect.objectContaining({ path: { orgId: "org-2" } }) }));
 });
 it("keeps decision evidence distinct from telemetry and links the exact application", async () => {
   vi.mocked(api.GET).mockImplementationOnce(async () => ({ data: { items: [{ id: session, app_id: app, installation_generation: app, created_at: "2026-10-03T00:00:00Z", kind: "request_denied", outcome: "denied", reason: "session_invalid" }], telemetry: { available: false, emitted: 0, dropped: 0, storage_failures: 0 } } }) as never);
   show();
-  await screen.findByText("session invalid");
+  await screen.findByText("Sign-in for the app was not valid");
   expect(screen.getByRole("table", { name: "Application access event history" })).toBeTruthy();
   expect(screen.getByText("Telemetry health")).toBeTruthy();
   expect(screen.getByRole("link", { name: `${app.slice(0, 4)}…${app.slice(-8)}` }).getAttribute("href")).toBe(`/app-access/applications/${app}`);
