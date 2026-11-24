@@ -680,7 +680,8 @@ func main() {
 		consoleHost = u.Hostname()
 	}
 	domainSettings := appdomains.New(pool, appdomains.Config{PortalURL: cfg.AppBaseURL, AppBaseDomain: cfg.AppAccessBaseDomain})
-	terminalSvc := serveraccess.New(pool, sessions, sealer, os.Getenv("TUNNEX_SERVER_ACCESS_ENABLED") == "true")
+	// SA-UI-1: the env only seeds the installation setting; TUNNEX_SERVER_ACCESS_LOCKED is an operator hard-off.
+	terminalSvc := serveraccess.New(pool, sessions, sealer, os.Getenv("TUNNEX_SERVER_ACCESS_ENABLED") == "true").WithInstallationLock(os.Getenv("TUNNEX_SERVER_ACCESS_LOCKED") == "true")
 	if err := terminalSvc.Boot(context.Background()); err != nil {
 		logger.Error("terminal_boot_failed")
 		os.Exit(1)

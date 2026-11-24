@@ -2868,6 +2868,15 @@ type ServerAccessGrant struct {
 	CreatedAt time.Time   `json:"created_at"`
 }
 
+type ServerAccessInstallationSetting struct {
+	Singleton bool        `json:"singleton"`
+	Enabled   bool        `json:"enabled"`
+	Version   int64       `json:"version"`
+	UpdatedBy pgtype.UUID `json:"updated_by"`
+	CreatedAt time.Time   `json:"created_at"`
+	UpdatedAt time.Time   `json:"updated_at"`
+}
+
 type ServerAccessRecording struct {
 	OrgID                   uuid.UUID          `json:"org_id"`
 	SessionID               uuid.UUID          `json:"session_id"`

@@ -943,6 +943,8 @@ type Querier interface {
 	// Public redemption identity derives entirely from the hash-bound sandbox.
 	GetSandboxBootstrapToken(ctx context.Context, tokenHash []byte) (GetSandboxBootstrapTokenRow, error)
 	GetSandboxEnforcementNode(ctx context.Context, arg GetSandboxEnforcementNodeParams) (Node, error)
+	// SA-UI-1: the saved installation capability. No row = environment seed.
+	GetServerAccessInstallationSettings(ctx context.Context) (GetServerAccessInstallationSettingsRow, error)
 	GetSite(ctx context.Context, arg GetSiteParams) (Site, error)
 	// lint:cross-org — org-scoped via the join to sites.org_id.
 	GetSiteSubnetForOrg(ctx context.Context, arg GetSiteSubnetForOrgParams) (GetSiteSubnetForOrgRow, error)
@@ -1699,6 +1701,8 @@ type Querier interface {
 	LockProviderRangeOrganization(ctx context.Context, id uuid.UUID) (uuid.UUID, error)
 	// lint:cross-org — callback locks its opaque server-side flow's exact connection.
 	LockSSOConnection(ctx context.Context, id uuid.UUID) (SsoConnection, error)
+	// Serializes saves, including the very first one when no row exists yet.
+	LockServerAccessInstallationSettings(ctx context.Context) error
 	// lint:cross-org — the bearer hash supplies only the locking scope, never authentication.
 	// Do not lock a credential before its device: device lifecycle triggers take
 	// those locks in device -> credential order. Re-read below AFTER the device lock.
@@ -2234,6 +2238,7 @@ type Querier interface {
 	// re-seeding restores a previously soft-deleted demo org to a clean live state.
 	UpsertOrganization(ctx context.Context, arg UpsertOrganizationParams) (Organization, error)
 	UpsertSSOConfig(ctx context.Context, arg UpsertSSOConfigParams) (SsoConfig, error)
+	UpsertServerAccessInstallationSettings(ctx context.Context, arg UpsertServerAccessInstallationSettingsParams) (UpsertServerAccessInstallationSettingsRow, error)
 	UpsertSystemSetting(ctx context.Context, arg UpsertSystemSettingParams) error
 	// S7.5.5 MFA / TOTP queries. Auth-plane; enrollment OPEN, enforce enterprise (app layer).
 	// The user_totp / user_recovery_codes / mfa_challenges tables are USER-scoped credentials (like a

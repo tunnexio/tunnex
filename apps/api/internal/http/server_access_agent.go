@@ -14,6 +14,30 @@ import (
 )
 
 func (a *AgentChannel) SetServerAccess(s *serveraccess.Service) { a.serverAccess = s }
+
+// serverAccessCapability (SA-UI-1) tells a gateway whose TUNNEX_SERVER_ACCESS_ENABLED is unset whether to
+// run its Server Access runtime: the installation capability AND the gateway organization's setting.
+// Gateways with the env set ignore it ("true" always runs, "false" never runs).
+func (a *AgentChannel) serverAccessCapability(w http.ResponseWriter, r *http.Request) {
+	node, r, ok := a.authenticateAgent(w, r)
+	if !ok {
+		return
+	}
+	if node.EnrolledKind == nil || *node.EnrolledKind != "gateway" {
+		apierr.Write(w, r, apierr.Forbidden("gateway_required", "Gateway authority required"))
+		return
+	}
+	enabled := false
+	if a.serverAccess != nil {
+		var e error
+		if enabled, e = a.serverAccess.Enabled(r.Context(), node.OrgID); e != nil {
+			apierr.Write(w, r, apierr.New(503, "server_access_capability_unavailable", "Terminal capability could not be read"))
+			return
+		}
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(terminalwire.Capability{Enabled: enabled})
+}
 func (a *AgentChannel) terminalAgent(w http.ResponseWriter, r *http.Request) {
 	node, r, ok := a.authenticateAgent(w, r)
 	if !ok {

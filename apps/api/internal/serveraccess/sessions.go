@@ -422,7 +422,7 @@ func (s *Service) end(ctx context.Context, org, id, actor uuid.UUID, reason stri
 	if e != nil {
 		return e
 	}
-	if _, e = tx.Exec(ctx, `UPDATE server_access_recordings SET status=CASE WHEN $3 IN ('recording_failed','recording_quota_reached','control_plane_restarted') THEN 'incomplete' WHEN next_seq=0 THEN 'failed' ELSE 'available' END WHERE org_id=$1 AND session_id=$2 AND status='capturing'`, org, id, reason); e != nil {
+	if _, e = tx.Exec(ctx, `UPDATE server_access_recordings SET status=CASE WHEN $3 IN ('recording_failed','recording_quota_reached','control_plane_restarted','server_access_disabled') THEN 'incomplete' WHEN next_seq=0 THEN 'failed' ELSE 'available' END WHERE org_id=$1 AND session_id=$2 AND status='capturing'`, org, id, reason); e != nil {
 		return e
 	}
 	if e = s.audit(ctx, tx, org, actor, "session_ended", id, map[string]any{"server_id": server, "account": account, "reason": reason, "gateway_id": gateway, "owner_user_id": owner, "grant_id": grant, "revision": revision}); e != nil {
@@ -443,10 +443,11 @@ func (s *Service) closeLive(id uuid.UUID) {
 		l.close()
 	}
 }
+
+// Boot ends sessions a previous process left active. It runs whatever the installation setting is: since
+// SA-UI-1 the capability can be turned on later without a restart, and rows stranded by a crash while it
+// was on must not survive into that.
 func (s *Service) Boot(ctx context.Context) error {
-	if !s.enabled {
-		return nil
-	}
 	rows, e := s.pool.Query(ctx, `SELECT org_id,id,user_id FROM server_access_sessions WHERE status IN ('pending','connecting','connected')`)
 	if e != nil {
 		return e

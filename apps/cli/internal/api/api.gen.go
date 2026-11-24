@@ -778,8 +778,8 @@ const (
 
 // Defines values for AppAccessDomainsSource.
 const (
-	Database    AppAccessDomainsSource = "database"
-	Environment AppAccessDomainsSource = "environment"
+	AppAccessDomainsSourceDatabase    AppAccessDomainsSource = "database"
+	AppAccessDomainsSourceEnvironment AppAccessDomainsSource = "environment"
 )
 
 // Defines values for AppAccessDraftInputIcon.
@@ -1999,6 +1999,12 @@ const (
 	ServerAccessEnrollmentQueued                ServerAccessEnrollmentState = "queued"
 	ServerAccessEnrollmentRunning               ServerAccessEnrollmentState = "running"
 	ServerAccessEnrollmentSucceeded             ServerAccessEnrollmentState = "succeeded"
+)
+
+// Defines values for ServerAccessInstallationSource.
+const (
+	ServerAccessInstallationSourceDatabase    ServerAccessInstallationSource = "database"
+	ServerAccessInstallationSourceEnvironment ServerAccessInstallationSource = "environment"
 )
 
 // Defines values for ServerAccessRecordingStatus.
@@ -8256,6 +8262,44 @@ type ServerAccessGrantInput struct {
 	UserId    *openapi_types.UUID `json:"user_id,omitempty"`
 }
 
+// ServerAccessInstallation defines model for ServerAccessInstallation.
+type ServerAccessInstallation struct {
+	// Effective enabled AND NOT locked. What the installation enforces.
+	Effective bool `json:"effective"`
+
+	// Enabled Saved value, or the environment seed before the first save.
+	Enabled bool `json:"enabled"`
+
+	// EndedSessions Only on a save that turned the capability off: active sessions ended by it.
+	EndedSessions *int `json:"ended_sessions,omitempty"`
+
+	// Locked TUNNEX_SERVER_ACCESS_LOCKED is set on the server; enabling is refused.
+	Locked           bool `json:"locked"`
+	Reauthentication struct {
+		// Available False when the caller has neither a local password nor MFA and therefore cannot change this setting.
+		Available bool `json:"available"`
+
+		// Mfa The caller has confirmed MFA and must have verified it in this session within five minutes.
+		Mfa bool `json:"mfa"`
+
+		// Password The caller has a local password and must send current_password.
+		Password bool `json:"password"`
+	} `json:"reauthentication"`
+	Source    ServerAccessInstallationSource `json:"source"`
+	UpdatedAt *time.Time                     `json:"updated_at,omitempty"`
+	Version   int64                          `json:"version"`
+}
+
+// ServerAccessInstallationSource defines model for ServerAccessInstallation.Source.
+type ServerAccessInstallationSource string
+
+// ServerAccessInstallationInput defines model for ServerAccessInstallationInput.
+type ServerAccessInstallationInput struct {
+	CurrentPassword *string `json:"current_password,omitempty"`
+	Enabled         bool    `json:"enabled"`
+	ExpectedVersion int64   `json:"expected_version"`
+}
+
 // ServerAccessRecording defines model for ServerAccessRecording.
 type ServerAccessRecording struct {
 	// ArchiveError Safe archive error code
@@ -9621,6 +9665,9 @@ type UpdateGatewayEndpointJSONRequestBody = UpdateGatewayEndpointRequest
 // AdminSetOrgRoleJSONRequestBody defines body for AdminSetOrgRole for application/json ContentType.
 type AdminSetOrgRoleJSONRequestBody = ChangeRoleRequest
 
+// UpdateServerAccessInstallationJSONRequestBody defines body for UpdateServerAccessInstallation for application/json ContentType.
+type UpdateServerAccessInstallationJSONRequestBody = ServerAccessInstallationInput
+
 // AdminSetCpAdminJSONRequestBody defines body for AdminSetCpAdmin for application/json ContentType.
 type AdminSetCpAdminJSONRequestBody = CpAdminRequest
 
@@ -10506,6 +10553,14 @@ type ClientInterface interface {
 	AdminSetOrgRoleWithBody(ctx context.Context, orgId openapi_types.UUID, userId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	AdminSetOrgRole(ctx context.Context, orgId openapi_types.UUID, userId openapi_types.UUID, body AdminSetOrgRoleJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetServerAccessInstallation request
+	GetServerAccessInstallation(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateServerAccessInstallationWithBody request with any body
+	UpdateServerAccessInstallationWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	UpdateServerAccessInstallation(ctx context.Context, body UpdateServerAccessInstallationJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetHostUpgrade request
 	GetHostUpgrade(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -12749,6 +12804,42 @@ func (c *Client) AdminSetOrgRoleWithBody(ctx context.Context, orgId openapi_type
 
 func (c *Client) AdminSetOrgRole(ctx context.Context, orgId openapi_types.UUID, userId openapi_types.UUID, body AdminSetOrgRoleJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewAdminSetOrgRoleRequest(c.Server, orgId, userId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetServerAccessInstallation(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetServerAccessInstallationRequest(c.Server)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) UpdateServerAccessInstallationWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateServerAccessInstallationRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) UpdateServerAccessInstallation(ctx context.Context, body UpdateServerAccessInstallationJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateServerAccessInstallationRequest(c.Server, body)
 	if err != nil {
 		return nil, err
 	}
@@ -21717,6 +21808,73 @@ func NewAdminSetOrgRoleRequestWithBody(server string, orgId openapi_types.UUID, 
 	}
 
 	req, err := http.NewRequest("PUT", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewGetServerAccessInstallationRequest generates requests for GetServerAccessInstallation
+func NewGetServerAccessInstallationRequest(server string) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/admin/server-access/installation")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewUpdateServerAccessInstallationRequest calls the generic UpdateServerAccessInstallation builder with application/json body
+func NewUpdateServerAccessInstallationRequest(server string, body UpdateServerAccessInstallationJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewUpdateServerAccessInstallationRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewUpdateServerAccessInstallationRequestWithBody generates requests for UpdateServerAccessInstallation with any type of body
+func NewUpdateServerAccessInstallationRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/admin/server-access/installation")
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("PATCH", queryURL.String(), body)
 	if err != nil {
 		return nil, err
 	}
@@ -44491,6 +44649,14 @@ type ClientWithResponsesInterface interface {
 
 	AdminSetOrgRoleWithResponse(ctx context.Context, orgId openapi_types.UUID, userId openapi_types.UUID, body AdminSetOrgRoleJSONRequestBody, reqEditors ...RequestEditorFn) (*AdminSetOrgRoleResponse, error)
 
+	// GetServerAccessInstallationWithResponse request
+	GetServerAccessInstallationWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetServerAccessInstallationResponse, error)
+
+	// UpdateServerAccessInstallationWithBodyWithResponse request with any body
+	UpdateServerAccessInstallationWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateServerAccessInstallationResponse, error)
+
+	UpdateServerAccessInstallationWithResponse(ctx context.Context, body UpdateServerAccessInstallationJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateServerAccessInstallationResponse, error)
+
 	// GetHostUpgradeWithResponse request
 	GetHostUpgradeWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetHostUpgradeResponse, error)
 
@@ -46810,6 +46976,52 @@ func (r AdminSetOrgRoleResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r AdminSetOrgRoleResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetServerAccessInstallationResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *ServerAccessInstallation
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r GetServerAccessInstallationResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetServerAccessInstallationResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type UpdateServerAccessInstallationResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *ServerAccessInstallation
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r UpdateServerAccessInstallationResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r UpdateServerAccessInstallationResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -57678,6 +57890,32 @@ func (c *ClientWithResponses) AdminSetOrgRoleWithResponse(ctx context.Context, o
 	return ParseAdminSetOrgRoleResponse(rsp)
 }
 
+// GetServerAccessInstallationWithResponse request returning *GetServerAccessInstallationResponse
+func (c *ClientWithResponses) GetServerAccessInstallationWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetServerAccessInstallationResponse, error) {
+	rsp, err := c.GetServerAccessInstallation(ctx, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetServerAccessInstallationResponse(rsp)
+}
+
+// UpdateServerAccessInstallationWithBodyWithResponse request with arbitrary body returning *UpdateServerAccessInstallationResponse
+func (c *ClientWithResponses) UpdateServerAccessInstallationWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateServerAccessInstallationResponse, error) {
+	rsp, err := c.UpdateServerAccessInstallationWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateServerAccessInstallationResponse(rsp)
+}
+
+func (c *ClientWithResponses) UpdateServerAccessInstallationWithResponse(ctx context.Context, body UpdateServerAccessInstallationJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateServerAccessInstallationResponse, error) {
+	rsp, err := c.UpdateServerAccessInstallation(ctx, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateServerAccessInstallationResponse(rsp)
+}
+
 // GetHostUpgradeWithResponse request returning *GetHostUpgradeResponse
 func (c *ClientWithResponses) GetHostUpgradeWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetHostUpgradeResponse, error) {
 	rsp, err := c.GetHostUpgrade(ctx, reqEditors...)
@@ -64275,6 +64513,72 @@ func ParseAdminSetOrgRoleResponse(rsp *http.Response) (*AdminSetOrgRoleResponse,
 	}
 
 	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetServerAccessInstallationResponse parses an HTTP response from a GetServerAccessInstallationWithResponse call
+func ParseGetServerAccessInstallationResponse(rsp *http.Response) (*GetServerAccessInstallationResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetServerAccessInstallationResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ServerAccessInstallation
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseUpdateServerAccessInstallationResponse parses an HTTP response from a UpdateServerAccessInstallationWithResponse call
+func ParseUpdateServerAccessInstallationResponse(rsp *http.Response) (*UpdateServerAccessInstallationResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UpdateServerAccessInstallationResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest ServerAccessInstallation
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
 		var dest Error
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {

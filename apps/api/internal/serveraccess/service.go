@@ -35,13 +35,18 @@ type Service struct {
 	pool    *pgxpool.Pool
 	parents *session.Store
 	sealer  *secret.Sealer
-	enabled bool
+	// seed is TUNNEX_SERVER_ACCESS_ENABLED: the installation value until a server administrator saves one.
+	seed bool
+	// locked is TUNNEX_SERVER_ACCESS_LOCKED: effective capability is off whatever is saved.
+	locked  bool
+	install installationCache
 	mu      sync.Mutex
 	live    map[uuid.UUID]*liveSession
 }
 
-func New(pool *pgxpool.Pool, parents *session.Store, sealer *secret.Sealer, enabled bool) *Service {
-	return &Service{pool: pool, parents: parents, sealer: sealer, enabled: enabled, live: map[uuid.UUID]*liveSession{}}
+// New takes the environment seed for the installation capability; see installation.go.
+func New(pool *pgxpool.Pool, parents *session.Store, sealer *secret.Sealer, seed bool) *Service {
+	return &Service{pool: pool, parents: parents, sealer: sealer, seed: seed, live: map[uuid.UUID]*liveSession{}}
 }
 func deny(reason string) error {
 	return apierr.Forbidden(reason, "Terminal access is unavailable: "+reason)
@@ -53,7 +58,7 @@ func missing() error {
 	return apierr.NotFound("server_access_not_found", "Server access record not found")
 }
 func (s *Service) available() error {
-	if !s.enabled {
+	if !s.InstallationEffective(context.Background()) {
 		return apierr.New(503, "server_access_disabled", "Terminal capability is disabled on this installation")
 	}
 	return nil
@@ -67,7 +72,7 @@ func (s *Service) audit(ctx context.Context, tx pgx.Tx, org, actor uuid.UUID, ac
 	return e
 }
 func (s *Service) Enabled(ctx context.Context, org uuid.UUID) (bool, error) {
-	if !s.enabled {
+	if !s.InstallationEffective(ctx) {
 		return false, nil
 	}
 	var enabled bool
