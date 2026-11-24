@@ -38,6 +38,9 @@ type enrollment struct {
 	AttestationKey string `json:"attestation_key,omitempty"`
 }
 
+// enrollmentFailures are the gateway-reported setup failures the control plane accepts, with their job message.
+var enrollmentFailures = map[string]string{"ssh_host_key_mismatch": "Management SSH host identity did not match. No installer was sent.", "ssh_unreachable": "The gateway could not reach the server's management SSH port. Allow TCP from the gateway to that port in the server's firewall or cloud security rules, then prepare setup again.", "ssh_authentication_failed": "Temporary SSH authorization was refused or expired. Prepare a new job.", "setup_failed": "Target setup failed. Check the target journal; prerequisites include Python 3, OpenSSH and systemd. Unsupported OS and enforcing SELinux are refused.", "gateway_key_lost": "Gateway restarted and discarded the temporary private key. Cancel and prepare a new job."}
+
 func activeEnrollment(state string) bool {
 	return state == "preparing" || state == "awaiting_authorization" || state == "queued" || state == "running"
 }
@@ -464,7 +467,7 @@ func (s *Service) EnrollmentReport(ctx context.Context, org, gateway, id uuid.UU
 		if !activeEnrollment(string(j.View.State)) || in.Setup != nil || in.HostKeyAttestation || in.HostKey != "" || in.Attestation != "" {
 			return bad()
 		}
-		allowed := map[string]string{"ssh_host_key_mismatch": "Management SSH host identity did not match. No installer was sent.", "ssh_unreachable": "The gateway could not reach the server's management SSH port. Allow TCP from the gateway to that port in the server's firewall or cloud security rules, then prepare setup again.", "ssh_authentication_failed": "Temporary SSH authorization was refused or expired. Prepare a new job.", "setup_failed": "Target setup failed. Check the target journal; prerequisites include Python 3, OpenSSH and systemd. Unsupported OS and enforcing SELinux are refused.", "gateway_key_lost": "Gateway restarted and discarded the temporary private key. Cancel and prepare a new job."}
+		allowed := enrollmentFailures
 		message, ok := allowed[in.Result]
 		if !ok {
 			return bad()
