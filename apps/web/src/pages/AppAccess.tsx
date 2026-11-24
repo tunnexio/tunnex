@@ -15,6 +15,7 @@ import { Link, Navigate, useLocation, useNavigate, useParams, useSearchParams } 
 import AppAccessAccess from "./AppAccessAccess";
 import AppAccessMyApplications from "./AppAccessMyApplications";
 import { OriginRangeNotice } from "../components/AppAccessOriginNotice";
+import { AppAccessSelfGrant } from "../components/AppAccessSelfGrant";
 import AppAccessConnection from "../components/AppAccessConnection";
 import AppAccessPublication, { checkCoversDraft } from "../components/AppAccessPublication";
 import AppAccessSessions from "../components/AppAccessSessions";
@@ -184,6 +185,7 @@ function DraftEditor({ orgId, userId, appId, manage, grant = false, configureDom
   const [iconReading, setIconReading] = useState(false);
   const [recovery, setRecovery] = useState<Draft | null>(null);
   const [attempt, setAttempt] = useState(0);
+  const [selfGranted, setSelfGranted] = useState(0);
   const storageKey = `tunnex.appAccessDraft:${userId}:${orgId}:${appId ?? "new"}`;
   useEffect(() => {
     let cancelled = false; setReady(false); setError("");
@@ -325,7 +327,7 @@ function DraftEditor({ orgId, userId, appId, manage, grant = false, configureDom
       </ResourceSummary>}
       {appId && step === "access" && <ResourceSummary title={currentStep.title} headingLevel={2} className="aa-editor-access-summary" description={currentStep.description} footer={<div className="aa-editor-actions"><Button variant="ghost" onClick={() => move("connection")}>Back to connection</Button><Button onClick={() => move("review")}>Continue to review</Button></div>}>
         {settings && <Availability settings={settings} manage={manage} archived={archived} />}
-        <div className="aa-editor-grants">{grant && !archived ? <AppAccessAccess orgId={orgId} appId={appId} permitted canViewEvents={canViewEvents} canViewAudit={canViewAudit} /> : <ErrorText>You do not have permission to manage application grants. Ask an administrator to configure access.</ErrorText>}</div>
+        <div className="aa-editor-grants">{grant && !archived ? <><AppAccessSelfGrant key={`${orgId}:${appId}:self`} orgId={orgId} appId={appId} userId={userId} appName={savedApplication?.draft.name ?? ""} onGranted={() => setSelfGranted(value => value + 1)} /><AppAccessAccess key={`${orgId}:${appId}:${selfGranted}`} orgId={orgId} appId={appId} permitted canViewEvents={canViewEvents} canViewAudit={canViewAudit} /></> : <ErrorText>You do not have permission to manage application grants. Ask an administrator to configure access.</ErrorText>}</div>
         {savedApplication && <details className="aa-editor-disclosure"><summary>Multi-factor authentication</summary><div className="aa-editor-disclosure-content"><AppAccessMfaPolicy key={`${orgId}:${appId}`} orgId={orgId} application={savedApplication} canManage={manage && !archived} dirty={dirty} onChanged={application => { setSavedApplication(application); setVersion(application.version); setReviewCheck(null); }} onReload={() => setAttempt(value => value + 1)} /></div></details>}
         {manage && grant && !archived && <details className="aa-editor-disclosure"><summary>Catalog visibility &amp; app admin</summary><div className="aa-editor-disclosure-content"><AppAccessCatalogSettings key={`${orgId}:${appId}:catalog`} orgId={orgId} appId={appId} permitted dirty={dirty} onChanged={() => setAttempt(value => value + 1)} /></div></details>}
       </ResourceSummary>}
