@@ -55,6 +55,10 @@ spec:
           env:
             - name: TUNNEX_SERVER_ACCESS_ENABLED
               value: {{ .Values.serverAccess.enabled | quote }}
+            # SA-UI-1: enabled only seeds the dashboard setting. A multi-replica API is locked off because
+            # terminal HA is not supported, so the dashboard cannot turn it on there either.
+            - name: TUNNEX_SERVER_ACCESS_LOCKED
+              value: {{ or .Values.serverAccess.locked (ne (int .Values.api.replicas) 1) | quote }}
             - name: TUNNEX_ENV
               value: {{ .Values.env | quote }}
             {{- with .Values.admin.email }}

@@ -45,7 +45,10 @@ services:
     environment:
       TUNNEX_ENV: production
       TUNNEX_LOG_LEVEL: ${TUNNEX_LOG_LEVEL:-info}
+      # SA-UI-1: only the INITIAL installation value. Server administrators turn Server Access on or off in
+      # Settings; the saved value then wins. TUNNEX_SERVER_ACCESS_LOCKED=true forces it off regardless.
       TUNNEX_SERVER_ACCESS_ENABLED: ${TUNNEX_SERVER_ACCESS_ENABLED:-false}
+      TUNNEX_SERVER_ACCESS_LOCKED: ${TUNNEX_SERVER_ACCESS_LOCKED:-false}
       TUNNEX_API_ADDR: ":8080"
       TUNNEX_SECRETS_DIR: /var/lib/tunnex/secrets
       TUNNEX_AUTO_MIGRATE: "true" # the API migrates on boot — no separate migrate step for the customer
@@ -339,7 +342,10 @@ services:
     image: ${TUNNEX_NODE_AGENT_IMAGE:-ghcr.io/tunnexio/tunnex-node-agent:${TUNNEX_VERSION:-latest}}
     restart: unless-stopped
     environment:
-      TUNNEX_SERVER_ACCESS_ENABLED: ${TUNNEX_SERVER_ACCESS_ENABLED:-false}
+      # SA-UI-1: empty = follow the control plane's setting (default); "true" = always on; "false" = this
+      # gateway never runs Server Access. Deliberately NOT TUNNEX_SERVER_ACCESS_ENABLED, which installs write
+      # as "false" and which only seeds the API.
+      TUNNEX_SERVER_ACCESS_ENABLED: ${TUNNEX_GATEWAY_SERVER_ACCESS_ENABLED:-}
       TUNNEX_API_URL: http://api:8080
       TUNNEX_AGENT_URL: https://api:8443
       TUNNEX_AGENT_SERVERNAME: tunnex-control
