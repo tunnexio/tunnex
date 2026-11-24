@@ -47,6 +47,7 @@ class Packaging(unittest.TestCase):
         self.assertEqual(api['TUNNEX_APP_PROXY_GATEWAY_PORT'],'${TUNNEX_APP_PROXY_GATEWAY_PORT:-8444}')
         self.assertEqual(api['TUNNEX_APP_PROXY_GATEWAY_HOST'],'${TUNNEX_APP_PROXY_GATEWAY_HOST:-}')
         self.assertEqual(api['TUNNEX_APP_ACCESS_LOCKED'],'${TUNNEX_APP_ACCESS_LOCKED:-false}')
+        self.assertEqual(api['TUNNEX_APP_PROXY_GATEWAY_BIND_IP'],'${TUNNEX_APP_PROXY_GATEWAY_BIND_IP:-0.0.0.0}')
         self.assertEqual(proxy['environment']['TUNNEX_APP_PROXY_CONSOLE_UPSTREAM_URL'], '${TUNNEX_APP_PROXY_CONSOLE_UPSTREAM_URL:-}')
         self.assertEqual(proxy['environment']['TUNNEX_APP_PROXY_CONSOLE_UPSTREAM_SERVER_NAME'], '${TUNNEX_APP_PROXY_CONSOLE_UPSTREAM_SERVER_NAME:-}')
         self.assertEqual(proxy['environment']['TUNNEX_APP_PROXY_CONSOLE_UPSTREAM_CA_FILE'], '${TUNNEX_APP_PROXY_CONSOLE_UPSTREAM_CA_FILE:-}')

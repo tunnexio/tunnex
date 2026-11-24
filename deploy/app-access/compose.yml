@@ -10,6 +10,8 @@ services:
       # Empty host = each gateway dials its own agent host at this port.
       TUNNEX_APP_PROXY_GATEWAY_PORT: ${TUNNEX_APP_PROXY_GATEWAY_PORT:-8444}
       TUNNEX_APP_PROXY_GATEWAY_HOST: ${TUNNEX_APP_PROXY_GATEWAY_HOST:-}
+      # A loopback-only listener is not delivered unless a host is named above.
+      TUNNEX_APP_PROXY_GATEWAY_BIND_IP: ${TUNNEX_APP_PROXY_GATEWAY_BIND_IP:-0.0.0.0}
       TUNNEX_APP_ACCESS_LOCKED: ${TUNNEX_APP_ACCESS_LOCKED:-false}
     volumes:
       - app_restore:/var/lib/tunnex/app-restore:ro

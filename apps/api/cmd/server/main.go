@@ -806,8 +806,8 @@ func main() {
 	// AA-EN-1 E5: following gateways learn the proxy endpoint over this channel.
 	// A bad value disables delivery (gateways keep their own setting); it never
 	// stops the control plane.
-	if endpoint, err := apphttp.NewAppProxyEndpoint(os.Getenv("TUNNEX_APP_PROXY_GATEWAY_PORT"), os.Getenv("TUNNEX_APP_PROXY_GATEWAY_HOST"), os.Getenv("TUNNEX_APP_ACCESS_LOCKED") == "true"); err != nil {
-		logger.Error("app_access_gateway_endpoint_refused", slog.String("remedy", "set TUNNEX_APP_PROXY_GATEWAY_PORT to 1-65535 and TUNNEX_APP_PROXY_GATEWAY_HOST to a bare hostname or IP address"))
+	if endpoint, err := apphttp.NewAppProxyEndpointWithBind(os.Getenv("TUNNEX_APP_PROXY_GATEWAY_PORT"), os.Getenv("TUNNEX_APP_PROXY_GATEWAY_HOST"), os.Getenv("TUNNEX_APP_PROXY_GATEWAY_BIND_IP"), os.Getenv("TUNNEX_APP_ACCESS_LOCKED") == "true"); err != nil {
+		logger.Error("app_access_gateway_endpoint_refused", slog.String("remedy", "set TUNNEX_APP_PROXY_GATEWAY_PORT to 1-65535 and TUNNEX_APP_PROXY_GATEWAY_HOST to a bare hostname or IP address, and TUNNEX_APP_PROXY_GATEWAY_BIND_IP to an IP address"))
 	} else {
 		agentCh.SetAppProxyEndpoint(endpoint, func(ctx context.Context, org uuid.UUID) (bool, error) {
 			// Only the organization feature flag; domain readiness stays with the

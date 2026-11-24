@@ -64,7 +64,10 @@ to a bare hostname or IP. The gateway always pins the TLS server name
 `tunnex-app-proxy` and trusts only the enrollment CA, so it dials an IP address
 directly: no `--add-host` or `/etc/hosts` entry is needed. Delivery is on only when
 App Access is composed, `TUNNEX_APP_ACCESS_LOCKED` is not `true`, App Access is
-entitled, and the gateway's organization has the feature on.
+entitled, and the gateway's organization has the feature on. A listener bound only to
+loopback (`TUNNEX_APP_PROXY_GATEWAY_BIND_IP` in 127.0.0.0/8 or `::1`) is not
+delivered, because no remote gateway can reach it, unless
+`TUNNEX_APP_PROXY_GATEWAY_HOST` names an address explicitly (for example a tunnel).
 
 On a gateway, `TUNNEX_APP_PROXY_URL` is read as:
 
