@@ -3,7 +3,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import { StrictMode } from "react";
 import { MemoryRouter } from "react-router-dom";
 import BrowserTerminal from "../src/pages/BrowserTerminal";
-const state=vi.hoisted(()=>({terminal:null as any,pasted:[] as string[],selected:"",selectionChanged:null as any,multi:false,empty:false,serverCount:1,accountCount:1,developer:false,admin:false,recording:false,failed:false,connect:false,ready:true,sshPort:22,orgEnabled:true,serverEnabled:true,checkError:false,verified:false,installationOff:false,cpAdmin:false,requests:[] as string[],bodies:[] as unknown[]}));
+const state=vi.hoisted(()=>({terminal:null as any,pasted:[] as string[],selected:"",selectionChanged:null as any,multi:false,empty:false,serverCount:1,accountCount:1,developer:false,admin:false,recording:false,failed:false,connect:false,ready:true,sshPort:22,orgEnabled:true,serverEnabled:true,checkError:false,verified:false,installationOff:false,cpAdmin:false,requests:[] as string[],bodies:[] as unknown[],notGranted:false,lastError:""}));
 vi.mock("../src/lib/auth",()=>{const value=()=>({state:{status:"authed",user:{id:"user-1",email_verified:true,cp_admin:state.cpAdmin}}});return {useAuth:value,useOptionalAuth:value}});
 vi.mock("../src/lib/useOrg",()=>({useOrg:()=>({org:{id:"org-1"},failed:false})}));
 vi.mock("../src/components/MfaSettings",()=>({MfaSettings:()=> <div>Existing account MFA setup</div>}));
@@ -18,18 +18,22 @@ vi.mock("../src/lib/api",async()=>{
     if(state.failed)return {error:{error:{message:"Workspace unavailable"}}};
     if(state.installationOff)return {error:{error:{code:"server_access_disabled",message:"Terminal capability is disabled on this installation"}}};
     const workspace={data:{enabled:state.orgEnabled,can_manage:state.admin,can_grant:state.admin,can_manage_sessions:state.admin,grants:[],sessions:state.checkError?[{id:"check-1",kind:"check",server_id:"server-1",account:"fixture",status:"failed",reason:"ssh_authentication_failed"}]:[],mfa_freshness_seconds:900,recording_retention_days:7,recording_max_session_bytes:4194304,recording_max_org_bytes:67108864,limitations:["Recording-required servers refuse Connect until capture is implemented."],servers:[{id:"server-1",name:"Build host",gateway_id:"gateway-1",private_ip:state.admin?"10.2.3.4":undefined,ssh_port:22,host_fingerprint:"SHA256:fixture",accounts:["fixture"],ready_accounts:state.ready?["fixture"]:[],revision:1,enabled:state.serverEnabled,recording_enabled:state.recording,developer_access_enabled:state.developer,idle_timeout_seconds:300,max_session_seconds:900},...(state.multi?[{id:"server-2",name:"Database host",gateway_id:"gateway-1",accounts:["ubuntu"],ready_accounts:["ubuntu"],revision:1,enabled:true,recording_enabled:false,idle_timeout_seconds:300,max_session_seconds:900}]:[])]}};
-    workspace.data.servers[0].ssh_port=state.sshPort;
+    workspace.data.servers[0].ssh_port=state.sshPort;if(state.lastError)(workspace.data.servers[0] as Record<string,unknown>).last_error=state.lastError;
     if(state.serverCount>1)workspace.data.servers=Array.from({length:state.serverCount},(_,index)=>({...workspace.data.servers[0],id:`server-${index}`,name:`Host ${index}`}));
     if(state.accountCount>1){const accounts=Array.from({length:state.accountCount},(_,index)=>`account-${index}`);workspace.data.servers[0]={...workspace.data.servers[0],accounts,ready_accounts:accounts}}
     if(state.empty)workspace.data.servers=[];
     return workspace;
    }
    if(path.endsWith("/enrollment"))return {response:{status:404},error:{error:{message:"No setup job"}}};
+   if(path.endsWith("/nodes"))return {data:[{id:"gateway-1",name:"gcp-gw",status:"active",enrolled_kind:"gateway",endpoint:"34.1.2.3:51820"}]};
+   if(path.endsWith("/members"))return {data:[{user_id:"user-2",name:"Control Plane Admin",email:"support@tunnex.io",status:"active"}]};
    return {data:[]};
   }),
   POST:vi.fn(async(path:string,options:unknown)=>{
    state.requests.push(path);state.bodies.push(options);
    if(path.endsWith("/mfa/step-up")){state.verified=true;return {data:{ok:true}}}
+   if(path.endsWith("/server-access/grants")){state.notGranted=false;return {data:{id:"grant-1"}}}
+   if(state.notGranted&&path.endsWith("/sessions"))return {error:{error:{code:"account_not_granted",message:"You do not have current access to this account on this server. Ask an administrator for a grant."}}};
    if(state.verified&&path.endsWith("/check"))return {data:{id:"check-2",status:"pending"}};
    if(state.connect&&path.endsWith("/sessions")){const body=(options as {body:{server_id:string;account:string}}).body;return {data:{id:body.server_id==="server-2"?"session-2":"session-1",server_id:body.server_id,user_id:"user-1",account:body.account,status:"pending",reason:"",kind:"terminal",expires_at:new Date(Date.now()+60000).toISOString(),recording_enabled:false}}};
    return {error:{error:{code:"mfa_required",message:"Recent MFA required"}}};
@@ -38,7 +42,7 @@ vi.mock("../src/lib/api",async()=>{
   DELETE:vi.fn(async()=>({error:{error:{message:"Termination unconfirmed"}}}))
  }};
 });
-beforeEach(()=>{state.developer=false;state.terminal=null;state.pasted=[];state.selected="";state.selectionChanged=null;state.multi=false;state.empty=false;state.serverCount=1;state.accountCount=1;state.admin=false;state.recording=false;state.failed=false;state.connect=false;state.ready=true;state.sshPort=22;state.orgEnabled=true;state.serverEnabled=true;state.checkError=false;state.verified=false;state.installationOff=false;state.cpAdmin=false;state.requests=[];state.bodies=[]});afterEach(cleanup);
+beforeEach(()=>{state.developer=false;state.terminal=null;state.pasted=[];state.selected="";state.selectionChanged=null;state.multi=false;state.empty=false;state.serverCount=1;state.accountCount=1;state.admin=false;state.recording=false;state.failed=false;state.connect=false;state.ready=true;state.sshPort=22;state.orgEnabled=true;state.serverEnabled=true;state.checkError=false;state.verified=false;state.installationOff=false;state.cpAdmin=false;state.requests=[];state.bodies=[];state.notGranted=false;state.lastError=""});afterEach(cleanup);
 function mount(){render(<MemoryRouter><BrowserTerminal/></MemoryRouter>)}
 async function openServer(name="Build host"){fireEvent.click(await screen.findByRole("button",{name}))}
 async function rowAction(label:string,action:string){const trigger=await screen.findByRole("button",{name:label});if(trigger.getAttribute("aria-expanded")!=="true")fireEvent.click(trigger);return within(screen.getByRole("menu",{name:label})).getByRole("menuitem",{name:action})}
@@ -370,4 +374,36 @@ it("an ended terminal still points at Sessions while Server Access is on",async(
  act(()=>socket.onclose({}));
  await waitFor(()=>expect(screen.getByText(/Review the reason in Sessions/)).toBeTruthy());
  }finally{cleanup();vi.unstubAllGlobals()}
+});
+
+// SA-UX-2
+it("shows an unreachable account check as a sentence with firewall rules for the gateway, never the raw code",async()=>{
+ state.admin=true;state.lastError="ssh_unreachable";mount();await openServer();
+ await screen.findByText("The gateway could not reach the server.");
+ await waitFor(()=>expect(screen.getAllByText(/--cidr 34\.1\.2\.3\/32/).length).toBeGreaterThan(0));
+ expect(screen.queryByText(/ssh_unreachable/)).toBeNull();
+});
+it("lets an administrator without a grant grant themself access and connect (item 4)",async()=>{
+ state.admin=true;state.connect=true;state.notGranted=true;
+ class Socket{static OPEN=1;readyState=1;onopen:unknown;onmessage:unknown;onclose:unknown;onerror:unknown;send(){}close(){}}
+ vi.stubGlobal("WebSocket",Socket);vi.stubGlobal("ResizeObserver",class{observe(){}disconnect(){}});
+ try{mount();await openServer();fireEvent.click(await screen.findByRole("button",{name:"Connect as fixture"}));
+  const form=await screen.findByRole("alert",{name:"Grant myself access"});
+  expect(screen.queryByText(/Ask an administrator for a grant/)).toBeNull();
+  fireEvent.click(within(form).getByRole("button",{name:"Grant myself access"}));
+  await screen.findByLabelText("SSH terminal for fixture");
+  const grant=(state.bodies as {body?:{user_id?:string;account:string;starts_at:string;expires_at:string}}[]).find(b=>b.body?.user_id)! as {body:{user_id:string;account:string;starts_at:string;expires_at:string}};
+  expect(grant.body.user_id).toBe("user-1");expect(grant.body.account).toBe("fixture");
+  expect(Date.parse(grant.body.expires_at)-Date.parse(grant.body.starts_at)).toBeLessThanOrEqual(3600000+1000);
+ }finally{cleanup();vi.unstubAllGlobals()}
+});
+it("tells a member without a grant whom to ask instead of offering a self-grant",async()=>{
+ state.connect=true;state.notGranted=true;mount();await openServer();fireEvent.click(await screen.findByRole("button",{name:"Connect as fixture"}));
+ await screen.findByText(/Ask an organization owner or admin/);
+ expect(screen.queryByRole("button",{name:"Grant myself access"})).toBeNull();
+});
+it("explains session recording at registration with its default (item 9)",async()=>{
+ state.admin=true;mount();fireEvent.click(await screen.findByRole("button",{name:"Register server"}));const dialog=await screen.findByRole("dialog",{name:"Register server"});
+ expect(within(dialog).getByText(/Off \(the default\)\. When on, every browser terminal session/)).toBeTruthy();
+ expect(within(dialog).getByLabelText("Network requirement")).toBeTruthy();
 });
