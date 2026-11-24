@@ -45,6 +45,25 @@ const APIReturnRuleComment = "tunnex_k8s_api_return"
 // accepts the marker on that exact shape only.
 const SiteLANMasqueradeRuleComment = "tunnex_site_lan_masquerade"
 
+// The input hook of an in-cluster gateway (K8N-7). A packet that arrives on a
+// tunnel interface and is delivered to the node itself is dropped, except a
+// reply to a connection the node opened and the gateway's own tunnel-side
+// listeners. The egress renderer writes these rules in `ip tunnex input` and
+// `ip6 tunnex input`; validateTunnexInput accepts exactly that chain.
+const (
+	InputReplyRuleComment      = "tunnex_input_reply"
+	InputDNSRuleComment        = "tunnex_input_dns"
+	InputAIVPNRuleComment      = "tunnex_input_ai_vpn"
+	InputTunnelDropRuleComment = "tunnex_input_tunnel_drop"
+	// StoppedTunnelDropRuleComment marks the only rules a stopped in-cluster
+	// gateway leaves in its forward and input chains (K8N-5 item 1, K8N-7).
+	StoppedTunnelDropRuleComment = "tunnex_stopped_tunnel_drop"
+	// InputDNSPort is the DNS forwarder's tunnel-side port (UDP and TCP).
+	InputDNSPort = 53
+	// InputAIVPNPort is aivpn.HTTPPort, the AI VPN inference listener (IPv4).
+	InputAIVPNPort = 8083
+)
+
 // AuthorityGuard holds the node-local operation lock and validates the current
 // correlated manager authority. The caller holds the returned release function
 // across observation AND mutation. Lock order is guard, then Reconciler.mu.

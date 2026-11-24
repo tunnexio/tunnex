@@ -51,6 +51,8 @@ var (
 	// terminal verdict checks exact.
 	nativeForwardReadbackRE = regexp.MustCompile(`^\s*iifname\s+!=\s+(\{\s*"[A-Za-z0-9._-]{1,15}"(?:\s*,\s*"[A-Za-z0-9._-]{1,15}")*\s*\}|"[A-Za-z0-9._-]{1,15}")\s+oifname\s+!=\s+(\{\s*"[A-Za-z0-9._-]{1,15}"(?:\s*,\s*"[A-Za-z0-9._-]{1,15}")*\s*\}|"[A-Za-z0-9._-]{1,15}")(?:\s+ct\s+original\s+ip\s+daddr\s+!=\s+(?:\d{1,3}\.){3}\d{1,3}|\s+ct\s+original\s+ip\s+daddr\s+!=\s+\{\s*(?:\d{1,3}\.){3}\d{1,3}(?:\s*,\s*(?:\d{1,3}\.){3}\d{1,3})*\s*\})?\s+counter(?:\s+packets\s+\d+\s+bytes\s+\d+)?\s+accept\s+comment\s+"tunnex_native_forward_passthrough"\s*$`)
 	quotedIfaceRE           = regexp.MustCompile(`"([A-Za-z0-9._-]{1,15})"`)
+	// inputTunnelDropReadbackRE is the input chain's tunnel drop as `nft list table` prints it (K8N-7).
+	inputTunnelDropReadbackRE = regexp.MustCompile(`^\s*iifname\s+(\{\s*"[A-Za-z0-9._-]{1,15}"(?:\s*,\s*"[A-Za-z0-9._-]{1,15}")*\s*\}|"[A-Za-z0-9._-]{1,15}")\s+counter(?:\s+packets\s+\d+\s+bytes\s+\d+)?\s+drop\s+comment\s+"tunnex_input_tunnel_drop"(?:\s+#\s+handle\s+\d+)?\s*$`)
 )
 
 // ruleIDRE bounds a rule_id (observability metadata) to the canonical UUID shape before it is
@@ -162,6 +164,9 @@ type Manager struct {
 	k8sNetPrepStatus atomic.Pointer[string]
 	k8sNetPrepReady  atomic.Bool
 	kubernetesMode   atomic.Bool
+	// aiVPNInput is set when the AI VPN runtime is configured on this gateway: in
+	// Kubernetes mode the input chain then accepts its tunnel-side listener (K8N-7).
+	aiVPNInput atomic.Bool
 	// forwardBlocked (WF-4 / D-WF4-d): true when this is a Docker host (DOCKER-USER exists),
 	// FORWARD is policy-drop, there ARE remote routes to carry, yet the agent could NOT place
 	// its DOCKER-USER accept — so forwarded site traffic is silently dropped by Docker's chain.
@@ -339,8 +344,43 @@ func (m *Manager) ReadAppliedOVPNTunnel(ctx context.Context) (string, error) {
 		if !slices.Equal(got, want) {
 			return "", fmt.Errorf("%s OpenVPN tunnel-ingress interfaces=%v want=%v", family, got, want)
 		}
+		if m.kubernetesMode.Load() {
+			// K8N-7: the node itself stays closed to every tunnel interface, tun0 included.
+			closed, err := parseInputTunnelDropInterfaces(listing)
+			if err != nil {
+				return "", fmt.Errorf("read %s tunnel input drop: %w", family, err)
+			}
+			if !slices.Equal(closed, want) {
+				return "", fmt.Errorf("%s tunnel input drop interfaces=%v want=%v", family, closed, want)
+			}
+		}
 	}
 	return m.AppliedOVPNTun(), nil
+}
+
+// parseInputTunnelDropInterfaces reads the one tunnel drop of the input chain
+// of an in-cluster gateway (K8N-7) and returns the interfaces it names, sorted.
+func parseInputTunnelDropInterfaces(listing string) ([]string, error) {
+	var found []string
+	count := 0
+	for _, line := range strings.Split(listing, "\n") {
+		if !strings.Contains(line, `comment "`+k8snetprep.InputTunnelDropRuleComment+`"`) {
+			continue
+		}
+		count++
+		match := inputTunnelDropReadbackRE.FindStringSubmatch(line)
+		if len(match) != 2 {
+			return nil, fmt.Errorf("tunnel input drop semantics are invalid")
+		}
+		for _, value := range quotedIfaceRE.FindAllStringSubmatch(match[1], -1) {
+			found = append(found, value[1])
+		}
+		sort.Strings(found)
+	}
+	if count != 1 || len(found) == 0 {
+		return nil, fmt.Errorf("tunnel input drop is absent or ambiguous")
+	}
+	return found, nil
 }
 
 func parseTunnelIngressInterfaces(listing string) ([]string, error) {
@@ -717,8 +757,8 @@ func (m *Manager) reduceToHostPostureMarkers(ctx context.Context) error {
 }
 
 // stoppedTunnelDropComment marks the only rules a stopped Kubernetes gateway
-// leaves in its forward chain.
-const stoppedTunnelDropComment = "tunnex_stopped_tunnel_drop"
+// leaves in its forward and input chains.
+const stoppedTunnelDropComment = k8snetprep.StoppedTunnelDropRuleComment
 
 // hostPostureStoppedRuleset is what a stopped Kubernetes gateway leaves in the
 // manager-owned tables (K8N-5). `flush table` removes rules but keeps chains,
@@ -735,6 +775,9 @@ const stoppedTunnelDropComment = "tunnex_stopped_tunnel_drop"
 //     drops only packets entering or leaving a tunnel interface. The tunnel stays
 //     closed while wg0 is drained, ordinary node traffic meets no Tunnex rule,
 //     and the next start's flush + `policy drop` replaces this chain in place;
+//   - re-declares `input` the same way (K8N-7): policy accept, one drop of
+//     everything that arrives on a tunnel interface. The agent's listeners are
+//     gone with the process, so nothing on the tunnel side reaches the node;
 //   - writes back exactly the posture marker the manager checks.
 func hostPostureStoppedRuleset(tun []string) (string, error) {
 	if len(tun) == 0 {
@@ -749,13 +792,15 @@ func hostPostureStoppedRuleset(tun []string) (string, error) {
 	for _, family := range []string{"ip", "ip6"} {
 		t := family + " tunnex"
 		fmt.Fprintf(&b, "flush table %s\n", t)
-		for _, chain := range []string{"prerouting", "postrouting", "forward"} {
+		for _, chain := range []string{"prerouting", "postrouting", "forward", "input"} {
 			fmt.Fprintf(&b, "add chain %[1]s %[2]s\ndelete chain %[1]s %[2]s\n", t, chain)
 		}
 		fmt.Fprintf(&b, "add chain %s forward { type filter hook forward priority filter; policy accept; }\n", t)
 		for _, field := range []string{"iifname", "oifname"} {
 			fmt.Fprintf(&b, "add rule %s forward %s counter drop comment \"%s\"\n", t, ifClause(field, tun, false), stoppedTunnelDropComment)
 		}
+		fmt.Fprintf(&b, "add chain %s input { type filter hook input priority filter; policy accept; }\n", t)
+		fmt.Fprintf(&b, "add rule %s input %s counter drop comment \"%s\"\n", t, ifClause("iifname", tun, false), stoppedTunnelDropComment)
 		fmt.Fprintf(&b, "add chain %[1]s tunnex_posture_owner\nadd rule %[1]s tunnex_posture_owner counter comment \"%[2]s\"\n", t, hostposture.NFTMarkerComment)
 	}
 	return b.String(), nil
@@ -839,7 +884,7 @@ table ip tunnex {
 %[5]s  chain postrouting {
     type nat hook postrouting priority srcnat - 1; policy accept;
 %[1]s  }
-  chain forward {
+%[10]s  chain forward {
     type filter hook forward priority filter; policy drop;
     ct state established,related accept
     ct state invalid counter drop comment "tunnex_ct_invalid_drop"
@@ -854,14 +899,57 @@ table ip6 tunnex {
   chain postrouting {
     type nat hook postrouting priority srcnat - 1; policy accept;
 %[6]s  }
-  chain forward {
+%[11]s  chain forward {
     type filter hook forward priority filter; policy drop;
     ct state established,related accept
     ct state invalid counter drop comment "tunnex_ct_invalid_drop"
 %[8]s
 %[3]s  }
 }
-`, masq, v4fwd, v6fwd, mssClamp, m.preroutingDNAT(), masq6, nativeForward4, nativeForward6, postureOwnerChain)
+`, masq, v4fwd, v6fwd, mssClamp, m.preroutingDNAT(), masq6, nativeForward4, nativeForward6, postureOwnerChain,
+		m.k8sInputChain(false, tun), m.k8sInputChain(true, tun))
+}
+
+// k8sInputChain renders the input hook of an in-cluster gateway (K8N-7); it is
+// empty outside Kubernetes mode, where the VM/site ruleset stays byte for byte
+// as it was. The gateway shares the node's host network namespace, so a packet a
+// device addresses to ANY node address (the tunnel address, the node's own
+// address) is delivered locally through the input hook and never meets the
+// forward chain's rules. Here a packet that arrives on a tunnel interface is
+// dropped, except:
+//
+//   - a reply to a connection the node opened (`ct direction reply`; a device's
+//     own connection is in the original direction and is not covered);
+//   - the agent's own tunnel-side listeners, which are bound to the WireGuard
+//     interface (SO_BINDTODEVICE): the DNS forwarder on UDP and TCP 53 and, when
+//     configured, the AI VPN listener on TCP 8083 (IPv4 only). Each is limited to
+//     an address configured ON that interface (`fib daddr . iif type local`):
+//     the tunnel address and every cluster DNS VIP, never the node's other
+//     addresses.
+//
+// The chain is policy accept and every rule is limited to tunnel ingress, so
+// node traffic on other interfaces meets no Tunnex rule. It does not depend on
+// the policy: cold start, refusal, nil, enforcing and mesh render it the same.
+// k8snetprep's validateTunnexInput reads it back; THE SHAPE IS A CONTRACT.
+func (m *Manager) k8sInputChain(v6 bool, tun []string) string {
+	if !m.kubernetesMode.Load() {
+		return ""
+	}
+	wg := ifClause("iifname", []string{m.wgIface}, false)
+	var b strings.Builder
+	b.WriteString("  chain input {\n    type filter hook input priority filter; policy accept;\n")
+	fmt.Fprintf(&b, "    %s ct direction reply ct state established,related counter accept comment \"%s\"\n",
+		ifClause("iifname", tun, false), k8snetprep.InputReplyRuleComment)
+	for _, proto := range []string{"udp", "tcp"} {
+		fmt.Fprintf(&b, "    %s fib daddr . iif type local %s dport %d counter accept comment \"%s\"\n",
+			wg, proto, k8snetprep.InputDNSPort, k8snetprep.InputDNSRuleComment)
+	}
+	if !v6 && m.aiVPNInput.Load() {
+		fmt.Fprintf(&b, "    %s fib daddr . iif type local tcp dport %d counter accept comment \"%s\"\n",
+			wg, k8snetprep.InputAIVPNPort, k8snetprep.InputAIVPNRuleComment)
+	}
+	fmt.Fprintf(&b, "    %s counter drop comment \"%s\"\n  }\n", ifClause("iifname", tun, false), k8snetprep.InputTunnelDropRuleComment)
+	return b.String()
 }
 
 // resolvedVIPOriginalDstExclusion returns a fail-closed, nft-safe match suffix
@@ -1502,6 +1590,11 @@ func (m *Manager) SetKubernetesMode(enabled bool) {
 		m.k8sNetPrepReady.Store(false)
 	}
 }
+
+// SetAIVPNListener tells the renderer that the AI VPN inference listener
+// (aivpn.HTTPPort on the WireGuard IPv4 address) is configured. In Kubernetes
+// mode the input chain accepts it only then (K8N-7); the next pass renders it.
+func (m *Manager) SetAIVPNListener(enabled bool) { m.aiVPNInput.Store(enabled) }
 
 // SetKubernetesCNIAuthority installs the journal-scoped mechanism reconciler
 // before producers start. VM/site mode never acquires host-posture authority.
