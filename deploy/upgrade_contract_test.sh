@@ -7,7 +7,10 @@ grep -Fq 'const repairCommand = "curl -fsSL https://get.tunnex.io | sh"' "$ROOT/
 grep -Fq 'Installed version' "$ROOT/apps/web/src/components/UpgradeCenter.tsx"
 grep -Fq 'Target version' "$ROOT/apps/web/src/components/UpgradeCenter.tsx"
 grep -Fq 'Upgrade control plane' "$ROOT/apps/web/src/components/UpgradeCenter.tsx"
-grep -Fq 'api.POST("/api/v1/admin/upgrade")' "$ROOT/apps/web/src/components/UpgradeCenter.tsx"
+# The browser never names a target: the body carries only re-authentication
+# (AA-EN-1 founder ruling 2); the server pins the verified release.
+grep -Fq 'api.POST("/api/v1/admin/upgrade", { body })' "$ROOT/apps/web/src/components/UpgradeCenter.tsx"
+grep -Fq 'const body = host?.reauthentication?.password ? { current_password: reauthPassword } : {};' "$ROOT/apps/web/src/components/UpgradeCenter.tsx"
 grep -Fq 'health check failed' "$ROOT/deploy/upgrade.sh"
 grep -Fq 'restore the verified pre-upgrade backup' "$ROOT/deploy/upgrade.sh"
 if grep -F 'const hostCommand' "$ROOT/apps/web/src/components/UpgradeCenter.tsx" | grep -Eq -- '--public-key|release\.json'; then
