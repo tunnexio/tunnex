@@ -196,7 +196,8 @@ BACKUP_MANIFEST=
 CURRENT_STAGE=
 TERMINAL_STATUS=false
 AI_SNAPSHOT_STOPPED=false
-usage() { echo "usage: upgrade.sh [--manifest FILE] [--public-key KEY] [--apply] [--airgap DIR] [--expected-source-sha SHA] [--expected-sequence N]" >&2; exit 2; }
+ACCEPT_INSTALLED_UNKNOWN=false
+usage() { echo "usage: upgrade.sh [--manifest FILE] [--public-key KEY] [--apply] [--airgap DIR] [--expected-source-sha SHA] [--expected-sequence N] [--accept-installed-unknown]" >&2; exit 2; }
 while [ "$#" -gt 0 ]; do
   case "$1" in
     --manifest) MANIFEST=${2:-}; MANIFEST_EXPLICIT=true; shift 2;;
@@ -205,6 +206,7 @@ while [ "$#" -gt 0 ]; do
     --expected-source-sha) EXPECTED_SOURCE_SHA=${2:-}; shift 2;;
     --expected-sequence) EXPECTED_SEQUENCE=${2:-}; shift 2;;
     --apply) APPLY=true; shift;;
+    --accept-installed-unknown) ACCEPT_INSTALLED_UNKNOWN=true; shift;;
     *) usage;;
   esac
 done
@@ -213,13 +215,7 @@ case "$EXPECTED_SOURCE_SHA" in ''|*[!0-9a-f]*) [ -z "$EXPECTED_SOURCE_SHA" ] || 
 case "$EXPECTED_SEQUENCE" in ''|*[!0-9]*) [ -z "$EXPECTED_SEQUENCE" ] || usage ;; esac
 [ -n "$PUBLIC_KEY" ] || { echo "error: trusted release public key is not configured in the deployment environment" >&2; exit 1; }
 [ -f "$COMPOSE" ] && [ -f "$ENV_FILE" ] || { echo "error: deployment files not found" >&2; exit 1; }
-# Match Compose's first-file project directory, including an explicit file
-# outside the installation directory. Do not guess a top-level project name.
-_aa_upgrade_directory=$(CDPATH= cd -- "$(dirname -- "$COMPOSE")" && pwd -P) || exit 13
-admit_app_access "$_aa_upgrade_directory"
 TARGET_SOURCE_SHA=$EXPECTED_SOURCE_SHA
-TMPDIR=$(mktemp -d "${TMPDIR:-/tmp}/tunnex-upgrade.XXXXXX")
-trap 'rm -rf "$TMPDIR"' EXIT INT TERM
 write_status() {
   [ -n "$STATUS_FILE" ] || return 0
   _state=$1 _reason=${2:-} _next="${STATUS_FILE}.next"
@@ -239,6 +235,184 @@ write_status() {
   CURRENT_STAGE=$_state
   case "$_state" in failed|healthy) TERMINAL_STATUS=true ;; esac
 }
+# BEGIN UPG-2 TARGET HAND-OFF
+# The installed helper is only a trampoline: it verifies the signed release
+# with the installed key, refuses downgrade/replay against the installed signed
+# descriptor, copies the target release's host files out of the digest-pinned
+# API image (never running it) and execs the target's upgrade.sh. All admission,
+# backup and apply logic belongs to the target, so an old guard can never trap
+# a host again (UPG-2, rulings U1-U8). The hand-off interface (ABI 1) is frozen:
+#   args: --manifest <handoff>/release.json [--apply] [--expected-source-sha S]
+#         [--expected-sequence N] [--accept-installed-unknown]
+#   env:  TUNNEX_DIR TUNNEX_ENV_FILE TUNNEX_COMPOSE_FILE TUNNEX_RELEASE_PUBLIC_KEY
+#         TUNNEX_UPGRADE_STATUS_FILE TUNNEX_UPGRADE_REQUEST_ID
+#         TUNNEX_UPGRADE_PRIVILEGED TUNNEX_UPGRADE_HANDOFF=1
+#         TUNNEX_UPGRADE_HANDOFF_ABI=1 TUNNEX_UPGRADE_HANDOFF_DIR
+#   dir:  <handoff>/release.json (verified bytes), <handoff>/host/ (image files)
+HOST_ABI=1
+HOST_IMAGE_DIR=/usr/share/tunnex/host
+HOST_FILE_LIST='upgrade.sh upgrade-runner.sh tunnex.yml ai-bootstrap.sh ai-gateway/config-managed.json app-access/compose.yml app-access/restore.py'
+HANDOFF=${TUNNEX_UPGRADE_HANDOFF:-}
+HOST_FILES=
+handoff_refuse() {
+  _ho_reason=$1; shift
+  write_status failed "$_ho_reason"
+  echo "error: upgrade blocked; $*" >&2
+  exit 13
+}
+# 0 = complete, 2 = unknown hand-off ABI, 1 = incomplete or invalid.
+host_files_check() {
+  [ "$(cat "$1/HOST_ABI" 2>/dev/null)" = "$HOST_ABI" ] || return 2
+  for _ho_file in $HOST_FILE_LIST; do
+    [ -f "$1/$_ho_file" ] && [ ! -L "$1/$_ho_file" ] && [ -s "$1/$_ho_file" ] || return 1
+  done
+  sh -n "$1/upgrade.sh" && sh -n "$1/upgrade-runner.sh" && sh -n "$1/ai-bootstrap.sh" || return 1
+}
+# Verify FILE with the installed verifier and the installed key; print env.
+release_env_of() {
+  if [ -n "$VERIFY" ]; then
+    "$VERIFY" -manifest "$1" -public-key "$PUBLIC_KEY" -print-env
+  elif command -v releaseverify >/dev/null 2>&1; then
+    releaseverify -manifest "$1" -public-key "$PUBLIC_KEY" -print-env
+  else
+    set -- "$1" --env-file "$ENV_FILE" -f "$COMPOSE" exec -T api sh -c \
+      'cat > /tmp/tunnex-release.json && releaseverify -manifest /tmp/tunnex-release.json -public-key "$1" -print-env' \
+      sh "$PUBLIC_KEY"
+    _ho_manifest=$1; shift
+    [ -z "$PROJECT" ] || set -- --project-name "$PROJECT" "$@"
+    docker compose "$@" <"$_ho_manifest"
+  fi
+}
+env_value_of() { printf '%s\n' "$2" | sed -n "s/^$1=//p" | head -1; }
+# U4/U5: only a strictly newer release, or a re-run of the installed one.
+check_release_order() {
+  _ho_installed="$DIR/release.json"
+  _ho_env=
+  [ -s "$_ho_installed" ] && _ho_env=$(release_env_of "$_ho_installed" 2>/dev/null) || _ho_env=
+  _ho_seq=$(env_value_of TUNNEX_RELEASE_SEQUENCE "$_ho_env")
+  _ho_sha=$(env_value_of TUNNEX_RELEASE_SOURCE_SHA "$_ho_env")
+  case "$_ho_seq" in ''|*[!0-9]*) _ho_seq= ;; esac
+  case "$_ho_sha" in *[!0-9a-f]*) _ho_sha= ;; esac
+  if [ -z "$_ho_seq" ] || [ "${#_ho_sha}" -ne 40 ]; then
+    if [ "$ACCEPT_INSTALLED_UNKNOWN" = true ]; then
+      echo "warning: the installed release could not be verified ($_ho_installed); continuing because --accept-installed-unknown was given. Downgrade protection was skipped for this run." >&2
+      return 0
+    fi
+    handoff_refuse installed_release_unknown "the installed release descriptor $_ho_installed is missing or does not verify with the installed release key, so this upgrade cannot prove it is not a downgrade. Restore that file from the last upgrade (it is also kept in backups), or, after confirming the installed version yourself, re-run ./upgrade.sh on the command line with --accept-installed-unknown. Nothing was changed."
+  fi
+  if [ "$TARGET_SEQUENCE" -gt "$_ho_seq" ]; then
+    return 0
+  elif [ "$TARGET_SEQUENCE" -eq "$_ho_seq" ] && [ "$TARGET_SOURCE_SHA" = "$_ho_sha" ]; then
+    echo "re-running the installed release $TARGET_VERSION (sequence $TARGET_SEQUENCE); this is the supported forward fix after a failed upgrade"
+  elif [ "$TARGET_SEQUENCE" -eq "$_ho_seq" ]; then
+    handoff_refuse release_conflict "the signed release has the same sequence as the installed release but a different source ($TARGET_SOURCE_SHA, installed $_ho_sha). Nothing was changed."
+  else
+    handoff_refuse downgrade_refused "the signed release $TARGET_VERSION (sequence $TARGET_SEQUENCE) is older than the installed release (sequence $_ho_seq). Upgrades only move forward; to return to an earlier release, restore its pre-upgrade backup. Nothing was changed."
+  fi
+}
+if [ "$ACCEPT_INSTALLED_UNKNOWN" = true ] && [ "${TUNNEX_UPGRADE_PRIVILEGED:-}" = 1 ]; then
+  echo 'error: --accept-installed-unknown is command line only; the dashboard upgrade cannot skip downgrade protection' >&2
+  exit 2
+fi
+if [ "$HANDOFF" = 1 ]; then
+  # Target side: accept only the frozen interface and a complete file set.
+  [ "${TUNNEX_UPGRADE_HANDOFF_ABI:-}" = "$HOST_ABI" ] ||
+    handoff_refuse handoff_unsupported "the installed upgrade helper used hand-off interface '${TUNNEX_UPGRADE_HANDOFF_ABI:-none}', but this release speaks interface $HOST_ABI. Run the one-time step for older hosts in docs/upgrade.md. Nothing was changed."
+  HOST_FILES="${TUNNEX_UPGRADE_HANDOFF_DIR:-}/host"
+  [ -n "${TUNNEX_UPGRADE_HANDOFF_DIR:-}" ] && host_files_check "$HOST_FILES" ||
+    handoff_refuse handoff_failed 'the hand-off directory is missing or incomplete. Nothing was changed.'
+  [ "$MANIFEST_EXPLICIT" = true ] || handoff_refuse handoff_failed 'the hand-off did not include the verified release descriptor. Nothing was changed.'
+  trap 'rm -rf "$TUNNEX_UPGRADE_HANDOFF_DIR"' EXIT INT TERM
+else
+  HO_DIR=
+  HO_CID=
+  HO_TMPBASE=${TMPDIR:-/tmp}
+  HO_UMASK=$(umask)
+  ho_finish() {
+    _ho_status=$?
+    trap - EXIT INT TERM
+    [ -z "$HO_CID" ] || docker rm "$HO_CID" >/dev/null 2>&1 || true
+    [ -z "$HO_DIR" ] || rm -rf "$HO_DIR"
+    if [ "$_ho_status" -ne 0 ] && [ "$APPLY" = true ] && [ "$TERMINAL_STATUS" = false ]; then
+      write_status failed handoff_failed
+    fi
+    exit "$_ho_status"
+  }
+  trap ho_finish EXIT INT TERM
+  umask 077
+  HO_DIR=$(mktemp -d "$HO_TMPBASE/tunnex-handoff.XXXXXX")
+  mkdir "$HO_DIR/host"
+  # The descriptor that is verified is the exact file handed to the target.
+  if [ "$MANIFEST_EXPLICIT" = true ]; then
+    [ -n "$MANIFEST" ] && [ -r "$MANIFEST" ] || { echo "error: signed manifest is required" >&2; exit 1; }
+    cp "$MANIFEST" "$HO_DIR/release.json"
+  else
+    [ -n "$CATALOG_URL" ] || { echo "error: signed release catalog is not configured; use --manifest for an air-gapped bundle" >&2; exit 1; }
+    curl -fsSL "$CATALOG_URL" -o "$HO_DIR/release.json" || { echo "error: could not fetch the signed release catalog" >&2; exit 1; }
+  fi
+  RELEASE_ENV=$(release_env_of "$HO_DIR/release.json") || {
+    echo "error: update blocked; installation verification failed (tampered or incomplete release metadata)" >&2
+    exit 13
+  }
+  TARGET_SOURCE_SHA=$(env_value_of TUNNEX_RELEASE_SOURCE_SHA "$RELEASE_ENV")
+  TARGET_VERSION=$(env_value_of TUNNEX_RELEASE_VERSION "$RELEASE_ENV")
+  TARGET_SEQUENCE=$(env_value_of TUNNEX_RELEASE_SEQUENCE "$RELEASE_ENV")
+  case "$TARGET_SEQUENCE" in ''|*[!0-9]*) echo 'error: signed release verifier omitted TUNNEX_RELEASE_SEQUENCE' >&2; exit 13 ;; esac
+  [ "${#TARGET_SOURCE_SHA}" -eq 40 ] || { echo 'error: signed release verifier omitted TUNNEX_RELEASE_SOURCE_SHA' >&2; exit 13; }
+  [ -z "$EXPECTED_SOURCE_SHA" ] || [ "$TARGET_SOURCE_SHA" = "$EXPECTED_SOURCE_SHA" ] ||
+    handoff_refuse approved_release_changed 'the signed release no longer matches the release approved in the UI'
+  [ -z "$EXPECTED_SEQUENCE" ] || [ "$TARGET_SEQUENCE" = "$EXPECTED_SEQUENCE" ] ||
+    handoff_refuse approved_release_changed 'the signed release sequence no longer matches the release approved in the UI'
+  check_release_order
+  HO_IMAGE=$(env_value_of TUNNEX_API_IMAGE "$RELEASE_ENV")
+  printf '%s\n' "$HO_IMAGE" | grep -Eqx 'ghcr\.io/tunnexio/tunnex-api@sha256:[0-9a-f]{64}' ||
+    handoff_refuse handoff_failed 'the verified release does not pin the API image by digest, so its upgrade helper cannot be trusted. Nothing was changed.'
+  if [ -n "$AIRGAP" ]; then
+    [ -d "$AIRGAP" ] || { echo "error: air-gap bundle directory not found" >&2; exit 1; }
+    for image in "$AIRGAP"/*.tar; do [ -f "$image" ] || continue; docker load -i "$image"; done
+  else
+    docker pull "$HO_IMAGE" >/dev/null ||
+      handoff_refuse handoff_failed "could not extract the target release's upgrade helper: pulling the verified API image $HO_IMAGE failed. Nothing was changed."
+  fi
+  # Create (never start) a container from the pinned digest and copy the host
+  # files out of it. No code from the target release runs to obtain them.
+  HO_CID=$(docker create --pull never --network none "$HO_IMAGE") && [ -n "$HO_CID" ] ||
+    handoff_refuse handoff_failed "could not extract the target release's upgrade helper from the verified API image. Nothing was changed."
+  docker cp "$HO_CID:$HOST_IMAGE_DIR/." "$HO_DIR/host" ||
+    handoff_refuse handoff_failed "could not extract the target release's upgrade helper from the verified API image. Nothing was changed."
+  docker rm "$HO_CID" >/dev/null 2>&1 || true
+  HO_CID=
+  _ho_check=0
+  host_files_check "$HO_DIR/host" || _ho_check=$?
+  case "$_ho_check" in
+    0) ;;
+    2) handoff_refuse handoff_unsupported "the target release's upgrade helper uses hand-off interface '$(cat "$HO_DIR/host/HOST_ABI" 2>/dev/null || echo none)', which this installed helper does not support. Upgrade through each intermediate release named in the release notes. Nothing was changed." ;;
+    *) handoff_refuse handoff_failed "the target release's host files in the verified API image are incomplete or invalid. Nothing was changed." ;;
+  esac
+  write_status verifying
+  # Hand over: the target owns the status file from here; this process (and its
+  # EXIT trap) is replaced, so it can never overwrite the target's result.
+  trap - EXIT INT TERM
+  set -- --manifest "$HO_DIR/release.json"
+  [ "$APPLY" != true ] || set -- "$@" --apply
+  [ -z "$EXPECTED_SOURCE_SHA" ] || set -- "$@" --expected-source-sha "$EXPECTED_SOURCE_SHA"
+  [ -z "$EXPECTED_SEQUENCE" ] || set -- "$@" --expected-sequence "$EXPECTED_SEQUENCE"
+  [ "$ACCEPT_INSTALLED_UNKNOWN" != true ] || set -- "$@" --accept-installed-unknown
+  echo "release $TARGET_VERSION verified; handing off to its upgrade helper"
+  umask "$HO_UMASK" # the target starts with the caller's file-creation mask
+  exec env TMPDIR="$HO_TMPBASE" TUNNEX_DIR="$DIR" TUNNEX_ENV_FILE="$ENV_FILE" TUNNEX_COMPOSE_FILE="$COMPOSE" \
+    TUNNEX_RELEASE_PUBLIC_KEY="$PUBLIC_KEY" TUNNEX_UPGRADE_STATUS_FILE="$STATUS_FILE" \
+    TUNNEX_UPGRADE_REQUEST_ID="$REQUEST_ID" TUNNEX_UPGRADE_PRIVILEGED="${TUNNEX_UPGRADE_PRIVILEGED:-}" \
+    TUNNEX_UPGRADE_HANDOFF=1 TUNNEX_UPGRADE_HANDOFF_ABI="$HOST_ABI" TUNNEX_UPGRADE_HANDOFF_DIR="$HO_DIR" \
+    /bin/sh "$HO_DIR/host/upgrade.sh" "$@"
+fi
+# END UPG-2 TARGET HAND-OFF
+# Match Compose's first-file project directory, including an explicit file
+# outside the installation directory. Do not guess a top-level project name.
+_aa_upgrade_directory=$(CDPATH= cd -- "$(dirname -- "$COMPOSE")" && pwd -P) || exit 13
+admit_app_access "$_aa_upgrade_directory"
+TMPDIR=$(mktemp -d "${TMPDIR:-/tmp}/tunnex-upgrade.XXXXXX")
+trap 'rm -rf "$TMPDIR"; [ "$HANDOFF" != 1 ] || rm -rf "$TUNNEX_UPGRADE_HANDOFF_DIR"' EXIT INT TERM
 finish_upgrade() {
   _status=$?
   trap - EXIT INT TERM
@@ -252,6 +426,7 @@ finish_upgrade() {
     aa_rollback_guidance
   fi
   rm -rf "$TMPDIR"
+  [ -z "${TUNNEX_UPGRADE_HANDOFF_DIR:-}" ] || rm -rf "$TUNNEX_UPGRADE_HANDOFF_DIR"
   if [ "$_status" -ne 0 ] && [ "$APPLY" = true ] && [ "$TERMINAL_STATUS" = false ]; then
     case "$CURRENT_STAGE" in
       verifying|backing_up|preflight|pulling|restarting|health_check) write_status failed "${CURRENT_STAGE}_failed" ;;
@@ -425,11 +600,10 @@ TARGET_SEQUENCE=$(release_value TUNNEX_RELEASE_SEQUENCE)
   echo "error: update blocked; the signed release sequence no longer matches the release approved in the UI" >&2
   exit 13
 }
+# The target re-checks downgrade/replay itself; it trusts nothing it was handed.
+check_release_order
 write_status verifying
-if [ -n "$AIRGAP" ]; then
-  [ -d "$AIRGAP" ] || { echo "error: air-gap bundle directory not found" >&2; exit 1; }
-  for image in "$AIRGAP"/*.tar; do [ -f "$image" ] || continue; docker load -i "$image"; done
-fi
+# Air-gap archives were loaded by the installed helper before the hand-off.
 if [ "$AA_PRESENT" = true ]; then
   # The installed verifier must authenticate the signed proxy image itself; a
   # release without one cannot upgrade an App Access installation.
@@ -451,9 +625,9 @@ if [ "$AA_PRESENT" = true ]; then
     aa_refuse 'requires a target release with a signed App Access proxy image (verified with -require-app-proxy)'
   }
   for _aa_asset in compose.yml restore.py; do
-    curl -fsSL "https://raw.githubusercontent.com/tunnexio/tunnex/${TARGET_SOURCE_SHA}/deploy/app-access/${_aa_asset}" -o "$TMPDIR/app-access-${_aa_asset}" || {
+    cp "$HOST_FILES/app-access/${_aa_asset}" "$TMPDIR/app-access-${_aa_asset}" || {
       write_status failed app_access_admission_failed
-      echo 'error: could not fetch the App Access composition bound to the signed release' >&2; exit 13;
+      echo 'error: the App Access composition of the signed release is missing from its host files' >&2; exit 13;
     }
   done
   echo "App Access: upgrade will snapshot authority, back up, stop app-proxy, migrate the API, verify unchanged authority, then start the signed proxy $AA_PROXY_PIN"
@@ -672,8 +846,9 @@ ensure_edge_config() {
 SOURCE_SHA=$(release_value TUNNEX_RELEASE_SOURCE_SHA)
 VERSION=$(release_value TUNNEX_RELEASE_VERSION)
 write_status pulling
-curl -fsSL "https://raw.githubusercontent.com/tunnexio/tunnex/${SOURCE_SHA}/deploy/tunnex.yml" -o "$TMPDIR/tunnex.yml" || {
-  echo "error: could not fetch the deployment manifest bound to the signed release" >&2; exit 13;
+# Every host file comes from the verified API image (UPG-2), never from a URL.
+cp "$HOST_FILES/tunnex.yml" "$TMPDIR/tunnex.yml" || {
+  echo "error: the deployment manifest of the signed release is missing from its host files" >&2; exit 13;
 }
 grep -q 'TUNNEX_ENV: production' "$TMPDIR/tunnex.yml" && ! grep -qi 'mailpit' "$TMPDIR/tunnex.yml" || {
   echo "error: signed release points to a non-production deployment manifest" >&2; exit 13;
@@ -710,12 +885,12 @@ if grep -Fq '${TUNNEX_AI_ENGINE_IMAGE:' "$TMPDIR/tunnex.yml"; then
     }
     AI_IMAGE_PIN=$(release_value TUNNEX_AI_ENGINE_IMAGE)
   fi
-  curl -fsSL "https://raw.githubusercontent.com/tunnexio/tunnex/${SOURCE_SHA}/deploy/ai-bootstrap.sh" -o "$TMPDIR/ai-bootstrap.sh" || {
-    echo 'error: could not fetch the signed-source AI bootstrap helper' >&2; exit 13;
+  cp "$HOST_FILES/ai-bootstrap.sh" "$TMPDIR/ai-bootstrap.sh" || {
+    echo 'error: the AI bootstrap helper of the signed release is missing from its host files' >&2; exit 13;
   }
   sh -n "$TMPDIR/ai-bootstrap.sh"
-  curl -fsSL "https://raw.githubusercontent.com/tunnexio/tunnex/${SOURCE_SHA}/deploy/ai-gateway/config-managed.json" -o "$TMPDIR/ai-engine.json" || {
-    echo 'error: could not fetch the signed-source managed AI configuration' >&2; exit 13;
+  cp "$HOST_FILES/ai-gateway/config-managed.json" "$TMPDIR/ai-engine.json" || {
+    echo 'error: the managed AI configuration of the signed release is missing from its host files' >&2; exit 13;
   }
   AI_ENV_FILE=$ENV_FILE
   AI_COMPOSE_PROJECT=${PROJECT:-tunnex}
@@ -755,25 +930,6 @@ if grep -Fq '${TUNNEX_AI_ENGINE_IMAGE:' "$TMPDIR/tunnex.yml"; then
     compose start bifrost
     AI_SNAPSHOT_STOPPED=false
   fi
-fi
-if [ "${TUNNEX_UPGRADE_PRIVILEGED:-}" = 1 ]; then
-  curl -fsSL "https://raw.githubusercontent.com/tunnexio/tunnex/${SOURCE_SHA}/deploy/upgrade.sh" -o "$TMPDIR/upgrade.sh" || {
-    echo "error: could not fetch the verified host upgrade helper" >&2; exit 13;
-  }
-  curl -fsSL "https://raw.githubusercontent.com/tunnexio/tunnex/${SOURCE_SHA}/deploy/upgrade-runner.sh" -o "$TMPDIR/upgrade-runner.sh" || {
-    echo "error: could not fetch the verified host upgrade runner" >&2; exit 13;
-  }
-  sh -n "$TMPDIR/upgrade.sh" && sh -n "$TMPDIR/upgrade-runner.sh" || {
-    echo "error: verified host upgrade assets are not valid shell" >&2; exit 13;
-  }
-  ROOT_UPGRADE_DIR=${TUNNEX_ROOT_UPGRADE_DIR:-/usr/local/lib/tunnex}
-  install -d -o root -g root -m 0755 "$ROOT_UPGRADE_DIR"
-  install -m 0755 -o root -g root "$TMPDIR/upgrade.sh" "$ROOT_UPGRADE_DIR/upgrade.sh.next"
-  install -m 0755 -o root -g root "$TMPDIR/upgrade-runner.sh" "$ROOT_UPGRADE_DIR/upgrade-runner.sh.next"
-  mv "$ROOT_UPGRADE_DIR/upgrade.sh.next" "$ROOT_UPGRADE_DIR/upgrade.sh"
-  mv "$ROOT_UPGRADE_DIR/upgrade-runner.sh.next" "$ROOT_UPGRADE_DIR/upgrade-runner.sh"
-  install -m 0755 "$TMPDIR/upgrade.sh" "$DIR/upgrade.sh.next"
-  mv "$DIR/upgrade.sh.next" "$DIR/upgrade.sh"
 fi
 # Online catalog downloads already land at this destination. Avoid copying a
 # file onto itself; GNU cp exits non-zero for that case and would abort the
@@ -866,5 +1022,22 @@ if ! healthcheck; then
   exit 14
 fi
 write_status healthy
+# U3: adopt this release's helper only now that it has completed an upgrade on
+# this host. A failure here leaves the previous trampoline, which still hands off.
+install_host_copies() {
+  install -m 0755 "$HOST_FILES/upgrade.sh" "$DIR/upgrade.sh.next" &&
+    mv -f "$DIR/upgrade.sh.next" "$DIR/upgrade.sh" || return 1
+  [ "${TUNNEX_UPGRADE_PRIVILEGED:-}" = 1 ] || return 0
+  ROOT_UPGRADE_DIR=${TUNNEX_ROOT_UPGRADE_DIR:-/usr/local/lib/tunnex}
+  if [ "$(id -u)" = 0 ]; then set -- -o root -g root; else set --; fi
+  install -d "$@" -m 0755 "$ROOT_UPGRADE_DIR" || return 1
+  for _copy in upgrade.sh upgrade-runner.sh; do
+    install -m 0755 "$@" "$HOST_FILES/$_copy" "$ROOT_UPGRADE_DIR/$_copy.next" &&
+      mv -f "$ROOT_UPGRADE_DIR/$_copy.next" "$ROOT_UPGRADE_DIR/$_copy" || return 1
+  done
+}
+if ! install_host_copies; then
+  echo "warning: the upgrade succeeded, but the installed upgrade helper could not be updated; the next upgrade still works through the current helper" >&2
+fi
 echo "upgrade health check passed"
 echo "upgrade applied; retain the backup manifest and dump for forward-only rollback"

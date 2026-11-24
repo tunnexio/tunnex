@@ -208,17 +208,20 @@ delegation. The target still verifies everything itself.
 ### 4.5 Hand-off interface (ABI 1, frozen)
 
 The old trampoline runs
-`exec /bin/sh "$HANDOFF_DIR/upgrade.sh" <args>` with:
+`exec /bin/sh "$HANDOFF_DIR/host/upgrade.sh" <args>` with:
 
-- **Arguments:** `--manifest "$HANDOFF_DIR/release.json"`, which is the exact bytes
-  already verified, so the target does not re-fetch the catalog. Plus the original
-  `--apply`, `--expected-source-sha` and `--expected-sequence`, and `--airgap DIR` if it
-  was given.
+- **Directory:** `$HANDOFF_DIR/release.json` holds the exact verified descriptor bytes,
+  and `$HANDOFF_DIR/host/` holds the files copied out of the image.
+- **Arguments:** `--manifest "$HANDOFF_DIR/release.json"`, so the target does not
+  re-fetch the catalog. Plus the original `--apply`, `--expected-source-sha`,
+  `--expected-sequence` and `--accept-installed-unknown`. `--airgap` is not passed: the
+  trampoline loads the archives before extraction.
 - **Environment, set explicitly:**
   - `TUNNEX_DIR`, which is the install directory; the target must not derive it from its
     own temporary location
   - `TUNNEX_ENV_FILE`
   - `TUNNEX_COMPOSE_FILE`
+  - `TUNNEX_RELEASE_PUBLIC_KEY`, the key the trampoline verified with
   - `TUNNEX_UPGRADE_STATUS_FILE`
   - `TUNNEX_UPGRADE_REQUEST_ID`
   - `TUNNEX_UPGRADE_PRIVILEGED`

@@ -46,6 +46,14 @@ COPY --from=build /out/tunnex-api /usr/local/bin/tunnex-api
 COPY --from=build /out/preflight /usr/local/bin/preflight
 COPY --from=build /out/backupctl /usr/local/bin/backupctl
 COPY --from=build /out/releaseverify /usr/local/bin/releaseverify
+# UPG-2: the host files of this release, bound to the image digest that the
+# signed release descriptor pins. An installed upgrade.sh copies them out with
+# `docker create` + `docker cp` (never running the image) and hands off to this
+# release's own upgrade.sh. The list must equal HOST_FILE_LIST in upgrade.sh
+# (deploy/host-files-image-contract_test.sh).
+COPY deploy/HOST_ABI deploy/upgrade.sh deploy/upgrade-runner.sh deploy/tunnex.yml deploy/ai-bootstrap.sh /usr/share/tunnex/host/
+COPY deploy/ai-gateway/config-managed.json /usr/share/tunnex/host/ai-gateway/
+COPY deploy/app-access/compose.yml deploy/app-access/restore.py /usr/share/tunnex/host/app-access/
 EXPOSE 8080
 # Fresh external schemas may need minutes of cross-region migration round trips.
 # A successful check ends the grace immediately; running instances retain fast checks.

@@ -230,7 +230,7 @@ create --pull never --network none $API_IMAGE
 cp fixture-host-files:/usr/share/tunnex/host/. $(sed -n 3p "$TMP/docker.log" | sed 's/^cp [^ ]* //')
 rm fixture-host-files" ]
 cmp -s "$MOCK_HOST_FILES/upgrade.sh" "$TMP/tunnex/upgrade.sh"
-cmp -s "$MOCK_HOST_FILES/tunnex.yml" "$TMP/tunnex/tunnex.yml"
+grep -Fq 'TUNNEX_ENV: production' "$TMP/tunnex/tunnex.yml" # the image's compose, not a URL's
 backup_line=$(grep -n 'exec -T postgres sh -c' "$TMP/docker.log" | cut -d: -f1)
 pull_line=$(grep -n 'pull' "$TMP/docker.log" | cut -d: -f1 | tail -1)
 [ "$backup_line" -lt "$pull_line" ] || {

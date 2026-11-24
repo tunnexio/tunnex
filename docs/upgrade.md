@@ -75,11 +75,86 @@ mutable local Compose tag: the release manifest needs an explicit installed-imag
 mapping (and a defined source-build policy) before the updater can fail closed on
 those cases without rejecting legitimate custom or air-gapped deployments.
 
-For an air-gapped host, place pre-pulled OCI archives in a bundle directory and
-pass `--airgap BUNDLE`; the helper loads those archives only after descriptor
-verification. Keep the backup dump and manifest together for the documented
-forward-only restore procedure. Downgrades are refused by the signed sequence
-check. The UI action always requires an explicit deployment-administrator
+For an air-gapped host, place pre-pulled image archives in a bundle directory and
+pass `--manifest FILE --airgap BUNDLE`; the helper loads those archives only after
+descriptor verification. **The current air-gap path is not yet fully offline:**
+the upgrade still runs `docker compose pull`, which contacts the image registry,
+and the digests of loaded archives are not checked before `docker load` (a
+classic Docker image store does not keep registry digests for loaded images).
+Releases before the target-helper hand-off below also fetched `tunnex.yml` and
+the upgrade helpers from GitHub. A verified, network-free air-gap path is planned
+(UPG-2 ruling U7). Keep the backup dump and manifest together for the documented
+forward-only restore procedure.
+
+### The upgrade runs the target release's own helper
+
+The installed `upgrade.sh` (and the dashboard runner's copy) is only a small
+trampoline. It:
+
+1. verifies the signed release descriptor with the installation's trusted key and
+   its approved source SHA and sequence;
+2. refuses a release older than the installed one, and a release with the installed
+   sequence but a different source. Re-running the installed release (the supported
+   forward fix after a failed upgrade) is allowed. The comparison uses the installed,
+   signed `release.json`; if that file is missing or does not verify, the upgrade is
+   refused. On the command line only, `--accept-installed-unknown` skips this check
+   after you have confirmed the installed version yourself; the dashboard cannot;
+3. copies the target release's host files (`upgrade.sh`, `upgrade-runner.sh`,
+   `tunnex.yml`, the App Access overlay and restore helper, the AI bootstrap files)
+   out of the target's API image, pinned by the digest the signed descriptor names,
+   with `docker create` and `docker cp`. The image is never started;
+4. runs the target release's `upgrade.sh`, which performs every check, the backup
+   and the apply under its own rules.
+
+Nothing is downloaded from a mutable URL, and no host file is fetched from GitHub.
+The installed copies (`<install>/upgrade.sh` always, and
+`/usr/local/lib/tunnex/upgrade.sh` and `upgrade-runner.sh` for the dashboard runner)
+are replaced only after the target release has completed a healthy upgrade, so a
+failed upgrade leaves the previous helper in place and the next attempt hands off
+again. See [UPG-2](UPG-2-upgrade-runs-target-release-script.md).
+
+### Release notes: one-time step for hosts on v0.1.45 or older
+
+> **Upgrades now run the new release's own upgrade helper.** From this release on,
+> `upgrade.sh` verifies the signed release, refuses older releases, takes the new
+> release's files from its signed API image and runs that release's own helper. A
+> release that changes how upgrades work no longer needs any manual step.
+>
+> Installations on v0.1.45 or older still have the old helper. What to do depends
+> on the installation:
+>
+> - **Installed with the dashboard upgrade runner, without App Access:** nothing.
+>   Upgrade once from the dashboard; that upgrade installs the new helper.
+> - **With App Access, or upgraded only from the command line, or without
+>   systemd:** replace the helper once, as below, then upgrade as usual (one click
+>   in the dashboard, or `./upgrade.sh --apply`). This replaces the manual step
+>   announced for App Access installations in UPG-1.
+
+The one-time replacement verifies the target release with the key and verifier
+already installed on the host, and copies the helper out of the verified image
+without running it. Run it in the installation directory, with the target
+release's version tag (for example `v0.1.46`):
+
+```sh
+cd /opt/tunnex                     # your installation directory
+VERSION=v0.1.46                    # the release you are upgrading to
+KEY=$(sed -n 's/^TUNNEX_RELEASE_PUBLIC_KEY=//p' .env)
+curl -fsSL "https://github.com/tunnexio/tunnex/releases/download/$VERSION/release.json" -o target-release.json
+docker compose --env-file .env -f tunnex.yml exec -T api sh -c \
+  'cat > /tmp/target-release.json && releaseverify -manifest /tmp/target-release.json -public-key "$1" -print-env' \
+  sh "$KEY" < target-release.json > target-release.env      # must succeed
+IMAGE=$(sed -n 's/^TUNNEX_API_IMAGE=//p' target-release.env)  # ghcr.io/tunnexio/tunnex-api@sha256:...
+docker pull "$IMAGE"
+CID=$(docker create --pull never --network none "$IMAGE")
+docker cp "$CID:/usr/share/tunnex/host/upgrade.sh" upgrade.sh.next
+docker rm "$CID"
+install -m 0755 upgrade.sh.next upgrade.sh && rm upgrade.sh.next target-release.json target-release.env
+# Only where the dashboard upgrade runner is installed:
+sudo install -m 0755 -o root -g root upgrade.sh /usr/local/lib/tunnex/upgrade.sh
+```
+
+If `releaseverify` fails, stop: the descriptor is not signed by your installation's
+key. Do not substitute a script from any other source. The UI action always requires an explicit deployment-administrator
 confirmation and cannot select a different target from the server-verified release.
 
 This does not add a phone-home channel. The browser talks only to its own control

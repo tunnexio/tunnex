@@ -126,7 +126,7 @@ refused() {
   [ ! -e "$TMP/record-$1" ] || { echo "$1: target ran although the hand-off was refused" >&2; exit 1; }
   grep -Fxq 'state=failed' "$TMP/install-$1/status"
   grep -Fxq "reason_code=$2" "$TMP/install-$1/status" || { cat "$TMP/install-$1/status" >&2; exit 1; }
-  grep -Fq "$3" "$TMP/out-$1" || { cat "$TMP/out-$1" >&2; exit 1; }
+  grep -Fq -- "$3" "$TMP/out-$1" || { cat "$TMP/out-$1" >&2; exit 1; }
   ! grep -Eq '^(ps|compose|start|run|exec) ' "$TMP/docker-$1.log"
 }
 
@@ -168,6 +168,7 @@ rm fixture-cid" ]
   if MOCK_TARGET_EXIT=7 MOCK_TARGET_STATE=failed run_trampoline target-fails --apply >"$TMP/out-target-fails" 2>&1; then
     echo 'target failure was masked' >&2; exit 1
   fi
+  unset MOCK_TARGET_EXIT MOCK_TARGET_STATE # POSIX sh keeps assignments made before a function call
   grep -Fxq 'state=failed' "$TMP/install-target-fails/status"
   ! grep -Fq 'reason_code=' "$TMP/install-target-fails/status"
 
@@ -216,6 +217,7 @@ rm fixture-cid" ]
   if TUNNEX_UPGRADE_PRIVILEGED=1 run_trampoline accept-runner --apply --accept-installed-unknown >"$TMP/out-accept-runner" 2>&1; then
     echo 'runner accepted --accept-installed-unknown' >&2; exit 1
   fi
+  unset TUNNEX_UPGRADE_PRIVILEGED
   grep -Fq 'command line only' "$TMP/out-accept-runner"
   [ ! -e "$TMP/record-accept-runner" ]
 
@@ -228,6 +230,7 @@ rm fixture-cid" ]
   # 9. Pull or extraction failures and incomplete or unknown-ABI images refuse.
   new_install pull-fails
   if MOCK_PULL_FAIL=1 run_trampoline pull-fails --apply >"$TMP/out-pull-fails" 2>&1; then echo 'pull failure accepted' >&2; exit 1; fi
+  unset MOCK_PULL_FAIL
   refused pull-fails handoff_failed 'could not extract'
   new_install incomplete
   rm "$TMP/image-incomplete/app-access/restore.py"
