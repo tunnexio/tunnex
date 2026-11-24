@@ -1,6 +1,7 @@
 import "../resource-summary.css";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { api, apiErrorMessage, type HostUpgradeStatus, type Meta } from "../lib/api";
+import { api, apiErrorCode, apiErrorMessage, type HostUpgradeStatus, type Meta } from "../lib/api";
+import { InlineTerminalMfa } from "./InlineTerminalMfa";
 import { useAuth } from "../lib/auth";
 
 const activeStates = new Set(["requested", "verifying", "backing_up", "preflight", "pulling", "restarting", "health_check"]);
@@ -25,6 +26,8 @@ export function UpgradeCenter() {
   const [host, setHost] = useState<HostUpgradeStatus | null>(null);
   const [confirming, setConfirming] = useState(false);
   const [confirmingRerun, setConfirmingRerun] = useState(false);
+  const [rerunPassword, setRerunPassword] = useState("");
+  const [rerunNeedsMfa, setRerunNeedsMfa] = useState(false);
   const [busy, setBusy] = useState(false);
   const [reconnecting, setReconnecting] = useState(false);
   const [error, setError] = useState("");
@@ -81,8 +84,12 @@ export function UpgradeCenter() {
     setError("");
     try {
       const { data, error: requestError } = rerun
-        ? await api.POST("/api/v1/admin/upgrade/rerun")
+        ? await api.POST("/api/v1/admin/upgrade/rerun", { body: host?.rerun_reauthentication?.password ? { current_password: rerunPassword } : {} })
         : await api.POST("/api/v1/admin/upgrade");
+      if (rerun && apiErrorCode(requestError) === "mfa_step_up_required") {
+        setRerunNeedsMfa(true);
+        return;
+      }
       if (requestError || !data) {
         setError(apiErrorMessage(requestError, "Could not request the host upgrade."));
         return;
@@ -91,6 +98,8 @@ export function UpgradeCenter() {
       setHost(data);
       setConfirming(false);
       setConfirmingRerun(false);
+      setRerunPassword("");
+      setRerunNeedsMfa(false);
     } catch {
       setError("Could not reach the API. No new request was confirmed.");
     } finally {
@@ -146,14 +155,29 @@ export function UpgradeCenter() {
         )
       )}
 
-      {rerunAvailable && (
+      {rerunAvailable && host?.rerun_reauthentication && !host.rerun_reauthentication.available && (
+        <p className="mt-3 text-sm text-ink-secondary" role="note">Running the upgrade again needs re-authentication, and your account has no password or authenticator on this server. Set up an authenticator app in your account settings, or run the upgrade again on the server.</p>
+      )}
+      {rerunAvailable && host?.rerun_reauthentication?.available !== false && (
         confirmingRerun ? (
           <div className="mt-3 rounded-md border border-amber-300/30 p-3">
-            <p className="text-sm text-ink-secondary">Run the same verified release {titleVersion} again. A new database backup is created and verified first, then preflight runs and the upgrade finishes. An older release is never installed.</p>
-            <div className="mt-3 flex gap-2">
-              <button type="button" className="rounded-md border border-amber-300/40 px-3 py-2 text-sm" disabled={busy} onClick={() => void requestUpgrade(true)}>{busy ? "Requesting…" : "Confirm and run again"}</button>
-              <button type="button" className="rounded-md border border-line px-3 py-2 text-sm" disabled={busy} onClick={() => setConfirmingRerun(false)}>Cancel</button>
-            </div>
+            <form aria-label="Confirm running the upgrade again" onSubmit={event => { event.preventDefault(); void requestUpgrade(true); }}>
+              <p className="text-sm text-ink-secondary">Run the same verified release {titleVersion} again. A new database backup is created and verified first, then preflight runs and the upgrade finishes. An older release is never installed.</p>
+              {host?.rerun_reauthentication?.password && (
+                <label className="mt-3 block text-sm">Current password
+                  <input className="mt-1 block w-full rounded-md border border-line bg-transparent px-2 py-1" type="password" autoComplete="current-password" required value={rerunPassword} disabled={busy} onChange={event => setRerunPassword(event.target.value)} />
+                </label>
+              )}
+              {!rerunNeedsMfa && (
+                <div className="mt-3 flex gap-2">
+                  <button type="submit" className="rounded-md border border-amber-300/40 px-3 py-2 text-sm" disabled={busy}>{busy ? "Requesting…" : "Confirm and run again"}</button>
+                  <button type="button" className="rounded-md border border-line px-3 py-2 text-sm" disabled={busy} onClick={() => { setConfirmingRerun(false); setRerunPassword(""); }}>Cancel</button>
+                </div>
+              )}
+              {host?.rerun_reauthentication?.mfa && !rerunNeedsMfa && <p className="mt-2 text-xs text-ink-secondary">You may be asked to verify MFA.</p>}
+            </form>
+            {/* Outside the form above: the MFA step-up has its own form, and forms must not nest. */}
+            {rerunNeedsMfa && <InlineTerminalMfa action="Run the upgrade again" freshnessSeconds={300} onVerified={() => { setRerunNeedsMfa(false); void requestUpgrade(true); }} onCancel={() => setRerunNeedsMfa(false)} />}
           </div>
         ) : (
           <div className="mt-3">

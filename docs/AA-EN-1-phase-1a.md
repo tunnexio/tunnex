@@ -58,10 +58,15 @@ E1–E12 and the item added to Phase 1a by founder ruling (dashboard forward fix
    carries `Rerunnable` (same sequence and source SHA), `GET /admin/upgrade` reports
    `rerun_available` after a failed upgrade to that same source (not after
    `app_access_authority_changed`), and `POST /admin/upgrade/rerun` (no body; the server pins the target) requests
-   that pinned target. Same authorization (deployment administrator) and the same
-   audit action with `rerun: true` in its metadata. The host side already accepted a
-   same-sequence, same-source re-run (UPG-2 U4), so the runner is unchanged.
-   The step-up question is listed under decisions below.
+   that pinned target. Same deployment-administrator authorization and the same audit
+   action (`control_plane.upgrade_requested`, with `rerun: true` in its metadata),
+   plus the step-up of the founder ruling: a human browser session and SA-UI-1's
+   re-authentication rules (current password, and MFA verified within five minutes
+   when enrolled), with the re-run's own password-failure budget
+   (`control_plane_upgrade_rerun`). The rules were moved unchanged into one helper
+   (`requireRecentReauthentication`) used by both the Server Access setting and the
+   re-run. The host side already accepted a same-sequence, same-source re-run
+   (UPG-2 U4), so the runner is unchanged.
 
 ## Demo procedure (operator, after the release ships)
 
@@ -143,12 +148,10 @@ gateways.
 
 ## Decisions for the founder
 
-- **Step-up for the dashboard re-run.** The ruling says "the same step-up and audit
-  as other host actions". The only existing host action, the dashboard upgrade,
-  has no re-authentication step (deployment administrator, CSRF, audit). The re-run
-  matches it exactly. Recommendation: keep them identical now, and add SA-UI-1-style
-  re-authentication to both upgrade and re-run together in one follow-up, so the two
-  never differ.
+- **Step-up for the ordinary dashboard upgrade.** The re-run now requires SA-UI-1
+  re-authentication, but the ordinary "Upgrade control plane" request still does not
+  (deployment administrator and audit only, as before). Recommendation: add the same
+  step-up to it in a follow-up so the two host actions match.
 - **Console reachability during an upgrade on adopted (S2) hosts.** With
   terminate-and-forward the console goes through the proxy, which the upgrade stops
   while the API migrates and leaves stopped after a failure (UPG-1 invariant 5). On
