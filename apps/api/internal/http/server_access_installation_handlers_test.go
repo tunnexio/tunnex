@@ -2,6 +2,7 @@ package http
 
 import (
 	"context"
+	"strings"
 	"testing"
 	"time"
 
@@ -89,8 +90,8 @@ func TestServerAccessInstallationReauthentication(t *testing.T) {
 	if view.Reauthentication.Available || view.Source != "environment" || view.Enabled {
 		t.Fatalf("view = %+v", view)
 	}
-	if _, err = save(admin(parent), true, 0, nil); mfaHandlerErrorCode(err) != "reauthentication_unavailable" {
-		t.Fatalf("no factor = %v", err)
+	if _, err = save(admin(parent), true, 0, nil); mfaHandlerErrorCode(err) != "reauthentication_unavailable" || !strings.Contains(err.Error(), "authenticator app") {
+		t.Fatalf("no factor refusal must tell the administrator to enrol an authenticator: %v", err)
 	}
 
 	// A local password must be re-entered and is rate limited with the step-up budget.
@@ -133,11 +134,29 @@ func TestServerAccessInstallationReauthentication(t *testing.T) {
 		t.Fatalf("MFA save = %+v, %v", view, err)
 	}
 
-	// Password guessing through this endpoint shares the five-attempt step-up budget.
-	for i := 0; i < 5; i++ {
-		_, err = save(admin(verified), true, 2, str("guess"))
+	// Correct passwords never consume budget: many successful saves in a row are not limited.
+	version := int64(2)
+	for i := 0; i < 8; i++ {
+		if view, err = save(admin(verified), i%2 == 0, version, str("correct horse battery staple")); err != nil || view.Version != version+1 {
+			t.Fatalf("successful save %d = %+v, %v", i, view, err)
+		}
+		version++
 	}
-	if mfaHandlerErrorCode(err) != "reauthentication_rate_limited" {
-		t.Fatalf("sixth guess = %v", err)
+	// Failures are limited: one wrong password was already charged above, four more are answered, then the
+	// endpoint refuses even the correct password until the window passes.
+	for i := 0; i < 4; i++ {
+		if _, err = save(admin(verified), true, version, str("guess")); mfaHandlerErrorCode(err) != "invalid_credentials" {
+			t.Fatalf("failure %d = %v", i+2, err)
+		}
+	}
+	if _, err = save(admin(verified), true, version, str("guess")); mfaHandlerErrorCode(err) != "reauthentication_rate_limited" {
+		t.Fatalf("sixth failure = %v", err)
+	}
+	if _, err = save(admin(verified), true, version, str("correct horse battery staple")); mfaHandlerErrorCode(err) != "reauthentication_rate_limited" {
+		t.Fatalf("correct password while limited = %v", err)
+	}
+	// The budget is this endpoint's own: the MFA step-up budget is untouched.
+	if allowed, err := store.AllowMFAStepUp(ctx, parent.UserID, verified.ID); err != nil || !allowed {
+		t.Fatalf("MFA step-up budget was charged: %v %v", allowed, err)
 	}
 }

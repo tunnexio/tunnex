@@ -23,6 +23,9 @@ import (
 // serverAccessInstallationMFAWindow is the Local Sharing step-up window, reused.
 const serverAccessInstallationMFAWindow = 5 * time.Minute
 
+// serverAccessInstallationReauthScope names this endpoint's password-failure budget.
+const serverAccessInstallationReauthScope = "server_access_installation"
+
 func requireServerAccessInstallationAdmin(ctx context.Context) (*authctx.Principal, error) {
 	p, err := requireCPAdmin(ctx)
 	if err != nil {
@@ -78,7 +81,7 @@ func (s apiServer) requireServerAccessInstallationStepUp(ctx context.Context, p 
 		return apierr.New(http.StatusServiceUnavailable, "reauthentication_unavailable", "Re-authentication could not be checked. Try again.")
 	}
 	if !r.available() {
-		return apierr.Forbidden("reauthentication_unavailable", "Set up MFA for your account before changing Server Access for this installation.")
+		return apierr.Forbidden("reauthentication_unavailable", "Your account has no password or authenticator on this server to confirm it is you. Set up an authenticator app (two-factor authentication) in your account settings, then change Server Access for this installation.")
 	}
 	if r.mfa || r.ssoMFA {
 		now := time.Now()
@@ -90,14 +93,18 @@ func (s apiServer) requireServerAccessInstallationStepUp(ctx context.Context, p 
 		if currentPassword == nil || *currentPassword == "" {
 			return apierr.BadRequest("current_password_required", "Enter your current password to change Server Access for this installation.")
 		}
-		allowed, err := s.sessions.AllowMFAStepUp(ctx, p.UserID, parent.ID)
+		// Own budget, charged only by failures: correct re-entries never lock an administrator out.
+		allowed, err := s.sessions.ReauthPasswordAllowed(ctx, serverAccessInstallationReauthScope, p.UserID)
 		if err != nil {
 			return apierr.New(http.StatusServiceUnavailable, "reauthentication_unavailable", "Re-authentication could not be checked. Try again.")
 		}
 		if !allowed {
-			return apierr.New(http.StatusTooManyRequests, "reauthentication_rate_limited", "Too many verification attempts. Try again in five minutes.")
+			return apierr.New(http.StatusTooManyRequests, "reauthentication_rate_limited", "Too many incorrect passwords. Try again in five minutes.")
 		}
 		if _, err := password.Verify(*currentPassword, r.passwordHash); err != nil {
+			if err := s.sessions.RecordReauthPasswordFailure(ctx, serverAccessInstallationReauthScope, p.UserID); err != nil {
+				return apierr.New(http.StatusServiceUnavailable, "reauthentication_unavailable", "Re-authentication could not be checked. Try again.")
+			}
 			return apierr.Forbidden("invalid_credentials", "The current password is incorrect.")
 		}
 	}
