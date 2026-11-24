@@ -178,6 +178,31 @@ Rulings on the questions raised during implementation ("do recommended"):
   after upgrade (indistinguishable from intent). Remote Docker gateways installed by the dashboard command never set
   the variable and will follow the control plane. Release notes must say this.
 
+## Local walk 2026-11-24 (tests/server-access-local harness, loopback only)
+
+Real API + enrolled gateway + OpenSSH target in the owned harness project, browser through the Vite dev console.
+
+- Upgrade: v0.1.45 binaries (installer defaults, gateway `false`) → branch binaries (seed `false`, gateway empty).
+  Migration 243 applied; no installation row written; setting reads `source: environment`, off; gateway healthy.
+- Fresh install with defaults: same view; organization read refuses with `server_access_disabled`.
+- Features shows "Turned off for this installation" with the link for server administrators; the link opens
+  Settings → Server Access (Source: Server environment).
+- Enable from the UI: wrong password refused inline, correct password saves (Source: Saved settings), one
+  `server_access.installation_updated` audit row. With TOTP enrolled and MFA older than 5 minutes the UI ran the
+  step-up and then saved.
+- Gateway with empty env started its runtime ~4 s after the organization was turned on, no restart. Connection
+  check passed against the org CA; a browser terminal ran a command on the target.
+- Turning it off (API, password + fresh MFA) ended the live terminal in the open browser immediately (reason
+  `server_access_disabled`, audited), refused a new session (503), and the gateway stopped its runtime ~3 s later.
+- `TUNNEX_SERVER_ACCESS_LOCKED=true`: view locked, enabling refused (`server_access_locked`), gateway stopped;
+  removing the lock re-applied the saved On. Gateway `false`: `server_access_gateway_locked`, never started, and the
+  control plane refused checks with `gateway_terminal_unavailable`.
+- App Access endpoints answered normally while Server Access was off; Server Access ran while App Access was
+  unlicensed. No dependency either way.
+- Fixed from the walk: the locked view showed a green switch next to "Off" (now shows the enforced Off, disabled,
+  with "Saved setting: On"); the Server Access page's installation-off notice now links server administrators to
+  the setting; "0 active sessions were ended" now reads "no sessions were open".
+
 ## Tests
 
 - `serveraccess`: installation authority — env seed, saved value wins, lock forces off and refuses enabling,
