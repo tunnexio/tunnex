@@ -7,7 +7,7 @@ import AppAccess from "../src/pages/AppAccess";
 import { AppAccessFeatureSettings } from "../src/components/AppAccessFeatureSettings";
 import { api } from "../src/lib/api";
 
-const data = vi.hoisted(() => ({ roles: ["admin"] as string[], serverAdmin: false, verified: true, appAdmin: false, baseDomain: "apps.example", iconData: "", savedHostname: "payroll.apps.example", listFail: false, listState: "unpublished", listEmpty: false, membershipFail: false, entitled: true, enabled: true, stale: false, conflict: "", revoked: false, existingPolicy: false, archived: false, requests: [] as string[], patches: [] as unknown[] }));
+const data = vi.hoisted(() => ({ roles: ["admin"] as string[], serverAdmin: false, verified: true, appAdmin: false, baseDomain: "apps.example", iconData: "", savedHostname: "payroll.apps.example", listFail: false, listState: "unpublished", listEmpty: false, membershipFail: false, entitled: true, enabled: true, stale: false, conflict: "", revoked: false, existingPolicy: false, archived: false, privateOrigin: false, requests: [] as string[], patches: [] as unknown[] }));
 const draft = { name: "Payroll", description: "Team payroll", icon: "app", origin_url: "https://private.example", gateway_id: "gateway-1", public_hostname: "payroll.apps.example", idle_timeout_seconds: 1800, absolute_timeout_seconds: 28800 };
 const application = { require_mfa: false, mfa_freshness_seconds: 900, id: "app-1", org_id: "org-1", version: 7, draft_revision: 7, state: "draft", publication_state: "unpublished", draft: { ...draft, revision: 7, digest: "approved", created_at: "2026-10-03T00:00:00Z" }, connector_status: "unknown", created_at: "2026-10-03T00:00:00Z", updated_at: "2026-10-03T00:00:00Z" };
 vi.mock("../src/lib/api", async () => {
@@ -26,20 +26,20 @@ vi.mock("../src/lib/api", async () => {
       if (path.endsWith("/grants")) return { data: { items: [], limit: 20, offset: 0 } };
       if (path.endsWith("/groups")) return { data: [] };
       if (path.endsWith("/settings")) return { data: { enabled: data.enabled, version: 2, entitlement_available: data.entitled, base_domain: data.baseDomain, domain_ready: !!data.baseDomain } };
-      if (path.endsWith("/status")) return { data: { org_id: "org-1", gateway_id: "gateway-1", capability_version: 0, reported_at: null, status: "unknown" } };
+      if (path.endsWith("/status")) return data.privateOrigin ? { data: { org_id: "org-1", gateway_id: "gateway-1", capability_version: 1, reported_at: "2026-10-03T00:00:00Z", status: "supported" } } : { data: { org_id: "org-1", gateway_id: "gateway-1", capability_version: 0, reported_at: null, status: "unknown" } };
       if (path.endsWith("/my-apps")) return { data: { items: [], limit: 20, offset: 0, availability: "available" } };
       if (path.endsWith("/my-sessions")) return { data: { items: [], limit: 20, offset: 0 } };
       if (path.endsWith("/applications")) return data.listFail ? { error: { error: { message: "Inventory unavailable" } } } : { data: { items: data.listEmpty ? [] : [{ ...application, draft: { ...application.draft, icon_data_url: data.iconData }, publication_state: data.listState, ...(data.listState === "published" ? { active_revision: 3 } : {}) }], limit: 20, offset: 0 } };
-      if (path.endsWith("/{appId}")) return { data: { ...application, state: data.archived ? "archived" : "draft", draft: { ...application.draft, public_hostname: data.savedHostname, icon_data_url: data.iconData, ...(data.existingPolicy ? { allowed_destination_cidrs: ["10.20.0.0/16"], origin_ca_digest: "a".repeat(64) } : {}) } } };
+      if (path.endsWith("/{appId}")) return { data: { ...application, state: data.archived ? "archived" : "draft", draft: { ...application.draft, public_hostname: data.savedHostname, icon_data_url: data.iconData, ...(data.existingPolicy ? { allowed_destination_cidrs: ["10.20.0.0/16"], origin_ca_digest: "a".repeat(64) } : {}), ...(data.privateOrigin ? { origin_url: "http://10.20.0.5:8080", allowed_destination_cidrs: [] } : {}) } } };
       if (path.endsWith("/nodes")) return { data: [{ id: "gateway-1", name: "Office gateway", status: data.revoked ? "revoked" : "active", enrolled_kind: "gateway" }, { id: "gateway-2", name: "Active replacement", status: "active", enrolled_kind: "gateway" }, { id: "old-gateway", name: "Other revoked gateway", status: "revoked", enrolled_kind: "gateway" }, { id: "agent-1", name: "AI agent", enrolled_kind: "agent" }] };
       throw new Error(`Unexpected request ${path}`);
     }),
-    POST: vi.fn(async (_path: string, options: unknown) => { data.patches.push(options); if (data.conflict) return { error: { error: { code: data.conflict, message: data.conflict === "hostname_taken" ? "Hostname is already registered" : "Configure the application domain first" } }, response: { status: 409 } }; return { data: application, response: { status: 201 } }; }),
+    POST: vi.fn(async (_path: string, options: unknown) => { if (_path.endsWith("/checks")) return { data: { id: "check-1", org_id: "org-1", app_id: "app-1", gateway_id: "gateway-1", generation: "g", revision: 7, digest: "approved", purpose: "origin_check", status: "failed", created_at: "2026-10-03T00:00:00Z", deadline: "2026-10-03T00:00:10Z", completed_at: "2026-10-03T00:00:02Z", dns_status: "passed", connect_status: "failed", tls_status: "skipped", error_code: "target_refused" } }; data.patches.push(options); if (data.conflict) return { error: { error: { code: data.conflict, message: data.conflict === "hostname_taken" ? "Hostname is already registered" : "Configure the application domain first" } }, response: { status: 409 } }; return { data: application, response: { status: 201 } }; }),
     PATCH: vi.fn(async (_path: string, options: unknown) => { data.patches.push(options); if (data.conflict) return { error: { error: { code: data.conflict, message: data.conflict === "hostname_taken" ? "Hostname is already registered" : "Configure the application domain first" } }, response: { status: 409 } }; if (_path.endsWith("/settings") && !data.stale) return { data: { enabled: !data.enabled, version: 3, entitlement_available: data.entitled, base_domain: data.baseDomain, domain_ready: !!data.baseDomain }, response: { status: 200 } }; return data.stale ? { error: { error: { code: "version_conflict" } }, response: { status: 409 } } : { data: application, response: { status: 200 } }; }),
   } };
 });
 afterEach(cleanup);
-beforeEach(() => { Object.assign(data, { roles: ["admin"], serverAdmin: false, verified: true, appAdmin: false, baseDomain: "apps.example", iconData: "", savedHostname: "payroll.apps.example", listFail: false, listState: "unpublished", listEmpty: false, membershipFail: false, entitled: true, enabled: true, stale: false, conflict: "", revoked: false, existingPolicy: false, archived: false, requests: [], patches: [] }); vi.clearAllMocks(); window.localStorage.clear(); window.sessionStorage.clear(); });
+beforeEach(() => { Object.assign(data, { roles: ["admin"], serverAdmin: false, verified: true, appAdmin: false, baseDomain: "apps.example", iconData: "", savedHostname: "payroll.apps.example", listFail: false, listState: "unpublished", listEmpty: false, membershipFail: false, entitled: true, enabled: true, stale: false, conflict: "", revoked: false, existingPolicy: false, archived: false, privateOrigin: false, requests: [], patches: [] }); vi.clearAllMocks(); window.localStorage.clear(); window.sessionStorage.clear(); });
 function show(path: string) { return render(<MemoryRouter initialEntries={[path]}><AuthProvider><OrgProvider><Routes><Route path="/app-access" element={<AppAccess />} /><Route path="/app-access/applications" element={<AppAccess />} /><Route path="/app-access/applications/new" element={<AppAccess />} /><Route path="/app-access/applications/:appId" element={<AppAccess />} /><Route path="/app-access/access" element={<AppAccess />} /><Route path="/app-access/my-applications" element={<AppAccess />} /><Route path="/app-access/requests" element={<AppAccess />} /><Route path="/app-access/my-requests" element={<AppAccess />} /></Routes></OrgProvider></AuthProvider></MemoryRouter>); }
 async function openConnection() {
   fireEvent.click(await screen.findByRole("button", { name: "2. Connection" }));
@@ -156,6 +156,19 @@ describe("Applications draft workspace", () => {
     await waitFor(() => expect(data.patches).toHaveLength(1));
     expect(data.patches[0]).toMatchObject({ body: { allowed_destination_cidrs: ["10.20.0.0/16"], expected_version: 7 } });
     expect((data.patches[0] as { body: Record<string, unknown> }).body.origin_ca_pem).toBeUndefined();
+  });
+  it("fills a refused private origin's single-host range into the draft, which still has to be saved", async () => {
+    data.privateOrigin = true; show("/app-access/applications/app-1");
+    await openConnection();
+    fireEvent.click(await screen.findByRole("button", { name: "Check saved connection" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Allow 10.20.0.5/32" }));
+    expect(screen.getByText("Advanced connection settings").closest("details")).toHaveProperty("open", true);
+    expect(screen.getByLabelText("Allowed private destination ranges")).toHaveProperty("value", "10.20.0.5/32");
+    expect(screen.getByText("Save your changes before checking the connection.")).toBeTruthy();
+    expect(data.patches).toHaveLength(0);
+    fireEvent.click(screen.getByRole("button", { name: "Save draft" }));
+    await waitFor(() => expect(data.patches).toHaveLength(1));
+    expect(data.patches[0]).toMatchObject({ body: { allowed_destination_cidrs: ["10.20.0.5/32"], expected_version: 7 } });
   });
   it("clears private ranges and custom trust only through explicit edits", async () => {
     data.existingPolicy = true; show("/app-access/applications/app-1");

@@ -3,17 +3,17 @@ import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-li
 import AppAccessConnection from "../src/components/AppAccessConnection";
 import { api } from "../src/lib/api";
 
-const fixture = vi.hoisted(() => ({ status: "supported", stale: false, result: "succeeded", requests: [] as unknown[] }));
+const fixture = vi.hoisted(() => ({ status: "supported", stale: false, result: "succeeded", errorCode: "", requests: [] as unknown[] }));
 const check = { id: "check-1", org_id: "org-1", app_id: "app-1", gateway_id: "gateway-1", generation: "gen-1", revision: 7, digest: "a".repeat(64), purpose: "origin_check", status: "queued", created_at: "2026-10-03T00:00:00Z", deadline: "2026-10-03T00:00:10Z", completed_at: null, dns_status: "pending", connect_status: "pending", tls_status: "pending", error_code: "" };
 vi.mock("../src/lib/api", async () => {
   const actual = await vi.importActual<typeof import("../src/lib/api")>("../src/lib/api");
   return { ...actual, api: {
-    GET: vi.fn(async (path: string) => path.endsWith("/status") ? { data: { org_id: "org-1", gateway_id: "gateway-1", capability_version: 1, reported_at: "2026-10-03T00:00:00Z", status: fixture.status } } : { data: { ...check, status: fixture.result, dns_status: "passed", connect_status: "passed", tls_status: fixture.result === "failed" ? "failed" : "passed", error_code: fixture.result === "failed" ? "tls_failed" : "" } }),
+    GET: vi.fn(async (path: string) => path.endsWith("/status") ? { data: { org_id: "org-1", gateway_id: "gateway-1", capability_version: 1, reported_at: "2026-10-03T00:00:00Z", status: fixture.status } } : { data: { ...check, status: fixture.result, dns_status: "passed", connect_status: "passed", tls_status: fixture.result === "failed" ? "failed" : "passed", error_code: fixture.errorCode || (fixture.result === "failed" ? "tls_failed" : "") } }),
     POST: vi.fn(async (_path: string, options: unknown) => { fixture.requests.push(options); return fixture.stale ? { error: { error: { code: "version_conflict" } } } : { data: check }; }),
   } };
 });
 afterEach(cleanup);
-beforeEach(() => { Object.assign(fixture, { status: "supported", stale: false, result: "succeeded", requests: [] }); vi.clearAllMocks(); });
+beforeEach(() => { Object.assign(fixture, { status: "supported", stale: false, result: "succeeded", errorCode: "", requests: [] }); vi.clearAllMocks(); });
 const props = { orgId: "org-1", appId: "app-1", gatewayId: "gateway-1", version: 7, canCheck: true, dirty: false };
 
 it("requires a fresh supported connector and saved input before requesting a check", async () => {
@@ -81,4 +81,34 @@ it("shows failed capability loading as an error rather than a continuing loading
   expect(screen.queryByText("Loading gateway capability…")).toBeNull();
   expect(screen.queryByText("Origin connection succeeded.")).toBeNull();
   expect(screen.getByRole("button", { name: "Check saved connection" })).toHaveProperty("disabled", true);
+});
+
+async function refusedCheck(extra: Partial<React.ComponentProps<typeof AppAccessConnection>>) {
+  fixture.result = "failed"; fixture.errorCode = "target_refused";
+  render(<AppAccessConnection {...props} {...extra} />);
+  await screen.findByText(/supports Applications connection checks/);
+  fireEvent.click(screen.getByRole("button", { name: "Check saved connection" }));
+  await screen.findByText("Origin connection failed.", {}, { timeout: 3000 });
+}
+it("turns a refused private origin into the exact range to allow, with a one-click fill", async () => {
+  const allow = vi.fn();
+  await refusedCheck({ originUrl: "http://10.20.0.5:8080", allowedCidrs: [], onAllowDestination: allow });
+  expect(screen.getByText(/10\.20\.0\.5 is a private address/)).toBeTruthy();
+  expect(screen.getByText(/Advanced connection settings → Allowed private destination ranges/)).toBeTruthy();
+  fireEvent.click(screen.getByRole("button", { name: "Allow 10.20.0.5/32" }));
+  expect(allow).toHaveBeenCalledExactlyOnceWith("10.20.0.5/32");
+});
+it("points a refused hostname origin to the allowed ranges without guessing an address", async () => {
+  await refusedCheck({ originUrl: "https://wiki.corp.internal", allowedCidrs: [], onAllowDestination: vi.fn() });
+  expect(screen.getByText(/Advanced connection settings → Allowed private destination ranges/)).toBeTruthy();
+  expect(screen.queryByRole("button", { name: /^Allow / })).toBeNull();
+  expect(screen.queryByText(/outside the saved origin policy\.$/)).toBeNull();
+});
+it("offers no one-click range when the origin is already allowed or the viewer cannot edit", async () => {
+  await refusedCheck({ originUrl: "http://10.20.0.5", allowedCidrs: ["10.20.0.0/16"], onAllowDestination: vi.fn() });
+  expect(screen.queryByRole("button", { name: /^Allow / })).toBeNull();
+  cleanup();
+  await refusedCheck({ originUrl: "http://192.168.1.9" });
+  expect(screen.getByText(/192\.168\.1\.9 is a private address/)).toBeTruthy();
+  expect(screen.queryByRole("button", { name: /^Allow / })).toBeNull();
 });
