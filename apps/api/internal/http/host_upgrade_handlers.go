@@ -10,6 +10,7 @@ import (
 	"github.com/tunnexio/tunnex/apps/api/internal/api"
 	"github.com/tunnexio/tunnex/apps/api/internal/apierr"
 	"github.com/tunnexio/tunnex/apps/api/internal/hostupgrade"
+	"github.com/tunnexio/tunnex/apps/api/internal/release"
 )
 
 func (s apiServer) GetHostUpgrade(ctx context.Context, _ api.GetHostUpgradeRequestObject) (api.GetHostUpgradeResponseObject, error) {
@@ -20,6 +21,8 @@ func (s apiServer) GetHostUpgrade(ctx context.Context, _ api.GetHostUpgradeReque
 	if body.Available {
 		if status, err := s.hostUpgrade.Status(); err == nil {
 			body = hostUpgradeBody(status)
+			rerun := hostUpgradeRerunAvailable(s.currentReleaseStatus(), status)
+			body.RerunAvailable = &rerun
 		} else if !errors.Is(err, hostupgrade.ErrUnavailable) {
 			return nil, apierr.New(http.StatusServiceUnavailable, "host_upgrade_state_invalid", "The local upgrade runner state is unavailable or invalid.")
 		}
@@ -27,7 +30,27 @@ func (s apiServer) GetHostUpgrade(ctx context.Context, _ api.GetHostUpgradeReque
 	return api.GetHostUpgrade200JSONResponse{Body: body, Headers: api.GetHostUpgrade200ResponseHeaders{XRequestId: middleware.GetReqID(ctx)}}, nil
 }
 
-func (s apiServer) RequestHostUpgrade(ctx context.Context, _ api.RequestHostUpgradeRequestObject) (api.RequestHostUpgradeResponseObject, error) {
+func (s apiServer) currentReleaseStatus() *release.Status {
+	if s.releaseStatusProvider != nil {
+		return s.releaseStatusProvider()
+	}
+	return s.releaseStatus
+}
+
+// hostUpgradeRerunAvailable is the forward-fix rule (UPG-1 D2, AA-EN-1): the
+// last upgrade failed, it targeted exactly the release the verified catalog
+// names, and that release is the installed one (same sequence and source SHA,
+// release.Status.Rerunnable). Never an older release, never a different build
+// of the same sequence, and never after the App Access authority changed
+// (the upgrade then says not to re-run; the restore runbook applies).
+func hostUpgradeRerunAvailable(status *release.Status, host hostupgrade.Status) bool {
+	return status != nil && status.Verified && status.Rerunnable && !status.Available &&
+		len(status.SourceSHA) == 40 && status.Version != "" && status.Sequence > 0 &&
+		host.State == "failed" && host.TargetSource == status.SourceSHA &&
+		host.ReasonCode != "app_access_authority_changed"
+}
+
+func (s apiServer) RequestHostUpgrade(ctx context.Context, request api.RequestHostUpgradeRequestObject) (api.RequestHostUpgradeResponseObject, error) {
 	p, err := requireCPAdmin(ctx)
 	if err != nil {
 		return nil, err
@@ -35,14 +58,17 @@ func (s apiServer) RequestHostUpgrade(ctx context.Context, _ api.RequestHostUpgr
 	if s.hostUpgrade == nil || !s.hostUpgrade.Available() {
 		return nil, apierr.New(http.StatusServiceUnavailable, "host_updater_unavailable", "The local host upgrade runner is not installed or configured.")
 	}
-	status := s.releaseStatus
-	if s.releaseStatusProvider != nil {
-		status = s.releaseStatusProvider()
-	}
-	if status == nil || !status.Verified || !status.Available || status.SourceSHA == "" || status.Version == "" || status.Sequence <= 0 {
+	status := s.currentReleaseStatus()
+	rerun := request.Body != nil && request.Body.Rerun != nil && *request.Body.Rerun
+	if rerun {
+		host, hostErr := s.hostUpgrade.Status()
+		if hostErr != nil || !hostUpgradeRerunAvailable(status, host) {
+			return nil, apierr.New(http.StatusConflict, "rerun_not_available", "Only the installed release can be run again, and only after an upgrade to it failed.")
+		}
+	} else if status == nil || !status.Verified || !status.Available || status.SourceSHA == "" || status.Version == "" || status.Sequence <= 0 {
 		return nil, apierr.New(http.StatusConflict, "upgrade_not_available", "No newer verified release is currently available.")
 	}
-	result, _, err := s.hostUpgrade.Request(ctx, p.UserID, hostupgrade.Target{SourceSHA: status.SourceSHA, Version: status.Version, Sequence: status.Sequence})
+	result, _, err := s.hostUpgrade.Request(ctx, p.UserID, hostupgrade.Target{SourceSHA: status.SourceSHA, Version: status.Version, Sequence: status.Sequence, Rerun: rerun})
 	if err != nil {
 		switch {
 		case errors.Is(err, hostupgrade.ErrBusy):

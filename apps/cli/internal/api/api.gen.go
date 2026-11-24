@@ -5922,6 +5922,12 @@ type HealthResponse struct {
 // HealthResponseStatus Liveness status.
 type HealthResponseStatus string
 
+// HostUpgradeRequest defines model for HostUpgradeRequest.
+type HostUpgradeRequest struct {
+	// Rerun Re-run the same verified release after a failed upgrade (same sequence and source SHA only).
+	Rerun *bool `json:"rerun,omitempty"`
+}
+
 // HostUpgradeStatus defines model for HostUpgradeStatus.
 type HostUpgradeStatus struct {
 	Available bool `json:"available"`
@@ -5930,9 +5936,12 @@ type HostUpgradeStatus struct {
 	BackupDump *string `json:"backup_dump,omitempty"`
 
 	// BackupManifest Retained host filename only
-	BackupManifest  *string                `json:"backup_manifest,omitempty"`
-	ReasonCode      *string                `json:"reason_code,omitempty"`
-	RequestId       *openapi_types.UUID    `json:"request_id,omitempty"`
+	BackupManifest *string             `json:"backup_manifest,omitempty"`
+	ReasonCode     *string             `json:"reason_code,omitempty"`
+	RequestId      *openapi_types.UUID `json:"request_id,omitempty"`
+
+	// RerunAvailable True when the last upgrade failed and the verified catalog still names exactly the installed release (same sequence and source SHA), so it can be re-run as a forward fix.
+	RerunAvailable  *bool                  `json:"rerun_available,omitempty"`
 	State           HostUpgradeStatusState `json:"state"`
 	TargetSourceSha *string                `json:"target_source_sha,omitempty"`
 	TargetVersion   *string                `json:"target_version,omitempty"`
@@ -9668,6 +9677,9 @@ type AdminSetOrgRoleJSONRequestBody = ChangeRoleRequest
 // UpdateServerAccessInstallationJSONRequestBody defines body for UpdateServerAccessInstallation for application/json ContentType.
 type UpdateServerAccessInstallationJSONRequestBody = ServerAccessInstallationInput
 
+// RequestHostUpgradeJSONRequestBody defines body for RequestHostUpgrade for application/json ContentType.
+type RequestHostUpgradeJSONRequestBody = HostUpgradeRequest
+
 // AdminSetCpAdminJSONRequestBody defines body for AdminSetCpAdmin for application/json ContentType.
 type AdminSetCpAdminJSONRequestBody = CpAdminRequest
 
@@ -10565,8 +10577,10 @@ type ClientInterface interface {
 	// GetHostUpgrade request
 	GetHostUpgrade(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// RequestHostUpgrade request
-	RequestHostUpgrade(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error)
+	// RequestHostUpgradeWithBody request with any body
+	RequestHostUpgradeWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	RequestHostUpgrade(ctx context.Context, body RequestHostUpgradeJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// AdminSetCpAdminWithBody request with any body
 	AdminSetCpAdminWithBody(ctx context.Context, userId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -12862,8 +12876,20 @@ func (c *Client) GetHostUpgrade(ctx context.Context, reqEditors ...RequestEditor
 	return c.Client.Do(req)
 }
 
-func (c *Client) RequestHostUpgrade(ctx context.Context, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewRequestHostUpgradeRequest(c.Server)
+func (c *Client) RequestHostUpgradeWithBody(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRequestHostUpgradeRequestWithBody(c.Server, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) RequestHostUpgrade(ctx context.Context, body RequestHostUpgradeJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRequestHostUpgradeRequest(c.Server, body)
 	if err != nil {
 		return nil, err
 	}
@@ -21911,8 +21937,19 @@ func NewGetHostUpgradeRequest(server string) (*http.Request, error) {
 	return req, nil
 }
 
-// NewRequestHostUpgradeRequest generates requests for RequestHostUpgrade
-func NewRequestHostUpgradeRequest(server string) (*http.Request, error) {
+// NewRequestHostUpgradeRequest calls the generic RequestHostUpgrade builder with application/json body
+func NewRequestHostUpgradeRequest(server string, body RequestHostUpgradeJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewRequestHostUpgradeRequestWithBody(server, "application/json", bodyReader)
+}
+
+// NewRequestHostUpgradeRequestWithBody generates requests for RequestHostUpgrade with any type of body
+func NewRequestHostUpgradeRequestWithBody(server string, contentType string, body io.Reader) (*http.Request, error) {
 	var err error
 
 	serverURL, err := url.Parse(server)
@@ -21930,10 +21967,12 @@ func NewRequestHostUpgradeRequest(server string) (*http.Request, error) {
 		return nil, err
 	}
 
-	req, err := http.NewRequest("POST", queryURL.String(), nil)
+	req, err := http.NewRequest("POST", queryURL.String(), body)
 	if err != nil {
 		return nil, err
 	}
+
+	req.Header.Add("Content-Type", contentType)
 
 	return req, nil
 }
@@ -44660,8 +44699,10 @@ type ClientWithResponsesInterface interface {
 	// GetHostUpgradeWithResponse request
 	GetHostUpgradeWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*GetHostUpgradeResponse, error)
 
-	// RequestHostUpgradeWithResponse request
-	RequestHostUpgradeWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*RequestHostUpgradeResponse, error)
+	// RequestHostUpgradeWithBodyWithResponse request with any body
+	RequestHostUpgradeWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*RequestHostUpgradeResponse, error)
+
+	RequestHostUpgradeWithResponse(ctx context.Context, body RequestHostUpgradeJSONRequestBody, reqEditors ...RequestEditorFn) (*RequestHostUpgradeResponse, error)
 
 	// AdminSetCpAdminWithBodyWithResponse request with any body
 	AdminSetCpAdminWithBodyWithResponse(ctx context.Context, userId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*AdminSetCpAdminResponse, error)
@@ -57925,9 +57966,17 @@ func (c *ClientWithResponses) GetHostUpgradeWithResponse(ctx context.Context, re
 	return ParseGetHostUpgradeResponse(rsp)
 }
 
-// RequestHostUpgradeWithResponse request returning *RequestHostUpgradeResponse
-func (c *ClientWithResponses) RequestHostUpgradeWithResponse(ctx context.Context, reqEditors ...RequestEditorFn) (*RequestHostUpgradeResponse, error) {
-	rsp, err := c.RequestHostUpgrade(ctx, reqEditors...)
+// RequestHostUpgradeWithBodyWithResponse request with arbitrary body returning *RequestHostUpgradeResponse
+func (c *ClientWithResponses) RequestHostUpgradeWithBodyWithResponse(ctx context.Context, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*RequestHostUpgradeResponse, error) {
+	rsp, err := c.RequestHostUpgradeWithBody(ctx, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRequestHostUpgradeResponse(rsp)
+}
+
+func (c *ClientWithResponses) RequestHostUpgradeWithResponse(ctx context.Context, body RequestHostUpgradeJSONRequestBody, reqEditors ...RequestEditorFn) (*RequestHostUpgradeResponse, error) {
+	rsp, err := c.RequestHostUpgrade(ctx, body, reqEditors...)
 	if err != nil {
 		return nil, err
 	}

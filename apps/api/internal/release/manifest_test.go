@@ -187,3 +187,25 @@ func TestCheckerAcceptsOnlySignedCatalogAndKeepsLastVerifiedStatus(t *testing.T)
 }
 
 func hexKey(key ed25519.PublicKey) string { return fmt.Sprintf("%x", key) }
+
+// AA-EN-1 forward fix: only the exact installed release (same sequence AND
+// same source SHA) is re-runnable; never an older one or a same-sequence
+// release built from a different source.
+func TestCompareMarksOnlyTheInstalledReleaseRerunnable(t *testing.T) {
+	s, _ := signedFixture(t)
+	installed := Current{Sequence: 7, Version: "v0.4.0", SourceSHA: s.Manifest.SourceSHA, Protocol: 3}
+	if got := Compare(installed, s.Manifest); got.Available || !got.Rerunnable {
+		t.Fatalf("installed release must be re-runnable, not offered as new: %+v", got)
+	}
+	for name, current := range map[string]Current{
+		"same sequence, other source":  {Sequence: 7, SourceSHA: strings.Repeat("b", 40), Protocol: 3},
+		"catalog older than installed": {Sequence: 8, SourceSHA: s.Manifest.SourceSHA, Protocol: 3},
+		"installed source unknown":     {Sequence: 7, Protocol: 3},
+		"newer release available":      {Sequence: 6, SourceSHA: strings.Repeat("b", 40), Protocol: 3},
+		"protocol too old":             {Sequence: 7, SourceSHA: s.Manifest.SourceSHA, Protocol: 2},
+	} {
+		if got := Compare(current, s.Manifest); got.Rerunnable {
+			t.Errorf("%s marked re-runnable: %+v", name, got)
+		}
+	}
+}

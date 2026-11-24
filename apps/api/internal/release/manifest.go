@@ -88,11 +88,15 @@ type Status struct {
 	Downtime         string
 	ReleaseNotesURL  string
 	Reason           string
-	State            string
-	PreflightState   string
-	BackupState      string
-	RollbackState    string
-	ApprovalMode     string
+	// Rerunnable: the catalog names exactly the installed release (same
+	// sequence and source SHA). A failed upgrade to it may be re-run as a
+	// forward fix (UPG-1 D2, AA-EN-1); it is never offered as a new release.
+	Rerunnable     bool
+	State          string
+	PreflightState string
+	BackupState    string
+	RollbackState  string
+	ApprovalMode   string
 }
 
 func Verify(s SignedManifest, publicKey ed25519.PublicKey) error {
@@ -274,6 +278,8 @@ func Compare(current Current, next Manifest) Status {
 	switch {
 	case next.Sequence <= current.Sequence:
 		status.Reason = "no newer release is available"
+		status.Rerunnable = next.Sequence == current.Sequence && current.SourceSHA != "" &&
+			next.SourceSHA == current.SourceSHA && next.MinProtocol <= current.Protocol
 	case next.MinProtocol > current.Protocol:
 		status.Reason = fmt.Sprintf("release requires protocol %d; this control plane supports %d", next.MinProtocol, current.Protocol)
 	case current.SourceSHA == next.SourceSHA:

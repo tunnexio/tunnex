@@ -31,6 +31,10 @@ type Target struct {
 	SourceSHA string
 	Version   string
 	Sequence  int64
+	// Rerun marks a forward-fix re-run of the installed release after a failed
+	// upgrade (AA-EN-1). It is audit metadata only; the request file and the
+	// host-side release-order checks are the same as for any upgrade.
+	Rerun bool
 }
 
 type Status struct {
@@ -54,7 +58,11 @@ func SQLAudit(q AuditStore) AuditFunc {
 	return func(ctx context.Context, actor, requestID uuid.UUID, target Target) error {
 		targetType := "control_plane_upgrade"
 		targetID := requestID.String()
-		metadata, err := json.Marshal(map[string]any{"source_sha": target.SourceSHA, "version": target.Version, "sequence": target.Sequence})
+		fields := map[string]any{"source_sha": target.SourceSHA, "version": target.Version, "sequence": target.Sequence}
+		if target.Rerun {
+			fields["rerun"] = true
+		}
+		metadata, err := json.Marshal(fields)
 		if err != nil {
 			return err
 		}
