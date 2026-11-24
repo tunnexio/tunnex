@@ -110,6 +110,8 @@ func TestTunnexInputAcceptsTheRunningAndTheStoppedChain(t *testing.T) {
 			tunnels: []string{"wg0", "tun0"},
 			chains: map[nftChainView][]nftRuleView{
 				inputChain("ip"): runningInput("ip", false, nftNameSet("wg0", "tun0")), inputChain("ip6"): runningInput("ip6", false, nftNameSet("wg0", "tun0"))}},
+		"empty, as a release without the chain leaves it after its own flush": {chains: map[nftChainView][]nftRuleView{
+			inputChain("ip"): nil, inputChain("ip6"): nil}},
 		"stopped, both families": {chains: map[nftChainView][]nftRuleView{
 			inputChain("ip"): stoppedInput("ip", "wg0"), inputChain("ip6"): stoppedInput("ip6", "wg0")}},
 		"stopped with OpenVPN": {
@@ -162,7 +164,6 @@ func TestTunnexInputRefusesEveryNearMiss(t *testing.T) {
 			{Family: "ip", Table: "tunnex", Name: "input"}: nil}, reason: notHook},
 		"a second input-hook chain beside the registered one": {chains: map[nftChainView][]nftRuleView{
 			inputChain("ip"): running(), chain(func(c *nftChainView) { c.Name = "input_extra" }): nil}, reason: notChain},
-		"empty":                 {chains: map[nftChainView][]nftRuleView{inputChain("ip"): nil}, reason: notRules},
 		"the drop missing":      {chains: map[nftChainView][]nftRuleView{inputChain("ip"): running()[:3]}, reason: notRules},
 		"the reply missing":     {chains: map[nftChainView][]nftRuleView{inputChain("ip"): running()[1:]}, reason: notRules},
 		"an extra accept first": {chains: map[nftChainView][]nftRuleView{inputChain("ip"): append([]nftRuleView{inputListener("ip", InputDNSRuleComment, "tcp", 10250)}, running()...)}, reason: notRules},

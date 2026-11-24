@@ -26,10 +26,13 @@ var knownTunnexHooks = map[string]bool{"prerouting": true, "postrouting": true, 
 //   - the stopped chain: one tunnel drop under the stopped marker.
 //
 // Both tunnel sets are the same and cover the WireGuard interface and every
-// other tunnel interface the agent currently owns. A missing input chain is
-// accepted here: the manager's marker-only table, a table left by a release
-// without the chain and the gateway before its first apply have none. The
-// egress manager's kernel readback (ReadAppliedOVPNTunnel) requires it.
+// other tunnel interface the agent currently owns. A missing input chain, or
+// an empty one, is accepted here: the manager's marker-only table, a table
+// left by a release without the chain and the gateway before its first apply
+// have none, and a release that does not declare the chain leaves it empty
+// (policy accept, no rule) after its own `flush table`. Neither can drop or
+// accept anything. The egress manager's kernel readback (ReadAppliedOVPNTunnel)
+// requires the chain.
 func (s *cniSnapshot) validateTunnexInput(iface string) error {
 	tunnels := append([]string{iface}, s.tunnelIfaces...)
 	for key, chain := range s.chains {
@@ -59,6 +62,9 @@ func (s *cniSnapshot) validateTunnexInput(iface string) error {
 }
 
 func validateTunnexInputRules(family string, rules []nftRuleView, iface string, tunnels []string) error {
+	if len(rules) == 0 {
+		return nil
+	}
 	if len(rules) == 1 && rules[0].Comment == StoppedTunnelDropRuleComment {
 		_, err := tunnexInputDrop(withoutCounters(rules[0].Expr), tunnels)
 		return err
