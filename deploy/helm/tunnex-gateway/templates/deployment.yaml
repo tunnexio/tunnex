@@ -161,7 +161,12 @@ spec:
               value: {{ required "controlPlane.apiURL is required (the CP the gateway fetches desired state from)" .Values.controlPlane.apiURL | quote }}
             - name: TUNNEX_AGENT_URL
               value: {{ required "controlPlane.agentURL is required (the CP agent-mTLS endpoint the gateway enrolls against)" .Values.controlPlane.agentURL | quote }}
-            {{- if .Values.appAccess.enabled }}
+            {{- if and .Values.appAccess.locked .Values.appAccess.enabled }}
+            {{- fail "appAccess.locked and appAccess.enabled cannot both be true: locked keeps App Access off on this gateway" }}
+            {{- else if .Values.appAccess.locked }}
+            - name: TUNNEX_APP_PROXY_URL
+              value: "off"
+            {{- else if .Values.appAccess.enabled }}
             - name: TUNNEX_APP_PROXY_URL
               value: {{ required "appAccess.proxyURL is required; use direct enrollment-CA TLS SAN tunnex-app-proxy" .Values.appAccess.proxyURL | quote }}
             {{- end }}
