@@ -115,6 +115,12 @@ device, the same effect the walk already accepts for Flannel. Item 10 is of a di
    only; the socket still accepts API calls from root. The manager is already privileged, so this
    adds reach, not authority; the NOTES wording "read-only" overstates it. `ipset`, `bpftool` and
    libLLVM are also in the gateway's image.
+   **Wording fixed** — `docs(k8s): say what readOnly on the Cilium mounts prevents (K8N review 9)`.
+   The host-posture NOTES, the `values.yaml` comment and the DaemonSet comment now say that
+   `readOnly` stops file changes (create, replace, remove, pin) and not API calls on the socket
+   or a map opened for writing with `BPF_OBJ_GET`; K8N-2, "What `readOnly` on the Cilium paths
+   prevents", has the table. Chart contract test passes. No code test: wording only. The image
+   contents are not changed.
 
 10. **Unverified, outside the source-NAT proof, possibly the most serious.** K8N-2 records that
     Cilium attaches its programs to `wg0` and serves NodePort on its address. With eBPF host routing

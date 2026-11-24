@@ -111,9 +111,11 @@ spec:
               mountPath: /var/run/secrets/kubernetes.io/serviceaccount
               readOnly: true
             {{- if .Values.cilium.enabled }}
-            # K8N-2: read-only, and only on a cluster that runs Cilium. The
+            # K8N-2: readOnly, and only on a cluster that runs Cilium. The
             # manager sends one GET /v1/healthz to the agent socket and dumps
-            # one pinned map; it writes to neither path.
+            # one pinned map; it writes to neither path. readOnly stops file
+            # changes only: the socket still takes any API call from root, and
+            # a pinned map can still be opened for writing (BPF_OBJ_GET).
             - name: cilium-run
               mountPath: /var/run/cilium
               readOnly: true

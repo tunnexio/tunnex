@@ -232,8 +232,8 @@ Nothing calls them yet.
    `/sys/fs/bpf/tc/globals`, dumps `cilium_ipmasq_v4` when the report says the ip-masq-agent is on,
    and writes a receipt: schema version, manager identity and sequence, observed-at, the raw facts
    or the read error. The gateway refuses a receipt older than the heartbeat freshness window.
-5. **Chart** (`tunnex-host-posture`): read-only host paths `/var/run/cilium` and `/sys/fs/bpf` on
-   the manager only, behind a value (open question 2); chart contract test updated.
+5. **Chart** (`tunnex-host-posture`): host paths `/var/run/cilium` and `/sys/fs/bpf` mounted
+   `readOnly` (file changes only; see "What `readOnly` prevents" below) on the manager only, behind a value (open question 2); chart contract test updated.
 6. **Image** (`deploy/docker/node.Dockerfile`): add `bpftool`.
 
 ## Tests
@@ -357,7 +357,8 @@ Other:
    device range must be inside an exclusion Tunnex can read, or the node is refused with the
    instruction to add it.
 2. The pinned map is read with `bpftool` in the gateway image, not with hand-written `bpf()` calls.
-3. The two extra read-only host paths are mounted only when the chart value for Cilium is set, which
+3. The two extra `readOnly` host paths (which stop file changes, not API calls: see "What
+   `readOnly` prevents") are mounted only when the chart value for Cilium is set, which
    the installer sets when it sees Cilium. They are not mounted on other clusters.
 
 Questions 4 to 6 keep the paper's written default: egress gateway stays refused, an unknown field in
@@ -507,8 +508,8 @@ Of the six steps in "Wiring still to do", steps 1 and 2 are already done on this
 1. **Guard: done**, refuse-only (see "The guard, built"). When the reader exists, the guard's
    refusal becomes "Cilium is present and there is no fresh receipt", and a fresh receipt lets
    step 3 decide.
-2. **Reader and receipt** (`hostposture`). Root, read-only mounts of `/var/run/cilium` and
-   `/sys/fs/bpf`, nothing else. One `GET /v1/healthz`; list `/sys/fs/bpf/tc/globals`; dump
+2. **Reader and receipt** (`hostposture`). Root, `readOnly` mounts of `/var/run/cilium` and
+   `/sys/fs/bpf` (file changes refused; the socket and the maps are not), nothing else. One `GET /v1/healthz`; list `/sys/fs/bpf/tc/globals`; dump
    `cilium_ipmasq_v4` only when the status says `ip-masq-agent` is true. Treat `bpftool`'s exit
    status and output together: an `{"error":...}` object is a read error, carried in the receipt
    as such, never as an empty map. With the ip-masq-agent off a missing pin is expected.
@@ -1012,3 +1013,27 @@ release in which the two values agree is refused for the same range and lifted b
 A live capture with the ip-masq-agent on and no explicit native-routing range is still owed, to
 see the rewrite the review predicts from the source.
 
+### What `readOnly` on the Cilium paths prevents (review finding 9)
+
+The chart's NOTES said the two paths are "mounted read-only, so the manager can read what Cilium
+reports". That overstated it. `readOnly` is a mount flag: it refuses changes to the files under
+the mount, nothing else.
+
+| Through the mounts, as root in the manager | Stopped by `readOnly` |
+| --- | --- |
+| create, replace, rename or remove a file under `/var/run/cilium` (for example `cilium.sock`) | yes (`Read-only file system`, seen with `touch`) |
+| pin a new BPF object under `/sys/fs/bpf`, or unpin one | yes (a pin creates a file) |
+| connect to `cilium.sock` and call any API, including the ones that change the agent | **no**: connecting to a socket is not a file write; the live capture made a `GET` through such a mount (HTTP 200), and the API serves root |
+| open a pinned map with `BPF_OBJ_GET` for reading and writing, then update it | **no**: the open is checked against the file's permissions, not the mount flag |
+
+The manager is privileged (host network, root, all capabilities). Cilium's maps are kernel
+objects it could already open without the pin (`BPF_MAP_GET_FD_BY_ID` needs `CAP_SYS_ADMIN`,
+not a path), so for the maps the mount adds reach, not authority. The socket is different: it
+is reachable only through the mount, so `cilium.enabled=true` gives the manager Cilium's whole
+API, which `readOnly` does not narrow. What the
+code does with them is narrower than what it could: one `GET /v1/healthz` and one `bpftool map
+dump pinned` of `cilium_ipmasq_v4`. Changed: the NOTES, the comment in `values.yaml` and the one
+in the DaemonSet template now say the above; the chart contract test still passes. Not changed:
+the installer's plan line "with read-only host mounts of ..." names the mount flag, which is
+accurate. The gateway image also carries `ipset`, `bpftool` and libLLVM (the review's other
+point here); not changed.
