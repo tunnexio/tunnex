@@ -172,6 +172,21 @@ import Access, { ModeSection } from "../src/pages/Access";
 import { AuthProvider } from "../src/lib/auth";
 import { api } from "../src/lib/api";
 
+// Find and click "Add rule" in the same tick, and click again until the builder is open: the page
+// re-renders the button while its data loads, so a button found in one tick can be detached by the
+// next, and a click on it opens nothing.
+async function openAddRule() {
+  await waitFor(() => {
+    if (screen.queryByRole("dialog", { name: "Add rule" })) return;
+    const button = screen.getByRole("button", { name: "Add rule" }) as HTMLButtonElement;
+    expect(button.disabled).toBe(false);
+    fireEvent.click(button);
+    expect(screen.queryByRole("dialog", { name: "Add rule" })).not.toBeNull();
+  }, { timeout: 5000 });
+  return screen.getByRole("dialog", { name: "Add rule" });
+}
+
+
 // The REAL AuthProvider. Stubbing the context would put the TEST's copy of the role gate under assertion
 // instead of the PRODUCT's — fixture-restates-production at the seam that most invites it (docs/laws.md).
 const withAuth = (ui: React.ReactElement) =>
@@ -364,10 +379,7 @@ describe("Access replacement edits preserve active-rule warnings", () => {
   ])("reviews the actual saved destination scope: $expected", async ({ low, high, expected }) => {
     resourcesForTest = [{ id: "res1", name: "Production TLS", cidr: "10.90.0.0/24", protocol: "tcp", port_low: low, port_high: high }];
     withAuth(<Access />);
-    const add = await screen.findByRole("button", { name: "Add rule" });
-    await waitFor(() => expect((add as HTMLButtonElement).disabled).toBe(false));
-    fireEvent.click(add);
-    const dialog = screen.getByRole("dialog", { name: "Add rule" });
+    const dialog = await openAddRule();
     fireEvent.focus(within(dialog).getByRole("combobox", { name: "Destination" }));
     fireEvent.click(await within(dialog).findByRole("button", { name: /Production TLS/ }));
     expect(within(dialog).queryByRole("button", { name: "Create" })).toBeNull();
@@ -542,10 +554,7 @@ describe("Access — F06 agent sources are first-class", () => {
     await waitFor(() =>
       expect(screen.getAllByText("build-bot").length).toBeGreaterThan(0),
     );
-    const add = screen.getByRole("button", { name: "Add rule" });
-    expect((add as HTMLButtonElement).disabled).toBe(false);
-    fireEvent.click(add);
-    const createDialog = screen.getByRole("dialog", { name: "Add rule" });
+    const createDialog = await openAddRule();
     // SSI-3: a new rule opens with NO destination, so there is nothing to review until the operator
     // chooses one. It used to open on the first resource and reach Create in two clicks.
     const review = within(createDialog).getByRole("button", { name: "Review rule" });
@@ -640,9 +649,7 @@ describe("Access — FQDN destination status is the server projection", () => {
   it("selects an FQDN destination in Add rule and submits its identity, not a CIDR resource", async () => {
     fqdnResourcesForTest = [{ id: "fqdn-1", name: "Orders API", fqdn: "orders.example.com", state: "healthy" }];
     withAuth(<Access />);
-    const add = await screen.findByRole("button", { name: "Add rule" });
-    await waitFor(() => expect((add as HTMLButtonElement).disabled).toBe(false));
-    fireEvent.click(add);
+    await openAddRule();
     fireEvent.focus(screen.getByRole("combobox", { name: "Destination" }));
     fireEvent.click(await screen.findByRole("button", { name: /Orders API/ }));
     expect(screen.getAllByText(/Private DNS access remains fail-closed until this hostname has an active resolver generation/i).length).toBeGreaterThan(0);
