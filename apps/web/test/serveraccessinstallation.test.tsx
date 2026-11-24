@@ -2,7 +2,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ServerAccessInstallationSettings } from "../src/components/ServerAccessInstallationSettings";
 
-const api = vi.hoisted(() => ({ GET: vi.fn(), PATCH: vi.fn(), POST: vi.fn() }));
+const api = vi.hoisted(() => ({ GET: vi.fn(), PATCH: vi.fn(), POST: vi.fn(), PUT: vi.fn() }));
 vi.mock("../src/lib/api", async () => ({ ...await vi.importActual("../src/lib/api"), api }));
 const endpoint = "/api/v1/admin/server-access/installation";
 const view = (overrides = {}) => ({ enabled: false, effective: false, locked: false, source: "environment", version: 0, reauthentication: { password: true, mfa: false, available: true }, ...overrides });
@@ -74,5 +74,47 @@ describe("installation Server Access setting", () => {
     expect(await toggle()).toHaveProperty("disabled", true);
     expect(screen.getByText(/Set up an authenticator app \(two-factor authentication\) in your account settings/)).toBeTruthy();
     await waitFor(() => expect(api.PATCH).not.toHaveBeenCalled());
+  });
+});
+
+describe("one action for installation and organization (SA-UX-2 item 6)", () => {
+  const orgWorkspace = { enabled: false, can_manage: true, recording_retention_days: 30, mfa_freshness_seconds: 600, recording_max_session_bytes: 1048576, recording_max_org_bytes: 33554432 };
+  beforeEach(() => {
+    api.GET.mockImplementation(async (path: string) => ({ data: path === endpoint ? view() : orgWorkspace }));
+    api.PATCH.mockResolvedValue({ data: view({ enabled: true, effective: true, source: "database", version: 1 }) });
+    api.PUT.mockResolvedValue({ data: { status: "updated" } });
+  });
+  const turnOn = async () => {
+    fireEvent.click(await toggle());
+    fireEvent.change(screen.getByLabelText("Current password"), { target: { value: "secret" } });
+  };
+  it("also turns the current organization on through its own endpoint when checked (default)", async () => {
+    render(<ServerAccessInstallationSettings canEdit organization={{ id: "org-a", name: "Acme" }} />);
+    await turnOn();
+    expect((screen.getByLabelText(/Also turn on Server Access for Acme/) as HTMLInputElement).checked).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "Turn on Server Access" }));
+    await screen.findByText(/on for this installation and for Acme/);
+    expect(api.PATCH).toHaveBeenCalledTimes(1);
+    expect(api.PUT).toHaveBeenCalledExactlyOnceWith("/api/v1/organizations/{orgId}/server-access", { params: { path: { orgId: "org-a" } }, body: { enabled: true, recording_retention_days: 30, mfa_freshness_seconds: 600, recording_max_session_bytes: 1048576, recording_max_org_bytes: 33554432 } });
+  });
+  it("only changes the installation when unchecked", async () => {
+    render(<ServerAccessInstallationSettings canEdit organization={{ id: "org-a", name: "Acme" }} />);
+    await turnOn();
+    fireEvent.click(screen.getByLabelText(/Also turn on Server Access for Acme/));
+    fireEvent.click(screen.getByRole("button", { name: "Turn on Server Access" }));
+    await screen.findByText(/Each organization still turns it on/);
+    expect(api.PUT).not.toHaveBeenCalled();
+  });
+  it("reports an organization refusal separately", async () => {
+    api.PUT.mockResolvedValue({ error: { error: { code: "forbidden", message: "Not allowed here." } } });
+    render(<ServerAccessInstallationSettings canEdit organization={{ id: "org-a", name: "Acme" }} />);
+    await turnOn();
+    fireEvent.click(screen.getByRole("button", { name: "Turn on Server Access" }));
+    await screen.findByText(/on for this installation, but turning it on for Acme failed: Not allowed here\. Use Settings → Features/);
+  });
+  it("offers no organization option when the administrator cannot manage it", async () => {
+    show();
+    fireEvent.click(await toggle());
+    expect(screen.queryByLabelText(/Also turn on Server Access/)).toBeNull();
   });
 });
