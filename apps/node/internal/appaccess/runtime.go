@@ -41,6 +41,30 @@ type Runtime struct {
 	Check        func(context.Context, control.AppAssignment) originpolicy.Result
 	Interval     time.Duration
 	Pool         *Pool
+	// delivered holds proxy hosts learned from the control plane after start
+	// (AA-EN-1 G2): origins on them are refused like the control endpoint.
+	deliveredMu sync.Mutex
+	delivered   []string
+}
+
+// DenyDeliveredHost refuses origins on a proxy host delivered over the agent
+// channel. Safe to call while Run is active.
+func (r *Runtime) DenyDeliveredHost(host string) {
+	r.deliveredMu.Lock()
+	defer r.deliveredMu.Unlock()
+	for _, h := range r.delivered {
+		if h == host {
+			return
+		}
+	}
+	r.delivered = append(r.delivered, host)
+}
+
+// controlHosts is the static control endpoints plus delivered proxy hosts.
+func (r *Runtime) controlHosts() []string {
+	r.deliveredMu.Lock()
+	defer r.deliveredMu.Unlock()
+	return append(append([]string(nil), r.ControlHosts...), r.delivered...)
 }
 
 func New(client *control.AppAccessClient, logger *slog.Logger) *Runtime {
@@ -67,8 +91,9 @@ func (r *Runtime) check(ctx context.Context, a control.AppAssignment) originpoli
 	if r.Check != nil {
 		return r.Check(ctx, a)
 	}
+	hosts := r.controlHosts()
 	ips := []netip.Addr{}
-	for _, host := range r.ControlHosts {
+	for _, host := range hosts {
 		values, e := net.DefaultResolver.LookupNetIP(ctx, "ip", host)
 		if e != nil {
 			return originpolicy.Result{Status: "origin_refused"}
@@ -79,7 +104,7 @@ func (r *Runtime) check(ctx context.Context, a control.AppAssignment) originpoli
 	if e != nil {
 		return originpolicy.Result{Status: "origin_refused"}
 	}
-	return (originpolicy.Checker{ControlHosts: r.ControlHosts, ControlAddresses: ips}).Check(ctx, a.OriginURL, p)
+	return (originpolicy.Checker{ControlHosts: hosts, ControlAddresses: ips}).Check(ctx, a.OriginURL, p)
 }
 func result(c control.AppCheck, v originpolicy.Result) control.AppCheckResult {
 	out := control.AppCheckResult{RequestID: c.ID, Generation: c.Generation, AppID: c.AppID, Revision: c.Revision, Digest: c.Digest, Purpose: c.Purpose, DNSStatus: "pending", ConnectStatus: "pending", TLSStatus: "pending", ErrorCode: ""}

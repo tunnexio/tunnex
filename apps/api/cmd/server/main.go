@@ -803,6 +803,19 @@ func main() {
 	agentCh.SetServerAccess(terminalSvc)
 	agentCh.SetPolicyReportNotify(module.wake)
 	agentCh.SetAppAccessConnector(appAccessSvc, licenceMgr)
+	// AA-EN-1 E5: following gateways learn the proxy endpoint over this channel.
+	// A bad value disables delivery (gateways keep their own setting); it never
+	// stops the control plane.
+	if endpoint, err := apphttp.NewAppProxyEndpoint(os.Getenv("TUNNEX_APP_PROXY_GATEWAY_PORT"), os.Getenv("TUNNEX_APP_PROXY_GATEWAY_HOST"), os.Getenv("TUNNEX_APP_ACCESS_LOCKED") == "true"); err != nil {
+		logger.Error("app_access_gateway_endpoint_refused", slog.String("remedy", "set TUNNEX_APP_PROXY_GATEWAY_PORT to 1-65535 and TUNNEX_APP_PROXY_GATEWAY_HOST to a bare hostname or IP address"))
+	} else {
+		agentCh.SetAppProxyEndpoint(endpoint, func(ctx context.Context, org uuid.UUID) (bool, error) {
+			// Only the organization feature flag; domain readiness stays with the
+			// publication checks (a settings save is not readiness proof).
+			settings, err := sqlc.New(pool).GetAppAccessSettings(ctx, org)
+			return settings.Enabled, err
+		})
+	}
 	defer agentCh.CloseAppAccessConnector()
 	agentCh.SetIPsecRuntime(ipsecStore, sealer)
 	agentCh.SetConnectivityStore(connectivityStore)
