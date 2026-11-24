@@ -184,3 +184,22 @@ gateways.
 - **Reachability report** (`proxy_reachable | tls_failed | unreachable`) is not
   built; the supervisor logs start, stop and refusals only. Recommendation: ship it
   with the Phase 1b readiness panel, which is its only consumer.
+
+## Founder rulings on the Phase 1a decisions (2026-11-24)
+
+1. **Console offline during an upgrade on adopted (terminate-and-forward) hosts:
+   accepted.** It is documented in the App Access README, `docs/upgrade.md` and here,
+   with the command-line re-run recovery steps. SNI passthrough stays in Phase 2.
+2. **The ordinary dashboard upgrade gets the same re-authentication as the re-run.**
+   `POST /api/v1/admin/upgrade` requires a human browser session and the SA-UI-1
+   rules (current password; MFA verified within five minutes when enrolled) through
+   the shared helper, with its own failure budget, and keeps its audit action. The
+   Upgrade Center asks for the password and runs the MFA step-up for both actions.
+3. **No delivery to an unreachable listener.** `/agent/app-access/proxy-endpoint`
+   answers `enabled:false` when the gateway listener is bound only to loopback
+   (`TUNNEX_APP_PROXY_GATEWAY_BIND_IP` in 127.0.0.0/8 or `::1`) and no explicit
+   `TUNNEX_APP_PROXY_GATEWAY_HOST` is set.
+4. **Helm gateway lock.** The gateway chart gets `appAccess.locked: true`, which
+   renders `TUNNEX_APP_PROXY_URL=off`. The default stays "follow the control plane".
+5. **Gateway listener renewal and the `proxy_reachable` report stay in Phase 1b.**
+6. **The UPG-1 single-legacy-overlay re-run gap stays documented; no code.**
