@@ -50,6 +50,10 @@ case "$url" in
     cp "$MOCK_ROOT/deploy/ai-bootstrap.sh" "$out" ;;
   https://raw.githubusercontent.com/tunnexio/tunnex/*/deploy/ai-gateway/config-managed.json)
     cp "$MOCK_ROOT/deploy/ai-gateway/config-managed.json" "$out" ;;
+  https://raw.githubusercontent.com/tunnexio/tunnex/*/deploy/app-access/compose.yml)
+    cp "$MOCK_ROOT/deploy/app-access/compose.yml" "$out" ;;
+  https://raw.githubusercontent.com/tunnexio/tunnex/*/deploy/app-access/restore.py)
+    cp "$MOCK_ROOT/deploy/app-access/restore.py" "$out" ;;
   *) echo "unexpected curl URL: $url" >&2; exit 1 ;;
 esac
 SH
@@ -81,6 +85,10 @@ TUNNEX_NGINX_IMAGE=nginx@sha256:ccc
 TUNNEX_NODE_AGENT_IMAGE=node@sha256:ddd
 TUNNEX_MIGRATE_IMAGE=migrate@sha256:eee
 ENV
+  case " $* " in *' -require-app-proxy '*) [ "${MOCK_AA_NO_PROXY:-}" != 1 ] || exit 1 ;; esac
+  if [ "${MOCK_AA:-}" = 1 ] && [ "${MOCK_AA_NO_PROXY:-}" != 1 ]; then
+    printf '%s\n' 'TUNNEX_APP_PROXY_IMAGE=ghcr.io/tunnexio/tunnex-app-proxy@sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff'
+  fi
   if [ "${MOCK_AI:-}" = 1 ] && [ "${MOCK_AI_OLD_VERIFIER:-}" != 1 ]; then
     printf '%s\n' 'TUNNEX_AI_ENGINE_IMAGE=ghcr.io/tunnexio/tunnex-ai-engine@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa'
   fi
@@ -88,19 +96,41 @@ ENV
 SH
 chmod 0755 "$TMP/bin/releaseverify"
 
-cat >"$TMP/bin/pg_restore" <<'SH'
-#!/bin/sh
-set -eu
-[ "$1" = --list ]
-[ -s "$2" ]
-SH
-chmod 0755 "$TMP/bin/pg_restore"
+# No host pg_restore fake: bundled archives must be validated inside the
+# postgres container that produced them (fresh hosts do not ship pg_restore).
 
 cat >"$TMP/bin/docker" <<'SH'
 #!/bin/sh
 set -eu
 printf '%s\n' "$*" >>"$MOCK_DOCKER_LOG"
+printf '%s|%s\n' "${COMPOSE_PROFILES:-}" "$*" >>"$MOCK_DOCKER_LOG.profiles"
 case "$*" in
+  'ps -a --filter '*) [ -z "${MOCK_AA_DIR:-}" ] || cat "$MOCK_AA_DIR/ids" ;;
+  'inspect --format '*)
+    for last in "$@"; do :; done
+    cat "$MOCK_AA_DIR/$last" ;;
+  *'--entrypoint backupctl api app-preflight'*)
+    # The one-off helper must make only the marker mount writable.
+    helper=
+    previous=
+    for argument in "$@"; do
+      [ "$previous" != -f ] || case "$argument" in *app-access-preflight.yml) helper=$argument ;; esac
+      previous=$argument
+    done
+    [ -n "$helper" ] && grep -Fq 'target: /var/lib/tunnex/app-restore' "$helper" && grep -Fq 'read_only: false' "$helper"
+    case "$*" in *' run --rm --no-deps --pull never -T '*) ;; *) exit 1 ;; esac
+    count=$(($(cat "$MOCK_AA_DIR/preflight-count" 2>/dev/null || echo 0) + 1))
+    echo "$count" >"$MOCK_AA_DIR/preflight-count"
+    if [ "$count" = 1 ]; then
+      [ "${MOCK_AA_PRE:-}" != refuse ] || { echo 'app preflight refused' >&2; exit 1; }
+      printf '%s\n' '{"schema_version":242,"supported_schema_version":242,"generation":"11111111-1111-4111-8111-111111111111","authority_version":7,"recovery_completed":true}'
+    else
+      generation=11111111-1111-4111-8111-111111111111
+      [ "${MOCK_AA_POST:-}" != changed ] || generation=22222222-2222-4222-8222-222222222222
+      printf '{"schema_version":243,"supported_schema_version":243,"generation":"%s","authority_version":7,"recovery_completed":true}\n' "$generation"
+    fi ;;
+  *'exec -T postgres pg_restore --list'*)
+    head -c 5 | grep -Fxq PGDMP ;;
   *releaseverify*)
     # The Docker daemon cannot bind the runner's PrivateTmp files. Require the
     # already verified API image to receive the catalog through stdin instead.
@@ -175,7 +205,7 @@ grep -Fq 'pull' "$TMP/docker.log"
 grep -Fq 'up -d' "$TMP/docker.log"
 grep -Fq 'TUNNEX_RELEASE_VERSION=v9.9.9' "$TMP/tunnex/.env"
 
-backup_line=$(grep -n 'exec -T postgres' "$TMP/docker.log" | cut -d: -f1)
+backup_line=$(grep -n 'exec -T postgres sh -c' "$TMP/docker.log" | cut -d: -f1)
 pull_line=$(grep -n 'pull' "$TMP/docker.log" | cut -d: -f1 | tail -1)
 [ "$backup_line" -lt "$pull_line" ] || {
   echo 'database backup did not precede image mutation' >&2
@@ -543,6 +573,169 @@ fi
 grep -Fq 'start bifrost' "$TMP/ai-upgrade.log"
 ! grep -Fq 'up -d' "$TMP/ai-upgrade.log"
 cmp -s "$TMP/ai-before.env" "$TMP/ai-upgrade/.env"
+
+! grep -Fq 'app-preflight' "$TMP/docker.log"
+! grep -Fq 'app-access' "$TMP/docker.log"
+grep -Fq 'exec -T postgres pg_restore --list' "$TMP/docker.log"
+
+# ---------------------------------------------------------------------------
+# App Access: one invocation upgrades across a schema change (242 -> 243).
+# Admission inspects only labels/mounts/ports; authority is snapshotted before
+# backup, the proxy is stopped before the API migrates, and only an unchanged
+# completed authority on the new schema lets the signed proxy start again.
+make_aa_install() {
+  aa_dir="$TMP/aa-$1"
+  mkdir -p "$aa_dir/containers"
+  aa_dir=$(CDPATH= cd -- "$aa_dir" && pwd -P)
+  cp "$ROOT/deploy/upgrade.sh" "$aa_dir/upgrade.sh"
+  printf '%s\n' '# installed deployment' >"$aa_dir/tunnex.yml"
+  printf '%s\n' '# operator overlay' >"$aa_dir/legacy-app-access.yml"
+  printf '%s\n' '{"fixture":"installed release"}' >"$aa_dir/release.json"
+  cat >"$aa_dir/.env" <<'ENV'
+TUNNEX_RELEASE_PUBLIC_KEY=test-public-key
+TUNNEX_RELEASE_CATALOG_URL=https://updates.example.test/release.json
+COMPOSE_PROJECT_NAME=aa
+POSTGRES_USER=tunnex
+POSTGRES_DB=tunnex
+TUNNEX_APP_ACCESS_BASE_DOMAIN=apps.example.test
+TUNNEX_APP_PROXY_SECRETS_DIR=/srv/tunnex/app-proxy
+ENV
+  printf '%s\n' api proxy >"$aa_dir/containers/ids"
+  aa_files="$aa_dir/tunnex.yml,$aa_dir/legacy-app-access.yml"
+  printf 'aa|%s|api|volume:aa_app_restore;|||%s|\n' "$aa_dir" "$aa_files" >"$aa_dir/containers/api"
+  printf 'aa|%s|app-proxy|volume:aa_app_restore;|/srv/tunnex/app-proxy;|8443/tcp=127.0.0.1:443;|%s|\n' "$aa_dir" "$aa_files" >"$aa_dir/containers/proxy"
+}
+run_aa_upgrade() (
+  cd "$aa_dir"
+  PATH="$TMP/bin:$PATH" MOCK_CATALOG="$TMP/catalog.json" MOCK_ROOT="$ROOT" MOCK_AA=1 \
+    MOCK_AA_DIR="$aa_dir/containers" MOCK_DOCKER_LOG="$aa_dir/docker.log" \
+    TUNNEX_RELEASEVERIFY="$TMP/bin/releaseverify" TUNNEX_UPGRADE_STATUS_FILE="$aa_dir/status" \
+    TUNNEX_UPGRADE_REQUEST_ID=aa-request ./upgrade.sh "$@"
+)
+snapshot_aa() {
+  for aa_file in .env tunnex.yml release.json legacy-app-access.yml; do
+    cp "$aa_dir/$aa_file" "$aa_dir/$aa_file.before"
+  done
+}
+assert_aa_refused_unchanged() {
+  for aa_file in .env tunnex.yml release.json legacy-app-access.yml; do
+    cmp -s "$aa_dir/$aa_file.before" "$aa_dir/$aa_file"
+  done
+  [ ! -e "$aa_dir/app-access.yml" ]
+  ! grep -Eq ' (pull|up|stop|start)( |$)' "$aa_dir/docker.log" 2>/dev/null
+}
+line_of() { grep -nF -- "$2" "$aa_dir/docker.log" | sed -n "${3:-1}p" | cut -d: -f1; }
+
+# Success, adopting a hand-composed overlay, with Server Access configured too.
+make_aa_install adopt
+printf '%s\n' TUNNEX_SERVER_ACCESS_ENABLED=true TUNNEX_SERVER_ACCESS_RECORDING_VOLUME=owned-test-recordings \
+  TUNNEX_SERVER_ACCESS_RECORDING_VOLUME_EXTERNAL=true >>"$aa_dir/.env"
+snapshot_aa
+run_aa_upgrade --apply >"$aa_dir/output" 2>&1 || { cat "$aa_dir/output"; exit 1; }
+grep -Fxq 'state=healthy' "$aa_dir/status"
+grep -Fxq 'TUNNEX_APP_PROXY_IMAGE=ghcr.io/tunnexio/tunnex-app-proxy@sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff' "$aa_dir/.env"
+grep -Fxq 'COMPOSE_PROFILES=bundled-db,app-access' "$aa_dir/.env"
+cmp -s "$ROOT/deploy/app-access/compose.yml" "$aa_dir/app-access.yml"
+cmp -s "$ROOT/deploy/app-access/restore.py" "$aa_dir/app-access-restore.py"
+grep -Fxq "TUNNEX_APP_ACCESS_COMPOSE_SHA256=$(shasum -a 256 "$aa_dir/app-access.yml" | awk '{print $1}')" "$aa_dir/.env"
+cmp -s "$aa_dir/legacy-app-access.yml.before" "$aa_dir/legacy-app-access.yml"
+grep -Fxq 'TUNNEX_APP_ACCESS_BASE_DOMAIN=apps.example.test' "$aa_dir/.env"
+grep -Fxq 'TUNNEX_SERVER_ACCESS_ENABLED=true' "$aa_dir/.env"
+grep -Fxq 'TUNNEX_SERVER_ACCESS_RECORDING_VOLUME=owned-test-recordings' "$aa_dir/.env"
+grep -Fxq 'TUNNEX_SERVER_ACCESS_RECORDING_VOLUME_EXTERNAL=true' "$aa_dir/.env"
+pre=$(line_of x 'api app-preflight' 1)
+dump=$(line_of x 'exec -T postgres sh -c' 1)
+verify=$(line_of x 'exec -T postgres pg_restore --list' 1)
+stop=$(line_of x 'stop app-proxy' 1)
+migrate=$(line_of x 'up -d --wait --wait-timeout 900' 1)
+post=$(line_of x 'api app-preflight' 2)
+proxy=$(line_of x 'up -d --wait --wait-timeout 300 --no-deps app-proxy' 1)
+for aa_line in "$pre" "$dump" "$verify" "$stop" "$migrate" "$post" "$proxy"; do [ -n "$aa_line" ]; done
+[ "$pre" -lt "$dump" ] && [ "$dump" -lt "$verify" ] && [ "$verify" -lt "$stop" ] &&
+  [ "$stop" -lt "$migrate" ] && [ "$migrate" -lt "$post" ] && [ "$post" -lt "$proxy" ] || {
+  echo 'App Access upgrade ordering violated' >&2; cat "$aa_dir/docker.log" >&2; exit 1; }
+# The managed overlay is composed for every post-adoption operation; the API is
+# migrated without the proxy profile and the proxy starts only afterwards.
+grep -F 'up -d --wait --wait-timeout 900' "$aa_dir/docker.log.profiles" | grep -Fq "bundled-db|"
+grep -F 'up -d --wait --wait-timeout 900' "$aa_dir/docker.log" | grep -Fq -- "-f $aa_dir/app-access.yml"
+grep -F -- '--no-deps app-proxy' "$aa_dir/docker.log.profiles" | grep -Fq 'bundled-db,app-access|'
+grep -F 'pull' "$aa_dir/docker.log.profiles" | grep -Fq 'bundled-db,app-access|'
+! grep -Fq 'legacy-app-access.yml' "$aa_dir/docker.log"
+
+# A second run on the now-managed layout is the same single command.
+aa_files="$aa_dir/tunnex.yml,$aa_dir/app-access.yml"
+printf 'aa|%s|api|volume:aa_app_restore;|||%s|\n' "$aa_dir" "$aa_files" >"$aa_dir/containers/api"
+printf 'aa|%s|app-proxy|volume:aa_app_restore;|/srv/tunnex/app-proxy;|8443/tcp=127.0.0.1:443;|%s|\n' "$aa_dir" "$aa_files" >"$aa_dir/containers/proxy"
+rm -f "$aa_dir/containers/preflight-count" "$aa_dir/docker.log"
+run_aa_upgrade --apply >"$aa_dir/output" 2>&1 || { cat "$aa_dir/output"; exit 1; }
+grep -Fxq 'state=healthy' "$aa_dir/status"
+# A changed managed overlay is refused like a changed tunnex.yml.
+printf '%s\n' '# tampered' >>"$aa_dir/app-access.yml"
+if run_aa_upgrade --apply >"$aa_dir/output" 2>&1; then echo 'tampered App Access overlay accepted' >&2; exit 1; fi
+grep -Fq 'installed deployment files changed' "$aa_dir/output"
+
+# Dry run: admission and the plan, no authority helper and no mutation.
+make_aa_install dry
+snapshot_aa
+run_aa_upgrade >"$aa_dir/output" 2>&1
+grep -Fq 'App Access' "$aa_dir/output"
+! grep -Fq 'app-preflight' "$aa_dir/docker.log"
+assert_aa_refused_unchanged
+
+# Pending restore marker, dirty schema or incomplete authority: refused before
+# any backup or mutation, and the operator is told nothing changed.
+make_aa_install pending
+snapshot_aa
+if MOCK_AA_PRE=refuse run_aa_upgrade --apply >"$aa_dir/output" 2>&1; then echo 'pending App Access barrier accepted' >&2; exit 1; fi
+grep -Fxq 'reason_code=app_access_admission_failed' "$aa_dir/status"
+unset MOCK_AA_PRE # POSIX sh may retain assignments made before a function call
+grep -Fq 'restore marker' "$aa_dir/output"
+[ ! -e "$aa_dir/backups" ] || [ -z "$(ls "$aa_dir/backups")" ]
+assert_aa_refused_unchanged
+
+# A target release without a signed proxy image is refused before backup.
+make_aa_install no-proxy
+snapshot_aa
+if MOCK_AA_NO_PROXY=1 run_aa_upgrade --apply >"$aa_dir/output" 2>&1; then echo 'release without signed proxy accepted' >&2; exit 1; fi
+unset MOCK_AA_NO_PROXY
+grep -Fq 'signed App Access proxy' "$aa_dir/output"
+[ ! -e "$aa_dir/backups" ] || [ -z "$(ls "$aa_dir/backups")" ]
+assert_aa_refused_unchanged
+
+# Authority must be unchanged after migration; otherwise the proxy stays
+# stopped and rollback guidance names the supported restore runner + backup.
+make_aa_install changed
+if MOCK_AA_POST=changed run_aa_upgrade --apply >"$aa_dir/output" 2>&1; then echo 'changed authority accepted' >&2; exit 1; fi
+unset MOCK_AA_POST
+grep -Fxq 'state=failed' "$aa_dir/status"
+grep -Fxq 'reason_code=app_access_authority_changed' "$aa_dir/status"
+! grep -Fq -- '--no-deps app-proxy' "$aa_dir/docker.log"
+[ "$(grep -c 'stop app-proxy' "$aa_dir/docker.log")" -ge 2 ]
+grep -Fq 'app-access-restore.py' "$aa_dir/output"
+grep -Fq "$(sed -n 's/^backup_dump=//p' "$aa_dir/status")" "$aa_dir/output"
+grep -Fq 'raw pg_restore' "$aa_dir/output"
+
+# Identity drift is refused, never "fixed": barrier volume, proxy secrets,
+# published port, HA participants, proxy without barrier, unknown layouts,
+# and a missing reviewed domain.
+for aa_case in volume secrets port ha proxy-only layout domain project; do
+  make_aa_install "refuse-$aa_case"
+  case "$aa_case" in
+    volume) sed -i.bak 's/volume:aa_app_restore;/volume:other_app_restore;/' "$aa_dir/containers/api"; expected='restore barrier' ;;
+    secrets) sed -i.bak 's|/srv/tunnex/app-proxy;|/elsewhere;|' "$aa_dir/containers/proxy"; expected='TUNNEX_APP_PROXY_SECRETS_DIR' ;;
+    port) sed -i.bak 's/127.0.0.1:443;/0.0.0.0:443;/' "$aa_dir/containers/proxy"; expected='TUNNEX_APP_PROXY_BIND_IP' ;;
+    ha) cp "$aa_dir/containers/api" "$aa_dir/containers/api2"; printf '%s\n' api2 >>"$aa_dir/containers/ids"; expected='one API' ;;
+    proxy-only) sed -i.bak 's/|api|volume:aa_app_restore;|/|api||/' "$aa_dir/containers/api"; expected='restore barrier' ;;
+    layout) sed -i.bak "s|legacy-app-access.yml|legacy-app-access.yml,$aa_dir/extra.yml|" "$aa_dir/containers/api" "$aa_dir/containers/proxy"; expected='composition' ;;
+    domain) sed -i.bak '/^TUNNEX_APP_ACCESS_BASE_DOMAIN=/d' "$aa_dir/.env"; expected='TUNNEX_APP_ACCESS_BASE_DOMAIN' ;;
+    project) sed -i.bak '/^COMPOSE_PROJECT_NAME=/d' "$aa_dir/.env"; expected='COMPOSE_PROJECT_NAME=aa' ;;
+  esac
+  snapshot_aa
+  if run_aa_upgrade --apply >"$aa_dir/output" 2>&1; then echo "App Access $aa_case drift accepted" >&2; exit 1; fi
+  grep -Fq "$expected" "$aa_dir/output" || { echo "missing '$expected' for $aa_case" >&2; cat "$aa_dir/output" >&2; exit 1; }
+  ! grep -Fq 'app-preflight' "$aa_dir/docker.log"
+  assert_aa_refused_unchanged
+done
 
 grep -qx 'TUNNEX_SERVER_ACCESS_ENABLED=true' "$TMP/tunnex/.env"
 grep -qx 'TUNNEX_SERVER_ACCESS_RECORDING_VOLUME=owned-test-recordings' "$TMP/tunnex/.env"

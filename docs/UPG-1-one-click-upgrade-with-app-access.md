@@ -176,11 +176,17 @@ labels, mounts and port bindings, never environment.
 Apply order:
 
 1. Verify the signed release. If App Access is present, verify again with
-   `-require-app-proxy`. If the installed verifier is too old, run the
-   **target** API's verifier by digest, as the AI path already does. Take the
-   `TUNNEX_APP_PROXY_IMAGE` pin, which must have the form
-   `ghcr.io/tunnexio/tunnex-app-proxy@sha256:<64 hex>`. A target without a
-   signed proxy is refused here, before any backup or mutation.
+   `-require-app-proxy`, using the same installed verifier (host binary, or the
+   running API). Take the `TUNNEX_APP_PROXY_IMAGE` pin, which must have the
+   form `ghcr.io/tunnexio/tunnex-app-proxy@sha256:<64 hex>` and be bound to the
+   same source SHA. A target without a signed proxy is refused here, before any
+   backup or mutation.
+
+   Any installation that composed App Access already has a verifier with
+   `-require-app-proxy`, because the proxy pin came from it. A verifier that
+   lacks the flag is therefore refused, with no fallback. The AI path's
+   fallback, which runs the target API's verifier by digest, could be mirrored
+   later if needed.
 2. Fetch the signed-source overlay and `restore.py` at the release source SHA.
 3. **Authority snapshot.** Run `compose run --rm --no-deps --pull never
    --entrypoint backupctl api app-preflight` on the **current** API image. The

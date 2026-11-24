@@ -1,7 +1,40 @@
 # App Access operator composition
 
 These files prepare an explicit opt-in deployment. The base Compose stack and Helm
-charts keep App Access disabled. Ordinary installer reinstall and managed upgrade refuse an existing scoped App Access composition, including stopped participants, before replacing deployment files or restarting services. Use the explicit same-schema image replacement procedure below; it preserves signed proxy image pins, private authority configuration and the external restore volume. Ordinary managed upgrades and schema-changing opt-in upgrades remain unqualified. Enabling infrastructure does not grant entitlement,
+charts keep App Access disabled. Installer reinstall refuses an existing scoped App Access composition, including stopped participants, before replacing deployment files.
+
+## Upgrading an installation with App Access
+
+Use the ordinary single upgrade command (`upgrade.sh --apply`, or the dashboard
+upgrade), including for releases that add migrations. See
+[UPG-1](../../docs/UPG-1-one-click-upgrade-with-app-access.md). The upgrade
+manages this overlay as `<install>/app-access.yml`, fetched from the signed
+release source and hashed. It pins the signed `TUNNEX_APP_PROXY_IMAGE`
+(`-require-app-proxy`) and keeps the `app-access` profile.
+
+Before backing up, the upgrade runs `backupctl app-preflight`, which records the
+installation authority. The upgrade then stops the proxy and lets the API
+migrate. After migration it checks, with the new binary, that the authority is
+unchanged and the schema is clean. Only then does it start the proxy. A pending
+restore marker, a dirty schema, incomplete authority, a target release without a
+signed proxy, or any identity drift refuses the upgrade before mutation. Identity
+drift means any of: the restore volume is not `<project>_app_restore`, the proxy
+secrets directory or port differs from `.env`, more than one API or proxy exists,
+or the composition is unknown. Keep `TUNNEX_APP_ACCESS_BASE_DOMAIN`,
+`TUNNEX_APP_PROXY_SECRETS_DIR` and, when they are not the defaults,
+`TUNNEX_APP_PROXY_BIND_IP` and `TUNNEX_APP_PROXY_PUBLIC_PORT` in the installation
+`.env`. A hand-composed overlay is adopted once these checks pass. It is left on
+disk but no longer used.
+
+On a failure after migration the proxy stays stopped. To roll back, restore the
+named pre-upgrade backup with the installed `app-access-restore.py` (this file's
+`restore.py`). Recovery invalidates authority as described below. Never use raw
+`pg_restore` or a down migration.
+
+Installations whose installed `upgrade.sh` predates this change refuse before
+they can update themselves. Replace that script once with the copy from the
+verified target release's source SHA. The same-schema `upgrade.py` below remains
+a manual image-replacement tool. Enabling infrastructure does not grant entitlement,
 opt in an organization, publish an application, or create a browser session.
 
 Before installing or upgrading, verify the signed release descriptor with the trusted
