@@ -405,3 +405,10 @@ All runs were in `golang:1.26.11-alpine` on Docker's Linux kernel, with nftables
     NET_ADMIN alone it fails at `unshare`, before and after this change.
 - Not run: `TestCiliumServiceReachKernel` and `TestCiliumHostRoutingGrantKernel`. They are written
   for a kind node, and kind was not used. They compile.
+
+## Founder ruling, 2026-11-24
+
+Accepted as recommended: ping to an in-cluster gateway is dropped; the gateway's own node stays closed
+to devices even with Zero Trust off; no access rule can open the gateway's own node; the AI VPN port
+(TCP 8083) is opened only while AI VPN is configured. VM and site gateways are unchanged; deciding an
+input chain for them is a separate, later decision.
