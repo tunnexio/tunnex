@@ -38,7 +38,7 @@ function ScopedManagement({ orgId, appId, pending, onChanged }: { orgId: string;
 function ManagedGrants({ orgId, appId, onChanged }: { orgId: string; appId: string; onChanged: () => void }) {
   const [grants, setGrants] = useState<Grant[] | null>(null); const [error, setError] = useState(""); const [reload, setReload] = useState(0); const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState(20);
-  const [dialog, setDialog] = useState<{ action: "edit" | "disable" | "revoke"; grant: Grant | null } | null>(null);
+  const [dialog, setDialog] = useState<{ action: "edit" | "disable" | "enable" | "revoke"; grant: Grant | null } | null>(null);
   const [view, setView] = useState<"current" | "history">("current");
   const [status, setStatus] = useState<Grant["status"] | "">("");
   const changeView = (next: "current" | "history") => { setView(next); setStatus(""); setPage(0); setDialog(null); };
@@ -60,7 +60,7 @@ function ManagedGrants({ orgId, appId, onChanged }: { orgId: string; appId: stri
     { key: "validity", header: "Validity", cell: grant => <div className="text-sm"><p>Starts {grant.starts_at ? new Date(grant.starts_at).toLocaleString() : "immediately"}</p><p>Expires {grant.expires_at ? new Date(grant.expires_at).toLocaleString() : "without a time limit"}</p></div> },
     { key: "actions", header: "Actions", cell: grant => !grant.revoked_at ? <AppAccessRowMenu label={`Actions for ${grant.subject_label} grant`} actions={[
       { key: "edit", label: "Edit", onSelect: () => setDialog({ action: "edit", grant }) },
-      ...(grant.enabled ? [{ key: "disable", label: "Disable", onSelect: () => setDialog({ action: "disable", grant }) }] : []),
+      grant.enabled ? { key: "disable", label: "Disable", onSelect: () => setDialog({ action: "disable", grant }) } : { key: "enable", label: "Enable", onSelect: () => setDialog({ action: "enable", grant }) },
       { key: "revoke", label: "Revoke", danger: true, onSelect: () => setDialog({ action: "revoke", grant }) },
     ]} /> : null },
   ]} />}
@@ -72,7 +72,7 @@ function localDate(value: string | null | undefined) {
   if (!value) return ""; const date = new Date(value); const pad = (n: number) => String(n).padStart(2, "0");
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
-function ManagedGrantDialog({ orgId, appId, action, grant, onClose, onSaved }: { orgId: string; appId: string; action: "edit" | "disable" | "revoke"; grant: Grant | null; onClose: () => void; onSaved: () => void }) {
+function ManagedGrantDialog({ orgId, appId, action, grant, onClose, onSaved }: { orgId: string; appId: string; action: "edit" | "disable" | "enable" | "revoke"; grant: Grant | null; onClose: () => void; onSaved: () => void }) {
   const [subject, setSubject] = useState<Subject | null>(null); const [starts, setStarts] = useState(localDate(grant?.starts_at)); const [expires, setExpires] = useState(localDate(grant?.expires_at));
   const [enabled, setEnabled] = useState(grant?.enabled ?? true); const [error, setError] = useState(""); const [busy, setBusy] = useState(false); const lock = useRef(false); const alive = useRef(true);
   useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
@@ -88,7 +88,7 @@ function ManagedGrantDialog({ orgId, appId, action, grant, onClose, onSaved }: {
     try {
       const result = action === "revoke" && grant
         ? await api.POST("/api/v1/organizations/{orgId}/app-access/applications/{appId}/managed-grants/{grantId}/revoke", { params: { path: { orgId, appId, grantId: grant.id } }, body: { expected_version: grant.version } })
-        : grant ? await api.PATCH("/api/v1/organizations/{orgId}/app-access/applications/{appId}/managed-grants/{grantId}", { params: { path: { orgId, appId, grantId: grant.id } }, body: { expected_version: grant.version, enabled: action === "disable" ? false : enabled, starts_at: startsAt, expires_at: expiresAt } })
+        : grant ? await api.PATCH("/api/v1/organizations/{orgId}/app-access/applications/{appId}/managed-grants/{grantId}", { params: { path: { orgId, appId, grantId: grant.id } }, body: { expected_version: grant.version, enabled: action === "disable" ? false : action === "enable" ? true : enabled, starts_at: startsAt, expires_at: expiresAt } })
         : await api.POST("/api/v1/organizations/{orgId}/app-access/applications/{appId}/managed-grants", { params: { path: { orgId, appId } }, body: { app_id: appId, subject_id: subject!.id, subject_kind: subject!.kind, enabled, starts_at: startsAt, expires_at: expiresAt } });
       if (!alive.current) return;
       if (result.error || !result.data) setError(["version_conflict", "stale_version"].includes(apiErrorCode(result.error) ?? "") ? "This grant changed. Close and refresh grants before trying again." : apiErrorMessage(result.error, "Could not confirm this grant change. Close and refresh grants before retrying."));
@@ -96,6 +96,8 @@ function ManagedGrantDialog({ orgId, appId, action, grant, onClose, onSaved }: {
     } catch { if (alive.current) setError("Could not confirm this grant change. Close and refresh grants before retrying."); }
     finally { lock.current = false; if (alive.current) setBusy(false); }
   }
-  const removing = action !== "edit";
+  const removing = action === "disable" || action === "revoke";
+  // Enable changes only `enabled`; the unchanged date fields send the grant's original schedule back.
+  if (action === "enable" && grant) return <Modal title="Enable application grant" onDismiss={() => { if (!busy) onClose(); }}><form onSubmit={submit} className="space-y-4"><p>Enable access granted to <strong>{grant.subject_label}</strong> ({grant.subject_kind})?</p><p className="text-sm text-ink-secondary">Access applies again within the grant's saved schedule.</p><ErrorText>{error}</ErrorText><div className="flex gap-3"><Button type="submit" disabled={busy}>{busy ? "Saving grant…" : "Confirm grant enable"}</Button><Button type="button" variant="ghost" disabled={busy} onClick={onClose}>Keep disabled</Button></div></form></Modal>;
   return <Modal title={removing ? action === "disable" ? "Disable application grant" : "Revoke application grant" : grant ? "Edit application grant" : "Add application grant"} danger={removing} onDismiss={() => { if (!busy) onClose(); }}><form onSubmit={submit} className="space-y-4">{grant ? <p>{removing ? `${action === "disable" ? "Disable" : "Revoke"} access granted to` : "Subject:"} <strong>{grant.subject_label}</strong> ({grant.subject_kind}){removing ? "?" : ""}</p> : <AppAccessSubjectPicker orgId={orgId} appId={appId} label="Grant subject" value={subject} onChange={setSubject} />}{removing ? <p className="text-sm text-ink-secondary">Other valid user or group grants can still provide access. This changes grant configuration; it does not erase content already delivered.</p> : <><p className="text-sm text-ink-secondary">Times use your local timezone. Empty fields leave that side of the validity window unbounded.</p><Field label="Starts at"><Input type="datetime-local" value={starts} onChange={event => setStarts(event.target.value)} /></Field><Field label="Expires at"><Input type="datetime-local" value={expires} onChange={event => setExpires(event.target.value)} /></Field><label className="flex gap-2"><input type="checkbox" checked={enabled} onChange={event => setEnabled(event.target.checked)} />Grant enabled</label></>}<ErrorText>{error}</ErrorText><div className="flex gap-3"><Button type="submit" variant={removing ? "danger" : "primary"} disabled={busy || (!grant && !subject)}>{busy ? "Saving grant…" : removing ? action === "disable" ? "Confirm grant disable" : "Confirm grant revocation" : "Save grant"}</Button><Button type="button" variant="ghost" disabled={busy} onClick={onClose}>Cancel grant</Button></div></form></Modal>;
 }

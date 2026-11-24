@@ -50,7 +50,7 @@ function AccessWorkspace({ orgId, appId, canViewAudit }: { orgId: string; appId?
   const [error, setError] = useState("");
   const [attempt, setAttempt] = useState(0);
   const [hasNext, setHasNext] = useState(false);
-  const [dialog, setDialog] = useState<{ action: "edit" | "revoke" | "disable"; grant: Grant | null } | null>(null);
+  const [dialog, setDialog] = useState<{ action: "edit" | "revoke" | "disable" | "enable"; grant: Grant | null } | null>(null);
   const [previewUser, setPreviewUser] = useState<PickerOption | null>(null);
   const [preview, setPreview] = useState<Preview | null>(null);
   const [previewError, setPreviewError] = useState("");
@@ -121,7 +121,9 @@ function AccessWorkspace({ orgId, appId, canViewAudit }: { orgId: string; appId?
   const rowActions = (grant: Grant): AppAccessRowMenuAction[] => [
     ...(!grant.revoked_at ? [
       { key: "edit", label: "Edit grant", disabledReason: addUnavailable, icon: <Icon name="settings" size={16} />, onSelect: () => setDialog({ action: "edit", grant }) },
-      ...(grant.enabled ? [{ key: "disable", label: "Disable grant", icon: <Icon name="ban" size={16} />, onSelect: () => setDialog({ action: "disable", grant }) }] : []),
+      // Enabling adds access, so it is gated like Edit; disabling stays available after entitlement loss.
+      grant.enabled ? { key: "disable", label: "Disable grant", icon: <Icon name="ban" size={16} />, onSelect: () => setDialog({ action: "disable", grant }) }
+        : { key: "enable", label: "Enable grant", disabledReason: addUnavailable, icon: <Icon name="check-circle" size={16} />, onSelect: () => setDialog({ action: "enable", grant }) },
       { key: "revoke", label: "Revoke grant", danger: true, icon: <Icon name="shield-alert" size={16} />, onSelect: () => setDialog({ action: "revoke", grant }) },
     ] : []),
     ...(canViewAudit ? [{ key: "audit", label: "Grant change audits", icon: <Icon name="scroll-text" size={16} />, href: "/audit?target_type=app_access&target_id=" + encodeURIComponent(grant.id) }] : []),
@@ -160,6 +162,7 @@ function AccessWorkspace({ orgId, appId, canViewAudit }: { orgId: string; appId?
       {preview && <div role="status"><p>{preview.grant_match ? "A current explicit grant matches this user." : "No current explicit grant matches this user."}</p><p>{preview.access_allowed ? "Current configuration permits this user. Opening the application still requires a valid login and a fresh access decision." : `Current application access is denied. Reason: ${preview.deny_reason.replace(/_/g, " ")}.`}</p><p className="text-sm text-ink-secondary">This preview does not create a session or open application content.</p></div>}
     </div></div></details>}
     {dialog?.action === "edit" && <GrantEditor orgId={orgId} appId={filter} grant={dialog.grant} applications={applications} options={options} canEdit={canAdd} onClose={() => setDialog(null)} onSaved={() => { setDialog(null); setAttempt(value => value + 1); }} />}
+    {dialog?.action === "enable" && dialog.grant && <EnableGrant orgId={orgId} grant={dialog.grant} onClose={() => setDialog(null)} onSaved={() => { setDialog(null); setAttempt(value => value + 1); }} />}
     {(dialog?.action === "revoke" || dialog?.action === "disable") && dialog.grant && <RevokeGrant disabling={dialog.action === "disable"} orgId={orgId} grant={dialog.grant} onClose={() => setDialog(null)} onSaved={() => { setDialog(null); setAttempt(value => value + 1); }} />}
   </section>;
 }
@@ -205,6 +208,26 @@ function GrantEditor({ orgId, appId, grant, applications, options, canEdit, onCl
     </div></details>
     <ErrorText>{error}</ErrorText>
   </form></Modal>;
+}
+
+// Same PATCH (and the same audit) as editing the grant with "Grant enabled" checked: only
+// `enabled` changes; the reviewed version and the original schedule are sent back verbatim.
+function EnableGrant({ orgId, grant, onClose, onSaved }: { orgId: string; grant: Grant; onClose: () => void; onSaved: () => void }) {
+  const [error, setError] = useState(""); const [busy, setBusy] = useState(false);
+  const enable = async () => {
+    if (busy) return; setBusy(true); setError("");
+    try {
+      const result = await api.PATCH("/api/v1/organizations/{orgId}/app-access/grants/{grantId}", { params: { path: { orgId, grantId: grant.id } }, body: { expected_version: grant.version, enabled: true, starts_at: grant.starts_at, expires_at: grant.expires_at } });
+      if (result.error || !result.data) { setError(failure(result.error, "Could not confirm the grant was enabled. Refresh grants before retrying.")); return; } onSaved();
+    } catch { setError("Could not reach the API. Refresh grants to check whether the grant was enabled before retrying."); } finally { setBusy(false); }
+  };
+  const schedule = `${grant.starts_at ? "Starts " + new Date(grant.starts_at).toLocaleString() : "Starts immediately"} · ${grant.expires_at ? "Expires " + new Date(grant.expires_at).toLocaleString() : "No expiry"}`;
+  return <Modal title="Enable application grant" onDismiss={() => { if (!busy) onClose(); }}>
+    <p>Enable the explicit {grant.subject_kind} grant for {grant.subject_label}?</p>
+    <p className="mt-3">Access applies again within the grant's saved schedule: {schedule}.</p>
+    <ErrorText>{error}</ErrorText>
+    <div className="mt-4 flex flex-wrap gap-3"><Button disabled={busy} onClick={() => void enable()}>{busy ? "Enabling grant…" : "Confirm grant enable"}</Button><Button variant="ghost" disabled={busy} onClick={onClose}>Keep disabled</Button></div>
+  </Modal>;
 }
 
 function RevokeGrant({ orgId, grant, disabling, onClose, onSaved }: { orgId: string; grant: Grant; disabling: boolean; onClose: () => void; onSaved: () => void }) {
