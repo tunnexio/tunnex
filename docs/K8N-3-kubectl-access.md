@@ -834,8 +834,28 @@ The API server certificate on this cluster names (SAN): `kubernetes`, `kubernete
 Which one to print in the dashboard waits until both are walked with kubectl and EKS/AKS
 certificates are checked.
 
-Still not confirmed: authentication and every kubectl verb (nothing here used a credential);
-`exec`, `logs -f` and `port-forward` streaming; a running `exec` ending when the rule is removed;
-a gateway restart while a rule and an open connection exist; that a misconfigured kubeconfig
-pointing at the public endpoint is told apart from the Tunnex path (negative control);
-EKS, AKS and self-managed.
+### kubectl walk, same day
+
+The founder's own GKE credential (gcloud on the laptop, `gke-gcloud-auth-plugin`), in a separate
+kubeconfig whose only change was `server: https://kubernetes.default.svc.gke.k8s.corp.internal` plus
+`tls-server-name`:
+
+- `kubectl get namespaces` worked with `tls-server-name` set to the original host (the IP
+  35.201.21.105) and with `kubernetes.default.svc`. Both values verify against this certificate, so
+  "tls-server-name may be an IP" is confirmed for kubectl on GKE.
+- `get pods`, `logs`, `logs -f`, `exec` and `port-forward` (HTTP 200 through the forward) all worked.
+- Service flows keep the device's source: the Service's access log shows 10.99.0.2.
+- **Negative control.** With the access rule disabled at 00:34:27 UTC, a new `kubectl get` failed
+  with "context deadline exceeded" and a raw `/healthz` timed out. The same kubeconfig therefore goes
+  through Tunnex and does not fall back to the public endpoint. Re-enabling the rule restored kubectl
+  within 13 s.
+- **A running exec when the rule is disabled.** A streaming `exec` printing every 2 s stopped
+  receiving output at once (last line 00:34:23); the client did not exit by itself and reported
+  `i/o timeout` about 60 s later. Access ends immediately; the client notices late. The dashboard's
+  "Traffic matching this rule stops immediately" is accurate for the data; a customer may see a
+  hanging terminal for up to a minute.
+
+Still not confirmed: a gateway restart while a rule and an open connection exist; API access turned
+off (address withdrawn) with a session open; the node's address appearing in the cluster's audit
+log; EKS, AKS and self-managed clusters; the dashboard's single suggested `tls-server-name` value
+across providers.
