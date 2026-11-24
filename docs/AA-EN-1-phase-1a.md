@@ -35,7 +35,12 @@ E1–E12 and the item added to Phase 1a by founder ruling (dashboard forward fix
    as `${TUNNEX_EDGE_HTTPS_PUBLISH:-443}:443`; `docker compose config` renders it
    byte-identically to before with the default. UPG-1 admission accepts exactly the
    public listener alone (earlier overlays) or the public plus gateway listener,
-   each from `.env`, and the composition recorded by `adopt`.
+   each from `.env`, and the composition recorded by `adopt`. It also admits the
+   re-run after an adopted upgrade failed mid-way (the API already recreated from the
+   managed files, the stopped proxy still on the recorded files), and only that split.
+   The same mid-way split after adopting a single legacy overlay (UPG-1's own adoption,
+   which keeps no record) is still refused; that pre-existing UPG-1 gap needs a record
+   like adopt's to be closed safely.
 3. **`tunnex-app-access adopt`** (`deploy/app-access/tunnex-app-access.py`, stdlib
    only, shipped in the API image's host files and installed next to `upgrade.sh`).
    Files-only conversion: it never stops or recreates a container; the next upgrade

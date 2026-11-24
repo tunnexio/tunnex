@@ -95,6 +95,11 @@ esac
         result=self.classify([self.API,self.API.replace('app-access.yml','other.yml')])
         self.assertTrue(result.stdout.startswith('2|0|'))
         self.assertTrue(result.stdout.strip().endswith('|true'))
+    def test_api_and_proxy_file_split_is_reported_not_a_conflict(self):
+        # AA-EN-1: the caller admits only the hash-bound adopted case.
+        result=self.classify([self.API,self.PROXY.replace('app-access.yml','app-access.yml,/owned/demo.yml')])
+        self.assertEqual(result.returncode,0,result.stderr)
+        self.assertTrue(result.stdout.strip().endswith('|/owned/tunnex.yml,/owned/app-access.yml|false'))
     def test_inspection_failure_and_malformed_rows_refuse(self):
         for failure in ['ps','inspect']:
             result=self.classify([self.API],failure)
