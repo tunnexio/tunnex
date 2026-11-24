@@ -15,7 +15,7 @@ import { Link, Navigate, useLocation, useNavigate, useParams, useSearchParams } 
 import AppAccessAccess from "./AppAccessAccess";
 import AppAccessMyApplications from "./AppAccessMyApplications";
 import AppAccessConnection from "../components/AppAccessConnection";
-import AppAccessPublication from "../components/AppAccessPublication";
+import AppAccessPublication, { checkCoversDraft } from "../components/AppAccessPublication";
 import AppAccessSessions from "../components/AppAccessSessions";
 import AppAccessMfaPolicy from "../components/AppAccessMfaPolicy";
 import AppAccessCatalogSettings from "../components/AppAccessCatalogSettings";
@@ -190,7 +190,8 @@ function DraftEditor({ orgId, userId, appId, manage, grant = false, configureDom
       if (cancelled) return;
       if (!availability.ok || !gateways.ok || (app && !app.ok)) { setError(!availability.ok ? availability.error : !gateways.ok ? gateways.error : app && !app.ok ? app.error : "Could not load draft."); return; }
       setSettings(availability.data); setNodes(gateways.data.filter(node => node.enrolled_kind === "gateway"));
-      if (app?.ok) { setSavedApplication(app.data); setReviewCheck(null); setDraft(draftInput(app.data.draft)); setVersion(app.data.version); setSavedGateway(app.data.draft.gateway_id); setCaDigest(app.data.draft.origin_ca_digest ?? ""); setCaMode("preserve"); } else { setSavedApplication(null); setReviewCheck(null); setDraft(blank); setVersion(null); }
+      // A reload (e.g. after publishing) keeps a passing check of the same saved draft; any other check is dropped.
+      if (app?.ok) { const reloaded = app.data; setSavedApplication(reloaded); setReviewCheck(current => checkCoversDraft(current, reloaded) ? current : null); setDraft(draftInput(app.data.draft)); setVersion(app.data.version); setSavedGateway(app.data.draft.gateway_id); setCaDigest(app.data.draft.origin_ca_digest ?? ""); setCaMode("preserve"); } else { setSavedApplication(null); setReviewCheck(null); setDraft(blank); setVersion(null); }
       try { const saved = window.sessionStorage.getItem(storageKey); if (saved) { const value: unknown = JSON.parse(saved); if (value && typeof value === "object" && validOriginRecovery(value) && Object.entries(blank).every(([key, initial]) => typeof (value as Record<string, unknown>)[key] === typeof initial) && ["app", "globe", "dashboard", "terminal"].includes((value as Draft).icon)) setRecovery(value as Draft); } } catch { /* unavailable storage is optional */ }
       setReady(true);
     }); return () => { cancelled = true; };

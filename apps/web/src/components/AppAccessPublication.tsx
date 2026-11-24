@@ -39,6 +39,10 @@ const diagnostics: Record<string, string> = {
   capability_unavailable: "The browser connector capability is no longer current.", origin_check_stale: "Run a fresh saved connection check.",
   publication_changed: "The active publication changed. Refresh before continuing.", proxy_unavailable: "The application proxy is unavailable.",
 };
+/** A successful check of exactly this app's saved draft (freshness is judged separately). */
+export function checkCoversDraft(check: Check | null | undefined, application: Pick<Application, "id" | "draft">): boolean {
+  return check?.status === "succeeded" && check.app_id === application.id && check.revision === application.draft.revision && check.digest === application.draft.digest;
+}
 function recoverInput(key: string): Input | null {
   try {
     const value = JSON.parse(window.sessionStorage.getItem(key) ?? "null") as Partial<Input> | null;
@@ -121,7 +125,7 @@ export default function AppAccessPublication({ orgId, userId, application, check
     }, 1000);
     return () => { cancelled = true; window.clearTimeout(timer); };
   }, [orgId, appId, operation, view, error, onChanged]);
-  const checkMatches = check?.status === "succeeded" && check.app_id === appId && check.revision === application.draft.revision && check.digest === application.draft.digest;
+  const checkMatches = checkCoversDraft(check, application);
   const checkFresh = !!check?.completed_at && Number.isFinite(Date.parse(check.completed_at)) && Date.parse(check.completed_at) + 5 * 60_000 > checkTime;
   const canRequest = canManage && canPublish && !dirty && !error && !reading && view?.application_version === application.version && !!view && view.browser_capability === "supported" && checkMatches && checkFresh && !pending(view.pending_operation) && !intent;
 
@@ -195,6 +199,9 @@ export default function AppAccessPublication({ orgId, userId, application, check
   const originReady = checkMatches && checkFresh;
   const connectorLabel = { supported: "Available", unknown: "No report", unsupported: "Upgrade required", unavailable: "Report expired" };
   const withdrawalPending = active?.state === "disabled" && !active.withdrawal_confirmed;
+  // The live publication already serves this exact draft: there is nothing to publish, so
+  // pre-publish requirements (and a disabled Publish button) would only read as broken.
+  const publishedCurrent = !error && !dirty && !intent && !pending(pendingOperation) && active?.state === "active" && active.revision === application.draft.revision && active.digest === application.draft.digest;
   return <section className="aa-publication" aria-label="Publication review"><ResourceSummary title="Review & publish" headingLevel={2} className="aa-publication-stage" footer={footer}><div className="aa-publication-content">
     {notice}
     <div className="aa-publication-live">
@@ -219,7 +226,10 @@ export default function AppAccessPublication({ orgId, userId, application, check
     </section>
     {error && <ErrorText>{error}</ErrorText>}
     {!view && !error ? <Loading /> : view && <>
-      <div className="aa-publication-readiness">
+      {publishedCurrent ? <div className="aa-publication-readiness">
+        <div className="aa-publication-block-heading"><h3>Published — no unpublished changes</h3><span className="aa-publication-ready">Up to date</span></div>
+        <p role="status">Revision {application.draft.revision} is live. Edit the application to publish changes.</p>
+      </div> : <div className="aa-publication-readiness">
         <div className="aa-publication-block-heading"><h3>Before publishing</h3><span className={canRequest ? "aa-publication-ready" : ""}>{reading ? "Refreshing…" : intent ? "Request unresolved" : pending(pendingOperation) ? "Publishing…" : canRequest ? "Ready" : canManage ? "Needs attention" : "View only"}</span></div>
         <ul aria-label="Publish requirements">
           {!canPublish && canManage && <li><span>App Access setup</span><span className="aa-publication-blocker">{publishUnavailableReason || "Complete App Access setup"}</span></li>}
@@ -227,7 +237,7 @@ export default function AppAccessPublication({ orgId, userId, application, check
           <li><span>Gateway connector</span><span className={view.browser_capability === "supported" ? "" : "aa-publication-blocker"} title={capabilityText[view.browser_capability]}>{connectorLabel[view.browser_capability]}</span>{view.browser_capability !== "supported" && <Link to={connectionLink}>Connection</Link>}</li>
           <li><span>Origin check</span><span className={originReady ? "" : "aa-publication-blocker"}>{originReady ? "Passed" : checkMatches ? "Expired" : "Required"}</span>{!originReady && <Link to={connectionLink}>Check the saved connection</Link>}</li>
         </ul>
-      </div>
+      </div>}
       {operation && <div className="aa-publication-request">
         <div className="aa-publication-block-heading"><h3>Latest publication request</h3><Badge tone={operation.status === "failed" || operation.status === "expired" ? "danger" : pending(operation) ? "warn" : "neutral"}>{operation.status}</Badge></div>
         <p role="status">{operationText[operation.status]}</p>
@@ -237,7 +247,7 @@ export default function AppAccessPublication({ orgId, userId, application, check
       </div>}
       <ErrorText>{actionError}</ErrorText>
       {intent && <div className="aa-publication-recovery"><p role="status">A previous publication request is retained until its outcome is confirmed.</p><div><Button variant="ghost" disabled={busy} onClick={() => setRefresh(value => value + 1)}>Read request outcome</Button>{!pending(operation) && canManage && <Button disabled={busy} onClick={() => void submit(intent)}>Retry the same publication request</Button>}</div></div>}
-      {canManage && <div className="aa-publication-actions">
+      {canManage && !publishedCurrent && <div className="aa-publication-actions">
         <p>{canRequest ? "Browser access starts after the final checks pass." : pending(pendingOperation) ? "Readiness checks are in progress." : intent ? "Confirm the previous request before publishing again." : "Resolve the requirements above to publish."}</p>
         <Button disabled={!canRequest || busy} onClick={() => { if (!checkMatches || !check) return; setConfirmation({ kind: "publish", input: { expected_version: application.version, revision: application.draft.revision, digest: application.draft.digest, check_id: check.id, idempotency_key: crypto.randomUUID() } }); }}>Publish application<Icon name="chevron-right" size={16} /></Button>
         {pending(pendingOperation) && pendingOperation && <Button variant="ghost" disabled={busy || reading || !!error} onClick={() => setConfirmation({ kind: "cancel", id: pendingOperation.id, version: pendingOperation.version })}>Cancel pending publication</Button>}

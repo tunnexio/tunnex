@@ -47,7 +47,9 @@ export default function AppAccessConnection({ orgId, appId, gatewayId, version, 
     return () => { cancelled = true; };
   }, [orgId, gatewayId, refresh]);
   useEffect(() => { setCheck(null); }, [orgId, appId, gatewayId, version]);
-  useEffect(() => { onCheck?.(check); }, [check, onCheck]);
+  // Only report checks this view actually ran: mounting with no result must not erase a
+  // passing check the review step still relies on (the parent drops checks on save).
+  useEffect(() => { if (check) onCheck?.(check); }, [check, onCheck]);
   useEffect(() => {
     if (!check || (check.status !== "queued" && check.status !== "running")) return;
     let cancelled = false;
