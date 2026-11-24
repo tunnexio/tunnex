@@ -32,8 +32,11 @@ named pre-upgrade backup with the installed `app-access-restore.py` (this file's
 `pg_restore` or a down migration.
 
 Installations whose installed `upgrade.sh` predates this change refuse before
-they can update themselves. Replace that script once with the copy from the
-verified target release's source SHA. The same-schema `upgrade.py` below remains
+they can update themselves. Replace it once with the copy from the verified
+target release's source SHA. Replace both copies the host can run:
+`<install>/upgrade.sh` for the manual command, and the root-owned
+`/usr/local/lib/tunnex/upgrade.sh` (mode 0755) that the dashboard upgrade runner
+executes. The same-schema `upgrade.py` below remains
 a manual image-replacement tool. Enabling infrastructure does not grant entitlement,
 opt in an organization, publish an application, or create a browser session.
 

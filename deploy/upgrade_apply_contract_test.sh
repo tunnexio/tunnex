@@ -602,8 +602,8 @@ TUNNEX_APP_PROXY_SECRETS_DIR=/srv/tunnex/app-proxy
 ENV
   printf '%s\n' api proxy >"$aa_dir/containers/ids"
   aa_files="$aa_dir/tunnex.yml,$aa_dir/legacy-app-access.yml"
-  printf 'aa|%s|api|volume:aa_app_restore;|||%s|\n' "$aa_dir" "$aa_files" >"$aa_dir/containers/api"
-  printf 'aa|%s|app-proxy|volume:aa_app_restore;|/srv/tunnex/app-proxy;|8443/tcp=127.0.0.1:443;|%s|\n' "$aa_dir" "$aa_files" >"$aa_dir/containers/proxy"
+  printf 'aa|%s|api|volume:aa_app_restore;|||%s|False\n' "$aa_dir" "$aa_files" >"$aa_dir/containers/api"
+  printf 'aa|%s|app-proxy|volume:aa_app_restore;|/srv/tunnex/app-proxy;|8443/tcp=127.0.0.1:443;|%s|False\n' "$aa_dir" "$aa_files" >"$aa_dir/containers/proxy"
 }
 run_aa_upgrade() (
   cd "$aa_dir"
@@ -662,10 +662,13 @@ grep -F -- '--no-deps app-proxy' "$aa_dir/docker.log.profiles" | grep -Fq 'bundl
 grep -F 'pull' "$aa_dir/docker.log.profiles" | grep -Fq 'bundled-db,app-access|'
 ! grep -Fq 'legacy-app-access.yml' "$aa_dir/docker.log"
 
-# A second run on the now-managed layout is the same single command.
+# A second run on the now-managed layout is the same single command, even with
+# a leftover one-off helper container (Compose oneoff=True) in the project.
 aa_files="$aa_dir/tunnex.yml,$aa_dir/app-access.yml"
-printf 'aa|%s|api|volume:aa_app_restore;|||%s|\n' "$aa_dir" "$aa_files" >"$aa_dir/containers/api"
-printf 'aa|%s|app-proxy|volume:aa_app_restore;|/srv/tunnex/app-proxy;|8443/tcp=127.0.0.1:443;|%s|\n' "$aa_dir" "$aa_files" >"$aa_dir/containers/proxy"
+printf 'aa|%s|api|volume:aa_app_restore;|||%s|False\n' "$aa_dir" "$aa_files" >"$aa_dir/containers/api"
+printf 'aa|%s|app-proxy|volume:aa_app_restore;|/srv/tunnex/app-proxy;|8443/tcp=127.0.0.1:443;|%s|False\n' "$aa_dir" "$aa_files" >"$aa_dir/containers/proxy"
+sed 's/|False$/|True/' "$aa_dir/containers/api" >"$aa_dir/containers/helper"
+printf '%s\n' helper >>"$aa_dir/containers/ids"
 rm -f "$aa_dir/containers/preflight-count" "$aa_dir/docker.log"
 run_aa_upgrade --apply >"$aa_dir/output" 2>&1 || { cat "$aa_dir/output"; exit 1; }
 grep -Fxq 'state=healthy' "$aa_dir/status"
@@ -714,6 +717,8 @@ grep -Fxq 'reason_code=app_access_authority_changed' "$aa_dir/status"
 grep -Fq 'app-access-restore.py' "$aa_dir/output"
 grep -Fq "$(sed -n 's/^backup_dump=//p' "$aa_dir/status")" "$aa_dir/output"
 grep -Fq 'raw pg_restore' "$aa_dir/output"
+grep -Fq 'Do not re-run this upgrade' "$aa_dir/output"
+! grep -Fq 'safe to repeat' "$aa_dir/output"
 
 # Identity drift is refused, never "fixed": barrier volume, proxy secrets,
 # published port, HA participants, proxy without barrier, unknown layouts,

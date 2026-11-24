@@ -105,6 +105,7 @@ AA_PROFILE_ON=false
 AA_PROJECT=
 AA_PROXY_PIN=
 AA_MUTATION_STARTED=false
+AA_AUTHORITY_CHANGED=false
 aa_refuse() {
   echo "error: upgrade blocked; App Access $*. Nothing was changed." >&2
   exit 13
@@ -263,7 +264,13 @@ aa_rollback_guidance() {
   _aa_compose_files="--compose-file $COMPOSE --compose-file $AA_OVERLAY"
   {
     echo 'App Access: the public app proxy was left stopped. The database may already be migrated forward.'
-    echo '  Preferred: fix the reported cause and run this upgrade again (it is safe to repeat).'
+    if [ "$AA_AUTHORITY_CHANGED" = true ]; then
+      echo '  Installation authority changed or a restore marker appeared during the upgrade: a restore or recovery'
+      echo '  may have run concurrently. Do not re-run this upgrade or start the proxy. Inspect the restore marker and'
+      echo '  complete the App Access restore runbook (fresh proxy credential, logins and republish) first.'
+    else
+      echo '  Preferred: fix the reported cause and run this upgrade again (it is safe to repeat).'
+    fi
     echo '  To return to the previous release instead, restore the verified pre-upgrade backup with the App Access'
     echo '  restore runner. It performs fresh-authority recovery: users sign in again, the proxy credential is'
     echo '  reprovisioned and applications are rechecked and republished. Review the dry run, then add --apply:'
@@ -460,7 +467,7 @@ echo "  $compose_prefix --env-file $ENV_FILE -f $COMPOSE exec -T -e TUNNEX_PREFL
 if [ "$AA_PRESENT" = true ]; then
   AA_BEFORE=$(aa_authority "$TMPDIR/app-access-compose.yml") || {
     write_status failed app_access_admission_failed
-    aa_refuse 'authority preflight refused: a restore marker is pending, the schema is dirty or not this release, or installation authority is incomplete. Finish or inspect the restore with app-access-restore.py'
+    aa_refuse 'authority preflight refused: a restore marker is pending, the schema is dirty or not this release, or installation authority is incomplete. Finish or inspect the restore with the App Access restore runner (deploy/app-access/restore.py of the installed release)'
   }
 fi
 BACKUP_DIR=${TUNNEX_UPGRADE_BACKUP_DIR:-$DIR/backups}
@@ -837,6 +844,7 @@ if [ "$AA_PRESENT" = true ]; then
   # binary: clean schema at its ceiling and the very same completed authority.
   AA_AFTER=$(aa_authority "$AA_OVERLAY") || AA_AFTER=
   if [ -z "$AA_AFTER" ] || [ "${AA_AFTER% *}" != "${AA_BEFORE% *}" ]; then
+    AA_AUTHORITY_CHANGED=true
     write_status failed app_access_authority_changed
     echo 'error: upgrade stopped; App Access authority readback after migration did not match the pre-upgrade authority (or a restore marker appeared).' >&2
     exit 13
