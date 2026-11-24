@@ -88,6 +88,10 @@ device, the same effect the walk already accepts for Flannel. Item 10 is of a di
    other NAT chain is refused, never proved. No captured node has one on that path. The
    Service-endpoint scenario is **Assumption A1** in K8N-1, "After the review", with the
    options; it needs a ruling. Still owed: the live capture.
+   Follow-up `test(k8s): refuse NAT marks on every reserved bit (K8N review 4)`: rows for the
+   portmap (`0x2000`) and drop (`0x8000`) bits on both paths (`mark | 0x2000`, `mark | 0x8000`,
+   `--set-xmark 0x8000/0x8000`, `--set-xmark 0x8000/0x0`) and `ip saddr set` behind a pod-source
+   condition. Checked by narrowing the reserved bits to `0x4000`: those rows then fail.
 
 5. **Medium, predates this branch — legacy iptables is invisible.** A node whose CNI or kube-proxy
    writes with `iptables-legacy` shows nothing in `nft`, so it is ready with no walk. The manager's
