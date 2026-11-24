@@ -2,7 +2,7 @@ import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import type { components } from "@tunnex/shared";
-import AppAccessPublication from "../src/components/AppAccessPublication";
+import AppAccessPublication, { checkCoversDraft } from "../src/components/AppAccessPublication";
 import { api } from "../src/lib/api";
 
 type Publication = components["schemas"]["AppAccessPublicationState"];
@@ -268,4 +268,37 @@ it("keeps current publication and request readiness separately labelled", async 
   await openPublicationDisclosure("Connection diagnostics");
   expect(screen.getByRole("list", { name: "Publication readiness results" })).toBeTruthy();
   expect(screen.getByText("The previous active revision stays available.")).toBeTruthy();
+});
+
+it("shows a published draft as published, not as unmet pre-publish requirements", async () => {
+  f.view = { ...f.view, active: { ...active(), revision: application.draft.revision, digest: application.draft.digest, hostname: application.draft.public_hostname } };
+  render(<MemoryRouter><AppAccessPublication {...props} check={null} /></MemoryRouter>);
+  expect(await screen.findByText("Published — no unpublished changes")).toBeTruthy();
+  expect(screen.getByText(`Revision ${application.draft.revision} is live. Edit the application to publish changes.`)).toBeTruthy();
+  expect(screen.queryByText("Before publishing")).toBeNull();
+  expect(screen.queryByText("Needs attention")).toBeNull();
+  expect(screen.queryByRole("link", { name: "Check the saved connection" })).toBeNull();
+  expect(screen.queryByText("Resolve the requirements above to publish.")).toBeNull();
+  expect(screen.queryByRole("button", { name: "Publish application" })).toBeNull();
+});
+
+it("keeps pre-publish requirements when the draft differs from the live revision or is edited", async () => {
+  f.view = { ...f.view, active: active() };
+  const page = render(<MemoryRouter><AppAccessPublication {...props} check={null} /></MemoryRouter>);
+  expect(await screen.findByText("Before publishing")).toBeTruthy();
+  expect(screen.queryByText("Published — no unpublished changes")).toBeNull();
+  f.view = { ...f.view, active: { ...active(), revision: application.draft.revision, digest: application.draft.digest } };
+  page.rerender(<MemoryRouter><AppAccessPublication {...props} check={null} dirty /></MemoryRouter>);
+  fireEvent.click(screen.getByRole("button", { name: "Refresh publication status" }));
+  await waitFor(() => expect(screen.getByText("Before publishing")).toBeTruthy());
+  expect(screen.queryByText("Published — no unpublished changes")).toBeNull();
+});
+
+it("a check stays valid across a reload only for the same app, revision and digest", () => {
+  expect(checkCoversDraft(check, application)).toBe(true);
+  expect(checkCoversDraft({ ...check, revision: 7 }, application)).toBe(false);
+  expect(checkCoversDraft({ ...check, digest: "c".repeat(64) }, application)).toBe(false);
+  expect(checkCoversDraft({ ...check, app_id: "other" }, application)).toBe(false);
+  expect(checkCoversDraft({ ...check, status: "failed" }, application)).toBe(false);
+  expect(checkCoversDraft(null, application)).toBe(false);
 });
