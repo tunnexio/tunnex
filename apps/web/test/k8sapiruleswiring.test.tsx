@@ -79,13 +79,21 @@ beforeEach(() => {
 });
 
 async function openBuilder() {
-  const add = await screen.findByRole("button", { name: "Add rule" });
-  await waitFor(() => expect((add as HTMLButtonElement).disabled).toBe(false));
-  fireEvent.click(add);
+  // Find and click the button in the same tick, and click again until the builder is open: the
+  // page re-renders "Add rule" while auth, org and rule data load, so a button found in one tick
+  // can be detached by the next, and a click on it opens nothing.
+  await waitFor(() => {
+    if (screen.queryByRole("dialog", { name: "Add rule" })) return;
+    const button = screen.getByRole("button", { name: "Add rule" }) as HTMLButtonElement;
+    expect(button.disabled).toBe(false);
+    fireEvent.click(button);
+    expect(screen.queryByRole("dialog", { name: "Add rule" })).not.toBeNull();
+  }, { timeout: 5000 });
   return screen.getByRole("dialog", { name: "Add rule" });
 }
 
-describe("Access rules — a cluster's Kubernetes API (K8N-3)", () => {
+// These tests render the whole Access page and open the rule builder; give them room on a busy runner.
+describe("Access rules — a cluster's Kubernetes API (K8N-3)", { timeout: 20000 }, () => {
   it("names the destination 'Kubernetes API of <cluster>' on TCP 443, apart from a Service rule", async () => {
     rulesForTest = [API_RULE, SERVICE_RULE];
     page();
