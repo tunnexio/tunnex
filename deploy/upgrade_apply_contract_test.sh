@@ -666,6 +666,8 @@ grep -Fxq 'TUNNEX_APP_PROXY_IMAGE=ghcr.io/tunnexio/tunnex-app-proxy@sha256:fffff
 grep -Fxq 'COMPOSE_PROFILES=bundled-db,app-access' "$aa_dir/.env"
 cmp -s "$ROOT/deploy/app-access/compose.yml" "$aa_dir/app-access.yml"
 cmp -s "$ROOT/deploy/app-access/restore.py" "$aa_dir/app-access-restore.py"
+cmp -s "$ROOT/deploy/app-access/tunnex-app-access.py" "$aa_dir/tunnex-app-access"
+[ -x "$aa_dir/tunnex-app-access" ]
 grep -Fxq "TUNNEX_APP_ACCESS_COMPOSE_SHA256=$(shasum -a 256 "$aa_dir/app-access.yml" | awk '{print $1}')" "$aa_dir/.env"
 cmp -s "$aa_dir/legacy-app-access.yml.before" "$aa_dir/legacy-app-access.yml"
 grep -Fxq 'TUNNEX_APP_ACCESS_BASE_DOMAIN=apps.example.test' "$aa_dir/.env"

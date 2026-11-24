@@ -289,7 +289,7 @@ write_status() {
 #   dir:  <handoff>/release.json (verified bytes), <handoff>/host/ (image files)
 HOST_ABI=1
 HOST_IMAGE_DIR=/usr/share/tunnex/host
-HOST_FILE_LIST='upgrade.sh upgrade-runner.sh tunnex.yml ai-bootstrap.sh ai-gateway/config-managed.json app-access/compose.yml app-access/restore.py'
+HOST_FILE_LIST='upgrade.sh upgrade-runner.sh tunnex.yml ai-bootstrap.sh ai-gateway/config-managed.json app-access/compose.yml app-access/restore.py app-access/tunnex-app-access.py'
 HANDOFF=${TUNNEX_UPGRADE_HANDOFF:-}
 HOST_FILES=
 handoff_refuse() {
@@ -665,7 +665,7 @@ if [ "$AA_PRESENT" = true ]; then
     write_status failed app_access_admission_failed
     aa_refuse 'requires a target release with a signed App Access proxy image (verified with -require-app-proxy)'
   }
-  for _aa_asset in compose.yml restore.py; do
+  for _aa_asset in compose.yml restore.py tunnex-app-access.py; do
     cp "$HOST_FILES/app-access/${_aa_asset}" "$TMPDIR/app-access-${_aa_asset}" || {
       write_status failed app_access_admission_failed
       echo 'error: the App Access composition of the signed release is missing from its host files' >&2; exit 13;
@@ -1021,7 +1021,10 @@ if [ "$AA_PRESENT" = true ]; then
   # identity (barrier volume, secrets, port, project) was verified above.
   mv "$TMPDIR/app-access-compose.yml" "$AA_OVERLAY"
   mv "$TMPDIR/app-access-restore.py" "$DIR/app-access-restore.py"
+  # AA-EN-1: the host command (renew; adopt is run from the extracted release).
+  mv "$TMPDIR/app-access-tunnex-app-access.py" "$DIR/tunnex-app-access"
   chmod 0644 "$AA_OVERLAY" "$DIR/app-access-restore.py"
+  chmod 0755 "$DIR/tunnex-app-access"
   set_dotenv TUNNEX_APP_ACCESS_COMPOSE_SHA256 "$(file_sha256 "$AA_OVERLAY")"
   AA_COMPOSE_ACTIVE=true
   AA_PROFILE_ON=$AA_PROXY
