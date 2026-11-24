@@ -1749,8 +1749,11 @@ func deriveMemberLiveness(configured []uuid.UUID, pubkey map[uuid.UUID]string, r
 	type rxFold struct {
 		progress, stalled bool
 		silent            time.Duration // shortest silence any witness with evidence reports
+		stalledWitnesses  []uuid.UUID   // SSI-12 D7: the witnesses whose counter for this peer froze
 	}
 	rx := map[string]rxFold{}
+	// SSI-12 D7: hears[node][pubkey] — a CURRENT gateway's own row shows receive progress from that peer.
+	hears := map[uuid.UUID]map[string]bool{}
 	for _, r := range rows {
 		// A witness testifies only while it is itself reporting, and only about a link that has been up at
 		// least once (a never-handshaked peer has a counter that never moves and means nothing).
@@ -1764,8 +1767,13 @@ func deriveMemberLiveness(configured []uuid.UUID, pubkey map[uuid.UUID]string, r
 		}
 		if int(r.StalledReports) >= rxStallReports && silent >= rxStallWindow {
 			f.stalled = true
+			f.stalledWitnesses = append(f.stalledWitnesses, r.NodeID)
 		} else {
 			f.progress = true
+			if hears[r.NodeID] == nil {
+				hears[r.NodeID] = map[string]bool{}
+			}
+			hears[r.NodeID][r.PublicKey] = true
 		}
 		rx[r.PublicKey] = f
 	}
@@ -1781,7 +1789,7 @@ func deriveMemberLiveness(configured []uuid.UUID, pubkey map[uuid.UUID]string, r
 			// directions: progress seen by ANY witness is life (a 200s-old handshake on a link still
 			// passing keepalives is healthy); a counter frozen for EVERY witness is death, long before the
 			// handshake could say so.
-			if f, has := rx[pubkey[id]]; has {
+			if f, has := rx[pubkey[id]]; has && !silentNotDead(f.progress, f.stalledWitnesses, hears[id], pubkey) {
 				ml.Silent = f.silent
 				ml.Fresh = f.progress
 			}
@@ -1789,6 +1797,26 @@ func deriveMemberLiveness(configured []uuid.UUID, pubkey map[uuid.UUID]string, r
 		out[id] = ml
 	}
 	return out
+}
+
+// silentNotDead is SSI-12 D7 (docs/SSI-12-decisions.md): a frozen counter at a witness is NOT evidence of
+// death when the member is itself reporting and its own row shows that same witness's traffic arriving.
+// WireGuard resets a peer's persistent-keepalive timer on every packet it RECEIVES, so when one side's
+// keepalives keep arriving the other side legitimately sends nothing between rekeys. With both sides on
+// siteLinkKeepaliveSecs, whichever timer fires first keeps the other silent: the witness then sees the hub's
+// counter frozen although the hub is alive. In that case the receive evidence is set aside and the handshake
+// rule decides: the rekey every ~120 s needs the hub to answer, so a hub that cannot send still goes stale,
+// only at the handshake pace. A dead hub stops reporting (no current row of its own) and keeps the fast path.
+func silentNotDead(progress bool, stalledWitnesses []uuid.UUID, memberHears map[string]bool, pubkey map[uuid.UUID]string) bool {
+	if progress || len(memberHears) == 0 {
+		return false
+	}
+	for _, w := range stalledWitnesses {
+		if k := pubkey[w]; k != "" && memberHears[k] {
+			return true
+		}
+	}
+	return false
 }
 
 // idsToStrings renders a node-id slice for audit metadata (stable, ordered).

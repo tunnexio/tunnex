@@ -101,3 +101,59 @@ func TestWitnessRowsDropsGatewaysThatNoLongerPeer(t *testing.T) {
 		t.Fatalf("with no bound gateway there is no witness, got %+v", left)
 	}
 }
+
+// SSI-12 D7: WireGuard resets a peer's persistent-keepalive timer on every packet it receives, so a hub
+// whose witness keeps the link warm sends nothing between rekeys. Its witness's counter freezes although
+// the hub is alive. Seen live 2026-11-24: two gateways flapped "site link down" every minute.
+func TestDeriveMemberLivenessSilentHubIsNotDead(t *testing.T) {
+	now := time.Date(2026, 11, 24, 7, 0, 0, 0, time.UTC)
+	hub, wit, other := uuid.New(), uuid.New(), uuid.New()
+	keys := map[uuid.UUID]string{hub: "hub-key", wit: "witness-key", other: "other-key"}
+	ts := func(ago time.Duration) pgtype.Timestamptz {
+		return pgtype.Timestamptz{Time: now.Add(-ago), Valid: true}
+	}
+	// reporter's row about peer: handshake age, reporter's last report age, receive-progress age, stalled count
+	row := func(reporter uuid.UUID, peer string, handshakeAgo, reportedAgo, rxAgo time.Duration, stalled int32) sqlc.NodePeerStatus {
+		return sqlc.NodePeerStatus{NodeID: reporter, PublicKey: peer, LastHandshakeAt: ts(handshakeAgo),
+			UpdatedAt: now.Add(-reportedAgo), RxAdvancedAt: ts(rxAgo), StalledReports: stalled}
+	}
+	derive := func(rows ...sqlc.NodePeerStatus) MemberLiveness {
+		return deriveMemberLiveness([]uuid.UUID{hub}, keys, rows, nil, now)[hub]
+	}
+	witnessStalled := row(wit, "hub-key", 60*time.Second, 5*time.Second, 50*time.Second, 3)
+
+	t.Run("a hub that hears its witness is judged by the handshake, not the frozen counter", func(t *testing.T) {
+		got := derive(witnessStalled, row(hub, "witness-key", 60*time.Second, 5*time.Second, 6*time.Second, 0))
+		if !got.Observed || !got.Fresh {
+			t.Fatalf("a silent but living hub must stay fresh, got %+v", got)
+		}
+		if got.Silent != 60*time.Second {
+			t.Fatalf("silent = %v, want the handshake age 60s it now rests on", got.Silent)
+		}
+	})
+	t.Run("a silent hub that cannot answer rekeys still goes stale by the handshake", func(t *testing.T) {
+		stalledOld := row(wit, "hub-key", 300*time.Second, 5*time.Second, 280*time.Second, 9)
+		got := derive(stalledOld, row(hub, "witness-key", 300*time.Second, 5*time.Second, 6*time.Second, 0))
+		if got.Fresh {
+			t.Fatalf("a hub whose handshake is past the window must be stale, got %+v", got)
+		}
+	})
+	t.Run("a hub that stopped reporting keeps the fast verdict", func(t *testing.T) {
+		got := derive(witnessStalled, row(hub, "witness-key", 60*time.Second, 300*time.Second, 300*time.Second, 0))
+		if got.Fresh {
+			t.Fatalf("a dead hub's old row must not excuse its frozen counter, got %+v", got)
+		}
+	})
+	t.Run("a hub whose own counter for the witness froze keeps the fast verdict", func(t *testing.T) {
+		got := derive(witnessStalled, row(hub, "witness-key", 60*time.Second, 5*time.Second, 50*time.Second, 3))
+		if got.Fresh {
+			t.Fatalf("both directions frozen is a dead link, got %+v", got)
+		}
+	})
+	t.Run("hearing a different gateway does not excuse this witness's frozen counter", func(t *testing.T) {
+		got := derive(witnessStalled, row(hub, "other-key", 60*time.Second, 5*time.Second, 6*time.Second, 0))
+		if got.Fresh {
+			t.Fatalf("only the stalled witness's own traffic explains its silence, got %+v", got)
+		}
+	})
+}

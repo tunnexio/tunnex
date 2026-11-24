@@ -60,6 +60,31 @@ already exists on the gateway. At the default, detection is roughly 70 to 100 s;
 observing gateways it is roughly 40 to 60 s. The default is not changed here: every report writes one
 row per connected device, and tripling that for every fleet is a capacity decision of its own.
 
+**D7. A silent hub is not a dead hub (added 2026-11-24, after a live flap).** WireGuard resets a
+peer's persistent-keepalive timer on every packet it *receives*. With both ends of a site link on the
+same 10 s keepalive (D3), whichever timer fires first keeps the other end silent between rekeys. The
+measurement behind D2 was taken at 25 s, where that did not show. On the demo, with `gcp-gw` (VM) and
+`onprem-gw-a` (Kubernetes, primary hub), `gcp-gw`'s keepalives reached the hub every few seconds and the
+hub sent only handshake responses: hub tx 824 bytes = witness rx 824 bytes, nothing lost. The witness
+saw the hub's counter frozen, D2 called the hub stale, and both gateways showed "site link down",
+flipping back to healthy at each rekey, about once a minute. With a standby this would demote a living
+hub.
+
+Rule: when every current witness's counter for a member has frozen, but the member is itself reporting
+(its row is current) and its own row shows receive progress from one of those stalled witnesses, the
+receive evidence is set aside and the handshake rule decides (`failoverStaleWindow`). A rekey every
+~120 s needs the member to answer, so:
+
+- a dead hub stops reporting → no current row of its own → the fast verdict stands;
+- a hub whose own counter for the witness also froze → the fast verdict stands;
+- a hub that receives but cannot send → its handshake ages past the window → stale, at the handshake
+  pace instead of the fast one. This is the price of the rule and the reason it is narrow;
+- a hub that hears some other gateway but not the stalled witness → the fast verdict stands.
+
+Not chosen: different keepalive intervals for hubs and spokes (a spoke behind NAT would depend on
+inbound packets to keep its mapping), or an extra probe packet from the agent (new agent behaviour for a
+control-plane reading error). Test: `TestDeriveMemberLivenessSilentHubIsNotDead`.
+
 ## What this does not do
 
 - It does not detect a hub that still answers keepalives but no longer forwards. Neither did the
