@@ -111,6 +111,12 @@ device, the same effect the walk already accepts for Flannel. Item 10 is of a di
    chain). The manager may see the socket and pinned maps and publish a Cilium section the gateway
    never asks for. Fix: require the Cilium proof when either side saw a trace. GKE `anetd` and other
    eBPF dataplanes without those names are not covered by anything here.
+   **Fixed** — `fix(k8s): decide Cilium on the receipt's section alone (K8N review 6)`. With a
+   facts source the gateway reads the `cilium` section on every observation and runs the
+   Cilium decision when it is present, whatever it saw itself. Tests:
+   `TestGatewayRunsTheCiliumDecisionOnAReceiptSectionAlone`, `TestCiliumGuardWithoutCilium`
+   (changed: the source is now asked). GKE `anetd` and other unnamed eBPF dataplanes: still
+   not covered. See K8N-2, "A `cilium` section in the receipt makes a Cilium node".
 
 7. **Low — set identity is not bound.** A set renamed or recreated between the rule save and the
    member read yields safe members for a name the rule no longer uses. Needs NET_ADMIN on the host.

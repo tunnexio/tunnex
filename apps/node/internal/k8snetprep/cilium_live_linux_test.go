@@ -284,15 +284,17 @@ func TestCiliumGuardDetectsDevicesWithoutChains(t *testing.T) {
 	}
 }
 
-// A node with no Cilium signal is unaffected: it reports no cilium_masquerade
-// adapter and its facts source is never asked. A node whose devices cannot be
-// listed is not assumed free of Cilium.
+// A node with no Cilium signal on either side is unaffected: it reports no
+// cilium_masquerade adapter. Its facts source is asked once per reconcile
+// (K8N review, finding 6: the manager may have seen Cilium where the gateway
+// cannot) and has no section for it. A node whose devices cannot be listed
+// is not assumed free of Cilium.
 func TestCiliumGuardWithoutCilium(t *testing.T) {
 	f, r := liveFlannelKernel(t)
 	calls := 0
 	r.UseCiliumFacts(func(context.Context) (*CiliumFacts, error) {
 		calls++
-		return nil, errors.New("must not be asked on a node without Cilium")
+		return nil, nil
 	})
 	r.listLinks = func() ([]string, error) { return []string{"lo", "eth0", "flannel.1", "cni0", "wg0"}, nil }
 	status, err := r.Reconcile(t.Context(), "100.96.0.0/24")
@@ -304,12 +306,12 @@ func TestCiliumGuardWithoutCilium(t *testing.T) {
 			t.Fatalf("a node without Cilium reports %+v", adapter)
 		}
 	}
-	if len(f.mutations) != 0 || calls != 0 {
+	if len(f.mutations) != 0 || calls != 1 {
 		t.Fatalf("mutations: %v, facts taken %d times", f.mutations, calls)
 	}
 	// Names that merely contain the word are not Cilium's.
 	r.listLinks = func() ([]string, error) { return []string{"lo", "mycilium_0", "Cilium_host"}, nil }
-	if _, err := r.Reconcile(t.Context(), "100.96.0.0/24"); err != nil || calls != 0 {
+	if _, err := r.Reconcile(t.Context(), "100.96.0.0/24"); err != nil || calls != 2 {
 		t.Fatalf("unrelated device names refused: %v", err)
 	}
 	for name, list := range map[string]func() ([]string, error){
@@ -390,5 +392,48 @@ func TestCiliumLiveIPTablesNodeRefusals(t *testing.T) {
 		if err := walk("100.96.0.0/24", egress); err == nil || !strings.Contains(err.Error(), "CILIUM_POST_nat") {
 			t.Errorf("egress %q: %v", egress, err)
 		}
+	}
+}
+
+// Review finding 6. The gateway sees neither a cilium_ device nor a CILIUM_
+// chain (Cilium told to install no rules, devices it does not name so), but
+// the manager saw the agent's socket and pinned maps and published a `cilium`
+// section. Before the fix the gateway never asked and the node was ready on
+// the rule walk alone; now the section is decided as on any Cilium node.
+func TestGatewayRunsTheCiliumDecisionOnAReceiptSectionAlone(t *testing.T) {
+	const tunnel = "100.96.0.0/24"
+	noTrace := func() ([]string, error) { return []string{"lo", "eth0", "wg0"}, nil }
+
+	f, r := liveFlannelKernel(t)
+	r.listLinks = noTrace
+	r.UseCiliumFacts(constantCiliumFacts(ciliumFactsA(t), nil))
+	status, err := r.Reconcile(t.Context(), tunnel)
+	wantCiliumRefusal(t, "A section, no trace", f, status, err, ciliumWantEnable)
+
+	_, r = liveFlannelKernel(t)
+	r.listLinks = noTrace
+	r.UseCiliumFacts(constantCiliumFacts(ciliumFactsB(t), nil))
+	status, err = r.Reconcile(t.Context(), tunnel)
+	if err != nil || len(status.Adapters) < 2 || status.Adapters[1].Name != CiliumAdapterName || status.Adapters[1].State != StateReady {
+		t.Fatalf("B section, no trace: %+v %v", status, err)
+	}
+
+	// A section the manager could not read refuses, naming where Cilium was seen.
+	f, r = liveFlannelKernel(t)
+	r.listLinks = noTrace
+	r.UseCiliumFacts(constantCiliumFacts(UnreadableCiliumFacts("Cilium agent status: dial unix: connection refused"), nil))
+	status, err = r.Reconcile(t.Context(), tunnel)
+	if err == nil || !strings.Contains(err.Error(), "found a cilium section in the host-posture receipt") {
+		t.Fatalf("unreadable section: %+v %v", status, err)
+	}
+
+	// A receipt that cannot be taken: whether the manager saw Cilium is unknown.
+	_, r = liveFlannelKernel(t)
+	r.listLinks = noTrace
+	r.UseCiliumFacts(func(context.Context) (*CiliumFacts, error) {
+		return nil, errors.New("host facts receipt is stale or from the future")
+	})
+	if status, err := r.Reconcile(t.Context(), tunnel); err == nil || err.Error() != "could not tell whether the host-posture manager saw Cilium: host facts receipt is stale or from the future" {
+		t.Fatalf("receipt not taken: %+v %v", status, err)
 	}
 }

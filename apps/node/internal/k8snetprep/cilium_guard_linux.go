@@ -92,12 +92,37 @@ func (r *Reconciler) detectCilium(snapshot *cniSnapshot) (string, error) {
 // it returns nothing. On a node that shows Cilium it returns the ready
 // cilium_masquerade adapter, or the refusal. It reads the manager's facts once
 // and writes nothing.
+//
+// A node shows Cilium when this process sees a trace of it, or when the
+// manager's receipt carries a `cilium` section: the manager sees the agent's
+// socket and pinned maps, which the gateway does not (K8N review, finding 6).
+// With a facts source the receipt is therefore read on every observation, and
+// one that cannot be read refuses the node, Cilium or not.
 func (r *Reconciler) proveCilium(ctx context.Context, snapshot *cniSnapshot, tunnel netip.Prefix) (*ComponentStatus, error) {
 	found, err := r.detectCilium(snapshot)
-	if err != nil || found == "" {
+	if err != nil {
 		return nil, err
 	}
-	reason, err := r.decideCilium(ctx, tunnel)
+	if found == "" && r.ciliumFacts == nil {
+		return nil, nil
+	}
+	var reason string
+	if found == "" {
+		if err := operationContextErr(ctx); err != nil {
+			return nil, err
+		}
+		facts, factsErr := r.ciliumFacts(ctx)
+		if factsErr != nil {
+			return nil, fmt.Errorf("could not tell whether the host-posture manager saw Cilium: %s", bounded(factsErr.Error(), 120))
+		}
+		if facts == nil {
+			return nil, nil
+		}
+		found = "a cilium section in the host-posture receipt"
+		reason, err = decideCiliumMasquerade(facts, tunnel)
+	} else {
+		reason, err = r.decideCilium(ctx, tunnel)
+	}
 	if err != nil {
 		if errors.Is(err, errCiliumNotVerified) {
 			// Say what made this a Cilium node, when there is room for it.
