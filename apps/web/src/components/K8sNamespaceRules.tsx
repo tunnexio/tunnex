@@ -73,13 +73,16 @@ export function K8sNamespaceRulesPanel({
   // settles, then refresh the page's Services so what the rule exposed shows up without a reload.
   const pendingRules = rules?.some((rule) => rule.status === "pending") ?? false;
   const wasPending = useRef(false);
+  // A ref, so a parent re-render (a new onChanged) never restarts the timer.
+  const onChangedRef = useRef(onChanged);
+  onChangedRef.current = onChanged;
   useEffect(() => {
-    if (wasPending.current && !pendingRules && rules) void onChanged();
+    if (wasPending.current && !pendingRules && rules) void onChangedRef.current();
     wasPending.current = pendingRules;
     if (!pendingRules) return;
     const timer = window.setTimeout(() => { void load(); }, 10_000);
     return () => window.clearTimeout(timer);
-  }, [pendingRules, rules, load, onChanged]);
+  }, [pendingRules, rules, load]);
 
   async function changed() {
     await load();
