@@ -21,6 +21,24 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 
+describe("Server Access turned off for the installation (SA-UI-1)", () => {
+  const off = async () => ({ error: { error: { code: "server_access_disabled", message: "Terminal capability is disabled on this installation" } } });
+  it("tells a server administrator why and links to the installation setting", async () => {
+    mock.GET.mockImplementation(off);
+    render(<MemoryRouter><WorkspaceFeatureControl feature="server-access" orgId="org-a" roles={["admin"]} canEdit serverAdmin /></MemoryRouter>);
+    const link = await screen.findByRole("link", { name: "Open Server Access settings" });
+    expect(link.getAttribute("href")).toBe("/settings?section=server-access-installation");
+    expect(screen.getByText(/Turned off for this installation/)).toBeTruthy();
+    expect(screen.queryByRole("switch")).toBeNull();
+  });
+  it("tells other administrators to ask a server administrator, without a link", async () => {
+    mock.GET.mockImplementation(off);
+    render(page("server-access"));
+    expect(await screen.findByText(/Ask a server administrator to turn it on/)).toBeTruthy();
+    expect(screen.queryByRole("link", { name: "Open Server Access settings" })).toBeNull();
+  });
+});
+
 describe("central workspace feature contracts", () => {
   it("changes Server Access with the saved security limits and waits for authoritative readback", async () => {
     let finish!: (value: unknown) => void;
