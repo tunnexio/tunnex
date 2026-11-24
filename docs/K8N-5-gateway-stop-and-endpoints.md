@@ -49,8 +49,14 @@ The paths:
 3. **`EmergencyWithdrawK8s`** (the ownership lease found no fresh baseline). This is not a stop: the
    process goes on. It flushes only `prerouting` (the DNAT rules) and checks the readback. The rest of
    the running table is untouched. Native traffic is unaffected. A separate finding is below.
-4. **Ownership withdraw** (`withdrawalOrder` / `withdrawAll`) re-renders the ordinary table with the
-   non-serving state. It is always the full table, with the passthrough. Native traffic is unaffected.
+4. **Ownership withdraw** (`withdrawalOrder` / `withdrawAll`). The process goes on. On the
+   Kubernetes surface (`production_k8s_surface.go`, `ApplyStage`) the egress calls are:
+   - `ReconcileOVPNTunnel`;
+   - `SetPolicy` + `ResolveK8sVIPs` + `Reconcile`;
+   - `SetPolicy` + `ReconcileDNSVIPsWithCandidates`.
+
+   They re-render the ordinary table with the non-serving state. It is always the full table, with
+   the passthrough. Native traffic is unaffected.
 5. **The host-posture manager's last-owner cleanup** (`hostposture.RestoreAndCleanup`). This runs
    once the exact-node owner list is empty, meaning no gateway pod on the node without a
    `deletionTimestamp`. It checks the marker and runs `nft delete table` for both families. Nothing
@@ -72,7 +78,9 @@ manager checks only the marker chain (`Enforce`). The cases:
   Kubernetes API outage. The manager keeps the last owners, so the marker-only table stays until the
   API answers.
 - **A pod deletion with the API healthy** is short. The pod gets its `deletionTimestamp`, and the
-  manager deletes the table within about 2 s, often before the gateway has finished stopping.
+  manager deletes the table within about 2 s, often before the gateway has finished stopping. This
+  assumes no replacement gateway pod becomes an owner on the same node first. The chart's `Recreate`
+  strategy makes that unlikely, but it is **unconfirmed**.
 
 "Forwarded" means traffic the node routes, not traffic it originates or receives. On the node, that
 is traffic from pods to other nodes, Service traffic that kube-proxy DNATs on this node, and traffic
@@ -82,15 +90,17 @@ it.
 
 **Is `main` affected?** Yes. `origin/main` (60aae74f) and the released tag `v0.1.44` have the same
 `Teardown`, `reduceToHostPostureMarkers` and `hostPostureMarkerOnlyRuleset` text, byte for byte. In
-v0.1.44 the gateway chart runs the agent with `hostNetwork: true`, and Kubernetes mode is switched on
-in the agent from the in-cluster configuration (`SetKubernetesMode`), as on this branch.
+v0.1.44 the gateway chart runs the agent with `hostNetwork: true` and sets `TUNNEX_K8S_MODE=true`.
+`configureEndpointSource` reads that variable and the agent calls `SetKubernetesMode(true)`, so
+`Teardown` takes the Kubernetes branch, as on this branch. The witness replays that released text
+(`releasedStopRuleset`). It is the same string as main's template, with the marker substituted.
 
 **How a customer on v0.1.44 would notice:** after the gateway container restarts, workloads on the
 gateway's node lose their network. Their Services time out, and so do connections from other nodes
 to pods there. This lasts until the gateway is ready again, or for as long as it crash-loops. On the
 node, `nft list table ip tunnex` shows `chain forward { type filter hook forward priority filter;
 policy drop; }` with no rules, and the same in `ip6 tunnex`. Deleting the gateway pod, with the API
-healthy, clears it.
+healthy, should clear it (see the qualification above).
 
 ### Decision
 
@@ -179,6 +189,7 @@ running table always creates both.
 | after the **fixed** stop | passes | — | dropped by `tunnex_stopped_tunnel_drop` (counter > 0) |
 | new process over the fixed state | passes, ready | answers | — |
 | after `EmergencyWithdrawK8s` | passes | withdrawn | — |
+| after the ownership withdraw's egress calls | passes | withdrawn | — |
 | after the manager's table delete | passes | — | **open** (the control: it is the guard that closes it) |
 
   Kernel listings recorded by the witness, `ip tunnex` only:
@@ -242,6 +253,14 @@ What is checked:
     `k8snetprep.Reconcile`;
   - the organisation's device pool `PoolCIDR` from the current policy, when set (IPv4 or IPv6);
   - the global IPv6 subnet of `wg0`, when present.
+- **Coverage depends on the prefix of `wg0`.** The control plane gives an in-cluster gateway
+  `InterfaceAddress = ipalloc.GatewayCIDR(org.PoolCidr)`: the pool's first address with **the
+  pool's prefix length** (`apps/api/internal/nodes/service.go`). The default is `10.99.0.1/24`, and
+  the IPv6 gateway address comes from the org's IPv6 pool. So the observed `wg0` subnet is the
+  organisation's whole device pool, even where `PoolCIDR` is absent from the policy. It is
+  `omitempty`, and it is set only for site topologies. The K8N-3 fixture's `100.65.0.2/32` on `wg0`
+  is a fixture shape, not what the control plane assigns. On such a gateway the check would cover
+  only its own address, plus `PoolCIDR` if delivered.
 - **Not checked:**
   - **The Service VIP range.** VIPs end on the gateway node (DNAT to a pod), so they are not
     tunnel-bound.
