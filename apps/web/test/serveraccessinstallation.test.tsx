@@ -53,7 +53,7 @@ describe("installation Server Access setting", () => {
     api.GET.mockResolvedValue({ data: view({ reauthentication: { password: false, mfa: false, available: false } }) });
     show();
     expect(await toggle()).toHaveProperty("disabled", true);
-    expect(screen.getByText(/set up MFA in your account settings first/)).toBeTruthy();
+    expect(screen.getByText(/Set up an authenticator app \(two-factor authentication\) in your account settings/)).toBeTruthy();
     await waitFor(() => expect(api.PATCH).not.toHaveBeenCalled());
   });
 });
