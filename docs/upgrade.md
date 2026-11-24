@@ -113,6 +113,12 @@ not after an App Access authority change (AA-EN-1). Both dashboard actions, upgr
 and re-run, need a browser session and re-authentication: the current password, and
 an MFA verification within the last five minutes when the account has MFA.
 
+On a host whose App Access proxy owns public 443 and forwards the console (an
+installation converted with `tunnex-app-access adopt`), the console is unreachable
+while the upgrade runs and after a failed upgrade, so the re-run there is done on the
+command line. See "Console reachability during an upgrade" in the
+[App Access README](../deploy/app-access/README.md).
+
 Nothing is downloaded from a mutable URL, and no host file is fetched from GitHub.
 The installed copies (`<install>/upgrade.sh` always, and
 `/usr/local/lib/tunnex/upgrade.sh` and `upgrade-runner.sh` for the dashboard runner)

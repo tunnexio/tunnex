@@ -140,10 +140,39 @@ pre-upgrade backup); the hand-written layout is not restored.
 
 Adopted installations keep terminate-and-forward on 443 (the proxy terminates the
 console's TLS with its public certificate, which must cover the portal hostname).
-New installations will use SNI passthrough instead (AA-EN-1 E2, Phase 2). While the
-proxy is stopped during an upgrade, or after a failed upgrade, the console is not
-reachable on public 443 on such a host: run or re-run the upgrade from the command
-line there.
+New installations will use SNI passthrough instead (AA-EN-1 E2, Phase 2).
+
+### Console reachability during an upgrade (adopted installations)
+
+This is accepted behaviour (AA-EN-1 founder ruling 1); SNI passthrough in Phase 2
+removes it for new installations. On an adopted host the console reaches users
+through the App Access proxy on public 443. The upgrade stops the proxy while the
+API migrates and starts it only after the authority check passes, and it leaves the
+proxy stopped if the upgrade fails. So:
+
+- during an upgrade the console is unreachable on public 443 for its duration;
+- after a failed upgrade it stays unreachable, and the dashboard cannot show the
+  failure or offer "Run the upgrade again".
+
+Recover from the command line on the host:
+
+1. Read the result: `cat <install>/upgrade-state/status/status` (or the output of
+   the command you ran). Note `reason_code` and the backup file names.
+2. If `reason_code` is `app_access_authority_changed`, or the output says
+   "Do not re-run this upgrade", stop: follow the restore runbook it prints
+   (`app-access-restore.py` with the named pre-upgrade backup).
+3. Otherwise fix the reported cause and run the same release again (the supported
+   forward fix; a same-sequence, same-source re-run is accepted, never an older
+   release):
+
+   ```sh
+   cd <install>
+   sudo ./upgrade.sh             # dry run: verifies and shows the plan
+   sudo ./upgrade.sh --apply
+   ```
+
+4. When it reports healthy, the proxy is started again and the console is back on
+   public 443.
 
 ## Renewing the public certificate: `tunnex-app-access renew`
 
