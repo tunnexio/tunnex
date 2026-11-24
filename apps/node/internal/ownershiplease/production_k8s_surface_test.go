@@ -405,3 +405,43 @@ func TestProductionOVPNWithdrawalStopFailureClearsLiveEgressButCannotAck(t *test
 		t.Fatalf("failed stop must retain live-process evidence but withdraw egress: process=%+v tun=%q", owner.process, egressOwner.ovpnTun)
 	}
 }
+
+// K8N-5 item 3. The agent seeds the ordinary base (desired_state_startup_base, OnDesired →
+// UpdateBaseAndSnapshot) before ownership_startup_withdraw and exits if that fails, and nothing clears
+// the base afterwards. In that order the emergency withdraw, whose egress side used to leave a nil
+// "received" policy that renders the open mesh, is never reached: not for a start without a lease, and
+// not for a start that replays an unexpired one. The two tests above start without a base, which the
+// agent never does.
+func TestProductionStartupAfterTheBaseNeverTakesTheEmergencyWithdraw(t *testing.T) {
+	for _, withLease := range []bool{false, true} {
+		fenceStore := NewFileFenceStore(filepath.Join(t.TempDir(), "fences.json"))
+		egressOwner := &fakeProductionEgress{policy: productionDesired().Policy}
+		dnsOwner := &fakeProductionDNS{}
+		surface, err := NewProductionK8sSurface(&fakeDomainSurface{}, egressOwner, dnsOwner, fenceStore, "wg0")
+		if err != nil {
+			t.Fatal(err)
+		}
+		coordinator := NewCoordinator(NewProjector(), surface, fenceStore)
+		leaseStore := NewFileStateStore(filepath.Join(t.TempDir(), "ownership.json"))
+		if withLease {
+			now := time.Now().UTC()
+			if err := leaseStore.Save(t.Context(), State{Version: StateVersion, Grant: Grant{
+				Effective: projectorOwnership(), LeaseExpiresAt: now.Add(time.Hour),
+			}, LastWallTime: now.Add(-time.Second)}); err != nil {
+				t.Fatal(err)
+			}
+		}
+		// desired_state_startup_base.
+		if _, err := coordinator.UpdateBaseAndSnapshot(t.Context(), productionDesired(), BaseAuthority{}); err != nil {
+			t.Fatalf("lease=%v: seed the base: %v", withLease, err)
+		}
+		// ownership_startup_withdraw.
+		_ = New(coordinator, leaseStore).StartupReconcile(t.Context())
+		if egressOwner.emergency != 0 {
+			t.Fatalf("lease=%v: the emergency withdraw ran after the base was seeded (%d calls)", withLease, egressOwner.emergency)
+		}
+		if _, found, _ := coordinator.projector.Snapshot(); !found {
+			t.Fatalf("lease=%v: the startup pass lost the base", withLease)
+		}
+	}
+}

@@ -100,8 +100,9 @@ type Manager struct {
 	log *slog.Logger
 	// policyReceived distinguishes "no policy fetched YET" (cold start, before the first
 	// desired-state delivery) from "policy fetched, value nil = legacy mesh". THREE states
-	// (finding #2): (a) received + mesh/nil -> blanket; (b) received + enforcing -> grants;
-	// (c) NEVER received -> DENY-ALL regardless of mode. The initial synchronous Reconcile
+	// (finding #2): (a) received + mesh/nil -> blanket (nil in Kubernetes mode -> DENY-ALL,
+	// K8N-5 item 3); (b) received + enforcing -> grants; (c) NEVER received -> DENY-ALL
+	// regardless of mode. EmergencyWithdrawK8s returns to (c) (withdrawPolicy). The initial synchronous Reconcile
 	// runs before OnPolicy is wired, so without this the forward chain would render the
 	// blanket mesh (fail-OPEN) on every restart of an enforcing gateway until the first
 	// fetch lands. Deny-until-first-policy is fail-CLOSED; an off-mode org's brief
@@ -417,9 +418,9 @@ func (m *Manager) ConntrackFlushFailing() bool {
 // a packet's accept/drop fate (kernel semantics), so this cannot affect enforcement.
 func (m *Manager) SetFlowLogGroup(group int) { m.flowLogGroup = group }
 
-// SetPolicy stores the latest compiled policy (nil = legacy mesh) and marks that a
-// policy has now been received — flipping the forward chain out of the cold-start
-// deny-all state. Called on EVERY desired-state delivery (including nil for off orgs).
+// SetPolicy stores the latest compiled policy (nil = legacy mesh outside Kubernetes mode,
+// deny-all in it: see forwardRules) and marks that a policy has now been received —
+// flipping the forward chain out of the cold-start deny-all state. Called on EVERY desired-state delivery (including nil for off orgs).
 func (m *Manager) SetPolicy(p *nodepolicy.Compiled) {
 	// S8.1 D1 fail-closed gate: an artifact whose Version exceeds what this agent can apply
 	// is REFUSED — the agent does NOT store it as the active policy (rendering its fields
@@ -435,6 +436,15 @@ func (m *Manager) SetPolicy(p *nodepolicy.Compiled) {
 	m.refusedVersion.Store(0)
 	m.policy.Store(p)
 	m.policyReceived.Store(true)
+}
+
+// withdrawPolicy returns the manager to the state before the first desired-state delivery:
+// no stored policy and not received, so the forward chain renders DENY-ALL in every mode until
+// the next SetPolicy (K8N-5 item 3). An unsupported-version refusal is left in place: a
+// withdrawal is not a supported artifact.
+func (m *Manager) withdrawPolicy() {
+	m.policy.Store(nil)
+	m.policyReceived.Store(false)
 }
 
 // FlowAttribution returns one locked snapshot of the successfully applied
@@ -888,6 +898,8 @@ func (m *Manager) resolvedVIPOriginalDstExclusion() string {
 //
 //   - nil policy or Mesh=true (Zero Trust off / open build): the LEGACY blanket mesh —
 //     wg0<->wg0 (device↔device) + wg0→egress in v4, wg0<->wg0 in v6. No behavior change.
+//     EXCEPT nil in Kubernetes mode: DENY-ALL, as cold start (K8N-5 item 3). There only an
+//     explicit Mesh=true artifact opens the mesh.
 //   - enforcing: DEFAULT-DENY. Only the compiled allows are emitted, in the compiler's
 //     already-sorted order (byte-stable → steady-state reconcile is a no-op). There is
 //     NO wg0<->wg0 blanket — device↔device is permitted only by an explicit rule (the
@@ -916,6 +928,15 @@ func (m *Manager) forwardRules(pol *nodepolicy.Compiled, received bool) (v4, v6 
 		// S8.1 D1: an unsupported-version artifact was refused -> DENY-ALL (the same
 		// fail-closed shape as cold start). NEVER fall through to the mesh/enforcing render
 		// below, which would apply a shape the agent can't interpret or open the mesh.
+		return dropCounter, dropCounter
+	}
+	if pol == nil && m.kubernetesMode.Load() {
+		// K8N-5 item 3: an in-cluster gateway never opens the mesh from an ABSENT policy. Its
+		// forward hook sits in the node's host network namespace, so the blanket accept below
+		// would hand every connected device every pod and node address the node can route.
+		// The open mesh of a Zero Trust off org arrives as an explicit Mesh=true artifact
+		// (the control plane wraps every in-cluster gateway that has anything to serve);
+		// nil here is a node with nothing to serve or a compile error, so: deny, as cold start.
 		return dropCounter, dropCounter
 	}
 	tun := m.tunnelIfaces()
