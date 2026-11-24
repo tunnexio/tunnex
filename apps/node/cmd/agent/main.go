@@ -197,10 +197,9 @@ func main() {
 		logger.Error("agent_client_failed", slog.String("error", err.Error()))
 		os.Exit(1)
 	}
-	if os.Getenv("TUNNEX_SERVER_ACCESS_ENABLED") == "true" {
-		go serveraccess.Run(ctx, client)
-		go serveraccess.RunEnrollment(ctx, client)
-	}
+	// SA-UI-1: "true" always runs Server Access, "false" is a gateway-local hard lock, unset/empty follows
+	// the control plane's installation and organization setting without a restart.
+	go serveraccess.Supervise(ctx, client, serveraccess.ModeFromEnv(os.Getenv("TUNNEX_SERVER_ACCESS_ENABLED")), logger)
 	appClient, appErr := client.NewAppAccessClient(os.Getenv("TUNNEX_APP_ACCESS_CONTROL_URL"))
 	if appErr != nil {
 		logger.Error("app_access_control_configuration_refused")
