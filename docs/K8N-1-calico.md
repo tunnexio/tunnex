@@ -163,7 +163,9 @@ nothing in Calico's chains.
    not fit are published as `unreadable` with the reason, never cut. A chain name the manager
    could not pass to `nft` unquoted (`[A-Za-z_.][A-Za-z0-9_.-]*`, 64 bytes) is `unreadable` too.
 
-   *How the gateway uses it.* Inside the existing guard, with the operation lock held: nft JSON,
+   *How the gateway uses it.* (Since the review the receipt is taken on every observation, not
+   only when a proof needs rule text: see "After the review", "A node with iptables-legacy
+   tables is not ready".) Inside the existing guard, with the operation lock held: nft JSON,
    then the receipt, then nft JSON again; the two listings must still be equal ("CNI rules changed
    across semantic observation"). The receipt is taken only if
 
@@ -205,7 +207,8 @@ nothing in Calico's chains.
    read-write, and the manager is privileged. The manager's memory limit (128Mi) now also covers
    one `iptables-nft-save -t nat` per pass on nodes that have ipsets; see *Not known yet*.
 
-   *Versions.* A gateway from before this decision ignores the file. A gateway with it next to a
+   *Versions.* (Superseded for the receipt's schema by "After the review": version 2, and
+   both sides must run the same release.) A gateway from before this decision ignores the file. A gateway with it next to a
    manager without it finds no receipt and stays not ready on Calico, as it was. The digest is
    computed from each side's own `nft` output, so a manager and a gateway whose `nft` versions
    print a chain differently refuse each other until both run the same image.
@@ -672,15 +675,27 @@ one) the gateway reads the file itself under the same rules.
   tables are not read: they cannot rewrite IPv4 traffic.
 - **Not bound to a listing.** The fact belongs to the receipt's heartbeat and is as fresh as
   the receipt (10 s); a legacy table created after the read is seen on the next pass.
-- **Version skew.** The schema version is not raised. A new gateway with a receipt from an
-  older manager finds no `legacy_iptables` and refuses; an older gateway with a new receipt
-  refuses it as having an unknown field (strict decoding). Both refuse until the gateway and
-  the host-posture manager run the same release.
+- **Version skew.** The receipt's `schema_version` is now 2. A new gateway refuses a receipt
+  of version 1 from an older manager with `host facts receipt has an unknown schema or
+  contract`, before its digest is checked; without the bump it would have said `damaged: its
+  digest does not match`, because the missing field is re-encoded empty
+  (`TestHostFactsFromAManagerBeforeTheLegacyFactAreRefused`). An older gateway refuses a new
+  receipt as having an unknown field (strict decoding). Both refuse until the gateway and the
+  host-posture manager run the same release.
 
-Every captured node is decided as before with no legacy table: Calico, Cilium A/B/C (receipt
-path, whole reconcile), Flannel, the AWS, GKE-style and runtime fixtures (direct path, with a
-`/proc/net` that has no `ip_tables_names`), and the real reader in the test container, whose
-`/proc/net/ip_tables_names` is empty. Tests: `TestReadLegacyIPTables`,
+Every captured node is decided as before with no legacy table, each through the whole
+`Reconcile`:
+
+| Fixture | Path | Tests |
+| --- | --- | --- |
+| `calico-v3.31.2-kind.*` | receipt, and direct | `hostfacts_e2e_linux_test.go`, `observed_calico_live_linux_test.go`, `TestNodeWithLegacyTablesIsNotReady` |
+| `cilium-1.20.5-kind-{A,B,C}-*` | receipt (real manager and gateway) | `cilium_e2e_linux_test.go`, `cilium_live_linux_test.go` |
+| `k3s-flannel-nat.json` | receipt, and direct | `TestNodeWithLegacyTablesIsNotReady`, `TestGatewayNeedsOnlyTheReceiptOnANodeThatNeedsNoRuleFacts`, `TestCiliumGuardWithoutCilium` |
+| `native-*` (EKS) and `runtime-alpine-*` | direct (`awsTestReconciler`, a `/proc/net` without `ip_tables_names`) | `aws_linux_test.go` |
+| `k8n3-api-return*` | direct | `TestTunnexPostroutingRestartOverAKernelThatHoldsTheAPIReturnRule`; the egress package checks the same files below `Reconcile` (`validateTunnexPostrouting`), which the legacy refusal does not touch |
+
+The real reader in the test container (`hostfacts_e2e_linux_test.go`, `NewHostFactsReader(nil,
+nil, nil)`) read the container's real `/proc/net/ip_tables_names`, which was empty. Tests: `TestReadLegacyIPTables`,
 `TestHostNetFactsMustSayWhetherLegacyTablesExist`, `TestHostFactsReaderPublishesLegacyTables`,
 `TestNodeWithLegacyTablesIsNotReady` (Calico and Flannel through the receipt, Flannel
 direct; fails with the refusal removed), `TestGatewayTakesTheReceiptOnEveryObservation`.
