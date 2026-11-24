@@ -54,7 +54,7 @@ export function ServerAccessInstallationSettings({ canEdit }: { canEdit: boolean
       setSaved(next); setPending(null); setPassword(""); setNeedMfa(false);
       setResult(next.effective
         ? "Server Access is on for this installation. Each organization still turns it on in Settings → Features."
-        : `Server Access is off for this installation. New sessions are refused${typeof next.ended_sessions === "number" ? `; ${next.ended_sessions} active ${next.ended_sessions === 1 ? "session was" : "sessions were"} ended` : ""}.`);
+        : `Server Access is off for this installation. New sessions are refused${typeof next.ended_sessions !== "number" ? "" : next.ended_sessions === 0 ? "; no sessions were open" : `; ${next.ended_sessions} active ${next.ended_sessions === 1 ? "session was" : "sessions were"} ended`}.`);
     } catch {
       if (alive.current) setError("The response was interrupted. Reload the setting to check whether the change was saved.");
     } finally {
@@ -66,14 +66,16 @@ export function ServerAccessInstallationSettings({ canEdit }: { canEdit: boolean
   if (!saved) return <div className="space-y-3"><ErrorText>{error}</ErrorText><Button variant="ghost" onClick={() => setAttempt(value => value + 1)}>Retry Server Access setting</Button></div>;
 
   const reauth = saved.reauthentication;
-  const switchDisabled = !canEdit || busy !== null || pending !== null || !reauth.available || (saved.locked && !saved.enabled);
+  // While the environment lock is set the switch shows what is enforced (Off) and cannot be changed; a saved
+  // On is reported in words so the page never shows a green switch next to "Off".
+  const switchDisabled = !canEdit || busy !== null || pending !== null || !reauth.available || saved.locked;
   const state = saved.effective ? "On" : saved.locked ? "Off, locked by the server environment" : "Off";
   return <div className="space-y-3" data-testid="server-access-installation">
     <SettingRow label="Server Access for this installation" description="Browser SSH and RDP for every organization on this server. Each organization must also turn it on in Settings → Features.">
-      <Switch checked={pending ?? saved.enabled} disabled={switchDisabled} onChange={next => { if (next !== saved.enabled) { setPending(next); setResult(null); setError(null); } }} />
+      <Switch checked={saved.locked ? false : pending ?? saved.enabled} disabled={switchDisabled} onChange={next => { if (next !== saved.enabled) { setPending(next); setResult(null); setError(null); } }} />
     </SettingRow>
     <p className="text-sm text-ink-secondary">Status: <strong className="text-ink-heading">{state}</strong> · Source: {saved.source === "database" ? "Saved settings" : "Server environment"}</p>
-    {saved.locked && <p className="text-sm text-ink-secondary" role="note">TUNNEX_SERVER_ACCESS_LOCKED is set on the server, so Server Access stays off and cannot be turned on here. Remove the lock in the server environment and restart the API to allow it.</p>}
+    {saved.locked && <p className="text-sm text-ink-secondary" role="note">TUNNEX_SERVER_ACCESS_LOCKED is set on the server, so Server Access stays off and cannot be turned on here. Remove the lock in the server environment and restart the API to allow it.{saved.enabled ? " Saved setting: On. It applies again when the lock is removed." : ""}</p>}
     {!canEdit && <p className="text-sm text-ink-secondary">Verify your email and change your initial password to edit server settings.</p>}
     {canEdit && !reauth.available && <p className="text-sm text-ink-secondary" role="note">Changing this needs re-authentication, and your account has no password or authenticator on this server. Set up an authenticator app (two-factor authentication) in your account settings to change this setting.</p>}
     {pending !== null && <form className="space-y-3" onSubmit={event => void save(event)} aria-label="Confirm Server Access change">

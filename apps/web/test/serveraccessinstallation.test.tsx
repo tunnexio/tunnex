@@ -49,6 +49,25 @@ describe("installation Server Access setting", () => {
     expect(screen.getByText(/locked by the server environment/)).toBeTruthy();
   });
 
+  it("says no sessions were open instead of '0 active sessions were ended'", async () => {
+    api.GET.mockResolvedValue({ data: view({ enabled: true, effective: true, source: "database", version: 2 }) });
+    api.PATCH.mockResolvedValue({ data: view({ source: "database", version: 3, ended_sessions: 0 }) });
+    show();
+    fireEvent.click(await toggle());
+    fireEvent.change(screen.getByLabelText("Current password"), { target: { value: "secret" } });
+    fireEvent.click(screen.getByRole("button", { name: "Turn off Server Access" }));
+    expect(await screen.findByText(/New sessions are refused; no sessions were open\./)).toBeTruthy();
+  });
+
+  it("shows the enforced Off state, not a saved On, while locked (found in the local walk)", async () => {
+    api.GET.mockResolvedValue({ data: view({ locked: true, enabled: true, source: "database", version: 3 }) });
+    show();
+    const control = await toggle();
+    expect(control.getAttribute("aria-checked")).toBe("false");
+    expect(control).toHaveProperty("disabled", true);
+    expect(screen.getByText(/Saved setting: On\. It applies again when the lock is removed/)).toBeTruthy();
+  });
+
   it("explains when the administrator cannot re-authenticate", async () => {
     api.GET.mockResolvedValue({ data: view({ reauthentication: { password: false, mfa: false, available: false } }) });
     show();
