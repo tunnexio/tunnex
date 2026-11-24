@@ -1013,6 +1013,32 @@ release in which the two values agree is refused for the same range and lifted b
 A live capture with the ip-masq-agent on and no explicit native-routing range is still owed, to
 see the rewrite the review predicts from the source.
 
+### A `cilium` section in the receipt makes a Cilium node (review finding 6)
+
+*What was wrong.* The gateway ran the Cilium proof only when it saw a trace itself: a
+`cilium_` device or a `CILIUM_` chain. The manager sees more (the agent's socket, the pinned
+maps) and publishes a `cilium` section when it sees any of it, but the gateway never asked
+for that section on a node where it saw no trace. A Cilium told to install no iptables rules,
+on devices without its names, was ready on the rule walk alone.
+
+*What it does now* (`proveCilium`). With a Cilium facts source (always, in Kubernetes) the
+gateway reads the receipt's `cilium` section on every observation. A section present makes
+the node a Cilium node, decided exactly as one the gateway detected itself; the refusal
+names `found a cilium section in the host-posture receipt`. No section, and no trace of its
+own: unchanged, no `cilium_masquerade` adapter. A receipt that cannot be taken refuses (`could
+not tell whether the host-posture manager saw Cilium: ...`); in practice the receipt check of
+review finding 5 refuses first (K8N-1, "A node with iptables-legacy tables is not ready").
+Without a source (tests only) nothing changes.
+
+Consequence: a node with leftover Cilium pins or socket after Cilium was removed has a section
+and is decided (and most likely refused) as a Cilium node. Still not covered by anything: an
+eBPF dataplane that shows neither side's signals (GKE `anetd`, see "Still not confirmed").
+
+Tests: `TestGatewayRunsTheCiliumDecisionOnAReceiptSectionAlone` (A section refused, B section
+ready, an unreadable section and an untaken receipt refused, no trace on the gateway's side;
+fails with the old early return), `TestCiliumGuardWithoutCilium` (now: the source is asked
+once per reconcile, a node with no section is unaffected).
+
 ### What `readOnly` on the Cilium paths prevents (review finding 9)
 
 The chart's NOTES said the two paths are "mounted read-only, so the manager can read what Cilium
