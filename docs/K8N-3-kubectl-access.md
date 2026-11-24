@@ -806,3 +806,36 @@ the table again or the table is removed. Not looked into further.
 returns the API server's answer; `kubectl get`, `exec`, `logs -f`; the same after a gateway restart
 and after a kill; the rule is gone after API access is turned off; the cluster's audit log shows the
 node's address. Items 3 to 11 of "Not confirmed" stand.
+
+## First live result on GKE — 2026-11-24
+
+Demo control plane on `story/kubernetes-next`; GKE Standard cluster `gke` (zone
+australia-southeast1-b); gateway and host posture on a build with the return-path rule above (image
+tag `k8n3`). API access on for the cluster; one rule, a person → the cluster's Kubernetes API.
+A connected laptop on another gateway (device address 10.99.0.2).
+
+Confirmed:
+
+- The return path works on a managed control plane. Through
+  `https://kubernetes.default.svc.gke.k8s.corp.internal` (address 100.65.0.4, mapped to the
+  `default/kubernetes` endpoint 10.70.0.3:443): `/version` answered `401 Unauthorized` from the API
+  server in about 1 s, and `/healthz` answered 200 five times out of five. Before the rule the same
+  call timed out (2026-11-23).
+- The gateway restarted onto this build cleanly (no crash loop; ready within seconds), and existing
+  Services kept working (`orders` on GKE and `web` on the on-prem cluster answered 200).
+- Only TCP 443 is granted: port 80 on the same address does not answer.
+
+The API server certificate on this cluster names (SAN): `kubernetes`, `kubernetes.default`,
+`kubernetes.default.svc`, `kubernetes.default.svc.cluster.local`, and the addresses
+35.201.21.105 (the public endpoint; subject CN), 34.118.224.1 (the `kubernetes` ClusterIP),
+10.70.0.3 (the endpoint) and 34.151.107.213. The Tunnex name is not among them, as expected, so
+`tls-server-name` is required. Two values are candidates: the host of the original `server:` line
+(an IP on GKE) and `kubernetes.default.svc`, which kube-apiserver certificates carry by convention.
+Which one to print in the dashboard waits until both are walked with kubectl and EKS/AKS
+certificates are checked.
+
+Still not confirmed: authentication and every kubectl verb (nothing here used a credential);
+`exec`, `logs -f` and `port-forward` streaming; a running `exec` ending when the rule is removed;
+a gateway restart while a rule and an open connection exist; that a misconfigured kubeconfig
+pointing at the public endpoint is told apart from the Tunnex path (negative control);
+EKS, AKS and self-managed.
