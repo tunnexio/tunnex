@@ -866,3 +866,8 @@ kubeconfig whose only change was `server: https://kubernetes.default.svc.gke.k8s
 Still not confirmed: a gateway restart while a rule and an open connection exist; the node's address
 appearing in the cluster's audit log; EKS, AKS and self-managed clusters; the dashboard's single
 suggested `tls-server-name` value across providers.
+
+## Founder ruling, 2026-11-24
+
+- Edition: kubectl access is available in every edition (no gate), as built.
+- Order of work: walk on-prem and GKE now; EKS and AKS are walked later, after the merge to main.
