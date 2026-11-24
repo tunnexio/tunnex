@@ -149,7 +149,10 @@ jobs:
         run: bash deploy/release-source-ref-contract_test.sh
 
       - name: Host upgrade contract
-        run: sh deploy/upgrade_contract_test.sh && sh deploy/upgrade_apply_contract_test.sh && sh deploy/upgrade_runner_contract_test.sh
+        run: |
+          sh deploy/upgrade_contract_test.sh && sh deploy/upgrade_apply_contract_test.sh && sh deploy/upgrade_runner_contract_test.sh
+          sh deploy/upgrade_handoff_contract_test.sh
+          TUNNEX_TEST_DOCKER_RUNTIME=1 sh deploy/host-files-image-contract_test.sh
 
       - name: Set up Helm for deployment contracts
         uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1

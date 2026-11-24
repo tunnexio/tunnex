@@ -1,6 +1,7 @@
 """Execute only the extracted read-only App Access guard/classifier with a fake Docker CLI."""
 from pathlib import Path
 import os
+import re
 import subprocess
 import tempfile
 import unittest
@@ -106,6 +107,9 @@ esac
         self.assertNotIn('.Env',self.BLOCK)
     def test_admission_precedes_temporary_state_and_mutation(self):
         self.assertLess(self.SCRIPT.index('admit_app_access "$_aa_upgrade_directory"'),self.SCRIPT.index('TMPDIR=$(mktemp'))
+        # UPG-2 U2: the installed helper hands off to the target release's
+        # script before any admission guard, so no old guard can trap a host.
+        self.assertLess(self.SCRIPT.index('# BEGIN UPG-2 TARGET HAND-OFF'),self.SCRIPT.index('admit_app_access "$_aa_upgrade_directory"'))
         self.assertIn('$(dirname -- "$COMPOSE")',self.SCRIPT)
         self.assertNotIn('separately reviewed opt-in',self.SCRIPT)
     def test_custom_compose_path_proxy_without_barrier_refused_before_changes(self):
@@ -121,8 +125,16 @@ esac
             docker.chmod(0o755)
             env=os.environ.copy()
             env.update(PATH=str(binary)+':'+env['PATH'],TUNNEX_DIR=str(install),TUNNEX_COMPOSE_FILE=str(compose))
+            # Run as the target of a UPG-2 hand-off: admission is the target's.
+            host=root/'handoff'/'host'
+            (host/'app-access').mkdir(parents=True);(host/'ai-gateway').mkdir()
+            (host/'HOST_ABI').write_text((ROOT/'deploy/HOST_ABI').read_text())
+            for name in re.search(r"^HOST_FILE_LIST='(.*)'$",self.SCRIPT,re.M).group(1).split():
+                (host/name).write_bytes((ROOT/'deploy'/name).read_bytes())
+            manifest=root/'handoff'/'release.json';manifest.write_text('{}\n')
+            env.update(TUNNEX_UPGRADE_HANDOFF='1',TUNNEX_UPGRADE_HANDOFF_ABI='1',TUNNEX_UPGRADE_HANDOFF_DIR=str(root/'handoff'))
             env.pop('COMPOSE_PROJECT_NAME',None);env.pop('TUNNEX_COMPOSE_PROJECT',None)
-            result=subprocess.run(['sh',str(ROOT/'deploy/upgrade.sh'),'--apply'],env=env,capture_output=True,text=True)
+            result=subprocess.run(['sh',str(ROOT/'deploy/upgrade.sh'),'--apply','--manifest',str(manifest)],env=env,capture_output=True,text=True)
             self.assertEqual(result.returncode,13,result.stderr)
             self.assertIn('does not mount the external restore barrier',result.stderr)
             self.assertIn('Nothing was changed',result.stderr)
