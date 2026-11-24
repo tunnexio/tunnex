@@ -106,6 +106,10 @@ device, the same effect the walk already accepts for Flannel. Item 10 is of a di
    one. Tests: `TestNodeWithLegacyTablesIsNotReady` and four more; every captured fixture is
    decided as before. Checked in a scratch namespace that a legacy `MASQUERADE` is invisible to
    `nft` and listed in the file. See K8N-1, "A node with iptables-legacy tables is not ready".
+   Follow-up `fix(k8s): raise the host facts schema for the legacy fact (K8N review 5)`: a
+   receipt from an older manager was refused as "damaged" (the missing field re-encodes empty,
+   so the digest differs); the schema is now 2 and such a receipt is refused as an unknown
+   schema. Test: `TestHostFactsFromAManagerBeforeTheLegacyFactAreRefused`.
 
 6. **Low — Cilium detection uses only the gateway's two signals** (`cilium_` device, `CILIUM_`
    chain). The manager may see the socket and pinned maps and publish a Cilium section the gateway

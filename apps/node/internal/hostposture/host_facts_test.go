@@ -3,6 +3,8 @@ package hostposture
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"os"
@@ -124,7 +126,7 @@ func TestHostFactsAreTakenOnlyWithTheirLiveHeartbeat(t *testing.T) {
 			want:      "require an active host-posture heartbeat",
 		},
 		"unknown schema": {
-			receipt: func(r *HostFacts) { r.SchemaVersion = 2 },
+			receipt: func(r *HostFacts) { r.SchemaVersion = HostFactsSchemaVersion + 1 },
 			want:    "unknown schema or contract",
 		},
 		"another contract": {
@@ -471,5 +473,66 @@ func TestManagerKeepsPublishingHostFactsThroughAnAPIFault(t *testing.T) {
 	}
 	if store.heartbeat.State != HeartbeatActive || len(store.facts) != 2 || store.facts[1].Sequence != store.heartbeat.Sequence {
 		t.Fatalf("heartbeat=%s receipts=%d", store.heartbeat.State, len(store.facts))
+	}
+}
+
+// A receipt written by a manager from before the legacy_iptables fact (K8N
+// review, finding 5) is refused by a gateway that needs it, and says why: an
+// unknown schema, not a damaged file. Its digest is the old manager's own.
+func TestHostFactsFromAManagerBeforeTheLegacyFactAreRefused(t *testing.T) {
+	now := time.Unix(5000, 0).UTC()
+	store, err := NewStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	heartbeat := cniTestHeartbeat(now, 9)
+	if err := store.SaveHeartbeat(heartbeat); err != nil {
+		t.Fatal(err)
+	}
+	facts := testNetFacts()
+	type oldNetFacts struct {
+		NAT    k8snetprep.SavedTableFacts `json:"nat"`
+		Mangle k8snetprep.SavedTableFacts `json:"mangle"`
+		Sets   []k8snetprep.SavedSetFacts `json:"sets,omitempty"`
+	}
+	type oldReceipt struct {
+		SchemaVersion int                     `json:"schema_version"`
+		Contract      string                  `json:"contract"`
+		NodeName      string                  `json:"node_name"`
+		ManagerUID    string                  `json:"manager_uid"`
+		ManagerBootID string                  `json:"manager_boot_id"`
+		Sequence      uint64                  `json:"sequence"`
+		ObservedAt    time.Time               `json:"observed_at"`
+		Netfilter     oldNetFacts             `json:"netfilter"`
+		Cilium        *k8snetprep.CiliumFacts `json:"cilium,omitempty"`
+		Digest        string                  `json:"digest"`
+	}
+	old := oldReceipt{SchemaVersion: 1, Contract: HostFactsContract, NodeName: heartbeat.NodeName,
+		ManagerUID: heartbeat.ManagerUID, ManagerBootID: heartbeat.ManagerBootID, Sequence: heartbeat.Sequence,
+		ObservedAt: now.Add(-time.Second), Netfilter: oldNetFacts{NAT: facts.NAT, Mangle: facts.Mangle, Sets: facts.Sets}}
+	var body bytes.Buffer
+	enc := json.NewEncoder(&body)
+	enc.SetEscapeHTML(false)
+	if err := enc.Encode(old); err != nil {
+		t.Fatal(err)
+	}
+	sum := sha256.Sum256(body.Bytes())
+	old.Digest = hex.EncodeToString(sum[:])
+	encoded, err := json.Marshal(old)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(store.HostFactsPath(), encoded, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gateway, err := OpenStore(store.dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := gateway.HostNetFacts("worker-a", now); err == nil || err.Error() != "host facts receipt has an unknown schema or contract" {
+		t.Fatalf("old receipt: %v", err)
+	}
+	if _, err := gateway.CiliumFacts("worker-a", now); err == nil || err.Error() != "host facts receipt has an unknown schema or contract" {
+		t.Fatalf("old receipt, cilium section: %v", err)
 	}
 }

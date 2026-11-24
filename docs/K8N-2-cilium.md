@@ -582,7 +582,9 @@ Branch `k8n/cilium-wiring`. Checklist steps 1 to 7 above are done; step 8 is sti
   - anything else is a refusal, and nothing is written.
 
   A ready node reports the adapter `cilium_masquerade` after `observed_cni`. A node without
-  Cilium reports no such adapter and its facts source is never asked.
+  Cilium reports no such adapter and its facts source is never asked. (Superseded: since the
+  review the source is asked on every observation, and a `cilium` section alone makes a Cilium
+  node; see "After the review", "A `cilium` section in the receipt makes a Cilium node".)
 
 ### What the customer reads
 
@@ -691,7 +693,7 @@ known).
 - `k8snetprep/cilium_live_linux_test.go`: the whole `Reconcile` on the real captures with those
   sections; refused without a source, without a receipt, without the section; an iptables-mode
   range the walk refuses stays refused by the walk; a Flannel node reports no `cilium_masquerade`
-  and its facts source is never asked.
+  and its facts source is never asked (since the review: asked, and has no section).
 - `k8snetprep/cilium_e2e_linux_test.go`: the real manager with both real readers and a real
   gateway reconciler over one state directory, the captured node between them: A, then B, then the
   range removed, the pin gone, the ip-masq-agent off, an egress-gateway pin, an unknown field;

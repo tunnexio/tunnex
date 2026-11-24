@@ -15,7 +15,10 @@ import (
 )
 
 const (
-	HostFactsSchemaVersion = 1
+	// HostFactsSchemaVersion 2 adds netfilter.legacy_iptables (K8N review,
+	// finding 5). A receipt of version 1 says nothing about legacy tables and
+	// is refused as an unknown schema, before its digest is checked.
+	HostFactsSchemaVersion = 2
 	HostFactsContract      = "tunnex-host-posture-facts/v1"
 	// HostFactsFreshness is how old the manager's read may be when a gateway
 	// takes it. It is the heartbeat's own window.
