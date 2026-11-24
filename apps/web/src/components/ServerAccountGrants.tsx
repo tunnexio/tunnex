@@ -8,6 +8,7 @@ import AppAccessEmptyState from "./AppAccessEmptyState";
 import AppAccessPagination, { appAccessPageSize } from "./AppAccessPagination";
 import { Icon } from "./Icon";
 import { ResourceSummary } from "./ResourceSummary";
+import { personLabel } from "../lib/personLabel";
 type Grant=components["schemas"]["ServerAccessGrant"];
 type Server=components["schemas"]["ServerAccessServer"];
 type InputGrant=components["schemas"]["ServerAccessGrantInput"];
@@ -18,7 +19,7 @@ export function ServerAccountGrants({grants,servers,members,groups,disabled,onRe
  // Keep the latest enabled grant for each account and recipient before filtering or pagination.
  const latest=new Map<string,Grant>();
  for(const grant of grants){if(!grant.enabled||Date.parse(grant.starts_at)>now||!servers.some(server=>server.id===grant.server_id))continue;const key=JSON.stringify([grant.server_id,grant.account,grant.user_id,grant.group_id]);const previous=latest.get(key);if(!previous||Date.parse(grant.expires_at)>Date.parse(previous.expires_at))latest.set(key,grant)}
- const subject=(grant:Grant)=>grant.user_id?members.find(member=>member.user_id===grant.user_id)?.email??grant.user_id:groups.find(group=>group.id===grant.group_id)?.name??grant.group_id??"Unavailable recipient";
+ const subject=(grant:Grant)=>grant.user_id?personLabel(members.find(member=>member.user_id===grant.user_id),grant.user_id):groups.find(group=>group.id===grant.group_id)?.name??grant.group_id??"Unavailable recipient";
  const serverName=(grant:Grant)=>servers.find(server=>server.id===grant.server_id)?.name??"Removed server";
  const rows=[...latest.values()].sort((a,b)=>Number(Date.parse(a.expires_at)<=now)-Number(Date.parse(b.expires_at)<=now)).filter(grant=>(status==="all"||status==="expired"&&Date.parse(grant.expires_at)<=now||status==="active"&&Date.parse(grant.expires_at)>now)&&[serverName(grant),grant.account,subject(grant)].join(" ").toLowerCase().includes(search.trim().toLowerCase()));
  const current=Math.min(page,Math.max(1,Math.ceil(rows.length/pageSize)));const visible=rows.slice((current-1)*pageSize,current*pageSize);
