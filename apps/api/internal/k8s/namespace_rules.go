@@ -623,15 +623,53 @@ func (s *Service) ListNamespaceRules(ctx context.Context, orgID, clusterID uuid.
 		return out, nil
 	}
 	if _, err := currentInventoryReport(ctx, s.pool, orgID, clusterID, false); err != nil {
-		status, message, ok := namespaceRuleInventoryStatus(err)
-		if !ok {
+		if _, _, ok := namespaceRuleInventoryStatus(err); !ok {
 			return nil, err
 		}
+		latest, err2 := latestInventoryReceivedAt(ctx, s.pool, orgID, clusterID)
+		if err2 != nil {
+			return nil, err2
+		}
+		now := time.Now()
 		for i := range out {
-			out[i].Status, out[i].StatusMessage = status, message
+			out[i].Status, out[i].StatusMessage = namespaceRuleNoReportStatus(err, out[i].CreatedAt, latest, now)
 		}
 	}
 	return out, nil
+}
+
+// namespaceRuleFirstReportGrace is how long a new rule waits for the gateway's next Service report
+// before the lack of one is reported as a problem. It covers the report's 90s freshness plus the
+// longest report interval (60s) — a healthy gateway always reports well within it.
+const namespaceRuleFirstReportGrace = 150 * time.Second
+
+const namespaceRuleAwaitingReportMessage = "waiting for the gateway's next Service report; nothing is exposed until it arrives"
+
+// namespaceRuleAwaitingReport: the rule is newer than the cluster's latest Service report (or the
+// cluster never reported) and still inside the grace. The missing report then says nothing about the
+// gateway yet — the next one simply has not arrived.
+func namespaceRuleAwaitingReport(created time.Time, latestReceived *time.Time, now time.Time) bool {
+	return now.Sub(created) < namespaceRuleFirstReportGrace && (latestReceived == nil || !latestReceived.After(created))
+}
+
+// namespaceRuleNoReportStatus is the status shown and stored when the cluster has no current report.
+// Only "no current report" is softened to pending, and only for a rule awaiting its first report; a
+// stale report (the gateway stopped reporting) is never masked. Nothing is exposed either way.
+func namespaceRuleNoReportStatus(err error, created time.Time, latestReceived *time.Time, now time.Time) (status, message string) {
+	status, message, _ = namespaceRuleInventoryStatus(err)
+	if status == NamespaceRuleInventoryUnavailable && namespaceRuleAwaitingReport(created, latestReceived, now) {
+		return NamespaceRulePending, namespaceRuleAwaitingReportMessage
+	}
+	return status, message
+}
+
+// latestInventoryReceivedAt is when the cluster's newest Service report arrived, current or not.
+func latestInventoryReceivedAt(ctx context.Context, db scopeDB, orgID, clusterID uuid.UUID) (*time.Time, error) {
+	var latest *time.Time
+	if err := db.QueryRow(ctx, `SELECT max(received_at) FROM k8s_service_inventory_reports WHERE org_id=$1 AND cluster_id=$2`, orgID, clusterID).Scan(&latest); err != nil {
+		return nil, err
+	}
+	return latest, nil
 }
 
 func namespaceRuleInventoryStatus(err error) (status, message string, ok bool) {
@@ -758,6 +796,7 @@ type namespaceRuleRow struct {
 	Namespace string
 	Excluded  []string
 	Selector  map[string]string
+	CreatedAt time.Time
 }
 
 func (r namespaceRuleRow) spec() namespaceRuleSpec {
@@ -782,14 +821,14 @@ func (s *Service) reconcileNamespaceRulesAt(ctx context.Context, orgID, clusterI
 	} else if err != nil {
 		return err
 	}
-	ruleRows, err := tx.Query(ctx, `SELECT id,namespace,excluded_services,selector FROM k8s_namespace_exposure_rules WHERE org_id=$1 AND cluster_id=$2 ORDER BY namespace FOR UPDATE`, orgID, clusterID)
+	ruleRows, err := tx.Query(ctx, `SELECT id,namespace,excluded_services,selector,created_at FROM k8s_namespace_exposure_rules WHERE org_id=$1 AND cluster_id=$2 ORDER BY namespace FOR UPDATE`, orgID, clusterID)
 	if err != nil {
 		return err
 	}
 	var rules []namespaceRuleRow
 	for ruleRows.Next() {
 		var rule namespaceRuleRow
-		if err := ruleRows.Scan(&rule.ID, &rule.Namespace, &rule.Excluded, &rule.Selector); err != nil {
+		if err := ruleRows.Scan(&rule.ID, &rule.Namespace, &rule.Excluded, &rule.Selector, &rule.CreatedAt); err != nil {
 			ruleRows.Close()
 			return err
 		}
@@ -805,13 +844,20 @@ func (s *Service) reconcileNamespaceRulesAt(ctx context.Context, orgID, clusterI
 
 	report, err := currentInventoryReport(ctx, tx, orgID, clusterID, true)
 	if err != nil {
-		status, message, ok := namespaceRuleInventoryStatus(err)
-		if !ok {
+		if _, _, ok := namespaceRuleInventoryStatus(err); !ok {
 			return err
 		}
-		// No current report: record why, expose nothing, withdraw nothing.
-		if _, err := tx.Exec(ctx, `UPDATE k8s_namespace_exposure_rules SET status=$3,status_message=$4 WHERE org_id=$1 AND cluster_id=$2`, orgID, clusterID, status, message); err != nil {
-			return err
+		latest, lerr := latestInventoryReceivedAt(ctx, tx, orgID, clusterID)
+		if lerr != nil {
+			return lerr
+		}
+		// No current report: record why (or that a new rule awaits its first report), expose nothing,
+		// withdraw nothing.
+		for _, rule := range rules {
+			status, message := namespaceRuleNoReportStatus(err, rule.CreatedAt, latest, now)
+			if _, err := tx.Exec(ctx, `UPDATE k8s_namespace_exposure_rules SET status=$3,status_message=$4 WHERE org_id=$1 AND id=$2`, orgID, rule.ID, status, message); err != nil {
+				return err
+			}
 		}
 		return tx.Commit(ctx)
 	}

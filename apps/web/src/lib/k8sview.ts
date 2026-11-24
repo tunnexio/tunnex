@@ -449,7 +449,8 @@ export function namespaceRuleStatus(rule: Pick<K8sNamespaceRule, "status" | "sta
     case "applied":
       return { tone: "ok", label: "Applied", message };
     case "pending":
-      return { tone: "neutral", label: "Waiting for first report", message: message ?? "Nothing is exposed until the cluster's gateway reports its Services." };
+      // A new rule, or one newer than the gateway's latest Service report: not a problem, just not applied yet.
+      return { tone: "neutral", label: "Applying", message: message ?? "Waiting for the gateway's next Service report. Nothing is exposed until it arrives." };
     case "inventory_stale":
       return { tone: "warn", label: "Report is stale", message };
     case "inventory_unavailable":

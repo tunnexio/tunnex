@@ -353,6 +353,8 @@ describe("namespace rules (K8N-4)", () => {
     for (const status of ["pending", "inventory_stale", "inventory_unavailable", "scope_review_limit", "withdrawal_blocked", "error"] as const)
       expect(namespaceRuleStatus({ status, status_message: "why", waiting_services: 1 }).tone, status).not.toBe("ok");
     expect(namespaceRuleStatus({ status: "pending", status_message: "", waiting_services: 0 }).message).toMatch(/Nothing is exposed until/);
+    expect(namespaceRuleStatus({ status: "pending", status_message: "", waiting_services: 0 })).toEqual({ tone: "neutral", label: "Applying", message: "Waiting for the gateway's next Service report. Nothing is exposed until it arrives." });
+    expect(namespaceRuleStatus({ status: "inventory_unavailable", status_message: "none above 500 Services", waiting_services: 0 }).label).toBe("No current report");
   });
 });
 

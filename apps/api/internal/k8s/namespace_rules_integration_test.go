@@ -258,13 +258,23 @@ func TestNamespaceRuleRefusals(t *testing.T) {
 	_, err = f.svc.CreateNamespaceRule(ctx, f.org, uuid.New(), NamespaceRuleInput{Namespace: "shop"}, f.actor)
 	assertScopeAPIError(t, err, http.StatusNotFound, "cluster_not_found")
 
-	// No report yet: the rule exists, says why nothing happened, and exposed nothing.
+	// No report yet: the new rule exists, waits for the gateway's next report, and exposed nothing.
 	rule, err := f.svc.CreateNamespaceRule(ctx, f.org, f.cluster, NamespaceRuleInput{Namespace: "shop"}, f.actor)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if rule.Status != NamespaceRuleInventoryUnavailable || rule.StatusMessage == "" || len(f.live()) != 0 {
-		t.Fatalf("rule without a report = %+v live=%v", rule, f.live())
+	if rule.Status != NamespaceRulePending || rule.StatusMessage != namespaceRuleAwaitingReportMessage || len(f.live()) != 0 {
+		t.Fatalf("new rule without a report = %+v live=%v", rule, f.live())
+	}
+	// Still no report once the grace has passed: now the rule says why nothing happened.
+	f.exec(`UPDATE k8s_namespace_exposure_rules SET created_at=now()-interval '10 minutes' WHERE id=$1`, rule.ID)
+	if got := f.rule("shop"); got.Status != NamespaceRuleInventoryUnavailable || !strings.Contains(got.StatusMessage, "500 Services") || len(f.live()) != 0 {
+		t.Fatalf("rule without a report after the grace = %+v live=%v", got, f.live())
+	}
+	f.reconcileAt(time.Now().UTC())
+	var stored string
+	if err := f.pool.QueryRow(ctx, `SELECT status FROM k8s_namespace_exposure_rules WHERE id=$1`, rule.ID).Scan(&stored); err != nil || stored != NamespaceRuleInventoryUnavailable {
+		t.Fatalf("stored status after the grace = %q err=%v", stored, err)
 	}
 	_, err = f.svc.CreateNamespaceRule(ctx, f.org, f.cluster, NamespaceRuleInput{Namespace: "shop"}, f.actor)
 	assertScopeAPIError(t, err, http.StatusConflict, "namespace_rule_exists")

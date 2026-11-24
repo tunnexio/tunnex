@@ -12547,7 +12547,7 @@ components:
           type: string
           enum: [pending, applied, inventory_stale, inventory_unavailable, vip_range_exhausted, scope_review_limit, withdrawal_blocked, error, gateway_too_old, labels_incomplete]
           x-enum-varnames: [K8sNamespaceRulePending, K8sNamespaceRuleApplied, K8sNamespaceRuleInventoryStale, K8sNamespaceRuleInventoryUnavailable, K8sNamespaceRuleVipRangeExhausted, K8sNamespaceRuleScopeReviewLimit, K8sNamespaceRuleWithdrawalBlocked, K8sNamespaceRuleError, K8sNamespaceRuleGatewayTooOld, K8sNamespaceRuleLabelsIncomplete]
-          description: "applied = fully applied on the last pass. Anything else: the rule is not fully applied and status_message says why."
+          description: "applied = fully applied on the last pass. Anything else: the rule is not fully applied and status_message says why. pending = the rule is newer than the gateway's latest Service report and is waiting for the next one (nothing is exposed yet); inventory_unavailable = still no current report after that grace, e.g. a cluster above 500 Services, which the gateway does not report."
         status_message: { type: string }
         waiting_services: { type: integer, minimum: 0, description: "Services of the namespace the last pass could not expose." }
         exposed_services: { type: integer, minimum: 0, description: "Services currently exposed because of this rule." }

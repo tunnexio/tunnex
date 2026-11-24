@@ -69,6 +69,18 @@ export function K8sNamespaceRulesPanel({
     return () => { epoch.current += 1; };
   }, [load]);
 
+  // A pending rule is waiting for the gateway's next Service report (every 10–60s). Re-read until it
+  // settles, then refresh the page's Services so what the rule exposed shows up without a reload.
+  const pendingRules = rules?.some((rule) => rule.status === "pending") ?? false;
+  const wasPending = useRef(false);
+  useEffect(() => {
+    if (wasPending.current && !pendingRules && rules) void onChanged();
+    wasPending.current = pendingRules;
+    if (!pendingRules) return;
+    const timer = window.setTimeout(() => { void load(); }, 10_000);
+    return () => window.clearTimeout(timer);
+  }, [pendingRules, rules, load, onChanged]);
+
   async function changed() {
     await load();
     await onChanged();
@@ -215,7 +227,8 @@ export function ExposeNamespaceModal({
       await onDone();
       const status = namespaceRuleStatus(data);
       // The rule exists either way. If its first pass did not apply, keep the dialog open and say why.
-      if (data.status !== "applied" && status.message) return setErr(`The rule was created but is not applied yet. ${status.message}`);
+      // Pending only means the gateway's next report has not arrived yet; the list shows it as Applying.
+      if (data.status !== "applied" && data.status !== "pending" && status.message) return setErr(`The rule was created but is not applied yet. ${status.message}`);
       onClose();
     } finally {
       setBusy(false);
