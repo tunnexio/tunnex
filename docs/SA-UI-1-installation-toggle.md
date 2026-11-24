@@ -39,9 +39,10 @@ The Features page then only says "Unavailable" with no reason and no way forward
   database row. Reads are fail-closed (a database error is "off", never "fall back to env"), cached for at most
   one second per replica. `available()`, `Enabled()`, `Run`, `Boot` and the per-session renew check all go through
   it. `Run` (leader sweeps) keeps looping while off so a later "on" resumes sweeping without restart.
-- A per-replica watcher (not leader-gated) re-reads the setting each second; on an on→off transition it ends all
-  active sessions durably and closes the local `live` streams. The replica that served the PATCH does this
-  synchronously before replying.
+- Turning it off: the replica that served the PATCH ends every active session durably (reason
+  `server_access_disabled`, each audited) and closes its local `live` streams before replying. No separate watcher
+  is needed: every live terminal on every replica re-validates its authority each second through `available()`
+  and the durable session row, so streams held elsewhere close within ~1–2 s.
 - API: `GET/PATCH /api/v1/admin/server-access/installation` (`getServerAccessInstallation`,
   `updateServerAccessInstallation`), same authorization shape as Application domains (`requireCPAdmin` + human
   browser session), optimistic `expected_version`, advisory lock, CSRF as for every cookie PATCH.
@@ -110,6 +111,18 @@ Compose used one variable for both the API and the co-located `node-agent`. The 
 under the tri-state rule would have hard-locked the co-located gateway and broken decision 1. The `node-agent`
 service now reads `TUNNEX_GATEWAY_SERVER_ACCESS_ENABLED` (default empty = follow); `TUNNEX_SERVER_ACCESS_ENABLED`
 only seeds the API. `TUNNEX_SERVER_ACCESS_LOCKED` is passed to the API (compose, Helm `serverAccess.locked`).
+
+## Helm single-replica fence (found during implementation)
+
+The CP chart refuses `serverAccess.enabled=true` with `api.replicas != 1` (terminal sessions are bound to one
+API process; no HA). A dashboard toggle would have bypassed that fence, so the chart now renders
+`TUNNEX_SERVER_ACCESS_LOCKED=true` whenever `api.replicas != 1` (or `serverAccess.locked=true`).
+
+## Upgrade order
+
+A new gateway agent with an empty env asks the control plane at `GET /agent/server-access/capability`. An old
+control plane answers 404, which the gateway treats as "keep current state" (off), the same as before for an
+unset env. Upgrade the control plane first; gateways then follow within ~5 seconds.
 
 ## Migration and rollback
 
