@@ -862,3 +862,87 @@ Nothing here speaks for them; on each the gateway stays not ready unless the pro
    `cilium.enabled` is set; the values and their reasons are in K8N-1, "Hardening after the
    live install". Answering probes without a new process is still open. Not yet run on a
    cluster.
+
+## bpftool without LLVM — as built
+
+Built 2026-11-24 on branch `k8n/bpftool-small`; this is the "build it from source without LLVM"
+option of decision 1. Decision 1 itself is left as written.
+
+**Source.** Upstream `libbpf/bpftool` v7.8.1 (released 2026-10-20), the release archive that
+carries the libbpf submodule:
+`https://github.com/libbpf/bpftool/releases/download/v7.8.1/bpftool-libbpf-v7.8.1-sources.tar.gz`,
+sha256 `fed76b7acb54d810cc3982eb6394726010114977542fd146695887a7d904b60c` (the digest GitHub
+publishes for the asset). The URL and checksum are literals in the `bpftool` stage of
+`deploy/docker/node.Dockerfile`, not build arguments, and the archive is checked with
+`sha256sum -c` before it is unpacked. The stage uses the same pinned `alpine:3.24.2` index as
+the runtime stage.
+
+**Build.** `make -C src SKIP_LLVM=1 SKIP_LIBBFD=1 SKIP_CRYPTO=1`, then `strip`. Build packages:
+`build-base elfutils-dev zlib-dev zstd-dev libcap-dev linux-headers`; neither `llvm-dev`,
+`binutils-dev` nor `clang` is installed, so feature detection cannot find them either. libbpf
+1.8 is linked statically. Only `/usr/sbin/bpftool` and the five license files (bpftool's
+`LICENSE`, `LICENSE.BSD-2-Clause`, `LICENSE.GPL-2.0`, libbpf's `LICENSE` and
+`LICENSE.LGPL-2.1-only`, in `/usr/share/tunnex-bpftool/`) are copied into the image. The
+stage fails unless `bpftool --json version` reports version 7.8.1 with `llvm` and `libbfd`
+false and `ldd` shows no LLVM; the runtime stage still runs `bpftool version`, and
+`deploy/ipsec/verify_runtime.sh` now also fails the build if bpftool's `ldd` closure is
+incomplete or names LLVM, or if any llvm package is installed.
+
+**Features**, from `bpftool --json version`:
+
+| | version | llvm | libbfd | crypto | skeletons |
+|---|---|---|---|---|---|
+| before (Alpine's package binary) | 7.8.0 | true | false | true | true |
+| after (this build) | 7.8.1 | false | false | false | false |
+
+What is lost: JIT disassembly (`prog dump jited`), program signing, and the skeleton-based
+`prog profile` and pids column. The gateway uses none of them; it runs only
+`bpftool --json map dump pinned /sys/fs/bpf/tc/globals/cilium_ipmasq_v4`.
+
+**Linked libraries.** Before: libelf, libcrypto, libz, libcap, libLLVM.so.22.1, libzstd,
+libffi, libxml2, libstdc++, libgcc_s, liblzma. After: libelf, libz, libcap, libzstd (plus musl).
+The runtime `apk add` now names `libelf libcap2 zlib zstd-libs` instead of
+`libelf libcap2 zlib llvm22-libs`. `apk info` difference: `llvm22-libs`, `libffi`, `libgcc`,
+`libstdc++`, `libxml2` and `xz-libs` are gone; nothing was added. No other binary in the image
+lost a library (the build's `verify_runtime.sh` closure checks passed, and `ldd` of zebra,
+openvpn and tunnex-node shows nothing missing).
+
+**Size**, linux/arm64 only (amd64 not built here):
+
+| | before | after |
+|---|---|---|
+| image on disk (`docker images`) | 433 MB | 184 MB |
+| image content (compressed) | 119.0 MB | 50.1 MB |
+| `du -sh /` in the container | 298 MB | 126 MB |
+| `du -sh /usr/lib` | 212 MB | 40 MB |
+| `/usr/sbin/bpftool` | 725 KB | 723 KB |
+
+**Behavioural check, without a cluster.** In a privileged container from the new image
+(`--network none`, its own netns, on the build host's kernel 6.8.0-117-generic aarch64, the
+same kernel as the kind captures), a fresh bpffs was mounted at `/sys/fs/bpf` and:
+
+1. Before any map existed, `bpftool --json map dump pinned /sys/fs/bpf/tc/globals/cilium_ipmasq_v4`
+   printed `{"error":"bpf obj get (/sys/fs/bpf/tc/globals/cilium_ipmasq_v4): No such file or directory"}`
+   and exited 255, the same text as the captured missing-pin fixture
+   `testdata/cilium-1.20.5-kind-A-bpf.ipmasq-v4.bpftool.json` (no file matches the name
+   `*bpftool-missing*`; this A fixture is the one that holds the missing-pin output).
+2. bpftool itself created a pinned map like Cilium's: `map create ... type lpm_trie key 8 value 1
+   entries 16384 name cilium_ipmasq_v4 flags 1` (BPF_F_NO_PREALLOC; the name is truncated to 15
+   characters as the kernel requires), and inserted 100.96.0.0/24 with
+   `key hex 18 00 00 00 64 60 00 00 value hex 00`.
+3. The gateway's exact command printed
+   `[{"key":["0x18","0x00","0x00","0x00","0x64","0x60","0x00","0x00"],"value":["0x00"]}]`,
+   exit 0, byte-identical to `testdata/cilium-1.20.5-kind-B-bpf-ipmasq.ipmasq-v4.bpftool.json`.
+4. A throwaway Go test (not committed), compiled from this tree and run in that container,
+   drove `CiliumFactsReader.readIPMasqMap` through the real `realBPFTool` (exec of the image's
+   bpftool): the map case gave state `read` with the text equal to fixture B, and
+   `parseCiliumIPMasqDump` (through `parseBPFToolMapDump`) returned `[100.96.0.0/24]`; the
+   missing-pin case returned the fixture's output with `exit status 255` and the fact
+   `unreadable: bpftool: bpf obj get (...): No such file or directory`, as on kind.
+
+Not run on a cluster: the map was made by bpftool, not by Cilium.
+
+**Now stale, not edited here.** The 76 MB (peak 83 MB) LLVM page-cache figure behind
+`cilium.resources` in `deploy/helm/tunnex-host-posture/values.yaml`, and the memory reasoning in
+decision 7, were measured with the LLVM-linked bpftool. Both need re-measuring on the next
+cluster run with this image.

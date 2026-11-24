@@ -41,6 +41,15 @@ for library in /opt/tunnex-ipsec/lib/ipsec/plugins/*.so; do
       *) echo 'Unexpected IPsec plugin' >&2; exit 1;;
     esac
 done
+# K8N-2: bpftool is built from source without LLVM; its closure must stay complete and
+# LLVM-free, and no llvm package may come back into the image.
+dependencies=$(ldd /usr/sbin/bpftool 2>&1) || { printf 'bpftool dependency verification failed\n%s\n' "$dependencies" >&2; exit 1; }
+case "$dependencies" in *'not found'*|*'Error loading'*|*[Ll][Ll][Vv][Mm]*) echo 'bpftool runtime closure is incomplete or links LLVM' >&2; exit 1;; esac
+if apk info 2>/dev/null | grep -qi llvm; then
+    echo 'Unexpected llvm package in runtime image' >&2
+    exit 1
+fi
+bpftool version >/dev/null
 for binary in gcc cc make python3 gpg; do
     if command -v "$binary" >/dev/null 2>&1; then
         echo 'Unexpected build tool in runtime image' >&2
