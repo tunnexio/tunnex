@@ -25,7 +25,7 @@ cat >"$TMP/tunnex/.env" <<'EOF'
 TUNNEX_RELEASE_PUBLIC_KEY=from-installed-config
 TUNNEX_RELEASE_CATALOG_URL=https://updates.example.test/release.json
 EOF
-: >"$TMP/tunnex/release.json"
+printf '%s\n' '{"fixture":"installed release"}' >"$TMP/tunnex/release.json"
 : >"$TMP/catalog.json"
 cat >"$TMP/curl" <<'EOF'
 #!/bin/sh
@@ -45,10 +45,29 @@ if [ "${5:-}" = "-print-env" ]; then
 TUNNEX_RELEASE_SOURCE_SHA=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 TUNNEX_RELEASE_VERSION=v9.9.9
 TUNNEX_RELEASE_SEQUENCE=99
+TUNNEX_API_IMAGE=ghcr.io/tunnexio/tunnex-api@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 ENV
 fi
 EOF
 chmod 755 "$TMP/releaseverify"
+# UPG-2: the helper hands off to the target script carried by the verified API
+# image. This fake daemon serves the repository's own host files.
+mkdir -p "$TMP/image-host"
+cp "$ROOT/deploy/HOST_ABI" "$TMP/image-host/HOST_ABI"
+for f in $(sed -n "s/^HOST_FILE_LIST='\(.*\)'\$/\1/p" "$ROOT/deploy/upgrade.sh"); do
+  mkdir -p "$TMP/image-host/$(dirname "$f")"
+  cp "$ROOT/deploy/$f" "$TMP/image-host/$f"
+done
+cat >"$TMP/docker" <<EOF
+#!/bin/sh
+case "\$1" in
+  pull|rm|ps) ;;
+  create) echo fixture-host-files ;;
+  cp) cp -R "$TMP/image-host/." "\$3/" ;;
+  *) echo "unexpected docker call: \$*" >&2; exit 1 ;;
+esac
+EOF
+chmod 755 "$TMP/docker"
 
 output=$(cd "$TMP/tunnex" && PATH="$TMP:$PATH" MOCK_CATALOG="$TMP/catalog.json" TUNNEX_RELEASEVERIFY="$TMP/releaseverify" ./upgrade.sh)
 printf '%s\n' "$output" | grep -Fq 'dry run: re-run with --apply'

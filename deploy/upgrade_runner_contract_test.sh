@@ -33,7 +33,10 @@ requested_by=87654321-4321-4321-4321-cba987654321
 created_at=2026-08-20T00:00:00Z
 REQ
 MOCK_ARGS="$TMP/args" MOCK_REQUEST_ID="$TMP/request-id" "$TMP/tunnex/upgrade-runner.sh"
-grep -Fq -- '--expected-source-sha aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa --expected-sequence 99' "$TMP/args"
+[ "$(cat "$TMP/args")" = '--apply --expected-source-sha aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa --expected-sequence 99' ]
+# UPG-2 U5: the installed-descriptor override is command line only; the runner
+# never passes it (and upgrade.sh refuses it when privileged).
+! grep -Fq -- '--accept-installed-unknown' "$ROOT/deploy/upgrade-runner.sh"
 [ "$(cat "$TMP/request-id")" = 12345678-1234-1234-1234-123456789abc ]
 [ ! -e "$TMP/tunnex/upgrade-state/requests/request" ]
 find "$TMP/tunnex/upgrade-state/work" -maxdepth 1 -type f | grep -q . && { echo 'runner retained request snapshot' >&2; exit 1; }

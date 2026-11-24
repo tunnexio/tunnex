@@ -8,6 +8,20 @@ TMP=$(mktemp -d)
 trap 'rm -rf "$TMP"' EXIT HUP INT TERM
 
 mkdir -p "$TMP/tunnex" "$TMP/bin"
+# UPG-2: host files come from the digest-pinned API image, never from GitHub.
+# Stage them as the image carries them; the staged upgrade.sh is marked so the
+# tests can tell the exec'd target and the installed copies apart.
+API_IMAGE=ghcr.io/tunnexio/tunnex-api@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+MOCK_API_IMAGE=$API_IMAGE
+MOCK_HOST_FILES="$TMP/image-host"
+export MOCK_API_IMAGE MOCK_HOST_FILES
+mkdir -p "$MOCK_HOST_FILES"
+cp "$ROOT/deploy/HOST_ABI" "$MOCK_HOST_FILES/HOST_ABI"
+for f in $(sed -n "s/^HOST_FILE_LIST='\(.*\)'\$/\1/p" "$ROOT/deploy/upgrade.sh"); do
+  mkdir -p "$MOCK_HOST_FILES/$(dirname "$f")"
+  cp "$ROOT/deploy/$f" "$MOCK_HOST_FILES/$f"
+done
+printf '%s\n' '# staged-target-marker' >>"$MOCK_HOST_FILES/upgrade.sh"
 cp "$ROOT/deploy/upgrade.sh" "$TMP/tunnex/upgrade.sh"
 chmod 0755 "$TMP/tunnex/upgrade.sh"
 printf '%s\n' '# old compose' >"$TMP/tunnex/tunnex.yml"
@@ -20,6 +34,7 @@ TUNNEX_SERVER_ACCESS_ENABLED=true
 TUNNEX_SERVER_ACCESS_RECORDING_VOLUME=owned-test-recordings
 TUNNEX_SERVER_ACCESS_RECORDING_VOLUME_EXTERNAL=true
 ENV
+printf '%s\n' '{"fixture":"installed release"}' >"$TMP/tunnex/release.json"
 printf '%s\n' '{"fixture":"signed catalog for stdin transfer"}' >"$TMP/catalog.json"
 
 cat >"$TMP/bin/curl" <<'SH'
@@ -31,32 +46,29 @@ url=$2
 out=$4
 case "$url" in
   https://updates.example.test/release.json) cp "$MOCK_CATALOG" "$out" ;;
-  https://raw.githubusercontent.com/tunnexio/tunnex/*/deploy/tunnex.yml)
-    printf '%s\n' 'services:' '  api:' '    environment:' '      TUNNEX_ENV: production' '      TUNNEX_DATABASE_URL: ${TUNNEX_DATABASE_URL:-}' '# bundled-db' >"$out"
-    if [ -n "${MOCK_EDGE:-}" ]; then
-      printf '%s\n' '  caddy:' '    environment:' '      TUNNEX_EDGE_LISTEN: ${TUNNEX_EDGE_LISTEN:?configured}' >>"$out"
-      if [ "$MOCK_EDGE" = public-ip ]; then
-        printf '%s\n' '      TUNNEX_EDGE_PUBLIC_IP: ${TUNNEX_EDGE_PUBLIC_IP:-}' >>"$out"
-      fi
-    fi
-    if [ "${MOCK_EDGE_TRUST:-}" = 1 ]; then
-      printf '%s\n' '# TUNNEX_EDGE_TRUSTED_PROXIES' >>"$out"
-    fi
-    if [ "${MOCK_AI:-}" = 1 ]; then
-      printf '%s\n' '  bifrost:' '    image: ${TUNNEX_AI_ENGINE_IMAGE:?signed}' >>"$out"
-    fi
-    ;;
-  https://raw.githubusercontent.com/tunnexio/tunnex/*/deploy/ai-bootstrap.sh)
-    cp "$MOCK_ROOT/deploy/ai-bootstrap.sh" "$out" ;;
-  https://raw.githubusercontent.com/tunnexio/tunnex/*/deploy/ai-gateway/config-managed.json)
-    cp "$MOCK_ROOT/deploy/ai-gateway/config-managed.json" "$out" ;;
-  https://raw.githubusercontent.com/tunnexio/tunnex/*/deploy/app-access/compose.yml)
-    cp "$MOCK_ROOT/deploy/app-access/compose.yml" "$out" ;;
-  https://raw.githubusercontent.com/tunnexio/tunnex/*/deploy/app-access/restore.py)
-    cp "$MOCK_ROOT/deploy/app-access/restore.py" "$out" ;;
   *) echo "unexpected curl URL: $url" >&2; exit 1 ;;
 esac
 SH
+# The image's tunnex.yml stands in for each target release's capabilities.
+cat >"$TMP/bin/mock-compose" <<'SH'
+#!/bin/sh
+set -eu
+out=$1
+printf '%s\n' 'services:' '  api:' '    environment:' '      TUNNEX_ENV: production' '      TUNNEX_DATABASE_URL: ${TUNNEX_DATABASE_URL:-}' '# bundled-db' >"$out"
+if [ -n "${MOCK_EDGE:-}" ]; then
+  printf '%s\n' '  caddy:' '    environment:' '      TUNNEX_EDGE_LISTEN: ${TUNNEX_EDGE_LISTEN:?configured}' >>"$out"
+  if [ "$MOCK_EDGE" = public-ip ]; then
+    printf '%s\n' '      TUNNEX_EDGE_PUBLIC_IP: ${TUNNEX_EDGE_PUBLIC_IP:-}' >>"$out"
+  fi
+fi
+if [ "${MOCK_EDGE_TRUST:-}" = 1 ]; then
+  printf '%s\n' '# TUNNEX_EDGE_TRUSTED_PROXIES' >>"$out"
+fi
+if [ "${MOCK_AI:-}" = 1 ]; then
+  printf '%s\n' '  bifrost:' '    image: ${TUNNEX_AI_ENGINE_IMAGE:?signed}' >>"$out"
+fi
+SH
+chmod 0755 "$TMP/bin/mock-compose"
 chmod 0755 "$TMP/bin/curl"
 
 cat >"$TMP/bin/releaseverify" <<'SH'
@@ -79,7 +91,7 @@ case " $* " in *' -print-env '*)
 TUNNEX_RELEASE_SOURCE_SHA=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 TUNNEX_RELEASE_VERSION=v9.9.9
 TUNNEX_RELEASE_SEQUENCE=99
-TUNNEX_API_IMAGE=api@sha256:aaa
+TUNNEX_API_IMAGE=ghcr.io/tunnexio/tunnex-api@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
 TUNNEX_WEB_IMAGE=web@sha256:bbb
 TUNNEX_NGINX_IMAGE=nginx@sha256:ccc
 TUNNEX_NODE_AGENT_IMAGE=node@sha256:ddd
@@ -105,6 +117,12 @@ set -eu
 printf '%s\n' "$*" >>"$MOCK_DOCKER_LOG"
 printf '%s|%s\n' "${COMPOSE_PROFILES:-}" "$*" >>"$MOCK_DOCKER_LOG.profiles"
 case "$*" in
+  "pull $MOCK_API_IMAGE") ;;
+  "create --pull never --network none $MOCK_API_IMAGE") echo fixture-host-files ;;
+  "cp fixture-host-files:/usr/share/tunnex/host/. "*)
+    cp -R "$MOCK_HOST_FILES/." "$3/"
+    "$(dirname "$0")/mock-compose" "$3/tunnex.yml" ;;
+  'rm fixture-host-files') ;;
   'ps -a --filter '*) [ -z "${MOCK_AA_DIR:-}" ] || cat "$MOCK_AA_DIR/ids" ;;
   'inspect --format '*)
     for last in "$@"; do :; done
@@ -143,7 +161,7 @@ case "$*" in
         -i|--interactive) interactive=true; shift ;;
         --network) [ "$2" = none ]; network_none=true; shift 2 ;;
         --entrypoint) [ "$2" = sh ]; shell_entrypoint=true; shift 2 ;;
-        api@sha256:aaa) shift; break ;;
+        "$MOCK_API_IMAGE") shift; break ;;
         *) echo "unexpected target verifier Docker argument: $1" >&2; exit 1 ;;
       esac
     done
@@ -205,6 +223,14 @@ grep -Fq 'pull' "$TMP/docker.log"
 grep -Fq 'up -d' "$TMP/docker.log"
 grep -Fq 'TUNNEX_RELEASE_VERSION=v9.9.9' "$TMP/tunnex/.env"
 
+# UPG-2: the installed helper handed off to the image's target script before
+# any admission or backup, and the installed copy is now the target's.
+[ "$(sed -n 1,4p "$TMP/docker.log")" = "pull $API_IMAGE
+create --pull never --network none $API_IMAGE
+cp fixture-host-files:/usr/share/tunnex/host/. $(sed -n 3p "$TMP/docker.log" | sed 's/^cp [^ ]* //')
+rm fixture-host-files" ]
+cmp -s "$MOCK_HOST_FILES/upgrade.sh" "$TMP/tunnex/upgrade.sh"
+cmp -s "$MOCK_HOST_FILES/tunnex.yml" "$TMP/tunnex/tunnex.yml"
 backup_line=$(grep -n 'exec -T postgres sh -c' "$TMP/docker.log" | cut -d: -f1)
 pull_line=$(grep -n 'pull' "$TMP/docker.log" | cut -d: -f1 | tail -1)
 [ "$backup_line" -lt "$pull_line" ] || {
@@ -288,7 +314,7 @@ assert_edge_unmodified() {
     cmp -s "$edge_dir/$edge_file.before" "$edge_dir/$edge_file"
   done
   grep -Fxq 'state=failed' "$edge_dir/status"
-  ! grep -Eq '^pull |^compose .* (pull|up|stop|start)( |$)' "$edge_dir/docker.log"
+  ! grep -vFx "pull $API_IMAGE" "$edge_dir/docker.log" | grep -Eq '^pull |^compose .* (pull|up|stop|start)( |$)'
 }
 for edge_case in public-ip public-ip-port dns terminated implicit-terminated http; do
   case "$edge_case" in
@@ -371,6 +397,7 @@ assert_edge_unmodified
 mkdir "$TMP/ai-upgrade"
 cp "$ROOT/deploy/upgrade.sh" "$TMP/ai-upgrade/upgrade.sh"
 printf '%s\n' '# old compose' >"$TMP/ai-upgrade/tunnex.yml"
+printf '%s\n' '{"fixture":"installed release"}' >"$TMP/ai-upgrade/release.json"
 cat >"$TMP/ai-upgrade/.env" <<'ENV'
 TUNNEX_RELEASE_PUBLIC_KEY=test-public-key
 TUNNEX_RELEASE_CATALOG_URL=https://updates.example.test/release.json
@@ -412,7 +439,7 @@ for key in backup_dump backup_manifest; do
   backup=$(sed -n "s/^$key=//p" "$TMP/ai-verifier-failure/status")
   [ -n "$backup" ] && [ -s "$TMP/ai-verifier-failure/backups/$backup" ]
 done
-grep -Fxq 'pull api@sha256:aaa' "$TMP/ai-upgrade.log"
+grep -Fxq "pull $API_IMAGE" "$TMP/ai-upgrade.log"
 ! grep -Eq '^compose .* (pull|up|stop|start)( |$)' "$TMP/ai-upgrade.log"
 
 : >"$TMP/ai-upgrade.log"
@@ -509,6 +536,7 @@ PYTHON
 mkdir "$TMP/ai-byodb-upgrade"
 cp "$ROOT/deploy/upgrade.sh" "$TMP/ai-byodb-upgrade/upgrade.sh"
 printf '%s\n' '# old compose' >"$TMP/ai-byodb-upgrade/tunnex.yml"
+printf '%s\n' '{"fixture":"installed release"}' >"$TMP/ai-byodb-upgrade/release.json"
 cat >"$TMP/ai-byodb-upgrade/.env" <<'ENV'
 TUNNEX_RELEASE_PUBLIC_KEY=test-public-key
 TUNNEX_RELEASE_CATALOG_URL=https://updates.example.test/release.json
@@ -534,6 +562,7 @@ for fault in partial duplicate missing-policy operator-proxy; do
   mkdir "$TMP/ai-upgrade-$fault"
   cp "$ROOT/deploy/upgrade.sh" "$TMP/ai-upgrade-$fault/upgrade.sh"
   cp "$TMP/ai-upgrade/tunnex.yml" "$TMP/ai-upgrade-$fault/tunnex.yml"
+  cp "$TMP/ai-upgrade/release.json" "$TMP/ai-upgrade-$fault/release.json"
   cp "$TMP/ai-before.env" "$TMP/ai-fault.env"
   case "$fault" in
     partial)
@@ -745,4 +774,69 @@ done
 grep -qx 'TUNNEX_SERVER_ACCESS_ENABLED=true' "$TMP/tunnex/.env"
 grep -qx 'TUNNEX_SERVER_ACCESS_RECORDING_VOLUME=owned-test-recordings' "$TMP/tunnex/.env"
 grep -qx 'TUNNEX_SERVER_ACCESS_RECORDING_VOLUME_EXTERNAL=true' "$TMP/tunnex/.env"
+# ---------------------------------------------------------------------------
+# UPG-2 U3: installed copies are replaced only after the target is healthy.
+make_copy_install() {
+  copy_dir="$TMP/copies-$1"
+  mkdir -p "$copy_dir"
+  cp "$ROOT/deploy/upgrade.sh" "$copy_dir/upgrade.sh"
+  printf '%s\n' '# installed deployment' >"$copy_dir/tunnex.yml"
+  printf '%s\n' '{"fixture":"installed release"}' >"$copy_dir/release.json"
+  printf '%s\n' TUNNEX_RELEASE_PUBLIC_KEY=test-public-key TUNNEX_RELEASE_CATALOG_URL=https://updates.example.test/release.json \
+    POSTGRES_USER=tunnex POSTGRES_DB=tunnex >"$copy_dir/.env"
+}
+run_copy_upgrade() (
+  cd "$copy_dir"
+  PATH="$TMP/bin:$PATH" MOCK_CATALOG="$TMP/catalog.json" MOCK_DOCKER_LOG="$copy_dir/docker.log" \
+    TUNNEX_RELEASEVERIFY="$TMP/bin/releaseverify" TUNNEX_UPGRADE_STATUS_FILE="$copy_dir/status" \
+    TUNNEX_ROOT_UPGRADE_DIR="$copy_dir/root" "$@"
+)
+# A failed target leaves every installed copy alone; the next attempt hands off again.
+make_copy_install failed
+if run_copy_upgrade env MOCK_FAIL_STAGE=preflight TUNNEX_UPGRADE_PRIVILEGED=1 TUNNEX_UPGRADE_REQUEST_ID=copies-failed \
+  ./upgrade.sh --apply >"$copy_dir/output" 2>&1; then
+  echo 'failed target unexpectedly succeeded' >&2; exit 1
+fi
+grep -Fxq 'reason_code=preflight_failed' "$copy_dir/status"
+cmp -s "$ROOT/deploy/upgrade.sh" "$copy_dir/upgrade.sh"
+[ ! -e "$copy_dir/root" ]
+# Healthy and privileged: install-dir and root copies come from the image.
+make_copy_install privileged
+run_copy_upgrade env TUNNEX_UPGRADE_PRIVILEGED=1 TUNNEX_UPGRADE_REQUEST_ID=copies-ok \
+  ./upgrade.sh --apply >"$copy_dir/output" 2>&1 || { cat "$copy_dir/output" >&2; exit 1; }
+grep -Fxq 'state=healthy' "$copy_dir/status"
+cmp -s "$MOCK_HOST_FILES/upgrade.sh" "$copy_dir/upgrade.sh"
+cmp -s "$MOCK_HOST_FILES/upgrade.sh" "$copy_dir/root/upgrade.sh"
+cmp -s "$MOCK_HOST_FILES/upgrade-runner.sh" "$copy_dir/root/upgrade-runner.sh"
+for copy in "$copy_dir/upgrade.sh" "$copy_dir/root/upgrade.sh" "$copy_dir/root/upgrade-runner.sh"; do
+  [ -x "$copy" ] && [ ! -e "$copy.next" ]
+done
+# Unprivileged (manual CLI): only the install-dir copy is refreshed.
+make_copy_install manual
+run_copy_upgrade env TUNNEX_UPGRADE_REQUEST_ID=copies-manual ./upgrade.sh --apply >"$copy_dir/output" 2>&1 ||
+  { cat "$copy_dir/output" >&2; exit 1; }
+cmp -s "$MOCK_HOST_FILES/upgrade.sh" "$copy_dir/upgrade.sh"
+[ ! -e "$copy_dir/root" ]
+
+# The dashboard runner drives the trampoline; the request ID stays continuous
+# from the runner's request through the hand-off to the target's final status.
+make_copy_install runner
+mkdir -p "$copy_dir/upgrade-state/requests" "$copy_dir/upgrade-state/status" "$copy_dir/upgrade-state/work"
+cp "$ROOT/deploy/upgrade-runner.sh" "$copy_dir/upgrade-runner.sh"
+cat >"$copy_dir/upgrade-state/requests/request" <<'REQ'
+request_id=12345678-1234-1234-1234-123456789abc
+source_sha=aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa
+target_version=v9.9.9
+sequence=99
+requested_by=87654321-4321-4321-4321-cba987654321
+created_at=2026-08-20T00:00:00Z
+REQ
+run_copy_upgrade env TUNNEX_DIR="$copy_dir" TUNNEX_UPGRADE_HELPER="$copy_dir/upgrade.sh" \
+  sh "$copy_dir/upgrade-runner.sh" >"$copy_dir/output" 2>&1 || { cat "$copy_dir/output" >&2; exit 1; }
+runner_status="$copy_dir/status" # the runner honours an explicit status path
+grep -Fxq 'request_id=12345678-1234-1234-1234-123456789abc' "$runner_status"
+grep -Fxq 'state=healthy' "$runner_status"
+cmp -s "$MOCK_HOST_FILES/upgrade.sh" "$copy_dir/root/upgrade.sh"
+grep -Fq "create --pull never --network none $API_IMAGE" "$copy_dir/docker.log"
+
 echo 'upgrade apply contract passed'
