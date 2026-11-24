@@ -89,7 +89,7 @@ func RunEnrollment(ctx context.Context, c *control.Client) {
 					continue
 				}
 				if j.State == "preparing" {
-					c.TerminalRPC(ctx, "POST", "enrollments/"+j.ID, bootstrap.Report{PublicKey: string(ssh.MarshalAuthorizedKey(key.signer.PublicKey()))}, nil)
+					c.TerminalRPC(ctx, "POST", "enrollments/"+j.ID, bootstrap.Report{PublicKey: string(ssh.MarshalAuthorizedKey(key.signer.PublicKey())), HostKeyAttestation: j.HostKeyAttestation}, nil)
 				}
 				if j.State == "queued" {
 					mu.Lock()
@@ -108,17 +108,19 @@ func RunEnrollment(ctx context.Context, c *control.Client) {
 					go func(j bootstrap.Job, key *setupKey) {
 						defer cancel()
 						defer clear(key.private)
-						result, e := executeEnrollment(runCtx, c, j, key.signer)
-						code := "ok"
+						result, proof, e := executeEnrollment(runCtx, c, j, key.signer)
+						report := bootstrap.Report{Result: "ok", Setup: result}
 						if e != nil {
-							code = classifyResult(e)
-							if code == "failed" {
-								code = "setup_failed"
+							report = bootstrap.Report{Result: classifyResult(e)}
+							if report.Result == "failed" {
+								report.Result = "setup_failed"
 							}
+						} else if j.HostKeyAttestation {
+							report.HostKey, report.Attestation = proof.seen, proof.line
 						}
 						reportCtx, stop := context.WithTimeout(context.Background(), 2*time.Second)
 						defer stop()
-						c.TerminalRPC(reportCtx, "POST", "enrollments/"+j.ID, bootstrap.Report{Result: code, Setup: result}, nil)
+						c.TerminalRPC(reportCtx, "POST", "enrollments/"+j.ID, report, nil)
 					}(j, key)
 				}
 			}
@@ -140,12 +142,44 @@ func RunEnrollment(ctx context.Context, c *control.Client) {
 }
 func validateSetupJob(j bootstrap.Job) error {
 	ip, e := netip.ParseAddr(j.IP)
-	if e != nil || !ip.IsPrivate() || ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.Zone() != "" || j.Port < 1 || j.Port > 65535 || j.Account == "root" || j.Account == "" || len(j.Script) == 0 || len(j.Script) > 131072 {
+	if e != nil || !ip.IsPrivate() || ip.IsLoopback() || ip.IsLinkLocalUnicast() || ip.Zone() != "" || j.Port < 1 || j.Port > 65535 || j.Account == "root" || j.Account == "" || len(j.Script) == 0 || len(j.Script) > 131072 || (j.Fingerprint == "" && !j.HostKeyAttestation) {
 		return errors.New("invalid setup material")
 	}
 	return nil
 }
-func executeEnrollment(ctx context.Context, c *control.Client, j bootstrap.Job, signer ssh.Signer) (*bootstrap.Result, error) {
+
+// hostKeyProof is what the gateway saw plus the target's attestation line; the control plane verifies it.
+type hostKeyProof struct{ seen, line string }
+
+// setupHostKeyCallback pins the administrator's fingerprint when given. Without one (attestation jobs only) it
+// records the ed25519 key actually presented; trust is decided by the control plane from the attestation.
+func setupHostKeyCallback(j bootstrap.Job, proof *hostKeyProof) ssh.HostKeyCallback {
+	return func(_ string, _ net.Addr, key ssh.PublicKey) error {
+		fp := ssh.FingerprintSHA256(key)
+		if key.Type() != ssh.KeyAlgoED25519 || (j.Fingerprint != "" && fp != j.Fingerprint) || (j.Fingerprint == "" && !j.HostKeyAttestation) {
+			return errHostKeyMismatch
+		}
+		proof.seen = fp
+		return nil
+	}
+}
+
+// attestationFrom returns the single attestation line printed by the target launcher before the installer ran.
+func attestationFrom(output []byte) string {
+	for _, line := range bytes.Split(output, []byte("\n")) {
+		if bytes.HasPrefix(line, []byte(bootstrap.AttestationPrefix)) && len(line) <= 4096 {
+			return string(bytes.TrimSpace(line))
+		}
+	}
+	return ""
+}
+
+func executeEnrollment(ctx context.Context, c *control.Client, j bootstrap.Job, signer ssh.Signer) (*bootstrap.Result, hostKeyProof, error) {
+	proof := hostKeyProof{}
+	result, e := runEnrollment(ctx, c, j, signer, &proof)
+	return result, proof, e
+}
+func runEnrollment(ctx context.Context, c *control.Client, j bootstrap.Job, signer ssh.Signer, proof *hostKeyProof) (*bootstrap.Result, error) {
 	if e := validateSetupJob(j); e != nil {
 		return nil, e
 	}
@@ -162,12 +196,7 @@ func executeEnrollment(ctx context.Context, c *control.Client, j bootstrap.Job, 
 	defer raw.Close()
 	go func() { <-bounded.Done(); raw.Close() }()
 	raw.SetDeadline(time.Now().Add(5 * time.Second))
-	config := &ssh.ClientConfig{User: j.Account, Auth: []ssh.AuthMethod{ssh.PublicKeys(signer)}, HostKeyAlgorithms: []string{ssh.KeyAlgoED25519}, HostKeyCallback: func(_ string, _ net.Addr, key ssh.PublicKey) error {
-		if ssh.FingerprintSHA256(key) != j.Fingerprint {
-			return errHostKeyMismatch
-		}
-		return nil
-	}}
+	config := &ssh.ClientConfig{User: j.Account, Auth: []ssh.AuthMethod{ssh.PublicKeys(signer)}, HostKeyAlgorithms: []string{ssh.KeyAlgoED25519}, HostKeyCallback: setupHostKeyCallback(j, proof)}
 	conn, chans, reqs, e := ssh.NewClientConn(raw, net.JoinHostPort(j.IP, strconv.Itoa(j.Port)), config)
 	if e != nil {
 		return nil, e
@@ -188,6 +217,7 @@ func executeEnrollment(ctx context.Context, c *control.Client, j bootstrap.Job, 
 	if e = session.Run("tunnex-enroll"); e != nil {
 		return nil, e
 	}
+	proof.line = attestationFrom(output.Bytes())
 	return parseSetupOutput(output.Bytes())
 }
 

@@ -9,11 +9,21 @@ import (
 )
 
 func TestEnrollmentInputRejectsUnsafeProvisioning(t *testing.T) {
-	valid := api.ServerAccessEnrollmentInput{ManagementAccount: "ubuntu", ManagementPort: 22, ManagementFingerprint: "SHA256:" + strings.Repeat("A", 43), Accounts: []string{}}
+	fp := "SHA256:" + strings.Repeat("A", 43)
+	valid := api.ServerAccessEnrollmentInput{ManagementAccount: "ubuntu", ManagementPort: 22, ManagementFingerprint: &fp, Accounts: []string{}}
 	if e := validateEnrollmentInput(valid); e != nil {
 		t.Fatal(e)
 	}
-	for _, mutate := range []func(*api.ServerAccessEnrollmentInput){func(v *api.ServerAccessEnrollmentInput) { v.ManagementAccount = "root" }, func(v *api.ServerAccessEnrollmentInput) { v.ManagementAccount = "ubuntu;id" }, func(v *api.ServerAccessEnrollmentInput) { v.ManagementFingerprint = "SHA256:unverified" }, func(v *api.ServerAccessEnrollmentInput) { v.ManagementPort = 0 }, func(v *api.ServerAccessEnrollmentInput) { v.Accounts = []string{"root"} }, func(v *api.ServerAccessEnrollmentInput) { v.Accounts = []string{"ubuntu", "ubuntu"} }} {
+	// SA-UX-2: the fingerprint is optional (verified by attestation instead), but a given one must be well formed.
+	for _, optional := range []*string{nil, new(string)} {
+		v := valid
+		v.ManagementFingerprint = optional
+		if e := validateEnrollmentInput(v); e != nil {
+			t.Fatal(e)
+		}
+	}
+	unverified := "SHA256:unverified"
+	for _, mutate := range []func(*api.ServerAccessEnrollmentInput){func(v *api.ServerAccessEnrollmentInput) { v.ManagementAccount = "root" }, func(v *api.ServerAccessEnrollmentInput) { v.ManagementAccount = "ubuntu;id" }, func(v *api.ServerAccessEnrollmentInput) { v.ManagementFingerprint = &unverified }, func(v *api.ServerAccessEnrollmentInput) { v.ManagementPort = 0 }, func(v *api.ServerAccessEnrollmentInput) { v.Accounts = []string{"root"} }, func(v *api.ServerAccessEnrollmentInput) { v.Accounts = []string{"ubuntu", "ubuntu"} }} {
 		v := valid
 		mutate(&v)
 		if validateEnrollmentInput(v) == nil {
