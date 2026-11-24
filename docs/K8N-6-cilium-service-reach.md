@@ -331,3 +331,12 @@ The Tunnex table:
 
 The test is skipped unless opted in. The `wg0` reverse-path filter must be 0, as the host-posture
 manager sets it.
+
+## Decision taken, 2026-11-24
+
+Mitigation 1 was taken in its strict variant, together with the customer setting of mitigation 2.
+A Cilium node is ready only when its agent reports `routing.intra-host-routing-mode: Legacy`, and
+BPF host routing is refused with the instruction to set `bpf.hostLegacyRouting=true`. The
+legitimate path this paper asked for was run on kind: a device with a grant reached its Service
+through the VIP DNAT, and every other path was still dropped. See `docs/K8N-2-cilium.md`, "Host
+routing — decision, 2026-11-24", and `walk-artifacts/k8n6-cilium-host-routing-20261124/`.

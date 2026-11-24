@@ -11,6 +11,10 @@ done, with the commit subject and the refusal test. None of the fixes ran on a c
 Scale: Tunnex's forward chain drops flows opened towards a tunnel, and Cilium's eBPF program only
 masquerades pod-sourced packets. Most items below therefore rewrite a pod-opened connection to a
 device, the same effect the walk already accepts for Flannel. Item 10 is of a different kind.
+*Corrected 2026-11-24:* under Cilium's BPF host routing the first premise does not hold. The
+forward chain never sees such flows (K8N-6), and a pod's connection to a device was opened past
+it. Since item 10 was fixed, a Cilium node with BPF host routing is not ready. Under legacy host
+routing the premise holds again: pod to device was dropped by the forward chain.
 
 ## Findings
 
@@ -154,6 +158,32 @@ device, the same effect the walk already accepts for Flannel. Item 10 is of a di
     that translation runs before Tunnex's forward chain, so a connected device may reach NodePort and
     LoadBalancer Services without a grant. Needs a live capture: device to the `wg0` address and a
     NodePort on a kube-proxy-replacement cluster.
+    **Confirmed; fixed by** `feat(k8s): accept a Cilium node only with legacy host routing; refuse
+    Calico eBPF on purpose (K8N-6)`.
+    - *Confirmed* by `docs/K8N-6-cilium-service-reach.md`, wider than written. With BPF host
+      routing, a device reached NodePort (on any node address), LoadBalancer and pod addresses with
+      no rule, and a pod reached the device. Netfilter saw none of it.
+    - *What K8N-2 had wrong.* Its "configuration B ready" proved masquerade safety only, not access
+      safety. B ran BPF host routing.
+    - *The fix.* A Cilium node is ready only when its agent reports
+      `routing.intra-host-routing-mode: Legacy`, on top of the masquerade proof. `BPF` is refused
+      with `Cilium BPF host routing lets traffic between pods and the tunnel bypass Tunnex's
+      access rules. Set bpf.hostLegacyRouting=true in Cilium's Helm values, then restart the
+      Cilium agents`. A missing or unknown mode is refused as not verified. The manager carries
+      the `routing` member and the device list in the receipt, and the host-facts schema is now 3.
+    - *Calico.* Its eBPF dataplane is now refused on purpose (`bpfin.cali`/`bpfout.cali`, or the
+      raw chain `cali-untracked-policy`), not only through the walk's refusal of its
+      "BPF loopback SNAT" rule.
+    - *Tests:* `TestCiliumFactsHostRoutingDecision`, `TestParseCiliumRoutingRefuses`,
+      `TestCiliumLiveNodesReconcileOnTheManagersFacts` (whole reconcile: A and B refused, the new
+      legacy capture ready), `TestCapturedCiliumNodeFollowsTheIPMasqAgentThroughTheReceipt`,
+      `TestCalicoEBPFNodeIsRefusedOnPurpose`, `TestHostFactsFromAManagerBeforeTheHostRoutingFactAreRefused`.
+    - *Run on kind.* Legacy was ready, and every path without a rule was dropped by Tunnex. A
+      granted VIP was reached and nothing else was. BPF was refused by the live gateway and by the
+      real `Manager`. See K8N-2, "Host routing — decision, 2026-11-24".
+    - *Unsupported for now:* GKE Dataplane V2 and AKS, whose customers cannot change the setting;
+      netkit clusters, which require BPF host routing.
+    - *Not run:* multi-node.
 
 ## Found sound
 
@@ -188,9 +218,10 @@ The review listed these; each now exists on `k8n/review-fixes`:
 | a set renamed between the save and the member read | `TestHostFactsReaderRereadsSetNamesAfterTheMembers` (item 7) |
 
 Not addressed on this branch: item 8 (the receipt's digest is unkeyed and its freshness is
-wall-clock) and item 10 (needs a live cluster).
+wall-clock). Item 10 was confirmed and fixed later, on `k8n/cilium-host-routing`.
 
 ## Could not be determined
 
 Whether GKE Dataplane V2 or AKS show the names the guard looks for; whether Cilium before 1.20.5
-has the mismatch of item 1; whether an in-cluster gateway can have OpenVPN enabled; item 10.
+has the mismatch of item 1; whether an in-cluster gateway can have OpenVPN enabled. (Item 10 was
+settled later: confirmed and fixed, see above.)

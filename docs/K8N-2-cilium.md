@@ -392,6 +392,13 @@ speaks for GKE Dataplane V2 or AKS.
 | B, agent off again | as A | pin removed | rewritten again | refused | not run |
 | C | `mode: iptables`, no `ip-masq-agent` | not pinned | source `100.96.0.1` (rewritten) | defers to the walk | ready |
 
+*Correction, 2026-11-24.* "Proved by the map entry" in row B, and every "ready" for A or B
+below, is proof of **masquerade safety only**: no masquerade rewrites traffic to the tunnel range.
+It says nothing about **access safety**, that is, whether traffic between the tunnel and the
+pods passes Tunnex's access rules. A and B report `routing.intra-host-routing-mode: "BPF"`. On
+such a node a device reached NodePort, LoadBalancer and pod addresses without any Tunnex rule
+(K8N-6). Both are now refused. C reports `Legacy`. See "Host routing — decision, 2026-11-24".
+
 Confirmed [L]:
 
 - **Status.** `GET /v1/healthz` returns the `masquerading` object exactly as modelled:
@@ -580,6 +587,8 @@ Branch `k8n/cilium-wiring`. Checklist steps 1 to 7 above are done; step 8 is sti
     the review, see "After the review"); the pinned-map listing is required (egress gateway),
     and the map dump is required when the agent reports the ip-masq-agent on;
   - anything else is a refusal, and nothing is written.
+  - *added 2026-11-24:* in every case above, the node is ready only if the agent also reports
+    Legacy host routing ("Host routing — decision, 2026-11-24").
 
   A ready node reports the adapter `cilium_masquerade` after `observed_cni`. A node without
   Cilium reports no such adapter and its facts source is never asked. (Superseded: since the
@@ -588,7 +597,9 @@ Branch `k8n/cilium-wiring`. Checklist steps 1 to 7 above are done; step 8 is sti
 
 ### What the customer reads
 
-Ready (`cilium_masquerade`):
+Ready (`cilium_masquerade`). *Since 2026-11-24 each of these ends with `; host routing is Legacy`.
+A node that reports BPF host routing is refused instead (see "Host routing — decision,
+2026-11-24").*
 
 - `tunnel range is inside Cilium's native-routing range 10.244.0.0/16`
 - `tunnel range is inside Cilium ip-masq-agent range 100.96.0.0/24`
@@ -739,6 +750,12 @@ Neither Tunnex pod was restarted between the first three rows (0 restarts, same 
 | C: iptables masquerade | **ready**, `Cilium masquerades with iptables rules; the NAT rule walk decides` | ready, same |
 | C, manager without `cilium.enabled` | not ready, "/var/run/cilium is not mounted ... set cilium.enabled=true ..." | not ready, same |
 
+*Correction, 2026-11-24.* Every "ready" cell for A, for the ip-masq-agent rows and for B proved
+masquerade safety only. These configurations ran BPF host routing, the K8N-6 bypass. Under the
+host routing decision they read "not ready, Cilium BPF host routing lets traffic ...". They were
+not run again as such. The same Cilium with legacy host routing is ready; see "Host routing —
+decision, 2026-11-24", "Live check". The C rows (Legacy) stay ready.
+
 Timings, by the node's clock:
 
 - **A ConfigMap change took 49 s to be seen, both ways** (added 09:15:46.4, ready 09:16:35.6;
@@ -791,6 +808,9 @@ install of the real image and the real chart*.
 | A: eBPF masquerade, ip-masq-agent off | not ready, "Enable Cilium's ip-masq-agent (Helm ipMasqAgent.enabled=true) with 100.96.0.0/24 in nonMasqueradeCIDRs, then restart the Cilium agents" | ready, `tunnel range is inside Cilium's native-routing range 10.244.0.0/16` |
 | ip-masq-agent on, list `[100.64.99.0/24]` | not ready, "Add 100.96.0.0/24 to nonMasqueradeCIDRs in the ip-masq-agent ConfigMap (namespace kube-system, key config); no restart is needed, allow about a minute" | ready |
 | `100.96.0.0/24` added to the ConfigMap | **ready**, `tunnel range is inside Cilium ip-masq-agent range 100.96.0.0/24` | ready |
+
+*Correction, 2026-11-24.* As above: these "ready" cells were for BPF host routing, so they prove
+masquerade safety only. They are now refused.
 
 - **Timings**, by the node's clock. First decision 5.6 s after the pod was created. The
   ConfigMap change was seen after **48 s** (patched 13:57:45.1, ready 13:58:33.4), as the 49 s of
@@ -1065,3 +1085,360 @@ in the DaemonSet template now say the above; the chart contract test still passe
 the installer's plan line "with read-only host mounts of ..." names the mount flag, which is
 accurate. The gateway image also carries `ipset`, `bpftool` and libLLVM (the review's other
 point here); not changed.
+
+## Host routing — decision, 2026-11-24
+
+Branch `k8n/cilium-host-routing`. This section follows `docs/K8N-6-cilium-service-reach.md`, which
+confirmed review finding 10 on kind:
+
+- With Cilium's BPF host routing and `wg0` among Cilium's devices, a WireGuard device reached
+  NodePort, LoadBalancer and pod addresses with no Tunnex rule, and a pod on the node opened a
+  connection to the device. Netfilter saw none of this traffic.
+- With `bpf.hostLegacyRouting=true` every path reached Tunnex's forward chain and was dropped there.
+
+### The record, corrected
+
+**The earlier "configuration B ready" proved masquerade safety only, not access safety.** It
+showed:
+
+- that no masquerade rewrites traffic bound for the tunnel range;
+- nothing about whether traffic between the tunnel and the pods passes Tunnex's access rules.
+
+B, like A, ran BPF host routing. So on B, a device could reach Services and pods without a grant,
+whatever the masquerade proof said.
+
+The places that cite A or B as ready now carry a correction: "Live capture", "As built" (the
+decision and "What the customer reads"), "Live check of the wiring" and "Live install". So does
+finding 10 of `docs/K8N-review-false-ready.md`.
+
+### Decision
+
+1. **A Cilium node is accepted only when both of these hold:**
+   - the masquerade proof holds, as before and unchanged;
+   - the agent reports `routing.intra-host-routing-mode` as `Legacy`.
+2. **What is refused:**
+   - `BPF` is refused, with the instruction below.
+   - Anything else is refused as not verified: the member missing, an unknown value, a field in
+     `routing` this code does not know, `routing` or `kube-proxy-replacement` listed as stale, or
+     no device list.
+3. **The strict variant.** The node is refused on `BPF` alone, whatever the device list says:
+   - Leaving the tunnel interface out of Cilium's devices (K8N-6, configuration C) still let a
+     pod's SYN reach the device.
+   - `nodePort.addresses` (B) left most paths open.
+   - Only legacy host routing (F) closed every path.
+4. **The check applies in every masquerade mode** (off, `iptables`, `BPF`), not only where eBPF
+   masquerade runs:
+   - Cilium's documentation lists eBPF masquerade and kube-proxy replacement as requirements of
+     BPF host routing [D6]. So with iptables masquerade the agent should report `Legacy`, as
+     capture C does.
+   - The check does not rely on that.
+5. **Order.** The masquerade proof is decided first, unchanged. Host routing is checked only on a
+   node that proof would accept. So every existing masquerade refusal keeps its text.
+   - A customer with both problems sees the masquerade instruction first, then the host routing
+     one.
+   - Both changes need an agent restart when the ip-masq-agent is being turned on.
+6. **GKE Dataplane V2 and AKS (Azure CNI powered by Cilium) are unsupported for now.** Their
+   customers cannot change this setting:
+   - AKS does not support changes to `cilium-config` [D3].
+   - On GKE, `anetd`'s configuration belongs to Google; this is not confirmed from Google's
+     documentation.
+
+   Whether these platforms run BPF host routing, and whether Tunnex's Cilium detection even sees
+   them (`anetd` has neither the `cilium` DaemonSet name nor a confirmed socket), is **not
+   confirmed**. So the paper says "unsupported", not "refused".
+
+### What the customer does
+
+Self-managed Cilium:
+
+    helm upgrade cilium cilium/cilium --namespace kube-system --reuse-values \
+      --set bpf.hostLegacyRouting=true
+    kubectl -n kube-system rollout restart daemonset/cilium
+
+The setting was confirmed on kind with Cilium 1.20.5, where the agent then reported
+`Host: Legacy`. The walk used a values file, not `--reuse-values --set`.
+
+**What it costs.** Cilium's tuning guide, "eBPF Host-Routing" [D6], quoted from the
+documentation source at tag v1.20.5:
+
+> Even when network routing is performed by Cilium using eBPF, by default network packets still
+> traverse some parts of the regular network stack of the node. This ensures that all packets
+> still traverse through all of the iptables hooks in case you depend on them. However, they add
+> significant overhead.
+
+> We introduced eBPF-based host-routing in Cilium 1.9 to fully bypass iptables and the upper host
+> stack, and to achieve a faster network namespace switch compared to regular veth device
+> operation. This option is automatically enabled if your kernel supports it.
+
+In plain terms:
+
+- **Every pod's traffic goes through the node's kernel stack.** With legacy host routing, traffic
+  between pods and the node's devices passes the kernel's upper stack and every iptables hook.
+  That is exactly why Tunnex's forward chain sees it again.
+- **Throughput is lower and CPU per packet is higher.** The guide points to its benchmark for
+  "Cilium" against "Cilium (legacy host-routing)"; those numbers are not quoted here and were not
+  measured.
+- **It applies to the whole cluster.** It is an agent option for all nodes. A per-node override
+  was not tested.
+- **Most such clusters are refused until the customer acts.** BPF host routing is "automatically
+  enabled if your kernel supports it". So on current kernels most clusters with kube-proxy
+  replacement and eBPF masquerade are refused until the customer opts in.
+- **netkit clusters cannot opt in at all.** The same guide lists eBPF host routing as a
+  requirement of the netkit device mode [D6]. A netkit cluster cannot set legacy host routing and
+  is unsupported.
+
+### What the customer reads
+
+**Refused** (181 bytes, within the 240-byte bound):
+
+    Cilium BPF host routing lets traffic between pods and the tunnel bypass Tunnex's access rules.
+    Set bpf.hostLegacyRouting=true in Cilium's Helm values, then restart the Cilium agents
+
+(One line in the product; wrapped here.) It is not prefixed `Cilium masquerade on this node is not
+verified`: the facts were read and understood. The instruction is the only one: leaving the tunnel
+interface out of `devices` does not lift the refusal.
+
+**Not verified.** Each is prefixed `Cilium masquerade on this node is not verified: ` like the
+other unread or not-understood facts:
+
+- `Cilium status has no routing section`
+- `Cilium routing status is not understood` (an unknown field)
+- `Cilium routing status does not say how traffic is routed on the host`
+- `Cilium host routing mode is not understood`
+- `Cilium routing status is stale` / `Cilium kube-proxy-replacement status is stale`
+- `Cilium status has no kube-proxy-replacement section` / `Cilium status does not list its
+  devices` / `Cilium device list ...`
+
+**Ready.** The existing `cilium_masquerade` reason, followed by `; host routing is Legacy`, for
+example `tunnel range is inside Cilium ip-masq-agent range 10.99.0.0/24; host routing is Legacy`.
+The longest form fits the bound.
+
+### Reader and receipt
+
+- **Where the facts come from.** Both members are in the same `GET /v1/healthz` the manager
+  already makes:
+  - `routing.intra-host-routing-mode` (api/v1 model `Routing`: enum `BPF`, `Legacy` [S2]). The
+    agent fills it as `BPF` unless `EnableHostLegacyRouting` is set (`getRoutingStatus` [S3]).
+  - `kube-proxy-replacement.devices` (model `KubeProxyReplacement`; the field has no
+    `omitempty`, so it is always sent, `null` when empty).
+- **What the receipt's `cilium.status.text` now carries:**
+  - the `masquerading` member, as before;
+  - the whole `routing` member;
+  - of `kube-proxy-replacement`, only `{"devices":[...]}`. The per-device addresses and the
+    feature list grow with the node and the release, and nothing reads them;
+  - the `stale` member when present.
+
+  All of it is compacted byte for byte. The 8 KiB bound is unchanged. On kind the receipt was
+  1859 bytes, against 1611 to 1791 before.
+- **Strict parsing:**
+  - `routing` may hold only `inter-host-routing-mode`, `intra-host-routing-mode` and
+    `tunnel-protocol`.
+  - The device list must be at most 64 distinct interface names.
+  - The other members of `kube-proxy-replacement` are not read.
+  - Cilium names its status probes after these members (`routing`, `kube-proxy-replacement`
+    [S3]), so the `stale` list is checked for both.
+- **The device list is carried, not used.** The strict variant makes the decision independent of
+  it. It is in the receipt so that an operator sees what Cilium attached to, and it is parsed so
+  that a changed shape refuses.
+
+**Host-facts schema: raised from 2 to 3.** This follows the legacy-iptables precedent (review
+finding 5).
+
+- **The case that decides it: a new gateway reading an older manager's receipt.**
+  - Without the bump, a schema 2 receipt still carries a valid digest. The new gateway would then
+    refuse with `Cilium status has no routing section`, which blames Cilium for an old manager.
+  - That is the same misleading reason the v2 bump removed.
+- **The other mixed case: an old gateway beside a new manager.** It would accept a schema 3
+  receipt and ignore the host routing mode, that is, stay ready on BPF.
+- **With the bump, both mixed cases are refused** as `host facts receipt has an unknown schema or
+  contract`. That holds on every node, Cilium or not, as the manager and the gateway must be of the
+  same release.
+
+Test: `TestHostFactsFromAManagerBeforeTheHostRoutingFactAreRefused`.
+
+### Calico eBPF, refused on purpose
+
+**Before this change it was refused only by accident.** Felix in BPF mode keeps a mark-matched
+`MASQUERADE` in `cali-POSTROUTING` ("BPF loopback SNAT"), which the NAT walk cannot prove.
+
+**Now it is refused explicitly**, from what the gateway already reads, with no new privilege.
+`proveCilium` refuses before any Cilium fact is read when it sees either signal:
+
+- the network devices `bpfin.cali` / `bpfout.cali`;
+- a chain whose name contains `cali-untracked-policy` or `cali-untracked-flows`.
+
+Where the signals come from (Calico v3.31.2 source):
+
+- Felix creates the devices in BPF mode whenever host-networked NAT is on, which includes the
+  default (`dataplane/linux/dataplanedefs`, `bpf_ep_mgr.go`).
+- It renders the raw chains only in BPF mode (`rules/static.go`, `StaticBPFModeRawChains`;
+  `int_dataplane.go`, `setUpIptablesBPF`).
+
+The refusal (214 bytes with the longest finding):
+
+    Calico's eBPF dataplane runs on this node and is not supported: Tunnex cannot prove that its
+    programs leave tunnel traffic to Tunnex's access rules. Use Calico's iptables dataplane
+    (found network device bpfin.cali)
+
+**Seen on kind.** Calico v3.31.2 ran from its unchanged manifest with `bpfEnabled: true`.
+
+- **The signals.**
+  - On the first start Felix logged `HostNetworkedNATMode is 2` (the default) and `Created
+    bpfin.cali:bpfout.cali veth pair`. It then panicked attaching the connect-time load balancer,
+    so connect-time load balancing was turned off.
+  - The devices and the raw chain `cali-untracked-policy` were then present, and so was the
+    "BPF loopback SNAT" rule. `cali-untracked-flows` was not (it is rendered only with host
+    conntrack bypass).
+  - The captured iptables-dataplane Calico node shows none of the signals; neither do the Cilium
+    captures.
+- **No Calico program loaded.** Felix's tc programs did not load on this kernel
+  (`tc_preamble.o: error loading program: ... invalid argument`), so no Calico program was
+  attached anywhere, `wg0` included. Calico's packet behaviour was therefore **not** observed.
+- **The refusal a real node shows first is still the accidental one.** The live gateway refused
+  with `NAT chain cali-POSTROUTING can rewrite the source of traffic to the tunnel range
+  10.99.0.0/24`. The walk runs before `proveCilium`, and that ordering is in `aws_linux.go`, which
+  this change does not touch.
+
+**The explicit refusal is asserted where the walk passes.** The tests take the captured
+iptables-dataplane node and add one eBPF signal at a time: Felix's devices, or the raw chain.
+Each time the node is refused with the explicit reason.
+
+**No guard on programs attached to `wg0`** was built, for three reasons:
+
+- Calico's default `bpfDataIfacePattern` does not match `wg0`, so such a guard would not see
+  Calico.
+- The gateway cannot list tcx programs: it has no `CAP_BPF` or `CAP_SYS_ADMIN`, and its seccomp
+  filter is on.
+- On Cilium the programs on `wg0` are the same in the accepted and in the refused configuration
+  ("Live check" below), so they cannot tell the two apart.
+
+### Live check on kind, 2026-11-24
+
+**Setup.** As K8N-6:
+
+- one node, kind v0.31.0, `kindest/node:v1.35.0`, kernel 6.8.0-117-generic arm64;
+- Cilium 1.20.5 with K8N-6's values: kube-proxy replacement, native routing, eBPF masquerade,
+  ip-masq-agent with `nonMasqueradeCIDRs: [10.99.0.0/24]`;
+- a real WireGuard `wg0` (`10.99.0.1/24`) and a device namespace (`10.99.0.2`), with the
+  handshake completed;
+- the app of K8N-6 plus a second Service `web2`.
+
+**How it was read.**
+
+- The Tunnex parties ran as test binaries of this tree:
+  - a real host-posture manager, with the real netfilter and Cilium readers, publishing into a
+    state directory;
+  - a real gateway reconciler;
+  - and, for (b) and (c), the real egress `Manager` in Kubernetes mode, wired to that state
+    directory for authority, host facts and Cilium facts, as the agent wires it.
+- Everything ran in one privileged `hostNetwork` pod with the chart's read-only mounts of
+  `/var/run/cilium` and `/sys/fs/bpf`.
+- Files and transcripts are in `walk-artifacts/k8n6-cilium-host-routing-20261124/` (no keys); the
+  fixtures are in `apps/node/internal/k8snetprep/testdata/cilium-1.20.5-kind-host{legacy,bpf}-ipmasq.*`.
+
+**Programs attached to `wg0`** (`bpftool net show dev wg0`) were the same in both host routing
+modes:
+
+    wg0(18) tcx/ingress cil_from_netdev ...
+    wg0(18) tcx/egress cil_to_netdev ...
+
+| | (a) `hostLegacyRouting=true`, no rule | (b) same, one grant | (c) BPF host routing, same grant |
+| --- | --- | --- | --- |
+| Agent status | `Host: Legacy`; masquerading BPF (ip-masq-agent) | as (a) | `Host: BPF`; `wg0` among the KPR and masquerade devices |
+| Tunnex decision, live gateway | **ready**: `tunnel range is inside Cilium ip-masq-agent range 10.99.0.0/24; host routing is Legacy` | (same receipt) | **not ready**: the BPF host routing reason |
+| Real `Manager`, `K8sNetPrepReady` | not run with the real receipt | **true**, same reason | **false**, same refusal |
+| Control: Docker gateway `172.21.0.1:80` | dropped by Tunnex | dropped by Tunnex | dropped by Tunnex |
+| NodePort via `10.99.0.1` / via `172.21.0.2` | dropped by Tunnex | dropped by Tunnex | **reached** (200, client `10.99.0.2`) |
+| ClusterIP `web` | dropped by Tunnex | dropped by Tunnex | **reached** |
+| Pod IP `web` | dropped by Tunnex | dropped by Tunnex | **reached** |
+| LoadBalancer IP | dropped by Tunnex | dropped by Tunnex | **reached** |
+| Pod IP / ClusterIP `web2` | dropped by Tunnex | dropped by Tunnex | **reached** |
+| Granted VIP `10.98.0.10:80` | not granted | **reached**, through the VIP DNAT and the grant's accept | reached |
+| Pod `web` → device | dropped by Tunnex | dropped by Tunnex | **connects**; no trace event |
+
+How the cells were read:
+
+- **"Dropped by Tunnex":** `tunnex_default_drop` rose by the three SYNs, and the trace ends in
+  `ip tunnex forward policy drop`.
+- **(b) needed a second run of the probes.** In the first, the `Manager` re-applied its table
+  every 2 s, which reset the counters (kept as `probe-b-legacy-grant-paths-while-reconciling.txt`).
+  The probes were run again with the table in force and no reconcile running.
+- **(c) is K8N-6's bypass, back with the same table.** That includes the ClusterIP, which in
+  K8N-6 configuration A Cilium dropped. Why it differs was not investigated.
+
+Two more observations:
+
+- **In (b) the backend saw the node's `cilium_host` address `10.244.0.133`, not the device's.**
+  That is Tunnex's own egress rule `ip saddr 10.99.0.0/24 oifname != "wg0" masquerade`, which was
+  also in K8N-6's table but never reached there. This change does not alter it. Whether Services
+  should see the device's address under legacy host routing is for K8N-3/K8N-4 to say.
+- **In (a) and (b) the ClusterIP was translated and dropped by Tunnex.** In K8N-6 configuration F,
+  Cilium dropped it (`Is a ClusterIP`). Not investigated.
+
+**Timing.**
+
+- After `helm upgrade` with `hostLegacyRouting=false` and a DaemonSet restart, the manager
+  published `no agent socket` during the restart.
+- The first status read after the restart (01:42:46) carried `BPF`.
+- The gateway refused from its first pass with authority (01:43:00).
+
+### Captured verdicts that changed
+
+| Capture / case | Before | Now |
+| --- | --- | --- |
+| A, `10.244.200.0/24` (inside native routing) | ready | refused, BPF host routing |
+| B, `100.96.0.0/24` (in the map) | ready | refused, BPF host routing |
+| A, `100.96.0.0/24`; B, other ranges; B then off | refused (masquerade) | unchanged |
+| C, any range the walk accepts | ready | ready, reason ends `; host routing is Legacy` |
+| hostlegacy-ipmasq (new), `10.99.0.0/24` | — | ready |
+| hostbpf-ipmasq (new), `10.99.0.0/24` | — | refused, BPF host routing |
+| Calico iptables capture plus an eBPF signal | ready | refused, Calico eBPF |
+
+Tests that kept the eBPF-masquerade ready path in a full `Reconcile` now run it on the legacy
+capture:
+
+- `TestCiliumLiveNodesReconcileOnTheManagersFacts`;
+- `TestCiliumLiveNodeWithIPMasqAgentOnIsNotReadyOnTheReportedRange`;
+- `TestCapturedCiliumNodeFollowsTheIPMasqAgentThroughTheReceipt`, which now goes A → B → legacy →
+  BPF → legacy;
+- `TestCapturedCiliumNodeRefusesAReceiptThatDoesNotHold`.
+
+Where no capture has a combination (eBPF masquerade with the ip-masq-agent off and legacy host
+routing), A's status with its `routing` member set to `Legacy` stands in for it, and says so.
+
+New tests:
+
+- `TestParseCiliumRouting*`, `TestProveCiliumHostRouting`;
+- `TestCiliumFactsHostRoutingDecision`, `TestCiliumBPFHostRoutingRefusalFitsTheReasonBound`;
+- `TestDetectCalicoEBPFOnTheCaptures`, `TestCalicoEBPFNodeIsRefusedOnPurpose`;
+- the schema test above;
+- `TestCiliumHostRoutingGrantKernel`, the opt-in helper of (b) and (c).
+
+Not changed: the charts, the installer, the image.
+
+### Still not confirmed
+
+- **GKE Dataplane V2 and AKS:** see decision 6.
+- **Multi-node:** pods on other nodes, remote NodePort backends, DSR, and tunnel routing mode.
+  The parser accepts `tunnel-protocol`, but no capture has it.
+- **Cilium before 1.20.5:** the shape of the `routing` member.
+- **netkit:** that a netkit cluster reports `BPF` (it should, by [D6]).
+- **The per-node override** of the setting.
+- **UDP and IPv6.**
+- **The real `tunnex-node` loop and enrollment.** The `Manager` was driven by a test with a fixed
+  endpoint list in place of the EndpointSlice watch.
+- **Calico's packet behaviour in eBPF mode:** its programs did not load on this kernel.
+
+References added:
+
+- [D6] Cilium, Tuning Guide, "eBPF Host-Routing" and "netkit device mode" —
+  https://docs.cilium.io/en/stable/operations/performance/tuning/ ; text quoted from
+  `Documentation/operations/performance/tuning.rst` at tag v1.20.5, read 2026-11-24.
+- [S2]/[S3] as above, read again for `Routing`, `KubeProxyReplacement`, `getRoutingStatus` and
+  the probe names.
+- Calico v3.31.2 source, https://github.com/projectcalico/calico:
+  - `felix/dataplane/linux/dataplanedefs/dataplane_defs.go`;
+  - `felix/dataplane/linux/bpf_ep_mgr.go`;
+  - `felix/rules/static.go`, `felix/rules/rule_defs.go`;
+  - `felix/dataplane/linux/int_dataplane.go`;
+  - `felix/config/config_params.go`.
