@@ -298,9 +298,14 @@ applies to every installation, not only App Access.
     default.
 - **D3 — One-time bootstrap for installed App Access hosts at or below v0.1.45.**
   - Their installed `upgrade.sh` refuses before self-update (F5). For each such
-    host, the operator replaces `upgrade.sh` once with the copy at the target
-    release's signed source SHA, after verifying the release descriptor. From
-    then on, the upgrade is one click.
+    host, the operator first verifies the release descriptor. Then the operator
+    replaces the script once with the copy at the target release's signed
+    source SHA. Both copies must be replaced:
+    - `<install>/upgrade.sh`, used by the manual command
+    - `/usr/local/lib/tunnex/upgrade.sh`, root-owned with mode 0755, which the
+      systemd runner executes through `TUNNEX_UPGRADE_HELPER`
+
+    From then on, the upgrade is one click.
   - **Recommendation:** accept this, and announce it in the release notes for
     the first release that contains this change.
   - **Follow-up:** run the target's `upgrade.sh` (fetched at the signed SHA)
@@ -324,13 +329,25 @@ applies to every installation, not only App Access.
   - The App Access Python tests (`deploy/app-access/tests`).
   - `docker compose config` merge checks of the overlay and the one-off helper
     override. These use the Compose CLI only and start no containers.
+- **Verified with throwaway local Docker objects** (all created by name and
+  removed afterwards):
+  - The classifier's exact `docker inspect` template, run against real Compose
+    v5 containers: an API with the marker volume and a port, a proxy with a
+    secrets bind and a port, a plain service, and a `compose run` one-off. It
+    produced the 8-field rows, `config_files` as comma-separated absolute
+    paths, and `oneoff` as `True`/`False`. The classifier counted 1 API and 1
+    proxy and ignored the one-off.
+  - `docker exec -i <postgres:16-alpine> pg_restore --list < dump` lists a
+    real custom-format dump and rejects garbage with exit code 1.
 - **Not verified here:**
   - A real migration of a populated App Access database through a real
     `compose up`.
-  - `app-preflight` inside a real container with the derived writable marker
+  - `app-preflight` in a real API container with the derived writable marker
     mount.
   - `restore.py` against the managed `tunnex.yml` + `app-access.yml` layout.
-  - `pg_restore --list` from stdin in `postgres:16-alpine`.
+    The code reads as compatible: `--project-directory` loads the install
+    `.env`, including `COMPOSE_PROFILES`, and the mount and env identity
+    comparisons use the same merged config. It has not been executed.
   - The systemd runner.
 
   All of these need a Linux host with the signed images, and should be

@@ -74,10 +74,11 @@ esac
             file.write_text(fake+self.BLOCK+f'classify_existing_app_access "{project}" /owned || exit $?\n'
                             'printf "%s|%s|%s|%s|%s|%s|%s|%s\\n" "$AA_API_COUNT" "$AA_PROXY_COUNT" "$AA_PROJECT_FOUND" "$AA_API_MARKER" "$AA_PROXY_SECRETS" "$AA_PROXY_PORTS" "$AA_CONFIG_FILES" "$AA_CONFIG_CONFLICT"\n')
             return subprocess.run(['sh',str(file)],capture_output=True,text=True)
-    API='owned|/owned|api|volume:owned_app_restore;|||/owned/tunnex.yml,/owned/app-access.yml|'
-    PROXY='owned|/owned|app-proxy|volume:owned_app_restore;|/srv/s;|8443/tcp=127.0.0.1:443;|/owned/tunnex.yml,/owned/app-access.yml|'
+    # Row shapes observed from a real Docker/Compose v5 inspect of this template.
+    API='owned|/owned|api|volume:owned_app_restore;||8443/tcp=:8443;|/owned/tunnex.yml,/owned/app-access.yml|False'
+    PROXY='owned|/owned|app-proxy|volume:owned_app_restore;|/srv/s;|8443/tcp=127.0.0.1:443;|/owned/tunnex.yml,/owned/app-access.yml|False'
     def test_plain_install_has_no_participants(self):
-        result=self.classify(['owned|/owned|api||||/owned/tunnex.yml|','owned|/owned|postgres||||/owned/tunnex.yml|'])
+        result=self.classify(['owned|/owned|api|||8443/tcp=:8443;|/owned/tunnex.yml|False','owned|/owned|postgres||||/owned/tunnex.yml|False'])
         self.assertEqual(result.returncode,0,result.stderr)
         self.assertTrue(result.stdout.startswith('0|0||'))
     def test_participants_identity_reported(self):
@@ -85,7 +86,7 @@ esac
         self.assertEqual(result.returncode,0,result.stderr)
         self.assertEqual(result.stdout.strip(),'1|1|owned|volume:owned_app_restore;|/srv/s;|8443/tcp=127.0.0.1:443;|/owned/tunnex.yml,/owned/app-access.yml|false')
     def test_oneoff_helpers_and_foreign_participants_ignored(self):
-        rows=[self.API,self.PROXY,self.API[:-1]+'|True','foreign|/owned|app-proxy|x|||y|','owned|/foreign|api|x|||y|']
+        rows=[self.API,self.PROXY,self.API[:-len('False')]+'True','foreign|/owned|app-proxy|x|||y|','owned|/foreign|api|x|||y|']
         result=self.classify(rows)
         self.assertEqual(result.returncode,0,result.stderr)
         self.assertTrue(result.stdout.startswith('1|1|'))
