@@ -1,6 +1,7 @@
 #!/bin/sh
 # probe-all.sh <label>: the K8N-6 paths from the device (netns tnxdev), each read by probe.sh in the
-# tools pod. HR_DIR holds kubeconfig and out/. Addresses are this cluster's (see README.md).
+# tools pod. HR_DIR holds kubeconfig and out/. Addresses are those of the cluster in
+# docs/K8N-2-cilium.md, "Host routing — decision, 2026-11-24", "Live check".
 cfg=$1; d=${HR_DIR:-.}
 for t in "control: Docker network gateway|http://172.21.0.1:80/" \
          "NodePort via wg0 address|http://10.99.0.1:30080/clientip" \
