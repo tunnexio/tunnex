@@ -39,8 +39,9 @@ func (m *Manager) desktopNATRules(subnet string) string {
 // withholdDesktopNAT is K8N-5 item 4, (b). IPsec cannot run on an in-cluster gateway: its guard table
 // (inet tunnex_ipsec) hooks postrouting, and the host-network proof refuses every postrouting hook it
 // does not know. An exemption rendered there could never serve a working tunnel, and the same proof
-// would refuse the exemption itself, which is fatal at startup. It is withheld, so the IPsec runtime
-// keeps the desktop grant pending, and the reason is logged once per change of the withheld set.
+// would refuse the exemption itself, which is fatal at startup. It is withheld: the IPsec runtime sees
+// the exemption as pending, so its Apply fails closed and its maintenance pass keeps the desktop grant
+// pending. The reason is logged once per change of the withheld set.
 func (m *Manager) withholdDesktopNAT(withheld string) {
 	if previous := m.desktopNATWithheld.Swap(&withheld); previous != nil && *previous == withheld {
 		return

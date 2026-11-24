@@ -566,8 +566,9 @@ yet installed its guard, the exemption alone triggers the same fatal refusal.
 So in Kubernetes mode `desktopNATRules` is not rendered. The egress manager logs
 `k8s_ipsec_desktop_nat_withheld` (once per change of the withheld set) with the reason "IPsec is not
 supported on an in-cluster gateway: its guard hooks are refused by the host network proof". The IPsec
-runtime then sees its exemption as pending, and its desktop grant stays pending: fail closed, on the
-side the runtime already handles. Outside Kubernetes mode, nothing changes.
+runtime then sees its exemption as pending (`errDesktopNATPending`). `RuntimeController.Apply` fails
+the whole connection on it, and the maintenance pass keeps the desktop grant pending. Both fail closed,
+and both are paths the runtime already has. Outside Kubernetes mode, nothing changes.
 
 **Tests.**
 
@@ -586,3 +587,138 @@ side the runtime already handles. Outside Kubernetes mode, nothing changes.
 - Kernel (opt in): with a remote-site host behind `wg0` and a pod that has no route back, the pod
   answers through the rule and sees the node's address. A second process starts over the leftover
   table. Near-misses written into the live chain are refused. Shutdown leaves no rule.
+
+## Items 3 and 4 — as built and what was run (2026-11-24)
+
+### Item 3 (emergency fail-open)
+
+Changed functions, all in `apps/node/internal/egress`:
+
+- `forwardRules` (`egress_linux.go`): in Kubernetes mode a nil policy returns the cold-start
+  `dropCounter` in both families. The check sits before the mesh branch and after the cold-start and
+  refused-version checks. `Mesh: true` is untouched, and so is nil outside Kubernetes mode.
+- `withdrawPolicy` (new, `egress_linux.go`): it stores no policy and clears `policyReceived`. It does not
+  touch `refusedVersion`.
+- `EmergencyWithdrawK8s` (`dnat_linux.go`) calls `withdrawPolicy` in place of `SetPolicy(nil)`.
+- Comments: `SetPolicy`, `policyReceived`, and the `forwardRules` header.
+
+`rulesetWith` and `observeWGSubnet` keep their signatures and bodies.
+
+Tests:
+
+- `egress/nil_policy_k8s_linux_test.go`:
+  - Kubernetes nil gives the exact deny-all forward chain in both families;
+  - VM nil gives the legacy mesh;
+  - a Kubernetes `Mesh: true` artifact stays open;
+  - an emergency withdraw followed by the pass's own render is deny-all in both modes, and the next
+    delivery leaves that state;
+  - the emergency keeps an unsupported-version refusal.
+
+  Run against the old `egress_linux.go` and `dnat_linux.go`, three of them fail:
+  `TestKubernetesNilPolicyIsDenyAllNotMesh`, `TestEmergencyWithdrawThenEgressPassIsDenyAllInEveryMode`
+  and `TestEmergencyWithdrawKeepsAnUnsupportedVersionRefusal` ("cleared the refusal: 0, want 16").
+- `ownershiplease/production_k8s_surface_test.go`,
+  `TestProductionStartupAfterTheBaseNeverTakesTheEmergencyWithdraw`: with the base seeded first, as
+  `main` does, `StartupReconcile` calls the emergency withdraw zero times, with and without an
+  unexpired durable lease.
+- `TestGatewayStopStateKernel`, section 7:
+  - `RELEASED_EMERGENCY_PASS_OPENS_TUNNEL`: the control. The released post-emergency forward chain
+    (`iifname "wg0" oifname != "wg0" counter accept`) lets the device reach pod B.
+  - `EMERGENCY_THEN_PASS_TUNNEL_CLOSED`: `EmergencyWithdrawK8s` and then a real `Reconcile`. The device
+    cannot reach pod B, `counter packets 2 bytes 120 comment "tunnex_default_drop"`, and there is no
+    tunnel accept.
+  - `KUBERNETES_NIL_POLICY_PASS_TUNNEL_CLOSED`: the same after a control-plane nil and a pass.
+  - Native traffic still passes after both.
+
+**A pre-existing break in the witnesses, fixed here.** On `story/kubernetes-next` before this branch,
+`TestGatewayStopStateKernel` stops at its first start with `startup egress pass: host-posture facts: no
+host-posture facts source is configured`. That was re-run on a clean checkout of the branch tip.
+`TestK8sAPIReturnPathKernel` has the same cause: since K8N review finding 5 a Kubernetes-mode gateway
+needs a receipt that says whether the node has iptables-legacy tables. Both witnesses now pass
+`kernelTestHostFacts`. It reads the namespace's `ip_tables_names` the way the manager does and marks the
+nat and mangle rule text as not needed. The witness namespaces have no iptables-nft tables. This does
+not change what either witness proves.
+
+### Item 4 (site-LAN masquerade)
+
+Changed functions:
+
+- `k8snetprep/types.go`: `SiteLANMasqueradeRuleComment`.
+- `k8snetprep/aws_linux.go`: `validateTunnexPostrouting` accepts the marker, duplicate check included,
+  and the new `tunnexSiteLANRule` checks the exact shape.
+- `egress/egress_linux.go`: `siteLANMasqueradeRules` writes the shared constant. Its text is otherwise
+  byte for byte unchanged. A new `desktopNATWithheld` field.
+- `egress/ipsec_desktop_nat_linux.go`: `desktopNATRules` returns nothing in Kubernetes mode, and the new
+  `withholdDesktopNAT` logs `k8s_ipsec_desktop_nat_withheld` once per change.
+
+Tests:
+
+- `k8snetprep/site_lan_postrouting_linux_test.go`:
+  - accept table: a range; a `/32` as nft lists it; a device `/32` inside the tunnel range; next to the
+    API return rule; before the tunnel has an address; the OpenVPN set form;
+  - 31 near-misses, each after one and after three valid rules;
+  - duplicates in both `/32` spellings;
+  - the IPsec guard's two postrouting hooks are refused with `unknown IPv4 postrouting hook coverage`;
+  - a restart over the kernel fixture.
+
+  Before the validator changed, the accept table failed with `unknown Tunnex source-NAT rule`.
+- The fixture `k8snetprep/testdata/k8n5-site-lan.{rendered.nft,nft-ruleset.json}` is the real kernel's
+  listing (nft 1.1.6) of the renderer's output, written by the kernel witness.
+- `egress/site_lan_k8s_linux_test.go`:
+  - the marker and the exact NAT chain, both interface forms;
+  - drift against the fixture;
+  - `nft -c` syntax;
+  - the desktop exemption withheld in Kubernetes mode, logged once per change, and still rendered on
+    a VM.
+- In `TestTunnexPostroutingRefusesEveryNearMissOfTheAPIReturnRule`, the case that expected the
+  site-LAN rule to be refused now uses the IPsec desktop exemption, which is still refused.
+- `TestSiteLANMasqueradeKernel` (new, opt in with `TUNNEX_TEST_SITE_LAN_KERNEL=1`). A remote-site host
+  (10.50.0.5) sits on `wg0`. The pod (10.70.0.9) has only the host-posture route to the device range.
+  The results:
+  - `WITHOUT_THE_RULE_THE_POD_CANNOT_ANSWER`;
+  - `FIRST_START_ACCEPTED`, through the startup order that crash-looped: egress pass, then the OpenVPN
+    stage, then the DNAT stage;
+  - `POD_ANSWERS_THE_REMOTE_SITE_VIA_NODE_ADDRESS` (`ANSWER from=10.70.0.6`);
+  - `RESTART_OVER_LEFTOVER_RULE_ACCEPTED`: the check passes on the leftover table before anything is
+    loaded;
+  - `POD_ANSWERS_AFTER_RESTART`;
+  - `NEAR_MISSES_STILL_REFUSED`: six rules written into the live chain, each refused with its reason,
+    each removed by the next pass;
+  - `OPENVPN_SET_FORM_ACCEPTED` and `POD_ANSWERS_WITH_OPENVPN_SET`;
+  - `RULE_GONE_WITH_PRESERVE_SOURCE` and `POD_CANNOT_ANSWER_WITH_PRESERVE_SOURCE`;
+  - `NO_RULE_LEFT_AFTER_SHUTDOWN`.
+
+### Verification
+
+All runs were in `golang:1.26.11-alpine` on Docker's Linux kernel, with nftables 1.1.6 from apk.
+
+- In `apps/node`, with `--cap-add=NET_ADMIN`:
+  - `gofmt -l .`: empty;
+  - `go vet ./...` and `GOOS=linux go vet ./internal/egress/`: clean;
+  - `go build ./...`: clean;
+  - `go test ./internal/egress/... ./internal/k8snetprep/... ./internal/hostposture/... ./cmd/agent/...
+    -count=1`: all `ok`;
+  - `./internal/ownershiplease/...`: `ok`.
+- With `--privileged`, one container per witness, because they share namespace names:
+  - `TestGatewayStopStateKernel` PASS;
+  - `TestK8sAPIReturnPathKernel` PASS;
+  - `TestSiteLANMasqueradeKernel` PASS.
+
+### Still not confirmed
+
+- No cluster. The emergency branch's unreachability is shown from the code and the ownership test, not
+  from a running agent that was forced into it.
+- The off-org trade, where a nil policy now denies on an in-cluster gateway during a compile error, has
+  not been watched on a live control plane.
+- The site-LAN rule on a real cluster: a remote site reaching a pod through an in-cluster gateway on a
+  `gateway_address` site.
+- IPsec on an in-cluster gateway was not attempted. Its refusal is read from `validateHookCoverage` and
+  the guard's hook shapes, and shown on the JSON model, not on a running IPsec runtime.
+- `cilium_service_reach_kernel_linux_test.go` (K8N-6) says "Never nil: nil is the legacy mesh". In
+  Kubernetes mode nil is now deny-all. The test passes an explicit enforcing policy and is unaffected.
+
+*Correction, same day.* The decision text first said that a withheld exemption leaves "the desktop grant
+pending". `RuntimeController.Apply` (`ipsec/runtime_controller.go`) treats the pending exemption as an
+error and fails the connection's apply. Only the maintenance pass keeps the grant pending. The wording
+above is corrected, and the code comment on `withholdDesktopNAT` says the same. The decision does not
+change: IPsec is refused on an in-cluster gateway anyway.
