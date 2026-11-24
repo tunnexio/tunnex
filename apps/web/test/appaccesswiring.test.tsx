@@ -276,7 +276,8 @@ it("saves identity before continuing and refuses access while connection edits a
   await waitFor(() => expect(screen.getByRole("button", { name: "3. Access" }).getAttribute("aria-current")).toBe("step"));
   expect(screen.queryByLabelText("Origin URL")).toBeNull();
   expect(api.PATCH).toHaveBeenCalledTimes(2);
-  expect(api.POST).not.toHaveBeenCalled();
+  // The only POST allowed is the read-only effective-access preview behind "Grant myself access" (SA-UX-2 AA-4).
+  expect(vi.mocked(api.POST).mock.calls.filter(call => !String(call[0]).endsWith("/effective-access"))).toHaveLength(0);
 });
 
 it("uses only the configured Applications suffix and sends a full hostname to the API", async () => {
