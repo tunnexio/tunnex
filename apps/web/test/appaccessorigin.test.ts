@@ -11,7 +11,7 @@ describe("suggestedOriginRange", () => {
   ])("suggests the single-host range for private literal %s", (url, allowed, want) => {
     expect(suggestedOriginRange(url, allowed)).toEqual(want);
   });
-  it.each(["https://wiki.corp.internal", "http://8.8.8.8", "http://127.0.0.1", "http://169.254.169.254", "http://172.32.0.1", "not a url", ""])("never suggests a range the policy would refuse or cannot know: %s", url => {
+  it.each(["https://wiki.corp.internal", "http://8.8.8.8", "http://127.0.0.1", "http://169.254.169.254", "http://172.32.0.1", "http://[fd00:ec2::254]", "not a url", ""])("never suggests a range the policy would refuse or cannot know: %s", url => {
     expect(suggestedOriginRange(url, [])).toBeNull();
   });
 });

@@ -37,7 +37,8 @@ export function suggestedOriginRange(originUrl: string, allowed: string[] = []):
   }
   // fc00::/7 unique-local only; other IPv6 literals are public or refused outright.
   const v6 = /^\[([0-9a-f:]+)\]$/i.exec(host)?.[1]?.toLowerCase();
-  if (!v6 || !/^f[cd][0-9a-f]{0,2}:/.test(v6)) return null;
+  // fd00:ec2::254 (the EC2 metadata endpoint) is inside fc00::/7 but always refused by the server.
+  if (!v6 || !/^f[cd][0-9a-f]{0,2}:/.test(v6) || v6 === "fd00:ec2::254") return null;
   const range = `${v6}/128`;
   return { address: v6, range, covered: allowed.some(value => value.trim().toLowerCase() === range) };
 }
