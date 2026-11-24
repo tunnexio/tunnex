@@ -330,7 +330,10 @@ services:
         exec caddy run --config /tmp/tunnex-Caddyfile --adapter caddyfile
     ports:
       - "80:80"
-      - "443:443"
+      # Default renders exactly "443:443". App Access installations that let
+      # the proxy own public 443 move Caddy to a loopback publish here
+      # (AA-EN-1; for example 127.0.0.1:8446). Configure in .env, never here.
+      - "${TUNNEX_EDGE_HTTPS_PUBLISH:-443}:443"
     volumes:
       - caddy_data:/data
       - caddy_config:/config

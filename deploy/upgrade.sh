@@ -95,6 +95,32 @@ EOF
 }
 # END APP ACCESS COMPOSITION CLASSIFIER
 
+# AA-EN-1: true when the running composition is exactly the one that
+# tunnex-app-access adopt recorded (tunnex.yml, the now-managed app-access.yml,
+# then the hand-written overlays in order) and every hand-written overlay still
+# has the hash recorded at adoption. Anything else is unknown drift.
+aa_adopted_composition() {
+  _aad_files=$(dotenv_value TUNNEX_APP_ACCESS_ADOPTED_CONFIG_FILES)
+  _aad_hashes=$(dotenv_value TUNNEX_APP_ACCESS_ADOPTED_OVERLAYS_SHA256)
+  [ -n "$_aad_files" ] && [ -n "$_aad_hashes" ] && [ "$_aad_files" = "$AA_CONFIG_FILES" ] || return 1
+  [ -f "$AA_OVERLAY" ] || return 1
+  _aad_rest=${AA_CONFIG_FILES#*,}
+  case "$_aad_rest" in
+    "$AA_OVERLAY",*|"$1/app-access.yml",*) _aad_rest=${_aad_rest#*,} ;;
+    *) return 1 ;;
+  esac
+  _aad_actual=
+  _aad_saved_ifs=$IFS; IFS=,
+  for _aad_file in $_aad_rest; do
+    IFS=$_aad_saved_ifs
+    case "$_aad_file" in /*) ;; *) return 1 ;; esac
+    [ -f "$_aad_file" ] && [ ! -L "$_aad_file" ] || return 1
+    _aad_actual="${_aad_actual:+$_aad_actual,}$(file_sha256 "$_aad_file")"
+  done
+  IFS=$_aad_saved_ifs
+  [ "$_aad_actual" = "$_aad_hashes" ]
+}
+
 # App Access is an optional overlay owned by this upgrade once present. Every
 # check below is a refusal before any temporary state, backup or mutation.
 AA_PRESENT=false
@@ -144,14 +170,21 @@ admit_app_access() {
       "$COMPOSE"|"$_aa_dir_real/${COMPOSE##*/}") ;;
       *) aa_refuse 'composition is not based on this installation tunnex.yml' ;;
     esac
-    case "$_aa_overlay" in
-      "$AA_CONFIG_FILES"|*,*|'') aa_refuse 'composition must be tunnex.yml plus exactly one App Access overlay' ;;
-    esac
-    case "$_aa_overlay" in
-      "$AA_OVERLAY"|"$_aa_dir_real/app-access.yml") ;;
-      *) [ ! -f "$AA_OVERLAY" ] ||
-           aa_refuse 'composition uses a different overlay than the managed app-access.yml' ;;
-    esac
+    if [ "$AA_CONFIG_FILES" != "$_aa_base" ] && aa_adopted_composition "$_aa_dir_real"; then
+      # AA-EN-1: tunnex-app-access adopt recorded exactly this running
+      # composition and its hand-written overlays; this upgrade recreates it
+      # from the managed files. The recorded overlays must be unchanged.
+      :
+    else
+      case "$_aa_overlay" in
+        "$AA_CONFIG_FILES"|*,*|'') aa_refuse 'composition must be tunnex.yml plus exactly one App Access overlay (a hand-written multi-file layout must be converted first with tunnex-app-access adopt)' ;;
+      esac
+      case "$_aa_overlay" in
+        "$AA_OVERLAY"|"$_aa_dir_real/app-access.yml") ;;
+        *) [ ! -f "$AA_OVERLAY" ] ||
+             aa_refuse 'composition uses a different overlay than the managed app-access.yml' ;;
+      esac
+    fi
   elif [ "$AA_API_COUNT" -gt 0 ] || [ "$AA_PROXY_COUNT" -gt 0 ]; then
     aa_refuse 'composition files are unknown'
   fi
@@ -168,8 +201,13 @@ admit_app_access() {
     [ "$AA_PROXY_COUNT" -eq 0 ] || [ "$AA_PROXY_SECRETS" = "$_aa_secrets;" ] ||
       aa_refuse 'proxy credential directory differs from TUNNEX_APP_PROXY_SECRETS_DIR in .env'
     _aa_bind=$(dotenv_value TUNNEX_APP_PROXY_BIND_IP); _aa_port=$(dotenv_value TUNNEX_APP_PROXY_PUBLIC_PORT)
-    [ "$AA_PROXY_COUNT" -eq 0 ] || [ "$AA_PROXY_PORTS" = "8443/tcp=${_aa_bind:-127.0.0.1}:${_aa_port:-443};" ] ||
-      aa_refuse 'proxy port binding differs from TUNNEX_APP_PROXY_BIND_IP/TUNNEX_APP_PROXY_PUBLIC_PORT in .env'
+    _aa_gbind=$(dotenv_value TUNNEX_APP_PROXY_GATEWAY_BIND_IP); _aa_gport=$(dotenv_value TUNNEX_APP_PROXY_GATEWAY_PORT)
+    _aa_public="8443/tcp=${_aa_bind:-127.0.0.1}:${_aa_port:-443};"
+    # Exactly the managed port set: the public listener alone (overlays before
+    # AA-EN-1), or the public listener plus the gateway listener (AA-EN-1 E6).
+    [ "$AA_PROXY_COUNT" -eq 0 ] || [ "$AA_PROXY_PORTS" = "$_aa_public" ] ||
+      [ "$AA_PROXY_PORTS" = "${_aa_public}8444/tcp=${_aa_gbind:-0.0.0.0}:${_aa_gport:-8444};" ] ||
+      aa_refuse 'proxy port bindings differ from TUNNEX_APP_PROXY_BIND_IP/TUNNEX_APP_PROXY_PUBLIC_PORT and TUNNEX_APP_PROXY_GATEWAY_BIND_IP/TUNNEX_APP_PROXY_GATEWAY_PORT in .env'
   fi
   if [ -f "$AA_OVERLAY" ]; then
     _aa_sha=$(dotenv_value TUNNEX_APP_ACCESS_COMPOSE_SHA256)
@@ -1025,6 +1063,12 @@ if ! healthcheck; then
   exit 14
 fi
 write_status healthy
+if [ "$AA_PRESENT" = true ] && [ -n "$(dotenv_value TUNNEX_APP_ACCESS_ADOPTED_CONFIG_FILES)" ]; then
+  # The adopted layout now runs from the managed files; the record has done its job.
+  awk -F= '$1 != "TUNNEX_APP_ACCESS_ADOPTED_CONFIG_FILES" && $1 != "TUNNEX_APP_ACCESS_ADOPTED_OVERLAYS_SHA256"' \
+    "$ENV_FILE" >"$ENV_FILE.next" && mv "$ENV_FILE.next" "$ENV_FILE" ||
+    echo 'warning: the App Access adoption record could not be removed from .env; it is harmless' >&2
+fi
 # U3: adopt this release's helper only now that it has completed an upgrade on
 # this host. A failure here leaves the previous trampoline, which still hands off.
 install_host_copies() {

@@ -6,6 +6,11 @@ services:
       TUNNEX_APP_ACCESS_BASE_DOMAIN: ${TUNNEX_APP_ACCESS_BASE_DOMAIN:?Set the reviewed app domain}
       TUNNEX_APP_PROXY_AUTHORITY_ADDR: ":8445"
       TUNNEX_APP_ACCESS_RESTORE_MARKER: /var/lib/tunnex/app-restore/app-access.pending.json
+      # AA-EN-1 E5: delivered to following gateways over the mTLS agent channel.
+      # Empty host = each gateway dials its own agent host at this port.
+      TUNNEX_APP_PROXY_GATEWAY_PORT: ${TUNNEX_APP_PROXY_GATEWAY_PORT:-8444}
+      TUNNEX_APP_PROXY_GATEWAY_HOST: ${TUNNEX_APP_PROXY_GATEWAY_HOST:-}
+      TUNNEX_APP_ACCESS_LOCKED: ${TUNNEX_APP_ACCESS_LOCKED:-false}
     volumes:
       - app_restore:/var/lib/tunnex/app-restore:ro
   node-agent:
@@ -43,9 +48,13 @@ services:
       - ${TUNNEX_APP_PROXY_SECRETS_DIR:?Set the privately provisioned TLS/credential directory}:/etc/tunnex/app-proxy:ro
       - app_restore:/var/lib/tunnex/app-restore:ro
     ports:
-      # Only public browser TLS is published. Gateway8444 and authority8445 stay raw
-      # direct TLS on the private Compose network; no browser edge routing.
+      # Public browser TLS, and the gateway listener for remote gateways
+      # (AA-EN-1 E6: mutual TLS with the enrollment CA, the same exposure class
+      # as the agent channel 8443; narrow it with TUNNEX_APP_PROXY_GATEWAY_BIND_IP).
+      # The authority 8445 stays on the private Compose network. Configure in
+      # .env only; upgrade admission requires exactly these two bindings.
       - "${TUNNEX_APP_PROXY_BIND_IP:-127.0.0.1}:${TUNNEX_APP_PROXY_PUBLIC_PORT:-443}:8443"
+      - "${TUNNEX_APP_PROXY_GATEWAY_BIND_IP:-0.0.0.0}:${TUNNEX_APP_PROXY_GATEWAY_PORT:-8444}:8444"
     healthcheck:
       test: [CMD, wget, -q, -O, /dev/null, "http://127.0.0.1:9093/readyz"]
       interval: 10s
