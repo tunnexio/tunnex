@@ -6051,19 +6051,30 @@ paths:
       description: >-
         Requires `users.cp_admin`. The server pins its current verified catalog
         source SHA and sequence; the client cannot supply a different target.
-        Duplicate requests for that same active target are idempotent. With
-        `rerun: true` (AA-EN-1, UPG-1 D2 forward fix) the server re-requests the
-        installed release only when the last upgrade to it failed and the verified
-        catalog names that same sequence and source SHA; never an older release.
+        Duplicate requests for that same active target are idempotent.
       tags: [admin]
-      requestBody:
-        required: false
-        content:
-          application/json:
-            schema: { $ref: "#/components/schemas/HostUpgradeRequest" }
       responses:
         "202":
           description: Upgrade request accepted or already active for this exact target.
+          headers: { X-Request-Id: { $ref: "#/components/headers/RequestId" } }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/HostUpgradeStatus" }
+        default: { $ref: "#/components/responses/Error" }
+  /api/v1/admin/upgrade/rerun:
+    post:
+      operationId: rerunHostUpgrade
+      summary: Run the installed release's upgrade again after it failed (forward fix)
+      description: >-
+        Requires `users.cp_admin`. UPG-1 D2 / AA-EN-1: re-requests the installed release
+        only when the last upgrade to it failed (not after an App Access authority change)
+        and the verified catalog names exactly that sequence and source SHA. Never an
+        older release or a different build of the same sequence. The target is pinned by
+        the server; the client supplies nothing. Refused with 409 `rerun_not_available`.
+      tags: [admin]
+      responses:
+        "202":
+          description: Re-run request accepted for the installed release.
           headers: { X-Request-Id: { $ref: "#/components/headers/RequestId" } }
           content:
             application/json:
@@ -15851,14 +15862,6 @@ components:
         revision: { type: integer, format: int64, minimum: 0 }
         password_action: { type: string, enum: [keep, replace, clear] }
         password: { type: string, writeOnly: true, maxLength: 4096 }
-    HostUpgradeRequest:
-      type: object
-      additionalProperties: false
-      properties:
-        rerun:
-          type: boolean
-          description: Re-run the same verified release after a failed upgrade (same sequence and source SHA only).
-
     HostUpgradeStatus:
       type: object
       additionalProperties: false

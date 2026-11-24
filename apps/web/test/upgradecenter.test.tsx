@@ -56,7 +56,7 @@ beforeEach(() => {
     throw new Error(`unexpected GET ${path}`);
   });
   mocks.post.mockImplementation(async (path: string) => {
-    if (path !== "/api/v1/admin/upgrade") throw new Error(`unexpected POST ${path}`);
+    if (path !== "/api/v1/admin/upgrade" && path !== "/api/v1/admin/upgrade/rerun") throw new Error(`unexpected POST ${path}`);
     mocks.hostState = {
       available: true,
       state: "requested",
@@ -142,7 +142,7 @@ describe("control-plane upgrade authority", () => {
     expect(screen.getByText(/An older release is never installed/)).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Confirm and run again" }));
     await waitFor(() => expect(mocks.post).toHaveBeenCalledTimes(1));
-    expect(mocks.post).toHaveBeenCalledWith("/api/v1/admin/upgrade", { body: { rerun: true } });
+    expect(mocks.post).toHaveBeenCalledWith("/api/v1/admin/upgrade/rerun");
     expect(await screen.findByText("Request accepted")).toBeTruthy();
   });
 

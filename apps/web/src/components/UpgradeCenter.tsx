@@ -81,7 +81,7 @@ export function UpgradeCenter() {
     setError("");
     try {
       const { data, error: requestError } = rerun
-        ? await api.POST("/api/v1/admin/upgrade", { body: { rerun: true } })
+        ? await api.POST("/api/v1/admin/upgrade/rerun")
         : await api.POST("/api/v1/admin/upgrade");
       if (requestError || !data) {
         setError(apiErrorMessage(requestError, "Could not request the host upgrade."));
