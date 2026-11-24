@@ -225,10 +225,11 @@ func apiReturnKernelGateway(t *testing.T, phase string) {
 	case "shutdown":
 		start("")
 		m.Teardown(ctx)
-		// `flush table` empties every chain and keeps the chains themselves; only the marker rule is
-		// written back. No rule of the previous process is left, the return rule included.
+		// The stop state (K8N-5): the NAT chains are gone, `forward` drops only tunnel traffic under
+		// policy accept, and the marker rule is written back. No rule of the previous process is left,
+		// the return rule included.
 		table := nft("list", "table", "ip", "tunnex")
-		for _, left := range []string{"masquerade", "dnat to", "ct original", "ct state", k8snetprep.APIReturnRuleComment} {
+		for _, left := range []string{"masquerade", "dnat to", "ct original", "ct state", "policy drop", "chain postrouting", k8snetprep.APIReturnRuleComment} {
 			if strings.Contains(table, left) {
 				t.Fatalf("shutdown left a %q rule:\n%s", left, table)
 			}

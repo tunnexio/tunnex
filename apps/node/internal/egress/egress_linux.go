@@ -647,8 +647,10 @@ func poolCIDRForForward(policyPool, wgPool string) string {
 // Teardown removes legacy gateway-owned state. Kubernetes host-posture mode is
 // different: the per-node manager owns wg0 plus the nft table markers across a
 // gateway rollout. A terminating gateway withdraws its CNI/Docker rules and
-// atomically reduces the exact manager-owned tables to marker-only state; it
-// never deletes the manager's ownership receipts.
+// atomically reduces the exact manager-owned tables to the stopped state of
+// hostPostureStoppedRuleset: the ownership marker plus a forward chain that
+// closes only the tunnel interfaces. It never deletes the manager's ownership
+// receipts and leaves no hooked chain that can affect ordinary node traffic.
 func (m *Manager) Teardown(ctx context.Context) {
 	if m.fqdnBeforePolicy != nil {
 		if err := m.fqdnBeforePolicy(ctx, nil); err != nil {
@@ -694,25 +696,56 @@ func (m *Manager) reduceToHostPostureMarkers(ctx context.Context) error {
 			return fmt.Errorf("refuse ambiguous %s tunnex posture table: %w", family, err)
 		}
 	}
-	return m.apply(ctx, hostPostureMarkerOnlyRuleset())
+	ruleset, err := hostPostureStoppedRuleset(m.tunnelIfaces())
+	if err != nil {
+		return err
+	}
+	return m.apply(ctx, ruleset)
 }
 
-func hostPostureMarkerOnlyRuleset() string {
-	return fmt.Sprintf(`add table ip tunnex
-flush table ip tunnex
-table ip tunnex {
-  chain tunnex_posture_owner {
-    counter comment "%[1]s"
-  }
-}
-add table ip6 tunnex
-flush table ip6 tunnex
-table ip6 tunnex {
-  chain tunnex_posture_owner {
-    counter comment "%[1]s"
-  }
-}
-`, hostposture.NFTMarkerComment)
+// stoppedTunnelDropComment marks the only rules a stopped Kubernetes gateway
+// leaves in its forward chain.
+const stoppedTunnelDropComment = "tunnex_stopped_tunnel_drop"
+
+// hostPostureStoppedRuleset is what a stopped Kubernetes gateway leaves in the
+// manager-owned tables (K8N-5). `flush table` removes rules but keeps chains,
+// so a flush alone left `forward` hooked with policy drop and no rules: every
+// packet the node forwarded was dropped until the next gateway process applied
+// its table. Per family, in one transaction, this:
+//
+//   - starts with `flush table`, never `add table`: if the manager deleted the
+//     table after the marker check, the whole transaction fails instead of
+//     recreating a table nobody owns;
+//   - removes the NAT chains with `add chain` + `delete chain`, which works
+//     whether the chain exists or not and whatever hook priority it had;
+//   - re-declares `forward` with the same name and hook but policy accept, and
+//     drops only packets entering or leaving a tunnel interface. The tunnel stays
+//     closed while wg0 is drained, ordinary node traffic meets no Tunnex rule,
+//     and the next start's flush + `policy drop` replaces this chain in place;
+//   - writes back exactly the posture marker the manager checks.
+func hostPostureStoppedRuleset(tun []string) (string, error) {
+	if len(tun) == 0 {
+		return "", fmt.Errorf("no tunnel interface to close")
+	}
+	for _, name := range tun {
+		if !ifaceRE.MatchString(name) {
+			return "", fmt.Errorf("invalid tunnel interface name %q", name)
+		}
+	}
+	var b strings.Builder
+	for _, family := range []string{"ip", "ip6"} {
+		t := family + " tunnex"
+		fmt.Fprintf(&b, "flush table %s\n", t)
+		for _, chain := range []string{"prerouting", "postrouting", "forward"} {
+			fmt.Fprintf(&b, "add chain %[1]s %[2]s\ndelete chain %[1]s %[2]s\n", t, chain)
+		}
+		fmt.Fprintf(&b, "add chain %s forward { type filter hook forward priority filter; policy accept; }\n", t)
+		for _, field := range []string{"iifname", "oifname"} {
+			fmt.Fprintf(&b, "add rule %s forward %s counter drop comment \"%s\"\n", t, ifClause(field, tun, false), stoppedTunnelDropComment)
+		}
+		fmt.Fprintf(&b, "add chain %[1]s tunnex_posture_owner\nadd rule %[1]s tunnex_posture_owner counter comment \"%[2]s\"\n", t, hostposture.NFTMarkerComment)
+	}
+	return b.String(), nil
 }
 
 // ruleset is the atomic desired state. IPv4 (table ip): masquerade tunnel→egress + a

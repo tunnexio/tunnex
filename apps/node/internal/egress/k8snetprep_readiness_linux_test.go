@@ -436,9 +436,13 @@ func TestKubernetesGatewayRolloutShutdownPreservesManagerOwnedNFTMarkers(t *test
 	if prep.withdrawCalls != 1 {
 		t.Fatalf("Kubernetes shutdown CNI withdrawals=%d, want 1", prep.withdrawCalls)
 	}
-	if !strings.Contains(applied, `comment "tunnex_host_posture_v1"`) || !strings.Contains(applied, "flush table ip tunnex") ||
-		strings.Contains(applied, "delete table") || strings.Contains(applied, "chain forward") {
-		t.Fatalf("rollout shutdown did not preserve marker-only manager ownership:\n%s", applied)
+	want, err := hostPostureStoppedRuleset([]string{"wg0"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if applied != want || strings.Contains(applied, "delete table") || strings.Contains(applied, "add table") ||
+		strings.Contains(applied, "policy drop") {
+		t.Fatalf("rollout shutdown did not apply the stopped state that keeps manager ownership:\n%s", applied)
 	}
 }
 

@@ -147,14 +147,62 @@ The VM/site path (`delete table ip tunnex; delete table ip6 tunnex`) is unchange
 tables, so nothing is left. It fails as a whole only if one of the two tables is missing, and the
 running table always creates both.
 
+### As built and proved
+
+- `egress_linux.go`: `hostPostureMarkerOnlyRuleset` is replaced by `hostPostureStoppedRuleset(tun)`
+  (the text above). It refuses an empty tunnel set or an interface name outside `ifaceRE`, and
+  `Teardown` then logs `k8s_host_posture_shutdown_blocked` and applies nothing. The marker check
+  before it is unchanged.
+- Unit tests (`stop_ruleset_linux_test.go`): the exact stop text, statement by statement:
+  - no `add table` or `delete table`, no `policy drop`;
+  - every drop is limited to the tunnel interface, and the only hook is the forward guard;
+  - the marker is written back in both families;
+  - with OpenVPN the guard matches the set `{ "wg0", "tun0" }`, and `Teardown` applies it;
+  - unsafe names are refused.
+
+  `TestKubernetesGatewayRolloutShutdownPreservesManagerOwnedNFTMarkers` now requires exactly the
+  stop text. The shutdown phase of `TestK8sAPIReturnPathKernel` now also requires no `policy drop`
+  and no `postrouting` chain.
+- Kernel witness (`stop_state_kernel_linux_test.go`, opt in with
+  `TUNNEX_TEST_STOP_STATE_KERNEL=1`, privileged container). The gateway's namespace routes between
+  pod A (10.80.0.5), pod B (10.70.0.9, the Service's endpoint) and a device behind `wg0`. "Native"
+  means pod A to pod B, arriving with pod A's own address. Run on 2026-11-24 in `golang:1.26.11-alpine`
+  (nftables 1.1.x), Docker's Linux 6.8 kernel. All of the following held:
+
+| state | native pod A → pod B | device → exposed Service | device → pod B, no rule |
+|---|---|---|---|
+| before any gateway (no table) | passes | no path | — |
+| gateway running | passes | answers, device source kept | dropped (`tunnex_default_drop`) |
+| after SIGKILL (full table left) | passes | — | — |
+| after the **released** stop text | **dropped** (2 s timeout) | — | — |
+| new process over the released state | passes | answers | — |
+| after the **fixed** stop | passes | — | dropped by `tunnex_stopped_tunnel_drop` (counter > 0) |
+| new process over the fixed state | passes, ready | answers | — |
+| after `EmergencyWithdrawK8s` | passes | withdrawn | — |
+| after the manager's table delete | passes | — | **open** (the control: it is the guard that closes it) |
+
+  Kernel listings recorded by the witness, `ip tunnex` only:
+  - after the released stop: `prerouting`, `postrouting` and `forward { ... policy drop; }`, all
+    empty; the same `forward` in `ip6 tunnex`;
+  - after the fixed stop: `tunnex_posture_owner` with its one rule, and `forward { ... policy
+    accept; }` holding only the two tunnel drops. The marker passes
+    `hostposture.ValidateNFTMarkerChain` in both families.
+
+  The race with the manager was replayed as well: the tables are deleted between the marker check
+  and the apply. The released text recreates both tables, orphaned. The fixed text fails with "No
+  such file or directory", `Teardown` logs `k8s_host_posture_shutdown_blocked`, and no table is
+  left.
+
 ### Separate finding, not fixed here — the emergency path re-opens the mesh
 
 `EmergencyWithdrawK8s` calls `SetPolicy(nil)`. `SetPolicy` marks a policy as received. In
 `forwardRules`, a received nil policy renders the legacy blanket mesh: tunnel-to-anything accepts.
 If the egress loop runs a pass after the emergency withdraw, with no fresh desired state in between,
 the forward chain opens to every tunnel peer still on `wg0`. The emergency path removes the fenced
-peers and routes from `wg0` first. The container proof below shows what the manager renders. Whether
-a pass can run in that state in the real agent is **unconfirmed**. This needs its own decision; it is
+peers and routes from `wg0` first. The kernel witness shows it. After `EmergencyWithdrawK8s` and one more `Reconcile` in the same
+process, `forward` holds `iifname "wg0" oifname != "wg0" accept`, and the device reached pod B
+directly with no rule granting it. Whether the real agent runs such a pass before fresh desired
+state arrives is **unconfirmed**. This needs its own decision; it is
 recorded, not changed.
 
 ## Item 2 — Service endpoints inside the device range
