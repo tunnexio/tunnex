@@ -123,8 +123,10 @@ describe("every password input declares what it is to the browser", () => {
     // that way trains the browser to offer a credential on a page that should be minting a new one.
     // SA-UI-1 adds a third: re-entering the existing password to change the installation's Server Access
     // capability is a re-authentication of the current credential, not the creation of a new one.
+    // AA-EN-1 adds a fourth for the same reason: re-running a failed upgrade from the Upgrade Center.
     expect(current.sort()).toEqual([
       "src/components/ServerAccessInstallationSettings.tsx",
+      "src/components/UpgradeCenter.tsx",
       "src/pages/ChangePassword.tsx",
       "src/pages/Login.tsx",
     ]);
