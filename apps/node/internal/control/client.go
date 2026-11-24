@@ -93,7 +93,14 @@ type Client struct {
 	nodeName        string
 	cert            atomic.Pointer[tls.Certificate]
 	http            *http.Client
+	// agentVersion is reported with every /agent/report so the control plane
+	// shows the RUNNING version, not the one recorded at enrollment/renewal.
+	agentVersion atomic.Pointer[string]
 }
+
+// SetAgentVersion sets the version carried by ReportInfo. Unset = omitted,
+// which the control plane treats as "no change" (as for older agents).
+func (c *Client) SetAgentVersion(version string) { c.agentVersion.Store(&version) }
 
 // NewClient builds an mTLS client presenting certPEM/keyPEM and trusting caPEM.
 // serverName is the control-channel server cert's name (dialing host may differ,
@@ -271,6 +278,9 @@ func (c *Client) ReportInfo(ctx context.Context, publicKey, endpoint string, egr
 	}
 	if forwarder := c.dnsForwarder.Load(); forwarder != nil {
 		payload["dns_lan_listeners"] = forwarder.AppliedLANListeners()
+	}
+	if version := c.agentVersion.Load(); version != nil && *version != "" {
+		payload["agent_version"] = *version
 	}
 	if c.ipsecDesktopFQDNCapability() == 1 {
 		payload["ipsec_desktop_fqdn_version"] = 1

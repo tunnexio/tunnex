@@ -265,10 +265,12 @@ func (a *AgentChannel) report(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var body struct {
-		PublicKey  string `json:"public_key"`
-		Endpoint   string `json:"endpoint"`
-		EgressNAT  bool   `json:"egress_nat"`  // S3.7: gateway can source-NAT IPv4 full-tunnel egress
-		EgressIPv6 bool   `json:"egress_ipv6"` // S15: gateway can source-NAT IPv6 full-tunnel egress
+		PublicKey string `json:"public_key"`
+		Endpoint  string `json:"endpoint"`
+		// The running agent version. Older agents omit it; empty/invalid keeps the stored value.
+		AgentVersion string `json:"agent_version"`
+		EgressNAT    bool   `json:"egress_nat"`  // S3.7: gateway can source-NAT IPv4 full-tunnel egress
+		EgressIPv6   bool   `json:"egress_ipv6"` // S15: gateway can source-NAT IPv6 full-tunnel egress
 		// S7.2 staleness: the policy IN FORCE on the gateway (version + canonical hash
 		// of the last successfully applied Compiled) + the last apply error, if any.
 		AIVPNHTTPReady   bool   `json:"ai_vpn_http_ready"`
@@ -323,7 +325,7 @@ func (a *AgentChannel) report(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "public_key required", http.StatusBadRequest)
 		return
 	}
-	applied := nodes.AppliedPolicy{IPsecDesktopStaticVersion: body.IPsecDesktopStaticVersion, IPsecDesktopFQDNVersion: body.IPsecDesktopFQDNVersion, IPsecDesktopTransitVersion: body.IPsecDesktopTransitVersion, DNSLANListeners: body.DNSLANListeners, WireGuardAppliedMTU: body.WireGuardAppliedMTU, AIVPNHTTPReady: body.AIVPNHTTPReady, AIVPNHTTPAddress: body.AIVPNHTTPAddress, IPsecRecoveryVersion: body.IPsecRecoveryVersion, IPsecBGPVersion: body.IPsecBGPVersion, IPsecGCPHAVersion: body.IPsecGCPHAVersion, IPsecAzureVersion: body.IPsecAzureVersion, IPsecAzureBGPRecreationVersion: body.IPsecAzureBGPRecreationVersion, IPsecAzureProfileRecreationVersion: body.IPsecAzureProfileRecreationVersion, IPsecGCPClassicVersion: body.IPsecGCPClassicVersion, IPsecRetainedGuardVersion: body.IPsecRetainedGuardVersion, IPsecFQDNPolicyVersion: body.IPsecFQDNPolicyVersion, IPsecConfigVersion: body.IPsecConfigVersion, Version: body.PolicyVersion, Hash: body.PolicyHash, Error: body.PolicyError, FailingSince: body.PolicyFailing, RefusedVersion: body.PolicyRefusedVersion, SiteLinkStale: body.SiteLinkStale, SiteSubnetUnreachable: body.SiteSubnetUnreachable, ConntrackFlushUnavailable: body.ConntrackFlushUnavailable, K8sEndpointsUnavailable: body.K8sEndpointsUnavailable, K8sAPIEndpoint: body.K8sAPIEndpoint, MaxSupportedVersion: body.MaxPolicyVersion, OVPNHealth: body.OVPNHealth, DNSResolveRPCVersion: body.DNSResolveRPCVersion, DNSIPsecResolveVersion: body.DNSIPsecResolveVersion, FlowLogState: body.FlowLogState, FlowLogLastObservedAt: body.FlowLogLastObservedAt, FlowLogLastDeliveredAt: body.FlowLogLastDeliveredAt}
+	applied := nodes.AppliedPolicy{AgentVersion: body.AgentVersion, IPsecDesktopStaticVersion: body.IPsecDesktopStaticVersion, IPsecDesktopFQDNVersion: body.IPsecDesktopFQDNVersion, IPsecDesktopTransitVersion: body.IPsecDesktopTransitVersion, DNSLANListeners: body.DNSLANListeners, WireGuardAppliedMTU: body.WireGuardAppliedMTU, AIVPNHTTPReady: body.AIVPNHTTPReady, AIVPNHTTPAddress: body.AIVPNHTTPAddress, IPsecRecoveryVersion: body.IPsecRecoveryVersion, IPsecBGPVersion: body.IPsecBGPVersion, IPsecGCPHAVersion: body.IPsecGCPHAVersion, IPsecAzureVersion: body.IPsecAzureVersion, IPsecAzureBGPRecreationVersion: body.IPsecAzureBGPRecreationVersion, IPsecAzureProfileRecreationVersion: body.IPsecAzureProfileRecreationVersion, IPsecGCPClassicVersion: body.IPsecGCPClassicVersion, IPsecRetainedGuardVersion: body.IPsecRetainedGuardVersion, IPsecFQDNPolicyVersion: body.IPsecFQDNPolicyVersion, IPsecConfigVersion: body.IPsecConfigVersion, Version: body.PolicyVersion, Hash: body.PolicyHash, Error: body.PolicyError, FailingSince: body.PolicyFailing, RefusedVersion: body.PolicyRefusedVersion, SiteLinkStale: body.SiteLinkStale, SiteSubnetUnreachable: body.SiteSubnetUnreachable, ConntrackFlushUnavailable: body.ConntrackFlushUnavailable, K8sEndpointsUnavailable: body.K8sEndpointsUnavailable, K8sAPIEndpoint: body.K8sAPIEndpoint, MaxSupportedVersion: body.MaxPolicyVersion, OVPNHealth: body.OVPNHealth, DNSResolveRPCVersion: body.DNSResolveRPCVersion, DNSIPsecResolveVersion: body.DNSIPsecResolveVersion, FlowLogState: body.FlowLogState, FlowLogLastObservedAt: body.FlowLogLastObservedAt, FlowLogLastDeliveredAt: body.FlowLogLastDeliveredAt}
 	if err := a.svc.ReportWGInfo(r.Context(), node, body.PublicKey, body.Endpoint, body.EgressNAT, body.EgressIPv6, applied); err != nil {
 		// ONE seam for BOTH cases (S11-5): apierr.Write renders a typed *apierr.Error with its own
 		// status+code and turns an unmapped error into a logged 500 — so the hand-rolled errors.As branch

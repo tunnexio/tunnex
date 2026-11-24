@@ -141,6 +141,9 @@ WHERE id = $1;
 UPDATE nodes
 SET wg_public_key = @wg_public_key,
     endpoint = COALESCE(NULLIF(@endpoint::text, ''), nodes.endpoint),
+    -- The running agent version from the periodic report. Older agents omit it
+    -- (and the service blanks an invalid one), which keeps the stored value.
+    agent_version = COALESCE(NULLIF(@agent_version::text, ''), nodes.agent_version),
     capabilities = @capabilities::jsonb,
     last_seen_at = now(),
     -- S7.4b fold [1]: the applied-policy REPORT time (this write IS the report), distinct from

@@ -198,7 +198,7 @@ func TestNodeEnrollmentLifecycle(t *testing.T) {
 	wgKey := base64.StdEncoding.EncodeToString(wgKeyBytes)
 	flowObservedAt := time.Now().UTC().Truncate(time.Microsecond)
 	flowDeliveredAt := flowObservedAt.Add(time.Second)
-	if err := svc.ReportWGInfo(ctx, node, wgKey, "1.2.3.4:51820", true, false, AppliedPolicy{DNSResolveRPCVersion: 1, FlowLogState: "active", FlowLogLastObservedAt: &flowObservedAt, FlowLogLastDeliveredAt: &flowDeliveredAt}); err != nil {
+	if err := svc.ReportWGInfo(ctx, node, wgKey, "1.2.3.4:51820", true, false, AppliedPolicy{AgentVersion: "v9.9.9-running", DNSResolveRPCVersion: 1, FlowLogState: "active", FlowLogLastObservedAt: &flowObservedAt, FlowLogLastDeliveredAt: &flowDeliveredAt}); err != nil {
 		t.Fatalf("report valid key: %v", err)
 	}
 	if stored, _ := q.GetNodeByCertSerial(ctx, newSerial); stored.WgPublicKey != wgKey || stored.Endpoint != "1.2.3.4:51820" {
@@ -223,6 +223,17 @@ func TestNodeEnrollmentLifecycle(t *testing.T) {
 	}
 	if stored, _ := q.GetNodeByCertSerial(ctx, newSerial); stored.Endpoint != "1.2.3.4:51820" {
 		t.Fatalf("empty report clobbered endpoint: got %q", stored.Endpoint)
+	}
+	// The periodic report updates the shown agent version; an older agent that
+	// omits it (the empty report above) keeps the last reported one.
+	if stored, _ := q.GetNodeByCertSerial(ctx, newSerial); stored.AgentVersion != "v9.9.9-running" {
+		t.Fatalf("running agent version not kept from the report: got %q", stored.AgentVersion)
+	}
+	if err := svc.ReportWGInfo(ctx, node, wgKey, "", true, false, AppliedPolicy{AgentVersion: "v1\nInjected"}); err != nil {
+		t.Fatalf("invalid-version report: %v", err)
+	}
+	if stored, _ := q.GetNodeByCertSerial(ctx, newSerial); stored.AgentVersion != "v9.9.9-running" {
+		t.Fatalf("invalid agent version overwrote the stored one: got %q", stored.AgentVersion)
 	}
 	if stored, _ := q.GetNodeByCertSerial(ctx, newSerial); Capabilities(stored.Capabilities).FlowLogState != "unknown" {
 		t.Fatalf("missing or invalid collector state must fail closed to unknown: %s", stored.Capabilities)
