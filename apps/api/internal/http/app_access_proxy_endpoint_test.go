@@ -154,3 +154,36 @@ func TestAppProxyEndpointAgentHandler(t *testing.T) {
 		t.Fatalf("unreadable organization = %d, want 503 so the gateway keeps its state", rr.Code)
 	}
 }
+
+// Founder ruling 3: a listener bound only to loopback cannot be reached by a
+// remote gateway, so it is not delivered unless the operator names a host.
+func TestAppProxyEndpointLoopbackBindIsNotDelivered(t *testing.T) {
+	on := func(context.Context, uuid.UUID) (bool, error) { return true, nil }
+	for _, tc := range []struct {
+		bind, host string
+		enabled    bool
+	}{
+		{"", "", true},
+		{"0.0.0.0", "", true},
+		{"::", "", true},
+		{"10.70.0.2", "", true},
+		{"127.0.0.1", "", false},
+		{"127.0.0.53", "", false},
+		{"::1", "", false},
+		{"127.0.0.1", "gw-tunnel.internal", true},
+	} {
+		endpoint, err := NewAppProxyEndpointWithBind("8444", tc.host, tc.bind, false)
+		if err != nil {
+			t.Fatalf("%q: %v", tc.bind, err)
+		}
+		a := &AgentChannel{appAccessEntitled: func() bool { return true }}
+		a.SetAppProxyEndpoint(endpoint, on)
+		got, err := a.appProxyEndpointFor(context.Background(), uuid.New())
+		if err != nil || got.Enabled != tc.enabled {
+			t.Errorf("bind %q host %q = %+v, %v; want enabled %v", tc.bind, tc.host, got, err, tc.enabled)
+		}
+	}
+	if _, err := NewAppProxyEndpointWithBind("8444", "", "not-an-ip", false); err == nil {
+		t.Fatal("invalid bind address accepted")
+	}
+}

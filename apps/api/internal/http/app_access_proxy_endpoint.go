@@ -29,6 +29,10 @@ type AppProxyEndpoint struct {
 	Host string
 	// Locked is TUNNEX_APP_ACCESS_LOCKED, the operator hard-off.
 	Locked bool
+	// LoopbackOnly: TUNNEX_APP_PROXY_GATEWAY_BIND_IP is a loopback address, so no
+	// remote gateway can reach the listener. Without an explicit Host it is not
+	// delivered (founder ruling 3).
+	LoopbackOnly bool
 }
 
 var errAppProxyEndpoint = errors.New("invalid App Access gateway endpoint configuration")
@@ -37,6 +41,27 @@ var errAppProxyEndpoint = errors.New("invalid App Access gateway endpoint config
 // TUNNEX_APP_PROXY_GATEWAY_HOST. The host is a bare hostname or IP address:
 // no scheme, port, path, brackets or credentials.
 func NewAppProxyEndpoint(port, host string, locked bool) (AppProxyEndpoint, error) {
+	return NewAppProxyEndpointWithBind(port, host, "", locked)
+}
+
+// NewAppProxyEndpointWithBind also takes TUNNEX_APP_PROXY_GATEWAY_BIND_IP (empty
+// means the overlay default, all addresses).
+func NewAppProxyEndpointWithBind(port, host, bind string, locked bool) (AppProxyEndpoint, error) {
+	bind = strings.TrimSpace(bind)
+	loopback := false
+	if bind != "" {
+		ip := net.ParseIP(bind)
+		if ip == nil {
+			return AppProxyEndpoint{}, errAppProxyEndpoint
+		}
+		loopback = ip.IsLoopback()
+	}
+	e, err := newAppProxyEndpoint(port, host, locked)
+	e.LoopbackOnly = err == nil && loopback
+	return e, err
+}
+
+func newAppProxyEndpoint(port, host string, locked bool) (AppProxyEndpoint, error) {
 	port, host = strings.TrimSpace(port), strings.TrimSpace(host)
 	if port == "" {
 		if host != "" {
@@ -99,7 +124,7 @@ func (a *AgentChannel) SetAppProxyEndpoint(endpoint AppProxyEndpoint, orgEnabled
 // setting is an error, never "off": the gateway then keeps its current state.
 func (a *AgentChannel) appProxyEndpointFor(ctx context.Context, org uuid.UUID) (appProxyEndpointWire, error) {
 	e := a.appProxyEndpoint
-	if e.Port == 0 || e.Locked || a.appProxyOrgEnabled == nil || !a.appAccessHasEntitlement() {
+	if e.Port == 0 || e.Locked || (e.LoopbackOnly && e.Host == "") || a.appProxyOrgEnabled == nil || !a.appAccessHasEntitlement() {
 		return appProxyEndpointWire{}, nil
 	}
 	on, err := a.appProxyOrgEnabled(ctx, org)
