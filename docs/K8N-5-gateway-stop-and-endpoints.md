@@ -278,3 +278,40 @@ Endpoints (CVE-2021-25740), and they never included writing EndpointSlices.
 
 Why not (b): (b) would leave a known way around the walk as a written limit, although the data to
 refuse it is already on hand.
+
+### As built
+
+- `k8swatch_linux.go`: each EndpointSlice group also keeps `all`, every endpoint address whatever its
+  conditions. The DNAT's `ready` list is unchanged. `EndpointsInRanges(ranges)` returns every hit
+  sorted by Service, then address. It returns `ok=false` while the view is not live, and on a nil
+  watcher.
+- `egress_linux.go`: `deviceRanges` and `deviceRangeEndpointRefusal`. `reconcileK8sNetPrep` takes the
+  refusal before it logs the status. On a hit the host component becomes `blocked` with the reason,
+  appended after any earlier host reason, and the gateway is not ready. The check runs only when the
+  endpoint source is the in-cluster watcher (an optional interface). A VM gateway and the test fakes
+  are untouched.
+- RBAC: unchanged. Chart: unchanged.
+- Tests (`device_range_endpoints_linux_test.go`):
+  - every address is kept (ready, not ready, no condition, terminating) while the DNAT view stays
+    ready-only;
+  - IPv4 and IPv6 hits are found in sorted order;
+  - an FQDN slice, an unlabelled slice and a pod address are not hits;
+  - a DELETED event removes a hit, and a view that is not live, or a nil watcher, gives no answer;
+  - a clean cluster is ready and carries no refusal;
+  - a device endpoint makes the gateway not ready, with the exact reason, also in the logged status;
+  - two Services add "(2 Services in all)", and deleting both restores readiness;
+  - an endpoint in the policy's device pool but outside the `wg0` subnet is refused;
+  - an earlier host refusal is kept in front;
+  - sources without the cluster view, and a view that is not live, add no refusal.
+
+## Not confirmed
+
+- No real cluster was used for either item. The stop state was proved on veth namespaces, not on a
+  node with a CNI, kube-proxy and the host-posture manager process.
+- Which CNI datapaths bypass the netfilter forward hook, and so never saw the released drop.
+- Whether the real agent runs an egress pass between `EmergencyWithdrawK8s` and the next desired state
+  (the mesh re-opening above).
+- That kube-proxy and every supported CNI attach slices only through `kubernetes.io/service-name`,
+  and the Kubernetes 1.22 default-role change. Both are from memory, not re-read today.
+- Item 2 on a live cluster: a Service with no selector and a hand-written EndpointSlice at a device
+  address, the gateway going not ready, and back.
