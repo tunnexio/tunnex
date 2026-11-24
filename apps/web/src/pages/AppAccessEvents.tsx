@@ -46,7 +46,7 @@ const cursorKey = (cursor: Cursor) => `${cursor.before_id.toLowerCase()}:${Date.
 const label = (value: string) => value.replace(/_/g," ");
 // SA-UX-2 AA-6: event reasons as words people use, never the stored code.
 export const eventReasonText: Record<string, string> = {
-  none: "—", session_invalid: "Sign-in for the app was not valid", parent_unavailable: "Dashboard sign-in ended", user_inactive: "User is deactivated",
+  none: "None", session_invalid: "Sign-in for the app was not valid", parent_unavailable: "Dashboard sign-in ended", user_inactive: "User is deactivated",
   membership_unavailable: "Not a member of this organization", no_use_permission: "Role does not allow using applications", no_active_grant: "No current access grant",
   feature_disabled: "Applications turned off for this organization", feature_unavailable: "Applications not available on this license", publication_unavailable: "Application not published",
   installation_changed: "Application domain setup changed", session_revoked: "Session ended by an administrator or the user", lease_expired: "Session lease expired",
