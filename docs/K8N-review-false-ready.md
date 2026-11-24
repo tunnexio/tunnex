@@ -170,10 +170,21 @@ device, the same effect the walk already accepts for Flannel. Item 10 is of a di
 
 ## Refusal tests still missing
 
-`hash:ip` with netmask or bitmask; a second tunnel interface; a NAT-chain `MARK` or `mangle`
-touching reserved bits and `ip saddr set`; a comment containing set-match text; ip-masq-agent on
-with the tunnel inside the status exclusion; a receipt carrying a Cilium section when the gateway
-saw no trace; a node with legacy tables; a set renamed between the save and the member read.
+The review listed these; each now exists on `k8n/review-fixes`:
+
+| Missing test | Now |
+| --- | --- |
+| `hash:ip` with netmask or bitmask | `TestParseIPSetSaveRefusesASetThatMatchesMoreThanItLists` and rows of `TestCalicoNodeRefusals` (item 2) |
+| a second tunnel interface | `TestObservedExcusesNoRuleBoundToAnyTunnelInterface`, `TestLiveCalicoNodeIsRefusedWhenAMasqueradeIsBoundToASecondTunnelInterface` (item 3) |
+| a NAT-chain `MARK` or `mangle` touching reserved bits, `ip saddr set` | `TestObservedNATWalkReadsANativeMarkStatement`, `TestObservedNATWalkReadsAMarkTargetFromItsSavedRule` (item 4; every reserved bit after the follow-up) |
+| a comment containing set-match text | `TestObservedCommentWithSetMatchTextOnlyBreaksPairing` (a guard; no fix) |
+| ip-masq-agent on with the tunnel inside the status exclusion | `TestProveCiliumReportedRangeProvesOnlyWithTheIPMasqAgentOff`, `TestCiliumLiveNodeWithIPMasqAgentOnIsNotReadyOnTheReportedRange` (item 1) |
+| a receipt carrying a Cilium section when the gateway saw no trace | `TestGatewayRunsTheCiliumDecisionOnAReceiptSectionAlone` (item 6) |
+| a node with legacy tables | `TestNodeWithLegacyTablesIsNotReady` (item 5) |
+| a set renamed between the save and the member read | `TestHostFactsReaderRereadsSetNamesAfterTheMembers` (item 7) |
+
+Not addressed on this branch: item 8 (the receipt's digest is unkeyed and its freshness is
+wall-clock) and item 10 (needs a live cluster).
 
 ## Could not be determined
 
