@@ -199,6 +199,7 @@ appAccess:
   enabled: false
   proxyURL: ""
 
-# Community browser SSH remains an explicit default-off installation capability.
+# SA-UI-1: "" (default) follows the control plane's Server Access setting without a restart; "true" always
+# runs it; "false" is a gateway-local hard lock (this gateway never runs Server Access).
 serverAccess:
-  enabled: false
+  enabled: ""

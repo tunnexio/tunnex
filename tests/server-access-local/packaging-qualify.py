@@ -17,7 +17,11 @@ rejected=run(cp+['--set','serverAccess.enabled=true','--set','api.replicas=2'],o
 assert rejected.returncode and 'requires exactly one API replica' in rejected.stderr
 run(cp+['--set','api.replicas=2'])
 gateway=['helm','template','sa-local','deploy/helm/tunnex-gateway','--set','nodeName=sa-local-gateway','--set','acknowledgePrivileged=true','--set','controlPlane.apiURL=https://cp.fixture.test','--set','controlPlane.agentURL=https://cp.fixture.test:8443','--set','enrollment.existingSecret=local-enrollment']
-flag(run(gateway).stdout,False);flag(run(gateway+['--set','serverAccess.enabled=true']).stdout,True)
+assert re.search(r'name: TUNNEX_SERVER_ACCESS_ENABLED\s+value: ""',run(gateway).stdout)
+flag(run(gateway+['--set','serverAccess.enabled=true']).stdout,True);flag(run(gateway+['--set','serverAccess.enabled=false']).stdout,False)
+def locked(render,value):
+ assert re.search(r'name: TUNNEX_SERVER_ACCESS_LOCKED\s+value: "'+value+'"',render)
+locked(run(cp).stdout,'false');locked(run(cp+['--set','serverAccess.locked=true']).stdout,'true');locked(run(cp+['--set','api.replicas=2']).stdout,'true')
 # Persist only the public rendered proxy config for the owned proxy fixture.
 match=re.search(r'  default.conf: \|\n(.*?)(?=\n---|\Z)',enabled,re.S);assert match
 config='\n'.join(line[4:] for line in match[1].splitlines())+'\n'
@@ -29,7 +33,9 @@ env['TUNNEX_AI_CUSTOM_ENDPOINTS_FILE']='/private/tmp/sa-synthetic-policy.json'
 env.pop('TUNNEX_SERVER_ACCESS_ENABLED',None)
 compose=['tests/server-access-local/docker-local.sh','compose','--env-file','/dev/null','-f','deploy/tunnex.yml']
 plain=json.loads(run(compose+['config','--format','json'],env).stdout)
-for service in ['api','node-agent']:assert str(plain['services'][service]['environment']['TUNNEX_SERVER_ACCESS_ENABLED']).lower()=='false'
+assert str(plain['services']['api']['environment']['TUNNEX_SERVER_ACCESS_ENABLED']).lower()=='false'
+assert str(plain['services']['api']['environment']['TUNNEX_SERVER_ACCESS_LOCKED']).lower()=='false'
+assert plain['services']['node-agent']['environment']['TUNNEX_SERVER_ACCESS_ENABLED'] in ('',None)
 assert next(v for v in plain['services']['api']['volumes'] if v['target']=='/var/lib/tunnex/recordings')['source']=='server_access_recordings'
 assert plain['volumes']['server_access_recordings']['name']=='tunnex_server_access_recordings'
 env.update(TUNNEX_SERVER_ACCESS_RECORDING_VOLUME='sa-preexisting-volume',TUNNEX_SERVER_ACCESS_RECORDING_VOLUME_EXTERNAL='true')
@@ -37,9 +43,9 @@ external=json.loads(run(compose+['config','--format','json'],env).stdout)
 assert external['volumes']['server_access_recordings']['name']=='sa-preexisting-volume' and external['volumes']['server_access_recordings']['external'] is True
 env.pop('TUNNEX_SERVER_ACCESS_RECORDING_VOLUME');env.pop('TUNNEX_SERVER_ACCESS_RECORDING_VOLUME_EXTERNAL')
 with tempfile.TemporaryDirectory(prefix='sa-recording-mount-') as directory:
- env.update(TUNNEX_SERVER_ACCESS_ENABLED='true',TUNNEX_SERVER_ACCESS_RECORDING_SOURCE=directory)
+ env.update(TUNNEX_SERVER_ACCESS_ENABLED='true',TUNNEX_GATEWAY_SERVER_ACCESS_ENABLED='true',TUNNEX_SERVER_ACCESS_RECORDING_SOURCE=directory)
  mounted=json.loads(run(compose+['-f','deploy/server-access-storage.override.yml','config','--format','json'],env).stdout)
  for service in ['api','node-agent']:assert str(mounted['services'][service]['environment']['TUNNEX_SERVER_ACCESS_ENABLED']).lower()=='true'
  volume=next(v for v in mounted['services']['api']['volumes'] if v['target']=='/var/lib/tunnex/recordings')
  assert volume['type']=='bind' and volume['source']==directory and volume['bind']['create_host_path'] is False
-print('Compose/Helm default-off, explicit CP+gateway enablement, preexisting recording volume and single-API fence PASS; no deployment')
+print('Compose/Helm default-off seed, gateway follow default, lock env, preexisting recording volume and single-API fence PASS; no deployment')

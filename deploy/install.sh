@@ -909,7 +909,9 @@ fi
 ADDR="$(public_base_url_host "$BASE_URL")"
 select_tls_mode
 
-# New installations keep Browser SSH disabled unless explicitly selected.
+# New installations keep Browser SSH disabled unless explicitly selected. This is only the initial value
+# (SA-UI-1): server administrators can turn it on or off later in Settings without editing .env.
+# TUNNEX_SERVER_ACCESS_LOCKED=true in .env is the operator hard-off the dashboard cannot override.
 SERVER_ACCESS_ENABLED=${TUNNEX_SERVER_ACCESS_ENABLED:-false}
 case "$SERVER_ACCESS_ENABLED" in true|false) ;; *) die 'TUNNEX_SERVER_ACCESS_ENABLED must be true or false.' ;; esac
 

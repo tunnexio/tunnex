@@ -391,8 +391,10 @@
       "additionalProperties": false,
       "properties": {
         "enabled": {
-          "type": "boolean",
-          "default": false
+          "type": ["boolean", "string"],
+          "enum": [true, false, "", "true", "false"],
+          "default": "",
+          "description": "SA-UI-1: empty follows the control plane; true always runs Server Access; false never runs it on this gateway."
         }
       }
     }

@@ -260,8 +260,12 @@ appAccess:
       limits: {cpu: "1", memory: 512Mi}
 
 # Community browser SSH remains an explicit default-off installation capability.
+# enabled is the INITIAL value only (SA-UI-1): server administrators turn Server Access on or off in
+# Settings, and the saved value wins. locked: true forces it off and the dashboard cannot enable it.
+# More than one API replica always locks it off (terminal HA is not supported).
 serverAccess:
   enabled: false
+  locked: false
   # Existing dedicated PVC only; storage provisioning is outside this chart.
   recordingVolume:
     existingClaim: ""
