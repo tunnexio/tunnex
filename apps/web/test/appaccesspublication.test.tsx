@@ -273,7 +273,8 @@ it("keeps current publication and request readiness separately labelled", async 
 it("shows a published draft as published, not as unmet pre-publish requirements", async () => {
   f.view = { ...f.view, active: { ...active(), revision: application.draft.revision, digest: application.draft.digest, hostname: application.draft.public_hostname } };
   render(<MemoryRouter><AppAccessPublication {...props} check={null} /></MemoryRouter>);
-  expect(await screen.findByText("Published — no unpublished changes")).toBeTruthy();
+  expect(await screen.findByText("No unpublished changes")).toBeTruthy();
+  expect(screen.getByRole("heading", { name: "Published", level: 3 })).toBeTruthy();
   expect(screen.getByText(`Revision ${application.draft.revision} is live. Edit the application to publish changes.`)).toBeTruthy();
   expect(screen.queryByText("Before publishing")).toBeNull();
   expect(screen.queryByText("Needs attention")).toBeNull();
@@ -286,12 +287,12 @@ it("keeps pre-publish requirements when the draft differs from the live revision
   f.view = { ...f.view, active: active() };
   const page = render(<MemoryRouter><AppAccessPublication {...props} check={null} /></MemoryRouter>);
   expect(await screen.findByText("Before publishing")).toBeTruthy();
-  expect(screen.queryByText("Published — no unpublished changes")).toBeNull();
+  expect(screen.queryByText("No unpublished changes")).toBeNull();
   f.view = { ...f.view, active: { ...active(), revision: application.draft.revision, digest: application.draft.digest } };
   page.rerender(<MemoryRouter><AppAccessPublication {...props} check={null} dirty /></MemoryRouter>);
   fireEvent.click(screen.getByRole("button", { name: "Refresh publication status" }));
   await waitFor(() => expect(screen.getByText("Before publishing")).toBeTruthy());
-  expect(screen.queryByText("Published — no unpublished changes")).toBeNull();
+  expect(screen.queryByText("No unpublished changes")).toBeNull();
 });
 
 it("a check stays valid across a reload only for the same app, revision and digest", () => {
