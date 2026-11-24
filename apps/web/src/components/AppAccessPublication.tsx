@@ -33,7 +33,7 @@ const operationText: Record<Operation["status"], string> = {
 const diagnostics: Record<string, string> = {
   public_dns_failed: "The public application hostname could not be resolved safely.", public_tls_failed: "The public application certificate could not be verified.",
   public_challenge_failed: "The public URL did not reach the expected application proxy.", connector_failed: "The pending gateway connection could not complete its check.",
-  dns_failed: "The gateway could not resolve the origin.", target_refused: "The origin destination is outside the saved policy.",
+  dns_failed: "The gateway could not resolve the origin.", target_refused: "The gateway refused the origin destination. Allow its private address range under Advanced connection settings → Allowed private destination ranges, save, and check the connection again.",
   connect_failed: "The gateway could not connect to the origin.", tls_failed: "The origin certificate could not be verified.", http_failed: "The origin did not complete the connection check.",
   deadline_exceeded: "Readiness checks did not finish in time.", assignment_changed: "The reviewed application changed. Reopen it and check the saved connection.",
   capability_unavailable: "The browser connector capability is no longer current.", origin_check_stale: "Run a fresh saved connection check.",

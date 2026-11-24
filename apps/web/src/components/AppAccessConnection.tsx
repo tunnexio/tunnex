@@ -3,6 +3,7 @@ import type { components } from "@tunnex/shared";
 import { Badge, Button, ErrorText, Loading, RefreshButton } from "./ui";
 import { ResourceSummary } from "./ResourceSummary";
 import { api, apiErrorCode, apiErrorMessage, loadOne } from "../lib/api";
+import { suggestedOriginRange } from "../lib/appaccessorigin";
 
 type Check = components["schemas"]["AppAccessCheck"];
 type Runtime = components["schemas"]["AppAccessGatewayRuntime"];
@@ -15,7 +16,7 @@ const gatewayLabels: Record<Runtime["status"], string> = {
 const failures: Record<Check["error_code"], string> = {
   "": "",
   dns_failed: "The gateway could not resolve the origin.",
-  target_refused: "The destination is outside the saved origin policy.",
+  target_refused: "The gateway refused this destination: the saved origin policy does not allow it. Private origins need their address range listed under Advanced connection settings → Allowed private destination ranges. Add the origin's range there, save, and check again.",
   connect_failed: "The gateway could not connect to the origin.",
   tls_failed: "Origin TLS verification failed. Check the hostname and trusted CA.",
   http_failed: "The origin did not complete a bounded HTTP response.",
@@ -25,8 +26,12 @@ const failures: Record<Check["error_code"], string> = {
   connector_failed: "The connector could not complete this check.",
 };
 
-export default function AppAccessConnection({ orgId, appId, gatewayId, version, revision = version, canCheck, dirty, onCheck, embedded = false }: {
+export default function AppAccessConnection({ orgId, appId, gatewayId, version, revision = version, canCheck, dirty, onCheck, embedded = false, originUrl = "", allowedCidrs = [], onAllowDestination }: {
   orgId: string; appId: string; gatewayId: string; version: number; revision?: number; canCheck: boolean; dirty: boolean; onCheck?: (check: Check | null) => void; embedded?: boolean;
+  /** The SAVED origin URL and allowed ranges the check ran against, for target_refused guidance. */
+  originUrl?: string; allowedCidrs?: string[];
+  /** Fills a suggested range into the draft (the admin still saves and re-checks). Omitted when the viewer cannot edit. */
+  onAllowDestination?: (cidr: string) => void;
 }) {
   const [runtime, setRuntime] = useState<Runtime | null>(null);
   const [check, setCheck] = useState<Check | null>(null);
@@ -80,10 +85,21 @@ export default function AppAccessConnection({ orgId, appId, gatewayId, version, 
       <dl className="tnx-resource-facts" aria-label="Connection check details"><div><dt>Saved revision</dt><dd>{check.revision}</dd></div><div><dt>Requested</dt><dd>{new Date(check.created_at).toLocaleString()}</dd></div></dl>
       {outdated && <p className="text-sm">This result does not cover your current unsaved changes.</p>}
       <dl className="tnx-resource-facts aa-connection-results" aria-label="Origin check results">{[["DNS", check.dns_status], ["Connection", check.connect_status], ["TLS", check.tls_status]].map(([label, status]) => <div key={label}><dt>{label}</dt><dd><Badge tone={status === "passed" ? "neutral" : status === "failed" ? "danger" : "neutral"}>{status}</Badge></dd></div>)}</dl>
-      {failures[check.error_code] && <p>{failures[check.error_code]}</p>}
+      {check.error_code === "target_refused" ? <TargetRefused originUrl={originUrl} allowedCidrs={allowedCidrs} onAllow={onAllowDestination} /> : failures[check.error_code] && <p>{failures[check.error_code]}</p>}
       {error && pending && <Button variant="ghost" onClick={() => setCheck(current => current ? { ...current } : null)}>Retry check status</Button>}
     </div>}
     <p className="text-sm text-ink-secondary">Checks cover the saved origin connection. Connection checks do not change the active publication.</p>
   </div>;
   return embedded ? <section className="aa-connection-embedded" aria-label="Connection check"><div className="aa-connection-heading"><div><h3>Connection check</h3><p>Verify the saved origin through its gateway.</p></div>{capability}</div>{content}</section> : <ResourceSummary title="Connection check" className="aa-connection-summary" description="Verify the saved origin through its gateway." actions={capability}>{content}</ResourceSummary>;
+}
+
+function TargetRefused({ originUrl, allowedCidrs, onAllow }: { originUrl: string; allowedCidrs: string[]; onAllow?: (cidr: string) => void }) {
+  const [added, setAdded] = useState("");
+  const suggestion = suggestedOriginRange(originUrl, allowedCidrs);
+  if (!suggestion || suggestion.covered) return <p>{failures.target_refused}</p>;
+  return <div className="space-y-2">
+    <p>The gateway refused this destination: {suggestion.address} is a private address, and private origins need their range allowed. Add {suggestion.range} under Advanced connection settings → Allowed private destination ranges, save, and check again.</p>
+    {onAllow && (added ? <p role="status" className="text-sm">Added {added} to Allowed private destination ranges. Save the draft, then check the connection again.</p>
+      : <Button variant="ghost" type="button" onClick={() => { onAllow(suggestion.range); setAdded(suggestion.range); }}>Allow {suggestion.range}</Button>)}
+  </div>;
 }
