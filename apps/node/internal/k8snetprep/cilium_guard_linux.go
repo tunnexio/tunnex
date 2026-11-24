@@ -9,6 +9,7 @@ import (
 	"net"
 	"net/netip"
 	"sort"
+	"strings"
 )
 
 // K8N-2, the guard and the proof. The rule check reads NAT and mangle rules.
@@ -22,7 +23,10 @@ import (
 //   - it masquerades with iptables rules, which the rule check has just read
 //     and accepted, or
 //   - it masquerades in eBPF and the tunnel range lies inside its
-//     native-routing range or inside one entry of its ip-masq-agent map.
+//     native-routing range or inside one entry of its ip-masq-agent map;
+//
+// and, in every case, the agent reports Legacy host routing, so traffic
+// between pods and the tunnel passes Tunnex's forward chain (K8N-6).
 //
 // Without that report, or with one that is missing, stale, damaged or not
 // understood, the node is refused, whatever mode Cilium is in.
@@ -52,8 +56,15 @@ func realLinkNames() ([]string, error) {
 // the host's /sys/fs/bpf. The device names cover a Cilium that was told to
 // install no iptables rules.
 func (r *Reconciler) detectCilium(snapshot *cniSnapshot) (string, error) {
+	found, _, err := r.detectCiliumWithLinks(snapshot)
+	return found, err
+}
+
+// detectCiliumWithLinks is detectCilium that also returns the device names it
+// read, sorted, so that the eBPF dataplane guard reads the same list.
+func (r *Reconciler) detectCiliumWithLinks(snapshot *cniSnapshot) (string, []string, error) {
 	if snapshot == nil {
-		return "", errors.New("Cilium detection has no rule listing to read")
+		return "", nil, errors.New("Cilium detection has no rule listing to read")
 	}
 	list := r.listLinks
 	if list == nil {
@@ -61,11 +72,11 @@ func (r *Reconciler) detectCilium(snapshot *cniSnapshot) (string, error) {
 	}
 	links, err := list()
 	if err != nil {
-		return "", fmt.Errorf("Cilium detection could not list network devices: %w", err)
+		return "", nil, fmt.Errorf("Cilium detection could not list network devices: %w", err)
 	}
 	if len(links) == 0 {
 		// Every network namespace has at least the loopback device.
-		return "", errors.New("Cilium detection listed no network devices")
+		return "", nil, errors.New("Cilium detection listed no network devices")
 	}
 	var chains []string
 	for _, chain := range snapshot.chains {
@@ -73,23 +84,81 @@ func (r *Reconciler) detectCilium(snapshot *cniSnapshot) (string, error) {
 			chains = append(chains, chain.Name)
 		}
 	}
+	links = append([]string(nil), links...)
 	sort.Strings(links)
 	sort.Strings(chains)
 	for _, name := range links {
 		if ciliumPresent([]string{name}, nil, nil) {
-			return "network device " + bounded(name, 32), nil
+			return "network device " + bounded(name, 32), links, nil
 		}
 	}
 	for _, name := range chains {
 		if ciliumPresent(nil, []string{name}, nil) {
-			return "iptables chain " + bounded(name, 32), nil
+			return "iptables chain " + bounded(name, 32), links, nil
 		}
 	}
-	return "", nil
+	return "", links, nil
 }
 
-// proveCilium runs after the rule check has passed. On a node without Cilium
-// it returns nothing. On a node that shows Cilium it returns the ready
+// Calico's eBPF dataplane, like Cilium's BPF host routing, runs its own
+// programs on the node's devices and pods, and Tunnex has no proof that they
+// leave traffic between pods and the tunnel to its forward chain. It was refused before only because Felix in BPF mode
+// keeps a mark-matched MASQUERADE in cali-POSTROUTING ("BPF loopback SNAT")
+// that the NAT walk cannot prove. That refusal is an accident of a rule; this
+// one is on purpose. Two signals, both read from what the gateway already has
+// (Calico v3.31.2 source, felix):
+//
+//   - the network devices bpfin.cali and bpfout.cali
+//     (dataplane/linux/dataplanedefs), which Felix creates in BPF mode unless
+//     host-networked NAT is off (the default, connect-time load balancing for
+//     TCP only, leaves it on);
+//   - the raw-table chains cali-untracked-policy and cali-untracked-flows,
+//     which Felix renders only in BPF mode (rules/static.go,
+//     StaticBPFModeRawChains; dataplane/linux/int_dataplane.go,
+//     setUpIptablesBPF). The name is matched inside a longer one too, in case
+//     a backend prefixes it.
+//
+// The captured Calico node (iptables dataplane) shows neither.
+var (
+	calicoEBPFDevices = []string{"bpfin.cali", "bpfout.cali"}
+	calicoEBPFChains  = []string{"cali-untracked-policy", "cali-untracked-flows"}
+)
+
+// ReasonCalicoEBPF starts the refusal of a node that runs Calico's eBPF
+// dataplane.
+const ReasonCalicoEBPF = "Calico's eBPF dataplane runs on this node and is not supported: Tunnex cannot prove that its programs leave tunnel traffic to Tunnex's access rules. Use Calico's iptables dataplane"
+
+// detectCalicoEBPF names the first signal of Calico's eBPF dataplane among the
+// sorted device names and the listing's chains, or returns "".
+func detectCalicoEBPF(links []string, snapshot *cniSnapshot) string {
+	for _, name := range links {
+		for _, device := range calicoEBPFDevices {
+			if name == device {
+				return "network device " + name
+			}
+		}
+	}
+	if snapshot == nil {
+		return ""
+	}
+	var chains []string
+	for _, chain := range snapshot.chains {
+		chains = append(chains, chain.Name)
+	}
+	sort.Strings(chains)
+	for _, name := range chains {
+		for _, marker := range calicoEBPFChains {
+			if strings.Contains(name, marker) {
+				return "chain " + bounded(name, 48)
+			}
+		}
+	}
+	return ""
+}
+
+// proveCilium runs after the rule check has passed. It first refuses a node
+// that runs Calico's eBPF dataplane (detectCalicoEBPF). On a node without
+// Cilium it then returns nothing. On a node that shows Cilium it returns the ready
 // cilium_masquerade adapter, or the refusal. It reads the manager's facts once
 // and writes nothing.
 //
@@ -99,9 +168,14 @@ func (r *Reconciler) detectCilium(snapshot *cniSnapshot) (string, error) {
 // With a facts source the receipt is therefore read on every observation, and
 // one that cannot be read refuses the node, Cilium or not.
 func (r *Reconciler) proveCilium(ctx context.Context, snapshot *cniSnapshot, tunnel netip.Prefix) (*ComponentStatus, error) {
-	found, err := r.detectCilium(snapshot)
+	found, links, err := r.detectCiliumWithLinks(snapshot)
 	if err != nil {
 		return nil, err
+	}
+	// Calico's eBPF dataplane is refused on every node, Cilium or not, before
+	// anything else is read.
+	if calico := detectCalicoEBPF(links, snapshot); calico != "" {
+		return nil, fmt.Errorf("%s (found %s)", ReasonCalicoEBPF, calico)
 	}
 	if found == "" && r.ciliumFacts == nil {
 		return nil, nil

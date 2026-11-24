@@ -18,7 +18,15 @@ const (
 	// HostFactsSchemaVersion 2 adds netfilter.legacy_iptables (K8N review,
 	// finding 5). A receipt of version 1 says nothing about legacy tables and
 	// is refused as an unknown schema, before its digest is checked.
-	HostFactsSchemaVersion = 2
+	//
+	// Version 3 carries Cilium's routing member and device list in
+	// cilium.status (K8N-6). A version 2 receipt from a Cilium node lacks them,
+	// and a gateway of this release would refuse it as "no routing section",
+	// which blames Cilium for an old manager; a gateway of the release before
+	// would accept a version 3 receipt and ignore the host routing mode. Both
+	// are refused as an unknown schema instead, on every node, as the manager
+	// and the gateway must be of the same release.
+	HostFactsSchemaVersion = 3
 	HostFactsContract      = "tunnex-host-posture-facts/v1"
 	// HostFactsFreshness is how old the manager's read may be when a gateway
 	// takes it. It is the heartbeat's own window.
