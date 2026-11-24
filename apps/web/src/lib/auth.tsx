@@ -80,3 +80,8 @@ export function useAuth(): AuthContextValue {
   if (!ctx) throw new Error("useAuth must be used within AuthProvider");
   return ctx;
 }
+
+/** Like useAuth, for shared components that also render outside the provider: null when absent. */
+export function useOptionalAuth(): AuthContextValue | null {
+  return useContext(AuthContext);
+}

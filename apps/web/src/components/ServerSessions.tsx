@@ -8,6 +8,7 @@ import AppAccessEmptyState from "./AppAccessEmptyState";
 import AppAccessPagination, { appAccessPageSize } from "./AppAccessPagination";
 import { ResourceSummary } from "./ResourceSummary";
 import { Icon } from "./Icon";
+import { sessionReasonText } from "../lib/serverAccessReasons";
 type Session=components["schemas"]["ServerAccessSession"];
 type Server=components["schemas"]["ServerAccessServer"];
 const live=(session:Session)=>["pending","connecting","connected"].includes(session.status);
@@ -34,6 +35,6 @@ export function ServerSessions({sessions,servers,members,disabled,onRefresh,onEn
    {key:"actions",header:"Actions",cell:session=><AppAccessRowMenu label={`Session actions for ${session.id.slice(0,8)}`} actions={actions(session)}/>}
   ]}/></div>}
   <AppAccessPagination page={current} pageSize={pageSize} count={visible.length} hasNext={current*pageSize<rows.length} busy={disabled} onPageChange={setPage} onPageSizeChange={size=>{setPageSize(appAccessPageSize(String(size)));setPage(1)}} previousLabel="Previous sessions" nextLabel="Next sessions"/>
-  {details&&<Modal title="Session details" placement="right" showClose onDismiss={()=>setDetails(undefined)}><ResourceSummary title="Session information"><dl className="sa-dialog-summary tnx-resource-facts"><div><dt>Server</dt><dd>{serverName(details)}</dd></div><div><dt>Account</dt><dd>{details.account}</dd></div><div><dt>Status</dt><dd>{details.status}</dd></div><div className="tnx-resource-fact-wide"><dt>Reason</dt><dd>{details.reason.replace(/_/g," ")}</dd></div><div className="tnx-resource-fact-wide"><dt>Session</dt><dd className="font-mono">{details.id}</dd></div></dl></ResourceSummary></Modal>}
+  {details&&<Modal title="Session details" placement="right" showClose onDismiss={()=>setDetails(undefined)}><ResourceSummary title="Session information"><dl className="sa-dialog-summary tnx-resource-facts"><div><dt>Server</dt><dd>{serverName(details)}</dd></div><div><dt>Account</dt><dd>{details.account}</dd></div><div><dt>Status</dt><dd>{details.status}</dd></div><div className="tnx-resource-fact-wide"><dt>Reason</dt><dd>{sessionReasonText(details.reason)}</dd></div><div className="tnx-resource-fact-wide"><dt>Session</dt><dd className="font-mono">{details.id}</dd></div></dl></ResourceSummary></Modal>}
  </section>
 }
