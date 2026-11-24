@@ -18,6 +18,30 @@ def atomic(p, content, mode, owner=0, group=0):
     finally:
         if os.path.exists(temp): os.unlink(temp)
 
+def host_key_fingerprint(line):
+    # OpenSSH SHA256 fingerprint of one ed25519 public key line, or None for other key types.
+    parts = line.split()
+    if len(parts) < 2 or parts[0] != 'ssh-ed25519': return None
+    digest = hashlib.sha256(base64.b64decode(parts[1], validate=True)).digest()
+    return 'SHA256:' + base64.b64encode(digest).decode().rstrip('=')
+
+def host_keys():
+    # Read on the real server, as root, through the administrator's trusted channel: this is the trust source
+    # for the management host key (SA-UX-2). Never derived from what the gateway sees.
+    paths = []
+    try:
+        out = subprocess.run(['/usr/sbin/sshd', '-T'], check=True, capture_output=True, text=True, timeout=10).stdout
+        paths = [l.split(None, 1)[1].strip() for l in out.splitlines() if l.lower().startswith('hostkey ')]
+    except Exception: pass
+    if not paths: paths = ['/etc/ssh/ssh_host_ed25519_key']
+    found = set()
+    for path in paths:
+        try:
+            with open(path + '.pub') as f: fp = host_key_fingerprint(f.read())
+        except (OSError, ValueError): continue
+        if fp: found.add(fp)
+    return sorted(found)
+
 def configure():
     if os.geteuid() != 0: raise ValueError('Run this authorization command with sudo')
     if SETUP['expires'] <= time.time(): raise ValueError('Setup authorization expired; prepare a new job')
@@ -34,7 +58,10 @@ def configure():
     tag = 'tunnex-enroll-' + SETUP['id']
     launcher = root / (SETUP['id'] + '.py'); rule = Path('/etc/sudoers.d') / tag
     safe(launcher); safe(rule)
-    payload = dict(SETUP, keys=str(keys), owner=account.pw_uid, group=account.pw_gid, launcher=str(launcher), rule=str(rule), tag=tag)
+    keys_found = host_keys() if SETUP.get('attest') else []
+    if SETUP.get('attest') and not keys_found:
+        raise ValueError('No ed25519 SSH host key was found on this server, so Tunnex cannot verify it automatically. Use "Verify the host key independently" in Tunnex.')
+    payload = dict(SETUP, host_keys=keys_found, keys=str(keys), owner=account.pw_uid, group=account.pw_gid, launcher=str(launcher), rule=str(rule), tag=tag)
     wrapper = WRAPPER.replace('JOB = None', 'JOB = ' + repr(payload))
     atomic(launcher, wrapper, 0o700)
     atomic(rule, f"{SETUP['account']} ALL=(root) NOPASSWD: /usr/bin/python3 {launcher}\n", 0o440)
@@ -60,11 +87,18 @@ def configure():
             os.close(directory_fd)
     except Exception:
         rule.unlink(missing_ok=True); launcher.unlink(missing_ok=True); raise
+    for fp in keys_found: print('SSH host key Tunnex will verify: ' + fp)
     print('Temporary gateway setup authorized. Return to Tunnex and click Configure automatically.')
 
-WRAPPER = r'''import hashlib, os, subprocess, sys, tempfile, time
+WRAPPER = r'''import base64, hashlib, hmac, json, os, subprocess, sys, tempfile, time
 from pathlib import Path
 JOB = None
+
+def attestation_line():
+    # Binds the host keys read at authorization time to this job with the one-time key from the trusted channel.
+    message = ('tunnex-enroll-host-keys-v1\n' + JOB['id'] + '\n' + '\n'.join(JOB['host_keys'])).encode()
+    mac = hmac.new(base64.b64decode(JOB['attest']), message, hashlib.sha256).hexdigest()
+    return 'TUNNEX HOST KEY ATTESTATION ' + json.dumps({'v': 1, 'job': JOB['id'], 'host_keys': JOB['host_keys'], 'mac': mac}, separators=(',', ':'))
 
 def cleanup():
     keys = Path(JOB['keys'])
@@ -85,10 +119,13 @@ def cleanup():
     Path(JOB['rule']).unlink(missing_ok=True)
     Path(JOB['launcher']).unlink(missing_ok=True)
 
-if '--cleanup' in sys.argv:
+def main():
+  if '--cleanup' in sys.argv:
     cleanup(); sys.exit(0)
-try:
+  try:
     if time.time() >= JOB['expires']: raise ValueError('Enrollment authorization expired')
+    if JOB.get('attest'):
+        sys.stdout.write(attestation_line() + '\n'); sys.stdout.flush()
     # This key can only execute the exact reviewed server-bound installer.
     source = sys.stdin.buffer.read(131073)
     if len(source) > 131072 or hashlib.sha256(source).hexdigest() != JOB['digest']:
@@ -97,7 +134,9 @@ try:
         f.write(source); f.flush()
         args = ['--accounts', ','.join(JOB['accounts'])] if JOB['accounts'] else ['--all-login-users']
         subprocess.run(['/usr/bin/python3', f.name, 'bootstrap', *args], check=True, timeout=90)
-finally:
+  finally:
     cleanup()
+
+if __name__ == '__main__': main()
 '''
 if __name__ == '__main__': configure()

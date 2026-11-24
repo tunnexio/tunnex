@@ -33,6 +33,9 @@ type enrollment struct {
 	Epoch        int64                      `json:"epoch"`
 	Accounts     []string                   `json:"accounts"`
 	Key          string                     `json:"key"`
+	// AttestationKey is the per-job host-key attestation key (base64). Only in the authorization command and here;
+	// cleared with the command when the job ends. Never sent to the gateway.
+	AttestationKey string `json:"attestation_key,omitempty"`
 }
 
 func activeEnrollment(state string) bool {
@@ -43,7 +46,7 @@ func validFingerprint(fp string) bool {
 	return e == nil && len(b) == 32 && strings.HasPrefix(fp, "SHA256:") && len(fp) == 50
 }
 func validateEnrollmentInput(in api.ServerAccessEnrollmentInput) error {
-	if !accountPattern.MatchString(in.ManagementAccount) || in.ManagementAccount == "root" || in.ManagementPort < 1 || in.ManagementPort > 65535 || !validFingerprint(in.ManagementFingerprint) || len(in.Accounts) > 16 {
+	if !accountPattern.MatchString(in.ManagementAccount) || in.ManagementAccount == "root" || in.ManagementPort < 1 || in.ManagementPort > 65535 || (in.ManagementFingerprint != nil && *in.ManagementFingerprint != "" && !validFingerprint(*in.ManagementFingerprint)) || len(in.Accounts) > 16 {
 		return bad()
 	}
 	seen := map[string]bool{}
@@ -66,6 +69,9 @@ func bundleScript(org uuid.UUID, server api.ServerAccessServer, trust api.Server
 func authorizationCommand(j enrollment) string {
 	digest := sha256.Sum256([]byte(j.Material.Script))
 	setup := map[string]any{"id": j.View.Id.String(), "account": j.Material.Account, "expires": j.View.ExpiresAt.Unix(), "expiry_ssh": j.View.ExpiresAt.UTC().Format("20060102150405Z"), "key": j.Key, "digest": fmt.Sprintf("%x", digest), "accounts": j.Accounts}
+	if j.AttestationKey != "" {
+		setup["attest"] = j.AttestationKey
+	}
 	source := strings.Replace(bootstrap.Authorize, "SETUP = None", "SETUP = "+pythonJSON(setup), 1)
 	return "sudo /usr/bin/python3 -c \"import base64;exec(base64.b64decode('" + base64.StdEncoding.EncodeToString([]byte(source)) + "'))\""
 }
@@ -113,7 +119,7 @@ func (s *Service) PrepareEnrollment(ctx context.Context, org uuid.UUID, p *authc
 	}
 	job := enrollment{Sync: len(server.Accounts) > 0, CreatedAt: time.Now().UTC(), Org: org, Actor: p.UserID, Gateway: server.GatewayId, Serial: serial, Revision: server.Revision, ParentSealed: sealed, Epoch: parent.AppAuthEpoch, Accounts: in.Accounts}
 	job.View = api.ServerAccessEnrollment{Id: uuid.New(), ServerId: id, ExpiresAt: minTime(until, time.Now().Add(15*time.Minute)), State: "preparing", Message: "Preparing a temporary key on the selected gateway."}
-	job.Material = bootstrap.Job{ID: job.View.Id.String(), State: "preparing", IP: *server.PrivateIp, Port: in.ManagementPort, Account: in.ManagementAccount, Fingerprint: in.ManagementFingerprint, Script: bundleScript(org, server, trust), ExpiresAt: job.View.ExpiresAt}
+	job.Material = bootstrap.Job{ID: job.View.Id.String(), State: "preparing", IP: *server.PrivateIp, Port: in.ManagementPort, Account: in.ManagementAccount, Fingerprint: manualFingerprint(in), Script: bundleScript(org, server, trust), ExpiresAt: job.View.ExpiresAt, HostKeyAttestation: true}
 	tx, e := s.pool.Begin(ctx)
 	if e != nil {
 		return empty, e
@@ -147,7 +153,7 @@ func (s *Service) PrepareEnrollment(ctx context.Context, org uuid.UUID, p *authc
 	if e != nil {
 		return empty, e
 	}
-	if e = s.audit(ctx, tx, org, p.UserID, "enrollment_prepared", id, map[string]any{"job_id": job.View.Id, "gateway_id": job.Gateway, "management_account": in.ManagementAccount}); e != nil {
+	if e = s.audit(ctx, tx, org, p.UserID, "enrollment_prepared", id, map[string]any{"job_id": job.View.Id, "gateway_id": job.Gateway, "management_account": in.ManagementAccount, "host_key_verification": hostKeyVerification(manualFingerprint(in) != "")}); e != nil {
 		return empty, e
 	}
 	return job.View, tx.Commit(ctx)
@@ -223,6 +229,7 @@ func (s *Service) enrollmentAuthority(ctx context.Context, j enrollment) (*authc
 func (s *Service) storeEnrollment(ctx context.Context, tx pgx.Tx, j enrollment) error {
 	if !activeEnrollment(string(j.View.State)) {
 		j.ParentSealed = ""
+		j.AttestationKey = ""
 		j.View.AuthorizationCommand = ""
 		j.Material.Script = ""
 	}
@@ -364,7 +371,7 @@ func (s *Service) EnrollmentReport(ctx context.Context, org, gateway, id uuid.UU
 	}
 	switch {
 	case in.PublicKey != "":
-		if j.View.State != "preparing" || in.Result != "" || in.Setup != nil {
+		if j.View.State != "preparing" || in.Result != "" || in.Setup != nil || in.HostKey != "" || in.Attestation != "" {
 			return bad()
 		}
 		key, _, _, rest, e := ssh.ParseAuthorizedKey([]byte(in.PublicKey))
@@ -372,11 +379,22 @@ func (s *Service) EnrollmentReport(ctx context.Context, org, gateway, id uuid.UU
 			return bad()
 		}
 		j.Key = strings.TrimSpace(string(ssh.MarshalAuthorizedKey(key)))
+		if !in.HostKeyAttestation && j.Material.Fingerprint == "" {
+			// An older gateway would pin an empty fingerprint and fail with an unexplained host key mismatch.
+			j.View.State = "failed"
+			j.View.Message = "This gateway needs an update before it can verify the server automatically. Update the gateway, or use Advanced: verify the host key independently, and prepare setup again."
+			break
+		}
+		if in.HostKeyAttestation {
+			if j.AttestationKey, e = newAttestationKey(); e != nil {
+				return e
+			}
+		}
 		j.View.AuthorizationCommand = authorizationCommand(j)
 		j.View.State = "awaiting_authorization"
 		j.View.Message = "Run the one-time authorization command on the target through your trusted management SSH connection."
 	case in.Result == "running":
-		if j.View.State != "queued" || in.Setup != nil {
+		if j.View.State != "queued" || in.Setup != nil || in.HostKeyAttestation || in.HostKey != "" || in.Attestation != "" {
 			return bad()
 		}
 		j.View.State = "running"
@@ -387,6 +405,20 @@ func (s *Service) EnrollmentReport(ctx context.Context, org, gateway, id uuid.UU
 		}
 		if e = validateEnrollmentResult(j, in.Setup); e != nil {
 			return e
+		}
+		if in.HostKeyAttestation {
+			return bad()
+		}
+		if e = verifyEnrollmentHostKey(j, in); e != nil {
+			j.View.State = "failed"
+			j.View.Message = "The server's SSH host key could not be verified against the one-time authorization. Nothing was saved. Prepare setup again; if the server uses a non-default SSH host key, use Advanced: verify the host key independently."
+			if e = s.audit(ctx, tx, org, j.Actor, "enrollment_status", j.View.ServerId, map[string]any{"job_id": id, "state": j.View.State, "reason": "ssh_host_key_unverified"}); e != nil {
+				return e
+			}
+			if e = s.storeEnrollment(ctx, tx, j); e != nil {
+				return e
+			}
+			return tx.Commit(ctx)
 		}
 		server, e := s.Server(ctx, org, j.View.ServerId)
 		if e != nil {
@@ -429,10 +461,10 @@ func (s *Service) EnrollmentReport(ctx context.Context, org, gateway, id uuid.UU
 			j.View.Message = "Setup complete; accounts and host identity were saved. Run any remaining SSH checks, enable the server, then grant access."
 		}
 	default:
-		if !activeEnrollment(string(j.View.State)) || in.Setup != nil {
+		if !activeEnrollment(string(j.View.State)) || in.Setup != nil || in.HostKeyAttestation || in.HostKey != "" || in.Attestation != "" {
 			return bad()
 		}
-		allowed := map[string]string{"ssh_host_key_mismatch": "Management SSH host identity did not match. No installer was sent.", "ssh_unreachable": "Gateway cannot reach the management SSH port. Check routing and firewall rules.", "ssh_authentication_failed": "Temporary SSH authorization was refused or expired. Prepare a new job.", "setup_failed": "Target setup failed. Check the target journal; prerequisites include Python 3, OpenSSH and systemd. Unsupported OS and enforcing SELinux are refused.", "gateway_key_lost": "Gateway restarted and discarded the temporary private key. Cancel and prepare a new job."}
+		allowed := map[string]string{"ssh_host_key_mismatch": "Management SSH host identity did not match. No installer was sent.", "ssh_unreachable": "The gateway could not reach the server's management SSH port. Allow TCP from the gateway to that port in the server's firewall or cloud security rules, then prepare setup again.", "ssh_authentication_failed": "Temporary SSH authorization was refused or expired. Prepare a new job.", "setup_failed": "Target setup failed. Check the target journal; prerequisites include Python 3, OpenSSH and systemd. Unsupported OS and enforcing SELinux are refused.", "gateway_key_lost": "Gateway restarted and discarded the temporary private key. Cancel and prepare a new job."}
 		message, ok := allowed[in.Result]
 		if !ok {
 			return bad()
@@ -478,4 +510,32 @@ func validateAccountSync(server api.ServerAccessServer, result *bootstrap.Result
 		}
 	}
 	return nil
+}
+
+func manualFingerprint(in api.ServerAccessEnrollmentInput) string {
+	if in.ManagementFingerprint == nil {
+		return ""
+	}
+	return *in.ManagementFingerprint
+}
+func hostKeyVerification(manual bool) string {
+	if manual {
+		return "manual_and_attested"
+	}
+	return "attested"
+}
+
+// verifyEnrollmentHostKey binds the management host key the gateway saw to the one-time authorization. Jobs from
+// gateways without attestation support are accepted only with an administrator-pinned fingerprint (as before).
+func verifyEnrollmentHostKey(j enrollment, in bootstrap.Report) error {
+	if j.AttestationKey == "" {
+		if j.Material.Fingerprint == "" || in.HostKey != "" || in.Attestation != "" {
+			return errAttestation
+		}
+		return nil
+	}
+	if j.Material.Fingerprint != "" && in.HostKey != j.Material.Fingerprint {
+		return errAttestation
+	}
+	return verifyHostKeyAttestation(j.AttestationKey, j.View.Id.String(), in.HostKey, in.Attestation)
 }

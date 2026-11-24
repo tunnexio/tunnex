@@ -8255,10 +8255,12 @@ type ServerAccessEnrollmentState string
 // ServerAccessEnrollmentInput defines model for ServerAccessEnrollmentInput.
 type ServerAccessEnrollmentInput struct {
 	// Accounts Empty discovers all eligible Linux login users; otherwise a selected set
-	Accounts              []string `json:"accounts"`
-	ManagementAccount     string   `json:"management_account"`
-	ManagementFingerprint string   `json:"management_fingerprint"`
-	ManagementPort        int      `json:"management_port"`
+	Accounts          []string `json:"accounts"`
+	ManagementAccount string   `json:"management_account"`
+
+	// ManagementFingerprint Optional independently verified management sshd host key. When omitted, the host key is verified from the attestation produced by the one-time authorization command (SA-UX-2); when given, it is pinned strictly and the attestation is still verified.
+	ManagementFingerprint *string `json:"management_fingerprint,omitempty"`
+	ManagementPort        int     `json:"management_port"`
 }
 
 // ServerAccessGrant defines model for ServerAccessGrant.

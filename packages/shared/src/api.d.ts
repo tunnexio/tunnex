@@ -7944,7 +7944,8 @@ export interface components {
         ServerAccessEnrollmentInput: {
             management_account: string;
             management_port: number;
-            management_fingerprint: string;
+            /** @description Optional independently verified management sshd host key. When omitted, the host key is verified from the attestation produced by the one-time authorization command (SA-UX-2); when given, it is pinned strictly and the attestation is still verified. */
+            management_fingerprint?: string;
             /** @description Empty discovers all eligible Linux login users; otherwise a selected set */
             accounts: string[];
         };
