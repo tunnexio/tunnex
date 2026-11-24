@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/netip"
 	"os"
 	"sort"
 	"strconv"
@@ -138,6 +139,10 @@ type ServiceInventoryPort struct {
 type epGroup struct {
 	ready []string                // ready pod IPs (conditions.ready == true)
 	ports map[endpointPortKey]int // endpoint protocol+name -> resolved container port number
+	// all is every address of every endpoint, whatever its conditions (K8N-5). kube-proxy treats a
+	// missing ready condition as ready and can use terminating endpoints, so the device-range check
+	// cannot rely on the ready list the DNAT uses.
+	all []string
 }
 
 type K8sWatcher struct {
@@ -303,6 +308,63 @@ func (w *K8sWatcher) Targets(namespace, service, protocol string, servicePort in
 		}
 	}
 	return out, true
+}
+
+// DeviceRangeEndpoint is one EndpointSlice address of a Service that lies inside a Tunnex device range
+// (K8N-5).
+type DeviceRangeEndpoint struct {
+	Service string // namespace/name, from the slice's kubernetes.io/service-name label
+	Address string
+	Range   string
+}
+
+// EndpointsInRanges returns every address, in every EndpointSlice that names a Service, that lies inside
+// one of ranges, sorted by Service, then address. Conditions do not matter: kube-proxy can send traffic
+// to an endpoint that is not ready. Addresses that are not IP addresses (addressType FQDN) are skipped.
+// Slices without the service-name label are not held by the watcher; kube-proxy ignores them too.
+// ok=false means the EndpointSlice view is not live, which readiness already refuses on its own.
+func (w *K8sWatcher) EndpointsInRanges(ranges []netip.Prefix) (hits []DeviceRangeEndpoint, ok bool) {
+	if w == nil {
+		return nil, false
+	}
+	w.mu.RLock()
+	defer w.mu.RUnlock()
+	if !w.liveSnapshotLocked() {
+		return nil, false
+	}
+	if len(ranges) == 0 {
+		return nil, true
+	}
+	seen := map[DeviceRangeEndpoint]struct{}{}
+	for service, groups := range w.slices {
+		for _, g := range groups {
+			for _, raw := range g.all {
+				address, err := netip.ParseAddr(raw)
+				if err != nil {
+					continue
+				}
+				address = address.Unmap()
+				for _, r := range ranges {
+					if !r.Contains(address) {
+						continue
+					}
+					hit := DeviceRangeEndpoint{Service: service, Address: address.String(), Range: r.String()}
+					if _, dup := seen[hit]; !dup {
+						seen[hit] = struct{}{}
+						hits = append(hits, hit)
+					}
+					break
+				}
+			}
+		}
+	}
+	sort.Slice(hits, func(i, j int) bool {
+		if hits[i].Service != hits[j].Service {
+			return hits[i].Service < hits[j].Service
+		}
+		return netip.MustParseAddr(hits[i].Address).Less(netip.MustParseAddr(hits[j].Address))
+	})
+	return hits, true
 }
 
 // LiveSnapshotReady is true only after both full resource LISTs have succeeded
@@ -834,6 +896,7 @@ func parseSlice(raw json.RawMessage) (svcKey, sliceName string, g epGroup, ok bo
 		}
 	}
 	for _, e := range s.Endpoints {
+		g.all = append(g.all, e.Addresses...)
 		// FAIL-CLOSED: a nil ready condition is NOT ready (never assume readiness). Only ready addresses
 		// become DNAT targets.
 		if e.Conditions.Ready == nil || !*e.Conditions.Ready {

@@ -1375,6 +1375,14 @@ func (m *Manager) reconcileK8sNetPrep(ctx context.Context, subnet string) error 
 		return fmt.Errorf("Kubernetes network preparation is unavailable")
 	}
 	status, err := m.k8sNetPrep.Reconcile(ctx, subnet)
+	refusal := m.deviceRangeEndpointRefusal(ctx, subnet)
+	if refusal != "" {
+		if status.Host.State != k8snetprep.StateReady && status.Host.Reason != "" {
+			refusal = status.Host.Reason + "; " + refusal
+		}
+		status.Host.State = k8snetprep.StateBlocked
+		status.Host.Reason = refusal
+	}
 	m.logK8sNetPrepStatus(status)
 	ready := subnet != "" && err == nil && status.Host.State == k8snetprep.StateReady
 	activeAdapters := 0
@@ -1395,6 +1403,66 @@ func (m *Manager) reconcileK8sNetPrep(ctx context.Context, subnet string) error 
 	}
 	m.k8sNetPrepReady.Store(ready)
 	return err
+}
+
+// deviceRangeEndpointSource is the part of the in-cluster watcher that sees every EndpointSlice in
+// the cluster (K8N-5). Sources without it (VM gateways, test fakes) skip the check.
+type deviceRangeEndpointSource interface {
+	EndpointsInRanges([]netip.Prefix) ([]DeviceRangeEndpoint, bool)
+}
+
+// deviceRanges are the device addresses the mark proof protects: the observed IPv4 subnet of wg0, the
+// organisation's device pool from the current policy, and the global IPv6 subnet of wg0.
+func (m *Manager) deviceRanges(ctx context.Context, subnet string) []netip.Prefix {
+	var ranges []netip.Prefix
+	add := func(value string) {
+		if prefix, err := netip.ParsePrefix(strings.TrimSpace(value)); err == nil {
+			prefix = prefix.Masked()
+			for _, existing := range ranges {
+				if existing == prefix {
+					return
+				}
+			}
+			ranges = append(ranges, prefix)
+		}
+	}
+	add(subnet)
+	if pol := m.policy.Load(); pol != nil {
+		add(pol.PoolCIDR)
+	}
+	add(wgSubnet6(ctx, m.wgIface))
+	return ranges
+}
+
+// deviceRangeEndpointRefusal is the node-level refusal of K8N-5. A Service whose EndpointSlice holds a
+// device address makes kube-proxy (or a CNI) DNAT, mark and masquerade pod traffic towards the tunnel,
+// which the NAT walk assumes never happens. Tunnex's own DNAT does not take that path, so the only
+// honest answer is to refuse readiness while such an endpoint exists anywhere in the cluster. An
+// empty string means no such endpoint, or no live view (readiness already requires one).
+func (m *Manager) deviceRangeEndpointRefusal(ctx context.Context, subnet string) string {
+	source, ok := m.source.(deviceRangeEndpointSource)
+	if !ok || source == nil {
+		return ""
+	}
+	ranges := m.deviceRanges(ctx, subnet)
+	if len(ranges) == 0 {
+		return ""
+	}
+	hits, live := source.EndpointsInRanges(ranges)
+	if !live || len(hits) == 0 {
+		return ""
+	}
+	services := map[string]struct{}{}
+	for _, hit := range hits {
+		services[hit.Service] = struct{}{}
+	}
+	first := hits[0]
+	reason := fmt.Sprintf("Service %s has endpoint %s, inside the Tunnex device range %s. Kubernetes marks and masquerades traffic to it, so this gateway is not ready. Remove that endpoint or Service.",
+		first.Service, first.Address, first.Range)
+	if len(services) > 1 {
+		reason += fmt.Sprintf(" (%d Services in all)", len(services))
+	}
+	return reason
 }
 
 // K8sNetPrepReady is the finite readiness signal for common host posture plus
