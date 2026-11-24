@@ -4,6 +4,7 @@ package egress
 
 import (
 	"context"
+	"os"
 	"os/exec"
 	"strconv"
 	"strings"
@@ -249,5 +250,22 @@ func TestKubernetesTunnelReadbackRequiresTheInputDrop(t *testing.T) {
 				t.Fatalf("readback error %v, want %q", err, tc.err)
 			}
 		})
+	}
+}
+
+// The ownership check's fixtures (k8snetprep/testdata/k8n7-input*.nft-ruleset.json) are what a real
+// kernel listed after loading this renderer's output. This pins the two together: if the input chain is
+// rendered differently, the captures no longer describe what the gateway loads, and the check must be
+// proved against the new shape (TestGatewayInputChainKernel regenerates them).
+func TestInputChainRenderingIsTheOneTheOwnershipCheckWasProvedOn(t *testing.T) {
+	captured, err := os.ReadFile("../k8snetprep/testdata/k8n7-input.rendered.nft")
+	if err != nil {
+		t.Fatal(err)
+	}
+	wantV4, wantV6 := inputChains(t, string(captured))
+	m := inputTestManager(true)
+	gotV4, gotV6 := inputChains(t, m.rulesetWith("100.65.0.2/32", nil))
+	if gotV4 != wantV4 || gotV6 != wantV6 {
+		t.Fatalf("the input chains are rendered as:\n%s%s\nthe ownership check was proved on a kernel that loaded:\n%s%s", gotV4, gotV6, wantV4, wantV6)
 	}
 }
