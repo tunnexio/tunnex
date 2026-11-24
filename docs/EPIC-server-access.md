@@ -153,3 +153,67 @@ This implementation PR does not claim production release acceptance, installatio
 Main's Sandbox migrations own versions 0181–0197. This unmerged Server Access series now owns 0198–0206 in the same dependency order. Sandbox and Server Access API routes, service startup, roles, generated contracts and screen census are preserved together.
 
 The pre-merge owned test CP remains on the earlier Server Access-only version 189 and was not changed by this source merge. Its migration ledger is not compatible with the merged numbering: do not deploy the merged binary directly against that database. Reprovision a disposable test database or design and independently verify a dedicated legacy test-schema conversion before deploying this merged line there. This renumbering is not an automatic data migration and does not claim that historical test fixtures were upgraded.
+
+## Operator guide: automatic SSH setup (SA-UX-2, 2026-11-25)
+
+### Network requirements
+
+The gateway selected for a server must reach the server over TCP on:
+
+- the **management SSH port** (usually 22) while automatic setup runs, and
+- the **browser-terminal port** (`tunnex-browser-sshd`, 2222 by default) for every later account check and session.
+
+Allow these from the gateway's address only (`/32`). The dashboard shows the gateway's address as Tunnex knows it
+(its reported endpoint); when gateway and server share a private network or traffic passes NAT, use the address the
+server actually sees, usually the gateway's private IP. Examples, with `GATEWAY_IP` and the port filled in:
+
+```sh
+# Google Cloud
+gcloud compute firewall-rules create allow-tunnex-gateway-2222 --network=NETWORK --direction=INGRESS \
+  --action=ALLOW --rules=tcp:2222 --source-ranges=GATEWAY_IP/32 --target-tags=TARGET_TAG
+# AWS security group
+aws ec2 authorize-security-group-ingress --group-id SECURITY_GROUP_ID --protocol tcp --port 2222 --cidr GATEWAY_IP/32
+# Azure NSG
+az network nsg rule create --resource-group RESOURCE_GROUP --nsg-name NSG_NAME --name allow-tunnex-gateway-2222 \
+  --priority 300 --direction Inbound --access Allow --protocol Tcp --source-address-prefixes GATEWAY_IP/32 \
+  --destination-address-prefixes SERVER_IP --destination-port-ranges 2222
+# On the server
+sudo ufw allow proto tcp from GATEWAY_IP to any port 2222
+sudo firewall-cmd --permanent --add-rich-rule='rule family="ipv4" source address="GATEWAY_IP/32" port port="2222" protocol="tcp" accept' && sudo firewall-cmd --reload
+```
+
+An account check that cannot connect reports "The gateway could not reach the server" with these examples.
+
+### Server identity
+
+The one-time authorization command records the server's ed25519 SSH host key (read as root on the server) and binds
+it to the setup job with a single-use key that only travels inside the command. The gateway's connection is accepted
+only if it presented that key, so no fingerprint has to be pasted. "Advanced: verify the host key independently"
+still accepts a fingerprint (`sudo ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub -E sha256`) and then pins it as
+well. Use it if the server's host key is not in the default location, or if you prefer an independent check. Details
+and threat model: `docs/SA-UX-2-server-access-onboarding.md`, item 2.
+
+### Running the one-time authorization command without direct SSH
+
+The command must run on the server as root, through a channel you already trust. It is single use and expires after
+15 minutes.
+
+- **Jump host:** `ssh -J you@JUMP_HOST you@SERVER_IP`, then paste the command. Any host you administer that can reach
+  the server works; the gateway is not a jump host by default.
+- **Google Cloud, VM without an external IP:** IAP TCP forwarding. It needs a firewall rule that allows Google's IAP
+  range to reach SSH:
+  ```sh
+  gcloud compute firewall-rules create allow-iap-ssh --network=NETWORK --direction=INGRESS --action=ALLOW \
+    --rules=tcp:22 --source-ranges=35.235.240.0/20
+  gcloud compute ssh VM_NAME --zone=ZONE --tunnel-through-iap
+  ```
+- **AWS:** Systems Manager Session Manager (`aws ssm start-session --target INSTANCE_ID`). The instance needs the SSM
+  agent and an instance profile with `AmazonSSMManagedInstanceCore`.
+- **Azure:** Azure Bastion, or `az vm run-command invoke --command-id RunShellScript --scripts '<command>'`.
+- **New VMs (cloud-init / user data):** add the command under `runcmd:` only if the VM boots within the 15-minute
+  window. User data is stored in the cloud provider's metadata; prefer an interactive channel.
+  ```yaml
+  #cloud-config
+  runcmd:
+    - <paste the one-time authorization command here>
+  ```
