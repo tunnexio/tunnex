@@ -15,6 +15,7 @@ import (
 
 	"github.com/tunnexio/tunnex/apps/node/internal/hostposture"
 	"github.com/tunnexio/tunnex/apps/node/internal/k8snetprep"
+	"github.com/tunnexio/tunnex/apps/node/internal/nodepolicy"
 )
 
 // TestGatewayStopStateKernel is the opt-in witness for K8N-5, "what a stopped gateway leaves on its
@@ -79,6 +80,9 @@ func TestGatewayStopStateKernel(t *testing.T) {
 		"EMERGENCY_WITHDRAW_KEEPS_PASSTHROUGH",
 		"EMERGENCY_NATIVE_FORWARD_PASSES",
 		"EMERGENCY_SERVICE_WITHDRAWN",
+		"RELEASED_EMERGENCY_PASS_OPENS_TUNNEL",
+		"EMERGENCY_THEN_PASS_TUNNEL_CLOSED",
+		"KUBERNETES_NIL_POLICY_PASS_TUNNEL_CLOSED",
 		"OWNERSHIP_WITHDRAW_NATIVE_FORWARD_PASSES",
 		"OWNERSHIP_WITHDRAW_SERVICE_WITHDRAWN",
 		"MANAGER_CLEANUP_LEAVES_NO_TABLE",
@@ -109,7 +113,7 @@ func stopStateGateway(t *testing.T, phase string) {
 	m.SetKubernetesMode(true)
 	m.SetKubernetesCNIAuthority(func(context.Context) (k8snetprep.AuthorityGrant, func(), error) {
 		return k8snetprep.AuthorityGrant{Scope: k8snetprep.ScopeIPMasqAndAWS, NotAfter: time.Now().Add(k8snetprep.CNIOperationBudget)}, func() {}, nil
-	}, nil, nil)
+	}, kernelTestHostFacts, nil)
 	m.SetEndpointSource(apiReturnEndpoints())
 	m.SetPolicy(apiReturnPolicy(false))
 	// The order of a real start, as in TestK8sAPIReturnPathKernel.
@@ -224,6 +228,20 @@ func stopStateGateway(t *testing.T, phase string) {
 			t.Fatalf("unexpected table after the ownership withdraw:\n%s", table)
 		}
 		fmt.Printf("kernel after the ownership withdraw:\n%s", table)
+	case "emergency-released-replay":
+		// What the released code (v0.1.44, origin/main) loads on the first egress pass after an
+		// emergency withdraw: SetPolicy(nil) marked a policy as received, and forwardRules rendered
+		// the mesh branch with no routes. That is byte for byte the text of an explicit mesh artifact
+		// with no routes, which this build still renders.
+		start()
+		subnet, err := m.observeWGSubnet(ctx)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := nftApply(ctx, m.rulesetWith(subnet, &nodepolicy.Compiled{Mode: nodepolicy.ModeOff, Mesh: true})); err != nil {
+			t.Fatal(err)
+		}
+		fmt.Printf("forward chain the released code renders after the emergency withdraw:\n%s", nft("list", "chain", "ip", "tunnex", "forward"))
 	case "emergency-then-pass":
 		start()
 		if err := m.EmergencyWithdrawK8s(ctx, nil); err != nil {
@@ -232,7 +250,20 @@ func stopStateGateway(t *testing.T, phase string) {
 		if _, _, err := m.Reconcile(ctx); err != nil {
 			t.Fatalf("egress pass after the emergency withdraw: %v", err)
 		}
-		fmt.Printf("forward chain after an egress pass that follows the emergency withdraw:\n%s", nft("list", "chain", "ip", "tunnex", "forward"))
+		forward := nft("list", "chain", "ip", "tunnex", "forward")
+		assertNoTunnelAccept(t, forward)
+		fmt.Printf("forward chain after an egress pass that follows the emergency withdraw:\n%s", forward)
+	case "nil-policy-pass":
+		// The control plane serves Policy: null (an off org's gateway with nothing to serve).
+		start()
+		m.SetPolicy(nil)
+		m.ResolveK8sVIPs(ctx)
+		if _, _, err := m.Reconcile(ctx); err != nil {
+			t.Fatalf("egress pass with a nil policy: %v", err)
+		}
+		forward := nft("list", "chain", "ip", "tunnex", "forward")
+		assertNoTunnelAccept(t, forward)
+		fmt.Printf("forward chain after an egress pass with a nil policy:\n%s", forward)
 	case "race-released":
 		// The manager deletes the table between the gateway's marker check and its apply.
 		start()
@@ -264,6 +295,30 @@ func stopStateGateway(t *testing.T, phase string) {
 		}
 	default:
 		t.Fatalf("unknown phase %q", phase)
+	}
+}
+
+// kernelTestHostFacts stands in for the host-posture manager's receipt in the opt-in kernel witnesses.
+// Since K8N review finding 5 a Kubernetes-mode gateway is not ready without a receipt that says whether
+// the node has iptables-legacy tables; with none configured these witnesses stopped at their first
+// start. It reads this namespace's ip_tables_names exactly as the manager does, and says the saved nat
+// and mangle rule text was not needed: the witness namespaces hold no iptables-nft table.
+func kernelTestHostFacts(context.Context) (k8snetprep.HostNetFacts, error) {
+	notNeeded := k8snetprep.SavedTableFacts{State: k8snetprep.FactsNotNeeded, Reason: "kernel witness namespace: no iptables-nft table"}
+	return k8snetprep.HostNetFacts{NAT: notNeeded, Mangle: notNeeded, LegacyIPTables: k8snetprep.ReadLegacyIPTables("/proc/net")}, nil
+}
+
+// assertNoTunnelAccept requires that no forward rule accepts a packet entering the tunnel interface
+// and that the chain ends in the counted default drop.
+func assertNoTunnelAccept(t *testing.T, forward string) {
+	t.Helper()
+	for _, line := range strings.Split(forward, "\n") {
+		if strings.Contains(line, `iifname "wg0"`) && strings.Contains(line, " accept") {
+			t.Fatalf("a tunnel accept is in force:\n%s", forward)
+		}
+	}
+	if !strings.Contains(forward, `comment "tunnex_default_drop"`) {
+		t.Fatalf("the forward chain has no default drop:\n%s", forward)
 	}
 }
 
@@ -434,8 +489,24 @@ native
 echo EMERGENCY_NATIVE_FORWARD_PASSES
 if service; then echo "the Service still answers after the emergency withdraw"; exit 1; fi
 echo EMERGENCY_SERVICE_WITHDRAWN
+gw emergency-released-replay
+direct
+grep -q 'ANSWER from=10.99.0.2' /tmp/direct.out
+echo RELEASED_EMERGENCY_PASS_OPENS_TUNNEL
+tunnel_closed() {
+  if direct; then echo "the device reached pod B with no rule: $1"; exit 1; fi
+  ip netns exec tnx-gw nft list chain ip tunnex forward | tee /tmp/closed.out
+  grep -q 'counter packets [1-9].* comment "tunnex_default_drop"' /tmp/closed.out
+  if grep -q 'iifname "wg0".* accept' /tmp/closed.out; then echo "a tunnel accept is in force: $1"; exit 1; fi
+}
 gw emergency-then-pass
-if direct; then echo OBSERVED_TUNNEL_OPEN_TO_UNGRANTED_DESTINATION_AFTER_EMERGENCY_AND_PASS; else echo OBSERVED_TUNNEL_STAYS_CLOSED_AFTER_EMERGENCY_AND_PASS; fi
+tunnel_closed "emergency withdraw, then an egress pass"
+native
+echo EMERGENCY_THEN_PASS_TUNNEL_CLOSED
+gw nil-policy-pass
+tunnel_closed "nil policy, then an egress pass"
+native
+echo KUBERNETES_NIL_POLICY_PASS_TUNNEL_CLOSED
 
 echo "== 7b. ownership withdraw (the process goes on)"
 gw ownership-withdraw

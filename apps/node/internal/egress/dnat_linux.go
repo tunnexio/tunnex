@@ -510,8 +510,12 @@ func (m *Manager) ReadK8sDNATReceiptDigests(ctx context.Context) ([]string, erro
 // fresh ordinary desired baseline is available. The dedicated prerouting
 // chain contains only Tunnex Kubernetes DNAT; other Tunnex/foreign chains and
 // tables are preserved.
+//
+// "No fresh baseline" is the cold-start state, so the policy is withdrawn to it (deny-all
+// until the next delivery), never set to nil: SetPolicy(nil) is "received, legacy mesh",
+// and the next egress pass would open the tunnel to every destination (K8N-5 item 3).
 func (m *Manager) EmergencyWithdrawK8s(ctx context.Context, candidates []string) error {
-	m.SetPolicy(nil)
+	m.withdrawPolicy()
 	var errs []error
 	if err := m.ReconcileDNSVIPsWithCandidates(ctx, candidates); err != nil && !m.interfaceAlreadyAbsent(err) {
 		errs = append(errs, err)
