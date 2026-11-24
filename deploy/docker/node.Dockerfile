@@ -27,9 +27,32 @@ COPY deploy/bgp/build_observer.sh /build_observer.sh
 COPY deploy/bgp/zebra-no-sys-admin.patch /build/zebra-no-sys-admin.patch
 RUN sh /build_observer.sh
 
-# K8N-2: Alpine's own bpftool binary, taken out of its package (see the runtime stage).
+# K8N-2: bpftool built from the pinned upstream release (libbpf/bpftool v7.8.1, the
+# "-sources" archive that carries its libbpf submodule), checked against its sha256 before
+# it is unpacked. It is built WITHOUT a JIT disassembler: SKIP_LLVM=1 and SKIP_LIBBFD=1, and
+# neither llvm-dev nor binutils-dev is installed, so feature detection cannot find them
+# either. SKIP_CRYPTO=1 leaves out program signing (and libcrypto); no clang, so no BPF
+# skeletons (`prog profile` and the pids column). libbpf is linked statically; the binary
+# needs only libelf, zlib, zstd and libcap at runtime. The build fails unless bpftool itself
+# reports llvm and libbfd off and ldd shows no LLVM.
 FROM alpine:3.24.2@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6 AS bpftool
-RUN apk add --no-cache bpftool && test -x /usr/sbin/bpftool && /usr/sbin/bpftool version
+RUN apk add --no-cache build-base elfutils-dev zlib-dev zstd-dev libcap-dev linux-headers \
+    && wget -q -O /tmp/bpftool.tar.gz \
+        https://github.com/libbpf/bpftool/releases/download/v7.8.1/bpftool-libbpf-v7.8.1-sources.tar.gz \
+    && printf '%s  /tmp/bpftool.tar.gz\n' fed76b7acb54d810cc3982eb6394726010114977542fd146695887a7d904b60c | sha256sum -c - \
+    && mkdir /tmp/bpftool && tar -xzf /tmp/bpftool.tar.gz -C /tmp/bpftool --strip-components=1 \
+    && make -C /tmp/bpftool/src -j"$(nproc)" SKIP_LLVM=1 SKIP_LIBBFD=1 SKIP_CRYPTO=1 \
+    && strip /tmp/bpftool/src/bpftool \
+    && mkdir -p /stage/usr/sbin /stage/usr/share/tunnex-bpftool \
+    && install -m 0755 /tmp/bpftool/src/bpftool /stage/usr/sbin/bpftool \
+    && cp /tmp/bpftool/LICENSE /tmp/bpftool/LICENSE.BSD-2-Clause /tmp/bpftool/LICENSE.GPL-2.0 /stage/usr/share/tunnex-bpftool/ \
+    && cp /tmp/bpftool/libbpf/LICENSE.LGPL-2.1-only /stage/usr/share/tunnex-bpftool/libbpf-LICENSE.LGPL-2.1-only \
+    && cp /tmp/bpftool/libbpf/LICENSE /stage/usr/share/tunnex-bpftool/libbpf-LICENSE \
+    && /stage/usr/sbin/bpftool version \
+    && /stage/usr/sbin/bpftool --json version | grep -q '"version":"7.8.1"' \
+    && /stage/usr/sbin/bpftool --json version | grep -q '"llvm":false' \
+    && /stage/usr/sbin/bpftool --json version | grep -q '"libbfd":false' \
+    && ! ldd /stage/usr/sbin/bpftool | grep -qi llvm
 
 FROM alpine:3.24.2@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4cabeaec77e6
 # WireGuard data plane (S3.2): wg/wg-quick + ip (iproute2) drive the kernel
@@ -50,18 +73,16 @@ FROM alpine:3.24.2@sha256:294b683cb724975bec92580e1e685676bd4b50bda910ddb8c51d4c
 # On a Cilium node the host-posture manager reads Cilium's pinned ip-masq-agent map with
 # `bpftool --json map dump pinned PATH` (K8N-2), the command an operator can run to see what
 # Tunnex saw. It is only ever used to read, and only in that privileged container.
-# Alpine's bpftool package cannot be installed here as it is: it depends on perf, cpupower and
-# the other kernel tools, and through perf on python3, which the runtime check below refuses
-# as a build tool. So only its one binary is taken, from the same pinned Alpine release, and
-# the libraries that binary is linked against are installed by name. libLLVM is one of them
-# (the package is built with the LLVM disassembler) and is by far the largest part of what
-# this adds to the image. `bpftool version` loads the binary and every library without a
-# bpf() call, so it runs in the build and fails it if the closure is not complete.
+# bpftool is built from upstream source in the bpftool stage above, without LLVM (Alpine's
+# package depends on perf and python3 and links libLLVM, about 168 MB). Only its binary and
+# license files are copied; the libraries it is linked against are installed by name.
+# `bpftool version` loads the binary and every library without a bpf() call, so it runs in
+# the build and fails it if the closure is not complete.
 RUN apk add --no-cache ca-certificates wireguard-tools iproute2 nftables iptables ipset openvpn libcrypto3 libssl3 \
-        libelf libcap2 zlib llvm22-libs \
+        libelf libcap2 zlib zstd-libs \
     && iptables-nft-save -V \
     && ipset help >/dev/null
-COPY --from=bpftool /usr/sbin/bpftool /usr/sbin/bpftool
+COPY --from=bpftool /stage/ /
 RUN bpftool version
 COPY deploy/bgp/install.sh deploy/bgp/PROVENANCE.json deploy/bgp/NOTICE /usr/share/tunnex-bgp/
 RUN sh /usr/share/tunnex-bgp/install.sh
