@@ -13,7 +13,9 @@ grep -Fq 'TUNNEX_COOKIE_SECURE: ${TUNNEX_COOKIE_SECURE:-false}' "$COMPOSE"
 # the default to be the entire YAML value.
 grep -Eq '^    image: \$\{TUNNEX_CADDY_IMAGE:-caddy@sha256:[0-9a-f]{64}\}$' "$COMPOSE"
 grep -Fq '"80:80"' "$COMPOSE"
-grep -Fq '"443:443"' "$COMPOSE"
+# Caddy publishes HTTPS on 443 by default; only .env can move it (AA-EN-1,
+# for an App Access proxy that owns public 443). Match the list entry, not a comment.
+grep -Fxq '      - "${TUNNEX_EDGE_HTTPS_PUBLISH:-443}:443"' "$COMPOSE"
 grep -Fq 'TUNNEX_EDGE_LISTEN:?set by install.sh' "$COMPOSE"
 
 if sed -n '/^  nginx:/,/^  [a-z].*:/p' "$COMPOSE" | grep -q 'ports:'; then
