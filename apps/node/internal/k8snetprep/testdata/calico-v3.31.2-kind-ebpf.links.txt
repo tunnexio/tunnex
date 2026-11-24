@@ -1,0 +1,9 @@
+lo
+tunl0@NONE
+eth0@if1447
+cali8eabe11ca5e@if3
+cali079b7c43e39@if3
+cali6e80b50ba08@if3
+cali4180bc136c2@if3
+bpfout.cali@bpfin.cali
+bpfin.cali@bpfout.cali
