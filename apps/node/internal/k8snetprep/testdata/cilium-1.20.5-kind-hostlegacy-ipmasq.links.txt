@@ -1,0 +1,12 @@
+lo
+tunl0@NONE
+eth0@if1411
+cilium_net@cilium_host
+cilium_host@cilium_net
+lxc_health@if6
+lxc99bb7b798369@if8
+lxc36376c88b3b2@if10
+lxcc94e539f2034@if12
+lxc7b1be4c560fd@if14
+lxc3a0c5cfc3de8@if16
+wg0

@@ -1,0 +1,21 @@
+# K8N-6 base configuration (eBPF masquerade, ip-masq-agent listing the tunnel range)
+# with BPF host routing (the K8N-6 configuration A): the configuration Tunnex now refuses.
+kubeProxyReplacement: true
+k8sServiceHost: tnx-hr-control-plane
+k8sServicePort: 6443
+routingMode: native
+ipv4NativeRoutingCIDR: 10.244.0.0/16
+autoDirectNodeRoutes: true
+ipam:
+  mode: kubernetes
+bpf:
+  masquerade: true
+  hostLegacyRouting: false
+ipMasqAgent:
+  enabled: true
+  config:
+    nonMasqueradeCIDRs:
+    - 10.99.0.0/24
+    masqLinkLocal: true
+operator:
+  replicas: 1

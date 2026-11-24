@@ -1,0 +1,22 @@
+*nat
+:PREROUTING ACCEPT [44:2640]
+:INPUT ACCEPT [46:2810]
+:OUTPUT ACCEPT [871:52352]
+:POSTROUTING ACCEPT [935:56810]
+:CILIUM_OUTPUT_nat - [0:0]
+:CILIUM_POST_nat - [0:0]
+:CILIUM_PRE_nat - [0:0]
+:DOCKER_OUTPUT - [0:0]
+:DOCKER_POSTROUTING - [0:0]
+:KUBE-KUBELET-CANARY - [0:0]
+-A PREROUTING -m comment --comment "cilium-feeder: CILIUM_PRE_nat" -j CILIUM_PRE_nat
+-A PREROUTING -d 192.168.5.2/32 -j DOCKER_OUTPUT
+-A OUTPUT -m comment --comment "cilium-feeder: CILIUM_OUTPUT_nat" -j CILIUM_OUTPUT_nat
+-A OUTPUT -d 192.168.5.2/32 -j DOCKER_OUTPUT
+-A POSTROUTING -m comment --comment "cilium-feeder: CILIUM_POST_nat" -j CILIUM_POST_nat
+-A POSTROUTING -d 192.168.5.2/32 -j DOCKER_POSTROUTING
+-A DOCKER_OUTPUT -d 192.168.5.2/32 -p tcp -m tcp --dport 53 -j DNAT --to-destination 127.0.0.11:45581
+-A DOCKER_OUTPUT -d 192.168.5.2/32 -p udp -m udp --dport 53 -j DNAT --to-destination 127.0.0.11:42658
+-A DOCKER_POSTROUTING -s 127.0.0.11/32 -p tcp -m tcp --sport 45581 -j SNAT --to-source 192.168.5.2:53
+-A DOCKER_POSTROUTING -s 127.0.0.11/32 -p udp -m udp --sport 42658 -j SNAT --to-source 192.168.5.2:53
+COMMIT
