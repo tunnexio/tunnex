@@ -74,6 +74,9 @@ const (
 type Manager struct {
 	wgIface    string
 	desktopNAT atomic.Pointer[ipsec.DesktopNATSource]
+	// desktopNATWithheld is the last set of IPsec desktop exemptions withheld in Kubernetes
+	// mode (K8N-5 item 4), so the reason is logged once per change, not on every pass.
+	desktopNATWithheld atomic.Pointer[string]
 	// ovpnTun is the co-terminated OpenVPN server's tun interface name (S9.1 Slice 3), threaded
 	// from the OVPN server lifecycle's config — the ONE truth for the tunnel-ingress set, never
 	// re-derived. Empty when no OVPN server is configured (a WireGuard-only deployment), in which
@@ -1953,6 +1956,10 @@ func writeSysctl(key, val string) error {
 // hub forwards spoke-to-spoke traffic with its source intact and the destination gateway's own forward
 // chain still sees it. The forward hook runs before postrouting, so policy on this gateway matched the
 // original source too. Canonically re-emitted (netip) so nothing injects nft statements.
+//
+// THE SHAPE IS A CONTRACT on an in-cluster gateway (K8N-5 item 4): k8snetprep's
+// validateTunnexPostrouting reads this chain back on every pass, at startup fatally, and accepts this
+// rule only in exactly this shape under exactly this marker. Change both or neither.
 func siteLANMasqueradeRules(pol *nodepolicy.Compiled, tun []string) string {
 	if pol == nil || !pol.SiteLANMasquerade {
 		return ""
@@ -1969,7 +1976,7 @@ func siteLANMasqueradeRules(pol *nodepolicy.Compiled, tun []string) string {
 			continue
 		}
 		seen[c] = true
-		fmt.Fprintf(&out, "    ip saddr %s %s masquerade comment \"tunnex_site_lan_masquerade\"\n", c, ifClause("oifname", tun, true))
+		fmt.Fprintf(&out, "    ip saddr %s %s masquerade comment \"%s\"\n", c, ifClause("oifname", tun, true), k8snetprep.SiteLANMasqueradeRuleComment)
 	}
 	return out.String()
 }

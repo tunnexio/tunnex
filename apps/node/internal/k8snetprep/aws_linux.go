@@ -1141,12 +1141,16 @@ func (s *cniSnapshot) proveMangleMarks() error {
 //   - the device-pool rule: no comment, `ip saddr <current tunnel range>
 //     oifname != <tunnel interfaces> masquerade`;
 //   - the API return rule (K8N-3): comment APIReturnRuleComment, `ct original
-//     ip daddr <one IPv4 address> oifname != <tunnel interfaces> masquerade`.
+//     ip daddr <one IPv4 address> oifname != <tunnel interfaces> masquerade`;
+//   - the site-LAN masquerade (SSI-8, K8N-5 item 4): comment
+//     SiteLANMasqueradeRuleComment, `ip saddr <one IPv4 range> oifname !=
+//     <tunnel interfaces> masquerade`.
 //
 // It is not told which address the control plane mapped to the cluster's API,
-// so it binds the second shape and its marker, not the address. The renderer
-// binds the address: the table is replaced from the current mapping on every
-// egress pass.
+// nor the site's remote ranges, so it binds the second and third shapes and
+// their markers, not the addresses. The renderer binds the addresses: the table
+// is replaced from the current artifact on every egress pass. Every accepted
+// shape carries the tunnel exclusion, so none can translate tunnel-bound traffic.
 func (s *cniSnapshot) validateTunnexPostrouting(iface, cidr string) error {
 	ownerKey := nftKey("ip", "tunnex", "tunnex_posture_owner")
 	owner, ok := s.chains[ownerKey]
@@ -1155,8 +1159,20 @@ func (s *cniSnapshot) validateTunnexPostrouting(iface, cidr string) error {
 		return errors.New("Tunnex NAT hook lacks its exact posture ownership marker")
 	}
 	apiReturn := map[string]bool{}
+	siteLAN := map[string]bool{}
 	for _, rule := range s.rules[nftKey("ip", "tunnex", "postrouting")] {
 		expr := withoutCounters(rule.Expr)
+		if rule.Comment == SiteLANMasqueradeRuleComment {
+			source, err := tunnexSiteLANRule(expr, iface)
+			if err != nil {
+				return err
+			}
+			if siteLAN[source] {
+				return errors.New("Tunnex site-LAN masquerade is duplicated")
+			}
+			siteLAN[source] = true
+			continue
+		}
 		if rule.Comment == APIReturnRuleComment {
 			address, err := tunnexAPIReturnRule(expr, iface)
 			if err != nil {
@@ -1202,6 +1218,28 @@ func tunnexAPIReturnRule(expr []map[string]any, iface string) (string, error) {
 		return "", err
 	}
 	return address, nil
+}
+
+// tunnexSiteLANRule accepts the exact site-LAN masquerade and returns the one
+// source range it matches, canonical, a /32 included. Anything else under the
+// marker is refused. 0.0.0.0/0 would translate every flow the node forwards out
+// of a non-tunnel interface; the API refuses such a site range, so the renderer
+// never emits it.
+func tunnexSiteLANRule(expr []map[string]any, iface string) (string, error) {
+	if len(expr) != 3 || !reflect.DeepEqual(expr[2], map[string]any{"masquerade": nil}) {
+		return "", errors.New("Tunnex site-LAN masquerade is not the exact registered masquerade")
+	}
+	source, ok := nftAddressMatch(expr[0], "saddr")
+	if !ok {
+		return "", errors.New("Tunnex site-LAN masquerade does not match one IPv4 source range")
+	}
+	if source == "0.0.0.0/0" {
+		return "", errors.New("Tunnex site-LAN masquerade matches every source")
+	}
+	if err := tunnexNATExcludesTunnel(expr[1], iface); err != nil {
+		return "", err
+	}
+	return source, nil
 }
 
 // tunnexNATExcludesTunnel requires `oifname != iface`, or `oifname != { ... }`

@@ -29,5 +29,26 @@ func (m *Manager) desktopNATRules(subnet string) string {
 		}
 		fmt.Fprintf(&rules, "    ip saddr %s ip daddr %s counter return comment \"tunnex_ipsec_desktop_no_snat\"\n", exemption.Source, exemption.Destination)
 	}
+	if m.kubernetesMode.Load() {
+		m.withholdDesktopNAT(rules.String())
+		return ""
+	}
 	return rules.String()
+}
+
+// withholdDesktopNAT is K8N-5 item 4, (b). IPsec cannot run on an in-cluster gateway: its guard table
+// (inet tunnex_ipsec) hooks postrouting, and the host-network proof refuses every postrouting hook it
+// does not know. An exemption rendered there could never serve a working tunnel, and the same proof
+// would refuse the exemption itself, which is fatal at startup. It is withheld, so the IPsec runtime
+// keeps the desktop grant pending, and the reason is logged once per change of the withheld set.
+func (m *Manager) withholdDesktopNAT(withheld string) {
+	if previous := m.desktopNATWithheld.Swap(&withheld); previous != nil && *previous == withheld {
+		return
+	}
+	if withheld == "" || m.log == nil {
+		return
+	}
+	m.log.Warn("k8s_ipsec_desktop_nat_withheld",
+		"exemptions", strings.Count(withheld, "\n"),
+		"reason", "IPsec is not supported on an in-cluster gateway: its guard hooks are refused by the host network proof")
 }
