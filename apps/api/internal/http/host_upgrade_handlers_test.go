@@ -75,7 +75,6 @@ func TestHostUpgradeRerunsOnlyTheSameFailedRelease(t *testing.T) {
 	sha := strings.Repeat("a", 40)
 	installed := &release.Status{Verified: true, Rerunnable: true, SourceSHA: sha, Version: "v9.9.9", Sequence: 99, Reason: "no newer release is available"}
 	admin := &authctx.Principal{UserID: uuid.New(), EmailVerified: true, CPAdmin: true}
-	rerun := true
 	setup := func(t *testing.T, status string, rel *release.Status) (apiServer, string, *[]hostupgrade.Target) {
 		t.Helper()
 		dir := t.TempDir()
@@ -103,11 +102,11 @@ func TestHostUpgradeRerunsOnlyTheSameFailedRelease(t *testing.T) {
 		if err != nil || got.(api.GetHostUpgrade200JSONResponse).Body.RerunAvailable == nil || !*got.(api.GetHostUpgrade200JSONResponse).Body.RerunAvailable {
 			t.Fatalf("GET did not offer the re-run: %#v %v", got, err)
 		}
-		response, err := server.RequestHostUpgrade(ctx, api.RequestHostUpgradeRequestObject{Body: &api.HostUpgradeRequest{Rerun: &rerun}})
+		response, err := server.RerunHostUpgrade(ctx, api.RerunHostUpgradeRequestObject{})
 		if err != nil {
 			t.Fatal(err)
 		}
-		if accepted, ok := response.(api.RequestHostUpgrade202JSONResponse); !ok || accepted.Body.State != api.HostUpgradeStatusStateRequested {
+		if accepted, ok := response.(api.RerunHostUpgrade202JSONResponse); !ok || accepted.Body.State != api.HostUpgradeStatusStateRequested {
 			t.Fatalf("unexpected response: %#v", response)
 		}
 		body, _ := os.ReadFile(requestPath)
@@ -125,17 +124,17 @@ func TestHostUpgradeRerunsOnlyTheSameFailedRelease(t *testing.T) {
 		name   string
 		status string
 		rel    *release.Status
-		body   *api.HostUpgradeRequest
+		plain  bool // the ordinary upgrade request, not the re-run
 		admin  bool
 	}{
-		{"no explicit re-run intent", failed(sha, "health_check_failed"), installed, nil, true},
-		{"last upgrade succeeded", strings.Replace(failed(sha, ""), "state=failed", "state=healthy", 1), installed, &api.HostUpgradeRequest{Rerun: &rerun}, true},
-		{"no upgrade has run", "", installed, &api.HostUpgradeRequest{Rerun: &rerun}, true},
-		{"failed upgrade was to another source", failed(strings.Repeat("c", 40), "health_check_failed"), installed, &api.HostUpgradeRequest{Rerun: &rerun}, true},
-		{"authority changed: do not re-run", failed(sha, "app_access_authority_changed"), installed, &api.HostUpgradeRequest{Rerun: &rerun}, true},
-		{"catalog is not the installed release", failed(sha, "health_check_failed"), &release.Status{Verified: true, SourceSHA: sha, Version: "v9.9.9", Sequence: 99}, &api.HostUpgradeRequest{Rerun: &rerun}, true},
-		{"catalog unverified", failed(sha, "health_check_failed"), &release.Status{Verified: false, Rerunnable: true, SourceSHA: sha, Version: "v9.9.9", Sequence: 99}, &api.HostUpgradeRequest{Rerun: &rerun}, true},
-		{"organization owner", failed(sha, "health_check_failed"), installed, &api.HostUpgradeRequest{Rerun: &rerun}, false},
+		{"ordinary upgrade request for the installed release", failed(sha, "health_check_failed"), installed, true, true},
+		{"last upgrade succeeded", strings.Replace(failed(sha, ""), "state=failed", "state=healthy", 1), installed, false, true},
+		{"no upgrade has run", "", installed, false, true},
+		{"failed upgrade was to another source", failed(strings.Repeat("c", 40), "health_check_failed"), installed, false, true},
+		{"authority changed: do not re-run", failed(sha, "app_access_authority_changed"), installed, false, true},
+		{"catalog is not the installed release", failed(sha, "health_check_failed"), &release.Status{Verified: true, SourceSHA: sha, Version: "v9.9.9", Sequence: 99}, false, true},
+		{"catalog unverified", failed(sha, "health_check_failed"), &release.Status{Verified: false, Rerunnable: true, SourceSHA: sha, Version: "v9.9.9", Sequence: 99}, false, true},
+		{"organization owner", failed(sha, "health_check_failed"), installed, false, false},
 	} {
 		t.Run("refused: "+tc.name, func(t *testing.T) {
 			server, requestPath, audited := setup(t, tc.status, tc.rel)
@@ -144,7 +143,13 @@ func TestHostUpgradeRerunsOnlyTheSameFailedRelease(t *testing.T) {
 				who = &authctx.Principal{UserID: uuid.New(), EmailVerified: true, Roles: map[uuid.UUID]string{uuid.New(): "owner"}}
 			}
 			c := authctx.WithPrincipal(context.Background(), who)
-			if _, err := server.RequestHostUpgrade(c, api.RequestHostUpgradeRequestObject{Body: tc.body}); err == nil {
+			var err error
+			if tc.plain {
+				_, err = server.RequestHostUpgrade(c, api.RequestHostUpgradeRequestObject{})
+			} else {
+				_, err = server.RerunHostUpgrade(c, api.RerunHostUpgradeRequestObject{})
+			}
+			if err == nil {
 				t.Fatal("re-run accepted")
 			}
 			if _, err := os.Stat(requestPath); !os.IsNotExist(err) {
@@ -158,7 +163,7 @@ func TestHostUpgradeRerunsOnlyTheSameFailedRelease(t *testing.T) {
 				if err != nil {
 					t.Fatal(err)
 				}
-				if b := got.(api.GetHostUpgrade200JSONResponse).Body; b.RerunAvailable != nil && *b.RerunAvailable && tc.body != nil {
+				if b := got.(api.GetHostUpgrade200JSONResponse).Body; b.RerunAvailable != nil && *b.RerunAvailable && !tc.plain {
 					t.Fatal("GET offered a re-run that POST refuses")
 				}
 			}
@@ -167,7 +172,7 @@ func TestHostUpgradeRerunsOnlyTheSameFailedRelease(t *testing.T) {
 
 	t.Run("a newer release is still requested normally, never as a re-run", func(t *testing.T) {
 		server, _, _ := setup(t, failed(sha, "health_check_failed"), &release.Status{Available: true, Verified: true, SourceSHA: strings.Repeat("d", 40), Version: "v10.0.0", Sequence: 100})
-		if _, err := server.RequestHostUpgrade(ctx, api.RequestHostUpgradeRequestObject{Body: &api.HostUpgradeRequest{Rerun: &rerun}}); err == nil {
+		if _, err := server.RerunHostUpgrade(ctx, api.RerunHostUpgradeRequestObject{}); err == nil {
 			t.Fatal("re-run accepted while a newer release is available")
 		}
 		if _, err := server.RequestHostUpgrade(ctx, api.RequestHostUpgradeRequestObject{}); err != nil {

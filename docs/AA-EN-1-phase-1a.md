@@ -57,7 +57,7 @@ E1–E12 and the item added to Phase 1a by founder ruling (dashboard forward fix
    (`apps/api/internal/http/host_upgrade_handlers.go:43`). Now `release.Status`
    carries `Rerunnable` (same sequence and source SHA), `GET /admin/upgrade` reports
    `rerun_available` after a failed upgrade to that same source (not after
-   `app_access_authority_changed`), and `POST /admin/upgrade {"rerun":true}` requests
+   `app_access_authority_changed`), and `POST /admin/upgrade/rerun` (no body; the server pins the target) requests
    that pinned target. Same authorization (deployment administrator) and the same
    audit action with `rerun: true` in its metadata. The host side already accepted a
    same-sequence, same-source re-run (UPG-2 U4), so the runner is unchanged.

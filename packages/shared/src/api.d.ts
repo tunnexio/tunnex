@@ -5023,9 +5023,29 @@ export interface paths {
         put?: never;
         /**
          * Approve the exact signed release currently shown by the control plane
-         * @description Requires `users.cp_admin`. The server pins its current verified catalog source SHA and sequence; the client cannot supply a different target. Duplicate requests for that same active target are idempotent. With `rerun: true` (AA-EN-1, UPG-1 D2 forward fix) the server re-requests the installed release only when the last upgrade to it failed and the verified catalog names that same sequence and source SHA; never an older release.
+         * @description Requires `users.cp_admin`. The server pins its current verified catalog source SHA and sequence; the client cannot supply a different target. Duplicate requests for that same active target are idempotent.
          */
         post: operations["requestHostUpgrade"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/admin/upgrade/rerun": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Run the installed release's upgrade again after it failed (forward fix)
+         * @description Requires `users.cp_admin`. UPG-1 D2 / AA-EN-1: re-requests the installed release only when the last upgrade to it failed (not after an App Access authority change) and the verified catalog names exactly that sequence and source SHA. Never an older release or a different build of the same sequence. The target is pinned by the server; the client supplies nothing. Refused with 409 `rerun_not_available`.
+         */
+        post: operations["rerunHostUpgrade"];
         delete?: never;
         options?: never;
         head?: never;
@@ -13389,10 +13409,6 @@ export interface components {
             /** @enum {string} */
             password_action: "keep" | "replace" | "clear";
             password?: string;
-        };
-        HostUpgradeRequest: {
-            /** @description Re-run the same verified release after a failed upgrade (same sequence and source SHA only). */
-            rerun?: boolean;
         };
         HostUpgradeStatus: {
             available: boolean;
@@ -21963,13 +21979,31 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: {
-            content: {
-                "application/json": components["schemas"]["HostUpgradeRequest"];
-            };
-        };
+        requestBody?: never;
         responses: {
             /** @description Upgrade request accepted or already active for this exact target. */
+            202: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HostUpgradeStatus"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    rerunHostUpgrade: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Re-run request accepted for the installed release. */
             202: {
                 headers: {
                     "X-Request-Id": components["headers"]["RequestId"];

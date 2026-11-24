@@ -9,6 +9,7 @@ import (
 
 	"github.com/tunnexio/tunnex/apps/api/internal/api"
 	"github.com/tunnexio/tunnex/apps/api/internal/apierr"
+	"github.com/tunnexio/tunnex/apps/api/internal/authctx"
 	"github.com/tunnexio/tunnex/apps/api/internal/hostupgrade"
 	"github.com/tunnexio/tunnex/apps/api/internal/release"
 )
@@ -50,7 +51,43 @@ func hostUpgradeRerunAvailable(status *release.Status, host hostupgrade.Status) 
 		host.ReasonCode != "app_access_authority_changed"
 }
 
-func (s apiServer) RequestHostUpgrade(ctx context.Context, request api.RequestHostUpgradeRequestObject) (api.RequestHostUpgradeResponseObject, error) {
+func (s apiServer) RequestHostUpgrade(ctx context.Context, _ api.RequestHostUpgradeRequestObject) (api.RequestHostUpgradeResponseObject, error) {
+	p, err := s.requireHostUpgrade(ctx)
+	if err != nil {
+		return nil, err
+	}
+	status := s.currentReleaseStatus()
+	if status == nil || !status.Verified || !status.Available || status.SourceSHA == "" || status.Version == "" || status.Sequence <= 0 {
+		return nil, apierr.New(http.StatusConflict, "upgrade_not_available", "No newer verified release is currently available.")
+	}
+	result, err := s.requestHostUpgrade(ctx, p, hostupgrade.Target{SourceSHA: status.SourceSHA, Version: status.Version, Sequence: status.Sequence})
+	if err != nil {
+		return nil, err
+	}
+	return api.RequestHostUpgrade202JSONResponse{Body: hostUpgradeBody(result), Headers: api.RequestHostUpgrade202ResponseHeaders{XRequestId: middleware.GetReqID(ctx)}}, nil
+}
+
+// RerunHostUpgrade is the dashboard forward fix (UPG-1 D2, AA-EN-1): the same
+// authorization, request file and audit action as an upgrade, for the installed
+// release only, and only after the upgrade to it failed.
+func (s apiServer) RerunHostUpgrade(ctx context.Context, _ api.RerunHostUpgradeRequestObject) (api.RerunHostUpgradeResponseObject, error) {
+	p, err := s.requireHostUpgrade(ctx)
+	if err != nil {
+		return nil, err
+	}
+	status := s.currentReleaseStatus()
+	host, hostErr := s.hostUpgrade.Status()
+	if hostErr != nil || !hostUpgradeRerunAvailable(status, host) {
+		return nil, apierr.New(http.StatusConflict, "rerun_not_available", "Only the installed release can be run again, and only after an upgrade to it failed.")
+	}
+	result, err := s.requestHostUpgrade(ctx, p, hostupgrade.Target{SourceSHA: status.SourceSHA, Version: status.Version, Sequence: status.Sequence, Rerun: true})
+	if err != nil {
+		return nil, err
+	}
+	return api.RerunHostUpgrade202JSONResponse{Body: hostUpgradeBody(result), Headers: api.RerunHostUpgrade202ResponseHeaders{XRequestId: middleware.GetReqID(ctx)}}, nil
+}
+
+func (s apiServer) requireHostUpgrade(ctx context.Context) (*authctx.Principal, error) {
 	p, err := requireCPAdmin(ctx)
 	if err != nil {
 		return nil, err
@@ -58,28 +95,22 @@ func (s apiServer) RequestHostUpgrade(ctx context.Context, request api.RequestHo
 	if s.hostUpgrade == nil || !s.hostUpgrade.Available() {
 		return nil, apierr.New(http.StatusServiceUnavailable, "host_updater_unavailable", "The local host upgrade runner is not installed or configured.")
 	}
-	status := s.currentReleaseStatus()
-	rerun := request.Body != nil && request.Body.Rerun != nil && *request.Body.Rerun
-	if rerun {
-		host, hostErr := s.hostUpgrade.Status()
-		if hostErr != nil || !hostUpgradeRerunAvailable(status, host) {
-			return nil, apierr.New(http.StatusConflict, "rerun_not_available", "Only the installed release can be run again, and only after an upgrade to it failed.")
-		}
-	} else if status == nil || !status.Verified || !status.Available || status.SourceSHA == "" || status.Version == "" || status.Sequence <= 0 {
-		return nil, apierr.New(http.StatusConflict, "upgrade_not_available", "No newer verified release is currently available.")
-	}
-	result, _, err := s.hostUpgrade.Request(ctx, p.UserID, hostupgrade.Target{SourceSHA: status.SourceSHA, Version: status.Version, Sequence: status.Sequence, Rerun: rerun})
+	return p, nil
+}
+
+func (s apiServer) requestHostUpgrade(ctx context.Context, p *authctx.Principal, target hostupgrade.Target) (hostupgrade.Status, error) {
+	result, _, err := s.hostUpgrade.Request(ctx, p.UserID, target)
 	if err != nil {
 		switch {
 		case errors.Is(err, hostupgrade.ErrBusy):
-			return nil, apierr.New(http.StatusConflict, "upgrade_in_progress", "Another control-plane upgrade is already active.")
+			return result, apierr.New(http.StatusConflict, "upgrade_in_progress", "Another control-plane upgrade is already active.")
 		case errors.Is(err, hostupgrade.ErrUnavailable), errors.Is(err, hostupgrade.ErrInvalid):
-			return nil, apierr.New(http.StatusServiceUnavailable, "host_updater_unavailable", "The local host upgrade runner is not ready.")
+			return result, apierr.New(http.StatusServiceUnavailable, "host_updater_unavailable", "The local host upgrade runner is not ready.")
 		default:
-			return nil, err
+			return result, err
 		}
 	}
-	return api.RequestHostUpgrade202JSONResponse{Body: hostUpgradeBody(result), Headers: api.RequestHostUpgrade202ResponseHeaders{XRequestId: middleware.GetReqID(ctx)}}, nil
+	return result, nil
 }
 
 func hostUpgradeBody(status hostupgrade.Status) api.HostUpgradeStatus {
