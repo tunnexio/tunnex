@@ -1,17 +1,25 @@
 import { describe, expect, it } from "vitest";
-import { sessionReasonText } from "../src/lib/serverAccessReasons";
+import { serverAccessReason, serverAccessReasonCodes, serverAccessReasonText, sessionReasonText } from "../src/lib/serverAccessReasons";
 
-describe("Server Access session end reasons", () => {
-  it("reads as a sentence for the reasons a session can end with", () => {
-    for (const reason of ["revoked", "terminal_closed", "gateway_closed", "editor_closed", "control_plane_restarted", "server_access_disabled", "recording_failed", "recording_quota_reached", "session_expired", "idle_timeout", "mfa_required", "grant_revoked", "parent_logout", "organization_disabled", "gateway_terminal_unavailable", "ssh_connection_failed", "ssh_unreachable", "ssh_authentication_failed", "ssh_host_key_mismatch", "ssh_pty_failed", "editor_authorization_failed"]) {
-      const text = sessionReasonText(reason);
-      expect(text, reason).not.toContain("_");
-      expect(text.endsWith("."), reason).toBe(true);
+describe("Server Access reasons (SA-UX-2 item 8)", () => {
+  it("has a human sentence with no raw code for every known code", () => {
+    // The Go test TestEveryServerAccessCodeHasWebText keeps this list in step with the API and gateway.
+    expect(serverAccessReasonCodes.length).toBeGreaterThan(80);
+    for (const code of serverAccessReasonCodes) {
+      for (const text of [sessionReasonText(code), serverAccessReasonText(code)]) {
+        expect(text, code).not.toContain(code);
+        expect(text, code).not.toMatch(/[a-z]_[a-z]/);
+        expect(text.endsWith("."), code).toBe(true);
+      }
     }
     expect(sessionReasonText("server_access_disabled")).toMatch(/turned off for this installation/);
   });
-  it("falls back to readable words for an unknown code and is empty for none", () => {
-    expect(sessionReasonText("some_new_reason")).toBe("Some new reason.");
+  it("gives the reachability next step for ssh_unreachable", () => {
+    expect(serverAccessReason("ssh_unreachable").next).toMatch(/Allow TCP from the gateway/);
+  });
+  it("never humanizes an unknown code and is empty for none", () => {
+    expect(sessionReasonText("some_new_reason")).toBe("Server Access could not complete this action.");
+    expect(serverAccessReasonText("some_new_reason")).not.toMatch(/some new reason/i);
     expect(sessionReasonText("")).toBe("");
   });
 });
