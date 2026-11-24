@@ -771,6 +771,90 @@ for aa_case in volume secrets port ha proxy-only layout domain project; do
   assert_aa_refused_unchanged
 done
 
+# ---------------------------------------------------------------------------
+# AA-EN-1: admission accepts exactly the managed port set (public listener plus
+# the gateway listener, both from .env) and a composition that
+# tunnex-app-access adopt recorded; anything else stays refused.
+aa_sha() { shasum -a 256 "$1" | awk '{print $1}'; }
+managed_aa_install() {
+  make_aa_install "$1"
+  cp "$ROOT/deploy/app-access/compose.yml" "$aa_dir/app-access.yml"
+  printf 'TUNNEX_APP_ACCESS_COMPOSE_SHA256=%s\nCOMPOSE_PROFILES=bundled-db,app-access\n' "$(aa_sha "$aa_dir/app-access.yml")" >>"$aa_dir/.env"
+  aa_files="$aa_dir/tunnex.yml,$aa_dir/app-access.yml"
+  printf 'aa|%s|api|volume:aa_app_restore;|||%s|False\n' "$aa_dir" "$aa_files" >"$aa_dir/containers/api"
+  printf 'aa|%s|app-proxy|volume:aa_app_restore;|/srv/tunnex/app-proxy;|%s|%s|False\n' "$aa_dir" "$2" "$aa_files" >"$aa_dir/containers/proxy"
+}
+# Default gateway listener (0.0.0.0:8444) next to the default public listener.
+managed_aa_install gw-default '8443/tcp=127.0.0.1:443;8444/tcp=0.0.0.0:8444;'
+run_aa_upgrade --apply >"$aa_dir/output" 2>&1 || { cat "$aa_dir/output"; exit 1; }
+grep -Fxq 'state=healthy' "$aa_dir/status"
+# Narrowed by .env (E6): the binding must match .env exactly.
+managed_aa_install gw-narrow '8443/tcp=0.0.0.0:443;8444/tcp=10.70.0.2:8444;'
+printf '%s\n' TUNNEX_APP_PROXY_BIND_IP=0.0.0.0 TUNNEX_APP_PROXY_GATEWAY_BIND_IP=10.70.0.2 >>"$aa_dir/.env"
+run_aa_upgrade --apply >"$aa_dir/output" 2>&1 || { cat "$aa_dir/output"; exit 1; }
+grep -Fxq 'state=healthy' "$aa_dir/status"
+for aa_case in gw-drift gw-extra gw-only; do
+  case "$aa_case" in
+    gw-drift) ports='8443/tcp=127.0.0.1:443;8444/tcp=10.70.0.2:8444;' ;;
+    gw-extra) ports='8443/tcp=127.0.0.1:443;8444/tcp=0.0.0.0:8444;8445/tcp=0.0.0.0:8445;' ;;
+    gw-only) ports='8444/tcp=0.0.0.0:8444;' ;;
+  esac
+  managed_aa_install "$aa_case" "$ports"
+  cp "$aa_dir/.env" "$aa_dir/.env.before"
+  if run_aa_upgrade --apply >"$aa_dir/output" 2>&1; then echo "App Access $aa_case port set accepted" >&2; exit 1; fi
+  grep -Fq 'TUNNEX_APP_PROXY_GATEWAY_BIND_IP' "$aa_dir/output"
+  cmp -s "$aa_dir/.env.before" "$aa_dir/.env"
+  ! grep -Eq ' (pull|up|stop|start)( |$)' "$aa_dir/docker.log"
+done
+
+# The demo layout (two hand-written overlays, 443 and 8444 published) is
+# refused until adopt records it, and the refusal names the command.
+demo_aa_install() {
+  make_aa_install "$1"
+  printf '%s\n' '# hand-written demo overlay' >"$aa_dir/app-access-demo.yml"
+  cp "$ROOT/deploy/app-access/compose.yml" "$aa_dir/app-access.yml"
+  aa_files="$aa_dir/tunnex.yml,$aa_dir/app-access.yml,$aa_dir/app-access-demo.yml"
+  printf 'aa|%s|api|volume:aa_app_restore;|||%s|False\n' "$aa_dir" "$aa_files" >"$aa_dir/containers/api"
+  printf 'aa|%s|app-proxy|volume:aa_app_restore;|/srv/tunnex/app-proxy;|8443/tcp=0.0.0.0:443;8444/tcp=10.70.0.2:8444;|%s|False\n' "$aa_dir" "$aa_files" >"$aa_dir/containers/proxy"
+  printf '%s\n' TUNNEX_APP_PROXY_BIND_IP=0.0.0.0 TUNNEX_APP_PROXY_GATEWAY_BIND_IP=10.70.0.2 >>"$aa_dir/.env"
+}
+adopt_record() {
+  printf 'TUNNEX_APP_ACCESS_COMPOSE_SHA256=%s\nCOMPOSE_PROFILES=bundled-db,app-access\n' "$(aa_sha "$aa_dir/app-access.yml")" >>"$aa_dir/.env"
+  printf 'TUNNEX_APP_ACCESS_ADOPTED_CONFIG_FILES=%s\nTUNNEX_APP_ACCESS_ADOPTED_OVERLAYS_SHA256=%s\n' "$aa_files" "$(aa_sha "$aa_dir/app-access-demo.yml")" >>"$aa_dir/.env"
+}
+demo_aa_install demo-unadopted
+rm "$aa_dir/app-access.yml"
+cp "$aa_dir/.env" "$aa_dir/.env.before"
+if run_aa_upgrade --apply >"$aa_dir/output" 2>&1; then echo 'unadopted demo layout accepted' >&2; exit 1; fi
+grep -Fq 'tunnex-app-access adopt' "$aa_dir/output"
+cmp -s "$aa_dir/.env.before" "$aa_dir/.env"
+# Adopted: admitted, recreated from the managed files only, record cleared.
+demo_aa_install demo-adopted
+adopt_record
+cp "$aa_dir/app-access-demo.yml" "$aa_dir/app-access-demo.yml.before"
+run_aa_upgrade --apply >"$aa_dir/output" 2>&1 || { cat "$aa_dir/output"; exit 1; }
+grep -Fxq 'state=healthy' "$aa_dir/status"
+! grep -Fq 'app-access-demo.yml' "$aa_dir/docker.log"
+grep -F 'up -d --wait --wait-timeout 900' "$aa_dir/docker.log" | grep -Fq -- "-f $aa_dir/app-access.yml"
+! grep -Fq 'TUNNEX_APP_ACCESS_ADOPTED_' "$aa_dir/.env"
+grep -Fxq 'TUNNEX_APP_PROXY_GATEWAY_BIND_IP=10.70.0.2' "$aa_dir/.env"
+cmp -s "$aa_dir/app-access-demo.yml.before" "$aa_dir/app-access-demo.yml"
+# A hand-written overlay changed after adoption, or a different file list, is drift.
+for aa_case in demo-edited demo-other-files demo-unmanaged; do
+  demo_aa_install "$aa_case"
+  adopt_record
+  case "$aa_case" in
+    demo-edited) printf '%s\n' '# edited after adopt' >>"$aa_dir/app-access-demo.yml" ;;
+    demo-other-files) sed -i.bak "s|app-access-demo.yml|other-demo.yml|" "$aa_dir/containers/api" "$aa_dir/containers/proxy"
+      printf '%s\n' '# hand-written demo overlay' >"$aa_dir/other-demo.yml" ;;
+    demo-unmanaged) printf '%s\n' '# not the managed overlay' >>"$aa_dir/app-access.yml" ;;
+  esac
+  cp "$aa_dir/.env" "$aa_dir/.env.before"
+  if run_aa_upgrade --apply >"$aa_dir/output" 2>&1; then echo "App Access $aa_case accepted" >&2; exit 1; fi
+  cmp -s "$aa_dir/.env.before" "$aa_dir/.env"
+  ! grep -Eq ' (pull|up|stop|start)( |$)' "$aa_dir/docker.log"
+done
+
 grep -qx 'TUNNEX_SERVER_ACCESS_ENABLED=true' "$TMP/tunnex/.env"
 grep -qx 'TUNNEX_SERVER_ACCESS_RECORDING_VOLUME=owned-test-recordings' "$TMP/tunnex/.env"
 grep -qx 'TUNNEX_SERVER_ACCESS_RECORDING_VOLUME_EXTERNAL=true' "$TMP/tunnex/.env"

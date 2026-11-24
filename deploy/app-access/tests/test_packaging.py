@@ -41,12 +41,21 @@ class Packaging(unittest.TestCase):
         doc=yaml.safe_load((ROOT/'deploy/app-access/compose.yml').read_text())
         proxy=doc['services']['app-proxy']
         self.assertEqual(proxy['profiles'],['app-access'])
-        self.assertEqual(len(proxy['ports']),1)
+        # AA-EN-1 E6: exactly the public listener and the gateway listener, both from .env.
+        self.assertEqual(proxy['ports'],['${TUNNEX_APP_PROXY_BIND_IP:-127.0.0.1}:${TUNNEX_APP_PROXY_PUBLIC_PORT:-443}:8443','${TUNNEX_APP_PROXY_GATEWAY_BIND_IP:-0.0.0.0}:${TUNNEX_APP_PROXY_GATEWAY_PORT:-8444}:8444'])
+        api=doc['services']['api']['environment']
+        self.assertEqual(api['TUNNEX_APP_PROXY_GATEWAY_PORT'],'${TUNNEX_APP_PROXY_GATEWAY_PORT:-8444}')
+        self.assertEqual(api['TUNNEX_APP_PROXY_GATEWAY_HOST'],'${TUNNEX_APP_PROXY_GATEWAY_HOST:-}')
+        self.assertEqual(api['TUNNEX_APP_ACCESS_LOCKED'],'${TUNNEX_APP_ACCESS_LOCKED:-false}')
         self.assertEqual(proxy['environment']['TUNNEX_APP_PROXY_CONSOLE_UPSTREAM_URL'], '${TUNNEX_APP_PROXY_CONSOLE_UPSTREAM_URL:-}')
         self.assertEqual(proxy['environment']['TUNNEX_APP_PROXY_CONSOLE_UPSTREAM_SERVER_NAME'], '${TUNNEX_APP_PROXY_CONSOLE_UPSTREAM_SERVER_NAME:-}')
         self.assertEqual(proxy['environment']['TUNNEX_APP_PROXY_CONSOLE_UPSTREAM_CA_FILE'], '${TUNNEX_APP_PROXY_CONSOLE_UPSTREAM_CA_FILE:-}')
         self.assertIn('app_restore',doc['volumes'])
         for name in ['api','app-proxy']:
             self.assertIn('app_restore:/var/lib/tunnex/app-restore:ro',doc['services'][name]['volumes'])
+
+    def test_base_caddy_https_publish_default_is_unchanged(self):
+        doc=yaml.safe_load((ROOT/'deploy/tunnex.yml').read_text())
+        self.assertEqual(doc['services']['caddy']['ports'],['80:80','${TUNNEX_EDGE_HTTPS_PUBLISH:-443}:443'])
 
 if __name__=='__main__': unittest.main()
