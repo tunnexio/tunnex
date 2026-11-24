@@ -2,3 +2,11 @@ http://10.99.0.1:30080/clientip -> 10.99.0.2:60070 http_code=200
 http://10.244.0.35:8080/clientip -> 10.99.0.2:40958 http_code=200
 http://10.96.229.86:80/clientip ->  http_code=000
 		ip saddr 10.99.0.2 counter packets 0 bytes 0 drop
+# positive control first: destinations Cilium hands to the stack
+https://10.99.0.1:10250/healthz -> http_code=000
+http://172.21.0.1:80/ -> http_code=000
+		ip saddr 10.99.0.2 counter packets 6 bytes 360 drop
+# then the tc-handled destinations, same rule
+http://10.99.0.1:30080/clientip -> 10.99.0.2:36036 http_code=200
+http://10.244.0.35:8080/clientip -> 10.99.0.2:46058 http_code=200
+		ip saddr 10.99.0.2 counter packets 6 bytes 360 drop

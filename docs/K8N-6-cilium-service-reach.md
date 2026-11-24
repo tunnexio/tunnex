@@ -22,8 +22,9 @@ enforcing policy with no access rule. From a WireGuard peer, with no rule:
 - **Netfilter never sees the packets that get through.** The evidence: zero `nft monitor trace`
   events from a prerouting chain at priority -350; Tunnex's `tunnex_default_drop` counter does not
   move; netfilter conntrack has no entry; Cilium's own CT table has the flow, from source identity
-  `world` (2); and a drop rule in an nft `netdev` ingress chain on `wg0` (priority -500) matched
-  **0 packets** while NodePort and pod-IP requests still answered.
+  `world` (2); and a drop rule in an nft `netdev` ingress chain on `wg0` (priority -500) did
+  not count a single one of them while NodePort and pod-IP requests still answered. The same rule
+  did drop traffic Cilium hands to the stack, so the rule itself works on this device.
 
 So Tunnex's forward chain is not the only gate on such a node. On this kernel no nftables rule can
 be: every netfilter hook runs after the `tcx` ingress program Cilium attaches to `wg0`.
@@ -189,16 +190,27 @@ How each entry was decided, from the evidence files (`probe-<config>-paths.txt`,
   `ip filter INPUT`, because with `wg0` not a NodePort address (B), or not a Cilium device at all
   (C), nothing on the node listens on 30080. Tunnex has no input chain, so it did not decide this
   either.
+- **Pod → device under A**: the repeat run (`probe-A-repeat-pod-to-device.txt`) carried the trace
+  rule for `ip daddr 10.99.0.2 tcp dport 8000`. It logged 0 trace events, `agnhost connect`
+  exited 0, `tunnex_default_drop` did not move, and `tcpdump` on `wg0` shows the pod's SYN. The
+  first A run had `tcpdump` and the counter only.
 - **Pod → device under C**: the pod's SYN still left through `wg0` without a trace event. BPF host
   routing redirects from the pod's own program, which `devices` does not change. The device's
   SYN-ACK came back into netfilter, which had never seen the SYN, and was dropped as `ct invalid`
   (`tunnex_ct_invalid_drop` 0 → 7). The device still received an unsolicited SYN.
 
-**No nftables rule can close this.** With A in force, a `table netdev f10ingress` chain on `hook
-ingress device "wg0" priority -500` with `ip saddr 10.99.0.2 counter drop` counted 0 packets. In
-the same run, NodePort on `10.99.0.1` and the pod IP still answered 200
-(`probe-A-netdev-ingress-drop.txt`). Cilium's `tcx` ingress program redirects the packet before
-the netfilter ingress hook runs.
+**No nftables rule can close this.** With A in force, a `table netdev f10ingress` chain was
+loaded on `hook ingress device "wg0" priority -500`, with `ip saddr 10.99.0.2 counter drop`
+(`probe-A-netdev-ingress-drop.txt`, second run).
+
+- **The rule works on this device (positive control first).** Two destinations Cilium hands to the
+  stack, the kubelet on `10.99.0.1:10250` and the Docker gateway `172.21.0.1:80`, both failed, and
+  the counter reached 6 packets.
+- **The tc-handled paths never reach it.** With the rule still loaded, NodePort on `10.99.0.1` and
+  the pod IP answered 200, and the counter stayed at 6.
+
+Cilium's `tcx` ingress program redirects those packets before the netfilter ingress hook runs. (A
+first run without that positive control counted 0 packets and is kept in the same file.)
 
 ## What this means
 
