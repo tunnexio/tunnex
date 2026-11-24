@@ -10,6 +10,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net/netip"
 	"os"
 	"os/exec"
@@ -36,6 +37,7 @@ type HostFactsReader struct {
 	runIPTables IPTablesRunner
 	runIPSet    IPSetRunner
 	sysModule   string
+	procNet     string
 
 	mu sync.Mutex
 	// remembered holds, per table, the chains the last read carried. They are
@@ -55,7 +57,7 @@ func NewHostFactsReader(nft NFTRunner, iptables IPTablesRunner, ipset IPSetRunne
 	if ipset == nil {
 		ipset = realFactsIPSetRunner
 	}
-	return &HostFactsReader{runNFT: nft, runIPTables: iptables, runIPSet: ipset, sysModule: "/sys/module", remembered: map[string][]string{}}
+	return &HostFactsReader{runNFT: nft, runIPTables: iptables, runIPSet: ipset, sysModule: "/sys/module", procNet: "/proc/net", remembered: map[string][]string{}}
 }
 
 // realFactsNFTRunner lists the tables, or one chain of the ip nat or ip mangle
@@ -118,11 +120,15 @@ func (r *HostFactsReader) Read(ctx context.Context) HostNetFacts {
 	defer cancel()
 	r.mu.Lock()
 	defer r.mu.Unlock()
+	// Read first and on its own: it decides the node whatever else is read.
+	legacy := ReadLegacyIPTables(r.procNet)
 	version, err := r.runIPTables(ctx, "-V")
 	if err != nil || !strings.HasPrefix(strings.TrimSpace(version), "iptables-nft-save v") || !strings.Contains(version, "(nf_tables)") {
-		return UnreadableHostNetFacts("explicit nft-backed iptables-nft-save is unavailable or incompatible")
+		facts := UnreadableHostNetFacts("explicit nft-backed iptables-nft-save is unavailable or incompatible")
+		facts.LegacyIPTables = legacy
+		return facts
 	}
-	var facts HostNetFacts
+	facts := HostNetFacts{LegacyIPTables: legacy}
 	facts.Mangle, _ = r.readTable(ctx, "mangle")
 	switch exist, err := r.kernelSetsExist(ctx); {
 	case err != nil:
@@ -136,6 +142,42 @@ func (r *HostFactsReader) Read(ctx context.Context) HostNetFacts {
 		return UnreadableHostNetFacts(err.Error())
 	}
 	return facts
+}
+
+// maxLegacyNamesBytes bounds the read of ip_tables_names.
+const maxLegacyNamesBytes = 4096
+
+// ReadLegacyIPTables reads procNet/ip_tables_names (K8N review, finding 5).
+// The file lists the IPv4 tables iptables-legacy has in the reader's network
+// namespace; the manager and the gateway run in the host's. It is the same
+// file iptables-nft-save reads for its "iptables-legacy tables present"
+// warning, read here directly so that a failure is an answer ("unreadable")
+// and not a missing warning. A missing file means the ip_tables module is not
+// loaded, so no legacy table exists, but only in a procNet that is a network
+// namespace's proc directory (it has "dev").
+func ReadLegacyIPTables(procNet string) LegacyTablesFacts {
+	unreadable := func(reason string) LegacyTablesFacts {
+		return LegacyTablesFacts{State: FactsUnreadable, Reason: bounded(reason, maxReasonBytes)}
+	}
+	f, err := os.Open(filepath.Join(procNet, "ip_tables_names"))
+	if errors.Is(err, os.ErrNotExist) {
+		if info, statErr := os.Stat(filepath.Join(procNet, "dev")); statErr != nil || !info.Mode().IsRegular() {
+			return unreadable("no ip_tables_names, and " + procNet + " is not a network namespace's proc directory")
+		}
+		return LegacyTablesFacts{State: FactsRead}
+	}
+	if err != nil {
+		return unreadable("read ip_tables_names: " + err.Error())
+	}
+	defer f.Close()
+	text, err := io.ReadAll(io.LimitReader(f, maxLegacyNamesBytes+1))
+	if err != nil {
+		return unreadable("read ip_tables_names: " + err.Error())
+	}
+	if len(text) > maxLegacyNamesBytes {
+		return unreadable("ip_tables_names exceeds bound")
+	}
+	return ParseLegacyTableNames(string(text))
 }
 
 func unreadableTable(reason string) SavedTableFacts {

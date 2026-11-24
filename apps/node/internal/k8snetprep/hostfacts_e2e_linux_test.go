@@ -299,6 +299,7 @@ func TestCapturedCalicoNodeBecomesReadyThroughTheHostFactsReceipt(t *testing.T) 
 		t.Fatal(err)
 	}
 	reader.SetSysModuleForTest(sysModule)
+	reader.SetProcNetForTest(e2eNoLegacyProcNet(t))
 	manager := newE2EManager(t, stateDir, e2eNode, e2eOwnerUID, reader)
 	gateway := newE2EGateway(t, stateDir, e2eNode, e2eOwnerUID, node.gatewayNFT, node.gatewayDenied("iptables-nft-save"))
 	gateway.SetIPSetRunnerForTest(node.gatewayDenied("ipset"))
@@ -548,4 +549,15 @@ func TestLiveHostFactsGateway(t *testing.T) {
 	if err == nil || !strings.Contains(err.Error(), want) {
 		t.Fatalf("gateway was not refused with %q for %s", want, tunnel)
 	}
+}
+
+// e2eNoLegacyProcNet is a /proc/net of a node whose ip_tables module is not
+// loaded: no ip_tables_names, so no iptables-legacy table.
+func e2eNoLegacyProcNet(t *testing.T) string {
+	t.Helper()
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "dev"), []byte("Inter-|   Receive\n"), 0o444); err != nil {
+		t.Fatal(err)
+	}
+	return dir
 }

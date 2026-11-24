@@ -47,6 +47,83 @@ type HostNetFacts struct {
 	NAT    SavedTableFacts `json:"nat"`
 	Mangle SavedTableFacts `json:"mangle"`
 	Sets   []SavedSetFacts `json:"sets,omitempty"`
+	// LegacyIPTables says whether the node has IPv4 iptables-legacy tables.
+	// Their rules run beside nf_tables and no nft listing shows them, so a
+	// node with any is not ready (K8N review, finding 5). Required: facts that
+	// do not say are refused.
+	LegacyIPTables LegacyTablesFacts `json:"legacy_iptables"`
+}
+
+// LegacyTablesFacts is what /proc/net/ip_tables_names listed in the node's
+// network namespace, or why it could not be read.
+type LegacyTablesFacts struct {
+	State  string   `json:"state"`
+	Reason string   `json:"reason,omitempty"`
+	Tables []string `json:"tables,omitempty"`
+}
+
+// maxLegacyTables bounds the table names carried; the kernel has five.
+const maxLegacyTables = 16
+
+// legacyTableNameRE is the shape of an x_tables table name (XT_TABLE_MAXNAMELEN 32).
+var legacyTableNameRE = regexp.MustCompile(`^[A-Za-z0-9_.-]{1,31}$`)
+
+func (l LegacyTablesFacts) validate() error {
+	if len(l.Reason) > maxReasonBytes || len(l.Tables) > maxLegacyTables {
+		return errors.New("host facts for legacy iptables exceed bound")
+	}
+	switch l.State {
+	case FactsRead:
+		if l.Reason != "" {
+			return errors.New("host facts for legacy iptables are inconsistent")
+		}
+		for _, name := range l.Tables {
+			if !legacyTableNameRE.MatchString(name) {
+				return errors.New("host facts name an invalid legacy iptables table")
+			}
+		}
+	case FactsUnreadable:
+		if l.Reason == "" || len(l.Tables) != 0 {
+			return errors.New("host facts for legacy iptables are inconsistent")
+		}
+	case "":
+		return errors.New("host facts do not say whether the node has iptables-legacy tables")
+	default:
+		return errors.New("host facts for legacy iptables have an unknown state")
+	}
+	return nil
+}
+
+// LegacyRefusal is nil only when the facts say the node has no IPv4
+// iptables-legacy table. Anything else refuses the node: a legacy table's
+// rules, a masquerade among them, are invisible to every proof here.
+func (l LegacyTablesFacts) LegacyRefusal() error {
+	switch {
+	case l.State == FactsRead && len(l.Tables) == 0:
+		return nil
+	case l.State == FactsRead:
+		return fmt.Errorf("node has iptables-legacy tables (%s), whose rules no nft listing shows; remove them or move their rules to iptables-nft", strings.Join(l.Tables, ", "))
+	case l.State == FactsUnreadable:
+		return fmt.Errorf("could not tell whether the node has iptables-legacy tables: %s", bounded(l.Reason, 120))
+	default:
+		return errors.New("host facts do not say whether the node has iptables-legacy tables")
+	}
+}
+
+// ParseLegacyTableNames reads /proc/net/ip_tables_names: one table name per
+// line, empty when no legacy table exists in that network namespace.
+func ParseLegacyTableNames(text string) LegacyTablesFacts {
+	names := strings.Fields(text)
+	if len(names) > maxLegacyTables {
+		return LegacyTablesFacts{State: FactsUnreadable, Reason: "ip_tables_names lists more tables than expected"}
+	}
+	for _, name := range names {
+		if !legacyTableNameRE.MatchString(name) {
+			return LegacyTablesFacts{State: FactsUnreadable, Reason: "ip_tables_names lists a name that is not understood"}
+		}
+	}
+	sort.Strings(names)
+	return LegacyTablesFacts{State: FactsRead, Tables: names}
 }
 
 // SavedTableFacts carries the chains of one table a proof can need: NAT chains
@@ -81,7 +158,7 @@ type HostFactsSource func(context.Context) (HostNetFacts, error)
 // UnreadableHostNetFacts is the facts value of a read that failed as a whole.
 func UnreadableHostNetFacts(reason string) HostNetFacts {
 	table := SavedTableFacts{State: FactsUnreadable, Reason: bounded(reason, maxReasonBytes)}
-	return HostNetFacts{NAT: table, Mangle: table}
+	return HostNetFacts{NAT: table, Mangle: table, LegacyIPTables: LegacyTablesFacts{State: FactsUnreadable, Reason: table.Reason}}
 }
 
 // Validate refuses facts that are malformed or exceed a bound. It says nothing
@@ -97,6 +174,9 @@ func (f HostNetFacts) Validate() error {
 			return err
 		}
 		total += size
+	}
+	if err := f.LegacyIPTables.validate(); err != nil {
+		return err
 	}
 	if len(f.Sets) > maxProofSets {
 		return errors.New("host facts carry too many sets")

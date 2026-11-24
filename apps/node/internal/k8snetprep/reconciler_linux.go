@@ -41,9 +41,12 @@ type NFTRunner func(context.Context, ...string) (string, error)
 // Reconciler continuously verifies the manager-owned WireGuard rp_filter
 // posture and owns only Tunnex-commented rules in registered CNI mechanisms.
 type Reconciler struct {
-	mu          sync.Mutex
-	iface       string
-	procSys     string
+	mu      sync.Mutex
+	iface   string
+	procSys string
+	// procNet is where the observed proof reads ip_tables_names when it has no
+	// host-facts source.
+	procNet     string
 	runNFT      NFTRunner
 	awsAware    bool
 	runIPTables IPTablesRunner
@@ -73,7 +76,7 @@ func New(iface string, runNFT NFTRunner) *Reconciler {
 	if runNFT == nil {
 		runNFT = realNFTRunner
 	}
-	return &Reconciler{iface: iface, procSys: "/proc/sys", runNFT: runNFT}
+	return &Reconciler{iface: iface, procSys: "/proc/sys", procNet: "/proc/net", runNFT: runNFT}
 }
 
 // UseTunnelInterfaces tells the observed proof where to read the tunnel
