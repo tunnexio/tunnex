@@ -217,6 +217,7 @@ func awsTestReconciler(t *testing.T, f *awsTestKernel, scope AuthorityScope) *Re
 	t.Helper()
 	r := NewWithAWS("wg0", f.nft, f.iptables, func(context.Context) (AuthorityGrant, func(), error) { return awsTestGrant(scope), func() {}, nil })
 	r.procSys = t.TempDir()
+	r.procNet = legacyProcNet(t)
 	path := filepath.Join(r.procSys, "net", "ipv4", "conf", "wg0", "rp_filter")
 	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
 		t.Fatal(err)

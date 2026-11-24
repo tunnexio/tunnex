@@ -96,6 +96,7 @@ func liveCalicoFactsReader(t *testing.T) (*calicoTestKernel, *HostFactsReader) {
 	f, _ := liveCalicoKernel(t)
 	reader := NewHostFactsReader(f.factsNFT, f.iptables, f.factsIPSet)
 	reader.sysModule = t.TempDir()
+	reader.procNet = legacyProcNet(t)
 	if err := os.Mkdir(filepath.Join(reader.sysModule, "ip_set"), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -737,9 +738,12 @@ func TestReconcilerWithoutHostFactsStillReadsDirectly(t *testing.T) {
 	}
 }
 
-// A node that needs no facts never asks for them: Flannel, GKE and the other
-// fixtures stay ready with no receipt at all.
-func TestGatewayAsksForNoFactsOnANodeThatNeedsNone(t *testing.T) {
+// A node whose rules need no fact still takes the receipt, for what it says
+// of the node (legacy tables, K8N review finding 5): Flannel is ready on a
+// receipt that carries no rule text and no set, and reads no set. Before the
+// review such a node never asked and was ready with no receipt at all; that
+// case is now refused (TestGatewayTakesTheReceiptOnEveryObservation).
+func TestGatewayNeedsOnlyTheReceiptOnANodeThatNeedsNoRuleFacts(t *testing.T) {
 	listing, err := os.ReadFile("testdata/k3s-flannel-nat.json")
 	if err != nil {
 		t.Fatal(err)
@@ -751,10 +755,14 @@ func TestGatewayAsksForNoFactsOnANodeThatNeedsNone(t *testing.T) {
 	asked := false
 	r.UseHostFacts(func(context.Context) (HostNetFacts, error) {
 		asked = true
-		return HostNetFacts{}, errors.New("host facts receipt is missing")
+		return HostNetFacts{
+			NAT:            SavedTableFacts{State: FactsNotNeeded, Reason: "the kernel has no ipset, so no NAT rule can match one"},
+			Mangle:         SavedTableFacts{State: FactsUnreadable, Reason: "not needed by this node"},
+			LegacyIPTables: LegacyTablesFacts{State: FactsRead},
+		}, nil
 	})
 	status, err := r.Reconcile(t.Context(), "100.96.0.0/24")
-	if err != nil || asked {
+	if err != nil || !asked || status.Adapters[0].Name != ObservedAdapterName || status.Adapters[0].State != StateReady {
 		t.Fatalf("asked=%v status=%+v err=%v", asked, status, err)
 	}
 	if len(f.setReads) != 0 {

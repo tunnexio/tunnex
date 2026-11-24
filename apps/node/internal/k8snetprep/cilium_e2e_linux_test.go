@@ -127,6 +127,7 @@ func newCiliumE2E(t *testing.T, prefix string) *ciliumE2E {
 		}
 	}
 	netfilter.SetSysModuleForTest(sysModule)
+	netfilter.SetProcNetForTest(e2eNoLegacyProcNet(t))
 	e.manager = newE2EManager(t, e.stateDir, ciliumE2ENode, e2eOwnerUID, netfilter)
 	e.manager.SetCiliumFactsReader(e.agent.reader())
 	e.gateway = newE2EGateway(t, e.stateDir, ciliumE2ENode, e2eOwnerUID, e.rules.gatewayNFT, e.rules.gatewayDenied("iptables-nft-save"))
@@ -317,7 +318,9 @@ func TestCapturedCiliumNodeRefusesAReceiptThatDoesNotHold(t *testing.T) {
 	e.admit()
 	const tunnel = "100.96.0.0/24"
 	const proved = "tunnel range is inside Cilium ip-masq-agent range 100.96.0.0/24"
-	const notVerified = "Cilium masquerade on this node is not verified: "
+	// The receipt is taken before the rules are proved (K8N review, findings 5
+	// and 6), so a receipt that does not hold refuses there, Cilium or not.
+	const notVerified = "host-posture facts: "
 	e.ready(tunnel, proved)
 
 	if err := os.Remove(e.receiptPath()); err != nil {
@@ -394,7 +397,7 @@ func TestCapturedCiliumNodeRefusesAReceiptThatDoesNotHold(t *testing.T) {
 	// A manager from before K8N-2 publishes the receipt without the section.
 	e.manager.SetCiliumFactsReader(nil)
 	e.pass()
-	e.refused(tunnel, notVerified+"the host-posture manager published no Cilium facts (found iptables chain CILIUM_")
+	e.refused(tunnel, "Cilium masquerade on this node is not verified: the host-posture manager published no Cilium facts (found iptables chain CILIUM_")
 	e.manager.SetCiliumFactsReader(e.agent.reader())
 	e.pass()
 	e.ready(tunnel, proved)

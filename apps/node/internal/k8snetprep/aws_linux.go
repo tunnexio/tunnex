@@ -796,12 +796,29 @@ func (r *Reconciler) observeRegisteredMechanisms(ctx context.Context, cidr strin
 	if before.tunnelIfaces, err = r.otherTunnelInterfaces(); err != nil {
 		return nil, err
 	}
-	err = before.validateHookCoverage(r.iface, cidr)
-	// With a host-facts source (the gateway in Kubernetes) the two reads below
-	// are not commands of this process: the facts are taken once, between the
-	// two listings, and each fact is bound to the first listing by its chain's
-	// listing digest. The second listing must still equal the first.
+	// With a host-facts source (the gateway in Kubernetes) the reads below are
+	// not commands of this process: the facts are taken once, between the two
+	// listings, and each rule fact is bound to the first listing by its
+	// chain's listing digest. The second listing must still equal the first.
 	var hostFacts *HostNetFacts
+	// K8N review, finding 5: iptables-legacy rules run beside nf_tables and
+	// no listing read here shows them, so a node with a legacy table is
+	// refused before anything is proved. In Kubernetes the facts always say
+	// (the receipt is required on every observation); without a source this
+	// process reads ip_tables_names itself.
+	legacy := LegacyTablesFacts{}
+	if r.hostFacts != nil {
+		if hostFacts, err = r.takeHostFacts(ctx, &hostFacts); err != nil {
+			return nil, err
+		}
+		legacy = hostFacts.LegacyIPTables
+	} else {
+		legacy = ReadLegacyIPTables(r.procNet)
+	}
+	if err := legacy.LegacyRefusal(); err != nil {
+		return nil, err
+	}
+	err = before.validateHookCoverage(r.iface, cidr)
 	if errors.Is(err, errMarkFactsNeeded) {
 		// A mangle POSTROUTING hook sets a mark. Read its value from the saved
 		// form and prove again. Like the set reads below, this sits between the

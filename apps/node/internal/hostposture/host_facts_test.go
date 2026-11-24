@@ -24,6 +24,7 @@ func testNetFacts() k8snetprep.HostNetFacts {
 		Mangle: k8snetprep.SavedTableFacts{State: k8snetprep.FactsRead},
 		Sets: []k8snetprep.SavedSetFacts{{Name: "cali40masq-ipam-pools", State: k8snetprep.FactsRead,
 			Saved: "create cali40masq-ipam-pools hash:net family inet\nadd cali40masq-ipam-pools 192.168.0.0/16\n"}},
+		LegacyIPTables: k8snetprep.LegacyTablesFacts{State: k8snetprep.FactsRead},
 	}
 }
 

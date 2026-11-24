@@ -97,6 +97,15 @@ device, the same effect the walk already accepts for Flannel. Item 10 is of a di
    writes with `iptables-legacy` shows nothing in `nft`, so it is ready with no walk. The manager's
    `iptables-nft-save` already prints the "legacy tables present" warning. Fix: treat that warning,
    or a non-empty `/proc/net/ip_tables_names`, as a node-level refusal.
+   **Fixed** — `fix(k8s): refuse a node with iptables-legacy tables (K8N review 5)`. The
+   manager reads `/proc/net/ip_tables_names` and publishes it in the receipt
+   (`legacy_iptables`); the gateway refuses before any proof when it lists a table, is
+   unreadable or is absent. Chosen over the warning because the warning appears only where a
+   save is read and its absence is silent. **Behaviour change**: the gateway now takes the
+   receipt on every observation, so a node that needs no rule fact is no longer ready without
+   one. Tests: `TestNodeWithLegacyTablesIsNotReady` and four more; every captured fixture is
+   decided as before. Checked in a scratch namespace that a legacy `MASQUERADE` is invisible to
+   `nft` and listed in the file. See K8N-1, "A node with iptables-legacy tables is not ready".
 
 6. **Low — Cilium detection uses only the gateway's two signals** (`cilium_` device, `CILIUM_`
    chain). The manager may see the socket and pinned maps and publish a Cilium section the gateway

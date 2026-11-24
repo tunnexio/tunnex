@@ -617,6 +617,74 @@ nat POSTROUTING`:
   `KUBE-MARK-MASQ` in every receipt and a NAT save on every node; not built, because no
   captured node has a `MARK` on that path.
 
+### A node with iptables-legacy tables is not ready (review finding 5)
+
+*What was wrong.* Rules written with `iptables-legacy` live in the kernel's x_tables, run in
+the same hooks as nf_tables, and appear in no nft listing. Checked in a scratch network
+namespace (kernel 6.8, iptables 1.8.11): after `iptables-legacy -t nat -A POSTROUTING -s
+10.0.0.0/8 -j MASQUERADE`, `nft list ruleset` printed nothing at all. A node whose CNI or
+kube-proxy writes with `iptables-legacy` was therefore ready with nothing read.
+
+*The signal.* `/proc/net/ip_tables_names`, read by the host-posture manager and published in
+the receipt as `netfilter.legacy_iptables` (`state` `read` with the table names, or
+`unreadable` with the reason). In the same namespace the file was empty before and listed
+`nat` after the rule was added; `iptables-nft-save -t nat` and `-t mangle` then printed `#
+Warning: iptables-legacy tables present, use iptables-legacy-save to see them`. Why the file
+and not that warning:
+
+- The warning is printed only by a save, and the gateway path reads a save only when a proof
+  needs one (sets, marks). On Flannel, GKE and EKS nodes nothing would ever look at it. (Where
+  a save is read, the parser already refuses the warning as an unknown comment line.)
+- As far as the iptables source reads (`nft_check_xt_legacy`, not checked here beyond the run
+  above), the warning comes from opening this same file, and a file that cannot be opened
+  gives no warning. Its absence is silence, not an answer. Read directly, a failure is an
+  answer: `unreadable`, which refuses.
+- The text and whether it is printed at all depend on the iptables version; the file depends
+  only on the kernel.
+
+How the file is read (`ReadLegacyIPTables`): one name per line, at most 16 names of the
+x_tables shape, at most 4 KiB. A missing file means the `ip_tables` module is not loaded, so
+no legacy table exists, but only when the directory is a live `/proc/net` (it has `dev`);
+any other error, an oversized file or a name that is not understood is `unreadable`. The
+file is mode 0440 root, read as root by the manager in the host's network namespace (it runs
+with host networking). It is read first on every pass, whatever else fails.
+
+*The decision.* Before anything is proved, the gateway takes the receipt and refuses when it
+lists any table (`node has iptables-legacy tables (filter, nat), whose rules no nft listing
+shows; remove them or move their rules to iptables-nft`), when it says `unreadable`, and when
+it says nothing (`host facts do not say whether the node has iptables-legacy tables`).
+Without a facts source (tests only; every reconciler in the agent that runs the proof has
+one) the gateway reads the file itself under the same rules.
+
+*Consequences to know:*
+
+- **The receipt is now required on every observation in Kubernetes**, also on a node whose
+  rules need no fact from it. Before, a Flannel or GKE node never asked and stayed ready with
+  no receipt at all (`TestGatewayAsksForNoFactsOnANodeThatNeedsNone`, now
+  `TestGatewayNeedsOnlyTheReceiptOnANodeThatNeedsNoRuleFacts` and
+  `TestGatewayTakesTheReceiptOnEveryObservation`). "No fallback" is unchanged: a missing,
+  stale or damaged receipt refuses. A receipt that fails for Cilium reasons now refuses here,
+  before the Cilium proof, with `host-posture facts: ...` in place of `Cilium masquerade on
+  this node is not verified: ...`.
+- **Strict.** Any IPv4 legacy table refuses, also an empty one: in the run above `nat` stayed
+  listed after `iptables-legacy -t nat -F` and `-X`, and a stray `iptables-legacy -L`
+  instantiates `filter`. Clearing it takes unloading the module or a reboot. IPv6 legacy
+  tables are not read: they cannot rewrite IPv4 traffic.
+- **Not bound to a listing.** The fact belongs to the receipt's heartbeat and is as fresh as
+  the receipt (10 s); a legacy table created after the read is seen on the next pass.
+- **Version skew.** The schema version is not raised. A new gateway with a receipt from an
+  older manager finds no `legacy_iptables` and refuses; an older gateway with a new receipt
+  refuses it as having an unknown field (strict decoding). Both refuse until the gateway and
+  the host-posture manager run the same release.
+
+Every captured node is decided as before with no legacy table: Calico, Cilium A/B/C (receipt
+path, whole reconcile), Flannel, the AWS, GKE-style and runtime fixtures (direct path, with a
+`/proc/net` that has no `ip_tables_names`), and the real reader in the test container, whose
+`/proc/net/ip_tables_names` is empty. Tests: `TestReadLegacyIPTables`,
+`TestHostNetFactsMustSayWhetherLegacyTablesExist`, `TestHostFactsReaderPublishesLegacyTables`,
+`TestNodeWithLegacyTablesIsNotReady` (Calico and Flannel through the receipt, Flannel
+direct; fails with the refusal removed), `TestGatewayTakesTheReceiptOnEveryObservation`.
+
 ### Which set the members belong to (review finding 7)
 
 The proof reads a set's members by the name the saved rule prints, and a rule holds its set by
