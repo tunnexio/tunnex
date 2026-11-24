@@ -14,6 +14,7 @@ import { useEffect, useId, useRef, useState } from "react";
 import { Link, Navigate, useLocation, useNavigate, useParams, useSearchParams } from "react-router-dom";
 import AppAccessAccess from "./AppAccessAccess";
 import AppAccessMyApplications from "./AppAccessMyApplications";
+import { OriginRangeNotice } from "../components/AppAccessOriginNotice";
 import AppAccessConnection from "../components/AppAccessConnection";
 import AppAccessPublication, { checkCoversDraft } from "../components/AppAccessPublication";
 import AppAccessSessions from "../components/AppAccessSessions";
@@ -286,7 +287,7 @@ function DraftEditor({ orgId, userId, appId, manage, grant = false, configureDom
           </dl>
           <p className="aa-editor-field-help">HTTPS verifies the origin hostname and certificate chain. Loopback, link-local, metadata and control plane destinations remain blocked.</p>
         </div></details>
-        {appId && version !== null && savedGateway && <AppAccessConnection embedded key={`${orgId}:${appId}:${version}:${savedGateway}`} orgId={orgId} appId={appId} gatewayId={savedGateway} version={version} revision={savedApplication?.draft.revision} onCheck={setReviewCheck} canCheck={editable && eligibleGateway === true} dirty={dirty} originUrl={savedDraft?.origin_url} allowedCidrs={savedDraft?.allowed_destination_cidrs} />}
+        {appId && version !== null && savedGateway && <AppAccessConnection embedded key={`${orgId}:${appId}:${version}:${savedGateway}`} orgId={orgId} appId={appId} gatewayId={savedGateway} version={version} revision={savedApplication?.draft.revision} onCheck={setReviewCheck} canCheck={editable && eligibleGateway === true} dirty={dirty} originUrl={savedDraft?.origin_url} allowedCidrs={savedDraft?.allowed_destination_cidrs} gateway={nodes.find(node => node.id === savedGateway)} />}
       </ResourceSummary>}
       {!readOnly && (step === "application" || step === "connection") && <ResourceSummary title={currentStep.title} headingLevel={2} className="aa-editor-editable-summary" description={currentStep.description} footer={editActions}>
         {settings && <Availability settings={settings} manage={manage} archived={archived} />}
@@ -304,7 +305,7 @@ function DraftEditor({ orgId, userId, appId, manage, grant = false, configureDom
             <AppAccessHostname value={draft.public_hostname} domain={settings?.base_domain ?? ""} original={savedApplication?.draft.public_hostname} onChange={value => change("public_hostname", value)} />
           </div></div>}
           {step === "connection" && <div className="aa-editor-card"><div className="app-access-form-fields space-y-5">
-            <div><Field label="Origin URL"><Input required type="url" placeholder="https://your-private-app" value={draft.origin_url} onChange={event => change("origin_url", event.target.value)} /></Field><p className="aa-editor-field-help">HTTP or HTTPS, with the app served at its root path.</p></div>
+            <div><Field label="Origin URL"><Input required type="url" placeholder="https://your-private-app" value={draft.origin_url} onChange={event => change("origin_url", event.target.value)} /></Field><p className="aa-editor-field-help">HTTP or HTTPS, with the app served at its root path.</p><OriginRangeNotice originUrl={draft.origin_url} allowed={draft.allowed_destination_cidrs ?? []} gatewayName={selectedGateway?.name} onAllow={editable ? allowDestination : undefined} /></div>
             <Field label="Gateway connector"><Select required value={draft.gateway_id} onChange={event => change("gateway_id", event.target.value)}><option value="">Select a gateway</option>{draft.gateway_id && !selectedGateway && <option value={draft.gateway_id} disabled>Assigned gateway is unavailable</option>}{nodes.filter(node => node.status === "active" || node.id === draft.gateway_id).map(node => <option key={node.id} value={node.id} disabled={node.status !== "active"}>{node.name} · {node.status === "active" ? "Active gateway" : "Revoked: choose an active gateway"}</option>)}</Select></Field>
             <p className="aa-editor-field-help">Gateway enrollment does not confirm App Access capability. Save the draft to inspect the connector and check its origin connection.</p>
             <details className="aa-editor-disclosure" open={advancedOpen} onToggle={event => setAdvancedOpen(event.currentTarget.open)}><summary>Advanced connection settings</summary><div className="aa-editor-disclosure-content space-y-5">
@@ -320,7 +321,7 @@ function DraftEditor({ orgId, userId, appId, manage, grant = false, configureDom
         </fieldset>
         {dirty && <p role="status" className="aa-editor-field-help">Unsaved changes stay in this tab when you move between Application and Connection.</p>}
         </form>
-        {appId && version !== null && savedGateway && step === "connection" && <AppAccessConnection embedded key={`${orgId}:${appId}:${version}:${savedGateway}`} orgId={orgId} appId={appId} gatewayId={savedGateway} version={version} revision={savedApplication?.draft.revision} onCheck={setReviewCheck} canCheck={editable && eligibleGateway === true} dirty={dirty} originUrl={savedDraft?.origin_url} allowedCidrs={savedDraft?.allowed_destination_cidrs} onAllowDestination={editable ? allowDestination : undefined} />}
+        {appId && version !== null && savedGateway && step === "connection" && <AppAccessConnection embedded key={`${orgId}:${appId}:${version}:${savedGateway}`} orgId={orgId} appId={appId} gatewayId={savedGateway} version={version} revision={savedApplication?.draft.revision} onCheck={setReviewCheck} canCheck={editable && eligibleGateway === true} dirty={dirty} originUrl={savedDraft?.origin_url} allowedCidrs={savedDraft?.allowed_destination_cidrs} gateway={nodes.find(node => node.id === savedGateway)} onAllowDestination={editable ? allowDestination : undefined} />}
       </ResourceSummary>}
       {appId && step === "access" && <ResourceSummary title={currentStep.title} headingLevel={2} className="aa-editor-access-summary" description={currentStep.description} footer={<div className="aa-editor-actions"><Button variant="ghost" onClick={() => move("connection")}>Back to connection</Button><Button onClick={() => move("review")}>Continue to review</Button></div>}>
         {settings && <Availability settings={settings} manage={manage} archived={archived} />}
@@ -336,3 +337,4 @@ function DraftEditor({ orgId, userId, appId, manage, grant = false, configureDom
     </div>
   </section>;
 }
+

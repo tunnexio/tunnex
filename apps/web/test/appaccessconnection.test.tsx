@@ -112,3 +112,23 @@ it("offers no one-click range when the origin is already allowed or the viewer c
   expect(screen.getByText(/192\.168\.1\.9 is a private address/)).toBeTruthy();
   expect(screen.queryByRole("button", { name: /^Allow / })).toBeNull();
 });
+
+// SA-UX-2 App Access
+it("explains an unreachable origin with firewall rules for the gateway and origin port (AA-2)", async () => {
+  fixture.result = "failed"; fixture.errorCode = "connect_failed";
+  render(<AppAccessConnection {...props} originUrl="https://10.20.0.5:8443" gateway={{ name: "onprem-gw-a", endpoint: "203.0.113.7:51820" }} />);
+  await screen.findByText(/supports Applications connection checks/);
+  fireEvent.click(screen.getByRole("button", { name: "Check saved connection" }));
+  await screen.findByText("Origin connection failed.", {}, { timeout: 3000 });
+  expect(screen.getByText("Can't reach the origin?")).toBeTruthy();
+  expect(screen.getByText(/--port 8443 --cidr 203\.0\.113\.7\/32/)).toBeTruthy();
+  expect(screen.queryByText(/connect_failed/)).toBeNull();
+});
+it("has human text with no raw code for every check failure code (AA-6)", async () => {
+  const { failures } = await import("../src/components/AppAccessConnection");
+  for (const [code, text] of Object.entries(failures)) {
+    if (!code) continue;
+    expect(text, code).not.toContain(code);
+    expect(text, code).not.toMatch(/[a-z]_[a-z]/);
+  }
+});
