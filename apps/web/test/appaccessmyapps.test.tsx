@@ -9,7 +9,7 @@ import { api } from "../src/lib/api";
 
 const orgId = "00000000-0000-4000-8000-000000000001";
 const appId = "00000000-0000-4000-8000-000000000002";
-const state = vi.hoisted(() => ({ appsFailed: false, sessionsFailed: false, revokeFailed: false, launchFailed: true, logoutFailed: false, availability: "available", items: [] as unknown[], sessions: [] as unknown[] }));
+const state = vi.hoisted(() => ({ appsFailed: false, sessionsFailed: false, revokeFailed: false, launchFailed: true, logoutFailed: false, availability: "available", items: [] as unknown[], sessions: [] as unknown[], launchError: null as null | { status: number; code: string; message: string } }));
 vi.mock("sonner", () => ({ toast: { error: vi.fn() } }));
 vi.mock("../src/lib/api", async importOriginal => {
   const original = await importOriginal<typeof import("../src/lib/api")>();
@@ -23,7 +23,7 @@ vi.mock("../src/lib/api", async importOriginal => {
       if (path.endsWith("/my-sessions")) return state.sessionsFailed ? { error: { error: { message: "Sessions unavailable" } } } : { data: { items: state.sessions.slice(0, limit), limit, offset } };
       throw new Error(`Unexpected path ${path}`);
     }),
-    POST: vi.fn(async (path: string) => path.endsWith("/logout") ? { ...(state.logoutFailed ? { error: { error: { message: "Retry sign-out" } } } : {}), response: { status: state.logoutFailed ? 503 : 204 } } : { error: { error: { code: "access_denied", message: "Application access denied" } }, response: { status: 403 } }),
+    POST: vi.fn(async (path: string) => path.endsWith("/logout") ? { ...(state.logoutFailed ? { error: { error: { message: "Retry sign-out" } } } : {}), response: { status: state.logoutFailed ? 503 : 204 } } : state.launchError ? { error: { error: { code: state.launchError.code, message: state.launchError.message } }, response: { status: state.launchError.status } } : { error: { error: { code: "access_denied", message: "Application access denied" } }, response: { status: 403 } }),
     DELETE: vi.fn(async (_path: string, options: { params: { path: { sessionId: string } } }) => { if (state.revokeFailed) return { error: { error: { message: "Revocation unavailable" } } }; state.sessions = state.sessions.filter(item => (item as { id: string }).id !== options.params.path.sessionId); return { response: { status: 204 } }; }),
   } };
 });
@@ -31,7 +31,7 @@ const originalLocation = Object.getOwnPropertyDescriptor(window, "location")!;
 const originalTop = Object.getOwnPropertyDescriptor(window, "top")!;
 afterEach(() => { cleanup(); vi.restoreAllMocks(); Object.defineProperty(window, "location", originalLocation); Object.defineProperty(window, "top", originalTop); });
 beforeEach(() => {
-  Object.assign(state, { appsFailed: false, sessionsFailed: false, revokeFailed: false, launchFailed: true, logoutFailed: false, availability: "available", items: [], sessions: [] });
+  Object.assign(state, { appsFailed: false, sessionsFailed: false, revokeFailed: false, launchFailed: true, logoutFailed: false, availability: "available", items: [], sessions: [], launchError: null });
   window.localStorage.clear(); window.sessionStorage.clear(); vi.clearAllMocks();
   vi.spyOn(window, "open").mockImplementation(() => pendingWindow().window);
 });
@@ -396,6 +396,20 @@ describe("member application access", () => {
     expect(api.POST).not.toHaveBeenCalled(); fireEvent.click(button);
     expect(await screen.findByRole("alert")).toHaveProperty("textContent", "Application access denied");
     expect(api.POST).toHaveBeenCalledWith("/api/v1/organizations/{orgId}/app-access/my-apps/{appId}/launch", { params: { path: { orgId, appId } }, body: { nonce_hash: "a".repeat(64), relative_target: "/reports" } });
+  });
+  it("explains the uniform launch denial as missing access, not an outage", async () => {
+    state.launchError = { status: 403, code: "browser_authority_unavailable", message: "application authority unavailable" };
+    show(launchPath);
+    fireEvent.click(await screen.findByRole("button", { name: "Continue to application" }));
+    const alert = await screen.findByRole("alert");
+    expect(alert.textContent).toBe("You can't open this application. Ask your administrator for access.");
+    expect(alert.textContent).not.toMatch(/authority|unavailable/i);
+  });
+  it.each(["app_access_unavailable", "app_authority_unavailable"])("keeps an outage message for infrastructure failure %s", async code => {
+    state.launchError = { status: 503, code, message: "application authority unavailable" };
+    show(launchPath);
+    fireEvent.click(await screen.findByRole("button", { name: "Continue to application" }));
+    expect((await screen.findByRole("alert")).textContent).toBe("Applications are temporarily unavailable. Try again in a few minutes.");
   });
   it("refuses duplicate nonce or external-target handoffs before issuing a code", async () => {
     show(`/app-access/launch?orgId=${orgId}&appId=${appId}&nonce_hash=${"a".repeat(64)}&nonce_hash=${"b".repeat(64)}&target=https%3A%2F%2Fevil.example`);
