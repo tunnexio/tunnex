@@ -6,8 +6,12 @@ Namespace: tunnex-system (fixed)
 DaemonSet: {{ include "tunnex-host-posture.fullname" . }}
 Journal: /var/lib/tunnex/host-posture/v1 (node-local hostPath)
 {{- if .Values.cilium.enabled }}
-Cilium: /var/run/cilium and /sys/fs/bpf are mounted read-only, so the manager
-can read what Cilium itself reports about masquerading.
+Cilium: /var/run/cilium and /sys/fs/bpf are mounted with readOnly, so the
+manager can read what Cilium itself reports about masquerading. readOnly stops
+file changes under those paths only: creating, replacing or removing a file,
+and pinning a BPF object. It does not limit calls on Cilium's API socket, and a
+pinned map can still be opened for writing (BPF_OBJ_GET). The manager is
+privileged either way; it sends one GET and dumps one map.
 {{- end }}
 
 A manager on a node with no gateway pod is idle: its state directory holds
