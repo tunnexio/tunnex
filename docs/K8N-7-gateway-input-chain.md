@@ -304,3 +304,104 @@ last-owner cleanup deletes the whole table.
   `wg0` to a local socket without the netfilter input hook. Neither attaches to `wg0` as far as read,
   but that was not checked on a live node.
 - The OpenVPN DNS observation (row 10). It is read from `SO_BINDTODEVICE` semantics, not run.
+
+## As built and verified (2026-11-24)
+
+Rebased onto `story/kubernetes-next` at 85b89323 (the Cilium host-routing commits).
+
+### Functions changed
+
+- `apps/node/internal/egress/egress_linux.go`:
+  - `rulesetWith`: two new slots, one per family, for the input chain. VM mode renders them empty,
+    so its text is byte for byte as before.
+  - new `k8sInputChain`;
+  - `hostPostureStoppedRuleset`: also removes `input` and re-declares it as the stopped guard;
+  - `stoppedTunnelDropComment`: now the shared `k8snetprep.StoppedTunnelDropRuleComment`, same
+    text;
+  - `ReadAppliedOVPNTunnel`: in Kubernetes mode it also requires the input drop over exactly the
+    tunnel set;
+  - new `parseInputTunnelDropInterfaces` and `inputTunnelDropReadbackRE`;
+  - new `SetAIVPNListener` and the `aiVPNInput` field.
+- `apps/node/internal/egress/egress_other.go`: the `SetAIVPNListener` stub.
+- `apps/node/cmd/agent/main.go`: `egressMgr.SetAIVPNListener(aiVPN != nil)` after the AI VPN runtime
+  is configured.
+- `apps/node/internal/k8snetprep/types.go`: the rule markers and ports, shared by the renderer and
+  the check.
+- `apps/node/internal/k8snetprep/aws_linux.go`: `validateHookCoverage` calls `validateTunnexInput`
+  first.
+- `apps/node/internal/k8snetprep/tunnex_input_linux.go` (new):
+  - `validateTunnexInput` and `validateTunnexInputRules`;
+  - `tunnexInputReply`, `tunnexInputListener`, `tunnexInputDrop` and `tunnexInputIngress`;
+  - `knownTunnexHooks`.
+- Unchanged:
+  - `hostposture`: every one of its checks reads only the marker chain;
+  - `ipsec`;
+  - `dnat_linux.go`: the emergency path flushes only `prerouting`.
+
+### Tests
+
+- `egress/input_chain_k8s_linux_test.go`:
+  - the exact chain in both families;
+  - the AI VPN line only when configured, IPv4 only, and its port equal to `aivpn.HTTPPort`;
+  - the OpenVPN set;
+  - the same chain in the cold start, nil, refused-version, enforcing (with a grant over the node
+    network), mesh and emergency states;
+  - VM mode: no input chain, and the rest of the text identical to Kubernetes mode;
+  - `nft -c` of the running table, and of the stop over it;
+  - the readback: absent, leaves `tun0` open, two drops, an extra statement, and a VM;
+  - drift against the captured rendering.
+- `egress/stop_ruleset_linux_test.go`: the exact stop text with the input guard, and the set form.
+- `k8snetprep/tunnex_input_linux_test.go`:
+  - an accept table: none, empty, running, AI VPN, the OpenVPN set, stopped;
+  - 36 near-misses through `Reconcile`;
+  - a restart over the three real-kernel captures, each read twice with no mutation, plus a
+    `tun0`-open refusal over the same listing.
+- `k8snetprep/testdata/k8n7-input{,-openvpn,-stopped}.nft-ruleset.json` and
+  `k8n7-input.rendered.nft`: the listings from nft 1.1.6, written by the witness.
+- `TestGatewayInputChainKernel` (opt in with `TUNNEX_TEST_INPUT_CHAIN_KERNEL=1`, privileged). The
+  shell's proof lines, all present:
+  - `RELEASED_DEVICE_REACHES_KUBELET_VIA_TUNNEL_ADDRESS`, `…_VIA_NODE_ADDRESS`: the control;
+  - `FIRST_START_READY`, over the released table;
+  - `RUNNING_NODE_CLOSED_TO_DEVICE`: 10250 on the tunnel address, on the node address and on their
+    IPv6 twins, and the node-address DNS on TCP 53, all time out;
+  - `RUNNING_DNS_OPEN_TO_DEVICE`: UDP and TCP 53 on the tunnel address, the DNS VIP and the IPv6
+    tunnel address answer, with the device's own source;
+  - `RUNNING_NODE_OPENED_CONNECTION_GETS_REPLY`, IPv4 and IPv6;
+  - `RUNNING_NODE_NETWORK_UNTOUCHED`;
+  - `RUNNING_INPUT_DROP_COUNTED` (`counter packets 6` in IPv4, `4` in IPv6);
+  - `STOPPED_NODE_CLOSED_TO_DEVICE`, `STOPPED_DNS_CLOSED_TO_DEVICE`, `STOPPED_NODE_NETWORK_UNTOUCHED`;
+  - after a restart over the stopped table: `RESTART_OVER_STOPPED_TABLE_ACCEPTED` (the check before
+    anything is loaded), `RESTART_NODE_CLOSED_TO_DEVICE`, `RESTART_DNS_OPEN_TO_DEVICE`,
+    `RESTART_NODE_OPENED_CONNECTION_GETS_REPLY`, `RESTART_NODE_NETWORK_UNTOUCHED`;
+  - `RESTART_OVER_RUNNING_TABLE_ACCEPTED`;
+  - `RESTART_OVER_RELEASED_TABLE_ACCEPTED`: a released process over our table (empty input chain),
+    then a new start;
+  - `NEAR_MISSES_STILL_REFUSED`: five rules or chains written into the live tables, each refused,
+    each removed by the next pass;
+  - `OPENVPN_SET_FORM_ACCEPTED`, `OPENVPN_NODE_CLOSED_TO_DEVICE`;
+  - `KILL_LEAVES_NODE_CLOSED`;
+  - `MANAGER_DELETE_IS_THE_CONTROL`: after the manager's table delete the kubelet answers again.
+
+  The manager's `ValidateNFTMarkerChain` passed on the real kernel's marker after the start, the
+  stop and every restart.
+
+### Run
+
+All runs were in `golang:1.26.11-alpine` on Docker's Linux kernel, with nftables 1.1.6.
+
+- With `--cap-add=NET_ADMIN`, in `apps/node`:
+  - `gofmt -l .`: empty;
+  - `go vet ./...` and `GOOS=linux go vet ./internal/egress/`: clean. This also compiles
+    `cilium_service_reach_kernel_linux_test.go` with `TestCiliumHostRoutingGrantKernel`;
+  - `go build ./...`: clean;
+  - `go test ./internal/egress/... ./internal/k8snetprep/... ./internal/hostposture/...
+    ./internal/ownershiplease/... ./cmd/agent/... -count=1`: all `ok`.
+- With `--privileged`, one container each:
+  - `TestGatewayInputChainKernel` PASS (60 s);
+  - `TestGatewayStopStateKernel` PASS;
+  - `TestK8sAPIReturnPathKernel` PASS;
+  - `TestSiteLANMasqueradeKernel` PASS;
+  - `TestK8sDNATKernelPrinterRoundTrip` PASS. It needs `--privileged` for `unshare`; under
+    NET_ADMIN alone it fails at `unshare`, before and after this change.
+- Not run: `TestCiliumServiceReachKernel` and `TestCiliumHostRoutingGrantKernel`. They are written
+  for a kind node, and kind was not used. They compile.
