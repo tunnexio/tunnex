@@ -4,7 +4,7 @@ import { StrictMode } from "react";
 import { MemoryRouter } from "react-router-dom";
 import BrowserTerminal from "../src/pages/BrowserTerminal";
 const state=vi.hoisted(()=>({terminal:null as any,pasted:[] as string[],selected:"",selectionChanged:null as any,multi:false,empty:false,serverCount:1,accountCount:1,developer:false,admin:false,recording:false,failed:false,connect:false,ready:true,sshPort:22,orgEnabled:true,serverEnabled:true,checkError:false,verified:false,installationOff:false,cpAdmin:false,requests:[] as string[],bodies:[] as unknown[]}));
-vi.mock("../src/lib/auth",()=>({useAuth:()=>({state:{status:"authed",user:{id:"user-1",email_verified:true,cp_admin:state.cpAdmin}}})}));
+vi.mock("../src/lib/auth",()=>{const value=()=>({state:{status:"authed",user:{id:"user-1",email_verified:true,cp_admin:state.cpAdmin}}});return {useAuth:value,useOptionalAuth:value}});
 vi.mock("../src/lib/useOrg",()=>({useOrg:()=>({org:{id:"org-1"},failed:false})}));
 vi.mock("../src/components/MfaSettings",()=>({MfaSettings:()=> <div>Existing account MFA setup</div>}));
 vi.mock("@xterm/xterm",()=>({Terminal:class{rows=24;cols=80;constructor(){state.terminal=this}onSelectionChange(cb:any){state.selectionChanged=cb;return {dispose(){}}}getSelection(){return state.selected}paste(text:string){state.pasted.push(text);this.data?.(text)}data:any;loadAddon(){}open(){}focus(){}write(){}dispose(){}onData(cb:any){this.data=cb;return {dispose(){}}}}}));
@@ -354,3 +354,20 @@ it("installation-off Server Access links server administrators to the installati
  expect(screen.getByText("Server Access is off on this installation")).toBeTruthy();expect(screen.getByText(/turn it on in Settings/)).toBeTruthy()});
 it("installation-off Server Access tells other users to ask a server administrator, without a settings link",async()=>{state.installationOff=true;mount();
  expect(await screen.findByText(/Ask a server administrator to turn it on/)).toBeTruthy();expect(screen.queryByRole("link",{name:"Open Server Access settings"})).toBeNull()});
+it("an ended terminal explains an installation-off shutdown instead of pointing at unreachable Sessions (SA-UI-1)",async()=>{
+ state.connect=true;let socket:any;
+ vi.stubGlobal("WebSocket",class {static OPEN=1;readyState=1;constructor(){socket=this}onmessage:any;onclose:any;send(){}close(){}});vi.stubGlobal("ResizeObserver",class{observe(){}disconnect(){}});
+ try{mount();await openServer();fireEvent.click(await screen.findByRole("button",{name:"Connect as fixture"}));await screen.findByLabelText("SSH terminal for fixture");await waitFor(()=>expect(socket).toBeTruthy());
+ state.installationOff=true;act(()=>socket.onclose({}));
+ expect(await screen.findByText(/Session ended because Server Access was turned off for this installation/)).toBeTruthy();
+ expect(screen.queryByText(/Review the reason in Sessions/)).toBeNull();
+ }finally{cleanup();vi.unstubAllGlobals()}
+});
+it("an ended terminal still points at Sessions while Server Access is on",async()=>{
+ state.connect=true;let socket:any;
+ vi.stubGlobal("WebSocket",class {static OPEN=1;readyState=1;constructor(){socket=this}onmessage:any;onclose:any;send(){}close(){}});vi.stubGlobal("ResizeObserver",class{observe(){}disconnect(){}});
+ try{state.admin=true;mount();await openServer();fireEvent.click(await screen.findByRole("button",{name:"Connect as fixture"}));await screen.findByLabelText("SSH terminal for fixture");await waitFor(()=>expect(socket).toBeTruthy());
+ act(()=>socket.onclose({}));
+ await waitFor(()=>expect(screen.getByText(/Review the reason in Sessions/)).toBeTruthy());
+ }finally{cleanup();vi.unstubAllGlobals()}
+});

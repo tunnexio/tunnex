@@ -2,10 +2,13 @@ import { useState } from "react";
 import { api, apiErrorMessage } from "../lib/api";
 import { Button, ErrorText, Field, Input } from "./ui";
 import { MfaSettings } from "./MfaSettings";
+import { useOptionalAuth } from "../lib/auth";
 import { Icon } from "./Icon";
 
 export function InlineTerminalMfa({action, freshnessSeconds=900, onVerified, onCancel}:{action:string;freshnessSeconds?:number;onVerified:()=>void|Promise<void>;onCancel:()=>void}) {
  const [showSetup,setShowSetup]=useState(false);
+ // A confirmed factor is reported as a recovery-code count (even 0). Offer setup only when there is none or it is unknown.
+ const auth=useOptionalAuth();const enrolled=auth?.state.status==="authed"&&typeof auth.state.user.recovery_codes_remaining==="number";
  const [code,setCode]=useState(""),[busy,setBusy]=useState(false),[error,setError]=useState("");
  async function verify(){if(busy||!code.trim())return;setBusy(true);setError("");
   try {const result=await api.POST("/api/v1/auth/mfa/step-up",{body:{code:code.trim()}});
@@ -20,6 +23,6 @@ export function InlineTerminalMfa({action, freshnessSeconds=900, onVerified, onC
    <div className="tnx-inline-mfa-entry"><Field label="Authenticator or recovery code"><Input required autoFocus autoComplete="one-time-code" placeholder="Enter code" value={code} onChange={e=>setCode(e.target.value)} disabled={busy}/></Field><div className="tnx-inline-mfa-actions"><Button type="submit" disabled={busy||!code.trim()}>{busy?"Verifying…":"Verify and continue"}</Button><Button type="button" variant="ghost" aria-label="Cancel verification" disabled={busy} onClick={onCancel}>Cancel</Button></div></div>
    <ErrorText>{error}</ErrorText>
   </form>
-  <details className="tnx-inline-mfa-setup" onToggle={e=>setShowSetup(e.currentTarget.open)}><summary>Authenticator setup</summary>{showSetup&&<MfaSettings setupLabel="Set up MFA" onEnrolled={()=>void onVerified()} signInReturnTo="/browser-access/terminal"/>}</details>
+  {!enrolled&&<details className="tnx-inline-mfa-setup" onToggle={e=>setShowSetup(e.currentTarget.open)}><summary>Authenticator setup</summary>{showSetup&&<MfaSettings setupLabel="Set up MFA" onEnrolled={()=>void onVerified()} signInReturnTo="/browser-access/terminal"/>}</details>}
  </section>;
 }
