@@ -1,0 +1,11 @@
+apiVersion: crd.projectcalico.org/v1
+kind: FelixConfiguration
+metadata: {name: default}
+spec:
+  bpfEnabled: true
+  bpfKubeProxyIptablesCleanupEnabled: true
+  # On kind (Docker Desktop kernel 6.8) Felix panicked attaching the connect-time load
+  # balancer to the cgroup ("BPFConnTimeLBEnabled but failed to attach connect-time load
+  # balancer"). Turned off for this walk; host-networked NAT then takes its place.
+  bpfConnectTimeLoadBalancing: Disabled
+  bpfHostNetworkedNATWithoutCTLB: Enabled

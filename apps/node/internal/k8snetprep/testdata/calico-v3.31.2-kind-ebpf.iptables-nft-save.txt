@@ -1,0 +1,76 @@
+*mangle
+:PREROUTING ACCEPT [0:0]
+:INPUT ACCEPT [0:0]
+:FORWARD ACCEPT [0:0]
+:OUTPUT ACCEPT [0:0]
+:POSTROUTING ACCEPT [0:0]
+:KUBE-IPTABLES-HINT - [0:0]
+:KUBE-KUBELET-CANARY - [0:0]
+COMMIT
+*raw
+:PREROUTING ACCEPT [0:0]
+:OUTPUT ACCEPT [0:0]
+:cali-OUTPUT - [0:0]
+:cali-PREROUTING - [0:0]
+:cali-to-host-endpoint - [0:0]
+:cali-untracked-policy - [0:0]
+-A PREROUTING -m comment --comment "cali:6gwbT8clXdHdC1b1" -j cali-PREROUTING
+-A OUTPUT -m comment --comment "cali:tVnHkvAo15HuiPy0" -j cali-OUTPUT
+-A cali-OUTPUT -m comment --comment "cali:9usn1MLAmiWcEzK9" -j MARK --set-xmark 0x0/0x200b0000
+-A cali-OUTPUT -m comment --comment "cali:rw14CDfitDvXuw1U" -j cali-to-host-endpoint
+-A cali-OUTPUT -m comment --comment "cali:Jy7jGN6ZZ0pMt-sh" -m mark --mark 0x10000/0x10000 -j MARK --set-xmark 0x3000000/0xffffffff
+-A cali-OUTPUT -m comment --comment "cali:bZNA2Mv4IYg6cORf" -m mark --mark 0x3000000 -j ACCEPT
+-A cali-PREROUTING -m comment --comment "cali:kA0qui3F5xDVmQKE" -m comment --comment "Jump to target for packets with Bypass mark" -m mark --mark 0x3500000 -g cali-untracked-policy
+-A cali-PREROUTING -m comment --comment "cali:VTIw4WxM-WOYpn6s" -m comment --comment "Mark traffic towards the host - it is TRACKed" -m addrtype --dst-type LOCAL -j MARK --set-xmark 0x1100000/0x1100000
+-A cali-untracked-policy -m comment --comment "cali:Y7o_kzdWug6w9r_o" -j MARK --set-xmark 0x0/0x1ff00000
+-A cali-untracked-policy -m comment --comment "cali:8w6nBt3Q7qK4eWUh" -j NOTRACK
+COMMIT
+*filter
+:INPUT ACCEPT [0:0]
+:FORWARD ACCEPT [0:0]
+:OUTPUT ACCEPT [0:0]
+:KUBE-FIREWALL - [0:0]
+:KUBE-KUBELET-CANARY - [0:0]
+:cali-to-wl-dispatch - [0:0]
+-A INPUT -m comment --comment "cali:zkuE8qdwsVpH6Kd2" -m comment --comment "Accept packets from flows that pre-date BPF." -m mark --mark 0x5000000/0x5000000 -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT
+-A INPUT -p tcp -m comment --comment "cali:yZFRZmIXI6AqI8Di" -m comment --comment "REJECT/rst packets from unknown TCP flows." -m mark --mark 0x5000000/0x5000000 -j REJECT --reject-with tcp-reset
+-A INPUT -m comment --comment "cali:d6kO_Tm_dMRk4KKT" -m comment --comment "Drop packets from unknown non-TCP flows." -m mark --mark 0x5000000/0x5000000 -j DROP
+-A INPUT -i cali+ -m comment --comment "cali:JheEucsDZYJ7ze_r" -m mark --mark 0x1000000/0x1000000 -j ACCEPT
+-A INPUT -i cali+ -m comment --comment "cali:R-egD3QPpT8eWthR" -m mark ! --mark 0x1000000/0x1000000 -j DROP
+-A INPUT -j KUBE-FIREWALL
+-A FORWARD -m comment --comment "cali:umcmOn0WnTNOKJrp" -m comment --comment "Pre-approved by BPF programs." -m mark --mark 0x3000000/0x3000000 -j ACCEPT
+-A FORWARD -i cali+ -m comment --comment "cali:NnQ109Z-tVFkJGc1" -m comment --comment "From workload without BPF seen mark" -m mark ! --mark 0x1000000/0x1000000 -j DROP
+-A FORWARD -m comment --comment "cali:YmI_zfAgHIHbINEV" -m comment --comment "Mark pre-established flows." -m conntrack --ctstate RELATED,ESTABLISHED -j MARK --set-xmark 0x8000000/0x8000000
+-A FORWARD -o cali+ -m comment --comment "cali:-EFgmtwMJVO64q9s" -m comment --comment "To workload, check workload is known." -j cali-to-wl-dispatch
+-A FORWARD -i cali+ -m comment --comment "cali:wP1i1sEU71uRzM5d" -m comment --comment "To workload, mark has already been verified." -j ACCEPT
+-A FORWARD -i bpfout.cali -m comment --comment "cali:3t5V_2xe4DFVlHBq" -m comment --comment "From " -m comment --comment "bpfout.cali" -m comment --comment " device, mark verified, accept." -j ACCEPT
+-A OUTPUT -m comment --comment "cali:CD7jZCSqPP_KjGsd" -m comment --comment "Mark pre-established flows." -m conntrack --ctstate RELATED,ESTABLISHED -j MARK --set-xmark 0x8000000/0x8000000
+-A OUTPUT -j KUBE-FIREWALL
+-A KUBE-FIREWALL ! -s 127.0.0.0/8 -d 127.0.0.0/8 -m comment --comment "block incoming localnet connections" -m conntrack ! --ctstate RELATED,ESTABLISHED,DNAT -j DROP
+-A cali-to-wl-dispatch -m comment --comment "cali:7KNphB1nNHw80nIO" -m comment --comment "Unknown interface" -j DROP
+COMMIT
+*nat
+:PREROUTING ACCEPT [335:20100]
+:INPUT ACCEPT [26:1609]
+:OUTPUT ACCEPT [1561:93660]
+:POSTROUTING ACCEPT [1583:95116]
+:DOCKER_OUTPUT - [0:0]
+:DOCKER_POSTROUTING - [0:0]
+:KUBE-KUBELET-CANARY - [0:0]
+:cali-POSTROUTING - [0:0]
+:cali-fip-snat - [0:0]
+:cali-nat-outgoing - [0:0]
+-A PREROUTING -d 192.168.5.2/32 -j DOCKER_OUTPUT
+-A OUTPUT -d 192.168.5.2/32 -j DOCKER_OUTPUT
+-A POSTROUTING -m comment --comment "cali:O3lYWMrLQYEMJtB5" -j cali-POSTROUTING
+-A POSTROUTING -d 192.168.5.2/32 -j DOCKER_POSTROUTING
+-A DOCKER_OUTPUT -d 192.168.5.2/32 -p tcp -m tcp --dport 53 -j DNAT --to-destination 127.0.0.11:36335
+-A DOCKER_OUTPUT -d 192.168.5.2/32 -p udp -m udp --dport 53 -j DNAT --to-destination 127.0.0.11:50189
+-A DOCKER_POSTROUTING -s 127.0.0.11/32 -p tcp -m tcp --sport 36335 -j SNAT --to-source 192.168.5.2:53
+-A DOCKER_POSTROUTING -s 127.0.0.11/32 -p udp -m udp --sport 50189 -j SNAT --to-source 192.168.5.2:53
+-A cali-POSTROUTING -m comment --comment "cali:ggLCSZ9_r9uXnHIo" -m comment --comment "BPF loopback SNAT" -m mark --mark 0x3600000/0x3f00000 -j MASQUERADE --random-fully
+-A cali-POSTROUTING -m comment --comment "cali:THrmnLhAi3cxMLBO" -j cali-fip-snat
+-A cali-POSTROUTING -m comment --comment "cali:ez7mOi3T8N6rtIlJ" -j cali-nat-outgoing
+-A cali-POSTROUTING -o tunl0 -m comment --comment "cali:pSEn2f1JTKrHlo8S" -m addrtype ! --src-type LOCAL --limit-iface-out -m addrtype --src-type LOCAL -j MASQUERADE --random-fully
+-A cali-nat-outgoing -m comment --comment "cali:k9SjE1bWVYbIZgCm" -m mark --mark 0x3800000/0x3f00000 -j MASQUERADE --random-fully
+COMMIT

@@ -111,12 +111,12 @@ func (r *Reconciler) detectCiliumWithLinks(snapshot *cniSnapshot) (string, []str
 //   - the network devices bpfin.cali and bpfout.cali
 //     (dataplane/linux/dataplanedefs), which Felix creates in BPF mode unless
 //     host-networked NAT is off (the default, connect-time load balancing for
-//     TCP only, leaves it on);
+//     TCP only, leaves it on; seen on kind, docs/K8N-2-cilium.md);
 //   - the raw-table chains cali-untracked-policy and cali-untracked-flows,
 //     which Felix renders only in BPF mode (rules/static.go,
 //     StaticBPFModeRawChains; dataplane/linux/int_dataplane.go,
-//     setUpIptablesBPF). The name is matched inside a longer one too, in case
-//     a backend prefixes it.
+//     setUpIptablesBPF); cali-untracked-policy was seen on kind. The name is
+//     matched inside a longer one too, in case a backend prefixes it.
 //
 // The captured Calico node (iptables dataplane) shows neither.
 var (
@@ -131,7 +131,10 @@ const ReasonCalicoEBPF = "Calico's eBPF dataplane runs on this node and is not s
 // detectCalicoEBPF names the first signal of Calico's eBPF dataplane among the
 // sorted device names and the listing's chains, or returns "".
 func detectCalicoEBPF(links []string, snapshot *cniSnapshot) string {
-	for _, name := range links {
+	for _, link := range links {
+		// `ip -o link` shows a veth as name@peer; the kernel's name is
+		// before the @.
+		name, _, _ := strings.Cut(link, "@")
 		for _, device := range calicoEBPFDevices {
 			if name == device {
 				return "network device " + name

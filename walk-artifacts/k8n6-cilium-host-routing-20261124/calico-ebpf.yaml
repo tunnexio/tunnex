@@ -1,0 +1,9 @@
+# Calico v3.31.2 from its unchanged calico.yaml, switched to the eBPF dataplane the documented
+# way for a manifest install without kube-proxy: the API server endpoint for calico-node,
+# then bpfEnabled in the default FelixConfiguration.
+apiVersion: v1
+kind: ConfigMap
+metadata: {name: kubernetes-services-endpoint, namespace: kube-system}
+data:
+  KUBERNETES_SERVICE_HOST: tnx-hr-control-plane
+  KUBERNETES_SERVICE_PORT: "6443"

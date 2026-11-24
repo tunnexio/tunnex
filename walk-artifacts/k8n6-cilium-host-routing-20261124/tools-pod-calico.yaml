@@ -1,0 +1,23 @@
+# The tools pod of tools-pod.yaml without the Cilium socket path (a Calico node has none).
+apiVersion: v1
+kind: Pod
+metadata: {name: tools, namespace: kube-system}
+spec:
+  hostNetwork: true
+  hostPID: false
+  nodeName: tnx-hr-control-plane
+  tolerations: [{operator: Exists}]
+  containers:
+  - name: tools
+    image: tnx-hr-tools:k8n6
+    imagePullPolicy: Never
+    command: ["sleep", "infinity"]
+    securityContext: {privileged: true, runAsUser: 0}
+    volumeMounts:
+    - {name: bpf, mountPath: /sys/fs/bpf, readOnly: true, mountPropagation: HostToContainer}
+    - {name: state, mountPath: /var/lib/tnx-hr}
+    - {name: modules, mountPath: /lib/modules, readOnly: true}
+  volumes:
+  - {name: bpf, hostPath: {path: /sys/fs/bpf, type: Directory}}
+  - {name: state, hostPath: {path: /var/lib/tnx-hr, type: DirectoryOrCreate}}
+  - {name: modules, hostPath: {path: /lib/modules, type: Directory}}
