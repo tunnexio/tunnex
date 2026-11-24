@@ -121,4 +121,21 @@ grep -Fq 'TUNNEX_RELEASE_CATALOG_URL' "$ROOT/deploy/upgrade.sh"
 grep -Fq 'releaseverify -manifest /tmp/tunnex-release.json -public-key "$1" -print-env' "$ROOT/deploy/upgrade.sh"
 grep -Fq 'chmod 0644 "$DIR/release.json"' "$ROOT/deploy/upgrade.sh"
 
+# UPG-2: host code is authenticated through the signed API image digest only.
+# The upgrade never fetches host files from a URL, hands off before any
+# admission guard or image pull, and pins the API image by digest.
+! grep -Fq 'raw.githubusercontent.com' "$ROOT/deploy/upgrade.sh"
+handoff_line=$(grep -n '^# BEGIN UPG-2 TARGET HAND-OFF$' "$ROOT/deploy/upgrade.sh" | cut -d: -f1)
+admit_line=$(grep -n '^admit_app_access "$_aa_upgrade_directory"$' "$ROOT/deploy/upgrade.sh" | cut -d: -f1)
+pull_line=$(grep -n 'docker pull ' "$ROOT/deploy/upgrade.sh" | head -1 | cut -d: -f1)
+[ -n "$handoff_line" ] && [ "$handoff_line" -lt "$admit_line" ] && [ "$handoff_line" -lt "$pull_line" ]
+grep -Fq "grep -Eqx 'ghcr\.io/tunnexio/tunnex-api@sha256:[0-9a-f]{64}'" "$ROOT/deploy/upgrade.sh"
+grep -Fq 'docker create --pull never --network none "$HO_IMAGE"' "$ROOT/deploy/upgrade.sh"
+# release.json cannot gain fields: installed verifiers decode it strictly and
+# sign the canonical struct. New signed metadata needs a detached descriptor.
+grep -Fq 'decoder.DisallowUnknownFields()' "$ROOT/apps/api/internal/release/manifest.go"
+manifest_fields=$(awk '/^type Manifest struct \{/{inside=1; next} inside && /^\}/{exit} inside {print $NF}' "$ROOT/apps/api/internal/release/manifest.go" | tr '\n' ' ')
+[ "$manifest_fields" = '`json:"schema_version"` `json:"sequence"` `json:"version"` `json:"source_sha"` `json:"published_at"` `json:"min_protocol"` `json:"compatibility"` `json:"downtime"` `json:"release_notes_url"` `json:"images"` `json:"managed_agent_runtime"` ' ] || {
+  echo "release.json schema changed: $manifest_fields" >&2; exit 1; }
+
 echo 'signed successful-main release contract: PASS'

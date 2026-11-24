@@ -839,4 +839,66 @@ grep -Fxq 'state=healthy' "$runner_status"
 cmp -s "$MOCK_HOST_FILES/upgrade.sh" "$copy_dir/root/upgrade.sh"
 grep -Fq "create --pull never --network none $API_IMAGE" "$copy_dir/docker.log"
 
+# ---------------------------------------------------------------------------
+# UPG-2 U6, population 1: a v0.1.45 host with the dashboard runner and no App
+# Access. Its old helper applies the first UPG-2 release and, being privileged,
+# installs the new helper from the release source; the next upgrade hands off.
+if git -C "$ROOT" cat-file -e v0.1.45:deploy/upgrade.sh 2>/dev/null; then
+  mkdir -p "$TMP/bin-legacy"
+  cat >"$TMP/bin-legacy/curl" <<'SH'
+#!/bin/sh
+set -eu
+[ "$1" = -fsSL ] && [ "$3" = -o ]
+case "$2" in
+  https://updates.example.test/release.json) cp "$MOCK_CATALOG" "$4" ;;
+  https://raw.githubusercontent.com/tunnexio/tunnex/*/deploy/tunnex.yml) "$MOCK_BIN/mock-compose" "$4" ;;
+  https://raw.githubusercontent.com/tunnexio/tunnex/*/deploy/upgrade.sh) cp "$MOCK_ROOT/deploy/upgrade.sh" "$4" ;;
+  https://raw.githubusercontent.com/tunnexio/tunnex/*/deploy/upgrade-runner.sh) cp "$MOCK_ROOT/deploy/upgrade-runner.sh" "$4" ;;
+  *) echo "unexpected curl URL: $2" >&2; exit 1 ;;
+esac
+SH
+  # v0.1.45 validates bundled dumps with the host pg_restore.
+  printf '%s\n' '#!/bin/sh' 'head -c 5 "$2" | grep -Fxq PGDMP' >"$TMP/bin-legacy/pg_restore"
+  # Not root here: keep everything but the ownership change.
+  cat >"$TMP/bin-legacy/install" <<'SH'
+#!/bin/sh
+set -eu
+for argument in "$@"; do
+  shift
+  case "$argument" in -o|-g) skip=1; continue ;; esac
+  if [ "${skip:-}" = 1 ]; then skip=; continue; fi
+  set -- "$@" "$argument"
+done
+exec /usr/bin/install "$@"
+SH
+  chmod 0755 "$TMP/bin-legacy/curl" "$TMP/bin-legacy/pg_restore" "$TMP/bin-legacy/install"
+  make_copy_install legacy
+  git -C "$ROOT" show v0.1.45:deploy/upgrade.sh >"$copy_dir/upgrade.sh"
+  chmod 0755 "$copy_dir/upgrade.sh"
+  (cd "$copy_dir" && PATH="$TMP/bin-legacy:$TMP/bin:$PATH" MOCK_BIN="$TMP/bin" MOCK_ROOT="$ROOT" \
+    MOCK_CATALOG="$TMP/catalog.json" MOCK_DOCKER_LOG="$copy_dir/docker.log" \
+    TUNNEX_RELEASEVERIFY="$TMP/bin/releaseverify" TUNNEX_UPGRADE_STATUS_FILE="$copy_dir/status" \
+    TUNNEX_ROOT_UPGRADE_DIR="$copy_dir/root" TUNNEX_UPGRADE_PRIVILEGED=1 TUNNEX_UPGRADE_REQUEST_ID=legacy-first \
+    ./upgrade.sh --apply) >"$copy_dir/output" 2>&1 || { cat "$copy_dir/output" >&2; exit 1; }
+  grep -Fxq 'state=healthy' "$copy_dir/status"
+  # The old helper did not hand off (it cannot) but installed the new one.
+  ! grep -Fq 'create --pull never' "$copy_dir/docker.log"
+  cmp -s "$ROOT/deploy/upgrade.sh" "$copy_dir/upgrade.sh"
+  cmp -s "$ROOT/deploy/upgrade.sh" "$copy_dir/root/upgrade.sh"
+  cmp -s "$ROOT/deploy/upgrade-runner.sh" "$copy_dir/root/upgrade-runner.sh"
+  # The next dashboard upgrade runs the installed root copy, which hands off.
+  : >"$copy_dir/docker.log"
+  (cd "$copy_dir" && PATH="$TMP/bin:$PATH" MOCK_CATALOG="$TMP/catalog.json" MOCK_DOCKER_LOG="$copy_dir/docker.log" \
+    TUNNEX_RELEASEVERIFY="$TMP/bin/releaseverify" TUNNEX_UPGRADE_STATUS_FILE="$copy_dir/status" TUNNEX_DIR="$copy_dir" \
+    TUNNEX_ROOT_UPGRADE_DIR="$copy_dir/root" TUNNEX_UPGRADE_PRIVILEGED=1 TUNNEX_UPGRADE_REQUEST_ID=legacy-second \
+    "$copy_dir/root/upgrade.sh" --apply) >"$copy_dir/output" 2>&1 || { cat "$copy_dir/output" >&2; exit 1; }
+  grep -Fxq 'request_id=legacy-second' "$copy_dir/status"
+  grep -Fxq 'state=healthy' "$copy_dir/status"
+  [ "$(sed -n 2p "$copy_dir/docker.log")" = "create --pull never --network none $API_IMAGE" ]
+  cmp -s "$MOCK_HOST_FILES/upgrade.sh" "$copy_dir/root/upgrade.sh"
+  echo 'v0.1.45 bootstrap: first upgrade installed the hand-off helper; the next one handed off'
+else
+  echo 'v0.1.45 bootstrap rehearsal skipped: tag v0.1.45 is not available in this checkout'
+fi
+
 echo 'upgrade apply contract passed'
