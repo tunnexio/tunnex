@@ -88,30 +88,43 @@ func wantCiliumRefusal(t *testing.T, name string, f *calicoTestKernel, status Re
 // chains in the capture carry the detection here.
 //
 //	A  eBPF masquerade, ip-masq-agent off: refused, and the customer is told
-//	   what to add; ready only for a range inside the native-routing range.
-//	B  eBPF masquerade, the range in the ip-masq-agent map: ready, proved by
-//	   the map entry.
+//	   what to add; for a range inside the native-routing range the
+//	   masquerade proof holds, and the node is refused for its BPF host
+//	   routing (K8N-6; ready before).
+//	B  eBPF masquerade, the range in the ip-masq-agent map: the masquerade
+//	   proof holds by the map entry, and the node is refused for its BPF host
+//	   routing (K8N-6; ready before).
 //	B, then the ip-masq-agent turned off: refused again.
-//	C  iptables masquerade: the rule walk decides, and it accepts the real
-//	   rules.
+//	C  iptables masquerade, legacy host routing: the rule walk decides, and
+//	   it accepts the real rules.
+//	legacy host routing (K8N-6 capture): eBPF masquerade, the range in the
+//	   ip-masq-agent map: ready. The same rules with the BPF host routing
+//	   capture's facts: refused.
 func TestCiliumLiveNodesReconcileOnTheManagersFacts(t *testing.T) {
 	for name, tc := range map[string]struct {
 		prefix string
 		facts  *CiliumFacts
 		tunnel string
-		// reason is the ready cilium_masquerade reason; refuse is the refusal.
-		reason string
-		refuse string
+		// reason is the ready cilium_masquerade reason; refuse is the refusal,
+		// of the host routing kind when hostRouting is set.
+		reason      string
+		refuse      string
+		hostRouting bool
 	}{
 		"A":                   {prefix: ciliumLiveA, facts: ciliumFactsA(t), tunnel: "100.96.0.0/24", refuse: ciliumWantEnable},
-		"A, native routing":   {prefix: ciliumLiveA, facts: ciliumFactsA(t), tunnel: "10.244.200.0/24", reason: "tunnel range is inside Cilium's native-routing range 10.244.0.0/16"},
-		"B":                   {prefix: ciliumLiveB, facts: ciliumFactsB(t), tunnel: "100.96.0.0/24", reason: "tunnel range is inside Cilium ip-masq-agent range 100.96.0.0/24"},
+		"A, native routing":   {prefix: ciliumLiveA, facts: ciliumFactsA(t), tunnel: "10.244.200.0/24", refuse: ciliumWantBPFHostRouting, hostRouting: true},
+		"B":                   {prefix: ciliumLiveB, facts: ciliumFactsB(t), tunnel: "100.96.0.0/24", refuse: ciliumWantBPFHostRouting, hostRouting: true},
 		"B, range not listed": {prefix: ciliumLiveB, facts: ciliumFactsB(t), tunnel: "100.96.1.0/24", refuse: ciliumWantAdd},
 		// Review finding 1: with the ip-masq-agent on the reported range is no proof.
 		"B, reported range only": {prefix: ciliumLiveB, facts: ciliumFactsB(t), tunnel: "10.244.200.0/24", refuse: ciliumWantList},
 		"B then off":             {prefix: ciliumLiveA, facts: ciliumFactsBThenOff(t), tunnel: "100.96.0.0/24", refuse: ciliumWantEnable},
-		"C":                      {prefix: ciliumLiveC, facts: ciliumFactsC(t), tunnel: "100.96.0.0/24", reason: ReasonCiliumIPTablesMasquerade},
-		"C, inside pod routing":  {prefix: ciliumLiveC, facts: ciliumFactsC(t), tunnel: "10.244.200.0/24", reason: ReasonCiliumIPTablesMasquerade},
+		"C":                      {prefix: ciliumLiveC, facts: ciliumFactsC(t), tunnel: "100.96.0.0/24", reason: ciliumLegacyReady(ReasonCiliumIPTablesMasquerade)},
+		"C, inside pod routing":  {prefix: ciliumLiveC, facts: ciliumFactsC(t), tunnel: "10.244.200.0/24", reason: ciliumLegacyReady(ReasonCiliumIPTablesMasquerade)},
+		"legacy host routing":    {prefix: ciliumLiveLegacy, facts: ciliumFactsLegacy(t), tunnel: "10.99.0.0/24", reason: ciliumLegacyReady("tunnel range is inside Cilium ip-masq-agent range 10.99.0.0/24")},
+		// Only the facts of the BPF host routing node were captured; its
+		// rules are the legacy node's (the setting changes no rule the walk
+		// reads).
+		"BPF host routing": {prefix: ciliumLiveLegacy, facts: ciliumFactsBPFHost(t), tunnel: "10.99.0.0/24", refuse: ciliumWantBPFHostRouting, hostRouting: true},
 	} {
 		f, r := liveCiliumKernel(t, tc.prefix)
 		calls := 0
@@ -122,7 +135,11 @@ func TestCiliumLiveNodesReconcileOnTheManagersFacts(t *testing.T) {
 		}
 		if tc.refuse != "" {
 			wantCiliumRefusal(t, name, f, status, err, tc.refuse)
-			if err.Error() != tc.refuse || !errors.Is(err, errCiliumTunnelMasqueraded) {
+			kind := errCiliumTunnelMasqueraded
+			if tc.hostRouting {
+				kind = errCiliumBPFHostRouting
+			}
+			if err.Error() != tc.refuse || !errors.Is(err, kind) || errors.Is(err, errCiliumNotVerified) {
 				t.Errorf("%s: refusal = %q", name, err)
 			}
 			continue
@@ -168,21 +185,33 @@ func TestCiliumLiveNodeWithIPMasqAgentOnIsNotReadyOnTheReportedRange(t *testing.
 	}
 
 	// The same rules and the same range with the ip-masq-agent off: there the
-	// reported range is what the program was compiled with.
+	// reported range is what the program was compiled with. A reports BPF host
+	// routing, which K8N-6 refuses; no capture has the ip-masq-agent off with
+	// legacy host routing, so A's status with its routing member set to
+	// Legacy stands in for it.
 	f, r = liveCiliumKernel(t, ciliumLiveB)
-	r.UseCiliumFacts(constantCiliumFacts(ciliumFactsA(t), nil))
+	r.UseCiliumFacts(constantCiliumFacts(ciliumWithHostRouting(t, ciliumFactsA(t), "Legacy"), nil))
 	status, err = r.Reconcile(t.Context(), tunnel)
-	if err != nil || len(status.Adapters) < 2 || status.Adapters[1] != (ComponentStatus{Name: CiliumAdapterName, State: StateReady, Reason: "tunnel range is inside Cilium's native-routing range 10.244.0.0/16"}) {
+	if err != nil || len(status.Adapters) < 2 || status.Adapters[1] != (ComponentStatus{Name: CiliumAdapterName, State: StateReady, Reason: ciliumLegacyReady("tunnel range is inside Cilium's native-routing range 10.244.0.0/16")}) {
 		t.Fatalf("ip-masq-agent off: %+v %v", status, err)
 	}
 
-	// The customer follows the instruction: the range is in the live map.
-	listed := ciliumFactsB(t)
-	listed.IPMasqMap.Text = string(ciliumIPMasqDump("100.96.0.0/24", tunnel))
+	// The customer follows the instruction: the range is in the live map. On
+	// B (BPF host routing) that lifts the masquerade refusal only; on the
+	// legacy host routing capture (ip-masq-agent on, the same reported
+	// 10.244.0.0/16) the node is ready.
+	listedB := ciliumFactsB(t)
+	listedB.IPMasqMap.Text = string(ciliumIPMasqDump("100.96.0.0/24", tunnel))
 	f, r = liveCiliumKernel(t, ciliumLiveB)
+	r.UseCiliumFacts(constantCiliumFacts(listedB, nil))
+	status, err = r.Reconcile(t.Context(), tunnel)
+	wantCiliumRefusal(t, "range listed, BPF host routing", f, status, err, ciliumWantBPFHostRouting)
+	listed := ciliumFactsLegacy(t)
+	listed.IPMasqMap.Text = string(ciliumIPMasqDump("10.99.0.0/24", tunnel))
+	f, r = liveCiliumKernel(t, ciliumLiveLegacy)
 	r.UseCiliumFacts(constantCiliumFacts(listed, nil))
 	status, err = r.Reconcile(t.Context(), tunnel)
-	if err != nil || len(status.Adapters) < 2 || status.Adapters[1] != (ComponentStatus{Name: CiliumAdapterName, State: StateReady, Reason: "tunnel range is inside Cilium ip-masq-agent range " + tunnel}) {
+	if err != nil || len(status.Adapters) < 2 || status.Adapters[1] != (ComponentStatus{Name: CiliumAdapterName, State: StateReady, Reason: ciliumLegacyReady("tunnel range is inside Cilium ip-masq-agent range " + tunnel)}) {
 		t.Fatalf("range listed: %+v %v", status, err)
 	}
 	if len(f.mutations) != 0 {
@@ -279,8 +308,11 @@ func TestCiliumGuardDetectsDevicesWithoutChains(t *testing.T) {
 	wantCiliumRefusal(t, "A facts", f, status, err, ciliumWantEnable)
 	r.UseCiliumFacts(constantCiliumFacts(ciliumFactsB(t), nil))
 	status, err = r.Reconcile(t.Context(), "100.96.0.0/24")
+	wantCiliumRefusal(t, "B facts", f, status, err, ciliumWantBPFHostRouting)
+	r.UseCiliumFacts(constantCiliumFacts(ciliumFactsLegacy(t), nil))
+	status, err = r.Reconcile(t.Context(), "10.99.0.0/24")
 	if err != nil || len(status.Adapters) < 2 || status.Adapters[1].Name != CiliumAdapterName || status.Adapters[1].State != StateReady {
-		t.Fatalf("B facts: %+v %v", status, err)
+		t.Fatalf("legacy host routing facts: %+v %v", status, err)
 	}
 }
 
@@ -410,12 +442,19 @@ func TestGatewayRunsTheCiliumDecisionOnAReceiptSectionAlone(t *testing.T) {
 	status, err := r.Reconcile(t.Context(), tunnel)
 	wantCiliumRefusal(t, "A section, no trace", f, status, err, ciliumWantEnable)
 
-	_, r = liveFlannelKernel(t)
+	// K8N-6: B's section reports BPF host routing and is refused for it.
+	f, r = liveFlannelKernel(t)
 	r.listLinks = noTrace
 	r.UseCiliumFacts(constantCiliumFacts(ciliumFactsB(t), nil))
 	status, err = r.Reconcile(t.Context(), tunnel)
+	wantCiliumRefusal(t, "B section, no trace", f, status, err, ciliumWantBPFHostRouting)
+
+	_, r = liveFlannelKernel(t)
+	r.listLinks = noTrace
+	r.UseCiliumFacts(constantCiliumFacts(ciliumFactsLegacy(t), nil))
+	status, err = r.Reconcile(t.Context(), "10.99.0.0/24")
 	if err != nil || len(status.Adapters) < 2 || status.Adapters[1].Name != CiliumAdapterName || status.Adapters[1].State != StateReady {
-		t.Fatalf("B section, no trace: %+v %v", status, err)
+		t.Fatalf("legacy host routing section, no trace: %+v %v", status, err)
 	}
 
 	// A section the manager could not read refuses, naming where Cilium was seen.

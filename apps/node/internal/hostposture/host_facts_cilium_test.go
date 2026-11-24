@@ -3,6 +3,8 @@ package hostposture
 import (
 	"bytes"
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"os"
 	"reflect"
@@ -368,5 +370,66 @@ func TestManagerReadsNoCiliumFactsWhereNoGatewayRuns(t *testing.T) {
 	}
 	if cilium.reads != 0 || len(store.facts) != 0 {
 		t.Fatalf("idle node: reads=%d receipts=%d", cilium.reads, len(store.facts))
+	}
+}
+
+// K8N-6: a receipt of schema 2 is what a manager from before the host routing
+// decision publishes on a Cilium node: its cilium.status carries no routing
+// member and no device list. A gateway of this release refuses it as an
+// unknown schema, before its digest is checked, and does not blame Cilium
+// for it. The digest is the old manager's own.
+func TestHostFactsFromAManagerBeforeTheHostRoutingFactAreRefused(t *testing.T) {
+	now := time.Unix(5000, 0).UTC()
+	store, err := NewStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	heartbeat := cniTestHeartbeat(now, 9)
+	if err := store.SaveHeartbeat(heartbeat); err != nil {
+		t.Fatal(err)
+	}
+	// The masquerading member alone, as a schema 2 manager reduced the status.
+	old, err := SealHostFactsWithCilium(heartbeat, now.Add(-time.Second), testNetFacts(), testCiliumFacts())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(old.Cilium.Status.Text, "routing") {
+		t.Fatal("the old section carries a routing member")
+	}
+	old.SchemaVersion, old.Digest = 2, ""
+	var body bytes.Buffer
+	enc := json.NewEncoder(&body)
+	enc.SetEscapeHTML(false)
+	if err := enc.Encode(old); err != nil {
+		t.Fatal(err)
+	}
+	sum := sha256.Sum256(body.Bytes())
+	old.Digest = hex.EncodeToString(sum[:])
+	encoded, err := json.Marshal(old)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(store.HostFactsPath(), encoded, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	gateway, err := OpenStore(store.dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for name, take := range map[string]func() error{
+		"netfilter": func() error { _, err := gateway.HostNetFacts("worker-a", now); return err },
+		"cilium":    func() error { _, err := gateway.CiliumFacts("worker-a", now); return err },
+	} {
+		if err := take(); err == nil || err.Error() != "host facts receipt has an unknown schema or contract" {
+			t.Fatalf("%s: schema 2 receipt: %v", name, err)
+		}
+	}
+	// The same receipt sealed by this release is taken, and its schema is 3.
+	current := saveTestCiliumReceipt(t, store, heartbeat, now.Add(-time.Second))
+	if current.SchemaVersion != 3 || HostFactsSchemaVersion != 3 {
+		t.Fatalf("schema = %d / %d", current.SchemaVersion, HostFactsSchemaVersion)
+	}
+	if _, err := gateway.CiliumFacts("worker-a", now); err != nil {
+		t.Fatalf("current receipt: %v", err)
 	}
 }

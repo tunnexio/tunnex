@@ -477,3 +477,106 @@ func TestCiliumProofFromStatusAndDump(t *testing.T) {
 		t.Fatal("a tunnel range outside every listed range was accepted")
 	}
 }
+
+// K8N-6: the host routing mode and the device list, read from the real
+// captures and from every shape that must refuse.
+func TestParseCiliumRoutingOnTheRealCaptures(t *testing.T) {
+	for prefix, want := range map[string]ciliumRouting{
+		ciliumLiveA:       {IntraHost: ciliumHostRoutingBPF, Devices: []string{"eth0"}},
+		ciliumLiveB:       {IntraHost: ciliumHostRoutingBPF, Devices: []string{"eth0", "wg0"}},
+		ciliumLiveC:       {IntraHost: ciliumHostRoutingLegacy, Devices: []string{"eth0", "wg0"}},
+		ciliumLiveLegacy:  {IntraHost: ciliumHostRoutingLegacy, Devices: []string{"eth0", "wg0"}},
+		ciliumLiveBPFHost: {IntraHost: ciliumHostRoutingBPF, Devices: []string{"eth0", "wg0"}},
+	} {
+		got, err := parseCiliumRouting(ciliumLiveRead(t, prefix+"healthz.json"))
+		if err != nil || !reflect.DeepEqual(got, want) {
+			t.Errorf("%s: %+v %v", prefix, got, err)
+		}
+	}
+}
+
+func TestParseCiliumRoutingAccepts(t *testing.T) {
+	for name, tc := range map[string]struct {
+		raw  string
+		want ciliumRouting
+	}{
+		"legacy":             {`{"routing":{"intra-host-routing-mode":"Legacy"},"kube-proxy-replacement":{"devices":["eth0"]}}`, ciliumRouting{IntraHost: ciliumHostRoutingLegacy, Devices: []string{"eth0"}}},
+		"bpf, tunnel mode":   {`{"routing":{"inter-host-routing-mode":"Tunnel","intra-host-routing-mode":"BPF","tunnel-protocol":"vxlan"},"kube-proxy-replacement":{"devices":["eth0","wg0"]}}`, ciliumRouting{IntraHost: ciliumHostRoutingBPF, Devices: []string{"eth0", "wg0"}}},
+		"no devices (null)":  {`{"routing":{"intra-host-routing-mode":"Legacy"},"kube-proxy-replacement":{"devices":null}}`, ciliumRouting{IntraHost: ciliumHostRoutingLegacy, Devices: []string{}}},
+		"no devices (empty)": {`{"routing":{"intra-host-routing-mode":"Legacy"},"kube-proxy-replacement":{"devices":[]}}`, ciliumRouting{IntraHost: ciliumHostRoutingLegacy, Devices: []string{}}},
+		// Other members of kube-proxy-replacement are not read.
+		"other kpr members": {`{"routing":{"intra-host-routing-mode":"Legacy"},"kube-proxy-replacement":{"mode":"True","devices":["eth0"],"deviceList":[{"name":"eth0"}],"newThing":1}}`, ciliumRouting{IntraHost: ciliumHostRoutingLegacy, Devices: []string{"eth0"}}},
+		// Other probes being stale says nothing about these two.
+		"other probe stale":               {`{"routing":{"intra-host-routing-mode":"Legacy"},"kube-proxy-replacement":{"devices":["eth0"]},"stale":{"masquerading":"x"}}`, ciliumRouting{IntraHost: ciliumHostRoutingLegacy, Devices: []string{"eth0"}}},
+		"dotted and aliased device names": {`{"routing":{"intra-host-routing-mode":"Legacy"},"kube-proxy-replacement":{"devices":["bond0.100","ens5:1"]}}`, ciliumRouting{IntraHost: ciliumHostRoutingLegacy, Devices: []string{"bond0.100", "ens5:1"}}},
+	} {
+		got, err := parseCiliumRouting([]byte(tc.raw))
+		if err != nil || !reflect.DeepEqual(got, tc.want) {
+			t.Errorf("%s: %+v %v", name, got, err)
+		}
+	}
+}
+
+func TestParseCiliumRoutingRefuses(t *testing.T) {
+	kpr := `"kube-proxy-replacement":{"devices":["eth0"]}`
+	many := make([]string, maxCiliumDevices+1)
+	for i := range many {
+		many[i] = fmt.Sprintf(`"eth%d"`, i)
+	}
+	for name, raw := range map[string]string{
+		"not JSON":                   `{`,
+		"not an object":              `[]`,
+		"null":                       `null`,
+		"trailing data":              `{"routing":{"intra-host-routing-mode":"Legacy"},` + kpr + `} {}`,
+		"no routing section":         `{` + kpr + `}`,
+		"routing not an object":      `{"routing":"Legacy",` + kpr + `}`,
+		"routing null":               `{"routing":null,` + kpr + `}`,
+		"mode missing":               `{"routing":{"inter-host-routing-mode":"Native"},` + kpr + `}`,
+		"mode empty":                 `{"routing":{"intra-host-routing-mode":""},` + kpr + `}`,
+		"mode unknown":               `{"routing":{"intra-host-routing-mode":"Hybrid"},` + kpr + `}`,
+		"mode lower case":            `{"routing":{"intra-host-routing-mode":"bpf"},` + kpr + `}`,
+		"mode not a string":          `{"routing":{"intra-host-routing-mode":true},` + kpr + `}`,
+		"unknown routing field":      `{"routing":{"intra-host-routing-mode":"Legacy","bypass":"none"},` + kpr + `}`,
+		"routing stale":              `{"routing":{"intra-host-routing-mode":"Legacy"},` + kpr + `,"stale":{"routing":"2026-11-24T00:00:00Z"}}`,
+		"kpr stale":                  `{"routing":{"intra-host-routing-mode":"Legacy"},` + kpr + `,"stale":{"kube-proxy-replacement":"2026-11-24T00:00:00Z"}}`,
+		"stale not understood":       `{"routing":{"intra-host-routing-mode":"Legacy"},` + kpr + `,"stale":[]}`,
+		"no kpr section":             `{"routing":{"intra-host-routing-mode":"Legacy"}}`,
+		"kpr not an object":          `{"routing":{"intra-host-routing-mode":"Legacy"},"kube-proxy-replacement":["eth0"]}`,
+		"kpr null":                   `{"routing":{"intra-host-routing-mode":"Legacy"},"kube-proxy-replacement":null}`,
+		"devices missing":            `{"routing":{"intra-host-routing-mode":"Legacy"},"kube-proxy-replacement":{"mode":"True"}}`,
+		"devices not a list":         `{"routing":{"intra-host-routing-mode":"Legacy"},"kube-proxy-replacement":{"devices":"eth0"}}`,
+		"device not a string":        `{"routing":{"intra-host-routing-mode":"Legacy"},"kube-proxy-replacement":{"devices":[1]}}`,
+		"device name empty":          `{"routing":{"intra-host-routing-mode":"Legacy"},"kube-proxy-replacement":{"devices":[""]}}`,
+		"device name too long":       `{"routing":{"intra-host-routing-mode":"Legacy"},"kube-proxy-replacement":{"devices":["abcdefghijklmnop"]}}`,
+		"device name with a space":   `{"routing":{"intra-host-routing-mode":"Legacy"},"kube-proxy-replacement":{"devices":["eth 0"]}}`,
+		"device name with a slash":   `{"routing":{"intra-host-routing-mode":"Legacy"},"kube-proxy-replacement":{"devices":["eth/0"]}}`,
+		"device repeated":            `{"routing":{"intra-host-routing-mode":"Legacy"},"kube-proxy-replacement":{"devices":["eth0","eth0"]}}`,
+		"too many devices":           `{"routing":{"intra-host-routing-mode":"Legacy"},"kube-proxy-replacement":{"devices":[` + strings.Join(many, ",") + `]}}`,
+		"devices with trailing data": `{"routing":{"intra-host-routing-mode":"Legacy"},"kube-proxy-replacement":{"devices":["eth0"]} x}`,
+	} {
+		if got, err := parseCiliumRouting([]byte(raw)); err == nil {
+			t.Errorf("%s: accepted as %+v", name, got)
+		}
+	}
+	if _, err := parseCiliumRouting(make([]byte, maxCiliumStatusBytes+1)); err == nil {
+		t.Error("oversized status accepted")
+	}
+}
+
+func TestProveCiliumHostRouting(t *testing.T) {
+	if err := proveCiliumHostRouting(ciliumRouting{IntraHost: ciliumHostRoutingLegacy}); err != nil {
+		t.Fatalf("legacy: %v", err)
+	}
+	// The device list decides nothing: BPF is refused with or without the
+	// tunnel interface among the devices (K8N-6, configuration C).
+	for _, devices := range [][]string{nil, {"eth0"}, {"eth0", "wg0"}} {
+		if err := proveCiliumHostRouting(ciliumRouting{IntraHost: ciliumHostRoutingBPF, Devices: devices}); !errors.Is(err, errCiliumBPFHostRouting) {
+			t.Fatalf("BPF with devices %v: %v", devices, err)
+		}
+	}
+	for _, mode := range []ciliumHostRouting{"", "bpf", "Hybrid"} {
+		if err := proveCiliumHostRouting(ciliumRouting{IntraHost: mode}); err == nil || errors.Is(err, errCiliumBPFHostRouting) {
+			t.Fatalf("mode %q: %v", mode, err)
+		}
+	}
+}

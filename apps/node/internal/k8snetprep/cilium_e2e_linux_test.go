@@ -32,10 +32,21 @@ const (
 	ciliumA       = "testdata/cilium-1.20.5-kind-A-bpf."
 	ciliumB       = "testdata/cilium-1.20.5-kind-B-bpf-ipmasq."
 	ciliumC       = "testdata/cilium-1.20.5-kind-C-iptables."
+	// K8N-6: the same eBPF masquerade and ip-masq-agent (list 10.99.0.0/24)
+	// with legacy host routing, and with BPF host routing. Only the agent's
+	// facts of the BPF one were captured; its devices are the legacy one's.
+	ciliumLegacy  = "testdata/cilium-1.20.5-kind-hostlegacy-ipmasq."
+	ciliumBPFHost = "testdata/cilium-1.20.5-kind-hostbpf-ipmasq."
 
 	ciliumAbsentMap = `{"error":"bpf obj get (/sys/fs/bpf/tc/globals/cilium_ipmasq_v4): No such file or directory"}`
 	ciliumEnable    = "Cilium eBPF masquerade would rewrite traffic to the tunnel range 100.96.0.0/24. Enable Cilium's ip-masq-agent (Helm ipMasqAgent.enabled=true) with 100.96.0.0/24 in nonMasqueradeCIDRs, then restart the Cilium agents"
+	ciliumBPFRoute  = "Cilium BPF host routing lets traffic between pods and the tunnel bypass Tunnex's access rules. Set bpf.hostLegacyRouting=true in Cilium's Helm values, then restart the Cilium agents"
 )
+
+// ciliumLegacyReady is the ready reason of a node with legacy host routing.
+func ciliumLegacyReady(reason string) string {
+	return reason + "; " + k8snetprep.ReasonCiliumLegacyHostRouting
+}
 
 func ciliumFixture(t *testing.T, path string) string {
 	t.Helper()
@@ -62,12 +73,16 @@ func (a *ciliumAgent) configure(t *testing.T, prefix string) {
 	a.status = ciliumFixture(t, prefix+"healthz.json")
 	a.pins = strings.Fields(ciliumFixture(t, prefix+"pinned-maps.txt"))
 	a.links = nil
-	for _, name := range strings.Fields(ciliumFixture(t, prefix+"links.txt")) {
+	linksFrom := prefix
+	if prefix == ciliumBPFHost {
+		linksFrom = ciliumLegacy
+	}
+	for _, name := range strings.Fields(ciliumFixture(t, linksFrom+"links.txt")) {
 		name, _, _ = strings.Cut(name, "@")
 		a.links = append(a.links, name)
 	}
 	a.dump, a.dumpErr = ciliumAbsentMap, errors.New("bpftool inspection: exit status 255: ")
-	if prefix == ciliumB {
+	if prefix == ciliumB || prefix == ciliumLegacy || prefix == ciliumBPFHost {
 		a.dump, a.dumpErr = ciliumFixture(t, prefix+"ipmasq-v4.bpftool.json"), nil
 	}
 }
@@ -183,8 +198,10 @@ func (e *ciliumE2E) refused(tunnel, want string) {
 }
 
 // The customer's path on one node: eBPF masquerade with the device range not
-// excluded (A), then the range added to the ip-masq-agent list (B), then the
-// ip-masq-agent turned off again. The gateway and the manager are never
+// excluded (A), then the range added to the ip-masq-agent list (B), which
+// still has BPF host routing, then bpf.hostLegacyRouting set (the K8N-6
+// capture, whose list holds 10.99.0.0/24), then BPF host routing again, then
+// the ip-masq-agent turned off. The gateway and the manager are never
 // restarted; the gateway follows what each pass of the manager publishes.
 func TestCapturedCiliumNodeFollowsTheIPMasqAgentThroughTheReceipt(t *testing.T) {
 	e := newCiliumE2E(t, ciliumA)
@@ -195,10 +212,11 @@ func TestCapturedCiliumNodeFollowsTheIPMasqAgentThroughTheReceipt(t *testing.T) 
 	}
 	e.admit()
 
-	// A: refused, with the instruction; ready for a range inside the
-	// native-routing range.
+	// A: refused, with the instruction. For a range inside the native-routing
+	// range the masquerade proof holds and the BPF host routing refuses
+	// (K8N-6; ready before).
 	e.refused("100.96.0.0/24", ciliumEnable)
-	e.ready("10.244.200.0/24", "tunnel range is inside Cilium's native-routing range 10.244.0.0/16")
+	e.refused("10.244.200.0/24", ciliumBPFRoute)
 	if strings.Contains(strings.Join(e.agent.ran, "\n"), "bpftool") {
 		t.Fatalf("the map was dumped although the agent reports the ip-masq-agent off: %v", e.agent.ran)
 	}
@@ -208,7 +226,9 @@ func TestCapturedCiliumNodeFollowsTheIPMasqAgentThroughTheReceipt(t *testing.T) 
 	e.agent.configure(t, ciliumB)
 	e.refused("100.96.0.0/24", ciliumEnable)
 	e.pass()
-	e.ready("100.96.0.0/24", "tunnel range is inside Cilium ip-masq-agent range 100.96.0.0/24")
+	// The masquerade proof now holds by the map entry; B still routes host
+	// traffic in BPF (K8N-6; ready before).
+	e.refused("100.96.0.0/24", ciliumBPFRoute)
 	e.refused("100.96.1.0/24", "Add 100.96.1.0/24 to nonMasqueradeCIDRs in the ip-masq-agent ConfigMap (namespace kube-system, key config); no restart is needed, allow about a minute")
 	// Review finding 1: the range that was ready on the agent's report a
 	// moment ago is not ready on it now. With the ip-masq-agent on the report
@@ -225,30 +245,53 @@ func TestCapturedCiliumNodeFollowsTheIPMasqAgentThroughTheReceipt(t *testing.T) 
 	if info.Mode().Perm() != 0o644 || len(body) > 2<<10 {
 		t.Fatalf("receipt mode %v, %d bytes", info.Mode(), len(body))
 	}
-	for _, want := range []string{`"contract":"tunnex-host-posture-facts/v1"`, `"node_name":"` + ciliumE2ENode + `"`, `"cilium":{"status":{"state":"read"`, `\"mode\":\"BPF\"`, `\"ip-masq-agent\":true`, `"pinned_maps":{"state":"read","total":47}`, `\"0x18\",\"0x00\",\"0x00\",\"0x00\",\"0x64\",\"0x60\",\"0x00\",\"0x00\"`} {
+	for _, want := range []string{`"schema_version":3`, `"contract":"tunnex-host-posture-facts/v1"`, `"node_name":"` + ciliumE2ENode + `"`, `"cilium":{"status":{"state":"read"`, `\"mode\":\"BPF\"`, `\"ip-masq-agent\":true`,
+		`\"routing\":{\"inter-host-routing-mode\":\"Native\",\"intra-host-routing-mode\":\"BPF\"}`, `\"kube-proxy-replacement\":{\"devices\":[\"eth0\",\"wg0\"]}`,
+		`"pinned_maps":{"state":"read","total":47}`, `\"0x18\",\"0x00\",\"0x00\",\"0x00\",\"0x64\",\"0x60\",\"0x00\",\"0x00\"`} {
 		if !bytes.Contains(body, []byte(want)) {
 			t.Errorf("receipt lacks %q", want)
 		}
 	}
-	for _, unwanted := range []string{e2eOwnerUID, "100.96.0.0/24", "controllers", "kube-proxy-replacement", "cilium_lxc", "verdict", "ready"} {
+	// Of kube-proxy-replacement only the device list is carried.
+	for _, unwanted := range []string{e2eOwnerUID, "100.96.0.0/24", "controllers", "deviceList", "features", "directRoutingDevice", "cilium_lxc", "verdict", "ready"} {
 		if bytes.Contains(body, []byte(unwanted)) {
 			t.Errorf("receipt carries %q: %s", unwanted, body)
 		}
 	}
 
+	// The customer sets bpf.hostLegacyRouting=true and restarts the agents:
+	// the K8N-6 capture, whose list holds 10.99.0.0/24. Until the manager's
+	// next pass the gateway still sees B.
+	const listed = "10.99.0.0/24"
+	legacyProved := ciliumLegacyReady("tunnel range is inside Cilium ip-masq-agent range " + listed)
+	e.agent.configure(t, ciliumLegacy)
+	e.refused(listed, "Add 10.99.0.0/24 to nonMasqueradeCIDRs")
+	e.pass()
+	e.ready(listed, legacyProved)
+	e.refused("100.96.0.0/24", "Add 100.96.0.0/24 to nonMasqueradeCIDRs")
+
 	// The list changes without an agent restart: the range is taken out.
 	e.agent.dump = "[]"
 	e.pass()
-	e.refused("100.96.0.0/24", "Add 100.96.0.0/24 to nonMasqueradeCIDRs")
-	e.agent.configure(t, ciliumB)
+	e.refused(listed, "Add 10.99.0.0/24 to nonMasqueradeCIDRs")
+	e.agent.configure(t, ciliumLegacy)
 	e.pass()
-	e.ready("100.96.0.0/24", "tunnel range is inside Cilium ip-masq-agent range 100.96.0.0/24")
+	e.ready(listed, legacyProved)
+
+	// BPF host routing again (bpf.hostLegacyRouting=false): refused, with the
+	// setting to change, whatever the list holds.
+	e.agent.configure(t, ciliumBPFHost)
+	e.pass()
+	e.refused(listed, ciliumBPFRoute)
+	e.agent.configure(t, ciliumLegacy)
+	e.pass()
+	e.ready(listed, legacyProved)
 
 	// The pin disappears while the agent still reports the ip-masq-agent on.
 	// bpftool's error is a read error, never an empty map.
 	e.agent.dump, e.agent.dumpErr = ciliumAbsentMap, errors.New("bpftool inspection: exit status 255: ")
 	e.pass()
-	e.refused("100.96.0.0/24", "Cilium masquerade on this node is not verified: the host-posture manager could not read the ip-masq-agent map: bpftool: bpf obj get (/sys/fs/bpf/tc/globals/cilium_ipmasq_v4): No such file or directory")
+	e.refused(listed, "Cilium masquerade on this node is not verified: the host-posture manager could not read the ip-masq-agent map: bpftool: bpf obj get (/sys/fs/bpf/tc/globals/cilium_ipmasq_v4): No such file or directory")
 
 	// B, then the ip-masq-agent off and the agent restarted: as A, refused.
 	e.agent.configure(t, ciliumA)
@@ -257,20 +300,47 @@ func TestCapturedCiliumNodeFollowsTheIPMasqAgentThroughTheReceipt(t *testing.T) 
 	e.refused("100.96.0.0/24", ciliumEnable)
 
 	// An egress gateway is enabled on a node that would otherwise be ready.
-	e.agent.configure(t, ciliumB)
+	e.agent.configure(t, ciliumLegacy)
 	e.agent.pins = append(e.agent.pins, "cilium_egress_gw_policy_v4")
 	e.pass()
-	e.refused("100.96.0.0/24", "Cilium egress gateway is enabled; its policies are applied before any masquerade exclusion and are not read")
+	e.refused(listed, "Cilium egress gateway is enabled; its policies are applied before any masquerade exclusion and are not read")
 	e.refused("10.244.200.0/24", "Cilium egress gateway is enabled")
 
 	// A Cilium release adds a field to its masquerading report.
-	e.agent.configure(t, ciliumB)
+	e.agent.configure(t, ciliumLegacy)
 	e.agent.status = strings.Replace(e.agent.status, `"masquerading":{`, `"masquerading":{"egress-masquerade-interfaces":"eth+",`, 1)
 	if !strings.Contains(e.agent.status, "egress-masquerade-interfaces") {
 		t.Fatal("the captured status has no masquerading object to extend")
 	}
 	e.pass()
-	e.refused("100.96.0.0/24", "Cilium masquerade on this node is not verified: Cilium masquerading status is not understood")
+	e.refused(listed, "Cilium masquerade on this node is not verified: Cilium masquerading status is not understood")
+
+	// Or to its routing report, or leaves out what is read: never taken as
+	// Legacy.
+	for name, edit := range map[string]func(map[string]any){
+		"a new routing field": func(status map[string]any) {
+			status["routing"].(map[string]any)["host-routing-exceptions"] = []string{"wg0"}
+		},
+		"no routing report":            func(status map[string]any) { delete(status, "routing") },
+		"no host routing mode":         func(status map[string]any) { delete(status["routing"].(map[string]any), "intra-host-routing-mode") },
+		"an unknown host routing mode": func(status map[string]any) { status["routing"].(map[string]any)["intra-host-routing-mode"] = "Hybrid" },
+		"no device list":               func(status map[string]any) { delete(status["kube-proxy-replacement"].(map[string]any), "devices") },
+	} {
+		e.agent.configure(t, ciliumLegacy)
+		var status map[string]any
+		if err := json.Unmarshal([]byte(e.agent.status), &status); err != nil {
+			t.Fatal(err)
+		}
+		edit(status)
+		edited, err := json.Marshal(status)
+		if err != nil {
+			t.Fatal(err)
+		}
+		e.agent.status = string(edited)
+		e.pass()
+		t.Logf("%s:", name)
+		e.refused(listed, "Cilium masquerade on this node is not verified: Cilium ")
+	}
 
 	// Nothing above made the gateway run anything but its own listing, and the
 	// manager's Cilium reader issued only its three reads.
@@ -291,8 +361,8 @@ func TestCapturedCiliumNodeFollowsTheIPMasqAgentThroughTheReceipt(t *testing.T) 
 func TestCapturedCiliumIPTablesNodeIsDecidedByTheRuleWalk(t *testing.T) {
 	e := newCiliumE2E(t, ciliumC)
 	e.admit()
-	e.ready("100.96.0.0/24", k8snetprep.ReasonCiliumIPTablesMasquerade)
-	e.ready("10.244.200.0/24", k8snetprep.ReasonCiliumIPTablesMasquerade)
+	e.ready("100.96.0.0/24", ciliumLegacyReady(k8snetprep.ReasonCiliumIPTablesMasquerade))
+	e.ready("10.244.200.0/24", ciliumLegacyReady(k8snetprep.ReasonCiliumIPTablesMasquerade))
 	// A range that contains the node's pod range and reaches outside the
 	// native-routing range: the walk refuses, naming Cilium's chain.
 	e.refused("10.0.0.0/8", "CILIUM_POST_nat")
@@ -314,10 +384,12 @@ func TestCapturedCiliumIPTablesNodeIsDecidedByTheRuleWalk(t *testing.T) {
 // A missing, stale, earlier, damaged, edited or foreign receipt, and a manager
 // that stopped, each leave a Cilium node not ready and say which.
 func TestCapturedCiliumNodeRefusesAReceiptThatDoesNotHold(t *testing.T) {
-	e := newCiliumE2E(t, ciliumB)
+	// The K8N-6 legacy host routing node: the one captured configuration with
+	// eBPF masquerade that is ready.
+	e := newCiliumE2E(t, ciliumLegacy)
 	e.admit()
-	const tunnel = "100.96.0.0/24"
-	const proved = "tunnel range is inside Cilium ip-masq-agent range 100.96.0.0/24"
+	const tunnel = "10.99.0.0/24"
+	proved := ciliumLegacyReady("tunnel range is inside Cilium ip-masq-agent range 10.99.0.0/24")
 	// The receipt is taken before the rules are proved (K8N review, findings 5
 	// and 6), so a receipt that does not hold refuses there, Cilium or not.
 	const notVerified = "host-posture facts: "
@@ -354,9 +426,10 @@ func TestCapturedCiliumNodeRefusesAReceiptThatDoesNotHold(t *testing.T) {
 	// Edited: a wider range written into the map, the mode rewritten, the
 	// section taken out.
 	for name, edited := range map[string][]byte{
-		"wider range": bytes.Replace(current, []byte(`\"0x18\"`), []byte(`\"0x08\"`), 1),
-		"mode":        bytes.Replace(current, []byte(`\"mode\":\"BPF\"`), []byte(`\"mode\":\"iptables\"`), 1),
-		"agent flag":  bytes.Replace(current, []byte(`\"ip-masq-agent\":true,`), nil, 1),
+		"wider range":  bytes.Replace(current, []byte(`\"0x18\"`), []byte(`\"0x08\"`), 1),
+		"mode":         bytes.Replace(current, []byte(`\"mode\":\"BPF\"`), []byte(`\"mode\":\"iptables\"`), 1),
+		"agent flag":   bytes.Replace(current, []byte(`\"ip-masq-agent\":true,`), nil, 1),
+		"host routing": bytes.Replace(current, []byte(`\"intra-host-routing-mode\":\"Legacy\"`), []byte(`\"intra-host-routing-mode\":\"BPF\"`), 1),
 	} {
 		if bytes.Equal(edited, current) {
 			t.Fatalf("%s: the edit changed nothing", name)
@@ -378,7 +451,7 @@ func TestCapturedCiliumNodeRefusesAReceiptThatDoesNotHold(t *testing.T) {
 
 	// A receipt sealed on another node, by another manager, for a Cilium that
 	// excludes the range.
-	other := newCiliumE2E(t, ciliumB)
+	other := newCiliumE2E(t, ciliumLegacy)
 	otherManager := newE2EManager(t, other.stateDir, "another-worker", e2eOwnerUID, k8snetprep.NewHostFactsReader(other.rules.managerNFT, other.rules.managerIPTables, other.rules.managerIPSet))
 	otherManager.SetCiliumFactsReader(other.agent.reader())
 	if err := otherManager.ReconcileOnce(t.Context()); err != nil {

@@ -129,8 +129,10 @@ var (
 const ReasonCalicoEBPF = "Calico's eBPF dataplane runs on this node and is not supported: Tunnex cannot prove that its programs leave tunnel traffic to Tunnex's access rules. Use Calico's iptables dataplane"
 
 // detectCalicoEBPF names the first signal of Calico's eBPF dataplane among the
-// sorted device names and the listing's chains, or returns "".
+// device names and the listing's chains, each in sorted order, or returns "".
 func detectCalicoEBPF(links []string, snapshot *cniSnapshot) string {
+	links = append([]string(nil), links...)
+	sort.Strings(links)
 	for _, link := range links {
 		// `ip -o link` shows a veth as name@peer; the kernel's name is
 		// before the @.

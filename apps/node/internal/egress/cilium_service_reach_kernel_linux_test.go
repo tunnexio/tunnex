@@ -155,7 +155,7 @@ func TestCiliumHostRoutingGrantKernel(t *testing.T) {
 	}})
 	policy := &nodepolicy.Compiled{
 		Version: 7, NodeID: "k8n6-gateway", Mode: nodepolicy.ModeEnforcing,
-		Allow: []nodepolicy.AllowEntry{{SrcIP: device, DstCIDR: vip + "/32", Protocol: "tcp", PortLow: port, PortHigh: port}},
+		Allow:       []nodepolicy.AllowEntry{{SrcIP: device, DstCIDR: vip + "/32", Protocol: "tcp", PortLow: port, PortHigh: port}},
 		VIPMappings: []nodepolicy.VIPMapping{{VIP: vip, Namespace: namespace, Service: name, Protocol: "tcp", PortLow: port, PortHigh: port}},
 	}
 	m.SetPolicy(policy)
