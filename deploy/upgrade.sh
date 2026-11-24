@@ -370,7 +370,10 @@ else
   if [ -n "$AIRGAP" ]; then
     [ -d "$AIRGAP" ] || { echo "error: air-gap bundle directory not found" >&2; exit 1; }
     for image in "$AIRGAP"/*.tar; do [ -f "$image" ] || continue; docker load -i "$image"; done
-  else
+  fi
+  # A loaded archive may not be addressable by registry digest (classic image
+  # store); then the digest is pulled, as the rest of the upgrade does today.
+  if [ -z "$AIRGAP" ] || ! docker image inspect "$HO_IMAGE" >/dev/null 2>&1; then
     docker pull "$HO_IMAGE" >/dev/null ||
       handoff_refuse handoff_failed "could not extract the target release's upgrade helper: pulling the verified API image $HO_IMAGE failed. Nothing was changed."
   fi

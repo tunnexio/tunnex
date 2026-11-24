@@ -61,6 +61,15 @@ case "$*" in
   "cp fixture-cid:/usr/share/tunnex/host/. "*) cp -R "$MOCK_HOST_FILES/." "$3/" ;;
   'rm fixture-cid') ;;
   'ps -a --filter '*) ;;
+  'load -i '*) ;;
+  "image inspect $API_IMAGE") [ "${MOCK_IMAGE_ABSENT:-}" != 1 ] ;;
+  compose*' exec -T api sh -c '*)
+    # The installed API container's verifier: the descriptor arrives on stdin.
+    for last in "$@"; do :; done
+    stdin=$(mktemp "$MOCK_DOCKER_LOG.stdin.XXXXXX")
+    cat >"$stdin"
+    "$MOCK_RELEASEVERIFY" -manifest "$stdin" -public-key "$last" -print-env
+    rm -f "$stdin" ;;
   *) echo "unexpected docker call: $*" >&2; exit 1 ;;
 esac
 SH
@@ -249,6 +258,49 @@ rm fixture-cid" ]
   if run_trampoline approved --apply --expected-source-sha "$SHA_B" >"$TMP/out-approved" 2>&1; then echo 'approval mismatch accepted' >&2; exit 1; fi
   refused approved approved_release_changed 'no longer matches the release approved in the UI'
   [ ! -s "$TMP/docker-approved.log" ]
+
+  # 10b. Hosts normally have no host verifier: both descriptors are verified by
+  #      the installed API container, in the installation's Compose project.
+  mkdir -p "$TMP/bin-noverify"
+  ln -sf "$TMP/bin/curl" "$TMP/bin-noverify/curl"
+  ln -sf "$TMP/bin/docker" "$TMP/bin-noverify/docker"
+  for project in '' owned-project; do
+    new_install "container-verify$project"
+    [ -z "$project" ] || printf 'COMPOSE_PROJECT_NAME=%s\n' "$project" >>"$TMP/install-container-verify$project/.env"
+    (cd "$TMP/install-container-verify$project" && PATH="$TMP/bin-noverify:/usr/bin:/bin" \
+      MOCK_CATALOG="$TMP/catalog-container-verify$project.json" MOCK_HOST_FILES="$TMP/image-container-verify$project" \
+      MOCK_DOCKER_LOG="$TMP/docker-container-verify$project.log" MOCK_TARGET_RECORD="$TMP/record-container-verify$project" \
+      MOCK_RELEASEVERIFY="$TMP/bin/releaseverify" TUNNEX_UPGRADE_STATUS_FILE="$TMP/install-container-verify$project/status" \
+      TUNNEX_UPGRADE_REQUEST_ID=container-verify TMPDIR="$TMP/tmpbase" "$SHELL_UNDER_TEST" ./upgrade.sh --apply) \
+      >"$TMP/out-container-verify$project" 2>&1 || { cat "$TMP/out-container-verify$project" >&2; exit 1; }
+    [ -e "$TMP/record-container-verify$project" ]
+    verified=$(grep -c ' exec -T api sh -c ' "$TMP/docker-container-verify$project.log")
+    [ "$verified" -eq 2 ] || { echo "expected target and installed descriptors verified in the API container, got $verified" >&2; exit 1; }
+    if [ -n "$project" ]; then
+      [ "$(grep -c "^compose --project-name $project --env-file $TMP/install-container-verify$project/.env -f $TMP/install-container-verify$project/tunnex.yml exec -T api " "$TMP/docker-container-verify$project.log")" -eq 2 ]
+    else
+      ! grep -Fq -- '--project-name' "$TMP/docker-container-verify$project.log"
+    fi
+  done
+
+  # 10c. Air-gap: archives are loaded first; a loaded image addressable by its
+  #      digest is used without pulling, otherwise the digest is pulled.
+  for present in yes no; do
+    new_install "airgap-$present"
+    mkdir -p "$TMP/airgap-$present"
+    : >"$TMP/airgap-$present/api.tar"
+    absent=; [ "$present" = yes ] || absent=1
+    MOCK_IMAGE_ABSENT=$absent run_trampoline "airgap-$present" --apply --manifest "$TMP/catalog-airgap-$present.json" \
+      --airgap "$TMP/airgap-$present" >"$TMP/out-airgap-$present" 2>&1 || { cat "$TMP/out-airgap-$present" >&2; exit 1; }
+    unset MOCK_IMAGE_ABSENT
+    grep -Fxq "load -i $TMP/airgap-$present/api.tar" "$TMP/docker-airgap-$present.log"
+    if [ "$present" = yes ]; then
+      ! grep -Fq 'pull ' "$TMP/docker-airgap-$present.log"
+    else
+      grep -Fxq "pull $API_IMAGE" "$TMP/docker-airgap-$present.log"
+    fi
+    case " $(record "airgap-$present" args) " in *' --airgap '*) echo 'air-gap archives loaded twice' >&2; exit 1 ;; esac
+  done
 
   # 11. A target invoked with an unknown hand-off ABI refuses before admission.
   new_install target-abi
