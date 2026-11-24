@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/netip"
+	"regexp"
 	"strconv"
 	"strings"
 )
@@ -165,6 +166,169 @@ func parseCiliumStatus(raw []byte) (ciliumMasquerade, error) {
 }
 
 func ciliumBool(value *bool) bool { return value != nil && *value }
+
+// K8N-6, host routing. With BPF host routing Cilium's programs redirect
+// traffic between its devices and the pods past the kernel's upper stack, so
+// no netfilter hook sees it: a device reached NodePort, LoadBalancer and pod
+// addresses with no Tunnex rule, and a pod reached the device, on a node whose
+// masquerade proof held (docs/K8N-6-cilium-service-reach.md). With legacy host
+// routing every such packet went through Tunnex's forward chain. So a Cilium
+// node is accepted only when the agent reports Legacy host routing.
+
+type ciliumHostRouting string
+
+const (
+	ciliumHostRoutingBPF    ciliumHostRouting = "BPF"
+	ciliumHostRoutingLegacy ciliumHostRouting = "Legacy"
+)
+
+// maxCiliumDevices bounds the device list carried and read. Cilium selects a
+// node's physical and tunnel devices, a handful in practice.
+const maxCiliumDevices = 64
+
+// ciliumDeviceNameRE is a Linux interface name (IFNAMSIZ 16, so at most 15
+// bytes) of the characters a device Cilium selects can carry.
+var ciliumDeviceNameRE = regexp.MustCompile(`^[A-Za-z0-9._@:-]{1,15}$`)
+
+// ciliumRouting is what a Cilium agent reports about how it routes traffic on
+// the node itself.
+type ciliumRouting struct {
+	// IntraHost is routing.intra-host-routing-mode: BPF or Legacy.
+	IntraHost ciliumHostRouting
+	// Devices is kube-proxy-replacement.devices: the devices Cilium selected
+	// and attaches its programs to. The decision does not depend on it: BPF
+	// host routing also opens the pod-to-device direction, which leaving the
+	// tunnel interface out of the devices does not close (K8N-6,
+	// configuration C). It is carried so the receipt shows what Cilium
+	// attached to, and read strictly so that a changed shape is noticed.
+	Devices []string
+}
+
+// ciliumRoutingModel is the `routing` member of the agent's status (api/v1
+// model Routing). Every field is optional on the wire.
+type ciliumRoutingModel struct {
+	InterHost *string `json:"inter-host-routing-mode"`
+	IntraHost *string `json:"intra-host-routing-mode"`
+	Tunnel    *string `json:"tunnel-protocol"`
+}
+
+// parseCiliumRouting reads the agent's status document, full or as the
+// manager reduced it, and returns its host routing mode and selected devices.
+// The `routing` member must hold only fields this code knows; the
+// `kube-proxy-replacement` member must carry a `devices` list (null is an
+// empty one), and its other members are not read. A missing, stale or
+// newer-shaped member is an error, never "Legacy".
+func parseCiliumRouting(raw []byte) (ciliumRouting, error) {
+	if len(raw) > maxCiliumStatusBytes {
+		return ciliumRouting{}, errors.New("Cilium status exceeds bound")
+	}
+	var top map[string]json.RawMessage
+	if err := ciliumDecodeJSON(raw, &top, false); err != nil || top == nil {
+		return ciliumRouting{}, errors.New("Cilium status is not a JSON object")
+	}
+	if staleRaw, ok := top["stale"]; ok {
+		var stale map[string]json.RawMessage
+		if err := ciliumDecodeJSON(staleRaw, &stale, false); err != nil {
+			return ciliumRouting{}, errors.New("Cilium status has a stale list that is not understood")
+		}
+		for _, probe := range []string{"routing", "kube-proxy-replacement"} {
+			if _, isStale := stale[probe]; isStale {
+				return ciliumRouting{}, fmt.Errorf("Cilium %s status is stale", probe)
+			}
+		}
+	}
+	body, ok := top["routing"]
+	if !ok {
+		return ciliumRouting{}, errors.New("Cilium status has no routing section")
+	}
+	var model ciliumRoutingModel
+	if err := ciliumDecodeJSON(body, &model, true); err != nil {
+		return ciliumRouting{}, errors.New("Cilium routing status is not understood")
+	}
+	if model.IntraHost == nil {
+		return ciliumRouting{}, errors.New("Cilium routing status does not say how traffic is routed on the host")
+	}
+	var out ciliumRouting
+	switch ciliumHostRouting(*model.IntraHost) {
+	case ciliumHostRoutingBPF:
+		out.IntraHost = ciliumHostRoutingBPF
+	case ciliumHostRoutingLegacy:
+		out.IntraHost = ciliumHostRoutingLegacy
+	default:
+		return ciliumRouting{}, errors.New("Cilium host routing mode is not understood")
+	}
+	kprRaw, ok := top["kube-proxy-replacement"]
+	if !ok {
+		return ciliumRouting{}, errors.New("Cilium status has no kube-proxy-replacement section")
+	}
+	var kpr map[string]json.RawMessage
+	if err := ciliumDecodeJSON(kprRaw, &kpr, false); err != nil || kpr == nil {
+		return ciliumRouting{}, errors.New("Cilium kube-proxy-replacement status is not understood")
+	}
+	devicesRaw, ok := kpr["devices"]
+	if !ok {
+		return ciliumRouting{}, errors.New("Cilium status does not list its devices")
+	}
+	devices, err := parseCiliumDevices(devicesRaw)
+	if err != nil {
+		return ciliumRouting{}, err
+	}
+	out.Devices = devices
+	return out, nil
+}
+
+// parseCiliumDevices reads kube-proxy-replacement.devices: a JSON array of
+// distinct interface names, or null for none.
+func parseCiliumDevices(raw json.RawMessage) ([]string, error) {
+	var devices []string
+	if err := ciliumDecodeJSON(raw, &devices, false); err != nil {
+		return nil, errors.New("Cilium device list is not understood")
+	}
+	if len(devices) > maxCiliumDevices {
+		return nil, errors.New("Cilium device list exceeds bound")
+	}
+	seen := map[string]bool{}
+	for _, name := range devices {
+		if !ciliumDeviceNameRE.MatchString(name) || seen[name] {
+			return nil, errors.New("Cilium device list names an invalid or repeated device")
+		}
+		seen[name] = true
+	}
+	if devices == nil {
+		devices = []string{}
+	}
+	return devices, nil
+}
+
+// ReasonCiliumBPFHostRouting starts the refusal of a Cilium node whose agent
+// routes host traffic in BPF (K8N-6).
+const ReasonCiliumBPFHostRouting = "Cilium BPF host routing lets traffic between pods and the tunnel bypass Tunnex's access rules"
+
+// ciliumHostRoutingInstruction is what the customer changes. It is the only
+// setting shown to close every path (K8N-6, configuration F); leaving the
+// tunnel interface out of Cilium's devices does not close pod to device.
+const ciliumHostRoutingInstruction = "Set bpf.hostLegacyRouting=true in Cilium's Helm values, then restart the Cilium agents"
+
+// errCiliumBPFHostRouting is the whole customer-facing refusal. It fits the
+// reason bound.
+var errCiliumBPFHostRouting = errors.New(ReasonCiliumBPFHostRouting + ". " + ciliumHostRoutingInstruction)
+
+// ReasonCiliumLegacyHostRouting ends the ready reason of a Cilium node.
+const ReasonCiliumLegacyHostRouting = "host routing is Legacy"
+
+// proveCiliumHostRouting returns nil only when the agent reports Legacy host
+// routing. BPF refuses with the customer's instruction; anything else is not
+// understood.
+func proveCiliumHostRouting(routing ciliumRouting) error {
+	switch routing.IntraHost {
+	case ciliumHostRoutingLegacy:
+		return nil
+	case ciliumHostRoutingBPF:
+		return errCiliumBPFHostRouting
+	default:
+		return errors.New("Cilium host routing mode is not understood")
+	}
+}
 
 // ciliumDecodeJSON decodes exactly one JSON value and rejects trailing data.
 func ciliumDecodeJSON(raw []byte, into any, strict bool) error {

@@ -38,9 +38,11 @@ var ciliumPinNameRE = regexp.MustCompile(`^[A-Za-z0-9_.-]{1,64}$`)
 
 // CiliumFacts is what the manager read on a node that shows Cilium.
 type CiliumFacts struct {
-	// Status is the agent's own account of its masquerading: the
-	// `masquerading` member of GET /v1/healthz on its local socket and, when
-	// the agent sent one, the `stale` member, as one JSON object.
+	// Status is the agent's own account of its masquerading and of how it
+	// routes host traffic: the `masquerading` and `routing` members of
+	// GET /v1/healthz on its local socket, the `devices` list of its
+	// `kube-proxy-replacement` member and, when the agent sent one, the
+	// `stale` member, as one JSON object (reduceCiliumStatus).
 	Status CiliumTextFact `json:"status"`
 	// PinnedMaps is what was found under /sys/fs/bpf/tc/globals.
 	PinnedMaps CiliumPinFacts `json:"pinned_maps"`
@@ -208,7 +210,11 @@ func ciliumNotExcludedReason(e *ciliumTunnelNotExcludedError) error {
 // decideCiliumMasquerade is the gateway's decision on a node that shows
 // Cilium. It returns the reason only when Cilium's own masquerading cannot
 // rewrite traffic bound for tunnel, as proveCiliumNoTunnelMasquerade defines
-// it. In iptables mode the returned reason says the NAT rule walk decides; the
+// it, and the agent routes host traffic in Legacy mode, so that traffic
+// between pods and the tunnel passes Tunnex's forward chain (K8N-6). The
+// masquerade proof is decided first and unchanged; the host routing check
+// applies to every node it would accept, in every masquerade mode. In
+// iptables mode the returned reason says the NAT rule walk decides; the
 // caller must have run that walk. Every other outcome is an error whose text
 // is the bounded reason the customer sees.
 func decideCiliumMasquerade(facts *CiliumFacts, tunnel netip.Prefix) (string, error) {
@@ -254,7 +260,20 @@ func decideCiliumMasquerade(facts *CiliumFacts, tunnel netip.Prefix) (string, er
 	var notExcluded *ciliumTunnelNotExcludedError
 	switch {
 	case err == nil:
-		return reason, nil
+		// The masquerade proof holds. A Cilium node is ready only when its
+		// agent also routes host traffic through the kernel stack, where
+		// Tunnex's forward chain sees it (K8N-6).
+		routing, err := parseCiliumRouting([]byte(facts.Status.Text))
+		if err != nil {
+			return "", ciliumNotVerified(err.Error())
+		}
+		if err := proveCiliumHostRouting(routing); err != nil {
+			if errors.Is(err, errCiliumBPFHostRouting) {
+				return "", err
+			}
+			return "", ciliumNotVerified(err.Error())
+		}
+		return bounded(reason+"; "+ReasonCiliumLegacyHostRouting, maxReasonBytes), nil
 	case errors.As(err, &notExcluded):
 		return "", ciliumNotExcludedReason(notExcluded)
 	case errors.Is(err, errCiliumEgressGateway):
@@ -264,10 +283,15 @@ func decideCiliumMasquerade(facts *CiliumFacts, tunnel netip.Prefix) (string, er
 	}
 }
 
-// reduceCiliumStatus keeps of the agent's status only what the proof reads:
-// the `masquerading` member and, when present, the `stale` member. The result
-// is one JSON object that parseCiliumStatus reads like the full status. The
-// status has dozens of members and grows; none of the others is carried.
+// reduceCiliumStatus keeps of the agent's status only what the decision
+// reads: the `masquerading`, `routing` and, when present, `stale` members,
+// each compacted byte for byte, and of the `kube-proxy-replacement` member
+// only its `devices` list (its other members, the per-device addresses and
+// the feature list among them, grow with the node and the release and are not
+// read). The result is one JSON object that parseCiliumStatus and
+// parseCiliumRouting read like the full status. The status has dozens of
+// members and grows; none of the others is carried. A member the status lacks
+// is left out, and the gateway refuses its absence.
 func reduceCiliumStatus(raw []byte) (string, error) {
 	if len(raw) > maxCiliumStatusBytes {
 		return "", errors.New("Cilium status exceeds bound")
@@ -276,11 +300,29 @@ func reduceCiliumStatus(raw []byte) (string, error) {
 	if err := ciliumDecodeJSON(raw, &top, false); err != nil || top == nil {
 		return "", errors.New("Cilium status is not a JSON object")
 	}
-	names := make([]string, 0, 2)
-	for _, name := range []string{"masquerading", "stale"} {
-		if _, ok := top[name]; ok {
-			names = append(names, name)
+	members := map[string]json.RawMessage{}
+	for _, name := range []string{"masquerading", "routing", "stale"} {
+		if value, ok := top[name]; ok {
+			members[name] = value
 		}
+	}
+	if kprRaw, ok := top["kube-proxy-replacement"]; ok {
+		var kpr map[string]json.RawMessage
+		if err := ciliumDecodeJSON(kprRaw, &kpr, false); err != nil || kpr == nil {
+			return "", errors.New("Cilium kube-proxy-replacement status is not understood")
+		}
+		var compact bytes.Buffer
+		compact.WriteByte('{')
+		if devices, ok := kpr["devices"]; ok {
+			compact.WriteString(`"devices":`)
+			compact.Write(devices)
+		}
+		compact.WriteByte('}')
+		members["kube-proxy-replacement"] = compact.Bytes()
+	}
+	names := make([]string, 0, len(members))
+	for name := range members {
+		names = append(names, name)
 	}
 	sort.Strings(names)
 	var out strings.Builder
@@ -290,7 +332,7 @@ func reduceCiliumStatus(raw []byte) (string, error) {
 			out.WriteByte(',')
 		}
 		var compact bytes.Buffer
-		if err := json.Compact(&compact, top[name]); err != nil {
+		if err := json.Compact(&compact, members[name]); err != nil {
 			return "", errors.New("Cilium status is not understood")
 		}
 		fmt.Fprintf(&out, "%q:%s", name, compact.Bytes())
