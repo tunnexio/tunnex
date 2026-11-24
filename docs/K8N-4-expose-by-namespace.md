@@ -480,3 +480,26 @@ changed by any machine credential of the organisation that holds `k8s:manage`, n
 created it. Binding a rule to one credential would orphan every Git-declared rule when the operator's
 credential is rotated, which is the routine case; two operators in one organisation editing each
 other's rules is the rarer case and is visible in the audit log, which names the credential.
+
+## Live result on the on-prem demo cluster, 2026-11-24
+
+Cluster `gitops` (k3s), control plane and gateway on release `k8n4`. Test namespace `nsdemo` with
+Services `hello` (TCP 80) and `other` (TCP 8080); a laptop enrolled as Control Plane Admin.
+
+| Step | Result |
+| --- | --- |
+| Dashboard, Services tab, "Expose every Service in a namespace…", `nsdemo` | Rule `Applied`, 2 Services, 2 ports; rows show "Namespace rule" |
+| Names from the laptop, no access rule | `hello` and `other` resolve to their VIPs; HTTP fails (000). Exposure grants nothing |
+| Access rule Control Plane Admin → `hello` TCP 80 | `hello` 200 within seconds; `other` still 000 |
+| Exclusions…, exclude `other`, withdraw now | `other` name and VIP gone at once; `hello` still 200 |
+| New Service `third` (TCP 9090) added to `nsdemo` | Exposed by the rule after about 90 s (next gateway report); HTTP 000 without a rule |
+| Remove rule, "Withdraw all of them" | `hello` and `third` names and VIPs gone; `hello` 000 although its access rule still existed; `web.shop` (GitOps) unchanged, 200 |
+| Access Policies after removal | The rule to `hello` shows "Vanished" (removed service); deleted by hand |
+
+Observation: `third` received VIP `100.66.0.5`, freed by excluding `other` a few minutes earlier.
+Access rules bind the Service, not the address, so nobody granted `other` could reach `third`. A client
+that still had `other`'s name cached would reach `third`'s address and be refused by policy. No
+change made; noted for the VIP-reuse delay question if it comes up.
+
+Not walked live: the selector (covered by tests) and the operator's `TunnexNamespaceExposure`
+(covered by operator tests).
