@@ -29,10 +29,12 @@ import (
 // host mounts:
 //
 //	hostlegacy-ipmasq  bpf.hostLegacyRouting=true: host routing Legacy, the
-//	                   configuration Tunnex accepts (before the test wg0
-//	                   existed, as A)
-//	hostbpf-ipmasq     the same with bpf.hostLegacyRouting=false: host
-//	                   routing BPF, refused (wg0 up and among the devices)
+//	                   configuration Tunnex accepts
+//	hostbpf-ipmasq     the same with bpf.hostLegacyRouting=false, after the
+//	                   agents restarted: host routing BPF, refused
+//
+// Both were read with the test wg0 up and among Cilium's devices, before any
+// Tunnex table was loaded.
 //
 // See docs/K8N-2-cilium.md, "Host routing — decision, 2026-11-24".
 

@@ -59,7 +59,8 @@ eBPF masquerade, and the ip-masq-agent on with `nonMasqueradeCIDRs: [10.99.0.0/2
 `masqLinkLocal: true`.
 
 - `hostlegacy-ipmasq`: `bpf.hostLegacyRouting=true`. The agent reports `Host: Legacy`.
-  - The files were read before the test `wg0` existed, as for A.
+  - The files were read with the test `wg0` up and among Cilium's devices, before any Tunnex
+    table was loaded (unlike A, read before `wg0` existed).
   - They are the status, the pin list, the map dump, `nft -j list ruleset`, the two
     `iptables-nft-save` tables (with the `#` lines dropped), the device names (`ip -o link`,
     second field) and `bpftool --json net show`.
