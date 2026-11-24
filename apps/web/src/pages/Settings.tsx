@@ -353,7 +353,7 @@ function SettingsWorkspace() {
         )}
         {serverAdmin && active === "server-access-installation" && state.status === "authed" && (
           <SettingGroup id="server-access-installation" title="Server Access" tabpanel>
-            <ServerAccessInstallationSettings key={state.user.id} canEdit={emailVerified && !state.user.must_change_password} />
+            <ServerAccessInstallationSettings key={state.user.id} canEdit={emailVerified && !state.user.must_change_password} organization={currentOrg && can(appAccessRoles, "server_access:manage") ? { id: currentOrg.id, name: currentOrg.name } : undefined} />
           </SettingGroup>
         )}
         {serverAdmin && active === "beam-serving" && state.status === "authed" && (

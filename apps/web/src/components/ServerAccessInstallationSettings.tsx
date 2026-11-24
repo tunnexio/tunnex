@@ -11,7 +11,28 @@ const endpoint = "/api/v1/admin/server-access/installation" as const;
  * SA-UI-1: the installation-wide Server Access capability. Server administrators only; each change needs
  * recent re-authentication (current password and/or a fresh MFA verification) and is audited.
  */
-export function ServerAccessInstallationSettings({ canEdit }: { canEdit: boolean }) {
+/** SA-UX-2 item 6: turn the current organization on in the same confirmed action, through its own endpoint. */
+async function enableOrganization(orgId: string): Promise<string | null> {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    // Another API replica may still hold the previous installation value for about a second.
+    if (attempt) await new Promise(resolve => setTimeout(resolve, 1200));
+    const current = await api.GET("/api/v1/organizations/{orgId}/server-access", { params: { path: { orgId } } }).catch(() => null);
+    if (!current) return "Could not reach the server.";
+    if (current.error || !current.data) { if (apiErrorCode(current.error) === "server_access_disabled") continue; return apiErrorMessage(current.error, "Could not read the organization setting."); }
+    const saved = current.data;
+    if (saved.enabled) return null;
+    if (!saved.can_manage) return "You cannot manage Server Access in this organization.";
+    const result = await api.PUT("/api/v1/organizations/{orgId}/server-access", { params: { path: { orgId } }, body: { enabled: true, recording_retention_days: saved.recording_retention_days, mfa_freshness_seconds: saved.mfa_freshness_seconds, recording_max_session_bytes: saved.recording_max_session_bytes, recording_max_org_bytes: saved.recording_max_org_bytes } }).catch(() => null);
+    if (!result) return "Could not reach the server.";
+    if (!result.error) return null;
+    if (apiErrorCode(result.error) === "server_access_disabled") continue;
+    return apiErrorMessage(result.error, "The organization setting was not changed.");
+  }
+  return "The installation change has not reached every server yet.";
+}
+
+export function ServerAccessInstallationSettings({ canEdit, organization }: { canEdit: boolean; organization?: { id: string; name: string } }) {
+  const [alsoOrganization, setAlsoOrganization] = useState(true);
   const [saved, setSaved] = useState<Installation | null>(null);
   const [pending, setPending] = useState<boolean | null>(null);
   const [password, setPassword] = useState("");
@@ -52,6 +73,14 @@ export function ServerAccessInstallationSettings({ canEdit }: { canEdit: boolean
       }
       const next = response.data;
       setSaved(next); setPending(null); setPassword(""); setNeedMfa(false);
+      if (next.effective && pending && organization && alsoOrganization) {
+        const failure = await enableOrganization(organization.id);
+        if (!alive.current) return;
+        setResult(failure
+          ? `Server Access is on for this installation, but turning it on for ${organization.name} failed: ${failure} Use Settings → Features to try again.`
+          : `Server Access is on for this installation and for ${organization.name}. Other organizations turn it on in their own Settings → Features.`);
+        return;
+      }
       setResult(next.effective
         ? "Server Access is on for this installation. Each organization still turns it on in Settings → Features."
         : `Server Access is off for this installation. New sessions are refused${typeof next.ended_sessions !== "number" ? "" : next.ended_sessions === 0 ? "; no sessions were open" : `; ${next.ended_sessions} active ${next.ended_sessions === 1 ? "session was" : "sessions were"} ended`}.`);
@@ -80,6 +109,7 @@ export function ServerAccessInstallationSettings({ canEdit }: { canEdit: boolean
     {canEdit && !reauth.available && <p className="text-sm text-ink-secondary" role="note">Changing this needs re-authentication, and your account has no password or authenticator on this server. Set up an authenticator app (two-factor authentication) in your account settings to change this setting.</p>}
     {pending !== null && <form className="space-y-3" onSubmit={event => void save(event)} aria-label="Confirm Server Access change">
       <p>{pending ? "Turn Server Access on for this installation. Organizations that have it turned on can register servers and open SSH or RDP sessions." : "Turn Server Access off for this installation. New sessions are refused and every active SSH or RDP session ends now."}</p>
+      {pending && organization && <label className="flex items-start gap-2 text-sm"><input type="checkbox" checked={alsoOrganization} disabled={busy !== null} onChange={event => setAlsoOrganization(event.target.checked)} /><span>Also turn on Server Access for {organization.name}<span className="block text-xs text-ink-secondary">Saved through the organization's own setting, as in Settings → Features.</span></span></label>}
       {reauth.password && <Field label="Current password"><Input type="password" autoComplete="current-password" required value={password} disabled={busy !== null} onChange={event => setPassword(event.target.value)} /></Field>}
       {!needMfa && <div className="flex gap-2"><Button type="submit" disabled={busy !== null}>{busy === "save" ? "Saving…" : pending ? "Turn on Server Access" : "Turn off Server Access"}</Button><Button type="button" variant="ghost" disabled={busy !== null} onClick={() => { setPending(null); setPassword(""); setError(null); }}>Cancel</Button></div>}
       {reauth.mfa && !needMfa && <p className="text-xs text-ink-secondary">You may be asked to verify MFA.</p>}
