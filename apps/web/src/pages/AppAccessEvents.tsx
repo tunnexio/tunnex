@@ -44,6 +44,15 @@ function isFeed(value: unknown, limit: number): value is Feed {
 }
 const cursorKey = (cursor: Cursor) => `${cursor.before_id.toLowerCase()}:${Date.parse(cursor.before_time)}`;
 const label = (value: string) => value.replace(/_/g," ");
+// SA-UX-2 AA-6: event reasons as words people use, never the stored code.
+export const eventReasonText: Record<string, string> = {
+  none: "—", session_invalid: "Sign-in for the app was not valid", parent_unavailable: "Dashboard sign-in ended", user_inactive: "User is deactivated",
+  membership_unavailable: "Not a member of this organization", no_use_permission: "Role does not allow using applications", no_active_grant: "No current access grant",
+  feature_disabled: "Applications turned off for this organization", feature_unavailable: "Applications not available on this license", publication_unavailable: "Application not published",
+  installation_changed: "Application domain setup changed", session_revoked: "Session ended by an administrator or the user", lease_expired: "Session lease expired",
+  connection_closed: "Connection closed", self: "Ended by the user", admin: "Ended by an administrator", recovery: "Recovered after a restart",
+  infrastructure_unavailable: "Gateway or proxy unavailable", dropped_events: "Some events were not recorded",
+};
 const appLabel = (id: string) => `${id.slice(0,4)}…${id.slice(-8)}`;
 
 export default function AppAccessEvents() {
@@ -124,7 +133,7 @@ function ApplicationEventsWorkspace() {
         <table className="event-table" aria-label="Application access event history" aria-busy={busy}><caption className="sr-only">Application access event history</caption><colgroup><col style={{width:"19%"}} /><col style={{width:"20%"}} /><col style={{width:"27%"}} /><col style={{width:"21%"}} /><col style={{width:"13%"}} /></colgroup><thead><tr><th>Outcome</th><th>Application</th><th>Event</th><th>Reason</th><th>Recorded</th></tr></thead><tbody>{feed.items.map(event => <tr key={event.id}>
           <td><button type="button" className={`event-outcome is-${["denied","failed"].includes(event.outcome) ? "bad" : event.outcome === "allowed" ? "ok" : "neutral"}`} aria-label={`View ${label(event.kind)} event`} onClick={() => { setSelected(event); setStage("overview"); }}>{label(event.outcome)}</button></td>
           <td><Link className="event-flow" title={event.app_id} to={`/app-access/applications/${event.app_id}`}>{appLabel(event.app_id)}</Link></td>
-          <td>{label(event.kind)}</td><td className="event-muted">{label(event.reason)}</td><td><time dateTime={event.created_at} title={new Date(event.created_at).toLocaleString()}>{relativeAge(event.created_at)}</time></td>
+          <td>{label(event.kind)}</td><td className="event-muted">{(eventReasonText[event.reason] ?? "Other")}</td><td><time dateTime={event.created_at} title={new Date(event.created_at).toLocaleString()}>{relativeAge(event.created_at)}</time></td>
         </tr>)}{!feed.items.length && <tr><td colSpan={5}><div className="event-empty"><h2>{page > 1 ? "No events on this page" : active ? "No matching events" : "No events recorded"}</h2><p>{page > 1 ? "Older records may have expired. Go back or refresh to read the latest activity." : "No application events match this view."}</p></div></td></tr>}</tbody></table>
         <AppAccessPagination page={page} pageSize={size} count={feed.items.length} hasNext={!!feed.next_cursor} busy={busy} maxOffset={null} firstItem={cache.current.slice(0,page-1).reduce((n,item) => n+item.items.length,1)} onPageChange={changePage} onPageSizeChange={value => { epoch.current++; setFeed(null); setSize(value); }} />
         <details className="event-disclosure"><summary><span>Telemetry health</span><span className={feed.telemetry.available && (feed.telemetry.dropped || feed.telemetry.storage_failures) ? "event-health-attention" : undefined}>{feed.telemetry.available ? feed.telemetry.dropped || feed.telemetry.storage_failures ? "Needs attention" : "Counters available" : "Counters unavailable"}</span></summary><p>{feed.telemetry.available ? `Telemetry for this organization since this service started: ${feed.telemetry.emitted} recorded · ${feed.telemetry.dropped} dropped · ${feed.telemetry.storage_failures} storage failures.` : "Current telemetry counters are unavailable. Stored event history remains available; zero loss has not been confirmed."}</p><p>Application decision records remain available under the event permission when Applications or VPN Zero Trust is off. Decision telemetry can lose records; mutation audits are recorded separately.</p></details>

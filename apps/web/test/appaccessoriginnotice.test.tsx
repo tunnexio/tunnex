@@ -18,3 +18,12 @@ it("explains that a hostname is resolved by the gateway when it connects", () =>
   render(<OriginRangeNotice originUrl="https://wiki.internal" allowed={[]} gatewayName="gw" />);
   expect(screen.getByText(/The gateway gw resolves wiki\.internal when it connects/)).toBeTruthy();
 });
+
+it("has words for every App Access event reason, never the code (AA-6)", async () => {
+  const { eventReasonText } = await import("../src/pages/AppAccessEvents");
+  const reasons = ["none","session_invalid","parent_unavailable","user_inactive","membership_unavailable","no_use_permission","no_active_grant","feature_disabled","feature_unavailable","publication_unavailable","installation_changed","session_revoked","lease_expired","connection_closed","self","admin","recovery","infrastructure_unavailable","dropped_events"];
+  for (const reason of reasons) {
+    expect(eventReasonText[reason], reason).toBeTruthy();
+    expect(eventReasonText[reason]).not.toMatch(/_/);
+  }
+});
