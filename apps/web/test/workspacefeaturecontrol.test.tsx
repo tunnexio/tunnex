@@ -37,6 +37,21 @@ describe("Server Access turned off for the installation (SA-UI-1)", () => {
     expect(await screen.findByText(/Ask a server administrator to turn it on/)).toBeTruthy();
     expect(screen.queryByRole("link", { name: "Open Server Access settings" })).toBeNull();
   });
+  it("switches to the installation-off state with the link when a save is refused (SA-UX-2 item 5)", async () => {
+    mock.PUT.mockImplementation(off);
+    render(<MemoryRouter><WorkspaceFeatureControl feature="server-access" orgId="org-a" roles={["admin"]} canEdit serverAdmin /></MemoryRouter>);
+    fireEvent.click(await screen.findByRole("switch", { name: "Server Access" }));
+    expect(await screen.findByRole("link", { name: "Open Server Access settings" })).toBeTruthy();
+    expect(screen.queryByText(/Terminal capability is disabled/)).toBeNull();
+    expect(screen.queryByRole("button", { name: "Reload Server Access setting" })).toBeNull();
+  });
+  it("switches to the installation-off state when a reload is refused", async () => {
+    let calls = 0;
+    mock.GET.mockImplementation(async (path: string) => (path.endsWith("/server-access") && calls++ === 0 ? { error: { error: { code: "internal", message: "Temporary" } } } : off()));
+    render(<MemoryRouter><WorkspaceFeatureControl feature="server-access" orgId="org-a" roles={["admin"]} canEdit serverAdmin /></MemoryRouter>);
+    fireEvent.click(await screen.findByRole("button", { name: "Reload Server Access setting" }));
+    expect(await screen.findByRole("link", { name: "Open Server Access settings" })).toBeTruthy();
+  });
 });
 
 describe("central workspace feature contracts", () => {

@@ -99,14 +99,15 @@ function ServerFeature({ orgId,canEdit,serverAdmin }: { orgId:string;canEdit:boo
     });
   }
   if (installationOff) return <SettingRow label="Server Access" description={serverAdmin ? "Turned off for this installation. As a server administrator you can turn it on in Settings → Server Access." : "Turned off for this installation. Ask a server administrator to turn it on."}><span className="flex items-center gap-3"><span className="text-sm text-ink-secondary">Unavailable</span>{serverAdmin && <Link to="/settings?section=server-access-installation" className="text-sm text-brand">Open Server Access settings</Link>}</span></SettingRow>;
-  return <ServerFeatureControl orgId={orgId} canEdit={canEdit} read={read} />;
+  // SA-UX-2 item 5: a refusal on a save (the installation was turned off after this page loaded) is the same state.
+  return <ServerFeatureControl orgId={orgId} canEdit={canEdit} read={read} onInstallationOff={() => setInstallationOff(true)} />;
 }
-function ServerFeatureControl({ orgId,canEdit,read }: { orgId:string;canEdit:boolean;read:() => Promise<Loaded<components["schemas"]["ServerAccessWorkspace"]>> }) {
+function ServerFeatureControl({ orgId,canEdit,read,onInstallationOff }: { orgId:string;canEdit:boolean;read:() => Promise<Loaded<components["schemas"]["ServerAccessWorkspace"]>>;onInstallationOff:() => void }) {
   const control=useControl(read, value => !!value && typeof value.enabled === "boolean" && typeof value.can_manage === "boolean" && integer(value.recording_retention_days,1) && integer(value.mfa_freshness_seconds,1) && integer(value.recording_max_session_bytes,1) && integer(value.recording_max_org_bytes,1));
   const saved=control.data;
   function change(enabled:boolean) {
     if (!canEdit || !saved?.can_manage || enabled === saved.enabled) return;
-    void control.transact(() => write(() => api.PUT("/api/v1/organizations/{orgId}/server-access",{params:{path:{orgId}},body:{enabled,recording_retention_days:saved.recording_retention_days,mfa_freshness_seconds:saved.mfa_freshness_seconds,recording_max_session_bytes:saved.recording_max_session_bytes,recording_max_org_bytes:saved.recording_max_org_bytes}})),async () => { await control.reload(); });
+    void control.transact(() => write(async () => { const result=await api.PUT("/api/v1/organizations/{orgId}/server-access",{params:{path:{orgId}},body:{enabled,recording_retention_days:saved.recording_retention_days,mfa_freshness_seconds:saved.mfa_freshness_seconds,recording_max_session_bytes:saved.recording_max_session_bytes,recording_max_org_bytes:saved.recording_max_org_bytes}}); if (apiErrorCode(result.error) === "server_access_disabled") onInstallationOff(); return result; }),async () => { await control.reload(); });
   }
   return <FeatureRow name="Server Access" description="Allow server registration, account checks and new SSH or RDP sessions. Recording and security policies stay saved." enabled={saved?.enabled} canEdit={canEdit && !!saved?.can_manage} control={control} onChange={change} />;
 }
