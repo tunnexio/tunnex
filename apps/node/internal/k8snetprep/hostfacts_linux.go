@@ -15,6 +15,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"sort"
 	"strings"
 	"sync"
 )
@@ -160,6 +161,7 @@ func (r *HostFactsReader) kernelSetsExist(ctx context.Context) (bool, error) {
 // chains it carries. For nat it also reads the candidate sets.
 func (r *HostFactsReader) readTable(ctx context.Context, table string) (SavedTableFacts, []SavedSetFacts) {
 	names := r.remembered[table]
+	setsChanged := false
 	for attempt := 0; attempt < maxFactReadAttempts; attempt++ {
 		before, err := r.listingDigests(ctx, table, names)
 		if err != nil {
@@ -197,7 +199,10 @@ func (r *HostFactsReader) readTable(ctx context.Context, table string) (SavedTab
 		}
 		var sets []SavedSetFacts
 		if table == "nat" {
-			if sets, err = r.readSets(ctx, saved, relevant); err != nil {
+			if sets, err = r.readSets(ctx, saved, relevant); errors.Is(err, errSetNamesChanged) {
+				setsChanged = true
+				continue
+			} else if err != nil {
 				return unreadableTable(err.Error()), nil
 			}
 		}
@@ -213,6 +218,9 @@ func (r *HostFactsReader) readTable(ctx context.Context, table string) (SavedTab
 			facts.Chains = append(facts.Chains, SavedChainFacts{Name: name, Listing: after[name], Rules: lines[name]})
 		}
 		return facts, sets
+	}
+	if setsChanged {
+		return unreadableTable(errSetNamesChanged.Error()), nil
 	}
 	return unreadableTable(fmt.Sprintf("%s rules kept changing while they were read", table)), nil
 }
@@ -250,10 +258,50 @@ func (r *HostFactsReader) listingDigests(ctx context.Context, table string, chai
 	return digests, nil
 }
 
+// errSetNamesChanged says that the kernel's set names were not the same after
+// the members were read as before. readTable reads the table again.
+var errSetNamesChanged = errors.New("kernel sets were created, renamed or removed while they were read")
+
+// setNames lists the names of the kernel's sets, sorted. The order `ipset
+// list -n` prints carries nothing this reader relies on.
+func (r *HostFactsReader) setNames(ctx context.Context) ([]string, error) {
+	out, err := r.runIPSet(ctx, "list", "-n")
+	if err != nil {
+		return nil, fmt.Errorf("list kernel sets: %s", bounded(err.Error(), 120))
+	}
+	names := strings.Fields(out)
+	sort.Strings(names)
+	return names, nil
+}
+
+// readSets reads the members of the candidate sets between two listings of
+// the kernel's set names, and returns errSetNamesChanged when they differ.
+//
+// What this binds, and what it cannot (K8N review, finding 7). A rule holds
+// its set by kernel index; the saved text and `ipset save` name it. ipset
+// shows no index, generation or other identity, so nothing read here can
+// prove that the members belong to the set the rule holds. What makes the
+// name a fair stand-in is the kernel: a set held by a rule can be neither
+// renamed nor destroyed (ipset 7.24 on 6.8: "Set cannot be renamed: it is in
+// use by another system"), so its name keeps pointing at the index the rule
+// holds for as long as the rule exists, and a rule that is replaced gets a
+// new handle, which the chain listings around this read catch. The listing
+// of names here adds the check that no set was created, renamed or removed
+// while the members were read. Not bound by anything: `ipset swap`, which
+// keeps both names and indexes and exchanges what they hold, and plain
+// `ipset add`. Either changes what a rule matches, after the read as well
+// as during it; the receipt's freshness bounds how long such a read stands.
 func (r *HostFactsReader) readSets(ctx context.Context, saved map[string][]savedRule, chains []string) ([]SavedSetFacts, error) {
 	names := factSetCandidates(saved, chains)
 	if len(names) > maxProofSets {
 		return nil, fmt.Errorf("NAT rules name more than %d source sets", maxProofSets)
+	}
+	if len(names) == 0 {
+		return []SavedSetFacts{}, nil
+	}
+	before, err := r.setNames(ctx)
+	if err != nil {
+		return nil, err
 	}
 	sets := make([]SavedSetFacts, 0, len(names))
 	for _, name := range names {
@@ -269,6 +317,13 @@ func (r *HostFactsReader) readSets(ctx context.Context, saved map[string][]saved
 		default:
 			sets = append(sets, SavedSetFacts{Name: name, State: FactsRead, Saved: out})
 		}
+	}
+	after, err := r.setNames(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if !reflect.DeepEqual(before, after) {
+		return nil, errSetNamesChanged
 	}
 	return sets, nil
 }

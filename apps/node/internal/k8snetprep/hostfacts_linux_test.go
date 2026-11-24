@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -781,5 +782,68 @@ func TestClosedFactsRunnersRefuseEverythingElse(t *testing.T) {
 		if _, err := realFactsIPSetRunner(t.Context(), args...); err == nil || err.Error() != "unsupported ipset inspection" {
 			t.Errorf("ipset %v: %v", args, err)
 		}
+	}
+}
+
+// Review finding 7. The members are read between two listings of the kernel's
+// set names. A set created, renamed or removed meanwhile makes the reader start
+// the table over; if that keeps happening the NAT facts are unreadable, which
+// the gateway refuses. Before the fix the members were published as read.
+func TestHostFactsReaderRereadsSetNamesAfterTheMembers(t *testing.T) {
+	// Every member read renames a set: the names never settle.
+	f, reader := liveCalicoFactsReader(t)
+	renames := 0
+	var churn func()
+	churn = func() {
+		renames++
+		old := fmt.Sprintf("renamed-%d", renames-1)
+		if renames == 1 {
+			old = "spare"
+		}
+		f.sets[fmt.Sprintf("renamed-%d", renames)] = f.sets[old]
+		delete(f.sets, old)
+		f.onIPSet = churn
+	}
+	f.sets["spare"] = "create spare hash:net family inet\n"
+	f.onIPSet = churn
+	facts := reader.Read(t.Context())
+	if facts.NAT.State != FactsUnreadable || facts.NAT.Reason != "kernel sets were created, renamed or removed while they were read" || len(facts.Sets) != 0 {
+		t.Fatalf("nat = %+v, sets = %+v", facts.NAT, facts.Sets)
+	}
+	// The first attempt of a new reader finds the chains to carry; every
+	// later one reads the members and starts over.
+	if renames != maxFactReadAttempts-1 {
+		t.Fatalf("read the members %d times, want %d", renames, maxFactReadAttempts-1)
+	}
+	_, r := gatewayOnLiveCalico(t, constantFacts(facts))
+	if status, err := r.Reconcile(t.Context(), "100.96.0.0/24"); err == nil || !strings.Contains(err.Error(), "kernel sets were created, renamed or removed") {
+		t.Fatalf("gateway on churning sets: %+v %v", status, err)
+	}
+
+	// The scenario of the finding: while the members are read, the set is
+	// renamed away and a set with the old name and other members takes its
+	// place. The read starts over and publishes the members the name has once
+	// the names settle. (On a real node the kernel refuses to rename a set a
+	// rule holds; see readSets.)
+	f, reader = liveCalicoFactsReader(t)
+	original := f.sets[calicoMasq]
+	f.onIPSet = func() {
+		f.onIPSet = nil
+		f.sets["cali40masq-old"] = original
+		f.sets[calicoMasq] = "create " + calicoMasq + " hash:net family inet\nadd " + calicoMasq + " 172.16.0.0/12\n"
+	}
+	facts = reader.Read(t.Context())
+	if facts.NAT.State != FactsRead || len(facts.Sets) != 1 || !strings.Contains(facts.Sets[0].Saved, "172.16.0.0/12") {
+		t.Fatalf("nat = %+v, sets = %+v", facts.NAT, facts.Sets)
+	}
+	if !reflect.DeepEqual(f.setReads, []string{calicoMasq, calicoMasq}) {
+		t.Fatalf("sets read = %v", f.setReads)
+	}
+
+	// The names cannot be listed again: unreadable, never published.
+	f, reader = liveCalicoFactsReader(t)
+	f.onIPSet = func() { f.onIPSet = nil; f.setErr = errors.New("exit status 1: Kernel error") }
+	if facts := reader.Read(t.Context()); facts.NAT.State != FactsUnreadable || !strings.Contains(facts.NAT.Reason, "list kernel sets") || len(facts.Sets) != 0 {
+		t.Fatalf("nat = %+v, sets = %+v", facts.NAT, facts.Sets)
 	}
 }
