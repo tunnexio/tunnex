@@ -193,6 +193,9 @@ func main() {
 	}
 
 	client, err := control.NewClient(agentURL, serverName, nodeName, certPEM, keyPEM, caPEM)
+	if err == nil {
+		client.SetAgentVersion(version())
+	}
 	if err != nil {
 		logger.Error("agent_client_failed", slog.String("error", err.Error()))
 		os.Exit(1)

@@ -2367,6 +2367,10 @@ func (s *Service) ReportStatus(ctx context.Context, node sqlc.Node, stats []Peer
 // the control plane compares it against what it pushed — a gateway running stale
 // policy must be VISIBLE (a policy violation in slow motion), never silent.
 type AppliedPolicy struct {
+	// AgentVersion is the running agent version from the periodic report. It is
+	// written to nodes.agent_version (never into capabilities) after
+	// reportedAgentVersion bounds it; empty keeps the stored value.
+	AgentVersion        string                `json:"-"`
 	DNSLANListeners     []DNSLANListenerState `json:"dns_lan_listeners"`
 	WireGuardAppliedMTU int                   `json:"wireguard_applied_mtu"`
 	AIVPNHTTPReady      bool                  `json:"ai_vpn_http_ready"`
@@ -2572,7 +2576,7 @@ func (s *Service) ReportWGInfo(ctx context.Context, node sqlc.Node, publicKey, e
 	if err != nil {
 		return err
 	}
-	n, err := s.q.SetNodeWGInfo(ctx, sqlc.SetNodeWGInfoParams{ID: node.ID, WgPublicKey: publicKey, Endpoint: endpoint, Capabilities: caps})
+	n, err := s.q.SetNodeWGInfo(ctx, sqlc.SetNodeWGInfoParams{ID: node.ID, WgPublicKey: publicKey, Endpoint: endpoint, Capabilities: caps, AgentVersion: reportedAgentVersion(applied.AgentVersion)})
 	if err != nil {
 		return err
 	}

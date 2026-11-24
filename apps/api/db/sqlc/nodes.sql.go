@@ -1294,17 +1294,21 @@ const setNodeWGInfo = `-- name: SetNodeWGInfo :execrows
 UPDATE nodes
 SET wg_public_key = $1,
     endpoint = COALESCE(NULLIF($2::text, ''), nodes.endpoint),
-    capabilities = $3::jsonb,
+    -- The running agent version from the periodic report. Older agents omit it
+    -- (and the service blanks an invalid one), which keeps the stored value.
+    agent_version = COALESCE(NULLIF($3::text, ''), nodes.agent_version),
+    capabilities = $4::jsonb,
     last_seen_at = now(),
     -- S7.4b fold [1]: the applied-policy REPORT time (this write IS the report), distinct from
     -- last_seen_at (also bumped by DesiredState polls) — the desync freshness gate reads this.
     policy_reported_at = now()
-WHERE id = $4 AND status = 'active'
+WHERE id = $5 AND status = 'active'
 `
 
 type SetNodeWGInfoParams struct {
 	WgPublicKey  string    `json:"wg_public_key"`
 	Endpoint     string    `json:"endpoint"`
+	AgentVersion string    `json:"agent_version"`
 	Capabilities []byte    `json:"capabilities"`
 	ID           uuid.UUID `json:"id"`
 }
@@ -1319,6 +1323,7 @@ func (q *Queries) SetNodeWGInfo(ctx context.Context, arg SetNodeWGInfoParams) (i
 	result, err := q.db.Exec(ctx, setNodeWGInfo,
 		arg.WgPublicKey,
 		arg.Endpoint,
+		arg.AgentVersion,
 		arg.Capabilities,
 		arg.ID,
 	)
