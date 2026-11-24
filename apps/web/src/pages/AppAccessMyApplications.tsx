@@ -3,6 +3,7 @@ import { Link, useLocation, useNavigate, useSearchParams } from "react-router-do
 import type { components } from "@tunnex/shared";
 import { api, apiErrorCode, apiErrorMessage } from "../lib/api";
 import { useAuth } from "../lib/auth";
+import { AppAccessAvailabilityNotice, availabilityText } from "../components/AppAccessAvailabilityNotice";
 import { useOrg } from "../lib/useOrg";
 import { Badge, Button, ErrorText, Input, Loading, PageHeader, RefreshButton } from "../components/ui";
 
@@ -20,13 +21,7 @@ function browserDomain(launchURL: string) {
 
 type MyApps = components["schemas"]["AppAccessMyApps"];
 type MySessions = components["schemas"]["AppAccessMySessions"];
-const availabilityText: Record<MyApps["availability"], string> = {
-  available: "Only published applications granted to you appear here.",
-  feature_disabled: "Applications is off for this organization.",
-  feature_unavailable: "Applications requires an eligible license.",
-  domain_unavailable: "Application access setup is not complete. Contact your administrator.",
-  parent_unavailable: "Sign in again to open applications with this login.",
-};
+
 const catalogIntentKey = "tunnex.appAccess.catalogLaunch";
 const catalogIntentLifetime = 2 * 60 * 1000;
 type CatalogLaunchIntent = { version: 1; orgId: string; appId: string; userId: string; origin: string; target: "/"; createdAt: number };
@@ -154,7 +149,7 @@ export default function AppAccessMyApplications({ orgId, canUse = true }: { orgI
     {!canUse && <div className="space-y-3"><ErrorText>You do not have permission to launch applications. You can still revoke your own sessions.</ErrorText>{!showingSessions && <Button variant="ghost" onClick={() => changeView(true)}>My sessions</Button>}</div>}
     {canUse && !showingSessions && <section aria-label="My Applications" className="app-access-my-applications">
       <ErrorText>{launchError}</ErrorText>
-      {apps && apps.items.length > 0 && apps.availability !== "available" && <p role="status" className="app-access-notice">{availabilityText[apps.availability]}</p>}
+      {apps && apps.items.length > 0 && apps.availability !== "available" && <AppAccessAvailabilityNotice availability={apps.availability} />}
       {apps?.availability === "parent_unavailable" && apps.items.length > 0 && <FreshLogin />}
       <div className="app-access-toolbar">
         <div className="app-access-search"><Icon name="search" size={17} /><Input type="search" aria-label="Search applications" placeholder="Search your applications…" maxLength={100} value={search} onChange={event => changeSearch(event.target.value)} /></div>

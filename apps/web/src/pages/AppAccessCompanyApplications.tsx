@@ -8,6 +8,7 @@ import AppAccessPagination, { appAccessPageSize } from "../components/AppAccessP
 import { AppAccessRequestStatus } from "../components/AppAccessRequestStatus";
 import { Badge, Button, Card, ErrorText, Field, Loading, Modal, PageHeader } from "../components/ui";
 import { AppAccessOpenLink } from "./AppAccessMyApplications";
+import { AppAccessAvailabilityNotice } from "../components/AppAccessAvailabilityNotice";
 
 type Catalog = components["schemas"]["AppAccessCompanyApps"];
 type App = Catalog["items"][number];
@@ -31,7 +32,7 @@ export default function AppAccessCompanyApplications({ orgId }: { orgId: string 
     <PageHeader title="Company applications" navigationTitle />
     <AppAccessMemberTabs orgId={orgId} />
     <p className="text-sm text-ink-secondary">Your organization chooses which applications appear here. App admins review access requests; application access still requires a current grant.</p>
-    {catalog && catalog.availability !== "available" && <p role="status" className="app-access-notice">{catalog.availability === "feature_disabled" ? "Applications is off for this organization." : catalog.availability === "feature_unavailable" ? "Applications requires an eligible license." : catalog.availability === "parent_unavailable" ? "Sign in again to open applications with this login." : "Application access setup is not complete. Contact your administrator."}</p>}
+    {catalog && catalog.availability !== "available" && <AppAccessAvailabilityNotice availability={catalog.availability} />}
     {error ? <div><ErrorText>{error}</ErrorText><Button onClick={() => setReload(value => value + 1)}>Retry company apps</Button></div> : !catalog ? <Loading /> : !catalog.items.length ? <AppAccessEmptyState title={page ? "No more company apps" : "No company apps"} description={page ? "Return to the previous page to browse earlier applications." : "No company applications are available in this view."} /> : <ul className="grid min-w-0 gap-3 sm:grid-cols-2 xl:grid-cols-3">{catalog.items.map(app => <li key={app.id}><Card className="flex h-full min-w-0 flex-col gap-3 p-4">
       <div className="flex items-start gap-3"><span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-line bg-surface"><AppAccessIcon icon={app.icon} image={app.icon_data_url} className="h-5 w-5 text-ink-secondary" /></span><h2 className="text-base font-semibold">{app.name}</h2></div>
       {app.description && <p className="text-sm text-ink-secondary">{app.description}</p>}
