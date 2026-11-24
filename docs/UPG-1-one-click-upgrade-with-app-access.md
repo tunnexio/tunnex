@@ -352,3 +352,14 @@ applies to every installation, not only App Access.
 
   All of these need a Linux host with the signed images, and should be
   exercised on an isolated test CP before release.
+
+## Founder rulings, 2026-11-24
+
+The founder accepted the recommendations ("do recommended"), under the standing principles: no user confusion, security unchanged, one-click upgrades, no dependency between App Access and Server Access.
+
+- **D1:** the upgrade starts the signed proxy automatically, only after the authority re-check with the new binary passes. Restore and recovery never restart it automatically.
+- **D2:** rollback across a schema change is restore plus full invalidation (sign in again, reprovision the proxy credential, republish). No down migration. The default response to a failed upgrade is to re-run the upgrade (forward fix).
+- **D3:** hosts with App Access on v0.1.45 or older need a one-time manual replacement of both `upgrade.sh` copies with the script from the verified target release; announce it in the release notes. Follow-up story: after verification, the upgrade runs the target release's own script so this never recurs. It touches what code the host executes, so it needs its own decision paper and review first.
+- **D4:** reinstall with App Access stays refused.
+- **D5:** first-class App Access enablement (installer or dashboard) is a separate story, next in line, because today's enablement is manual.
+- **D6:** Kubernetes and HA control planes stay excluded.
