@@ -101,7 +101,7 @@ func apiReturnKernelGateway(t *testing.T, phase string) {
 	m.SetKubernetesMode(true)
 	m.SetKubernetesCNIAuthority(func(context.Context) (k8snetprep.AuthorityGrant, func(), error) {
 		return k8snetprep.AuthorityGrant{Scope: k8snetprep.ScopeIPMasqAndAWS, NotAfter: time.Now().Add(k8snetprep.CNIOperationBudget)}, func() {}, nil
-	}, nil, nil)
+	}, kernelTestHostFacts, nil)
 	m.SetEndpointSource(apiReturnEndpoints())
 	policy := apiReturnPolicy(phase != "api-access-off")
 	m.SetPolicy(policy)

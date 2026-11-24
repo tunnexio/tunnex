@@ -147,7 +147,7 @@ func TestTunnexPostroutingRefusesEveryNearMissOfTheAPIReturnRule(t *testing.T) {
 		"the marker on the device-pool shape":       {marked(nftAddr("saddr", testTunnel), exclusion, nftMasquerade), notOneAddress},
 		"the marker on an unconditional masquerade": {marked(nftMasquerade), notMasquerade},
 		// Any other rule is still refused, also next to a valid return rule.
-		"the site-LAN masquerade":              {tunnexNATRule("tunnex_site_lan_masquerade", nftAddr("saddr", "10.70.0.0/24"), exclusion, nftMasquerade), unknown},
+		"the IPsec desktop exemption":          {tunnexNATRule("tunnex_ipsec_desktop_no_snat", nftAddr("saddr", "10.99.0.2/32"), nftAddr("daddr", "10.60.0.0/24"), map[string]any{"return": nil}), unknown},
 		"a device-pool rule for another range": {tunnexNATRule("", nftAddr("saddr", "10.98.0.0/24"), exclusion, nftMasquerade), wrongPool},
 		"an unconditional masquerade":          {tunnexNATRule("", nftMasquerade), unknown},
 		"a commented device-pool rule":         {tunnexNATRule("note", nftAddr("saddr", testTunnel), exclusion, nftMasquerade), unknown},

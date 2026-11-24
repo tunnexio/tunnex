@@ -38,6 +38,13 @@ const (
 // the marker on that exact shape only.
 const APIReturnRuleComment = "tunnex_k8s_api_return"
 
+// SiteLANMasqueradeRuleComment marks SSI-8's site-LAN masquerade in `ip tunnex
+// postrouting` (K8N-5 item 4): on a site with `lan_egress = gateway_address`,
+// traffic from one remote site range takes the node's address as it leaves a
+// non-tunnel interface. The egress renderer writes it; validateTunnexPostrouting
+// accepts the marker on that exact shape only.
+const SiteLANMasqueradeRuleComment = "tunnex_site_lan_masquerade"
+
 // AuthorityGuard holds the node-local operation lock and validates the current
 // correlated manager authority. The caller holds the returned release function
 // across observation AND mutation. Lock order is guard, then Reconciler.mu.
