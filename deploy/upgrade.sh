@@ -39,10 +39,15 @@ COMPOSE_SHA256=${TUNNEX_COMPOSE_SHA256:-}
 [ -n "$COMPOSE_SHA256" ] || COMPOSE_SHA256=$(dotenv_value TUNNEX_COMPOSE_SHA256)
 PROJECT=${TUNNEX_COMPOSE_PROJECT:-${COMPOSE_PROJECT_NAME:-}}
 [ -n "$PROJECT" ] || PROJECT=$(dotenv_value COMPOSE_PROJECT_NAME)
-# BEGIN APP ACCESS REINSTALL GUARD
-# Inspect labels/mounts only; never read or emit container environment secrets.
-refuse_existing_app_access() {
+# BEGIN APP ACCESS COMPOSITION CLASSIFIER
+# Inspect labels, mounts and port bindings only; never read or emit container
+# environment secrets. Sets AA_* facts; refusal decisions are made by the caller.
+AA_MARKER_DIR=/var/lib/tunnex/app-restore
+AA_PROXY_SECRETS_TARGET=/etc/tunnex/app-proxy
+classify_existing_app_access() {
   _aa_project=$1 _aa_directory=$2
+  AA_API_COUNT=0 AA_PROXY_COUNT=0 AA_PROJECT_FOUND= AA_API_MARKER= AA_PROXY_MARKER=
+  AA_PROXY_SECRETS= AA_PROXY_PORTS= AA_CONFIG_FILES= AA_CONFIG_CONFLICT=false
   if [ -n "$_aa_project" ]; then
     _aa_filter="label=com.docker.compose.project=$_aa_project"
   else
@@ -54,15 +59,16 @@ refuse_existing_app_access() {
     echo 'error: existing installation inspection failed; upgrade refused' >&2; return 1;
   }
   for _aa_id in $_aa_ids; do
-    _aa_info=$(docker inspect --format '{{index .Config.Labels "com.docker.compose.project"}}|{{index .Config.Labels "com.docker.compose.project.working_dir"}}|{{index .Config.Labels "com.docker.compose.service"}}|{{range .Mounts}}{{if eq .Destination "/var/lib/tunnex/app-restore"}}marker{{end}}{{end}}' "$_aa_id" 2>/dev/null) || {
+    _aa_info=$(docker inspect --format '{{index .Config.Labels "com.docker.compose.project"}}|{{index .Config.Labels "com.docker.compose.project.working_dir"}}|{{index .Config.Labels "com.docker.compose.service"}}|{{range .Mounts}}{{if eq .Destination "/var/lib/tunnex/app-restore"}}{{.Type}}:{{.Name}};{{end}}{{end}}|{{range .Mounts}}{{if eq .Destination "/etc/tunnex/app-proxy"}}{{.Source}};{{end}}{{end}}|{{range $p, $b := .HostConfig.PortBindings}}{{range $b}}{{$p}}={{.HostIp}}:{{.HostPort}};{{end}}{{end}}|{{index .Config.Labels "com.docker.compose.project.config_files"}}|{{index .Config.Labels "com.docker.compose.oneoff"}}' "$_aa_id" 2>/dev/null) || {
       echo 'error: existing installation inspection failed; upgrade refused' >&2; return 1;
     }
     case "$_aa_info" in
-      *'|'*'|'*'|'*) ;;
+      *'|'*'|'*'|'*'|'*'|'*'|'*'|'*'|'*) echo 'error: existing installation inspection failed; upgrade refused' >&2; return 1 ;;
+      *'|'*'|'*'|'*'|'*'|'*'|'*) ;;
       *) echo 'error: existing installation inspection failed; upgrade refused' >&2; return 1 ;;
     esac
     _aa_saved_ifs=$IFS
-    IFS='|' read -r _aa_found_project _aa_found_directory _aa_service _aa_marker <<EOF
+    IFS='|' read -r _aa_found_project _aa_found_directory _aa_service _aa_marker _aa_secrets _aa_ports _aa_files _aa_oneoff <<EOF
 $_aa_info
 EOF
     IFS=$_aa_saved_ifs
@@ -71,13 +77,109 @@ EOF
     [ -n "$_aa_found_project" ] && [ "$_aa_found_project" != '<no value>' ] || {
       echo 'error: existing installation inspection failed; upgrade refused' >&2; return 1;
     }
-    if [ "$_aa_service" = app-proxy ] || { [ "$_aa_service" = api ] && [ -n "$_aa_marker" ]; }; then
-      echo 'error: existing App Access composition requires a separately reviewed opt-in install/upgrade workflow; ordinary install/upgrade is refused before replacement. Preserve the proxy, signed image pins, and external restore barrier.' >&2
-      return 1
-    fi
+    # One-off helper containers (compose run) are not serving participants.
+    [ "$_aa_oneoff" != True ] || continue
+    case "$_aa_service" in
+      api) [ -n "$_aa_marker" ] || continue
+        AA_API_COUNT=$((AA_API_COUNT + 1)); AA_API_MARKER=$_aa_marker ;;
+      app-proxy)
+        AA_PROXY_COUNT=$((AA_PROXY_COUNT + 1)); AA_PROXY_MARKER=$_aa_marker
+        AA_PROXY_SECRETS=$_aa_secrets AA_PROXY_PORTS=$_aa_ports ;;
+      *) continue ;;
+    esac
+    [ -z "$AA_PROJECT_FOUND" ] || [ "$AA_PROJECT_FOUND" = "$_aa_found_project" ] || AA_CONFIG_CONFLICT=true
+    AA_PROJECT_FOUND=$_aa_found_project
+    [ -z "$AA_CONFIG_FILES" ] || [ "$AA_CONFIG_FILES" = "$_aa_files" ] || AA_CONFIG_CONFLICT=true
+    AA_CONFIG_FILES=$_aa_files
   done
 }
-# END APP ACCESS REINSTALL GUARD
+# END APP ACCESS COMPOSITION CLASSIFIER
+
+# App Access is an optional overlay owned by this upgrade once present. Every
+# check below is a refusal before any temporary state, backup or mutation.
+AA_PRESENT=false
+AA_PROXY=false
+AA_OVERLAY="$DIR/app-access.yml"
+AA_COMPOSE_ACTIVE=false
+AA_PROFILE_ON=false
+AA_PROJECT=
+AA_PROXY_PIN=
+AA_MUTATION_STARTED=false
+aa_refuse() {
+  echo "error: upgrade blocked; App Access $*. Nothing was changed." >&2
+  exit 13
+}
+admit_app_access() {
+  _aa_dir_real=$1
+  classify_existing_app_access "$PROJECT" "$_aa_dir_real" || exit 13
+  if [ "$AA_API_COUNT" -eq 0 ] && [ "$AA_PROXY_COUNT" -eq 0 ] && [ ! -f "$AA_OVERLAY" ]; then
+    return 0
+  fi
+  AA_PRESENT=true
+  [ "$AA_CONFIG_CONFLICT" = false ] ||
+    aa_refuse 'participants were created from different projects or composition files; inspect them before upgrading'
+  [ "$AA_API_COUNT" -le 1 ] && [ "$AA_PROXY_COUNT" -le 1 ] ||
+    aa_refuse 'upgrade supports exactly one API and one proxy on this host; HA participants need a separately fenced procedure'
+  if [ "$AA_PROXY_COUNT" -eq 1 ] && [ "$AA_API_COUNT" -eq 0 ]; then
+    aa_refuse 'proxy exists but the API does not mount the external restore barrier; restore the reviewed composition first'
+  fi
+  AA_PROJECT=${AA_PROJECT_FOUND:-${PROJECT:-tunnex}}
+  [ -z "$PROJECT" ] || [ "$AA_PROJECT" = "$PROJECT" ] ||
+    aa_refuse "containers belong to Compose project $AA_PROJECT; set COMPOSE_PROJECT_NAME in .env to match"
+  if [ -z "$PROJECT" ] && [ "$AA_PROJECT" != tunnex ]; then
+    aa_refuse "containers belong to Compose project $AA_PROJECT; set COMPOSE_PROJECT_NAME=$AA_PROJECT in .env"
+  fi
+  _aa_volume="volume:${AA_PROJECT}_app_restore;"
+  for _aa_found_marker in "$AA_API_MARKER" "$AA_PROXY_MARKER"; do
+    [ -z "$_aa_found_marker" ] || [ "$_aa_found_marker" = "$_aa_volume" ] ||
+      aa_refuse "restore barrier is not the dedicated volume ${AA_PROJECT}_app_restore; it was preserved, migrate it with the reviewed procedure first"
+  done
+  [ "$AA_PROXY_COUNT" -eq 0 ] || [ -n "$AA_PROXY_MARKER" ] ||
+    aa_refuse 'proxy does not mount the external restore barrier'
+  if [ -n "$AA_CONFIG_FILES" ]; then
+    _aa_base=${AA_CONFIG_FILES%%,*}
+    _aa_overlay=${AA_CONFIG_FILES#*,}
+    case "$_aa_base" in
+      "$COMPOSE"|"$_aa_dir_real/${COMPOSE##*/}") ;;
+      *) aa_refuse 'composition is not based on this installation tunnex.yml' ;;
+    esac
+    case "$_aa_overlay" in
+      "$AA_CONFIG_FILES"|*,*|'') aa_refuse 'composition must be tunnex.yml plus exactly one App Access overlay' ;;
+    esac
+    case "$_aa_overlay" in
+      "$AA_OVERLAY"|"$_aa_dir_real/app-access.yml") ;;
+      *) [ ! -f "$AA_OVERLAY" ] ||
+           aa_refuse 'composition uses a different overlay than the managed app-access.yml' ;;
+    esac
+  elif [ "$AA_API_COUNT" -gt 0 ] || [ "$AA_PROXY_COUNT" -gt 0 ]; then
+    aa_refuse 'composition files are unknown'
+  fi
+  if [ "$AA_PROXY_COUNT" -eq 1 ]; then
+    AA_PROXY=true
+  elif [ -f "$AA_OVERLAY" ]; then
+    case ",$(dotenv_value COMPOSE_PROFILES)," in *,app-access,*) AA_PROXY=true ;; esac
+  fi
+  [ -n "$(dotenv_value TUNNEX_APP_ACCESS_BASE_DOMAIN)" ] ||
+    aa_refuse 'requires TUNNEX_APP_ACCESS_BASE_DOMAIN in .env'
+  if [ "$AA_PROXY" = true ]; then
+    _aa_secrets=$(dotenv_value TUNNEX_APP_PROXY_SECRETS_DIR)
+    [ -n "$_aa_secrets" ] || aa_refuse 'requires TUNNEX_APP_PROXY_SECRETS_DIR in .env'
+    [ "$AA_PROXY_COUNT" -eq 0 ] || [ "$AA_PROXY_SECRETS" = "$_aa_secrets;" ] ||
+      aa_refuse 'proxy credential directory differs from TUNNEX_APP_PROXY_SECRETS_DIR in .env'
+    _aa_bind=$(dotenv_value TUNNEX_APP_PROXY_BIND_IP); _aa_port=$(dotenv_value TUNNEX_APP_PROXY_PUBLIC_PORT)
+    [ "$AA_PROXY_COUNT" -eq 0 ] || [ "$AA_PROXY_PORTS" = "8443/tcp=${_aa_bind:-127.0.0.1}:${_aa_port:-443};" ] ||
+      aa_refuse 'proxy port binding differs from TUNNEX_APP_PROXY_BIND_IP/TUNNEX_APP_PROXY_PUBLIC_PORT in .env'
+  fi
+  if [ -f "$AA_OVERLAY" ]; then
+    _aa_sha=$(dotenv_value TUNNEX_APP_ACCESS_COMPOSE_SHA256)
+    [ -n "$_aa_sha" ] && [ "$(file_sha256 "$AA_OVERLAY")" = "$_aa_sha" ] || {
+      echo "error: update blocked; installed deployment files changed after provisioning" >&2
+      exit 13
+    }
+    AA_COMPOSE_ACTIVE=true
+    AA_PROFILE_ON=$AA_PROXY
+  fi
+}
 
 VERIFY=${TUNNEX_RELEASEVERIFY:-}
 APPLY=false
@@ -113,7 +215,7 @@ case "$EXPECTED_SEQUENCE" in ''|*[!0-9]*) [ -z "$EXPECTED_SEQUENCE" ] || usage ;
 # Match Compose's first-file project directory, including an explicit file
 # outside the installation directory. Do not guess a top-level project name.
 _aa_upgrade_directory=$(CDPATH= cd -- "$(dirname -- "$COMPOSE")" && pwd -P) || exit 13
-refuse_existing_app_access "$PROJECT" "$_aa_upgrade_directory" || exit 13
+admit_app_access "$_aa_upgrade_directory"
 TARGET_SOURCE_SHA=$EXPECTED_SOURCE_SHA
 TMPDIR=$(mktemp -d "${TMPDIR:-/tmp}/tunnex-upgrade.XXXXXX")
 trap 'rm -rf "$TMPDIR"' EXIT INT TERM
@@ -142,6 +244,12 @@ finish_upgrade() {
   if [ "$AI_SNAPSHOT_STOPPED" = true ]; then
     compose start bifrost >/dev/null 2>&1 || true
   fi
+  if [ "$_status" -ne 0 ] && [ "$AA_MUTATION_STARTED" = true ]; then
+    # Never leave the public App Access listener serving on an unverified stack.
+    AA_PROFILE_ON=true
+    compose stop app-proxy >/dev/null 2>&1 || true
+    aa_rollback_guidance
+  fi
   rm -rf "$TMPDIR"
   if [ "$_status" -ne 0 ] && [ "$APPLY" = true ] && [ "$TERMINAL_STATUS" = false ]; then
     case "$CURRENT_STAGE" in
@@ -150,6 +258,18 @@ finish_upgrade() {
     esac
   fi
   exit "$_status"
+}
+aa_rollback_guidance() {
+  _aa_compose_files="--compose-file $COMPOSE --compose-file $AA_OVERLAY"
+  {
+    echo 'App Access: the public app proxy was left stopped. The database may already be migrated forward.'
+    echo '  Preferred: fix the reported cause and run this upgrade again (it is safe to repeat).'
+    echo '  To return to the previous release instead, restore the verified pre-upgrade backup with the App Access'
+    echo '  restore runner. It performs fresh-authority recovery: users sign in again, the proxy credential is'
+    echo '  reprovisioned and applications are rechecked and republished. Review the dry run, then add --apply:'
+    echo "    python3 $DIR/app-access-restore.py --docker-socket /run/docker.sock --project $AA_PROJECT --directory $DIR $_aa_compose_files --dump $BACKUP_DUMP --manifest $BACKUP_MANIFEST --operator NAME"
+    echo '  Do not use raw pg_restore or a down migration for an App Access installation.'
+  } >&2
 }
 trap finish_upgrade EXIT INT TERM
 if [ "$MANIFEST_EXPLICIT" = true ]; then
@@ -195,14 +315,60 @@ verify_release_env() {
       sh "$PUBLIC_KEY" < "$MANIFEST"
   fi || fail_verification
 }
+base_profile() {
+  case "$(dotenv_value TUNNEX_DATABASE_MODE)" in external) printf external-db ;; *) printf bundled-db ;; esac
+}
 compose() {
-  case "$(dotenv_value TUNNEX_DATABASE_MODE)" in external) COMPOSE_PROFILES=external-db ;; *) COMPOSE_PROFILES=bundled-db ;; esac
+  COMPOSE_PROFILES=$(base_profile)
+  if [ "$AA_COMPOSE_ACTIVE" = true ]; then
+    [ "$AA_PROFILE_ON" != true ] || COMPOSE_PROFILES="$COMPOSE_PROFILES,app-access"
+    set -- -f "$COMPOSE" -f "$AA_OVERLAY" "$@"
+  else
+    set -- -f "$COMPOSE" "$@"
+  fi
   export COMPOSE_PROFILES
   if [ -n "$PROJECT" ]; then
-    docker compose --project-name "$PROJECT" --env-file "$ENV_FILE" -f "$COMPOSE" "$@"
+    docker compose --project-name "$PROJECT" --env-file "$ENV_FILE" "$@"
   else
-    docker compose --env-file "$ENV_FILE" -f "$COMPOSE" "$@"
+    docker compose --env-file "$ENV_FILE" "$@"
   fi
+}
+# Offline, read-only authority admission. backupctl takes the shared restore
+# lock in the marker directory, which serving containers mount read-only, so a
+# one-off helper gets only that exact named volume writable; ports, other mounts
+# and secrets are unchanged and nothing is pulled.
+aa_preflight() {
+  _aa_helper="$TMPDIR/app-access-preflight.yml"
+  [ -f "$_aa_helper" ] || cat >"$_aa_helper" <<'YAML'
+services:
+  api:
+    volumes:
+      - type: volume
+        source: app_restore
+        target: /var/lib/tunnex/app-restore
+        read_only: false
+YAML
+  COMPOSE_PROFILES=$(base_profile)
+  export COMPOSE_PROFILES
+  set -- --env-file "$ENV_FILE" -f "$COMPOSE" -f "$1" -f "$_aa_helper" \
+    run --rm --no-deps --pull never -T --entrypoint backupctl api app-preflight
+  [ -z "$PROJECT" ] || set -- --project-name "$PROJECT" "$@"
+  TUNNEX_APP_PROXY_IMAGE=$AA_PROXY_PIN docker compose "$@"
+}
+aa_field() {
+  printf '%s\n' "$2" | sed -n "s/.*\"$1\":\"\{0,1\}\([0-9a-f-]*\)\"\{0,1\}[,}].*/\1/p" | head -1
+}
+# Prints "generation version schema" for a clean, completed authority.
+aa_authority() {
+  _aa_json=$(aa_preflight "$1" 2>/dev/null) || return 1
+  _aa_schema=$(aa_field schema_version "$_aa_json")
+  _aa_ceiling=$(aa_field supported_schema_version "$_aa_json")
+  _aa_generation=$(aa_field generation "$_aa_json")
+  _aa_version=$(aa_field authority_version "$_aa_json")
+  case "$_aa_json" in *'"recovery_completed":true'*) ;; *) return 1 ;; esac
+  case "$_aa_generation" in ''|00000000-0000-0000-0000-000000000000) return 1 ;; esac
+  [ -n "$_aa_schema" ] && [ "$_aa_schema" = "$_aa_ceiling" ] && [ -n "$_aa_version" ] || return 1
+  printf '%s %s %s\n' "$_aa_generation" "$_aa_version" "$_aa_schema"
 }
 compose_up() {
   if [ "$(dotenv_value TUNNEX_GATEWAY_PLACEMENT)" = separate ]; then
@@ -257,12 +423,46 @@ if [ -n "$AIRGAP" ]; then
   [ -d "$AIRGAP" ] || { echo "error: air-gap bundle directory not found" >&2; exit 1; }
   for image in "$AIRGAP"/*.tar; do [ -f "$image" ] || continue; docker load -i "$image"; done
 fi
+if [ "$AA_PRESENT" = true ]; then
+  # The installed verifier must authenticate the signed proxy image itself; a
+  # release without one cannot upgrade an App Access installation.
+  _aa_env=$(
+    if [ -n "$VERIFY" ]; then
+      "$VERIFY" -manifest "$MANIFEST" -public-key "$PUBLIC_KEY" -require-app-proxy -print-env
+    elif command -v releaseverify >/dev/null 2>&1; then
+      releaseverify -manifest "$MANIFEST" -public-key "$PUBLIC_KEY" -require-app-proxy -print-env
+    else
+      compose exec -T api sh -c \
+        'cat > /tmp/tunnex-release.json && releaseverify -manifest /tmp/tunnex-release.json -public-key "$1" -require-app-proxy -print-env' \
+        sh "$PUBLIC_KEY" < "$MANIFEST"
+    fi 2>/dev/null
+  ) || _aa_env=
+  AA_PROXY_PIN=$(printf '%s\n' "$_aa_env" | sed -n 's/^TUNNEX_APP_PROXY_IMAGE=//p' | head -1)
+  [ "$(printf '%s\n' "$_aa_env" | sed -n 's/^TUNNEX_RELEASE_SOURCE_SHA=//p' | head -1)" = "$TARGET_SOURCE_SHA" ] || AA_PROXY_PIN=
+  printf '%s\n' "$AA_PROXY_PIN" | grep -Eqx 'ghcr\.io/tunnexio/tunnex-app-proxy@sha256:[0-9a-f]{64}' || {
+    write_status failed app_access_admission_failed
+    aa_refuse 'requires a target release with a signed App Access proxy image (verified with -require-app-proxy)'
+  }
+  for _aa_asset in compose.yml restore.py; do
+    curl -fsSL "https://raw.githubusercontent.com/tunnexio/tunnex/${TARGET_SOURCE_SHA}/deploy/app-access/${_aa_asset}" -o "$TMPDIR/app-access-${_aa_asset}" || {
+      write_status failed app_access_admission_failed
+      echo 'error: could not fetch the App Access composition bound to the signed release' >&2; exit 13;
+    }
+  done
+  echo "App Access: upgrade will snapshot authority, back up, stop app-proxy, migrate the API, verify unchanged authority, then start the signed proxy $AA_PROXY_PIN"
+fi
 echo "release verified; preflight and backup are required before mutation"
 compose_prefix="docker compose"
 [ -z "$PROJECT" ] || compose_prefix="$compose_prefix --project-name $PROJECT"
 echo "  a PostgreSQL dump and matching key-bound manifest will be retained under $DIR/backups"
 echo "  $compose_prefix --env-file $ENV_FILE -f $COMPOSE exec -T -e TUNNEX_PREFLIGHT_BACKUP_CONFIRMED=yes api preflight"
 [ "$APPLY" = true ] || { echo "dry run: re-run with --apply after reviewing the commands above"; exit 0; }
+if [ "$AA_PRESENT" = true ]; then
+  AA_BEFORE=$(aa_authority "$TMPDIR/app-access-compose.yml") || {
+    write_status failed app_access_admission_failed
+    aa_refuse 'authority preflight refused: a restore marker is pending, the schema is dirty or not this release, or installation authority is incomplete. Finish or inspect the restore with app-access-restore.py'
+  }
+fi
 BACKUP_DIR=${TUNNEX_UPGRADE_BACKUP_DIR:-$DIR/backups}
 umask 077
 mkdir -p "$BACKUP_DIR"
@@ -289,7 +489,9 @@ database_verify_archive() {
   if [ "$(dotenv_value TUNNEX_DATABASE_MODE)" = external ]; then
     compose exec -T api preflight --database-verify-archive <"$BACKUP_DUMP"
   else
-    pg_restore --list "$BACKUP_DUMP"
+    # Validate with the same container/version that produced the dump; hosts
+    # need not ship PostgreSQL client tools.
+    compose exec -T postgres pg_restore --list <"$BACKUP_DUMP"
   fi
 }
 database_dump >"${BACKUP_DUMP}.next" || {
@@ -583,6 +785,10 @@ case "$(dotenv_value TUNNEX_DATABASE_MODE)" in
   external) set_dotenv COMPOSE_PROFILES external-db ;;
   *) set_dotenv COMPOSE_PROFILES bundled-db ;;
 esac
+if [ "$AA_PRESENT" = true ]; then
+  set_dotenv TUNNEX_APP_PROXY_IMAGE "$AA_PROXY_PIN"
+  [ "$AA_PROXY" != true ] || set_dotenv COMPOSE_PROFILES "$(base_profile),app-access"
+fi
 set_dotenv TUNNEX_RELEASE_MANIFEST_PATH /var/lib/tunnex/release.json
 mv "$TMPDIR/tunnex.yml" "$COMPOSE"
 mv "$TMPDIR/release.json" "$DIR/release.json"
@@ -606,14 +812,49 @@ if [ "$AI_BUNDLED" = true ]; then
   fi
 fi
 set_dotenv TUNNEX_COMPOSE_SHA256 "$(file_sha256 "$COMPOSE")"
+if [ "$AA_PRESENT" = true ]; then
+  # Signed-source overlay replaces any operator overlay (left on disk untouched);
+  # identity (barrier volume, secrets, port, project) was verified above.
+  mv "$TMPDIR/app-access-compose.yml" "$AA_OVERLAY"
+  mv "$TMPDIR/app-access-restore.py" "$DIR/app-access-restore.py"
+  chmod 0644 "$AA_OVERLAY" "$DIR/app-access-restore.py"
+  set_dotenv TUNNEX_APP_ACCESS_COMPOSE_SHA256 "$(file_sha256 "$AA_OVERLAY")"
+  AA_COMPOSE_ACTIVE=true
+  AA_PROFILE_ON=$AA_PROXY
+fi
 compose pull
 write_status restarting
+if [ "$AA_PRESENT" = true ]; then
+  AA_MUTATION_STARTED=true
+  # The old proxy must never talk to the new API; stop it before replacement.
+  [ "$AA_PROXY" != true ] || compose stop app-proxy
+  AA_PROFILE_ON=false
+fi
 compose_up -d --wait --wait-timeout 900
 compose ps --all
+if [ "$AA_PRESENT" = true ]; then
+  # The API checked the barrier before migrating. Readback with the target
+  # binary: clean schema at its ceiling and the very same completed authority.
+  AA_AFTER=$(aa_authority "$AA_OVERLAY") || AA_AFTER=
+  if [ -z "$AA_AFTER" ] || [ "${AA_AFTER% *}" != "${AA_BEFORE% *}" ]; then
+    write_status failed app_access_authority_changed
+    echo 'error: upgrade stopped; App Access authority readback after migration did not match the pre-upgrade authority (or a restore marker appeared).' >&2
+    exit 13
+  fi
+  if [ "$AA_PROXY" = true ]; then
+    AA_PROFILE_ON=true
+    compose up -d --wait --wait-timeout 300 --no-deps app-proxy
+  fi
+  echo "App Access authority unchanged (generation ${AA_AFTER%% *}); schema ${AA_BEFORE##* } -> ${AA_AFTER##* }"
+fi
 write_status health_check
 if ! healthcheck; then
   write_status failed health_check_failed
-  echo "error: upgrade health check failed; restore the verified pre-upgrade backup before retrying" >&2
+  if [ "$AA_PRESENT" = true ]; then
+    echo "error: upgrade health check failed" >&2
+  else
+    echo "error: upgrade health check failed; restore the verified pre-upgrade backup before retrying" >&2
+  fi
   exit 14
 fi
 write_status healthy

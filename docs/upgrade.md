@@ -206,7 +206,9 @@ because those are periodic reconcilers and never sit in the request or data path
 
 ## If an upgrade goes wrong
 
-There is no downgrade. Restore:
+There is no downgrade. With App Access installed, do **not** use the raw procedure below. The upgrade
+prints the exact `app-access-restore.py` command for its pre-upgrade backup, which keeps the external restore
+barrier and runs fresh-authority recovery ([UPG-1](UPG-1-one-click-upgrade-with-app-access.md)). Otherwise, restore:
 
 ```bash
 # 1. Put the master key that belongs to the backup in place.
