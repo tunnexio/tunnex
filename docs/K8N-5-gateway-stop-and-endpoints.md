@@ -258,7 +258,7 @@ What is checked:
   pool's prefix length** (`apps/api/internal/nodes/service.go`). The default is `10.99.0.1/24`, and
   the IPv6 gateway address comes from the org's IPv6 pool. So the observed `wg0` subnet is the
   organisation's whole device pool, even where `PoolCIDR` is absent from the policy. It is
-  `omitempty`, and it is set only for site topologies. The K8N-3 fixture's `100.65.0.2/32` on `wg0`
+  `omitempty`, and it is filled in on the site artifact path (`finalizeSiteArtifact`). The K8N-3 fixture's `100.65.0.2/32` on `wg0`
   is a fixture shape, not what the control plane assigns. On such a gateway the check would cover
   only its own address, plus `PoolCIDR` if delivered.
 - **Not checked:**
