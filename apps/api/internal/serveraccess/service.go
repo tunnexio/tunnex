@@ -49,7 +49,7 @@ func New(pool *pgxpool.Pool, parents *session.Store, sealer *secret.Sealer, seed
 	return &Service{pool: pool, parents: parents, sealer: sealer, seed: seed, live: map[uuid.UUID]*liveSession{}}
 }
 func deny(reason string) error {
-	return apierr.Forbidden(reason, "Terminal access is unavailable: "+reason)
+	return apierr.Forbidden(reason, denyMessage(reason))
 }
 func bad() error {
 	return apierr.BadRequest("invalid_server_access", "Invalid server, account or grant configuration")
