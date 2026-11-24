@@ -19,12 +19,30 @@ import (
 //	              [100.96.0.0/24], masqLinkLocal true
 //	C-iptables    bpf.masquerade=false (iptables masquerade)
 //
-// See docs/K8N-2-cilium.md, "Live capture".
+// See docs/K8N-2-cilium.md, "Live capture". A and B report BPF host routing,
+// C reports Legacy.
+//
+// Two more were captured on 2026-11-24 for the host routing decision (same
+// kind, node image and kernel; Cilium 1.20.5 with K8N-6's values: eBPF
+// masquerade, ip-masq-agent on with nonMasqueradeCIDRs [10.99.0.0/24],
+// masqLinkLocal true), read from a privileged pod with the same read-only
+// host mounts:
+//
+//	hostlegacy-ipmasq  bpf.hostLegacyRouting=true: host routing Legacy, the
+//	                   configuration Tunnex accepts (before the test wg0
+//	                   existed, as A)
+//	hostbpf-ipmasq     the same with bpf.hostLegacyRouting=false: host
+//	                   routing BPF, refused (wg0 up and among the devices)
+//
+// See docs/K8N-2-cilium.md, "Host routing — decision, 2026-11-24".
 
 const (
 	ciliumLiveA = "testdata/cilium-1.20.5-kind-A-bpf."
 	ciliumLiveB = "testdata/cilium-1.20.5-kind-B-bpf-ipmasq."
 	ciliumLiveC = "testdata/cilium-1.20.5-kind-C-iptables."
+
+	ciliumLiveLegacy  = "testdata/cilium-1.20.5-kind-hostlegacy-ipmasq."
+	ciliumLiveBPFHost = "testdata/cilium-1.20.5-kind-hostbpf-ipmasq."
 )
 
 func ciliumLiveFile(t *testing.T, name string) []byte {
