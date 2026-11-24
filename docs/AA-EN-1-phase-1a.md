@@ -62,7 +62,7 @@ E1–E12 and the item added to Phase 1a by founder ruling (dashboard forward fix
    (`apps/api/internal/http/host_upgrade_handlers.go:43`). Now `release.Status`
    carries `Rerunnable` (same sequence and source SHA), `GET /admin/upgrade` reports
    `rerun_available` after a failed upgrade to that same source (not after
-   `app_access_authority_changed`), and `POST /admin/upgrade/rerun` (no body; the server pins the target) requests
+   `app_access_authority_changed`), and `POST /admin/upgrade/rerun` (body carries only `current_password`; the server pins the target) requests
    that pinned target. Same deployment-administrator authorization and the same audit
    action (`control_plane.upgrade_requested`, with `rerun: true` in its metadata),
    plus the step-up of the founder ruling: a human browser session and SA-UI-1's
@@ -146,6 +146,10 @@ gateways.
 - `docker restart` of a real proxy and its readiness after `renew`, file ownership
   uid 10001 as root, certbot output with Let's Encrypt's real chain against the
   system trust store.
+- The live demo certificate's SANs: with console forwarding, `renew` refuses a
+  certificate that does not also cover the apex `cp.tunnex.app`. Check read-only with
+  `openssl x509 -noout -ext subjectAltName -in /home/ubuntu/appaccess-secrets/public-cert.pem`
+  and request `-d cp.tunnex.app` from certbot if it is missing.
 - `adopt` against the live demo (container inspection of the real containers, the
   real `app-access-demo.yml`, whether the demo's Compose version renders it the same).
 - The full upgrade of the adopted demo layout (UPG-1's own unverified items still
@@ -164,6 +168,16 @@ gateways.
   and the dashboard re-run unusable there; the operator re-runs from the command line.
   Recommendation: accept for adopted installs (documented); S1 passthrough in Phase 2
   removes it for new installs.
+- **Gateway listener exposure is not uniform.** An existing managed install starts
+  publishing `0.0.0.0:8444` on its next upgrade (E6 default), while `adopt` keeps an
+  unpublished listener on loopback to preserve today's exposure; in that loopback case
+  the API still tells following gateways `enabled:true` for a listener they cannot
+  reach. Recommendation: accept E6 for managed installs (release-noted), and have the
+  API deliver `enabled:false` when the published bind address is loopback (small
+  follow-up), or let adopt follow E6 too.
+- **Helm gateways** with `appAccess.enabled: false` now follow the control plane. The
+  gateway-local lock is available today as `appAccess.enabled: true` with
+  `appAccess.proxyURL: off`. Recommendation: add an explicit Helm value for the lock.
 - **Gateway listener renewal** (365-day leaf) is not part of this `renew`; the demo
   leaf expires around 2027-11. Recommendation: add `renew --gateway` through the
   one-off `backupctl app-proxy-certificate` helper in Phase 1b.
