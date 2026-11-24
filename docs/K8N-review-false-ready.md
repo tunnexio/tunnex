@@ -225,3 +225,10 @@ wall-clock). Item 10 was confirmed and fixed later, on `k8n/cilium-host-routing`
 Whether GKE Dataplane V2 or AKS show the names the guard looks for; whether Cilium before 1.20.5
 has the mismatch of item 1; whether an in-cluster gateway can have OpenVPN enabled. (Item 10 was
 settled later: confirmed and fixed, see above.)
+
+## Founder ruling, 2026-11-24
+
+Accepted as recommended: the host-facts receipt is required on every Kubernetes observation; any
+iptables-legacy table refuses the node; leftover Cilium pins or socket make the node a Cilium node;
+the host-posture manager and the gateway must run the same release (schema). Cilium is supported only
+with `bpf.hostLegacyRouting=true`; GKE Dataplane V2 and AKS are unsupported for now.
