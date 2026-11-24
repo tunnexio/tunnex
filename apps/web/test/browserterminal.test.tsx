@@ -3,7 +3,8 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import { StrictMode } from "react";
 import { MemoryRouter } from "react-router-dom";
 import BrowserTerminal from "../src/pages/BrowserTerminal";
-const state=vi.hoisted(()=>({terminal:null as any,pasted:[] as string[],selected:"",selectionChanged:null as any,multi:false,empty:false,serverCount:1,accountCount:1,developer:false,admin:false,recording:false,failed:false,connect:false,ready:true,sshPort:22,orgEnabled:true,serverEnabled:true,checkError:false,verified:false,requests:[] as string[],bodies:[] as unknown[]}));
+const state=vi.hoisted(()=>({terminal:null as any,pasted:[] as string[],selected:"",selectionChanged:null as any,multi:false,empty:false,serverCount:1,accountCount:1,developer:false,admin:false,recording:false,failed:false,connect:false,ready:true,sshPort:22,orgEnabled:true,serverEnabled:true,checkError:false,verified:false,installationOff:false,cpAdmin:false,requests:[] as string[],bodies:[] as unknown[]}));
+vi.mock("../src/lib/auth",()=>({useAuth:()=>({state:{status:"authed",user:{id:"user-1",email_verified:true,cp_admin:state.cpAdmin}}})}));
 vi.mock("../src/lib/useOrg",()=>({useOrg:()=>({org:{id:"org-1"},failed:false})}));
 vi.mock("../src/components/MfaSettings",()=>({MfaSettings:()=> <div>Existing account MFA setup</div>}));
 vi.mock("@xterm/xterm",()=>({Terminal:class{rows=24;cols=80;constructor(){state.terminal=this}onSelectionChange(cb:any){state.selectionChanged=cb;return {dispose(){}}}getSelection(){return state.selected}paste(text:string){state.pasted.push(text);this.data?.(text)}data:any;loadAddon(){}open(){}focus(){}write(){}dispose(){}onData(cb:any){this.data=cb;return {dispose(){}}}}}));
@@ -15,6 +16,7 @@ vi.mock("../src/lib/api",async()=>{
    state.requests.push(path);
    if(path.endsWith("/server-access")){
     if(state.failed)return {error:{error:{message:"Workspace unavailable"}}};
+    if(state.installationOff)return {error:{error:{code:"server_access_disabled",message:"Terminal capability is disabled on this installation"}}};
     const workspace={data:{enabled:state.orgEnabled,can_manage:state.admin,can_grant:state.admin,can_manage_sessions:state.admin,grants:[],sessions:state.checkError?[{id:"check-1",kind:"check",server_id:"server-1",account:"fixture",status:"failed",reason:"ssh_authentication_failed"}]:[],mfa_freshness_seconds:900,recording_retention_days:7,recording_max_session_bytes:4194304,recording_max_org_bytes:67108864,limitations:["Recording-required servers refuse Connect until capture is implemented."],servers:[{id:"server-1",name:"Build host",gateway_id:"gateway-1",private_ip:state.admin?"10.2.3.4":undefined,ssh_port:22,host_fingerprint:"SHA256:fixture",accounts:["fixture"],ready_accounts:state.ready?["fixture"]:[],revision:1,enabled:state.serverEnabled,recording_enabled:state.recording,developer_access_enabled:state.developer,idle_timeout_seconds:300,max_session_seconds:900},...(state.multi?[{id:"server-2",name:"Database host",gateway_id:"gateway-1",accounts:["ubuntu"],ready_accounts:["ubuntu"],revision:1,enabled:true,recording_enabled:false,idle_timeout_seconds:300,max_session_seconds:900}]:[])]}};
     workspace.data.servers[0].ssh_port=state.sshPort;
     if(state.serverCount>1)workspace.data.servers=Array.from({length:state.serverCount},(_,index)=>({...workspace.data.servers[0],id:`server-${index}`,name:`Host ${index}`}));
@@ -36,7 +38,7 @@ vi.mock("../src/lib/api",async()=>{
   DELETE:vi.fn(async()=>({error:{error:{message:"Termination unconfirmed"}}}))
  }};
 });
-beforeEach(()=>{state.developer=false;state.terminal=null;state.pasted=[];state.selected="";state.selectionChanged=null;state.multi=false;state.empty=false;state.serverCount=1;state.accountCount=1;state.admin=false;state.recording=false;state.failed=false;state.connect=false;state.ready=true;state.sshPort=22;state.orgEnabled=true;state.serverEnabled=true;state.checkError=false;state.verified=false;state.requests=[];state.bodies=[]});afterEach(cleanup);
+beforeEach(()=>{state.developer=false;state.terminal=null;state.pasted=[];state.selected="";state.selectionChanged=null;state.multi=false;state.empty=false;state.serverCount=1;state.accountCount=1;state.admin=false;state.recording=false;state.failed=false;state.connect=false;state.ready=true;state.sshPort=22;state.orgEnabled=true;state.serverEnabled=true;state.checkError=false;state.verified=false;state.installationOff=false;state.cpAdmin=false;state.requests=[];state.bodies=[]});afterEach(cleanup);
 function mount(){render(<MemoryRouter><BrowserTerminal/></MemoryRouter>)}
 async function openServer(name="Build host"){fireEvent.click(await screen.findByRole("button",{name}))}
 async function rowAction(label:string,action:string){const trigger=await screen.findByRole("button",{name:label});if(trigger.getAttribute("aria-expanded")!=="true")fireEvent.click(trigger);return within(screen.getByRole("menu",{name:label})).getByRole("menuitem",{name:action})}
@@ -346,3 +348,9 @@ it("refuses an operational recording save when the fresh setting withdraws manag
  state.admin=false;fireEvent.click(screen.getByRole("button",{name:"Save recording policy"}));
  await screen.findByText("The request could not be completed.");expect(put).not.toHaveBeenCalled();
 });
+
+it("installation-off Server Access links server administrators to the installation setting (SA-UI-1)",async()=>{state.installationOff=true;state.cpAdmin=true;mount();
+ const link=await screen.findByRole("link",{name:"Open Server Access settings"});expect(link.getAttribute("href")).toBe("/settings?section=server-access-installation");
+ expect(screen.getByText("Server Access is off on this installation")).toBeTruthy();expect(screen.getByText(/turn it on in Settings/)).toBeTruthy()});
+it("installation-off Server Access tells other users to ask a server administrator, without a settings link",async()=>{state.installationOff=true;mount();
+ expect(await screen.findByText(/Ask a server administrator to turn it on/)).toBeTruthy();expect(screen.queryByRole("link",{name:"Open Server Access settings"})).toBeNull()});
