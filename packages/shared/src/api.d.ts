@@ -10994,7 +10994,7 @@ export interface components {
             /** @description True when a TunnexNamespaceExposure resource declares this rule (it was created with the operator's machine credential). It is edited only through that resource. */
             managed_by_operator: boolean;
             /**
-             * @description applied = fully applied on the last pass. Anything else: the rule is not fully applied and status_message says why.
+             * @description applied = fully applied on the last pass. Anything else: the rule is not fully applied and status_message says why. pending = the rule is newer than the gateway's latest Service report and is waiting for the next one (nothing is exposed yet); inventory_unavailable = still no current report after that grace, e.g. a cluster above 500 Services, which the gateway does not report.
              * @enum {string}
              */
             status: "pending" | "applied" | "inventory_stale" | "inventory_unavailable" | "vip_range_exhausted" | "scope_review_limit" | "withdrawal_blocked" | "error" | "gateway_too_old" | "labels_incomplete";

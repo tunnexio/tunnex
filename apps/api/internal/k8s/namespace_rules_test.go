@@ -333,3 +333,45 @@ func TestNormalizeSelector(t *testing.T) {
 	_, err = normalizeSelector(many)
 	assertScopeAPIError(t, err, http.StatusBadRequest, "selector_limit")
 }
+
+// A rule newer than the cluster's latest Service report is waiting for the next report; it is not
+// evidence of a missing report. Only once the grace has passed without a newer report does the
+// "no current report" explanation (the >500-Services case) apply.
+func TestNamespaceRuleAwaitingFirstReport(t *testing.T) {
+	now := time.Date(2026, 11, 24, 12, 0, 0, 0, time.UTC)
+	created := now.Add(-20 * time.Second)
+	before, after := created.Add(-time.Minute), created.Add(5*time.Second)
+	for name, tc := range map[string]struct {
+		created time.Time
+		latest  *time.Time
+		want    bool
+	}{
+		"new rule, cluster never reported":       {created, nil, true},
+		"new rule, last report predates it":      {created, &before, true},
+		"report received since the rule":         {created, &after, false},
+		"grace over, still no report":            {now.Add(-namespaceRuleFirstReportGrace - time.Second), nil, false},
+		"grace over, last report predates it":    {now.Add(-namespaceRuleFirstReportGrace - time.Second), &before, false},
+		"clock skew: rule from the future waits": {now.Add(time.Second), nil, true},
+	} {
+		if got := namespaceRuleAwaitingReport(tc.created, tc.latest, now); got != tc.want {
+			t.Errorf("%s: awaiting = %v, want %v", name, got, tc.want)
+		}
+	}
+}
+
+func TestNamespaceRuleNoReportStatusKeepsTheRealReasonAfterTheGrace(t *testing.T) {
+	now := time.Date(2026, 11, 24, 12, 0, 0, 0, time.UTC)
+	status, message := namespaceRuleNoReportStatus(scopeapproval.ErrInventoryUnavailable, now.Add(-10*time.Second), nil, now)
+	if status != NamespaceRulePending || !strings.Contains(message, "waiting for the gateway's next Service report") || strings.Contains(message, "500") {
+		t.Fatalf("fresh rule = %q %q", status, message)
+	}
+	status, message = namespaceRuleNoReportStatus(scopeapproval.ErrInventoryUnavailable, now.Add(-time.Hour), nil, now)
+	if status != NamespaceRuleInventoryUnavailable || !strings.Contains(message, "500 Services") {
+		t.Fatalf("old rule without a report = %q %q", status, message)
+	}
+	// A stale report means the gateway stopped reporting: never masked as pending.
+	status, _ = namespaceRuleNoReportStatus(scopeapproval.ErrInventoryStale, now.Add(-10*time.Second), nil, now)
+	if status != NamespaceRuleInventoryStale {
+		t.Fatalf("stale report on a fresh rule = %q", status)
+	}
+}

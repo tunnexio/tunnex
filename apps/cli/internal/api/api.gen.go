@@ -6709,7 +6709,7 @@ type K8sNamespaceRule struct {
 	// Selector Label selector: every key=value pair must equal the Service's label. Empty = every Service of the namespace. Equality only: no set operators, negation or wildcards.
 	Selector K8sNamespaceRuleSelector `json:"selector"`
 
-	// Status applied = fully applied on the last pass. Anything else: the rule is not fully applied and status_message says why.
+	// Status applied = fully applied on the last pass. Anything else: the rule is not fully applied and status_message says why. pending = the rule is newer than the gateway's latest Service report and is waiting for the next one (nothing is exposed yet); inventory_unavailable = still no current report after that grace, e.g. a cluster above 500 Services, which the gateway does not report.
 	Status        K8sNamespaceRuleStatus `json:"status"`
 	StatusMessage string                 `json:"status_message"`
 
@@ -6717,7 +6717,7 @@ type K8sNamespaceRule struct {
 	WaitingServices int `json:"waiting_services"`
 }
 
-// K8sNamespaceRuleStatus applied = fully applied on the last pass. Anything else: the rule is not fully applied and status_message says why.
+// K8sNamespaceRuleStatus applied = fully applied on the last pass. Anything else: the rule is not fully applied and status_message says why. pending = the rule is newer than the gateway's latest Service report and is waiting for the next one (nothing is exposed yet); inventory_unavailable = still no current report after that grace, e.g. a cluster above 500 Services, which the gateway does not report.
 type K8sNamespaceRuleStatus string
 
 // K8sNamespaceRuleSelector Label selector: every key=value pair must equal the Service's label. Empty = every Service of the namespace. Equality only: no set operators, negation or wildcards.

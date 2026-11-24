@@ -93,6 +93,36 @@ describe("namespace rules panel (K8N-4)", () => {
     expect(await within(dialog).findByText(/created but is not applied yet.*address range 100\.66\.0\.0\/24 is full/)).toBeTruthy();
   });
 
+  it("closes the create dialog for a rule that is only waiting for the gateway's next report", async () => {
+    post.mockResolvedValue({ data: { ...RULE, namespace: "shop", status: "pending", status_message: "waiting for the gateway's next Service report; nothing is exposed until it arrives", exposed_services: 0, exposed_ports: 0 } } as never);
+    get.mockResolvedValueOnce({ data: [] } as never);
+    get.mockResolvedValue({ data: [{ ...RULE, namespace: "shop", status: "pending", status_message: "waiting for the gateway's next Service report; nothing is exposed until it arrives", exposed_services: 0, exposed_ports: 0 }] } as never);
+    panel();
+    fireEvent.click(await screen.findByRole("button", { name: "Expose every Service in a namespace…" }));
+    const dialog = screen.getByRole("dialog");
+    fireEvent.change(within(dialog).getByRole("combobox", { name: "Namespace" }), { target: { value: "shop" } });
+    fireEvent.click(within(dialog).getByRole("checkbox"));
+    fireEvent.click(within(dialog).getByRole("button", { name: /keep exposing/ }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(await screen.findByText("Applying")).toBeTruthy();
+    expect(screen.getByText(/waiting for the gateway's next Service report/)).toBeTruthy();
+    expect(screen.queryByText("No current report")).toBeNull();
+    expect(screen.queryByText(/500 Services/)).toBeNull();
+  });
+
+  it("re-reads a pending rule until the gateway's report applies it, then refreshes the Services", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    try {
+      get.mockResolvedValueOnce({ data: [{ ...RULE, status: "pending", status_message: "" }] } as never);
+      get.mockResolvedValue({ data: [RULE] } as never);
+      const onChanged = panel();
+      expect(await screen.findByText("Applying")).toBeTruthy();
+      await vi.advanceTimersByTimeAsync(10_000);
+      expect(await screen.findByText("Applied")).toBeTruthy();
+      await waitFor(() => expect(onChanged).toHaveBeenCalledTimes(1));
+    } finally { vi.useRealTimers(); }
+  });
+
   it("shows a rule that is not applied with its reason, never as healthy", async () => {
     get.mockResolvedValue({ data: [{ ...RULE, status: "inventory_stale", status_message: "the cluster's gateway has not reported its Services recently" }] } as never);
     panel();
