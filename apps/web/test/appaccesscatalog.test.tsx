@@ -431,4 +431,16 @@ describe("Catalog scope and lifecycle regressions", () => {
     fireEvent.click(screen.getByRole("button", { name: "Confirm grant disable" }));
     await waitFor(() => expect(calls.PATCH).toHaveBeenCalledWith("/api/v1/organizations/{orgId}/app-access/applications/{appId}/managed-grants/{grantId}", { params: { path: { orgId: "org", appId: "app", grantId: "grant" } }, body: { expected_version: 3, enabled: false, starts_at: null, expires_at: null } }));
   });
+  it("re-enables a disabled scoped grant from the row menu with its observed version and schedule", async () => {
+    const grant = { id: "grant", app_id: "app", subject_label: "Member", subject_kind: "user", subject_id: "member", status: "disabled", enabled: false, starts_at: "2026-10-03T00:00:12Z", expires_at: null, revoked_at: null, version: 5 };
+    calls.GET.mockImplementation(async (path: string) => path.endsWith("/managed-apps") ? response([{ id: "app", name: "Payroll", description: "", icon: "app", icon_data_url: "", pending_count: 0 }]) : path.endsWith("/managed-grants") ? response([grant]) : response([], { pending_count: 0 }));
+    calls.PATCH.mockResolvedValue({ data: { ...grant, enabled: true, status: "active", version: 6 } });
+    mount(<AppAccessManagedApplications orgId="org" appId="app" />);
+    const enable = await managedGrantAction("Enable");
+    expect(within(screen.getByRole("menu", { name: "Actions for Member grant" })).queryByRole("menuitem", { name: "Disable" })).toBeNull();
+    fireEvent.click(enable);
+    expect(calls.PATCH).not.toHaveBeenCalled();
+    fireEvent.click(await screen.findByRole("button", { name: "Confirm grant enable" }));
+    await waitFor(() => expect(calls.PATCH).toHaveBeenCalledExactlyOnceWith("/api/v1/organizations/{orgId}/app-access/applications/{appId}/managed-grants/{grantId}", { params: { path: { orgId: "org", appId: "app", grantId: "grant" } }, body: { expected_version: 5, enabled: true, starts_at: "2026-10-03T00:00:12Z", expires_at: null } }));
+  });
 });
