@@ -23,7 +23,7 @@ func TestDenyPageIsUniformAndActionable(t *testing.T) {
 	if _, again := render(); again != body {
 		t.Fatal("deny page is not uniform")
 	}
-	for _, want := range []string{"<title>Can&#39;t open this application · Tunnex</title>", "<h1>You can&#39;t open this application</h1>", "Reopen it from My Applications. If you need access, ask your administrator."} {
+	for _, want := range []string{"<title>Can&#39;t open this application · Tunnex</title>", "<h1>You can&#39;t open this application</h1>", "Reopen it from My Applications. If it still won&#39;t open, ask your administrator."} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("deny page missing %q:\n%s", want, body)
 		}

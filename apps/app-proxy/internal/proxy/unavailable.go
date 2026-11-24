@@ -20,7 +20,8 @@ func (h *Handler) deny(w http.ResponseWriter) {
 func denyPage(w http.ResponseWriter, beam bool) {
 	brand := "TUNNEX APP ACCESS"
 	title, heading := "Can&#39;t open this application", "You can&#39;t open this application"
-	message := "Reopen it from My Applications. If you need access, ask your administrator."
+	// One page for every cause, outages included, so the copy fits both.
+	message := "Reopen it from My Applications. If it still won&#39;t open, ask your administrator."
 	if beam {
 		brand = "TUNNEX BEAM"
 		title, heading = "Application unavailable", "Application unavailable"
