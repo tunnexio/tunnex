@@ -202,6 +202,12 @@ Real API + enrolled gateway + OpenSSH target in the owned harness project, brows
 - Fixed from the walk: the locked view showed a green switch next to "Off" (now shows the enforced Off, disabled,
   with "Saved setting: On"); the Server Access page's installation-off notice now links server administrators to
   the setting; "0 active sessions were ended" now reads "no sessions were open".
+- Follow-up (no user confusion): Sessions and recordings stay behind the installation gate while it is off — the
+  workspace read carries servers, addresses and grants, so reopening it would widen what an off capability exposes.
+  Instead an ended terminal asks the API and, if Server Access was turned off, says so instead of pointing at
+  Sessions. Every refusal code now has a plain sentence (a locked gateway names the operator setting), session
+  details show sentences instead of codes, and the MFA step-up hides "Authenticator setup" from users who already
+  have a confirmed factor.
 
 ## Tests
 
