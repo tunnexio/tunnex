@@ -4,6 +4,8 @@
 # hand-off ABI marker. Set TUNNEX_TEST_DOCKER_RUNTIME=1 to also build those
 # layers on a local daemon and extract them the way upgrade.sh does.
 set -eu
+LC_ALL=C
+export LC_ALL
 
 ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 DOCKERFILE="$ROOT/deploy/docker/api.Dockerfile"

@@ -8,8 +8,8 @@ charts keep App Access disabled. Installer reinstall refuses an existing scoped 
 Use the ordinary single upgrade command (`upgrade.sh --apply`, or the dashboard
 upgrade), including for releases that add migrations. See
 [UPG-1](../../docs/UPG-1-one-click-upgrade-with-app-access.md). The upgrade
-manages this overlay as `<install>/app-access.yml`, fetched from the signed
-release source and hashed. It pins the signed `TUNNEX_APP_PROXY_IMAGE`
+manages this overlay as `<install>/app-access.yml`, taken from the target
+release's signed API image (UPG-2) and hashed. It pins the signed `TUNNEX_APP_PROXY_IMAGE`
 (`-require-app-proxy`) and keeps the `app-access` profile.
 
 Before backing up, the upgrade runs `backupctl app-preflight`, which records the
@@ -31,12 +31,12 @@ named pre-upgrade backup with the installed `app-access-restore.py` (this file's
 `restore.py`). Recovery invalidates authority as described below. Never use raw
 `pg_restore` or a down migration.
 
-Installations whose installed `upgrade.sh` predates this change refuse before
-they can update themselves. Replace it once with the copy from the verified
-target release's source SHA. Replace both copies the host can run:
-`<install>/upgrade.sh` for the manual command, and the root-owned
-`/usr/local/lib/tunnex/upgrade.sh` (mode 0755) that the dashboard upgrade runner
-executes. The same-schema `upgrade.py` below remains
+Installations whose installed `upgrade.sh` predates the one-click upgrade refuse
+before they can update themselves. Replace the helper once with the verified
+target release's copy, using the one-time step in
+[docs/upgrade.md](../../docs/upgrade.md#release-notes-one-time-step-for-hosts-on-v0145-or-older).
+From then on every upgrade runs the target release's own helper, so this is never
+needed again. The same-schema `upgrade.py` below remains
 a manual image-replacement tool. Enabling infrastructure does not grant entitlement,
 opt in an organization, publish an application, or create a browser session.
 
