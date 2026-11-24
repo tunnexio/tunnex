@@ -185,6 +185,19 @@ export default function AppAccessMyApplications({ orgId, canUse = true }: { orgI
   </div>;
 }
 
+// The server answers every authority refusal with one uniform code, so the
+// page can never say WHY (no grant, unpublished, disabled...). It only words
+// that uniform denial as something the user can act on, and keeps true
+// infrastructure failures as an outage.
+export const appLaunchDeniedMessage = "You can't open this application. Ask your administrator for access.";
+export const appLaunchOutageMessage = "Applications are temporarily unavailable. Try again in a few minutes.";
+export function appLaunchErrorMessage(error: unknown): string {
+  const code = apiErrorCode(error);
+  if (code === "browser_authority_unavailable") return appLaunchDeniedMessage;
+  if (code === "app_access_unavailable" || code === "app_authority_unavailable") return appLaunchOutageMessage;
+  return apiErrorMessage(error, "This application could not be opened. Reopen it from My Applications.");
+}
+
 // Both catalogs use the same bound one-use launch intent and the existing MFA flow.
 function launchCatalogApplication(app: { id: string; launch_url: string }, orgId: string, userId: string) {
   if (!isTopLevel()) return "Open My Applications in its own browser tab to launch an application.";
@@ -309,7 +322,7 @@ export function AppAccessLaunch() {
           setMfa(code === "app_mfa_setup_required" ? "setup" : "verify");
           return;
         }
-        setError(apiErrorMessage(result.error, "This application could not be opened. Reopen it from My Applications."));
+        setError(appLaunchErrorMessage(result.error));
         setFreshLogin(code === "app_login_required");
         return;
       }
