@@ -76,17 +76,19 @@ Implementation, all in one function (`requireServerAccessInstallationStepUp`), s
 one-site change:
 
 - Password: when the account has a local password, the PATCH must carry `current_password`, verified with the
-  same `password.Verify` primitive; each attempt consumes the existing `AllowMFAStepUp` budget so password guessing
-  through this endpoint is limited to the same 5 per 5 minutes.
+  same `password.Verify` primitive. The endpoint has its own Redis budget (`session.ReauthPasswordAllowed` /
+  `RecordReauthPasswordFailure`, scope `server_access_installation`), separate from the MFA step-up budget and
+  charged only by FAILED passwords: 5 failures per 5 minutes per user, after which even the correct password is
+  refused (`reauthentication_rate_limited`) until the window passes. Correct re-entries never consume budget.
 - MFA: when the account has a confirmed TOTP factor, the session must carry valid MFA assurance no older than 5
   minutes (the Local Sharing window); otherwise `mfa_step_up_required` and the UI runs the existing step-up.
 - An account with neither a local password nor a confirmed TOTP (SSO-only, no local MFA) is refused with
-  `reauthentication_unavailable` — it cannot prove recent authentication with any existing mechanism. An SSO
-  login that carried a verified IdP MFA claim (`sso_mfa` assurance) counts as MFA when fresh.
+  `reauthentication_unavailable` — it cannot prove recent authentication with any existing mechanism. The
+  refusal tells them to set up an authenticator app (TOTP) to change this setting. An SSO login that carried a
+  verified IdP MFA claim (`sso_mfa` assurance) counts as MFA when fresh (within 5 minutes).
 
-**Open question for the founder:** SSO-only server administrators without local MFA cannot change this setting.
-Options: accept (they enrol TOTP first), or accept fresh `sso_mfa` assurance only (already accepted), or add a
-real SSO re-login step-up (does not exist today).
+A real SSO re-login step-up (re-authenticate at the IdP on demand) does not exist today and is **deferred** (founder
+ruling below).
 
 ## Threat notes
 
@@ -124,6 +126,46 @@ A new gateway agent with an empty env asks the control plane at `GET /agent/serv
 control plane answers 404, which the gateway treats as "keep current state" (off), the same as before for an
 unset env. Upgrade the control plane first; gateways then follow within ~5 seconds.
 
+## Upgrade notes (release-note text)
+
+**Server Access can now be turned on or off from the dashboard.** Server administrators use Settings → Server
+Access. `TUNNEX_SERVER_ACCESS_ENABLED` on the control plane is now only the initial value; once an administrator
+saves the setting, the saved value wins. Each organization still turns Server Access on for itself in Settings →
+Features.
+
+- **New lock:** set `TUNNEX_SERVER_ACCESS_LOCKED=true` on the control plane (Helm: `serverAccess.locked: true`) to
+  keep Server Access off whatever is saved; the dashboard cannot turn it on. Helm control planes with more than
+  one API replica are always locked off, because terminal sessions do not support HA.
+- **Gateways follow the control plane.** On a gateway, `TUNNEX_SERVER_ACCESS_ENABLED` now means: `true` always on,
+  `false` never on (a gateway-local lock), unset or empty follows the control plane, with no restart needed.
+- **Docker Compose:** the bundled gateway (`node-agent`) now reads `TUNNEX_GATEWAY_SERVER_ACCESS_ENABLED`
+  (default empty, follow the control plane) instead of `TUNNEX_SERVER_ACCESS_ENABLED`. If you relied on
+  `TUNNEX_SERVER_ACCESS_ENABLED=true` to force the bundled gateway on, it now follows the dashboard setting; set
+  `TUNNEX_GATEWAY_SERVER_ACCESS_ENABLED=true` to keep forcing it.
+- **Helm gateways:** the chart default for `serverAccess.enabled` is now `""` (follow). A gateway whose own values
+  file sets `serverAccess.enabled: false` explicitly stays locked off after the upgrade; remove that line to let it
+  follow the control plane.
+- **Upgrade the control plane before gateways.** An older control plane does not answer the new capability request
+  (404), and a following gateway then stays off until the control plane is upgraded.
+
+## Founder rulings 2026-11-24
+
+Original decisions (see "Decisions"): env is the initial value plus a separate hard lock; server administrators
+only, with recent re-authentication, audit and immediate off; gateways follow the control plane (tri-state env);
+the per-organization toggle stays and effective = installation AND organization.
+
+Rulings on the questions raised during implementation ("do recommended"):
+
+1. **Password re-authentication budget:** this endpoint gets its own limiter, separate from the MFA step-up
+   budget, counting only failed passwords (5 failures per 5 minutes per user). Successful saves never consume it.
+2. **SSO-only administrators:** keep the behaviour — a fresh IdP MFA (`sso_mfa`, within 5 minutes) is accepted,
+   otherwise refused with a message telling them to set up an authenticator app (TOTP). A real SSO re-login step-up
+   is deferred.
+3. **Multi-replica Helm control planes:** keep the automatic lock (`TUNNEX_SERVER_ACCESS_LOCKED=true` whenever
+   `api.replicas != 1`); those installs cannot enable Server Access from the dashboard until terminal HA exists.
+4. Upgrade notes above are the release-note text for the Helm explicit-false lock, the Compose variable rename,
+   the control-plane-first upgrade order and the new lock variable.
+
 ## Migration and rollback
 
 - Up: creates the empty singleton table. No row is written, so every install keeps its current env behaviour until
@@ -141,7 +183,8 @@ unset env. Upgrade the control plane first; gateways then follow within ~5 secon
 - `serveraccess`: installation authority — env seed, saved value wins, lock forces off and refuses enabling,
   fail-closed on read error, version conflict, audit row, active sessions ended on disable (Postgres fixture).
 - HTTP: non-CP-admin refused, machine/bearer refused, missing password refused, wrong password refused, stale MFA
-  refused for enrolled users, CSRF/operation census lists updated.
+  refused for enrolled users, no-factor refusal names the authenticator fix, repeated successful saves are never
+  limited, five failures are, the MFA step-up budget is untouched, CSRF/operation census lists updated.
 - Agent channel: capability endpoint requires gateway identity and reflects installation AND org.
 - Node: tri-state decision table; supervisor starts and stops the runtime on changes (fake poller).
 - Deploy: installer still writes `TUNNEX_SERVER_ACCESS_ENABLED=false`; compose node-agent default is empty; Helm
