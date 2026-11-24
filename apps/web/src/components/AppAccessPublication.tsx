@@ -227,7 +227,7 @@ export default function AppAccessPublication({ orgId, userId, application, check
     {error && <ErrorText>{error}</ErrorText>}
     {!view && !error ? <Loading /> : view && <>
       {publishedCurrent ? <div className="aa-publication-readiness">
-        <div className="aa-publication-block-heading"><h3>Published — no unpublished changes</h3><span className="aa-publication-ready">Up to date</span></div>
+        <div className="aa-publication-block-heading"><h3>Published</h3><span className="aa-publication-ready">No unpublished changes</span></div>
         <p role="status">Revision {application.draft.revision} is live. Edit the application to publish changes.</p>
       </div> : <div className="aa-publication-readiness">
         <div className="aa-publication-block-heading"><h3>Before publishing</h3><span className={canRequest ? "aa-publication-ready" : ""}>{reading ? "Refreshing…" : intent ? "Request unresolved" : pending(pendingOperation) ? "Publishing…" : canRequest ? "Ready" : canManage ? "Needs attention" : "View only"}</span></div>
