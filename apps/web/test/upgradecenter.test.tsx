@@ -125,6 +125,36 @@ describe("control-plane upgrade authority", () => {
     expect(await screen.findByRole("button", { name: "Upgrade control plane" })).toBeTruthy();
   });
 
+  it("offers a confirmed re-run of the same release after a failed upgrade (forward fix)", async () => {
+    meta.upgrade.available = false;
+    mocks.hostState = {
+      available: true,
+      state: "failed",
+      reason_code: "health_check_failed",
+      target_version: "v0.1.7",
+      target_source_sha: "b".repeat(40),
+      rerun_available: true,
+    };
+    render(<UpgradeCenter />);
+    expect(await screen.findByText("Tunnex v0.1.7 upgrade stopped")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Upgrade control plane" })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Run the upgrade again" }));
+    expect(screen.getByText(/An older release is never installed/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Confirm and run again" }));
+    await waitFor(() => expect(mocks.post).toHaveBeenCalledTimes(1));
+    expect(mocks.post).toHaveBeenCalledWith("/api/v1/admin/upgrade", { body: { rerun: true } });
+    expect(await screen.findByText("Request accepted")).toBeTruthy();
+  });
+
+  it("does not offer a re-run the server did not offer", async () => {
+    meta.upgrade.available = false;
+    mocks.hostState = { available: true, state: "failed", reason_code: "app_access_authority_changed", target_version: "v0.1.7", target_source_sha: "b".repeat(40), rerun_available: false };
+    render(<UpgradeCenter />);
+    expect(await screen.findByText(/Upgrade stopped before completion/)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Run the upgrade again" })).toBeNull();
+    expect(mocks.post).not.toHaveBeenCalled();
+  });
+
   it("offers installer repair instead of a missing helper on old installations", async () => {
     mocks.hostState = { available: false, state: "idle" };
     render(<UpgradeCenter />);

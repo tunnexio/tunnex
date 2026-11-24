@@ -5023,7 +5023,7 @@ export interface paths {
         put?: never;
         /**
          * Approve the exact signed release currently shown by the control plane
-         * @description Requires `users.cp_admin`. The server pins its current verified catalog source SHA and sequence; the client cannot supply a different target. Duplicate requests for that same active target are idempotent.
+         * @description Requires `users.cp_admin`. The server pins its current verified catalog source SHA and sequence; the client cannot supply a different target. Duplicate requests for that same active target are idempotent. With `rerun: true` (AA-EN-1, UPG-1 D2 forward fix) the server re-requests the installed release only when the last upgrade to it failed and the verified catalog names that same sequence and source SHA; never an older release.
          */
         post: operations["requestHostUpgrade"];
         delete?: never;
@@ -13390,8 +13390,14 @@ export interface components {
             password_action: "keep" | "replace" | "clear";
             password?: string;
         };
+        HostUpgradeRequest: {
+            /** @description Re-run the same verified release after a failed upgrade (same sequence and source SHA only). */
+            rerun?: boolean;
+        };
         HostUpgradeStatus: {
             available: boolean;
+            /** @description True when the last upgrade failed and the verified catalog still names exactly the installed release (same sequence and source SHA), so it can be re-run as a forward fix. */
+            rerun_available?: boolean;
             /** Format: uuid */
             request_id?: string;
             /** @enum {string} */
@@ -21957,7 +21963,11 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["HostUpgradeRequest"];
+            };
+        };
         responses: {
             /** @description Upgrade request accepted or already active for this exact target. */
             202: {

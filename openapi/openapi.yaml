@@ -6051,8 +6051,16 @@ paths:
       description: >-
         Requires `users.cp_admin`. The server pins its current verified catalog
         source SHA and sequence; the client cannot supply a different target.
-        Duplicate requests for that same active target are idempotent.
+        Duplicate requests for that same active target are idempotent. With
+        `rerun: true` (AA-EN-1, UPG-1 D2 forward fix) the server re-requests the
+        installed release only when the last upgrade to it failed and the verified
+        catalog names that same sequence and source SHA; never an older release.
       tags: [admin]
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/HostUpgradeRequest" }
       responses:
         "202":
           description: Upgrade request accepted or already active for this exact target.
@@ -15843,12 +15851,25 @@ components:
         revision: { type: integer, format: int64, minimum: 0 }
         password_action: { type: string, enum: [keep, replace, clear] }
         password: { type: string, writeOnly: true, maxLength: 4096 }
+    HostUpgradeRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        rerun:
+          type: boolean
+          description: Re-run the same verified release after a failed upgrade (same sequence and source SHA only).
+
     HostUpgradeStatus:
       type: object
       additionalProperties: false
       required: [available, state]
       properties:
         available: { type: boolean }
+        rerun_available:
+          type: boolean
+          description: >-
+            True when the last upgrade failed and the verified catalog still names exactly the
+            installed release (same sequence and source SHA), so it can be re-run as a forward fix.
         request_id: { type: string, format: uuid }
         state:
           type: string

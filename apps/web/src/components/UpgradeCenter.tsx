@@ -24,6 +24,7 @@ export function UpgradeCenter() {
   const [meta, setMeta] = useState<Meta | null>(null);
   const [host, setHost] = useState<HostUpgradeStatus | null>(null);
   const [confirming, setConfirming] = useState(false);
+  const [confirmingRerun, setConfirmingRerun] = useState(false);
   const [busy, setBusy] = useState(false);
   const [reconnecting, setReconnecting] = useState(false);
   const [error, setError] = useState("");
@@ -75,11 +76,13 @@ export function UpgradeCenter() {
   }
 
   const repairCommand = "curl -fsSL https://get.tunnex.io | sh";
-  const requestUpgrade = async () => {
+  const requestUpgrade = async (rerun = false) => {
     setBusy(true);
     setError("");
     try {
-      const { data, error: requestError } = await api.POST("/api/v1/admin/upgrade");
+      const { data, error: requestError } = rerun
+        ? await api.POST("/api/v1/admin/upgrade", { body: { rerun: true } })
+        : await api.POST("/api/v1/admin/upgrade");
       if (requestError || !data) {
         setError(apiErrorMessage(requestError, "Could not request the host upgrade."));
         return;
@@ -87,6 +90,7 @@ export function UpgradeCenter() {
       refreshEpoch.current += 1;
       setHost(data);
       setConfirming(false);
+      setConfirmingRerun(false);
     } catch {
       setError("Could not reach the API. No new request was confirmed.");
     } finally {
@@ -95,11 +99,18 @@ export function UpgradeCenter() {
   };
 
   const direct = upgrade?.approval_mode === "host_updater" && host?.available;
+  // UPG-1 D2 forward fix: the server offers this only for the same verified
+  // release (same sequence and source SHA) after a failed upgrade to it.
+  const rerunAvailable = Boolean(direct && host?.state === "failed" && host.rerun_available && !hasAvailableUpgrade);
   const titleVersion = statusMatchesAvailable ? (host?.target_version ?? upgrade?.version ?? "new release") : (upgrade?.version ?? host?.target_version ?? "new release");
   return (
     <section className="rounded-xl border border-amber-400/30 bg-amber-400/10 p-4" aria-label="Upgrade available">
       <h2 className="text-sm font-semibold text-ink-heading">
-        {host?.state === "healthy" ? `Tunnex ${titleVersion} upgrade completed` : `Tunnex ${titleVersion} is available`}
+        {host?.state === "healthy"
+          ? `Tunnex ${titleVersion} upgrade completed`
+          : host?.state === "failed" && !hasAvailableUpgrade
+            ? `Tunnex ${titleVersion} upgrade stopped`
+            : `Tunnex ${titleVersion} is available`}
       </h2>
       {upgrade && (
         <p className="mt-1 text-sm text-ink-secondary">
@@ -132,6 +143,23 @@ export function UpgradeCenter() {
           </div>
         ) : (
           <button type="button" className="mt-3 rounded-md border border-amber-300/40 px-3 py-2 text-sm" onClick={() => setConfirming(true)}>Upgrade control plane</button>
+        )
+      )}
+
+      {rerunAvailable && (
+        confirmingRerun ? (
+          <div className="mt-3 rounded-md border border-amber-300/30 p-3">
+            <p className="text-sm text-ink-secondary">Run the same verified release {titleVersion} again. A new database backup is created and verified first, then preflight runs and the upgrade finishes. An older release is never installed.</p>
+            <div className="mt-3 flex gap-2">
+              <button type="button" className="rounded-md border border-amber-300/40 px-3 py-2 text-sm" disabled={busy} onClick={() => void requestUpgrade(true)}>{busy ? "Requesting…" : "Confirm and run again"}</button>
+              <button type="button" className="rounded-md border border-line px-3 py-2 text-sm" disabled={busy} onClick={() => setConfirmingRerun(false)}>Cancel</button>
+            </div>
+          </div>
+        ) : (
+          <div className="mt-3">
+            <p className="text-sm text-ink-secondary">Running the upgrade again is the supported fix after a failed upgrade.</p>
+            <button type="button" className="mt-2 rounded-md border border-amber-300/40 px-3 py-2 text-sm" onClick={() => setConfirmingRerun(true)}>Run the upgrade again</button>
+          </div>
         )
       )}
 
