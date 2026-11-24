@@ -132,6 +132,12 @@ device, the same effect the walk already accepts for Flannel. Item 10 is of a di
 
 - Positional pairing: text is bound by handle-bearing listings before and after; nft handles are
   not reused. A comment containing set-match text only breaks pairing, which refuses.
+  Now guarded by a test — `test(k8s): a comment holding set-match text only breaks pairing (K8N
+  review)`, `TestObservedCommentWithSetMatchTextOnlyBreaksPairing`: a comment naming a safe set
+  ahead of an overlapping real one, repeating the real matches or holding a negated match does
+  not pair; one that ends inside a match is not understood; set-match text touching the quotes
+  is not a match and the rule is read through its real sets. A regression guard, not a fix:
+  with the set count dropped from the pairing, the first three rows are accepted.
 - The `oifname` exemption for one tunnel interface: `oif`, sets, wildcards, `!=`, an empty egress
   and `iifname` all prove nothing.
 - The receipt against anyone without write access to the state directory: random boot ID per

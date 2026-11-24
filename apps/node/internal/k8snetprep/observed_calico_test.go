@@ -298,3 +298,77 @@ func TestObservedExistingFixtureNeedsNoSetFacts(t *testing.T) {
 		t.Fatalf("k3s Flannel fixture: %v %v", proof, err)
 	}
 }
+
+// Review list: a comment containing set-match text. iptables-nft-save prints a
+// comment in quotes, and the saved-rule reader splits on spaces, so set-match
+// text inside a comment is read as one more set match of that rule. That can
+// only add a match, never hide a real one, and an added match breaks pairing
+// with the nft listing, which counts the rule's opaque set matches: the rule
+// is refused, never read through the comment's set. This guards a property
+// the review found sound; there is no fix behind it.
+func TestObservedCommentWithSetMatchTextOnlyBreaksPairing(t *testing.T) {
+	safe := map[string][]string{calicoMasq: {"192.168.0.0/16"}, "safe-pool": {"192.168.0.0/16"}}
+	wide := map[string][]string{calicoMasq: {"0.0.0.0/0"}, "safe-pool": {"192.168.0.0/16"}}
+	for name, tc := range map[string]struct {
+		rule    string
+		members map[string][]string
+		want    string // empty: accepted
+	}{
+		// The comment names a safe set ahead of the real, overlapping one.
+		"comment names a safe set first": {
+			rule:    `-m comment --comment "see -m set --match-set safe-pool src here" ` + calicoMasqOK + ` -j MASQUERADE --random-fully`,
+			members: wide, want: "rule 1 does not pair",
+		},
+		"comment repeats the real matches": {
+			rule:    `-m comment --comment "x ` + calicoMasqOK + ` y" ` + calicoMasqOK + ` -j MASQUERADE --random-fully`,
+			members: safe, want: "rule 1 does not pair",
+		},
+		"comment holds a negated set match": {
+			rule:    `-m comment --comment "x -m set ! --match-set safe-pool src y" ` + calicoMasqOK + ` -j MASQUERADE --random-fully`,
+			members: safe, want: "rule 1 does not pair",
+		},
+		// Text that cannot be completed inside the comment is refused as
+		// not understood, never skipped.
+		"comment ends inside a set match": {
+			rule:    `-m comment --comment "x -m set --match-set safe-pool" ` + calicoMasqOK + ` -j MASQUERADE --random-fully`,
+			members: safe, want: "invalid set",
+		},
+		// Set-match text touching the quotes is not a match: the rule pairs
+		// and is read through its real sets, whatever the comment names.
+		"comment is set-match text, real set overlaps": {
+			rule:    `-m comment --comment "-m set --match-set safe-pool src" ` + calicoMasqOK + ` -j MASQUERADE --random-fully`,
+			members: wide, want: "overlaps the tunnel range",
+		},
+		"comment is set-match text, real set is safe": {
+			rule:    `-m comment --comment "-m set --match-set safe-pool src" ` + calicoMasqOK + ` -j MASQUERADE --random-fully`,
+			members: safe,
+		},
+		// A target inside a comment precedes the real one, which wins.
+		"comment names another target": {
+			rule:    `-m comment --comment "x -j RETURN y" ` + calicoMasqOK + ` -j MASQUERADE --random-fully`,
+			members: safe,
+		},
+	} {
+		chains, rules := observedRules(t, calicoNFT())
+		saved, err := parseSavedRules(calicoSave(tc.rule))
+		if err != nil {
+			if tc.want == "" || !strings.Contains(err.Error(), tc.want) {
+				t.Errorf("%s: saved text: %v", name, err)
+			}
+			continue
+		}
+		facts := &natSetFacts{saved: saved, members: map[string][]netip.Prefix{}}
+		for set, list := range tc.members {
+			for _, member := range list {
+				facts.members[set] = append(facts.members[set], netip.MustParsePrefix(member))
+			}
+		}
+		_, err = proveNoTunnelSourceNATWithSets(chains, rules, "POSTROUTING", calicoTunnel, "", nil, facts)
+		switch {
+		case tc.want == "" && err != nil:
+			t.Errorf("%s: refused: %v", name, err)
+		case tc.want != "" && (err == nil || !strings.Contains(err.Error(), tc.want)):
+			t.Errorf("%s: err = %v, want %q", name, err, tc.want)
+		}
+	}
+}
