@@ -1,0 +1,31 @@
+=== positive control: docker network gateway: http://172.21.0.1:80/
+--- tunnex forward counters before
+counter packets 0 drop comment "tunnex_ct_invalid_drop"
+counter packets 0 accept comment "tunnex_native_forward_passthrough"
+counter packets 0 comment "tunnex_default_drop"
+curl: curl: (28) Connection timed out after 3001 milliseconds
+curl: http_code=000
+body: 
+--- tunnex forward counters after
+counter packets 0 drop comment "tunnex_ct_invalid_drop"
+counter packets 0 accept comment "tunnex_native_forward_passthrough"
+counter packets 3 comment "tunnex_default_drop"
+--- tcpdump wg0 (before tc ingress)
+00:53:30.255724 IP 10.99.0.2.56050 > 172.21.0.1.80: Flags [S], seq 2782923465, win 64860, options [mss 1380,sackOK,TS val 2223916725 ecr 0,nop,wscale 7], length 0
+00:53:31.258791 IP 10.99.0.2.56050 > 172.21.0.1.80: Flags [S], seq 2782923465, win 64860, options [mss 1380,sackOK,TS val 2223917729 ecr 0,nop,wscale 7], length 0
+00:53:32.282896 IP 10.99.0.2.56050 > 172.21.0.1.80: Flags [S], seq 2782923465, win 64860, options [mss 1380,sackOK,TS val 2223918753 ecr 0,nop,wscale 7], length 0
+
+--- tcpdump lxc14fcf69d02cb (pod side)
+
+--- nft monitor trace (prerouting priority -350, iifname wg0 saddr 10.99.0.2)
+trace id a5369dc1 ip f10trace pre packet: iif "wg0" ip saddr 10.99.0.2 ip daddr 172.21.0.1 ip dscp cs0 ip ecn not-ect ip ttl 64 ip id 64959 ip length 60 tcp sport 56050 tcp dport 80 tcp flags == syn tcp window 64860 
+trace id a5369dc1 ip f10trace pre rule iifname "wg0" ip saddr 10.99.0.2 meta nftrace set 1 (verdict continue)
+trace id a5369dc1 ip f10trace pre policy accept 
+trace id a5369dc1 ip raw PREROUTING packet: iif "wg0" ip saddr 10.99.0.2 ip daddr 172.21.0.1 ip dscp cs0 ip ecn not-ect ip ttl 64 ip id 64959 ip length 60 tcp sport 56050 tcp dport 80 tcp flags == syn tcp window 64860 
+trace id a5369dc1 ip raw PREROUTING rule xt match "comment" counter packets 13957 bytes 2914995 jump CILIUM_PRE_raw (verdict jump CILIUM_PRE_raw)
+trace id a5369dc1 ip raw PREROUTING policy accept 
+trace id a5369dc1 ip mangle PREROUTING packet: iif "wg0" ip saddr 10.99.0.2 ip daddr 172.21.0.1 ip dscp cs0 ip ecn not-ect ip ttl 64 ip id 64959 ip length 60 tcp sport 56050 tcp dport 80 tcp flags == syn tcp window 64860 
+trace id a5369dc1 ip mangle PREROUTING rule xt match "comment" counter packets 13956 bytes 2914943 jump CILIUM_PRE_mangle (verdict jump CILIUM_PRE_mangle)
+trace lines: 45
+--- netfilter conntrack for 10.99.0.2
+conntrack v1.4.9 (conntrack-tools): 0 flow entries have been shown.

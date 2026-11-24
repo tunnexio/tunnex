@@ -1,0 +1,134 @@
+=== NodePort via wg0 address: http://10.99.0.1:30080/clientip
+--- tunnex forward counters before
+counter packets 0 drop comment "tunnex_ct_invalid_drop"
+counter packets 0 accept comment "tunnex_native_forward_passthrough"
+counter packets 3 comment "tunnex_default_drop"
+curl: curl: (7) Failed to connect to 10.99.0.1:30080 after 0 ms: Could not connect to server
+curl: http_code=000
+body: 
+--- tunnex forward counters after
+counter packets 0 drop comment "tunnex_ct_invalid_drop"
+counter packets 0 accept comment "tunnex_native_forward_passthrough"
+counter packets 3 comment "tunnex_default_drop"
+--- tcpdump wg0 (before tc ingress)
+00:56:11.064288 IP 10.99.0.2.40578 > 10.99.0.1.30080: Flags [S], seq 1816572699, win 64860, options [mss 1380,sackOK,TS val 3799146046 ecr 0,nop,wscale 7], length 0
+00:56:11.064421 IP 10.99.0.1.30080 > 10.99.0.2.40578: Flags [R.], seq 0, ack 1816572700, win 0, length 0
+
+--- tcpdump lxc14fcf69d02cb (pod side)
+
+--- nft monitor trace (prerouting priority -350, iifname wg0 saddr 10.99.0.2)
+trace id 4be95c56 ip f10trace pre packet: iif "wg0" ip saddr 10.99.0.2 ip daddr 10.99.0.1 ip dscp cs0 ip ecn not-ect ip ttl 64 ip id 61452 ip length 60 tcp sport 40578 tcp dport 30080 tcp flags == syn tcp window 64860 
+trace id 4be95c56 ip f10trace pre rule iifname "wg0" ip saddr 10.99.0.2 meta nftrace set 1 (verdict continue)
+trace id 4be95c56 ip f10trace pre policy accept 
+(tunnex/filter verdict lines:)
+trace id 4be95c56 ip nat PREROUTING packet: iif "wg0" ip saddr 10.99.0.2 ip daddr 10.99.0.1 ip dscp cs0 ip ecn not-ect ip ttl 64 ip id 61452 ip length 60 tcp sport 40578 tcp dport 30080 tcp flags == syn tcp window 64860 
+trace id 4be95c56 ip nat PREROUTING rule xt match "comment" counter packets 8 bytes 480 jump CILIUM_PRE_nat (verdict jump CILIUM_PRE_nat)
+trace id 4be95c56 ip nat PREROUTING policy accept 
+trace id 4be95c56 ip filter INPUT packet: iif "wg0" ip saddr 10.99.0.2 ip daddr 10.99.0.1 ip dscp cs0 ip ecn not-ect ip ttl 64 ip id 61452 ip length 60 tcp sport 40578 tcp dport 30080 tcp flags == syn tcp window 64860 
+trace id 4be95c56 ip filter INPUT rule xt match "comment" counter packets 7183 bytes 2195275 jump CILIUM_INPUT (verdict jump CILIUM_INPUT)
+trace id 4be95c56 ip filter INPUT rule counter packets 202476 bytes 591017984 jump KUBE-FIREWALL (verdict jump KUBE-FIREWALL)
+trace lines: 18
+--- netfilter conntrack for 10.99.0.2
+conntrack v1.4.9 (conntrack-tools): 0 flow entries have been shown.
+=== NodePort via node primary IP: http://172.21.0.2:30080/clientip
+--- tunnex forward counters before
+counter packets 0 drop comment "tunnex_ct_invalid_drop"
+counter packets 0 accept comment "tunnex_native_forward_passthrough"
+counter packets 3 comment "tunnex_default_drop"
+curl: http_code=200
+body: 10.99.0.2:46592
+--- tunnex forward counters after
+counter packets 0 drop comment "tunnex_ct_invalid_drop"
+counter packets 0 accept comment "tunnex_native_forward_passthrough"
+counter packets 3 comment "tunnex_default_drop"
+--- tcpdump wg0 (before tc ingress)
+00:56:17.198595 IP 10.99.0.2.46592 > 172.21.0.2.30080: Flags [S], seq 3157804473, win 64860, options [mss 1380,sackOK,TS val 920769842 ecr 0,nop,wscale 7], length 0
+00:56:17.198826 IP 172.21.0.2.30080 > 10.99.0.2.46592: Flags [S.], seq 969018, ack 3157804474, win 64296, options [mss 1380,sackOK,TS val 2009052761 ecr 920769842,nop,wscale 7], length 0
+00:56:17.198957 IP 10.99.0.2.46592 > 172.21.0.2.30080: Flags [.], ack 1, win 507, options [nop,nop,TS val 920769843 ecr 2009052761], length 0
+00:56:17.199152 IP 10.99.0.2.46592 > 172.21.0.2.30080: Flags [P.], seq 1:89, ack 1, win 507, options [nop,nop,TS val 920769843 ecr 2009052761], length 88
+--- tcpdump lxc14fcf69d02cb (pod side)
+00:56:17.198769 IP 10.244.0.35.8080 > 10.99.0.2.46592: Flags [S.], seq 969018, ack 3157804474, win 64296, options [mss 1380,sackOK,TS val 2009052761 ecr 920769842,nop,wscale 7], length 0
+00:56:17.199169 IP 10.244.0.35.8080 > 10.99.0.2.46592: Flags [.], ack 89, win 502, options [nop,nop,TS val 2009052761 ecr 920769843], length 0
+00:56:17.209652 IP 10.244.0.35.8080 > 10.99.0.2.46592: Flags [P.], seq 1:133, ack 89, win 502, options [nop,nop,TS val 2009052771 ecr 920769843], length 132: HTTP: HTTP/1.1 200 OK
+00:56:17.210141 IP 10.244.0.35.8080 > 10.99.0.2.46592: Flags [F.], seq 133, ack 90, win 502, options [nop,nop,TS val 2009052772 ecr 920769854], length 0
+--- nft monitor trace (prerouting priority -350, iifname wg0 saddr 10.99.0.2)
+(tunnex/filter verdict lines:)
+trace lines: 0
+--- netfilter conntrack for 10.99.0.2
+conntrack v1.4.9 (conntrack-tools): 0 flow entries have been shown.
+=== ClusterIP: http://10.96.229.86:80/clientip
+--- tunnex forward counters before
+counter packets 0 drop comment "tunnex_ct_invalid_drop"
+counter packets 0 accept comment "tunnex_native_forward_passthrough"
+counter packets 3 comment "tunnex_default_drop"
+curl: curl: (28) Connection timed out after 3002 milliseconds
+curl: http_code=000
+body: 
+--- tunnex forward counters after
+counter packets 0 drop comment "tunnex_ct_invalid_drop"
+counter packets 0 accept comment "tunnex_native_forward_passthrough"
+counter packets 3 comment "tunnex_default_drop"
+--- tcpdump wg0 (before tc ingress)
+00:56:23.433980 IP 10.99.0.2.40582 > 10.96.229.86.80: Flags [S], seq 2607940094, win 64860, options [mss 1380,sackOK,TS val 2918503323 ecr 0,nop,wscale 7], length 0
+00:56:24.443342 IP 10.99.0.2.40582 > 10.96.229.86.80: Flags [S], seq 2607940094, win 64860, options [mss 1380,sackOK,TS val 2918504332 ecr 0,nop,wscale 7], length 0
+00:56:25.466901 IP 10.99.0.2.40582 > 10.96.229.86.80: Flags [S], seq 2607940094, win 64860, options [mss 1380,sackOK,TS val 2918505356 ecr 0,nop,wscale 7], length 0
+
+--- tcpdump lxc14fcf69d02cb (pod side)
+
+--- nft monitor trace (prerouting priority -350, iifname wg0 saddr 10.99.0.2)
+(tunnex/filter verdict lines:)
+trace lines: 0
+--- netfilter conntrack for 10.99.0.2
+conntrack v1.4.9 (conntrack-tools): 0 flow entries have been shown.
+=== pod IP direct: http://10.244.0.35:8080/clientip
+--- tunnex forward counters before
+counter packets 0 drop comment "tunnex_ct_invalid_drop"
+counter packets 0 accept comment "tunnex_native_forward_passthrough"
+counter packets 3 comment "tunnex_default_drop"
+curl: http_code=200
+body: 10.99.0.2:42266
+--- tunnex forward counters after
+counter packets 0 drop comment "tunnex_ct_invalid_drop"
+counter packets 0 accept comment "tunnex_native_forward_passthrough"
+counter packets 3 comment "tunnex_default_drop"
+--- tcpdump wg0 (before tc ingress)
+00:56:32.579320 IP 10.99.0.2.42266 > 10.244.0.35.8080: Flags [S], seq 75791311, win 64860, options [mss 1380,sackOK,TS val 3134335068 ecr 0,nop,wscale 7], length 0
+00:56:32.579572 IP 10.244.0.35.8080 > 10.99.0.2.42266: Flags [S.], seq 946675037, ack 75791312, win 64296, options [mss 1380,sackOK,TS val 2009068141 ecr 3134335068,nop,wscale 7], length 0
+00:56:32.579721 IP 10.99.0.2.42266 > 10.244.0.35.8080: Flags [.], ack 1, win 507, options [nop,nop,TS val 3134335068 ecr 2009068141], length 0
+00:56:32.580586 IP 10.99.0.2.42266 > 10.244.0.35.8080: Flags [P.], seq 1:89, ack 1, win 507, options [nop,nop,TS val 3134335069 ecr 2009068141], length 88: HTTP: GET /clientip HTTP/1.1
+--- tcpdump lxc14fcf69d02cb (pod side)
+00:56:32.579537 IP 10.244.0.35.8080 > 10.99.0.2.42266: Flags [S.], seq 946675037, ack 75791312, win 64296, options [mss 1380,sackOK,TS val 2009068141 ecr 3134335068,nop,wscale 7], length 0
+00:56:32.580601 IP 10.244.0.35.8080 > 10.99.0.2.42266: Flags [.], ack 89, win 502, options [nop,nop,TS val 2009068142 ecr 3134335069], length 0
+00:56:32.588774 IP 10.244.0.35.8080 > 10.99.0.2.42266: Flags [P.], seq 1:133, ack 89, win 502, options [nop,nop,TS val 2009068151 ecr 3134335069], length 132: HTTP: HTTP/1.1 200 OK
+00:56:32.590299 IP 10.244.0.35.8080 > 10.99.0.2.42266: Flags [F.], seq 133, ack 90, win 502, options [nop,nop,TS val 2009068152 ecr 3134335078], length 0
+--- nft monitor trace (prerouting priority -350, iifname wg0 saddr 10.99.0.2)
+(tunnex/filter verdict lines:)
+trace lines: 0
+--- netfilter conntrack for 10.99.0.2
+conntrack v1.4.9 (conntrack-tools): 0 flow entries have been shown.
+=== LoadBalancer IP: http://172.31.250.0:80/clientip
+--- tunnex forward counters before
+counter packets 0 drop comment "tunnex_ct_invalid_drop"
+counter packets 0 accept comment "tunnex_native_forward_passthrough"
+counter packets 3 comment "tunnex_default_drop"
+curl: http_code=200
+body: 10.99.0.2:48324
+--- tunnex forward counters after
+counter packets 0 drop comment "tunnex_ct_invalid_drop"
+counter packets 0 accept comment "tunnex_native_forward_passthrough"
+counter packets 3 comment "tunnex_default_drop"
+--- tcpdump wg0 (before tc ingress)
+00:56:39.273146 IP 10.99.0.2.48324 > 172.31.250.0.80: Flags [S], seq 3082568174, win 64860, options [mss 1380,sackOK,TS val 3685027594 ecr 0,nop,wscale 7], length 0
+00:56:39.275609 IP 172.31.250.0.80 > 10.99.0.2.48324: Flags [S.], seq 3529458283, ack 3082568175, win 64296, options [mss 1380,sackOK,TS val 2009074837 ecr 3685027594,nop,wscale 7], length 0
+00:56:39.276695 IP 10.99.0.2.48324 > 172.31.250.0.80: Flags [.], ack 1, win 507, options [nop,nop,TS val 3685027598 ecr 2009074837], length 0
+00:56:39.281695 IP 10.99.0.2.48324 > 172.31.250.0.80: Flags [P.], seq 1:85, ack 1, win 507, options [nop,nop,TS val 3685027603 ecr 2009074837], length 84: HTTP: GET /clientip HTTP/1.1
+--- tcpdump lxc14fcf69d02cb (pod side)
+00:56:39.274751 IP 10.244.0.35.8080 > 10.99.0.2.48324: Flags [S.], seq 3529458283, ack 3082568175, win 64296, options [mss 1380,sackOK,TS val 2009074837 ecr 3685027594,nop,wscale 7], length 0
+00:56:39.281720 IP 10.244.0.35.8080 > 10.99.0.2.48324: Flags [.], ack 85, win 502, options [nop,nop,TS val 2009074844 ecr 3685027603], length 0
+00:56:39.410716 IP 10.244.0.35.8080 > 10.99.0.2.48324: Flags [P.], seq 1:133, ack 85, win 502, options [nop,nop,TS val 2009074972 ecr 3685027603], length 132: HTTP: HTTP/1.1 200 OK
+00:56:39.433214 IP 10.244.0.35.8080 > 10.99.0.2.48324: Flags [F.], seq 133, ack 86, win 502, options [nop,nop,TS val 2009074995 ecr 3685027734], length 0
+--- nft monitor trace (prerouting priority -350, iifname wg0 saddr 10.99.0.2)
+(tunnex/filter verdict lines:)
+trace lines: 0
+--- netfilter conntrack for 10.99.0.2
+conntrack v1.4.9 (conntrack-tools): 0 flow entries have been shown.

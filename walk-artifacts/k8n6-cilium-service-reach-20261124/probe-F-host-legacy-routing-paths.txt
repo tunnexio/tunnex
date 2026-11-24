@@ -1,0 +1,156 @@
+=== NodePort via wg0 address: http://10.99.0.1:30080/clientip
+--- tunnex forward counters before
+counter packets 7 drop comment "tunnex_ct_invalid_drop"
+counter packets 0 accept comment "tunnex_native_forward_passthrough"
+counter packets 57 comment "tunnex_default_drop"
+curl: curl: (28) Connection timed out after 3001 milliseconds
+curl: http_code=000
+body: 
+--- tunnex forward counters after
+counter packets 7 drop comment "tunnex_ct_invalid_drop"
+counter packets 0 accept comment "tunnex_native_forward_passthrough"
+counter packets 60 comment "tunnex_default_drop"
+--- tcpdump wg0 (before tc ingress)
+01:04:41.275352 IP 10.99.0.2.36300 > 10.99.0.1.30080: Flags [S], seq 529362643, win 64860, options [mss 1380,sackOK,TS val 3799656997 ecr 0,nop,wscale 7], length 0
+01:04:42.327410 IP 10.99.0.2.36300 > 10.99.0.1.30080: Flags [S], seq 529362643, win 64860, options [mss 1380,sackOK,TS val 3799658049 ecr 0,nop,wscale 7], length 0
+01:04:43.351968 IP 10.99.0.2.36300 > 10.99.0.1.30080: Flags [S], seq 529362643, win 64860, options [mss 1380,sackOK,TS val 3799659073 ecr 0,nop,wscale 7], length 0
+
+--- tcpdump lxc14fcf69d02cb (pod side)
+
+--- nft monitor trace (prerouting priority -350, iifname wg0 saddr 10.99.0.2)
+trace id 6a3edc5e ip f10trace pre packet: iif "wg0" ip saddr 10.99.0.2 ip daddr 10.244.0.35 ip dscp cs0 ip ecn not-ect ip ttl 64 ip id 5190 ip length 60 tcp sport 36300 tcp dport 8080 tcp flags == syn tcp window 64860 
+trace id 6a3edc5e ip f10trace pre rule iifname "wg0" ip saddr 10.99.0.2 meta nftrace set 1 (verdict continue)
+trace id 6a3edc5e ip f10trace pre policy accept 
+(tunnex/filter verdict lines:)
+trace id 6a3edc5e ip nat PREROUTING packet: iif "wg0" ip saddr 10.99.0.2 ip daddr 10.244.0.35 ip dscp cs0 ip ecn not-ect ip ttl 64 ip id 5190 ip length 60 tcp sport 36300 tcp dport 8080 tcp flags == syn tcp window 64860 
+trace id 6a3edc5e ip nat PREROUTING rule xt match "comment" counter packets 3 bytes 180 jump CILIUM_PRE_nat (verdict jump CILIUM_PRE_nat)
+trace id 6a3edc5e ip nat PREROUTING policy accept 
+trace id 6a3edc5e ip filter FORWARD packet: iif "wg0" oif "cilium_host" ip saddr 10.99.0.2 ip daddr 10.244.0.35 ip dscp cs0 ip ecn not-ect ip ttl 63 ip id 5190 ip length 60 tcp sport 36300 tcp dport 8080 tcp flags == syn tcp window 64860 
+trace id 6a3edc5e ip filter FORWARD rule xt match "comment" counter packets 0 bytes 0 jump CILIUM_FORWARD (verdict jump CILIUM_FORWARD)
+trace id 6a3edc5e ip tunnex forward packet: iif "wg0" oif "cilium_host" ip saddr 10.99.0.2 ip daddr 10.244.0.35 ip dscp cs0 ip ecn not-ect ip ttl 63 ip id 5190 ip length 60 tcp sport 36300 tcp dport 8080 tcp flags == syn tcp window 64860 
+trace lines: 60
+--- netfilter conntrack for 10.99.0.2
+conntrack v1.4.9 (conntrack-tools): 0 flow entries have been shown.
+=== NodePort via node primary IP: http://172.21.0.2:30080/clientip
+--- tunnex forward counters before
+counter packets 7 drop comment "tunnex_ct_invalid_drop"
+counter packets 0 accept comment "tunnex_native_forward_passthrough"
+counter packets 60 comment "tunnex_default_drop"
+curl: curl: (28) Connection timed out after 3000 milliseconds
+curl: http_code=000
+body: 
+--- tunnex forward counters after
+counter packets 7 drop comment "tunnex_ct_invalid_drop"
+counter packets 0 accept comment "tunnex_native_forward_passthrough"
+counter packets 63 comment "tunnex_default_drop"
+--- tcpdump wg0 (before tc ingress)
+01:04:50.430385 IP 10.99.0.2.59884 > 172.21.0.2.30080: Flags [S], seq 4023697723, win 64860, options [mss 1380,sackOK,TS val 921283814 ecr 0,nop,wscale 7], length 0
+01:04:51.479690 IP 10.99.0.2.59884 > 172.21.0.2.30080: Flags [S], seq 4023697723, win 64860, options [mss 1380,sackOK,TS val 921284863 ecr 0,nop,wscale 7], length 0
+01:04:52.513422 IP 10.99.0.2.59884 > 172.21.0.2.30080: Flags [S], seq 4023697723, win 64860, options [mss 1380,sackOK,TS val 921285891 ecr 0,nop,wscale 7], length 0
+
+--- tcpdump lxc14fcf69d02cb (pod side)
+
+--- nft monitor trace (prerouting priority -350, iifname wg0 saddr 10.99.0.2)
+trace id 87636367 ip f10trace pre packet: iif "wg0" ip saddr 10.99.0.2 ip daddr 10.244.0.35 ip dscp cs0 ip ecn not-ect ip ttl 64 ip id 14213 ip length 60 tcp sport 59884 tcp dport 8080 tcp flags == syn tcp window 64860 
+trace id 87636367 ip f10trace pre rule iifname "wg0" ip saddr 10.99.0.2 meta nftrace set 1 (verdict continue)
+trace id 87636367 ip f10trace pre policy accept 
+(tunnex/filter verdict lines:)
+trace id 87636367 ip nat PREROUTING packet: iif "wg0" ip saddr 10.99.0.2 ip daddr 10.244.0.35 ip dscp cs0 ip ecn not-ect ip ttl 64 ip id 14213 ip length 60 tcp sport 59884 tcp dport 8080 tcp flags == syn tcp window 64860 
+trace id 87636367 ip nat PREROUTING rule xt match "comment" counter packets 6 bytes 360 jump CILIUM_PRE_nat (verdict jump CILIUM_PRE_nat)
+trace id 87636367 ip nat PREROUTING policy accept 
+trace id 87636367 ip filter FORWARD packet: iif "wg0" oif "cilium_host" ip saddr 10.99.0.2 ip daddr 10.244.0.35 ip dscp cs0 ip ecn not-ect ip ttl 63 ip id 14213 ip length 60 tcp sport 59884 tcp dport 8080 tcp flags == syn tcp window 64860 
+trace id 87636367 ip filter FORWARD rule xt match "comment" counter packets 3 bytes 180 jump CILIUM_FORWARD (verdict jump CILIUM_FORWARD)
+trace id 87636367 ip tunnex forward packet: iif "wg0" oif "cilium_host" ip saddr 10.99.0.2 ip daddr 10.244.0.35 ip dscp cs0 ip ecn not-ect ip ttl 63 ip id 14213 ip length 60 tcp sport 59884 tcp dport 8080 tcp flags == syn tcp window 64860 
+trace lines: 60
+--- netfilter conntrack for 10.99.0.2
+conntrack v1.4.9 (conntrack-tools): 0 flow entries have been shown.
+=== ClusterIP: http://10.96.229.86:80/clientip
+--- tunnex forward counters before
+counter packets 7 drop comment "tunnex_ct_invalid_drop"
+counter packets 0 accept comment "tunnex_native_forward_passthrough"
+counter packets 63 comment "tunnex_default_drop"
+curl: curl: (28) Connection timed out after 3005 milliseconds
+curl: http_code=000
+body: 
+--- tunnex forward counters after
+counter packets 7 drop comment "tunnex_ct_invalid_drop"
+counter packets 0 accept comment "tunnex_native_forward_passthrough"
+counter packets 63 comment "tunnex_default_drop"
+--- tcpdump wg0 (before tc ingress)
+01:04:59.551886 IP 10.99.0.2.57088 > 10.96.229.86.80: Flags [S], seq 3743883907, win 64860, options [mss 1380,sackOK,TS val 2919020181 ecr 0,nop,wscale 7], length 0
+01:05:00.567449 IP 10.99.0.2.57088 > 10.96.229.86.80: Flags [S], seq 3743883907, win 64860, options [mss 1380,sackOK,TS val 2919021196 ecr 0,nop,wscale 7], length 0
+01:05:01.590891 IP 10.99.0.2.57088 > 10.96.229.86.80: Flags [S], seq 3743883907, win 64860, options [mss 1380,sackOK,TS val 2919022220 ecr 0,nop,wscale 7], length 0
+
+--- tcpdump lxc14fcf69d02cb (pod side)
+
+--- nft monitor trace (prerouting priority -350, iifname wg0 saddr 10.99.0.2)
+(tunnex/filter verdict lines:)
+trace lines: 0
+--- netfilter conntrack for 10.99.0.2
+conntrack v1.4.9 (conntrack-tools): 0 flow entries have been shown.
+=== pod IP direct: http://10.244.0.35:8080/clientip
+--- tunnex forward counters before
+counter packets 7 drop comment "tunnex_ct_invalid_drop"
+counter packets 0 accept comment "tunnex_native_forward_passthrough"
+counter packets 63 comment "tunnex_default_drop"
+curl: curl: (28) Connection timed out after 3003 milliseconds
+curl: http_code=000
+body: 
+--- tunnex forward counters after
+counter packets 7 drop comment "tunnex_ct_invalid_drop"
+counter packets 0 accept comment "tunnex_native_forward_passthrough"
+counter packets 66 comment "tunnex_default_drop"
+--- tcpdump wg0 (before tc ingress)
+01:05:08.654303 IP 10.99.0.2.35364 > 10.244.0.35.8080: Flags [S], seq 3364315383, win 64860, options [mss 1380,sackOK,TS val 3134851883 ecr 0,nop,wscale 7], length 0
+01:05:09.655625 IP 10.99.0.2.35364 > 10.244.0.35.8080: Flags [S], seq 3364315383, win 64860, options [mss 1380,sackOK,TS val 3134852885 ecr 0,nop,wscale 7], length 0
+01:05:10.680691 IP 10.99.0.2.35364 > 10.244.0.35.8080: Flags [S], seq 3364315383, win 64860, options [mss 1380,sackOK,TS val 3134853909 ecr 0,nop,wscale 7], length 0
+
+--- tcpdump lxc14fcf69d02cb (pod side)
+
+--- nft monitor trace (prerouting priority -350, iifname wg0 saddr 10.99.0.2)
+trace id 35496515 ip f10trace pre packet: iif "wg0" ip saddr 10.99.0.2 ip daddr 10.244.0.35 ip dscp cs0 ip ecn not-ect ip ttl 64 ip id 25841 ip length 60 tcp sport 35364 tcp dport 8080 tcp flags == syn tcp window 64860 
+trace id 35496515 ip f10trace pre rule iifname "wg0" ip saddr 10.99.0.2 meta nftrace set 1 (verdict continue)
+trace id 35496515 ip f10trace pre policy accept 
+(tunnex/filter verdict lines:)
+trace id 35496515 ip nat PREROUTING packet: iif "wg0" ip saddr 10.99.0.2 ip daddr 10.244.0.35 ip dscp cs0 ip ecn not-ect ip ttl 64 ip id 25841 ip length 60 tcp sport 35364 tcp dport 8080 tcp flags == syn tcp window 64860 
+trace id 35496515 ip nat PREROUTING rule xt match "comment" counter packets 9 bytes 540 jump CILIUM_PRE_nat (verdict jump CILIUM_PRE_nat)
+trace id 35496515 ip nat PREROUTING policy accept 
+trace id 35496515 ip filter FORWARD packet: iif "wg0" oif "cilium_host" ip saddr 10.99.0.2 ip daddr 10.244.0.35 ip dscp cs0 ip ecn not-ect ip ttl 63 ip id 25841 ip length 60 tcp sport 35364 tcp dport 8080 tcp flags == syn tcp window 64860 
+trace id 35496515 ip filter FORWARD rule xt match "comment" counter packets 6 bytes 360 jump CILIUM_FORWARD (verdict jump CILIUM_FORWARD)
+trace id 35496515 ip tunnex forward packet: iif "wg0" oif "cilium_host" ip saddr 10.99.0.2 ip daddr 10.244.0.35 ip dscp cs0 ip ecn not-ect ip ttl 63 ip id 25841 ip length 60 tcp sport 35364 tcp dport 8080 tcp flags == syn tcp window 64860 
+trace lines: 60
+--- netfilter conntrack for 10.99.0.2
+conntrack v1.4.9 (conntrack-tools): 0 flow entries have been shown.
+=== LoadBalancer IP: http://172.31.250.0:80/clientip
+--- tunnex forward counters before
+counter packets 7 drop comment "tunnex_ct_invalid_drop"
+counter packets 0 accept comment "tunnex_native_forward_passthrough"
+counter packets 66 comment "tunnex_default_drop"
+curl: curl: (28) Connection timed out after 3001 milliseconds
+curl: http_code=000
+body: 
+--- tunnex forward counters after
+counter packets 7 drop comment "tunnex_ct_invalid_drop"
+counter packets 0 accept comment "tunnex_native_forward_passthrough"
+counter packets 69 comment "tunnex_default_drop"
+--- tcpdump wg0 (before tc ingress)
+01:05:17.764590 IP 10.99.0.2.54022 > 172.31.250.0.80: Flags [S], seq 2627535168, win 64860, options [mss 1380,sackOK,TS val 3685546827 ecr 0,nop,wscale 7], length 0
+01:05:18.806760 IP 10.99.0.2.54022 > 172.31.250.0.80: Flags [S], seq 2627535168, win 64860, options [mss 1380,sackOK,TS val 3685547869 ecr 0,nop,wscale 7], length 0
+01:05:19.832166 IP 10.99.0.2.54022 > 172.31.250.0.80: Flags [S], seq 2627535168, win 64860, options [mss 1380,sackOK,TS val 3685548893 ecr 0,nop,wscale 7], length 0
+
+--- tcpdump lxc14fcf69d02cb (pod side)
+
+--- nft monitor trace (prerouting priority -350, iifname wg0 saddr 10.99.0.2)
+trace id 95fe7fa3 ip f10trace pre packet: iif "wg0" ip saddr 10.99.0.2 ip daddr 10.244.0.35 ip dscp cs0 ip ecn not-ect ip ttl 64 ip id 29212 ip length 60 tcp sport 54022 tcp dport 8080 tcp flags == syn tcp window 64860 
+trace id 95fe7fa3 ip f10trace pre rule iifname "wg0" ip saddr 10.99.0.2 meta nftrace set 1 (verdict continue)
+trace id 95fe7fa3 ip f10trace pre policy accept 
+(tunnex/filter verdict lines:)
+trace id 95fe7fa3 ip nat PREROUTING packet: iif "wg0" ip saddr 10.99.0.2 ip daddr 10.244.0.35 ip dscp cs0 ip ecn not-ect ip ttl 64 ip id 29212 ip length 60 tcp sport 54022 tcp dport 8080 tcp flags == syn tcp window 64860 
+trace id 95fe7fa3 ip nat PREROUTING rule xt match "comment" counter packets 13 bytes 772 jump CILIUM_PRE_nat (verdict jump CILIUM_PRE_nat)
+trace id 95fe7fa3 ip nat PREROUTING policy accept 
+trace id 95fe7fa3 ip filter FORWARD packet: iif "wg0" oif "cilium_host" ip saddr 10.99.0.2 ip daddr 10.244.0.35 ip dscp cs0 ip ecn not-ect ip ttl 63 ip id 29212 ip length 60 tcp sport 54022 tcp dport 8080 tcp flags == syn tcp window 64860 
+trace id 95fe7fa3 ip filter FORWARD rule xt match "comment" counter packets 9 bytes 540 jump CILIUM_FORWARD (verdict jump CILIUM_FORWARD)
+trace id 95fe7fa3 ip tunnex forward packet: iif "wg0" oif "cilium_host" ip saddr 10.99.0.2 ip daddr 10.244.0.35 ip dscp cs0 ip ecn not-ect ip ttl 63 ip id 29212 ip length 60 tcp sport 54022 tcp dport 8080 tcp flags == syn tcp window 64860 
+trace lines: 60
+--- netfilter conntrack for 10.99.0.2
+conntrack v1.4.9 (conntrack-tools): 0 flow entries have been shown.

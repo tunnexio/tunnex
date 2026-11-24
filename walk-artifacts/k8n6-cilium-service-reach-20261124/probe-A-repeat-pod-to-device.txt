@@ -1,0 +1,11 @@
+=== A-repeat: pod web (10.244.0.35) -> device 10.99.0.2:8000
+agnhost connect: exit=0
+tunnex_default_drop before: packets 72 bytes 4320 comment "tunnex_default_drop"
+tunnex_default_drop after:  packets 72 bytes 4320 comment "tunnex_default_drop"
+--- tcpdump wg0
+01:06:51.061442 IP 10.244.0.35.44714 > 10.99.0.2.8000: Flags [S], seq 3548858075, win 64860, options [mss 1380,sackOK,TS val 2009687363 ecr 0,nop,wscale 7], length 0
+01:06:51.061621 IP 10.99.0.2.8000 > 10.244.0.35.44714: Flags [S.], seq 4207197951, ack 3548858076, win 64296, options [mss 1380,sackOK,TS val 3134954291 ecr 2009687363,nop,wscale 7], length 0
+01:06:51.061717 IP 10.244.0.35.44714 > 10.99.0.2.8000: Flags [.], ack 1, win 507, options [nop,nop,TS val 2009687364 ecr 3134954291], length 0
+01:06:51.061783 IP 10.244.0.35.44714 > 10.99.0.2.8000: Flags [F.], seq 1, ack 1, win 507, options [nop,nop,TS val 2009687364 ecr 3134954291], length 0
+--- nft trace (prerouting -350, daddr 10.99.0.2 dport 8000), tunnex lines:
+trace lines: 0
