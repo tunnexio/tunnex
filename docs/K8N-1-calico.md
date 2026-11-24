@@ -617,6 +617,42 @@ nat POSTROUTING`:
   `KUBE-MARK-MASQ` in every receipt and a NAT save on every node; not built, because no
   captured node has a `MARK` on that path.
 
+### Which set the members belong to (review finding 7)
+
+The proof reads a set's members by the name the saved rule prints, and a rule holds its set by
+kernel index. If the set were renamed (or destroyed and created again) between the rule save and
+the member read, the members of whatever now has that name would be read for a rule that no
+longer uses it.
+
+What `ipset` can and cannot say:
+
+- `ipset` shows no index, generation or other identity of a set, only its name (`ipset list -n`)
+  and its header and members (`ipset save NAME`). **Identity cannot be bound with `ipset`
+  alone.**
+- The kernel binds it instead, for a set that a rule holds. Checked in a scratch network
+  namespace (kernel 6.8, ipset 7.24, iptables-nft 1.8.11), with `-A POSTROUTING -m set
+  --match-set a src -j MASQUERADE` in place: `ipset rename a c` failed (`Set cannot be renamed:
+  it is in use by another system`), `ipset destroy a` failed (`Set cannot be destroyed: it is in
+  use by a kernel component`); `ipset rename` of a set no rule holds succeeded. So while the rule
+  exists its set keeps its name. A rule that is deleted to free the set and added again has a
+  new handle, which the chain listings around the read (manager) or the two ruleset listings
+  (gateway) already catch.
+- Not bound by anything: `ipset swap a b` succeeded on the held set; `a` kept its name and its
+  index and now held `b`'s members, and the saved rule still printed `a`. A swap, like a plain
+  `ipset add`, changes what the rule matches without changing any name or listing, during the
+  read or after it. The proof is a snapshot of the members; the receipt's freshness window
+  (10 s) is how long it stands. This is the same for every set member read since Decision 2.
+
+What changed: the manager (`HostFactsReader.readSets`) now lists the kernel's set names before
+and after it reads the members and starts the table over when the two lists differ (a set was
+created, renamed or removed meanwhile); after three attempts the NAT facts are unreadable
+(`kernel sets were created, renamed or removed while they were read`), which the gateway
+refuses. A second `ipset list -n` per pass, only on a node with a set match in NAT. Test:
+`TestHostFactsReaderRereadsSetNamesAfterTheMembers` (fails without the change: the members
+were published as read). The gateway's own direct read (`readNATSetFacts`) is not changed: it
+is used only without a host-facts source, and every reconciler that runs the proof in the agent
+has one (`SetKubernetesCNIAuthority`); the manager's reconciler only withdraws.
+
 ### Assumption A1: no Kubernetes-marked packet is bound for the tunnel range
 
 **For the founder to rule on.** The fix above closes the NAT table. The sentence the walk

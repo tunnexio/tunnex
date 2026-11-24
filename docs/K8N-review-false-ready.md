@@ -106,6 +106,14 @@ device, the same effect the walk already accepts for Flannel. Item 10 is of a di
 7. **Low — set identity is not bound.** A set renamed or recreated between the rule save and the
    member read yields safe members for a name the rule no longer uses. Needs NET_ADMIN on the host.
    Fix, if wanted: read set names again after the members and compare.
+   **Fixed as far as `ipset` allows** — `fix(k8s): re-read set names after the members (K8N
+   review 7)`. The manager lists the set names before and after the member reads and starts over
+   when they differ; unreadable after three tries. Test:
+   `TestHostFactsReaderRereadsSetNamesAfterTheMembers`. Checked on kernel 6.8 / ipset 7.24: the
+   kernel refuses to rename or destroy a set a rule holds, so a held set keeps its name; `ipset
+   swap` is allowed, keeps names, and changes the members unseen, like `ipset add`. `ipset` shows
+   no set identity, so that cannot be bound; the receipt's freshness bounds it. See K8N-1,
+   "Which set the members belong to". The test-only direct read is not changed.
 
 8. **Low/info — the receipt.** Its digest is unkeyed: whoever can write the state directory (the
    manager, node root, a pod granted that hostPath) can forge it. The gateway mounts it read-only.
