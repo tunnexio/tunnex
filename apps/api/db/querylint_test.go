@@ -29,6 +29,9 @@ var globalTables = map[string]bool{
 	"auth_tokens":                true, // global — user-scoped auth tokens, predate org context
 	"platform_secrets":           true, // global — platform-wide sealed material (agent CA)
 	"app_access_domain_settings": true, // global — singleton deployment addresses; writes require a CP-admin browser session
+	// SA-UI-1: the installation-wide Server Access capability, one row for the whole deployment. Each
+	// organization's own toggle stays in the org-scoped server_access_settings.
+	"server_access_installation_settings": true, // global — singleton; writes require a server-admin browser session with re-auth
 	// ⭐ THE LINT ASKED THE RIGHT QUESTION AND THIS IS THE ANSWER, NOT A SILENCING.
 	//
 	// The licence is DEPLOYMENT-WIDE, and that is measured rather than preferred: `CountOrganizations` —
