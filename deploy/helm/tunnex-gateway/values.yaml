@@ -195,9 +195,14 @@ reportInterval: "5s"
 # Browser connector uses the retained rotating enrollment identity and CA.
 # Raw TLS listener must present enrollment-CA SAN tunnex-app-proxy; no ingress
 # termination or public app certificate reuse. Existing WG endpoints unchanged.
+# AA-EN-1: by default (enabled: false, locked: false) the gateway follows the
+# App Access proxy endpoint the control plane delivers, without a restart.
+# enabled: true with proxyURL forces that address. locked: true is the
+# gateway-local lock: this gateway never runs the App Access browser connector.
 appAccess:
   enabled: false
   proxyURL: ""
+  locked: false
 
 # SA-UI-1: "" (default) follows the control plane's Server Access setting without a restart; "true" always
 # runs it; "false" is a gateway-local hard lock (this gateway never runs Server Access).

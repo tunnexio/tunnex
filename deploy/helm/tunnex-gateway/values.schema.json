@@ -383,6 +383,9 @@
         "proxyURL": {
           "type": "string",
           "pattern": "^$|^https://[^/\\s?#]+/?$"
+        },
+        "locked": {
+          "type": "boolean"
         }
       }
     },

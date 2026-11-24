@@ -433,6 +433,21 @@ expect_fail insecure-api-url 'controlPlane.apiURL|pattern|https' \
 expect_fail insecure-agent-url 'controlPlane.agentURL|pattern|https' \
   "${ENROLL[@]}" --set-string controlPlane.agentURL=http://cp.example.test:8443
 
+# AA-EN-1 founder ruling 4: App Access on a gateway is tri-state. The default
+# renders no TUNNEX_APP_PROXY_URL (follow the control plane), appAccess.enabled
+# with proxyURL forces an address as before, and appAccess.locked renders the
+# gateway-local lock "off". Enabled and locked together is a contradiction.
+reject "${TMP}/enroll.yaml" 'TUNNEX_APP_PROXY_URL' 'App Access URL in the follow-the-control-plane default'
+helm template gw-aa-url "${CHART}" "${ENROLL[@]}" --set appAccess.enabled=true \
+  --set-string appAccess.proxyURL=https://tunnex-app-proxy:8444 >"${TMP}/aa-url.yaml"
+require "${TMP}/aa-url.yaml" 'name: TUNNEX_APP_PROXY_URL' 'App Access override env'
+require "${TMP}/aa-url.yaml" 'value: "https://tunnex-app-proxy:8444"' 'App Access override URL'
+helm template gw-aa-locked "${CHART}" "${ENROLL[@]}" --set appAccess.locked=true >"${TMP}/aa-locked.yaml"
+require "${TMP}/aa-locked.yaml" 'name: TUNNEX_APP_PROXY_URL' 'App Access lock env'
+require "${TMP}/aa-locked.yaml" 'value: "off"' 'App Access gateway-local lock'
+expect_fail aa-locked-and-enabled 'appAccess.locked' "${ENROLL[@]}" --set appAccess.locked=true \
+  --set appAccess.enabled=true --set-string appAccess.proxyURL=https://tunnex-app-proxy:8444
+
 # Offline template rendering cannot prove lookup behavior. Exercise the actual
 # Helm engine against a local read-only Kubernetes API fixture as well.
 python3 "${ROOT}/deploy/k8s-gateway-pvc-lookup_test.py"

@@ -53,3 +53,17 @@ release with Pending pods is not an enrolled, functioning gateway.
 
 See [Kubernetes lifecycle guidance](../../../docs/kubernetes-zero-touch.md)
 and [guard decision/proof](../../../docs/S20.5-direct-helm-pvc-guard.md).
+
+## App Access browser connector
+
+By default (`appAccess.enabled: false`, `appAccess.locked: false`) the gateway
+follows the App Access proxy endpoint that the control plane delivers over the
+agent channel, and starts or stops the browser connector without a restart. It
+runs only when App Access is set up on the control plane and turned on for the
+gateway's organization.
+
+- `appAccess.enabled: true` with `appAccess.proxyURL: https://<host>:<port>` forces
+  that address (renders `TUNNEX_APP_PROXY_URL`).
+- `appAccess.locked: true` is the gateway-local lock: this gateway never runs the
+  browser connector (renders `TUNNEX_APP_PROXY_URL=off`). It cannot be combined
+  with `appAccess.enabled: true`.
