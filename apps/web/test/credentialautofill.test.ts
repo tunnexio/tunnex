@@ -121,7 +121,10 @@ describe("every password input declares what it is to the browser", () => {
     // ⚠ THE GUARD STAYS AN ALLOW-LIST, not a rule that says "only Login". What it exists to catch is a
     // form that claims to be a sign-in when it is not — an invite-accept or a reset screen mislabelled
     // that way trains the browser to offer a credential on a page that should be minting a new one.
+    // SA-UI-1 adds a third: re-entering the existing password to change the installation's Server Access
+    // capability is a re-authentication of the current credential, not the creation of a new one.
     expect(current.sort()).toEqual([
+      "src/components/ServerAccessInstallationSettings.tsx",
       "src/pages/ChangePassword.tsx",
       "src/pages/Login.tsx",
     ]);

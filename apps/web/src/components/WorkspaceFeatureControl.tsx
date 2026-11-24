@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { api, apiErrorMessage, loadOne, type Loaded, type Role, type SandboxSetup } from "../lib/api";
+import type { components } from "@tunnex/shared";
+import { api, apiErrorCode, apiErrorMessage, loadOne, type Loaded, type Role, type SandboxSetup } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { can } from "../lib/rbac";
 import { useSandboxModuleState } from "../lib/deploymentMeta";
@@ -27,7 +28,7 @@ export function WorkspaceFeatureControl(props: Props) {
   const editable = props.canEdit && state.status === "authed" && state.user.email_verified && !state.user.must_change_password;
   switch (props.feature) {
     case "ai-gateway": return <AIFeature key={key} orgId={props.orgId} canEdit={editable} />;
-    case "server-access": return <ServerFeature key={key} orgId={props.orgId} canEdit={editable} />;
+    case "server-access": return <ServerFeature key={key} orgId={props.orgId} canEdit={editable} serverAdmin={props.serverAdmin} />;
     case "local-sharing": return <SharingFeature key={key} orgId={props.orgId} canEdit={editable} />;
     case "sandboxes": return <SandboxFeature key={key} orgId={props.orgId} canEdit={editable} />;
     case "alert-delivery": return <DeliveryFeature key={key} orgId={props.orgId} canEdit={editable} />;
@@ -87,8 +88,21 @@ function AIFeature({ orgId,canEdit }: { orgId:string;canEdit:boolean }) {
   return <FeatureRow name="AI Gateway" description="Allow requests to configured models. Disabling blocks new requests; accepted requests may finish within 30 seconds." enabled={saved?.enabled} canEdit={canEdit} control={control} enableBlocked={!!saved && !saved.enabled && !saved.available} onChange={change}>{saved && !saved.available && <p className="text-sm text-ink-secondary">{aiGatewayPrerequisite(saved)}</p>}</FeatureRow>;
 }
 
-function ServerFeature({ orgId,canEdit }: { orgId:string;canEdit:boolean }) {
-  const control=useControl(() => loadOne(() => api.GET("/api/v1/organizations/{orgId}/server-access",{params:{path:{orgId}}})), value => !!value && typeof value.enabled === "boolean" && typeof value.can_manage === "boolean" && integer(value.recording_retention_days,1) && integer(value.mfa_freshness_seconds,1) && integer(value.recording_max_session_bytes,1) && integer(value.recording_max_org_bytes,1));
+function ServerFeature({ orgId,canEdit,serverAdmin }: { orgId:string;canEdit:boolean;serverAdmin:boolean }) {
+  const [installationOff,setInstallationOff]=useState(false);
+  async function read() {
+    // loadOne keeps its handling of thrown and malformed reads; only the installation-off code is new.
+    return loadOne(async () => {
+      const result=await api.GET("/api/v1/organizations/{orgId}/server-access",{params:{path:{orgId}}});
+      setInstallationOff(apiErrorCode(result.error) === "server_access_disabled");
+      return result;
+    });
+  }
+  if (installationOff) return <SettingRow label="Server Access" description={serverAdmin ? "Turned off for this installation. As a server administrator you can turn it on in Settings → Server Access." : "Turned off for this installation. Ask a server administrator to turn it on."}><span className="flex items-center gap-3"><span className="text-sm text-ink-secondary">Unavailable</span>{serverAdmin && <Link to="/settings?section=server-access-installation" className="text-sm text-brand">Open Server Access settings</Link>}</span></SettingRow>;
+  return <ServerFeatureControl orgId={orgId} canEdit={canEdit} read={read} />;
+}
+function ServerFeatureControl({ orgId,canEdit,read }: { orgId:string;canEdit:boolean;read:() => Promise<Loaded<components["schemas"]["ServerAccessWorkspace"]>> }) {
+  const control=useControl(read, value => !!value && typeof value.enabled === "boolean" && typeof value.can_manage === "boolean" && integer(value.recording_retention_days,1) && integer(value.mfa_freshness_seconds,1) && integer(value.recording_max_session_bytes,1) && integer(value.recording_max_org_bytes,1));
   const saved=control.data;
   function change(enabled:boolean) {
     if (!canEdit || !saved?.can_manage || enabled === saved.enabled) return;

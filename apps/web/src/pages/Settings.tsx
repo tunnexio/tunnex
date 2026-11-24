@@ -3,6 +3,7 @@ import { AITransportSettings } from "../components/AITransportSettings";
 import { BeamPolicySettings } from "../components/BeamPolicySettings";
 import { BeamDomainReadinessSettings } from "../components/BeamDomainReadinessSettings";
 import { AppAccessDomainsSettings } from "../components/AppAccessDomainsSettings";
+import { ServerAccessInstallationSettings } from "../components/ServerAccessInstallationSettings";
 import { AppAccessFeatureSettings } from "../components/AppAccessFeatureSettings";
 import { EmailDeliverySettings } from "../components/EmailDeliverySettings";
 import { SsoSelfLink } from "../components/SsoSelfLink";
@@ -348,6 +349,11 @@ function SettingsWorkspace() {
         {serverAdmin && active === "app-access-domains" && state.status === "authed" && (
           <SettingGroup id="app-access-domains" title="Application domains" tabpanel>
             <AppAccessDomainsSettings key={state.user.id} canEdit={emailVerified && !state.user.must_change_password} />
+          </SettingGroup>
+        )}
+        {serverAdmin && active === "server-access-installation" && state.status === "authed" && (
+          <SettingGroup id="server-access-installation" title="Server Access" tabpanel>
+            <ServerAccessInstallationSettings key={state.user.id} canEdit={emailVerified && !state.user.must_change_password} />
           </SettingGroup>
         )}
         {serverAdmin && active === "beam-serving" && state.status === "authed" && (
@@ -1869,6 +1875,7 @@ const RAIL: ReadonlyArray<{
   { id: "email-delivery", label: "Email delivery", hint: "Server-wide email configuration. Only server administrators can manage it.", serverAdminOnly: true },
   { id: "ai-transport", label: "AI Gateway transport", hint: "Server-wide HTTP access policy for AI Gateway. Only server administrators can manage it.", serverAdminOnly: true },
   { id: "app-access-domains", label: "Application domains", hint: "Server-wide portal and application addresses. Only server administrators can manage them.", serverAdminOnly: true },
+  { id: "server-access-installation", label: "Server Access", hint: "Turn browser SSH and RDP on or off for every organization on this server. Only server administrators can change it.", serverAdminOnly: true },
   { id: "beam-serving", label: "Local Sharing domain", hint: "Measure installation DNS and TLS readiness. Only server administrators can run checks.", serverAdminOnly: true },
   {
     id: "danger",
@@ -1893,7 +1900,7 @@ const SETTINGS_GROUP_OF: Record<string, number> = {
   network: 2,
   beam: 3,
   "ai-agents": 4,
-  "email-delivery": 5, "app-access-domains": 5, "beam-serving": 5, "ai-transport": 5,
+  "email-delivery": 5, "app-access-domains": 5, "server-access-installation": 5, "beam-serving": 5, "ai-transport": 5,
 };
 
 function SettingsRail({
