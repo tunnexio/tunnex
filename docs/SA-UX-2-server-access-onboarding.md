@@ -319,9 +319,34 @@ every App Access check, publication and event reason code the rendered text cont
 
 The banner (item 7) is mounted in the app shell, so it covers App Access pages too.
 
-## Implementation status
+## Outcome (2026-11-25)
 
-Recorded at the end of the slice in "Outcome" below.
+Server Access
+- 1: done. Register form and setup panel state the gateway → server ports (management SSH for setup, browser
+  terminal afterwards) with firewall examples; `last_error` renders as a sentence plus firewall rules on the
+  Connection and Accounts steps. No new probe RPC (the account check is the probe).
+- 2: done as decided. Host-key attestation in `authorize.py` (launcher prints the HMAC line), gateway records the key
+  it saw (`setupHostKeyCallback`), control plane verifies (`verifyHostKeyAttestation`); fingerprint optional in the
+  API and UI. Python ↔ Go round trip tested with the real `authorize.py` code.
+- 3: done in the setup panel (requirement and inline two-factor setup before Prepare). The Servers landing itself is
+  unchanged; the panel is where the requirement applies.
+- 4: done (`SelfGrant`, existing grant endpoint, 1 hour default, up to the existing 7-day cap).
+- 5: done (save and reload refusals switch to the installation-off row).
+- 6: done (checkbox, two sequenced calls, separate results).
+- 7: done (`NewVersionBanner` in the app shell).
+- 8: done (`serverAccessReasons.ts` + `TestEveryServerAccessCodeHasWebText`).
+- 9: done for new servers and the terminal header; no migration.
+- 10: done for Server Access (picker and list) and the App Access picker. The App Access grant list shows the
+  server-stored `subject_label` (name, or email when there is no name), captured when the grant was created; changing
+  that snapshot is an API/data change left out of this slice.
+- 11: done (`docs/EPIC-server-access.md` operator guide + in-app "Can't run commands on the server?").
+
+App Access
+- AA-1, AA-2, AA-4, AA-5, AA-6 (check codes and event reasons), AA-7, AA-8: done as decided above.
+- AA-3: deferred to Phase 1b (needs a new gateway probe and report).
+
+Not run here: the `tests/server-access-local` harness walk (real gateway + OpenSSH target) for the attestation path;
+the unit and round-trip tests cover the protocol, but a live walk on a real target should precede release.
 
 ## Rollback
 
