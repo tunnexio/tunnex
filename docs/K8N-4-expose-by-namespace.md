@@ -472,3 +472,11 @@ Tests only; no behaviour changed.
   build machine and none was downloaded, so the CRD's CEL rules, immutability and patterns are
   still checked for presence only. Trigger unchanged: the next live walk, or a CI job that has
   envtest binaries.
+
+## Founder ruling, 2026-11-24
+
+Operator ownership of namespace rules stays as built: a rule marked `managed_by_operator` may be
+changed by any machine credential of the organisation that holds `k8s:manage`, not only the one that
+created it. Binding a rule to one credential would orphan every Git-declared rule when the operator's
+credential is rotated, which is the routine case; two operators in one organisation editing each
+other's rules is the rarer case and is visible in the audit log, which names the credential.
