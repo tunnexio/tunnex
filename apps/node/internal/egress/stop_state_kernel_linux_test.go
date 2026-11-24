@@ -79,6 +79,8 @@ func TestGatewayStopStateKernel(t *testing.T) {
 		"EMERGENCY_WITHDRAW_KEEPS_PASSTHROUGH",
 		"EMERGENCY_NATIVE_FORWARD_PASSES",
 		"EMERGENCY_SERVICE_WITHDRAWN",
+		"OWNERSHIP_WITHDRAW_NATIVE_FORWARD_PASSES",
+		"OWNERSHIP_WITHDRAW_SERVICE_WITHDRAWN",
 		"MANAGER_CLEANUP_LEAVES_NO_TABLE",
 		"MANAGER_CLEANUP_NATIVE_FORWARD_PASSES",
 		"CONTROL_DIRECT_TUNNEL_PATH_OPEN_WITHOUT_TABLE",
@@ -198,6 +200,30 @@ func stopStateGateway(t *testing.T, phase string) {
 			t.Fatalf("unexpected table after the emergency withdraw:\n%s", table)
 		}
 		fmt.Printf("kernel after the emergency withdraw:\n%s", table)
+	case "ownership-withdraw":
+		// The egress calls the ownership coordinator makes in withdrawalOrder (OVPN, DNAT, DNS stages of
+		// the Kubernetes surface), with a policy that no longer maps the Service. The projector's exact
+		// non-serving policy is not reproduced here.
+		start()
+		withdrawn := apiReturnPolicy(false)
+		withdrawn.Allow, withdrawn.VIPMappings = nil, nil
+		if err := m.ReconcileOVPNTunnel(ctx, ""); err != nil {
+			t.Fatalf("withdraw, OpenVPN stage: %v", err)
+		}
+		m.SetPolicy(withdrawn)
+		m.ResolveK8sVIPs(ctx)
+		if _, _, err := m.Reconcile(ctx); err != nil {
+			t.Fatalf("withdraw, DNAT stage: %v", err)
+		}
+		m.SetPolicy(withdrawn)
+		if err := m.ReconcileDNSVIPsWithCandidates(ctx, nil); err != nil {
+			t.Fatalf("withdraw, DNS stage: %v", err)
+		}
+		table := nft("list", "table", "ip", "tunnex")
+		if strings.Contains(table, "dnat to") || !strings.Contains(table, "tunnex_native_forward_passthrough") {
+			t.Fatalf("unexpected table after the ownership withdraw:\n%s", table)
+		}
+		fmt.Printf("kernel after the ownership withdraw:\n%s", table)
 	case "emergency-then-pass":
 		start()
 		if err := m.EmergencyWithdrawK8s(ctx, nil); err != nil {
@@ -410,6 +436,13 @@ if service; then echo "the Service still answers after the emergency withdraw"; 
 echo EMERGENCY_SERVICE_WITHDRAWN
 gw emergency-then-pass
 if direct; then echo OBSERVED_TUNNEL_OPEN_TO_UNGRANTED_DESTINATION_AFTER_EMERGENCY_AND_PASS; else echo OBSERVED_TUNNEL_STAYS_CLOSED_AFTER_EMERGENCY_AND_PASS; fi
+
+echo "== 7b. ownership withdraw (the process goes on)"
+gw ownership-withdraw
+native
+echo OWNERSHIP_WITHDRAW_NATIVE_FORWARD_PASSES
+if service; then echo "the Service still answers after the ownership withdraw"; exit 1; fi
+echo OWNERSHIP_WITHDRAW_SERVICE_WITHDRAWN
 
 echo "== 8. a stop, then the manager's last-owner cleanup"
 gw stop >/dev/null
