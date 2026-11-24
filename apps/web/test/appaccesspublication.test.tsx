@@ -295,6 +295,14 @@ it("keeps pre-publish requirements when the draft differs from the live revision
   expect(screen.queryByText("No unpublished changes")).toBeNull();
 });
 
+it("does not claim a stale tab is published when the saved application moved on", async () => {
+  f.view = { ...f.view, application_version: 9, active: { ...active(), revision: application.draft.revision, digest: application.draft.digest } };
+  render(<MemoryRouter><AppAccessPublication {...props} check={null} /></MemoryRouter>);
+  expect(await screen.findByText("Before publishing")).toBeTruthy();
+  expect(screen.getByText("Reload required")).toBeTruthy();
+  expect(screen.queryByText("No unpublished changes")).toBeNull();
+});
+
 it("a check stays valid across a reload only for the same app, revision and digest", () => {
   expect(checkCoversDraft(check, application)).toBe(true);
   expect(checkCoversDraft({ ...check, revision: 7 }, application)).toBe(false);

@@ -201,7 +201,7 @@ export default function AppAccessPublication({ orgId, userId, application, check
   const withdrawalPending = active?.state === "disabled" && !active.withdrawal_confirmed;
   // The live publication already serves this exact draft: there is nothing to publish, so
   // pre-publish requirements (and a disabled Publish button) would only read as broken.
-  const publishedCurrent = !error && !dirty && !intent && !pending(pendingOperation) && active?.state === "active" && active.revision === application.draft.revision && active.digest === application.draft.digest;
+  const publishedCurrent = !error && !dirty && !intent && !pending(pendingOperation) && view?.application_version === application.version && active?.state === "active" && active.revision === application.draft.revision && active.digest === application.draft.digest;
   return <section className="aa-publication" aria-label="Publication review"><ResourceSummary title="Review & publish" headingLevel={2} className="aa-publication-stage" footer={footer}><div className="aa-publication-content">
     {notice}
     <div className="aa-publication-live">
