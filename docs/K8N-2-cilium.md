@@ -1122,15 +1122,15 @@ finding 10 of `docs/K8N-review-false-ready.md`.
      `routing` this code does not know, `routing` or `kube-proxy-replacement` listed as stale, or
      no device list.
 3. **The strict variant.** The node is refused on `BPF` alone, whatever the device list says:
-   - Leaving the tunnel interface out of Cilium's devices (K8N-6, configuration C) still let a
+   - Leaving the tunnel interface out of Cilium's devices (K8N-6 configuration C) still let a
      pod's SYN reach the device.
-   - `nodePort.addresses` (B) left most paths open.
-   - Only legacy host routing (F) closed every path.
+   - `nodePort.addresses` (K8N-6 configuration B) left most paths open.
+   - Only legacy host routing (K8N-6 configuration F) closed every path.
 4. **The check applies in every masquerade mode** (off, `iptables`, `BPF`), not only where eBPF
    masquerade runs:
    - Cilium's documentation lists eBPF masquerade and kube-proxy replacement as requirements of
      BPF host routing [D6]. So with iptables masquerade the agent should report `Legacy`, as
-     capture C does.
+     K8N-2's capture C does.
    - The check does not rely on that.
 5. **Order.** The masquerade proof is decided first, unchanged. Host routing is checked only on a
    node that proof would accept. So every existing masquerade refusal keeps its text.
@@ -1220,7 +1220,10 @@ The longest form fits the bound.
   - `routing.intra-host-routing-mode` (api/v1 model `Routing`: enum `BPF`, `Legacy` [S2]). The
     agent fills it as `BPF` unless `EnableHostLegacyRouting` is set (`getRoutingStatus` [S3]).
   - `kube-proxy-replacement.devices` (model `KubeProxyReplacement`; the field has no
-    `omitempty`, so it is always sent, `null` when empty).
+    `omitempty`, so it is always sent, `null` when empty). The agent's `kube-proxy-replacement`
+    probe fills this member whatever the mode, with mode `False` when kube-proxy is kept
+    (`getKubeProxyReplacementStatus` [S3]). So requiring the member and its device list does not
+    refuse Cilium with kube-proxy. That reading is from source; no such status was captured here.
 - **What the receipt's `cilium.status.text` now carries:**
   - the `masquerading` member, as before;
   - the whole `routing` member;
@@ -1428,6 +1431,11 @@ Not changed: the charts, the installer, the image.
 - **The real `tunnex-node` loop and enrollment.** The `Manager` was driven by a test with a fixed
   endpoint list in place of the EndpointSlice watch.
 - **Calico's packet behaviour in eBPF mode:** its programs did not load on this kernel.
+- **Gaps in the Calico signals.** With `bpfConnectTimeLoadBalancing: Enabled` and
+  `bpfHostNetworkedNATWithoutCTLB: Disabled`, Felix creates no `bpfin.cali`/`bpfout.cali`
+  devices. Under Calico's nftables backend the raw chain's name was not observed. In both cases
+  only the source-derived chain match covers the node, and that match is not confirmed for the
+  nftables backend.
 
 References added:
 
