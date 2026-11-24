@@ -974,6 +974,10 @@ func (r *Reconciler) readNATSetFacts(ctx context.Context, s *cniSnapshot, cidr s
 }
 
 func (s *cniSnapshot) validateHookCoverage(iface, cidr string) error {
+	// K8N-7: the gateway's own input hook closes the node to the tunnel.
+	if err := s.validateTunnexInput(iface); err != nil {
+		return err
+	}
 	postKey := nftKey("ip", "nat", "POSTROUTING")
 	for key, rules := range s.rules {
 		for _, rule := range rules {

@@ -29,6 +29,9 @@ func (m *Manager) K8sNetPrepReady() bool { return false }
 // SetKubernetesMode is a no-op off Linux; readiness remains fail-closed there.
 func (m *Manager) SetKubernetesMode(bool) {}
 
+// SetAIVPNListener is a no-op off Linux.
+func (m *Manager) SetAIVPNListener(bool) {}
+
 // SetKubernetesCNIAuthority cannot enable a non-Linux gateway data plane.
 func (m *Manager) SetKubernetesCNIAuthority(k8snetprep.AuthorityGuard, k8snetprep.HostFactsSource, k8snetprep.CiliumFactsSource) {
 }

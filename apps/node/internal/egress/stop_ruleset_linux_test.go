@@ -42,9 +42,13 @@ add chain ip tunnex postrouting
 delete chain ip tunnex postrouting
 add chain ip tunnex forward
 delete chain ip tunnex forward
+add chain ip tunnex input
+delete chain ip tunnex input
 add chain ip tunnex forward { type filter hook forward priority filter; policy accept; }
 add rule ip tunnex forward iifname "wg0" counter drop comment "tunnex_stopped_tunnel_drop"
 add rule ip tunnex forward oifname "wg0" counter drop comment "tunnex_stopped_tunnel_drop"
+add chain ip tunnex input { type filter hook input priority filter; policy accept; }
+add rule ip tunnex input iifname "wg0" counter drop comment "tunnex_stopped_tunnel_drop"
 add chain ip tunnex tunnex_posture_owner
 add rule ip tunnex tunnex_posture_owner counter comment "tunnex_host_posture_v1"
 flush table ip6 tunnex
@@ -54,9 +58,13 @@ add chain ip6 tunnex postrouting
 delete chain ip6 tunnex postrouting
 add chain ip6 tunnex forward
 delete chain ip6 tunnex forward
+add chain ip6 tunnex input
+delete chain ip6 tunnex input
 add chain ip6 tunnex forward { type filter hook forward priority filter; policy accept; }
 add rule ip6 tunnex forward iifname "wg0" counter drop comment "tunnex_stopped_tunnel_drop"
 add rule ip6 tunnex forward oifname "wg0" counter drop comment "tunnex_stopped_tunnel_drop"
+add chain ip6 tunnex input { type filter hook input priority filter; policy accept; }
+add rule ip6 tunnex input iifname "wg0" counter drop comment "tunnex_stopped_tunnel_drop"
 add chain ip6 tunnex tunnex_posture_owner
 add rule ip6 tunnex tunnex_posture_owner counter comment "tunnex_host_posture_v1"
 `
@@ -72,8 +80,10 @@ add rule ip6 tunnex tunnex_posture_owner counter comment "tunnex_host_posture_v1
 			t.Fatalf("the stop leaves a drop policy: %q", line)
 		case strings.Contains(line, " drop") && !strings.Contains(line, `ifname "wg0" counter drop`):
 			t.Fatalf("a stop drop rule is not limited to the tunnel interface: %q", line)
-		case strings.Contains(line, "hook") && !strings.Contains(line, "hook forward priority filter; policy accept;"):
-			t.Fatalf("the stop leaves a hooked chain other than the tunnel guard: %q", line)
+		case strings.Contains(line, "hook") && !strings.Contains(line, "hook forward priority filter; policy accept;") && !strings.Contains(line, "hook input priority filter; policy accept;"):
+			t.Fatalf("the stop leaves a hooked chain other than the tunnel guards: %q", line)
+		case strings.HasPrefix(line, "add rule") && strings.Contains(line, " input ") && line != "add rule "+strings.Fields(line)[2]+` tunnex input iifname "wg0" counter drop comment "tunnex_stopped_tunnel_drop"`:
+			t.Fatalf("the stopped input chain holds more than the tunnel drop (K8N-7): %q", line)
 		}
 	}
 	for _, family := range []string{"ip", "ip6"} {
@@ -97,6 +107,11 @@ func TestStoppedRulesetClosesTheOpenVPNTunnelToo(t *testing.T) {
 			if !strings.Contains(got, want) {
 				t.Fatalf("missing %q in:\n%s", want, got)
 			}
+		}
+		// K8N-7: the node stays closed to both tunnels after the stop.
+		want := "add rule " + family + ` tunnex input iifname { "wg0", "tun0" } counter drop comment "tunnex_stopped_tunnel_drop"` + "\n"
+		if !strings.Contains(got, want) {
+			t.Fatalf("missing %q in:\n%s", want, got)
 		}
 	}
 }

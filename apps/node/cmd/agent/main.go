@@ -411,6 +411,8 @@ func main() {
 		default:
 		}
 	}, logger)
+	// K8N-7: an in-cluster gateway's input chain accepts the AI VPN listener only when it is configured.
+	egressMgr.SetAIVPNListener(aiVPN != nil)
 	if aiVPN != nil {
 		go aiVPN.Run(ctx)
 		defer aiVPN.Close()
