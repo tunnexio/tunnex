@@ -47,6 +47,133 @@ signed releases remain usable without App Access, but cannot satisfy this opt-in
 preflight. The existing protected CI release job now builds and signs the additional
 image; no image has been published by this local work.
 
+## Gateways learn the proxy endpoint from the control plane (AA-EN-1)
+
+The managed overlay publishes the proxy's gateway listener on
+`${TUNNEX_APP_PROXY_GATEWAY_BIND_IP:-0.0.0.0}:${TUNNEX_APP_PROXY_GATEWAY_PORT:-8444}`.
+It requires a client certificate from the enrollment CA, like the agent channel
+on 8443. Set `TUNNEX_APP_PROXY_GATEWAY_BIND_IP` in `.env` to narrow it, for example
+to a private address. Allow TCP to that port from your gateways in the cloud
+firewall; the product cannot change firewall rules.
+
+The control plane tells each gateway where the listener is over the existing
+mTLS agent channel (`GET /agent/app-access/proxy-endpoint`). By default the gateway
+dials the same host it uses for its agent channel, at that port. If gateways must
+use another address (split networks), set `TUNNEX_APP_PROXY_GATEWAY_HOST` in `.env`
+to a bare hostname or IP. The gateway always pins the TLS server name
+`tunnex-app-proxy` and trusts only the enrollment CA, so it dials an IP address
+directly: no `--add-host` or `/etc/hosts` entry is needed. Delivery is on only when
+App Access is composed, `TUNNEX_APP_ACCESS_LOCKED` is not `true`, App Access is
+entitled, and the gateway's organization has the feature on.
+
+On a gateway, `TUNNEX_APP_PROXY_URL` is read as:
+
+- unset or empty: follow the control plane; the browser connector starts, moves or
+  stops within about 5 seconds, without a restart;
+- a URL (for example `https://tunnex-app-proxy:8444`): a local override that always
+  wins, as before;
+- `off`: never run the browser connector on this gateway.
+
+Upgrade the control plane before gateways. An older control plane answers 404, and
+a following gateway then keeps its current state.
+
+## Adopting a hand-written composition: `tunnex-app-access adopt`
+
+Upgrades admit exactly `tunnex.yml` plus the managed `app-access.yml`. A host that
+was composed by hand with more files (for example the demo's `tunnex.yml` +
+`app-access.yml` + `app-access-demo.yml`, where the proxy owns public 443 and
+forwards the console to Caddy, and the gateway listener is published on a private
+address) is refused until it is adopted.
+
+1. Take the command from the verified target release. Verify the release
+   descriptor as for the one-time step in [docs/upgrade.md](../../docs/upgrade.md),
+   then copy the host files out of its API image without running it:
+
+   ```sh
+   cid=$(docker create --pull never --network none ghcr.io/tunnexio/tunnex-api@sha256:<verified digest>)
+   mkdir -m 0700 /root/tunnex-host && docker cp "$cid:/usr/share/tunnex/host/." /root/tunnex-host
+   docker rm "$cid"
+   ```
+
+2. Review the plan (dry run, nothing changes):
+
+   ```sh
+   sudo python3 /root/tunnex-host/app-access/tunnex-app-access.py --directory /home/ubuntu/tunnex adopt
+   ```
+
+   It inspects container labels, mounts and port bindings only (never container
+   environment). It refuses identity drift: more than one API or proxy, a restore
+   volume other than `<project>_app_restore`, a secrets directory other than
+   `TUNNEX_APP_PROXY_SECRETS_DIR`, an unsigned proxy pin, unexpected or implicit
+   port bindings. It renders the composition with and without the hand-written
+   overlays and refuses anything they change beyond Caddy giving up 443, the proxy
+   ports and the console upstream settings. Move other settings into `.env` or
+   remove them first.
+
+3. Apply with `--apply`. It keeps a private backup
+   (`<install>/app-access-adopt-<time>/`, with `ROLLBACK.txt`), installs the managed
+   overlay, and writes to `.env`: the proxy and gateway bind addresses and ports as
+   they run today, the console forwarding (`TUNNEX_APP_PROXY_CONSOLE_UPSTREAM_URL`
+   and `..._SERVER_NAME`), `TUNNEX_EDGE_HTTPS_PUBLISH=127.0.0.1:8446` when the proxy
+   owns 443 (Caddy then publishes HTTPS on loopback only), the gateway host override
+   when the listener is on a specific address, the overlay hash, and a record of the
+   adopted composition with the hash of each hand-written overlay. The secrets
+   directory, the restore volume, the proxy credential and the certificates are not
+   touched. No container is stopped or recreated, so the console stays as it is.
+   Running it again changes nothing.
+
+4. Run the upgrade (`upgrade.sh`, then `upgrade.sh --apply`, or the dashboard). Its
+   admission accepts the recorded composition only while the hand-written overlays
+   are unchanged, recreates the stack from the managed files, and removes the
+   record once healthy. The hand-written overlays stay on disk, unused.
+
+Rollback: before the upgrade, copy the backed-up `.env` and `app-access.yml` back
+(`ROLLBACK.txt` has the exact commands); nothing running had changed. After the
+upgrade, use the upgrade's own rollback (`app-access-restore.py` with the
+pre-upgrade backup); the hand-written layout is not restored.
+
+Adopted installations keep terminate-and-forward on 443 (the proxy terminates the
+console's TLS with its public certificate, which must cover the portal hostname).
+New installations will use SNI passthrough instead (AA-EN-1 E2, Phase 2). While the
+proxy is stopped during an upgrade, or after a failed upgrade, the console is not
+reachable on public 443 on such a host: run or re-run the upgrade from the command
+line there.
+
+## Renewing the public certificate: `tunnex-app-access renew`
+
+Until automatic renewal ships (AA-EN-1 Phase 1b), renew the public wildcard with
+certbot's DNS-01 challenge and install it with the host command, which the upgrade
+installs as `<install>/tunnex-app-access`:
+
+```sh
+# Operator step: renew with a DNS API token scoped to the zone (Cloudflare shown).
+sudo certbot certonly --dns-cloudflare --dns-cloudflare-credentials /root/.secrets/cloudflare.ini \
+  -d '*.cp.example.com' -d cp.example.com
+# Review, then install with a controlled proxy restart.
+sudo /home/ubuntu/tunnex/tunnex-app-access --directory /home/ubuntu/tunnex renew \
+  --cert /etc/letsencrypt/live/cp.example.com/fullchain.pem \
+  --key /etc/letsencrypt/live/cp.example.com/privkey.pem
+sudo /home/ubuntu/tunnex/tunnex-app-access --directory /home/ubuntu/tunnex renew --apply \
+  --cert /etc/letsencrypt/live/cp.example.com/fullchain.pem \
+  --key /etc/letsencrypt/live/cp.example.com/privkey.pem
+```
+
+Include the portal name (`-d cp.example.com`) when the proxy forwards the console.
+`renew` checks, with the system trust store (or `--ca-file` for a private CA): the
+full chain, that a random name under `*.<base domain>` and (with console forwarding)
+the portal hostname are covered, the validity window, that the key matches, at least
+7 days left, and a later expiry than the installed certificate
+(`--allow-earlier-expiry` overrides the last check). With `--apply` it writes
+`public-cert.pem` and `public-key.pem` atomically as mode 0400 files owned like the
+existing ones (uid 10001), keeps the previous pair as `*.previous`, restarts only
+the proxy and waits for it to be ready. If the proxy does not become ready it puts
+the previous pair back and restarts it again. The restart closes open streams;
+clients reconnect. Nothing secret is printed. A root cron job or systemd timer can
+run the two commands; certbot's `--deploy-hook` is a good place for the second.
+
+The gateway listener certificate (`gateway-cert.pem`, valid 365 days) is not renewed
+by this command yet; follow [CERTIFICATES.md](CERTIFICATES.md).
+
 ## Reviewed install, same-schema replacement and rollback
 
 For an initial opt-in install, cache the API and proxy images selected by the
@@ -144,9 +271,9 @@ SSO provider callback registrations before using a changed portal hostname. A
 rollback to a binary older than schema175 must use a verified pre-upgrade backup
 when saved settings exist; the down migration refuses to discard them silently.
 
-Only public browser TLS is published (loopback443 by default). Gateway8444 and
-APIauthority8445 require raw direct TLS and must not traverse the browser edge or an
-HTTP-terminating ingress. Public TLS is TLS1.3/HTTP1.1; ordinary WireGuard/control
+Public browser TLS is published (loopback443 by default), and the gateway listener
+8444 for remote gateways (see above). Gateway8444 and APIauthority8445 require raw
+direct TLS and must not traverse the browser edge or an HTTP-terminating ingress. Public TLS is TLS1.3/HTTP1.1; ordinary WireGuard/control
 listeners retain their compatibility settings. No inbound gateway listener is added.
 The optional operator listener exposes unauthenticated fixed health/capacity gauges,
 without application/user/URL/token labels: keep it private. Compose binds it to

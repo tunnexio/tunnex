@@ -44,6 +44,11 @@ continues to refuse startup. The restart closes existing streams; eligible
 sessions can reconnect through current authority afterward. This single-instance
 procedure has an availability interruption and makes no HA claim.
 
+For the public browser pair, `tunnex-app-access renew` performs these checks and
+the controlled restart, and restores the previous pair if the proxy does not become
+ready. See "Renewing the public certificate" in [README.md](README.md), including the
+certbot DNS-01 operator step used until automatic renewal ships.
+
 New TLS handshakes reject expired server and client chains. Admitted gateway
 channels also cap their initial and renewed authority leases at the earliest
 expiry in the verified client certificate chain, including issuer certificates.
