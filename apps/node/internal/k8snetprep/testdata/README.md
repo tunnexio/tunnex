@@ -50,3 +50,33 @@ lines of `iptables-nft-save` (version and date) were dropped.
 is what `bpftool --json map dump pinned .../cilium_ipmasq_v4` printed (an error
 object in A, where the map is not pinned). See `docs/K8N-2-cilium.md`, "Live
 capture".
+
+### Host routing captures, 2026-11-24
+
+`cilium-1.20.5-kind-hostlegacy-ipmasq.*` and `cilium-1.20.5-kind-hostbpf-ipmasq.*` come from the
+same kind, node image and kernel, with Cilium 1.20.5 and the values of K8N-6. Those values are
+eBPF masquerade, and the ip-masq-agent on with `nonMasqueradeCIDRs: [10.99.0.0/24]` and
+`masqLinkLocal: true`.
+
+- `hostlegacy-ipmasq`: `bpf.hostLegacyRouting=true`. The agent reports `Host: Legacy`.
+  - The files were read before the test `wg0` existed, as for A.
+  - They are the status, the pin list, the map dump, `nft -j list ruleset`, the two
+    `iptables-nft-save` tables (with the `#` lines dropped), the device names (`ip -o link`,
+    second field) and `bpftool --json net show`.
+- `hostbpf-ipmasq`: the same with `bpf.hostLegacyRouting=false`, after the agents restarted. The
+  agent reports `Host: BPF`, and `wg0` is up and among its devices.
+  - Only the status, the pin list and the map dump were taken.
+
+Read from a privileged `hostNetwork` pod with read-only host mounts (Alpine 3.24.4: bpftool
+v7.8.0, nft 1.1.6, iptables-nft-save 1.8.13).
+
+`calico-v3.31.2-kind-ebpf.*` come from the same kind and kernel with Calico v3.31.2.
+
+- The setup: the unchanged `calico.yaml`, pool `192.168.0.0/16`, switched to the eBPF dataplane
+  (`bpfEnabled: true`).
+- Connect-time load balancing was turned off, because Felix could not attach it on this kernel.
+- What was taken: the device names, `nft -j list ruleset` and `iptables-nft-save` (`#` lines
+  dropped).
+- Felix's tc programs did not load on this kernel, so nothing was attached.
+
+See `docs/K8N-2-cilium.md`, "Host routing — decision, 2026-11-24".
