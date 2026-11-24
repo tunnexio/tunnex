@@ -211,7 +211,12 @@ func main() {
 		if err := appRuntime.DenyControlEndpoint(apiURL); err != nil {
 			logger.Error("app_access_control_configuration_refused")
 		} else {
-			if browserEndpoint := os.Getenv("TUNNEX_APP_PROXY_URL"); browserEndpoint != "" {
+			// AA-EN-1 E5: TUNNEX_APP_PROXY_URL set to a URL is a local override (as before), "off" is a
+			// gateway-local lock, and unset follows the endpoint the control plane delivers over this
+			// agent channel, starting and stopping the browser pool without a restart.
+			proxyMode, browserEndpoint := appaccess.ProxyModeFromEnv(os.Getenv("TUNNEX_APP_PROXY_URL"))
+			switch proxyMode {
+			case appaccess.ProxyURL:
 				_, browserTLS, tlsErr := client.AppAccessTLSConfig(browserEndpoint)
 				if tlsErr != nil || appRuntime.DenyControlEndpoint(browserEndpoint) != nil {
 					logger.Error("app_browser_configuration_refused")
@@ -223,6 +228,25 @@ func main() {
 						go appaccess.ObserveBrowser(ctx, appClient, browserPool, logger)
 					}
 				}
+			case appaccess.ProxyOff:
+				logger.Info("app_browser_gateway_locked")
+			default:
+				staticHosts := append([]string(nil), appRuntime.ControlHosts...)
+				go appaccess.FollowProxy(ctx, appaccess.ProxyFollowInterval, client.AgentHost(), client.AppProxyEndpoint,
+					func(child context.Context, endpoint string) (func(), error) {
+						target, browserTLS, err := client.AppAccessTLSConfig(endpoint)
+						if err != nil {
+							return nil, err
+						}
+						appRuntime.DenyDeliveredHost(target.Hostname())
+						browserPool, err := appaccess.NewBrowserPool(endpoint, browserTLS, originpolicy.Checker{ControlHosts: append([]string(nil), staticHosts...)})
+						if err != nil {
+							return nil, err
+						}
+						done := make(chan struct{})
+						go func() { defer close(done); appaccess.ObserveBrowser(child, appClient, browserPool, logger) }()
+						return func() { <-done }, nil
+					}, logger)
 			}
 			go appRuntime.Run(ctx)
 		}

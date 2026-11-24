@@ -41,6 +41,8 @@ type AgentChannel struct {
 	appAccessBroker            *appAccessBroker
 	appAccess                  appAccessGatewayPort
 	appAccessEntitled          func() bool
+	appProxyEndpoint           AppProxyEndpoint
+	appProxyOrgEnabled         func(context.Context, uuid.UUID) (bool, error)
 	ipsecRuntime               agentIPsecRepository
 	ipsecSealer                *crypto.Sealer
 	vpnAIAdapter               *aigateway.Adapter
@@ -174,6 +176,7 @@ func (a *AgentChannel) Handler() http.Handler {
 	r.Post("/agent/app-access/browser-capability", a.appAccessBrowserCapability)
 	r.MethodFunc("CONNECT", "/agent/app-access/channel", a.appAccessChannel)
 	r.Post("/agent/app-access/capability", a.appAccessCapability)
+	r.Get("/agent/app-access/proxy-endpoint", a.appAccessProxyEndpoint)
 	r.Post("/agent/app-access/report", a.appAccessReport)
 	r.Post("/agent/app-access/checks/{requestId}/result", a.appAccessResult)
 	r.Post("/agent/ai/organizations/{orgId}/v1/chat/completions", a.vpnAIChat)
