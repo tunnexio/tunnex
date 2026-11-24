@@ -863,8 +863,13 @@ kubeconfig whose only change was `server: https://kubernetes.default.svc.gke.k8s
 - **Turned on again** (00:44:40 UTC): the same address 100.65.0.4 came back and the kept rule worked
   again; kubectl worked 49 s later, most of it the name returning to the device's resolver.
 
-Still not confirmed: a gateway restart while a rule and an open connection exist; the node's address
-appearing in the cluster's audit log; EKS, AKS and self-managed clusters; the dashboard's single
+- **Gateway restarted with a rule and an open session** (`kubectl rollout restart`, about
+  00:54 UTC). The new gateway pod started on the build with the return rule and was Ready in about
+  10 s, with no crash loop (the failure of the first attempt). The open `exec` stream, printing every
+  2 s, did not miss a single line across the restart (87 lines, no gap over 2 s); a new kubectl call
+  worked at once and `orders` answered 200.
+
+Still not confirmed: the node's address appearing in the cluster's audit log; EKS, AKS and self-managed clusters; the dashboard's single
 suggested `tls-server-name` value across providers.
 
 ## Founder ruling, 2026-11-24
