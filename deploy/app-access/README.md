@@ -125,7 +125,10 @@ address) is refused until it is adopted.
 4. Run the upgrade (`upgrade.sh`, then `upgrade.sh --apply`, or the dashboard). Its
    admission accepts the recorded composition only while the hand-written overlays
    are unchanged, recreates the stack from the managed files, and removes the
-   record once healthy. The hand-written overlays stay on disk, unused.
+   record once healthy. The hand-written overlays stay on disk, unused. If that
+   upgrade fails after the API was recreated, running it again is admitted: the
+   stopped proxy still carries the recorded composition, which is accepted only
+   while it matches the record.
 
 Rollback: before the upgrade, copy the backed-up `.env` and `app-access.yml` back
 (`ROLLBACK.txt` has the exact commands); nothing running had changed. After the

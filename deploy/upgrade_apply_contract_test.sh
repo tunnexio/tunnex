@@ -841,6 +841,36 @@ grep -F 'up -d --wait --wait-timeout 900' "$aa_dir/docker.log" | grep -Fq -- "-f
 ! grep -Fq 'TUNNEX_APP_ACCESS_ADOPTED_' "$aa_dir/.env"
 grep -Fxq 'TUNNEX_APP_PROXY_GATEWAY_BIND_IP=10.70.0.2' "$aa_dir/.env"
 cmp -s "$aa_dir/app-access-demo.yml.before" "$aa_dir/app-access-demo.yml"
+# Re-running after the upgrade failed mid-way on an adopted host: the API was
+# already recreated from the managed files, the stopped proxy still carries the
+# recorded adopted list. Admitted (the forward fix), but only that exact split.
+demo_aa_install demo-rerun
+adopt_record
+managed_files="$aa_dir/tunnex.yml,$aa_dir/app-access.yml"
+printf 'aa|%s|api|volume:aa_app_restore;|||%s|False\n' "$aa_dir" "$managed_files" >"$aa_dir/containers/api"
+run_aa_upgrade --apply >"$aa_dir/output" 2>&1 || { cat "$aa_dir/output"; exit 1; }
+grep -Fxq 'state=healthy' "$aa_dir/status"
+! grep -Fq 'app-access-demo.yml' "$aa_dir/docker.log"
+for aa_case in split-unrecorded split-api-unmanaged split-edited; do
+  demo_aa_install "$aa_case"
+  case "$aa_case" in
+    split-unrecorded)
+      printf 'TUNNEX_APP_ACCESS_COMPOSE_SHA256=%s\n' "$(aa_sha "$aa_dir/app-access.yml")" >>"$aa_dir/.env"
+      printf 'aa|%s|api|volume:aa_app_restore;|||%s,%s|False\n' "$aa_dir" "$aa_dir/tunnex.yml" "$aa_dir/app-access.yml" >"$aa_dir/containers/api" ;;
+    split-api-unmanaged)
+      adopt_record
+      printf 'aa|%s|api|volume:aa_app_restore;|||%s,%s|False\n' "$aa_dir" "$aa_dir/tunnex.yml" "$aa_dir/other.yml" >"$aa_dir/containers/api" ;;
+    split-edited)
+      adopt_record
+      printf 'aa|%s|api|volume:aa_app_restore;|||%s,%s|False\n' "$aa_dir" "$aa_dir/tunnex.yml" "$aa_dir/app-access.yml" >"$aa_dir/containers/api"
+      printf '%s\n' '# edited' >>"$aa_dir/app-access-demo.yml" ;;
+  esac
+  cp "$aa_dir/.env" "$aa_dir/.env.before"
+  if run_aa_upgrade --apply >"$aa_dir/output" 2>&1; then echo "App Access $aa_case accepted" >&2; exit 1; fi
+  grep -Fq 'different projects or composition files' "$aa_dir/output"
+  cmp -s "$aa_dir/.env.before" "$aa_dir/.env"
+  ! grep -Eq ' (pull|up|stop|start)( |$)' "$aa_dir/docker.log"
+done
 # A hand-written overlay changed after adoption, or a different file list, is drift.
 for aa_case in demo-edited demo-other-files demo-unmanaged; do
   demo_aa_install "$aa_case"

@@ -48,6 +48,7 @@ classify_existing_app_access() {
   _aa_project=$1 _aa_directory=$2
   AA_API_COUNT=0 AA_PROXY_COUNT=0 AA_PROJECT_FOUND= AA_API_MARKER= AA_PROXY_MARKER=
   AA_PROXY_SECRETS= AA_PROXY_PORTS= AA_CONFIG_FILES= AA_CONFIG_CONFLICT=false
+  AA_API_FILES= AA_PROXY_FILES= AA_FILES_SPLIT=false
   if [ -n "$_aa_project" ]; then
     _aa_filter="label=com.docker.compose.project=$_aa_project"
   else
@@ -89,9 +90,19 @@ EOF
     esac
     [ -z "$AA_PROJECT_FOUND" ] || [ "$AA_PROJECT_FOUND" = "$_aa_found_project" ] || AA_CONFIG_CONFLICT=true
     AA_PROJECT_FOUND=$_aa_found_project
-    [ -z "$AA_CONFIG_FILES" ] || [ "$AA_CONFIG_FILES" = "$_aa_files" ] || AA_CONFIG_CONFLICT=true
-    AA_CONFIG_FILES=$_aa_files
+    # Same-service participants must agree. The API and the proxy may differ only
+    # in one case the caller checks: an upgrade recreated the API from the managed
+    # files and then failed while the stopped proxy kept the adopted file list.
+    if [ "$_aa_service" = api ]; then
+      [ -z "$AA_API_FILES" ] || [ "$AA_API_FILES" = "$_aa_files" ] || AA_CONFIG_CONFLICT=true
+      AA_API_FILES=$_aa_files
+    else
+      [ -z "$AA_PROXY_FILES" ] || [ "$AA_PROXY_FILES" = "$_aa_files" ] || AA_CONFIG_CONFLICT=true
+      AA_PROXY_FILES=$_aa_files
+    fi
   done
+  AA_CONFIG_FILES=${AA_API_FILES:-$AA_PROXY_FILES}
+  [ -z "$AA_API_FILES" ] || [ -z "$AA_PROXY_FILES" ] || [ "$AA_API_FILES" = "$AA_PROXY_FILES" ] || AA_FILES_SPLIT=true
 }
 # END APP ACCESS COMPOSITION CLASSIFIER
 
@@ -100,11 +111,12 @@ EOF
 # then the hand-written overlays in order) and every hand-written overlay still
 # has the hash recorded at adoption. Anything else is unknown drift.
 aa_adopted_composition() {
+  _aad_running=${2:-$AA_CONFIG_FILES}
   _aad_files=$(dotenv_value TUNNEX_APP_ACCESS_ADOPTED_CONFIG_FILES)
   _aad_hashes=$(dotenv_value TUNNEX_APP_ACCESS_ADOPTED_OVERLAYS_SHA256)
-  [ -n "$_aad_files" ] && [ -n "$_aad_hashes" ] && [ "$_aad_files" = "$AA_CONFIG_FILES" ] || return 1
+  [ -n "$_aad_files" ] && [ -n "$_aad_hashes" ] && [ "$_aad_files" = "$_aad_running" ] || return 1
   [ -f "$AA_OVERLAY" ] || return 1
-  _aad_rest=${AA_CONFIG_FILES#*,}
+  _aad_rest=${_aad_running#*,}
   case "$_aad_rest" in
     "$AA_OVERLAY",*|"$1/app-access.yml",*) _aad_rest=${_aad_rest#*,} ;;
     *) return 1 ;;
@@ -145,6 +157,17 @@ admit_app_access() {
   AA_PRESENT=true
   [ "$AA_CONFIG_CONFLICT" = false ] ||
     aa_refuse 'participants were created from different projects or composition files; inspect them before upgrading'
+  if [ "$AA_FILES_SPLIT" = true ]; then
+    # Re-running a failed upgrade of an adopted layout: the API already runs from
+    # the managed files and the stopped proxy still carries the recorded adopted
+    # composition (hash-bound). Anything else is unknown drift.
+    case "$AA_API_FILES" in
+      "$COMPOSE,$AA_OVERLAY"|"$_aa_dir_real/${COMPOSE##*/},$_aa_dir_real/app-access.yml") ;;
+      *) aa_refuse 'participants were created from different projects or composition files; inspect them before upgrading' ;;
+    esac
+    aa_adopted_composition "$_aa_dir_real" "$AA_PROXY_FILES" ||
+      aa_refuse 'participants were created from different projects or composition files; inspect them before upgrading'
+  fi
   [ "$AA_API_COUNT" -le 1 ] && [ "$AA_PROXY_COUNT" -le 1 ] ||
     aa_refuse 'upgrade supports exactly one API and one proxy on this host; HA participants need a separately fenced procedure'
   if [ "$AA_PROXY_COUNT" -eq 1 ] && [ "$AA_API_COUNT" -eq 0 ]; then
