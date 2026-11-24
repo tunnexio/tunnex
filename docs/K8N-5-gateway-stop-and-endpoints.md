@@ -334,3 +334,255 @@ refuse it is already on hand.
   and the Kubernetes 1.22 default-role change. Both are from memory, not re-read today.
 - Item 2 on a live cluster: a Service with no selector and a hand-written EndpointSlice at a device
   address, the gateway going not ready, and back.
+
+## Item 3 — the emergency withdraw and a nil policy open the tunnel (decision, 2026-11-24)
+
+Branch `k8n/emergency-sitelan` (from `story/kubernetes-next`). This follows up the separate finding
+in item 1, "the emergency path re-opens the mesh". Nothing here was run on a cluster.
+
+### Can the real agent reach it?
+
+`EmergencyWithdrawK8s` has one caller, `productionK8sSurface.EmergencyWithdraw`. That is reached only
+from the two `!found` branches of the ownership coordinator:
+
+- `Coordinator.ApplyAndReadback` (a lease start, a withdraw, an expiry);
+- `Coordinator.VerifyCurrent` (the v3 delivery ACK replay).
+
+`found` is false only while the projector has no ordinary base (`Projector.Snapshot`, `p.base == nil`).
+`p.base` is written only by `UpdateBase` and `ReplaceBaseAndFences`, and nothing clears it.
+`ensureLoaded` replaces only the fences. In the agent, the one writer is `OnDesired` →
+`Coordinator.UpdateBaseAndSnapshot` → `UpdateBase` → `ReplaceBaseAndFences`.
+
+The order in `apps/node/cmd/agent/main.go`:
+
+1. `desired_state_startup_base` (`submitDesiredStateCommand`). `ApplyDesiredState` calls `onDesired`
+   first and returns its error. If it fails, `main` logs `desired_state_startup_base_failed` and
+   returns.
+2. `ownership_startup_withdraw` (`Lifecycle.StartupReconcile`). This is the first ownership command.
+3. Only then are `egressLoop`, `produceOwnershipCommands` and the lease watchdog started. The lane's
+   lease guard (`LeaseDeadline`) is inert while `Lifecycle.current` is nil, which it is until step 2.
+
+So when the first ownership call runs, the base is always present, and it stays present for the life
+of the process. **The emergency branch cannot run in the shipped agent.** The fail-open is latent in
+the primitive, not live. The comment in `StartupReconcile` ("Production starts fail closed before the
+first ordinary base arrives") and the tests
+`TestProductionStartupWithoutLeaseOrFenceStillRunsEmergencyK8sSweep` and
+`TestProductionStartupWithdrawsUnexpiredLeaseBeforeFirstBase` describe an older order, in which the
+lease was replayed before the base.
+
+If the branch were reached, the fail-open would be real:
+
+- The next `egress_reconcile` command renders the table from the stored policy. It runs on the same
+  lane, on the 30-second ticker (`TUNNEX_AGENT_EGRESS_INTERVAL`) or at once on an endpoint-watch kick.
+- `SetPolicy(nil)` has marked a policy as received, so `forwardRules` takes the mesh branch.
+- Nothing waits for fresh desired state first. The desired-state producer runs every 60 s.
+
+The kernel witness in item 1 shows the result.
+
+`main` and `v0.1.44` have the same `EmergencyWithdrawK8s` (`SetPolicy(nil)`), the same `forwardRules`
+branch and the same start order (`main.go` lines 646, 652 and 658 on both). Same conclusion there:
+latent, not reachable. **How it would show if it ever were reached:** after the ownership log line of an
+emergency withdrawal, and within 30 s, `nft list chain ip tunnex forward` holds
+`iifname "wg0" oifname != "wg0" counter accept` with no `tunnex_default_drop`. Every connected device
+then reaches every pod and node address the gateway node can route to, whatever its rules.
+
+### The other ways a nil policy reaches the egress manager
+
+| path | Kubernetes mode | what renders today |
+|---|---|---|
+| start, before the first delivery (`policyReceived` false) | yes | deny-all (`tunnex_default_drop`), fail closed |
+| control-plane outage, fetch error | yes | no `SetPolicy` call; the last policy stays |
+| unsupported artifact version | yes | deny-all (`refusedVersion`) |
+| control plane serves `Policy: null` | yes | **open mesh** |
+| ownership stages `SetPolicy(desired.Policy)` | yes | whatever the base carries; the projection never turns a non-nil policy into nil (`filterFencedBase`, `cloneDesiredState`) |
+| `EmergencyWithdrawK8s` | the surface is built in both modes | **open mesh**; it also clears an unsupported-version refusal |
+
+When does the control plane serve `Policy: null`? The policy compiler (`CompiledForNode`) returns an
+artifact for every node in its node set, and a deny-all for any other node of an enforcing org. It
+returns nil only for an org with Zero Trust off. `DesiredState` also leaves it nil on a policy-compile
+error in an org confirmed off (`policy_compile_failed_org_off_serving_mesh`). `finalizeSiteArtifact` and
+`finalizeArtifact` then wrap it in an explicit `Mode: "off", Mesh: true` artifact whenever the gateway
+has site routes, exposed Services (VIP mappings, the API endpoint), DNS zones, resolver profiles or
+client-graph peers. A gateway with devices, a site or a connector is in the compiler's node set. So an
+in-cluster gateway receives nil only:
+
+- when it is in an off org and has no devices, no site, no Service, no route and no client peer, so
+  there is nothing to forward; or
+- in an off org during a policy-compile error with none of the above to wrap it.
+
+### Decision
+
+1. **In Kubernetes mode a nil policy renders deny-all**, the same as the cold start: `ct
+   established,related accept`, `ct state invalid drop`, the native passthrough (both interfaces outside
+   the tunnel set, unchanged), then `counter comment "tunnex_default_drop"` under `policy drop`. No
+   `iifname <tunnel>` accept of any kind, in either family. Tunnel to non-tunnel, tunnel to tunnel and
+   non-tunnel to tunnel all fall to the drop. The change is in `forwardRules`, before the mesh branch.
+2. **The open mesh in Kubernetes mode comes only from an explicit artifact with `Mesh: true`.** This is
+   the documented Zero Trust off behaviour (K8N-3, "Open mesh": with enforcement off an enabled API
+   endpoint is reachable by every device). The control plane sends that artifact to every in-cluster
+   gateway that has anything to serve. Unchanged.
+3. **Outside Kubernetes mode, nil stays the legacy mesh, unchanged.** That is where the open mesh from
+   nil is intentional: a VM or site gateway of an org with Zero Trust off, or an open build without the
+   policy subsystem (`s.policy == nil`), whose desired state carries `Policy: null`. "nil = legacy
+   mesh" is the documented contract there (the `policyReceived` comment, `DesiredState`'s
+   `policy_compile_failed_org_off_serving_mesh` branch).
+4. **`EmergencyWithdrawK8s` no longer calls `SetPolicy(nil)`.** It returns the manager to the cold-start
+   state: no stored policy, `policyReceived` false. That renders deny-all in every mode, because the
+   ownership surface is composed in both modes (`NewProductionOwnerSurfaceWithOVPN` sits outside `if
+   kubernetesMode`). It leaves an unsupported-version refusal in place. The next real delivery
+   (`SetPolicy` from `OnPolicy` or an ownership stage) leaves that state, exactly as after a start.
+   "No fresh baseline" is what the cold start means, so the two share one state.
+
+**Trade.** In an org with Zero Trust off, an in-cluster gateway that receives nil now denies tunnel
+traffic instead of opening the mesh. From the list above, that happens only to a gateway with nothing
+to serve, or during an off org's policy-compile error. In the second case the gateway's devices lose
+device-to-device and cluster access until the compile succeeds again, where today they keep the mesh.
+For a gateway that sits in a cluster's host network namespace, that is the right side to fail on.
+
+**Limit.** Flows established while the mesh was open survive through `ct state established,related
+accept`. The decision closes new flows. It does not flush conntrack. That is the same as every other
+policy narrowing here except a grant removal (`drainFlush`).
+
+**Tests.**
+
+- Renderer:
+  - Kubernetes nil gives exactly the deny-all forward text, in both families;
+  - VM nil gives the legacy mesh text, unchanged;
+  - Kubernetes `Mesh: true` is still open.
+- The emergency path followed by the egress pass's own render (`rulesetWith(subnet,
+  m.policy.Load())`), in both modes. Then a delivery restores the policy, and the emergency leaves an
+  unsupported-version refusal in place.
+- Ownership: with the base seeded first, as `main` does, `StartupReconcile` never calls the emergency
+  withdraw, with or without a durable lease.
+- Kernel (`TestGatewayStopStateKernel`, opt in):
+  - the released behaviour replayed (the mesh text that nil renders today) opens device → pod B;
+  - after `EmergencyWithdrawK8s` and one real `Reconcile`, the device cannot reach pod B, the
+    `tunnex_default_drop` counter rises and the chain holds no tunnel accept;
+  - the same after a control-plane nil followed by a pass.
+
+## Item 4 — the site-LAN masquerade stops an in-cluster gateway at startup (decision, 2026-11-24)
+
+### What happens
+
+SSI-8's `siteLANMasqueradeRules` renders, for a site with `lan_egress = gateway_address` and for every
+distinct IPv4 route of the artifact:
+
+```
+ip saddr <route> oifname != <tunnel set> masquerade comment "tunnex_site_lan_masquerade"
+```
+
+into `ip tunnex postrouting`. `validateTunnexPostrouting` (`k8snetprep/aws_linux.go`) accepts only the
+device-pool rule and the API return rule there. It refuses this one with `unknown Tunnex source-NAT
+rule`. The validator runs inside every Kubernetes-mode `Reconcile` (`reconcileK8sNetPrep`) on every
+CNI, because the `ip tunnex postrouting` hook is checked in `validateHookCoverage`. During
+`ownership_startup_withdraw` the OpenVPN and DNAT stages call `Reconcile`, and the error is fatal there.
+The process logs `ownership_startup_reconcile_failed` and exits on every start. While it runs, the
+gateway is not ready.
+
+**Does it apply to an in-cluster gateway?** Yes. `finalizeSiteArtifact` sets `SiteLANMasquerade` from
+the gateway's site whenever the artifact has routes. An in-cluster connector belongs to the cluster's
+site. Its routes are:
+
+- other sites' subnets;
+- handoff VIP `/32`s of other connectors (`k8sHandoffGraph`);
+- once the flag is set, the `/32`s of devices on other gateways that `finalizeArtifact` appends from
+  the client graph.
+
+The API's guard on `gateway_address` asks only that every gateway of the site supports artifact v15,
+and the in-cluster agent is the same binary. The option is also useful there: a remote site host
+reaching a pod gets an answer only if the pod's node can route back to the remote range. Host posture
+gives every node a return route to the tunnel range, not to remote site ranges.
+
+**Is `main` affected?** Yes. `origin/main` (60aae74f) and `v0.1.44` both render the rule
+(`egress_linux.go` line 1824 on both). Both validators accept only the device-pool shape (main line 870,
+`unknown Tunnex source-NAT rule` at 880). Both call `Reconcile` from the DNAT stage and so run the check
+at startup. A site that turns on `gateway_address` with an in-cluster gateway that has any route makes
+that gateway crash-loop. **How it shows:** the gateway pod restarts repeatedly, its log ends with
+`ownership_startup_reconcile_failed ... unknown Tunnex source-NAT rule`, and `nft list chain ip tunnex
+postrouting` on the node shows the `tunnex_site_lan_masquerade` rules from the last attempt.
+
+### Decision: teach the check the site-LAN shape; withhold the IPsec desktop exemption in Kubernetes mode
+
+**The site-LAN masquerade: (a), the validator learns exactly one more shape.** It follows the API
+return rule. The comment is exactly `tunnex_site_lan_masquerade` (one constant,
+`k8snetprep.SiteLANMasqueradeRuleComment`, used by the renderer and the check). There are exactly three
+statements:
+
+1. `ip saddr ==` one IPv4 prefix in canonical masked form. nft lists a `/32` as a bare address, so both
+   forms are accepted, as `nftAddressMatch` already does.
+2. The same tunnel exclusion as the device-pool rule: `oifname !=` the WireGuard interface, or a set
+   that contains it.
+3. A bare `masquerade`.
+
+Refused:
+
+- the same prefix twice;
+- `0.0.0.0/0`. An unconditional masquerade in disguise: it would translate every flow the node forwards
+  out of a non-tunnel interface. The API refuses such a site range (`subnetguard.Admissible`), so the
+  renderer never emits it.
+- any other field (`ip daddr`, `ct original ...`);
+- `!=`, a set, a range, an IPv6 address;
+- a missing or different interface exclusion;
+- `snat`, `masquerade` with flags or ports, any further statement;
+- the shape without the marker or under another comment;
+- the marker on any other shape.
+
+*Not refused: a source inside the tunnel range.* The client-graph device `/32`s of other gateways lie
+in the org's device pool, which is also this gateway's `wg0` range, and the renderer emits them under
+this marker. Refusing them would bring the crash loop back. They are translated as they leave a
+non-tunnel interface, which is what the device-pool rule already does for the same range.
+
+*Why the invariant still holds.* "Tunnex never source-NATs traffic bound for the tunnel" rests on the
+exclusion, and the check refuses the rule without it. As with the API return rule, the check binds the
+shape and the marker, not the prefixes. It is not given the routes, and after a restart it runs before
+the policy is known. The renderer binds the prefixes: the table is replaced from the current artifact
+on every pass.
+
+*Residual risk:* root on the node can write a marked rule for another prefix. The check accepts it
+until the next pass replaces the table. It cannot touch tunnel-bound traffic.
+
+*Adjacent, unchanged:* on a `gateway_address` site, devices of other gateways (client-graph `/32`s)
+reach pods with the node's address, not their own. That is SSI-8's behaviour on a VM gateway too, and
+it is recorded, not changed.
+
+**The IPsec desktop exemption: (b), not rendered in Kubernetes mode, with a logged reason.** It is
+`ip saddr <device> ip daddr <dest> counter return comment "tunnex_ipsec_desktop_no_snat"`. A `return`
+cannot translate anything, so on the invariant alone the check could accept it. But on an in-cluster
+gateway it can never do its job:
+
+- The exemption exists only to keep a desktop's flow into an IPsec tunnel un-NATed. That flow needs the
+  IPsec runtime's guard table, `inet tunnex_ipsec`, whose `postrouting_guard` (priority 90) and
+  `postnat_guard` (priority 300) are postrouting hooks (`ipsec/guard_render.go`).
+- `validateHookCoverage` refuses every IPv4 or inet postrouting hook it does not know, with `unknown
+  IPv4 postrouting hook coverage`.
+- So IPsec on an in-cluster gateway is already refused by the host-network proof, whatever the
+  postrouting chain holds.
+- Teaching the check the exemption would add a shape that can never take part in a working
+  configuration.
+
+Rendering it anyway is what is harmful: whenever the IPsec runtime has published an exemption but not
+yet installed its guard, the exemption alone triggers the same fatal refusal.
+
+So in Kubernetes mode `desktopNATRules` is not rendered. The egress manager logs
+`k8s_ipsec_desktop_nat_withheld` (once per change of the withheld set) with the reason "IPsec is not
+supported on an in-cluster gateway: its guard hooks are refused by the host network proof". The IPsec
+runtime then sees its exemption as pending, and its desktop grant stays pending: fail closed, on the
+side the runtime already handles. Outside Kubernetes mode, nothing changes.
+
+**Tests.**
+
+- Renderer:
+  - the site-LAN rules render under the shared marker constant;
+  - the desktop exemption is withheld in Kubernetes mode and kept on a VM.
+- Validator:
+  - accept table: prefix and `/32` forms, the set exclusion, next to the device-pool and API return
+    rules;
+  - near-miss refusal table, each after one and after two valid rules;
+  - duplicate refusal;
+  - an `inet tunnex_ipsec` postrouting hook is refused (the evidence for (b)).
+- The restart/ownership path over the real kernel's listing of a table that holds the rule: a new
+  check before anything is loaded, then the startup order. The fixture is saved next to the rendered
+  text, with an egress test that fails if the rendering drifts from it.
+- Kernel (opt in): with a remote-site host behind `wg0` and a pod that has no route back, the pod
+  answers through the rule and sees the node's address. A second process starts over the leftover
+  table. Near-misses written into the live chain are refused. Shutdown leaves no rule.
