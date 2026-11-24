@@ -855,7 +855,14 @@ kubeconfig whose only change was `server: https://kubernetes.default.svc.gke.k8s
   "Traffic matching this rule stops immediately" is accurate for the data; a customer may see a
   hanging terminal for up to a minute.
 
-Still not confirmed: a gateway restart while a rule and an open connection exist; API access turned
-off (address withdrawn) with a session open; the node's address appearing in the cluster's audit
-log; EKS, AKS and self-managed clusters; the dashboard's single suggested `tls-server-name` value
-across providers.
+- **API access turned off with a session open** (00:43:12 UTC). The open `exec` stream stopped at
+  once (last output 00:43:09) and the client reported `i/o timeout` about 60 s later. The name
+  stopped resolving ("no such host"), the raw address no longer answered, and an ordinary Service
+  (`orders`) kept answering 200. The dialog said, correctly, that the one rule is kept and allows
+  nothing.
+- **Turned on again** (00:44:40 UTC): the same address 100.65.0.4 came back and the kept rule worked
+  again; kubectl worked 49 s later, most of it the name returning to the device's resolver.
+
+Still not confirmed: a gateway restart while a rule and an open connection exist; the node's address
+appearing in the cluster's audit log; EKS, AKS and self-managed clusters; the dashboard's single
+suggested `tls-server-name` value across providers.
