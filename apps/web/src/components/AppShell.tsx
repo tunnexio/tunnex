@@ -19,6 +19,7 @@ import { useLayoutCapability } from "./ComposeGate";
 import { useDeploymentMeta, useSandboxModuleState } from "../lib/deploymentMeta";
 import { SANDBOX_PRODUCT_SHELVED } from "../lib/sandboxProduct";
 import { CommandPalette } from "./CommandPalette";
+import { NewVersionBanner } from "./NewVersionBanner";
 import { useNavCounts } from "../lib/useNavCounts";
 import { Icon, type IconName } from "./Icon";
 import { badgeText, gatewayBadgeText, type NavCounts } from "../lib/navcounts";
@@ -616,6 +617,7 @@ export function AppShell() {
               <VerifyEmailBanner />
             )}
             <SetupReturn />
+            <NewVersionBanner />
             {import.meta.env.VITE_REVIEW_BUILD && <p role="status" className="mb-4 rounded-input border border-line px-3 py-2 text-sm text-ink-secondary">Review build · {import.meta.env.VITE_REVIEW_BUILD} · awaiting approval</p>}
             <Outlet />
           </main>
