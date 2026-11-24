@@ -5023,7 +5023,7 @@ export interface paths {
         put?: never;
         /**
          * Approve the exact signed release currently shown by the control plane
-         * @description Requires `users.cp_admin`. The server pins its current verified catalog source SHA and sequence; the client cannot supply a different target. Duplicate requests for that same active target are idempotent.
+         * @description Requires `users.cp_admin`. The server pins its current verified catalog source SHA and sequence; the client cannot supply a different target. Duplicate requests for that same active target are idempotent. Requires a human browser session and recent re-authentication with the SA-UI-1 rules (current password and/or MFA verified within five minutes), the same as the re-run (AA-EN-1 founder ruling).
          */
         post: operations["requestHostUpgrade"];
         delete?: never;
@@ -13410,7 +13410,7 @@ export interface components {
             password_action: "keep" | "replace" | "clear";
             password?: string;
         };
-        HostUpgradeRerunInput: {
+        HostUpgradeReauthInput: {
             /** @description Required when the caller has a local password. */
             current_password?: string;
         };
@@ -13418,13 +13418,13 @@ export interface components {
             available: boolean;
             /** @description True when the last upgrade failed and the verified catalog still names exactly the installed release (same sequence and source SHA), so it can be re-run as a forward fix. */
             rerun_available?: boolean;
-            /** @description Present with rerun_available. What the caller must prove to re-run. */
-            rerun_reauthentication?: {
+            /** @description Present when an upgrade or a re-run can be requested. What the caller must prove (the same rules for both actions). */
+            reauthentication?: {
                 /** @description The caller has a local password and must send current_password. */
                 password: boolean;
                 /** @description The caller has confirmed MFA and must have verified it in this session within five minutes. */
                 mfa: boolean;
-                /** @description False when the caller has neither a local password nor MFA and therefore cannot re-run from the dashboard. */
+                /** @description False when the caller has neither a local password nor MFA and therefore cannot upgrade or re-run from the dashboard. */
                 available: boolean;
             };
             /** Format: uuid */
@@ -21992,7 +21992,11 @@ export interface operations {
             path?: never;
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HostUpgradeReauthInput"];
+            };
+        };
         responses: {
             /** @description Upgrade request accepted or already active for this exact target. */
             202: {
@@ -22016,7 +22020,7 @@ export interface operations {
         };
         requestBody: {
             content: {
-                "application/json": components["schemas"]["HostUpgradeRerunInput"];
+                "application/json": components["schemas"]["HostUpgradeReauthInput"];
             };
         };
         responses: {

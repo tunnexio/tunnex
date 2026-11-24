@@ -109,7 +109,9 @@ trampoline. It:
 After a failed upgrade whose release is already installed, server administrators can
 also re-run it from the dashboard (Upgrade Center, "Run the upgrade again"). The API
 offers this only for the same sequence and source SHA, never an older release, and
-not after an App Access authority change (AA-EN-1).
+not after an App Access authority change (AA-EN-1). Both dashboard actions, upgrade
+and re-run, need a browser session and re-authentication: the current password, and
+an MFA verification within the last five minutes when the account has MFA.
 
 Nothing is downloaded from a mutable URL, and no host file is fetched from GitHub.
 The installed copies (`<install>/upgrade.sh` always, and

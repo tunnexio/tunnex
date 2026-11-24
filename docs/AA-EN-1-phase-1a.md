@@ -68,8 +68,9 @@ E1–E12 and the item added to Phase 1a by founder ruling (dashboard forward fix
    plus the step-up of the founder ruling: a human browser session and SA-UI-1's
    re-authentication rules (current password, and MFA verified within five minutes
    when enrolled), with the re-run's own password-failure budget
-   (`control_plane_upgrade_rerun`). The rules were moved unchanged into one helper
-   (`requireRecentReauthentication`) used by both the Server Access setting and the
+   (`control_plane_upgrade`, shared with the ordinary upgrade, which by founder ruling
+   now requires the same re-authentication). The rules were moved unchanged into one helper
+   (`requireRecentReauthentication`) used by the Server Access setting, the upgrade and the
    re-run. The host side already accepted a same-sequence, same-source re-run
    (UPG-2 U4), so the runner is unchanged.
 
@@ -157,10 +158,8 @@ gateways.
 
 ## Decisions for the founder
 
-- **Step-up for the ordinary dashboard upgrade.** The re-run now requires SA-UI-1
-  re-authentication, but the ordinary "Upgrade control plane" request still does not
-  (deployment administrator and audit only, as before). Recommendation: add the same
-  step-up to it in a follow-up so the two host actions match.
+- **Step-up for the ordinary dashboard upgrade.** Resolved by ruling 2: the ordinary
+  upgrade requires the same re-authentication as the re-run.
 - **Console reachability during an upgrade on adopted (S2) hosts.** With
   terminate-and-forward the console goes through the proxy, which the upgrade stops
   while the API migrates and leaves stopped after a failure (UPG-1 invariant 5). On

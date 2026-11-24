@@ -15,34 +15,48 @@ import (
 )
 
 func (s apiServer) GetHostUpgrade(ctx context.Context, _ api.GetHostUpgradeRequestObject) (api.GetHostUpgradeResponseObject, error) {
-	if _, err := requireCPAdmin(ctx); err != nil {
+	p, err := requireCPAdmin(ctx)
+	if err != nil {
 		return nil, err
 	}
 	body := api.HostUpgradeStatus{Available: s.hostUpgrade != nil && s.hostUpgrade.Available(), State: api.HostUpgradeStatusStateIdle}
-	if body.Available {
-		if status, err := s.hostUpgrade.Status(); err == nil {
-			body = hostUpgradeBody(status)
-			rerun := hostUpgradeRerunAvailable(s.currentReleaseStatus(), status)
-			body.RerunAvailable = &rerun
-			if p, _ := authctx.PrincipalFrom(ctx); rerun && p != nil && s.system != nil {
-				// What this administrator must prove to re-run (display only; enforced on POST).
-				if r, err := s.installationReauthFor(ctx, p.UserID, s.currentParent(ctx, p)); err == nil {
-					body.RerunReauthentication = &struct {
-						Available bool `json:"available"`
-						Mfa       bool `json:"mfa"`
-						Password  bool `json:"password"`
-					}{Available: r.available(), Mfa: r.mfa || r.ssoMFA, Password: r.password}
-				}
-			}
-		} else if !errors.Is(err, hostupgrade.ErrUnavailable) {
-			return nil, apierr.New(http.StatusServiceUnavailable, "host_upgrade_state_invalid", "The local upgrade runner state is unavailable or invalid.")
+	if !body.Available {
+		return api.GetHostUpgrade200JSONResponse{Body: body, Headers: api.GetHostUpgrade200ResponseHeaders{XRequestId: middleware.GetReqID(ctx)}}, nil
+	}
+	current := s.currentReleaseStatus()
+	actionable := current != nil && current.Verified && current.Available
+	if status, err := s.hostUpgrade.Status(); err == nil {
+		body = hostUpgradeBody(status)
+		rerun := hostUpgradeRerunAvailable(current, status)
+		body.RerunAvailable = &rerun
+		actionable = actionable || rerun
+	} else if !errors.Is(err, hostupgrade.ErrUnavailable) {
+		return nil, apierr.New(http.StatusServiceUnavailable, "host_upgrade_state_invalid", "The local upgrade runner state is unavailable or invalid.")
+	}
+	if actionable && s.system != nil {
+		// What this administrator must prove to upgrade or re-run (display only;
+		// enforced on POST).
+		if r, err := s.installationReauthFor(ctx, p.UserID, s.currentParent(ctx, p)); err == nil {
+			body.Reauthentication = &struct {
+				Available bool `json:"available"`
+				Mfa       bool `json:"mfa"`
+				Password  bool `json:"password"`
+			}{Available: r.available(), Mfa: r.mfa || r.ssoMFA, Password: r.password}
 		}
 	}
 	return api.GetHostUpgrade200JSONResponse{Body: body, Headers: api.GetHostUpgrade200ResponseHeaders{XRequestId: middleware.GetReqID(ctx)}}, nil
 }
 
-// hostUpgradeRerunReauthScope names the re-run's password-failure budget.
-const hostUpgradeRerunReauthScope = "control_plane_upgrade_rerun"
+// hostUpgradeReauthScope names the password-failure budget shared by the two
+// host-upgrade actions (upgrade and re-run), separate from Server Access's.
+const hostUpgradeReauthScope = "control_plane_upgrade"
+
+func reauthPassword(body *api.HostUpgradeReauthInput) *string {
+	if body == nil {
+		return nil
+	}
+	return body.CurrentPassword
+}
 
 func (s apiServer) currentReleaseStatus() *release.Status {
 	if s.releaseStatusProvider != nil {
@@ -64,7 +78,7 @@ func hostUpgradeRerunAvailable(status *release.Status, host hostupgrade.Status) 
 		host.ReasonCode != "app_access_authority_changed"
 }
 
-func (s apiServer) RequestHostUpgrade(ctx context.Context, _ api.RequestHostUpgradeRequestObject) (api.RequestHostUpgradeResponseObject, error) {
+func (s apiServer) RequestHostUpgrade(ctx context.Context, request api.RequestHostUpgradeRequestObject) (api.RequestHostUpgradeResponseObject, error) {
 	p, err := s.requireHostUpgrade(ctx)
 	if err != nil {
 		return nil, err
@@ -72,6 +86,10 @@ func (s apiServer) RequestHostUpgrade(ctx context.Context, _ api.RequestHostUpgr
 	status := s.currentReleaseStatus()
 	if status == nil || !status.Verified || !status.Available || status.SourceSHA == "" || status.Version == "" || status.Sequence <= 0 {
 		return nil, apierr.New(http.StatusConflict, "upgrade_not_available", "No newer verified release is currently available.")
+	}
+	// Founder ruling (AA-EN-1): the same re-authentication as the re-run.
+	if err := s.requireRecentReauthentication(ctx, p, reauthPassword(request.Body), hostUpgradeReauthScope, "upgrade the control plane"); err != nil {
+		return nil, err
 	}
 	result, err := s.requestHostUpgrade(ctx, p, hostupgrade.Target{SourceSHA: status.SourceSHA, Version: status.Version, Sequence: status.Sequence})
 	if err != nil {
@@ -84,14 +102,8 @@ func (s apiServer) RequestHostUpgrade(ctx context.Context, _ api.RequestHostUpgr
 // authorization, request file and audit action as an upgrade, for the installed
 // release only, and only after the upgrade to it failed.
 func (s apiServer) RerunHostUpgrade(ctx context.Context, request api.RerunHostUpgradeRequestObject) (api.RerunHostUpgradeResponseObject, error) {
-	p, err := requireCPAdmin(ctx)
+	p, err := s.requireHostUpgrade(ctx)
 	if err != nil {
-		return nil, err
-	}
-	if err := requireHumanSession(p, "Running an upgrade again from the dashboard"); err != nil {
-		return nil, err
-	}
-	if _, err := s.requireHostUpgrade(ctx); err != nil {
 		return nil, err
 	}
 	status := s.currentReleaseStatus()
@@ -99,13 +111,9 @@ func (s apiServer) RerunHostUpgrade(ctx context.Context, request api.RerunHostUp
 	if hostErr != nil || !hostUpgradeRerunAvailable(status, host) {
 		return nil, apierr.New(http.StatusConflict, "rerun_not_available", "Only the installed release can be run again, and only after an upgrade to it failed.")
 	}
-	var currentPassword *string
-	if request.Body != nil {
-		currentPassword = request.Body.CurrentPassword
-	}
 	// E7 / founder ruling: the same SA-UI-1 re-authentication as the Server
-	// Access installation setting, with this action's own password budget.
-	if err := s.requireRecentReauthentication(ctx, p, currentPassword, hostUpgradeRerunReauthScope, "run the upgrade again"); err != nil {
+	// Access installation setting and the ordinary upgrade.
+	if err := s.requireRecentReauthentication(ctx, p, reauthPassword(request.Body), hostUpgradeReauthScope, "run the upgrade again"); err != nil {
 		return nil, err
 	}
 	result, err := s.requestHostUpgrade(ctx, p, hostupgrade.Target{SourceSHA: status.SourceSHA, Version: status.Version, Sequence: status.Sequence, Rerun: true})
@@ -115,9 +123,14 @@ func (s apiServer) RerunHostUpgrade(ctx context.Context, request api.RerunHostUp
 	return api.RerunHostUpgrade202JSONResponse{Body: hostUpgradeBody(result), Headers: api.RerunHostUpgrade202ResponseHeaders{XRequestId: middleware.GetReqID(ctx)}}, nil
 }
 
+// requireHostUpgrade: a deployment administrator in a human browser session,
+// with the local runner installed. Both host-upgrade actions start here.
 func (s apiServer) requireHostUpgrade(ctx context.Context) (*authctx.Principal, error) {
 	p, err := requireCPAdmin(ctx)
 	if err != nil {
+		return nil, err
+	}
+	if err := requireHumanSession(p, "Upgrading the control plane from the dashboard"); err != nil {
 		return nil, err
 	}
 	if s.hostUpgrade == nil || !s.hostUpgrade.Available() {
