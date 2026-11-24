@@ -164,6 +164,7 @@ func (a *AgentChannel) Handler() http.Handler {
 	r.Post("/agent/ipsec/connections/{connectionId}/permit-lease", a.ipsecPermitLease)
 	r.Get("/agent/server-access/enrollments", a.enrollmentAgent)
 	r.Post("/agent/server-access/enrollments/{enrollmentId}", a.enrollmentAgent)
+	r.Get("/agent/server-access/capability", a.serverAccessCapability)
 	r.Get("/agent/server-access/desired-state", a.terminalAgent)
 	r.Post("/agent/server-access/sessions/{sessionId}/{operation}", a.terminalAgent)
 	r.MethodFunc("CONNECT", "/agent/server-access/sessions/{sessionId}/{operation}", a.terminalAgent)

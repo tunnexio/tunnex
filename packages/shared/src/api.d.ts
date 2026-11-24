@@ -4946,6 +4946,30 @@ export interface paths {
         patch: operations["updateAppAccessDomains"];
         trace?: never;
     };
+    "/api/v1/admin/server-access/installation": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Read the installation-wide Server Access capability (server administrator)
+         * @description Requires a verified human browser session with CP administrator authority. Until a server administrator saves a value, the environment seed (TUNNEX_SERVER_ACCESS_ENABLED) is returned with source environment. TUNNEX_SERVER_ACCESS_LOCKED forces the effective capability off. The reauthentication fields describe what the current administrator must provide to save.
+         */
+        get: operations["getServerAccessInstallation"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Turn Server Access on or off for the whole installation
+         * @description Requires a verified CP administrator browser session, CSRF protection and recent re-authentication. Accounts with a local password send current_password; accounts with confirmed MFA must have verified MFA in this session within the last five minutes (mfa_step_up_required otherwise). Enabling is refused with server_access_locked while TUNNEX_SERVER_ACCESS_LOCKED is set. Turning it off immediately refuses new terminal sessions and ends every active one. Every change is audited. Organization Server Access settings are unchanged; an organization needs both.
+         */
+        patch: operations["updateServerAccessInstallation"];
+        trace?: never;
+    };
     "/api/v1/admin/email-settings": {
         parameters: {
             query?: never;
@@ -13311,6 +13335,36 @@ export interface components {
             app_base_domain: string;
             /** Format: int64 */
             expected_version: number;
+        };
+        ServerAccessInstallation: {
+            /** @description Saved value, or the environment seed before the first save. */
+            enabled: boolean;
+            /** @description enabled AND NOT locked. What the installation enforces. */
+            effective: boolean;
+            /** @description TUNNEX_SERVER_ACCESS_LOCKED is set on the server; enabling is refused. */
+            locked: boolean;
+            /** @enum {string} */
+            source: "environment" | "database";
+            /** Format: int64 */
+            version: number;
+            /** Format: date-time */
+            updated_at?: string;
+            /** @description Only on a save that turned the capability off: active sessions ended by it. */
+            ended_sessions?: number;
+            reauthentication: {
+                /** @description The caller has a local password and must send current_password. */
+                password: boolean;
+                /** @description The caller has confirmed MFA and must have verified it in this session within five minutes. */
+                mfa: boolean;
+                /** @description False when the caller has neither a local password nor MFA and therefore cannot change this setting. */
+                available: boolean;
+            };
+        };
+        ServerAccessInstallationInput: {
+            enabled: boolean;
+            /** Format: int64 */
+            expected_version: number;
+            current_password?: string;
         };
         ServerEmailSettings: {
             enabled: boolean;
@@ -21745,6 +21799,54 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AppAccessDomains"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getServerAccessInstallation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Installation capability and the caller's re-authentication requirements. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServerAccessInstallation"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    updateServerAccessInstallation: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ServerAccessInstallationInput"];
+            };
+        };
+        responses: {
+            /** @description Saved setting, effective on every API replica and following gateway within seconds. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ServerAccessInstallation"];
                 };
             };
             default: components["responses"]["Error"];

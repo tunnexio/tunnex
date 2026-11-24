@@ -73,7 +73,7 @@ func TestRecordingPreservesSplitUTF8AndRejectsInput(t *testing.T) {
 	}
 }
 func TestRecordingPolicyBoundsBeforeMutation(t *testing.T) {
-	s := &Service{enabled: true}
+	s := &Service{seed: true}
 	for _, in := range []api.ServerAccessSettingsInput{{MfaFreshnessSeconds: ptr(0)}, {MfaFreshnessSeconds: ptr(901)}, {RecordingRetentionDays: ptr(0)}, {RecordingRetentionDays: ptr(3651)}, {RecordingMaxSessionBytes: ptr(1)}, {RecordingMaxSessionBytes: ptr(16777217)}, {RecordingMaxOrgBytes: ptr(1)}, {RecordingMaxOrgBytes: ptr(1073741825)}} {
 		if e := s.Configure(context.Background(), uuid.New(), uuid.New(), in); e == nil {
 			t.Fatal("accepted unsafe policy")

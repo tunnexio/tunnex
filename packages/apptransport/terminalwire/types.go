@@ -12,6 +12,13 @@ import (
 )
 
 const Purpose = "server_access_terminal_v1"
+
+// Capability (SA-UI-1) is the control plane's answer to "should this gateway run Server Access?" for a
+// gateway whose TUNNEX_SERVER_ACCESS_ENABLED is unset: installation capability AND organization setting.
+type Capability struct {
+	Enabled bool `json:"enabled"`
+}
+
 const MaxFrameBytes = 65536
 const MaxDataBytes = 16384
 

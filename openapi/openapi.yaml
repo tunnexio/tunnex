@@ -5943,6 +5943,38 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/AppAccessDomains" }
         default: { $ref: "#/components/responses/Error" }
+  /api/v1/admin/server-access/installation:
+    get:
+      operationId: getServerAccessInstallation
+      summary: Read the installation-wide Server Access capability (server administrator)
+      description: Requires a verified human browser session with CP administrator authority. Until a server administrator saves a value, the environment seed (TUNNEX_SERVER_ACCESS_ENABLED) is returned with source environment. TUNNEX_SERVER_ACCESS_LOCKED forces the effective capability off. The reauthentication fields describe what the current administrator must provide to save.
+      tags: [admin]
+      responses:
+        "200":
+          description: Installation capability and the caller's re-authentication requirements.
+          headers: { X-Request-Id: { $ref: "#/components/headers/RequestId" } }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ServerAccessInstallation" }
+        default: { $ref: "#/components/responses/Error" }
+    patch:
+      operationId: updateServerAccessInstallation
+      summary: Turn Server Access on or off for the whole installation
+      description: Requires a verified CP administrator browser session, CSRF protection and recent re-authentication. Accounts with a local password send current_password; accounts with confirmed MFA must have verified MFA in this session within the last five minutes (mfa_step_up_required otherwise). Enabling is refused with server_access_locked while TUNNEX_SERVER_ACCESS_LOCKED is set. Turning it off immediately refuses new terminal sessions and ends every active one. Every change is audited. Organization Server Access settings are unchanged; an organization needs both.
+      tags: [admin]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/ServerAccessInstallationInput" }
+      responses:
+        "200":
+          description: Saved setting, effective on every API replica and following gateway within seconds.
+          headers: { X-Request-Id: { $ref: "#/components/headers/RequestId" } }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ServerAccessInstallation" }
+        default: { $ref: "#/components/responses/Error" }
   /api/v1/admin/email-settings:
     get:
       operationId: getServerEmailSettings
@@ -15758,6 +15790,34 @@ components:
         portal_url: { type: string, maxLength: 2048 }
         app_base_domain: { type: string, maxLength: 253 }
         expected_version: { type: integer, format: int64, minimum: 0 }
+    ServerAccessInstallation:
+      type: object
+      additionalProperties: false
+      required: [enabled, effective, locked, source, version, reauthentication]
+      properties:
+        enabled: { type: boolean, description: "Saved value, or the environment seed before the first save." }
+        effective: { type: boolean, description: "enabled AND NOT locked. What the installation enforces." }
+        locked: { type: boolean, description: "TUNNEX_SERVER_ACCESS_LOCKED is set on the server; enabling is refused." }
+        source: { type: string, enum: [environment, database] }
+        version: { type: integer, format: int64, minimum: 0 }
+        updated_at: { type: string, format: date-time }
+        ended_sessions: { type: integer, minimum: 0, description: "Only on a save that turned the capability off: active sessions ended by it." }
+        reauthentication:
+          type: object
+          additionalProperties: false
+          required: [password, mfa, available]
+          properties:
+            password: { type: boolean, description: "The caller has a local password and must send current_password." }
+            mfa: { type: boolean, description: "The caller has confirmed MFA and must have verified it in this session within five minutes." }
+            available: { type: boolean, description: "False when the caller has neither a local password nor MFA and therefore cannot change this setting." }
+    ServerAccessInstallationInput:
+      type: object
+      additionalProperties: false
+      required: [enabled, expected_version]
+      properties:
+        enabled: { type: boolean }
+        expected_version: { type: integer, format: int64, minimum: 0 }
+        current_password: { type: string, maxLength: 1024 }
     ServerEmailSettings:
       type: object
       required: [enabled, host, port, from, username, password_configured, source, revision]

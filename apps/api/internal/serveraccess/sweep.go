@@ -10,9 +10,8 @@ import (
 // Run retires unclaimed/expired durable admissions. Active stream watchdogs
 // independently enforce their deadlines even when this database work stalls.
 func (s *Service) Run(ctx context.Context) {
-	if !s.enabled {
-		return
-	}
+	// The installation capability can be turned on later without a restart, so the loop always runs and
+	// skips its work while the capability is off.
 	ticker := time.NewTicker(time.Second)
 	defer ticker.Stop()
 	var nextRecordingWarning time.Time
@@ -21,6 +20,9 @@ func (s *Service) Run(ctx context.Context) {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
+			if !s.InstallationEffective(ctx) {
+				continue
+			}
 			bounded, cancel := context.WithTimeout(ctx, 2*time.Second)
 			s.sweepExpired(bounded)
 			if err := s.expireRecordings(bounded); err != nil && !time.Now().Before(nextRecordingWarning) {
