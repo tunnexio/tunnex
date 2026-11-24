@@ -24,6 +24,7 @@ const meta = {
 };
 
 vi.mock("../src/lib/auth", () => ({
+  useOptionalAuth: () => null,
   useAuth: () => ({
     state: mocks.cpAdmin
       ? { status: "authed", user: { id: "cp-1", email: "cp@example.com", email_verified: true, cp_admin: true } }
@@ -134,16 +135,37 @@ describe("control-plane upgrade authority", () => {
       target_version: "v0.1.7",
       target_source_sha: "b".repeat(40),
       rerun_available: true,
+      rerun_reauthentication: { password: true, mfa: false, available: true },
     };
     render(<UpgradeCenter />);
     expect(await screen.findByText("Tunnex v0.1.7 upgrade stopped")).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Upgrade control plane" })).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Run the upgrade again" }));
     expect(screen.getByText(/An older release is never installed/)).toBeTruthy();
+    fireEvent.change(screen.getByLabelText("Current password"), { target: { value: "correct horse" } });
     fireEvent.click(screen.getByRole("button", { name: "Confirm and run again" }));
     await waitFor(() => expect(mocks.post).toHaveBeenCalledTimes(1));
-    expect(mocks.post).toHaveBeenCalledWith("/api/v1/admin/upgrade/rerun");
+    expect(mocks.post).toHaveBeenCalledWith("/api/v1/admin/upgrade/rerun", { body: { current_password: "correct horse" } });
     expect(await screen.findByText("Request accepted")).toBeTruthy();
+  });
+
+  it("asks for MFA when the server requires a fresh verification for the re-run", async () => {
+    meta.upgrade.available = false;
+    mocks.hostState = { available: true, state: "failed", target_version: "v0.1.7", target_source_sha: "b".repeat(40), rerun_available: true, rerun_reauthentication: { password: false, mfa: true, available: true } };
+    mocks.post.mockImplementationOnce(async () => ({ error: { error: { code: "mfa_step_up_required", message: "Verify MFA" } } }));
+    render(<UpgradeCenter />);
+    fireEvent.click(await screen.findByRole("button", { name: "Run the upgrade again" }));
+    fireEvent.click(screen.getByRole("button", { name: "Confirm and run again" }));
+    expect(await screen.findByRole("region", { name: "MFA for Run the upgrade again" })).toBeTruthy();
+    expect(mocks.post).toHaveBeenCalledWith("/api/v1/admin/upgrade/rerun", { body: {} });
+  });
+
+  it("explains when the account cannot re-authenticate for a re-run", async () => {
+    meta.upgrade.available = false;
+    mocks.hostState = { available: true, state: "failed", target_version: "v0.1.7", target_source_sha: "b".repeat(40), rerun_available: true, rerun_reauthentication: { password: false, mfa: false, available: false } };
+    render(<UpgradeCenter />);
+    expect(await screen.findByText(/no password or authenticator on this server/)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Run the upgrade again" })).toBeNull();
   });
 
   it("does not offer a re-run the server did not offer", async () => {

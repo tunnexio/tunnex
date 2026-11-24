@@ -4,14 +4,12 @@ import (
 	"context"
 	"errors"
 	"net/http"
-	"time"
 
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/google/uuid"
 	"github.com/tunnexio/tunnex/apps/api/internal/api"
 	"github.com/tunnexio/tunnex/apps/api/internal/apierr"
 	"github.com/tunnexio/tunnex/apps/api/internal/authctx"
-	"github.com/tunnexio/tunnex/apps/api/internal/password"
 	"github.com/tunnexio/tunnex/apps/api/internal/serveraccess"
 	"github.com/tunnexio/tunnex/apps/api/internal/session"
 )
@@ -19,9 +17,6 @@ import (
 // SA-UI-1: the installation-wide Server Access capability. Server administrators only (the same
 // deployment authority as Application domains), from a human browser session, with recent
 // re-authentication. See docs/SA-UI-1-installation-toggle.md.
-
-// serverAccessInstallationMFAWindow is the Local Sharing step-up window, reused.
-const serverAccessInstallationMFAWindow = 5 * time.Minute
 
 // serverAccessInstallationReauthScope names this endpoint's password-failure budget.
 const serverAccessInstallationReauthScope = "server_access_installation"
@@ -70,45 +65,10 @@ func (s apiServer) installationReauthFor(ctx context.Context, user uuid.UUID, pa
 	return out, nil
 }
 
-// requireServerAccessInstallationStepUp is the ONE place decision 2's re-authentication is enforced.
+// requireServerAccessInstallationStepUp is the ONE place decision 2's re-authentication is enforced for
+// this setting; the rules live in requireRecentReauthentication.
 func (s apiServer) requireServerAccessInstallationStepUp(ctx context.Context, p *authctx.Principal, currentPassword *string) error {
-	parent, err := s.mfaParent(ctx)
-	if err != nil {
-		return err
-	}
-	r, err := s.installationReauthFor(ctx, p.UserID, &parent)
-	if err != nil {
-		return apierr.New(http.StatusServiceUnavailable, "reauthentication_unavailable", "Re-authentication could not be checked. Try again.")
-	}
-	if !r.available() {
-		return apierr.Forbidden("reauthentication_unavailable", "Your account has no password or authenticator on this server to confirm it is you. Set up an authenticator app (two-factor authentication) in your account settings, then change Server Access for this installation.")
-	}
-	if r.mfa || r.ssoMFA {
-		now := time.Now()
-		if !session.ValidMFAAssurance(parent.MFAVerifiedAt, parent.MFAAssuranceSource, now) || parent.MFAVerifiedAt.Before(now.Add(-serverAccessInstallationMFAWindow)) {
-			return apierr.Forbidden("mfa_step_up_required", "Verify MFA to change Server Access for this installation.")
-		}
-	}
-	if r.password {
-		if currentPassword == nil || *currentPassword == "" {
-			return apierr.BadRequest("current_password_required", "Enter your current password to change Server Access for this installation.")
-		}
-		// Own budget, charged only by failures: correct re-entries never lock an administrator out.
-		allowed, err := s.sessions.ReauthPasswordAllowed(ctx, serverAccessInstallationReauthScope, p.UserID)
-		if err != nil {
-			return apierr.New(http.StatusServiceUnavailable, "reauthentication_unavailable", "Re-authentication could not be checked. Try again.")
-		}
-		if !allowed {
-			return apierr.New(http.StatusTooManyRequests, "reauthentication_rate_limited", "Too many incorrect passwords. Try again in five minutes.")
-		}
-		if _, err := password.Verify(*currentPassword, r.passwordHash); err != nil {
-			if err := s.sessions.RecordReauthPasswordFailure(ctx, serverAccessInstallationReauthScope, p.UserID); err != nil {
-				return apierr.New(http.StatusServiceUnavailable, "reauthentication_unavailable", "Re-authentication could not be checked. Try again.")
-			}
-			return apierr.Forbidden("invalid_credentials", "The current password is incorrect.")
-		}
-	}
-	return s.validateMFAParent(ctx, parent)
+	return s.requireRecentReauthentication(ctx, p, currentPassword, serverAccessInstallationReauthScope, "change Server Access for this installation")
 }
 
 func serverAccessInstallationView(v serveraccess.InstallationView, r installationReauth) api.ServerAccessInstallation {

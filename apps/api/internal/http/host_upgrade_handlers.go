@@ -24,12 +24,25 @@ func (s apiServer) GetHostUpgrade(ctx context.Context, _ api.GetHostUpgradeReque
 			body = hostUpgradeBody(status)
 			rerun := hostUpgradeRerunAvailable(s.currentReleaseStatus(), status)
 			body.RerunAvailable = &rerun
+			if p, _ := authctx.PrincipalFrom(ctx); rerun && p != nil && s.system != nil {
+				// What this administrator must prove to re-run (display only; enforced on POST).
+				if r, err := s.installationReauthFor(ctx, p.UserID, s.currentParent(ctx, p)); err == nil {
+					body.RerunReauthentication = &struct {
+						Available bool `json:"available"`
+						Mfa       bool `json:"mfa"`
+						Password  bool `json:"password"`
+					}{Available: r.available(), Mfa: r.mfa || r.ssoMFA, Password: r.password}
+				}
+			}
 		} else if !errors.Is(err, hostupgrade.ErrUnavailable) {
 			return nil, apierr.New(http.StatusServiceUnavailable, "host_upgrade_state_invalid", "The local upgrade runner state is unavailable or invalid.")
 		}
 	}
 	return api.GetHostUpgrade200JSONResponse{Body: body, Headers: api.GetHostUpgrade200ResponseHeaders{XRequestId: middleware.GetReqID(ctx)}}, nil
 }
+
+// hostUpgradeRerunReauthScope names the re-run's password-failure budget.
+const hostUpgradeRerunReauthScope = "control_plane_upgrade_rerun"
 
 func (s apiServer) currentReleaseStatus() *release.Status {
 	if s.releaseStatusProvider != nil {
@@ -70,15 +83,30 @@ func (s apiServer) RequestHostUpgrade(ctx context.Context, _ api.RequestHostUpgr
 // RerunHostUpgrade is the dashboard forward fix (UPG-1 D2, AA-EN-1): the same
 // authorization, request file and audit action as an upgrade, for the installed
 // release only, and only after the upgrade to it failed.
-func (s apiServer) RerunHostUpgrade(ctx context.Context, _ api.RerunHostUpgradeRequestObject) (api.RerunHostUpgradeResponseObject, error) {
-	p, err := s.requireHostUpgrade(ctx)
+func (s apiServer) RerunHostUpgrade(ctx context.Context, request api.RerunHostUpgradeRequestObject) (api.RerunHostUpgradeResponseObject, error) {
+	p, err := requireCPAdmin(ctx)
 	if err != nil {
+		return nil, err
+	}
+	if err := requireHumanSession(p, "Running an upgrade again from the dashboard"); err != nil {
+		return nil, err
+	}
+	if _, err := s.requireHostUpgrade(ctx); err != nil {
 		return nil, err
 	}
 	status := s.currentReleaseStatus()
 	host, hostErr := s.hostUpgrade.Status()
 	if hostErr != nil || !hostUpgradeRerunAvailable(status, host) {
 		return nil, apierr.New(http.StatusConflict, "rerun_not_available", "Only the installed release can be run again, and only after an upgrade to it failed.")
+	}
+	var currentPassword *string
+	if request.Body != nil {
+		currentPassword = request.Body.CurrentPassword
+	}
+	// E7 / founder ruling: the same SA-UI-1 re-authentication as the Server
+	// Access installation setting, with this action's own password budget.
+	if err := s.requireRecentReauthentication(ctx, p, currentPassword, hostUpgradeRerunReauthScope, "run the upgrade again"); err != nil {
+		return nil, err
 	}
 	result, err := s.requestHostUpgrade(ctx, p, hostupgrade.Target{SourceSHA: status.SourceSHA, Version: status.Version, Sequence: status.Sequence, Rerun: true})
 	if err != nil {
