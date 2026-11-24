@@ -38,6 +38,7 @@ var walkBodies = map[string]string{
 	"updateappaccessdomains":              `{"portal_url":"https://internal.tunnex.app","app_base_domain":"internal.tunnex.app","expected_version":0}`,
 	"updateserveraccessinstallation":      `{"enabled":true,"expected_version":0}`,
 	"rerunhostupgrade":                    `{}`,
+	"requesthostupgrade":                  `{}`,
 	"createappaccesspublicationoperation": `{"expected_version":1,"revision":1,"digest":"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa","check_id":"00000000-0000-4000-8000-000000000001","idempotency_key":"00000000-0000-4000-8000-000000000002"}`,
 	"cancelappaccesspublicationoperation": `{"expected_operation_version":1}`,
 	"disableappaccesspublication":         `{"expected_application_version":1,"expected_authority_version":0}`,

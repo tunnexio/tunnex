@@ -6051,8 +6051,16 @@ paths:
       description: >-
         Requires `users.cp_admin`. The server pins its current verified catalog
         source SHA and sequence; the client cannot supply a different target.
-        Duplicate requests for that same active target are idempotent.
+        Duplicate requests for that same active target are idempotent. Requires a
+        human browser session and recent re-authentication with the SA-UI-1 rules
+        (current password and/or MFA verified within five minutes), the same as the
+        re-run (AA-EN-1 founder ruling).
       tags: [admin]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/HostUpgradeReauthInput" }
       responses:
         "202":
           description: Upgrade request accepted or already active for this exact target.
@@ -6078,7 +6086,7 @@ paths:
         required: true
         content:
           application/json:
-            schema: { $ref: "#/components/schemas/HostUpgradeRerunInput" }
+            schema: { $ref: "#/components/schemas/HostUpgradeReauthInput" }
       responses:
         "202":
           description: Re-run request accepted for the installed release.
@@ -15869,7 +15877,7 @@ components:
         revision: { type: integer, format: int64, minimum: 0 }
         password_action: { type: string, enum: [keep, replace, clear] }
         password: { type: string, writeOnly: true, maxLength: 4096 }
-    HostUpgradeRerunInput:
+    HostUpgradeReauthInput:
       type: object
       additionalProperties: false
       properties:
@@ -15886,15 +15894,17 @@ components:
           description: >-
             True when the last upgrade failed and the verified catalog still names exactly the
             installed release (same sequence and source SHA), so it can be re-run as a forward fix.
-        rerun_reauthentication:
+        reauthentication:
           type: object
-          description: Present with rerun_available. What the caller must prove to re-run.
+          description: >-
+            Present when an upgrade or a re-run can be requested. What the caller must prove
+            (the same rules for both actions).
           additionalProperties: false
           required: [password, mfa, available]
           properties:
             password: { type: boolean, description: "The caller has a local password and must send current_password." }
             mfa: { type: boolean, description: "The caller has confirmed MFA and must have verified it in this session within five minutes." }
-            available: { type: boolean, description: "False when the caller has neither a local password nor MFA and therefore cannot re-run from the dashboard." }
+            available: { type: boolean, description: "False when the caller has neither a local password nor MFA and therefore cannot upgrade or re-run from the dashboard." }
         request_id: { type: string, format: uuid }
         state:
           type: string

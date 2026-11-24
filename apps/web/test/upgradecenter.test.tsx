@@ -87,7 +87,7 @@ describe("control-plane upgrade authority", () => {
     fireEvent.click(screen.getByRole("button", { name: "Confirm upgrade" }));
 
     await waitFor(() => expect(mocks.post).toHaveBeenCalledTimes(1));
-    expect(mocks.post).toHaveBeenCalledWith("/api/v1/admin/upgrade");
+    expect(mocks.post).toHaveBeenCalledWith("/api/v1/admin/upgrade", { body: {} });
     expect(await screen.findByText("Request accepted")).toBeTruthy();
   });
 
@@ -126,6 +126,24 @@ describe("control-plane upgrade authority", () => {
     expect(await screen.findByRole("button", { name: "Upgrade control plane" })).toBeTruthy();
   });
 
+  it("asks for the current password and MFA before an ordinary upgrade too", async () => {
+    mocks.hostState = { available: true, state: "idle", reauthentication: { password: true, mfa: true, available: true } };
+    mocks.post.mockImplementationOnce(async () => ({ error: { error: { code: "mfa_step_up_required", message: "Verify MFA" } } }));
+    render(<UpgradeCenter />);
+    fireEvent.click(await screen.findByRole("button", { name: "Upgrade control plane" }));
+    fireEvent.change(screen.getByLabelText("Current password"), { target: { value: "correct horse" } });
+    fireEvent.click(screen.getByRole("button", { name: "Confirm upgrade" }));
+    expect(await screen.findByRole("region", { name: "MFA for Upgrade the control plane" })).toBeTruthy();
+    expect(mocks.post).toHaveBeenCalledWith("/api/v1/admin/upgrade", { body: { current_password: "correct horse" } });
+  });
+
+  it("explains when the account cannot re-authenticate for an upgrade", async () => {
+    mocks.hostState = { available: true, state: "idle", reauthentication: { password: false, mfa: false, available: false } };
+    render(<UpgradeCenter />);
+    expect(await screen.findByText(/Upgrading from the dashboard needs re-authentication/)).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Upgrade control plane" })).toBeNull();
+  });
+
   it("offers a confirmed re-run of the same release after a failed upgrade (forward fix)", async () => {
     meta.upgrade.available = false;
     mocks.hostState = {
@@ -135,7 +153,7 @@ describe("control-plane upgrade authority", () => {
       target_version: "v0.1.7",
       target_source_sha: "b".repeat(40),
       rerun_available: true,
-      rerun_reauthentication: { password: true, mfa: false, available: true },
+      reauthentication: { password: true, mfa: false, available: true },
     };
     render(<UpgradeCenter />);
     expect(await screen.findByText("Tunnex v0.1.7 upgrade stopped")).toBeTruthy();
@@ -151,7 +169,7 @@ describe("control-plane upgrade authority", () => {
 
   it("asks for MFA when the server requires a fresh verification for the re-run", async () => {
     meta.upgrade.available = false;
-    mocks.hostState = { available: true, state: "failed", target_version: "v0.1.7", target_source_sha: "b".repeat(40), rerun_available: true, rerun_reauthentication: { password: false, mfa: true, available: true } };
+    mocks.hostState = { available: true, state: "failed", target_version: "v0.1.7", target_source_sha: "b".repeat(40), rerun_available: true, reauthentication: { password: false, mfa: true, available: true } };
     mocks.post.mockImplementationOnce(async () => ({ error: { error: { code: "mfa_step_up_required", message: "Verify MFA" } } }));
     render(<UpgradeCenter />);
     fireEvent.click(await screen.findByRole("button", { name: "Run the upgrade again" }));
@@ -162,7 +180,7 @@ describe("control-plane upgrade authority", () => {
 
   it("explains when the account cannot re-authenticate for a re-run", async () => {
     meta.upgrade.available = false;
-    mocks.hostState = { available: true, state: "failed", target_version: "v0.1.7", target_source_sha: "b".repeat(40), rerun_available: true, rerun_reauthentication: { password: false, mfa: false, available: false } };
+    mocks.hostState = { available: true, state: "failed", target_version: "v0.1.7", target_source_sha: "b".repeat(40), rerun_available: true, reauthentication: { password: false, mfa: false, available: false } };
     render(<UpgradeCenter />);
     expect(await screen.findByText(/no password or authenticator on this server/)).toBeTruthy();
     expect(screen.queryByRole("button", { name: "Run the upgrade again" })).toBeNull();

@@ -28,35 +28,33 @@ func TestHostUpgradeRequiresDeploymentAdminNotOrgOwner(t *testing.T) {
 	orgOwner := &authctx.Principal{UserID: uuid.New(), EmailVerified: true, Roles: map[uuid.UUID]string{uuid.New(): "owner"}}
 	ctx := authctx.WithPrincipal(context.Background(), orgOwner)
 	server := apiServer{}
-	if _, err := server.RequestHostUpgrade(ctx, api.RequestHostUpgradeRequestObject{}); err == nil {
+	if _, err := server.RequestHostUpgrade(ctx, api.RequestHostUpgradeRequestObject{Body: &api.HostUpgradeReauthInput{}}); err == nil {
 		t.Fatal("organization owner requested a deployment-wide host upgrade")
 	}
 }
 
-func TestHostUpgradePinsServerVerifiedTarget(t *testing.T) {
+// Founder ruling: the ordinary upgrade needs the same re-authentication as the
+// re-run. Without a provable session nothing is written and nothing is audited;
+// bearer and sessionless principals are refused outright.
+func TestHostUpgradeNeedsReauthenticationBeforeAnyRequest(t *testing.T) {
 	dir := t.TempDir()
 	requestPath := filepath.Join(dir, "request")
-	svc := hostupgrade.New(requestPath, filepath.Join(dir, "status"), func(context.Context, uuid.UUID, uuid.UUID, hostupgrade.Target) error { return nil })
+	var audited int
+	svc := hostupgrade.New(requestPath, filepath.Join(dir, "status"), func(context.Context, uuid.UUID, uuid.UUID, hostupgrade.Target) error { audited++; return nil })
 	server := apiServer{hostUpgrade: svc, releaseStatus: &release.Status{
 		Available: true, Verified: true, SourceSHA: strings.Repeat("a", 40), Version: "v9.9.9", Sequence: 99,
 	}}
-	admin := &authctx.Principal{UserID: uuid.New(), EmailVerified: true, CPAdmin: true}
-	response, err := server.RequestHostUpgrade(authctx.WithPrincipal(context.Background(), admin), api.RequestHostUpgradeRequestObject{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	accepted, ok := response.(api.RequestHostUpgrade202JSONResponse)
-	if !ok || accepted.Body.State != api.HostUpgradeStatusStateRequested || accepted.Body.TargetVersion == nil || *accepted.Body.TargetVersion != "v9.9.9" {
-		t.Fatalf("unexpected response: %#v", response)
-	}
-	body, err := os.ReadFile(requestPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, want := range []string{"source_sha=" + strings.Repeat("a", 40), "sequence=99", "requested_by=" + admin.UserID.String()} {
-		if !strings.Contains(string(body), want) {
-			t.Fatalf("server request omitted %q: %s", want, body)
+	for _, p := range []*authctx.Principal{
+		{UserID: uuid.New(), SessionID: "s", EmailVerified: true, CPAdmin: true},
+		{UserID: uuid.New(), EmailVerified: true, CPAdmin: true},
+		{UserID: uuid.New(), SessionID: "s", EmailVerified: true, CPAdmin: true, AuthMethod: authctx.AuthBearer},
+	} {
+		if _, err := server.RequestHostUpgrade(authctx.WithPrincipal(context.Background(), p), api.RequestHostUpgradeRequestObject{Body: &api.HostUpgradeReauthInput{}}); err == nil {
+			t.Fatalf("upgrade accepted without re-authentication for %+v", p)
 		}
+	}
+	if _, err := os.Stat(requestPath); !os.IsNotExist(err) || audited != 0 {
+		t.Fatal("an unauthenticated upgrade wrote or audited a request")
 	}
 }
 
@@ -65,7 +63,7 @@ func TestHostUpgradeRefusesUnverifiedCatalog(t *testing.T) {
 	svc := hostupgrade.New(filepath.Join(dir, "request"), filepath.Join(dir, "status"), func(context.Context, uuid.UUID, uuid.UUID, hostupgrade.Target) error { return nil })
 	server := apiServer{hostUpgrade: svc, releaseStatus: &release.Status{Available: true, Verified: false, SourceSHA: strings.Repeat("a", 40), Version: "v9.9.9", Sequence: 99}}
 	admin := &authctx.Principal{UserID: uuid.New(), EmailVerified: true, CPAdmin: true}
-	if _, err := server.RequestHostUpgrade(authctx.WithPrincipal(context.Background(), admin), api.RequestHostUpgradeRequestObject{}); err == nil {
+	if _, err := server.RequestHostUpgrade(authctx.WithPrincipal(context.Background(), admin), api.RequestHostUpgradeRequestObject{Body: &api.HostUpgradeReauthInput{}}); err == nil {
 		t.Fatal("unverified release reached the host runner")
 	}
 	if _, err := os.Stat(filepath.Join(dir, "request")); !os.IsNotExist(err) {
@@ -112,7 +110,7 @@ func TestHostUpgradeRerunsOnlyTheSameFailedRelease(t *testing.T) {
 			t.Fatalf("GET did not offer the re-run: %#v %v", got, err)
 		}
 		// No session store is wired here: re-authentication cannot be proved.
-		if _, err := server.RerunHostUpgrade(ctx, api.RerunHostUpgradeRequestObject{Body: &api.HostUpgradeRerunInput{}}); err == nil {
+		if _, err := server.RerunHostUpgrade(ctx, api.RerunHostUpgradeRequestObject{Body: &api.HostUpgradeReauthInput{}}); err == nil {
 			t.Fatal("re-run accepted without re-authentication")
 		}
 		if _, err := os.Stat(requestPath); !os.IsNotExist(err) || len(*audited) != 0 {
@@ -125,7 +123,7 @@ func TestHostUpgradeRerunsOnlyTheSameFailedRelease(t *testing.T) {
 			{UserID: uuid.New(), EmailVerified: true, CPAdmin: true},
 			{UserID: uuid.New(), SessionID: "s", EmailVerified: true, CPAdmin: true, AuthMethod: authctx.AuthBearer},
 		} {
-			_, err := server.RerunHostUpgrade(authctx.WithPrincipal(context.Background(), p), api.RerunHostUpgradeRequestObject{Body: &api.HostUpgradeRerunInput{}})
+			_, err := server.RerunHostUpgrade(authctx.WithPrincipal(context.Background(), p), api.RerunHostUpgradeRequestObject{Body: &api.HostUpgradeReauthInput{}})
 			if mfaHandlerErrorCode(err) != "human_session_required" {
 				t.Fatalf("%+v = %v", p, err)
 			}
@@ -160,9 +158,9 @@ func TestHostUpgradeRerunsOnlyTheSameFailedRelease(t *testing.T) {
 			c := authctx.WithPrincipal(context.Background(), who)
 			var err error
 			if tc.plain {
-				_, err = server.RequestHostUpgrade(c, api.RequestHostUpgradeRequestObject{})
+				_, err = server.RequestHostUpgrade(c, api.RequestHostUpgradeRequestObject{Body: &api.HostUpgradeReauthInput{}})
 			} else {
-				_, err = server.RerunHostUpgrade(c, api.RerunHostUpgradeRequestObject{Body: &api.HostUpgradeRerunInput{}})
+				_, err = server.RerunHostUpgrade(c, api.RerunHostUpgradeRequestObject{Body: &api.HostUpgradeReauthInput{}})
 			}
 			want := "rerun_not_available"
 			if tc.plain {
@@ -193,11 +191,12 @@ func TestHostUpgradeRerunsOnlyTheSameFailedRelease(t *testing.T) {
 
 	t.Run("a newer release is still requested normally, never as a re-run", func(t *testing.T) {
 		server, _, _ := setup(t, failed(sha, "health_check_failed"), &release.Status{Available: true, Verified: true, SourceSHA: strings.Repeat("d", 40), Version: "v10.0.0", Sequence: 100})
-		if _, err := server.RerunHostUpgrade(ctx, api.RerunHostUpgradeRequestObject{Body: &api.HostUpgradeRerunInput{}}); mfaHandlerErrorCode(err) != "rerun_not_available" {
+		if _, err := server.RerunHostUpgrade(ctx, api.RerunHostUpgradeRequestObject{Body: &api.HostUpgradeReauthInput{}}); mfaHandlerErrorCode(err) != "rerun_not_available" {
 			t.Fatal("re-run accepted while a newer release is available")
 		}
-		if _, err := server.RequestHostUpgrade(ctx, api.RequestHostUpgradeRequestObject{}); err != nil {
-			t.Fatalf("newer release refused: %v", err)
+		// The ordinary path admits the newer release; it then needs re-authentication.
+		if _, err := server.RequestHostUpgrade(ctx, api.RequestHostUpgradeRequestObject{Body: &api.HostUpgradeReauthInput{}}); err == nil || mfaHandlerErrorCode(err) == "upgrade_not_available" {
+			t.Fatalf("newer release = %v", err)
 		}
 	})
 }
@@ -251,7 +250,7 @@ func TestHostUpgradeRerunReauthentication(t *testing.T) {
 		return c
 	}
 	rerun := func(c context.Context, pw *string) error {
-		_, err := server.RerunHostUpgrade(c, api.RerunHostUpgradeRequestObject{Body: &api.HostUpgradeRerunInput{CurrentPassword: pw}})
+		_, err := server.RerunHostUpgrade(c, api.RerunHostUpgradeRequestObject{Body: &api.HostUpgradeReauthInput{CurrentPassword: pw}})
 		return err
 	}
 	str := func(v string) *string { return &v }
@@ -260,7 +259,7 @@ func TestHostUpgradeRerunReauthentication(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if r := got.(api.GetHostUpgrade200JSONResponse).Body.RerunReauthentication; r == nil || !r.Password || r.Mfa || !r.Available {
+	if r := got.(api.GetHostUpgrade200JSONResponse).Body.Reauthentication; r == nil || !r.Password || r.Mfa || !r.Available {
 		t.Fatalf("GET re-authentication requirements = %+v", r)
 	}
 	if err = rerun(admin(parent), nil); mfaHandlerErrorCode(err) != "current_password_required" {
@@ -292,6 +291,94 @@ func TestHostUpgradeRerunReauthentication(t *testing.T) {
 		t.Fatalf("request = %s", body)
 	}
 	if len(audited) != 1 || !audited[0].Rerun || audited[0].Sequence != 99 {
+		t.Fatalf("audit = %+v", audited)
+	}
+}
+
+// The ordinary upgrade follows the same rules and budget family as the re-run:
+// password, then fresh MFA when enrolled, and only then the pinned request.
+func TestHostUpgradeReauthentication(t *testing.T) {
+	ctx, pool := testpostgres.New(t)
+	q := sqlc.New(pool)
+	user, err := q.CreateUser(ctx, sqlc.CreateUserParams{Email: "upgrade-admin@app.test", Name: "Server admin"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	hash, err := password.Hash("correct horse battery staple")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err = pool.Exec(ctx, "UPDATE users SET email_verified_at=now(), password_hash=$2 WHERE id=$1", user.ID, hash); err != nil {
+		t.Fatal(err)
+	}
+	rdb := redis.NewClient(&redis.Options{Addr: miniredis.RunT(t).Addr(), MaxRetries: -1})
+	t.Cleanup(func() { _ = rdb.Close() })
+	store := session.NewWithClient(rdb, time.Hour, 24*time.Hour)
+	parent, err := store.CreateWithAuthority(ctx, user.ID, authctx.AuthLocalPassword, user.AppAuthEpoch)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sealer, err := crypto.NewSealer(make([]byte, 32))
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	var audited []hostupgrade.Target
+	svc := hostupgrade.New(filepath.Join(dir, "request"), filepath.Join(dir, "status"), func(_ context.Context, _ uuid.UUID, _ uuid.UUID, target hostupgrade.Target) error {
+		audited = append(audited, target)
+		return nil
+	})
+	sha := strings.Repeat("a", 40)
+	server := apiServer{system: q, sessions: store, mfa: mfa.NewService(pool, sealer, nil, nil), hostUpgrade: svc,
+		releaseStatus: &release.Status{Available: true, Verified: true, SourceSHA: sha, Version: "v9.9.9", Sequence: 99}}
+	admin := func(p session.Session) context.Context {
+		c := mfaHandlerContext(ctx, p)
+		principal, _ := authctx.PrincipalFrom(c)
+		principal.CPAdmin = true
+		return c
+	}
+	upgrade := func(c context.Context, pw *string) error {
+		_, err := server.RequestHostUpgrade(c, api.RequestHostUpgradeRequestObject{Body: &api.HostUpgradeReauthInput{CurrentPassword: pw}})
+		return err
+	}
+	str := func(v string) *string { return &v }
+	got, err := server.GetHostUpgrade(admin(parent), api.GetHostUpgradeRequestObject{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if r := got.(api.GetHostUpgrade200JSONResponse).Body.Reauthentication; r == nil || !r.Password || r.Mfa || !r.Available {
+		t.Fatalf("GET re-authentication requirements = %+v", r)
+	}
+	if err = upgrade(admin(parent), nil); mfaHandlerErrorCode(err) != "current_password_required" {
+		t.Fatalf("missing password = %v", err)
+	}
+	if err = upgrade(admin(parent), str("wrong")); mfaHandlerErrorCode(err) != "invalid_credentials" {
+		t.Fatalf("wrong password = %v", err)
+	}
+	if allowed, err := store.ReauthPasswordAllowed(ctx, serverAccessInstallationReauthScope, user.ID); err != nil || !allowed {
+		t.Fatal("Server Access budget was charged by an upgrade failure")
+	}
+	mfaHandlerEnroll(t, ctx, server, parent)
+	if err = upgrade(admin(parent), str("correct horse battery staple")); mfaHandlerErrorCode(err) != "mfa_step_up_required" {
+		t.Fatalf("stale MFA = %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "request")); !os.IsNotExist(err) || len(audited) != 0 {
+		t.Fatal("a refused upgrade wrote or audited a request")
+	}
+	verified, err := store.CreateWithMFAAuthority(ctx, user.ID, authctx.AuthLocalPassword, parent.AppAuthEpoch, time.Now(), session.MFAAssuranceLocalTOTP)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = upgrade(admin(verified), str("correct horse battery staple")); err != nil {
+		t.Fatalf("re-authenticated upgrade = %v", err)
+	}
+	body, _ := os.ReadFile(filepath.Join(dir, "request"))
+	for _, want := range []string{"source_sha=" + sha, "sequence=99", "requested_by=" + user.ID.String()} {
+		if !strings.Contains(string(body), want) {
+			t.Fatalf("server request omitted %q: %s", want, body)
+		}
+	}
+	if len(audited) != 1 || audited[0].Rerun || audited[0].Sequence != 99 {
 		t.Fatalf("audit = %+v", audited)
 	}
 }
