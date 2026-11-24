@@ -109,7 +109,7 @@ gateways.
 - **Helm gateways:** a gateway with `appAccess.enabled: false` no longer sets
   `TUNNEX_APP_PROXY_URL`, so it now follows the control plane. It still runs the
   browser connector only when App Access is set up on the control plane and turned
-  on for its organization.
+  on for its organization. Set `appAccess.locked: true` to keep it off.
 - **Hand-written App Access layouts** (more than one overlay file) must be adopted
   once with `tunnex-app-access adopt` before they can be upgraded. See the App
   Access README.
@@ -117,6 +117,13 @@ gateways.
   certificate and installs it with a controlled proxy restart.
 - **Failed upgrades:** server administrators can run the same release again from
   the dashboard after a failed upgrade. Older releases are never installed.
+- **Dashboard upgrades ask you to confirm it is you:** upgrading or re-running from
+  the dashboard needs your current password, and an MFA verification when your
+  account has MFA. Accounts with neither can still upgrade on the server.
+- **Helm gateways:** `appAccess.locked: true` keeps App Access off on that gateway.
+- **Adopted App Access hosts** (proxy on public 443 forwarding the console): the
+  console is unreachable while an upgrade runs and after a failed one; re-run the
+  upgrade on the server (see the App Access README).
 - Installations without App Access are unchanged.
 
 ## Verification (local, this branch)
@@ -160,27 +167,24 @@ gateways.
 
 - **Step-up for the ordinary dashboard upgrade.** Resolved by ruling 2: the ordinary
   upgrade requires the same re-authentication as the re-run.
-- **Console reachability during an upgrade on adopted (S2) hosts.** With
-  terminate-and-forward the console goes through the proxy, which the upgrade stops
-  while the API migrates and leaves stopped after a failure (UPG-1 invariant 5). On
-  the demo, a failed upgrade therefore makes the console unreachable on public 443
-  and the dashboard re-run unusable there; the operator re-runs from the command line.
-  Recommendation: accept for adopted installs (documented); S1 passthrough in Phase 2
-  removes it for new installs.
-- **Gateway listener exposure is not uniform.** An existing managed install starts
-  publishing `0.0.0.0:8444` on its next upgrade (E6 default), while `adopt` keeps an
-  unpublished listener on loopback to preserve today's exposure; in that loopback case
-  the API still tells following gateways `enabled:true` for a listener they cannot
-  reach. Recommendation: accept E6 for managed installs (release-noted), and have the
-  API deliver `enabled:false` when the published bind address is loopback (small
-  follow-up), or let adopt follow E6 too.
-- **Helm gateways** with `appAccess.enabled: false` now follow the control plane. The
-  gateway-local lock is available today as `appAccess.enabled: true` with
-  `appAccess.proxyURL: off`. Recommendation: add an explicit Helm value for the lock.
-- **Gateway listener renewal** (365-day leaf) is not part of this `renew`; the demo
+- **Console reachability during an upgrade on adopted (S2) hosts.** Accepted by
+  ruling 1. The console goes through the proxy, which the upgrade stops while the API
+  migrates and leaves stopped after a failure (UPG-1 invariant 5), so the console is
+  unreachable on public 443 then and the dashboard cannot re-run. Recovery is the
+  command-line re-run in the App Access README ("Console reachability during an
+  upgrade"): read the status file, stop and follow the restore runbook if the
+  authority changed, otherwise `upgrade.sh` then `upgrade.sh --apply` for the same
+  release. SNI passthrough in Phase 2 removes this for new installs.
+- **Gateway listener exposure.** Resolved by ruling 3: a listener bound only to
+  loopback is not delivered unless `TUNNEX_APP_PROXY_GATEWAY_HOST` is set. Existing
+  managed installs publish `0.0.0.0:8444` on their next upgrade (E6, release-noted).
+- **Helm gateways.** Resolved by ruling 4: `appAccess.locked: true` renders
+  `TUNNEX_APP_PROXY_URL=off`. (The earlier suggestion `proxyURL: off` was wrong: the
+  chart schema only accepts an `https://` URL there.)
+- **Gateway listener renewal** (stays Phase 1b, ruling 5; 365-day leaf) is not part of this `renew`; the demo
   leaf expires around 2027-11. Recommendation: add `renew --gateway` through the
   one-off `backupctl app-proxy-certificate` helper in Phase 1b.
-- **Reachability report** (`proxy_reachable | tls_failed | unreachable`) is not
+- **Reachability report** (stays Phase 1b, ruling 5; `proxy_reachable | tls_failed | unreachable`) is not
   built; the supervisor logs start, stop and refusals only. Recommendation: ship it
   with the Phase 1b readiness panel, which is its only consumer.
 
