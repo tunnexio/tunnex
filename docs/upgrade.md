@@ -106,6 +106,11 @@ trampoline. It:
 4. runs the target release's `upgrade.sh`, which performs every check, the backup
    and the apply under its own rules.
 
+After a failed upgrade whose release is already installed, server administrators can
+also re-run it from the dashboard (Upgrade Center, "Run the upgrade again"). The API
+offers this only for the same sequence and source SHA, never an older release, and
+not after an App Access authority change (AA-EN-1).
+
 Nothing is downloaded from a mutable URL, and no host file is fetched from GitHub.
 The installed copies (`<install>/upgrade.sh` always, and
 `/usr/local/lib/tunnex/upgrade.sh` and `upgrade-runner.sh` for the dashboard runner)

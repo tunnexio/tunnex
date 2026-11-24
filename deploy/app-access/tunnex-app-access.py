@@ -493,8 +493,11 @@ def renew(args):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(prog="tunnex-app-access", description=__doc__.split("\n\n")[0])
-    parser.add_argument("--directory", default=os.environ.get("TUNNEX_DIR", str(pathlib.Path.cwd())),
-                        help="installation directory with tunnex.yml and .env (default: current directory)")
+    # Installed next to upgrade.sh, the command finds its installation by itself.
+    default_dir = os.environ.get("TUNNEX_DIR") or (str(HERE) if (HERE / ".env").is_file() else str(pathlib.Path.cwd()))
+    parser.add_argument("--directory", default=default_dir,
+                        help="installation directory with tunnex.yml and .env (default: this command's directory "
+                             "when installed there, else the current directory)")
     sub = parser.add_subparsers(dest="command", required=True)
     a = sub.add_parser("adopt", help="convert a hand-written App Access composition into the managed one")
     a.add_argument("--apply", action="store_true")
