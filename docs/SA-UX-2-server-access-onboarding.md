@@ -478,6 +478,12 @@ actionable, no dead ends, "Name (email)", no raw codes, one-click paths). Rows a
 | A15 | Domain settings "verify your email / change password" | org admin | No links | Fix: link to Account settings |
 | A16 | "App admin assignment" copy | app admin | Jargon | Fix: plain words |
 
+**Audit outcome.** Every "Fix" row is done in this branch with web tests. Deferred: S4 naming specific people
+(needs a contacts API that does not expose the member list), S8 member-visible grant expiry (needs the member's own
+grants in the workspace response), A14 refusal page link to My Applications (needs the console URL in the proxy
+configuration). The audit was a code walk of every screen and state for the four roles; it was not a click-through
+of a running stack, so a review walk on the demo after the release remains worthwhile.
+
 ## Rollback
 
 No migrations. R2 adds optional read-only session fields that older clients ignore. Item 2 adds optional fields to the agent wire (`bootstrap.Job.HostKeyAttestation`, report fields) that
