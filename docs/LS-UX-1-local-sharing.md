@@ -691,3 +691,89 @@ from the same release.
 **IPv6.** Edge mode publishes 443 on IPv4 only. A host that served the
 console over IPv6 should keep `--layout dedicated`, or add an IPv6 publish
 (documented; not automated).
+
+## G. LS-FIX-1: `tunnex-local-sharing enable --apply` on the demo (v0.1.48)
+
+**What happened.** On the demo (managed `tunnex.yml` + `app-access.yml`,
+`COMPOSE_PROFILES=bundled-db,app-access`), `enable --apply` installed
+`local-sharing.yml` and then failed in the one-off `docker compose run`
+that issues the proxy credential:
+`required variable TUNNEX_BEAM_PROXY_SECRETS_DIR is missing a value`.
+The rollback then ran `docker compose up -d --wait` without naming services.
+That **created and started `node-agent`**, which has no profile and was not
+running on this control plane, because its gateway runs on another VM.
+
+**Root cause 1 (ordering).** The command installs the overlay in step 1, but
+writes the `TUNNEX_BEAM_*` settings to `.env` only in step 4. The credential
+and certificate runs in step 2 already include the overlay. Compose
+interpolates every service in every file, whether or not its profile is on,
+so those runs cannot work on a first enable. The old tests used a fake
+`docker`, which never interpolated anything.
+
+**Decision 1: a staged environment, `.env` untouched until the start.**
+- Before its first compose call, enable writes a complete staged copy of the
+  environment: the current `.env` plus the planned changes.
+  - The copy goes in a private temporary directory (directory 0700, file 0600)
+    and is removed afterwards.
+  - Every compose call that includes the overlay passes it as the only
+    `--env-file`. A complete copy is needed because Compose stops reading
+    `.env` once `--env-file` is given.
+  - `COMPOSE_PROFILES` for those calls comes from the same staged values.
+- The real `.env` is still written only immediately before the start.
+  - So a crash in the middle never leaves `.env` pointing `COMPOSE_PROFILES`
+    at a proxy whose credentials do not exist.
+  - Nothing is printed from the staged file.
+- **Rejected: run the one-off without the overlay.** The issue helper mounts
+  the restore volume `app_restore`. Only `app-access.yml` and
+  `local-sharing.yml` declare that volume, so a Local-Sharing-only host would
+  then fail with an undefined volume.
+
+**Root cause 2 (blast radius).** Enable, the enable rollback and disable all
+ran `up` for the whole composition. `up` starts every service whose profile is
+on, and a service with no profile, like `node-agent`, always counts as on. So
+these commands started services that were deliberately stopped or never
+created.
+
+**Decision 2: only touch what was running, plus Local Sharing.**
+- At the start of `--apply`, before any change, the command records the
+  project's **running** services.
+  - Stopped or exited containers and one-off containers do not count.
+  - This uses Compose labels and container state only, never container
+    environment.
+- Every `up` names its services:
+  - **Enable:** the recorded set plus `beam-proxy`. `beam-restore-init`
+    follows as its dependency.
+  - **Enable rollback:** exactly the recorded set.
+  - **Disable:** the recorded set minus `beam-proxy` and
+    `beam-restore-init`.
+- No command uses `--remove-orphans` or `--scale`.
+- **Rollback.** If the start had already run, rollback first stops and
+  removes `beam-proxy` and `beam-restore-init`, unless `beam-proxy` was
+  running before. It does this while the overlay and staged environment are
+  still in place. Otherwise the proxy would stay bound to 443 as an orphan,
+  and the restored console edge could not take 443 back. Only then are `.env`
+  and the overlay restored and the recorded set started again.
+- **Rollback when no container was touched yet,** as on the demo: only the
+  files are restored, and no `up` runs.
+
+**Audit.**
+- **`upgrade.sh`.** Its Local Sharing paths already name the service:
+  `up --no-deps beam-proxy` on start and on the failure path, and
+  `stop beam-proxy`.
+- **Outside this feature.** `upgrade.sh`'s platform-wide `compose_up` is
+  general upgrade behaviour. It is gated on `TUNNEX_GATEWAY_PLACEMENT` and
+  `TUNNEX_PORTABLE_CONTROL_PLANE` (`--scale node-agent=0`). It is out of scope
+  here and is reported to the owner, not changed.
+- **README.** The manual-setup and adoption steps in `deploy/beam/README.md`
+  used an unnamed `up -d`. They now name the services.
+
+**Tests.**
+- The fake `docker` now runs the real `docker compose config -q` for every
+  compose call the command makes. It uses the same files, `--env-file`,
+  project and profiles, against copies of the real `tunnex.yml`,
+  `app-access.yml` and `local-sharing.yml`.
+- Further tests assert the exact service lists of every `up`/`rm` in enable,
+  rollback and disable. `node-agent` appears only when it was running before.
+- A throwaway Docker run with stub `lsfix1-*` images exercises
+  `enable --apply`, a forced rollback and `disable --apply`. It is described
+  in the commit, and it never touches `tunnex-*` resources.
