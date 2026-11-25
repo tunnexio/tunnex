@@ -495,6 +495,49 @@ Copy claims were checked against the code: Server Access live sessions re-check 
 a few seconds"); App Access re-checks grants on every authorized request and on each 4-second stream lease renewal,
 so A7 says a removed last grant cuts open sessions within a few seconds; App Access archive happens after disable.
 
+## Final round (coordinator request, 2026-11-25)
+
+### Remaining components walked line by line
+
+| # | Component | Who | Problem | Decision |
+|---|---|---|---|---|
+| I1 | InlineTerminalMfa | anyone without a factor | Code entry shown first; the setup path is a closed "Authenticator setup" disclosure | Fix: without a factor, say so first and open the setup |
+| I2 | InlineTerminalMfa | anyone | After setup the sign-in return path is always the Servers page, also when used from Settings | Fix: return to the current page |
+| I3 | InlineTerminalMfa | anyone | "MFA" wording differs from "two-factor" elsewhere | Fix: "two-factor verification" in visible copy |
+| W1 | Features → Server Access | org admin | Does not say turning it off ends open sessions | Fix: say it (sessions re-check organization state every second) |
+| N1 | Settings → Server Access (installation) | server admin | "Set up an authenticator app in your account settings" without a link; "verify MFA" wording | Fix: link to Settings → Authentication; two-factor wording |
+| N2 | Same | server admin with unverified email / initial password | No link | Fix: link to change password |
+| C1 | App Access catalog settings | org admin | The current App admin is not shown when they are not on the picker's first page | Fix: "Current App admin: Name (email)" |
+| C2 | Same | org admin | "Remove App admin assignment" | Fix: "Remove App admin" |
+
+### S8. Members see when their own access ends (was deferred)
+**Decision.** The workspace response gains `my_access`: one row per server account the caller can currently use,
+with `server_id`, `account` and the latest `expires_at` among the caller's own current grants (direct or through a
+group). It is computed only for the authenticated caller (`user_id = caller` or the caller's group memberships), never
+includes who granted it or other people's grants, and is returned to every role. My servers shows "Your access ends
+<time>" per account (and "ends in N h" when under a day). **Security:** the caller already learns that the grant exists
+(the account is listed); the expiry of their own grant is information about themselves. No other subject's data.
+**Tests:** API integration (caller sees own grant expiry, not another user's; group grant counted; expired/disabled not
+listed); web renders the line.
+
+### S4. Name whom to ask (was deferred)
+**Decision.** No new API. Members already hold `member:list` (see `rbac.go`, role member) and can already read the
+full member list with names, emails and roles through `GET /organizations/{orgId}/members`. The dashboard reads that
+same endpoint and shows only owners and admins ("Ask Alice (alice@x) or Bob (bob@x)", at most three). This exposes
+nothing a member cannot already see. When the list cannot be read (a role without `member:list`), the generic text
+stays. **Tests:** web, names shown for members; generic text when the list is unavailable.
+
+### A14. Refusal page links to My Applications (was deferred)
+**Decision.** The app proxy already receives the console URL from its authenticated authority (`DomainConfig.PortalURL`,
+used for launches). It now remembers the last validated console URL and the refusal page adds "Open My Applications"
+linking to `<console>/app-access/my-applications`. No new configuration, no compose/Helm change, so the one-click
+upgrade path and adopted layouts are unaffected. **Security:** the link is the same for every refusal on every host,
+so the page still does not reveal whether the app exists, is unpublished or is not granted. A refusal never triggers
+an authority call (only the cached value is used), so unauthenticated traffic cannot amplify load. The URL passed
+the existing `ConsoleURL` validation (https, host only) and is HTML-escaped. Until a launch has happened since the
+proxy started, the page keeps today's text without a link. **Tests:** proxy unit tests (link present with a cached
+console, absent without, identical for unknown host and denied grant, escaped).
+
 ## Rollback
 
 No migrations. R2 adds optional read-only session fields that older clients ignore. Item 2 adds optional fields to the agent wire (`bootstrap.Job.HostKeyAttestation`, report fields) that
