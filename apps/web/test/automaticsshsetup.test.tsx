@@ -67,8 +67,9 @@ it("states the network requirement with the gateway address and firewall example
  mocks.GET.mockResolvedValue({response:{status:404}});
  render(<AutomaticSSHSetup orgId="org" server={server} gateway={{id:"gateway",name:"gcp-gw",endpoint:"34.1.2.3:51820"} as never} disabled={false} onComplete={()=>{}} onMfa={()=>{}}/>);
  expect(screen.getByText(/must reach 10\.2\.3\.4 on TCP 22 \(management SSH, for setup\) and on TCP 2222/)).toBeTruthy();
- expect(screen.getByText(/aws ec2 authorize-security-group-ingress .*--port 2222 --cidr 34\.1\.2\.3\/32/)).toBeTruthy();
+ expect(screen.getByText(/aws ec2 authorize-security-group-ingress .*--port 2222 --cidr GATEWAY_PRIVATE_IP\/32/)).toBeTruthy();
  expect(screen.getByText(/35\.235\.240\.0\/20/)).toBeTruthy();
+ expect(screen.getAllByText("ip -4 route get 10.2.3.4").length).toBeGreaterThan(0);
 });
 it("shows the two-factor requirement up front and offers setup when none is enrolled (SA-UX-2 item 3)",()=>{
  mocks.GET.mockResolvedValue({response:{status:404}});

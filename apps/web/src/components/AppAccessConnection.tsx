@@ -4,7 +4,7 @@ import { Badge, Button, ErrorText, Loading, RefreshButton } from "./ui";
 import { ResourceSummary } from "./ResourceSummary";
 import { api, apiErrorCode, apiErrorMessage, loadOne } from "../lib/api";
 import { suggestedOriginRange } from "../lib/appaccessorigin";
-import { FirewallHelp, gatewayAddress } from "./FirewallHelp";
+import { FirewallHelp } from "./FirewallHelp";
 
 type Check = components["schemas"]["AppAccessCheck"];
 type Runtime = components["schemas"]["AppAccessGatewayRuntime"];
@@ -96,7 +96,7 @@ export default function AppAccessConnection({ orgId, appId, gatewayId, version, 
       {outdated && <p className="text-sm">This result does not cover your current unsaved changes.</p>}
       <dl className="tnx-resource-facts aa-connection-results" aria-label="Origin check results">{[["DNS", check.dns_status], ["Connection", check.connect_status], ["TLS", check.tls_status]].map(([label, status]) => <div key={label}><dt>{label}</dt><dd><Badge tone={status === "passed" ? "neutral" : status === "failed" ? "danger" : "neutral"}>{status}</Badge></dd></div>)}</dl>
       {check.error_code === "target_refused" ? <TargetRefused originUrl={originUrl} allowedCidrs={allowedCidrs} onAllow={onAllowDestination} /> : failures[check.error_code] && <p>{failures[check.error_code]}</p>}
-      {(check.error_code === "connect_failed" || check.error_code === "deadline_exceeded") && originTarget(originUrl) && <FirewallHelp summary="Can't reach the origin?" gatewayName={gateway?.name ?? "for this application"} gatewayIp={gatewayAddress(gateway?.endpoint)} host={originTarget(originUrl)!.host} port={originTarget(originUrl)!.port} />}
+      {(check.error_code === "connect_failed" || check.error_code === "deadline_exceeded") && originTarget(originUrl) && <FirewallHelp summary="Can't reach the origin?" gatewayName={gateway?.name ?? "for this application"} host={originTarget(originUrl)!.host} port={originTarget(originUrl)!.port} />}
       {error && pending && <Button variant="ghost" onClick={() => setCheck(current => current ? { ...current } : null)}>Retry check status</Button>}
     </div>}
     <p className="text-sm text-ink-secondary">Checks cover the saved origin connection. Connection checks do not change the active publication.</p>

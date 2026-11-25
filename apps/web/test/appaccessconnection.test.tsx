@@ -121,7 +121,7 @@ it("explains an unreachable origin with firewall rules for the gateway and origi
   fireEvent.click(screen.getByRole("button", { name: "Check saved connection" }));
   await screen.findByText("Origin connection failed.", {}, { timeout: 3000 });
   expect(screen.getByText("Can't reach the origin?")).toBeTruthy();
-  expect(screen.getByText(/--port 8443 --cidr 203\.0\.113\.7\/32/)).toBeTruthy();
+  expect(screen.getByText(/--port 8443 --cidr GATEWAY_PRIVATE_IP\/32/)).toBeTruthy();
   expect(screen.queryByText(/connect_failed/)).toBeNull();
 });
 it("has human text with no raw code for every check failure code (AA-6)", async () => {

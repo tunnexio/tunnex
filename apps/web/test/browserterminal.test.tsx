@@ -3,8 +3,8 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import { StrictMode } from "react";
 import { MemoryRouter } from "react-router-dom";
 import BrowserTerminal from "../src/pages/BrowserTerminal";
-const state=vi.hoisted(()=>({terminal:null as any,pasted:[] as string[],selected:"",selectionChanged:null as any,multi:false,empty:false,serverCount:1,accountCount:1,developer:false,admin:false,recording:false,failed:false,connect:false,ready:true,sshPort:22,orgEnabled:true,serverEnabled:true,checkError:false,verified:false,installationOff:false,cpAdmin:false,requests:[] as string[],bodies:[] as unknown[],notGranted:false,lastError:""}));
-vi.mock("../src/lib/auth",()=>{const value=()=>({state:{status:"authed",user:{id:"user-1",email_verified:true,cp_admin:state.cpAdmin}}});return {useAuth:value,useOptionalAuth:value}});
+const state=vi.hoisted(()=>({terminal:null as any,pasted:[] as string[],selected:"",selectionChanged:null as any,multi:false,empty:false,serverCount:1,accountCount:1,developer:false,admin:false,recording:false,failed:false,connect:false,ready:true,sshPort:22,orgEnabled:true,serverEnabled:true,checkError:false,verified:false,installationOff:false,cpAdmin:false,requests:[] as string[],bodies:[] as unknown[],notGranted:false,lastError:"",noMfa:false}));
+vi.mock("../src/lib/auth",()=>{const value=()=>({state:{status:"authed",user:{id:"user-1",email_verified:true,cp_admin:state.cpAdmin,recovery_codes_remaining:state.noMfa?null:5}}});return {useAuth:value,useOptionalAuth:value}});
 vi.mock("../src/lib/useOrg",()=>({useOrg:()=>({org:{id:"org-1"},failed:false})}));
 vi.mock("../src/components/MfaSettings",()=>({MfaSettings:()=> <div>Existing account MFA setup</div>}));
 vi.mock("@xterm/xterm",()=>({Terminal:class{rows=24;cols=80;constructor(){state.terminal=this}onSelectionChange(cb:any){state.selectionChanged=cb;return {dispose(){}}}getSelection(){return state.selected}paste(text:string){state.pasted.push(text);this.data?.(text)}data:any;loadAddon(){}open(){}focus(){}write(){}dispose(){}onData(cb:any){this.data=cb;return {dispose(){}}}}}));
@@ -42,7 +42,7 @@ vi.mock("../src/lib/api",async()=>{
   DELETE:vi.fn(async()=>({error:{error:{message:"Termination unconfirmed"}}}))
  }};
 });
-beforeEach(()=>{state.developer=false;state.terminal=null;state.pasted=[];state.selected="";state.selectionChanged=null;state.multi=false;state.empty=false;state.serverCount=1;state.accountCount=1;state.admin=false;state.recording=false;state.failed=false;state.connect=false;state.ready=true;state.sshPort=22;state.orgEnabled=true;state.serverEnabled=true;state.checkError=false;state.verified=false;state.installationOff=false;state.cpAdmin=false;state.requests=[];state.bodies=[];state.notGranted=false;state.lastError=""});afterEach(cleanup);
+beforeEach(()=>{state.developer=false;state.terminal=null;state.pasted=[];state.selected="";state.selectionChanged=null;state.multi=false;state.empty=false;state.serverCount=1;state.accountCount=1;state.admin=false;state.recording=false;state.failed=false;state.connect=false;state.ready=true;state.sshPort=22;state.orgEnabled=true;state.serverEnabled=true;state.checkError=false;state.verified=false;state.installationOff=false;state.cpAdmin=false;state.requests=[];state.bodies=[];state.notGranted=false;state.lastError="";state.noMfa=false});afterEach(cleanup);
 function mount(){render(<MemoryRouter><BrowserTerminal/></MemoryRouter>)}
 async function openServer(name="Build host"){fireEvent.click(await screen.findByRole("button",{name}))}
 async function rowAction(label:string,action:string){const trigger=await screen.findByRole("button",{name:label});if(trigger.getAttribute("aria-expanded")!=="true")fireEvent.click(trigger);return within(screen.getByRole("menu",{name:label})).getByRole("menuitem",{name:action})}
@@ -380,7 +380,7 @@ it("an ended terminal still points at Sessions while Server Access is on",async(
 it("shows an unreachable account check as a sentence with firewall rules for the gateway, never the raw code",async()=>{
  state.admin=true;state.lastError="ssh_unreachable";mount();await openServer();
  await screen.findByText("The gateway could not reach the server.");
- await waitFor(()=>expect(screen.getAllByText(/--cidr 34\.1\.2\.3\/32/).length).toBeGreaterThan(0));
+ await waitFor(()=>expect(screen.getAllByText(/--cidr GATEWAY_PRIVATE_IP\/32/).length).toBeGreaterThan(0));
  expect(screen.queryByText(/ssh_unreachable/)).toBeNull();
 });
 it("lets an administrator without a grant grant themself access and connect (item 4)",async()=>{
@@ -406,4 +406,23 @@ it("explains session recording at registration with its default (item 9)",async(
  state.admin=true;mount();fireEvent.click(await screen.findByRole("button",{name:"Register server"}));const dialog=await screen.findByRole("dialog",{name:"Register server"});
  expect(within(dialog).getByText(/Off \(the default\)\. When on, every browser terminal session/)).toBeTruthy();
  expect(within(dialog).getByLabelText("Network requirement")).toBeTruthy();
+});
+it("Change recording opens the server settings without ending the live terminal (item 9)",async()=>{
+ state.admin=true;state.connect=true;const deletes=vi.mocked((await import("../src/lib/api")).api.DELETE);deletes.mockClear();
+ class Socket{static OPEN=1;readyState=1;onopen:unknown;onmessage:unknown;onclose:unknown;onerror:unknown;send(){}close(){}}
+ vi.stubGlobal("WebSocket",Socket);vi.stubGlobal("ResizeObserver",class{observe(){}disconnect(){}});
+ try{mount();await openServer();fireEvent.click(await screen.findByRole("button",{name:"Connect as fixture"}));await screen.findByLabelText("SSH terminal for fixture");
+  fireEvent.click(screen.getByRole("button",{name:"Change recording for new sessions"}));
+  expect(screen.getByLabelText("SSH terminal for fixture")).toBeTruthy();expect(deletes).not.toHaveBeenCalled();
+  expect(screen.getByText("Session options",{selector:"summary"})).toBeTruthy();
+ }finally{cleanup();vi.unstubAllGlobals()}
+});
+it("tells a manager without two-factor about the requirement on the Servers page (item 3)",async()=>{
+ state.admin=true;state.noMfa=true;mount();
+ await screen.findByText(/need two-factor verification, and your account has none yet/);
+ expect(screen.getByText("Set up two-factor verification")).toBeTruthy();
+});
+it("does not show the two-factor notice when a factor is enrolled",async()=>{
+ state.admin=true;mount();await screen.findByRole("button",{name:"Build host"});
+ expect(screen.queryByText(/your account has none yet/)).toBeNull();
 });
