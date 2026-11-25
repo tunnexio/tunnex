@@ -1,5 +1,6 @@
 # Explicit Beam override. Do not include this file in the default installation.
-# Public and connector listeners need distinct bind IPs when both use port 443.
+# Public and connector listeners need distinct bind IPs when both use port 443;
+# set TUNNEX_BEAM_CONNECTOR_PORT to use one address for both.
 services:
   api:
     environment:
@@ -52,7 +53,10 @@ services:
       - app_restore:/var/lib/tunnex/app-restore:ro
     ports:
       - '${TUNNEX_BEAM_PUBLIC_BIND_IP:?Set the browser listener bind IP}:443:8443'
-      - '${TUNNEX_BEAM_CONNECTOR_BIND_IP:?Set a distinct connector listener bind IP}:443:8444'
+      # LS-UX-1: the connector may use another port (e.g. 8447) and then share
+      # the browser listener's or the host's existing address. The browser
+      # listener stays on 443 (readiness checks the wildcard on 443).
+      - '${TUNNEX_BEAM_CONNECTOR_BIND_IP:?Set the connector listener bind IP}:${TUNNEX_BEAM_CONNECTOR_PORT:-443}:8444'
     healthcheck:
       test: [CMD, wget, -q, -O, /dev/null, http://127.0.0.1:9093/readyz]
       interval: 10s

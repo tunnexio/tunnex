@@ -24,19 +24,24 @@ def verify(config):
     ports = proxy.get("ports", [])
     if len(ports) != 2 or {p.get("target") for p in ports} != {8443, 8444}:
         raise ValueError("Publish only browser and connector TLS listeners")
-    addresses = []
+    bindings = set()
     for port in ports:
-        if str(port.get("published")) != "443" or port.get("protocol", "tcp") != "tcp":
-            raise ValueError("Both supported external TLS listeners must use TCP 443")
+        published = str(port.get("published"))
+        if port.get("protocol", "tcp") != "tcp" or not published.isdigit() or not 1 <= int(published) <= 65535:
+            raise ValueError("Listeners must use one explicit TCP port each")
+        if port.get("target") == 8443 and published != "443":
+            raise ValueError("The browser listener must use TCP 443")
+        if port.get("target") == 8444 and published in ("8445", "9093"):
+            raise ValueError("The connector must not reuse an internal port number")
         try:
             address = ipaddress.ip_address(port.get("host_ip", ""))
         except ValueError:
             raise ValueError("Choose explicit listener bind IP addresses") from None
         if address.is_unspecified or address.version != 4:
             raise ValueError("This override requires explicit IPv4 bind addresses")
-        addresses.append(address)
-    if len(set(addresses)) != 2:
-        raise ValueError("Browser and connector TCP 443 need distinct bind IP addresses")
+        bindings.add((address, published))
+    if len(bindings) != 2:
+        raise ValueError("Browser and connector listeners need distinct bind addresses or ports")
     for port in api.get("ports", []):
         if port.get("target") == 8445:
             raise ValueError("Control-plane Beam authority must remain internal")
@@ -65,7 +70,7 @@ def main():
         verify(json.load(sys.stdin))
     except (ValueError, TypeError, KeyError, AttributeError):
         # Never echo rendered configuration: it can contain database credentials.
-        print("Beam wiring check failed; review the fixed URLs, image digest, distinct bind IPs, private mounts and listener confinement.", file=sys.stderr)
+        print("Beam wiring check failed; review the fixed URLs, image digest, distinct listener addresses or ports, private mounts and listener confinement.", file=sys.stderr)
         return 1
     print("Beam opt-in wiring checked. Public DNS/TLS and image provenance require separate qualification.")
     return 0

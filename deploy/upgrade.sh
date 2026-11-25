@@ -48,7 +48,7 @@ classify_existing_app_access() {
   _aa_project=$1 _aa_directory=$2
   AA_API_COUNT=0 AA_PROXY_COUNT=0 AA_PROJECT_FOUND= AA_API_MARKER= AA_PROXY_MARKER=
   AA_PROXY_SECRETS= AA_PROXY_PORTS= AA_CONFIG_FILES= AA_CONFIG_CONFLICT=false
-  AA_API_FILES= AA_PROXY_FILES= AA_FILES_SPLIT=false
+  AA_API_FILES= AA_PROXY_FILES= AA_FILES_SPLIT=false LS_COUNT=0
   if [ -n "$_aa_project" ]; then
     _aa_filter="label=com.docker.compose.project=$_aa_project"
   else
@@ -86,6 +86,8 @@ EOF
       app-proxy)
         AA_PROXY_COUNT=$((AA_PROXY_COUNT + 1)); AA_PROXY_MARKER=$_aa_marker
         AA_PROXY_SECRETS=$_aa_secrets AA_PROXY_PORTS=$_aa_ports ;;
+      # LS-UX-1: Local Sharing serving participants (deploy/beam/compose.yml).
+      beam-proxy|beam-restore-init) LS_COUNT=$((LS_COUNT + 1)); continue ;;
       *) continue ;;
     esac
     [ -z "$AA_PROJECT_FOUND" ] || [ "$AA_PROJECT_FOUND" = "$_aa_found_project" ] || AA_CONFIG_CONFLICT=true
@@ -151,6 +153,13 @@ aa_refuse() {
 admit_app_access() {
   _aa_dir_real=$1
   classify_existing_app_access "$PROJECT" "$_aa_dir_real" || exit 13
+  # LS-UX-1: this upgrade does not manage Local Sharing serving yet. Refuse
+  # before any backup or mutation rather than misreport it as App Access, or
+  # leave an old Local Sharing proxy talking to a migrated API.
+  if [ "$LS_COUNT" -gt 0 ]; then
+    echo 'error: upgrade blocked; Local Sharing serving (beam-proxy) is part of this installation, and the one-command upgrade does not manage it yet. Recreate the stack without the Local Sharing overlay first (this ends live shares), run the upgrade, then add the overlay back from the new release. Steps: deploy/beam/README.md, "Upgrading". Nothing was changed.' >&2
+    exit 13
+  fi
   if [ "$AA_API_COUNT" -eq 0 ] && [ "$AA_PROXY_COUNT" -eq 0 ] && [ ! -f "$AA_OVERLAY" ]; then
     return 0
   fi
