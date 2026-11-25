@@ -388,7 +388,9 @@ func (s *Service) EnrollmentReport(ctx context.Context, org, gateway, id uuid.UU
 			j.View.Message = "This gateway needs an update before it can verify the server automatically. Update the gateway, or use Advanced: verify the host key independently, and prepare setup again."
 			break
 		}
-		if in.HostKeyAttestation {
+		// With an administrator-pinned fingerprint the pin is the trust source (as before SA-UX-2); attestation is
+		// only used when nothing was pinned, so a non-default host key path can still be set up through the pin.
+		if in.HostKeyAttestation && j.Material.Fingerprint == "" {
 			if j.AttestationKey, e = newAttestationKey(); e != nil {
 				return e
 			}
@@ -523,21 +525,22 @@ func manualFingerprint(in api.ServerAccessEnrollmentInput) string {
 }
 func hostKeyVerification(manual bool) string {
 	if manual {
-		return "manual_and_attested"
+		return "manual"
 	}
 	return "attested"
 }
 
-// verifyEnrollmentHostKey binds the management host key the gateway saw to the one-time authorization. Jobs from
-// gateways without attestation support are accepted only with an administrator-pinned fingerprint (as before).
+// verifyEnrollmentHostKey binds the management host key the gateway saw to the one-time authorization. With an
+// administrator-pinned fingerprint (any gateway version) the gateway already refused every other key, exactly as
+// before SA-UX-2; a newer gateway also reports the key it saw, which must equal the pin.
 func verifyEnrollmentHostKey(j enrollment, in bootstrap.Report) error {
 	if j.AttestationKey == "" {
-		if j.Material.Fingerprint == "" || in.HostKey != "" || in.Attestation != "" {
+		if j.Material.Fingerprint == "" || in.Attestation != "" || (in.HostKey != "" && in.HostKey != j.Material.Fingerprint) {
 			return errAttestation
 		}
 		return nil
 	}
-	if j.Material.Fingerprint != "" && in.HostKey != j.Material.Fingerprint {
+	if j.Material.Fingerprint != "" {
 		return errAttestation
 	}
 	return verifyHostKeyAttestation(j.AttestationKey, j.View.Id.String(), in.HostKey, in.Attestation)

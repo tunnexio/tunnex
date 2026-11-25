@@ -85,21 +85,25 @@ func TestEnrollmentHostKeyModes(t *testing.T) {
 	if e := verifyEnrollmentHostKey(j, bootstrap.Report{HostKey: seen, Attestation: att}); e != nil {
 		t.Fatal(e)
 	}
-	// A manual pin must match what the gateway saw, and the attestation is still required.
-	j.Material.Fingerprint = pinned
-	if verifyEnrollmentHostKey(j, bootstrap.Report{HostKey: seen, Attestation: att}) == nil {
-		t.Fatal("pin mismatch accepted")
-	}
-	j.Material.Fingerprint = seen
 	if verifyEnrollmentHostKey(j, bootstrap.Report{HostKey: seen}) == nil {
 		t.Fatal("attested job accepted without attestation")
 	}
-	// Gateways without attestation support: only with an administrator pin, exactly as before SA-UX-2.
-	legacy := enrollment{Material: bootstrap.Job{Fingerprint: pinned}}
-	if e := verifyEnrollmentHostKey(legacy, bootstrap.Report{}); e != nil {
-		t.Fatal(e)
+	// A pinned job never carries an attestation key; the pin is the trust source, as before SA-UX-2, so a
+	// non-default host key path can still be set up.
+	pin := enrollment{View: j.View, Material: bootstrap.Job{Fingerprint: pinned}}
+	if e := verifyEnrollmentHostKey(pin, bootstrap.Report{}); e != nil {
+		t.Fatal("legacy gateway with a pin refused", e)
 	}
-	legacy.Material.Fingerprint = ""
+	if e := verifyEnrollmentHostKey(pin, bootstrap.Report{HostKey: pinned}); e != nil {
+		t.Fatal("new gateway with a pin refused", e)
+	}
+	if verifyEnrollmentHostKey(pin, bootstrap.Report{HostKey: seen}) == nil {
+		t.Fatal("seen key different from the pin accepted")
+	}
+	if verifyEnrollmentHostKey(pin, bootstrap.Report{HostKey: pinned, Attestation: att}) == nil {
+		t.Fatal("unexpected attestation on a pinned job accepted")
+	}
+	legacy := enrollment{}
 	if verifyEnrollmentHostKey(legacy, bootstrap.Report{}) == nil {
 		t.Fatal("unpinned, unattested result accepted")
 	}

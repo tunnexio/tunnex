@@ -3,7 +3,7 @@ import type { components } from "@tunnex/shared";
 import { api, apiErrorMessage } from "../lib/api";
 import { InlineTerminalMfa } from "./InlineTerminalMfa";
 import { MfaSettings } from "./MfaSettings";
-import { FirewallHelp, gatewayAddress } from "./FirewallHelp";
+import { FirewallHelp } from "./FirewallHelp";
 import { useOptionalAuth } from "../lib/auth";
 import type { Node } from "../lib/api";
 import { Badge, Button, ErrorText, Field, Input, SettingRow, Switch } from "./ui";
@@ -15,7 +15,7 @@ export function AutomaticSSHSetup({orgId,server,gateway,disabled,onComplete,onMf
  const auth=useOptionalAuth();const [mfaEnrolledNow,setMfaEnrolledNow]=useState(false);
  // Unknown (no signed-in user in context) is not treated as missing; the server still enforces MFA.
  const mfaEnrolled=mfaEnrolledNow||auth?.state.status!=="authed"||typeof auth.state.user.recovery_codes_remaining==="number";const [mfaSetupOpen,setMfaSetupOpen]=useState(false);
- const gatewayName=gateway?.name??"selected for this server";const gatewayIp=gatewayAddress(gateway?.endpoint);
+ const gatewayName=gateway?.name??"selected for this server";
  const [account,setAccount]=useState("ubuntu"),[port,setPort]=useState(22),[fingerprint,setFingerprint]=useState("");
  const [all,setAll]=useState(true),[accounts,setAccounts]=useState(server.accounts.join(","));
  const [job,setJob]=useState<Job>(),[busy,setBusy]=useState(false),[error,setError]=useState("");const command=useRef<HTMLTextAreaElement>(null);const completed=useRef<string>();
@@ -41,18 +41,18 @@ export function AutomaticSSHSetup({orgId,server,gateway,disabled,onComplete,onMf
  </ol>
  {!active&&<div className="space-y-4">
  <div className="rounded-lg border border-white/10 p-3 text-sm space-y-2" aria-label="Before you start"><p className="font-medium text-ink-heading">Before you start</p>
- <p><strong>Network:</strong> the gateway {gatewayName}{gatewayIp?` (${gatewayIp})`:""} must reach {server.private_ip} on TCP {port} (management SSH, for setup) and on TCP {server.ssh_port} (browser terminal, afterwards).</p>
- <FirewallHelp gatewayName={gatewayName} gatewayIp={gatewayIp} host={server.private_ip??"SERVER_IP"} port={server.ssh_port??2222} summary="Firewall examples"/>
+ <p><strong>Network:</strong> the gateway {gatewayName} must reach {server.private_ip} on TCP {port} (management SSH, for setup) and on TCP {server.ssh_port} (browser terminal, afterwards).</p>
+ <FirewallHelp gatewayName={gatewayName} host={server.private_ip??"SERVER_IP"} port={server.ssh_port??2222} summary="Firewall examples"/>
  <p><strong>Two-factor verification:</strong> {mfaEnrolled?"you will confirm a code from your authenticator app when you prepare setup.":"setting up a server needs it, and your account has none yet. Set it up here first."}</p>
  {!mfaEnrolled&&<details className="tnx-inline-mfa-setup" onToggle={e=>setMfaSetupOpen(e.currentTarget.open)}><summary className="cursor-pointer">Set up two-factor verification</summary>{mfaSetupOpen&&<MfaSettings setupLabel="Set up two-factor" onEnrolled={()=>setMfaEnrolledNow(true)} signInReturnTo="/browser-access/terminal"/>}</details>}
  <p><strong>A way to run one command on the server</strong> as an administrator (sudo).</p>
- <RunCommandHelp ip={server.private_ip??"SERVER_IP"} gatewayName={gatewayName} gatewayIp={gatewayIp}/></div>
+ <RunCommandHelp ip={server.private_ip??"SERVER_IP"}/></div>
  <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_160px]">
  <Field label="Management SSH account"><Input value={account} onChange={e=>setAccount(e.target.value)}/></Field>
  <Field label="Management SSH port"><Input type="number" min={1} max={65535} value={port} onChange={e=>setPort(Number(e.target.value))}/></Field></div>
  <p className="text-xs text-ink-secondary max-w-prose">Server identity is verified automatically: the one-time authorization command you run on the server records its SSH host key, and Tunnex accepts the gateway's connection only if it presented that key.</p>
  <details className="text-sm text-ink-secondary" open={!!fingerprint}><summary className="cursor-pointer text-ink-body">Advanced: verify the host key independently</summary><div className="mt-2 space-y-2"><Field label="Verified management SSH fingerprint (optional)"><Input placeholder="SHA256:…" value={fingerprint} aria-describedby="management-fingerprint-help" onChange={e=>setFingerprint(e.target.value)}/></Field>
- <p id="management-fingerprint-help" className="text-xs">{!fingerprint.trim()?"Optional. When set, the gateway also refuses any other host key. Needed only if the server's SSH host key is not in the default location.":validTrust?"Fingerprint format accepted. The gateway will pin this host key as well.":"Paste only SHA256:… from a trusted session on this server."}</p>
+ <p id="management-fingerprint-help" className="text-xs">{!fingerprint.trim()?"Optional. When set, Tunnex pins this host key instead of verifying it automatically. Use it if the server's SSH host key is not in the default location, or if you prefer an independent check.":validTrust?"Fingerprint format accepted. The gateway will accept only this host key.":"Paste only SHA256:… from a trusted session on this server."}</p>
  <p className="text-xs">Run on {server.private_ip} through a trusted session:</p><pre className="rounded-lg bg-white/5 p-3 overflow-x-auto text-xs">sudo ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub -E sha256</pre></div></details>
  <SettingRow label="Discover all eligible login users" description="Find existing and newly created Linux login accounts. Keep this on to discover all users."><Switch label="Discover all eligible login users" checked={all} onChange={setAll}/></SettingRow>
  {!all&&<Field label="Selected existing Linux accounts"><Input value={accounts} onChange={e=>setAccounts(e.target.value)} placeholder="ubuntu,deploy"/></Field>}
@@ -66,7 +66,7 @@ export function AutomaticSSHSetup({orgId,server,gateway,disabled,onComplete,onMf
  <div className="flex flex-wrap gap-2"><Button variant="ghost" onClick={()=>{if(navigator.clipboard)void navigator.clipboard.writeText(job.authorization_command).catch(()=>{command.current?.focus();command.current?.select()});else{command.current?.focus();command.current?.select()}}}>Copy authorization command</Button><Button disabled={busy||disabled} onClick={()=>void action()}>{syncing?"Run account sync":"Configure automatically"}</Button></div>
  <p className="text-xs text-ink-secondary">Continue after the target confirms “Temporary gateway setup authorized”. Authorization is limited to this installer and is cleaned up after use.</p></>}
  {active&&<Button variant="ghost" disabled={busy} onClick={()=>void action(true)}>Cancel setup</Button>}
-{job.state==="succeeded"&&<div className="rounded-lg border border-white/10 bg-white/5 p-3 text-sm space-y-2"><p><strong>Allow the browser terminal:</strong> the gateway {gatewayName} must reach {server.private_ip} on TCP {server.ssh_port}. If an account check says the server could not be reached, allow it in the server's firewall or cloud security rules, then run Check again.</p><FirewallHelp gatewayName={gatewayName} gatewayIp={gatewayIp} host={server.private_ip??"SERVER_IP"} port={server.ssh_port??2222} summary="Firewall examples"/></div>}
+{job.state==="succeeded"&&<div className="rounded-lg border border-white/10 bg-white/5 p-3 text-sm space-y-2"><p><strong>Allow the browser terminal:</strong> the gateway {gatewayName} must reach {server.private_ip} on TCP {server.ssh_port}. If an account check says the server could not be reached, allow it in the server's firewall or cloud security rules, then run Check again.</p><FirewallHelp gatewayName={gatewayName} host={server.private_ip??"SERVER_IP"} port={server.ssh_port??2222} summary="Firewall examples"/></div>}
   {job.state==="succeeded"&&<p className="text-sm">{syncing?"Check any new account, then grant access under Access. Existing checked accounts stay available.":"Check the accounts below, enable the server, then grant access under Access."}</p>}
  </div>}
  <details className="text-xs text-ink-secondary"><summary className="cursor-pointer">Supported systems and account limits</summary><p className="mt-2 max-w-prose">Requires Linux, Python 3, OpenSSH and systemd. Root, system and non-login users are excluded. Maximum 16 accounts. Unsupported distributions and enforcing SELinux are refused. Discovery runs on request; it does not grant access or remove existing accounts.</p></details>
@@ -74,7 +74,7 @@ export function AutomaticSSHSetup({orgId,server,gateway,disabled,onComplete,onMf
 }
 
 // SA-UX-2 item 11: ways to run the one-time authorization command when the server has no direct SSH from you.
-export function RunCommandHelp({ip,gatewayName,gatewayIp}:{ip:string;gatewayName:string;gatewayIp:string}){
+export function RunCommandHelp({ip}:{ip:string}){
  return <details className="text-sm text-ink-secondary"><summary className="cursor-pointer text-ink-body">Can't run commands on the server?</summary><div className="mt-2 space-y-2 max-w-prose">
  <p>Any channel you already trust works: the command must run on the server itself, as root (sudo). It is single use and expires in 15 minutes.</p>
  <p><strong>Through a jump host</strong> (for example a host or gateway VM you can SSH to that can reach the server):</p><pre className="overflow-x-auto rounded-lg bg-white/5 p-2 text-xs">{`ssh -J you@JUMP_HOST you@${ip}`}</pre>
@@ -82,6 +82,5 @@ export function RunCommandHelp({ip,gatewayName,gatewayIp}:{ip:string;gatewayName
  <p><strong>AWS:</strong> use Systems Manager Session Manager (the instance needs the SSM agent and an instance profile with AmazonSSMManagedInstanceCore):</p><pre className="overflow-x-auto rounded-lg bg-white/5 p-2 text-xs">aws ssm start-session --target INSTANCE_ID</pre>
  <p><strong>Azure:</strong> use Azure Bastion, or Run Command (<code>az vm run-command invoke --command-id RunShellScript --scripts '…'</code>).</p>
  <p><strong>New VMs:</strong> you can paste the command into cloud-init / user data (<code>runcmd:</code>) only if the VM boots within the 15-minute window. User data is stored in the cloud provider's metadata, so prefer an interactive channel.</p>
- {gatewayIp&&<p>The gateway {gatewayName} ({gatewayIp}) is not a jump host by default; use a host you administer.</p>}
  </div></details>
 }
