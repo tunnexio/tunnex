@@ -44,6 +44,9 @@ services:
       TUNNEX_APP_PROXY_GATEWAY_TLS_CERT_FILE: /etc/tunnex/app-proxy/gateway-cert.pem
       TUNNEX_APP_PROXY_GATEWAY_TLS_KEY_FILE: /etc/tunnex/app-proxy/gateway-key.pem
       TUNNEX_APP_PROXY_CREDENTIAL_FILE: /etc/tunnex/app-proxy/proxy-credential
+      # LS-UX-1 E.1: set only behind the single-IP edge (tunnex-local-sharing);
+      # a PROXY v2 client address is trusted only with this private token.
+      TUNNEX_APP_PROXY_EDGE_TOKEN_FILE: ${TUNNEX_APP_PROXY_EDGE_TOKEN_FILE:-}
       TUNNEX_APP_ACCESS_RESTORE_MARKER: /var/lib/tunnex/app-restore/app-access.pending.json
     volumes:
       # Files must be readable by image uid10001; credential remains mode0600/0400.

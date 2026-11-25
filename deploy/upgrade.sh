@@ -1230,6 +1230,8 @@ if [ "$LS_PRESENT" = true ] && [ "$LS_PROXY" = true ]; then
   compose up -d --wait --wait-timeout 300 --no-deps beam-proxy || {
     write_status failed local_sharing_start_failed
     echo 'error: upgrade stopped; the signed Local Sharing proxy did not become healthy. The control plane is upgraded and healthy.' >&2
+    [ -z "$(dotenv_value TUNNEX_BEAM_EDGE_DEFAULT)" ] ||
+      echo "  The Local Sharing proxy also carries public 443 (single-IP edge). To give 443 back to the console now, run: $DIR/tunnex-local-sharing disable --apply" >&2
     exit 14
   }
   echo "Local Sharing proxy started from $LS_PROXY_PIN"

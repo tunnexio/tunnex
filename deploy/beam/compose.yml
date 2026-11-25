@@ -2,9 +2,18 @@
 # Installed as <install>/local-sharing.yml (always the last -f file) and managed
 # by upgrade.sh like app-access.yml (LS-UX-1 D.2). Image pins come only from the
 # signed release (releaseverify -require-beam-proxy).
-# Public and connector listeners need distinct bind IPs when both use port 443;
-# set TUNNEX_BEAM_CONNECTOR_PORT to use one address for both.
+# Single-IP edge (LS-UX-1 E.1, the default from tunnex-local-sharing enable):
+# beam-proxy owns public 443, terminates only *.<sharing domain> and splices
+# every other stream, undecrypted, to the next owner of 443 with a PROXY v2
+# client address. Caddy trusts that address only from the edge's fixed /32 on
+# the internal `edge` network; app-proxy only with the edge token. Dedicated-IP
+# mode (TUNNEX_BEAM_EDGE_DEFAULT empty) stays supported.
 services:
+  caddy:
+    networks:
+      default: {}
+      edge: {ipv4_address: '${TUNNEX_EDGE_CADDY_ADDRESS:-172.31.254.3}'}
+
   api:
     environment:
       TUNNEX_BEAM_BASE_DOMAIN: ${TUNNEX_BEAM_BASE_DOMAIN:?Set the reviewed Beam base domain}
@@ -49,6 +58,13 @@ services:
       TUNNEX_BEAM_PROXY_CONNECTOR_TLS_KEY_FILE: /etc/tunnex/beam/gateway-key.pem
       TUNNEX_BEAM_PROXY_CREDENTIAL_FILE: /etc/tunnex/beam/authority.token
       TUNNEX_BEAM_PROXY_RESTORE_MARKER: /var/lib/tunnex/app-restore/app-access.pending.json
+      TUNNEX_BEAM_PROXY_EDGE_DEFAULT: ${TUNNEX_BEAM_EDGE_DEFAULT:-}
+      TUNNEX_BEAM_PROXY_EDGE_APP_ACCESS_DOMAIN: ${TUNNEX_BEAM_EDGE_APP_ACCESS_DOMAIN:-}
+      TUNNEX_BEAM_PROXY_EDGE_APP_ACCESS_TARGET: ${TUNNEX_BEAM_EDGE_APP_ACCESS_TARGET:-}
+      TUNNEX_BEAM_PROXY_EDGE_TOKEN_FILE: /etc/tunnex/beam/edge.token
+    networks:
+      default: {}
+      edge: {ipv4_address: '${TUNNEX_EDGE_PROXY_ADDRESS:-172.31.254.2}'}
     volumes:
       - ${TUNNEX_BEAM_PROXY_SECRETS_DIR:?Set the privately provisioned Beam TLS and credential directory}:/etc/tunnex/beam:ro
       - app_restore:/var/lib/tunnex/app-restore:ro
@@ -79,3 +95,12 @@ services:
 
 volumes:
   app_restore:
+
+networks:
+  # Internal only: the edge and the console edge. Fixed so Caddy can trust
+  # exactly the edge's address; override TUNNEX_EDGE_SUBNET on collision.
+  edge:
+    internal: true
+    ipam:
+      config:
+        - subnet: '${TUNNEX_EDGE_SUBNET:-172.31.254.0/29}'
