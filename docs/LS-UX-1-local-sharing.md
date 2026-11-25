@@ -813,5 +813,51 @@ created.
     settings.
   - **If even that fails,** the rollback does not start the console edge
     into a 443 collision. It tells the operator to run `disable --apply`.
+- **Operator pass on the demo layout.** The run used an isolated
+  Docker-in-Docker daemon (`lsfix1-dind`).
+  - **Setup.** The managed files were the real `tunnex.yml`,
+    `app-access.yml` and `local-sharing.yml`. The Local Sharing proxy was
+    the **real signed v0.1.48 image**, pinned by the **real `releaseverify`**
+    from the real signed `release.json` and its key. The other services were
+    stubs. App Access held 443 and Caddy held `127.0.0.1:8446`, with
+    `node-agent` absent.
+  - **Steps:**
+    - **`status`** showed what was missing.
+    - **`enable` dry run** printed the plan and left `.env` unchanged.
+    - **`enable --apply`** started the proxy on 443 and 8447. App Access
+      moved to `127.0.0.1:8448`, and only the services that were running
+      before were restarted.
+    - **`status`:** all ok, proxy running.
+    - **Console readiness prerequisites.** A TLS client on 443 with SNI
+      `tunnex-check.<domain>` received the wildcard and it verified against
+      its CA. Console SNI was spliced to Caddy undecrypted.
+    - **Publish prerequisites.** On 8447, the connector presented
+      `tunnex-beam-proxy`, which verified against the agent CA. It accepted
+      a publisher client certificate and rejected a client without one.
+    - **`disable --apply`:** `.env` was byte-identical to before, App Access
+      held 443 again, and the credential was revoked.
+    - **`enable` again:** a fresh credential.
+    - **Forced failure.** A broken connector key made the real proxy fail
+      to start. The rollback removed it, revoked the credential, gave 443
+      back to App Access, and left `.env` identical. A fixed re-run then
+      succeeded.
+    - **`upgrade.sh`, Local Sharing enabled.** The branch's helper ran as
+      the hand-off target, with the real verifier and the real v0.1.48
+      manifest. It admitted the layout that enable produced: overlay hash,
+      secrets directory, port bindings, restore volume and `beam` profile.
+      It announced its plan for both proxies.
+  - **Not run: `upgrade.sh --apply`.** It replaces every image with the real
+    signed ones, which need a real database and API. That path stays
+    covered by `upgrade_apply_contract_test.sh` (Local Sharing cases).
+  - **What the pass fixed.**
+    - `status` printed "not enabled layout"; it now prints "not enabled".
+    - `status` now also shows whether the proxy is running.
+    - A failed start said only "docker compose up failed". It now says
+      which step failed and points to Compose's output.
+  - **`upgrade.sh` and `node-agent` (checked, no change).** `upgrade.sh`
+    starts `node-agent` only when the installer placed the gateway on this
+    host. It honours `TUNNEX_GATEWAY_PLACEMENT=separate` and
+    `TUNNEX_PORTABLE_CONTROL_PLANE=true`, which `install.sh` writes, the same
+    way the installer does.
 - **CI.** The real-Compose tests need only the `docker compose` CLI, with no
   daemon. Under `CI` they fail if it is missing, rather than skipping.
