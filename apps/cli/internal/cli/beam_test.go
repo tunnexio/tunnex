@@ -607,3 +607,24 @@ func TestBeamKeyCSRProofAndNoPersistence(t *testing.T) {
 		t.Fatal("CSR is not bound to generated private key")
 	}
 }
+
+// LS-UX-1: each blocked-publish cause names who can fix it, server setup first.
+func TestBeamPublishBlockedNamesTheNextStep(t *testing.T) {
+	ready := beamPolicy{Enabled: true, DomainReady: true, CanPublish: true}
+	if e := beamPublishBlocked(ready); e != nil {
+		t.Fatal(e)
+	}
+	for _, c := range []struct {
+		p    beamPolicy
+		want string
+	}{
+		{beamPolicy{Enabled: false, DomainReady: false, CanPublish: false}, "server administrator"},
+		{beamPolicy{Enabled: false, DomainReady: true, CanPublish: true}, "turned off for this organization"},
+		{beamPolicy{Enabled: true, DomainReady: true, CanPublish: false}, "publisher group"},
+	} {
+		e := beamPublishBlocked(c.p)
+		if e == nil || !strings.Contains(e.Error(), c.want) {
+			t.Fatalf("%+v: %v", c.p, e)
+		}
+	}
+}

@@ -166,7 +166,7 @@ func (e *beamAPIError) Error() string {
 	case 401:
 		return "Local Sharing login is no longer valid; run 'tunnex login'"
 	case 403:
-		return "Local Sharing access denied by current sharing policy or publishing authority"
+		return "Local Sharing refused this request under the organization's current sharing policy. Check 'tunnex beam policy' or ask an organization admin"
 	case 404:
 		return "Share unavailable to this login; resume requires the original publishing credential"
 	case 409:

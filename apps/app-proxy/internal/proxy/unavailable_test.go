@@ -36,11 +36,30 @@ func TestDenyPageIsUniformAndActionable(t *testing.T) {
 	}
 }
 
+// LS-UX-1: the Local Sharing refusal names the product, not its code name, says
+// what to do next without saying why, and links to the console identically.
 func TestBeamDenyPageKeepsItsOwnWording(t *testing.T) {
 	w := httptest.NewRecorder()
 	denyPage(w, true)
-	if !strings.Contains(w.Body.String(), "This shared app is unavailable. Reopen the original Beam link.") {
-		t.Fatal("beam deny wording changed")
+	body := w.Body.String()
+	for _, want := range []string{"TUNNEX LOCAL SHARING", "Open Shared with me in Tunnex Local Sharing, or ask the person who shared the link."} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("Local Sharing deny page missing %q", want)
+		}
+	}
+	if strings.Contains(body, "Beam") || strings.Contains(body, "My Applications") {
+		t.Fatal("Local Sharing deny page uses a code name or App Access wording")
+	}
+	h := NewBeamHandler("share.example.net", nil, nil)
+	render := func() string { w := httptest.NewRecorder(); h.deny(w); return w.Body.String() }
+	if strings.Contains(render(), "Open Local Sharing") {
+		t.Fatal("console link shown before the console is known")
+	}
+	console, _ := url.Parse("https://console.example.com")
+	h.Console = console
+	body = render()
+	if !strings.Contains(body, `<a href="https://console.example.com/beam/shared-with-me">Open Local Sharing</a>`) || render() != body {
+		t.Fatalf("Local Sharing refusal link missing or not uniform:\n%s", body)
 	}
 }
 
@@ -90,7 +109,7 @@ func TestDenyPageLinksMyApplicationsUniformly(t *testing.T) {
 }
 
 func TestMyAppsLinkIsEscaped(t *testing.T) {
-	if got := myAppsLink(`https://x.example/"><script>`); strings.Contains(got, "<script>") {
+	if got := consoleLink(`https://x.example/"><script>`, false); strings.Contains(got, "<script>") {
 		t.Fatalf("unescaped: %s", got)
 	}
 }
