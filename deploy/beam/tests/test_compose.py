@@ -46,6 +46,17 @@ class BeamCompose(unittest.TestCase):
         with self.assertRaises(ValueError):
             VERIFY(config)
 
+    def test_connector_port_shares_an_address_but_browser_stays_on_443(self):
+        config = copy.deepcopy(self.beam)
+        ports = config["services"]["beam-proxy"]["ports"]
+        connector = next(p for p in ports if p["target"] == 8444)
+        browser = next(p for p in ports if p["target"] == 8443)
+        connector["host_ip"], connector["published"] = browser["host_ip"], "8447"
+        VERIFY(config)
+        browser["published"] = "8443"
+        with self.assertRaises(ValueError):
+            VERIFY(config)
+
     def test_operator_or_authority_exposure_rejected(self):
         for name, port in (("beam-proxy", 9093), ("api", 8445)):
             config = copy.deepcopy(self.beam)

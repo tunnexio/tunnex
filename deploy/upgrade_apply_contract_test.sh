@@ -736,6 +736,30 @@ grep -Fq 'signed App Access proxy' "$aa_dir/output"
 [ ! -e "$aa_dir/backups" ] || [ -z "$(ls "$aa_dir/backups")" ]
 assert_aa_refused_unchanged
 
+# LS-UX-1: Local Sharing serving is refused up front with its own message, with
+# or without App Access, never misreported as App Access and never left running
+# an old proxy against a migrated API.
+for ls_case in with-app-access only; do
+  make_aa_install "ls-$ls_case"
+  ls_files="$aa_dir/tunnex.yml,$aa_dir/beam.yml"
+  if [ "$ls_case" = only ]; then
+    sed -i.bak '/^TUNNEX_APP_ACCESS_BASE_DOMAIN=/d;/^TUNNEX_APP_PROXY_SECRETS_DIR=/d' "$aa_dir/.env"
+    printf 'aa|%s|api|volume:aa_app_restore;|||%s|False\n' "$aa_dir" "$ls_files" >"$aa_dir/containers/api"
+    printf '%s\n' api beam >"$aa_dir/containers/ids"
+  else
+    ls_files="$aa_dir/tunnex.yml,$aa_dir/legacy-app-access.yml,$aa_dir/beam.yml"
+    printf '%s\n' beam >>"$aa_dir/containers/ids"
+  fi
+  printf 'aa|%s|beam-proxy|volume:aa_app_restore;||8443/tcp=10.0.0.3:443;8444/tcp=10.0.0.2:8447;|%s|False\n' "$aa_dir" "$ls_files" >"$aa_dir/containers/beam"
+  snapshot_aa
+  if run_aa_upgrade --apply >"$aa_dir/output" 2>&1; then echo "Local Sharing ($ls_case) upgrade accepted" >&2; exit 1; fi
+  grep -Fq 'Local Sharing serving (beam-proxy)' "$aa_dir/output"
+  grep -Fq 'deploy/beam/README.md' "$aa_dir/output"
+  ! grep -Fq 'App Access' "$aa_dir/output"
+  ! grep -Fq 'app-preflight' "$aa_dir/docker.log" 2>/dev/null
+  assert_aa_refused_unchanged
+done
+
 # Authority must be unchanged after migration; otherwise the proxy stays
 # stopped and rollback guidance names the supported restore runner + backup.
 make_aa_install changed

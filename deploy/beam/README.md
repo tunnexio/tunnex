@@ -9,7 +9,8 @@ complete installer walkthrough remain qualification gates.
 
 One proxy process serves two independent TLS listeners: browser HTTPS and desktop
 mTLS CONNECT. Both can use external port 443 on distinct explicitly chosen host
-IP addresses. The browser wildcard DNS points to the browser address; the fixed
+IP addresses, or the connector can use another port (`TUNNEX_BEAM_CONNECTOR_PORT`)
+on any address. The browser wildcard DNS points to the browser address; the fixed
 connector URL points to the connector address. Using the same IP for both port
 443 mappings fails to bind. A shared-IP TLS passthrough edge is outside the current
 qualified override. No gateway or VPN connection carries the desktop connector.
@@ -22,6 +23,29 @@ replace it with a public wildcard certificate or disable certificate verificatio
 The console URL must be HTTPS. Installation serving defaults off. Environment
 domain/connector values are suggestions for the operator form; they cannot grant
 admission. `TUNNEX_BEAM_DOMAIN_READY` does not substitute for measured readiness.
+
+## Alongside App Access, and the domain rule (LS-UX-1)
+
+Local Sharing does not need App Access, and App Access does not need Local
+Sharing. When both run on one host:
+
+- Local Sharing has its own proxy (`beam-proxy`). `app-proxy` cannot serve
+  shares. The two overlays share only the API's private authority listener
+  `:8445` and the `app_restore` barrier volume, and both overlays set them the
+  same way.
+- The **browser listener must be on TCP 443** (the readiness check probes the
+  wildcard on 443). If `app-proxy` already owns 443 on the host address, give
+  Local Sharing a second public IPv4 address (`TUNNEX_BEAM_PUBLIC_BIND_IP`).
+- The **connector can share an address** if it uses another port. Set
+  `TUNNEX_BEAM_CONNECTOR_PORT` (e.g. `8447`; not `8444`, which App Access
+  gateways use, and not 8445 or 9093). Then use for example
+  `https://<console host>:8447` as the connector URL. The connector always
+  verifies the TLS name `tunnex-beam-proxy`, not the DNS name.
+- The **sharing domain** must be the console host itself or a different
+  registrable domain (siblings such as `share.<console domain>` are refused).
+  It must also not equal or nest inside the App Access base domain. In
+  practice, when App Access uses the console host, Local Sharing needs its own
+  registrable domain and its own `*.<sharing domain>` certificate.
 
 ## Provision privately
 
@@ -50,8 +74,9 @@ the supported fencing procedure is not a qualified recovery path.
 
 Set `APP_BASE_URL`, `TUNNEX_BEAM_BASE_DOMAIN`, `TUNNEX_BEAM_PROXY_URL`,
 `TUNNEX_BEAM_PROXY_IMAGE` (verified immutable digest),
-`TUNNEX_BEAM_PROXY_SECRETS_DIR`, `TUNNEX_BEAM_PUBLIC_BIND_IP` and
-`TUNNEX_BEAM_CONNECTOR_BIND_IP` in a private environment file. Do not put real
+`TUNNEX_BEAM_PROXY_SECRETS_DIR`, `TUNNEX_BEAM_PUBLIC_BIND_IP`,
+`TUNNEX_BEAM_CONNECTOR_BIND_IP` and optionally `TUNNEX_BEAM_CONNECTOR_PORT`
+(default 443) in a private environment file. Do not put real
 credentials into shell history or documentation. The service credential belongs in
 its private mounted file, not environment variables.
 
@@ -78,6 +103,21 @@ this impact. A failed or expired measurement denies admission and lease renewal.
 Then enable each organization's Beam policy. Delegate explicit publisher groups and reviewer
 users/groups, lifetime and quota. A random hostname is a locator; access still
 requires a permitted current browser identity and grant.
+
+## Upgrading
+
+`upgrade.sh` does not manage this overlay yet, and no signed `beam-proxy` image
+is published (the release only signs `app-proxy`). When `beam-proxy` or
+`beam-restore-init` containers exist, the upgrade refuses before any backup or
+change. Until the managed path exists:
+
+1. Recreate the stack without `-f beam.yml` and the `beam` profile, and remove
+   the `beam-proxy` and `beam-restore-init` containers. Live shares end;
+   serving is denied because the checks fail.
+2. Run the ordinary upgrade.
+3. Build or obtain the proxy image for the **new** release, update
+   `TUNNEX_BEAM_PROXY_IMAGE`, add the overlay back, then run **Check DNS and TLS**
+   again in Settings → Local Sharing domain.
 
 ## Health, disable and rotation
 
