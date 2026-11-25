@@ -637,3 +637,57 @@ managed `app-access.yml` plus its hash in `.env`.
   image, `backupctl` itself inside the real API image, and `docker compose cp`
   from it. The helper mount semantics, the edge, Caddy and readiness were each
   exercised for real or end to end.
+
+---
+
+## F. Founder ruling 2026-11-25 (third): real client addresses at the console API
+
+**Finding, worse than reported in E.5.** The API takes its client address from
+chi `RealIP`. That uses, in order, `True-Client-IP`, then `X-Real-IP`, then
+the leftmost `X-Forwarded-For`. nginx sets `X-Real-IP $remote_addr`, which is
+always **Caddy's container address**. So today the API sees one address for
+every client on **every** install, with or without App Access. Login
+throttling and audit are per-Caddy, not per-client. Worse, a client-supplied
+`True-Client-IP` passes through Caddy and nginx untouched, and `RealIP`
+prefers it. **Any client can choose the address the API records.**
+
+**Decision: fix the whole chain, keeping one rule: each hop trusts only the
+previous hop.**
+
+| Hop | Change | Trust |
+|---|---|---|
+| Single-IP edge → Caddy / `app-proxy` | unchanged (E.1): PROXY v2 | Caddy: edge `/32`; `app-proxy`: edge token |
+| `app-proxy` → Caddy (console forward) | `app-proxy` already strips every client forwarding header and sets `X-Forwarded-For` to its peer (the real client, behind the edge too). Caddy now trusts that header **only** from `app-proxy`'s fixed address on the internal `edge` network (`trusted_proxies static 172.31.254.4/32`). | `/32` of `app-proxy` |
+| Caddy → nginx | Caddy overwrites `X-Real-IP` with `{client_ip}` and deletes `True-Client-IP` in every mode. `{client_ip}` is the PROXY address, the trusted-proxy address, the load balancer's (terminated mode, unchanged) or the peer. | Caddy's view |
+| nginx → API | nginx forwards Caddy's `X-Real-IP` instead of its own peer and always clears `True-Client-IP`. | nginx is internal-only |
+
+**Why `X-Forwarded-For` from `app-proxy`, not PROXY v2.** `app-proxy` forwards
+the console with an HTTP connection pool. A PROXY header belongs to a TCP
+connection, so a pooled connection would carry the first client's address for
+later clients. The fixes would be to turn pooling off (one TLS handshake per
+console request) or to keep one pool per client. The header is set per
+request and already exists in released `app-proxy` builds, so trust it by a
+fixed address. The fixed address on an internal network is the same pattern
+E.1 uses for Caddy.
+
+**Network.** The App Access overlay now also defines the internal `edge`
+network, identical to the Local Sharing definition so Compose merges them. It
+gives Caddy `.3` and `app-proxy` `.4` fixed addresses there. Before any
+backup, `upgrade.sh` refuses, with the exact `.env` line to set, if
+`TUNNEX_EDGE_SUBNET` overlaps an existing Docker network. Otherwise the next
+upgrade applies all of this with **no operator edits**, including on the demo
+(managed `tunnex.yml` + `app-access.yml`).
+
+**Version skew during the upgrade.** Caddy and nginx are recreated together
+from the same release.
+- **Old `app-proxy` with new Caddy:** works. Old `app-proxy` already sends the
+  header.
+- **New Caddy without its fixed address yet:** the header is simply not
+  trusted, and the console still works.
+- **New nginx with old Caddy:** possible only for the seconds between their
+  recreation. A client `X-Real-IP` could then pass through, which only affects
+  attribution. Nothing breaks.
+
+**IPv6.** Edge mode publishes 443 on IPv4 only. A host that served the
+console over IPv6 should keep `--layout dedicated`, or add an IPv6 publish
+(documented; not automated).
