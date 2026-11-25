@@ -37,8 +37,8 @@ def verify(config):
             address = ipaddress.ip_address(port.get("host_ip", ""))
         except ValueError:
             raise ValueError("Choose explicit listener bind IP addresses") from None
-        if address.is_unspecified or address.version != 4:
-            raise ValueError("This override requires explicit IPv4 bind addresses")
+        if address.version != 4:
+            raise ValueError("This override requires IPv4 bind addresses")
         bindings.add((address, published))
     if len(bindings) != 2:
         raise ValueError("Browser and connector listeners need distinct bind addresses or ports")
@@ -61,6 +61,18 @@ def verify(config):
     secrets = mounts.get("/etc/tunnex/beam", {})
     if secrets.get("type") != "bind" or not PurePosixPath(secrets.get("source", "")).is_absolute() or not secrets.get("read_only"):
         raise ValueError("Beam credentials must use a fixed read-only private directory")
+    edge = proxy.get("environment", {})
+    if edge.get("TUNNEX_BEAM_PROXY_EDGE_DEFAULT"):
+        # The edge must own public 443 and route only to fixed host:port targets.
+        for key in ("TUNNEX_BEAM_PROXY_EDGE_DEFAULT", "TUNNEX_BEAM_PROXY_EDGE_APP_ACCESS_TARGET"):
+            value = edge.get(key) or ""
+            if value and not re.fullmatch(r"[A-Za-z0-9.-]+:[0-9]{1,5}", value):
+                raise ValueError("Edge targets must be host:port")
+        if bool(edge.get("TUNNEX_BEAM_PROXY_EDGE_APP_ACCESS_DOMAIN")) != bool(edge.get("TUNNEX_BEAM_PROXY_EDGE_APP_ACCESS_TARGET")):
+            raise ValueError("App Access edge route needs a domain and a target")
+    nets = proxy.get("networks") or {}
+    if "edge" not in nets or (config.get("networks", {}).get("edge", {}) or {}).get("internal") is not True:
+        raise ValueError("The edge network must exist and be internal")
     if init.get("network_mode") != "none":
         raise ValueError("Restore initialization must have no network")
 

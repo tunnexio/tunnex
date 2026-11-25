@@ -25,9 +25,16 @@ class BeamCompose(unittest.TestCase):
             TUNNEX_BEAM_PROXY_SECRETS_DIR="/private/beam-fixture",
             TUNNEX_BEAM_PUBLIC_BIND_IP="127.0.0.1",
             TUNNEX_BEAM_CONNECTOR_BIND_IP="127.0.0.2",
+            TUNNEX_EDGE_LISTEN="https://console.fixture.org",
         )
         env.pop("TUNNEX_BEAM_DOMAIN_READY", None)
-        cli = ["sh", str(ROOT / "tests/beam-local/docker-local.sh"), "compose", "-f", str(ROOT / "docker-compose.yml")]
+        # The overlay extends the installed stack (deploy/tunnex.yml).
+        import re
+        for name in set(re.findall(r"\$\{([A-Z0-9_]+):\?", (ROOT / "deploy/tunnex.yml").read_text())):
+            env.setdefault(name, "/placeholder")
+        env["TUNNEX_AI_ENGINE_IMAGE"] = "fixture.invalid/ai@sha256:" + "b" * 64
+        env["COMPOSE_PROFILES"] = "bundled-db"
+        cli = ["sh", str(ROOT / "tests/beam-local/docker-local.sh"), "compose", "-f", str(ROOT / "deploy/tunnex.yml")]
         cls.base = json.loads(subprocess.check_output(cli + ["config", "--format", "json"], cwd=ROOT, env=env))
         cls.beam = json.loads(subprocess.check_output(cli + ["-f", str(ROOT / "deploy/beam/compose.yml"), "--profile", "beam", "config", "--format", "json"], cwd=ROOT, env=env))
 
@@ -56,6 +63,27 @@ class BeamCompose(unittest.TestCase):
         browser["published"] = "8443"
         with self.assertRaises(ValueError):
             VERIFY(config)
+
+    def test_single_ip_edge_layout(self):
+        config = copy.deepcopy(self.beam)
+        proxy = config["services"]["beam-proxy"]
+        self.assertEqual(proxy["networks"]["edge"]["ipv4_address"], "172.31.254.2")
+        self.assertEqual(config["services"]["caddy"]["networks"]["edge"]["ipv4_address"], "172.31.254.3")
+        self.assertTrue(config["networks"]["edge"]["internal"])
+        proxy["environment"]["TUNNEX_BEAM_PROXY_EDGE_DEFAULT"] = "172.31.254.3:443"
+        for port in proxy["ports"]:
+            port["host_ip"] = "0.0.0.0"
+        proxy["ports"][1]["published"] = "8447"
+        VERIFY(config)
+        for bad in ("caddy", "http://caddy:443", "172.31.254.3:443/x"):
+            broken = copy.deepcopy(config)
+            broken["services"]["beam-proxy"]["environment"]["TUNNEX_BEAM_PROXY_EDGE_DEFAULT"] = bad
+            with self.assertRaises(ValueError):
+                VERIFY(broken)
+        broken = copy.deepcopy(config)
+        broken["networks"]["edge"]["internal"] = False
+        with self.assertRaises(ValueError):
+            VERIFY(broken)
 
     def test_operator_or_authority_exposure_rejected(self):
         for name, port in (("beam-proxy", 9093), ("api", 8445)):
