@@ -171,13 +171,15 @@
    squeezed it to 40px. Server takes the remaining width. Keep this list in step with ServerSessions.tsx. */
 .server-access-workspace .sa-session-table th:nth-child(2) { width:17%; }
 .server-access-workspace .sa-session-table th:nth-child(3) { width:96px; }
-.server-access-workspace .sa-session-table th:nth-child(4) { width:150px; }
-.server-access-workspace .sa-session-table th:nth-child(5) { width:132px; }
-.server-access-workspace .sa-session-table th:nth-child(6) { width:150px; }
+.server-access-workspace .sa-session-table th:nth-child(4) { width:170px; }
+.server-access-workspace .sa-session-table th:nth-child(5) { width:150px; }
+.server-access-workspace .sa-session-table th:nth-child(6) { width:180px; }
 .server-access-workspace .sa-session-table th:nth-child(7) { width:128px; }
 /* Narrow windows scroll the table (inside .tnx-table-scroll) rather than squeezing columns until text breaks. */
-.server-access-workspace .sa-session-table.sa-table .tnx-datatable table:has(thead th:nth-child(7)) { min-width:960px; }
+.server-access-workspace .sa-session-table.sa-table .tnx-datatable table:has(thead th:nth-child(7)) { min-width:1000px; }
 .server-access-workspace .sa-time { white-space:nowrap; }
+/* A rare long value (another year) is cut with an ellipsis, never drawn over the next column; title has it all. */
+.server-access-workspace .sa-session-table td:nth-child(5),.server-access-workspace .sa-session-table td:nth-child(6) { overflow:hidden; text-overflow:ellipsis; }
 .server-access-workspace .sa-grants-embedded { display:grid; gap:18px; }
 .server-access-workspace .sa-grants-embedded .sa-list-toolbar > input { flex:1; min-width:0; width:auto; }
 .server-access-workspace .sa-grants-embedded .sa-list-toolbar > select { min-width:120px; }
