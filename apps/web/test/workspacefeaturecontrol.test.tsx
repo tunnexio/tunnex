@@ -121,6 +121,23 @@ describe("central workspace feature contracts", () => {
     expect(mock.impact).toHaveBeenCalledTimes(1);
   });
 
+  it("tells a server administrator where to finish Local Sharing setup (LS-UX-1)", async () => {
+    mock.policy.mockResolvedValue({ ok: true, data: { ...policy, enabled: false, domain_ready: false } });
+    render(<MemoryRouter><WorkspaceFeatureControl feature="local-sharing" orgId="org-a" roles={["admin"]} canEdit serverAdmin /></MemoryRouter>);
+    const link = await screen.findByRole("link", { name: "Open Local Sharing domain setup" });
+    expect(link.getAttribute("href")).toBe("/settings?section=beam-serving");
+    expect(screen.getByText(/isn't set up on this server yet/)).toBeTruthy();
+    expect(screen.queryByText(/must be qualified/)).toBeNull();
+  });
+
+  it("tells other administrators to ask a server administrator, without the setup link (LS-UX-1)", async () => {
+    mock.policy.mockResolvedValue({ ok: true, data: { ...policy, enabled: false, domain_ready: false } });
+    render(page("local-sharing"));
+    expect(await screen.findByText(/Ask a server administrator to finish Local Sharing setup/)).toBeTruthy();
+    expect(screen.queryByRole("link", { name: "Open Local Sharing domain setup" })).toBeNull();
+    expect(screen.getByRole("link", { name: "Open sharing policy" }).getAttribute("href")).toBe("/settings?section=beam");
+  });
+
   it("withdraws a pending sharing review immediately when the actor changes", async () => {
     let finish!: (value: unknown) => void;
     mock.impact.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
