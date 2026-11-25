@@ -179,6 +179,9 @@ jobs:
       - name: BYODB Helm Secret and TLS contract
         run: bash deploy/byodb-chart-contract_test.sh
 
+      - name: Local Sharing Helm contract
+        run: bash deploy/local-sharing-chart-contract_test.sh
+
       - name: BYODB installer contract
         run: sh deploy/byodb-install-contract_test.sh
 

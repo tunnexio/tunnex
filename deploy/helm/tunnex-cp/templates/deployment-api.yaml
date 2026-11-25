@@ -1,4 +1,5 @@
 {{- include "tunnex-cp.appAccessGuard" . -}}
+{{- include "tunnex-cp.localSharingGuard" . -}}
 {{- if and .Values.serverAccess.enabled (ne (int .Values.api.replicas) 1) -}}
 {{- fail "serverAccess currently requires exactly one API replica; terminal HA is not supported" -}}
 {{- end -}}
@@ -36,7 +37,7 @@ spec:
       securityContext:
         runAsNonRoot: true
         runAsUser: 10001
-        {{- if or .Values.database.tls.existingSecret .Values.appAccess.enabled (and .Values.serverAccess.enabled .Values.serverAccess.recordingVolume.existingClaim) }}
+        {{- if or .Values.database.tls.existingSecret (include "tunnex-cp.appAuthority" .) (and .Values.serverAccess.enabled .Values.serverAccess.recordingVolume.existingClaim) }}
         fsGroup: 10001
         fsGroupChangePolicy: OnRootMismatch
         {{- end }}
@@ -49,7 +50,7 @@ spec:
               containerPort: 8080
             - name: agent-mtls
               containerPort: 8443
-            {{- if .Values.appAccess.enabled }}
+            {{- if include "tunnex-cp.appAuthority" . }}
             - {name: app-authority, containerPort: 8445}
             {{- end }}
           env:
@@ -69,6 +70,12 @@ spec:
               value: {{ .Values.logLevel | quote }}
             {{- if .Values.appAccess.enabled }}
             - {name: TUNNEX_APP_ACCESS_BASE_DOMAIN, value: {{ .Values.appAccess.baseDomain | quote }}}
+            {{- end }}
+            {{- if .Values.localSharing.enabled }}
+            - {name: TUNNEX_BEAM_BASE_DOMAIN, value: {{ .Values.localSharing.baseDomain | quote }}}
+            - {name: TUNNEX_BEAM_PROXY_URL, value: {{ .Values.localSharing.proxyURL | quote }}}
+            {{- end }}
+            {{- if include "tunnex-cp.appAuthority" . }}
             - {name: TUNNEX_APP_PROXY_AUTHORITY_ADDR, value: ":8445"}
             - {name: TUNNEX_APP_ACCESS_RESTORE_MARKER, value: /var/lib/tunnex/app-restore/app-access.pending.json}
             {{- end }}
@@ -157,7 +164,7 @@ spec:
             - name: terminal-recordings
               mountPath: /var/lib/tunnex/recordings
             {{- end }}
-            {{- if .Values.appAccess.enabled }}
+            {{- if include "tunnex-cp.appAuthority" . }}
             - {name: app-restore, mountPath: /var/lib/tunnex/app-restore, subPath: app-restore, readOnly: true}
             {{- end }}
             {{- if .Values.aiGateway.customProviders.enabled }}
@@ -230,9 +237,9 @@ spec:
           persistentVolumeClaim:
             claimName: {{ .Values.serverAccess.recordingVolume.existingClaim | quote }}
         {{- end }}
-        {{- if .Values.appAccess.enabled }}
+        {{- if include "tunnex-cp.appAuthority" . }}
         - name: app-restore
-          persistentVolumeClaim: {claimName: {{ .Values.appAccess.restore.existingClaim | quote }}}
+          persistentVolumeClaim: {claimName: {{ include "tunnex-cp.restoreClaim" . | quote }}}
         {{- end }}
         {{- if .Values.aiGateway.customProviders.enabled }}
         - name: ai-custom-policy

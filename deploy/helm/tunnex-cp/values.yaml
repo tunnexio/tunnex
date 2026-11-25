@@ -259,6 +259,29 @@ appAccess:
       requests: {cpu: 100m, memory: 128Mi}
       limits: {cpu: "1", memory: 512Mi}
 
+# Explicit Local Sharing composition (LS-UX-1). Independent of appAccess; when
+# both are enabled they share one restore fence claim. No public route is
+# created by this chart; publish the two Services as your edge requires.
+localSharing:
+  enabled: false
+  baseDomain: ""   # registrable domain separate from the console and App Access
+  proxyURL: ""     # https:// connector URL publishers reach (seeds the console form)
+  restore:
+    existingClaim: ""
+  proxy:
+    # Exact signed release image@sha256 (releaseverify -require-beam-proxy); empty while disabled.
+    image: ""
+    credentialSecret: ""    # key authority.token, issued by backupctl app-proxy-issue
+    publicTLSSecret: ""     # keys tls.crt/tls.key; browser-trusted *.<baseDomain>
+    connectorTLSSecret: ""  # keys tls.crt/tls.key; backupctl beam-proxy-certificate (tunnex-beam-proxy)
+    agentCASecret: ""       # key ca.crt; enrollment CA public certificate only
+    publicServiceType: ClusterIP
+    connectorServiceType: ClusterIP
+    connectorPort: 443
+    resources:
+      requests: {cpu: 100m, memory: 128Mi}
+      limits: {cpu: "1", memory: 512Mi}
+
 # Community browser SSH remains an explicit default-off installation capability.
 # enabled is the INITIAL value only (SA-UI-1): server administrators turn Server Access on or off in
 # Settings, and the saved value wins. locked: true forces it off and the dashboard cannot enable it.
