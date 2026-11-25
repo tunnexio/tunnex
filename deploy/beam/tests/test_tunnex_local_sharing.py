@@ -77,9 +77,16 @@ class LocalSharingCommand(unittest.TestCase):
         self.addCleanup(shutil.rmtree, self.tmp)
         pki = self.tmp / "pki"
         pki.mkdir()
-        openssl("req", "-x509", "-newkey", "rsa:2048", "-nodes", "-keyout", "ca.key", "-out", "ca.pem", "-days", "30", "-subj", "/CN=Test CA", cwd=pki)
+        # RFC 5280-shaped fixtures: strict verifiers (VERIFY_X509_STRICT, the
+        # Python 3.13+ default) reject CAs without key usage, as real CAs have.
+        (pki / "ca.ext").write_text("basicConstraints=critical,CA:TRUE\nkeyUsage=critical,keyCertSign,cRLSign\n"
+                                    "subjectKeyIdentifier=hash\nauthorityKeyIdentifier=keyid:always\n")
+        openssl("req", "-new", "-newkey", "rsa:2048", "-nodes", "-keyout", "ca.key", "-out", "ca.csr", "-subj", "/CN=Test CA", cwd=pki)
+        openssl("x509", "-req", "-in", "ca.csr", "-signkey", "ca.key", "-out", "ca.pem", "-days", "30", "-extfile", "ca.ext", cwd=pki)
         openssl("req", "-newkey", "rsa:2048", "-nodes", "-keyout", "key.pem", "-out", "req.csr", "-subj", "/CN=*.share-example.dev", cwd=pki)
-        (pki / "ext").write_text("subjectAltName=DNS:*.share-example.dev\n")
+        (pki / "ext").write_text("basicConstraints=critical,CA:FALSE\nkeyUsage=critical,digitalSignature,keyEncipherment\n"
+                                 "extendedKeyUsage=serverAuth\nsubjectAltName=DNS:*.share-example.dev\n"
+                                 "subjectKeyIdentifier=hash\nauthorityKeyIdentifier=keyid\n")
         openssl("x509", "-req", "-in", "req.csr", "-CA", "ca.pem", "-CAkey", "ca.key", "-CAcreateserial", "-out", "cert.pem", "-days", "30", "-extfile", "ext", cwd=pki)
         self.pki = pki
         self.install = self.tmp / "tunnex"
