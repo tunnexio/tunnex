@@ -74,7 +74,10 @@ class Renew(unittest.TestCase):
         openssl("req", "-x509", "-newkey", "ec", "-pkeyopt", "ec_paramgen_curve:P-256", "-nodes", "-keyout", "root.key",
                 "-out", "root.pem", "-subj", "/CN=AA-EN-1 test root", "-days", "30",
                 "-addext", "basicConstraints=critical,CA:TRUE", "-addext", "keyUsage=critical,keyCertSign,cRLSign", cwd=self.pki)
-        (self.pki / "inter.ext").write_text("basicConstraints=critical,CA:TRUE,pathlen:0\nkeyUsage=critical,keyCertSign,cRLSign\n")
+        # RFC 5280-shaped fixtures: strict verifiers (VERIFY_X509_STRICT, the
+        # Python 3.13+ default) require key identifiers, as real CAs issue them.
+        (self.pki / "inter.ext").write_text("basicConstraints=critical,CA:TRUE,pathlen:0\nkeyUsage=critical,keyCertSign,cRLSign\n"
+                                            "subjectKeyIdentifier=hash\nauthorityKeyIdentifier=keyid:always\n")
         openssl("req", "-new", "-newkey", "ec", "-pkeyopt", "ec_paramgen_curve:P-256", "-nodes", "-keyout", "inter.key",
                 "-out", "inter.csr", "-subj", "/CN=AA-EN-1 test intermediate", cwd=self.pki)
         openssl("x509", "-req", "-in", "inter.csr", "-CA", "root.pem", "-CAkey", "root.key", "-CAcreateserial",
@@ -88,7 +91,9 @@ class Renew(unittest.TestCase):
             dst.chmod(0o400)
 
     def leaf(self, name, days=20, sans="DNS:*.cp.example.test,DNS:cp.example.test", dates=None):
-        (self.pki / (name + ".ext")).write_text("subjectAltName=%s\nextendedKeyUsage=serverAuth\nkeyUsage=critical,digitalSignature\n" % sans)
+        (self.pki / (name + ".ext")).write_text("basicConstraints=critical,CA:FALSE\nsubjectAltName=%s\nextendedKeyUsage=serverAuth\n"
+                                                "keyUsage=critical,digitalSignature\nsubjectKeyIdentifier=hash\n"
+                                                "authorityKeyIdentifier=keyid\n" % sans)
         openssl("req", "-new", "-newkey", "ec", "-pkeyopt", "ec_paramgen_curve:P-256", "-nodes", "-keyout", name + ".key",
                 "-out", name + ".csr", "-subj", "/CN=cp.example.test", cwd=self.pki)
         validity = ["-days", str(days)] if dates is None else ["-not_before", dates[0], "-not_after", dates[1]]
