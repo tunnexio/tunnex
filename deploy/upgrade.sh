@@ -396,7 +396,7 @@ write_status() {
 #   dir:  <handoff>/release.json (verified bytes), <handoff>/host/ (image files)
 HOST_ABI=1
 HOST_IMAGE_DIR=/usr/share/tunnex/host
-HOST_FILE_LIST='upgrade.sh upgrade-runner.sh tunnex.yml ai-bootstrap.sh ai-gateway/config-managed.json app-access/compose.yml app-access/restore.py app-access/tunnex-app-access.py beam/compose.yml'
+HOST_FILE_LIST='upgrade.sh upgrade-runner.sh tunnex.yml ai-bootstrap.sh ai-gateway/config-managed.json app-access/compose.yml app-access/restore.py app-access/tunnex-app-access.py beam/compose.yml beam/tunnex-local-sharing.py'
 HANDOFF=${TUNNEX_UPGRADE_HANDOFF:-}
 HOST_FILES=
 handoff_refuse() {
@@ -1257,6 +1257,12 @@ install_host_copies() {
       mv -f "$ROOT_UPGRADE_DIR/$_copy.next" "$ROOT_UPGRADE_DIR/$_copy" || return 1
   done
 }
+# LS-UX-1 E.2: the one-step Local Sharing command is always available on the host.
+if install -m 0755 "$HOST_FILES/beam/tunnex-local-sharing.py" "$DIR/tunnex-local-sharing.next" 2>/dev/null; then
+  mv -f "$DIR/tunnex-local-sharing.next" "$DIR/tunnex-local-sharing"
+else
+  echo 'warning: the tunnex-local-sharing command could not be installed; the upgrade itself succeeded' >&2
+fi
 if ! install_host_copies; then
   echo "warning: the upgrade succeeded, but the installed upgrade helper could not be updated; the next upgrade still works through the current helper" >&2
 fi
