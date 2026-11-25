@@ -74,7 +74,8 @@ the administrator had no way to learn the reason.
    `TestEveryServerAccessCodeHasWebText` also iterates `bootstrap.SetupErrorCodes`.
 
 6. **The journal claim becomes true.** The helper (and the launcher, for its own two refusals) writes
-   `setup refused: <code>` (code only, plus the local human message) to syslog under the identifier
+   `setup refused: <code>` (the code only; `unclassified (<exception type>)` when there is none) to syslog under the
+   identifier
    `tunnex-browser-ssh` using Python's standard `syslog` module; journald stores it, so
    `journalctl -t tunnex-browser-ssh` shows it. Logging is best effort and can never change the exit path. The
    generic text now names that command instead of a vague "check the journal".
@@ -92,8 +93,8 @@ the administrator had no way to learn the reason.
 - Why it cannot carry secrets: the gateway never forwards free text; the per-job key K, HMAC/attestation lines, the
   temporary private key and tokens are never part of a code. A hostile or compromised target can at most choose the
   wrong canned sentence, which it could already cause by failing in that way.
-- The helper's human message (paths, account names) goes only to the target's own stderr and journal, as today; the
-  helper holds no secrets (its bundle is public material).
+- The helper's human message (paths, account names) goes only to the target's own stderr, as today; the journal gets
+  the code only. The helper holds no secrets (its bundle is public material).
 - Output limits are unchanged (64 KiB total, 80-byte line cap for the code line).
 
 ### Version skew
@@ -125,8 +126,9 @@ fail or carry the wrong trust.
 
 1. **The placeholder stays an internal storage value only.** It is still what the database holds for a pending
    server (no migration), but:
-   - the API never returns it: `Workspace` and server save responses omit `host_fingerprint` when it is the
-     placeholder;
+   - the API never returns it: `Workspace` and server save responses return an empty `host_fingerprint` instead
+     (empty, not absent: a dashboard bundle cached from before this fix echoes the field on every save, and the
+     field is required on input, so it sends `""` back and the server stays pending);
    - on input, a pending Linux server (no accounts) accepts an empty `host_fingerprint` (normalized to the stored
      placeholder) and still accepts the placeholder itself, so an old cached bundle or script keeps working;
    - **the placeholder is refused as a pin** whenever the server has accounts (Linux or Windows) with
@@ -145,8 +147,19 @@ fail or carry the wrong trust.
 4. **Windows:** the RDP certificate fingerprint stays an editable field (this form is the only place it is set);
    Windows servers always have accounts and a real pin, so the placeholder never applies to them.
 5. **Dashboard round-trips:** `save()` (enable, toggles) sends the server's fingerprint or an empty string, never
-   the placeholder; the Connection view derives "Host trust pending SSH setup" from a Linux server with no pin.
+   the placeholder; the Connection view derives "Host trust pending SSH setup" from a Linux server with no accounts
+   and no pin.
    `sshBootstrap.ts` refuses a manual import result carrying the placeholder.
+
+### Version skew
+
+- **Stale dashboard tab (bundle from before this fix) against the new API:** it receives `host_fingerprint: ""` for
+  a pending server. Its Connection view shows "Not reported" instead of "pending" until reloaded; its edit form
+  shows an empty (required) fingerprint field instead of the placeholder; its other saves echo `""`, which the API
+  stores as pending. It can no longer pin the placeholder: if typed, the API refuses it.
+- **New dashboard against an older API** (only during a rolling deploy): the dashboard treats a returned placeholder
+  as "no pin" and sends `""` for a pending server, which an older API refuses as invalid until it is upgraded; no
+  trust is changed.
 
 ### Leak scan
 

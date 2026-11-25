@@ -45,28 +45,29 @@ func TestPendingTrustNeverRoundTripsThePlaceholder(t *testing.T) {
 	if e != nil {
 		t.Fatal(e)
 	}
-	if created.HostFingerprint != nil {
-		t.Fatalf("placeholder returned on create: %q", *created.HostFingerprint)
+	pendingView := func(v api.ServerAccessServer) bool { return v.HostFingerprint != nil && *v.HostFingerprint == "" }
+	if !pendingView(created) {
+		t.Fatalf("placeholder returned on create: %v", created.HostFingerprint)
 	}
 	if fp, _ := stored(created.Id); fp != PendingHostFingerprint {
 		t.Fatalf("pending server stored with %q", fp)
 	}
 	principal := &authctx.Principal{UserID: user, RoleSets: map[uuid.UUID][]string{org: {"owner"}}}
 	workspace, e := svc.Workspace(ctx, org, principal)
-	if e != nil || len(workspace.Servers) != 1 || workspace.Servers[0].HostFingerprint != nil {
+	if e != nil || len(workspace.Servers) != 1 || !pendingView(workspace.Servers[0]) {
 		t.Fatalf("workspace leaks the placeholder: %+v %v", workspace.Servers, e)
 	}
 
 	// Editing other fields of a pending server (empty fingerprint, as the dashboard sends) keeps trust pending.
 	in.Name, in.Revision = "renamed", created.Revision
 	renamed, e := svc.SaveServer(ctx, org, user, created.Id, in)
-	if e != nil || renamed.HostFingerprint != nil || renamed.Name != "renamed" {
+	if e != nil || !pendingView(renamed) || renamed.Name != "renamed" {
 		t.Fatalf("pending edit: %+v %v", renamed, e)
 	}
 	// An older bundle that echoes the placeholder for a pending server still works.
 	in.HostFingerprint, in.Revision = PendingHostFingerprint, renamed.Revision
 	echoed, e := svc.SaveServer(ctx, org, user, created.Id, in)
-	if e != nil || echoed.HostFingerprint != nil {
+	if e != nil || !pendingView(echoed) {
 		t.Fatalf("placeholder echo for a pending server refused: %v", e)
 	}
 
