@@ -565,3 +565,25 @@ immediately.
 **Precondition (unchanged):** the demo's App Access must be in the managed
 layout first (AA-EN-1 E12). The command detects App Access only from the
 managed `app-access.yml` plus its hash in `.env`.
+
+## E.4 What was verified against real software (throwaway `lsux1-*` Docker only)
+
+- **Caddy (pinned image v2.11.4), `proxy_protocol` wrapper with `allow <edge>/32`
+  and `fallback_policy skip`:**
+  - from the edge address, a PROXY v2 header sets the client address;
+  - the edge without a header is served normally;
+  - from any other address, a forged header breaks the handshake and is not
+    trusted;
+  - other direct callers are served normally.
+
+  Every generated Caddy mode validates with the pinned image. This is now a CI
+  contract (`deploy/edge-proxy-protocol-contract_test.sh`).
+- **One-off `backupctl` helper mounts:** a Compose override that re-mounts
+  `app_restore` with `read_only: false` replaces the serving overlay's
+  read-only mount for the one-off run only. The serving composition stays
+  read-only. The bind-mounted output directory is writable by uid 10001 once
+  owned by it, which the host command does when run as root. Same mechanism as
+  `upgrade.sh`'s `app-preflight` helper.
+- **Not exercised live:** a full stack with a published `beam-proxy` image,
+  because the image is produced by release CI. The edge, PROXY reader/writer and
+  readiness-through-edge are covered by Go end-to-end tests over real TCP/TLS.
