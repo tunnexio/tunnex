@@ -157,7 +157,7 @@ func TestSubdomainAndUnder(t *testing.T) {
 		}
 	}
 	under := Under("apps.test")
-	if !under("apps.test") || !under("x.y.apps.test") || under("xapps.test") {
+	if under("apps.test") || !under("x.y.apps.test") || under("xapps.test") {
 		t.Fatal("under")
 	}
 }

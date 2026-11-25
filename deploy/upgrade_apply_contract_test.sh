@@ -782,6 +782,8 @@ grep -Fxq 'state=healthy' "$aa_dir/status"
 grep -Fxq 'TUNNEX_BEAM_PROXY_IMAGE=ghcr.io/tunnexio/tunnex-beam-proxy@sha256:9999999999999999999999999999999999999999999999999999999999999999' "$aa_dir/.env"
 grep -Fxq 'COMPOSE_PROFILES=bundled-db,beam' "$aa_dir/.env"
 cmp -s "$ROOT/deploy/beam/compose.yml" "$aa_dir/local-sharing.yml"
+cmp -s "$ROOT/deploy/beam/tunnex-local-sharing.py" "$aa_dir/tunnex-local-sharing"
+[ -x "$aa_dir/tunnex-local-sharing" ]
 grep -Fxq "TUNNEX_LOCAL_SHARING_COMPOSE_SHA256=$(shasum -a 256 "$aa_dir/local-sharing.yml" | awk '{print $1}')" "$aa_dir/.env"
 ! grep -Fq 'app-preflight' "$aa_dir/docker.log"
 ! grep -Fq 'app-access' "$aa_dir/docker.log"

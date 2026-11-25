@@ -52,12 +52,12 @@ func Subdomain(base string) func(string) bool {
 	}
 }
 
-// Under matches base itself and any name below it.
+// Under matches any name strictly below base. base itself is excluded: it
+// can be the console host (App Access portal-parent topology).
 func Under(base string) func(string) bool {
 	base = strings.ToLower(strings.TrimSuffix(base, "."))
 	return func(sni string) bool {
-		sni = strings.ToLower(sni)
-		return sni == base || strings.HasSuffix(sni, "."+base)
+		return strings.HasSuffix(strings.ToLower(sni), "."+base)
 	}
 }
 

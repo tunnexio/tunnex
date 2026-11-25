@@ -9,6 +9,7 @@ import (
 	"crypto/x509"
 	"encoding/json"
 	"encoding/pem"
+	"github.com/tunnexio/tunnex/packages/apptransport/sniedge"
 	"math/big"
 	"net"
 	"net/http"
@@ -252,5 +253,72 @@ func TestExplicitDevelopmentTrustFactory(t *testing.T) {
 	c.ProbeFingerprint = p.ProbeFingerprint()
 	if Version(c) == before {
 		t.Fatal("persisted config version did not bind probe trust")
+	}
+}
+
+// LS-UX-1 E.1: the checks pass unchanged when public 443 is the single-IP edge
+// (SNI passthrough in front of the sharing proxy), and fail when the edge sends
+// sharing hostnames elsewhere.
+func TestReadinessThroughSingleIPEdge(t *testing.T) {
+	for _, tc := range []struct {
+		name  string
+		owned string
+		want  bool
+	}{{"edgeRoutesSharingDomain", "beam.example.net", true}, {"edgeMisrouted", "other.example.net", false}} {
+		t.Run(tc.name, func(t *testing.T) {
+			publicKey, publicCert := testCertificate(t, []string{"*.beam.example.net"}, false)
+			console, err := net.Listen("tcp", "127.0.0.1:0")
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer console.Close()
+			go func() {
+				for {
+					c, err := console.Accept()
+					if err != nil {
+						return
+					}
+					c.Close()
+				}
+			}()
+			inner, err := net.Listen("tcp", "127.0.0.1:0")
+			if err != nil {
+				t.Fatal(err)
+			}
+			edge, err := sniedge.New(inner, sniedge.Config{Own: sniedge.Subdomain(tc.owned), Default: console.Addr().String(), Token: []byte(strings.Repeat("t", 32))})
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer edge.Close()
+			server := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(404) })}
+			go func() {
+				_ = server.Serve(tls.NewListener(edge, &tls.Config{MinVersion: tls.VersionTLS13, Certificates: []tls.Certificate{publicKey}}))
+			}()
+			defer server.Close()
+			purposeKey, purposeCert := testCertificate(t, []string{"tunnex-beam-proxy"}, false)
+			connector := httptest.NewUnstartedServer(http.NotFoundHandler())
+			connector.TLS = &tls.Config{MinVersion: tls.VersionTLS13, Certificates: []tls.Certificate{purposeKey}}
+			connector.StartTLS()
+			defer connector.Close()
+			roots := x509.NewCertPool()
+			roots.AddCert(publicCert)
+			c := configured()
+			c.ConnectorCA = pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: purposeCert.Raw})
+			p := New()
+			p.roots, p.allowLoopback = roots, true
+			p.lookup = func(context.Context, string) ([]net.IPAddr, error) {
+				return []net.IPAddr{{IP: net.ParseIP("127.0.0.1")}}, nil
+			}
+			p.dial = func(ctx context.Context, n, a string) (net.Conn, error) {
+				target := inner.Addr().String()
+				if strings.HasSuffix(a, ":8443") {
+					target = connector.Listener.Addr().String()
+				}
+				return (&net.Dialer{}).DialContext(ctx, n, target)
+			}
+			if v := p.probe(context.Background(), c); v.Passed != tc.want {
+				t.Fatalf("edge readiness = %v, want %v: %#v", v.Passed, tc.want, v.Checks)
+			}
+		})
 	}
 }
