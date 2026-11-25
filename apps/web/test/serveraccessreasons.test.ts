@@ -17,6 +17,15 @@ describe("Server Access reasons (SA-UX-2 item 8)", () => {
   it("gives the reachability next step for ssh_unreachable", () => {
     expect(serverAccessReason("ssh_unreachable").next).toMatch(/Allow TCP from the gateway/);
   });
+  it("explains every target setup refusal with a next step (SA-UX-3)", () => {
+    const setup = serverAccessReasonCodes.filter(code => code.startsWith("setup_") && !["setup_failed", "setup_expired", "setup_capacity", "setup_in_progress", "setup_not_ready"].includes(code));
+    expect(setup.length).toBe(23);
+    for (const code of setup) expect(serverAccessReason(code).next, code).toBeTruthy();
+    // A leftover unit has no managed configuration, so the helper's remove command would refuse; never suggest it.
+    expect(serverAccessReasonText("setup_existing_setup")).not.toMatch(/tunnex-browser-ssh remove/);
+    expect(serverAccessReasonText("setup_identity_differs")).toMatch(/SSH port/);
+    expect(serverAccessReasonText("setup_failed")).toMatch(/journalctl -t tunnex-browser-ssh/);
+  });
   it("never humanizes an unknown code and is empty for none", () => {
     expect(sessionReasonText("some_new_reason")).toBe("Server Access could not complete this action.");
     expect(serverAccessReasonText("some_new_reason")).not.toMatch(/some new reason/i);

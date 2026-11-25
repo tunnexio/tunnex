@@ -84,3 +84,28 @@ func TestOnlineAccountSyncRejectsTrustChangesAndAccountRemoval(t *testing.T) {
 		}
 	}
 }
+
+// SA-UX-3: a target refusal shows its fixed sentence; anything else falls back without refusing the report.
+func TestEnrollmentFailureUsesOnlyAllowListedSetupCodes(t *testing.T) {
+	message, code, e := enrollmentFailure(bootstrap.Report{Result: "setup_failed", SetupError: "setup_existing_setup"})
+	if e != nil || code != "setup_existing_setup" || message != setupErrorMessages["setup_existing_setup"] || !strings.Contains(message, "tunnex-browser-sshd") {
+		t.Fatalf("coded refusal not explained: %q %q %v", message, code, e)
+	}
+	for _, in := range []bootstrap.Report{{Result: "setup_failed"}, {Result: "setup_failed", SetupError: "setup_from_a_newer_gateway"}, {Result: "setup_failed", SetupError: "Existing setup found at /etc"}} {
+		message, code, e := enrollmentFailure(in)
+		if e != nil || code != "" || message != enrollmentFailures["setup_failed"] {
+			t.Fatalf("%+v: got %q %q %v", in, message, code, e)
+		}
+	}
+	if message, code, e := enrollmentFailure(bootstrap.Report{Result: "ssh_unreachable"}); e != nil || code != "" || message != enrollmentFailures["ssh_unreachable"] {
+		t.Fatal("transport failure changed")
+	}
+	for _, in := range []bootstrap.Report{{Result: "ssh_unreachable", SetupError: "setup_existing_setup"}, {Result: "made_up"}, {Result: "failed"}} {
+		if _, _, e := enrollmentFailure(in); e == nil {
+			t.Fatalf("malformed report accepted: %+v", in)
+		}
+	}
+	if !strings.Contains(enrollmentFailures["setup_failed"], "journalctl -t tunnex-browser-ssh") {
+		t.Fatal("generic text must name the journal identifier the helper writes")
+	}
+}
