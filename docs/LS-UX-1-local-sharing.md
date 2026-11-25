@@ -217,3 +217,139 @@ behaviour could leave an old proxy talking to a migrated API.
 - **D3** Purpose-bind proxy credentials (App Access vs Local Sharing).
 - **D4** For the demo video: a second public IP on the demo VM and a separate
   registrable sharing domain (A.1), or wait for D1/D2 and record later.
+
+---
+
+## D. Founder ruling 2026-11-25 and the architecture it asks for
+
+The ruling: "go with the best architecture; if code changes are needed, make them.
+I want an easy, good user experience without confusion and extra work." This
+section records the decisions for B1, B2, single-IP serving and the operator
+checklist. It supersedes A.0/C.4/C.5 where they differ.
+
+### D.1 B1: a signed Local Sharing proxy image (decided, built here)
+
+`tunnex-beam-proxy` is published exactly like `tunnex-app-proxy`:
+- the CI image matrix builds `deploy/docker/beam-proxy.Dockerfile` for amd64 and
+  arm64 with the same provenance/SBOM/attestation steps;
+- it is in the public-package gate and the burned-tag guard;
+- the signed release descriptor gets `images["beam-proxy"]`;
+- `release.Verify` requires both digests whenever the entry is present, which
+  keeps older descriptors valid;
+- `releaseverify -require-beam-proxy -print-env` prints
+  `TUNNEX_BEAM_PROXY_IMAGE=ghcr.io/tunnexio/tunnex-beam-proxy@sha256:…`.
+
+The compose overlay and the Helm chart only accept a digest. A self-built image
+is no longer part of the supported path.
+
+**One-time founder action:** the first release that publishes the image creates
+a new GHCR package. That package is private until an org owner sets it to
+Public. CI's public-package gate fails that release until then, the same as
+when `app-proxy` was added.
+
+### D.2 B2: Local Sharing is a managed upgrade profile (decided, built here)
+
+It mirrors the App Access managed layout:
+- The release ships the overlay as a host file (`local-sharing/compose.yml`
+  in the API image, extracted by the hand-off). The installation keeps it as
+  `<install>/local-sharing.yml`, hash-bound in `.env`
+  (`TUNNEX_LOCAL_SHARING_COMPOSE_SHA256`). The profile is `beam`.
+- **Admission, before any backup or change:**
+  - the running `beam-proxy` must come from `tunnex.yml`, optionally
+    `app-access.yml`, then `local-sharing.yml`, in that order;
+  - its secrets directory and port bindings must equal `.env`;
+  - the overlay hash must match;
+  - the target release must carry a signed `beam-proxy` digest (verified with
+    `-require-beam-proxy`).
+
+  An unmanaged hand-written layout is refused with the exact adopt steps
+  (copy the release's overlay, record its hash, recreate).
+- **Apply:**
+  - pin the signed digest in `.env`;
+  - stop `beam-proxy` **before** the API migrates, so an old proxy never talks
+    to a new API;
+  - migrate and health-check the API;
+  - start the new `beam-proxy` and wait for its health check (`/livez`:
+    process and listeners up). Readiness (`/readyz`) depends on the
+    installation's DNS/TLS checks, so it must not fail an upgrade.
+  - Shares end on the restart (connectors drop). Their database state, policy,
+    settings, events and the restore volume are kept.
+- **Rollback:** the same forward-fix rule as the rest of the product. Re-run the
+  upgrade, or restore the verified pre-upgrade backup with the documented
+  restore procedure. A failed apply leaves `beam-proxy` stopped, so nothing
+  serves from an unverified stack.
+- **Independence:**
+  - Local Sharing-only installs are recognised as such. The restore-volume
+    mount from the Local Sharing overlay no longer makes the classifier think
+    App Access is present.
+  - App Access-only installs are unchanged.
+  - Both together compose as `tunnex.yml, app-access.yml, local-sharing.yml`.
+
+### D.3 Single public IP (evaluated; decided design, **not built in this PR**)
+
+Options for serving `*.<sharing domain>` on the one public 443 that already
+belongs to Caddy (base install) or `app-proxy` (App Access installs, the demo):
+
+| Option | Verdict |
+|---|---|
+| E1. **SNI passthrough edge**: whichever process owns public 443 reads only the ClientHello SNI. It splices `*.<sharing domain>` raw TCP to `beam-proxy:8443` (TLS still terminates in `beam-proxy`). Every other SNI goes to the next owner, with a PROXY v2 header so client addresses survive. This is the same mechanism as App Access's accepted-but-unbuilt AA-EN-1 **S1**. | **Chosen design.** One IP, one edge. Share TLS and cookies never decrypt outside `beam-proxy`. Console TLS and ACME stay in Caddy. |
+| E2. `app-proxy` terminates share TLS and forwards | Rejected: share plaintext in the wrong component, and it ties Local Sharing to App Access. |
+| E3. Caddy layer-4 routing | Rejected (AA-EN-1 S3): custom Caddy build in the supply chain. |
+| E4. Share URLs on a non-443 port | Rejected: confusing reviewer URLs, blocked by many corporate networks. |
+| E5. Second public IP | Works today. Stays the supported layout until E1 ships. |
+
+**Why E1 is not built here.** It cannot be done safely as a side change of a UX
+story:
+1. **Client addresses.** Spliced console and App Access traffic would reach
+   Caddy and `app-proxy` from the edge's container address. The API's per-IP
+   login throttling, rate limits and audit addresses would collapse to one
+   value. That weakens security. Preserving them needs PROXY v2 *acceptance*,
+   with an exact allow-list, in Caddy (built-in `proxy_protocol` listener
+   wrapper, changes the base `tunnex.yml` edge) and in `app-proxy`.
+2. **Ownership of 443 moves.** Moving 443 is an `.env` and port-admission
+   change for `upgrade.sh`'s Caddy and App Access checks. App Access's adopted
+   terminate-and-forward layout (the demo) needs its own migration.
+3. **The same edge is App Access's S1.** Building it once in a shared
+   `packages/apptransport/sniedge` (bounded ClientHello parse, peek timeout,
+   connection cap, PROXY v2 writer), owned by "whoever holds 443", serves both
+   features and keeps them independent. Building a Local Sharing-only copy now
+   would be thrown away.
+
+**Remaining work, as its own story (LS-EDGE-1, shared with AA-EN-1 S1):** the
+`sniedge` package and its fuzz tests; PROXY v2 accept in `app-proxy` and in
+Caddy; 443 ownership in `tunnex.yml`/the overlays (`TUNNEX_EDGE_HTTPS_PUBLISH`
+already exists); `upgrade.sh` port admission; and a readiness check that accepts
+"wildcard served via the shared edge". The readiness check needs no change in
+substance: it already probes the real public 443 and the real certificate,
+whatever forwards it.
+
+**Separate registrable sharing domain: still required.** It is a real isolation
+property, not a routing convenience:
+- A sibling of the console (same eTLD+1) is *same-site*. Browsers send
+  `SameSite=Lax/Strict` console cookies on requests that start from a shared
+  app, and a share's JavaScript could set domain cookies that the console
+  reads.
+- Shared apps are arbitrary code from members' laptops, so they must be
+  cross-site to the console.
+- The console host itself is allowed only because no app lives on it.
+
+### D.4 Operator checklist (in the docs and in the app)
+
+The checklist lives in section A and, shortened, in the console's Local
+Sharing domain page. Each failing check shows what is missing and the next
+step.
+
+### D.5 Security analysis of D.1–D.2
+
+- **Supply chain:** only a signed, digest-pinned image runs, verified by the
+  installed key through the same `releaseverify` path as every other image.
+  Mutable tags are refused by `verify-config.py` and by the upgrade's
+  digest pattern.
+- **Upgrade ordering:** the old proxy is stopped before migration. The new one
+  starts only after the API is healthy, and the proxy itself refuses to start
+  while a restore marker is present (unchanged).
+- **No new secrets path:** secrets stay in the operator's private directory.
+  The upgrade only compares its path with `.env`; it never reads it.
+- **Independence:** no code path requires App Access for Local Sharing, or
+  the reverse. The shared authority listener and restore volume are set
+  identically by either overlay.
