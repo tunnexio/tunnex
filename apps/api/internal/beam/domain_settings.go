@@ -3,11 +3,14 @@ package beam
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"path/filepath"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/tunnexio/tunnex/apps/api/internal/apierr"
 	"github.com/tunnexio/tunnex/apps/api/internal/beamreadiness"
 	"github.com/tunnexio/tunnex/packages/apptransport/restorebarrier"
@@ -122,6 +125,19 @@ func (s *Service) UpdateDomainSettings(ctx context.Context, actor uuid.UUID, in 
 	if r.version != in.ExpectedVersion {
 		return DomainSettings{}, apierr.Conflict("beam_settings_version_conflict", "Installation settings changed; reload before saving")
 	}
+	if in.BaseDomain != "" {
+		appBase := s.config.AppAccessBaseDomain
+		var saved string
+		switch e = tx.QueryRow(ctx, `SELECT app_base_domain FROM app_access_domain_settings WHERE singleton`).Scan(&saved); {
+		case e == nil:
+			appBase = saved
+		case !errors.Is(e, pgx.ErrNoRows):
+			return DomainSettings{}, e
+		}
+		if domainsOverlap(strings.ToLower(in.BaseDomain), strings.ToLower(appBase)) {
+			return DomainSettings{}, invalid("This sharing domain overlaps the App Access domain (" + appBase + "). Use a separate domain for Local Sharing so the two features never share hostnames or certificates.")
+		}
+	}
 	if r.configured && r.enabled == in.OperatorEnabled && r.base == in.BaseDomain && r.proxy == in.ProxyURL && r.portal == s.config.PortalURL {
 		_ = tx.Rollback(ctx)
 		return s.GetDomainSettings(ctx)
@@ -226,4 +242,13 @@ func (s *Service) RefreshDomainReadiness(ctx context.Context) error {
 	}
 	_, e = s.CheckDomainReadiness(ctx, beamreadiness.Version(s.probeConfig(r)))
 	return e
+}
+
+// domainsOverlap reports whether two serving bases share a hostname space:
+// equal, or one is a subdomain of the other.
+func domainsOverlap(a, b string) bool {
+	if a == "" || b == "" {
+		return false
+	}
+	return a == b || strings.HasSuffix(a, "."+b) || strings.HasSuffix(b, "."+a)
 }

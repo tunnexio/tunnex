@@ -49,8 +49,11 @@ func (s *Service) preparePolicy(ctx context.Context, org uuid.UUID, a Actor, in 
 	if e != nil {
 		return nil, p, e
 	}
-	if in.Enabled && !p.DomainReady {
-		return nil, p, invalid("Configure and verify the installation Local Sharing domain before enabling organization policy")
+	// LS-UX-1: only turning the policy on needs current serving checks. Editing
+	// or turning off an enabled policy must work during a lapse; serving itself
+	// still denies every share until the checks are current again.
+	if in.Enabled && !p.Enabled && !p.DomainReady {
+		return nil, p, invalid("Local Sharing setup on this server is not complete. A server administrator must finish Settings → Local Sharing domain before this organization can turn it on.")
 	}
 	if p.Version != in.ExpectedVersion {
 		return nil, p, conflict()
