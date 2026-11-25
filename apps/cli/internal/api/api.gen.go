@@ -8323,6 +8323,13 @@ type ServerAccessInstallationInput struct {
 	ExpectedVersion int64   `json:"expected_version"`
 }
 
+// ServerAccessMyAccess defines model for ServerAccessMyAccess.
+type ServerAccessMyAccess struct {
+	Account   string             `json:"account"`
+	ExpiresAt time.Time          `json:"expires_at"`
+	ServerId  openapi_types.UUID `json:"server_id"`
+}
+
 // ServerAccessRecording defines model for ServerAccessRecording.
 type ServerAccessRecording struct {
 	// ArchiveError Safe archive error code
@@ -8530,18 +8537,21 @@ type ServerAccessTrust struct {
 
 // ServerAccessWorkspace defines model for ServerAccessWorkspace.
 type ServerAccessWorkspace struct {
-	CanGrant                 bool                  `json:"can_grant"`
-	CanManage                bool                  `json:"can_manage"`
-	CanManageSessions        bool                  `json:"can_manage_sessions"`
-	Enabled                  bool                  `json:"enabled"`
-	Grants                   []ServerAccessGrant   `json:"grants"`
-	Limitations              []string              `json:"limitations"`
-	MfaFreshnessSeconds      int                   `json:"mfa_freshness_seconds"`
-	RecordingMaxOrgBytes     int                   `json:"recording_max_org_bytes"`
-	RecordingMaxSessionBytes int                   `json:"recording_max_session_bytes"`
-	RecordingRetentionDays   int                   `json:"recording_retention_days"`
-	Servers                  []ServerAccessServer  `json:"servers"`
-	Sessions                 []ServerAccessSession `json:"sessions"`
+	CanGrant            bool                `json:"can_grant"`
+	CanManage           bool                `json:"can_manage"`
+	CanManageSessions   bool                `json:"can_manage_sessions"`
+	Enabled             bool                `json:"enabled"`
+	Grants              []ServerAccessGrant `json:"grants"`
+	Limitations         []string            `json:"limitations"`
+	MfaFreshnessSeconds int                 `json:"mfa_freshness_seconds"`
+
+	// MyAccess The caller's own current access: one row per server account with the latest expiry among the caller's current direct or group grants. Never includes other people or who granted it.
+	MyAccess                 *[]ServerAccessMyAccess `json:"my_access,omitempty"`
+	RecordingMaxOrgBytes     int                     `json:"recording_max_org_bytes"`
+	RecordingMaxSessionBytes int                     `json:"recording_max_session_bytes"`
+	RecordingRetentionDays   int                     `json:"recording_retention_days"`
+	Servers                  []ServerAccessServer    `json:"servers"`
+	Sessions                 []ServerAccessSession   `json:"sessions"`
 }
 
 // ServerEmailSettings defines model for ServerEmailSettings.
