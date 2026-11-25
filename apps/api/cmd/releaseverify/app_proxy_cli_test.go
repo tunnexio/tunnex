@@ -106,3 +106,62 @@ func TestAppProxyOptInCommand(t *testing.T) {
 		t.Fatalf("incomplete architecture exported pins: %v %s", err, out)
 	}
 }
+
+// LS-UX-1 D.1: the Local Sharing proxy is an optional signed image like App Access's.
+func TestBeamProxyOptInCommand(t *testing.T) {
+	dir := t.TempDir()
+	binary := filepath.Join(dir, "releaseverify")
+	if out, err := exec.Command("go", "build", "-o", binary, ".").CombinedOutput(); err != nil {
+		t.Fatalf("build verifier: %v %s", err, out)
+	}
+	pub, private, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		t.Fatal(err)
+	}
+	source := strings.Repeat("a", 40)
+	m := release.Manifest{SchemaVersion: 1, Sequence: 1, Version: "v0.1.1", SourceSHA: source, Images: map[string]release.Images{}}
+	for _, name := range []string{"api", "web", "nginx", "node-agent", "migrate", "beam-proxy"} {
+		m.Images[name] = release.Images{AMD64Digest: "sha256:" + strings.Repeat("1", 64), ARM64Digest: "sha256:" + strings.Repeat("2", 64)}
+	}
+	m.ManagedAgentRuntime = release.ManagedAgentRuntime{Binary: "tunnex-agent-runtime", Version: m.Version,
+		Unit:       release.RuntimeAsset{Name: "tunnex-agent-runtime.service", SHA256: strings.Repeat("3", 64), SourceSHA: source},
+		LinuxAMD64: release.RuntimeAsset{Name: "tunnex-agent-runtime-linux-amd64", SHA256: strings.Repeat("4", 64), SourceSHA: source},
+		LinuxARM64: release.RuntimeAsset{Name: "tunnex-agent-runtime-linux-arm64", SHA256: strings.Repeat("5", 64), SourceSHA: source}}
+	path := filepath.Join(dir, "release.json")
+	write := func() {
+		t.Helper()
+		raw, err := json.Marshal(m)
+		if err != nil {
+			t.Fatal(err)
+		}
+		data, _ := json.Marshal(release.SignedManifest{Manifest: m, KeyID: "ephemeral-local-test", Signature: base64.RawURLEncoding.EncodeToString(ed25519.Sign(private, raw))})
+		if err := os.WriteFile(path, data, 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	run := func(flags ...string) ([]byte, error) {
+		args := append([]string{"-manifest", path, "-public-key", base64.RawURLEncoding.EncodeToString(pub), "-platform", "arm64", "-print-env"}, flags...)
+		return exec.Command(binary, args...).CombinedOutput()
+	}
+	write()
+	out, err := run("-require-beam-proxy")
+	if err != nil || !strings.Contains(string(out), "TUNNEX_BEAM_PROXY_IMAGE=ghcr.io/tunnexio/tunnex-beam-proxy@sha256:"+strings.Repeat("2", 64)+"\n") {
+		t.Fatalf("Local Sharing pin missing: %v %s", err, out)
+	}
+	if out, err = run("-require-app-proxy"); err == nil {
+		t.Fatalf("Local Sharing image satisfied the App Access requirement: %s", out)
+	}
+	delete(m.Images, "beam-proxy")
+	write()
+	if out, err = run("-require-beam-proxy"); err == nil || strings.Contains(string(out), "TUNNEX_API_IMAGE=") {
+		t.Fatalf("missing Local Sharing image exported pins: %v %s", err, out)
+	}
+	if out, err = run(); err != nil || strings.Contains(string(out), "TUNNEX_BEAM_PROXY_IMAGE=") {
+		t.Fatalf("legacy release compatibility: %v %s", err, out)
+	}
+	m.Images["beam-proxy"] = release.Images{AMD64Digest: "sha256:" + strings.Repeat("1", 64)}
+	write()
+	if out, err = run(); err == nil {
+		t.Fatalf("incomplete Local Sharing architecture accepted: %s", out)
+	}
+}

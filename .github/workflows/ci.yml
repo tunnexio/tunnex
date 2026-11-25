@@ -782,7 +782,8 @@ jobs:
               "${GITHUB_REPOSITORY}-migrate" \
               "${GITHUB_REPOSITORY}-operator" \
               "${GITHUB_REPOSITORY}-ai-engine" \
-              "${GITHUB_REPOSITORY}-app-proxy"; do
+              "${GITHUB_REPOSITORY}-app-proxy" \
+              "${GITHUB_REPOSITORY}-beam-proxy"; do
               if registry_ref_exists "$repo" "$IMAGE_TAG"; then
                 echo "::error::GHCR already contains ${repo}:${IMAGE_TAG} but its release/source ledger is absent; the immutable ref is burned and must not be overwritten"
                 exit 1
@@ -1195,6 +1196,7 @@ jobs:
           - { name: operator, dockerfile: apps/operator/Dockerfile, context: apps/operator }
           - { name: ai-engine, dockerfile: apps/ai-engine/Dockerfile, context: . }
           - { name: app-proxy, dockerfile: deploy/docker/app-proxy.Dockerfile, context: . }
+          - { name: beam-proxy, dockerfile: deploy/docker/beam-proxy.Dockerfile, context: . }
     steps:
       - name: Revalidate release source ledger immediately before image publication
         env:
@@ -1326,7 +1328,7 @@ jobs:
           # publishes only the version (`v0.1.2`) because is_default_branch is false on a tag ref.
           # Checking a fixed list would have
           # red-flagged every release build for a tag that was never pushed.
-          IMAGES="api web nginx node-agent migrate operator ai-engine app-proxy"
+          IMAGES="api web nginx node-agent migrate operator ai-engine app-proxy beam-proxy"
           case "$GITHUB_REF" in
             refs/tags/*) TAGS="${GITHUB_REF#refs/tags/}" ;;
             *)           TAGS="latest sha-${GITHUB_SHA::7}" ;;
@@ -1606,6 +1608,7 @@ jobs:
           operator_amd64=$(digest "${image_prefix}-operator" amd64); operator_arm64=$(digest "${image_prefix}-operator" arm64)
           ai_amd64=$(digest "${image_prefix}-ai-engine" amd64); ai_arm64=$(digest "${image_prefix}-ai-engine" arm64)
           app_proxy_amd64=$(digest "${image_prefix}-app-proxy" amd64); app_proxy_arm64=$(digest "${image_prefix}-app-proxy" arm64)
+          beam_proxy_amd64=$(digest "${image_prefix}-beam-proxy" amd64); beam_proxy_arm64=$(digest "${image_prefix}-beam-proxy" arm64)
           jq -n \
             --argjson sequence "$RUN_NUMBER" --arg version "$RELEASE_VERSION" --arg source_sha "$SOURCE_SHA" \
             --arg published_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
@@ -1616,9 +1619,10 @@ jobs:
             --arg operator_amd64 "$operator_amd64" --arg operator_arm64 "$operator_arm64" \
             --arg ai_amd64 "$ai_amd64" --arg ai_arm64 "$ai_arm64" \
             --arg app_proxy_amd64 "$app_proxy_amd64" --arg app_proxy_arm64 "$app_proxy_arm64" \
+            --arg beam_proxy_amd64 "$beam_proxy_amd64" --arg beam_proxy_arm64 "$beam_proxy_arm64" \
             --arg runtime_amd64_sha "$runtime_amd64_sha" --arg runtime_arm64_sha "$runtime_arm64_sha" \
             --arg runtime_unit_sha "$runtime_unit_sha" \
-            '{schema_version:1,sequence:$sequence,version:$version,source_sha:$source_sha,published_at:$published_at,min_protocol:1,compatibility:"open+enterprise",downtime:"brief control-plane restart",release_notes_url:$notes,images:{api:{linux_amd64_digest:$api_amd64,linux_arm64_digest:$api_arm64},web:{linux_amd64_digest:$web_amd64,linux_arm64_digest:$web_arm64},nginx:{linux_amd64_digest:$nginx_amd64,linux_arm64_digest:$nginx_arm64},"node-agent":{linux_amd64_digest:$node_amd64,linux_arm64_digest:$node_arm64},migrate:{linux_amd64_digest:$migrate_amd64,linux_arm64_digest:$migrate_arm64},operator:{linux_amd64_digest:$operator_amd64,linux_arm64_digest:$operator_arm64},"ai-engine":{linux_amd64_digest:$ai_amd64,linux_arm64_digest:$ai_arm64},"app-proxy":{linux_amd64_digest:$app_proxy_amd64,linux_arm64_digest:$app_proxy_arm64}},managed_agent_runtime:{binary:"tunnex-agent-runtime",version:$version,unit:{name:"tunnex-agent-runtime.service",sha256:$runtime_unit_sha,source_sha:$source_sha},linux_amd64:{name:"tunnex-agent-runtime-linux-amd64",sha256:$runtime_amd64_sha,source_sha:$source_sha},linux_arm64:{name:"tunnex-agent-runtime-linux-arm64",sha256:$runtime_arm64_sha,source_sha:$source_sha}}}' > release-unsigned.json
+            '{schema_version:1,sequence:$sequence,version:$version,source_sha:$source_sha,published_at:$published_at,min_protocol:1,compatibility:"open+enterprise",downtime:"brief control-plane restart",release_notes_url:$notes,images:{api:{linux_amd64_digest:$api_amd64,linux_arm64_digest:$api_arm64},web:{linux_amd64_digest:$web_amd64,linux_arm64_digest:$web_arm64},nginx:{linux_amd64_digest:$nginx_amd64,linux_arm64_digest:$nginx_arm64},"node-agent":{linux_amd64_digest:$node_amd64,linux_arm64_digest:$node_arm64},migrate:{linux_amd64_digest:$migrate_amd64,linux_arm64_digest:$migrate_arm64},operator:{linux_amd64_digest:$operator_amd64,linux_arm64_digest:$operator_arm64},"ai-engine":{linux_amd64_digest:$ai_amd64,linux_arm64_digest:$ai_arm64},"app-proxy":{linux_amd64_digest:$app_proxy_amd64,linux_arm64_digest:$app_proxy_arm64},"beam-proxy":{linux_amd64_digest:$beam_proxy_amd64,linux_arm64_digest:$beam_proxy_arm64}},managed_agent_runtime:{binary:"tunnex-agent-runtime",version:$version,unit:{name:"tunnex-agent-runtime.service",sha256:$runtime_unit_sha,source_sha:$source_sha},linux_amd64:{name:"tunnex-agent-runtime-linux-amd64",sha256:$runtime_amd64_sha,source_sha:$source_sha},linux_arm64:{name:"tunnex-agent-runtime-linux-arm64",sha256:$runtime_arm64_sha,source_sha:$source_sha}}}' > release-unsigned.json
           (cd apps/api && GOFLAGS=-mod=readonly go run ./cmd/releasesign -manifest ../../release-unsigned.json -private-key "$TUNNEX_RELEASE_SIGNING_PRIVATE_KEY" -kid "$TUNNEX_RELEASE_KEY_ID" -output ../../release.json)
           rm release-unsigned.json
           sha256sum release.json > release.json.sha256

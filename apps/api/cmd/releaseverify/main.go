@@ -25,6 +25,7 @@ func main() {
 	bootstrapDescriptor := flag.String("bootstrap-verifier", "", "also verify this detached managed-agent verifier descriptor")
 	bootstrapAssets := flag.String("bootstrap-verifier-assets", "", "verify downloaded verifier executable bytes from this directory")
 	requireAppProxy := flag.Bool("require-app-proxy", false, "require the optional signed App Access proxy image for opt-in install/upgrade")
+	requireBeamProxy := flag.Bool("require-beam-proxy", false, "require the optional signed Local Sharing proxy image for opt-in install/upgrade")
 	flag.Parse()
 	if *manifest == "" || *key == "" {
 		fmt.Fprintln(os.Stderr, "usage: releaseverify -manifest FILE -public-key KEY")
@@ -38,6 +39,12 @@ func main() {
 	if *requireAppProxy {
 		if _, ok := s.Manifest.Images["app-proxy"]; !ok {
 			fmt.Fprintln(os.Stderr, "release manifest rejected: App Access proxy image is absent")
+			os.Exit(1)
+		}
+	}
+	if *requireBeamProxy {
+		if _, ok := s.Manifest.Images["beam-proxy"]; !ok {
+			fmt.Fprintln(os.Stderr, "release manifest rejected: Local Sharing proxy image is absent")
 			os.Exit(1)
 		}
 	}
@@ -73,6 +80,9 @@ func main() {
 	}
 	if _, ok := s.Manifest.Images["app-proxy"]; ok {
 		images = append(images, "app-proxy")
+	}
+	if _, ok := s.Manifest.Images["beam-proxy"]; ok {
+		images = append(images, "beam-proxy")
 	}
 	for _, name := range images {
 		image := s.Manifest.Images[name]
