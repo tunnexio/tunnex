@@ -46,6 +46,7 @@ OWNED_KEYS = (
     "TUNNEX_BEAM_EDGE_APP_ACCESS_TARGET", "TUNNEX_EDGE_PROXY_PROTOCOL_FROM", "TUNNEX_APP_PROXY_EDGE_TOKEN_FILE",
     "TUNNEX_LOCAL_SHARING_CREDENTIAL_ID", "TUNNEX_LOCAL_SHARING_CREDENTIAL_VERSION", "TUNNEX_BEAM_EDGE_DEFAULT_TOKEN",
 )
+BEAM_SERVICES = ("beam-proxy", "beam-restore-init")
 HOST_RE = re.compile(r"^(?=.{4,218}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$")
 
 
@@ -134,10 +135,13 @@ class Host:
         files = [self.dir / "tunnex.yml"] + ([self.dir / "app-access.yml"] if self.app_access else [])
         return files + ([self.overlay] if local_sharing else [])
 
-    def compose(self, *args, local_sharing=True, extra=(), profiles=None, capture=True):
+    def compose(self, *args, local_sharing=True, extra=(), profiles=None, capture=True, env_file=None):
+        # env_file: a complete staged copy of .env (LS-FIX-1). Compose reads only
+        # this file for interpolation, so it must hold every setting.
+        env_file = env_file or self.env_file
         env = dict(os.environ)
-        env["COMPOSE_PROFILES"] = profiles if profiles is not None else read_env(self.env_file).get("COMPOSE_PROFILES", "bundled-db")
-        cmd = ["docker", "compose", "--project-name", self.project, "--env-file", str(self.env_file)]
+        env["COMPOSE_PROFILES"] = profiles if profiles is not None else read_env(env_file).get("COMPOSE_PROFILES", "bundled-db")
+        cmd = ["docker", "compose", "--project-name", self.project, "--env-file", str(env_file)]
         for f in list(self.files(local_sharing)) + list(extra):
             cmd += ["-f", str(f)]
         result = subprocess.run(cmd + list(args), capture_output=capture, env=env)
@@ -146,8 +150,16 @@ class Host:
             raise Refused("docker compose %s failed%s" % (args[0], (": " + detail) if detail else ""))
         return (result.stdout or b"").decode()
 
+    def up(self, services, **kw):
+        """Start exactly these services (and what they depend on). Never an
+        unnamed `up`: that would also start every service no profile hides,
+        such as a stopped node-agent (LS-FIX-1)."""
+        if services:
+            self.compose("up", "-d", "--wait", "--wait-timeout", "300", *sorted(services), capture=False, **kw)
+
     def running(self):
-        """Compose participants of this project: {service: config_files}. Labels only."""
+        """Compose participants of this project: {service: (config_files, running)}.
+        Labels and container state only."""
         out = subprocess.run(["docker", "ps", "-a", "--filter", "label=com.docker.compose.project=" + self.project, "--format", "{{.ID}}"],
                              capture_output=True, text=True)
         if out.returncode != 0:
@@ -155,18 +167,24 @@ class Host:
         found = {}
         for cid in out.stdout.split():
             info = subprocess.run(["docker", "inspect", "--format",
-                                   '{{index .Config.Labels "com.docker.compose.service"}}|{{index .Config.Labels "com.docker.compose.project.config_files"}}|{{index .Config.Labels "com.docker.compose.oneoff"}}', cid],
+                                   '{{index .Config.Labels "com.docker.compose.service"}}|{{index .Config.Labels "com.docker.compose.project.config_files"}}|{{index .Config.Labels "com.docker.compose.oneoff"}}|{{.State.Running}}', cid],
                                   capture_output=True, text=True)
-            if info.returncode != 0 or info.stdout.count("|") != 2:
+            if info.returncode != 0 or info.stdout.count("|") != 3:
                 raise Refused("could not inspect the running installation")
-            service, files, oneoff = info.stdout.strip().split("|")
+            service, files, oneoff, running = info.stdout.strip().split("|")
             if oneoff != "True":
-                found.setdefault(service, files)
+                files_seen, was_running = found.get(service, (files, False))
+                found[service] = (files_seen, was_running or running == "true")
         return found
+
+    def running_services(self):
+        """The services running now: the only ones enable, disable and a
+        rollback may (re)start, besides Local Sharing's own."""
+        return {service for service, (_, running) in self.running().items() if running}
 
     def check_layout(self):
         """Refuse unless the running stack is exactly what this command composes."""
-        running = self.running()
+        running = {service: files for service, (files, _) in self.running().items()}
         if "app-proxy" in running and not self.app_access:
             raise Refused("App Access is installed but not in the managed layout (tunnex.yml + app-access.yml); "
                           "adopt or upgrade App Access first, then run this again")
@@ -251,10 +269,25 @@ def helper_overlay(tmp, out):
     return path
 
 
-def backupctl(host, out, *args):
+def backupctl(host, out, *args, env_file=None, local_sharing=True):
     with tempfile.TemporaryDirectory() as tmp:
         return host.compose("run", "--rm", "--no-deps", "-T", "--pull", "never", "--entrypoint", "backupctl", "api", *args,
-                            extra=[helper_overlay(tmp, out)], profiles=host.base_profile())
+                            extra=[helper_overlay(tmp, out)], profiles=host.base_profile(), env_file=env_file,
+                            local_sharing=local_sharing)
+
+
+def stage_env(host, directory, updates):
+    """A complete private copy of .env with the planned settings (LS-FIX-1).
+    Every compose call that includes the overlay before .env is written uses
+    it, so interpolation never meets a missing TUNNEX_BEAM_* value."""
+    staged = pathlib.Path(directory) / "env"
+    fd = os.open(str(staged), os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
+    try:
+        os.write(fd, host.env_file.read_bytes())
+    finally:
+        os.close(fd)
+    write_env(staged, updates)
+    return staged
 
 
 def edge_plan(host, env):
@@ -345,33 +378,54 @@ def enable(args):
     if os.geteuid() != 0 and not args.skip_owner_check:
         raise Refused("run with sudo: the proxy runs as uid %d and must own its private files" % PROXY_UID)
     host.check_layout()
+    # Recorded before any change: the only services this run may (re)start.
+    before = host.running_services()
     env_before = host.env_file.read_bytes()
     overlay_before = host.overlay.read_bytes() if host.overlay.is_file() else None
-    try:
-        return apply_enable(args, host, env, domain, console, port, updates, saved, secrets_dir, cert, key)
-    except Exception as e:
-        # Never leave public 443 without an owner: put the previous setup back.
-        atomic_write(host.env_file, env_before, os.stat(host.env_file).st_mode & 0o777)
-        if overlay_before is None:
-            if host.overlay.exists():
-                host.overlay.unlink()
-        else:
-            atomic_write(host.overlay, overlay_before, 0o644)
+    state = {"started": False}
+    with tempfile.TemporaryDirectory(prefix="tunnex-local-sharing-") as stage_dir:
+        staged = stage_env(host, stage_dir, {**updates, **saved})
         try:
-            host.compose("up", "-d", "--wait", "--wait-timeout", "300", local_sharing=overlay_before is not None, capture=False)
-            restored = "the previous setup was restored and is running"
+            return apply_enable(args, host, env, domain, console, port, updates, saved, secrets_dir, cert, key,
+                                staged, before, state)
+        except Exception as e:
+            raise Refused("enable failed (%s); %s" % (e, rollback_enable(host, before, state, staged, env_before, overlay_before)))
+
+
+def rollback_enable(host, before, state, staged, env_before, overlay_before):
+    """Put the previous setup back without starting anything that was not running.
+    Never leaves public 443 held by a proxy the restored setup does not know."""
+    removal_failed = False
+    if state["started"] and "beam-proxy" not in before:
+        # While the overlay and staged settings still describe it.
+        try:
+            host.compose("rm", "-s", "-f", *BEAM_SERVICES, env_file=staged)
         except Refused:
-            restored = "restoring the previous setup also failed; run: %s disable --apply" % sys.argv[0]
-        raise Refused("enable failed (%s); %s" % (e, restored))
+            removal_failed = True
+    atomic_write(host.env_file, env_before, os.stat(host.env_file).st_mode & 0o777)
+    if overlay_before is None:
+        if host.overlay.exists():
+            host.overlay.unlink()
+    else:
+        atomic_write(host.overlay, overlay_before, 0o644)
+    if not state["started"]:
+        return "the previous setup was restored; no running service was changed"
+    try:
+        if removal_failed:
+            raise Refused("beam-proxy could not be removed")
+        host.up(before, local_sharing=overlay_before is not None)
+        return "the previous setup was restored and is running"
+    except Refused:
+        return "restoring the previous setup also failed; run: %s disable --apply" % sys.argv[0]
 
 
-def apply_enable(args, host, env, domain, console, port, updates, saved, secrets_dir, cert, key):
+def apply_enable(args, host, env, domain, console, port, updates, saved, secrets_dir, cert, key, staged, before, state):
     # 1. Managed overlay from the running signed API image.
     with tempfile.TemporaryDirectory() as tmp:
-        staged = pathlib.Path(tmp) / "compose.yml"
-        host.compose("cp", "api:" + HOST_OVERLAY, str(staged), local_sharing=False)
-        if not host.overlay.is_file() or host.overlay.read_bytes() != staged.read_bytes():
-            atomic_write(host.overlay, staged.read_bytes(), 0o644)
+        signed = pathlib.Path(tmp) / "compose.yml"
+        host.compose("cp", "api:" + HOST_OVERLAY, str(signed), local_sharing=False)
+        if not host.overlay.is_file() or host.overlay.read_bytes() != signed.read_bytes():
+            atomic_write(host.overlay, signed.read_bytes(), 0o644)
             say("installed the managed overlay %s" % host.overlay)
     updates["TUNNEX_LOCAL_SHARING_COMPOSE_SHA256"] = sha256_file(host.overlay)
     # 2. Credential and connector certificate (only when missing).
@@ -381,13 +435,14 @@ def apply_enable(args, host, env, domain, console, port, updates, saved, secrets
         try:
             if not (secrets_dir / "authority.token").is_file():
                 issued = json.loads(backupctl(host, out, "app-proxy-issue", "--purpose", "local-sharing",
-                                              "--name", "local-sharing-" + console, "--output", "/out/authority.token"))
+                                              "--name", "local-sharing-" + console, "--output", "/out/authority.token",
+                                              env_file=staged))
                 updates["TUNNEX_LOCAL_SHARING_CREDENTIAL_ID"] = issued["id"]
                 updates["TUNNEX_LOCAL_SHARING_CREDENTIAL_VERSION"] = str(issued["version"])
                 shutil.move(str(out / "authority.token"), str(secrets_dir / "authority.token"))
                 say("issued the Local Sharing proxy credential %s" % issued["id"])
             if not (secrets_dir / "gateway-cert.pem").is_file():
-                backupctl(host, out, "beam-proxy-certificate", "--output-dir", "/out/connector")
+                backupctl(host, out, "beam-proxy-certificate", "--output-dir", "/out/connector", env_file=staged)
                 for name in ("gateway-cert.pem", "gateway-key.pem", "agent-ca.pem"):
                     shutil.move(str(out / "connector" / name), str(secrets_dir / name))
                 say("issued the connector certificate (TLS name tunnex-beam-proxy)")
@@ -417,7 +472,9 @@ def apply_enable(args, host, env, domain, console, port, updates, saved, secrets
     final = {k: v for k, v in {**updates, **saved}.items() if read_env(host.env_file).get(k) != v}
     if final:
         write_env(host.env_file, final)
-    host.compose("up", "-d", "--wait", "--wait-timeout", "300", capture=False)
+    # Only what ran before, plus the proxy (beam-restore-init is its dependency).
+    state["started"] = True
+    host.up(before | {"beam-proxy"})
     say("")
     say("Local Sharing is running. What is left:")
     say("  1. DNS: create *.%s pointing to this server's public address%s." % (
@@ -450,13 +507,15 @@ def disable(args):
     if not args.apply:
         say("dry run: nothing was changed. Re-run with --apply.")
         return 0
+    # Recorded before any change: the only services restarted afterwards.
+    before = host.running_services() - set(BEAM_SERVICES)
     if host.overlay.is_file():
-        host.compose("rm", "-s", "-f", "beam-proxy", "beam-restore-init", profiles=read_env(host.env_file).get("COMPOSE_PROFILES", ""))
+        host.compose("rm", "-s", "-f", *BEAM_SERVICES, profiles=read_env(host.env_file).get("COMPOSE_PROFILES", ""))
     if env.get("TUNNEX_LOCAL_SHARING_CREDENTIAL_ID") and env.get("TUNNEX_LOCAL_SHARING_CREDENTIAL_VERSION"):
         out = private_dir(host.dir / "local-sharing" / ("revoke-" + secrets.token_hex(4)))
         try:
             backupctl(host, out, "app-proxy-revoke", "--id", env["TUNNEX_LOCAL_SHARING_CREDENTIAL_ID"],
-                      "--expected-version", env["TUNNEX_LOCAL_SHARING_CREDENTIAL_VERSION"])
+                      "--expected-version", env["TUNNEX_LOCAL_SHARING_CREDENTIAL_VERSION"], local_sharing=host.overlay.is_file())
         finally:
             shutil.rmtree(out, ignore_errors=True)
         token = host.dir / "local-sharing" / "secrets" / "authority.token"
@@ -465,7 +524,7 @@ def disable(args):
     write_env(host.env_file, restore, removals=removals - set(restore))
     if host.overlay.is_file():
         os.replace(str(host.overlay), str(host.overlay) + ".disabled")
-    host.compose("up", "-d", "--wait", "--wait-timeout", "300", local_sharing=False, capture=False)
+    host.up(before, local_sharing=False)
     say("Local Sharing is off. Shares stopped; settings and policy are kept. Run enable again to turn it back on.")
     return 0
 

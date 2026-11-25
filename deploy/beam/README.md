@@ -197,8 +197,11 @@ TUNNEX_BEAM_CONNECTOR_BIND_IP=203.0.113.10
 TUNNEX_BEAM_CONNECTOR_PORT=8447
 ENV
 sed -i 's/^COMPOSE_PROFILES=\(.*\)$/COMPOSE_PROFILES=\1,beam/' .env
-# 6. Start (local-sharing.yml is always the last file).
-docker compose $F -f local-sharing.yml up -d
+# 6. Start (local-sharing.yml is always the last file). Name the services:
+#    a bare `up -d` would also start every stopped service without a profile,
+#    such as node-agent on a control plane whose gateway runs elsewhere.
+#    Add app-proxy when App Access is installed.
+docker compose $F -f local-sharing.yml up -d api caddy beam-proxy
 ```
 
 Then, in the console, **Settings → Local Sharing domain**: enter the domain and
@@ -242,7 +245,8 @@ backup instead:
 If `beam-proxy` was started from another overlay file, the upgrade refuses and
 prints these steps. Copy the managed overlay (step 1 above), keep your
 `TUNNEX_BEAM_*` values in `.env`, then recreate:
-`docker compose $F -f local-sharing.yml up -d`. Remove the old overlay from
+`docker compose $F -f local-sharing.yml up -d api caddy beam-proxy` (add
+`app-proxy` when App Access is installed). Remove the old overlay from
 your command line. The next upgrade then manages it.
 
 ## Health, disable and rotation
