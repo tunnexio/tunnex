@@ -515,8 +515,8 @@ def apply_enable(args, host, env, domain, console, port, updates, saved, secrets
     try:
         host.up(before | {"beam-proxy"})
     except Refused:
-        raise Refused("the Local Sharing proxy or a restarted service did not become healthy "
-                      "(docker compose up failed; its output above names the container and the reason)")
+        raise Refused("the Local Sharing proxy or a restarted service did not become healthy; "
+                      "the Compose output above names the container and the reason")
     say("")
     say("Local Sharing is running. What is left:")
     say("  1. DNS: create *.%s pointing to this server's public address%s." % (

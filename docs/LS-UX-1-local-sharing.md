@@ -859,5 +859,32 @@ created.
     host. It honours `TUNNEX_GATEWAY_PLACEMENT=separate` and
     `TUNNEX_PORTABLE_CONTROL_PLANE=true`, which `install.sh` writes, the same
     way the installer does.
+- **The credential paths, against the real API.** These ran with the real
+  signed v0.1.48 API image (its real `backupctl` and `releaseverify`), a
+  throwaway Postgres it migrated itself, and the real v0.1.48 proxy.
+  `tunnex-local-sharing` ran as root on Linux, inside the throwaway
+  Docker-in-Docker daemon.
+  - **Enable** issued a real `local_sharing` credential and a connector
+    certificate. All secrets ended up 0400 and owned by 10001.
+    - The connector on 8447 verified against the issued agent CA.
+    - The wildcard on 443 verified against its CA.
+  - **Disable** revoked the credential in the database and restored `.env`
+    byte for byte.
+  - **Forced start failure.** The rollback revoked the credential that run
+    had issued (revoked in the database), removed its token, gave 443 back
+    to App Access, and left `.env` identical.
+  - **Re-enable** issued a fresh credential, and **disable** revoked it.
+  - **`upgrade.sh`** (dry run, verifying inside the real API image) admitted
+    the layout.
+- **Edge PROXY contract on macOS.** It fails only because macOS's default
+  `TMPDIR` is not shared with the Docker VM: the bind-mounted script is
+  empty inside the container. It passes on macOS with a shared `TMPDIR`,
+  and it passes on Linux (inside Docker-in-Docker).
+- **App Access renew tests under Python 3.13.**
+  - **Cause.** Their certificate fixtures lacked key identifiers, which
+    3.13's strict X.509 checks reject.
+  - **Fixed** the same way as the Local Sharing fixtures.
+  - **CI.** The `contracts` job now pins Python 3.13, and every Python and
+    shell contract in it passes on 3.13.
 - **CI.** The real-Compose tests need only the `docker compose` CLI, with no
   daemon. Under `CI` they fail if it is missing, rather than skipping.
