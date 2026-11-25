@@ -21,12 +21,16 @@ register form and the setup panel never said the gateway must reach the server o
 paragraph shown after setup succeeded.
 
 **Decision.**
-- The register form and the setup panel state the requirement before anything runs: "The gateway *name* (address
-  as Tunnex knows it: *IP*) must reach *server IP*:*management port* (setup) and *server IP*:*SSH port* (browser
-  terminal) over TCP." The address is the gateway's address as the control plane knows it (its reported/public
-  address); the panel says so, because NAT can change the source address the server sees.
+- The register form and the setup panel state the requirement before anything runs: "The gateway *name* must reach
+  *server IP* on TCP *management port* (setup) and on TCP *SSH port* (browser terminal)."
+- **The source address is not pre-filled.** Tunnex records only the gateway's public WireGuard endpoint; a gateway
+  reaches a private server (setup targets must be private addresses) from its own LAN address, which Tunnex does not
+  know. A pre-filled public address would produce a rule that still blocks (the founder's GCP case). The examples use
+  `GATEWAY_PRIVATE_IP` and tell the administrator to run `ip -4 route get <server IP>` on the gateway host and use the
+  `src` address it prints (or the public outbound address when traffic crosses NAT/the internet). Recording the
+  gateway's LAN source address is a possible follow-up (agent report + schema), not in this slice.
 - When an account check, a setup run or a session fails with `ssh_unreachable`, the UI shows a plain sentence and a
-  "Can't reach the server?" disclosure with copy-ready firewall rules parameterized with the gateway address and
+  "Can't reach the server?" disclosure with copy-ready firewall rules parameterized with the destination and
   the port: GCP firewall rule, AWS security group, Azure NSG, `ufw`, `firewalld`.
 - **No new probe RPC.** The account check already *is* the gateway's TCP probe: the gateway dials the server and
   `classifyResult` maps a dial error (`net.OpError`) to `ssh_unreachable`. Adding a second probe would duplicate that
@@ -34,11 +38,12 @@ paragraph shown after setup succeeded.
   explanation, not the detection.
 - `ssh_unreachable` is never rendered raw (see item 8).
 
-**Security.** Display only. The gateway address shown is already visible to administrators on the Gateways page.
-The firewall examples restrict the source to the gateway address (`/32`), never `0.0.0.0/0`.
+**Security.** Display only. The firewall examples restrict the source to a single gateway address (`/32`), never
+`0.0.0.0/0`.
 
-**Tests.** Web: the register form and setup panel render the requirement with the gateway address and ports; a check
-failing with `ssh_unreachable` renders the human sentence and firewall examples containing the gateway IP and the
+**Tests.** Web: the register form and setup panel render the requirement with the gateway name and ports; a check
+failing with `ssh_unreachable` renders the human sentence and firewall examples (with `GATEWAY_PRIVATE_IP` and the
+`ip -4 route get` hint) and the
 SSH port, and the raw code is absent.
 
 ### 2. Manual "Verified management SSH fingerprint" paste
@@ -75,8 +80,10 @@ the real server can read the real host keys. So:
    to be in the attested list. Any mismatch fails the job (`ssh_host_key_unverified`) and **nothing is saved**.
 
 The "Verified management SSH fingerprint" input stays as an optional **"Advanced: verify the host key
-independently"** field. When it is filled, the gateway pins it strictly exactly as before, *and* the attestation is
-still verified.
+independently"** field. When it is filled, the pin is the trust source exactly as before SA-UX-2 (the gateway refuses
+any other key) and no attestation key is issued, so a server whose host key is not where the command looks (the case
+the attestation cannot cover) can still be set up. A newer gateway also reports the key it saw, which must equal the
+pin.
 
 **Threat model.**
 - *Network attacker between gateway and server (the threat the field addressed).* To pass, the attacker must either
@@ -98,7 +105,8 @@ still verified.
 - *Compromised gateway.* Already holds the temporary key and sees the session; it gains nothing new (it never
   receives `K`; it could only report a wrong fingerprint, which the attestation rejects).
 - *Non-default host keys.* If sshd serves an ed25519 key the command cannot find, or only non-ed25519 keys, the
-  attestation fails closed with a clear message pointing to the advanced field. Nothing is trusted silently.
+  attestation fails closed with a clear message pointing to the advanced field, which works for that case because a
+  pinned job does not use attestation. Nothing is trusted silently.
 
 **Upgrade and version skew (one-click upgrades).**
 - New control plane, old gateway: the control plane advertises `host_key_attestation: true` in the job; an old
@@ -159,6 +167,12 @@ with a 1-hour window and retries; a non-manager sees the "ask an administrator" 
 Server Access setting", without the link. The installation-off branch only covered the *initial read*; a refusal
 that arrived on a later read or on a save (the installation was turned off after the page loaded, or a read raced
 the change) fell through to the generic error.
+
+**Root cause (most likely).** The installation-off branch shipped in v0.1.46 (SA-UI-1); v0.1.45's
+`WorkspaceFeatureControl` has none (`git show v0.1.45:…` has no `installationOff`). The founder's tab was still
+running the pre-upgrade bundle (item 7), which renders exactly "Terminal capability is disabled on this
+installation" plus "Reload Server Access setting". Item 7 is the real fix; the change below is defense in depth for
+the one path v0.1.46 still missed (a refusal on a save or later reload).
 
 **Decision.** Any `server_access_disabled` answer — initial read, reload, or save — switches the row to the
 installation-off state. Server administrators always get the link to Settings → Server Access; others are told to ask
@@ -276,7 +290,7 @@ covered origin shows none; a hostname shows the resolution note.
 ### AA-2. Gateway → origin reachability
 
 **Decision.** `connect_failed` and `deadline_exceeded` check results add the same "Can't reach the origin?" disclosure
-as Server Access item 1, with firewall examples parameterized with the gateway's address (as Tunnex knows it) and the
+as Server Access item 1, with firewall examples (source `GATEWAY_PRIVATE_IP` with the `ip -4 route get` hint) and the
 origin host:port. Shared helper, separate call sites.
 
 **Tests.** Web: a `connect_failed` check renders the examples with the origin port; the raw code is absent.
@@ -323,13 +337,14 @@ The banner (item 7) is mounted in the app shell, so it covers App Access pages t
 
 Server Access
 - 1: done. Register form and setup panel state the gateway → server ports (management SSH for setup, browser
-  terminal afterwards) with firewall examples; `last_error` renders as a sentence plus firewall rules on the
-  Connection and Accounts steps. No new probe RPC (the account check is the probe).
+  terminal afterwards) with firewall examples (source `GATEWAY_PRIVATE_IP` + how to find it); `last_error` renders as
+  a sentence plus firewall rules on the Connection and Accounts steps. No new probe RPC (the account check is the
+  probe).
 - 2: done as decided. Host-key attestation in `authorize.py` (launcher prints the HMAC line), gateway records the key
   it saw (`setupHostKeyCallback`), control plane verifies (`verifyHostKeyAttestation`); fingerprint optional in the
   API and UI. Python ↔ Go round trip tested with the real `authorize.py` code.
-- 3: done in the setup panel (requirement and inline two-factor setup before Prepare). The Servers landing itself is
-  unchanged; the panel is where the requirement applies.
+- 3: done on the Servers landing for managers without a factor (`ServerAccessMfaNotice`) and in the setup panel
+  (requirement and inline two-factor setup before Prepare).
 - 4: done (`SelfGrant`, existing grant endpoint, 1 hour default, up to the existing 7-day cap).
 - 5: done (save and reload refusals switch to the installation-off row).
 - 6: done (checkbox, two sequenced calls, separate results).
@@ -345,8 +360,13 @@ App Access
 - AA-1, AA-2, AA-4, AA-5, AA-6 (check codes and event reasons), AA-7, AA-8: done as decided above.
 - AA-3: deferred to Phase 1b (needs a new gateway probe and report).
 
-Not run here: the `tests/server-access-local` harness walk (real gateway + OpenSSH target) for the attestation path;
-the unit and round-trip tests cover the protocol, but a live walk on a real target should precede release.
+End-to-end target check (2026-11-25, throwaway, not committed): the real authorization command generated by
+`authorizationCommand` ran as root on a disposable Alpine OpenSSH target (`systemd-run` stubbed); `sshd -T` found the
+ed25519 key, the forced command printed the attestation, the Go verifier accepted it for the key the SSH client saw,
+refused it under a different key, and the temporary authorization could not be reused. Not exercised: the full
+gateway agent + control plane loop (the `tests/server-access-local` harness is pinned to its own project names and has
+no automatic-setup flow) and systemd-based cleanup timers on a real distribution. A walk on a real VM should precede
+release.
 
 ## Rollback
 

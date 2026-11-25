@@ -163,23 +163,24 @@ The gateway selected for a server must reach the server over TCP on:
 - the **management SSH port** (usually 22) while automatic setup runs, and
 - the **browser-terminal port** (`tunnex-browser-sshd`, 2222 by default) for every later account check and session.
 
-Allow these from the gateway's address only (`/32`). The dashboard shows the gateway's address as Tunnex knows it
-(its reported endpoint); when gateway and server share a private network or traffic passes NAT, use the address the
-server actually sees, usually the gateway's private IP. Examples, with `GATEWAY_IP` and the port filled in:
+Allow these from the gateway's address only (`/32`). Use the address the server actually sees: on the gateway host,
+`ip -4 route get SERVER_IP` prints it after `src` (usually the gateway's private IP; use the public outbound address
+only when traffic crosses NAT or the internet). Tunnex does not pre-fill it, because it records only the gateway's
+public WireGuard endpoint. Examples (replace `GATEWAY_PRIVATE_IP`):
 
 ```sh
 # Google Cloud
 gcloud compute firewall-rules create allow-tunnex-gateway-2222 --network=NETWORK --direction=INGRESS \
-  --action=ALLOW --rules=tcp:2222 --source-ranges=GATEWAY_IP/32 --target-tags=TARGET_TAG
+  --action=ALLOW --rules=tcp:2222 --source-ranges=GATEWAY_PRIVATE_IP/32 --target-tags=TARGET_TAG
 # AWS security group
-aws ec2 authorize-security-group-ingress --group-id SECURITY_GROUP_ID --protocol tcp --port 2222 --cidr GATEWAY_IP/32
+aws ec2 authorize-security-group-ingress --group-id SECURITY_GROUP_ID --protocol tcp --port 2222 --cidr GATEWAY_PRIVATE_IP/32
 # Azure NSG
 az network nsg rule create --resource-group RESOURCE_GROUP --nsg-name NSG_NAME --name allow-tunnex-gateway-2222 \
-  --priority 300 --direction Inbound --access Allow --protocol Tcp --source-address-prefixes GATEWAY_IP/32 \
+  --priority 300 --direction Inbound --access Allow --protocol Tcp --source-address-prefixes GATEWAY_PRIVATE_IP/32 \
   --destination-address-prefixes SERVER_IP --destination-port-ranges 2222
 # On the server
-sudo ufw allow proto tcp from GATEWAY_IP to any port 2222
-sudo firewall-cmd --permanent --add-rich-rule='rule family="ipv4" source address="GATEWAY_IP/32" port port="2222" protocol="tcp" accept' && sudo firewall-cmd --reload
+sudo ufw allow proto tcp from GATEWAY_PRIVATE_IP to any port 2222
+sudo firewall-cmd --permanent --add-rich-rule='rule family="ipv4" source address="GATEWAY_PRIVATE_IP/32" port port="2222" protocol="tcp" accept' && sudo firewall-cmd --reload
 ```
 
 An account check that cannot connect reports "The gateway could not reach the server" with these examples.
@@ -189,8 +190,8 @@ An account check that cannot connect reports "The gateway could not reach the se
 The one-time authorization command records the server's ed25519 SSH host key (read as root on the server) and binds
 it to the setup job with a single-use key that only travels inside the command. The gateway's connection is accepted
 only if it presented that key, so no fingerprint has to be pasted. "Advanced: verify the host key independently"
-still accepts a fingerprint (`sudo ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub -E sha256`) and then pins it as
-well. Use it if the server's host key is not in the default location, or if you prefer an independent check. Details
+still accepts a fingerprint (`sudo ssh-keygen -lf /etc/ssh/ssh_host_ed25519_key.pub -E sha256`); the gateway then
+accepts only that key and no attestation is used. Use it if the server's host key is not in the default location, or if you prefer an independent check. Details
 and threat model: `docs/SA-UX-2-server-access-onboarding.md`, item 2.
 
 ### Running the one-time authorization command without direct SSH
