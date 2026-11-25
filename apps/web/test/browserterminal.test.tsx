@@ -91,7 +91,7 @@ it("administrators retain session review and recording import",async()=>{
 it("admin sees target SSH prerequisites when a granted account is not ready",async()=>{
  state.admin=true;state.ready=false;mount();await openServer();
  expect(await screen.findByRole("button",{name:"Check SSH for fixture"})).toHaveProperty("disabled",false);expect(screen.queryByRole("button",{name:"Connect as fixture"})).toBeNull();
- const requirements=screen.getByText("SSH setup requirements",{selector:"summary"});expect(requirements.closest("details")).toHaveProperty("open",false);fireEvent.click(requirements);expect(screen.getByText("Trusted CA")).toBeTruthy();expect(screen.getByText("Account principal")).toBeTruthy();
+ const requirements=screen.getByText("SSH setup requirements",{selector:"summary"});expect(requirements.closest("details")).toHaveProperty("open",false);fireEvent.click(requirements);expect(screen.getByText("SSH certificate trust")).toBeTruthy();expect(screen.getByText("Account identity")).toBeTruthy();
  expect(await accountAction("Check fixture")).toBeTruthy();
  fireEvent.click(await accountAction("SSH setup for fixture"));
  expect(screen.getByRole("dialog",{name:"SSH setup · fixture"})).toBeTruthy();manualStep("Account");
@@ -99,7 +99,7 @@ it("admin sees target SSH prerequisites when a granted account is not ready",asy
 });
 it("member sees an administrator action instead of privileged SSH setup details",async()=>{
  state.ready=false;mount();await openServer();const connect=await screen.findByRole("button",{name:"Connect as fixture"});expect(connect).toHaveProperty("disabled",true);fireEvent.click(connect);expect(state.bodies).toHaveLength(0);
- expect(screen.getByText("Waiting for administrator check")).toBeTruthy();
+ expect(screen.getByText("Not checked yet")).toBeTruthy();expect(screen.getByText(/An administrator must check this account before you can connect/)).toBeTruthy();
  expect(screen.queryByText("SSH setup for fixture")).toBeNull();
  expect(screen.queryByText(/AuthorizedPrincipalsFile/)).toBeNull();
  expect(screen.queryByRole("button",{name:"Check SSH for fixture"})).toBeNull();expect(screen.queryByRole("button",{name:"Account actions for fixture"})).toBeNull();expect(state.requests).toEqual(["/api/v1/organizations/{orgId}/server-access"]);
@@ -190,7 +190,7 @@ it.each([true,false])("reports local setup-command clipboard success without cha
 it("server removal requires explicit confirmation and members cannot see the action",async()=>{
  mount();await openServer();await screen.findByRole("button",{name:"Connect as fixture"});expect(screen.queryByRole("button",{name:"Remove server"})).toBeNull();cleanup();
  state.admin=true;mount();fireEvent.click(await serverAction("Remove server"));
- expect(await screen.findByText(/Remove this server from admin and member lists/)).toBeTruthy();
+ expect(await screen.findByText(/Remove Build host from Server Access\. All of its grants are revoked/)).toBeTruthy();
  expect(state.bodies).toHaveLength(0);fireEvent.click(screen.getByRole("button",{name:"Cancel"}));
  expect(screen.queryByRole("button",{name:"Confirm server removal"})).toBeNull();
 });
@@ -201,7 +201,7 @@ it("quick bootstrap is admin-only and registration remains disabled with pending
  fireEvent.click(screen.getByRole("button",{name:"Back to servers"}));
  fireEvent.click(screen.getByRole("button",{name:"Register server"}));
  expect(await screen.findByText(/Host trust is pending bootstrap/)).toBeTruthy();
- expect(screen.getByRole("button",{name:"Register disabled server"})).toBeTruthy();
+ expect(screen.getByRole("button",{name:"Register server (stays off until checked)"})).toBeTruthy();
  expect(screen.queryByLabelText("Independently verified SHA256 host fingerprint")).toBeNull();
 });
 
@@ -426,3 +426,7 @@ it("does not show the two-factor notice when a factor is enrolled",async()=>{
  state.admin=true;mount();await screen.findByRole("button",{name:"Build host"});
  expect(screen.queryByText(/your account has none yet/)).toBeNull();
 });
+it("tells a member why Connect is off and whom to ask (audit S5)",async()=>{state.serverEnabled=false;mount();await openServer();
+ expect(await screen.findByText("This server is turned off. Ask an organization owner or admin.")).toBeTruthy()});
+it("disable confirmation says what happens to open sessions (audit S15)",async()=>{state.admin=true;mount();fireEvent.click(await serverAction("Disable server"));
+ expect(await screen.findByText(/New connections are refused; no sessions are open\. Grants and recordings stay/)).toBeTruthy()});
