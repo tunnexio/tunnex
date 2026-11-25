@@ -387,7 +387,8 @@ describe("Catalog scope and lifecycle regressions", () => {
     calls.GET.mockImplementation(async (path: string) => path.endsWith("/access-management") ? { data: settings } : response([{ ...owner, kind: "user" }]));
     calls.PATCH.mockResolvedValue({ data: { ...settings, version: 9, app_admin_user_id: null, app_admin: null } });
     mount(<AppAccessCatalogSettings orgId="org" appId="app" permitted dirty={false} onChanged={vi.fn()} />);
-    fireEvent.click(await screen.findByRole("button", { name: "Remove App admin assignment" }));
+    expect(await screen.findByText(/^Current App admin: /)).toBeTruthy(); // SA-UX-2 C1
+    fireEvent.click(await screen.findByRole("button", { name: "Remove App admin" }));
     expect((screen.getByLabelText("Show in Company apps") as HTMLInputElement).checked).toBe(true);
     fireEvent.click(screen.getByRole("button", { name: "Save access management" }));
     await waitFor(() => expect(calls.PATCH).toHaveBeenCalledWith(expect.stringContaining("/access-management"), expect.objectContaining({ body: { expected_version: 8, catalog_visible: true, app_admin_user_id: null } })));
