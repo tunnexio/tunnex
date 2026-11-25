@@ -76,6 +76,7 @@ func TestApplicationMFALiveAuthorityLocalDatabaseRedis(t *testing.T) {
 	if _, err = s.CreateGrant(ctx, org, user, GrantInput{AppID: app.ID, SubjectKind: "user", SubjectID: user, Enabled: true}, true); err != nil {
 		t.Fatal(err)
 	}
+	migrateForProxyCredentials(t, pool.Config().ConnString())
 	_, secret, err := s.IssueProxyCredential(ctx, "mfa-live-fixture")
 	if err != nil {
 		t.Fatal(err)

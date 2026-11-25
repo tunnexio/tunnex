@@ -27,6 +27,7 @@ func TestProxyAuthorityLocalDatabase(t *testing.T) {
 		}
 	}
 	s := NewService(pool, Config{AppBaseDomain: "apps.fixture.test", ConsoleHosts: []string{"console.other.test"}})
+	migrateForProxyCredentials(t, dsn)
 	credential, secret, e := s.IssueProxyCredential(ctx, "local-proxy")
 	if e != nil {
 		t.Fatal(e)
@@ -142,5 +143,15 @@ func TestProxyAuthorityLocalDatabase(t *testing.T) {
 	_ = tx.Rollback(ctx)
 	if e == nil {
 		t.Fatal("proxy history destructively rolled down")
+	}
+}
+
+// migrateForProxyCredentials brings a pinned-schema fixture forward before
+// proxy credentials are used: since migration 0244 every credential is bound
+// to a purpose (LS-UX-1 E.3), and the current code requires that column.
+func migrateForProxyCredentials(t *testing.T, dsn string) {
+	t.Helper()
+	if err := db.Up(dsn); err != nil {
+		t.Fatal(err)
 	}
 }

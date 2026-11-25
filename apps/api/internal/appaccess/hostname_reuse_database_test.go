@@ -294,6 +294,7 @@ func TestHostnameReuseOldAuthorityLocalDatabaseRedis(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer parents.Delete(ctx, parent.ID)
+	migrateForProxyCredentials(t, f.pool.Config().ConnString())
 	_, secret, err := f.service.IssueProxyCredential(ctx, "hostname-authority-fixture")
 	if err != nil {
 		t.Fatal(err)

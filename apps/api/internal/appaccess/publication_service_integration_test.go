@@ -88,6 +88,7 @@ func TestPublicationServiceLocalDatabase(t *testing.T) {
 	if expiryState.PendingOperation != nil || expiryState.LastOperation == nil || expiryState.LastOperation.Status != "expired" {
 		t.Fatal("deadline pending projection inconsistent")
 	}
+	migrateForProxyCredentials(t, pool.Config().ConnString())
 	cred, secret, e := s.IssueProxyCredential(ctx, "Publication fixture")
 	must(e)
 	proxy, e := s.AuthenticateProxy(ctx, secret)

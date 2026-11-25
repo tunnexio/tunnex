@@ -71,6 +71,7 @@ func TestSessionAuthorityLocalDatabaseRedis(t *testing.T) {
 	if _, e = s.CreateGrant(ctx, org, user, GrantInput{AppID: app.ID, SubjectKind: "user", SubjectID: user, Enabled: true}, true); e != nil {
 		t.Fatal(e)
 	}
+	migrateForProxyCredentials(t, pool.Config().ConnString())
 	_, secret, e := s.IssueProxyCredential(ctx, "isolated-session")
 	if e != nil {
 		t.Fatal(e)
