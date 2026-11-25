@@ -74,6 +74,7 @@ const reasons: Record<string, Reason> = {
   editor_requires_https: { text: "Editor connections need the console to be served over HTTPS." },
   gateway_binding_mismatch: { text: "This session belongs to a different gateway.", next: "Close the terminal and connect again." },
   gateway_unavailable: { text: "The gateway for this server is offline or not enrolled.", next: "Check Gateways, then try again." },
+  host_fingerprint_placeholder: { text: "That fingerprint is Tunnex's placeholder for pending host trust, not a real host key.", next: "Leave it empty and run SSH setup, or enter the fingerprint you verified on the server." },
   host_key_mismatch: { text: "The server's SSH host key does not match the pinned fingerprint.", next: "Verify the server before updating the fingerprint." },
   human_session_required: { text: "Terminal access needs a signed-in person in a browser, not an API token." },
   invalid_ca_binding: { text: "This organization's SSH certificate authority could not be verified.", next: "Contact a server administrator." },

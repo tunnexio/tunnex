@@ -74,7 +74,7 @@ func activeEnrollment(state string) bool {
 }
 func validFingerprint(fp string) bool {
 	b, e := base64.RawStdEncoding.DecodeString(strings.TrimPrefix(fp, "SHA256:"))
-	return e == nil && len(b) == 32 && strings.HasPrefix(fp, "SHA256:") && len(fp) == 50
+	return e == nil && len(b) == 32 && strings.HasPrefix(fp, "SHA256:") && len(fp) == 50 && fp != PendingHostFingerprint
 }
 func validateEnrollmentInput(in api.ServerAccessEnrollmentInput) error {
 	if !accountPattern.MatchString(in.ManagementAccount) || in.ManagementAccount == "root" || in.ManagementPort < 1 || in.ManagementPort > 65535 || (in.ManagementFingerprint != nil && *in.ManagementFingerprint != "" && !validFingerprint(*in.ManagementFingerprint)) || len(in.Accounts) > 16 {

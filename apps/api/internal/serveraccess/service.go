@@ -228,7 +228,37 @@ func authorityClipboardPolicy(v api.ServerAccessServer) string {
 var windowsAccountPattern = regexp.MustCompile(`^[A-Za-z0-9_][A-Za-z0-9_.@\\-]{0,31}$`)
 var accountPattern = regexp.MustCompile(`^[a-z_][a-z0-9_-]{0,31}$`)
 
+// PendingHostFingerprint is the value stored for a Linux server whose host trust is pending SSH setup (no accounts
+// yet). It is a storage placeholder, never a pin (SA-UX-3): the API never returns it, accepts an empty fingerprint
+// in its place, and refuses it whenever the server has accounts.
+const PendingHostFingerprint = "SHA256:AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA"
+
+// errPlaceholderPin refuses the pending-trust placeholder used as if it were a verified fingerprint.
+func errPlaceholderPin() error {
+	return apierr.BadRequest("host_fingerprint_placeholder", "This is Tunnex's placeholder for pending host trust, not a real fingerprint. Leave it empty and run SSH setup, or enter the fingerprint you verified on the server.")
+}
+
+// normalizeServerInput stores a pending Linux server (no accounts) with the placeholder; empty means pending.
+func normalizeServerInput(in api.ServerAccessServerInput) api.ServerAccessServerInput {
+	if inputOS(in) == "linux" && len(in.Accounts) == 0 && in.HostFingerprint == "" {
+		in.HostFingerprint = PendingHostFingerprint
+	}
+	return in
+}
+
+// publicServer hides the pending-trust placeholder from every API response.
+func publicServer(v api.ServerAccessServer) api.ServerAccessServer {
+	if v.HostFingerprint != nil && *v.HostFingerprint == PendingHostFingerprint {
+		v.HostFingerprint = nil
+	}
+	return v
+}
+
 func ValidateServer(in api.ServerAccessServerInput) error {
+	in = normalizeServerInput(in)
+	if len(in.Accounts) > 0 && in.HostFingerprint == PendingHostFingerprint {
+		return errPlaceholderPin()
+	}
 	os := inputOS(in)
 	policy := inputClipboardPolicy(in)
 	if !rdpwire.ValidClipboardPolicy(policy) || (os != "windows" && policy != "off") {
@@ -248,7 +278,7 @@ func ValidateServer(in api.ServerAccessServerInput) error {
 		return bad()
 	}
 	ip, e := netip.ParseAddr(in.PrivateIp)
-	if e != nil || !ip.IsPrivate() || ip.Zone() != "" || ip.IsLoopback() || ip.IsLinkLocalUnicast() || in.GatewayId == uuid.Nil || strings.TrimSpace(in.Name) == "" || len(in.Name) > 100 || in.SshPort < 1 || in.SshPort > 65535 || !strings.HasPrefix(in.HostFingerprint, "SHA256:") || len(in.HostFingerprint) != 50 || (len(in.Accounts) == 0 && (in.Enabled || in.SshPort < 1024 || in.HostFingerprint != "SHA256:"+strings.Repeat("A", 43))) || len(in.Accounts) > 16 || in.IdleTimeoutSeconds < 60 || in.IdleTimeoutSeconds > 900 || in.MaxSessionSeconds < 60 || in.MaxSessionSeconds > 3600 || in.IdleTimeoutSeconds > in.MaxSessionSeconds {
+	if e != nil || !ip.IsPrivate() || ip.Zone() != "" || ip.IsLoopback() || ip.IsLinkLocalUnicast() || in.GatewayId == uuid.Nil || strings.TrimSpace(in.Name) == "" || len(in.Name) > 100 || in.SshPort < 1 || in.SshPort > 65535 || !strings.HasPrefix(in.HostFingerprint, "SHA256:") || len(in.HostFingerprint) != 50 || (len(in.Accounts) == 0 && (in.Enabled || in.SshPort < 1024 || in.HostFingerprint != PendingHostFingerprint)) || len(in.Accounts) > 16 || in.IdleTimeoutSeconds < 60 || in.IdleTimeoutSeconds > 900 || in.MaxSessionSeconds < 60 || in.MaxSessionSeconds > 3600 || in.IdleTimeoutSeconds > in.MaxSessionSeconds {
 		return bad()
 	}
 	seen := map[string]bool{}
@@ -288,6 +318,7 @@ func (s *Service) SaveServer(ctx context.Context, org, actor, id uuid.UUID, in a
 	if e := ValidateServer(in); e != nil {
 		return api.ServerAccessServer{}, e
 	}
+	in = normalizeServerInput(in)
 	enabled, e := s.Enabled(ctx, org)
 	if e != nil || !enabled {
 		return api.ServerAccessServer{}, deny("organization_disabled")
@@ -323,7 +354,7 @@ func (s *Service) SaveServer(ctx context.Context, org, actor, id uuid.UUID, in a
 	if e = s.audit(ctx, tx, org, actor, action, out.Id, map[string]any{"revision": out.Revision, "recording_enabled": in.RecordingEnabled, "clipboard_policy": inputClipboardPolicy(in), "developer_access_enabled": developerInput(in)}); e != nil {
 		return out, e
 	}
-	return out, tx.Commit(ctx)
+	return publicServer(out), tx.Commit(ctx)
 }
 
 // RemoveServer retires an identity without deleting historical evidence.
@@ -496,7 +527,7 @@ func (s *Service) Workspace(ctx context.Context, org uuid.UUID, p *authctx.Princ
 			v.HostFingerprint = nil
 			v.LastError = nil
 		}
-		out.Servers = append(out.Servers, v)
+		out.Servers = append(out.Servers, publicServer(v))
 	}
 	if e = rows.Err(); e != nil {
 		return out, e
