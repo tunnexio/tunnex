@@ -142,7 +142,42 @@ error/retry time and expiry only.
 - Web: the poll stops on unmount; no poll requests while the tab is hidden; an immediate recheck when it becomes
   visible again; a denied recheck still clears content (existing tests kept); polling stops on an expired recording.
 
+## Follow-up: Server Access tables size columns by key, not position
+
+Founder request on the same branch: remove the deferred item.
+
+### Problem
+
+Bug 1 happened because a width rule said "the fifth column", and the fifth column changed meaning when a column
+was added. The Grants table still used positional rules (`th:nth-child(2..5)`), and so did the Sessions table after
+the bug 1 fix. Any column added, removed or reordered silently moves every width after it.
+
+### Decisions
+
+1. **The shared table names its cells.** `DataTable` (`components/ui.tsx`) renders `data-column="<column key>"` on
+   every header and body cell. The key is the column's existing `key` (already required, stable, and React's key),
+   so no consumer changes and no new prop. The selection checkbox column has no key and gets no attribute.
+   This is additive: no existing class, structure or text changes, so every other table renders exactly as before.
+2. **Grants and Sessions widths are keyed.** The two Server Access tables that shared the positional rules now
+   select `th[data-column="…"]`. The values are unchanged:
+   - Grants: `subject` 26%, `status` 88px, `expires` 145px, `actions` 40px with its header text hidden (the row
+     menu column, as before).
+   - Sessions: `user` 17%, `status` 96px, `recording` 170px, `started` 150px, `time` 180px, `actions` 128px; the
+     ellipsis rule for `started` and `time` cells and the 1000px table floor are keyed too.
+   A column added to either table now gets the default width instead of inheriting a neighbour's.
+3. **Scope.** Only tables that used the shared positional rules change. Other tables in the app also size columns
+   by position, each with its own rules for its own fixed columns; converting them is mechanical with
+   `data-column` but each is a separate visual change to review, so they are left as they are. Structural
+   `:first-child` / `:last-child` padding rules are about edges, not meaning, and stay.
+
+### Tests (web)
+
+- `DataTable` puts `data-column` with the column key on every `th` and `td`, and not on the selection column.
+- Stylesheet guard: no `.sa-grants-table` or `.sa-session-table` rule uses `nth-child`/`nth-last-child`/
+  `nth-of-type`; every Grants and Sessions width rule names a key that exists in that component's column list
+  (keys read from the component source), so a renamed key cannot silently orphan a width.
+- Existing Grants, Sessions, App Access and other table tests stay green.
+
 ## Deferred
 
-- The grants table still uses positional `nth-child` widths. Column-keyed widths would need a `className` on
-  `DataTable` columns (`ui.tsx`), a shared-component change outside this story.
+- Other tables outside Server Access still size columns by position (see Scope above).
