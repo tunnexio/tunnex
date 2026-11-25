@@ -109,7 +109,7 @@ function ServerFeatureControl({ orgId,canEdit,read,onInstallationOff }: { orgId:
     if (!canEdit || !saved?.can_manage || enabled === saved.enabled) return;
     void control.transact(() => write(async () => { const result=await api.PUT("/api/v1/organizations/{orgId}/server-access",{params:{path:{orgId}},body:{enabled,recording_retention_days:saved.recording_retention_days,mfa_freshness_seconds:saved.mfa_freshness_seconds,recording_max_session_bytes:saved.recording_max_session_bytes,recording_max_org_bytes:saved.recording_max_org_bytes}}); if (apiErrorCode(result.error) === "server_access_disabled") onInstallationOff(); return result; }),async () => { await control.reload(); });
   }
-  return <FeatureRow name="Server Access" description="Allow server registration, account checks and new SSH or RDP sessions. Recording and security policies stay saved." enabled={saved?.enabled} canEdit={canEdit && !!saved?.can_manage} control={control} onChange={change} />;
+  return <FeatureRow name="Server Access" description="Allow server registration, account checks and new SSH or RDP sessions. Turning it off ends open sessions within a few seconds; servers, grants, recordings and policies stay saved." enabled={saved?.enabled} canEdit={canEdit && !!saved?.can_manage} control={control} onChange={change} />;
 }
 
 function validPolicy(value: BeamPolicy) {
