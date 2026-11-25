@@ -77,7 +77,7 @@ it("members cannot reveal session details through the direct Sessions URL",async
  expect(screen.queryByRole("heading",{name:"Sessions"})).toBeNull();
  expect(screen.queryByRole("button",{name:"Import recording"})).toBeNull();
  expect(screen.queryByRole("table",{name:"Terminal sessions"})).toBeNull();
- expect(screen.queryByRole("link",{name:"View session evidence in Audit Log"})).toBeNull();
+ expect(screen.queryByRole("link",{name:"Open Server Access events in the Audit Log"})).toBeNull();
 });
 it("administrators retain session review and recording import",async()=>{
  state.admin=true;render(<MemoryRouter initialEntries={["/browser-access/terminal?view=sessions"]}><BrowserTerminal/></MemoryRouter>);
@@ -85,7 +85,7 @@ it("administrators retain session review and recording import",async()=>{
  fireEvent.click(screen.getByText("Import recording",{selector:"summary"}));
  expect(screen.getByRole("button",{name:"Import recording"})).toBeTruthy();
  fireEvent.click(screen.getByText("Connection requirements",{selector:"summary"}));
- expect(screen.getByRole("link",{name:"View session evidence in Audit Log"})).toBeTruthy();
+ expect(screen.getByRole("link",{name:"Open Server Access events in the Audit Log"})).toBeTruthy();
 });
 
 it("admin sees target SSH prerequisites when a granted account is not ready",async()=>{
