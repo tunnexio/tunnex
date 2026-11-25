@@ -27,7 +27,8 @@ hid it.
    keeps exactly its current rules. The sessions table sizes every column explicitly (Server takes the remainder):
    User 17%, Status 96px, Recording 170px, Started 150px, Duration or expiry 180px, Actions 128px. Its Actions header
    stays visible ("Actions"): `font-size:0` is not used on any session column. At a ~1100px table (a 1440–1500px
-   window minus navigation) every column fits on one line.
+   window minus the ~256px navigation and page padding; the workspace caps at 1320px) every column fits on one
+   line. Checked by arithmetic against the stylesheet, not by a live screenshot.
 2. **Time cells never wrap.** Started, Duration or expiry, and the Details time values render inside a
    `.sa-time` element with `white-space:nowrap`, which overrides the cell's `overflow-wrap:anywhere`. Below 1000px the table keeps a
    1000px minimum width and scrolls horizontally inside `.tnx-table-scroll` instead of squeezing columns. A rare
@@ -136,7 +137,8 @@ error/retry time and expiry only.
 
 - API (`testpostgres` + miniredis, both editions): a recorded terminal session; N metadata-only reads add zero audit
   rows of any kind and return no events; each full read adds exactly one `recording_read`; after the viewer's
-  membership is revoked a metadata read is denied and still writes nothing.
+  role is changed to one without replay permission (`ai-view`) a metadata read and a content read are both denied
+  and write nothing.
 - Web: the poll stops on unmount; no poll requests while the tab is hidden; an immediate recheck when it becomes
   visible again; a denied recheck still clears content (existing tests kept); polling stops on an expired recording.
 
