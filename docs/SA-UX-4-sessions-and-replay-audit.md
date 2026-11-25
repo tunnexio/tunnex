@@ -25,13 +25,14 @@ hid it.
 
 1. **The sessions table gets its own column widths.** The shared grants/sessions rules are split. The grants table
    keeps exactly its current rules. The sessions table sizes every column explicitly (Server takes the remainder):
-   User 17%, Status 96px, Recording 150px, Started 132px, Duration or expiry 150px, Actions 128px. Its Actions header
+   User 17%, Status 96px, Recording 170px, Started 150px, Duration or expiry 180px, Actions 128px. Its Actions header
    stays visible ("Actions"): `font-size:0` is not used on any session column. At a ~1100px table (a 1440–1500px
    window minus navigation) every column fits on one line.
 2. **Time cells never wrap.** Started, Duration or expiry, and the Details time values render inside a
-   `.sa-time` element with `white-space:nowrap`, which overrides the cell's `overflow-wrap:anywhere`. On narrow
-   windows the table already scrolls horizontally inside `.tnx-table-scroll`, so a time is clipped or scrolled,
-   never broken mid-number.
+   `.sa-time` element with `white-space:nowrap`, which overrides the cell's `overflow-wrap:anywhere`. Below 1000px the table keeps a
+   1000px minimum width and scrolls horizontally inside `.tnx-table-scroll` instead of squeezing columns. A rare
+   long value (a date in another year) is cut with an ellipsis rather than drawn over the next column; the full
+   time is in the tooltip. A time is never broken mid-number.
 3. **Compact absolute time, full time in the tooltip.** A new `compactDateTime(iso, now)` in `lib/format.ts` uses
    `Intl.DateTimeFormat(undefined, …)` so the viewer's locale decides order, separators and 12/24-hour clock, as
    the other tables (`toLocaleString()`) do:
