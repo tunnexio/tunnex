@@ -424,8 +424,12 @@ Recording and archive states were shown as raw codes ("capturing", "none"). They
 with no output yet says so instead of showing an empty terminal; a recording still being captured offers "Load
 latest output" (the 5-second refresh only reads metadata, so new output was never shown).
 
+### Recording and evidence outcome
+R1–R7 and the replay gaps are done as decided. R2 added the optional `created_at`/`ended_at` fields (no migration).
+The R2 API test is the existing integration suite, which reads sessions through the changed scanner in both editions.
+
 ## Rollback
 
-No migrations. Item 2 adds optional fields to the agent wire (`bootstrap.Job.HostKeyAttestation`, report fields) that
+No migrations. R2 adds optional read-only session fields that older clients ignore. Item 2 adds optional fields to the agent wire (`bootstrap.Job.HostKeyAttestation`, report fields) that
 older peers ignore or never receive; rolling the control plane back makes the fingerprint required again (the old
 web bundle requires it too). All other items are web-only.
