@@ -526,6 +526,96 @@
           }
         }
       }
+    },
+    "localSharing": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "enabled",
+        "baseDomain",
+        "proxyURL",
+        "restore",
+        "proxy"
+      ],
+      "properties": {
+        "enabled": {
+          "type": "boolean"
+        },
+        "baseDomain": {
+          "type": "string"
+        },
+        "proxyURL": {
+          "type": "string"
+        },
+        "restore": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "existingClaim"
+          ],
+          "properties": {
+            "existingClaim": {
+              "type": "string"
+            }
+          }
+        },
+        "proxy": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "image",
+            "credentialSecret",
+            "publicTLSSecret",
+            "connectorTLSSecret",
+            "agentCASecret",
+            "publicServiceType",
+            "connectorServiceType",
+            "connectorPort",
+            "resources"
+          ],
+          "properties": {
+            "image": {
+              "type": "string"
+            },
+            "credentialSecret": {
+              "type": "string"
+            },
+            "publicTLSSecret": {
+              "type": "string"
+            },
+            "connectorTLSSecret": {
+              "type": "string"
+            },
+            "agentCASecret": {
+              "type": "string"
+            },
+            "publicServiceType": {
+              "type": "string",
+              "enum": [
+                "ClusterIP",
+                "LoadBalancer",
+                "NodePort"
+              ]
+            },
+            "connectorServiceType": {
+              "type": "string",
+              "enum": [
+                "ClusterIP",
+                "LoadBalancer",
+                "NodePort"
+              ]
+            },
+            "connectorPort": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 65535
+            },
+            "resources": {
+              "type": "object"
+            }
+          }
+        }
+      }
     }
   },
   "allOf": [

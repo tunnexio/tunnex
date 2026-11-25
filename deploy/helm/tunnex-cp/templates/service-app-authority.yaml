@@ -1,0 +1,11 @@
+{{- if include "tunnex-cp.appAuthority" . }}
+# Private proxy authority (TLS 1.3, tunnex-app-authority). Shared by the App
+# Access and Local Sharing proxies; present when either is enabled.
+apiVersion: v1
+kind: Service
+metadata: {name: app-authority}
+spec:
+  type: ClusterIP
+  selector: {app.kubernetes.io/instance: {{ .Release.Name }}, app.kubernetes.io/component: api}
+  ports: [{name: authority-tls, port: 8445, targetPort: app-authority}]
+{{- end }}

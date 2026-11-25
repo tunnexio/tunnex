@@ -1,0 +1,95 @@
+{{- if .Values.localSharing.enabled }}
+{{- include "tunnex-cp.localSharingGuard" . }}
+# LS-UX-1 D.1: Local Sharing proxy (browser HTTPS + publisher mTLS connector),
+# from the signed release image only. Independent of App Access.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: beam-proxy
+  labels:
+    {{- include "tunnex-cp.labels" . | nindent 4 }}
+    app.kubernetes.io/component: beam-proxy
+spec:
+  replicas: 1
+  strategy: {type: Recreate}
+  selector:
+    matchLabels: {app.kubernetes.io/instance: {{ .Release.Name }}, app.kubernetes.io/component: beam-proxy}
+  template:
+    metadata:
+      labels: {app.kubernetes.io/instance: {{ .Release.Name }}, app.kubernetes.io/component: beam-proxy}
+    spec:
+      automountServiceAccountToken: false
+      terminationGracePeriodSeconds: 10
+      securityContext: {runAsNonRoot: true, runAsUser: 10001, runAsGroup: 10001, fsGroup: 10001, fsGroupChangePolicy: OnRootMismatch}
+      initContainers:
+        - name: private-credential
+          image: {{ .Values.localSharing.proxy.image | quote }}
+          command: [/bin/sh, -ec]
+          args: ["umask 077; cp /source/authority.token /private/authority.token; chmod 0400 /private/authority.token"]
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
+          volumeMounts:
+            - {name: credential-source, mountPath: /source, readOnly: true}
+            - {name: credential-private, mountPath: /private}
+      containers:
+        - name: beam-proxy
+          image: {{ .Values.localSharing.proxy.image | quote }}
+          securityContext: {allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: {drop: [ALL]}}
+          ports:
+            - {name: public-tls, containerPort: 8443}
+            - {name: connector-tls, containerPort: 8444}
+            - {name: operator, containerPort: 9093}
+          env:
+            - {name: TUNNEX_BEAM_PROXY_PUBLIC_ADDR, value: ":8443"}
+            - {name: TUNNEX_BEAM_PROXY_CONNECTOR_ADDR, value: ":8444"}
+            - {name: TUNNEX_BEAM_PROXY_ADMIN_ADDR, value: ":9093"}
+            - {name: TUNNEX_BEAM_PROXY_BASE_DOMAIN, value: {{ .Values.localSharing.baseDomain | quote }}}
+            - {name: TUNNEX_BEAM_PROXY_CONSOLE_BASE_URL, value: {{ .Values.appBaseURL | quote }}}
+            - {name: TUNNEX_BEAM_PROXY_AUTHORITY_URL, value: "https://app-authority:8445"}
+            - {name: TUNNEX_BEAM_PROXY_AUTHORITY_SERVER_NAME, value: tunnex-app-authority}
+            - {name: TUNNEX_BEAM_PROXY_AUTHORITY_CA_FILE, value: /tls/agent/ca.crt}
+            - {name: TUNNEX_BEAM_PROXY_CONNECTOR_CA_FILE, value: /tls/agent/ca.crt}
+            - {name: TUNNEX_BEAM_PROXY_TLS_CERT_FILE, value: /tls/public/tls.crt}
+            - {name: TUNNEX_BEAM_PROXY_TLS_KEY_FILE, value: /tls/public/tls.key}
+            - {name: TUNNEX_BEAM_PROXY_CONNECTOR_TLS_CERT_FILE, value: /tls/connector/tls.crt}
+            - {name: TUNNEX_BEAM_PROXY_CONNECTOR_TLS_KEY_FILE, value: /tls/connector/tls.key}
+            - {name: TUNNEX_BEAM_PROXY_CREDENTIAL_FILE, value: /private/authority.token}
+            - {name: TUNNEX_BEAM_PROXY_RESTORE_MARKER, value: /var/lib/tunnex/app-restore/app-access.pending.json}
+          readinessProbe: {httpGet: {path: /readyz, port: operator}, periodSeconds: 5, timeoutSeconds: 2}
+          livenessProbe: {httpGet: {path: /livez, port: operator}, periodSeconds: 10, timeoutSeconds: 2}
+          resources:
+            {{- toYaml .Values.localSharing.proxy.resources | nindent 12 }}
+          volumeMounts:
+            - {name: credential-private, mountPath: /private, readOnly: true}
+            - {name: public-tls, mountPath: /tls/public, readOnly: true}
+            - {name: connector-tls, mountPath: /tls/connector, readOnly: true}
+            - {name: agent-ca, mountPath: /tls/agent, readOnly: true}
+            - {name: app-restore, mountPath: /var/lib/tunnex/app-restore, subPath: app-restore, readOnly: true}
+      volumes:
+        - {name: credential-private, emptyDir: {medium: Memory, sizeLimit: 1Mi}}
+        - name: credential-source
+          secret: {secretName: {{ .Values.localSharing.proxy.credentialSecret | quote }}, defaultMode: 0444}
+        - name: public-tls
+          secret: {secretName: {{ .Values.localSharing.proxy.publicTLSSecret | quote }}, defaultMode: 0440}
+        - name: connector-tls
+          secret: {secretName: {{ .Values.localSharing.proxy.connectorTLSSecret | quote }}, defaultMode: 0440}
+        - name: agent-ca
+          secret: {secretName: {{ .Values.localSharing.proxy.agentCASecret | quote }}, defaultMode: 0440}
+        - name: app-restore
+          persistentVolumeClaim: {claimName: {{ .Values.localSharing.restore.existingClaim | quote }}}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: beam-proxy}
+spec:
+  type: {{ .Values.localSharing.proxy.publicServiceType }}
+  selector: {app.kubernetes.io/instance: {{ .Release.Name }}, app.kubernetes.io/component: beam-proxy}
+  ports: [{name: public-tls, port: 443, targetPort: public-tls}]
+---
+apiVersion: v1
+kind: Service
+metadata: {name: beam-proxy-connector}
+spec:
+  type: {{ .Values.localSharing.proxy.connectorServiceType }}
+  selector: {app.kubernetes.io/instance: {{ .Release.Name }}, app.kubernetes.io/component: beam-proxy}
+  ports: [{name: connector-tls, port: {{ .Values.localSharing.proxy.connectorPort }}, targetPort: connector-tls}]
+{{- end }}

@@ -32,6 +32,25 @@ img renders a full image ref. Usage: include "tunnex-cp.img" (dict "root" $ "rep
 {{- printf "%s-edge-proxies" (include "tunnex-cp.fullname" . | trunc 50 | trimSuffix "-") -}}
 {{- end -}}
 
+{{/* LS-UX-1 D.1: Local Sharing is independent of App Access; the authority
+listener, restore fence and its claim are shared infrastructure for either. */}}
+{{- define "tunnex-cp.appAuthority" -}}
+{{- if or .Values.appAccess.enabled .Values.localSharing.enabled -}}true{{- end -}}
+{{- end -}}
+{{- define "tunnex-cp.restoreClaim" -}}
+{{- if .Values.appAccess.enabled -}}{{ .Values.appAccess.restore.existingClaim }}{{- else -}}{{ .Values.localSharing.restore.existingClaim }}{{- end -}}
+{{- end -}}
+{{- define "tunnex-cp.localSharingGuard" -}}
+{{- if .Values.localSharing.enabled -}}
+{{- if ne (int .Values.api.replicas) 1 -}}{{- fail "Local Sharing currently requires api.replicas=1; shared restore/stream HA is unqualified" -}}{{- end -}}
+{{- if not (regexMatch "^[^\\s@]+@sha256:[a-f0-9]{64}$" .Values.localSharing.proxy.image) -}}{{- fail "localSharing.proxy.image must be the signed immutable image@sha256 from releaseverify -require-beam-proxy" -}}{{- end -}}
+{{- range $name,$value := dict "baseDomain" .Values.localSharing.baseDomain "proxyURL" .Values.localSharing.proxyURL "restore.existingClaim" .Values.localSharing.restore.existingClaim "proxy.credentialSecret" .Values.localSharing.proxy.credentialSecret "proxy.publicTLSSecret" .Values.localSharing.proxy.publicTLSSecret "proxy.connectorTLSSecret" .Values.localSharing.proxy.connectorTLSSecret "proxy.agentCASecret" .Values.localSharing.proxy.agentCASecret -}}
+{{- if not $value -}}{{- fail (printf "localSharing.%s is required; this chart never generates trust or credentials" $name) -}}{{- end -}}
+{{- end -}}
+{{- if and .Values.appAccess.enabled (ne .Values.appAccess.restore.existingClaim .Values.localSharing.restore.existingClaim) -}}{{- fail "appAccess and localSharing must share one restore fence claim" -}}{{- end -}}
+{{- end -}}
+{{- end -}}
+
 {{- define "tunnex-cp.appAccessGuard" -}}
 {{- if .Values.appAccess.enabled -}}
 {{- if ne (int .Values.api.replicas) 1 -}}{{- fail "App Access currently requires api.replicas=1; shared restore/stream HA is unqualified" -}}{{- end -}}

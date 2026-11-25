@@ -92,12 +92,4 @@ spec:
   type: {{ .Values.appAccess.proxy.gatewayServiceType }}
   selector: {app.kubernetes.io/instance: {{ .Release.Name }}, app.kubernetes.io/component: app-proxy}
   ports: [{name: gateway-tls, port: 8444, targetPort: gateway-tls}]
----
-apiVersion: v1
-kind: Service
-metadata: {name: app-authority}
-spec:
-  type: ClusterIP
-  selector: {app.kubernetes.io/instance: {{ .Release.Name }}, app.kubernetes.io/component: api}
-  ports: [{name: authority-tls, port: 8445, targetPort: app-authority}]
 {{- end }}
