@@ -3,16 +3,19 @@ package serveraccess
 import (
 	"bytes"
 	"encoding/base64"
+	"errors"
 	"github.com/google/uuid"
 	"github.com/tunnexio/tunnex/apps/api/internal/api"
+	"github.com/tunnexio/tunnex/apps/api/internal/apierr"
 	"net"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 )
 
 func validServer() api.ServerAccessServerInput {
-	return api.ServerAccessServerInput{GatewayId: uuid.New(), Name: "fixture", PrivateIp: "10.1.2.3", SshPort: 22, HostFingerprint: "SHA256:" + base64.RawStdEncoding.EncodeToString(make([]byte, 32)), Accounts: []string{"fixture"}, IdleTimeoutSeconds: 60, MaxSessionSeconds: 300}
+	return api.ServerAccessServerInput{GatewayId: uuid.New(), Name: "fixture", PrivateIp: "10.1.2.3", SshPort: 22, HostFingerprint: "SHA256:" + base64.RawStdEncoding.EncodeToString(bytes.Repeat([]byte{7}, 32)), Accounts: []string{"fixture"}, IdleTimeoutSeconds: 60, MaxSessionSeconds: 300}
 }
 func TestServerDestinationAndAccountBounds(t *testing.T) {
 	for _, ip := range []string{"127.0.0.1", "::1", "169.254.169.254", "8.8.8.8", "fe80::1", "fd00::1%wg0", "bad"} {
@@ -101,5 +104,49 @@ func TestRecordingSnapshotDoesNotHideAuthorityChanges(t *testing.T) {
 		if bytes.Equal(original, serverAuthorityHash(changed)) {
 			t.Fatal("authority edit failed to invalidate the session binding")
 		}
+	}
+}
+
+// SA-UX-3: the pending-trust placeholder is storage only. It is never a pin and never leaves the API.
+func TestPendingHostFingerprintIsNeverAPin(t *testing.T) {
+	if PendingHostFingerprint != "SHA256:"+strings.Repeat("A", 43) {
+		t.Fatal("placeholder changed; stored pending servers would no longer match")
+	}
+	for _, os := range []api.ServerAccessServerInputOs{"linux", "windows"} {
+		v := validServer()
+		v.Os = &os
+		v.SshPort = 2222
+		v.HostFingerprint = PendingHostFingerprint
+		var refused *apierr.Error
+		if e := ValidateServer(v); !errors.As(e, &refused) || refused.Code != "host_fingerprint_placeholder" {
+			t.Fatalf("%s: placeholder accepted as a pin: %v", os, e)
+		}
+	}
+	pending := validServer()
+	pending.Accounts, pending.SshPort = []string{}, 2222
+	for _, fp := range []string{"", PendingHostFingerprint} {
+		pending.HostFingerprint = fp
+		if e := ValidateServer(pending); e != nil {
+			t.Fatalf("pending server %q refused: %v", fp, e)
+		}
+		if normalizeServerInput(pending).HostFingerprint != PendingHostFingerprint {
+			t.Fatal("pending server not stored with the placeholder")
+		}
+	}
+	// An empty fingerprint is never a way to drop trust from a server that has accounts.
+	trusted := validServer()
+	trusted.HostFingerprint = ""
+	if ValidateServer(trusted) == nil || normalizeServerInput(trusted).HostFingerprint != "" {
+		t.Fatal("trusted server accepted without a fingerprint")
+	}
+	if validFingerprint(PendingHostFingerprint) {
+		t.Fatal("placeholder accepted as a management pin or setup result")
+	}
+	fp, real := PendingHostFingerprint, "SHA256:"+strings.Repeat("B", 43)
+	if publicServer(api.ServerAccessServer{HostFingerprint: &fp}).HostFingerprint != nil {
+		t.Fatal("placeholder returned to a client")
+	}
+	if out := publicServer(api.ServerAccessServer{HostFingerprint: &real}).HostFingerprint; out == nil || *out != real {
+		t.Fatal("real pin hidden")
 	}
 }
