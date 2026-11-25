@@ -336,8 +336,8 @@ func runBeam(ctx context.Context, args []string, out io.Writer, build string, d 
 	if e = beamCompatible(policy, build); e != nil {
 		return e
 	}
-	if !policy.Enabled || !policy.DomainReady || !policy.CanPublish {
-		return errors.New("Local Sharing publishing is unavailable under current organization policy or serving-domain readiness")
+	if e = beamPublishBlocked(policy); e != nil {
+		return e
 	}
 	if strings.TrimSpace(build) == "dev" {
 		if _, e = fmt.Fprintln(out, "Development build: Local Sharing protocol 1; no released CLI version is declared."); e != nil {
@@ -581,4 +581,18 @@ func beamCanonicalURL(s beamShare) (string, error) {
 		return "", errors.New("invalid canonical share URL")
 	}
 	return u.String(), nil
+}
+
+// beamPublishBlocked names the one cause a publisher can act on, in the order
+// the setup has to happen: server, then organization, then the publisher.
+func beamPublishBlocked(p beamPolicy) error {
+	switch {
+	case !p.DomainReady:
+		return errors.New("Local Sharing is not set up on this server yet. Ask a server administrator to finish Settings → Local Sharing domain in the Tunnex console")
+	case !p.Enabled:
+		return errors.New("Local Sharing is turned off for this organization. Ask an organization admin to turn it on in Settings → Features")
+	case !p.CanPublish:
+		return errors.New("your account cannot publish under this organization's sharing policy. Ask an organization admin to add you to a Local Sharing publisher group")
+	}
+	return nil
 }

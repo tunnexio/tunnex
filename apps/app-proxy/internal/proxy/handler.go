@@ -117,7 +117,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		// Reject from headers without draining an unfinished upload. This is a
 		// single-use response and must not hold a browser connection for its body.
 		w.Header().Set("Connection", "close")
-		http.Error(w, "Beam uploads are limited to 16 MiB.", http.StatusRequestEntityTooLarge)
+		http.Error(w, "Local Sharing uploads are limited to 16 MiB.", http.StatusRequestEntityTooLarge)
 		return
 	}
 	if r.ContentLength != 0 || len(r.TransferEncoding) > 0 {
