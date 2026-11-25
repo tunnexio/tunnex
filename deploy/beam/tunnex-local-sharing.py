@@ -157,6 +157,20 @@ class Host:
         if services:
             self.compose("up", "-d", "--wait", "--wait-timeout", "300", *sorted(services), capture=False, **kw)
 
+    def remove_beam_containers(self):
+        """Stop and remove this project's Local Sharing containers by their Compose
+        labels. Needs no compose file or settings, so it also removes a proxy the
+        restored files no longer describe (never leaves it holding 443)."""
+        ids = []
+        for service in BEAM_SERVICES:
+            out = subprocess.run(["docker", "ps", "-aq", "--filter", "label=com.docker.compose.project=" + self.project,
+                                  "--filter", "label=com.docker.compose.service=" + service], capture_output=True, text=True)
+            if out.returncode != 0:
+                raise Refused("could not list the Local Sharing containers")
+            ids += out.stdout.split()
+        if ids and subprocess.run(["docker", "rm", "-f", *ids], capture_output=True).returncode != 0:
+            raise Refused("could not remove the Local Sharing containers")
+
     def running(self):
         """Compose participants of this project: {service: (config_files, running)}.
         Labels and container state only."""
@@ -403,7 +417,10 @@ def rollback_enable(host, before, state, staged, env_before, overlay_before):
         try:
             host.compose("rm", "-s", "-f", *BEAM_SERVICES, env_file=staged)
         except Refused:
-            removal_failed = True
+            try:
+                host.remove_beam_containers()
+            except Refused:
+                removal_failed = True
     if state["issued"]:
         # The restored .env does not know this credential, so disable could never
         # revoke it: revoke it now and let the next enable issue a fresh one.
@@ -429,6 +446,7 @@ def rollback_enable(host, before, state, staged, env_before, overlay_before):
         return "the previous setup was restored; no running service was changed" + unrevoked
     try:
         if removal_failed:
+            # Starting the console edge now would collide with the proxy on 443.
             raise Refused("beam-proxy could not be removed")
         host.up(before, local_sharing=overlay_before is not None)
         return "the previous setup was restored and is running" + unrevoked
@@ -531,6 +549,9 @@ def disable(args):
     before = host.running_services() - set(BEAM_SERVICES)
     if host.overlay.is_file():
         host.compose("rm", "-s", "-f", *BEAM_SERVICES, profiles=read_env(host.env_file).get("COMPOSE_PROFILES", ""))
+    # Also a proxy no overlay describes any more (for example after an
+    # interrupted run): by label, so 443 is always given back.
+    host.remove_beam_containers()
     if env.get("TUNNEX_LOCAL_SHARING_CREDENTIAL_ID") and env.get("TUNNEX_LOCAL_SHARING_CREDENTIAL_VERSION"):
         out = private_dir(host.dir / "local-sharing" / ("revoke-" + secrets.token_hex(4)))
         try:
