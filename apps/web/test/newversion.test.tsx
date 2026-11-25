@@ -1,6 +1,5 @@
 import { afterEach, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { readFileSync, existsSync } from "node:fs";
 import { entryScript, newerBuildAvailable } from "../src/lib/newVersion";
 import { NewVersionBanner } from "../src/components/NewVersionBanner";
 afterEach(cleanup);
@@ -40,8 +39,7 @@ it("stays hidden when there is no newer build", async () => {
   expect(screen.queryByText(/A new version/)).toBeNull();
 });
 
-it("reads the entry script from the real built index.html when a build exists", () => {
-  const built = new URL("../dist/index.html", import.meta.url);
-  if (!existsSync(built)) return;
-  expect(entryScript(readFileSync(built, "utf8"))).toMatch(/^\/assets\/index-[^/]+\.js$/);
+it("reads the entry script in the form the production build emits", () => {
+  // Copied from apps/web/dist/index.html of this build (Vite adds crossorigin before src).
+  expect(entryScript('<script type="module" crossorigin src="/assets/index-CXUV1Noi.js"></script>')).toBe("/assets/index-CXUV1Noi.js");
 });
