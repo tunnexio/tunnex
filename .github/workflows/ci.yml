@@ -183,6 +183,7 @@ jobs:
         run: |
           bash deploy/local-sharing-chart-contract_test.sh
           sh deploy/edge-proxy-protocol-contract_test.sh
+          python3 -B -m unittest deploy/beam/tests/test_tunnex_local_sharing.py -v
 
       - name: BYODB installer contract
         run: sh deploy/byodb-install-contract_test.sh

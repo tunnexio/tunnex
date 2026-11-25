@@ -101,7 +101,7 @@ Server-side (operator, on the host):
    writable and a new, absolute, private output directory bind-mounted. This is
    the same vehicle UPG-1/AA-EN-1 use for `app-preflight` and App Access
    issuance.
-   `backupctl app-proxy-issue --name local-sharing-proxy --output /out/authority.token`, then
+   `backupctl app-proxy-issue --purpose local-sharing --name local-sharing-proxy --output /out/authority.token`, then
    `backupctl beam-proxy-certificate --output-dir /out/connector`. The second
    gives `gateway-cert.pem`, `gateway-key.pem` (TLS name `tunnex-beam-proxy`)
    and `agent-ca.pem`. *The exact mount flags have not been walked on a
@@ -587,3 +587,53 @@ managed `app-access.yml` plus its hash in `.env`.
 - **Not exercised live:** a full stack with a published `beam-proxy` image,
   because the image is produced by release CI. The edge, PROXY reader/writer and
   readiness-through-edge are covered by Go end-to-end tests over real TCP/TLS.
+
+## E.5 Review folds and known limits
+
+**Folded after review:**
+- **Edge token scope.** The edge token goes only to `app-proxy`, which verifies
+  it. Caddy trusts the edge by its fixed address and never receives the secret.
+- **Edge bounds.** The edge never blocks accepting:
+  - over a bound, a new stream is closed;
+  - one source address can hold at most 8 handshakes in flight and 256
+    splices;
+  - a spliced stream with no traffic for 1 hour ends.
+
+  A test proves a silent flood from one address does not stall another client.
+- **Host command safety.**
+  - It refuses unless the running stack is exactly the managed composition.
+    An adopted or hand-written App Access layout is named, and nothing
+    changes.
+  - It requires root, so the proxy (uid 10001) owns its files.
+  - If anything fails after `.env` changes, it restores the previous `.env`
+    and overlay and brings the previous stack back up, so public 443 never
+    stays without an owner.
+- **Upgrade in edge mode.** On any failure after the proxy stopped, the
+  upgrade starts it again so the console keeps 443. Shares stay unavailable
+  until authority is current.
+- **Copy-paste commands.** Every manual issuing command now passes
+  `--purpose local-sharing`.
+- **Verified on Compose 5.4.0:** `up -d --wait` with the one-shot
+  `beam-restore-init` succeeds.
+- **End-to-end check:** client → real edge (the `sniedge` package) → real
+  pinned Caddy. Caddy reported the client's own address, not the edge's.
+
+**Known limits (stated, not hidden):**
+- **Client address on the demo's adopted App Access layout.** There,
+  `app-proxy` terminates the console and forwards it to Caddy. Caddy does not
+  trust `app-proxy` as a proxy, so the API sees `app-proxy`'s address. That is
+  the case today, before this branch. The edge delivers the real address to
+  `app-proxy` (so App Access audit is right), but not past it to the console
+  API.
+  - Fix: route console SNI straight to Caddy. That needs Caddy to hold the
+    console certificate, which is an on-host check (AA-EN-1 S1 vs S2).
+    Founder decision.
+  - On base installs and on App Access installs where Caddy serves the
+    console, the API sees real client addresses.
+- **IPv4 only.** Edge mode publishes 443 on IPv4 (`0.0.0.0`). A host that
+  served the console over IPv6 stops doing so on 443 until an IPv6 binding is
+  added.
+- **Not exercised live:** a full stack running the published `beam-proxy`
+  image, `backupctl` itself inside the real API image, and `docker compose cp`
+  from it. The helper mount semantics, the edge, Caddy and readiness were each
+  exercised for real or end to end.

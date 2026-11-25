@@ -57,7 +57,7 @@ Use the current control-plane `backupctl` with its existing database, sealed CA 
 restore-barrier configuration:
 
 ```sh
-backupctl app-proxy-issue --name beam-proxy --output /private/beam/authority.token
+backupctl app-proxy-issue --purpose local-sharing --name beam-proxy --output /private/beam/authority.token
 backupctl beam-proxy-certificate --output-dir /private/beam/connector
 ```
 
@@ -176,7 +176,7 @@ services:
       - {type: bind, source: /opt/tunnex/beam-secrets, target: /out}
 YAML
 docker compose $F -f local-sharing.yml -f /tmp/ls-issue.yml run --rm --no-deps -T \
-  --entrypoint backupctl api app-proxy-issue --name local-sharing-proxy --output /out/authority.token
+  --entrypoint backupctl api app-proxy-issue --purpose local-sharing --name local-sharing-proxy --output /out/authority.token
 docker compose $F -f local-sharing.yml -f /tmp/ls-issue.yml run --rm --no-deps -T \
   --entrypoint backupctl api beam-proxy-certificate --output-dir /out/connector
 mv /opt/tunnex/beam-secrets/connector/* /opt/tunnex/beam-secrets/ && rmdir /opt/tunnex/beam-secrets/connector

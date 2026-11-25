@@ -44,7 +44,7 @@ OWNED_KEYS = (
     "TUNNEX_BEAM_PUBLIC_BIND_IP", "TUNNEX_BEAM_CONNECTOR_BIND_IP", "TUNNEX_BEAM_CONNECTOR_PORT",
     "TUNNEX_LOCAL_SHARING_COMPOSE_SHA256", "TUNNEX_BEAM_EDGE_DEFAULT", "TUNNEX_BEAM_EDGE_APP_ACCESS_DOMAIN",
     "TUNNEX_BEAM_EDGE_APP_ACCESS_TARGET", "TUNNEX_EDGE_PROXY_PROTOCOL_FROM", "TUNNEX_APP_PROXY_EDGE_TOKEN_FILE",
-    "TUNNEX_LOCAL_SHARING_CREDENTIAL_ID", "TUNNEX_LOCAL_SHARING_CREDENTIAL_VERSION",
+    "TUNNEX_LOCAL_SHARING_CREDENTIAL_ID", "TUNNEX_LOCAL_SHARING_CREDENTIAL_VERSION", "TUNNEX_BEAM_EDGE_DEFAULT_TOKEN",
 )
 HOST_RE = re.compile(r"^(?=.{4,218}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$")
 
@@ -146,6 +146,37 @@ class Host:
             raise Refused("docker compose %s failed%s" % (args[0], (": " + detail) if detail else ""))
         return (result.stdout or b"").decode()
 
+    def running(self):
+        """Compose participants of this project: {service: config_files}. Labels only."""
+        out = subprocess.run(["docker", "ps", "-a", "--filter", "label=com.docker.compose.project=" + self.project, "--format", "{{.ID}}"],
+                             capture_output=True, text=True)
+        if out.returncode != 0:
+            raise Refused("could not inspect the running installation")
+        found = {}
+        for cid in out.stdout.split():
+            info = subprocess.run(["docker", "inspect", "--format",
+                                   '{{index .Config.Labels "com.docker.compose.service"}}|{{index .Config.Labels "com.docker.compose.project.config_files"}}|{{index .Config.Labels "com.docker.compose.oneoff"}}', cid],
+                                  capture_output=True, text=True)
+            if info.returncode != 0 or info.stdout.count("|") != 2:
+                raise Refused("could not inspect the running installation")
+            service, files, oneoff = info.stdout.strip().split("|")
+            if oneoff != "True":
+                found.setdefault(service, files)
+        return found
+
+    def check_layout(self):
+        """Refuse unless the running stack is exactly what this command composes."""
+        running = self.running()
+        if "app-proxy" in running and not self.app_access:
+            raise Refused("App Access is installed but not in the managed layout (tunnex.yml + app-access.yml); "
+                          "adopt or upgrade App Access first, then run this again")
+        expected = {",".join(str(f) for f in self.files(False)), ",".join(str(f) for f in self.files(True))}
+        if "api" not in running:
+            raise Refused("the Tunnex API is not running in project %s; start Tunnex first" % self.project)
+        if running["api"] not in expected:
+            raise Refused("the running stack uses %s, not the managed files this command uses (%s); "
+                          "converge it with upgrade.sh first" % (running["api"], " or ".join(sorted(expected))))
+
     def base_profile(self):
         return "external-db" if self.env.get("TUNNEX_DATABASE_MODE") == "external" else "bundled-db"
 
@@ -159,6 +190,8 @@ def console_host(env):
 
 
 def check_domain(domain, env):
+    """Obvious mistakes only; the console enforces the public-suffix rule when
+    the domain is saved (a sibling of the console would share its cookies)."""
     if not HOST_RE.match(domain):
         raise Refused("--domain must be a DNS name such as share-example.dev (no scheme, wildcard or port)")
     console = console_host(env)
@@ -166,9 +199,8 @@ def check_domain(domain, env):
         return bool(a and b) and (a == b or a.endswith("." + b) or b.endswith("." + a))
     if overlaps(domain, env.get("TUNNEX_APP_ACCESS_BASE_DOMAIN", "").lower()):
         raise Refused("the sharing domain overlaps the App Access domain; use a separate domain")
-    if domain != console and (domain.endswith("." + console) or ".".join(domain.split(".")[-2:]) == ".".join(console.split(".")[-2:])):
-        raise Refused("the sharing domain must be a different registrable domain from the console (%s); "
-                      "a sibling would share cookies with the console" % console)
+    if domain.endswith("." + console) or console.endswith("." + domain):
+        raise Refused("the sharing domain must be a registrable domain of its own, not under or above the console (%s)" % console)
 
 
 def _pump(client, server, c_in, c_out, s_in, s_out):
@@ -238,6 +270,7 @@ def edge_plan(host, env):
     if host.app_access:
         if env.get("TUNNEX_APP_PROXY_CONSOLE_UPSTREAM_URL"):
             default = "app-proxy:8443"  # app-proxy already forwards the console
+            updates["TUNNEX_BEAM_EDGE_DEFAULT_TOKEN"] = "true"
         else:
             updates["TUNNEX_BEAM_EDGE_APP_ACCESS_DOMAIN"] = env.get("TUNNEX_APP_ACCESS_BASE_DOMAIN", "")
             updates["TUNNEX_BEAM_EDGE_APP_ACCESS_TARGET"] = "app-proxy:8443"
@@ -309,7 +342,30 @@ def enable(args):
     if not args.apply:
         say("dry run: nothing was changed. Re-run with --apply.")
         return 0
+    if os.geteuid() != 0 and not args.skip_owner_check:
+        raise Refused("run with sudo: the proxy runs as uid %d and must own its private files" % PROXY_UID)
+    host.check_layout()
+    env_before = host.env_file.read_bytes()
+    overlay_before = host.overlay.read_bytes() if host.overlay.is_file() else None
+    try:
+        return apply_enable(args, host, env, domain, console, port, updates, saved, secrets_dir, cert, key)
+    except Exception as e:
+        # Never leave public 443 without an owner: put the previous setup back.
+        atomic_write(host.env_file, env_before, os.stat(host.env_file).st_mode & 0o777)
+        if overlay_before is None:
+            if host.overlay.exists():
+                host.overlay.unlink()
+        else:
+            atomic_write(host.overlay, overlay_before, 0o644)
+        try:
+            host.compose("up", "-d", "--wait", "--wait-timeout", "300", local_sharing=overlay_before is not None, capture=False)
+            restored = "the previous setup was restored and is running"
+        except Refused:
+            restored = "restoring the previous setup also failed; run: %s disable --apply" % sys.argv[0]
+        raise Refused("enable failed (%s); %s" % (e, restored))
 
+
+def apply_enable(args, host, env, domain, console, port, updates, saved, secrets_dir, cert, key):
     # 1. Managed overlay from the running signed API image.
     with tempfile.TemporaryDirectory() as tmp:
         staged = pathlib.Path(tmp) / "compose.yml"
@@ -444,6 +500,7 @@ def main(argv=None):
     e.add_argument("--layout", choices=("edge", "dedicated"), default="edge", help="edge: share this host's 443 (default); dedicated: own address")
     e.add_argument("--public-ip", help="with --layout dedicated: the address for *.DOMAIN on 443")
     e.add_argument("--apply", action="store_true")
+    e.add_argument("--skip-owner-check", action="store_true", help=argparse.SUPPRESS)  # tests only: no root
     d = sub.add_parser("disable", help="stop Local Sharing and give 443 back (dry run unless --apply)")
     d.add_argument("--apply", action="store_true")
     sub.add_parser("status", help="show what is installed and missing")

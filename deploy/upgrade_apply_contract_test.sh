@@ -193,7 +193,8 @@ case "$*" in
   *'api backupctl manifest'*) printf '%s\n' '{"manifest":"test"}' ;;
   *'api backupctl verify'*) cat >/dev/null ;;
   *'exec -T api wget -qO-'*) printf '%s\n' ok ;;
-  *'--no-deps beam-proxy'*) [ "${MOCK_LS_START:-}" != fail ] || exit 1 ;;
+  *'up -d --wait --wait-timeout 300 --no-deps beam-proxy'*) [ "${MOCK_LS_START:-}" != fail ] || exit 1 ;;
+  *'up -d --wait --wait-timeout 900'*) [ "${MOCK_LS_MIGRATE:-}" != fail ] || exit 1 ;;
 esac
 SH
 chmod 0755 "$TMP/bin/docker"
@@ -852,6 +853,28 @@ for ls_case in hand-written no-image ports secrets missing-env tampered two-prox
   grep -Fxq "reason_code=$expected_reason" "$aa_dir/status"
   if [ "$ls_case" = hand-written ]; then assert_aa_refused_unchanged; else assert_ls_refused_unchanged; fi
 done
+
+# Single-IP edge layout with the host command's real .env values: upgrades
+# normally, keeps the edge settings, and on a failed migration starts the proxy
+# again so public 443 keeps serving the console.
+make_ls_install edge
+sed -i.bak 's/^TUNNEX_BEAM_PUBLIC_BIND_IP=.*/TUNNEX_BEAM_PUBLIC_BIND_IP=0.0.0.0/;s/^TUNNEX_BEAM_CONNECTOR_BIND_IP=.*/TUNNEX_BEAM_CONNECTOR_BIND_IP=0.0.0.0/' "$aa_dir/.env"
+cat >>"$aa_dir/.env" <<'ENV'
+TUNNEX_EDGE_HTTPS_PUBLISH=127.0.0.1:8446
+TUNNEX_EDGE_PROXY_PROTOCOL_FROM=172.31.254.2/32
+TUNNEX_BEAM_EDGE_DEFAULT=172.31.254.3:443
+ENV
+write_ls_proxy "$aa_dir/tunnex.yml,$aa_dir/local-sharing.yml" '8443/tcp=0.0.0.0:443;8444/tcp=0.0.0.0:8447;'
+run_ls_upgrade --apply >"$aa_dir/output" 2>&1 || { cat "$aa_dir/output"; exit 1; }
+grep -Fxq 'state=healthy' "$aa_dir/status"
+for ls_key in TUNNEX_EDGE_HTTPS_PUBLISH=127.0.0.1:8446 TUNNEX_EDGE_PROXY_PROTOCOL_FROM=172.31.254.2/32 TUNNEX_BEAM_EDGE_DEFAULT=172.31.254.3:443 TUNNEX_BEAM_PUBLIC_BIND_IP=0.0.0.0; do
+  grep -Fxq "$ls_key" "$aa_dir/.env" || { echo "edge setting lost: $ls_key" >&2; exit 1; }
+done
+rm -f "$aa_dir/docker.log"
+if MOCK_LS_MIGRATE=fail run_ls_upgrade --apply >"$aa_dir/output" 2>&1; then echo 'failed migration accepted' >&2; exit 1; fi
+unset MOCK_LS_MIGRATE
+[ "$(line_of x 'stop beam-proxy' 1)" -lt "$(line_of x 'up -d --no-deps beam-proxy' 1)" ] || { echo 'edge not restarted after failure' >&2; cat "$aa_dir/docker.log" >&2; exit 1; }
+grep -Fq 'keeps public 443' "$aa_dir/output"
 
 # A proxy that does not become healthy leaves it stopped; the control plane stays upgraded.
 make_ls_install start-fails
