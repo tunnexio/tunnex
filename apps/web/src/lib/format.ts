@@ -29,3 +29,21 @@ export function endSentence(message: string): string {
   if (m === "") return m;
   return /[.!?:;…]$/.test(m) ? m : `${m}.`;
 }
+
+// compactDateTime renders a short, locale-aware absolute time for dense tables (SA-UX-4): the time alone on
+// the same calendar day, day + short month + time in the same year, and the year otherwise. No seconds.
+// Absolute rather than relative on purpose: a list that re-renders only on refresh would show a stale
+// "12 min ago". Callers put the full `toLocaleString()` value in `title` for the exact second.
+export function compactDateTime(iso: string, now: Date = new Date()): string {
+  const d = new Date(iso);
+  if (!iso || Number.isNaN(d.getTime())) return "";
+  const time: Intl.DateTimeFormatOptions = { hour: "numeric", minute: "2-digit" };
+  const sameYear = d.getFullYear() === now.getFullYear();
+  const sameDay = sameYear && d.getMonth() === now.getMonth() && d.getDate() === now.getDate();
+  const options: Intl.DateTimeFormatOptions = sameDay
+    ? time
+    : sameYear
+      ? { day: "numeric", month: "short", ...time }
+      : { year: "numeric", day: "numeric", month: "short", ...time };
+  return new Intl.DateTimeFormat(undefined, options).format(d);
+}

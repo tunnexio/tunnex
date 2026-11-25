@@ -10,6 +10,7 @@ import { ResourceSummary } from "./ResourceSummary";
 import { Icon } from "./Icon";
 import { sessionReasonText } from "../lib/serverAccessReasons";
 import { personLabel } from "../lib/personLabel";
+import { compactDateTime } from "../lib/format";
 type Session=components["schemas"]["ServerAccessSession"];
 type Server=components["schemas"]["ServerAccessServer"];
 const live=(session:Session)=>["pending","connecting","connected"].includes(session.status);
@@ -31,6 +32,8 @@ export function sessionDuration(session:Session):string{
  const minutes=Math.round(seconds/60);
  return minutes<60?`${minutes} min`:`${Math.floor(minutes/60)} h ${minutes%60} min`;
 }
+/** SA-UX-4: a compact, non-wrapping time with the exact local time on hover. */
+function SessionTime({iso}:{iso:string}){return <time className="sa-time" dateTime={iso} title={new Date(iso).toLocaleString()}>{compactDateTime(iso)}</time>}
 const auditHref=(session:Session)=>`/audit?target_type=server_access&target_id=${session.id}`;
 
 export function ServerSessions({sessions,servers,members,disabled,onRefresh,onEnd,onReplay,importControl}:{sessions:Session[];servers:Server[];members:Member[];disabled:boolean;onRefresh:()=>void;onEnd:(id:string)=>void;onReplay:(id:string)=>void;importControl:React.ReactNode}){
@@ -53,12 +56,12 @@ export function ServerSessions({sessions,servers,members,disabled,onRefresh,onEn
    {key:"user",header:"User",cell:session=><span title={session.user_id}>{userName(session)}</span>},
    {key:"status",header:"Status",cell:session=><Badge tone={session.status==="connected"||session.status==="passed"?"ok":session.status==="failed"?"warn":undefined}>{statusLabel(session.status)}</Badge>},
    {key:"recording",header:"Recording",cell:session=><span>{recordingLabel(session)}</span>},
-   {key:"started",header:"Started",cell:session=>session.created_at?<time dateTime={session.created_at}>{new Date(session.created_at).toLocaleString()}</time>:<span>Not reported</span>},
-   {key:"time",header:"Duration or expiry",cell:session=>live(session)?<span>Expires <time dateTime={session.expires_at}>{new Date(session.expires_at).toLocaleString()}</time></span>:<span>{sessionDuration(session)||"Ended"}</span>},
+   {key:"started",header:"Started",cell:session=>session.created_at?<SessionTime iso={session.created_at}/>:<span className="sa-time">Not reported</span>},
+   {key:"time",header:"Duration or expiry",cell:session=>live(session)?<span className="sa-time">Expires <SessionTime iso={session.expires_at}/></span>:<span className="sa-time">{sessionDuration(session)||"Ended"}</span>},
    {key:"actions",header:"Actions",cell:session=><div className="flex items-center gap-2">{replayable(session)&&<Button variant="ghost" onClick={()=>onReplay(session.id)}>Replay</Button>}<AppAccessRowMenu label={`Session actions for ${session.id.slice(0,8)}`} actions={actions(session)}/></div>}
   ]}/></div>}
   <AppAccessPagination page={current} pageSize={pageSize} count={visible.length} hasNext={current*pageSize<rows.length} busy={disabled} onPageChange={setPage} onPageSizeChange={size=>{setPageSize(appAccessPageSize(String(size)));setPage(1)}} previousLabel="Previous sessions" nextLabel="Next sessions"/>
-  {details&&<Modal title="Session details" placement="right" showClose onDismiss={()=>setDetails(undefined)}><ResourceSummary title="Session information"><dl className="sa-dialog-summary tnx-resource-facts"><div><dt>Server</dt><dd>{serverName(details)}</dd></div><div><dt>Account</dt><dd>{details.account}</dd></div><div><dt>User</dt><dd>{userName(details)}</dd></div><div><dt>Status</dt><dd>{statusLabel(details.status)}</dd></div>{details.created_at&&<div><dt>Started</dt><dd>{new Date(details.created_at).toLocaleString()}</dd></div>}{details.ended_at&&<div><dt>Ended</dt><dd>{new Date(details.ended_at).toLocaleString()} ({sessionDuration(details)})</dd></div>}<div><dt>Recording</dt><dd>{recordingLabel(details)}</dd></div>{details.reason&&<div className="tnx-resource-fact-wide"><dt>Reason</dt><dd>{sessionReasonText(details.reason)}</dd></div>}<div className="tnx-resource-fact-wide"><dt>Session</dt><dd className="font-mono">{details.id}</dd></div></dl>
+  {details&&<Modal title="Session details" placement="right" showClose onDismiss={()=>setDetails(undefined)}><ResourceSummary title="Session information"><dl className="sa-dialog-summary tnx-resource-facts"><div><dt>Server</dt><dd>{serverName(details)}</dd></div><div><dt>Account</dt><dd>{details.account}</dd></div><div><dt>User</dt><dd>{userName(details)}</dd></div><div><dt>Status</dt><dd>{statusLabel(details.status)}</dd></div>{details.created_at&&<div><dt>Started</dt><dd><time dateTime={details.created_at}>{new Date(details.created_at).toLocaleString()}</time></dd></div>}{details.ended_at&&<div><dt>Ended</dt><dd><time dateTime={details.ended_at}>{new Date(details.ended_at).toLocaleString()}</time> ({sessionDuration(details)})</dd></div>}<div><dt>Recording</dt><dd>{recordingLabel(details)}</dd></div>{details.reason&&<div className="tnx-resource-fact-wide"><dt>Reason</dt><dd>{sessionReasonText(details.reason)}</dd></div>}<div className="tnx-resource-fact-wide"><dt>Session</dt><dd className="font-mono">{details.id}</dd></div></dl>
    <div className="mt-3 flex flex-wrap gap-3">{replayable(details)&&<Button onClick={()=>{const id=details.id;setDetails(undefined);onReplay(id)}}>Replay recording</Button>}<Link className="text-brand" to={auditHref(details)}>Audit events for this session</Link></div></ResourceSummary></Modal>}
  </section>
 }
