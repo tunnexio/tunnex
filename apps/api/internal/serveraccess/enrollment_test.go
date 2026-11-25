@@ -9,7 +9,7 @@ import (
 )
 
 func TestEnrollmentInputRejectsUnsafeProvisioning(t *testing.T) {
-	fp := "SHA256:" + strings.Repeat("A", 43)
+	fp := "SHA256:" + strings.Repeat("B", 43)
 	valid := api.ServerAccessEnrollmentInput{ManagementAccount: "ubuntu", ManagementPort: 22, ManagementFingerprint: &fp, Accounts: []string{}}
 	if e := validateEnrollmentInput(valid); e != nil {
 		t.Fatal(e)
@@ -22,8 +22,8 @@ func TestEnrollmentInputRejectsUnsafeProvisioning(t *testing.T) {
 			t.Fatal(e)
 		}
 	}
-	unverified := "SHA256:unverified"
-	for _, mutate := range []func(*api.ServerAccessEnrollmentInput){func(v *api.ServerAccessEnrollmentInput) { v.ManagementAccount = "root" }, func(v *api.ServerAccessEnrollmentInput) { v.ManagementAccount = "ubuntu;id" }, func(v *api.ServerAccessEnrollmentInput) { v.ManagementFingerprint = &unverified }, func(v *api.ServerAccessEnrollmentInput) { v.ManagementPort = 0 }, func(v *api.ServerAccessEnrollmentInput) { v.Accounts = []string{"root"} }, func(v *api.ServerAccessEnrollmentInput) { v.Accounts = []string{"ubuntu", "ubuntu"} }} {
+	unverified, placeholder := "SHA256:unverified", PendingHostFingerprint
+	for _, mutate := range []func(*api.ServerAccessEnrollmentInput){func(v *api.ServerAccessEnrollmentInput) { v.ManagementFingerprint = &placeholder }, func(v *api.ServerAccessEnrollmentInput) { v.ManagementAccount = "root" }, func(v *api.ServerAccessEnrollmentInput) { v.ManagementAccount = "ubuntu;id" }, func(v *api.ServerAccessEnrollmentInput) { v.ManagementFingerprint = &unverified }, func(v *api.ServerAccessEnrollmentInput) { v.ManagementPort = 0 }, func(v *api.ServerAccessEnrollmentInput) { v.Accounts = []string{"root"} }, func(v *api.ServerAccessEnrollmentInput) { v.Accounts = []string{"ubuntu", "ubuntu"} }} {
 		v := valid
 		mutate(&v)
 		if validateEnrollmentInput(v) == nil {
@@ -33,11 +33,11 @@ func TestEnrollmentInputRejectsUnsafeProvisioning(t *testing.T) {
 }
 func TestEnrollmentResultBindsIdentityAndAccounts(t *testing.T) {
 	j := enrollment{Org: uuid.New(), Accounts: []string{"ubuntu"}, View: api.ServerAccessEnrollment{ServerId: uuid.New()}}
-	good := bootstrap.Result{Version: 1, OrgID: j.Org.String(), ServerID: j.View.ServerId.String(), SSHPort: 2222, HostFingerprint: "SHA256:" + strings.Repeat("A", 43), Accounts: []string{"ubuntu"}}
+	good := bootstrap.Result{Version: 1, OrgID: j.Org.String(), ServerID: j.View.ServerId.String(), SSHPort: 2222, HostFingerprint: "SHA256:" + strings.Repeat("B", 43), Accounts: []string{"ubuntu"}}
 	if e := validateEnrollmentResult(j, &good); e != nil {
 		t.Fatal(e)
 	}
-	for _, change := range []func(*bootstrap.Result){func(r *bootstrap.Result) { r.ServerID = uuid.NewString() }, func(r *bootstrap.Result) { r.OrgID = uuid.NewString() }, func(r *bootstrap.Result) { r.Accounts = []string{"root"} }, func(r *bootstrap.Result) { r.Accounts = []string{"deploy"} }, func(r *bootstrap.Result) { r.HostFingerprint = "invalid" }} {
+	for _, change := range []func(*bootstrap.Result){func(r *bootstrap.Result) { r.ServerID = uuid.NewString() }, func(r *bootstrap.Result) { r.OrgID = uuid.NewString() }, func(r *bootstrap.Result) { r.Accounts = []string{"root"} }, func(r *bootstrap.Result) { r.Accounts = []string{"deploy"} }, func(r *bootstrap.Result) { r.HostFingerprint = "invalid" }, func(r *bootstrap.Result) { r.HostFingerprint = PendingHostFingerprint }} {
 		r := good
 		change(&r)
 		if validateEnrollmentResult(j, &r) == nil {
@@ -50,6 +50,7 @@ func TestPendingDiscoveryRemainsDisabledAndUntrusted(t *testing.T) {
 	v := validServer()
 	v.Accounts = []string{}
 	v.SshPort = 2222
+	v.HostFingerprint = PendingHostFingerprint
 	if ValidateServer(v) != nil {
 		t.Fatal("disabled pending-discovery registration refused")
 	}
@@ -65,7 +66,7 @@ func TestPendingDiscoveryRemainsDisabledAndUntrusted(t *testing.T) {
 }
 
 func TestOnlineAccountSyncRejectsTrustChangesAndAccountRemoval(t *testing.T) {
-	fp := "SHA256:" + strings.Repeat("A", 43)
+	fp := "SHA256:" + strings.Repeat("B", 43)
 	port := 2222
 	server := api.ServerAccessServer{HostFingerprint: &fp, SshPort: &port, Accounts: []string{"ubuntu"}, Enabled: true, ReadyAccounts: []string{"ubuntu"}, Revision: 7}
 	result := bootstrap.Result{HostFingerprint: fp, SSHPort: port, Accounts: []string{"ubuntu", "deploy"}}
@@ -73,7 +74,7 @@ func TestOnlineAccountSyncRejectsTrustChangesAndAccountRemoval(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, change := range []func(*bootstrap.Result){
-		func(r *bootstrap.Result) { r.HostFingerprint = "SHA256:" + strings.Repeat("B", 43) },
+		func(r *bootstrap.Result) { r.HostFingerprint = "SHA256:" + strings.Repeat("C", 43) },
 		func(r *bootstrap.Result) { r.SSHPort = 2223 },
 		func(r *bootstrap.Result) { r.Accounts = []string{"deploy"} },
 	} {

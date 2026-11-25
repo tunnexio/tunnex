@@ -3,7 +3,7 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import { StrictMode } from "react";
 import { MemoryRouter } from "react-router-dom";
 import BrowserTerminal from "../src/pages/BrowserTerminal";
-const state=vi.hoisted(()=>({terminal:null as any,pasted:[] as string[],selected:"",selectionChanged:null as any,multi:false,empty:false,serverCount:1,accountCount:1,developer:false,admin:false,recording:false,failed:false,connect:false,ready:true,sshPort:22,orgEnabled:true,serverEnabled:true,checkError:false,verified:false,installationOff:false,cpAdmin:false,requests:[] as string[],bodies:[] as unknown[],notGranted:false,lastError:"",noMfa:false}));
+const state=vi.hoisted(()=>({terminal:null as any,pasted:[] as string[],selected:"",selectionChanged:null as any,multi:false,empty:false,serverCount:1,accountCount:1,developer:false,admin:false,recording:false,failed:false,connect:false,ready:true,sshPort:22,orgEnabled:true,serverEnabled:true,checkError:false,verified:false,installationOff:false,cpAdmin:false,requests:[] as string[],bodies:[] as unknown[],notGranted:false,lastError:"",noMfa:false,pendingTrust:false,placeholder:false,puts:[] as unknown[]}));
 vi.mock("../src/lib/auth",()=>{const value=()=>({state:{status:"authed",user:{id:"user-1",email_verified:true,cp_admin:state.cpAdmin,recovery_codes_remaining:state.noMfa?null:5}}});return {useAuth:value,useOptionalAuth:value}});
 vi.mock("../src/lib/useOrg",()=>({useOrg:()=>({org:{id:"org-1"},failed:false})}));
 vi.mock("../src/components/MfaSettings",()=>({MfaSettings:()=> <div>Existing account MFA setup</div>}));
@@ -19,6 +19,7 @@ vi.mock("../src/lib/api",async()=>{
     if(state.installationOff)return {error:{error:{code:"server_access_disabled",message:"Terminal capability is disabled on this installation"}}};
     const workspace={data:{enabled:state.orgEnabled,can_manage:state.admin,can_grant:state.admin,can_manage_sessions:state.admin,grants:[],sessions:state.checkError?[{id:"check-1",kind:"check",server_id:"server-1",account:"fixture",status:"failed",reason:"ssh_authentication_failed"}]:[],mfa_freshness_seconds:900,recording_retention_days:7,recording_max_session_bytes:4194304,recording_max_org_bytes:67108864,limitations:["Recording-required servers refuse Connect until capture is implemented."],servers:[{id:"server-1",name:"Build host",gateway_id:"gateway-1",private_ip:state.admin?"10.2.3.4":undefined,ssh_port:22,host_fingerprint:"SHA256:fixture",accounts:["fixture"],ready_accounts:state.ready?["fixture"]:[],revision:1,enabled:state.serverEnabled,recording_enabled:state.recording,developer_access_enabled:state.developer,idle_timeout_seconds:300,max_session_seconds:900},...(state.multi?[{id:"server-2",name:"Database host",gateway_id:"gateway-1",accounts:["ubuntu"],ready_accounts:["ubuntu"],revision:1,enabled:true,recording_enabled:false,idle_timeout_seconds:300,max_session_seconds:900}]:[])]}};
     workspace.data.servers[0].ssh_port=state.sshPort;(workspace.data as Record<string,unknown>).my_access=[{server_id:"server-1",account:"fixture",expires_at:new Date(Date.now()+2*3600000).toISOString()}];if(state.lastError)(workspace.data.servers[0] as Record<string,unknown>).last_error=state.lastError;
+    if(state.pendingTrust){const pending=workspace.data.servers[0] as Record<string,unknown>;pending.accounts=[];pending.ready_accounts=[];pending.enabled=false;if(state.placeholder)pending.host_fingerprint="SHA256:"+"A".repeat(43);else delete pending.host_fingerprint}
     if(state.serverCount>1)workspace.data.servers=Array.from({length:state.serverCount},(_,index)=>({...workspace.data.servers[0],id:`server-${index}`,name:`Host ${index}`}));
     if(state.accountCount>1){const accounts=Array.from({length:state.accountCount},(_,index)=>`account-${index}`);workspace.data.servers[0]={...workspace.data.servers[0],accounts,ready_accounts:accounts}}
     if(state.empty)workspace.data.servers=[];
@@ -38,11 +39,11 @@ vi.mock("../src/lib/api",async()=>{
    if(state.connect&&path.endsWith("/sessions")){const body=(options as {body:{server_id:string;account:string}}).body;return {data:{id:body.server_id==="server-2"?"session-2":"session-1",server_id:body.server_id,user_id:"user-1",account:body.account,status:"pending",reason:"",kind:"terminal",expires_at:new Date(Date.now()+60000).toISOString(),recording_enabled:false}}};
    return {error:{error:{code:"mfa_required",message:"Recent MFA required"}}};
   }),
-  PUT:vi.fn(async()=>({data:{status:"updated"}})),
+  PUT:vi.fn(async(_path:string,options:unknown)=>{state.puts.push(options);return {data:{status:"updated"}}}),
   DELETE:vi.fn(async()=>({error:{error:{message:"Termination unconfirmed"}}}))
  }};
 });
-beforeEach(()=>{state.developer=false;state.terminal=null;state.pasted=[];state.selected="";state.selectionChanged=null;state.multi=false;state.empty=false;state.serverCount=1;state.accountCount=1;state.admin=false;state.recording=false;state.failed=false;state.connect=false;state.ready=true;state.sshPort=22;state.orgEnabled=true;state.serverEnabled=true;state.checkError=false;state.verified=false;state.installationOff=false;state.cpAdmin=false;state.requests=[];state.bodies=[];state.notGranted=false;state.lastError="";state.noMfa=false});afterEach(cleanup);
+beforeEach(()=>{state.pendingTrust=false;state.placeholder=false;state.puts=[];state.developer=false;state.terminal=null;state.pasted=[];state.selected="";state.selectionChanged=null;state.multi=false;state.empty=false;state.serverCount=1;state.accountCount=1;state.admin=false;state.recording=false;state.failed=false;state.connect=false;state.ready=true;state.sshPort=22;state.orgEnabled=true;state.serverEnabled=true;state.checkError=false;state.verified=false;state.installationOff=false;state.cpAdmin=false;state.requests=[];state.bodies=[];state.notGranted=false;state.lastError="";state.noMfa=false});afterEach(cleanup);
 function mount(){render(<MemoryRouter><BrowserTerminal/></MemoryRouter>)}
 async function openServer(name="Build host"){fireEvent.click(await screen.findByRole("button",{name}))}
 async function rowAction(label:string,action:string){const trigger=await screen.findByRole("button",{name:label});if(trigger.getAttribute("aria-expanded")!=="true")fireEvent.click(trigger);return within(screen.getByRole("menu",{name:label})).getByRole("menuitem",{name:action})}
@@ -433,3 +434,73 @@ it("disable confirmation says what happens to open sessions (audit S15)",async()
 it("names the organization owners and admins to ask, from the member-visible list (S4)",async()=>{state.serverEnabled=false;mount();await openServer();
  expect(await screen.findByText("This server is turned off. Ask Control Plane Admin (support@tunnex.io).")).toBeTruthy();expect(screen.queryByText(/Plain Member/)).toBeNull()});
 it("shows a member when their own access ends (S8)",async()=>{mount();await openServer();expect(await screen.findByText(/Your access ends .* \(in 2 h\)/)).toBeTruthy()});
+
+// SA-UX-3: Edit server never shows or re-sends the pending-trust placeholder and never changes a pin implicitly.
+const placeholderPin="SHA256:"+"A".repeat(43);
+async function openEditConnection(){mount();await openServer();serverStep("Connection");fireEvent.click(await screen.findByRole("button",{name:"Edit connection"}));return screen.findByRole("dialog",{name:"Edit server"})}
+function putBody(){return (state.puts.at(-1) as {body:{host_fingerprint:string;accounts:string[];name:string}}).body}
+for(const placeholder of [false,true])it(`a pending server's edit form shows no fake fingerprint and keeps trust pending (${placeholder?"older API echoing the placeholder":"placeholder omitted"})`,async()=>{
+ state.admin=true;state.pendingTrust=true;state.placeholder=placeholder;
+ const dialog=await openEditConnection();
+ expect(screen.getAllByText("Host trust pending SSH setup").length).toBeGreaterThan(0);
+ for(const input of within(dialog).queryAllByRole("textbox"))expect((input as HTMLInputElement).value).not.toBe(placeholderPin);
+ expect(within(dialog).queryByLabelText("Independently verified SHA256 host fingerprint")).toBeNull();
+ expect(within(dialog).queryByLabelText("Existing Linux accounts (comma separated)")).toBeNull();
+ expect(within(dialog).getByText("Advanced: enter accounts and verify the host key independently")).toBeTruthy();
+ expect((within(dialog).getByLabelText("Independently verified SHA256 host fingerprint (optional)") as HTMLInputElement).value).toBe("");
+ fireEvent.change(within(dialog).getByDisplayValue("Build host"),{target:{value:"Renamed host"}});
+ fireEvent.click(within(dialog).getByRole("button",{name:"Save server"}));
+ await waitFor(()=>expect(state.puts).toHaveLength(1));
+ expect(putBody()).toMatchObject({name:"Renamed host",accounts:[],host_fingerprint:""});
+});
+it("a pending server refuses the placeholder or a half-entered manual pin",async()=>{
+ state.admin=true;state.pendingTrust=true;state.placeholder=true;
+ const dialog=await openEditConnection();
+ const fingerprint=within(dialog).getByLabelText("Independently verified SHA256 host fingerprint (optional)");
+ fireEvent.change(within(dialog).getByLabelText("Existing Linux accounts (comma separated, optional)"),{target:{value:"ubuntu"}});
+ expect(within(dialog).getByRole("alert").textContent).toMatch(/Enter the verified fingerprint too/);
+ fireEvent.change(fingerprint,{target:{value:placeholderPin}});
+ expect(within(dialog).getByRole("alert").textContent).toMatch(/placeholder for pending host trust/);
+ const save=within(dialog).getByRole("button",{name:"Save server"}) as HTMLButtonElement;
+ expect(save.disabled).toBe(true);fireEvent.click(save);expect(state.puts).toHaveLength(0);
+ const real="SHA256:"+"B".repeat(43);fireEvent.change(fingerprint,{target:{value:real}});
+ expect(within(dialog).queryByRole("alert")).toBeNull();
+ fireEvent.click(save);await waitFor(()=>expect(state.puts).toHaveLength(1));
+ expect(putBody()).toMatchObject({accounts:["ubuntu"],host_fingerprint:real});
+});
+it("a trusted server shows its pin read-only and editing other fields keeps it",async()=>{
+ state.admin=true;
+ const dialog=await openEditConnection();
+ expect(within(dialog).getByLabelText("Pinned host fingerprint").textContent).toContain("SHA256:fixture");
+ expect(within(dialog).queryByDisplayValue("SHA256:fixture")).toBeNull();
+ expect((within(dialog).getByLabelText("New independently verified SHA256 host fingerprint (optional)") as HTMLInputElement).value).toBe("");
+ fireEvent.change(within(dialog).getByDisplayValue("Build host"),{target:{value:"Renamed host"}});
+ fireEvent.click(within(dialog).getByRole("button",{name:"Save server"}));
+ await waitFor(()=>expect(state.puts).toHaveLength(1));
+ expect(putBody()).toMatchObject({name:"Renamed host",accounts:["fixture"],host_fingerprint:"SHA256:fixture"});
+});
+it("replacing a trusted pin is explicit and refuses the placeholder",async()=>{
+ state.admin=true;
+ const dialog=await openEditConnection();
+ const replacement=within(dialog).getByLabelText("New independently verified SHA256 host fingerprint (optional)");
+ fireEvent.change(replacement,{target:{value:placeholderPin}});
+ expect(within(dialog).getByRole("alert").textContent).toMatch(/placeholder/);
+ expect((within(dialog).getByRole("button",{name:"Save server"}) as HTMLButtonElement).disabled).toBe(true);
+ const real="SHA256:"+"C".repeat(43);fireEvent.change(replacement,{target:{value:real}});
+ expect(within(dialog).getByText(/These changes need new account checks/)).toBeTruthy();
+ fireEvent.click(within(dialog).getByRole("button",{name:"Save server"}));
+ await waitFor(()=>expect(state.puts).toHaveLength(1));
+ expect(putBody().host_fingerprint).toBe(real);
+});
+it("new automatic-setup registrations never send the placeholder",async()=>{
+ state.admin=true;mount();fireEvent.click(await screen.findByRole("button",{name:"Register server"}));
+ const dialog=await screen.findByRole("dialog",{name:"Register server"});
+ fireEvent.change(within(dialog).getByLabelText("Server name"),{target:{value:"New host"}});
+ fireEvent.change(within(dialog).getByLabelText("Private IP"),{target:{value:"10.9.8.7"}});
+ await waitFor(()=>expect(within(dialog).getByRole("option",{name:"gcp-gw"})).toBeTruthy());
+ fireEvent.change(within(dialog).getByLabelText("Gateway"),{target:{value:"gateway-1"}});
+ fireEvent.click(within(dialog).getByRole("button",{name:"Register server (stays off until checked)"}));
+ await waitFor(()=>expect(state.bodies.some(b=>JSON.stringify(b).includes("New host"))).toBe(true));
+ const body=(state.bodies.find(b=>JSON.stringify(b).includes("New host")) as {body:{host_fingerprint:string;accounts:string[]}}).body;
+ expect(body).toMatchObject({accounts:[],host_fingerprint:""});
+});
