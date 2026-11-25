@@ -54,4 +54,49 @@ class Discovery(unittest.TestCase):
     with self.assertRaises(ValueError):h.sync(meta,['ubuntu'])
    self.assertEqual(p.read_text(),'foreign-principal\n')
    self.assertFalse((root/'managed.json').exists())
+class FailureCodes(unittest.TestCase):
+ # SA-UX-3: a refusal prints one structured line with a fixed code; free text stays on stderr and in the journal.
+ def refuse(self,error):
+  import io,contextlib
+  out,err=io.StringIO(),io.StringIO()
+  with patch.object(h,'journal') as journal,contextlib.redirect_stdout(out),contextlib.redirect_stderr(err):h.refuse(error)
+  return out.getvalue(),err.getvalue(),journal.call_args[0][0]
+ def test_coded_refusal_prints_only_the_code(self):
+  out,err,logged=self.refuse(h.SetupError('setup_existing_setup','Existing setup found at /etc/x'))
+  self.assertEqual(out,'TUNNEX SSH SETUP ERROR setup_existing_setup\n')
+  self.assertIn('Existing setup found',err);self.assertNotIn('/etc/x',out)
+  self.assertTrue(logged.startswith('setup refused: setup_existing_setup: '))
+ def test_uncoded_refusal_prints_no_line(self):
+  out,err,logged=self.refuse(ValueError('something else'))
+  self.assertEqual(out,'');self.assertIn('something else',err);self.assertTrue(logged.startswith('setup refused: unclassified'))
+ def test_journal_never_raises(self):
+  with patch.dict('sys.modules',{'syslog':None}):h.journal('x')
+ def test_setup_error_is_a_value_error(self):
+  self.assertIsInstance(h.SetupError('setup_not_root','Run with sudo'),ValueError)
+ def test_foreign_or_missing_configuration_is_coded(self):
+  with tempfile.TemporaryDirectory() as d:
+   root=Path(d);unit=root/'unit';unit.write_text('unrelated')
+   with patch.object(h,'ROOT',root),patch.object(h,'UNIT',unit):
+    for content in (None,'not json','{"owner":"someone-else"}'):
+     if content is not None:(root/'managed.json').write_text(content)
+     with self.assertRaises(h.SetupError) as c:h.load()
+     self.assertEqual(c.exception.code,'setup_foreign_setup')
+ def test_missing_prerequisite_is_coded(self):
+  with tempfile.TemporaryDirectory() as d:
+   release=Path(d)/'os-release';release.write_text('ID=ubuntu\n')
+   real=Path
+   def fake(p,*a):
+    if str(p)=='/etc/os-release':return release
+    if str(p)=='/run/systemd/system':return real(d)
+    return real(p,*a)
+   with patch.object(h.sys,'platform','linux'),patch.object(h,'Path',side_effect=fake),patch.object(h.shutil,'which',side_effect=lambda c:None if c=='ip' else '/usr/bin/'+c):
+    with self.assertRaises(h.SetupError) as c:h.platform_preflight()
+   self.assertEqual(c.exception.code,'setup_missing_ip')
+ def test_too_many_and_ineligible_accounts_are_coded(self):
+  with patch.object(h,'eligible_accounts',return_value=['u'+str(i) for i in range(17)]):
+   with self.assertRaises(h.SetupError) as c:h.selected_accounts(SimpleNamespace(all_login_users=True,accounts=None))
+  self.assertEqual(c.exception.code,'setup_too_many_accounts')
+  with patch.object(h,'eligible_accounts',return_value=['ubuntu']):
+   with self.assertRaises(h.SetupError) as c:h.selected_accounts(SimpleNamespace(all_login_users=False,accounts='root'))
+  self.assertEqual(c.exception.code,'setup_no_eligible_accounts')
 if __name__=='__main__':unittest.main()

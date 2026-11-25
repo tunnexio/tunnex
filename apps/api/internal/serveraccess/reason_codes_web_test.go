@@ -5,8 +5,10 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strings"
 	"testing"
 
+	"github.com/tunnexio/tunnex/packages/apptransport/bootstrap"
 	"github.com/tunnexio/tunnex/packages/apptransport/terminalwire"
 )
 
@@ -26,6 +28,9 @@ func TestEveryServerAccessCodeHasWebText(t *testing.T) {
 		need[code] = true
 	}
 	for code := range enrollmentFailures {
+		need[code] = true
+	}
+	for code := range bootstrap.SetupErrorCodes {
 		need[code] = true
 	}
 	need["ssh_host_key_unverified"] = true
@@ -65,5 +70,31 @@ func TestEveryServerAccessCodeHasWebText(t *testing.T) {
 	sort.Strings(missing)
 	if len(missing) > 0 {
 		t.Fatalf("Server Access codes without dashboard text in serverAccessReasons.ts: %v", missing)
+	}
+}
+
+// SA-UX-3: the setup panel renders the job message, so for every target refusal code the control plane's message
+// must be the dashboard's sentence and next step, word for word.
+func TestSetupErrorMessagesMatchWebText(t *testing.T) {
+	web, e := os.ReadFile(filepath.Join("..", "..", "..", "web", "src", "lib", "serverAccessReasons.ts"))
+	if e != nil {
+		t.Fatal(e)
+	}
+	texts := map[string]string{}
+	for _, m := range regexp.MustCompile(`(?m)^\s+([a-z_]+): \{ text: "([^"]*)"(?:, next: "([^"]*)")? \},$`).FindAllStringSubmatch(string(web), -1) {
+		texts[m[1]] = strings.TrimSpace(m[2] + " " + m[3])
+	}
+	for code := range bootstrap.SetupErrorCodes {
+		if setupErrorMessages[code] == "" || setupErrorMessages[code] != texts[code] {
+			t.Fatalf("%s: control plane %q, dashboard %q", code, setupErrorMessages[code], texts[code])
+		}
+	}
+	for code := range setupErrorMessages {
+		if !bootstrap.SetupErrorCodes[code] {
+			t.Fatalf("message for a code outside the allow-list: %s", code)
+		}
+	}
+	if enrollmentFailures["setup_failed"] != texts["setup_failed"] {
+		t.Fatalf("generic setup text differs: %q vs %q", enrollmentFailures["setup_failed"], texts["setup_failed"])
 	}
 }

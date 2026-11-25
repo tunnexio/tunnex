@@ -5,7 +5,9 @@ import (
 	"crypto/ed25519"
 	"crypto/elliptic"
 	"crypto/rand"
+	"encoding/json"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/tunnexio/tunnex/packages/apptransport/bootstrap"
@@ -86,5 +88,34 @@ func TestAttestationLineIsExtractedFromBoundedOutput(t *testing.T) {
 	}
 	if attestationFrom(append([]byte(bootstrap.AttestationPrefix), long...)) != "" {
 		t.Fatal("oversized attestation accepted")
+	}
+}
+
+// SA-UX-3: a failed target run reports only an allow-listed code, and only to a control plane that advertised it.
+func TestSetupFailureReportCarriesOnlyAdvertisedAllowListedCode(t *testing.T) {
+	output := []byte("TUNNEX HOST KEY ATTESTATION {\"mac\":\"secret-hmac\"}\nError: Existing setup found at /etc/tunnex-browser-ssh\nTUNNEX SSH SETUP ERROR setup_existing_setup\n")
+	failed := &targetSetupError{code: bootstrap.ParseSetupError(output), err: errors.New("Process exited with status 1")}
+	advertised := bootstrap.Job{SetupErrorCodes: true}
+	if r := setupFailureReport(advertised, failed); r.Result != "setup_failed" || r.SetupError != "setup_existing_setup" {
+		t.Fatalf("coded failure lost: %#v", r)
+	}
+	// An old control plane decodes reports strictly: no field unless the job advertised it.
+	r := setupFailureReport(bootstrap.Job{}, failed)
+	raw, _ := json.Marshal(r)
+	if r.Result != "setup_failed" || r.SetupError != "" || strings.Contains(string(raw), "setup_error") {
+		t.Fatalf("unadvertised setup error sent: %s", raw)
+	}
+	for _, e := range []error{&targetSetupError{code: "setup_exfiltrate", err: errors.New("x")}, &targetSetupError{err: errors.New("x")}, errors.New("plain")} {
+		if r := setupFailureReport(advertised, e); r.Result != "setup_failed" || r.SetupError != "" {
+			t.Fatalf("unknown or absent code forwarded: %#v", r)
+		}
+	}
+	// Transport failures keep their own result and never carry a setup code.
+	if r := setupFailureReport(advertised, errHostKeyMismatch); r.Result != "ssh_host_key_mismatch" || r.SetupError != "" {
+		t.Fatalf("transport failure misreported: %#v", r)
+	}
+	raw, _ = json.Marshal(setupFailureReport(advertised, failed))
+	if strings.Contains(string(raw), "secret-hmac") || strings.Contains(string(raw), "/etc/") {
+		t.Fatalf("target free text reached the report: %s", raw)
 	}
 }
