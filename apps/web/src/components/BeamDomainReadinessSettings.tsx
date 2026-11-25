@@ -41,7 +41,7 @@ export function BeamDomainReadinessSettings({ canEdit }: { canEdit: boolean }) {
   if (loading) return <Loading label="Loading serving configuration…" />;
   if (!view || !saved) return <div className="space-y-3"><ErrorText>{error}</ErrorText><Button onClick={() => setReload(value => value + 1)}>Retry serving configuration</Button></div>;
   const fresh = !!view.expires_at && Date.parse(view.expires_at) > now;
-  const status = !view.checked_at ? "Not checked" : !fresh ? "Check expired — run it again" : view.passed ? "All checks passed" : "Some checks failed";
+  const status = !view.checked_at ? "Not checked" : !fresh ? "Check expired. Run it again." : view.passed ? "All checks passed" : "Some checks failed";
   const disabled = !canEdit || busy !== null || uncertain;
   return <div className="beam-policy-settings space-y-5">
     <div className="space-y-2"><h3 className="font-semibold">Sharing domain and checks</h3><p className="text-sm text-ink-secondary">These settings apply to every organization on this server. The check is run from the control plane against your real DNS and certificates.</p><p role="status">{status}</p><p className="text-sm">Local Sharing is {saved.operator_enabled ? "allowed" : "not allowed"} on this server. Publishing: {saved.authority_ready ? "available" : "not available until every check passes"}.</p>
