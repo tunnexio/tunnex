@@ -111,10 +111,7 @@ func RunEnrollment(ctx context.Context, c *control.Client) {
 						result, proof, e := executeEnrollment(runCtx, c, j, key.signer)
 						report := bootstrap.Report{Result: "ok", Setup: result}
 						if e != nil {
-							report = bootstrap.Report{Result: classifyResult(e)}
-							if report.Result == "failed" {
-								report.Result = "setup_failed"
-							}
+							report = setupFailureReport(j, e)
 						} else if j.HostKeyAttestation {
 							report.HostKey, report.Attestation = proof.seen, proof.line
 						}
@@ -215,10 +212,35 @@ func runEnrollment(ctx context.Context, c *control.Client, j bootstrap.Job, sign
 	session.Stderr = output
 	// The target-side forced command verifies the exact installer digest before execution.
 	if e = session.Run("tunnex-enroll"); e != nil {
-		return nil, e
+		// SA-UX-3: only an allow-listed code from the target's structured line is kept; the output is discarded.
+		return nil, &targetSetupError{code: bootstrap.ParseSetupError(output.Bytes()), err: e}
 	}
 	proof.line = attestationFrom(output.Bytes())
 	return parseSetupOutput(output.Bytes())
+}
+
+// targetSetupError is a failed target run carrying at most an allow-listed bootstrap.SetupErrorCodes code.
+type targetSetupError struct {
+	code string
+	err  error
+}
+
+func (e *targetSetupError) Error() string { return e.err.Error() }
+func (e *targetSetupError) Unwrap() error { return e.err }
+
+// setupFailureReport classifies a failed run. The setup error code is sent only to a control plane that advertised
+// it on the job, because older control planes decode reports strictly.
+func setupFailureReport(j bootstrap.Job, e error) bootstrap.Report {
+	report := bootstrap.Report{Result: classifyResult(e)}
+	if report.Result != "failed" {
+		return report
+	}
+	report.Result = "setup_failed"
+	var target *targetSetupError
+	if j.SetupErrorCodes && errors.As(e, &target) && bootstrap.SetupErrorCodes[target.code] {
+		report.SetupError = target.code
+	}
+	return report
 }
 
 type boundedSetupOutput struct {

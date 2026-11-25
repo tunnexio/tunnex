@@ -119,17 +119,26 @@ def cleanup():
     Path(JOB['rule']).unlink(missing_ok=True)
     Path(JOB['launcher']).unlink(missing_ok=True)
 
+def refuse(code, message):
+    # SA-UX-3: one structured line with a fixed code for the gateway; the code is also kept in the target journal.
+    try:
+        import syslog
+        syslog.openlog('tunnex-browser-ssh', 0, syslog.LOG_AUTH); syslog.syslog(syslog.LOG_ERR, 'setup refused: ' + code + ': ' + message); syslog.closelog()
+    except Exception: pass
+    sys.stdout.write('TUNNEX SSH SETUP ERROR ' + code + '\n'); sys.stdout.flush()
+    sys.stderr.write('Error: ' + message + '\n'); sys.exit(1)
+
 def main():
   if '--cleanup' in sys.argv:
     cleanup(); sys.exit(0)
   try:
-    if time.time() >= JOB['expires']: raise ValueError('Enrollment authorization expired')
+    if time.time() >= JOB['expires']: refuse('setup_authorization_expired', 'Enrollment authorization expired')
     if JOB.get('attest'):
         sys.stdout.write(attestation_line() + '\n'); sys.stdout.flush()
     # This key can only execute the exact reviewed server-bound installer.
     source = sys.stdin.buffer.read(131073)
     if len(source) > 131072 or hashlib.sha256(source).hexdigest() != JOB['digest']:
-        raise ValueError('Installer digest mismatch')
+        refuse('setup_installer_mismatch', 'Installer digest mismatch')
     with tempfile.NamedTemporaryFile(dir=Path(JOB['launcher']).parent, suffix='.py') as f:
         f.write(source); f.flush()
         args = ['--accounts', ','.join(JOB['accounts'])] if JOB['accounts'] else ['--all-login-users']

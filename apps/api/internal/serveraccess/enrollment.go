@@ -39,7 +39,35 @@ type enrollment struct {
 }
 
 // enrollmentFailures are the gateway-reported setup failures the control plane accepts, with their job message.
-var enrollmentFailures = map[string]string{"ssh_host_key_mismatch": "Management SSH host identity did not match. No installer was sent.", "ssh_unreachable": "The gateway could not reach the server's management SSH port. Allow TCP from the gateway to that port in the server's firewall or cloud security rules, then prepare setup again.", "ssh_authentication_failed": "Temporary SSH authorization was refused or expired. Prepare a new job.", "setup_failed": "Target setup failed. Check the target journal; prerequisites include Python 3, OpenSSH and systemd. Unsupported OS and enforcing SELinux are refused.", "gateway_key_lost": "Gateway restarted and discarded the temporary private key. Cancel and prepare a new job."}
+var enrollmentFailures = map[string]string{"ssh_host_key_mismatch": "Management SSH host identity did not match. No installer was sent.", "ssh_unreachable": "The gateway could not reach the server's management SSH port. Allow TCP from the gateway to that port in the server's firewall or cloud security rules, then prepare setup again.", "ssh_authentication_failed": "Temporary SSH authorization was refused or expired. Prepare a new job.", "setup_failed": "Setup on the server failed before Tunnex received a reason. On the server, run sudo journalctl -t tunnex-browser-ssh -n 20 to see what setup reported. Setup needs Linux with Python 3, OpenSSH and systemd; unsupported distributions and enforcing SELinux are refused.", "gateway_key_lost": "Gateway restarted and discarded the temporary private key. Cancel and prepare a new job."}
+
+// setupErrorMessages explain each allow-listed target refusal (bootstrap.SetupErrorCodes) with a next step (SA-UX-3).
+// Each equals the dashboard text for the same code in serverAccessReasons.ts (TestSetupErrorMessagesMatchWebText).
+var setupErrorMessages = map[string]string{
+	"setup_not_root": "Setup on the server did not run as root. Prepare setup again and run the one-time authorization command with sudo.",
+	"setup_unsupported_os": "Automatic SSH setup supports only Linux servers. For a Windows server, register it as Windows · RDP instead.",
+	"setup_unsupported_distro": "This Linux distribution is not supported by automatic SSH setup. Supported families: Ubuntu, Debian, RHEL, Fedora, CentOS, Rocky Linux, AlmaLinux and Amazon Linux.",
+	"setup_no_systemd": "The server does not run systemd, which automatic SSH setup needs. Use a systemd-based Linux server.",
+	"setup_missing_systemctl": "The server is missing systemctl, which setup needs. Install systemd on the server, then prepare setup again.",
+	"setup_missing_ssh_keygen": "The server is missing ssh-keygen, which setup needs. Install the OpenSSH client tools (for example openssh-client), then prepare setup again.",
+	"setup_missing_ip": "The server is missing the ip command, which setup needs. Install iproute2 (iproute on RHEL-family systems), then prepare setup again.",
+	"setup_no_openssh": "The OpenSSH server is not installed on the server. Install the distribution's OpenSSH server package (openssh-server), then prepare setup again.",
+	"setup_selinux_enforcing": "SELinux is enforcing on the server, which Tunnex SSH setup does not support yet. No changes were made. Use a server without enforcing SELinux; Tunnex never changes SELinux settings for you.",
+	"setup_unsafe_path": "Setup stopped because a Tunnex SSH file or folder on the server is a symlink or not owned by root. No changes were made. Inspect /etc/tunnex-browser-ssh, /usr/local/sbin/tunnex-browser-ssh and the tunnex-browser-sshd service unit, fix their ownership, then prepare setup again.",
+	"setup_existing_setup": "The server has a leftover Tunnex SSH service (tunnex-browser-sshd) without its configuration, so setup stopped. No changes were made. If it is not in use, run sudo systemctl disable --now tunnex-browser-sshd on the server, delete the unit file that systemctl status tunnex-browser-sshd shows, run sudo systemctl daemon-reload, then prepare setup again.",
+	"setup_foreign_setup": "The server has Tunnex SSH files that this setup does not manage, so setup stopped. No changes were made. Inspect /etc/tunnex-browser-ssh, /usr/local/sbin/tunnex-browser-ssh and the tunnex-browser-sshd service on the server. Remove them only if they are not in use, then prepare setup again.",
+	"setup_identity_differs": "This server is already set up for a different Tunnex server record, organization, SSH port or certificate authority. No changes were made. If that earlier setup is not in use, run sudo tunnex-browser-ssh remove on the server, then prepare setup again. If only the SSH port differs, set it back in Edit connection.",
+	"setup_ca_mismatch": "The Tunnex certificate authority on the server does not match this organization's. No changes were made. If an earlier setup from another organization or control plane is not in use, run sudo tunnex-browser-ssh remove on the server, then prepare setup again.",
+	"setup_principal_conflict": "An account on the server already has a different Tunnex sign-in rule, so setup stopped. No changes were made. Inspect /etc/tunnex-browser-ssh/principals on the server. If the earlier setup is not in use, run sudo tunnex-browser-ssh remove, then prepare setup again.",
+	"setup_ip_mismatch": "The server does not own the private IP registered in Tunnex, so setup stopped to avoid configuring the wrong machine. Check that the private IP in Edit connection is an address on the server (ip -4 addr), then prepare setup again.",
+	"setup_port_invalid": "The browser terminal SSH port must be between 1024 and 65535. Change the SSH port in Edit connection, then prepare setup again.",
+	"setup_port_in_use": "The browser terminal SSH port is already in use on the server. No changes were made. Choose a free port in Edit connection (sudo ss -ltnp lists ports in use), then prepare setup again.",
+	"setup_no_eligible_accounts": "The chosen accounts are not eligible Linux login accounts on the server. Choose existing non-root login accounts (system and no-login users are excluded), or discover all eligible users, then prepare setup again.",
+	"setup_too_many_accounts": "The server has more than 16 eligible accounts; Tunnex supports at most 16 per server. Turn off Discover all eligible login users and select up to 16 accounts, then prepare setup again.",
+	"setup_service_failed": "The dedicated SSH service on the server did not start or reload, so the changes were rolled back. On the server, run sudo journalctl -u tunnex-browser-sshd -n 50 to see why, then prepare setup again.",
+	"setup_authorization_expired": "The one-time authorization expired before setup ran. Prepare setup again, then click Configure automatically within 15 minutes.",
+	"setup_installer_mismatch": "The server refused the installer because it did not match the one you authorized. Nothing was run. Prepare setup again and run the new authorization command.",
+}
 
 func activeEnrollment(state string) bool {
 	return state == "preparing" || state == "awaiting_authorization" || state == "queued" || state == "running"
@@ -122,7 +150,7 @@ func (s *Service) PrepareEnrollment(ctx context.Context, org uuid.UUID, p *authc
 	}
 	job := enrollment{Sync: len(server.Accounts) > 0, CreatedAt: time.Now().UTC(), Org: org, Actor: p.UserID, Gateway: server.GatewayId, Serial: serial, Revision: server.Revision, ParentSealed: sealed, Epoch: parent.AppAuthEpoch, Accounts: in.Accounts}
 	job.View = api.ServerAccessEnrollment{Id: uuid.New(), ServerId: id, ExpiresAt: minTime(until, time.Now().Add(15*time.Minute)), State: "preparing", Message: "Preparing a temporary key on the selected gateway."}
-	job.Material = bootstrap.Job{ID: job.View.Id.String(), State: "preparing", IP: *server.PrivateIp, Port: in.ManagementPort, Account: in.ManagementAccount, Fingerprint: manualFingerprint(in), Script: bundleScript(org, server, trust), ExpiresAt: job.View.ExpiresAt, HostKeyAttestation: true}
+	job.Material = bootstrap.Job{ID: job.View.Id.String(), State: "preparing", IP: *server.PrivateIp, Port: in.ManagementPort, Account: in.ManagementAccount, Fingerprint: manualFingerprint(in), Script: bundleScript(org, server, trust), ExpiresAt: job.View.ExpiresAt, HostKeyAttestation: true, SetupErrorCodes: true}
 	tx, e := s.pool.Begin(ctx)
 	if e != nil {
 		return empty, e
@@ -372,9 +400,10 @@ func (s *Service) EnrollmentReport(ctx context.Context, org, gateway, id uuid.UU
 	if e != nil {
 		return e
 	}
+	audit := map[string]any{"job_id": id, "state": nil}
 	switch {
 	case in.PublicKey != "":
-		if j.View.State != "preparing" || in.Result != "" || in.Setup != nil || in.HostKey != "" || in.Attestation != "" {
+		if j.View.State != "preparing" || in.Result != "" || in.Setup != nil || in.HostKey != "" || in.Attestation != "" || in.SetupError != "" {
 			return bad()
 		}
 		key, _, _, rest, e := ssh.ParseAuthorizedKey([]byte(in.PublicKey))
@@ -399,13 +428,13 @@ func (s *Service) EnrollmentReport(ctx context.Context, org, gateway, id uuid.UU
 		j.View.State = "awaiting_authorization"
 		j.View.Message = "Run the one-time authorization command on the target through your trusted management SSH connection."
 	case in.Result == "running":
-		if j.View.State != "queued" || in.Setup != nil || in.HostKeyAttestation || in.HostKey != "" || in.Attestation != "" {
+		if j.View.State != "queued" || in.Setup != nil || in.HostKeyAttestation || in.HostKey != "" || in.Attestation != "" || in.SetupError != "" {
 			return bad()
 		}
 		j.View.State = "running"
 		j.View.Message = "Detecting OS, configuring SSH trust and discovering login accounts."
 	case in.Result == "ok":
-		if j.View.State != "running" {
+		if j.View.State != "running" || in.SetupError != "" {
 			return bad()
 		}
 		if e = validateEnrollmentResult(j, in.Setup); e != nil {
@@ -469,21 +498,38 @@ func (s *Service) EnrollmentReport(ctx context.Context, org, gateway, id uuid.UU
 		if !activeEnrollment(string(j.View.State)) || in.Setup != nil || in.HostKeyAttestation || in.HostKey != "" || in.Attestation != "" {
 			return bad()
 		}
-		allowed := enrollmentFailures
-		message, ok := allowed[in.Result]
-		if !ok {
-			return bad()
+		message, code, e := enrollmentFailure(in)
+		if e != nil {
+			return e
 		}
 		j.View.State = "failed"
 		j.View.Message = message
+		if code != "" {
+			audit["reason"] = code
+		}
 	}
-	if e = s.audit(ctx, tx, org, j.Actor, "enrollment_status", j.View.ServerId, map[string]any{"job_id": id, "state": j.View.State}); e != nil {
+	audit["state"] = j.View.State
+	if e = s.audit(ctx, tx, org, j.Actor, "enrollment_status", j.View.ServerId, audit); e != nil {
 		return e
 	}
 	if e = s.storeEnrollment(ctx, tx, j); e != nil {
 		return e
 	}
 	return tx.Commit(ctx)
+}
+
+// enrollmentFailure maps a gateway failure report to the job message and, for a target refusal, its code. The code
+// is re-checked against the same allow-list the gateway used (SA-UX-3). An unknown code (from a newer gateway) keeps
+// the generic message instead of refusing the report, which would leave the job running until it expires.
+func enrollmentFailure(in bootstrap.Report) (message, code string, e error) {
+	message, ok := enrollmentFailures[in.Result]
+	if !ok || in.SetupError != "" && in.Result != "setup_failed" {
+		return "", "", bad()
+	}
+	if bootstrap.SetupErrorCodes[in.SetupError] && setupErrorMessages[in.SetupError] != "" {
+		return setupErrorMessages[in.SetupError], in.SetupError, nil
+	}
+	return message, "", nil
 }
 
 func (s *Service) CurrentEnrollment(ctx context.Context, org uuid.UUID, p *authctx.Principal, server uuid.UUID) (api.ServerAccessEnrollment, error) {
