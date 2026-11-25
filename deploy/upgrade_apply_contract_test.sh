@@ -98,6 +98,10 @@ TUNNEX_NODE_AGENT_IMAGE=node@sha256:ddd
 TUNNEX_MIGRATE_IMAGE=migrate@sha256:eee
 ENV
   case " $* " in *' -require-app-proxy '*) [ "${MOCK_AA_NO_PROXY:-}" != 1 ] || exit 1 ;; esac
+  case " $* " in *' -require-beam-proxy '*) [ "${MOCK_LS_NO_PROXY:-}" != 1 ] || exit 1 ;; esac
+  if [ "${MOCK_LS:-}" = 1 ] && [ "${MOCK_LS_NO_PROXY:-}" != 1 ]; then
+    printf '%s\n' 'TUNNEX_BEAM_PROXY_IMAGE=ghcr.io/tunnexio/tunnex-beam-proxy@sha256:9999999999999999999999999999999999999999999999999999999999999999'
+  fi
   if [ "${MOCK_AA:-}" = 1 ] && [ "${MOCK_AA_NO_PROXY:-}" != 1 ]; then
     printf '%s\n' 'TUNNEX_APP_PROXY_IMAGE=ghcr.io/tunnexio/tunnex-app-proxy@sha256:ffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffffff'
   fi
@@ -189,6 +193,7 @@ case "$*" in
   *'api backupctl manifest'*) printf '%s\n' '{"manifest":"test"}' ;;
   *'api backupctl verify'*) cat >/dev/null ;;
   *'exec -T api wget -qO-'*) printf '%s\n' ok ;;
+  *'--no-deps beam-proxy'*) [ "${MOCK_LS_START:-}" != fail ] || exit 1 ;;
 esac
 SH
 chmod 0755 "$TMP/bin/docker"
@@ -736,31 +741,123 @@ grep -Fq 'signed App Access proxy' "$aa_dir/output"
 [ ! -e "$aa_dir/backups" ] || [ -z "$(ls "$aa_dir/backups")" ]
 assert_aa_refused_unchanged
 
-# LS-UX-1: Local Sharing serving is refused up front with its own message, with
-# or without App Access, never misreported as App Access and never left running
-# an old proxy against a migrated API.
-for ls_case in with-app-access only; do
-  make_aa_install "ls-$ls_case"
-  ls_files="$aa_dir/tunnex.yml,$aa_dir/beam.yml"
-  if [ "$ls_case" = only ]; then
-    sed -i.bak '/^TUNNEX_APP_ACCESS_BASE_DOMAIN=/d;/^TUNNEX_APP_PROXY_SECRETS_DIR=/d' "$aa_dir/.env"
-    printf 'aa|%s|api|volume:aa_app_restore;|||%s|False\n' "$aa_dir" "$ls_files" >"$aa_dir/containers/api"
-    printf '%s\n' api beam >"$aa_dir/containers/ids"
-  else
-    ls_files="$aa_dir/tunnex.yml,$aa_dir/legacy-app-access.yml,$aa_dir/beam.yml"
-    printf '%s\n' beam >>"$aa_dir/containers/ids"
-  fi
-  printf 'aa|%s|beam-proxy|volume:aa_app_restore;||8443/tcp=10.0.0.3:443;8444/tcp=10.0.0.2:8447;|%s|False\n' "$aa_dir" "$ls_files" >"$aa_dir/containers/beam"
-  snapshot_aa
-  if run_aa_upgrade --apply >"$aa_dir/output" 2>&1; then echo "Local Sharing ($ls_case) upgrade accepted" >&2; exit 1; fi
-  grep -Fq 'Local Sharing serving (beam-proxy)' "$aa_dir/output"
-  grep -Fq 'deploy/beam/README.md' "$aa_dir/output"
-  grep -Fxq 'state=failed' "$aa_dir/status"
-  grep -Fxq 'reason_code=local_sharing_unmanaged' "$aa_dir/status"
-  ! grep -Fq 'App Access' "$aa_dir/output"
-  ! grep -Fq 'app-preflight' "$aa_dir/docker.log" 2>/dev/null
+# ---------------------------------------------------------------------------
+# LS-UX-1 D.2: Local Sharing is a managed optional profile, with or without
+# App Access. The proxy is stopped before the API migrates and started from the
+# signed pin only after the API is healthy; drift is refused before mutation.
+make_ls_install() {
+  make_aa_install "ls-$1"
+  cp "$ROOT/deploy/beam/compose.yml" "$aa_dir/local-sharing.yml"
+  sed -i.bak '/^TUNNEX_APP_ACCESS_BASE_DOMAIN=/d;/^TUNNEX_APP_PROXY_SECRETS_DIR=/d' "$aa_dir/.env"
+  cat >>"$aa_dir/.env" <<ENV
+COMPOSE_PROFILES=bundled-db,beam
+TUNNEX_LOCAL_SHARING_COMPOSE_SHA256=$(shasum -a 256 "$aa_dir/local-sharing.yml" | awk '{print $1}')
+TUNNEX_BEAM_BASE_DOMAIN=share-example.dev
+TUNNEX_BEAM_PROXY_URL=https://cp.example.test:8447
+TUNNEX_BEAM_PROXY_SECRETS_DIR=/srv/tunnex/beam
+TUNNEX_BEAM_PUBLIC_BIND_IP=10.0.0.3
+TUNNEX_BEAM_CONNECTOR_BIND_IP=10.0.0.2
+TUNNEX_BEAM_CONNECTOR_PORT=8447
+ENV
+  ls_files="$aa_dir/tunnex.yml,$aa_dir/local-sharing.yml"
+  printf 'aa|%s|api|volume:aa_app_restore;|||%s|False\n' "$aa_dir" "$ls_files" >"$aa_dir/containers/api"
+  printf '%s\n' api beam >"$aa_dir/containers/ids"
+  rm -f "$aa_dir/containers/proxy"
+  write_ls_proxy "$ls_files" '8443/tcp=10.0.0.3:443;8444/tcp=10.0.0.2:8447;'
+}
+write_ls_proxy() {
+  printf 'aa|%s|beam-proxy|volume:aa_app_restore;|/srv/tunnex/beam;|%s|%s|False\n' "$aa_dir" "$2" "$1" >"$aa_dir/containers/beam"
+}
+run_ls_upgrade() { MOCK_LS=1 run_aa_upgrade "$@"; }
+snapshot_ls() { snapshot_aa; cp "$aa_dir/local-sharing.yml" "$aa_dir/local-sharing.yml.before"; }
+assert_ls_refused_unchanged() {
   assert_aa_refused_unchanged
+  cmp -s "$aa_dir/local-sharing.yml.before" "$aa_dir/local-sharing.yml"
+}
+
+# Local Sharing only: no App Access admission, no App Access wording.
+make_ls_install only
+run_ls_upgrade --apply >"$aa_dir/output" 2>&1 || { cat "$aa_dir/output"; exit 1; }
+grep -Fxq 'state=healthy' "$aa_dir/status"
+grep -Fxq 'TUNNEX_BEAM_PROXY_IMAGE=ghcr.io/tunnexio/tunnex-beam-proxy@sha256:9999999999999999999999999999999999999999999999999999999999999999' "$aa_dir/.env"
+grep -Fxq 'COMPOSE_PROFILES=bundled-db,beam' "$aa_dir/.env"
+cmp -s "$ROOT/deploy/beam/compose.yml" "$aa_dir/local-sharing.yml"
+grep -Fxq "TUNNEX_LOCAL_SHARING_COMPOSE_SHA256=$(shasum -a 256 "$aa_dir/local-sharing.yml" | awk '{print $1}')" "$aa_dir/.env"
+! grep -Fq 'app-preflight' "$aa_dir/docker.log"
+! grep -Fq 'app-access' "$aa_dir/docker.log"
+! grep -Fq 'App Access' "$aa_dir/output"
+stop=$(line_of x 'stop beam-proxy' 1)
+migrate=$(line_of x 'up -d --wait --wait-timeout 900' 1)
+start=$(line_of x 'up -d --wait --wait-timeout 300 --no-deps beam-proxy' 1)
+health=$(line_of x 'exec -T api wget -qO-' 1)
+for ls_line in "$stop" "$migrate" "$start" "$health"; do [ -n "$ls_line" ]; done
+[ "$stop" -lt "$migrate" ] && [ "$migrate" -lt "$health" ] && [ "$health" -lt "$start" ] || {
+  echo 'Local Sharing upgrade ordering violated' >&2; cat "$aa_dir/docker.log" >&2; exit 1; }
+grep -F 'up -d --wait --wait-timeout 900' "$aa_dir/docker.log" | grep -Fq -- "-f $aa_dir/local-sharing.yml"
+grep -F 'up -d --wait --wait-timeout 900' "$aa_dir/docker.log.profiles" | grep -Fq 'bundled-db|'
+grep -F -- '--no-deps beam-proxy' "$aa_dir/docker.log.profiles" | grep -Fq 'bundled-db,beam|'
+
+# Local Sharing with managed App Access: both profiles, both pins.
+make_ls_install with-app-access
+cp "$ROOT/deploy/app-access/compose.yml" "$aa_dir/app-access.yml"
+cat >>"$aa_dir/.env" <<ENV
+TUNNEX_APP_ACCESS_BASE_DOMAIN=apps.example.test
+TUNNEX_APP_PROXY_SECRETS_DIR=/srv/tunnex/app-proxy
+TUNNEX_APP_ACCESS_COMPOSE_SHA256=$(shasum -a 256 "$aa_dir/app-access.yml" | awk '{print $1}')
+ENV
+sed -i.bak 's/^COMPOSE_PROFILES=.*/COMPOSE_PROFILES=bundled-db,app-access,beam/' "$aa_dir/.env"
+ls_files="$aa_dir/tunnex.yml,$aa_dir/app-access.yml,$aa_dir/local-sharing.yml"
+printf 'aa|%s|api|volume:aa_app_restore;|||%s|False\n' "$aa_dir" "$ls_files" >"$aa_dir/containers/api"
+printf 'aa|%s|app-proxy|volume:aa_app_restore;|/srv/tunnex/app-proxy;|8443/tcp=127.0.0.1:443;|%s|False\n' "$aa_dir" "$ls_files" >"$aa_dir/containers/proxy"
+printf '%s\n' api proxy beam >"$aa_dir/containers/ids"
+write_ls_proxy "$ls_files" '8443/tcp=10.0.0.3:443;8444/tcp=10.0.0.2:8447;'
+run_ls_upgrade --apply >"$aa_dir/output" 2>&1 || { cat "$aa_dir/output"; exit 1; }
+grep -Fxq 'state=healthy' "$aa_dir/status"
+grep -Fxq 'COMPOSE_PROFILES=bundled-db,app-access,beam' "$aa_dir/.env"
+grep -Fq 'TUNNEX_APP_PROXY_IMAGE=ghcr.io/tunnexio/tunnex-app-proxy@sha256:' "$aa_dir/.env"
+grep -Fq 'TUNNEX_BEAM_PROXY_IMAGE=ghcr.io/tunnexio/tunnex-beam-proxy@sha256:' "$aa_dir/.env"
+grep -F 'up -d --wait --wait-timeout 900' "$aa_dir/docker.log" | grep -Fq -- "-f $aa_dir/app-access.yml -f $aa_dir/local-sharing.yml"
+[ "$(line_of x 'stop beam-proxy' 1)" -lt "$(line_of x 'up -d --wait --wait-timeout 900' 1)" ]
+
+# Refusals before any change, each with a readable reason for the dashboard.
+for ls_case in hand-written no-image ports secrets missing-env tampered two-proxies; do
+  make_ls_install "refuse-$ls_case"
+  expected_reason=local_sharing_admission_failed
+  case "$ls_case" in
+    hand-written)
+      rm "$aa_dir/local-sharing.yml"; printf '%s\n' '# hand-written' >"$aa_dir/beam.yml"; cp "$aa_dir/beam.yml" "$aa_dir/local-sharing.yml.before"
+      ls_files="$aa_dir/tunnex.yml,$aa_dir/beam.yml"
+      printf 'aa|%s|api|volume:aa_app_restore;|||%s|False\n' "$aa_dir" "$ls_files" >"$aa_dir/containers/api"
+      write_ls_proxy "$ls_files" '8443/tcp=10.0.0.3:443;8444/tcp=10.0.0.2:8447;'
+      expected_reason=local_sharing_unmanaged expected='docker compose cp api:/usr/share/tunnex/host/beam/compose.yml' ;;
+    no-image) expected='signed Local Sharing proxy image' ;;
+    ports) write_ls_proxy "$aa_dir/tunnex.yml,$aa_dir/local-sharing.yml" '8443/tcp=10.0.0.9:443;8444/tcp=10.0.0.2:8447;'; expected='port bindings' ;;
+    secrets) sed -i.bak 's#/srv/tunnex/beam;#/elsewhere;#' "$aa_dir/containers/beam"; expected='secrets directory' ;;
+    missing-env) sed -i.bak '/^TUNNEX_BEAM_PROXY_SECRETS_DIR=/d' "$aa_dir/.env"; expected='requires TUNNEX_BEAM_PROXY_SECRETS_DIR' ;;
+    tampered) printf '%s\n' '# tampered' >>"$aa_dir/local-sharing.yml"; expected='changed after it was installed' ;;
+    two-proxies) cp "$aa_dir/containers/beam" "$aa_dir/containers/beam2"; printf '%s\n' beam2 >>"$aa_dir/containers/ids"; expected='exactly one Local Sharing proxy' ;;
+  esac
+  [ "$ls_case" = hand-written ] || snapshot_ls
+  [ "$ls_case" != hand-written ] || snapshot_aa
+  if [ "$ls_case" = no-image ]; then
+    if MOCK_LS_NO_PROXY=1 run_ls_upgrade --apply >"$aa_dir/output" 2>&1; then echo "Local Sharing $ls_case accepted" >&2; exit 1; fi
+    unset MOCK_LS_NO_PROXY
+  elif run_ls_upgrade --apply >"$aa_dir/output" 2>&1; then echo "Local Sharing $ls_case accepted" >&2; exit 1; fi
+  grep -Fq "$expected" "$aa_dir/output" || { echo "missing '$expected' for $ls_case" >&2; cat "$aa_dir/output" >&2; exit 1; }
+  grep -Fq 'Nothing was changed' "$aa_dir/output"
+  ! grep -Fq 'App Access' "$aa_dir/output"
+  grep -Fxq 'state=failed' "$aa_dir/status"
+  grep -Fxq "reason_code=$expected_reason" "$aa_dir/status"
+  if [ "$ls_case" = hand-written ]; then assert_aa_refused_unchanged; else assert_ls_refused_unchanged; fi
 done
+
+# A proxy that does not become healthy leaves it stopped; the control plane stays upgraded.
+make_ls_install start-fails
+if MOCK_LS_START=fail run_ls_upgrade --apply >"$aa_dir/output" 2>&1; then echo 'failed Local Sharing start accepted' >&2; exit 1; fi
+unset MOCK_LS_START
+grep -Fxq 'reason_code=local_sharing_start_failed' "$aa_dir/status"
+[ "$(grep -c 'stop beam-proxy' "$aa_dir/docker.log")" -ge 2 ]
+grep -Fq 'the proxy was left stopped' "$aa_dir/output"
 
 # Authority must be unchanged after migration; otherwise the proxy stays
 # stopped and rollback guidance names the supported restore runner + backup.

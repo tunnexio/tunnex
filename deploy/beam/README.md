@@ -1,9 +1,13 @@
-# Beam operator runbook
+# Local Sharing (Beam) operator runbook
 
-Beam is opt-in. `docker-compose.yml` does not start its proxy, and organization
-policy defaults off. This override is a local implementation artifact; published
-signed proxy images, Windows execution, production certificate topology and a
-complete installer walkthrough remain qualification gates.
+Local Sharing is opt-in. The base stack does not start its proxy, and
+organization policy defaults off. Releases publish a signed
+`tunnex-beam-proxy` image, and `upgrade.sh` manages this overlay as
+`<install>/local-sharing.yml` (LS-UX-1 D.1/D.2). **Use "Install (managed
+layout)" below.** The sections before it explain the topology and checks.
+Serving on a host's single public 443 next to Caddy or App Access is planned
+(LS-EDGE-1). Until then the browser listener needs its own public IPv4
+address.
 
 ## Supported process topology
 
@@ -104,20 +108,81 @@ Then enable each organization's Beam policy. Delegate explicit publisher groups 
 users/groups, lifetime and quota. A random hostname is a locator; access still
 requires a permitted current browser identity and grant.
 
+## Install (managed layout, LS-UX-1)
+
+Run in the installation directory (for example `/opt/tunnex`). `F` is your
+current file list: `-f tunnex.yml`, plus `-f app-access.yml` when App Access is
+installed. The release must include the signed Local Sharing proxy.
+
+```sh
+F="-f tunnex.yml"            # or: F="-f tunnex.yml -f app-access.yml"
+# 1. The managed overlay, from the signed API image you are running.
+docker compose $F cp api:/usr/share/tunnex/host/beam/compose.yml local-sharing.yml
+echo "TUNNEX_LOCAL_SHARING_COMPOSE_SHA256=$(sha256sum local-sharing.yml | cut -d' ' -f1)" >> .env
+# 2. The signed proxy image, by digest.
+docker compose $F exec -T api sh -c 'releaseverify -manifest /var/lib/tunnex/release.json \
+  -public-key "$TUNNEX_RELEASE_PUBLIC_KEY" -require-beam-proxy -print-env' \
+  | grep '^TUNNEX_BEAM_PROXY_IMAGE=' >> .env
+# 3. Proxy credential and connector certificate (writable restore lock, new private dir).
+install -d -o 10001 -g 10001 -m 0700 /opt/tunnex/beam-secrets
+cat > /tmp/ls-issue.yml <<'YAML'
+services:
+  api:
+    volumes:
+      - {type: volume, source: app_restore, target: /var/lib/tunnex/app-restore, read_only: false}
+      - {type: bind, source: /opt/tunnex/beam-secrets, target: /out}
+YAML
+docker compose $F -f local-sharing.yml -f /tmp/ls-issue.yml run --rm --no-deps -T \
+  --entrypoint backupctl api app-proxy-issue --name local-sharing-proxy --output /out/authority.token
+docker compose $F -f local-sharing.yml -f /tmp/ls-issue.yml run --rm --no-deps -T \
+  --entrypoint backupctl api beam-proxy-certificate --output-dir /out/connector
+mv /opt/tunnex/beam-secrets/connector/* /opt/tunnex/beam-secrets/ && rmdir /opt/tunnex/beam-secrets/connector
+# 4. Your wildcard certificate for *.<sharing domain> (full chain + key).
+install -o 10001 -g 10001 -m 0400 fullchain.pem /opt/tunnex/beam-secrets/public-cert.pem
+install -o 10001 -g 10001 -m 0400 privkey.pem   /opt/tunnex/beam-secrets/public-key.pem
+# 5. Settings (the domain and URL only pre-fill the console form).
+cat >> .env <<'ENV'
+TUNNEX_BEAM_BASE_DOMAIN=share-example.dev
+TUNNEX_BEAM_PROXY_URL=https://cp.example.com:8447
+TUNNEX_BEAM_PROXY_SECRETS_DIR=/opt/tunnex/beam-secrets
+TUNNEX_BEAM_PUBLIC_BIND_IP=203.0.113.20
+TUNNEX_BEAM_CONNECTOR_BIND_IP=203.0.113.10
+TUNNEX_BEAM_CONNECTOR_PORT=8447
+ENV
+sed -i 's/^COMPOSE_PROFILES=\(.*\)$/COMPOSE_PROFILES=\1,beam/' .env
+# 6. Start (local-sharing.yml is always the last file).
+docker compose $F -f local-sharing.yml up -d
+```
+
+Then, in the console, **Settings → Local Sharing domain**: enter the domain and
+connector URL, allow Local Sharing, save, and select **Check DNS and TLS**.
+
 ## Upgrading
 
-`upgrade.sh` does not manage this overlay yet, and no signed `beam-proxy` image
-is published (the release only signs `app-proxy`). When `beam-proxy` or
-`beam-restore-init` containers exist, the upgrade refuses before any backup or
-change. Until the managed path exists:
+The ordinary one-command upgrade (`upgrade.sh --apply` or the dashboard)
+manages this profile, the same way it manages App Access:
+- it verifies and pins the signed `TUNNEX_BEAM_PROXY_IMAGE`;
+- it replaces `local-sharing.yml` with the new release's copy;
+- it stops `beam-proxy` before the API migrates, then starts it again once the
+  API is healthy.
 
-1. Recreate the stack without `-f beam.yml` and the `beam` profile, and remove
-   the `beam-proxy` and `beam-restore-init` containers. Live shares end;
-   serving is denied because the checks fail.
-2. Run the ordinary upgrade.
-3. Build or obtain the proxy image for the **new** release, update
-   `TUNNEX_BEAM_PROXY_IMAGE`, add the overlay back, then run **Check DNS and TLS**
-   again in Settings → Local Sharing domain.
+Live shares end at the restart. Publishers run their command again. Policy,
+settings, history and the restore volume are kept. Drift is refused before any
+change, and the refusal names the setting: a changed overlay, a secrets
+directory or port binding that differs from `.env`, a missing setting, or a
+release without the signed proxy. If the new proxy does not become healthy,
+it is left stopped while the upgraded control plane keeps running. Fix the
+cause and run the upgrade again. To return to the previous release, restore
+the verified pre-upgrade backup (see the App Access README when App Access is
+installed).
+
+## Adopting a hand-written setup
+
+If `beam-proxy` was started from another overlay file, the upgrade refuses and
+prints these steps. Copy the managed overlay (step 1 above), keep your
+`TUNNEX_BEAM_*` values in `.env`, then recreate:
+`docker compose $F -f local-sharing.yml up -d`. Remove the old overlay from
+your command line. The next upgrade then manages it.
 
 ## Health, disable and rotation
 

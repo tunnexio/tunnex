@@ -171,7 +171,7 @@ describe("control-plane upgrade authority", () => {
     meta.upgrade.available = false;
     mocks.hostState = { available: true, state: "failed", reason_code: "local_sharing_unmanaged", target_version: "v0.1.7", target_source_sha: "b".repeat(40), rerun_available: true, reauthentication: { password: true, mfa: false, available: true } };
     render(<UpgradeCenter />);
-    expect(await screen.findByText(/Local Sharing serving is part of this installation/)).toBeTruthy();
+    expect(await screen.findByText(/Local Sharing on this server was set up by hand/)).toBeTruthy();
     expect(screen.queryByText(/local_sharing_unmanaged/)).toBeNull();
   });
 
