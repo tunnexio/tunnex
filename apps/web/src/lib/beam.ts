@@ -76,3 +76,14 @@ export function beamAuditDetails(details: Record<string, unknown>): [string, str
   const allowed = new Set(["outcome", "reason", "version", "authority_version", "generation"]);
   return Object.entries(details).filter((entry): entry is [string, string | number | boolean] => allowed.has(entry[0]) && ["string", "number", "boolean"].includes(typeof entry[1]));
 }
+
+// LS-UX-1: people read words, not codes. Unknown values still render readably.
+const beamActionLabels: Record<string, string> = { "beam.share.created": "Share created", "beam.share.pause": "Share paused", "beam.share.resume": "Share resumed", "beam.share.stop": "Share stopped", "beam.share.extend": "Expiry extended", "beam.grants.updated": "Reviewers changed", "beam.policy.updated": "Sharing policy changed", "beam.access.allowed": "Reviewer opened the app", "beam.access.denied": "Reviewer access refused", "beam.connector.issued": "Publisher connected" };
+const beamStateLabels: Record<string, string> = { starting: "Starting", active: "Active", paused: "Paused", stopped: "Stopped", expired: "Expired", revoked: "Ended by a policy or server change" };
+const beamConnectivityLabels: Record<string, string> = { online: "Online", offline: "Publisher offline", reconnecting: "Reconnecting", origin_unavailable: "Local app unavailable" };
+const beamOutcomeLabels: Record<string, string> = { success: "Succeeded", allowed: "Allowed", denied: "Refused" };
+export function beamWords(code: string | undefined | null): string { const text = (code ?? "").replace(/^beam\./, "").replace(/[._]+/g, " ").trim(); return text ? text[0].toUpperCase() + text.slice(1) : ""; }
+export const beamActionLabel = (code: string) => beamActionLabels[code] ?? beamWords(code);
+export const beamStateLabel = (code: string) => beamStateLabels[code] ?? beamWords(code);
+export const beamConnectivityLabel = (code: string) => beamConnectivityLabels[code] ?? beamWords(code);
+export const beamOutcomeLabel = (code: string) => beamOutcomeLabels[code] ?? beamWords(code);

@@ -1,9 +1,12 @@
 package beam
 
 import (
+	"context"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
+	"github.com/tunnexio/tunnex/apps/api/internal/appdomains"
 )
 
 // LS-UX-1 #2: a lapse in serving checks must never stop an administrator from
@@ -49,15 +52,14 @@ func TestBeamInstallationDomainRefusesAppAccessOverlap(t *testing.T) {
 		t.Fatal(e)
 	}
 	f.s.config.AppAccessBaseDomain = "console.fixture.org"
-	for _, base := range []string{"console.fixture.org"} {
-		if _, e = f.s.UpdateDomainSettings(f.ctx, f.owner, DomainSettingsInput{ExpectedVersion: current.Version, OperatorEnabled: true, BaseDomain: base, ProxyURL: f.s.config.ProxyURL, ConfirmEndActiveShares: true}); e == nil {
-			t.Fatal("sharing domain equal to the App Access base was saved", base)
-		}
+	overlap := func(e error) bool { return e != nil && strings.Contains(e.Error(), "overlaps the App Access domain") }
+	if _, e = f.s.UpdateDomainSettings(f.ctx, f.owner, DomainSettingsInput{ExpectedVersion: current.Version, OperatorEnabled: true, BaseDomain: "console.fixture.org", ProxyURL: f.s.config.ProxyURL, ConfirmEndActiveShares: true}); !overlap(e) {
+		t.Fatal("sharing domain equal to the App Access base was not refused for overlap", e)
 	}
 	f.exec(`INSERT INTO app_access_domain_settings(singleton,portal_url,app_base_domain,version)VALUES(true,'https://console.fixture.org','apps.beam.other.net',1) ON CONFLICT (singleton) DO UPDATE SET app_base_domain=EXCLUDED.app_base_domain`)
 	f.s.config.AppAccessBaseDomain = ""
-	if _, e = f.s.UpdateDomainSettings(f.ctx, f.owner, DomainSettingsInput{ExpectedVersion: current.Version, OperatorEnabled: true, BaseDomain: "beam.other.net", ProxyURL: "https://connector2.beam.other.net", ConfirmEndActiveShares: true}); e == nil {
-		t.Fatal("sharing domain containing the saved App Access base was saved")
+	if _, e = f.s.UpdateDomainSettings(f.ctx, f.owner, DomainSettingsInput{ExpectedVersion: current.Version, OperatorEnabled: true, BaseDomain: "beam.other.net", ProxyURL: "https://connector2.beam.other.net", ConfirmEndActiveShares: true}); !overlap(e) {
+		t.Fatal("sharing domain containing the saved App Access base was not refused for overlap", e)
 	}
 	if _, e = f.s.UpdateDomainSettings(f.ctx, f.owner, DomainSettingsInput{ExpectedVersion: current.Version, OperatorEnabled: true, BaseDomain: "share.independent.net", ProxyURL: "https://connector2.beam.other.net", ConfirmEndActiveShares: true}); e != nil {
 		t.Fatal("independent sharing domain refused", e)
@@ -72,5 +74,25 @@ func TestBeamDomainOverlap(t *testing.T) {
 		if got := domainsOverlap(c.a, c.b); got != c.want {
 			t.Fatal(c.a, c.b, got)
 		}
+	}
+}
+
+// LS-UX-1: the reverse direction, an App Access base saved over the Local Sharing domain.
+func TestAppAccessDomainRefusesLocalSharingOverlap(t *testing.T) {
+	f := newFixture(t)
+	domains := appdomains.New(f.pool, appdomains.Config{})
+	save := func(base string) error {
+		v, e := domains.Get(context.Background())
+		if e != nil {
+			return e
+		}
+		_, e = domains.Save(f.ctx, f.owner, appdomains.Update{ExpectedVersion: v.Version, PortalURL: "https://console.fixture.org", AppBaseDomain: base})
+		return e
+	}
+	if e := save("apps.beam.other.net"); e == nil || !strings.Contains(e.Error(), "overlaps the Local Sharing domain") {
+		t.Fatal("App Access base nested in the sharing domain was not refused", e)
+	}
+	if e := save("apps.independent.net"); e != nil {
+		t.Fatal("independent App Access base refused", e)
 	}
 }

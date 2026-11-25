@@ -163,7 +163,7 @@ export function UpgradeCenter() {
         {host?.backup_manifest && <div><dt className="font-semibold">Backup manifest</dt><dd>{host.backup_manifest}</dd></div>}
       </dl>
       {reconnecting && <p className="mt-2 text-xs text-amber-200">Control plane is restarting or temporarily unreachable. Reconnecting…</p>}
-      {host?.state === "failed" && <p className="mt-2 text-sm text-red-200">Upgrade stopped before completion ({host.reason_code ?? "upgrade_failed"}). Review the local runner journal and retain the displayed backup.</p>}
+      {host?.state === "failed" && (host.reason_code === "local_sharing_unmanaged" ? <p className="mt-2 text-sm text-red-200">Upgrade not started: Local Sharing serving is part of this installation, and the one-command upgrade does not manage it yet. Nothing was changed. Remove the Local Sharing overlay, upgrade, then add it back (deploy/beam/README.md, "Upgrading").</p> : <p className="mt-2 text-sm text-red-200">Upgrade stopped before completion ({host.reason_code ?? "upgrade_failed"}). Review the local runner journal and retain the displayed backup.</p>)}
       {error && <p className="mt-2 text-sm text-red-200" role="alert">{error}</p>}
       {upgrade?.release_notes_url && (
         <a className="mt-2 inline-block text-sm underline" href={upgrade.release_notes_url} target="_blank" rel="noreferrer">Read release notes</a>

@@ -167,6 +167,14 @@ describe("control-plane upgrade authority", () => {
     expect(await screen.findByText("Request accepted")).toBeTruthy();
   });
 
+  it("explains a Local Sharing refusal in words instead of a code (LS-UX-1)", async () => {
+    meta.upgrade.available = false;
+    mocks.hostState = { available: true, state: "failed", reason_code: "local_sharing_unmanaged", target_version: "v0.1.7", target_source_sha: "b".repeat(40), rerun_available: true, reauthentication: { password: true, mfa: false, available: true } };
+    render(<UpgradeCenter />);
+    expect(await screen.findByText(/Local Sharing serving is part of this installation/)).toBeTruthy();
+    expect(screen.queryByText(/local_sharing_unmanaged/)).toBeNull();
+  });
+
   it("asks for MFA when the server requires a fresh verification for the re-run", async () => {
     meta.upgrade.available = false;
     mocks.hostState = { available: true, state: "failed", target_version: "v0.1.7", target_source_sha: "b".repeat(40), rerun_available: true, reauthentication: { password: false, mfa: true, available: true } };

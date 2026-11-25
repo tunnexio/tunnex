@@ -588,7 +588,7 @@ func beamCanonicalURL(s beamShare) (string, error) {
 func beamPublishBlocked(p beamPolicy) error {
 	switch {
 	case !p.DomainReady:
-		return errors.New("Local Sharing is not set up on this server yet. Ask a server administrator to finish Settings → Local Sharing domain in the Tunnex console")
+		return errors.New("Local Sharing isn't available on this server right now: its setup is incomplete or a server check is failing. Ask a server administrator to check Settings → Local Sharing domain in the Tunnex console")
 	case !p.Enabled:
 		return errors.New("Local Sharing is turned off for this organization. Ask an organization admin to turn it on in Settings → Features")
 	case !p.CanPublish:

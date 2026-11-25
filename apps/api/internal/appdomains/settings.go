@@ -187,6 +187,15 @@ func (s *Service) Save(ctx context.Context, actor uuid.UUID, in Update) (View, e
 	if reserved {
 		return View{}, apierr.Conflict("portal_hostname_reserved", "This portal hostname is already reserved for an application. Choose a different portal hostname.")
 	}
+	// LS-UX-1: App Access and Local Sharing never share a hostname space.
+	var sharing string
+	switch err = tx.QueryRow(ctx, `SELECT base_domain FROM beam_installation_settings WHERE singleton AND configured`).Scan(&sharing); {
+	case errors.Is(err, pgx.ErrNoRows):
+	case err != nil:
+		return View{}, err
+	case sharing != "" && (sharing == cfg.AppBaseDomain || strings.HasSuffix(sharing, "."+cfg.AppBaseDomain) || strings.HasSuffix(cfg.AppBaseDomain, "."+sharing)):
+		return View{}, invalid("This app base domain overlaps the Local Sharing domain (" + sharing + "). Use a separate domain so the two features never share hostnames or certificates.")
+	}
 	version++
 	_, err = tx.Exec(ctx, `INSERT INTO app_access_domain_settings(singleton,version,portal_url,app_base_domain) VALUES(true,$1,$2,$3) ON CONFLICT(singleton) DO UPDATE SET version=EXCLUDED.version,portal_url=EXCLUDED.portal_url,app_base_domain=EXCLUDED.app_base_domain,updated_at=clock_timestamp()`, version, cfg.PortalURL, cfg.AppBaseDomain)
 	if err != nil {

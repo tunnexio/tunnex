@@ -88,12 +88,19 @@ Server-side (operator, on the host):
    `*.tunnex-share.dev` (DNS-01). Put `public-cert.pem` (full chain) and
    `public-key.pem` in the secrets dir. Readiness never outlives the
    certificate. The proxy reads it at start, so restart it after renewal.
-7. **Proxy credential + connector certificate** (offline, with the API image's
-   `backupctl` and the existing database / sealed CA / restore barrier):
-   `backupctl app-proxy-issue --name local-sharing-proxy --output /private/beam/authority.token`
-   and `backupctl beam-proxy-certificate --output-dir /private/beam/connector`.
-   The second gives `gateway-cert.pem`, `gateway-key.pem` (TLS name
-   `tunnex-beam-proxy`) and `agent-ca.pem`.
+7. **Proxy credential + connector certificate.** Both commands need the
+   database, the master key and a **writable** restore-barrier lock. The serving
+   API mounts the barrier read-only, so run them in a one-off API container
+   from the installed release: `docker compose <your -f files> run --rm --no-deps
+   --entrypoint backupctl api …`, with the `<project>_app_restore` volume mounted
+   writable and a new, absolute, private output directory bind-mounted. This is
+   the same vehicle UPG-1/AA-EN-1 use for `app-preflight` and App Access
+   issuance.
+   `backupctl app-proxy-issue --name local-sharing-proxy --output /out/authority.token`, then
+   `backupctl beam-proxy-certificate --output-dir /out/connector`. The second
+   gives `gateway-cert.pem`, `gateway-key.pem` (TLS name `tunnex-beam-proxy`)
+   and `agent-ca.pem`. *The exact mount flags have not been walked on a
+   live host in this story; dry-run them on a scratch host before recording.*
 8. **Secrets directory** (e.g. `/opt/tunnex/beam-secrets`): `authority.token`,
    `agent-ca.pem`, `gateway-cert.pem`, `gateway-key.pem`, `public-cert.pem`,
    `public-key.pem`. Owner uid 10001, keys/token mode 0600 or 0400. Mounted read-only.
@@ -105,7 +112,10 @@ Server-side (operator, on the host):
    `TUNNEX_BEAM_PROXY_URL=https://cp.tunnex.app:8447`. The last two only
    pre-fill the console form; they grant nothing.
    `TUNNEX_BEAM_DOMAIN_READY` is ignored for admission. Leave it `false`.
-10. **Compose.** Add `-f beam.yml` (copy of `deploy/beam/compose.yml`) and
+10. **Compose.** Add `-f beam.yml`. Release hosts do not receive it
+    (`upgrade.sh` `HOST_FILE_LIST` has no Local Sharing files), so copy
+    `deploy/beam/compose.yml` and `verify-config.py` from the **same source tag**
+    as the installed release. and
     profile `beam` to the existing composition (`tunnex.yml` + `app-access.yml`).
     Render and check: `docker compose … --profile beam config --format json |
     python3 deploy/beam/verify-config.py`. Then `up -d` (recreates `api`, runs
@@ -141,7 +151,7 @@ Roles: **SA** server administrator (installation), **OA** org owner/admin (`beam
 
 | # | Page / surface | Role | Problem | Disposition |
 |---|----------------|------|---------|-------------|
-| 1 | Settings → Features → Local Sharing | OA | "Installation serving setup must be qualified before enabling publishing." is jargon and says neither who nor how. The only link, "Review sharing policy", leads to the org policy page, which cannot fix it. Dead end. | **Fixed.** Plain message. SA gets "Open Local Sharing domain setup". Others get "Ask a server administrator to finish Local Sharing setup". Policy link kept, renamed "Open sharing policy". |
+| 1 | Settings → Features → Local Sharing | OA | "Installation serving setup must be qualified before enabling publishing." is jargon and says neither who nor how. The only link, "Review sharing policy", leads to the org policy page, which cannot fix it. Dead end. | **Fixed.** One neutral sentence covers both "never set up" and "set up but a check is now failing" (the API cannot tell them apart): "isn't available on this server right now: its setup is incomplete or a server check is failing". SA gets "Open Local Sharing domain setup". Others get "Ask a server administrator to check Local Sharing setup". Policy link kept, renamed "Open sharing policy". The same wording is used on the policy page, the workspace notice, diagnostics, the CLI and the API refusal. |
 | 2 | Org policy save (API `impact.go`) + Settings → Local Sharing | OA | While the feature is on, any lapse in serving checks (≤5 min, background refresh) refused **every** policy save. That included *tightening* (removing reviewers, shortening lifetime). The UI disabled "Review policy changes" the same way. Security-adverse dead end. | **Fixed.** Refuse only when turning the policy on while setup is not current. Edits to an enabled policy and turning it off always work. Serving still denies every share while checks are not current. |
 | 3 | Settings → Local Sharing → "Operator setup guide" | OA | Wrong and incomplete. It presents `TUNNEX_BEAM_*` env vars as the setup (they only pre-fill), and omits the proxy service, second IP, certificates, credential and firewall. | **Fixed.** Short role-correct summary that points to the server admin page and the runbook. |
 | 4 | Local Sharing domain page | SA | Jargon ("Authority at last read", "operator", "independent checks", "Setup needs repair"). A failed check gives no next step. No overview of what must exist before checking. | **Fixed.** Plain statuses, a "Before you check" list, a fix hint for each failing check, "Serving is turned on/off for this installation". |
@@ -149,7 +159,7 @@ Roles: **SA** server administrator (installation), **OA** org owner/admin (`beam
 | 6 | Reviewer refusal page (proxy) | R/X | Says "TUNNEX BEAM" and "Reopen the original Beam link" (code name). No way back to the console. | **Fixed.** Says "Local Sharing" with actionable copy (ended, paused or no access → open **Shared with me** or ask the person who shared it). Adds a fixed "Open Local Sharing" console link, identical for every refusal. Upload-limit text no longer says "Beam". |
 | 7 | CLI `tunnex beam publish` precheck | P | One message for three causes ("unavailable under current organization policy or serving-domain readiness"). | **Fixed.** Three messages: server setup incomplete → ask SA; feature off → ask org admin; not a publisher → ask org admin to add you. |
 | 8 | CLI HTTP errors | P | 403/400 messages vague. | **Fixed** (403 names the next step). 400 kept: the server message is not passed through, so a specific cause cannot be named safely. |
-| 9 | Installation domain save (API) | SA | Sharing domain could equal or nest inside the App Access base (e.g. both `cp.tunnex.app`). Readiness could then pass against **App Access's** edge (its wildcard cert + 404 for unknown hosts) while shares were unreachable. Misleading, and the two features would share a hostname space. | **Fixed.** Refused with a clear message. The App Access base is read from its saved settings, falling back to the environment. |
+| 9 | Installation domain save (API) | SA | Sharing domain could equal or nest inside the App Access base (e.g. both `cp.tunnex.app`). Readiness could then pass against **App Access's** edge (its wildcard cert + 404 for unknown hosts) while shares were unreachable. Misleading, and the two features would share a hostname space. | **Fixed, both directions.** A Local Sharing save is refused against the saved App Access base (environment fallback). An App Access domain save is refused against the saved Local Sharing domain. Both messages are clear. |
 | 10 | `deploy/beam/compose.yml` | SA | Connector hard-wired to a second **443**, so two extra IPs were needed on a host that already serves 443. | **Fixed.** `TUNNEX_BEAM_CONNECTOR_PORT` (default 443). The verifier accepts the same IP when the ports differ. |
 | 11 | `upgrade.sh` | SA | B2 above: misleading App Access refusal, or an old proxy left talking to a new API. | **Partly fixed.** Clear early refusal naming Local Sharing, before any backup or mutation, with steps. Managed upgrade **deferred** (D2). |
 | 12 | Release images | SA | B1 above. | **Deferred** (D1): CI matrix, signing, descriptor and `releaseverify` change. Not a small, safe edit. |
@@ -159,7 +169,9 @@ Roles: **SA** server administrator (installation), **OA** org owner/admin (`beam
 | 16 | Unknown / expired / revoked / not-invited reviewer | X | One identical refusal page for every cause. | **Kept by design** (C.1). Only the wording was fixed (#6). |
 | 17 | Publish button with publishing unavailable | P | The button is disabled without saying why. | Already covered: the workspace notice above it states the reason (improved in #5). |
 | 18 | Desktop client publish flow | P | Lives in the read-only `tunnex-desktop` repo (`apps/client/src/main/beam*.ts`). | **Not audited for edits** (read-only). The flow exists, so "CLI or desktop client" in the console copy is true. |
-| 19 | Access Events → Local Sharing activity, share detail, feedback, rooms, pause/stop/extend | OA/P/R | Read. The states are labelled; actions have confirms and reload paths. No raw codes found. | No change. |
+| 19 | Local Sharing → Events, share diagnostics | OA/P | The events table and its filters showed raw codes (`beam.share.created`, `denied`, `grant_removed`). Diagnostics showed raw `state`/`connectivity` values (`origin_unavailable`). Copy said "installation operator" and "desktop client" only. | **Fixed.** Readable labels for actions, outcomes, reasons, states and connectivity, with readable fallbacks for unknown codes. Wording aligned. Access Events details use the action label. |
+| 20 | Dashboard upgrade (Upgrade center) | SA | The new refusal exited before writing status, so a dashboard upgrade would sit at "verifying". The failed banner prints raw reason codes. | **Fixed for this case.** Status `failed` / `local_sharing_unmanaged`, shown as a plain sentence. Raw codes for other upgrade failures, and the same missing-status gap for existing App Access admission refusals, are pre-existing. **Deferred** to an upgrade-UX story. |
+| 21 | Share detail, feedback, rooms, pause/stop/extend, reviewer launch page (`BeamLaunch`), Access Events "Local Sharing access" list | OA/P/R | Skimmed, not audited line by line. The launch page's invalid-link, wrong-organization and expired states are worded and actionable. The Access Events list humanizes reasons. The generic Audit Log page shows raw action names for **every** feature, by platform convention. | No change in this PR. A line-by-line pass of these surfaces and the desktop client is a follow-up. |
 
 ---
 
