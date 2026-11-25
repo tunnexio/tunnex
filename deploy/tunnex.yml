@@ -217,6 +217,9 @@ services:
       TUNNEX_TLS_MODE: ${TUNNEX_TLS_MODE:-}
       TUNNEX_EDGE_TRUSTED_PROXIES: ${TUNNEX_EDGE_TRUSTED_PROXIES:-}
       TUNNEX_HTTP_CONSOLE_ENABLED: ${TUNNEX_HTTP_CONSOLE_ENABLED:-false}
+      # LS-UX-1 E.1: set only by tunnex-local-sharing in single-IP edge mode.
+      # The exact edge address (/32) whose PROXY v2 client address is trusted.
+      TUNNEX_EDGE_PROXY_PROTOCOL_FROM: ${TUNNEX_EDGE_PROXY_PROTOCOL_FROM:-}
     entrypoint: ["/bin/sh", "-ec"]
     command:
       - |
@@ -258,6 +261,27 @@ services:
             }'
         }
         # END EXPLICIT EDGE PROXY VALIDATION
+        # LS-UX-1 E.1: PROXY v2 is trusted only from the one edge address;
+        # from any other source the header is never parsed (fallback skip).
+        edge_servers=
+        if [ -n "$$TUNNEX_EDGE_PROXY_PROTOCOL_FROM" ]; then
+          case "$$TUNNEX_EDGE_PROXY_PROTOCOL_FROM" in
+            *[!0-9./]*) false ;;
+            */32) edge_trusted_proxies_ok "$$TUNNEX_EDGE_PROXY_PROTOCOL_FROM" ;;
+            *) false ;;
+          esac || { echo 'TUNNEX_EDGE_PROXY_PROTOCOL_FROM must be one IPv4 address with /32' >&2; exit 1; }
+          [ "$$TUNNEX_TLS_MODE" != terminated ] || { echo 'The single-IP edge needs direct HTTPS on this host' >&2; exit 1; }
+          edge_servers="  servers :443 {
+            listener_wrappers {
+              proxy_protocol {
+                timeout 5s
+                allow $$TUNNEX_EDGE_PROXY_PROTOCOL_FROM
+                fallback_policy skip
+              }
+              tls
+            }
+          }"
+        fi
 
         case "$$TUNNEX_TLS_MODE" in
           ''|direct|http) ;;
@@ -289,10 +313,20 @@ services:
               host=$${authority%%:*}
               case "$$host" in ''|*[!A-Za-z0-9.-]*) echo 'Invalid HTTPS hostname' >&2; exit 1 ;; esac
               case "$$authority" in "$$host"|"$$host:443") ;; *) echo 'Direct HTTPS requires port 443' >&2; exit 1 ;; esac
+              { [ -z "$$edge_servers" ] || printf '%s\n' '{' "$$edge_servers" '}'; } > /tmp/tunnex-Caddyfile
               printf '%s\n' "https://$$host {" '  reverse_proxy nginx:8080' '}' \
-                ':80 {' '  reverse_proxy nginx:8080' '}' > /tmp/tunnex-Caddyfile
+                ':80 {' '  reverse_proxy nginx:8080' '}' >> /tmp/tunnex-Caddyfile
               exec caddy run --config /tmp/tunnex-Caddyfile --adapter caddyfile ;;
           esac
+          if [ -n "$$edge_servers" ]; then
+            case "$$TUNNEX_EDGE_LISTEN" in
+              https://*) ;;
+              *) echo 'The single-IP edge needs direct HTTPS on this host' >&2; exit 1 ;;
+            esac
+            # Same site as caddy reverse-proxy --from/--to, with the edge wrapper.
+            printf '%s\n' '{' "$$edge_servers" '}' "$$TUNNEX_EDGE_LISTEN {" '  reverse_proxy nginx:8080' '}' > /tmp/tunnex-Caddyfile
+            exec caddy run --config /tmp/tunnex-Caddyfile --adapter caddyfile
+          fi
           exec caddy reverse-proxy --from "$$TUNNEX_EDGE_LISTEN" --to nginx:8080
         fi
         # Only the validated direct IPv4 origin may be inserted into Caddyfile.
@@ -310,6 +344,7 @@ services:
         printf '%s\n' \
           '{' \
           "  default_sni $$TUNNEX_EDGE_PUBLIC_IP" \
+          "$$edge_servers" \
           '}' \
           "https://$$TUNNEX_EDGE_PUBLIC_IP {" \
           '  tls {' \
