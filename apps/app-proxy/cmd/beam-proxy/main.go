@@ -19,7 +19,9 @@ import (
 	"time"
 
 	"github.com/tunnexio/tunnex/apps/app-proxy/internal/proxy"
+	"github.com/tunnexio/tunnex/packages/apptransport/proxyproto"
 	"github.com/tunnexio/tunnex/packages/apptransport/restorebarrier"
+	"github.com/tunnexio/tunnex/packages/apptransport/sniedge"
 )
 
 func required(suffix string) string {
@@ -123,7 +125,19 @@ func main() {
 		if err != nil {
 			log.Fatal("cannot bind Beam listener")
 		}
-		bounded := &limitListener{Listener: listener, slots: make(chan struct{}, entry.capacity), done: make(chan struct{})}
+		var bounded net.Listener = &limitListener{Listener: listener, slots: make(chan struct{}, entry.capacity), done: make(chan struct{})}
+		if !entry.connector {
+			// LS-UX-1 E.1: optional single-IP edge. Only this listener's own
+			// sharing hostnames are terminated here; everything else is
+			// spliced, undecrypted, to the configured next owner of 443.
+			if fallback := os.Getenv("TUNNEX_BEAM_PROXY_EDGE_DEFAULT"); fallback != "" {
+				edge, err := edgeListener(listener, base, fallback)
+				if err != nil {
+					log.Fatal("invalid Local Sharing edge configuration")
+				}
+				bounded = edge
+			}
+		}
 		server := &http.Server{Handler: entry.handler, TLSConfig: config, ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 15 * time.Second, MaxHeaderBytes: 32 << 10, BaseContext: func(net.Listener) context.Context { return servingCtx }, ConnContext: proxy.ConnectionContext}
 		servers = append(servers, server)
 		go func() { failures <- server.Serve(tls.NewListener(bounded, config)) }()
@@ -200,3 +214,28 @@ type limitConn struct {
 
 // Conn can be closed by the stream deadline and server concurrently.
 func (c *limitConn) Close() error { err := c.Conn.Close(); c.once.Do(c.release); return err }
+
+// edgeListener builds the SNI edge. The splice cap replaces the public
+// listener's capacity bound; owned streams keep the TLS server's limits.
+func edgeListener(listener net.Listener, base, fallback string) (net.Listener, error) {
+	token, err := proxyproto.LoadToken(required("EDGE_TOKEN_FILE"))
+	if err != nil {
+		return nil, err
+	}
+	cfg := sniedge.Config{Own: sniedge.Subdomain(base), Default: fallback, Token: token, Timeout: 5 * time.Second, MaxSplices: 1024}
+	if domain, target := os.Getenv("TUNNEX_BEAM_PROXY_EDGE_APP_ACCESS_DOMAIN"), os.Getenv("TUNNEX_BEAM_PROXY_EDGE_APP_ACCESS_TARGET"); domain != "" || target != "" {
+		if domain == "" || target == "" {
+			return nil, errors.New("App Access edge route needs a domain and a target")
+		}
+		cfg.Routes = []sniedge.Route{{Match: sniedge.Under(domain), Target: target}}
+	}
+	for _, target := range append([]string{fallback}, os.Getenv("TUNNEX_BEAM_PROXY_EDGE_APP_ACCESS_TARGET")) {
+		if target == "" {
+			continue
+		}
+		if _, _, err := net.SplitHostPort(target); err != nil {
+			return nil, errors.New("edge target must be host:port")
+		}
+	}
+	return sniedge.New(&limitListener{Listener: listener, slots: make(chan struct{}, 2048), done: make(chan struct{})}, cfg)
+}

@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/tunnexio/tunnex/apps/app-proxy/internal/proxy"
+	"github.com/tunnexio/tunnex/packages/apptransport/proxyproto"
 	"github.com/tunnexio/tunnex/packages/apptransport/restorebarrier"
 )
 
@@ -134,7 +135,20 @@ func main() {
 		if e != nil {
 			log.Fatal("cannot bind proxy listener")
 		}
-		bounded := &limitListener{Listener: listener, slots: make(chan struct{}, entry.limit), done: make(chan struct{})}
+		var bounded net.Listener = &limitListener{Listener: listener, slots: make(chan struct{}, entry.limit), done: make(chan struct{})}
+		if entry.address == public {
+			if path := os.Getenv("TUNNEX_APP_PROXY_EDGE_TOKEN_FILE"); path != "" {
+				// LS-UX-1 E.1: behind the single-IP edge, trust the PROXY v2
+				// client address only with the installation edge token.
+				token, err := proxyproto.LoadToken(path)
+				if err != nil {
+					log.Fatal("invalid edge token")
+				}
+				if bounded, err = proxyproto.NewListener(bounded, token, 5*time.Second); err != nil {
+					log.Fatal("invalid edge token")
+				}
+			}
+		}
 		server := &http.Server{Handler: entry.handler, TLSConfig: entry.config, ReadHeaderTimeout: entry.headerTimeout, IdleTimeout: 15 * time.Second, MaxHeaderBytes: 32 << 10, BaseContext: func(net.Listener) context.Context { return workerCtx }, ConnContext: proxy.ConnectionContext}
 		servers = append(servers, server)
 		go func() { failures <- server.Serve(tls.NewListener(bounded, server.TLSConfig)) }()
