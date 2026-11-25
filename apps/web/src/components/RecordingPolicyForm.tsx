@@ -19,10 +19,12 @@ function SizeField({ label, value, unit, units: allowed, onValue, onUnit }: { la
 export function RecordingPolicyForm({days,sessionBytes,orgBytes,mfaSeconds,disabled,onSave}:{mfaSeconds:number;days:number;sessionBytes:number;orgBytes:number;disabled:boolean;onSave:(v:{mfa_freshness_seconds:number;recording_retention_days:number;recording_max_session_bytes:number;recording_max_org_bytes:number})=>Promise<void>}) {
   const [freshness, setFreshness] = useState(mfaSeconds);
   const [retention, setRetention] = useState(days);
-  const initialSession = toUnit(sessionBytes, ["KB", "MB"]), initialOrg = toUnit(orgBytes, ["MB", "GB"]);
+  const initialSession = toUnit(sessionBytes, ["KB", "MB"]), initialOrg = toUnit(orgBytes, ["KB", "MB", "GB"]);
   const [session, setSession] = useState(initialSession.value), [sessionUnit, setSessionUnit] = useState<Unit>(initialSession.unit);
   const [org, setOrg] = useState(initialOrg.value), [orgUnit, setOrgUnit] = useState<Unit>(initialOrg.unit);
-  const sessionValue = toBytes(session, sessionUnit), orgValue = toBytes(org, orgUnit);
+  // Unedited sizes keep their exact saved bytes, so saving another field never rounds a limit.
+  const [sessionEdited, setSessionEdited] = useState(false), [orgEdited, setOrgEdited] = useState(false);
+  const sessionValue = sessionEdited ? toBytes(session, sessionUnit) : sessionBytes, orgValue = orgEdited ? toBytes(org, orgUnit) : orgBytes;
   const problem = !(sessionValue >= SESSION.min && sessionValue <= SESSION.max) ? `Per-session limit must be between ${show(SESSION.min)} and ${show(SESSION.max)}.`
     : !(orgValue >= ORG.min && orgValue <= ORG.max) ? `Organization limit must be between ${show(ORG.min)} and ${show(ORG.max)}.`
     : orgValue < sessionValue ? "The organization limit must be at least the per-session limit." : "";
@@ -35,8 +37,8 @@ export function RecordingPolicyForm({days,sessionBytes,orgBytes,mfaSeconds,disab
     <fieldset className="space-y-3"><legend className="font-medium">Recordings</legend>
       <div className="grid gap-3 sm:grid-cols-3">
         <Field label="Keep recordings for (days)"><Input type="number" min={1} max={3650} required value={retention} onChange={e => setRetention(Number(e.target.value))} /></Field>
-        <SizeField label="Limit per session" value={session} unit={sessionUnit} units={["KB", "MB"]} onValue={setSession} onUnit={setSessionUnit} />
-        <SizeField label="Limit for the organization" value={org} unit={orgUnit} units={["MB", "GB"]} onValue={setOrg} onUnit={setOrgUnit} />
+        <SizeField label="Limit per session" value={session} unit={sessionUnit} units={["KB", "MB"]} onValue={v => { setSession(v); setSessionEdited(true); }} onUnit={u => { setSessionUnit(u); setSessionEdited(true); }} />
+        <SizeField label="Limit for the organization" value={org} unit={orgUnit} units={["KB", "MB", "GB"]} onValue={v => { setOrg(v); setOrgEdited(true); }} onUnit={u => { setOrgUnit(u); setOrgEdited(true); }} />
       </div>
       <ul className="list-disc pl-5 text-xs text-ink-secondary space-y-1">
         <li>A recorded session that reaches its limit is closed, and its reason says the recording limit was reached. While the organization total is at its limit, recorded sessions cannot start.</li>

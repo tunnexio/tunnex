@@ -14,3 +14,7 @@ it("shows recording limits in human units and keeps the API in bytes (SA-UX-2 R4
  fireEvent.change(screen.getByLabelText("Limit per session unit"),{target:{value:"KB"}});expect(screen.getByRole("alert").textContent).toMatch(/between 64 KB and 16 MB/);
  fireEvent.change(screen.getByRole("spinbutton",{name:"Limit per session"}),{target:{value:"512"}});
  fireEvent.click(screen.getByRole("button",{name:"Save policy"}));expect(save).toHaveBeenCalledWith({mfa_freshness_seconds:600,recording_retention_days:30,recording_max_session_bytes:524288,recording_max_org_bytes:1073741824})});
+
+it("saving another field never rounds an unedited, non-round recording limit (SA-UX-2 R4)",()=>{const save=vi.fn(async()=>{});render(<RecordingPolicyForm days={30} sessionBytes={70000} orgBytes={100000} mfaSeconds={600} disabled={false} onSave={save}/>);
+ fireEvent.change(screen.getByRole("spinbutton",{name:"Keep recordings for (days)"}),{target:{value:"31"}});fireEvent.click(screen.getByRole("button",{name:"Save policy"}));
+ expect(save).toHaveBeenCalledWith({mfa_freshness_seconds:600,recording_retention_days:31,recording_max_session_bytes:70000,recording_max_org_bytes:100000})});
