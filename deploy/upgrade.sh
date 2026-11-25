@@ -48,7 +48,8 @@ classify_existing_app_access() {
   _aa_project=$1 _aa_directory=$2
   AA_API_COUNT=0 AA_PROXY_COUNT=0 AA_PROJECT_FOUND= AA_API_MARKER= AA_PROXY_MARKER=
   AA_PROXY_SECRETS= AA_PROXY_PORTS= AA_CONFIG_FILES= AA_CONFIG_CONFLICT=false
-  AA_API_FILES= AA_PROXY_FILES= AA_FILES_SPLIT=false LS_COUNT=0
+  AA_API_FILES= AA_PROXY_FILES= AA_FILES_SPLIT=false
+  LS_PROXY_COUNT=0 LS_INIT_COUNT=0 LS_PROXY_FILES= LS_PROXY_SECRETS= LS_PROXY_PORTS= LS_PROXY_MARKER= LS_IN_COMPOSITION=false
   if [ -n "$_aa_project" ]; then
     _aa_filter="label=com.docker.compose.project=$_aa_project"
   else
@@ -60,7 +61,7 @@ classify_existing_app_access() {
     echo 'error: existing installation inspection failed; upgrade refused' >&2; return 1;
   }
   for _aa_id in $_aa_ids; do
-    _aa_info=$(docker inspect --format '{{index .Config.Labels "com.docker.compose.project"}}|{{index .Config.Labels "com.docker.compose.project.working_dir"}}|{{index .Config.Labels "com.docker.compose.service"}}|{{range .Mounts}}{{if eq .Destination "/var/lib/tunnex/app-restore"}}{{.Type}}:{{.Name}};{{end}}{{end}}|{{range .Mounts}}{{if eq .Destination "/etc/tunnex/app-proxy"}}{{.Source}};{{end}}{{end}}|{{range $p, $b := .HostConfig.PortBindings}}{{range $b}}{{$p}}={{.HostIp}}:{{.HostPort}};{{end}}{{end}}|{{index .Config.Labels "com.docker.compose.project.config_files"}}|{{index .Config.Labels "com.docker.compose.oneoff"}}' "$_aa_id" 2>/dev/null) || {
+    _aa_info=$(docker inspect --format '{{index .Config.Labels "com.docker.compose.project"}}|{{index .Config.Labels "com.docker.compose.project.working_dir"}}|{{index .Config.Labels "com.docker.compose.service"}}|{{range .Mounts}}{{if eq .Destination "/var/lib/tunnex/app-restore"}}{{.Type}}:{{.Name}};{{end}}{{end}}|{{range .Mounts}}{{if or (eq .Destination "/etc/tunnex/app-proxy") (eq .Destination "/etc/tunnex/beam")}}{{.Source}};{{end}}{{end}}|{{range $p, $b := .HostConfig.PortBindings}}{{range $b}}{{$p}}={{.HostIp}}:{{.HostPort}};{{end}}{{end}}|{{index .Config.Labels "com.docker.compose.project.config_files"}}|{{index .Config.Labels "com.docker.compose.oneoff"}}' "$_aa_id" 2>/dev/null) || {
       echo 'error: existing installation inspection failed; upgrade refused' >&2; return 1;
     }
     case "$_aa_info" in
@@ -80,14 +81,26 @@ EOF
     }
     # One-off helper containers (compose run) are not serving participants.
     [ "$_aa_oneoff" != True ] || continue
+    # LS-UX-1 D.2: the managed Local Sharing overlay is always the last file of
+    # a composition; App Access checks see the composition without it.
+    case "$_aa_service" in
+      api|app-proxy)
+        case "$_aa_files" in
+          *",$_aa_directory/local-sharing.yml") _aa_files=${_aa_files%,*}; LS_IN_COMPOSITION=true ;;
+        esac ;;
+    esac
     case "$_aa_service" in
       api) [ -n "$_aa_marker" ] || continue
         AA_API_COUNT=$((AA_API_COUNT + 1)); AA_API_MARKER=$_aa_marker ;;
       app-proxy)
         AA_PROXY_COUNT=$((AA_PROXY_COUNT + 1)); AA_PROXY_MARKER=$_aa_marker
         AA_PROXY_SECRETS=$_aa_secrets AA_PROXY_PORTS=$_aa_ports ;;
-      # LS-UX-1: Local Sharing serving participants (deploy/beam/compose.yml).
-      beam-proxy|beam-restore-init) LS_COUNT=$((LS_COUNT + 1)); continue ;;
+      # LS-UX-1 D.2: Local Sharing serving participants.
+      beam-proxy)
+        LS_PROXY_COUNT=$((LS_PROXY_COUNT + 1)); LS_PROXY_FILES=$_aa_files
+        LS_PROXY_SECRETS=$_aa_secrets LS_PROXY_PORTS=$_aa_ports LS_PROXY_MARKER=$_aa_marker
+        continue ;;
+      beam-restore-init) LS_INIT_COUNT=$((LS_INIT_COUNT + 1)); continue ;;
       *) continue ;;
     esac
     [ -z "$AA_PROJECT_FOUND" ] || [ "$AA_PROJECT_FOUND" = "$_aa_found_project" ] || AA_CONFIG_CONFLICT=true
@@ -153,17 +166,21 @@ aa_refuse() {
 admit_app_access() {
   _aa_dir_real=$1
   classify_existing_app_access "$PROJECT" "$_aa_dir_real" || exit 13
-  # LS-UX-1: this upgrade does not manage Local Sharing serving yet. Refuse
-  # before any backup or mutation rather than misreport it as App Access, or
-  # leave an old Local Sharing proxy talking to a migrated API.
-  if [ "$LS_COUNT" -gt 0 ]; then
-    # A readable reason for the dashboard upgrade (the runner keeps it).
-    [ "$APPLY" != true ] || write_status failed local_sharing_unmanaged
-    echo 'error: upgrade blocked; Local Sharing serving (beam-proxy) is part of this installation, and the one-command upgrade does not manage it yet. Recreate the stack without the Local Sharing overlay first (this ends live shares), run the upgrade, then add the overlay back from the new release. Steps: deploy/beam/README.md, "Upgrading". Nothing was changed.' >&2
-    exit 13
+  # LS-UX-1 D.2: a hand-written Local Sharing setup is named as such, before
+  # App Access admission could misreport its overlay.
+  if [ "$LS_PROXY_COUNT" -gt 0 ] || [ "$LS_INIT_COUNT" -gt 0 ]; then
+    case "$LS_PROXY_FILES" in ''|*",$_aa_dir_real/local-sharing.yml") ;; *) LS_PROXY_FILES=unmanaged ;; esac
+    if [ ! -f "$LS_OVERLAY" ] || [ "$LS_PROXY_FILES" = unmanaged ]; then
+      ls_refuse local_sharing_unmanaged "was set up by hand and is not yet managed by the upgrade. To adopt it: $ls_adopt_steps"
+    fi
   fi
   if [ "$AA_API_COUNT" -eq 0 ] && [ "$AA_PROXY_COUNT" -eq 0 ] && [ ! -f "$AA_OVERLAY" ]; then
     return 0
+  fi
+  # LS-UX-1 D.2: the API mounts the restore volume for Local Sharing alone; that
+  # is not App Access (features stay independent).
+  if [ "$AA_PROXY_COUNT" -eq 0 ] && [ ! -f "$AA_OVERLAY" ] && [ "$LS_IN_COMPOSITION" = true ]; then
+    case "$AA_CONFIG_FILES" in "$COMPOSE"|"$_aa_dir_real/${COMPOSE##*/}") return 0 ;; esac
   fi
   AA_PRESENT=true
   [ "$AA_CONFIG_CONFLICT" = false ] ||
@@ -254,6 +271,62 @@ admit_app_access() {
   fi
 }
 
+# LS-UX-1 D.2: Local Sharing is a managed optional profile like App Access. It
+# is admitted independently; every check is a refusal before any mutation.
+LS_PRESENT=false
+LS_PROXY=false
+LS_OVERLAY="$DIR/local-sharing.yml"
+LS_COMPOSE_ACTIVE=false
+LS_PROFILE_ON=false
+LS_PROXY_PIN=
+LS_MUTATION_STARTED=false
+ls_refuse() {
+  [ "$APPLY" != true ] || write_status failed "$1"
+  shift
+  echo "error: upgrade blocked; Local Sharing $*. Nothing was changed." >&2
+  exit 13
+}
+ls_adopt_steps='copy the managed overlay from the running API (docker compose cp api:/usr/share/tunnex/host/beam/compose.yml local-sharing.yml), record its hash as TUNNEX_LOCAL_SHARING_COMPOSE_SHA256 in .env, recreate the stack with -f local-sharing.yml as the last file, then run the upgrade again (deploy/beam/README.md, "Adopting a hand-written setup")'
+admit_local_sharing() {
+  _ls_dir=$1
+  if [ "$LS_PROXY_COUNT" -eq 0 ] && [ "$LS_INIT_COUNT" -eq 0 ] && [ "$LS_IN_COMPOSITION" = false ] && [ ! -f "$LS_OVERLAY" ]; then
+    return 0
+  fi
+  LS_PRESENT=true
+  [ "$LS_PROXY_COUNT" -le 1 ] ||
+    ls_refuse local_sharing_admission_failed 'upgrade supports exactly one Local Sharing proxy on this host'
+  [ -f "$LS_OVERLAY" ] && [ ! -L "$LS_OVERLAY" ] ||
+    ls_refuse local_sharing_unmanaged "was set up by hand and is not yet managed by the upgrade. To adopt it: $ls_adopt_steps"
+  _ls_expected="$_ls_dir/${COMPOSE##*/}"
+  [ "$AA_COMPOSE_ACTIVE" != true ] || _ls_expected="$_ls_expected,$_ls_dir/app-access.yml"
+  _ls_expected="$_ls_expected,$_ls_dir/local-sharing.yml"
+  if [ "$LS_PROXY_COUNT" -eq 1 ]; then
+    [ "$LS_PROXY_FILES" = "$_ls_expected" ] ||
+      ls_refuse local_sharing_unmanaged "proxy runs from a different composition than the managed one (tunnex.yml, app-access.yml when App Access is installed, then local-sharing.yml). To adopt it: $ls_adopt_steps"
+    _ls_project=${AA_PROJECT_FOUND:-${PROJECT:-tunnex}}
+    [ "$LS_PROXY_MARKER" = "volume:${_ls_project}_app_restore;" ] ||
+      ls_refuse local_sharing_admission_failed "proxy does not mount the restore barrier volume ${_ls_project}_app_restore"
+  fi
+  _ls_sha=$(dotenv_value TUNNEX_LOCAL_SHARING_COMPOSE_SHA256)
+  [ -n "$_ls_sha" ] && [ "$(file_sha256 "$LS_OVERLAY")" = "$_ls_sha" ] ||
+    ls_refuse local_sharing_admission_failed 'overlay local-sharing.yml changed after it was installed (its hash differs from TUNNEX_LOCAL_SHARING_COMPOSE_SHA256 in .env)'
+  for _ls_key in TUNNEX_BEAM_BASE_DOMAIN TUNNEX_BEAM_PROXY_URL TUNNEX_BEAM_PROXY_SECRETS_DIR TUNNEX_BEAM_PUBLIC_BIND_IP TUNNEX_BEAM_CONNECTOR_BIND_IP; do
+    [ -n "$(dotenv_value "$_ls_key")" ] || ls_refuse local_sharing_admission_failed "requires $_ls_key in .env"
+  done
+  if [ "$LS_PROXY_COUNT" -eq 1 ]; then
+    LS_PROXY=true
+    [ "$LS_PROXY_SECRETS" = "$(dotenv_value TUNNEX_BEAM_PROXY_SECRETS_DIR);" ] ||
+      ls_refuse local_sharing_admission_failed 'proxy secrets directory differs from TUNNEX_BEAM_PROXY_SECRETS_DIR in .env'
+    _ls_port=$(dotenv_value TUNNEX_BEAM_CONNECTOR_PORT)
+    [ "$LS_PROXY_PORTS" = "8443/tcp=$(dotenv_value TUNNEX_BEAM_PUBLIC_BIND_IP):443;8444/tcp=$(dotenv_value TUNNEX_BEAM_CONNECTOR_BIND_IP):${_ls_port:-443};" ] ||
+      ls_refuse local_sharing_admission_failed 'proxy port bindings differ from TUNNEX_BEAM_PUBLIC_BIND_IP, TUNNEX_BEAM_CONNECTOR_BIND_IP and TUNNEX_BEAM_CONNECTOR_PORT in .env'
+  else
+    case ",$(dotenv_value COMPOSE_PROFILES)," in *,beam,*) LS_PROXY=true ;; esac
+  fi
+  LS_COMPOSE_ACTIVE=true
+  LS_PROFILE_ON=$LS_PROXY
+}
+
 VERIFY=${TUNNEX_RELEASEVERIFY:-}
 APPLY=false
 AIRGAP=
@@ -323,7 +396,7 @@ write_status() {
 #   dir:  <handoff>/release.json (verified bytes), <handoff>/host/ (image files)
 HOST_ABI=1
 HOST_IMAGE_DIR=/usr/share/tunnex/host
-HOST_FILE_LIST='upgrade.sh upgrade-runner.sh tunnex.yml ai-bootstrap.sh ai-gateway/config-managed.json app-access/compose.yml app-access/restore.py app-access/tunnex-app-access.py'
+HOST_FILE_LIST='upgrade.sh upgrade-runner.sh tunnex.yml ai-bootstrap.sh ai-gateway/config-managed.json app-access/compose.yml app-access/restore.py app-access/tunnex-app-access.py beam/compose.yml'
 HANDOFF=${TUNNEX_UPGRADE_HANDOFF:-}
 HOST_FILES=
 handoff_refuse() {
@@ -486,6 +559,7 @@ fi
 # outside the installation directory. Do not guess a top-level project name.
 _aa_upgrade_directory=$(CDPATH= cd -- "$(dirname -- "$COMPOSE")" && pwd -P) || exit 13
 admit_app_access "$_aa_upgrade_directory"
+admit_local_sharing "$_aa_upgrade_directory"
 TMPDIR=$(mktemp -d "${TMPDIR:-/tmp}/tunnex-upgrade.XXXXXX")
 trap 'rm -rf "$TMPDIR"; [ "$HANDOFF" != 1 ] || rm -rf "$TUNNEX_UPGRADE_HANDOFF_DIR"' EXIT INT TERM
 finish_upgrade() {
@@ -493,6 +567,12 @@ finish_upgrade() {
   trap - EXIT INT TERM
   if [ "$AI_SNAPSHOT_STOPPED" = true ]; then
     compose start bifrost >/dev/null 2>&1 || true
+  fi
+  if [ "$_status" -ne 0 ] && [ "$LS_MUTATION_STARTED" = true ]; then
+    # Never serve shares from an unverified stack (LS-UX-1 D.2).
+    LS_PROFILE_ON=true
+    compose stop beam-proxy >/dev/null 2>&1 || true
+    echo 'Local Sharing: the proxy was left stopped. Fix the reported cause and run this upgrade again; shares can be published again once it succeeds.' >&2
   fi
   if [ "$_status" -ne 0 ] && [ "$AA_MUTATION_STARTED" = true ]; then
     # Never leave the public App Access listener serving on an unverified stack.
@@ -577,6 +657,10 @@ base_profile() {
 }
 compose() {
   COMPOSE_PROFILES=$(base_profile)
+  if [ "$LS_COMPOSE_ACTIVE" = true ]; then
+    [ "$LS_PROFILE_ON" != true ] || COMPOSE_PROFILES="$COMPOSE_PROFILES,beam"
+    set -- -f "$LS_OVERLAY" "$@"
+  fi
   if [ "$AA_COMPOSE_ACTIVE" = true ]; then
     [ "$AA_PROFILE_ON" != true ] || COMPOSE_PROFILES="$COMPOSE_PROFILES,app-access"
     set -- -f "$COMPOSE" -f "$AA_OVERLAY" "$@"
@@ -706,6 +790,26 @@ if [ "$AA_PRESENT" = true ]; then
     }
   done
   echo "App Access: upgrade will snapshot authority, back up, stop app-proxy, migrate the API, verify unchanged authority, then start the signed proxy $AA_PROXY_PIN"
+fi
+if [ "$LS_PRESENT" = true ]; then
+  _ls_env=$(
+    if [ -n "$VERIFY" ]; then
+      "$VERIFY" -manifest "$MANIFEST" -public-key "$PUBLIC_KEY" -require-beam-proxy -print-env
+    elif command -v releaseverify >/dev/null 2>&1; then
+      releaseverify -manifest "$MANIFEST" -public-key "$PUBLIC_KEY" -require-beam-proxy -print-env
+    else
+      compose exec -T api sh -c \
+        'cat > /tmp/tunnex-release.json && releaseverify -manifest /tmp/tunnex-release.json -public-key "$1" -require-beam-proxy -print-env' \
+        sh "$PUBLIC_KEY" < "$MANIFEST"
+    fi 2>/dev/null
+  ) || _ls_env=
+  LS_PROXY_PIN=$(printf '%s\n' "$_ls_env" | sed -n 's/^TUNNEX_BEAM_PROXY_IMAGE=//p' | head -1)
+  [ "$(printf '%s\n' "$_ls_env" | sed -n 's/^TUNNEX_RELEASE_SOURCE_SHA=//p' | head -1)" = "$TARGET_SOURCE_SHA" ] || LS_PROXY_PIN=
+  printf '%s\n' "$LS_PROXY_PIN" | grep -Eqx 'ghcr\.io/tunnexio/tunnex-beam-proxy@sha256:[0-9a-f]{64}' ||
+    ls_refuse local_sharing_admission_failed 'requires a target release with a signed Local Sharing proxy image (verified with -require-beam-proxy)'
+  cp "$HOST_FILES/beam/compose.yml" "$TMPDIR/local-sharing-compose.yml" ||
+    ls_refuse local_sharing_admission_failed 'composition of the signed release is missing from its host files'
+  echo "Local Sharing: upgrade will back up, stop beam-proxy, migrate and check the API, then start the signed proxy $LS_PROXY_PIN"
 fi
 echo "release verified; preflight and backup are required before mutation"
 compose_prefix="docker compose"
@@ -1023,10 +1127,16 @@ case "$(dotenv_value TUNNEX_DATABASE_MODE)" in
   external) set_dotenv COMPOSE_PROFILES external-db ;;
   *) set_dotenv COMPOSE_PROFILES bundled-db ;;
 esac
+_profiles=$(base_profile)
 if [ "$AA_PRESENT" = true ]; then
   set_dotenv TUNNEX_APP_PROXY_IMAGE "$AA_PROXY_PIN"
-  [ "$AA_PROXY" != true ] || set_dotenv COMPOSE_PROFILES "$(base_profile),app-access"
+  [ "$AA_PROXY" != true ] || _profiles="$_profiles,app-access"
 fi
+if [ "$LS_PRESENT" = true ]; then
+  set_dotenv TUNNEX_BEAM_PROXY_IMAGE "$LS_PROXY_PIN"
+  [ "$LS_PROXY" != true ] || _profiles="$_profiles,beam"
+fi
+set_dotenv COMPOSE_PROFILES "$_profiles"
 set_dotenv TUNNEX_RELEASE_MANIFEST_PATH /var/lib/tunnex/release.json
 mv "$TMPDIR/tunnex.yml" "$COMPOSE"
 mv "$TMPDIR/release.json" "$DIR/release.json"
@@ -1063,8 +1173,22 @@ if [ "$AA_PRESENT" = true ]; then
   AA_COMPOSE_ACTIVE=true
   AA_PROFILE_ON=$AA_PROXY
 fi
+if [ "$LS_PRESENT" = true ]; then
+  # The signed release's overlay replaces the installed copy (identity verified above).
+  mv "$TMPDIR/local-sharing-compose.yml" "$LS_OVERLAY"
+  chmod 0644 "$LS_OVERLAY"
+  set_dotenv TUNNEX_LOCAL_SHARING_COMPOSE_SHA256 "$(file_sha256 "$LS_OVERLAY")"
+  LS_COMPOSE_ACTIVE=true
+  LS_PROFILE_ON=$LS_PROXY
+fi
 compose pull
 write_status restarting
+if [ "$LS_PRESENT" = true ]; then
+  LS_MUTATION_STARTED=true
+  # The old Local Sharing proxy must never talk to the new API either.
+  [ "$LS_PROXY" != true ] || compose stop beam-proxy
+  LS_PROFILE_ON=false
+fi
 if [ "$AA_PRESENT" = true ]; then
   AA_MUTATION_STARTED=true
   # The old proxy must never talk to the new API; stop it before replacement.
@@ -1098,6 +1222,17 @@ if ! healthcheck; then
     echo "error: upgrade health check failed; restore the verified pre-upgrade backup before retrying" >&2
   fi
   exit 14
+fi
+if [ "$LS_PRESENT" = true ] && [ "$LS_PROXY" = true ]; then
+  # Liveness only: serving readiness depends on the installation's DNS/TLS
+  # checks, which the console reports; it must not fail a platform upgrade.
+  LS_PROFILE_ON=true
+  compose up -d --wait --wait-timeout 300 --no-deps beam-proxy || {
+    write_status failed local_sharing_start_failed
+    echo 'error: upgrade stopped; the signed Local Sharing proxy did not become healthy. The control plane is upgraded and healthy.' >&2
+    exit 14
+  }
+  echo "Local Sharing proxy started from $LS_PROXY_PIN"
 fi
 write_status healthy
 if [ "$AA_PRESENT" = true ] && [ -n "$(dotenv_value TUNNEX_APP_ACCESS_ADOPTED_CONFIG_FILES)" ]; then

@@ -54,6 +54,7 @@ COPY --from=build /out/releaseverify /usr/local/bin/releaseverify
 COPY deploy/HOST_ABI deploy/upgrade.sh deploy/upgrade-runner.sh deploy/tunnex.yml deploy/ai-bootstrap.sh /usr/share/tunnex/host/
 COPY deploy/ai-gateway/config-managed.json /usr/share/tunnex/host/ai-gateway/
 COPY deploy/app-access/compose.yml deploy/app-access/restore.py deploy/app-access/tunnex-app-access.py /usr/share/tunnex/host/app-access/
+COPY deploy/beam/compose.yml /usr/share/tunnex/host/beam/
 EXPOSE 8080
 # Fresh external schemas may need minutes of cross-region migration round trips.
 # A successful check ends the grace immediately; running instances retain fast checks.

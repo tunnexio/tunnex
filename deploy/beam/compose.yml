@@ -1,4 +1,7 @@
-# Explicit Beam override. Do not include this file in the default installation.
+# Local Sharing overlay. Opt-in; never part of the default installation.
+# Installed as <install>/local-sharing.yml (always the last -f file) and managed
+# by upgrade.sh like app-access.yml (LS-UX-1 D.2). Image pins come only from the
+# signed release (releaseverify -require-beam-proxy).
 # Public and connector listeners need distinct bind IPs when both use port 443;
 # set TUNNEX_BEAM_CONNECTOR_PORT to use one address for both.
 services:
@@ -11,8 +14,6 @@ services:
       TUNNEX_APP_ACCESS_RESTORE_MARKER: /var/lib/tunnex/app-restore/app-access.pending.json
     volumes:
       - app_restore:/var/lib/tunnex/app-restore:ro
-    depends_on:
-      beam-restore-init: {condition: service_completed_successfully}
 
   beam-restore-init:
     image: ${TUNNEX_BEAM_PROXY_IMAGE:?Select the locally verified Beam proxy image digest}
@@ -57,8 +58,11 @@ services:
       # the browser listener's or the host's existing address. The browser
       # listener stays on 443 (readiness checks the wildcard on 443).
       - '${TUNNEX_BEAM_CONNECTOR_BIND_IP:?Set the connector listener bind IP}:${TUNNEX_BEAM_CONNECTOR_PORT:-443}:8444'
+    # Liveness: process and listeners up. /readyz also needs the installation's
+    # DNS/TLS checks to pass, which the console reports and which must not block
+    # an upgrade; metrics and /readyz stay on loopback for monitoring.
     healthcheck:
-      test: [CMD, wget, -q, -O, /dev/null, http://127.0.0.1:9093/readyz]
+      test: [CMD, wget, -q, -O, /dev/null, http://127.0.0.1:9093/livez]
       interval: 10s
       timeout: 3s
       retries: 3
@@ -71,6 +75,7 @@ services:
     pids_limit: 128
     depends_on:
       api: {condition: service_healthy}
+      beam-restore-init: {condition: service_completed_successfully}
 
 volumes:
   app_restore:

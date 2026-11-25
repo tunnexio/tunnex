@@ -19,6 +19,14 @@ const stageLabel: Record<string, string> = {
 };
 
 /** Deployment upgrade surface. Docker/root authority stays in the local runner. */
+
+// LS-UX-1 D.2: Local Sharing upgrade refusals in words (the runner journal has the detail).
+const localSharingReasons: Record<string, string> = {
+  local_sharing_unmanaged: "Upgrade not started: Local Sharing on this server was set up by hand. Nothing was changed. Adopt it once (deploy/beam/README.md, \"Adopting a hand-written setup\"), then run the upgrade again.",
+  local_sharing_admission_failed: "Upgrade not started: the Local Sharing setup does not match the server settings, or the new release has no signed Local Sharing proxy. Nothing was changed. The runner journal names the exact setting.",
+  local_sharing_start_failed: "The control plane was upgraded and is healthy, but the Local Sharing proxy did not start. It was left stopped; fix the cause in the runner journal and run the upgrade again.",
+};
+
 export function UpgradeCenter() {
   const { state } = useAuth();
   const cpAdmin = state.status === "authed" && Boolean(state.user.cp_admin);
@@ -163,7 +171,7 @@ export function UpgradeCenter() {
         {host?.backup_manifest && <div><dt className="font-semibold">Backup manifest</dt><dd>{host.backup_manifest}</dd></div>}
       </dl>
       {reconnecting && <p className="mt-2 text-xs text-amber-200">Control plane is restarting or temporarily unreachable. Reconnecting…</p>}
-      {host?.state === "failed" && (host.reason_code === "local_sharing_unmanaged" ? <p className="mt-2 text-sm text-red-200">Upgrade not started: Local Sharing serving is part of this installation, and the one-command upgrade does not manage it yet. Nothing was changed. Remove the Local Sharing overlay, upgrade, then add it back (deploy/beam/README.md, "Upgrading").</p> : <p className="mt-2 text-sm text-red-200">Upgrade stopped before completion ({host.reason_code ?? "upgrade_failed"}). Review the local runner journal and retain the displayed backup.</p>)}
+      {host?.state === "failed" && (host.reason_code && localSharingReasons[host.reason_code] ? <p className="mt-2 text-sm text-red-200">{localSharingReasons[host.reason_code]}</p> : <p className="mt-2 text-sm text-red-200">Upgrade stopped before completion ({host.reason_code ?? "upgrade_failed"}). Review the local runner journal and retain the displayed backup.</p>)}
       {error && <p className="mt-2 text-sm text-red-200" role="alert">{error}</p>}
       {upgrade?.release_notes_url && (
         <a className="mt-2 inline-block text-sm underline" href={upgrade.release_notes_url} target="_blank" rel="noreferrer">Read release notes</a>
