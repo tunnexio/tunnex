@@ -31,11 +31,16 @@ func appProxyCredentialGuarded(ctx context.Context, cfg config.Config, command s
 	path := flags.String("output", "", "exclusive private credential output file")
 	id := flags.String("id", "", "dedicated proxy credential UUID")
 	version := flags.Int64("expected-version", 0, "reviewed current credential version")
+	purpose := flags.String("purpose", "app-access", "authority the credential is bound to: app-access or local-sharing")
 	if err := flags.Parse(args); err != nil {
 		return err
 	}
 	if flags.NArg() != 0 {
 		return errors.New("unexpected credential command arguments")
+	}
+	bound := map[string]string{"app-access": appaccess.PurposeAppAccess, "local-sharing": appaccess.PurposeLocalSharing}[*purpose]
+	if bound == "" {
+		return errors.New("--purpose must be app-access or local-sharing")
 	}
 	if err := restorebarrier.Check(cfg.AppAccessRestoreMarker); err != nil {
 		return err
@@ -78,7 +83,7 @@ func appProxyCredentialGuarded(ctx context.Context, cfg config.Config, command s
 		return errors.New("credential output exists or cannot be created; refusing overwrite")
 	}
 	defer f.Close()
-	credential, secret, err := svc.IssueProxyCredential(ctx, *name)
+	credential, secret, err := svc.IssueProxyCredentialFor(ctx, *name, bound)
 	if err != nil {
 		return errors.New("dedicated proxy credential issuance unconfirmed; inspect retained private output before retrying")
 	}
@@ -111,5 +116,6 @@ func appProxyCredentialGuarded(ctx context.Context, cfg config.Config, command s
 		ID      uuid.UUID `json:"id"`
 		Version int64     `json:"version"`
 		Name    string    `json:"name"`
-	}{credential.ID, credential.Version, credential.Name})
+		Purpose string    `json:"purpose"`
+	}{credential.ID, credential.Version, credential.Name, *purpose})
 }

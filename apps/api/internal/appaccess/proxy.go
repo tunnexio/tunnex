@@ -73,9 +73,23 @@ func proxyProvisionAudit(ctx context.Context, q *sqlc.Queries, id uuid.UUID, act
 	return e
 }
 
-// IssueProxyCredential is reserved for the later local operator provisioning tool.
-// No human or agent HTTP route exposes this operation.
+// Proxy credential purposes (LS-UX-1 E.3): each authority accepts only its own.
+const (
+	PurposeAppAccess    = "app_access"
+	PurposeLocalSharing = "local_sharing"
+)
+
+// IssueProxyCredential issues an App Access proxy credential.
 func (s *Service) IssueProxyCredential(ctx context.Context, name string) (ProxyCredential, string, error) {
+	return s.IssueProxyCredentialFor(ctx, name, PurposeAppAccess)
+}
+
+// IssueProxyCredentialFor is reserved for the local operator provisioning tool.
+// No human or agent HTTP route exposes this operation.
+func (s *Service) IssueProxyCredentialFor(ctx context.Context, name, purpose string) (ProxyCredential, string, error) {
+	if purpose != PurposeAppAccess && purpose != PurposeLocalSharing {
+		return ProxyCredential{}, "", apierr.BadRequest("invalid_proxy_credential", "invalid proxy credential purpose")
+	}
 	name = strings.TrimSpace(name)
 	if !utf8.ValidString(name) || utf8.RuneCountInString(name) < 1 || utf8.RuneCountInString(name) > 100 || strings.IndexFunc(name, unicode.IsControl) >= 0 {
 		return ProxyCredential{}, "", apierr.BadRequest("invalid_proxy_credential", "invalid proxy credential name")
@@ -88,7 +102,7 @@ func (s *Service) IssueProxyCredential(ctx context.Context, name string) (ProxyC
 	hash := sha256.Sum256([]byte(token))
 	var out ProxyCredential
 	e := s.transaction(ctx, func(q *sqlc.Queries) error {
-		r, e := q.CreateAppAccessProxyCredential(ctx, sqlc.CreateAppAccessProxyCredentialParams{Name: name, TokenHash: hash[:]})
+		r, e := q.CreateAppAccessProxyCredential(ctx, sqlc.CreateAppAccessProxyCredentialParams{Name: name, TokenHash: hash[:], Purpose: purpose})
 		if e != nil {
 			return e
 		}
@@ -100,7 +114,14 @@ func (s *Service) IssueProxyCredential(ctx context.Context, name string) (ProxyC
 	}
 	return out, token, nil
 }
+
+// AuthenticateProxy accepts only App Access proxy credentials.
 func (s *Service) AuthenticateProxy(ctx context.Context, raw string) (AuthenticatedProxy, error) {
+	return s.AuthenticateProxyFor(ctx, raw, PurposeAppAccess)
+}
+
+// AuthenticateProxyFor accepts only a current credential issued for purpose.
+func (s *Service) AuthenticateProxyFor(ctx context.Context, raw, purpose string) (AuthenticatedProxy, error) {
 	var out AuthenticatedProxy
 	if !strings.HasPrefix(raw, ProxyTokenPrefix) {
 		return out, proxyUnauthenticated()
@@ -110,7 +131,7 @@ func (s *Service) AuthenticateProxy(ctx context.Context, raw string) (Authentica
 		return out, proxyUnauthenticated()
 	}
 	hash := sha256.Sum256([]byte(raw))
-	r, e := sqlc.New(s.pool).AuthenticateAppAccessProxyCredential(ctx, hash[:])
+	r, e := sqlc.New(s.pool).AuthenticateAppAccessProxyCredential(ctx, sqlc.AuthenticateAppAccessProxyCredentialParams{TokenHash: hash[:], Purpose: purpose})
 	if e != nil {
 		return out, proxyUnauthenticated()
 	}

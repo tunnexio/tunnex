@@ -812,6 +812,7 @@ type AppAccessProxyCredential struct {
 	Version   int64              `json:"version"`
 	CreatedAt time.Time          `json:"created_at"`
 	RevokedAt pgtype.Timestamptz `json:"revoked_at"`
+	Purpose   string             `json:"purpose"`
 }
 
 type AppAccessPublicationOperation struct {

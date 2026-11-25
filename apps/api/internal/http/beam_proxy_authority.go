@@ -1,14 +1,21 @@
 package http
 
 import (
+	"context"
 	"crypto/tls"
 	"github.com/tunnexio/tunnex/apps/api/internal/apierr"
+	"github.com/tunnexio/tunnex/apps/api/internal/appaccess"
 	"github.com/tunnexio/tunnex/apps/api/internal/beam"
 	"net/http"
 	"strings"
 )
 
-func NewBeamProxyAuthorityHandler(service *beam.Service, proxies appProxyAuthorityPort, fallback http.Handler) http.Handler {
+// beamProxyAuthenticator accepts only Local Sharing proxy credentials (LS-UX-1 E.3).
+type beamProxyAuthenticator interface {
+	AuthenticateProxyFor(context.Context, string, string) (appaccess.AuthenticatedProxy, error)
+}
+
+func NewBeamProxyAuthorityHandler(service *beam.Service, proxies beamProxyAuthenticator, fallback http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !strings.HasPrefix(r.URL.Path, "/internal/beam/") {
 			fallback.ServeHTTP(w, r)
@@ -21,7 +28,7 @@ func NewBeamProxyAuthorityHandler(service *beam.Service, proxies appProxyAuthori
 			return
 		}
 		token := strings.TrimPrefix(r.Header.Get("Authorization"), "AppProxy ")
-		if _, e := proxies.AuthenticateProxy(r.Context(), token); e != nil {
+		if _, e := proxies.AuthenticateProxyFor(r.Context(), token, appaccess.PurposeLocalSharing); e != nil {
 			unauth()
 			return
 		}

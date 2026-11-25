@@ -1,13 +1,13 @@
 -- name: CreateAppAccessProxyCredential :one
-INSERT INTO app_access_proxy_credentials(name,token_hash)VALUES($1,$2)RETURNING *;
+INSERT INTO app_access_proxy_credentials(name,token_hash,purpose)VALUES($1,$2,$3)RETURNING *;
 
 -- name: AuthenticateAppAccessProxyCredential :one
 -- lint:cross-org -- Installation-wide dedicated proxy identity; no tenant authority is stored here.
-SELECT * FROM app_access_proxy_credentials WHERE token_hash=$1 AND revoked_at IS NULL;
+SELECT * FROM app_access_proxy_credentials WHERE token_hash=$1 AND purpose=$2 AND revoked_at IS NULL;
 
 -- name: CurrentAppAccessProxyCredential :one
 -- lint:cross-org -- Installation-wide dedicated proxy identity, rechecked before every internal port.
-SELECT * FROM app_access_proxy_credentials WHERE id=$1 AND version=$2 AND revoked_at IS NULL;
+SELECT * FROM app_access_proxy_credentials WHERE id=$1 AND version=$2 AND purpose='app_access' AND revoked_at IS NULL;
 
 -- name: LockAppAccessProxyCredential :one
 -- lint:cross-org -- Operator-local provisioning of installation-wide service credentials.
