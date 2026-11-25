@@ -14,7 +14,7 @@ export function SSHBootstrap({orgId,server,disabled,onSave}:{orgId:string;server
   const source=await bootstrapBundle(await response.text(),trust.data.public_key,orgId,server,trust.data.ca_fingerprint??"");
   const url=URL.createObjectURL(new Blob([source],{type:"text/x-python;charset=utf-8"}));const link=document.createElement("a");link.href=url;link.download=file;link.click();setTimeout(()=>URL.revokeObjectURL(url),1000);
  }catch(e){setError(e instanceof Error?e.message:"Could not create bootstrap bundle.")}finally{setBusy(false)}}
- return <details className="rounded border border-white/10 p-4 space-y-3"><summary className="cursor-pointer font-semibold">Quick SSH bootstrap</summary>
+ return <details className="rounded border border-white/10 p-4 space-y-3"><summary className="cursor-pointer font-semibold">Manual setup: download and run a setup script</summary>
  <p>Configure eligible Linux login users in one run. Public CA trust and this server identity are included. Root, system and non-login users are excluded. No Tunnex member receives access until an administrator grants it.</p>
  <Button disabled={disabled||busy} onClick={()=>void download()}>Download server bootstrap</Button>
  <ol className="list-decimal pl-5 space-y-2"><li>Review the downloaded bundle and copy it to this machine over your trusted management SSH connection.</li><li>Run on the target machine for all eligible existing login users:</li></ol>

@@ -196,8 +196,8 @@ it("server removal requires explicit confirmation and members cannot see the act
 });
 
 it("quick bootstrap is admin-only and registration remains disabled with pending host trust",async()=>{
- mount();await openServer();await screen.findByRole("button",{name:"Connect as fixture"});expect(screen.queryByText("Quick SSH bootstrap")).toBeNull();cleanup();
- state.admin=true;mount();await openServer();serverStep("Connection");expect(screen.getByText("Quick SSH bootstrap")).toBeTruthy();
+ mount();await openServer();await screen.findByRole("button",{name:"Connect as fixture"});expect(screen.queryByText("Manual setup: download and run a setup script")).toBeNull();cleanup();
+ state.admin=true;mount();await openServer();serverStep("Connection");expect(screen.getByText("Manual setup: download and run a setup script")).toBeTruthy();
  fireEvent.click(screen.getByRole("button",{name:"Back to servers"}));
  fireEvent.click(screen.getByRole("button",{name:"Register server"}));
  expect(await screen.findByText(/Host trust is pending bootstrap/)).toBeTruthy();
