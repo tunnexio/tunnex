@@ -21,6 +21,11 @@ public docs page (`tunnex-web …/local-sharing.md`, read-only).
 
 ### A.0 Blockers found — read first
 
+> **Status after the founder ruling (section D):** B1 and B2 are **resolved in
+> this branch** (signed image, managed upgrade). They take effect from the first
+> release cut from it. The final checklist is **A.3**; A.2 is kept as the audit
+> record of the pre-ruling state.
+
 These two make a *supported* Local Sharing installation impossible today. They are
 not fixable as a small, safe change in this PR (see C.4) and are founder decisions.
 
@@ -161,8 +166,9 @@ Roles: **SA** server administrator (installation), **OA** org owner/admin (`beam
 | 8 | CLI HTTP errors | P | 403/400 messages vague. | **Fixed** (403 names the next step). 400 kept: the server message is not passed through, so a specific cause cannot be named safely. |
 | 9 | Installation domain save (API) | SA | Sharing domain could equal or nest inside the App Access base (e.g. both `cp.tunnex.app`). Readiness could then pass against **App Access's** edge (its wildcard cert + 404 for unknown hosts) while shares were unreachable. Misleading, and the two features would share a hostname space. | **Fixed, both directions.** A Local Sharing save is refused against the saved App Access base (environment fallback). An App Access domain save is refused against the saved Local Sharing domain. Both messages are clear. |
 | 10 | `deploy/beam/compose.yml` | SA | Connector hard-wired to a second **443**, so two extra IPs were needed on a host that already serves 443. | **Fixed.** `TUNNEX_BEAM_CONNECTOR_PORT` (default 443). The verifier accepts the same IP when the ports differ. |
-| 11 | `upgrade.sh` | SA | B2 above: misleading App Access refusal, or an old proxy left talking to a new API. | **Partly fixed.** Clear early refusal naming Local Sharing, before any backup or mutation, with steps. Managed upgrade **deferred** (D2). |
-| 12 | Release images | SA | B1 above. | **Deferred** (D1): CI matrix, signing, descriptor and `releaseverify` change. Not a small, safe edit. |
+| 11 | `upgrade.sh` | SA | B2 above: misleading App Access refusal, or an old proxy left talking to a new API. | **Fixed (D.2).** Managed profile with one-command upgrade. A hand-written setup is refused with adopt steps, and each refusal has a readable dashboard reason. |
+| 12 | Release images | SA | B1 above. | **Fixed (D.1).** Signed `tunnex-beam-proxy` in CI and the descriptor, `-require-beam-proxy`, Helm `localSharing` by digest. |
+| 22 | Single public IP | SA | The browser listener needs its own public IPv4 because 443 belongs to Caddy or App Access. | **Designed, deferred to LS-EDGE-1** (D.3): shared SNI-passthrough edge with PROXY v2. Deferred because it needs PROXY acceptance in Caddy and `app-proxy` to keep client addresses (security). |
 | 13 | Proxy authority credential | — | `/internal/beam/*` accepts any App Access proxy credential, and the beam credential is accepted by App Access authority. They are one table with no purpose binding. A compromised App Access proxy could call Local Sharing authority (and vice versa). Both are operator-run on the same host. | **Deferred** (needs a schema column, a `backupctl --purpose` flag and a rollout for existing credentials). Recorded in C.3 / D3. |
 | 14 | `deploy/beam/README.md` | SA | Missing: App Access coexistence, the domain rule, the connector port, upgrade steps. | **Fixed.** Sections added. |
 | 15 | Public docs page (tunnex-web, read-only) | all | Calls the server page "Local Sharing setup". The console calls it "Local Sharing domain". It also omits blockers B1/B2. | **Deferred** (read-only repo). The console label stays; the docs owner should rename it to "Local Sharing domain". |
@@ -353,3 +359,56 @@ step.
 - **Independence:** no code path requires App Access for Local Sharing, or
   the reverse. The shared authority listener and restore volume are set
   identically by either overlay.
+
+---
+
+## A.3 Final operator checklist (from the first release cut from this branch)
+
+For a compose install. Shown in short in the console (Settings → Local Sharing
+domain → Setup checklist). The commands are in `deploy/beam/README.md`,
+"Install (managed layout)".
+
+1. **Domain:** pick a registrable domain of its own, e.g. `tunnex-share.dev`
+   (not `*.tunnex.app`, not the App Access base).
+2. **Address:** a public IPv4 that the VM can bind and that Caddy/App Access
+   don't use (until LS-EDGE-1). On GCP: reserve a static IP and attach it to
+   the VM (alias/secondary NIC or protocol forwarding).
+3. **DNS:** `*.tunnex-share.dev A <that IP>`. The connector reuses the console
+   name: `https://cp.tunnex.app:8447`.
+4. **Firewall:** TCP 443 → that IP from everyone; TCP 8447 → the VM from
+   publishers. Never 8445/9093.
+5. **Certificate:** a trusted wildcard `*.tunnex-share.dev` (DNS-01).
+6. **On the host** (README steps 1–6):
+   - copy the managed overlay from the API image and record its hash;
+   - pin the signed proxy digest with `releaseverify -require-beam-proxy`;
+   - issue `authority.token` and the connector certificate with a one-off
+     `backupctl`;
+   - install your wildcard certificate files;
+   - add the six `TUNNEX_BEAM_*` settings and the `beam` profile to `.env`;
+   - `docker compose -f tunnex.yml -f app-access.yml -f local-sharing.yml up -d`.
+7. **Console, server admin:** Settings → Local Sharing domain. Enter the domain
+   and connector URL, allow, save, then **Check DNS and TLS**. All 5 checks
+   must pass.
+8. **Console, org admin:**
+   - Settings → Local Sharing: publishers and reviewers, then confirm;
+   - Settings → Features → Local Sharing: turn on.
+9. **Publisher:** Local Sharing → My shares → Share a local app → run the
+   command.
+
+**What the demo upgrade looks like afterwards:** the same single
+`upgrade.sh --apply` (or the dashboard button). In order, it:
+1. verifies the release, including the signed `beam-proxy` and `app-proxy`
+   digests;
+2. checks the App Access and Local Sharing layouts against `.env`;
+3. backs up;
+4. stops `app-proxy` and `beam-proxy`;
+5. migrates the API;
+6. verifies App Access authority;
+7. starts `app-proxy`;
+8. health-checks the API;
+9. starts `beam-proxy` and waits for its liveness check.
+
+Live shares end at the restart, so publishers re-run their command. Nothing
+else changes. Any drift refuses before step 3 with a named setting. Because
+the demo is an adopted App Access layout, run one App Access upgrade first so
+it uses the managed `app-access.yml`, then add Local Sharing.
