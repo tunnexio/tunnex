@@ -108,7 +108,50 @@ Then enable each organization's Beam policy. Delegate explicit publisher groups 
 users/groups, lifetime and quota. A random hostname is a locator; access still
 requires a permitted current browser identity and grant.
 
-## Install (managed layout, LS-UX-1)
+## Enable in one step (LS-UX-1 E.2)
+
+You need a sharing domain of its own, a trusted wildcard certificate for it,
+and DNS `*.<sharing domain>` pointing to this server's public address. Then,
+in the installation directory:
+
+```sh
+./tunnex-local-sharing enable --domain share-example.dev --cert fullchain.pem --key privkey.pem
+./tunnex-local-sharing enable --domain share-example.dev --cert fullchain.pem --key privkey.pem --apply
+```
+
+The first command only shows the plan. The second one:
+- pins the signed proxy from the installed release;
+- installs `local-sharing.yml`;
+- issues the purpose-bound credential and the connector certificate;
+- installs your certificate;
+- moves the console and App Access behind the single-IP edge on the same
+  public 443;
+- starts everything.
+
+It then prints what is left: the publishers' firewall port (default 8447) and
+the console check. `./tunnex-local-sharing status` shows the state.
+`./tunnex-local-sharing disable --apply` gives 443 back and turns Local
+Sharing off. Use `--layout dedicated --public-ip ADDRESS` to give shares their
+own address instead. The command is installed by every upgrade. On an older
+host, copy it once with `docker compose cp
+api:/usr/share/tunnex/host/beam/tunnex-local-sharing.py ./tunnex-local-sharing`.
+
+**How the single IP works.** `beam-proxy` owns public 443 and reads only the
+TLS server name. Share hostnames are decrypted by `beam-proxy` itself.
+Everything else (console, App Access, ACME) is passed through undecrypted to
+Caddy or `app-proxy`, with a PROXY v2 header carrying the real client address:
+- Caddy trusts that header only from the edge's fixed address on the internal
+  `edge` network.
+- `app-proxy` trusts it only with the private edge token.
+
+If the default subnet `172.31.254.0/29` collides with a local network, set
+`TUNNEX_EDGE_SUBNET`, `TUNNEX_EDGE_PROXY_ADDRESS` and
+`TUNNEX_EDGE_CADDY_ADDRESS` in `.env` before enabling.
+
+## Manual install (reference)
+
+The command above performs these steps.
+
 
 Run in the installation directory (for example `/opt/tunnex`). `F` is your
 current file list: `-f tunnex.yml`, plus `-f app-access.yml` when App Access is

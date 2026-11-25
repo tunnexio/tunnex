@@ -532,3 +532,36 @@ signed API image's host files, installed by the upgrade, and also runnable from
   `enable` re-issues a `local_sharing` credential. This is the safe direction:
   no credential silently gains authority, and App Access keeps working through
   the upgrade with no action.
+
+---
+
+## A.4 Final demo checklist (supersedes A.3; from the first release cut from this branch)
+
+1. **Sharing domain** of its own registrable name, e.g. `tunnex-share.dev`.
+2. **Wildcard certificate** for `*.tunnex-share.dev` (full chain + key).
+3. **DNS:** `*.tunnex-share.dev` → the demo VM's existing public address. No
+   second IP is needed.
+4. **One command** in the install directory:
+   `./tunnex-local-sharing enable --domain tunnex-share.dev --cert fullchain.pem --key privkey.pem`
+   to review the plan, then run it again with `--apply`. Open TCP 8447 for
+   publishers when it says so.
+5. **Console:** Settings → Local Sharing domain (the printed values) → Check
+   DNS and TLS, then the org policy and the Features switch.
+
+**Demo upgrade afterwards:** the same `upgrade.sh --apply` or dashboard
+button.
+1. It verifies the signed `app-proxy` and `beam-proxy`.
+2. It admits both overlays and the edge settings against `.env`, then backs up.
+3. It stops `app-proxy` and `beam-proxy`. Public 443 is briefly down, together
+   with the control-plane restart that already takes the console down.
+4. It migrates the API and checks App Access authority.
+5. It starts `app-proxy`, health-checks the API, then starts `beam-proxy`.
+   That restores 443 for the console, App Access and shares.
+
+If `beam-proxy` fails to start, the message gives
+`./tunnex-local-sharing disable --apply`, which hands 443 back to the console
+immediately.
+
+**Precondition (unchanged):** the demo's App Access must be in the managed
+layout first (AA-EN-1 E12). The command detects App Access only from the
+managed `app-access.yml` plus its hash in `.env`.
