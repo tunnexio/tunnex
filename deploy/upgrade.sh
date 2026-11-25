@@ -569,10 +569,18 @@ finish_upgrade() {
     compose start bifrost >/dev/null 2>&1 || true
   fi
   if [ "$_status" -ne 0 ] && [ "$LS_MUTATION_STARTED" = true ]; then
-    # Never serve shares from an unverified stack (LS-UX-1 D.2).
     LS_PROFILE_ON=true
-    compose stop beam-proxy >/dev/null 2>&1 || true
-    echo 'Local Sharing: the proxy was left stopped. Fix the reported cause and run this upgrade again; shares can be published again once it succeeds.' >&2
+    if [ -n "$(dotenv_value TUNNEX_BEAM_EDGE_DEFAULT)" ]; then
+      # LS-UX-1 E.1: the proxy also carries public 443 for the console. Keep it
+      # serving so the console stays reachable; shares fail closed without
+      # current authority.
+      compose up -d --no-deps beam-proxy >/dev/null 2>&1 || true
+      echo "Local Sharing: the proxy was started again so the console keeps public 443. Fix the reported cause and run this upgrade again. If 443 is not reachable, run: $DIR/tunnex-local-sharing disable --apply" >&2
+    else
+      # Never serve shares from an unverified stack (LS-UX-1 D.2).
+      compose stop beam-proxy >/dev/null 2>&1 || true
+      echo 'Local Sharing: the proxy was left stopped. Fix the reported cause and run this upgrade again; shares can be published again once it succeeds.' >&2
+    fi
   fi
   if [ "$_status" -ne 0 ] && [ "$AA_MUTATION_STARTED" = true ]; then
     # Never leave the public App Access listener serving on an unverified stack.

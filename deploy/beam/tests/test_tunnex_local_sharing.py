@@ -24,6 +24,14 @@ d = os.environ["FAKE_DIR"]
 args = sys.argv[1:]
 with open(os.path.join(d, "calls"), "a") as log:
     log.write(os.environ.get("COMPOSE_PROFILES", "") + "|" + " ".join(args) + "\n")
+if args[0] == "ps":
+    print("\n".join("c%d" % i for i, _ in enumerate(open(os.path.join(d, "participants")).read().split())))
+    sys.exit(0)
+if args[0] == "inspect":
+    rows = open(os.path.join(d, "participants")).read().split()
+    service, files = rows[int(args[-1][1:])].split("|")
+    print("%s|%s|False" % (service, files))
+    sys.exit(0)
 assert args[0] == "compose", args
 cut = next(i for i, a in enumerate(args) if a in ("exec", "cp", "run", "up", "rm"))
 files = [args[i + 1] for i, a in enumerate(args[:cut]) if a == "-f"]
@@ -49,6 +57,8 @@ elif rest[0] == "run" and "beam-proxy-certificate" in rest:
             f.write("SHHH-" + name)
 elif rest[0] == "run" and "app-proxy-revoke" in rest:
     print("{}")
+elif rest[0] == "up" and os.path.exists(os.path.join(d, "fail-up")) and any(f.endswith("local-sharing.yml") for f in files):
+    sys.exit("proxy did not become healthy")
 elif rest[0] in ("up", "rm"):
     pass
 else:
@@ -83,15 +93,20 @@ class LocalSharingCommand(unittest.TestCase):
         (bin_dir / "docker").write_text(FAKE_DOCKER)
         os.chmod(bin_dir / "docker", 0o755)
         self.fake = self.tmp / "fake"
-        self.fake.mkdir()
+        self.participants([("api", ["tunnex.yml"])])
         self.environ = dict(os.environ, PATH="%s:%s" % (bin_dir, os.environ["PATH"]), FAKE_DIR=str(self.fake), FAKE_PIN=PIN,
                             FAKE_OVERLAY=str(ROOT / "deploy/beam/compose.yml"))
+
+    def participants(self, rows):
+        (self.tmp / "fake").mkdir(exist_ok=True)
+        (self.tmp / "fake" / "participants").write_text("\n".join("%s|%s" % (svc, ",".join(str(self.install / f) for f in files)) for svc, files in rows) + "\n")
 
     def run_tool(self, *args, extra_env=None):
         env = dict(self.environ, **(extra_env or {}))
         return subprocess.run([sys.executable, str(TOOL), "--directory", str(self.install), *args], capture_output=True, text=True, env=env)
 
     def enable(self, *more, domain="share-example.dev"):
+        more = more + (("--skip-owner-check",) if "--apply" in more else ())
         return self.run_tool("enable", "--domain", domain, "--cert", str(self.pki / "cert.pem"), "--key", str(self.pki / "key.pem"), "--ca-file", str(self.pki / "ca.pem"), *more)
 
     def calls(self):
@@ -107,7 +122,7 @@ class LocalSharingCommand(unittest.TestCase):
         self.assertIn("dry run: nothing was changed", result.stdout)
         self.assertEqual((self.install / ".env").read_text(), self.env)
         self.assertFalse((self.install / "local-sharing.yml").exists())
-        self.assertTrue(all(" exec " in c for c in self.calls()), self.calls())
+        self.assertTrue(all(" exec " in c for c in self.calls() if "compose" in c), self.calls())
 
     def test_enable_edge_then_idempotent_then_disable_restores(self):
         result = self.enable("--apply")
@@ -154,6 +169,7 @@ class LocalSharingCommand(unittest.TestCase):
             f.write("TUNNEX_APP_ACCESS_COMPOSE_SHA256=abc\nTUNNEX_APP_ACCESS_BASE_DOMAIN=cp.example.com\nTUNNEX_APP_PROXY_SECRETS_DIR=%s\n"
                     "TUNNEX_APP_PROXY_BIND_IP=0.0.0.0\nTUNNEX_APP_PROXY_CONSOLE_UPSTREAM_URL=https://caddy:443\nTUNNEX_EDGE_HTTPS_PUBLISH=127.0.0.1:8446\n" % aa_secrets)
         original = self.env_values()
+        self.participants([("api", ["tunnex.yml", "app-access.yml"]), ("app-proxy", ["tunnex.yml", "app-access.yml"])])
         result = self.enable("--apply")
         self.assertEqual(result.returncode, 0, result.stderr)
         env = self.env_values()
@@ -162,20 +178,21 @@ class LocalSharingCommand(unittest.TestCase):
         self.assertEqual(env["TUNNEX_APP_PROXY_EDGE_TOKEN_FILE"], "/etc/tunnex/app-proxy/edge.token")
         self.assertEqual((aa_secrets / "edge.token").read_bytes(), (self.install / "local-sharing/secrets/edge.token").read_bytes())
         self.assertTrue(all("app-access.yml" in c for c in self.calls() if " up " in c))
+        self.assertEqual(env["TUNNEX_BEAM_EDGE_DEFAULT_TOKEN"], "true")
         off = self.run_tool("disable", "--apply")
         self.assertEqual(off.returncode, 0, off.stderr)
         self.assertEqual(self.env_values(), original)
 
     def test_refusals_change_nothing(self):
         cases = [
-            (["enable", "--domain", "share.example.com"], "different registrable domain"),
-            (["enable", "--domain", "x.cp.example.com"], "different registrable domain"),
+            (["enable", "--domain", "x.cp.example.com"], "not under or above the console"),
             (["enable", "--domain", "other.dev"], "not trusted"),
         ]
         for args, expected in cases:
             result = self.run_tool(*args, "--cert", str(self.pki / "cert.pem"), "--key", str(self.pki / "key.pem"), "--apply") if "other.dev" in args else \
                 self.run_tool(*args, "--cert", str(self.pki / "cert.pem"), "--key", str(self.pki / "key.pem"), "--ca-file", str(self.pki / "ca.pem"), "--apply")
             self.assertNotEqual(result.returncode, 0, args)
+            self.assertIn("Nothing else was changed", result.stderr)
             self.assertIn(expected, result.stderr)
         bad_port = self.enable("--connector-port", "443", "--apply")
         self.assertIn("--connector-port", bad_port.stderr)
@@ -188,6 +205,34 @@ class LocalSharingCommand(unittest.TestCase):
         self.assertIn("--layout dedicated", terminated.stderr)
         self.assertEqual((self.install / ".env").read_text(), self.env.replace("TUNNEX_TLS_MODE=direct", "TUNNEX_TLS_MODE=terminated"))
         self.assertFalse((self.install / "local-sharing.yml").exists())
+
+    def test_unmanaged_app_access_and_drifted_stack_refused(self):
+        (self.install / "app-access.yml").unlink(missing_ok=True)
+        self.participants([("api", ["tunnex.yml", "app-access-demo.yml"]), ("app-proxy", ["tunnex.yml", "app-access-demo.yml"])])
+        result = self.enable("--apply")
+        self.assertIn("not in the managed layout", result.stderr)
+        self.participants([("api", ["tunnex.yml", "extra.yml"])])
+        result = self.enable("--apply")
+        self.assertIn("converge it with upgrade.sh", result.stderr)
+        self.assertEqual((self.install / ".env").read_text(), self.env)
+        self.assertFalse((self.install / "local-sharing.yml").exists())
+        self.assertFalse(any(" up " in c or "app-proxy-issue" in c for c in self.calls()))
+
+    def test_failed_start_restores_previous_setup(self):
+        (self.fake / "fail-up").write_text("1")
+        result = self.enable("--apply")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("the previous setup was restored", result.stderr)
+        self.assertEqual((self.install / ".env").read_text(), self.env)
+        self.assertFalse((self.install / "local-sharing.yml").exists())
+        ups = [c for c in self.calls() if " up " in c]
+        self.assertTrue(ups and "local-sharing.yml" not in ups[-1], ups)
+
+    def test_apply_requires_root(self):
+        if os.geteuid() == 0:
+            self.skipTest("running as root")
+        result = self.run_tool("enable", "--domain", "share-example.dev", "--cert", str(self.pki / "cert.pem"), "--key", str(self.pki / "key.pem"), "--ca-file", str(self.pki / "ca.pem"), "--apply")
+        self.assertIn("run with sudo", result.stderr)
 
     def test_status(self):
         result = self.run_tool("status")

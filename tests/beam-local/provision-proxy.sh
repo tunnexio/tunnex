@@ -5,7 +5,7 @@ umask 077
 mkdir -p .runtime/proxy
 sh docker-local.sh exec tunnex-beam-local-api-1 /bin/sh -ec 'mkdir -p /state/beam-local-proxy; chmod 700 /state/beam-local-proxy'
 if ! sh docker-local.sh exec tunnex-beam-local-api-1 test -f /state/beam-local-proxy/authority.token; then
-  sh docker-local.sh compose --env-file .runtime/env -f compose.yaml -p tunnex-beam-local run --rm -T operator /binaries/backupctl app-proxy-issue --name beam-local-proxy --output /state/beam-local-proxy/authority.token > .runtime/proxy/provision.json
+  sh docker-local.sh compose --env-file .runtime/env -f compose.yaml -p tunnex-beam-local run --rm -T operator /binaries/backupctl app-proxy-issue --purpose local-sharing --name beam-local-proxy --output /state/beam-local-proxy/authority.token > .runtime/proxy/provision.json
 fi
 if ! sh docker-local.sh exec tunnex-beam-local-api-1 test -f /state/beam-local-proxy/server/gateway-cert.pem; then
   sh docker-local.sh compose --env-file .runtime/env -f compose.yaml -p tunnex-beam-local run --rm -T operator /binaries/backupctl beam-proxy-certificate --output-dir /state/beam-local-proxy/server > .runtime/proxy/certificate.json

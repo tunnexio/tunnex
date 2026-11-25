@@ -9,10 +9,10 @@ import (
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"fmt"
 	"io"
 	"math/big"
 	"net"
-	"strings"
 	"testing"
 	"time"
 
@@ -37,6 +37,23 @@ type upstream struct {
 	got  chan string
 }
 
+// readHeader parses a PROXY v2 header and reports whether it carried the token.
+func readHeader(r *bufio.Reader) (string, bool, error) {
+	fixed := make([]byte, 16)
+	if _, err := io.ReadFull(r, fixed); err != nil || !bytes.Equal(fixed[:12], proxyproto.Signature) {
+		return "", false, io.ErrUnexpectedEOF
+	}
+	body := make([]byte, int(fixed[14])<<8|int(fixed[15]))
+	if _, err := io.ReadFull(r, body); err != nil {
+		return "", false, err
+	}
+	size := 4
+	if fixed[13] == 0x21 {
+		size = 16
+	}
+	return net.IP(body[:size]).String(), bytes.Contains(body[2*size+4:], token), nil
+}
+
 // upstream records the PROXY source and the first TLS record type it receives.
 func newUpstream(t *testing.T) upstream {
 	t.Helper()
@@ -55,14 +72,13 @@ func newUpstream(t *testing.T) upstream {
 			go func() {
 				defer c.Close()
 				r := bufio.NewReader(c)
-				src, err := proxyproto.Read(r, token)
+				host, withToken, err := readHeader(r)
 				if err != nil {
 					u.got <- "bad header"
 					return
 				}
 				first, _ := r.ReadByte()
-				host, _, _ := net.SplitHostPort(src.String())
-				u.got <- host + "|" + string(rune('0'+first%10))
+				u.got <- fmt.Sprintf("%s|%d|%v", host, first, withToken)
 			}()
 		}
 	}()
@@ -95,7 +111,7 @@ func edge(t *testing.T, cfg Config) string {
 
 func TestEdgeTerminatesOwnAndSplicesOthersWithClientAddress(t *testing.T) {
 	console, apps := newUpstream(t), newUpstream(t)
-	address := edge(t, Config{Own: Subdomain("share.test"), Routes: []Route{{Match: Under("apps.test"), Target: apps.addr}}, Default: console.addr, Token: token})
+	address := edge(t, Config{Own: Subdomain("share.test"), Routes: []Route{{Match: Under("apps.test"), Target: apps.addr, Token: true}}, Default: console.addr, Token: token})
 	c, err := tls.Dial("tcp", address, &tls.Config{ServerName: "p-1.share.test", InsecureSkipVerify: true})
 	if err != nil {
 		t.Fatal("owned SNI not terminated by the owner", err)
@@ -106,9 +122,10 @@ func TestEdgeTerminatesOwnAndSplicesOthersWithClientAddress(t *testing.T) {
 		t.Fatal("owner did not serve", line)
 	}
 	for _, tc := range []struct {
-		sni  string
-		want upstream
-	}{{"cp.example.test", console}, {"demo.apps.test", apps}, {"", console}, {"a.b.share.test", console}} {
+		sni   string
+		want  upstream
+		token bool
+	}{{"cp.example.test", console, false}, {"demo.apps.test", apps, true}, {"", console, false}, {"a.b.share.test", console, false}} {
 		raw, err := net.Dial("tcp", address)
 		if err != nil {
 			t.Fatal(err)
@@ -116,8 +133,9 @@ func TestEdgeTerminatesOwnAndSplicesOthersWithClientAddress(t *testing.T) {
 		go func() { _ = tls.Client(raw, &tls.Config{ServerName: tc.sni, InsecureSkipVerify: true}).Handshake() }()
 		select {
 		case got := <-tc.want.got:
-			// 22 = TLS handshake record: the ClientHello reached the target unchanged.
-			if !strings.HasPrefix(got, "127.0.0.1|") || got != "127.0.0.1|"+string(rune('0'+22%10)) {
+			// 22 = TLS handshake record: the ClientHello reached the target
+			// unchanged; the token goes only to the route that verifies it.
+			if got != fmt.Sprintf("127.0.0.1|22|%v", tc.token) {
 				t.Fatal(tc.sni, "spliced stream wrong", got)
 			}
 		case <-time.After(3 * time.Second):
@@ -167,5 +185,49 @@ func TestNewRequiresTokenAndDefault(t *testing.T) {
 	defer inner.Close()
 	if _, err := New(inner, Config{Own: Subdomain("x.test"), Default: "127.0.0.1:1"}); err == nil {
 		t.Fatal("edge without token")
+	}
+}
+
+// A flood of silent connections from one address must not stall another client.
+func TestSilentFloodFromOneSourceDoesNotStallOthers(t *testing.T) {
+	console := newUpstream(t)
+	inner, err := net.Listen("tcp", "[::]:0")
+	if err != nil {
+		t.Skip("dual-stack listener unavailable")
+	}
+	l, err := New(inner, Config{Own: Subdomain("share.test"), Default: console.addr, Token: token, Timeout: 3 * time.Second})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer l.Close()
+	port := inner.Addr().(*net.TCPAddr).Port
+	var flood []net.Conn
+	for i := 0; i < 200; i++ {
+		c, err := net.Dial("tcp", fmt.Sprintf("127.0.0.1:%d", port))
+		if err != nil {
+			t.Fatal(err)
+		}
+		flood = append(flood, c)
+	}
+	defer func() {
+		for _, c := range flood {
+			c.Close()
+		}
+	}()
+	raw, err := net.Dial("tcp", fmt.Sprintf("[::1]:%d", port))
+	if err != nil {
+		t.Skip("IPv6 loopback unavailable")
+	}
+	defer raw.Close()
+	go func() {
+		_ = tls.Client(raw, &tls.Config{ServerName: "cp.example.test", InsecureSkipVerify: true}).Handshake()
+	}()
+	select {
+	case got := <-console.got:
+		if got != "::1|22|false" {
+			t.Fatal("second client spliced wrongly", got)
+		}
+	case <-time.After(2 * time.Second):
+		t.Fatal("a silent flood from one address stalled another client")
 	}
 }

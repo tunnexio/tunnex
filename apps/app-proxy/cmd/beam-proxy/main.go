@@ -222,12 +222,14 @@ func edgeListener(listener net.Listener, base, fallback string) (net.Listener, e
 	if err != nil {
 		return nil, err
 	}
-	cfg := sniedge.Config{Own: sniedge.Subdomain(base), Default: fallback, Token: token, Timeout: 5 * time.Second, MaxSplices: 1024}
+	// The edge token goes only to app-proxy, which verifies it; Caddy trusts the
+	// edge by its fixed address and never receives the secret.
+	cfg := sniedge.Config{Own: sniedge.Subdomain(base), Default: fallback, DefaultToken: os.Getenv("TUNNEX_BEAM_PROXY_EDGE_DEFAULT_TOKEN") == "true", Token: token, Timeout: 5 * time.Second, MaxSplices: 1024}
 	if domain, target := os.Getenv("TUNNEX_BEAM_PROXY_EDGE_APP_ACCESS_DOMAIN"), os.Getenv("TUNNEX_BEAM_PROXY_EDGE_APP_ACCESS_TARGET"); domain != "" || target != "" {
 		if domain == "" || target == "" {
 			return nil, errors.New("App Access edge route needs a domain and a target")
 		}
-		cfg.Routes = []sniedge.Route{{Match: sniedge.Under(domain), Target: target}}
+		cfg.Routes = []sniedge.Route{{Match: sniedge.Under(domain), Target: target, Token: true}}
 	}
 	for _, target := range append([]string{fallback}, os.Getenv("TUNNEX_BEAM_PROXY_EDGE_APP_ACCESS_TARGET")) {
 		if target == "" {
