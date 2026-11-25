@@ -8106,6 +8106,15 @@ export interface components {
             recording_max_session_bytes: number;
             recording_max_org_bytes: number;
             mfa_freshness_seconds: number;
+            /** @description The caller's own current access: one row per server account with the latest expiry among the caller's current direct or group grants. Never includes other people or who granted it. */
+            my_access?: components["schemas"]["ServerAccessMyAccess"][];
+        };
+        ServerAccessMyAccess: {
+            /** Format: uuid */
+            server_id: string;
+            account: string;
+            /** Format: date-time */
+            expires_at: string;
         };
         ServerAccessTrust: {
             /** @description SHA256 fingerprint of the installation public SSH CA */

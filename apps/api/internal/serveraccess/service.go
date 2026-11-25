@@ -502,6 +502,9 @@ func (s *Service) Workspace(ctx context.Context, org uuid.UUID, p *authctx.Princ
 		return out, e
 	}
 	rows.Close()
+	if out.MyAccess, e = s.myAccess(ctx, org, p.UserID); e != nil {
+		return out, e
+	}
 	if out.CanGrant {
 		grants, e := s.pool.Query(ctx, `SELECT `+grantColumns+` FROM server_access_grants WHERE org_id=$1 ORDER BY created_at DESC LIMIT 100`, org)
 		if e != nil {
@@ -663,4 +666,25 @@ func developerEnabled(v api.ServerAccessServer) bool {
 }
 func developerInput(v api.ServerAccessServerInput) bool {
 	return v.DeveloperAccessEnabled != nil && *v.DeveloperAccessEnabled
+}
+
+// myAccessSQL is the caller's own current access only (SA-UX-2 S8): direct grants to the caller or grants to a group
+// the caller belongs to, on servers that still exist. It never returns other subjects or who granted the access.
+const myAccessSQL = `SELECT g.server_id,g.account,max(g.expires_at) FROM server_access_grants g JOIN server_access_servers s ON s.org_id=g.org_id AND s.id=g.server_id AND s.removed_at IS NULL WHERE g.org_id=$1 AND g.enabled AND g.starts_at<=now() AND g.expires_at>now() AND (g.user_id=$2 OR EXISTS(SELECT 1 FROM group_members gm WHERE gm.org_id=g.org_id AND gm.group_id=g.group_id AND gm.user_id=$2)) GROUP BY g.server_id,g.account ORDER BY g.server_id,g.account LIMIT 1600`
+
+func (s *Service) myAccess(ctx context.Context, org, user uuid.UUID) (*[]api.ServerAccessMyAccess, error) {
+	out := []api.ServerAccessMyAccess{}
+	rows, e := s.pool.Query(ctx, myAccessSQL, org, user)
+	if e != nil {
+		return nil, e
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var v api.ServerAccessMyAccess
+		if e = rows.Scan(&v.ServerId, &v.Account, &v.ExpiresAt); e != nil {
+			return nil, e
+		}
+		out = append(out, v)
+	}
+	return &out, rows.Err()
 }
