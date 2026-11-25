@@ -686,7 +686,7 @@ func main() {
 		logger.Error("terminal_boot_failed")
 		os.Exit(1)
 	}
-	beamSvc := beam.New(pool, beam.Config{BaseDomain: cfg.BeamBaseDomain, ProxyURL: cfg.BeamProxyURL, PortalURL: cfg.AppBaseURL, DomainReady: cfg.BeamDomainReady, RestoreMarker: cfg.AppAccessRestoreMarker, DevelopmentAllowLoopback: beamDevelopmentLoopback, DevelopmentPublicCA: beamDevelopmentCA}, agentCA, sessions)
+	beamSvc := beam.New(pool, beam.Config{BaseDomain: cfg.BeamBaseDomain, ProxyURL: cfg.BeamProxyURL, AppAccessBaseDomain: cfg.AppAccessBaseDomain, PortalURL: cfg.AppBaseURL, DomainReady: cfg.BeamDomainReady, RestoreMarker: cfg.AppAccessRestoreMarker, DevelopmentAllowLoopback: beamDevelopmentLoopback, DevelopmentPublicCA: beamDevelopmentCA}, agentCA, sessions)
 	if beamSvc.ReadinessConfigurationError() != nil {
 		logger.Error("beam_probe_trust_invalid")
 		os.Exit(1)

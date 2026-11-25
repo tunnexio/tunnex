@@ -29,9 +29,12 @@ import (
 
 type Config struct {
 	BaseDomain, ProxyURL, PortalURL, RestoreMarker string
-	DomainReady                                    bool
-	DevelopmentAllowLoopback                       bool
-	DevelopmentPublicCA                            []byte
+	// AppAccessBaseDomain is the environment App Access base, used only when
+	// App Access domain settings were never saved. Empty when not configured.
+	AppAccessBaseDomain      string
+	DomainReady              bool
+	DevelopmentAllowLoopback bool
+	DevelopmentPublicCA      []byte
 }
 type Signer interface {
 	SignCSR([]byte, string) (agentca.Issued, error)
