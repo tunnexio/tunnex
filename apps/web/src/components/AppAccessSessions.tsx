@@ -5,11 +5,15 @@ import { api, apiErrorMessage } from "../lib/api";
 import AppAccessEmptyState from "./AppAccessEmptyState";
 import AppAccessPagination, { appAccessPageSize } from "./AppAccessPagination";
 import { Button, Card, DataTable, ErrorText, Loading, Modal, RefreshButton } from "./ui";
+import { personLabel } from "../lib/personLabel";
 
 type Sessions = components["schemas"]["AppAccessApplicationSessions"];
 type Session = components["schemas"]["AppAccessApplicationSession"];
 
 export default function AppAccessSessions({ orgId, appId }: { orgId: string; appId: string }) {
+  // SA-UX-2 audit A4: name people when the viewer may list members; otherwise keep the short id.
+  const [members, setMembers] = useState<{ user_id: string; name?: string; email?: string }[]>([]);
+  useEffect(() => { let live = true; void api.GET("/api/v1/organizations/{orgId}/members", { params: { path: { orgId } } }).then(r => { if (live && r.data) setMembers(r.data); }).catch(() => {}); return () => { live = false; }; }, [orgId]);
   const [sessions, setSessions] = useState<Sessions | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -42,7 +46,7 @@ export default function AppAccessSessions({ orgId, appId }: { orgId: string; app
   }
   return <Card className="space-y-4"><div className="app-access-panel-header"><div><h3 className="text-lg font-semibold">Application sessions</h3><p className="text-sm text-ink-secondary">Withdraw one user's session without changing the application's grants. Already delivered content cannot be removed.</p></div><RefreshButton label="Refresh application sessions" disabled={busy} onClick={() => setRefresh(value => value + 1)} /></div><ErrorText>{error}</ErrorText>{notice && <p role="status" className="app-access-notice">{notice}</p>}{!sessions && !error ? <Loading /> : sessions && <>{!sessions.items.length ? <AppAccessEmptyState title={page > 1 ? "No more sessions" : "No current sessions"} description={page > 1 ? "Return to the previous page to review earlier sessions." : "No current sessions in this view."} icon="monitor" /> : <DataTable caption="Application sessions" rows={sessions.items} rowKey={session => session.id} failed={false} filterable={false} pageSize={0} empty={null} columns={[
     { key: "session", header: "Session", cell: session => <span className="font-mono" title={session.id}>{session.id.slice(0, 8)}</span> },
-    { key: "user", header: "User", cell: session => <span title={session.user_id}>{session.user_id.slice(0, 8)}</span> },
+    { key: "user", header: "User", cell: session => <span title={session.user_id}>{personLabel(members.find(m => m.user_id === session.user_id), `Member ${session.user_id.slice(0, 8)}`)}</span> },
     { key: "started", header: "Started", cell: session => <time dateTime={session.created_at}>{new Date(session.created_at).toLocaleString()}</time> },
     { key: "expires", header: "Expires", cell: session => <time dateTime={session.expires_at}>{new Date(session.expires_at).toLocaleString()}</time> },
     { key: "actions", header: "Actions", cell: session => <div className="flex flex-wrap items-center gap-3"><Button variant="ghost" size="sm" disabled={busy} onClick={() => setSelected(session)}>Revoke {session.id.slice(0, 8)}</Button><Link className="text-brand" to={`/access-events?source=applications&app_id=${encodeURIComponent(appId)}&session_id=${encodeURIComponent(session.id)}`}>Session events</Link></div> },

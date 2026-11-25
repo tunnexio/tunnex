@@ -28,7 +28,7 @@ it("does not claim withdrawal or automatically retry an uncertain mutation", asy
   await screen.findByText("Withdrawal unconfirmed");
   expect(screen.queryByText(/New requests for this session are denied/)).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: "Refresh application sessions" }));
-  await waitFor(() => expect(api.GET).toHaveBeenCalledTimes(2));expect(api.DELETE).toHaveBeenCalledTimes(1);
+  await waitFor(() => expect(vi.mocked(api.GET).mock.calls.filter(call => !String(call[0]).endsWith("/members"))).toHaveLength(2));expect(api.DELETE).toHaveBeenCalledTimes(1);
 });
 it("keeps failed reads distinct from no current sessions", async () => {
   f.failed = true; show();await screen.findByText("Sessions unavailable");
@@ -38,7 +38,7 @@ it("keeps failed reads distinct from no current sessions", async () => {
 it("shows a short session identity and semantic timing alongside the scoped user", async () => {
   const view = show();
   expect(await screen.findByText("22222222")).toHaveProperty("title", session.id);
-  expect(screen.getByText("33333333")).toHaveProperty("title", session.user_id);
+  expect(screen.getByText("Member 33333333")).toHaveProperty("title", session.user_id);
   expect([...view.container.querySelectorAll("time")].map(item => item.dateTime)).toEqual([session.created_at, session.expires_at]);
   expect(screen.getByText(/without changing the application's grants/)).toBeTruthy();
 });

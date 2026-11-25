@@ -78,7 +78,7 @@ export function AppAccessDomainsSettings({ canEdit, onSaved, onSavingChange }: {
   const validPreview = previewBase.length <= 248 && previewBase.split(".").length > 1 && previewBase.split(".").every(label => /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/.test(label)) && /[a-z]/.test(previewBase.split(".").at(-1) ?? "");
   return <div className="aa-domain-settings">
     <div className="aa-domain-heading"><p>Shared by every organization on this server.</p><span>Source: {saved.source === "database" ? "Saved settings" : "Server environment"}</span></div>
-    {!canEdit && <p className="aa-domain-notice">Verify your email and change your initial password to edit server settings.</p>}
+    {!canEdit && <p className="aa-domain-notice">To edit server settings, verify your email and change your initial password (<a href="/change-password">change password</a>; the email link is in your inbox, and the banner at the top can resend it).</p>}
     <form onSubmit={event => void save(event)} className="aa-domain-form">
       <div className="aa-domain-fields">
         <div><Field label="Portal URL"><Input type="url" required maxLength={2048} placeholder="https://console.example.com" value={portal} disabled={disabled} aria-describedby={portalHint} onChange={event => { setPortal(event.target.value); setResult(null); }} /></Field><p id={portalHint}>Tunnex sign-in address. HTTPS, without a path.</p></div>

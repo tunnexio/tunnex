@@ -92,12 +92,12 @@ describe("Applications draft workspace", () => {
     expect(within(connection).getByText("https://private.example")).toBeTruthy();
     expect(within(connection).getByText("Office gateway")).toBeTruthy();
     expect(screen.queryByLabelText("Origin URL")).toBeNull();
-    expect(screen.queryByLabelText("Gateway connector")).toBeNull();
+    expect(screen.queryByLabelText("Gateway")).toBeNull();
     openAdvancedConnectionSettings();
     const advanced = screen.getByLabelText("Saved advanced connection settings");
     expect(within(advanced).getByText("10.20.0.0/16")).toBeTruthy();
     expect(within(advanced).getByText("Custom CA certificates")).toBeTruthy();
-    expect(within(advanced).getByText("a".repeat(64))).toBeTruthy();
+    expect(within(advanced).getByText("aaaaaaaaaaaaaaaa…")).toBeTruthy();
     expect(screen.queryByLabelText("Allowed private destination ranges")).toBeNull();
     expect(screen.queryByRole("button", { name: /Save draft|Save and continue/ })).toBeNull();
     expect(api.PATCH).not.toHaveBeenCalled();
@@ -109,7 +109,7 @@ describe("Applications draft workspace", () => {
     data.revoked = true; show("/app-access/applications/app-1");
     fireEvent.change(await screen.findByLabelText("Application name"), { target: { value: "Reassigned payroll" } });
     await openConnection();
-    const picker = screen.getByLabelText("Gateway connector");
+    const picker = screen.getByLabelText("Gateway");
     expect(picker).toHaveProperty("value", "gateway-1");
     expect(screen.getByRole("option", { name: /Office gateway.*Revoked/ })).toHaveProperty("disabled", true);
     expect(screen.queryByRole("option", { name: /Other revoked gateway/ })).toBeNull();
@@ -137,7 +137,7 @@ describe("Applications draft workspace", () => {
     fireEvent.change(screen.getByLabelText("Application subdomain"), { target: { value: "payroll" } });
     fireEvent.click(screen.getByRole("button", { name: "Continue to connection" }));
     fireEvent.change(screen.getByLabelText("Origin URL"), { target: { value: "https://private.example" } });
-    fireEvent.change(screen.getByLabelText("Gateway connector"), { target: { value: "gateway-1" } });
+    fireEvent.change(screen.getByLabelText("Gateway"), { target: { value: "gateway-1" } });
     fireEvent.click(screen.getByRole("button", { name: "Save draft" }));
     await waitFor(() => expect(screen.getByRole("button", { name: "2. Connection" }).getAttribute("aria-current")).toBe("step"));
     expect(await screen.findByRole("button", { name: "Continue to access" })).toBeTruthy();
@@ -191,7 +191,7 @@ describe("Applications draft workspace", () => {
     expect(api.PATCH).not.toHaveBeenCalled();
     expect(window.sessionStorage.getItem("tunnex.appAccessDraft:u1:org-1:app-1")).not.toContain("PRIVATE KEY");
   });
-  it("gateway enrollment never claims connector readiness and excludes agent nodes", async () => { show("/app-access/applications/new"); fireEvent.change(await screen.findByLabelText("Application name"), { target: { value: "Payroll" } }); fireEvent.change(screen.getByLabelText("Application subdomain"), { target: { value: "payroll" } }); fireEvent.click(screen.getByRole("button", { name: "Continue to connection" })); expect(await screen.findByRole("option", { name: /Office gateway.*Active gateway/ })).toBeTruthy(); expect(screen.queryByRole("option", { name: /AI agent/ })).toBeNull(); expect(screen.getByText(/Save the draft to inspect the connector/)).toBeTruthy(); await waitFor(() => expect(screen.getByLabelText("Origin URL")).toBeTruthy()); });
+  it("gateway enrollment never claims connector readiness and excludes agent nodes", async () => { show("/app-access/applications/new"); fireEvent.change(await screen.findByLabelText("Application name"), { target: { value: "Payroll" } }); fireEvent.change(screen.getByLabelText("Application subdomain"), { target: { value: "payroll" } }); fireEvent.click(screen.getByRole("button", { name: "Continue to connection" })); expect(await screen.findByRole("option", { name: /Office gateway.*Active gateway/ })).toBeTruthy(); expect(screen.queryByRole("option", { name: /AI agent/ })).toBeNull(); expect(screen.getByText(/run a connection check to confirm it can reach the app/)).toBeTruthy(); await waitFor(() => expect(screen.getByLabelText("Origin URL")).toBeTruthy()); });
 });
 
 it("filters publication on the server before pagination and labels active revision independently", async () => {
@@ -289,7 +289,7 @@ it("uses only the configured Applications suffix and sends a full hostname to th
   expect(screen.getByText("Application address: https://payroll.private.customer.test")).toBeTruthy();
   fireEvent.click(screen.getByRole("button", { name: "Continue to connection" }));
   fireEvent.change(screen.getByLabelText("Origin URL"), { target: { value: "https://private.example" } });
-  fireEvent.change(screen.getByLabelText("Gateway connector"), { target: { value: "gateway-1" } });
+  fireEvent.change(screen.getByLabelText("Gateway"), { target: { value: "gateway-1" } });
   fireEvent.click(screen.getByRole("button", { name: "Save draft" }));
   await waitFor(() => expect(data.patches).toHaveLength(1));
   expect(data.patches[0]).toMatchObject({ body: { public_hostname: "payroll.private.customer.test" } });

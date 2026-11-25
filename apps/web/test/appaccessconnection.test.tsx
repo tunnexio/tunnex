@@ -19,7 +19,7 @@ const props = { orgId: "org-1", appId: "app-1", gatewayId: "gateway-1", version:
 it("requires a fresh supported connector and saved input before requesting a check", async () => {
   fixture.status = "unsupported";
   const view = render(<AppAccessConnection {...props} />);
-  await screen.findByText(/does not support the required/);
+  await screen.findByText(/needs an update before it can serve applications/);
   expect(screen.getByRole("button", { name: "Check saved connection" })).toHaveProperty("disabled", true);
   fixture.status = "supported";
   fireEvent.click(screen.getByRole("button", { name: "Refresh gateway status" }));
@@ -54,7 +54,7 @@ it("shows redacted TLS failure after gateway check completion", async () => {
   const results = within(screen.getByLabelText("Origin check results"));
   const tls = results.getByText("TLS", { selector: "dt" });
   expect(tls.nextElementSibling).toHaveProperty("tagName", "DD");
-  expect(tls.nextElementSibling).toHaveProperty("textContent", "failed");
+  expect(tls.nextElementSibling).toHaveProperty("textContent", "Failed");
 });
 it("lets retained configuration inspect capability after entitlement loss without initiating checks", async () => {
   render(<AppAccessConnection {...props} canCheck={false} />);

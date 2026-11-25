@@ -8,6 +8,7 @@ import AppAccessPagination, { appAccessPageSize } from "../components/AppAccessP
 import { Icon } from "../components/Icon";
 import { Badge, Button, DataTable, ErrorText, Field, Input, Loading, Modal, Select } from "../components/ui";
 import { api, apiErrorCode, apiErrorMessage, loadOne, type Member, type UserGroup } from "../lib/api";
+import { grantStatusText, subjectKindText, words } from "../lib/appAccessLabels";
 
 type Grant = components["schemas"]["AppAccessGrant"];
 type Settings = components["schemas"]["AppAccessSettings"];
@@ -149,7 +150,7 @@ function AccessWorkspace({ orgId, appId, canViewAudit }: { orgId: string; appId?
       {error ? <div><ErrorText>{error}</ErrorText><Button onClick={() => setAttempt(value => value + 1)}>Retry grants</Button></div> : grants === null ? <Loading /> : grants.length === 0 ? emptyState : <div className="aa-access-table"><DataTable<Grant> variant="flat" failed={false} caption="Access grants" rows={grants} rowKey={grant => grant.id} rowLabel={grant => grant.subject_label} pageSize={0} filterable={false} empty={emptyState} columns={[
         { key: "subject", header: "Subject", cell: grant => <div className="aa-access-subject"><p>{grant.subject_label}</p><p>{grant.subject_kind === "user" ? "Person" : "Group"}</p></div> },
         ...(!appId ? [{ key: "application", header: "Application", cell: (grant: Grant) => <Link className="text-brand" to={"/app-access/applications/" + grant.app_id}>{grant.app_label}</Link> }] : []),
-        { key: "status", header: "Status", cell: grant => <Badge tone={grant.status === "scheduled" ? "warn" : "neutral"}>{grant.status.replace(/_/g, " ")}</Badge> },
+        { key: "status", header: "Status", cell: grant => <Badge tone={grant.status === "scheduled" ? "warn" : "neutral"}>{words(grantStatusText, grant.status)}</Badge> },
         { key: "validity", header: "Validity", cell: grant => <div className="aa-access-validity"><p>{grant.starts_at ? "From " + new Date(grant.starts_at).toLocaleString() : "Immediate"}</p><p>{grant.expires_at ? "Until " + new Date(grant.expires_at).toLocaleString() : "No expiry"}</p></div> },
         { key: "actions", header: "Actions", cell: grant => <AppAccessRowMenu label={"Grant actions for " + grant.subject_label} actions={rowActions(grant)} /> },
       ]} /></div>}
@@ -223,7 +224,7 @@ function EnableGrant({ orgId, grant, onClose, onSaved }: { orgId: string; grant:
   };
   const schedule = `${grant.starts_at ? "Starts " + new Date(grant.starts_at).toLocaleString() : "Starts immediately"} · ${grant.expires_at ? "Expires " + new Date(grant.expires_at).toLocaleString() : "No expiry"}`;
   return <Modal title="Enable application grant" onDismiss={() => { if (!busy) onClose(); }}>
-    <p>Enable the explicit {grant.subject_kind} grant for {grant.subject_label}?</p>
+    <p>Give {grant.subject_label} access again?</p>
     <p className="mt-3">Access applies again within the grant's saved schedule: {schedule}.</p>
     <ErrorText>{error}</ErrorText>
     <div className="mt-4 flex flex-wrap gap-3"><Button disabled={busy} onClick={() => void enable()}>{busy ? "Enabling grant…" : "Confirm grant enable"}</Button><Button variant="ghost" disabled={busy} onClick={onClose}>Keep disabled</Button></div>
@@ -253,9 +254,9 @@ function RevokeGrant({ orgId, grant, disabling, onClose, onSaved }: { orgId: str
     } catch { setError("Could not reach the API. Refresh grants to check whether removal completed before retrying."); } finally { setBusy(false); }
   };
   return <Modal title={disabling ? "Disable application grant" : "Revoke application grant"} danger onDismiss={() => { if (!busy) onClose(); }}>
-    <p>{disabling ? "Disable" : "Revoke"} the explicit {grant.subject_kind} grant for {grant.subject_label}?</p>
-    <p className="mt-3">Other valid user or group grants can still match this user. This changes grant configuration; it does not confirm termination of browser sessions or erase content already delivered.</p>
-    {impact ? <div role="status" className="mt-3"><p>Users currently matching this grant: {impact.matching_user_count}</p><p>Users losing their last current grant match: {impact.users_losing_grant_match_count}</p><p>Browser session impact is unavailable in this grant preview.</p><p className="text-sm">Evaluated {new Date(impact.evaluated_at).toLocaleString()}</p></div> : !error && <Loading />}
+    <p>{disabling ? "Pause" : "Remove"} access for {grant.subject_label} ({words(subjectKindText, grant.subject_kind).toLowerCase()})?</p>
+    <p className="mt-3">They cannot open the app again through this grant. Another grant (for example through a group) may still give them access. Browser sessions already open continue until they expire; end them under Sessions if needed. Content already shown cannot be taken back.</p>
+    {impact ? <div role="status" className="mt-3"><p>Users currently matching this grant: {impact.matching_user_count}</p><p>Users losing their last current grant match: {impact.users_losing_grant_match_count}</p><p className="text-sm">Evaluated {new Date(impact.evaluated_at).toLocaleString()}</p></div> : !error && <Loading />}
     <ErrorText>{error}</ErrorText>{error && !impact && <Button variant="ghost" onClick={() => setAttempt(value => value + 1)}>Retry grant impact</Button>}
     <div className="mt-4 flex flex-wrap gap-3"><Button variant="danger" disabled={busy || !impact} onClick={() => void revoke()}>{busy ? "Removing grant…" : disabling ? "Confirm grant disable" : "Confirm grant revocation"}</Button><Button variant="ghost" disabled={busy} onClick={onClose}>Cancel removal</Button></div>
   </Modal>;

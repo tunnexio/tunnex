@@ -18,7 +18,7 @@ const app = { id: "app", name: "Payroll", description: "Private payroll", icon: 
 const response = (items: unknown[], extra = {}) => ({ data: { items, limit: 20, offset: 0, ...extra } });
 function mount(node: React.ReactNode) { return render(<MemoryRouter>{node}</MemoryRouter>); }
 async function requestAction(action: string) {
-  const label = "Actions for Payroll request by Member";
+  const label = "Actions for Payroll request by Member (member@example.test)";
   const trigger = await screen.findByRole("button", { name: label });
   if (trigger.getAttribute("aria-expanded") !== "true") fireEvent.click(trigger);
   return within(screen.getByRole("menu", { name: label })).getByRole("menuitem", { name: action });

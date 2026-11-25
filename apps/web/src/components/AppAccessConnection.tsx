@@ -5,13 +5,14 @@ import { ResourceSummary } from "./ResourceSummary";
 import { api, apiErrorCode, apiErrorMessage, loadOne } from "../lib/api";
 import { suggestedOriginRange } from "../lib/appaccessorigin";
 import { FirewallHelp } from "./FirewallHelp";
+import { checkStatusText, words } from "../lib/appAccessLabels";
 
 type Check = components["schemas"]["AppAccessCheck"];
 type Runtime = components["schemas"]["AppAccessGatewayRuntime"];
 const gatewayLabels: Record<Runtime["status"], string> = {
-  unknown: "Applications capability has not been reported.",
-  unsupported: "This gateway does not support the required Applications connector version.",
-  unavailable: "The gateway's Applications report is no longer current.",
+  unknown: "This gateway has not reported whether it can serve applications yet. Check that it is online and up to date.",
+  unsupported: "This gateway needs an update before it can serve applications. Update it from the Gateways page.",
+  unavailable: "This gateway has not reported recently. Check that it is online.",
   supported: "The gateway supports Applications connection checks.",
 };
 export const failures: Record<Check["error_code"], string> = {
@@ -22,9 +23,9 @@ export const failures: Record<Check["error_code"], string> = {
   tls_failed: "Origin TLS verification failed. Check the hostname and trusted CA.",
   http_failed: "The origin did not complete a bounded HTTP response.",
   deadline_exceeded: "The connection check timed out.",
-  assignment_changed: "The saved application changed during this check.",
+  assignment_changed: "The application was changed during this check. Run the check again.",
   feature_withdrawn: "Applications was turned off or became unavailable during this check.",
-  connector_failed: "The connector could not complete this check.",
+  connector_failed: "The gateway could not complete this check.",
 };
 
 /** Origin host and port for reachability guidance (AA-2). */
@@ -92,9 +93,9 @@ export default function AppAccessConnection({ orgId, appId, gatewayId, version, 
     {dirty && <p className="text-sm">Save your changes before checking the connection.</p>}
     <ErrorText>{error}</ErrorText>
     {check && <div className="aa-connection-result space-y-4"><p role="status" className="font-medium">{check.status === "succeeded" ? "Origin connection succeeded." : check.status === "failed" ? "Origin connection failed." : check.status === "expired" ? "Connection check expired." : check.status === "withdrawn" ? "Connection check was withdrawn." : "Connection check is pending."}</p>
-      <dl className="tnx-resource-facts" aria-label="Connection check details"><div><dt>Saved revision</dt><dd>{check.revision}</dd></div><div><dt>Requested</dt><dd>{new Date(check.created_at).toLocaleString()}</dd></div></dl>
+      <dl className="tnx-resource-facts" aria-label="Connection check details"><div><dt>Checked version</dt><dd>{check.revision}</dd></div><div><dt>Requested</dt><dd>{new Date(check.created_at).toLocaleString()}</dd></div></dl>
       {outdated && <p className="text-sm">This result does not cover your current unsaved changes.</p>}
-      <dl className="tnx-resource-facts aa-connection-results" aria-label="Origin check results">{[["DNS", check.dns_status], ["Connection", check.connect_status], ["TLS", check.tls_status]].map(([label, status]) => <div key={label}><dt>{label}</dt><dd><Badge tone={status === "passed" ? "neutral" : status === "failed" ? "danger" : "neutral"}>{status}</Badge></dd></div>)}</dl>
+      <dl className="tnx-resource-facts aa-connection-results" aria-label="Origin check results">{[["DNS", check.dns_status], ["Connection", check.connect_status], ["TLS", check.tls_status]].map(([label, status]) => <div key={label}><dt>{label}</dt><dd><Badge tone={status === "passed" ? "neutral" : status === "failed" ? "danger" : "neutral"}>{words(checkStatusText, status)}</Badge></dd></div>)}</dl>
       {check.error_code === "target_refused" ? <TargetRefused originUrl={originUrl} allowedCidrs={allowedCidrs} onAllow={onAllowDestination} /> : failures[check.error_code] && <p>{failures[check.error_code]}</p>}
       {(check.error_code === "connect_failed" || check.error_code === "deadline_exceeded") && originTarget(originUrl) && <FirewallHelp summary="Can't reach the origin?" gatewayName={gateway?.name ?? "for this application"} host={originTarget(originUrl)!.host} port={originTarget(originUrl)!.port} />}
       {error && pending && <Button variant="ghost" onClick={() => setCheck(current => current ? { ...current } : null)}>Retry check status</Button>}

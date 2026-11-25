@@ -9,6 +9,7 @@ import AppAccessDomainSetup from "../components/AppAccessDomainSetup";
 import AppAccessPagination, { appAccessPageSize } from "../components/AppAccessPagination";
 
 import { Badge, Button, DataTable, ErrorText, Field, Input, Loading, Modal, PageHeader, Select, RefreshButton } from "../components/ui";
+import { personLabel } from "../lib/personLabel";
 
 type Request = components["schemas"]["AppAccessAccessRequest"];
 type Requests = components["schemas"]["AppAccessAccessRequests"];
@@ -37,10 +38,10 @@ export default function AppAccessRequests({ orgId, appId, managed = false, embed
       {managed && data && data.pending_count > 0 && <span role="status" className="aa-requests-count">{data.pending_count} pending</span>}</div><RefreshButton label="Refresh requests" onClick={() => setReload(value => value + 1)} /></div>
     {error ? <div className="aa-requests-error"><ErrorText>{error}</ErrorText><Button variant="ghost" onClick={() => setReload(value => value + 1)}>Retry requests</Button></div> : !data ? <Loading label="Loading requests…" /> : !data.items.length ? <AppAccessEmptyState title={emptyTitle} description={emptyDescription} action={emptyAction} icon={managed && status === "pending" ? "check-circle" : "file-text"} /> : <div className="aa-requests-table"><DataTable failed={false} empty={null} caption="Access requests" rows={data.items} rowKey={request => request.id} rowLabel={request => request.app_name} pageSize={0} filterable={false} columns={[
       { key: "application", header: "Application", cell: request => <div className="aa-requests-application"><p>{request.app_name}</p><p title={new Date(request.created_at).toLocaleString()}>{new Date(request.created_at).toLocaleDateString()}</p></div> },
-      ...(managed ? [{ key: "requester", header: "Requested by", cell: (request: Request) => <div className="aa-requests-requester">{request.requester.name || request.requester.email}{request.requester.name && <p>{request.requester.email}</p>}{!request.requester.available && <p>Member unavailable</p>}</div> }] : []),
+      ...(managed ? [{ key: "requester", header: "Requested by", cell: (request: Request) => <div className="aa-requests-requester">{personLabel(request.requester)}{!request.requester.available && <p>Member unavailable</p>}</div> }] : []),
       { key: "reason", header: "Reason", cell: request => <div className="aa-requests-reason">{request.reason || <span className="aa-requests-muted">No reason provided</span>}{request.decision_reason && <p>Decision: {request.decision_reason}</p>}</div> },
       { key: "status", header: "Status", cell: request => <div className="aa-requests-status"><Badge tone={request.status === "pending" ? "warn" : "neutral"}>{request.status === "pending" ? "Pending" : request.status === "approved" ? "Approved" : "Rejected"}</Badge>{!managed && <p>App admin: {request.app_admin ? request.app_admin.name || request.app_admin.email : "Unassigned"}{!request.app_admin?.available && " · Organization administrator review available"}</p>}</div> },
-      ...(managed ? [{ key: "actions", header: "Actions", cell: (request: Request) => request.status === "pending" ? <AppAccessRowMenu label={`Actions for ${request.app_name} request by ${request.requester.name || request.requester.email}`} actions={[
+      ...(managed ? [{ key: "actions", header: "Actions", cell: (request: Request) => request.status === "pending" ? <AppAccessRowMenu label={`Actions for ${request.app_name} request by ${personLabel(request.requester)}`} actions={[
         { key: "approve", label: "Approve", disabledReason: request.requester.available ? null : "This member is unavailable.", onSelect: () => setDecision({ request, approve: true }) },
         { key: "reject", label: "Reject", danger: true, onSelect: () => setDecision({ request, approve: false }) },
       ]} /> : <span className="aa-requests-reviewed">{request.decided_at ? new Date(request.decided_at).toLocaleDateString() : "Reviewed"}</span> }] : []),
