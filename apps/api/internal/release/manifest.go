@@ -122,6 +122,10 @@ func Verify(s SignedManifest, publicKey ed25519.PublicKey) error {
 	if image, ok := s.Manifest.Images["app-proxy"]; ok && (!validDigest(image.AMD64Digest) || !validDigest(image.ARM64Digest)) {
 		return errors.New("release manifest app-proxy requires valid amd64/arm64 digests")
 	}
+	// Local Sharing is opt-in too (LS-UX-1 D.1); older descriptors stay valid without it.
+	if image, ok := s.Manifest.Images["beam-proxy"]; ok && (!validDigest(image.AMD64Digest) || !validDigest(image.ARM64Digest)) {
+		return errors.New("release manifest beam-proxy requires valid amd64/arm64 digests")
+	}
 	// Older signed releases predate the bundled AI engine. If present, the
 	// additional image must bind both supported architectures just like the
 	// mandatory control-plane images.
