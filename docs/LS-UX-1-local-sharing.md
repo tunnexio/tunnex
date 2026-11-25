@@ -424,3 +424,111 @@ and names the App Access cause.
 App Access restore runner when App Access is installed. A Local Sharing-only
 restore is documented in the runbook but has no automated fenced runner yet
 (deferred).
+
+---
+
+## E. Founder ruling 2026-11-25 (second): single-IP edge, one-step enable, purpose-bound credentials
+
+The founder approved building D.3 (LS-EDGE-1), a host command, and credential
+purpose binding in this branch. The decisions are below. They supersede the
+D.3 deferral and table row 13.
+
+### E.1 Single public 443: SNI passthrough in the Local Sharing proxy
+
+**Who owns 443:**
+- **Neither feature, or App Access only:** unchanged. Caddy owns 443, or
+  `app-proxy` does on the adopted/terminate-and-forward layout.
+- **Local Sharing in shared-edge mode** (the default from the host command):
+  `beam-proxy` owns public 443. Its browser listener peeks only at the TLS
+  ClientHello. The peek is bounded to 16 KiB and 5 s, and a connection cap
+  applies.
+  - SNI exactly one label under the sharing domain: `beam-proxy` terminates
+    TLS itself, as before.
+  - SNI under the App Access base, when App Access is installed: raw TCP is
+    spliced to `app-proxy`'s public listener, **not decrypted**.
+  - Any other SNI, or none (IP clients, the console, ACME TLS-ALPN): raw TCP
+    is spliced to the next owner. On App Access's adopted layout that is
+    `app-proxy`, which still forwards the console. Otherwise it is Caddy.
+- **Dedicated-IP mode** (the D.2 layout) stays supported, but it is no longer
+  required.
+
+**Client addresses: PROXY protocol v2 on every spliced connection.** The edge
+prepends a v2 header carrying the real client address. Each receiver trusts it
+only from the edge:
+- **Caddy** (console, nginx, API: login throttling, rate limits, audit). The
+  Local Sharing overlay puts `beam-proxy` and Caddy on a dedicated internal
+  network `edge` with a fixed, operator-overridable subnet
+  (`TUNNEX_EDGE_SUBNET`, default `172.31.254.0/29`). `beam-proxy` has the fixed
+  address `.2`. Caddy's built-in `proxy_protocol` listener wrapper is enabled
+  only when `TUNNEX_EDGE_PROXY_PROTOCOL_FROM` is set, and it allows exactly
+  that `/32`. A header from any other source is never parsed, so the
+  handshake fails. Client addresses cannot be spoofed.
+- **`app-proxy`** (our code). It requires a PROXY v2 header that carries a
+  pre-shared edge token TLV (32 random bytes from a private file mounted into
+  both proxies). A connection that starts with a PROXY signature but has a
+  missing or wrong token, or a malformed header, is closed (fail closed).
+  Connections without a PROXY signature are served as before. This keeps the
+  loopback console-forward and the dedicated-IP layouts working. No fixed
+  address is needed, so App Access-only installs gain no new network.
+- **`beam-proxy`** receives clients directly, so it sees real addresses.
+
+**Readiness:** no change in substance. The probe already dials the real public
+443 with a random `*.<sharing domain>` SNI. Through the edge, that SNI routes
+to `beam-proxy`, which presents the sharing certificate and refuses the unknown
+host. A test proves this through an edge.
+
+**Independence:**
+- Disabling Local Sharing returns 443 to its previous owner (the host command
+  restores the saved `.env` values).
+- App Access never needs the edge.
+- Local Sharing needs App Access neither in Compose nor in code.
+
+**Upgrade:** `upgrade.sh` admits the edge layout from `.env`, the same way it
+admits ports. Stopping `beam-proxy` before migration briefly takes public 443
+down during the control-plane restart, which already takes the console down.
+If the new proxy fails to start, the refusal tells the operator to run
+`tunnex-local-sharing disable`, which hands 443 back.
+
+### E.2 One-step enable: `tunnex-local-sharing`
+
+It is a host command in the style of `tunnex-app-access`. It is shipped in the
+signed API image's host files, installed by the upgrade, and also runnable from
+`docker compose cp`.
+
+- **`enable --domain D --cert FULLCHAIN --key KEY`** (dry run by default;
+  `--apply` to change). In order:
+  1. verifies the installed signed release and pins `beam-proxy`;
+  2. installs the managed overlay;
+  3. issues the proxy credential with purpose `local-sharing` and the
+     connector certificate, through the same one-off writable-lock helper the
+     upgrade uses;
+  4. installs the certificate files (0400, uid 10001);
+  5. creates the edge token;
+  6. writes `.env`, saving the values it replaces;
+  7. brings the services up;
+  8. prints what is left (DNS record, console check) in plain words.
+
+  It is idempotent: a re-run with the same inputs changes nothing. It never
+  prints secrets.
+- **`disable`:** stops and removes the Local Sharing containers, restores the
+  saved 443 owner and `.env` values, and revokes the Local Sharing proxy
+  credential. Settings, policy, history and the restore volume are kept.
+- **`status`:** reports what is installed and what is missing.
+
+### E.3 Purpose-bound proxy credentials
+
+- **Schema:** a migration adds
+  `app_access_proxy_credentials.purpose text NOT NULL DEFAULT 'app_access'
+  CHECK (purpose IN ('app_access','local_sharing'))`.
+- **Enforcement:**
+  - the App Access authority accepts only `app_access`;
+  - `/internal/beam/*` accepts only `local_sharing`.
+- **Issuing:** `backupctl app-proxy-issue --purpose app-access|local-sharing`
+  (default `app-access`, so existing App Access tooling is unchanged).
+- **Rollout:** every existing credential becomes `app_access`. No Local
+  Sharing credential was ever issued for a supported install, because the
+  signed proxy image ships with this branch. A hand-built Local Sharing proxy
+  therefore stops authenticating after the upgrade, and the host command's
+  `enable` re-issues a `local_sharing` credential. This is the safe direction:
+  no credential silently gains authority, and App Access keeps working through
+  the upgrade with no action.
