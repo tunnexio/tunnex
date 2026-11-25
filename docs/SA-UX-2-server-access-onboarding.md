@@ -368,6 +368,62 @@ gateway agent + control plane loop (the `tests/server-access-local` harness is p
 no automatic-setup flow) and systemd-based cleanup timers on a real distribution. A walk on a real VM should precede
 release.
 
+## Recording and evidence (scope addition, 2026-11-25)
+
+Founder-approved addition: the Sessions list, recording policy, storage, import and replay screens. Security facts
+stay as they are (recordings encrypted at rest, credentials never returned, local JSON never uploaded, encrypted
+packages uploaded only on an explicit Decrypt, imports never restore audit identity).
+
+### R1. Recording state in the Sessions list
+**Decision.** A Recording column shows "Recorded", "Not recorded", "Developer · Recording off" (editor sessions,
+never recorded) or "Not applicable" (connection checks). Recorded terminal rows get a visible Replay button next to
+the row menu. **Security:** display only; replay still goes through the existing recording endpoint and its
+authorization. **Tests:** web, each state renders and Replay is visible only on recorded terminal rows.
+
+### R2. Started and duration
+**Problem.** The session schema exposed only `expires_at`. **Decision.** Add two optional, read-only fields to
+`ServerAccessSession`: `created_at` (always set) and `ended_at` (set once ended). Both columns already exist in
+`server_access_sessions` and every session read goes through one scanner, so the change is additive and trivial;
+older clients ignore them. The list shows Started, and Duration for ended sessions; live sessions keep Expires.
+**Security:** timestamps the caller can already infer from audit events; same authorization as the list.
+**Tests:** API unit test of the scanner mapping is covered by the existing integration tests reading sessions; web
+renders Started/Duration/Expires.
+
+### R3. User column
+"Name (email)" via the shared `personLabel` (item 10).
+
+### R4. Retention policy form
+**Decision.** Two labelled groups. "Two-factor reuse": minutes. "Recordings": retention in days, per-session limit
+and organization limit with a unit selector (KB/MB, MB/GB); the API stays in bytes. The form says what happens:
+a session that reaches its limit, or any session while the organization total is at its limit, is closed and the
+reason says so; at retention expiry the recording content is deleted from PostgreSQL (after a verified S3 archive
+when automatic archiving is on), while the session record and audit events remain. **Tests:** web, unit conversion
+round-trips the saved byte values and the bounds.
+
+### R5. Storage
+**Decision.** "Legacy storage connections" is shown only when one is already saved (a non-PostgreSQL destination or
+saved credentials); otherwise it is hidden, because new recordings always use PostgreSQL. The S3 archive section is
+titled "S3 archive (optional)" with one line: recordings are kept in PostgreSQL; add S3 only to keep them after
+retention or to export them. Secret handling is unchanged (write-only fields, never returned). **Tests:** web, hidden
+for the default PostgreSQL state, shown when a legacy destination or credentials exist.
+
+### R6. Import recording copy
+Plain language: "a recording you downloaded (.json) opens only in this browser; an encrypted Tunnex package
+(.tunnex-recording) is sent to this control plane only when you choose Decrypt, and only people allowed to replay
+recordings can open it; imported recordings are for viewing and do not prove who ran the session." No "raw chunks or
+manifests" wording.
+
+### R7. Session details
+**Decision.** Details is available for every session and shows server, account, user, status, started/ended,
+recording state, the reason in words, a Replay button when recorded, and "Audit events for this session". The row
+menu's "Session events" becomes "Audit events for this session"; "View session evidence in Audit Log" becomes "Open
+Server Access events in the Audit Log" (filtered to Server Access).
+
+### Replay gaps
+Recording and archive states were shown as raw codes ("capturing", "none"). They now read as sentences. A recording
+with no output yet says so instead of showing an empty terminal; a recording still being captured offers "Load
+latest output" (the 5-second refresh only reads metadata, so new output was never shown).
+
 ## Rollback
 
 No migrations. Item 2 adds optional fields to the agent wire (`bootstrap.Job.HostKeyAttestation`, report fields) that
