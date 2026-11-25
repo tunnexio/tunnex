@@ -317,9 +317,10 @@ func (s *Service) Recording(ctx context.Context, org, id uuid.UUID, p *authctx.P
 		out.Status = "expired"
 	}
 	if metadataOnly {
-		if e = s.audit(ctx, tx, org, p.UserID, "recording_access_checked", id, map[string]any{"status": out.Status}); e != nil {
-			return out, e
-		}
+		// SA-UX-4: a metadata-only read is the mounted player's five-second authority re-check (SA-0). It has
+		// passed the full recordingAudience check above and returns no events, so it is not a content access
+		// and writes no audit row; auditing it wrote a row every five seconds per open replay. Every path
+		// below that returns content, or reports an expired/failed read, still audits recording_read.
 		return out, tx.Commit(ctx)
 	}
 	if out.Status == "expired" || out.Status == "failed" {

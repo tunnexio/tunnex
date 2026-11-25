@@ -1,4 +1,4 @@
-import { afterEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { TerminalReplay } from "../src/components/TerminalReplay";
 const state=vi.hoisted(()=>({operations:[] as string[],callbacks:[] as (()=>void)[],denied:false,networkError:false,status:"complete",archiveStatus:"none",exportDenied:false}));
@@ -29,3 +29,28 @@ it("states recording and archive state in words, not codes",async()=>{state.stat
 it("a recording still being captured can load its latest output with a full read",async()=>{state.status="capturing";const {api}=await import("../src/lib/api");vi.mocked(api.GET).mockClear();render(<TerminalReplay orgId="org" sessionId="session" onClose={()=>{}}/>);
  fireEvent.click(await screen.findByRole("button",{name:"Load latest output"}));
  await waitFor(()=>expect(vi.mocked(api.GET).mock.calls.filter(c=>(c[1] as {params:{query:{metadata_only:boolean}}}).params.query.metadata_only===false)).toHaveLength(2))});
+// SA-UX-4: the SA-0 authority re-check runs only while the player is mounted and visible, and stops for
+// content-free terminal states. Each re-check is metadata-only; content reads happen only on open and on
+// Load latest output.
+describe("replay authority re-check lifecycle",()=>{
+ let hidden=false;
+ beforeEach(()=>{hidden=false;Object.defineProperty(document,"hidden",{configurable:true,get:()=>hidden});vi.useFakeTimers({toFake:["setInterval","clearInterval"]})});
+ afterEach(()=>{vi.useRealTimers();Object.defineProperty(document,"hidden",{configurable:true,get:()=>false})});
+ const calls=async(metadata:boolean)=>{const {api}=await import("../src/lib/api");return vi.mocked(api.GET).mock.calls.filter(c=>c[0]==="/api/v1/organizations/{orgId}/server-access/sessions/{sessionId}/recording"&&(c[1] as {params:{query:{metadata_only:boolean}}}).params.query.metadata_only===metadata).length};
+ const tick=async(ms:number)=>{await act(async()=>{vi.advanceTimersByTime(ms);await Promise.resolve()})};
+ const setHidden=async(value:boolean)=>{hidden=value;await act(async()=>{document.dispatchEvent(new Event("visibilitychange"));await Promise.resolve()})};
+ it("re-checks a finished recording every 5 s while visible and stops when the replay closes",async()=>{state.status="available";const {api}=await import("../src/lib/api");vi.mocked(api.GET).mockClear();
+  const view=render(<TerminalReplay orgId="org" sessionId="session" onClose={()=>{}}/>);await screen.findByRole("slider");expect(await calls(false)).toBe(1);expect(await calls(true)).toBe(0);
+  await tick(5000);expect(await calls(true)).toBe(1);await tick(5000);expect(await calls(true)).toBe(2);
+  view.unmount();await tick(30000);expect(await calls(true)).toBe(2);expect(await calls(false)).toBe(1)});
+ it("makes no requests while the tab is hidden and re-checks at once when it is visible again",async()=>{state.status="capturing";const {api}=await import("../src/lib/api");vi.mocked(api.GET).mockClear();
+  render(<TerminalReplay orgId="org" sessionId="session" onClose={()=>{}}/>);await screen.findByRole("slider");
+  await setHidden(true);await tick(30000);expect(await calls(true)).toBe(0);
+  await setHidden(false);expect(await calls(true)).toBe(1);await tick(5000);expect(await calls(true)).toBe(2);expect(await calls(false)).toBe(1)});
+ it("a revocation noticed on becoming visible clears the replay before it is shown",async()=>{const {api}=await import("../src/lib/api");vi.mocked(api.GET).mockClear();
+  render(<TerminalReplay orgId="org" sessionId="session" onClose={()=>{}}/>);await screen.findByRole("slider");await setHidden(true);state.denied=true;await tick(30000);expect(screen.getByRole("slider")).toBeTruthy();
+  await setHidden(false);await screen.findByText("Access denied");expect(screen.queryByRole("slider")).toBeNull()});
+ it.each(["expired","failed","disabled"])("stops re-checking a %s recording, which has no content to protect",async status=>{state.status=status;const {api}=await import("../src/lib/api");vi.mocked(api.GET).mockClear();
+  render(<TerminalReplay orgId="org" sessionId="session" onClose={()=>{}}/>);await screen.findByRole("button",{name:"Manual download"});await tick(30000);expect(await calls(true)).toBe(0);
+  await setHidden(true);await setHidden(false);expect(await calls(true)).toBe(0)});
+});
