@@ -1336,6 +1336,9 @@ export function DataTable<T>({
                   <th
                     key={c.key}
                     scope="col"
+                    // SA-UX-4: cells are named by column key so stylesheets size a column by WHAT it is, not
+                    // where it is. A positional width moves onto the wrong column when one is added.
+                    data-column={c.key}
                     aria-sort={
                       active
                         ? sort!.dir === 1
@@ -1433,6 +1436,7 @@ export function DataTable<T>({
                     {columns.map((c, i) => (
                       <td
                         key={c.key}
+                        data-column={c.key}
                         className={`py-1.5 pr-4 align-middle ${i === 0 && !showSelect ? "pl-3" : ""} ${c.numeric ? "pl-6 text-right tabular-nums" : ""}`}
                       >
                         {c.cell(r, { expanded: isOpen, toggle })}

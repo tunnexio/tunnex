@@ -162,24 +162,24 @@
 .server-access-workspace .sa-list-toolbar { display:flex; align-items:center; flex-wrap:wrap; gap:10px; }
 .server-access-workspace .sa-list-toolbar > input { width:260px; max-width:100%; }
 .server-access-workspace .sa-list-toolbar > select { width:auto; min-width:140px; font-size:12px; }
-.server-access-workspace .sa-grants-table th:nth-child(2) { width:26%; }
-.server-access-workspace .sa-grants-table th:nth-child(3) { width:88px; }
-.server-access-workspace .sa-grants-table th:nth-child(4) { width:145px; }
-.server-access-workspace .sa-grants-table th:nth-child(5) { width:40px; font-size:0; }
-/* SA-UX-4: the sessions table has its own seven columns (Server, User, Status, Recording, Started, Duration or
-   expiry, Actions). Sharing the grants table's five positional rules hid the Started header (font-size:0) and
-   squeezed it to 40px. Server takes the remaining width. Keep this list in step with ServerSessions.tsx. */
-.server-access-workspace .sa-session-table th:nth-child(2) { width:17%; }
-.server-access-workspace .sa-session-table th:nth-child(3) { width:96px; }
-.server-access-workspace .sa-session-table th:nth-child(4) { width:170px; }
-.server-access-workspace .sa-session-table th:nth-child(5) { width:150px; }
-.server-access-workspace .sa-session-table th:nth-child(6) { width:180px; }
-.server-access-workspace .sa-session-table th:nth-child(7) { width:128px; }
+/* SA-UX-4: Grants and Sessions size columns by column key (DataTable renders data-column="<key>"), never by
+   position. A positional rule moved onto the wrong column when Sessions gained two columns and hid Started. The
+   first column (server) takes the remaining width in both tables. */
+.server-access-workspace .sa-grants-table th[data-column="subject"] { width:26%; }
+.server-access-workspace .sa-grants-table th[data-column="status"] { width:88px; }
+.server-access-workspace .sa-grants-table th[data-column="expires"] { width:145px; }
+.server-access-workspace .sa-grants-table th[data-column="actions"] { width:40px; font-size:0; }
+.server-access-workspace .sa-session-table th[data-column="user"] { width:17%; }
+.server-access-workspace .sa-session-table th[data-column="status"] { width:96px; }
+.server-access-workspace .sa-session-table th[data-column="recording"] { width:170px; }
+.server-access-workspace .sa-session-table th[data-column="started"] { width:150px; }
+.server-access-workspace .sa-session-table th[data-column="time"] { width:180px; }
+.server-access-workspace .sa-session-table th[data-column="actions"] { width:128px; }
 /* Narrow windows scroll the table (inside .tnx-table-scroll) rather than squeezing columns until text breaks. */
-.server-access-workspace .sa-session-table.sa-table .tnx-datatable table:has(thead th:nth-child(7)) { min-width:1000px; }
+.server-access-workspace .sa-session-table.sa-table .tnx-datatable table:has(thead th[data-column="started"]) { min-width:1000px; }
 .server-access-workspace .sa-time { white-space:nowrap; }
 /* A rare long value (another year) is cut with an ellipsis, never drawn over the next column; title has it all. */
-.server-access-workspace .sa-session-table td:nth-child(5),.server-access-workspace .sa-session-table td:nth-child(6) { overflow:hidden; text-overflow:ellipsis; }
+.server-access-workspace .sa-session-table td[data-column="started"],.server-access-workspace .sa-session-table td[data-column="time"] { overflow:hidden; text-overflow:ellipsis; }
 .server-access-workspace .sa-grants-embedded { display:grid; gap:18px; }
 .server-access-workspace .sa-grants-embedded .sa-list-toolbar > input { flex:1; min-width:0; width:auto; }
 .server-access-workspace .sa-grants-embedded .sa-list-toolbar > select { min-width:120px; }
