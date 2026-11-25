@@ -525,7 +525,9 @@ listed); web renders the line.
 full member list with names, emails and roles through `GET /organizations/{orgId}/members`. The dashboard reads that
 same endpoint and shows only owners and admins ("Ask Alice (alice@x) or Bob (bob@x)", at most three). This exposes
 nothing a member cannot already see. When the list cannot be read (a role without `member:list`), the generic text
-stays. **Tests:** web, names shown for members; generic text when the list is unavailable.
+stays. **Tests:** web, names shown for members; generic text when the list is unavailable. App Access member pages keep the
+generic wording: their existing contract (`appaccesscatalog.test.tsx`) is that the member catalog never loads the
+organization directory, and that rule is kept.
 
 ### A14. Refusal page links to My Applications (was deferred)
 **Decision.** The app proxy already receives the console URL from its authenticated authority (`DomainConfig.PortalURL`,
