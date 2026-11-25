@@ -803,9 +803,15 @@ created.
     enable issues fresh ones.
   - **If the revoke fails,** the error names the credential id. The id is
     not secret.
-- **Known limit.** If removing `beam-proxy` fails during a rollback, the
-  files are still restored. The suggested `disable --apply` then finds no
-  overlay and cannot remove the orphaned proxy. In that case, remove it with
-  `docker rm -f` by name.
+- **Fixed here as well: an orphaned proxy after a failed removal.**
+  - **The problem.** If `docker compose rm` of the proxy failed during a
+    rollback, the restored files no longer described the proxy. `disable`
+    then found no overlay and could not remove it, so it kept holding 443.
+  - **The fix.** Both the rollback (as a fallback) and `disable` (always) now
+    also remove this project's `beam-proxy` and `beam-restore-init`
+    containers by their Compose labels. That needs no compose file and no
+    settings.
+  - **If even that fails,** the rollback does not start the console edge
+    into a 443 collision. It tells the operator to run `disable --apply`.
 - **CI.** The real-Compose tests need only the `docker compose` CLI, with no
   daemon. Under `CI` they fail if it is missing, rather than skipping.

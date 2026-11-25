@@ -26,7 +26,11 @@ args = sys.argv[1:]
 with open(os.path.join(d, "calls"), "a") as log:
     log.write(os.environ.get("COMPOSE_PROFILES", "") + "|" + " ".join(args) + "\n")
 if args[0] == "ps":
-    print("\n".join("c%d" % i for i, _ in enumerate(open(os.path.join(d, "participants")).read().split())))
+    rows = open(os.path.join(d, "participants")).read().split()
+    wanted = [a.split("=", 2)[2] for a in args if a.startswith("label=com.docker.compose.service=")]
+    print("\n".join("c%d" % i for i, row in enumerate(rows) if not wanted or row.split("|")[0] in wanted))
+    sys.exit(0)
+if args[0] == "rm":
     sys.exit(0)
 if args[0] == "inspect":
     rows = open(os.path.join(d, "participants")).read().split()
@@ -72,6 +76,8 @@ elif rest[0] == "run" and "app-proxy-revoke" in rest:
     print("{}")
 elif rest[0] == "up" and os.path.exists(os.path.join(d, "fail-up")) and any(f.endswith("local-sharing.yml") for f in files):
     sys.exit("proxy did not become healthy")
+elif rest[0] == "rm" and os.path.exists(os.path.join(d, "fail-rm")):
+    sys.exit("compose rm failed")
 elif rest[0] in ("up", "rm"):
     pass
 else:
@@ -315,6 +321,24 @@ class LocalSharingCommand(Fixture):
         self.assertEqual((self.install / ".env").read_text(), original)
         self.assertEqual(self.compose_calls("up") + self.compose_calls("rm"), [])
         self.assert_issued_credential_revoked()
+
+    def test_rollback_removes_proxy_by_label_when_compose_rm_fails(self):
+        (self.fake / "fail-up").write_text("1")
+        (self.fake / "fail-rm").write_text("1")
+        self.participants([(s, ["tunnex.yml"]) for s in BASE_RUNNING] + [("node-agent", ["tunnex.yml"], "exited"),
+                                                                         ("beam-proxy", ["tunnex.yml", "local-sharing.yml"], "exited")])
+        result = self.enable("--apply")
+        self.assertIn("the previous setup was restored and is running", result.stderr)
+        # c7 is beam-proxy: removed by label, never another container.
+        self.assertEqual([c for c in self.calls() if c.startswith("|rm ")], ["|rm -f c7"])
+        self.assertEqual([u[3] for u in self.compose_calls("up")], [sorted(BASE_RUNNING + ["beam-proxy"]), BASE_RUNNING])
+
+    def test_disable_removes_an_orphaned_proxy_without_overlay(self):
+        self.participants([(s, ["tunnex.yml"]) for s in BASE_RUNNING] + [("beam-proxy", ["tunnex.yml", "local-sharing.yml"])])
+        off = self.run_tool("disable", "--apply")
+        self.assertEqual(off.returncode, 0, off.stderr)
+        self.assertEqual([c for c in self.calls() if c.startswith("|rm ")], ["|rm -f c6"])
+        self.assertEqual(self.compose_calls("up")[-1][3], BASE_RUNNING)
 
     def test_failure_before_start_touches_no_container(self):
         (self.fake / "fail-issue").write_text("1")
