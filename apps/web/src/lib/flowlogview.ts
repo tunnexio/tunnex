@@ -1,6 +1,7 @@
 // Flow logs — the view-model.
 
 import type { AccessEvent as APIAccessEvent } from "./api";
+import { beamActionLabel } from "./beam";
 import type { components } from "@tunnex/shared";
 //
 // ⛔ THE FOURTH UNREACHABLE-SURFACE INSTANCE. `GET …/access-events` and `…/access-log/health`
@@ -280,7 +281,7 @@ export const ATTRIBUTION_NOTE =
   "Source device and AI-agent IDs come from the successfully applied gateway policy; the recorded person comes from org-scoped ownership verified at ingest. Names are current labels only, and a recorded person is accountability, not proof that they initiated the traffic. Identity is never inferred from an IP address.";
 
 export function eventTimeline(e: AccessEvent): string[] {
-  if (e.beam) return [`Authenticated browser reviewer ${e.src_user_id ?? "not recorded"}`, `Share ${e.beam.share_id}`, `${e.beam.action} · ${e.beam.reason || "reason not recorded"}`, `Control-plane audit recorded at ${e.created_at}`];
+  if (e.beam) return [`Authenticated browser reviewer ${e.src_user_id ?? "not recorded"}`, `Share ${e.beam.share_id}`, `${beamActionLabel(e.beam.action)} · ${e.beam.reason || "reason not recorded"}`, `Control-plane audit recorded at ${e.created_at}`];
   const reason = e.decision_reason?.replace(/_/g, " ") ?? "reason unavailable";
   const agentID = e.src_agent_id ??
     (e.src_kind === "agent" ? e.src_device_id ?? undefined : undefined);

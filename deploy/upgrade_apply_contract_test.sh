@@ -755,6 +755,8 @@ for ls_case in with-app-access only; do
   if run_aa_upgrade --apply >"$aa_dir/output" 2>&1; then echo "Local Sharing ($ls_case) upgrade accepted" >&2; exit 1; fi
   grep -Fq 'Local Sharing serving (beam-proxy)' "$aa_dir/output"
   grep -Fq 'deploy/beam/README.md' "$aa_dir/output"
+  grep -Fxq 'state=failed' "$aa_dir/status"
+  grep -Fxq 'reason_code=local_sharing_unmanaged' "$aa_dir/status"
   ! grep -Fq 'App Access' "$aa_dir/output"
   ! grep -Fq 'app-preflight' "$aa_dir/docker.log" 2>/dev/null
   assert_aa_refused_unchanged

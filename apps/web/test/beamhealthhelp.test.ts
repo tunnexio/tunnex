@@ -8,7 +8,7 @@ describe("Beam health actions", () => {
     expect(beamHealthNextStep({ reason: "share_ended", connectivity: "offline" })).toContain("An ended link cannot be restarted");
   });
   it("distinguishes installation setup from publisher connectivity", () => {
-    expect(beamHealthNextStep({ reason: "domain_unavailable", connectivity: "offline" })).toContain("installation operator");
+    expect(beamHealthNextStep({ reason: "domain_unavailable", connectivity: "offline" })).toContain("server administrator");
     expect(beamHealthNextStep({ reason: "connector_offline", connectivity: "offline" })).toContain("publishing terminal or desktop client");
   });
 });

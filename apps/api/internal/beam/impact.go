@@ -53,7 +53,7 @@ func (s *Service) preparePolicy(ctx context.Context, org uuid.UUID, a Actor, in 
 	// or turning off an enabled policy must work during a lapse; serving itself
 	// still denies every share until the checks are current again.
 	if in.Enabled && !p.Enabled && !p.DomainReady {
-		return nil, p, invalid("Local Sharing setup on this server is not complete. A server administrator must finish Settings → Local Sharing domain before this organization can turn it on.")
+		return nil, p, invalid("Local Sharing isn't available on this server right now: its setup is incomplete or a server check is failing. A server administrator must fix Settings → Local Sharing domain before this organization can turn it on.")
 	}
 	if p.Version != in.ExpectedVersion {
 		return nil, p, conflict()

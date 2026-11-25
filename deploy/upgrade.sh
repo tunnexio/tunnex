@@ -157,6 +157,8 @@ admit_app_access() {
   # before any backup or mutation rather than misreport it as App Access, or
   # leave an old Local Sharing proxy talking to a migrated API.
   if [ "$LS_COUNT" -gt 0 ]; then
+    # A readable reason for the dashboard upgrade (the runner keeps it).
+    [ "$APPLY" != true ] || write_status failed local_sharing_unmanaged
     echo 'error: upgrade blocked; Local Sharing serving (beam-proxy) is part of this installation, and the one-command upgrade does not manage it yet. Recreate the stack without the Local Sharing overlay first (this ends live shares), run the upgrade, then add the overlay back from the new release. Steps: deploy/beam/README.md, "Upgrading". Nothing was changed.' >&2
     exit 13
   fi

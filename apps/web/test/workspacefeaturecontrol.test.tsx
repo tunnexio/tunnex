@@ -126,14 +126,14 @@ describe("central workspace feature contracts", () => {
     render(<MemoryRouter><WorkspaceFeatureControl feature="local-sharing" orgId="org-a" roles={["admin"]} canEdit serverAdmin /></MemoryRouter>);
     const link = await screen.findByRole("link", { name: "Open Local Sharing domain setup" });
     expect(link.getAttribute("href")).toBe("/settings?section=beam-serving");
-    expect(screen.getByText(/isn't set up on this server yet/)).toBeTruthy();
+    expect(screen.getByText(/isn't available on this server right now/)).toBeTruthy();
     expect(screen.queryByText(/must be qualified/)).toBeNull();
   });
 
   it("tells other administrators to ask a server administrator, without the setup link (LS-UX-1)", async () => {
     mock.policy.mockResolvedValue({ ok: true, data: { ...policy, enabled: false, domain_ready: false } });
     render(page("local-sharing"));
-    expect(await screen.findByText(/Ask a server administrator to finish Local Sharing setup/)).toBeTruthy();
+    expect(await screen.findByText(/Ask a server administrator to check Local Sharing setup/)).toBeTruthy();
     expect(screen.queryByRole("link", { name: "Open Local Sharing domain setup" })).toBeNull();
     expect(screen.getByRole("link", { name: "Open sharing policy" }).getAttribute("href")).toBe("/settings?section=beam");
   });
