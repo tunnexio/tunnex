@@ -96,7 +96,7 @@ describe("Server sessions stylesheet", () => {
     }
   });
   it("sizes all seven session columns and keeps time values on one line", () => {
-    for (let n = 2; n <= 7; n++) expect(sessionRules.some(r => r.selector.includes(`.sa-session-table th:nth-child(${n})`))).toBe(true);
+    for (const key of ["user", "status", "recording", "started", "time", "actions"]) expect(sessionRules.some(r => r.selector.includes(`th[data-column="${key}"]`))).toBe(true);
     const time = rules.find(r => /\.sa-time\b/.test(r.selector));
     expect(time?.body.replace(/\s/g, "")).toContain("white-space:nowrap");
   });

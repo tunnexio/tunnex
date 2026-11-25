@@ -748,3 +748,22 @@ describe("DataTable — the footer earns its place", () => {
     expect(heads[1].className).not.toContain("pl-3"); // the Name header does not repeat it
   });
 });
+
+// SA-UX-4: tables size columns by column KEY, not by position. A positional rule ("the fifth column") moved
+// onto the wrong column when Server Access Sessions gained two columns and hid the Started header.
+describe("DataTable — cells are named by column key", () => {
+  it("puts the column key on every header and body cell", () => {
+    table();
+    expect(screen.getAllByRole("columnheader").map((th) => th.getAttribute("data-column"))).toEqual(["name", "state", "plain"]);
+    for (const row of screen.getAllByRole("row").slice(1))
+      expect(within(row).getAllByRole("cell").map((td) => td.getAttribute("data-column"))).toEqual(["name", "state", "plain"]);
+  });
+  it("leaves the selection column unnamed", () => {
+    render(<DataTable<Row> caption="Widgets" rows={ROWS} failed={false} rowKey={(r) => r.id} empty="None." selectable columns={[{ key: "name", header: "Name", cell: (r) => <span>{r.name}</span> }]} />);
+    const header = screen.getAllByRole("row")[0];
+    const cells = [...header.querySelectorAll("th")];
+    expect(cells.length).toBe(2);
+    expect(cells[0].hasAttribute("data-column")).toBe(false);
+    expect(cells[1].getAttribute("data-column")).toBe("name");
+  });
+});

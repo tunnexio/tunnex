@@ -158,6 +158,10 @@ the bug 1 fix. Any column added, removed or reordered silently moves every width
    every header and body cell. The key is the column's existing `key` (already required, stable, and React's key),
    so no consumer changes and no new prop. The selection checkbox column has no key and gets no attribute.
    This is additive: no existing class, structure or text changes, so every other table renders exactly as before.
+   It follows an existing convention: the hand-built Users members table and Access Policies rules table already
+   render `data-column` and size columns with `th[data-column=…]`. Those rules are scoped to their own table classes
+   (`.ur-members-table`, `.ap-rules-table`), which are not `DataTable`, so the new attribute activates nothing there;
+   no stylesheet selected `data-column` on a `DataTable` before this change.
 2. **Grants and Sessions widths are keyed.** The two Server Access tables that shared the positional rules now
    select `th[data-column="…"]`. The values are unchanged:
    - Grants: `subject` 26%, `status` 88px, `expires` 145px, `actions` 40px with its header text hidden (the row
