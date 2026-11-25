@@ -428,6 +428,56 @@ latest output" (the 5-second refresh only reads metadata, so new output was neve
 R1–R7 and the replay gaps are done as decided. R2 added the optional `created_at`/`ended_at` fields (no migration).
 The R2 API test is the existing integration suite, which reads sessions through the changed scanner in both editions.
 
+## Full flow audit (scope addition, 2026-11-25)
+
+Founder widened the slice to every Server Access and App Access page, dialog and state, for server administrators,
+organization owners/admins, grant managers and members with and without a grant. Method: a code walk of every
+screen (both features' pages and components, the app-proxy refusal page), driven by the principles (clear and
+actionable, no dead ends, "Name (email)", no raw codes, one-click paths). Rows are "fix" (done in this branch) or
+"defer" (with the reason). Items already covered above are not repeated.
+
+### Server Access
+
+| # | Page / state | Who | Problem | Decision |
+|---|---|---|---|---|
+| S1 | Account check result banner | manager | Unhandled check reasons fell back to the raw code | Fix: route through `serverAccessReasons` |
+| S2 | End session / revoke grant / remove server confirmations | manager | "within the authority lease window", "new SSH principals" | Fix: "within a few seconds" (live sessions re-check authority every second), "new SSH setup" |
+| S3 | Same confirmations | manager | Do not say whose access, which account or server | Fix: name the person ("Name (email)"), account and server |
+| S4 | My servers: no servers, feature off, no accounts | member | "Contact your administrator" with nobody named | Fix: "an organization owner or admin" consistently. Naming people: defer (members cannot list admins today; needs an API that exposes contacts without leaking the member list) |
+| S5 | Member Connect disabled (server off, account not checked) | member | Disabled button without a reason | Fix: disabled reason text and who to ask |
+| S6 | Windows RDP over plain HTTP | everyone | Only said after clicking Connect | Fix: say it up front on the account row |
+| S7 | Manual SSH help | server admin | "Trusted CA", "Account principal", "AuthorizedPrincipalsFile" without explanation | Fix: plain labels with the technical term in parentheses |
+| S8 | Expired grant (member view) | member | Members do not see their grant expiry | Defer: the member workspace does not return the member's grants; needs an API field (small, but touches authorization of the grants listing) |
+| S9 | Grant list | grant manager | No warning before expiry | Fix: "Expires in N h" when under 24 h |
+| S10 | Grant / extend duration | grant manager | Hidden in a collapsed section, hours up to 168 | Fix: visible preset choices (1 h, 8 h, 1 day, 7 days) and the resulting end time |
+| S11 | Grant list fallbacks | grant manager | Removed person/group shown as a UUID | Fix: "Removed member" / "Removed group" |
+| S12 | Grant account picker | grant manager | Unchecked accounts not marked | Fix: "(not checked yet)" |
+| S13 | "Discover server accounts first." | grant manager | Jargon and not actionable for non-admins | Fix: "Set up this server's accounts first (server Accounts step)." |
+| S14 | Register / edit server | server admin | "Register disabled server" reads like an error; edit warning shown for every edit | Fix: "Register server (stays off until checked)"; edit warning only when address, port, host key or OS changes |
+| S15 | Disable server confirmation | server admin | Does not say how many sessions end | Fix: count from loaded sessions |
+| S16 | "Run a successful account check first." | server admin | No path | Fix: name the unchecked accounts |
+
+### App Access
+
+| # | Page / state | Who | Problem | Decision |
+|---|---|---|---|---|
+| A1 | Connection check and publication diagnostics badges | admin | Raw "passed/failed/pending" | Fix: shared status words |
+| A2 | Publication request badge | admin | Raw operation status | Fix: words |
+| A3 | Event details | admin | App shown as an id; user, gateway as ids; reason not using the words map | Fix: app name, person label, gateway name, `eventReasonText` |
+| A4 | Sessions list user column | admin | Truncated user id | Fix: person label from the members list when available |
+| A5 | Access requests, managed apps, grant revoke | grant manager | Person label inconsistent; raw "user/group"; "explicit user grant" | Fix: `personLabel`, "Person/Group", plain revoke text |
+| A6 | Grant status badge | grant manager | Lowercase enum | Fix: words |
+| A7 | Revoke confirmation | grant manager | Consequence unclear | Fix: say open sessions may continue until they expire and where to end them |
+| A8 | Disable / archive publication | admin | Consequences and reversibility unclear | Fix: say grants are kept and how to restore (disable); archive is permanent for the hostname |
+| A9 | Publication status lines | admin | "revision", "stream withdrawal" | Fix: "version", "closing open connections" |
+| A10 | Publish blocked | admin | "Resolve the requirements above" | Fix: name the first unmet requirement |
+| A11 | Gateway field and capability copy | admin | "Gateway connector", "capability", "assignment" | Fix: plain words |
+| A12 | Saved CA fingerprint | admin | Long digest as primary content | Fix: shortened with full value on hover |
+| A13 | "Access is granted. Opening this application is currently unavailable." | member | Dead end | Fix: likely reasons and who to ask |
+| A14 | App refusal page "Try again" | member | Loops to the same host; does not link to My Applications | Defer: the proxy does not know the console URL; wiring it needs proxy configuration (safe, but not small). The copy already points to My Applications |
+| A15 | Domain settings "verify your email / change password" | org admin | No links | Fix: link to Account settings |
+| A16 | "App admin assignment" copy | app admin | Jargon | Fix: plain words |
+
 ## Rollback
 
 No migrations. R2 adds optional read-only session fields that older clients ignore. Item 2 adds optional fields to the agent wire (`bootstrap.Job.HostKeyAttestation`, report fields) that
