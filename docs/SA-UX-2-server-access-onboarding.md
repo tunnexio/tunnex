@@ -481,8 +481,19 @@ actionable, no dead ends, "Name (email)", no raw codes, one-click paths). Rows a
 **Audit outcome.** Every "Fix" row is done in this branch with web tests. Deferred: S4 naming specific people
 (needs a contacts API that does not expose the member list), S8 member-visible grant expiry (needs the member's own
 grants in the workspace response), A14 refusal page link to My Applications (needs the console URL in the proxy
-configuration). The audit was a code walk of every screen and state for the four roles; it was not a click-through
-of a running stack, so a review walk on the demo after the release remains worthwhile.
+configuration).
+
+**Coverage, stated honestly.** The audit was a code walk, not a click-through of a running stack. The two broad
+sweeps were partial; a second pass covered the surfaces they skipped: the manual SSH setup script panel (S17: summary
+renamed to "Manual setup: download and run a setup script"), the local VS Code dialog (S18: Copy now confirms or says
+how to copy manually), remote desktop (no findings), App Access feature and domain setup (no further findings) and the
+app-proxy launch path (it renders only the shared refusal page, A14). Not walked line by line: InlineTerminalMfa,
+ServerAccessInstallationSettings and WorkspaceFeatureControl beyond the items already changed in this branch, and the
+App Access catalog settings beyond A16. A review walk on the demo after the release remains worthwhile.
+
+Copy claims were checked against the code: Server Access live sessions re-check authority every second (S2 "within
+a few seconds"); App Access re-checks grants on every authorized request and on each 4-second stream lease renewal,
+so A7 says a removed last grant cuts open sessions within a few seconds; App Access archive happens after disable.
 
 ## Rollback
 
