@@ -170,7 +170,7 @@ func usage() {
   backupctl app-preflight
   backupctl app-restore-begin --barrier ABSOLUTE_PATH
   backupctl app-recovery --barrier ABSOLUTE_PATH --barrier-id UUID --operator NAME
-  backupctl app-proxy-issue --name NAME --output ABSOLUTE_PRIVATE_FILE
+  backupctl app-proxy-issue --name NAME --output ABSOLUTE_PRIVATE_FILE [--purpose app-access|local-sharing]
   backupctl app-proxy-certificate --output-dir ABSOLUTE_NEW_PRIVATE_DIRECTORY
   backupctl beam-proxy-certificate --output-dir ABSOLUTE_NEW_PRIVATE_DIRECTORY
   backupctl app-proxy-revoke --id UUID --expected-version VERSION

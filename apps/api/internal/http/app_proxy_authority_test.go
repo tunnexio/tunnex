@@ -69,6 +69,9 @@ func (s *denyProxyAuthority) AuthenticateProxy(context.Context, string) (appacce
 	s.authCalls++
 	return appaccess.AuthenticatedProxy{CredentialID: uuid.New(), CredentialVersion: 1}, nil
 }
+func (s *denyProxyAuthority) AuthenticateProxyFor(ctx context.Context, raw, _ string) (appaccess.AuthenticatedProxy, error) {
+	return s.AuthenticateProxy(ctx, raw)
+}
 func (*denyProxyAuthority) LookupRoute(context.Context, appaccess.AuthenticatedProxy, string, bool) (appaccess.Route, error) {
 	return appaccess.Route{}, apierr.New(404, "route_unavailable", "unavailable")
 }

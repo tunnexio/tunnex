@@ -14,12 +14,17 @@ import (
 )
 
 const authenticateAppAccessProxyCredential = `-- name: AuthenticateAppAccessProxyCredential :one
-SELECT id, name, token_hash, version, created_at, revoked_at FROM app_access_proxy_credentials WHERE token_hash=$1 AND revoked_at IS NULL
+SELECT id, name, token_hash, version, created_at, revoked_at, purpose FROM app_access_proxy_credentials WHERE token_hash=$1 AND purpose=$2 AND revoked_at IS NULL
 `
 
+type AuthenticateAppAccessProxyCredentialParams struct {
+	TokenHash []byte `json:"token_hash"`
+	Purpose   string `json:"purpose"`
+}
+
 // lint:cross-org -- Installation-wide dedicated proxy identity; no tenant authority is stored here.
-func (q *Queries) AuthenticateAppAccessProxyCredential(ctx context.Context, tokenHash []byte) (AppAccessProxyCredential, error) {
-	row := q.db.QueryRow(ctx, authenticateAppAccessProxyCredential, tokenHash)
+func (q *Queries) AuthenticateAppAccessProxyCredential(ctx context.Context, arg AuthenticateAppAccessProxyCredentialParams) (AppAccessProxyCredential, error) {
+	row := q.db.QueryRow(ctx, authenticateAppAccessProxyCredential, arg.TokenHash, arg.Purpose)
 	var i AppAccessProxyCredential
 	err := row.Scan(
 		&i.ID,
@@ -28,21 +33,23 @@ func (q *Queries) AuthenticateAppAccessProxyCredential(ctx context.Context, toke
 		&i.Version,
 		&i.CreatedAt,
 		&i.RevokedAt,
+		&i.Purpose,
 	)
 	return i, err
 }
 
 const createAppAccessProxyCredential = `-- name: CreateAppAccessProxyCredential :one
-INSERT INTO app_access_proxy_credentials(name,token_hash)VALUES($1,$2)RETURNING id, name, token_hash, version, created_at, revoked_at
+INSERT INTO app_access_proxy_credentials(name,token_hash,purpose)VALUES($1,$2,$3)RETURNING id, name, token_hash, version, created_at, revoked_at, purpose
 `
 
 type CreateAppAccessProxyCredentialParams struct {
 	Name      string `json:"name"`
 	TokenHash []byte `json:"token_hash"`
+	Purpose   string `json:"purpose"`
 }
 
 func (q *Queries) CreateAppAccessProxyCredential(ctx context.Context, arg CreateAppAccessProxyCredentialParams) (AppAccessProxyCredential, error) {
-	row := q.db.QueryRow(ctx, createAppAccessProxyCredential, arg.Name, arg.TokenHash)
+	row := q.db.QueryRow(ctx, createAppAccessProxyCredential, arg.Name, arg.TokenHash, arg.Purpose)
 	var i AppAccessProxyCredential
 	err := row.Scan(
 		&i.ID,
@@ -51,12 +58,13 @@ func (q *Queries) CreateAppAccessProxyCredential(ctx context.Context, arg Create
 		&i.Version,
 		&i.CreatedAt,
 		&i.RevokedAt,
+		&i.Purpose,
 	)
 	return i, err
 }
 
 const currentAppAccessProxyCredential = `-- name: CurrentAppAccessProxyCredential :one
-SELECT id, name, token_hash, version, created_at, revoked_at FROM app_access_proxy_credentials WHERE id=$1 AND version=$2 AND revoked_at IS NULL
+SELECT id, name, token_hash, version, created_at, revoked_at, purpose FROM app_access_proxy_credentials WHERE id=$1 AND version=$2 AND purpose='app_access' AND revoked_at IS NULL
 `
 
 type CurrentAppAccessProxyCredentialParams struct {
@@ -75,6 +83,7 @@ func (q *Queries) CurrentAppAccessProxyCredential(ctx context.Context, arg Curre
 		&i.Version,
 		&i.CreatedAt,
 		&i.RevokedAt,
+		&i.Purpose,
 	)
 	return i, err
 }
@@ -192,7 +201,7 @@ func (q *Queries) ListMyAppAccessPublishedCandidates(ctx context.Context, arg Li
 }
 
 const lockAppAccessProxyCredential = `-- name: LockAppAccessProxyCredential :one
-SELECT id, name, token_hash, version, created_at, revoked_at FROM app_access_proxy_credentials WHERE id=$1 FOR UPDATE
+SELECT id, name, token_hash, version, created_at, revoked_at, purpose FROM app_access_proxy_credentials WHERE id=$1 FOR UPDATE
 `
 
 // lint:cross-org -- Operator-local provisioning of installation-wide service credentials.
@@ -206,6 +215,7 @@ func (q *Queries) LockAppAccessProxyCredential(ctx context.Context, id uuid.UUID
 		&i.Version,
 		&i.CreatedAt,
 		&i.RevokedAt,
+		&i.Purpose,
 	)
 	return i, err
 }
@@ -270,7 +280,7 @@ func (q *Queries) LookupAppAccessServingRoute(ctx context.Context, hostname stri
 }
 
 const revokeAppAccessProxyCredential = `-- name: RevokeAppAccessProxyCredential :one
-UPDATE app_access_proxy_credentials SET version=version+1,revoked_at=now()WHERE id=$1 AND revoked_at IS NULL RETURNING id, name, token_hash, version, created_at, revoked_at
+UPDATE app_access_proxy_credentials SET version=version+1,revoked_at=now()WHERE id=$1 AND revoked_at IS NULL RETURNING id, name, token_hash, version, created_at, revoked_at, purpose
 `
 
 // lint:cross-org -- Operator-local revocation of installation-wide service credentials.
@@ -284,6 +294,7 @@ func (q *Queries) RevokeAppAccessProxyCredential(ctx context.Context, id uuid.UU
 		&i.Version,
 		&i.CreatedAt,
 		&i.RevokedAt,
+		&i.Purpose,
 	)
 	return i, err
 }

@@ -155,7 +155,7 @@ func beamNativeJourney(t *testing.T, binary, clientPath, node, withdrawal string
 		t.Fatal(e)
 	}
 	appAccess := appaccess.NewService(pool, appaccess.Config{})
-	_, proxyCredential, e := appAccess.IssueProxyCredential(ctx, "native Local Sharing fixture")
+	_, proxyCredential, e := appAccess.IssueProxyCredentialFor(ctx, "native Local Sharing fixture", appaccess.PurposeLocalSharing)
 	if e != nil {
 		t.Fatal(e)
 	}

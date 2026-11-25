@@ -6,7 +6,9 @@ import (
 	"testing"
 
 	"github.com/google/uuid"
+	"github.com/tunnexio/tunnex/apps/api/internal/appaccess"
 	"github.com/tunnexio/tunnex/apps/api/internal/appdomains"
+	"github.com/tunnexio/tunnex/apps/api/internal/testpostgres"
 )
 
 // LS-UX-1 #2: a lapse in serving checks must never stop an administrator from
@@ -94,5 +96,37 @@ func TestAppAccessDomainRefusesLocalSharingOverlap(t *testing.T) {
 	}
 	if e := save("apps.independent.net"); e != nil {
 		t.Fatal("independent App Access base refused", e)
+	}
+}
+
+// LS-UX-1 E.3: proxy credentials are bound to one authority.
+func TestProxyCredentialPurposeBinding(t *testing.T) {
+	ctx, pool := testpostgres.New(t)
+	s := appaccess.NewService(pool, appaccess.Config{})
+	_, aa, e := s.IssueProxyCredential(ctx, "app access proxy")
+	if e != nil {
+		t.Fatal(e)
+	}
+	_, ls, e := s.IssueProxyCredentialFor(ctx, "local sharing proxy", appaccess.PurposeLocalSharing)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if _, e = s.AuthenticateProxy(ctx, aa); e != nil {
+		t.Fatal("App Access credential refused by App Access", e)
+	}
+	if _, e = s.AuthenticateProxyFor(ctx, ls, appaccess.PurposeLocalSharing); e != nil {
+		t.Fatal("Local Sharing credential refused by Local Sharing", e)
+	}
+	if _, e = s.AuthenticateProxy(ctx, ls); e == nil {
+		t.Fatal("App Access authority accepted a Local Sharing credential")
+	}
+	if _, e = s.AuthenticateProxyFor(ctx, aa, appaccess.PurposeLocalSharing); e == nil {
+		t.Fatal("Local Sharing authority accepted an App Access credential")
+	}
+	if _, _, e = s.IssueProxyCredentialFor(ctx, "bad", "both"); e == nil {
+		t.Fatal("unknown purpose issued")
+	}
+	if _, e = pool.Exec(ctx, `UPDATE app_access_proxy_credentials SET purpose='other'`); e == nil {
+		t.Fatal("schema accepted an unknown purpose")
 	}
 }

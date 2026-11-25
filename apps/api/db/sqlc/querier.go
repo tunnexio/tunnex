@@ -84,7 +84,7 @@ type Querier interface {
 	// a fresh READ COMMITTED snapshot after a lock wait; it does not promote.
 	AuthenticateAgentRuntimeCredential(ctx context.Context, arg AuthenticateAgentRuntimeCredentialParams) (AgentRuntimeCredential, error)
 	// lint:cross-org -- Installation-wide dedicated proxy identity; no tenant authority is stored here.
-	AuthenticateAppAccessProxyCredential(ctx context.Context, tokenHash []byte) (AppAccessProxyCredential, error)
+	AuthenticateAppAccessProxyCredential(ctx context.Context, arg AuthenticateAppAccessProxyCredentialParams) (AppAccessProxyCredential, error)
 	// Flip an EXISTING manual group to idp_sync. The WHERE origin='manual' clause makes a re-bind of
 	// an already-synced group a no-row (the app layer maps that + the not-empty check to a 409). The
 	// disjointness (D1) and the not-empty rule are enforced above this; this only flips a clean group.
