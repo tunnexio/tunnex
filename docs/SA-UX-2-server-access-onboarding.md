@@ -478,18 +478,16 @@ actionable, no dead ends, "Name (email)", no raw codes, one-click paths). Rows a
 | A15 | Domain settings "verify your email / change password" | org admin | No links | Fix: link to Account settings |
 | A16 | "App admin assignment" copy | app admin | Jargon | Fix: plain words |
 
-**Audit outcome.** Every "Fix" row is done in this branch with web tests. Deferred: S4 naming specific people
-(needs a contacts API that does not expose the member list), S8 member-visible grant expiry (needs the member's own
-grants in the workspace response), A14 refusal page link to My Applications (needs the console URL in the proxy
-configuration).
+**Audit outcome.** Every row is done in this branch with tests. S4, S8 and A14, first deferred, were completed in the
+final round below. App Access member pages keep generic "whom to ask" wording by their no-directory contract.
 
 **Coverage, stated honestly.** The audit was a code walk, not a click-through of a running stack. The two broad
 sweeps were partial; a second pass covered the surfaces they skipped: the manual SSH setup script panel (S17: summary
 renamed to "Manual setup: download and run a setup script"), the local VS Code dialog (S18: Copy now confirms or says
 how to copy manually), remote desktop (no findings), App Access feature and domain setup (no further findings) and the
-app-proxy launch path (it renders only the shared refusal page, A14). Not walked line by line: InlineTerminalMfa,
-ServerAccessInstallationSettings and WorkspaceFeatureControl beyond the items already changed in this branch, and the
-App Access catalog settings beyond A16. A review walk on the demo after the release remains worthwhile.
+app-proxy launch path (it renders only the shared refusal page, A14). The components not walked line by line in the first pass
+(InlineTerminalMfa, ServerAccessInstallationSettings, WorkspaceFeatureControl, App Access catalog settings) were walked
+in the final round (rows I1–C2). A review walk on the demo after the release remains worthwhile.
 
 Copy claims were checked against the code: Server Access live sessions re-check authority every second (S2 "within
 a few seconds"); App Access re-checks grants on every authorized request and on each 4-second stream lease renewal,
