@@ -144,6 +144,10 @@ Caddy or `app-proxy`, with a PROXY v2 header carrying the real client address:
   `edge` network.
 - `app-proxy` trusts it only with the private edge token.
 
+**IPv6:** edge mode publishes 443 on IPv4 only. If this host serves the
+console to IPv6 clients, use `--layout dedicated` or add an IPv6 port mapping
+for `beam-proxy` yourself. The latter is not managed by the upgrade.
+
 If the default subnet `172.31.254.0/29` collides with a local network, set
 `TUNNEX_EDGE_SUBNET`, `TUNNEX_EDGE_PROXY_ADDRESS` and
 `TUNNEX_EDGE_CADDY_ADDRESS` in `.env` before enabling.

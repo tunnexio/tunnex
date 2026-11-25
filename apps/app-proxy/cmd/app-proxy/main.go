@@ -8,6 +8,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -97,6 +98,15 @@ func main() {
 		router, err := proxy.NewConsoleRouter(publicHandler, upstream, upstreamTLS)
 		if err != nil {
 			log.Fatal("invalid fixed console upstream configuration")
+		}
+		// LS-UX-1 F: reach the stack's own Caddy on the internal edge network so
+		// Caddy can trust this proxy's X-Forwarded-For by its fixed address.
+		if pinned := os.Getenv("TUNNEX_APP_PROXY_CONSOLE_CADDY_ADDRESS"); pinned != "" {
+			if parsed, err := url.Parse(upstream); err == nil && parsed.Hostname() == "caddy" {
+				if router.PinDial(pinned) != nil {
+					log.Fatal("invalid console Caddy address")
+				}
+			}
 		}
 		defer router.CloseIdleConnections()
 		publicBrowser = router

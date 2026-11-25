@@ -1,6 +1,7 @@
 package proxy
 
 import (
+	"context"
 	"crypto/tls"
 	"io"
 	"log"
@@ -84,6 +85,22 @@ func NewConsoleRouter(applications *Handler, endpoint string, config *tls.Config
 }
 
 func (r *ConsoleRouter) CloseIdleConnections() { r.transport.CloseIdleConnections() }
+
+// PinDial makes the console upstream connect to one fixed internal address
+// (LS-UX-1 F) while TLS still verifies the configured server name. The stack's
+// Caddy trusts app-proxy's X-Forwarded-For only from app-proxy's fixed address
+// on the internal edge network, so the connection must leave on that network.
+func (r *ConsoleRouter) PinDial(address string) error {
+	host, port, err := net.SplitHostPort(address)
+	if err != nil || net.ParseIP(host) == nil || port == "" {
+		return ErrDenied
+	}
+	dialer := &net.Dialer{Timeout: 5 * time.Second, KeepAlive: 30 * time.Second}
+	r.transport.DialContext = func(ctx context.Context, network, _ string) (net.Conn, error) {
+		return dialer.DialContext(ctx, network, address)
+	}
+	return nil
+}
 
 // browserAuthority compares HTTPS authorities with only the default port
 // normalized. It does not accept userinfo, paths, wildcard hosts or IP zones.

@@ -43,7 +43,7 @@ class EdgeIPTLS(unittest.TestCase):
             with self.subTest(origin=origin):
                 self.assertEqual(self.run_edge(origin).returncode, 0)
                 self.assertEqual(self.args.read_text().splitlines(),
-                    ['reverse-proxy', '--from', origin, '--to', 'nginx:8080'])
+                    ['reverse-proxy', '--from', origin, '--to', 'nginx:8080', '--header-up', 'X-Real-IP: {client_ip}'])
                 self.assertFalse(self.config.exists())
 
     def test_ip_uses_public_acme_and_ip_sni(self):
@@ -70,7 +70,7 @@ class EdgeIPTLS(unittest.TestCase):
                 self.assertEqual(result.returncode, 0, result.stderr)
                 config = self.config.read_text()
                 self.assertIn(origin + ' {', config)
-                self.assertIn(':80 {\n  reverse_proxy nginx:8080\n}', config)
+                self.assertIn(':80 {\n  reverse_proxy nginx:8080 {\n    header_up X-Real-IP {client_ip}\n    header_up -True-Client-IP\n  }\n}', config)
                 self.assertNotIn('redir ', config)
         self.assertNotEqual(self.run_edge('http://:80', '', 'automatic').returncode, 0)
 

@@ -210,3 +210,38 @@ func TestConsoleUpstreamIsFixedVerifiedHTTPS(t *testing.T) {
 		t.Fatal("upstream certificate failure bypassed verification")
 	}
 }
+
+// LS-UX-1 F: with PinDial the console upstream named `caddy` is reached at the
+// fixed internal address, never through name resolution, and TLS still
+// verifies the configured server name.
+func TestConsoleRouterPinDialReachesFixedAddress(t *testing.T) {
+	var calls atomic.Int32
+	upstream := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		if r.Header.Get("X-Forwarded-For") != "192.0.2.25" {
+			t.Errorf("client address not forwarded: %q", r.Header.Get("X-Forwarded-For"))
+		}
+	}))
+	defer upstream.Close()
+	roots := x509.NewCertPool()
+	roots.AddCert(upstream.Certificate())
+	applications := NewHandler("apps.example.net", parentPortalAuthority(), nil)
+	router, err := NewConsoleRouter(applications, "https://caddy:443", &tls.Config{RootCAs: roots, ServerName: "example.com"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer router.CloseIdleConnections()
+	for _, bad := range []string{"caddy:443", "172.31.254.3", "not an address"} {
+		if router.PinDial(bad) == nil {
+			t.Fatal("PinDial accepted", bad)
+		}
+	}
+	if err = router.PinDial(strings.TrimPrefix(upstream.URL, "https://")); err != nil {
+		t.Fatal(err)
+	}
+	response := httptest.NewRecorder()
+	router.ServeHTTP(response, consoleRequest("GET", "/api/v1/whoami", "internal.tunnex.app"))
+	if calls.Load() != 1 || response.Code != http.StatusOK {
+		t.Fatalf("pinned console upstream not used: calls=%d code=%d", calls.Load(), response.Code)
+	}
+}
