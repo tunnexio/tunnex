@@ -1193,8 +1193,8 @@ EOF
     [ -n "$_aa_found_project" ] && [ "$_aa_found_project" != '<no value>' ] || {
       echo 'error: existing installation inspection failed; upgrade refused' >&2; return 1;
     }
-    if [ "$_aa_service" = app-proxy ] || { [ "$_aa_service" = api ] && [ -n "$_aa_marker" ]; }; then
-      echo 'error: existing App Access composition requires a separately reviewed opt-in install/upgrade workflow; ordinary install/upgrade is refused before replacement. Preserve the proxy, signed image pins, and external restore barrier.' >&2
+    if [ "$_aa_service" = app-proxy ] || [ "$_aa_service" = beam-proxy ] || { [ "$_aa_service" = api ] && [ -n "$_aa_marker" ]; }; then
+      echo 'error: existing App Access or Local Sharing composition requires a separately reviewed opt-in install/upgrade workflow; ordinary install/upgrade is refused before replacement. Use upgrade.sh to upgrade it. Preserve the proxies, signed image pins, and external restore barrier.' >&2
       return 1
     fi
   done

@@ -78,6 +78,17 @@ esac
     # Row shapes observed from a real Docker/Compose v5 inspect of this template.
     API='owned|/owned|api|volume:owned_app_restore;||8443/tcp=:8443;|/owned/tunnex.yml,/owned/app-access.yml|False'
     PROXY='owned|/owned|app-proxy|volume:owned_app_restore;|/srv/s;|8443/tcp=127.0.0.1:443;|/owned/tunnex.yml,/owned/app-access.yml|False'
+    def test_local_sharing_overlay_is_not_app_access_composition(self):
+        # LS-UX-1 D.2: the managed Local Sharing overlay is stripped from the
+        # App Access view; its proxy is never counted as an App Access proxy.
+        ls=',/owned/local-sharing.yml'
+        result=self.classify([self.API, 'owned|/owned|beam-proxy|volume:owned_app_restore;|/srv/b;|8443/tcp=10.0.0.3:443;|/owned/tunnex.yml,/owned/app-access.yml'+ls+'|False',
+                              self.API.replace('app-access.yml|','app-access.yml'+ls+'|')])
+        self.assertEqual(result.returncode,0,result.stderr)
+        fields=result.stdout.strip().split('|')
+        self.assertEqual(fields[1],'0')
+        self.assertEqual(fields[6],'/owned/tunnex.yml,/owned/app-access.yml')
+        self.assertEqual(fields[7],'false')
     def test_plain_install_has_no_participants(self):
         result=self.classify(['owned|/owned|api|||8443/tcp=:8443;|/owned/tunnex.yml|False','owned|/owned|postgres||||/owned/tunnex.yml|False'])
         self.assertEqual(result.returncode,0,result.stderr)
@@ -132,7 +143,7 @@ esac
             env.update(PATH=str(binary)+':'+env['PATH'],TUNNEX_DIR=str(install),TUNNEX_COMPOSE_FILE=str(compose))
             # Run as the target of a UPG-2 hand-off: admission is the target's.
             host=root/'handoff'/'host'
-            (host/'app-access').mkdir(parents=True);(host/'ai-gateway').mkdir()
+            (host/'app-access').mkdir(parents=True);(host/'ai-gateway').mkdir();(host/'beam').mkdir()
             (host/'HOST_ABI').write_text((ROOT/'deploy/HOST_ABI').read_text())
             for name in re.search(r"^HOST_FILE_LIST='(.*)'$",self.SCRIPT,re.M).group(1).split():
                 (host/name).write_bytes((ROOT/'deploy'/name).read_bytes())
