@@ -255,7 +255,7 @@ function RevokeGrant({ orgId, grant, disabling, onClose, onSaved }: { orgId: str
   };
   return <Modal title={disabling ? "Disable application grant" : "Revoke application grant"} danger onDismiss={() => { if (!busy) onClose(); }}>
     <p>{disabling ? "Pause" : "Remove"} access for {grant.subject_label} ({words(subjectKindText, grant.subject_kind).toLowerCase()})?</p>
-    <p className="mt-3">They cannot open the app again through this grant. Another grant (for example through a group) may still give them access. Browser sessions already open continue until they expire; end them under Sessions if needed. Content already shown cannot be taken back.</p>
+    <p className="mt-3">They cannot open the app again through this grant. Another grant (for example through a group) may still give them access. If this was their last matching grant, their open browser sessions lose access within a few seconds. Content already shown cannot be taken back.</p>
     {impact ? <div role="status" className="mt-3"><p>Users currently matching this grant: {impact.matching_user_count}</p><p>Users losing their last current grant match: {impact.users_losing_grant_match_count}</p><p className="text-sm">Evaluated {new Date(impact.evaluated_at).toLocaleString()}</p></div> : !error && <Loading />}
     <ErrorText>{error}</ErrorText>{error && !impact && <Button variant="ghost" onClick={() => setAttempt(value => value + 1)}>Retry grant impact</Button>}
     <div className="mt-4 flex flex-wrap gap-3"><Button variant="danger" disabled={busy || !impact} onClick={() => void revoke()}>{busy ? "Removing grant…" : disabling ? "Confirm grant disable" : "Confirm grant revocation"}</Button><Button variant="ghost" disabled={busy} onClick={onClose}>Cancel removal</Button></div>
