@@ -336,12 +336,12 @@ it("preserves freshly disabled organization activation when saving a previously 
  const {api}=await import("../src/lib/api");const put=vi.mocked(api.PUT);put.mockClear();state.admin=true;
  render(<MemoryRouter initialEntries={["/browser-access/terminal?view=settings"]}><BrowserTerminal/></MemoryRouter>);
  fireEvent.click(await screen.findByText("Security and retention policy",{selector:"summary"}));
- fireEvent.change(screen.getByRole("spinbutton",{name:"Recording retention (days)"}),{target:{value:"19"}});
+ fireEvent.change(screen.getByRole("spinbutton",{name:"Keep recordings for (days)"}),{target:{value:"19"}});
  state.orgEnabled=false;
- fireEvent.click(screen.getByRole("button",{name:"Save recording policy"}));
+ fireEvent.click(screen.getByRole("button",{name:"Save policy"}));
  await waitFor(()=>expect(put).toHaveBeenCalledExactlyOnceWith("/api/v1/organizations/{orgId}/server-access",{params:{path:{orgId:"org-1"}},body:{enabled:false,recording_retention_days:19,mfa_freshness_seconds:900,recording_max_session_bytes:4194304,recording_max_org_bytes:67108864}}));
  await screen.findByText("Server access is disabled.");
- expect(screen.queryByRole("button",{name:"Save recording policy"})).toBeNull();
+ expect(screen.queryByRole("button",{name:"Save policy"})).toBeNull();
  expect(screen.getByRole("link",{name:"Manage feature"}).getAttribute("href")).toBe("/settings?section=features&feature=server-access");
 });
 
@@ -349,7 +349,7 @@ it("refuses an operational recording save when the fresh setting withdraws manag
  const {api}=await import("../src/lib/api");const put=vi.mocked(api.PUT);put.mockClear();state.admin=true;
  render(<MemoryRouter initialEntries={["/browser-access/terminal?view=settings"]}><BrowserTerminal/></MemoryRouter>);
  fireEvent.click(await screen.findByText("Security and retention policy",{selector:"summary"}));
- state.admin=false;fireEvent.click(screen.getByRole("button",{name:"Save recording policy"}));
+ state.admin=false;fireEvent.click(screen.getByRole("button",{name:"Save policy"}));
  await screen.findByText("The request could not be completed.");expect(put).not.toHaveBeenCalled();
 });
 
