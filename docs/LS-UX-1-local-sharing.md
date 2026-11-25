@@ -790,9 +790,22 @@ created.
   - **`node-agent` running before:** it stayed running through both enable
     and disable.
   - **In none of the runs did `node-agent` start.**
-- **Open finding (not changed here).** If enable fails after it has already
-  issued the proxy credential (for example, the proxy does not start), the
-  rollback restores `.env` and drops the credential's id. The token file
-  stays in `local-sharing/secrets`. The next enable reuses that token without
-  recording its id, so `disable` cannot revoke it. The fix is to revoke it, or
-  to keep the id, on rollback. That needs its own decision.
+- **Found by that run and fixed here: a credential issued by a failed enable.**
+  - **The problem.** Enable can fail after issuing the proxy credential,
+    whether or not the start has already run. For example, the proxy does
+    not start, or the App Access secrets directory is wrong. The rollback
+    restored `.env`, which dropped the credential's id, but the token stayed
+    on disk. The next enable reused that token without recording the id, so
+    `disable` could never revoke it.
+  - **The fix.** The rollback now revokes the credential this run issued.
+    It uses the staged environment, while the overlay is still present. It
+    also deletes the token and connector files this run created, so the next
+    enable issues fresh ones.
+  - **If the revoke fails,** the error names the credential id. The id is
+    not secret.
+- **Known limit.** If removing `beam-proxy` fails during a rollback, the
+  files are still restored. The suggested `disable --apply` then finds no
+  overlay and cannot remove the orphaned proxy. In that case, remove it with
+  `docker rm -f` by name.
+- **CI.** The real-Compose tests need only the `docker compose` CLI, with no
+  daemon. Under `CI` they fail if it is missing, rather than skipping.

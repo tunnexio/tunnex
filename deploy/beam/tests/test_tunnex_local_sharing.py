@@ -288,6 +288,33 @@ class LocalSharingCommand(Fixture):
                  for c in self.calls() if " up " in c or " rm " in c]
         self.assertEqual(order, ["up", "rm", "up"])
         self.assertNotIn("node-agent", "\n".join(self.calls()))
+        self.assert_issued_credential_revoked()
+
+    def assert_issued_credential_revoked(self):
+        # A credential issued by a failed run is revoked, never left live and
+        # unrecorded; the next enable issues a fresh one.
+        revokes = [c for c in self.calls() if "app-proxy-revoke" in c]
+        self.assertEqual(len(revokes), 1, self.calls())
+        self.assertIn("--id 11111111-1111-4111-8111-111111111111 --expected-version 1", revokes[0])
+        secrets_dir = self.install / "local-sharing/secrets"
+        for name in ("authority.token", "gateway-cert.pem", "gateway-key.pem", "agent-ca.pem"):
+            self.assertFalse((secrets_dir / name).exists(), name)
+        self.assertEqual(sorted(p.name for p in (self.install / "local-sharing").iterdir()), ["secrets"])
+
+    def test_failure_after_issue_before_start_revokes_and_touches_no_container(self):
+        (self.install / "app-access.yml").write_text("# managed\n")
+        with open(self.install / ".env", "a") as f:
+            f.write("TUNNEX_APP_ACCESS_COMPOSE_SHA256=abc\nTUNNEX_APP_ACCESS_BASE_DOMAIN=apps.example.net\n"
+                    "TUNNEX_APP_PROXY_SECRETS_DIR=%s\n" % (self.tmp / "missing"))
+        original = (self.install / ".env").read_text()
+        self.participants([(s, ["tunnex.yml", "app-access.yml"]) for s in BASE_RUNNING + ["app-proxy"]])
+        result = self.enable("--apply")
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("TUNNEX_APP_PROXY_SECRETS_DIR", result.stderr)
+        self.assertIn("no running service was changed", result.stderr)
+        self.assertEqual((self.install / ".env").read_text(), original)
+        self.assertEqual(self.compose_calls("up") + self.compose_calls("rm"), [])
+        self.assert_issued_credential_revoked()
 
     def test_failure_before_start_touches_no_container(self):
         (self.fake / "fail-issue").write_text("1")
@@ -355,6 +382,10 @@ class LocalSharingCommand(Fixture):
 
 def compose_available():
     return bool(REAL_DOCKER) and subprocess.run([REAL_DOCKER, "compose", "version"], capture_output=True).returncode == 0
+
+
+if os.environ.get("CI") and not compose_available():
+    raise RuntimeError("CI must provide the docker compose CLI: the LS-FIX-1 interpolation tests need it")
 
 
 @unittest.skipUnless(OPENSSL and compose_available(), "needs openssl and the docker compose CLI (no daemon)")
@@ -433,6 +464,9 @@ class RealComposeInterpolation(Fixture):
         self.assertNotIn("real compose config failed", result.stderr)
         self.assertEqual([u[3] for u in self.compose_calls("up")], [sorted(running + ["beam-proxy"]), sorted(running)])
         self.assertEqual((self.install / ".env").read_text(), self.env)
+        # The rm and the revoke ran (and interpolated) before the files were restored.
+        self.assertEqual(len(self.compose_calls("rm")), 1)
+        self.assertEqual(len([c for c in self.calls() if "app-proxy-revoke" in c]), 1)
 
 
 if __name__ == "__main__":

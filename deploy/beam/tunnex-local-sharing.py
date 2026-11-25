@@ -382,7 +382,9 @@ def enable(args):
     before = host.running_services()
     env_before = host.env_file.read_bytes()
     overlay_before = host.overlay.read_bytes() if host.overlay.is_file() else None
-    state = {"started": False}
+    # started: the final `up` ran. issued: (id, version) of a credential this
+    # run issued. created: secret files this run created (removed on rollback).
+    state = {"started": False, "issued": None, "created": []}
     with tempfile.TemporaryDirectory(prefix="tunnex-local-sharing-") as stage_dir:
         staged = stage_env(host, stage_dir, {**updates, **saved})
         try:
@@ -395,13 +397,28 @@ def enable(args):
 def rollback_enable(host, before, state, staged, env_before, overlay_before):
     """Put the previous setup back without starting anything that was not running.
     Never leaves public 443 held by a proxy the restored setup does not know."""
-    removal_failed = False
+    removal_failed, unrevoked = False, ""
     if state["started"] and "beam-proxy" not in before:
         # While the overlay and staged settings still describe it.
         try:
             host.compose("rm", "-s", "-f", *BEAM_SERVICES, env_file=staged)
         except Refused:
             removal_failed = True
+    if state["issued"]:
+        # The restored .env does not know this credential, so disable could never
+        # revoke it: revoke it now and let the next enable issue a fresh one.
+        credential_id, version = state["issued"]
+        out = private_dir(host.dir / "local-sharing" / ("revoke-" + secrets.token_hex(4)))
+        try:
+            backupctl(host, out, "app-proxy-revoke", "--id", credential_id, "--expected-version", version, env_file=staged)
+        except Refused:
+            unrevoked = ("; the proxy credential %s issued by this run could not be revoked: "
+                         "revoke it with backupctl app-proxy-revoke" % credential_id)
+        finally:
+            shutil.rmtree(out, ignore_errors=True)
+    for path in state["created"]:
+        if path.exists():
+            path.unlink()
     atomic_write(host.env_file, env_before, os.stat(host.env_file).st_mode & 0o777)
     if overlay_before is None:
         if host.overlay.exists():
@@ -409,14 +426,14 @@ def rollback_enable(host, before, state, staged, env_before, overlay_before):
     else:
         atomic_write(host.overlay, overlay_before, 0o644)
     if not state["started"]:
-        return "the previous setup was restored; no running service was changed"
+        return "the previous setup was restored; no running service was changed" + unrevoked
     try:
         if removal_failed:
             raise Refused("beam-proxy could not be removed")
         host.up(before, local_sharing=overlay_before is not None)
-        return "the previous setup was restored and is running"
+        return "the previous setup was restored and is running" + unrevoked
     except Refused:
-        return "restoring the previous setup also failed; run: %s disable --apply" % sys.argv[0]
+        return "restoring the previous setup also failed; run: %s disable --apply%s" % (sys.argv[0], unrevoked)
 
 
 def apply_enable(args, host, env, domain, console, port, updates, saved, secrets_dir, cert, key, staged, before, state):
@@ -437,11 +454,14 @@ def apply_enable(args, host, env, domain, console, port, updates, saved, secrets
                 issued = json.loads(backupctl(host, out, "app-proxy-issue", "--purpose", "local-sharing",
                                               "--name", "local-sharing-" + console, "--output", "/out/authority.token",
                                               env_file=staged))
+                state["issued"] = (issued["id"], str(issued["version"]))
+                state["created"].append(secrets_dir / "authority.token")
                 updates["TUNNEX_LOCAL_SHARING_CREDENTIAL_ID"] = issued["id"]
                 updates["TUNNEX_LOCAL_SHARING_CREDENTIAL_VERSION"] = str(issued["version"])
                 shutil.move(str(out / "authority.token"), str(secrets_dir / "authority.token"))
                 say("issued the Local Sharing proxy credential %s" % issued["id"])
             if not (secrets_dir / "gateway-cert.pem").is_file():
+                state["created"] += [secrets_dir / n for n in ("gateway-cert.pem", "gateway-key.pem", "agent-ca.pem")]
                 backupctl(host, out, "beam-proxy-certificate", "--output-dir", "/out/connector", env_file=staged)
                 for name in ("gateway-cert.pem", "gateway-key.pem", "agent-ca.pem"):
                     shutil.move(str(out / "connector" / name), str(secrets_dir / name))
