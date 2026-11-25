@@ -172,9 +172,23 @@ change, and the refusal names the setting: a changed overlay, a secrets
 directory or port binding that differs from `.env`, a missing setting, or a
 release without the signed proxy. If the new proxy does not become healthy,
 it is left stopped while the upgraded control plane keeps running. Fix the
-cause and run the upgrade again. To return to the previous release, restore
-the verified pre-upgrade backup (see the App Access README when App Access is
-installed).
+cause and run the upgrade again.
+
+**Returning to the previous release (rollback).** The product's rule is
+forward fix: re-run the upgrade. If you must restore the verified pre-upgrade
+backup instead:
+- **App Access installed:** use the App Access restore runner
+  (`app-access-restore.py`, see the App Access README). Keep `beam-proxy`
+  stopped until it finishes.
+- **Local Sharing only:** there is no automated fenced restore runner yet.
+  1. Stop `beam-proxy`.
+  2. Restore the database with the base procedure (`docs/backup-restore.md`).
+  3. Revoke the old proxy credential with `backupctl app-proxy-revoke`.
+  4. Issue a new one (step 3 above).
+  5. Start the proxy, then run **Check DNS and TLS** again.
+
+  Shares that were live at backup time cannot resume, so publishers create
+  new ones. This path is documented, not qualified.
 
 ## Adopting a hand-written setup
 

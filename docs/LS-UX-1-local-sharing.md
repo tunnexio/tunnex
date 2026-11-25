@@ -248,10 +248,11 @@ checklist. It supersedes A.0/C.4/C.5 where they differ.
 The compose overlay and the Helm chart only accept a digest. A self-built image
 is no longer part of the supported path.
 
-**One-time founder action:** the first release that publishes the image creates
-a new GHCR package. That package is private until an org owner sets it to
-Public. CI's public-package gate fails that release until then, the same as
-when `app-proxy` was added.
+**One-time founder action:** the publish job also runs on `main` pushes
+(`tunnex-build-<sha>`). So the **first main build after this merges** creates
+the new GHCR package `tunnex-beam-proxy` as private, and its public-package
+gate fails. Set the package to Public (org packages page), then re-run that
+job. Later builds and releases pass.
 
 ### D.2 B2: Local Sharing is a managed upgrade profile (decided, built here)
 
@@ -409,6 +410,17 @@ domain → Setup checklist). The commands are in `deploy/beam/README.md`,
 9. starts `beam-proxy` and waits for its liveness check.
 
 Live shares end at the restart, so publishers re-run their command. Nothing
-else changes. Any drift refuses before step 3 with a named setting. Because
-the demo is an adopted App Access layout, run one App Access upgrade first so
-it uses the managed `app-access.yml`, then add Local Sharing.
+else changes. Any drift refuses before step 3 with a named setting.
+
+**Precondition for the demo (founder decision / on-host check):** Local
+Sharing expects App Access in the **managed** layout (`tunnex.yml` +
+`app-access.yml`). Per AA-EN-1 E12 and the demo notes, the demo's adopted App
+Access layout has **not yet been verified as one-click upgradable**. Verify
+that on the host, or run the reviewed App Access adoption/upgrade, **before**
+adding Local Sharing. Otherwise the upgrade refuses, without changing anything,
+and names the App Access cause.
+
+**Rollback:** forward fix by default (re-run). Restoring a backup follows the
+App Access restore runner when App Access is installed. A Local Sharing-only
+restore is documented in the runbook but has no automated fenced runner yet
+(deferred).
