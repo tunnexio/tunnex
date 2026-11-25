@@ -52,6 +52,7 @@ func (h *Handler) launchConsole(ctx context.Context) (*url.URL, error) {
 			return nil, ErrDenied
 		}
 		console := *h.Console
+		h.rememberConsole(&console)
 		return &console, nil
 	}
 	select {
@@ -67,5 +68,19 @@ func (h *Handler) launchConsole(ctx context.Context) (*url.URL, error) {
 	if err != nil || bounded.Err() != nil {
 		return nil, ErrDenied
 	}
-	return ConsoleURL(config.PortalURL, config.AppBaseDomain)
+	console, err := ConsoleURL(config.PortalURL, config.AppBaseDomain)
+	if err == nil {
+		h.rememberConsole(console)
+	}
+	return console, err
+}
+
+// rememberConsole keeps the My Applications link for the refusal page. The URL already passed ConsoleURL
+// validation (https, host only), and it is the same for every host, so linking it reveals nothing about the app.
+func (h *Handler) rememberConsole(console *url.URL) {
+	if console == nil || h.beam {
+		return
+	}
+	link := (&url.URL{Scheme: console.Scheme, Host: console.Host, Path: "/app-access/my-applications"}).String()
+	h.myApps.Store(&link)
 }

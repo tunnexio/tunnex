@@ -443,11 +443,11 @@ actionable, no dead ends, "Name (email)", no raw codes, one-click paths). Rows a
 | S1 | Account check result banner | manager | Unhandled check reasons fell back to the raw code | Fix: route through `serverAccessReasons` |
 | S2 | End session / revoke grant / remove server confirmations | manager | "within the authority lease window", "new SSH principals" | Fix: "within a few seconds" (live sessions re-check authority every second), "new SSH setup" |
 | S3 | Same confirmations | manager | Do not say whose access, which account or server | Fix: name the person ("Name (email)"), account and server |
-| S4 | My servers: no servers, feature off, no accounts | member | "Contact your administrator" with nobody named | Fix: "an organization owner or admin" consistently. Naming people: defer (members cannot list admins today; needs an API that exposes contacts without leaking the member list) |
+| S4 | My servers: no servers, feature off, no accounts | member | "Contact your administrator" with nobody named | Fixed: names up to three owners/admins (final round, "S4" below) |
 | S5 | Member Connect disabled (server off, account not checked) | member | Disabled button without a reason | Fix: disabled reason text and who to ask |
 | S6 | Windows RDP over plain HTTP | everyone | Only said after clicking Connect | Fix: say it up front on the account row |
 | S7 | Manual SSH help | server admin | "Trusted CA", "Account principal", "AuthorizedPrincipalsFile" without explanation | Fix: plain labels with the technical term in parentheses |
-| S8 | Expired grant (member view) | member | Members do not see their grant expiry | Defer: the member workspace does not return the member's grants; needs an API field (small, but touches authorization of the grants listing) |
+| S8 | Expired grant (member view) | member | Members do not see their grant expiry | Fixed in the final round (see "S8" below) |
 | S9 | Grant list | grant manager | No warning before expiry | Fix: "Expires in N h" when under 24 h |
 | S10 | Grant / extend duration | grant manager | Hidden in a collapsed section, hours up to 168 | Fix: visible preset choices (1 h, 8 h, 1 day, 7 days) and the resulting end time |
 | S11 | Grant list fallbacks | grant manager | Removed person/group shown as a UUID | Fix: "Removed member" / "Removed group" |
@@ -474,7 +474,7 @@ actionable, no dead ends, "Name (email)", no raw codes, one-click paths). Rows a
 | A11 | Gateway field and capability copy | admin | "Gateway connector", "capability", "assignment" | Fix: plain words |
 | A12 | Saved CA fingerprint | admin | Long digest as primary content | Fix: shortened with full value on hover |
 | A13 | "Access is granted. Opening this application is currently unavailable." | member | Dead end | Fix: likely reasons and who to ask |
-| A14 | App refusal page "Try again" | member | Loops to the same host; does not link to My Applications | Defer: the proxy does not know the console URL; wiring it needs proxy configuration (safe, but not small). The copy already points to My Applications |
+| A14 | App refusal page "Try again" | member | Loops to the same host; does not link to My Applications | Fixed in the final round (see "A14" below): the proxy reuses the console URL its authority already delivers |
 | A15 | Domain settings "verify your email / change password" | org admin | No links | Fix: link to Account settings |
 | A16 | "App admin assignment" copy | app admin | Jargon | Fix: plain words |
 
