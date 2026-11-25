@@ -12,6 +12,7 @@ import (
 	"net/url"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/tunnexio/tunnex/packages/apptransport"
@@ -31,6 +32,9 @@ type Handler struct {
 	callbacks            chan struct{}
 	terminationCallbacks chan struct{}
 	metrics              measurements
+	// myApps is the last validated console My Applications URL (SA-UX-2 A14). It is only ever set from the
+	// authenticated authority or static configuration and only read by the refusal page; a refusal never fetches it.
+	myApps atomic.Pointer[string]
 }
 
 func NewHandler(base string, a Authority, b *apptransport.Broker) *Handler {
