@@ -246,10 +246,13 @@ func normalizeServerInput(in api.ServerAccessServerInput) api.ServerAccessServer
 	return in
 }
 
-// publicServer hides the pending-trust placeholder from every API response.
+// publicServer hides the pending-trust placeholder from every API response. It becomes an empty string rather than
+// an absent field so a dashboard bundle cached from before SA-UX-3, which echoes host_fingerprint on every save of
+// the server (the field is required on input), sends "" back and the server stays pending.
 func publicServer(v api.ServerAccessServer) api.ServerAccessServer {
 	if v.HostFingerprint != nil && *v.HostFingerprint == PendingHostFingerprint {
-		v.HostFingerprint = nil
+		empty := ""
+		v.HostFingerprint = &empty
 	}
 	return v
 }

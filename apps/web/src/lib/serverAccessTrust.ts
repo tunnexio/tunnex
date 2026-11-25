@@ -13,9 +13,9 @@ export function pinnedFingerprint(server?: Pick<Server, "host_fingerprint">): st
   return value === PENDING_HOST_FINGERPRINT ? "" : value;
 }
 
-/** A Linux server with no real pin is waiting for SSH setup. */
-export function hostTrustPending(server: Pick<Server, "host_fingerprint" | "os">): boolean {
-  return (server.os ?? "linux") === "linux" && !pinnedFingerprint(server);
+/** A Linux server with no accounts and no real pin is waiting for SSH setup. */
+export function hostTrustPending(server: Pick<Server, "host_fingerprint" | "os" | "accounts">): boolean {
+  return (server.os ?? "linux") === "linux" && server.accounts.length === 0 && !pinnedFingerprint(server);
 }
 
 /** Why an entered fingerprint cannot be pinned, or "" when it can. */

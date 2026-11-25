@@ -143,7 +143,7 @@ func TestPendingHostFingerprintIsNeverAPin(t *testing.T) {
 		t.Fatal("placeholder accepted as a management pin or setup result")
 	}
 	fp, real := PendingHostFingerprint, "SHA256:"+strings.Repeat("B", 43)
-	if publicServer(api.ServerAccessServer{HostFingerprint: &fp}).HostFingerprint != nil {
+	if out := publicServer(api.ServerAccessServer{HostFingerprint: &fp}).HostFingerprint; out == nil || *out != "" {
 		t.Fatal("placeholder returned to a client")
 	}
 	if out := publicServer(api.ServerAccessServer{HostFingerprint: &real}).HostFingerprint; out == nil || *out != real {

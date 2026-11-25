@@ -123,7 +123,7 @@ def refuse(code, message):
     # SA-UX-3: one structured line with a fixed code for the gateway; the code is also kept in the target journal.
     try:
         import syslog
-        syslog.openlog('tunnex-browser-ssh', 0, syslog.LOG_AUTH); syslog.syslog(syslog.LOG_ERR, 'setup refused: ' + code + ': ' + message); syslog.closelog()
+        syslog.openlog('tunnex-browser-ssh', 0, syslog.LOG_AUTH); syslog.syslog(syslog.LOG_ERR, 'setup refused: ' + code); syslog.closelog()
     except Exception: pass
     sys.stdout.write('TUNNEX SSH SETUP ERROR ' + code + '\n'); sys.stdout.flush()
     sys.stderr.write('Error: ' + message + '\n'); sys.exit(1)

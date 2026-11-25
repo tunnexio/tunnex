@@ -38,7 +38,8 @@ def journal(message):
 
 def refuse(e):
     code = getattr(e, 'code', None)
-    journal('setup refused: ' + (code or 'unclassified') + ': ' + str(e))
+    # Code only: the journal entry names the reason without copying paths or account names into syslog.
+    journal('setup refused: ' + (code or 'unclassified (' + type(e).__name__ + ')'))
     if code:
         print(ERROR_PREFIX + code, flush=True)
     print(f'Error: {e}', file=sys.stderr)

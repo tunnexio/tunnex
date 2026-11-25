@@ -65,10 +65,10 @@ class FailureCodes(unittest.TestCase):
   out,err,logged=self.refuse(h.SetupError('setup_existing_setup','Existing setup found at /etc/x'))
   self.assertEqual(out,'TUNNEX SSH SETUP ERROR setup_existing_setup\n')
   self.assertIn('Existing setup found',err);self.assertNotIn('/etc/x',out)
-  self.assertTrue(logged.startswith('setup refused: setup_existing_setup: '))
+  self.assertEqual(logged,'setup refused: setup_existing_setup')
  def test_uncoded_refusal_prints_no_line(self):
   out,err,logged=self.refuse(ValueError('something else'))
-  self.assertEqual(out,'');self.assertIn('something else',err);self.assertTrue(logged.startswith('setup refused: unclassified'))
+  self.assertEqual(out,'');self.assertIn('something else',err);self.assertEqual(logged,'setup refused: unclassified (ValueError)')
  def test_journal_never_raises(self):
   with patch.dict('sys.modules',{'syslog':None}):h.journal('x')
  def test_setup_error_is_a_value_error(self):
