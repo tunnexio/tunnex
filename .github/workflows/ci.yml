@@ -195,6 +195,8 @@ jobs:
           cache-dependency-path: apps/cli/go.sum
       - name: Reuse compiler cache across chart invocations
         run: echo "GOCACHE=$(go env GOCACHE)" >> "$GITHUB_ENV"
+      - name: Console client address end to end (real Caddy, nginx config, app-proxy and edge)
+        run: TUNNEX_WALK_TMPDIR="$RUNNER_TEMP" sh tests/console-client-ip/walk.sh
       - name: Native image publication contracts
         run: ruby deploy/native-image-publication_test.rb
       - name: Draft release publication permissions contract

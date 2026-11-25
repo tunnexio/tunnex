@@ -128,6 +128,8 @@ case "$*" in
     "$(dirname "$0")/mock-compose" "$3/tunnex.yml" ;;
   'rm fixture-host-files') ;;
   'ps -a --filter '*) [ -z "${MOCK_AA_DIR:-}" ] || cat "$MOCK_AA_DIR/ids" ;;
+  'network ls -q') [ -z "${MOCK_NETWORKS:-}" ] || printf '%s\n' n1 ;;
+  'network inspect --format '*) printf '%s\n' "$MOCK_NETWORKS" ;;
   'inspect --format '*)
     for last in "$@"; do :; done
     cat "$MOCK_AA_DIR/$last" ;;
@@ -875,6 +877,19 @@ if MOCK_LS_MIGRATE=fail run_ls_upgrade --apply >"$aa_dir/output" 2>&1; then echo
 unset MOCK_LS_MIGRATE
 [ "$(line_of x 'stop beam-proxy' 1)" -lt "$(line_of x 'up -d --no-deps beam-proxy' 1)" ] || { echo 'edge not restarted after failure' >&2; cat "$aa_dir/docker.log" >&2; exit 1; }
 grep -Fq 'keeps public 443' "$aa_dir/output"
+
+# LS-UX-1 F: an existing Docker network overlapping the internal edge subnet
+# refuses before any change and names the fix; its own edge network does not.
+make_ls_install edge-collision
+snapshot_ls
+if MOCK_NETWORKS='other|172.31.254.0/24 ' run_ls_upgrade --apply >"$aa_dir/output" 2>&1; then echo 'edge subnet collision accepted' >&2; exit 1; fi
+grep -Fq 'overlaps Docker network other' "$aa_dir/output"
+grep -Fq 'TUNNEX_EDGE_SUBNET' "$aa_dir/output"
+grep -Fxq 'reason_code=edge_network_conflict' "$aa_dir/status"
+assert_ls_refused_unchanged
+make_ls_install edge-own
+MOCK_NETWORKS='aa_edge|172.31.254.0/29 ' run_ls_upgrade --apply >"$aa_dir/output" 2>&1 || { cat "$aa_dir/output"; exit 1; }
+grep -Fxq 'state=healthy' "$aa_dir/status"
 
 # A proxy that does not become healthy leaves it stopped; the control plane stays upgraded.
 make_ls_install start-fails

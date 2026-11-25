@@ -19,7 +19,18 @@ services:
     environment:
       # Uses the existing rotating enrollment identity, CA and exact purpose SAN.
       TUNNEX_APP_PROXY_URL: https://app-proxy:8444
+  # LS-UX-1 F: Caddy trusts app-proxy's console X-Forwarded-For (the real
+  # client) only from app-proxy's fixed address on the internal edge network.
+  caddy:
+    environment:
+      TUNNEX_EDGE_APP_PROXY_FROM: '${TUNNEX_EDGE_APP_PROXY_ADDRESS:-172.31.254.4}/32'
+    networks:
+      default: {}
+      edge: {ipv4_address: '${TUNNEX_EDGE_CADDY_ADDRESS:-172.31.254.3}'}
   app-proxy:
+    networks:
+      default: {}
+      edge: {ipv4_address: '${TUNNEX_EDGE_APP_PROXY_ADDRESS:-172.31.254.4}'}
     image: ${TUNNEX_APP_PROXY_IMAGE:?Select the signed app-proxy image digest}
     profiles: [app-access]
     restart: unless-stopped
@@ -47,6 +58,8 @@ services:
       # LS-UX-1 E.1: set only behind the single-IP edge (tunnex-local-sharing);
       # a PROXY v2 client address is trusted only with this private token.
       TUNNEX_APP_PROXY_EDGE_TOKEN_FILE: ${TUNNEX_APP_PROXY_EDGE_TOKEN_FILE:-}
+      # LS-UX-1 F: when the console upstream is the stack's Caddy, dial it here.
+      TUNNEX_APP_PROXY_CONSOLE_CADDY_ADDRESS: '${TUNNEX_EDGE_CADDY_ADDRESS:-172.31.254.3}:443'
       TUNNEX_APP_ACCESS_RESTORE_MARKER: /var/lib/tunnex/app-restore/app-access.pending.json
     volumes:
       # Files must be readable by image uid10001; credential remains mode0600/0400.
@@ -78,3 +91,11 @@ services:
 # Separate from pg_data and redis_data; retained independently during recovery.
 volumes:
   app_restore:
+
+# Identical to the Local Sharing overlay's definition so Compose merges them.
+networks:
+  edge:
+    internal: true
+    ipam:
+      config:
+        - subnet: '${TUNNEX_EDGE_SUBNET:-172.31.254.0/29}'

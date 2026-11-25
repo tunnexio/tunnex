@@ -327,6 +327,33 @@ admit_local_sharing() {
   LS_PROFILE_ON=$LS_PROXY
 }
 
+# LS-UX-1 F: App Access and Local Sharing use the internal `edge` network with
+# a fixed subnet. Refuse before any change if it overlaps another network.
+ipv4_range() {
+  printf '%s\n' "$1" | awk -F'[./]' 'NF==5 { s=0; for (i=1;i<=4;i++) s=s*256+$i; n=2^(32-$5); s=s-(s%n); printf "%.0f %.0f\n", s, s+n-1 }'
+}
+check_edge_subnet() {
+  [ "$AA_PRESENT" = true ] || [ "$LS_PRESENT" = true ] || return 0
+  _es=$(dotenv_value TUNNEX_EDGE_SUBNET); _es=${_es:-172.31.254.0/29}
+  _er=$(ipv4_range "$_es")
+  [ -n "$_er" ] || { [ "$APPLY" != true ] || write_status failed edge_network_conflict
+    echo "error: upgrade blocked; TUNNEX_EDGE_SUBNET ($_es) must be an IPv4 CIDR. Nothing was changed." >&2; exit 13; }
+  _own="${AA_PROJECT_FOUND:-${PROJECT:-tunnex}}_edge"
+  for _net in $(docker network ls -q 2>/dev/null); do
+    _info=$(docker network inspect --format '{{.Name}}|{{range .IPAM.Config}}{{.Subnet}} {{end}}' "$_net" 2>/dev/null) || continue
+    [ "${_info%%|*}" != "$_own" ] || continue
+    for _sub in ${_info#*|}; do
+      case "$_sub" in *:*) continue ;; esac
+      _or=$(ipv4_range "$_sub"); [ -n "$_or" ] || continue
+      if [ "${_or% *}" -le "${_er#* }" ] && [ "${_er% *}" -le "${_or#* }" ]; then
+        [ "$APPLY" != true ] || write_status failed edge_network_conflict
+        echo "error: upgrade blocked; the internal edge network $_es overlaps Docker network ${_info%%|*} ($_sub). Set TUNNEX_EDGE_SUBNET to a free /29 and TUNNEX_EDGE_PROXY_ADDRESS, TUNNEX_EDGE_CADDY_ADDRESS and TUNNEX_EDGE_APP_PROXY_ADDRESS to its .2, .3 and .4 in .env, then run the upgrade again. Nothing was changed." >&2
+        exit 13
+      fi
+    done
+  done
+}
+
 VERIFY=${TUNNEX_RELEASEVERIFY:-}
 APPLY=false
 AIRGAP=
@@ -560,6 +587,7 @@ fi
 _aa_upgrade_directory=$(CDPATH= cd -- "$(dirname -- "$COMPOSE")" && pwd -P) || exit 13
 admit_app_access "$_aa_upgrade_directory"
 admit_local_sharing "$_aa_upgrade_directory"
+check_edge_subnet
 TMPDIR=$(mktemp -d "${TMPDIR:-/tmp}/tunnex-upgrade.XXXXXX")
 trap 'rm -rf "$TMPDIR"; [ "$HANDOFF" != 1 ] || rm -rf "$TUNNEX_UPGRADE_HANDOFF_DIR"' EXIT INT TERM
 finish_upgrade() {

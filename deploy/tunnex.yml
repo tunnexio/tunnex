@@ -220,6 +220,9 @@ services:
       # LS-UX-1 E.1: set only by tunnex-local-sharing in single-IP edge mode.
       # The exact edge address (/32) whose PROXY v2 client address is trusted.
       TUNNEX_EDGE_PROXY_PROTOCOL_FROM: ${TUNNEX_EDGE_PROXY_PROTOCOL_FROM:-}
+      # LS-UX-1 F: App Access's fixed internal address (set by app-access.yml).
+      # Its X-Forwarded-For (the real console client) is trusted only from there.
+      TUNNEX_EDGE_APP_PROXY_FROM: ${TUNNEX_EDGE_APP_PROXY_FROM:-}
     entrypoint: ["/bin/sh", "-ec"]
     command:
       - |
@@ -271,7 +274,7 @@ services:
             *) false ;;
           esac || { echo 'TUNNEX_EDGE_PROXY_PROTOCOL_FROM must be one IPv4 address with /32' >&2; exit 1; }
           [ "$$TUNNEX_TLS_MODE" != terminated ] || { echo 'The single-IP edge needs direct HTTPS on this host' >&2; exit 1; }
-          edge_servers="  servers :443 {
+          edge_servers="
             listener_wrappers {
               proxy_protocol {
                 timeout 5s
@@ -279,9 +282,27 @@ services:
                 fallback_policy skip
               }
               tls
-            }
-          }"
+            }"
         fi
+        # LS-UX-1 F: trust app-proxy's console X-Forwarded-For only from its
+        # fixed /32. Only direct HTTPS has the :443 server app-proxy forwards to.
+        if [ -n "$$TUNNEX_EDGE_APP_PROXY_FROM" ] && [ "$$TUNNEX_TLS_MODE" != terminated ] && [ "$$TUNNEX_TLS_MODE" != http ]; then
+          case "$$TUNNEX_EDGE_APP_PROXY_FROM" in
+            *[!0-9./]*) false ;;
+            */32) edge_trusted_proxies_ok "$$TUNNEX_EDGE_APP_PROXY_FROM" ;;
+            *) false ;;
+          esac || { echo 'TUNNEX_EDGE_APP_PROXY_FROM must be one IPv4 address with /32' >&2; exit 1; }
+          edge_servers="$$edge_servers
+            trusted_proxies static $$TUNNEX_EDGE_APP_PROXY_FROM"
+        fi
+        [ -z "$$edge_servers" ] || edge_servers="  servers :443 {$$edge_servers
+          }"
+        # Every mode hands nginx the client address Caddy determined and never
+        # a caller-supplied one (chi RealIP prefers True-Client-IP, X-Real-IP).
+        upstream_block='  reverse_proxy nginx:8080 {
+            header_up X-Real-IP {client_ip}
+            header_up -True-Client-IP
+          }'
 
         case "$$TUNNEX_TLS_MODE" in
           ''|direct|http) ;;
@@ -302,7 +323,7 @@ services:
               '  @invalidScheme {' '    not path /healthz' \
               '    not vars {http.request.header.X-Forwarded-Proto} http https' '  }' \
               '  respond @invalidScheme "Proxy must report the client scheme" 400' \
-              '  reverse_proxy nginx:8080' '}' > /tmp/tunnex-Caddyfile
+              "$$upstream_block" '}' > /tmp/tunnex-Caddyfile
             exec caddy run --config /tmp/tunnex-Caddyfile --adapter caddyfile ;;
           *) echo 'Invalid TLS mode' >&2; exit 1 ;;
         esac
@@ -314,8 +335,8 @@ services:
               case "$$host" in ''|*[!A-Za-z0-9.-]*) echo 'Invalid HTTPS hostname' >&2; exit 1 ;; esac
               case "$$authority" in "$$host"|"$$host:443") ;; *) echo 'Direct HTTPS requires port 443' >&2; exit 1 ;; esac
               { [ -z "$$edge_servers" ] || printf '%s\n' '{' "$$edge_servers" '}'; } > /tmp/tunnex-Caddyfile
-              printf '%s\n' "https://$$host {" '  reverse_proxy nginx:8080' '}' \
-                ':80 {' '  reverse_proxy nginx:8080' '}' >> /tmp/tunnex-Caddyfile
+              printf '%s\n' "https://$$host {" "$$upstream_block" '}' \
+                ':80 {' "$$upstream_block" '}' >> /tmp/tunnex-Caddyfile
               exec caddy run --config /tmp/tunnex-Caddyfile --adapter caddyfile ;;
           esac
           if [ -n "$$edge_servers" ]; then
@@ -324,10 +345,10 @@ services:
               *) echo 'The single-IP edge needs direct HTTPS on this host' >&2; exit 1 ;;
             esac
             # Same site as caddy reverse-proxy --from/--to, with the edge wrapper.
-            printf '%s\n' '{' "$$edge_servers" '}' "$$TUNNEX_EDGE_LISTEN {" '  reverse_proxy nginx:8080' '}' > /tmp/tunnex-Caddyfile
+            printf '%s\n' '{' "$$edge_servers" '}' "$$TUNNEX_EDGE_LISTEN {" "$$upstream_block" '}' > /tmp/tunnex-Caddyfile
             exec caddy run --config /tmp/tunnex-Caddyfile --adapter caddyfile
           fi
-          exec caddy reverse-proxy --from "$$TUNNEX_EDGE_LISTEN" --to nginx:8080
+          exec caddy reverse-proxy --from "$$TUNNEX_EDGE_LISTEN" --to nginx:8080 --header-up 'X-Real-IP: {client_ip}'
         fi
         # Only the validated direct IPv4 origin may be inserted into Caddyfile.
         # Public IP certificates need explicit ACME; Caddy otherwise uses its CA.
@@ -353,12 +374,12 @@ services:
           '      disable_http_challenge' \
           '    }' \
           '  }' \
-          '  reverse_proxy nginx:8080' \
+          "$$upstream_block" \
           '}' > /tmp/tunnex-Caddyfile
         if [ "$$TUNNEX_HTTP_CONSOLE_ENABLED" = true ]; then
           # Serving an HTTP console does not enable AI: the API's persisted
           # administrator setting denies HTTP AI traffic until explicitly saved.
-          printf '%s\n' ':80 {' '  reverse_proxy nginx:8080' '}' >> /tmp/tunnex-Caddyfile
+          printf '%s\n' ':80 {' "$$upstream_block" '}' >> /tmp/tunnex-Caddyfile
         else
           printf '%s\n' ':80 {' "  redir https://$$TUNNEX_EDGE_PUBLIC_IP{uri} 308" '}' >> /tmp/tunnex-Caddyfile
         fi

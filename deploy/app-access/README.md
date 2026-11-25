@@ -47,6 +47,19 @@ signed releases remain usable without App Access, but cannot satisfy this opt-in
 preflight. The existing protected CI release job now builds and signs the additional
 image; no image has been published by this local work.
 
+## Real client addresses for the console (LS-UX-1 F)
+
+When `app-proxy` forwards the console to Caddy (`TUNNEX_APP_PROXY_CONSOLE_UPSTREAM_URL=https://caddy:443`),
+it connects to Caddy's fixed address on the internal `edge` network: Caddy is `.3`
+and `app-proxy` is `.4` of `TUNNEX_EDGE_SUBNET`, default `172.31.254.0/29`.
+Caddy trusts `app-proxy`'s `X-Forwarded-For` only from that address, then
+hands nginx and the API the real client address. A forged header from anywhere
+else is ignored.
+
+This needs no operator action; the upgrade applies it. If that subnet overlaps
+another Docker network, the upgrade refuses before any change and names the
+`.env` settings to choose a free `/29`.
+
 ## Gateways learn the proxy endpoint from the control plane (AA-EN-1)
 
 The managed overlay publishes the proxy's gateway listener on
