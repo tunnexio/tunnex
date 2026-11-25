@@ -29,7 +29,7 @@ export function WorkspaceFeatureControl(props: Props) {
   switch (props.feature) {
     case "ai-gateway": return <AIFeature key={key} orgId={props.orgId} canEdit={editable} />;
     case "server-access": return <ServerFeature key={key} orgId={props.orgId} canEdit={editable} serverAdmin={props.serverAdmin} />;
-    case "local-sharing": return <SharingFeature key={key} orgId={props.orgId} canEdit={editable} />;
+    case "local-sharing": return <SharingFeature key={key} orgId={props.orgId} canEdit={editable} serverAdmin={props.serverAdmin} />;
     case "sandboxes": return <SandboxFeature key={key} orgId={props.orgId} canEdit={editable} />;
     case "alert-delivery": return <DeliveryFeature key={key} orgId={props.orgId} canEdit={editable} />;
   }
@@ -118,7 +118,7 @@ function validPolicy(value: BeamPolicy) {
     && (value.open_for_all_users === undefined || typeof value.open_for_all_users === "boolean")
     && [value.publisher_group_ids,value.reviewer_user_ids,value.reviewer_group_ids].every(ids => Array.isArray(ids) && ids.every(id => typeof id === "string" && id.length > 0));
 }
-function SharingFeature({ orgId,canEdit }: { orgId:string;canEdit:boolean }) {
+function SharingFeature({ orgId,canEdit,serverAdmin }: { orgId:string;canEdit:boolean;serverAdmin:boolean }) {
   const control=useControl(() => beamApi.policy(orgId),validPolicy);
   const [review,setReview]=useState<{policy:BeamPolicy;impact:BeamPolicyImpact} | null>(null), [confirmed,setConfirmed]=useState(false);
   const saved=control.data;
@@ -137,7 +137,7 @@ function SharingFeature({ orgId,canEdit }: { orgId:string;canEdit:boolean }) {
     if (!canEdit || !saved?.can_manage_policy || !review || (review.impact.requires_confirmation && !confirmed)) return;
     void control.transact(() => beamApi.savePolicy(orgId,review.policy,confirmed),value => { setReview(null); control.commit(value); });
   }
-  return <><FeatureRow name="Local Sharing" description="Allow local app publishing under the saved sharing policy. Policy limits and audiences stay saved." enabled={saved?.enabled} canEdit={canEdit && !!saved?.can_manage_policy} control={control} enableBlocked={!!review || (!!saved && !saved.enabled && !saved.domain_ready)} onChange={change}>{saved && !saved.domain_ready && <p className="text-sm text-ink-secondary">Installation serving setup must be qualified before enabling publishing.</p>}<Link to="/settings?section=beam" className="text-sm text-brand">Review sharing policy</Link></FeatureRow>
+  return <><FeatureRow name="Local Sharing" description="Allow local app publishing under the saved sharing policy. Policy limits and audiences stay saved." enabled={saved?.enabled} canEdit={canEdit && !!saved?.can_manage_policy} control={control} enableBlocked={!!review || (!!saved && !saved.enabled && !saved.domain_ready)} onChange={change}>{saved && !saved.domain_ready && <p className="text-sm text-ink-secondary">{serverAdmin ? "Local Sharing isn't set up on this server yet. Finish the sharing domain and its checks, then turn it on here." : "Local Sharing isn't set up on this server yet. Ask a server administrator to finish Local Sharing setup, then turn it on here."}</p>}<span className="flex flex-wrap gap-4">{saved && !saved.domain_ready && serverAdmin && <Link to="/settings?section=beam-serving" className="text-sm text-brand">Open Local Sharing domain setup</Link>}<Link to="/settings?section=beam" className="text-sm text-brand">Open sharing policy</Link></span></FeatureRow>
     {review && <Modal title="Review Local Sharing activation" placement="right" showClose onDismiss={() => { if (!control.busy) setReview(null); }} actions={<><Button variant="ghost" disabled={control.busy} onClick={() => setReview(null)}>Cancel</Button><Button disabled={!canEdit || control.busy || control.blocked || (review.impact.requires_confirmation && !confirmed)} onClick={save}>Confirm Local Sharing change</Button></>}>
       <p>{review.policy.enabled ? "Enable Local Sharing for this organization." : "Disable Local Sharing for this organization."}</p><p>{review.impact.active_share_count} active shares; {review.impact.affected_share_count} shares and {review.impact.affected_reviewer_session_count} current reviewer sessions affected.</p><p className="text-sm text-ink-secondary">The saved policy version and current impact are checked again before applying the change.</p>{review.impact.requires_confirmation && <label className="flex items-center gap-3"><input type="checkbox" disabled={control.busy} checked={confirmed} onChange={event => setConfirmed(event.target.checked)} /><span>End active shares affected by this policy change</span></label>}{control.error && <p role="alert" className="text-danger">{control.error}</p>}
     </Modal>}
