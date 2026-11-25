@@ -20,7 +20,7 @@ import (
 	"golang.org/x/crypto/ssh"
 )
 
-const sessionColumns = `id,server_id,account,status,reason,expires_at,user_id,recording_enabled,kind,gateway_id,parent_sealed,parent_hash,parent_epoch,grant_id,revision,gateway_serial,idle_deadline,created_at`
+const sessionColumns = `id,server_id,account,status,reason,expires_at,user_id,recording_enabled,kind,gateway_id,parent_sealed,parent_hash,parent_epoch,grant_id,revision,gateway_serial,idle_deadline,created_at,ended_at`
 
 type record struct {
 	View                     api.ServerAccessSession
@@ -35,7 +35,11 @@ type record struct {
 
 func scanSession(row interface{ Scan(...any) error }) (record, error) {
 	var r record
-	e := row.Scan(&r.View.Id, &r.View.ServerId, &r.View.Account, &r.View.Status, &r.View.Reason, &r.View.ExpiresAt, &r.View.UserId, &r.View.RecordingEnabled, &r.View.Kind, &r.Gateway, &r.ParentSealed, &r.ParentHash, &r.Epoch, &r.Grant, &r.Revision, &r.Serial, &r.Idle, &r.Created)
+	e := row.Scan(&r.View.Id, &r.View.ServerId, &r.View.Account, &r.View.Status, &r.View.Reason, &r.View.ExpiresAt, &r.View.UserId, &r.View.RecordingEnabled, &r.View.Kind, &r.Gateway, &r.ParentSealed, &r.ParentHash, &r.Epoch, &r.Grant, &r.Revision, &r.Serial, &r.Idle, &r.Created, &r.View.EndedAt)
+	if e == nil {
+		created := r.Created
+		r.View.CreatedAt = &created
+	}
 	return r, e
 }
 func (s *Service) load(ctx context.Context, org, id uuid.UUID) (record, error) {

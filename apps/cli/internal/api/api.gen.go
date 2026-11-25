@@ -8490,10 +8490,16 @@ type ServerAccessServerInputOs string
 
 // ServerAccessSession defines model for ServerAccessSession.
 type ServerAccessSession struct {
-	Account          string             `json:"account"`
-	ArchiveError     *string            `json:"archive_error,omitempty"`
-	ArchiveRetryAt   *time.Time         `json:"archive_retry_at,omitempty"`
-	ArchiveStatus    *string            `json:"archive_status,omitempty"`
+	Account        string     `json:"account"`
+	ArchiveError   *string    `json:"archive_error,omitempty"`
+	ArchiveRetryAt *time.Time `json:"archive_retry_at,omitempty"`
+	ArchiveStatus  *string    `json:"archive_status,omitempty"`
+
+	// CreatedAt When the session was requested.
+	CreatedAt *time.Time `json:"created_at,omitempty"`
+
+	// EndedAt When the session ended; absent while it is live.
+	EndedAt          *time.Time         `json:"ended_at,omitempty"`
 	ExpiresAt        time.Time          `json:"expires_at"`
 	Id               openapi_types.UUID `json:"id"`
 	Kind             string             `json:"kind"`

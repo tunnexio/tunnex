@@ -8082,6 +8082,16 @@ export interface components {
             archive_error?: string;
             /** Format: date-time */
             archive_retry_at?: string;
+            /**
+             * Format: date-time
+             * @description When the session was requested.
+             */
+            created_at?: string;
+            /**
+             * Format: date-time
+             * @description When the session ended; absent while it is live.
+             */
+            ended_at?: string;
         };
         ServerAccessWorkspace: {
             enabled: boolean;
