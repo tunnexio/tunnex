@@ -512,7 +512,11 @@ def apply_enable(args, host, env, domain, console, port, updates, saved, secrets
         write_env(host.env_file, final)
     # Only what ran before, plus the proxy (beam-restore-init is its dependency).
     state["started"] = True
-    host.up(before | {"beam-proxy"})
+    try:
+        host.up(before | {"beam-proxy"})
+    except Refused:
+        raise Refused("the Local Sharing proxy or a restarted service did not become healthy "
+                      "(docker compose up failed; its output above names the container and the reason)")
     say("")
     say("Local Sharing is running. What is left:")
     say("  1. DNS: create *.%s pointing to this server's public address%s." % (
@@ -581,9 +585,16 @@ def status(args):
         ("connector certificate", (host.dir / "local-sharing/secrets/gateway-cert.pem").is_file()),
         ("wildcard certificate", (host.dir / "local-sharing/secrets/public-cert.pem").is_file()),
     ]
-    say("Local Sharing on %s: %s layout" % (host.dir, "single-IP edge" if env.get("TUNNEX_BEAM_EDGE_DEFAULT") else "dedicated-address" if env.get("TUNNEX_BEAM_PUBLIC_BIND_IP") else "not enabled"))
+    layout = ("single-IP edge layout" if env.get("TUNNEX_BEAM_EDGE_DEFAULT") else
+              "dedicated-address layout" if env.get("TUNNEX_BEAM_PUBLIC_BIND_IP") else "not enabled")
+    say("Local Sharing on %s: %s" % (host.dir, layout))
     for name, ok in checks:
         say("  %-22s %s" % (name, "ok" if ok else "missing — run: tunnex-local-sharing enable ..."))
+    try:
+        running = "beam-proxy" in host.running_services()
+        say("  %-22s %s" % ("proxy running", "yes" if running else "no — run: tunnex-local-sharing enable ... --apply"))
+    except Refused:
+        say("  %-22s %s" % ("proxy running", "unknown (run with sudo to inspect Docker)"))
     return 0
 
 

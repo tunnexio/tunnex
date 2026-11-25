@@ -402,6 +402,10 @@ class LocalSharingCommand(Fixture):
         result = self.run_tool("status")
         self.assertEqual(result.returncode, 0, result.stderr)
         self.assertIn("not enabled", result.stdout)
+        self.assertNotIn("not enabled layout", result.stdout)
+        self.assertIn("proxy running          no", result.stdout)
+        self.participants([("api", ["tunnex.yml"]), ("beam-proxy", ["tunnex.yml", "local-sharing.yml"])])
+        self.assertIn("proxy running          yes", self.run_tool("status").stdout)
 
 
 def compose_available():
