@@ -18,6 +18,30 @@ UNIT = Path('/etc/systemd/system/tunnex-browser-sshd.service')
 SERVICE = 'tunnex-browser-sshd'
 MARKER = 'tunnex-browser-ssh-v1'
 BUNDLE = None  # Replaced only in the administrator-downloaded server bundle.
+ERROR_PREFIX = 'TUNNEX SSH SETUP ERROR '
+
+class SetupError(ValueError):
+    """A refusal with a fixed code (SA-UX-3). Only the code leaves the target, on one structured line."""
+    def __init__(self, code, message):
+        super().__init__(message)
+        self.code = code
+
+def journal(message):
+    # Best effort: journald stores syslog under this identifier (journalctl -t tunnex-browser-ssh).
+    try:
+        import syslog
+        syslog.openlog('tunnex-browser-ssh', 0, syslog.LOG_AUTH)
+        syslog.syslog(syslog.LOG_ERR, message)
+        syslog.closelog()
+    except Exception:
+        pass
+
+def refuse(e):
+    code = getattr(e, 'code', None)
+    journal('setup refused: ' + (code or 'unclassified') + ': ' + str(e))
+    if code:
+        print(ERROR_PREFIX + code, flush=True)
+    print(f'Error: {e}', file=sys.stderr)
 
 def run(*args, **kwargs):
     return subprocess.run(args, check=True, text=True, **kwargs)
@@ -25,17 +49,17 @@ def run(*args, **kwargs):
 def safe_tree():
     for parent in (Path('/etc'), Path('/etc/systemd'), UNIT.parent, ROOT):
         if parent.is_symlink():
-            raise ValueError(f'Refusing symlink: {parent}')
+            raise SetupError('setup_unsafe_path', f'Refusing symlink: {parent}')
         if parent.exists() and (parent.stat().st_uid != 0 or parent.stat().st_mode & 0o022):
-            raise ValueError(f'Refusing non-root-owned or writable path: {parent}')
+            raise SetupError('setup_unsafe_path', f'Refusing non-root-owned or writable path: {parent}')
     if UNIT.is_symlink():
-        raise ValueError('Refusing symlink service unit')
+        raise SetupError('setup_unsafe_path', 'Refusing symlink service unit')
     if ROOT.exists():
         for p in ROOT.rglob('*'):
             if p.is_symlink() or not (p.is_dir() or p.is_file()):
-                raise ValueError(f'Refusing unexpected file type: {p}')
+                raise SetupError('setup_unsafe_path', f'Refusing unexpected file type: {p}')
             if p.stat().st_uid != 0 or p.stat().st_mode & 0o022:
-                raise ValueError(f'Refusing non-root-owned or writable file: {p}')
+                raise SetupError('setup_unsafe_path', f'Refusing non-root-owned or writable file: {p}')
 
 def write(path, value, mode=0o644):
     fd, tmp = tempfile.mkstemp(dir=path.parent)
@@ -55,16 +79,23 @@ def identity(org, server, account):
     if not re.fullmatch(uuid, org) or not re.fullmatch(uuid, server):
         raise ValueError('Use exact organization and registered server UUIDs from Tunnex')
     if not re.fullmatch(r'[a-z_][a-z0-9_-]{0,31}', account):
-        raise ValueError('Invalid Linux account name')
-    u = pwd.getpwnam(account)
+        raise SetupError('setup_no_eligible_accounts', 'Invalid Linux account name')
+    try:
+        u = pwd.getpwnam(account)
+    except KeyError:
+        raise SetupError('setup_no_eligible_accounts', 'Linux account does not exist: ' + account)
     if u.pw_uid == 0 or u.pw_shell in ('/bin/false', '/usr/sbin/nologin', '/sbin/nologin'):
-        raise ValueError('Account must be an existing non-root login account')
+        raise SetupError('setup_no_eligible_accounts', 'Account must be an existing non-root login account')
     return f'tunnex:{org}:{server}:{account}'
 
 def load():
-    m = json.loads((ROOT / 'managed.json').read_text())
-    if m.get('owner') != MARKER or MARKER not in UNIT.read_text():
-        raise ValueError('Existing configuration is not owned by this helper')
+    try:
+        m = json.loads((ROOT / 'managed.json').read_text())
+        owned = isinstance(m, dict) and m.get('owner') == MARKER and MARKER in UNIT.read_text()
+    except (OSError, ValueError):
+        owned = False
+    if not owned:
+        raise SetupError('setup_foreign_setup', 'Existing configuration is not owned by this helper')
     return m
 
 def render(m):
@@ -93,12 +124,18 @@ LogLevel VERBOSE
 
 def apply(m):
     write(ROOT / 'sshd.conf', render(m))
-    run('/usr/sbin/sshd', '-t', '-f', str(ROOT / 'sshd.conf'))
+    try:
+        run('/usr/sbin/sshd', '-t', '-f', str(ROOT / 'sshd.conf'))
+    except subprocess.CalledProcessError:
+        raise SetupError('setup_service_failed', 'The dedicated sshd configuration did not validate (sshd -t)')
     write(ROOT / 'managed.json', json.dumps(m, indent=2) + '\n', 0o600)
 
 def reload():
-    run('systemctl', 'kill', '--kill-whom=main', '--signal=HUP', SERVICE)
-    run('systemctl', 'is-active', '--quiet', SERVICE)
+    try:
+        run('systemctl', 'kill', '--kill-whom=main', '--signal=HUP', SERVICE)
+        run('systemctl', 'is-active', '--quiet', SERVICE)
+    except subprocess.CalledProcessError:
+        raise SetupError('setup_service_failed', 'The dedicated SSH service did not reload: ' + SERVICE)
 
 def report(m):
     print(f'Dedicated SSH port: {m["port"]}; accounts: {", ".join(sorted(m["accounts"]))}')
@@ -126,22 +163,22 @@ def selected_accounts(args):
     eligible = eligible_accounts()
     selected = eligible if args.all_login_users else sorted(set(args.accounts.split(',')))
     if not selected or any(account not in eligible for account in selected):
-        raise ValueError('Choose existing eligible non-system login accounts: ' + ', '.join(eligible))
+        raise SetupError('setup_no_eligible_accounts', 'Choose existing eligible non-system login accounts: ' + ', '.join(eligible))
     if len(selected) > 16:
-        raise ValueError('This server supports at most 16 accounts. Use --accounts to select up to 16 eligible users.')
+        raise SetupError('setup_too_many_accounts', 'This server supports at most 16 accounts. Use --accounts to select up to 16 eligible users.')
     return selected
 
 def sync(m, accounts):
     accounts = sorted(set(m['accounts'] + accounts))
     if len(accounts) > 16:
-        raise ValueError('This server supports at most 16 configured accounts')
+        raise SetupError('setup_too_many_accounts', 'This server supports at most 16 configured accounts')
     fp = run('ssh-keygen', '-lf', str(ROOT / 'ca.pub'), '-E', 'sha256', capture_output=True).stdout.split()[1]
     if fp != m['ca_fingerprint']:
-        raise ValueError('Installed CA changed; inspect trust before adding accounts')
+        raise SetupError('setup_ca_mismatch', 'Installed CA changed; inspect trust before adding accounts')
     principals = {ROOT / 'principals' / a: identity(m['org'], m['server'], a) + '\n' for a in accounts}
     for file, principal in principals.items():
         if file.exists() and file.read_text().strip() != principal.strip():
-            raise ValueError('Existing principal differs; refusing to overwrite it')
+            raise SetupError('setup_principal_conflict', 'Existing principal differs; refusing to overwrite it')
     before = {x: x.read_bytes() if x.exists() else None for x in (*principals, ROOT / 'sshd.conf', ROOT / 'managed.json')}
     try:
         for file, principal in principals.items():
@@ -172,14 +209,14 @@ def setup_result(m):
 def install_helper():
     dest = Path('/usr/local/sbin/tunnex-browser-ssh')
     if dest.is_symlink() or dest.parent.is_symlink():
-        raise ValueError('Refusing symlink helper installation path')
+        raise SetupError('setup_unsafe_path', 'Refusing symlink helper installation path')
     if dest.exists() and (dest.stat().st_uid != 0 or MARKER not in dest.read_text()):
-        raise ValueError('Existing helper path is not owned by this helper')
+        raise SetupError('setup_foreign_setup', 'Existing helper path is not owned by this helper')
     write(dest, Path(__file__).read_text(), 0o755)
 
 def platform_preflight():
     if sys.platform != 'linux':
-        raise ValueError('Unsupported OS: automatic enrollment currently requires Linux')
+        raise SetupError('setup_unsupported_os', 'Unsupported OS: automatic enrollment currently requires Linux')
     values = {}
     for line in Path('/etc/os-release').read_text().splitlines():
         if '=' in line:
@@ -187,17 +224,17 @@ def platform_preflight():
             values[key] = value.strip('"')
     family = {values.get('ID', ''), *values.get('ID_LIKE', '').split()}
     if not family.intersection({'ubuntu', 'debian', 'rhel', 'fedora', 'centos', 'rocky', 'almalinux', 'amzn'}):
-        raise ValueError('Unsupported Linux distribution: ' + values.get('ID', 'unknown'))
+        raise SetupError('setup_unsupported_distro', 'Unsupported Linux distribution: ' + values.get('ID', 'unknown'))
     if not Path('/run/systemd/system').is_dir():
-        raise ValueError('This Linux adapter requires systemd')
-    for command in ('systemctl', 'ssh-keygen', 'ip'):
+        raise SetupError('setup_no_systemd', 'This Linux adapter requires systemd')
+    for command, code in (('systemctl', 'setup_missing_systemctl'), ('ssh-keygen', 'setup_missing_ssh_keygen'), ('ip', 'setup_missing_ip')):
         if not shutil.which(command):
-            raise ValueError('Install prerequisite on target: ' + command)
+            raise SetupError(code, 'Install prerequisite on target: ' + command)
     if not Path('/usr/sbin/sshd').is_file():
-        raise ValueError('Install the distribution OpenSSH server before enrollment')
+        raise SetupError('setup_no_openssh', 'Install the distribution OpenSSH server before enrollment')
     # Do not disable SELinux or guess a policy for a dedicated listener.
     if Path('/sys/fs/selinux/enforce').exists() and Path('/sys/fs/selinux/enforce').read_text().strip() == '1':
-        raise ValueError('SELinux enforcing adapter is not supported yet; no changes were made')
+        raise SetupError('setup_selinux_enforcing', 'SELinux enforcing adapter is not supported yet; no changes were made')
     print('Detected Linux: ' + values.get('PRETTY_NAME', values.get('ID', 'unknown')))
 
 def main():
@@ -221,7 +258,7 @@ def main():
     sub.add_parser('remove', help='Stop and remove only helper-owned browser SSH configuration')
     a = p.parse_args()
     if os.geteuid() != 0:
-        raise ValueError('Run with sudo')
+        raise SetupError('setup_not_root', 'Run with sudo')
     platform_preflight()
     # Serialize helper mutations; lock path is protected by root-owned /run.
     fd = os.open('/run/tunnex-browser-ssh.lock', os.O_CREAT | os.O_RDWR | os.O_NOFOLLOW, 0o600)
@@ -245,15 +282,15 @@ def main():
             for account in accounts:
                 identity(bundle['org_id'], bundle['server_id'], account)
             if not isinstance(bundle['ssh_port'], int) or not 1024 <= bundle['ssh_port'] <= 65535:
-                raise ValueError('Bootstrap needs a dedicated SSH port between 1024 and 65535')
+                raise SetupError('setup_port_invalid', 'Bootstrap needs a dedicated SSH port between 1024 and 65535')
             addresses = json.loads(run('ip', '-j', 'addr', 'show', capture_output=True).stdout)
             local_ips = {addr.get('local') for interface in addresses for addr in interface.get('addr_info', [])}
             if bundle['private_ip'] not in local_ips:
-                raise ValueError('This machine does not own the registered target IP; refusing another host identity')
+                raise SetupError('setup_ip_mismatch', 'This machine does not own the registered target IP; refusing another host identity')
             if ROOT.exists():
                 m = load()
                 if (m['org'], m['server'], m['port'], m['ca_fingerprint']) != (bundle['org_id'], bundle['server_id'], bundle['ssh_port'], bundle['ca_fingerprint']):
-                    raise ValueError('Bootstrap identity or trust differs from existing setup; inspect it first')
+                    raise SetupError('setup_identity_differs', 'Bootstrap identity or trust differs from existing setup; inspect it first')
                 sync(m, accounts)
                 install_helper()
                 report(m)
@@ -266,22 +303,25 @@ def main():
             accounts = accounts or [a.account]
             principals = {account: identity(a.org, a.server, account) for account in accounts}
             if ROOT.exists() or UNIT.exists() or Path('/usr/lib/systemd/system/tunnex-browser-sshd.service').exists() or Path('/lib/systemd/system/tunnex-browser-sshd.service').exists():
-                raise ValueError('Existing setup found. Use add-account, or inspect and explicitly remove it first.')
+                raise SetupError('setup_existing_setup', 'Existing setup found. Use add-account, or inspect and explicitly remove it first.')
             if not 1024 <= a.port <= 65535:
-                raise ValueError('Dedicated listener port must be between 1024 and 65535')
+                raise SetupError('setup_port_invalid', 'Dedicated listener port must be between 1024 and 65535')
             key = bundle['public_key'].strip() if bundle else a.ca.read_text().strip()
             if '\n' in key or not re.fullmatch(r'ssh-ed25519 [A-Za-z0-9+/]+={0,2}(?: [^\r\n]+)?', key):
-                raise ValueError('Expected exactly one public Ed25519 SSH CA key')
+                raise SetupError('setup_ca_mismatch', 'Expected exactly one public Ed25519 SSH CA key')
             with tempfile.NamedTemporaryFile(mode='w', prefix='tunnex-public-ca-') as staged:
                 staged.write(key + '\n')
                 staged.flush()
                 fp = run('ssh-keygen', '-lf', staged.name, '-E', 'sha256', capture_output=True).stdout.split()[1]
             if fp != a.ca_fingerprint:
-                raise ValueError('CA fingerprint differs from independently verified Tunnex public CA')
+                raise SetupError('setup_ca_mismatch', 'CA fingerprint differs from independently verified Tunnex public CA')
             # Refuse occupied port before writing any target configuration.
             import socket
             with socket.socket() as sock:
-                sock.bind(('0.0.0.0', a.port))
+                try:
+                    sock.bind(('0.0.0.0', a.port))
+                except OSError:
+                    raise SetupError('setup_port_in_use', f'Dedicated SSH port {a.port} is already in use on this server')
             m = dict(owner=MARKER, org=a.org, server=a.server, port=a.port, ca_fingerprint=fp, accounts=accounts)
             try:
                 ROOT.mkdir(mode=0o755)
@@ -303,8 +343,11 @@ Restart=on-failure
 WantedBy=multi-user.target
 ''')
                 run('systemctl', 'daemon-reload')
-                run('systemctl', 'enable', '--now', SERVICE)
-                run('systemctl', 'is-active', '--quiet', SERVICE)
+                try:
+                    run('systemctl', 'enable', '--now', SERVICE)
+                    run('systemctl', 'is-active', '--quiet', SERVICE)
+                except subprocess.CalledProcessError:
+                    raise SetupError('setup_service_failed', 'The dedicated SSH service did not start: ' + SERVICE)
             except Exception:
                 subprocess.run(['systemctl', 'disable', '--now', SERVICE], capture_output=True)
                 UNIT.unlink(missing_ok=True)
@@ -321,13 +364,13 @@ WantedBy=multi-user.target
             org, server = a.org or m['org'], a.server or m['server']
             principal = identity(org, server, a.account)
             if (org, server) != (m['org'], m['server']):
-                raise ValueError('Organization/server identity differs from this configured target')
+                raise SetupError('setup_identity_differs', 'Organization/server identity differs from this configured target')
             fp = run('ssh-keygen', '-lf', str(ROOT / 'ca.pub'), '-E', 'sha256', capture_output=True).stdout.split()[1]
             if fp != m['ca_fingerprint']:
-                raise ValueError('Installed CA changed; inspect trust before adding accounts')
+                raise SetupError('setup_ca_mismatch', 'Installed CA changed; inspect trust before adding accounts')
             file = ROOT / 'principals' / a.account
             if file.exists() and file.read_text().strip() != principal:
-                raise ValueError('Existing principal differs; refusing to overwrite it')
+                raise SetupError('setup_principal_conflict', 'Existing principal differs; refusing to overwrite it')
             before = {x: x.read_bytes() if x.exists() else None for x in (file, ROOT / 'sshd.conf', ROOT / 'managed.json')}
             try:
                 write(file, principal + '\n')
@@ -358,5 +401,5 @@ if __name__ == '__main__':
     try:
         main()
     except (ValueError, KeyError, OSError, subprocess.CalledProcessError) as e:
-        print(f'Error: {e}', file=sys.stderr)
+        refuse(e)
         sys.exit(1)

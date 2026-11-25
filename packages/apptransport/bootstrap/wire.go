@@ -16,6 +16,10 @@ type Job struct {
 	// attestation produced by the one-time authorization command (SA-UX-2). Fingerprint may then be empty. Older
 	// gateways ignore the field and keep requiring Fingerprint.
 	HostKeyAttestation bool `json:"host_key_attestation,omitempty"`
+	// SetupErrorCodes tells the gateway that the control plane accepts Report.SetupError (SA-UX-3). Older gateways
+	// ignore the field; a newer gateway sends SetupError only when it is set, because older control planes decode
+	// reports strictly.
+	SetupErrorCodes bool `json:"setup_error_codes,omitempty"`
 }
 type Report struct {
 	PublicKey string  `json:"public_key,omitempty"`
@@ -25,6 +29,9 @@ type Report struct {
 	HostKeyAttestation bool   `json:"host_key_attestation,omitempty"`
 	HostKey            string `json:"host_key,omitempty"`
 	Attestation        string `json:"attestation,omitempty"`
+	// SetupError is an allow-listed SetupErrorCodes code, sent only with Result "setup_failed" and only when the job
+	// advertised SetupErrorCodes. Never free text from the target.
+	SetupError string `json:"setup_error,omitempty"`
 }
 type Result struct {
 	Version         int      `json:"version"`
