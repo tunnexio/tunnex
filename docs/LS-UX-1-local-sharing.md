@@ -774,6 +774,25 @@ created.
   `app-access.yml` and `local-sharing.yml`.
 - Further tests assert the exact service lists of every `up`/`rm` in enable,
   rollback and disable. `node-agent` appears only when it was running before.
-- A throwaway Docker run with stub `lsfix1-*` images exercises
-  `enable --apply`, a forced rollback and `disable --apply`. It is described
-  in the commit, and it never touches `tunnex-*` resources.
+- **Verified against real Docker.** The run used Compose 5.4 on colima,
+  stub `lsfix1-*` images and a stub `tunnex.yml` + `app-access.yml` + overlay
+  with the same required variables, profiles and dependencies. It was removed
+  by name afterwards, and no `tunnex-*` resource was touched. The base state
+  was `api`, `app-proxy`, `caddy` and `postgres` running, and `node-agent`
+  absent.
+  - **Forced proxy failure on start:** the rollback left exactly the base
+    set, `.env` byte-identical, and the overlay removed.
+  - **Enable:** the base set plus `beam-proxy`, and Caddy and `app-proxy`
+    moved behind the edge.
+  - **Re-enable:** no change.
+  - **Disable:** exactly the base set again, `.env` restored, and Caddy and
+    `app-proxy` back.
+  - **`node-agent` running before:** it stayed running through both enable
+    and disable.
+  - **In none of the runs did `node-agent` start.**
+- **Open finding (not changed here).** If enable fails after it has already
+  issued the proxy credential (for example, the proxy does not start), the
+  rollback restores `.env` and drops the credential's id. The token file
+  stays in `local-sharing/secrets`. The next enable reuses that token without
+  recording its id, so `disable` cannot revoke it. The fix is to revoke it, or
+  to keep the id, on rollback. That needs its own decision.
