@@ -18,7 +18,7 @@ vi.mock("../src/lib/api",async()=>{
     if(state.failed)return {error:{error:{message:"Workspace unavailable"}}};
     if(state.installationOff)return {error:{error:{code:"server_access_disabled",message:"Terminal capability is disabled on this installation"}}};
     const workspace={data:{enabled:state.orgEnabled,can_manage:state.admin,can_grant:state.admin,can_manage_sessions:state.admin,grants:[],sessions:state.checkError?[{id:"check-1",kind:"check",server_id:"server-1",account:"fixture",status:"failed",reason:"ssh_authentication_failed"}]:[],mfa_freshness_seconds:900,recording_retention_days:7,recording_max_session_bytes:4194304,recording_max_org_bytes:67108864,limitations:["Recording-required servers refuse Connect until capture is implemented."],servers:[{id:"server-1",name:"Build host",gateway_id:"gateway-1",private_ip:state.admin?"10.2.3.4":undefined,ssh_port:22,host_fingerprint:"SHA256:fixture",accounts:["fixture"],ready_accounts:state.ready?["fixture"]:[],revision:1,enabled:state.serverEnabled,recording_enabled:state.recording,developer_access_enabled:state.developer,idle_timeout_seconds:300,max_session_seconds:900},...(state.multi?[{id:"server-2",name:"Database host",gateway_id:"gateway-1",accounts:["ubuntu"],ready_accounts:["ubuntu"],revision:1,enabled:true,recording_enabled:false,idle_timeout_seconds:300,max_session_seconds:900}]:[])]}};
-    workspace.data.servers[0].ssh_port=state.sshPort;if(state.lastError)(workspace.data.servers[0] as Record<string,unknown>).last_error=state.lastError;
+    workspace.data.servers[0].ssh_port=state.sshPort;(workspace.data as Record<string,unknown>).my_access=[{server_id:"server-1",account:"fixture",expires_at:new Date(Date.now()+2*3600000).toISOString()}];if(state.lastError)(workspace.data.servers[0] as Record<string,unknown>).last_error=state.lastError;
     if(state.serverCount>1)workspace.data.servers=Array.from({length:state.serverCount},(_,index)=>({...workspace.data.servers[0],id:`server-${index}`,name:`Host ${index}`}));
     if(state.accountCount>1){const accounts=Array.from({length:state.accountCount},(_,index)=>`account-${index}`);workspace.data.servers[0]={...workspace.data.servers[0],accounts,ready_accounts:accounts}}
     if(state.empty)workspace.data.servers=[];
@@ -26,7 +26,7 @@ vi.mock("../src/lib/api",async()=>{
    }
    if(path.endsWith("/enrollment"))return {response:{status:404},error:{error:{message:"No setup job"}}};
    if(path.endsWith("/nodes"))return {data:[{id:"gateway-1",name:"gcp-gw",status:"active",enrolled_kind:"gateway",endpoint:"34.1.2.3:51820"}]};
-   if(path.endsWith("/members"))return {data:[{user_id:"user-2",name:"Control Plane Admin",email:"support@tunnex.io",status:"active"}]};
+   if(path.endsWith("/members"))return {data:[{user_id:"user-2",name:"Control Plane Admin",email:"support@tunnex.io",status:"active",role:"owner"},{user_id:"user-3",name:"Plain Member",email:"member@example.test",status:"active",role:"member"}]};
    return {data:[]};
   }),
   POST:vi.fn(async(path:string,options:unknown)=>{
@@ -50,7 +50,7 @@ const serverAction=(action:string)=>rowAction("Actions for Build host",action);
 const accountAction=(action:string)=>rowAction("Account actions for fixture",action);
 function serverStep(name:string){fireEvent.click(within(screen.getByRole("navigation",{name:"Server setup steps"})).getByRole("button",{name:new RegExp(`${name}$`)}))}
 function manualStep(name:string){fireEvent.click(within(screen.getByRole("navigation",{name:"Manual SSH setup steps"})).getByRole("button",{name}))}
-it("member catalog does not request privileged topology and MFA refusal cannot open a terminal",async()=>{mount();await openServer();await screen.findByRole("button",{name:"Connect as fixture"});expect(state.requests).toEqual(["/api/v1/organizations/{orgId}/server-access"]);expect(screen.queryByText("10.2.3.4:22")).toBeNull();fireEvent.click(screen.getByRole("button",{name:"Connect as fixture"}));await screen.findByRole("heading",{name:"Verify your identity"});expect(state.bodies[0]).toMatchObject({params:{path:{orgId:"org-1"}},body:{server_id:"server-1",account:"fixture"}});expect(screen.queryByLabelText("SSH terminal for fixture")).toBeNull()});
+it("member catalog does not request privileged topology and MFA refusal cannot open a terminal",async()=>{mount();await openServer();await screen.findByRole("button",{name:"Connect as fixture"});expect(state.requests.filter(r=>!r.endsWith("/members"))).toEqual(["/api/v1/organizations/{orgId}/server-access"]);/* /members is the member-visible list used to name whom to ask (SA-UX-2 S4) */expect(screen.queryByText("10.2.3.4:22")).toBeNull();fireEvent.click(screen.getByRole("button",{name:"Connect as fixture"}));await screen.findByRole("heading",{name:"Verify your identity"});expect(state.bodies[0]).toMatchObject({params:{path:{orgId:"org-1"}},body:{server_id:"server-1",account:"fixture"}});expect(screen.queryByLabelText("SSH terminal for fixture")).toBeNull()});
 it("recording-enabled servers allow admission when capture is implemented",async()=>{state.recording=true;mount();await openServer();const button=await screen.findByRole("button",{name:"Connect as fixture"});expect((button as HTMLButtonElement).disabled).toBe(false);fireEvent.click(screen.getByText("Session options",{selector:"summary"}));expect(screen.getByText(/Recording on/)).toBeTruthy()});
 it("failed workspace reads show an error instead of an empty granted catalog",async()=>{state.failed=true;mount();await screen.findByText("Workspace unavailable");expect(screen.queryByText("No servers are available for your account.")).toBeNull()});
 it("clears a failed workspace read when a manual refresh restores the healthy catalog",async()=>{state.failed=true;mount();await screen.findByText("Workspace unavailable");state.failed=false;fireEvent.click(screen.getByRole("button",{name:"Refresh servers"}));await screen.findByRole("button",{name:"Build host"});expect(screen.queryByText("Workspace unavailable")).toBeNull();expect(state.bodies).toHaveLength(0)});
@@ -102,7 +102,7 @@ it("member sees an administrator action instead of privileged SSH setup details"
  expect(screen.getByText("Not checked yet")).toBeTruthy();expect(screen.getByText(/An administrator must check this account before you can connect/)).toBeTruthy();
  expect(screen.queryByText("SSH setup for fixture")).toBeNull();
  expect(screen.queryByText(/AuthorizedPrincipalsFile/)).toBeNull();
- expect(screen.queryByRole("button",{name:"Check SSH for fixture"})).toBeNull();expect(screen.queryByRole("button",{name:"Account actions for fixture"})).toBeNull();expect(state.requests).toEqual(["/api/v1/organizations/{orgId}/server-access"]);
+ expect(screen.queryByRole("button",{name:"Check SSH for fixture"})).toBeNull();expect(screen.queryByRole("button",{name:"Account actions for fixture"})).toBeNull();expect(state.requests.filter(r=>!r.endsWith("/members"))).toEqual(["/api/v1/organizations/{orgId}/server-access"]);/* /members is the member-visible list used to name whom to ask (SA-UX-2 S4) */
 });
 
 it("checks an unready disabled Linux server through the primary admin action without admitting a terminal",async()=>{
@@ -294,7 +294,7 @@ it("shows loaded empty server guidance without a table, pagination or privileged
  expect(screen.queryByRole("table",{name:"Servers"})).toBeNull();expect(screen.queryByRole("columnheader")).toBeNull();
  expect(screen.queryByRole("navigation",{name:"Table pagination"})).toBeNull();expect(screen.queryByRole("combobox",{name:"Rows per page"})).toBeNull();
  expect(screen.queryByRole("button",{name:"Previous servers"})).toBeNull();expect(screen.queryByRole("button",{name:"Next servers"})).toBeNull();
- expect(state.requests).toEqual(["/api/v1/organizations/{orgId}/server-access"]);
+ expect(state.requests.filter(r=>!r.endsWith("/members"))).toEqual(["/api/v1/organizations/{orgId}/server-access"]);/* /members is the member-visible list used to name whom to ask (SA-UX-2 S4) */
 });
 
 it("pages the complete permitted server catalog at the chosen size and resets after search or size changes",async()=>{
@@ -305,11 +305,11 @@ it("pages the complete permitted server catalog at the chosen size and resets af
  fireEvent.click(screen.getByRole("button",{name:"Next servers"}));expect(screen.getByRole("button",{name:"Host 50"})).toBeTruthy();
  fireEvent.change(screen.getByRole("textbox",{name:"Search servers"}),{target:{value:"Host 0"}});expect(screen.getByRole("button",{name:"Host 0"})).toBeTruthy();expect(screen.getAllByRole("row")).toHaveLength(2);
  expect(screen.queryByRole("navigation",{name:"Table pagination"})).toBeNull();expect(screen.queryByRole("button",{name:"Previous servers"})).toBeNull();
- expect(state.requests).toEqual(["/api/v1/organizations/{orgId}/server-access"]);expect(state.bodies).toHaveLength(0);
+ expect(state.requests.filter(r=>!r.endsWith("/members"))).toEqual(["/api/v1/organizations/{orgId}/server-access"]);/* /members is the member-visible list used to name whom to ask (SA-UX-2 S4) */expect(state.bodies).toHaveLength(0);
 });
 
 it("keeps a single permitted account usable without pagination controls",async()=>{
- mount();await openServer();expect(screen.getByRole("table",{name:"Server accounts"})).toBeTruthy();expect(screen.getAllByRole("row")).toHaveLength(2);expect(screen.getByRole("button",{name:"Connect as fixture"})).toHaveProperty("disabled",false);expect(screen.queryByRole("navigation",{name:"Table pagination"})).toBeNull();expect(screen.queryByRole("combobox",{name:"Rows per page"})).toBeNull();expect(screen.queryByRole("button",{name:"Previous accounts"})).toBeNull();expect(screen.queryByRole("button",{name:"Next accounts"})).toBeNull();expect(state.requests).toEqual(["/api/v1/organizations/{orgId}/server-access"]);expect(state.bodies).toHaveLength(0);
+ mount();await openServer();expect(screen.getByRole("table",{name:"Server accounts"})).toBeTruthy();expect(screen.getAllByRole("row")).toHaveLength(2);expect(screen.getByRole("button",{name:"Connect as fixture"})).toHaveProperty("disabled",false);expect(screen.queryByRole("navigation",{name:"Table pagination"})).toBeNull();expect(screen.queryByRole("combobox",{name:"Rows per page"})).toBeNull();expect(screen.queryByRole("button",{name:"Previous accounts"})).toBeNull();expect(screen.queryByRole("button",{name:"Next accounts"})).toBeNull();expect(state.requests.filter(r=>!r.endsWith("/members"))).toEqual(["/api/v1/organizations/{orgId}/server-access"]);/* /members is the member-visible list used to name whom to ask (SA-UX-2 S4) */expect(state.bodies).toHaveLength(0);
 });
 
 it("pages authoritative accounts at the chosen size without requesting topology or admitting a session",async()=>{
@@ -318,7 +318,7 @@ it("pages authoritative accounts at the chosen size without requesting topology 
  fireEvent.click(screen.getByRole("button",{name:"Next accounts"}));expect(screen.getByRole("button",{name:"Connect as account-10"})).toBeTruthy();expect(screen.queryByRole("button",{name:"Connect as account-0"})).toBeNull();
  fireEvent.change(screen.getByRole("combobox",{name:"Rows per page"}),{target:{value:"50"}});expect(screen.getAllByRole("row")).toHaveLength(51);expect(screen.getByRole("button",{name:"Previous accounts"})).toHaveProperty("disabled",true);
  fireEvent.click(screen.getByRole("button",{name:"Next accounts"}));expect(screen.getAllByRole("row")).toHaveLength(6);expect(screen.getByRole("button",{name:"Connect as account-50"})).toBeTruthy();expect(screen.getByRole("button",{name:"Previous accounts"})).toHaveProperty("disabled",false);expect(screen.getByRole("button",{name:"Next accounts"})).toHaveProperty("disabled",true);fireEvent.click(screen.getByRole("button",{name:"Previous accounts"}));expect(screen.getByRole("button",{name:"Connect as account-0"})).toBeTruthy();expect(screen.getAllByRole("row")).toHaveLength(51);
- expect(state.requests).toEqual(["/api/v1/organizations/{orgId}/server-access"]);expect(state.bodies).toHaveLength(0);
+ expect(state.requests.filter(r=>!r.endsWith("/members"))).toEqual(["/api/v1/organizations/{orgId}/server-access"]);/* /members is the member-visible list used to name whom to ask (SA-UX-2 S4) */expect(state.bodies).toHaveLength(0);
 });
 
 it("submits a pending connection only once and keeps account admission blocked until it settles",async()=>{
@@ -399,7 +399,7 @@ it("lets an administrator without a grant grant themself access and connect (ite
 });
 it("tells a member without a grant whom to ask instead of offering a self-grant",async()=>{
  state.connect=true;state.notGranted=true;mount();await openServer();fireEvent.click(await screen.findByRole("button",{name:"Connect as fixture"}));
- await screen.findByText(/Ask an organization owner or admin/);
+ await screen.findByText(/Ask Control Plane Admin \(support@tunnex\.io\) to grant you access/);
  expect(screen.queryByRole("button",{name:"Grant myself access"})).toBeNull();
 });
 it("explains session recording at registration with its default (item 9)",async()=>{
@@ -426,7 +426,10 @@ it("does not show the two-factor notice when a factor is enrolled",async()=>{
  state.admin=true;mount();await screen.findByRole("button",{name:"Build host"});
  expect(screen.queryByText(/your account has none yet/)).toBeNull();
 });
-it("tells a member why Connect is off and whom to ask (audit S5)",async()=>{state.serverEnabled=false;mount();await openServer();
- expect(await screen.findByText("This server is turned off. Ask an organization owner or admin.")).toBeTruthy()});
+it("tells a member why Connect is off (audit S5)",async()=>{state.serverEnabled=false;mount();await openServer();
+ expect(await screen.findByText(/^This server is turned off\. Ask /)).toBeTruthy()});
 it("disable confirmation says what happens to open sessions (audit S15)",async()=>{state.admin=true;mount();fireEvent.click(await serverAction("Disable server"));
  expect(await screen.findByText(/New connections are refused; no sessions are open\. Grants and recordings stay/)).toBeTruthy()});
+it("names the organization owners and admins to ask, from the member-visible list (S4)",async()=>{state.serverEnabled=false;mount();await openServer();
+ expect(await screen.findByText("This server is turned off. Ask Control Plane Admin (support@tunnex.io).")).toBeTruthy();expect(screen.queryByText(/Plain Member/)).toBeNull()});
+it("shows a member when their own access ends (S8)",async()=>{mount();await openServer();expect(await screen.findByText(/Your access ends .* \(in 2 h\)/)).toBeTruthy()});
