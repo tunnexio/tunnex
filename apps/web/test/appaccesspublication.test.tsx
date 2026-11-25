@@ -70,7 +70,7 @@ it("requires distinct browser capability, the exact checked revision and saved c
   f.view.browser_capability = "unsupported";
   const page = show();
   const upgrade = await screen.findByText("Upgrade required");
-  expect(upgrade.getAttribute("title")).toBe("Upgrade the gateway to a compatible browser connector.");
+  expect(upgrade.getAttribute("title")).toBe("This gateway needs an update before it can serve applications.");
   expectOutsideOptionalDetails(upgrade);
   expect(screen.getByRole("button", { name: "Publish application" })).toHaveProperty("disabled", true);
   f.view.browser_capability = "supported"; fireEvent.click(screen.getByRole("button", { name: "Refresh publication status" })); await ready();
@@ -89,7 +89,7 @@ it("publishes only the confirmed review and keeps the old active revision visibl
   expectOutsideOptionalDetails(requested);
   expect(Array.from(document.querySelectorAll("details")).every(detail => !detail.open)).toBe(true);
   expect(api.POST).toHaveBeenCalledWith(expect.stringContaining("/publication-operations"), { params: { path: { orgId: "org-1", appId: id } }, body: { expected_version: 7, revision: 6, digest, check_id: checkId, idempotency_key: expect.stringMatching(/^[0-9a-f-]{36}$/) } });
-  expect(screen.getByText("Active revision 4")).toBeTruthy();
+  expect(screen.getByText("Live: version 4")).toBeTruthy();
   expect(screen.getByText("old.apps.example.com")).toBeTruthy();
   expect(screen.getByRole("link", { name: "Open published application" }).getAttribute("href")).toBe("https://old.apps.example.com/__tunnex_app/start");
   expect(screen.queryByText("Active revision 6")).toBeNull(); expect(callbacks.onChanged).toHaveBeenCalledTimes(1);
@@ -139,7 +139,7 @@ it("permits safe disable after license loss and captures both current authority 
   await openPublicationDisclosure("Manage publication");
   fireEvent.click(await screen.findByRole("button", { name: "Disable application" }));
   expect(api.POST).not.toHaveBeenCalled(); fireEvent.click(screen.getByRole("button", { name: "Confirm disable" }));
-  await screen.findByText(/Routing and stream withdrawal confirmed/);
+  await screen.findByText(/Open connections are closed/);
   expect(api.POST).toHaveBeenCalledWith(expect.stringContaining("/publication/disable"), { params: { path: { orgId: "org-1", appId: id } }, body: { expected_application_version: 7, expected_authority_version: 12 } });
   expect(screen.getByRole("button", { name: "Archive application" })).toBeTruthy();
 });
@@ -166,7 +166,7 @@ it("restores history as a new draft while preserving the current publication", a
   await openPublicationDisclosure("Publication history");
   fireEvent.change(await screen.findByLabelText("Previously published revision"), { target: { value: "2" } });
   fireEvent.click(screen.getByRole("button", { name: "Create rollback draft" })); fireEvent.click(screen.getByRole("button", { name: "Confirm rollback draft" }));
-  await waitFor(() => expect(callbacks.onRollback).toHaveBeenCalledTimes(1)); expect(screen.getByText("Active revision 4")).toBeTruthy();
+  await waitFor(() => expect(callbacks.onRollback).toHaveBeenCalledTimes(1)); expect(screen.getByText("Live: version 4")).toBeTruthy();
   expect(api.POST).toHaveBeenCalledWith(expect.stringContaining("/rollback-draft"), { params: { path: { orgId: "org-1", appId: id } }, body: { expected_version: 7, revision: 2 } });
   expect(api.POST).toHaveBeenCalledTimes(1);
 });
@@ -236,7 +236,7 @@ it("an unavailable impact never blocks confirmed withdrawal or invents a session
   expect(disable).toHaveProperty("disabled", false); fireEvent.click(disable);
   expect(api.POST).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole("button", { name: "Confirm disable" }));
-  await screen.findByText("Disabled. Routing and stream withdrawal confirmed.");
+  await screen.findByText("Disabled. Open connections are closed.");
   expect(screen.queryByText(/unexpired app session records\./)).toBeNull();
 });
 it("missing session impact is reported independently from the matching user count", async () => {
@@ -275,7 +275,7 @@ it("shows a published draft as published, not as unmet pre-publish requirements"
   render(<MemoryRouter><AppAccessPublication {...props} check={null} /></MemoryRouter>);
   expect(await screen.findByText("No unpublished changes")).toBeTruthy();
   expect(screen.getByRole("heading", { name: "Published", level: 3 })).toBeTruthy();
-  expect(screen.getByText(`Revision ${application.draft.revision} is live. Edit the application to publish changes.`)).toBeTruthy();
+  expect(screen.getByText(`Version ${application.draft.revision} is live. Edit the application to publish changes.`)).toBeTruthy();
   expect(screen.queryByText("Before publishing")).toBeNull();
   expect(screen.queryByText("Needs attention")).toBeNull();
   expect(screen.queryByRole("link", { name: "Check the saved connection" })).toBeNull();

@@ -276,14 +276,14 @@ function DraftEditor({ orgId, userId, appId, manage, grant = false, configureDom
         {settings && <Availability settings={settings} manage={manage} archived={archived} />}
         <dl aria-label="Saved connection details" className="aa-editor-readonly-summary tnx-resource-facts">
           <div className="tnx-resource-fact-wide"><dt>Origin URL</dt><dd>{savedDraft.origin_url}</dd></div>
-          <div><dt>Gateway connector</dt><dd>{savedNode?.name ?? "Assigned gateway is unavailable"}</dd></div>
+          <div><dt>Gateway</dt><dd>{savedNode?.name ?? "Assigned gateway is unavailable"}</dd></div>
           <div><dt>Gateway status</dt><dd>{savedNode ? savedNode.status === "active" ? "Active gateway" : "Revoked gateway" : "Unavailable"}</dd></div>
         </dl>
         <details className="aa-editor-disclosure"><summary>Advanced connection settings</summary><div className="aa-editor-disclosure-content">
           <dl aria-label="Saved advanced connection settings" className="aa-editor-readonly-summary tnx-resource-facts">
             <div className="tnx-resource-fact-wide"><dt>Allowed private destination ranges</dt><dd>{savedDraft.allowed_destination_cidrs?.length ? savedDraft.allowed_destination_cidrs.join(", ") : "Safe public destinations only"}</dd></div>
             <div><dt>Origin certificate trust</dt><dd>{savedDraft.origin_ca_digest ? "Custom CA certificates" : "System certificate roots"}</dd></div>
-            {savedDraft.origin_ca_digest && <div className="tnx-resource-fact-wide"><dt>Saved CA fingerprint</dt><dd className="aa-editor-value-fingerprint">{savedDraft.origin_ca_digest}</dd></div>}
+            {savedDraft.origin_ca_digest && <div className="tnx-resource-fact-wide"><dt>Saved CA fingerprint</dt><dd className="aa-editor-value-fingerprint" title={savedDraft.origin_ca_digest}>{savedDraft.origin_ca_digest.slice(0, 16)}…</dd></div>}
             <div><dt>Idle timeout</dt><dd>{savedDraft.idle_timeout_seconds} seconds</dd></div>
             <div><dt>Maximum session</dt><dd>{savedDraft.absolute_timeout_seconds} seconds</dd></div>
           </dl>
@@ -308,15 +308,15 @@ function DraftEditor({ orgId, userId, appId, manage, grant = false, configureDom
           </div></div>}
           {step === "connection" && <div className="aa-editor-card"><div className="app-access-form-fields space-y-5">
             <div><Field label="Origin URL"><Input required type="url" placeholder="https://your-private-app" value={draft.origin_url} onChange={event => change("origin_url", event.target.value)} /></Field><p className="aa-editor-field-help">HTTP or HTTPS, with the app served at its root path.</p><OriginRangeNotice originUrl={draft.origin_url} allowed={draft.allowed_destination_cidrs ?? []} gatewayName={selectedGateway?.name} onAllow={editable ? allowDestination : undefined} /></div>
-            <Field label="Gateway connector"><Select required value={draft.gateway_id} onChange={event => change("gateway_id", event.target.value)}><option value="">Select a gateway</option>{draft.gateway_id && !selectedGateway && <option value={draft.gateway_id} disabled>Assigned gateway is unavailable</option>}{nodes.filter(node => node.status === "active" || node.id === draft.gateway_id).map(node => <option key={node.id} value={node.id} disabled={node.status !== "active"}>{node.name} · {node.status === "active" ? "Active gateway" : "Revoked: choose an active gateway"}</option>)}</Select></Field>
-            <p className="aa-editor-field-help">Gateway enrollment does not confirm App Access capability. Save the draft to inspect the connector and check its origin connection.</p>
+            <Field label="Gateway"><Select required value={draft.gateway_id} onChange={event => change("gateway_id", event.target.value)}><option value="">Select a gateway</option>{draft.gateway_id && !selectedGateway && <option value={draft.gateway_id} disabled>Assigned gateway is unavailable</option>}{nodes.filter(node => node.status === "active" || node.id === draft.gateway_id).map(node => <option key={node.id} value={node.id} disabled={node.status !== "active"}>{node.name} · {node.status === "active" ? "Active gateway" : "Revoked: choose an active gateway"}</option>)}</Select></Field>
+            <p className="aa-editor-field-help">The gateway connects to your app. Save, then run a connection check to confirm it can reach the app.</p>
             <details className="aa-editor-disclosure" open={advancedOpen} onToggle={event => setAdvancedOpen(event.currentTarget.open)}><summary>Advanced connection settings</summary><div className="aa-editor-disclosure-content space-y-5">
               <Field label="Allowed private destination ranges"><textarea className="w-full rounded-md border border-line bg-transparent p-2 font-mono text-sm" rows={3} maxLength={2080} value={(draft.allowed_destination_cidrs ?? []).join("\n")} onChange={event => change("allowed_destination_cidrs", event.target.value.split(/\n/).map(value => value.trim()))} /></Field>
               <p className="aa-editor-field-help">One private CIDR per line, up to 32. Empty allows safe public destinations only. Loopback, link-local, metadata and control plane addresses remain blocked.</p>
               <Field label="Origin certificate trust"><Select value={caMode} onChange={event => { const mode = event.target.value as typeof caMode; setCaMode(mode); setDraft(current => { const next = { ...current }; if (mode === "preserve") delete next.origin_ca_pem; else next.origin_ca_pem = ""; return next; }); setDirty(true); }}>{appId && <option value="preserve">Keep saved trust ({caDigest ? "custom CA" : "system roots"})</option>}<option value="system">System certificate roots</option><option value="custom">Custom public CA certificates</option></Select></Field>
               {caMode === "custom" && <Field label="Public CA certificate PEM"><textarea className="w-full rounded-md border border-line bg-transparent p-2 font-mono text-sm" rows={6} maxLength={32768} value={draft.origin_ca_pem ?? ""} onChange={event => change("origin_ca_pem", event.target.value)} /></Field>}
               <p className="aa-editor-field-help">HTTPS verifies the origin hostname and certificate chain. Custom trust accepts up to eight public CA certificates; paste no private keys.</p>
-              {caDigest && <p className="break-all aa-editor-field-help">Saved CA fingerprint: {caDigest}</p>}
+              {caDigest && <p className="break-all aa-editor-field-help" title={caDigest}>Saved CA fingerprint: {caDigest.slice(0, 16)}…</p>}
               <div className="grid min-w-0 gap-4 sm:grid-cols-2"><Field label="Idle timeout (seconds)"><Input required type="number" min={60} max={1800} value={draft.idle_timeout_seconds} onChange={event => change("idle_timeout_seconds", Number(event.target.value))} /></Field><Field label="Maximum session (seconds)"><Input required type="number" min={300} max={28800} value={draft.absolute_timeout_seconds} onChange={event => change("absolute_timeout_seconds", Number(event.target.value))} /></Field></div>
             </div></details>
           </div></div>}
