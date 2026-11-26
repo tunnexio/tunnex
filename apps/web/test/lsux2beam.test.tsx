@@ -81,7 +81,8 @@ describe("LS-UX-2 reviewer share detail", () => {
     await screen.findByText(/This share has ended. Ask Pat Publisher \(pat@example.com\) for a new link/);
     expect(screen.queryByRole("button", { name: "Copy link" })).toBeNull();
     expect(screen.queryByText(/Create a new share using the CLI/)).toBeNull();
-    expect(screen.getByText("Feedback closed when this share ended.")).toBeTruthy();
+    // The feedback panel sets its closed state in an effect after the share renders; wait for it.
+    expect(await screen.findByText("Feedback closed when this share ended.")).toBeTruthy();
     expect(beamRoomsApi.feedback).not.toHaveBeenCalled();
   });
   it("answers not invited, withdrawn and missing with one sentence and a way forward (L9)", async () => {
@@ -148,7 +149,7 @@ describe("LS-UX-2 review feedback", () => {
   it("puts the form first, explains the decision and why Send is disabled (L16, L17, L19, L20)", async () => {
     render(<MemoryRouter><BeamFeedback orgId={identity.org} share={reviewed} viewer="reviewer" /></MemoryRouter>);
     const form = await screen.findByRole("form", { name: "Send review feedback" });
-    const empty = screen.getByText("No feedback yet. Yours will be the first.");
+    const empty = await screen.findByText("No feedback yet. Yours will be the first.");
     expect(form.compareDocumentPosition(empty) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     expect(screen.queryByRole("combobox", { name: "Review decision" })).toBeNull();
     for (const [name, meaning] of [["Comment", "A note without a decision."], ["Approve", "Tell the publisher it looks good."], ["Request changes", "Ask the publisher to change something."]]) {
