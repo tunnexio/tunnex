@@ -143,3 +143,10 @@
 .scan-metric-pending { display:flex; flex-direction:column; align-items:flex-start; gap:8px; }
 .scan-metric-pending .scan-metric-value { color:var(--tnx-text-disabled); }
 @media (max-width:760px) { .scan-read-at { display:none; } }
+/* LS-UX-2: the member workspace overview. */
+.scan-workspace-cards { display:grid; grid-template-columns:repeat(auto-fill,minmax(220px,1fr)); gap:12px; }
+.scan-workspace-cards a { display:flex; flex-direction:column; gap:4px; height:100%; padding:14px 16px; border:1px solid var(--tnx-border); border-radius:10px; background:var(--tnx-surface-inset); color:var(--tnx-text-body); }
+.scan-workspace-cards a:hover { border-color:color-mix(in srgb,var(--tnx-text-secondary) 45%,var(--tnx-border)); }
+.scan-workspace-cards a:focus-visible { outline:2px solid var(--tnx-focus); outline-offset:2px; }
+.scan-workspace-cards strong { color:var(--tnx-text-heading); font-size:14px; font-weight:550; }
+.scan-workspace-cards span { color:var(--tnx-text-secondary); font-size:13px; }

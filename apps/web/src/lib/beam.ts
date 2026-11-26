@@ -1,4 +1,5 @@
 import { apiErrorCode, apiErrorMessage } from "./api";
+import { personLabel } from "./personLabel";
 
 import { createTunnexClient } from "@tunnex/shared";
 import type { paths, components } from "./beam-api";
@@ -87,3 +88,45 @@ export const beamActionLabel = (code: string) => beamActionLabels[code] ?? beamW
 export const beamStateLabel = (code: string) => beamStateLabels[code] ?? beamWords(code);
 export const beamConnectivityLabel = (code: string) => beamConnectivityLabels[code] ?? beamWords(code);
 export const beamOutcomeLabel = (code: string) => beamOutcomeLabels[code] ?? beamWords(code);
+
+// LS-UX-2: who shared the app, always as "Name (email)". The publisher identity is only
+// present on projections the server already let this person read.
+export function beamPublisherLabel(share: Pick<BeamShare, "publisher_name" | "publisher_email">): string {
+  return personLabel({ name: share.publisher_name, email: share.publisher_email }, "the publisher");
+}
+export type BeamViewer = "publisher" | "manager" | "reviewer";
+/** How this person relates to the share: its publisher, an organization manager, or a reviewer. */
+export function beamViewer(share: Pick<BeamShare, "publisher_id" | "can_manage">, userId: string): BeamViewer {
+  return share.publisher_id === userId ? "publisher" : share.can_manage ? "manager" : "reviewer";
+}
+/**
+ * LS-UX-2: one refusal for every "you cannot see this share" answer. The server answers the same
+ * not-found for a share that does not exist, one you were never invited to and one whose access was
+ * withdrawn, and the page must not tell them apart either.
+ */
+export const BEAM_SHARE_UNAVAILABLE = "This shared app isn't available to your account. The share may have ended, or the person who shared it hasn't given your account access. Ask them to check the link and who it is shared with.";
+export function beamShareError(result: { error: string; code?: string }): string {
+  return result.code === "beam_share_not_found" ? BEAM_SHARE_UNAVAILABLE : result.error;
+}
+/**
+ * One plain sentence explaining the status to the person looking at it, or null when the app
+ * can simply be opened. Reviewers are told who can change it; publishers are told what to do.
+ */
+export function beamStatusHint(share: BeamShare, viewer: BeamViewer, now = Date.now()): string | null {
+  const hint = statusHint(share, viewer, now);
+  return hint && hint[0].toUpperCase() + hint.slice(1);
+}
+function statusHint(share: BeamShare, viewer: BeamViewer, now: number): string | null {
+  const publisher = beamPublisherLabel(share);
+  const own = viewer === "publisher";
+  if (beamIsTerminal(share, now)) {
+    if (share.state === "revoked") return own ? "This share was ended by a sharing policy or server change. Publish again from the CLI or desktop client if you still need it." : `This share was ended by a sharing policy or server change. Ask ${publisher} to share the app again if you still need to review it.`;
+    return own ? "This share has ended. Publish again from the CLI or desktop client to share the app again." : viewer === "manager" ? "This share has ended. Only its publisher can share the app again." : `This share has ended. Ask ${publisher} for a new link if you still need to review it.`;
+  }
+  if (share.state === "paused") return own ? "This share is paused. Reviewers can't open it until you resume it." : `${publisher} has paused this share. You can open it again when they resume it.`;
+  if (share.state === "starting") return own ? "Waiting for your CLI or desktop client to connect." : `Waiting for ${publisher} to start sharing. Check again in a moment.`;
+  if (share.connectivity === "offline" || share.connectivity === "reconnecting") return own ? "Your CLI or desktop client is not connected. Keep it running to serve reviewers." : `${publisher}'s computer is offline or reconnecting. The app opens again when it is back.`;
+  if (share.connectivity === "origin_unavailable") return own ? "Your local app is not responding. Check that it is running on the shared port." : `${publisher}'s local app is not responding right now. Try again shortly or let them know.`;
+  if (!share.can_open && viewer !== "reviewer") return "You manage this share but are not one of its reviewers, so you can't open the app.";
+  return null;
+}

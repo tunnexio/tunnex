@@ -5,6 +5,7 @@ import { NAV_DESTINATIONS } from "./AppShell";
 import { motionAllowed } from "../lib/motion";
 import { useMotionPreference } from "./MotionProvider";
 import { useOrg } from "../lib/useOrg";
+import { navAllows, useMyOrgRoles } from "../lib/navaccess";
 import { api, listItems } from "../lib/api";
 import { entityResults, type PaletteInventory } from "../lib/palettesearch";
 
@@ -45,6 +46,7 @@ export function CommandPalette() {
   // Entities are READ when the palette opens and dropped when it closes: a result is never older than the
   // moment the operator asked. A read that fails contributes nothing rather than an error in a dialog.
   const { org } = useOrg();
+  const mine = useMyOrgRoles();
   const orgId = org?.id;
   const [inventory, setInventory] = useState<PaletteInventory>({});
   useEffect(() => {
@@ -62,13 +64,13 @@ export function CommandPalette() {
     return () => { cancelled = true; };
   }, [open, orgId]);
   const pages = useMemo(() => {
-    const destinations = NAV_DESTINATIONS.filter(item => item.to !== "/sandboxes" || sandboxState === "enabled" || sandboxState === "draining");
+    const destinations = NAV_DESTINATIONS.filter(item => (item.to !== "/sandboxes" || sandboxState === "enabled" || sandboxState === "draining") && navAllows(item.to, mine));
     const q = query.trim().toLowerCase();
     if (!q) return destinations;
     return destinations.filter(
       (d) => d.label.toLowerCase().includes(q) || d.to.includes(q),
     );
-  }, [query, sandboxState]);
+  }, [query, sandboxState, mine]);
   const results = useMemo(
     () => [
       ...pages.map(page => ({ key: page.to, to: page.to, label: page.label, kind: undefined as string | undefined, detail: undefined as string | undefined })),

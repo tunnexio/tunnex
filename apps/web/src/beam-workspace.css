@@ -180,3 +180,19 @@
   .beam-sample-explorer { grid-template-columns:minmax(260px,.9fr) minmax(310px,1.1fr); }
   .beam-sample-panel { padding-inline:18px; }
 }
+/* LS-UX-2: reviewer view and feedback form. */
+.beam-status-hint { padding:10px 12px; border:1px solid var(--tnx-border); border-radius:8px; background:var(--tnx-surface-inset); color:var(--tnx-text-body); font-size:13px; }
+.beam-feedback-form { max-width:780px; }
+.beam-decision { border:0; padding:0; margin:0; }
+.beam-decision legend { margin-bottom:8px; font-size:13px; font-weight:500; color:var(--tnx-text-primary); }
+.beam-decision-options { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:8px; }
+.beam-decision-option { display:flex; gap:10px; align-items:flex-start; padding:10px 12px; border:1px solid var(--tnx-border); border-radius:8px; background:var(--tnx-surface-inset); cursor:pointer; }
+.beam-decision-option[data-selected] { border-color:color-mix(in srgb,var(--tnx-text-heading) 45%,var(--tnx-border)); }
+.beam-decision-option input { margin-top:3px; accent-color:var(--tnx-text-heading); }
+.beam-decision-option > span { display:flex; flex-direction:column; gap:2px; }
+.beam-decision-option strong { font-size:13px; font-weight:550; color:var(--tnx-text-heading); }
+.beam-decision-option > span > span { font-size:12px; color:var(--tnx-text-secondary); }
+.beam-decision-option:has(input:focus-visible) { outline:2px solid var(--tnx-focus); outline-offset:2px; }
+.beam-attachment-name { font-size:13px; color:var(--tnx-text-body); overflow-wrap:anywhere; }
+.beam-feedback-empty { padding-top:4px; }
+.beam-feedback-history { padding-top:14px; border-top:1px solid var(--tnx-border); font-size:14px; font-weight:550; color:var(--tnx-text-heading); }
