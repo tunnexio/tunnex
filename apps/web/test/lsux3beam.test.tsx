@@ -87,6 +87,37 @@ describe("LS-UX-3 review feedback behind the MFA policy", () => {
   });
 });
 
+describe("LS-UX-3 review screenshots behind the MFA policy", () => {
+  const withShot = { id: "f1", share_id: shareId, author_id: publisherId, author_name: "Sam Reviewer", author_email: "sam@example.com", body: "Button overlaps", status: "changes_requested", created_at: "2026-10-06T10:00:00Z", screenshot_url: `/api/v1/organizations/${identity.org}/beam/shares/${shareId}/feedback/f1/screenshot` };
+  beforeEach(() => {
+    vi.mocked(beamRoomsApi.feedback).mockResolvedValue({ ok: true, data: { ...empty, items: [withShot] } } as never);
+    URL.createObjectURL = vi.fn(() => "blob:http://localhost/shot-1"); URL.revokeObjectURL = vi.fn();
+  });
+  it("opens the screenshot in the console, verifies MFA inline and never links a new tab to the API (U11)", async () => {
+    vi.mocked(beamRoomsApi.screenshot).mockResolvedValueOnce(mfaRefusal).mockResolvedValue({ ok: true, data: new Blob(["png"], { type: "image/png" }) });
+    render(<MemoryRouter><BeamFeedback orgId={identity.org} share={reviewed} viewer="reviewer" /></MemoryRouter>);
+    const view = await screen.findByRole("button", { name: "View screenshot from Sam Reviewer (sam@example.com)" });
+    expect(document.querySelector('a[href*="/screenshot"]')).toBeNull();
+    fireEvent.click(view);
+    await screen.findByText("Your organization requires a recent MFA check to view review screenshots.");
+    expect(screen.queryByText("Verify MFA to open this share")).toBeNull();
+    await verifyInline();
+    const image = await screen.findByRole("img", { name: "Screenshot from Sam Reviewer (sam@example.com)" });
+    expect(image.getAttribute("src")).toBe("blob:http://localhost/shot-1");
+    expect(beamRoomsApi.screenshot).toHaveBeenCalledTimes(2);
+    expect(beamRoomsApi.screenshot).toHaveBeenLastCalledWith(identity.org, shareId, "f1");
+    fireEvent.click(screen.getByRole("button", { name: "Close" }));
+    await waitFor(() => expect(URL.revokeObjectURL).toHaveBeenCalledWith("blob:http://localhost/shot-1"));
+  });
+  it("shows a plain sentence when the screenshot is no longer available (U11)", async () => {
+    vi.mocked(beamRoomsApi.screenshot).mockResolvedValue({ ok: false, code: "beam_share_not_found", error: "Share not found" });
+    render(<MemoryRouter><BeamFeedback orgId={identity.org} share={reviewed} viewer="reviewer" /></MemoryRouter>);
+    fireEvent.click(await screen.findByRole("button", { name: /View screenshot from/ }));
+    await screen.findByText("This screenshot is no longer available to your account. Refresh feedback to check.");
+    expect(screen.queryByText("Share not found")).toBeNull();
+  });
+});
+
 describe("LS-UX-3 Sharing updates behind the MFA policy", () => {
   it("offers inline MFA instead of a red error and a Retry that cannot help (U3)", async () => {
     vi.mocked(beamRoomsApi.notifications).mockResolvedValueOnce(mfaRefusal).mockResolvedValue({ ok: true, data: empty });
