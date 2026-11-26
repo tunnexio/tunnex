@@ -197,6 +197,21 @@ const VAULT_ACTION_LABELS: Record<string, string> = {
 /** Every Vault action, for the audit filter's suggestions. */
 export const VAULT_AUDIT_ACTIONS = Object.keys(VAULT_ACTION_LABELS);
 
+// VAULT-UX-2 W1: "family.*" in the Action filter is a whole action family, sent as action_prefix, so a
+// family filter can never miss an action because it lives on another target type.
+const ACTION_FAMILY = /^((?:[a-z][a-z0-9_]*\.)+)\*$/;
+const FAMILY_LABELS: Record<string, string> = { "vault.": "All Vault activity" };
+/** The Vault family filter, as the Action field shows it. */
+export const VAULT_ACTION_FAMILY = "vault.*";
+
+/** The audit query for what the Action field holds: an exact action, or a family as action_prefix. */
+export function auditActionQuery(action: string): { action?: string; action_prefix?: string } {
+  const value = action.trim();
+  if (!value) return {};
+  const family = ACTION_FAMILY.exec(value);
+  return family && family[1].length <= 64 ? { action_prefix: family[1] } : { action: value };
+}
+
 const VAULT_DETAIL_KEYS = new Set(["title", "service", "visibility", "kind", "version", "recipient", "recipient_kind", "recipient_from", "fields", "entries", "reason"]);
 
 /** Vault evidence through an allowlist, like Local Sharing's: labels and counts only, never anything else. */
@@ -215,6 +230,8 @@ export function vaultAuditDetails(details: Record<string, unknown>): [string, st
  * no cluster, because none is involved yet.
  */
 export function auditActionLabel(action: string): string {
+  const family = ACTION_FAMILY.exec(action);
+  if (family) return FAMILY_LABELS[family[1]] ?? `All ${family[1].slice(0, -1)} activity`;
   if (VAULT_ACTION_LABELS[action]) return VAULT_ACTION_LABELS[action];
   if (action === "k8s.api_access_enabled") return "Kubernetes API access turned on";
   if (action === "k8s.api_access_disabled") return "Kubernetes API access turned off";

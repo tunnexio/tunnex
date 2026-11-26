@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
+import { stripJsComments } from "./support/source";
 
 // VAULT-UX-2 W1: "Vault activity" is every vault.* action, whatever its target type.
 afterEach(cleanup);
@@ -78,8 +79,17 @@ describe("Vault audit labels cover every action the API writes", () => {
       ...readdirSync(join(api, "db", "migrations")).filter(name => name.endsWith(".up.sql")).map(name => join(api, "db", "migrations", name)),
     ];
     const written = new Set<string>();
-    for (const file of sources) for (const match of readFileSync(file, "utf8").matchAll(/["'`](vault\.[a-z_]+)["'`]/g)) written.add(match[1]);
-    expect(written.size).toBeGreaterThan(5);
+    for (const file of sources) {
+      const raw = readFileSync(file, "utf8");
+      // Go comments are C-style; SQL comments are "--" lines. Neither may count as a written action.
+      const text = file.endsWith(".go") ? stripJsComments(raw) : raw.replace(/--.*$/gm, "");
+      // Literal actions ("vault.service_created", migration SQL) and the entry helper's suffixes:
+      // audit(ctx, tx, org, user, entry, "created", …) and Reveal's action := "revealed" / "copied".
+      for (const match of text.matchAll(/["'`](vault\.[a-z_]+)["'`]/g)) written.add(match[1]);
+      for (const match of text.matchAll(/\baudit\(ctx, tx, org, \w+, \w+, "([a-z_]+)"/g)) written.add(`vault.${match[1]}`);
+      for (const match of text.matchAll(/\baction :?= "([a-z_]+)"/g)) written.add(`vault.${match[1]}`);
+    }
+    expect(written.size).toBeGreaterThanOrEqual(10);
     for (const action of written) expect(VAULT_AUDIT_ACTIONS).toContain(action);
     for (const action of VAULT_AUDIT_ACTIONS) expect(action.startsWith("vault.")).toBe(true);
   });

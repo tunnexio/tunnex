@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { MemoryRouter } from "react-router-dom";
 import Vault from "../src/pages/Vault";
+import { stripCssComments } from "./support/source";
 
 // VAULT-UX-2: polish from the v0.1.51 walk (W1–W6) and the full pass (F1–F10).
 const mock = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), put: vi.fn(), patch: vi.fn(), remove: vi.fn(), canAssign: false, reauth: { password: true, mfa: false, available: true } as { password: boolean; mfa: boolean; available: boolean } }));
@@ -21,7 +22,7 @@ let entries: unknown[] = [];
 const ok = (data: unknown, status = 200) => ({ data, response: new Response("{}", { status }) });
 function show(at = "/vault") { return render(<MemoryRouter initialEntries={[at]}><Vault /></MemoryRouter>); }
 function listQueries() { return mock.get.mock.calls.filter(([path]) => String(path).endsWith("/vault/entries")).map(([, init]) => init.params.query); }
-const css = readFileSync(join(__dirname, "..", "src", "vault-workspace.css"), "utf8").replace(/\/\*[\s\S]*?\*\//g, "");
+const css = stripCssComments(readFileSync(join(__dirname, "..", "src", "vault-workspace.css"), "utf8"));
 
 beforeEach(() => {
   vi.resetAllMocks(); mock.canAssign = false; mock.reauth = { password: true, mfa: false, available: true };

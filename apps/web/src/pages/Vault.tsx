@@ -46,6 +46,19 @@ function entryTitle(entry: Entry) { return entry.configured === false ? QUICK_TI
 function serviceLabel(entry: Entry) { return entry.configured === false ? "Details not added yet" : entry.service_name; }
 function plural(n: number, one: string, many = `${one}s`) { return `${n} ${n === 1 ? one : many}`; }
 function subjectLabel(subject: Subject) { return subject.email ? personLabel(subject) : subject.name; }
+// VAULT-UX-2 W2: one recipient label for the list, the drawer and Change secret.
+function recipientLabel(entry: Entry) {
+  if (entry.subject_kind === "group") return typeof entry.subject_member_count === "number" ? `${entry.subject_name || "Group"} · ${plural(entry.subject_member_count, "member")}` : entry.subject_name || "Group";
+  return entry.subject_email ? personLabel({ name: entry.subject_name, email: entry.subject_email }) : entry.subject_name || "Recipient";
+}
+// VAULT-UX-2 F1: say exactly what the account will be asked for.
+function stepUpWords(reauth?: Reauth) {
+  if (reauth?.password && reauth.mfa) return "your password and a recent two-factor check";
+  if (reauth?.password) return "your password";
+  if (reauth?.mfa) return "a recent two-factor check";
+  return "";
+}
+const SECRET_INPUT = { className: "vault-secret-input", "data-1p-ignore": "", "data-lpignore": "true", "data-bwignore": "", "data-form-type": "other" } as const;
 
 export default function Vault() {
   const { org, failed } = useOrg();
@@ -69,6 +82,8 @@ const EMPTY: Record<View, string> = {
   assigned: "Credentials you share with people or groups in this organization appear here.",
 };
 
+const EMPTY_ACTION: Record<View, string | null> = { all: "Add your first credential", personal: "Add a personal credential", shared: null, assigned: "Add credential" };
+
 type LoadFailure = "access" | "unverified" | "other";
 type EditorState = { mode: "new" } | { mode: "configure" | "rotate" | "details"; entry: Entry };
 
@@ -86,6 +101,7 @@ function VaultWorkspace({ orgId }: { orgId: string }) {
   const pageSize = appAccessPageSize(params.get("page_size"));
   const page = Math.min(Math.floor(10000 / pageSize) + 1, Math.max(1, Math.floor(Number(params.get("page"))) || 1));
   const [query, setQuery] = useState(search);
+  const pushed = useRef(search);
   const [editor, setEditor] = useState<EditorState | null>(null);
   const [quick, setQuick] = useState<{ password: string; requestId: string } | null>(null);
   const [selected, setSelected] = useState<Entry | null>(null);
@@ -96,20 +112,36 @@ function VaultWorkspace({ orgId }: { orgId: string }) {
   const workspaceLive = useRef(true);
   useEffect(() => { workspaceLive.current = true; return () => { workspaceLive.current = false; }; }, []);
 
-  function changeQuery(next: { q?: string; page?: number; pageSize?: number; view?: View }) {
+  function changeQuery(next: { q?: string; page?: number; pageSize?: number; view?: View }, replace = false) {
     const updated = new URLSearchParams(params);
-    if (next.q !== undefined) { if (next.q) updated.set("q", next.q); else updated.delete("q"); }
+    if (next.q !== undefined) { pushed.current = next.q; if (next.q) updated.set("q", next.q); else updated.delete("q"); }
     if (next.page !== undefined) { if (next.page > 1) updated.set("page", String(next.page)); else updated.delete("page"); }
     if (next.pageSize !== undefined) updated.set("page_size", String(next.pageSize));
     if (next.view !== undefined) { if (next.view !== "all") updated.set("view", next.view); else updated.delete("view"); }
-    setParams(updated);
+    setParams(updated, { replace });
   }
   function setPage(value: number) { changeQuery({ page: value }); }
-  useEffect(() => { setQuery(search); }, [search]);
+  // Only a URL change from outside (Back/Forward) rewrites the field; our own debounced writes never
+  // overwrite what the person kept typing (VAULT-UX-2 W5).
+  useEffect(() => { if (search !== pushed.current) { pushed.current = search; setQuery(search); } }, [search]);
+  // Search as you type, like Local Sharing: 300 ms after typing stops, replacing the history entry.
+  useEffect(() => {
+    const next = query.trim().slice(0, 100);
+    if (next === search) return;
+    const timer = window.setTimeout(() => { setNotice(""); changeQuery({ q: next, page: 1 }, true); }, 300);
+    return () => window.clearTimeout(timer);
+  }, [query, search, params]);
+  const listKey = `${orgId}:${page}:${pageSize}:${view}:${reload}`;
+  const lastListKey = useRef(listKey);
+  const [searching, setSearching] = useState(false);
 
   useEffect(() => {
     let live = true;
-    setData(null); setFailure(null);
+    // A search keeps the current rows on screen while it loads; any other change starts clean.
+    const searchOnly = lastListKey.current === listKey && data !== null;
+    lastListKey.current = listKey;
+    if (searchOnly) setSearching(true); else setData(null);
+    setFailure(null);
     // Read the status, not just the data: a refusal is an access answer, not a broken page (V11).
     void (async () => {
       try {
@@ -117,12 +149,13 @@ function VaultWorkspace({ orgId }: { orgId: string }) {
         if (!live) return;
         if (result.data) {
           if (page > 1 && !result.data.entries.length) { setPage(Math.max(1, Math.ceil(result.data.total / pageSize))); return; }
-          setData(result.data); setCanAssign(result.data.can_assign); setReauth(result.data.reauthentication);
+          setSearching(false); setData(result.data); setCanAssign(result.data.can_assign); setReauth(result.data.reauthentication);
           return;
         }
         const code = apiErrorCode(result.error);
+        setSearching(false);
         setFailure(code === "email_not_verified" ? "unverified" : result.response?.status === 403 ? "access" : "other");
-      } catch { if (live) setFailure("other"); }
+      } catch { if (live) { setSearching(false); setFailure("other"); } }
     })();
     return () => { live = false; };
   }, [orgId, page, pageSize, search, view, reload]);
@@ -148,26 +181,25 @@ function VaultWorkspace({ orgId }: { orgId: string }) {
   const savedMessage = (state: EditorState) => state.mode === "configure" ? "Details added. The generated password is unchanged." : state.mode === "details" ? "Details saved. No new version was created." : state.mode === "rotate" ? "New version saved. Earlier versions remain in history." : "Credential saved.";
   return <section className="beam-workspace vault-workspace network-management min-w-0 space-y-5">
     <PageHeader navigationTitle title="Vault" />
-    <nav className="vault-views" aria-label="Vault views">{views.map(item => <button key={item.key} type="button" aria-pressed={view === item.key} onClick={() => { if (view !== item.key) { setSelected(null); changeQuery({ view: item.key, page: 1 }); } }}>{item.label}</button>)}</nav>
+    <nav className="vault-views" aria-label="Vault views">{views.map(item => <button key={item.key} type="button" aria-pressed={view === item.key} onClick={() => { if (view !== item.key) { setSelected(null); setNotice(""); changeQuery({ view: item.key, page: 1 }); } }}>{item.label}</button>)}</nav>
     <section className="beam-inventory" aria-label="Vault credentials">
     <div className="beam-workspace-bar"><p className="beam-list-summary vault-inventory-summary">{data ? plural(data.total, "credential") : "Credentials"}</p><div className="beam-workspace-tools"><button type="button" className="beam-inline-link" onClick={quickGenerate}>Quick generate</button><Button onClick={() => open({ mode: "new" })}>Add credential</Button></div></div>
-    <form className="beam-toolbar" onSubmit={event => { event.preventDefault(); changeQuery({ q: query.trim(), page: 1 }); setNotice(""); }}>
+    <form className="beam-toolbar" role="search" aria-label="Credential search" onSubmit={event => { event.preventDefault(); changeQuery({ q: query.trim().slice(0, 100), page: 1 }); setNotice(""); }}>
       <div className="beam-search"><Icon name="search" size={17} /><Input type="search" aria-label="Search Vault" placeholder="Search title, service or username…" maxLength={100} value={query} onChange={event => setQuery(event.target.value)} /></div>
-      <Button type="submit" variant="ghost" size="sm">Search</Button>
       <RefreshButton label="Refresh Vault" className="beam-refresh" onClick={() => { setSelected(null); setReload(value => value + 1); }} />
       {search && <Button type="button" variant="ghost" size="sm" onClick={() => { setQuery(""); changeQuery({ q: "", page: 1 }); }}>Clear search</Button>}
     </form>
     {notice && <p role="status" className="beam-notice">{notice}</p>}
-    {failure === "other" ? <div className="beam-error"><ErrorText>Could not load your credentials. You can still add one; try loading the list again.</ErrorText><Button onClick={() => setReload(value => value + 1)}>Retry Vault</Button></div> : !data ? <Loading label="Loading credentials…" /> : !data.entries.length ? <AppAccessEmptyState
+    {failure === "other" ? <div className="beam-error"><ErrorText>Could not load your credentials. You can still add one; try loading the list again.</ErrorText><Button onClick={() => setReload(value => value + 1)}>Retry Vault</Button></div> : !data ? <Loading label="Loading credentials…" /> : <div className="vault-results" aria-busy={searching}>{!data.entries.length ? <AppAccessEmptyState
       icon={null}
       title={search ? "No credentials match your search." : view === "all" ? "No credentials yet" : `Nothing in ${views.find(item => item.key === view)?.label ?? "this view"} yet`}
       description={search ? "Try another title, service or username, or clear the search." : EMPTY[view]}
-      action={search ? <Button variant="ghost" size="sm" onClick={() => { changeQuery({ q: "", page: 1 }); setQuery(""); }}>Clear filters</Button> : <button type="button" className="beam-inline-link" onClick={() => open({ mode: "new" })}>Add your first credential<Icon name="chevron-right" size={14} /></button>}
+      action={search ? <Button variant="ghost" size="sm" onClick={() => { changeQuery({ q: "", page: 1 }); setQuery(""); }}>Clear search</Button> : EMPTY_ACTION[view] ? <button type="button" className="beam-inline-link" onClick={() => open({ mode: "new" })}>{EMPTY_ACTION[view]}<Icon name="chevron-right" size={14} /></button> : undefined}
     /> : <>
       <div className="beam-table-wrap"><table className="beam-inventory-table vault-credentials-table"><caption className="sr-only">Vault credentials</caption><thead><tr><th>Credential</th><th>Username</th><th>Access</th><th>Version</th><th>Updated</th><th><span className="sr-only">Actions</span></th></tr></thead><tbody>{data.entries.map(entry => <tr key={entry.id}>
         <td><div className="beam-app-identity"><div><h2><button type="button" className="vault-entry-title" onClick={() => setSelected(entry)}>{entryTitle(entry)}</button></h2><p className="beam-url vault-service-label">{serviceLabel(entry)} · {entry.kind === "api_key" ? "API key" : "Password"}</p></div></div></td>
         <td>{entry.username || <span className="vault-muted">Not set</span>}</td>
-        <td><span className="vault-access">{entry.visibility === "personal" ? "Personal" : entry.subject_name || "Assigned"}</span><span className="vault-cell-note">{entry.visibility === "personal" ? "Only you" : entry.subject_kind === "group" ? "Shared with a group" : "Shared with a person"}</span></td>
+        <td><span className="vault-access">{entry.visibility === "personal" ? "Personal" : recipientLabel(entry)}</span><span className="vault-cell-note">{entry.visibility === "personal" ? "Only you" : entry.subject_kind === "group" ? "Shared with a group" : "Shared with a person"}</span></td>
         <td><span className="vault-version">Version {entry.current_version}</span></td>
         <td><time className="beam-expiry" dateTime={entry.updated_at}>{dateLabel(entry.updated_at)}</time></td>
         <td><div className="beam-row-actions">{entry.configured === false && entry.can_edit ? <button type="button" className="beam-open-link" aria-label="Add details for Generated password" onClick={() => open({ mode: "configure", entry })}>Add details<Icon name="chevron-right" size={15} /></button> : <button type="button" className="beam-open-link" aria-label={`View ${entryTitle(entry)}`} onClick={() => setSelected(entry)}>View<Icon name="chevron-right" size={15} /></button>}<AppAccessRowMenu label={`Actions for ${entryTitle(entry)}`} actions={[{ key: "view", label: "View credential", onSelect: () => setSelected(entry) },
@@ -177,7 +209,7 @@ function VaultWorkspace({ orgId }: { orgId: string }) {
           ...(entry.can_delete ? [{ key: "delete", label: "Delete credential", danger: true, onSelect: () => setDeleting(entry) }] : [])]} /></div></td>
       </tr>)}</tbody></table></div>
       <AppAccessPagination page={page} pageSize={pageSize} count={data.entries.length} hasNext={page * pageSize < data.total} onPageChange={setPage} onPageSizeChange={size => changeQuery({ pageSize: size, page: 1 })} />
-    </>}
+    </>}</div>}
     <details className="beam-disclosure beam-publishing-help"><summary>Who can see what</summary><div><p>Personal credentials and their history are visible only to you. Administrators cannot open them. If you leave this organization, your personal credentials here are deleted.</p><p>Shared credentials are visible to their current recipients and to Vault administrators. Opening one asks you to confirm it is you. Recipients can save a new secret; only administrators change the title, service or recipient, or delete it.</p><p>Saving a password or API key here does not change it in the external service.</p></div></details>
     </section>
     {quick && <QuickPassword orgId={orgId} password={quick.password} requestId={quick.requestId} onDismiss={() => setQuick(null)} onPersisted={() => { if (workspaceLive.current) setReload(value => value + 1); }} onCopied={() => { setQuick(null); setNotice(`Password saved and copied. Add its details from the list. ${CLIPBOARD_NOTE}`); }} />}
@@ -242,7 +274,7 @@ function QuickPassword({ orgId, password: initialPassword, requestId: initialReq
       else setError("Could not save or copy this password. Try Save & copy again.");
     } finally { if (isCurrent()) { activeCopy.current = false; setBusy(false); } }
   }
-  return <Modal placement="right" title="Quick generate" onDismiss={close} actions={<><button type="button" className="beam-inline-link mr-auto disabled:opacity-50" disabled={busy} onClick={regenerate}>Regenerate</button><button type="button" className="beam-inline-link" onClick={close}>Close</button><button type="button" className="beam-inline-link disabled:opacity-50" disabled={busy} onClick={() => void copy()}>{busy ? "Saving and copying…" : "Save & copy"}</button></>}>
+  return <Modal placement="right" title="Quick generate" onDismiss={close} actions={<><Button variant="ghost" className="mr-auto" disabled={busy} onClick={regenerate}>Regenerate</Button><Button variant="ghost" onClick={close}>Close</Button><Button disabled={busy} onClick={() => void copy()}>{busy ? "Saving and copying…" : "Save & copy"}</Button></>}>
     <div className="vault-quick-password vault-form"><Field label="Generated password"><Input type="text" readOnly autoFocus autoComplete="off" spellCheck={false} value={password} /></Field>
       <p className="vault-help">Saving keeps this password in your Vault so you can add details later. It is personal until you add details.</p>
       {confirmDiscard && <div className="vault-confirm" role="alertdialog" aria-label="Discard generated password"><p>This password isn't saved. Discard it?</p><div className="vault-inline-actions"><Button variant="ghost" size="sm" onClick={discard}>Discard</Button><Button variant="ghost" size="sm" onClick={() => setConfirmDiscard(false)}>Keep it</Button></div></div>}
@@ -373,7 +405,7 @@ function CredentialEditor({ orgId, state, canAssign, services, serviceError, onR
       <ErrorText>{error}</ErrorText>
       {mode === "configure" && <p className="vault-help">Add a title and where this password is used. The saved password does not change and no new version is created.</p>}
       {mode === "details" && <p className="vault-help">Details changes do not create a new version. To change the secret itself, use Change secret.</p>}
-      {mode === "rotate" && entry && <><p className="vault-readonly-title">{entry.title}</p><p className="vault-help">{entry.service_name} · {entry.visibility === "personal" ? "Personal · only you" : `Shared with ${entry.subject_name || "its recipients"}`}. Saving creates version {entry.current_version + 1}; earlier versions stay in history. Update the external service separately.</p></>}
+      {mode === "rotate" && entry && <><p className="vault-readonly-title">{entry.title}</p><p className="vault-help">{entry.service_name} · {entry.visibility === "personal" ? "Personal · only you" : `Shared with ${recipientLabel(entry)}`}. Saving creates version {entry.current_version + 1}; earlier versions stay in history. Update the external service separately.</p></>}
       {mode !== "rotate" && <div className={mode === "new" ? "vault-form-grid" : undefined}><Field label="Title"><Input autoFocus maxLength={160} required value={title} onChange={event => setTitle(event.target.value)} placeholder="Production database" /></Field>{mode === "new" && <Field label="Credential type"><Select value={kind} onChange={event => setKind(event.target.value as typeof kind)}><option value="password">Password</option><option value="api_key">API key</option></Select></Field>}</div>}
       {editingVisibility && <Field label="Visibility"><Select value={visibility} onChange={event => { setVisibility(event.target.value as typeof visibility); setSubjectId(""); if (event.target.value === "assigned") setPrivateService(""); }}><option value="personal">Personal · only you</option>{canAssign && <option value="assigned">Assigned · administrators and recipients</option>}</Select></Field>}
       {mode === "details" && <p className="vault-help">{visibility === "personal" ? "Personal · only you. A personal credential can't be shared; to share it, add it again as Assigned." : "Assigned · administrators and recipients. It can be moved to another person or group, but not made personal."}</p>}
@@ -390,7 +422,7 @@ function CredentialEditor({ orgId, state, canAssign, services, serviceError, onR
       </>}
       <Field label="Username (optional)"><Input name="vault-credential-username" autoComplete="off" maxLength={320} value={username} onChange={event => setUsername(event.target.value)} placeholder="Login name or email" /></Field>
       {withSecret && <>
-        <Field label={entry ? "New secret" : "Secret"}><Input name="vault-credential-value" autoComplete="new-password" type={showSecret ? "text" : "password"} spellCheck={false} required maxLength={16384} value={secret} onChange={event => setSecret(event.target.value)} /></Field>
+        <Field label={entry ? "New secret" : "Secret"}><Input {...SECRET_INPUT} name="vault-credential-value" autoComplete="new-password" type={showSecret ? "text" : "password"} spellCheck={false} required maxLength={16384} value={secret} onChange={event => setSecret(event.target.value)} /></Field>
         <div className="vault-inline-actions">{kind === "password" && <Button type="button" variant="ghost" size="sm" onClick={generate}>Generate password</Button>}<Button type="button" variant="ghost" size="sm" disabled={!secret} onClick={() => setShowSecret(value => !value)}>{showSecret ? "Hide secret" : "Show secret"}</Button><span className="vault-help">{kind === "password" ? "24 characters · letters, numbers and symbols" : "Paste the API key issued by the service. Up to 16,384 characters."}</span></div>
       </>}
     </form>
@@ -475,9 +507,9 @@ function CredentialDetails({ orgId, entry, reauth, onDismiss, onRotate, onDetail
   }
   const currentVersion = history?.current_version ?? entry.current_version;
   return <Modal placement="right" title={entryTitle(entry)} size="wide" showClose onDismiss={close} actions={<><Button variant="ghost" onClick={close}>Close</Button>{entry.can_delete && <Button variant="danger" onClick={() => { conceal(); onDelete(); }}>Delete credential</Button>}{entry.configured === false ? entry.can_edit && <Button onClick={() => { conceal(); onConfigure(); }}>Add details</Button> : <>{entry.can_edit_details && <Button variant="ghost" onClick={() => { conceal(); onDetails(); }}>Edit details</Button>}{entry.can_edit && <Button onClick={() => { conceal(); onRotate(); }}>Change secret</Button>}</>}</>}>
-    <div className="vault-detail"><dl className="vault-detail-facts"><div><dt>Service</dt><dd>{serviceLabel(entry)}</dd></div><div><dt>Type</dt><dd>{entry.kind === "api_key" ? "API key" : "Password"}</dd></div><div><dt>Username</dt><dd>{entry.username || "Not set"}</dd></div><div><dt>Access</dt><dd>{entry.visibility === "personal" ? "Personal · only you" : `Shared · ${entry.subject_name || "recipients"} and Vault administrators`}</dd></div></dl>
+    <div className="vault-detail"><dl className="vault-detail-facts"><div><dt>Service</dt><dd>{serviceLabel(entry)}</dd></div><div><dt>Type</dt><dd>{entry.kind === "api_key" ? "API key" : "Password"}</dd></div><div><dt>Username</dt><dd>{entry.username || "Not set"}</dd></div><div><dt>Access</dt><dd>{entry.visibility === "personal" ? "Personal · only you" : `Shared · ${recipientLabel(entry)} and Vault administrators`}</dd></div></dl>
       <section className="vault-secret-panel" aria-label="Credential secret"><div className="vault-section-heading"><h3>{revealed ? `Version ${revealed.version}${revealed.version === currentVersion ? " · current" : " · earlier version"}` : "Secret hidden"}</h3>{revealed && <button type="button" className="vault-text-action" onClick={conceal}>Hide secret</button>}</div><code className="vault-secret-value" aria-label={revealed ? "Revealed secret" : "Hidden secret"}>{revealed?.value ?? "••••••••••••••••"}</code>{revealed && <p className="vault-help">{revealed.version === currentVersion ? "Username" : "Username saved with this version"}: {revealed.username || "Not set"}. Hidden automatically after 30 seconds.</p>}
-        {shared && <div className="vault-stepup"><p className="vault-help">This is a shared credential, so opening or copying it asks you to confirm it is you{reauth?.mfa ? " (your password and a recent two-factor check)" : ""}.</p>{asksPassword && <Field label="Current password"><Input type="password" autoComplete="current-password" value={password} disabled={busy} onChange={event => setPassword(event.target.value)} /></Field>}</div>}
+        {shared && <div className="vault-stepup"><p className="vault-help">This is a shared credential, so opening or copying it asks you to confirm it is you{stepUpWords(reauth) ? ` (${stepUpWords(reauth)})` : ""}.</p>{reauth && !reauth.available && <p className="vault-help" role="note">Set up an authenticator app before you can open shared credentials.</p>}{asksPassword && <Field label="Current password"><Input type="password" autoComplete="current-password" value={password} disabled={busy} onChange={event => setPassword(event.target.value)} /></Field>}</div>}
         <div className="vault-inline-actions"><Button variant="ghost" size="sm" disabled={busy} onClick={() => void accessSecret()}>{busy ? "Checking access…" : "Reveal current secret"}</Button><Button variant="ghost" size="sm" disabled={busy} onClick={() => void accessSecret(revealed?.version, true)}>{revealed ? `Copy version ${revealed.version}` : "Copy current secret"}</Button></div>
         {stepUp && <InlineTerminalMfa action="Open a shared Vault credential" freshnessSeconds={300} onVerified={() => { const pending = stepUp; setStepUp(null); setError(""); void accessSecret(pending.version, pending.copy); }} onCancel={() => { setStepUp(null); setError(""); }} />}
         <ErrorText>{error}</ErrorText>{notice && <p role="status" className="vault-help">{notice}</p>}</section>
