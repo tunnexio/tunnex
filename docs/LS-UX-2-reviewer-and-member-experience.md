@@ -43,9 +43,9 @@ Status: **Fixed** = fixed in this branch. **Kept** = checked, deliberately uncha
 | L1 | Share detail, reviewer | Breadcrumb always says **My shares / name**, even for someone who does not own the share. | **Fixed.** Breadcrumb follows the viewer: publisher → *My shares*, reviewer → *Shared with me*, organization manager looking at someone else's share → *Local Sharing*. |
 | L2 | Share detail, reviewer | A **Sharing status** card says *"You do not have permission to manage this share."* — a negative dead end for someone who was never meant to manage. | **Fixed.** Removed. Reviewers get a **Shared app** card: *Shared with you by Name (email)*, browser link, created, expires with remaining time, status sentence, and Open app, Open on phone, Copy link, Review feedback. The **Manage sharing** card renders only when `can_manage`. |
 | L3 | Share detail + Shared with me | Nothing says **who shared the app**; the list column shows the name only ("Control Plane Admin"). | **Fixed.** API adds `publisher_email` to the share projection; the console shows `Name (email)` everywhere (list column, detail). See C for why this leaks nothing. |
-| L4 | Share detail, organization manager on someone else's share | No indication that the share belongs to someone else. | **Fixed.** *Published by Name (email)* fact. Ended text says only its publisher can share again (the old text told the manager to publish from the CLI). |
+| L4 | Share detail, organization manager on someone else's share | No indication that the share belongs to someone else. | **Fixed.** *Published by Name (email)* fact. Ended status sentence says only its publisher can share again (the old text told the manager to publish from the CLI). If the manager is not a reviewer, the page says why Open app is unavailable. |
 | L5 | Share detail, reviewer, paused / offline / local app down / starting | Status pill only (*Paused*, *Publisher offline*); Open app area says the same word. No explanation of what to do. | **Fixed.** One plain sentence per status for the viewer (`beamStatusHint`): reviewer is told who can change it (*"Pat (pat@x) has paused this share. You can open it again when they resume it."*), publisher is told what to do. |
-| L6 | Share detail, reviewer, ended (stopped / expired / revoked) | Text said *"Create a new share using the CLI or desktop client"* — reviewer cannot. Copy link and Open on phone still offered for a dead link. | **Fixed.** Reviewer: *"This share has ended. Ask Name (email) for a new link…"*. Copy link / Open on phone hidden once ended. *Expires* reads *Ended or expired* with no countdown. |
+| L6 | Share detail, reviewer, ended (stopped / expired / revoked) | Text said *"Create a new share using the CLI or desktop client"* — reviewer cannot. Copy link and Open on phone still offered for a dead link. | **Fixed.** Reviewer: *"This share has ended. Ask Name (email) for a new link…"*. Copy link / Open on phone hidden once ended. *Expires* reads *Ended or expired* with no countdown. The **Manage sharing** card is not shown for an ended share (nothing left to manage); the status sentence carries the next step for every viewer, so the page never repeats it twice. |
 | L7 | Share detail, reviewer, ended share — feedback section | Server closes the review room when the share ends (`feedbackAuthority` → `source`), so the feedback panel showed the raw **"Share not found"** under a share that had just loaded. | **Fixed.** A non-publisher on an ended share is told *"Feedback closed when this share ended."* and no request is made. A not-found from the feedback API for a non-publisher is shown as the same plain sentence, never the raw message. Server rule unchanged (pinned by a new Go test). |
 | L8 | Share detail, organization manager who is not a reviewer — feedback | Same raw **"Share not found"** in the feedback section (managers may manage, but the review room is publisher + reviewers only). | **Fixed.** *"Feedback is visible to the publisher and the share's reviewers."* Rule unchanged. |
 | L9 | Share detail, member not invited / share does not exist / access withdrawn | Raw **"Share not found"**, breadcrumb *My shares*, no way forward. | **Fixed.** One uniform sentence for all three (the server already answers them identically): *"This shared app isn't available to your account. The share may have ended, or the person who shared it hasn't given your account access. Ask them to check the link and who it is shared with."* plus *Go to Shared with me* and *Check again*. |
@@ -53,7 +53,7 @@ Status: **Fixed** = fixed in this branch. **Kept** = checked, deliberately uncha
 | L11 | Share detail, reviewer, Copy link | Notice said *"Reviewers still need current access…"* — written for the publisher. | **Fixed.** Reviewer: *"Link copied. Anyone you send it to needs their own access and sign-in."* |
 | L12 | Shared with me | Connectivity filter **"All connectivity"** (Online / Offline or reconnecting / Local app unavailable) is publisher jargon; reviewers already see status per row. | **Fixed.** Removed for reviewers. Publishers keep it, renamed **Connection: Any connection / Connected / Your client offline or reconnecting / Local app not responding**. |
 | L13 | My shares + Shared with me | Search box **and** a separate **Search** button **and** a refresh icon; filters only applied when Search was pressed. Other console lists (App Access) filter as you type. | **Fixed.** Search filters as you type (300 ms), selects apply on change, the Search button is gone. Refresh stays (it re-reads live status, which typing does not). *Clear share search* renamed *Clear filters*. |
-| L14 | Both lists, bell **"Preview updates"** | Meaning unclear to a reviewer. | **Fixed.** Renamed **Sharing updates**; the panel says what it holds for this person: *"Apps shared with you that are ready to open, shares about to expire, and new review feedback — on your shares and on apps shared with you."* |
+| L14 | Both lists, bell **"Preview updates"** | Meaning unclear to a reviewer. | **Fixed.** Renamed **Sharing updates**; the panel says what it holds for this person: *"Apps shared with you that are ready to open, shares about to expire, and new review feedback, on your shares and on apps shared with you."* |
 | L15 | Lists, app tile initials ("CP") | Could be mistaken for a person's initials. | **Kept.** App tiles are rounded squares in the sharing palette; people avatars are circles in the accent colour. Recorded, no change. |
 | L16 | Review feedback, layout | A large *No feedback yet / Open the preview and share your review here* empty state sits above, and the form is below another divider: the reviewer scrolls past an empty box to find where to write. | **Fixed.** Form first, then *Earlier feedback*. Empty state is one compact line that matches the page: reviewer *"No feedback yet. Yours will be the first."*, publisher *"No feedback yet. Reviewers' comments appear here."* |
 | L17 | Review feedback, decision select | Select showed a crimson border that read like an error. Cause: it is the console-wide **focus** colour (`--tnx-focus` #C2444F, shared token), not validation. The options *Comment / Approved / Changes requested* did not say what they mean. | **Fixed.** Replaced the select with three labelled choices with one-line meanings: **Comment** (*a note without a decision*), **Approve** (*tell the publisher it looks good*), **Request changes** (*ask the publisher to change something*). The focus token itself is a console-wide design decision and stays. |
@@ -110,7 +110,7 @@ sandbox:manage, sandbox:view, server_access:replay, server_access:use, vault:use
 | M6 | AI Agents | Read-only inventory. | Shown. | **Hidden** without an agent management/grant/request permission. |
 | M7 | MCP | 403; friendly card exists. When the org feature is off, it showed *Open feature settings* to people who cannot open them. | Shown. | **Hidden** without `agent_template:manage`. Feature-off link shown only to people who can manage; others read *"Ask an organization admin to turn on MCP management."* |
 | M8 | Access Policies | 403; friendly member gate exists. | Shown. | **Hidden** without `policy:view`. |
-| M9 | Devices | Own devices only (server-filtered) + Add device. | Shown; **Approvals** and **Posture** tabs always visible and show the raw permission message. | **Kept**; Approvals/Posture tabs only with `device:approve`; direct URL shows the admin-only notice (M15). |
+| M9 | Devices | Own devices only (server-filtered) + Add device. | Shown; **Approvals** and **Posture** tabs always visible and show the raw permission message. | **Kept**; Approvals/Posture tabs only with `device:approve`, decided from the roster the Devices page already reads (no extra request); a failed roster keeps both tabs. Direct URL shows the admin-only notice (M20). |
 | M10 | Users & Groups | `member:list` roster, read-only; groups 403. | Shown. | **Hidden** without `member:manage`/`member:invite`. Direct URL unchanged (read-only roster, invitations already say no permission). |
 | M11 | App Access | `app_access:use`; already redirects to My applications. | Shown. | **Kept.** |
 | M12 | Server Access | `server_access:use`; *My servers*, names admins to ask. | Shown. | **Kept.** |
@@ -130,8 +130,21 @@ scope). While roles load, gated items are not shown; if the read fails, **every*
 shown (a failed read must never remove a destination — the server still decides). The
 destination set is the same at every width (responsive contract) for a given role.
 
-Other roles checked against the same table: **operator** keeps Kubernetes, AI Agents, Access
-Policies, Access Events; **ai-admin / ai-view** keep AI Gateway and get the workspace overview.
+Other membership roles checked against the same table: **ai-admin / ai-view** keep AI Gateway and
+get the workspace overview; **owner / admin** keep every destination. (The `operator` grant set
+exists in `rbac.go` for machine identities; it is not a membership role in the Member schema, but
+the rules would keep its Kubernetes, Agents, Access Policies and Access Events.)
+
+Build notes (folded during the build):
+
+* The role read shares one in-flight request but never reuses a settled answer, so a role change
+  shows on the next page without a reload.
+* Shared chrome that renders without a signed-in person (isolated pages, the palette in tests)
+  treats roles as unknown and withholds nothing.
+* Routes gated by URL: `/alerts`, `/access-events`, `/devices/approvals`, `/devices/posture`,
+  `/mcp`, `/users/groups`. Pages that already answer a member with a friendly state or with
+  read-only data (Access Policies, Users, Gateways, Sites, Kubernetes, Agents) keep their own
+  behaviour by URL.
 
 ---
 
