@@ -17,6 +17,7 @@
 // smaller half. The larger half is what discarding it CONCEALS.
 
 import type { Member } from "./api";
+import { beamActionLabel } from "./beam";
 import { k8sApiLabel, ruleCountPhrase } from "./k8sapiaccess";
 
 export type AuditRow = {
@@ -200,9 +201,11 @@ export const VAULT_AUDIT_ACTIONS = Object.keys(VAULT_ACTION_LABELS);
 // VAULT-UX-2 W1: "family.*" in the Action filter is a whole action family, sent as action_prefix, so a
 // family filter can never miss an action because it lives on another target type.
 const ACTION_FAMILY = /^((?:[a-z][a-z0-9_]*\.)+)\*$/;
-const FAMILY_LABELS: Record<string, string> = { "vault.": "All Vault activity" };
+const FAMILY_LABELS: Record<string, string> = { "vault.": "All Vault activity", "beam.": "All Local Sharing activity" };
 /** The Vault family filter, as the Action field shows it. */
 export const VAULT_ACTION_FAMILY = "vault.*";
+/** LS-UX-4 P26: every Local Sharing action, including policy, project and server changes on other target types. */
+export const BEAM_ACTION_FAMILY = "beam.*";
 
 /** The audit query for what the Action field holds: an exact action, or a family as action_prefix. */
 export function auditActionQuery(action: string): { action?: string; action_prefix?: string } {
@@ -233,6 +236,7 @@ export function auditActionLabel(action: string): string {
   const family = ACTION_FAMILY.exec(action);
   if (family) return FAMILY_LABELS[family[1]] ?? `All ${family[1].slice(0, -1)} activity`;
   if (VAULT_ACTION_LABELS[action]) return VAULT_ACTION_LABELS[action];
+  if (action.startsWith("beam.")) return beamActionLabel(action);
   if (action === "k8s.api_access_enabled") return "Kubernetes API access turned on";
   if (action === "k8s.api_access_disabled") return "Kubernetes API access turned off";
   return actionWords(action);
