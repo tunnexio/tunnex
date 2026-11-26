@@ -24,6 +24,9 @@ export const beamRoomsApi = {
   sessions: (orgId: string, id: string, offset = 0, scope?: "active" | "history", limit = 20) => request(() => client.GET("/api/v1/organizations/{orgId}/beam/projects/{id}/sessions", { params: { path: { orgId, id }, query: { limit, offset, ...(scope ? { scope } : {}) } } })),
   feedback: (orgId: string, id: string, offset = 0, limit = 20) => request(() => client.GET("/api/v1/organizations/{orgId}/beam/shares/{id}/feedback", { params: { path: { orgId, id }, query: { limit, offset } } })),
   addFeedback: (orgId: string, id: string, input: BeamFeedbackInput) => request(() => client.POST("/api/v1/organizations/{orgId}/beam/shares/{id}/feedback", { params: { path: { orgId, id } }, body: input })),
+  // LS-UX-3: fetched in-page through the same authenticated client (cookie session, desktop origin),
+  // so an MFA refusal comes back as a code the console can act on instead of a raw page in a new tab.
+  screenshot: (orgId: string, id: string, feedbackId: string) => request(() => client.GET("/api/v1/organizations/{orgId}/beam/shares/{id}/feedback/{feedbackId}/screenshot", { params: { path: { orgId, id, feedbackId } }, parseAs: "blob" }) as Promise<{ data?: Blob; error?: unknown; response?: Response }>),
   notifications: (orgId: string, offset = 0, limit = 20) => request(() => client.GET("/api/v1/organizations/{orgId}/beam/notifications", { params: { path: { orgId }, query: { limit, offset } } })),
 };
 

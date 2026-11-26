@@ -197,3 +197,4 @@
 .beam-feedback-empty { padding-top:4px; }
 .beam-feedback-history { padding-top:14px; border-top:1px solid var(--tnx-border); font-size:14px; font-weight:550; color:var(--tnx-text-heading); }
 .beam-feedback:focus { outline:none; } /* LS-UX-3: focus target for Review feedback; the form or Verify MFA inside carries the visible focus. */
+.beam-screenshot-view { display:block; max-width:100%; max-height:70vh; margin-inline:auto; border:1px solid var(--tnx-border); border-radius:6px; } /* LS-UX-3: in-console review screenshot viewer. */
