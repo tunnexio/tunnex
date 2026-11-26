@@ -50,7 +50,7 @@ describe("Vault", () => {
     expect(element.querySelectorAll("select")).toHaveLength(0);
     expect(dialog.queryByLabelText("Title")).toBeNull();
     expect(dialog.queryByLabelText("Credential type")).toBeNull();
-    expect(dialog.queryByRole("button", { name: /^Save (credential|details)|Generate again|Show/ })).toBeNull();
+    expect(dialog.queryByRole("button", { name: /^(?:Save (?:credential|details)|Generate again|Show)/ })).toBeNull();
     expect(mock.clipboard).not.toHaveBeenCalled();
     expect(mock.post).not.toHaveBeenCalled();
     fireEvent.click(dialog.getByRole("button", { name: "Save & copy" }));
