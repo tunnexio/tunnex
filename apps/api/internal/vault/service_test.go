@@ -246,6 +246,13 @@ func TestVaultIdentityPrivacyAssignmentsAndVersionTransactions(t *testing.T) {
 		_, e := s.Reveal(ctx, org, alice, personal.Id, RevealRequest{Version: 0, StepUp: allowStepUp})
 		status(t, e, 403)
 		exec(`UPDATE memberships SET access_revoked_at=NULL WHERE org_id=$1 AND user_id=$2`, org, alice)
+		// VAULT-UX-1 V6: revoking organization access purged the personal entry; it does not come back.
+		_, e = s.Reveal(ctx, org, alice, personal.Id, RevealRequest{Version: 0, StepUp: allowStepUp})
+		status(t, e, 404)
+		var err error
+		if personal, err = s.Create(ctx, org, alice, api.VaultCreateInput{Title: "Personal API", Kind: "api_key", Visibility: "personal", ServiceName: ptr("Private service"), Secret: ptr("fixture-personal-secret")}); err != nil {
+			t.Fatal(err)
+		}
 		exec(`UPDATE users SET status='deactivated' WHERE id=$1`, alice)
 		_, e = s.Reveal(ctx, org, alice, personal.Id, RevealRequest{Version: 0, StepUp: allowStepUp})
 		status(t, e, 403)

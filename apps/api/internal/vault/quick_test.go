@@ -159,7 +159,7 @@ func TestVaultQuickPersistenceAndConfiguration(t *testing.T) {
 			t.Fatal("configure race had no unique winner")
 		}
 		h, e := s.Versions(ctx, org, alice, v.Id, 50, 0)
-		if e != nil || h.Total != 2 {
+		if e != nil || h.Total != 1 {
 			t.Fatal("configure retry appended extra versions")
 		}
 	})

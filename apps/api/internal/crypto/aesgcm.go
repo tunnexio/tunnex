@@ -108,3 +108,27 @@ func SelfTest(s *Sealer) error {
 	}
 	return nil
 }
+
+// SealWithAAD is Seal with associated data: aad is authenticated (Open fails if it differs) but not stored
+// or encrypted, so the caller supplies the same context again to OpenWithAAD. Seal and Open are unchanged.
+func (s *Sealer) SealWithAAD(plaintext, aad []byte) (string, error) {
+	nonce := make([]byte, s.aead.NonceSize())
+	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
+		return "", err
+	}
+	sealed := s.aead.Seal(nonce, nonce, plaintext, aad)
+	return base64.StdEncoding.EncodeToString(sealed), nil
+}
+
+// OpenWithAAD reverses SealWithAAD; it fails unless aad matches the value used when sealing.
+func (s *Sealer) OpenWithAAD(encoded string, aad []byte) ([]byte, error) {
+	raw, err := base64.StdEncoding.DecodeString(encoded)
+	if err != nil {
+		return nil, fmt.Errorf("decode sealed value: %w", err)
+	}
+	ns := s.aead.NonceSize()
+	if len(raw) < ns {
+		return nil, errors.New("sealed value too short")
+	}
+	return s.aead.Open(nil, raw[:ns], raw[ns:], aad)
+}
