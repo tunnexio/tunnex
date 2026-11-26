@@ -288,9 +288,10 @@ role change without step-up.
 - `sign_in_required` tells whoever holds an invitation token that an account exists for that address.
   On an SMTP-less deployment that holder is the inviting admin, so this is a small existence oracle
   across organizations. It is accepted, because requiring sign-in needs to say so.
-- `tests/app-access-local/run-lifecycle-case.py` is a local-only harness, not CI. Its `user-deactivate`
-  case posts without `current_password`, so it now gets the step-up refusal. Trigger to fix it: the next
-  App Access local walk.
+- `tests/app-access-local/run-lifecycle-case.py` (local-only harness) — FIXED before push: `user-deactivate`
+  sends the synthetic admin's `current_password` (from its private control artifact or
+  `AA8_ADMIN_CURRENT_PASSWORD`), refuses before mutating when none is available, and every mutation
+  case now fails loudly on a non-2xx response instead of being measured as if it happened.
 - The roster's machine-credential count spans every organization. For an org-scoped deactivation it is
   an upper bound, and the dialog says "up to".
 - `CountOnlineDevicesByOrg` (an overview display count) still counts devices of org-revoked members as

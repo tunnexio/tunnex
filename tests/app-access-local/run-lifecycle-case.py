@@ -14,6 +14,14 @@ spec=importlib.util.spec_from_file_location('owned_api',ROOT/'lifecycle-api.py')
 api=importlib.util.module_from_spec(spec);spec.loader.exec_module(api)
 
 
+def admin_current_password(admin):
+    """The synthetic administrator's current password for RBAC-0 step-up; never logged."""
+    value=admin.control.get('current_password') or os.environ.get('AA8_ADMIN_CURRENT_PASSWORD')
+    if not isinstance(value,str) or not value:
+        raise ValueError('user-deactivate needs the synthetic admin current_password (aa8-admin-control.json "current_password" or AA8_ADMIN_CURRENT_PASSWORD) for step-up; an admin with an authenticator must also verify MFA in that session within five minutes')
+    return value
+
+
 def execute(case,session_file,control_file,driver_path):
     state=api.private_json(ROOT/'.runtime/aa8-lifecycle-state.json')
     control=api.private_json(control_file)
@@ -103,11 +111,18 @@ def execute(case,session_file,control_file,driver_path):
                     if control['user_id']!=state.get('group_user_id'):raise ValueError('group-only synthetic user required')
                     client=admin;method='DELETE';path=base+'/groups/'+state['group_id']+'/members/'+state['group_user_id'];body=None
                 elif case=='user-deactivate':
-                    client=admin;method='POST';path=base+'/members/'+control['user_id']+'/deactivate';body=None
+                    # RBAC-0 step-up: deactivation re-authenticates the administrator. The throwaway admin's
+                    # current password comes from its private control artifact (or the environment); without
+                    # it the case refuses BEFORE mutating rather than measuring a refusal as a deactivation.
+                    client=admin;method='POST';path=base+'/members/'+control['user_id']+'/deactivate';body={'current_password':admin_current_password(admin)}
                 else:raise ValueError('unsupported reviewed lifecycle case')
                 def mutation_started(started):
                     driver.stdin.write(json.dumps({'phase':'mutation_started','mutation_started_at':started})+'\n');driver.stdin.flush()
                 status,result,mutation_ref,event=client.request(method,path,body,label=case+'-mutation',before_send=mutation_started if case=='publication-disable' else None)
+                if not 200<=status<300:
+                    # Never measure a refused mutation as if it happened (e.g. a step-up refusal).
+                    code=(result or {}).get('error',{}).get('code') if isinstance(result,dict) else None
+                    raise ValueError(case+' mutation refused: status '+str(status)+(' ('+code+')' if code else ''))
                 measured_marker=api.marker(case,mutation_ref,event)
                 feature_changed=case=='feature-disable'
                 if case=='grant-expiry':
