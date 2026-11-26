@@ -267,9 +267,19 @@ administrator-only.
 its `navaccess.ts`, `AdminOnlyNotice` and `AdminOnlyRoute` and changes only the Vault card's title text
 in its dashboard list.
 
-## Verification plan
+## Verification
 
-gofmt, go vet, Go tests in open and enterprise editions on a throwaway Postgres/Redis
-(`vaultux1-` prefix), migration up/down, `make generate-check`, web typecheck/build/full test suite,
-Playwright `vault.spec.ts` and `users.spec.ts` against a throwaway stack. Results are recorded in the
-final report.
+Run locally on throwaway `vaultux1-` Docker resources (removed afterwards):
+
+- Go: `make test-edition` in **open** and **enterprise** editions on the API tree of `ded6e8ea` (later commits
+  are web and docs only): 83 packages `ok` in each, zero failures. Includes the Vault service, HTTP step-up and
+  rate-limit, body-limit, purge, envelope v2 and the 0245 up/down/up migration round trip. `gofmt`, `go vet`
+  (both editions) clean. CLI module builds, vets and tests clean against the regenerated client.
+- `make generate-check` on the final tree: generated code up to date.
+- Web: typecheck, build, and the full suite — 240 files, 3,301 tests passed (2 expected failures, as on main).
+- Playwright against a full `vaultux1` stack (seeded): `vault.spec.ts` 3/3, `users.spec.ts` 7/7, and the
+  whole suite 56 passed, 2 skipped. The stack's API image predates `ded6e8ea`, whose only change is generated
+  Go constant names. Headless Chromium refused the clipboard write even with permission; the spec accepts the
+  saved-but-not-copied outcome because the save is what it proves.
+- A first Go run against the live stack's database failed `internal/leader` only because the running API held
+  the scheduler lock; with the API stopped it passed.
