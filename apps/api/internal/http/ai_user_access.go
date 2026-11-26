@@ -202,7 +202,9 @@ func (s apiServer) userVPNEndpoint(ctx context.Context, org, user uuid.UUID) (st
 	if err != nil {
 		return "", "transport_unavailable"
 	}
-	if !settings.AllowHTTP {
+	// The automatic endpoint is HTTP inside WireGuard, so only the VPN switch
+	// decides it; the public HTTP switch is unrelated.
+	if !settings.AllowVPNHTTP {
 		return "", "http_disabled"
 	}
 	endpoint, err := s.aiPolicies.AutomaticVPNBaseURL(ctx, org, user)

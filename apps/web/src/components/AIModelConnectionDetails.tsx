@@ -16,7 +16,7 @@ const languageIcons: Record<string, IconType> = { python: SiPython, javascript: 
 type UserModel = components["schemas"]["AIUserModel"];
 const unavailableMessages: Record<string, string> = {
   deployment_disabled: "VPN AI access is not enabled on this installation. Ask your administrator to update the gateway setup, then refresh.",
-  http_disabled: "The gateway's VPN AI transport is disabled. Ask your installation administrator to enable it, then refresh.",
+  http_disabled: "HTTP inside the VPN is turned off for this server, so models cannot be reached over the VPN. Ask a server administrator to turn on \"Inside the VPN\" in Settings → AI Gateway transport, then refresh.",
   transport_unavailable: "Could not verify the VPN AI transport. Refresh or ask your installation administrator to check it.",
   gateway_not_ready: "No ready VPN AI gateway is available for your device. Connect the Tunnex client and refresh; if this persists, ask your administrator to check the gateway.",
   operation_unsupported: "VPN connection examples currently support chat models only. This model's operation is not supported over VPN yet.",

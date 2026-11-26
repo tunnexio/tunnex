@@ -110,17 +110,24 @@ func TestAITransportHTTPPolicyWire(t *testing.T) {
 		if err := json.Unmarshal(raw, &v); err != nil || v.AllowHttp != want || v.Revision != revision {
 			t.Fatalf("persisted view %s: %v", raw, err)
 		}
+		// The VPN switch is always reported; it stays on until the last save turns it off.
+		if !strings.Contains(string(raw), `"allow_vpn_http"`) || v.AllowVpnHttp != (revision < 3) {
+			t.Fatalf("VPN switch view %s", raw)
+		}
 	}
+	read(plain, false, 1)
+	// A client that predates the VPN switch cannot silently turn it off.
+	call(plain, "PUT", settings, `{"allow_http":true,"revision":1}`, "admin", "", true, true, 400)
 	read(plain, false, 1)
 	call(plain, "POST", inference, prompt, "", "fixture-ai-bearer", false, false, 403)
 	if arrivals.Load() != 0 {
 		t.Fatal("default HTTP denial reached private engine")
 	}
 	call(secure, "POST", inference, prompt, "", "fixture-ai-bearer", false, false, 200)
-	call(plain, "PUT", settings, `{"allow_http":true,"revision":1}`, "owner", "", false, false, 403)
-	call(plain, "PUT", settings, `{"allow_http":true,"revision":1}`, "admin", "", true, false, 403)
+	call(plain, "PUT", settings, `{"allow_http":true,"allow_vpn_http":true,"revision":1}`, "owner", "", false, false, 403)
+	call(plain, "PUT", settings, `{"allow_http":true,"allow_vpn_http":true,"revision":1}`, "admin", "", true, false, 403)
 	read(plain, false, 1)
-	call(plain, "PUT", settings, `{"allow_http":true,"revision":1}`, "admin", "", true, true, 200)
+	call(plain, "PUT", settings, `{"allow_http":true,"allow_vpn_http":true,"revision":1}`, "admin", "", true, true, 200)
 	read(secure, true, 2)
 	// A separately constructed router/service sees the same persisted policy.
 	restarted := httptest.NewServer(makeRouter())
@@ -129,9 +136,9 @@ func TestAITransportHTTPPolicyWire(t *testing.T) {
 	call(restarted, "POST", inference, prompt, "", "", false, false, 401)
 	call(restarted, "POST", inference, prompt, "", "wrong", false, false, 403)
 	call(restarted, "POST", inference, prompt, "", "fixture-ai-bearer", false, false, 200)
-	call(plain, "PUT", settings, `{"allow_http":false,"revision":1}`, "admin", "", true, true, 409)
+	call(plain, "PUT", settings, `{"allow_http":false,"allow_vpn_http":true,"revision":1}`, "admin", "", true, true, 409)
 	read(plain, true, 2)
-	call(plain, "PUT", settings, `{"allow_http":false,"revision":2}`, "admin", "", true, true, 200)
+	call(plain, "PUT", settings, `{"allow_http":false,"allow_vpn_http":false,"revision":2}`, "admin", "", true, true, 200)
 	read(restarted, false, 3)
 	call(restarted, "POST", inference, prompt, "", "fixture-ai-bearer", false, false, 403)
 	call(secure, "POST", inference, prompt, "", "fixture-ai-bearer", false, false, 200)

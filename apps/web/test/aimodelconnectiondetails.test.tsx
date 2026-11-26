@@ -52,6 +52,16 @@ it.each(["deployment_disabled", "http_disabled", "transport_unavailable", "gatew
   fireEvent.click(screen.getByRole("button", { name: "Refresh VPN endpoint" }));
   await screen.findByRole("button", { name: "Copy Base URL" });
 });
+it("tells a member which server switch an administrator must turn on when VPN HTTP is off", async () => {
+  state.get.mockResolvedValue({ data: [{ model, mode: "chat", vpn_unavailable_reason: "http_disabled" }] });
+  render(<AIModelConnectionDetails orgId="one" model={model} />);
+  const message = await screen.findByText(/HTTP inside the VPN is turned off/);
+  expect(message.textContent).toContain("Inside the VPN");
+  expect(message.textContent).toContain("Settings → AI Gateway transport");
+  expect(message.textContent).toContain("server administrator");
+  // The public switch is not the fix and must not be suggested.
+  expect(message.textContent).not.toContain("Public internet");
+});
 it("does not give an administrator a connection example without their own model grant", async () => {
   state.get.mockResolvedValue({ data: [{ ...granted, model: "a-different-model" }] });
   render(<AIModelConnectionDetails orgId="one" model={model} />);

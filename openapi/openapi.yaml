@@ -5945,7 +5945,7 @@ paths:
       tags: [admin]
       responses:
         "200":
-          description: Saved HTTP policy; HTTPS access is always allowed.
+          description: Saved HTTP policy for the VPN relay route and for public endpoints; HTTPS access is always allowed.
           headers: { X-Request-Id: { $ref: "#/components/headers/RequestId" } }
           content:
             application/json:
@@ -5954,7 +5954,7 @@ paths:
     put:
       operationId: updateAITransportSettings
       summary: Set deployment-wide HTTP access for AI with a revision precondition
-      description: Explicitly permits AI credential management and inference over HTTP, including public HTTP. Does not bypass authentication, organization permissions or provider TLS validation.
+      description: Saves two independent switches. allow_vpn_http covers only the gateway relay route inside the WireGuard VPN. allow_http explicitly permits AI credential management and inference over public HTTP. Neither bypasses authentication, organization permissions or provider TLS validation.
       tags: [admin]
       requestBody:
         required: true
@@ -10975,7 +10975,7 @@ components:
         vpn_unavailable_reason:
           type: string
           enum: [deployment_disabled, http_disabled, transport_unavailable, gateway_not_ready, operation_unsupported]
-          description: Why VPN SDK chat access is not currently advertised. No public endpoint or application token fallback is implied.
+          description: Why VPN SDK chat access is not currently advertised. http_disabled means the server-wide allow_vpn_http switch is off; the public allow_http switch does not affect it. No public endpoint or application token fallback is implied.
     AIUserModelGrantInput:
       type: object
       additionalProperties: false
@@ -11379,9 +11379,10 @@ components:
     AITransportSettings:
       type: object
       additionalProperties: false
-      required: [allow_http, revision]
+      required: [allow_http, allow_vpn_http, revision]
       properties:
-        allow_http: { type: boolean, description: Permit AI access over HTTP. Defaults to false. HTTPS remains available regardless of this setting. }
+        allow_http: { type: boolean, description: "Permit AI access over public HTTP: credential management, workload tokens and inference on the control plane's own HTTP endpoints. Defaults to false. Does not affect the gateway relay route inside the VPN. HTTPS remains available regardless of this setting." }
+        allow_vpn_http: { type: boolean, description: "Permit HTTP inside the WireGuard VPN: only the gateway relay route and the member VPN endpoint it advertises. Defaults to true. Never permits public HTTP. HTTPS remains available regardless of this setting." }
         revision: { type: integer, format: int64, minimum: 1, description: Current saved revision; required unchanged when saving. }
     AIInferenceRequest:
       type: object

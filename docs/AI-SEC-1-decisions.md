@@ -73,6 +73,13 @@ Each was confirmed in code before this paper was written.
   covers only the gateway relay route and defaults to on; "public HTTP" keeps
   the existing field, meaning and default. An installation that had the old
   switch on keeps both on, so nothing stops working on upgrade.
+  - As built: the new field is `allow_vpn_http` (migration 0247, column default
+    true). It decides the relay route `/agent/ai-http/...` and the member
+    `vpn_base_url`; a refusal there is `403 ai_vpn_http_disabled`, and the
+    member reason stays `http_disabled`. `allow_http` alone decides the public
+    AI paths (`403 ai_https_required`). The field is required on save, so a
+    client that predates it gets a 400 instead of silently turning it off.
+    An installation that had the old switch off gets HTTP inside the VPN on.
 - Locked: issuing a bootstrap token writes `agent.bootstrap_token_issued`.
   Pending tokens can be listed (name, gateway, issuer, expiry; never the
   value) and revoked, with `agent.bootstrap_token_revoked`. The generated

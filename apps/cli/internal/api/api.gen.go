@@ -2834,8 +2834,11 @@ type AITranscriptionRequestResponseFormat string
 
 // AITransportSettings defines model for AITransportSettings.
 type AITransportSettings struct {
-	// AllowHttp Permit AI access over HTTP. Defaults to false. HTTPS remains available regardless of this setting.
+	// AllowHttp Permit AI access over public HTTP: credential management, workload tokens and inference on the control plane's own HTTP endpoints. Defaults to false. Does not affect the gateway relay route inside the VPN. HTTPS remains available regardless of this setting.
 	AllowHttp bool `json:"allow_http"`
+
+	// AllowVpnHttp Permit HTTP inside the WireGuard VPN: only the gateway relay route and the member VPN endpoint it advertises. Defaults to true. Never permits public HTTP. HTTPS remains available regardless of this setting.
+	AllowVpnHttp bool `json:"allow_vpn_http"`
 
 	// Revision Current saved revision; required unchanged when saving.
 	Revision int64 `json:"revision"`
@@ -2913,11 +2916,11 @@ type AIUserModel struct {
 	// VpnBaseUrl Private chat endpoint for an owned active WireGuard device. Automatic HTTP uses /ai/v1 for a user with one live organization membership and an organization-scoped URL otherwise. Configured TLS ingress remains supported. Does not assert current client connectivity.
 	VpnBaseUrl *string `json:"vpn_base_url,omitempty"`
 
-	// VpnUnavailableReason Why VPN SDK chat access is not currently advertised. No public endpoint or application token fallback is implied.
+	// VpnUnavailableReason Why VPN SDK chat access is not currently advertised. http_disabled means the server-wide allow_vpn_http switch is off; the public allow_http switch does not affect it. No public endpoint or application token fallback is implied.
 	VpnUnavailableReason *AIUserModelVpnUnavailableReason `json:"vpn_unavailable_reason,omitempty"`
 }
 
-// AIUserModelVpnUnavailableReason Why VPN SDK chat access is not currently advertised. No public endpoint or application token fallback is implied.
+// AIUserModelVpnUnavailableReason Why VPN SDK chat access is not currently advertised. http_disabled means the server-wide allow_vpn_http switch is off; the public allow_http switch does not affect it. No public endpoint or application token fallback is implied.
 type AIUserModelVpnUnavailableReason string
 
 // AIUserModelGrant defines model for AIUserModelGrant.
