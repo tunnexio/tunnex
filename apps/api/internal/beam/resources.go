@@ -496,9 +496,9 @@ func (s *Service) Audience(ctx context.Context, org uuid.UUID, a Actor) (Audienc
 	}
 	ids := p.ReviewerGroups
 	if a.ManagePolicy || p.OpenForAllUsers {
-		rows, e = s.pool.Query(ctx, `SELECT id,name FROM user_groups WHERE org_id=$1 ORDER BY name,id LIMIT CASE WHEN $2 THEN NULL ELSE 500 END`, org, p.OpenForAllUsers)
+		rows, e = s.pool.Query(ctx, `SELECT g.id,g.name,(SELECT count(DISTINCT gm.user_id) FROM group_members gm JOIN memberships m ON m.org_id=gm.org_id AND m.user_id=gm.user_id JOIN users u ON u.id=gm.user_id WHERE gm.org_id=g.org_id AND gm.group_id=g.id AND m.access_revoked_at IS NULL AND u.deleted_at IS NULL AND u.status='active') FROM user_groups g WHERE g.org_id=$1 ORDER BY g.name,g.id LIMIT CASE WHEN $2 THEN NULL ELSE 500 END`, org, p.OpenForAllUsers)
 	} else {
-		rows, e = s.pool.Query(ctx, `SELECT id,name FROM user_groups WHERE org_id=$1 AND id=ANY($2::uuid[]) ORDER BY name,id LIMIT 500`, org, ids)
+		rows, e = s.pool.Query(ctx, `SELECT g.id,g.name,(SELECT count(DISTINCT gm.user_id) FROM group_members gm JOIN memberships m ON m.org_id=gm.org_id AND m.user_id=gm.user_id JOIN users u ON u.id=gm.user_id WHERE gm.org_id=g.org_id AND gm.group_id=g.id AND m.access_revoked_at IS NULL AND u.deleted_at IS NULL AND u.status='active') FROM user_groups g WHERE g.org_id=$1 AND g.id=ANY($2::uuid[]) ORDER BY g.name,g.id LIMIT 500`, org, ids)
 	}
 	if e != nil {
 		return out, e
@@ -506,7 +506,7 @@ func (s *Service) Audience(ctx context.Context, org uuid.UUID, a Actor) (Audienc
 	defer rows.Close()
 	for rows.Next() {
 		var g Group
-		if e = rows.Scan(&g.ID, &g.Name); e != nil {
+		if e = rows.Scan(&g.ID, &g.Name, &g.MemberCount); e != nil {
 			return out, e
 		}
 		out.Groups = append(out.Groups, g)

@@ -215,6 +215,9 @@ type User struct {
 type Group struct {
 	ID   uuid.UUID `json:"id"`
 	Name string    `json:"name"`
+	// MemberCount is the number of the group's current active organization members. It is only a count,
+	// returned with reviewer choices the caller may already list; it names no one.
+	MemberCount int `json:"member_count"`
 }
 type Audience struct {
 	Users  []User  `json:"users"`

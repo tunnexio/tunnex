@@ -168,8 +168,11 @@ type BeamActionInputAction string
 // BeamAudience defines model for BeamAudience.
 type BeamAudience struct {
 	Groups []struct {
-		Id   openapi_types.UUID `json:"id"`
-		Name string             `json:"name"`
+		Id openapi_types.UUID `json:"id"`
+
+		// MemberCount Number of the group's current active organization members. A count only; no member identities. Always sent by servers that support it; absent from older servers.
+		MemberCount *int   `json:"member_count,omitempty"`
+		Name        string `json:"name"`
 	} `json:"groups"`
 	Users []struct {
 		Email openapi_types.Email `json:"email"`
