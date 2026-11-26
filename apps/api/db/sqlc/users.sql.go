@@ -57,7 +57,7 @@ func (q *Queries) CountUsers(ctx context.Context) (int64, error) {
 const createBootstrapAdmin = `-- name: CreateBootstrapAdmin :one
 INSERT INTO users (email, name, password_hash, email_verified_at, cp_admin, must_change_password)
 VALUES ($1, $2, $3, now(), true, true)
-RETURNING id, email, name, password_hash, email_verified_at, status, created_at, updated_at, deleted_at, can_create_orgs, must_change_password, cp_admin, app_auth_epoch, deactivation_source, deactivated_by_org_id
+RETURNING id, email, name, password_hash, email_verified_at, status, created_at, updated_at, deleted_at, can_create_orgs, must_change_password, cp_admin, app_auth_epoch
 `
 
 type CreateBootstrapAdminParams struct {
@@ -83,8 +83,6 @@ func (q *Queries) CreateBootstrapAdmin(ctx context.Context, arg CreateBootstrapA
 		&i.MustChangePassword,
 		&i.CpAdmin,
 		&i.AppAuthEpoch,
-		&i.DeactivationSource,
-		&i.DeactivatedByOrgID,
 	)
 	return i, err
 }
@@ -92,7 +90,7 @@ func (q *Queries) CreateBootstrapAdmin(ctx context.Context, arg CreateBootstrapA
 const createUser = `-- name: CreateUser :one
 INSERT INTO users (email, name, password_hash)
 VALUES ($1, $2, $3)
-RETURNING id, email, name, password_hash, email_verified_at, status, created_at, updated_at, deleted_at, can_create_orgs, must_change_password, cp_admin, app_auth_epoch, deactivation_source, deactivated_by_org_id
+RETURNING id, email, name, password_hash, email_verified_at, status, created_at, updated_at, deleted_at, can_create_orgs, must_change_password, cp_admin, app_auth_epoch
 `
 
 type CreateUserParams struct {
@@ -118,16 +116,19 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 		&i.MustChangePassword,
 		&i.CpAdmin,
 		&i.AppAuthEpoch,
-		&i.DeactivationSource,
-		&i.DeactivatedByOrgID,
 	)
 	return i, err
 }
 
 const deactivateUserAccount = `-- name: DeactivateUserAccount :execrows
-UPDATE users
-SET status = 'deactivated', deactivation_source = $1::text, deactivated_by_org_id = $2
-WHERE id = $3 AND deleted_at IS NULL AND status <> 'deactivated'
+WITH deactivated AS (
+    UPDATE users SET status = 'deactivated'
+    WHERE id = $3 AND deleted_at IS NULL AND status <> 'deactivated'
+    RETURNING id
+)
+INSERT INTO user_deactivations (user_id, source, org_id)
+SELECT id, $1::text, $2 FROM deactivated
+ON CONFLICT (user_id) DO UPDATE SET source = EXCLUDED.source, org_id = EXCLUDED.org_id, created_at = now()
 `
 
 type DeactivateUserAccountParams struct {
@@ -146,7 +147,7 @@ func (q *Queries) DeactivateUserAccount(ctx context.Context, arg DeactivateUserA
 }
 
 const getUserByEmail = `-- name: GetUserByEmail :one
-SELECT id, email, name, password_hash, email_verified_at, status, created_at, updated_at, deleted_at, can_create_orgs, must_change_password, cp_admin, app_auth_epoch, deactivation_source, deactivated_by_org_id FROM users
+SELECT id, email, name, password_hash, email_verified_at, status, created_at, updated_at, deleted_at, can_create_orgs, must_change_password, cp_admin, app_auth_epoch FROM users
 WHERE email = $1 AND deleted_at IS NULL
 `
 
@@ -167,14 +168,12 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error
 		&i.MustChangePassword,
 		&i.CpAdmin,
 		&i.AppAuthEpoch,
-		&i.DeactivationSource,
-		&i.DeactivatedByOrgID,
 	)
 	return i, err
 }
 
 const getUserByID = `-- name: GetUserByID :one
-SELECT id, email, name, password_hash, email_verified_at, status, created_at, updated_at, deleted_at, can_create_orgs, must_change_password, cp_admin, app_auth_epoch, deactivation_source, deactivated_by_org_id FROM users
+SELECT id, email, name, password_hash, email_verified_at, status, created_at, updated_at, deleted_at, can_create_orgs, must_change_password, cp_admin, app_auth_epoch FROM users
 WHERE id = $1 AND deleted_at IS NULL
 `
 
@@ -195,14 +194,14 @@ func (q *Queries) GetUserByID(ctx context.Context, id uuid.UUID) (User, error) {
 		&i.MustChangePassword,
 		&i.CpAdmin,
 		&i.AppAuthEpoch,
-		&i.DeactivationSource,
-		&i.DeactivatedByOrgID,
 	)
 	return i, err
 }
 
 const getUserDeactivation = `-- name: GetUserDeactivation :one
-SELECT status, deactivation_source, deactivated_by_org_id, cp_admin FROM users WHERE id = $1 AND deleted_at IS NULL
+SELECT u.status, d.source AS deactivation_source, d.org_id AS deactivated_by_org_id, u.cp_admin
+FROM users u LEFT JOIN user_deactivations d ON d.user_id = u.id
+WHERE u.id = $1 AND u.deleted_at IS NULL
 `
 
 type GetUserDeactivationRow struct {
@@ -250,8 +249,8 @@ func (q *Queries) MarkEmailVerified(ctx context.Context, id uuid.UUID) error {
 }
 
 const reactivateUserAccount = `-- name: ReactivateUserAccount :execrows
-UPDATE users
-SET status = 'active', deactivation_source = NULL, deactivated_by_org_id = NULL
+WITH cleared AS (DELETE FROM user_deactivations WHERE user_id = $1)
+UPDATE users SET status = 'active'
 WHERE id = $1 AND deleted_at IS NULL AND status = 'deactivated'
 `
 
@@ -326,7 +325,7 @@ VALUES ($1, $2, $3, $4)
 ON CONFLICT (id) DO UPDATE
     SET email = EXCLUDED.email, name = EXCLUDED.name,
         cp_admin = EXCLUDED.cp_admin
-RETURNING id, email, name, password_hash, email_verified_at, status, created_at, updated_at, deleted_at, can_create_orgs, must_change_password, cp_admin, app_auth_epoch, deactivation_source, deactivated_by_org_id
+RETURNING id, email, name, password_hash, email_verified_at, status, created_at, updated_at, deleted_at, can_create_orgs, must_change_password, cp_admin, app_auth_epoch
 `
 
 type UpsertUserParams struct {
@@ -368,8 +367,6 @@ func (q *Queries) UpsertUser(ctx context.Context, arg UpsertUserParams) (User, e
 		&i.MustChangePassword,
 		&i.CpAdmin,
 		&i.AppAuthEpoch,
-		&i.DeactivationSource,
-		&i.DeactivatedByOrgID,
 	)
 	return i, err
 }

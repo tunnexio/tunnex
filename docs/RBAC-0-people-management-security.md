@@ -8,7 +8,7 @@ tests are commit two, the code follows.
 Principles that bound every decision (product principles, `CLAUDE.md`):
 
 - **Security only gets stronger.** No fix may reopen something to close something else.
-- **One-click upgrades.** The migration is additive (nullable columns plus a backfill). It never
+- **One-click upgrades.** The migration is additive (two side tables plus a backfill). It never
   rewrites a role and is safe on existing data.
 - **Features stay independent.** No fix makes one feature depend on another being enabled.
 - **No user confusion.** Every new refusal has a plain-language message that says what to do
@@ -107,13 +107,15 @@ including directory sync (IdP deprovisioning) or another org.
 3. **Directory sync follows the same rule.** One org's directory sync disabling a user used to
    deactivate them account-wide, a cross-org effect from another tenant's IdP. It now uses the same
    scope rule.
-4. **Provenance is recorded** so reactivation can tell whose act it is reversing. Migration 0246 adds
-   two things. On `memberships`, `access_revoked_source` (`member_admin` | `idp_sync`). On `users`,
-   `deactivation_source` (`member_admin` | `idp_sync`) and `deactivated_by_org_id`. The backfill sets
-   existing revoked memberships to `idp_sync`, their only previous writer. Existing deactivated users
-   are backfilled from their latest `user.deactivated` audit row: `idp-sync` actor gives `idp_sync`,
-   anything else gives `member_admin`, plus that row's org. With no audit row the fields stay NULL
-   (legacy).
+4. **Provenance is recorded** so reactivation can tell whose act it is reversing. Migration 0246 adds two
+   **side tables**: `membership_revocation_sources` (org, user, `member_admin` | `idp_sync`) and
+   `user_deactivations` (user, source, org). They are not new columns on `users`/`memberships`. Those
+   rows are read with expanded `SELECT *` by code that also runs against pinned older schemas. CI's
+   App Access integration suites failed on exactly that when the first version of this migration added
+   columns. The backfill sets existing revoked memberships to `idp_sync`, their only previous writer.
+   Existing deactivated users are backfilled from their latest `user.deactivated` audit row (`idp-sync`
+   actor gives `idp_sync`, anything else gives `member_admin`, plus that row's org). With no audit row
+   there is no provenance row (legacy).
 5. **Reactivation reverses only this org's own act**:
    - An org-scoped `member_admin` revocation in this org is restored.
    - An account-wide `member_admin` deactivation made from this org is reactivated.
@@ -247,9 +249,9 @@ role change without step-up.
 
 ## Upgrade notes
 
-- Migration **0246** is additive. It adds nullable columns and a CHECK that only constrains the new
-  columns, and backfills from data that already exists. It does not touch roles or status. The down
-  migration drops the columns.
+- Migration **0246** is additive: two new side tables, backfilled from existing data. The shape of `users`
+  and `memberships` is unchanged, and no role or status is touched. The down migration drops the two
+  tables.
 - Behaviour visible after upgrade:
   - Members whose access was revoked by directory sync now show as *Deactivated* (directory), not
     *Active*.

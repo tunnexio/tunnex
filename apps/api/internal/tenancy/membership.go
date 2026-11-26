@@ -348,7 +348,11 @@ func (s *MembershipService) ReactivateMember(ctx context.Context, actor uuid.UUI
 			return errOwnerOnly("reactivate")
 		}
 		if m.AccessRevokedAt.Valid {
-			if m.AccessRevokedSource == nil || *m.AccessRevokedSource != sourceMemberAdmin {
+			source, se := q.GetMembershipRevocationSource(ctx, sqlc.GetMembershipRevocationSourceParams{OrgID: orgID, UserID: targetUserID})
+			if se != nil {
+				return se
+			}
+			if source != sourceMemberAdmin {
 				return errDirectoryManaged()
 			}
 			if e := a.runStepUp(ctx); e != nil {
@@ -430,7 +434,11 @@ func (s *MembershipService) RestoreForSync(ctx context.Context, orgID, targetUse
 			return e
 		}
 		if m.AccessRevokedAt.Valid {
-			if m.AccessRevokedSource == nil || *m.AccessRevokedSource != sourceIdpSync {
+			source, se := q.GetMembershipRevocationSource(ctx, sqlc.GetMembershipRevocationSourceParams{OrgID: orgID, UserID: targetUserID})
+			if se != nil {
+				return se
+			}
+			if source != sourceIdpSync {
 				return nil // an administrator's deactivation stands
 			}
 			if _, e := q.RestoreMembershipAccess(ctx, sqlc.RestoreMembershipAccessParams{OrgID: orgID, UserID: targetUserID, Source: sourceIdpSync}); e != nil {

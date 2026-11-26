@@ -50,13 +50,13 @@ SELECT m.user_id, m.role, m.roles, m.created_at AS joined_at,
        -- Who removed access, relative to THIS org: organization | directory | other_organization | ''.
        (CASE
           WHEN m.access_revoked_at IS NOT NULL THEN
-            CASE WHEN m.access_revoked_source = 'member_admin' THEN 'organization' ELSE 'directory' END
+            CASE WHEN rs.source = 'member_admin' THEN 'organization' ELSE 'directory' END
           WHEN u.status = 'deactivated' THEN
             CASE
-              WHEN u.deactivation_source = 'idp_sync' AND u.deactivated_by_org_id = m.org_id THEN 'directory'
-              WHEN u.deactivation_source = 'idp_sync' THEN 'other_organization'
-              WHEN u.deactivated_by_org_id = m.org_id THEN 'organization'
-              WHEN u.deactivated_by_org_id IS NOT NULL THEN 'other_organization'
+              WHEN ud.source = 'idp_sync' AND ud.org_id = m.org_id THEN 'directory'
+              WHEN ud.source = 'idp_sync' THEN 'other_organization'
+              WHEN ud.org_id = m.org_id THEN 'organization'
+              WHEN ud.org_id IS NOT NULL THEN 'other_organization'
               ELSE ''
             END
           ELSE ''
@@ -75,6 +75,8 @@ SELECT m.user_id, m.role, m.roles, m.created_at AS joined_at,
            AND d.deleted_at IS NULL)::bigint AS managed_agent_delegations
 FROM memberships m
 JOIN users u ON u.id = m.user_id
+LEFT JOIN membership_revocation_sources rs ON rs.org_id = m.org_id AND rs.user_id = m.user_id
+LEFT JOIN user_deactivations ud ON ud.user_id = m.user_id
 WHERE m.org_id = $1 AND u.deleted_at IS NULL
 ORDER BY m.created_at;
 
@@ -93,14 +95,31 @@ ORDER BY source_type, source_key;
 
 -- name: RevokeMembershipAccess :execrows
 -- RBAC-0 D3: the source records which authority removed access, so only that authority restores it.
-UPDATE memberships SET access_revoked_at = now(), access_revoked_source = sqlc.arg(source)::text
-WHERE org_id = sqlc.arg(org_id) AND user_id = sqlc.arg(user_id) AND access_revoked_at IS NULL;
+WITH revoked AS (
+    UPDATE memberships mr SET access_revoked_at = now()
+    WHERE mr.org_id = sqlc.arg(org_id) AND mr.user_id = sqlc.arg(user_id) AND mr.access_revoked_at IS NULL
+    RETURNING mr.org_id AS revoked_org_id, mr.user_id AS revoked_user_id
+)
+INSERT INTO membership_revocation_sources (org_id, user_id, source)
+SELECT revoked_org_id, revoked_user_id, sqlc.arg(source)::text FROM revoked
+ON CONFLICT (org_id, user_id) DO UPDATE SET source = EXCLUDED.source, created_at = now();
 
 -- name: RestoreMembershipAccess :execrows
 -- Restores ONLY a revocation made by the named source; another authority's revocation is left alone.
-UPDATE memberships SET access_revoked_at = NULL, access_revoked_source = NULL
-WHERE org_id = sqlc.arg(org_id) AND user_id = sqlc.arg(user_id)
-  AND access_revoked_at IS NOT NULL AND access_revoked_source = sqlc.arg(source)::text;
+WITH owned AS (
+    DELETE FROM membership_revocation_sources s
+    USING memberships m
+    WHERE s.org_id = sqlc.arg(org_id) AND s.user_id = sqlc.arg(user_id) AND s.source = sqlc.arg(source)::text
+      AND m.org_id = s.org_id AND m.user_id = s.user_id AND m.access_revoked_at IS NOT NULL
+    RETURNING s.org_id, s.user_id
+)
+UPDATE memberships SET access_revoked_at = NULL
+FROM owned WHERE memberships.org_id = owned.org_id AND memberships.user_id = owned.user_id;
+
+-- name: GetMembershipRevocationSource :one
+-- The authority that revoked this membership ('' when none is recorded). Read only while revoked.
+SELECT COALESCE((SELECT source FROM membership_revocation_sources s
+                 WHERE s.org_id = sqlc.arg(org_id) AND s.user_id = sqlc.arg(user_id)), '')::text AS source;
 
 -- name: CountOtherActiveMemberships :one
 -- lint:cross-org — RBAC-0 D3: does this person have access to any OTHER live organization? Decides

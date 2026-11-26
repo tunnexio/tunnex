@@ -236,6 +236,11 @@ func TestGrantsLocalDatabase(t *testing.T) {
 		t.Fatalf("logical revoke %+v", p)
 	}
 	exec("UPDATE memberships SET access_revoked_at=NULL WHERE org_id=$1 AND user_id=$2", org, u1)
+	// RBAC-0: the deactivation sweep records its provenance (migration 0246), so the lifecycle leg runs
+	// on the schema that sweep belongs to. Later migrations are additive side tables only.
+	if e = db.MigrateTo(pool.Config().ConnString(), 246); e != nil {
+		t.Fatal(e)
+	}
 	members := tenancy.NewMembershipService(pool, nil)
 	if e = members.DeactivateMember(ctx, actor, "owner", org, u1); e != nil {
 		t.Fatal(e)

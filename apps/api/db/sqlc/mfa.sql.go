@@ -197,7 +197,7 @@ func (q *Queries) GetLiveMfaChallenge(ctx context.Context, tokenHash []byte) (Mf
 }
 
 const getMFAUserForUpdate = `-- name: GetMFAUserForUpdate :one
-SELECT id, email, name, password_hash, email_verified_at, status, created_at, updated_at, deleted_at, can_create_orgs, must_change_password, cp_admin, app_auth_epoch, deactivation_source, deactivated_by_org_id FROM users WHERE id = $1 AND deleted_at IS NULL FOR UPDATE
+SELECT id, email, name, password_hash, email_verified_at, status, created_at, updated_at, deleted_at, can_create_orgs, must_change_password, cp_admin, app_auth_epoch FROM users WHERE id = $1 AND deleted_at IS NULL FOR UPDATE
 `
 
 // lint:cross-org — user-scoped credential authority lock.
@@ -218,8 +218,6 @@ func (q *Queries) GetMFAUserForUpdate(ctx context.Context, id uuid.UUID) (User, 
 		&i.MustChangePassword,
 		&i.CpAdmin,
 		&i.AppAuthEpoch,
-		&i.DeactivationSource,
-		&i.DeactivatedByOrgID,
 	)
 	return i, err
 }

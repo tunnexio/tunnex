@@ -42,7 +42,7 @@ func (q *Queries) CASUserPasswordRehash(ctx context.Context, arg CASUserPassword
 const changePasswordCASAndBumpAppAuthEpoch = `-- name: ChangePasswordCASAndBumpAppAuthEpoch :one
 UPDATE users SET password_hash = $1, app_auth_epoch = app_auth_epoch + 1
 WHERE id = $2 AND deleted_at IS NULL
- AND password_hash = $3 AND app_auth_epoch = $4 RETURNING id, email, name, password_hash, email_verified_at, status, created_at, updated_at, deleted_at, can_create_orgs, must_change_password, cp_admin, app_auth_epoch, deactivation_source, deactivated_by_org_id
+ AND password_hash = $3 AND app_auth_epoch = $4 RETURNING id, email, name, password_hash, email_verified_at, status, created_at, updated_at, deleted_at, can_create_orgs, must_change_password, cp_admin, app_auth_epoch
 `
 
 type ChangePasswordCASAndBumpAppAuthEpochParams struct {
@@ -75,8 +75,6 @@ func (q *Queries) ChangePasswordCASAndBumpAppAuthEpoch(ctx context.Context, arg 
 		&i.MustChangePassword,
 		&i.CpAdmin,
 		&i.AppAuthEpoch,
-		&i.DeactivationSource,
-		&i.DeactivatedByOrgID,
 	)
 	return i, err
 }
@@ -141,7 +139,7 @@ func (q *Queries) RecordAppParentLogout(ctx context.Context, arg RecordAppParent
 
 const setUserPasswordAndBumpAppAuthEpoch = `-- name: SetUserPasswordAndBumpAppAuthEpoch :one
 UPDATE users SET password_hash = $1, app_auth_epoch = app_auth_epoch + 1
-WHERE id = $2 AND deleted_at IS NULL RETURNING id, email, name, password_hash, email_verified_at, status, created_at, updated_at, deleted_at, can_create_orgs, must_change_password, cp_admin, app_auth_epoch, deactivation_source, deactivated_by_org_id
+WHERE id = $2 AND deleted_at IS NULL RETURNING id, email, name, password_hash, email_verified_at, status, created_at, updated_at, deleted_at, can_create_orgs, must_change_password, cp_admin, app_auth_epoch
 `
 
 type SetUserPasswordAndBumpAppAuthEpochParams struct {
@@ -167,8 +165,6 @@ func (q *Queries) SetUserPasswordAndBumpAppAuthEpoch(ctx context.Context, arg Se
 		&i.MustChangePassword,
 		&i.CpAdmin,
 		&i.AppAuthEpoch,
-		&i.DeactivationSource,
-		&i.DeactivatedByOrgID,
 	)
 	return i, err
 }

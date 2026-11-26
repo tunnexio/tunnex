@@ -830,6 +830,8 @@ type Querier interface {
 	GetManualAuditLogRetentionRun(ctx context.Context, arg GetManualAuditLogRetentionRunParams) (AuditLogRetentionRun, error)
 	GetMembership(ctx context.Context, arg GetMembershipParams) (Membership, error)
 	GetMembershipIncludingRevoked(ctx context.Context, arg GetMembershipIncludingRevokedParams) (Membership, error)
+	// The authority that revoked this membership ('' when none is recorded). Read only while revoked.
+	GetMembershipRevocationSource(ctx context.Context, arg GetMembershipRevocationSourceParams) (string, error)
 	// lint:cross-org — user-scoped login challenge; the token itself is the credential.
 	// Verify path: fetch a LIVE challenge under a row lock (attempt-count + burn serialize here).
 	GetMfaChallengeForUpdate(ctx context.Context, tokenHash []byte) (MfaChallenge, error)

@@ -46,17 +46,24 @@ WHERE id = $1 AND deleted_at IS NULL;
 
 -- name: DeactivateUserAccount :execrows
 -- RBAC-0 D3: account-wide deactivation with its provenance (who, from which org).
-UPDATE users
-SET status = 'deactivated', deactivation_source = sqlc.arg(source)::text, deactivated_by_org_id = sqlc.arg(org_id)
-WHERE id = sqlc.arg(id) AND deleted_at IS NULL AND status <> 'deactivated';
+WITH deactivated AS (
+    UPDATE users SET status = 'deactivated'
+    WHERE id = sqlc.arg(id) AND deleted_at IS NULL AND status <> 'deactivated'
+    RETURNING id
+)
+INSERT INTO user_deactivations (user_id, source, org_id)
+SELECT id, sqlc.arg(source)::text, sqlc.arg(org_id) FROM deactivated
+ON CONFLICT (user_id) DO UPDATE SET source = EXCLUDED.source, org_id = EXCLUDED.org_id, created_at = now();
 
 -- name: ReactivateUserAccount :execrows
-UPDATE users
-SET status = 'active', deactivation_source = NULL, deactivated_by_org_id = NULL
+WITH cleared AS (DELETE FROM user_deactivations WHERE user_id = $1)
+UPDATE users SET status = 'active'
 WHERE id = $1 AND deleted_at IS NULL AND status = 'deactivated';
 
 -- name: GetUserDeactivation :one
-SELECT status, deactivation_source, deactivated_by_org_id, cp_admin FROM users WHERE id = $1 AND deleted_at IS NULL;
+SELECT u.status, d.source AS deactivation_source, d.org_id AS deactivated_by_org_id, u.cp_admin
+FROM users u LEFT JOIN user_deactivations d ON d.user_id = u.id
+WHERE u.id = $1 AND u.deleted_at IS NULL;
 
 -- name: UserIsCPAdmin :one
 SELECT cp_admin FROM users WHERE id = $1 AND deleted_at IS NULL;

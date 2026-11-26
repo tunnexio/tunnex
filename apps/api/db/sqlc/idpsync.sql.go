@@ -517,8 +517,15 @@ func (q *Queries) RemoveImportedBootstrapSource(ctx context.Context, arg RemoveI
 }
 
 const restoreMembershipAfterIdpGrant = `-- name: RestoreMembershipAfterIdpGrant :exec
-UPDATE memberships SET access_revoked_at = NULL, access_revoked_source = NULL
-WHERE org_id = $1 AND user_id = $2 AND access_revoked_at IS NOT NULL AND access_revoked_source = 'idp_sync'
+WITH owned AS (
+    DELETE FROM membership_revocation_sources s
+    USING memberships m
+    WHERE s.org_id = $1 AND s.user_id = $2 AND s.source = 'idp_sync'
+      AND m.org_id = s.org_id AND m.user_id = s.user_id AND m.access_revoked_at IS NOT NULL
+    RETURNING s.org_id, s.user_id
+)
+UPDATE memberships SET access_revoked_at = NULL
+FROM owned WHERE memberships.org_id = owned.org_id AND memberships.user_id = owned.user_id
 `
 
 type RestoreMembershipAfterIdpGrantParams struct {
