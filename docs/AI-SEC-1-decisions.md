@@ -40,12 +40,13 @@ Each was confirmed in code before this paper was written.
 - Locked: an agent device matches only `agent` and `agent_group` rules, the
   same model sandboxes already use. `user` and `group` rules no longer apply
   to agent devices.
-  - This changes behaviour for existing installations. A migration is not
-    possible without guessing intent, so the upgrade is made visible instead:
-    the agent Access tab and the agents list show "relied on owner access
-    before this release" for any agent with no agent or agent-group rule, with
-    a one-click "Create rule from owner's access" preview. No access is
-    recreated automatically.
+  - This changes behaviour for existing installations: an agent that relied
+    on its owner's rules loses that reach until a rule names it or one of its
+    agent groups. A migration is not possible without guessing intent. The
+    agent Access tab now states the rule and links to the agent's rules.
+  - Deferred to AI-UX-1: a list of what each agent can reach, and a one-click
+    "create rules from the owner's access" preview for agents left without a
+    rule. Release notes must call the change out.
   - Rejected: keeping inheritance behind a per-organization toggle. It keeps
     the unsafe default alive and adds a setting customers must understand.
 - Locked: the MCP proxy refuses a request unless `Host` is exactly its own
