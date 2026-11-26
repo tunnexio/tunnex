@@ -34,8 +34,8 @@ const release: BootstrapRelease = {
   },
 };
 
-const agentBootstrapCommand = (token: string, apiURL = "https://cp.example") =>
-  buildAgentBootstrapCommand(token, release, apiURL);
+const agentBootstrapCommand = (apiURL = "https://cp.example") =>
+  buildAgentBootstrapCommand(release, apiURL);
 
 describe("the agent surface — S15.3", () => {
   const row = (o: Partial<AgentRow> = {}): AgentRow => ({
@@ -178,18 +178,44 @@ describe("the connect command — S15.3", () => {
 });
 
 describe("the managed bootstrap command — F03", () => {
-  it("shell-quotes token and API URL and never embeds a private key", () => {
-    const cmd = agentBootstrapCommand("tok'$danger", "https://cp.example/one path");
+  it("shell-quotes the API URL and never embeds a private key", () => {
+    const cmd = agentBootstrapCommand("https://cp.example/one path'$danger");
     expect(cmd).toContain("--rawfile token");
     expect(cmd).toContain("'\\''");
-    expect(cmd).toContain("https://cp.example/one path/api/v1/agent/bootstrap");
+    expect(cmd).toContain("https://cp.example/one path'\\''$danger/api/v1/agent/bootstrap");
     expect(cmd).toContain("wg genkey");
     expect(cmd).not.toContain("PrivateKey =");
     expect(cmd).not.toContain("private_key");
   });
 
+  it("never contains the install token: it is typed into a hidden terminal prompt instead", () => {
+    // The builder takes no token at all, so nothing pasted into a shell, saved
+    // to history, or downloaded as a script can carry one.
+    expect(buildAgentBootstrapCommand.length).toBeLessThanOrEqual(2);
+    const cmd = agentBootstrapCommand("https://cp.example");
+    expect(cmd).not.toMatch(/tnx_agent_[A-Za-z0-9_-]{8,}/);
+    expect(cmd).toContain("stty -echo < /dev/tty");
+    expect(cmd).toContain("IFS= read -r bootstrap_token < /dev/tty");
+    expect(cmd).toContain('stty "$tty_state" < /dev/tty');
+    expect(cmd).toMatch(/a terminal is required[^']*no bootstrap token was used/);
+    expect(cmd).toMatch(/not an install token[^']*no bootstrap token was used/);
+    // Echo is switched off before the read and restored straight after it,
+    // including when the prompt is interrupted.
+    expect(cmd.indexOf("stty -echo < /dev/tty")).toBeLessThan(cmd.indexOf("IFS= read -r bootstrap_token"));
+    expect(cmd.indexOf("IFS= read -r bootstrap_token")).toBeLessThan(cmd.lastIndexOf('stty "$tty_state" < /dev/tty'));
+    expect(cmd).toMatch(/trap '[^']*stty "\$tty_state" < \/dev\/tty[^']*exit 130' INT TERM HUP/);
+    // The prompt comes after the cleanup trap exists and before anything is
+    // installed, downloaded or redeemed.
+    expect(cmd.indexOf("trap cleanup EXIT")).toBeLessThan(cmd.indexOf("stty -echo < /dev/tty"));
+    expect(cmd.indexOf("IFS= read -r bootstrap_token")).toBeLessThan(cmd.indexOf("apt-get update"));
+    expect(cmd.indexOf("IFS= read -r bootstrap_token")).toBeLessThan(cmd.indexOf("/api/v1/agent/bootstrap"));
+    // The value reaches curl through a 0600 temp file, never an argument.
+    expect(cmd).toContain(`printf '%s' "$bootstrap_token" > "$d/token"`);
+    expect(cmd).not.toMatch(/(?:curl|jq)[^;|]*\$bootstrap_token/);
+  });
+
   it("validates before installation, uses atomic temp files, and cleans failures", () => {
-    const cmd = agentBootstrapCommand("TKN", "https://cp.example");
+    const cmd = agentBootstrapCommand("https://cp.example");
     expect(cmd).toContain("command -v resolvconf");
     expect(cmd).toContain("apt-get install -y --no-install-recommends --no-remove");
     expect(cmd).toContain("mktemp -d");
@@ -250,6 +276,10 @@ esac`);
     executable("uname", 'case "$1" in -s) echo Linux ;; *) echo x86_64 ;; esac');
     executable("id", "echo 1000");
     executable("ip", "exit 0");
+    // No terminal exists under the test runner. The fixture stands in for the
+    // terminal device and for stty; the prompt logic itself is the real shell.
+    executable("stty", `case "\${1:-}" in -g) echo fixture-tty-state ;; *) exit 0 ;; esac`);
+    writeFileSync(join(dir, "tty"), "tnx_agent_fixture-only_TOKEN\n");
     writeFileSync(join(dir, "os-release"), "ID=ubuntu\n");
     writeFileSync(join(dir, "ca-certificates.crt"), "fixture-ca\n");
     // The generated command targets Linux, but the fixture also runs on macOS,
@@ -324,7 +354,8 @@ esac`);
     };
 
     try {
-      const generated = buildAgentBootstrapCommand("TKN", executableRelease, "https://cp.example")
+      const generated = buildAgentBootstrapCommand(executableRelease, "https://cp.example")
+        .split("/dev/tty").join(join(dir, "tty"))
         .split("/etc/os-release").join(join(dir, "os-release"))
         .split("/etc/ssl/certs/ca-certificates.crt").join(join(dir, "ca-certificates.crt"));
       expect(generated).toMatch(/^sh <<'TUNNEX_BOOTSTRAP'/);
@@ -381,7 +412,9 @@ esac`);
       expect(readGeneratedFile(join(captured, "etc/tunnex-agent/runtime-credential"), captured)).toBe(`${runtimeCredential}\n`);
       expect(stdout).not.toContain(privateKey);
       expect(stdout).not.toContain(runtimeCredential);
-      expect(readGeneratedFile(curlArgs, dir)).not.toContain("TKN");
+      expect(readGeneratedFile(curlArgs, dir)).not.toContain("tnx_agent_fixture");
+      expect(generated).not.toContain("tnx_agent_fixture");
+      expect(stdout).not.toContain("tnx_agent_fixture");
       expect(() => readGeneratedFile(join(process.cwd(), "src/lib/agentview.ts"), dir)).toThrow(/escaped/);
       expect(() => accessSync(ephemeral)).toThrow();
     } finally {
@@ -391,7 +424,7 @@ esac`);
 
 
   it("installs the pinned same-release managed runtime service contract", () => {
-    const cmd = agentBootstrapCommand("TKN", "https://cp.example");
+    const cmd = agentBootstrapCommand("https://cp.example");
     // F04's approved package contract is asserted here so F03 cannot invent a
     // second runtime binary, unit, or state layout.
     expect(cmd).toContain("tunnex-agent-runtime");
@@ -405,13 +438,13 @@ esac`);
   });
 
   it("installs root-owned 0600 runtime files for the approved root service", () => {
-    const cmd = agentBootstrapCommand("TKN", "https://cp.example");
+    const cmd = agentBootstrapCommand("https://cp.example");
     const rootOwned0600 = cmd.match(/install -o root -g root -m 600[^;]+\$runtime_(?:cfg|cred|state)/g) ?? [];
     expect(rootOwned0600.length).toBe(3);
   });
 
   it("keeps bootstrap/runtime secrets and private keys out of process args and command output", () => {
-    const cmd = agentBootstrapCommand("TKN", "https://cp.example");
+    const cmd = agentBootstrapCommand("https://cp.example");
     // The approved hygiene boundary keeps secrets in temporary files and rawfile
     // inputs rather than process arguments or command output.
     expect(cmd).not.toMatch(/--arg\s+token\b/i);
@@ -421,7 +454,7 @@ esac`);
   });
 
   it("atomically hands off startup and revoke/offboarding to the service", () => {
-    const cmd = agentBootstrapCommand("TKN", "https://cp.example");
+    const cmd = agentBootstrapCommand("https://cp.example");
     expect(cmd).toMatch(/mktemp -d/);
     expect(cmd).toMatch(/trap/);
     expect(cmd).toMatch(/systemctl\s+(?:enable\s+--now|start)\s+tunnex-agent-runtime\.service/);
@@ -431,7 +464,7 @@ esac`);
   });
 
   it("requires the signed runtime descriptor and binds the selected asset to its source release", () => {
-    const cmd = agentBootstrapCommand("TKN", "https://cp.example");
+    const cmd = agentBootstrapCommand("https://cp.example");
     expect(cmd).toContain("releaseverify");
     expect(cmd).toMatch(/-manifest\s+[^ ]*release\.json/);
     expect(cmd).toMatch(/-public-key/);
@@ -455,7 +488,7 @@ esac`);
   });
 
   it("verifies runtime bytes before install and rejects unsigned or mutable fallbacks", () => {
-    const cmd = agentBootstrapCommand("TKN", "https://cp.example");
+    const cmd = agentBootstrapCommand("https://cp.example");
     expect(cmd).toMatch(/sha256sum/);
     expect(cmd).toContain("expected_amd64_digest");
     expect(cmd).toContain("expected_arm64_digest");
@@ -465,7 +498,7 @@ esac`);
   });
 
   it("requires the systemd unit to be a signed, digest-verified runtime asset", () => {
-    const cmd = agentBootstrapCommand("TKN", "https://cp.example");
+    const cmd = agentBootstrapCommand("https://cp.example");
     expect(cmd).toContain("TUNNEX_AGENT_RUNTIME_UNIT_NAME");
     expect(cmd).toContain("TUNNEX_AGENT_RUNTIME_UNIT_SHA256");
     expect(cmd).toContain("TUNNEX_AGENT_RUNTIME_UNIT_SOURCE_SHA");
@@ -483,7 +516,7 @@ esac`);
   });
 
   it("fails closed on malformed signatures, missing architectures, and unsupported hosts", () => {
-    const cmd = agentBootstrapCommand("TKN", "https://cp.example");
+    const cmd = agentBootstrapCommand("https://cp.example");
     expect(cmd).toMatch(/set -e/);
     expect(cmd).toMatch(/(?:amd64|x86_64)/);
     expect(cmd).toMatch(/(?:arm64|aarch64)/);
@@ -492,7 +525,7 @@ esac`);
   });
 
   it("preserves runtime files and service state when verification or startup fails", () => {
-    const cmd = agentBootstrapCommand("TKN", "https://cp.example");
+    const cmd = agentBootstrapCommand("https://cp.example");
     expect(cmd).toMatch(/(?:runtime|agent-runtime)/i);
     expect(cmd).toMatch(/(?:backup|restore|preserve|already exists|\.bak|snapshot)/i);
     expect(cmd).toMatch(/(?:systemctl\s+is-active|was-active|service state|restore.*service)/i);
@@ -501,7 +534,7 @@ esac`);
   });
 
   it("refuses existing managed targets before changing config or credential bytes", () => {
-    const cmd = agentBootstrapCommand("TKN", "https://cp.example");
+    const cmd = agentBootstrapCommand("https://cp.example");
     // Refusal occurs before token redemption, key generation, download, writes,
     // service mutation, or cleanup of an existing managed installation.
     expect(cmd).toMatch(/existing managed (?:runtime interface|installation) refused/i);

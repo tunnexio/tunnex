@@ -16,8 +16,11 @@ const fixtures: string[] = [];
 afterEach(() => { for (const path of fixtures.splice(0)) rmSync(path, { recursive: true, force: true }); });
 const sha = (bytes: string) => createHash("sha256").update(bytes).digest("hex");
 const source = "a".repeat(40);
-const token = "tnx_fixture_only_token";
-function harness(options: { missing?: string[]; resolver?: "existing" | "resolved" | "package" | "unavailable"; legacy?: boolean; arch?: string; root?: boolean } = {}) {
+const token = "tnx_agent_fixture-only_TOKEN";
+// `typed` is what the operator enters at the hidden prompt; null means the
+// host has no terminal at all. stty and the terminal device are fakes; the
+// prompt, trimming and validation are the real generated shell.
+function harness(options: { missing?: string[]; resolver?: "existing" | "resolved" | "package" | "unavailable"; legacy?: boolean; arch?: string; root?: boolean; typed?: string | null } = {}) {
   const dir = mkdtempSync(join(tmpdir(), "tunnex-agent-host-"));
   fixtures.push(dir);
   const bin = join(dir, "bin");
@@ -28,10 +31,13 @@ function harness(options: { missing?: string[]; resolver?: "existing" | "resolve
   const ephemeral = join(dir, "ephemeral");
   for (const path of [bin, available, root, assets, join(root, "usr/local/bin"), join(root, "usr/local/sbin"), join(root, "etc/ssl/certs")]) mkdirSync(path, { recursive: true });
   const executable = (name: string, body: string, directory = bin) => writeFileSync(join(directory, name), `#!/bin/sh\nset -eu\n${body}\n`, { mode: 0o700 });
-  for (const name of ["sh", "cat", "cp", "rm", "mkdir", "ln", "chmod", "sed", "awk", "cut", "env", "test"]) symlinkSync(execFileSync("which", [name]).toString().trim(), join(bin, name));
+  for (const name of ["sh", "cat", "cp", "rm", "mkdir", "ln", "chmod", "sed", "awk", "cut", "env", "test", "tr"]) symlinkSync(execFileSync("which", [name]).toString().trim(), join(bin, name));
   const realInstall = execFileSync("which", ["install"]).toString().trim();
   executable("install", `# Production installs use root:root; the fixture runs unprivileged.\nif [ "$1" = -d ]; then shift; directory=1; else directory=0; fi\n[ "$1" = -o ] && shift 2\n[ "$1" = -g ] && shift 2\nif [ "$directory" = 1 ]; then exec '${realInstall}' -d "$@"; else exec '${realInstall}' "$@"; fi`);
   executable("mktemp", 'mkdir -p "$FIXTURE_EPHEMERAL"; echo "$FIXTURE_EPHEMERAL"');
+  executable("stty", 'echo "stty $*" >> "$FIXTURE_LOG"; case "${1:-}" in -g) echo fixture-tty-state ;; esac');
+  const tty = join(dir, "tty");
+  if (options.typed !== null) writeFileSync(tty, options.typed ?? `${token}\n`);
   executable("uname", 'case "$1" in -s) echo Linux ;; *) echo "$FIXTURE_ARCH" ;; esac');
   executable("id", `echo ${options.root === false ? "1000" : "0"}`);
   executable("sudo", `echo "sudo $*" >> "$FIXTURE_LOG"
@@ -119,8 +125,10 @@ printf '%s\\n' 'TUNNEX_AGENT_RUNTIME_BINARY=tunnex-agent-runtime' 'TUNNEX_AGENT_
     run(extra: Record<string, string> = {}) {
       // No path rewrites exist in production. Remap only fixed host locations so
       // root mode can be executed without touching the developer's machine.
-      let command = agentBootstrapCommand(token, release, "https://cp.example");
+      let command = agentBootstrapCommand(release, "https://cp.example");
+      expect(command).not.toContain(token);
       command = command.replace(/\/(?:etc|usr\/local|var\/lib\/tunnex-agent|sys\/class\/net)(?=[/;"\s])/g, (path) => root + path);
+      command = command.split("/dev/tty").join(tty);
       return spawnSync("/bin/sh", [], { input: command, encoding: "utf8", timeout: 30_000, env: {
         PATH: bin, FIXTURE_NODE: process.execPath, FIXTURE_DIR: dir, FIXTURE_BIN: bin, FIXTURE_ROOT: root,
         FIXTURE_AVAILABLE: available, FIXTURE_ASSETS: assets, FIXTURE_LOG: log, FIXTURE_EPHEMERAL: ephemeral,
@@ -156,6 +164,44 @@ describe("automatic managed-agent host preparation (executed shell)", { timeout:
     expect(calls).toContain("systemctl enable --now tunnex-agent-runtime.service");
     expect(calls).not.toContain(token);
     expect(result.stdout + result.stderr).not.toMatch(/private\+fixture|tnx_fixture_runtime/);
+    expect(existsSync(f.ephemeral)).toBe(false);
+  });
+  it("asks for the install token on the terminal with echo off, after host checks and before any change", () => {
+    const f = harness({ missing: ["wg", "wg-quick"] });
+    const result = f.run();
+    expect(result.status, result.stderr).toBe(0);
+    const calls = f.calls();
+    expect(calls.indexOf("systemctl show")).toBeLessThan(calls.indexOf("stty -g"));
+    expect(calls.indexOf("stty -g")).toBeLessThan(calls.indexOf("stty -echo"));
+    expect(calls.indexOf("stty -echo")).toBeLessThan(calls.indexOf("stty fixture-tty-state"));
+    expect(calls.indexOf("stty fixture-tty-state")).toBeLessThan(calls.indexOf("apt-get"));
+    expect(calls.match(/^stty /gm)).toHaveLength(3);
+    expect(result.stderr).toContain("Paste the install token");
+    expect(result.stdout + result.stderr).not.toContain(token);
+    expect(calls).not.toContain(token);
+    expect(JSON.parse(readGeneratedFile(join(f.dir, "redeemed.json"), f.dir)).bootstrap_token).toBe(token);
+  });
+  it("accepts a token pasted with stray spaces or a Windows line ending", () => {
+    const f = harness({ typed: `  ${token} \r\n` });
+    const result = f.run();
+    expect(result.status, result.stderr).toBe(0);
+    expect(JSON.parse(readGeneratedFile(join(f.dir, "redeemed.json"), f.dir)).bootstrap_token).toBe(token);
+  });
+  it("stops without a terminal before packages, downloads or redemption", () => {
+    const f = harness({ typed: null, missing: ["wg", "wg-quick"] });
+    deniedBeforeRedeem(f, /a terminal is required to enter the install token.*no bootstrap token was used/);
+    expect(f.calls()).not.toContain("apt-get");
+    expect(f.calls()).not.toContain("curl");
+    expect(f.calls()).not.toContain("stty -echo");
+    expect(existsSync(f.ephemeral)).toBe(false);
+  });
+  it.each([["an empty entry", "\n"], ["something that is not a token", "sh <<'TUNNEX_BOOTSTRAP'\n"], ["a token with unexpected characters", "tnx_agent_abc$(id)\n"]])("refuses %s, restores the terminal, and never repeats what was typed", (_label, typed) => {
+    const f = harness({ typed, missing: ["wg", "wg-quick"] });
+    const result = deniedBeforeRedeem(f, /not an install token.*no bootstrap token was used/);
+    expect(f.calls()).toContain("stty fixture-tty-state");
+    expect(f.calls()).not.toContain("apt-get");
+    expect(f.calls()).not.toContain("curl");
+    if (typed.trim()) expect(result.stdout + result.stderr).not.toContain(typed.trim());
     expect(existsSync(f.ephemeral)).toBe(false);
   });
   it.each(["x86_64", "aarch64"])("uses the selected architecture %s and leaves existing dependencies/resolver alone", (arch) => {
