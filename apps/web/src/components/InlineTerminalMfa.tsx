@@ -4,6 +4,7 @@ import { Button, ErrorText, Field, Input } from "./ui";
 import { MfaSettings } from "./MfaSettings";
 import { useOptionalAuth } from "../lib/auth";
 import { Icon } from "./Icon";
+import { announceMfaVerified } from "../lib/mfa-events";
 
 export function InlineTerminalMfa({action, freshnessSeconds=900, onVerified, onCancel}:{action:string;freshnessSeconds?:number;onVerified:()=>void|Promise<void>;onCancel:()=>void}) {
  // SA-UX-2 I1: without a confirmed factor, setup comes first and is open; known only when signed in.
@@ -16,7 +17,7 @@ export function InlineTerminalMfa({action, freshnessSeconds=900, onVerified, onC
  async function verify(){if(busy||!code.trim())return;setBusy(true);setError("");
   try {const result=await api.POST("/api/v1/auth/mfa/step-up",{body:{code:code.trim()}});
    if(result.error||!result.data){setError(apiErrorMessage(result.error,"Verification was not confirmed. Try again."));return}
-   setCode("");await onVerified();
+   setCode("");announceMfaVerified();await onVerified();
   }catch{setError("Could not verify the code. Check your connection and try again.")}finally{setBusy(false)}
  }
  return <section aria-label={`MFA for ${action}`} className="tnx-inline-mfa">

@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 import { decisionLabel, type AccessEvent } from "../lib/flowlogview";
+import { beamActionLabel, beamWords } from "../lib/beam";
 
 export function BeamAccessEvidence({ event, reviewerLabel }: { event: AccessEvent; reviewerLabel?: string | null }) {
   if (!event.beam) return null;
@@ -10,8 +11,8 @@ export function BeamAccessEvidence({ event, reviewerLabel }: { event: AccessEven
       <div><dt className="text-xs text-ink-faint">Reviewer</dt><dd>{reviewerLabel ? `${reviewerLabel} (current member label)` : event.src_user_id || "Not recorded"}</dd></div>
       <div><dt className="text-xs text-ink-faint">Recorded at the control plane</dt><dd>{new Date(event.created_at).toLocaleString()}</dd></div>
       <div><dt className="text-xs text-ink-faint">Share ID</dt><dd className="break-all">{event.beam.share_id}</dd></div>
-      <div><dt className="text-xs text-ink-faint">Action</dt><dd>{event.beam.action}</dd></div>
-      <div><dt className="text-xs text-ink-faint">Safe reason</dt><dd>{event.beam.reason.replace(/_/g, " ") || "None recorded"}</dd></div>
+      <div><dt className="text-xs text-ink-faint">Action</dt><dd>{beamActionLabel(event.beam.action)}</dd></div>
+      <div><dt className="text-xs text-ink-faint">Reason</dt><dd>{beamWords(event.beam.reason) || "None recorded"}</dd></div>
       <div><dt className="text-xs text-ink-faint">Audit event ID</dt><dd className="break-all">{event.id}</dd></div>
       <div><dt className="text-xs text-ink-faint">Recorded reviewer ID</dt><dd className="break-all">{event.src_user_id || "Not recorded"}</dd></div>
     </dl>

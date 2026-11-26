@@ -3,6 +3,7 @@ import { api, apiErrorCode, apiErrorMessage } from "../lib/api";
 import { Button, Card, ErrorText, Field, Input } from "./ui";
 import { MfaSettings } from "./MfaSettings";
 import { mfaRequiresSignIn, MfaSignInAgain } from "./MfaSessionRequired";
+import { announceMfaVerified } from "../lib/mfa-events";
 
 export default function AppAccessMfaChallenge({ setupRequired, onVerified }: {
   setupRequired: boolean; onVerified: () => void;
@@ -21,6 +22,8 @@ export default function AppAccessMfaChallenge({ setupRequired, onVerified }: {
     locked.current = true; setBusy(true); setError("");
     try {
       const result = await api.POST("/api/v1/auth/mfa/step-up", { body: { code: code.trim() } });
+      // LS-UX-4: other panels waiting for a recent MFA check re-check after this.
+      if (!result.error && result.data) announceMfaVerified();
       if (!active.current) return;
       setCode("");
       if (result.error || !result.data) {

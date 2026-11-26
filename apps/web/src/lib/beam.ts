@@ -134,3 +134,48 @@ function statusHint(share: BeamShare, viewer: BeamViewer, now: number): string |
   if (!share.can_open && viewer === "manager") return "You manage this share but are not one of its reviewers, so you can't open the app.";
   return null;
 }
+
+// LS-UX-4: one way to say a lifetime and a count everywhere in Local Sharing ("1 hour", "2 shares").
+export function beamCount(count: number, singular: string, plural = `${singular}s`): string {
+  return `${count} ${count === 1 ? singular : plural}`;
+}
+/** Whole minutes, as the desktop client says them: "45 minutes", "1 hour", "1 hour 30 minutes". */
+export function beamDuration(seconds: number): string {
+  const total = Math.max(0, Math.round(seconds / 60)), hours = Math.floor(total / 60), minutes = total % 60;
+  if (!hours) return beamCount(minutes, "minute");
+  return minutes ? `${beamCount(hours, "hour")} ${beamCount(minutes, "minute")}` : beamCount(hours, "hour");
+}
+/**
+ * LS-UX-4: the server stores the publisher's own access as a grant on every share (resources.go
+ * Create). It is not a reviewer choice: never shown, counted or offered, and always kept on save.
+ */
+export function beamOwnGrant(grant: BeamGrant, publisherId: string): boolean {
+  return grant.subject_kind === "user" && grant.subject_id === publisherId;
+}
+export function beamReviewerGrants(share: Pick<BeamShare, "grants" | "publisher_id">): BeamGrant[] {
+  return (share.grants ?? []).filter(grant => !beamOwnGrant(grant, share.publisher_id));
+}
+function peopleAndGroups(grants: BeamGrant[]): string {
+  const people = grants.filter(grant => grant.subject_kind === "user").length, groups = grants.length - people;
+  return [people && beamCount(people, "person", "people"), groups && beamCount(groups, "group")].filter(Boolean).join(" and ");
+}
+/** The list's Reviewers column: counts only (names need the reviewer directory, which the list does not load). */
+export function beamReviewerCount(share: Pick<BeamShare, "grants" | "publisher_id">): string {
+  if (!share.grants) return "Not reported";
+  return peopleAndGroups(beamReviewerGrants(share)) || "None yet";
+}
+/** Reviewers by name, as the desktop client shows them: "Alice (alice@x), Developers group · 3 members +2 more". */
+export function beamReviewerSummary(share: Pick<BeamShare, "grants" | "publisher_id">, audience: BeamAudience | null, shown = 3): string {
+  const grants = beamReviewerGrants(share);
+  if (!grants.length) return "No reviewers yet";
+  if (!audience) return peopleAndGroups(grants);
+  const names = grants.flatMap(grant => {
+    if (grant.subject_kind === "user") { const user = audience.users.find(candidate => candidate.id === grant.subject_id); return user ? [personLabel({ name: user.name, email: user.email })] : []; }
+    const group = audience.groups.find(candidate => candidate.id === grant.subject_id);
+    if (!group) return [];
+    const size = typeof group.member_count === "number" && Number.isFinite(group.member_count) && group.member_count >= 0 ? ` · ${beamCount(group.member_count, "member")}` : "";
+    return [`${group.name} group${size}`];
+  });
+  const more = grants.length - Math.min(shown, names.length);
+  return names.length ? `${names.slice(0, shown).join(", ")}${more ? ` +${more} more` : ""}` : peopleAndGroups(grants);
+}

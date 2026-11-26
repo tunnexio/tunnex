@@ -90,13 +90,13 @@ describe("LS-UX-4 reviewers shown plainly (P3, P4, P5)", () => {
     expect(beamReviewerSummary(owned, null)).toBe("1 person and 1 group");
     const many = { users: [...audience.users, ...["a", "b", "c"].map((name, index) => ({ id: `6666666${index}-6666-4666-8666-666666666666`, name, email: `${name}@tunnex.io` }))], groups: audience.groups };
     const grants = [self, reviewerGrant, groupGrant, ...many.users.slice(2).map(user => ({ subject_kind: "user" as const, subject_id: user.id }))];
-    expect(beamReviewerSummary({ ...owned, grants }, many)).toBe("reviewer (reviewer@tunnex.io), a (a@tunnex.io), b (b@tunnex.io) +2 more");
+    expect(beamReviewerSummary({ ...owned, grants }, many)).toBe("reviewer (reviewer@tunnex.io), Developers group · 1 member, a (a@tunnex.io) +2 more");
   });
   it("counts reviewers for the list without the publisher", () => {
     expect(beamReviewerCount(owned)).toBe("1 person and 1 group");
     expect(beamReviewerCount({ ...owned, grants: [self] })).toBe("None yet");
     expect(beamReviewerCount({ ...owned, grants: [self, reviewerGrant, { subject_kind: "user", subject_id: groupId }] })).toBe("2 people");
-    expect(beamReviewerCount({ ...owned, grants: undefined })).toBe("—");
+    expect(beamReviewerCount({ ...owned, grants: undefined })).toBe("Not reported");
   });
   it("shows Reviewers by name on the share settings card instead of an Audience count (P3)", async () => {
     show(`/beam/shares/${shareId}`);
@@ -310,7 +310,7 @@ describe("LS-UX-4 wording (P11-P16)", () => {
     show("/beam/events");
     const link = await screen.findByRole("link", { name: `Open share ${shareId}` });
     expect(link.getAttribute("href")).toBe(`/beam/shares/${shareId}`);
-    expect(screen.getByText("—")).toBeTruthy();
+    expect(screen.getByText("None")).toBeTruthy();
     expect(screen.queryByText("None recorded")).toBeNull();
   });
   it("labels Local Sharing access evidence in words (P14)", () => {
