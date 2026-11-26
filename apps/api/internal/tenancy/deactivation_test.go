@@ -59,7 +59,7 @@ func TestDeactivationFreezesAndGuardsLastOwner(t *testing.T) {
 
 	// Deactivating a regular member freezes the account and revokes sessions,
 	// but keeps the membership (frozen, not deleted).
-	if err := svc.DeactivateMember(ctx, actor, orgA, member); err != nil {
+	if err := svc.DeactivateMember(ctx, actor, "owner", orgA, member); err != nil {
 		t.Fatalf("deactivate member: %v", err)
 	}
 	var status string
@@ -85,12 +85,12 @@ func TestDeactivationFreezesAndGuardsLastOwner(t *testing.T) {
 	}
 
 	// The last-owner invariant blocks deactivating an org's sole owner.
-	if err := svc.DeactivateMember(ctx, actor, orgB, soleOwner); !isCode(err, "last_owner") {
+	if err := svc.DeactivateMember(ctx, actor, "owner", orgB, soleOwner); !isCode(err, "last_owner") {
 		t.Fatalf("deactivate sole owner: want last_owner, got %v", err)
 	}
 
 	// Reactivation restores the frozen account.
-	if err := svc.ReactivateMember(ctx, actor, orgA, member); err != nil {
+	if err := svc.ReactivateMember(ctx, actor, "owner", orgA, member); err != nil {
 		t.Fatalf("reactivate: %v", err)
 	}
 	if err := tx.QueryRow(ctx, "SELECT status FROM users WHERE id=$1", member).Scan(&status); err != nil || status != "active" {
@@ -161,7 +161,7 @@ func TestDeactivatePushesOrgWideNotJustUserNodes(t *testing.T) {
 
 	fp := &fakePusher{}
 	svc := &MembershipService{q: sqlc.New(tx), revoker: &fakeRevoker{}, pusher: fp}
-	if err := svc.DeactivateMember(ctx, actor, org, target); err != nil {
+	if err := svc.DeactivateMember(ctx, actor, "owner", org, target); err != nil {
 		t.Fatalf("deactivate: %v", err)
 	}
 

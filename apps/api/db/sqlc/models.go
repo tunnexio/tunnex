@@ -2183,14 +2183,15 @@ type MachineCredential struct {
 }
 
 type Membership struct {
-	ID              uuid.UUID          `json:"id"`
-	OrgID           uuid.UUID          `json:"org_id"`
-	UserID          uuid.UUID          `json:"user_id"`
-	Role            string             `json:"role"`
-	CreatedAt       time.Time          `json:"created_at"`
-	UpdatedAt       time.Time          `json:"updated_at"`
-	AccessRevokedAt pgtype.Timestamptz `json:"access_revoked_at"`
-	Roles           []string           `json:"roles"`
+	ID                  uuid.UUID          `json:"id"`
+	OrgID               uuid.UUID          `json:"org_id"`
+	UserID              uuid.UUID          `json:"user_id"`
+	Role                string             `json:"role"`
+	CreatedAt           time.Time          `json:"created_at"`
+	UpdatedAt           time.Time          `json:"updated_at"`
+	AccessRevokedAt     pgtype.Timestamptz `json:"access_revoked_at"`
+	Roles               []string           `json:"roles"`
+	AccessRevokedSource *string            `json:"access_revoked_source"`
 }
 
 type MembershipAccessSource struct {
@@ -3067,6 +3068,8 @@ type User struct {
 	MustChangePassword bool               `json:"must_change_password"`
 	CpAdmin            bool               `json:"cp_admin"`
 	AppAuthEpoch       int64              `json:"app_auth_epoch"`
+	DeactivationSource *string            `json:"deactivation_source"`
+	DeactivatedByOrgID pgtype.UUID        `json:"deactivated_by_org_id"`
 }
 
 type UserGroup struct {

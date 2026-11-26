@@ -14,7 +14,24 @@ import (
 	"github.com/tunnexio/tunnex/apps/api/internal/authctx"
 	"github.com/tunnexio/tunnex/apps/api/internal/invites"
 	"github.com/tunnexio/tunnex/apps/api/internal/rbac"
+	"github.com/tunnexio/tunnex/apps/api/internal/tenancy"
 )
+
+// peopleStepUpScope names the failure-only password budget shared by the RBAC-0 D9 step-up actions.
+const peopleStepUpScope = "people_management"
+
+// peopleStepUp returns the RBAC-0 D9 step-up check for a people-management action: a browser session,
+// the current password when the account has one, and an MFA verification within five minutes when it
+// has a factor (requireRecentReauthentication). The services run it AFTER their relational checks, so an
+// administrator is never asked to re-authenticate for an action that would be refused anyway.
+func (s apiServer) peopleStepUp(p *authctx.Principal, currentPassword *string, action string) func(context.Context) error {
+	return func(ctx context.Context) error {
+		if err := requireHumanSession(p, "This action"); err != nil {
+			return err
+		}
+		return s.requireRecentReauthentication(ctx, p, currentPassword, peopleStepUpScope, action)
+	}
+}
 
 // ListMembers GET /api/v1/organizations/{orgId}/members — the org roster
 // (incl. deactivated members). Any member may list (PermMemberList).
@@ -46,7 +63,13 @@ func toAPIMember(r sqlc.ListOrgMembersWithUserRow) api.Member {
 	for _, role := range r.Roles {
 		roles = append(roles, api.MemberRoles(role))
 	}
+	var deactivatedBy *api.MemberDeactivatedBy
+	if r.DeactivatedBy != "" {
+		v := api.MemberDeactivatedBy(r.DeactivatedBy)
+		deactivatedBy = &v
+	}
 	return api.Member{
+		DeactivatedBy:           deactivatedBy,
 		Roles:                   &roles,
 		MachineCredentials:      &mc,
 		ManagedAgentDelegations: &delegations,
@@ -75,7 +98,8 @@ func (s apiServer) ChangeMemberRoles(ctx context.Context, req api.ChangeMemberRo
 	for i, role := range req.Body.Roles {
 		roles[i] = string(role)
 	}
-	if _, err := s.members.ChangeMemberRoles(ctx, &p.UserID, actorRole, req.OrgId, req.UserId, roles); err != nil {
+	stepUp := s.peopleStepUp(p, req.Body.CurrentPassword, "change this member's roles")
+	if _, err := s.members.ChangeMemberRoles(ctx, &p.UserID, actorRole, req.OrgId, req.UserId, roles, tenancy.WithStepUp(stepUp)); err != nil {
 		return nil, err
 	}
 	return api.ChangeMemberRoles204Response{Headers: api.ChangeMemberRoles204ResponseHeaders{XRequestId: middleware.GetReqID(ctx)}}, nil
@@ -93,7 +117,8 @@ func (s apiServer) ChangeMemberRole(ctx context.Context, req api.ChangeMemberRol
 	}
 	p, _ := authctx.PrincipalFrom(ctx)
 	actorRole, _ := p.RoleIn(req.OrgId)
-	if _, err := s.members.ChangeMemberRole(ctx, &p.UserID, actorRole, req.OrgId, req.UserId, string(req.Body.Role)); err != nil {
+	stepUp := s.peopleStepUp(p, req.Body.CurrentPassword, "change this member's role")
+	if _, err := s.members.ChangeMemberRole(ctx, &p.UserID, actorRole, req.OrgId, req.UserId, string(req.Body.Role), tenancy.WithStepUp(stepUp)); err != nil {
 		return nil, err
 	}
 	return api.ChangeMemberRole204Response{
@@ -180,15 +205,18 @@ func (s apiServer) CreateInvitation(ctx context.Context, req api.CreateInvitatio
 	if err != nil {
 		return nil, err
 	}
-	msg := "Invitation created."
+	msg := "Invitation emailed."
+	var inviteToken *string
 	if !delivered {
 		msg = "Invitation created, BUT THE EMAIL COULD NOT BE SENT. Copy the link below and send it to " +
 			"them yourself. Check this deployment's SMTP settings."
+		// The raw token reaches the admin ONLY when the email did not leave (RBAC-0 D1): that is the one
+		// case where they must hand the link over themselves. When it was delivered, only the inbox holds
+		// it — so accepting proves inbox control again. Shown once; never retrievable again.
+		inviteToken = &token
 	}
-	// Return the raw token so the dashboard can show a copyable accept link (the
-	// SMTP-less delivery path). Shown once; never retrievable again.
 	return api.CreateInvitation202JSONResponse{
-		Body:    api.InviteCreated{Message: msg, InviteToken: token, Delivered: &delivered},
+		Body:    api.InviteCreated{Message: msg, InviteToken: inviteToken, Delivered: &delivered},
 		Headers: api.CreateInvitation202ResponseHeaders{XRequestId: middleware.GetReqID(ctx)},
 	}, nil
 }
@@ -209,7 +237,13 @@ func (s apiServer) AcceptInvitation(ctx context.Context, req api.AcceptInvitatio
 	// SMTP-less delivery), so the accept must NOT mint a session — otherwise anyone
 	// holding the link could land in an existing invitee's account. The invitee sets
 	// their password here (new user) or keeps their existing one, then signs in.
-	if _, _, err := s.invites.Accept(ctx, req.Body.Token, name, pw); err != nil {
+	// RBAC-0 D1: an EXISTING account is attached only when this request is signed in as it. The
+	// principal middleware runs on public routes too, so a signed-in invitee is visible here.
+	signedIn := uuid.Nil
+	if p, ok := authctx.PrincipalFrom(ctx); ok && p != nil && !p.IsMachine() && !p.IsAgent() {
+		signedIn = p.UserID
+	}
+	if _, _, err := s.invites.Accept(ctx, req.Body.Token, name, pw, signedIn); err != nil {
 		return nil, err
 	}
 	return api.AcceptInvitation200JSONResponse{
@@ -235,7 +269,7 @@ func (s apiServer) ResendInvitation(ctx context.Context, req api.ResendInvitatio
 		// ⚠ The token WAS re-minted — only the delivery failed. Saying "re-sent" here would be the same
 		// lie one endpoint over.
 		msg = "The invitation was renewed, but the email could not be sent. Check this deployment's SMTP " +
-			"settings, or copy the link from the invitations list and send it yourself."
+			"settings, or revoke this invitation and invite them again to get a link you can send yourself."
 	}
 	return api.ResendInvitation202JSONResponse{
 		Body:    api.GenericMessage{Message: msg},
@@ -266,7 +300,13 @@ func (s apiServer) DeactivateMember(ctx context.Context, req api.DeactivateMembe
 		return nil, err
 	}
 	p, _ := authctx.PrincipalFrom(ctx)
-	if err := s.members.DeactivateMember(ctx, p.UserID, req.OrgId, req.UserId); err != nil {
+	actorRole, _ := p.RoleIn(req.OrgId)
+	var currentPassword *string
+	if req.Body != nil {
+		currentPassword = req.Body.CurrentPassword
+	}
+	stepUp := s.peopleStepUp(p, currentPassword, "deactivate this member")
+	if err := s.members.DeactivateMember(ctx, p.UserID, actorRole, req.OrgId, req.UserId, tenancy.WithStepUp(stepUp), tenancy.ActorIsCPAdmin(p.CPAdmin)); err != nil {
 		return nil, err
 	}
 	return api.DeactivateMember204Response{
@@ -280,7 +320,8 @@ func (s apiServer) ReactivateMember(ctx context.Context, req api.ReactivateMembe
 		return nil, err
 	}
 	p, _ := authctx.PrincipalFrom(ctx)
-	if err := s.members.ReactivateMember(ctx, p.UserID, req.OrgId, req.UserId); err != nil {
+	actorRole, _ := p.RoleIn(req.OrgId)
+	if err := s.members.ReactivateMember(ctx, p.UserID, actorRole, req.OrgId, req.UserId, tenancy.ActorIsCPAdmin(p.CPAdmin)); err != nil {
 		return nil, err
 	}
 	return api.ReactivateMember204Response{

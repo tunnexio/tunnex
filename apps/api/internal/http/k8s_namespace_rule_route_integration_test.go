@@ -306,8 +306,8 @@ func TestNamespaceRuleOwnershipOverHTTPWithAMachineCredential(t *testing.T) {
 func TestK8sAPIRuleIsRefusedOverHTTPWhileAPIAccessIsOff(t *testing.T) {
 	f := newK8sRouteFixture(t)
 	operatorToken, _ := f.machine(f.org, "gitops", rbac.RoleOperator, f.admin)
-	if !rbac.Can(rbac.RoleOperator, rbac.PermPolicyManage) {
-		t.Fatal("fixture: the operator role holds policy:manage")
+	if !rbac.Can(rbac.RoleOperator, rbac.PermPolicyRuleManage) {
+		t.Fatal("fixture: the operator role holds policy_rule:manage (rule authoring)")
 	}
 	operator := k8sRouteCaller{token: operatorToken, cause: "tunnexgrant:gitops/kubectl"}
 	admin := k8sRouteCaller{human: "admin"}

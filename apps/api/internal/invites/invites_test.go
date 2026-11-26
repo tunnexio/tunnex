@@ -119,7 +119,7 @@ func TestInviteCreateAcceptNewUser(t *testing.T) {
 	token := mailer.last()
 
 	// Accept creates a VERIFIED user + membership.
-	uid, gotOrg, err := svc.Accept(ctx, token, "New User", "a valid passphrase")
+	uid, gotOrg, err := svc.Accept(ctx, token, "New User", "a valid passphrase", uuid.Nil)
 	if err != nil {
 		t.Fatalf("accept: %v", err)
 	}
@@ -134,7 +134,7 @@ func TestInviteCreateAcceptNewUser(t *testing.T) {
 		t.Fatalf("membership missing: %v", err)
 	}
 	// Single-use: replay fails.
-	if _, _, err := svc.Accept(ctx, token, "", ""); codeOf(err) != "invalid_invite" {
+	if _, _, err := svc.Accept(ctx, token, "", "", uuid.Nil); codeOf(err) != "invalid_invite" {
 		t.Fatalf("replay: want invalid_invite, got %v", err)
 	}
 }
@@ -162,7 +162,12 @@ func TestInviteAcceptAttachesExistingAndVerifies(t *testing.T) {
 	if _, err := svc.Create(ctx, actor, org, "exists@example.com", "admin"); err != nil {
 		t.Fatalf("create: %v", err)
 	}
-	uid, _, err := svc.Accept(ctx, mailer.last(), "", "")
+	// RBAC-0 D1: the token alone never attaches an existing account; the invitee must be signed in as it.
+	tok := mailer.last()
+	if _, _, err := svc.Accept(ctx, tok, "", "", uuid.Nil); codeOf(err) != "sign_in_required" {
+		t.Fatalf("token-only attach: want sign_in_required, got %v", err)
+	}
+	uid, _, err := svc.Accept(ctx, tok, "", "", existing.ID)
 	if err != nil {
 		t.Fatalf("accept: %v", err)
 	}
@@ -189,7 +194,7 @@ func TestInviteAcceptRejectsDeactivatedAccount(t *testing.T) {
 		t.Fatalf("create: %v", err)
 	}
 	// Accepting must not resurrect a frozen account into a membership.
-	if _, _, err := svc.Accept(ctx, mailer.last(), "", ""); codeOf(err) != "account_deactivated" {
+	if _, _, err := svc.Accept(ctx, mailer.last(), "", "", u.ID); codeOf(err) != "account_deactivated" {
 		t.Fatalf("accept into frozen account: want account_deactivated, got %v", err)
 	}
 }
@@ -211,7 +216,7 @@ func TestInviteRevokeAndResend(t *testing.T) {
 	if first == second {
 		t.Fatal("resend must issue a new token")
 	}
-	if _, _, err := svc.Accept(ctx, first, "", "a valid passphrase"); codeOf(err) != "invalid_invite" {
+	if _, _, err := svc.Accept(ctx, first, "", "a valid passphrase", uuid.Nil); codeOf(err) != "invalid_invite" {
 		t.Fatalf("old token valid after resend: %v", err)
 	}
 
@@ -236,10 +241,10 @@ func TestInviteAIRolesSurviveResendAndAcceptance(t *testing.T) {
 			if err := svc.Resend(ctx, actor, org, email); err != nil {
 				t.Fatalf("resend: %v", err)
 			}
-			if _, _, err := svc.Accept(ctx, oldToken, "", ""); codeOf(err) != "invalid_invite" {
+			if _, _, err := svc.Accept(ctx, oldToken, "", "", uuid.Nil); codeOf(err) != "invalid_invite" {
 				t.Fatalf("old token: %v", err)
 			}
-			user, acceptedOrg, err := svc.Accept(ctx, mailer.last(), "AI user", "")
+			user, acceptedOrg, err := svc.Accept(ctx, mailer.last(), "AI user", "", uuid.Nil)
 			if err != nil || acceptedOrg != org {
 				t.Fatalf("accept: %v", err)
 			}

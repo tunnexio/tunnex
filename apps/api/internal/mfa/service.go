@@ -19,6 +19,7 @@ import (
 	"github.com/tunnexio/tunnex/apps/api/internal/apierr"
 	"github.com/tunnexio/tunnex/apps/api/internal/crypto"
 	"github.com/tunnexio/tunnex/apps/api/internal/mail"
+	"github.com/tunnexio/tunnex/apps/api/internal/rbac"
 )
 
 const (
@@ -92,16 +93,54 @@ func (s *Service) OrgEnforces(ctx context.Context, orgID uuid.UUID) (bool, error
 	return row.Enforce, nil
 }
 
+// AdminResetOptions carries what the RBAC-0 D2 rules need to know about the actor.
+type AdminResetOptions struct {
+	ActorRole    string // the actor's role in orgID (highest-ranked)
+	ActorCPAdmin bool   // the actor is a deployment administrator
+	// StepUp runs after every relational check and before the reset (RBAC-0 D9).
+	StepUp func(context.Context) error
+}
+
 // AdminReset DISENROLLS another user's MFA (enterprise; PermMfaManage). It only clears the factor —
 // it never authenticates as the user. Audited org-scoped (actor=admin, target=user) and the target
 // is NOTIFIED best-effort (a silently-reset factor by a compromised admin must surface to the owner).
-func (s *Service) AdminReset(ctx context.Context, orgID, actorAdmin, targetUser uuid.UUID) error {
+//
+// ⛔ RBAC-0 D2: the factor is account-wide, so the authority to clear it must be bounded. The target must
+// be an ACTIVE member of the actor's org (a 404 otherwise — no cross-org reach, no existence oracle); an
+// actor cannot reset their own factor here; only an owner may reset an owner; and a deployment
+// administrator's factor only by another deployment administrator.
+func (s *Service) AdminReset(ctx context.Context, orgID, actorAdmin, targetUser uuid.UUID, opts AdminResetOptions) error {
 	if err := s.withTx(ctx, func(q *sqlc.Queries) error {
+		target, e := q.GetMembership(ctx, sqlc.GetMembershipParams{OrgID: orgID, UserID: targetUser})
+		if errors.Is(e, pgx.ErrNoRows) {
+			return apierr.NotFound("member_not_found", "member not found")
+		}
+		if e != nil {
+			return e
+		}
+		if targetUser == actorAdmin {
+			return apierr.Conflict("self_reset", "Reset your own two-factor authentication from your account settings.")
+		}
+		if target.Role == rbac.RoleOwner && opts.ActorRole != rbac.RoleOwner {
+			return apierr.New(403, "forbidden", "Only an owner can reset another owner's two-factor authentication.")
+		}
+		u, e := q.GetUserByID(ctx, targetUser)
+		if e != nil {
+			return e
+		}
+		if u.CpAdmin && !opts.ActorCPAdmin {
+			return apierr.New(403, "forbidden", "This person is a deployment administrator. Only another deployment administrator can reset their two-factor authentication.")
+		}
+		if opts.StepUp != nil {
+			if e := opts.StepUp(ctx); e != nil {
+				return e
+			}
+		}
 		if e := revokeAllMfa(ctx, q, targetUser); e != nil {
 			return e
 		}
 		return s.auditOrg(ctx, q, orgID, actorAdmin, "mfa.admin_reset", "user", targetUser.String(),
-			map[string]any{"target_user": targetUser.String()})
+			map[string]any{"target_user": targetUser.String(), "actor_role": opts.ActorRole, "target_role": target.Role})
 	}); err != nil {
 		return err
 	}

@@ -2046,7 +2046,7 @@ export interface paths {
         put?: never;
         /**
          * Admin-reset a member's MFA — disenroll only (enterprise)
-         * @description S7.5.5. Clears the member's TOTP + recovery codes (never authenticates as them); audited + the member is notified.
+         * @description S7.5.5. Clears the member's TOTP + recovery codes (never authenticates as them); audited + the member is notified. RBAC-0: the target must be an active member of this organization; only an owner may reset an owner, only a deployment administrator may reset a deployment administrator; requires step-up.
          */
         post: operations["adminResetMfa"];
         delete?: never;
@@ -4826,7 +4826,11 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Deactivate a member's account (freezes access, revokes sessions) */
+        /**
+         * Deactivate a member (RBAC-0 — organization-scoped when they belong to other organizations)
+         * @description Requires `member:manage`; only an owner may deactivate an owner, and the last active owner cannot be deactivated. Account-wide (sessions revoked) only when this is the person's only organization and they are not a deployment administrator; otherwise only this organization's access is removed. Requires recent re-authentication (step-up).
+         *
+         */
         post: operations["deactivateMember"];
         delete?: never;
         options?: never;
@@ -4846,7 +4850,11 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Reactivate a deactivated member */
+        /**
+         * Reactivate a member this organization deactivated
+         * @description Reverses only this organization's own deactivation. Refuses `directory_managed` when directory sync removed the access (it restores access itself when the person is active in the directory again) and `deactivated_elsewhere` when another organization deactivated the account.
+         *
+         */
         post: operations["reactivateMember"];
         delete?: never;
         options?: never;
@@ -10495,6 +10503,8 @@ export interface components {
         MintMachineCredentialRequest: {
             /** @description A label for the credential; appears in audit as operator:<name>. */
             name: string;
+            /** @description RBAC-0 step-up: required when the caller has a local password. A recent MFA verification (five minutes) is also required when the caller has an authenticator or an IdP-asserted MFA. */
+            current_password?: string;
         };
         MintedMachineCredential: {
             /** Format: uuid */
@@ -11916,8 +11926,8 @@ export interface components {
         };
         InviteCreated: {
             message: string;
-            /** @description Raw one-time accept token. The dashboard builds the accept link (origin + /accept-invite?token=…) for the admin to hand to the invitee — the SMTP-less delivery path. Also emailed when SMTP is configured. Shown once; not retrievable later. */
-            invite_token: string;
+            /** @description Raw one-time accept token, present ONLY when `delivered` is false (no SMTP, or delivery failed). The dashboard builds the accept link (origin + /accept-invite?token=…) for the admin to hand to the invitee. RBAC-0 D1: when the email left, only the inbox holds the link. Shown once; not retrievable later. */
+            invite_token?: string;
             /** @description Whether the invitation email actually left. ⛔ False means the invitation EXISTS and delivery FAILED — two facts, both true. The token is still valid and can be handed over another way, so the invitation is kept; what changes is that the response stops claiming a send happened. */
             delivered?: boolean;
         };
@@ -12958,6 +12968,11 @@ export interface components {
             email_verified: boolean;
             /** Format: date-time */
             joined_at: string;
+            /**
+             * @description RBAC-0: present when status is deactivated and the cause is known. `organization` — this organization's administrators (Reactivate reverses it); `directory` — directory sync (it restores access itself); `other_organization` — another organization on this server.
+             * @enum {string}
+             */
+            deactivated_by?: "organization" | "directory" | "other_organization";
             /** @description Live machine credentials this person OWNS, across every organization. Deactivating them stops every one of these immediately (D23) — the roster carries the number so the confirmation can say what the act will break, rather than an operator finding out from a broken pipeline. */
             machine_credentials?: number;
             /** @description Current managed agents this person can manage through team membership, across every organization. Deactivation withdraws that authority immediately without clearing the team's assignment. */
@@ -12966,9 +12981,17 @@ export interface components {
         ChangeRoleRequest: {
             /** @enum {string} */
             role: "owner" | "admin" | "member" | "ai-admin" | "ai-view";
+            /** @description RBAC-0 step-up: required when the caller has a local password. A recent MFA verification (five minutes) is also required when the caller has an authenticator or an IdP-asserted MFA. */
+            current_password?: string;
         };
         ChangeRolesRequest: {
             roles: ("owner" | "admin" | "member" | "ai-admin" | "ai-view")[];
+            /** @description RBAC-0 step-up: required when the caller has a local password. A recent MFA verification (five minutes) is also required when the caller has an authenticator or an IdP-asserted MFA. */
+            current_password?: string;
+        };
+        MemberStepUpRequest: {
+            /** @description RBAC-0 step-up: required when the caller has a local password. A recent MFA verification (five minutes) is also required when the caller has an authenticator or an IdP-asserted MFA. */
+            current_password?: string;
         };
         OrgDeletionPreflight: {
             /** @description True only when every count below is zero. */
@@ -13062,6 +13085,14 @@ export interface components {
             cp_admin?: boolean;
             must_change_password?: boolean;
             recovery_codes_remaining?: number;
+            reauthentication?: {
+                /** @description The account has a local password; step-up actions send current_password. */
+                password: boolean;
+                /** @description The account has confirmed MFA (or an IdP-asserted MFA on this session); step-up actions need a verification within five minutes. */
+                mfa: boolean;
+                /** @description False when the account has neither, and so cannot perform step-up actions until it sets up an authenticator. */
+                available: boolean;
+            };
         };
         LoginResult: {
             /** @description true = complete the second step at /auth/mfa/verify (no session set). */
@@ -17245,7 +17276,11 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["MemberStepUpRequest"];
+            };
+        };
         responses: {
             /** @description MFA reset. */
             204: {
@@ -21733,7 +21768,11 @@ export interface operations {
             };
             cookie?: never;
         };
-        requestBody?: never;
+        requestBody?: {
+            content: {
+                "application/json": components["schemas"]["MemberStepUpRequest"];
+            };
+        };
         responses: {
             /** @description Deactivated. */
             204: {

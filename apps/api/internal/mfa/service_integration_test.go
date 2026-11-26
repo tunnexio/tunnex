@@ -276,7 +276,7 @@ func TestAdminResetDisenrollsAndAudits(t *testing.T) {
 	if ok, _ := s.HasConfirmedTOTP(context.Background(), f.userB); !ok {
 		t.Fatal("precondition: userB enrolled")
 	}
-	if err := s.AdminReset(context.Background(), f.org, f.userA, f.userB); err != nil {
+	if err := s.AdminReset(context.Background(), f.org, f.userA, f.userB, AdminResetOptions{ActorRole: "owner"}); err != nil {
 		t.Fatalf("admin reset: %v", err)
 	}
 	if ok, _ := s.HasConfirmedTOTP(context.Background(), f.userB); ok {
@@ -353,7 +353,7 @@ func TestAdminResetClearsInflightChallenge(t *testing.T) {
 	s, clock := newSvc(t, pool)
 	enroll(t, s, clock, f.userB)
 	tok, _, _ := s.CreateChallenge(context.Background(), f.userB) // mid-login
-	if err := s.AdminReset(context.Background(), f.org, f.userA, f.userB); err != nil {
+	if err := s.AdminReset(context.Background(), f.org, f.userA, f.userB, AdminResetOptions{ActorRole: "owner"}); err != nil {
 		t.Fatalf("admin reset: %v", err)
 	}
 	if _, _, err := s.VerifyChallenge(context.Background(), tok, "000000"); code(err) != "mfa_challenge_invalid" {

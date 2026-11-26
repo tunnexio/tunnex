@@ -69,7 +69,7 @@ func TestDeactivationRevokesOVPNCertsAndReactivationRestoresThem(t *testing.T) {
 	}
 
 	svc := &MembershipService{q: q} // tx-scoped; nil crl/revoker/pusher are skipped
-	if err := svc.DeactivateMember(ctx, actor, org, target); err != nil {
+	if err := svc.DeactivateMember(ctx, actor, "owner", org, target); err != nil {
 		t.Fatalf("deactivate: %v", err)
 	}
 
@@ -85,7 +85,7 @@ func TestDeactivationRevokesOVPNCertsAndReactivationRestoresThem(t *testing.T) {
 		t.Fatal("deactivating one user revoked ANOTHER member's cert — the revoke is not user-scoped")
 	}
 
-	if err := svc.ReactivateMember(ctx, actor, org, target); err != nil {
+	if err := svc.ReactivateMember(ctx, actor, "owner", org, target); err != nil {
 		t.Fatalf("reactivate: %v", err)
 	}
 	if revoked("AA01") {

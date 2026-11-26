@@ -1632,6 +1632,13 @@ const (
 	ManagedAgentConfigWireguardRotationStateStaged    ManagedAgentConfigWireguardRotationState = "staged"
 )
 
+// Defines values for MemberDeactivatedBy.
+const (
+	MemberDeactivatedByDirectory         MemberDeactivatedBy = "directory"
+	MemberDeactivatedByOrganization      MemberDeactivatedBy = "organization"
+	MemberDeactivatedByOtherOrganization MemberDeactivatedBy = "other_organization"
+)
+
 // Defines values for MemberRole.
 const (
 	MemberRoleAdmin   MemberRole = "admin"
@@ -4926,13 +4933,23 @@ type AuditLogRetentionRunTrigger string
 
 // AuthUser defines model for AuthUser.
 type AuthUser struct {
-	CpAdmin                *bool               `json:"cp_admin,omitempty"`
-	Email                  openapi_types.Email `json:"email"`
-	EmailVerified          bool                `json:"email_verified"`
-	Id                     openapi_types.UUID  `json:"id"`
-	MfaEnrollmentRequired  *bool               `json:"mfa_enrollment_required,omitempty"`
-	MustChangePassword     *bool               `json:"must_change_password,omitempty"`
-	RecoveryCodesRemaining *int                `json:"recovery_codes_remaining,omitempty"`
+	CpAdmin               *bool               `json:"cp_admin,omitempty"`
+	Email                 openapi_types.Email `json:"email"`
+	EmailVerified         bool                `json:"email_verified"`
+	Id                    openapi_types.UUID  `json:"id"`
+	MfaEnrollmentRequired *bool               `json:"mfa_enrollment_required,omitempty"`
+	MustChangePassword    *bool               `json:"must_change_password,omitempty"`
+	Reauthentication      *struct {
+		// Available False when the account has neither, and so cannot perform step-up actions until it sets up an authenticator.
+		Available bool `json:"available"`
+
+		// Mfa The account has confirmed MFA (or an IdP-asserted MFA on this session); step-up actions need a verification within five minutes.
+		Mfa bool `json:"mfa"`
+
+		// Password The account has a local password; step-up actions send current_password.
+		Password bool `json:"password"`
+	} `json:"reauthentication,omitempty"`
+	RecoveryCodesRemaining *int `json:"recovery_codes_remaining,omitempty"`
 }
 
 // BeamAccessEvidence defines model for BeamAccessEvidence.
@@ -4954,7 +4971,9 @@ type BindSiteNodeRequest struct {
 
 // ChangeRoleRequest defines model for ChangeRoleRequest.
 type ChangeRoleRequest struct {
-	Role ChangeRoleRequestRole `json:"role"`
+	// CurrentPassword RBAC-0 step-up: required when the caller has a local password. A recent MFA verification (five minutes) is also required when the caller has an authenticator or an IdP-asserted MFA.
+	CurrentPassword *string               `json:"current_password,omitempty"`
+	Role            ChangeRoleRequestRole `json:"role"`
 }
 
 // ChangeRoleRequestRole defines model for ChangeRoleRequest.Role.
@@ -4962,7 +4981,9 @@ type ChangeRoleRequestRole string
 
 // ChangeRolesRequest defines model for ChangeRolesRequest.
 type ChangeRolesRequest struct {
-	Roles []ChangeRolesRequestRoles `json:"roles"`
+	// CurrentPassword RBAC-0 step-up: required when the caller has a local password. A recent MFA verification (five minutes) is also required when the caller has an authenticator or an IdP-asserted MFA.
+	CurrentPassword *string                   `json:"current_password,omitempty"`
+	Roles           []ChangeRolesRequestRoles `json:"roles"`
 }
 
 // ChangeRolesRequestRoles defines model for ChangeRolesRequest.Roles.
@@ -6431,9 +6452,9 @@ type InviteCreated struct {
 	// Delivered Whether the invitation email actually left. ⛔ False means the invitation EXISTS and delivery FAILED — two facts, both true. The token is still valid and can be handed over another way, so the invitation is kept; what changes is that the response stops claiming a send happened.
 	Delivered *bool `json:"delivered,omitempty"`
 
-	// InviteToken Raw one-time accept token. The dashboard builds the accept link (origin + /accept-invite?token=…) for the admin to hand to the invitee — the SMTP-less delivery path. Also emailed when SMTP is configured. Shown once; not retrievable later.
-	InviteToken string `json:"invite_token"`
-	Message     string `json:"message"`
+	// InviteToken Raw one-time accept token, present ONLY when `delivered` is false (no SMTP, or delivery failed). The dashboard builds the accept link (origin + /accept-invite?token=…) for the admin to hand to the invitee. RBAC-0 D1: when the email left, only the inbox holds the link. Shown once; not retrievable later.
+	InviteToken *string `json:"invite_token,omitempty"`
+	Message     string  `json:"message"`
 }
 
 // InviteRequest defines model for InviteRequest.
@@ -6950,9 +6971,11 @@ type ManagedAgentConfigWireguardRotationState string
 
 // Member defines model for Member.
 type Member struct {
-	Email         openapi_types.Email `json:"email"`
-	EmailVerified bool                `json:"email_verified"`
-	JoinedAt      time.Time           `json:"joined_at"`
+	// DeactivatedBy RBAC-0: present when status is deactivated and the cause is known. `organization` — this organization's administrators (Reactivate reverses it); `directory` — directory sync (it restores access itself); `other_organization` — another organization on this server.
+	DeactivatedBy *MemberDeactivatedBy `json:"deactivated_by,omitempty"`
+	Email         openapi_types.Email  `json:"email"`
+	EmailVerified bool                 `json:"email_verified"`
+	JoinedAt      time.Time            `json:"joined_at"`
 
 	// MachineCredentials Live machine credentials this person OWNS, across every organization. Deactivating them stops every one of these immediately (D23) — the roster carries the number so the confirmation can say what the act will break, rather than an operator finding out from a broken pipeline.
 	MachineCredentials *int `json:"machine_credentials,omitempty"`
@@ -6966,6 +6989,9 @@ type Member struct {
 	UserId                  openapi_types.UUID `json:"user_id"`
 }
 
+// MemberDeactivatedBy RBAC-0: present when status is deactivated and the cause is known. `organization` — this organization's administrators (Reactivate reverses it); `directory` — directory sync (it restores access itself); `other_organization` — another organization on this server.
+type MemberDeactivatedBy string
+
 // MemberRole defines model for Member.Role.
 type MemberRole string
 
@@ -6974,6 +7000,12 @@ type MemberRoles string
 
 // MemberStatus defines model for Member.Status.
 type MemberStatus string
+
+// MemberStepUpRequest defines model for MemberStepUpRequest.
+type MemberStepUpRequest struct {
+	// CurrentPassword RBAC-0 step-up: required when the caller has a local password. A recent MFA verification (five minutes) is also required when the caller has an authenticator or an IdP-asserted MFA.
+	CurrentPassword *string `json:"current_password,omitempty"`
+}
 
 // Meta defines model for Meta.
 type Meta struct {
@@ -7051,6 +7083,9 @@ type MfaVerifyRequest struct {
 
 // MintMachineCredentialRequest defines model for MintMachineCredentialRequest.
 type MintMachineCredentialRequest struct {
+	// CurrentPassword RBAC-0 step-up: required when the caller has a local password. A recent MFA verification (five minutes) is also required when the caller has an authenticator or an IdP-asserted MFA.
+	CurrentPassword *string `json:"current_password,omitempty"`
+
 	// Name A label for the credential; appears in audit as operator:<name>.
 	Name string `json:"name"`
 }
@@ -10247,6 +10282,12 @@ type MintMachineCredentialJSONRequestBody = MintMachineCredentialRequest
 // AssignMachineCredentialOwnerJSONRequestBody defines body for AssignMachineCredentialOwner for application/json ContentType.
 type AssignMachineCredentialOwnerJSONRequestBody = AssignMachineCredentialOwnerRequest
 
+// DeactivateMemberJSONRequestBody defines body for DeactivateMember for application/json ContentType.
+type DeactivateMemberJSONRequestBody = MemberStepUpRequest
+
+// AdminResetMfaJSONRequestBody defines body for AdminResetMfa for application/json ContentType.
+type AdminResetMfaJSONRequestBody = MemberStepUpRequest
+
 // ChangeMemberRoleJSONRequestBody defines body for ChangeMemberRole for application/json ContentType.
 type ChangeMemberRoleJSONRequestBody = ChangeRoleRequest
 
@@ -11961,11 +12002,15 @@ type ClientInterface interface {
 	// ListMembers request
 	ListMembers(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// DeactivateMember request
-	DeactivateMember(ctx context.Context, orgId openapi_types.UUID, userId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+	// DeactivateMemberWithBody request with any body
+	DeactivateMemberWithBody(ctx context.Context, orgId openapi_types.UUID, userId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
-	// AdminResetMfa request
-	AdminResetMfa(ctx context.Context, orgId openapi_types.UUID, userId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+	DeactivateMember(ctx context.Context, orgId openapi_types.UUID, userId openapi_types.UUID, body DeactivateMemberJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// AdminResetMfaWithBody request with any body
+	AdminResetMfaWithBody(ctx context.Context, orgId openapi_types.UUID, userId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	AdminResetMfa(ctx context.Context, orgId openapi_types.UUID, userId openapi_types.UUID, body AdminResetMfaJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ReactivateMember request
 	ReactivateMember(ctx context.Context, orgId openapi_types.UUID, userId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -18601,8 +18646,8 @@ func (c *Client) ListMembers(ctx context.Context, orgId openapi_types.UUID, reqE
 	return c.Client.Do(req)
 }
 
-func (c *Client) DeactivateMember(ctx context.Context, orgId openapi_types.UUID, userId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewDeactivateMemberRequest(c.Server, orgId, userId)
+func (c *Client) DeactivateMemberWithBody(ctx context.Context, orgId openapi_types.UUID, userId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeactivateMemberRequestWithBody(c.Server, orgId, userId, contentType, body)
 	if err != nil {
 		return nil, err
 	}
@@ -18613,8 +18658,32 @@ func (c *Client) DeactivateMember(ctx context.Context, orgId openapi_types.UUID,
 	return c.Client.Do(req)
 }
 
-func (c *Client) AdminResetMfa(ctx context.Context, orgId openapi_types.UUID, userId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
-	req, err := NewAdminResetMfaRequest(c.Server, orgId, userId)
+func (c *Client) DeactivateMember(ctx context.Context, orgId openapi_types.UUID, userId openapi_types.UUID, body DeactivateMemberJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeactivateMemberRequest(c.Server, orgId, userId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) AdminResetMfaWithBody(ctx context.Context, orgId openapi_types.UUID, userId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewAdminResetMfaRequestWithBody(c.Server, orgId, userId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) AdminResetMfa(ctx context.Context, orgId openapi_types.UUID, userId openapi_types.UUID, body AdminResetMfaJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewAdminResetMfaRequest(c.Server, orgId, userId, body)
 	if err != nil {
 		return nil, err
 	}
@@ -38235,8 +38304,19 @@ func NewListMembersRequest(server string, orgId openapi_types.UUID) (*http.Reque
 	return req, nil
 }
 
-// NewDeactivateMemberRequest generates requests for DeactivateMember
-func NewDeactivateMemberRequest(server string, orgId openapi_types.UUID, userId openapi_types.UUID) (*http.Request, error) {
+// NewDeactivateMemberRequest calls the generic DeactivateMember builder with application/json body
+func NewDeactivateMemberRequest(server string, orgId openapi_types.UUID, userId openapi_types.UUID, body DeactivateMemberJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewDeactivateMemberRequestWithBody(server, orgId, userId, "application/json", bodyReader)
+}
+
+// NewDeactivateMemberRequestWithBody generates requests for DeactivateMember with any type of body
+func NewDeactivateMemberRequestWithBody(server string, orgId openapi_types.UUID, userId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
@@ -38268,16 +38348,29 @@ func NewDeactivateMemberRequest(server string, orgId openapi_types.UUID, userId 
 		return nil, err
 	}
 
-	req, err := http.NewRequest("POST", queryURL.String(), nil)
+	req, err := http.NewRequest("POST", queryURL.String(), body)
 	if err != nil {
 		return nil, err
 	}
 
+	req.Header.Add("Content-Type", contentType)
+
 	return req, nil
 }
 
-// NewAdminResetMfaRequest generates requests for AdminResetMfa
-func NewAdminResetMfaRequest(server string, orgId openapi_types.UUID, userId openapi_types.UUID) (*http.Request, error) {
+// NewAdminResetMfaRequest calls the generic AdminResetMfa builder with application/json body
+func NewAdminResetMfaRequest(server string, orgId openapi_types.UUID, userId openapi_types.UUID, body AdminResetMfaJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewAdminResetMfaRequestWithBody(server, orgId, userId, "application/json", bodyReader)
+}
+
+// NewAdminResetMfaRequestWithBody generates requests for AdminResetMfa with any type of body
+func NewAdminResetMfaRequestWithBody(server string, orgId openapi_types.UUID, userId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
 	var err error
 
 	var pathParam0 string
@@ -38309,10 +38402,12 @@ func NewAdminResetMfaRequest(server string, orgId openapi_types.UUID, userId ope
 		return nil, err
 	}
 
-	req, err := http.NewRequest("POST", queryURL.String(), nil)
+	req, err := http.NewRequest("POST", queryURL.String(), body)
 	if err != nil {
 		return nil, err
 	}
+
+	req.Header.Add("Content-Type", contentType)
 
 	return req, nil
 }
@@ -46267,11 +46362,15 @@ type ClientWithResponsesInterface interface {
 	// ListMembersWithResponse request
 	ListMembersWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ListMembersResponse, error)
 
-	// DeactivateMemberWithResponse request
-	DeactivateMemberWithResponse(ctx context.Context, orgId openapi_types.UUID, userId openapi_types.UUID, reqEditors ...RequestEditorFn) (*DeactivateMemberResponse, error)
+	// DeactivateMemberWithBodyWithResponse request with any body
+	DeactivateMemberWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, userId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*DeactivateMemberResponse, error)
 
-	// AdminResetMfaWithResponse request
-	AdminResetMfaWithResponse(ctx context.Context, orgId openapi_types.UUID, userId openapi_types.UUID, reqEditors ...RequestEditorFn) (*AdminResetMfaResponse, error)
+	DeactivateMemberWithResponse(ctx context.Context, orgId openapi_types.UUID, userId openapi_types.UUID, body DeactivateMemberJSONRequestBody, reqEditors ...RequestEditorFn) (*DeactivateMemberResponse, error)
+
+	// AdminResetMfaWithBodyWithResponse request with any body
+	AdminResetMfaWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, userId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*AdminResetMfaResponse, error)
+
+	AdminResetMfaWithResponse(ctx context.Context, orgId openapi_types.UUID, userId openapi_types.UUID, body AdminResetMfaJSONRequestBody, reqEditors ...RequestEditorFn) (*AdminResetMfaResponse, error)
 
 	// ReactivateMemberWithResponse request
 	ReactivateMemberWithResponse(ctx context.Context, orgId openapi_types.UUID, userId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ReactivateMemberResponse, error)
@@ -62380,18 +62479,34 @@ func (c *ClientWithResponses) ListMembersWithResponse(ctx context.Context, orgId
 	return ParseListMembersResponse(rsp)
 }
 
-// DeactivateMemberWithResponse request returning *DeactivateMemberResponse
-func (c *ClientWithResponses) DeactivateMemberWithResponse(ctx context.Context, orgId openapi_types.UUID, userId openapi_types.UUID, reqEditors ...RequestEditorFn) (*DeactivateMemberResponse, error) {
-	rsp, err := c.DeactivateMember(ctx, orgId, userId, reqEditors...)
+// DeactivateMemberWithBodyWithResponse request with arbitrary body returning *DeactivateMemberResponse
+func (c *ClientWithResponses) DeactivateMemberWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, userId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*DeactivateMemberResponse, error) {
+	rsp, err := c.DeactivateMemberWithBody(ctx, orgId, userId, contentType, body, reqEditors...)
 	if err != nil {
 		return nil, err
 	}
 	return ParseDeactivateMemberResponse(rsp)
 }
 
-// AdminResetMfaWithResponse request returning *AdminResetMfaResponse
-func (c *ClientWithResponses) AdminResetMfaWithResponse(ctx context.Context, orgId openapi_types.UUID, userId openapi_types.UUID, reqEditors ...RequestEditorFn) (*AdminResetMfaResponse, error) {
-	rsp, err := c.AdminResetMfa(ctx, orgId, userId, reqEditors...)
+func (c *ClientWithResponses) DeactivateMemberWithResponse(ctx context.Context, orgId openapi_types.UUID, userId openapi_types.UUID, body DeactivateMemberJSONRequestBody, reqEditors ...RequestEditorFn) (*DeactivateMemberResponse, error) {
+	rsp, err := c.DeactivateMember(ctx, orgId, userId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeactivateMemberResponse(rsp)
+}
+
+// AdminResetMfaWithBodyWithResponse request with arbitrary body returning *AdminResetMfaResponse
+func (c *ClientWithResponses) AdminResetMfaWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, userId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*AdminResetMfaResponse, error) {
+	rsp, err := c.AdminResetMfaWithBody(ctx, orgId, userId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseAdminResetMfaResponse(rsp)
+}
+
+func (c *ClientWithResponses) AdminResetMfaWithResponse(ctx context.Context, orgId openapi_types.UUID, userId openapi_types.UUID, body AdminResetMfaJSONRequestBody, reqEditors ...RequestEditorFn) (*AdminResetMfaResponse, error) {
+	rsp, err := c.AdminResetMfa(ctx, orgId, userId, body, reqEditors...)
 	if err != nil {
 		return nil, err
 	}

@@ -93,13 +93,14 @@ func TestSiteReadVsManageSplit(t *testing.T) {
 func TestOperatorRoleScope(t *testing.T) {
 	// member:list is READ-ONLY, added for user-subject resolution (WF-OP-1) — resolving a TunnexGrant's
 	// user subject email->id. It must NOT bring any membership-MUTATION perm (member:invite / member:manage).
-	has := []Permission{PermOrgView, PermK8sManage, PermPolicyManage, PermPolicyView, PermMemberList}
+	has := []Permission{PermOrgView, PermK8sManage, PermPolicyRuleManage, PermPolicyView, PermMemberList}
 	for _, p := range has {
 		if !Can(RoleOperator, p) {
 			t.Fatalf("operator must hold %q", p)
 		}
 	}
-	hasNot := []Permission{PermMachineManage, PermMemberManage, PermMemberInvite, PermOrgUpdate, PermOrgDelete, PermMfaManage, PermSiteManage, PermDeviceApprove}
+	// RBAC-0 D4: policy:manage (Zero Trust mode, groups, resources, directory sync) is NOT the operator's.
+	hasNot := []Permission{PermPolicyManage, PermMachineManage, PermMemberManage, PermMemberInvite, PermOrgUpdate, PermOrgDelete, PermMfaManage, PermSiteManage, PermDeviceApprove}
 	for _, p := range hasNot {
 		if Can(RoleOperator, p) {
 			t.Fatalf("operator must NOT hold %q (scope creep)", p)

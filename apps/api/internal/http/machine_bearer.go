@@ -31,8 +31,9 @@ import (
 type machineCredStore interface {
 	GetMachineCredentialByHash(ctx context.Context, tokenHash []byte) (sqlc.MachineCredential, error)
 	TouchMachineCredentialUsed(ctx context.Context, id uuid.UUID) error
-	// D23: is the owner deactivated? See the arm in MachineAuth.
-	GetMachineOwnerStanding(ctx context.Context, id uuid.UUID) (bool, error)
+	// D23: is the owner deactivated? See the arm in MachineAuth. RBAC-0 D3.6: standing is per org — the
+	// owner must still have access to the credential's organization.
+	GetMachineOwnerStanding(ctx context.Context, arg sqlc.GetMachineOwnerStandingParams) (bool, error)
 }
 
 func MachineAuth(q machineCredStore) BearerAuthFunc {
@@ -86,7 +87,7 @@ func MachineAuth(q machineCredStore) BearerAuthFunc {
 		//
 		// ⛔ REFUSED THE SAME WAY AS EVERY OTHER ARM: `nil, nil` → a generic 401. "Your owner was
 		// deactivated" would be an oracle about a person to whoever holds a stolen token.
-		active, err := q.GetMachineOwnerStanding(r.Context(), cred.UserID.Bytes)
+		active, err := q.GetMachineOwnerStanding(r.Context(), sqlc.GetMachineOwnerStandingParams{OrgID: cred.OrgID, UserID: cred.UserID.Bytes})
 		if err != nil || !active {
 			// ⚠ ErrNoRows lands here too — a soft-deleted owner is simply not there, and "we could not
 			// confirm the owner is active" must never resolve to "carry on".

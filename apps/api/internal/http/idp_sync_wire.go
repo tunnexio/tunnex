@@ -25,6 +25,11 @@ func (d syncDeprovisioner) DeactivateForSync(ctx context.Context, orgID, userID 
 	return d.members.DeactivateMemberBySync(ctx, orgID, userID, "disabled_in_directory")
 }
 
+// RestoreForSync reverses only directory sync's own deprovisioning (RBAC-0 D3).
+func (d syncDeprovisioner) RestoreForSync(ctx context.Context, orgID, userID uuid.UUID) (bool, error) {
+	return d.members.RestoreForSync(ctx, orgID, userID)
+}
+
 func (d syncDeprovisioner) RevokeOrgAccess(ctx context.Context, orgID, userID uuid.UUID, cause string) (bool, error) {
 	return d.members.RevokeOrgAccessBySync(ctx, orgID, userID, cause)
 }

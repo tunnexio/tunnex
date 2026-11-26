@@ -61,6 +61,7 @@
     "org:view",
     "policy:manage",
     "policy:view",
+    "policy_rule:manage",
     "sandbox:admin",
     "sandbox:create",
     "sandbox:delegate_manage",
@@ -125,8 +126,8 @@
     "k8s_ha:view",
     "member:list",
     "org:view",
-    "policy:manage",
-    "policy:view"
+    "policy:view",
+    "policy_rule:manage"
   ],
   "owner": [
     "access_event_retention:manage",
@@ -193,6 +194,7 @@
     "org:view",
     "policy:manage",
     "policy:view",
+    "policy_rule:manage",
     "sandbox:admin",
     "sandbox:create",
     "sandbox:delegate_manage",

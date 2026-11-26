@@ -2,6 +2,7 @@ package agentaccess
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -36,7 +37,7 @@ func TestRBAC0RequesterCannotApproveOwnRequest(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, _, err := svc.Approve(ctx, org, row.ID, requester, "rbac0-self"); err == nil {
+	if _, _, err := svc.Approve(ctx, org, row.ID, requester, "rbac0-self"); !errors.Is(err, ErrSelfApproval) {
 		t.Fatal("the requester approved their own temporary access")
 	}
 	var state string

@@ -35,10 +35,13 @@ import (
 // ⚠ NO DATA-PLANE PUSH. A membership grant creates no device and moves no peer: the WireGuard peer set and
 // the compiled policy are built from DEVICES, and a user who has just been added to an org owns none in it.
 // Membership REMOVAL is the direction that strands data-plane state, and this operation cannot remove one.
-func (s *Service) GrantOrgRole(ctx context.Context, actor uuid.UUID, actorEmail string, orgID, targetUserID uuid.UUID, newRole string) error {
-	if !rbac.ValidRole(newRole) {
+func (s *Service) GrantOrgRole(ctx context.Context, actor uuid.UUID, actorEmail string, orgID, targetUserID uuid.UUID, newRole string, opts ...MemberActionOption) error {
+	// RBAC-0 D7: only HUMAN roles. `operator` and `agent` are machine principals' fixed roles; the
+	// membership CHECK refuses them anyway, which surfaced as a 500 instead of this clean 400.
+	if _, err := rbac.NormalizeHumanRoles([]string{newRole}); err != nil {
 		return apierr.BadRequest("invalid_role", "unknown role: "+newRole)
 	}
+	a := memberActionFrom(opts)
 	return s.withTx(ctx, func(q *sqlc.Queries) error {
 		// Share the membership API's lock so the audited before/after sets
 		// describe this change even when another role update runs concurrently.
@@ -76,13 +79,19 @@ func (s *Service) GrantOrgRole(ctx context.Context, actor uuid.UUID, actorEmail 
 			return nil
 		}
 		if activeMembership && from == rbac.RoleOwner && newRole != rbac.RoleOwner {
-			owners, oe := q.CountOwners(ctx, orgID)
+			owners, oe := q.CountOwners(ctx, orgID) // ACTIVE owners (RBAC-0 D6)
 			if oe != nil {
 				return oe
 			}
-			if owners <= 1 {
+			if target.Status == "active" {
+				owners--
+			}
+			if owners < 1 {
 				return apierr.Conflict("last_owner", "an organization must always have at least one owner")
 			}
+		}
+		if e := a.runStepUp(ctx); e != nil {
+			return e
 		}
 		membership, e := q.UpsertMembership(ctx, sqlc.UpsertMembershipParams{OrgID: orgID, UserID: targetUserID, Role: newRole})
 		if e != nil {

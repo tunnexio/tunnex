@@ -343,7 +343,13 @@ type Querier interface {
 	CountOrganizationsEver(ctx context.Context) (int64, error)
 	// lint:cross-org — spans a user's orgs to protect the last-owner invariant on
 	// global deactivation; each row's org_id is used in the correlated subquery.
+	// Same ACTIVE-owner definition as CountOwners (RBAC-0 D6).
 	CountOrgsWhereSoleOwner(ctx context.Context, userID uuid.UUID) (int64, error)
+	// lint:cross-org — RBAC-0 D3: does this person have access to any OTHER live organization? Decides
+	// whether a deactivation may be account-wide (no) or must stay scoped to the acting org (yes).
+	CountOtherActiveMemberships(ctx context.Context, arg CountOtherActiveMembershipsParams) (int64, error)
+	// RBAC-0 D6: ACTIVE owners only — membership not revoked, account active and not deleted. A deactivated
+	// or revoked owner cannot administer the org, so it must not satisfy the last-owner guard.
 	CountOwners(ctx context.Context, orgID uuid.UUID) (int64, error)
 	CountPendingAppAccessRequests(ctx context.Context, arg CountPendingAppAccessRequestsParams) (int64, error)
 	// lint:cross-org — org-scoped by org_id; counts policy rules that name this site as src OR dst. S8.3 D1/D4:
@@ -506,6 +512,8 @@ type Querier interface {
 	CurrentAppAccessAssignment(ctx context.Context, arg CurrentAppAccessAssignmentParams) (AppAccessConnectorAssignment, error)
 	// lint:cross-org -- Installation-wide dedicated proxy identity, rechecked before every internal port.
 	CurrentAppAccessProxyCredential(ctx context.Context, arg CurrentAppAccessProxyCredentialParams) (AppAccessProxyCredential, error)
+	// RBAC-0 D3: account-wide deactivation with its provenance (who, from which org).
+	DeactivateUserAccount(ctx context.Context, arg DeactivateUserAccountParams) (int64, error)
 	DecideAppAccessRequest(ctx context.Context, arg DecideAppAccessRequestParams) (int64, error)
 	// lint:cross-org — keyed by device_id (the caller already authorized the device
 	// via its org). Clears a device's live status (on revoke) so a revoked device
@@ -813,7 +821,11 @@ type Querier interface {
 	// ⚠ NO ROW = REFUSE, and that is fail-closed rather than a second check: users are read `deleted_at IS
 	// NULL` everywhere, so a soft-deleted owner simply is not here, and "we could not confirm the owner is
 	// active" must never resolve to "carry on".
-	GetMachineOwnerStanding(ctx context.Context, id uuid.UUID) (bool, error)
+	//
+	// ⛔ RBAC-0 D3.6: AND ACCESS TO THE CREDENTIAL'S ORG. "Removed from org is unreachable" stopped being true
+	// when directory sync began revoking a single org's access (`RevokeOrgAccessBySync`), and org-scoped
+	// deactivation now does the same. A credential acts in ONE org, so its owner must stand in THAT org.
+	GetMachineOwnerStanding(ctx context.Context, arg GetMachineOwnerStandingParams) (bool, error)
 	GetManualAccessEventRetentionRun(ctx context.Context, arg GetManualAccessEventRetentionRunParams) (AccessEventRetentionRun, error)
 	GetManualAuditLogRetentionRun(ctx context.Context, arg GetManualAuditLogRetentionRunParams) (AuditLogRetentionRun, error)
 	GetMembership(ctx context.Context, arg GetMembershipParams) (Membership, error)
@@ -955,6 +967,7 @@ type Querier interface {
 	GetTOTPForUpdate(ctx context.Context, userID uuid.UUID) (UserTotp, error)
 	GetUserByEmail(ctx context.Context, email string) (User, error)
 	GetUserByID(ctx context.Context, id uuid.UUID) (User, error)
+	GetUserDeactivation(ctx context.Context, id uuid.UUID) (GetUserDeactivationRow, error)
 	GetUserGroup(ctx context.Context, arg GetUserGroupParams) (UserGroup, error)
 	// lint:cross-org — JIT resolves the capturing org from an email domain before an
 	// org context exists; org_id is a column on the returned row. Only verified
@@ -998,6 +1011,9 @@ type Querier interface {
 	InsertAuditLogRetentionSettings(ctx context.Context, arg InsertAuditLogRetentionSettingsParams) (AuditLogRetentionSetting, error)
 	InsertManualAccessEventRetentionRun(ctx context.Context, arg InsertManualAccessEventRetentionRunParams) (AccessEventRetentionRun, error)
 	InsertManualAuditLogRetentionRun(ctx context.Context, arg InsertManualAuditLogRetentionRunParams) (AuditLogRetentionRun, error)
+	// RBAC-0 D1: the JOIN form. Never touches an existing row (active or revoked); no row returned means the
+	// person already has a membership and the caller must refuse rather than change it.
+	InsertMembershipIfAbsent(ctx context.Context, arg InsertMembershipIfAbsentParams) (Membership, error)
 	// S9.1 Slice 2: OpenVPN client-cert records. The issuance path records the cert identity so the
 	// Slice 5 revocation full-sweep + CRL have their source (B2). The private key is never stored.
 	InsertOVPNClientCert(ctx context.Context, arg InsertOVPNClientCertParams) (OvpnClientCert, error)
@@ -1761,6 +1777,7 @@ type Querier interface {
 	// body locks the exact unexpired durable run and derives tenant/cutoff from it.
 	PruneAuditLogsByAgeBatch(ctx context.Context, runID uuid.UUID) (int64, error)
 	PruneConnectivityIssuances(ctx context.Context, arg PruneConnectivityIssuancesParams) error
+	ReactivateUserAccount(ctx context.Context, id uuid.UUID) (int64, error)
 	ReadConnectivityProfile(ctx context.Context, orgID uuid.UUID) (ConnectivityProfile, error)
 	// lint:cross-org — exact native parent session logout is user scoped.
 	RecordAppParentLogout(ctx context.Context, arg RecordAppParentLogoutParams) error
@@ -1884,7 +1901,10 @@ type Querier interface {
 	// RestoreCascadeRevokedDevice.
 	// lint:cross-org — keyed by device_id, which the caller read from the org-scoped candidate set.
 	RestoreCascadeRevokedOVPNCertsForDevice(ctx context.Context, deviceID uuid.UUID) ([]RestoreCascadeRevokedOVPNCertsForDeviceRow, error)
-	RestoreMembershipAccess(ctx context.Context, arg RestoreMembershipAccessParams) error
+	// Restores ONLY a revocation made by the named source; another authority's revocation is left alone.
+	RestoreMembershipAccess(ctx context.Context, arg RestoreMembershipAccessParams) (int64, error)
+	// RBAC-0 D3: only DIRECTORY revocations are restored by a directory grant. An administrator's
+	// deactivation in this org is not the directory's to undo.
 	RestoreMembershipAfterIdpGrant(ctx context.Context, arg RestoreMembershipAfterIdpGrantParams) error
 	// ⛔ THE SYMMETRIC HALF, AND SHIPPING WITHOUT IT WOULD BE A ONE-WAY DOOR. Reactivation restores memberships,
 	// sessions and the peer set; if the certificate stayed revoked the user would come back `active` everywhere
@@ -1941,6 +1961,7 @@ type Querier interface {
 	// Org-scoped + idempotent (already-revoked returns 0 rows). Revocation severs on the very next request
 	// (the auth path re-reads the row every time — no session cache).
 	RevokeMachineCredential(ctx context.Context, arg RevokeMachineCredentialParams) (int64, error)
+	// RBAC-0 D3: the source records which authority removed access, so only that authority restores it.
 	RevokeMembershipAccess(ctx context.Context, arg RevokeMembershipAccessParams) (int64, error)
 	// KEEPS THE SITE BINDING. The unbind added for WF-S11-14 was RULED REVERSED ON EVIDENCE after review, because the
 	// status filter on ListSiteNodesForOrg was sufficient for the compiler input on its own and the unbind bought
@@ -2205,7 +2226,10 @@ type Querier interface {
 	// left intact (a credential rotation shouldn't fake a green health).
 	UpsertIdpSyncConfig(ctx context.Context, arg UpsertIdpSyncConfigParams) (IdpSyncConfig, error)
 	UpsertK8sConnectorPoolHealthCandidateTicks(ctx context.Context, arg UpsertK8sConnectorPoolHealthCandidateTicksParams) (K8sConnectorPoolHealthCandidateTick, error)
-	// Idempotent on (org_id, user_id).
+	// Idempotent on (org_id, user_id), and it SETS the role. ⛔ RBAC-0 D1: only for callers whose authority
+	// is "set this person's role" — org creation, bootstrap, the deployment-administrator grant. A JOIN
+	// (invite accept, SSO JIT) must use InsertMembershipIfAbsent: an upsert there let an invite or login
+	// rewrite an existing member's roles, including demoting the sole owner.
 	UpsertMembership(ctx context.Context, arg UpsertMembershipParams) (Membership, error)
 	// lint:cross-org — keyed by node_id (the agent is cert-authorized for its own node) + the PEER's pubkey.
 	// The SIBLING of UpsertDeviceStatus (S8.6): it stores a reporting GATEWAY's GATEWAY-peer telemetry

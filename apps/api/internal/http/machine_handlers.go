@@ -62,6 +62,10 @@ func (s apiServer) MintMachineCredential(ctx context.Context, req api.MintMachin
 		return nil, apierr.BadRequest("invalid_request", "a name is required, it appears in the audit trail as operator:<name>")
 	}
 	p, _ := authctx.PrincipalFrom(ctx)
+	// RBAC-0 D9: minting a non-human org principal is org-delete-grade — require recent re-authentication.
+	if err := s.peopleStepUp(p, req.Body.CurrentPassword, "create a machine credential")(ctx); err != nil {
+		return nil, err
+	}
 	cred, err := s.machine.Mint(ctx, req.OrgId, p.UserID, strings.TrimSpace(req.Body.Name))
 	if err != nil {
 		return nil, err

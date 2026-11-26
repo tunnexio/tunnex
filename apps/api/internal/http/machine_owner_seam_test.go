@@ -46,7 +46,7 @@ func (s stubMachineQ) TouchMachineCredentialUsed(_ context.Context, _ uuid.UUID)
 	return nil
 }
 
-func (s stubMachineQ) GetMachineOwnerStanding(_ context.Context, _ uuid.UUID) (bool, error) {
+func (s stubMachineQ) GetMachineOwnerStanding(_ context.Context, _ sqlc.GetMachineOwnerStandingParams) (bool, error) {
 	if s.ownerGone {
 		return false, pgx.ErrNoRows // soft-deleted: users are read deleted_at IS NULL
 	}

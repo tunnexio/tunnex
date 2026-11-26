@@ -373,7 +373,9 @@ func (s apiServer) ListPolicyRules(ctx context.Context, req api.ListPolicyRulesR
 }
 
 func (s apiServer) CreatePolicyRule(ctx context.Context, req api.CreatePolicyRuleRequestObject) (api.CreatePolicyRuleResponseObject, error) {
-	if _, err := authorize(ctx, req.OrgId, rbac.PermPolicyManage); err != nil {
+	// RBAC-0 D4: rule authoring is its own permission so the GitOps operator holds it without the rest of
+	// policy administration (Zero Trust mode, groups, resources, directory sync).
+	if _, err := authorize(ctx, req.OrgId, rbac.PermPolicyRuleManage); err != nil {
 		return nil, err
 	}
 	if req.Body != nil && req.Body.SrcKind != nil && string(*req.Body.SrcKind) == "agent" {
@@ -431,7 +433,9 @@ func (s apiServer) CreatePolicyRule(ctx context.Context, req api.CreatePolicyRul
 }
 
 func (s apiServer) DeletePolicyRule(ctx context.Context, req api.DeletePolicyRuleRequestObject) (api.DeletePolicyRuleResponseObject, error) {
-	if _, err := authorize(ctx, req.OrgId, rbac.PermPolicyManage); err != nil {
+	// RBAC-0 D4: rule authoring is its own permission so the GitOps operator holds it without the rest of
+	// policy administration (Zero Trust mode, groups, resources, directory sync).
+	if _, err := authorize(ctx, req.OrgId, rbac.PermPolicyRuleManage); err != nil {
 		return nil, err
 	}
 	if s.policy == nil {

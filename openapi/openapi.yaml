@@ -2002,8 +2002,13 @@ paths:
     post:
       operationId: adminResetMfa
       summary: Admin-reset a member's MFA — disenroll only (enterprise)
-      description: "S7.5.5. Clears the member's TOTP + recovery codes (never authenticates as them); audited + the member is notified."
+      description: "S7.5.5. Clears the member's TOTP + recovery codes (never authenticates as them); audited + the member is notified. RBAC-0: the target must be an active member of this organization; only an owner may reset an owner, only a deployment administrator may reset a deployment administrator; requires step-up."
       tags: [auth]
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/MemberStepUpRequest" }
       responses:
         "204": { description: MFA reset. }
         default: { $ref: "#/components/responses/Error" }
@@ -5788,8 +5793,18 @@ paths:
         schema: { type: string, format: uuid }
     post:
       operationId: deactivateMember
-      summary: Deactivate a member's account (freezes access, revokes sessions)
+      summary: Deactivate a member (RBAC-0 — organization-scoped when they belong to other organizations)
+      description: >
+        Requires `member:manage`; only an owner may deactivate an owner, and the last active owner cannot
+        be deactivated. Account-wide (sessions revoked) only when this is the person's only organization and
+        they are not a deployment administrator; otherwise only this organization's access is removed.
+        Requires recent re-authentication (step-up).
       tags: [members]
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/MemberStepUpRequest" }
       responses:
         "204":
           description: Deactivated.
@@ -5808,7 +5823,11 @@ paths:
         schema: { type: string, format: uuid }
     post:
       operationId: reactivateMember
-      summary: Reactivate a deactivated member
+      summary: Reactivate a member this organization deactivated
+      description: >
+        Reverses only this organization's own deactivation. Refuses `directory_managed` when directory sync
+        removed the access (it restores access itself when the person is active in the directory again) and
+        `deactivated_elsewhere` when another organization deactivated the account.
       tags: [members]
       responses:
         "204":
@@ -12098,6 +12117,7 @@ components:
       additionalProperties: false
       properties:
         name: { type: string, description: "A label for the credential; appears in audit as operator:<name>." }
+        current_password: { type: string, maxLength: 200, writeOnly: true, description: "RBAC-0 step-up: required when the caller has a local password. A recent MFA verification (five minutes) is also required when the caller has an authenticator or an IdP-asserted MFA." }
 
     # NAME: NOT "MintMachineCredentialResponse" — oapi-codegen generates a response-wrapper type of exactly
     # that name for the mintMachineCredential operation, so the schema and the wrapper collide and the Go
@@ -13685,17 +13705,17 @@ components:
 
     InviteCreated:
       type: object
-      required: [message, invite_token]
+      required: [message]
       additionalProperties: false
       properties:
         message: { type: string }
         invite_token:
           type: string
           description: >-
-            Raw one-time accept token. The dashboard builds the accept link
-            (origin + /accept-invite?token=…) for the admin to hand to the invitee
-            — the SMTP-less delivery path. Also emailed when SMTP is configured.
-            Shown once; not retrievable later.
+            Raw one-time accept token, present ONLY when `delivered` is false (no SMTP, or delivery failed).
+            The dashboard builds the accept link (origin + /accept-invite?token=…) for the admin to hand to
+            the invitee. RBAC-0 D1: when the email left, only the inbox holds the link. Shown once; not
+            retrievable later.
         delivered:
           type: boolean
           description: >-
@@ -15242,6 +15262,13 @@ components:
         status: { type: string, enum: [active, deactivated] }
         email_verified: { type: boolean }
         joined_at: { type: string, format: date-time }
+        deactivated_by:
+          type: string
+          enum: [organization, directory, other_organization]
+          description: >-
+            RBAC-0: present when status is deactivated and the cause is known. `organization` — this
+            organization's administrators (Reactivate reverses it); `directory` — directory sync (it restores
+            access itself); `other_organization` — another organization on this server.
         machine_credentials:
           type: integer
           description: >-
@@ -15260,6 +15287,7 @@ components:
       additionalProperties: false
       properties:
         role: { type: string, enum: [owner, admin, member, ai-admin, ai-view] }
+        current_password: { type: string, maxLength: 200, writeOnly: true, description: "RBAC-0 step-up: required when the caller has a local password. A recent MFA verification (five minutes) is also required when the caller has an authenticator or an IdP-asserted MFA." }
 
     ChangeRolesRequest:
       type: object
@@ -15272,6 +15300,15 @@ components:
           maxItems: 5
           uniqueItems: true
           items: { type: string, enum: [owner, admin, member, ai-admin, ai-view] }
+        current_password: { type: string, maxLength: 200, writeOnly: true, description: "RBAC-0 step-up: required when the caller has a local password. A recent MFA verification (five minutes) is also required when the caller has an authenticator or an IdP-asserted MFA." }
+
+    # RBAC-0 D9: the step-up body for people-management verbs that carry no other input. Optional on the
+    # wire so an older client gets the clear `current_password_required` / `mfa_step_up_required` refusal.
+    MemberStepUpRequest:
+      type: object
+      additionalProperties: false
+      properties:
+        current_password: { type: string, maxLength: 200, writeOnly: true, description: "RBAC-0 step-up: required when the caller has a local password. A recent MFA verification (five minutes) is also required when the caller has an authenticator or an IdP-asserted MFA." }
 
     OrgDeletionPreflight:
       type: object
@@ -15422,6 +15459,16 @@ components:
         # (nothing recoverable). Drives the low-remaining (<=3) + last-code warnings; returned on
         # /auth/me and on mfa/verify (the verify moment is exactly when a just-burned code matters).
         recovery_codes_remaining: { type: integer }
+        # RBAC-0 D9: what this account must prove for a step-up action (role changes, deactivation, MFA
+        # reset, machine credentials), so the dashboard asks for it up front.
+        reauthentication:
+          type: object
+          additionalProperties: false
+          required: [password, mfa, available]
+          properties:
+            password: { type: boolean, description: "The account has a local password; step-up actions send current_password." }
+            mfa: { type: boolean, description: "The account has confirmed MFA (or an IdP-asserted MFA on this session); step-up actions need a verification within five minutes." }
+            available: { type: boolean, description: "False when the account has neither, and so cannot perform step-up actions until it sets up an authenticator." }
 
     LoginResult:
       type: object

@@ -146,7 +146,8 @@ func (s apiServer) CreateDevice(ctx context.Context, req api.CreateDeviceRequest
 // UpdateDeviceMode PATCH .../devices/{deviceId}/mode. This changes the issued
 // routing mode in-place; it never mints or revokes a device identity.
 func (s apiServer) UpdateDeviceMode(ctx context.Context, req api.UpdateDeviceModeRequestObject) (api.UpdateDeviceModeResponseObject, error) {
-	if _, err := authorize(ctx, req.OrgId, rbac.PermOrgView); err != nil {
+	// RBAC-0 D5: a mutation, so the verified-email gate applies even though the permission is a read.
+	if _, err := authorizeMutation(ctx, req.OrgId, rbac.PermOrgView); err != nil {
 		return nil, err
 	}
 	p, _ := authctx.PrincipalFrom(ctx)
@@ -202,8 +203,15 @@ func (s apiServer) RemoveDevice(ctx context.Context, req api.RemoveDeviceRequest
 	p, _ := authctx.PrincipalFrom(ctx)
 	role, _ := p.RoleIn(req.OrgId)
 
-	if _, err := s.authorizeDeviceLifecycleTarget(ctx, req.OrgId, req.DeviceId, p.UserID, role, "remove"); err != nil {
+	target, err := s.authorizeDeviceLifecycleTarget(ctx, req.OrgId, req.DeviceId, p.UserID, role, "remove")
+	if err != nil {
 		return nil, err
+	}
+	// RBAC-0 D5: acting on SOMEONE ELSE'S device is an administrative mutation and needs a verified email.
+	// Cutting off your OWN device stays open to an unverified account — refusing it would make a lost laptop
+	// impossible to disconnect, which is less safe, not more.
+	if target.UserID != p.UserID && !p.EmailVerified && !p.IsMachine() {
+		return nil, apierr.New(403, "email_not_verified", "verify your email to perform this action")
 	}
 	if err := s.devices.RemoveRevoked(ctx, req.OrgId, p.UserID, req.DeviceId); err != nil {
 		return nil, err
@@ -218,8 +226,15 @@ func (s apiServer) RevokeDevice(ctx context.Context, req api.RevokeDeviceRequest
 	p, _ := authctx.PrincipalFrom(ctx)
 	role, _ := p.RoleIn(req.OrgId)
 
-	if _, err := s.authorizeDeviceLifecycleTarget(ctx, req.OrgId, req.DeviceId, p.UserID, role, "revoke"); err != nil {
+	target, err := s.authorizeDeviceLifecycleTarget(ctx, req.OrgId, req.DeviceId, p.UserID, role, "revoke")
+	if err != nil {
 		return nil, err
+	}
+	// RBAC-0 D5: acting on SOMEONE ELSE'S device is an administrative mutation and needs a verified email.
+	// Cutting off your OWN device stays open to an unverified account — refusing it would make a lost laptop
+	// impossible to disconnect, which is less safe, not more.
+	if target.UserID != p.UserID && !p.EmailVerified && !p.IsMachine() {
+		return nil, apierr.New(403, "email_not_verified", "verify your email to perform this action")
 	}
 	if err := s.devices.Revoke(ctx, req.OrgId, p.UserID, req.DeviceId); err != nil {
 		return nil, err

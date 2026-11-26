@@ -55,7 +55,7 @@ func TestDeactivationSweepsCliCredentials(t *testing.T) {
 	}
 
 	svc := &MembershipService{q: q} // tx-scoped; nil revoker/pusher are skipped
-	if err := svc.DeactivateMember(ctx, actor, org, target); err != nil {
+	if err := svc.DeactivateMember(ctx, actor, "owner", org, target); err != nil {
 		t.Fatalf("deactivate: %v", err)
 	}
 	if _, err := q.GetActiveCliCredentialByHash(ctx, h[:]); err == nil {

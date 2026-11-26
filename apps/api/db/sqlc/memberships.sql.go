@@ -16,7 +16,7 @@ const changeMemberRole = `-- name: ChangeMemberRole :one
 UPDATE memberships
 SET role = $3
 WHERE org_id = $1 AND user_id = $2
-RETURNING id, org_id, user_id, role, created_at, updated_at, access_revoked_at, roles
+RETURNING id, org_id, user_id, role, created_at, updated_at, access_revoked_at, roles, access_revoked_source
 `
 
 type ChangeMemberRoleParams struct {
@@ -37,6 +37,7 @@ func (q *Queries) ChangeMemberRole(ctx context.Context, arg ChangeMemberRolePara
 		&i.UpdatedAt,
 		&i.AccessRevokedAt,
 		&i.Roles,
+		&i.AccessRevokedSource,
 	)
 	return i, err
 }
@@ -44,7 +45,7 @@ func (q *Queries) ChangeMemberRole(ctx context.Context, arg ChangeMemberRolePara
 const changeMemberRoles = `-- name: ChangeMemberRoles :one
 UPDATE memberships SET roles = $1::text[]
 WHERE org_id = $2 AND user_id = $3
-RETURNING id, org_id, user_id, role, created_at, updated_at, access_revoked_at, roles
+RETURNING id, org_id, user_id, role, created_at, updated_at, access_revoked_at, roles, access_revoked_source
 `
 
 type ChangeMemberRolesParams struct {
@@ -65,18 +66,22 @@ func (q *Queries) ChangeMemberRoles(ctx context.Context, arg ChangeMemberRolesPa
 		&i.UpdatedAt,
 		&i.AccessRevokedAt,
 		&i.Roles,
+		&i.AccessRevokedSource,
 	)
 	return i, err
 }
 
 const countOrgsWhereSoleOwner = `-- name: CountOrgsWhereSoleOwner :one
 SELECT count(*) FROM memberships m
-WHERE m.user_id = $1 AND m.role = 'owner'
-  AND (SELECT count(*) FROM memberships o WHERE o.org_id = m.org_id AND o.role = 'owner') = 1
+WHERE m.user_id = $1 AND m.role = 'owner' AND m.access_revoked_at IS NULL
+  AND (SELECT count(*) FROM memberships o JOIN users ou ON ou.id = o.user_id
+        WHERE o.org_id = m.org_id AND o.role = 'owner' AND o.access_revoked_at IS NULL
+          AND ou.status = 'active' AND ou.deleted_at IS NULL) = 1
 `
 
 // lint:cross-org — spans a user's orgs to protect the last-owner invariant on
 // global deactivation; each row's org_id is used in the correlated subquery.
+// Same ACTIVE-owner definition as CountOwners (RBAC-0 D6).
 func (q *Queries) CountOrgsWhereSoleOwner(ctx context.Context, userID uuid.UUID) (int64, error) {
 	row := q.db.QueryRow(ctx, countOrgsWhereSoleOwner, userID)
 	var count int64
@@ -84,11 +89,35 @@ func (q *Queries) CountOrgsWhereSoleOwner(ctx context.Context, userID uuid.UUID)
 	return count, err
 }
 
-const countOwners = `-- name: CountOwners :one
-SELECT count(*) FROM memberships
-WHERE org_id = $1 AND role = 'owner'
+const countOtherActiveMemberships = `-- name: CountOtherActiveMemberships :one
+SELECT count(*) FROM memberships m
+JOIN organizations o ON o.id = m.org_id AND o.deleted_at IS NULL
+WHERE m.user_id = $1 AND m.org_id <> $2 AND m.access_revoked_at IS NULL
 `
 
+type CountOtherActiveMembershipsParams struct {
+	UserID uuid.UUID `json:"user_id"`
+	OrgID  uuid.UUID `json:"org_id"`
+}
+
+// lint:cross-org — RBAC-0 D3: does this person have access to any OTHER live organization? Decides
+// whether a deactivation may be account-wide (no) or must stay scoped to the acting org (yes).
+func (q *Queries) CountOtherActiveMemberships(ctx context.Context, arg CountOtherActiveMembershipsParams) (int64, error) {
+	row := q.db.QueryRow(ctx, countOtherActiveMemberships, arg.UserID, arg.OrgID)
+	var count int64
+	err := row.Scan(&count)
+	return count, err
+}
+
+const countOwners = `-- name: CountOwners :one
+SELECT count(*) FROM memberships m
+JOIN users u ON u.id = m.user_id
+WHERE m.org_id = $1 AND m.role = 'owner' AND m.access_revoked_at IS NULL
+  AND u.status = 'active' AND u.deleted_at IS NULL
+`
+
+// RBAC-0 D6: ACTIVE owners only — membership not revoked, account active and not deleted. A deactivated
+// or revoked owner cannot administer the org, so it must not satisfy the last-owner guard.
 func (q *Queries) CountOwners(ctx context.Context, orgID uuid.UUID) (int64, error) {
 	row := q.db.QueryRow(ctx, countOwners, orgID)
 	var count int64
@@ -97,7 +126,7 @@ func (q *Queries) CountOwners(ctx context.Context, orgID uuid.UUID) (int64, erro
 }
 
 const getMembership = `-- name: GetMembership :one
-SELECT id, org_id, user_id, role, created_at, updated_at, access_revoked_at, roles FROM memberships
+SELECT id, org_id, user_id, role, created_at, updated_at, access_revoked_at, roles, access_revoked_source FROM memberships
 WHERE org_id = $1 AND user_id = $2 AND access_revoked_at IS NULL
 `
 
@@ -118,12 +147,13 @@ func (q *Queries) GetMembership(ctx context.Context, arg GetMembershipParams) (M
 		&i.UpdatedAt,
 		&i.AccessRevokedAt,
 		&i.Roles,
+		&i.AccessRevokedSource,
 	)
 	return i, err
 }
 
 const getMembershipIncludingRevoked = `-- name: GetMembershipIncludingRevoked :one
-SELECT id, org_id, user_id, role, created_at, updated_at, access_revoked_at, roles FROM memberships
+SELECT id, org_id, user_id, role, created_at, updated_at, access_revoked_at, roles, access_revoked_source FROM memberships
 WHERE org_id = $1 AND user_id = $2
 `
 
@@ -144,6 +174,39 @@ func (q *Queries) GetMembershipIncludingRevoked(ctx context.Context, arg GetMemb
 		&i.UpdatedAt,
 		&i.AccessRevokedAt,
 		&i.Roles,
+		&i.AccessRevokedSource,
+	)
+	return i, err
+}
+
+const insertMembershipIfAbsent = `-- name: InsertMembershipIfAbsent :one
+INSERT INTO memberships (org_id, user_id, role)
+VALUES ($1, $2, $3)
+ON CONFLICT (org_id, user_id) DO NOTHING
+RETURNING id, org_id, user_id, role, created_at, updated_at, access_revoked_at, roles, access_revoked_source
+`
+
+type InsertMembershipIfAbsentParams struct {
+	OrgID  uuid.UUID `json:"org_id"`
+	UserID uuid.UUID `json:"user_id"`
+	Role   string    `json:"role"`
+}
+
+// RBAC-0 D1: the JOIN form. Never touches an existing row (active or revoked); no row returned means the
+// person already has a membership and the caller must refuse rather than change it.
+func (q *Queries) InsertMembershipIfAbsent(ctx context.Context, arg InsertMembershipIfAbsentParams) (Membership, error) {
+	row := q.db.QueryRow(ctx, insertMembershipIfAbsent, arg.OrgID, arg.UserID, arg.Role)
+	var i Membership
+	err := row.Scan(
+		&i.ID,
+		&i.OrgID,
+		&i.UserID,
+		&i.Role,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.AccessRevokedAt,
+		&i.Roles,
+		&i.AccessRevokedSource,
 	)
 	return i, err
 }
@@ -185,7 +248,7 @@ func (q *Queries) ListAccessSources(ctx context.Context, arg ListAccessSourcesPa
 }
 
 const listMembershipsByOrg = `-- name: ListMembershipsByOrg :many
-SELECT id, org_id, user_id, role, created_at, updated_at, access_revoked_at, roles FROM memberships
+SELECT id, org_id, user_id, role, created_at, updated_at, access_revoked_at, roles, access_revoked_source FROM memberships
 WHERE org_id = $1 AND access_revoked_at IS NULL
 ORDER BY created_at
 `
@@ -208,6 +271,7 @@ func (q *Queries) ListMembershipsByOrg(ctx context.Context, orgID uuid.UUID) ([]
 			&i.UpdatedAt,
 			&i.AccessRevokedAt,
 			&i.Roles,
+			&i.AccessRevokedSource,
 		); err != nil {
 			return nil, err
 		}
@@ -220,7 +284,7 @@ func (q *Queries) ListMembershipsByOrg(ctx context.Context, orgID uuid.UUID) ([]
 }
 
 const listMembershipsByUser = `-- name: ListMembershipsByUser :many
-SELECT id, org_id, user_id, role, created_at, updated_at, access_revoked_at, roles FROM memberships
+SELECT id, org_id, user_id, role, created_at, updated_at, access_revoked_at, roles, access_revoked_source FROM memberships
 WHERE user_id = $1 AND access_revoked_at IS NULL
 ORDER BY created_at
 `
@@ -245,6 +309,7 @@ func (q *Queries) ListMembershipsByUser(ctx context.Context, userID uuid.UUID) (
 			&i.UpdatedAt,
 			&i.AccessRevokedAt,
 			&i.Roles,
+			&i.AccessRevokedSource,
 		); err != nil {
 			return nil, err
 		}
@@ -258,7 +323,25 @@ func (q *Queries) ListMembershipsByUser(ctx context.Context, userID uuid.UUID) (
 
 const listOrgMembersWithUser = `-- name: ListOrgMembersWithUser :many
 SELECT m.user_id, m.role, m.roles, m.created_at AS joined_at,
-       u.email, u.name, u.status, (u.email_verified_at IS NOT NULL)::boolean AS email_verified,
+       u.email, u.name,
+       -- RBAC-0 D3: status is PER ORGANIZATION. A membership whose access was revoked here reads as
+       -- deactivated even when the account is active elsewhere; it used to read "active".
+       (CASE WHEN m.access_revoked_at IS NOT NULL THEN 'deactivated' ELSE u.status END)::text AS status,
+       -- Who removed access, relative to THIS org: organization | directory | other_organization | ''.
+       (CASE
+          WHEN m.access_revoked_at IS NOT NULL THEN
+            CASE WHEN m.access_revoked_source = 'member_admin' THEN 'organization' ELSE 'directory' END
+          WHEN u.status = 'deactivated' THEN
+            CASE
+              WHEN u.deactivation_source = 'idp_sync' AND u.deactivated_by_org_id = m.org_id THEN 'directory'
+              WHEN u.deactivation_source = 'idp_sync' THEN 'other_organization'
+              WHEN u.deactivated_by_org_id = m.org_id THEN 'organization'
+              WHEN u.deactivated_by_org_id IS NOT NULL THEN 'other_organization'
+              ELSE ''
+            END
+          ELSE ''
+        END)::text AS deactivated_by,
+       (u.email_verified_at IS NOT NULL)::boolean AS email_verified,
        (SELECT count(*) FROM machine_credentials mc
          WHERE mc.user_id = m.user_id AND mc.revoked_at IS NULL)::bigint AS machine_credentials,
        (SELECT count(DISTINCT ap.device_id)
@@ -284,6 +367,7 @@ type ListOrgMembersWithUserRow struct {
 	Email                   string    `json:"email"`
 	Name                    string    `json:"name"`
 	Status                  string    `json:"status"`
+	DeactivatedBy           string    `json:"deactivated_by"`
 	EmailVerified           bool      `json:"email_verified"`
 	MachineCredentials      int64     `json:"machine_credentials"`
 	ManagedAgentDelegations int64     `json:"managed_agent_delegations"`
@@ -317,6 +401,7 @@ func (q *Queries) ListOrgMembersWithUser(ctx context.Context, orgID uuid.UUID) (
 			&i.Email,
 			&i.Name,
 			&i.Status,
+			&i.DeactivatedBy,
 			&i.EmailVerified,
 			&i.MachineCredentials,
 			&i.ManagedAgentDelegations,
@@ -360,33 +445,41 @@ func (q *Queries) RemoveMember(ctx context.Context, arg RemoveMemberParams) (int
 	return result.RowsAffected(), nil
 }
 
-const restoreMembershipAccess = `-- name: RestoreMembershipAccess :exec
-UPDATE memberships SET access_revoked_at = NULL
+const restoreMembershipAccess = `-- name: RestoreMembershipAccess :execrows
+UPDATE memberships SET access_revoked_at = NULL, access_revoked_source = NULL
 WHERE org_id = $1 AND user_id = $2
+  AND access_revoked_at IS NOT NULL AND access_revoked_source = $3::text
 `
 
 type RestoreMembershipAccessParams struct {
 	OrgID  uuid.UUID `json:"org_id"`
 	UserID uuid.UUID `json:"user_id"`
+	Source string    `json:"source"`
 }
 
-func (q *Queries) RestoreMembershipAccess(ctx context.Context, arg RestoreMembershipAccessParams) error {
-	_, err := q.db.Exec(ctx, restoreMembershipAccess, arg.OrgID, arg.UserID)
-	return err
+// Restores ONLY a revocation made by the named source; another authority's revocation is left alone.
+func (q *Queries) RestoreMembershipAccess(ctx context.Context, arg RestoreMembershipAccessParams) (int64, error) {
+	result, err := q.db.Exec(ctx, restoreMembershipAccess, arg.OrgID, arg.UserID, arg.Source)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const revokeMembershipAccess = `-- name: RevokeMembershipAccess :execrows
-UPDATE memberships SET access_revoked_at = now()
-WHERE org_id = $1 AND user_id = $2 AND access_revoked_at IS NULL
+UPDATE memberships SET access_revoked_at = now(), access_revoked_source = $1::text
+WHERE org_id = $2 AND user_id = $3 AND access_revoked_at IS NULL
 `
 
 type RevokeMembershipAccessParams struct {
+	Source string    `json:"source"`
 	OrgID  uuid.UUID `json:"org_id"`
 	UserID uuid.UUID `json:"user_id"`
 }
 
+// RBAC-0 D3: the source records which authority removed access, so only that authority restores it.
 func (q *Queries) RevokeMembershipAccess(ctx context.Context, arg RevokeMembershipAccessParams) (int64, error) {
-	result, err := q.db.Exec(ctx, revokeMembershipAccess, arg.OrgID, arg.UserID)
+	result, err := q.db.Exec(ctx, revokeMembershipAccess, arg.Source, arg.OrgID, arg.UserID)
 	if err != nil {
 		return 0, err
 	}
@@ -398,7 +491,7 @@ INSERT INTO memberships (org_id, user_id, role)
 VALUES ($1, $2, $3)
 ON CONFLICT (org_id, user_id) DO UPDATE
     SET role = EXCLUDED.role
-RETURNING id, org_id, user_id, role, created_at, updated_at, access_revoked_at, roles
+RETURNING id, org_id, user_id, role, created_at, updated_at, access_revoked_at, roles, access_revoked_source
 `
 
 type UpsertMembershipParams struct {
@@ -407,7 +500,10 @@ type UpsertMembershipParams struct {
 	Role   string    `json:"role"`
 }
 
-// Idempotent on (org_id, user_id).
+// Idempotent on (org_id, user_id), and it SETS the role. ⛔ RBAC-0 D1: only for callers whose authority
+// is "set this person's role" — org creation, bootstrap, the deployment-administrator grant. A JOIN
+// (invite accept, SSO JIT) must use InsertMembershipIfAbsent: an upsert there let an invite or login
+// rewrite an existing member's roles, including demoting the sole owner.
 func (q *Queries) UpsertMembership(ctx context.Context, arg UpsertMembershipParams) (Membership, error) {
 	row := q.db.QueryRow(ctx, upsertMembership, arg.OrgID, arg.UserID, arg.Role)
 	var i Membership
@@ -420,6 +516,7 @@ func (q *Queries) UpsertMembership(ctx context.Context, arg UpsertMembershipPara
 		&i.UpdatedAt,
 		&i.AccessRevokedAt,
 		&i.Roles,
+		&i.AccessRevokedSource,
 	)
 	return i, err
 }

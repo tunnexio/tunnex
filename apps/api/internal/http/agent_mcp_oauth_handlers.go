@@ -38,7 +38,8 @@ func (s apiServer) ListAgentMCPOAuthConnections(ctx context.Context, req api.Lis
 }
 
 func (s apiServer) StartAgentMCPOAuthConnection(ctx context.Context, req api.StartAgentMCPOAuthConnectionRequestObject) (api.StartAgentMCPOAuthConnectionResponseObject, error) {
-	if _, err := authorize(ctx, req.OrgId, rbac.PermOrgView); err != nil {
+	// RBAC-0 D5: a mutation, so the verified-email gate applies even though the permission is a read.
+	if _, err := authorizeMutation(ctx, req.OrgId, rbac.PermOrgView); err != nil {
 		return nil, err
 	}
 	if err := s.requireAgentPermission(ctx, req.OrgId, req.DeviceId, rbac.PermAgentManage); err != nil {

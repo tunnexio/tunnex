@@ -59,6 +59,12 @@ const (
 	// (owner/admin) capability, deliberately not a members-level read.
 	PermPolicyView   Permission = "policy:view"
 	PermPolicyManage Permission = "policy:manage"
+	// PermPolicyRuleManage (RBAC-0 D4) authors and deletes individual policy RULES — exactly the GitOps
+	// operator's TunnexGrant verbs. It is split from policy:manage so the machine operator can hold rule
+	// authoring WITHOUT the rest of policy administration: the Zero Trust mode (disabling it re-opens the
+	// mesh), groups and their membership, resources, rule enable/disable, grant extension, directory-sync
+	// configuration and Kubernetes scopes. Owner/admin hold both, so humans see no change.
+	PermPolicyRuleManage Permission = "policy_rule:manage"
 	// PermAccessEventRetentionManage governs the organization-wide lifecycle of
 	// access-event records. It is deliberately separate from policy:manage: an
 	// automated policy operator may author grants, but may not shorten audit-data
@@ -223,8 +229,8 @@ const (
 	// same principal kind as RoleOperator.
 	//
 	// ⛔ THE SPLIT IS THE POINT, AND IT IS WHY THIS COULD NOT SHIP BEFORE THE AGENT PRINCIPAL EXISTED.
-	// `RoleOperator` holds PermPolicyManage — correct for a GitOps operator, whose entire job is reconciling
-	// TunnexGrant CRs into policy rules, and INVERTED for an agent. An agent is a principal that can be
+	// `RoleOperator` holds rule authoring (PermPolicyRuleManage since RBAC-0) — correct for a GitOps
+	// operator, whose entire job is reconciling TunnexGrant CRs into policy rules, and INVERTED for an agent. An agent is a principal that can be
 	// talked into a request; one that could then WRITE THE RULE PERMITTING IT is a compromised principal
 	// granting itself what it was denied.
 	//
@@ -285,6 +291,7 @@ var rolePermissions = map[string]map[Permission]bool{
 		PermMemberManage:                true,
 		PermPolicyView:                  true,
 		PermPolicyManage:                true,
+		PermPolicyRuleManage:            true,
 		PermAccessEventRetentionManage:  true,
 		PermAuditLogRetentionView:       true,
 		PermAuditLogRetentionManage:     true,
@@ -342,6 +349,7 @@ var rolePermissions = map[string]map[Permission]bool{
 		PermMemberManage:                true,
 		PermPolicyView:                  true,
 		PermPolicyManage:                true,
+		PermPolicyRuleManage:            true,
 		PermAccessEventRetentionManage:  true,
 		PermAuditLogRetentionView:       true,
 		PermAuditLogRetentionManage:     true,
@@ -383,14 +391,16 @@ var rolePermissions = map[string]map[Permission]bool{
 	},
 	// RoleOperator (S10.2) — the machine credential's fixed role, scoped to exactly the operator's verbs
 	// (D3). NOT user-assignable. NO machine:manage (a machine can't mint more machines), NO member/org
-	// administration. PermPolicyManage is still enterprise-gated at the handler (a TunnexGrant → 403
-	// edition_required in the open build), so holding the perm here does not widen the edition surface.
+	// administration. ⛔ RBAC-0 D4: NO policy:manage — the operator authors and deletes RULES
+	// (policy_rule:manage) and nothing else policy-wide; holding policy:manage let a GitOps token switch
+	// Zero Trust off, edit group membership and reconfigure directory sync. Rule authoring is still
+	// enterprise-gated at the handler (403 edition_required in the open build).
 	RoleOperator: {
 		PermOrgView:          true,
 		PermK8sManage:        true,
 		PermK8sHAView:        true,
 		PermPolicyView:       true,
-		PermPolicyManage:     true,
+		PermPolicyRuleManage: true,
 		PermAgentGrantAccess: true,
 		// member:list is READ-ONLY (WF-OP-1) — the operator resolves a TunnexGrant's user subject
 		// (email -> id) via GET /members; it NEVER mutates membership (no member:invite / member:manage).

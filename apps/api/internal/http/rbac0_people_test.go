@@ -233,7 +233,7 @@ func TestRBAC0InviteOwnerRoleAndTokenExposure(t *testing.T) {
 		t.Fatal(err)
 	}
 	body := out.(api.CreateInvitation202JSONResponse).Body
-	if body.Delivered == nil || !*body.Delivered || body.InviteToken != "" {
+	if body.Delivered == nil || !*body.Delivered || body.InviteToken != nil {
 		t.Fatalf("a delivered invitation must not return the raw token to the admin: %+v", body)
 	}
 }
@@ -309,11 +309,11 @@ func TestRBAC0OperatorCannotAdministerPolicy(t *testing.T) {
 	if rbac.Can(rbac.RoleOperator, rbac.PermPolicyManage) {
 		t.Fatal("operator must not hold policy:manage (Zero Trust mode, groups, IdP sync, resources)")
 	}
-	if !rbac.Can(rbac.RoleOperator, rbac.Permission("policy_rule:manage")) {
+	if !rbac.Can(rbac.RoleOperator, rbac.PermPolicyRuleManage) {
 		t.Fatal("operator must keep rule authoring (policy_rule:manage) for TunnexGrant")
 	}
 	for _, role := range []string{rbac.RoleOwner, rbac.RoleAdmin} {
-		if !rbac.Can(role, rbac.Permission("policy_rule:manage")) || !rbac.Can(role, rbac.PermPolicyManage) {
+		if !rbac.Can(role, rbac.PermPolicyRuleManage) || !rbac.Can(role, rbac.PermPolicyManage) {
 			t.Fatalf("%s must keep both policy permissions", role)
 		}
 	}
