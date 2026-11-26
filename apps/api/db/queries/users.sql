@@ -46,6 +46,7 @@ WHERE id = $1 AND deleted_at IS NULL;
 
 -- name: DeactivateUserAccount :execrows
 -- RBAC-0 D3: account-wide deactivation with its provenance (who, from which org).
+-- lint:cross-org — user_deactivations is keyed by USER; its org_id records which organization acted.
 WITH deactivated AS (
     UPDATE users SET status = 'deactivated'
     WHERE id = sqlc.arg(id) AND deleted_at IS NULL AND status <> 'deactivated'
@@ -56,11 +57,13 @@ SELECT id, sqlc.arg(source)::text, sqlc.arg(org_id) FROM deactivated
 ON CONFLICT (user_id) DO UPDATE SET source = EXCLUDED.source, org_id = EXCLUDED.org_id, created_at = now();
 
 -- name: ReactivateUserAccount :execrows
+-- lint:cross-org — clears the user-keyed provenance row together with the account status.
 WITH cleared AS (DELETE FROM user_deactivations WHERE user_id = $1)
 UPDATE users SET status = 'active'
 WHERE id = $1 AND deleted_at IS NULL AND status = 'deactivated';
 
 -- name: GetUserDeactivation :one
+-- lint:cross-org — reads the user-keyed provenance row; callers compare its org_id to the acting org.
 SELECT u.status, d.source AS deactivation_source, d.org_id AS deactivated_by_org_id, u.cp_admin
 FROM users u LEFT JOIN user_deactivations d ON d.user_id = u.id
 WHERE u.id = $1 AND u.deleted_at IS NULL;

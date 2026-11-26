@@ -513,6 +513,7 @@ type Querier interface {
 	// lint:cross-org -- Installation-wide dedicated proxy identity, rechecked before every internal port.
 	CurrentAppAccessProxyCredential(ctx context.Context, arg CurrentAppAccessProxyCredentialParams) (AppAccessProxyCredential, error)
 	// RBAC-0 D3: account-wide deactivation with its provenance (who, from which org).
+	// lint:cross-org — user_deactivations is keyed by USER; its org_id records which organization acted.
 	DeactivateUserAccount(ctx context.Context, arg DeactivateUserAccountParams) (int64, error)
 	DecideAppAccessRequest(ctx context.Context, arg DecideAppAccessRequestParams) (int64, error)
 	// lint:cross-org — keyed by device_id (the caller already authorized the device
@@ -969,6 +970,7 @@ type Querier interface {
 	GetTOTPForUpdate(ctx context.Context, userID uuid.UUID) (UserTotp, error)
 	GetUserByEmail(ctx context.Context, email string) (User, error)
 	GetUserByID(ctx context.Context, id uuid.UUID) (User, error)
+	// lint:cross-org — reads the user-keyed provenance row; callers compare its org_id to the acting org.
 	GetUserDeactivation(ctx context.Context, id uuid.UUID) (GetUserDeactivationRow, error)
 	GetUserGroup(ctx context.Context, arg GetUserGroupParams) (UserGroup, error)
 	// lint:cross-org — JIT resolves the capturing org from an email domain before an
@@ -1780,6 +1782,7 @@ type Querier interface {
 	// body locks the exact unexpired durable run and derives tenant/cutoff from it.
 	PruneAuditLogsByAgeBatch(ctx context.Context, runID uuid.UUID) (int64, error)
 	PruneConnectivityIssuances(ctx context.Context, arg PruneConnectivityIssuancesParams) error
+	// lint:cross-org — clears the user-keyed provenance row together with the account status.
 	ReactivateUserAccount(ctx context.Context, id uuid.UUID) (int64, error)
 	ReadConnectivityProfile(ctx context.Context, orgID uuid.UUID) (ConnectivityProfile, error)
 	// lint:cross-org — exact native parent session logout is user scoped.
