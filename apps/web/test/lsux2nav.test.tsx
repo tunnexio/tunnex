@@ -103,7 +103,7 @@ describe("LS-UX-2 member navigation (M1-M19)", () => {
     await screen.findByText("Your workspace");
     await screen.findByText(/No devices yet\./);
     const cards = screen.getByRole("list");
-    for (const name of ["App Access", "Server Access", "Local Sharing", "Tunnex Vault", "AI Gateway"]) expect(within(cards).getByText(name)).toBeTruthy();
+    for (const name of ["App Access", "Server Access", "Local Sharing", "Vault", "AI Gateway"]) expect(within(cards).getByText(name)).toBeTruthy();
     expect(screen.queryByText("Sandboxes")).toBeNull();
     expect(screen.queryByText("Get started")).toBeNull();
     expect(screen.queryByText("Gateway Health")).toBeNull();

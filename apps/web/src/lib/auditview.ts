@@ -179,11 +179,43 @@ export function auditK8sApiDestination(row: AuditChange): string | null {
   return row.details?.["dst_kind"] === "k8s_api" ? k8sApiLabel("a cluster whose name was not recorded") : null;
 }
 
+// ── Vault (VAULT-UX-1 V3) ─────────────────────────────────────────────────────────────────
+
+const VAULT_ACTION_LABELS: Record<string, string> = {
+  "vault.created": "Credential added",
+  "vault.quick_created": "Password generated and saved",
+  "vault.configured": "Credential details added",
+  "vault.updated": "New secret version saved",
+  "vault.details_changed": "Credential details changed",
+  "vault.revealed": "Secret revealed",
+  "vault.copied": "Secret copied",
+  "vault.deleted": "Credential deleted",
+  "vault.service_created": "Vault service added",
+  "vault.personal_entries_purged": "Personal credentials removed with the membership",
+};
+
+/** Every Vault action, for the audit filter's suggestions. */
+export const VAULT_AUDIT_ACTIONS = Object.keys(VAULT_ACTION_LABELS);
+
+const VAULT_DETAIL_KEYS = new Set(["title", "service", "visibility", "kind", "version", "recipient", "recipient_kind", "recipient_from", "fields", "entries", "reason"]);
+
+/** Vault evidence through an allowlist, like Local Sharing's: labels and counts only, never anything else. */
+export function vaultAuditDetails(details: Record<string, unknown>): [string, string | number | boolean][] {
+  const out: [string, string | number | boolean][] = [];
+  for (const [key, value] of Object.entries(details)) {
+    if (!VAULT_DETAIL_KEYS.has(key)) continue;
+    if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") out.push([key, value]);
+    else if (Array.isArray(value) && value.every(item => typeof item === "string")) out.push([key, value.join(", ")]);
+  }
+  return out;
+}
+
 /**
  * An action as words where there is no event to read, such as the action filter's suggestions. It names
  * no cluster, because none is involved yet.
  */
 export function auditActionLabel(action: string): string {
+  if (VAULT_ACTION_LABELS[action]) return VAULT_ACTION_LABELS[action];
   if (action === "k8s.api_access_enabled") return "Kubernetes API access turned on";
   if (action === "k8s.api_access_disabled") return "Kubernetes API access turned off";
   return actionWords(action);
@@ -197,6 +229,13 @@ export function auditChangeLabel(row: AuditChange): string {
   if (row.action === "k8s.api_access_enabled" || row.action === "k8s.api_access_disabled") {
     const cluster = detailText(row, "cluster") ?? "a cluster whose name was not recorded";
     return `${auditActionLabel(row.action)} for ${cluster}`;
+  }
+  if (row.action.startsWith("vault.") && VAULT_ACTION_LABELS[row.action]) {
+    // Assigned credentials carry their title; personal ones are recorded without one (VAULT-UX-1 V3).
+    const title = detailText(row, "title");
+    if (title) return `${VAULT_ACTION_LABELS[row.action]} · ${title}`;
+    if (detailText(row, "visibility") === "personal") return `${VAULT_ACTION_LABELS[row.action]} · personal credential`;
+    return VAULT_ACTION_LABELS[row.action];
   }
   const destination = auditK8sApiDestination(row);
   return destination ? `${actionWords(row.action)} · ${destination}` : actionWords(row.action);

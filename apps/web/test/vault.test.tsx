@@ -32,7 +32,7 @@ beforeEach(() => {
 });
 afterEach(() => { cleanup(); vi.useRealTimers(); Object.defineProperty(document, "visibilityState", { configurable: true, value: "visible" }); });
 
-describe("Tunnex Vault", () => {
+describe("Vault", () => {
   it("shows the generated password directly and persists before copying it", async () => {
     let finish!: (value: unknown) => void;
     mock.post.mockImplementation(() => new Promise(resolve => { finish = resolve; }));
@@ -50,10 +50,10 @@ describe("Tunnex Vault", () => {
     expect(element.querySelectorAll("select")).toHaveLength(0);
     expect(dialog.queryByLabelText("Title")).toBeNull();
     expect(dialog.queryByLabelText("Credential type")).toBeNull();
-    expect(dialog.queryByRole("button", { name: /Save|Generate again|Show/ })).toBeNull();
+    expect(dialog.queryByRole("button", { name: /^Save (credential|details)|Generate again|Show/ })).toBeNull();
     expect(mock.clipboard).not.toHaveBeenCalled();
     expect(mock.post).not.toHaveBeenCalled();
-    fireEvent.click(dialog.getByRole("button", { name: "Copy" }));
+    fireEvent.click(dialog.getByRole("button", { name: "Save & copy" }));
     expect(mock.post).toHaveBeenCalledWith(expect.stringMatching(/\/entries\/quick$/), {
       params: { path: { orgId: mock.org } }, body: { request_id: expect.stringMatching(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/), secret: value },
     });
@@ -61,10 +61,10 @@ describe("Tunnex Vault", () => {
     expect(dialog.getByRole("button", { name: "Regenerate" }).hasAttribute("disabled")).toBe(true);
     await act(async () => { entries = [...entries, unconfigured]; finish({ data: unconfigured, response: new Response("{}") }); });
     await waitFor(() => expect(mock.clipboard).toHaveBeenCalledWith(value));
-    await screen.findByRole("button", { name: "Configure Unconfigured password" });
+    await screen.findByRole("button", { name: "Add details for Generated password" });
     expect(screen.queryByRole("dialog")).toBeNull();
     expect(screen.queryByDisplayValue(value)).toBeNull();
-    expect(screen.getByRole("status").textContent).toContain("copied and saved");
+    expect(screen.getByRole("status").textContent).toContain("saved and copied");
   });
 
   it("regenerates locally in the same drawer and copies only the new candidate", async () => {
@@ -81,7 +81,7 @@ describe("Tunnex Vault", () => {
     expect(next).not.toBe(first);
     expect(mock.post).not.toHaveBeenCalled();
     expect(mock.clipboard).not.toHaveBeenCalled();
-    fireEvent.click(dialog.getByRole("button", { name: "Copy" }));
+    fireEvent.click(dialog.getByRole("button", { name: "Save & copy" }));
     await waitFor(() => expect(mock.clipboard).toHaveBeenCalledWith(next));
     expect(mock.post.mock.calls[0][1].body.secret).toBe(next);
   });
@@ -91,13 +91,13 @@ describe("Tunnex Vault", () => {
     show(); await screen.findByRole("button", { name: personal.title });
     fireEvent.click(screen.getByRole("button", { name: "Quick generate" }));
     const dialog = within(screen.getByRole("dialog", { name: "Quick generate" }));
-    fireEvent.click(dialog.getByRole("button", { name: "Copy" }));
+    fireEvent.click(dialog.getByRole("button", { name: "Save & copy" }));
     await dialog.findByRole("alert");
     const previous = mock.post.mock.calls[0][1].body;
     fireEvent.click(dialog.getByRole("button", { name: "Regenerate" }));
     const next = (dialog.getByLabelText("Generated password") as HTMLInputElement).value;
     expect(dialog.queryByRole("alert")).toBeNull();
-    fireEvent.click(dialog.getByRole("button", { name: "Copy" }));
+    fireEvent.click(dialog.getByRole("button", { name: "Save & copy" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(mock.post).toHaveBeenCalledTimes(2);
     expect(mock.post.mock.calls[1][1].body.request_id).not.toBe(previous.request_id);
@@ -112,7 +112,7 @@ describe("Tunnex Vault", () => {
     show(); await screen.findByRole("button", { name: personal.title });
     fireEvent.click(screen.getByRole("button", { name: "Quick generate" }));
     const dialog = within(screen.getByRole("dialog", { name: "Quick generate" }));
-    fireEvent.click(dialog.getByRole("button", { name: "Copy" }));
+    fireEvent.click(dialog.getByRole("button", { name: "Save & copy" }));
     const previous = mock.post.mock.calls[0][1].body;
     Object.defineProperty(document, "visibilityState", { configurable: true, value: "hidden" });
     fireEvent(document, new Event("visibilitychange"));
@@ -122,7 +122,7 @@ describe("Tunnex Vault", () => {
     const next = (dialog.getByLabelText("Generated password") as HTMLInputElement).value;
     await act(async () => { finish({ data: unconfigured, response: new Response("{}") }); });
     expect(mock.clipboard).not.toHaveBeenCalled();
-    fireEvent.click(dialog.getByRole("button", { name: "Copy" }));
+    fireEvent.click(dialog.getByRole("button", { name: "Save & copy" }));
     await waitFor(() => expect(mock.clipboard).toHaveBeenCalledWith(next));
     expect(mock.post).toHaveBeenCalledTimes(2);
     expect(mock.post.mock.calls[1][1].body.request_id).not.toBe(previous.request_id);
@@ -134,7 +134,7 @@ describe("Tunnex Vault", () => {
     fireEvent.click(screen.getByRole("button", { name: "Quick generate" }));
     let dialog = within(screen.getByRole("dialog", { name: "Quick generate" }));
     const first = (dialog.getByLabelText("Generated password") as HTMLInputElement).value;
-    fireEvent.click(dialog.getByRole("button", { name: "Close" }));
+    fireEvent.click(dialog.getByRole("button", { name: "Close" })); fireEvent.click(dialog.getByRole("button", { name: "Discard" }));
     expect(screen.queryByDisplayValue(first)).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Add credential" }));
     dialog = within(screen.getByRole("dialog", { name: "Add credential" }));
@@ -157,12 +157,12 @@ describe("Tunnex Vault", () => {
     fireEvent.click(screen.getByRole("button", { name: "Quick generate" }));
     const dialog = within(screen.getByRole("dialog", { name: "Quick generate" }));
     const value = (dialog.getByLabelText("Generated password") as HTMLInputElement).value;
-    fireEvent.click(dialog.getByRole("button", { name: "Copy" }));
+    fireEvent.click(dialog.getByRole("button", { name: "Save & copy" }));
     expect((await dialog.findByRole("alert")).textContent).toContain("Nothing was copied");
     const first = mock.post.mock.calls[0];
     expect(mock.clipboard).not.toHaveBeenCalled();
     expect(screen.queryByText("private storage diagnostic")).toBeNull();
-    fireEvent.click(dialog.getByRole("button", { name: "Copy" }));
+    fireEvent.click(dialog.getByRole("button", { name: "Save & copy" }));
     await waitFor(() => expect(mock.clipboard).toHaveBeenCalledWith(value));
     expect(mock.post.mock.calls[1]).toEqual(first);
   });
@@ -173,9 +173,9 @@ describe("Tunnex Vault", () => {
     for (let attempt = 0; attempt < 2; attempt++) {
       fireEvent.click(screen.getByRole("button", { name: "Quick generate" }));
       const dialog = within(screen.getByRole("dialog", { name: "Quick generate" }));
-      fireEvent.click(dialog.getByRole("button", { name: "Copy" }));
+      fireEvent.click(dialog.getByRole("button", { name: "Save & copy" }));
       await dialog.findByRole("alert");
-      fireEvent.click(dialog.getByRole("button", { name: "Close" }));
+      fireEvent.click(dialog.getByRole("button", { name: "Close" })); fireEvent.click(dialog.getByRole("button", { name: "Discard" }));
     }
     expect(mock.post.mock.calls[0][1].body.request_id).not.toBe(mock.post.mock.calls[1][1].body.request_id);
     expect(mock.post.mock.calls[0][1].body.secret).not.toBe(mock.post.mock.calls[1][1].body.secret);
@@ -188,15 +188,15 @@ describe("Tunnex Vault", () => {
     fireEvent.click(screen.getByRole("button", { name: "Quick generate" }));
     const dialog = within(screen.getByRole("dialog", { name: "Quick generate" }));
     const value = (dialog.getByLabelText("Generated password") as HTMLInputElement).value;
-    fireEvent.click(dialog.getByRole("button", { name: "Copy" }));
+    fireEvent.click(dialog.getByRole("button", { name: "Save & copy" }));
     expect((await dialog.findByRole("alert")).textContent).toContain("Saved to Vault, but");
     expect(screen.queryByText("private clipboard diagnostic")).toBeNull();
     expect(mock.post).toHaveBeenCalledTimes(1);
-    fireEvent.click(dialog.getByRole("button", { name: "Copy" }));
+    fireEvent.click(dialog.getByRole("button", { name: "Save & copy" }));
     await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
     expect(mock.post).toHaveBeenCalledTimes(1);
     expect(mock.clipboard).toHaveBeenNthCalledWith(2, value);
-    await screen.findByRole("button", { name: "Configure Unconfigured password" });
+    await screen.findByRole("button", { name: "Add details for Generated password" });
   });
 
   it.each(["close", "organization", "user", "hidden tab"])("does not copy a late quick-save response after %s", async boundary => {
@@ -205,8 +205,8 @@ describe("Tunnex Vault", () => {
     const view = show(); await screen.findByRole("button", { name: personal.title });
     fireEvent.click(screen.getByRole("button", { name: "Quick generate" }));
     const dialog = within(screen.getByRole("dialog", { name: "Quick generate" }));
-    fireEvent.click(dialog.getByRole("button", { name: "Copy" }));
-    if (boundary === "close") fireEvent.click(dialog.getByRole("button", { name: "Close" }));
+    fireEvent.click(dialog.getByRole("button", { name: "Save & copy" }));
+    if (boundary === "close") { fireEvent.click(dialog.getByRole("button", { name: "Close" })); fireEvent.click(dialog.getByRole("button", { name: "Discard" })); }
     else if (boundary === "hidden tab") {
       Object.defineProperty(document, "visibilityState", { configurable: true, value: "hidden" });
       fireEvent(document, new Event("visibilitychange"));
@@ -219,17 +219,17 @@ describe("Tunnex Vault", () => {
     const callsBeforeLateResponse = mock.get.mock.calls.length;
     await act(async () => { if (boundary === "close") entries = [...entries, unconfigured]; finish({ data: unconfigured, response: new Response("{}") }); });
     expect(mock.clipboard).not.toHaveBeenCalled();
-    if (boundary === "close") await screen.findByRole("button", { name: "Configure Unconfigured password" });
+    if (boundary === "close") await screen.findByRole("button", { name: "Add details for Generated password" });
     if (boundary === "organization" || boundary === "user") {
       expect(mock.get.mock.calls).toHaveLength(callsBeforeLateResponse);
-      expect(screen.queryByRole("button", { name: "Configure Unconfigured password" })).toBeNull();
+      expect(screen.queryByRole("button", { name: "Add details for Generated password" })).toBeNull();
     }
   });
 
   it("configures a saved password with assignment metadata without resending or replacing its secret", async () => {
     mock.canAssign = true; entries = [unconfigured];
-    show(); fireEvent.click(await screen.findByRole("button", { name: "Configure Unconfigured password" }));
-    const element = screen.getByRole("dialog", { name: "Configure credential" });
+    show(); fireEvent.click(await screen.findByRole("button", { name: "Add details for Generated password" }));
+    const element = screen.getByRole("dialog", { name: "Add details" });
     const dialog = within(element);
     expect(element.closest(".tnx-modal-overlay")?.getAttribute("data-placement")).toBe("right");
     expect(dialog.queryByLabelText("Secret")).toBeNull();
@@ -253,16 +253,17 @@ describe("Tunnex Vault", () => {
   it("offers members private-only metadata configuration and prevents retrying a stale configure", async () => {
     entries = [unconfigured];
     mock.post.mockResolvedValue({ error: {}, response: new Response("{}", { status: 409 }) });
-    show(); fireEvent.click(await screen.findByRole("button", { name: "Configure Unconfigured password" }));
-    const dialog = within(screen.getByRole("dialog", { name: "Configure credential" }));
+    show(); fireEvent.click(await screen.findByRole("button", { name: "Add details for Generated password" }));
+    const dialog = within(screen.getByRole("dialog", { name: "Add details" }));
     expect(dialog.queryByRole("option", { name: /Assigned/ })).toBeNull();
     fireEvent.change(dialog.getByLabelText("Title"), { target: { value: "Private login" } });
     fireEvent.change(dialog.getByLabelText("Private service name"), { target: { value: "Private console" } });
     fireEvent.click(dialog.getByRole("button", { name: "Save details" }));
     await dialog.findByRole("alert");
     expect(mock.post).toHaveBeenCalledWith(expect.stringMatching(/\/configure$/), expect.objectContaining({ body: { expected_version: 1, title: "Private login", username: "", visibility: "personal", service_name: "Private console" } }));
-    expect((dialog.getByRole("button", { name: "Save details" }) as HTMLButtonElement).disabled).toBe(true);
-    fireEvent.click(dialog.getByRole("button", { name: "Save details" }));
+    // A stale form cannot be resubmitted; it offers only to close and refresh (VAULT-UX-1).
+    expect(dialog.queryByRole("button", { name: "Save details" })).toBeNull();
+    expect(dialog.getByRole("button", { name: "Close and refresh" })).toBeTruthy();
     expect(mock.post).toHaveBeenCalledTimes(1);
   });
 
@@ -276,7 +277,7 @@ describe("Tunnex Vault", () => {
     expect(mock.post).not.toHaveBeenCalled();
     fireEvent.click(dialog.getByRole("button", { name: "Reveal version 1" }));
     expect((await dialog.findByLabelText("Revealed secret")).textContent).toBe("old-secret-value");
-    expect(mock.post).toHaveBeenLastCalledWith(expect.stringContaining("/reveal"), { params: { path: { orgId: mock.org, entryId: personal.id } }, body: { version: 1 } });
+    expect(mock.post).toHaveBeenLastCalledWith(expect.stringContaining("/reveal"), { params: { path: { orgId: mock.org, entryId: personal.id } }, body: { version: 1, purpose: "reveal" } });
     fireEvent.click(dialog.getByRole("button", { name: "Copy version 1" }));
     await waitFor(() => expect(mock.clipboard).toHaveBeenCalledWith("old-secret-value"));
     expect(mock.post).toHaveBeenCalledTimes(2);
@@ -333,11 +334,12 @@ describe("Tunnex Vault", () => {
     fireEvent.change(dialog.getByLabelText("New secret"), { target: { value: "next-secret" } });
     fireEvent.click(dialog.getByRole("button", { name: "Save new version" }));
     await dialog.findByRole("alert");
-    expect(mock.put).toHaveBeenCalledWith(expect.stringContaining("/entries/{entryId}"), expect.objectContaining({ body: { title: assigned.title, username: assigned.username, secret: "next-secret", expected_version: 2 } }));
+    expect(mock.put).toHaveBeenCalledWith(expect.stringContaining("/entries/{entryId}"), expect.objectContaining({ body: { username: assigned.username, secret: "next-secret", expected_version: 2 } }));
     expect((dialog.getByLabelText("New secret") as HTMLInputElement).value).toBe("");
-    expect((dialog.getByRole("button", { name: "Save new version" }) as HTMLButtonElement).disabled).toBe(true);
-    fireEvent.click(dialog.getByRole("button", { name: "Save new version" }));
+    expect(dialog.queryByRole("button", { name: "Save new version" })).toBeNull();
+    fireEvent.click(dialog.getByRole("button", { name: "Close and refresh" }));
     expect(mock.put).toHaveBeenCalledTimes(1);
+    expect(await screen.findByText(/changed while you were editing/)).toBeTruthy();
   });
 
   it("keeps recipients from deleting assigned credentials and confirms deletion of personal history", async () => {
@@ -433,7 +435,8 @@ describe("Tunnex Vault", () => {
     show();
     await screen.findByRole("button", { name: "Retry Vault" });
     expect(screen.queryByText(/No credentials yet/)).toBeNull();
-    expect((screen.getByRole("button", { name: "Add credential" }) as HTMLButtonElement).disabled).toBe(true);
+    // VAULT-UX-1 V11: a failed list never blocks adding a credential.
+    expect((screen.getByRole("button", { name: "Add credential" }) as HTMLButtonElement).disabled).toBe(false);
   });
 
   it.each([["/vault", "No credentials yet"], ["/vault?q=missing", "No credentials match your search."]])("uses Local Sharing's shared empty state for %s", async (path, title) => {
@@ -441,7 +444,7 @@ describe("Tunnex Vault", () => {
     show(path);
     const heading = await screen.findByRole("heading", { name: title });
     expect(heading.closest(".aa-empty-state")).toBeTruthy();
-    expect(screen.getByRole("link", { name: "My Vault" }).getAttribute("aria-current")).toBe("page");
+    expect(screen.getByRole("button", { name: "All" }).getAttribute("aria-pressed")).toBe("true");
     expect(screen.queryByRole("table", { name: "Vault credentials" })).toBeNull();
     if (path.includes("q=")) {
       fireEvent.click(screen.getByRole("button", { name: "Clear filters" }));

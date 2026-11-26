@@ -70,3 +70,61 @@ export async function copyVaultPasswordAfterSave(password: string, save: (() => 
   } catch { throw new VaultCopyError("copy_failed"); }
   if (!isCurrent()) throw new VaultCopyError("cancelled");
 }
+
+/** A secret-reading failure that carries the server's code, so the UI can explain it in words. */
+export class VaultRevealError extends Error {
+  constructor(readonly code: string, readonly status: number) {
+    super(code);
+    this.name = "VaultRevealError";
+  }
+}
+
+/**
+ * Copy a secret that is fetched by an authorized, audited request. Where the browser supports promised
+ * clipboard items (WebKit requires user activation at the click), the clipboard is reserved during the click
+ * and filled only once the server answers; a refused reveal writes nothing.
+ */
+export async function copyRevealedSecret(fetchValue: () => Promise<string>): Promise<string> {
+  const clipboard = globalThis.navigator?.clipboard;
+  if (typeof globalThis.ClipboardItem === "function" && typeof clipboard?.write === "function") {
+    const value = fetchValue();
+    const payload = value.then(text => new Blob([text], { type: "text/plain" }));
+    void payload.catch(() => undefined);
+    let copying: Promise<void>;
+    try { copying = clipboard.write([new ClipboardItem({ "text/plain": payload })]); }
+    catch { copying = Promise.reject(new VaultCopyError("copy_failed")); }
+    const [fetched, copied] = await Promise.allSettled([value, copying]);
+    if (fetched.status === "rejected") throw fetched.reason;
+    if (copied.status === "rejected") throw new VaultCopyError("copy_failed");
+    return fetched.value;
+  }
+  const text = await fetchValue();
+  try {
+    if (!clipboard?.writeText) throw new VaultCopyError("copy_failed");
+    await clipboard.writeText(text);
+  } catch { throw new VaultCopyError("copy_failed"); }
+  return text;
+}
+
+// Module level, so closing the drawer or leaving the page does not cancel it (VAULT-UX-1 V15).
+let clipboardTimer: ReturnType<typeof setTimeout> | undefined;
+export const CLIPBOARD_CLEAR_MS = 30_000;
+
+/**
+ * Best effort: about 30 seconds after a copy, clear the clipboard only if it still holds the copied value.
+ * Where the browser will not let a page read the clipboard (Firefox, or a refused permission), nothing is
+ * cleared — Vault never overwrites something the person copied afterwards.
+ */
+export function scheduleClipboardClear(value: string, delay = CLIPBOARD_CLEAR_MS): void {
+  if (clipboardTimer !== undefined) clearTimeout(clipboardTimer);
+  clipboardTimer = setTimeout(() => {
+    clipboardTimer = undefined;
+    void (async () => {
+      try {
+        const clipboard = globalThis.navigator?.clipboard;
+        if (!clipboard?.readText || !clipboard.writeText) return;
+        if (await clipboard.readText() === value) await clipboard.writeText("");
+      } catch { /* the browser refused; leave the clipboard alone */ }
+    })();
+  }, delay);
+}

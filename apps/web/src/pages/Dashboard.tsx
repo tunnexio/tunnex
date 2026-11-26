@@ -55,7 +55,7 @@ const WORKSPACE_CARDS: { to: string; title: string; text: string }[] = [
   { to: "/app-access", title: "App Access", text: "Open the company applications you've been given." },
   { to: "/browser-access/terminal", title: "Server Access", text: "Connect to the servers you can use, from the browser." },
   { to: "/beam", title: "Local Sharing", text: "Review apps teammates share with you, or share your own." },
-  { to: "/vault", title: "Tunnex Vault", text: "Your saved secrets and the ones shared with you." },
+  { to: "/vault", title: "Vault", text: "Your saved secrets and the ones shared with you." },
   { to: "/ai-gateway", title: "AI Gateway", text: "Try the AI models your organization lets you use." },
   { to: "/sandboxes", title: "Sandboxes", text: "Your workspaces." },
 ];
