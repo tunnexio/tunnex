@@ -76,6 +76,7 @@ re-authentication; personal entries need none.
   - an SSO account with neither uses a fresh IdP MFA assertion;
   - an account with none of these is refused (`reauthentication_unavailable`) and is offered authenticator
     setup inline.
+- Every reveal attempt is charged to the rate limit (below) before any other work, refused ones included.
 - The check runs **inside** the reveal transaction, after the entry row is locked and its visibility is
   known, so an entry cannot be reassigned between the check and the read.
 - **Decide-item recorded, not changed:** for local-password accounts this means typing the password for
@@ -225,18 +226,30 @@ it, and the admin deletes it. User docs: `docs/vault.md` in this repo. The publi
 
 ## Extra friction found in the full pass
 
-Recorded as found during the role-by-role pass (owner, admin, member, member in a group, ai-admin/ai-view,
-unverified email):
+Found in the role-by-role pass (owner, admin, member, member in a group, ai-admin/ai-view, unverified email,
+SSO account without MFA) and fixed in this story:
 
-- E1: the details drawer offered "Change secret" on an unconfigured quick entry's history; it now offers
-  "Add details" only.
-- E2: deleting showed "all N saved versions" even for one version; now pluralised correctly.
-- E3: a rotation conflict (409) said "refresh" but left the drawer open with a disabled button and no way
-  to refresh; the message now has a Refresh button that reloads the entry.
-- E4: reveal errors said "Refresh Vault to check your current access" for every failure, including rate
-  limits and step-up; each case now has its own plain message.
-- E5: the history table's Reveal buttons had no copy counterpart; copying an earlier version required
-  revealing it first. Each row now has Copy.
+- E1: a rotation or details conflict (409) left the form open with a disabled Save button and the advice to
+  "refresh Vault", with no way to do so from the form. The form now offers **Close and refresh**, which
+  reloads the list and says why.
+- E2: the delete confirmation read "all 1 saved versions"; it now reads "its saved version" for one.
+- E3: every reveal failure read "Refresh Vault to check your current access". Each case now has its own
+  words: wrong password, too many wrong passwords, rate limit, no authenticator, removed from the group (404:
+  "no longer available to you").
+- E4: copying an earlier version required revealing it first; each history row now has Copy as well as Reveal.
+- E5: a rotation that omitted the username blanked it (the API treated "absent" as empty). An omitted
+  username now keeps the current one.
+- E6: the help disclosure ("Vault access") did not say that personal credentials are deleted when you leave
+  the organization, or that shared ones ask you to confirm it is you. It is now "Who can see what" and says both.
+- E7: an empty filtered view showed the generic "No credentials yet"; each view has its own empty message.
+- E8: an SSO account with no IdP MFA and no authenticator could never open a shared credential and got no
+  path forward; the reveal now opens the inline verification panel, which offers authenticator setup.
+- E9: ai-admin/ai-view reaching `/vault` by URL saw "Could not load your Vault"; they now see the calm access
+  notice (V11/V12).
+
+Decide-item recorded during the build (not changed): a recipient rotating a shared credential may also set
+its username, because the username is saved with each version. Title, service and recipient remain
+administrator-only.
 
 ## Overlap with #137
 
