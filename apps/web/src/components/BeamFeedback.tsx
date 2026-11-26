@@ -16,7 +16,7 @@ const BEAM_MFA_FRESHNESS_SECONDS = 300;
 function BeamMfaPrompt({ reason, action, verifying, onVerify, onVerified, onCancel }: { reason: string; action: string; verifying: boolean; onVerify: () => void; onVerified: () => void | Promise<void>; onCancel: () => void }) {
   return <div className="beam-mfa-prompt space-y-3">{verifying
     ? <InlineTerminalMfa action={action} freshnessSeconds={BEAM_MFA_FRESHNESS_SECONDS} onVerified={onVerified} onCancel={onCancel} />
-    : <><p className="text-sm text-ink-secondary">{reason}</p><Button type="button" variant="ghost" data-beam-feedback-focus onClick={onVerify}><Icon name="shield-check" size={14} />Verify MFA</Button></>}</div>;
+    : <><p className="text-sm text-ink-secondary">{reason}</p><Button type="button" data-beam-feedback-focus onClick={onVerify}><Icon name="shield-check" size={14} />Verify MFA</Button></>}</div>;
 }
 const decisions: { value: BeamFeedbackInput["status"]; label: string; meaning: string }[] = [
   { value: "comment", label: "Comment", meaning: "A note without a decision." },
