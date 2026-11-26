@@ -65,12 +65,13 @@ describe("Unified Beam access evidence", () => {
 });
 
 describe("Beam Audit Log integration", () => {
-  it("applies a typed Beam target filter and shows only redacted metadata in details", async () => {
+  it("asks for the whole beam.* family (LS-UX-4 P26) and shows only redacted metadata in details", async () => {
     render(<MemoryRouter><AuditLog /></MemoryRouter>);
     await screen.findByRole("table", { name: "Audit events" });
     fireEvent.click(screen.getByText("More filters"));
     const activity = await screen.findByRole("button", { name: "Local Sharing activity" }); fireEvent.click(activity);
-    await waitFor(() => expect(fixture.queries.at(-1)).toEqual(expect.objectContaining({ target_type: "beam_share" })));
+    await waitFor(() => expect(fixture.queries.at(-1)).toEqual(expect.objectContaining({ action_prefix: "beam." })));
+    expect(fixture.queries.at(-1)).not.toHaveProperty("target_type");
     fireEvent.click(await screen.findByRole("button", { name: "Inspect beam.access.allowed audit event" }));
     const dialog = await screen.findByRole("region", { name: "Audit evidence" });
     expect(dialog.textContent).toContain("admission"); expect(dialog.textContent).not.toMatch(/PRIVATE|connector_token/);
