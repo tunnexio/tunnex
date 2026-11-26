@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"mime"
 	"net"
 	"net/http"
 	"net/url"
@@ -310,6 +311,25 @@ func copyMCPProxyHeaders(dst, src http.Header) {
 	}
 }
 
+// mcpLoopbackGuard keeps the loopback listener from being driven by a browser.
+// A page open on the agent host can send a cross-site POST to 127.0.0.1, and a
+// DNS-rebinding page can read the reply, so the tool gate is reachable only by
+// a request that names this listener, carries no Origin and is plain JSON (a
+// content type a page cannot send without a preflight this proxy never
+// answers).
+func mcpLoopbackGuard(listen string, next http.Handler) http.Handler {
+	_, port, _ := net.SplitHostPort(listen)
+	allowed := map[string]bool{listen: true, net.JoinHostPort("localhost", port): true}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mediaType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
+		if !allowed[r.Host] || len(r.Header.Values("Origin")) != 0 || err != nil || mediaType != "application/json" {
+			writeMCPProxyError(w, http.StatusForbidden, -32600, "MCP proxy accepts local JSON requests only")
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
 // StartMCPToolProxy serves only a loopback listener. It is intentionally
 // separate from RunManagedAgent so an operator must configure a client to use it.
 func StartMCPToolProxy(ctx context.Context, listen, upstream string, policy MCPPolicySource, authorization MCPAuthorizationSource, stepUp ...MCPStepUpSource) error {
@@ -325,7 +345,7 @@ func StartMCPToolProxyDynamic(ctx context.Context, listen string, upstream MCPUp
 	if err != nil {
 		return err
 	}
-	server := &http.Server{Addr: listen, Handler: handler, ReadHeaderTimeout: 5 * time.Second}
+	server := &http.Server{Addr: listen, Handler: mcpLoopbackGuard(listen, handler), ReadHeaderTimeout: 5 * time.Second}
 	go func() {
 		<-ctx.Done()
 		shutdown, cancel := context.WithTimeout(context.Background(), 5*time.Second)
