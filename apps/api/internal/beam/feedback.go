@@ -27,6 +27,7 @@ type Feedback struct {
 	ShareID       uuid.UUID `json:"share_id"`
 	AuthorID      uuid.UUID `json:"author_id"`
 	AuthorName    string    `json:"author_name"`
+	AuthorEmail   string    `json:"author_email,omitempty"`
 	Body          string    `json:"body"`
 	Status        string    `json:"status"`
 	CreatedAt     time.Time `json:"created_at"`
@@ -116,12 +117,12 @@ func (s *Service) feedbackAuthority(ctx context.Context, q reader, org, id uuid.
 	return r, nil
 }
 
-const feedbackColumns = `f.id,f.share_id,f.author_id,u.name,f.body,f.status,f.created_at,(f.screenshot IS NOT NULL)`
+const feedbackColumns = `f.id,f.share_id,f.author_id,u.name,u.email,f.body,f.status,f.created_at,(f.screenshot IS NOT NULL)`
 
 func scanFeedback(row pgx.Row, org uuid.UUID) (Feedback, error) {
 	var f Feedback
 	var screenshot bool
-	e := row.Scan(&f.ID, &f.ShareID, &f.AuthorID, &f.AuthorName, &f.Body, &f.Status, &f.CreatedAt, &screenshot)
+	e := row.Scan(&f.ID, &f.ShareID, &f.AuthorID, &f.AuthorName, &f.AuthorEmail, &f.Body, &f.Status, &f.CreatedAt, &screenshot)
 	if screenshot {
 		f.ScreenshotURL = fmt.Sprintf("/api/v1/organizations/%s/beam/shares/%s/feedback/%s/screenshot", org, f.ShareID, f.ID)
 	}

@@ -2546,6 +2546,8 @@ export interface components {
             target?: components["schemas"]["BeamTarget"];
             grants?: components["schemas"]["BeamGrant"][];
             publisher_name?: string;
+            /** @description LS-UX-2: the publisher's email, shown with the name as Name (email). Present only on projections the caller may already read (publisher, share manager or current reviewer). */
+            publisher_email?: string;
             /** Format: uuid */
             project_id?: string;
         };
@@ -2794,6 +2796,8 @@ export interface components {
             /** Format: uuid */
             author_id: string;
             author_name: string;
+            /** @description LS-UX-2: shown with the author name as Name (email) to the share's participants. */
+            author_email?: string;
             body: string;
             /** @enum {string} */
             status: "comment" | "approved" | "changes_requested";

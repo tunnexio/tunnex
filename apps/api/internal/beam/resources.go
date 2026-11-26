@@ -207,7 +207,7 @@ func (s *Service) Create(ctx context.Context, org uuid.UUID, a Actor, in CreateI
 }
 func apiQuota() error { return apierr.New(429, "beam_quota_reached", "Publisher share quota reached") }
 func (s *Service) decorate(ctx context.Context, q reader, r Share, a Actor, owner bool) (Share, error) {
-	e := q.QueryRow(ctx, `SELECT name FROM users WHERE id=$1`, r.PublisherID).Scan(&r.PublisherName)
+	e := q.QueryRow(ctx, `SELECT name,email FROM users WHERE id=$1`, r.PublisherID).Scan(&r.PublisherName, &r.PublisherEmail)
 	if e != nil {
 		return r, e
 	}

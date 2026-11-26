@@ -119,12 +119,15 @@ type PolicyInput struct {
 	ConfirmEndActiveShares bool        `json:"confirm_end_active_shares,omitempty"`
 }
 type Share struct {
-	ProjectID               *uuid.UUID `json:"project_id,omitempty"`
-	ID                      uuid.UUID  `json:"id"`
-	OrgID                   uuid.UUID  `json:"org_id"`
-	PublisherID             uuid.UUID  `json:"publisher_id"`
-	Name                    string     `json:"name"`
-	PublisherName           string     `json:"publisher_name,omitempty"`
+	ProjectID     *uuid.UUID `json:"project_id,omitempty"`
+	ID            uuid.UUID  `json:"id"`
+	OrgID         uuid.UUID  `json:"org_id"`
+	PublisherID   uuid.UUID  `json:"publisher_id"`
+	Name          string     `json:"name"`
+	PublisherName string     `json:"publisher_name,omitempty"`
+	// LS-UX-2: reviewers see who shared the app as "Name (email)". Only
+	// projections that already passed the owner/manager/grantee check carry it.
+	PublisherEmail          string     `json:"publisher_email,omitempty"`
 	Hostname                string     `json:"hostname"`
 	URL                     string     `json:"url"`
 	Target                  *Target    `json:"target,omitempty"`
