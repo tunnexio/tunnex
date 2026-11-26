@@ -79,4 +79,22 @@ describe("first connection handoff",()=>{
     expect(screen.getByRole("link",{name:"Download Client"})).toBeTruthy();
     expect(mock.setUser).not.toHaveBeenCalled();
   });
+  // RBAC-0 D1: an existing account must be signed in to accept; the token waits in this tab, never the URL.
+  it("sends an existing account to sign in and accepts with one button when it returns",async()=>{
+    window.sessionStorage.clear();
+    mock.post.mockResolvedValueOnce({error:{error:{code:"sign_in_required",message:"An account already exists for owner@example.test. Sign in as owner@example.test, then open this invitation link again."}}});
+    const first=render(<MemoryRouter initialEntries={["/accept-invite?token=existing-invite"]}><AcceptInvite/></MemoryRouter>);
+    fireEvent.change(screen.getByLabelText("Your name"),{target:{value:"Owner"}});
+    fireEvent.change(screen.getByLabelText("Password"),{target:{value:"sample-new-password"}});
+    fireEvent.click(screen.getByRole("button",{name:"Accept invitation"}));
+    expect((await screen.findByRole("link",{name:"Sign in to accept"})).getAttribute("href")).toBe("/login?next=%2Faccept-invite");
+    expect(window.sessionStorage.getItem("tunnex.pendingInvite")).toContain("existing-invite");
+    first.unmount();
+    mock.post.mockResolvedValueOnce({data:{message:"Invitation accepted"}});
+    render(<MemoryRouter initialEntries={["/accept-invite"]}><AcceptInvite/></MemoryRouter>);
+    expect(screen.queryByLabelText("Password")).toBeNull();
+    fireEvent.click(screen.getByRole("button",{name:"Accept invitation"}));
+    await waitFor(()=>expect(mock.post).toHaveBeenLastCalledWith("/api/v1/auth/invitations/accept",{body:{token:"existing-invite"}}));
+    expect(window.sessionStorage.getItem("tunnex.pendingInvite")).toBeNull();
+  });
 });

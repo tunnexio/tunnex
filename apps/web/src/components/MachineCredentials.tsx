@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import {
   api,
+  apiErrorCode,
   apiErrorMessage,
   loadOne,
   type Loaded,
@@ -19,6 +20,8 @@ import {
   SettingValue,
 } from "./ui";
 import { OneTimeSecretModal } from "./OneTimeSecret";
+import { InlineTerminalMfa } from "./InlineTerminalMfa";
+import { STEP_UP_MFA, stepUpBody, StepUpPassword, useStepUpNeeds } from "./StepUp";
 
 // MachineCredentials (S10.2) — the owner-only Settings panel to mint / list / revoke the GitOps operator's
 // machine credential. The token is shown ONCE via the shared OneTimeSecretModal (the same ceremony as a
@@ -75,6 +78,9 @@ export function MachineCredentials({
   // picker offers nothing and the copy below says so, rather than implying there is nobody to choose.
   const [members, setMembers] = useState<Member[]>([]);
   const [name, setName] = useState("");
+  const stepUpNeeds = useStepUpNeeds();
+  const [reauthPassword, setReauthPassword] = useState("");
+  const [needsMfa, setNeedsMfa] = useState(false);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [secret, setSecret] = useState<string | null>(null); // the tnxm_ token, in state ONLY, never re-fetched
@@ -144,21 +150,26 @@ export function MachineCredentials({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [orgId, suppliedMembers]);
 
-  async function mint(e: FormEvent) {
-    e.preventDefault();
+  async function mint(e?: FormEvent) {
+    e?.preventDefault();
     setBusy(true);
     setErr(null);
+    setNeedsMfa(false);
     const { data, error } = await api.POST(
       "/api/v1/organizations/{orgId}/machine-credentials",
       {
         params: { path: { orgId } },
-        body: { name: name.trim() },
+        // RBAC-0 D9: minting a non-human org principal asks the owner to confirm it is them.
+        body: { name: name.trim(), ...stepUpBody(stepUpNeeds, reauthPassword) },
       },
     );
     setBusy(false);
-    if (error)
+    if (error) {
+      if (apiErrorCode(error) === STEP_UP_MFA) return setNeedsMfa(true);
       return setErr(apiErrorMessage(error, "Could not mint the credential."));
+    }
     setName("");
+    setReauthPassword("");
     setSecret(data?.token ?? null); // shown once — the server never re-serves it
     void load(true);
   }
@@ -223,10 +234,21 @@ export function MachineCredentials({
               />
             </Field>
           </div>
-          <Button type="submit" disabled={busy || name.trim() === ""}>
+          {stepUpNeeds?.password && (
+            <div className="flex-1">
+              <StepUpPassword needs={stepUpNeeds} value={reauthPassword} onChange={setReauthPassword} disabled={busy} action="create a machine credential" />
+            </div>
+          )}
+          <Button type="submit" disabled={busy || name.trim() === "" || (!!stepUpNeeds?.password && !reauthPassword) || stepUpNeeds?.available === false}>
             {busy ? "Minting…" : "Mint credential"}
           </Button>
         </form>
+      )}
+      {canManage && stepUpNeeds && !stepUpNeeds.available && (
+        <StepUpPassword needs={stepUpNeeds} value="" onChange={() => {}} action="create a machine credential" />
+      )}
+      {needsMfa && (
+        <InlineTerminalMfa action="Create a machine credential" freshnessSeconds={300} onVerified={() => { setNeedsMfa(false); void mint(); }} onCancel={() => setNeedsMfa(false)} />
       )}
 
       {/* ⛔ THREE DISTINGUISHABLE STATES, AND THE THIRD IS THE REASON THIS SCREEN IS HARD.

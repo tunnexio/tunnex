@@ -98,7 +98,7 @@ describe("Users authoritative role and account changes", () => {
     await rowAction("person2@example.test", "Deactivate");
     fireEvent.click(screen.getByRole("button", { name: "Deactivate" }));
     await waitFor(() => expect(state.POST).toHaveBeenCalledTimes(1));
-    expect(state.POST).toHaveBeenCalledWith("/api/v1/organizations/{orgId}/members/{userId}/deactivate", { params: { path: { orgId: "org-a", userId: "person-2" } } });
+    expect(state.POST).toHaveBeenCalledWith("/api/v1/organizations/{orgId}/members/{userId}/deactivate", { params: { path: { orgId: "org-a", userId: "person-2" } }, body: {} });
     await screen.findByText("1 account deactivated.");
   });
 
@@ -111,7 +111,7 @@ describe("Users authoritative role and account changes", () => {
     const apply = within(dialog).getByRole("button", { name: "Reset 2FA" });
     fireEvent.click(apply); fireEvent.click(apply);
     expect(state.POST).toHaveBeenCalledTimes(1);
-    expect(state.POST).toHaveBeenCalledWith("/api/v1/organizations/{orgId}/members/{userId}/mfa-reset", { params: { path: { orgId: "org-a", userId: "person-2" } } });
+    expect(state.POST).toHaveBeenCalledWith("/api/v1/organizations/{orgId}/members/{userId}/mfa-reset", { params: { path: { orgId: "org-a", userId: "person-2" } }, body: {} });
     expect(within(dialog).getByRole("button", { name: "Cancel" })).toHaveProperty("disabled", true);
     await act(async () => complete({ data: {} }));
     await screen.findByText("1 account had 2FA reset.");

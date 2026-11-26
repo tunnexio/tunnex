@@ -133,6 +133,9 @@ type UnaccountedMemberField = Exclude<
   // something, or it is a projection nobody renders.
   | "machine_credentials"
   | "managed_agent_delegations"
+  // RBAC-0: consumed by accountActionBlocked — the reason Reactivate is unavailable (directory sync or
+  // another organization deactivated this person).
+  | "deactivated_by"
 >;
 const _memberHasNoAuthField: UnaccountedMemberField extends never
   ? true

@@ -1,6 +1,7 @@
 import { useEffect, useState, type FormEvent } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { api, apiErrorMessage } from "../lib/api";
+import { api, apiErrorCode, apiErrorMessage } from "../lib/api";
+import { useAuth } from "../lib/auth";
 import { AuthLayout } from "../components/AuthLayout";
 import { Button, ErrorText, Field, Input } from "../components/ui";
 import { CLIENT_DOWNLOAD_URL } from "../components/ClientConnection";
@@ -15,12 +16,47 @@ import { CLIENT_DOWNLOAD_URL } from "../components/ClientConnection";
  * (the link is admin-visible in the dashboard, so a session must never be minted from
  * it): the invitee sets a password here, then signs in explicitly and lands in the
  * org (RequireOrg passes — the membership now exists).
+ *
+ * RBAC-0 D1: when the invited address ALREADY has an account, the token alone is not
+ * enough — the invitee must be signed in as that account. The page keeps the token in
+ * this tab's sessionStorage (never the URL), sends them to sign in, and brings them back
+ * here to accept with one button.
  */
+const PENDING_INVITE_KEY = "tunnex.pendingInvite";
+
+function readPendingInvite(): { token: string; signIn: boolean } | null {
+  try {
+    const raw = window.sessionStorage.getItem(PENDING_INVITE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { token?: unknown; signIn?: unknown };
+    return typeof parsed.token === "string" && parsed.token ? { token: parsed.token, signIn: parsed.signIn === true } : null;
+  } catch {
+    return null;
+  }
+}
+
+function writePendingInvite(value: { token: string; signIn: boolean } | null) {
+  try {
+    if (value) window.sessionStorage.setItem(PENDING_INVITE_KEY, JSON.stringify(value));
+    else window.sessionStorage.removeItem(PENDING_INVITE_KEY);
+  } catch {
+    // Storage unavailable: the person can open the invitation link again after signing in.
+  }
+}
 export default function AcceptInvite() {
   const [params] = useSearchParams();
   // Capture the token ONCE, then strip it from the URL so the secret doesn't linger
   // in browser history / leak via the Referer header (same hygiene as ResetPassword).
-  const [token] = useState(() => params.get("token") ?? "");
+  const [pending] = useState(() => {
+    const fromUrl = params.get("token");
+    if (fromUrl) return { token: fromUrl, signIn: false };
+    return readPendingInvite() ?? { token: "", signIn: false };
+  });
+  const token = pending.token;
+  const { state: auth } = useAuth();
+  const [needsSignIn, setNeedsSignIn] = useState(false);
+  // Came back from signing in for an existing account: accept with one button.
+  const existingAccount = pending.signIn && auth.status === "authed";
   useEffect(() => {
     if (params.get("token"))
       window.history.replaceState(null, "", window.location.pathname);
@@ -35,16 +71,23 @@ export default function AcceptInvite() {
     e.preventDefault();
     setBusy(true);
     setError(null);
+    setNeedsSignIn(false);
     const { error } = await api.POST("/api/v1/auth/invitations/accept", {
-      body: { token, name, password },
+      body: existingAccount ? { token } : { token, name, password },
     });
     setBusy(false);
     if (error) {
+      const code = apiErrorCode(error);
+      if (code === "sign_in_required") {
+        writePendingInvite({ token, signIn: true });
+        setNeedsSignIn(true);
+      }
       setError(
         apiErrorMessage(error, "This invitation is invalid or has expired."),
       );
       return;
     }
+    writePendingInvite(null);
     setDone(true);
   }
 
@@ -86,6 +129,25 @@ export default function AcceptInvite() {
     );
   }
 
+  if (existingAccount && auth.status === "authed") {
+    return (
+      <AuthLayout>
+        <h1 className="text-xl font-semibold text-white">
+          Accept your invitation
+        </h1>
+        <p className="mt-1 text-sm text-slate-400">
+          You're signed in as {auth.user.email}. Accept to join the organization that invited you. Your roles in other organizations don't change.
+        </p>
+        <form onSubmit={submit} className="mt-5 space-y-4">
+          <ErrorText>{error}</ErrorText>
+          <Button type="submit" disabled={busy} className="w-full">
+            {busy ? "Joining…" : "Accept invitation"}
+          </Button>
+        </form>
+      </AuthLayout>
+    );
+  }
+
   return (
     <AuthLayout>
       <h1 className="text-xl font-semibold text-white">
@@ -115,6 +177,14 @@ export default function AcceptInvite() {
           />
         </Field>
         <ErrorText>{error}</ErrorText>
+        {needsSignIn && (
+          <Link
+            to="/login?next=%2Faccept-invite"
+            className="block text-center text-sm text-accent-400 hover:underline"
+          >
+            Sign in to accept
+          </Link>
+        )}
         <Button type="submit" disabled={busy} className="w-full">
           {busy ? "Joining…" : "Accept invitation"}
         </Button>
