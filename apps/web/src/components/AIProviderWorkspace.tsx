@@ -70,8 +70,8 @@ function ProviderWorkspace({ orgId, canManage = true, canManageTransport = false
   const [error, setError] = useState(""), [notice, setNotice] = useState("");
   const [httpsRequired, setHTTPSRequired] = useState(false);
   const transportMessage = canManageTransport
-    ? "AI Gateway access over HTTP is disabled. Use HTTPS, or enable Allow AI Gateway over HTTP in Settings → AI Gateway transport."
-    : "AI Gateway access over HTTP is disabled. Use HTTPS, or ask your server administrator to enable Allow AI Gateway over HTTP in Settings → AI Gateway transport.";
+    ? "AI Gateway access over HTTP is disabled. Use HTTPS, or turn on Public internet in Settings → AI Gateway transport."
+    : "AI Gateway access over HTTP is disabled. Use HTTPS, or ask your server administrator to turn on Public internet in Settings → AI Gateway transport.";
   const drafts = useRef<Record<string, EditorDraft>>({});
   const [editing, setEditing] = useState<AIProviderConnection | "new" | null>(null);
   const [localView, setLocalView] = useState<WorkspaceView>("models");
