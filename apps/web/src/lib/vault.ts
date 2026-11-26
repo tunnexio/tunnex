@@ -128,3 +128,18 @@ export function scheduleClipboardClear(value: string, delay = CLIPBOARD_CLEAR_MS
     })();
   }, delay);
 }
+
+/**
+ * A v4 request id for Quick generate. randomUUID exists only in secure contexts, so a plain-HTTP install
+ * (development, or an operator testing before TLS) fell through to "secure generation is unavailable"
+ * although getRandomValues — the actual randomness source — is available everywhere.
+ */
+export function vaultRequestId(random: Crypto = globalThis.crypto): string {
+  if (typeof random?.randomUUID === "function") return random.randomUUID();
+  if (!random?.getRandomValues) throw new Error("Secure random numbers are unavailable in this browser.");
+  const bytes = random.getRandomValues(new Uint8Array(16));
+  bytes[6] = (bytes[6] & 0x0f) | 0x40;
+  bytes[8] = (bytes[8] & 0x3f) | 0x80;
+  const hex = Array.from(bytes, byte => byte.toString(16).padStart(2, "0")).join("");
+  return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}

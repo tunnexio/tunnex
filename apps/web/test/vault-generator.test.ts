@@ -32,3 +32,14 @@ describe("Vault secure password generation", () => {
     expect(password).toContain("!");
   });
 });
+
+describe("Vault quick request ids (VAULT-UX-1)", () => {
+  it("falls back to getRandomValues where randomUUID is unavailable (plain HTTP)", async () => {
+    const { vaultRequestId } = await import("../src/lib/vault");
+    const insecure = { getRandomValues: (array: Uint8Array) => globalThis.crypto.getRandomValues(array) } as unknown as Crypto;
+    const ids = Array.from({ length: 20 }, () => vaultRequestId(insecure));
+    for (const id of ids) expect(id).toMatch(/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/);
+    expect(new Set(ids).size).toBe(ids.length);
+    expect(() => vaultRequestId({} as Crypto)).toThrow();
+  });
+});

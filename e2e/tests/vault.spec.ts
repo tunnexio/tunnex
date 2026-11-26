@@ -6,6 +6,9 @@ import { MEMBER, OWNER } from "./helpers";
 // seeded accounts have a local password and no authenticator, so the step-up is the password prompt) and
 // cannot assign, edit details or delete it; the administrator deletes it. Serial: one credential, one story.
 test.describe.configure({ mode: "serial" });
+// The stack is served over plain HTTP inside the compose network; production is HTTPS. Treat the origin as
+// secure so the clipboard behaves as it does for a real operator.
+test.use({ launchOptions: { args: [`--unsafely-treat-insecure-origin-as-secure=${process.env.E2E_BASE_URL ?? "http://localhost"}`] } });
 
 const TITLE = `E2E shared login ${Date.now()}`;
 
@@ -26,12 +29,17 @@ test("an administrator quick-generates, adds details and assigns to a member", a
   const quick = page.getByRole("dialog", { name: "Quick generate" });
   await expect(quick.getByText(/Saving keeps this password in your Vault/)).toBeVisible();
   await quick.getByRole("button", { name: "Save & copy" }).click();
+  // Headless Chromium may refuse the clipboard write even with permission; the save is what this story
+  // proves. A saved-but-not-copied password closes without the discard prompt.
+  const savedOnly = quick.getByText("Saved to Vault, but the password could not be copied. Try Save & copy again.");
+  await expect(quick.or(savedOnly).first()).toBeVisible();
+  if (await savedOnly.isVisible().catch(() => false)) await quick.getByRole("button", { name: "Close" }).click();
   await expect(quick).toHaveCount(0);
   await page.getByRole("button", { name: "Add details for Generated password" }).first().click();
   const details = page.getByRole("dialog", { name: "Add details" });
-  await details.getByLabel("Title").fill(TITLE);
+  await details.getByLabel("Title", { exact: true }).fill(TITLE);
   await details.getByLabel("Visibility").selectOption("assigned");
-  const service = details.getByLabel("Service");
+  const service = details.getByLabel("Service", { exact: true });
   if (await service.locator("option", { hasText: "E2E service" }).count() === 0) {
     await details.getByRole("button", { name: "Add a service to the catalog" }).click();
     await details.getByLabel("New service name").fill("E2E service");
@@ -39,7 +47,7 @@ test("an administrator quick-generates, adds details and assigns to a member", a
   } else {
     await service.selectOption({ label: "E2E service" });
   }
-  await details.getByLabel("User").selectOption({ label: `Demo Member (${MEMBER.email})` });
+  await details.getByLabel("User", { exact: true }).selectOption({ label: `Demo Member (${MEMBER.email})` });
   await details.getByRole("button", { name: "Save details" }).click();
   await expect(details).toHaveCount(0);
   await expect(page.getByRole("button", { name: TITLE, exact: true })).toBeVisible();
