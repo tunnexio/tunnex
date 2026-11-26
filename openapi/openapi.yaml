@@ -2710,6 +2710,60 @@ paths:
               schema: { $ref: "#/components/schemas/AgentBootstrapTokenResponse" }
         default: { $ref: "#/components/responses/Error" }
 
+  /api/v1/organizations/{orgId}/agents/bootstrap-tokens:
+    parameters:
+      - name: orgId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      operationId: listAgentBootstrapTokens
+      summary: List pending managed agent bootstrap tokens
+      description: >-
+        Requires `agent:enroll`, the same permission as issuing. Returns only tokens that can still be
+        redeemed: not used, not revoked and not expired, newest first, at most 200. The token value and
+        its hash are never returned; a value is shown once, when it is issued.
+      tags: [agents]
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      responses:
+        "200":
+          description: The pending bootstrap tokens.
+          headers: { X-Request-Id: { $ref: "#/components/headers/RequestId" } }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PendingAgentBootstrapTokenList" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/v1/organizations/{orgId}/agents/bootstrap-tokens/{tokenId}:
+    parameters:
+      - name: orgId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+      - name: tokenId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    delete:
+      operationId: revokeAgentBootstrapToken
+      summary: Revoke a pending managed agent bootstrap token
+      description: >-
+        Requires `agent:enroll` and a verified email. The token stops working immediately and is refused
+        by `POST /api/v1/agent/bootstrap` exactly like an expired one. Writes the audit action
+        `agent.bootstrap_token_revoked`. A token that is unknown, belongs to another organization, or is
+        no longer pending (used, revoked or expired) answers 404 `bootstrap_token_not_found`.
+      tags: [agents]
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      responses:
+        "204":
+          description: The token is revoked.
+          headers: { X-Request-Id: { $ref: "#/components/headers/RequestId" } }
+        default: { $ref: "#/components/responses/Error" }
+
   /api/v1/sandbox/bootstrap:
     post:
       operationId: bootstrapSandbox
@@ -14981,6 +15035,40 @@ components:
       properties:
         bootstrap_token: { type: string, description: Shown once and stored only as a hash. }
         release: { $ref: "#/components/schemas/AgentBootstrapRelease" }
+
+    PendingAgentBootstrapTokenList:
+      type: object
+      required: [items]
+      additionalProperties: false
+      properties:
+        items:
+          type: array
+          maxItems: 200
+          items: { $ref: "#/components/schemas/PendingAgentBootstrapToken" }
+
+    PendingAgentBootstrapToken:
+      type: object
+      description: A bootstrap token that can still be redeemed. Never contains the token value or its hash.
+      required: [id, agent_name, gateway_id, gateway_name, issued_at, expires_at]
+      additionalProperties: false
+      properties:
+        id: { type: string, format: uuid, description: Identifies the token for revocation. It is not the token value. }
+        agent_name: { type: string, description: The name the agent will enroll with. }
+        gateway_id: { type: string, format: uuid }
+        gateway_name: { type: string }
+        issued_by:
+          type: string
+          format: uuid
+          nullable: true
+          description: The member who issued the token, or null when that account no longer exists.
+        issued_by_email:
+          type: string
+          nullable: true
+          description: >-
+            The issuer's email. Present for the caller's own tokens and for callers who can manage members;
+            null otherwise.
+        issued_at: { type: string, format: date-time }
+        expires_at: { type: string, format: date-time }
 
     AgentBootstrapRelease:
       type: object
