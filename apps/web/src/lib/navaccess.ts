@@ -29,6 +29,7 @@ export const NAV_PERMISSIONS: Record<string, readonly string[]> = {
   "/devices/approvals": ["device:approve"],
   "/devices/posture": ["device:approve", "device_health:manage"],
   "/users/groups": ["policy:view"],
+  "/users/invitations": ["member:invite"],
 };
 
 /** Organization-wide audit (everyone else reads only their own actions). Mirrors audit_handlers.go. */

@@ -5,7 +5,7 @@ import { NAV_DESTINATIONS } from "./AppShell";
 import { motionAllowed } from "../lib/motion";
 import { useMotionPreference } from "./MotionProvider";
 import { useOrg } from "../lib/useOrg";
-import { navAllows, useMyOrgRoles } from "../lib/navaccess";
+import { navAllows, seesOrgAudit, useMyOrgRoles } from "../lib/navaccess";
 import { api, listItems } from "../lib/api";
 import { entityResults, type PaletteInventory } from "../lib/palettesearch";
 
@@ -64,7 +64,7 @@ export function CommandPalette() {
     return () => { cancelled = true; };
   }, [open, orgId]);
   const pages = useMemo(() => {
-    const destinations = NAV_DESTINATIONS.filter(item => (item.to !== "/sandboxes" || sandboxState === "enabled" || sandboxState === "draining") && navAllows(item.to, mine));
+    const destinations = NAV_DESTINATIONS.filter(item => (item.to !== "/sandboxes" || sandboxState === "enabled" || sandboxState === "draining") && navAllows(item.to, mine)).map(item => item.to === "/audit" && mine.state === "ready" && !seesOrgAudit(mine.roles) ? { ...item, label: "My activity" } : item);
     const q = query.trim().toLowerCase();
     if (!q) return destinations;
     return destinations.filter(

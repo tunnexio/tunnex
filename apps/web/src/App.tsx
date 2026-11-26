@@ -246,7 +246,7 @@ function ProductApp() {
             <Route path="/access/groups" element={<LegacyWorkspaceRedirect groups />} />
             <Route path="/users/groups" element={<AdminOnlyRoute to="/users/groups" page="Groups"><AccessGroups scope="people" /></AdminOnlyRoute>} />
             <Route path="/users/roles" element={<Users view="roles" />} />
-            <Route path="/users/invitations" element={<Users view="invitations" />} />
+            <Route path="/users/invitations" element={<AdminOnlyRoute to="/users/invitations" page="Invitations"><Users view="invitations" /></AdminOnlyRoute>} />
             <Route path="/access/resources" element={<AccessResources />} />
             <Route path="/access/resources/fqdn/:resourceId" element={<FQDNResourceDetail />} />
             <Route path="/access/kubernetes-scopes" element={<AccessKubernetesScopes />} />
