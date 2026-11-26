@@ -94,6 +94,7 @@ function routeResponse(scenario: S18VisualScenario, url: URL, init?: RequestInit
     return Promise.resolve(json({ items: scenario === "index-empty" ? [] : filtered, next_cursor: null, partial: scenario === "index-partial" }));
   }
   if (url.pathname.endsWith("/nodes")) return Promise.resolve(json([{ id: "11111111-1111-4111-8111-111111111201", name: "us-east-gw", status: "active" }]));
+  if (url.pathname.endsWith("/agents/bootstrap-tokens")) return Promise.resolve(json({ items: [] }));
   if (url.pathname.endsWith("/agents/bootstrap-token") && init?.method === "POST") return Promise.resolve(json({ bootstrap_token: "tnx_fixture_one_time_token", release: { tag: "v0.0.0-fixture", source_sha: "fixture", manifest_url: "https://example.invalid/release.json", verifier_key_id: "fixture", verifier_public_key: "fixture", runtime: { version: "fixture" } } }));
   return Promise.resolve(json({ error: { code: "fixture_unhandled", message: `Unhandled fixture request: ${url.pathname}` } }, 500));
 }

@@ -67,3 +67,6 @@ div.fixed:has(> [role=dialog] .agents-enroll-secret) { display:flex; align-items
 
 .agents-workspace .agents-inventory-table td .agents-name-link { text-decoration:none; }
 .agents-workspace .agents-inventory-table td .agents-name-link:hover { text-decoration:underline; }
+.agents-pending-tokens { min-width:0; margin-bottom:28px; padding-bottom:20px; border-bottom:1px solid var(--tnx-border); }
+.agents-pending-tokens h2 { margin:0 0 6px; font-size:14px; font-weight:600; color:var(--tnx-text-heading); }
+.agents-pending-tokens-help,.agents-pending-tokens-note { margin:0 0 10px; color:var(--tnx-text-secondary); font-size:12px; line-height:1.6; }
