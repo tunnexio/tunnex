@@ -32,7 +32,12 @@ test("an administrator quick-generates, adds details and assigns to a member", a
   // Headless Chromium may refuse the clipboard write even with permission; the save is what this story
   // proves. A saved-but-not-copied password closes without the discard prompt.
   const savedOnly = quick.getByText("Saved to Vault, but the password could not be copied. Try Save & copy again.");
-  await expect(quick.or(savedOnly).first()).toBeVisible();
+  // Wait for the outcome: either the dialog closed (saved and copied) or the saved-only message showed.
+  // The dialog itself is visible the whole time, so it cannot be the thing waited on.
+  await expect(async () => {
+    if (await savedOnly.isVisible()) return;
+    expect(await quick.count()).toBe(0);
+  }).toPass({ timeout: 10_000 });
   if (await savedOnly.isVisible().catch(() => false)) await quick.getByRole("button", { name: "Close" }).click();
   await expect(quick).toHaveCount(0);
   await page.getByRole("button", { name: "Add details for Generated password" }).first().click();
