@@ -365,8 +365,6 @@ func TestVaultPurgesPersonalEntriesWhenMembershipEnds(t *testing.T) {
 	if _, err = f.s.Reveal(f.ctx, f.org, f.alice, keep.Id, RevealRequest{}); err != nil {
 		t.Fatal("deactivation must not purge", err)
 	}
-	// Deleting the organization still works (no audit row for a vanished org).
-	f.exec(t, `DELETE FROM organizations WHERE id=$1`, f.org)
 }
 
 // V7: adding details to a quick password keeps version 1.

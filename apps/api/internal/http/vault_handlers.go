@@ -13,9 +13,12 @@ import (
 	"github.com/tunnexio/tunnex/apps/api/internal/apierr"
 	"github.com/tunnexio/tunnex/apps/api/internal/authctx"
 	"github.com/tunnexio/tunnex/apps/api/internal/rbac"
+	"github.com/tunnexio/tunnex/apps/api/internal/vault"
 )
 
-const vaultBodyLimit int64 = 64 << 10
+// vaultBodyLimit admits the largest valid secret (16,384 characters) at its worst-case JSON escaping
+// (an astral character escapes to 12 bytes: 196,608 bytes) plus every other field (VAULT-UX-1 V17).
+const vaultBodyLimit int64 = 256 << 10
 
 func isVaultRequest(r *http.Request) bool {
 	parts := strings.Split(r.URL.Path, "/")
@@ -28,7 +31,7 @@ func vaultRequestError(w http.ResponseWriter, r *http.Request, err error, status
 		return false
 	}
 	if r.ContentLength > vaultBodyLimit || strings.Contains(err.Error(), "http: request body too large") {
-		apierr.Write(w, r, apierr.New(http.StatusRequestEntityTooLarge, "vault_request_too_large", "Vault request is too large"))
+		apierr.Write(w, r, apierr.New(http.StatusRequestEntityTooLarge, "vault_request_too_large", "Vault request is too large. Secrets can be up to 16,384 characters."))
 	} else {
 		apierr.Write(w, r, apierr.New(status, "invalid_vault_request", "Invalid Vault request"))
 	}
@@ -78,7 +81,7 @@ func (s apiServer) vaultRequestGuard(next http.Handler) http.Handler {
 			apierr.Write(w, r, err)
 			return
 		}
-		if r.Method == http.MethodPost || r.Method == http.MethodPut {
+		if r.Method == http.MethodPost || r.Method == http.MethodPut || r.Method == http.MethodPatch {
 			body, readErr := io.ReadAll(r.Body)
 			if readErr != nil {
 				vaultRequestError(w, r, readErr, http.StatusBadRequest)
@@ -94,6 +97,9 @@ func (s apiServer) vaultRequestGuard(next http.Handler) http.Handler {
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
+
+// vaultRevealReauthScope names the Vault reveal password-failure budget.
+const vaultRevealReauthScope = "vault_reveal"
 
 func vaultPage(limit, offset *int32) (int32, int32) {
 	l, o := int32(50), int32(0)
@@ -116,9 +122,20 @@ func (s apiServer) ListVaultEntries(ctx context.Context, req api.ListVaultEntrie
 	if req.Params.Q != nil {
 		q = *req.Params.Q
 	}
-	out, err := s.vault.List(ctx, req.OrgId, p.UserID, limit, offset, q)
+	view := "all"
+	if req.Params.View != nil {
+		view = string(*req.Params.View)
+	}
+	out, err := s.vault.ListView(ctx, req.OrgId, p.UserID, limit, offset, q, view)
 	if err != nil {
 		return nil, err
+	}
+	// Tell the console what a shared reveal will ask for. Best effort: when it cannot be read the reveal
+	// still enforces it and the console handles the refusal.
+	if parent, perr := s.mfaParent(ctx); perr == nil {
+		if r, rerr := s.installationReauthFor(ctx, p.UserID, &parent); rerr == nil {
+			out.Reauthentication = &api.VaultReauthentication{Password: r.password, Mfa: r.mfa || r.ssoMFA, Available: r.available()}
+		}
 	}
 	return api.ListVaultEntries200JSONResponse(out), nil
 }
@@ -183,6 +200,21 @@ func (s apiServer) UpdateVaultEntry(ctx context.Context, req api.UpdateVaultEntr
 	return api.UpdateVaultEntry200JSONResponse(out), nil
 }
 
+func (s apiServer) UpdateVaultEntryDetails(ctx context.Context, req api.UpdateVaultEntryDetailsRequestObject) (api.UpdateVaultEntryDetailsResponseObject, error) {
+	ctx, p, err := s.vaultContext(ctx, req.OrgId, rbac.PermVaultUse)
+	if err != nil {
+		return nil, err
+	}
+	if req.Body == nil {
+		return nil, apierr.BadRequest("invalid_vault_request", "Request body required")
+	}
+	out, err := s.vault.UpdateDetails(ctx, req.OrgId, p.UserID, req.EntryId, *req.Body)
+	if err != nil {
+		return nil, err
+	}
+	return api.UpdateVaultEntryDetails200JSONResponse(out), nil
+}
+
 func (s apiServer) DeleteVaultEntry(ctx context.Context, req api.DeleteVaultEntryRequestObject) (api.DeleteVaultEntryResponseObject, error) {
 	ctx, p, err := s.vaultContext(ctx, req.OrgId, rbac.PermVaultUse)
 	if err != nil {
@@ -215,11 +247,31 @@ func (s apiServer) RevealVaultEntry(ctx context.Context, req api.RevealVaultEntr
 	if req.Body == nil {
 		return nil, apierr.BadRequest("invalid_vault_request", "Request body required")
 	}
-	version := 0
+	reveal := vault.RevealRequest{}
 	if req.Body.Version != nil {
-		version = *req.Body.Version
+		reveal.Version = *req.Body.Version
 	}
-	out, err := s.vault.Reveal(ctx, req.OrgId, p.UserID, req.EntryId, version)
+	if req.Body.Purpose != nil {
+		reveal.Purpose = string(*req.Body.Purpose)
+	}
+	// Every reveal or copy is budgeted per person and organization (V4), before any other work.
+	if s.sessions == nil {
+		return nil, apierr.New(503, "vault_unavailable", "Vault is unavailable")
+	}
+	allowed, err := s.sessions.VaultRevealAllowed(ctx, req.OrgId, p.UserID)
+	if err != nil {
+		return nil, apierr.New(503, "vault_unavailable", "Vault is unavailable")
+	}
+	if !allowed {
+		return nil, apierr.New(http.StatusTooManyRequests, "vault_reveal_rate_limited", "You've opened a lot of secrets in a short time. Wait a minute and try again.")
+	}
+	// Shared (assigned) entries need recent re-authentication, with the same rules as every other
+	// step-up action. The vault service runs this inside its transaction, only for assigned entries.
+	currentPassword := req.Body.CurrentPassword
+	reveal.StepUp = func(ctx context.Context) error {
+		return s.requireRecentReauthentication(ctx, p, currentPassword, vaultRevealReauthScope, "open a shared Vault credential")
+	}
+	out, err := s.vault.Reveal(ctx, req.OrgId, p.UserID, req.EntryId, reveal)
 	if err != nil {
 		return nil, err
 	}

@@ -701,6 +701,7 @@ func main() {
 	appEvents := appaccess.NewEventProducer(pool)
 	defer appEvents.Close()
 	appAccessSvc.WithEventProducer(appEvents)
+	vaultSvc := vault.New(pool, sealer)
 	router, err := apphttp.NewRouter(logger, apphttp.Deps{
 		AppDomains:                 domainSettings,
 		Sandboxes:                  sandboxDeps.Sandboxes,
@@ -754,7 +755,7 @@ func main() {
 		SSO:                   apphttp.NewSSOPort(pool, sealer, sessions.Client(), cfg.AppBaseURL, licenceMgr, logger),
 		Policy:                apphttp.NewPolicyPortWithFQDN(pool, pushHub, licenceMgr),
 		ServerAccess:          terminalSvc,
-		Vault:                 vault.New(pool, sealer),
+		Vault:                 vaultSvc,
 		AppAccess:             appAccessSvc,
 		Beam:                  beamSvc,
 		FQDNResources:         fqdnresources.New(pool),
@@ -1028,6 +1029,37 @@ func main() {
 					}
 					if claimed {
 						logger.Info("audit_log_retention_run", slog.String("org_id", orgID.String()), slog.Int64("deleted", run.DeletedRows), slog.Int("batches", int(run.Batches)), slog.Bool("more_pending", run.MorePending))
+					}
+				}
+				scancel()
+			}
+		}
+	}()
+	// VAULT-UX-1 V18: quick-generate idempotency rows older than 30 days are pruned hourly, in batches, by
+	// the leader only. Saved passwords are never touched.
+	go func() {
+		t := time.NewTicker(time.Hour)
+		defer t.Stop()
+		for {
+			select {
+			case <-retentionStop:
+				return
+			case <-t.C:
+				if !elector.IsLeader() || !elector.ConfirmLeader(electorCtx, pool) {
+					continue
+				}
+				sctx, scancel := context.WithTimeout(electorCtx, 2*time.Minute)
+				for i := 0; i < 10; i++ {
+					n, err := vaultSvc.PruneQuickRequests(sctx, vault.QuickRequestRetention, 5000)
+					if err != nil {
+						logger.Error("vault_quick_request_prune_failed", slog.String("error", err.Error()))
+						break
+					}
+					if n > 0 {
+						logger.Info("vault_quick_request_pruned", slog.Int64("deleted", n))
+					}
+					if n < 5000 {
+						break
 					}
 				}
 				scancel()

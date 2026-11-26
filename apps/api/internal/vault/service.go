@@ -37,11 +37,28 @@ func conflict() error {
 	return apierr.New(409, "vault_version_conflict", "This entry changed. Refresh it before saving")
 }
 
+// maxSecret is the secret length in characters (runes). It is not a byte limit: existing multibyte
+// secrets must keep opening. The HTTP body limit is sized for its worst-case JSON escaping (V17).
+const maxSecret = 16384
+
 func validText(v string, max int, empty bool) bool {
 	return utf8.ValidString(v) && !strings.ContainsRune(v, 0) && utf8.RuneCountInString(v) <= max && (empty || strings.TrimSpace(v) != "")
 }
 
+func detailsForbidden() error {
+	return apierr.Forbidden("vault_details_forbidden", "Only Vault administrators can change the details of a shared credential")
+}
+func recipientWithoutAccess() error {
+	return apierr.BadRequest("vault_recipient_without_access", "This person can't use Vault yet. They need the Vault role and a verified email.")
+}
+
 type authority struct{ canAssign bool }
+
+// eligibleMembership is the ONE rule for who can use Vault in an organization (VAULT-UX-1 V1): begin(),
+// the recipient list and target validation all apply it, together with rbac.PermVaultUse checked in Go.
+const eligibleMembership = `m.access_revoked_at IS NULL AND u.status='active' AND u.deleted_at IS NULL AND u.email_verified_at IS NOT NULL`
+
+func canUseVault(roles []string) bool { return rbac.CanAny(roles, rbac.PermVaultUse) }
 
 // Holding share locks until the operation commits serializes sensitive reads
 // with membership removal, role changes, user deactivation and organization deletion.
@@ -59,10 +76,9 @@ func (s *Service) begin(ctx context.Context, org, user uuid.UUID) (pgx.Tx, autho
 	var roles []string
 	err = tx.QueryRow(ctx, `SELECT coalesce(m.roles,ARRAY[m.role]) FROM memberships m
  JOIN users u ON u.id=m.user_id JOIN organizations o ON o.id=m.org_id
- WHERE m.org_id=$1 AND m.user_id=$2 AND m.access_revoked_at IS NULL
- AND u.status='active' AND u.deleted_at IS NULL AND u.email_verified_at IS NOT NULL AND o.deleted_at IS NULL
+ WHERE m.org_id=$1 AND m.user_id=$2 AND `+eligibleMembership+` AND o.deleted_at IS NULL
  FOR SHARE OF m,u,o`, org, user).Scan(&roles)
-	if errors.Is(err, pgx.ErrNoRows) || err == nil && !rbac.CanAny(roles, rbac.PermVaultUse) {
+	if errors.Is(err, pgx.ErrNoRows) || err == nil && !canUseVault(roles) {
 		_ = tx.Rollback(ctx)
 		return nil, authority{}, denied()
 	}
@@ -73,19 +89,36 @@ func (s *Service) begin(ctx context.Context, org, user uuid.UUID) (pgx.Tx, autho
 	return tx, authority{canAssign: rbac.CanAny(roles, rbac.PermVaultAssign)}, nil
 }
 
-func audit(ctx context.Context, tx pgx.Tx, org, actor, id uuid.UUID, action string, version int) error {
-	targetType := "vault_entry"
-	if action == "service_created" {
-		targetType = "vault_service"
+// audit records labels only (VAULT-UX-1 V3). A personal entry is recorded by kind and visibility alone:
+// organization audit is readable by administrators, who must not learn what is in a personal Vault.
+func audit(ctx context.Context, tx pgx.Tx, org, actor uuid.UUID, entry api.VaultEntry, action string, version int, extra map[string]any) error {
+	meta := map[string]any{"kind": string(entry.Kind), "visibility": string(entry.Visibility)}
+	if version > 0 {
+		meta["version"] = version
 	}
-	meta, err := json.Marshal(struct {
-		Version int `json:"version,omitempty"`
-	}{version})
+	if string(entry.Visibility) == "assigned" {
+		meta["title"] = entry.Title
+		meta["service"] = entry.ServiceName
+		if entry.SubjectKind != nil {
+			meta["recipient_kind"] = string(*entry.SubjectKind)
+		}
+		if entry.SubjectName != nil {
+			meta["recipient"] = *entry.SubjectName
+		}
+	}
+	for k, v := range extra {
+		meta[k] = v
+	}
+	return writeAudit(ctx, tx, org, actor, "vault."+action, "vault_entry", entry.Id, meta)
+}
+
+func writeAudit(ctx context.Context, tx pgx.Tx, org, actor uuid.UUID, action, targetType string, id uuid.UUID, meta map[string]any) error {
+	raw, err := json.Marshal(meta)
 	if err != nil {
 		return err
 	}
 	_, err = tx.Exec(ctx, `INSERT INTO audit_logs(org_id,actor_user_id,action,target_type,target_id,metadata)
- VALUES($1,$2,$3,$4,$5,$6)`, org, actor, "vault."+action, targetType, id.String(), meta)
+ VALUES($1,$2,$3,$4,$5,$6)`, org, actor, action, targetType, id.String(), raw)
 	return err
 }
 
@@ -141,7 +174,7 @@ func (s *Service) AddService(ctx context.Context, org, user uuid.UUID, name stri
 	if err != nil {
 		return v, err
 	}
-	if err = audit(ctx, tx, org, user, v.Id, "service_created", 0); err != nil {
+	if err = writeAudit(ctx, tx, org, user, "vault.service_created", "vault_service", v.Id, map[string]any{"service": v.Name}); err != nil {
 		return v, err
 	}
 	if err = tx.Commit(ctx); err != nil {
@@ -150,6 +183,8 @@ func (s *Service) AddService(ctx context.Context, org, user uuid.UUID, name stri
 	return v, nil
 }
 
+// Subjects lists the people and groups an entry can be assigned to. People are listed only when they can
+// use Vault; a group lists the members who cannot, so the picker can name them (VAULT-UX-1 V1, V9).
 func (s *Service) Subjects(ctx context.Context, org, user uuid.UUID) (api.VaultSubjects, error) {
 	out := api.VaultSubjects{Users: []api.VaultSubject{}, Groups: []api.VaultSubject{}}
 	tx, a, err := s.begin(ctx, org, user)
@@ -160,18 +195,24 @@ func (s *Service) Subjects(ctx context.Context, org, user uuid.UUID) (api.VaultS
 	if !a.canAssign {
 		return out, denied()
 	}
-	rows, err := tx.Query(ctx, `SELECT u.id,coalesce(nullif(u.name,''),u.email::text) FROM memberships m JOIN users u ON u.id=m.user_id
- WHERE m.org_id=$1 AND m.access_revoked_at IS NULL AND u.status='active' AND u.deleted_at IS NULL ORDER BY lower(u.name),u.id`, org)
+	rows, err := tx.Query(ctx, `SELECT u.id,coalesce(nullif(u.name,''),u.email::text),u.email::text,coalesce(m.roles,ARRAY[m.role])
+ FROM memberships m JOIN users u ON u.id=m.user_id
+ WHERE m.org_id=$1 AND `+eligibleMembership+` ORDER BY lower(coalesce(nullif(u.name,''),u.email::text)),u.id`, org)
 	if err != nil {
 		return out, err
 	}
 	for rows.Next() {
 		var v api.VaultSubject
-		if err = rows.Scan(&v.Id, &v.Name); err != nil {
+		var email string
+		var roles []string
+		if err = rows.Scan(&v.Id, &v.Name, &email, &roles); err != nil {
 			rows.Close()
 			return out, err
 		}
-		out.Users = append(out.Users, v)
+		if canUseVault(roles) {
+			v.Email = &email
+			out.Users = append(out.Users, v)
+		}
 	}
 	err = rows.Err()
 	rows.Close()
@@ -182,13 +223,49 @@ func (s *Service) Subjects(ctx context.Context, org, user uuid.UUID) (api.VaultS
 	if err != nil {
 		return out, err
 	}
+	index := map[uuid.UUID]int{}
 	for rows.Next() {
 		var v api.VaultSubject
 		if err = rows.Scan(&v.Id, &v.Name); err != nil {
 			rows.Close()
 			return out, err
 		}
+		count, missing := 0, []api.VaultPerson{}
+		v.MemberCount, v.MembersWithoutAccess = &count, &missing
+		index[v.Id] = len(out.Groups)
 		out.Groups = append(out.Groups, v)
+	}
+	err = rows.Err()
+	rows.Close()
+	if err != nil {
+		return out, err
+	}
+	rows, err = tx.Query(ctx, `SELECT gm.group_id,u.id,coalesce(nullif(u.name,''),u.email::text),u.email::text,
+ coalesce(m.roles,ARRAY[m.role],ARRAY[]::text[]),coalesce(m.user_id IS NOT NULL AND `+eligibleMembership+`,false)
+ FROM group_members gm JOIN users u ON u.id=gm.user_id
+ LEFT JOIN memberships m ON m.org_id=gm.org_id AND m.user_id=gm.user_id
+ WHERE gm.org_id=$1 ORDER BY lower(coalesce(nullif(u.name,''),u.email::text)),u.id`, org)
+	if err != nil {
+		return out, err
+	}
+	for rows.Next() {
+		var group uuid.UUID
+		var p api.VaultPerson
+		var roles []string
+		var eligible bool
+		if err = rows.Scan(&group, &p.Id, &p.Name, &p.Email, &roles, &eligible); err != nil {
+			rows.Close()
+			return out, err
+		}
+		i, ok := index[group]
+		if !ok {
+			continue
+		}
+		g := &out.Groups[i]
+		*g.MemberCount++
+		if !eligible || !canUseVault(roles) {
+			*g.MembersWithoutAccess = append(*g.MembersWithoutAccess, p)
+		}
 	}
 	err = rows.Err()
 	rows.Close()

@@ -18,7 +18,7 @@ func quickConflict() error {
 // QuickCreate persists one candidate without publishing any service or assignment
 // metadata. The client may release it to the clipboard only after this commits.
 func (s *Service) QuickCreate(ctx context.Context, org, user uuid.UUID, in api.VaultQuickCreateInput) (api.VaultEntry, error) {
-	if in.RequestId == uuid.Nil || in.Secret == nil || !validText(*in.Secret, 16384, false) {
+	if in.RequestId == uuid.Nil || in.Secret == nil || !validText(*in.Secret, maxSecret, false) {
 		return api.VaultEntry{}, invalid()
 	}
 	tx, a, err := s.begin(ctx, org, user)
@@ -74,11 +74,11 @@ func (s *Service) QuickCreate(ctx context.Context, org, user uuid.UUID, in api.V
 	if err != nil {
 		return api.VaultEntry{}, err
 	}
-	if err = audit(ctx, tx, org, user, id, "quick_created", 1); err != nil {
-		return api.VaultEntry{}, err
-	}
 	entry, err := readEntry(ctx, tx, org, user, id, a, false)
 	if err != nil {
+		return api.VaultEntry{}, err
+	}
+	if err = audit(ctx, tx, org, user, entry, "quick_created", 1, nil); err != nil {
 		return api.VaultEntry{}, err
 	}
 	if err = tx.Commit(ctx); err != nil {
@@ -88,7 +88,8 @@ func (s *Service) QuickCreate(ctx context.Context, org, user uuid.UUID, in api.V
 }
 
 // Configure is the single creator-owned transition from an unconfigured password
-// to normal ledger metadata. It never accepts a replacement secret or kind.
+// to normal ledger metadata. It never accepts a replacement secret or kind, and since
+// VAULT-UX-1 (V7) it writes no version: the entry keeps its single version 1.
 func (s *Service) Configure(ctx context.Context, org, user, id uuid.UUID, in api.VaultConfigureInput) (api.VaultEntry, error) {
 	if in.ExpectedVersion < 1 {
 		return api.VaultEntry{}, invalid()
@@ -134,25 +135,21 @@ func (s *Service) Configure(ctx context.Context, org, user, id uuid.UUID, in api
 	if err = validateTargets(ctx, tx, org, in.ServiceId, in.SubjectId, subjectKind); err != nil {
 		return api.VaultEntry{}, err
 	}
-	version := entry.CurrentVersion + 1
-	if err = s.writeVersion(ctx, tx, org, user, id, version, original.Value, username); err != nil {
-		return api.VaultEntry{}, err
-	}
 	var subject any
 	if subjectKind != "" {
 		subject = subjectKind
 	}
 	_, err = tx.Exec(ctx, `UPDATE vault_entries SET configured=true,title=$3,username=$4,service_id=$5,service_name=$6,
- visibility=$7,subject_kind=$8,subject_id=$9,current_version=$10 WHERE org_id=$1 AND id=$2`,
-		org, id, title, username, in.ServiceId, serviceName, string(in.Visibility), subject, in.SubjectId, version)
+ visibility=$7,subject_kind=$8,subject_id=$9,revision=revision+1 WHERE org_id=$1 AND id=$2`,
+		org, id, title, username, in.ServiceId, serviceName, string(in.Visibility), subject, in.SubjectId)
 	if err != nil {
-		return api.VaultEntry{}, err
-	}
-	if err = audit(ctx, tx, org, user, id, "configured", version); err != nil {
 		return api.VaultEntry{}, err
 	}
 	entry, err = readEntry(ctx, tx, org, user, id, a, false)
 	if err != nil {
+		return api.VaultEntry{}, err
+	}
+	if err = audit(ctx, tx, org, user, entry, "configured", entry.CurrentVersion, nil); err != nil {
 		return api.VaultEntry{}, err
 	}
 	if err = tx.Commit(ctx); err != nil {
