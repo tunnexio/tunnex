@@ -3,7 +3,8 @@
 A Tunnex control-plane backup is **two artifacts, and you must keep both**:
 
 1. **A PostgreSQL dump** — every organization, policy, device, node, audit row, and the *sealed* secret
-   material (the agent CA private key, the OpenVPN CA and profile keys, MFA secrets, SSO client secrets).
+   material (the agent CA private key, the OpenVPN CA and profile keys, MFA secrets, SSO client secrets, and
+   every Vault password and API key with all of its saved versions).
 2. **The master key** — a 32-byte secret, held *outside* the backup, which is the only thing that can decrypt
    the sealed material in that dump.
 
@@ -19,9 +20,13 @@ Stated plainly, because this is the sentence that decides whether people actuall
 | lost | consequence |
 |---|---|
 | **The dump** | Restore from an older one. You lose whatever changed in between — nothing is unrecoverable. |
-| **The master key** | **The sealed material is unrecoverable.** The agent CA cannot be read, so no certificate can ever again be issued that your enrolled gateways will trust: **the whole fleet must re-enroll.** Devices must be re-issued. MFA enrolments, SSO client secrets and OpenVPN profiles are all lost. |
+| **The master key** | **The sealed material is unrecoverable.** The agent CA cannot be read, so no certificate can ever again be issued that your enrolled gateways will trust: **the whole fleet must re-enroll.** Devices must be re-issued. MFA enrolments, SSO client secrets and OpenVPN profiles are all lost. **Every Vault secret, personal and shared, in every version, is lost**: the titles and usernames survive, the passwords and API keys do not, and each must be re-entered from its source. |
 
 Back the key up separately, and to somewhere the database backup does not also live.
+
+The master key has **no rotation today**: there is one key, and every sealed value (Vault included) is sealed
+under it. Rotating it would mean re-sealing every sealed column; that is tracked as separate future work
+(VAULT-UX-1 V14, `DEFERRAL-REGISTER.md`). Until then, protect the key as a long-lived secret.
 
 ## What a backup does *not* contain — and why that is a good property
 
