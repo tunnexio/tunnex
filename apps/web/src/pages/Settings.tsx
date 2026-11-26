@@ -437,9 +437,8 @@ function SettingsWorkspace() {
               live defect — the honest version, after a mutation survivor sent me to measure.
               Settings gates its org panels on `org:update`; every idp-sync handler gates on
               `policy:manage`. Today those are held by the same user-assignable roles (owner, admin),
-              so nesting would change nothing observable. `operator` holds policy:manage WITHOUT
-              org:update but is MACHINE-ONLY — `memberships` CHECKs role IN (owner, admin, member),
-              so it never renders a UI and cannot make the difference visible.
+              so nesting would change nothing observable. (`operator`, the machine-only GitOps role,
+              no longer holds policy:manage at all since RBAC-0 — only rule authoring.)
               It is out here so the panel is governed by ONE gate — its own, matching the server —
               rather than silently ANDed with a different permission that merely happens to coincide.
               `idpGate` is the authority; a test pins the coincidence so a divergence is loud. */}

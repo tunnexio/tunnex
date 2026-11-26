@@ -3,6 +3,7 @@ import "../users-inventory.css";
 import { useEffect, useId, useMemo, useState } from "react";
 import type { Device, Member, Role } from "../lib/api";
 import { canManageMembership, HUMAN_ROLES } from "../lib/rbac";
+import { accountActionBlocked } from "../lib/usersview";
 import { deviceCountFor, deviceCountLabel, rosterShape } from "../lib/usersview";
 import AppAccessEmptyState from "./AppAccessEmptyState";
 import AppAccessPagination from "./AppAccessPagination";
@@ -94,18 +95,10 @@ export default function UsersInventory({ members, devices, actorId, actorRole, e
     });
   }, [members, actorScope]);
 
+  // RBAC-0: one source for the reasons (lib/usersview accountActionBlocked), shared with the person page.
   const unavailable = (member: Member, action: AccountAction) => {
     if (busy) return "Wait for the current member operation.";
-    if (!emailVerified) return "Verify your email before managing members.";
-    if (action === "deactivate" && member.user_id === actorId) return "You cannot deactivate your own account.";
-    if (action === "reset" && member.user_id === actorId) return "Reset your own 2FA from your account settings.";
-    if (!canManageMembership(actorRole, member.role, "")) return "You cannot manage this member's role.";
-    if (action === "deactivate") {
-      if (member.status !== "active") return "Already deactivated.";
-      if (member.role === "owner" && ownerCount <= 1) return "An organization must always have at least one owner.";
-    }
-    if (action === "reactivate" && member.status === "active") return "Already active.";
-    return null;
+    return accountActionBlocked(member, action, { actorId, actorRole, emailVerified, activeOwners: ownerCount });
   };
   const requestAction = (action: AccountAction, targets: Member[]) => {
     if (busy || !emailVerified || (action === "reset" && targets.length !== 1)) return;
@@ -149,8 +142,9 @@ export default function UsersInventory({ members, devices, actorId, actorRole, e
         <td data-column="roles"><span className="ur-roles">{roles(member).join(" + ")}</span></td>
         <td data-column="state"><span className="ur-member-state" data-state={member.status === "active" && !member.email_verified ? "unverified" : member.status}>{member.status === "deactivated" ? "Deactivated" : !member.email_verified ? "Email unverified" : "Active"}</span>{member.status === "deactivated" && !member.email_verified && <span className="ur-unverified">Email unverified</span>}</td>
         {showDeviceCount && <td data-column="devices"><span className={count.kind === "count" ? "ur-device-count" : "ur-device-unknown"} aria-label={count.kind === "count" ? deviceCountLabel(count) : undefined}>{count.kind === "count" ? count.n : deviceCountLabel(count)}</span></td>}
-        {hasRowActions && <td className="ur-actions">{canEditRoles(member) && <AppAccessRowMenu label={`User actions for ${member.email}`} actions={[
-          { key: "roles", label: "Edit roles", disabledReason: busy ? "Wait for the current member operation." : null, onSelect: () => { if (!busy && canEditRoles(member)) onInspect(member.user_id, "roles"); } },
+        {hasRowActions && <td className="ur-actions">{(canEditRoles(member) || (emailVerified && member.user_id !== actorId)) && <AppAccessRowMenu label={`User actions for ${member.email}`} actions={[
+          // RBAC-0: an action this person may not take stays listed WITH its reason (e.g. an admin looking at an owner).
+          { key: "roles", label: "Edit roles", disabledReason: busy ? "Wait for the current member operation." : canEditRoles(member) ? null : member.role === "owner" && actorRole !== "owner" ? "Only an owner can change an owner's roles." : "You cannot change this member's roles.", onSelect: () => { if (!busy && canEditRoles(member)) onInspect(member.user_id, "roles"); } },
           ...(member.user_id === actorId ? [] : ([member.status === "active" ? "deactivate" : "reactivate", "reset"] as AccountAction[]).map(action => ({ key: action, label: accountActionLabel[action], danger: action === "deactivate" || action === "reset", disabledReason: unavailable(member, action), onSelect: () => requestAction(action, [member]) }))),
         ]} />}</td>}
       </tr>;

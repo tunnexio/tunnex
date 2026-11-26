@@ -1,5 +1,5 @@
 import type { Device, Member, Role } from "./api";
-import { can } from "./rbac";
+import { can, canManageMembership } from "./rbac";
 
 // usersview — PURE view-model for Users & Roles (S14.11).
 //
@@ -331,4 +331,42 @@ export function filterMembers(members: Member[], q: string): Member[] {
       m.name.toLowerCase().includes(needle) ||
       m.role.toLowerCase().includes(needle),
   );
+}
+
+// ── RBAC-0: account actions an administrator may take, and why not ───────────────────────────────────
+//
+// One place for the reasons the Users table, the person page and the bulk bar give. The server is
+// authoritative (tenancy.DeactivateMember / ReactivateMember, mfa.AdminReset); this only decides what to
+// offer, and says WHY an action is unavailable rather than hiding a row's options without explanation.
+
+export type AccountAction = "deactivate" | "reactivate" | "reset";
+
+/** Owners who can still administer the org: active status (mirrors the server's CountOwners, RBAC-0 D6). */
+export function activeOwnerCount(members: Member[]): number {
+  return members.filter((m) => m.role === "owner" && m.status === "active").length;
+}
+
+export function accountActionBlocked(
+  member: Member,
+  action: AccountAction,
+  ctx: { actorId: string; actorRole: Role | undefined; emailVerified: boolean; activeOwners: number },
+): string | null {
+  if (!ctx.emailVerified) return "Verify your email before managing members.";
+  if (action === "deactivate" && member.user_id === ctx.actorId) return "You cannot deactivate your own account.";
+  if (action === "reset" && member.user_id === ctx.actorId) return "Reset your own 2FA from your account settings.";
+  if (member.role === "owner" && ctx.actorRole !== "owner") {
+    return action === "reset" ? "Only an owner can reset an owner's 2FA." : `Only an owner can ${action} an owner.`;
+  }
+  if (!canManageMembership(ctx.actorRole, member.role, "")) return "You cannot manage this member.";
+  if (action === "deactivate") {
+    if (member.status !== "active") return "Already deactivated.";
+    if (member.role === "owner" && ctx.activeOwners <= 1) return "An organization must always have at least one owner.";
+  }
+  if (action === "reactivate") {
+    if (member.status === "active") return "Already active.";
+    if (member.deactivated_by === "directory") return "Directory sync deactivated this person. Re-enable them in your identity provider; the next sync restores their access.";
+    if (member.deactivated_by === "other_organization") return "Another organization on this server deactivated this person. Ask a deployment administrator.";
+  }
+  if (action === "reset" && member.status !== "active") return "Reactivate this person before resetting their 2FA.";
+  return null;
 }

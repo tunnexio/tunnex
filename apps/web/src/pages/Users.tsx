@@ -4,7 +4,7 @@ import { api, apiErrorCode, apiErrorMessage, loadOne, type Device, type Member, 
 import { useOrg } from "../lib/useOrg";
 import { useAuth } from "../lib/auth";
 import { can, canManageMembership, HUMAN_ROLES } from "../lib/rbac";
-import { deviceCountFor, deviceCountLabel, deactivationImpactCopy, rosterShape } from "../lib/usersview";
+import { accountActionBlocked, activeOwnerCount, deviceCountFor, deviceCountLabel, deactivationImpactCopy, rosterShape } from "../lib/usersview";
 import { canResend, canRevoke, invitationState, inviteErrorCopy, inviteGate, inviterLabel, orderInvitations, outstandingCount, REVOKED_CAUSE_NOTE, stateLabel, type Invitation } from "../lib/invitationview";
 import { Button, ErrorText, Field, Input, Loading, Modal, RefreshButton, Select } from "../components/ui";
 import { UsersTabRail } from "../components/WorkspaceTabs";
@@ -14,6 +14,8 @@ import { LoadRetry } from "../components/LoadRetry";
 import { OneTimeSecretModal } from "../components/OneTimeSecret";
 import AppAccessPagination from "../components/AppAccessPagination";
 import AppAccessRowMenu, { type AppAccessRowMenuAction } from "../components/AppAccessRowMenu";
+import { InlineTerminalMfa } from "../components/InlineTerminalMfa";
+import { isStepUpCode, STEP_UP_MFA, stepUpBody, StepUpPassword, type StepUpNeeds } from "../components/StepUp";
 import "../network-workspaces.css";
 import "../app-access-workspace.css";
 import "../users-workspace.css";
@@ -64,6 +66,11 @@ function UsersWorkspace({ view }: { view: View }) {
   const [inviteError, setInviteError] = useState("");
   const [invitesLoading, setInvitesLoading] = useState(false);
   const [inviteConfirmation, setInviteConfirmation] = useState<{ kind: "resend" | "revoke"; row: Invitation } | null>(null);
+  // RBAC-0 D9: step-up state for deactivate / 2FA reset / role changes.
+  const stepUpNeeds = state.status === "authed" ? state.user.reauthentication : undefined;
+  const [stepUpPassword, setStepUpPassword] = useState("");
+  const [stepUpError, setStepUpError] = useState("");
+  const [stepUpMfa, setStepUpMfa] = useState<null | { action: string; retry: () => void }>(null);
   const alive = useRef(true), rosterRequest = useRef(0), devicesRequest = useRef(0), invitesRequest = useRef(0), locked = useRef(false), ready = useRef(false), roster = useRef<Member[]>([]);
   const titleRef = useRef<HTMLHeadingElement>(null), stageRef = useRef<HTMLHeadingElement>(null);
   useEffect(() => { alive.current = true; return () => { alive.current = false; ready.current = false; rosterRequest.current++; devicesRequest.current++; invitesRequest.current++; }; }, []);
@@ -72,8 +79,8 @@ function UsersWorkspace({ view }: { view: View }) {
     const roles = mine ? memberRoles(mine) : [];
     return roles.includes("owner") ? "owner" : roles.includes("admin") ? "admin" : mine?.role;
   }, [members, actorId]);
-  // Mirrors the backend CountOwners contract, including deactivated owner rows.
-  const ownerCount = members.filter(m => m.role === "owner").length;
+  // Mirrors the backend CountOwners contract: ACTIVE owners only (RBAC-0 D6).
+  const ownerCount = activeOwnerCount(members);
   const shape = rosterShape({ role: myRole, isEnterprise: false });
   const loadMembers = useCallback(async () => {
     if (!org) return;
@@ -120,19 +127,13 @@ function UsersWorkspace({ view }: { view: View }) {
   const inspectedDevices = devices?.filter(device => device.user_id === inspected?.user_id) ?? [];
   const blocked = busy || membersState !== "ready";
   function unavailable(kind: PersonAction, m: Member): string | null {
-    if (!emailVerified) return "Verify your email to manage accounts.";
-    if (!canManageMembership(myRole, m.role, "")) return "You cannot manage this member's role.";
-    if (kind !== "reactivate" && m.user_id === actorId) return kind === "reset" ? "Reset your own 2FA from your account settings." : "You cannot deactivate your own account.";
-    if (kind === "deactivate" && m.status !== "active") return "Already deactivated.";
-    if (kind === "deactivate" && m.role === "owner" && ownerCount <= 1) return "An organization must always have at least one owner.";
-    if (kind === "reactivate" && m.status === "active") return "Already active.";
-    return null;
+    return accountActionBlocked(m, kind, { actorId, actorRole: myRole, emailVerified, activeOwners: ownerCount });
   }
   function requestAction(kind: PersonAction, targets: Member[]) {
     if (blocked || locked.current || !ready.current || !targets.length || (kind === "reset" && targets.length !== 1)) return;
     const current = targets.map(m => roster.current.find(row => row.user_id === m.user_id));
     if (current.some(m => !m || unavailable(kind, m))) return;
-    setError(""); setNotice(""); setConfirmation({ kind, targets: current as Member[] });
+    setError(""); setNotice(""); setStepUpError(""); setStepUpMfa(null); setStepUpPassword(""); setConfirmation({ kind, targets: current as Member[] });
   }
   async function decide() {
     if (!org || !confirmation || locked.current || !ready.current) return;
@@ -140,35 +141,65 @@ function UsersWorkspace({ view }: { view: View }) {
     if (targets.some(target => { const current = roster.current.find(m => m.user_id === target.user_id); return !current || memberSignature(current) !== memberSignature(target) || unavailable(kind, current); })) {
       setConfirmation(null); setError("The roster changed. Review the current accounts before continuing."); return;
     }
-    locked.current = true; setBusy(true); setError("");
-    const outcomes = await Promise.all(targets.map(async target => {
+    locked.current = true; setBusy(true); setError(""); setStepUpError(""); setStepUpMfa(null);
+    // Sequential, so a step-up pauses the batch once instead of failing every request in parallel.
+    const failed: { target: Member; error: string }[] = [];
+    let succeeded = 0, paused: Member[] | null = null, pausedForMfa = false;
+    for (let i = 0; i < targets.length; i++) {
+      const target = targets[i];
       try {
-        const path = kind === "deactivate" ? "/api/v1/organizations/{orgId}/members/{userId}/deactivate" as const : kind === "reactivate" ? "/api/v1/organizations/{orgId}/members/{userId}/reactivate" as const : "/api/v1/organizations/{orgId}/members/{userId}/mfa-reset" as const;
-        const result = await api.POST(path, { params: { path: { orgId: org.id, userId: target.user_id } } });
-        return { target, error: result.error ? apiErrorMessage(result.error, "Could not update the account.") : "" };
-      } catch { return { target, error: "Could not confirm the result. Refresh before trying again." }; }
-    }));
+        const params = { path: { orgId: org.id, userId: target.user_id } };
+        const body = stepUpBody(stepUpNeeds, stepUpPassword);
+        const result = kind === "deactivate"
+          ? await api.POST("/api/v1/organizations/{orgId}/members/{userId}/deactivate", { params, body })
+          : kind === "reset"
+            ? await api.POST("/api/v1/organizations/{orgId}/members/{userId}/mfa-reset", { params, body })
+            : await api.POST("/api/v1/organizations/{orgId}/members/{userId}/reactivate", { params });
+        if (!alive.current) return;
+        if (result.error) {
+          const code = apiErrorCode(result.error);
+          if (isStepUpCode(code)) {
+            paused = targets.slice(i); pausedForMfa = code === STEP_UP_MFA;
+            if (!pausedForMfa) setStepUpError(apiErrorMessage(result.error, "Confirm it is you to continue."));
+            break;
+          }
+          failed.push({ target, error: apiErrorMessage(result.error, "Could not update the account.") });
+        } else succeeded++;
+      } catch { failed.push({ target, error: "Could not confirm the result. Refresh before trying again." }); }
+    }
     if (!alive.current) return;
-    const failed = outcomes.filter(result => result.error);
-    const succeeded = outcomes.length - failed.length;
-    setConfirmation(null);
     setNotice(succeeded ? `${succeeded} ${succeeded === 1 ? "account" : "accounts"} ${kind === "reset" ? "had 2FA reset" : kind === "deactivate" ? "deactivated" : "reactivated"}.` : "");
     setError(failed.map(result => `${result.target.email}: ${result.error}`).join(" "));
+    if (paused) {
+      // Keep the dialog open on the accounts not yet updated; the person confirms it is them and continues.
+      setConfirmation({ kind, targets: paused });
+      if (pausedForMfa) setStepUpMfa({ action: kind === "reset" ? "Reset two-factor authentication" : "Deactivate accounts", retry: () => { setStepUpMfa(null); void decide(); } });
+    } else {
+      setConfirmation(null); setStepUpPassword("");
+    }
     await loadMembers();
     if (alive.current) { locked.current = false; setBusy(false); }
   }
-  async function changeRoles(target: Member, roles: Role[]) {
+  async function changeRoles(target: Member, roles: Role[], password = ""): Promise<boolean> {
     const current = roster.current.find(m => m.user_id === target.user_id);
-    if (!org || !current || locked.current || !ready.current || !emailVerified || memberSignature(current) !== memberSignature(target) || !roles.length || roles.some(role => !HUMAN_ROLES.includes(role) || !canManageMembership(myRole, current.role, role)) || (current.role === "owner" && ownerCount <= 1 && !roles.includes("owner"))) return;
-    locked.current = true; setBusy(true); setError(""); setNotice("");
+    if (!org || !current || locked.current || !ready.current || !emailVerified || memberSignature(current) !== memberSignature(target) || !roles.length || roles.some(role => !HUMAN_ROLES.includes(role) || !canManageMembership(myRole, current.role, role)) || (current.role === "owner" && ownerCount <= 1 && !roles.includes("owner"))) return false;
+    locked.current = true; setBusy(true); setError(""); setNotice(""); setStepUpError(""); setStepUpMfa(null);
+    let saved = false, pausedForMfa = false;
     try {
-      const result = await api.PUT("/api/v1/organizations/{orgId}/members/{userId}/roles", { params: { path: { orgId: org.id, userId: current.user_id } }, body: { roles } });
-      if (!alive.current) return;
-      if (result.error) setError(apiErrorMessage(result.error, "Could not change the roles.")); else setNotice("Roles updated.");
+      const result = await api.PUT("/api/v1/organizations/{orgId}/members/{userId}/roles", { params: { path: { orgId: org.id, userId: current.user_id } }, body: { roles, ...stepUpBody(stepUpNeeds, password) } });
+      if (!alive.current) return false;
+      if (result.error) {
+        const code = apiErrorCode(result.error);
+        if (code === STEP_UP_MFA) pausedForMfa = true;
+        else if (isStepUpCode(code)) setStepUpError(apiErrorMessage(result.error, "Confirm it is you to change roles."));
+        else setError(apiErrorMessage(result.error, "Could not change the roles."));
+      } else { setNotice("Roles updated."); saved = true; }
     } catch { if (alive.current) setError("Could not confirm the role update. Refresh before trying again."); }
-    if (!alive.current) return;
-    await loadMembers();
+    if (!alive.current) return false;
+    if (pausedForMfa) setStepUpMfa({ action: "Change roles", retry: () => { setStepUpMfa(null); void changeRoles(target, roles, password); } });
+    else await loadMembers();
     if (alive.current) { locked.current = false; setBusy(false); }
+    return saved;
   }
   async function decideInvitation() {
     if (!org || !inviteConfirmation || locked.current || blocked || !emailVerified || invitesLoading || inviteError || inviteGate(myRole).kind !== "ready") return;
@@ -185,7 +216,9 @@ function UsersWorkspace({ view }: { view: View }) {
     setInviteConfirmation(null); await loadInvites();
     if (alive.current) { locked.current = false; setBusy(false); }
   }
-  const personActions = (m: Member): AppAccessRowMenuAction[] => !emailVerified || !canManageMembership(myRole, m.role, "") || m.user_id === actorId ? [] : [
+  // RBAC-0: actions stay visible with the reason they are unavailable (e.g. an admin looking at an owner),
+  // rather than disappearing without explanation. Your own row has no account actions.
+  const personActions = (m: Member): AppAccessRowMenuAction[] => m.user_id === actorId ? [] : [
     { key: m.status === "active" ? "deactivate" : "reactivate", label: m.status === "active" ? "Deactivate" : "Reactivate", danger: m.status === "active", disabledReason: blocked ? "Wait for the roster to finish loading." : unavailable(m.status === "active" ? "deactivate" : "reactivate", m), onSelect: () => requestAction(m.status === "active" ? "deactivate" : "reactivate", [m]) },
     { key: "reset", label: "Reset 2FA", disabledReason: blocked ? "Wait for the current operation." : unavailable("reset", m), onSelect: () => requestAction("reset", [m]) },
   ];
@@ -206,7 +239,7 @@ function UsersWorkspace({ view }: { view: View }) {
       <div className="user-detail-layout"><nav aria-label="Person detail sections" className="user-detail-path">{(["overview", "roles", ...(shape.showDeviceCount ? ["devices"] : [])] as Stage[]).map(item => <button key={item} type="button" disabled={busy} aria-current={stage === item ? "step" : undefined} onClick={() => changeStage(item)}>{item[0].toUpperCase() + item.slice(1)}</button>)}</nav>
         <div className="user-detail-stage">
           {stage === "overview" && <ResourceSummary title="Account details" headingRef={stageRef} footer={backToPeople}><UserFacts summary rows={[["Email", inspected.email], ["Account", memberState(inspected)], ["Email verified", inspected.email_verified ? "Verified" : "Unverified"], ["Joined", dateLabel(inspected.joined_at)], ["Roles", memberRoles(inspected).join(" + ")]]} /></ResourceSummary>}
-          {stage === "roles" && <PersonRoles key={inspected.user_id + ":" + memberRoles(inspected).join(",") + ":" + myRole + ":" + emailVerified} member={inspected} actorRole={myRole} editable={emailVerified && canManageMembership(myRole, inspected.role, "")} soleOwner={inspected.role === "owner" && ownerCount <= 1} busy={busy} headingRef={stageRef} backAction={backToPeople} onSave={roles => changeRoles(inspected, roles)} />}
+          {stage === "roles" && <PersonRoles key={inspected.user_id + ":" + memberRoles(inspected).join(",") + ":" + myRole + ":" + emailVerified} member={inspected} actorRole={myRole} editable={emailVerified && canManageMembership(myRole, inspected.role, "")} lockedReason={!emailVerified ? "Verify your email before changing roles." : inspected.role === "owner" && myRole !== "owner" ? "Only an owner can change an owner's roles." : !canManageMembership(myRole, inspected.role, "") ? "You cannot change this member's roles." : null} soleOwner={inspected.role === "owner" && inspected.status === "active" && ownerCount <= 1} busy={busy} headingRef={stageRef} backAction={backToPeople} needs={stepUpNeeds} stepUp={stepUpMfa && !confirmation ? <InlineTerminalMfa action={stepUpMfa.action} freshnessSeconds={300} onVerified={stepUpMfa.retry} onCancel={() => setStepUpMfa(null)} /> : null} stepUpError={confirmation ? "" : stepUpError} onSave={(roles, password) => changeRoles(inspected, roles, password)} />}
           {stage === "devices" && shape.showDeviceCount && <ResourceSummary title="Devices" headingRef={stageRef} description="Devices enrolled by this person in this organization." footer={<>{backToPeople}{!devicesLoading && !deviceError && devices && <Link className="user-text-link" to="/devices">Open device inventory</Link>}</>}>
             {devicesLoading ? <Loading label="Loading devices…" /> : deviceError ? <LoadRetry error={deviceError} onRetry={() => void loadDevices()} /> : devices ? <><p className="user-stage-meta">{deviceCountLabel(deviceCountFor({ role: myRole, devices, userId: inspected.user_id }))}</p>{inspectedDevices.length ? <ul className="user-device-list" aria-label={`Devices for ${inspected.email}`}>{inspectedDevices.map(device => <li key={device.id}><span className="user-device-name">{device.name}</span><span className="user-device-state">{device.status}</span></li>)}</ul> : <div className="user-device-empty"><h4>No devices enrolled</h4><p>This person has no devices in this organization.</p></div>}</> : <p className="user-stage-meta" role="status">Device counts could not load.</p>}
           </ResourceSummary>}
@@ -217,11 +250,15 @@ function UsersWorkspace({ view }: { view: View }) {
       {invitesLoading ? <Loading label="Loading invitations…" /> : inviteError ? <LoadRetry error={inviteError} onRetry={() => void loadInvites()} /> : invites && <InvitationsInventory rows={invites} busy={blocked} emailVerified={emailVerified} actorRole={myRole} onAction={(kind, row) => { if (!blocked && !locked.current) setInviteConfirmation({ kind, row }); }} onInvite={emailVerified ? () => setInviteOpen(true) : undefined} />}
     </>)}
     {inviteOpen && org && membersState === "ready" && emailVerified && can(myRole, "member:invite") && <InviteForm key={`${org.id}:${myRole}:${emailVerified}`} orgId={org.id} actorRole={myRole} onInvited={() => void loadInvites()} onDismiss={() => setInviteOpen(false)} />}
-    {confirmation && <Modal title={confirmation.kind === "reset" ? "Reset two-factor authentication" : `${confirmation.kind === "deactivate" ? "Deactivate" : "Reactivate"} ${confirmation.targets.length === 1 ? "account" : "accounts"}?`} danger={confirmation.kind !== "reactivate"} placement="right" size="enrollment" onDismiss={() => { if (!busy) setConfirmation(null); }} actions={<><Button variant="ghost" disabled={busy} onClick={() => setConfirmation(null)}>Cancel</Button><Button variant={confirmation.kind === "reactivate" ? "primary" : "danger"} disabled={busy || !ready.current} onClick={() => void decide()}>{busy ? "Updating…" : confirmation.kind === "reset" ? "Reset 2FA" : confirmation.kind === "deactivate" ? "Deactivate" : "Reactivate"}</Button></>}><div className="user-account-confirm">
+    {confirmation && <Modal title={confirmation.kind === "reset" ? "Reset two-factor authentication" : `${confirmation.kind === "deactivate" ? "Deactivate" : "Reactivate"} ${confirmation.targets.length === 1 ? "account" : "accounts"}?`} danger={confirmation.kind !== "reactivate"} placement="right" size="enrollment" onDismiss={() => { if (!busy) setConfirmation(null); }} actions={<><Button variant="ghost" disabled={busy} onClick={() => setConfirmation(null)}>Cancel</Button><Button variant={confirmation.kind === "reactivate" ? "primary" : "danger"} disabled={busy || !ready.current} onClick={() => void decide()} title={confirmation.kind !== "reactivate" && stepUpNeeds?.password && !stepUpPassword ? "Enter your current password to continue." : undefined}>{busy ? "Updating…" : confirmation.kind === "reset" ? "Reset 2FA" : confirmation.kind === "deactivate" ? "Deactivate" : "Reactivate"}</Button></>}><div className="user-account-confirm">
       <p>{confirmation.kind === "reset" ? "Clear this person's 2FA and recovery codes. They must enroll again if your organization requires MFA. Email notification is best effort." : confirmation.kind === "deactivate" ? "Prevent these accounts from signing in and using organization resources." : "Restore sign-in for these accounts. Existing organization roles remain."}</p>
       <ul>{confirmation.targets.map(m => <li key={m.user_id}><strong>{m.name || m.email}</strong>{m.name && <span>{m.email}</span>}<span>{memberState(m)} · {memberRoles(m).join(" + ")}</span></li>)}</ul>
-      {confirmation.kind === "deactivate" && deactivationImpactCopy(confirmation.targets) && <div className="user-deactivation-impact" role="note"><strong>{confirmation.targets.reduce((n, m) => n + (m.machine_credentials ?? 0), 0)} machine credentials stop working. {confirmation.targets.reduce((n, m) => n + (m.managed_agent_delegations ?? 0), 0)} managed-agent delegations are withdrawn.</strong><p>This takes effect immediately across all organizations. Reactivating restores them; team assignments remain.</p></div>}
+      {confirmation.kind === "deactivate" && deactivationImpactCopy(confirmation.targets) && <div className="user-deactivation-impact" role="note"><strong>Up to {confirmation.targets.reduce((n, m) => n + (m.machine_credentials ?? 0), 0)} machine credentials stop working. {confirmation.targets.reduce((n, m) => n + (m.managed_agent_delegations ?? 0), 0)} managed-agent delegations are withdrawn.</strong><p>This takes effect immediately. Reactivating restores them; team assignments remain.</p></div>}
+      {confirmation.kind === "deactivate" && <p>If someone also belongs to other organizations on this server, only their access to this organization is removed.</p>}
       {confirmation.kind === "reset" && <p>This resets enrollment only; it does not sign you in as them.</p>}
+      {confirmation.kind !== "reactivate" && <StepUpPassword needs={stepUpNeeds} value={stepUpPassword} onChange={setStepUpPassword} disabled={busy} action={confirmation.kind === "reset" ? "reset two-factor authentication" : "deactivate accounts"} />}
+      <ErrorText>{stepUpError}</ErrorText>
+      {stepUpMfa && <InlineTerminalMfa action={stepUpMfa.action} freshnessSeconds={300} onVerified={stepUpMfa.retry} onCancel={() => setStepUpMfa(null)} />}
     </div></Modal>}
     {inviteConfirmation && <Modal title={inviteConfirmation.kind === "resend" ? "Renew invitation?" : "Revoke invitation?"} danger={inviteConfirmation.kind === "revoke"} placement="right" size="enrollment" onDismiss={() => { if (!busy) setInviteConfirmation(null); }} actions={<><Button variant="ghost" disabled={busy} onClick={() => setInviteConfirmation(null)}>Cancel</Button><Button variant={inviteConfirmation.kind === "revoke" ? "danger" : "primary"} disabled={busy} onClick={() => void decideInvitation()}>{busy ? "Updating…" : inviteConfirmation.kind === "resend" ? "Resend invitation" : "Revoke invitation"}</Button></>}><div className="user-account-confirm"><strong>{inviteConfirmation.row.email}</strong><UserFacts rows={[["Starting role", inviteConfirmation.row.role], ["Current state", stateLabel(invitationState(inviteConfirmation.row, new Date()))]]} /><p>{inviteConfirmation.kind === "resend" ? "Create a new invitation token and invalidate the previous link. Delivery follows this installation's email configuration." : "Invalidate the pending invitation link. An accepted membership is unaffected."}</p></div></Modal>}
   </div>;
@@ -229,12 +266,16 @@ function UsersWorkspace({ view }: { view: View }) {
 
 function UserFacts({ rows, summary = false }: { rows: Array<[string, ReactNode]>; summary?: boolean }) { return <dl className={summary ? "user-facts tnx-resource-facts tnx-resource-facts-three" : "user-facts"}>{rows.map(([label, value]) => <div key={label}><dt>{label}</dt><dd>{value}</dd></div>)}</dl>; }
 
-function PersonRoles({ member, actorRole, editable, soleOwner, busy, headingRef, backAction, onSave }: { member: Member; actorRole: Role | undefined; editable: boolean; soleOwner: boolean; busy: boolean; headingRef: Ref<HTMLHeadingElement>; backAction: ReactNode; onSave: (roles: Role[]) => Promise<void> }) {
-  const saved = memberRoles(member), [selected, setSelected] = useState<Role[]>(saved);
+function PersonRoles({ member, actorRole, editable, lockedReason, soleOwner, busy, headingRef, backAction, needs, stepUp, stepUpError, onSave }: { member: Member; actorRole: Role | undefined; editable: boolean; lockedReason: string | null; soleOwner: boolean; busy: boolean; headingRef: Ref<HTMLHeadingElement>; backAction: ReactNode; needs: StepUpNeeds | undefined; stepUp: ReactNode; stepUpError: string; onSave: (roles: Role[], password: string) => Promise<boolean> }) {
+  const saved = memberRoles(member), [selected, setSelected] = useState<Role[]>(saved), [password, setPassword] = useState("");
   const options = editable ? HUMAN_ROLES.filter(role => canManageMembership(actorRole, member.role, role)) : saved;
   const unchanged = selected.length === saved.length && saved.every(role => selected.includes(role));
-  return <ResourceSummary title="Roles" headingRef={headingRef} description="Roles control administration. Resource access comes from policies and group grants." footer={<>{backAction}{editable && <div className="user-role-actions">{!unchanged && <Button variant="ghost" disabled={busy} onClick={() => setSelected(saved)}>Discard changes</Button>}<Button disabled={busy || unchanged || !selected.length} onClick={() => void onSave(selected)}>{busy ? "Saving…" : "Save roles"}</Button></div>}</>}>
-    <div className="user-role-editor" data-editable={editable}><fieldset disabled={busy}><legend className="sr-only">Roles for {member.email}</legend>{options.map(role => <label key={role} className="user-role-option" data-selected={selected.includes(role)}>{editable && <input type="checkbox" aria-label={role} checked={selected.includes(role)} disabled={soleOwner && role === "owner"} title={soleOwner && role === "owner" ? "An organization must always have at least one owner." : undefined} onChange={event => setSelected(current => event.target.checked ? [...current, role] : current.filter(value => value !== role))} />}<span><strong>{role}</strong><small>{roleHelp[role]}</small></span>{saved.includes(role) && <em>Assigned</em>}</label>)}</fieldset>{soleOwner && editable && <p className="user-role-note">Keep at least one owner.</p>}</div>
+  return <ResourceSummary title="Roles" headingRef={headingRef} description="Roles control administration. Resource access comes from policies and group grants." footer={<>{backAction}{editable && <div className="user-role-actions">{!unchanged && <Button variant="ghost" disabled={busy} onClick={() => setSelected(saved)}>Discard changes</Button>}<Button disabled={busy || unchanged || !selected.length || (!!needs?.password && !password) || needs?.available === false} onClick={() => void onSave(selected, password).then(ok => { if (ok) setPassword(""); })}>{busy ? "Saving…" : "Save roles"}</Button></div>}</>}>
+    <div className="user-role-editor" data-editable={editable}><fieldset disabled={busy}><legend className="sr-only">Roles for {member.email}</legend>{options.map(role => <label key={role} className="user-role-option" data-selected={selected.includes(role)}>{editable && <input type="checkbox" aria-label={role} checked={selected.includes(role)} disabled={soleOwner && role === "owner"} title={soleOwner && role === "owner" ? "An organization must always have at least one owner." : undefined} onChange={event => setSelected(current => event.target.checked ? [...current, role] : current.filter(value => value !== role))} />}<span><strong>{role}</strong><small>{roleHelp[role]}</small></span>{saved.includes(role) && <em>Assigned</em>}</label>)}</fieldset>{soleOwner && editable && <p className="user-role-note">Keep at least one owner.</p>}{!editable && lockedReason && <p className="user-role-note">{lockedReason}</p>}
+      {editable && !unchanged && <StepUpPassword needs={needs} value={password} onChange={setPassword} disabled={busy} action="change roles" />}
+      <ErrorText>{stepUpError}</ErrorText>
+      {stepUp}
+    </div>
   </ResourceSummary>;
 }
 
@@ -256,7 +297,7 @@ function InvitationsInventory({ rows, busy, emailVerified, actorRole, onAction, 
 // The API is enumeration-resistant: invite creation is never a claim that the address was a new account.
 function InviteForm({ orgId, actorRole, onInvited, onDismiss }: { orgId: string; actorRole: Role | undefined; onInvited: () => void; onDismiss: () => void }) {
   const [email, setEmail] = useState(""), [role, setRole] = useState<Role>("member"), [busy, setBusy] = useState(false), [inviteLink, setInviteLink] = useState<string | null>(null), [err, setErr] = useState("");
-  const [mailOn, setMailOn] = useState<boolean | null>(null), [delivered, setDelivered] = useState<boolean | null>(null);
+  const [mailOn, setMailOn] = useState<boolean | null>(null), [delivered, setDelivered] = useState<boolean | null>(null), [emailedTo, setEmailedTo] = useState<string | null>(null);
   const alive = useRef(true), locked = useRef(false);
   useEffect(() => { alive.current = true; void api.GET("/api/v1/meta").then(({ data }) => { if (alive.current && typeof data?.smtp_configured === "boolean") setMailOn(data.smtp_configured); }).catch(() => {}); return () => { alive.current = false; }; }, []);
   async function submit(event: FormEvent) {
@@ -266,12 +307,16 @@ function InviteForm({ orgId, actorRole, onInvited, onDismiss }: { orgId: string;
     try {
       const result = await api.POST("/api/v1/organizations/{orgId}/invitations", { params: { path: { orgId } }, body: { email, role } });
       if (!alive.current) return;
-      if (result.error || !result.data || typeof result.data.invite_token !== "string" || !result.data.invite_token) { setErr(result.error ? apiErrorMessage(result.error, "Could not create the invitation.") : "Could not confirm the invitation link. Refresh the invitation list before trying again."); return; }
+      if (result.error || !result.data) { setErr(result.error ? apiErrorMessage(result.error, "Could not create the invitation.") : "Could not confirm the invitation. Refresh the invitation list before trying again."); return; }
+      // RBAC-0 D1: the link comes back only when the email did NOT leave; a delivered invitation is in the inbox.
+      if (result.data.delivered === true && !result.data.invite_token) { setEmailedTo(email.trim()); setEmail(""); onInvited(); return; }
+      if (typeof result.data.invite_token !== "string" || !result.data.invite_token) { setErr("Could not confirm the invitation link. Refresh the invitation list before trying again."); return; }
       setDelivered(typeof result.data.delivered === "boolean" ? result.data.delivered : null);
       setInviteLink(`${window.location.origin}/accept-invite?token=${result.data.invite_token}`); setEmail(""); onInvited();
     } catch { if (alive.current) setErr("Could not confirm the invitation. Refresh before trying again."); }
     finally { if (alive.current) { locked.current = false; setBusy(false); } }
   }
+  if (emailedTo) return <Modal title="Invitation emailed" placement="right" size="enrollment" onDismiss={onDismiss} actions={<Button onClick={onDismiss}>Done</Button>}><div className="user-invite-editor"><p role="status">An invitation was emailed to <strong>{emailedTo}</strong>. The link is only in their inbox; it expires in 7 days.</p><p className="user-stage-meta">If it doesn't arrive, revoke the invitation and invite them again.</p></div></Modal>;
   if (inviteLink) return <OneTimeSecretModal title="Invitation link" caption={delivered === false ? "Email was not delivered. Copy this one-time link and share it securely." : delivered === true ? "An email was sent. You can also copy this one-time link and share it securely." : mailOn === false ? "Email delivery is not configured. Copy this one-time link and share it securely." : "Copy this one-time link and share it securely. Email delivery could not be confirmed."} secret={inviteLink} copyLabel="Copy link" onDismiss={() => { setInviteLink(null); onDismiss(); }} />;
   return <Modal title="Invite user" placement="right" size="enrollment" onDismiss={() => { if (!busy) onDismiss(); }} actions={<><Button variant="ghost" disabled={busy} onClick={onDismiss}>Cancel</Button><Button type="submit" form="invite-user-form" disabled={busy}>{busy ? "Creating…" : "Create invite"}</Button></>}><div className="user-invite-editor"><form id="invite-user-form" onSubmit={submit}><fieldset disabled={busy}><Field label="Email address"><Input type="email" value={email} onChange={event => setEmail(event.target.value)} required autoFocus placeholder="name@company.com" /></Field><Field label="Role"><Select aria-label="Role" value={role} onChange={event => setRole(event.target.value as Role)}>{HUMAN_ROLES.filter(value => canManageMembership(actorRole, "member", value)).map(value => <option key={value} value={value}>{value}</option>)}</Select></Field><p className="user-stage-meta">{roleHelp[role]}</p></fieldset></form>{mailOn === false && <p className="user-invite-warning">Email delivery is off. Copy the one-time link after creating the invitation.</p>}<ErrorText>{err}</ErrorText></div></Modal>;
 }

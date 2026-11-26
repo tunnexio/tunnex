@@ -125,8 +125,11 @@ describe("every password input declares what it is to the browser", () => {
     // capability is a re-authentication of the current credential, not the creation of a new one.
     // AA-EN-1 adds a fourth for the same reason: re-running a failed upgrade from the Upgrade Center.
     // VAULT-UX-1 adds a fifth: re-entering the existing password to open a shared Vault credential.
+    // RBAC-0 adds a sixth: the shared step-up field for role changes, deactivation, 2FA reset and
+    // machine credentials — a re-authentication of the current credential.
     expect(current.sort()).toEqual([
       "src/components/ServerAccessInstallationSettings.tsx",
+      "src/components/StepUp.tsx",
       "src/components/UpgradeCenter.tsx",
       "src/pages/ChangePassword.tsx",
       "src/pages/Login.tsx",
