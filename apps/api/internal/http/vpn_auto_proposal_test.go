@@ -152,12 +152,18 @@ func TestProposalVPNHTTPChannelPolicyAndReports(t *testing.T) {
 			t.Fatalf("status %d want %d/%s: %s", w.Code, want, code, w.Body.String())
 		}
 	}
-	check(403, "ai_https_required")
-	exec(`UPDATE server_ai_transport_settings SET allow_http=true,revision=revision+1 WHERE singleton`)
+	// A new installation allows HTTP inside the VPN while public HTTP stays off.
 	// The intentionally incomplete body reaches normal adapter validation only when policy permits.
 	check(400, "")
-	exec(`UPDATE server_ai_transport_settings SET allow_http=false,revision=revision+1 WHERE singleton`)
-	check(403, "ai_https_required")
+	exec(`UPDATE server_ai_transport_settings SET allow_vpn_http=false,revision=revision+1 WHERE singleton`)
+	check(403, "ai_vpn_http_disabled")
+	// The public switch does not open the relay route.
+	exec(`UPDATE server_ai_transport_settings SET allow_http=true,revision=revision+1 WHERE singleton`)
+	check(403, "ai_vpn_http_disabled")
+	exec(`UPDATE server_ai_transport_settings SET allow_http=false,allow_vpn_http=true,revision=revision+1 WHERE singleton`)
+	check(400, "")
+	exec(`UPDATE server_ai_transport_settings SET allow_vpn_http=false,revision=revision+1 WHERE singleton`)
+	check(403, "ai_vpn_http_disabled")
 	channel.SetVPNHTTPTransport(nil)
 	check(503, "ai_transport_settings_unavailable")
 	channel.SetVPNHTTPTransport(&aiTransportStub{failure: errors.New("fixture unavailable")})
@@ -212,7 +218,7 @@ func TestProposalVPNHTTPChannelPolicyAndReports(t *testing.T) {
 	if w := call("/agent/report", `{"public_key":"`+pk+`","ai_vpn_http_ready":true,"ai_vpn_http_address":"10.99.0.1"}`, true); w.Code != 204 {
 		t.Fatal("ready report failed")
 	}
-	exec(`UPDATE server_ai_transport_settings SET allow_http=true,revision=revision+1 WHERE singleton`)
+	exec(`UPDATE server_ai_transport_settings SET allow_vpn_http=true,revision=revision+1 WHERE singleton`)
 	if w := call(route, chat, true); w.Code != 200 || !strings.Contains(w.Body.String(), "VPN fixture success") {
 		t.Fatalf("valid inference %d: %s", w.Code, w.Body.String())
 	}
@@ -235,9 +241,9 @@ func TestProposalVPNHTTPChannelPolicyAndReports(t *testing.T) {
 		t.Fatalf("revoked grant status %d", w.Code)
 	}
 	exec(`INSERT INTO group_members(org_id,group_id,user_id) VALUES($1,$2,$3)`, org, group, user)
-	exec(`UPDATE server_ai_transport_settings SET allow_http=false,revision=revision+1 WHERE singleton`)
-	if w := call(route, chat, true); w.Code != 403 || !strings.Contains(w.Body.String(), "ai_https_required") {
-		t.Fatalf("current HTTP OFF ignored: %d", w.Code)
+	exec(`UPDATE server_ai_transport_settings SET allow_vpn_http=false,revision=revision+1 WHERE singleton`)
+	if w := call(route, chat, true); w.Code != 403 || !strings.Contains(w.Body.String(), "ai_vpn_http_disabled") {
+		t.Fatalf("current VPN HTTP OFF ignored: %d", w.Code)
 	}
 	if arrivals.Load() != 2 {
 		t.Fatal("denied request reached fixture engine")
@@ -256,8 +262,11 @@ func TestProposalVPNMetadataHTTPPolicy(t *testing.T) {
 		reason   string
 	}{
 		{nil, "transport_unavailable"}, {&aiTransportStub{failure: errors.New("read failed")}, "transport_unavailable"},
-		{&aiTransportStub{value: aitransport.Settings{AllowHTTP: false}}, "http_disabled"},
-		{&aiTransportStub{value: aitransport.Settings{AllowHTTP: true}}, "gateway_not_ready"},
+		{&aiTransportStub{value: aitransport.Settings{AllowVPNHTTP: false}}, "http_disabled"},
+		// Public HTTP alone never advertises the VPN endpoint.
+		{&aiTransportStub{value: aitransport.Settings{AllowHTTP: true, AllowVPNHTTP: false}}, "http_disabled"},
+		{&aiTransportStub{value: aitransport.Settings{AllowVPNHTTP: true}}, "gateway_not_ready"},
+		{&aiTransportStub{value: aitransport.Settings{AllowHTTP: true, AllowVPNHTTP: true}}, "gateway_not_ready"},
 	} {
 		server.aiTransport = tc.settings
 		url, reason := server.userVPNEndpoint(context.Background(), uuid.New(), uuid.New())

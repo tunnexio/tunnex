@@ -2985,10 +2985,11 @@ type ServerAccessSetting struct {
 }
 
 type ServerAiTransportSetting struct {
-	Singleton bool      `json:"singleton"`
-	AllowHttp bool      `json:"allow_http"`
-	Revision  int64     `json:"revision"`
-	UpdatedAt time.Time `json:"updated_at"`
+	Singleton    bool      `json:"singleton"`
+	AllowHttp    bool      `json:"allow_http"`
+	Revision     int64     `json:"revision"`
+	UpdatedAt    time.Time `json:"updated_at"`
+	AllowVpnHttp bool      `json:"allow_vpn_http"`
 }
 
 type ServerEmailSetting struct {

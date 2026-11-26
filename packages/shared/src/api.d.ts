@@ -4920,7 +4920,7 @@ export interface paths {
         get: operations["getAITransportSettings"];
         /**
          * Set deployment-wide HTTP access for AI with a revision precondition
-         * @description Explicitly permits AI credential management and inference over HTTP, including public HTTP. Does not bypass authentication, organization permissions or provider TLS validation.
+         * @description Saves two independent switches. allow_vpn_http covers only the gateway relay route inside the WireGuard VPN. allow_http explicitly permits AI credential management and inference over public HTTP. Neither bypasses authentication, organization permissions or provider TLS validation.
          */
         put: operations["updateAITransportSettings"];
         post?: never;
@@ -9385,7 +9385,7 @@ export interface components {
             /** @description Private chat endpoint for an owned active WireGuard device. Automatic HTTP uses /ai/v1 for a user with one live organization membership and an organization-scoped URL otherwise. Configured TLS ingress remains supported. Does not assert current client connectivity. */
             vpn_base_url?: string;
             /**
-             * @description Why VPN SDK chat access is not currently advertised. No public endpoint or application token fallback is implied.
+             * @description Why VPN SDK chat access is not currently advertised. http_disabled means the server-wide allow_vpn_http switch is off; the public allow_http switch does not affect it. No public endpoint or application token fallback is implied.
              * @enum {string}
              */
             vpn_unavailable_reason?: "deployment_disabled" | "http_disabled" | "transport_unavailable" | "gateway_not_ready" | "operation_unsupported";
@@ -9822,8 +9822,10 @@ export interface components {
             unavailable_reason?: "https_required" | "engine_not_configured";
         };
         AITransportSettings: {
-            /** @description Permit AI access over HTTP. Defaults to false. HTTPS remains available regardless of this setting. */
+            /** @description Permit AI access over public HTTP: credential management, workload tokens and inference on the control plane's own HTTP endpoints. Defaults to false. Does not affect the gateway relay route inside the VPN. HTTPS remains available regardless of this setting. */
             allow_http: boolean;
+            /** @description Permit HTTP inside the WireGuard VPN: only the gateway relay route and the member VPN endpoint it advertises. Defaults to true. Never permits public HTTP. HTTPS remains available regardless of this setting. */
+            allow_vpn_http: boolean;
             /**
              * Format: int64
              * @description Current saved revision; required unchanged when saving.
@@ -21870,7 +21872,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Saved HTTP policy; HTTPS access is always allowed. */
+            /** @description Saved HTTP policy for the VPN relay route and for public endpoints; HTTPS access is always allowed. */
             200: {
                 headers: {
                     "X-Request-Id": components["headers"]["RequestId"];

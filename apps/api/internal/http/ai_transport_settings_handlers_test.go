@@ -35,7 +35,7 @@ func (s *aiTransportStub) Save(_ context.Context, actor uuid.UUID, in aitranspor
 	if s.failure != nil {
 		return aitransport.Settings{}, s.failure
 	}
-	s.value = aitransport.Settings{AllowHTTP: in.AllowHTTP, Revision: in.Revision + 1}
+	s.value = aitransport.Settings{AllowHTTP: in.AllowHTTP, AllowVPNHTTP: in.AllowVPNHTTP, Revision: in.Revision + 1}
 	return s.value, nil
 }
 
@@ -64,6 +64,22 @@ func TestAITransportRequiresVerifiedServerAdministrator(t *testing.T) {
 	response, err := server.UpdateAITransportSettings(ctx, api.UpdateAITransportSettingsRequestObject{Body: &api.AITransportSettings{AllowHttp: true, Revision: 1}})
 	if err != nil || stub.actor != p.UserID || !response.(api.UpdateAITransportSettings200JSONResponse).Body.AllowHttp {
 		t.Fatal("admin save failed", err)
+	}
+	// Each switch is passed through and reported on its own.
+	for _, tc := range []struct{ public, vpn bool }{{false, true}, {true, false}, {true, true}, {false, false}} {
+		stub.value = aitransport.Settings{Revision: 4}
+		response, err = server.UpdateAITransportSettings(ctx, api.UpdateAITransportSettingsRequestObject{Body: &api.AITransportSettings{AllowHttp: tc.public, AllowVpnHttp: tc.vpn, Revision: 4}})
+		saved := response.(api.UpdateAITransportSettings200JSONResponse).Body
+		if err != nil || saved.AllowHttp != tc.public || saved.AllowVpnHttp != tc.vpn || saved.Revision != 5 {
+			t.Fatalf("save %+v returned %+v: %v", tc, saved, err)
+		}
+		if stub.value.AllowHTTP != tc.public || stub.value.AllowVPNHTTP != tc.vpn {
+			t.Fatalf("save %+v stored %+v", tc, stub.value)
+		}
+		read, err := server.GetAITransportSettings(ctx, api.GetAITransportSettingsRequestObject{})
+		if got := read.(api.GetAITransportSettings200JSONResponse).Body; err != nil || got != saved {
+			t.Fatalf("read %+v after saving %+v: %v", got, saved, err)
+		}
 	}
 	stub.failure = apierr.Conflict("ai_transport_settings_changed", "Reload")
 	if _, err = server.UpdateAITransportSettings(ctx, api.UpdateAITransportSettingsRequestObject{Body: &api.AITransportSettings{Revision: 1}}); err != stub.failure {
@@ -96,8 +112,10 @@ func TestAITransportCoversAllAIContracts(t *testing.T) {
 			}
 			tested++
 			t.Run(method+" "+path, func(t *testing.T) {
-				for _, allow := range []bool{false, true, false} {
+				for i, allow := range []bool{false, true, false} {
 					stub.value.AllowHTTP = allow
+					// The VPN switch never opens or closes a public path.
+					stub.value.AllowVPNHTTP = i != 1
 					before := calls
 					req := httptest.NewRequest(method, "http://console.example.test"+path, nil)
 					req.Header.Set("X-Forwarded-Proto", "https") // No trusted peer: cannot override native HTTP.
