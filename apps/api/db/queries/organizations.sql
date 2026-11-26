@@ -26,7 +26,7 @@ ORDER BY created_at;
 
 -- name: ListOrganizationsForUser :many
 SELECT o.* FROM organizations o
-JOIN memberships m ON m.org_id = o.id
+JOIN memberships m ON m.org_id = o.id AND m.access_revoked_at IS NULL -- RBAC-0: a deactivated org is not offered
 WHERE m.user_id = $1 AND o.deleted_at IS NULL
 ORDER BY o.created_at;
 

@@ -92,6 +92,10 @@ func TestRBAC0DeactivationIsOrgScopedForMultiOrgPeople(t *testing.T) {
 	if !o.hasAccess(t, b, multi) {
 		t.Fatal("deactivation in A removed access to B")
 	}
+	orgs, err := o.q.ListOrganizationsForUser(o.ctx, multi)
+	if err != nil || len(orgs) != 1 || orgs[0].ID != b {
+		t.Fatalf("org list after deactivation in A must offer only B: %v %v", len(orgs), err)
+	}
 	// Reactivating in A restores A, and only A.
 	if err := o.svc.ReactivateMember(o.ctx, actor, "owner", a, multi); err != nil {
 		t.Fatal(err)

@@ -83,7 +83,7 @@ JOIN sandboxes s ON s.id=b.sandbox_id AND s.org_id=b.org_id
 JOIN sandbox_templates t ON t.id=s.template_id AND t.org_id=s.org_id
 JOIN organizations o ON o.id=s.org_id AND o.deleted_at IS NULL AND o.zero_trust_mode='enforcing' AND ((o.sandboxes_enabled AND t.enabled) OR sandbox_qualification_trial_valid(s.id)) AND sandbox_qualification_trial_authority(s.id)
 JOIN users u ON u.id=s.creator_id AND u.status='active' AND u.deleted_at IS NULL AND u.email_verified_at IS NOT NULL AND NOT u.must_change_password
-JOIN memberships m ON m.org_id=s.org_id AND m.user_id=s.creator_id AND COALESCE(m.roles,ARRAY[m.role]) && ARRAY['member','admin','owner']::text[]
+JOIN memberships m ON m.org_id=s.org_id AND m.user_id=s.creator_id AND m.access_revoked_at IS NULL AND COALESCE(m.roles,ARRAY[m.role]) && ARRAY['member','admin','owner']::text[]
 JOIN nodes n ON n.id=b.gateway_node_id AND n.org_id=s.org_id AND n.status='active'
 WHERE b.token_hash=$1 AND b.consumed_at IS NULL AND b.expires_at>now()
  AND (s.local_terminal_gateway_id IS NULL OR s.local_terminal_gateway_id=b.gateway_node_id)
@@ -222,7 +222,7 @@ FROM sandboxes s
 LEFT JOIN sandbox_remote_terminal_routes r ON r.sandbox_id=s.id AND r.org_id=s.org_id
 JOIN sandbox_templates t ON t.id=s.template_id AND t.org_id=s.org_id
 JOIN organizations o ON o.id=s.org_id AND o.deleted_at IS NULL AND o.zero_trust_mode='enforcing' AND ((o.sandboxes_enabled AND t.enabled) OR sandbox_qualification_trial_valid(s.id)) AND sandbox_qualification_trial_authority(s.id)
-JOIN memberships m ON m.org_id=s.org_id AND m.user_id=s.creator_id AND COALESCE(m.roles,ARRAY[m.role]) && ARRAY['member','admin','owner']::text[]
+JOIN memberships m ON m.org_id=s.org_id AND m.user_id=s.creator_id AND m.access_revoked_at IS NULL AND COALESCE(m.roles,ARRAY[m.role]) && ARRAY['member','admin','owner']::text[]
 JOIN users u ON u.id=s.creator_id AND u.status='active' AND u.deleted_at IS NULL AND u.email_verified_at IS NOT NULL AND NOT u.must_change_password
 JOIN devices d ON d.id=s.peer_id AND d.org_id=s.org_id AND d.user_id=s.creator_id AND d.kind='sandbox'
 WHERE s.org_id=$1 AND s.desired_state='started' AND s.observed_state IN ('creating','starting','ready')

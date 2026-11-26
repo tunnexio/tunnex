@@ -382,8 +382,9 @@ type ListOrgMembersWithUserRow struct {
 // nothing in the product could tell an operator that BEFORE they clicked. A routine offboarding took down
 // a GitOps pipeline and the two acts were never connected.
 //
-// ⚠ COUNTED ACROSS EVERY ORGANIZATION, because deactivation is a deployment-wide act on a person. A count
-// scoped to this org would under-report the blast radius on the one screen that exists to state it.
+// ⚠ COUNTED ACROSS EVERY ORGANIZATION. Since RBAC-0 deactivation is account-wide only for a person in no
+// other organization; for anyone else it is org-scoped, so this count is an UPPER bound (the dialog says
+// "up to") — over-stating the blast radius is the safe direction on the screen that exists to state it.
 func (q *Queries) ListOrgMembersWithUser(ctx context.Context, orgID uuid.UUID) ([]ListOrgMembersWithUserRow, error) {
 	rows, err := q.db.Query(ctx, listOrgMembersWithUser, orgID)
 	if err != nil {
