@@ -3,6 +3,7 @@ import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/re
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import Beam, { BeamLaunch } from "../src/pages/Beam";
 import { BeamFeedback, BeamNotifications } from "../src/components/BeamFeedback";
+import { AudiencePicker, beamGroupDetail } from "../src/components/BeamAudiencePicker";
 import { beamRoomsApi } from "../src/lib/beam-rooms";
 import { api } from "../src/lib/api";
 import { BEAM_SHARE_UNAVAILABLE, beamApi, type BeamPolicy, type BeamShare } from "../src/lib/beam";
@@ -201,5 +202,17 @@ describe("LS-UX-3 unavailable share is a status, not an error", () => {
     expect(sentence.getAttribute("role")).toBe("status");
     expect(screen.queryByRole("alert")).toBeNull();
     await waitFor(() => expect(screen.getByRole("button", { name: "Check again" })).toBeTruthy());
+  });
+});
+
+describe("LS-UX-3 reviewer group sizes", () => {
+  it("shows how many current members each reviewer group has, and only the word Group from older servers (U12)", async () => {
+    expect(beamGroupDetail(3)).toBe("Group · 3 members");
+    expect(beamGroupDetail(1)).toBe("Group · 1 member");
+    expect(beamGroupDetail(0)).toBe("Group · 0 members");
+    expect(beamGroupDetail(undefined)).toBe("Group");
+    render(<AudiencePicker audience={{ users: [], groups: [{ id: "g1", name: "Developers", member_count: 4 }, { id: "g2", name: "Design" }] }} grants={[]} onChange={() => undefined} disabled={false} />);
+    expect(screen.getByText("Group · 4 members")).toBeTruthy();
+    expect(screen.getByText("Group")).toBeTruthy();
   });
 });
