@@ -177,6 +177,11 @@ func ruleMatchesDevice(rule Rule, device Device, ownerGroups, agentGroups map[uu
 	if device.Kind == "sandbox" {
 		return rule.SrcKind == "sandbox" && rule.sandboxProjected && rule.SrcDeviceID == device.ID
 	}
+	// An agent is its own principal (AI-SEC-1): rules written for the person who
+	// enrolled it, or for that person's groups, do not reach it.
+	if device.Kind == "agent" && rule.SrcKind != "agent" && rule.SrcKind != "agent_group" {
+		return false
+	}
 	switch rule.SrcKind {
 	case "sandbox_terminal":
 		return rule.sandboxProjected && device.Kind == "human" && rule.SrcDeviceID == device.ID
