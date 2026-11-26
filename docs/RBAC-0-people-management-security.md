@@ -86,6 +86,9 @@ including directory sync (IdP deprovisioning) or another org.
 
 **Decisions.**
 
+0. **People act on active memberships only; sync may act on a retained one.** A person deactivating a
+   membership that is already revoked here gets `member_not_found`, which was the existing rule. Sync
+   may still act on a retained, revoked row, which is the existing directory flow.
 1. **Relational rules.** Deactivate and reactivate apply `CanManageMembership(actor, target, "")`:
    an admin cannot deactivate or reactivate an owner. Last-owner: deactivating an *active* owner is
    refused when they are the org's only active owner. The check runs inside the transaction under the
@@ -160,7 +163,11 @@ of *someone else's* device.
 
 **Decision.** One helper, `authorizeMutation(ctx, org, perm)`: `authorize` plus the verified-email
 rule even when the permission is a read. Machines stay exempt, as in `authorize`. It is applied to
-the mutations above. `CreateDevice` and `ExportOVPNProfile` move onto it with the same message.
+`UpdateDeviceMode`, `UpdateAgentProfile`, `CreateAgentAccessRequest` and
+`StartAgentMCPOAuthConnection`. Revoking or removing *someone else's* device now requires a verified
+email. `CreateDevice` and `ExportOVPNProfile` keep their existing in-handler check, which was already
+correct and carries a more specific message. The edition-order guard test recognises the new helper
+as a permission gate.
 **Deliberately not gated:** revoking or removing *your own* device, cancelling your own access
 request, and device health reports. These reduce your own access or report facts about your own
 device. Blocking them for an unverified account would make things less safe, because a lost laptop
@@ -250,6 +257,33 @@ role change without step-up.
   - Role changes, deactivation, MFA reset and machine-credential minting ask the admin to confirm it
     is them.
 - The GitOps operator needs no change: its permissions shrink to exactly the calls it makes.
+
+## Folded during the build
+
+- Accepting an invitation checks its state before sign-in. A consumed, revoked or expired invitation is
+  `invalid_invite`, and the sign-in check runs before the single-use transition. So a refused attempt
+  never consumes the invitation, even without a transaction.
+- When directory sync restores a membership, it also re-issues the OpenVPN certificates that the
+  deprovisioning revoked in that org. The restore goes through the `RestoreForSync` seam for every person
+  the directory lists as active. Only an `idp_sync` act is reversed. It is licence-gated.
+- The "renewed but not sent" resend message now tells the admin to revoke and re-invite to get a link.
+  The old message pointed at the invitations list, which never carries tokens.
+- The deactivation dialog states that a person in other organizations loses access to this one only. The
+  machine-credential number is now worded "up to", because the roster counts credentials across every
+  organization and an org-scoped deactivation stops only this org's credentials.
+
+## For the founder's disposition (decided provisionally, flagged)
+
+1. **No self-approval (D8) in a single-administrator org.** The sole owner cannot approve their own
+   agent's JIT request. They can still grant the access directly with a policy rule, which needs
+   `policy:manage`. If that friction is unwanted, the alternative is "self-approval allowed only when no
+   other approver exists", which weakens separation of duties.
+2. **Step-up needs a browser session (D9).** CLI bearer tokens can no longer change roles, deactivate,
+   reset MFA or mint machine credentials. Neither the CLI nor the operator does this today.
+3. **Sync now reactivates (D3.5).** A directory-deprovisioned person whom the directory lists as active
+   again is restored by sync. This replaces "an admin reactivates them", which could also reverse a
+   deprovisioning that was still current.
+4. **Reactivation has no step-up.** It was not in the requested list. It only reverses this org's own act.
 
 ## Deferred (named triggers)
 
