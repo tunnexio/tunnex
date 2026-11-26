@@ -39,3 +39,11 @@
 .tnx-modal-panel:has(.vault-quick-password) .tnx-modal-actions { margin-top:16px; padding-top:0; border-top:0; gap:20px; }
 .vault-quick-password { display:grid; gap:12px; }
 @media (max-width:700px) { .vault-credentials-table { min-width:850px; } .vault-form-grid,.vault-detail-facts { grid-template-columns:1fr; } .vault-history-table { min-width:450px; } }
+/* VAULT-UX-1: view switcher, step-up, quick discard confirmation. */
+.vault-views { display:flex; align-items:center; gap:20px; border-bottom:1px solid var(--tnx-border); }
+.vault-views button { color:var(--tnx-text-secondary); font-size:13px; padding:10px 0 12px; border-bottom:2px solid transparent; }
+.vault-views button[aria-pressed=true] { color:var(--tnx-text-primary); border-bottom-color:var(--tnx-focus); }
+.vault-stepup { display:grid; gap:10px; }
+.vault-confirm { display:grid; gap:8px; padding:12px 14px; border:1px solid var(--tnx-border); border-radius:6px; }
+.vault-readonly-title { color:var(--tnx-text-heading); font-size:14px; font-weight:550; }
+@media (max-width:640px) { .vault-views { gap:14px; overflow-x:auto; } .vault-form-grid,.vault-detail-facts { grid-template-columns:1fr; } }

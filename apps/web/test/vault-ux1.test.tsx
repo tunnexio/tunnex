@@ -107,7 +107,10 @@ describe("VAULT-UX-1", () => {
 
   it("keeps the title read-only for a recipient rotating a shared secret (V2)", async () => {
     show(); fireEvent.click(await screen.findByRole("button", { name: shared.title }));
-    fireEvent.click(within(screen.getByRole("dialog", { name: shared.title })).getByRole("button", { name: "Change secret" }));
+    const drawer = within(screen.getByRole("dialog", { name: shared.title }));
+    expect(drawer.queryByRole("button", { name: "Edit details" })).toBeNull();
+    expect(drawer.queryByRole("button", { name: "Delete credential" })).toBeNull();
+    fireEvent.click(drawer.getByRole("button", { name: "Change secret" }));
     const dialog = within(screen.getByRole("dialog", { name: "Change secret" }));
     expect(dialog.queryByLabelText("Title")).toBeNull();
     expect(dialog.getByText(shared.title)).toBeTruthy();
@@ -115,7 +118,6 @@ describe("VAULT-UX-1", () => {
     fireEvent.click(dialog.getByRole("button", { name: "Save new version" }));
     await waitFor(() => expect(mock.put).toHaveBeenCalled());
     expect(mock.put.mock.calls[0][1].body).not.toHaveProperty("title");
-    expect(within(screen.getByRole("dialog", { name: shared.title }) ?? document.body).queryByRole("button", { name: "Edit details" })).toBeNull();
   });
 
   it("edits details without a new version (V5)", async () => {

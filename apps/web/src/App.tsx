@@ -251,7 +251,7 @@ function ProductApp() {
             <Route path="/access/resources/fqdn/:resourceId" element={<FQDNResourceDetail />} />
             <Route path="/access/kubernetes-scopes" element={<AccessKubernetesScopes />} />
             <Route path="/users" element={<Users />} />
-            <Route path="/vault" element={<Vault />} />
+            <Route path="/vault" element={<AdminOnlyRoute to="/vault" page="Vault"><Vault /></AdminOnlyRoute>} />
             <Route path="/settings" element={<Settings />} />
             <Route path="/access-events" element={<AdminOnlyRoute to="/access-events" page="Access Events"><AccessEventsRoute /></AdminOnlyRoute>} />
             <Route path="/audit" element={<AuditLog />} />
