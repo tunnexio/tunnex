@@ -6,14 +6,37 @@ RETURNING *;
 -- name: GetAgentBootstrapToken :one
 -- lint:cross-org — the public redemption credential is an unguessable hash; org is learned from the token row.
 SELECT * FROM agent_bootstrap_tokens
-WHERE token_hash = $1 AND consumed_at IS NULL AND expires_at > now();
+WHERE token_hash = $1 AND consumed_at IS NULL AND revoked_at IS NULL AND expires_at > now();
 
 -- name: ConsumeAgentBootstrapToken :one
 -- lint:cross-org — the token hash is the public endpoint's credential and the row is locked before creation.
 UPDATE agent_bootstrap_tokens
 SET consumed_at = now(), consumed_device_id = $2
-WHERE token_hash = $1 AND consumed_at IS NULL AND expires_at > now()
+WHERE token_hash = $1 AND consumed_at IS NULL AND revoked_at IS NULL AND expires_at > now()
 RETURNING *;
+
+-- name: ListPendingAgentBootstrapTokens :many
+-- Pending means still redeemable: not used, not revoked, not expired. The
+-- token hash is deliberately not selected; a listing never carries the value.
+-- Tokens live for one hour, so the newest 200 is a bound, not a page.
+-- lint:allow-deleted — the issuer stays named after their account is removed; a live credential must remain attributable.
+SELECT t.id, t.agent_name, t.gateway_node_id, n.name AS gateway_name,
+       t.issued_by, u.email AS issued_by_email, t.created_at, t.expires_at
+FROM agent_bootstrap_tokens t
+JOIN nodes n ON n.id = t.gateway_node_id AND n.org_id = t.org_id
+LEFT JOIN users u ON u.id = t.issued_by
+WHERE t.org_id = $1 AND t.consumed_at IS NULL AND t.revoked_at IS NULL AND t.expires_at > now()
+ORDER BY t.created_at DESC, t.id DESC
+LIMIT 200;
+
+-- name: RevokeAgentBootstrapToken :one
+-- Only a pending token can be revoked. Redemption and revocation both update
+-- this row under its row lock, so exactly one of them wins.
+UPDATE agent_bootstrap_tokens
+SET revoked_at = now(), revoked_by = $3
+WHERE id = $1 AND org_id = $2
+  AND consumed_at IS NULL AND revoked_at IS NULL AND expires_at > now()
+RETURNING id, agent_name, gateway_node_id, expires_at;
 
 -- name: CreateAgentRuntimeCredential :one
 INSERT INTO agent_runtime_credentials (org_id, device_id, token_hash)

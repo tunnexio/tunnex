@@ -388,7 +388,9 @@ func (s *Service) findManagedHumanKeyReplay(ctx context.Context, in CreateInput)
 }
 
 // IssueAgentBootstrapToken creates a short-lived, single-use credential bound
-// to one org gateway. The raw value is returned exactly once.
+// to one org gateway. The raw value is returned exactly once. The audit row is
+// written in the same transaction as the token, so a live token always has a
+// record of who created it; neither the value nor its hash is ever audited.
 func (s *Service) IssueAgentBootstrapToken(ctx context.Context, actor, orgID, gatewayID uuid.UUID, name string) (string, error) {
 	if name == "" {
 		return "", apierr.BadRequest("invalid_request", "agent name is required")
@@ -407,14 +409,90 @@ func (s *Service) IssueAgentBootstrapToken(ctx context.Context, actor, orgID, ga
 		if n.Status != "active" {
 			return apierr.Conflict("gateway_not_ready", "the gateway is not active")
 		}
-		_, err = q.CreateAgentBootstrapToken(ctx, sqlc.CreateAgentBootstrapTokenParams{OrgID: orgID, GatewayNodeID: gatewayID, AgentName: name, TokenHash: h[:], ExpiresAt: time.Now().Add(time.Hour), IssuedBy: pgtype.UUID{Bytes: actor, Valid: actor != uuid.Nil}})
-		return err
+		tok, err := q.CreateAgentBootstrapToken(ctx, sqlc.CreateAgentBootstrapTokenParams{OrgID: orgID, GatewayNodeID: gatewayID, AgentName: name, TokenHash: h[:], ExpiresAt: time.Now().Add(time.Hour), IssuedBy: pgtype.UUID{Bytes: actor, Valid: actor != uuid.Nil}})
+		if err != nil {
+			return err
+		}
+		return audit(ctx, q, orgID, bootstrapTokenActor(actor), "agent.bootstrap_token_issued", "agent_bootstrap_token", tok.ID.String(),
+			bootstrapTokenAuditMetadata(tok.AgentName, tok.GatewayNodeID, tok.ExpiresAt))
 	})
 	returnIfErr := err
 	if returnIfErr != nil {
 		return "", returnIfErr
 	}
 	return raw, nil
+}
+
+// PendingAgentBootstrapToken describes a token that can still be redeemed. It
+// carries no token value and no hash: neither is recoverable after issuance.
+type PendingAgentBootstrapToken struct {
+	ID            uuid.UUID
+	AgentName     string
+	GatewayID     uuid.UUID
+	GatewayName   string
+	IssuedBy      *uuid.UUID
+	IssuedByEmail *string
+	IssuedAt      time.Time
+	ExpiresAt     time.Time
+}
+
+// ListPendingAgentBootstrapTokens returns the organization's tokens that are
+// neither used, revoked nor expired, newest first.
+func (s *Service) ListPendingAgentBootstrapTokens(ctx context.Context, orgID uuid.UUID) ([]PendingAgentBootstrapToken, error) {
+	rows, err := s.q.ListPendingAgentBootstrapTokens(ctx, orgID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]PendingAgentBootstrapToken, 0, len(rows))
+	for _, row := range rows {
+		item := PendingAgentBootstrapToken{
+			ID: row.ID, AgentName: row.AgentName, GatewayID: row.GatewayNodeID, GatewayName: row.GatewayName,
+			IssuedByEmail: row.IssuedByEmail, IssuedAt: row.CreatedAt, ExpiresAt: row.ExpiresAt,
+		}
+		if row.IssuedBy.Valid {
+			id := uuid.UUID(row.IssuedBy.Bytes)
+			item.IssuedBy = &id
+		}
+		out = append(out, item)
+	}
+	return out, nil
+}
+
+// RevokeAgentBootstrapToken makes a pending token unusable. Redemption filters
+// on revoked_at, so a revoked token is refused exactly like an expired one. A
+// token that is unknown, in another organization, or no longer pending gets
+// the same not-found answer and no audit row.
+func (s *Service) RevokeAgentBootstrapToken(ctx context.Context, actor, orgID, tokenID uuid.UUID) error {
+	return s.withTx(ctx, func(q *sqlc.Queries) error {
+		tok, err := q.RevokeAgentBootstrapToken(ctx, sqlc.RevokeAgentBootstrapTokenParams{
+			ID: tokenID, OrgID: orgID, RevokedBy: pgtype.UUID{Bytes: actor, Valid: actor != uuid.Nil},
+		})
+		if errors.Is(err, pgx.ErrNoRows) {
+			return apierr.NotFound("bootstrap_token_not_found", "this install token is no longer pending; it was already used, revoked, or has expired")
+		}
+		if err != nil {
+			return err
+		}
+		return audit(ctx, q, orgID, bootstrapTokenActor(actor), "agent.bootstrap_token_revoked", "agent_bootstrap_token", tok.ID.String(),
+			bootstrapTokenAuditMetadata(tok.AgentName, tok.GatewayNodeID, tok.ExpiresAt))
+	})
+}
+
+func bootstrapTokenActor(actor uuid.UUID) *uuid.UUID {
+	if actor == uuid.Nil {
+		return nil
+	}
+	return &actor
+}
+
+// bootstrapTokenAuditMetadata is the whole audited description of a token. It
+// takes no token value or hash, so neither can reach the audit trail.
+func bootstrapTokenAuditMetadata(agentName string, gatewayID uuid.UUID, expiresAt time.Time) map[string]any {
+	return map[string]any{
+		"agent_name": agentName,
+		"gateway_id": gatewayID.String(),
+		"expires_at": expiresAt.UTC().Format(time.RFC3339),
+	}
 }
 
 func hashBootstrapToken(raw string) []byte { h := sha256.Sum256([]byte(raw)); return h[:] }

@@ -58,6 +58,8 @@ export function OneTimeSecretModal({
   children,
   onDismiss,
   requireAck,
+  secretLabel,
+  extraSecret,
 }: {
   title: string;
   caption: ReactNode;
@@ -85,12 +87,41 @@ export function OneTimeSecretModal({
    * a user who has their codes and a user who needs an administrator.
    */
   requireAck?: string;
+  /** A short heading for the main secret, for a ceremony that shows two things. */
+  secretLabel?: string;
+  /**
+   * A second one-time value with its own Copy button, shown under the main one.
+   *
+   * It exists so a secret can be kept OUT of a command: the command is pasted into a shell, where it
+   * is recorded in history, and the secret is typed into the prompt that command opens. Copy and
+   * Download of the main value never include this one.
+   */
+  extraSecret?: { label: string; value: string; copyLabel: string; note: ReactNode };
 }) {
   const [copied, setCopied] = useState(false);
   const [copyFailed, setCopyFailed] = useState(false);
+  const [extraCopied, setExtraCopied] = useState(false);
+  const [extraCopyFailed, setExtraCopyFailed] = useState(false);
   // ⛔ THE ACKNOWLEDGEMENT GATE. Undefined `requireAck` keeps every existing caller unchanged; a
   // caller that opts in cannot be dismissed until the box is ticked.
   const [acked, setAcked] = useState(false);
+
+  async function copyExtra() {
+    if (!extraSecret) return;
+    try {
+      // Same secure-context fallback as copy() below.
+      if (navigator.clipboard?.writeText) {
+        await navigator.clipboard.writeText(extraSecret.value);
+      } else if (!legacyCopy(extraSecret.value)) {
+        throw new Error("clipboard unavailable");
+      }
+      setExtraCopied(true);
+      setTimeout(() => setExtraCopied(false), 1500);
+    } catch {
+      setExtraCopyFailed(true);
+      setTimeout(() => setExtraCopyFailed(false), 4000);
+    }
+  }
 
   async function copy() {
     try {
@@ -129,9 +160,22 @@ export function OneTimeSecretModal({
         </div>
         <Dialog.Description className="mt-2 text-xs text-slate-400">{caption}</Dialog.Description>
         {children}
-        <pre className="mt-3 max-h-64 overflow-auto rounded-md bg-ink-950 p-3 font-mono text-xs text-slate-300">
+        {secretLabel && <p className="mt-3 text-xs font-semibold text-slate-200">{secretLabel}</p>}
+        <pre data-testid="ots-secret" className={`${secretLabel ? "mt-1" : "mt-3"} max-h-64 overflow-auto rounded-md bg-ink-950 p-3 font-mono text-xs text-slate-300`}>
           {secret}
         </pre>
+        {extraSecret && (
+          <div className="mt-4">
+            <p className="text-xs font-semibold text-slate-200">{extraSecret.label}</p>
+            <p className="mt-1 text-xs text-slate-400">{extraSecret.note}</p>
+            <div className="mt-2 flex items-center gap-2">
+              <code data-testid="ots-extra-secret" className="min-w-0 flex-1 overflow-x-auto whitespace-nowrap rounded-md bg-ink-950 p-3 font-mono text-xs text-slate-300">{extraSecret.value}</code>
+              <Button variant="ghost" onClick={copyExtra}>
+                {extraCopied ? "Copied" : extraCopyFailed ? "Select + ⌘C to copy" : extraSecret.copyLabel}
+              </Button>
+            </div>
+          </div>
+        )}
         {requireAck && (
           <label className="mt-3 flex items-start gap-2 text-xs text-slate-300">
             <input

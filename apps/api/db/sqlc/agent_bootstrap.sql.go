@@ -55,8 +55,8 @@ func (q *Queries) AuthenticateAgentRuntimeCredential(ctx context.Context, arg Au
 const consumeAgentBootstrapToken = `-- name: ConsumeAgentBootstrapToken :one
 UPDATE agent_bootstrap_tokens
 SET consumed_at = now(), consumed_device_id = $2
-WHERE token_hash = $1 AND consumed_at IS NULL AND expires_at > now()
-RETURNING id, org_id, gateway_node_id, agent_name, token_hash, expires_at, consumed_at, consumed_device_id, issued_by, created_at
+WHERE token_hash = $1 AND consumed_at IS NULL AND revoked_at IS NULL AND expires_at > now()
+RETURNING id, org_id, gateway_node_id, agent_name, token_hash, expires_at, consumed_at, consumed_device_id, issued_by, created_at, revoked_at, revoked_by
 `
 
 type ConsumeAgentBootstrapTokenParams struct {
@@ -79,6 +79,8 @@ func (q *Queries) ConsumeAgentBootstrapToken(ctx context.Context, arg ConsumeAge
 		&i.ConsumedDeviceID,
 		&i.IssuedBy,
 		&i.CreatedAt,
+		&i.RevokedAt,
+		&i.RevokedBy,
 	)
 	return i, err
 }
@@ -86,7 +88,7 @@ func (q *Queries) ConsumeAgentBootstrapToken(ctx context.Context, arg ConsumeAge
 const createAgentBootstrapToken = `-- name: CreateAgentBootstrapToken :one
 INSERT INTO agent_bootstrap_tokens (org_id, gateway_node_id, agent_name, token_hash, expires_at, issued_by)
 VALUES ($1, $2, $3, $4, $5, $6)
-RETURNING id, org_id, gateway_node_id, agent_name, token_hash, expires_at, consumed_at, consumed_device_id, issued_by, created_at
+RETURNING id, org_id, gateway_node_id, agent_name, token_hash, expires_at, consumed_at, consumed_device_id, issued_by, created_at, revoked_at, revoked_by
 `
 
 type CreateAgentBootstrapTokenParams struct {
@@ -119,6 +121,8 @@ func (q *Queries) CreateAgentBootstrapToken(ctx context.Context, arg CreateAgent
 		&i.ConsumedDeviceID,
 		&i.IssuedBy,
 		&i.CreatedAt,
+		&i.RevokedAt,
+		&i.RevokedBy,
 	)
 	return i, err
 }
@@ -240,8 +244,8 @@ func (q *Queries) ExpireAgentWireGuardRotation(ctx context.Context, arg ExpireAg
 }
 
 const getAgentBootstrapToken = `-- name: GetAgentBootstrapToken :one
-SELECT id, org_id, gateway_node_id, agent_name, token_hash, expires_at, consumed_at, consumed_device_id, issued_by, created_at FROM agent_bootstrap_tokens
-WHERE token_hash = $1 AND consumed_at IS NULL AND expires_at > now()
+SELECT id, org_id, gateway_node_id, agent_name, token_hash, expires_at, consumed_at, consumed_device_id, issued_by, created_at, revoked_at, revoked_by FROM agent_bootstrap_tokens
+WHERE token_hash = $1 AND consumed_at IS NULL AND revoked_at IS NULL AND expires_at > now()
 `
 
 // lint:cross-org — the public redemption credential is an unguessable hash; org is learned from the token row.
@@ -259,6 +263,8 @@ func (q *Queries) GetAgentBootstrapToken(ctx context.Context, tokenHash []byte) 
 		&i.ConsumedDeviceID,
 		&i.IssuedBy,
 		&i.CreatedAt,
+		&i.RevokedAt,
+		&i.RevokedBy,
 	)
 	return i, err
 }
@@ -366,6 +372,61 @@ func (q *Queries) GetAgentWireGuardRotation(ctx context.Context, arg GetAgentWir
 		&i.UpdatedAt,
 	)
 	return i, err
+}
+
+const listPendingAgentBootstrapTokens = `-- name: ListPendingAgentBootstrapTokens :many
+SELECT t.id, t.agent_name, t.gateway_node_id, n.name AS gateway_name,
+       t.issued_by, u.email AS issued_by_email, t.created_at, t.expires_at
+FROM agent_bootstrap_tokens t
+JOIN nodes n ON n.id = t.gateway_node_id AND n.org_id = t.org_id
+LEFT JOIN users u ON u.id = t.issued_by
+WHERE t.org_id = $1 AND t.consumed_at IS NULL AND t.revoked_at IS NULL AND t.expires_at > now()
+ORDER BY t.created_at DESC, t.id DESC
+LIMIT 200
+`
+
+type ListPendingAgentBootstrapTokensRow struct {
+	ID            uuid.UUID   `json:"id"`
+	AgentName     string      `json:"agent_name"`
+	GatewayNodeID uuid.UUID   `json:"gateway_node_id"`
+	GatewayName   string      `json:"gateway_name"`
+	IssuedBy      pgtype.UUID `json:"issued_by"`
+	IssuedByEmail *string     `json:"issued_by_email"`
+	CreatedAt     time.Time   `json:"created_at"`
+	ExpiresAt     time.Time   `json:"expires_at"`
+}
+
+// Pending means still redeemable: not used, not revoked, not expired. The
+// token hash is deliberately not selected; a listing never carries the value.
+// Tokens live for one hour, so the newest 200 is a bound, not a page.
+// lint:allow-deleted — the issuer stays named after their account is removed; a live credential must remain attributable.
+func (q *Queries) ListPendingAgentBootstrapTokens(ctx context.Context, orgID uuid.UUID) ([]ListPendingAgentBootstrapTokensRow, error) {
+	rows, err := q.db.Query(ctx, listPendingAgentBootstrapTokens, orgID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListPendingAgentBootstrapTokensRow{}
+	for rows.Next() {
+		var i ListPendingAgentBootstrapTokensRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.AgentName,
+			&i.GatewayNodeID,
+			&i.GatewayName,
+			&i.IssuedBy,
+			&i.IssuedByEmail,
+			&i.CreatedAt,
+			&i.ExpiresAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const lookupAgentRuntimeCredentialBinding = `-- name: LookupAgentRuntimeCredentialBinding :one
@@ -672,6 +733,41 @@ func (q *Queries) RequestAgentWireGuardRotation(ctx context.Context, arg Request
 		&i.StagedAt,
 		&i.CompletedAt,
 		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const revokeAgentBootstrapToken = `-- name: RevokeAgentBootstrapToken :one
+UPDATE agent_bootstrap_tokens
+SET revoked_at = now(), revoked_by = $3
+WHERE id = $1 AND org_id = $2
+  AND consumed_at IS NULL AND revoked_at IS NULL AND expires_at > now()
+RETURNING id, agent_name, gateway_node_id, expires_at
+`
+
+type RevokeAgentBootstrapTokenParams struct {
+	ID        uuid.UUID   `json:"id"`
+	OrgID     uuid.UUID   `json:"org_id"`
+	RevokedBy pgtype.UUID `json:"revoked_by"`
+}
+
+type RevokeAgentBootstrapTokenRow struct {
+	ID            uuid.UUID `json:"id"`
+	AgentName     string    `json:"agent_name"`
+	GatewayNodeID uuid.UUID `json:"gateway_node_id"`
+	ExpiresAt     time.Time `json:"expires_at"`
+}
+
+// Only a pending token can be revoked. Redemption and revocation both update
+// this row under its row lock, so exactly one of them wins.
+func (q *Queries) RevokeAgentBootstrapToken(ctx context.Context, arg RevokeAgentBootstrapTokenParams) (RevokeAgentBootstrapTokenRow, error) {
+	row := q.db.QueryRow(ctx, revokeAgentBootstrapToken, arg.ID, arg.OrgID, arg.RevokedBy)
+	var i RevokeAgentBootstrapTokenRow
+	err := row.Scan(
+		&i.ID,
+		&i.AgentName,
+		&i.GatewayNodeID,
+		&i.ExpiresAt,
 	)
 	return i, err
 }

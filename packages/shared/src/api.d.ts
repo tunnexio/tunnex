@@ -2627,6 +2627,51 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/organizations/{orgId}/agents/bootstrap-tokens": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * List pending managed agent bootstrap tokens
+         * @description Requires `agent:enroll`, the same permission as issuing. Returns only tokens that can still be redeemed: not used, not revoked and not expired, newest first, at most 200. The token value and its hash are never returned; a value is shown once, when it is issued.
+         */
+        get: operations["listAgentBootstrapTokens"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/agents/bootstrap-tokens/{tokenId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                tokenId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Revoke a pending managed agent bootstrap token
+         * @description Requires `agent:enroll` and a verified email. The token stops working immediately and is refused by `POST /api/v1/agent/bootstrap` exactly like an expired one. Writes the audit action `agent.bootstrap_token_revoked`. A token that is unknown, belongs to another organization, or is no longer pending (used, revoked or expired) answers 404 `bootstrap_token_not_found`.
+         */
+        delete: operations["revokeAgentBootstrapToken"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/sandbox/bootstrap": {
         parameters: {
             query?: never;
@@ -12812,6 +12857,33 @@ export interface components {
             bootstrap_token: string;
             release: components["schemas"]["AgentBootstrapRelease"];
         };
+        PendingAgentBootstrapTokenList: {
+            items: components["schemas"]["PendingAgentBootstrapToken"][];
+        };
+        /** @description A bootstrap token that can still be redeemed. Never contains the token value or its hash. */
+        PendingAgentBootstrapToken: {
+            /**
+             * Format: uuid
+             * @description Identifies the token for revocation. It is not the token value.
+             */
+            id: string;
+            /** @description The name the agent will enroll with. */
+            agent_name: string;
+            /** Format: uuid */
+            gateway_id: string;
+            gateway_name: string;
+            /**
+             * Format: uuid
+             * @description The member who issued the token, or null when that account no longer exists.
+             */
+            issued_by?: string | null;
+            /** @description The issuer's email. Present for the caller's own tokens and for callers who can manage members; null otherwise. */
+            issued_by_email?: string | null;
+            /** Format: date-time */
+            issued_at: string;
+            /** Format: date-time */
+            expires_at: string;
+        };
         /** @description Server-verified immutable runtime release metadata. Contains no secret or signing private key. */
         AgentBootstrapRelease: {
             /** @description Immutable v* or tunnex-build-* release tag. */
@@ -18107,6 +18179,53 @@ export interface operations {
                 content: {
                     "application/json": components["schemas"]["AgentBootstrapTokenResponse"];
                 };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listAgentBootstrapTokens: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The pending bootstrap tokens. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PendingAgentBootstrapTokenList"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    revokeAgentBootstrapToken: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                tokenId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The token is revoked. */
+            204: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content?: never;
             };
             default: components["responses"]["Error"];
         };

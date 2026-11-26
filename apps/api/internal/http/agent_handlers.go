@@ -54,6 +54,48 @@ func (s apiServer) IssueAgentBootstrapToken(ctx context.Context, req api.IssueAg
 	return api.IssueAgentBootstrapToken201JSONResponse{Body: api.AgentBootstrapTokenResponse{BootstrapToken: tok, Release: toAPIBootstrapRelease(metadata)}, Headers: api.IssueAgentBootstrapToken201ResponseHeaders{XRequestId: middleware.GetReqID(ctx)}}, nil
 }
 
+// ListAgentBootstrapTokens GET /api/v1/organizations/{orgId}/agents/bootstrap-tokens — the tokens
+// that can still be redeemed. Same permission as issuing one; never the value.
+func (s apiServer) ListAgentBootstrapTokens(ctx context.Context, req api.ListAgentBootstrapTokensRequestObject) (api.ListAgentBootstrapTokensResponseObject, error) {
+	if _, err := authorize(ctx, req.OrgId, rbac.PermAgentEnroll); err != nil {
+		return nil, err
+	}
+	p, _ := authctx.PrincipalFrom(ctx)
+	rows, err := s.devices.ListPendingAgentBootstrapTokens(ctx, req.OrgId)
+	if err != nil {
+		return nil, err
+	}
+	canViewIssuers := rbac.CanAny(p.RolesIn(req.OrgId), rbac.PermMemberManage)
+	items := make([]api.PendingAgentBootstrapToken, 0, len(rows))
+	for _, row := range rows {
+		items = append(items, toAPIPendingBootstrapToken(row, p.UserID, canViewIssuers))
+	}
+	return api.ListAgentBootstrapTokens200JSONResponse{Body: api.PendingAgentBootstrapTokenList{Items: items}, Headers: api.ListAgentBootstrapTokens200ResponseHeaders{XRequestId: reqID(ctx)}}, nil
+}
+
+func toAPIPendingBootstrapToken(t devices.PendingAgentBootstrapToken, caller uuid.UUID, canViewIssuers bool) api.PendingAgentBootstrapToken {
+	out := api.PendingAgentBootstrapToken{
+		Id: t.ID, AgentName: t.AgentName, GatewayId: t.GatewayID, GatewayName: t.GatewayName,
+		IssuedBy: t.IssuedBy, IssuedAt: t.IssuedAt, ExpiresAt: t.ExpiresAt,
+	}
+	if canViewIssuers || (t.IssuedBy != nil && caller != uuid.Nil && *t.IssuedBy == caller) {
+		out.IssuedByEmail = t.IssuedByEmail
+	}
+	return out
+}
+
+// RevokeAgentBootstrapToken DELETE /api/v1/organizations/{orgId}/agents/bootstrap-tokens/{tokenId}.
+func (s apiServer) RevokeAgentBootstrapToken(ctx context.Context, req api.RevokeAgentBootstrapTokenRequestObject) (api.RevokeAgentBootstrapTokenResponseObject, error) {
+	if _, err := authorizeMutation(ctx, req.OrgId, rbac.PermAgentEnroll); err != nil {
+		return nil, err
+	}
+	p, _ := authctx.PrincipalFrom(ctx)
+	if err := s.devices.RevokeAgentBootstrapToken(ctx, p.UserID, req.OrgId, req.TokenId); err != nil {
+		return nil, err
+	}
+	return api.RevokeAgentBootstrapToken204Response{Headers: api.RevokeAgentBootstrapToken204ResponseHeaders{XRequestId: reqID(ctx)}}, nil
+}
+
 func toAPIBootstrapRelease(r release.BootstrapRelease) api.AgentBootstrapRelease {
 	result := api.AgentBootstrapRelease{
 		Tag: r.Tag, SourceSha: r.SourceSHA, ManifestUrl: r.ManifestURL, VerifierKeyId: r.VerifierKeyID, VerifierPublicKey: r.VerifierPublicKey,

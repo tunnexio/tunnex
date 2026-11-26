@@ -7387,6 +7387,30 @@ type PasswordResetRequest struct {
 	Email openapi_types.Email `json:"email"`
 }
 
+// PendingAgentBootstrapToken A bootstrap token that can still be redeemed. Never contains the token value or its hash.
+type PendingAgentBootstrapToken struct {
+	// AgentName The name the agent will enroll with.
+	AgentName   string             `json:"agent_name"`
+	ExpiresAt   time.Time          `json:"expires_at"`
+	GatewayId   openapi_types.UUID `json:"gateway_id"`
+	GatewayName string             `json:"gateway_name"`
+
+	// Id Identifies the token for revocation. It is not the token value.
+	Id       openapi_types.UUID `json:"id"`
+	IssuedAt time.Time          `json:"issued_at"`
+
+	// IssuedBy The member who issued the token, or null when that account no longer exists.
+	IssuedBy *openapi_types.UUID `json:"issued_by"`
+
+	// IssuedByEmail The issuer's email. Present for the caller's own tokens and for callers who can manage members; null otherwise.
+	IssuedByEmail *string `json:"issued_by_email"`
+}
+
+// PendingAgentBootstrapTokenList defines model for PendingAgentBootstrapTokenList.
+type PendingAgentBootstrapTokenList struct {
+	Items []PendingAgentBootstrapToken `json:"items"`
+}
+
 // PolicyRule defines model for PolicyRule.
 type PolicyRule struct {
 	// AgentAccessRequestId Owning F10 request when managed_by_agent_access is true.
@@ -11163,6 +11187,12 @@ type ClientInterface interface {
 
 	IssueAgentBootstrapToken(ctx context.Context, orgId openapi_types.UUID, body IssueAgentBootstrapTokenJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// ListAgentBootstrapTokens request
+	ListAgentBootstrapTokens(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// RevokeAgentBootstrapToken request
+	RevokeAgentBootstrapToken(ctx context.Context, orgId openapi_types.UUID, tokenId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// GetAgentProfile request
 	GetAgentProfile(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -14891,6 +14921,30 @@ func (c *Client) IssueAgentBootstrapTokenWithBody(ctx context.Context, orgId ope
 
 func (c *Client) IssueAgentBootstrapToken(ctx context.Context, orgId openapi_types.UUID, body IssueAgentBootstrapTokenJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewIssueAgentBootstrapTokenRequest(c.Server, orgId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ListAgentBootstrapTokens(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListAgentBootstrapTokensRequest(c.Server, orgId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) RevokeAgentBootstrapToken(ctx context.Context, orgId openapi_types.UUID, tokenId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRevokeAgentBootstrapTokenRequest(c.Server, orgId, tokenId)
 	if err != nil {
 		return nil, err
 	}
@@ -26849,6 +26903,81 @@ func NewIssueAgentBootstrapTokenRequestWithBody(server string, orgId openapi_typ
 	}
 
 	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewListAgentBootstrapTokensRequest generates requests for ListAgentBootstrapTokens
+func NewListAgentBootstrapTokensRequest(server string, orgId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/agents/bootstrap-tokens", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewRevokeAgentBootstrapTokenRequest generates requests for RevokeAgentBootstrapToken
+func NewRevokeAgentBootstrapTokenRequest(server string, orgId openapi_types.UUID, tokenId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "tokenId", runtime.ParamLocationPath, tokenId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/agents/bootstrap-tokens/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("DELETE", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
 
 	return req, nil
 }
@@ -45623,6 +45752,12 @@ type ClientWithResponsesInterface interface {
 
 	IssueAgentBootstrapTokenWithResponse(ctx context.Context, orgId openapi_types.UUID, body IssueAgentBootstrapTokenJSONRequestBody, reqEditors ...RequestEditorFn) (*IssueAgentBootstrapTokenResponse, error)
 
+	// ListAgentBootstrapTokensWithResponse request
+	ListAgentBootstrapTokensWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ListAgentBootstrapTokensResponse, error)
+
+	// RevokeAgentBootstrapTokenWithResponse request
+	RevokeAgentBootstrapTokenWithResponse(ctx context.Context, orgId openapi_types.UUID, tokenId openapi_types.UUID, reqEditors ...RequestEditorFn) (*RevokeAgentBootstrapTokenResponse, error)
+
 	// GetAgentProfileWithResponse request
 	GetAgentProfileWithResponse(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetAgentProfileResponse, error)
 
@@ -49875,6 +50010,51 @@ func (r IssueAgentBootstrapTokenResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r IssueAgentBootstrapTokenResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ListAgentBootstrapTokensResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *PendingAgentBootstrapTokenList
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r ListAgentBootstrapTokensResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListAgentBootstrapTokensResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type RevokeAgentBootstrapTokenResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r RevokeAgentBootstrapTokenResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r RevokeAgentBootstrapTokenResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -59887,6 +60067,24 @@ func (c *ClientWithResponses) IssueAgentBootstrapTokenWithResponse(ctx context.C
 	return ParseIssueAgentBootstrapTokenResponse(rsp)
 }
 
+// ListAgentBootstrapTokensWithResponse request returning *ListAgentBootstrapTokensResponse
+func (c *ClientWithResponses) ListAgentBootstrapTokensWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ListAgentBootstrapTokensResponse, error) {
+	rsp, err := c.ListAgentBootstrapTokens(ctx, orgId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListAgentBootstrapTokensResponse(rsp)
+}
+
+// RevokeAgentBootstrapTokenWithResponse request returning *RevokeAgentBootstrapTokenResponse
+func (c *ClientWithResponses) RevokeAgentBootstrapTokenWithResponse(ctx context.Context, orgId openapi_types.UUID, tokenId openapi_types.UUID, reqEditors ...RequestEditorFn) (*RevokeAgentBootstrapTokenResponse, error) {
+	rsp, err := c.RevokeAgentBootstrapToken(ctx, orgId, tokenId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRevokeAgentBootstrapTokenResponse(rsp)
+}
+
 // GetAgentProfileWithResponse request returning *GetAgentProfileResponse
 func (c *ClientWithResponses) GetAgentProfileWithResponse(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetAgentProfileResponse, error) {
 	rsp, err := c.GetAgentProfile(ctx, orgId, deviceId, reqEditors...)
@@ -68533,6 +68731,65 @@ func ParseIssueAgentBootstrapTokenResponse(rsp *http.Response) (*IssueAgentBoots
 		}
 		response.JSON201 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListAgentBootstrapTokensResponse parses an HTTP response from a ListAgentBootstrapTokensWithResponse call
+func ParseListAgentBootstrapTokensResponse(rsp *http.Response) (*ListAgentBootstrapTokensResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListAgentBootstrapTokensResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest PendingAgentBootstrapTokenList
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseRevokeAgentBootstrapTokenResponse parses an HTTP response from a RevokeAgentBootstrapTokenWithResponse call
+func ParseRevokeAgentBootstrapTokenResponse(rsp *http.Response) (*RevokeAgentBootstrapTokenResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &RevokeAgentBootstrapTokenResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
 		var dest Error
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
