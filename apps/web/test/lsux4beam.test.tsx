@@ -12,7 +12,7 @@ import { InlineTerminalMfa } from "../src/components/InlineTerminalMfa";
 import { beamRoomsApi, type BeamFeedback as Feedback, type BeamProject } from "../src/lib/beam-rooms";
 import { api } from "../src/lib/api";
 import { announceMfaVerified, onMfaVerified } from "../src/lib/mfa-events";
-import { beamApi, beamCount, beamDuration, beamReviewerCount, beamReviewerSummary, type BeamAudience, type BeamPolicy, type BeamShare } from "../src/lib/beam";
+import { beamApi, beamCount, beamDuration, beamReviewerCount, beamReviewerSummary, beamStatus, type BeamAudience, type BeamPolicy, type BeamShare } from "../src/lib/beam";
 
 // LS-UX-4: publisher and admin polish (docs/LS-UX-4-publisher-polish.md).
 const identity = vi.hoisted(() => ({ org: "11111111-1111-4111-8111-111111111111", user: "22222222-2222-4222-8222-222222222222" }));
@@ -348,5 +348,23 @@ describe("LS-UX-4 wording (P11-P16)", () => {
     vi.mocked(beamRoomsApi.projects).mockResolvedValue({ ok: true, data: { ...empty, items: [project] } });
     render(<MemoryRouter><BeamRooms orgId={identity.org} policy={policy} selfId={identity.user} /></MemoryRouter>);
     await screen.findByText("Local port 3000 · Lasts 1 hour · 1 person and 1 group");
+  });
+});
+
+describe("LS-UX-4 follow-up checks", () => {
+  it("uses the History filter's words for a share ended by an admin change (P19)", () => {
+    expect(beamStatus({ ...owned, state: "revoked" })).toBe("Ended by admin change");
+  });
+  it("takes the publisher from Review feedback to the feedback they received, not to the reply button (P8)", async () => {
+    vi.mocked(beamRoomsApi.feedback).mockResolvedValue({ ok: true, data: { ...empty, items: [fromReviewer("f1", "approved", "Ship it")] } });
+    show(`/beam/shares/${shareId}`);
+    await screen.findByRole("heading", { name: "Feedback from reviewers" });
+    fireEvent.click(screen.getByRole("link", { name: "Review feedback" }));
+    expect(document.activeElement).toBe(document.getElementById("beam-review-feedback"));
+  });
+  it("tells a reviewer plainly what is checked before the app opens", async () => {
+    vi.mocked(beamApi.share).mockResolvedValue({ ok: true, data: { ...owned, publisher_id: reviewerId, can_manage: false } });
+    show(`/beam/launch?orgId=${identity.org}&shareId=${shareId}&nonce_hash=${"a".repeat(64)}&target=%2F`);
+    await screen.findByText("Your sign-in and reviewer access are checked again before the app opens.");
   });
 });
