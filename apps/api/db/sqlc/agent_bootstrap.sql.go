@@ -399,6 +399,7 @@ type ListPendingAgentBootstrapTokensRow struct {
 // Pending means still redeemable: not used, not revoked, not expired. The
 // token hash is deliberately not selected; a listing never carries the value.
 // Tokens live for one hour, so the newest 200 is a bound, not a page.
+// lint:allow-deleted — the issuer stays named after their account is removed; a live credential must remain attributable.
 func (q *Queries) ListPendingAgentBootstrapTokens(ctx context.Context, orgID uuid.UUID) ([]ListPendingAgentBootstrapTokensRow, error) {
 	rows, err := q.db.Query(ctx, listPendingAgentBootstrapTokens, orgID)
 	if err != nil {

@@ -1554,6 +1554,7 @@ type Querier interface {
 	// Pending means still redeemable: not used, not revoked, not expired. The
 	// token hash is deliberately not selected; a listing never carries the value.
 	// Tokens live for one hour, so the newest 200 is a bound, not a page.
+	// lint:allow-deleted — the issuer stays named after their account is removed; a live credential must remain attributable.
 	ListPendingAgentBootstrapTokens(ctx context.Context, orgID uuid.UUID) ([]ListPendingAgentBootstrapTokensRow, error)
 	// ⛔ AGENTS ARE EXCLUDED FROM THE HUMAN DEVICE SURFACES. An AI agent is a `devices` row because it IS a
 	// WireGuard peer — the peer set, the pool allocation, the revocation sweep and the liveness upsert all read

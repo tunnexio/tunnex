@@ -267,6 +267,7 @@ func TestSessionlessRequestsAre401(t *testing.T) {
 			reqPath = strings.ReplaceAll(reqPath, "{profileId}", uuid.NewString())
 			reqPath = strings.ReplaceAll(reqPath, "{assignmentId}", uuid.NewString())
 			reqPath = strings.ReplaceAll(reqPath, "{requestId}", uuid.NewString())
+			reqPath = strings.ReplaceAll(reqPath, "{tokenId}", uuid.NewString())
 			reqPath = strings.ReplaceAll(reqPath, "{connectionId}", uuid.NewString())
 
 			var body io.Reader

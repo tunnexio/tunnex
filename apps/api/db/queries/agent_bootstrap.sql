@@ -19,6 +19,7 @@ RETURNING *;
 -- Pending means still redeemable: not used, not revoked, not expired. The
 -- token hash is deliberately not selected; a listing never carries the value.
 -- Tokens live for one hour, so the newest 200 is a bound, not a page.
+-- lint:allow-deleted — the issuer stays named after their account is removed; a live credential must remain attributable.
 SELECT t.id, t.agent_name, t.gateway_node_id, n.name AS gateway_name,
        t.issued_by, u.email AS issued_by_email, t.created_at, t.expires_at
 FROM agent_bootstrap_tokens t
