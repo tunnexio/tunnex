@@ -81,7 +81,16 @@ export function beamAuditDetails(details: Record<string, unknown>): [string, str
 }
 
 // LS-UX-1: people read words, not codes. Unknown values still render readably.
-const beamActionLabels: Record<string, string> = { "beam.share.created": "Share created", "beam.share.pause": "Share paused", "beam.share.resume": "Share resumed", "beam.share.stop": "Share stopped", "beam.share.extend": "Expiry extended", "beam.grants.updated": "Reviewers changed", "beam.policy.updated": "Sharing policy changed", "beam.access.allowed": "Reviewer opened the app", "beam.access.denied": "Reviewer access refused", "beam.connector.issued": "Publisher connected" };
+// LS-UX-4 P26: one label for every beam.* action the API writes (lsux4audit.test.ts keeps this complete).
+const beamActionLabels: Record<string, string> = {
+  "beam.share.created": "Share created", "beam.share.pause": "Share paused", "beam.share.resume": "Share resumed", "beam.share.stop": "Share stopped", "beam.share.extend": "Expiry extended",
+  "beam.share.expired": "Share expired", "beam.share.revoked": "Share ended by an admin change", "beam.share.stopped": "Share stopped: the publisher never connected",
+  "beam.grants.updated": "Reviewers changed", "beam.policy.updated": "Sharing policy changed", "beam.project.saved": "Saved project changed", "beam.installation.updated": "Local Sharing server settings changed",
+  "beam.connector.issued": "Publisher connected", "beam.launch.created": "Reviewer started opening the app", "beam.session.created": "Reviewer signed in to the app",
+  "beam.access.allowed": "Reviewer opened the app", "beam.access.denied": "Reviewer access refused", "beam.feedback.created": "Review feedback added",
+};
+/** Every Local Sharing audit action, for the audit filter's suggestions. */
+export const BEAM_AUDIT_ACTIONS = Object.keys(beamActionLabels);
 const beamStateLabels: Record<string, string> = { starting: "Starting", active: "Active", paused: "Paused", stopped: "Stopped", expired: "Expired", revoked: "Ended by a policy or server change" };
 const beamConnectivityLabels: Record<string, string> = { online: "Online", offline: "Publisher offline", reconnecting: "Reconnecting", origin_unavailable: "Local app unavailable" };
 const beamOutcomeLabels: Record<string, string> = { success: "Succeeded", allowed: "Allowed", denied: "Refused" };

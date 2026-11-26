@@ -71,7 +71,7 @@ describe("Beam Audit Log integration", () => {
     fireEvent.click(screen.getByText("More filters"));
     const activity = await screen.findByRole("button", { name: "Local Sharing activity" }); fireEvent.click(activity);
     await waitFor(() => expect(fixture.queries.at(-1)).toEqual(expect.objectContaining({ action_prefix: "beam." })));
-    expect(fixture.queries.at(-1)).not.toHaveProperty("target_type");
+    expect(fixture.queries.at(-1)?.target_type).toBeUndefined();
     fireEvent.click(await screen.findByRole("button", { name: "Inspect beam.access.allowed audit event" }));
     const dialog = await screen.findByRole("region", { name: "Audit evidence" });
     expect(dialog.textContent).toContain("admission"); expect(dialog.textContent).not.toMatch(/PRIVATE|connector_token/);

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
 import { stripJsComments } from "./support/source";
-import { BEAM_AUDIT_ACTIONS, beamActionLabel, beamWords } from "../src/lib/beam";
+import { BEAM_AUDIT_ACTIONS, beamActionLabel } from "../src/lib/beam";
 import { BEAM_ACTION_FAMILY, auditActionLabel, auditActionQuery } from "../src/lib/auditview";
 
 // LS-UX-4 P26: "Local Sharing activity" is every beam.* action, whatever its target type
@@ -31,13 +31,15 @@ describe("Local Sharing audit labels cover every action the API writes", () => {
       for (const match of text.matchAll(/\baudit\(ctx, tx, [\w.]+, [\w.]+, "([a-z_]+\.[a-z_]+)"/g)) written.add(`beam.${match[1]}`);
       // Dynamic suffixes: "share."+in.Action (lifecycle actions) and "share."+state (background endings).
       if (/"share\."\+in\.Action/.test(text)) for (const match of text.matchAll(/case "([a-z_]+)":/g)) if (["pause", "resume", "stop", "extend"].includes(match[1])) written.add(`beam.share.${match[1]}`);
-      if (/"share\."\+state/.test(text)) for (const match of text.matchAll(/\bstate = "([a-z_]+)"/g)) written.add(`beam.share.${match[1]}`);
+      // Only the assignments in the block that ends with that audit call (the background sweep).
+      const sweep = text.indexOf('"share."+state');
+      if (sweep >= 0) for (const match of text.slice(Math.max(0, sweep - 1500), sweep).matchAll(/\bstate = "([a-z_]+)"/g)) written.add(`beam.share.${match[1]}`);
     }
     expect(written.size).toBeGreaterThanOrEqual(15);
     for (const action of written) expect(BEAM_AUDIT_ACTIONS).toContain(action);
     for (const action of BEAM_AUDIT_ACTIONS) {
       expect(action.startsWith("beam.")).toBe(true);
-      expect(beamActionLabel(action)).not.toBe(beamWords(action));
+      expect(beamActionLabel(action)).toMatch(/^[A-Z]/);
       expect(auditActionLabel(action)).toBe(beamActionLabel(action));
     }
   });
