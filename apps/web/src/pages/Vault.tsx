@@ -34,7 +34,7 @@ const servicesPath = "/api/v1/organizations/{orgId}/vault/services";
 const subjectsPath = "/api/v1/organizations/{orgId}/vault/subjects";
 const revealPath = "/api/v1/organizations/{orgId}/vault/entries/{entryId}/reveal";
 const historyPath = "/api/v1/organizations/{orgId}/vault/entries/{entryId}/versions";
-const CLIPBOARD_NOTE = "Vault will clear the clipboard in about 30 seconds if it still holds this secret.";
+const CLIPBOARD_NOTE = "Clear it after use. Where this browser allows Vault to read the clipboard, Vault clears it after about 30 seconds if it still holds this secret.";
 
 function dateLabel(value: string) {
   const date = new Date(value);

@@ -5,7 +5,7 @@ import Vault from "../src/pages/Vault";
 import { auditActionLabel, auditChangeLabel, vaultAuditDetails } from "../src/lib/auditview";
 
 // VAULT-UX-1: the Vault experience findings, one behaviour per test.
-const mock = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), put: vi.fn(), patch: vi.fn(), remove: vi.fn(), write: vi.fn(), read: vi.fn(), canAssign: false, reauth: { password: true, mfa: false, available: true } }));
+const mock = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), put: vi.fn(), patch: vi.fn(), remove: vi.fn(), write: vi.fn(), read: vi.fn(), permission: vi.fn(), canAssign: false, reauth: { password: true, mfa: false, available: true } }));
 vi.mock("../src/lib/api", async () => ({ ...await vi.importActual("../src/lib/api"), api: { GET: mock.get, POST: mock.post, PUT: mock.put, PATCH: mock.patch, DELETE: mock.remove } }));
 vi.mock("../src/lib/useOrg", () => ({ useOrg: () => ({ org: { id: "org-one" }, failed: false }) }));
 vi.mock("../src/lib/auth", () => ({ useAuth: () => ({ state: { status: "authed", user: { id: "user-one", email_verified: true } } }), useOptionalAuth: () => null }));
@@ -26,6 +26,7 @@ beforeEach(() => {
   vi.resetAllMocks(); mock.canAssign = false; mock.reauth = { password: true, mfa: false, available: true }; listFailure = null;
   entries = [personal, shared];
   Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText: mock.write.mockResolvedValue(undefined), readText: mock.read } });
+  Object.defineProperty(navigator, "permissions", { configurable: true, value: { query: mock.permission.mockResolvedValue({ state: "granted" }) } });
   mock.get.mockImplementation(async (path: string) => {
     if (path.endsWith("/services")) return ok([{ id: "service-one", name: "Payments" }]);
     if (path.endsWith("/subjects")) return ok({ users: [{ id: "user-two", name: "Teammate", email: "teammate@example.test" }], groups: [{ id: "group-one", name: "DevOps", member_count: 3, members_without_access: [{ id: "u9", name: "Ivy Viewer", email: "ivy@example.test" }] }] });
@@ -192,9 +193,21 @@ describe("VAULT-UX-1", () => {
     fireEvent.click(dialog.getByRole("button", { name: "Copy current secret" }));
     await waitFor(() => expect(mock.write).toHaveBeenCalledWith("current-secret-value"));
     expect(mock.post.mock.calls[0][1].body).toMatchObject({ purpose: "copy" });
-    expect(await dialog.findByText(/clear the clipboard in about 30 seconds/)).toBeTruthy();
+    expect(await dialog.findByText(/clears it after about 30 seconds/)).toBeTruthy();
     await act(async () => { await vi.advanceTimersByTimeAsync(31_000); });
     await waitFor(() => expect(mock.write).toHaveBeenLastCalledWith(""));
+  });
+
+  it("never prompts for clipboard access: no grant, no read (V15)", async () => {
+    vi.useFakeTimers({ shouldAdvanceTime: true });
+    mock.permission.mockResolvedValue({ state: "prompt" });
+    mock.read.mockResolvedValue("current-secret-value");
+    show(); fireEvent.click(await screen.findByRole("button", { name: personal.title }));
+    fireEvent.click(within(screen.getByRole("dialog", { name: personal.title })).getByRole("button", { name: "Copy current secret" }));
+    await waitFor(() => expect(mock.write).toHaveBeenCalledTimes(1));
+    await act(async () => { await vi.advanceTimersByTimeAsync(31_000); });
+    expect(mock.read).not.toHaveBeenCalled();
+    expect(mock.write).toHaveBeenCalledTimes(1);
   });
 
   it("leaves the clipboard alone when it no longer holds the secret (V15)", async () => {

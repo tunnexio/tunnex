@@ -112,8 +112,8 @@ export const CLIPBOARD_CLEAR_MS = 30_000;
 
 /**
  * Best effort: about 30 seconds after a copy, clear the clipboard only if it still holds the copied value.
- * Where the browser will not let a page read the clipboard (Firefox, or a refused permission), nothing is
- * cleared — Vault never overwrites something the person copied afterwards.
+ * Only where clipboard reading is already allowed for this site (never by prompting), and only while the page
+ * has focus; otherwise nothing is cleared — Vault never overwrites something the person copied afterwards.
  */
 export function scheduleClipboardClear(value: string, delay = CLIPBOARD_CLEAR_MS): void {
   if (clipboardTimer !== undefined) clearTimeout(clipboardTimer);
@@ -123,6 +123,12 @@ export function scheduleClipboardClear(value: string, delay = CLIPBOARD_CLEAR_MS
       try {
         const clipboard = globalThis.navigator?.clipboard;
         if (!clipboard?.readText || !clipboard.writeText) return;
+        // Never trigger a permission prompt 30 seconds after the fact: read only when clipboard-read is
+        // already granted. Browsers that cannot answer (Firefox does not know the name) are left alone.
+        const permissions = globalThis.navigator?.permissions;
+        if (!permissions?.query) return;
+        const state = await permissions.query({ name: "clipboard-read" as PermissionName });
+        if (state.state !== "granted") return;
         if (await clipboard.readText() === value) await clipboard.writeText("");
       } catch { /* the browser refused; leave the clipboard alone */ }
     })();
