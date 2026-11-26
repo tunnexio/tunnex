@@ -20,6 +20,7 @@ const shareId = "33333333-3333-4333-8333-333333333333";
 const initialOrg = identity.org;
 const policy: BeamPolicy = { version: 3, enabled: true, domain_ready: true, base_domain: "beam.example.net", max_duration_seconds: 86400, max_shares: 5, require_mfa: false, publisher_group_ids: ["group-1"], reviewer_user_ids: [identity.user], reviewer_group_ids: [], can_manage_policy: false, can_publish: true, protocol_version: 1, min_client_version: "0.1.7", capabilities: [] };
 const share: BeamShare = { id: shareId, org_id: initialOrg, publisher_id: identity.user, name: "Design review", hostname: "p-1.beam.example.net", url: "https://p-1.beam.example.net/", state: "active", connectivity: "online", version: 8, authority_version: 2, expires_at: "2099-10-06T10:00:00Z", created_at: "2099-10-06T08:00:00Z", can_open: true, can_manage: true, grants: [{ subject_kind: "user", subject_id: identity.user }] };
+const reviewerShare: BeamShare = { ...share, publisher_id: "44444444-4444-4444-8444-444444444444", publisher_name: "Pat Publisher", publisher_email: "pat@example.com", can_manage: false };
 const previewShare: BeamShare = { ...share, id: "01900000-0000-7000-8000-0000000fd001", name: "Local UI preview", hostname: "preview-1.beam.example.test", url: "https://preview-1.beam.example.test", can_open: false, can_manage: false, target: { protocol: "http", address: "127.0.0.1", port: 5173 } };
 function show(path = "/beam/shared-with-me") { return render(<MemoryRouter initialEntries={[path]}><Routes><Route path="/beam/launch" element={<BeamLaunch />} /><Route path="/beam/shares/:shareId" element={<Beam />} /><Route path="*" element={<Beam />} /></Routes></MemoryRouter>); }
 beforeEach(() => { vi.clearAllMocks(); identity.preview = false; vi.mocked(beamRoomsApi.feedback).mockResolvedValue({ ok: true, data: { items: [], limit: 20, offset: 0, server_time: "2026-10-06T11:00:00Z" } }); vi.mocked(beamRoomsApi.projects).mockResolvedValue({ ok: true, data: { items: [], limit: 20, offset: 0, server_time: "2026-10-06T11:00:00Z" } }); vi.mocked(beamRoomsApi.notifications).mockResolvedValue({ ok: true, data: { items: [], limit: 20, offset: 0, server_time: "2026-10-06T11:00:00Z" } }); vi.mocked(beamApi.shareEvents).mockResolvedValue({ ok: true, data: { items: [], limit: 20, offset: 0, server_time: "2026-10-06T11:00:00Z" } }); vi.mocked(beamApi.events).mockResolvedValue({ ok: true, data: { items: [], limit: 20, offset: 0, server_time: "2026-10-06T11:00:00Z" } }); vi.mocked(beamApi.diagnostics).mockResolvedValue({ ok: false, error: "Share diagnostics unavailable" }); vi.mocked(beamApi.policyImpact).mockResolvedValue({ ok: true, data: { policy_version: 3, active_share_count: 0, affected_share_count: 0, affected_reviewer_session_count: 0, requires_confirmation: false } }); identity.org = initialOrg; vi.mocked(beamApi.policy).mockResolvedValue({ ok: true, data: { ...policy, can_publish: false } }); vi.mocked(beamApi.shares).mockResolvedValue({ ok: true, data: { items: [share], limit: 20, offset: 0, server_time: "2026-10-06T11:00:00Z" } }); vi.mocked(beamApi.share).mockResolvedValue({ ok: true, data: share }); vi.mocked(beamApi.audience).mockResolvedValue({ ok: true, data: { users: [{ id: identity.user, name: "Reviewer", email: "r@example.com" }], groups: [] } }); });
@@ -123,7 +124,7 @@ describe("Beam console authority", () => {
   it("keeps Stop available after serving setup is withdrawn while refusing Resume", async () => { vi.mocked(beamApi.policy).mockResolvedValue({ ok: true, data: { ...policy, domain_ready: false } }); vi.mocked(beamApi.share).mockResolvedValue({ ok: true, data: { ...share, state: "paused" } }); show(`/beam/shares/${shareId}`); const stop = await screen.findByRole("button", { name: "Stop share" }); expect((stop as HTMLButtonElement).disabled).toBe(false); expect((screen.getByRole("button", { name: "Resume share" }) as HTMLButtonElement).disabled).toBe(true); });
   it("returns focus to the lifecycle trigger when Stop confirmation is cancelled", async () => { show(`/beam/shares/${shareId}`); const stop = await screen.findByRole("button", { name: "Stop share" }); stop.focus(); fireEvent.click(stop); const dialog = await screen.findByRole("dialog", { name: "Stop this share" }); expect(dialog).toBeTruthy(); fireEvent.click(screen.getByRole("button", { name: "Keep sharing" })); await waitFor(() => expect(screen.queryByRole("dialog", { name: "Stop this share" })).toBeNull()); expect(document.activeElement).toBe(stop); expect(beamApi.action).not.toHaveBeenCalled(); });
   it("keeps an uncertain versioned change from allowing another mutation", async () => { vi.mocked(beamApi.action).mockResolvedValue({ ok: false, code: "beam_changed", error: "Share changed" }); show(`/beam/shares/${shareId}`); fireEvent.click(await screen.findByRole("button", { name: "Pause share" })); await screen.findByText(/Share changed.*Refresh the share/); expect((screen.getByRole("button", { name: "Pause share" }) as HTMLButtonElement).disabled).toBe(true); expect(screen.queryByText("Share paused. Reviewer access is ending.")).toBeNull(); });
-  it("does not fetch reviewer directory or show management for non-owner content access", async () => { vi.mocked(beamApi.share).mockResolvedValue({ ok: true, data: { ...share, can_manage: false, grants: undefined } }); show(`/beam/shares/${shareId}`); await screen.findByText("You do not have permission to manage this share."); expect(beamApi.audience).not.toHaveBeenCalled(); expect(screen.queryByRole("button", { name: "Review reviewer access" })).toBeNull(); });
+  it("does not fetch reviewer directory or show management for non-owner content access", async () => { vi.mocked(beamApi.share).mockResolvedValue({ ok: true, data: { ...reviewerShare, grants: undefined } }); show(`/beam/shares/${shareId}`); await screen.findByRole("heading", { name: "Shared app" }); expect(screen.queryByText(/permission to manage/)).toBeNull(); expect(screen.queryByRole("heading", { name: "Manage sharing" })).toBeNull(); expect(beamApi.audience).not.toHaveBeenCalled(); expect(screen.queryByRole("button", { name: "Review reviewer access" })).toBeNull(); });
   it("discards a previous organization's delayed policy response", async () => { let resolve!: (value: { ok: true; data: BeamPolicy }) => void; vi.mocked(beamApi.policy).mockImplementationOnce(() => new Promise(done => { resolve = done; })); const rendered = show(); identity.org = "44444444-4444-4444-8444-444444444444"; rendered.rerender(<MemoryRouter initialEntries={["/beam/shared-with-me"]}><Beam /></MemoryRouter>); await screen.findByRole("link", { name: "Open Design review" }); resolve({ ok: true, data: { ...policy, can_manage_policy: true } }); await waitFor(() => expect(screen.queryByRole("link", { name: "Sharing policy" })).toBeNull()); });
   it("ends owner launch and lifecycle controls at expiry without navigation", async () => {
     vi.useFakeTimers();
@@ -154,7 +155,7 @@ describe("Beam console authority", () => {
 });
 describe("Beam reviewer handoff", () => {
   const path = `/beam/launch?orgId=${initialOrg}&shareId=${shareId}&nonce_hash=${"a".repeat(64)}&target=%2F`;
-  it("refuses invalid and cross-organization handoffs before any launch request", async () => { show(path.replace(initialOrg, "55555555-5555-4555-8555-555555555555")); await screen.findByText(/different organization/); expect(beamApi.launch).not.toHaveBeenCalled(); expect(beamApi.share).not.toHaveBeenCalled(); });
+  it("refuses invalid and cross-organization handoffs before any launch request", async () => { show(path.replace(initialOrg, "55555555-5555-4555-8555-555555555555")); await screen.findByText(/isn't in the organization that shared this app/); expect(screen.getByRole("button", { name: "Sign out and use another account" })).toBeTruthy(); expect(beamApi.launch).not.toHaveBeenCalled(); expect(beamApi.share).not.toHaveBeenCalled(); });
   it("recovers an expired mobile sign-in through a fresh browser-bound entry with the original app path", async () => {
     vi.mocked(beamApi.launch).mockResolvedValue({ ok: false, code: "beam_launch_expired", error: "This sign-in link expired or was already used. Open a fresh link to continue." });
     show(path.replace("target=%2F", "target=%2Fdesign%3Fmobile%3D1"));
@@ -187,10 +188,10 @@ describe("Beam functional acceptance controls", () => {
     show(); await screen.findByRole("heading", { name: share.name });
     vi.mocked(beamApi.shares).mockResolvedValue({ ok: true, data: { items: [], limit: 20, offset: 0, server_time: "2026-10-06T11:00:00Z" } });
     fireEvent.change(screen.getByRole("searchbox", { name: "Search shares" }), { target: { value: " unseen%_app " } });
-    fireEvent.click(screen.getByRole("button", { name: "Search shares" }));
+    expect(screen.queryByRole("button", { name: "Search shares" })).toBeNull();
     await screen.findByText("No shares match this search.");
-    expect(beamApi.shares).toHaveBeenLastCalledWith(initialOrg, true, 0, "unseen%_app", {}, 20);
-    fireEvent.click(screen.getByRole("button", { name: "Clear share search" }));
+    await waitFor(() => expect(beamApi.shares).toHaveBeenLastCalledWith(initialOrg, true, 0, "unseen%_app", {}, 20));
+    fireEvent.click(screen.getAllByRole("button", { name: "Clear filters" })[0]);
     await waitFor(() => expect(beamApi.shares).toHaveBeenLastCalledWith(initialOrg, true, 0, undefined, {}, 20));
   });
   it("uses server time and elapsed time despite a workstation clock in the future", async () => {
@@ -206,8 +207,8 @@ describe("Beam functional acceptance controls", () => {
     } finally { cleanup(); vi.useRealTimers(); }
   });
   it("does not expose owner history or diagnostic projections to a content-only reviewer", async () => {
-    vi.mocked(beamApi.share).mockResolvedValue({ ok: true, data: { ...share, can_manage: false, grants: undefined } });
-    show(`/beam/shares/${shareId}`); await screen.findByText("You do not have permission to manage this share.");
+    vi.mocked(beamApi.share).mockResolvedValue({ ok: true, data: { ...reviewerShare, grants: undefined } });
+    show(`/beam/shares/${shareId}`); await screen.findByRole("heading", { name: "Shared app" });
     expect(beamApi.shareEvents).not.toHaveBeenCalled(); expect(beamApi.diagnostics).not.toHaveBeenCalled();
     expect(screen.queryByText("Audience")).toBeNull();
   });
@@ -260,8 +261,7 @@ describe("Beam functional acceptance controls", () => {
 });
   it("applies health filters on the server and labels selected grants without guessing group size", async () => {
     show("/beam/my-shares"); await screen.findByText("1 selection");
-    fireEvent.change(screen.getByRole("combobox", { name: "Share connectivity" }), { target: { value: "offline" } });
-    fireEvent.click(screen.getByRole("button", { name: "Search shares" }));
+    fireEvent.change(screen.getByRole("combobox", { name: "Connection" }), { target: { value: "offline" } });
     await waitFor(() => expect(beamApi.shares).toHaveBeenLastCalledWith(initialOrg, false, 0, undefined, { connectivity: "offline", scope: "active" }, 20));
   });
   it("shows exact-host Vite compatibility help to owners", async () => {
@@ -316,7 +316,7 @@ describe("Beam functional acceptance controls", () => {
     vi.mocked(beamApi.shares).mockResolvedValue({ ok: true, data: { items: [], limit: 20, offset: 0, server_time: "2026-10-06T11:00:00Z", quota: { active_shares: 4, max_shares: 5 } } });
     show("/beam/my-shares"); await screen.findByText(/4 of 5 share slots in use/);
     fireEvent.change(screen.getByRole("searchbox", { name: "Search shares" }), { target: { value: "unmatched" } });
-    fireEvent.click(screen.getByRole("button", { name: "Search shares" })); await screen.findByText("No shares match this search.");
+    await screen.findByText("No shares match this search.");
     expect(screen.getByText(/4 of 5 share slots in use/)).toBeTruthy();
   });
 
@@ -327,8 +327,8 @@ describe("Minimal Local Sharing workspace", () => {
     show("/beam/my-shares");
     await screen.findByRole("table", { name: "Active shares" });
     fireEvent.change(screen.getByRole("searchbox", { name: "Search shares" }), { target: { value: " design " } });
-    fireEvent.change(screen.getByRole("combobox", { name: "Share connectivity" }), { target: { value: "offline" } });
-    fireEvent.click(screen.getByRole("button", { name: "Search shares" }));
+    fireEvent.change(screen.getByRole("combobox", { name: "Connection" }), { target: { value: "offline" } });
+    await waitFor(() => expect(beamApi.shares).toHaveBeenLastCalledWith(initialOrg, false, 0, "design", { connectivity: "offline", scope: "active" }, 20));
     await screen.findByRole("table", { name: "Active shares" });
     fireEvent.change(screen.getByRole("combobox", { name: "Rows per page" }), { target: { value: "10" } });
     await screen.findByRole("table", { name: "Active shares" });
