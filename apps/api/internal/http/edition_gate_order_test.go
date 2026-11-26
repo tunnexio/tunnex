@@ -125,7 +125,7 @@ var postHistoricalEntitlementHandlers = map[string]string{
 var (
 	reFunction = regexp.MustCompile(`^func (?:\([^)]*\) )?(\w+)\(`)
 	reHandler  = regexp.MustCompile(`^func \(s apiServer\) (\w+)\(ctx context\.Context, req api\.`)
-	reAuth     = regexp.MustCompile(`\b(authorize|requireVerifiedSessionUser|requireVerifiedUser)\(ctx`)
+	reAuth     = regexp.MustCompile(`\b(authorize|authorizeMutation|requireVerifiedSessionUser|requireVerifiedUser)\(ctx`)
 )
 
 type entitlementSourceFunction struct {
