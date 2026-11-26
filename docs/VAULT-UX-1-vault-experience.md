@@ -244,6 +244,9 @@ SSO account without MFA) and fixed in this story:
 - E7: an empty filtered view showed the generic "No credentials yet"; each view has its own empty message.
 - E8: an SSO account with no IdP MFA and no authenticator could never open a shared credential and got no
   path forward; the reveal now opens the inline verification panel, which offers authenticator setup.
+- E10: on a plain-HTTP install (development, or before TLS) Quick generate said "secure generation is
+  unavailable": `crypto.randomUUID` exists only in secure contexts. The request id now falls back to a v4 id
+  from `getRandomValues`, the same randomness source the password generator already uses. Found by the e2e run.
 - E9: ai-admin/ai-view reaching `/vault` by URL saw "Could not load your Vault"; they now see the calm access
   notice (V11/V12).
 
