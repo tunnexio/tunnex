@@ -18,6 +18,34 @@ function BeamMfaPrompt({ reason, action, verifying, onVerify, onVerified, onCanc
     ? <InlineTerminalMfa action={action} freshnessSeconds={BEAM_MFA_FRESHNESS_SECONDS} onVerified={onVerified} onCancel={onCancel} />
     : <><p className="text-sm text-ink-secondary">{reason}</p><Button type="button" data-beam-feedback-focus onClick={onVerify}><Icon name="shield-check" size={14} />Verify MFA</Button></>}</div>;
 }
+/**
+ * LS-UX-3: a review screenshot opens in the console, fetched through the same server check as the feedback.
+ * If the policy MFA check has lapsed, the inline step-up runs here and the image loads after it; a new tab
+ * never lands on a raw refusal. The image lives only in a local object URL, revoked when the viewer closes.
+ */
+function BeamScreenshotViewer({ orgId, shareId, feedbackId, author }: { orgId: string; shareId: string; feedbackId: string; author: string }) {
+  const [open, setOpen] = useState(false); const [image, setImage] = useState(""); const [error, setError] = useState(""); const [mfa, setMfa] = useState(false); const [attempt, setAttempt] = useState(0);
+  const opener = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    if (!open) return; let current = true; let url = ""; setImage(""); setError("");
+    void beamRoomsApi.screenshot(orgId, shareId, feedbackId).then(result => {
+      if (!current) return;
+      if (result.ok) { url = URL.createObjectURL(result.data); setMfa(false); setImage(url); }
+      else if (beamNeedsMfa(result.code)) setMfa(true);
+      else setError(result.code === "beam_share_not_found" || result.code === "not_found" ? "This screenshot is no longer available to your account. Refresh feedback to check." : result.error);
+    });
+    return () => { current = false; if (url) URL.revokeObjectURL(url); };
+  }, [open, attempt, orgId, shareId, feedbackId]);
+  const close = () => { setOpen(false); setMfa(false); };
+  return <><button type="button" className="text-brand text-sm w-fit" onClick={event => { opener.current = event.currentTarget; setOpen(true); }}>View screenshot from {author}</button>
+    {open && <Modal size="wide" title={`Screenshot from ${author}`} returnFocusTo={opener.current} showClose onDismiss={close} actions={<Button variant="ghost" onClick={close}>Close</Button>}>
+      {mfa ? <div className="space-y-3"><p className="text-sm text-ink-secondary">Your organization requires a recent MFA check to view review screenshots.</p><InlineTerminalMfa action="View this screenshot" freshnessSeconds={BEAM_MFA_FRESHNESS_SECONDS} onCancel={close} onVerified={() => { setMfa(false); setAttempt(n => n + 1); }} /></div>
+        : error ? <ErrorText>{error}</ErrorText>
+        : !image ? <Loading label="Loading screenshot…" />
+        : <img src={image} alt={`Screenshot from ${author}`} className="beam-screenshot-view" />}
+    </Modal>}
+  </>;
+}
 const decisions: { value: BeamFeedbackInput["status"]; label: string; meaning: string }[] = [
   { value: "comment", label: "Comment", meaning: "A note without a decision." },
   { value: "approved", label: "Approve", meaning: "Tell the publisher it looks good." },
@@ -72,7 +100,7 @@ export function BeamFeedback({ orgId, share, uncertain = false, viewer = "publis
   return <section id="beam-review-feedback" tabIndex={-1} className="beam-feedback beam-section space-y-4" aria-label="Review feedback"><div className="beam-section-heading"><h2 className="font-semibold">Review feedback</h2>{!closed && <RefreshButton label="Refresh feedback" disabled={busy} onClick={() => setReload(n => n + 1)} />}</div><ErrorText>{error}</ErrorText>{notice && <p role="status">{notice}</p>}
     {uncertain ? <p role="status">Refresh the share to check current feedback access.</p> : closed ? <p role="status" className="text-sm text-ink-secondary">{closed}</p> : <>
       {mfa === "read" && mfaPrompt}{form}{mfa === "send" && mfaPrompt}
-      {!data ? !error && !mfa && <Loading label="Loading review feedback…" /> : !data.items.length ? page === 0 && <p className="beam-feedback-empty text-sm text-ink-secondary">{publisher ? "No feedback yet. Reviewers' comments appear here." : "No feedback yet. Yours will be the first."}</p> : <><h3 className="beam-feedback-history">Earlier feedback</h3><ul className="beam-comment-list" aria-label="Review comments">{data.items.map(item => { const image = beamScreenshotURL(orgId, share.id, item); const author = personLabel({ name: item.author_name, email: item.author_email }, "Participant"); return <li key={item.id} className="space-y-2"><div className="flex flex-wrap justify-between gap-2"><span className="font-medium text-sm">{author}</span><span className="beam-status">{decisionLabel[item.status] ?? "Comment"}</span></div>{item.body && <p className="whitespace-pre-wrap text-sm">{item.body}</p>}{image && <a href={image} target="_blank" rel="noopener noreferrer" className="text-brand text-sm">View screenshot from {author}</a>}<p className="text-xs text-ink-secondary">{new Date(item.created_at).toLocaleString()}</p></li>; })}</ul></>}
+      {!data ? !error && !mfa && <Loading label="Loading review feedback…" /> : !data.items.length ? page === 0 && <p className="beam-feedback-empty text-sm text-ink-secondary">{publisher ? "No feedback yet. Reviewers' comments appear here." : "No feedback yet. Yours will be the first."}</p> : <><h3 className="beam-feedback-history">Earlier feedback</h3><ul className="beam-comment-list" aria-label="Review comments">{data.items.map(item => { const image = beamScreenshotURL(orgId, share.id, item); const author = personLabel({ name: item.author_name, email: item.author_email }, "Participant"); return <li key={item.id} className="space-y-2"><div className="flex flex-wrap justify-between gap-2"><span className="font-medium text-sm">{author}</span><span className="beam-status">{decisionLabel[item.status] ?? "Comment"}</span></div>{item.body && <p className="whitespace-pre-wrap text-sm">{item.body}</p>}{image && <BeamScreenshotViewer orgId={orgId} shareId={share.id} feedbackId={item.id} author={author} />}<p className="text-xs text-ink-secondary">{new Date(item.created_at).toLocaleString()}</p></li>; })}</ul></>}
       {data && (data.items.length > 0 || page > 0) && <Pagination page={page} count={data.items.length} limit={pageSize} label="comments" onChange={setPage} onPageSizeChange={size => { setPageSize(size); setPage(0); }} />}
     </>}
   </section>;
