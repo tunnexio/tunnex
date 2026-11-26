@@ -12,7 +12,7 @@ import { api, apiErrorCode, loadOne } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { useOrg } from "../lib/useOrg";
 import { personLabel } from "../lib/personLabel";
-import { copyRevealedSecret, copyVaultPasswordAfterSave, generateVaultPassword, scheduleClipboardClear, VaultCopyError, VaultRevealError } from "../lib/vault";
+import { copyRevealedSecret, copyVaultPasswordAfterSave, generateVaultPassword, vaultRequestId, scheduleClipboardClear, VaultCopyError, VaultRevealError } from "../lib/vault";
 import "../app-access-workspace.css";
 import "../beam-workspace.css";
 import "../vault-workspace.css";
@@ -139,7 +139,7 @@ function VaultWorkspace({ orgId }: { orgId: string }) {
   function refreshed(message: string) { setNotice(message); setSelected(null); setReload(value => value + 1); }
   function open(state: EditorState) { setSelected(null); setEditor(state); }
   function quickGenerate() {
-    try { const password = generateVaultPassword(); const requestId = crypto.randomUUID(); setSelected(null); setNotice(""); setQuick({ password, requestId }); }
+    try { const password = generateVaultPassword(); const requestId = vaultRequestId(); setSelected(null); setNotice(""); setQuick({ password, requestId }); }
     catch { setNotice("Secure generation is unavailable in this browser. Use Add credential to enter a password."); }
   }
   if (failure === "access") return <AdminOnlyNotice page="Vault" />;
@@ -210,7 +210,7 @@ function QuickPassword({ orgId, password: initialPassword, requestId: initialReq
     if (activeCopy.current) return;
     try {
       const password = generateVaultPassword();
-      const requestId = crypto.randomUUID();
+      const requestId = vaultRequestId();
       attempt.current++;
       currentRequestId.current = requestId;
       saved.current = null;
