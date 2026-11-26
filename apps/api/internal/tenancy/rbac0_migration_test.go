@@ -12,7 +12,9 @@ import (
 )
 
 // RBAC-0 migration 0246 is additive and backfills provenance from data that already exists, so an
-// upgrade keeps every role and status and reactivation rules apply to pre-upgrade deactivations.
+// upgrade keeps every role and status and reactivation rules apply to pre-upgrade deactivations. It adds
+// side tables only: the shape of `users` and `memberships` is unchanged, because their expanded
+// `SELECT *` queries also run against pinned older schemas.
 func TestRBAC0MigrationBackfillsProvenance(t *testing.T) {
 	ctx, pool := testpostgres.NewAtVersion(t, 245)
 	org, bySync, byAdmin, legacy, revoked := uuid.New(), uuid.New(), uuid.New(), uuid.New(), uuid.New()
@@ -47,7 +49,7 @@ func TestRBAC0MigrationBackfillsProvenance(t *testing.T) {
 		var status string
 		var source *string
 		var hasOrg bool
-		if err := pool.QueryRow(ctx, `SELECT status, deactivation_source, deactivated_by_org_id IS NOT NULL FROM users WHERE id=$1`, user).Scan(&status, &source, &hasOrg); err != nil {
+		if err := pool.QueryRow(ctx, `SELECT u.status, d.source, d.org_id IS NOT NULL FROM users u LEFT JOIN user_deactivations d ON d.user_id=u.id WHERE u.id=$1`, user).Scan(&status, &source, &hasOrg); err != nil {
 			t.Fatal(err)
 		}
 		got := ""
@@ -63,7 +65,7 @@ func TestRBAC0MigrationBackfillsProvenance(t *testing.T) {
 	check(legacy, "", false)
 	var role string
 	var source *string
-	if err := pool.QueryRow(ctx, `SELECT role, access_revoked_source FROM memberships WHERE org_id=$1 AND user_id=$2`, org, revoked).Scan(&role, &source); err != nil {
+	if err := pool.QueryRow(ctx, `SELECT m.role, s.source FROM memberships m LEFT JOIN membership_revocation_sources s ON s.org_id=m.org_id AND s.user_id=m.user_id WHERE m.org_id=$1 AND m.user_id=$2`, org, revoked).Scan(&role, &source); err != nil {
 		t.Fatal(err)
 	}
 	if role != "member" || source == nil || *source != "idp_sync" {
@@ -71,6 +73,12 @@ func TestRBAC0MigrationBackfillsProvenance(t *testing.T) {
 	}
 	if err := pool.QueryRow(ctx, `SELECT role FROM memberships WHERE org_id=$1 AND user_id=$2`, org, bySync).Scan(&role); err != nil || role != "owner" {
 		t.Fatalf("role rewritten by migration: %q %v", role, err)
+	}
+	for _, table := range []string{"users", "memberships"} {
+		var n int
+		if err := pool.QueryRow(ctx, `SELECT count(*) FROM information_schema.columns WHERE table_schema='public' AND table_name=$1 AND column_name IN ('deactivation_source','deactivated_by_org_id','access_revoked_source')`, table).Scan(&n); err != nil || n != 0 {
+			t.Fatalf("%s gained provenance columns (%d): %v", table, n, err)
+		}
 	}
 	down, err := db.MigrationsFS.ReadFile("migrations/0246_people_management_provenance.down.sql")
 	if err != nil {

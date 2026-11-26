@@ -121,8 +121,15 @@ SELECT count(*) FROM membership_access_sources WHERE org_id = $1 AND user_id = $
 -- name: RestoreMembershipAfterIdpGrant :exec
 -- RBAC-0 D3: only DIRECTORY revocations are restored by a directory grant. An administrator's
 -- deactivation in this org is not the directory's to undo.
-UPDATE memberships SET access_revoked_at = NULL, access_revoked_source = NULL
-WHERE org_id = $1 AND user_id = $2 AND access_revoked_at IS NOT NULL AND access_revoked_source = 'idp_sync';
+WITH owned AS (
+    DELETE FROM membership_revocation_sources s
+    USING memberships m
+    WHERE s.org_id = $1 AND s.user_id = $2 AND s.source = 'idp_sync'
+      AND m.org_id = s.org_id AND m.user_id = s.user_id AND m.access_revoked_at IS NOT NULL
+    RETURNING s.org_id, s.user_id
+)
+UPDATE memberships SET access_revoked_at = NULL
+FROM owned WHERE memberships.org_id = owned.org_id AND memberships.user_id = owned.user_id;
 
 -- name: RemoveIdpGroupMember :execrows
 -- Remove a synced member — scoped to origin='idp_sync' so the reconcile can NEVER delete a

@@ -257,7 +257,7 @@ func TestRBAC0RestoreForSyncReversesOnlyDirectoryActs(t *testing.T) {
 		t.Fatalf("sync restored an administrator's org-scoped deactivation: did=%v err=%v", did, err)
 	}
 	// And the directory's own org-scoped removal comes back.
-	if _, err := o.pool.Exec(o.ctx, `UPDATE memberships SET access_revoked_at=NULL, access_revoked_source=NULL WHERE org_id=$1 AND user_id=$2`, a, multi); err != nil {
+	if _, err := o.pool.Exec(o.ctx, `WITH d AS (DELETE FROM membership_revocation_sources WHERE org_id=$1 AND user_id=$2) UPDATE memberships SET access_revoked_at=NULL WHERE org_id=$1 AND user_id=$2`, a, multi); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := o.svc.RevokeOrgAccessBySync(o.ctx, a, multi, "directory_provenance_exhausted"); err != nil {
