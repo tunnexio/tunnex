@@ -7815,6 +7815,10 @@ export interface components {
             /** Format: uuid */
             subject_id?: string;
             subject_name?: string;
+            /** @description User recipients only */
+            subject_email?: string;
+            /** @description Group recipients only; counted as VaultSubject.member_count */
+            subject_member_count?: number;
             current_version: number;
             /** @description Bumped by every change; the precondition for details edits */
             revision: number;
@@ -19706,6 +19710,8 @@ export interface operations {
                 to?: string;
                 /** @description Exact audit target type filter; ordinary defaults are unchanged. */
                 target_type?: string;
+                /** @description Action family filter, for example vault. for every vault.* action. A literal prefix ending in a dot; composes with every other filter. */
+                action_prefix?: string;
                 /** @description Exact UUID target filter. Application changes use app_access plus the application UUID; grant and session target IDs differ. */
                 target_id?: string;
                 cursor_ts?: string;

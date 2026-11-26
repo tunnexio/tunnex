@@ -24,6 +24,7 @@ SELECT * FROM audit_logs
 WHERE org_id = $1
   AND (sqlc.narg('actor')::uuid IS NULL OR actor_user_id = sqlc.narg('actor'))
   AND (sqlc.narg('action')::text IS NULL OR action = sqlc.narg('action'))
+  AND (sqlc.narg('action_prefix')::text IS NULL OR starts_with(action, sqlc.narg('action_prefix')))
   AND (sqlc.narg('target_type')::text IS NULL OR target_type = sqlc.narg('target_type'))
   AND (sqlc.narg('target_id')::text IS NULL OR target_id = sqlc.narg('target_id'))
   AND (sqlc.narg('from_ts')::timestamptz IS NULL OR created_at >= sqlc.narg('from_ts'))

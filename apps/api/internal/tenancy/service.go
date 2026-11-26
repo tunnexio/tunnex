@@ -656,10 +656,12 @@ type AuditFilter struct {
 	TargetType, TargetID *string
 	Actor                *uuid.UUID
 	Action               *string
-	From, To             *time.Time
-	CursorTS             *time.Time
-	CursorID             *uuid.UUID
-	Limit                int32
+	// ActionPrefix is a validated literal "family." prefix (VAULT-UX-2 W1).
+	ActionPrefix *string
+	From, To     *time.Time
+	CursorTS     *time.Time
+	CursorID     *uuid.UUID
+	Limit        int32
 }
 
 // ListAuditLogs returns a keyset page of the org's audit feed, newest first,
@@ -671,6 +673,7 @@ func (s *Service) ListAuditLogs(ctx context.Context, orgID uuid.UUID, f AuditFil
 		p.Actor = pgtype.UUID{Bytes: *f.Actor, Valid: true}
 	}
 	p.Action = f.Action
+	p.ActionPrefix = f.ActionPrefix
 	p.TargetType = f.TargetType
 	p.TargetID = f.TargetID
 	if f.From != nil {

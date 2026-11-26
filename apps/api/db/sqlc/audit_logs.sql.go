@@ -615,26 +615,28 @@ SELECT id, org_id, actor_user_id, action, target_type, target_id, metadata, crea
 WHERE org_id = $1
   AND ($2::uuid IS NULL OR actor_user_id = $2)
   AND ($3::text IS NULL OR action = $3)
-  AND ($4::text IS NULL OR target_type = $4)
-  AND ($5::text IS NULL OR target_id = $5)
-  AND ($6::timestamptz IS NULL OR created_at >= $6)
-  AND ($7::timestamptz IS NULL OR created_at <= $7)
-  AND ($8::timestamptz IS NULL OR (created_at, id) < ($8, $9::uuid))
+  AND ($4::text IS NULL OR starts_with(action, $4))
+  AND ($5::text IS NULL OR target_type = $5)
+  AND ($6::text IS NULL OR target_id = $6)
+  AND ($7::timestamptz IS NULL OR created_at >= $7)
+  AND ($8::timestamptz IS NULL OR created_at <= $8)
+  AND ($9::timestamptz IS NULL OR (created_at, id) < ($9, $10::uuid))
 ORDER BY created_at DESC, id DESC
-LIMIT $10
+LIMIT $11
 `
 
 type ListAuditLogsByOrgParams struct {
-	OrgID      pgtype.UUID        `json:"org_id"`
-	Actor      pgtype.UUID        `json:"actor"`
-	Action     *string            `json:"action"`
-	TargetType *string            `json:"target_type"`
-	TargetID   *string            `json:"target_id"`
-	FromTs     pgtype.Timestamptz `json:"from_ts"`
-	ToTs       pgtype.Timestamptz `json:"to_ts"`
-	CursorTs   pgtype.Timestamptz `json:"cursor_ts"`
-	CursorID   pgtype.UUID        `json:"cursor_id"`
-	Lim        int32              `json:"lim"`
+	OrgID        pgtype.UUID        `json:"org_id"`
+	Actor        pgtype.UUID        `json:"actor"`
+	Action       *string            `json:"action"`
+	ActionPrefix *string            `json:"action_prefix"`
+	TargetType   *string            `json:"target_type"`
+	TargetID     *string            `json:"target_id"`
+	FromTs       pgtype.Timestamptz `json:"from_ts"`
+	ToTs         pgtype.Timestamptz `json:"to_ts"`
+	CursorTs     pgtype.Timestamptz `json:"cursor_ts"`
+	CursorID     pgtype.UUID        `json:"cursor_id"`
+	Lim          int32              `json:"lim"`
 }
 
 // Org-scoped audit feed with optional filters (actor / action / date range) and
@@ -647,6 +649,7 @@ func (q *Queries) ListAuditLogsByOrg(ctx context.Context, arg ListAuditLogsByOrg
 		arg.OrgID,
 		arg.Actor,
 		arg.Action,
+		arg.ActionPrefix,
 		arg.TargetType,
 		arg.TargetID,
 		arg.FromTs,
