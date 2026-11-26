@@ -185,6 +185,8 @@ describe("LS-UX-2 status sentences", () => {
   it("tells reviewers who can act and publishers what to do", () => {
     const now = Date.parse("2026-10-06T11:00:00Z");
     expect(beamStatusHint(reviewed, "reviewer", now)).toBeNull();
+    expect(beamStatusHint({ ...reviewed, can_open: false }, "publisher", now)).toBeNull();
+    expect(beamStatusHint({ ...reviewed, can_open: false }, "manager", now)).toMatch(/not one of its reviewers/);
     expect(beamStatusHint({ ...reviewed, connectivity: "origin_unavailable" }, "reviewer", now)).toMatch(/^Pat Publisher \(pat@example.com\)'s local app is not responding/);
     expect(beamStatusHint({ ...reviewed, connectivity: "origin_unavailable" }, "publisher", now)).toMatch(/^Your local app is not responding/);
     expect(beamStatusHint({ ...reviewed, state: "revoked" }, "reviewer", now)).toMatch(/sharing policy or server change\. Ask Pat Publisher/);

@@ -127,6 +127,6 @@ function statusHint(share: BeamShare, viewer: BeamViewer, now: number): string |
   if (share.state === "starting") return own ? "Waiting for your CLI or desktop client to connect." : `Waiting for ${publisher} to start sharing. Check again in a moment.`;
   if (share.connectivity === "offline" || share.connectivity === "reconnecting") return own ? "Your CLI or desktop client is not connected. Keep it running to serve reviewers." : `${publisher}'s computer is offline or reconnecting. The app opens again when it is back.`;
   if (share.connectivity === "origin_unavailable") return own ? "Your local app is not responding. Check that it is running on the shared port." : `${publisher}'s local app is not responding right now. Try again shortly or let them know.`;
-  if (!share.can_open && viewer !== "reviewer") return "You manage this share but are not one of its reviewers, so you can't open the app.";
+  if (!share.can_open && viewer === "manager") return "You manage this share but are not one of its reviewers, so you can't open the app.";
   return null;
 }

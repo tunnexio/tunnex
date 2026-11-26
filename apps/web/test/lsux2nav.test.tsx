@@ -25,7 +25,9 @@ vi.mock("../src/lib/api", async () => {
   };
 });
 
+vi.mock("../src/components/UpgradeCenter", () => ({ UpgradeCenter: () => <p>Upgrade center mounted</p> }));
 import { OrgProvider } from "../src/lib/useOrg";
+import { CommandPalette } from "../src/components/CommandPalette";
 import { AuthProvider } from "../src/lib/auth";
 import { AppShell, NAV_DESTINATIONS } from "../src/components/AppShell";
 import { LayoutCapabilityProvider } from "../src/components/ComposeGate";
@@ -106,5 +108,16 @@ describe("LS-UX-2 member navigation (M1-M19)", () => {
     expect(screen.queryByText("Get started")).toBeNull();
     expect(screen.queryByText("Gateway Health")).toBeNull();
     await screen.findByText(/ask Olu Owner \(olu@example.com\)/);
+    // A server admin is not an organization role: one-click upgrades stay on the member overview.
+    expect(screen.getByText("Upgrade center mounted")).toBeTruthy();
+  });
+  it("the command palette offers the member's destinations with the same labels as the sidebar (M19)", async () => {
+    providers(<CommandPalette />);
+    act(() => { fireEvent.keyDown(window, { key: "k", metaKey: true }); });
+    const list = await screen.findByRole("listbox");
+    await waitFor(() => expect(within(list).queryByText("Gateways")).toBeNull());
+    expect(within(list).getByText("My activity")).toBeTruthy();
+    expect(within(list).queryByText("Audit Log")).toBeNull();
+    expect(within(list).getByText("Local Sharing")).toBeTruthy();
   });
 });

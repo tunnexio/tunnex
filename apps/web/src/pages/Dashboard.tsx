@@ -77,6 +77,8 @@ function WorkspaceOverview({ orgId, orgName, mine }: { orgId: string; orgName: s
       <div className="scan-org">{orgName}<span>Your workspace</span></div>
       <div className="scan-toolbar-actions"><RefreshButton label="Refresh overview" disabled={devices === null} onClick={() => setAttempt(value => value + 1)} /></div>
     </div>
+    {/* Server administration is not an organization role: a server admin keeps one-click upgrades here. */}
+    <UpgradeCenter />
     <Section title="Your devices" className="scan-devices" actions={<Link to="/devices" className="scan-text-link">View my devices</Link>}>
       {devices === null ? <Loading label="Loading your devices…" /> : !devices.ok ? <ErrorText>Your devices could not be read. Refresh to try again.</ErrorText>
         : devices.data.length === 0 ? <EmptyState><span className="block">No devices yet. <Link className="scan-text-link" to="/connect">Connect this computer</Link> or <Link className="scan-text-link" to="/devices">add a device</Link> to reach your organization's network.</span></EmptyState>

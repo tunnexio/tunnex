@@ -102,16 +102,16 @@ sandbox:manage, sandbox:view, server_access:replay, server_access:use, vault:use
 
 | # | Destination | Server answer to a member | Before | Disposition |
 |---|---|---|---|---|
-| M1 | Overview `/dashboard` | `org:view` reads succeed; `devices/pending` and `policies` 403 (tiles silently dropped). | The admin fleet view: org-wide gateway/site/member counts, *Waiting for you* admin items, *Get started* setup cards, *Setup guide* link — all pointing at pages a member cannot act on. | **Fixed.** People without network administration (`org:update` or `policy:view`) get **Your workspace**: their own devices with *Add a device*, and cards for the areas they can use (App Access, Server Access, Local Sharing, Vault, AI Gateway playground, Sandboxes when enabled), with *"For anything else, ask Name (email)"*. Admins keep the fleet view unchanged. |
+| M1 | Overview `/dashboard` | `org:view` reads succeed; `devices/pending` and `policies` 403 (tiles silently dropped). | The admin fleet view: org-wide gateway/site/member counts, *Waiting for you* admin items, *Get started* setup cards, *Setup guide* link — all pointing at pages a member cannot act on. | **Fixed.** People without network administration (`org:update` or `policy:view`) get **Your workspace**: their own devices with *Connect this computer* / *add a device*, and cards for the areas they can use (App Access, Server Access, Local Sharing, Vault, AI Gateway playground, Sandboxes when enabled), with *"For anything else, ask Name (email)"*. A server administrator (`cp_admin`, not an organization role) keeps the one-click upgrade panel on this overview too. Admins keep the fleet view unchanged. |
 | M2 | Gateways | `org:view` read-only inventory. | Shown. | **Hidden** for roles without `org:update`/`site:manage`. Direct URL keeps the existing read-only page (no error). |
 | M3 | Site-to-site | Read-only topology; dns-forwards 403 per site. | Shown. | **Hidden** without `site:manage`/`ipsec:manage`. Direct URL unchanged (already role-gated, failures named). |
 | M4 | Kubernetes | Read-only. | Shown. | **Hidden** without `k8s:manage`/`k8s_scope:view`/`k8s_ha:view` (operators keep it). |
 | M5 | AI Gateway | `ai_model:use` → Playground. | Shown, already scoped. | **Kept** (any of `ai_model:use`, `ai_gateway:view`). |
 | M6 | AI Agents | Read-only inventory. | Shown. | **Hidden** without an agent management/grant/request permission. |
-| M7 | MCP | 403; friendly card exists. When the org feature is off, it showed *Open feature settings* to people who cannot open them. | Shown. | **Hidden** without `agent_template:manage`. Feature-off link shown only to people who can manage; others read *"Ask an organization admin to turn on MCP management."* |
+| M7 | MCP | 403; friendly card exists. When the org feature is off, it showed *Open feature settings* to people who cannot open them. | Shown. | **Hidden** without `agent_template:manage`, and `/mcp` by URL is behind the same rule (admin-only notice, M20). Only owners and admins reach the page, and they can open feature settings, so the feature-off link is now always actionable. `AgentsMCP.tsx` itself is unchanged. |
 | M8 | Access Policies | 403; friendly member gate exists. | Shown. | **Hidden** without `policy:view`. |
 | M9 | Devices | Own devices only (server-filtered) + Add device. | Shown; **Approvals** and **Posture** tabs always visible and show the raw permission message. | **Kept**; Approvals/Posture tabs only with `device:approve`, decided from the roster the Devices page already reads (no extra request); a failed roster keeps both tabs. Direct URL shows the admin-only notice (M20). |
-| M10 | Users & Groups | `member:list` roster, read-only; groups 403. | Shown. | **Hidden** without `member:manage`/`member:invite`. Direct URL unchanged (read-only roster, invitations already say no permission). |
+| M10 | Users & Groups | `member:list` roster, read-only; groups 403. | Shown. | **Hidden** without `member:manage`/`member:invite`. By URL: `/users` and `/users/roles` keep the read-only roster (no actions offered); `/users/invitations` (was *"You do not have permission to manage invitations."*) and `/users/groups` (403) show the admin-only notice. |
 | M11 | App Access | `app_access:use`; already redirects to My applications. | Shown. | **Kept.** |
 | M12 | Server Access | `server_access:use`; *My servers*, names admins to ask. | Shown. | **Kept.** |
 | M13 | Local Sharing | `beam:use`. | Shown. | **Kept** (this paper, B). |
@@ -120,8 +120,8 @@ sandbox:manage, sandbox:view, server_access:replay, server_access:use, vault:use
 | M16 | Access Events | 403 (`policy:view`; App Access source needs `app_access:event_view`, Local Sharing source `beam:audit_view`). | Shown; raw message with Retry. | **Hidden** without any of those; direct URL shows the admin-only notice. |
 | M17 | Audit Log | Own actions only, page already says so. | Shown as *Audit Log*. | **Kept, relabelled** *My activity* for people without organization-wide audit (owner/admin), so the nav matches what the page shows. |
 | M18 | Settings | Authentication (MFA, SSO self-link) and Licence & plan. | Shown. | **Kept.** |
-| M19 | Command palette (⌘K) | Listed every destination for everyone. | | **Fixed.** Same role filter as the sidebar. Entity search unchanged (reads a member may already make). |
-| M20 | Admin-only page reached by URL | Mixed: raw messages (Alerts, Access Events, Device Approvals/Posture), friendly cards elsewhere. | | **Fixed.** One shared **AdminOnlyNotice**: *"<Page> is managed by organization admins. Your account can't open it. If you need something here, ask Name (email)."* with a link back to Overview. No codes, no alarm styling. |
+| M19 | Command palette (⌘K) | Listed every destination for everyone. | | **Fixed.** Same role filter and the same *My activity* label as the sidebar. Entity search unchanged (reads a member may already make). |
+| M20 | Admin-only page reached by URL | Mixed: raw messages (Alerts, Access Events, Device Approvals/Posture), friendly cards elsewhere. | | **Fixed.** One shared **AdminOnlyNotice**: heading *"<Page> is managed by organization admins"*, then *"Your account can't open this page. If you need something here, ask Name (email)."* and *Go to your overview*. No codes, no alarm styling. |
 
 Role resolution: one hook `useMyOrgRoles` reads the member list (`member:list` is held by every
 human role) and uses `roles ?? [role]`, so multi-role users are right (the older
@@ -142,7 +142,7 @@ Build notes (folded during the build):
 * Shared chrome that renders without a signed-in person (isolated pages, the palette in tests)
   treats roles as unknown and withholds nothing.
 * Routes gated by URL: `/alerts`, `/access-events`, `/devices/approvals`, `/devices/posture`,
-  `/mcp`, `/users/groups`. Pages that already answer a member with a friendly state or with
+  `/mcp`, `/users/groups`, `/users/invitations`. Pages that already answer a member with a friendly state or with
   read-only data (Access Policies, Users, Gateways, Sites, Kubernetes, Agents) keep their own
   behaviour by URL.
 
