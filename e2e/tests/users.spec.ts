@@ -24,7 +24,14 @@ async function loginAs(page: Page, who: { email: string; pass: string }) {
   await page.getByLabel("Password", { exact: true }).fill(who.pass);
   await page.getByRole("button", { name: "Sign in" }).click();
   await expect(page.getByRole("heading", { name: "Overview" })).toBeVisible();
-  await page.getByRole("link", { name: "Users & Groups" }).click();
+  if (who === MEMBER) {
+    // LS-UX-2: Users & Groups is an admin area, so a member's sidebar hides it;
+    // the read-only roster stays reachable by URL.
+    await expect(page.getByRole("link", { name: "Users & Groups" })).toHaveCount(0);
+    await page.goto("/users");
+  } else {
+    await page.getByRole("link", { name: "Users & Groups" }).click();
+  }
   await expect(page).toHaveURL(/\/users$/);
   await expect(page.getByRole("navigation", { name: "User sections" }).getByRole("link", { name: "Users", exact: true })).toHaveAttribute("aria-current", "page");
   await expect(page.getByRole("table", { name: "Members", exact: true })).toBeVisible();
