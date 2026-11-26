@@ -7,6 +7,9 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -378,3 +381,102 @@ func TestRBAC0OrgViewMutationsRequireVerifiedEmail(t *testing.T) {
 }
 
 func rbac0HashToken(raw string) []byte { h := sha256.Sum256([]byte(raw)); return h[:] }
+
+// D9: deactivate and MFA reset had no body; a bodyless request from an older client must reach the
+// handler (and its clear refusal), not die on a decode error before authorization.
+func TestRBAC0BodylessStepUpRoutesReachTheHandler(t *testing.T) {
+	f := newRBAC0Fixture(t, true)
+	h := vaultSecurityRouter(t, Deps{Members: f.server.members, Mfa: f.server.mfa, System: f.q, Sessions: f.store, MfaEnforceEnabled: true,
+		AuthFn: func(*http.Request) *authctx.Principal {
+			return &authctx.Principal{UserID: f.adminA.ID, SessionID: "vault-security-session", EmailVerified: true,
+				AuthMethod: authctx.AuthLocalPassword, Roles: map[uuid.UUID]string{f.orgA: "admin"}}
+		}})
+	for _, verb := range []string{"deactivate", "mfa-reset"} {
+		path := "/api/v1/organizations/" + f.orgA.String() + "/members/" + f.ownerA.ID.String() + "/" + verb
+		r := httptest.NewRequest(http.MethodPost, path, nil)
+		r.AddCookie(&http.Cookie{Name: "tunnex_session", Value: "vault-security-session"})
+		r.Header.Set("X-Tunnex-CSRF", "1")
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		// An admin acting on an owner: the handler's relational refusal, which proves the request got there.
+		if w.Code != http.StatusForbidden || !strings.Contains(w.Body.String(), "Only an owner") {
+			t.Fatalf("bodyless %s: %d %s", verb, w.Code, w.Body.String())
+		}
+	}
+}
+
+// D3 + D9: with re-authentication, an admin deactivates a multi-org member here only; the member keeps
+// their other organization and their account.
+func TestRBAC0StepUpDeactivationIsOrgScoped(t *testing.T) {
+	f := newRBAC0Fixture(t, true)
+	pw := rbac0Password
+	if _, err := f.server.DeactivateMember(f.as(t, f.adminA), api.DeactivateMemberRequestObject{OrgId: f.orgA, UserId: f.multi.ID,
+		Body: &api.DeactivateMemberJSONRequestBody{CurrentPassword: &pw}}); err != nil {
+		t.Fatal(err)
+	}
+	if got := f.status(t, f.multi.ID); got != "active" {
+		t.Fatalf("account status = %q", got)
+	}
+	var revokedA, revokedB bool
+	if err := f.pool.QueryRow(f.ctx, `SELECT
+		bool_or(access_revoked_at IS NOT NULL) FILTER (WHERE org_id=$1),
+		bool_or(access_revoked_at IS NOT NULL) FILTER (WHERE org_id=$2)
+		FROM memberships WHERE user_id=$3`, f.orgA, f.orgB, f.multi.ID).Scan(&revokedA, &revokedB); err != nil {
+		t.Fatal(err)
+	}
+	if !revokedA || revokedB {
+		t.Fatalf("revoked A=%v B=%v", revokedA, revokedB)
+	}
+	// The roster says so, per organization.
+	out, err := f.server.ListMembers(f.as(t, f.adminA), api.ListMembersRequestObject{OrgId: f.orgA})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, m := range out.(api.ListMembers200JSONResponse).Body {
+		if m.UserId == f.multi.ID && (m.Status != "deactivated" || m.DeactivatedBy == nil || *m.DeactivatedBy != "organization") {
+			t.Fatalf("roster row = %+v", m)
+		}
+	}
+	// A wrong password is refused without acting.
+	bad := "wrong-password"
+	if _, err := f.server.DeactivateMember(f.as(t, f.adminA), api.DeactivateMemberRequestObject{OrgId: f.orgA, UserId: f.memberA.ID,
+		Body: &api.DeactivateMemberJSONRequestBody{CurrentPassword: &bad}}); mfaHandlerErrorCode(err) != "invalid_credentials" {
+		t.Fatalf("wrong password: %v", err)
+	}
+	if got := f.status(t, f.memberA.ID); got != "active" {
+		t.Fatalf("deactivated despite a wrong password: %q", got)
+	}
+}
+
+// D2: a deployment administrator's factor can be reset only by another deployment administrator, and the
+// caller's own factor never through this route.
+func TestRBAC0MFAResetProtectsCPAdminAndSelf(t *testing.T) {
+	f := newRBAC0Fixture(t, true)
+	if _, err := f.pool.Exec(f.ctx, `UPDATE users SET cp_admin=true WHERE id=$1`, f.memberA.ID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.server.AdminResetMfa(f.as(t, f.ownerA), api.AdminResetMfaRequestObject{OrgId: f.orgA, UserId: f.memberA.ID}); mfaHandlerErrorCode(err) != "forbidden" {
+		t.Fatalf("owner resetting a deployment administrator: %v", err)
+	}
+	if _, err := f.server.AdminResetMfa(f.as(t, f.ownerA), api.AdminResetMfaRequestObject{OrgId: f.orgA, UserId: f.ownerA.ID}); mfaHandlerErrorCode(err) != "self_reset" {
+		t.Fatalf("self reset: %v", err)
+	}
+	pw := rbac0Password
+	if _, err := f.server.AdminResetMfa(f.as(t, f.adminA), api.AdminResetMfaRequestObject{OrgId: f.orgA, UserId: f.multi.ID,
+		Body: &api.AdminResetMfaJSONRequestBody{CurrentPassword: &pw}}); err != nil {
+		t.Fatalf("admin resetting a member with step-up: %v", err)
+	}
+}
+
+// D9: the roster's /me carries what a step-up will ask for.
+func TestRBAC0CurrentUserReportsReauthentication(t *testing.T) {
+	f := newRBAC0Fixture(t, true)
+	out, err := f.server.CurrentUser(f.as(t, f.adminA), api.CurrentUserRequestObject{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := out.(api.CurrentUser200JSONResponse).Body.Reauthentication
+	if r == nil || !r.Password || r.Mfa || !r.Available {
+		t.Fatalf("reauthentication = %+v", r)
+	}
+}

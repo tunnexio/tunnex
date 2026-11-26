@@ -217,3 +217,49 @@ func rbac0MachineStanding(t *testing.T, o *rbac0Org, owner, org uuid.UUID) bool 
 	}
 	return active
 }
+
+// D3: directory sync — and only sync — reverses its own deprovisioning when the directory lists the
+// person as active again; an administrator's deactivation is never undone by sync.
+func TestRBAC0RestoreForSyncReversesOnlyDirectoryActs(t *testing.T) {
+	o := newRBAC0Org(t)
+	a := o.org(t)
+	actor := o.user(t, map[uuid.UUID]string{a: "owner"})
+	bySync := o.user(t, map[uuid.UUID]string{a: "member"})
+	byAdmin := o.user(t, map[uuid.UUID]string{a: "member"})
+	if _, err := o.svc.DeactivateMemberBySync(o.ctx, a, bySync, "disabled_in_directory"); err != nil {
+		t.Fatal(err)
+	}
+	if err := o.svc.DeactivateMember(o.ctx, actor, "owner", a, byAdmin); err != nil {
+		t.Fatal(err)
+	}
+	if did, err := o.svc.RestoreForSync(o.ctx, a, bySync); err != nil || !did {
+		t.Fatalf("sync restore of its own deactivation: did=%v err=%v", did, err)
+	}
+	if got := o.status(t, bySync); got != "active" {
+		t.Fatalf("status after sync restore = %q", got)
+	}
+	if did, err := o.svc.RestoreForSync(o.ctx, a, byAdmin); err != nil || did {
+		t.Fatalf("sync must not reverse an administrator: did=%v err=%v", did, err)
+	}
+	if got := o.status(t, byAdmin); got != "deactivated" {
+		t.Fatalf("admin-deactivated status = %q", got)
+	}
+	// Org-scoped: the administrator's revocation of a multi-org member is not the directory's either.
+	multi := o.user(t, map[uuid.UUID]string{a: "member", o.org(t): "member"})
+	if err := o.svc.DeactivateMember(o.ctx, actor, "owner", a, multi); err != nil {
+		t.Fatal(err)
+	}
+	if did, err := o.svc.RestoreForSync(o.ctx, a, multi); err != nil || did || o.hasAccess(t, a, multi) {
+		t.Fatalf("sync restored an administrator's org-scoped deactivation: did=%v err=%v", did, err)
+	}
+	// And the directory's own org-scoped removal comes back.
+	if _, err := o.pool.Exec(o.ctx, `UPDATE memberships SET access_revoked_at=NULL, access_revoked_source=NULL WHERE org_id=$1 AND user_id=$2`, a, multi); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := o.svc.RevokeOrgAccessBySync(o.ctx, a, multi, "directory_provenance_exhausted"); err != nil {
+		t.Fatal(err)
+	}
+	if did, err := o.svc.RestoreForSync(o.ctx, a, multi); err != nil || !did || !o.hasAccess(t, a, multi) {
+		t.Fatalf("sync did not restore its own org-scoped removal: did=%v err=%v", did, err)
+	}
+}
