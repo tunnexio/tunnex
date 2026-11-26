@@ -22,8 +22,9 @@ matches one exact target type and one exact action and pages by keyset, so the b
 together without short pages and a wrong "next" flag, and a list of target types would still either miss
 the purge row or pull in unrelated `user` events.
 
-**Locked.** The audit API gains one optional filter, `action_prefix` (`^[a-z][a-z0-9_]*\.$`, at most 64
-characters), matched with `starts_with(action, prefix)` so no LIKE metacharacter can widen it. It composes
+**Locked.** The audit API gains one optional filter, `action_prefix` (one or more `[a-z][a-z0-9_]*` segments
+each ending in a dot, e.g. `vault.` or `beam.share.`; at most 64 characters; anything else is
+`400 invalid_action_filter`), matched with `starts_with(action, prefix)` so no LIKE metacharacter can widen it. It composes
 with every existing filter and with the member self-scope (members still see only their own rows). The
 "Vault activity" button sends `action_prefix=vault.` and no target type, so every current and future
 `vault.*` action is included by construction. The action suggestions still come from the one
@@ -120,3 +121,17 @@ details. Its actions become the standard buttons (Regenerate, Close, Save & copy
   tests against a `vaultux2-` stack.
 - `make generate-check` (OpenAPI and sqlc change).
 - Real stack (`vaultux2-` compose project): `e2e/tests/vault.spec.ts`, plus a browser check of W3 and W6.
+
+## Verification record
+
+- Real stack (`vaultux2` compose project, this branch): `e2e/tests/vault.spec.ts` 3/3 passed. A throwaway
+  walk spec (not committed) on the same stack confirmed: no Search button; typing filters and writes `?q=`
+  with history replaced (Back leaves Vault instead of stepping through each pause); Quick generate drawer is
+  the full viewport height (720 of 720 px); the generated secret is `type=password`, the normal dark input
+  background `rgb(23,23,23)` with light text, and Show secret switches it to text.
+- W3 caveat: headless Chromium has no password manager or saved logins, so it cannot reproduce the grey
+  block itself (`:autofill` was false there). The fix targets the two causes that can paint over the field —
+  autofill state styling and password-manager decoration — and is verified as "normal look in a clean
+  browser"; the founder's browser is the final check.
+- The search form's accessible name is "Credential search", not "Search Vault …", so `getByLabel("Search
+  Vault")` still resolves to the one input.
