@@ -82,6 +82,7 @@ type Route struct {
 	PathPrefix string `json:"path_prefix"`
 	Target     Target `json:"target"`
 }
+
 // Reviewer is a grant with its display name: a person's name and email, or a group's name.
 type Reviewer struct {
 	SubjectKind string    `json:"subject_kind"`
@@ -135,17 +136,17 @@ type Share struct {
 	PublisherName string     `json:"publisher_name,omitempty"`
 	// LS-UX-2: reviewers see who shared the app as "Name (email)". Only
 	// projections that already passed the owner/manager/grantee check carry it.
-	PublisherEmail          string     `json:"publisher_email,omitempty"`
-	Hostname                string     `json:"hostname"`
-	URL                     string     `json:"url"`
-	Target                  *Target    `json:"target,omitempty"`
-	State                   string     `json:"state"`
-	Connectivity            string     `json:"connectivity"`
-	Version                 int64      `json:"version"`
-	AuthorityVersion        int64      `json:"authority_version"`
-	ExpiresAt               time.Time  `json:"expires_at"`
-	CreatedAt               time.Time  `json:"created_at"`
-	Grants                  []Grant    `json:"grants,omitempty"`
+	PublisherEmail   string    `json:"publisher_email,omitempty"`
+	Hostname         string    `json:"hostname"`
+	URL              string    `json:"url"`
+	Target           *Target   `json:"target,omitempty"`
+	State            string    `json:"state"`
+	Connectivity     string    `json:"connectivity"`
+	Version          int64     `json:"version"`
+	AuthorityVersion int64     `json:"authority_version"`
+	ExpiresAt        time.Time `json:"expires_at"`
+	CreatedAt        time.Time `json:"created_at"`
+	Grants           []Grant   `json:"grants,omitempty"`
 	// LS-UX-4: who the share's reviewers are, by name, for the publisher and managers only (the same
 	// projections that carry Grants). The publisher's own implicit grant and subjects that are no longer
 	// current organization members or groups are left out.
@@ -267,7 +268,9 @@ func unavailable() error {
 func conflict() error {
 	return apierr.Conflict("beam_version_conflict", "This share or the sharing policy changed. Refresh and try again.")
 }
-func missing() error           { return apierr.NotFound("beam_share_not_found", "This share isn't available to your account.") }
+func missing() error {
+	return apierr.NotFound("beam_share_not_found", "This share isn't available to your account.")
+}
 func invalid(msg string) error { return apierr.BadRequest("beam_invalid", msg) }
 func terminal(state string) bool {
 	return state == "stopped" || state == "expired" || state == "revoked"

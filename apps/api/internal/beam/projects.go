@@ -36,7 +36,9 @@ type ProjectInput struct {
 
 const projectColumns = `id,org_id,owner_id,name,target,duration_seconds,grants,version,created_at,updated_at`
 
-func projectMissing() error { return apierr.NotFound("beam_project_not_found", "This saved project isn't available to your account.") }
+func projectMissing() error {
+	return apierr.NotFound("beam_project_not_found", "This saved project isn't available to your account.")
+}
 func scanProject(row pgx.Row) (Project, error) {
 	var p Project
 	var target, grants []byte
