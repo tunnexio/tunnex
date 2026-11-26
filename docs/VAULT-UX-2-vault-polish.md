@@ -64,10 +64,12 @@ autofill / password-manager decoration, which paints its own background and text
   every hint still masks the value — and are styled through a Vault-scoped rule that pins the normal input
   background and text colour in the `:autofill` / `:-webkit-autofill` states, so hidden reads as dots in the
   normal field and **Show secret** reveals it.
-- They carry the password-manager opt-outs (`data-1p-ignore`, `data-lpignore`, `data-bwignore`,
-  `data-form-type="other"`): a Vault secret is not a login for this site, and a manager must neither fill the
-  operator's own control-plane password into it nor offer to save the secret against the control-plane
-  origin. Security is stronger, not weaker.
+- They carry the third-party password-manager opt-outs (`data-1p-ignore`, `data-lpignore`, `data-bwignore`,
+  `data-form-type="other"`): a Vault secret is not a login for this site, and those managers should neither
+  fill the operator's own control-plane password into it nor decorate it. Browsers' built-in managers
+  (Chrome, Safari) ignore these attributes; whether Chrome offers to save the secret against the
+  control-plane origin is a founder-browser check, recorded under Verification, not a claim of this story.
+  Security is unchanged or stronger.
 - jsdom cannot show paint, so the proof is a browser check on a local stack (recorded under Verification),
   plus a unit test that the attributes and the scoped class are present on both forms.
 
@@ -108,7 +110,8 @@ details. Its actions become the standard buttons (Regenerate, Close, Save & copy
 | F3 | Search empty state's button said "Clear filters" while the toolbar says "Clear search". | **Fix.** One name: "Clear search". |
 | F4 | A success notice ("Credential saved.") stayed on screen after switching view or paging. | **Fix.** Switching view clears it, as a search already did. |
 | F5 | Detail drawer Access fact and Change secret summary named the recipient without email or group size. | **Fix** with W2's shared label. |
-| F6 | Member without the Vault role: navigation hides Vault and a direct `/vault` shows "Vault is managed by organization admins". | **No change.** Correct and calm; role gating belongs to `story/rbac-0`. |
+| F6a | Member who is not a recipient (has `vault:use`): sees only their personal entries; Shared with me is empty with no add action (F2); a direct reveal of someone else's entry is 404. | **No change** beyond F2; covered by the new Go test (the group member sees only the group share). |
+| F6 | Account without the Vault role: navigation hides Vault and a direct `/vault` shows "Vault is managed by organization admins". | **No change.** Correct and calm; role gating belongs to `story/rbac-0`. |
 | F7 | AI view (AI administration roles without `vault:use`): same as F6 — nav hidden, direct URL refused calmly. | **No change.** |
 | F8 | History paging: Previous/Next disabled correctly at the ends; paging conceals any revealed value. | **No change.** Covered by existing tests. |
 | F9 | Delete confirm: names the credential, the version count and "for every recipient" on shared entries; a stale version refuses with a refresh instruction. | **No change.** |
@@ -133,5 +136,10 @@ details. Its actions become the standard buttons (Regenerate, Close, Save & copy
   block itself (`:autofill` was false there). The fix targets the two causes that can paint over the field —
   autofill state styling and password-manager decoration — and is verified as "normal look in a clean
   browser"; the founder's browser is the final check.
+- W1 live: on the same stack the Audit Log's Vault activity sent `?action_prefix=vault.&limit=21` (no
+  `target_type`) through nginx and the generated router, and the table listed "Vault service added" and
+  "Credential deleted" together.
+- Founder-browser check still open: after saving a credential in Chrome, confirm Chrome does not offer to
+  save the Vault secret as a password for the control-plane site.
 - The search form's accessible name is "Credential search", not "Search Vault …", so `getByLabel("Search
   Vault")` still resolves to the one input.
