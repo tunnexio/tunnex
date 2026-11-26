@@ -9321,8 +9321,13 @@ type StartSsoLoginParamsProvider string
 
 // McpOAuthCallbackParams defines parameters for McpOAuthCallback.
 type McpOAuthCallbackParams struct {
-	Code  string `form:"code" json:"code"`
-	State string `form:"state" json:"state"`
+	// Code Absent when the authorization server reports that consent was refused.
+	Code  *string `form:"code,omitempty" json:"code,omitempty"`
+	Error *string `form:"error,omitempty" json:"error,omitempty"`
+	State string  `form:"state" json:"state"`
+
+	// TnxMcpOauth One-time value set in the browser that started consent. A callback without the matching value fails closed, so a forwarded authorization link cannot bind another person's upstream account to the agent.
+	TnxMcpOauth *string `form:"tnx_mcp_oauth,omitempty" json:"tnx_mcp_oauth,omitempty"`
 }
 
 // ListAccessEventsParams defines parameters for ListAccessEvents.
@@ -11182,6 +11187,9 @@ type ClientInterface interface {
 	StartAgentMCPOAuthConnectionWithBody(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	StartAgentMCPOAuthConnection(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, body StartAgentMCPOAuthConnectionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DisconnectAgentMCPOAuthConnection request
+	DisconnectAgentMCPOAuthConnection(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, connectionId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListAgentMCPToolApprovalRequests request
 	ListAgentMCPToolApprovalRequests(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -15000,6 +15008,18 @@ func (c *Client) StartAgentMCPOAuthConnectionWithBody(ctx context.Context, orgId
 
 func (c *Client) StartAgentMCPOAuthConnection(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, body StartAgentMCPOAuthConnectionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewStartAgentMCPOAuthConnectionRequest(c.Server, orgId, deviceId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) DisconnectAgentMCPOAuthConnection(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, connectionId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDisconnectAgentMCPOAuthConnectionRequest(c.Server, orgId, deviceId, connectionId)
 	if err != nil {
 		return nil, err
 	}
@@ -24072,16 +24092,36 @@ func NewMcpOAuthCallbackRequest(server string, params *McpOAuthCallbackParams) (
 	if params != nil {
 		queryValues := queryURL.Query()
 
-		if queryFrag, err := runtime.StyleParamWithLocation("form", true, "code", runtime.ParamLocationQuery, params.Code); err != nil {
-			return nil, err
-		} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
-			return nil, err
-		} else {
-			for k, v := range parsed {
-				for _, v2 := range v {
-					queryValues.Add(k, v2)
+		if params.Code != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "code", runtime.ParamLocationQuery, *params.Code); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
 				}
 			}
+
+		}
+
+		if params.Error != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "error", runtime.ParamLocationQuery, *params.Error); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
 		}
 
 		if queryFrag, err := runtime.StyleParamWithLocation("form", true, "state", runtime.ParamLocationQuery, params.State); err != nil {
@@ -24104,6 +24144,23 @@ func NewMcpOAuthCallbackRequest(server string, params *McpOAuthCallbackParams) (
 		return nil, err
 	}
 
+	if params != nil {
+
+		if params.TnxMcpOauth != nil {
+			var cookieParam0 string
+
+			cookieParam0, err = runtime.StyleParamWithLocation("simple", true, "tnx_mcp_oauth", runtime.ParamLocationCookie, *params.TnxMcpOauth)
+			if err != nil {
+				return nil, err
+			}
+
+			cookie0 := &http.Cookie{
+				Name:  "tnx_mcp_oauth",
+				Value: cookieParam0,
+			}
+			req.AddCookie(cookie0)
+		}
+	}
 	return req, nil
 }
 
@@ -27143,6 +27200,54 @@ func NewStartAgentMCPOAuthConnectionRequestWithBody(server string, orgId openapi
 	}
 
 	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewDisconnectAgentMCPOAuthConnectionRequest generates requests for DisconnectAgentMCPOAuthConnection
+func NewDisconnectAgentMCPOAuthConnectionRequest(server string, orgId openapi_types.UUID, deviceId openapi_types.UUID, connectionId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "deviceId", runtime.ParamLocationPath, deviceId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam2 string
+
+	pathParam2, err = runtime.StyleParamWithLocation("simple", false, "connectionId", runtime.ParamLocationPath, connectionId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/agents/%s/mcp-oauth-connections/%s", pathParam0, pathParam1, pathParam2)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("DELETE", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
 
 	return req, nil
 }
@@ -45543,6 +45648,9 @@ type ClientWithResponsesInterface interface {
 
 	StartAgentMCPOAuthConnectionWithResponse(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, body StartAgentMCPOAuthConnectionJSONRequestBody, reqEditors ...RequestEditorFn) (*StartAgentMCPOAuthConnectionResponse, error)
 
+	// DisconnectAgentMCPOAuthConnectionWithResponse request
+	DisconnectAgentMCPOAuthConnectionWithResponse(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, connectionId openapi_types.UUID, reqEditors ...RequestEditorFn) (*DisconnectAgentMCPOAuthConnectionResponse, error)
+
 	// ListAgentMCPToolApprovalRequestsWithResponse request
 	ListAgentMCPToolApprovalRequestsWithResponse(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ListAgentMCPToolApprovalRequestsResponse, error)
 
@@ -49948,6 +50056,28 @@ func (r StartAgentMCPOAuthConnectionResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r StartAgentMCPOAuthConnectionResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type DisconnectAgentMCPOAuthConnectionResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r DisconnectAgentMCPOAuthConnectionResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DisconnectAgentMCPOAuthConnectionResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -59842,6 +59972,15 @@ func (c *ClientWithResponses) StartAgentMCPOAuthConnectionWithResponse(ctx conte
 	return ParseStartAgentMCPOAuthConnectionResponse(rsp)
 }
 
+// DisconnectAgentMCPOAuthConnectionWithResponse request returning *DisconnectAgentMCPOAuthConnectionResponse
+func (c *ClientWithResponses) DisconnectAgentMCPOAuthConnectionWithResponse(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, connectionId openapi_types.UUID, reqEditors ...RequestEditorFn) (*DisconnectAgentMCPOAuthConnectionResponse, error) {
+	rsp, err := c.DisconnectAgentMCPOAuthConnection(ctx, orgId, deviceId, connectionId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDisconnectAgentMCPOAuthConnectionResponse(rsp)
+}
+
 // ListAgentMCPToolApprovalRequestsWithResponse request returning *ListAgentMCPToolApprovalRequestsResponse
 func (c *ClientWithResponses) ListAgentMCPToolApprovalRequestsWithResponse(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ListAgentMCPToolApprovalRequestsResponse, error) {
 	rsp, err := c.ListAgentMCPToolApprovalRequests(ctx, orgId, deviceId, reqEditors...)
@@ -68655,6 +68794,32 @@ func ParseStartAgentMCPOAuthConnectionResponse(rsp *http.Response) (*StartAgentM
 		}
 		response.JSON201 = &dest
 
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDisconnectAgentMCPOAuthConnectionResponse parses an HTTP response from a DisconnectAgentMCPOAuthConnectionWithResponse call
+func ParseDisconnectAgentMCPOAuthConnectionResponse(rsp *http.Response) (*DisconnectAgentMCPOAuthConnectionResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DisconnectAgentMCPOAuthConnectionResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
 		var dest Error
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {

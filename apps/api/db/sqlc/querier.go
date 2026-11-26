@@ -601,6 +601,7 @@ type Querier interface {
 	// lint:cross-org -- Offline installation recovery advances every retained serving pointer and clears withdrawal proof before the full monotonic wait.
 	DisableAllAppAccessServingPublications(ctx context.Context) (int64, error)
 	DisableAppAccessServingPublication(ctx context.Context, arg DisableAppAccessServingPublicationParams) (int64, error)
+	DisconnectAgentMCPOAuthConnection(ctx context.Context, arg DisconnectAgentMCPOAuthConnectionParams) (int64, error)
 	// lint:cross-org — the device was just inserted in this same org-scoped transaction;
 	// the device ID is not an authorization input and this existence check does not
 	// expose or mutate a device outside the caller's already-authorized create.
@@ -615,6 +616,9 @@ type Querier interface {
 	EnsureConnectivityProfile(ctx context.Context, orgID uuid.UUID) error
 	ExpireAccessEventRetentionRun(ctx context.Context, orgID uuid.UUID) (AccessEventRetentionRun, error)
 	ExpireAgentAccessRequest(ctx context.Context, arg ExpireAgentAccessRequestParams) (AgentAccessRequest, error)
+	// AI-SEC-1: the issuer rejected the refresh token. The connection stops being
+	// leasable and tells the operator to consent again; sealed tokens are dropped.
+	ExpireAgentMCPOAuthConnection(ctx context.Context, arg ExpireAgentMCPOAuthConnectionParams) (int64, error)
 	ExpireAgentRuntimeCredentialRotation(ctx context.Context, arg ExpireAgentRuntimeCredentialRotationParams) error
 	ExpireAgentWireGuardRotation(ctx context.Context, arg ExpireAgentWireGuardRotationParams) error
 	ExpireAppAccessChecks(ctx context.Context, arg ExpireAppAccessChecksParams) error

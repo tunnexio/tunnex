@@ -42,6 +42,48 @@ func (q *Queries) ConnectAgentMCPOAuthConnection(ctx context.Context, arg Connec
 	return result.RowsAffected(), nil
 }
 
+const disconnectAgentMCPOAuthConnection = `-- name: DisconnectAgentMCPOAuthConnection :execrows
+UPDATE agent_mcp_oauth_connections
+SET state='disconnected', failure_code=NULL, access_token_sealed=NULL, refresh_token_sealed=NULL, token_expires_at=NULL
+WHERE id=$1 AND org_id=$2 AND device_id=$3 AND state <> 'disconnected'
+`
+
+type DisconnectAgentMCPOAuthConnectionParams struct {
+	ID       uuid.UUID `json:"id"`
+	OrgID    uuid.UUID `json:"org_id"`
+	DeviceID uuid.UUID `json:"device_id"`
+}
+
+func (q *Queries) DisconnectAgentMCPOAuthConnection(ctx context.Context, arg DisconnectAgentMCPOAuthConnectionParams) (int64, error) {
+	result, err := q.db.Exec(ctx, disconnectAgentMCPOAuthConnection, arg.ID, arg.OrgID, arg.DeviceID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const expireAgentMCPOAuthConnection = `-- name: ExpireAgentMCPOAuthConnection :execrows
+UPDATE agent_mcp_oauth_connections
+SET state='expired', failure_code=$1, access_token_sealed=NULL, refresh_token_sealed=NULL, token_expires_at=NULL
+WHERE id=$2 AND org_id=$3 AND state='connected'
+`
+
+type ExpireAgentMCPOAuthConnectionParams struct {
+	FailureCode *string   `json:"failure_code"`
+	ID          uuid.UUID `json:"id"`
+	OrgID       uuid.UUID `json:"org_id"`
+}
+
+// AI-SEC-1: the issuer rejected the refresh token. The connection stops being
+// leasable and tells the operator to consent again; sealed tokens are dropped.
+func (q *Queries) ExpireAgentMCPOAuthConnection(ctx context.Context, arg ExpireAgentMCPOAuthConnectionParams) (int64, error) {
+	result, err := q.db.Exec(ctx, expireAgentMCPOAuthConnection, arg.FailureCode, arg.ID, arg.OrgID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const failAgentMCPOAuthConnection = `-- name: FailAgentMCPOAuthConnection :execrows
 UPDATE agent_mcp_oauth_connections SET state='failed', failure_code=$1
 WHERE id=$2 AND org_id=$3

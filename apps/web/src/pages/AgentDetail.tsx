@@ -77,7 +77,9 @@ function MCPAuthentication({ orgId, deviceId, inventory, canManage }: { orgId: s
   const discovery = inventory.snapshot.oauth_discovery as { servers?: Array<{ status?: string }> } | undefined;
   const servers = Array.isArray(discovery?.servers) ? discovery.servers : undefined;
   const protectedReported = servers?.some(server => server?.status === "protected") ?? false;
-  return <Panel title="MCP OAuth"><AgentMCPOAuthPanel orgId={orgId} deviceId={deviceId} inventory={inventory} canManage={canManage} />{!protectedReported && <p className="agent-detail-context" role="status">{servers ? "No OAuth-protected MCP server is reported in this inventory." : "OAuth discovery has not been reported in this inventory."}</p>}</Panel>;
+  // The sign-in callback returns here with a secret-free outcome in the address.
+  const outcome = new URLSearchParams(window.location.search).get("mcp_oauth") ?? undefined;
+  return <Panel title="MCP sign-in"><AgentMCPOAuthPanel orgId={orgId} deviceId={deviceId} inventory={inventory} canManage={canManage} outcome={outcome} />{!protectedReported && <p className="agent-detail-context" role="status">{servers ? "None of this agent's MCP servers asks for a sign-in." : "The agent has not reported yet whether its MCP servers ask for a sign-in."}</p>}</Panel>;
 }
 
 function AgentAssignment({ profile, members, groups, busy, onSave }: { profile: AgentProfile; members: State<Member[]>; groups: State<UserGroup[]>; busy: boolean; onSave: (body: Record<string, unknown>) => void }) {

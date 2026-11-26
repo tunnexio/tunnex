@@ -59,12 +59,55 @@ func (s apiServer) StartAgentMCPOAuthConnection(ctx context.Context, req api.Sta
 	if err != nil {
 		return nil, mapMCPOAuthError(err)
 	}
-	return api.StartAgentMCPOAuthConnection201JSONResponse(api.AgentMCPOAuthConsentStart{ConnectionId: started.ConnectionID, AuthorizationUrl: started.RedirectURL, State: api.AgentMCPOAuthConsentStartStatePendingConsent}), nil
+	return mcpOAuthStartResponse{
+		body:    api.StartAgentMCPOAuthConnection201JSONResponse(api.AgentMCPOAuthConsentStart{ConnectionId: started.ConnectionID, AuthorizationUrl: started.RedirectURL, State: api.AgentMCPOAuthConsentStartStatePendingConsent}),
+		binding: started.Binding,
+	}, nil
 }
 
-type mcpOAuthCallbackResponse struct{ location string }
+// mcpOAuthBindingCookie ties consent to the browser that started it. It is sent
+// only to the callback path and only on a top-level navigation back from the
+// authorization server (SameSite=Lax).
+const mcpOAuthBindingCookie = "tnx_mcp_oauth"
+
+type mcpOAuthStartResponse struct {
+	body    api.StartAgentMCPOAuthConnection201JSONResponse
+	binding string
+}
+
+func (r mcpOAuthStartResponse) VisitStartAgentMCPOAuthConnectionResponse(w http.ResponseWriter) error {
+	http.SetCookie(w, &http.Cookie{Name: mcpOAuthBindingCookie, Value: r.binding, Path: "/api/v1/mcp/oauth/callback", MaxAge: 600, HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
+	return r.body.VisitStartAgentMCPOAuthConnectionResponse(w)
+}
+
+func (s apiServer) DisconnectAgentMCPOAuthConnection(ctx context.Context, req api.DisconnectAgentMCPOAuthConnectionRequestObject) (api.DisconnectAgentMCPOAuthConnectionResponseObject, error) {
+	if _, err := authorizeMutation(ctx, req.OrgId, rbac.PermOrgView); err != nil {
+		return nil, err
+	}
+	if err := s.requireAgentPermission(ctx, req.OrgId, req.DeviceId, rbac.PermAgentManage); err != nil {
+		return nil, err
+	}
+	if s.mcpOAuth == nil {
+		return nil, apierr.New(http.StatusServiceUnavailable, "mcp_oauth_unavailable", "MCP OAuth is temporarily unavailable")
+	}
+	if err := s.mcpOAuth.Disconnect(ctx, req.OrgId, req.DeviceId, req.ConnectionId, actorID(ctx)); err != nil {
+		if errors.Is(err, mcpoauth.ErrFlowNotFound) || errors.Is(err, mcpoauth.ErrInvalidInput) {
+			return nil, apierr.NotFound("mcp_oauth_connection_not_found", "no such MCP OAuth connection on this agent")
+		}
+		return nil, apierr.New(http.StatusServiceUnavailable, "mcp_oauth_unavailable", "MCP OAuth is temporarily unavailable")
+	}
+	return api.DisconnectAgentMCPOAuthConnection204Response{}, nil
+}
+
+type mcpOAuthCallbackResponse struct {
+	location     string
+	clearBinding bool
+}
 
 func (r mcpOAuthCallbackResponse) VisitMcpOAuthCallbackResponse(w http.ResponseWriter) error {
+	if r.clearBinding {
+		http.SetCookie(w, &http.Cookie{Name: mcpOAuthBindingCookie, Value: "", Path: "/api/v1/mcp/oauth/callback", MaxAge: -1, HttpOnly: true, Secure: true, SameSite: http.SameSiteLaxMode})
+	}
 	w.Header().Set("Location", r.location)
 	w.WriteHeader(http.StatusFound)
 	return nil
@@ -74,10 +117,32 @@ func (s apiServer) McpOAuthCallback(ctx context.Context, req api.McpOAuthCallbac
 	if s.mcpOAuth == nil {
 		return mcpOAuthCallbackResponse{location: s.publicURL(ctx) + "/agents?mcp_oauth=failed"}, nil
 	}
-	if err := s.mcpOAuth.Complete(ctx, req.Params.State, req.Params.Code); err != nil {
-		return mcpOAuthCallbackResponse{location: s.publicURL(ctx) + "/agents?mcp_oauth=failed"}, nil
+	code, binding := "", ""
+	// A callback that carries an error has no usable code, whatever else it sends.
+	if req.Params.Code != nil && req.Params.Error == nil {
+		code = *req.Params.Code
 	}
-	return mcpOAuthCallbackResponse{location: s.publicURL(ctx) + "/agents?mcp_oauth=connected"}, nil
+	if req.Params.TnxMcpOauth != nil {
+		binding = *req.Params.TnxMcpOauth
+	}
+	device, err := s.mcpOAuth.Complete(ctx, req.Params.State, code, binding)
+	return mcpOAuthCallbackResponse{location: s.publicURL(ctx) + mcpOAuthResultPath(device, err), clearBinding: true}, nil
+}
+
+// mcpOAuthResultPath sends the browser back to the agent it was configuring
+// with a secret-free outcome the page can explain.
+func mcpOAuthResultPath(device uuid.UUID, err error) string {
+	outcome := "connected"
+	switch {
+	case errors.Is(err, mcpoauth.ErrFlowNotFound):
+		outcome = "expired"
+	case err != nil:
+		outcome = "failed"
+	}
+	if device == uuid.Nil {
+		return "/agents?mcp_oauth=" + outcome
+	}
+	return "/agents/" + device.String() + "?tab=mcp&mcp_oauth=" + outcome
 }
 
 func toAPIMCPOAuthConnection(row mcpoauth.Connection) api.AgentMCPOAuthConnection {

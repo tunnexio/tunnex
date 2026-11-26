@@ -3217,6 +3217,32 @@ paths:
               schema: { $ref: "#/components/schemas/AgentMCPOAuthConsentStart" }
         default: { $ref: "#/components/responses/Error" }
 
+  /api/v1/organizations/{orgId}/agents/{deviceId}/mcp-oauth-connections/{connectionId}:
+    parameters:
+      - name: orgId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+      - name: deviceId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+      - name: connectionId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    delete:
+      operationId: disconnectAgentMCPOAuthConnection
+      summary: Disconnect one MCP OAuth connection and discard its sealed tokens
+      description: >-
+        The agent stops receiving a credential for this MCP server immediately. Consent can be
+        started again afterwards. The upstream authorization itself is not revoked at the provider.
+      tags: [agents]
+      responses:
+        "204":
+          description: Disconnected.
+        default: { $ref: "#/components/responses/Error" }
+
   /api/v1/organizations/{orgId}/agents/{deviceId}/workflow-provenance:
     parameters:
       - name: orgId
@@ -3251,12 +3277,25 @@ paths:
       parameters:
         - name: code
           in: query
-          required: true
+          required: false
+          description: Absent when the authorization server reports that consent was refused.
           schema: { type: string, minLength: 1, maxLength: 8192 }
+        - name: error
+          in: query
+          required: false
+          schema: { type: string, minLength: 1, maxLength: 256 }
         - name: state
           in: query
           required: true
           schema: { type: string, minLength: 1, maxLength: 512 }
+        - name: tnx_mcp_oauth
+          in: cookie
+          required: false
+          description: >-
+            One-time value set in the browser that started consent. A callback without the matching
+            value fails closed, so a forwarded authorization link cannot bind another person's
+            upstream account to the agent.
+          schema: { type: string, minLength: 1, maxLength: 256 }
       responses:
         "302":
           description: Browser redirect to a secret-free terminal connection result.

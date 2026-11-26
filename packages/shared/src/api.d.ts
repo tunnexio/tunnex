@@ -3008,6 +3008,30 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/organizations/{orgId}/agents/{deviceId}/mcp-oauth-connections/{connectionId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                deviceId: string;
+                connectionId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * Disconnect one MCP OAuth connection and discard its sealed tokens
+         * @description The agent stops receiving a credential for this MCP server immediately. Consent can be started again afterwards. The upstream authorization itself is not revoked at the provider.
+         */
+        delete: operations["disconnectAgentMCPOAuthConnection"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/organizations/{orgId}/agents/{deviceId}/workflow-provenance": {
         parameters: {
             query?: never;
@@ -18655,6 +18679,29 @@ export interface operations {
             default: components["responses"]["Error"];
         };
     };
+    disconnectAgentMCPOAuthConnection: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                deviceId: string;
+                connectionId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Disconnected. */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Error"];
+        };
+    };
     listAgentWorkflowProvenance: {
         parameters: {
             query?: never;
@@ -18682,12 +18729,17 @@ export interface operations {
     mcpOAuthCallback: {
         parameters: {
             query: {
-                code: string;
+                /** @description Absent when the authorization server reports that consent was refused. */
+                code?: string;
+                error?: string;
                 state: string;
             };
             header?: never;
             path?: never;
-            cookie?: never;
+            cookie?: {
+                /** @description One-time value set in the browser that started consent. A callback without the matching value fails closed, so a forwarded authorization link cannot bind another person's upstream account to the agent. */
+                tnx_mcp_oauth?: string;
+            };
         };
         requestBody?: never;
         responses: {

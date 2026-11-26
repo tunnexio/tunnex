@@ -37,3 +37,15 @@ WHERE id=sqlc.arg(id) AND org_id=sqlc.arg(org_id) AND state='connected';
 -- name: FailAgentMCPOAuthConnection :execrows
 UPDATE agent_mcp_oauth_connections SET state='failed', failure_code=sqlc.arg(failure_code)
 WHERE id=sqlc.arg(id) AND org_id=sqlc.arg(org_id);
+
+-- name: ExpireAgentMCPOAuthConnection :execrows
+-- AI-SEC-1: the issuer rejected the refresh token. The connection stops being
+-- leasable and tells the operator to consent again; sealed tokens are dropped.
+UPDATE agent_mcp_oauth_connections
+SET state='expired', failure_code=sqlc.arg(failure_code), access_token_sealed=NULL, refresh_token_sealed=NULL, token_expires_at=NULL
+WHERE id=sqlc.arg(id) AND org_id=sqlc.arg(org_id) AND state='connected';
+
+-- name: DisconnectAgentMCPOAuthConnection :execrows
+UPDATE agent_mcp_oauth_connections
+SET state='disconnected', failure_code=NULL, access_token_sealed=NULL, refresh_token_sealed=NULL, token_expires_at=NULL
+WHERE id=sqlc.arg(id) AND org_id=sqlc.arg(org_id) AND device_id=sqlc.arg(device_id) AND state <> 'disconnected';

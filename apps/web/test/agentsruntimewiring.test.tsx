@@ -121,7 +121,7 @@ describe("active Agent detail mutation ownership", () => {
     renderDetail("mcp");
     expect(await screen.findByText(/MCP tool policy could not be loaded: Unavailable/)).toBeTruthy();
     expect(screen.getByText(/Step-up requests could not be loaded: Unavailable/)).toBeTruthy();
-    expect(screen.getByText(/MCP OAuth connections could not be loaded: Unavailable/)).toBeTruthy();
+    expect(screen.getByText(/Sign-in status could not be loaded: Unavailable/)).toBeTruthy();
     expect(screen.queryByText("No policy yet: the local proxy denies every tool.")).toBeNull();
     expect(screen.queryByText("No step-up requests.")).toBeNull();
   });

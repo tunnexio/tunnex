@@ -57,12 +57,16 @@ Each was confirmed in code before this paper was written.
     address is surfaced.
 - Locked: starting OAuth consent sets an HttpOnly, Secure, SameSite=Lax cookie
   holding a random value whose hash is stored in the flow. The callback
-  requires the cookie and a signed-in session equal to the flow's actor.
-  Without both, the flow fails closed and the connection is marked failed.
+  requires the cookie; without it the single-use flow is consumed, the
+  connection is marked failed and the authorization code is never exchanged.
+  The cookie is scoped to the callback path and lives ten minutes.
+  - Not done: also requiring a signed-in session on the callback. The route is
+    unauthenticated by contract and the cookie already proves the same
+    browser, which is what the attack needs to defeat.
 - Locked: a token response without `expires_in` is stored and leased as a
   non-expiring token. A refresh that the issuer rejects moves the connection
-  to `needs_reconsent` with a failure code. A connection can be disconnected,
-  and consent can be started again from `needs_reconsent` or `failed`.
+  to the existing `expired` state with a failure code (no schema change). A connection can be disconnected,
+  and consent can be started again from `expired`, `failed` or `disconnected`.
   Connect, failure, re-consent and disconnect write audit rows.
 - Locked: the transport policy gains a second field. "HTTP inside the VPN"
   covers only the gateway relay route and defaults to on; "public HTTP" keeps
