@@ -47,13 +47,23 @@ unmatched deployment files to an older control plane.
 
 ## Optional HTTP access
 
-In releases with **Settings → AI Gateway transport**, a server administrator can
-turn on **Allow AI Gateway over HTTP** and select **Save changes**. The setting
-is off by default and applies to every organization, including public HTTP
-endpoints. Editing it requires a verified email and a changed initial password.
+**Settings → AI Gateway transport** has two independent switches that apply to
+every organization. Editing them requires a server administrator with a
+verified email and a changed initial password. HTTPS always works and is not
+affected by either switch.
 
-HTTP does not encrypt credentials or requests; someone on the network path can
-read or change them. Prefer HTTPS. HTTPS remains available when HTTP is enabled.
+- **Inside the VPN** (on by default, recommended): members and agents connected
+  to the VPN reach their models over HTTP at the gateway's VPN address. Requests
+  travel inside the encrypted WireGuard tunnel. It opens nothing on the public
+  internet.
+- **Public internet** (off by default): permits AI setup and model requests
+  over plain HTTP on the server's public address. Provider keys and access
+  tokens then travel unencrypted; someone on the network path can read or
+  change them. Keep it off unless the server cannot use HTTPS.
+
+Upgrading from a release with the single **Allow AI Gateway over HTTP** switch
+keeps both switches on if it was on. If it was off, **Inside the VPN** is on and
+**Public internet** stays off.
 
 The saved choice persists in the database across restarts and upgrades. Changes
 apply to subsequent requests without restarting the backend. Turning it off
@@ -123,8 +133,8 @@ Administrator and inference endpoints require authentication. A healthy backend
 alone does not prove a provider key, model entitlement or grant works.
 
 If the console reports an HTTPS prerequisite, open the HTTPS console or ask a
-server administrator to enable **Settings → AI Gateway transport → Allow AI
-Gateway over HTTP**. Saving this policy needs no installer rerun. If the backend
+server administrator to turn on **Settings → AI Gateway transport → Public
+internet**. Saving this policy needs no installer rerun. If the backend
 is missing, use a signed release that includes it. Keep the existing project,
 encrypted engine storage and encryption key; do not reset volumes or substitute
 a false origin.
