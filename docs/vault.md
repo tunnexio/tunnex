@@ -58,9 +58,9 @@ Saving here does not change the password in the external service; update it ther
   two-factor check if you have an authenticator app (valid for 5 minutes in this browser session). An account
   with neither must set up an authenticator first; the page offers it inline.
 - Revealed secrets hide after 30 seconds, or when you switch tabs.
-- After a copy, Vault clears the clipboard about 30 seconds later **if it still holds that secret**. Some
-  browsers (Firefox, or when clipboard reading is refused) do not let a page read the clipboard; then nothing
-  is cleared.
+- After a copy, clear your clipboard when you are done. Where your browser already allows Vault to read the
+  clipboard, Vault clears it about 30 seconds later **if it still holds that secret**. Vault never asks for
+  that permission, and Firefox does not offer it, so in many browsers nothing is cleared automatically.
 - Each person can open or copy at most **30 secrets per minute** in an organization.
 
 ## Audit
@@ -73,7 +73,7 @@ are never recorded. "Secret copied" records that a copy was requested; the serve
 
 When someone is removed from an organization, or their organization access is revoked by directory sync,
 **their personal credentials in that organization are permanently deleted**, with all versions. This is
-recorded as "Personal credentials removed with the membership" (a count only). Being invited back does not
+recorded as "Personal credentials removed with the membership" (a count only). Being invited back, or having directory access restored, does not
 restore them. Shared credentials they created stay. Deactivating an account does not delete anything.
 
 ## Backups

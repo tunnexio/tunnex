@@ -127,6 +127,10 @@ keeps the membership so reactivation is clean — and does not purge.
 - Audit: `vault.personal_entries_purged`, system actor `vault`, target the user, metadata
   `{entries: <count>, reason: "membership_removed" | "organization_access_revoked"}`. No titles. Skipped
   when there was nothing to purge, and when the organization itself is being deleted.
+- **Consequence named for the founder:** a directory-sync revocation that is later restored — including a
+  transient IdP glitch that drops and re-adds someone — permanently deletes that person's personal entries in
+  the organization. Revocation keeps the membership row by design, but Vault treats it as the end of the
+  membership, as decided. There is no undo.
 - A re-invited or restored person starts with an empty personal Vault. Tested on both re-entry routes
   (hard removal then re-add, and IdP revoke then restore).
 
@@ -184,11 +188,14 @@ is recorded in `DEFERRAL-REGISTER.md`.
 
 ### V15 — clipboard clearing
 
-**Locked.** About 30 seconds after a copy, Vault reads the clipboard and clears it **only if it still holds
-the copied value**. Best effort: where the browser refuses to read the clipboard (Firefox, or a denied
-permission), nothing is cleared. The notice says so: "Copied. Vault will clear the clipboard in about 30
-seconds if it still holds this secret." The timer lives at module level so closing the drawer does not
-cancel it.
+**Locked (least-confusing variant).** About 30 seconds after a copy, Vault clears the clipboard **only if it
+still holds the copied value**, and only where reading the clipboard is **already granted** to the site
+(`navigator.permissions.query({name: "clipboard-read"})` returns `granted`). It never triggers a permission
+prompt half a minute after the action, which would be unexplained. Where the state is `prompt`/`denied`, the
+browser cannot answer (Firefox), or the page is not focused (Chromium refuses the read), nothing is cleared.
+The notice is honest about it: "Clear it after use. Where this browser allows Vault to read the clipboard,
+Vault clears it after about 30 seconds if it still holds this secret." The timer lives at module level so
+closing the drawer does not cancel it.
 
 ### V16 — search wildcards
 
