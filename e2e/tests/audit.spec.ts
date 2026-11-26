@@ -175,7 +175,8 @@ test("a cross-tenant grant appears in the TARGET org's audit log, naming the dep
   for (const role of ["member", "admin"]) {
     const resp = await page.request.put(
       `/api/v1/admin/organizations/${SANDBOX_ORG}/members/${GRANTEE}/role`,
-      { headers: { "X-Tunnex-CSRF": "1" }, data: { role } },
+      // RBAC-0 D9: a role grant re-authenticates (the administrator's password; they have no authenticator).
+      { headers: { "X-Tunnex-CSRF": "1" }, data: { role, current_password: CP_ADMIN.pass } },
     );
     expect(resp.status()).toBe(204);
   }

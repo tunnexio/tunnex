@@ -39,7 +39,10 @@ test("an invited user accepts and lands INSIDE the inviting org (real backend, n
   const body = await created.json();
   // ⛔ THE TOKEN IS THE DELIVERY PATH WHEN SMTP IS UNSET. If this is ever absent, an operator on a box with
   // no mail server has no way to admit anyone — the invitation exists and reaches nobody.
-  expect(body.invite_token, "the 202 must carry the raw accept token").toBeTruthy();
+  // RBAC-0 D1: the raw token comes back ONLY when the email did not leave — which is always the case on this
+  // SMTP-less stack. When mail is delivered, only the inbox holds the link.
+  expect(body.delivered, "this stack has no SMTP, so delivery is reported as false").toBe(false);
+  expect(body.invite_token, "an undelivered invitation must carry the raw accept token").toBeTruthy();
   // ⚠ `delivered` is a FACT, not a failure: it is false on a deployment with no SMTP, and the invitation is
   // still valid. Asserted as present-and-boolean so the field cannot quietly vanish from the contract.
   expect(typeof body.delivered).toBe("boolean");
