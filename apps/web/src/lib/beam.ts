@@ -52,6 +52,8 @@ export function beamIsTerminal(share: BeamShare, now = Date.now()): boolean { re
 export function beamCanOpen(share: BeamShare, now = Date.now()): boolean { return share.can_open && !beamIsTerminal(share, now) && share.state === "active" && share.connectivity === "online"; }
 export function beamStatus(share: BeamShare, now = Date.now()): string {
   if (Date.parse(share.expires_at) <= now && !["stopped", "revoked"].includes(share.state)) return "Expired";
+  // LS-UX-4: the same words as the History state filter.
+  if (share.state === "revoked") return "Ended by admin change";
   if (share.state !== "active") return share.state.charAt(0).toUpperCase() + share.state.slice(1);
   return ({ online: "Live", reconnecting: "Reconnecting", offline: "Publisher offline", origin_unavailable: "Local app unavailable" } as const)[share.connectivity] ?? "Unavailable";
 }

@@ -2,6 +2,7 @@ import { useEffect, useState, type FormEvent } from "react";
 import { QRCodeSVG } from "qrcode.react";
 import { api, apiErrorMessage } from "../lib/api";
 import { useAuth } from "../lib/auth";
+import { announceMfaVerified } from "../lib/mfa-events";
 import {
   Button,
   ErrorText,
@@ -111,6 +112,9 @@ export function MfaSettings({ onEnrolled, setupLabel = "Set up", signInReturnTo 
       );
       return;
     }
+    // LS-UX-4: confirming setup counts as a fresh MFA check (the server promotes the session); panels
+    // waiting for one re-check by themselves.
+    announceMfaVerified();
     setRecovery(data.recovery_codes);
     setPhase("idle");
     setCode("");
