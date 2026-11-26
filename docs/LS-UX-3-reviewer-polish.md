@@ -28,7 +28,7 @@ Read for this paper: `apps/web/src/pages/Beam.tsx` (share detail, `ReviewerLaunc
 | U8 | Status pill *Local app unavailable* / *Unavailable* | Danger tone. | **Kept.** The app really cannot be opened; this is the one state where the colour is meant to alarm. *Publisher offline*, *Reconnecting*, *Starting*, *Refresh required* stay amber, *Paused / Expired / Stopped / Revoked* neutral. |
 | U9 | Open app unavailable text (*Access is not currently granted*), reviewers card, diagnostics, events | Grey or neutral already; no red outside real errors. | **Kept.** |
 | U10 | Share detail, *Open on phone*, policy requires MFA | The QR code carries only the public share URL; the phone signs in and lands on the same *Open shared app* page. | **Kept.** U4's sentence covers the phone as well; nothing phone-specific to change. |
-| U11 | Earlier feedback, *View screenshot* link, MFA lapses after the list loaded | The screenshot opens in a new tab through the same server gate, so after 5 minutes that tab shows the API refusal. | **Kept / known.** Out of scope for this polish story; reloading the feedback (which now offers Verify MFA) is the recovery. Candidate for a later story. |
+| U11 | Earlier feedback, *View screenshot* link, MFA lapsed after the list loaded | The link opened the API path in a new tab; after 5 minutes that tab showed the raw `mfa_step_up_required` JSON refusal. | **Fix.** *View screenshot* is a button that opens an in-console viewer. The image is fetched through the same typed API client and the same server check (cookie session, no token in any URL), shown from a local `blob:` object URL and revoked when the viewer closes. An MFA refusal shows the neutral line *"Your organization requires a recent MFA check to view review screenshots."* with the inline step-up, then the image loads. A not-found reads *"This screenshot is no longer available to your account. Refresh feedback to check."* The server response headers (`no-store`, `nosniff`, sandbox CSP) are unchanged. |
 
 ## Not changed
 
@@ -40,4 +40,4 @@ Read for this paper: `apps/web/src/pages/Beam.tsx` (share detail, `ReviewerLaunc
 
 `apps/web/test/lsux3beam.test.tsx`: U1 (no red text, Verify MFA → inline step-up → form appears
 without reload, feedback re-read), U2 (MFA on submit keeps the draft, verifies and sends), U3,
-U4, U5 (button classes and focus), U6, U7. Existing LS-UX-2 tests keep passing.
+U4, U5 (button classes and focus), U6, U7, U11 (in-console screenshot viewer with inline MFA, object URL revoked on close). Existing LS-UX-2 tests keep passing.
