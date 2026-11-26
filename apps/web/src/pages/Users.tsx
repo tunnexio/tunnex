@@ -15,7 +15,7 @@ import { OneTimeSecretModal } from "../components/OneTimeSecret";
 import AppAccessPagination from "../components/AppAccessPagination";
 import AppAccessRowMenu, { type AppAccessRowMenuAction } from "../components/AppAccessRowMenu";
 import { InlineTerminalMfa } from "../components/InlineTerminalMfa";
-import { isStepUpCode, STEP_UP_MFA, stepUpBody, StepUpPassword, type StepUpNeeds } from "../components/StepUp";
+import { isStepUpCode, STEP_UP_MFA, stepUpBody, StepUpPassword, useResolvedStepUpNeeds, type StepUpNeeds } from "../components/StepUp";
 import "../network-workspaces.css";
 import "../app-access-workspace.css";
 import "../users-workspace.css";
@@ -67,7 +67,7 @@ function UsersWorkspace({ view }: { view: View }) {
   const [invitesLoading, setInvitesLoading] = useState(false);
   const [inviteConfirmation, setInviteConfirmation] = useState<{ kind: "resend" | "revoke"; row: Invitation } | null>(null);
   // RBAC-0 D9: step-up state for deactivate / 2FA reset / role changes.
-  const stepUpNeeds = state.status === "authed" ? state.user.reauthentication : undefined;
+  const stepUpNeeds = useResolvedStepUpNeeds(state.status === "authed" ? state.user.reauthentication : undefined, state.status === "authed");
   const [stepUpPassword, setStepUpPassword] = useState("");
   const [stepUpError, setStepUpError] = useState("");
   const [stepUpMfa, setStepUpMfa] = useState<null | { action: string; retry: () => void }>(null);
