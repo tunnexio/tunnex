@@ -2571,6 +2571,8 @@ export interface components {
                 /** Format: uuid */
                 id: string;
                 name: string;
+                /** @description Number of the group's current active organization members. A count only; no member identities. Always sent by servers that support it; absent from older servers. */
+                member_count?: number;
             }[];
         };
         BeamActionInput: {

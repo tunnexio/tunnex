@@ -3538,6 +3538,11 @@
                 },
                 "name": {
                   "type": "string"
+                },
+                "member_count": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "description": "Number of the group's current active organization members. A count only; no member identities. Always sent by servers that support it; absent from older servers."
                 }
               },
               "required": [
