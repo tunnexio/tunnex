@@ -2235,6 +2235,12 @@ const (
 	VaultCreateInputVisibilityPersonal VaultCreateInputVisibility = "personal"
 )
 
+// Defines values for VaultDetailsInputSubjectKind.
+const (
+	VaultDetailsSubjectGroup VaultDetailsInputSubjectKind = "group"
+	VaultDetailsSubjectUser  VaultDetailsInputSubjectKind = "user"
+)
+
 // Defines values for VaultEntryKind.
 const (
 	VaultEntryKindApiKey   VaultEntryKind = "api_key"
@@ -2253,10 +2259,16 @@ const (
 	VaultEntryVisibilityPersonal VaultEntryVisibility = "personal"
 )
 
+// Defines values for VaultRevealInputPurpose.
+const (
+	VaultRevealInputPurposeCopy   VaultRevealInputPurpose = "copy"
+	VaultRevealInputPurposeReveal VaultRevealInputPurpose = "reveal"
+)
+
 // Defines values for ZeroTrustModeMode.
 const (
-	ZeroTrustModeModeEnforcing ZeroTrustModeMode = "enforcing"
-	ZeroTrustModeModeOff       ZeroTrustModeMode = "off"
+	Enforcing ZeroTrustModeMode = "enforcing"
+	Off       ZeroTrustModeMode = "off"
 )
 
 // Defines values for SsoCallbackParamsProvider.
@@ -2303,8 +2315,8 @@ const (
 
 // Defines values for ListAgentsParamsMcp.
 const (
-	Assigned   ListAgentsParamsMcp = "assigned"
-	Unassigned ListAgentsParamsMcp = "unassigned"
+	ListAgentsParamsMcpAssigned   ListAgentsParamsMcp = "assigned"
+	ListAgentsParamsMcpUnassigned ListAgentsParamsMcp = "unassigned"
 )
 
 // Defines values for ListAgentsParamsAccess.
@@ -2399,6 +2411,14 @@ const (
 const (
 	K8sNamespaceRuleExposuresKeep     DeleteK8sNamespaceRuleParamsExposures = "keep"
 	K8sNamespaceRuleExposuresWithdraw DeleteK8sNamespaceRuleParamsExposures = "withdraw"
+)
+
+// Defines values for ListVaultEntriesParamsView.
+const (
+	ListVaultEntriesParamsViewAll      ListVaultEntriesParamsView = "all"
+	ListVaultEntriesParamsViewAssigned ListVaultEntriesParamsView = "assigned"
+	ListVaultEntriesParamsViewPersonal ListVaultEntriesParamsView = "personal"
+	ListVaultEntriesParamsViewShared   ListVaultEntriesParamsView = "shared"
 )
 
 // AIAssignment defines model for AIAssignment.
@@ -9007,27 +9027,51 @@ type VaultCreateInputSubjectKind string
 // VaultCreateInputVisibility defines model for VaultCreateInput.Visibility.
 type VaultCreateInputVisibility string
 
+// VaultDetailsInput defines model for VaultDetailsInput.
+type VaultDetailsInput struct {
+	ExpectedRevision int                 `json:"expected_revision"`
+	ServiceId        *openapi_types.UUID `json:"service_id,omitempty"`
+
+	// ServiceName Private service label for personal entries only
+	ServiceName *string                       `json:"service_name,omitempty"`
+	SubjectId   *openapi_types.UUID           `json:"subject_id,omitempty"`
+	SubjectKind *VaultDetailsInputSubjectKind `json:"subject_kind,omitempty"`
+	Title       *string                       `json:"title,omitempty"`
+	Username    *string                       `json:"username,omitempty"`
+}
+
+// VaultDetailsInputSubjectKind defines model for VaultDetailsInput.SubjectKind.
+type VaultDetailsInputSubjectKind string
+
 // VaultEntry defines model for VaultEntry.
 type VaultEntry struct {
 	CanDelete bool `json:"can_delete"`
-	CanEdit   bool `json:"can_edit"`
+
+	// CanEdit May save a new secret version
+	CanEdit bool `json:"can_edit"`
+
+	// CanEditDetails May change title
+	CanEditDetails bool `json:"can_edit_details"`
 
 	// Configured False for a creator-private quick entry whose title and service metadata are not configured yet
-	Configured     bool                   `json:"configured"`
-	CreatedAt      time.Time              `json:"created_at"`
-	CurrentVersion int                    `json:"current_version"`
-	Id             openapi_types.UUID     `json:"id"`
-	Kind           VaultEntryKind         `json:"kind"`
-	OwnerUserId    openapi_types.UUID     `json:"owner_user_id"`
-	ServiceId      *openapi_types.UUID    `json:"service_id,omitempty"`
-	ServiceName    string                 `json:"service_name"`
-	SubjectId      *openapi_types.UUID    `json:"subject_id,omitempty"`
-	SubjectKind    *VaultEntrySubjectKind `json:"subject_kind,omitempty"`
-	SubjectName    *string                `json:"subject_name,omitempty"`
-	Title          string                 `json:"title"`
-	UpdatedAt      time.Time              `json:"updated_at"`
-	Username       string                 `json:"username"`
-	Visibility     VaultEntryVisibility   `json:"visibility"`
+	Configured     bool               `json:"configured"`
+	CreatedAt      time.Time          `json:"created_at"`
+	CurrentVersion int                `json:"current_version"`
+	Id             openapi_types.UUID `json:"id"`
+	Kind           VaultEntryKind     `json:"kind"`
+	OwnerUserId    openapi_types.UUID `json:"owner_user_id"`
+
+	// Revision Bumped by every change; the precondition for details edits
+	Revision    int                    `json:"revision"`
+	ServiceId   *openapi_types.UUID    `json:"service_id,omitempty"`
+	ServiceName string                 `json:"service_name"`
+	SubjectId   *openapi_types.UUID    `json:"subject_id,omitempty"`
+	SubjectKind *VaultEntrySubjectKind `json:"subject_kind,omitempty"`
+	SubjectName *string                `json:"subject_name,omitempty"`
+	Title       string                 `json:"title"`
+	UpdatedAt   time.Time              `json:"updated_at"`
+	Username    string                 `json:"username"`
+	Visibility  VaultEntryVisibility   `json:"visibility"`
 }
 
 // VaultEntryKind defines model for VaultEntry.Kind.
@@ -9046,6 +9090,13 @@ type VaultHistory struct {
 	Versions       []VaultVersion `json:"versions"`
 }
 
+// VaultPerson defines model for VaultPerson.
+type VaultPerson struct {
+	Email string             `json:"email"`
+	Id    openapi_types.UUID `json:"id"`
+	Name  string             `json:"name"`
+}
+
 // VaultQuickCreateInput defines model for VaultQuickCreateInput.
 type VaultQuickCreateInput struct {
 	// RequestId One UUID per generated candidate; reuse unchanged for retries
@@ -9053,11 +9104,32 @@ type VaultQuickCreateInput struct {
 	Secret    *string            `json:"secret,omitempty"`
 }
 
+// VaultReauthentication defines model for VaultReauthentication.
+type VaultReauthentication struct {
+	// Available False when the account has nothing to re-authenticate with
+	Available bool `json:"available"`
+
+	// Mfa Recent MFA is required for shared reveals
+	Mfa bool `json:"mfa"`
+
+	// Password The current password is asked for shared reveals
+	Password bool `json:"password"`
+}
+
 // VaultRevealInput defines model for VaultRevealInput.
 type VaultRevealInput struct {
+	// CurrentPassword Re-authentication for assigned entries when the account has a local password
+	CurrentPassword *string `json:"current_password,omitempty"`
+
+	// Purpose Client-stated purpose; recorded as vault.revealed or vault.copied
+	Purpose *VaultRevealInputPurpose `json:"purpose,omitempty"`
+
 	// Version Omit to reveal the current version
 	Version *int `json:"version,omitempty"`
 }
+
+// VaultRevealInputPurpose Client-stated purpose; recorded as vault.revealed or vault.copied
+type VaultRevealInputPurpose string
 
 // VaultSecret defines model for VaultSecret.
 type VaultSecret struct {
@@ -9081,8 +9153,16 @@ type VaultServiceInput struct {
 
 // VaultSubject defines model for VaultSubject.
 type VaultSubject struct {
-	Id   openapi_types.UUID `json:"id"`
-	Name string             `json:"name"`
+	// Email Users only
+	Email *string            `json:"email,omitempty"`
+	Id    openapi_types.UUID `json:"id"`
+
+	// MemberCount Groups only
+	MemberCount *int `json:"member_count,omitempty"`
+
+	// MembersWithoutAccess Groups only. Members who cannot open Vault (no Vault role or unverified email).
+	MembersWithoutAccess *[]VaultPerson `json:"members_without_access,omitempty"`
+	Name                 string         `json:"name"`
 }
 
 // VaultSubjects defines model for VaultSubjects.
@@ -9095,23 +9175,27 @@ type VaultSubjects struct {
 type VaultUpdateInput struct {
 	ExpectedVersion int     `json:"expected_version"`
 	Secret          *string `json:"secret,omitempty"`
-	Title           string  `json:"title"`
-	Username        *string `json:"username,omitempty"`
+
+	// Title Optional; changing it needs details authority
+	Title    *string `json:"title,omitempty"`
+	Username *string `json:"username,omitempty"`
 }
 
 // VaultVersion defines model for VaultVersion.
 type VaultVersion struct {
-	ChangedBy     openapi_types.UUID `json:"changed_by"`
-	ChangedByName string             `json:"changed_by_name"`
-	CreatedAt     time.Time          `json:"created_at"`
-	Version       int                `json:"version"`
+	ChangedBy      openapi_types.UUID `json:"changed_by"`
+	ChangedByEmail string             `json:"changed_by_email"`
+	ChangedByName  string             `json:"changed_by_name"`
+	CreatedAt      time.Time          `json:"created_at"`
+	Version        int                `json:"version"`
 }
 
 // VaultWorkspace defines model for VaultWorkspace.
 type VaultWorkspace struct {
-	CanAssign bool         `json:"can_assign"`
-	Entries   []VaultEntry `json:"entries"`
-	Total     int          `json:"total"`
+	CanAssign        bool                   `json:"can_assign"`
+	Entries          []VaultEntry           `json:"entries"`
+	Reauthentication *VaultReauthentication `json:"reauthentication,omitempty"`
+	Total            int                    `json:"total"`
 }
 
 // ZeroTrustMode defines model for ZeroTrustMode.
@@ -9646,7 +9730,13 @@ type ListVaultEntriesParams struct {
 	Limit  *int32  `form:"limit,omitempty" json:"limit,omitempty"`
 	Offset *int32  `form:"offset,omitempty" json:"offset,omitempty"`
 	Q      *string `form:"q,omitempty" json:"q,omitempty"`
+
+	// View all; personal (yours); shared (assigned to you directly or through a group); assigned (every assigned entry you can see, all of them for Vault administrators)
+	View *ListVaultEntriesParamsView `form:"view,omitempty" json:"view,omitempty"`
 }
+
+// ListVaultEntriesParamsView defines parameters for ListVaultEntries.
+type ListVaultEntriesParamsView string
 
 // DeleteVaultEntryParams defines parameters for DeleteVaultEntry.
 type DeleteVaultEntryParams struct {
@@ -10336,6 +10426,9 @@ type CreateVaultEntryJSONRequestBody = VaultCreateInput
 
 // QuickCreateVaultEntryJSONRequestBody defines body for QuickCreateVaultEntry for application/json ContentType.
 type QuickCreateVaultEntryJSONRequestBody = VaultQuickCreateInput
+
+// UpdateVaultEntryDetailsJSONRequestBody defines body for UpdateVaultEntryDetails for application/json ContentType.
+type UpdateVaultEntryDetailsJSONRequestBody = VaultDetailsInput
 
 // UpdateVaultEntryJSONRequestBody defines body for UpdateVaultEntry for application/json ContentType.
 type UpdateVaultEntryJSONRequestBody = VaultUpdateInput
@@ -12356,6 +12449,11 @@ type ClientInterface interface {
 
 	// DeleteVaultEntry request
 	DeleteVaultEntry(ctx context.Context, orgId openapi_types.UUID, entryId openapi_types.UUID, params *DeleteVaultEntryParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateVaultEntryDetailsWithBody request with any body
+	UpdateVaultEntryDetailsWithBody(ctx context.Context, orgId openapi_types.UUID, entryId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	UpdateVaultEntryDetails(ctx context.Context, orgId openapi_types.UUID, entryId openapi_types.UUID, body UpdateVaultEntryDetailsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// UpdateVaultEntryWithBody request with any body
 	UpdateVaultEntryWithBody(ctx context.Context, orgId openapi_types.UUID, entryId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -20728,6 +20826,30 @@ func (c *Client) QuickCreateVaultEntry(ctx context.Context, orgId openapi_types.
 
 func (c *Client) DeleteVaultEntry(ctx context.Context, orgId openapi_types.UUID, entryId openapi_types.UUID, params *DeleteVaultEntryParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewDeleteVaultEntryRequest(c.Server, orgId, entryId, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) UpdateVaultEntryDetailsWithBody(ctx context.Context, orgId openapi_types.UUID, entryId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateVaultEntryDetailsRequestWithBody(c.Server, orgId, entryId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) UpdateVaultEntryDetails(ctx context.Context, orgId openapi_types.UUID, entryId openapi_types.UUID, body UpdateVaultEntryDetailsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateVaultEntryDetailsRequest(c.Server, orgId, entryId, body)
 	if err != nil {
 		return nil, err
 	}
@@ -43724,6 +43846,22 @@ func NewListVaultEntriesRequest(server string, orgId openapi_types.UUID, params 
 
 		}
 
+		if params.View != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "view", runtime.ParamLocationQuery, *params.View); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
 		queryURL.RawQuery = queryValues.Encode()
 	}
 
@@ -43884,6 +44022,60 @@ func NewDeleteVaultEntryRequest(server string, orgId openapi_types.UUID, entryId
 	if err != nil {
 		return nil, err
 	}
+
+	return req, nil
+}
+
+// NewUpdateVaultEntryDetailsRequest calls the generic UpdateVaultEntryDetails builder with application/json body
+func NewUpdateVaultEntryDetailsRequest(server string, orgId openapi_types.UUID, entryId openapi_types.UUID, body UpdateVaultEntryDetailsJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewUpdateVaultEntryDetailsRequestWithBody(server, orgId, entryId, "application/json", bodyReader)
+}
+
+// NewUpdateVaultEntryDetailsRequestWithBody generates requests for UpdateVaultEntryDetails with any type of body
+func NewUpdateVaultEntryDetailsRequestWithBody(server string, orgId openapi_types.UUID, entryId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "entryId", runtime.ParamLocationPath, entryId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/vault/entries/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("PATCH", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
 
 	return req, nil
 }
@@ -46547,6 +46739,11 @@ type ClientWithResponsesInterface interface {
 
 	// DeleteVaultEntryWithResponse request
 	DeleteVaultEntryWithResponse(ctx context.Context, orgId openapi_types.UUID, entryId openapi_types.UUID, params *DeleteVaultEntryParams, reqEditors ...RequestEditorFn) (*DeleteVaultEntryResponse, error)
+
+	// UpdateVaultEntryDetailsWithBodyWithResponse request with any body
+	UpdateVaultEntryDetailsWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, entryId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateVaultEntryDetailsResponse, error)
+
+	UpdateVaultEntryDetailsWithResponse(ctx context.Context, orgId openapi_types.UUID, entryId openapi_types.UUID, body UpdateVaultEntryDetailsJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateVaultEntryDetailsResponse, error)
 
 	// UpdateVaultEntryWithBodyWithResponse request with any body
 	UpdateVaultEntryWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, entryId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateVaultEntryResponse, error)
@@ -57339,6 +57536,29 @@ func (r DeleteVaultEntryResponse) StatusCode() int {
 	return 0
 }
 
+type UpdateVaultEntryDetailsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *VaultEntry
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r UpdateVaultEntryDetailsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r UpdateVaultEntryDetailsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
 type UpdateVaultEntryResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -63753,6 +63973,23 @@ func (c *ClientWithResponses) DeleteVaultEntryWithResponse(ctx context.Context, 
 		return nil, err
 	}
 	return ParseDeleteVaultEntryResponse(rsp)
+}
+
+// UpdateVaultEntryDetailsWithBodyWithResponse request with arbitrary body returning *UpdateVaultEntryDetailsResponse
+func (c *ClientWithResponses) UpdateVaultEntryDetailsWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, entryId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateVaultEntryDetailsResponse, error) {
+	rsp, err := c.UpdateVaultEntryDetailsWithBody(ctx, orgId, entryId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateVaultEntryDetailsResponse(rsp)
+}
+
+func (c *ClientWithResponses) UpdateVaultEntryDetailsWithResponse(ctx context.Context, orgId openapi_types.UUID, entryId openapi_types.UUID, body UpdateVaultEntryDetailsJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateVaultEntryDetailsResponse, error) {
+	rsp, err := c.UpdateVaultEntryDetails(ctx, orgId, entryId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateVaultEntryDetailsResponse(rsp)
 }
 
 // UpdateVaultEntryWithBodyWithResponse request with arbitrary body returning *UpdateVaultEntryResponse
@@ -79069,6 +79306,39 @@ func ParseDeleteVaultEntryResponse(rsp *http.Response) (*DeleteVaultEntryRespons
 	}
 
 	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseUpdateVaultEntryDetailsResponse parses an HTTP response from a UpdateVaultEntryDetailsWithResponse call
+func ParseUpdateVaultEntryDetailsResponse(rsp *http.Response) (*UpdateVaultEntryDetailsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UpdateVaultEntryDetailsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest VaultEntry
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
 		var dest Error
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {

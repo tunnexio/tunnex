@@ -113,17 +113,17 @@ func TestVaultIdentityPrivacyAssignmentsAndVersionTransactions(t *testing.T) {
 		if workspace.Total != 0 || len(workspace.Entries) != 0 {
 			t.Fatal("private entry visible to another actor")
 		}
-		_, e = s.Reveal(ctx, org, user, personal.Id, 0)
+		_, e = s.Reveal(ctx, org, user, personal.Id, RevealRequest{Version: 0, StepUp: allowStepUp})
 		status(t, e, 404)
 		_, e = s.Versions(ctx, org, user, personal.Id, 50, 0)
 		status(t, e, 404)
-		_, e = s.Update(ctx, org, user, personal.Id, api.VaultUpdateInput{Title: "Takeover", Secret: ptr("fixture-takeover"), ExpectedVersion: 1})
+		_, e = s.Update(ctx, org, user, personal.Id, api.VaultUpdateInput{Title: ptr("Takeover"), Secret: ptr("fixture-takeover"), ExpectedVersion: 1})
 		status(t, e, 404)
 		status(t, s.Delete(ctx, org, user, personal.Id, 1), 404)
 	}
-	_, err = s.Reveal(ctx, otherOrg, otherUser, personal.Id, 0)
+	_, err = s.Reveal(ctx, otherOrg, otherUser, personal.Id, RevealRequest{Version: 0, StepUp: allowStepUp})
 	status(t, err, 404)
-	_, err = s.Reveal(ctx, org, otherUser, personal.Id, 0)
+	_, err = s.Reveal(ctx, org, otherUser, personal.Id, RevealRequest{Version: 0, StepUp: allowStepUp})
 	status(t, err, 403)
 	services, err := s.Services(ctx, org, admin)
 	if err != nil || len(services) != 0 {
@@ -168,32 +168,32 @@ func TestVaultIdentityPrivacyAssignmentsAndVersionTransactions(t *testing.T) {
 		t.Fatal(err)
 	}
 	for _, user := range []uuid.UUID{admin, alice} {
-		v, e := s.Reveal(ctx, org, user, assigned.Id, 0)
+		v, e := s.Reveal(ctx, org, user, assigned.Id, RevealRequest{Version: 0, StepUp: allowStepUp})
 		if e != nil || v.Value != "fixture-first-secret" {
 			t.Fatal("assigned entry unavailable to allowed actor")
 		}
 	}
-	_, err = s.Reveal(ctx, org, bob, assigned.Id, 0)
+	_, err = s.Reveal(ctx, org, bob, assigned.Id, RevealRequest{Version: 0, StepUp: allowStepUp})
 	status(t, err, 404)
 	workspace, err := s.List(ctx, org, alice, 1, 0, "Team account")
 	if err != nil || workspace.Total != 1 || len(workspace.Entries) != 1 || workspace.Entries[0].CanDelete {
 		t.Fatal("assigned entry listing/authority wrong")
 	}
-	updated, err := s.Update(ctx, org, alice, assigned.Id, api.VaultUpdateInput{Title: "Team account", Secret: ptr("fixture-second-secret"), Username: ptr("second-account"), ExpectedVersion: 1})
+	updated, err := s.Update(ctx, org, alice, assigned.Id, api.VaultUpdateInput{Title: ptr("Team account"), Secret: ptr("fixture-second-secret"), Username: ptr("second-account"), ExpectedVersion: 1})
 	if err != nil || updated.CurrentVersion != 2 {
 		t.Fatal("recipient cannot rotate assigned entry")
 	}
-	_, err = s.Update(ctx, org, admin, assigned.Id, api.VaultUpdateInput{Title: "Stale", Secret: ptr("fixture-stale-secret"), ExpectedVersion: 1})
+	_, err = s.Update(ctx, org, admin, assigned.Id, api.VaultUpdateInput{Title: ptr("Stale"), Secret: ptr("fixture-stale-secret"), ExpectedVersion: 1})
 	status(t, err, 409)
 	history, err := s.Versions(ctx, org, alice, assigned.Id, 50, 0)
 	if err != nil || history.Total != 2 || history.CurrentVersion != 2 || len(history.Versions) != 2 || history.Versions[0].ChangedBy != alice {
 		t.Fatal("version metadata not preserved")
 	}
-	old, err := s.Reveal(ctx, org, alice, assigned.Id, 1)
+	old, err := s.Reveal(ctx, org, alice, assigned.Id, RevealRequest{Version: 1, StepUp: allowStepUp})
 	if err != nil || old.Value != "fixture-first-secret" || old.Username != "first-account" {
 		t.Fatal("prior version overwritten")
 	}
-	current, err := s.Reveal(ctx, org, admin, assigned.Id, 0)
+	current, err := s.Reveal(ctx, org, admin, assigned.Id, RevealRequest{Version: 0, StepUp: allowStepUp})
 	if err != nil || current.Value != "fixture-second-secret" || current.Username != "second-account" {
 		t.Fatal("current version not updated")
 	}
@@ -217,7 +217,8 @@ func TestVaultIdentityPrivacyAssignmentsAndVersionTransactions(t *testing.T) {
 	if err = pool.QueryRow(ctx, `SELECT coalesce(string_agg(metadata::text,','),'') FROM audit_logs WHERE org_id=$1 AND action LIKE 'vault.%'`, org).Scan(&auditMeta); err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(auditMeta, "fixture-") || strings.Contains(auditMeta, "account") {
+	// Assigned entries carry their title in audit (VAULT-UX-1 V3); usernames and secrets never.
+	if strings.Contains(auditMeta, "fixture-") || strings.Contains(auditMeta, "first-account") || strings.Contains(auditMeta, "second-account") {
 		t.Fatal("secret or username logged in audit")
 	}
 	status(t, s.Delete(ctx, org, alice, assigned.Id, 2), 403)
@@ -231,22 +232,22 @@ func TestVaultIdentityPrivacyAssignmentsAndVersionTransactions(t *testing.T) {
 		if e != nil {
 			t.Fatal(e)
 		}
-		if _, e = s.Reveal(ctx, org, bob, entry.Id, 0); e != nil {
+		if _, e = s.Reveal(ctx, org, bob, entry.Id, RevealRequest{Version: 0, StepUp: allowStepUp}); e != nil {
 			t.Fatal(e)
 		}
 		exec(`DELETE FROM group_members WHERE org_id=$1 AND group_id=$2 AND user_id=$3`, org, group, bob)
-		_, e = s.Reveal(ctx, org, bob, entry.Id, 0)
+		_, e = s.Reveal(ctx, org, bob, entry.Id, RevealRequest{Version: 0, StepUp: allowStepUp})
 		status(t, e, 404)
 		_, e = s.Versions(ctx, org, bob, entry.Id, 50, 0)
 		status(t, e, 404)
 	})
 	t.Run("live membership and account status", func(t *testing.T) {
 		exec(`UPDATE memberships SET access_revoked_at=now() WHERE org_id=$1 AND user_id=$2`, org, alice)
-		_, e := s.Reveal(ctx, org, alice, personal.Id, 0)
+		_, e := s.Reveal(ctx, org, alice, personal.Id, RevealRequest{Version: 0, StepUp: allowStepUp})
 		status(t, e, 403)
 		exec(`UPDATE memberships SET access_revoked_at=NULL WHERE org_id=$1 AND user_id=$2`, org, alice)
 		exec(`UPDATE users SET status='deactivated' WHERE id=$1`, alice)
-		_, e = s.Reveal(ctx, org, alice, personal.Id, 0)
+		_, e = s.Reveal(ctx, org, alice, personal.Id, RevealRequest{Version: 0, StepUp: allowStepUp})
 		status(t, e, 403)
 		exec(`UPDATE users SET status='active' WHERE id=$1`, alice)
 	})
@@ -257,7 +258,7 @@ func TestVaultIdentityPrivacyAssignmentsAndVersionTransactions(t *testing.T) {
 			wg.Add(1)
 			go func() {
 				defer wg.Done()
-				_, e := s.Update(ctx, org, alice, personal.Id, api.VaultUpdateInput{Title: "Personal API", Secret: ptr("fixture-concurrent-key"), ExpectedVersion: 1})
+				_, e := s.Update(ctx, org, alice, personal.Id, api.VaultUpdateInput{Title: ptr("Personal API"), Secret: ptr("fixture-concurrent-key"), ExpectedVersion: 1})
 				errs <- e
 			}()
 		}
@@ -283,7 +284,7 @@ func TestVaultIdentityPrivacyAssignmentsAndVersionTransactions(t *testing.T) {
 	t.Run("audit failure prevents reveal", func(t *testing.T) {
 		exec(`CREATE FUNCTION vault_test_refuse_audit() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.action='vault.revealed' THEN RAISE EXCEPTION 'fixture audit unavailable'; END IF; RETURN NEW; END; $$`)
 		exec(`CREATE TRIGGER vault_test_refuse_audit BEFORE INSERT ON audit_logs FOR EACH ROW EXECUTE FUNCTION vault_test_refuse_audit()`)
-		v, e := s.Reveal(ctx, org, admin, assigned.Id, 0)
+		v, e := s.Reveal(ctx, org, admin, assigned.Id, RevealRequest{Version: 0, StepUp: allowStepUp})
 		if e == nil || v.Value != "" {
 			t.Fatal("secret returned without durable audit")
 		}
@@ -292,7 +293,7 @@ func TestVaultIdentityPrivacyAssignmentsAndVersionTransactions(t *testing.T) {
 	if err = s.Delete(ctx, org, admin, assigned.Id, 2); err != nil {
 		t.Fatal(err)
 	}
-	_, err = s.Reveal(ctx, org, alice, assigned.Id, 0)
+	_, err = s.Reveal(ctx, org, alice, assigned.Id, RevealRequest{Version: 0, StepUp: allowStepUp})
 	status(t, err, 404)
 	var remaining int
 	if err = pool.QueryRow(ctx, `SELECT count(*) FROM vault_versions WHERE org_id=$1 AND entry_id=$2`, org, assigned.Id).Scan(&remaining); err != nil || remaining != 0 {

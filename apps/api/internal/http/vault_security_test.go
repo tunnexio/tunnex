@@ -9,11 +9,15 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/alicebob/miniredis/v2"
 	"github.com/google/uuid"
+	"github.com/redis/go-redis/v9"
 	"github.com/tunnexio/tunnex/apps/api/internal/api"
 	"github.com/tunnexio/tunnex/apps/api/internal/authctx"
 	"github.com/tunnexio/tunnex/apps/api/internal/crypto"
+	"github.com/tunnexio/tunnex/apps/api/internal/session"
 	"github.com/tunnexio/tunnex/apps/api/internal/testpostgres"
 	"github.com/tunnexio/tunnex/apps/api/internal/vault"
 )
@@ -123,6 +127,7 @@ func TestVaultRouterRejectsUnsafeAndSecretBearingInvalidRequests(t *testing.T) {
 		{"POST", "/services", `{"name":"Example"}`},
 		{"POST", "/entries/" + uuid.NewString() + "/reveal", `{}`},
 		{"PUT", "/entries/" + uuid.NewString(), `{"title":"Test","secret":"test-only-value","expected_version":1}`},
+		{"PATCH", "/entries/" + uuid.NewString(), `{"title":"Test","expected_revision":1}`},
 		{"DELETE", "/entries/" + uuid.NewString() + "?expected_version=1", ""},
 	} {
 		w := vaultSecurityRequest(h, route.method, base+route.path, route.body, false)
@@ -191,7 +196,9 @@ func TestVaultRouterPrivateAndAssignedVersionAuthority(t *testing.T) {
 	}
 	actor := owner
 	roles := map[uuid.UUID]string{owner: "member", admin: "admin", other: "member"}
-	h := vaultSecurityRouter(t, Deps{Vault: vault.New(pool, sealer), AuthFn: func(*http.Request) *authctx.Principal {
+	rdb := redis.NewClient(&redis.Options{Addr: miniredis.RunT(t).Addr(), MaxRetries: -1})
+	t.Cleanup(func() { _ = rdb.Close() })
+	h := vaultSecurityRouter(t, Deps{Vault: vault.New(pool, sealer), Sessions: session.NewWithClient(rdb, time.Hour, 24*time.Hour), AuthFn: func(*http.Request) *authctx.Principal {
 		return vaultSecurityPrincipal(org, actor, roles[actor])
 	}})
 	base := "/api/v1/organizations/" + org.String() + "/vault"
@@ -270,16 +277,27 @@ func TestVaultRouterPrivateAndAssignedVersionAuthority(t *testing.T) {
 		t.Fatal(err)
 	}
 	assignedPath := "/entries/" + assigned.Id.String()
-	call(owner, "POST", assignedPath+"/reveal", map[string]any{}, 200)
+	// VAULT-UX-1 V4: an assigned reveal needs recent re-authentication on a real session; this
+	// fixture's session cannot provide it, so the reveal is refused while history stays readable.
+	call(owner, "POST", assignedPath+"/reveal", map[string]any{}, 401)
 	call(owner, "GET", assignedPath+"/versions", nil, 200)
+	// V2/V5: recipients cannot change details; administrators can, without a new version.
+	call(owner, "PATCH", assignedPath, map[string]any{"title": "Recipient rename", "expected_revision": 1}, 403)
+	call(owner, "PUT", assignedPath, map[string]any{"title": "Recipient rename", "secret": "vault-http-assigned-rename", "expected_version": 1}, 403)
+	renamedBody := call(admin, "PATCH", assignedPath, map[string]any{"title": "Group API key (prod)", "expected_revision": 1}, 200)
+	var renamed api.VaultEntry
+	if err = json.Unmarshal(renamedBody, &renamed); err != nil || renamed.CurrentVersion != 1 || renamed.Revision != 2 {
+		t.Fatal("details edit created a version or did not bump the revision")
+	}
+	call(admin, "PATCH", assignedPath, map[string]any{"title": "Stale", "expected_revision": 1}, 409)
 	call(other, "POST", assignedPath+"/reveal", map[string]any{}, 404)
 	// Recipient authority includes rotation/history, never deleting the assignment.
-	call(owner, "PUT", assignedPath, map[string]any{"title": "Group API key", "secret": "vault-http-assigned-rotated-key", "expected_version": 1}, 200)
+	call(owner, "PUT", assignedPath, map[string]any{"secret": "vault-http-assigned-rotated-key", "expected_version": 1}, 200)
 	call(owner, "DELETE", assignedPath+"?expected_version=2", nil, 403)
 	exec(`DELETE FROM group_members WHERE org_id=$1 AND group_id=$2 AND user_id=$3`, org, group, owner)
 	call(owner, "POST", assignedPath+"/reveal", map[string]any{}, 404)
 	call(owner, "GET", assignedPath+"/versions", nil, 404)
-	call(admin, "POST", assignedPath+"/reveal", map[string]any{"version": 1}, 200)
+	call(admin, "POST", assignedPath+"/reveal", map[string]any{"version": 1}, 401)
 	call(admin, "DELETE", assignedPath+"?expected_version=2", nil, 204)
 	call(admin, "POST", assignedPath+"/reveal", map[string]any{}, 404)
 	quickRequest := map[string]any{"request_id": uuid.NewString(), "secret": "vault-http-quick-original"}
@@ -297,10 +315,10 @@ func TestVaultRouterPrivateAndAssignedVersionAuthority(t *testing.T) {
 	configuration := map[string]any{"title": "Quick login", "visibility": "personal", "service_name": "Actual private service", "username": "quick-account", "expected_version": 1}
 	call(admin, "POST", quickPath+"/configure", configuration, 404)
 	configuredBody := call(owner, "POST", quickPath+"/configure", configuration, 200)
-	if err = json.Unmarshal(configuredBody, &quick); err != nil || !quick.Configured || quick.CurrentVersion != 2 {
-		t.Fatal("configure route did not append the configured version")
+	if err = json.Unmarshal(configuredBody, &quick); err != nil || !quick.Configured || quick.CurrentVersion != 1 {
+		t.Fatal("configure route must add details without a duplicate version")
 	}
-	for version, username := range map[int]string{1: "", 2: "quick-account"} {
+	for version, username := range map[int]string{1: "quick-account"} {
 		body := call(owner, "POST", quickPath+"/reveal", map[string]any{"version": version}, 200)
 		var secret api.VaultSecret
 		if err = json.Unmarshal(body, &secret); err != nil || secret.Value != "vault-http-quick-original" || secret.Username != username {

@@ -77,14 +77,14 @@ func TestVaultQuickPersistenceAndConfiguration(t *testing.T) {
 		}
 		_, e = s.Configure(ctx, org, user, draft.Id, api.VaultConfigureInput{Title: "Unauthorized", Visibility: "personal", ServiceName: ptr("Private"), ExpectedVersion: 1})
 		status(t, e, 404)
-		_, e = s.Reveal(ctx, org, user, draft.Id, 0)
+		_, e = s.Reveal(ctx, org, user, draft.Id, RevealRequest{Version: 0, StepUp: allowStepUp})
 		status(t, e, 404)
 	}
 	changed := request
 	changed.Secret = ptr("different-candidate")
 	_, e = s.QuickCreate(ctx, org, alice, changed)
 	status(t, e, 409)
-	_, e = s.Update(ctx, org, alice, draft.Id, api.VaultUpdateInput{Title: "No metadata yet", Secret: ptr("must-not-rotate"), ExpectedVersion: 1})
+	_, e = s.Update(ctx, org, alice, draft.Id, api.VaultUpdateInput{Title: ptr("No metadata yet"), Secret: ptr("must-not-rotate"), ExpectedVersion: 1})
 	status(t, e, 409)
 	_, e = s.Configure(ctx, otherOrg, alice, draft.Id, api.VaultConfigureInput{Title: "Foreign", Visibility: "personal", ServiceName: ptr("Private"), ExpectedVersion: 1})
 	status(t, e, 404)
@@ -93,16 +93,16 @@ func TestVaultQuickPersistenceAndConfiguration(t *testing.T) {
 	_, e = s.Configure(ctx, org, alice, draft.Id, api.VaultConfigureInput{Title: "Missing service", Visibility: "personal", ExpectedVersion: 1})
 	status(t, e, 400)
 	configured, e := s.Configure(ctx, org, alice, draft.Id, api.VaultConfigureInput{Title: "Configured login", Visibility: "personal", ServiceName: ptr("Real private service"), Username: ptr("service-user"), ExpectedVersion: 1})
-	if e != nil || !configured.Configured || configured.Kind != "password" || configured.CurrentVersion != 2 || configured.Username != "service-user" {
-		t.Fatalf("configure did not append metadata version: %v", e)
+	if e != nil || !configured.Configured || configured.Kind != "password" || configured.CurrentVersion != 1 || configured.Username != "service-user" {
+		t.Fatalf("configure must keep version 1 and only add details (VAULT-UX-1 V7): %v", e)
 	}
-	for version, username := range map[int]string{1: "", 2: "service-user"} {
-		secret, e := s.Reveal(ctx, org, alice, draft.Id, version)
+	for version, username := range map[int]string{1: "service-user"} {
+		secret, e := s.Reveal(ctx, org, alice, draft.Id, RevealRequest{Version: version, StepUp: allowStepUp})
 		if e != nil || secret.Value != original || secret.Username != username {
 			t.Fatal("configure replaced the original password or username history")
 		}
 	}
-	_, e = s.Configure(ctx, org, alice, draft.Id, api.VaultConfigureInput{Title: "Again", Visibility: "personal", ServiceName: ptr("Other"), ExpectedVersion: 2})
+	_, e = s.Configure(ctx, org, alice, draft.Id, api.VaultConfigureInput{Title: "Again", Visibility: "personal", ServiceName: ptr("Other"), ExpectedVersion: 1})
 	status(t, e, 409)
 	// Reusing a UUID in another creator or tenant namespace is independent.
 	bobDraft, e := s.QuickCreate(ctx, org, bob, request)
@@ -185,12 +185,12 @@ func TestVaultQuickPersistenceAndConfiguration(t *testing.T) {
 		}
 		_, e = s.Configure(ctx, org, bob, v.Id, config)
 		status(t, e, 404)
-		_, e = s.Update(ctx, org, bob, v.Id, api.VaultUpdateInput{Title: v.Title, Secret: ptr("later-rotation-value"), ExpectedVersion: 2})
+		_, e = s.Update(ctx, org, bob, v.Id, api.VaultUpdateInput{Secret: ptr("later-rotation-value"), ExpectedVersion: 1})
 		if e != nil {
 			t.Fatal(e)
 		}
 		replay, e := s.QuickCreate(ctx, org, admin, r)
-		if e != nil || replay.Id != v.Id || replay.CurrentVersion != 3 {
+		if e != nil || replay.Id != v.Id || replay.CurrentVersion != 2 {
 			t.Fatal("exact replay failed after configure and rotation")
 		}
 		r.Secret = ptr("later-rotation-value")
