@@ -17,7 +17,7 @@ SELECT d.id AS device_id, d.org_id, d.user_id AS owner_id, d.node_id AS gateway_
 FROM devices d
 JOIN nodes n ON n.id = d.node_id AND n.org_id = d.org_id
 JOIN users u ON u.id = d.user_id
-JOIN memberships m ON m.org_id = d.org_id AND m.user_id = d.user_id
+JOIN memberships m ON m.org_id = d.org_id AND m.user_id = d.user_id AND m.access_revoked_at IS NULL -- RBAC-0: org-scoped deactivation
 JOIN organizations o ON o.id = d.org_id
 JOIN connectivity_profiles p ON p.org_id = d.org_id
 WHERE d.id = $1 AND d.org_id = $2

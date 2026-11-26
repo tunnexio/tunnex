@@ -272,6 +272,30 @@ role change without step-up.
   machine-credential number is now worded "up to", because the roster counts credentials across every
   organization and an org-scoped deactivation stops only this org's credentials.
 
+- **Org-scoped deactivation reaches every org-scoped gate.** An audit of queries that join `memberships`
+  without the revoked filter found four places that ignored `access_revoked_at`, which mattered once
+  people could be deactivated per organization. Directory sync could already revoke access per org, so
+  these were not new. The four are: connectivity eligibility (lock and share), the sandbox projection
+  and bootstrap-token joins, and the user's organization list. All four now filter on it. Per-request
+  authorization already did, because the principal is rebuilt from non-revoked memberships.
+  `UserInEnforcingOrg` (MFA enforcement) still counts revoked memberships. That is the stricter
+  direction, so it is deliberately unchanged.
+- **Scoped deactivation does not delete sessions.** If it did, an admin of org A could repeatedly sign a
+  person out of org B. The revoked org drops out of the principal on the next request.
+
+## Residuals (recorded, not fixed)
+
+- `sign_in_required` tells whoever holds an invitation token that an account exists for that address.
+  On an SMTP-less deployment that holder is the inviting admin, so this is a small existence oracle
+  across organizations. It is accepted, because requiring sign-in needs to say so.
+- `tests/app-access-local/run-lifecycle-case.py` is a local-only harness, not CI. Its `user-deactivate`
+  case posts without `current_password`, so it now gets the step-up refusal. Trigger to fix it: the next
+  App Access local walk.
+- The roster's machine-credential count spans every organization. For an org-scoped deactivation it is
+  an upper bound, and the dialog says "up to".
+- `CountOnlineDevicesByOrg` (an overview display count) still counts devices of org-revoked members as
+  online until their peers drop. It is cosmetic only, because the data plane has already removed them.
+
 ## For the founder's disposition (decided provisionally, flagged)
 
 1. **No self-approval (D8) in a single-administrator org.** The sole owner cannot approve their own

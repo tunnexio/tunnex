@@ -447,7 +447,7 @@ func (q *Queries) ListOrganizations(ctx context.Context) ([]Organization, error)
 
 const listOrganizationsForUser = `-- name: ListOrganizationsForUser :many
 SELECT o.id, o.name, o.slug, o.created_at, o.updated_at, o.deleted_at, o.max_devices_per_user, o.pool_cidr, o.zero_trust_mode, o.device_approval, o.flow_seq, o.ovpn_enabled, o.max_agent_identities, o.managed_agent_runtime_enabled, o.agent_policy_templates_enabled, o.agent_jit_access_enabled, o.alerting_enabled, o.fqdn_resources_enabled, o.ai_gateway_enabled, o.ai_gateway_revision, o.cross_gateway_clients_enabled, o.sandboxes_enabled, o.max_sandboxes_per_user, o.max_sandboxes, o.sandbox_delegation_enabled FROM organizations o
-JOIN memberships m ON m.org_id = o.id
+JOIN memberships m ON m.org_id = o.id AND m.access_revoked_at IS NULL -- RBAC-0: a deactivated org is not offered
 WHERE m.user_id = $1 AND o.deleted_at IS NULL
 ORDER BY o.created_at
 `
