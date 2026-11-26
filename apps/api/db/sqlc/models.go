@@ -147,6 +147,8 @@ type AgentBootstrapToken struct {
 	ConsumedDeviceID pgtype.UUID        `json:"consumed_device_id"`
 	IssuedBy         pgtype.UUID        `json:"issued_by"`
 	CreatedAt        time.Time          `json:"created_at"`
+	RevokedAt        pgtype.Timestamptz `json:"revoked_at"`
+	RevokedBy        pgtype.UUID        `json:"revoked_by"`
 }
 
 type AgentGroup struct {

@@ -1551,6 +1551,10 @@ type Querier interface {
 	// ListOrganizationsForUser (membership-scoped).
 	ListOrganizations(ctx context.Context) ([]Organization, error)
 	ListOrganizationsForUser(ctx context.Context, userID uuid.UUID) ([]Organization, error)
+	// Pending means still redeemable: not used, not revoked, not expired. The
+	// token hash is deliberately not selected; a listing never carries the value.
+	// Tokens live for one hour, so the newest 200 is a bound, not a page.
+	ListPendingAgentBootstrapTokens(ctx context.Context, orgID uuid.UUID) ([]ListPendingAgentBootstrapTokensRow, error)
 	// ⛔ AGENTS ARE EXCLUDED FROM THE HUMAN DEVICE SURFACES. An AI agent is a `devices` row because it IS a
 	// WireGuard peer — the peer set, the pool allocation, the revocation sweep and the liveness upsert all read
 	// this table and MUST keep seeing it. What it is not is a user endpoint: it has no owner carrying it, no
@@ -1922,6 +1926,9 @@ type Querier interface {
 	// lint:cross-org — keyed by user + org inside the org-scoped reactivate transaction.
 	RestoreOVPNCertsForReactivatedUser(ctx context.Context, arg RestoreOVPNCertsForReactivatedUserParams) ([]string, error)
 	RevokeAgentAccessRequest(ctx context.Context, arg RevokeAgentAccessRequestParams) (AgentAccessRequest, error)
+	// Only a pending token can be revoked. Redemption and revocation both update
+	// this row under its row lock, so exactly one of them wins.
+	RevokeAgentBootstrapToken(ctx context.Context, arg RevokeAgentBootstrapTokenParams) (RevokeAgentBootstrapTokenRow, error)
 	// lint:cross-org -- Offline installation recovery revokes the dedicated AppProxy family only; no operator or gateway credentials are touched.
 	RevokeAllAppAccessProxyCredentials(ctx context.Context) (int64, error)
 	// The SWEEP: password reset and account deactivation kill every live CLI
