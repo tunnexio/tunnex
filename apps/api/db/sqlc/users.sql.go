@@ -138,6 +138,7 @@ type DeactivateUserAccountParams struct {
 }
 
 // RBAC-0 D3: account-wide deactivation with its provenance (who, from which org).
+// lint:cross-org — user_deactivations is keyed by USER; its org_id records which organization acted.
 func (q *Queries) DeactivateUserAccount(ctx context.Context, arg DeactivateUserAccountParams) (int64, error) {
 	result, err := q.db.Exec(ctx, deactivateUserAccount, arg.Source, arg.OrgID, arg.ID)
 	if err != nil {
@@ -211,6 +212,7 @@ type GetUserDeactivationRow struct {
 	CpAdmin            bool        `json:"cp_admin"`
 }
 
+// lint:cross-org — reads the user-keyed provenance row; callers compare its org_id to the acting org.
 func (q *Queries) GetUserDeactivation(ctx context.Context, id uuid.UUID) (GetUserDeactivationRow, error) {
 	row := q.db.QueryRow(ctx, getUserDeactivation, id)
 	var i GetUserDeactivationRow
@@ -254,6 +256,7 @@ UPDATE users SET status = 'active'
 WHERE id = $1 AND deleted_at IS NULL AND status = 'deactivated'
 `
 
+// lint:cross-org — clears the user-keyed provenance row together with the account status.
 func (q *Queries) ReactivateUserAccount(ctx context.Context, id uuid.UUID) (int64, error) {
 	result, err := q.db.Exec(ctx, reactivateUserAccount, id)
 	if err != nil {
