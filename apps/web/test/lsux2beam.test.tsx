@@ -174,7 +174,7 @@ describe("LS-UX-2 review feedback", () => {
     vi.mocked(beamRoomsApi.addFeedback).mockResolvedValue({ ok: true, data: { id: "f2", share_id: shareId, author_id: identity.user, author_name: "Rae", body: "ok", status: "comment", created_at: "2026-10-06T10:01:00Z" } });
     render(<MemoryRouter><BeamFeedback orgId={identity.org} share={reviewed} viewer="reviewer" /></MemoryRouter>);
     await screen.findByText("Sam Reviewer (sam@example.com)");
-    expect(screen.getByRole("heading", { name: "Earlier feedback" })).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Feedback so far" })).toBeTruthy();
     fireEvent.change(screen.getByRole("textbox", { name: "Your feedback" }), { target: { value: "ok" } });
     fireEvent.click(screen.getByRole("button", { name: "Send feedback" }));
     await screen.findByText("Feedback sent. The publisher sees it on this page and in Sharing updates.");
