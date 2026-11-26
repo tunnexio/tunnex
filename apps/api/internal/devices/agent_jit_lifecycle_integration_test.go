@@ -57,6 +57,10 @@ func TestAgentLifecycleClosesJITAccessPostgres(t *testing.T) {
 	exec(`INSERT INTO organizations (id,name,slug,pool_cidr,zero_trust_mode,agent_jit_access_enabled) VALUES ($1,'F10 lifecycle',$2,'10.121.0.0/24','enforcing',true)`, org, "f10-life-"+org.String()[:8])
 	exec(`INSERT INTO users (id,email,name) VALUES ($1,$2,'F10 owner')`, owner, "f10-life-"+owner.String()[:8]+"@example.test")
 	exec(`INSERT INTO memberships (org_id,user_id,role) VALUES ($1,$2,'owner')`, org, owner)
+	// RBAC-0 D8: requests are approved by someone other than the requester.
+	approver := uuid.New()
+	exec(`INSERT INTO users (id,email,name) VALUES ($1,$2,'F10 approver')`, approver, "f10-life-"+approver.String()[:8]+"@example.test")
+	exec(`INSERT INTO memberships (org_id,user_id,role) VALUES ($1,$2,'admin')`, org, approver)
 	exec(`INSERT INTO nodes (id,org_id,name,cert_serial) VALUES ($1,$2,'f10-gw',$3)`, node, org, "f10-life-"+node.String())
 	exec(`INSERT INTO devices (id,org_id,user_id,node_id,name,public_key,assigned_ip,status,kind) VALUES ($1,$2,$3,$4,'agent',$5,'10.121.0.2','active','agent')`, agent, org, owner, node, "f10-life-agent-"+agent.String())
 	exec(`INSERT INTO agent_profiles (device_id,environment,runtime,labels) VALUES ($1,'dev','linux','{}')`, agent)
@@ -79,7 +83,7 @@ func TestAgentLifecycleClosesJITAccessPostgres(t *testing.T) {
 			t.Fatalf("create %s replay=%v err=%v", name, replay, err)
 		}
 		if approve {
-			r, replay, err = jit.Approve(ctx, org, r.ID, owner, "approve-"+name)
+			r, replay, err = jit.Approve(ctx, org, r.ID, approver, "approve-"+name)
 			if err != nil || replay || !r.PolicyRuleID.Valid {
 				t.Fatalf("approve %s replay=%v err=%v", name, replay, err)
 			}
