@@ -196,3 +196,4 @@
 .beam-attachment-name { font-size:13px; color:var(--tnx-text-body); overflow-wrap:anywhere; }
 .beam-feedback-empty { padding-top:4px; }
 .beam-feedback-history { padding-top:14px; border-top:1px solid var(--tnx-border); font-size:14px; font-weight:550; color:var(--tnx-text-heading); }
+.beam-feedback:focus { outline:none; } /* LS-UX-3: focus target for Review feedback; the form or Verify MFA inside carries the visible focus. */

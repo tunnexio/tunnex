@@ -108,6 +108,10 @@ export const BEAM_SHARE_UNAVAILABLE = "This shared app isn't available to your a
 export function beamShareError(result: { error: string; code?: string }): string {
   return result.code === "beam_share_not_found" ? BEAM_SHARE_UNAVAILABLE : result.error;
 }
+// LS-UX-3: the server refuses launch, feedback and Sharing updates with these codes when the
+// organization's Local Sharing policy requires a recent MFA check. They are a step to take, not an error.
+export const BEAM_MFA_CODES = ["beam_mfa_required", "mfa_required", "mfa_step_up_required"];
+export function beamNeedsMfa(code?: string): boolean { return BEAM_MFA_CODES.includes(code ?? ""); }
 /**
  * One plain sentence explaining the status to the person looking at it, or null when the app
  * can simply be opened. Reviewers are told who can change it; publishers are told what to do.
