@@ -218,7 +218,7 @@ function UsersWorkspace({ view }: { view: View }) {
   }
   // RBAC-0: actions stay visible with the reason they are unavailable (e.g. an admin looking at an owner),
   // rather than disappearing without explanation. Your own row has no account actions.
-  const personActions = (m: Member): AppAccessRowMenuAction[] => m.user_id === actorId ? [] : [
+  const personActions = (m: Member): AppAccessRowMenuAction[] => m.user_id === actorId || !can(myRole, "member:manage") ? [] : [
     { key: m.status === "active" ? "deactivate" : "reactivate", label: m.status === "active" ? "Deactivate" : "Reactivate", danger: m.status === "active", disabledReason: blocked ? "Wait for the roster to finish loading." : unavailable(m.status === "active" ? "deactivate" : "reactivate", m), onSelect: () => requestAction(m.status === "active" ? "deactivate" : "reactivate", [m]) },
     { key: "reset", label: "Reset 2FA", disabledReason: blocked ? "Wait for the current operation." : unavailable("reset", m), onSelect: () => requestAction("reset", [m]) },
   ];

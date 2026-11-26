@@ -165,46 +165,35 @@ test("the sole owner's own role control is disabled with an explanation", async 
   await expect(ownerRole).toHaveAttribute("title", /at least one owner/i);
 });
 
-// (c) Invite enumeration resistance: inviting an address that already has an
-// account renders IDENTICALLY to inviting a brand-new one — no account-existence
-// tell.
-test("invite renders identically for an existing account vs a new email", async ({
+// (c) Inviting someone who is ALREADY A MEMBER is refused with a plain message (RBAC-0 D1): an invitation
+// must never be a way to change an existing member's roles. This reveals nothing new — the roster already
+// lists them to anyone who may invite — while a brand-new address still succeeds.
+test("inviting an existing member is refused with a clear message; a new address succeeds", async ({
   page,
 }) => {
   await loginAs(page, OWNER);
   const ORG = "01900000-0000-7000-8000-000000000001"; // seeddata.DemoOrgID
 
-  // The real proof is that BOTH invites reach the success confirmation with NO
-  // error shown. Success now surfaces the one-time invite-link modal (constant
-  // chrome — title "Invitation link"); the meaningful signal is that neither path
-  // errors — a server enumeration tell would 409/error the existing-account invite,
-  // so the modal would never appear and an error would be masked. The modal is
-  // dismissed between invites (it's a fixed overlay covering the form).
-  async function inviteSucceedsCleanly(email: string) {
-    await page.getByRole("button", { name: "Invite user" }).click();
-    await page.getByLabel("Email address").fill(email);
-    await page.getByRole("button", { name: "Create invite" }).click();
-    await expect(page.getByText("Invitation link")).toBeVisible();
-    await expect(
-      page.getByText(/could not create the invitation/i),
-    ).toHaveCount(0);
-    await page.getByRole("button", { name: /I.?ve saved it/i }).click();
-    await expect(page.getByText("Invitation link")).toHaveCount(0);
-  }
+  await page.getByRole("button", { name: "Invite user" }).click();
+  await page.getByLabel("Email address").fill(MEMBER.email);
+  await page.getByRole("button", { name: "Create invite" }).click();
+  await expect(page.getByText(/already a member of this organization/i)).toBeVisible();
+  await expect(page.getByText("Invitation link")).toHaveCount(0);
+  await page.getByRole("button", { name: "Cancel" }).click();
 
   const fresh = `nobody-${Date.now()}@example.com`;
-  await inviteSucceedsCleanly(MEMBER.email); // an address that already has an account
-  await inviteSucceedsCleanly(fresh); // a brand-new address — indistinguishable from the above
+  await page.getByRole("button", { name: "Invite user" }).click();
+  await page.getByLabel("Email address").fill(fresh);
+  await page.getByRole("button", { name: "Create invite" }).click();
+  // No SMTP on this stack, so the link comes back to hand over (it is withheld when the email is delivered).
+  await expect(page.getByText("Invitation link")).toBeVisible();
+  await page.getByRole("button", { name: /I.?ve saved it/i }).click();
 
-  // Clean up the pending invites we created so the test is re-runnable (the
-  // invite table would otherwise 409 "invite_pending" on the next run). Uses the
-  // owner's authenticated session shared with the page context.
-  for (const email of [MEMBER.email, fresh]) {
-    await page.request.post(`/api/v1/organizations/${ORG}/invitations/revoke`, {
-      headers: { "X-Tunnex-CSRF": "1" },
-      data: { email },
-    });
-  }
+  // Clean up so the test is re-runnable (a pending invite would 409 "invite_pending" next run).
+  await page.request.post(`/api/v1/organizations/${ORG}/invitations/revoke`, {
+    headers: { "X-Tunnex-CSRF": "1" },
+    data: { email: fresh },
+  });
 });
 
 // (e) Audit loop: a mutation in the Users UI lands in the audit log and is RENDERED
@@ -224,6 +213,8 @@ test("a role change in the UI appears in the audit log", async ({ page }) => {
   try {
     const roles = await openRoles(page, MEMBER.email);
     await roles.getByRole("checkbox", { name: "admin", exact: true }).check();
+    // RBAC-0 D9: a role change re-authenticates; the owner confirms with their current password.
+    await page.getByRole("region", { name: "Person details" }).getByLabel("Your current password").fill(OWNER.pass);
     const saved = page.waitForResponse((response) =>
       response.url().endsWith(`/members/${MEMBER_ID}/roles`) &&
       response.request().method() === "PUT",
@@ -250,7 +241,7 @@ test("a role change in the UI appears in the audit log", async ({ page }) => {
       `/api/v1/organizations/${ORG}/members/${MEMBER_ID}/roles`,
       {
         headers: { "X-Tunnex-CSRF": "1" },
-        data: { roles: ["member"] },
+        data: { roles: ["member"], current_password: OWNER.pass },
       },
     );
     expect(restored.status()).toBe(204);
