@@ -9011,7 +9011,7 @@ paths:
         - {name: limit, in: query, schema: {type: integer, format: int32, minimum: 1, maximum: 100, default: 50}}
         - {name: offset, in: query, schema: {type: integer, format: int32, minimum: 0, maximum: 100000, default: 0}}
         - {name: q, in: query, schema: {type: string, maxLength: 100}}
-        - {name: view, in: query, description: 'all; personal (yours); shared (assigned to you directly or through a group); assigned (every assigned entry you can see, all of them for Vault administrators)', schema: {type: string, enum: [all, personal, shared, assigned], default: all}}
+        - {name: view, in: query, description: 'all; personal (yours); shared (assigned to you directly or through a group); assigned (every assigned entry you can see, all of them for Vault administrators)', schema: {type: string, enum: [all, personal, shared, assigned], default: all, x-enum-varnames: [VaultViewAll, VaultViewPersonal, VaultViewShared, VaultViewAssigned]}}
       responses:
         '200': {description: Authorized Vault result, content: {application/json: {schema: {$ref: '#/components/schemas/VaultWorkspace'}}}}
         default: {$ref: '#/components/responses/Error'}
@@ -9320,7 +9320,7 @@ components:
       additionalProperties: false
       properties:
         version: {type: integer, minimum: 1, description: Omit to reveal the current version}
-        purpose: {type: string, enum: [reveal, copy], default: reveal, description: Client-stated purpose; recorded as vault.revealed or vault.copied}
+        purpose: {type: string, enum: [reveal, copy], default: reveal, x-enum-varnames: [VaultRevealPurposeReveal, VaultRevealPurposeCopy], description: Client-stated purpose; recorded as vault.revealed or vault.copied}
         current_password: {type: string, maxLength: 1024, writeOnly: true, description: Re-authentication for assigned entries when the account has a local password}
     VaultSecret:
       type: object

@@ -2261,14 +2261,14 @@ const (
 
 // Defines values for VaultRevealInputPurpose.
 const (
-	VaultRevealInputPurposeCopy   VaultRevealInputPurpose = "copy"
-	VaultRevealInputPurposeReveal VaultRevealInputPurpose = "reveal"
+	VaultRevealPurposeCopy   VaultRevealInputPurpose = "copy"
+	VaultRevealPurposeReveal VaultRevealInputPurpose = "reveal"
 )
 
 // Defines values for ZeroTrustModeMode.
 const (
-	Enforcing ZeroTrustModeMode = "enforcing"
-	Off       ZeroTrustModeMode = "off"
+	ZeroTrustModeModeEnforcing ZeroTrustModeMode = "enforcing"
+	ZeroTrustModeModeOff       ZeroTrustModeMode = "off"
 )
 
 // Defines values for SsoCallbackParamsProvider.
@@ -2315,8 +2315,8 @@ const (
 
 // Defines values for ListAgentsParamsMcp.
 const (
-	ListAgentsParamsMcpAssigned   ListAgentsParamsMcp = "assigned"
-	ListAgentsParamsMcpUnassigned ListAgentsParamsMcp = "unassigned"
+	Assigned   ListAgentsParamsMcp = "assigned"
+	Unassigned ListAgentsParamsMcp = "unassigned"
 )
 
 // Defines values for ListAgentsParamsAccess.
@@ -2415,10 +2415,10 @@ const (
 
 // Defines values for ListVaultEntriesParamsView.
 const (
-	ListVaultEntriesParamsViewAll      ListVaultEntriesParamsView = "all"
-	ListVaultEntriesParamsViewAssigned ListVaultEntriesParamsView = "assigned"
-	ListVaultEntriesParamsViewPersonal ListVaultEntriesParamsView = "personal"
-	ListVaultEntriesParamsViewShared   ListVaultEntriesParamsView = "shared"
+	VaultViewAll      ListVaultEntriesParamsView = "all"
+	VaultViewAssigned ListVaultEntriesParamsView = "assigned"
+	VaultViewPersonal ListVaultEntriesParamsView = "personal"
+	VaultViewShared   ListVaultEntriesParamsView = "shared"
 )
 
 // AIAssignment defines model for AIAssignment.
