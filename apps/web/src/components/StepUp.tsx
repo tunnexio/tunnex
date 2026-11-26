@@ -1,3 +1,5 @@
+import { useEffect, useState } from "react";
+import { api } from "../lib/api";
 import { useOptionalAuth } from "../lib/auth";
 import { Field, Input } from "./ui";
 
@@ -9,7 +11,25 @@ export type StepUpNeeds = { password: boolean; mfa: boolean; available: boolean 
 
 export function useStepUpNeeds(): StepUpNeeds | undefined {
   const auth = useOptionalAuth();
-  return auth?.state.status === "authed" ? auth.state.user.reauthentication : undefined;
+  return useResolvedStepUpNeeds(auth?.state.status === "authed" ? auth.state.user.reauthentication : undefined, auth?.state.status === "authed");
+}
+
+/**
+ * The sign-in response does not carry `reauthentication` (it is session-derived and only /auth/me reports
+ * it), so a freshly signed-in page reads it once from /auth/me rather than guessing.
+ */
+export function useResolvedStepUpNeeds(known: StepUpNeeds | undefined, authed: boolean): StepUpNeeds | undefined {
+  const [fetched, setFetched] = useState<StepUpNeeds | undefined>(undefined);
+  useEffect(() => {
+    if (known || !authed) return;
+    let alive = true;
+    void Promise.resolve(api.GET("/api/v1/auth/me")).then(result => {
+      const value = (result as { data?: { reauthentication?: StepUpNeeds } } | undefined)?.data?.reauthentication;
+      if (alive && value && typeof value.password === "boolean") setFetched(value);
+    }).catch(() => {});
+    return () => { alive = false; };
+  }, [known, authed]);
+  return known ?? fetched;
 }
 
 /** The error codes that mean "confirm it is you", as opposed to a refusal of the action itself. */
