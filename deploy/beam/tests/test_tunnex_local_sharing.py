@@ -462,7 +462,8 @@ class RealComposeInterpolation(Fixture):
         self.assertEqual(self.config("tunnex.yml", "app-access.yml", env_file=self.install / ".env", profiles="bundled-db").returncode, 0)
         old = self.config("tunnex.yml", "app-access.yml", "local-sharing.yml", env_file=self.install / ".env", profiles="bundled-db")
         self.assertNotEqual(old.returncode, 0)
-        self.assertIn("TUNNEX_BEAM_PROXY_IMAGE", old.stderr)
+        # Which unset TUNNEX_BEAM_* variable compose reports first depends on the compose version.
+        self.assertRegex(old.stderr, r"required variable TUNNEX_BEAM_\w+ is missing a value")
 
     def check_enable_disable(self, app_access):
         running = self.base_env(app_access)
