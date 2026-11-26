@@ -9062,16 +9062,22 @@ type VaultEntry struct {
 	OwnerUserId    openapi_types.UUID `json:"owner_user_id"`
 
 	// Revision Bumped by every change; the precondition for details edits
-	Revision    int                    `json:"revision"`
-	ServiceId   *openapi_types.UUID    `json:"service_id,omitempty"`
-	ServiceName string                 `json:"service_name"`
-	SubjectId   *openapi_types.UUID    `json:"subject_id,omitempty"`
-	SubjectKind *VaultEntrySubjectKind `json:"subject_kind,omitempty"`
-	SubjectName *string                `json:"subject_name,omitempty"`
-	Title       string                 `json:"title"`
-	UpdatedAt   time.Time              `json:"updated_at"`
-	Username    string                 `json:"username"`
-	Visibility  VaultEntryVisibility   `json:"visibility"`
+	Revision    int                 `json:"revision"`
+	ServiceId   *openapi_types.UUID `json:"service_id,omitempty"`
+	ServiceName string              `json:"service_name"`
+
+	// SubjectEmail User recipients only
+	SubjectEmail *string                `json:"subject_email,omitempty"`
+	SubjectId    *openapi_types.UUID    `json:"subject_id,omitempty"`
+	SubjectKind  *VaultEntrySubjectKind `json:"subject_kind,omitempty"`
+
+	// SubjectMemberCount Group recipients only; counted as VaultSubject.member_count
+	SubjectMemberCount *int                 `json:"subject_member_count,omitempty"`
+	SubjectName        *string              `json:"subject_name,omitempty"`
+	Title              string               `json:"title"`
+	UpdatedAt          time.Time            `json:"updated_at"`
+	Username           string               `json:"username"`
+	Visibility         VaultEntryVisibility `json:"visibility"`
 }
 
 // VaultEntryKind defines model for VaultEntry.Kind.
@@ -9578,6 +9584,9 @@ type ListAuditLogsParams struct {
 
 	// TargetType Exact audit target type filter; ordinary defaults are unchanged.
 	TargetType *string `form:"target_type,omitempty" json:"target_type,omitempty"`
+
+	// ActionPrefix Action family filter, for example vault. for every vault.* action. A literal prefix ending in a dot; composes with every other filter.
+	ActionPrefix *string `form:"action_prefix,omitempty" json:"action_prefix,omitempty"`
 
 	// TargetId Exact UUID target filter. Application changes use app_access plus the application UUID; grant and session target IDs differ.
 	TargetId *openapi_types.UUID `form:"target_id,omitempty" json:"target_id,omitempty"`
@@ -32999,6 +33008,22 @@ func NewListAuditLogsRequest(server string, orgId openapi_types.UUID, params *Li
 		if params.TargetType != nil {
 
 			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "target_type", runtime.ParamLocationQuery, *params.TargetType); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.ActionPrefix != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "action_prefix", runtime.ParamLocationQuery, *params.ActionPrefix); err != nil {
 				return nil, err
 			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
 				return nil, err

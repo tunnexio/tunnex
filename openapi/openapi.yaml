@@ -4207,6 +4207,7 @@ paths:
         - { name: from, in: query, required: false, schema: { type: string, format: date-time }, description: created_at >= this. }
         - { name: to, in: query, required: false, schema: { type: string, format: date-time }, description: created_at <= this. }
         - {name: target_type, in: query, schema: {type: string, minLength: 1, maxLength: 100}, description: Exact audit target type filter; ordinary defaults are unchanged.}
+        - {name: action_prefix, in: query, schema: {type: string, minLength: 2, maxLength: 64, pattern: '^([a-z][a-z0-9_]*\.)+$'}, description: 'Action family filter, for example vault. for every vault.* action. A literal prefix ending in a dot; composes with every other filter.'}
         - {name: target_id, in: query, schema: {type: string, format: uuid}, description: Exact UUID target filter. Application changes use app_access plus the application UUID; grant and session target IDs differ.}
         # Keyset cursor: pass the last entry's created_at + id to fetch the next page.
         - { name: cursor_ts, in: query, required: false, schema: { type: string, format: date-time } }
@@ -9244,6 +9245,8 @@ components:
         subject_kind: {type: string, enum: [user, group]}
         subject_id: {type: string, format: uuid}
         subject_name: {type: string}
+        subject_email: {type: string, description: User recipients only}
+        subject_member_count: {type: integer, minimum: 0, description: Group recipients only; counted as VaultSubject.member_count}
         current_version: {type: integer, minimum: 1}
         revision: {type: integer, minimum: 1, description: Bumped by every change; the precondition for details edits}
         created_at: {type: string, format: date-time}

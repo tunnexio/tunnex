@@ -12,10 +12,14 @@ import (
 	"github.com/tunnexio/tunnex/apps/api/internal/apierr"
 )
 
+// entryColumns names a recipient with their email (users) or member count (groups), counted as the
+// recipient picker counts it, so the list and the picker agree (VAULT-UX-2 W2).
 const entryColumns = `e.id,e.configured,e.service_id,coalesce(s.name,e.service_name),e.title,e.kind,e.username,e.visibility,
  e.owner_user_id,e.subject_kind,e.subject_id,
  CASE WHEN e.subject_kind='user' THEN coalesce(nullif(su.name,''),su.email::text,'Former user')
  WHEN e.subject_kind='group' THEN coalesce(sg.name,'Former group') ELSE NULL END,
+ CASE WHEN e.subject_kind='user' THEN su.email::text ELSE NULL END,
+ CASE WHEN e.subject_kind='group' AND sg.id IS NOT NULL THEN (SELECT count(*)::int FROM group_members gm WHERE gm.org_id=e.org_id AND gm.group_id=e.subject_id) ELSE NULL END,
  e.current_version,e.revision,e.created_at,e.updated_at`
 const entryJoins = ` FROM vault_entries e
  LEFT JOIN vault_services s ON s.org_id=e.org_id AND s.id=e.service_id
@@ -31,7 +35,7 @@ type rowScanner interface{ Scan(...any) error }
 func scanEntry(row rowScanner, user uuid.UUID, a authority) (api.VaultEntry, error) {
 	var v api.VaultEntry
 	err := row.Scan(&v.Id, &v.Configured, &v.ServiceId, &v.ServiceName, &v.Title, &v.Kind, &v.Username, &v.Visibility,
-		&v.OwnerUserId, &v.SubjectKind, &v.SubjectId, &v.SubjectName, &v.CurrentVersion, &v.Revision, &v.CreatedAt, &v.UpdatedAt)
+		&v.OwnerUserId, &v.SubjectKind, &v.SubjectId, &v.SubjectName, &v.SubjectEmail, &v.SubjectMemberCount, &v.CurrentVersion, &v.Revision, &v.CreatedAt, &v.UpdatedAt)
 	if err != nil {
 		return v, err
 	}

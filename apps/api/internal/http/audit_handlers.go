@@ -3,6 +3,7 @@ package http
 import (
 	"context"
 	"encoding/json"
+	"regexp"
 	"unicode/utf8"
 
 	"github.com/go-chi/chi/v5/middleware"
@@ -36,6 +37,9 @@ func auditActorScope(p *authctx.Principal, orgID uuid.UUID) *uuid.UUID {
 	return &actor
 }
 
+// auditActionPrefix is the only shape an action family filter may take.
+var auditActionPrefix = regexp.MustCompile(`^([a-z][a-z0-9_]*\.)+$`)
+
 // ListAuditLogs GET /api/v1/organizations/{orgId}/audit-logs — the org's audit
 // feed, filterable + keyset-paginated. READ-ONLY: there is no per-row mutation
 // endpoint and DB triggers reject ordinary UPDATE/DELETE. The separate retention
@@ -55,6 +59,14 @@ func (s apiServer) ListAuditLogs(ctx context.Context, req api.ListAuditLogsReque
 			return nil, apierr.BadRequest("invalid_target_filter", "invalid audit target type")
 		}
 		f.TargetType = p.TargetType
+	}
+	if p.ActionPrefix != nil {
+		// A literal action family ("vault.", "beam.share."). The pattern admits no LIKE or regex
+		// metacharacter, and the query matches with starts_with, so it can never widen (VAULT-UX-2 W1).
+		if len(*p.ActionPrefix) > 64 || !auditActionPrefix.MatchString(*p.ActionPrefix) {
+			return nil, apierr.BadRequest("invalid_action_filter", "invalid audit action family")
+		}
+		f.ActionPrefix = p.ActionPrefix
 	}
 	if p.TargetId != nil {
 		target := p.TargetId.String()
