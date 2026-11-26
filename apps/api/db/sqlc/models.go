@@ -3114,6 +3114,7 @@ type VaultEntry struct {
 	CreatedAt      time.Time   `json:"created_at"`
 	UpdatedAt      time.Time   `json:"updated_at"`
 	Configured     bool        `json:"configured"`
+	Revision       int32       `json:"revision"`
 }
 
 type VaultQuickRequest struct {
