@@ -106,6 +106,21 @@ func authorize(ctx context.Context, orgID uuid.UUID, perm rbac.Permission) (cont
 	return authctx.WithOrg(ctx, orgID), nil
 }
 
+// authorizeMutation is authorize() for a MUTATION whose permission is a read (typically org:view, where
+// the handler then applies its own relational check — "your own device", "an agent you manage").
+// authorize() applies the verified-email gate only to mutating PERMISSIONS, so these mutations skipped it
+// (RBAC-0 D5). Same rule, same message, same machine exemption as authorize().
+func authorizeMutation(ctx context.Context, orgID uuid.UUID, perm rbac.Permission) (context.Context, error) {
+	out, err := authorize(ctx, orgID, perm)
+	if err != nil {
+		return out, err
+	}
+	if p, _ := authctx.PrincipalFrom(ctx); !p.EmailVerified && !p.IsMachine() {
+		return ctx, apierr.New(http.StatusForbidden, "email_not_verified", "verify your email to perform this action")
+	}
+	return out, nil
+}
+
 // requireVerifiedUser requires an authenticated, verified principal (for actions
 // not scoped to an existing org, e.g. creating one). Returns the principal.
 // ⛔ THE FORCED CHANGE COVERS THIS PATH TOO, AND A LIVE WALK IS WHY.

@@ -32,6 +32,8 @@ var (
 	ErrNotFound = errors.New("agent access request not found")
 	ErrConflict = errors.New("agent access request conflicts with current state")
 	ErrDisabled = errors.New("agent JIT access is disabled")
+	// ErrSelfApproval (RBAC-0 D8): the requester cannot approve their own temporary access.
+	ErrSelfApproval = errors.New("the requester cannot approve their own agent access request")
 )
 
 type Pusher interface {
@@ -214,6 +216,11 @@ func (s *Service) approve(ctx context.Context, orgID, requestID, actor uuid.UUID
 	}
 	if row.State != "pending" {
 		return sqlc.AgentAccessRequest{}, false, ErrConflict
+	}
+	// RBAC-0 D8: separation of duties — the request is approved by someone other than the person who made
+	// it. Checked under the row lock, after the state check, so a replay of a real approval is unaffected.
+	if row.RequestedByUserID == actor {
+		return sqlc.AgentAccessRequest{}, false, ErrSelfApproval
 	}
 	if err := requireAgent(ctx, tx, orgID, row.DeviceID, true); err != nil {
 		return sqlc.AgentAccessRequest{}, false, err

@@ -110,9 +110,15 @@ WHERE m.org_id = $1 AND m.user_id = $2
 -- ⚠ NO ROW = REFUSE, and that is fail-closed rather than a second check: users are read `deleted_at IS
 -- NULL` everywhere, so a soft-deleted owner simply is not here, and "we could not confirm the owner is
 -- active" must never resolve to "carry on".
-SELECT (u.status = 'active')::boolean AS active
+--
+-- ⛔ RBAC-0 D3.6: AND ACCESS TO THE CREDENTIAL'S ORG. "Removed from org is unreachable" stopped being true
+-- when directory sync began revoking a single org's access (`RevokeOrgAccessBySync`), and org-scoped
+-- deactivation now does the same. A credential acts in ONE org, so its owner must stand in THAT org.
+SELECT (u.status = 'active' AND EXISTS (
+          SELECT 1 FROM memberships m
+          WHERE m.org_id = sqlc.arg(org_id) AND m.user_id = u.id AND m.access_revoked_at IS NULL))::boolean AS active
 FROM users u
-WHERE u.id = $1 AND u.deleted_at IS NULL;
+WHERE u.id = sqlc.arg(user_id) AND u.deleted_at IS NULL;
 
 -- name: CountLiveMachineCredentialsOwnedBy :one
 -- lint:cross-org — deliberately spans organizations: deactivation is a DEPLOYMENT-wide act on a person,

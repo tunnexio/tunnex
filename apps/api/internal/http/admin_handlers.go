@@ -7,6 +7,7 @@ import (
 
 	"github.com/tunnexio/tunnex/apps/api/internal/api"
 	"github.com/tunnexio/tunnex/apps/api/internal/apierr"
+	"github.com/tunnexio/tunnex/apps/api/internal/tenancy"
 )
 
 // The deployment-administration handlers (S12.11). Both are gated by requireCPAdmin — the capability
@@ -25,7 +26,10 @@ func (s apiServer) AdminSetOrgRole(ctx context.Context, req api.AdminSetOrgRoleR
 	if err != nil {
 		return nil, err
 	}
-	if err := s.orgs.GrantOrgRole(ctx, p.UserID, p.Email, req.OrgId, req.UserId, string(req.Body.Role)); err != nil {
+	// RBAC-0 D9: granting (or transferring) a role in any organization requires recent re-authentication,
+	// checked after the role and last-owner rules.
+	stepUp := s.peopleStepUp(p, req.Body.CurrentPassword, "change a role in this organization")
+	if err := s.orgs.GrantOrgRole(ctx, p.UserID, p.Email, req.OrgId, req.UserId, string(req.Body.Role), tenancy.WithStepUp(stepUp)); err != nil {
 		return nil, err
 	}
 	return api.AdminSetOrgRole204Response{

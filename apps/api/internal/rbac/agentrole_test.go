@@ -12,14 +12,15 @@ import "testing"
 // ⚠ The fix was never "remove PermPolicyManage" — that breaks the operator. It was "stop having one role
 // for two principal kinds", which is why this test could not have been written before the agent existed.
 func TestAgentRoleCannotAuthorPolicy(t *testing.T) {
-	if Can(RoleAgent, PermPolicyManage) {
-		t.Fatal("D4: an AGENT must not hold PermPolicyManage — it enforces policy, it never authors it")
+	if Can(RoleAgent, PermPolicyManage) || Can(RoleAgent, PermPolicyRuleManage) {
+		t.Fatal("D4: an AGENT must not hold PermPolicyManage or PermPolicyRuleManage — it enforces policy, it never authors it")
 	}
 	// ⛔ THE CONTRAST IS THE ASSERTION. Without this, a table that granted the agent NOTHING would pass
 	// above, and so would one where PermPolicyManage had been deleted outright — which would silently
 	// break the GitOps operator instead.
-	if !Can(RoleOperator, PermPolicyManage) {
-		t.Fatal("the OPERATOR must still hold PermPolicyManage — reconciling TunnexGrant CRs is its job, " +
+	// RBAC-0 D4 narrowed the operator from policy:manage to rule authoring (policy_rule:manage).
+	if !Can(RoleOperator, PermPolicyRuleManage) {
+		t.Fatal("the OPERATOR must still hold PermPolicyRuleManage — reconciling TunnexGrant CRs is its job, " +
 			"and removing the permission breaks the operator rather than narrowing the agent")
 	}
 }
@@ -34,7 +35,7 @@ func TestAgentRoleIsNarrowerThanOperator(t *testing.T) {
 	}
 	// ⚠ AND IT MUST NOT HOLD THE ADMINISTRATIVE ONES. Listed individually rather than counted, because a
 	// count passes whenever the total happens to match and says nothing about WHICH.
-	for _, p := range []Permission{PermPolicyManage, PermMachineManage, PermMemberList, PermK8sManage} {
+	for _, p := range []Permission{PermPolicyManage, PermPolicyRuleManage, PermMachineManage, PermMemberList, PermK8sManage} {
 		if Can(RoleAgent, p) {
 			t.Fatalf("the agent must NOT hold %v — every permission for an unattended principal is argued "+
 				"for individually, never inherited from a sibling role that happened to exist first", p)

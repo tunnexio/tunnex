@@ -11,6 +11,7 @@ import (
 	"github.com/tunnexio/tunnex/apps/api/internal/api"
 	"github.com/tunnexio/tunnex/apps/api/internal/apierr"
 	"github.com/tunnexio/tunnex/apps/api/internal/authctx"
+	"github.com/tunnexio/tunnex/apps/api/internal/mfa"
 	"github.com/tunnexio/tunnex/apps/api/internal/rbac"
 )
 
@@ -62,7 +63,17 @@ func (s apiServer) AdminResetMfa(ctx context.Context, req api.AdminResetMfaReque
 		return nil, mfaEnforceEditionRequired()
 	}
 	p, _ := authctx.PrincipalFrom(ctx)
-	if err := s.mfa.AdminReset(ctx, req.OrgId, p.UserID, req.UserId); err != nil {
+	actorRole, _ := p.RoleIn(req.OrgId)
+	var currentPassword *string
+	if req.Body != nil {
+		currentPassword = req.Body.CurrentPassword
+	}
+	// RBAC-0 D2/D9: the service bounds the target (active member of THIS org, owner/cp_admin protection)
+	// and runs the step-up after those checks.
+	if err := s.mfa.AdminReset(ctx, req.OrgId, p.UserID, req.UserId, mfa.AdminResetOptions{
+		ActorRole: actorRole, ActorCPAdmin: p.CPAdmin,
+		StepUp: s.peopleStepUp(p, currentPassword, "reset this member's two-factor authentication"),
+	}); err != nil {
 		return nil, err
 	}
 	return api.AdminResetMfa204Response{}, nil

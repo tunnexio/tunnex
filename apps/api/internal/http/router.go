@@ -56,6 +56,17 @@ import (
 	"github.com/tunnexio/tunnex/apps/api/internal/workflowprovenance"
 )
 
+// optionalStepUpBodyRoute reports the RBAC-0 D9 routes whose body (just `current_password`) is optional:
+// deactivate and admin MFA reset had no body before step-up, so a bodyless call from an older client must
+// reach the handler and get the clear step-up refusal, not a pre-auth decode failure.
+func optionalStepUpBodyRoute(req *http.Request) bool {
+	if req.Method != http.MethodPost || !strings.HasPrefix(req.URL.Path, "/api/v1/organizations/") ||
+		!strings.Contains(req.URL.Path, "/members/") {
+		return false
+	}
+	return strings.HasSuffix(req.URL.Path, "/deactivate") || strings.HasSuffix(req.URL.Path, "/mfa-reset")
+}
+
 // AuthFunc resolves the authenticated principal for a request, or nil if the
 // request is unauthenticated. SessionAuth is the session-backed implementation.
 type AuthFunc func(r *http.Request) *authctx.Principal
@@ -291,8 +302,9 @@ func NewRouter(logger *slog.Logger, d Deps) (http.Handler, error) {
 	// empty body to the empty JSON object so the optional body is ACTUALLY optional on the wire.
 	r.Use(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
-			if req.Method == http.MethodDelete && req.ContentLength == 0 &&
-				strings.Contains(req.URL.Path, "/sites/") && strings.HasSuffix(req.URL.Path, "/bind") {
+			if req.ContentLength == 0 && (req.Method == http.MethodDelete &&
+				strings.Contains(req.URL.Path, "/sites/") && strings.HasSuffix(req.URL.Path, "/bind") ||
+				optionalStepUpBodyRoute(req)) {
 				req.Body = io.NopCloser(strings.NewReader("{}"))
 				req.ContentLength = 2
 				req.Header.Set("Content-Type", "application/json")

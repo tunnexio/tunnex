@@ -118,7 +118,7 @@ func TestFactorResetAdvancesAllParentAuthority(t *testing.T) {
 		t.Fatal("old parent re-enrolled", err)
 	}
 	_, _ = enroll(t, svc, clock, f.userA)
-	if err = svc.AdminReset(ctx, f.org, f.userB, f.userA); err != nil {
+	if err = svc.AdminReset(ctx, f.org, f.userB, f.userA, AdminResetOptions{ActorRole: "owner"}); err != nil /* authority is not under test here */ {
 		t.Fatal(err)
 	}
 	reset, err := q.GetUserByID(ctx, f.userA)

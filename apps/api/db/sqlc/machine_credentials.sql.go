@@ -140,10 +140,17 @@ func (q *Queries) GetMachineCredentialByHash(ctx context.Context, tokenHash []by
 }
 
 const getMachineOwnerStanding = `-- name: GetMachineOwnerStanding :one
-SELECT (u.status = 'active')::boolean AS active
+SELECT (u.status = 'active' AND EXISTS (
+          SELECT 1 FROM memberships m
+          WHERE m.org_id = $1 AND m.user_id = u.id AND m.access_revoked_at IS NULL))::boolean AS active
 FROM users u
-WHERE u.id = $1 AND u.deleted_at IS NULL
+WHERE u.id = $2 AND u.deleted_at IS NULL
 `
+
+type GetMachineOwnerStandingParams struct {
+	OrgID  uuid.UUID `json:"org_id"`
+	UserID uuid.UUID `json:"user_id"`
+}
 
 // ⛔ D23 (RULED): IS THE OWNER DEACTIVATED? Nothing else.
 //
@@ -162,8 +169,12 @@ WHERE u.id = $1 AND u.deleted_at IS NULL
 // ⚠ NO ROW = REFUSE, and that is fail-closed rather than a second check: users are read `deleted_at IS
 // NULL` everywhere, so a soft-deleted owner simply is not here, and "we could not confirm the owner is
 // active" must never resolve to "carry on".
-func (q *Queries) GetMachineOwnerStanding(ctx context.Context, id uuid.UUID) (bool, error) {
-	row := q.db.QueryRow(ctx, getMachineOwnerStanding, id)
+//
+// ⛔ RBAC-0 D3.6: AND ACCESS TO THE CREDENTIAL'S ORG. "Removed from org is unreachable" stopped being true
+// when directory sync began revoking a single org's access (`RevokeOrgAccessBySync`), and org-scoped
+// deactivation now does the same. A credential acts in ONE org, so its owner must stand in THAT org.
+func (q *Queries) GetMachineOwnerStanding(ctx context.Context, arg GetMachineOwnerStandingParams) (bool, error) {
+	row := q.db.QueryRow(ctx, getMachineOwnerStanding, arg.OrgID, arg.UserID)
 	var active bool
 	err := row.Scan(&active)
 	return active, err

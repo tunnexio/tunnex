@@ -116,7 +116,8 @@ func (s apiServer) SetOrganizationAgentJITAccessEnabled(ctx context.Context, req
 }
 
 func (s apiServer) CreateAgentAccessRequest(ctx context.Context, req api.CreateAgentAccessRequestRequestObject) (api.CreateAgentAccessRequestResponseObject, error) {
-	ctx, err := authorize(ctx, req.OrgId, rbac.PermOrgView)
+	// RBAC-0 D5: a mutation, so the verified-email gate applies even though the permission is a read.
+	ctx, err := authorizeMutation(ctx, req.OrgId, rbac.PermOrgView)
 	if err != nil {
 		return nil, err
 	}
@@ -444,6 +445,8 @@ func mapAgentAccessError(err error) error {
 		return apierr.New(409, "agent_access_request_conflict", "agent access request conflicts with current state")
 	case errors.Is(err, agentaccess.ErrDisabled):
 		return apierr.Forbidden("opt_in_required", "enable just-in-time agent access in organization settings first")
+	case errors.Is(err, agentaccess.ErrSelfApproval):
+		return apierr.Forbidden("self_approval_forbidden", "You requested this access, so another administrator must approve it.")
 	default:
 		return err
 	}

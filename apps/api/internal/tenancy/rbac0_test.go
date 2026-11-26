@@ -80,7 +80,7 @@ func TestRBAC0DeactivationIsOrgScopedForMultiOrgPeople(t *testing.T) {
 	a, b := o.org(t), o.org(t)
 	actor := o.user(t, map[uuid.UUID]string{a: "owner"})
 	multi := o.user(t, map[uuid.UUID]string{a: "member", b: "owner"})
-	if err := o.svc.DeactivateMember(o.ctx, actor, a, multi); err != nil {
+	if err := o.svc.DeactivateMember(o.ctx, actor, "owner", a, multi); err != nil {
 		t.Fatal(err)
 	}
 	if got := o.status(t, multi); got != "active" {
@@ -93,7 +93,7 @@ func TestRBAC0DeactivationIsOrgScopedForMultiOrgPeople(t *testing.T) {
 		t.Fatal("deactivation in A removed access to B")
 	}
 	// Reactivating in A restores A, and only A.
-	if err := o.svc.ReactivateMember(o.ctx, actor, a, multi); err != nil {
+	if err := o.svc.ReactivateMember(o.ctx, actor, "owner", a, multi); err != nil {
 		t.Fatal(err)
 	}
 	if !o.hasAccess(t, a, multi) {
@@ -127,7 +127,7 @@ func TestRBAC0ReactivationDoesNotReverseDirectorySync(t *testing.T) {
 	if _, err := o.svc.DeactivateMemberBySync(o.ctx, a, single, "disabled_in_directory"); err != nil {
 		t.Fatal(err)
 	}
-	if err := o.svc.ReactivateMember(o.ctx, actor, a, single); rbac0Code(err) != "directory_managed" {
+	if err := o.svc.ReactivateMember(o.ctx, actor, "owner", a, single); rbac0Code(err) != "directory_managed" {
 		t.Fatalf("reactivating a directory-deprovisioned person: want directory_managed, got %v", err)
 	}
 	if got := o.status(t, single); got != "deactivated" {
@@ -138,7 +138,7 @@ func TestRBAC0ReactivationDoesNotReverseDirectorySync(t *testing.T) {
 	if _, err := o.svc.RevokeOrgAccessBySync(o.ctx, a, multi, "directory_provenance_exhausted"); err != nil {
 		t.Fatal(err)
 	}
-	if err := o.svc.ReactivateMember(o.ctx, actor, a, multi); rbac0Code(err) != "directory_managed" {
+	if err := o.svc.ReactivateMember(o.ctx, actor, "owner", a, multi); rbac0Code(err) != "directory_managed" {
 		t.Fatalf("reactivating a directory-revoked membership: want directory_managed, got %v", err)
 	}
 }
@@ -150,14 +150,14 @@ func TestRBAC0ReactivationDoesNotReverseAnotherOrg(t *testing.T) {
 	actorA := o.user(t, map[uuid.UUID]string{a: "owner"})
 	actorB := o.user(t, map[uuid.UUID]string{b: "owner"})
 	person := o.user(t, map[uuid.UUID]string{a: "member"})
-	if err := o.svc.DeactivateMember(o.ctx, actorA, a, person); err != nil {
+	if err := o.svc.DeactivateMember(o.ctx, actorA, "owner", a, person); err != nil {
 		t.Fatal(err)
 	}
 	// Later the person is added to B (e.g. by a deployment administrator) while deactivated.
 	if _, err := o.pool.Exec(o.ctx, `INSERT INTO memberships(org_id,user_id,role) VALUES($1,$2,'member')`, b, person); err != nil {
 		t.Fatal(err)
 	}
-	if err := o.svc.ReactivateMember(o.ctx, actorB, b, person); rbac0Code(err) != "deactivated_elsewhere" {
+	if err := o.svc.ReactivateMember(o.ctx, actorB, "owner", b, person); rbac0Code(err) != "deactivated_elsewhere" {
 		t.Fatalf("B reactivating A's deactivation: want deactivated_elsewhere, got %v", err)
 	}
 	if got := o.status(t, person); got != "deactivated" {
@@ -211,8 +211,7 @@ func TestRBAC0MachineCredentialStopsWithOrgScopedRevocation(t *testing.T) {
 // rbac0MachineStanding asks the exact query the machine-credential auth seam runs.
 func rbac0MachineStanding(t *testing.T, o *rbac0Org, owner, org uuid.UUID) bool {
 	t.Helper()
-	_ = org
-	active, err := o.q.GetMachineOwnerStanding(o.ctx, owner)
+	active, err := o.q.GetMachineOwnerStanding(o.ctx, sqlc.GetMachineOwnerStandingParams{OrgID: org, UserID: owner})
 	if err != nil {
 		t.Fatal(err)
 	}

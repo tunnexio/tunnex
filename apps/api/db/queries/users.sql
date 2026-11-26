@@ -44,6 +44,20 @@ UPDATE users
 SET status = $2
 WHERE id = $1 AND deleted_at IS NULL;
 
+-- name: DeactivateUserAccount :execrows
+-- RBAC-0 D3: account-wide deactivation with its provenance (who, from which org).
+UPDATE users
+SET status = 'deactivated', deactivation_source = sqlc.arg(source)::text, deactivated_by_org_id = sqlc.arg(org_id)
+WHERE id = sqlc.arg(id) AND deleted_at IS NULL AND status <> 'deactivated';
+
+-- name: ReactivateUserAccount :execrows
+UPDATE users
+SET status = 'active', deactivation_source = NULL, deactivated_by_org_id = NULL
+WHERE id = $1 AND deleted_at IS NULL AND status = 'deactivated';
+
+-- name: GetUserDeactivation :one
+SELECT status, deactivation_source, deactivated_by_org_id, cp_admin FROM users WHERE id = $1 AND deleted_at IS NULL;
+
 -- name: UserIsCPAdmin :one
 SELECT cp_admin FROM users WHERE id = $1 AND deleted_at IS NULL;
 

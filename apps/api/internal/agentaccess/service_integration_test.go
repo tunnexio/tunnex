@@ -65,6 +65,10 @@ func TestAgentAccessRequestApprovalAndExpiryPostgres(t *testing.T) {
 	exec(`INSERT INTO organizations (id,name,slug,pool_cidr,zero_trust_mode,agent_jit_access_enabled) VALUES ($1,'F10',$2,'10.120.0.0/24','enforcing',true)`, org, "f10-"+org.String()[:8])
 	exec(`INSERT INTO users (id,email,name) VALUES ($1,$2,'F10 owner')`, actor, "f10-"+actor.String()[:8]+"@example.test")
 	exec(`INSERT INTO memberships (org_id,user_id,role) VALUES ($1,$2,'owner')`, org, actor)
+	// RBAC-0 D8: approval is by someone other than the requester.
+	approver := uuid.New()
+	exec(`INSERT INTO users (id,email,name) VALUES ($1,$2,'F10 approver')`, approver, "f10-"+approver.String()[:8]+"@example.test")
+	exec(`INSERT INTO memberships (org_id,user_id,role) VALUES ($1,$2,'admin')`, org, approver)
 	exec(`INSERT INTO nodes (id,org_id,name,cert_serial) VALUES ($1,$2,'f10-gw',$3)`, node, org, "f10-"+node.String())
 	exec(`INSERT INTO devices (id,org_id,user_id,node_id,name,public_key,assigned_ip,status,kind) VALUES ($1,$2,$3,$4,'agent',$5,'10.120.0.2','active','agent')`, agent, org, actor, node, "f10-agent-"+agent.String())
 	exec(`INSERT INTO resources (id,org_id,name,cidr,protocol,port_low,port_high) VALUES ($1,$2,'db','10.50.0.0/24','tcp',5432,5432)`, resource, org)
@@ -107,7 +111,10 @@ func TestAgentAccessRequestApprovalAndExpiryPostgres(t *testing.T) {
 		t.Fatalf("conflicting replay err=%v", err)
 	}
 
-	approved, replay, err := svc.Approve(ctx, org, request.ID, actor, "approve-1")
+	if _, _, err := svc.Approve(ctx, org, request.ID, actor, "approve-self"); !errors.Is(err, ErrSelfApproval) {
+		t.Fatalf("self-approval err=%v", err)
+	}
+	approved, replay, err := svc.Approve(ctx, org, request.ID, approver, "approve-1")
 	if err != nil || replay || approved.State != "approved" || !approved.PolicyRuleID.Valid {
 		t.Fatalf("approve state=%s replay=%v err=%v", approved.State, replay, err)
 	}

@@ -221,12 +221,13 @@ func (s *Service) resolveUserWithAuthority(ctx context.Context, id Identity, org
 // repeat logins. Role is always member (least privilege; group mapping is a
 // separate future story).
 func (s *Service) ensureMembership(ctx context.Context, q *sqlc.Queries, orgID, userID uuid.UUID, via string, id Identity) error {
-	if _, err := q.GetMembership(ctx, sqlc.GetMembershipParams{OrgID: orgID, UserID: userID}); err == nil {
-		return nil // already a member
-	} else if !errors.Is(err, pgx.ErrNoRows) {
-		return err
-	}
-	if _, err := q.UpsertMembership(ctx, sqlc.UpsertMembershipParams{OrgID: orgID, UserID: userID, Role: rbac.RoleMember}); err != nil {
+	// ⛔ RBAC-0 D1: INSERT IF ABSENT, never upsert. A revoked membership is invisible to GetMembership, so
+	// the old upsert rewrote a revoked OWNER's role to member on their next SSO login (and still did not
+	// restore access). A login can add a person to the org; it can never change who they already are.
+	if _, err := q.InsertMembershipIfAbsent(ctx, sqlc.InsertMembershipIfAbsentParams{OrgID: orgID, UserID: userID, Role: rbac.RoleMember}); err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil // already a member (active or revoked): nothing to do
+		}
 		return err
 	}
 	// A JIT join makes any pending invite for this (org, email) moot.

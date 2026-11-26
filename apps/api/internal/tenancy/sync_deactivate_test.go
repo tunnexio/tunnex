@@ -60,7 +60,7 @@ func testSyncDeactivationAudit(t *testing.T, revoked bool) {
 	}
 	svc := &MembershipService{q: sqlc.New(tx), revoker: &fakeRevoker{}}
 	if revoked {
-		if err := svc.DeactivateMember(ctx, uuid.New(), org, member); err == nil {
+		if err := svc.DeactivateMember(ctx, uuid.New(), "owner", org, member); err == nil {
 			t.Fatal("human deactivation must refuse revoked membership")
 		}
 	}

@@ -237,7 +237,7 @@ func TestGrantsLocalDatabase(t *testing.T) {
 	}
 	exec("UPDATE memberships SET access_revoked_at=NULL WHERE org_id=$1 AND user_id=$2", org, u1)
 	members := tenancy.NewMembershipService(pool, nil)
-	if e = members.DeactivateMember(ctx, actor, org, u1); e != nil {
+	if e = members.DeactivateMember(ctx, actor, "owner", org, u1); e != nil {
 		t.Fatal(e)
 	}
 	if p := preview(u1, true); p.GrantMatch || p.DenyReason != "user_inactive" {

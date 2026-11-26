@@ -32,7 +32,8 @@ func (s apiServer) GetAgentProfile(ctx context.Context, req api.GetAgentProfileR
 }
 
 func (s apiServer) UpdateAgentProfile(ctx context.Context, req api.UpdateAgentProfileRequestObject) (api.UpdateAgentProfileResponseObject, error) {
-	if _, err := authorize(ctx, req.OrgId, rbac.PermOrgView); err != nil {
+	// RBAC-0 D5: a mutation, so the verified-email gate applies even though the permission is a read.
+	if _, err := authorizeMutation(ctx, req.OrgId, rbac.PermOrgView); err != nil {
 		return nil, err
 	}
 	if req.Body == nil {

@@ -517,7 +517,8 @@ func (q *Queries) RemoveImportedBootstrapSource(ctx context.Context, arg RemoveI
 }
 
 const restoreMembershipAfterIdpGrant = `-- name: RestoreMembershipAfterIdpGrant :exec
-UPDATE memberships SET access_revoked_at = NULL WHERE org_id = $1 AND user_id = $2
+UPDATE memberships SET access_revoked_at = NULL, access_revoked_source = NULL
+WHERE org_id = $1 AND user_id = $2 AND access_revoked_at IS NOT NULL AND access_revoked_source = 'idp_sync'
 `
 
 type RestoreMembershipAfterIdpGrantParams struct {
@@ -525,6 +526,8 @@ type RestoreMembershipAfterIdpGrantParams struct {
 	UserID uuid.UUID `json:"user_id"`
 }
 
+// RBAC-0 D3: only DIRECTORY revocations are restored by a directory grant. An administrator's
+// deactivation in this org is not the directory's to undo.
 func (q *Queries) RestoreMembershipAfterIdpGrant(ctx context.Context, arg RestoreMembershipAfterIdpGrantParams) error {
 	_, err := q.db.Exec(ctx, restoreMembershipAfterIdpGrant, arg.OrgID, arg.UserID)
 	return err

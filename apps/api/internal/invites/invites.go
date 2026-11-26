@@ -106,6 +106,9 @@ func (s *Service) Create(ctx context.Context, actor, orgID uuid.UUID, email, rol
 		if e := authorizeInvitationRole(ctx, q, actor, orgID, role); e != nil {
 			return e
 		}
+		if e := refuseExistingMember(ctx, q, orgID, email); e != nil {
+			return e
+		}
 		if _, e := q.CreateInvitation(ctx, sqlc.CreateInvitationParams{
 			OrgID: orgID, Email: email, Role: role, TokenHash: hash,
 			ExpiresAt: time.Now().Add(inviteTTL), InvitedByUserID: pgUUID(actor),
@@ -137,7 +140,15 @@ var ErrNotDelivered = errors.New("the invitation was created but the email could
 
 // Accept consumes an invite token, provisions/links the user (verifying the
 // email — the token proves inbox control), and adds the membership.
-func (s *Service) Accept(ctx context.Context, token, name, pw string) (uuid.UUID, uuid.UUID, error) {
+//
+// ⛔ RBAC-0 D1. Two rules close "an admin demotes the sole owner by inviting the owner's address":
+//   - an EXISTING account is attached only when the request is signed in AS that account (signedIn); the
+//     token alone proves nothing about who is holding it when the inviter has seen the link;
+//   - the membership is INSERTED IF ABSENT, never upserted: an accept can add a person, never change the
+//     roles of someone already in the organization (active or deactivated).
+//
+// signedIn is the caller's user id, or uuid.Nil when the request carries no session.
+func (s *Service) Accept(ctx context.Context, token, name, pw string, signedIn uuid.UUID) (uuid.UUID, uuid.UUID, error) {
 	var userID, orgID uuid.UUID
 	err := s.withTx(ctx, func(q *sqlc.Queries) error {
 		inv, e := q.GetInvitationByTokenHash(ctx, hashToken(token))
@@ -146,6 +157,22 @@ func (s *Service) Accept(ctx context.Context, token, name, pw string) (uuid.UUID
 		}
 		if e != nil {
 			return e
+		}
+		// A consumed, revoked or expired invitation is invalid before anything else is said about it.
+		if inv.AcceptedAt.Valid || inv.RevokedAt.Valid || !inv.ExpiresAt.After(time.Now()) {
+			return apierr.BadRequest("invalid_invite", "this invitation is invalid or has expired")
+		}
+		// RBAC-0 D1: an EXISTING account is attached only for a request signed in as it. Checked BEFORE the
+		// single-use transition, so a refused attempt never consumes the invitation.
+		if existing, ue := q.GetUserByEmail(ctx, inv.Email); ue == nil && existing.Status == "active" {
+			if signedIn == uuid.Nil {
+				return apierr.New(401, "sign_in_required", "An account already exists for "+inv.Email+". Sign in as "+inv.Email+", then open this invitation link again.")
+			}
+			if signedIn != existing.ID {
+				return apierr.Forbidden("invite_account_mismatch", "This invitation is for "+inv.Email+", but you are signed in as a different account. Sign out, sign in as "+inv.Email+", then open this invitation link again.")
+			}
+		} else if ue != nil && !errors.Is(ue, pgx.ErrNoRows) {
+			return ue
 		}
 		// AcceptInvitation only transitions a pending, unexpired invite (single-use).
 		accepted, e := q.AcceptInvitation(ctx, inv.ID)
@@ -183,6 +210,9 @@ func (s *Service) Accept(ctx context.Context, token, name, pw string) (uuid.UUID
 			if local.Status != "active" {
 				return apierr.New(403, "account_deactivated", "this account is deactivated; contact an administrator")
 			}
+			if signedIn != local.ID { // re-checked on the row the transition returned
+				return apierr.New(401, "sign_in_required", "Sign in as "+accepted.Email+", then open this invitation link again.")
+			}
 			userID = local.ID
 		}
 
@@ -190,7 +220,11 @@ func (s *Service) Accept(ctx context.Context, token, name, pw string) (uuid.UUID
 		if e := q.MarkEmailVerified(ctx, userID); e != nil {
 			return e
 		}
-		if _, e := q.UpsertMembership(ctx, sqlc.UpsertMembershipParams{OrgID: orgID, UserID: userID, Role: accepted.Role}); e != nil {
+		if _, e := q.InsertMembershipIfAbsent(ctx, sqlc.InsertMembershipIfAbsentParams{OrgID: orgID, UserID: userID, Role: accepted.Role}); e != nil {
+			if errors.Is(e, pgx.ErrNoRows) {
+				// The transaction rolls back, so the invitation stays pending and the roles stay as they are.
+				return errAlreadyMember(accepted.Email, false)
+			}
 			return e
 		}
 		return writeAudit(ctx, q, orgID, &userID, "invite.accepted", accepted.Email, map[string]any{"role": accepted.Role})
@@ -238,6 +272,9 @@ func (s *Service) Resend(ctx context.Context, actor, orgID uuid.UUID, email stri
 		if e := authorizeInvitationRole(ctx, q, actor, orgID, pending.Role); e != nil {
 			return e
 		}
+		if e := refuseExistingMember(ctx, q, orgID, email); e != nil {
+			return e
+		}
 		if _, e := q.RevokeInvitationByOrgEmail(ctx, sqlc.RevokeInvitationByOrgEmailParams{OrgID: orgID, Email: email}); e != nil {
 			return e
 		}
@@ -256,6 +293,33 @@ func (s *Service) Resend(ctx context.Context, actor, orgID uuid.UUID, email stri
 		return ErrNotDelivered // the token was re-minted; only the delivery failed
 	}
 	return nil
+}
+
+// refuseExistingMember (RBAC-0 D1): an address that already has a membership in this organization is
+// never invited — the invitation would be a way to change their roles that skips every role-change rule.
+func refuseExistingMember(ctx context.Context, q *sqlc.Queries, orgID uuid.UUID, email string) error {
+	u, err := q.GetUserByEmail(ctx, email)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	m, err := q.GetMembershipIncludingRevoked(ctx, sqlc.GetMembershipIncludingRevokedParams{OrgID: orgID, UserID: u.ID})
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil
+	}
+	if err != nil {
+		return err
+	}
+	return errAlreadyMember(email, m.AccessRevokedAt.Valid || u.Status != "active")
+}
+
+func errAlreadyMember(email string, deactivated bool) error {
+	if deactivated {
+		return apierr.Conflict("already_member", email+" is already a member of this organization, but deactivated. Reactivate them on the Users page instead of inviting them.")
+	}
+	return apierr.Conflict("already_member", email+" is already a member of this organization. Change their roles on the Users page instead.")
 }
 
 func authorizeInvitationRole(ctx context.Context, q *sqlc.Queries, actor, orgID uuid.UUID, role string) error {

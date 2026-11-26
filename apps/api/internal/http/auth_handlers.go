@@ -245,6 +245,18 @@ func (s apiServer) CurrentUser(ctx context.Context, _ api.CurrentUserRequestObje
 			}
 		}
 	}
+	// RBAC-0 D9: what a step-up action will ask this account for, so the dashboard asks up front. Display
+	// only — the step-up itself re-derives everything. Omitted (never guessed) for non-browser principals
+	// or when it cannot be determined.
+	if p.SessionID != "" && !p.IsMachine() && !p.IsAgent() && p.AuthMethod != authctx.AuthBearer && s.system != nil {
+		if r, err := s.installationReauthFor(ctx, p.UserID, s.currentParent(ctx, p)); err == nil {
+			au.Reauthentication = &struct {
+				Available bool `json:"available"`
+				Mfa       bool `json:"mfa"`
+				Password  bool `json:"password"`
+			}{Available: r.available(), Mfa: r.mfa || r.ssoMFA, Password: r.password}
+		}
+	}
 	return api.CurrentUser200JSONResponse{
 		Body:    au,
 		Headers: api.CurrentUser200ResponseHeaders{XRequestId: middleware.GetReqID(ctx)},

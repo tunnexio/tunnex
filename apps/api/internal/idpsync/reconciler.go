@@ -76,6 +76,13 @@ type Deprovisioner interface {
 	RevokeOrgAccess(ctx context.Context, orgID, userID uuid.UUID, cause string) (didAct bool, err error)
 }
 
+// DirectoryRestorer is the optional reverse of Deprovisioner (RBAC-0 D3): restore what directory sync
+// itself removed, for a person the directory lists as active again. didAct=false when there was nothing of
+// sync's to restore. Optional so existing Deprovisioner implementations keep compiling.
+type DirectoryRestorer interface {
+	RestoreForSync(ctx context.Context, orgID, userID uuid.UUID) (didAct bool, err error)
+}
+
 // NewReconciler builds a reconciler. now defaults to time.Now.
 func NewReconciler(p DirectoryProvider, s Store, d Deprovisioner, now func() time.Time) *Reconciler {
 	if now == nil {
@@ -261,6 +268,25 @@ func (r *Reconciler) converge(ctx context.Context, orgID uuid.UUID, provider str
 					continue
 				}
 				if did { // false on an idempotent no-op → no redundant push
+					changed = true
+				}
+			}
+		}
+		// RBAC-0 D3: the directory lists these people as ACTIVE, so sync reverses its OWN earlier
+		// deprovisioning of them in this org (and only its own — an administrator's deactivation stands).
+		// People can no longer reverse directory sync, so this is the way back. Additive, so it sits
+		// behind the same licence gate as every other grant.
+		if restorer, ok := r.deprov.(DirectoryRestorer); ok {
+			for _, uid := range sortedUUIDKeys(desired) {
+				if !r.mayProvision() {
+					break
+				}
+				did, e := restorer.RestoreForSync(ctx, orgID, uid)
+				if e != nil {
+					errs = append(errs, fmt.Errorf("restore %s: %w", uid, e))
+					continue
+				}
+				if did {
 					changed = true
 				}
 			}
