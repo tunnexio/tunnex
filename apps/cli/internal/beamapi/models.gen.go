@@ -306,6 +306,8 @@ type BeamEventList struct {
 
 // BeamFeedback defines model for BeamFeedback.
 type BeamFeedback struct {
+	// AuthorEmail LS-UX-2: shown with the author name as Name (email) to the share's participants.
+	AuthorEmail   *string            `json:"author_email,omitempty"`
 	AuthorId      openapi_types.UUID `json:"author_id"`
 	AuthorName    string             `json:"author_name"`
 	Body          string             `json:"body"`
@@ -541,12 +543,15 @@ type BeamShare struct {
 	Name             string                `json:"name"`
 	OrgId            openapi_types.UUID    `json:"org_id"`
 	ProjectId        *openapi_types.UUID   `json:"project_id,omitempty"`
-	PublisherId      openapi_types.UUID    `json:"publisher_id"`
-	PublisherName    *string               `json:"publisher_name,omitempty"`
-	State            BeamShareState        `json:"state"`
-	Target           *BeamTarget           `json:"target,omitempty"`
-	Url              string                `json:"url"`
-	Version          int                   `json:"version"`
+
+	// PublisherEmail LS-UX-2: the publisher's email, shown with the name as Name (email). Present only on projections the caller may already read (publisher, share manager or current reviewer).
+	PublisherEmail *string            `json:"publisher_email,omitempty"`
+	PublisherId    openapi_types.UUID `json:"publisher_id"`
+	PublisherName  *string            `json:"publisher_name,omitempty"`
+	State          BeamShareState     `json:"state"`
+	Target         *BeamTarget        `json:"target,omitempty"`
+	Url            string             `json:"url"`
+	Version        int                `json:"version"`
 }
 
 // BeamShareConnectivity defines model for BeamShare.Connectivity.

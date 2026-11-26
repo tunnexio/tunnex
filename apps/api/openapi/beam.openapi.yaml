@@ -3438,6 +3438,10 @@
           "publisher_name": {
             "type": "string"
           },
+          "publisher_email": {
+            "type": "string",
+            "description": "LS-UX-2: the publisher's email, shown with the name as Name (email). Present only on projections the caller may already read (publisher, share manager or current reviewer)."
+          },
           "project_id": {
             "type": "string",
             "format": "uuid"
@@ -4396,6 +4400,10 @@
           },
           "author_name": {
             "type": "string"
+          },
+          "author_email": {
+            "type": "string",
+            "description": "LS-UX-2: shown with the author name as Name (email) to the share's participants."
           },
           "body": {
             "type": "string",
