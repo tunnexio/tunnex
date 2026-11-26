@@ -8,6 +8,7 @@ import { QRCodeSVG } from "qrcode.react";
 import { PRODUCT_NAME } from "../brand";
 import { api, apiErrorMessage, loadOne, type Device, type Node } from "../lib/api";
 import { useAuth } from "../lib/auth";
+import { can } from "../lib/rbac";
 import { useOrg } from "../lib/useOrg";
 import { relativeAge } from "../lib/format";
 import { formatBytes } from "../lib/hubsetview";
@@ -55,6 +56,7 @@ type DeviceStage = "overview" | "connection" | "posture";
 function DevicesWorkspace() {
   const { state } = useAuth();
   const emailVerified = state.status === "authed" && state.user.email_verified;
+  const actorId = state.status === "authed" ? state.user.id : "";
   const { org, loading: orgLoading, failed: orgFailed } = useOrg();
   const [nodes, setNodes] = useState<Node[]>([]);
   const [nodesLoading, setNodesLoading] = useState(true);
@@ -64,6 +66,8 @@ function DevicesWorkspace() {
   const [devicesLoaded, setDevicesLoaded] = useState(false);
   const [devicesLoadError, setDevicesLoadError] = useState<string | null>(null);
   const [ownerEmail, setOwnerEmail] = useState<Map<string, string>>(new Map());
+  // null until the roster is read; a failed read keeps every tab (the server decides).
+  const [approves, setApproves] = useState<boolean | null>(null);
   const [inspectedId, setInspectedId] = useState<string | null>(null);
   const [stage, setStage] = useState<DeviceStage>("overview");
   const [error, setError] = useState<string | null>(null);
@@ -123,8 +127,10 @@ function DevicesWorkspace() {
     if (!alive.current || attempt !== readEpoch.current) return;
     if (members.ok && Array.isArray(members.data)) {
       setOwnerEmail(new Map(members.data.filter(member => member.email).map(member => [member.user_id, member.email])));
-    }
-  }, [orgId]);
+      const me = members.data.find(member => member && member.user_id === actorId);
+      setApproves(me ? can(Array.isArray(me.roles) && me.roles.length ? me.roles : [me.role], "device:approve") : true);
+    } else setApproves(true);
+  }, [orgId, actorId]);
 
   const loadNodes = useCallback(async () => {
     if (!orgId) return;
@@ -264,7 +270,7 @@ function DevicesWorkspace() {
   const detailFooter = <div className="device-detail-footer"><Button variant="ghost" onClick={() => setInspectedId(null)}>Back to devices</Button></div>;
   return <div className="network-management devices-workspace devices-management">
     <h1 className="sr-only">Devices</h1>
-    <DevicesTabRail actions={emailVerified ? <Button disabled={nodesLoading || Boolean(nodesError) || busy} onClick={() => { setCreateError(null); setCreating(true); }}>Add device</Button> : undefined} />
+    <DevicesTabRail adminTabs={approves !== false} actions={emailVerified ? <Button disabled={nodesLoading || Boolean(nodesError) || busy} onClick={() => { setCreateError(null); setCreating(true); }}>Add device</Button> : undefined} />
     <ErrorText>{error}</ErrorText>
     {notice && <p role="status" className="device-action-notice">{notice}</p>}
     {devicesLoading && <Loading label="Loading devices…" />}

@@ -9,6 +9,10 @@ import { assembleTopology, meshFrom } from "../lib/sitesview";
 import { NodeLink } from "../components/viz";
 import { assembleClusters } from "../lib/k8sview";
 import { UpgradeCenter } from "../components/UpgradeCenter";
+import { administersNetwork, navAllows, useMyOrgRoles, type MyRoles } from "../lib/navaccess";
+import { askText, useOrgAdmins } from "../lib/useOrgAdmins";
+import { useSandboxModuleState } from "../lib/deploymentMeta";
+import { SANDBOX_PRODUCT_SHELVED } from "../lib/sandboxProduct";
 import {
   api, listItems, apiErrorMessage, loadOne,
   type Device, type Loaded, type Node, type OrgOverview, type Site,
@@ -33,8 +37,54 @@ export default function Dashboard() {
     {loading || state.status === "loading" ? <Loading label="Loading your overview…" />
       : !org ? <ErrorText>{failed ? "Could not load your organizations." : "You are not a member of any organization yet."}</ErrorText>
       : state.status !== "authed" ? <ErrorText>Sign in to view your overview.</ErrorText>
-      : <OverviewContent key={`${org.id}:${actor}`} orgId={org.id} orgName={org.name} />}
+      : <RoleOverview key={`${org.id}:${actor}`} orgId={org.id} orgName={org.name} />}
   </div>;
+}
+
+// LS-UX-2: the fleet view is for people who administer the network. Everyone else gets their own
+// workspace: their devices and the areas they can use, with a named person to ask for anything else.
+// UX only — the reads behind each card are the member's own and the API still decides.
+function RoleOverview({ orgId, orgName }: { orgId: string; orgName: string }) {
+  const mine = useMyOrgRoles();
+  if (mine.state === "loading") return <Loading label="Loading your overview…" />;
+  if (mine.state === "ready" && !administersNetwork(mine.roles)) return <WorkspaceOverview orgId={orgId} orgName={orgName} mine={mine} />;
+  return <OverviewContent orgId={orgId} orgName={orgName} />;
+}
+
+const WORKSPACE_CARDS: { to: string; title: string; text: string }[] = [
+  { to: "/app-access", title: "App Access", text: "Open the company applications you've been given." },
+  { to: "/browser-access/terminal", title: "Server Access", text: "Connect to the servers you can use, from the browser." },
+  { to: "/beam", title: "Local Sharing", text: "Review apps teammates share with you, or share your own." },
+  { to: "/vault", title: "Tunnex Vault", text: "Your saved secrets and the ones shared with you." },
+  { to: "/ai-gateway", title: "AI Gateway", text: "Try the AI models your organization lets you use." },
+  { to: "/sandboxes", title: "Sandboxes", text: "Your workspaces." },
+];
+
+function WorkspaceOverview({ orgId, orgName, mine }: { orgId: string; orgName: string; mine: MyRoles }) {
+  const [devices, setDevices] = useState<Loaded<Device[]> | null>(null);
+  const [attempt, setAttempt] = useState(0);
+  const admins = useOrgAdmins(orgId);
+  const sandboxState = useSandboxModuleState();
+  useEffect(() => {
+    let cancelled = false; setDevices(null);
+    // The server returns only this person's own devices to a member (device_handlers.go ListForUser).
+    void loadOne(() => api.GET("/api/v1/organizations/{orgId}/devices", { params: { path: { orgId } } })).then(r => { if (!cancelled) setDevices(inventoryResult<Device>(r)); });
+    return () => { cancelled = true; };
+  }, [orgId, attempt]);
+  const cards = WORKSPACE_CARDS.filter(card => navAllows(card.to, mine) && (card.to !== "/sandboxes" || (!SANDBOX_PRODUCT_SHELVED && (sandboxState === "enabled" || sandboxState === "draining"))));
+  return <>
+    <div className="scan-toolbar">
+      <div className="scan-org">{orgName}<span>Your workspace</span></div>
+      <div className="scan-toolbar-actions"><RefreshButton label="Refresh overview" disabled={devices === null} onClick={() => setAttempt(value => value + 1)} /></div>
+    </div>
+    <Section title="Your devices" className="scan-devices" actions={<Link to="/devices" className="scan-text-link">View my devices</Link>}>
+      {devices === null ? <Loading label="Loading your devices…" /> : !devices.ok ? <ErrorText>Your devices could not be read. Refresh to try again.</ErrorText>
+        : devices.data.length === 0 ? <EmptyState><span className="block">No devices yet. <Link className="scan-text-link" to="/connect">Connect this computer</Link> or <Link className="scan-text-link" to="/devices">add a device</Link> to reach your organization's network.</span></EmptyState>
+        : <p className="text-sm">{devices.data.length} {devices.data.length === 1 ? "device" : "devices"} registered to you. <Link className="scan-text-link" to="/connect">Connect another device</Link></p>}
+    </Section>
+    {cards.length > 0 && <Section title="What you can use" className="scan-workspace"><ul className="scan-workspace-cards">{cards.map(card => <li key={card.to}><Link to={card.to}><strong>{card.title}</strong><span>{card.text}</span></Link></li>)}</ul></Section>}
+    <p className="text-sm text-ink-secondary">Gateways, policies, users and alerts are managed by organization admins. For anything else, ask {askText(admins)}.</p>
+  </>;
 }
 
 function OverviewContent({ orgId, orgName }: { orgId: string; orgName: string }) {

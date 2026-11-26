@@ -23,6 +23,7 @@ import { NewVersionBanner } from "./NewVersionBanner";
 import { useNavCounts } from "../lib/useNavCounts";
 import { Icon, type IconName } from "./Icon";
 import { badgeText, gatewayBadgeText, type NavCounts } from "../lib/navcounts";
+import { navAllows, seesOrgAudit, useMyOrgRoles } from "../lib/navaccess";
 import "../app-shell.css";
 
 // S14.2 — THE NAV, GROUPED. The wireframe groups destinations NETWORK / ACCESS / OBSERVE / OPERATE / SETTINGS,
@@ -148,7 +149,10 @@ function NavGroups({
   collapsed?: boolean;
 }) {
   const sandboxState = useSandboxModuleState();
-  const groups = NAV_GROUPS.map(group => ({ ...group, items: group.items.filter(item => item.to !== "/sandboxes" || sandboxState === "enabled" || sandboxState === "draining") })).filter(group => group.items.length > 0);
+  // LS-UX-2: ROLE decides which destinations exist (UX only; every API still checks). WIDTH never does —
+  // for one person the set is identical at every width, which is what the responsive contract asserts.
+  const mine = useMyOrgRoles();
+  const groups = NAV_GROUPS.map(group => ({ ...group, items: group.items.filter(item => (item.to !== "/sandboxes" || sandboxState === "enabled" || sandboxState === "draining") && navAllows(item.to, mine)).map(item => item.to === "/audit" && mine.state === "ready" && !seesOrgAudit(mine.roles) ? { ...item, label: "My activity" } : item) })).filter(group => group.items.length > 0);
   const shows = navShows(collapsed ? "closed" : "open");
   const { pathname } = useLocation();
   return (

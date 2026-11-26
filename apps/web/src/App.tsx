@@ -10,6 +10,7 @@ import { AuthProvider, useAuth } from "./lib/auth";
 import { AuthLayout } from "./components/AuthLayout";
 import { MfaSettings } from "./components/MfaSettings";
 import { AppShell } from "./components/AppShell";
+import { AdminOnlyRoute } from "./components/AdminOnly";
 import { DeploymentMetaProvider } from "./lib/deploymentMeta";
 import { SandboxModuleGate } from "./components/SandboxModuleGate";
 import { SANDBOX_PRODUCT_SHELVED } from "./lib/sandboxProduct";
@@ -193,8 +194,8 @@ function ProductApp() {
           >
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/devices" element={<Devices />} />
-            <Route path="/devices/approvals" element={<DeviceApprovals />} />
-            <Route path="/devices/posture" element={<DevicePosture />} />
+            <Route path="/devices/approvals" element={<AdminOnlyRoute to="/devices/approvals" page="Device approvals"><DeviceApprovals /></AdminOnlyRoute>} />
+            <Route path="/devices/posture" element={<AdminOnlyRoute to="/devices/posture" page="Device posture"><DevicePosture /></AdminOnlyRoute>} />
             <Route path="/network/setup" element={<NetworkSetup />} />
             <Route path="/gateways" element={<Gateways />} />
             <Route path="/gateways/:gatewayId" element={<GatewayDetail />} />
@@ -213,7 +214,7 @@ function ProductApp() {
               <Route path="/sandboxes/:sandboxId" element={<Suspense fallback={<Loading />}><SandboxDetailPage /></Suspense>} />
             </Route>}
             <Route path="/agents" element={<AgentsIndex />} />
-            <Route path="/mcp" element={<AgentsMCP />} />
+            <Route path="/mcp" element={<AdminOnlyRoute to="/mcp" page="MCP"><AgentsMCP /></AdminOnlyRoute>} />
             <Route path="/agents/mcp" element={<LegacyWorkspaceRedirect to="/mcp" />} />
             <Route path="/agents/ai-gateway" element={<LegacyWorkspaceRedirect />} />
             <Route path="/ai-gateway" element={<AgentsAIGateway />} />
@@ -243,7 +244,7 @@ function ProductApp() {
             <Route path="/app-access/launch" element={<AppAccessLaunch />} />
             <Route path="/access" element={<Access />} />
             <Route path="/access/groups" element={<LegacyWorkspaceRedirect groups />} />
-            <Route path="/users/groups" element={<AccessGroups scope="people" />} />
+            <Route path="/users/groups" element={<AdminOnlyRoute to="/users/groups" page="Groups"><AccessGroups scope="people" /></AdminOnlyRoute>} />
             <Route path="/users/roles" element={<Users view="roles" />} />
             <Route path="/users/invitations" element={<Users view="invitations" />} />
             <Route path="/access/resources" element={<AccessResources />} />
@@ -252,9 +253,9 @@ function ProductApp() {
             <Route path="/users" element={<Users />} />
             <Route path="/vault" element={<Vault />} />
             <Route path="/settings" element={<Settings />} />
-            <Route path="/access-events" element={<AccessEventsRoute />} />
+            <Route path="/access-events" element={<AdminOnlyRoute to="/access-events" page="Access Events"><AccessEventsRoute /></AdminOnlyRoute>} />
             <Route path="/audit" element={<AuditLog />} />
-            <Route path="/alerts" element={<Alerts />} />
+            <Route path="/alerts" element={<AdminOnlyRoute to="/alerts" page="Alerts"><Alerts /></AdminOnlyRoute>} />
           </Route>
         </Route>
         {/* Default: the shell decides (RequireAuth bounces anon users to /login). */}
