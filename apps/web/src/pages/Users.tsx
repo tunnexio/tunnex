@@ -173,13 +173,17 @@ function UsersWorkspace({ view }: { view: View }) {
     if (paused) {
       // Keep the dialog open on the accounts not yet updated; the person confirms it is them and continues.
       setConfirmation({ kind, targets: paused });
-      if (pausedForMfa) setStepUpMfa({ action: kind === "reset" ? "Reset two-factor authentication" : "Deactivate accounts", retry: () => { setStepUpMfa(null); void decide(); } });
+      // Retry through the ref: this closure belongs to an earlier render, whose `confirmation` still lists
+      // every original target.
+      if (pausedForMfa) setStepUpMfa({ action: kind === "reset" ? "Reset two-factor authentication" : "Deactivate accounts", retry: () => { setStepUpMfa(null); void decideRef.current(); } });
     } else {
       setConfirmation(null); setStepUpPassword("");
     }
     await loadMembers();
     if (alive.current) { locked.current = false; setBusy(false); }
   }
+  const decideRef = useRef(decide);
+  decideRef.current = decide;
   async function changeRoles(target: Member, roles: Role[], password = ""): Promise<boolean> {
     const current = roster.current.find(m => m.user_id === target.user_id);
     if (!org || !current || locked.current || !ready.current || !emailVerified || memberSignature(current) !== memberSignature(target) || !roles.length || roles.some(role => !HUMAN_ROLES.includes(role) || !canManageMembership(myRole, current.role, role)) || (current.role === "owner" && ownerCount <= 1 && !roles.includes("owner"))) return false;
