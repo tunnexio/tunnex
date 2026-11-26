@@ -100,3 +100,18 @@ Each was confirmed in code before this paper was written.
 - Changed Go packages in both editions, web unit suite, typecheck, build,
   gofmt.
 - Security change: run the agents and MCP end-to-end specs locally.
+
+## As built: bootstrap tokens
+
+- Migration `0248_agent_bootstrap_token_revocation` (0247 is the transport
+  split). Its down migration deletes revoked tokens so a rollback cannot
+  revive one.
+- `GET` and `DELETE .../agents/bootstrap-tokens[/{tokenId}]` on the enrol
+  permission; revoke uses the mutation gate. Revoking an unknown, used,
+  expired, revoked or other-organization token answers 404 with no audit row.
+- The install command no longer contains the token. The script asks for it on
+  the terminal, after its read-only host checks and before it changes
+  anything, and accepts only the `tnx_agent_` format.
+- Open: a host with no terminal (cloud-init, piped ssh) is refused with "no
+  bootstrap token was used". A file-based way to supply the token is not built.
+
