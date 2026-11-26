@@ -39,18 +39,31 @@ func TestVaultQuickMigrationPreservesCredentialsAndGuardsRollback(t *testing.T) 
 	if e = db.MigrateTo(dsn, 231); e != nil {
 		t.Fatal(e)
 	}
-	index, e := s.List(ctx, org, user, 50, 0, "")
-	if e != nil || index.Total != 1 || !index.Entries[0].Configured || index.Entries[0].Kind != "api_key" {
+	// Service code targets the latest schema, so this pinned-schema test reads
+	// and writes with SQL and the envelope helpers only.
+	var configured bool
+	var kind string
+	if e = pool.QueryRow(ctx, `SELECT configured,kind FROM vault_entries WHERE org_id=$1 AND id=$2`, org, existing).Scan(&configured, &kind); e != nil || !configured || kind != "api_key" {
 		t.Fatal("migration did not preserve existing configured credentials")
 	}
-	draft, e := s.QuickCreate(ctx, org, user, api.VaultQuickCreateInput{RequestId: uuid.New(), Secret: ptr("unconfigured-migration-fixture")})
+	draftID := uuid.New()
+	exec(`INSERT INTO vault_entries(id,org_id,title,kind,visibility,owner_user_id,current_version,configured) VALUES($1,$2,'','password','personal',$3,1,false)`, draftID, org, user)
+	draftSealed, e := s.seal(org, draftID, 1, "unconfigured-migration-fixture", "")
 	if e != nil {
 		t.Fatal(e)
+	}
+	exec(`INSERT INTO vault_versions(org_id,entry_id,version,sealed_payload,changed_by) VALUES($1,$2,1,$3,$4)`, org, draftID, draftSealed, user)
+	reveal := func(id uuid.UUID) (api.VaultSecret, error) {
+		var payload string
+		if err := pool.QueryRow(ctx, `SELECT sealed_payload FROM vault_versions WHERE org_id=$1 AND entry_id=$2 AND version=1`, org, id).Scan(&payload); err != nil {
+			return api.VaultSecret{}, err
+		}
+		return s.open(org, id, 1, payload)
 	}
 	if e = db.MigrateTo(dsn, 230); e == nil {
 		t.Fatal("rollback silently discarded or fabricated metadata for an unconfigured secret")
 	}
-	value, e := s.Reveal(ctx, org, user, draft.Id, 1)
+	value, e := reveal(draftID)
 	if e != nil || value.Value != "unconfigured-migration-fixture" {
 		t.Fatal("refused rollback damaged the unconfigured secret")
 	}
@@ -58,9 +71,7 @@ func TestVaultQuickMigrationPreservesCredentialsAndGuardsRollback(t *testing.T) 
 	// Repair only this disposable fixture's bookkeeping after proving the guard;
 	// no application database is used by this test.
 	exec(`UPDATE schema_migrations SET version=231,dirty=false`)
-	if e = s.Delete(ctx, org, user, draft.Id, 1); e != nil {
-		t.Fatal(e)
-	}
+	exec(`DELETE FROM vault_entries WHERE org_id=$1 AND id=$2`, org, draftID)
 	if e = db.MigrateTo(dsn, 230); e != nil {
 		t.Fatal(e)
 	}
@@ -71,7 +82,7 @@ func TestVaultQuickMigrationPreservesCredentialsAndGuardsRollback(t *testing.T) 
 	if e = db.MigrateTo(dsn, 231); e != nil {
 		t.Fatal(e)
 	}
-	value, e = s.Reveal(ctx, org, user, existing, 1)
+	value, e = reveal(existing)
 	if e != nil || value.Value != "pre-upgrade-fixture-key" || value.Username != "existing-account" {
 		t.Fatal("upgrade/down/upgrade lost an existing credential")
 	}

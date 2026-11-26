@@ -7619,7 +7619,7 @@ export interface paths {
         put?: never;
         /**
          * Configure an owned quick entry once without replacing its password
-         * @description Creator ownership and expected_version are required. Assigned visibility also requires vault assignment authority. Preserves the password and its initial encrypted version, appends a configured username snapshot, and atomically marks the entry configured. Already configured entries cannot be reassigned through this endpoint.
+         * @description Creator ownership and expected_version are required. Assigned visibility also requires vault assignment authority. Metadata only (VAULT-UX-1) — the entry keeps its single encrypted version and no duplicate value is written. Already configured entries use updateVaultEntryDetails.
          */
         post: operations["configureVaultEntry"];
         delete?: never;
@@ -7641,7 +7641,7 @@ export interface paths {
         get?: never;
         /**
          * Append a new encrypted version with an expected-version precondition
-         * @description Verified browser identity required. CLI, machine and agent credentials are refused until scoped Vault credentials are available.
+         * @description Rotation. Recipients of an assigned entry may rotate; a title change requires details authority (403 vault_details_forbidden). Verified browser identity required.
          */
         put: operations["updateVaultEntry"];
         post?: never;
@@ -7652,7 +7652,11 @@ export interface paths {
         delete: operations["deleteVaultEntry"];
         options?: never;
         head?: never;
-        patch?: never;
+        /**
+         * Change title, username, service or recipient without creating a version
+         * @description Personal entries by their owner; assigned entries by Vault administrators, including reassignment to another eligible user or group. Visibility cannot change. expected_revision is required.
+         */
+        patch: operations["updateVaultEntryDetails"];
         trace?: never;
     };
     "/api/v1/organizations/{orgId}/vault/entries/{entryId}/versions": {
@@ -7692,7 +7696,7 @@ export interface paths {
         put?: never;
         /**
          * Explicitly reveal and audit the current or an earlier secret version
-         * @description Verified browser identity required. CLI, machine and agent credentials are refused until scoped Vault credentials are available.
+         * @description Assigned entries require recent re-authentication (current_password and/or MFA within five minutes). Rate limited to 30 reveals or copies per person per organization per minute (429 vault_reveal_rate_limited).
          */
         post: operations["revealVaultEntry"];
         delete?: never;
@@ -7765,6 +7769,26 @@ export interface components {
             /** Format: uuid */
             id: string;
             name: string;
+            /** @description Users only */
+            email?: string;
+            /** @description Groups only */
+            member_count?: number;
+            /** @description Groups only. Members who cannot open Vault (no Vault role or unverified email). */
+            members_without_access?: components["schemas"]["VaultPerson"][];
+        };
+        VaultPerson: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            email: string;
+        };
+        VaultReauthentication: {
+            /** @description The current password is asked for shared reveals */
+            password: boolean;
+            /** @description Recent MFA is required for shared reveals */
+            mfa: boolean;
+            /** @description False when the account has nothing to re-authenticate with */
+            available: boolean;
         };
         VaultSubjects: {
             users: components["schemas"]["VaultSubject"][];
@@ -7792,17 +7816,23 @@ export interface components {
             subject_id?: string;
             subject_name?: string;
             current_version: number;
+            /** @description Bumped by every change; the precondition for details edits */
+            revision: number;
             /** Format: date-time */
             created_at: string;
             /** Format: date-time */
             updated_at: string;
+            /** @description May save a new secret version */
             can_edit: boolean;
+            /** @description May change title */
+            can_edit_details: boolean;
             can_delete: boolean;
         };
         VaultWorkspace: {
             entries: components["schemas"]["VaultEntry"][];
             total: number;
             can_assign: boolean;
+            reauthentication?: components["schemas"]["VaultReauthentication"];
         };
         VaultCreateInput: {
             title: string;
@@ -7845,14 +7875,36 @@ export interface components {
             expected_version: number;
         };
         VaultUpdateInput: {
-            title: string;
+            /** @description Optional; changing it needs details authority */
+            title?: string;
             secret: string;
             username?: string;
             expected_version: number;
         };
+        VaultDetailsInput: {
+            expected_revision: number;
+            title?: string;
+            username?: string;
+            /** Format: uuid */
+            service_id?: string;
+            /** @description Private service label for personal entries only */
+            service_name?: string;
+            /** @enum {string} */
+            subject_kind?: "user" | "group";
+            /** Format: uuid */
+            subject_id?: string;
+        };
         VaultRevealInput: {
             /** @description Omit to reveal the current version */
             version?: number;
+            /**
+             * @description Client-stated purpose; recorded as vault.revealed or vault.copied
+             * @default reveal
+             * @enum {string}
+             */
+            purpose: "reveal" | "copy";
+            /** @description Re-authentication for assigned entries when the account has a local password */
+            current_password?: string;
         };
         VaultSecret: {
             /** @description Explicit authorized reveal only. Never cache or log. */
@@ -7867,6 +7919,7 @@ export interface components {
             /** Format: uuid */
             changed_by: string;
             changed_by_name: string;
+            changed_by_email: string;
         };
         VaultHistory: {
             versions: components["schemas"]["VaultVersion"][];
@@ -26588,6 +26641,8 @@ export interface operations {
                 limit?: number;
                 offset?: number;
                 q?: string;
+                /** @description all; personal (yours); shared (assigned to you directly or through a group); assigned (every assigned entry you can see, all of them for Vault administrators) */
+                view?: "all" | "personal" | "shared" | "assigned";
             };
             header?: never;
             path: {
@@ -26679,7 +26734,7 @@ export interface operations {
             };
         };
         responses: {
-            /** @description Configured entry with a new encrypted version */
+            /** @description Configured entry (still version 1) */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -26739,6 +26794,34 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    updateVaultEntryDetails: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                entryId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["VaultDetailsInput"];
+            };
+        };
+        responses: {
+            /** @description Updated entry */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["VaultEntry"];
+                };
             };
             default: components["responses"]["Error"];
         };

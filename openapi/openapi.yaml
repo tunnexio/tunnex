@@ -9011,6 +9011,7 @@ paths:
         - {name: limit, in: query, schema: {type: integer, format: int32, minimum: 1, maximum: 100, default: 50}}
         - {name: offset, in: query, schema: {type: integer, format: int32, minimum: 0, maximum: 100000, default: 0}}
         - {name: q, in: query, schema: {type: string, maxLength: 100}}
+        - {name: view, in: query, description: 'all; personal (yours); shared (assigned to you directly or through a group); assigned (every assigned entry you can see, all of them for Vault administrators)', schema: {type: string, enum: [all, personal, shared, assigned], default: all}}
       responses:
         '200': {description: Authorized Vault result, content: {application/json: {schema: {$ref: '#/components/schemas/VaultWorkspace'}}}}
         default: {$ref: '#/components/responses/Error'}
@@ -9046,10 +9047,10 @@ paths:
       tags: [vault]
       security: [{cookieAuth: []}]
       summary: Configure an owned quick entry once without replacing its password
-      description: Creator ownership and expected_version are required. Assigned visibility also requires vault assignment authority. Preserves the password and its initial encrypted version, appends a configured username snapshot, and atomically marks the entry configured. Already configured entries cannot be reassigned through this endpoint.
+      description: Creator ownership and expected_version are required. Assigned visibility also requires vault assignment authority. Metadata only (VAULT-UX-1) — the entry keeps its single encrypted version and no duplicate value is written. Already configured entries use updateVaultEntryDetails.
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/VaultConfigureInput'}}}}
       responses:
-        '200': {description: Configured entry with a new encrypted version, content: {application/json: {schema: {$ref: '#/components/schemas/VaultEntry'}}}}
+        '200': {description: Configured entry (still version 1), content: {application/json: {schema: {$ref: '#/components/schemas/VaultEntry'}}}}
         default: {$ref: '#/components/responses/Error'}
   /api/v1/organizations/{orgId}/vault/entries/{entryId}:
     parameters:
@@ -9060,10 +9061,20 @@ paths:
       tags: [vault]
       security: [{cookieAuth: []}]
       summary: Append a new encrypted version with an expected-version precondition
-      description: Verified browser identity required. CLI, machine and agent credentials are refused until scoped Vault credentials are available.
+      description: Rotation. Recipients of an assigned entry may rotate; a title change requires details authority (403 vault_details_forbidden). Verified browser identity required.
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/VaultUpdateInput'}}}}
       responses:
         '200': {description: Authorized Vault result, content: {application/json: {schema: {$ref: '#/components/schemas/VaultEntry'}}}}
+        default: {$ref: '#/components/responses/Error'}
+    patch:
+      operationId: updateVaultEntryDetails
+      tags: [vault]
+      security: [{cookieAuth: []}]
+      summary: Change title, username, service or recipient without creating a version
+      description: Personal entries by their owner; assigned entries by Vault administrators, including reassignment to another eligible user or group. Visibility cannot change. expected_revision is required.
+      requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/VaultDetailsInput'}}}}
+      responses:
+        '200': {description: Updated entry, content: {application/json: {schema: {$ref: '#/components/schemas/VaultEntry'}}}}
         default: {$ref: '#/components/responses/Error'}
     delete:
       operationId: deleteVaultEntry
@@ -9101,7 +9112,7 @@ paths:
       tags: [vault]
       security: [{cookieAuth: []}]
       summary: Explicitly reveal and audit the current or an earlier secret version
-      description: Verified browser identity required. CLI, machine and agent credentials are refused until scoped Vault credentials are available.
+      description: Assigned entries require recent re-authentication (current_password and/or MFA within five minutes). Rate limited to 30 reveals or copies per person per organization per minute (429 vault_reveal_rate_limited).
       requestBody: {required: true, content: {application/json: {schema: {$ref: '#/components/schemas/VaultRevealInput'}}}}
       responses:
         '200': {description: Authorized Vault result, content: {application/json: {schema: {$ref: '#/components/schemas/VaultSecret'}}}}
@@ -9190,6 +9201,25 @@ components:
       properties:
         id: {type: string, format: uuid}
         name: {type: string}
+        email: {type: string, description: Users only}
+        member_count: {type: integer, minimum: 0, description: Groups only}
+        members_without_access: {type: array, description: Groups only. Members who cannot open Vault (no Vault role or unverified email)., items: {$ref: '#/components/schemas/VaultPerson'}}
+    VaultPerson:
+      type: object
+      additionalProperties: false
+      required: [id, name, email]
+      properties:
+        id: {type: string, format: uuid}
+        name: {type: string}
+        email: {type: string}
+    VaultReauthentication:
+      type: object
+      additionalProperties: false
+      required: [password, mfa, available]
+      properties:
+        password: {type: boolean, description: The current password is asked for shared reveals}
+        mfa: {type: boolean, description: Recent MFA is required for shared reveals}
+        available: {type: boolean, description: False when the account has nothing to re-authenticate with}
     VaultSubjects:
       type: object
       additionalProperties: false
@@ -9200,7 +9230,7 @@ components:
     VaultEntry:
       type: object
       additionalProperties: false
-      required: [id, configured, service_name, title, kind, username, visibility, owner_user_id, current_version, created_at, updated_at, can_edit, can_delete]
+      required: [id, configured, service_name, title, kind, username, visibility, owner_user_id, current_version, revision, created_at, updated_at, can_edit, can_edit_details, can_delete]
       properties:
         id: {type: string, format: uuid}
         configured: {type: boolean, description: False for a creator-private quick entry whose title and service metadata are not configured yet}
@@ -9215,9 +9245,11 @@ components:
         subject_id: {type: string, format: uuid}
         subject_name: {type: string}
         current_version: {type: integer, minimum: 1}
+        revision: {type: integer, minimum: 1, description: Bumped by every change; the precondition for details edits}
         created_at: {type: string, format: date-time}
         updated_at: {type: string, format: date-time}
-        can_edit: {type: boolean}
+        can_edit: {type: boolean, description: May save a new secret version}
+        can_edit_details: {type: boolean, description: May change title, username, service or recipient}
         can_delete: {type: boolean}
     VaultWorkspace:
       type: object
@@ -9227,6 +9259,7 @@ components:
         entries: {type: array, items: {$ref: '#/components/schemas/VaultEntry'}}
         total: {type: integer, minimum: 0}
         can_assign: {type: boolean}
+        reauthentication: {$ref: '#/components/schemas/VaultReauthentication'}
     VaultCreateInput:
       type: object
       additionalProperties: false
@@ -9264,17 +9297,31 @@ components:
     VaultUpdateInput:
       type: object
       additionalProperties: false
-      required: [title, secret, expected_version]
+      required: [secret, expected_version]
       properties:
-        title: {type: string, minLength: 1, maxLength: 160}
+        title: {type: string, minLength: 1, maxLength: 160, description: Optional; changing it needs details authority}
         secret: {type: string, minLength: 1, maxLength: 16384, writeOnly: true}
         username: {type: string, maxLength: 320}
         expected_version: {type: integer, minimum: 1}
+    VaultDetailsInput:
+      type: object
+      additionalProperties: false
+      required: [expected_revision]
+      properties:
+        expected_revision: {type: integer, minimum: 1}
+        title: {type: string, minLength: 1, maxLength: 160}
+        username: {type: string, maxLength: 320}
+        service_id: {type: string, format: uuid}
+        service_name: {type: string, minLength: 1, maxLength: 120, description: Private service label for personal entries only}
+        subject_kind: {type: string, enum: [user, group], x-enum-varnames: [VaultDetailsSubjectUser, VaultDetailsSubjectGroup]}
+        subject_id: {type: string, format: uuid}
     VaultRevealInput:
       type: object
       additionalProperties: false
       properties:
         version: {type: integer, minimum: 1, description: Omit to reveal the current version}
+        purpose: {type: string, enum: [reveal, copy], default: reveal, description: Client-stated purpose; recorded as vault.revealed or vault.copied}
+        current_password: {type: string, maxLength: 1024, writeOnly: true, description: Re-authentication for assigned entries when the account has a local password}
     VaultSecret:
       type: object
       additionalProperties: false
@@ -9286,12 +9333,13 @@ components:
     VaultVersion:
       type: object
       additionalProperties: false
-      required: [version, created_at, changed_by, changed_by_name]
+      required: [version, created_at, changed_by, changed_by_name, changed_by_email]
       properties:
         version: {type: integer, minimum: 1}
         created_at: {type: string, format: date-time}
         changed_by: {type: string, format: uuid}
         changed_by_name: {type: string}
+        changed_by_email: {type: string}
     VaultHistory:
       type: object
       additionalProperties: false
