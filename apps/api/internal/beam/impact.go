@@ -30,7 +30,7 @@ func (s *Service) preparePolicy(ctx context.Context, org uuid.UUID, a Actor, in 
 		return nil, Policy{}, deny()
 	}
 	if in.ExpectedVersion < 1 || in.MaxDuration < 60 || in.MaxDuration > 86400 || in.MaxShares < 1 || in.MaxShares > 25 || len(in.PublisherGroups) > 100 || len(in.ReviewerGroups) > 100 || len(in.ReviewerUsers) > 100 {
-		return nil, Policy{}, invalid("Invalid policy limits")
+		return nil, Policy{}, invalid("Lifetime must be 1 to 1440 minutes and shares per publisher 1 to 25.")
 	}
 	tx, e := s.transaction(ctx, org)
 	if e != nil {
@@ -69,7 +69,7 @@ func (s *Service) preparePolicy(ctx context.Context, org uuid.UUID, a Actor, in 
 				return nil, p, e
 			}
 			if !ok {
-				return nil, p, invalid("Policy group is outside this organization")
+				return nil, p, invalid("One of the selected groups isn't in this organization. Reload the policy and try again.")
 			}
 		}
 	}
@@ -80,7 +80,7 @@ func (s *Service) preparePolicy(ctx context.Context, org uuid.UUID, a Actor, in 
 			return nil, p, e
 		}
 		if !ok {
-			return nil, p, invalid("Policy user is outside this organization")
+			return nil, p, invalid("One of the selected people isn't in this organization. Reload the policy and try again.")
 		}
 	}
 	ok = true

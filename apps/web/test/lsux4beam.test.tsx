@@ -12,7 +12,7 @@ import { InlineTerminalMfa } from "../src/components/InlineTerminalMfa";
 import { beamRoomsApi, type BeamFeedback as Feedback, type BeamProject } from "../src/lib/beam-rooms";
 import { api } from "../src/lib/api";
 import { announceMfaVerified, onMfaVerified } from "../src/lib/mfa-events";
-import { beamApi, beamCount, beamDuration, beamReviewerCount, beamReviewerSummary, beamStatus, type BeamAudience, type BeamPolicy, type BeamShare } from "../src/lib/beam";
+import { beamApi, beamCount, beamDuration, beamReviewerCount, beamReviewerNames, beamReviewerSummary, beamStatus, type BeamAudience, type BeamPolicy, type BeamShare } from "../src/lib/beam";
 
 // LS-UX-4: publisher and admin polish (docs/LS-UX-4-publisher-polish.md).
 const identity = vi.hoisted(() => ({ org: "11111111-1111-4111-8111-111111111111", user: "22222222-2222-4222-8222-222222222222" }));
@@ -366,5 +366,28 @@ describe("LS-UX-4 follow-up checks", () => {
     vi.mocked(beamApi.share).mockResolvedValue({ ok: true, data: { ...owned, publisher_id: reviewerId, can_manage: false } });
     show(`/beam/launch?orgId=${identity.org}&shareId=${shareId}&nonce_hash=${"a".repeat(64)}&target=%2F`);
     await screen.findByText("Your sign-in and reviewer access are checked again before the app opens.");
+  });
+});
+
+describe("LS-UX-4 reviewer names in the My shares list (P4)", () => {
+  const named = [{ subject_kind: "user", subject_id: reviewerId, name: "reviewer", email: "reviewer@tunnex.io" }, { subject_kind: "group", subject_id: groupId, name: "Developers" }];
+  it("names reviewers from the server projection, two then +N, never the publisher", () => {
+    expect(beamReviewerNames({ ...owned, reviewers: named })).toBe("reviewer, Developers group");
+    const extra = { subject_kind: "user" as const, subject_id: "88888888-8888-4888-8888-888888888888" };
+    expect(beamReviewerNames({ ...owned, grants: [...owned.grants!, extra], reviewers: named })).toBe("reviewer, Developers group +1");
+    expect(beamReviewerNames({ ...owned, grants: [self], reviewers: [] })).toBe("None yet");
+    expect(beamReviewerNames(owned)).toBe("1 person and 1 group");
+    expect(beamReviewerNames({ ...owned, grants: undefined })).toBe("Not reported");
+  });
+  it("shows the names in the list row", async () => {
+    vi.mocked(beamApi.shares).mockResolvedValue({ ok: true, data: { ...empty, items: [{ ...owned, reviewers: named } as BeamShare] } });
+    show("/beam/my-shares");
+    await screen.findByText("reviewer, Developers group");
+  });
+  it("names reviewers on the share card from the projection when the reviewer choices can't load", async () => {
+    vi.mocked(beamApi.audience).mockResolvedValue({ ok: false, error: "Directory unavailable" });
+    vi.mocked(beamApi.share).mockResolvedValue({ ok: true, data: { ...owned, reviewers: named } as BeamShare });
+    show(`/beam/shares/${shareId}`);
+    await screen.findByText("reviewer (reviewer@tunnex.io), Developers group");
   });
 });

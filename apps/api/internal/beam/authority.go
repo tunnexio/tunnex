@@ -53,7 +53,7 @@ func (s *Service) publisher(ctx context.Context, q reader, org, user uuid.UUID, 
 		return e
 	}
 	if !allowed {
-		return apierr.Forbidden("beam_publisher_denied", "Your account is not in a permitted publisher group")
+		return apierr.Forbidden("beam_publisher_denied", "Your account isn't allowed to publish. An organization admin can add you to a publisher group in the sharing policy.")
 	}
 	return nil
 }
@@ -84,7 +84,7 @@ func (s *Service) parent(ctx context.Context, q reader, org, user uuid.UUID, id 
 		return time.Time{}, e
 	}
 	if requireMFA && (!session.ValidMFAAssurance(sess.MFAVerifiedAt, sess.MFAAssuranceSource, time.Now()) || sess.MFAVerifiedAt.Before(time.Now().Add(-5*time.Minute))) {
-		return time.Time{}, apierr.Forbidden("mfa_step_up_required", "Verify MFA to open this share")
+		return time.Time{}, apierr.Forbidden("mfa_step_up_required", "Your organization requires a recent MFA check. Verify MFA, then try again.")
 	}
 	return deadline, nil
 }
@@ -203,7 +203,7 @@ func (s *Service) Credential(ctx context.Context, user uuid.UUID, raw string) (u
 func nonceHash(raw string) ([]byte, error) {
 	b, e := hex.DecodeString(raw)
 	if e != nil || len(b) != 32 {
-		return nil, invalid("Invalid launch nonce")
+		return nil, invalid("This sharing link is invalid. Open the original share link again.")
 	}
 	return b, nil
 }

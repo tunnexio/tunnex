@@ -46,19 +46,19 @@ func audit(ctx context.Context, tx pgx.Tx, org, actor uuid.UUID, action string, 
 }
 func (s *Service) validateSubjects(ctx context.Context, q reader, org, owner uuid.UUID, p Policy, grants []Grant) error {
 	if len(grants) > 100 {
-		return invalid("At most 100 reviewers are supported")
+		return invalid("You can choose up to 100 reviewers.")
 	}
 	seen := map[Grant]bool{}
 	for _, g := range grants {
 		if g.SubjectID == uuid.Nil || seen[g] {
-			return invalid("Invalid or duplicate reviewer")
+			return invalid("A reviewer was chosen twice or no longer exists. Refresh the reviewer list and try again.")
 		}
 		seen[g] = true
 		var exists bool
 		switch g.SubjectKind {
 		case "user":
 			if p.OpenForAllUsers && s.member(ctx, q, org, g.SubjectID, rbac.PermBeamUse) != nil {
-				return invalid("Reviewer is not an eligible member of this organization")
+				return invalid("One of the reviewers can't use Local Sharing in this organization. Remove them and try again.")
 			}
 			e := q.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM memberships m JOIN users u ON u.id=m.user_id WHERE m.org_id=$1 AND m.user_id=$2 AND u.status='active' AND u.deleted_at IS NULL AND ($5 OR $2=$3 OR $2=ANY($4::uuid[])))`, org, g.SubjectID, owner, p.ReviewerUsers, p.OpenForAllUsers).Scan(&exists)
 			if e != nil {
@@ -70,10 +70,10 @@ func (s *Service) validateSubjects(ctx context.Context, q reader, org, owner uui
 				return e
 			}
 		default:
-			return invalid("Reviewer must be a user or group")
+			return invalid("Reviewers must be people or groups.")
 		}
 		if !exists {
-			return invalid("Reviewer is outside the permitted audience")
+			return invalid("One of the reviewers isn't someone your organization lets you share with. Remove them and try again.")
 		}
 	}
 	return nil
@@ -120,7 +120,7 @@ func nonNil[T any](v []T) []T {
 func (s *Service) Create(ctx context.Context, org uuid.UUID, a Actor, in CreateInput) (Share, error) {
 	in.Name = strings.TrimSpace(in.Name)
 	if in.Name == "" || !utf8.ValidString(in.Name) || utf8.RuneCountInString(in.Name) > 100 || strings.ContainsAny(in.Name, "\r\n\x00") || in.IdempotencyKey == uuid.Nil {
-		return Share{}, invalid("Name and idempotency key required")
+		return Share{}, invalid("Enter a name for the share.")
 	}
 	if e := ValidateTarget(in.Target); e != nil {
 		return Share{}, e
@@ -162,7 +162,7 @@ func (s *Service) Create(ctx context.Context, org uuid.UUID, a Actor, in CreateI
 		return Share{}, e
 	}
 	if in.Duration < 60 || in.Duration > p.MaxDuration {
-		return Share{}, invalid("Duration exceeds organization policy")
+		return Share{}, invalid("The lifetime must be 1 minute to your organization's maximum of " + humanDuration(p.MaxDuration) + ".")
 	}
 	if e = s.validateSubjects(ctx, tx, org, a.ID, p, in.Grants); e != nil {
 		return Share{}, e
@@ -205,7 +205,7 @@ func (s *Service) Create(ctx context.Context, org uuid.UUID, a Actor, in CreateI
 	}
 	return s.Get(ctx, org, r.ID, a)
 }
-func apiQuota() error { return apierr.New(429, "beam_quota_reached", "Publisher share quota reached") }
+func apiQuota() error { return apierr.New(429, "beam_quota_reached", "You've reached your organization's limit of active shares. Stop a share to start another.") }
 func (s *Service) decorate(ctx context.Context, q reader, r Share, a Actor, owner bool) (Share, error) {
 	e := q.QueryRow(ctx, `SELECT name,email FROM users WHERE id=$1`, r.PublisherID).Scan(&r.PublisherName, &r.PublisherEmail)
 	if e != nil {
@@ -241,10 +241,40 @@ func (s *Service) decorate(ctx context.Context, q reader, r Share, a Actor, owne
 		if e = rows.Err(); e != nil {
 			return r, e
 		}
+		if r.Reviewers, e = s.reviewerNames(ctx, q, r); e != nil {
+			return r, e
+		}
 	} else {
 		r.Target = nil
 	}
 	return r, nil
+}
+
+// reviewerNames labels a managed share's grants for its publisher or a manager (LS-UX-4). People must still
+// be active members of the share's organization and groups must belong to it; anything else is left out
+// rather than named. The publisher's own grant is implicit and never listed.
+func (s *Service) reviewerNames(ctx context.Context, q reader, r Share) ([]Reviewer, error) {
+	rows, e := q.Query(ctx, `SELECT g.subject_kind,g.subject_id,COALESCE(u.name,ug.name),COALESCE(u.email,'')
+		FROM beam_grants g
+		LEFT JOIN users u ON g.subject_kind='user' AND u.id=g.subject_id AND u.deleted_at IS NULL AND u.status='active'
+			AND EXISTS(SELECT 1 FROM memberships m WHERE m.org_id=g.org_id AND m.user_id=u.id)
+		LEFT JOIN user_groups ug ON g.subject_kind='group' AND ug.org_id=g.org_id AND ug.id=g.subject_id
+		WHERE g.org_id=$1 AND g.share_id=$2 AND NOT (g.subject_kind='user' AND g.subject_id=$3)
+			AND (u.id IS NOT NULL OR ug.id IS NOT NULL)
+		ORDER BY g.subject_kind DESC,lower(COALESCE(u.name,ug.name)),g.subject_id`, r.OrgID, r.ID, r.PublisherID)
+	if e != nil {
+		return nil, e
+	}
+	defer rows.Close()
+	out := []Reviewer{}
+	for rows.Next() {
+		var v Reviewer
+		if e = rows.Scan(&v.SubjectKind, &v.SubjectID, &v.Name, &v.Email); e != nil {
+			return nil, e
+		}
+		out = append(out, v)
+	}
+	return out, rows.Err()
 }
 func (s *Service) Get(ctx context.Context, org, id uuid.UUID, a Actor) (Share, error) {
 	r, e := scanShare(s.pool.QueryRow(ctx, `SELECT `+shareColumns+` FROM beam_shares WHERE org_id=$1 AND id=$2`, org, id))
@@ -350,7 +380,7 @@ func (s *Service) Action(ctx context.Context, org, id uuid.UUID, a Actor, in Act
 		return r, conflict()
 	}
 	if terminal(r.State) {
-		return r, invalid("Terminal shares cannot be reopened")
+		return r, invalid("This share has ended and can't be reopened. Share the app again instead.")
 	}
 	p, e := s.policy(ctx, tx, org)
 	if e != nil {
@@ -370,7 +400,7 @@ func (s *Service) Action(ctx context.Context, org, id uuid.UUID, a Actor, in Act
 			return r, missing()
 		}
 		if r.State != "paused" {
-			return r, invalid("Only paused shares can resume")
+			return r, invalid("Only a paused share can be resumed.")
 		}
 		if _, e = s.source(ctx, tx, r, p); e != nil {
 			return r, e
@@ -378,7 +408,7 @@ func (s *Service) Action(ctx context.Context, org, id uuid.UUID, a Actor, in Act
 		state = "starting"
 	case "extend":
 		if in.ExpiresAt == nil || !in.ExpiresAt.After(r.ExpiresAt) || in.ExpiresAt.After(r.CreatedAt.Add(time.Duration(p.MaxDuration)*time.Second)) {
-			return r, invalid("Extension exceeds the original lifetime ceiling")
+			return r, invalid("Choose an expiry later than the current one and within your organization's maximum lifetime of " + humanDuration(p.MaxDuration) + " from when the share was created.")
 		}
 		if _, e = s.source(ctx, tx, r, p); e != nil {
 			return r, e

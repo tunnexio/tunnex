@@ -2478,6 +2478,16 @@ export interface components {
             /** Format: uuid */
             subject_id: string;
         };
+        /** @description LS-UX-4: a share reviewer with its display name, for the publisher and share managers only. The publisher's own implicit grant and subjects that are no longer current members or groups of the organization are omitted. */
+        BeamReviewer: {
+            /** @description user or group, as in BeamGrant. */
+            subject_kind: string;
+            /** Format: uuid */
+            subject_id: string;
+            name: string;
+            /** @description Present for people only. */
+            email?: string;
+        };
         BeamPolicyInput: {
             expected_version: number;
             enabled: boolean;
@@ -2545,6 +2555,8 @@ export interface components {
             can_manage: boolean;
             target?: components["schemas"]["BeamTarget"];
             grants?: components["schemas"]["BeamGrant"][];
+            /** @description LS-UX-4: reviewers by name, present on the same projections as grants (publisher or share manager). */
+            reviewers?: components["schemas"]["BeamReviewer"][];
             publisher_name?: string;
             /** @description LS-UX-2: the publisher's email, shown with the name as Name (email). Present only on projections the caller may already read (publisher, share manager or current reviewer). */
             publisher_email?: string;

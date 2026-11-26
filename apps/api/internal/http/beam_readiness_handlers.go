@@ -9,7 +9,7 @@ import (
 
 func beamOperator(r *http.Request) (uuid.UUID, error) {
 	if len(r.Header.Values("Authorization")) > 0 {
-		return uuid.Nil, apierr.Forbidden("human_session_required", "Installation serving settings require a human browser session")
+		return uuid.Nil, apierr.Forbidden("human_session_required", "Change these settings from the console in your browser.")
 	}
 	if len(r.URL.Query()) != 0 {
 		return uuid.Nil, apierr.BadRequest("beam_invalid", "Installation serving operations do not accept query targets")
@@ -18,7 +18,7 @@ func beamOperator(r *http.Request) (uuid.UUID, error) {
 }
 func beamOperatorService(s *beam.Service) error {
 	if s == nil {
-		return apierr.New(503, "beam_unavailable", "Local Sharing service unavailable")
+		return apierr.New(503, "beam_unavailable", "Local Sharing isn't available on this server right now. Try again shortly.")
 	}
 	return nil
 }
