@@ -447,7 +447,7 @@ describe("Vault", () => {
     expect(screen.getByRole("button", { name: "All" }).getAttribute("aria-pressed")).toBe("true");
     expect(screen.queryByRole("table", { name: "Vault credentials" })).toBeNull();
     if (path.includes("q=")) {
-      fireEvent.click(screen.getByRole("button", { name: "Clear filters" }));
+      fireEvent.click(within(heading.closest(".aa-empty-state") as HTMLElement).getByRole("button", { name: "Clear search" }));
       await screen.findByRole("heading", { name: "No credentials yet" });
     } else {
       fireEvent.click(screen.getByRole("button", { name: "Add your first credential" }));
