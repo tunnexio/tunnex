@@ -36,7 +36,7 @@ type ProjectInput struct {
 
 const projectColumns = `id,org_id,owner_id,name,target,duration_seconds,grants,version,created_at,updated_at`
 
-func projectMissing() error { return apierr.NotFound("beam_project_not_found", "Project not found") }
+func projectMissing() error { return apierr.NotFound("beam_project_not_found", "This saved project isn't available to your account.") }
 func scanProject(row pgx.Row) (Project, error) {
 	var p Project
 	var target, grants []byte
@@ -84,7 +84,7 @@ func (s *Service) Projects(ctx context.Context, org uuid.UUID, a Actor, limit, o
 func validateProject(in *ProjectInput) error {
 	in.Name = strings.TrimSpace(in.Name)
 	if in.Name == "" || !utf8.ValidString(in.Name) || utf8.RuneCountInString(in.Name) > 100 || strings.ContainsAny(in.Name, "\r\n\x00") {
-		return invalid("Project name must contain 1 to 100 characters")
+		return invalid("Project names must be 1 to 100 characters.")
 	}
 	return ValidateTarget(in.Target)
 }
@@ -105,7 +105,7 @@ func (s *Service) SaveProject(ctx context.Context, org, id uuid.UUID, a Actor, i
 		return Project{}, e
 	}
 	if in.Duration < 60 || in.Duration > p.MaxDuration {
-		return Project{}, invalid("Project duration exceeds current organization policy")
+		return Project{}, invalid("The default lifetime must be 1 minute to your organization's maximum of " + humanDuration(p.MaxDuration) + ".")
 	}
 	if e = s.validateSubjects(ctx, tx, org, a.ID, p, in.Grants); e != nil {
 		return Project{}, e
@@ -119,7 +119,7 @@ func (s *Service) SaveProject(ctx context.Context, org, id uuid.UUID, a Actor, i
 			return out, e
 		}
 		if count >= 100 {
-			return out, apierr.New(429, "beam_project_quota_reached", "At most 100 saved projects per publisher")
+			return out, apierr.New(429, "beam_project_quota_reached", "You already have 100 saved projects, the most a publisher can keep.")
 		}
 		out, e = scanProject(tx.QueryRow(ctx, `INSERT INTO beam_projects(org_id,owner_id,name,target,duration_seconds,grants) VALUES($1,$2,$3,$4,$5,$6) RETURNING `+projectColumns, org, a.ID, in.Name, target, in.Duration, grants))
 	} else {

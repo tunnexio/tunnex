@@ -22,7 +22,7 @@ func (s *Service) IssueConnector(ctx context.Context, org, id uuid.UUID, a Actor
 		return out, missing()
 	}
 	if r.Target != nil && len(r.Target.Routes) > 0 && !slices.Contains(in.Capabilities, "path_routes_v1") {
-		return out, invalid("Update the publisher: this share requires path_routes_v1 support")
+		return out, invalid("Update the CLI or desktop client: this share uses extra local services that need a newer version.")
 	}
 	if r.Version != in.ExpectedVersion {
 		return out, conflict()

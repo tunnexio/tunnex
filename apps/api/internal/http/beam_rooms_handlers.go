@@ -43,7 +43,7 @@ func serveBeamRooms(ctx context.Context, w http.ResponseWriter, r *http.Request,
 	if len(parts) >= 2 && parts[0] == "projects" {
 		id, e := uuid.Parse(parts[1])
 		if e != nil {
-			return nil, true, apierr.NotFound("beam_project_not_found", "Project not found")
+			return nil, true, apierr.NotFound("beam_project_not_found", "This saved project isn't available to your account.")
 		}
 		if len(parts) == 2 {
 			if r.Method == http.MethodGet {
@@ -71,7 +71,7 @@ func serveBeamRooms(ctx context.Context, w http.ResponseWriter, r *http.Request,
 	if len(parts) >= 3 && parts[0] == "shares" && parts[2] == "feedback" {
 		id, e := uuid.Parse(parts[1])
 		if e != nil {
-			return nil, true, apierr.NotFound("beam_share_not_found", "Share not found")
+			return nil, true, apierr.NotFound("beam_share_not_found", "This share isn't available to your account.")
 		}
 		if len(parts) == 3 {
 			if r.Method == http.MethodGet {
@@ -94,7 +94,7 @@ func serveBeamRooms(ctx context.Context, w http.ResponseWriter, r *http.Request,
 		if len(parts) == 5 && parts[4] == "screenshot" && r.Method == http.MethodGet {
 			fid, e := uuid.Parse(parts[3])
 			if e != nil {
-				return nil, true, apierr.NotFound("beam_feedback_not_found", "Feedback not found")
+				return nil, true, apierr.NotFound("beam_feedback_not_found", "This feedback isn't available to your account.")
 			}
 			shot, e := s.FeedbackScreenshot(ctx, org, id, fid, a)
 			return beamScreenshotResponse(shot), true, e

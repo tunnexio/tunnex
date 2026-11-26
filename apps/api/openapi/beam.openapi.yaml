@@ -3155,6 +3155,33 @@
           "subject_id"
         ]
       },
+      "BeamReviewer": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "LS-UX-4: a share reviewer with its display name, for the publisher and share managers only. The publisher's own implicit grant and subjects that are no longer current members or groups of the organization are omitted.",
+        "properties": {
+          "subject_kind": {
+            "type": "string",
+            "description": "user or group, as in BeamGrant."
+          },
+          "subject_id": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "name": {
+            "type": "string"
+          },
+          "email": {
+            "type": "string",
+            "description": "Present for people only."
+          }
+        },
+        "required": [
+          "subject_kind",
+          "subject_id",
+          "name"
+        ]
+      },
       "BeamPolicyInput": {
         "type": "object",
         "additionalProperties": false,
@@ -3433,6 +3460,13 @@
             "type": "array",
             "items": {
               "$ref": "#/components/schemas/BeamGrant"
+            }
+          },
+          "reviewers": {
+            "type": "array",
+            "description": "LS-UX-4: reviewers by name, present on the same projections as grants (publisher or share manager).",
+            "items": {
+              "$ref": "#/components/schemas/BeamReviewer"
             }
           },
           "publisher_name": {

@@ -39,43 +39,43 @@ func sanitizedScreenshot(raw string) ([]byte, error) {
 		return nil, nil
 	}
 	if len(raw) > base64.StdEncoding.EncodedLen(262144) {
-		return nil, invalid("Screenshot must be a PNG or JPEG of at most 256 KiB")
+		return nil, invalid("Screenshots must be PNG or JPEG files of 256 KB or less.")
 	}
 	data, e := base64.StdEncoding.Strict().DecodeString(raw)
 	if e != nil || len(data) > 262144 {
-		return nil, invalid("Screenshot must be raw PNG or JPEG base64 of at most 256 KiB")
+		return nil, invalid("Screenshots must be PNG or JPEG files of 256 KB or less.")
 	}
 	cfg, format, e := image.DecodeConfig(bytes.NewReader(data))
 	if e != nil || (format != "png" && format != "jpeg") || cfg.Width < 1 || cfg.Height < 1 || cfg.Width > 2048 || cfg.Height > 2048 || cfg.Width*cfg.Height > 4000000 {
-		return nil, invalid("Screenshot dimensions must be at most 2048 × 2048 (4 million pixels)")
+		return nil, invalid("Screenshots can be at most 2048 by 2048 pixels.")
 	}
 	img, _, e := image.Decode(bytes.NewReader(data))
 	if e != nil {
-		return nil, invalid("Invalid screenshot")
+		return nil, invalid("This screenshot can't be read. Choose a PNG or JPEG file.")
 	}
 	var out bytes.Buffer
 	if e = png.Encode(&out, img); e != nil {
-		return nil, invalid("Invalid screenshot")
+		return nil, invalid("This screenshot can't be read. Choose a PNG or JPEG file.")
 	}
 	if out.Len() > 262144 {
-		return nil, invalid("Optimized screenshot must fit within 256 KiB")
+		return nil, invalid("This screenshot is still larger than 256 KB after resizing. Crop it and try again.")
 	}
 	return out.Bytes(), nil
 }
 func validateFeedback(in *FeedbackInput) ([]byte, error) {
 	in.Body = strings.TrimSpace(in.Body)
 	if !utf8.ValidString(in.Body) || utf8.RuneCountInString(in.Body) > 4000 || strings.ContainsRune(in.Body, '\x00') {
-		return nil, invalid("Feedback must contain at most 4000 characters")
+		return nil, invalid("Feedback can be at most 4,000 characters.")
 	}
 	if in.Status != "comment" && in.Status != "approved" && in.Status != "changes_requested" {
-		return nil, invalid("Select comment, approved or changes requested")
+		return nil, invalid("Choose Comment, Approve or Request changes.")
 	}
 	shot, e := sanitizedScreenshot(in.ScreenshotBase64)
 	if e != nil {
 		return nil, e
 	}
 	if in.Status == "comment" && in.Body == "" && len(shot) == 0 {
-		return nil, invalid("Add a comment or screenshot")
+		return nil, invalid("Write a comment or attach a screenshot.")
 	}
 	return shot, nil
 }
@@ -170,14 +170,14 @@ func (s *Service) AddFeedback(ctx context.Context, org, id uuid.UUID, a Actor, i
 		return Feedback{}, e
 	}
 	if count >= 500 {
-		return Feedback{}, invalid("This preview has reached its 500 feedback item limit")
+		return Feedback{}, invalid("This share already has 500 feedback items, the most it can hold.")
 	}
 	// Per-author rate limit prevents accidental repeat submissions and attachment flooding.
 	if e = tx.QueryRow(ctx, `SELECT count(*) FROM beam_feedback WHERE org_id=$1 AND author_id=$2 AND created_at>now()-interval '1 minute'`, org, a.ID).Scan(&count); e != nil {
 		return Feedback{}, e
 	}
 	if count >= 20 {
-		return Feedback{}, invalid("Please wait before adding more feedback")
+		return Feedback{}, invalid("You're sending feedback quickly. Wait a moment, then try again.")
 	}
 	var fid uuid.UUID
 	if e = tx.QueryRow(ctx, `INSERT INTO beam_feedback(org_id,share_id,author_id,body,status,screenshot) VALUES($1,$2,$3,$4,$5,$6) RETURNING id`, org, id, a.ID, in.Body, in.Status, shot).Scan(&fid); e != nil {

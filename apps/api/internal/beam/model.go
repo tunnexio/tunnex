@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"math/big"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -81,6 +82,13 @@ type Route struct {
 	PathPrefix string `json:"path_prefix"`
 	Target     Target `json:"target"`
 }
+// Reviewer is a grant with its display name: a person's name and email, or a group's name.
+type Reviewer struct {
+	SubjectKind string    `json:"subject_kind"`
+	SubjectID   uuid.UUID `json:"subject_id"`
+	Name        string    `json:"name"`
+	Email       string    `json:"email,omitempty"`
+}
 type Grant struct {
 	SubjectKind string    `json:"subject_kind"`
 	SubjectID   uuid.UUID `json:"subject_id"`
@@ -138,6 +146,10 @@ type Share struct {
 	ExpiresAt               time.Time  `json:"expires_at"`
 	CreatedAt               time.Time  `json:"created_at"`
 	Grants                  []Grant    `json:"grants,omitempty"`
+	// LS-UX-4: who the share's reviewers are, by name, for the publisher and managers only (the same
+	// projections that carry Grants). The publisher's own implicit grant and subjects that are no longer
+	// current organization members or groups are left out.
+	Reviewers               []Reviewer `json:"reviewers,omitempty"`
 	CanManage               bool       `json:"can_manage"`
 	CanOpen                 bool       `json:"can_open"`
 	ConnectorID             uuid.UUID  `json:"-"`
@@ -247,15 +259,15 @@ type Quota struct {
 }
 
 func deny() error {
-	return apierr.Forbidden("beam_authority_unavailable", "Local Sharing authority is unavailable")
+	return apierr.Forbidden("beam_authority_unavailable", "Your Local Sharing permission could not be confirmed. Sign in again in the CLI or desktop client and try again.")
 }
 func unavailable() error {
-	return apierr.New(503, "beam_unavailable", "Local Sharing is not configured or enabled")
+	return apierr.New(503, "beam_unavailable", "Local Sharing is turned off for this organization or isn't set up on this server.")
 }
 func conflict() error {
-	return apierr.Conflict("beam_version_conflict", "Share or policy changed; refresh and retry")
+	return apierr.Conflict("beam_version_conflict", "This share or the sharing policy changed. Refresh and try again.")
 }
-func missing() error           { return apierr.NotFound("beam_share_not_found", "Share not found") }
+func missing() error           { return apierr.NotFound("beam_share_not_found", "This share isn't available to your account.") }
 func invalid(msg string) error { return apierr.BadRequest("beam_invalid", msg) }
 func terminal(state string) bool {
 	return state == "stopped" || state == "expired" || state == "revoked"
@@ -264,12 +276,12 @@ func hash(v string) []byte { h := sha256.Sum256([]byte(v)); return h[:] }
 func digest(v any) string  { b, _ := json.Marshal(v); return hex.EncodeToString(hash(string(b))) }
 func ValidateTarget(t Target) error {
 	if len(t.Routes) > 8 {
-		return invalid("At most eight routes are supported")
+		return invalid("You can add up to 8 local services.")
 	}
 	seen := map[string]bool{}
 	for _, r := range t.Routes {
 		if !beamtransport.ValidPathPrefix(r.PathPrefix) || seen[r.PathPrefix] || len(r.Target.Routes) > 0 {
-			return invalid("Invalid or duplicate route prefix")
+			return invalid("Each local service needs its own path starting with /.")
 		}
 		seen[r.PathPrefix] = true
 		if e := ValidateTarget(r.Target); e != nil {
@@ -277,13 +289,13 @@ func ValidateTarget(t Target) error {
 		}
 	}
 	if (t.Protocol != "http" && t.Protocol != "https") || (t.Address != "127.0.0.1" && t.Address != "::1") || t.Port < 1 || t.Port > 65535 || len(t.CAPEM) > 16384 || strings.ContainsAny(t.CAPEM, "\x00") {
-		return invalid("Select HTTP or HTTPS and an exact numeric loopback address and valid port")
+		return invalid("Use HTTP or HTTPS on 127.0.0.1 or ::1 with a port from 1 to 65535.")
 	}
 	if t.CAPEM != "" && !x509.NewCertPool().AppendCertsFromPEM([]byte(t.CAPEM)) {
-		return invalid("Invalid local HTTPS trust anchor")
+		return invalid("The local certificate authority file isn't a valid PEM certificate.")
 	}
 	if t.Protocol == "http" && t.CAPEM != "" {
-		return invalid("HTTP targets do not accept a trust anchor")
+		return invalid("A certificate authority file only applies to HTTPS apps.")
 	}
 	return nil
 }
@@ -352,4 +364,26 @@ func (r Share) MarshalJSON() ([]byte, error) {
 		alias
 		Grants *[]Grant `json:"grants,omitempty"`
 	}{alias(r), grants})
+}
+
+// LS-UX-4: lifetimes in refusals read as the console and desktop client say them ("1 hour", "1 hour 30 minutes").
+func humanDuration(seconds int) string {
+	count := func(n int, unit string) string {
+		if n == 1 {
+			return "1 " + unit
+		}
+		return strconv.Itoa(n) + " " + unit + "s"
+	}
+	total := (seconds + 30) / 60
+	if total < 0 {
+		total = 0
+	}
+	hours, minutes := total/60, total%60
+	if hours == 0 {
+		return count(minutes, "minute")
+	}
+	if minutes == 0 {
+		return count(hours, "hour")
+	}
+	return count(hours, "hour") + " " + count(minutes, "minute")
 }

@@ -532,6 +532,17 @@ type BeamReadinessInput struct {
 	ExpectedConfigurationVersion string `json:"expected_configuration_version"`
 }
 
+// BeamReviewer LS-UX-4: a share reviewer with its display name, for the publisher and share managers only. The publisher's own implicit grant and subjects that are no longer current members or groups of the organization are omitted.
+type BeamReviewer struct {
+	// Email Present for people only.
+	Email     *string            `json:"email,omitempty"`
+	Name      string             `json:"name"`
+	SubjectId openapi_types.UUID `json:"subject_id"`
+
+	// SubjectKind user or group, as in BeamGrant.
+	SubjectKind string `json:"subject_kind"`
+}
+
 // BeamShare defines model for BeamShare.
 type BeamShare struct {
 	AuthorityVersion int                   `json:"authority_version"`
@@ -551,10 +562,13 @@ type BeamShare struct {
 	PublisherEmail *string            `json:"publisher_email,omitempty"`
 	PublisherId    openapi_types.UUID `json:"publisher_id"`
 	PublisherName  *string            `json:"publisher_name,omitempty"`
-	State          BeamShareState     `json:"state"`
-	Target         *BeamTarget        `json:"target,omitempty"`
-	Url            string             `json:"url"`
-	Version        int                `json:"version"`
+
+	// Reviewers LS-UX-4: reviewers by name, present on the same projections as grants (publisher or share manager).
+	Reviewers *[]BeamReviewer `json:"reviewers,omitempty"`
+	State     BeamShareState  `json:"state"`
+	Target    *BeamTarget     `json:"target,omitempty"`
+	Url       string          `json:"url"`
+	Version   int             `json:"version"`
 }
 
 // BeamShareConnectivity defines model for BeamShare.Connectivity.

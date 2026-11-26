@@ -161,19 +161,40 @@ function peopleAndGroups(grants: BeamGrant[]): string {
   const people = grants.filter(grant => grant.subject_kind === "user").length, groups = grants.length - people;
   return [people && beamCount(people, "person", "people"), groups && beamCount(groups, "group")].filter(Boolean).join(" and ");
 }
-/** The list's Reviewers column: counts only (names need the reviewer directory, which the list does not load). */
+/** Reviewer counts without the publisher ("1 person and 1 group"), for places without names. */
 export function beamReviewerCount(share: Pick<BeamShare, "grants" | "publisher_id">): string {
   if (!share.grants) return "Not reported";
   return peopleAndGroups(beamReviewerGrants(share)) || "None yet";
 }
+/**
+ * The list's Reviewers column, as the desktop client says it: "reviewer, Developers group +1". Names come
+ * from the server's `reviewers` projection (publisher and managers only). An older server without it, or
+ * reviewers the server no longer names, fall back to counts or "+N".
+ */
+export function beamReviewerNames(share: Pick<BeamShare, "grants" | "publisher_id" | "reviewers">, shown = 2): string {
+  if (!share.grants) return "Not reported";
+  const grants = beamReviewerGrants(share);
+  if (!grants.length) return "None yet";
+  if (!share.reviewers) return peopleAndGroups(grants);
+  const named = share.reviewers.filter(reviewer => grants.some(grant => grant.subject_kind === reviewer.subject_kind && grant.subject_id === reviewer.subject_id));
+  if (!named.length) return peopleAndGroups(grants);
+  const labels = named.slice(0, shown).map(reviewer => reviewer.subject_kind === "group" ? `${reviewer.name} group` : reviewer.name || reviewer.email || "Reviewer");
+  const more = grants.length - labels.length;
+  return `${labels.join(", ")}${more ? ` +${more}` : ""}`;
+}
 /** Reviewers by name, as the desktop client shows them: "Alice (alice@x), Developers group · 3 members +2 more". */
-export function beamReviewerSummary(share: Pick<BeamShare, "grants" | "publisher_id">, audience: BeamAudience | null, shown = 3): string {
+export function beamReviewerSummary(share: Pick<BeamShare, "grants" | "publisher_id" | "reviewers">, audience: BeamAudience | null, shown = 3): string {
   const grants = beamReviewerGrants(share);
   if (!grants.length) return "No reviewers yet";
-  if (!audience) return peopleAndGroups(grants);
+  // LS-UX-4: names come from the reviewer choices (with group sizes) or, failing that, the share's own
+  // `reviewers` projection; counts only when neither is available.
+  const named = (grant: BeamGrant) => share.reviewers?.find(reviewer => reviewer.subject_kind === grant.subject_kind && reviewer.subject_id === grant.subject_id);
+  if (!audience && !share.reviewers) return peopleAndGroups(grants);
   const names = grants.flatMap(grant => {
-    if (grant.subject_kind === "user") { const user = audience.users.find(candidate => candidate.id === grant.subject_id); return user ? [personLabel({ name: user.name, email: user.email })] : []; }
-    const group = audience.groups.find(candidate => candidate.id === grant.subject_id);
+    const known = named(grant);
+    if (grant.subject_kind === "user") { const user = audience?.users.find(candidate => candidate.id === grant.subject_id); return user ? [personLabel({ name: user.name, email: user.email })] : known ? [personLabel({ name: known.name, email: known.email })] : []; }
+    const group = audience?.groups.find(candidate => candidate.id === grant.subject_id);
+    if (!group && known) return [`${known.name} group`];
     if (!group) return [];
     const size = typeof group.member_count === "number" && Number.isFinite(group.member_count) && group.member_count >= 0 ? ` · ${beamCount(group.member_count, "member")}` : "";
     return [`${group.name} group${size}`];

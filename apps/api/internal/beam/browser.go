@@ -48,7 +48,7 @@ func secret(prefix string) (string, error) {
 }
 func (s *Service) Pending(ctx context.Context, b Binding, nonce, target string) (time.Time, error) {
 	if !relative(target) {
-		return time.Time{}, invalid("Invalid relative target")
+		return time.Time{}, invalid("This sharing link is invalid. Open the original share link again.")
 	}
 	nh, e := nonceHash(nonce)
 	if e != nil {
@@ -200,7 +200,7 @@ func (s *Service) browser(ctx context.Context, q reader, b Binding, tokenHash []
 	var until time.Time
 	e = q.QueryRow(ctx, `SELECT user_id,parent_session_id,expires_at FROM beam_browser_sessions WHERE org_id=$1 AND share_id=$2 AND token_hash=$3 AND expires_at>now()`, b.OrgID, b.AppID, tokenHash).Scan(&user, &parent, &until)
 	if errors.Is(e, pgx.ErrNoRows) {
-		return r, time.Time{}, apierr.Forbidden("beam_session_invalid", "Local Sharing browser session expired")
+		return r, time.Time{}, apierr.Forbidden("beam_session_invalid", "Your access to this shared app expired. Open the share link again.")
 	}
 	if e != nil {
 		return r, time.Time{}, e
@@ -210,7 +210,7 @@ func (s *Service) browser(ctx context.Context, q reader, b Binding, tokenHash []
 	}
 	parentUntil, e := s.parent(ctx, q, r.OrgID, user, parent, p.RequireMFA)
 	if e != nil {
-		return r, time.Time{}, apierr.Forbidden("beam_session_invalid", "Local Sharing browser login is no longer valid")
+		return r, time.Time{}, apierr.Forbidden("beam_session_invalid", "Your sign-in for this shared app is no longer valid. Open the share link again.")
 	}
 	for _, t := range []time.Time{until, parentUntil} {
 		if t.Before(deadline) {
@@ -228,7 +228,7 @@ func (s *Service) Authorize(ctx context.Context, b Binding, token string, m Meta
 	started := time.Now()
 	var out Decision
 	if !strings.HasPrefix(token, "tnxbs_") || len(token) != 49 {
-		return out, apierr.Forbidden("beam_session_invalid", "Local Sharing browser session is invalid")
+		return out, apierr.Forbidden("beam_session_invalid", "Your sign-in for this shared app is no longer valid. Open the share link again.")
 	}
 	if !relative(m.Path) || len(m.Method) > 12 {
 		return out, deny()
@@ -261,7 +261,7 @@ func (s *Service) Authorize(ctx context.Context, b Binding, token string, m Meta
 		return out, e
 	}
 	if count >= 32 {
-		return out, apierr.New(429, "beam_stream_capacity", "Share stream capacity reached")
+		return out, apierr.New(429, "beam_stream_capacity", "This shared app has too many live connections right now. Close some of its tabs and try again.")
 	}
 	until = capLeaseAt(until, started)
 	if !until.After(time.Now()) {

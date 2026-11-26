@@ -100,11 +100,11 @@ func (s *Service) UpdateDomainSettings(ctx context.Context, actor uuid.UUID, in 
 	}
 	if in.OperatorEnabled || in.BaseDomain != "" || in.ProxyURL != "" {
 		if !(&Service{config: Config{BaseDomain: in.BaseDomain, ProxyURL: in.ProxyURL, PortalURL: s.config.PortalURL, DomainReady: true}}).domainReady() {
-			return DomainSettings{}, invalid("Configure a valid dedicated domain and HTTPS connector endpoint")
+			return DomainSettings{}, invalid("Enter a valid sharing domain of its own and an https:// connector URL without a path.")
 		}
 	}
 	if in.OperatorEnabled && (s.inspector == nil || !filepath.IsAbs(s.config.RestoreMarker)) {
-		return DomainSettings{}, invalid("Configure the installation restore barrier and trusted readiness inspector before enabling Local Sharing")
+		return DomainSettings{}, invalid("This server's Local Sharing setup is incomplete. Run tunnex-local-sharing status on the server to see what is missing, then try again.")
 	}
 	tx, e := s.pool.Begin(ctx)
 	if e != nil {
@@ -123,7 +123,7 @@ func (s *Service) UpdateDomainSettings(ctx context.Context, actor uuid.UUID, in 
 		return DomainSettings{}, e
 	}
 	if r.version != in.ExpectedVersion {
-		return DomainSettings{}, apierr.Conflict("beam_settings_version_conflict", "Installation settings changed; reload before saving")
+		return DomainSettings{}, apierr.Conflict("beam_settings_version_conflict", "These settings were changed elsewhere. Reload them before saving.")
 	}
 	if in.BaseDomain != "" {
 		appBase := s.config.AppAccessBaseDomain
@@ -190,17 +190,17 @@ func (s *Service) CheckDomainReadiness(ctx context.Context, expected string) (be
 	}
 	c := s.probeConfig(r)
 	if expected != beamreadiness.Version(c) {
-		return beamreadiness.View{}, apierr.Conflict("beam_readiness_version_conflict", "Serving configuration changed; reload before checking")
+		return beamreadiness.View{}, apierr.Conflict("beam_readiness_version_conflict", "These settings were changed elsewhere. Reload them before checking again.")
 	}
 	if s.inspector == nil {
 		return beamreadiness.View{}, unavailable()
 	}
 	v, reason := s.inspector.Check(ctx, c, expected)
 	if reason == "busy" {
-		return v, apierr.New(429, "beam_readiness_busy", "A readiness check is already running")
+		return v, apierr.New(429, "beam_readiness_busy", "A check is already running. Wait a moment, then try again.")
 	}
 	if reason != "" {
-		return v, apierr.Conflict("beam_readiness_version_conflict", "Serving configuration changed; reload before checking")
+		return v, apierr.Conflict("beam_readiness_version_conflict", "These settings were changed elsewhere. Reload them before checking again.")
 	}
 	v.SettingsVersion = r.version
 	return s.persistReadiness(ctx, r, v)
@@ -219,7 +219,7 @@ func (s *Service) persistReadiness(ctx context.Context, observed installation, v
 		return v, e
 	}
 	if current.version != observed.version || beamreadiness.Version(s.probeConfig(current)) != v.ConfigurationVersion {
-		return v, apierr.Conflict("beam_readiness_version_conflict", "Serving configuration changed during checking")
+		return v, apierr.Conflict("beam_readiness_version_conflict", "These settings changed while the check ran. Reload them and check again.")
 	}
 	passed := v.Passed && v.CheckedAt != nil && v.ExpiresAt != nil && v.ExpiresAt.After(time.Now()) && s.probeConfig(current).Asserted
 	raw, _ := json.Marshal(v.Checks)
