@@ -6,6 +6,7 @@ import { api, apiErrorCode, apiErrorMessage, loadOne } from "../lib/api";
 import { compactDateTime } from "../lib/format";
 import { announceMCPApprovalCountChanged } from "../lib/useMCPApprovalCount";
 import { useOrg } from "../lib/useOrg";
+import type { NamedMCPServer } from "../lib/mcpServerName";
 import { ApprovalArguments, approvalOutcome, approvalTimeLeft } from "../components/AgentMCPControls";
 import { Button, Loading, Modal, PageHeader, RefreshButton } from "../components/ui";
 
@@ -39,6 +40,16 @@ function ApprovalsInbox({ orgId }: { orgId: string }) {
   const [notice, setNotice] = useState<string | null>(null);
   const [olderBusy, setOlderBusy] = useState(false);
   const [olderError, setOlderError] = useState<string | null>(null);
+  // The organization's MCP servers, so a request names its server as the administrator named it.
+  const [named, setNamed] = useState<NamedMCPServer[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    void loadOne(() => api.GET("/api/v1/organizations/{orgId}/agent-mcp-profiles", { params: { path: { orgId } } })).then((result) => {
+      if (cancelled || !result.ok || !Array.isArray(result.data)) return;
+      setNamed(result.data.filter((profile) => !profile.archived_at).map((profile) => ({ endpoint: profile.endpoint, profile_name: profile.name, server_name: profile.server_name ?? "" })));
+    });
+    return () => { cancelled = true; };
+  }, [orgId, version]);
   const deciding = useRef(false);
   deciding.current = busy !== null || approving !== null || denying !== null;
 
@@ -98,7 +109,12 @@ function ApprovalsInbox({ orgId }: { orgId: string }) {
   const items = state.kind === "ready" ? state.items : [];
   const pending = items.filter((item) => item.request.state === "pending");
   const earlier = items.filter((item) => item.request.state !== "pending");
-  const serverOf = (item: Item) => item.mcp_server_name || item.request.server_name;
+  // The administrator's name for the server; then its address name; the server's own name only as a last resort.
+  const serverOf = (item: Item) => {
+    const address = item.request.endpoint.trim();
+    const profile = named.find((server) => item.mcp_server_name && server.server_name === item.mcp_server_name) ?? named.find((server) => server.endpoint.trim() === address);
+    return profile?.profile_name || item.mcp_server_name || item.request.server_name;
+  };
   const who = (item: Item) => <dl className="mt-2 grid min-w-0 gap-x-6 gap-y-1 text-sm sm:grid-cols-2">
     <div className="min-w-0"><dt className="text-xs text-ink-secondary">Agent</dt><dd className="break-words"><Link className="underline" to={`/agents/${encodeURIComponent(item.request.device_id)}?tab=mcp`}>{item.agent_name}</Link></dd></div>
     <div className="min-w-0"><dt className="text-xs text-ink-secondary">Agent owner</dt><dd className="break-all">{item.owner_email || "No owner"}</dd></div>

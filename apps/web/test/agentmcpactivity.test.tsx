@@ -136,3 +136,14 @@ it("never shows a failed load as an empty list", async () => {
   fireEvent.click(screen.getByRole("button", { name: "Retry MCP calls" }));
   expect(await screen.findByText("list_invoices")).toBeTruthy();
 });
+
+it("names each call's server as the administrator named it, in the list and in the server filter", async () => {
+  get.mockResolvedValue({ data: { items: [call({}), call({ id: "act-9", tool_name: "old_tool", endpoint: "http://10.0.0.77:8080/mcp", server_name: "gone-server" })], next_cursor: null } });
+  render(<AgentMCPToolActivityPanel orgId="org" deviceId="agent" servers={[{ endpoint: "http://10.0.0.5:8080/mcp", profile_name: "Billing database", server_name: "billing-db" }]} />);
+  await screen.findByRole("table", { name: "MCP calls" });
+  expect(row("list_invoices").getByText("Billing database")).toBeTruthy();
+  expect(row("list_invoices").queryByText("billing")).toBeNull();
+  // A call to a server that is no longer connected keeps the name that server reported.
+  expect(row("old_tool").getByText("gone-server")).toBeTruthy();
+  expect(within(screen.getByLabelText("Server")).getAllByRole("option").map((option) => option.textContent)).toEqual(["All servers", "Billing database"]);
+});

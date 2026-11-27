@@ -18,6 +18,7 @@ import { AgentHostRemoval } from "../components/AgentHostRemoval";
 import { AgentMCPServers } from "../components/AgentMCPServers";
 import { AgentAccessPanel } from "../components/AgentAccess";
 import { NO_TUNNEL_DNS_NOTE } from "../lib/agentview";
+import { mcpServerName, type NamedMCPServer } from "../lib/mcpServerName";
 import { ResourceSummary } from "../components/ResourceSummary";
 import { FeatureEnableInline } from "../components/FeatureEnableInline";
 import { useAgentFeatures } from "../lib/agentFeatures";
@@ -76,10 +77,15 @@ function ReadState<T>({ state, children, onRetry, title = "Information unavailab
   return <>{children(state.data)}</>;
 }
 
-function ObservedMCP({ data }: { data: MCPInventory }) {
+function ObservedMCP({ data, named }: { data: MCPInventory; /** The agent's MCP servers as the administrator named them. */ named?: readonly NamedMCPServer[] }) {
   const servers = Array.isArray(data.snapshot.servers) ? data.snapshot.servers.map(value => value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {}) : undefined;
   return <Panel title="What the gateway sees"><p className="agent-detail-context">Read {age(data.observed_at)}{data.source === "gateway" ? " by the gateway" : data.source === "agent" ? " by the agent's own machine" : ""}. This is the server&apos;s tool list as last read, not a live check, and it holds no secrets.</p>
-    {servers ? servers.length ? <ul className="agent-detail-observed-servers">{servers.map((server, index) => <li key={index}><div><strong>{typeof server.server_name === "string" && server.server_name ? server.server_name : "Unnamed server"}</strong>{typeof server.endpoint === "string" && server.endpoint && <small>{server.endpoint}</small>}</div><span>{Array.isArray(server.tools) ? `${server.tools.length} tool${server.tools.length === 1 ? "" : "s"}` : "Tools not reported"}</span></li>)}</ul> : <p className="agent-detail-context">No servers were seen at the last read.</p> : <p className="agent-detail-context">The last read did not include a server list.</p>}
+    {servers ? servers.length ? <ul className="agent-detail-observed-servers">{servers.map((server, index) => {
+      // The administrator's name leads. What the server calls itself is detail, shown only here.
+      const reported = typeof server.server_name === "string" ? server.server_name : "", address = typeof server.endpoint === "string" ? server.endpoint : "";
+      const name = mcpServerName(named, address, reported) || "Unnamed server";
+      return <li key={index}><div><strong>{name}</strong>{address && address !== name && <small>{address}</small>}{reported && reported !== name && <small>The server calls itself {reported}</small>}</div><span>{Array.isArray(server.tools) ? `${server.tools.length} tool${server.tools.length === 1 ? "" : "s"}` : "Tools not reported"}</span></li>;
+    })}</ul> : <p className="agent-detail-context">No servers were seen at the last read.</p> : <p className="agent-detail-context">The last read did not include a server list.</p>}
     <details className="agent-detail-disclosure"><summary>View the raw tool list</summary><pre>{JSON.stringify(data.snapshot, null, 2)}</pre></details>
   </Panel>;
 }
@@ -250,6 +256,8 @@ function AgentDetailWorkspace({ fixture, agentIdOverride }: { fixture?: AgentDet
     ...(data.permissions.revoke ? [{ key: "remove", label: "Remove agent", danger: true, disabledReason: actionBlock, onSelect: () => { setMutationError(""); setRemoveOpen(true); } }] : []),
   ] : [];
   const tabIndex = tabs.indexOf(tab);
+  // One name per server everywhere on this page: the one the administrator gave it, found by its address.
+  const namedServers = effectiveMCP.kind === "ready" ? effectiveMCP.data.servers : undefined;
   return <div className="agent-detail-workspace">
     <nav className="agent-detail-breadcrumb" aria-label="AI Agent breadcrumb"><Link to="/agents">AI Agents</Link><span aria-hidden="true">/</span><span aria-current="page">{data?.name ?? "Agent"}</span></nav>
     {data && <header className="agent-detail-header"><div><h1>{data.name}</h1>{detailSubtitle && <p>{detailSubtitle}</p>}</div><span className={`agent-detail-status agent-detail-status-${data.status}`}>{data.status}</span><RefreshButton label="Refresh agent" disabled={busy} onClick={refreshAgent} /><AppAccessRowMenu label={`Agent actions for ${data.name}`} actions={actions} /></header>}
@@ -299,11 +307,11 @@ function AgentDetailWorkspace({ fixture, agentIdOverride }: { fixture?: AgentDet
               {!perServer && <Link className="agent-detail-text-link" to={`/mcp${value.group_id ? `?group=${value.group_id}` : ""}`}>Manage MCP servers</Link>}
             </Panel>;
           }}</ReadState>
-          <Panel title="Approvals"><AgentMCPToolApprovalPanel orgId={org.id} deviceId={agentId} canApprove={can(myRole, "agent_mcp_tool_approval:approve")} /></Panel>
+          <Panel title="Approvals"><AgentMCPToolApprovalPanel orgId={org.id} deviceId={agentId} canApprove={can(myRole, "agent_mcp_tool_approval:approve")} servers={namedServers} /></Panel>
           {inventory.kind === "error" && inventory.code === "mcp_inventory_not_found" ? <div className="agent-detail-empty" role="status"><h3>The gateway has not read this agent&apos;s MCP servers yet.</h3><p>Once the agent is connected and has a server, the gateway reads the server&apos;s tool list about every 30 seconds. Sign-in settings appear here after that.</p></div> : <ReadState state={inventory} onRetry={refreshAgent} title="MCP tool list unavailable" retryLabel="Retry MCP tool list">{(value) => <>
             {effectiveMCP.kind === "ready" && !Array.isArray(effectiveMCP.data.servers) && <Panel title="MCP tool policy"><AgentMCPToolPolicyPanel orgId={org.id} deviceId={agentId} inventory={value} canManage={can(myRole, "agent_mcp_tool_policy:manage")} enforcement={effectiveMCP.data.enforcement} /></Panel>}
             <MCPAuthentication orgId={org.id} deviceId={agentId} inventory={value} canManage={agent.permissions.manage} />
-            <ObservedMCP data={value} />
+            <ObservedMCP data={value} named={namedServers} />
           </>}</ReadState>}
         </>}
         {tab === "access" && <>

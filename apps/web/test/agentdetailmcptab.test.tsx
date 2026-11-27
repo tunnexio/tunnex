@@ -15,6 +15,8 @@ import AgentDetail from "../src/pages/AgentDetail";
 
 const endpoint = "http://10.0.0.5:8080/mcp";
 const agent = { device_id: "agent-a", name: "builder", environment: "prod", runtime: "python", labels: {}, owner_id: "user-a", owner_email: "owner@example.test", managing_group_id: null, managing_group_name: null, status: "active", last_handshake_at: null, permissions: { view_privileged: true, manage: true, assign: true, grant_access: true, revoke: true, rotate_credentials: true } };
+const billing = { profile_id: "profile-billing", profile_name: "Billing database", server_name: "billing-db", endpoint, group_id: "group-1", group_name: "Finance agents", default: true, local_url: "http://127.0.0.1:17100/billing-db", policy_source: "group" };
+const connected = (over: Record<string, unknown> = {}) => ({ assigned: true, enforcement: "gateway", profile_id: "profile-billing", profile_name: "Billing database", endpoint, group_id: "group-1", group_name: "Finance agents", servers: [billing], ...over });
 let role = "owner";
 let effective: Record<string, unknown> = { assigned: false };
 let approvals: unknown[] = [];
@@ -63,5 +65,36 @@ describe("agent MCP tab, agent with no MCP server yet", () => {
     open("mcp");
     expect((await screen.findByRole("link", { name: "Manage MCP servers" })).getAttribute("href")).toBe("/mcp?group=group-1");
     expect(screen.queryByRole("button", { name: "Connect MCP server" })).toBeNull();
+  });
+});
+
+describe("one name for a server across the agent page", () => {
+  // The administrator named the server "Billing database" (address name billing-db). The server calls itself "acme-backoffice".
+  const request = { id: "req-1", device_id: "agent-a", policy_version: 1, endpoint, server_name: "acme-backoffice", tool_name: "refund_order", input_schema_hash: "h", state: "pending", requested_at: "2026-11-27T09:59:00Z", expires_at: "2099-01-01T00:00:00Z", arguments: {}, arguments_truncated: false };
+
+  it("uses the administrator's name in the Approvals panel, and the server's own name only as detail under What the gateway sees", async () => {
+    effective = connected();
+    approvals = [request, { ...request, id: "req-2", state: "expired", tool_name: "close_order" }];
+    open("mcp");
+    expect(await screen.findByRole("listitem", { name: "refund_order on Billing database" })).toBeTruthy();
+    expect(screen.getByRole("listitem", { name: "close_order on Billing database" })).toBeTruthy();
+    const seen = within((await screen.findByRole("heading", { name: "What the gateway sees" })).closest("section") as HTMLElement);
+    expect(seen.getByText("Billing database").tagName).toBe("STRONG");
+    expect(seen.getByText("The server calls itself acme-backoffice").tagName).toBe("SMALL");
+    // Outside that section (and its raw tool list) the self-reported name is not shown at all.
+    const stage = document.getElementById("agent-detail-stage") as HTMLElement;
+    const elsewhere = stage.cloneNode(true) as HTMLElement;
+    [...elsewhere.querySelectorAll("section")].find((section) => section.querySelector("h3")?.textContent === "What the gateway sees")?.remove();
+    expect(elsewhere.textContent).not.toContain("acme-backoffice");
+  });
+
+  it("uses the administrator's name in the Activity list and its server filter", async () => {
+    effective = connected();
+    activity = [{ id: "act-1", device_id: "agent-a", endpoint, server_name: "acme-backoffice", method: "tools/call", tool_name: "refund_order", decision: "allow", reason: "", result_status: "ok", approval_request_id: null, occurred_at: "2026-11-27T10:00:00Z" }];
+    open("activity");
+    const row = within((await screen.findByText("refund_order")).closest("tr") as HTMLElement);
+    expect(row.getByText("Billing database")).toBeTruthy();
+    expect(within(screen.getByLabelText("Server")).getByRole("option", { name: "Billing database" })).toBeTruthy();
+    expect(document.body.textContent).not.toContain("acme-backoffice");
   });
 });

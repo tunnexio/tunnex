@@ -93,7 +93,7 @@ describe("an agent's MCP servers", () => {
     expect(within(card).getByText("This agent's own policy")).toBeTruthy();
     expect(within(card).getByText(/It overrides the policy of Finance agents: changes to the group's policy do not reach this agent\./)).toBeTruthy();
     // The editor shown is the agent's own policy for this server, not the group's.
-    await within(card).findByRole("list", { name: "Tools on billing" });
+    await within(card).findByRole("list", { name: "Tools on Billing tools" });
     expect(chosen(card, "refund_payment")).toBe("Allow");
     expect(get.mock.calls.some(([path]) => path === groupPolicyPath)).toBe(false);
     fireEvent.click(within(card).getByRole("button", { name: "Use the group's policy" }));

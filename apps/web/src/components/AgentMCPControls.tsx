@@ -3,6 +3,7 @@ import { Link } from "react-router-dom";
 import type { components } from "@tunnex/shared";
 import { api, apiErrorCode, apiErrorMessage, loadOne, type Loaded } from "../lib/api";
 import { compactDateTime } from "../lib/format";
+import { mcpServerName, type NamedMCPServer } from "../lib/mcpServerName";
 import { Badge, Button, DataTable, Field, Input, Modal } from "./ui";
 import { MCPToolRows, modeSummary, parseRate, type MCPToolMode, type MCPToolRow } from "./MCPToolSettings";
 
@@ -51,7 +52,7 @@ export function ApprovalArguments({ item }: { item: Approval }) {
   </div>;
 }
 
-export function AgentMCPToolApprovalPanel({ orgId, deviceId, canApprove }: { orgId: string; deviceId: string; canApprove: boolean }) {
+export function AgentMCPToolApprovalPanel({ orgId, deviceId, canApprove, servers }: { orgId: string; deviceId: string; canApprove: boolean; /** The agent's MCP servers, so each request names its server as the administrator did. */ servers?: readonly NamedMCPServer[] }) {
   const [requests, setRequests] = useState<Loaded<Approval[]> | null>(null); const [busy, setBusy] = useState<string | null>(null); const [confirmation, setConfirmation] = useState<Approval | null>(null); const [mutationError, setMutationError] = useState<string | null>(null);
   const [denying, setDenying] = useState<string | null>(null); const [denyError, setDenyError] = useState<string | null>(null); const [notice, setNotice] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
@@ -83,14 +84,15 @@ export function AgentMCPToolApprovalPanel({ orgId, deviceId, canApprove }: { org
     if (result.error || !result.data) { setDenyError("Could not deny this request. Refresh and try again."); return; }
     setDenying(null); load();
   };
-  const title = (item: Approval) => <div className="min-w-0 break-words"><span className="font-mono text-ink-heading">{item.tool_name}</span> <span className="text-slate-400">on {item.server_name}</span></div>;
+  const serverOf = (item: Approval) => mcpServerName(servers, item.endpoint, item.server_name);
+  const title = (item: Approval) => <div className="min-w-0 break-words"><span className="font-mono text-ink-heading">{item.tool_name}</span> <span className="text-slate-400">on {serverOf(item)}</span></div>;
   return <div data-testid="agent-mcp-tool-approvals" className="text-xs text-slate-300">
     <p className="text-slate-500">When a tool is set to Ask first, the agent&apos;s call waits here. Approving lets that one call run once, with exactly the arguments shown. <Link className="underline" to="/approvals">See every agent&apos;s requests in Approvals</Link>.</p>
     {notice && <p role="status" className="mt-2 text-slate-300">{notice}</p>}
     {!canApprove ? <p role="status" className="mt-2 text-slate-500">You do not have permission to review or approve step-up requests.</p> : requests === null ? <p role="status" className="mt-2 text-slate-500">Loading step-up requests…</p> : !requests.ok ? <><p role="alert" className="mt-2 text-danger">Step-up requests could not be loaded: {requests.error}</p><Button size="sm" variant="ghost" className="mt-2" onClick={load}>Retry</Button></> : items.length === 0 ? <p className="mt-2 text-slate-500">No step-up requests.</p> : <>
       {pending.length === 0 ? <p className="mt-2 text-slate-500">Nothing is waiting for a decision.</p> : <ul aria-label="Waiting for a decision" className="mt-2 grid gap-3">{pending.map((item) => {
         const left = approvalTimeLeft(item.expires_at, now);
-        return <li key={item.id} aria-label={`${item.tool_name} on ${item.server_name}`} className="min-w-0 border-t border-white/10 pt-3">
+        return <li key={item.id} aria-label={`${item.tool_name} on ${serverOf(item)}`} className="min-w-0 border-t border-white/10 pt-3">
           <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">{title(item)}{left && <span className="text-slate-400">{left}</span>}</div>
           <ApprovalArguments item={item} />
           {denying === item.id ? <div className="mt-2 flex flex-wrap items-center gap-2"><span>Deny this call? The agent is told no and has to ask again.</span><Button size="sm" variant="danger" disabled={busy !== null} onClick={() => void deny(item)}>{busy === item.id ? "Denying…" : "Deny call"}</Button><Button size="sm" variant="ghost" disabled={busy !== null} onClick={() => { setDenying(null); setDenyError(null); }}>Keep waiting</Button></div>
@@ -98,9 +100,9 @@ export function AgentMCPToolApprovalPanel({ orgId, deviceId, canApprove }: { org
           {denying === item.id && denyError && <p role="alert" className="mt-2 text-danger">{denyError}</p>}
         </li>;
       })}</ul>}
-      {earlier.length > 0 && <><h4 className="mt-4 text-slate-400">Earlier requests</h4><ul aria-label="Earlier requests" className="mt-1 grid gap-1">{earlier.slice(0, EARLIER_REQUEST_LIMIT).map((item) => <li key={item.id} aria-label={`${item.tool_name} on ${item.server_name}`} className="flex min-w-0 flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-t border-white/10 pt-2">{title(item)}<span className="text-slate-400"><span>{approvalOutcome[item.state] ?? item.state}</span>{compactDateTime(item.requested_at) && <span title={new Date(item.requested_at).toLocaleString()}> · asked {compactDateTime(item.requested_at)}</span>}</span></li>)}</ul>{earlier.length > EARLIER_REQUEST_LIMIT && <p className="mt-2 text-slate-500">Showing the {EARLIER_REQUEST_LIMIT} most recent of {earlier.length} earlier requests.</p>}</>}
+      {earlier.length > 0 && <><h4 className="mt-4 text-slate-400">Earlier requests</h4><ul aria-label="Earlier requests" className="mt-1 grid gap-1">{earlier.slice(0, EARLIER_REQUEST_LIMIT).map((item) => <li key={item.id} aria-label={`${item.tool_name} on ${serverOf(item)}`} className="flex min-w-0 flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-t border-white/10 pt-2">{title(item)}<span className="text-slate-400"><span>{approvalOutcome[item.state] ?? item.state}</span>{compactDateTime(item.requested_at) && <span title={new Date(item.requested_at).toLocaleString()}> · asked {compactDateTime(item.requested_at)}</span>}</span></li>)}</ul>{earlier.length > EARLIER_REQUEST_LIMIT && <p className="mt-2 text-slate-500">Showing the {EARLIER_REQUEST_LIMIT} most recent of {earlier.length} earlier requests.</p>}</>}
     </>}
-    {confirmation && <Modal title={`Approve ${confirmation.tool_name} once?`} onDismiss={() => !busy && setConfirmation(null)} actions={<><Button variant="ghost" disabled={busy !== null} onClick={() => setConfirmation(null)}>Cancel</Button><Button disabled={busy !== null} onClick={() => void approve(confirmation)}>{busy ? "Approving…" : mutationError ? "Retry approval" : "Approve once"}</Button></>}><p className="text-cell text-ink-tertiary">This authorizes one retried invocation of <strong>{confirmation.server_name} / {confirmation.tool_name}</strong>: the agent can run this call once, with exactly these arguments.</p><div className="mt-3 text-xs"><ApprovalArguments item={confirmation} /></div>{mutationError && <p role="alert" className="mt-3 text-danger">{mutationError}</p>}</Modal>}
+    {confirmation && <Modal title={`Approve ${confirmation.tool_name} once?`} onDismiss={() => !busy && setConfirmation(null)} actions={<><Button variant="ghost" disabled={busy !== null} onClick={() => setConfirmation(null)}>Cancel</Button><Button disabled={busy !== null} onClick={() => void approve(confirmation)}>{busy ? "Approving…" : mutationError ? "Retry approval" : "Approve once"}</Button></>}><p className="text-cell text-ink-tertiary">This authorizes one retried invocation of <strong>{serverOf(confirmation)} / {confirmation.tool_name}</strong>: the agent can run this call once, with exactly these arguments.</p><div className="mt-3 text-xs"><ApprovalArguments item={confirmation} /></div>{mutationError && <p role="alert" className="mt-3 text-danger">{mutationError}</p>}</Modal>}
   </div>;
 }
 
@@ -117,7 +119,7 @@ const writable = (rule: Rule) => ({ endpoint: rule.endpoint, server_name: rule.s
  * This agent's own tool policy: Allow, Ask first or Off for each tool the gateway sees. With `endpoint` it
  * shows one MCP server and leaves the agent's choices for its other servers exactly as they are.
  */
-export function AgentMCPToolPolicyPanel({ orgId, deviceId, inventory, canManage, enforcement, endpoint, onSaved }: { orgId: string; deviceId: string; inventory: Inventory; canManage: boolean; enforcement?: EffectiveMCP["enforcement"]; endpoint?: string; onSaved?: () => void }) {
+export function AgentMCPToolPolicyPanel({ orgId, deviceId, inventory, canManage, enforcement, endpoint, servers: named, onSaved }: { orgId: string; deviceId: string; inventory: Inventory; canManage: boolean; enforcement?: EffectiveMCP["enforcement"]; endpoint?: string; /** The agent's MCP servers, so each is named as the administrator named it. */ servers?: readonly NamedMCPServer[]; onSaved?: () => void }) {
   const tools = toolsFrom(inventory).filter((tool) => !endpoint || tool.endpoint === endpoint);
   const [policy, setPolicy] = useState<Loaded<Policy | null> | null>(null); const [choices, setChoices] = useState<Record<string, Choice>>({}); const [busy, setBusy] = useState(false); const [error, setError] = useState<string | null>(null);
   const [accepted, setAccepted] = useState<Set<string>>(new Set()); const [notice, setNotice] = useState<string | null>(null);
@@ -139,7 +141,7 @@ export function AgentMCPToolPolicyPanel({ orgId, deviceId, inventory, canManage,
     // The agent's choices for its other servers are sent back unchanged. One that changed would be accepted by this save, so it has to be reviewed first.
     const kept = endpoint ? rules.filter((rule) => rule.endpoint !== endpoint) : [];
     const keptChanged = kept.find((rule) => rule.definition_state === "changed");
-    if (keptChanged) { setError(`Review ${keptChanged.tool_name} on ${keptChanged.server_name} first: that server changed it, and saving here would accept the change.`); return; }
+    if (keptChanged) { setError(`Review ${keptChanged.tool_name} on ${mcpServerName(named, keptChanged.endpoint, keptChanged.server_name)} first: that server changed it, and saving here would accept the change.`); return; }
     const invalid = tools.find((tool) => choiceFor(tool).mode !== "off" && !parseRate(choiceFor(tool).rate).ok);
     if (invalid) { setError(`Calls per minute for ${invalid.tool_name} must be a whole number above zero, or empty for no limit.`); return; }
     const body = [...kept.map(writable), ...tools.filter((tool) => choiceFor(tool).mode !== "off").map((tool) => { const choice = choiceFor(tool); const rate = parseRate(choice.rate); const constraints = ruleFor(tool)?.argument_constraints; return { endpoint: tool.endpoint, server_name: tool.server_name, tool_name: tool.tool_name, input_schema_hash: tool.input_schema_hash, step_up_required: choice.mode === "ask", ...(rate.ok && rate.rate ? { rate_limit_per_minute: rate.rate } : {}), ...(constraints ? { argument_constraints: constraints } : {}) }; })];
@@ -165,7 +167,7 @@ export function AgentMCPToolPolicyPanel({ orgId, deviceId, inventory, canManage,
     setNotice(`New version accepted. ${tool.tool_name} can run again.`);
   };
   const atGateway = enforcement === "gateway";
-  const servers = [...new Map(tools.map((tool) => [tool.endpoint, tool.server_name])).entries()];
+  const servers = [...new Map(tools.map((tool) => [tool.endpoint, mcpServerName(named, tool.endpoint, tool.server_name)])).entries()];
   const rowsFor = (server: string): MCPToolRow[] => tools.filter((tool) => tool.endpoint === server).map((tool) => { const choice = choiceFor(tool); return { name: tool.tool_name, description: tool.description, mode: choice.mode, effect: null, rate: choice.rate, changed: choice.mode !== "off" && changed(tool), argumentLimits: Boolean(ruleFor(tool)?.argument_constraints) }; });
   const allRows = servers.flatMap(([server]) => rowsFor(server));
   return <div data-testid="agent-mcp-tool-policy" className="min-w-0 text-sm">
@@ -277,7 +279,7 @@ function activityApproval(item: Activity): ReactNode {
  * What the agent did through MCP, newest first, with filters the server applies: denied or approved
  * calls, a date range and one server. Arguments and results are never stored, so none are shown.
  */
-export function AgentMCPToolActivityPanel({ orgId, deviceId, servers = [] }: { orgId: string; deviceId: string; /** The agent's MCP servers, for the server filter. */ servers?: Array<{ server_name: string; profile_name: string }> }) {
+export function AgentMCPToolActivityPanel({ orgId, deviceId, servers = [] }: { orgId: string; deviceId: string; /** The agent's MCP servers, for the server filter. */ servers?: Array<{ server_name: string; profile_name: string; endpoint?: string }> }) {
   const [state, setState] = useState<ActivityState>({ kind: "loading" }); const [filters, setFilters] = useState<ActivityFilters>(NO_FILTERS);
   const [olderBusy, setOlderBusy] = useState(false); const [olderError, setOlderError] = useState<string | null>(null); const [version, setVersion] = useState(0);
   const dayId = useId();
@@ -325,7 +327,7 @@ export function AgentMCPToolActivityPanel({ orgId, deviceId, servers = [] }: { o
               <DataTable caption="MCP calls" rows={state.items} rowKey={(item) => item.id} failed={false} filterable={false} pageSize={0} empty={<>No MCP calls yet.</>} columns={[
                 { key: "time", header: "Time", cell: (item) => <span className="whitespace-nowrap" title={new Date(item.occurred_at).toLocaleString()}>{compactDateTime(item.occurred_at)}</span> },
                 { key: "tool", header: "Tool", cell: (item) => <span className="break-all font-mono">{item.tool_name || item.method}</span> },
-                { key: "server", header: "Server", cell: (item) => <span className="break-all">{item.server_name || item.endpoint}</span> },
+                { key: "server", header: "Server", cell: (item) => <span className="break-all">{mcpServerName(servers, item.endpoint, item.server_name)}</span> },
                 { key: "result", header: "Result", cell: (item) => { const result = activityResult(item); return <Badge tone={result.tone}>{result.text}</Badge>; } },
                 { key: "approval", header: "Approval", cell: activityApproval },
               ]} />

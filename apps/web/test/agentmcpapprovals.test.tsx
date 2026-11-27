@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 
 const { get, post } = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn() }));
@@ -119,4 +119,27 @@ it("lists earlier requests with their outcome and no actions", async () => {
   expect(screen.queryByRole("button", { name: "Approve once" })).toBeNull();
   expect(screen.queryByRole("button", { name: "Deny" })).toBeNull();
   expect(screen.getByText("Nothing is waiting for a decision.")).toBeTruthy();
+});
+
+describe("the server's name on a request", () => {
+  // The administrator connected http://10.0.0.5:8080/mcp as "Billing database"; the server calls itself "billing".
+  const servers = [{ endpoint: "http://10.0.0.5:8080/mcp", profile_name: "Billing database", server_name: "billing-db" }];
+  const named = () => render(<MemoryRouter><AgentMCPToolApprovalPanel orgId="org" deviceId="agent" canApprove servers={servers} /></MemoryRouter>);
+
+  it("is the administrator's name for that server, on waiting requests, in the confirmation and on earlier requests", async () => {
+    requests = [request({}), request({ id: "req-2", state: "denied", tool_name: "close_account" })];
+    named();
+    const item = await screen.findByRole("listitem", { name: "refund_payment on Billing database" });
+    expect(screen.getByRole("listitem", { name: "close_account on Billing database" })).toBeTruthy();
+    fireEvent.click(within(item).getByRole("button", { name: "Approve once" }));
+    expect(within(screen.getByRole("dialog")).getByText("Billing database / refund_payment")).toBeTruthy();
+    expect(screen.queryByText(/on billing$/)).toBeNull();
+    expect(document.body.textContent).not.toMatch(/on billing(?! database)|billing \/ /i);
+  });
+
+  it("falls back to the name the server reported when no connected server has that address", async () => {
+    requests = [request({ endpoint: "http://10.0.0.77:8080/mcp" })];
+    named();
+    expect(await screen.findByRole("listitem", { name: "refund_payment on billing" })).toBeTruthy();
+  });
 });

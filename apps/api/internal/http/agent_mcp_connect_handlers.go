@@ -402,7 +402,16 @@ func (s apiServer) ExportAgentMCPToolActivity(ctx context.Context, req api.Expor
 	if err != nil {
 		return nil, apierr.New(http.StatusServiceUnavailable, "mcp_tool_activity_unavailable", "MCP tool activity is temporarily unavailable")
 	}
-	body := mcpActivityCSV(rows)
+	// The "server" column is the name an administrator gave the server at that address, as on the page.
+	names := map[string]string{}
+	if s.system != nil {
+		if servers, err := mcptoolpolicy.AssignedServers(ctx, s.system, req.OrgId, req.DeviceId); err == nil {
+			for _, server := range servers {
+				names[server.Endpoint] = server.ProfileName
+			}
+		}
+	}
+	body := mcpActivityCSV(rows, names)
 	return api.ExportAgentMCPToolActivity200TextcsvResponse{Body: bytes.NewReader(body), ContentLength: int64(len(body)),
 		Headers: api.ExportAgentMCPToolActivity200ResponseHeaders{ContentDisposition: `attachment; filename="mcp-activity.csv"`, XRequestId: reqID(ctx)}}, nil
 }
@@ -411,8 +420,9 @@ var mcpActivityCSVHeader = []string{"time", "tool", "server", "method", "result"
 
 // mcpActivityCSV renders activity rows as one CSV file with a header row. Arguments are never in it, only
 // their digest. Text an MCP server or an agent chose (tool and server names) is written so a spreadsheet
-// shows it instead of running it as a formula.
-func mcpActivityCSV(rows []mcpdecision.ActivityRow) []byte {
+// shows it instead of running it as a formula. names maps a server address to the name an administrator
+// gave that server; a call to an address with no such name keeps the name the server reported for itself.
+func mcpActivityCSV(rows []mcpdecision.ActivityRow, names map[string]string) []byte {
 	var buffer bytes.Buffer
 	w := csv.NewWriter(&buffer)
 	_ = w.Write(mcpActivityCSVHeader)
@@ -423,7 +433,11 @@ func mcpActivityCSV(rows []mcpdecision.ActivityRow) []byte {
 		return *value
 	}
 	for _, row := range rows {
-		record := []string{row.OccurredAt.UTC().Format(time.RFC3339), csvText(row.ToolName), csvText(row.ServerName), csvText(row.Method), row.Decision, row.Reason, row.ResultStatus, "", text(row.PolicySource), "", "", "", "", text(row.ArgumentsDigest), csvText(row.Endpoint)}
+		server := row.ServerName
+		if name := names[strings.TrimSpace(row.Endpoint)]; name != "" {
+			server = name
+		}
+		record := []string{row.OccurredAt.UTC().Format(time.RFC3339), csvText(row.ToolName), csvText(server), csvText(row.Method), row.Decision, row.Reason, row.ResultStatus, "", text(row.PolicySource), "", "", "", "", text(row.ArgumentsDigest), csvText(row.Endpoint)}
 		if row.UpstreamHttpStatus != nil {
 			record[7] = strconv.Itoa(int(*row.UpstreamHttpStatus))
 		}
