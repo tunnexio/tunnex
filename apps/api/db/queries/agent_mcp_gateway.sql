@@ -25,17 +25,24 @@ FROM organization_mcp_direct_path_grace
 WHERE org_id = sqlc.arg(org_id);
 
 -- name: InsertAgentMCPToolActivity :one
+-- AI-UX-1: policy_source says which policy decided ('agent' or 'group', with
+-- the group in policy_group_id). A caller that does not say is recorded as the
+-- per-agent policy whenever it names a policy version, as before.
 INSERT INTO agent_mcp_tool_activity (
     org_id, device_id, node_id, endpoint, server_name, method, tool_name,
-    arguments_digest, decision, reason, policy_version, approval_request_id, result_status
+    arguments_digest, decision, reason, policy_version, approval_request_id, result_status,
+    policy_source, policy_group_id
 ) VALUES (
     sqlc.arg(org_id), sqlc.arg(device_id), sqlc.narg(node_id), sqlc.arg(endpoint), sqlc.arg(server_name),
     sqlc.arg(method), sqlc.arg(tool_name), sqlc.narg(arguments_digest), sqlc.arg(decision), sqlc.arg(reason),
-    sqlc.narg(policy_version), sqlc.narg(approval_request_id), sqlc.arg(result_status)
+    sqlc.narg(policy_version), sqlc.narg(approval_request_id), sqlc.arg(result_status),
+    COALESCE(sqlc.narg(policy_source)::text,
+             CASE WHEN sqlc.narg(policy_version)::bigint IS NOT NULL THEN 'agent' END),
+    sqlc.narg(policy_group_id)
 )
 RETURNING id, org_id, device_id, node_id, endpoint, server_name, method, tool_name, arguments_digest,
           decision, reason, policy_version, approval_request_id, result_status, upstream_http_status,
-          occurred_at, completed_at, created_at;
+          occurred_at, completed_at, created_at, policy_source, policy_group_id;
 
 -- name: CompleteAgentMCPToolActivity :execrows
 -- Closes an allowed call once, and only for the gateway that was given it.
@@ -53,7 +60,8 @@ WHERE id = sqlc.arg(id)
 -- Newest first for one agent. Keyset: pass the last row's occurred_at and id.
 SELECT a.id, a.org_id, a.device_id, a.node_id, a.endpoint, a.server_name, a.method, a.tool_name,
        a.arguments_digest, a.decision, a.reason, a.policy_version, a.approval_request_id, a.result_status,
-       a.upstream_http_status, a.occurred_at, a.completed_at, a.created_at
+       a.upstream_http_status, a.occurred_at, a.completed_at, a.created_at,
+       a.policy_source, a.policy_group_id
 FROM agent_mcp_tool_activity a
 JOIN devices d ON d.id = a.device_id
 WHERE a.org_id = sqlc.arg(org_id)

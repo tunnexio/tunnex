@@ -45,7 +45,7 @@ func (q *Queries) AssignAgentMCPProfile(ctx context.Context, arg AssignAgentMCPP
 const createAgentMCPProfile = `-- name: CreateAgentMCPProfile :one
 INSERT INTO agent_mcp_profiles (org_id, name, endpoint)
 VALUES ($1, $2, $3)
-RETURNING id, org_id, name, endpoint, created_at, updated_at, archived_at
+RETURNING id, org_id, name, endpoint, created_at, updated_at, archived_at, server_name
 `
 
 type CreateAgentMCPProfileParams struct {
@@ -65,12 +65,13 @@ func (q *Queries) CreateAgentMCPProfile(ctx context.Context, arg CreateAgentMCPP
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.ArchivedAt,
+		&i.ServerName,
 	)
 	return i, err
 }
 
 const getAgentMCPProfile = `-- name: GetAgentMCPProfile :one
-SELECT id, org_id, name, endpoint, created_at, updated_at, archived_at FROM agent_mcp_profiles WHERE id = $1 AND org_id = $2
+SELECT id, org_id, name, endpoint, created_at, updated_at, archived_at, server_name FROM agent_mcp_profiles WHERE id = $1 AND org_id = $2
 `
 
 type GetAgentMCPProfileParams struct {
@@ -89,6 +90,7 @@ func (q *Queries) GetAgentMCPProfile(ctx context.Context, arg GetAgentMCPProfile
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.ArchivedAt,
+		&i.ServerName,
 	)
 	return i, err
 }
@@ -207,7 +209,7 @@ func (q *Queries) ListAgentMCPProfileAssignments(ctx context.Context, orgID uuid
 }
 
 const listAgentMCPProfiles = `-- name: ListAgentMCPProfiles :many
-SELECT id, org_id, name, endpoint, created_at, updated_at, archived_at FROM agent_mcp_profiles WHERE org_id = $1 ORDER BY archived_at NULLS FIRST, lower(name), id
+SELECT id, org_id, name, endpoint, created_at, updated_at, archived_at, server_name FROM agent_mcp_profiles WHERE org_id = $1 ORDER BY archived_at NULLS FIRST, lower(name), id
 `
 
 func (q *Queries) ListAgentMCPProfiles(ctx context.Context, orgID uuid.UUID) ([]AgentMcpProfile, error) {
@@ -227,6 +229,7 @@ func (q *Queries) ListAgentMCPProfiles(ctx context.Context, orgID uuid.UUID) ([]
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.ArchivedAt,
+			&i.ServerName,
 		); err != nil {
 			return nil, err
 		}
