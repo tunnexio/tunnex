@@ -210,6 +210,13 @@ const (
 	// Separate human approval authority: policy authors cannot implicitly
 	// approve their own tool invocations.
 	PermAgentMCPToolApprovalApprove Permission = "agent_mcp_tool_approval:approve"
+	// PermMCPManage governs the organization's MCP switch and connecting an MCP
+	// server to an agent or an agent group (AI-UX-1). MCP no longer rides on
+	// agent_template:manage: turning on agent groups and policy templates and
+	// letting agents reach tool servers are separate decisions. Editing a tool
+	// allow-list stays agent_mcp_tool_policy:manage and approving a call stays
+	// agent_mcp_tool_approval:approve.
+	PermMCPManage Permission = "mcp:manage"
 )
 
 // Roles.
@@ -328,6 +335,7 @@ var rolePermissions = map[string]map[Permission]bool{
 		PermAlertingManage:              true,
 		PermAgentMCPToolPolicyManage:    true,
 		PermAgentMCPToolApprovalApprove: true,
+		PermMCPManage:                   true,
 	},
 	RoleOwner: {
 		PermVaultUse: true, PermVaultAssign: true,
@@ -388,6 +396,7 @@ var rolePermissions = map[string]map[Permission]bool{
 		PermAlertingManage:              true,
 		PermAgentMCPToolPolicyManage:    true,
 		PermAgentMCPToolApprovalApprove: true,
+		PermMCPManage:                   true,
 	},
 	// RoleOperator (S10.2) — the machine credential's fixed role, scoped to exactly the operator's verbs
 	// (D3). NOT user-assignable. NO machine:manage (a machine can't mint more machines), NO member/org
