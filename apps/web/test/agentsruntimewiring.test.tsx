@@ -275,3 +275,23 @@ it("lists the agent's MCP servers by name with their local addresses when the se
   // The group's policy decides here, so the agent's own policy is not read or offered for saving.
   expect(get.mock.calls.some(([path]) => String(path).endsWith("/mcp-tool-policy"))).toBe(false);
 });
+
+it("says on the Runtime tab, beside Update runtime, when the runtime reports that tunnel DNS was not applied", async () => {
+  org = { ...org, managed_agent_runtime_enabled: true };
+  seed(); const original = get.getMockImplementation()!;
+  let dns: boolean | null = false;
+  get.mockImplementation(async (path: string) => path.endsWith("/runtime-status") ? { data: { ...runtime, tunnel_dns_applied: dns } } : original(path));
+  const page = renderDetail("runtime");
+  const note = await screen.findByRole("note", {name: "Private DNS names do not resolve on this host"});
+  expect(note.textContent).toContain("private DNS names pushed through the tunnel will not resolve here");
+  expect(note.textContent).toContain("sudo systemctl restart tunnex-agent-runtime");
+  // The in-place runtime update stays where it was, right after the note.
+  const update = screen.getByRole("heading", {name: "Update runtime"});
+  expect(note.compareDocumentPosition(update) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  for (const value of [true, null]) {
+    page.unmount(); dns = value;
+    renderDetail("runtime");
+    await screen.findByRole("heading", {name: "Update runtime"});
+    expect(screen.queryByRole("note", {name: "Private DNS names do not resolve on this host"})).toBeNull();
+  }
+});
