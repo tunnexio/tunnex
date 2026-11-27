@@ -253,6 +253,19 @@ func (s *Policies) ListProviders(ctx context.Context, org uuid.UUID) ([]Provider
 	}
 	return items, legacy, nil
 }
+
+// HasProvider reports whether the organization has any provider credential: a saved connection or a
+// credential that predates connections. It reads no secret and returns no connection detail.
+func (s *Policies) HasProvider(ctx context.Context, org uuid.UUID) (bool, error) {
+	if s == nil || s.pool == nil {
+		return false, aiUnavailable()
+	}
+	var has bool
+	if s.pool.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM ai_provider_connections WHERE org_id=$1 AND deleted_at IS NULL) OR EXISTS(SELECT 1 FROM ai_provider_legacy_keys WHERE org_id=$1)`, org).Scan(&has) != nil {
+		return false, aiUnavailable()
+	}
+	return has, nil
+}
 func (s *Policies) CreateProvider(ctx context.Context, org, actor uuid.UUID, in ProviderInput) (ProviderConnection, error) {
 	if !s.ProviderManagementAvailable() {
 		return ProviderConnection{}, aiUnavailable()
