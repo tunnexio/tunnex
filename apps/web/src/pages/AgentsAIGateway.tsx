@@ -12,16 +12,17 @@ import { AgentsTabRail } from "../components/AgentsTabRail";
 import { AIGatewaySettings } from "../components/AIGatewaySettings";
 import { AIProviderWorkspace } from "../components/AIProviderWorkspace";
 import { AIWorkloads } from "../components/AIWorkloads";
-import { AIUsageWorkspace } from "../components/AIUsageWorkspace";
+import { AIUsagePage } from "../components/AIUsageWorkspace";
+import { AIGatewayOffBanner, useAIGatewayStatus } from "../components/AIGatewayOffBanner";
 import { Button, Card, Field, Input, Loading, Modal, PageHeader, Select, RefreshButton } from "../components/ui";
 import AppAccessRowMenu from "../components/AppAccessRowMenu";
 import AppAccessPagination from "../components/AppAccessPagination";
 import AppAccessEmptyState from "../components/AppAccessEmptyState";
 import { NetworkDetailList } from "../components/NetworkDetailList";
-import { api } from "../lib/api";
+import { api, apiErrorMessage } from "../lib/api";
 import { useOrg } from "../lib/useOrg";
 import { useAuth } from "../lib/auth";
-import { AIAccessGate, AIGroupAccess, AIUseModel } from "../components/AIUserAccess";
+import { AIAccessGate, AIAgentAccess, AIGroupAccess, AIUseModel } from "../components/AIUserAccess";
 type S = components["schemas"];
 type Inventory = {
   groups: S["AgentGroup"][];
@@ -63,48 +64,96 @@ export default function AgentsAIGateway() {
   const [search] = useSearchParams();
   useEffect(() => setGrant(null), [org?.id, pathname]);
   const page = pathname.split("/")[2] || "models";
+  const requested = search.get("subject");
   return <div className="network-management ai-workspace ai-gateway-workspace space-y-5">
     <AIAccessGate key={org?.id}>{(orgId, access) => {
       if (pathname === "/ai-gateway" || pathname === "/ai-gateway/") return <Navigate to={access.view ? "/ai-gateway/models" : "/ai-gateway/my-models"} replace />;
       if (!access.view && page !== "my-models") return <Navigate to="/ai-gateway/my-models" replace />;
       if (!gatewayTabs.some((tab) => tab.href === `/ai-gateway/${page}`)) return <Navigate to="/ai-gateway/models" replace />;
       const tabs = access.view ? gatewayTabs : gatewayTabs.filter((tab) => tab.href.endsWith("/my-models"));
+      const subject = requested === "workloads" && access.workloadsView ? "workloads" : requested === "agents" ? "agents" : "users";
       return <>
         <WorkspaceTabs label="AI gateway views" items={tabs} />
         {grant && <AIGroupAccess orgId={orgId} canManage={access.manage} initialConnection={grant.connection} initialModel={grant.model} dialogOnly onDone={() => setGrant(null)} />}
-        {page === "my-models" ? <AIUseModel key={orgId} orgId={orgId} />
+        {page === "my-models" ? <AIUseModel key={orgId} orgId={orgId} canManage={access.manage} serverAdmin={canManageTransport} />
            : page === "access" ? <>
             <nav aria-label="Access subjects" className="workspace-tabs">
-              <Link to="/ai-gateway/access" aria-current={search.get("subject") !== "workloads" || !access.workloadsView ? "page" : undefined}>User groups</Link>
-              {access.workloadsView && <Link to="/ai-gateway/access?subject=workloads" aria-current={search.get("subject") === "workloads" ? "page" : undefined}>Workloads</Link>}
+              <Link to="/ai-gateway/access" aria-current={subject === "users" ? "page" : undefined}>User groups</Link>
+              <Link to="/ai-gateway/access?subject=agents" aria-current={subject === "agents" ? "page" : undefined}>Agents and agent groups</Link>
+              {access.workloadsView && <Link to="/ai-gateway/access?subject=workloads" aria-current={subject === "workloads" ? "page" : undefined}>Workloads</Link>}
             </nav>
-            {search.get("subject")==="workloads" && access.workloadsView ? <AIWorkloads key={orgId} orgId={orgId} canManage={access.workloadsManage} /> : <AIGroupAccess key={`${orgId}:${search.get("connection")}:${search.get("model")}`} orgId={orgId} canManage={access.manage} initialConnection={search.get("connection") ?? ""} initialModel={search.get("model") ?? ""} />}
+            {subject === "workloads" ? <AIWorkloads key={orgId} orgId={orgId} canManage={access.workloadsManage} />
+              : subject === "agents" ? access.agents ? <AIAgentAccess key={orgId} orgId={orgId} canManage={access.manage} serverAdmin={canManageTransport} />
+                : <Card><p role="status">Your role cannot manage agent groups, so model access for agents is not shown here. Ask an organization owner or administrator.</p></Card>
+              : <AIGroupAccess key={`${orgId}:${search.get("connection")}:${search.get("model")}`} orgId={orgId} canManage={access.manage} initialConnection={search.get("connection") ?? ""} initialModel={search.get("model") ?? ""} />}
           </>
-          : page === "usage" ? <AIUsageWorkspace key={orgId} orgId={orgId} inventory={{ groups: [], devices: [], teams: [], assignments: [] }} />
+          : page === "usage" ? <AIUsagePage key={orgId} orgId={orgId} canManage={access.manage} serverAdmin={canManageTransport} />
           : page === "models" || page === "credentials" ? <AIProviderWorkspace key={`${orgId}:${page}`} orgId={orgId} canManage={access.manage} canManageTransport={canManageTransport}
             view={page === "credentials" ? "connections" : pathname.endsWith("/new") && access.manage ? "add" : "models"}
             onViewChange={(view) => navigate(view === "connections" ? "/ai-gateway/credentials" : view === "add" ? "/ai-gateway/models/new" : "/ai-gateway/models")}
             onGrantAccess={(connection, model) => setGrant({ connection, model })} />
           : <div className="ai-gateway-configuration"><h2 className="sr-only">Gateway settings</h2>
-            <AIGatewaySettings orgId={orgId} canEdit={access.manage} />
-            {access.agents && <Card className="ai-setting-card"><div className="ai-setting-row"><div className="ai-setting-copy"><h3>Agent model access</h3><p>Choose which models your managed agents can use.</p></div><Link className="network-setup-link" to="/agents/model-access">Manage access</Link></div></Card>}
+            <AIGatewaySettings orgId={orgId} canEdit={access.manage} serverAdmin={canManageTransport} />
+            {access.agents && <Card className="ai-setting-card"><div className="ai-setting-row"><div className="ai-setting-copy"><h3>Agent model access</h3><p>Choose which models your managed agents can use.</p></div><Link className="network-setup-link" to="/ai-gateway/access?subject=agents">Manage access</Link></div></Card>}
           </div>}
       </>;
     }}</AIAccessGate>
   </div>;
 }
+/** Agent groups are on when the organization turned on either feature that uses them. */
+function useAgentGroupsEnabled(org: { id: string; agent_policy_templates_enabled?: boolean } | null) {
+  const [feature, setFeature] = useState<{ orgId: string; enabled: boolean } | null>(null);
+  const orgId = org?.id;
+  useEffect(() => {
+    let live = true;
+    if (!orgId) return;
+    void (async () => {
+      try {
+        const result = await api.GET("/api/v1/organizations/{orgId}/agent-features", { params: { path: { orgId } } });
+        const groups = result?.data?.items?.find((item) => item.key === "agent_groups");
+        if (live && groups && typeof groups.enabled === "boolean") setFeature({ orgId, enabled: groups.enabled });
+      } catch { /* an older server has no feature list; the organization setting below still answers */ }
+    })();
+    return () => { live = false; };
+  }, [orgId, org?.agent_policy_templates_enabled]);
+  return Boolean(org?.agent_policy_templates_enabled) || (!!feature && feature.orgId === orgId && feature.enabled);
+}
+function EnableAgentGroups({ orgId }: { orgId: string }) {
+  const { updateOrg } = useOrg();
+  const [busy, setBusy] = useState(false), [error, setError] = useState("");
+  const alive = useRef(true);
+  useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
+  async function enable() {
+    if (busy) return;
+    setBusy(true); setError("");
+    try {
+      const result = await api.PUT("/api/v1/organizations/{orgId}/agent-policy-template-settings", { params: { path: { orgId } }, body: { enabled: true } });
+      if (!alive.current) return;
+      if (result.error) { setError(apiErrorMessage(result.error, "Agent groups could not be turned on. Try again.")); return; }
+      const saved = await api.GET("/api/v1/organizations/{orgId}", { params: { path: { orgId } } });
+      if (!alive.current) return;
+      if (saved.error || !saved.data || saved.data.id !== orgId) setError("Agent groups were turned on, but this page could not refresh. Reload the page.");
+      else updateOrg(saved.data);
+    } catch { if (alive.current) setError("Could not reach the server. Reload the page to see whether agent groups are on."); }
+    finally { if (alive.current) setBusy(false); }
+  }
+  return <AppAccessEmptyState icon={null} title="Agent groups are turned off" description="An agent gets its models through its agent group. Turning agent groups on lets you put agents in groups and give each group its models; nothing changes for existing agents until you do." action={<><Button disabled={busy} onClick={() => void enable()}>{busy ? "Turning on…" : "Turn on agent groups"}</Button>{error && <p role="alert">{error}</p>}</>} />;
+}
 export function AgentModelAccess() {
   const { org } = useOrg();
+  const groupsEnabled = useAgentGroupsEnabled(org);
   return <div className="network-management agents-workspace agents-management ai-workspace space-y-5">
     <PageHeader navigationTitle title="Agent model access" subtitle={org?.name} />
     <AgentsTabRail />
     <AIAccessGate key={org?.id}>{(orgId, access) => !access.agents ? <Card><p role="alert">You do not have permission to manage agent model access.</p></Card>
-      : !org?.agent_policy_templates_enabled ? <AppAccessEmptyState icon={null} title="Agent groups are turned off" description="Enable this organization’s opt-in before assigning group model policies." action={<Link className="agents-management-link" to="/settings?section=features&feature=agent-templates">Configure Agent Group settings</Link>} />
-      : <div className="ai-gateway-configuration"><AIGatewayWorkspace key={orgId} orgId={orgId} /></div>}
+      : !groupsEnabled ? <EnableAgentGroups key={orgId} orgId={orgId} />
+      : <div className="ai-gateway-configuration"><AIGatewayWorkspace key={orgId} orgId={orgId} canManage={access.manage} serverAdmin={Boolean(access.serverAdmin)} /></div>}
     </AIAccessGate>
   </div>;
 }
-export function AIGatewayWorkspace({ orgId }: { orgId: string }) {
+export function AIGatewayWorkspace({ orgId, canManage = false, serverAdmin = false }: { orgId: string; canManage?: boolean; serverAdmin?: boolean }) {
+  const gateway = useAIGatewayStatus(orgId);
+  const banner = <AIGatewayOffBanner orgId={orgId} gateway={gateway} canManage={canManage} serverAdmin={serverAdmin} onChanged={() => void reload()} />;
   const [editor, setEditor] = useState<"team" | "agent" | null>(null);
   const [view, setView] = useState<"teams" | "agents">("teams");
   const [query, setQuery] = useState("");
@@ -225,8 +274,9 @@ export function AIGatewayWorkspace({ orgId }: { orgId: string }) {
     }
   }
   if (loading) return <Loading label="Loading AI policies…" />;
+  // While the banner says why AI Gateway does not answer, the load error beside it would only repeat it.
   if (!data)
-    return (
+    return gateway.off ? banner : (
       <Card>
         <p role="alert">{error}</p>
         <Button onClick={() => void reload()}>Retry AI policies</Button>
@@ -247,11 +297,12 @@ export function AIGatewayWorkspace({ orgId }: { orgId: string }) {
   const openTeam = (id = "") => { setTeamID(id); setView("teams"); setEditor("team"); };
   const openAgent = (id = "") => { setDeviceID(id); setView("agents"); setEditor("agent"); };
   return <div className="agents-management agents-management-content ai-agent-access">
+    {banner}
     <div className="agents-management-view-tabs" role="tablist" aria-label="Agent model policy views">
       <button type="button" role="tab" aria-selected={view === "teams"} onClick={() => { setView("teams"); setQuery(""); setPage(1); }}>Group policies</button>
       <button type="button" role="tab" aria-selected={view === "agents"} onClick={() => { setView("agents"); setQuery(""); setPage(1); }}>Agent assignments</button>
     </div>
-    <div className="agents-management-toolbar"><Input aria-label="Search model policies" value={query} placeholder={view === "teams" ? "Search groups or models" : "Search agents or groups"} onChange={(event) => { setQuery(event.target.value); setPage(1); }} /><div className="agents-management-actions"><RefreshButton label="Refresh" disabled={busy} onClick={() => void reload()} /><Button variant={view === "teams" ? "primary" : "ghost"} disabled={busy} onClick={() => openTeam()}>Add policy</Button><Button variant={view === "agents" ? "primary" : "ghost"} disabled={busy} onClick={() => openAgent()}>Assign agent</Button></div></div>
+    <div className="agents-management-toolbar"><Input aria-label="Search model policies" value={query} placeholder={view === "teams" ? "Search groups or models" : "Search agents or groups"} onChange={(event) => { setQuery(event.target.value); setPage(1); }} /><div className="agents-management-actions"><RefreshButton label="Refresh" disabled={busy} onClick={() => { gateway.reload(); void reload(); }} /><Button variant={view === "teams" ? "primary" : "ghost"} disabled={busy} onClick={() => openTeam()}>Add policy</Button><Button variant={view === "agents" ? "primary" : "ghost"} disabled={busy} onClick={() => openAgent()}>Assign agent</Button></div></div>
     {error && !editor && <p role="alert">{error}</p>}
     <div className="agents-management-table-scroll">
       {view === "teams" ? matchingTeams.length ? <table className="ai-compact-table"><caption className="sr-only">Group model policies</caption><thead><tr><th scope="col">Agent group</th><th scope="col">Models</th><th scope="col">Revision</th><th scope="col"><span className="sr-only">Actions</span></th></tr></thead><tbody>{visibleTeams.map((t) => <tr key={t.team_id}><td><button className="agents-management-name" aria-label={`Edit policy for ${teamName(t.team_id)}`} onClick={() => openTeam(t.team_id)}>{teamName(t.team_id)}</button></td><td title={t.models.map(modelDisplayName).join(", ")}>{t.models.length}</td><td>{t.revision}</td><td><AppAccessRowMenu label={`Actions for policy ${teamName(t.team_id)}`} actions={[{ key: "edit", label: "Edit policy", disabledReason: busy ? "Wait for the current update." : undefined, onSelect: () => openTeam(t.team_id) }]} /></td></tr>)}</tbody></table> : <AppAccessEmptyState icon={null} title={query ? "No matching group policies" : "No team policies yet."} description={query ? "Try another group or model." : "Choose an agent group, its exact models, and owned provider credentials."} action={query ? <Button variant="ghost" onClick={() => { setQuery(""); setPage(1); }}>Clear search</Button> : undefined} />
