@@ -278,6 +278,41 @@ func TestMCPGatewayForwarderForwardsUnchangedWithoutLocalPolicyOrLease(t *testin
 	}
 }
 
+// The loopback forwarder serves MCP, never a web page: whatever content type the gateway (or anything
+// answering at its address) sends, the local client receives JSON or an event stream, with sniffing off.
+func TestMCPGatewayForwarderAnswersOnlyJSONOrEventStream(t *testing.T) {
+	for _, tc := range []struct{ upstream, want string }{
+		{"text/html; charset=utf-8", "application/json"},
+		{"", "application/json"},
+		{"application/json; charset=utf-8", "application/json"},
+		{"text/event-stream", "text/event-stream"},
+		{"Text/Event-Stream; charset=utf-8", "text/event-stream"},
+	} {
+		gateway := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if tc.upstream != "" {
+				w.Header().Set("Content-Type", tc.upstream)
+			} else {
+				w.Header()["Content-Type"] = nil
+			}
+			w.Header().Set("Mcp-Session-Id", "session-2")
+			_, _ = w.Write([]byte(`<script>alert(1)</script>`))
+		}))
+		handler, _, _ := gatewayModeProxy(t, func() string { return gateway.URL + "/mcp" })
+		recorder := httptest.NewRecorder()
+		handler.ServeHTTP(recorder, localMCPRequest(`{"jsonrpc":"2.0","id":1,"method":"tools/list","params":{}}`))
+		gateway.Close()
+		if got := recorder.Header().Values("Content-Type"); len(got) != 1 || got[0] != tc.want {
+			t.Errorf("upstream %q: Content-Type = %q, want exactly %q", tc.upstream, got, tc.want)
+		}
+		if recorder.Header().Get("X-Content-Type-Options") != "nosniff" {
+			t.Errorf("upstream %q: nosniff missing", tc.upstream)
+		}
+		if recorder.Header().Get("Mcp-Session-Id") != "session-2" {
+			t.Errorf("upstream %q: MCP session header was dropped", tc.upstream)
+		}
+	}
+}
+
 func TestMCPGatewayForwarderKeepsLoopbackGuardAndBodyLimit(t *testing.T) {
 	var seen atomic.Int64
 	gateway := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { seen.Add(1); w.WriteHeader(http.StatusNoContent) }))
