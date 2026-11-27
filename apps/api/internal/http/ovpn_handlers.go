@@ -50,8 +50,7 @@ func (s apiServer) ExportOVPNProfile(ctx context.Context, req api.ExportOVPNProf
 	// Owner resolution (self, or admin-on-behalf) — mirrors CreateDevice.
 	owner := p.UserID
 	if req.Body.UserId != nil && *req.Body.UserId != p.UserID {
-		role, _ := p.RoleIn(req.OrgId)
-		if !rbac.Can(role, rbac.PermMemberManage) {
+		if !rbac.CanAny(p.RolesIn(req.OrgId), rbac.PermMemberManage) {
 			return nil, apierr.New(403, "forbidden", "you may not create a device for another user")
 		}
 		owner = *req.Body.UserId
@@ -106,11 +105,11 @@ func (s apiServer) ExportOVPNProfile(ctx context.Context, req api.ExportOVPNProf
 	}, nil
 }
 
-// SetOVPNEnabled flips the org's OpenVPN opt-in (S9.1 D-S9.5-OPTIN). org:update perm (an org setting).
+// SetOVPNEnabled flips the org's OpenVPN opt-in (S9.1 D-S9.5-OPTIN). gateway:manage perm (RBAC-1; org:update before).
 // Unlock-then-opt-in: OFF by default; disabling is NOT revocation (issued certs survive, re-enable
 // restores). The agent runs the OVPN server on a gateway iff this is true (DesiredState.OVPNEnabled).
 func (s apiServer) SetOVPNEnabled(ctx context.Context, req api.SetOVPNEnabledRequestObject) (api.SetOVPNEnabledResponseObject, error) {
-	if _, err := authorize(ctx, req.OrgId, rbac.PermOrgUpdate); err != nil {
+	if _, err := authorize(ctx, req.OrgId, rbac.PermGatewayManage); err != nil {
 		return nil, err
 	}
 	if req.Body == nil {

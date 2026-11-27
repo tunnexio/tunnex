@@ -99,7 +99,7 @@ func (s apiServer) UpdateAgentProfile(ctx context.Context, req api.UpdateAgentPr
 
 func (s apiServer) effectiveAgentPermissions(ctx context.Context, orgID, deviceID openapi_types.UUID) (api.AgentEffectivePermissions, error) {
 	p, _ := authctx.PrincipalFrom(ctx)
-	role, _ := p.RoleIn(orgID)
+	roles := p.RolesIn(orgID)
 	scope := devices.AgentScopedAuthority{}
 	if s.devices != nil {
 		var err error
@@ -108,22 +108,21 @@ func (s apiServer) effectiveAgentPermissions(ctx context.Context, orgID, deviceI
 			return api.AgentEffectivePermissions{}, err
 		}
 	}
-	view := rbac.Can(role, rbac.PermAgentViewPrivileged) || scope.Owner || scope.Manager
-	manage := rbac.Can(role, rbac.PermAgentManage) || scope.Owner || scope.Manager
+	view := rbac.CanAny(roles, rbac.PermAgentViewPrivileged) || scope.Owner || scope.Manager
+	manage := rbac.CanAny(roles, rbac.PermAgentManage) || scope.Owner || scope.Manager
 	return api.AgentEffectivePermissions{
 		ViewPrivileged:    view,
 		Manage:            manage,
-		Assign:            rbac.Can(role, rbac.PermAgentManage),
-		GrantAccess:       rbac.Can(role, rbac.PermAgentGrantAccess),
-		Revoke:            rbac.Can(role, rbac.PermAgentRevoke) || scope.Owner,
-		RotateCredentials: rbac.Can(role, rbac.PermAgentCredentialRotate),
+		Assign:            rbac.CanAny(roles, rbac.PermAgentManage),
+		GrantAccess:       rbac.CanAny(roles, rbac.PermAgentGrantAccess),
+		Revoke:            rbac.CanAny(roles, rbac.PermAgentRevoke) || scope.Owner,
+		RotateCredentials: rbac.CanAny(roles, rbac.PermAgentCredentialRotate),
 	}, nil
 }
 
 func (s apiServer) requireAgentPermission(ctx context.Context, orgID, deviceID openapi_types.UUID, permission rbac.Permission) error {
 	p, _ := authctx.PrincipalFrom(ctx)
-	role, _ := p.RoleIn(orgID)
-	if rbac.Can(role, permission) {
+	if rbac.CanAny(p.RolesIn(orgID), permission) {
 		return nil
 	}
 	if permission != rbac.PermAgentViewPrivileged && permission != rbac.PermAgentManage && permission != rbac.PermAgentRevoke && permission != rbac.PermAgentAccessRequest {

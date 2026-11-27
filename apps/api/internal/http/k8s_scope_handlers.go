@@ -77,7 +77,13 @@ func (s apiServer) CreateK8sClusterScope(ctx context.Context, req api.CreateK8sC
 	if _, err := authorize(ctx, req.OrgId, rbac.PermK8sScopeManage); err != nil {
 		return nil, err
 	}
-	if _, err := authorize(ctx, req.OrgId, rbac.PermPolicyManage); err != nil {
+	// A cluster scope is an access rule to a cluster (RBAC-1): it needs the rule permission for its source
+	// (policy_rule:manage, or agent:grant_access for an agent source), not policy:manage.
+	srcKind := ""
+	if req.Body != nil {
+		srcKind = string(req.Body.Source.Kind)
+	}
+	if _, err := authorize(ctx, req.OrgId, rulePermissionForSource(srcKind)); err != nil {
 		return nil, err
 	}
 	if req.Body == nil {

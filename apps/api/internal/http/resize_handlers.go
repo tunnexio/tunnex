@@ -22,7 +22,7 @@ const orphanCap = 20
 // allocator is core/open (S3.5), so there is no edition gate here. authorize runs
 // first (401 before any body check — keeps the spec 401-walk honest).
 func (s apiServer) ResizePool(ctx context.Context, req api.ResizePoolRequestObject) (api.ResizePoolResponseObject, error) {
-	if _, err := authorize(ctx, req.OrgId, rbac.PermOrgUpdate); err != nil {
+	if _, err := authorize(ctx, req.OrgId, rbac.PermGatewayManage); err != nil {
 		return nil, err
 	}
 	if req.Body == nil {

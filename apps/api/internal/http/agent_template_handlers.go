@@ -771,10 +771,10 @@ func (s apiServer) ApplyAgentPolicyTemplate(ctx context.Context, req api.ApplyAg
 	if err != nil {
 		return nil, err
 	}
-	for _, perm := range []rbac.Permission{rbac.PermPolicyManage, rbac.PermAgentGrantAccess} {
-		if _, err := authorize(ctx, req.OrgId, perm); err != nil {
-			return nil, err
-		}
+	// RBAC-1: a template only ever writes rules whose source is an agent group, so it needs the agent rule
+	// permission (agent:grant_access) and not policy:manage.
+	if _, err := authorize(ctx, req.OrgId, rbac.PermAgentGrantAccess); err != nil {
+		return nil, err
 	}
 	if err := s.requireAgentTemplates(ctx, req.OrgId); err != nil {
 		return nil, err
@@ -812,10 +812,10 @@ func (s apiServer) RemoveAgentPolicyTemplateAssignment(ctx context.Context, req 
 	if err != nil {
 		return nil, err
 	}
-	for _, perm := range []rbac.Permission{rbac.PermPolicyManage, rbac.PermAgentGrantAccess} {
-		if _, err := authorize(ctx, req.OrgId, perm); err != nil {
-			return nil, err
-		}
+	// RBAC-1: a template only ever writes rules whose source is an agent group, so it needs the agent rule
+	// permission (agent:grant_access) and not policy:manage.
+	if _, err := authorize(ctx, req.OrgId, rbac.PermAgentGrantAccess); err != nil {
+		return nil, err
 	}
 	if err := s.requireAgentTemplates(ctx, req.OrgId); err != nil {
 		return nil, err

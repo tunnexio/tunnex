@@ -20,11 +20,14 @@ import (
 // be an optional step nobody takes before the destructive one. Neither half is useful alone, which is why
 // they ship together.
 //
-// device:transfer rather than device:restore or org:update: a new capability never rides in on an existing
+// device:transfer rather than device:restore or gateway:manage: a new capability never rides in on an existing
 // permission, and this one moves LIVE users between gateways — which, across sites, changes which policy
 // rules apply to them (D5). Granting the power to retire a gateway must not silently grant that.
 func (s apiServer) TransferNodeDevices(ctx context.Context, req api.TransferNodeDevicesRequestObject) (api.TransferNodeDevicesResponseObject, error) {
 	if _, err := authorize(ctx, req.OrgId, rbac.PermDeviceTransfer); err != nil {
+		return nil, err
+	}
+	if err := s.requireHelpdeskNodeCeiling(ctx, req.OrgId, req.NodeId, rbac.PermDeviceTransfer); err != nil {
 		return nil, err
 	}
 	if req.Body == nil {
@@ -67,11 +70,11 @@ func (s apiServer) TransferNodeDevices(ctx context.Context, req api.TransferNode
 
 // DeleteNode DELETE /api/v1/organizations/{orgId}/nodes/{nodeId} (S12.12 D2).
 //
-// org:update, the same permission that revokes: this is the second half of retiring a gateway, and an
+// gateway:manage (RBAC-1; org:update before), the same permission that revokes: this is the second half of retiring a gateway, and an
 // operator who can revoke can already reach the state deletion is permitted from. A separate permission
 // would let someone revoke gateways and never be able to clear the rows they made.
 func (s apiServer) DeleteNode(ctx context.Context, req api.DeleteNodeRequestObject) (api.DeleteNodeResponseObject, error) {
-	if _, err := authorize(ctx, req.OrgId, rbac.PermOrgUpdate); err != nil {
+	if _, err := authorize(ctx, req.OrgId, rbac.PermGatewayManage); err != nil {
 		return nil, err
 	}
 	p, _ := authctx.PrincipalFrom(ctx)
@@ -86,7 +89,7 @@ func (s apiServer) DeleteNode(ctx context.Context, req api.DeleteNodeRequestObje
 // UpdateNode PATCH /api/v1/organizations/{orgId}/nodes/{nodeId} (S12.12 D3) — rename only, and the spec
 // carries why the endpoint is not here.
 func (s apiServer) UpdateNode(ctx context.Context, req api.UpdateNodeRequestObject) (api.UpdateNodeResponseObject, error) {
-	if _, err := authorize(ctx, req.OrgId, rbac.PermOrgUpdate); err != nil {
+	if _, err := authorize(ctx, req.OrgId, rbac.PermGatewayManage); err != nil {
 		return nil, err
 	}
 	if req.Body == nil {

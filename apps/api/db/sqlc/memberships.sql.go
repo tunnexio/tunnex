@@ -123,6 +123,31 @@ func (q *Queries) CountOwners(ctx context.Context, orgID uuid.UUID) (int64, erro
 	return count, err
 }
 
+const getDeviceOwnerMembershipRoles = `-- name: GetDeviceOwnerMembershipRoles :one
+SELECT m.role, m.roles FROM devices d
+JOIN memberships m ON m.org_id = d.org_id AND m.user_id = d.user_id AND m.access_revoked_at IS NULL
+WHERE d.org_id = $1 AND d.id = $2
+`
+
+type GetDeviceOwnerMembershipRolesParams struct {
+	OrgID uuid.UUID `json:"org_id"`
+	ID    uuid.UUID `json:"id"`
+}
+
+type GetDeviceOwnerMembershipRolesRow struct {
+	Role  string   `json:"role"`
+	Roles []string `json:"roles"`
+}
+
+// RBAC-1 Helpdesk ceiling. The roles of the person who owns a device in this organization (no row when the
+// device or the owner's active membership is gone).
+func (q *Queries) GetDeviceOwnerMembershipRoles(ctx context.Context, arg GetDeviceOwnerMembershipRolesParams) (GetDeviceOwnerMembershipRolesRow, error) {
+	row := q.db.QueryRow(ctx, getDeviceOwnerMembershipRoles, arg.OrgID, arg.ID)
+	var i GetDeviceOwnerMembershipRolesRow
+	err := row.Scan(&i.Role, &i.Roles)
+	return i, err
+}
+
 const getMembership = `-- name: GetMembership :one
 SELECT id, org_id, user_id, role, created_at, updated_at, access_revoked_at, roles FROM memberships
 WHERE org_id = $1 AND user_id = $2 AND access_revoked_at IS NULL
@@ -439,6 +464,30 @@ func (q *Queries) LockMembershipOrganization(ctx context.Context, id uuid.UUID) 
 	var id_2 uuid.UUID
 	err := row.Scan(&id_2)
 	return id_2, err
+}
+
+const nodeHasDeviceOwnedByRoles = `-- name: NodeHasDeviceOwnedByRoles :one
+SELECT EXISTS (
+    SELECT 1 FROM devices d
+    JOIN memberships m ON m.org_id = d.org_id AND m.user_id = d.user_id
+    WHERE d.org_id = $1 AND d.node_id = $2 AND d.deleted_at IS NULL
+      AND COALESCE(m.roles, ARRAY[m.role]) && $3::text[]
+)
+`
+
+type NodeHasDeviceOwnedByRolesParams struct {
+	OrgID  uuid.UUID `json:"org_id"`
+	NodeID uuid.UUID `json:"node_id"`
+	Roles  []string  `json:"roles"`
+}
+
+// RBAC-1 Helpdesk ceiling for gateway-level device actions: does any device homed on this gateway belong
+// to a person holding one of the given roles?
+func (q *Queries) NodeHasDeviceOwnedByRoles(ctx context.Context, arg NodeHasDeviceOwnedByRolesParams) (bool, error) {
+	row := q.db.QueryRow(ctx, nodeHasDeviceOwnedByRoles, arg.OrgID, arg.NodeID, arg.Roles)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
 }
 
 const removeMember = `-- name: RemoveMember :execrows

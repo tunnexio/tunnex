@@ -25,6 +25,18 @@ func NormalizeHumanRoles(roles []string) ([]string, error) {
 	return result, nil
 }
 
+// MembershipRoles is a membership row's full role set: the roles column, or the compatibility role for a
+// row written before role sets existed.
+func MembershipRoles(primary string, roles []string) []string {
+	if len(roles) > 0 {
+		return roles
+	}
+	if primary == "" {
+		return nil
+	}
+	return []string{primary}
+}
+
 func CanAny(roles []string, permission Permission) bool {
 	for _, role := range roles {
 		if Can(role, permission) {

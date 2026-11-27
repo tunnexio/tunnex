@@ -191,7 +191,8 @@ const (
 	PermAgentRevoke         Permission = "agent:revoke"
 	// PermAgentTemplateManage governs the F09 organization opt-in plus agent
 	// group/template administration. Applying a template still separately
-	// requires policy:manage and agent:grant_access.
+	// requires agent:grant_access (RBAC-1: its rules' source is always an agent
+	// group, so policy:manage is no longer required).
 	PermAgentTemplateManage Permission = "agent_template:manage"
 	// F10 separates asking for temporary access from approving it. Scoped agent
 	// owners/managers receive request authority relationally; only owner/admin
@@ -236,6 +237,9 @@ const (
 	// PermResourceManage creates, edits and deletes Zero Trust resources (network destinations). Split from
 	// policy:manage, which keeps the Zero Trust mode, groups, directory sync and rule enable/extend.
 	PermResourceManage Permission = "resource:manage"
+	// PermAlertingPrivateDestination lets an alert destination point at a private network address. Owner
+	// only: it was a role-name check (owner) before RBAC-1, and stays exactly as narrow.
+	PermAlertingPrivateDestination Permission = "alerting:private_destination"
 )
 
 // Roles.
@@ -407,6 +411,7 @@ var rolePermissions = map[string]map[Permission]bool{
 		PermK8sScopeApprove:             true,
 		PermK8sAPIManage:                true,
 		PermLicenseManage:               true,
+		PermAlertingPrivateDestination:  true, // owner-only, as the owner-name check it replaced
 		PermMachineManage:               true, // owner-only: minting a non-human org principal is org-delete-grade
 		PermAgentRuntimeManage:          true,
 		PermAIProviderView:              true,
@@ -452,7 +457,7 @@ var rolePermissions = map[string]map[Permission]bool{
 	// directory sync (policy:manage), users, MFA, AI or agents.
 	RoleNetworkAdmin: {
 		PermOrgView: true, PermMemberList: true, PermPolicyView: true,
-		PermGatewayManage: true, PermConnectivityManage: true, PermConnectivityUse: true,
+		PermGatewayManage: true, PermConnectivityManage: true,
 		PermSiteManage: true, PermIPsecManage: true,
 		PermK8sManage: true, PermK8sHAView: true, PermK8sHAManage: true, PermK8sScopeView: true,
 		PermK8sScopeManage: true, PermK8sScopeApprove: true, PermK8sAPIManage: true,
@@ -570,6 +575,16 @@ func CanManageMembership(actorRole, targetRole, newRole string) bool {
 // their devices would let the narrowest staff role take over a more powerful account.
 var adminGradeRoles = map[string]bool{
 	RoleOwner: true, RoleAdmin: true, RoleNetworkAdmin: true, RoleAgentsAdmin: true, RoleAuditor: true, RoleAIAdmin: true,
+}
+
+// AdminGradeRoles lists the admin-grade roles, sorted.
+func AdminGradeRoles() []string {
+	out := make([]string, 0, len(adminGradeRoles))
+	for r := range adminGradeRoles {
+		out = append(out, r)
+	}
+	sort.Strings(out)
+	return out
 }
 
 // IsAdminGrade reports whether any of roles is admin-grade.

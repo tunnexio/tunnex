@@ -27,12 +27,11 @@ func auditActorScope(p *authctx.Principal, orgID uuid.UUID) *uuid.UUID {
 	if p == nil {
 		return nil
 	}
-	for _, role := range p.RolesIn(orgID) {
-		if role == rbac.RoleOwner || role == rbac.RoleAdmin {
-			return nil
-		}
+	// RBAC-1: the organization-wide audit log is audit:view_all (owner, admin, auditor). Everyone else,
+	// including AI administration, reads only their own actions.
+	if rbac.CanAny(p.RolesIn(orgID), rbac.PermAuditViewAll) {
+		return nil
 	}
-	// AI administration does not confer organization-wide audit access.
 	actor := p.UserID
 	return &actor
 }

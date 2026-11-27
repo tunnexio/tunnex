@@ -97,11 +97,14 @@ func (s *Service) OrgEnforces(ctx context.Context, orgID uuid.UUID) (bool, error
 type AdminResetOptions struct {
 	ActorRole    string // the actor's role in orgID (highest-ranked)
 	ActorCPAdmin bool   // the actor is a deployment administrator
+	// HelpdeskCeiling (RBAC-1): the actor holds mfa:reset only through Helpdesk, so the target must hold no
+	// admin-grade role.
+	HelpdeskCeiling bool
 	// StepUp runs after every relational check and before the reset (RBAC-0 D9).
 	StepUp func(context.Context) error
 }
 
-// AdminReset DISENROLLS another user's MFA (enterprise; PermMfaManage). It only clears the factor —
+// AdminReset DISENROLLS another user's MFA (enterprise; PermMfaReset). It only clears the factor —
 // it never authenticates as the user. Audited org-scoped (actor=admin, target=user) and the target
 // is NOTIFIED best-effort (a silently-reset factor by a compromised admin must surface to the owner).
 //
@@ -123,6 +126,9 @@ func (s *Service) AdminReset(ctx context.Context, orgID, actorAdmin, targetUser 
 		}
 		if target.Role == rbac.RoleOwner && opts.ActorRole != rbac.RoleOwner {
 			return apierr.New(403, "forbidden", "Only an owner can reset another owner's two-factor authentication.")
+		}
+		if opts.HelpdeskCeiling && rbac.IsAdminGrade(rbac.MembershipRoles(target.Role, target.Roles)) {
+			return apierr.New(403, "forbidden", rbac.HelpdeskTargetRefusal)
 		}
 		u, e := q.GetUserByID(ctx, targetUser)
 		if e != nil {

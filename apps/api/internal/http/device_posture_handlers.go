@@ -30,6 +30,9 @@ func (s apiServer) ApproveDevice(ctx context.Context, req api.ApproveDeviceReque
 	if _, err := authorize(ctx, req.OrgId, rbac.PermDeviceApprove); err != nil {
 		return nil, err
 	}
+	if err := s.requireHelpdeskDeviceCeiling(ctx, req.OrgId, req.DeviceId, rbac.PermDeviceApprove); err != nil {
+		return nil, err
+	}
 	p, _ := authctx.PrincipalFrom(ctx)
 	if err := s.devices.Approve(ctx, req.OrgId, p.UserID, req.DeviceId); err != nil {
 		return nil, err
@@ -40,6 +43,9 @@ func (s apiServer) ApproveDevice(ctx context.Context, req api.ApproveDeviceReque
 // RejectDevice POST .../devices/{deviceId}/reject.
 func (s apiServer) RejectDevice(ctx context.Context, req api.RejectDeviceRequestObject) (api.RejectDeviceResponseObject, error) {
 	if _, err := authorize(ctx, req.OrgId, rbac.PermDeviceApprove); err != nil {
+		return nil, err
+	}
+	if err := s.requireHelpdeskDeviceCeiling(ctx, req.OrgId, req.DeviceId, rbac.PermDeviceApprove); err != nil {
 		return nil, err
 	}
 	p, _ := authctx.PrincipalFrom(ctx)
@@ -66,8 +72,10 @@ func (s apiServer) GetDeviceApproval(ctx context.Context, req api.GetDeviceAppro
 
 // SetDeviceApproval PUT .../device-approval — flip the gate; returns the grandfathered
 // count when enabling (best-effort; a committed flip never fails on the count).
+// RBAC-1: device_approval:manage, split from device:approve so approving one device never lets a Helpdesk
+// person switch the requirement off for the whole organization.
 func (s apiServer) SetDeviceApproval(ctx context.Context, req api.SetDeviceApprovalRequestObject) (api.SetDeviceApprovalResponseObject, error) {
-	if _, err := authorize(ctx, req.OrgId, rbac.PermDeviceApprove); err != nil {
+	if _, err := authorize(ctx, req.OrgId, rbac.PermDeviceApprovalManage); err != nil {
 		return nil, err
 	}
 	p, _ := authctx.PrincipalFrom(ctx)

@@ -18,6 +18,7 @@ import (
 
 	"github.com/tunnexio/tunnex/apps/api/db/sqlc"
 	"github.com/tunnexio/tunnex/apps/api/internal/pgerr"
+	"github.com/tunnexio/tunnex/apps/api/internal/rbac"
 )
 
 const (
@@ -642,12 +643,15 @@ func requireAgent(ctx context.Context, tx pgx.Tx, orgID, deviceID uuid.UUID, act
 
 func requireRequesterAuthority(ctx context.Context, tx pgx.Tx, orgID, deviceID, requester uuid.UUID) error {
 	var role string
-	if err := tx.QueryRow(ctx, `SELECT m.role FROM memberships m JOIN users u ON u.id=m.user_id
+	var roles []string
+	if err := tx.QueryRow(ctx, `SELECT m.role, m.roles FROM memberships m JOIN users u ON u.id=m.user_id
 		WHERE m.org_id=$1 AND m.user_id=$2 AND m.access_revoked_at IS NULL
-		AND u.status='active' AND u.deleted_at IS NULL FOR SHARE OF m,u`, orgID, requester).Scan(&role); err != nil {
+		AND u.status='active' AND u.deleted_at IS NULL FOR SHARE OF m,u`, orgID, requester).Scan(&role, &roles); err != nil {
 		return ErrConflict
 	}
-	if role == "owner" || role == "admin" {
+	// RBAC-1: organization-wide request authority is the agent_access:request permission (owner, admin and
+	// AI Agents admin), read from the full role set, not a comparison with role names.
+	if rbac.CanAny(rbac.MembershipRoles(role, roles), rbac.PermAgentAccessRequest) {
 		return nil
 	}
 	var owner uuid.UUID

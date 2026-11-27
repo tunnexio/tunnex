@@ -68,8 +68,7 @@ func (s apiServer) CreateAlertDestination(ctx context.Context, req api.CreateAle
 	}
 	p, _ := authctx.PrincipalFrom(ctx)
 	allowPrivate := req.Body.AllowPrivate != nil && *req.Body.AllowPrivate
-	role, _ := p.RoleIn(req.OrgId)
-	if allowPrivate && role != rbac.RoleOwner {
+	if allowPrivate && !rbac.CanAny(p.RolesIn(req.OrgId), rbac.PermAlertingPrivateDestination) {
 		return nil, apierr.New(http.StatusForbidden, "forbidden", "only the organization owner may enable private alert destinations")
 	}
 	if s.alertConfig == nil {

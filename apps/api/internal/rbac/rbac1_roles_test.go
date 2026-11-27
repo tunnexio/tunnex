@@ -22,7 +22,7 @@ var rbac1Grants = map[string][]Permission{
 		PermMCPManage, PermMemberList, PermOrgView,
 	},
 	RoleNetworkAdmin: {
-		PermConnectivityManage, PermConnectivityUse, PermDeviceApprovalManage, PermDeviceApprove,
+		PermConnectivityManage, PermDeviceApprovalManage, PermDeviceApprove,
 		PermDeviceHealthManage, PermDeviceRestore, PermDeviceTransfer, PermDeviceView, PermFQDNResourceManage,
 		PermFQDNResourceView, PermGatewayManage, PermIPsecManage, PermK8sAPIManage, PermK8sHAManage,
 		PermK8sHAView, PermK8sManage, PermK8sScopeApprove, PermK8sScopeManage, PermK8sScopeView, PermMemberList,
@@ -179,6 +179,14 @@ func TestRBAC1AdminGradeAndHelpdeskCeiling(t *testing.T) {
 	for _, c := range cases {
 		if got := HelpdeskCeilingApplies(c.actor, c.perm); got != c.want {
 			t.Errorf("HelpdeskCeilingApplies(%v,%s)=%v want %v", c.actor, c.perm, got, c.want)
+		}
+	}
+}
+
+func TestRBAC1PrivateAlertDestinationStaysOwnerOnly(t *testing.T) {
+	for role := range rolePermissions {
+		if Can(role, PermAlertingPrivateDestination) != (role == RoleOwner) {
+			t.Errorf("alerting:private_destination held by %s", role)
 		}
 	}
 }

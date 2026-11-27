@@ -780,6 +780,9 @@ type Querier interface {
 	// lint:cross-org — keyed by device_id; the caller authorized the device via its
 	// org (GetDevice) before reading its health snapshot.
 	GetDeviceHealth(ctx context.Context, deviceID uuid.UUID) (DeviceHealth, error)
+	// RBAC-1 Helpdesk ceiling. The roles of the person who owns a device in this organization (no row when the
+	// device or the owner's active membership is gone).
+	GetDeviceOwnerMembershipRoles(ctx context.Context, arg GetDeviceOwnerMembershipRolesParams) (GetDeviceOwnerMembershipRolesRow, error)
 	GetDomainClaim(ctx context.Context, arg GetDomainClaimParams) (DomainClaim, error)
 	// lint:cross-org — SSO callback resolves the config by (provider, client_id)
 	// before an org context exists; org_id is a column on the returned row.
@@ -1869,6 +1872,9 @@ type Querier interface {
 	// in the snapshot, and neither its time nor its source, changes.
 	MergeAgentMCPInventoryOAuthDiscovery(ctx context.Context, arg MergeAgentMCPInventoryOAuthDiscoveryParams) (int64, error)
 	NextAgentPolicyTemplateVersion(ctx context.Context, arg NextAgentPolicyTemplateVersionParams) (int32, error)
+	// RBAC-1 Helpdesk ceiling for gateway-level device actions: does any device homed on this gateway belong
+	// to a person holding one of the given roles?
+	NodeHasDeviceOwnedByRoles(ctx context.Context, arg NodeHasDeviceOwnedByRolesParams) (bool, error)
 	// JSON projection preserves historical pre-release schema qualification.
 	OwnsAppAccessHostname(ctx context.Context, arg OwnsAppAccessHostnameParams) (*bool, error)
 	// lint:cross-org — the token itself is the credential; the org comes from the returned row.

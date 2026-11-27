@@ -113,8 +113,8 @@ func (s apiServer) RemintNodeLifecycleClaim(ctx context.Context, req api.RemintN
 	}
 	// Remint returns the same raw gateway join credential as ordinary node
 	// enrollment. Keep the lifecycle scope gate above, and also require the
-	// canonical credential-mint authority before validating claim-shaped input.
-	if _, err := authorize(ctx, req.OrgId, rbac.PermOrgUpdate); err != nil {
+	// canonical credential-mint authority (gateway:manage since RBAC-1) before validating claim-shaped input.
+	if _, err := authorize(ctx, req.OrgId, rbac.PermGatewayManage); err != nil {
 		return nil, err
 	}
 	if req.Body == nil {

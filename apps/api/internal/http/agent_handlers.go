@@ -221,8 +221,7 @@ func (s apiServer) ListAgents(ctx context.Context, req api.ListAgentsRequestObje
 		return nil, agentAccessFeatureRequired()
 	}
 	principal, _ := authctx.PrincipalFrom(ctx)
-	role, _ := principal.RoleIn(req.OrgId)
-	canViewOwners := rbac.Can(role, rbac.PermMemberManage)
+	canViewOwners := rbac.CanAny(principal.RolesIn(req.OrgId), rbac.PermMemberManage)
 	rows, err := s.nodes.ListAgents(ctx, req.OrgId)
 	if err != nil {
 		return nil, err

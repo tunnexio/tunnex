@@ -38,8 +38,7 @@ func (s apiServer) ListAgentAccessDestinations(ctx context.Context, req api.List
 		return nil, err
 	}
 	p, _ := authctx.PrincipalFrom(ctx)
-	role, _ := p.RoleIn(req.OrgId)
-	if !rbac.Can(role, rbac.PermAgentAccessRequest) {
+	if !rbac.CanAny(p.RolesIn(req.OrgId), rbac.PermAgentAccessRequest) {
 		if s.system == nil {
 			return nil, apierr.Internal()
 		}
@@ -158,8 +157,7 @@ func (s apiServer) ListAgentAccessRequests(ctx context.Context, req api.ListAgen
 		return nil, apierr.BadRequest("invalid_request", "before_requested_at and before_id must be supplied together")
 	}
 	p, _ := authctx.PrincipalFrom(ctx)
-	role, _ := p.RoleIn(req.OrgId)
-	global := rbac.Can(role, rbac.PermAgentAccessRequest)
+	global := rbac.CanAny(p.RolesIn(req.OrgId), rbac.PermAgentAccessRequest)
 	if !global {
 		if s.system == nil {
 			return nil, apierr.Internal()
@@ -335,8 +333,7 @@ func (s apiServer) authorizeAgentAccessRequest(ctx context.Context, orgID, reque
 		return sqlc.AgentAccessRequest{}, false, apierr.Internal()
 	}
 	p, _ := authctx.PrincipalFrom(ctx)
-	role, _ := p.RoleIn(orgID)
-	if rbac.Can(role, rbac.PermAgentAccessApprove) || rbac.Can(role, rbac.PermAgentAccessRequest) {
+	if roles := p.RolesIn(orgID); rbac.CanAny(roles, rbac.PermAgentAccessApprove) || rbac.CanAny(roles, rbac.PermAgentAccessRequest) {
 		row, err := s.system.GetAgentAccessRequest(ctx, sqlc.GetAgentAccessRequestParams{ID: requestID, OrgID: orgID})
 		return row, true, mapAgentAccessLookup(err)
 	}

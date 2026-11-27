@@ -174,7 +174,6 @@
   ],
   "network-admin": [
     "connectivity:manage",
-    "connectivity:use",
     "device:approve",
     "device:restore",
     "device:transfer",
@@ -232,6 +231,7 @@
     "ai_workload:manage",
     "ai_workload:view",
     "alerting:manage",
+    "alerting:private_destination",
     "app_access:event_view",
     "app_access:grant",
     "app_access:manage",
