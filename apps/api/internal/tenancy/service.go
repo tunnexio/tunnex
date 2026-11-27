@@ -405,7 +405,13 @@ func (s *Service) SetAgentQuota(ctx context.Context, id uuid.UUID, max *int32) (
 
 // SetAgentRuntimeEnabled records the F04 organization opt-in atomically with
 // its audit event. A licence unlock alone never calls this method.
+//
+// Turning it on is refused with 403 feature_required on a plan that cannot use runtime synchronization,
+// so the switch is never saved in a state that only fails later. Turning it off is always allowed.
 func (s *Service) SetAgentRuntimeEnabled(ctx context.Context, id uuid.UUID, enabled bool) (sqlc.Organization, error) {
+	if enabled && !s.AgentRuntimeAvailable() {
+		return sqlc.Organization{}, AgentRuntimeFeatureRequired()
+	}
 	var org sqlc.Organization
 	err := s.withTx(ctx, func(q *sqlc.Queries) error {
 		var e error
@@ -428,6 +434,76 @@ func (s *Service) SetAgentRuntimeEnabled(ctx context.Context, id uuid.UUID, enab
 		return sqlc.Organization{}, err
 	}
 	return org, nil
+}
+
+// AgentRuntimeUnlocked says whether a plan includes runtime synchronization. It is the same rule the
+// runtime service applies on every poll (the unlock passed to agentruntime.OrganizationOptIn): every
+// plan except Community.
+func AgentRuntimeUnlocked(tier licence.Tier) bool { return tier != licence.TierCommunity }
+
+// AgentRuntimeAvailable reports whether this deployment's current plan includes runtime synchronization.
+func (s *Service) AgentRuntimeAvailable() bool { return AgentRuntimeUnlocked(s.effectiveTier()) }
+
+// AgentRuntimeFeatureRequired is the refusal for turning runtime synchronization on without a plan that
+// includes it.
+func AgentRuntimeFeatureRequired() error {
+	return apierr.Forbidden("feature_required", "Runtime synchronization is not included in your current plan.")
+}
+
+// MCPEnabled reads the organization's MCP switch. An organization that never set it reads as off.
+func (s *Service) MCPEnabled(ctx context.Context, id uuid.UUID) (bool, error) {
+	row, err := s.q.GetOrganizationMCPSetting(ctx, id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return row.Enabled, nil
+}
+
+// SetMCPEnabled records the organization's MCP switch atomically with its audit row. MCP has its own
+// switch and does not depend on agent groups and policy templates. Turning it off is refused with 409
+// mcp_in_use while any agent group still has an MCP server assigned, the same rule the templates switch
+// applies to its own assignments.
+func (s *Service) SetMCPEnabled(ctx context.Context, id uuid.UUID, enabled bool) (bool, error) {
+	var saved bool
+	err := s.withTx(ctx, func(q *sqlc.Queries) error {
+		// Confirms the organization exists and holds it against deletion for this transaction.
+		if _, e := q.GetOrganizationAgentPolicyTemplatesEnabled(ctx, id); errors.Is(e, pgx.ErrNoRows) {
+			return orgNotFound()
+		} else if e != nil {
+			return e
+		}
+		if !enabled {
+			live, e := q.CountActiveAgentMCPAssignments(ctx, id)
+			if e != nil {
+				return e
+			}
+			if live != 0 {
+				return apierr.Conflict("mcp_in_use", "Remove the MCP server from every agent group before turning MCP off.")
+			}
+		}
+		actor := actorFromCtx(ctx)
+		updatedBy := pgtype.UUID{}
+		if actor != nil {
+			updatedBy = pgtype.UUID{Bytes: [16]byte(*actor), Valid: true}
+		}
+		row, e := q.UpsertOrganizationMCPSetting(ctx, sqlc.UpsertOrganizationMCPSettingParams{OrgID: id, Enabled: enabled, UpdatedByUserID: updatedBy})
+		if e != nil {
+			return e
+		}
+		saved = row.Enabled
+		action := "org.mcp_disabled"
+		if enabled {
+			action = "org.mcp_enabled"
+		}
+		return writeAudit(ctx, q, id, actor, action, "organization", id.String(), map[string]any{"enabled": enabled})
+	})
+	if err != nil {
+		return false, err
+	}
+	return saved, nil
 }
 
 // SetAlertingEnabled records the F11 opt-in atomically with its attributable
