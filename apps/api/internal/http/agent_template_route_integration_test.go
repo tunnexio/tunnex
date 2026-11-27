@@ -79,6 +79,8 @@ func TestAgentTemplateRouteAuthorizationOptInAndRefetch(t *testing.T) {
 	if _, err := s.SetOrganizationAgentPolicyTemplatesEnabled(with(owner, rbac.RoleOwner), api.SetOrganizationAgentPolicyTemplatesEnabledRequestObject{OrgId: org, Body: &api.AgentPolicyTemplateSetting{Enabled: true}}); err != nil {
 		t.Fatalf("owner opt-in: %v", err)
 	}
+	// MCP has its own switch (AI-UX-1); this proof also walks the MCP profile routes.
+	exec(`INSERT INTO organization_mcp_settings (org_id,enabled) VALUES ($1,true)`, org)
 	created, err := s.CreateAgentGroup(with(owner, rbac.RoleOwner), api.CreateAgentGroupRequestObject{OrgId: org, Body: &api.CreateAgentGroupRequest{Name: "workers"}})
 	if err != nil {
 		t.Fatal(err)

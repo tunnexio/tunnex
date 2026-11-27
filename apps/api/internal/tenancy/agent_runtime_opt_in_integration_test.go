@@ -2,6 +2,7 @@ package tenancy
 
 import (
 	"context"
+	"errors"
 	"os"
 	"testing"
 	"time"
@@ -9,7 +10,9 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/tunnexio/tunnex/apps/api/internal/apierr"
 	"github.com/tunnexio/tunnex/apps/api/internal/authctx"
+	"github.com/tunnexio/tunnex/apps/api/internal/licence"
 )
 
 // TestSetAgentRuntimeEnabledAuditsAndRollsBack proves that both directions are
@@ -36,7 +39,22 @@ func TestSetAgentRuntimeEnabledAuditsAndRollsBack(t *testing.T) {
 		t.Fatalf("seed actor: %v", err)
 	}
 	ctx = authctx.WithPrincipal(ctx, &authctx.Principal{UserID: actor, Email: "actor@example.com"})
-	svc := NewService(pool)
+	// AI-UX-1: a plan without runtime synchronization cannot turn it on, and nothing is saved or audited.
+	community := NewService(pool).WithLicence(licence.NewTestManager("community", time.Now().Add(time.Hour)))
+	if _, err := community.SetAgentRuntimeEnabled(ctx, org, true); !isFeatureRequired(err) {
+		t.Fatalf("community enable: want 403 feature_required, got %v", err)
+	}
+	var savedOn bool
+	var auditRows int
+	if err := pool.QueryRow(ctx, `SELECT o.managed_agent_runtime_enabled,
+		(SELECT count(*) FROM audit_logs a WHERE a.org_id=o.id AND a.action LIKE 'org.agent_runtime_%')
+		FROM organizations o WHERE o.id=$1`, org).Scan(&savedOn, &auditRows); err != nil {
+		t.Fatalf("read after refused enable: %v", err)
+	}
+	if savedOn || auditRows != 0 {
+		t.Fatalf("refused enable changed state: enabled=%v audit rows=%d", savedOn, auditRows)
+	}
+	svc := NewService(pool).WithLicence(licence.NewTestManager("starter", time.Now().Add(time.Hour)))
 	cleanupAuditFailure := func() {
 		cleanupCtx := context.Background()
 		tx, beginErr := pool.Begin(cleanupCtx)
@@ -119,5 +137,26 @@ $$`); err != nil {
 	}
 	if disabledAudits != 1 {
 		t.Fatalf("failed toggle must not add an audit row, got %d disabled rows", disabledAudits)
+	}
+}
+
+func isFeatureRequired(err error) bool {
+	var apiErr *apierr.Error
+	return errors.As(err, &apiErr) && apiErr.Status == 403 && apiErr.Code == "feature_required"
+}
+
+// A plan that loses runtime synchronization can still turn the switch off.
+func TestAgentRuntimeCanAlwaysBeTurnedOff(t *testing.T) {
+	if (&Service{}).AgentRuntimeAvailable() {
+		t.Fatal("no licence is Community, which does not include runtime synchronization")
+	}
+	for tier, want := range map[string]bool{"community": false, "trial": true, "starter": true, "growth": true, "scale": true} {
+		svc := (&Service{}).WithLicence(licence.NewTestManager(tier, time.Now().Add(time.Hour)))
+		if got := svc.AgentRuntimeAvailable(); got != want {
+			t.Fatalf("%s: runtime synchronization available=%v, want %v", tier, got, want)
+		}
+	}
+	if _, err := (&Service{}).SetAgentRuntimeEnabled(context.Background(), uuid.New(), true); !isFeatureRequired(err) {
+		t.Fatalf("enable without a licence: want 403 feature_required, got %v", err)
 	}
 }
