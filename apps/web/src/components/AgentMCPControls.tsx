@@ -246,7 +246,7 @@ export function AgentMCPOAuthPanel({ orgId, deviceId, inventory, canManage, outc
 const ACTIVITY_PAGE = 50;
 const blockedReason: Record<string, string> = {
   policy: "not allowed by the tool rules", method: "this kind of request is not allowed", arguments: "the arguments are not allowed", schema: "the arguments do not fit the tool's inputs",
-  rate_limit: "too many calls in a minute", step_up_required: "waiting for approval", step_up_denied: "approval was denied", definition_changed: "the tool changed and needs review",
+  rate_limit: "too many calls in a minute", step_up_required: "approval was required", step_up_denied: "approval was denied", definition_changed: "the tool changed and needs review",
   no_profile: "no MCP profile is assigned", no_inventory: "the tool list is not available yet", unavailable: "the rules could not be checked",
 };
 function activityResult(item: Activity): { text: string; tone: "ok" | "warn" | "danger" | "neutral" } {
@@ -278,8 +278,8 @@ export function mcpActivityExportHref(orgId: string, deviceId: string, filters: 
 function activityApproval(item: Activity): ReactNode {
   // A call that was stopped to ask a person: it needed approval, whatever the row carries about the request.
   if (item.decision === "deny" && item.reason === "step_up_required") return item.approval_request_id
-    ? <Link className="underline" to="/approvals" title={`Request ${item.approval_request_id.slice(0, 8)}`}>Waiting for approval</Link>
-    : <span>Waiting for approval</span>;
+    ? <Link className="underline" to="/approvals" title={`Request ${item.approval_request_id.slice(0, 8)}`}>Approval was required</Link>
+    : <span>Approval was required</span>;
   if (item.decision === "deny" && item.reason === "step_up_denied") return <span>Denied</span>;
   if (!item.approval_request_id) return <span>Not needed</span>;
   const when = item.approved_at ? compactDateTime(item.approved_at) : "";

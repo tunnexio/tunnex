@@ -153,11 +153,11 @@ describe("the Approval column", () => {
   const approval = (tool: string) => row(tool).getAllByRole("cell").at(-1) as HTMLElement;
   const showLinked = (items: unknown[]) => { get.mockResolvedValue({ data: { items, next_cursor: null } }); return render(<MemoryRouter><AgentMCPToolActivityPanel orgId="org" deviceId="agent" /></MemoryRouter>); };
 
-  it("says a blocked call is waiting for approval, never that approval was not needed", async () => {
+  it("says a blocked call required approval, never that approval was not needed", async () => {
     showLinked([call({ id: "w1", tool_name: "refund_payment", decision: "deny", reason: "step_up_required", result_status: "not_forwarded" })]);
     await screen.findByRole("table", { name: "MCP calls" });
-    expect(row("refund_payment").getByText("Blocked: waiting for approval")).toBeTruthy();
-    expect(approval("refund_payment").textContent).toBe("Waiting for approval");
+    expect(row("refund_payment").getByText("Blocked: approval was required")).toBeTruthy();
+    expect(approval("refund_payment").textContent).toBe("Approval was required");
     expect(row("refund_payment").queryByText("Not needed")).toBeNull();
     // No request id on the row, so there is nothing to link to.
     expect(within(approval("refund_payment")).queryByRole("link")).toBeNull();
@@ -166,7 +166,7 @@ describe("the Approval column", () => {
   it("links a waiting call to its request in Approvals when the row carries the request", async () => {
     showLinked([call({ id: "w2", tool_name: "refund_payment", decision: "deny", reason: "step_up_required", result_status: "not_forwarded", approval_request_id: "9f8e7d6c-1111-4222-8333-444455556666" })]);
     await screen.findByRole("table", { name: "MCP calls" });
-    const link = within(approval("refund_payment")).getByRole("link", { name: "Waiting for approval" });
+    const link = within(approval("refund_payment")).getByRole("link", { name: "Approval was required" });
     expect(link.getAttribute("href")).toBe("/approvals");
     expect(link.getAttribute("title")).toBe("Request 9f8e7d6c");
   });
