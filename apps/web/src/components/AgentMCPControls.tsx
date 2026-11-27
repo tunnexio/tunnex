@@ -248,20 +248,51 @@ function activityResult(item: Activity): { text: string; tone: "ok" | "warn" | "
   return { text: "Still running", tone: "neutral" };
 }
 type ActivityState = { kind: "loading" } | { kind: "error"; message: string } | { kind: "ready"; items: Activity[]; next: string | null };
+type ActivityShow = "all" | "denied" | "approved";
+type ActivityFilters = { show: ActivityShow; from: string; to: string; server: string };
+const NO_FILTERS: ActivityFilters = { show: "all", from: "", to: "", server: "" };
+/** A day picked in the browser, as the instant it starts or ends in the person's own time zone. */
+const dayEdge = (day: string, end: boolean): string | undefined => {
+  if (!day) return undefined;
+  const at = new Date(`${day}T${end ? "23:59:59.999" : "00:00:00"}`);
+  return Number.isNaN(at.getTime()) ? undefined : at.toISOString();
+};
+/** The filters as the server takes them, shared by the list and the CSV export so both show the same calls. */
+function activityQuery(filters: ActivityFilters): Record<string, string | boolean> {
+  const from = dayEdge(filters.from, false), to = dayEdge(filters.to, true);
+  return { ...(filters.show === "denied" ? { decision: "deny" } : {}), ...(filters.show === "approved" ? { approved: true } : {}), ...(from ? { from } : {}), ...(to ? { to } : {}), ...(filters.server ? { server: filters.server } : {}) };
+}
+export function mcpActivityExportHref(orgId: string, deviceId: string, filters: ActivityFilters): string {
+  const query = new URLSearchParams(Object.entries(activityQuery(filters)).map(([key, value]) => [key, String(value)])).toString();
+  return `/api/v1/organizations/${encodeURIComponent(orgId)}/agents/${encodeURIComponent(deviceId)}/mcp-tool-activity/export${query ? `?${query}` : ""}`;
+}
+function activityApproval(item: Activity): ReactNode {
+  if (!item.approval_request_id) return <span>Not needed</span>;
+  const when = item.approved_at ? compactDateTime(item.approved_at) : "";
+  if (item.approved_by_email) return <span title={item.approved_at ? new Date(item.approved_at).toLocaleString() : undefined}>Approved by {item.approved_by_email}{when ? `, ${when}` : ""}</span>;
+  return <span title={item.approval_request_id}>Approved request {item.approval_request_id.slice(0, 8)}</span>;
+}
 
-/** What the agent did through MCP, newest first. Arguments and results are never stored, so none are shown. */
-export function AgentMCPToolActivityPanel({ orgId, deviceId }: { orgId: string; deviceId: string }) {
-  const [state, setState] = useState<ActivityState>({ kind: "loading" }); const [filter, setFilter] = useState<"all" | "approved">("all");
+/**
+ * What the agent did through MCP, newest first, with filters the server applies: denied or approved
+ * calls, a date range and one server. Arguments and results are never stored, so none are shown.
+ */
+export function AgentMCPToolActivityPanel({ orgId, deviceId, servers = [] }: { orgId: string; deviceId: string; /** The agent's MCP servers, for the server filter. */ servers?: Array<{ server_name: string; profile_name: string }> }) {
+  const [state, setState] = useState<ActivityState>({ kind: "loading" }); const [filters, setFilters] = useState<ActivityFilters>(NO_FILTERS);
   const [olderBusy, setOlderBusy] = useState(false); const [olderError, setOlderError] = useState<string | null>(null); const [version, setVersion] = useState(0);
-  const fetchPage = (cursor?: string) => loadOne(() => api.GET("/api/v1/organizations/{orgId}/agents/{deviceId}/mcp-tool-activity", { params: { path: { orgId, deviceId }, query: cursor ? { limit: ACTIVITY_PAGE, cursor } : { limit: ACTIVITY_PAGE } } }));
+  const dayId = useId();
+  const backwards = Boolean(filters.from && filters.to && filters.from > filters.to);
+  const filtered = filters.show !== "all" || Boolean(filters.from || filters.to || filters.server);
+  const fetchPage = (cursor?: string) => loadOne(() => api.GET("/api/v1/organizations/{orgId}/agents/{deviceId}/mcp-tool-activity", { params: { path: { orgId, deviceId }, query: { limit: ACTIVITY_PAGE, ...activityQuery(filters), ...(cursor ? { cursor } : {}) } as never } }));
   // Older fixtures answer with a bare list; the contract is { items, next_cursor }.
   const pageOf = (data: unknown): { items: Activity[]; next: string | null } => Array.isArray(data) ? { items: data as Activity[], next: null } : { items: (data as { items?: Activity[] } | undefined)?.items ?? [], next: (data as { next_cursor?: string | null } | undefined)?.next_cursor ?? null };
   useEffect(() => {
+    if (backwards) return;
     let cancelled = false;
     setState({ kind: "loading" }); setOlderError(null);
     void fetchPage().then((result) => { if (!cancelled) setState(result.ok ? { kind: "ready", ...pageOf(result.data) } : { kind: "error", message: result.error }); });
     return () => { cancelled = true; };
-  }, [orgId, deviceId, version]);
+  }, [orgId, deviceId, version, filters.show, filters.from, filters.to, filters.server, backwards]);
   const older = async () => {
     if (state.kind !== "ready" || !state.next) return;
     setOlderBusy(true); setOlderError(null);
@@ -271,22 +302,36 @@ export function AgentMCPToolActivityPanel({ orgId, deviceId }: { orgId: string; 
     const page = pageOf(result.data);
     setState((current) => current.kind === "ready" ? { kind: "ready", items: [...current.items, ...page.items], next: page.next } : current);
   };
-  if (state.kind === "loading") return <div data-testid="agent-mcp-tool-activity"><p role="status">Loading MCP calls…</p></div>;
-  if (state.kind === "error") return <div data-testid="agent-mcp-tool-activity"><p role="alert">MCP calls could not be loaded: {state.message}</p><Button size="sm" variant="ghost" className="mt-2" aria-label="Retry MCP calls" onClick={() => setVersion((value) => value + 1)}>Retry</Button></div>;
-  const shown = filter === "approved" ? state.items.filter((item) => item.approval_request_id) : state.items;
+  const set = (patch: Partial<ActivityFilters>) => setFilters((current) => ({ ...current, ...patch }));
+  const controls = <div role="group" aria-label="Filter MCP calls" className="grid min-w-0 gap-3">
+    <div role="group" aria-label="Show" className="flex flex-wrap items-center gap-2">{([["all", "All calls"], ["denied", "Denied calls"], ["approved", "Approved calls"]] as const).map(([value, label]) => <Button key={value} size="sm" variant={filters.show === value ? "primary" : "ghost"} aria-pressed={filters.show === value} onClick={() => set({ show: value })}>{label}</Button>)}</div>
+    <div className="flex min-w-0 flex-wrap items-end gap-3">
+      <label htmlFor={`${dayId}-from`} className="grid gap-1 text-xs text-ink-secondary">From<input id={`${dayId}-from`} type="date" value={filters.from} max={filters.to || undefined} onChange={(event) => set({ from: event.target.value })} className="min-h-9 rounded-md border border-line bg-surface px-2 text-sm text-ink-body" /></label>
+      <label htmlFor={`${dayId}-to`} className="grid gap-1 text-xs text-ink-secondary">To<input id={`${dayId}-to`} type="date" value={filters.to} min={filters.from || undefined} onChange={(event) => set({ to: event.target.value })} className="min-h-9 rounded-md border border-line bg-surface px-2 text-sm text-ink-body" /></label>
+      {servers.length > 0 && <label htmlFor={`${dayId}-server`} className="grid gap-1 text-xs text-ink-secondary">Server<select id={`${dayId}-server`} value={filters.server} onChange={(event) => set({ server: event.target.value })} className="min-h-9 rounded-md border border-line bg-surface px-2 text-sm text-ink-body"><option value="">All servers</option>{servers.map((server) => <option key={server.server_name} value={server.server_name}>{server.profile_name}</option>)}</select></label>}
+      {filtered && <Button size="sm" variant="ghost" onClick={() => setFilters(NO_FILTERS)}>Clear filters</Button>}
+      {/* A plain link, not a script-started download: the browser handles it even where scripted downloads are blocked. */}
+      {!backwards && <a className="inline-flex min-h-9 items-center text-sm underline sm:ml-auto" href={mcpActivityExportHref(orgId, deviceId, filters)} download>Download CSV</a>}
+    </div>
+    <p className="text-xs text-ink-secondary">The CSV holds the calls that match these filters, up to 10,000 rows.</p>
+  </div>;
   return <div data-testid="agent-mcp-tool-activity" className="min-w-0">
-    {state.items.length === 0 ? <><p className="text-ink-heading">No MCP calls yet.</p><p>Calls this agent makes to its MCP server through the gateway are listed here.</p></> : <>
-      <div role="group" aria-label="Show" className="flex flex-wrap items-center gap-2">{([["all", "All calls"], ["approved", "Approved calls"]] as const).map(([value, label]) => <Button key={value} size="sm" variant={filter === value ? "primary" : "ghost"} aria-pressed={filter === value} onClick={() => setFilter(value)}>{label}</Button>)}</div>
-      {shown.length === 0 ? <p className="mt-3">None of the calls shown ran on an approval.</p> : <div className="mt-3 min-w-0"><DataTable caption="MCP calls" rows={shown} rowKey={(item) => item.id} failed={false} filterable={false} pageSize={0} empty={<>No MCP calls yet.</>} columns={[
-        { key: "time", header: "Time", cell: (item) => <span className="whitespace-nowrap" title={new Date(item.occurred_at).toLocaleString()}>{compactDateTime(item.occurred_at)}</span> },
-        { key: "tool", header: "Tool", cell: (item) => <span className="break-all font-mono">{item.tool_name || item.method}</span> },
-        { key: "server", header: "Server", cell: (item) => <span className="break-all">{item.server_name || item.endpoint}</span> },
-        { key: "result", header: "Result", cell: (item) => { const result = activityResult(item); return <Badge tone={result.tone}>{result.text}</Badge>; } },
-        { key: "approval", header: "Approval", cell: (item) => item.approval_request_id ? <span title={item.approval_request_id}>Approved request {item.approval_request_id.slice(0, 8)}</span> : <span>Not needed</span> },
-      ]} /></div>}
-      {state.next && <Button size="sm" variant="ghost" className="mt-3" disabled={olderBusy} onClick={() => void older()}>{olderBusy ? "Loading…" : "Show older calls"}</Button>}
-      {olderError && <p role="alert" className="mt-2">{olderError}</p>}
-    </>}
+    {controls}
+    <div className="mt-3 min-w-0">{backwards ? <p role="alert">The From date is after the To date. Change one of them to see calls.</p>
+      : state.kind === "loading" ? <p role="status">Loading MCP calls…</p>
+        : state.kind === "error" ? <><p role="alert">MCP calls could not be loaded: {state.message}</p><Button size="sm" variant="ghost" className="mt-2" aria-label="Retry MCP calls" onClick={() => setVersion((value) => value + 1)}>Retry</Button></>
+          : state.items.length === 0 ? (filtered ? <p>No calls match these filters.</p> : <><p className="text-ink-heading">No MCP calls yet.</p><p>Calls this agent makes to its MCP servers through the gateway are listed here.</p></>)
+            : <>
+              <DataTable caption="MCP calls" rows={state.items} rowKey={(item) => item.id} failed={false} filterable={false} pageSize={0} empty={<>No MCP calls yet.</>} columns={[
+                { key: "time", header: "Time", cell: (item) => <span className="whitespace-nowrap" title={new Date(item.occurred_at).toLocaleString()}>{compactDateTime(item.occurred_at)}</span> },
+                { key: "tool", header: "Tool", cell: (item) => <span className="break-all font-mono">{item.tool_name || item.method}</span> },
+                { key: "server", header: "Server", cell: (item) => <span className="break-all">{item.server_name || item.endpoint}</span> },
+                { key: "result", header: "Result", cell: (item) => { const result = activityResult(item); return <Badge tone={result.tone}>{result.text}</Badge>; } },
+                { key: "approval", header: "Approval", cell: activityApproval },
+              ]} />
+              {state.next && <Button size="sm" variant="ghost" className="mt-3" disabled={olderBusy} onClick={() => void older()}>{olderBusy ? "Loading…" : "Show older calls"}</Button>}
+              {olderError && <p role="alert" className="mt-2">{olderError}</p>}
+            </>}</div>
   </div>;
 }
 
