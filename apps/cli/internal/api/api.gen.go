@@ -451,12 +451,25 @@ const (
 	AgentCredentialRotationStatusWireguardStateStaged    AgentCredentialRotationStatusWireguardState = "staged"
 )
 
+// Defines values for AgentEffectiveMCPProfileEnforcement.
+const (
+	MCPEnforcementAgentHost   AgentEffectiveMCPProfileEnforcement = "agent_host"
+	MCPEnforcementGateway     AgentEffectiveMCPProfileEnforcement = "gateway"
+	MCPEnforcementUnavailable AgentEffectiveMCPProfileEnforcement = "unavailable"
+)
+
 // Defines values for AgentGroupMemberStatus.
 const (
 	AgentGroupMemberStatusActive    AgentGroupMemberStatus = "active"
 	AgentGroupMemberStatusPending   AgentGroupMemberStatus = "pending"
 	AgentGroupMemberStatusRevoked   AgentGroupMemberStatus = "revoked"
 	AgentGroupMemberStatusSuspended AgentGroupMemberStatus = "suspended"
+)
+
+// Defines values for AgentMCPInventorySource.
+const (
+	MCPInventorySourceAgent   AgentMCPInventorySource = "agent"
+	MCPInventorySourceGateway AgentMCPInventorySource = "gateway"
 )
 
 // Defines values for AgentMCPOAuthConnectionState.
@@ -485,6 +498,21 @@ const (
 	AgentMCPProfileAssignmentStateQuarantined AgentMCPProfileAssignmentState = "quarantined"
 	AgentMCPProfileAssignmentStateReplaced    AgentMCPProfileAssignmentState = "replaced"
 	AgentMCPProfileAssignmentStateUnassigned  AgentMCPProfileAssignmentState = "unassigned"
+)
+
+// Defines values for AgentMCPToolActivityDecision.
+const (
+	MCPToolActivityAllow AgentMCPToolActivityDecision = "allow"
+	MCPToolActivityDeny  AgentMCPToolActivityDecision = "deny"
+)
+
+// Defines values for AgentMCPToolActivityResultStatus.
+const (
+	MCPToolActivityError               AgentMCPToolActivityResultStatus = "error"
+	MCPToolActivityNotForwarded        AgentMCPToolActivityResultStatus = "not_forwarded"
+	MCPToolActivityOk                  AgentMCPToolActivityResultStatus = "ok"
+	MCPToolActivityPending             AgentMCPToolActivityResultStatus = "pending"
+	MCPToolActivityUpstreamUnavailable AgentMCPToolActivityResultStatus = "upstream_unavailable"
 )
 
 // Defines values for AgentMCPToolApprovalRequestState.
@@ -1623,6 +1651,12 @@ const (
 	Integer MCPArgumentConstraintType = "integer"
 	Number  MCPArgumentConstraintType = "number"
 	String  MCPArgumentConstraintType = "string"
+)
+
+// Defines values for MCPToolPolicyRuleDefinitionState.
+const (
+	MCPToolDefinitionChanged MCPToolPolicyRuleDefinitionState = "changed"
+	MCPToolDefinitionCurrent MCPToolPolicyRuleDefinitionState = "current"
 )
 
 // Defines values for ManagedAgentConfigWireguardRotationState.
@@ -3152,6 +3186,15 @@ type AIWorkloadTokenInputClientAssertionType string
 // AIWorkloadTokenInputGrantType defines model for AIWorkloadTokenInput.GrantType.
 type AIWorkloadTokenInputGrantType string
 
+// AcceptAgentMCPToolDefinitionRequest defines model for AcceptAgentMCPToolDefinitionRequest.
+type AcceptAgentMCPToolDefinitionRequest struct {
+	Endpoint string `json:"endpoint"`
+
+	// ToolDefinitionHash The definition hash currently observed for the tool. The accept is refused if the tool changed again since it was shown.
+	ToolDefinitionHash string `json:"tool_definition_hash"`
+	ToolName           string `json:"tool_name"`
+}
+
 // AcceptInviteRequest defines model for AcceptInviteRequest.
 type AcceptInviteRequest struct {
 	Name     *string `json:"name,omitempty"`
@@ -3582,13 +3625,25 @@ type AgentCredentialRotationStatusWireguardState string
 type AgentEffectiveMCPProfile struct {
 	Assigned bool `json:"assigned"`
 
+	// DirectPathClosable False when the endpoint is a hostname that the gateway cannot fully close (only addresses it already resolves for an FQDN resource of the same name are denied), or a public server the agent host can reach over its own internet.
+	DirectPathClosable *bool `json:"direct_path_closable,omitempty"`
+
+	// DirectPathGraceUntil Until this instant a runtime that predates gateway enforcement may keep the direct path to its MCP endpoint. Null means no grace: the direct path is closed as soon as the gateway can enforce.
+	DirectPathGraceUntil *time.Time `json:"direct_path_grace_until"`
+
 	// Endpoint Credential-free MCP upstream endpoint.
-	Endpoint    *string             `json:"endpoint"`
-	GroupId     *openapi_types.UUID `json:"group_id"`
-	GroupName   *string             `json:"group_name"`
-	ProfileId   *openapi_types.UUID `json:"profile_id"`
-	ProfileName *string             `json:"profile_name"`
+	Endpoint *string `json:"endpoint"`
+
+	// Enforcement Where tool policy is enforced for this agent right now. `gateway`: the gateway's MCP listener decides every call and the agent has no direct path to the endpoint. `agent_host`: the older local-proxy path, allowed only until `direct_path_grace_until`. `unavailable`: the grace period is over and the agent's gateway or runtime cannot use the gateway path, so MCP is withheld.
+	Enforcement *AgentEffectiveMCPProfileEnforcement `json:"enforcement,omitempty"`
+	GroupId     *openapi_types.UUID                  `json:"group_id"`
+	GroupName   *string                              `json:"group_name"`
+	ProfileId   *openapi_types.UUID                  `json:"profile_id"`
+	ProfileName *string                              `json:"profile_name"`
 }
+
+// AgentEffectiveMCPProfileEnforcement Where tool policy is enforced for this agent right now. `gateway`: the gateway's MCP listener decides every call and the agent has no direct path to the endpoint. `agent_host`: the older local-proxy path, allowed only until `direct_path_grace_until`. `unavailable`: the grace period is over and the agent's gateway or runtime cannot use the gateway path, so MCP is withheld.
+type AgentEffectiveMCPProfileEnforcement string
 
 // AgentEffectivePermissions Server-computed authority for this exact agent; clients must not infer it from the organization role.
 type AgentEffectivePermissions struct {
@@ -3646,9 +3701,15 @@ type AgentMCPInventory struct {
 	DeviceId   openapi_types.UUID `json:"device_id"`
 	ObservedAt time.Time          `json:"observed_at"`
 
-	// Snapshot Secret-free F12 inventory snapshot; no MCP request/response content or credentials.
+	// Snapshot Secret-free F12 inventory snapshot; no MCP request/response content or credentials. Each tool carries `tool_definition_hash` (SHA-256 of its canonical name, description and input schema, computed by the control plane) beside `input_schema_hash`, and `definition_state` (`current` or `changed`) relative to the agent's policy.
 	Snapshot map[string]interface{} `json:"snapshot"`
+
+	// Source Who observed the tool list. `gateway` inventory is discovered by the agent's gateway and is the only source an allow-list is built from once it exists; `agent` is the older host-reported list.
+	Source *AgentMCPInventorySource `json:"source,omitempty"`
 }
+
+// AgentMCPInventorySource Who observed the tool list. `gateway` inventory is discovered by the agent's gateway and is the only source an allow-list is built from once it exists; `agent` is the older host-reported list.
+type AgentMCPInventorySource string
 
 // AgentMCPOAuthConnection defines model for AgentMCPOAuthConnection.
 type AgentMCPOAuthConnection struct {
@@ -3751,20 +3812,65 @@ type AgentMCPProfileMutationResult struct {
 	ProposedProfileId           *openapi_types.UUID        `json:"proposed_profile_id"`
 }
 
+// AgentMCPToolActivity One decision the control plane made for a gateway-forwarded MCP request. Never carries arguments, results or credentials.
+type AgentMCPToolActivity struct {
+	ApprovalRequestId *openapi_types.UUID          `json:"approval_request_id"`
+	ArgumentsDigest   *string                      `json:"arguments_digest"`
+	CompletedAt       *time.Time                   `json:"completed_at"`
+	Decision          AgentMCPToolActivityDecision `json:"decision"`
+	DeviceId          openapi_types.UUID           `json:"device_id"`
+	Endpoint          string                       `json:"endpoint"`
+	Id                openapi_types.UUID           `json:"id"`
+	Method            string                       `json:"method"`
+	NodeId            *openapi_types.UUID          `json:"node_id"`
+	OccurredAt        time.Time                    `json:"occurred_at"`
+	PolicyVersion     *int64                       `json:"policy_version"`
+
+	// Reason Empty for an allow. For a deny, why (for example policy, arguments, rate_limit, step_up_required, definition_changed, no_profile).
+	Reason             string                           `json:"reason"`
+	ResultStatus       AgentMCPToolActivityResultStatus `json:"result_status"`
+	ServerName         string                           `json:"server_name"`
+	ToolName           string                           `json:"tool_name"`
+	UpstreamHttpStatus *int                             `json:"upstream_http_status"`
+}
+
+// AgentMCPToolActivityDecision defines model for AgentMCPToolActivity.Decision.
+type AgentMCPToolActivityDecision string
+
+// AgentMCPToolActivityResultStatus defines model for AgentMCPToolActivity.ResultStatus.
+type AgentMCPToolActivityResultStatus string
+
+// AgentMCPToolActivityPage defines model for AgentMCPToolActivityPage.
+type AgentMCPToolActivityPage struct {
+	Items []AgentMCPToolActivity `json:"items"`
+
+	// NextCursor Opaque cursor for the next (older) page; null when there are no more rows.
+	NextCursor *string `json:"next_cursor"`
+}
+
 // AgentMCPToolApprovalRequest defines model for AgentMCPToolApprovalRequest.
 type AgentMCPToolApprovalRequest struct {
-	ApprovedAt       *time.Time                       `json:"approved_at"`
-	ApprovedByUserId *openapi_types.UUID              `json:"approved_by_user_id"`
-	DeviceId         openapi_types.UUID               `json:"device_id"`
-	Endpoint         string                           `json:"endpoint"`
-	ExpiresAt        time.Time                        `json:"expires_at"`
-	Id               openapi_types.UUID               `json:"id"`
-	InputSchemaHash  string                           `json:"input_schema_hash"`
-	PolicyVersion    int64                            `json:"policy_version"`
-	RequestedAt      time.Time                        `json:"requested_at"`
-	ServerName       string                           `json:"server_name"`
-	State            AgentMCPToolApprovalRequestState `json:"state"`
-	ToolName         string                           `json:"tool_name"`
+	ApprovedAt       *time.Time          `json:"approved_at"`
+	ApprovedByUserId *openapi_types.UUID `json:"approved_by_user_id"`
+
+	// Arguments The arguments of the call awaiting approval, so the approver sees what they approve. At most 4 KiB of canonical JSON; a larger call is not stored and `arguments_truncated` is true. Null for a request created before arguments were kept. Visible only to roles that may approve.
+	Arguments          *map[string]interface{}          `json:"arguments"`
+	ArgumentsTruncated *bool                            `json:"arguments_truncated,omitempty"`
+	DeniedAt           *time.Time                       `json:"denied_at"`
+	DeniedByUserId     *openapi_types.UUID              `json:"denied_by_user_id"`
+	DeviceId           openapi_types.UUID               `json:"device_id"`
+	Endpoint           string                           `json:"endpoint"`
+	ExpiresAt          time.Time                        `json:"expires_at"`
+	Id                 openapi_types.UUID               `json:"id"`
+	InputSchemaHash    string                           `json:"input_schema_hash"`
+	PolicyVersion      int64                            `json:"policy_version"`
+	RequestedAt        time.Time                        `json:"requested_at"`
+	ServerName         string                           `json:"server_name"`
+	State              AgentMCPToolApprovalRequestState `json:"state"`
+
+	// ToolDefinitionHash The exact tool definition (name, description, input schema) the approval is bound to.
+	ToolDefinitionHash *string `json:"tool_definition_hash"`
+	ToolName           string  `json:"tool_name"`
 }
 
 // AgentMCPToolApprovalRequestState defines model for AgentMCPToolApprovalRequest.State.
@@ -6899,13 +7005,22 @@ type MCPArgumentConstraints struct {
 // MCPToolPolicyRule defines model for MCPToolPolicyRule.
 type MCPToolPolicyRule struct {
 	ArgumentConstraints *MCPArgumentConstraints `json:"argument_constraints"`
-	Endpoint            string                  `json:"endpoint"`
-	InputSchemaHash     string                  `json:"input_schema_hash"`
-	RateLimitPerMinute  *int                    `json:"rate_limit_per_minute"`
-	ServerName          string                  `json:"server_name"`
-	StepUpRequired      *bool                   `json:"step_up_required,omitempty"`
-	ToolName            string                  `json:"tool_name"`
+
+	// DefinitionState `changed` when the observed definition no longer matches `tool_definition_hash`; the tool is denied until accepted. Ignored on write.
+	DefinitionState    *MCPToolPolicyRuleDefinitionState `json:"definition_state,omitempty"`
+	Endpoint           string                            `json:"endpoint"`
+	InputSchemaHash    string                            `json:"input_schema_hash"`
+	RateLimitPerMinute *int                              `json:"rate_limit_per_minute"`
+	ServerName         string                            `json:"server_name"`
+	StepUpRequired     *bool                             `json:"step_up_required,omitempty"`
+
+	// ToolDefinitionHash SHA-256 of the canonical tool definition (name, description and input schema) this rule allows, computed by the control plane from gateway-observed inventory. A change to any of the three denies the tool until the new definition is accepted. Omitted on write pins the definition currently observed; a rule saved before this field existed is pinned at the first gateway inventory after upgrade.
+	ToolDefinitionHash *string `json:"tool_definition_hash"`
+	ToolName           string  `json:"tool_name"`
 }
+
+// MCPToolPolicyRuleDefinitionState `changed` when the observed definition no longer matches `tool_definition_hash`; the tool is denied until accepted. Ignored on write.
+type MCPToolPolicyRuleDefinitionState string
 
 // MFAStepUpInput defines model for MFAStepUpInput.
 type MFAStepUpInput struct {
@@ -6952,6 +7067,9 @@ type ManagedAgentConfig struct {
 
 	// GatewayPublicKey The gateway WireGuard public key.
 	GatewayPublicKey string `json:"gateway_public_key"`
+
+	// McpGatewayUrl The gateway's MCP listener on its tunnel address (for example `http://10.99.0.1:8084/mcp`). When present the local proxy forwards every MCP request there and applies no policy, token lease or discovery of its own: the gateway identifies the agent from the tunnel and enforces tool policy. Omitted or null when the agent's gateway has not reported the MCP capability; the runtime then stays on the direct path for as long as the organization's grace period allows.
+	McpGatewayUrl *string `json:"mcp_gateway_url"`
 
 	// McpUpstream Canonical Streamable HTTP MCP endpoint supplied by the assigned group profile. It is configuration, never a credential; null leaves the local proxy default-deny.
 	McpUpstream         *string            `json:"mcp_upstream"`
@@ -9303,6 +9421,9 @@ type PollAgentRuntimeParams struct {
 
 	// WireguardRevision Last handshake-committed WireGuard key revision known by the runtime.
 	WireguardRevision *int64 `form:"wireguard_revision,omitempty" json:"wireguard_revision,omitempty"`
+
+	// McpGateway True when this runtime forwards MCP to the gateway listener named by `mcp_gateway_url` instead of calling the MCP server itself. A runtime that predates gateway enforcement omits it. The runtime cannot update itself, so this explicit declaration, not `client_version`, is the capability signal.
+	McpGateway *bool `form:"mcp_gateway,omitempty" json:"mcp_gateway,omitempty"`
 }
 
 // ChangePasswordJSONBody defines parameters for ChangePassword.
@@ -9453,6 +9574,14 @@ type ListAgentsParamsSort string
 
 // ListAgentsParamsDir defines parameters for ListAgents.
 type ListAgentsParamsDir string
+
+// ListAgentMCPToolActivityParams defines parameters for ListAgentMCPToolActivity.
+type ListAgentMCPToolActivityParams struct {
+	Limit *int `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Cursor The `next_cursor` of the previous page.
+	Cursor *string `form:"cursor,omitempty" json:"cursor,omitempty"`
+}
 
 // TestAgentAccessParams defines parameters for TestAgentAccess.
 type TestAgentAccessParams struct {
@@ -10043,6 +10172,9 @@ type StartAgentMCPOAuthConnectionJSONRequestBody = StartAgentMCPOAuthConnectionR
 
 // ReplaceAgentMCPToolPolicyJSONRequestBody defines body for ReplaceAgentMCPToolPolicy for application/json ContentType.
 type ReplaceAgentMCPToolPolicyJSONRequestBody = ReplaceAgentMCPToolPolicyRequest
+
+// AcceptAgentMCPToolDefinitionJSONRequestBody defines body for AcceptAgentMCPToolDefinition for application/json ContentType.
+type AcceptAgentMCPToolDefinitionJSONRequestBody = AcceptAgentMCPToolDefinitionRequest
 
 // SetAIGatewaySettingsJSONRequestBody defines body for SetAIGatewaySettings for application/json ContentType.
 type SetAIGatewaySettingsJSONRequestBody = AIGatewayOptIn
@@ -11224,11 +11356,17 @@ type ClientInterface interface {
 	// DisconnectAgentMCPOAuthConnection request
 	DisconnectAgentMCPOAuthConnection(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, connectionId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// ListAgentMCPToolActivity request
+	ListAgentMCPToolActivity(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, params *ListAgentMCPToolActivityParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// ListAgentMCPToolApprovalRequests request
 	ListAgentMCPToolApprovalRequests(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ApproveAgentMCPToolApprovalRequest request
 	ApproveAgentMCPToolApprovalRequest(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, requestId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DenyAgentMCPToolApprovalRequest request
+	DenyAgentMCPToolApprovalRequest(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, requestId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetAgentMCPToolPolicy request
 	GetAgentMCPToolPolicy(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -11237,6 +11375,11 @@ type ClientInterface interface {
 	ReplaceAgentMCPToolPolicyWithBody(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	ReplaceAgentMCPToolPolicy(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, body ReplaceAgentMCPToolPolicyJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// AcceptAgentMCPToolDefinitionWithBody request with any body
+	AcceptAgentMCPToolDefinitionWithBody(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	AcceptAgentMCPToolDefinition(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, body AcceptAgentMCPToolDefinitionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetAgentRuntimeStatus request
 	GetAgentRuntimeStatus(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -15087,6 +15230,18 @@ func (c *Client) DisconnectAgentMCPOAuthConnection(ctx context.Context, orgId op
 	return c.Client.Do(req)
 }
 
+func (c *Client) ListAgentMCPToolActivity(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, params *ListAgentMCPToolActivityParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListAgentMCPToolActivityRequest(c.Server, orgId, deviceId, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 func (c *Client) ListAgentMCPToolApprovalRequests(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewListAgentMCPToolApprovalRequestsRequest(c.Server, orgId, deviceId)
 	if err != nil {
@@ -15101,6 +15256,18 @@ func (c *Client) ListAgentMCPToolApprovalRequests(ctx context.Context, orgId ope
 
 func (c *Client) ApproveAgentMCPToolApprovalRequest(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, requestId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewApproveAgentMCPToolApprovalRequestRequest(c.Server, orgId, deviceId, requestId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) DenyAgentMCPToolApprovalRequest(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, requestId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDenyAgentMCPToolApprovalRequestRequest(c.Server, orgId, deviceId, requestId)
 	if err != nil {
 		return nil, err
 	}
@@ -15137,6 +15304,30 @@ func (c *Client) ReplaceAgentMCPToolPolicyWithBody(ctx context.Context, orgId op
 
 func (c *Client) ReplaceAgentMCPToolPolicy(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, body ReplaceAgentMCPToolPolicyJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewReplaceAgentMCPToolPolicyRequest(c.Server, orgId, deviceId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) AcceptAgentMCPToolDefinitionWithBody(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewAcceptAgentMCPToolDefinitionRequestWithBody(c.Server, orgId, deviceId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) AcceptAgentMCPToolDefinition(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, body AcceptAgentMCPToolDefinitionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewAcceptAgentMCPToolDefinitionRequest(c.Server, orgId, deviceId, body)
 	if err != nil {
 		return nil, err
 	}
@@ -22820,6 +23011,22 @@ func NewPollAgentRuntimeRequest(server string, params *PollAgentRuntimeParams) (
 
 		}
 
+		if params.McpGateway != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "mcp_gateway", runtime.ParamLocationQuery, *params.McpGateway); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
 		queryURL.RawQuery = queryValues.Encode()
 	}
 
@@ -27384,6 +27591,85 @@ func NewDisconnectAgentMCPOAuthConnectionRequest(server string, orgId openapi_ty
 	return req, nil
 }
 
+// NewListAgentMCPToolActivityRequest generates requests for ListAgentMCPToolActivity
+func NewListAgentMCPToolActivityRequest(server string, orgId openapi_types.UUID, deviceId openapi_types.UUID, params *ListAgentMCPToolActivityParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "deviceId", runtime.ParamLocationPath, deviceId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/agents/%s/mcp-tool-activity", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "limit", runtime.ParamLocationQuery, *params.Limit); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Cursor != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "cursor", runtime.ParamLocationQuery, *params.Cursor); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewListAgentMCPToolApprovalRequestsRequest generates requests for ListAgentMCPToolApprovalRequests
 func NewListAgentMCPToolApprovalRequestsRequest(server string, orgId openapi_types.UUID, deviceId openapi_types.UUID) (*http.Request, error) {
 	var err error
@@ -27456,6 +27742,54 @@ func NewApproveAgentMCPToolApprovalRequestRequest(server string, orgId openapi_t
 	}
 
 	operationPath := fmt.Sprintf("/api/v1/organizations/%s/agents/%s/mcp-tool-approval-requests/%s/approve", pathParam0, pathParam1, pathParam2)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewDenyAgentMCPToolApprovalRequestRequest generates requests for DenyAgentMCPToolApprovalRequest
+func NewDenyAgentMCPToolApprovalRequestRequest(server string, orgId openapi_types.UUID, deviceId openapi_types.UUID, requestId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "deviceId", runtime.ParamLocationPath, deviceId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam2 string
+
+	pathParam2, err = runtime.StyleParamWithLocation("simple", false, "requestId", runtime.ParamLocationPath, requestId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/agents/%s/mcp-tool-approval-requests/%s/deny", pathParam0, pathParam1, pathParam2)
 	if operationPath[0] == '/' {
 		operationPath = "." + operationPath
 	}
@@ -27559,6 +27893,60 @@ func NewReplaceAgentMCPToolPolicyRequestWithBody(server string, orgId openapi_ty
 	}
 
 	req, err := http.NewRequest("PUT", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewAcceptAgentMCPToolDefinitionRequest calls the generic AcceptAgentMCPToolDefinition builder with application/json body
+func NewAcceptAgentMCPToolDefinitionRequest(server string, orgId openapi_types.UUID, deviceId openapi_types.UUID, body AcceptAgentMCPToolDefinitionJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewAcceptAgentMCPToolDefinitionRequestWithBody(server, orgId, deviceId, "application/json", bodyReader)
+}
+
+// NewAcceptAgentMCPToolDefinitionRequestWithBody generates requests for AcceptAgentMCPToolDefinition with any type of body
+func NewAcceptAgentMCPToolDefinitionRequestWithBody(server string, orgId openapi_types.UUID, deviceId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "deviceId", runtime.ParamLocationPath, deviceId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/agents/%s/mcp-tool-policy/accept-definition", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
 	if err != nil {
 		return nil, err
 	}
@@ -45789,11 +46177,17 @@ type ClientWithResponsesInterface interface {
 	// DisconnectAgentMCPOAuthConnectionWithResponse request
 	DisconnectAgentMCPOAuthConnectionWithResponse(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, connectionId openapi_types.UUID, reqEditors ...RequestEditorFn) (*DisconnectAgentMCPOAuthConnectionResponse, error)
 
+	// ListAgentMCPToolActivityWithResponse request
+	ListAgentMCPToolActivityWithResponse(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, params *ListAgentMCPToolActivityParams, reqEditors ...RequestEditorFn) (*ListAgentMCPToolActivityResponse, error)
+
 	// ListAgentMCPToolApprovalRequestsWithResponse request
 	ListAgentMCPToolApprovalRequestsWithResponse(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ListAgentMCPToolApprovalRequestsResponse, error)
 
 	// ApproveAgentMCPToolApprovalRequestWithResponse request
 	ApproveAgentMCPToolApprovalRequestWithResponse(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, requestId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ApproveAgentMCPToolApprovalRequestResponse, error)
+
+	// DenyAgentMCPToolApprovalRequestWithResponse request
+	DenyAgentMCPToolApprovalRequestWithResponse(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, requestId openapi_types.UUID, reqEditors ...RequestEditorFn) (*DenyAgentMCPToolApprovalRequestResponse, error)
 
 	// GetAgentMCPToolPolicyWithResponse request
 	GetAgentMCPToolPolicyWithResponse(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetAgentMCPToolPolicyResponse, error)
@@ -45802,6 +46196,11 @@ type ClientWithResponsesInterface interface {
 	ReplaceAgentMCPToolPolicyWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ReplaceAgentMCPToolPolicyResponse, error)
 
 	ReplaceAgentMCPToolPolicyWithResponse(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, body ReplaceAgentMCPToolPolicyJSONRequestBody, reqEditors ...RequestEditorFn) (*ReplaceAgentMCPToolPolicyResponse, error)
+
+	// AcceptAgentMCPToolDefinitionWithBodyWithResponse request with any body
+	AcceptAgentMCPToolDefinitionWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*AcceptAgentMCPToolDefinitionResponse, error)
+
+	AcceptAgentMCPToolDefinitionWithResponse(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, body AcceptAgentMCPToolDefinitionJSONRequestBody, reqEditors ...RequestEditorFn) (*AcceptAgentMCPToolDefinitionResponse, error)
 
 	// GetAgentRuntimeStatusWithResponse request
 	GetAgentRuntimeStatusWithResponse(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetAgentRuntimeStatusResponse, error)
@@ -50267,6 +50666,29 @@ func (r DisconnectAgentMCPOAuthConnectionResponse) StatusCode() int {
 	return 0
 }
 
+type ListAgentMCPToolActivityResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AgentMCPToolActivityPage
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r ListAgentMCPToolActivityResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListAgentMCPToolActivityResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
 type ListAgentMCPToolApprovalRequestsResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -50313,6 +50735,29 @@ func (r ApproveAgentMCPToolApprovalRequestResponse) StatusCode() int {
 	return 0
 }
 
+type DenyAgentMCPToolApprovalRequestResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AgentMCPToolApprovalRequest
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r DenyAgentMCPToolApprovalRequestResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DenyAgentMCPToolApprovalRequestResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
 type GetAgentMCPToolPolicyResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -50353,6 +50798,29 @@ func (r ReplaceAgentMCPToolPolicyResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r ReplaceAgentMCPToolPolicyResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type AcceptAgentMCPToolDefinitionResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AgentMCPToolPolicy
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r AcceptAgentMCPToolDefinitionResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r AcceptAgentMCPToolDefinitionResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -60182,6 +60650,15 @@ func (c *ClientWithResponses) DisconnectAgentMCPOAuthConnectionWithResponse(ctx 
 	return ParseDisconnectAgentMCPOAuthConnectionResponse(rsp)
 }
 
+// ListAgentMCPToolActivityWithResponse request returning *ListAgentMCPToolActivityResponse
+func (c *ClientWithResponses) ListAgentMCPToolActivityWithResponse(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, params *ListAgentMCPToolActivityParams, reqEditors ...RequestEditorFn) (*ListAgentMCPToolActivityResponse, error) {
+	rsp, err := c.ListAgentMCPToolActivity(ctx, orgId, deviceId, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListAgentMCPToolActivityResponse(rsp)
+}
+
 // ListAgentMCPToolApprovalRequestsWithResponse request returning *ListAgentMCPToolApprovalRequestsResponse
 func (c *ClientWithResponses) ListAgentMCPToolApprovalRequestsWithResponse(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ListAgentMCPToolApprovalRequestsResponse, error) {
 	rsp, err := c.ListAgentMCPToolApprovalRequests(ctx, orgId, deviceId, reqEditors...)
@@ -60198,6 +60675,15 @@ func (c *ClientWithResponses) ApproveAgentMCPToolApprovalRequestWithResponse(ctx
 		return nil, err
 	}
 	return ParseApproveAgentMCPToolApprovalRequestResponse(rsp)
+}
+
+// DenyAgentMCPToolApprovalRequestWithResponse request returning *DenyAgentMCPToolApprovalRequestResponse
+func (c *ClientWithResponses) DenyAgentMCPToolApprovalRequestWithResponse(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, requestId openapi_types.UUID, reqEditors ...RequestEditorFn) (*DenyAgentMCPToolApprovalRequestResponse, error) {
+	rsp, err := c.DenyAgentMCPToolApprovalRequest(ctx, orgId, deviceId, requestId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDenyAgentMCPToolApprovalRequestResponse(rsp)
 }
 
 // GetAgentMCPToolPolicyWithResponse request returning *GetAgentMCPToolPolicyResponse
@@ -60224,6 +60710,23 @@ func (c *ClientWithResponses) ReplaceAgentMCPToolPolicyWithResponse(ctx context.
 		return nil, err
 	}
 	return ParseReplaceAgentMCPToolPolicyResponse(rsp)
+}
+
+// AcceptAgentMCPToolDefinitionWithBodyWithResponse request with arbitrary body returning *AcceptAgentMCPToolDefinitionResponse
+func (c *ClientWithResponses) AcceptAgentMCPToolDefinitionWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*AcceptAgentMCPToolDefinitionResponse, error) {
+	rsp, err := c.AcceptAgentMCPToolDefinitionWithBody(ctx, orgId, deviceId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseAcceptAgentMCPToolDefinitionResponse(rsp)
+}
+
+func (c *ClientWithResponses) AcceptAgentMCPToolDefinitionWithResponse(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, body AcceptAgentMCPToolDefinitionJSONRequestBody, reqEditors ...RequestEditorFn) (*AcceptAgentMCPToolDefinitionResponse, error) {
+	rsp, err := c.AcceptAgentMCPToolDefinition(ctx, orgId, deviceId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseAcceptAgentMCPToolDefinitionResponse(rsp)
 }
 
 // GetAgentRuntimeStatusWithResponse request returning *GetAgentRuntimeStatusResponse
@@ -69092,6 +69595,39 @@ func ParseDisconnectAgentMCPOAuthConnectionResponse(rsp *http.Response) (*Discon
 	return response, nil
 }
 
+// ParseListAgentMCPToolActivityResponse parses an HTTP response from a ListAgentMCPToolActivityWithResponse call
+func ParseListAgentMCPToolActivityResponse(rsp *http.Response) (*ListAgentMCPToolActivityResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListAgentMCPToolActivityResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AgentMCPToolActivityPage
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseListAgentMCPToolApprovalRequestsResponse parses an HTTP response from a ListAgentMCPToolApprovalRequestsWithResponse call
 func ParseListAgentMCPToolApprovalRequestsResponse(rsp *http.Response) (*ListAgentMCPToolApprovalRequestsResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -69158,6 +69694,39 @@ func ParseApproveAgentMCPToolApprovalRequestResponse(rsp *http.Response) (*Appro
 	return response, nil
 }
 
+// ParseDenyAgentMCPToolApprovalRequestResponse parses an HTTP response from a DenyAgentMCPToolApprovalRequestWithResponse call
+func ParseDenyAgentMCPToolApprovalRequestResponse(rsp *http.Response) (*DenyAgentMCPToolApprovalRequestResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DenyAgentMCPToolApprovalRequestResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AgentMCPToolApprovalRequest
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseGetAgentMCPToolPolicyResponse parses an HTTP response from a GetAgentMCPToolPolicyWithResponse call
 func ParseGetAgentMCPToolPolicyResponse(rsp *http.Response) (*GetAgentMCPToolPolicyResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -69200,6 +69769,39 @@ func ParseReplaceAgentMCPToolPolicyResponse(rsp *http.Response) (*ReplaceAgentMC
 	}
 
 	response := &ReplaceAgentMCPToolPolicyResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AgentMCPToolPolicy
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseAcceptAgentMCPToolDefinitionResponse parses an HTTP response from a AcceptAgentMCPToolDefinitionWithResponse call
+func ParseAcceptAgentMCPToolDefinitionResponse(rsp *http.Response) (*AcceptAgentMCPToolDefinitionResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &AcceptAgentMCPToolDefinitionResponse{
 		Body:         bodyBytes,
 		HTTPResponse: rsp,
 	}

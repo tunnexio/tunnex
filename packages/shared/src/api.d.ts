@@ -2991,6 +2991,52 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/organizations/{orgId}/agents/{deviceId}/mcp-tool-policy/accept-definition": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                deviceId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Accept a changed MCP tool definition
+         * @description A tool whose name, description or input schema changed is denied until an administrator accepts the new definition. Accepting creates the next immutable policy version with the rule re-pinned to the given hash. Refused with 409 `mcp_tool_definition_stale` when the observed definition is no longer the one named, and 404 `mcp_tool_rule_not_found` when the policy has no rule for the tool.
+         */
+        post: operations["acceptAgentMCPToolDefinition"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/agents/{deviceId}/mcp-tool-activity": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                deviceId: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * List what an agent did through MCP
+         * @description Newest first. One row per decision made for a gateway-forwarded MCP request: allowed calls with their outcome and denied calls with the reason. Rows are kept for the organization's activity retention period. Arguments are never stored, only their digest.
+         */
+        get: operations["listAgentMCPToolActivity"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/organizations/{orgId}/agents/{deviceId}/mcp-tool-approval-requests": {
         parameters: {
             query?: never;
@@ -3026,6 +3072,30 @@ export interface paths {
         put?: never;
         /** Approve one pending MCP step-up request */
         post: operations["approveAgentMCPToolApprovalRequest"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/agents/{deviceId}/mcp-tool-approval-requests/{requestId}/deny": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                deviceId: string;
+                requestId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Deny one pending MCP step-up request
+         * @description Refuses the pending call. The agent's retry is denied and must start a new request. Returns 409 `mcp_tool_approval_not_pending` when the request is no longer pending.
+         */
+        post: operations["denyAgentMCPToolApprovalRequest"];
         delete?: never;
         options?: never;
         head?: never;
@@ -12143,6 +12213,18 @@ export interface components {
             /** Format: uuid */
             group_id?: string | null;
             group_name?: string | null;
+            /**
+             * @description Where tool policy is enforced for this agent right now. `gateway`: the gateway's MCP listener decides every call and the agent has no direct path to the endpoint. `agent_host`: the older local-proxy path, allowed only until `direct_path_grace_until`. `unavailable`: the grace period is over and the agent's gateway or runtime cannot use the gateway path, so MCP is withheld.
+             * @enum {string}
+             */
+            enforcement?: "gateway" | "agent_host" | "unavailable";
+            /**
+             * Format: date-time
+             * @description Until this instant a runtime that predates gateway enforcement may keep the direct path to its MCP endpoint. Null means no grace: the direct path is closed as soon as the gateway can enforce.
+             */
+            direct_path_grace_until?: string | null;
+            /** @description False when the endpoint is a hostname that the gateway cannot fully close (only addresses it already resolves for an FQDN resource of the same name are denied), or a public server the agent host can reach over its own internet. */
+            direct_path_closable?: boolean;
         };
         DNSLANListenerStatus: {
             /** Format: ipv4 */
@@ -12497,6 +12579,11 @@ export interface components {
              */
             mcp_upstream?: string | null;
             /**
+             * Format: uri
+             * @description The gateway's MCP listener on its tunnel address (for example `http://10.99.0.1:8084/mcp`). When present the local proxy forwards every MCP request there and applies no policy, token lease or discovery of its own: the gateway identifies the agent from the tunnel and enforces tool policy. Omitted or null when the agent's gateway has not reported the MCP capability; the runtime then stays on the direct path for as long as the organization's grace period allows.
+             */
+            mcp_gateway_url?: string | null;
+            /**
              * Format: int64
              * @description Non-secret requested successor revision; omitted when no request is pending.
              */
@@ -12668,12 +12755,17 @@ export interface components {
         AgentMCPInventory: {
             /** Format: uuid */
             device_id: string;
-            /** @description Secret-free F12 inventory snapshot; no MCP request/response content or credentials. */
+            /** @description Secret-free F12 inventory snapshot; no MCP request/response content or credentials. Each tool carries `tool_definition_hash` (SHA-256 of its canonical name, description and input schema, computed by the control plane) beside `input_schema_hash`, and `definition_state` (`current` or `changed`) relative to the agent's policy. */
             snapshot: {
                 [key: string]: unknown;
             };
             /** Format: date-time */
             observed_at: string;
+            /**
+             * @description Who observed the tool list. `gateway` inventory is discovered by the agent's gateway and is the only source an allow-list is built from once it exists; `agent` is the older host-reported list.
+             * @enum {string}
+             */
+            source?: "agent" | "gateway";
         };
         MCPToolPolicyRule: {
             /** Format: uri */
@@ -12685,6 +12777,13 @@ export interface components {
             rate_limit_per_minute?: number | null;
             /** @default false */
             step_up_required: boolean;
+            /** @description SHA-256 of the canonical tool definition (name, description and input schema) this rule allows, computed by the control plane from gateway-observed inventory. A change to any of the three denies the tool until the new definition is accepted. Omitted on write pins the definition currently observed; a rule saved before this field existed is pinned at the first gateway inventory after upgrade. */
+            tool_definition_hash?: string | null;
+            /**
+             * @description `changed` when the observed definition no longer matches `tool_definition_hash`; the tool is denied until accepted. Ignored on write.
+             * @enum {string}
+             */
+            readonly definition_state?: "current" | "changed";
         };
         MCPArgumentConstraints: {
             required: string[];
@@ -12767,6 +12866,59 @@ export interface components {
             approved_by_user_id?: string | null;
             /** Format: date-time */
             approved_at?: string | null;
+            /** Format: uuid */
+            denied_by_user_id?: string | null;
+            /** Format: date-time */
+            denied_at?: string | null;
+            /** @description The arguments of the call awaiting approval, so the approver sees what they approve. At most 4 KiB of canonical JSON; a larger call is not stored and `arguments_truncated` is true. Null for a request created before arguments were kept. Visible only to roles that may approve. */
+            arguments?: {
+                [key: string]: unknown;
+            } | null;
+            /** @default false */
+            arguments_truncated: boolean;
+            /** @description The exact tool definition (name, description, input schema) the approval is bound to. */
+            tool_definition_hash?: string | null;
+        };
+        AcceptAgentMCPToolDefinitionRequest: {
+            /** Format: uri */
+            endpoint: string;
+            tool_name: string;
+            /** @description The definition hash currently observed for the tool. The accept is refused if the tool changed again since it was shown. */
+            tool_definition_hash: string;
+        };
+        /** @description One decision the control plane made for a gateway-forwarded MCP request. Never carries arguments, results or credentials. */
+        AgentMCPToolActivity: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            device_id: string;
+            /** Format: uuid */
+            node_id?: string | null;
+            endpoint: string;
+            server_name: string;
+            method: string;
+            tool_name: string;
+            arguments_digest?: string | null;
+            /** @enum {string} */
+            decision: "allow" | "deny";
+            /** @description Empty for an allow. For a deny, why (for example policy, arguments, rate_limit, step_up_required, definition_changed, no_profile). */
+            reason: string;
+            /** Format: int64 */
+            policy_version?: number | null;
+            /** Format: uuid */
+            approval_request_id?: string | null;
+            /** @enum {string} */
+            result_status: "pending" | "ok" | "error" | "upstream_unavailable" | "not_forwarded";
+            upstream_http_status?: number | null;
+            /** Format: date-time */
+            occurred_at: string;
+            /** Format: date-time */
+            completed_at?: string | null;
+        };
+        AgentMCPToolActivityPage: {
+            items: components["schemas"]["AgentMCPToolActivity"][];
+            /** @description Opaque cursor for the next (older) page; null when there are no more rows. */
+            next_cursor?: string | null;
         };
         StartAgentMCPOAuthConnectionRequest: {
             /** Format: uri */
@@ -18291,6 +18443,8 @@ export interface operations {
                 wait_seconds?: number;
                 /** @description Last handshake-committed WireGuard key revision known by the runtime. */
                 wireguard_revision?: number;
+                /** @description True when this runtime forwards MCP to the gateway listener named by `mcp_gateway_url` instead of calling the MCP server itself. A runtime that predates gateway enforcement omits it. The runtime cannot update itself, so this explicit declaration, not `client_version`, is the capability signal. */
+                mcp_gateway?: boolean;
             };
             header?: never;
             path?: never;
@@ -18659,7 +18813,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Current policy version. Rules allow only exact inventory identities at the local MCP proxy. */
+            /** @description Current policy version. Rules allow only exact inventory identities; the gateway enforces them. */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -18699,6 +18853,62 @@ export interface operations {
             default: components["responses"]["Error"];
         };
     };
+    acceptAgentMCPToolDefinition: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                deviceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AcceptAgentMCPToolDefinitionRequest"];
+            };
+        };
+        responses: {
+            /** @description New current policy version. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentMCPToolPolicy"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listAgentMCPToolActivity: {
+        parameters: {
+            query?: {
+                limit?: number;
+                /** @description The `next_cursor` of the previous page. */
+                cursor?: string;
+            };
+            header?: never;
+            path: {
+                orgId: string;
+                deviceId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One page of activity. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentMCPToolActivityPage"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
     listAgentMCPToolApprovalRequests: {
         parameters: {
             query?: never;
@@ -18711,7 +18921,7 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description Approval records without raw MCP arguments or credentials. */
+            /** @description Approval records. A pending call's arguments are included for approvers; credentials never are. */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -18737,6 +18947,31 @@ export interface operations {
         requestBody?: never;
         responses: {
             /** @description Approved request. The next matching runtime retry consumes it. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentMCPToolApprovalRequest"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    denyAgentMCPToolApprovalRequest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                deviceId: string;
+                requestId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Denied request. */
             200: {
                 headers: {
                     [name: string]: unknown;

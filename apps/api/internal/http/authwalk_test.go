@@ -182,6 +182,7 @@ var walkBodies = map[string]string{
 	"assignagentmcpprofile":                      `{"group_id":"00000000-0000-0000-0000-000000000000"}`,
 	"replaceagentgroupmcpprofile":                `{"profile_id":"00000000-0000-0000-0000-000000000000"}`,
 	"previewagentgroupmcpprofileimpact":          `{}`,
+	"acceptagentmcptooldefinition":               `{"endpoint":"https://mcp.example.test/mcp","tool_name":"walk","tool_definition_hash":"0000000000000000000000000000000000000000000000000000000000000000"}`,
 	// F10 JIT agent access. Keep these structurally valid so the spec-driven
 	// walk measures authentication rather than request validation.
 	"setorganizationagentjitaccessenabled": `{"enabled":true}`,
