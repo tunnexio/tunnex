@@ -40,6 +40,20 @@ type flowTuple struct {
 	portHigh    uint16
 	ruleID      string // the revoked grant identity, stamped on the VerdictTerminated event
 	fqdnManaged bool   // requires the reserved S21 ownership mark before deletion
+	// denied marks the tuple of an explicit deny (AI-SEC-2). It also matches a flow whose REPLY comes from
+	// the denied destination: one the device opened to another address that is DNATed to the denied server.
+	denied bool
+}
+
+// tupleFromDeny builds the cut spec for a deny that entered the applied set: the same exact tuple the
+// forward chain drops. ok=false for an entry that cannot be parsed; such a set is never rendered either.
+func tupleFromDeny(e nodepolicy.DenyEntry) (flowTuple, bool) {
+	t, ok := tupleFromAllow(nodepolicy.AllowEntry{SrcIP: e.SrcIP, DstCIDR: e.DstCIDR, Protocol: e.Protocol, PortLow: e.PortLow, PortHigh: e.PortHigh})
+	if !ok {
+		return flowTuple{}, false
+	}
+	t.ruleID, t.denied = "policy_deny", true
+	return t, true
 }
 
 // tupleFromAllow builds the flush spec for a removed AllowEntry. ok=false for a malformed src/dst — NEVER
@@ -99,7 +113,13 @@ func matchesTuple(c conntrack.Con, t flowTuple) bool {
 	if !ok {
 		return false
 	}
-	if !t.src.Contains(src.Unmap()) || !t.dst.Contains(dst.Unmap()) {
+	if !t.src.Contains(src.Unmap()) {
+		return false
+	}
+	if t.denied && matchesDeniedReply(c, t) {
+		return true
+	}
+	if !t.dst.Contains(dst.Unmap()) {
 		return false
 	}
 	if t.proto != 0 {
@@ -117,6 +137,33 @@ func matchesTuple(c conntrack.Con, t flowTuple) bool {
 	}
 	if t.fqdnManaged && !hasFQDNConntrackMark(c) {
 		return false
+	}
+	return true
+}
+
+// matchesDeniedReply reports whether a flow from the denied source is answered BY the denied destination:
+// its reply tuple's source address, protocol and source port are the deny's destination. The caller has
+// already matched the origin source. A missing field fails the match.
+func matchesDeniedReply(c conntrack.Con, t flowTuple) bool {
+	if c.Reply == nil || c.Reply.Src == nil {
+		return false
+	}
+	server, ok := netip.AddrFromSlice(*c.Reply.Src)
+	if !ok || !t.dst.Contains(server.Unmap()) {
+		return false
+	}
+	if t.proto != 0 {
+		if c.Reply.Proto == nil || c.Reply.Proto.Number == nil || *c.Reply.Proto.Number != t.proto {
+			return false
+		}
+	}
+	if t.portHigh != 0 {
+		if c.Reply.Proto == nil || c.Reply.Proto.SrcPort == nil {
+			return false
+		}
+		if sp := *c.Reply.Proto.SrcPort; sp < t.portLow || sp > t.portHigh {
+			return false
+		}
 	}
 	return true
 }

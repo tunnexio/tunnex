@@ -13,6 +13,7 @@ import (
 	"github.com/tunnexio/tunnex/apps/node/internal/aivpn"
 	"github.com/tunnexio/tunnex/apps/node/internal/k8snetprep"
 	"github.com/tunnexio/tunnex/apps/node/internal/nodepolicy"
+	"github.com/tunnexio/tunnex/packages/apptransport/mcpwire"
 )
 
 // K8N-7: an in-cluster gateway's node is closed to the tunnel by an input chain in both families. These
@@ -33,6 +34,27 @@ const wantInputChainV4AIVPN = `  chain input {
     iifname "wg0" fib daddr . iif type local udp dport 53 counter accept comment "tunnex_input_dns"
     iifname "wg0" fib daddr . iif type local tcp dport 53 counter accept comment "tunnex_input_dns"
     iifname "wg0" fib daddr . iif type local tcp dport 8083 counter accept comment "tunnex_input_ai_vpn"
+    iifname "wg0" counter drop comment "tunnex_input_tunnel_drop"
+  }
+`
+
+const wantInputChainV4MCPGateway = `  chain input {
+    type filter hook input priority filter; policy accept;
+    iifname "wg0" ct direction reply ct state established,related counter accept comment "tunnex_input_reply"
+    iifname "wg0" fib daddr . iif type local udp dport 53 counter accept comment "tunnex_input_dns"
+    iifname "wg0" fib daddr . iif type local tcp dport 53 counter accept comment "tunnex_input_dns"
+    iifname "wg0" fib daddr . iif type local tcp dport 8084 counter accept comment "tunnex_input_mcp_gateway"
+    iifname "wg0" counter drop comment "tunnex_input_tunnel_drop"
+  }
+`
+
+const wantInputChainV4AIVPNAndMCPGateway = `  chain input {
+    type filter hook input priority filter; policy accept;
+    iifname "wg0" ct direction reply ct state established,related counter accept comment "tunnex_input_reply"
+    iifname "wg0" fib daddr . iif type local udp dport 53 counter accept comment "tunnex_input_dns"
+    iifname "wg0" fib daddr . iif type local tcp dport 53 counter accept comment "tunnex_input_dns"
+    iifname "wg0" fib daddr . iif type local tcp dport 8083 counter accept comment "tunnex_input_ai_vpn"
+    iifname "wg0" fib daddr . iif type local tcp dport 8084 counter accept comment "tunnex_input_mcp_gateway"
     iifname "wg0" counter drop comment "tunnex_input_tunnel_drop"
   }
 `
@@ -105,6 +127,33 @@ func TestKubernetesInputChainAcceptsTheAIVPNListenerOnlyWhenConfiguredAndOnlyInI
 	// The port is the listener's.
 	if aivpn.HTTPPort != strconv.Itoa(k8snetprep.InputAIVPNPort) {
 		t.Fatalf("aivpn.HTTPPort=%s, the input chain accepts %d", aivpn.HTTPPort, k8snetprep.InputAIVPNPort)
+	}
+}
+
+// AI-SEC-2: the MCP gateway listener (TCP 8084 on the tunnel address) is accepted only when configured,
+// only in IPv4, after the AI VPN listener.
+func TestKubernetesInputChainAcceptsTheMCPGatewayListenerOnlyWhenConfiguredAndOnlyInIPv4(t *testing.T) {
+	m := inputTestManager(true)
+	m.SetMCPGatewayListener(true)
+	v4, v6 := inputChains(t, m.rulesetWith("10.99.0.0/24", nil))
+	if v4 != wantInputChainV4MCPGateway {
+		t.Fatalf("ip tunnex input with the MCP gateway:\n%s\nwant:\n%s", v4, wantInputChainV4MCPGateway)
+	}
+	if v6 != wantInputChainV4 {
+		t.Fatalf("ip6 tunnex input must not carry the IPv4-only MCP gateway listener:\n%s", v6)
+	}
+	m.SetAIVPNListener(true)
+	if v4, _ := inputChains(t, m.rulesetWith("10.99.0.0/24", nil)); v4 != wantInputChainV4AIVPNAndMCPGateway {
+		t.Fatalf("ip tunnex input with both listeners:\n%s\nwant:\n%s", v4, wantInputChainV4AIVPNAndMCPGateway)
+	}
+	m.SetAIVPNListener(false)
+	m.SetMCPGatewayListener(false)
+	if v4, _ := inputChains(t, m.rulesetWith("10.99.0.0/24", nil)); v4 != wantInputChainV4 {
+		t.Fatalf("the MCP gateway accept outlived its listener:\n%s", v4)
+	}
+	// The port is the listener's.
+	if mcpwire.ListenerPort != k8snetprep.InputMCPGatewayPort {
+		t.Fatalf("mcpwire.ListenerPort=%d, the input chain accepts %d", mcpwire.ListenerPort, k8snetprep.InputMCPGatewayPort)
 	}
 }
 
@@ -182,6 +231,7 @@ func TestKubernetesInputChainIsValidNft(t *testing.T) {
 	for _, tun := range []string{"", "tun0"} {
 		m := inputTestManager(true)
 		m.SetAIVPNListener(true)
+		m.SetMCPGatewayListener(true)
 		m.SetOVPNTun(tun)
 		rs := m.rulesetWith("10.99.0.0/24", nil)
 		cmd := exec.Command("nft", "-c", "-f", "-")

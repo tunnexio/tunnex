@@ -167,6 +167,9 @@ type Manager struct {
 	// aiVPNInput is set when the AI VPN runtime is configured on this gateway: in
 	// Kubernetes mode the input chain then accepts its tunnel-side listener (K8N-7).
 	aiVPNInput atomic.Bool
+	// mcpGatewayInput is set when the MCP gateway runtime is configured on this gateway (AI-SEC-2): in
+	// Kubernetes mode the input chain then accepts its tunnel-side listener.
+	mcpGatewayInput atomic.Bool
 	// forwardBlocked (WF-4 / D-WF4-d): true when this is a Docker host (DOCKER-USER exists),
 	// FORWARD is policy-drop, there ARE remote routes to carry, yet the agent could NOT place
 	// its DOCKER-USER accept — so forwarded site traffic is silently dropped by Docker's chain.
@@ -218,6 +221,14 @@ type Manager struct {
 	// leaving the applied allow set while the agent is UP. The boot-time restart reconcile (a grant revoked
 	// while the agent was DOWN) was deferred to S8.7b — see the NOTE in conntrack_linux.go.
 	pendingFlush []flowTuple
+	// appliedDeny is the Deny set of the last successful apply that RENDERED it (under mu), in either mode
+	// (AI-SEC-2). nil whenever the chain in force is a deny-all or carries no deny, so the next apply
+	// that renders denies treats every one of them as new.
+	appliedDeny []nodepolicy.DenyEntry
+	// pendingDenyFlush is the tuple set of denies that entered the applied set, cut by drainFlush. Unlike
+	// pendingFlush it is kept until a flush succeeds: a flow that survives a withdrawn grant was once
+	// allowed, a flow that survives a deny is the bypass the deny exists to close.
+	pendingDenyFlush []flowTuple
 	// flushErr is the last conntrack-flush error (CAP_NET_ADMIN absent / netlink fault), surfaced never
 	// silent — the rule removal already succeeded, the lingering flows are degraded-not-broken.
 	flushErr error
@@ -849,6 +860,7 @@ func (m *Manager) rulesetWith(subnet string, pol *nodepolicy.Compiled) string {
 		masq6 = fmt.Sprintf("    ip6 saddr %s %s masquerade\n", subnet6, ifClause("oifname", tun, true))
 	}
 	v4fwd, v6fwd := m.forwardRules(pol, m.policyReceived.Load())
+	input4, input6 := m.inputChains(pol, tun)
 	// This chain is installed in the host network namespace for an in-cluster
 	// connector. It must adjudicate every packet that enters or leaves a Tunnex
 	// tunnel, but it must not become a second CNI firewall for ordinary native
@@ -907,7 +919,36 @@ table ip6 tunnex {
 %[3]s  }
 }
 `, masq, v4fwd, v6fwd, mssClamp, m.preroutingDNAT(), masq6, nativeForward4, nativeForward6, postureOwnerChain,
-		m.k8sInputChain(false, tun), m.k8sInputChain(true, tun))
+		input4, input6)
+}
+
+// inputChains returns the input-hook chain of each family. An in-cluster gateway has its fixed chain
+// (k8sInputChain), which already drops everything a device sends to the node except the agent's own
+// listeners. A VM or site gateway has NO input chain (administrators may reach it over the VPN), with one
+// exception (AI-SEC-2): while the applied artifact carries denies, the same drops are rendered on the
+// input hook, because a denied server that runs ON the gateway host is delivered locally and never meets
+// the forward chain. The chain is policy accept and holds only those drops; without denies the ruleset
+// is byte for byte what it was. It follows the forward chain's states: nothing before the first
+// delivery, under a version refusal, or for a set that cannot be rendered exactly (the forward chain is
+// deny-all in each).
+func (m *Manager) inputChains(pol *nodepolicy.Compiled, tun []string) (v4, v6 string) {
+	if m.kubernetesMode.Load() {
+		return m.k8sInputChain(false, tun), m.k8sInputChain(true, tun)
+	}
+	if pol == nil || len(pol.Deny) == 0 || !m.policyReceived.Load() || m.refusedVersion.Load() != 0 {
+		return "", ""
+	}
+	deny4, deny6, ok := renderDenies(pol.Deny, m.flowLogGroup)
+	if !ok {
+		return "", ""
+	}
+	chain := func(denies string) string {
+		if denies == "" {
+			return ""
+		}
+		return "  chain input {\n    type filter hook input priority filter; policy accept;\n" + denies + "  }\n"
+	}
+	return chain(deny4), chain(deny6)
 }
 
 // k8sInputChain renders the input hook of an in-cluster gateway (K8N-7); it is
@@ -922,7 +963,8 @@ table ip6 tunnex {
 //     own connection is in the original direction and is not covered);
 //   - the agent's own tunnel-side listeners, which are bound to the WireGuard
 //     interface (SO_BINDTODEVICE): the DNS forwarder on UDP and TCP 53 and, when
-//     configured, the AI VPN listener on TCP 8083 (IPv4 only). Each is limited to
+//     configured, the AI VPN listener on TCP 8083 and then the MCP gateway
+//     listener on TCP 8084 (both IPv4 only). Each is limited to
 //     an address configured ON that interface (`fib daddr . iif type local`):
 //     the tunnel address and every cluster DNS VIP, never the node's other
 //     addresses.
@@ -947,6 +989,10 @@ func (m *Manager) k8sInputChain(v6 bool, tun []string) string {
 	if !v6 && m.aiVPNInput.Load() {
 		fmt.Fprintf(&b, "    %s fib daddr . iif type local tcp dport %d counter accept comment \"%s\"\n",
 			wg, k8snetprep.InputAIVPNPort, k8snetprep.InputAIVPNRuleComment)
+	}
+	if !v6 && m.mcpGatewayInput.Load() {
+		fmt.Fprintf(&b, "    %s fib daddr . iif type local tcp dport %d counter accept comment \"%s\"\n",
+			wg, k8snetprep.InputMCPGatewayPort, k8snetprep.InputMCPGatewayRuleComment)
 	}
 	fmt.Fprintf(&b, "    %s counter drop comment \"%s\"\n  }\n", ifClause("iifname", tun, false), k8snetprep.InputTunnelDropRuleComment)
 	return b.String()
@@ -1030,6 +1076,17 @@ func (m *Manager) forwardRules(pol *nodepolicy.Compiled, received bool) (v4, v6 
 		// nil here is a node with nothing to serve or a compile error, so: deny, as cold start.
 		return dropCounter, dropCounter
 	}
+	// AI-SEC-2 (v16): the artifact's explicit denies come FIRST, ahead of the blanket mesh accepts and
+	// ahead of the compiled allows, so they hold in both modes and whatever an allow says. An artifact
+	// without denies renders exactly what it rendered before. A deny that cannot be rendered exactly is
+	// never skipped (that would leave the path it names open): the chain is DENY-ALL instead.
+	deny4, deny6 := "", ""
+	if pol != nil && len(pol.Deny) > 0 {
+		var ok bool
+		if deny4, deny6, ok = renderDenies(pol.Deny, m.flowLogGroup); !ok {
+			return dropCounter, dropCounter
+		}
+	}
 	tun := m.tunnelIfaces()
 	if pol == nil || pol.Mesh {
 		// The blanket mesh accepts. iifname over the TUNNEL SET is the S3.7 anti-spoof anchor:
@@ -1037,7 +1094,7 @@ func (m *Manager) forwardRules(pol *nodepolicy.Compiled, received bool) (v4, v6 
 		// tun) forwards — an eth0-side host spoofing a pool source is dropped by the policy-drop
 		// base (never matched by an `iifname <tunnel-set>` accept). Device↔device = tunnel→tunnel;
 		// spoke→egress = tunnel→non-tunnel.
-		v4 = fmt.Sprintf("    %[1]s %[2]s counter accept\n    %[1]s %[3]s counter accept\n",
+		v4 = deny4 + fmt.Sprintf("    %[1]s %[2]s counter accept\n    %[1]s %[3]s counter accept\n",
 			ifClause("iifname", tun, false), ifClause("oifname", tun, false), ifClause("oifname", tun, true))
 		// S8.2c D1: SYMMETRIC site forwarding in mesh. Mesh means "no doors" — a behind-gateway host must
 		// be able to INITIATE to a remote site (LAN→tunnel), not just receive. The wg0-ingress accepts
@@ -1055,12 +1112,14 @@ func (m *Manager) forwardRules(pol *nodepolicy.Compiled, received bool) (v4, v6 
 				}
 			}
 		}
-		v6 = fmt.Sprintf("    %s %s counter accept\n    %s %s counter accept\n",
+		v6 = deny6 + fmt.Sprintf("    %s %s counter accept\n    %s %s counter accept\n",
 			ifClause("iifname", tun, false), ifClause("oifname", tun, false),
 			ifClause("iifname", tun, false), ifClause("oifname", tun, true))
 		return v4, v6
 	}
 	var v4Rules, v6Rules strings.Builder
+	v4Rules.WriteString(deny4)
+	v6Rules.WriteString(deny6)
 	g := m.flowLogGroup
 	for _, e := range pol.Allow {
 		// Render each tuple in its one applicable family. The other family rejects it
@@ -1322,6 +1381,7 @@ func (m *Manager) applyAndTrack(ctx context.Context, ruleset string, pol *nodepo
 			// (removedTuples diffs from nil → empty). This is the SAME no-continuous-baseline class as the deferred
 			// boot reconcile — carried by S8.7b, stated in its named limitation. NEW connections are denied at once.
 			m.appliedAllow = nil
+			m.trackAppliedDenies(pol)
 			if m.fqdnCommittedPolicy != nil {
 				m.fqdnCommittedPolicy(nil)
 			}
@@ -1366,6 +1426,7 @@ func (m *Manager) applyAndTrack(ctx context.Context, ruleset string, pol *nodepo
 	// while-DOWN gap (a grant revoked before this baseline existed) is the S8.7b boot-reconcile deferral.
 	m.pendingFlush = removedTuples(m.appliedAllow, pol.Allow)
 	m.appliedAllow = pol.Allow
+	m.trackAppliedDenies(pol)
 	if err := writeFQDNBaseline(m.fqdnBaselinePath, "committed", pol); err != nil {
 		// nft has already atomically installed the policy. Leaving the pending
 		// marker forces the next boot through deny-all + recovery rather than
@@ -1395,6 +1456,29 @@ func (m *Manager) setAppliedVIPMap(pol *nodepolicy.Compiled) {
 		return
 	}
 	m.appliedVIPMappings = append([]nodepolicy.VIPMapping(nil), pol.VIPMappings...)
+}
+
+// trackAppliedDenies runs under m.mu after a SUCCESSFUL apply, in either mode. It queues the conntrack cut
+// for every deny that just entered the applied set: `ct state established accept` runs ahead of the deny
+// lines, so without the cut a connection the device already holds to the denied address keeps working.
+// On the first apply after a start there is no baseline, so every deny is cut once; that is exact (the
+// tuple of the deny and nothing else) and closes a flow opened while the agent was down.
+//
+// The denies count as applied only when the chain rendered them: before the first delivery and under a
+// version refusal the chain is deny-all, and a set that cannot be rendered exactly is deny-all too.
+func (m *Manager) trackAppliedDenies(pol *nodepolicy.Compiled) {
+	var current []nodepolicy.DenyEntry
+	if pol != nil && m.policyReceived.Load() && m.refusedVersion.Load() == 0 {
+		if _, _, ok := renderDenies(pol.Deny, 0); ok {
+			current = pol.Deny
+		}
+	}
+	for _, e := range addedDenies(m.appliedDeny, current) {
+		if t, ok := tupleFromDeny(e); ok {
+			m.pendingDenyFlush = append(m.pendingDenyFlush, t)
+		}
+	}
+	m.appliedDeny = append([]nodepolicy.DenyEntry(nil), current...)
 }
 
 // removedTuples returns the flush specs for grants present in the OLD applied allow set but ABSENT from the
@@ -1431,7 +1515,9 @@ func allowKey(e nodepolicy.AllowEntry) string {
 // behavior, not a new failure.
 func (m *Manager) drainFlush(ctx context.Context) {
 	m.mu.Lock()
-	tuples := m.pendingFlush
+	denied := m.pendingDenyFlush
+	m.pendingDenyFlush = nil
+	tuples := append(m.pendingFlush, denied...)
 	m.pendingFlush = nil
 	m.mu.Unlock()
 
@@ -1449,6 +1535,10 @@ func (m *Manager) drainFlush(ctx context.Context) {
 	killed, err := m.ctFlush(ctx, tuples)
 	m.mu.Lock()
 	m.flushErr = err
+	if err != nil {
+		// A deny's cut is retried on the next reconcile until it succeeds (AI-SEC-2).
+		m.pendingDenyFlush = append(denied, m.pendingDenyFlush...)
+	}
 	m.mu.Unlock()
 	if err != nil {
 		slog.Error("conntrack_flush_failed", "error", err.Error(), "tuples", len(tuples))
@@ -1595,6 +1685,10 @@ func (m *Manager) SetKubernetesMode(enabled bool) {
 // (aivpn.HTTPPort on the WireGuard IPv4 address) is configured. In Kubernetes
 // mode the input chain accepts it only then (K8N-7); the next pass renders it.
 func (m *Manager) SetAIVPNListener(enabled bool) { m.aiVPNInput.Store(enabled) }
+
+// SetMCPGatewayListener tells the renderer that the MCP gateway listener (mcpgw, TCP 8084 on the tunnel
+// address) is configured, so an in-cluster gateway's input chain accepts it. Set once at wiring time.
+func (m *Manager) SetMCPGatewayListener(enabled bool) { m.mcpGatewayInput.Store(enabled) }
 
 // SetKubernetesCNIAuthority installs the journal-scoped mechanism reconciler
 // before producers start. VM/site mode never acquires host-posture authority.
