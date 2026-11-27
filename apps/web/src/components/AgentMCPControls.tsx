@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import type { components } from "@tunnex/shared";
 import { api, apiErrorCode, apiErrorMessage, loadOne, type Loaded } from "../lib/api";
+import { compactDateTime } from "../lib/format";
 import { Button, Field, Input, Modal } from "./ui";
 
 type Inventory = components["schemas"]["AgentMCPInventory"];
@@ -18,17 +19,84 @@ const toolsFrom = (inventory: Inventory): Tool[] => (Array.isArray(inventory.sna
   });
 });
 
+const approvalOutcome: Record<Approval["state"], string> = { pending: "Waiting", approved: "Approved, not used yet", denied: "Denied", expired: "Expired", consumed: "Used" };
+const EARLIER_REQUEST_LIMIT = 20;
+
+function timeLeft(expiresAt: string, now: number): string | null {
+  const end = new Date(expiresAt).getTime();
+  if (Number.isNaN(end)) return null;
+  const seconds = Math.floor((end - now) / 1000);
+  if (seconds <= 0) return "Out of time";
+  const minutes = Math.floor(seconds / 60);
+  return minutes > 0 ? `${minutes} min ${seconds % 60} s left` : `${seconds} s left`;
+}
+
+function argumentText(value: unknown): string {
+  if (typeof value === "string") return value === "" ? "(empty)" : value;
+  return JSON.stringify(value) ?? "";
+}
+
+/** What the approver is being asked to allow. The arguments are data from the agent: shown as text, never run. */
+function ApprovalArguments({ item }: { item: Approval }) {
+  const entries = item.arguments ? Object.entries(item.arguments) : null;
+  return <div role="group" aria-label="Arguments" className="mt-1 min-w-0">
+    <div className="text-slate-500">Arguments</div>
+    {entries && entries.length > 0 && <dl className="mt-1 grid gap-1">{entries.map(([name, value]) => <div key={name} className="grid min-w-0 gap-x-3 sm:grid-cols-[minmax(0,12rem)_minmax(0,1fr)]"><dt className="break-all font-mono text-slate-400">{name}</dt><dd className="whitespace-pre-wrap break-all font-mono">{argumentText(value)}</dd></div>)}</dl>}
+    {item.arguments_truncated ? <p className="mt-1 text-slate-400">Shortened: the arguments were too long to show in full. Deny the call if you are not sure what it will do.</p> : entries === null ? <p className="mt-1 text-slate-500">The arguments were not kept for this request.</p> : entries.length === 0 ? <p className="mt-1 text-slate-500">This call has no arguments.</p> : null}
+  </div>;
+}
+
 export function AgentMCPToolApprovalPanel({ orgId, deviceId, canApprove }: { orgId: string; deviceId: string; canApprove: boolean }) {
   const [requests, setRequests] = useState<Loaded<Approval[]> | null>(null); const [busy, setBusy] = useState<string | null>(null); const [confirmation, setConfirmation] = useState<Approval | null>(null); const [mutationError, setMutationError] = useState<string | null>(null);
+  const [denying, setDenying] = useState<string | null>(null); const [denyError, setDenyError] = useState<string | null>(null); const [notice, setNotice] = useState<string | null>(null);
+  const [now, setNow] = useState(() => Date.now());
   const load = () => {
     if (!canApprove) { setRequests(null); return; }
     setRequests(null);
     void loadOne(() => api.GET("/api/v1/organizations/{orgId}/agents/{deviceId}/mcp-tool-approval-requests", { params: { path: { orgId, deviceId } } })).then((result) => setRequests(result as Loaded<Approval[]>));
   };
   useEffect(load, [orgId, deviceId, canApprove]);
-  const approve = async (item: Approval) => { setBusy(item.id); setMutationError(null); const result = await api.POST("/api/v1/organizations/{orgId}/agents/{deviceId}/mcp-tool-approval-requests/{requestId}/approve", { params: { path: { orgId, deviceId, requestId: item.id } } }); setBusy(null); if (result.error || !result.data) { setMutationError(apiErrorMessage(result.error, "Could not approve this step-up request. It may already have expired or been consumed. Refresh and try again.")); return; } setConfirmation(null); load(); };
   const items = requests?.ok ? requests.data : [];
-  return <div data-testid="agent-mcp-tool-approvals" className="text-xs text-slate-300"><p className="text-slate-500">The exact retried invocation consumes approval once. Arguments and credentials are never shown or retained.</p>{!canApprove ? <p role="status" className="mt-2 text-slate-500">You do not have permission to review or approve step-up requests.</p> : requests === null ? <p role="status" className="mt-2 text-slate-500">Loading step-up requests…</p> : !requests.ok ? <><p role="alert" className="mt-2 text-danger">Step-up requests could not be loaded: {requests.error}</p><Button size="sm" variant="ghost" className="mt-2" onClick={load}>Retry</Button></> : items.length === 0 ? <p className="mt-2 text-slate-500">No step-up requests.</p> : items.map((item) => <div key={item.id} className="mt-2 flex flex-wrap items-center gap-2"><span>{item.server_name} · <span className="font-mono">{item.tool_name}</span> · {item.state}</span>{item.state === "pending" && <Button disabled={busy === item.id} onClick={() => { setMutationError(null); setConfirmation(item); }}>Approve once</Button>}</div>)}{confirmation && <Modal title={`Approve ${confirmation.tool_name} once?`} onDismiss={() => !busy && setConfirmation(null)} actions={<><Button variant="ghost" disabled={busy !== null} onClick={() => setConfirmation(null)}>Cancel</Button><Button disabled={busy !== null} onClick={() => void approve(confirmation)}>{busy ? "Approving…" : mutationError ? "Retry approval" : "Approve once"}</Button></>}><p className="text-cell text-ink-tertiary">This authorizes one retried invocation of <strong>{confirmation.server_name} / {confirmation.tool_name}</strong>. The approval is consumed once; arguments and credentials are not displayed or retained.</p>{mutationError && <p role="alert" className="mt-3 text-danger">{mutationError}</p>}</Modal>}</div>;
+  const pending = items.filter((item) => item.state === "pending");
+  const earlier = items.filter((item) => item.state !== "pending").sort((a, b) => String(b.requested_at ?? "").localeCompare(String(a.requested_at ?? "")));
+  const counting = pending.some((item) => timeLeft(item.expires_at, now) !== null);
+  useEffect(() => {
+    if (!counting) return;
+    setNow(Date.now());
+    const timer = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [counting]);
+  const path = (item: Approval) => ({ params: { path: { orgId, deviceId, requestId: item.id } } });
+  // Someone else decided, or the request ran out of time, between the list loading and the click.
+  const alreadyHandled = () => { setConfirmation(null); setDenying(null); setMutationError(null); setDenyError(null); setNotice("This request was already handled. The list is now up to date."); load(); };
+  const approve = async (item: Approval) => { setBusy(item.id); setMutationError(null); setNotice(null); const result = await api.POST("/api/v1/organizations/{orgId}/agents/{deviceId}/mcp-tool-approval-requests/{requestId}/approve", path(item)); setBusy(null); if (apiErrorCode(result.error) === "mcp_tool_approval_not_pending") { alreadyHandled(); return; } if (result.error || !result.data) { setMutationError(apiErrorMessage(result.error, "Could not approve this step-up request. It may already have expired or been consumed. Refresh and try again.")); return; } setConfirmation(null); load(); };
+  const deny = async (item: Approval) => {
+    setBusy(item.id); setDenyError(null); setNotice(null);
+    const result = await api.POST("/api/v1/organizations/{orgId}/agents/{deviceId}/mcp-tool-approval-requests/{requestId}/deny", path(item));
+    setBusy(null);
+    if (apiErrorCode(result.error) === "mcp_tool_approval_not_pending") { alreadyHandled(); return; }
+    if (result.error || !result.data) { setDenyError("Could not deny this request. Refresh and try again."); return; }
+    setDenying(null); load();
+  };
+  const title = (item: Approval) => <div className="min-w-0 break-words"><span className="font-mono text-ink-heading">{item.tool_name}</span> <span className="text-slate-400">on {item.server_name}</span></div>;
+  return <div data-testid="agent-mcp-tool-approvals" className="text-xs text-slate-300">
+    <p className="text-slate-500">When a tool needs approval, the agent&apos;s call waits here. Approving lets that one call run once, with exactly the arguments shown.</p>
+    {notice && <p role="status" className="mt-2 text-slate-300">{notice}</p>}
+    {!canApprove ? <p role="status" className="mt-2 text-slate-500">You do not have permission to review or approve step-up requests.</p> : requests === null ? <p role="status" className="mt-2 text-slate-500">Loading step-up requests…</p> : !requests.ok ? <><p role="alert" className="mt-2 text-danger">Step-up requests could not be loaded: {requests.error}</p><Button size="sm" variant="ghost" className="mt-2" onClick={load}>Retry</Button></> : items.length === 0 ? <p className="mt-2 text-slate-500">No step-up requests.</p> : <>
+      {pending.length === 0 ? <p className="mt-2 text-slate-500">Nothing is waiting for a decision.</p> : <ul aria-label="Waiting for a decision" className="mt-2 grid gap-3">{pending.map((item) => {
+        const left = timeLeft(item.expires_at, now);
+        return <li key={item.id} aria-label={`${item.tool_name} on ${item.server_name}`} className="min-w-0 border-t border-white/10 pt-3">
+          <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">{title(item)}{left && <span className="text-slate-400">{left}</span>}</div>
+          <ApprovalArguments item={item} />
+          {denying === item.id ? <div className="mt-2 flex flex-wrap items-center gap-2"><span>Deny this call? The agent is told no and has to ask again.</span><Button size="sm" variant="danger" disabled={busy !== null} onClick={() => void deny(item)}>{busy === item.id ? "Denying…" : "Deny call"}</Button><Button size="sm" variant="ghost" disabled={busy !== null} onClick={() => { setDenying(null); setDenyError(null); }}>Keep waiting</Button></div>
+            : <div className="mt-2 flex flex-wrap items-center gap-2"><Button disabled={busy !== null} onClick={() => { setMutationError(null); setNotice(null); setDenying(null); setConfirmation(item); }}>Approve once</Button><Button variant="ghost" disabled={busy !== null} onClick={() => { setDenyError(null); setNotice(null); setDenying(item.id); }}>Deny</Button></div>}
+          {denying === item.id && denyError && <p role="alert" className="mt-2 text-danger">{denyError}</p>}
+        </li>;
+      })}</ul>}
+      {earlier.length > 0 && <><h4 className="mt-4 text-slate-400">Earlier requests</h4><ul aria-label="Earlier requests" className="mt-1 grid gap-1">{earlier.slice(0, EARLIER_REQUEST_LIMIT).map((item) => <li key={item.id} aria-label={`${item.tool_name} on ${item.server_name}`} className="flex min-w-0 flex-wrap items-baseline justify-between gap-x-4 gap-y-1 border-t border-white/10 pt-2">{title(item)}<span className="text-slate-400"><span>{approvalOutcome[item.state] ?? item.state}</span>{compactDateTime(item.requested_at) && <span title={new Date(item.requested_at).toLocaleString()}> · asked {compactDateTime(item.requested_at)}</span>}</span></li>)}</ul>{earlier.length > EARLIER_REQUEST_LIMIT && <p className="mt-2 text-slate-500">Showing the {EARLIER_REQUEST_LIMIT} most recent of {earlier.length} earlier requests.</p>}</>}
+    </>}
+    {confirmation && <Modal title={`Approve ${confirmation.tool_name} once?`} onDismiss={() => !busy && setConfirmation(null)} actions={<><Button variant="ghost" disabled={busy !== null} onClick={() => setConfirmation(null)}>Cancel</Button><Button disabled={busy !== null} onClick={() => void approve(confirmation)}>{busy ? "Approving…" : mutationError ? "Retry approval" : "Approve once"}</Button></>}><p className="text-cell text-ink-tertiary">This authorizes one retried invocation of <strong>{confirmation.server_name} / {confirmation.tool_name}</strong>: the agent can run this call once, with exactly these arguments.</p><div className="mt-3 text-xs"><ApprovalArguments item={confirmation} /></div>{mutationError && <p role="alert" className="mt-3 text-danger">{mutationError}</p>}</Modal>}
+  </div>;
 }
 
 export function AgentMCPToolPolicyPanel({ orgId, deviceId, inventory, canManage }: { orgId: string; deviceId: string; inventory: Inventory; canManage: boolean }) {
