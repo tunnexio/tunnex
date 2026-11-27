@@ -52,3 +52,14 @@ func StartPolicyGrantSweeper(ctx context.Context, pool *pgxpool.Pool, hub *nodep
 	}
 	go svc.StartGrantExpirySweeper(ctx, mayTick)
 }
+
+// StartPolicyMCPGraceTicker runs the AI-SEC-2 grace sweep: when an organization's direct-path grace date
+// goes by, its gateways are pushed so the MCP deny is compiled at the date, not at the next unrelated change.
+// mayTick gates it on scheduler leadership, like the grant sweeper.
+func StartPolicyMCPGraceTicker(ctx context.Context, pool *pgxpool.Pool, hub *nodepush.Hub, mayTick func() bool) {
+	svc := policy.NewService(pool)
+	if hub != nil {
+		svc.SetNotifier(hub)
+	}
+	go svc.StartMCPDirectPathGraceTicker(ctx, mayTick)
+}

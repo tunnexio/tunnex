@@ -70,6 +70,13 @@ func runningInput(family string, aiVPN bool, tunnels any) []nftRuleView {
 	return append(rules, inputDrop(family, tunnels))
 }
 
+// runningInputWithMCP is runningInput with the MCP gateway listener (AI-SEC-2) after the optional AI VPN one.
+func runningInputWithMCP(family string, aiVPN bool, tunnels any) []nftRuleView {
+	rules := runningInput(family, aiVPN, tunnels)
+	drop := rules[len(rules)-1]
+	return append(rules[:len(rules)-1:len(rules)-1], inputListener(family, InputMCPGatewayRuleComment, "tcp", InputMCPGatewayPort), drop)
+}
+
 func stoppedInput(family string, tunnels any) []nftRuleView {
 	return []nftRuleView{inputRule(family, StoppedTunnelDropRuleComment, nftIifname(tunnels), nftCounter, nftDrop)}
 }
@@ -106,6 +113,10 @@ func TestTunnexInputAcceptsTheRunningAndTheStoppedChain(t *testing.T) {
 			inputChain("ip"): runningInput("ip", false, "wg0"), inputChain("ip6"): runningInput("ip6", false, "wg0")}},
 		"running with the AI VPN listener in IPv4": {chains: map[nftChainView][]nftRuleView{
 			inputChain("ip"): runningInput("ip", true, "wg0"), inputChain("ip6"): runningInput("ip6", false, "wg0")}},
+		"running with the MCP gateway listener in IPv4": {chains: map[nftChainView][]nftRuleView{
+			inputChain("ip"): runningInputWithMCP("ip", false, "wg0"), inputChain("ip6"): runningInput("ip6", false, "wg0")}},
+		"running with the AI VPN and the MCP gateway listeners in IPv4": {chains: map[nftChainView][]nftRuleView{
+			inputChain("ip"): runningInputWithMCP("ip", true, "wg0"), inputChain("ip6"): runningInput("ip6", false, "wg0")}},
 		"running with OpenVPN: the reply and the drop name the set": {
 			tunnels: []string{"wg0", "tun0"},
 			chains: map[nftChainView][]nftRuleView{
@@ -172,6 +183,15 @@ func TestTunnexInputRefusesEveryNearMiss(t *testing.T) {
 		"the AI VPN listener in IPv6": {chains: map[nftChainView][]nftRuleView{inputChain("ip6"): runningInput("ip6", true, "wg0")}, reason: notRules},
 		"the AI VPN listener twice": {chains: map[nftChainView][]nftRuleView{inputChain("ip"): append(running()[:3],
 			inputListener("ip", InputAIVPNRuleComment, "tcp", InputAIVPNPort), inputListener("ip", InputAIVPNRuleComment, "tcp", InputAIVPNPort), inputDrop("ip", "wg0"))}, reason: notRules},
+		"the MCP gateway listener in IPv6": {chains: map[nftChainView][]nftRuleView{inputChain("ip6"): runningInputWithMCP("ip6", false, "wg0")}, reason: notRules},
+		"the MCP gateway listener twice": {chains: map[nftChainView][]nftRuleView{inputChain("ip"): append(running()[:3],
+			inputListener("ip", InputMCPGatewayRuleComment, "tcp", InputMCPGatewayPort), inputListener("ip", InputMCPGatewayRuleComment, "tcp", InputMCPGatewayPort), inputDrop("ip", "wg0"))}, reason: notRules},
+		"the MCP gateway listener before the AI VPN listener": {chains: map[nftChainView][]nftRuleView{inputChain("ip"): append(running()[:3],
+			inputListener("ip", InputMCPGatewayRuleComment, "tcp", InputMCPGatewayPort), inputListener("ip", InputAIVPNRuleComment, "tcp", InputAIVPNPort), inputDrop("ip", "wg0"))}, reason: notRules},
+		"the MCP gateway listener on another port": {chains: map[nftChainView][]nftRuleView{inputChain("ip"): append(running()[:3],
+			inputListener("ip", InputMCPGatewayRuleComment, "tcp", 10250), inputDrop("ip", "wg0"))}, reason: notListener},
+		"the MCP gateway marker on the AI VPN port": {chains: map[nftChainView][]nftRuleView{inputChain("ip"): append(running()[:3],
+			inputListener("ip", InputMCPGatewayRuleComment, "tcp", InputAIVPNPort), inputDrop("ip", "wg0"))}, reason: notListener},
 		"the stopped drop beside running rules": {chains: map[nftChainView][]nftRuleView{inputChain("ip"): append(running()[:4], stoppedInput("ip", "wg0")...)}, reason: notRules},
 		"the stopped drop twice":                {chains: map[nftChainView][]nftRuleView{inputChain("ip"): append(stoppedInput("ip", "wg0"), stoppedInput("ip", "wg0")...)}, reason: notRules},
 		"an unknown comment":                    {chains: map[nftChainView][]nftRuleView{inputChain("ip"): with(3, inputRule("ip", "tunnex_other", nftIifname("wg0"), nftCounter, nftDrop))}, reason: notRules},

@@ -147,6 +147,8 @@ type AgentBootstrapToken struct {
 	ConsumedDeviceID pgtype.UUID        `json:"consumed_device_id"`
 	IssuedBy         pgtype.UUID        `json:"issued_by"`
 	CreatedAt        time.Time          `json:"created_at"`
+	RevokedAt        pgtype.Timestamptz `json:"revoked_at"`
+	RevokedBy        pgtype.UUID        `json:"revoked_by"`
 }
 
 type AgentGroup struct {
@@ -174,6 +176,7 @@ type AgentMcpInventory struct {
 	ObservedAt time.Time `json:"observed_at"`
 	CreatedAt  time.Time `json:"created_at"`
 	UpdatedAt  time.Time `json:"updated_at"`
+	Source     string    `json:"source"`
 }
 
 // F13 agent MCP OAuth trust; tokens and client secrets are sealed and never returned by readable APIs.
@@ -221,25 +224,58 @@ type AgentMcpProfileAssignment struct {
 	QuarantineReason *string            `json:"quarantine_reason"`
 }
 
-// F16 step-up permits. Exact policy identity plus request digest only; raw MCP arguments, results, OAuth tokens, and secrets are never retained.
+// AI-SEC-2 MCP tool activity. Decision and outcome metadata plus an argument digest only; never arguments, results, OAuth tokens, or secrets.
+type AgentMcpToolActivity struct {
+	ID                 uuid.UUID          `json:"id"`
+	OrgID              uuid.UUID          `json:"org_id"`
+	DeviceID           uuid.UUID          `json:"device_id"`
+	NodeID             pgtype.UUID        `json:"node_id"`
+	Endpoint           string             `json:"endpoint"`
+	ServerName         string             `json:"server_name"`
+	Method             string             `json:"method"`
+	ToolName           string             `json:"tool_name"`
+	ArgumentsDigest    *string            `json:"arguments_digest"`
+	Decision           string             `json:"decision"`
+	Reason             string             `json:"reason"`
+	PolicyVersion      *int64             `json:"policy_version"`
+	ApprovalRequestID  pgtype.UUID        `json:"approval_request_id"`
+	ResultStatus       string             `json:"result_status"`
+	UpstreamHttpStatus *int32             `json:"upstream_http_status"`
+	OccurredAt         time.Time          `json:"occurred_at"`
+	CompletedAt        pgtype.Timestamptz `json:"completed_at"`
+	CreatedAt          time.Time          `json:"created_at"`
+}
+
+type AgentMcpToolActivityRetentionSetting struct {
+	OrgID           uuid.UUID   `json:"org_id"`
+	RetentionDays   int32       `json:"retention_days"`
+	UpdatedByUserID pgtype.UUID `json:"updated_by_user_id"`
+	CreatedAt       time.Time   `json:"created_at"`
+	UpdatedAt       time.Time   `json:"updated_at"`
+}
+
+// Step-up permits bound to exact policy identity and request digest. The pending call's arguments are kept (capped) so an approver can see them; results, OAuth tokens, and secrets are never retained.
 type AgentMcpToolApprovalRequest struct {
-	ID               uuid.UUID          `json:"id"`
-	OrgID            uuid.UUID          `json:"org_id"`
-	DeviceID         uuid.UUID          `json:"device_id"`
-	PolicyVersion    int64              `json:"policy_version"`
-	Endpoint         string             `json:"endpoint"`
-	ServerName       string             `json:"server_name"`
-	ToolName         string             `json:"tool_name"`
-	InputSchemaHash  string             `json:"input_schema_hash"`
-	RequestDigest    string             `json:"request_digest"`
-	State            string             `json:"state"`
-	RequestedAt      time.Time          `json:"requested_at"`
-	ExpiresAt        time.Time          `json:"expires_at"`
-	ApprovedByUserID pgtype.UUID        `json:"approved_by_user_id"`
-	ApprovedAt       pgtype.Timestamptz `json:"approved_at"`
-	DeniedByUserID   pgtype.UUID        `json:"denied_by_user_id"`
-	DeniedAt         pgtype.Timestamptz `json:"denied_at"`
-	ConsumedAt       pgtype.Timestamptz `json:"consumed_at"`
+	ID                 uuid.UUID          `json:"id"`
+	OrgID              uuid.UUID          `json:"org_id"`
+	DeviceID           uuid.UUID          `json:"device_id"`
+	PolicyVersion      int64              `json:"policy_version"`
+	Endpoint           string             `json:"endpoint"`
+	ServerName         string             `json:"server_name"`
+	ToolName           string             `json:"tool_name"`
+	InputSchemaHash    string             `json:"input_schema_hash"`
+	RequestDigest      string             `json:"request_digest"`
+	State              string             `json:"state"`
+	RequestedAt        time.Time          `json:"requested_at"`
+	ExpiresAt          time.Time          `json:"expires_at"`
+	ApprovedByUserID   pgtype.UUID        `json:"approved_by_user_id"`
+	ApprovedAt         pgtype.Timestamptz `json:"approved_at"`
+	DeniedByUserID     pgtype.UUID        `json:"denied_by_user_id"`
+	DeniedAt           pgtype.Timestamptz `json:"denied_at"`
+	ConsumedAt         pgtype.Timestamptz `json:"consumed_at"`
+	Arguments          []byte             `json:"arguments"`
+	ArgumentsTruncated bool               `json:"arguments_truncated"`
+	ToolDefinitionHash *string            `json:"tool_definition_hash"`
 }
 
 // F14 immutable MCP tool allow policies. Rules contain only stable inventory identities; never arguments, results, OAuth tokens, or client secrets.
@@ -352,6 +388,7 @@ type AgentRuntimeState struct {
 	CreatedAt             time.Time          `json:"created_at"`
 	UpdatedAt             time.Time          `json:"updated_at"`
 	RouteFingerprint      string             `json:"route_fingerprint"`
+	McpGatewayCapableAt   pgtype.Timestamptz `json:"mcp_gateway_capable_at"`
 }
 
 type AgentWireguardRotation struct {
@@ -2382,6 +2419,12 @@ type Organization struct {
 	SandboxDelegationEnabled    bool               `json:"sandbox_delegation_enabled"`
 }
 
+type OrganizationMcpDirectPathGrace struct {
+	OrgID      uuid.UUID `json:"org_id"`
+	GraceUntil time.Time `json:"grace_until"`
+	CreatedAt  time.Time `json:"created_at"`
+}
+
 type OvpnClientCert struct {
 	ID         uuid.UUID          `json:"id"`
 	OrgID      uuid.UUID          `json:"org_id"`
@@ -2985,10 +3028,11 @@ type ServerAccessSetting struct {
 }
 
 type ServerAiTransportSetting struct {
-	Singleton bool      `json:"singleton"`
-	AllowHttp bool      `json:"allow_http"`
-	Revision  int64     `json:"revision"`
-	UpdatedAt time.Time `json:"updated_at"`
+	Singleton    bool      `json:"singleton"`
+	AllowHttp    bool      `json:"allow_http"`
+	Revision     int64     `json:"revision"`
+	UpdatedAt    time.Time `json:"updated_at"`
+	AllowVpnHttp bool      `json:"allow_vpn_http"`
 }
 
 type ServerEmailSetting struct {

@@ -31,6 +31,12 @@ type Runtime struct {
 	observe   func(context.Context, string, netip.Addr) (int, error)
 	listen    func(context.Context, string, string) (net.Listener, error)
 	peers     func(context.Context, string) (string, error)
+	// port, name, handler and the timeouts are the listener's own; NewRuntime sets the AI values.
+	port         string
+	name         string
+	handler      func(address string, peers KernelPeers) http.Handler
+	readTimeout  time.Duration
+	writeTimeout time.Duration
 }
 
 type binding struct {
@@ -42,7 +48,52 @@ type binding struct {
 
 func NewRuntime(iface string, target *url.URL, transport http.RoundTripper, healthy func() bool, notify func(), logger *slog.Logger) *Runtime {
 	return &Runtime{iface: iface, target: target, transport: transport, healthy: healthy,
-		notify: notify, logger: logger, observe: observeInterface, listen: listenInterface, peers: kernelPeers}
+		notify: notify, logger: logger, observe: observeInterface, listen: listenInterface, peers: kernelPeers,
+		port: HTTPPort, name: "ai_vpn", readTimeout: 35 * time.Second, writeTimeout: 40 * time.Second,
+		handler: func(address string, peers KernelPeers) http.Handler {
+			return HTTPHandler(address, target, transport, peers)
+		}}
+}
+
+// ListenerConfig describes another tunnel-side listener with the same lifecycle as the AI one: bound with
+// SO_BINDTODEVICE to the WireGuard interface on the gateway's private IPv4 tunnel address, present only
+// while that address is the ownership-projected one, the interface is a live kernel WireGuard device and
+// the reconciler is healthy, and closed on any doubt. Handler receives the bound address and the kernel
+// peer readback its callers are identified from (see PeerKey).
+type ListenerConfig struct {
+	Interface string
+	Port      string
+	// Name prefixes the log events (<name>_listener_ready, ...).
+	Name         string
+	Handler      func(address string, peers KernelPeers) http.Handler
+	ReadTimeout  time.Duration
+	WriteTimeout time.Duration
+	Healthy      func() bool
+	// Notify must not block; it is called whenever readiness changes.
+	Notify func()
+	Logger *slog.Logger
+	// Observe, Listen and Peers replace the platform interface check, device-bound socket and kernel
+	// readback. They exist for tests; nil selects the platform implementation.
+	Observe func(context.Context, string, netip.Addr) (int, error)
+	Listen  func(context.Context, string, string) (net.Listener, error)
+	Peers   func(context.Context, string) (string, error)
+}
+
+// NewListenerRuntime builds a Runtime for cfg. It shares every fail-closed rule of the AI listener.
+func NewListenerRuntime(cfg ListenerConfig) *Runtime {
+	r := &Runtime{iface: cfg.Interface, healthy: cfg.Healthy, notify: cfg.Notify, logger: cfg.Logger,
+		observe: observeInterface, listen: listenInterface, peers: kernelPeers,
+		port: cfg.Port, name: cfg.Name, handler: cfg.Handler, readTimeout: cfg.ReadTimeout, writeTimeout: cfg.WriteTimeout}
+	if cfg.Observe != nil {
+		r.observe = cfg.Observe
+	}
+	if cfg.Listen != nil {
+		r.listen = cfg.Listen
+	}
+	if cfg.Peers != nil {
+		r.peers = cfg.Peers
+	}
+	return r
 }
 
 // SetDesired accepts only an actual private IPv4 gateway address from the
@@ -106,9 +157,9 @@ func (r *Runtime) Reconcile(ctx context.Context) {
 	}
 	r.closeLocked()
 	addr := r.desired
-	listener, err := r.listen(ctx, r.iface, net.JoinHostPort(addr.String(), HTTPPort))
+	listener, err := r.listen(ctx, r.iface, net.JoinHostPort(addr.String(), r.port))
 	if err != nil {
-		r.logger.Warn("ai_vpn_bind_unavailable")
+		r.logger.Warn(r.name + "_bind_unavailable")
 		return
 	}
 	// Fail closed if the interface was replaced or lost during socket creation.
@@ -119,14 +170,14 @@ func (r *Runtime) Reconcile(ctx context.Context) {
 	}
 	b := &binding{index: index, address: addr, listener: listener}
 	b.server = &http.Server{
-		Handler:           HTTPHandler(addr.String(), r.target, r.transport, func(ctx context.Context) (string, error) { return r.peers(ctx, r.iface) }),
-		ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 35 * time.Second,
-		WriteTimeout: 40 * time.Second, IdleTimeout: 30 * time.Second, MaxHeaderBytes: 16 << 10,
+		Handler:           r.handler(addr.String(), func(ctx context.Context) (string, error) { return r.peers(ctx, r.iface) }),
+		ReadHeaderTimeout: 5 * time.Second, ReadTimeout: r.readTimeout,
+		WriteTimeout: r.writeTimeout, IdleTimeout: 30 * time.Second, MaxHeaderBytes: 16 << 10,
 		BaseContext: func(net.Listener) context.Context { return ctx },
 	}
 	r.current = b
 	r.changed()
-	r.logger.Info("ai_vpn_listener_ready", "interface", r.iface, "address", addr.String())
+	r.logger.Info(r.name+"_listener_ready", "interface", r.iface, "address", addr.String())
 	go func() {
 		serveErr := b.server.Serve(listener)
 		r.mu.Lock()
@@ -136,7 +187,7 @@ func (r *Runtime) Reconcile(ctx context.Context) {
 			_ = b.server.Close()
 			r.changed()
 			if serveErr != nil && !errors.Is(serveErr, http.ErrServerClosed) {
-				r.logger.Warn("ai_vpn_listener_stopped")
+				r.logger.Warn(r.name + "_listener_stopped")
 			}
 		}
 	}()

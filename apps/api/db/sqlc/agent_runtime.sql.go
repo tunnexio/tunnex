@@ -77,7 +77,8 @@ WHERE d.id = $1
 ON CONFLICT (device_id) DO UPDATE SET device_id = EXCLUDED.device_id
 RETURNING device_id, desired_revision, applied_revision,
           last_attempted_revision, client_version, last_seen_at,
-          last_error_code, last_error_revision, route_fingerprint, created_at, updated_at
+          last_error_code, last_error_revision, route_fingerprint, created_at, updated_at,
+          mcp_gateway_capable_at
 `
 
 type EnsureAgentRuntimeStateParams struct {
@@ -98,6 +99,7 @@ type EnsureAgentRuntimeStateRow struct {
 	RouteFingerprint      string             `json:"route_fingerprint"`
 	CreatedAt             time.Time          `json:"created_at"`
 	UpdatedAt             time.Time          `json:"updated_at"`
+	McpGatewayCapableAt   pgtype.Timestamptz `json:"mcp_gateway_capable_at"`
 }
 
 // The org join is the tenant boundary; device ids are globally unique, but a
@@ -117,6 +119,7 @@ func (q *Queries) EnsureAgentRuntimeState(ctx context.Context, arg EnsureAgentRu
 		&i.RouteFingerprint,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.McpGatewayCapableAt,
 	)
 	return i, err
 }
@@ -124,7 +127,8 @@ func (q *Queries) EnsureAgentRuntimeState(ctx context.Context, arg EnsureAgentRu
 const getAgentRuntimeState = `-- name: GetAgentRuntimeState :one
 SELECT ars.device_id, ars.desired_revision, ars.applied_revision,
        ars.last_attempted_revision, ars.client_version, ars.last_seen_at,
-       ars.last_error_code, ars.last_error_revision, ars.route_fingerprint, ars.created_at, ars.updated_at
+       ars.last_error_code, ars.last_error_revision, ars.route_fingerprint, ars.created_at, ars.updated_at,
+       ars.mcp_gateway_capable_at
 FROM agent_runtime_state ars
 JOIN devices d ON d.id = ars.device_id
 WHERE ars.device_id = $1
@@ -150,6 +154,7 @@ type GetAgentRuntimeStateRow struct {
 	RouteFingerprint      string             `json:"route_fingerprint"`
 	CreatedAt             time.Time          `json:"created_at"`
 	UpdatedAt             time.Time          `json:"updated_at"`
+	McpGatewayCapableAt   pgtype.Timestamptz `json:"mcp_gateway_capable_at"`
 }
 
 func (q *Queries) GetAgentRuntimeState(ctx context.Context, arg GetAgentRuntimeStateParams) (GetAgentRuntimeStateRow, error) {
@@ -167,8 +172,36 @@ func (q *Queries) GetAgentRuntimeState(ctx context.Context, arg GetAgentRuntimeS
 		&i.RouteFingerprint,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.McpGatewayCapableAt,
 	)
 	return i, err
+}
+
+const markAgentRuntimeMCPGatewayCapable = `-- name: MarkAgentRuntimeMCPGatewayCapable :execrows
+UPDATE agent_runtime_state ars
+SET mcp_gateway_capable_at = now()
+FROM devices d
+WHERE d.id = ars.device_id
+  AND ars.device_id = $1
+  AND d.org_id = $2
+  AND d.kind = 'agent'
+  AND d.deleted_at IS NULL
+`
+
+type MarkAgentRuntimeMCPGatewayCapableParams struct {
+	DeviceID uuid.UUID `json:"device_id"`
+	OrgID    uuid.UUID `json:"org_id"`
+}
+
+// AI-SEC-2: the runtime declared (poll query mcp_gateway=true) that it forwards
+// MCP to the gateway listener. Recorded on every declaring poll so the value is
+// also a freshness signal. Never cleared by a poll that omits the declaration.
+func (q *Queries) MarkAgentRuntimeMCPGatewayCapable(ctx context.Context, arg MarkAgentRuntimeMCPGatewayCapableParams) (int64, error) {
+	result, err := q.db.Exec(ctx, markAgentRuntimeMCPGatewayCapable, arg.DeviceID, arg.OrgID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const refreshAgentRuntimeRouteFingerprint = `-- name: RefreshAgentRuntimeRouteFingerprint :one

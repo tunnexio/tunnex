@@ -287,6 +287,113 @@ type Snapshot struct {
 	// The compiler does NOT elect: the site→site transit grant lands on THIS node. uuid.Nil = no hub (no
 	// site→site transit to place — a non-site compile, or no capable gateway).
 	ActiveHub uuid.UUID
+	// MCPDirectPathDenies (AI-SEC-2) are the direct paths to close: one entry per agent device and MCP
+	// endpoint assigned to it through a profile. The snapshot builder has ALREADY applied the gating
+	// (gateway capability, runtime capability, grace date), so the clockless compiler only resolves and
+	// emits. Empty for an organization with no MCP assignment: its artifacts are unchanged.
+	MCPDirectPathDenies []MCPDirectPathDeny
+}
+
+// MCPDirectPathDeny names one agent device and one MCP endpoint it may reach only through the gateway's MCP
+// listener. Host is an IP literal or a normalized hostname; the compiler never resolves DNS.
+type MCPDirectPathDeny struct {
+	DeviceID uuid.UUID
+	Host     string
+	Port     int
+}
+
+// mcpDirectPathDenies resolves the snapshot's deny inputs to per-gateway DenyEntries (AI-SEC-2). Pure.
+//
+//   - Source: the agent device's own tunnel address, placed on the gateway that hosts the device (the first
+//     hop of every packet it sends). A person's device, a sandbox, or a device that is not active is never a
+//     source, whatever the input says.
+//   - IP-literal host: that address as a host prefix.
+//   - Hostname: the answers of every ACTIVE FQDN generation with exactly that name, and nothing else. Those
+//     are the addresses the gateway already resolves; a name with no such generation closes nothing here
+//     (the documented hostname limit).
+//
+// De-duplicated on the match tuple and sorted, so equal input gives byte-identical output.
+func mcpDirectPathDenies(s Snapshot) map[uuid.UUID][]policyspec.DenyEntry {
+	if len(s.MCPDirectPathDenies) == 0 {
+		return nil
+	}
+	agents := map[uuid.UUID]Device{}
+	for _, d := range s.Devices {
+		if d.Kind == "agent" && d.ID != uuid.Nil && d.NodeID != uuid.Nil && d.AssignedIP != "" {
+			agents[d.ID] = d
+		}
+	}
+	answersByName := map[string][]string{}
+	if s.FQDNResourcesLicensed && s.FQDNResourcesEnabled {
+		for _, r := range s.FQDNResources {
+			if _, answers, _, active := activeFQDNGeneration(r); active {
+				answersByName[r.FQDN] = append(answersByName[r.FQDN], answers...)
+			}
+		}
+	}
+	type denyKey struct {
+		node     uuid.UUID
+		src, dst string
+		port     int
+	}
+	seen := map[denyKey]bool{}
+	out := map[uuid.UUID][]policyspec.DenyEntry{}
+	for _, in := range s.MCPDirectPathDenies {
+		d, ok := agents[in.DeviceID]
+		if !ok || in.Port < 1 || in.Port > 65535 {
+			continue
+		}
+		source, err := netip.ParseAddr(d.AssignedIP)
+		if err != nil {
+			continue
+		}
+		var destinations []string
+		if addr, err := netip.ParseAddr(in.Host); err == nil {
+			addr = addr.Unmap()
+			if addr.Zone() != "" || addr.IsUnspecified() || addr.IsMulticast() {
+				continue
+			}
+			destinations = []string{netip.PrefixFrom(addr, addr.BitLen()).String()}
+		} else {
+			destinations = answersByName[strings.ToLower(strings.TrimSuffix(strings.TrimSpace(in.Host), "."))]
+		}
+		for _, dst := range destinations {
+			prefix, err := netip.ParsePrefix(dst)
+			if err != nil {
+				continue
+			}
+			src := source.Unmap().String()
+			if prefix.Addr().Is6() != source.Unmap().Is6() {
+				// An IPv6 destination is reached from the device's IPv6 identity, when it has one. A
+				// device with no address in the destination's family has no direct path to close.
+				if src = s.CrossGatewayGraph.IPv6Source(d.AssignedIP); src == "" || !prefix.Addr().Is6() {
+					continue
+				}
+			}
+			k := denyKey{d.NodeID, src, dst, in.Port}
+			if seen[k] {
+				continue
+			}
+			seen[k] = true
+			out[d.NodeID] = append(out[d.NodeID], policyspec.DenyEntry{
+				SrcIP: src, DstCIDR: dst, Protocol: policyspec.ProtoTCP, PortLow: in.Port, PortHigh: in.Port,
+				Reason: policyspec.DenyReasonMCPGatewayOnly, SrcDeviceID: d.ID.String(),
+			})
+		}
+	}
+	for node := range out {
+		list := out[node]
+		sort.Slice(list, func(i, j int) bool {
+			if list[i].SrcIP != list[j].SrcIP {
+				return list[i].SrcIP < list[j].SrcIP
+			}
+			if list[i].DstCIDR != list[j].DstCIDR {
+				return list[i].DstCIDR < list[j].DstCIDR
+			}
+			return list[i].PortLow < list[j].PortLow
+		})
+	}
+	return out
 }
 
 // AgentGroupMembership is the F09 agent-group compiler input. Human
@@ -383,10 +490,13 @@ func Compile(s Snapshot) map[uuid.UUID]policyspec.Compiled {
 	}
 
 	out := make(map[uuid.UUID]policyspec.Compiled, len(nodeSet))
+	// AI-SEC-2: denies hold in BOTH modes (the gateway renders them ahead of the mesh accepts and ahead of
+	// the allows). A node with none gets a nil list, which serializes nothing and keeps its version.
+	denies := mcpDirectPathDenies(s)
 
 	if mesh {
 		for nodeID := range nodeSet {
-			c := policyspec.Compiled{NodeID: nodeID.String(), Mode: ModeOff, Mesh: true, Allow: nil, Subjects: subjects}
+			c := policyspec.Compiled{NodeID: nodeID.String(), Mode: ModeOff, Mesh: true, Allow: nil, Subjects: subjects, Deny: denies[nodeID]}
 			c.Version = policyspec.RequiredVersion(c) // content-derived (S8.2 D1b); mesh has no v5 feature
 			out[nodeID] = c
 		}
@@ -1032,7 +1142,7 @@ func Compile(s Snapshot) map[uuid.UUID]policyspec.Compiled {
 			generations = append(generations, generation)
 		}
 		sort.Slice(generations, func(i, j int) bool { return generations[i].ResourceID < generations[j].ResourceID })
-		c := policyspec.Compiled{NodeID: nodeID.String(), Mode: ModeEnforcing, Mesh: false, Allow: list, Subjects: subjects, FQDNGenerations: generations}
+		c := policyspec.Compiled{NodeID: nodeID.String(), Mode: ModeEnforcing, Mesh: false, Allow: list, Subjects: subjects, FQDNGenerations: generations, Deny: denies[nodeID]}
 		c.Version = policyspec.RequiredVersion(c) // content-derived (S8.2 D1b): v5 iff a CIDR source present
 		out[nodeID] = c
 	}

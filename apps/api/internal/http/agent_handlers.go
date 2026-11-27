@@ -33,8 +33,24 @@ func (s apiServer) IssueAgentBootstrapToken(ctx context.Context, req api.IssueAg
 	if req.Body == nil {
 		return nil, apierr.BadRequest("invalid_request", "request body is required")
 	}
+	metadata, err := s.verifiedBootstrapRelease(ctx)
+	if err != nil {
+		return nil, err
+	}
+	p, _ := authctx.PrincipalFrom(ctx)
+	tok, err := s.devices.IssueAgentBootstrapToken(ctx, p.UserID, req.OrgId, req.Body.GatewayId, req.Body.Name)
+	if err != nil {
+		return nil, err
+	}
+	return api.IssueAgentBootstrapToken201JSONResponse{Body: api.AgentBootstrapTokenResponse{BootstrapToken: tok, Release: toAPIBootstrapRelease(metadata)}, Headers: api.IssueAgentBootstrapToken201ResponseHeaders{XRequestId: middleware.GetReqID(ctx)}}, nil
+}
+
+// verifiedBootstrapRelease returns the release this deployment pins together with its separately
+// signed verifier descriptor, or 503 bootstrap_unavailable. It is the one source for both the install
+// command and the runtime update command, so the two can never be handed different releases.
+func (s apiServer) verifiedBootstrapRelease(ctx context.Context) (release.BootstrapRelease, error) {
 	if s.releaseBootstrap == nil {
-		return nil, apierr.New(http.StatusServiceUnavailable, "bootstrap_unavailable", "managed agent enrollment is temporarily unavailable")
+		return release.BootstrapRelease{}, apierr.New(http.StatusServiceUnavailable, "bootstrap_unavailable", "managed agent enrollment is temporarily unavailable")
 	}
 	metadata := *s.releaseBootstrap
 	fetchVerifier := s.releaseBootstrapVerifier
@@ -43,15 +59,66 @@ func (s apiServer) IssueAgentBootstrapToken(ctx context.Context, req api.IssueAg
 	}
 	verifier, err := fetchVerifier(ctx, metadata)
 	if err != nil {
-		return nil, apierr.New(http.StatusServiceUnavailable, "bootstrap_unavailable", "managed agent release verifier could not be validated; retry enrollment")
+		return release.BootstrapRelease{}, apierr.New(http.StatusServiceUnavailable, "bootstrap_unavailable", "managed agent release verifier could not be validated; retry enrollment")
 	}
 	metadata.Verifier = verifier
-	p, _ := authctx.PrincipalFrom(ctx)
-	tok, err := s.devices.IssueAgentBootstrapToken(ctx, p.UserID, req.OrgId, req.Body.GatewayId, req.Body.Name)
+	return metadata, nil
+}
+
+// GetAgentRuntimeRelease GET /api/v1/organizations/{orgId}/agents/runtime-release — the release an
+// install command carries, without issuing a token, for updating an enrolled host's runtime in place.
+// Same permission as issuing a token; public verifier material only.
+func (s apiServer) GetAgentRuntimeRelease(ctx context.Context, req api.GetAgentRuntimeReleaseRequestObject) (api.GetAgentRuntimeReleaseResponseObject, error) {
+	if _, err := authorize(ctx, req.OrgId, rbac.PermAgentEnroll); err != nil {
+		return nil, err
+	}
+	metadata, err := s.verifiedBootstrapRelease(ctx)
 	if err != nil {
 		return nil, err
 	}
-	return api.IssueAgentBootstrapToken201JSONResponse{Body: api.AgentBootstrapTokenResponse{BootstrapToken: tok, Release: toAPIBootstrapRelease(metadata)}, Headers: api.IssueAgentBootstrapToken201ResponseHeaders{XRequestId: middleware.GetReqID(ctx)}}, nil
+	return api.GetAgentRuntimeRelease200JSONResponse{Body: toAPIBootstrapRelease(metadata), Headers: api.GetAgentRuntimeRelease200ResponseHeaders{XRequestId: reqID(ctx)}}, nil
+}
+
+// ListAgentBootstrapTokens GET /api/v1/organizations/{orgId}/agents/bootstrap-tokens — the tokens
+// that can still be redeemed. Same permission as issuing one; never the value.
+func (s apiServer) ListAgentBootstrapTokens(ctx context.Context, req api.ListAgentBootstrapTokensRequestObject) (api.ListAgentBootstrapTokensResponseObject, error) {
+	if _, err := authorize(ctx, req.OrgId, rbac.PermAgentEnroll); err != nil {
+		return nil, err
+	}
+	p, _ := authctx.PrincipalFrom(ctx)
+	rows, err := s.devices.ListPendingAgentBootstrapTokens(ctx, req.OrgId)
+	if err != nil {
+		return nil, err
+	}
+	canViewIssuers := rbac.CanAny(p.RolesIn(req.OrgId), rbac.PermMemberManage)
+	items := make([]api.PendingAgentBootstrapToken, 0, len(rows))
+	for _, row := range rows {
+		items = append(items, toAPIPendingBootstrapToken(row, p.UserID, canViewIssuers))
+	}
+	return api.ListAgentBootstrapTokens200JSONResponse{Body: api.PendingAgentBootstrapTokenList{Items: items}, Headers: api.ListAgentBootstrapTokens200ResponseHeaders{XRequestId: reqID(ctx)}}, nil
+}
+
+func toAPIPendingBootstrapToken(t devices.PendingAgentBootstrapToken, caller uuid.UUID, canViewIssuers bool) api.PendingAgentBootstrapToken {
+	out := api.PendingAgentBootstrapToken{
+		Id: t.ID, AgentName: t.AgentName, GatewayId: t.GatewayID, GatewayName: t.GatewayName,
+		IssuedBy: t.IssuedBy, IssuedAt: t.IssuedAt, ExpiresAt: t.ExpiresAt,
+	}
+	if canViewIssuers || (t.IssuedBy != nil && caller != uuid.Nil && *t.IssuedBy == caller) {
+		out.IssuedByEmail = t.IssuedByEmail
+	}
+	return out
+}
+
+// RevokeAgentBootstrapToken DELETE /api/v1/organizations/{orgId}/agents/bootstrap-tokens/{tokenId}.
+func (s apiServer) RevokeAgentBootstrapToken(ctx context.Context, req api.RevokeAgentBootstrapTokenRequestObject) (api.RevokeAgentBootstrapTokenResponseObject, error) {
+	if _, err := authorizeMutation(ctx, req.OrgId, rbac.PermAgentEnroll); err != nil {
+		return nil, err
+	}
+	p, _ := authctx.PrincipalFrom(ctx)
+	if err := s.devices.RevokeAgentBootstrapToken(ctx, p.UserID, req.OrgId, req.TokenId); err != nil {
+		return nil, err
+	}
+	return api.RevokeAgentBootstrapToken204Response{Headers: api.RevokeAgentBootstrapToken204ResponseHeaders{XRequestId: reqID(ctx)}}, nil
 }
 
 func toAPIBootstrapRelease(r release.BootstrapRelease) api.AgentBootstrapRelease {

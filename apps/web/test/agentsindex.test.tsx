@@ -5,7 +5,7 @@ import { Profiler } from "react";
 import type { AgentRow } from "../src/lib/agentview";
 
 const state = vi.hoisted(() => ({
-  GET: vi.fn(), POST: vi.fn(),
+  GET: vi.fn(), POST: vi.fn(), DELETE: vi.fn(),
   org: { id: "org-a", name: "Organization A", managed_agent_runtime_enabled: true },
   auth: { status: "authed", user: { id: "user-a", email: "owner@example.test", email_verified: true } },
   role: "owner",
@@ -169,7 +169,10 @@ describe("AI Agents inventory paging and authority", () => {
     expect(screen.queryByRole("dialog", { name: "Agent enrollment" })).toBeNull();
     expect(screen.getByRole("link", { name: "Agent 21" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "Previous page" })).toHaveProperty("disabled", false);
-    expect(state.GET).toHaveBeenCalledTimes(readCount);
+    // Closing may have created an install token, so only the pending-token list is read again.
+    const later = state.GET.mock.calls.slice(readCount).map(([path]) => path);
+    expect(later.every(path => path === "/api/v1/organizations/{orgId}/agents/bootstrap-tokens")).toBe(true);
+    expect(later.length).toBeLessThanOrEqual(1);
   });
 
   it("does not read inventory or deployment entitlement when membership is forbidden", async () => {
@@ -232,5 +235,128 @@ describe("AI Agents inventory paging and authority", () => {
     expect(leakedCommits.length).toBeGreaterThan(0);
     expect(leakedCommits).not.toContain(true);
     expect(state.POST).not.toHaveBeenCalled();
+  });
+});
+
+describe("Pending install tokens", () => {
+  const tokensPath = "/api/v1/organizations/{orgId}/agents/bootstrap-tokens";
+  const pendingToken = (values: Record<string, unknown> = {}) => ({
+    id: "token-1", agent_name: "jira-runner", gateway_id: "gateway-a", gateway_name: "Gateway A",
+    issued_by: "user-a", issued_by_email: "owner@example.test", issued_at: new Date(Date.now() - 5 * 60_000).toISOString(),
+    expires_at: new Date(Date.now() + 55 * 60_000).toISOString(), ...values,
+  });
+  function seedTokens(load: () => unknown) {
+    seed();
+    const agents = state.GET.getMockImplementation()!;
+    state.GET.mockImplementation(async (path: string, request?: Request) => path === tokensPath ? load() : agents(path, request));
+  }
+  const tokenReads = () => state.GET.mock.calls.filter(([path]) => path === tokensPath);
+
+  it("lists tokens that can still be used, without any token value, for a member who can add agents", async () => {
+    seedTokens(() => ({ data: { items: [pendingToken(), pendingToken({ id: "token-2", agent_name: "ci-runner", issued_by_email: null })] } }));
+    mount();
+    const section = await screen.findByRole("region", { name: "Pending install tokens" });
+    expect(within(section).getByText("These tokens can still be used to add an agent. Revoke any you did not expect or no longer need.")).toBeTruthy();
+    const first = within(section).getByText("jira-runner").closest("tr")!;
+    expect(within(first).getByText("Gateway A")).toBeTruthy();
+    expect(within(first).getByText("owner@example.test")).toBeTruthy();
+    expect(within(first).getByText(/^Expires in \d+ minutes?$/)).toBeTruthy();
+    expect(within(within(section).getByText("ci-runner").closest("tr")!).getByText("Another member")).toBeTruthy();
+    expect(section.textContent).not.toMatch(/tnx_/);
+    expect(tokenReads()[0][1]).toEqual({ params: { path: { orgId: "org-a" } } });
+  });
+
+  it("is hidden when there are no pending tokens", async () => {
+    seedTokens(() => ({ data: { items: [] } }));
+    mount();
+    await screen.findByRole("link", { name: "Agent 01" });
+    await waitFor(() => expect(tokenReads()).toHaveLength(1));
+    expect(screen.queryByRole("region", { name: "Pending install tokens" })).toBeNull();
+  });
+
+  it("does not show an already expired token as usable", async () => {
+    seedTokens(() => ({ data: { items: [pendingToken({ expires_at: new Date(Date.now() - 1000).toISOString() })] } }));
+    mount();
+    await screen.findByRole("link", { name: "Agent 01" });
+    await waitFor(() => expect(tokenReads()).toHaveLength(1));
+    expect(screen.queryByRole("region", { name: "Pending install tokens" })).toBeNull();
+  });
+
+  it("says so when the tokens cannot be loaded, instead of looking empty", async () => {
+    let fail = true;
+    seedTokens(() => fail ? { error: { error: { code: "internal", message: "boom" } } } : { data: { items: [pendingToken()] } });
+    mount();
+    const section = await screen.findByRole("region", { name: "Pending install tokens" });
+    expect(within(section).getByRole("alert").textContent).toBe("Could not load pending install tokens. Some may still be usable.");
+    fail = false;
+    fireEvent.click(within(section).getByRole("button", { name: "Retry" }));
+    expect(await screen.findByText("jira-runner")).toBeTruthy();
+  });
+
+  it("is neither requested nor shown for a member who cannot add agents", async () => {
+    state.role = "member";
+    seedTokens(() => ({ data: { items: [pendingToken()] } }));
+    mount();
+    await screen.findByRole("link", { name: "Agent 01" });
+    expect(tokenReads()).toHaveLength(0);
+    expect(screen.queryByRole("region", { name: "Pending install tokens" })).toBeNull();
+  });
+
+  it("revokes a token after confirmation and removes it from the list", async () => {
+    let items = [pendingToken()];
+    seedTokens(() => ({ data: { items } }));
+    state.DELETE.mockImplementation(async () => { items = []; return { data: undefined, response: { ok: true } }; });
+    mount();
+    const section = await screen.findByRole("region", { name: "Pending install tokens" });
+    fireEvent.click(within(section).getByRole("button", { name: "Revoke install token for jira-runner" }));
+    expect(state.DELETE).not.toHaveBeenCalled();
+    const dialog = await screen.findByRole("dialog", { name: "Revoke this install token?" });
+    expect(within(dialog).getByText(/The token for jira-runner will stop working right away/)).toBeTruthy();
+    fireEvent.click(within(dialog).getByRole("button", { name: "Revoke token" }));
+    await waitFor(() => expect(state.DELETE).toHaveBeenCalledWith(
+      "/api/v1/organizations/{orgId}/agents/bootstrap-tokens/{tokenId}",
+      { params: { path: { orgId: "org-a", tokenId: "token-1" } } },
+    ));
+    // The operator is told what happened, and the token is no longer listed.
+    expect(await screen.findByText("The install token for jira-runner was revoked.")).toBeTruthy();
+    await waitFor(() => expect(within(screen.getByRole("region", { name: "Pending install tokens" })).queryByText("jira-runner")).toBeNull());
+    expect(screen.queryByRole("button", { name: "Revoke install token for jira-runner" })).toBeNull();
+  });
+
+  it("says so when a token was already used or expired, and refreshes the list", async () => {
+    let items = [pendingToken()];
+    seedTokens(() => ({ data: { items } }));
+    state.DELETE.mockImplementation(async () => { items = []; return { error: { error: { code: "bootstrap_token_not_found", message: "this install token is no longer pending; it was already used, revoked, or has expired" } } }; });
+    mount();
+    const section = await screen.findByRole("region", { name: "Pending install tokens" });
+    fireEvent.click(within(section).getByRole("button", { name: "Revoke install token for jira-runner" }));
+    fireEvent.click(within(await screen.findByRole("dialog", { name: "Revoke this install token?" })).getByRole("button", { name: "Revoke token" }));
+    expect(await screen.findByText("That token was already used, revoked, or has expired. Nothing was changed.")).toBeTruthy();
+    await waitFor(() => expect(tokenReads()).toHaveLength(2));
+  });
+
+  it("stays in place and is not read again while the inventory changes page", async () => {
+    seedTokens(() => ({ data: { items: [pendingToken()] } }));
+    const agents = state.GET.getMockImplementation()!;
+    state.GET.mockImplementation(async (path: string, request?: Request) => path === agentsPath
+      ? { data: { items: [agent(request!.params.query!.cursor ? 21 : 1)], next_cursor: request!.params.query!.cursor ? null : "second-page" } }
+      : agents(path, request));
+    mount();
+    await screen.findByRole("region", { name: "Pending install tokens" });
+    fireEvent.click(screen.getByRole("button", { name: "Next page" }));
+    expect(screen.getByRole("region", { name: "Pending install tokens" })).toBeTruthy();
+    await screen.findByRole("link", { name: "Agent 21" });
+    expect(tokenReads()).toHaveLength(1);
+  });
+
+  it("reloads after the add-agent flow closes, so a new token appears", async () => {
+    let items: unknown[] = [];
+    seedTokens(() => ({ data: { items } }));
+    mount("/agents?add=1");
+    await screen.findByRole("dialog", { name: "Agent enrollment" });
+    await waitFor(() => expect(tokenReads()).toHaveLength(1));
+    items = [pendingToken()];
+    fireEvent.click(screen.getByRole("button", { name: "Close enrollment" }));
+    expect(await screen.findByRole("region", { name: "Pending install tokens" })).toBeTruthy();
   });
 });

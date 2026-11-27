@@ -19,6 +19,10 @@ var (
 	ErrNotFound       = errors.New("MCP tool policy not found")
 	ErrInvalid        = errors.New("invalid MCP tool policy")
 	ErrUnobservedTool = errors.New("MCP tool policy contains an unobserved tool")
+	// ErrRuleNotFound means no rule of the current policy names the endpoint and tool.
+	ErrRuleNotFound = errors.New("MCP tool rule not found")
+	// ErrDefinitionStale means the definition an administrator reviewed is no longer the one observed.
+	ErrDefinitionStale = errors.New("MCP tool definition changed again")
 )
 
 type Rule struct {
@@ -29,6 +33,11 @@ type Rule struct {
 	ArgumentConstraints json.RawMessage `json:"argument_constraints,omitempty"`
 	RateLimitPerMinute  *int            `json:"rate_limit_per_minute,omitempty"`
 	StepUpRequired      bool            `json:"step_up_required,omitempty"`
+	// ToolDefinitionHash pins the whole definition (name, description, input schema) the rule allows. Empty
+	// only on a rule saved before the pin existed, until the first gateway inventory pins it.
+	ToolDefinitionHash string `json:"tool_definition_hash,omitempty"`
+	// DefinitionState is computed on read against gateway-observed inventory and never stored.
+	DefinitionState string `json:"-"`
 }
 
 type Policy struct {
@@ -37,6 +46,10 @@ type Policy struct {
 	InventoryObservedAt time.Time
 	CreatedAt           time.Time
 }
+
+// InventoryFreshness is how old a gateway observation may be and still back a decision. The gateway
+// discovers every 30 seconds, so this tolerates two missed rounds.
+const InventoryFreshness = 90 * time.Second
 
 type Service struct{ pool *pgxpool.Pool }
 
@@ -57,7 +70,58 @@ FROM agent_mcp_tool_policy_versions WHERE org_id=$1 AND device_id=$2 ORDER BY ve
 	if err != nil || json.Unmarshal(raw, &p.Rules) != nil {
 		return Policy{}, ErrInvalid
 	}
+	inventory, err := s.LoadInventory(ctx, orgID, deviceID)
+	if err != nil && !errors.Is(err, ErrNotFound) {
+		return Policy{}, err
+	}
+	annotateDefinitionState(p.Rules, inventory)
 	return p, nil
+}
+
+// LoadInventory returns the typed inventory last stored for an agent, or ErrNotFound.
+func (s *Service) LoadInventory(ctx context.Context, orgID, deviceID uuid.UUID) (Inventory, error) {
+	if s == nil || s.pool == nil || orgID == uuid.Nil || deviceID == uuid.Nil {
+		return Inventory{}, ErrInvalid
+	}
+	return loadInventory(ctx, s.pool, orgID, deviceID, "")
+}
+
+type rowQuerier interface {
+	QueryRow(ctx context.Context, sql string, args ...any) pgx.Row
+}
+
+func loadInventory(ctx context.Context, q rowQuerier, orgID, deviceID uuid.UUID, lock string) (Inventory, error) {
+	var snapshot []byte
+	var observed time.Time
+	var source string
+	err := q.QueryRow(ctx, `SELECT i.snapshot, i.observed_at, i.source FROM agent_mcp_inventory i
+JOIN devices d ON d.id=i.device_id
+WHERE d.id=$1 AND d.org_id=$2 AND d.kind='agent' AND d.deleted_at IS NULL`+lock, deviceID, orgID).Scan(&snapshot, &observed, &source)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return Inventory{}, ErrNotFound
+	}
+	if err != nil {
+		return Inventory{}, err
+	}
+	return parseInventory(snapshot, source, observed), nil
+}
+
+// annotateDefinitionState marks each rule against gateway-observed inventory. Without a healthy gateway
+// observation of the rule's endpoint nothing is known and the state stays empty.
+func annotateDefinitionState(rules []Rule, inventory Inventory) {
+	if inventory.Source != SourceGateway {
+		return
+	}
+	for i := range rules {
+		server, ok := inventory.Server(rules[i].Endpoint)
+		if !ok || server.Status != StatusHealthy {
+			continue
+		}
+		rules[i].DefinitionState = DefinitionChanged
+		if tool, ok := server.Tool(rules[i].ToolName); ok && rules[i].ToolDefinitionHash != "" && tool.ToolDefinitionHash == rules[i].ToolDefinitionHash {
+			rules[i].DefinitionState = DefinitionCurrent
+		}
+	}
 }
 
 // Runtime returns only rules which still match the most recently observed
@@ -70,16 +134,23 @@ func (s *Service) Runtime(ctx context.Context, orgID, deviceID uuid.UUID, now ti
 	}
 	var snapshot []byte
 	var observed time.Time
-	err := s.pool.QueryRow(ctx, `SELECT i.snapshot, i.observed_at FROM agent_mcp_inventory i
+	var source string
+	err := s.pool.QueryRow(ctx, `SELECT i.snapshot, i.observed_at, i.source FROM agent_mcp_inventory i
 JOIN devices d ON d.id=i.device_id
-WHERE d.id=$1 AND d.org_id=$2 AND d.kind='agent' AND d.deleted_at IS NULL`, deviceID, orgID).Scan(&snapshot, &observed)
+WHERE d.id=$1 AND d.org_id=$2 AND d.kind='agent' AND d.deleted_at IS NULL`, deviceID, orgID).Scan(&snapshot, &observed, &source)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Policy{Version: 0}, nil
 	}
 	if err != nil {
 		return Policy{}, err
 	}
-	if now.UTC().Sub(observed) > time.Minute || observed.After(now.UTC().Add(time.Minute)) {
+	// A gateway reports on its own discovery interval, so its list stays usable a little longer than the
+	// one the agent host sends with every report.
+	freshness := time.Minute
+	if source == SourceGateway {
+		freshness = InventoryFreshness
+	}
+	if now.UTC().Sub(observed) > freshness || observed.After(now.UTC().Add(time.Minute)) {
 		return Policy{Version: 0, InventoryObservedAt: observed}, nil
 	}
 	p, err := s.Get(ctx, orgID, deviceID)
@@ -89,12 +160,19 @@ WHERE d.id=$1 AND d.org_id=$2 AND d.kind='agent' AND d.deleted_at IS NULL`, devi
 	if err != nil {
 		return Policy{}, err
 	}
-	available := inventoryRules(snapshot)
+	available := inventoryTools(snapshot)
 	allowed := make([]Rule, 0, len(p.Rules))
 	for _, rule := range p.Rules {
-		if available[ruleKey(rule)] {
-			allowed = append(allowed, rule)
+		observedHash, ok := available[ruleKey(rule)]
+		if !ok {
+			continue
 		}
+		// Once the gateway observes the server, the older agent-host path also refuses a tool whose
+		// pinned definition no longer matches.
+		if source == SourceGateway && rule.ToolDefinitionHash != "" && observedHash != rule.ToolDefinitionHash {
+			continue
+		}
+		allowed = append(allowed, rule)
 	}
 	p.Rules, p.InventoryObservedAt = allowed, observed
 	return p, nil
@@ -126,25 +204,47 @@ func (s *Service) Replace(ctx context.Context, orgID, deviceID, actorID uuid.UUI
 	}
 	var snapshot []byte
 	var observed time.Time
-	err = tx.QueryRow(ctx, `SELECT i.snapshot, i.observed_at FROM agent_mcp_inventory i
+	var source string
+	err = tx.QueryRow(ctx, `SELECT i.snapshot, i.observed_at, i.source FROM agent_mcp_inventory i
 JOIN devices d ON d.id=i.device_id
-WHERE d.id=$1 AND d.org_id=$2 AND d.kind='agent' AND d.deleted_at IS NULL FOR SHARE`, deviceID, orgID).Scan(&snapshot, &observed)
+WHERE d.id=$1 AND d.org_id=$2 AND d.kind='agent' AND d.deleted_at IS NULL FOR SHARE`, deviceID, orgID).Scan(&snapshot, &observed, &source)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Policy{}, ErrNotFound
 	}
 	if err != nil {
 		return Policy{}, err
 	}
-	available := inventoryRules(snapshot)
-	for _, rule := range rules {
-		if !available[ruleKey(rule)] {
-			return Policy{}, ErrUnobservedTool
-		}
-	}
-	var version int64
-	if err := tx.QueryRow(ctx, `SELECT COALESCE(MAX(version), 0)+1 FROM agent_mcp_tool_policy_versions WHERE device_id=$1`, deviceID).Scan(&version); err != nil {
+	previous, err := currentRules(ctx, tx, deviceID)
+	if err != nil {
 		return Policy{}, err
 	}
+	pinned := make(map[string]string, len(previous.Rules))
+	for _, rule := range previous.Rules {
+		pinned[ruleKey(rule)] = rule.ToolDefinitionHash
+	}
+	available := inventoryTools(snapshot)
+	for i := range rules {
+		observedHash, ok := available[ruleKey(rules[i])]
+		if !ok {
+			return Policy{}, ErrUnobservedTool
+		}
+		if source != SourceGateway {
+			// Only a gateway observation can pin a definition. A hash for a list the agent host
+			// reported is carried when it is the one already stored and refused otherwise.
+			observedHash = ""
+		}
+		// The pin of an existing rule moves only through AcceptDefinition, never by saving the policy
+		// again; a new rule is pinned to what the gateway observes now.
+		want := observedHash
+		if carried := pinned[ruleKey(rules[i])]; carried != "" {
+			want = carried
+		}
+		if rules[i].ToolDefinitionHash != "" && rules[i].ToolDefinitionHash != want {
+			return Policy{}, ErrInvalid
+		}
+		rules[i].ToolDefinitionHash = want
+	}
+	version := previous.Version + 1
 	raw, err := json.Marshal(rules)
 	if err != nil {
 		return Policy{}, err
@@ -162,7 +262,32 @@ VALUES ($1,$2,$3,$4,$5,$6) RETURNING created_at`, orgID, deviceID, version, raw,
 	if err := tx.Commit(ctx); err != nil {
 		return Policy{}, err
 	}
+	annotateDefinitionState(rules, parseInventory(snapshot, source, observed))
 	return Policy{Version: version, Rules: rules, InventoryObservedAt: observed, CreatedAt: created}, nil
+}
+
+type storedPolicy struct {
+	Version   int64
+	Rules     []Rule
+	CreatedBy uuid.UUID
+}
+
+// currentRules reads the newest stored version inside the caller's transaction. The caller holds the
+// device row lock, so the version it returns is the one the next write follows.
+func currentRules(ctx context.Context, tx pgx.Tx, deviceID uuid.UUID) (storedPolicy, error) {
+	var out storedPolicy
+	var raw []byte
+	err := tx.QueryRow(ctx, `SELECT version, rules, created_by_user_id FROM agent_mcp_tool_policy_versions WHERE device_id=$1 ORDER BY version DESC LIMIT 1`, deviceID).Scan(&out.Version, &raw, &out.CreatedBy)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return storedPolicy{}, nil
+	}
+	if err != nil {
+		return storedPolicy{}, err
+	}
+	if json.Unmarshal(raw, &out.Rules) != nil {
+		return storedPolicy{}, ErrInvalid
+	}
+	return out, nil
 }
 
 func canonicalRules(in []Rule) []Rule {
@@ -180,6 +305,10 @@ func canonicalRules(in []Rule) []Rule {
 			return nil
 		}
 		if len(rule.ArgumentConstraints) > 0 && !validArgumentConstraints(rule.ArgumentConstraints) {
+			return nil
+		}
+		rule.ToolDefinitionHash, rule.DefinitionState = strings.TrimSpace(rule.ToolDefinitionHash), ""
+		if rule.ToolDefinitionHash != "" && !validDefinitionHash(rule.ToolDefinitionHash) {
 			return nil
 		}
 		key := ruleKey(rule)
@@ -227,23 +356,38 @@ func ruleKey(rule Rule) string {
 }
 
 func inventoryRules(snapshot []byte) map[string]bool {
+	out := map[string]bool{}
+	for key := range inventoryTools(snapshot) {
+		out[key] = true
+	}
+	return out
+}
+
+// inventoryTools maps each tool a usable server offers to its definition hash (empty in a list the agent
+// host reported). A server with a status other than healthy offers nothing.
+func inventoryTools(snapshot []byte) map[string]string {
 	var value struct {
 		Servers []struct {
 			Endpoint   string `json:"endpoint"`
 			ServerName string `json:"server_name"`
+			Status     string `json:"status"`
 			Tools      []struct {
-				Name            string `json:"name"`
-				InputSchemaHash string `json:"input_schema_hash"`
+				Name               string `json:"name"`
+				InputSchemaHash    string `json:"input_schema_hash"`
+				ToolDefinitionHash string `json:"tool_definition_hash"`
 			} `json:"tools"`
 		} `json:"servers"`
 	}
-	out := map[string]bool{}
+	out := map[string]string{}
 	if json.Unmarshal(snapshot, &value) != nil {
 		return out
 	}
 	for _, server := range value.Servers {
+		if server.Status != "" && server.Status != StatusHealthy {
+			continue
+		}
 		for _, tool := range server.Tools {
-			out[ruleKey(Rule{Endpoint: server.Endpoint, ServerName: server.ServerName, ToolName: tool.Name, InputSchemaHash: tool.InputSchemaHash})] = true
+			out[ruleKey(Rule{Endpoint: server.Endpoint, ServerName: server.ServerName, ToolName: tool.Name, InputSchemaHash: tool.InputSchemaHash})] = tool.ToolDefinitionHash
 		}
 	}
 	return out

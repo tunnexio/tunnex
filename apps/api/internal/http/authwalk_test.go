@@ -54,7 +54,7 @@ var walkBodies = map[string]string{
 	"createappaccessapplication":    `{"name":"Walk","description":"","icon":"app","origin_url":"https://origin.example.test","gateway_id":"00000000-0000-4000-8000-000000000001","public_hostname":"walk.apps.example.test","idle_timeout_seconds":1800,"absolute_timeout_seconds":28800}`,
 	"updateappaccessapplication":    `{"name":"Walk","description":"","icon":"app","origin_url":"https://origin.example.test","gateway_id":"00000000-0000-4000-8000-000000000001","public_hostname":"walk.apps.example.test","idle_timeout_seconds":1800,"absolute_timeout_seconds":28800,"expected_version":1}`,
 	"setcrossgatewayclientsenabled": `{"enabled":true}`,
-	"updateaitransportsettings":     `{"allow_http":false,"revision":1}`,
+	"updateaitransportsettings":     `{"allow_http":false,"allow_vpn_http":true,"revision":1}`,
 	"updateserveremailsettings":     `{"enabled":false,"host":"","port":587,"from":"","username":"","revision":0,"password_action":"keep"}`,
 	"testserveremailsettings":       `{"enabled":true,"host":"smtp.example.test","port":587,"from":"test@example.test","username":"","revision":0,"password_action":"keep"}`,
 	"createipsecproviderconnection": providerWireBody(),
@@ -182,6 +182,7 @@ var walkBodies = map[string]string{
 	"assignagentmcpprofile":                      `{"group_id":"00000000-0000-0000-0000-000000000000"}`,
 	"replaceagentgroupmcpprofile":                `{"profile_id":"00000000-0000-0000-0000-000000000000"}`,
 	"previewagentgroupmcpprofileimpact":          `{}`,
+	"acceptagentmcptooldefinition":               `{"endpoint":"https://mcp.example.test/mcp","tool_name":"walk","tool_definition_hash":"0000000000000000000000000000000000000000000000000000000000000000"}`,
 	// F10 JIT agent access. Keep these structurally valid so the spec-driven
 	// walk measures authentication rather than request validation.
 	"setorganizationagentjitaccessenabled": `{"enabled":true}`,
@@ -267,6 +268,7 @@ func TestSessionlessRequestsAre401(t *testing.T) {
 			reqPath = strings.ReplaceAll(reqPath, "{profileId}", uuid.NewString())
 			reqPath = strings.ReplaceAll(reqPath, "{assignmentId}", uuid.NewString())
 			reqPath = strings.ReplaceAll(reqPath, "{requestId}", uuid.NewString())
+			reqPath = strings.ReplaceAll(reqPath, "{tokenId}", uuid.NewString())
 			reqPath = strings.ReplaceAll(reqPath, "{connectionId}", uuid.NewString())
 
 			var body io.Reader

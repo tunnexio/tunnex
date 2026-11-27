@@ -45,6 +45,7 @@ func TestNMinusOneAgentsCanStillApply(t *testing.T) {
 		"with-fqdn":          {FQDNGenerations: []FQDNGeneration{{ResourceID: "resource", Name: "api.example.test", Generation: "content", Answers: []string{"10.99.0.9/32"}}}},
 		"with-fqdn-managed":  {Allow: []AllowEntry{{SrcIP: "10.99.0.7", DstCIDR: "10.99.0.9/32", Protocol: ProtoTCP, PortLow: 443, PortHigh: 443, FQDNManaged: true}}},
 		"with-site-lan-masq": {Routes: []Route{{DstCIDR: "10.5.0.0/24"}}, SiteLANMasquerade: true},
+		"with-deny":          {Deny: []DenyEntry{{SrcIP: "10.99.0.7", DstCIDR: "172.30.0.10/32", Protocol: ProtoTCP, PortLow: 9000, PortHigh: 9000}}},
 	} {
 		v := RequiredVersion(c)
 		if v > ProtocolVersion {
@@ -73,6 +74,7 @@ func TestNewContentRaisesRequiredVersion(t *testing.T) {
 		"fqdn generations (v8)":     {FQDNGenerations: []FQDNGeneration{{ResourceID: "resource", Name: "api.example.test", Generation: "content", Answers: []string{"10.99.0.9/32"}}}},
 		"fqdn ownership (v9)":       {Allow: []AllowEntry{{SrcIP: "10.99.0.7", DstCIDR: "10.99.0.9/32", Protocol: ProtoTCP, PortLow: 443, PortHigh: 443, FQDNManaged: true}}},
 		"site lan masquerade (v15)": {Routes: []Route{{DstCIDR: "10.5.0.0/24"}}, SiteLANMasquerade: true},
+		"deny entries (v16)":        {Deny: []DenyEntry{{SrcIP: "10.99.0.7", DstCIDR: "172.30.0.10/32", Protocol: ProtoTCP, PortLow: 9000, PortHigh: 9000}}},
 	} {
 		if got := RequiredVersion(c); got <= base {
 			t.Fatalf("%s does not raise RequiredVersion above the baseline v%d (got v%d) — an old agent "+

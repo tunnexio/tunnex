@@ -40,6 +40,24 @@ describe("Add Agent flow", () => {
     ));
     await screen.findByText(/Step 3 of 3/);
     expect(screen.getByText(/no agent is claimed as enrolled/i)).toBeTruthy();
+
+    // The command and the token are separate. The command is what gets pasted
+    // into a shell (and its history), so it must not carry the token.
+    const command = screen.getByTestId("ots-secret");
+    expect(command.textContent).toContain("sh <<'TUNNEX_BOOTSTRAP'");
+    expect(command.textContent).not.toContain("tnx_test_once");
+    expect(screen.getByTestId("ots-extra-secret").textContent).toBe("tnx_test_once");
+    expect(screen.getAllByText("tnx_test_once")).toHaveLength(1);
+    expect(screen.getByText("Install token")).toBeTruthy();
+    expect(screen.getByText("The command asks for this token when it runs, so the token stays out of your shell history.")).toBeTruthy();
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
+    fireEvent.click(screen.getByRole("button", { name: "Copy token" }));
+    await waitFor(() => expect(writeText).toHaveBeenLastCalledWith("tnx_test_once"));
+    fireEvent.click(screen.getByRole("button", { name: "Copy command" }));
+    await waitFor(() => expect(writeText).toHaveBeenCalledTimes(2));
+    expect(writeText.mock.calls[1][0]).toContain("sh <<'TUNNEX_BOOTSTRAP'");
+    expect(writeText.mock.calls[1][0]).not.toContain("tnx_test_once");
     fireEvent.click(screen.getByText("Host requirements", { selector: "summary" }));
     expect(screen.getByText(/Missing host dependencies are installed automatically/i)).toBeTruthy();
     expect(screen.getByText(/older release requires a preinstalled release verifier/i)).toBeTruthy();
@@ -58,6 +76,12 @@ describe("Add Agent flow", () => {
     fireEvent.click(screen.getByRole("button", { name: "Issue one-time command" }));
     expect(await screen.findByText(/Verified release is unavailable.*has not enrolled/i)).toBeTruthy();
     expect(screen.queryByText(/Agent connected/i)).toBeNull();
+  });
+
+  it("shows a token-free specimen command in the design gallery", () => {
+    render(<AddAgentFlow orgId="org-a" enabled visualStage="token" onDismiss={vi.fn()} />);
+    expect(screen.getByTestId("ots-secret").textContent).not.toMatch(/tnx_|--token/);
+    expect(screen.getByTestId("ots-extra-secret").textContent).toMatch(/^tnx_agent_/);
   });
 
   it("keeps the waiting specimen pending until a server-owned status contract exists", () => {

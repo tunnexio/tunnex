@@ -1397,3 +1397,176 @@ func TestB1DeviceGrantIsTransportAgnostic(t *testing.T) {
 		}
 	}
 }
+
+// ── AI-SEC-2: the direct path to an assigned MCP endpoint is closed ───────────────
+
+func mcpDenySnapshot(mode string) (policy.Snapshot, uuid.UUID, uuid.UUID) {
+	agent, other := uuid.MustParse("00000000-0000-0000-0000-0000000a6e01"), uuid.MustParse("00000000-0000-0000-0000-0000000a6e02")
+	return policy.Snapshot{
+		Mode: mode,
+		Devices: []policy.Device{
+			{ID: uuid.MustParse("00000000-0000-0000-0000-00000000d001"), UserID: uAlice, NodeID: nodeA, AssignedIP: "10.99.0.10", Kind: "human"},
+			{ID: agent, UserID: uBob, NodeID: nodeA, AssignedIP: "10.99.0.11", Kind: "agent"},
+			{ID: other, UserID: uBob, NodeID: nodeB, AssignedIP: "10.99.0.12", Kind: "agent"},
+		},
+	}, agent, other
+}
+
+func TestMCPDirectPathDenyForAssignedIPEndpoint(t *testing.T) {
+	for _, mode := range []string{policy.ModeOff, policy.ModeEnforcing} {
+		t.Run(mode, func(t *testing.T) {
+			snap, agent, _ := mcpDenySnapshot(mode)
+			before := policy.Compile(snap)
+			snap.MCPDirectPathDenies = []policy.MCPDirectPathDeny{{DeviceID: agent, Host: "10.20.0.5", Port: 8080}}
+			out := policy.Compile(snap)
+
+			want := []policyspec.DenyEntry{{
+				SrcIP: "10.99.0.11", DstCIDR: "10.20.0.5/32", Protocol: policyspec.ProtoTCP, PortLow: 8080, PortHigh: 8080,
+				Reason: policyspec.DenyReasonMCPGatewayOnly, SrcDeviceID: agent.String(),
+			}}
+			if got := out[nodeA].Deny; !reflect.DeepEqual(got, want) {
+				t.Fatalf("deny on the agent's gateway = %+v, want %+v", got, want)
+			}
+			if out[nodeA].Version != 16 {
+				t.Fatalf("an artifact that carries a deny must be version 16, got %d", out[nodeA].Version)
+			}
+			if out[nodeA].Mesh != (mode == policy.ModeOff) || !reflect.DeepEqual(out[nodeA].Allow, before[nodeA].Allow) {
+				t.Fatal("a deny must not change the mode or the allow set")
+			}
+			// The other gateway hosts no assigned agent: its artifact is untouched.
+			if !reflect.DeepEqual(out[nodeB], before[nodeB]) {
+				t.Fatalf("a gateway without an assigned agent changed: %+v", out[nodeB])
+			}
+		})
+	}
+}
+
+func TestMCPDirectPathDenyNeverTouchesUsersOrOtherDevices(t *testing.T) {
+	snap, agent, other := mcpDenySnapshot(policy.ModeEnforcing)
+	human := snap.Devices[0].ID
+	snap.Devices = append(snap.Devices, policy.Device{ID: uuid.MustParse("00000000-0000-0000-0000-00000000d002"), UserID: uCarol, NodeID: nodeA, AssignedIP: "10.99.0.13", Kind: "sandbox"})
+	snap.MCPDirectPathDenies = []policy.MCPDirectPathDeny{
+		{DeviceID: agent, Host: "10.20.0.5", Port: 8080},
+		{DeviceID: human, Host: "10.20.0.5", Port: 8080},              // a person is never a deny source
+		{DeviceID: snap.Devices[3].ID, Host: "10.20.0.5", Port: 8080}, // nor a sandbox
+		{DeviceID: uuid.New(), Host: "10.20.0.5", Port: 8080},         // nor a device that is not active
+	}
+	out := policy.Compile(snap)
+	for node, c := range out {
+		for _, d := range c.Deny {
+			if d.SrcIP != "10.99.0.11" || node != nodeA {
+				t.Fatalf("deny for a source other than the assigned agent: node %s %+v", node, d)
+			}
+		}
+	}
+	if len(out[nodeA].Deny) != 1 {
+		t.Fatalf("want exactly the agent's deny, got %+v", out[nodeA].Deny)
+	}
+	if len(out[nodeB].Deny) != 0 || other == agent {
+		t.Fatalf("the unassigned agent on another gateway got a deny: %+v", out[nodeB].Deny)
+	}
+}
+
+func TestMCPDirectPathDenyRejectsUnusableInput(t *testing.T) {
+	snap, agent, _ := mcpDenySnapshot(policy.ModeEnforcing)
+	snap.MCPDirectPathDenies = []policy.MCPDirectPathDeny{
+		{DeviceID: agent, Host: "10.20.0.5", Port: 0},
+		{DeviceID: agent, Host: "10.20.0.5", Port: 70000},
+		{DeviceID: agent, Host: "", Port: 443},
+		{DeviceID: agent, Host: "0.0.0.0", Port: 443},
+		{DeviceID: agent, Host: "no-such-resource.example.com", Port: 443}, // a hostname nothing resolves
+	}
+	if got := policy.Compile(snap)[nodeA]; len(got.Deny) != 0 || got.Version == 16 {
+		t.Fatalf("unusable deny input must compile to nothing, got v%d %+v", got.Version, got.Deny)
+	}
+}
+
+func TestMCPDirectPathDenyHostnameUsesActiveGenerationAnswersOnly(t *testing.T) {
+	site, config := uuid.New(), uuid.New()
+	mcpRes, otherRes, staleRes := uuid.New(), uuid.New(), uuid.New()
+	snap, agent, _ := mcpDenySnapshot(policy.ModeEnforcing)
+	snap.SiteNodes = []policy.SiteNode{{SiteID: site, NodeID: nodeA}}
+	snap.FQDNResourcesLicensed, snap.FQDNResourcesEnabled = true, true
+	snap.FQDNResources = []policy.FQDNResource{
+		{ID: mcpRes, FQDN: "mcp.example.com", Protocol: "tcp", PortLow: 443, PortHigh: 443, Active: activeFQDN(mcpRes, site, nodeA, config, "10.30.0.8", "10.30.0.7")},
+		{ID: otherRes, FQDN: "api.example.com", Protocol: "tcp", PortLow: 443, PortHigh: 443, Active: activeFQDN(otherRes, site, nodeA, config, "10.30.0.99")},
+		{ID: staleRes, FQDN: "mcp.example.com", Protocol: "tcp", PortLow: 443, PortHigh: 443}, // no active generation
+	}
+	snap.MCPDirectPathDenies = []policy.MCPDirectPathDeny{{DeviceID: agent, Host: "mcp.example.com", Port: 8443}}
+	got := policy.Compile(snap)[nodeA].Deny
+	if len(got) != 2 || got[0].DstCIDR != "10.30.0.7/32" || got[1].DstCIDR != "10.30.0.8/32" {
+		t.Fatalf("hostname deny must cover exactly the active answers of the same name, got %+v", got)
+	}
+	for _, d := range got {
+		if d.SrcIP != "10.99.0.11" || d.Protocol != policyspec.ProtoTCP || d.PortLow != 8443 || d.PortHigh != 8443 {
+			t.Fatalf("hostname deny has the wrong scope: %+v", d)
+		}
+	}
+
+	// FQDN resources switched off: the gateway resolves nothing for that name, so nothing is denied.
+	snap.FQDNResourcesEnabled = false
+	if got := policy.Compile(snap)[nodeA].Deny; len(got) != 0 {
+		t.Fatalf("no active generation is in force, want no deny, got %+v", got)
+	}
+}
+
+func TestMCPDirectPathDenyIsDeterministicAndDeduplicated(t *testing.T) {
+	snap, agent, other := mcpDenySnapshot(policy.ModeOff)
+	a := []policy.MCPDirectPathDeny{
+		{DeviceID: agent, Host: "10.20.0.9", Port: 443},
+		{DeviceID: agent, Host: "10.20.0.5", Port: 8080},
+		{DeviceID: agent, Host: "10.20.0.5", Port: 8080},
+		{DeviceID: other, Host: "10.20.0.5", Port: 8080},
+	}
+	b := []policy.MCPDirectPathDeny{a[3], a[2], a[0], a[1]}
+	snap.MCPDirectPathDenies = a
+	first, _ := json.Marshal(policy.Compile(snap))
+	snap.MCPDirectPathDenies = b
+	second, _ := json.Marshal(policy.Compile(snap))
+	if string(first) != string(second) {
+		t.Fatalf("deny output depends on input order:\n%s\n%s", first, second)
+	}
+	out := policy.Compile(snap)
+	if len(out[nodeA].Deny) != 2 || out[nodeA].Deny[0].DstCIDR != "10.20.0.5/32" || len(out[nodeB].Deny) != 1 {
+		t.Fatalf("want two sorted denies on node A and one on node B, got %+v / %+v", out[nodeA].Deny, out[nodeB].Deny)
+	}
+	if policyspec.CanonicalHash(out[nodeA]) == policyspec.CanonicalHash(policyspec.Compiled{Version: out[nodeA].Version, NodeID: out[nodeA].NodeID, Mode: out[nodeA].Mode, Mesh: true}) {
+		t.Fatal("a deny must change the enforcement hash so the gateway re-applies")
+	}
+}
+
+// An organization with no MCP assignment keeps the artifact it had before AI-SEC-2: the same bytes and the
+// same version, in both modes, so a gateway that predates the deny list keeps applying it.
+func TestNoMCPAssignmentKeepsArtifactBytesAndVersion(t *testing.T) {
+	// Captured from the compiler at 4bca9518, before any deny was emitted.
+	subjects := `"subjects":[{"src_ip":"10.99.0.10","device_id":"00000000-0000-0000-0000-00000000d001","kind":"human"},{"src_ip":"10.99.0.11","device_id":"00000000-0000-0000-0000-0000000a6e01","kind":"agent"},{"src_ip":"10.99.0.12","device_id":"00000000-0000-0000-0000-0000000a6e02","kind":"agent"}]}`
+	want := map[string]string{
+		policy.ModeOff:       `{"version":4,"node_id":"00000000-0000-0000-0000-0000000000a1","mode":"off","mesh":true,"allow":null,` + subjects,
+		policy.ModeEnforcing: `{"version":4,"node_id":"00000000-0000-0000-0000-0000000000a1","mode":"enforcing","mesh":false,"allow":[{"src_ip":"10.99.0.11","dst_cidr":"10.20.0.5/32","protocol":"tcp","port_low":8080,"port_high":8080,"rule_id":"00000000-0000-0000-0000-00000000001e","src_device_id":"00000000-0000-0000-0000-0000000a6e01"}],` + subjects,
+	}
+	wantHash := map[string]string{policy.ModeOff: "67e68f9804f2", policy.ModeEnforcing: "42d8c80e4dfd"}
+	for _, mode := range []string{policy.ModeOff, policy.ModeEnforcing} {
+		snap, _, _ := mcpDenySnapshot(mode)
+		snap.Resources = []policy.Resource{{ID: rDB, CIDR: "10.20.0.5/32", Protocol: "tcp", PortLow: 8080, PortHigh: 8080}}
+		snap.Rules = []policy.Rule{{ID: uuid.MustParse("00000000-0000-0000-0000-00000000001e"), SrcKind: "agent", SrcDeviceID: snap.Devices[1].ID, DstKind: "resource", DstResourceID: rDB}}
+		plain, _ := json.Marshal(policy.Compile(snap)[nodeA])
+		snap.MCPDirectPathDenies = []policy.MCPDirectPathDeny{}
+		empty, _ := json.Marshal(policy.Compile(snap)[nodeA])
+		if string(plain) != string(empty) {
+			t.Fatalf("an empty deny input changed the artifact:\n%s\n%s", plain, empty)
+		}
+		if regexp.MustCompile(`"deny"`).Match(plain) {
+			t.Fatalf("an artifact without MCP must not serialize a deny section: %s", plain)
+		}
+		c := policy.Compile(snap)[nodeA]
+		if c.Version >= 16 || c.Version != policyspec.RequiredVersion(c) {
+			t.Fatalf("%s: version moved to %d without any deny", mode, c.Version)
+		}
+		if string(plain) != want[mode] {
+			t.Fatalf("%s: the artifact is no longer byte-identical to the pre-AI-SEC-2 artifact:\n got %s\nwant %s", mode, plain, want[mode])
+		}
+		if got := policyspec.CanonicalHash(c); got != wantHash[mode] {
+			t.Fatalf("%s: enforcement hash moved to %s, want %s", mode, got, wantHash[mode])
+		}
+	}
+}

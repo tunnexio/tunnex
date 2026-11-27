@@ -26,7 +26,7 @@ func aiTransportError(err error) error {
 	return apierr.New(503, "ai_transport_settings_unavailable", "AI transport settings are unavailable. Try again.")
 }
 func aiTransportView(v aitransport.Settings) api.AITransportSettings {
-	return api.AITransportSettings{AllowHttp: v.AllowHTTP, Revision: v.Revision}
+	return api.AITransportSettings{AllowHttp: v.AllowHTTP, AllowVpnHttp: v.AllowVPNHTTP, Revision: v.Revision}
 }
 func (s apiServer) GetAITransportSettings(ctx context.Context, _ api.GetAITransportSettingsRequestObject) (api.GetAITransportSettingsResponseObject, error) {
 	if _, err := requireCPAdmin(ctx); err != nil {
@@ -52,7 +52,7 @@ func (s apiServer) UpdateAITransportSettings(ctx context.Context, req api.Update
 	if req.Body == nil {
 		return nil, apierr.BadRequest("ai_transport_settings_invalid", "AI transport settings are required.")
 	}
-	v, err := s.aiTransport.Save(ctx, p.UserID, aitransport.Settings{AllowHTTP: req.Body.AllowHttp, Revision: req.Body.Revision})
+	v, err := s.aiTransport.Save(ctx, p.UserID, aitransport.Settings{AllowHTTP: req.Body.AllowHttp, AllowVPNHTTP: req.Body.AllowVpnHttp, Revision: req.Body.Revision})
 	if err != nil {
 		return nil, aiTransportError(err)
 	}
@@ -87,7 +87,7 @@ func aiTransportMiddleware(settings aiTransportRepository) func(http.Handler) ht
 				next.ServeHTTP(w, r)
 				return
 			}
-			if err := requireAIHTTP(r.Context(), settings); err != nil {
+			if err := requirePublicAIHTTP(r.Context(), settings); err != nil {
 				apierr.Write(w, r, err)
 				return
 			}
@@ -96,18 +96,42 @@ func aiTransportMiddleware(settings aiTransportRepository) func(http.Handler) ht
 	}
 }
 
-// The relay-to-CP leg is mTLS, but the dedicated relay route represents HTTP
-// inside WireGuard. It must consult the same current saved policy as public HTTP.
-func requireAIHTTP(ctx context.Context, settings aiTransportRepository) error {
+func currentAITransport(ctx context.Context, settings aiTransportRepository) (aitransport.Settings, error) {
 	if settings == nil {
-		return aiTransportError(nil)
+		return aitransport.Settings{}, aiTransportError(nil)
 	}
 	v, err := settings.Get(ctx)
 	if err != nil {
-		return aiTransportError(err)
+		return aitransport.Settings{}, aiTransportError(err)
+	}
+	return v, nil
+}
+
+// requirePublicAIHTTP admits plaintext on the public AI paths, which carry
+// provider keys and workload tokens. Only the public switch is consulted; the
+// VPN switch never opens these paths.
+func requirePublicAIHTTP(ctx context.Context, settings aiTransportRepository) error {
+	v, err := currentAITransport(ctx, settings)
+	if err != nil {
+		return err
 	}
 	if !v.AllowHTTP {
-		return apierr.New(403, "ai_https_required", "AI access over HTTP is disabled. Use HTTPS or ask a server administrator to enable HTTP in AI Gateway transport settings.")
+		return apierr.New(403, "ai_https_required", "AI access over public HTTP is disabled. Use HTTPS or ask a server administrator to turn on \"Public internet\" in AI Gateway transport settings.")
+	}
+	return nil
+}
+
+// requireVPNAIHTTP admits the dedicated gateway relay route. The relay-to-CP
+// leg is mTLS, but the route represents HTTP inside WireGuard, so it has its
+// own switch. The public switch is deliberately not consulted: allowing the
+// VPN path must never require, or be implied by, public plaintext.
+func requireVPNAIHTTP(ctx context.Context, settings aiTransportRepository) error {
+	v, err := currentAITransport(ctx, settings)
+	if err != nil {
+		return err
+	}
+	if !v.AllowVPNHTTP {
+		return apierr.New(403, "ai_vpn_http_disabled", "AI access over HTTP inside the VPN is disabled. Ask a server administrator to turn on \"Inside the VPN\" in AI Gateway transport settings.")
 	}
 	return nil
 }

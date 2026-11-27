@@ -119,7 +119,7 @@ func TestStartAndCompleteUsesPKCEAndSealedCustody(t *testing.T) {
 	if state == "" || authURL.Query().Get("code_challenge_method") != "S256" || authURL.Query().Get("resource") != "https://mcp.example/resource" || authURL.Query().Get("redirect_uri") != "https://portal.example.org/api/v1/mcp/oauth/callback" {
 		t.Fatalf("authorization URL=%s", started.RedirectURL)
 	}
-	if err := svc.Complete(publicurl.With(ctx, "https://changed.example.org"), state, "code"); err != nil {
+	if device2, err := svc.Complete(publicurl.With(ctx, "https://changed.example.org"), state, "code", started.Binding); err != nil || device2 != device {
 		t.Fatal(err)
 	}
 	row, err := sqlc.New(pool).GetAgentMCPOAuthConnection(ctx, sqlc.GetAgentMCPOAuthConnectionParams{ID: started.ConnectionID, OrgID: org, DeviceID: device})
@@ -135,7 +135,7 @@ func TestStartAndCompleteUsesPKCEAndSealedCustody(t *testing.T) {
 	if _, err := svc.Start(ctx, StartInput{OrgID: org, DeviceID: device, ActorID: user, Endpoint: "https://mcp.example/rpc", Resource: "https://mcp.example/resource", Issuer: server.URL + "/issuer", Scopes: []string{"tools:read"}, ClientID: "registered-client"}); !errors.Is(err, ErrAlreadyConnected) {
 		t.Fatalf("repeat start err=%v", err)
 	}
-	if err := svc.Complete(ctx, state, "code"); !errors.Is(err, ErrFlowNotFound) {
+	if _, err := svc.Complete(ctx, state, "code", started.Binding); !errors.Is(err, ErrFlowNotFound) {
 		t.Fatalf("replay err=%v", err)
 	}
 }

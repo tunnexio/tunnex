@@ -37,7 +37,7 @@ describe("API request transport", () => {
     setApiOrigin("http://private-console.example.test");
     const api = createTunnexClient("https://renderer.example.test");
     await api.PUT("/api/v1/admin/ai-transport-settings", {
-      body: { allow_http: true, revision: 1 },
+      body: { allow_http: true, allow_vpn_http: true, revision: 1 },
     });
 
     expect(requests).toHaveLength(1);
@@ -45,7 +45,7 @@ describe("API request transport", () => {
     expect(requests[0].cache).toBe("no-store");
     expect(requests[0].credentials).toBe("same-origin");
     expect(requests[0].headers.get("X-Tunnex-CSRF")).toBe("1");
-    expect(await requests[0].json()).toEqual({ allow_http: true, revision: 1 });
+    expect(await requests[0].json()).toEqual({ allow_http: true, allow_vpn_http: true, revision: 1 });
   });
 });
 

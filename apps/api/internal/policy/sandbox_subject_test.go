@@ -19,10 +19,64 @@ func TestSandboxCannotInheritLegacySubjectGrants(t *testing.T) {
 		if ruleMatchesDevice(rule, d, map[uuid.UUID]bool{group: true}, map[uuid.UUID]bool{agentGroup: true}) {
 			t.Fatalf("sandbox inherited %q grant", rule.SrcKind)
 		}
-		d.Kind = "agent"
-		if !ruleMatchesDevice(rule, d, map[uuid.UUID]bool{group: true}, map[uuid.UUID]bool{agentGroup: true}) {
-			t.Fatalf("existing agent behavior changed for %q", rule.SrcKind)
+	}
+}
+
+// AI-SEC-1: an agent is its own principal. It is reached by rules that name it
+// or one of its agent groups, never by a rule written for the person who
+// enrolled it or for that person's groups.
+func TestAgentMatchesOnlyAgentSubjects(t *testing.T) {
+	owner, group, agentGroup, agent := uuid.New(), uuid.New(), uuid.New(), uuid.New()
+	d := Device{ID: agent, UserID: owner, Kind: "agent"}
+	ownerGroups, agentGroups := map[uuid.UUID]bool{group: true}, map[uuid.UUID]bool{agentGroup: true}
+	for _, rule := range []Rule{{SrcKind: "user", SrcUserID: owner}, {SrcKind: "group", SrcGroupID: group}, {SrcGroupID: group}} {
+		if ruleMatchesDevice(rule, d, ownerGroups, agentGroups) {
+			t.Fatalf("agent inherited its owner's %q grant", rule.SrcKind)
 		}
+	}
+	for _, rule := range []Rule{{SrcKind: "agent", SrcDeviceID: agent}, {SrcKind: "agent_group", SrcAgentGroupID: agentGroup}} {
+		if !ruleMatchesDevice(rule, d, ownerGroups, agentGroups) {
+			t.Fatalf("agent lost its own %q grant", rule.SrcKind)
+		}
+	}
+	human := Device{ID: uuid.New(), UserID: owner, Kind: "human"}
+	for _, rule := range []Rule{{SrcKind: "user", SrcUserID: owner}, {SrcKind: "group", SrcGroupID: group}, {SrcGroupID: group}} {
+		if !ruleMatchesDevice(rule, human, ownerGroups, agentGroups) {
+			t.Fatalf("a person's device lost its %q grant", rule.SrcKind)
+		}
+	}
+}
+
+func TestAgentOwnerGrantsCompileToNoAllows(t *testing.T) {
+	node, owner, group, agent, resource := uuid.New(), uuid.New(), uuid.New(), uuid.New(), uuid.New()
+	s := Snapshot{Mode: ModeEnforcing,
+		Devices: []Device{
+			{ID: uuid.New(), UserID: owner, NodeID: node, AssignedIP: "10.99.0.3", Kind: "human"},
+			{ID: agent, UserID: owner, NodeID: node, AssignedIP: "10.99.0.4", Kind: "agent"},
+		},
+		Memberships: []Membership{{UserID: owner, GroupID: group}},
+		Resources:   []Resource{{ID: resource, CIDR: "192.168.10.0/24", Protocol: "tcp", PortLow: 22, PortHigh: 22}},
+		Rules: []Rule{
+			{ID: uuid.New(), SrcKind: "user", SrcUserID: owner, DstKind: "resource", DstResourceID: resource},
+			{ID: uuid.New(), SrcKind: "group", SrcGroupID: group, DstKind: "resource", DstResourceID: resource},
+		},
+	}
+	human, agentAllows := 0, 0
+	for _, compiled := range Compile(s) {
+		for _, allow := range compiled.Allow {
+			switch allow.SrcIP {
+			case "10.99.0.3":
+				human++
+			case "10.99.0.4":
+				agentAllows++
+			}
+		}
+	}
+	if human == 0 {
+		t.Fatal("the owner's own device must keep its grant")
+	}
+	if agentAllows != 0 {
+		t.Fatalf("agent received %d allows from its owner's rules", agentAllows)
 	}
 }
 

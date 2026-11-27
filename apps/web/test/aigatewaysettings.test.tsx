@@ -115,7 +115,7 @@ describe("AI gateway organization settings", () => {
     api.GET.mockResolvedValue({ data: { ...result(false, false).data, engine_installed: true, unavailable_reason: "https_required", http_allowed: false } });
     render(view("org-a", true, false)); await state(false, false);
     expect(screen.getByText(/Settings → AI Gateway transport/)).toBeTruthy();
-    expect(screen.getByText(/Allow AI Gateway over HTTP/)).toBeTruthy();
+    expect(screen.getByText(/turn on Public internet/)).toBeTruthy();
     expect(screen.queryByText(/endpoint restricted to your private or VPN network/)).toBeNull();
   });
   it("reports the saved HTTP exception without claiming private-only access", async () => {

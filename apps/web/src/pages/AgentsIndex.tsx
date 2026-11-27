@@ -15,6 +15,7 @@ import {
 } from "../lib/agentview";
 import { Button, DataTable, Input, Loading, Select, StatusDot, RefreshButton } from "../components/ui";
 import { AddAgentFlow } from "../components/AddAgentFlow";
+import { PendingInstallTokens } from "../components/PendingInstallTokens";
 import { AgentsTabRail } from "../components/AgentsTabRail";
 import AppAccessEmptyState from "../components/AppAccessEmptyState";
 import AppAccessPagination, { appAccessPageSize } from "../components/AppAccessPagination";
@@ -74,6 +75,10 @@ function AgentsIndexWorkspace({ fixture }: { fixture?: AgentsIndexFixture }) {
   const [state, setState] = useState<ViewState>(fixture?.state ?? { kind: "loading" });
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [readAttempt, setReadAttempt] = useState(0);
+  // Closing the add-agent flow may have created an install token; reload the pending list.
+  const [enrollmentsClosed, setEnrollmentsClosed] = useState(0);
+  // Remembered apart from the inventory state so the pending list stays put while a page loads.
+  const [canEnroll, setCanEnroll] = useState(false);
   const pageSize = appAccessPageSize(params.get("page_size"));
   const cursorHistory = params.getAll("previous_cursor");
   const pageNumber = cursorHistory.length + (params.get("cursor") && !cursorHistory.length ? 2 : 1);
@@ -115,6 +120,7 @@ function AgentsIndexWorkspace({ fixture }: { fixture?: AgentsIndexFixture }) {
       }
       const role = (membership.data as Member[]).find((member) => member.user_id === authState.user.id)?.role as Role | undefined;
       if (!can(role, "org:view")) {
+        setCanEnroll(false);
         setState({ kind: "denied" });
         return;
       }
@@ -125,6 +131,7 @@ function AgentsIndexWorkspace({ fixture }: { fixture?: AgentsIndexFixture }) {
       await api.GET("/api/v1/license");
       if (cancelled) return;
       const canEnroll = can(role, "agent:enroll");
+      setCanEnroll(canEnroll);
 
       const result = await api.GET("/api/v1/organizations/{orgId}/agents", {
         params: {
@@ -197,7 +204,8 @@ function AgentsIndexWorkspace({ fixture }: { fixture?: AgentsIndexFixture }) {
         <RefreshButton label="Refresh" disabled={state.kind === "loading"} onClick={() => setReadAttempt(attempt => attempt + 1)} />
         {state.kind === "ready" && state.canEnroll && <Button onClick={() => update({ add: "1" })}>Add agent</Button>}
       </>} />
-      {state.kind === "ready" && state.canEnroll && params.get("add") === "1" && org && <AddAgentFlow key={org.id} orgId={org.id} runtimeEnabled={Boolean(org.managed_agent_runtime_enabled)} enabled onDismiss={() => update({ add: null })} />}
+      {state.kind === "ready" && state.canEnroll && params.get("add") === "1" && org && <AddAgentFlow key={org.id} orgId={org.id} runtimeEnabled={Boolean(org.managed_agent_runtime_enabled)} enabled onDismiss={() => { update({ add: null }); setEnrollmentsClosed(count => count + 1); }} />}
+      {!fixture && canEnroll && (state.kind === "ready" || state.kind === "loading") && org && <PendingInstallTokens orgId={org.id} refreshKey={`${readAttempt}:${enrollmentsClosed}`} />}
       {state.kind === "loading" && <div className="agents-inventory-state"><Loading label="Loading AI agents…" /></div>}
       {state.kind === "denied" && <AppAccessEmptyState icon={null} title="Agent access required" description="Ask an organization administrator for access to this workspace." />}
       {state.kind === "failed" && <div className="agents-load-error"><p role="alert">{state.message}</p><Button variant="ghost" onClick={() => setReadAttempt(attempt => attempt + 1)}>Retry</Button></div>}

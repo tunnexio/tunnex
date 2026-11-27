@@ -46,7 +46,7 @@ func (a *AgentChannel) serveVPNChat(w http.ResponseWriter, r *http.Request, auto
 			apierr.Write(w, r, apierr.New(403, "ai_vpn_unavailable", "Automatic VPN AI access is unavailable."))
 			return
 		}
-		if err := requireAIHTTP(r.Context(), a.vpnHTTPTransport); err != nil {
+		if err := requireVPNAIHTTP(r.Context(), a.vpnHTTPTransport); err != nil {
 			apierr.Write(w, r, err)
 			return
 		}

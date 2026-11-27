@@ -32,6 +32,9 @@ func (m *Manager) SetKubernetesMode(bool) {}
 // SetAIVPNListener is a no-op off Linux.
 func (m *Manager) SetAIVPNListener(bool) {}
 
+// SetMCPGatewayListener is a no-op off Linux.
+func (m *Manager) SetMCPGatewayListener(bool) {}
+
 // SetKubernetesCNIAuthority cannot enable a non-Linux gateway data plane.
 func (m *Manager) SetKubernetesCNIAuthority(k8snetprep.AuthorityGuard, k8snetprep.HostFactsSource, k8snetprep.CiliumFactsSource) {
 }

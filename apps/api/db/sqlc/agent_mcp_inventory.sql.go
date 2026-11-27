@@ -13,7 +13,7 @@ import (
 )
 
 const getAgentMCPInventory = `-- name: GetAgentMCPInventory :one
-SELECT i.device_id, i.snapshot, i.observed_at, i.created_at, i.updated_at
+SELECT i.device_id, i.snapshot, i.observed_at, i.created_at, i.updated_at, i.source
 FROM agent_mcp_inventory i
 JOIN devices d ON d.id = i.device_id
 WHERE i.device_id = $1
@@ -36,8 +36,38 @@ func (q *Queries) GetAgentMCPInventory(ctx context.Context, arg GetAgentMCPInven
 		&i.ObservedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Source,
 	)
 	return i, err
+}
+
+const mergeAgentMCPInventoryOAuthDiscovery = `-- name: MergeAgentMCPInventoryOAuthDiscovery :execrows
+UPDATE agent_mcp_inventory i
+SET snapshot = jsonb_set(i.snapshot, '{oauth_discovery}', $1::jsonb, true)
+FROM devices d
+WHERE d.id = i.device_id
+  AND i.device_id = $2
+  AND d.org_id = $3
+  AND d.kind = 'agent'
+  AND d.deleted_at IS NULL
+  AND i.source = 'gateway'
+`
+
+type MergeAgentMCPInventoryOAuthDiscoveryParams struct {
+	OauthDiscovery []byte    `json:"oauth_discovery"`
+	DeviceID       uuid.UUID `json:"device_id"`
+	OrgID          uuid.UUID `json:"org_id"`
+}
+
+// AI-SEC-2: for a gateway-observed device the agent host may still refresh the
+// OAuth discovery metadata an administrator starts consent from. Nothing else
+// in the snapshot, and neither its time nor its source, changes.
+func (q *Queries) MergeAgentMCPInventoryOAuthDiscovery(ctx context.Context, arg MergeAgentMCPInventoryOAuthDiscoveryParams) (int64, error) {
+	result, err := q.db.Exec(ctx, mergeAgentMCPInventoryOAuthDiscovery, arg.OauthDiscovery, arg.DeviceID, arg.OrgID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const upsertAgentMCPInventory = `-- name: UpsertAgentMCPInventory :one
@@ -50,7 +80,8 @@ WHERE d.id = $3
   AND d.deleted_at IS NULL
 ON CONFLICT (device_id) DO UPDATE
 SET snapshot = EXCLUDED.snapshot, observed_at = EXCLUDED.observed_at
-RETURNING device_id, snapshot, observed_at, created_at, updated_at
+WHERE agent_mcp_inventory.source = 'agent'
+RETURNING device_id, snapshot, observed_at, created_at, updated_at, source
 `
 
 type UpsertAgentMCPInventoryParams struct {
@@ -60,6 +91,8 @@ type UpsertAgentMCPInventoryParams struct {
 	OrgID      uuid.UUID `json:"org_id"`
 }
 
+// AI-SEC-2: once the gateway has observed this device, a list reported by the
+// agent host never replaces it. No row is returned in that case.
 func (q *Queries) UpsertAgentMCPInventory(ctx context.Context, arg UpsertAgentMCPInventoryParams) (AgentMcpInventory, error) {
 	row := q.db.QueryRow(ctx, upsertAgentMCPInventory,
 		arg.Snapshot,
@@ -74,6 +107,53 @@ func (q *Queries) UpsertAgentMCPInventory(ctx context.Context, arg UpsertAgentMC
 		&i.ObservedAt,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Source,
+	)
+	return i, err
+}
+
+const upsertGatewayAgentMCPInventory = `-- name: UpsertGatewayAgentMCPInventory :one
+INSERT INTO agent_mcp_inventory (device_id, snapshot, observed_at, source)
+SELECT d.id, $1::jsonb, $2, 'gateway'
+FROM devices d
+WHERE d.id = $3
+  AND d.org_id = $4
+  AND d.node_id = $5
+  AND d.kind = 'agent'
+  AND d.deleted_at IS NULL
+ON CONFLICT (device_id) DO UPDATE
+SET snapshot = EXCLUDED.snapshot, observed_at = EXCLUDED.observed_at, source = 'gateway'
+RETURNING device_id, snapshot, observed_at, created_at, updated_at, source
+`
+
+type UpsertGatewayAgentMCPInventoryParams struct {
+	Snapshot   []byte    `json:"snapshot"`
+	ObservedAt time.Time `json:"observed_at"`
+	DeviceID   uuid.UUID `json:"device_id"`
+	OrgID      uuid.UUID `json:"org_id"`
+	NodeID     uuid.UUID `json:"node_id"`
+}
+
+// AI-SEC-2: the gateway observed this device's MCP server. The row becomes
+// gateway-sourced and stays so; the control plane computes every hash in the
+// snapshot itself and never stores one a caller reported. The device must be an
+// active agent homed on the reporting gateway.
+func (q *Queries) UpsertGatewayAgentMCPInventory(ctx context.Context, arg UpsertGatewayAgentMCPInventoryParams) (AgentMcpInventory, error) {
+	row := q.db.QueryRow(ctx, upsertGatewayAgentMCPInventory,
+		arg.Snapshot,
+		arg.ObservedAt,
+		arg.DeviceID,
+		arg.OrgID,
+		arg.NodeID,
+	)
+	var i AgentMcpInventory
+	err := row.Scan(
+		&i.DeviceID,
+		&i.Snapshot,
+		&i.ObservedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Source,
 	)
 	return i, err
 }

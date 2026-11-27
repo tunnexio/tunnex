@@ -19,10 +19,10 @@ var knownTunnexHooks = map[string]bool{"prerouting": true, "postrouting": true, 
 //
 //   - the running chain: the reply accept (`iifname <tunnels> ct direction
 //     reply ct state established,related accept`), the DNS listener in UDP and
-//     TCP and, in IPv4 only and at most once, the AI VPN listener (`iifname
-//     <wg> fib daddr . iif type local <proto> dport <port> accept`), then the
-//     tunnel drop (`iifname <tunnels> drop`), in that order, each under its
-//     marker;
+//     TCP and, in IPv4 only and each at most once, the AI VPN listener and
+//     then the MCP gateway listener (`iifname <wg> fib daddr . iif type local
+//     <proto> dport <port> accept`), then the tunnel drop (`iifname <tunnels>
+//     drop`), in that order, each under its marker;
 //   - the stopped chain: one tunnel drop under the stopped marker.
 //
 // Both tunnel sets are the same and cover the WireGuard interface and every
@@ -70,8 +70,18 @@ func validateTunnexInputRules(family string, rules []nftRuleView, iface string, 
 		return err
 	}
 	want := []string{InputReplyRuleComment, InputDNSRuleComment, InputDNSRuleComment}
-	if family == "ip" && len(rules) == 5 {
-		want = append(want, InputAIVPNRuleComment)
+	listeners := [][2]any{{"udp", float64(InputDNSPort)}, {"tcp", float64(InputDNSPort)}}
+	// The optional IPv4 listeners, in the renderer's order, each named by its marker at its position.
+	if family == "ip" {
+		for _, optional := range []struct {
+			comment string
+			port    int
+		}{{InputAIVPNRuleComment, InputAIVPNPort}, {InputMCPGatewayRuleComment, InputMCPGatewayPort}} {
+			if len(want) < len(rules) && rules[len(want)].Comment == optional.comment {
+				want = append(want, optional.comment)
+				listeners = append(listeners, [2]any{"tcp", float64(optional.port)})
+			}
+		}
 	}
 	want = append(want, InputTunnelDropRuleComment)
 	if len(rules) != len(want) {
@@ -85,10 +95,6 @@ func validateTunnexInputRules(family string, rules []nftRuleView, iface string, 
 	reply, err := tunnexInputReply(withoutCounters(rules[0].Expr), tunnels)
 	if err != nil {
 		return err
-	}
-	listeners := [][2]any{{"udp", float64(InputDNSPort)}, {"tcp", float64(InputDNSPort)}}
-	if len(want) == 5 {
-		listeners = append(listeners, [2]any{"tcp", float64(InputAIVPNPort)})
 	}
 	for i, listener := range listeners {
 		if !tunnexInputListener(withoutCounters(rules[1+i].Expr), iface, listener[0], listener[1]) {

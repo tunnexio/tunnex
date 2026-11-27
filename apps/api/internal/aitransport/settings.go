@@ -1,4 +1,5 @@
-// Package aitransport owns the deployment-wide opt-in for AI over HTTP.
+// Package aitransport owns the deployment-wide policy for AI over HTTP:
+// one switch for HTTP inside the VPN and one for public HTTP.
 package aitransport
 
 import (
@@ -14,9 +15,15 @@ import (
 	"github.com/tunnexio/tunnex/apps/api/internal/apierr"
 )
 
+// Settings holds two independent switches. AllowVPNHTTP covers only HTTP
+// inside the WireGuard VPN: the gateway relay route and the member VPN
+// endpoint it advertises. AllowHTTP covers only plaintext HTTP on public AI
+// paths, which carry provider keys and workload tokens. Neither implies the
+// other, and HTTPS is gated by neither.
 type Settings struct {
-	AllowHTTP bool
-	Revision  int64
+	AllowHTTP    bool
+	AllowVPNHTTP bool
+	Revision     int64
 }
 
 type Service struct{ pool *pgxpool.Pool }
@@ -27,7 +34,7 @@ func New(pool *pgxpool.Pool) *Service { return &Service{pool: pool} }
 // requests across all replicas, without an API or engine restart.
 func (s *Service) Get(ctx context.Context) (Settings, error) {
 	var v Settings
-	err := s.pool.QueryRow(ctx, `SELECT allow_http, revision FROM server_ai_transport_settings WHERE singleton`).Scan(&v.AllowHTTP, &v.Revision)
+	err := s.pool.QueryRow(ctx, `SELECT allow_http, allow_vpn_http, revision FROM server_ai_transport_settings WHERE singleton`).Scan(&v.AllowHTTP, &v.AllowVPNHTTP, &v.Revision)
 	return v, err
 }
 
@@ -41,14 +48,14 @@ func (s *Service) Save(ctx context.Context, actor uuid.UUID, in Settings) (Setti
 	}
 	defer tx.Rollback(ctx)
 	var out Settings
-	err = tx.QueryRow(ctx, `UPDATE server_ai_transport_settings SET allow_http=$1, revision=revision+1 WHERE singleton AND revision=$2 RETURNING allow_http, revision`, in.AllowHTTP, in.Revision).Scan(&out.AllowHTTP, &out.Revision)
+	err = tx.QueryRow(ctx, `UPDATE server_ai_transport_settings SET allow_http=$1, allow_vpn_http=$2, revision=revision+1 WHERE singleton AND revision=$3 RETURNING allow_http, allow_vpn_http, revision`, in.AllowHTTP, in.AllowVPNHTTP, in.Revision).Scan(&out.AllowHTTP, &out.AllowVPNHTTP, &out.Revision)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Settings{}, apierr.Conflict("ai_transport_settings_changed", "AI transport settings changed. Reload them before saving.")
 	}
 	if err != nil {
 		return Settings{}, err
 	}
-	metadata, err := json.Marshal(map[string]any{"allow_http": out.AllowHTTP, "revision": out.Revision})
+	metadata, err := json.Marshal(map[string]any{"allow_http": out.AllowHTTP, "allow_vpn_http": out.AllowVPNHTTP, "revision": out.Revision})
 	if err != nil {
 		return Settings{}, err
 	}

@@ -5,6 +5,9 @@ package mcpoauth
 
 import (
 	"context"
+	"crypto/sha256"
+	"crypto/subtle"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -42,6 +45,10 @@ type StartInput struct {
 type StartResult struct {
 	ConnectionID uuid.UUID
 	RedirectURL  string
+	// Binding is returned to the browser that started consent, as a cookie. The
+	// callback must present it: a forwarded authorization link is useless in
+	// any other browser.
+	Binding string
 }
 
 type Connection struct {
@@ -119,7 +126,11 @@ func (s *Service) Start(ctx context.Context, in StartInput) (StartResult, error)
 	if base := publicurl.From(ctx, ""); base != "" {
 		callbackURL = strings.TrimSuffix(base, "/") + "/api/v1/mcp/oauth/callback"
 	}
-	flow, err := json.Marshal(flowState{ConnectionID: row.ID, OrgID: in.OrgID, ActorID: in.ActorID, Resource: in.Resource, Verifier: verifier, TokenEndpoint: metadata.TokenEndpoint, CallbackURL: callbackURL})
+	binding, err := sso.RandomToken()
+	if err != nil {
+		return StartResult{}, err
+	}
+	flow, err := json.Marshal(flowState{ConnectionID: row.ID, OrgID: in.OrgID, ActorID: in.ActorID, DeviceID: in.DeviceID, Resource: in.Resource, Verifier: verifier, TokenEndpoint: metadata.TokenEndpoint, CallbackURL: callbackURL, BindingHash: bindingHash(binding)})
 	if err != nil {
 		return StartResult{}, err
 	}
@@ -140,24 +151,43 @@ func (s *Service) Start(ctx context.Context, in StartInput) (StartResult, error)
 	q.Set("resource", in.Resource)
 	q.Set("scope", strings.Join(in.Scopes, " "))
 	auth.RawQuery = q.Encode()
-	return StartResult{ConnectionID: row.ID, RedirectURL: auth.String()}, nil
+	return StartResult{ConnectionID: row.ID, RedirectURL: auth.String(), Binding: binding}, nil
 }
 
-func (s *Service) Complete(ctx context.Context, state, code string) error {
-	if strings.TrimSpace(state) == "" || strings.TrimSpace(code) == "" {
-		return ErrFlowNotFound
+// Complete finishes consent. binding is the value Start handed to the browser
+// that began the flow; code is empty when the authorization server reports that
+// consent was refused. The returned device lets the caller send the browser
+// back to the agent it was configuring, and is uuid.Nil when the flow is
+// unknown.
+func (s *Service) Complete(ctx context.Context, state, code, binding string) (uuid.UUID, error) {
+	if strings.TrimSpace(state) == "" {
+		return uuid.Nil, ErrFlowNotFound
 	}
 	data, err := s.rdb.GetDel(ctx, flowKey(state)).Bytes()
 	if errors.Is(err, redis.Nil) {
-		return ErrFlowNotFound
+		return uuid.Nil, ErrFlowNotFound
 	}
 	if err != nil {
-		return err
+		return uuid.Nil, err
 	}
 	var flow flowState
 	if json.Unmarshal(data, &flow) != nil || flow.ConnectionID == uuid.Nil || flow.OrgID == uuid.Nil || flow.ActorID == uuid.Nil || flow.Verifier == "" || !validURL(flow.Resource) || !validURL(flow.TokenEndpoint) {
-		return ErrFlowNotFound
+		return uuid.Nil, ErrFlowNotFound
 	}
+	// The flow is single-use and already consumed, so a wrong or missing
+	// binding cannot be retried against the same state.
+	if flow.BindingHash == "" || subtle.ConstantTimeCompare([]byte(bindingHash(binding)), []byte(flow.BindingHash)) != 1 {
+		s.failWith(ctx, flow, "consent_browser_mismatch")
+		return flow.DeviceID, ErrFlowNotFound
+	}
+	if strings.TrimSpace(code) == "" {
+		s.failWith(ctx, flow, "consent_refused")
+		return flow.DeviceID, ErrExchange
+	}
+	return flow.DeviceID, s.exchange(ctx, flow, code)
+}
+
+func (s *Service) exchange(ctx context.Context, flow flowState, code string) error {
 	row, err := s.queries.GetAgentMCPOAuthConnectionForCallback(ctx, sqlc.GetAgentMCPOAuthConnectionForCallbackParams{ID: flow.ConnectionID, OrgID: flow.OrgID})
 	if err != nil || row.ProtectedResource != canonicalURL(flow.Resource) || row.State != "pending_consent" || !sameOrigin(row.Issuer, flow.TokenEndpoint) {
 		return ErrFlowNotFound
@@ -224,6 +254,27 @@ func (s *Service) Complete(ctx context.Context, state, code string) error {
 	if err != nil || changed != 1 {
 		return ErrExchange
 	}
+	s.audit(ctx, flow.OrgID, flow.ActorID, "agent.mcp_oauth.connected", row.ID, map[string]any{"device_id": row.DeviceID.String(), "endpoint": row.Endpoint, "issuer": row.Issuer})
+	return nil
+}
+
+// Disconnect discards the sealed tokens so the runtime stops receiving a
+// credential at its next lease. Consent can be started again afterwards.
+func (s *Service) Disconnect(ctx context.Context, orgID, deviceID, connectionID, actor uuid.UUID) error {
+	if s == nil || s.queries == nil || orgID == uuid.Nil || deviceID == uuid.Nil || connectionID == uuid.Nil {
+		return ErrInvalidInput
+	}
+	row, err := s.queries.GetAgentMCPOAuthConnection(ctx, sqlc.GetAgentMCPOAuthConnectionParams{ID: connectionID, OrgID: orgID, DeviceID: deviceID})
+	if err != nil {
+		return ErrFlowNotFound
+	}
+	changed, err := s.queries.DisconnectAgentMCPOAuthConnection(ctx, sqlc.DisconnectAgentMCPOAuthConnectionParams{ID: connectionID, OrgID: orgID, DeviceID: deviceID})
+	if err != nil {
+		return err
+	}
+	if changed == 1 {
+		s.audit(ctx, orgID, actor, "agent.mcp_oauth.disconnected", connectionID, map[string]any{"device_id": deviceID.String(), "endpoint": row.Endpoint})
+	}
 	return nil
 }
 
@@ -264,14 +315,21 @@ func (s *Service) Lease(ctx context.Context, orgID, deviceID uuid.UUID, endpoint
 		return "", time.Time{}, ErrLease
 	}
 	now := time.Now().UTC()
-	if row.TokenExpiresAt.Valid && row.TokenExpiresAt.Time.After(now.Add(30*time.Second)) {
+	// An issuer that sends no expires_in issued a token without a stated
+	// lifetime. It is handed out on a short lease horizon so a later disconnect
+	// or re-consent still takes effect at the runtime within minutes.
+	if !row.TokenExpiresAt.Valid || row.TokenExpiresAt.Time.After(now.Add(30*time.Second)) {
 		plain, openErr := s.sealer.Open(*row.AccessTokenSealed)
 		if openErr != nil || len(plain) == 0 {
 			return "", time.Time{}, ErrLease
 		}
+		if !row.TokenExpiresAt.Valid {
+			return string(plain), now.Add(nonExpiringLeaseHorizon), nil
+		}
 		return string(plain), row.TokenExpiresAt.Time, nil
 	}
 	if row.RefreshTokenSealed == nil {
+		s.expire(ctx, row, "token_expired")
 		return "", time.Time{}, ErrLease
 	}
 	refresh, openErr := s.sealer.Open(*row.RefreshTokenSealed)
@@ -304,6 +362,13 @@ func (s *Service) Lease(ctx context.Context, orgID, deviceID uuid.UUID, endpoint
 		return "", time.Time{}, ErrLease
 	}
 	defer response.Body.Close()
+	if response.StatusCode == http.StatusBadRequest || response.StatusCode == http.StatusUnauthorized {
+		// RFC 6749 section 5.2: the issuer refused this refresh token. Retrying
+		// cannot succeed, so the connection asks for consent again instead of
+		// showing as connected while every call goes out unauthenticated.
+		s.expire(ctx, row, "refresh_rejected")
+		return "", time.Time{}, ErrLease
+	}
 	if response.StatusCode < 200 || response.StatusCode >= 300 {
 		return "", time.Time{}, ErrLease
 	}
@@ -312,7 +377,7 @@ func (s *Service) Lease(ctx context.Context, orgID, deviceID uuid.UUID, endpoint
 		RefreshToken string `json:"refresh_token"`
 		ExpiresIn    int64  `json:"expires_in"`
 	}
-	if json.NewDecoder(response.Body).Decode(&token) != nil || strings.TrimSpace(token.AccessToken) == "" || token.ExpiresIn <= 0 || token.ExpiresIn > 31_536_000 {
+	if json.NewDecoder(response.Body).Decode(&token) != nil || strings.TrimSpace(token.AccessToken) == "" || token.ExpiresIn < 0 || token.ExpiresIn > 31_536_000 {
 		return "", time.Time{}, ErrLease
 	}
 	access, sealErr := s.sealer.Seal([]byte(token.AccessToken))
@@ -327,25 +392,60 @@ func (s *Service) Lease(ctx context.Context, orgID, deviceID uuid.UUID, endpoint
 		}
 		nextRefresh = &value
 	}
-	expires := now.Add(time.Duration(token.ExpiresIn) * time.Second)
-	changed, updateErr := s.queries.RefreshAgentMCPOAuthConnection(ctx, sqlc.RefreshAgentMCPOAuthConnectionParams{ID: row.ID, OrgID: orgID, AccessTokenSealed: &access, RefreshTokenSealed: nextRefresh, TokenExpiresAt: pgtype.Timestamptz{Time: expires, Valid: true}})
+	stored, expires := pgtype.Timestamptz{}, now.Add(nonExpiringLeaseHorizon)
+	if token.ExpiresIn > 0 {
+		expires = now.Add(time.Duration(token.ExpiresIn) * time.Second)
+		stored = pgtype.Timestamptz{Time: expires, Valid: true}
+	}
+	changed, updateErr := s.queries.RefreshAgentMCPOAuthConnection(ctx, sqlc.RefreshAgentMCPOAuthConnectionParams{ID: row.ID, OrgID: orgID, AccessTokenSealed: &access, RefreshTokenSealed: nextRefresh, TokenExpiresAt: stored})
 	if updateErr != nil || changed != 1 {
 		return "", time.Time{}, ErrLease
 	}
 	return token.AccessToken, expires, nil
 }
 
+const nonExpiringLeaseHorizon = 5 * time.Minute
+
 type flowState struct {
 	ConnectionID, OrgID, ActorID      uuid.UUID
+	DeviceID                          uuid.UUID `json:",omitempty"`
 	Resource, Verifier, TokenEndpoint string
 	CallbackURL                       string `json:",omitempty"`
+	BindingHash                       string `json:",omitempty"`
+}
+
+func bindingHash(binding string) string {
+	if strings.TrimSpace(binding) == "" {
+		return ""
+	}
+	sum := sha256.Sum256([]byte(binding))
+	return hex.EncodeToString(sum[:])
+}
+
+func (s *Service) expire(ctx context.Context, row sqlc.AgentMcpOauthConnection, code string) {
+	changed, err := s.queries.ExpireAgentMCPOAuthConnection(ctx, sqlc.ExpireAgentMCPOAuthConnectionParams{ID: row.ID, OrgID: row.OrgID, FailureCode: &code})
+	if err == nil && changed == 1 {
+		s.audit(ctx, row.OrgID, uuid.Nil, "agent.mcp_oauth.reconsent_required", row.ID, map[string]any{"device_id": row.DeviceID.String(), "endpoint": row.Endpoint, "reason": code})
+	}
+}
+
+// audit is best effort: a credential state change must not be undone because
+// its audit row could not be written, and the row never carries token material.
+func (s *Service) audit(ctx context.Context, orgID, actor uuid.UUID, action string, connectionID uuid.UUID, meta map[string]any) {
+	targetType, targetID := "agent_mcp_oauth_connection", connectionID.String()
+	b, _ := json.Marshal(meta)
+	_, _ = s.queries.InsertAuditLog(ctx, sqlc.InsertAuditLogParams{OrgID: pgtype.UUID{Bytes: orgID, Valid: true}, ActorUserID: pgtype.UUID{Bytes: actor, Valid: actor != uuid.Nil}, Action: action, TargetType: &targetType, TargetID: &targetID, Metadata: b})
 }
 
 func flowKey(state string) string { return "mcpoauth:" + state }
 
-func (s *Service) fail(ctx context.Context, flow flowState) {
-	code := "exchange_failed"
-	_, _ = s.queries.FailAgentMCPOAuthConnection(ctx, sqlc.FailAgentMCPOAuthConnectionParams{ID: flow.ConnectionID, OrgID: flow.OrgID, FailureCode: &code})
+func (s *Service) fail(ctx context.Context, flow flowState) { s.failWith(ctx, flow, "exchange_failed") }
+
+func (s *Service) failWith(ctx context.Context, flow flowState, code string) {
+	changed, err := s.queries.FailAgentMCPOAuthConnection(ctx, sqlc.FailAgentMCPOAuthConnectionParams{ID: flow.ConnectionID, OrgID: flow.OrgID, FailureCode: &code})
+	if err == nil && changed == 1 {
+		s.audit(ctx, flow.OrgID, flow.ActorID, "agent.mcp_oauth.failed", flow.ConnectionID, map[string]any{"device_id": flow.DeviceID.String(), "reason": code})
+	}
 }
 
 type authorizationMetadata struct {

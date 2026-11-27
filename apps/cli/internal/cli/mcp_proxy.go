@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"mime"
 	"net"
 	"net/http"
 	"net/url"
@@ -310,6 +311,179 @@ func copyMCPProxyHeaders(dst, src http.Header) {
 	}
 }
 
+// mcpLoopbackGuard keeps the loopback listener from being driven by a browser.
+// A page open on the agent host can send a cross-site POST to 127.0.0.1, and a
+// DNS-rebinding page can read the reply, so the tool gate is reachable only by
+// a request that names this listener, carries no Origin and is plain JSON (a
+// content type a page cannot send without a preflight this proxy never
+// answers).
+func mcpLoopbackGuard(listen string, next http.Handler) http.Handler {
+	_, port, _ := net.SplitHostPort(listen)
+	allowed := map[string]bool{listen: true, net.JoinHostPort("localhost", port): true}
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mediaType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
+		if !allowed[r.Host] || len(r.Header.Values("Origin")) != 0 || err != nil || mediaType != "application/json" {
+			writeMCPProxyError(w, http.StatusForbidden, -32600, "MCP proxy accepts local JSON requests only")
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// MCPGatewaySource returns the gateway MCP listener URL from the runtime's current desired state, or ""
+// when the control plane named none (an older gateway, or the organization's grace period).
+type MCPGatewaySource func(context.Context) string
+
+const (
+	// mcpGatewayDialTimeout bounds reaching the gateway listener (AI-SEC-2: five seconds).
+	mcpGatewayDialTimeout = 5 * time.Second
+	// mcpGatewayHeaderTimeout bounds a gateway that accepted the connection and then says nothing. It is
+	// longer than the dial bound on purpose: before it answers, the gateway asks the control plane for a
+	// decision and gives the MCP server its own five seconds, and that answer must not be cut short here.
+	mcpGatewayHeaderTimeout = 10 * time.Second
+)
+
+// mcpGatewayForwarder is the loopback proxy once the gateway enforces MCP policy (AI-SEC-2). It decides
+// nothing: no tool policy, no token lease, no discovery. The gateway identifies the agent from the tunnel
+// and the control plane decides; this only carries the request there and the answer back.
+type mcpGatewayForwarder struct {
+	gateway       MCPGatewaySource
+	dialTimeout   time.Duration
+	headerTimeout time.Duration
+	dial          func(context.Context, string, string) (net.Conn, error)
+	once          sync.Once
+	transport     *http.Transport
+}
+
+func newMCPGatewayForwarder(gateway MCPGatewaySource) *mcpGatewayForwarder {
+	return &mcpGatewayForwarder{gateway: gateway, dialTimeout: mcpGatewayDialTimeout, headerTimeout: mcpGatewayHeaderTimeout}
+}
+
+func (f *mcpGatewayForwarder) roundTripper() *http.Transport {
+	f.once.Do(func() {
+		dial := f.dial
+		if dial == nil {
+			dial = (&net.Dialer{}).DialContext
+		}
+		timeout := f.dialTimeout
+		f.transport = &http.Transport{
+			// The gateway is a tunnel address: never route it through an environment proxy.
+			Proxy: nil,
+			DialContext: func(ctx context.Context, network, address string) (net.Conn, error) {
+				ctx, cancel := context.WithTimeout(ctx, timeout)
+				defer cancel()
+				return dial(ctx, network, address)
+			},
+			ResponseHeaderTimeout: f.headerTimeout,
+			MaxIdleConnsPerHost:   4,
+			IdleConnTimeout:       60 * time.Second,
+		}
+	})
+	return f.transport
+}
+
+// mcpGatewayRequestHeader reports whether a caller header travels to the gateway. Only what the MCP
+// transport itself needs: the caller's Authorization, cookies and anything that could pass for identity
+// stay on this host.
+func mcpGatewayRequestHeader(name string) bool {
+	switch http.CanonicalHeaderKey(name) {
+	case "Content-Type", "Accept", "Mcp-Session-Id", "Mcp-Protocol-Version", "Mcp-Method", "Mcp-Name":
+		return true
+	}
+	return false
+}
+
+func (f *mcpGatewayForwarder) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeMCPProxyError(w, http.StatusMethodNotAllowed, -32600, "MCP proxy accepts POST only")
+		return
+	}
+	body, err := io.ReadAll(io.LimitReader(r.Body, maxMCPRequestBody+1))
+	if err != nil || len(body) > maxMCPRequestBody {
+		writeMCPProxyError(w, http.StatusBadRequest, -32600, "MCP request is invalid")
+		return
+	}
+	target, err := url.Parse(f.gateway(r.Context()))
+	if err != nil || target.Scheme != "http" || target.Host == "" || target.User != nil {
+		writeMCPProxyError(w, http.StatusBadGateway, -32020, "MCP upstream is unavailable")
+		return
+	}
+	outbound, err := http.NewRequestWithContext(r.Context(), http.MethodPost, target.String(), bytes.NewReader(body))
+	if err != nil {
+		writeMCPProxyError(w, http.StatusBadGateway, -32020, "MCP upstream is unavailable")
+		return
+	}
+	for name, values := range r.Header {
+		if mcpGatewayRequestHeader(name) {
+			outbound.Header[name] = append([]string(nil), values...)
+		}
+	}
+	response, err := f.roundTripper().RoundTrip(outbound)
+	if err != nil {
+		writeMCPProxyError(w, http.StatusBadGateway, -32020, "MCP upstream is unavailable")
+		return
+	}
+	defer response.Body.Close()
+	// The loopback listener serves MCP, never a web page. Whatever the gateway's address answers with, the
+	// local client receives JSON or an event stream (fixed values, not the upstream's), with sniffing off.
+	streamed := false
+	if mediaType, _, parseErr := mime.ParseMediaType(response.Header.Get("Content-Type")); parseErr == nil && mediaType == "text/event-stream" {
+		streamed = true
+	}
+	for key, values := range response.Header {
+		if strings.EqualFold(key, "Connection") || strings.EqualFold(key, "Transfer-Encoding") ||
+			strings.EqualFold(key, "Content-Type") || strings.EqualFold(key, "X-Content-Type-Options") {
+			continue
+		}
+		for _, value := range values {
+			w.Header().Add(key, value)
+		}
+	}
+	if streamed {
+		w.Header().Set("Content-Type", "text/event-stream")
+	} else {
+		w.Header().Set("Content-Type", "application/json")
+	}
+	w.Header().Set("X-Content-Type-Options", "nosniff")
+	w.WriteHeader(response.StatusCode)
+	// Flush as it arrives so a streamed (text/event-stream) answer is not held back.
+	controller := http.NewResponseController(w)
+	buffer := make([]byte, 32<<10)
+	for {
+		n, readErr := response.Body.Read(buffer)
+		if n > 0 {
+			if _, writeErr := w.Write(buffer[:n]); writeErr != nil {
+				return
+			}
+			_ = controller.Flush()
+		}
+		if readErr != nil {
+			return
+		}
+	}
+}
+
+// managedMCPProxyHandler is the loopback proxy the managed runtime serves. The AI-SEC-1 guard is applied
+// first in every mode. With a gateway URL the request is forwarded to the gateway and nothing local runs;
+// without one the legacy local proxy (policy, lease, direct upstream) handles it exactly as before.
+func managedMCPProxyHandler(listen string, gateway MCPGatewaySource, upstream MCPUpstreamSource, policy MCPPolicySource, authorization MCPAuthorizationSource, stepUp ...MCPStepUpSource) (http.Handler, error) {
+	legacy, err := MCPToolProxyDynamic(upstream, policy, authorization, stepUp...)
+	if err != nil {
+		return nil, err
+	}
+	if gateway == nil {
+		return mcpLoopbackGuard(listen, legacy), nil
+	}
+	forwarder := newMCPGatewayForwarder(gateway)
+	return mcpLoopbackGuard(listen, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if gateway(r.Context()) != "" {
+			forwarder.ServeHTTP(w, r)
+			return
+		}
+		legacy.ServeHTTP(w, r)
+	})), nil
+}
+
 // StartMCPToolProxy serves only a loopback listener. It is intentionally
 // separate from RunManagedAgent so an operator must configure a client to use it.
 func StartMCPToolProxy(ctx context.Context, listen, upstream string, policy MCPPolicySource, authorization MCPAuthorizationSource, stepUp ...MCPStepUpSource) error {
@@ -317,11 +491,18 @@ func StartMCPToolProxy(ctx context.Context, listen, upstream string, policy MCPP
 }
 
 func StartMCPToolProxyDynamic(ctx context.Context, listen string, upstream MCPUpstreamSource, policy MCPPolicySource, authorization MCPAuthorizationSource, stepUp ...MCPStepUpSource) error {
+	return StartManagedMCPToolProxy(ctx, listen, nil, upstream, policy, authorization, stepUp...)
+}
+
+// StartManagedMCPToolProxy serves the loopback proxy of the managed runtime: a forwarder to the gateway
+// MCP listener whenever gateway returns a URL, the legacy local proxy otherwise. A nil gateway source is
+// the legacy proxy alone.
+func StartManagedMCPToolProxy(ctx context.Context, listen string, gateway MCPGatewaySource, upstream MCPUpstreamSource, policy MCPPolicySource, authorization MCPAuthorizationSource, stepUp ...MCPStepUpSource) error {
 	host, _, err := net.SplitHostPort(listen)
 	if err != nil || net.ParseIP(host) == nil || !net.ParseIP(host).IsLoopback() {
 		return errors.New("MCP proxy listener must be loopback")
 	}
-	handler, err := MCPToolProxyDynamic(upstream, policy, authorization, stepUp...)
+	handler, err := managedMCPProxyHandler(listen, gateway, upstream, policy, authorization, stepUp...)
 	if err != nil {
 		return err
 	}

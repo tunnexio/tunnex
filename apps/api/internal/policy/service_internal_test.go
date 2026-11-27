@@ -109,3 +109,76 @@ func TestAppendActiveFQDNGenerationsFailsClosed(t *testing.T) {
 		t.Fatalf("unsupported desktop endpoints must be excluded, got %v", got)
 	}
 }
+
+// AI-SEC-2 grace mechanism: a deny goes out only to a gateway that can render it, and then only when the
+// runtime already forwards through the gateway or the organization's grace is over.
+func TestMCPDirectPathClosedGatingMatrix(t *testing.T) {
+	cases := []struct {
+		gateway, runtime, graceOpen, want bool
+	}{
+		{false, false, false, false}, // old gateway: never, it would refuse a v16 artifact and deny everything
+		{false, false, true, false},
+		{false, true, false, false},
+		{false, true, true, false},
+		{true, false, true, false}, // capable gateway, old runtime, inside grace: the old path stays
+		{true, false, false, true}, // grace over (or never granted): closed
+		{true, true, true, true},   // runtime forwards through the gateway: closed even inside grace
+		{true, true, false, true},
+	}
+	for _, c := range cases {
+		if got := mcpDirectPathClosed(c.gateway, c.runtime, c.graceOpen); got != c.want {
+			t.Errorf("gateway=%v runtime=%v graceOpen=%v: closed=%v, want %v", c.gateway, c.runtime, c.graceOpen, got, c.want)
+		}
+	}
+}
+
+func TestGatewayRendersMCPDenyReadsCapabilities(t *testing.T) {
+	cases := map[string]bool{
+		`{"mcp_gateway_ready":true,"max_policy_version":16}`:   true,
+		`{"mcp_gateway_ready":true,"max_policy_version":17}`:   true,
+		`{"mcp_gateway_ready":true,"max_policy_version":15}`:   false, // it would refuse the artifact
+		`{"mcp_gateway_ready":true}`:                           false,
+		`{"mcp_gateway_ready":false,"max_policy_version":16}`:  false,
+		`{"mcp_gateway_ready":"true","max_policy_version":16}`: false, // only the typed boolean counts
+		`{"max_policy_version":16,"ai_vpn_http_ready":true}`:   false,
+		`{}`:   false,
+		``:     false,
+		`null`: false,
+		`[]`:   false,
+	}
+	for raw, want := range cases {
+		if got := gatewayRendersMCPDeny([]byte(raw)); got != want {
+			t.Errorf("gatewayRendersMCPDeny(%s) = %v, want %v", raw, got, want)
+		}
+	}
+}
+
+func TestMCPEndpointTarget(t *testing.T) {
+	type target struct {
+		host string
+		port int
+		ok   bool
+	}
+	cases := map[string]target{
+		"http://10.20.0.5:8080/mcp":     {"10.20.0.5", 8080, true},
+		"http://10.20.0.5/mcp":          {"10.20.0.5", 80, true},
+		"https://10.20.0.5":             {"10.20.0.5", 443, true},
+		"https://MCP.Example.com./mcp":  {"mcp.example.com", 443, true},
+		"https://mcp.example.com:8443/": {"mcp.example.com", 8443, true},
+		"http://[fd00::5]:9000/mcp":     {"fd00::5", 9000, true},
+		"http://[::ffff:10.20.0.5]/mcp": {"10.20.0.5", 80, true},
+		"ftp://10.20.0.5/mcp":           {"", 0, false}, // no default port to close
+		"ftp://10.20.0.5:2121/mcp":      {"10.20.0.5", 2121, true},
+		"http://10.20.0.5:0/mcp":        {"", 0, false},
+		"http://10.20.0.5:99999/mcp":    {"", 0, false},
+		"10.20.0.5:8080":                {"", 0, false},
+		"http:///mcp":                   {"", 0, false},
+		"":                              {"", 0, false},
+	}
+	for endpoint, want := range cases {
+		host, port, ok := mcpEndpointTarget(endpoint)
+		if host != want.host || port != want.port || ok != want.ok {
+			t.Errorf("mcpEndpointTarget(%q) = %q %d %v, want %+v", endpoint, host, port, ok, want)
+		}
+	}
+}

@@ -30,6 +30,7 @@ export function AddAgentFlow({ orgId, enabled = false, runtimeEnabled = true, on
   const [busy, setBusy] = useState(false);
   const [stage, setStage] = useState<Stage>("details");
   const [command, setCommand] = useState<string | null>(null);
+  const [token, setToken] = useState<string | null>(null);
   const [needsLegacyVerifier, setNeedsLegacyVerifier] = useState(false);
   const [runtimeState, setRuntimeState] = useState<{ orgId: string; enabled: boolean } | null>(null);
   const [runtimeError, setRuntimeError] = useState(false);
@@ -61,8 +62,9 @@ export function AddAgentFlow({ orgId, enabled = false, runtimeEnabled = true, on
   }, [enabled, orgId, readAttempt]);
 
   function dismiss() {
-    // The only copy of a shown-once token-derived command is component memory.
+    // The only copy of the shown-once token is component memory.
     setCommand(null);
+    setToken(null);
     setNeedsLegacyVerifier(false);
     onDismiss();
   }
@@ -78,8 +80,11 @@ export function AddAgentFlow({ orgId, enabled = false, runtimeEnabled = true, on
       const { data, error: requestError } = await api.POST("/api/v1/organizations/{orgId}/agents/bootstrap-token", {
         params: { path: { orgId } }, body: { name: name.trim(), gateway_id: gatewayId },
       });
-      if (requestError || !data) { setError(`${apiErrorMessage(requestError, "The bootstrap token could not be issued.")} The agent has not enrolled.`); return; }
-      setCommand(agentBootstrapCommand(data.bootstrap_token, data.release));
+      if (requestError || !data) { setError(`${apiErrorMessage(requestError, "The install token could not be created.")} The agent has not enrolled.`); return; }
+      // The token is kept apart from the command on purpose: the command is
+      // pasted into a shell and asks for the token on a hidden prompt.
+      setCommand(agentBootstrapCommand(data.release));
+      setToken(data.bootstrap_token);
       setNeedsLegacyVerifier(!data.release.verifier);
       setStage("token");
     } catch { setError("Could not reach the API. The agent has not enrolled."); } finally { setBusy(false); }
@@ -90,9 +95,10 @@ export function AddAgentFlow({ orgId, enabled = false, runtimeEnabled = true, on
   if (!runtimeReady) return <Modal placement="right" title="Enable the agent runtime first" onDismiss={dismiss} actions={<Button variant="ghost" onClick={dismiss}>Close</Button>}><div className="agents-enroll"><SetupSteps current={1} /><p>Runtime synchronization is currently off for this organization.</p><a href="/settings?section=features&feature=agent-runtime">Configure AI Agent settings</a><details className="agents-enroll-help"><summary>About runtime synchronization</summary><div>Requires a paid plan. Enabling it does not grant model or MCP tool access.</div></details></div></Modal>;
   const shownStage = visualStage ?? stage;
   const gateway = gateways?.find(item => item.id === gatewayId);
-  const visualCommand = command ?? "tunnex agent bootstrap --token tnx_fixture_one_time_token";
-  if (shownStage === "token") return <OneTimeSecretModal title="Step 3 of 3, install agent" caption="Run this single-use command on the agent host. It is shown once. Enrollment remains pending; no agent is claimed as enrolled until the server reports it." secret={visualCommand} copyLabel="Copy command" downloadFilename="tunnex-agent.sh" onDismiss={dismiss}><div className="agents-enroll agents-enroll-secret"><SetupSteps current={3} /><HostRequirements legacy={needsLegacyVerifier} /></div></OneTimeSecretModal>;
-  if (shownStage === "waiting") return <Modal placement="right" title="Waiting for enrollment" onDismiss={dismiss} actions={<Button onClick={dismiss}>Done</Button>}><div className="agents-enroll"><SetupSteps current={3} /><p>The command was issued. Enrollment remains pending until a future server-owned status contract reports it.</p><p>The token is shown once and cannot be recovered after closing.</p></div></Modal>;
+  const visualCommand = command ?? "sh <<'TUNNEX_BOOTSTRAP'\n# install steps for this release\nTUNNEX_BOOTSTRAP";
+  const visualToken = token ?? "tnx_agent_example-shown-once";
+  if (shownStage === "token") return <OneTimeSecretModal title="Step 3 of 3, install agent" caption="Run the command on the agent host and paste the install token when it asks. The token works once, expires in 1 hour, and is shown only now. Enrollment remains pending; no agent is claimed as enrolled until the server reports it." secret={visualCommand} secretLabel="Install command" copyLabel="Copy command" downloadFilename="tunnex-agent.sh" extraSecret={{ label: "Install token", value: visualToken, copyLabel: "Copy token", note: "The command asks for this token when it runs, so the token stays out of your shell history." }} onDismiss={dismiss}><div className="agents-enroll agents-enroll-secret"><SetupSteps current={3} /><HostRequirements legacy={needsLegacyVerifier} /></div></OneTimeSecretModal>;
+  if (shownStage === "waiting") return <Modal placement="right" title="Waiting for enrollment" onDismiss={dismiss} actions={<Button onClick={dismiss}>Done</Button>}><div className="agents-enroll"><SetupSteps current={3} /><p>The command was issued. Enrollment remains pending until a future server-owned status contract reports it.</p><p>The install token is shown once and cannot be recovered after closing. Until it is used or expires, it is listed under Pending install tokens, where it can be revoked.</p></div></Modal>;
   if (shownStage === "review") return <Modal placement="right" title="Step 2 of 3, review agent" onDismiss={dismiss} actions={<><Button variant="ghost" disabled={busy} onClick={() => setStage("details")}>Back</Button><Button disabled={busy} onClick={() => void issue()}>{busy ? "Issuing…" : "Issue one-time command"}</Button></>}><div className="agents-enroll"><SetupSteps current={2} /><dl className="agents-enroll-facts tnx-resource-facts"><div><dt>Agent name</dt><dd>{name.trim()}</dd></div><div><dt>Gateway</dt><dd>{gateway?.name ?? "Selected gateway"}</dd></div><div><dt>Runtime sync</dt><dd>Enabled</dd></div></dl><p>Next, run the one-time command on the host to enroll this agent.</p><HostRequirements /><ErrorText>{error}</ErrorText></div></Modal>;
   return <Modal placement="right" title="Step 1 of 3, agent identity" onDismiss={dismiss} actions={<><Button variant="ghost" onClick={dismiss}>Cancel</Button><Button disabled={busy || gateways === null} onClick={continueToReview}>Continue</Button></>}><div className="agents-enroll"><SetupSteps current={1} />{gateways === null ? <Loading label="Loading gateways…" /> : <><Field label="Agent name"><Input placeholder="e.g. production-runner" value={name} onChange={event => setName(event.target.value)} autoFocus /></Field><Field label="Gateway"><Select value={gatewayId} onChange={event => setGatewayId(event.target.value)}><option value="">Select a gateway</option>{gateways.map(item => <option key={item.id} value={item.id}>{item.name}{item.status ? `, ${item.status}` : ""}</option>)}</Select></Field>{gateways.length === 0 && !error && <p>No gateways available. <a href="/gateways">Set up a gateway</a> first.</p>}</>}<HostRequirements /><ErrorText>{error}</ErrorText></div></Modal>;
 }
