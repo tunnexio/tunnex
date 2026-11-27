@@ -12,7 +12,6 @@ import (
 	"time"
 
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 
 	"github.com/tunnexio/tunnex/apps/api/internal/api"
 	"github.com/tunnexio/tunnex/apps/api/internal/apierr"
@@ -29,17 +28,8 @@ import (
 // requireMCPOn gates every operation in this file: MCP must be on for the organization (its own switch;
 // no row means off). It is one small function so it can be replaced by the shared gate.
 func (s apiServer) requireMCPOn(ctx context.Context, orgID uuid.UUID) error {
-	if s.system == nil {
-		return mcpConnectionUnavailable()
-	}
-	setting, err := s.system.GetOrganizationMCPSetting(ctx, orgID)
-	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
-		return mcpConnectionUnavailable()
-	}
-	if err != nil || !setting.Enabled {
-		return apierr.Forbidden("opt_in_required", "Turn on MCP for this organization first.")
-	}
-	return nil
+	// One definition of "MCP is on" for the whole console API.
+	return s.requireMCP(ctx, orgID)
 }
 
 func mcpConnectionUnavailable() error {

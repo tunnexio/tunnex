@@ -84,9 +84,8 @@ func (s apiServer) requireAgentTemplates(ctx context.Context, orgID uuid.UUID) e
 // MCP, whatever agent groups and policy templates is set to. Handlers in other files call it right after
 // authorizing.
 func (s apiServer) requireMCP(ctx context.Context, orgID uuid.UUID) error {
-	if s.agentTemplates == nil {
-		return agentTemplateServiceUnavailable()
-	}
+	// The switch is read on its own: MCP routes that never touch agent groups (activity, approvals,
+	// tool policy) must not fail because the agent-groups service is absent.
 	if s.system == nil {
 		return apierr.Internal()
 	}
