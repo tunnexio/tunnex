@@ -154,3 +154,36 @@ away. Security holds after AI-SEC-1 and AI-SEC-2. The path does not:
 - Real walk on the GCP test machines: a new administrator adds an agent,
   connects the test MCP server and approves a refund without leaving the agent
   and MCP pages and without creating a network rule.
+
+## End-to-end walk (two GCP machines, signed test release)
+
+Build `69b4a2ca`, then `72da6e84` with the walk fixes. Control plane, gateway,
+AI engine and a Postgres-backed test MCP server on one machine; a managed agent
+on another.
+
+- Add agent: the install step showed "Enrolled at", "Tunnel connected at" and
+  "The agent is connected." live. A host still holding a revoked agent was
+  refused with both paths explained; the new "Remove the agent from this host"
+  command on the revoked agent's page clears it.
+- Connect MCP server: one dialog read the tool list through the gateway, every
+  tool started Off, Allow / Ask first / Off and markers were set, and saving
+  created the profile, an agent group named for the agent, the assignment and
+  the group policy. No network rule was created or needed.
+- Calls: the named address and the older bare address both reached the server;
+  an unknown name answered 404; allowed tools ran; Off tools were denied; the
+  direct path stayed closed and the agent had no route to the server.
+- Ask first: the gateway held the call; approving it in the Approvals inbox
+  (count in the sidebar, arguments shown) let the waiting call finish with a
+  normal result after 22 seconds. An unapproved call returned the step-up error
+  after 45 seconds.
+- Access tab, owner-access preview, Activity with filters and CSV, and the AI
+  Gateway banner ("No provider credential yet") on every gateway page.
+- Fixed in the walk: connect action on an agent with no server; revoked agents
+  in the connect picker; one server name everywhere (the administrator's, the
+  server's own only as detail); "Waiting for approval" in Activity; no create
+  button when nothing can be copied; checkbox layout; notice for an agent on the
+  older path whose tool choices come from its group; MCP sign-in wording; the
+  gateway reason shown to members.
+- Test suites on Linux: gateway suite and API suite in both editions pass.
+- Not walked: Community plan screens, alert delivery to a real destination, a
+  real model call (no provider key), MCP OAuth sign-in.
