@@ -250,3 +250,26 @@ name: it is the "who to ask" contact list, not an access decision.
 ### Not done
 
 - The live walk with one person per role on the test deployment.
+
+## Live walk (test deployment, 2026-11-28)
+
+One user per new role was invited, accepted the invitation and signed in on the
+test deployment running this branch (schema 256). Checked through the API as
+each user:
+
+- Auditor: read the organization audit log (entries from six people), rules,
+  agent groups, alert destinations, invitations and MCP servers; was refused
+  creating a rule or a resource, turning Zero Trust off, inviting, and turning
+  MCP off.
+- AI Agents admin: created, disabled and deleted a rule for an agent, created
+  and archived an agent group; was refused a rule with a CIDR source, a
+  resource, Zero Trust and invitations.
+- Network admin: created a resource and a rule with a CIDR source, disabled and
+  deleted the rule, deleted the resource; was refused an agent rule, Zero
+  Trust, user groups and invitations.
+- Helpdesk: listed members and reset a plain member's two-factor
+  authentication after entering its own password; was refused resetting the
+  owner's and the auditor's, creating a rule, inviting and Zero Trust. A plain
+  member was refused the same reset.
+
+Not walked: the console pages as each role (covered by unit tests).
