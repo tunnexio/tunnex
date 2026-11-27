@@ -217,6 +217,25 @@ const (
 	// allow-list stays agent_mcp_tool_policy:manage and approving a call stays
 	// agent_mcp_tool_approval:approve.
 	PermMCPManage Permission = "mcp:manage"
+	// RBAC-1 permissions. Each one is split out of a permission that bundled a capability a new role needs
+	// with one it must not have; owner and admin hold every one of them, so nothing changes for them.
+	//
+	// PermAuditViewAll reads the organization-wide audit log. Everyone else reads only their own actions.
+	PermAuditViewAll Permission = "audit:view_all"
+	// PermGatewayManage runs gateways: join tokens, rename, revoke, delete, the address pool, cross-gateway
+	// clients, OpenVPN and the gateway lifecycle claim. Split from org:update, which no RBAC-1 role holds.
+	PermGatewayManage Permission = "gateway:manage"
+	// PermDeviceView lists every device in the organization. It was member:manage before RBAC-1.
+	PermDeviceView Permission = "device:view"
+	// PermMfaReset resets another member's two-factor authentication. Split from mfa:manage, which also
+	// switches organization-wide MFA enforcement on and off.
+	PermMfaReset Permission = "mfa:reset"
+	// PermDeviceApprovalManage turns the organization's device-approval requirement on and off. Split from
+	// device:approve, which now only approves and rejects individual devices.
+	PermDeviceApprovalManage Permission = "device_approval:manage"
+	// PermResourceManage creates, edits and deletes Zero Trust resources (network destinations). Split from
+	// policy:manage, which keeps the Zero Trust mode, groups, directory sync and rule enable/extend.
+	PermResourceManage Permission = "resource:manage"
 )
 
 // Roles.
@@ -226,6 +245,12 @@ const (
 	RoleMember  = "member"
 	RoleAIAdmin = "ai-admin"
 	RoleAIView  = "ai-view"
+	// RBAC-1 human roles, ranked below admin. None of them invites people, assigns roles, or changes the
+	// organization, the licence or machine credentials (docs/RBAC-1-roles.md).
+	RoleAuditor      = "auditor"
+	RoleAgentsAdmin  = "agents-admin"
+	RoleNetworkAdmin = "network-admin"
+	RoleHelpdesk     = "helpdesk"
 	// RoleOperator (S10.2) is the fixed role a MACHINE credential holds — NOT user-assignable (the member
 	// role picker offers owner/admin/member only). Scoped to EXACTLY what the GitOps operator needs (D3):
 	// register a cluster, expose a Service, create a grant, and read the org — nothing else (no member
@@ -280,6 +305,8 @@ var rolePermissions = map[string]map[Permission]bool{
 		PermMemberList:      true,
 	},
 	RoleAdmin: {
+		PermAuditViewAll: true, PermGatewayManage: true, PermDeviceView: true, PermMfaReset: true,
+		PermDeviceApprovalManage: true, PermResourceManage: true,
 		PermVaultUse: true, PermVaultAssign: true,
 		PermBeamCreate: true, PermBeamUse: true, PermBeamManageOwn: true, PermBeamManageAll: true, PermBeamPolicyManage: true, PermBeamAuditView: true,
 		PermServerAccessView: true, PermServerAccessManage: true, PermServerAccessGrant: true, PermServerAccessUse: true, PermServerAccessReplay: true, PermServerAccessSessionManage: true,
@@ -338,6 +365,8 @@ var rolePermissions = map[string]map[Permission]bool{
 		PermMCPManage:                   true,
 	},
 	RoleOwner: {
+		PermAuditViewAll: true, PermGatewayManage: true, PermDeviceView: true, PermMfaReset: true,
+		PermDeviceApprovalManage: true, PermResourceManage: true,
 		PermVaultUse: true, PermVaultAssign: true,
 		PermBeamCreate: true, PermBeamUse: true, PermBeamManageOwn: true, PermBeamManageAll: true, PermBeamPolicyManage: true, PermBeamAuditView: true,
 		PermServerAccessView: true, PermServerAccessManage: true, PermServerAccessGrant: true, PermServerAccessUse: true, PermServerAccessReplay: true, PermServerAccessSessionManage: true,
@@ -397,6 +426,45 @@ var rolePermissions = map[string]map[Permission]bool{
 		PermAgentMCPToolPolicyManage:    true,
 		PermAgentMCPToolApprovalApprove: true,
 		PermMCPManage:                   true,
+	},
+	// RoleAuditor (RBAC-1) sees what an admin sees and changes nothing: every admin read, plus the
+	// organization audit log. Not Server Access recordings (server_access:replay), Vault, MCP approval
+	// arguments (approval needs agent_mcp_tool_approval:approve) or install tokens (agent:enroll).
+	RoleAuditor: {
+		PermOrgView: true, PermMemberList: true, PermAuditViewAll: true, PermAuditLogRetentionView: true,
+		PermPolicyView: true, PermFQDNResourceView: true, PermK8sHAView: true, PermK8sScopeView: true,
+		PermDeviceView: true, PermAppAccessView: true, PermAppAccessEventView: true, PermBeamAuditView: true,
+		PermAIWorkloadView: true, PermAIModelAccessView: true, PermAIGatewayView: true, PermAIProviderView: true,
+		PermAgentViewPrivileged: true, PermSandboxView: true,
+	},
+	// RoleAgentsAdmin (RBAC-1) runs AI agents and MCP. Access rules only where the source is an agent or an
+	// agent group (agent:grant_access; the rule handlers enforce the source). Not people, groups, Zero Trust
+	// mode, AI Gateway model access, users or MFA.
+	RoleAgentsAdmin: {
+		PermOrgView: true, PermMemberList: true,
+		PermAgentEnroll: true, PermAgentManage: true, PermAgentRevoke: true, PermAgentCredentialRotate: true,
+		PermAgentViewPrivileged: true, PermAgentRuntimeManage: true, PermAgentTemplateManage: true,
+		PermAgentGrantAccess: true, PermAgentAccessRequest: true, PermAgentAccessApprove: true,
+		PermMCPManage: true, PermAgentMCPToolPolicyManage: true, PermAgentMCPToolApprovalApprove: true,
+	},
+	// RoleNetworkAdmin (RBAC-1) runs the network: gateways, connectivity, sites, IPsec, Kubernetes, FQDN
+	// resources, resources, access rules, devices and access events. Not Zero Trust on/off, groups or
+	// directory sync (policy:manage), users, MFA, AI or agents.
+	RoleNetworkAdmin: {
+		PermOrgView: true, PermMemberList: true, PermPolicyView: true,
+		PermGatewayManage: true, PermConnectivityManage: true, PermConnectivityUse: true,
+		PermSiteManage: true, PermIPsecManage: true,
+		PermK8sManage: true, PermK8sHAView: true, PermK8sHAManage: true, PermK8sScopeView: true,
+		PermK8sScopeManage: true, PermK8sScopeApprove: true, PermK8sAPIManage: true,
+		PermFQDNResourceView: true, PermFQDNResourceManage: true, PermResourceManage: true, PermPolicyRuleManage: true,
+		PermDeviceView: true, PermDeviceApprove: true, PermDeviceApprovalManage: true, PermDeviceRestore: true,
+		PermDeviceTransfer: true, PermDeviceHealthManage: true,
+	},
+	// RoleHelpdesk (RBAC-1) helps people get connected. Its device and MFA actions refuse a person who holds
+	// an admin-grade role (HelpdeskCeilingApplies); the handlers enforce that.
+	RoleHelpdesk: {
+		PermOrgView: true, PermMemberList: true, PermDeviceView: true,
+		PermDeviceApprove: true, PermDeviceRestore: true, PermMfaReset: true,
 	},
 	// RoleOperator (S10.2) — the machine credential's fixed role, scoped to exactly the operator's verbs
 	// (D3). NOT user-assignable. NO machine:manage (a machine can't mint more machines), NO member/org
@@ -465,7 +533,7 @@ func IsMutating(p Permission) bool {
 	// unverified user slipping through a mutation. Do NOT invert this into a
 	// mutating-allowlist.
 	switch p {
-	case PermBeamUse, PermBeamAuditView, PermSandboxView, PermServerAccessReplay, PermServerAccessView, PermServerAccessUse, PermAppAccessView, PermAppAccessUse, PermAppAccessEventView, PermAIModelAccessView, PermAIGatewayView, PermAIProviderView, PermOrgView, PermMemberList, PermPolicyView, PermAuditLogRetentionView, PermFQDNResourceView, PermAgentViewPrivileged, PermK8sHAView, PermK8sScopeView:
+	case PermBeamUse, PermBeamAuditView, PermSandboxView, PermServerAccessReplay, PermServerAccessView, PermServerAccessUse, PermAppAccessView, PermAppAccessUse, PermAppAccessEventView, PermAIModelAccessView, PermAIGatewayView, PermAIProviderView, PermOrgView, PermMemberList, PermPolicyView, PermAuditLogRetentionView, PermFQDNResourceView, PermAgentViewPrivileged, PermK8sHAView, PermK8sScopeView, PermAuditViewAll, PermDeviceView:
 		return false
 	default:
 		return true
@@ -497,3 +565,38 @@ func CanManageMembership(actorRole, targetRole, newRole string) bool {
 	}
 	return true
 }
+
+// adminGradeRoles are the roles a Helpdesk person may not act on (RBAC-1): resetting their MFA or acting on
+// their devices would let the narrowest staff role take over a more powerful account.
+var adminGradeRoles = map[string]bool{
+	RoleOwner: true, RoleAdmin: true, RoleNetworkAdmin: true, RoleAgentsAdmin: true, RoleAuditor: true, RoleAIAdmin: true,
+}
+
+// IsAdminGrade reports whether any of roles is admin-grade.
+func IsAdminGrade(roles []string) bool {
+	for _, r := range roles {
+		if adminGradeRoles[r] {
+			return true
+		}
+	}
+	return false
+}
+
+// HelpdeskCeilingApplies reports whether the actor holds perm ONLY through the Helpdesk role, so the action
+// must refuse an admin-grade target. Another role that grants perm lifts the ceiling.
+func HelpdeskCeilingApplies(actorRoles []string, perm Permission) bool {
+	viaHelpdesk := false
+	for _, r := range actorRoles {
+		if !Can(r, perm) {
+			continue
+		}
+		if r != RoleHelpdesk {
+			return false
+		}
+		viaHelpdesk = true
+	}
+	return viaHelpdesk
+}
+
+// HelpdeskTargetRefusal is the plain refusal for a Helpdesk action on an admin-grade person.
+const HelpdeskTargetRefusal = "Helpdesk cannot do this for a person with an administrator role. Ask an owner or admin."

@@ -5,7 +5,7 @@ import "fmt"
 // NormalizeHumanRoles validates a nonempty set and orders the compatibility
 // primary role first. Machine roles never enter a human membership.
 func NormalizeHumanRoles(roles []string) ([]string, error) {
-	order := []string{RoleOwner, RoleAdmin, RoleAIAdmin, RoleAIView, RoleMember}
+	order := []string{RoleOwner, RoleAdmin, RoleNetworkAdmin, RoleAgentsAdmin, RoleAuditor, RoleHelpdesk, RoleAIAdmin, RoleAIView, RoleMember}
 	if len(roles) == 0 || len(roles) > len(order) {
 		return nil, fmt.Errorf("select at least one human role")
 	}

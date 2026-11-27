@@ -12469,7 +12469,7 @@ export interface components {
             /** Format: email */
             email: string;
             /** @enum {string} */
-            role: "owner" | "admin" | "member" | "ai-admin" | "ai-view";
+            role: "owner" | "admin" | "member" | "ai-admin" | "ai-view" | "auditor" | "agents-admin" | "network-admin" | "helpdesk";
             /** Format: date-time */
             expires_at: string;
             /** Format: date-time */
@@ -13947,7 +13947,7 @@ export interface components {
             /** Format: email */
             email: string;
             /** @enum {string} */
-            role: "owner" | "admin" | "member" | "ai-admin" | "ai-view";
+            role: "owner" | "admin" | "member" | "ai-admin" | "ai-view" | "auditor" | "agents-admin" | "network-admin" | "helpdesk";
         };
         Member: {
             /** Format: uuid */
@@ -13956,8 +13956,8 @@ export interface components {
             email: string;
             name: string;
             /** @enum {string} */
-            role: "owner" | "admin" | "member" | "ai-admin" | "ai-view";
-            roles?: ("owner" | "admin" | "member" | "ai-admin" | "ai-view")[];
+            role: "owner" | "admin" | "member" | "ai-admin" | "ai-view" | "auditor" | "agents-admin" | "network-admin" | "helpdesk";
+            roles?: ("owner" | "admin" | "member" | "ai-admin" | "ai-view" | "auditor" | "agents-admin" | "network-admin" | "helpdesk")[];
             /** @enum {string} */
             status: "active" | "deactivated";
             email_verified: boolean;
@@ -13975,12 +13975,12 @@ export interface components {
         };
         ChangeRoleRequest: {
             /** @enum {string} */
-            role: "owner" | "admin" | "member" | "ai-admin" | "ai-view";
+            role: "owner" | "admin" | "member" | "ai-admin" | "ai-view" | "auditor" | "agents-admin" | "network-admin" | "helpdesk";
             /** @description RBAC-0 step-up: required when the caller has a local password. A recent MFA verification (five minutes) is also required when the caller has an authenticator or an IdP-asserted MFA. */
             current_password?: string;
         };
         ChangeRolesRequest: {
-            roles: ("owner" | "admin" | "member" | "ai-admin" | "ai-view")[];
+            roles: ("owner" | "admin" | "member" | "ai-admin" | "ai-view" | "auditor" | "agents-admin" | "network-admin" | "helpdesk")[];
             /** @description RBAC-0 step-up: required when the caller has a local password. A recent MFA verification (five minutes) is also required when the caller has an authenticator or an IdP-asserted MFA. */
             current_password?: string;
         };

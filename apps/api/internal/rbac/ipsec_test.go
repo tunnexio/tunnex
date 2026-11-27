@@ -6,7 +6,8 @@ func TestIPsecManageRoleBoundary(t *testing.T) {
 	permission := Permission("ipsec:manage")
 	for role := range Policy() {
 		t.Run(role, func(t *testing.T) {
-			want := role == RoleOwner || role == RoleAdmin
+			// RBAC-1: Network admin runs IPsec.
+			want := role == RoleOwner || role == RoleAdmin || role == RoleNetworkAdmin
 			if got := Can(role, permission); got != want {
 				t.Fatalf("Can(%q, %q) = %v, want %v", role, permission, got, want)
 			}

@@ -1044,20 +1044,28 @@ const (
 
 // Defines values for ChangeRoleRequestRole.
 const (
-	ChangeRoleRequestRoleAdmin   ChangeRoleRequestRole = "admin"
-	ChangeRoleRequestRoleAiAdmin ChangeRoleRequestRole = "ai-admin"
-	ChangeRoleRequestRoleAiView  ChangeRoleRequestRole = "ai-view"
-	ChangeRoleRequestRoleMember  ChangeRoleRequestRole = "member"
-	ChangeRoleRequestRoleOwner   ChangeRoleRequestRole = "owner"
+	ChangeRoleRequestRoleAdmin        ChangeRoleRequestRole = "admin"
+	ChangeRoleRequestRoleAgentsAdmin  ChangeRoleRequestRole = "agents-admin"
+	ChangeRoleRequestRoleAiAdmin      ChangeRoleRequestRole = "ai-admin"
+	ChangeRoleRequestRoleAiView       ChangeRoleRequestRole = "ai-view"
+	ChangeRoleRequestRoleAuditor      ChangeRoleRequestRole = "auditor"
+	ChangeRoleRequestRoleHelpdesk     ChangeRoleRequestRole = "helpdesk"
+	ChangeRoleRequestRoleMember       ChangeRoleRequestRole = "member"
+	ChangeRoleRequestRoleNetworkAdmin ChangeRoleRequestRole = "network-admin"
+	ChangeRoleRequestRoleOwner        ChangeRoleRequestRole = "owner"
 )
 
 // Defines values for ChangeRolesRequestRoles.
 const (
-	ChangeRolesRequestRolesAdmin   ChangeRolesRequestRoles = "admin"
-	ChangeRolesRequestRolesAiAdmin ChangeRolesRequestRoles = "ai-admin"
-	ChangeRolesRequestRolesAiView  ChangeRolesRequestRoles = "ai-view"
-	ChangeRolesRequestRolesMember  ChangeRolesRequestRoles = "member"
-	ChangeRolesRequestRolesOwner   ChangeRolesRequestRoles = "owner"
+	ChangeRolesRequestRolesAdmin        ChangeRolesRequestRoles = "admin"
+	ChangeRolesRequestRolesAgentsAdmin  ChangeRolesRequestRoles = "agents-admin"
+	ChangeRolesRequestRolesAiAdmin      ChangeRolesRequestRoles = "ai-admin"
+	ChangeRolesRequestRolesAiView       ChangeRolesRequestRoles = "ai-view"
+	ChangeRolesRequestRolesAuditor      ChangeRolesRequestRoles = "auditor"
+	ChangeRolesRequestRolesHelpdesk     ChangeRolesRequestRoles = "helpdesk"
+	ChangeRolesRequestRolesMember       ChangeRolesRequestRoles = "member"
+	ChangeRolesRequestRolesNetworkAdmin ChangeRolesRequestRoles = "network-admin"
+	ChangeRolesRequestRolesOwner        ChangeRolesRequestRoles = "owner"
 )
 
 // Defines values for CreateDeviceRequestKind.
@@ -1503,20 +1511,28 @@ const (
 
 // Defines values for InvitationRole.
 const (
-	InvitationRoleAdmin   InvitationRole = "admin"
-	InvitationRoleAiAdmin InvitationRole = "ai-admin"
-	InvitationRoleAiView  InvitationRole = "ai-view"
-	InvitationRoleMember  InvitationRole = "member"
-	InvitationRoleOwner   InvitationRole = "owner"
+	InvitationRoleAdmin        InvitationRole = "admin"
+	InvitationRoleAgentsAdmin  InvitationRole = "agents-admin"
+	InvitationRoleAiAdmin      InvitationRole = "ai-admin"
+	InvitationRoleAiView       InvitationRole = "ai-view"
+	InvitationRoleAuditor      InvitationRole = "auditor"
+	InvitationRoleHelpdesk     InvitationRole = "helpdesk"
+	InvitationRoleMember       InvitationRole = "member"
+	InvitationRoleNetworkAdmin InvitationRole = "network-admin"
+	InvitationRoleOwner        InvitationRole = "owner"
 )
 
 // Defines values for InviteRequestRole.
 const (
-	InviteRequestRoleAdmin   InviteRequestRole = "admin"
-	InviteRequestRoleAiAdmin InviteRequestRole = "ai-admin"
-	InviteRequestRoleAiView  InviteRequestRole = "ai-view"
-	InviteRequestRoleMember  InviteRequestRole = "member"
-	InviteRequestRoleOwner   InviteRequestRole = "owner"
+	InviteRequestRoleAdmin        InviteRequestRole = "admin"
+	InviteRequestRoleAgentsAdmin  InviteRequestRole = "agents-admin"
+	InviteRequestRoleAiAdmin      InviteRequestRole = "ai-admin"
+	InviteRequestRoleAiView       InviteRequestRole = "ai-view"
+	InviteRequestRoleAuditor      InviteRequestRole = "auditor"
+	InviteRequestRoleHelpdesk     InviteRequestRole = "helpdesk"
+	InviteRequestRoleMember       InviteRequestRole = "member"
+	InviteRequestRoleNetworkAdmin InviteRequestRole = "network-admin"
+	InviteRequestRoleOwner        InviteRequestRole = "owner"
 )
 
 // Defines values for JoinTokenRequestEnrolsKind.
@@ -1770,20 +1786,28 @@ const (
 
 // Defines values for MemberRole.
 const (
-	MemberRoleAdmin   MemberRole = "admin"
-	MemberRoleAiAdmin MemberRole = "ai-admin"
-	MemberRoleAiView  MemberRole = "ai-view"
-	MemberRoleMember  MemberRole = "member"
-	MemberRoleOwner   MemberRole = "owner"
+	MemberRoleAdmin        MemberRole = "admin"
+	MemberRoleAgentsAdmin  MemberRole = "agents-admin"
+	MemberRoleAiAdmin      MemberRole = "ai-admin"
+	MemberRoleAiView       MemberRole = "ai-view"
+	MemberRoleAuditor      MemberRole = "auditor"
+	MemberRoleHelpdesk     MemberRole = "helpdesk"
+	MemberRoleMember       MemberRole = "member"
+	MemberRoleNetworkAdmin MemberRole = "network-admin"
+	MemberRoleOwner        MemberRole = "owner"
 )
 
 // Defines values for MemberRoles.
 const (
-	MemberRolesAdmin   MemberRoles = "admin"
-	MemberRolesAiAdmin MemberRoles = "ai-admin"
-	MemberRolesAiView  MemberRoles = "ai-view"
-	MemberRolesMember  MemberRoles = "member"
-	MemberRolesOwner   MemberRoles = "owner"
+	MemberRolesAdmin        MemberRoles = "admin"
+	MemberRolesAgentsAdmin  MemberRoles = "agents-admin"
+	MemberRolesAiAdmin      MemberRoles = "ai-admin"
+	MemberRolesAiView       MemberRoles = "ai-view"
+	MemberRolesAuditor      MemberRoles = "auditor"
+	MemberRolesHelpdesk     MemberRoles = "helpdesk"
+	MemberRolesMember       MemberRoles = "member"
+	MemberRolesNetworkAdmin MemberRoles = "network-admin"
+	MemberRolesOwner        MemberRoles = "owner"
 )
 
 // Defines values for MemberStatus.

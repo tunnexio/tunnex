@@ -14464,7 +14464,7 @@ components:
       properties:
         id: { type: string, format: uuid }
         email: { type: string, format: email }
-        role: { type: string, enum: [owner, admin, member, ai-admin, ai-view] }
+        role: { type: string, enum: [owner, admin, member, ai-admin, ai-view, auditor, agents-admin, network-admin, helpdesk], x-enum-varnames: [Owner, Admin, Member, AiAdmin, AiView, Auditor, AgentsAdmin, NetworkAdmin, Helpdesk] }
         expires_at: { type: string, format: date-time }
         created_at: { type: string, format: date-time }
         # ⛔ THE THREE TERMINAL STATES ARE TIMESTAMPS, NOT A STATUS ENUM — the table stores them that way
@@ -16623,7 +16623,7 @@ components:
       additionalProperties: false
       properties:
         email: { type: string, format: email, maxLength: 320 }
-        role: { type: string, enum: [owner, admin, member, ai-admin, ai-view] }
+        role: { type: string, enum: [owner, admin, member, ai-admin, ai-view, auditor, agents-admin, network-admin, helpdesk], x-enum-varnames: [Owner, Admin, Member, AiAdmin, AiView, Auditor, AgentsAdmin, NetworkAdmin, Helpdesk] }
 
     Member:
       type: object
@@ -16633,12 +16633,12 @@ components:
         user_id: { type: string, format: uuid }
         email: { type: string, format: email }
         name: { type: string }
-        role: { type: string, enum: [owner, admin, member, ai-admin, ai-view] }
+        role: { type: string, enum: [owner, admin, member, ai-admin, ai-view, auditor, agents-admin, network-admin, helpdesk], x-enum-varnames: [Owner, Admin, Member, AiAdmin, AiView, Auditor, AgentsAdmin, NetworkAdmin, Helpdesk] }
         roles:
           type: array
           minItems: 1
           uniqueItems: true
-          items: { type: string, enum: [owner, admin, member, ai-admin, ai-view] }
+          items: { type: string, enum: [owner, admin, member, ai-admin, ai-view, auditor, agents-admin, network-admin, helpdesk], x-enum-varnames: [Owner, Admin, Member, AiAdmin, AiView, Auditor, AgentsAdmin, NetworkAdmin, Helpdesk] }
         # Account status — a deactivated member stays on the roster (S2.6).
         status: { type: string, enum: [active, deactivated] }
         email_verified: { type: boolean }
@@ -16667,7 +16667,7 @@ components:
       required: [role]
       additionalProperties: false
       properties:
-        role: { type: string, enum: [owner, admin, member, ai-admin, ai-view] }
+        role: { type: string, enum: [owner, admin, member, ai-admin, ai-view, auditor, agents-admin, network-admin, helpdesk], x-enum-varnames: [Owner, Admin, Member, AiAdmin, AiView, Auditor, AgentsAdmin, NetworkAdmin, Helpdesk] }
         current_password: { type: string, maxLength: 200, writeOnly: true, description: "RBAC-0 step-up: required when the caller has a local password. A recent MFA verification (five minutes) is also required when the caller has an authenticator or an IdP-asserted MFA." }
 
     ChangeRolesRequest:
@@ -16678,9 +16678,9 @@ components:
         roles:
           type: array
           minItems: 1
-          maxItems: 5
+          maxItems: 9
           uniqueItems: true
-          items: { type: string, enum: [owner, admin, member, ai-admin, ai-view] }
+          items: { type: string, enum: [owner, admin, member, ai-admin, ai-view, auditor, agents-admin, network-admin, helpdesk], x-enum-varnames: [Owner, Admin, Member, AiAdmin, AiView, Auditor, AgentsAdmin, NetworkAdmin, Helpdesk] }
         current_password: { type: string, maxLength: 200, writeOnly: true, description: "RBAC-0 step-up: required when the caller has a local password. A recent MFA verification (five minutes) is also required when the caller has an authenticator or an IdP-asserted MFA." }
 
     # RBAC-0 D9: the step-up body for people-management verbs that carry no other input. Optional on the
