@@ -90,13 +90,13 @@ function ObservedMCP({ data, named }: { data: MCPInventory; /** The agent's MCP 
   </Panel>;
 }
 
-function MCPAuthentication({ orgId, deviceId, inventory, canManage }: { orgId: string; deviceId: string; inventory: MCPInventory; canManage: boolean }) {
+function MCPAuthentication({ orgId, deviceId, inventory, canManage, enforcement }: { orgId: string; deviceId: string; inventory: MCPInventory; canManage: boolean; enforcement?: EffectiveMCP["enforcement"] }) {
   const discovery = inventory.snapshot.oauth_discovery as { servers?: Array<{ status?: string }> } | undefined;
   const servers = Array.isArray(discovery?.servers) ? discovery.servers : undefined;
   const protectedReported = servers?.some(server => server?.status === "protected") ?? false;
   // The sign-in callback returns here with a secret-free outcome in the address.
   const outcome = new URLSearchParams(window.location.search).get("mcp_oauth") ?? undefined;
-  return <Panel title="MCP sign-in"><AgentMCPOAuthPanel orgId={orgId} deviceId={deviceId} inventory={inventory} canManage={canManage} outcome={outcome} />{!protectedReported && <p className="agent-detail-context" role="status">{servers ? "None of this agent's MCP servers asks for a sign-in." : "The agent has not reported yet whether its MCP servers ask for a sign-in."}</p>}</Panel>;
+  return <Panel title="MCP sign-in"><AgentMCPOAuthPanel orgId={orgId} deviceId={deviceId} inventory={inventory} canManage={canManage} outcome={outcome} enforcement={enforcement} />{!protectedReported && <p className="agent-detail-context" role="status">{servers ? "None of this agent's MCP servers asks for a sign-in." : "The agent has not reported yet whether its MCP servers ask for a sign-in."}</p>}</Panel>;
 }
 
 function AgentAssignment({ profile, members, groups, busy, onSave }: { profile: AgentProfile; members: State<Member[]>; groups: State<UserGroup[]>; busy: boolean; onSave: (body: Record<string, unknown>) => void }) {
@@ -310,7 +310,7 @@ function AgentDetailWorkspace({ fixture, agentIdOverride }: { fixture?: AgentDet
           <Panel title="Approvals"><AgentMCPToolApprovalPanel orgId={org.id} deviceId={agentId} canApprove={can(myRole, "agent_mcp_tool_approval:approve")} servers={namedServers} /></Panel>
           {inventory.kind === "error" && inventory.code === "mcp_inventory_not_found" ? <div className="agent-detail-empty" role="status"><h3>The gateway has not read this agent&apos;s MCP servers yet.</h3><p>Once the agent is connected and has a server, the gateway reads the server&apos;s tool list about every 30 seconds. Sign-in settings appear here after that.</p></div> : <ReadState state={inventory} onRetry={refreshAgent} title="MCP tool list unavailable" retryLabel="Retry MCP tool list">{(value) => <>
             {effectiveMCP.kind === "ready" && !Array.isArray(effectiveMCP.data.servers) && <Panel title="MCP tool policy"><AgentMCPToolPolicyPanel orgId={org.id} deviceId={agentId} inventory={value} canManage={can(myRole, "agent_mcp_tool_policy:manage")} enforcement={effectiveMCP.data.enforcement} /></Panel>}
-            <MCPAuthentication orgId={org.id} deviceId={agentId} inventory={value} canManage={agent.permissions.manage} />
+            <MCPAuthentication orgId={org.id} deviceId={agentId} inventory={value} canManage={agent.permissions.manage} enforcement={effectiveMCP.kind === "ready" ? effectiveMCP.data.enforcement : undefined} />
             <ObservedMCP data={value} named={namedServers} />
           </>}</ReadState>}
         </>}

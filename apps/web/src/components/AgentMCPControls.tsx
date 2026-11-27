@@ -192,15 +192,22 @@ const oauthOutcome: Record<string, { tone: "success" | "danger"; text: string }>
   failed: { tone: "danger", text: "The MCP server's sign-in was refused or could not be completed. Check the client ID, secret and scopes, then try again." },
 };
 const oauthFailure: Record<string, string> = {
-  refresh_rejected: "The MCP server's sign-in is no longer accepted. The agent is not sending a credential until you connect again.",
-  token_expired: "The MCP server's sign-in has expired and cannot be renewed. The agent is not sending a credential until you connect again.",
+  refresh_rejected: "The MCP server's sign-in is no longer accepted. No credential is used for this agent's calls until you connect again.",
+  token_expired: "The MCP server's sign-in has expired and cannot be renewed. No credential is used for this agent's calls until you connect again.",
   consent_refused: "Sign-in was refused at the MCP server.",
   consent_browser_mismatch: "Sign-in was finished in a different browser from the one that started it, so it was not accepted.",
   exchange_failed: "The MCP server did not accept the sign-in. Check the client ID, secret and scopes.",
 };
 const oauthStateLabel: Record<string, string> = { connected: "Connected", pending_consent: "Waiting for sign-in", expired: "Needs connecting again", failed: "Not connected", disconnected: "Disconnected", discovered: "Not connected" };
 
-export function AgentMCPOAuthPanel({ orgId, deviceId, inventory, canManage, outcome }: { orgId: string; deviceId: string; inventory: Inventory; canManage: boolean; outcome?: string }) {
+/** Where the sign-in token is kept depends on where the agent's tool rules are applied. */
+function signInTokenNote(enforcement: EffectiveMCP["enforcement"]): string {
+  if (enforcement === "gateway") return "The sign-in token stays with the gateway, which uses it for one call at a time; it is never stored on or sent to the agent's host. Nothing is shown on this page.";
+  if (enforcement === "agent_host") return "This agent's runtime is an older version, so a short-lived token is handed to the runtime, which holds it in memory only. Once the runtime is updated, the token stays with the gateway and no longer reaches the agent's host. Nothing is shown on this page.";
+  return "Nothing is shown on this page or written to disk on the agent's host.";
+}
+
+export function AgentMCPOAuthPanel({ orgId, deviceId, inventory, canManage, outcome, enforcement }: { orgId: string; deviceId: string; inventory: Inventory; canManage: boolean; outcome?: string; /** From the agent's effective MCP profile. */ enforcement?: EffectiveMCP["enforcement"] }) {
   const discovered = (inventory.snapshot.oauth_discovery as { servers?: Array<{ endpoint?: string; status?: string; protected_resource?: string; authorization_servers?: string[]; scopes_supported?: string[] }> } | undefined)?.servers ?? [];
   const protectedServer = discovered.find((server) => server.status === "protected");
   const [clientId, setClientId] = useState(""); const [clientSecret, setClientSecret] = useState("");
@@ -218,12 +225,12 @@ export function AgentMCPOAuthPanel({ orgId, deviceId, inventory, canManage, outc
   const disconnect = async () => { if (!current) return; setBusy(true); setError(null); const removed = await api.DELETE("/api/v1/organizations/{orgId}/agents/{deviceId}/mcp-oauth-connections/{connectionId}", { params: { path: { orgId, deviceId, connectionId: current.id } } }); setBusy(false); setConfirming(false); if (!removed.response?.ok) { setError("Could not disconnect. Try again."); return; } loadConnections(); };
   return <div data-testid="agent-mcp-oauth" className="text-xs text-slate-300">
     {result && <p role={result.tone === "danger" ? "alert" : "status"} className={`mb-2 ${result.tone === "danger" ? "text-danger" : "text-success"}`}>{result.text}</p>}
-    <p className="text-slate-500">This MCP server asks the agent to sign in. Tunnex keeps the sign-in here on the server and hands the agent a short-lived token in memory; nothing is shown on this page or stored on the agent.</p>
+    <p className="text-slate-500">This MCP server asks for a sign-in. Tunnex keeps the sign-in here on the server. {signInTokenNote(enforcement)}</p>
     {!canManage ? <p role="status" className="mt-2 text-slate-500">You do not have permission to manage MCP sign-in for this agent.</p> : connections === null ? <p role="status" className="mt-2 text-slate-500">Loading sign-in status…</p> : !connections.ok ? <><p role="alert" className="mt-2 text-danger">Sign-in status could not be loaded: {connections.error}</p><Button size="sm" variant="ghost" className="mt-2" onClick={loadConnections}>Retry</Button></> : <>
       {current && <div className="mt-2 text-slate-400">{current.endpoint} · <span className={connected ? "text-success" : current.state === "expired" || current.state === "failed" ? "text-danger" : ""}>{oauthStateLabel[current.state] ?? current.state}</span>{connected && current.token_expires_at ? ` · token renews automatically (current one until ${new Date(current.token_expires_at).toLocaleString()})` : ""}</div>}
       {current && !connected && current.failure_code && <p role="alert" className="mt-1 text-danger">{oauthFailure[current.failure_code] ?? "The MCP server's sign-in did not complete."}</p>}
       {connected ? (confirming
-        ? <div className="mt-2 flex flex-wrap items-center gap-2"><span>The agent stops sending a credential to this MCP server straight away. You can connect again later.</span><Button size="sm" variant="danger" disabled={busy} onClick={() => void disconnect()}>Disconnect now</Button><Button size="sm" variant="ghost" disabled={busy} onClick={() => setConfirming(false)}>Keep connected</Button></div>
+        ? <div className="mt-2 flex flex-wrap items-center gap-2"><span>This agent&apos;s calls to this MCP server stop carrying a credential straight away. You can connect again later.</span><Button size="sm" variant="danger" disabled={busy} onClick={() => void disconnect()}>Disconnect now</Button><Button size="sm" variant="ghost" disabled={busy} onClick={() => setConfirming(false)}>Keep connected</Button></div>
         : <Button size="sm" variant="ghost" className="mt-2" onClick={() => setConfirming(true)}>Disconnect</Button>)
         : <>
           <p className="mt-3 text-slate-400">Register this redirect address with the MCP server's sign-in service, then enter the client it gives you:</p>
