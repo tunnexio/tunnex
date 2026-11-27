@@ -486,7 +486,27 @@ func (f *mcpGatewayForwarder) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	defer response.Body.Close()
-	copyMCPProxyHeaders(w.Header(), response.Header)
+	// The loopback listener serves MCP, never a web page. Whatever the gateway's address answers with, the
+	// local client receives JSON or an event stream (fixed values, not the upstream's), with sniffing off.
+	streamed := false
+	if mediaType, _, parseErr := mime.ParseMediaType(response.Header.Get("Content-Type")); parseErr == nil && mediaType == "text/event-stream" {
+		streamed = true
+	}
+	for key, values := range response.Header {
+		if strings.EqualFold(key, "Connection") || strings.EqualFold(key, "Transfer-Encoding") ||
+			strings.EqualFold(key, "Content-Type") || strings.EqualFold(key, "X-Content-Type-Options") {
+			continue
+		}
+		for _, value := range values {
+			w.Header().Add(key, value)
+		}
+	}
+	if streamed {
+		w.Header().Set("Content-Type", "text/event-stream")
+	} else {
+		w.Header().Set("Content-Type", "application/json")
+	}
+	w.Header().Set("X-Content-Type-Options", "nosniff")
 	w.WriteHeader(response.StatusCode)
 	// Flush as it arrives so a streamed (text/event-stream) answer is not held back.
 	controller := http.NewResponseController(w)
