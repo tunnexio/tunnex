@@ -1358,6 +1358,15 @@ func main() {
 	// pollCtx (cancelled on shutdown).
 	apphttp.StartPolicyGrantSweeper(pollCtx, pool, pushHub, mayTick)
 	apphttp.StartPolicyMCPGraceTicker(pollCtx, pool, pushHub, mayTick)
+	// AI-SEC-2: the moment a runtime first reports it can use the gateway MCP path, its direct route to
+	// the MCP server must close. That is a policy change, so the organization is recompiled and pushed.
+	mcpDirectPathPolicy := policy.NewService(pool)
+	if pushHub != nil {
+		mcpDirectPathPolicy.SetNotifier(pushHub)
+	}
+	aiRuntime.SetMCPGatewayCapableHook(func(ctx context.Context, orgID, _ uuid.UUID) {
+		mcpDirectPathPolicy.RecompileOrg(ctx, orgID)
+	})
 	// F10 JIT approvals own their request-bound rule expiry. The generic policy
 	// sweeper intentionally excludes those rows; the elected writer advances the
 	// workflow, audit and gateway push atomically here.
