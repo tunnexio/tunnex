@@ -62,6 +62,7 @@ import (
 	"github.com/tunnexio/tunnex/apps/api/internal/machineauth"
 	"github.com/tunnexio/tunnex/apps/api/internal/mail"
 	"github.com/tunnexio/tunnex/apps/api/internal/mailsettings"
+	"github.com/tunnexio/tunnex/apps/api/internal/mcpdecision"
 	"github.com/tunnexio/tunnex/apps/api/internal/mcpoauth"
 	"github.com/tunnexio/tunnex/apps/api/internal/mcptoolapproval"
 	"github.com/tunnexio/tunnex/apps/api/internal/mcptoolpolicy"
@@ -702,6 +703,12 @@ func main() {
 	defer appEvents.Close()
 	appAccessSvc.WithEventProducer(appEvents)
 	vaultSvc := vault.New(pool, sealer)
+	// AI-SEC-2: one set of MCP services for the public API and for the gateway decision path, so both read
+	// the same policy, approvals and activity. The rate limiter counts in Redis, shared by every replica.
+	mcpOAuthSvc := mcpoauth.New(systemQueries, sealer, sessions.Client(), cfg.AppBaseURL)
+	mcpToolPolicySvc := mcptoolpolicy.New(pool)
+	mcpToolApprovalSvc := mcptoolapproval.New(pool)
+	mcpDecisionSvc := mcpdecision.New(pool, mcpToolPolicySvc, mcpToolApprovalSvc, mcpOAuthSvc, mcpdecision.NewRedisLimiter(sessions.Client()), logger)
 	router, err := apphttp.NewRouter(logger, apphttp.Deps{
 		AppDomains:                 domainSettings,
 		Sandboxes:                  sandboxDeps.Sandboxes,
@@ -748,9 +755,10 @@ func main() {
 		K8s:                   k8sSvc,
 		Sessions:              sessions,
 		Mfa:                   mfaSvc,
-		MCPOAuth:              mcpoauth.New(systemQueries, sealer, sessions.Client(), cfg.AppBaseURL),
-		MCPToolPolicy:         mcptoolpolicy.New(pool),
-		MCPToolApproval:       mcptoolapproval.New(pool),
+		MCPOAuth:              mcpOAuthSvc,
+		MCPToolPolicy:         mcpToolPolicySvc,
+		MCPToolApproval:       mcpToolApprovalSvc,
+		MCPDecision:           mcpDecisionSvc,
 		WorkflowProvenance:    workflowprovenance.New(pool),
 		SSO:                   apphttp.NewSSOPort(pool, sealer, sessions.Client(), cfg.AppBaseURL, licenceMgr, logger),
 		Policy:                apphttp.NewPolicyPortWithFQDN(pool, pushHub, licenceMgr),
@@ -822,6 +830,7 @@ func main() {
 	agentCh.SetConnectivityStore(connectivityStore)
 	agentCh.SetVPNInference(aiAdapter, aiPolicies)
 	agentCh.SetVPNHTTPTransport(aitransport.New(pool))
+	agentCh.SetMCPDecision(mcpDecisionSvc)
 	// S20.3a P2: ownership deliveries are a durable, private mTLS mailbox.
 	// Attaching the store starts no scheduler and does not issue work; old agents
 	// omit the capability header and retain their existing desired-state path.
@@ -995,6 +1004,30 @@ func main() {
 					if claimed {
 						logger.Info("flowlog_retention_run", slog.String("org_id", orgID.String()), slog.Int64("deleted", run.DeletedRows), slog.Int("batches", int(run.Batches)), slog.Bool("more_pending", run.MorePending))
 					}
+				}
+				scancel()
+			}
+		}
+	}()
+	// AI-SEC-2: MCP tool activity retention and the expiry of unanswered step-up requests, behind the
+	// same leader fence. Deletes are bounded batches; a pass that could not finish continues next tick.
+	go func() {
+		t := time.NewTicker(mcpdecision.ActivityRetentionInterval)
+		defer t.Stop()
+		for {
+			select {
+			case <-retentionStop:
+				return
+			case <-t.C:
+				if !elector.IsLeader() || !elector.ConfirmLeader(electorCtx, pool) {
+					continue
+				}
+				sctx, scancel := context.WithTimeout(electorCtx, 2*time.Minute)
+				result, err := mcpDecisionSvc.Sweep(sctx)
+				if err != nil {
+					logger.Error("mcp_activity_retention_failed", slog.String("error", err.Error()))
+				} else if result.DeletedRows > 0 || result.ExpiredApprovals > 0 {
+					logger.Info("mcp_activity_retention_run", slog.Int64("deleted", result.DeletedRows), slog.Int("expired_approvals", result.ExpiredApprovals), slog.Int("organizations", result.Organizations), slog.Bool("more_pending", result.MorePending))
 				}
 				scancel()
 			}

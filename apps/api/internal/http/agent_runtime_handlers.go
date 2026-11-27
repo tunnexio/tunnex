@@ -14,6 +14,7 @@ import (
 	"github.com/tunnexio/tunnex/apps/api/internal/agentruntime"
 	"github.com/tunnexio/tunnex/apps/api/internal/api"
 	"github.com/tunnexio/tunnex/apps/api/internal/apierr"
+	"github.com/tunnexio/tunnex/apps/api/internal/mcptoolpolicy"
 	"github.com/tunnexio/tunnex/apps/api/internal/rbac"
 )
 
@@ -46,7 +47,36 @@ func (s apiServer) GetAgentMCPInventory(ctx context.Context, req api.GetAgentMCP
 	if err := json.Unmarshal(row.Snapshot, &snapshot); err != nil {
 		return nil, apierr.New(http.StatusServiceUnavailable, "mcp_inventory_unavailable", "MCP inventory is temporarily unavailable")
 	}
-	return api.GetAgentMCPInventory200JSONResponse{DeviceId: row.DeviceID, ObservedAt: row.ObservedAt, Snapshot: snapshot}, nil
+	source := api.AgentMCPInventorySource(row.Source)
+	if row.Source == mcptoolpolicy.SourceGateway && s.mcpToolPolicy != nil {
+		// Show each observed tool against the rule that pins it, so a changed definition is visible
+		// where the administrator picks tools.
+		if policy, err := s.mcpToolPolicy.Get(ctx, req.OrgId, req.DeviceId); err == nil {
+			annotateMCPInventoryDefinitionState(snapshot, policy.Rules)
+		}
+	}
+	return api.GetAgentMCPInventory200JSONResponse{DeviceId: row.DeviceID, ObservedAt: row.ObservedAt, Snapshot: snapshot, Source: &source}, nil
+}
+
+// annotateMCPInventoryDefinitionState sets definition_state on every tool of a healthy, gateway-observed
+// server that a rule names: current when the rule pins exactly the observed definition, changed otherwise.
+func annotateMCPInventoryDefinitionState(snapshot map[string]interface{}, rules []mcptoolpolicy.Rule) {
+	for _, server := range inventoryObjects(snapshot, "servers") {
+		if server["status"] != mcptoolpolicy.StatusHealthy {
+			continue
+		}
+		for _, tool := range inventoryObjects(server, "tools") {
+			for _, rule := range rules {
+				if rule.Endpoint != server["endpoint"] || rule.ToolName != tool["name"] {
+					continue
+				}
+				tool["definition_state"] = mcptoolpolicy.DefinitionChanged
+				if rule.ToolDefinitionHash != "" && rule.ToolDefinitionHash == tool["tool_definition_hash"] {
+					tool["definition_state"] = mcptoolpolicy.DefinitionCurrent
+				}
+			}
+		}
+	}
 }
 
 func (s apiServer) PrepareAgentRuntimeWireGuard(ctx context.Context, req api.PrepareAgentRuntimeWireGuardRequestObject) (api.PrepareAgentRuntimeWireGuardResponseObject, error) {
@@ -79,7 +109,8 @@ func (s apiServer) PollAgentRuntime(ctx context.Context, req api.PollAgentRuntim
 	if req.Params.WireguardRevision != nil {
 		wgRevision = *req.Params.WireguardRevision
 	}
-	cfg, unchanged, err := s.agentRuntime.PollWait(ctx, id, req.Params.AppliedRevision, wgRevision, req.Params.ClientVersion, wait)
+	opts := agentruntime.PollOptions{MCPGateway: req.Params.McpGateway != nil && *req.Params.McpGateway}
+	cfg, unchanged, err := s.agentRuntime.PollWaitWith(ctx, id, req.Params.AppliedRevision, wgRevision, req.Params.ClientVersion, wait, opts)
 	if err != nil {
 		return nil, runtimeMachineError(err)
 	}
@@ -91,6 +122,7 @@ func (s apiServer) PollAgentRuntime(ctx context.Context, req api.PollAgentRuntim
 			Address: cfg.Address, GatewayEndpoint: cfg.GatewayEndpoint, GatewayPublicKey: cfg.GatewayPublicKey,
 			AllowedIps: cfg.AllowedIPs, Dns: cfg.DNS, PersistentKeepalive: cfg.PersistentKeepalive,
 			McpUpstream:                cfg.MCPUpstream,
+			McpGatewayUrl:              cfg.MCPGatewayURL,
 			CredentialRotationRevision: cfg.CredentialRotationRevision,
 			WireguardCurrentRevision:   cfg.WireGuardCurrentRevision,
 			WireguardRotationRevision:  cfg.WireGuardRotationRevision,
@@ -117,6 +149,25 @@ func (s apiServer) ReportAgentRuntime(ctx context.Context, req api.ReportAgentRu
 	}
 	if req.Body.McpInventory != nil {
 		inventory := *req.Body.McpInventory
+		prior, priorErr := s.system.GetAgentMCPInventory(ctx, sqlc.GetAgentMCPInventoryParams{DeviceID: id.DeviceID, OrgID: id.OrgID})
+		if priorErr == nil && prior.Source == mcptoolpolicy.SourceGateway {
+			// AI-SEC-2: the gateway observes this agent's MCP server now. What the agent host says
+			// its tools are is no longer stored: an allow-list is never built from it again. Only
+			// the OAuth discovery metadata an administrator starts consent from is still taken.
+			if req.Body.McpOauthDiscovery != nil {
+				if !validMCPInventoryValue(*req.Body.McpOauthDiscovery) {
+					return nil, apierr.New(http.StatusBadRequest, "invalid_mcp_oauth_discovery", "MCP OAuth discovery is not acceptable")
+				}
+				discovery, err := json.Marshal(*req.Body.McpOauthDiscovery)
+				if err != nil || len(discovery) > 64<<10 {
+					return nil, apierr.New(http.StatusBadRequest, "invalid_mcp_oauth_discovery", "MCP OAuth discovery is not acceptable")
+				}
+				if _, err := s.system.MergeAgentMCPInventoryOAuthDiscovery(ctx, sqlc.MergeAgentMCPInventoryOAuthDiscoveryParams{OauthDiscovery: discovery, DeviceID: id.DeviceID, OrgID: id.OrgID}); err != nil {
+					return nil, apierr.New(http.StatusServiceUnavailable, "mcp_inventory_unavailable", "MCP inventory is temporarily unavailable")
+				}
+			}
+			return api.ReportAgentRuntime204Response{Headers: api.ReportAgentRuntime204ResponseHeaders{XRequestId: reqID(ctx)}}, nil
+		}
 		if req.Body.McpOauthDiscovery != nil {
 			// Keep F13 discovery co-located with the F12 runtime-owned snapshot.
 			// It is deliberately metadata only: no authorization header, code,
@@ -126,7 +177,7 @@ func (s apiServer) ReportAgentRuntime(ctx context.Context, req api.ReportAgentRu
 			}
 			inventory["oauth_discovery"] = *req.Body.McpOauthDiscovery
 		}
-		if prior, err := s.system.GetAgentMCPInventory(ctx, sqlc.GetAgentMCPInventoryParams{DeviceID: id.DeviceID, OrgID: id.OrgID}); err == nil {
+		if priorErr == nil {
 			var previous map[string]interface{}
 			if json.Unmarshal(prior.Snapshot, &previous) == nil {
 				annotateMCPInventory(previous, inventory, time.Now().UTC())
@@ -138,7 +189,9 @@ func (s apiServer) ReportAgentRuntime(ctx context.Context, req api.ReportAgentRu
 		if err != nil || len(body) > 512<<10 || !validMCPInventoryValue(*req.Body.McpInventory) {
 			return nil, apierr.New(http.StatusBadRequest, "invalid_mcp_inventory", "MCP inventory is not acceptable")
 		}
-		if _, err := s.system.UpsertAgentMCPInventory(ctx, sqlc.UpsertAgentMCPInventoryParams{DeviceID: id.DeviceID, OrgID: id.OrgID, Snapshot: body, ObservedAt: time.Now().UTC()}); err != nil {
+		// No row comes back when a gateway observation landed between the read above and this write;
+		// the statement itself refuses to replace it, so that is not a failure.
+		if _, err := s.system.UpsertAgentMCPInventory(ctx, sqlc.UpsertAgentMCPInventoryParams{DeviceID: id.DeviceID, OrgID: id.OrgID, Snapshot: body, ObservedAt: time.Now().UTC()}); err != nil && !errors.Is(err, pgx.ErrNoRows) {
 			return nil, apierr.New(http.StatusServiceUnavailable, "mcp_inventory_unavailable", "MCP inventory is temporarily unavailable")
 		}
 	}

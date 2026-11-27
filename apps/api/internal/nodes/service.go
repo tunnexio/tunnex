@@ -2375,6 +2375,10 @@ type AppliedPolicy struct {
 	WireGuardAppliedMTU int                   `json:"wireguard_applied_mtu"`
 	AIVPNHTTPReady      bool                  `json:"ai_vpn_http_ready"`
 	AIVPNHTTPAddress    string                `json:"ai_vpn_http_address"`
+	// AI-SEC-2: the gateway's MCP listener is up on this tunnel address. Stored only as a
+	// validated pair; a report without it clears both.
+	MCPGatewayReady   bool   `json:"mcp_gateway_ready"`
+	MCPGatewayAddress string `json:"mcp_gateway_address"`
 	// IPsecConfigVersion is an authenticated configuration protocol assertion.
 	// Only exact version 1 is recognized; current shipped agents report zero.
 	IPsecConfigVersion                 int    `json:"ipsec_config_version"`
@@ -2528,6 +2532,12 @@ func (s *Service) ReportWGInfo(ctx context.Context, node sqlc.Node, publicKey, e
 		applied.AIVPNHTTPReady = false
 		applied.AIVPNHTTPAddress = ""
 	}
+	// AI-SEC-2: the same rule for the MCP listener. The address is checked again against the
+	// organization's pool where it is used.
+	if ip, err := netip.ParseAddr(applied.MCPGatewayAddress); !applied.MCPGatewayReady || err != nil || !ip.Is4() || !ip.IsPrivate() || ip.String() != applied.MCPGatewayAddress {
+		applied.MCPGatewayReady = false
+		applied.MCPGatewayAddress = ""
+	}
 	// Gateway capabilities the agent probes + re-reports every reconcile (S3.7 +
 	// S7.2 applied-policy status). The column is a forward-compat JSONB map; we build
 	// it server-side from the typed report so a compromised agent can't inject
@@ -2540,6 +2550,8 @@ func (s *Service) ReportWGInfo(ctx context.Context, node sqlc.Node, publicKey, e
 		"wireguard_applied_mtu":                  applied.WireGuardAppliedMTU,
 		"ai_vpn_http_ready":                      applied.AIVPNHTTPReady,
 		"ai_vpn_http_address":                    applied.AIVPNHTTPAddress,
+		"mcp_gateway_ready":                      applied.MCPGatewayReady,
+		"mcp_gateway_address":                    applied.MCPGatewayAddress,
 		"ipsec_config_version":                   applied.IPsecConfigVersion,
 		"ipsec_recovery_version":                 applied.IPsecRecoveryVersion,
 		"ipsec_bgp_version":                      applied.IPsecBGPVersion,
@@ -2582,6 +2594,12 @@ func (s *Service) ReportWGInfo(ctx context.Context, node sqlc.Node, publicKey, e
 	}
 	if n == 0 {
 		return apierr.Conflict("node_not_active", "node is no longer active; key not stored")
+	}
+	// AI-SEC-2: whether this gateway can enforce MCP decides if the compiler closes the direct path
+	// for its agents, so a change of the stored capability re-pushes the organization's policy. The
+	// node row is the one read when the report was authenticated; the push runs after the write.
+	if before := Capabilities(node.Capabilities); s.pushOrg != nil && (before.MCPGatewayReady != applied.MCPGatewayReady || before.MCPGatewayAddress != applied.MCPGatewayAddress) {
+		s.pushOrg(ctx, node.OrgID)
 	}
 	s.trackDesync(ctx, node, applied.Hash)
 	return nil
@@ -2639,6 +2657,9 @@ type NodeCapabilities struct {
 	DNSLANListeners  []DNSLANListenerState `json:"dns_lan_listeners"`
 	AIVPNHTTPReady   bool                  `json:"ai_vpn_http_ready"`
 	AIVPNHTTPAddress string                `json:"ai_vpn_http_address"`
+	// AI-SEC-2: the gateway's MCP listener (see AppliedPolicy).
+	MCPGatewayReady   bool   `json:"mcp_gateway_ready"`
+	MCPGatewayAddress string `json:"mcp_gateway_address"`
 	// Freshness is the server-written policy_reported_at on the same node row.
 	IPsecConfigVersion                 int    `json:"ipsec_config_version"`
 	IPsecRecoveryVersion               int    `json:"ipsec_recovery_version"`

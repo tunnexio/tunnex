@@ -27,9 +27,11 @@ import (
 	"github.com/tunnexio/tunnex/apps/api/internal/connectivity"
 	"github.com/tunnexio/tunnex/apps/api/internal/crypto"
 	"github.com/tunnexio/tunnex/apps/api/internal/fqdnresolver"
+	"github.com/tunnexio/tunnex/apps/api/internal/mcpdecision"
 	"github.com/tunnexio/tunnex/apps/api/internal/nodepush"
 	"github.com/tunnexio/tunnex/apps/api/internal/nodes"
 	"github.com/tunnexio/tunnex/apps/api/internal/rbac"
+	"github.com/tunnexio/tunnex/packages/apptransport/mcpwire"
 )
 
 // AgentChannel is the mTLS control channel the tunnex-node agent reconciles
@@ -48,6 +50,7 @@ type AgentChannel struct {
 	vpnAIAdapter               *aigateway.Adapter
 	vpnAIPolicies              *aigateway.Policies
 	vpnHTTPTransport           aiTransportRepository
+	mcp                        *mcpdecision.Service
 	connectivity               *connectivity.Store
 	svc                        *nodes.Service
 	ca                         *agentca.CA
@@ -183,6 +186,10 @@ func (a *AgentChannel) Handler() http.Handler {
 	r.Post("/agent/ai/v1/chat/completions", a.vpnAIChat)
 	r.Post("/agent/ai-http/organizations/{orgId}/v1/chat/completions", a.vpnAIHTTPChat)
 	r.Post("/agent/ai-http/v1/chat/completions", a.vpnAIHTTPChat)
+	r.Post(mcpwire.PathDecide, a.mcpDecide)
+	r.Post(mcpwire.PathResult, a.mcpResult)
+	r.Get(mcpwire.PathTargets, a.mcpTargets)
+	r.Post(mcpwire.PathInventory, a.mcpInventory)
 	r.Get("/agent/watch", a.watch)
 	r.Post("/agent/renew", a.renew)
 	r.Post("/agent/report", a.report)
@@ -278,10 +285,13 @@ func (a *AgentChannel) report(w http.ResponseWriter, r *http.Request) {
 		// of the last successfully applied Compiled) + the last apply error, if any.
 		AIVPNHTTPReady   bool   `json:"ai_vpn_http_ready"`
 		AIVPNHTTPAddress string `json:"ai_vpn_http_address"`
-		PolicyVersion    int    `json:"policy_version"`
-		PolicyHash       string `json:"policy_hash"`
-		PolicyError      string `json:"policy_error"`
-		PolicyFailing    string `json:"policy_failing_since"`
+		// AI-SEC-2: the gateway's MCP listener on its tunnel address.
+		MCPGatewayReady   bool   `json:"mcp_gateway_ready"`
+		MCPGatewayAddress string `json:"mcp_gateway_address"`
+		PolicyVersion     int    `json:"policy_version"`
+		PolicyHash        string `json:"policy_hash"`
+		PolicyError       string `json:"policy_error"`
+		PolicyFailing     string `json:"policy_failing_since"`
 		// S8.1 D1: the compiled-artifact version the agent REFUSED as unsupported (0 = none).
 		PolicyRefusedVersion int `json:"policy_refused_version"`
 		// S8.2 H5: a site-link peer has a stale/absent handshake (site-to-site link down).
@@ -328,7 +338,7 @@ func (a *AgentChannel) report(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "public_key required", http.StatusBadRequest)
 		return
 	}
-	applied := nodes.AppliedPolicy{AgentVersion: body.AgentVersion, IPsecDesktopStaticVersion: body.IPsecDesktopStaticVersion, IPsecDesktopFQDNVersion: body.IPsecDesktopFQDNVersion, IPsecDesktopTransitVersion: body.IPsecDesktopTransitVersion, DNSLANListeners: body.DNSLANListeners, WireGuardAppliedMTU: body.WireGuardAppliedMTU, AIVPNHTTPReady: body.AIVPNHTTPReady, AIVPNHTTPAddress: body.AIVPNHTTPAddress, IPsecRecoveryVersion: body.IPsecRecoveryVersion, IPsecBGPVersion: body.IPsecBGPVersion, IPsecGCPHAVersion: body.IPsecGCPHAVersion, IPsecAzureVersion: body.IPsecAzureVersion, IPsecAzureBGPRecreationVersion: body.IPsecAzureBGPRecreationVersion, IPsecAzureProfileRecreationVersion: body.IPsecAzureProfileRecreationVersion, IPsecGCPClassicVersion: body.IPsecGCPClassicVersion, IPsecRetainedGuardVersion: body.IPsecRetainedGuardVersion, IPsecFQDNPolicyVersion: body.IPsecFQDNPolicyVersion, IPsecConfigVersion: body.IPsecConfigVersion, Version: body.PolicyVersion, Hash: body.PolicyHash, Error: body.PolicyError, FailingSince: body.PolicyFailing, RefusedVersion: body.PolicyRefusedVersion, SiteLinkStale: body.SiteLinkStale, SiteSubnetUnreachable: body.SiteSubnetUnreachable, ConntrackFlushUnavailable: body.ConntrackFlushUnavailable, K8sEndpointsUnavailable: body.K8sEndpointsUnavailable, K8sAPIEndpoint: body.K8sAPIEndpoint, MaxSupportedVersion: body.MaxPolicyVersion, OVPNHealth: body.OVPNHealth, DNSResolveRPCVersion: body.DNSResolveRPCVersion, DNSIPsecResolveVersion: body.DNSIPsecResolveVersion, FlowLogState: body.FlowLogState, FlowLogLastObservedAt: body.FlowLogLastObservedAt, FlowLogLastDeliveredAt: body.FlowLogLastDeliveredAt}
+	applied := nodes.AppliedPolicy{AgentVersion: body.AgentVersion, IPsecDesktopStaticVersion: body.IPsecDesktopStaticVersion, IPsecDesktopFQDNVersion: body.IPsecDesktopFQDNVersion, IPsecDesktopTransitVersion: body.IPsecDesktopTransitVersion, DNSLANListeners: body.DNSLANListeners, WireGuardAppliedMTU: body.WireGuardAppliedMTU, AIVPNHTTPReady: body.AIVPNHTTPReady, AIVPNHTTPAddress: body.AIVPNHTTPAddress, MCPGatewayReady: body.MCPGatewayReady, MCPGatewayAddress: body.MCPGatewayAddress, IPsecRecoveryVersion: body.IPsecRecoveryVersion, IPsecBGPVersion: body.IPsecBGPVersion, IPsecGCPHAVersion: body.IPsecGCPHAVersion, IPsecAzureVersion: body.IPsecAzureVersion, IPsecAzureBGPRecreationVersion: body.IPsecAzureBGPRecreationVersion, IPsecAzureProfileRecreationVersion: body.IPsecAzureProfileRecreationVersion, IPsecGCPClassicVersion: body.IPsecGCPClassicVersion, IPsecRetainedGuardVersion: body.IPsecRetainedGuardVersion, IPsecFQDNPolicyVersion: body.IPsecFQDNPolicyVersion, IPsecConfigVersion: body.IPsecConfigVersion, Version: body.PolicyVersion, Hash: body.PolicyHash, Error: body.PolicyError, FailingSince: body.PolicyFailing, RefusedVersion: body.PolicyRefusedVersion, SiteLinkStale: body.SiteLinkStale, SiteSubnetUnreachable: body.SiteSubnetUnreachable, ConntrackFlushUnavailable: body.ConntrackFlushUnavailable, K8sEndpointsUnavailable: body.K8sEndpointsUnavailable, K8sAPIEndpoint: body.K8sAPIEndpoint, MaxSupportedVersion: body.MaxPolicyVersion, OVPNHealth: body.OVPNHealth, DNSResolveRPCVersion: body.DNSResolveRPCVersion, DNSIPsecResolveVersion: body.DNSIPsecResolveVersion, FlowLogState: body.FlowLogState, FlowLogLastObservedAt: body.FlowLogLastObservedAt, FlowLogLastDeliveredAt: body.FlowLogLastDeliveredAt}
 	if err := a.svc.ReportWGInfo(r.Context(), node, body.PublicKey, body.Endpoint, body.EgressNAT, body.EgressIPv6, applied); err != nil {
 		// ONE seam for BOTH cases (S11-5): apierr.Write renders a typed *apierr.Error with its own
 		// status+code and turns an unmapped error into a logged 500 — so the hand-rolled errors.As branch
