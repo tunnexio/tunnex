@@ -73,6 +73,18 @@ describe("MCP switch on the MCP page", () => {
   });
 });
 
+describe("connecting a server from the MCP page", () => {
+  it("opens the one guided dialog, which first asks where to connect the server", async () => {
+    mode = "ready";
+    render(<MemoryRouter><AgentsMCP /></MemoryRouter>);
+    fireEvent.click(await screen.findByRole("button", { name: "Connect MCP server" }));
+    const dialog = await screen.findByRole("dialog", { name: "Connect MCP server" });
+    expect(dialog.textContent).toContain("Nothing is connected until you save.");
+    expect(await screen.findByLabelText("Connect to")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Create profile" })).toBeNull();
+  });
+});
+
 describe("Agents MCP permission boundary", () => {
   it("renders forbidden inventory as permission denied, never as an empty or failed inventory", async () => {
     render(<MemoryRouter><AgentsMCP /></MemoryRouter>);

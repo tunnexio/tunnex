@@ -215,23 +215,23 @@ describe("active Agent detail mutation ownership", () => {
     get.mockImplementation((path: string) => path.endsWith("/mcp-inventory") ? Promise.resolve({ error: { error: { code } } }) : original(path));
     renderDetail("mcp");
     if (code === "mcp_inventory_not_found") {
-      await screen.findByText("No MCP inventory reported yet.");
-      expect(screen.queryByRole("button", { name: "Retry MCP inventory" })).toBeNull();
-      expect(screen.queryByRole("heading", { name: "MCP inventory unavailable" })).toBeNull();
+      await screen.findByText("The gateway has not read this agent's MCP servers yet.");
+      expect(screen.queryByRole("button", { name: "Retry MCP tool list" })).toBeNull();
+      expect(screen.queryByRole("heading", { name: "MCP tool list unavailable" })).toBeNull();
     } else {
-      await screen.findByRole("heading", { name: "MCP inventory unavailable" });
-      expect(screen.getByRole("button", { name: "Retry MCP inventory" })).toBeTruthy();
-      expect(screen.queryByText("No MCP inventory reported yet.")).toBeNull();
+      await screen.findByRole("heading", { name: "MCP tool list unavailable" });
+      expect(screen.getByRole("button", { name: "Retry MCP tool list" })).toBeTruthy();
+      expect(screen.queryByText("The gateway has not read this agent's MCP servers yet.")).toBeNull();
     }
-    expect(screen.queryByText("No servers observed in this snapshot.")).toBeNull();
+    expect(screen.queryByText("No servers were seen at the last read.")).toBeNull();
     expect(screen.queryByRole("button", { name: "Save tool policy" })).toBeNull();
     expect(get.mock.calls.some(([path]) => String(path).endsWith("/mcp-tool-policy"))).toBe(false);
     expect(put).not.toHaveBeenCalled();
     if (code === "mcp_inventory_unavailable") {
       get.mockImplementation(original);
-      fireEvent.click(screen.getByRole("button", { name: "Retry MCP inventory" }));
+      fireEvent.click(screen.getByRole("button", { name: "Retry MCP tool list" }));
       await screen.findByRole("button", { name: "Save tool policy" });
-      expect(screen.queryByRole("heading", { name: "MCP inventory unavailable" })).toBeNull();
+      expect(screen.queryByRole("heading", { name: "MCP tool list unavailable" })).toBeNull();
     }
   });
 });
@@ -253,4 +253,25 @@ it("sets a tool to Allow from the MCP tab without any raw JSON box", async () =>
   fireEvent.click(screen.getByRole("button", {name: "Save tool policy"}));
   await waitFor(() => expect(put).toHaveBeenCalled());
   expect(put.mock.calls[0][1].body.rules).toEqual([{endpoint: "https://mcp.example.test", server_name: "inventory", tool_name: "read", input_schema_hash: "hash", step_up_required: false}]);
+});
+
+it("names the MCP tab correctly in the footer buttons", async () => {
+  seed(); renderDetail("access");
+  expect(await screen.findByRole("button", {name: "Back to MCP"})).toBeTruthy();
+  expect(screen.queryByRole("button", {name: "Back to mcp"})).toBeNull();
+  expect(screen.getByRole("button", {name: "View activity"})).toBeTruthy();
+});
+
+it("lists the agent's MCP servers by name with their local addresses when the server reports them", async () => {
+  seed(); const original = get.getMockImplementation()!;
+  const one = { profile_id: "p1", profile_name: "Inventory", server_name: "inventory", endpoint: "https://mcp.example.test", group_id: "g1", group_name: "Agents", default: true, local_url: "http://127.0.0.1:17100/inventory", policy_source: "group" };
+  const two = { ...one, profile_id: "p2", profile_name: "Billing", server_name: "billing", endpoint: "https://billing.example.test", default: false, local_url: "http://127.0.0.1:17100/billing" };
+  get.mockImplementation(async (path: string) => path.endsWith("/effective-mcp-profile") ? { data: { assigned: true, enforcement: "gateway", servers: [one, two] } } : path.endsWith("/tool-policy") ? { data: { group_id: "g1", profile_id: "p1", server_name: "inventory", endpoint: one.endpoint, version: 0, tools: [] } } : original(path));
+  renderDetail("mcp");
+  const first = await screen.findByRole("region", {name: "Inventory"});
+  expect(within(first).getByText("http://127.0.0.1:17100/inventory")).toBeTruthy();
+  expect(within(screen.getByRole("region", {name: "Billing"})).getByText("http://127.0.0.1:17100/billing")).toBeTruthy();
+  expect(screen.getByRole("button", {name: "Connect MCP server"})).toBeTruthy();
+  // The group's policy decides here, so the agent's own policy is not read or offered for saving.
+  expect(get.mock.calls.some(([path]) => String(path).endsWith("/mcp-tool-policy"))).toBe(false);
 });

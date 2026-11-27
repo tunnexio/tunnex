@@ -11,6 +11,7 @@ import { api, apiErrorMessage, listItems, loadOne, type AgentGroup, type AgentGr
 import { useOrg } from "../lib/useOrg";
 import { useAgentFeatures, type AgentFeatures } from "../lib/agentFeatures";
 import { FeatureEnableInline } from "../components/FeatureEnableInline";
+import { AgentGroupMCPServers } from "../components/AgentMCPServers";
 import { useAuth } from "../lib/auth";
 import { DIRECTORY_MANAGED_NOTE, isDirectoryManaged } from "../lib/idpsyncview";
 import { relativeAge } from "../lib/format";
@@ -310,6 +311,7 @@ function CanonicalGroupsWorkspace({
           ]} />
           <AppAccessPagination maxOffset={null} page={currentMemberPage} pageSize={memberPageSize} count={memberRows.length} hasNext={currentMemberPage * memberPageSize < matchedMembers.length} busy={busy} onPageChange={setMemberPage} onPageSizeChange={(size) => { setMemberPageSize(size); setMemberPage(1); }} />
         </>}
+        {features.get("mcp")?.enabled && features.get("mcp")?.available && <AgentGroupMCPServers key={selected.raw.id} orgId={orgId} groupId={selected.raw.id} groupName={selected.name} canManage />}
         <details className="agents-management-help"><summary>Inherited group configuration</summary><p>Adding members queues desired inherited configuration; queued does not mean applied. Removing a member withdraws its group-derived desired configuration after reconciliation. Model policies, network templates, and MCP tool permissions remain separate.</p></details></div></ResourceSummary>
       </> : <>
         <div className="agents-management-toolbar"><Input aria-label="Search groups" value={query} placeholder="Search agent groups" onChange={(event) => { setPage(1); update({ q: event.target.value || null }); }} /></div>

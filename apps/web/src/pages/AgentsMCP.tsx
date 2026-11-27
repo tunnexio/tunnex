@@ -4,12 +4,13 @@ import "../agents-workspace.css";
 import { useEffect, useMemo, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import type { components } from "@tunnex/shared";
-import { Button, Card, DataTable, EmptyState, ErrorText, Field, Input, Loading, Modal, PageHeader, Select } from "../components/ui";
+import { Button, Card, DataTable, EmptyState, ErrorText, Loading, Modal, PageHeader, Select } from "../components/ui";
 import { api, apiErrorCode, apiErrorMessage, loadOne } from "../lib/api";
 import { MCPProfileTools } from "../components/MCPProfileTools";
 import { useOrg } from "../lib/useOrg";
 import { useAgentFeatures } from "../lib/agentFeatures";
 import { FeatureEnableInline } from "../components/FeatureEnableInline";
+import { ConnectMCPServer, mcpLocalAddress } from "../components/ConnectMCPServer";
 
 type Profile = components["schemas"]["AgentMCPProfile"];
 type Group = components["schemas"]["AgentGroup"];
@@ -39,8 +40,6 @@ export default function AgentsMCP() {
   const [groups, setGroups] = useState<Load<Group[]>>(loading);
   const [members, setMembers] = useState<Load<Member[]>>(loading);
   const [assignments, setAssignments] = useState<Load<Assignment[]>>(loading);
-  const [profileName, setProfileName] = useState("");
-  const [endpoint, setEndpoint] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
@@ -86,16 +85,6 @@ export default function AgentsMCP() {
     });
     return () => { cancelled = true; };
   }, [org?.id, enabled, groupId]);
-  async function createProfile() {
-    if (!org || !profileName.trim() || !endpoint.trim()) return false;
-    setBusy(true); setError(""); setNotice("");
-    const result = await api.POST("/api/v1/organizations/{orgId}/agent-mcp-profiles", { params: { path: { orgId: org.id } }, body: { name: profileName.trim(), endpoint: endpoint.trim() } });
-    setBusy(false);
-    if (result.error || !result.data) { setError(apiErrorMessage(result.error, "Could not create the MCP profile.")); return false; }
-    setProfileName(""); setEndpoint("");
-    setNotice("Profile created. Select an Agent Group to understand shared assignment context.");
-    select({ profile: result.data.id }); await reload(); return true;
-  }
   async function preview(group: Group, profile: Profile | null, nextDialog: "replace" | "unassign") {
     if (!org) return;
     setBusy(true); setError(""); setNotice("");
@@ -147,24 +136,25 @@ export default function AgentsMCP() {
   }
   if (!org) return <Loading label="Loading organization…" />;
   const groupLink = <Link className="inline-flex min-h-10 items-center text-sm font-medium text-accent-400 hover:underline" to="/agents/groups">Manage agent groups</Link>;
-  const createButton = <Button onClick={() => setCreateOpen(true)}>Create profile</Button>;
+  const createButton = <Button onClick={() => { setNotice(""); setError(""); setCreateOpen(true); }}>Connect MCP server</Button>;
   const denied = (profiles.kind === "error" && (profiles.code === "permission_denied" || profiles.code === "forbidden")) || (groups.kind === "error" && /permission|forbidden/i.test(groups.message));
   const transportError = profiles.kind === "error" ? profiles.message : groups.kind === "error" ? groups.message : "";
   const selectedProfileAlreadyActive = activeAssignment?.profile_id === selectedProfile?.id;
 
   return <div className="network-management agents-workspace space-y-5">
-    <PageHeader navigationTitle title="MCP profiles" subtitle={org.name} actions={enabled && profiles.kind === "ready" && profiles.data.length > 0 ? createButton : undefined} />
-    <div className="text-right"><HelpTooltip label="About MCP profiles">Create a profile, assign it to an agent group, then review discovered tools. Adding a profile does not grant tool access.</HelpTooltip></div>
+    <PageHeader navigationTitle title="MCP servers" subtitle={org.name} actions={enabled && profiles.kind === "ready" && profiles.data.length > 0 ? createButton : undefined} />
+    <div className="text-right"><HelpTooltip label="About MCP servers">Connect a server to an agent or an agent group, then choose Allow, Ask first or Off for each of its tools. Connecting a server allows no tool by itself.</HelpTooltip></div>
     {!enabled && <div className="max-w-2xl"><FeatureEnableInline orgId={org.id} feature="mcp" features={features} /></div>}
     {enabled && profiles.kind === "loading" && <Card><Loading label="Loading MCP profiles…" /></Card>}
     {enabled && denied && <Card className="max-w-2xl"><h2 className="text-sm font-semibold text-ink-heading">You do not have permission to view MCP profiles</h2><p className="mt-2 text-cell text-ink-tertiary">No profile, group, assignment, or plan information is shown without the required permission.</p></Card>}
     {enabled && transportError && !denied && <Card className="max-w-2xl"><h2 className="text-sm font-semibold text-ink-heading">MCP profiles could not be loaded</h2><p className="mt-2 text-cell text-ink-tertiary">No empty inventory is shown because the current API response failed. Refresh to retry.</p><ErrorText>{transportError}</ErrorText></Card>}
-    {enabled && profiles.kind === "ready" && groups.kind === "ready" && profiles.data.length === 0 && <Card className="max-w-2xl"><EmptyState action={createButton}><strong className="block text-sm text-ink-heading">Create a reusable MCP profile</strong><span className="mt-1 block">Create a credential-free upstream, assign it to an Agent Group, then agents inherit it through group membership.</span><span className="mt-3 block">{groupLink}</span></EmptyState></Card>}
+    {enabled && profiles.kind === "ready" && groups.kind === "ready" && profiles.data.length === 0 && <Card className="max-w-2xl"><EmptyState action={createButton}><strong className="block text-sm text-ink-heading">Connect your first MCP server</strong><span className="mt-1 block">Enter the server&apos;s address, let the gateway read its tools, and choose what your agents may do with each one.</span><span className="mt-3 block">{groupLink}</span></EmptyState></Card>}
     {enabled && profiles.kind === "ready" && groups.kind === "ready" && assignments.kind === "ready" && profiles.data.length > 0 && <>
       <div>
         <Card><DataTable caption="MCP profile inventory" rows={profiles.data} rowKey={(profile) => profile.id} failed={false} filterable={false} pageSize={0} empty={<>No MCP profiles.</>} columns={[
           { key: "name", header: "Profile", cell: (profile) => <button type="button" onClick={() => select({ profile: profile.id })} className="font-medium text-ink-heading hover:underline">{profile.name}</button> },
-          { key: "endpoint", header: "Endpoint", cell: (profile) => <span className="break-all text-xs text-ink-tertiary">{profile.endpoint}</span> },
+          { key: "endpoint", header: "Server address", cell: (profile) => <span className="break-all text-xs text-ink-tertiary">{profile.endpoint}</span> },
+          { key: "local", header: "Address for clients", cell: (profile) => profile.server_name ? <span className="break-all font-mono text-xs text-ink-tertiary">{mcpLocalAddress(profile.server_name)}</span> : <span className="text-xs text-ink-tertiary">Not set</span> },
           { key: "status", header: "Lifecycle", cell: (profile) => profile.archived_at ? "Archived" : "Available" },
           { key: "assignments", header: "Group assignments", cell: (profile) => assignments.data.filter((assignment) => assignment.profile_id === profile.id && assignment.state === "active").length },
         ]} /></Card>
@@ -182,7 +172,7 @@ export default function AgentsMCP() {
     {selectedProfile && activeAssignment?.profile_id !== selectedProfile.id && <Card><h2 className="text-sm font-semibold text-ink-heading">Discovered tools</h2><p className="mt-2">Choose a group that uses this profile to see its agents’ tool inventory. If no group uses it yet, assign the profile and connect an agent first.</p>{assignments.kind === "ready" && assignments.data.filter(item => item.profile_id === selectedProfile.id && item.state === "active").map(item => <Button key={item.id} variant="ghost" onClick={() => select({group: item.group_id})}>View tools from {item.group_name}</Button>)}</Card>}
     {org && selectedProfile && activeAssignment?.profile_id === selectedProfile.id && members.kind === "ready" && <MCPProfileTools key={`${org.id}/${selectedProfile.id}/${groupId}`} orgId={org.id} endpoint={selectedProfile.endpoint} members={members.data} />}</div><ErrorText>{error}</ErrorText></Modal>}
 
-    {createOpen && <Modal title="Create reusable MCP profile" onDismiss={() => setCreateOpen(false)} actions={<><Button variant="ghost" onClick={() => setCreateOpen(false)}>Cancel</Button><Button disabled={busy || !profileName.trim() || !endpoint.trim()} onClick={() => void createProfile().then((created) => { if (created) setCreateOpen(false); })}>Create profile</Button></>}><p className="mb-3 text-cell text-ink-tertiary">Creation is non-disruptive. Use a credential-free absolute endpoint. Next, select an Agent Group to understand the shared assignment context.</p><div className="space-y-3"><Field label="Profile name"><Input autoFocus value={profileName} onChange={(event) => setProfileName(event.target.value)} /></Field><Field label="MCP endpoint"><Input value={endpoint} placeholder="https://mcp.example" onChange={(event) => setEndpoint(event.target.value)} /></Field></div><ErrorText>{error}</ErrorText></Modal>}
+    {createOpen && <ConnectMCPServer orgId={org.id} onDismiss={() => setCreateOpen(false)} onConnected={(connection) => { setNotice(`${connection.profile.name} is connected to ${connection.group.name}.`); void reload(); }} />}
     {dialog === "replace" && impact && selectedGroup && selectedProfile && <Modal title={activeAssignment ? "Replace group MCP profile" : "Assign group MCP profile"} onDismiss={() => setDialog(null)} actions={<><Button variant="ghost" onClick={() => setDialog(null)}>Cancel</Button><Button disabled={busy || !impact.mutation_allowed} onClick={() => void replace()}>{activeAssignment ? "Replace profile" : "Assign profile"}</Button></>}><p className="text-cell text-ink-tertiary">{impact.affected_agent_count} agents will {impact.effective_upstream_changes ? "receive a changed desired MCP upstream" : "keep the same desired MCP upstream"}. {impact.desired_runtime_updates_queued ? "Desired runtime updates will be queued after the transaction commits." : "No runtime update is currently required."}</p>{impact.conflict && <ErrorText>{impact.conflict}</ErrorText>}<p className="mt-3 text-cell text-ink-tertiary">Recovery: select another profile and replace it, or unassign this group. Runtime application remains separately observed.</p><ErrorText>{error}</ErrorText></Modal>}
     {dialog === "unassign" && impact && selectedGroup && <Modal title="Unassign group MCP profile" danger onDismiss={() => setDialog(null)} actions={<><Button variant="ghost" onClick={() => setDialog(null)}>Cancel</Button><Button variant="danger" disabled={busy || !impact.mutation_allowed} onClick={() => void unassign()}>Unassign profile</Button></>}><p className="text-cell text-ink-tertiary">{impact.affected_agent_count} agents will lose this inherited desired upstream. Assignment history is retained. Recovery: assign a replacement profile to {selectedGroup.name}.</p>{impact.conflict && <ErrorText>{impact.conflict}</ErrorText>}<ErrorText>{error}</ErrorText></Modal>}
     {dialog === "archive" && selectedProfile && <Modal title="Archive MCP profile" danger onDismiss={() => setDialog(null)} actions={<><Button variant="ghost" onClick={() => setDialog(null)}>Cancel</Button><Button variant="danger" disabled={busy} onClick={() => void archive()}>Archive profile</Button></>}><p className="text-cell text-ink-tertiary">Archiving preserves historical assignment evidence but refuses while an active group still references this profile. Recovery: unassign it from every active group, then archive.</p><ErrorText>{error}</ErrorText></Modal>}
