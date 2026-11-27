@@ -33,6 +33,7 @@ import (
 	"github.com/tunnexio/tunnex/apps/node/internal/hostposture"
 	"github.com/tunnexio/tunnex/apps/node/internal/identity"
 	"github.com/tunnexio/tunnex/apps/node/internal/ipsec"
+	"github.com/tunnexio/tunnex/apps/node/internal/mcpgw"
 	"github.com/tunnexio/tunnex/apps/node/internal/nodepolicy"
 	"github.com/tunnexio/tunnex/apps/node/internal/ovpnserver"
 	"github.com/tunnexio/tunnex/apps/node/internal/ownershiplease"
@@ -443,7 +444,21 @@ func main() {
 		go aiVPN.Run(ctx)
 		defer aiVPN.Close()
 	}
-	go reportKeyLoop(ctx, client, wgPub, endpointSource, reportKick, &egressNAT, &egressIPv6, egressMgr, &siteLinkStale, &siteSubnetUnreachable, &ovpnHealth, flowLogStatus, aiVPN, &keyReported, reportEvery, logger, r.AppliedWireGuardMTU)
+	// AI-SEC-2: the MCP listener on the tunnel address. No setting: on whenever the backend is wgctrl.
+	// A readiness change kicks the capability report, as the AI listener's does.
+	mcpGateway := configureMCPGatewayRuntime(wgBackend, wgIface, client, r.Healthy, func() {
+		select {
+		case reportKick <- struct{}{}:
+		default:
+		}
+	}, logger)
+	// An in-cluster gateway's input chain accepts the MCP listener only when it is configured.
+	egressMgr.SetMCPGatewayListener(mcpGateway != nil)
+	if mcpGateway != nil {
+		go mcpGateway.Run(ctx)
+		defer mcpGateway.Close()
+	}
+	go reportKeyLoop(ctx, client, wgPub, endpointSource, reportKick, &egressNAT, &egressIPv6, egressMgr, &siteLinkStale, &siteSubnetUnreachable, &ovpnHealth, flowLogStatus, aiVPN, mcpGateway, &keyReported, reportEvery, logger, r.AppliedWireGuardMTU)
 	r.SetSiteLinkStaleSink(&siteLinkStale)
 	r.SetSiteSubnetUnreachableSink(&siteSubnetUnreachable) // D3: unreachable-advertised-subnet health signal
 	r.SetForwardBlockedFn(egressMgr.ForwardBlocked)        // WF-4: Docker FORWARD DROP swallowing the forward → same signal
@@ -561,6 +576,12 @@ func main() {
 			} else {
 				aiVPN.SetDesired(projected.InterfaceAddress)
 			}
+		}
+		// Only the ownership-projected address may carry the MCP listener (nil-safe when not configured).
+		if err != nil {
+			mcpGateway.SetDesired("")
+		} else {
+			mcpGateway.SetDesired(projected.InterfaceAddress)
 		}
 		return projected, err
 	})
@@ -981,7 +1002,7 @@ func identityWatchLoop(ctx context.Context, client *control.Client, apiURL, cert
 // failures with backoff and publishing changed applied policy promptly. The report is
 // idempotent server-side, so retrying is safe. Until it succeeds the agent stays
 // not-ready, so no orchestrator routes to a node the control plane can't peer.
-func reportKeyLoop(ctx context.Context, client *control.Client, pubKey string, endpointSource reportEndpointSource, reportKick <-chan struct{}, egressNAT, egressIPv6 *atomic.Bool, egressMgr *egress.Manager, siteLinkStale, siteSubnetUnreachable *atomic.Bool, ovpnHealth *atomic.Pointer[string], flowStatus *flowlog.Status, aiVPN *aivpn.Runtime, reported *atomic.Bool, every time.Duration, logger *slog.Logger, mtuSource ...func() int) {
+func reportKeyLoop(ctx context.Context, client *control.Client, pubKey string, endpointSource reportEndpointSource, reportKick <-chan struct{}, egressNAT, egressIPv6 *atomic.Bool, egressMgr *egress.Manager, siteLinkStale, siteSubnetUnreachable *atomic.Bool, ovpnHealth *atomic.Pointer[string], flowStatus *flowlog.Status, aiVPN *aivpn.Runtime, mcpGateway *mcpgw.Runtime, reported *atomic.Bool, every time.Duration, logger *slog.Logger, mtuSource ...func() int) {
 	report := func(reportCtx context.Context) bool {
 		endpoint := endpointSource()
 		if !endpoint.Reportable {
@@ -1015,6 +1036,8 @@ func reportKeyLoop(ctx context.Context, client *control.Client, pubKey string, e
 			FlowLogLastDeliveredAt:    flow.LastDeliveredAt,
 		}
 		ps.AIVPNHTTPReady, ps.AIVPNHTTPAddress = aiVPN.Status()
+		// True only while the MCP listener is actually bound (nil-safe: absent runtime = not ready).
+		ps.MCPGatewayReady, ps.MCPGatewayAddress = mcpGateway.Status()
 		ps.Error = boundedPolicyApplyError(applyErr)
 		if !failingSince.IsZero() {
 			ps.FailingSince = failingSince.UTC().Format(time.RFC3339)
