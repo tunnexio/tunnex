@@ -1,19 +1,26 @@
 import { useId, useState, type ReactNode } from "react";
 import "./ai-usage-dashboard.css";
 import AppAccessPagination from "./AppAccessPagination";
+import "./ai-gateway-off-banner.css";
 
 export type AIUsageTotals = {
   requests: number; tokens: number; inputTokens: number; outputTokens: number;
   cost: number; uncostedRequests: number; successfulRequests: number; failedRequests: number; cancelledRequests?: number;
 };
 export type AIUsageDay = { date: string; requests: number; tokens: number; cost: number; uncostedRequests: number };
-export type AIUsageRank = { id: string; name: string; requests: number; tokens: number; cost: number; uncostedRequests: number };
+/** The daily budget an agent spends against: its agent group's, shared by the group. `dailyLimit` null means none is set. */
+export type AIUsageBudget = { dailyLimit: number | null; group?: string };
+export type AIUsageRank = { id: string; name: string; requests: number; tokens: number; cost: number; uncostedRequests: number; budget?: AIUsageBudget };
 export type AIUsageDashboardProps = {
   workloads?: ReactNode;
   status: "loading" | "error" | "ready";
   error?: string; onRetry?: () => void; filters?: ReactNode;
   totals?: AIUsageTotals; daily?: AIUsageDay[];
   models?: { name: string; cost: number }[]; teams?: AIUsageRank[]; agents?: AIUsageRank[]; userGroups?: AIUsageRank[];
+  /** A banner above already says why the gateway does not answer, so a failed read shows nothing more. */
+  gatewayOff?: boolean;
+  /** The period is the current UTC day, the window a daily budget counts, so spend compares to it directly. */
+  budgetDay?: boolean;
 };
 const count = (value: number) => value.toLocaleString("en-US");
 export function formatAIUsageCost(value: number): string {
@@ -43,6 +50,7 @@ export function AIUsageDashboard(props: AIUsageDashboardProps) {
     <h2 className="sr-only">Usage &amp; cost</h2>
     {filters && <div className="ai-usage-filters">{filters}</div>}
     {status === "loading" ? <div className="ai-usage-state" role="status"><span className="ai-usage-loader" />Loading usage from your gateway…</div>
+      : (status === "error" || !totals || !validTotals(totals)) && props.gatewayOff ? null
       : status === "error" || !totals || !validTotals(totals) ? <div className="ai-usage-state" role="alert"><h3>Usage is unavailable</h3><p>{props.error || "Could not read usage from your gateway. No zero-spend claim can be made."}</p>{onRetry && <button type="button" onClick={onRetry}>Retry usage</button>}</div>
       : <>
         <div className="ai-usage-overview">
@@ -78,7 +86,7 @@ export function AIUsageDashboard(props: AIUsageDashboardProps) {
         <div role="tabpanel" aria-label={breakdown}>
         {breakdown === "User groups" && <Ranked title="Spend by user group" label="User group" rows={props.userGroups} />}
         {breakdown === "Teams" && <Ranked title="Spend by team" label="Team" rows={props.teams} />}
-        {breakdown === "Agents" && <Ranked title="Spend by agent" label="Agent" rows={props.agents} />}
+        {breakdown === "Agents" && <Ranked title="Usage by agent" label="Agent" rows={props.agents} detailed budgetDay={props.budgetDay} />}
         {breakdown === "Models" && <Ranked emptyMessage="No priced model usage." title="Spend by model" label="Model" rows={props.models?.map(m => ({ ...m, id: m.name }))} />}
         {breakdown === "Workloads" && props.workloads}
         </div></div></div>
@@ -108,15 +116,26 @@ function DailyChart({ days }: { days?: AIUsageDay[] }) {
     </>}
   </div>;
 }
-function Ranked({ title, label, rows, emptyMessage }: { emptyMessage?: string; title: string; label: string; rows?: (Pick<AIUsageRank, "id" | "name" | "cost"> & Partial<AIUsageRank>)[] }) {
+function Budget({ row, day }: { row: Pick<AIUsageRank, "cost" | "budget">; day?: boolean }) {
+  const budget = row.budget;
+  if (!budget) return <>Unavailable</>;
+  if (budget.dailyLimit === null || !(budget.dailyLimit > 0)) return <>No budget</>;
+  const shared = budget.group ? `Shared by ${budget.group}` : "Shared by its agent group";
+  if (!day) return <span className="ai-usage-budget"><span>{formatAIUsageCost(budget.dailyLimit)} a day</span><small>{shared}. Choose Today to compare.</small></span>;
+  const share = Math.min(100, row.cost / budget.dailyLimit * 100);
+  return <span className="ai-usage-budget" data-over={row.cost >= budget.dailyLimit}><span>{formatAIUsageCost(row.cost)} of {formatAIUsageCost(budget.dailyLimit)}</span><span className="ai-usage-budget-track" aria-hidden="true"><i style={{ width: `${share}%` }} /></span><small>{Math.round(share)}% of today's budget. {shared}.</small></span>;
+}
+function Ranked({ title, label, rows, emptyMessage, detailed, budgetDay }: { emptyMessage?: string; title: string; label: string; detailed?: boolean; budgetDay?: boolean; rows?: (Pick<AIUsageRank, "id" | "name" | "cost"> & Partial<AIUsageRank>)[] }) {
   const [page, setPage] = useState(1), [pageSize, setPageSize] = useState(20);
   const sorted = rows ? [...rows].sort((a, b) => b.cost - a.cost || a.name.localeCompare(b.name)) : undefined;
   const currentPage = Math.min(page, Math.max(1, Math.ceil((sorted?.length ?? 0) / pageSize)));
   const visibleRows = sorted?.slice((currentPage - 1) * pageSize, currentPage * pageSize) ?? [];
   const max = sorted?.[0]?.cost ?? 0;
   const hasRequests = label !== "Model";
+  // Tokens and the budget are shown per agent; the budget only when the page could read the agents' groups.
+  const hasBudget = !!detailed && !!rows?.some((row) => row.budget);
   return <div className="ai-usage-panel ai-usage-rank-panel"><div className="ai-usage-panel-title"><h3 className="sr-only">{title}</h3><span>{rows ? `${rows.length} ${label.toLowerCase()}${rows.length === 1 ? "" : "s"}` : "Unavailable"}</span></div>
-    {!sorted?.length ? <p className="ai-usage-muted">{rows ? emptyMessage ?? "No recorded usage in this period." : "Breakdown is unavailable."}</p> : <><div className="ai-usage-table-scroll"><table><caption className="sr-only">{title}</caption><thead><tr><th scope="col">{label}</th>{hasRequests && <th scope="col">Requests</th>}<th scope="col">Cost</th></tr></thead><tbody>{visibleRows.map((row) => <tr key={row.id}><th scope="row"><span className="ai-usage-rank-name" title={row.name}>{row.name}</span><span className="ai-usage-rank-track" hidden={!max} aria-hidden="true"><i style={{ width: `${max ? row.cost / max * 100 : 0}%` }} /></span>{(row.uncostedRequests ?? 0) > 0 && <small className="ai-usage-rank-missing">{count(row.uncostedRequests!)} without cost</small>}</th>{hasRequests && <td>{row.requests === undefined ? "Unavailable" : count(row.requests)}</td>}<td>{row.requests && row.uncostedRequests === row.requests ? "Unavailable" : formatAIUsageCost(row.cost)}</td></tr>)}</tbody></table></div><AppAccessPagination page={currentPage} pageSize={pageSize} count={visibleRows.length} hasNext={currentPage * pageSize < sorted.length} maxOffset={null} onPageChange={setPage} onPageSizeChange={(size) => { setPageSize(size); setPage(1); }} /></>}
+    {!sorted?.length ? <p className="ai-usage-muted">{rows ? emptyMessage ?? "No recorded usage in this period." : "Breakdown is unavailable."}</p> : <><div className="ai-usage-table-scroll"><table><caption className="sr-only">{title}</caption><thead><tr><th scope="col">{label}</th>{hasRequests && <th scope="col">Requests</th>}{detailed && <th scope="col">Tokens</th>}<th scope="col">Cost</th>{hasBudget && <th scope="col">Daily budget</th>}</tr></thead><tbody>{visibleRows.map((row) => <tr key={row.id}><th scope="row"><span className="ai-usage-rank-name" title={row.name}>{row.name}</span><span className="ai-usage-rank-track" hidden={!max} aria-hidden="true"><i style={{ width: `${max ? row.cost / max * 100 : 0}%` }} /></span>{(row.uncostedRequests ?? 0) > 0 && <small className="ai-usage-rank-missing">{count(row.uncostedRequests!)} without cost</small>}</th>{hasRequests && <td>{row.requests === undefined ? "Unavailable" : count(row.requests)}</td>}{detailed && <td>{row.tokens === undefined ? "Unavailable" : count(row.tokens)}</td>}<td>{row.requests && row.uncostedRequests === row.requests ? "Unavailable" : formatAIUsageCost(row.cost)}</td>{hasBudget && <td><Budget row={row} day={budgetDay} /></td>}</tr>)}</tbody></table></div><AppAccessPagination page={currentPage} pageSize={pageSize} count={visibleRows.length} hasNext={currentPage * pageSize < sorted.length} maxOffset={null} onPageChange={setPage} onPageSizeChange={(size) => { setPageSize(size); setPage(1); }} /></>}
   </div>;
 }
 

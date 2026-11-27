@@ -31,7 +31,7 @@ describe("AI user access", () => {
   it.each([["ai-admin", true], ["ai-view", false]] as const)("scopes %s to AI", async (role, manage) => {
     mock.get.mockResolvedValue({ data: [{ user_id: "user", role, roles: ["member", role] }] });
     render(<AIAccessGate>{(_, access) => <p>{JSON.stringify(access)}</p>}</AIAccessGate>);
-    expect(await screen.findByText(JSON.stringify({ view: true, manage, agents: false, workloadsView: true, workloadsManage: manage }))).toBeTruthy();
+    expect(await screen.findByText(JSON.stringify({ view: true, manage, agents: false, workloadsView: true, workloadsManage: manage, serverAdmin: false }))).toBeTruthy();
   });
   it("grants Engineering a configured model", async () => {
     mock.get.mockImplementation((path: string) => Promise.resolve({ data: path.endsWith("/members") ? [{ user_id: "user", role: "owner" }] : path.endsWith("user-groups") ? [{ id: "engineering", name: "Engineering", members: 4 }] : path.endsWith("user-model-grants") ? [] : { items: [provider] } }));

@@ -94,9 +94,14 @@ describe("AI team and agent policy workspace", () => {
     mocks.org.agent_policy_templates_enabled = false;
     render(<MemoryRouter initialEntries={["/agents/model-access"]}><AgentModelAccess /></MemoryRouter>);
     expect(await screen.findByText("Agent groups are turned off")).toBeTruthy();
-    expect(mocks.GET).not.toHaveBeenCalled();
+    // Only the feature list is asked for; no policy, agent or provider inventory is read.
+    expect(mocks.GET.mock.calls.map(([path]) => path)).toEqual(["/api/v1/organizations/{orgId}/agent-features"]);
     expect(mocks.PUT).not.toHaveBeenCalled();
     expect(mocks.POST).not.toHaveBeenCalled();
+    // AI-UX-1: the switch is here, not behind a link to Settings.
+    expect(screen.queryByRole("link", { name: /Settings/ })).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: "Turn on agent groups" }));
+    await waitFor(() => expect(mocks.PUT).toHaveBeenCalledWith("/api/v1/organizations/{orgId}/agent-policy-template-settings", { params: { path: { orgId: "org-a" } }, body: { enabled: true } }));
   });
 
   it("loads organization agents across pages and preserves selection after a failed page", async () => {

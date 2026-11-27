@@ -1,0 +1,25 @@
+.ai-gateway-off-banner { display:flex; align-items:center; justify-content:space-between; gap:16px 24px; flex-wrap:wrap; margin:0 0 20px; padding:16px 20px; border:1px solid var(--tnx-border); border-left:3px solid var(--tnx-warn); border-radius:8px; }
+.ai-gateway-off-copy { flex:1 1 320px; min-width:0; }
+.ai-gateway-off-copy h3 { margin:0; color:var(--tnx-text-heading); font-size:14px; font-weight:500; }
+.ai-gateway-off-copy p { max-width:720px; margin:6px 0 0; color:var(--tnx-text-secondary); font-size:13px; line-height:1.6; overflow-wrap:anywhere; }
+.ai-gateway-off-copy .ai-gateway-off-error { color:var(--tnx-danger); }
+.ai-gateway-off-actions { display:flex; flex-wrap:wrap; gap:12px; flex-shrink:0; }
+.ai-gateway-off-link { font-size:13px; text-decoration:underline; text-underline-offset:4px; }
+.ai-in-use { display:grid; gap:14px; }
+.ai-in-use h4 { margin:0 0 6px; color:var(--tnx-text-heading); font-size:13px; font-weight:500; }
+.ai-in-use ul { display:grid; gap:4px; margin:0; padding:0; list-style:none; font-size:13px; }
+.ai-in-use li { overflow-wrap:anywhere; }
+.ai-in-use a { text-decoration:underline; text-underline-offset:4px; }
+.ai-usage-budget { display:grid; gap:4px; min-width:120px; }
+.ai-usage-budget small { color:var(--tnx-text-secondary); font-size:11px; }
+.ai-usage-budget-track { display:block; height:4px; border-radius:2px; background:var(--tnx-border); overflow:hidden; }
+.ai-usage-budget-track i { display:block; height:100%; background:var(--tnx-ok); }
+.ai-usage-budget[data-over=true] .ai-usage-budget-track i { background:var(--tnx-warn); }
+.ai-agent-grant-list { display:grid; gap:8px; max-height:240px; margin:0; padding:0; overflow:auto; list-style:none; }
+.ai-agent-grant-list label { display:flex; align-items:flex-start; gap:10px; font-size:13px; overflow-wrap:anywhere; }
+.ai-agent-grant-list small { display:block; color:var(--tnx-text-secondary); font-size:11px; }
+.ai-access-section-title { margin:0 0 12px; color:var(--tnx-text-heading); font-size:14px; font-weight:500; }
+@media (max-width:640px) {
+  .ai-gateway-off-banner { align-items:flex-start; flex-direction:column; padding:14px 16px; }
+  .ai-gateway-off-actions { width:100%; }
+}
