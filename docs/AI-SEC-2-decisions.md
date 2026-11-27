@@ -135,6 +135,61 @@ each locked decision is unchanged.
   own gateway; the gateway listener needs the kernel WireGuard backend; an
   open connection is cut when its deny arrives.
 
+## As built: runtime update
+
+Found in the live walk: the notice told an administrator to reinstall the
+agent before the grace date, but the install command refuses a host that
+already runs the runtime. The only way through was to remove the agent and
+enrol it again as a new device, which loses its group membership, rules and
+MCP policy.
+
+- Locked: **an enrolled agent's runtime is updated in place.** The agent
+  page, Runtime tab, has "Update runtime". It shows a command to run on the
+  agent's host. The agent keeps its identity, access and MCP settings.
+  - Rejected: let the install command replace an existing installation. It
+    redeems a token and writes a new credential and key, so the host would
+    come back as a different device.
+  - Rejected: self-update from the runtime. The unit runs with a read-only
+    system; that stays.
+- The update command takes no install token and does not call the control
+  plane. It downloads the signed release descriptor and the separately signed
+  verifier, verifies them with the deployment's pinned public key carried in
+  the command, and checks the runtime binary and the unit against the signed
+  digests. This is the same shell the install command runs
+  (`runtimeHostChecks`, `runtimeReleaseVars`, `runtimeVerifierVars`,
+  `runtimeVerifiedDownload` in `apps/web/src/lib/agentview.ts`), not a copy.
+- It replaces only `/usr/local/bin/tunnex-agent-runtime` and the unit file,
+  each by a rename in its own directory, then reloads systemd and restarts the
+  service. It does not read or write the runtime credential, the WireGuard
+  configuration or interface, or the runtime state.
+- It refuses, changing nothing, when the host has no complete installation
+  (runtime, unit and credential), when any verification or download fails, or
+  when the host is unsupported. If the service does not start, or is not
+  running three seconds after the restart, the previous runtime and unit are
+  put back and the service is restarted. Every failure ends with one line
+  saying what was or was not changed.
+- No version ordering. The signed descriptor carries a version string and a
+  source commit, not a sequence, so the command installs the verified release
+  the control plane serves, including the same one again.
+- The install command still refuses an enrolled host, before it asks for the
+  token. A complete installation is told to use "Update runtime". A leftover
+  file or interface from an earlier installation is named and must be removed
+  first, because the update command would refuse it too.
+- `GET /api/v1/organizations/{orgId}/agents/runtime-release` returns the same
+  `AgentBootstrapRelease` as the bootstrap-token response, on the same
+  `agent:enroll` permission, without issuing a token. It answers 503
+  `bootstrap_unavailable` when no signed release is configured. "Update
+  runtime" is shown for an active agent to a member who holds that permission.
+- The notices now read "Update this agent's runtime before <date> to keep MCP
+  working" and link to the Runtime tab.
+- Open: the control plane does not know which runtime release a host runs
+  beyond the reported client version, so the page does not say whether an
+  update is needed. The MCP notice is the only prompt.
+- Substitute: proven by the executed-shell tests with a faked host
+  (`apps/web/test/agentbootstrap-host.test.ts`). The real proof, an update on
+  an enrolled systemd host with a signed release, is due at the next walk on
+  the GCP test machines.
+
 ## Validation
 
 - Tests first: gateway listener (identity from tunnel evidence only, forged

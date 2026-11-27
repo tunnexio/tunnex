@@ -1,4 +1,5 @@
 import { useEffect, useId, useState, type ReactNode } from "react";
+import { Link } from "react-router-dom";
 import type { components } from "@tunnex/shared";
 import { api, apiErrorCode, apiErrorMessage, loadOne, type Loaded } from "../lib/api";
 import { compactDateTime } from "../lib/format";
@@ -284,17 +285,19 @@ function EnforcementNotice({ tone, title, children }: { tone: "warn" | "danger";
  * Where this agent's tool rules are applied, and what the administrator has to do about it. Driven only by
  * what the server reports for the agent's effective profile; nothing is shown when it did not say.
  */
-export function MCPEnforcementNotices({ profile, now = new Date() }: { profile: EffectiveMCP; now?: Date }) {
+export function MCPEnforcementNotices({ profile, now = new Date(), updateHref }: { profile: EffectiveMCP; now?: Date; /** The agent's Runtime tab, where "Update runtime" is. */ updateHref?: string }) {
   if (!profile.assigned) return null;
   const graceUntil = profile.direct_path_grace_until ? new Date(profile.direct_path_grace_until) : null;
   const inGrace = graceUntil !== null && !Number.isNaN(graceUntil.getTime()) && graceUntil.getTime() > now.getTime();
   const host = hostOf(profile.endpoint);
+  // The runtime is updated in place: the agent is not removed or enrolled again, so nothing it has is lost.
+  const howToUpdate = <> The agent keeps its identity, access and MCP settings. {updateHref ? <Link className="underline" to={updateHref}>Update runtime</Link> : "Use Update runtime on the agent's page."}</>;
   return <>
     {profile.enforcement === "gateway" && <p role="note" className="mt-3 text-xs text-ink-tertiary">Tool rules are applied at the gateway. This agent needs no network rule for the MCP server.</p>}
     {profile.enforcement === "agent_host" && (inGrace && graceUntil
-      ? <EnforcementNotice tone="warn" title={`Reinstall this agent before ${noticeDate(graceUntil)} to keep MCP working`}>The new version sends MCP calls through the gateway, which applies the tool rules; the older way is switched off after this date.</EnforcementNotice>
-      : <EnforcementNotice tone="warn" title="Reinstall this agent to keep MCP working">The new version sends MCP calls through the gateway, which applies the tool rules; the older way can be switched off at any time.</EnforcementNotice>)}
-    {profile.enforcement === "unavailable" && <EnforcementNotice tone="danger" title="Upgrade this agent's gateway to use MCP">MCP is off for this agent because its gateway cannot apply tool rules yet. If the gateway is already up to date, reinstall the agent.</EnforcementNotice>}
+      ? <EnforcementNotice tone="warn" title={`Update this agent's runtime before ${noticeDate(graceUntil)} to keep MCP working`}>The new version sends MCP calls through the gateway, which applies the tool rules; the older way is switched off after this date.{howToUpdate}</EnforcementNotice>
+      : <EnforcementNotice tone="warn" title="Update this agent's runtime to keep MCP working">The new version sends MCP calls through the gateway, which applies the tool rules; the older way can be switched off at any time.{howToUpdate}</EnforcementNotice>)}
+    {profile.enforcement === "unavailable" && <EnforcementNotice tone="danger" title="Upgrade this agent's gateway to use MCP">MCP is off for this agent because its gateway cannot apply tool rules yet. If the gateway is already up to date, update this agent&apos;s runtime.</EnforcementNotice>}
     {profile.direct_path_closable === false && <EnforcementNotice tone="warn" title="Tunnex cannot fully block direct access to this server">The agent&apos;s machine may still reach {host || "this server"} without going through the gateway. Use a private IP address for the server, or add an FQDN resource with the same name. For a public server with no sign-in, tool rules cannot be guaranteed.</EnforcementNotice>}
   </>;
 }

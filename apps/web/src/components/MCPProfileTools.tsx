@@ -38,7 +38,7 @@ export function MCPProfileTools({ orgId, endpoint, members }: { orgId: string; e
     {!deviceId ? <p className="mt-3">Add an agent to this group and enable its runtime to discover this server’s tools.</p> : <>
       <Select aria-label="Reporting agent" value={deviceId} onChange={event => setChosen(event.target.value)} className="mt-3">{members.map(member => <option key={member.device_id} value={member.device_id}>{member.name || member.device_id}</option>)}</Select>
       <RefreshButton label="Refresh tools" className="mt-2" onClick={() => setReload(value => value + 1)} />
-      {effective && effective.endpoint === endpoint && <MCPEnforcementNotices profile={effective} />}
+      {effective && effective.endpoint === endpoint && <MCPEnforcementNotices profile={effective} updateHref={`/agents/${deviceId}?tab=runtime`} />}
       {error ? <p role="alert">Could not load tool inventory: {error}</p> : !inventory ? <p role="status">Loading observed tools…</p> : <>
         <p className="mt-2 text-xs text-ink-tertiary">Last observed: {inventory.observed_at}. This is the last {inventory.source === "gateway" ? "gateway check" : "agent report"}, not a live connection check.</p>
         {!servers.length && <p>No tools reported for this endpoint yet. Check the agent runtime and its inherited MCP profile.</p>}

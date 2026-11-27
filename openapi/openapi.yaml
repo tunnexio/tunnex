@@ -2764,6 +2764,34 @@ paths:
           headers: { X-Request-Id: { $ref: "#/components/headers/RequestId" } }
         default: { $ref: "#/components/responses/Error" }
 
+  /api/v1/organizations/{orgId}/agents/runtime-release:
+    parameters:
+      - name: orgId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      operationId: getAgentRuntimeRelease
+      summary: Get the managed agent runtime release this control plane serves
+      description: >-
+        Requires `agent:enroll`, the same permission as issuing a bootstrap token. Returns the release
+        metadata an install command carries, without issuing a token, so an already enrolled agent host
+        can replace its runtime in place. The response contains public verifier material only. Answers
+        503 `bootstrap_unavailable` when no signed release is configured or its verifier descriptor
+        cannot be validated, exactly as issuing a bootstrap token does.
+      tags: [agents]
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      responses:
+        "200":
+          description: The pinned runtime release.
+          headers: { X-Request-Id: { $ref: "#/components/headers/RequestId" } }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AgentBootstrapRelease" }
+        default: { $ref: "#/components/responses/Error" }
+
   /api/v1/sandbox/bootstrap:
     post:
       operationId: bootstrapSandbox

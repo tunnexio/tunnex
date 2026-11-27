@@ -19,7 +19,7 @@ const NOW = new Date("2026-11-27T10:00:00Z");
 const graceDate = "2026-12-27T00:00:00Z";
 const graceLabel = new Intl.DateTimeFormat(undefined, { day: "numeric", month: "long", year: "numeric" }).format(new Date(graceDate));
 const assigned = (over: Record<string, unknown>) => ({ assigned: true, profile_id: "p", profile_name: "Billing tools", endpoint: "http://10.0.0.5:8080/mcp", group_id: "g", group_name: "Finance agents", direct_path_closable: true, direct_path_grace_until: null, ...over });
-const show = (over: Record<string, unknown>) => render(<MCPEnforcementNotices profile={assigned(over) as never} now={NOW} />);
+const show = (over: Record<string, unknown>, updateHref?: string) => render(<MemoryRouter><MCPEnforcementNotices profile={assigned(over) as never} now={NOW} updateHref={updateHref} /></MemoryRouter>);
 const gatewayLine = "Tool rules are applied at the gateway. This agent needs no network rule for the MCP server.";
 const cannotClose = "Tunnex cannot fully block direct access to this server";
 
@@ -29,30 +29,37 @@ describe("MCP enforcement notices", () => {
   it("says tool rules are applied at the gateway", () => {
     show({ enforcement: "gateway" });
     expect(screen.getByText(gatewayLine)).toBeTruthy();
-    expect(screen.queryByText(/Reinstall/)).toBeNull();
+    expect(screen.queryByText(/Reinstall|Update this agent/)).toBeNull();
     expect(screen.queryByText(cannotClose)).toBeNull();
   });
 
-  it("gives the date to reinstall by while the older path is still allowed", () => {
-    show({ enforcement: "agent_host", direct_path_grace_until: graceDate });
-    const notice = within(screen.getByRole("note", { name: `Reinstall this agent before ${graceLabel} to keep MCP working` }));
-    expect(notice.getByText("The new version sends MCP calls through the gateway, which applies the tool rules; the older way is switched off after this date.")).toBeTruthy();
+  it("gives the date to update the runtime by while the older path is still allowed, and links to the action", () => {
+    show({ enforcement: "agent_host", direct_path_grace_until: graceDate }, "/agents/agent-a?tab=runtime");
+    const notice = within(screen.getByRole("note", { name: `Update this agent's runtime before ${graceLabel} to keep MCP working` }));
+    expect(notice.getByText(/The new version sends MCP calls through the gateway, which applies the tool rules; the older way is switched off after this date\./)).toBeTruthy();
+    expect(notice.getByText(/The agent keeps its identity, access and MCP settings\./)).toBeTruthy();
+    expect(notice.getByRole("link", { name: "Update runtime" }).getAttribute("href")).toBe("/agents/agent-a?tab=runtime");
     expect(screen.queryByText(gatewayLine)).toBeNull();
+    expect(screen.queryByText(/reinstall/i)).toBeNull();
   });
 
-  it("still asks for a reinstall when the older path has no date left", () => {
-    show({ enforcement: "agent_host", direct_path_grace_until: "2026-11-01T00:00:00Z" });
-    const notice = within(screen.getByRole("note", { name: "Reinstall this agent to keep MCP working" }));
-    expect(notice.getByText("The new version sends MCP calls through the gateway, which applies the tool rules; the older way can be switched off at any time.")).toBeTruthy();
+  it("still asks for a runtime update when the older path has no date left", () => {
+    show({ enforcement: "agent_host", direct_path_grace_until: "2026-11-01T00:00:00Z" }, "/agents/agent-a?tab=runtime");
+    const notice = within(screen.getByRole("note", { name: "Update this agent's runtime to keep MCP working" }));
+    expect(notice.getByText(/The new version sends MCP calls through the gateway, which applies the tool rules; the older way can be switched off at any time\./)).toBeTruthy();
+    expect(notice.getByRole("link", { name: "Update runtime" }).getAttribute("href")).toBe("/agents/agent-a?tab=runtime");
     cleanup();
     show({ enforcement: "agent_host" });
-    expect(screen.getByRole("note", { name: "Reinstall this agent to keep MCP working" })).toBeTruthy();
+    expect(screen.getByRole("note", { name: "Update this agent's runtime to keep MCP working" })).toBeTruthy();
+    // Without a place to send the reader, the notice names the action instead of linking nowhere.
+    expect(screen.queryByRole("link")).toBeNull();
+    expect(screen.getByText(/Use Update runtime on the agent's page\./)).toBeTruthy();
   });
 
   it("says to upgrade the gateway when MCP is withheld", () => {
     show({ enforcement: "unavailable" });
     const notice = within(screen.getByRole("note", { name: "Upgrade this agent's gateway to use MCP" }));
-    expect(notice.getByText("MCP is off for this agent because its gateway cannot apply tool rules yet. If the gateway is already up to date, reinstall the agent.")).toBeTruthy();
+    expect(notice.getByText("MCP is off for this agent because its gateway cannot apply tool rules yet. If the gateway is already up to date, update this agent's runtime.")).toBeTruthy();
     expect(screen.queryByText(gatewayLine)).toBeNull();
   });
 
@@ -64,10 +71,10 @@ describe("MCP enforcement notices", () => {
   });
 
   it("shows nothing when no profile is assigned or the server did not say", () => {
-    const empty = render(<MCPEnforcementNotices profile={{ assigned: false } as never} now={NOW} />);
+    const empty = render(<MemoryRouter><MCPEnforcementNotices profile={{ assigned: false } as never} now={NOW} /></MemoryRouter>);
     expect(empty.container.textContent).toBe("");
     cleanup();
-    const unknown = render(<MCPEnforcementNotices profile={{ assigned: true, endpoint: "http://10.0.0.5/mcp" } as never} now={NOW} />);
+    const unknown = render(<MemoryRouter><MCPEnforcementNotices profile={{ assigned: true, endpoint: "http://10.0.0.5/mcp" } as never} now={NOW} /></MemoryRouter>);
     expect(unknown.container.textContent).toBe("");
   });
 
@@ -97,11 +104,12 @@ describe("where the notices appear", () => {
       return { data: [] };
     });
   });
-  const reinstall = `Reinstall this agent before ${new Intl.DateTimeFormat(undefined, { day: "numeric", month: "long", year: "numeric" }).format(new Date("2099-01-15T00:00:00Z"))} to keep MCP working`;
+  const reinstall = `Update this agent's runtime before ${new Intl.DateTimeFormat(undefined, { day: "numeric", month: "long", year: "numeric" }).format(new Date("2099-01-15T00:00:00Z"))} to keep MCP working`;
 
   it("shows them with the agent's MCP profile on the agent MCP tab", async () => {
     render(<MemoryRouter initialEntries={["/agents/agent-a?tab=mcp"]}><AgentDetail agentIdOverride="agent-a" /></MemoryRouter>);
-    expect(await screen.findByRole("note", { name: reinstall })).toBeTruthy();
+    const notice = within(await screen.findByRole("note", { name: reinstall }));
+    expect(notice.getByRole("link", { name: "Update runtime" }).getAttribute("href")).toBe("/agents/agent-a?tab=runtime");
     expect(screen.getByRole("note", { name: cannotClose })).toBeTruthy();
     expect(await screen.findByText(/Seen by the gateway/)).toBeTruthy();
   });
@@ -116,7 +124,8 @@ describe("where the notices appear", () => {
 
   it("shows them for the chosen agent on the MCP page, and flags a changed tool there", async () => {
     render(<MemoryRouter><MCPProfileTools orgId="org-a" endpoint="https://tools.example.com/mcp" members={[{ device_id: "agent-a", name: "builder", status: "active", node_id: "node", added_at: "now" }] as never} /></MemoryRouter>);
-    expect(await screen.findByRole("note", { name: reinstall })).toBeTruthy();
+    const notice = within(await screen.findByRole("note", { name: reinstall }));
+    expect(notice.getByRole("link", { name: "Update runtime" }).getAttribute("href")).toBe("/agents/agent-a?tab=runtime");
     expect(screen.getByRole("note", { name: cannotClose })).toBeTruthy();
     expect(await screen.findByText("Changed, review")).toBeTruthy();
     expect(get).toHaveBeenCalledWith("/api/v1/organizations/{orgId}/agents/{deviceId}/effective-mcp-profile", { params: { path: { orgId: "org-a", deviceId: "agent-a" } } });
