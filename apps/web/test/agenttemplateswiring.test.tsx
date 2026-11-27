@@ -157,12 +157,15 @@ describe("released F09 agent group and template workflow", () => {
     render(<MemoryRouter><AgentsPolicyTemplates /></MemoryRouter>);
 
     expect(await screen.findByRole("heading", { name: "Agent groups and policy templates are turned off" })).toBeTruthy();
-    expect(screen.getByRole("link", { name: "Configure AI Agent settings" }).getAttribute("href")).toBe("/settings?section=features&feature=agent-templates");
+    // The feature is turned on in place; the page no longer sends the administrator to Settings.
+    expect((await screen.findByRole("switch", { name: "Agent groups & policy templates" })).getAttribute("aria-checked")).toBe("false");
+    expect(screen.queryByRole("link", { name: "Configure AI Agent settings" })).toBeNull();
     expect(screen.queryByText("Could not load policy templates. Refresh to retry.")).toBeNull();
     expect(screen.queryByRole("button", { name: "Create template" })).toBeNull();
     expect(f09Reads).toEqual([]);
-    expect(api.GET).toHaveBeenCalledTimes(1);
-    expect(api.GET).toHaveBeenCalledWith("/api/v1/organizations/{orgId}/members", expect.anything());
+    const paths = (api.GET as unknown as { mock: { calls: unknown[][] } }).mock.calls.map((call) => call[0]);
+    expect(paths).toContain("/api/v1/organizations/{orgId}/members");
+    expect(paths.some((path) => /agent-groups|agent-policy-template|resources/.test(String(path)))).toBe(false);
   });
 
   it("keeps genuine enabled policy-template inventory failures retryable", async () => {
