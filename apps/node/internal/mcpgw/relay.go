@@ -27,8 +27,9 @@ import (
 )
 
 const (
-	// Path is the one path the listener serves.
-	Path = "/mcp"
+	// Path is the listener's base path. It serves the caller's first MCP server there and each of its
+	// servers at Path + "/" + the server's name (AI-UX-1); nothing else.
+	Path = mcpwire.ListenerPath
 	// UpstreamTimeout bounds connecting to the MCP server and receiving its response headers, in total.
 	UpstreamTimeout = 5 * time.Second
 	// decideTimeout bounds one decision on the node channel.
@@ -36,6 +37,11 @@ const (
 	// maxCallDuration bounds one forwarded call, including a streamed answer.
 	maxCallDuration = 5 * time.Minute
 	maxConcurrent   = 64
+	// waitTimeout bounds the wait of one held "Ask first" call (AI-UX-1), apart from decideTimeout.
+	waitTimeout = mcpwire.WaitTimeoutSeconds * time.Second
+	// holdGrace is added to the hold the control plane asked for, so its own answer ("still pending")
+	// arrives before the gateway gives up on the wait.
+	holdGrace = 5 * time.Second
 
 	messageDecisionUnavailable = "MCP policy decision is unavailable"
 )
@@ -46,6 +52,9 @@ type Control interface {
 	MCPResult(ctx context.Context, vpnIP, vpnKey string, result mcpwire.ResultRequest) error
 	MCPTargets(ctx context.Context) ([]mcpwire.Target, error)
 	MCPInventory(ctx context.Context, report mcpwire.InventoryReport) error
+	// MCPWait reports what became of the approval request a held call waits on. It returns when the
+	// request leaves pending or the control plane's own bound passes.
+	MCPWait(ctx context.Context, vpnIP, vpnKey string, request mcpwire.WaitRequest) (mcpwire.WaitResponse, error)
 }
 
 // NewUpstreamTransport is the transport to MCP servers. It uses no proxy from the environment, shares no
@@ -68,7 +77,8 @@ func NewUpstreamTransport() *http.Transport {
 // (Authorization, cookies, forwarded-for or identity headers) is used or forwarded.
 func Handler(host string, control Control, upstream http.RoundTripper, peers aivpn.KernelPeers, logger *slog.Logger) http.Handler {
 	return &relay{host: host, control: control, upstream: upstream, peers: peers, logger: logger,
-		headerTimeout: UpstreamTimeout, slots: make(chan struct{}, maxConcurrent)}
+		headerTimeout: UpstreamTimeout, slots: make(chan struct{}, maxConcurrent),
+		waitTimeout: waitTimeout, held: make(chan struct{}, mcpwire.MaxHeldCalls)}
 }
 
 type relay struct {
@@ -79,6 +89,10 @@ type relay struct {
 	logger        *slog.Logger
 	headerTimeout time.Duration
 	slots         chan struct{}
+	waitTimeout   time.Duration
+	// held counts the calls being held for an approval. It is its own, smaller cap inside slots, so held
+	// calls can never take the whole listener.
+	held chan struct{}
 }
 
 func (h *relay) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -90,8 +104,11 @@ func (h *relay) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusMisdirectedRequest, codeInvalidRequest, "MCP gateway does not serve this host", nil)
 		return
 	}
-	if r.URL.Path != Path || r.URL.RawQuery != "" || r.URL.RawPath != "" {
-		writeError(w, http.StatusNotFound, codeInvalidRequest, "MCP gateway serves "+Path+" only", nil)
+	// The path names the server and nothing else: Path is the caller's first server, Path/<name> the
+	// server of that name. Whether the caller has such a server is the control plane's decision.
+	server, served := mcpwire.ServerFromPath(r.URL.Path)
+	if !served || r.URL.RawQuery != "" || r.URL.RawPath != "" {
+		writeError(w, http.StatusNotFound, codeInvalidRequest, "MCP gateway serves "+Path+" and "+Path+"/<server name> only", nil)
 		return
 	}
 	if r.Method != http.MethodPost {
@@ -151,16 +168,32 @@ func (h *relay) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	decideCtx, decideCancel := context.WithTimeout(ctx, decideTimeout)
-	decision, err := h.control.MCPDecide(decideCtx, source, key, mcpwire.DecideRequest{
-		Method: req.Method, ToolName: req.ToolName, Arguments: req.Arguments, ProtocolVersion: protocol,
-	})
-	decideCancel()
-	// No decision, or one that is not internally consistent, is a denial: nothing is forwarded.
-	if err != nil || decision.Valid() != nil {
-		h.logger.Warn("mcp_gateway_decision_unavailable", "source", source)
-		writeError(w, http.StatusServiceUnavailable, codeTransport, messageDecisionUnavailable, nil)
+	question := mcpwire.DecideRequest{
+		Method: req.Method, ToolName: req.ToolName, Arguments: req.Arguments, ProtocolVersion: protocol, Server: server,
+	}
+	decide := func() (mcpwire.DecideResponse, bool) {
+		decideCtx, decideCancel := context.WithTimeout(ctx, decideTimeout)
+		defer decideCancel()
+		decision, err := h.control.MCPDecide(decideCtx, source, key, question)
+		// No decision, or one that is not internally consistent, is a denial: nothing is forwarded.
+		if err != nil || decision.Valid() != nil {
+			h.logger.Warn("mcp_gateway_decision_unavailable", "source", source)
+			writeError(w, http.StatusServiceUnavailable, codeTransport, messageDecisionUnavailable, nil)
+			return mcpwire.DecideResponse{}, false
+		}
+		return decision, true
+	}
+	decision, ok := decide()
+	if !ok {
 		return
+	}
+	// An "Ask first" call the control plane lets this gateway hold: wait for the approver, and on an
+	// approval ask for the decision again, which consumes the approval. That second decision is final.
+	// In every other case the refusal below is the one the agent would have got at once.
+	if seconds, holdable := decision.Holdable(); holdable && h.approvedWhileHeld(ctx, source, key, decision.Error.Data.RequestID, seconds) {
+		if decision, ok = decide(); !ok {
+			return
+		}
 	}
 	if decision.Decision != mcpwire.DecisionAllow {
 		status := decision.Error.HTTPStatus
@@ -171,6 +204,26 @@ func (h *relay) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.forward(ctx, w, r, forwarded{source: source, key: key, method: req.Method, body: body, decision: decision})
+}
+
+// approvedWhileHeld keeps the call open until its approval request is decided, and reports whether it was
+// approved. It is false at once when mcpwire.MaxHeldCalls calls are already held, and false when the
+// request was denied, expired, is still pending at the bound, or could not be asked about.
+func (h *relay) approvedWhileHeld(ctx context.Context, source, key, requestID string, seconds int) bool {
+	select {
+	case h.held <- struct{}{}:
+		defer func() { <-h.held }()
+	default:
+		return false
+	}
+	bound := time.Duration(seconds)*time.Second + holdGrace
+	if bound > h.waitTimeout {
+		bound = h.waitTimeout
+	}
+	waitCtx, cancel := context.WithTimeout(ctx, bound)
+	defer cancel()
+	answer, err := h.control.MCPWait(waitCtx, source, key, mcpwire.WaitRequest{RequestID: requestID})
+	return err == nil && answer.State == mcpwire.WaitApproved
 }
 
 type forwarded struct {

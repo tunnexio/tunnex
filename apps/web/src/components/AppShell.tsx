@@ -22,7 +22,8 @@ import { CommandPalette } from "./CommandPalette";
 import { NewVersionBanner } from "./NewVersionBanner";
 import { useNavCounts } from "../lib/useNavCounts";
 import { Icon, type IconName } from "./Icon";
-import { badgeText, gatewayBadgeText, type NavCounts } from "../lib/navcounts";
+import { badgeText, gatewayBadgeText, type NavCount, type NavCounts } from "../lib/navcounts";
+import { useMCPApprovalCount } from "../lib/useMCPApprovalCount";
 import { navAllows, seesOrgAudit, useMyOrgRoles } from "../lib/navaccess";
 import "../app-shell.css";
 
@@ -72,6 +73,7 @@ export const NAV_GROUPS: Array<{
       { to: "/ai-gateway", label: "AI Gateway", icon: "aiGateway" },
       { to: "/agents", label: "AI Agents", icon: "bot" },
       { to: "/mcp", label: "MCP", icon: "mcp" },
+      { to: "/approvals", label: "Approvals", icon: "shield-check" },
     ],
   },
   {
@@ -121,7 +123,10 @@ export const NAV_DESTINATIONS = NAV_GROUPS.flatMap((g) => g.items);
  * ⛔ `null` MEANS RENDER NOTHING. Not an empty string, not a dash, and never `0` — see lib/navcounts.ts for
  * why this surface is stricter than any other in the app.
  */
-function badgeFor(to: string, c: NavCounts): string | null {
+function badgeFor(to: string, c: NavCounts, approvals: NavCount): string | null {
+  // Calls waiting for a person. Shown only when there are some: "0" in permanent chrome is noise, and an
+  // unknown count is never shown as a number.
+  if (to === "/approvals") return approvals.state === "ok" && approvals.value > 0 ? String(approvals.value) : null;
   // ⛔ THE GATEWAY RATIO BELONGS ON /gateways, and it was on /dashboard because /gateways DID NOT EXIST.
   //
   // Overview rendered `1/6` — the online-of-total GATEWAY count — on a nav item that is not about gateways,
@@ -155,6 +160,8 @@ function NavGroups({
   const groups = NAV_GROUPS.map(group => ({ ...group, items: group.items.filter(item => (item.to !== "/sandboxes" || sandboxState === "enabled" || sandboxState === "draining") && navAllows(item.to, mine)).map(item => item.to === "/audit" && mine.state === "ready" && !seesOrgAudit(mine.roles) ? { ...item, label: "My activity" } : item) })).filter(group => group.items.length > 0);
   const shows = navShows(collapsed ? "closed" : "open");
   const { pathname } = useLocation();
+  // Only a person who can approve is counted for; nobody else's sidebar asks.
+  const approvals = useMCPApprovalCount(mine.state === "ready" && navAllows("/approvals", mine));
   return (
     <>
       {groups.map((g) => (
@@ -200,7 +207,7 @@ function NavGroups({
                   {/* ⛔ The badge is RIGHT-ALIGNED and CONDITIONAL; the destination never is. `null` means
                       render nothing — never 0, never a dash (lib/navcounts.ts). */}
                   {(() => {
-                    const b = badgeFor(item.to, counts);
+                    const b = badgeFor(item.to, counts, approvals);
                     // Badges survive the collapse — they are the reason to glance at a rail at all.
                     if (collapsed) {
                       return b === null ? null : (

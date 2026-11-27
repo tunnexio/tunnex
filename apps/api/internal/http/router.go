@@ -325,6 +325,10 @@ func NewRouter(logger *slog.Logger, d Deps) (http.Handler, error) {
 	agentRuntime := agentruntime.New(d.AgentRuntimePool, d.AgentRuntimeOptIn)
 	agentRuntime.SetNotifier(d.AgentRuntimeNotify)
 	agentRuntime.SetAlertPublisher(d.AlertPublisher)
+	if d.MCPToolApproval != nil {
+		// A call that starts waiting for an approver is offered to alert delivery.
+		d.MCPToolApproval.SetAlertPublisher(d.AlertPublisher)
+	}
 	r.Use(runtimeAuthMiddleware(agentRuntime))
 	r.Use(aiInferenceMiddleware(d.AIAdapter))
 	r.Use(authBeforeAgentValidation)

@@ -344,7 +344,21 @@ const NO_TOKEN_USED = "; no bootstrap token was used";
  * for or used.
  */
 export const INSTALL_ON_ENROLLED_HOST =
-  `This host already runs a Tunnex agent. Nothing was changed and the install token was not used. To update it, use "Update runtime" on the agent's page in Tunnex.`;
+  `This host already runs a Tunnex agent. Nothing was changed and the install token was not used. To update a working agent, use "Update runtime" on the agent's page in Tunnex. If the agent was revoked, or you want to enrol this host as a new agent, first run the "Remove the agent from this host" command shown on the revoked agent's page in Tunnex, then run this install command again.`;
+
+/**
+ * Where a host with no terminal supplies the install token. The path is fixed
+ * so nothing a person types is ever placed in the command.
+ */
+export const INSTALL_TOKEN_FILE = "/root/tunnex-install-token";
+
+/**
+ * What the install command prints, and the Runtime tab shows, for a host that
+ * has no `resolvconf` and no way to get one. The agent still installs and
+ * connects there; only names pushed through the tunnel are affected.
+ */
+export const NO_TUNNEL_DNS_NOTE =
+  "This host has no resolvconf and no systemd-resolved, so private DNS names pushed through the tunnel will not resolve here. The agent is installed and reaches addresses as usual. To use those names, install resolvconf or turn on systemd-resolved, then restart tunnex-agent-runtime.";
 
 // The fragments below are shared, unchanged, by the install command and the
 // runtime update command. Obtaining and verifying the runtime must stay ONE
@@ -389,7 +403,27 @@ function runtimeVerifiedDownload(unused: string): string[] {
   ];
 }
 
-export function agentBootstrapCommand(release: BootstrapRelease, apiURL = globalThis.location?.origin ?? ""): string {
+// The token is accepted only when it has the install-token shape, whichever way
+// it reached the script. `refusal` says what was wrong without repeating it.
+function installTokenValidation(refusal: string): string {
+  return `bootstrap_token=$(printf '%s' "$bootstrap_token" | tr -d '[:space:]'); case "$bootstrap_token" in tnx_agent_*[!A-Za-z0-9_-]*|tnx_agent_) token_ok=0 ;; tnx_agent_*) token_ok=1 ;; *) token_ok=0 ;; esac; [ "$token_ok" = 1 ] || { echo ${shq(refusal)} >&2; exit 1; }`;
+}
+
+// Ask for the token on the terminal with echo off.
+function installTokenFromTerminal(): string {
+  return `tty_state=$(stty -g 2>/dev/null < /dev/tty) || { echo 'a terminal is required to enter the install token; run this command in an interactive shell; no bootstrap token was used' >&2; exit 1; }; trap 'stty "$tty_state" < /dev/tty 2>/dev/null; exit 130' INT TERM HUP; printf '%s' 'Paste the install token shown in Tunnex, then press Enter (it stays hidden): ' >&2; stty -echo < /dev/tty; bootstrap_token=; IFS= read -r bootstrap_token < /dev/tty || true; stty "$tty_state" < /dev/tty; trap - INT TERM HUP; printf '\\n' >&2; ${installTokenValidation("that is not an install token; copy it from Tunnex and run this command again; no bootstrap token was used")}`;
+}
+
+// A host with no terminal: read the token once from a root-only file at a fixed
+// path. The file must be a regular file (not a link) owned by root with mode
+// 600 or 400, and it is removed as soon as it is read, before any package,
+// download or redemption, so the token is never left on disk.
+function installTokenFromFile(): string {
+  const refuse = (problem: string) => `{ echo "The install token file $token_file ${problem}; no bootstrap token was used" >&2; exit 1; }`;
+  return `token_file=${INSTALL_TOKEN_FILE}; if as_root test -L "$token_file" || ! as_root test -f "$token_file"; then ${refuse("was not found, or it is not a regular file. Create it as described in Tunnex and run this command again")}; fi; token_file_facts=$(as_root stat -c '%u %a' "$token_file" 2>/dev/null) || token_file_facts=; case "$token_file_facts" in '0 600'|'0 400') ;; *) ${refuse("must be owned by root with mode 600 or 400. It was not read. Correct it, or delete it and create it again, then run this command again")} ;; esac; bootstrap_token=$(as_root cat "$token_file") || bootstrap_token=; as_root rm -f "$token_file"; token_file_read=1; if as_root test -e "$token_file" || as_root test -L "$token_file"; then bootstrap_token=; ${refuse("could not be removed after it was read. Remove it yourself, then issue a new command in Tunnex")}; fi; ${installTokenValidation("The install token file did not contain an install token. It was removed. Create it again with the token shown in Tunnex and run this command again; no bootstrap token was used")}`;
+}
+
+export function agentBootstrapCommand(release: BootstrapRelease, apiURL = globalThis.location?.origin ?? "", options: { /** Read the token from INSTALL_TOKEN_FILE instead of asking on a terminal. */ tokenFile?: boolean } = {}): string {
   const q = shq;
   const script = [
     ...runtimeHostChecks(),
@@ -397,17 +431,22 @@ export function agentBootstrapCommand(release: BootstrapRelease, apiURL = global
     // A complete installation is sent to "Update runtime". Anything less (a leftover file or interface) cannot
     // be updated in place, so it is named and the operator is told to remove it.
     `refuse_existing() { if as_root test -f "$runtime_bin" && as_root test -f "$runtime_unit" && as_root test -f "$runtime_cred"; then echo ${q(INSTALL_ON_ENROLLED_HOST)} >&2; else echo "Part of an earlier Tunnex agent installation is still on this host: $1. Nothing was changed and the install token was not used. Remove it, then run this command again." >&2; fi; rm -rf "$d"; exit 1; }; if [ -e /sys/class/net/runtime ] || { command -v wg >/dev/null && as_root wg show runtime >/dev/null 2>&1; }; then refuse_existing 'the runtime network interface'; fi; for target in "$runtime_bin" "$runtime_unit" "$runtime_cfg" "$runtime_cred" "$runtime_state"; do if as_root test -e "$target" || as_root test -L "$target"; then refuse_existing "$target"; fi; done`,
-    "rollback_file() { path=\"$1\"; snap=\"$2\"; if [ -f \"$snap\" ]; then as_root install -o root -g root -m 600 \"$snap\" \"$path\"; else as_root rm -f \"$path\"; fi; }; offboard_runtime() { as_root systemctl disable --now tunnex-agent-runtime.service >/dev/null 2>&1 || true; }; rollback() { offboard_runtime; rollback_file \"$runtime_bin\" \"$d/runtime-bin.snapshot\"; rollback_file \"$runtime_unit\" \"$d/runtime-unit.snapshot\"; rollback_file \"$runtime_cfg\" \"$d/runtime-cfg.snapshot\"; rollback_file \"$runtime_cred\" \"$d/runtime-cred.snapshot\"; rollback_file \"$runtime_state\" \"$d/runtime-state.snapshot\"; as_root systemctl daemon-reload >/dev/null 2>&1 || true; if [ \"$was_active\" = 1 ]; then as_root systemctl start tunnex-agent-runtime.service >/dev/null 2>&1 || true; else as_root systemctl stop tunnex-agent-runtime.service >/dev/null 2>&1 || true; fi; if [ \"$was_enabled\" = 1 ]; then as_root systemctl enable tunnex-agent-runtime.service >/dev/null 2>&1 || true; else as_root systemctl disable tunnex-agent-runtime.service >/dev/null 2>&1 || true; fi; }; cleanup() { rc=$?; set +e; if [ \"$failed\" = 1 ] && [ \"$snapshot_ready\" = 1 ]; then rollback; fi; rm -rf \"$d\"; trap - EXIT; exit \"$rc\"; }; trap cleanup EXIT",
+    "rollback_file() { path=\"$1\"; snap=\"$2\"; if [ -f \"$snap\" ]; then as_root install -o root -g root -m 600 \"$snap\" \"$path\"; else as_root rm -f \"$path\"; fi; }; offboard_runtime() { as_root systemctl disable --now tunnex-agent-runtime.service >/dev/null 2>&1 || true; }; rollback() { offboard_runtime; rollback_file \"$runtime_bin\" \"$d/runtime-bin.snapshot\"; rollback_file \"$runtime_unit\" \"$d/runtime-unit.snapshot\"; rollback_file \"$runtime_cfg\" \"$d/runtime-cfg.snapshot\"; rollback_file \"$runtime_cred\" \"$d/runtime-cred.snapshot\"; rollback_file \"$runtime_state\" \"$d/runtime-state.snapshot\"; as_root systemctl daemon-reload >/dev/null 2>&1 || true; if [ \"$was_active\" = 1 ]; then as_root systemctl start tunnex-agent-runtime.service >/dev/null 2>&1 || true; else as_root systemctl stop tunnex-agent-runtime.service >/dev/null 2>&1 || true; fi; if [ \"$was_enabled\" = 1 ]; then as_root systemctl enable tunnex-agent-runtime.service >/dev/null 2>&1 || true; else as_root systemctl disable tunnex-agent-runtime.service >/dev/null 2>&1 || true; fi; }; token_file_read=0; cleanup() { rc=$?; set +e; if [ \"$failed\" = 1 ] && [ \"$snapshot_ready\" = 1 ]; then rollback; fi; if [ \"$failed\" = 1 ] && [ \"$token_file_read\" = 1 ]; then echo 'The install token file was read and removed. Create it again before you run this command again.' >&2; fi; rm -rf \"$d\"; trap - EXIT; exit \"$rc\"; }; trap cleanup EXIT",
     runtimeVerifierVars(release, NO_TOKEN_USED),
-    `tty_state=$(stty -g 2>/dev/null < /dev/tty) || { echo 'a terminal is required to enter the install token; run this command in an interactive shell; no bootstrap token was used' >&2; exit 1; }; trap 'stty "$tty_state" < /dev/tty 2>/dev/null; exit 130' INT TERM HUP; printf '%s' 'Paste the install token shown in Tunnex, then press Enter (it stays hidden): ' >&2; stty -echo < /dev/tty; bootstrap_token=; IFS= read -r bootstrap_token < /dev/tty || true; stty "$tty_state" < /dev/tty; trap - INT TERM HUP; printf '\\n' >&2; bootstrap_token=$(printf '%s' "$bootstrap_token" | tr -d '[:space:]'); case "$bootstrap_token" in tnx_agent_*[!A-Za-z0-9_-]*|tnx_agent_) token_ok=0 ;; tnx_agent_*) token_ok=1 ;; *) token_ok=0 ;; esac; [ "$token_ok" = 1 ] || { echo 'that is not an install token; copy it from Tunnex and run this command again; no bootstrap token was used' >&2; exit 1; }`,
+    options.tokenFile ? installTokenFromFile() : installTokenFromTerminal(),
     "packages=; command -v wg >/dev/null && command -v wg-quick >/dev/null || packages=\"$packages wireguard-tools\"; command -v curl >/dev/null || packages=\"$packages curl\"; command -v jq >/dev/null || packages=\"$packages jq\"; command -v ip >/dev/null || packages=\"$packages iproute2\"; command -v sha256sum >/dev/null || packages=\"$packages coreutils\"; [ -s /etc/ssl/certs/ca-certificates.crt ] || packages=\"$packages ca-certificates\"",
-    "need_resolver=0; resolver_link=; if ! command -v resolvconf >/dev/null; then if command -v resolvectl >/dev/null && as_root systemctl is-active --quiet systemd-resolved && resolvectl status >/dev/null 2>&1; then resolver_link=$(command -v resolvectl); else need_resolver=1; fi; fi",
-    "if [ -n \"$packages\" ] || [ \"$need_resolver\" = 1 ]; then command -v apt-get >/dev/null && command -v apt-cache >/dev/null || { echo 'apt is required to install missing agent dependencies' >&2; exit 1; }; as_root apt-get update || { echo 'could not refresh dependency packages; no bootstrap token was used' >&2; exit 1; }; if [ \"$need_resolver\" = 1 ]; then apt-cache show openresolv >/dev/null 2>&1 || { echo 'no supported resolver compatibility is available; configure resolvconf or active systemd-resolved before retrying; no bootstrap token was used' >&2; exit 1; }; packages=\"$packages openresolv\"; fi; as_root env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends --no-remove $packages || { echo 'agent dependency installation failed; no bootstrap token was used' >&2; exit 1; }; fi",
+    // `resolvconf` is wanted only because the tunnel configuration can carry a DNS line. A host with none,
+    // no active systemd-resolved and no installable `openresolv` (a stock Ubuntu 24.04 server) still installs:
+    // the runtime leaves the DNS line out there, and the operator is told what that means.
+    "need_resolver=0; resolver_link=; no_tunnel_dns=0; if ! command -v resolvconf >/dev/null; then if command -v resolvectl >/dev/null && as_root systemctl is-active --quiet systemd-resolved && resolvectl status >/dev/null 2>&1; then resolver_link=$(command -v resolvectl); else need_resolver=1; fi; fi",
+    "if [ -n \"$packages\" ] || [ \"$need_resolver\" = 1 ]; then if command -v apt-get >/dev/null && command -v apt-cache >/dev/null; then if as_root apt-get update; then if [ \"$need_resolver\" = 1 ] && apt-cache show openresolv >/dev/null 2>&1; then packages=\"$packages openresolv\"; fi; elif [ -n \"$packages\" ]; then echo 'could not refresh dependency packages; no bootstrap token was used' >&2; exit 1; fi; if [ -n \"$packages\" ]; then as_root env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends --no-remove $packages || { echo 'agent dependency installation failed; no bootstrap token was used' >&2; exit 1; }; fi; elif [ -n \"$packages\" ]; then echo 'apt is required to install missing agent dependencies' >&2; exit 1; fi; fi",
     "if [ -n \"$resolver_link\" ]; then if [ -e /usr/local/sbin/resolvconf ] || [ -L /usr/local/sbin/resolvconf ]; then echo 'existing resolver compatibility path refused' >&2; exit 1; fi; as_root mkdir -p /usr/local/sbin; as_root ln -s \"$resolver_link\" /usr/local/sbin/resolvconf; fi",
-    "for tool in wg wg-quick curl jq ip sha256sum resolvconf; do command -v \"$tool\" >/dev/null || { echo \"required agent dependency is unavailable: $tool; no bootstrap token was used\" >&2; exit 1; }; done; [ -s /etc/ssl/certs/ca-certificates.crt ] || { echo 'CA certificates are unavailable; no bootstrap token was used' >&2; exit 1; }",
+    "command -v resolvconf >/dev/null || no_tunnel_dns=1",
+    "for tool in wg wg-quick curl jq ip sha256sum; do command -v \"$tool\" >/dev/null || { echo \"required agent dependency is unavailable: $tool; no bootstrap token was used\" >&2; exit 1; }; done; [ -s /etc/ssl/certs/ca-certificates.crt ] || { echo 'CA certificates are unavailable; no bootstrap token was used' >&2; exit 1; }",
     ...runtimeVerifiedDownload(NO_TOKEN_USED),
     `wg genkey > "$d/key"; wg pubkey < "$d/key" > "$d/public"; printf '%s' "$bootstrap_token" > "$d/token"; bootstrap_token=; jq -nc --rawfile token "$d/token" --rawfile key "$d/public" '{bootstrap_token:($token|rtrimstr("\\n")),public_key:($key|rtrimstr("\\n"))}' | curl -fsS -H 'content-type: application/json' --data-binary @- ${q(`${apiURL}/api/v1/agent/bootstrap`)} > "$d/response" 2> "$d/bootstrap.err" || { if grep -Eq 'error: 40[13]' "$d/bootstrap.err"; then echo 'Tunnex refused the install token. It was already used, has expired or was revoked. Issue a new command in Tunnex and run it again; nothing was installed' >&2; else echo 'could not reach Tunnex to redeem the install token; check the network and run this command again; nothing was installed' >&2; fi; exit 1; }; jq -e '.config | type == "string" and contains("__TUNNEX_PRIVATE_KEY__")' < "$d/response" >/dev/null; jq -e '.runtime_credential | type == "string" and length > 0' < "$d/response" >/dev/null; jq -j --rawfile p "$d/key" '.config | gsub("__TUNNEX_PRIVATE_KEY__"; ($p|rtrimstr("\\n")))' < "$d/response" > "$d/config"; jq -r '.runtime_credential' < "$d/response" > "$d/credential"; jq -n --arg server ${q(apiURL)} --arg client tunnex-agent-runtime '{server:$server,applied_revision:0,client_version:$client}' > "$d/state"; as_root systemctl is-active --quiet tunnex-agent-runtime.service && was_active=1 || true; as_root systemctl is-enabled --quiet tunnex-agent-runtime.service && was_enabled=1 || true`,
     "for pair in 'runtime-bin.snapshot /usr/local/bin/tunnex-agent-runtime' 'runtime-unit.snapshot /etc/systemd/system/tunnex-agent-runtime.service' 'runtime-cfg.snapshot /etc/wireguard/runtime.conf' 'runtime-cred.snapshot /etc/tunnex-agent/runtime-credential' 'runtime-state.snapshot /var/lib/tunnex-agent/runtime-state.json'; do snap=$(printf '%s' \"$pair\" | cut -d' ' -f1); path=$(printf '%s' \"$pair\" | cut -d' ' -f2); if as_root test -f \"$path\"; then as_root cp -p \"$path\" \"$d/$snap\"; fi; done; snapshot_ready=1; as_root install -d -o root -g root -m 755 /etc/wireguard /etc/tunnex-agent /var/lib/tunnex-agent /etc/systemd/system; as_root install -o root -g root -m 755 \"$d/runtime\" \"$runtime_bin\"; as_root install -o root -g root -m 644 \"$d/unit\" \"$runtime_unit\"; as_root install -o root -g root -m 600 \"$d/config\" \"$runtime_cfg\"; as_root install -o root -g root -m 600 \"$d/credential\" \"$runtime_cred\"; as_root install -o root -g root -m 600 \"$d/state\" \"$runtime_state\"; as_root systemctl daemon-reload; as_root systemctl enable --now tunnex-agent-runtime.service; failed=0; trap - EXIT; rm -rf \"$d\"",
+    `if [ "$no_tunnel_dns" = 1 ]; then echo ${q(`Note: ${NO_TUNNEL_DNS_NOTE}`)} >&2; fi`,
   ].join("; ");
   return ["sh <<'TUNNEX_BOOTSTRAP'", script, "TUNNEX_BOOTSTRAP"].join("\n");
 }
@@ -446,6 +485,40 @@ export function agentRuntimeUpdateCommand(release: BootstrapRelease): string {
 }
 
 /**
+ * The command an administrator runs on the host of an agent that was revoked
+ * or abandoned, so the host can be enrolled again.
+ *
+ * It is the same text for every agent: it takes no token, embeds no secret and
+ * contacts nothing. In order it stops and disables the runtime service, brings
+ * the managed tunnel interface down, then removes the unit, the runtime, the
+ * stored credential, the runtime state and the managed tunnel configuration,
+ * with the copies the runtime keeps beside them while a credential or key is
+ * being changed. Each path is named in full and removed with a plain `rm -f`:
+ * no pattern, no directory, nothing else on the host. Running it again, or on
+ * a host that never had an agent, changes nothing.
+ */
+export function agentHostRemoveCommand(): string {
+  const q = shq;
+  const service = "tunnex-agent-runtime.service";
+  const script = [
+    ...runtimeHostChecks().slice(0, 2),
+    "[ \"$(uname -s)\" = Linux ] || { echo 'This command removes the Tunnex agent from a Linux host. Nothing was changed.' >&2; exit 1; }",
+    runtimeHostChecks()[4],
+    "runtime_bin=/usr/local/bin/tunnex-agent-runtime; runtime_unit=/etc/systemd/system/tunnex-agent-runtime.service; runtime_cfg=/etc/wireguard/runtime.conf; runtime_cred=/etc/tunnex-agent/runtime-credential; runtime_state=/var/lib/tunnex-agent/runtime-state.json",
+    // `removed` is the summary. A stop part-way still says what was already removed.
+    `removed=; done=0; nl='\n'; note() { removed="$removed- $1$nl"; }; present() { as_root test -e "$1" || as_root test -L "$1"; }; finish() { rc=$?; set +e; if [ "$done" = 0 ] && [ -n "$removed" ]; then echo 'Removed before it stopped:' >&2; printf '%s' "$removed" >&2; fi; trap - EXIT; exit "$rc"; }; trap finish EXIT; trap 'exit 130' INT TERM HUP`,
+    `drop() { if present "$1"; then as_root rm -f "$1" 2>/dev/null || true; if present "$1"; then echo "$1 could not be removed. Remove it yourself, then run this command again." >&2; exit 1; fi; note "$2 $1"; fi; }`,
+    `if command -v systemctl >/dev/null 2>&1; then if present "$runtime_unit" || as_root systemctl is-active --quiet ${service} || as_root systemctl is-enabled --quiet ${service} 2>/dev/null; then as_root systemctl disable --now ${service} >/dev/null 2>&1 || true; as_root systemctl stop ${service} >/dev/null 2>&1 || true; if as_root systemctl is-active --quiet ${service}; then echo ${q("The tunnex-agent-runtime service could not be stopped, so nothing was removed. Run: sudo systemctl stop tunnex-agent-runtime. Then run this command again.")} >&2; exit 1; fi; note 'the tunnex-agent-runtime service was stopped and disabled'; fi; fi`,
+    // wg-quick also undoes the routes and DNS it added; deleting the link is the fallback.
+    `if [ -e /sys/class/net/runtime ]; then if command -v wg-quick >/dev/null 2>&1 && as_root test -f "$runtime_cfg"; then as_root wg-quick down "$runtime_cfg" >/dev/null 2>&1 || true; fi; if [ -e /sys/class/net/runtime ] && command -v ip >/dev/null 2>&1; then as_root ip link delete dev runtime >/dev/null 2>&1 || true; fi; if [ -e /sys/class/net/runtime ]; then echo ${q("The tunnel interface runtime could not be brought down, so no file was removed. Run: sudo ip link delete dev runtime. Then run this command again.")} >&2; exit 1; fi; note 'the tunnel interface runtime was brought down'; fi`,
+    `unit_gone=0; if present "$runtime_unit" || present "$runtime_unit.tunnex-update"; then unit_gone=1; fi; drop "$runtime_unit" 'the service unit'; drop "$runtime_unit.tunnex-update" 'an unfinished update of the service unit'; if [ "$unit_gone" = 1 ] && command -v systemctl >/dev/null 2>&1; then as_root systemctl daemon-reload >/dev/null 2>&1 || true; fi`,
+    `drop "$runtime_bin" 'the runtime program'; drop "$runtime_bin.tunnex-update" 'an unfinished update of the runtime program'; drop "$runtime_cred" 'the stored credential'; drop "$runtime_cred.previous" 'an earlier copy of the credential'; drop "$runtime_cred.candidate" 'an unfinished copy of the credential'; drop "$runtime_state" 'the runtime state'; drop "$runtime_cfg" 'the tunnel configuration'; drop "$runtime_cfg.previous" 'an earlier copy of the tunnel configuration'; drop "$runtime_cfg.candidate-key" 'an unfinished tunnel key'; drop "$runtime_cfg.restore-key" 'a saved tunnel key'`,
+    `done=1; if [ -z "$removed" ]; then echo 'No Tunnex agent was found on this host, so nothing was removed. This host can be enrolled with the install command from Add agent in Tunnex.'; else echo 'Removed the Tunnex agent from this host:'; printf '%s' "$removed"; echo 'Nothing else on this host was changed. This host can now be enrolled again with the install command from Add agent in Tunnex.'; fi`,
+  ].join("; ");
+  return ["sh <<'TUNNEX_AGENT_REMOVE'", script, "TUNNEX_AGENT_REMOVE"].join("\n");
+}
+
+/**
  * What the operator must have on the agent host first.
  *
  * ⚠ STATED, NOT ASSUMED. `wg-quick` is not installed by default on most images, and a command that fails
@@ -462,4 +535,4 @@ export function agentRuntimeUpdateCommand(release: BootstrapRelease): string {
  * A successful request is not proof the tunnel carried it — only a counter delta on the peer is.
  */
 export const AGENT_PREREQ =
-  "Requires Ubuntu/Debian (amd64 or arm64), systemd, and root or sudo. Missing host dependencies are installed automatically.";
+  "Requires Ubuntu/Debian (amd64 or arm64), systemd, and root or sudo. Missing host dependencies are installed automatically. On a host with no resolvconf and no systemd-resolved the agent still installs, but private DNS names pushed through the tunnel do not resolve there.";

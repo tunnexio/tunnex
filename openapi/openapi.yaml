@@ -1375,6 +1375,10 @@ paths:
         content: { application/json: { schema: { $ref: '#/components/schemas/AIProviderRevision' } } }
       responses:
         "204": { description: Connection removed; team policies and usage are preserved. }
+        "409":
+          description: The connection is in use. Lists what uses it so each can be opened and changed first.
+          headers: { X-Request-Id: { $ref: "#/components/headers/RequestId" } }
+          content: { application/json: { schema: { $ref: '#/components/schemas/AIProviderInUseConflict' } } }
         default: { $ref: '#/components/responses/Error' }
   /api/v1/organizations/{orgId}/ai-gateway/providers/{connectionId}/test:
     parameters:
@@ -1510,6 +1514,22 @@ paths:
           headers:
             Cache-Control: { schema: { type: string, enum: [no-store] } }
           content: { application/json: { schema: { $ref: "#/components/schemas/AICredential" } } }
+        default: { $ref: "#/components/responses/Error" }
+  /api/v1/organizations/{orgId}/ai-gateway/status:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: getAIGatewayStatus
+      summary: Whether the AI gateway works for this organization and, when it does not, the one reason
+      description: >-
+        For a person who may use a model but may not read the AI gateway settings, so the page that lists
+        their models can say why none can answer. Carries only `on` and `reason`: `fix` is never set and no
+        setting is returned.
+      tags: [ai-gateway]
+      responses:
+        "200":
+          description: Whether the gateway is usable, and the reason when it is not.
+          content: { application/json: { schema: { $ref: "#/components/schemas/AIGatewayStatus" } } }
         default: { $ref: "#/components/responses/Error" }
   /api/v1/organizations/{orgId}/ai-gateway:
     parameters:
@@ -2746,6 +2766,26 @@ paths:
         in: path
         required: true
         schema: { type: string, format: uuid }
+    get:
+      operationId: getAgentBootstrapTokenStatus
+      summary: Read whether a bootstrap token was used and whether its agent is connected
+      description: >-
+        Requires `agent:enroll`, the same permission as issuing. The install step polls this to show
+        waiting, enrolled and tunnel connected. Unlike the pending list it also answers for a token that
+        was used, revoked or has expired. The token value and its hash are never returned. A token that is
+        unknown or belongs to another organization answers 404 `bootstrap_token_not_found`.
+      tags: [agents]
+      security:
+        - cookieAuth: []
+        - bearerAuth: []
+      responses:
+        "200":
+          description: The token's state and, once enrolled, the agent's tunnel facts.
+          headers: { X-Request-Id: { $ref: "#/components/headers/RequestId" } }
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AgentBootstrapTokenStatus" }
+        default: { $ref: "#/components/responses/Error" }
     delete:
       operationId: revokeAgentBootstrapToken
       summary: Revoke a pending managed agent bootstrap token
@@ -2871,6 +2911,14 @@ paths:
             True when this runtime forwards MCP to the gateway listener named by `mcp_gateway_url` instead of
             calling the MCP server itself. A runtime that predates gateway enforcement omits it. The runtime
             cannot update itself, so this explicit declaration, not `client_version`, is the capability signal.
+          schema: { type: boolean, default: false }
+        - name: mcp_hold
+          in: query
+          required: false
+          description: >-
+            True when this runtime's local proxy keeps an MCP request open for up to 60 seconds, so the
+            gateway may hold an "Ask first" call while an approver decides. A runtime that predates held
+            calls omits it and gets the immediate "requires step-up approval" error, as before.
           schema: { type: boolean, default: false }
       responses:
         "200":
@@ -3221,6 +3269,32 @@ paths:
               schema: { $ref: "#/components/schemas/AgentMCPToolPolicy" }
         default: { $ref: "#/components/responses/Error" }
 
+  /api/v1/organizations/{orgId}/agents/{deviceId}/mcp-tool-policy/override:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: deviceId, in: path, required: true, schema: { type: string, format: uuid } }
+    delete:
+      operationId: removeAgentMCPToolPolicyOverride
+      summary: Stop an agent's own tool policy from overriding its group for one MCP server
+      description: >-
+        Creates the next immutable policy version for the agent without the rules for `endpoint` and without
+        that endpoint in `override_endpoints`. From then on the group's tool policy decides for that server.
+        Answers 404 `mcp_tool_policy_override_not_found` when the agent's policy does not override the
+        endpoint. Writes the audit action `agent.mcp_tool_policy.override_removed`.
+      tags: [agents]
+      parameters:
+        - name: endpoint
+          in: query
+          required: true
+          description: The MCP endpoint whose per-agent override is removed.
+          schema: { type: string, format: uri, minLength: 1, maxLength: 2048 }
+      responses:
+        "200":
+          description: New current policy version of the agent.
+          headers: { X-Request-Id: { $ref: "#/components/headers/RequestId" } }
+          content: { application/json: { schema: { $ref: "#/components/schemas/AgentMCPToolPolicy" } } }
+        default: { $ref: "#/components/responses/Error" }
+
   /api/v1/organizations/{orgId}/agents/{deviceId}/mcp-tool-policy/accept-definition:
     parameters:
       - name: orgId
@@ -3281,12 +3355,94 @@ paths:
           required: false
           description: The `next_cursor` of the previous page.
           schema: { type: string, minLength: 1, maxLength: 256 }
+        - name: decision
+          in: query
+          required: false
+          description: Only allowed or only denied calls.
+          schema: { $ref: "#/components/schemas/MCPToolActivityDecisionFilter" }
+        - name: approved
+          in: query
+          required: false
+          description: True keeps only calls that ran on an approval.
+          schema: { type: boolean, default: false }
+        - name: from
+          in: query
+          required: false
+          description: Only calls at or after this instant.
+          schema: { type: string, format: date-time }
+        - name: to
+          in: query
+          required: false
+          description: Only calls before this instant.
+          schema: { type: string, format: date-time }
+        - name: server
+          in: query
+          required: false
+          description: Only calls to the MCP server with this server name (the profile's `server_name`).
+          schema: { type: string, pattern: '^[a-z0-9][a-z0-9-]{0,62}$' }
       responses:
         "200":
           description: One page of activity.
           content:
             application/json:
               schema: { $ref: "#/components/schemas/AgentMCPToolActivityPage" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/v1/organizations/{orgId}/agents/{deviceId}/mcp-tool-activity/export:
+    parameters:
+      - name: orgId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+      - name: deviceId
+        in: path
+        required: true
+        schema: { type: string, format: uuid }
+    get:
+      operationId: exportAgentMCPToolActivity
+      summary: Download what an agent did through MCP as CSV
+      description: >-
+        The same rows and filters as the activity list, newest first, as one CSV file with a header row,
+        capped at 10 000 rows. Arguments are never included, only their digest. Writes the audit action
+        `agent.mcp_tool_activity.exported`.
+      tags: [agents]
+      parameters:
+        - name: decision
+          in: query
+          required: false
+          description: Only allowed or only denied calls.
+          schema: { $ref: "#/components/schemas/MCPToolActivityDecisionFilter" }
+        - name: approved
+          in: query
+          required: false
+          description: True keeps only calls that ran on an approval.
+          schema: { type: boolean, default: false }
+        - name: from
+          in: query
+          required: false
+          description: Only calls at or after this instant.
+          schema: { type: string, format: date-time }
+        - name: to
+          in: query
+          required: false
+          description: Only calls before this instant.
+          schema: { type: string, format: date-time }
+        - name: server
+          in: query
+          required: false
+          description: Only calls to the MCP server with this server name (the profile's `server_name`).
+          schema: { type: string, pattern: '^[a-z0-9][a-z0-9-]{0,62}$' }
+      responses:
+        "200":
+          description: The CSV file.
+          headers:
+            X-Request-Id: { $ref: "#/components/headers/RequestId" }
+            Content-Disposition:
+              description: Names the download, for example `attachment; filename="mcp-activity.csv"`.
+              schema: { type: string }
+          content:
+            text/csv:
+              schema: { type: string }
         default: { $ref: "#/components/responses/Error" }
 
   /api/v1/organizations/{orgId}/agents/{deviceId}/mcp-tool-approval-requests:
@@ -3527,6 +3683,69 @@ paths:
           content:
             application/json:
               schema: { $ref: "#/components/schemas/AgentAccessDiagnostic" }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/v1/organizations/{orgId}/agents/{deviceId}/access-summary:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: deviceId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: getAgentAccessSummary
+      summary: List what an agent can reach now and what it was refused recently
+      description: >-
+        Read-only. `rules` are the policy rules whose source is this agent or one of its agent groups, each
+        with its destination and ports. `refusals` are recent denied connections attributed to the agent,
+        grouped by destination; on an edition without the access log `refusals.available` is false and
+        `required_plan` names the plan that includes it. Creates and changes nothing.
+      tags: [agents]
+      responses:
+        "200":
+          description: The agent's current access and recent refusals.
+          headers: { X-Request-Id: { $ref: "#/components/headers/RequestId" } }
+          content: { application/json: { schema: { $ref: "#/components/schemas/AgentAccessSummary" } } }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/v1/organizations/{orgId}/agents/{deviceId}/owner-access-preview:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: deviceId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      operationId: previewAgentOwnerAccess
+      summary: Preview the owner's current access as rules for the agent
+      description: >-
+        Requires `agent:grant_access`. Lists every destination the agent's owner can reach now, directly or
+        through a user group, as a candidate rule for the agent. Creates nothing. A destination kind that
+        cannot be copied to an agent is listed with `copyable` false. An agent with no owner answers 409
+        `agent_owner_unattributable`.
+      tags: [agents]
+      responses:
+        "200":
+          description: Candidate rules. Nothing was created.
+          headers: { X-Request-Id: { $ref: "#/components/headers/RequestId" } }
+          content: { application/json: { schema: { $ref: "#/components/schemas/AgentOwnerAccessPreview" } } }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/v1/organizations/{orgId}/agents/{deviceId}/owner-access-rules:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: deviceId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      operationId: createAgentRulesFromOwnerAccess
+      summary: Create agent rules from chosen destinations of the owner's access
+      description: >-
+        Requires `agent:grant_access`. Creates one rule with this agent as its source for each chosen
+        candidate `key` of the latest preview. A key that is unknown, no longer current, not copyable or
+        already covered refuses the whole request with 409 `owner_access_preview_stale` and creates nothing.
+        Writes the audit action `agent.access_rules_created_from_owner` with the rule ids.
+      tags: [agents]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/CreateAgentRulesFromOwnerAccessRequest" } } }
+      responses:
+        "201":
+          description: The rules that were created.
+          headers: { X-Request-Id: { $ref: "#/components/headers/RequestId" } }
+          content: { application/json: { schema: { $ref: "#/components/schemas/AgentOwnerAccessRulesResult" } } }
         default: { $ref: "#/components/responses/Error" }
 
   /api/v1/organizations/{orgId}/agents/{deviceId}/credential-rotation:
@@ -6680,7 +6899,8 @@ paths:
         Explicit organization opt-in. Requires agent_runtime:manage. It never enables itself; the default is
         disabled. Disabling an active
         organization makes the next runtime poll/report a terminal uniform refusal so managed tunnels
-        offboard instead of preserving synchronization indefinitely.
+        offboard instead of preserving synchronization indefinitely. Enabling on a plan that does not
+        include runtime synchronization answers 403 `feature_required` and saves nothing.
       tags: [agents]
       requestBody:
         required: true
@@ -7675,6 +7895,205 @@ paths:
       tags: [sites]
       responses:
         "204": { description: Removed. }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/v1/organizations/{orgId}/mcp-settings:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: getOrganizationMCPSetting
+      summary: Read whether MCP is on for an organization
+      description: Requires `org:view`. An organization that never set it reads as off.
+      tags: [agents]
+      responses:
+        "200":
+          description: Current setting.
+          headers: { X-Request-Id: { $ref: "#/components/headers/RequestId" } }
+          content: { application/json: { schema: { $ref: "#/components/schemas/MCPSetting" } } }
+        default: { $ref: "#/components/responses/Error" }
+    put:
+      operationId: setOrganizationMCPEnabled
+      summary: Turn MCP on or off for an organization
+      description: >-
+        Requires `mcp:manage`. MCP has its own switch and does not depend on agent groups and policy
+        templates. Turning it off is refused with 409 `mcp_in_use` while any agent group has an MCP server
+        assigned. On an edition that does not include MCP the request answers 403 `feature_required`. Writes
+        the audit action `org.mcp_enabled` or `org.mcp_disabled`.
+      tags: [agents]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/MCPSetting" } } }
+      responses:
+        "200":
+          description: Persisted setting.
+          headers: { X-Request-Id: { $ref: "#/components/headers/RequestId" } }
+          content: { application/json: { schema: { $ref: "#/components/schemas/MCPSetting" } } }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/v1/organizations/{orgId}/agent-features:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: listAgentFeatures
+      summary: List the agent and MCP switches with whether each can be used on this plan
+      description: >-
+        Requires `org:view`. One entry per switch an agent or MCP page may need to turn on in place.
+        `available` is false when the current plan does not include the feature; `required_plan` then
+        names the plan that does, so the page can disable the control and say why instead of offering a
+        switch that fails after the click.
+      tags: [agents]
+      responses:
+        "200":
+          description: Every agent feature, in a fixed order.
+          headers: { X-Request-Id: { $ref: "#/components/headers/RequestId" } }
+          content: { application/json: { schema: { $ref: "#/components/schemas/AgentFeatureList" } } }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/v1/organizations/{orgId}/mcp-connections/preview:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      operationId: startMCPConnectionPreview
+      summary: Ask the gateway to read the tool list of an MCP server address
+      description: >-
+        Requires `mcp:manage`. First step of "Connect MCP server". The gateway of the given agent (or of an
+        agent in the given group) reads the tool list on its next discovery pass, about 35 seconds; poll the
+        preview until it is `ready` or `failed`. Nothing is assigned and no agent can reach the address
+        because of a preview. A preview expires a few minutes after it is created.
+      tags: [agents]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/StartMCPConnectionPreviewRequest" } } }
+      responses:
+        "201":
+          description: The preview, normally still waiting.
+          headers: { X-Request-Id: { $ref: "#/components/headers/RequestId" } }
+          content: { application/json: { schema: { $ref: "#/components/schemas/MCPConnectionPreview" } } }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/v1/organizations/{orgId}/mcp-connections/preview/{previewId}:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: previewId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: getMCPConnectionPreview
+      summary: Read a connection preview
+      description: Requires `mcp:manage`. An unknown or expired preview answers 404 `mcp_connection_preview_not_found`.
+      tags: [agents]
+      responses:
+        "200":
+          description: The preview.
+          headers: { X-Request-Id: { $ref: "#/components/headers/RequestId" } }
+          content: { application/json: { schema: { $ref: "#/components/schemas/MCPConnectionPreview" } } }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/v1/organizations/{orgId}/mcp-connections:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      operationId: connectMCPServer
+      summary: Connect an MCP server to an agent or an agent group in one step
+      description: >-
+        Requires `mcp:manage`. In one transaction: creates the MCP profile, for an agent target creates an
+        agent group named for the agent and adds the agent to it, assigns the profile to the group, saves
+        the group's tool policy for that server and saves the tool markers. Each tool is Allow, Ask first or
+        Off; a tool that is not listed is Off. No network rule is needed. Writes the audit actions
+        `agent.mcp_server_connected`, `agent_group.mcp_tool_policy_replaced` and `agent.mcp_tool_marker_set`.
+        Refused with 409 `mcp_tool_definition_stale` when a tool changed since it was shown and 409
+        `mcp_server_name_taken` when the server name is in use.
+      tags: [agents]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/ConnectMCPServerRequest" } } }
+      responses:
+        "201":
+          description: Everything that was created.
+          headers: { X-Request-Id: { $ref: "#/components/headers/RequestId" } }
+          content: { application/json: { schema: { $ref: "#/components/schemas/MCPConnection" } } }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/v1/organizations/{orgId}/agent-groups/{groupId}/mcp-servers/{profileId}/tool-policy:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: groupId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: profileId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: getAgentGroupMCPToolPolicy
+      summary: Get an agent group's tool policy for one MCP server
+      description: >-
+        Requires `agent_mcp_tool_policy:manage`. Every tool the gateway observed for the server, each with
+        its mode and marker, plus tools the policy names that are no longer observed. `version` 0 means no
+        policy was saved yet and every tool is Off.
+      tags: [agents]
+      responses:
+        "200":
+          description: Current policy version for the group and server.
+          headers: { X-Request-Id: { $ref: "#/components/headers/RequestId" } }
+          content: { application/json: { schema: { $ref: "#/components/schemas/AgentGroupMCPToolPolicy" } } }
+        default: { $ref: "#/components/responses/Error" }
+    put:
+      operationId: replaceAgentGroupMCPToolPolicy
+      summary: Create the next immutable tool policy version for an agent group and MCP server
+      description: >-
+        Requires `agent_mcp_tool_policy:manage`. Applies to every agent in the group, except an agent whose
+        own policy overrides this server. A tool that is not listed is Off. Writes the audit actions
+        `agent_group.mcp_tool_policy_replaced` and, for a changed marker, `agent.mcp_tool_marker_set`.
+      tags: [agents]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: "#/components/schemas/ReplaceAgentGroupMCPToolPolicyRequest" } } }
+      responses:
+        "200":
+          description: New current policy version.
+          headers: { X-Request-Id: { $ref: "#/components/headers/RequestId" } }
+          content: { application/json: { schema: { $ref: "#/components/schemas/AgentGroupMCPToolPolicy" } } }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/v1/organizations/{orgId}/mcp-tool-approval-requests:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: listOrganizationMCPToolApprovalRequests
+      summary: List MCP approval requests across every agent of the organization
+      description: >-
+        Requires `agent_mcp_tool_approval:approve`. The Approvals inbox, newest first. Approve and deny use
+        the per-agent operations with the `device_id` of the request.
+      tags: [agents]
+      parameters:
+        - name: state
+          in: query
+          required: false
+          description: "`pending` lists requests that still await a decision; `all` also lists decided and expired ones."
+          schema: { $ref: "#/components/schemas/MCPToolApprovalInboxFilter" }
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 200, default: 50 }
+        - name: cursor
+          in: query
+          required: false
+          description: The `next_cursor` of the previous page.
+          schema: { type: string, minLength: 1, maxLength: 256 }
+      responses:
+        "200":
+          description: One page of requests.
+          headers: { X-Request-Id: { $ref: "#/components/headers/RequestId" } }
+          content: { application/json: { schema: { $ref: "#/components/schemas/MCPToolApprovalInboxPage" } } }
+        default: { $ref: "#/components/responses/Error" }
+
+  /api/v1/organizations/{orgId}/mcp-tool-approval-requests/count:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: countOrganizationMCPToolApprovalRequests
+      summary: Count the MCP approval requests awaiting a decision
+      description: Requires `agent_mcp_tool_approval:approve`. The number shown beside Approvals in the sidebar.
+      tags: [agents]
+      responses:
+        "200":
+          description: The pending count.
+          headers: { X-Request-Id: { $ref: "#/components/headers/RequestId" } }
+          content: { application/json: { schema: { $ref: "#/components/schemas/MCPToolApprovalCount" } } }
         default: { $ref: "#/components/responses/Error" }
 
   /api/v1/organizations/{orgId}/agent-policy-template-settings:
@@ -11563,6 +11982,90 @@ components:
         private_http_allowed: { type: boolean, deprecated: true, description: "Compatibility alias for http_allowed. Reflects the saved server-administrator policy allowing AI access over HTTP, including public HTTP. Use http_allowed in new clients." }
         http_allowed: { type: boolean, description: "Deployment administrator has explicitly allowed HTTP for AI access, including public HTTP." }
         unavailable_reason: { type: string, enum: [https_required, engine_not_configured], description: Deployment prerequisite when AI is unavailable. }
+        status: { $ref: '#/components/schemas/AIGatewayStatus' }
+    AIGatewayStatus:
+      type: object
+      description: >-
+        Whether the AI Gateway works for this organization right now and, when it does not, the one reason
+        and the control that fixes it. Every AI Gateway page shows the same banner from this.
+      additionalProperties: false
+      required: [on]
+      properties:
+        on: { type: boolean, description: True when the gateway is enabled and can serve a request. }
+        reason:
+          type: string
+          nullable: true
+          enum: [not_enabled, transport_required, no_provider, engine_not_installed]
+          x-enum-varnames: [AIGatewayOffNotEnabled, AIGatewayOffTransportRequired, AIGatewayOffNoProvider, AIGatewayOffEngineNotInstalled]
+          description: >-
+            Null when `on` is true. `not_enabled`: the organization switch is off. `transport_required`: a
+            server administrator must choose HTTPS or allow HTTP first. `no_provider`: no provider credential
+            is configured. `engine_not_installed`: the installation has not prepared its AI backend. When
+            several apply, the first in that order that the caller must fix first is reported.
+        fix:
+          nullable: true
+          allOf: [{ $ref: '#/components/schemas/AIGatewayFix' }]
+    AIGatewayFix:
+      type: object
+      description: The control that resolves `reason`.
+      additionalProperties: false
+      required: [kind]
+      properties:
+        kind:
+          type: string
+          enum: [enable, choose_transport, add_provider, install_engine]
+          x-enum-varnames: [AIGatewayFixEnable, AIGatewayFixChooseTransport, AIGatewayFixAddProvider, AIGatewayFixInstallEngine]
+        href:
+          type: string
+          nullable: true
+          maxLength: 512
+          description: In-app path of the page that holds the control, when it is not the current page.
+        requires_server_admin:
+          type: boolean
+          description: True when only a server administrator can apply the fix; others are told who can.
+    AIProviderInUseConflict:
+      type: object
+      description: Refusal to delete a provider connection that is still used, with what uses it.
+      additionalProperties: false
+      required: [error, in_use]
+      properties:
+        error:
+          type: object
+          additionalProperties: false
+          required: [code, message]
+          properties:
+            code: { type: string, enum: [ai_provider_in_use], x-enum-varnames: [AIProviderInUse] }
+            message: { type: string }
+            request_id: { type: string }
+        in_use:
+          type: object
+          additionalProperties: false
+          required: [models, policies, agents]
+          properties:
+            models:
+              type: array
+              maxItems: 200
+              items: { type: string, maxLength: 255, description: A model name served through this connection. }
+            policies:
+              type: array
+              maxItems: 200
+              items:
+                type: object
+                additionalProperties: false
+                required: [team_id, name]
+                properties:
+                  team_id: { type: string, format: uuid }
+                  name: { type: string }
+            agents:
+              type: array
+              maxItems: 200
+              items:
+                type: object
+                additionalProperties: false
+                required: [device_id, name]
+                properties:
+                  device_id: { type: string, format: uuid }
+                  name: { type: string }
     AITransportSettings:
       type: object
       additionalProperties: false
@@ -11734,6 +12237,13 @@ components:
         org_id: { type: string, format: uuid }
         name: { type: string }
         endpoint: { type: string, format: uri }
+        server_name:
+          type: string
+          pattern: '^[a-z0-9][a-z0-9-]{0,62}$'
+          description: >-
+            The path the server is reached at on the agent host,
+            `http://127.0.0.1:17100/<server_name>`. Unique among the organization's profiles that are not
+            archived; never `mcp`.
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }
         archived_at: { type: string, format: date-time, nullable: true }
@@ -11744,6 +12254,10 @@ components:
       properties:
         name: { type: string, minLength: 1, maxLength: 128 }
         endpoint: { type: string, format: uri, minLength: 1, maxLength: 2048 }
+        server_name:
+          type: string
+          pattern: '^[a-z0-9][a-z0-9-]{0,62}$'
+          description: Optional. Omitted derives a free name from `name`. `mcp` is reserved.
     AssignAgentMCPProfileRequest:
       type: object
       required: [group_id]
@@ -11849,6 +12363,39 @@ components:
         description: { type: string }
         created_at: { type: string, format: date-time }
         updated_at: { type: string, format: date-time }
+    MCPSetting:
+      type: object
+      required: [enabled]
+      additionalProperties: false
+      properties:
+        enabled:
+          type: boolean
+          description: Explicit organization switch for MCP. Turning it off is refused while an MCP server is assigned.
+    AgentFeatureList:
+      type: object
+      required: [items]
+      additionalProperties: false
+      properties:
+        items: { type: array, maxItems: 16, items: { $ref: "#/components/schemas/AgentFeature" } }
+    AgentFeature:
+      type: object
+      required: [key, enabled, available]
+      additionalProperties: false
+      properties:
+        key:
+          type: string
+          enum: [runtime_sync, agent_groups, mcp, agent_jit]
+          x-enum-varnames: [AgentFeatureRuntimeSync, AgentFeatureAgentGroups, AgentFeatureMCP, AgentFeatureAgentJIT]
+          description: >-
+            `runtime_sync`: runtime synchronization, needed to add an agent. `agent_groups`: agent groups and
+            policy templates. `mcp`: MCP servers and tool policy. `agent_jit`: approval-based temporary access.
+        enabled: { type: boolean, description: The organization switch as saved. }
+        available: { type: boolean, description: False when the current plan does not include the feature. The switch is then disabled. }
+        required_plan:
+          type: string
+          nullable: true
+          maxLength: 32
+          description: The lowest plan that includes the feature (for example `starter` or `scale`); null when `available` is true.
     AgentPolicyTemplateSetting:
       type: object
       required: [enabled]
@@ -11990,7 +12537,7 @@ components:
       enum: [info, warning, critical]
     AlertEventKey:
       type: string
-      enum: [agent.offline, agent.denial_spike, agent.access_expiring, agent.rotation_failed, agent.configuration_drift, gateway.offline, gateway.policy_degraded, site.link_down, ipsec.tunnel_down, ipsec.connection_down, ipsec.status_unavailable, device.offline, device.posture_blocked, kubernetes.connector_degraded, kubernetes.inventory_stale, kubernetes.service_unavailable]
+      enum: [agent.offline, agent.denial_spike, agent.access_expiring, agent.rotation_failed, agent.configuration_drift, gateway.offline, gateway.policy_degraded, site.link_down, ipsec.tunnel_down, ipsec.connection_down, ipsec.status_unavailable, device.offline, device.posture_blocked, kubernetes.connector_degraded, kubernetes.inventory_stale, kubernetes.service_unavailable, agent.mcp_approval_pending]
 
     AlertOccurrenceState:
       type: string
@@ -14199,6 +14746,13 @@ components:
         endpoint: { type: string, nullable: true, description: Credential-free MCP upstream endpoint. }
         group_id: { type: string, format: uuid, nullable: true }
         group_name: { type: string, nullable: true }
+        servers:
+          type: array
+          maxItems: 64
+          description: >-
+            Every MCP server the agent inherits from its groups, first one first. The scalar fields above
+            describe the first. Empty or omitted when none is assigned.
+          items: { $ref: "#/components/schemas/AgentEffectiveMCPServer" }
         enforcement:
           type: string
           enum: [gateway, agent_host, unavailable]
@@ -14221,6 +14775,27 @@ components:
             False when the endpoint is a hostname that the gateway cannot fully close (only addresses it
             already resolves for an FQDN resource of the same name are denied), or a public server the agent
             host can reach over its own internet.
+
+    AgentEffectiveMCPServer:
+      type: object
+      description: One MCP server an agent reaches through one of its groups.
+      required: [profile_id, profile_name, server_name, endpoint, group_id, group_name, default, local_url, policy_source]
+      additionalProperties: false
+      properties:
+        profile_id: { type: string, format: uuid }
+        profile_name: { type: string }
+        server_name: { type: string, pattern: '^[a-z0-9][a-z0-9-]{0,62}$' }
+        endpoint: { type: string, description: Credential-free MCP upstream endpoint. }
+        group_id: { type: string, format: uuid }
+        group_name: { type: string }
+        default:
+          type: boolean
+          description: True for the first server (the earliest assignment), which also answers at the bare local address.
+        local_url:
+          type: string
+          format: uri
+          description: The address an MCP client on the agent host uses, `http://127.0.0.1:17100/<server_name>`.
+        policy_source: { $ref: "#/components/schemas/MCPToolPolicySource" }
 
     DNSLANListenerStatus:
       type: object
@@ -14800,6 +15375,15 @@ components:
             discovery of its own: the gateway identifies the agent from the tunnel and enforces tool policy.
             Omitted or null when the agent's gateway has not reported the MCP capability; the runtime then
             stays on the direct path for as long as the organization's grace period allows.
+        mcp_servers:
+          type: array
+          maxItems: 64
+          description: >-
+            The MCP servers this agent may address through the gateway, first one first. The local proxy
+            serves each at `/<name>` and forwards it to `mcp_gateway_url` + `/<name>`; the one marked
+            `default` also answers at the bare local address and is forwarded to `mcp_gateway_url` as is.
+            Omitted for an agent with no MCP server and by a control plane that predates several servers.
+          items: { $ref: "#/components/schemas/ManagedAgentMCPServer" }
         credential_rotation_revision:
           type: integer
           format: int64
@@ -14822,6 +15406,14 @@ components:
           enum: [requested, prepared, staged]
           nullable: true
           description: Non-secret stage reached by the candidate on the assigned gateway.
+
+    ManagedAgentMCPServer:
+      type: object
+      required: [name, default]
+      additionalProperties: false
+      properties:
+        name: { type: string, pattern: '^[a-z0-9][a-z0-9-]{0,62}$', description: The server name, which is its path on the local proxy and on the gateway listener. }
+        default: { type: boolean, description: True for exactly one server, the first. }
 
     AgentCredentialCandidate:
       type: object
@@ -14891,6 +15483,12 @@ components:
           nullable: true
           additionalProperties: true
           description: Optional secret-free F13 protected-resource discovery for this runtime only.
+        tunnel_dns_applied:
+          type: boolean
+          description: >-
+            False when the host has no `resolvconf`, so the runtime left the DNS servers out of its tunnel
+            configuration and private DNS names pushed through the tunnel do not resolve there. True when
+            they were written. Omitted by a runtime that predates the field.
 
     AgentWorkflowSigningKeyRegistration:
       type: object
@@ -14992,6 +15590,15 @@ components:
           enum: [invalid_config, apply_failed]
           description: Last bounded stable runtime error, never raw runtime output.
         last_error_revision: { type: integer, format: int64, minimum: 1, nullable: true }
+        tunnel_dns_applied:
+          type: boolean
+          nullable: true
+          description: >-
+            False when the runtime reported that the host has no `resolvconf` and private DNS names pushed
+            through the tunnel do not resolve there. Null when the runtime has not said.
+        mcp_hold_capable:
+          type: boolean
+          description: True when the runtime declared that it keeps an MCP call open while an "Ask first" request waits.
 
     AgentMCPInventory:
       type: object
@@ -15080,6 +15687,237 @@ components:
         rules: { type: array, maxItems: 1024, items: { $ref: "#/components/schemas/MCPToolPolicyRule" } }
         inventory_observed_at: { type: string, format: date-time }
         created_at: { type: string, format: date-time }
+        override_endpoints:
+          type: array
+          maxItems: 64
+          items: { type: string, format: uri, maxLength: 2048 }
+          description: >-
+            The MCP endpoints this agent's own policy decides for. For each of them these rules apply (none
+            means every tool is denied) and the group's tool policy is ignored; for any other server the
+            group's policy decides. Saving the agent's policy adds the endpoints its rules name.
+
+    MCPToolPolicySource:
+      type: string
+      enum: [agent, group]
+      x-enum-varnames: [MCPToolPolicySourceAgent, MCPToolPolicySourceGroup]
+      description: Which tool policy decides or decided, the agent's own or its group's.
+
+    MCPToolMode:
+      type: string
+      enum: [allow, ask, "off"]
+      x-enum-varnames: [MCPToolModeAllow, MCPToolModeAsk, MCPToolModeOff]
+      description: >-
+        `allow`: the agent may call the tool. `ask`: each call waits for a person to approve it ("Ask
+        first"). `off`: the tool is denied and hidden from the agent. A tool that is new is `off`.
+
+    MCPToolEffect:
+      type: string
+      enum: [reads, changes, destructive]
+      x-enum-varnames: [MCPToolEffectReads, MCPToolEffectChanges, MCPToolEffectDestructive]
+      description: What the tool does, as an administrator marked it. Never inferred from the tool's name.
+
+    MCPToolSettingInput:
+      type: object
+      required: [tool_name, mode]
+      additionalProperties: false
+      properties:
+        tool_name: { type: string, minLength: 1, maxLength: 512 }
+        mode: { $ref: "#/components/schemas/MCPToolMode" }
+        effect:
+          nullable: true
+          allOf: [{ $ref: "#/components/schemas/MCPToolEffect" }]
+          description: Null or omitted clears the marker.
+        tool_definition_hash:
+          type: string
+          pattern: '^[a-f0-9]{64}$'
+          nullable: true
+          description: >-
+            The definition the administrator was shown. Required for `allow` and `ask` when saving from a
+            preview; omitted pins the definition currently observed. The save is refused if the tool changed.
+        argument_constraints:
+          nullable: true
+          allOf: [{ $ref: "#/components/schemas/MCPArgumentConstraints" }]
+        rate_limit_per_minute: { type: integer, minimum: 1, maximum: 60000, nullable: true }
+
+    MCPToolSetting:
+      type: object
+      required: [tool_name, mode, observed]
+      additionalProperties: false
+      properties:
+        tool_name: { type: string, minLength: 1, maxLength: 512 }
+        description: { type: string, nullable: true, maxLength: 8192, description: The words the server gives for the tool. }
+        mode: { $ref: "#/components/schemas/MCPToolMode" }
+        effect:
+          nullable: true
+          allOf: [{ $ref: "#/components/schemas/MCPToolEffect" }]
+        observed: { type: boolean, description: False when the policy names a tool the gateway no longer sees on the server. }
+        input_schema_hash: { type: string, maxLength: 128, nullable: true }
+        tool_definition_hash: { type: string, pattern: '^[a-f0-9]{64}$', nullable: true }
+        definition_state:
+          type: string
+          enum: [current, changed]
+          x-enum-varnames: [MCPToolSettingDefinitionCurrent, MCPToolSettingDefinitionChanged]
+          description: "`changed` when the observed definition no longer matches the one the policy pinned; the tool is denied until the policy is saved again."
+        argument_constraints:
+          nullable: true
+          allOf: [{ $ref: "#/components/schemas/MCPArgumentConstraints" }]
+        rate_limit_per_minute: { type: integer, minimum: 1, maximum: 60000, nullable: true }
+
+    AgentGroupMCPToolPolicy:
+      type: object
+      required: [group_id, profile_id, server_name, endpoint, version, tools]
+      additionalProperties: false
+      properties:
+        group_id: { type: string, format: uuid }
+        profile_id: { type: string, format: uuid }
+        server_name: { type: string, pattern: '^[a-z0-9][a-z0-9-]{0,62}$' }
+        endpoint: { type: string, maxLength: 2048 }
+        version: { type: integer, format: int64, minimum: 0, description: Zero means no policy was saved yet; every tool is Off. }
+        tools: { type: array, maxItems: 1024, items: { $ref: "#/components/schemas/MCPToolSetting" } }
+        inventory_observed_at: { type: string, format: date-time, nullable: true }
+        created_at: { type: string, format: date-time, nullable: true }
+        overriding_agent_count:
+          type: integer
+          minimum: 0
+          description: How many agents of the group have their own policy for this server and therefore do not follow this one.
+
+    ReplaceAgentGroupMCPToolPolicyRequest:
+      type: object
+      required: [tools]
+      additionalProperties: false
+      properties:
+        tools: { type: array, maxItems: 1024, items: { $ref: "#/components/schemas/MCPToolSettingInput" } }
+
+    StartMCPConnectionPreviewRequest:
+      type: object
+      description: Exactly one of `via_device_id` and `via_group_id` is given.
+      required: [endpoint]
+      additionalProperties: false
+      properties:
+        endpoint: { type: string, format: uri, minLength: 1, maxLength: 2048 }
+        via_device_id: { type: string, format: uuid, description: The agent the server is being connected to; its gateway reads the tool list. }
+        via_group_id: { type: string, format: uuid, description: The agent group the server is being connected to; the gateway of one of its agents reads the tool list. }
+
+    MCPConnectionPreview:
+      type: object
+      required: [preview_id, state, endpoint, tools, expires_at]
+      additionalProperties: false
+      properties:
+        preview_id: { type: string, format: uuid }
+        state:
+          type: string
+          enum: [waiting, ready, failed]
+          x-enum-varnames: [MCPConnectionPreviewWaiting, MCPConnectionPreviewReady, MCPConnectionPreviewFailed]
+        endpoint: { type: string, maxLength: 2048 }
+        failure_reason:
+          type: string
+          nullable: true
+          maxLength: 64
+          description: >-
+            Why a `failed` preview failed: `unreachable`, `unauthorized`, `invalid` (not an MCP server),
+            `no_gateway` (no gateway that can read it is connected) or `timed_out`.
+        server_name: { type: string, nullable: true, maxLength: 512, description: The name the MCP server reports for itself. }
+        suggested_server_name:
+          type: string
+          nullable: true
+          pattern: '^[a-z0-9][a-z0-9-]{0,62}$'
+          description: A free server name derived from what the server reports.
+        tools: { type: array, maxItems: 1024, items: { $ref: "#/components/schemas/MCPConnectionPreviewTool" } }
+        expires_at: { type: string, format: date-time }
+
+    MCPConnectionPreviewTool:
+      type: object
+      required: [name, tool_definition_hash]
+      additionalProperties: false
+      properties:
+        name: { type: string, minLength: 1, maxLength: 512 }
+        description: { type: string, nullable: true, maxLength: 8192 }
+        input_schema: { type: object, nullable: true, additionalProperties: true }
+        input_schema_hash: { type: string, maxLength: 128 }
+        tool_definition_hash:
+          type: string
+          pattern: '^[a-f0-9]{64}$'
+          description: SHA-256 of the canonical name, description and input schema, computed by the control plane.
+
+    MCPConnectionTarget:
+      type: object
+      description: Exactly one of `device_id` and `group_id` is given.
+      additionalProperties: false
+      properties:
+        device_id: { type: string, format: uuid }
+        group_id: { type: string, format: uuid }
+
+    ConnectMCPServerRequest:
+      type: object
+      required: [target, name, endpoint, tools]
+      additionalProperties: false
+      properties:
+        target: { $ref: "#/components/schemas/MCPConnectionTarget" }
+        name: { type: string, minLength: 1, maxLength: 128, description: The display name of the MCP server. }
+        server_name:
+          type: string
+          pattern: '^[a-z0-9][a-z0-9-]{0,62}$'
+          description: Optional. Omitted derives a free name from `name`. `mcp` is reserved.
+        endpoint: { type: string, format: uri, minLength: 1, maxLength: 2048 }
+        preview_id:
+          type: string
+          format: uuid
+          description: The preview whose tool list the administrator chose from. Tools are checked against it when the gateway has not observed the server for the target yet.
+        tools: { type: array, maxItems: 1024, items: { $ref: "#/components/schemas/MCPToolSettingInput" } }
+
+    MCPConnection:
+      type: object
+      required: [profile, group, group_created, assignment, tool_policy]
+      additionalProperties: false
+      properties:
+        profile: { $ref: "#/components/schemas/AgentMCPProfile" }
+        group: { $ref: "#/components/schemas/AgentGroup" }
+        group_created: { type: boolean, description: True when a group named for the agent was created for this connection. }
+        assignment: { $ref: "#/components/schemas/AgentMCPProfileAssignment" }
+        tool_policy: { $ref: "#/components/schemas/AgentGroupMCPToolPolicy" }
+
+    MCPToolApprovalInboxFilter:
+      type: string
+      enum: [pending, all]
+      default: pending
+      x-enum-varnames: [MCPToolApprovalInboxPending, MCPToolApprovalInboxAll]
+
+    MCPToolApprovalInboxItem:
+      type: object
+      required: [request, agent_name]
+      additionalProperties: false
+      properties:
+        request: { $ref: "#/components/schemas/AgentMCPToolApprovalRequest" }
+        agent_name: { type: string }
+        owner_email: { type: string, nullable: true, description: The agent's owner, who is asking; null for an agent with no owner. }
+        mcp_server_name:
+          type: string
+          nullable: true
+          description: The server name of the MCP profile the call was addressed to, when it is still assigned.
+
+    MCPToolApprovalInboxPage:
+      type: object
+      required: [items]
+      additionalProperties: false
+      properties:
+        items: { type: array, maxItems: 200, items: { $ref: "#/components/schemas/MCPToolApprovalInboxItem" } }
+        next_cursor:
+          type: string
+          nullable: true
+          maxLength: 256
+          description: Opaque cursor for the next (older) page; null when there are no more rows.
+
+    MCPToolApprovalCount:
+      type: object
+      required: [pending]
+      additionalProperties: false
+      properties:
+        pending: { type: integer, minimum: 0 }
+
+    MCPToolActivityDecisionFilter:
+      type: string
+      enum: [allow, deny]
+      x-enum-varnames: [MCPToolActivityFilterAllow, MCPToolActivityFilterDeny]
 
     ReplaceAgentMCPToolPolicyRequest:
       type: object
@@ -15170,6 +16008,12 @@ components:
           pattern: '^[a-f0-9]{64}$'
           nullable: true
           description: The exact tool definition (name, description, input schema) the approval is bound to.
+        policy_source: { $ref: "#/components/schemas/MCPToolPolicySource" }
+        policy_group_id:
+          type: string
+          format: uuid
+          nullable: true
+          description: The agent group whose tool policy asked for approval, when `policy_source` is `group` and the group still exists.
 
     AcceptAgentMCPToolDefinitionRequest:
       type: object
@@ -15211,6 +16055,14 @@ components:
         upstream_http_status: { type: integer, minimum: 100, maximum: 599, nullable: true }
         occurred_at: { type: string, format: date-time }
         completed_at: { type: string, format: date-time, nullable: true }
+        policy_source:
+          nullable: true
+          allOf: [{ $ref: "#/components/schemas/MCPToolPolicySource" }]
+          description: Which policy decided; null when no policy was consulted (for example no server assigned).
+        policy_group_id: { type: string, format: uuid, nullable: true }
+        approved_by_user_id: { type: string, format: uuid, nullable: true, description: Who approved the call, when it ran on an approval. }
+        approved_by_email: { type: string, nullable: true }
+        approved_at: { type: string, format: date-time, nullable: true }
 
     AgentMCPToolActivityPage:
       type: object
@@ -15338,6 +16190,144 @@ components:
       properties:
         bootstrap_token: { type: string, description: Shown once and stored only as a hash. }
         release: { $ref: "#/components/schemas/AgentBootstrapRelease" }
+        token_id:
+          type: string
+          format: uuid
+          description: Identifies the token for its status and for revocation. It is not the token value.
+
+    AgentBootstrapTokenStatus:
+      type: object
+      description: Whether one bootstrap token was used, and the tunnel facts of the agent it enrolled. Never contains the token value or its hash.
+      required: [id, state, agent_name, expires_at]
+      additionalProperties: false
+      properties:
+        id: { type: string, format: uuid }
+        agent_name: { type: string, description: The name the agent enrolls with. }
+        state:
+          type: string
+          enum: [pending, enrolled, revoked, expired]
+          x-enum-varnames: [AgentBootstrapTokenPending, AgentBootstrapTokenEnrolled, AgentBootstrapTokenRevoked, AgentBootstrapTokenExpired]
+          description: "`pending`: not used yet. `enrolled`: an agent redeemed it. `revoked` and `expired`: it can no longer be used."
+        expires_at: { type: string, format: date-time }
+        enrolled_at: { type: string, format: date-time, nullable: true }
+        device_id: { type: string, format: uuid, nullable: true, description: The agent that redeemed the token; null until enrolled or when that agent was removed. }
+        tunnel:
+          nullable: true
+          allOf: [{ $ref: "#/components/schemas/AgentBootstrapTunnelStatus" }]
+          description: Null until an agent enrolled.
+
+    AgentBootstrapTunnelStatus:
+      type: object
+      required: [connected, gateway_reporting]
+      additionalProperties: false
+      properties:
+        connected: { type: boolean, description: True when the gateway saw a recent WireGuard handshake from the agent. }
+        last_handshake_at: { type: string, format: date-time, nullable: true }
+        gateway_reporting:
+          type: boolean
+          description: False when the agent's gateway is not reporting peer status. `connected` is then unknown, not offline.
+
+    AgentAccessSummary:
+      type: object
+      required: [rules, refusals]
+      additionalProperties: false
+      properties:
+        rules: { type: array, maxItems: 1000, items: { $ref: "#/components/schemas/AgentAccessRule" } }
+        refusals: { $ref: "#/components/schemas/AgentAccessRefusals" }
+
+    AgentAccessDestinationSummary:
+      type: object
+      required: [kind, name]
+      additionalProperties: false
+      properties:
+        kind: { type: string, maxLength: 32, description: "The rule's destination kind: resource, group, site, k8s_service, k8s_cluster_scope, fqdn_resource or k8s_api." }
+        id: { type: string, format: uuid, nullable: true }
+        name: { type: string }
+        address: { type: string, nullable: true, description: The destination prefix or host name, when the kind has one. }
+        protocol: { type: string, nullable: true, maxLength: 8, description: "any, tcp or udp, when the kind has one." }
+        port_low: { type: integer, nullable: true, minimum: 1, maximum: 65535 }
+        port_high: { type: integer, nullable: true, minimum: 1, maximum: 65535 }
+
+    AgentAccessRule:
+      type: object
+      required: [rule_id, via, destination, enabled]
+      additionalProperties: false
+      properties:
+        rule_id: { type: string, format: uuid }
+        via:
+          type: string
+          enum: [agent, agent_group]
+          x-enum-varnames: [AgentAccessRuleViaAgent, AgentAccessRuleViaAgentGroup]
+          description: Whether the rule names the agent itself or an agent group it belongs to.
+        group_id: { type: string, format: uuid, nullable: true }
+        group_name: { type: string, nullable: true }
+        destination: { $ref: "#/components/schemas/AgentAccessDestinationSummary" }
+        expires_at: { type: string, format: date-time, nullable: true }
+        enabled: { type: boolean }
+
+    AgentAccessRefusals:
+      type: object
+      required: [available, items]
+      additionalProperties: false
+      properties:
+        available: { type: boolean, description: False when the current plan does not include the access log. `items` is then empty. }
+        required_plan: { type: string, nullable: true, maxLength: 32 }
+        items: { type: array, maxItems: 100, items: { $ref: "#/components/schemas/AgentAccessRefusal" } }
+
+    AgentAccessRefusal:
+      type: object
+      required: [dst, protocol, count, last_seen]
+      additionalProperties: false
+      properties:
+        dst: { type: string, description: The destination address that was refused. }
+        port: { type: integer, nullable: true, minimum: 0, maximum: 65535 }
+        protocol: { type: string, maxLength: 16 }
+        count: { type: integer, format: int64, minimum: 1 }
+        last_seen: { type: string, format: date-time }
+
+    AgentOwnerAccessPreview:
+      type: object
+      required: [candidates]
+      additionalProperties: false
+      properties:
+        owner_email: { type: string, nullable: true }
+        candidates: { type: array, maxItems: 1000, items: { $ref: "#/components/schemas/AgentOwnerAccessCandidate" } }
+
+    AgentOwnerAccessCandidate:
+      type: object
+      required: [key, destination, via, source_rule_id, copyable, already_covered]
+      additionalProperties: false
+      properties:
+        key: { type: string, minLength: 1, maxLength: 128, description: Opaque. Sent back to create the rule. }
+        destination: { $ref: "#/components/schemas/AgentAccessDestinationSummary" }
+        via:
+          type: string
+          enum: [user, group]
+          x-enum-varnames: [AgentOwnerAccessViaUser, AgentOwnerAccessViaGroup]
+          description: Whether the owner reaches the destination by a rule naming them or through a user group.
+        via_group_name: { type: string, nullable: true }
+        source_rule_id: { type: string, format: uuid }
+        copyable: { type: boolean, description: False for a destination kind an agent rule cannot name. }
+        already_covered: { type: boolean, description: True when the agent already has a rule for this destination. }
+
+    CreateAgentRulesFromOwnerAccessRequest:
+      type: object
+      required: [keys]
+      additionalProperties: false
+      properties:
+        keys:
+          type: array
+          minItems: 1
+          maxItems: 200
+          uniqueItems: true
+          items: { type: string, minLength: 1, maxLength: 128 }
+
+    AgentOwnerAccessRulesResult:
+      type: object
+      required: [rule_ids]
+      additionalProperties: false
+      properties:
+        rule_ids: { type: array, maxItems: 200, items: { type: string, format: uuid } }
 
     PendingAgentBootstrapTokenList:
       type: object

@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { AgentMCPOAuthPanel } from "../src/components/AgentMCPControls";
 
@@ -45,4 +45,38 @@ it("explains the result of returning from the sign-in page", async () => {
   cleanup();
   show("connected");
   expect(await screen.findByText(/sign-in completed/i)).toBeTruthy();
+});
+
+describe("where the sign-in token is kept", () => {
+  const panel = (enforcement?: string) => render(<AgentMCPOAuthPanel orgId="org" deviceId="agent" inventory={inventory} canManage enforcement={enforcement as never} />);
+  const gateway = "This MCP server asks for a sign-in. Tunnex keeps the sign-in here on the server. The sign-in token stays with the gateway, which uses it for one call at a time; it is never stored on or sent to the agent's host. Nothing is shown on this page.";
+  const olderRuntime = "This MCP server asks for a sign-in. Tunnex keeps the sign-in here on the server. This agent's runtime is an older version, so a short-lived token is handed to the runtime, which holds it in memory only. Once the runtime is updated, the token stays with the gateway and no longer reaches the agent's host. Nothing is shown on this page.";
+
+  it("says the token stays with the gateway when the gateway applies the tool rules", async () => {
+    panel("gateway");
+    expect(await screen.findByText(gateway)).toBeTruthy();
+    expect(document.body.textContent).not.toMatch(/hands the agent|token in memory|handed to/);
+  });
+
+  it("says the token is handed to the runtime in memory while the agent is on the older runtime", async () => {
+    panel("agent_host");
+    expect(await screen.findByText(olderRuntime)).toBeTruthy();
+  });
+
+  it.each([["the server did not say", undefined], ["MCP is withheld", "unavailable"]])("claims neither when %s", async (_label, enforcement) => {
+    panel(enforcement);
+    expect(await screen.findByText("This MCP server asks for a sign-in. Tunnex keeps the sign-in here on the server. Nothing is shown on this page or written to disk on the agent's host.")).toBeTruthy();
+    expect(document.body.textContent).not.toMatch(/stays with the gateway|in memory/);
+  });
+
+  it("does not say the agent holds or sends the credential when the sign-in fails or is disconnected", async () => {
+    state.connections = [connection({ state: "expired", failure_code: "token_expired" })];
+    panel("gateway");
+    expect(await screen.findByText("The MCP server's sign-in has expired and cannot be renewed. No credential is used for this agent's calls until you connect again.")).toBeTruthy();
+    cleanup();
+    state.connections = [connection({})];
+    panel("gateway");
+    fireEvent.click(await screen.findByRole("button", { name: "Disconnect" }));
+    expect(screen.getByText("This agent's calls to this MCP server stop carrying a credential straight away. You can connect again later.")).toBeTruthy();
+  });
 });

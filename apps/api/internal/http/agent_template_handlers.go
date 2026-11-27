@@ -20,7 +20,9 @@ import (
 	"github.com/tunnexio/tunnex/apps/api/internal/api"
 	"github.com/tunnexio/tunnex/apps/api/internal/apierr"
 	"github.com/tunnexio/tunnex/apps/api/internal/authctx"
+	"github.com/tunnexio/tunnex/apps/api/internal/mcptoolpolicy"
 	"github.com/tunnexio/tunnex/apps/api/internal/rbac"
+	"github.com/tunnexio/tunnex/packages/apptransport/mcpwire"
 )
 
 type agentTemplatePort interface {
@@ -47,7 +49,7 @@ type agentTemplatePort interface {
 	SetGroupMCPProfile(context.Context, uuid.UUID, uuid.UUID, uuid.UUID, uuid.UUID) (agenttemplates.MCPMutation, error)
 	UnassignGroupMCPProfile(context.Context, uuid.UUID, uuid.UUID, uuid.UUID) (agenttemplates.MCPMutation, error)
 	ArchiveMCPProfile(context.Context, uuid.UUID, uuid.UUID, uuid.UUID) error
-	CreateMCPProfile(context.Context, uuid.UUID, uuid.UUID, string, string) (sqlc.AgentMcpProfile, error)
+	CreateMCPProfile(context.Context, uuid.UUID, uuid.UUID, string, string, string) (sqlc.AgentMcpProfile, error)
 }
 
 func agentTemplateServiceUnavailable() error {
@@ -78,11 +80,60 @@ func (s apiServer) requireAgentTemplates(ctx context.Context, orgID uuid.UUID) e
 	return requireAgentTemplates(s, ctx, orgID)
 }
 
+// requireMCP gates every MCP endpoint on the organization's MCP switch alone: the switch is the truth for
+// MCP, whatever agent groups and policy templates is set to. Handlers in other files call it right after
+// authorizing.
+func (s apiServer) requireMCP(ctx context.Context, orgID uuid.UUID) error {
+	// The switch is read on its own: MCP routes that never touch agent groups (activity, approvals,
+	// tool policy) must not fail because the agent-groups service is absent.
+	if s.system == nil {
+		return apierr.Internal()
+	}
+	mcp, err := s.system.GetOrganizationMCPSetting(ctx, orgID)
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		return err
+	}
+	if err != nil || !mcp.Enabled {
+		return apierr.Forbidden("opt_in_required", "Turn on MCP for this organization first.")
+	}
+	return nil
+}
+
+// requireAgentGroups gates agent groups and their members, which agent policy templates and MCP both
+// build on: either switch being on is enough. MCP endpoints use requireMCP and template endpoints
+// requireAgentTemplates.
+func (s apiServer) requireAgentGroups(ctx context.Context, orgID uuid.UUID) error {
+	if s.agentTemplates == nil {
+		return agentTemplateServiceUnavailable()
+	}
+	if s.system == nil {
+		return apierr.Internal()
+	}
+	templates, err := s.system.GetOrganizationAgentPolicyTemplatesEnabled(ctx, orgID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return apierr.NotFound("org_not_found", "organization not found")
+	}
+	if err != nil {
+		return err
+	}
+	if templates {
+		return nil
+	}
+	mcp, err := s.system.GetOrganizationMCPSetting(ctx, orgID)
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		return err
+	}
+	if err != nil || !mcp.Enabled {
+		return apierr.Forbidden("opt_in_required", "Turn on MCP or agent groups and policy templates for this organization first.")
+	}
+	return nil
+}
+
 func (s apiServer) ListAgentMCPProfiles(ctx context.Context, req api.ListAgentMCPProfilesRequestObject) (api.ListAgentMCPProfilesResponseObject, error) {
 	if _, err := authorize(ctx, req.OrgId, rbac.PermAgentTemplateManage); err != nil {
 		return nil, err
 	}
-	if err := s.requireAgentTemplates(ctx, req.OrgId); err != nil {
+	if err := s.requireMCP(ctx, req.OrgId); err != nil {
 		return nil, err
 	}
 	rows, err := s.system.ListAgentMCPProfiles(ctx, req.OrgId)
@@ -108,21 +159,41 @@ func (s apiServer) GetAgentEffectiveMCPProfile(ctx context.Context, req api.GetA
 	if s.system == nil {
 		return nil, apierr.Internal()
 	}
-	assignments, err := s.system.ListActiveMCPAssignmentsForDevice(ctx, sqlc.ListActiveMCPAssignmentsForDeviceParams{OrgID: req.OrgId, DeviceID: req.DeviceId})
+	servers, err := mcptoolpolicy.AssignedServers(ctx, s.system, req.OrgId, req.DeviceId)
 	if err != nil {
 		return nil, apierr.Internal()
 	}
-	if len(assignments) == 0 {
+	if len(servers) == 0 {
 		return api.GetAgentEffectiveMCPProfile200JSONResponse{Assigned: false}, nil
 	}
-	if len(assignments) != 1 {
-		return nil, apierr.New(http.StatusServiceUnavailable, "mcp_profile_unavailable", "multiple active MCP profiles are assigned to this agent")
-	}
-	matched := assignments[0]
+	// An agent can have several MCP servers. The scalar fields describe the first one (the earliest
+	// assignment), which is the one a client reaches at the bare local address.
+	matched := servers[0]
 	out := api.GetAgentEffectiveMCPProfile200JSONResponse{
 		Assigned: true, ProfileId: &matched.ProfileID, ProfileName: &matched.ProfileName, Endpoint: &matched.Endpoint,
-		GroupId: &matched.AgentGroupID, GroupName: &matched.GroupName,
+		GroupId: &matched.GroupID, GroupName: &matched.GroupName,
 	}
+	var overrides []string
+	if own, err := s.system.GetAgentMCPToolPolicyOverrideEndpoints(ctx, sqlc.GetAgentMCPToolPolicyOverrideEndpointsParams{OrgID: req.OrgId, DeviceID: req.DeviceId}); err == nil {
+		overrides = own.OverrideEndpoints
+	} else if !errors.Is(err, pgx.ErrNoRows) {
+		return nil, apierr.Internal()
+	}
+	list := make([]api.AgentEffectiveMCPServer, 0, len(servers))
+	for i, server := range servers {
+		source := api.MCPToolPolicySourceGroup
+		for _, endpoint := range overrides {
+			if endpoint == server.Endpoint {
+				source = api.MCPToolPolicySourceAgent
+			}
+		}
+		list = append(list, api.AgentEffectiveMCPServer{
+			ProfileId: server.ProfileID, ProfileName: server.ProfileName, ServerName: server.ServerName, Endpoint: server.Endpoint,
+			GroupId: server.GroupID, GroupName: server.GroupName, Default: i == 0, PolicySource: source,
+			LocalUrl: mcpLocalProxyURL + "/" + server.ServerName,
+		})
+	}
+	out.Servers = &list
 	// AI-SEC-2: where tool policy is enforced for this agent right now. Left out when it cannot be
 	// read; the profile itself is still shown.
 	if s.agentRuntime != nil {
@@ -134,6 +205,10 @@ func (s apiServer) GetAgentEffectiveMCPProfile(ctx context.Context, req api.GetA
 	}
 	return out, nil
 }
+
+// mcpLocalProxyURL is where an MCP client on the agent host reaches the agent's servers: each one at
+// /<server name>, and the first one at the bare address too.
+const mcpLocalProxyURL = "http://127.0.0.1:17100"
 
 // mcpDirectPathClosable reports whether the gateway can fully close the agent's own route to the endpoint:
 // only for a private IP literal. A hostname is closed just for addresses the gateway already resolves for
@@ -152,7 +227,7 @@ func (s apiServer) CreateAgentMCPProfile(ctx context.Context, req api.CreateAgen
 	if err != nil {
 		return nil, err
 	}
-	if err := s.requireAgentTemplates(ctx, req.OrgId); err != nil {
+	if err := s.requireMCP(ctx, req.OrgId); err != nil {
 		return nil, err
 	}
 	if req.Body == nil {
@@ -163,7 +238,17 @@ func (s apiServer) CreateAgentMCPProfile(ctx context.Context, req api.CreateAgen
 	if name == "" || parseErr != nil || u.Scheme == "" || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
 		return nil, apierr.BadRequest("invalid_request", "name and credential-free absolute MCP endpoint are required")
 	}
-	row, err := s.agentTemplates.CreateMCPProfile(ctx, req.OrgId, actorID(ctx), name, endpoint)
+	serverName := ""
+	if req.Body.ServerName != nil {
+		// Optional: left out, a free name is derived from the display name.
+		if serverName = strings.TrimSpace(*req.Body.ServerName); !mcpwire.ValidServerName(serverName) {
+			return nil, apierr.BadRequest("invalid_request", "server name must be lowercase letters, digits and hyphens, and cannot be \"mcp\"")
+		}
+	}
+	row, err := s.agentTemplates.CreateMCPProfile(ctx, req.OrgId, actorID(ctx), name, endpoint, serverName)
+	if isMCPServerNameViolation(err) {
+		return nil, apierr.Conflict("mcp_server_name_taken", "Another MCP server already uses that server name")
+	}
 	if isUniqueViolation(err) {
 		return nil, apierr.Conflict("mcp_profile_conflict", "MCP profile name already exists")
 	}
@@ -178,7 +263,7 @@ func (s apiServer) AssignAgentMCPProfile(ctx context.Context, req api.AssignAgen
 	if err != nil {
 		return nil, err
 	}
-	if err := s.requireAgentTemplates(ctx, req.OrgId); err != nil {
+	if err := s.requireMCP(ctx, req.OrgId); err != nil {
 		return nil, err
 	}
 	if req.Body == nil {
@@ -189,7 +274,7 @@ func (s apiServer) AssignAgentMCPProfile(ctx context.Context, req api.AssignAgen
 		return nil, lifecycleErr
 	}
 	if errors.Is(err, agenttemplates.ErrConflict) {
-		return nil, apierr.Conflict("mcp_profile_assignment_conflict", "an agent may have only one MCP profile")
+		return nil, apierr.Conflict("mcp_profile_assignment_conflict", "profile is archived or assignment conflicts")
 	}
 	if err != nil {
 		return nil, apierr.Internal()
@@ -206,6 +291,8 @@ func mcpLifecycleError(err error) error {
 		return apierr.NotFound("mcp_profile_not_found", "MCP profile was not found")
 	case errors.Is(err, agenttemplates.ErrAgentGroupNotFound):
 		return apierr.NotFound("agent_group_not_found", "agent group was not found")
+	case errors.Is(err, agenttemplates.ErrMCPOff):
+		return apierr.Forbidden("opt_in_required", "Turn on MCP for this organization first.")
 	default:
 		return nil
 	}
@@ -222,7 +309,7 @@ func (s apiServer) ListAgentMCPAssignments(ctx context.Context, req api.ListAgen
 	if _, err := authorize(ctx, req.OrgId, rbac.PermAgentTemplateManage); err != nil {
 		return nil, err
 	}
-	if err := s.requireAgentTemplates(ctx, req.OrgId); err != nil {
+	if err := s.requireMCP(ctx, req.OrgId); err != nil {
 		return nil, err
 	}
 	var state *string
@@ -245,7 +332,7 @@ func (s apiServer) PreviewAgentGroupMCPProfileImpact(ctx context.Context, req ap
 	if _, err := authorize(ctx, req.OrgId, rbac.PermAgentTemplateManage); err != nil {
 		return nil, err
 	}
-	if err := s.requireAgentTemplates(ctx, req.OrgId); err != nil {
+	if err := s.requireMCP(ctx, req.OrgId); err != nil {
 		return nil, err
 	}
 	var p *uuid.UUID
@@ -266,7 +353,7 @@ func (s apiServer) ReplaceAgentGroupMCPProfile(ctx context.Context, req api.Repl
 	if _, err := authorize(ctx, req.OrgId, rbac.PermAgentTemplateManage); err != nil {
 		return nil, err
 	}
-	if err := s.requireAgentTemplates(ctx, req.OrgId); err != nil {
+	if err := s.requireMCP(ctx, req.OrgId); err != nil {
 		return nil, err
 	}
 	if req.Body == nil {
@@ -295,7 +382,7 @@ func (s apiServer) UnassignAgentGroupMCPProfile(ctx context.Context, req api.Una
 	if _, err := authorize(ctx, req.OrgId, rbac.PermAgentTemplateManage); err != nil {
 		return nil, err
 	}
-	if err := s.requireAgentTemplates(ctx, req.OrgId); err != nil {
+	if err := s.requireMCP(ctx, req.OrgId); err != nil {
 		return nil, err
 	}
 	m, err := s.agentTemplates.UnassignGroupMCPProfile(ctx, req.OrgId, req.GroupId, actorID(ctx))
@@ -313,7 +400,7 @@ func (s apiServer) ArchiveAgentMCPProfile(ctx context.Context, req api.ArchiveAg
 	if _, err := authorize(ctx, req.OrgId, rbac.PermAgentTemplateManage); err != nil {
 		return nil, err
 	}
-	if err := s.requireAgentTemplates(ctx, req.OrgId); err != nil {
+	if err := s.requireMCP(ctx, req.OrgId); err != nil {
 		return nil, err
 	}
 	archiveErr := s.agentTemplates.ArchiveMCPProfile(ctx, req.OrgId, req.ProfileId, actorID(ctx))
@@ -339,6 +426,11 @@ func (s apiServer) ArchiveAgentMCPProfile(ctx context.Context, req api.ArchiveAg
 		return nil, apierr.Internal()
 	}
 	return api.ArchiveAgentMCPProfile200JSONResponse(toAPIAgentMCPProfile(row)), nil
+}
+
+func isMCPServerNameViolation(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "23505" && strings.Contains(pgErr.ConstraintName, "server_name")
 }
 
 func isUniqueViolation(err error) bool {
@@ -420,7 +512,7 @@ func (s apiServer) ListAgentGroups(ctx context.Context, req api.ListAgentGroupsR
 	if _, err := authorize(ctx, req.OrgId, rbac.PermAgentTemplateManage); err != nil {
 		return nil, err
 	}
-	if err := requireAgentTemplates(s, ctx, req.OrgId); err != nil {
+	if err := s.requireAgentGroups(ctx, req.OrgId); err != nil {
 		return nil, err
 	}
 	rows, err := s.agentTemplates.ListGroups(ctx, req.OrgId)
@@ -439,7 +531,7 @@ func (s apiServer) CreateAgentGroup(ctx context.Context, req api.CreateAgentGrou
 	if err != nil {
 		return nil, err
 	}
-	if err := s.requireAgentTemplates(ctx, req.OrgId); err != nil {
+	if err := s.requireAgentGroups(ctx, req.OrgId); err != nil {
 		return nil, err
 	}
 	if req.Body == nil {
@@ -461,7 +553,7 @@ func (s apiServer) UpdateAgentGroup(ctx context.Context, req api.UpdateAgentGrou
 	if err != nil {
 		return nil, err
 	}
-	if err := s.requireAgentTemplates(ctx, req.OrgId); err != nil {
+	if err := s.requireAgentGroups(ctx, req.OrgId); err != nil {
 		return nil, err
 	}
 	if req.Body == nil {
@@ -483,7 +575,7 @@ func (s apiServer) ArchiveAgentGroup(ctx context.Context, req api.ArchiveAgentGr
 	if err != nil {
 		return nil, err
 	}
-	if err := s.requireAgentTemplates(ctx, req.OrgId); err != nil {
+	if err := s.requireAgentGroups(ctx, req.OrgId); err != nil {
 		return nil, err
 	}
 	impact, err := s.agentTemplates.ArchiveGroup(ctx, req.OrgId, req.GroupId, actorID(ctx))
@@ -500,7 +592,7 @@ func (s apiServer) ListAgentGroupMembers(ctx context.Context, req api.ListAgentG
 	if _, err := authorize(ctx, req.OrgId, rbac.PermAgentTemplateManage); err != nil {
 		return nil, err
 	}
-	if err := s.requireAgentTemplates(ctx, req.OrgId); err != nil {
+	if err := s.requireAgentGroups(ctx, req.OrgId); err != nil {
 		return nil, err
 	}
 	rows, err := s.agentTemplates.ListMembers(ctx, req.OrgId, req.GroupId)
@@ -519,7 +611,7 @@ func (s apiServer) AddAgentGroupMember(ctx context.Context, req api.AddAgentGrou
 	if err != nil {
 		return nil, err
 	}
-	if err := s.requireAgentTemplates(ctx, req.OrgId); err != nil {
+	if err := s.requireAgentGroups(ctx, req.OrgId); err != nil {
 		return nil, err
 	}
 	if req.Body == nil {
@@ -536,7 +628,7 @@ func (s apiServer) RemoveAgentGroupMember(ctx context.Context, req api.RemoveAge
 	if err != nil {
 		return nil, err
 	}
-	if err := s.requireAgentTemplates(ctx, req.OrgId); err != nil {
+	if err := s.requireAgentGroups(ctx, req.OrgId); err != nil {
 		return nil, err
 	}
 	impact, err := s.agentTemplates.RemoveMember(ctx, req.OrgId, req.GroupId, req.DeviceId, actorID(ctx))
@@ -760,7 +852,12 @@ func toAPIAgentMCPProfile(row sqlc.AgentMcpProfile) api.AgentMCPProfile {
 	if row.ArchivedAt.Valid {
 		archivedAt = &row.ArchivedAt.Time
 	}
-	return api.AgentMCPProfile{Id: row.ID, OrgId: row.OrgID, Name: row.Name, Endpoint: row.Endpoint, CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt, ArchivedAt: archivedAt}
+	out := api.AgentMCPProfile{Id: row.ID, OrgId: row.OrgID, Name: row.Name, Endpoint: row.Endpoint, CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt, ArchivedAt: archivedAt}
+	if row.ServerName != "" {
+		name := row.ServerName
+		out.ServerName = &name
+	}
+	return out
 }
 
 func toAPIAgentPolicyTemplate(row sqlc.AgentPolicyTemplate) api.AgentPolicyTemplate {

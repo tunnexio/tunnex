@@ -1,12 +1,16 @@
 package mcptoolapproval
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
+
+	"github.com/tunnexio/tunnex/apps/api/internal/alerts"
 	"github.com/tunnexio/tunnex/apps/api/internal/mcpfixture"
 )
 
@@ -145,5 +149,187 @@ func TestStepUpLifecycle(t *testing.T) {
 	big, outcome, err := svc.Decide(f.Ctx, f.Org, f.Agent, identity(t, large))
 	if err != nil || outcome != OutcomePending || !big.ArgumentsTruncated || len(big.Arguments) != 0 {
 		t.Fatalf("large = truncated=%v len=%d, %s, %v", big.ArgumentsTruncated, len(big.Arguments), outcome, err)
+	}
+}
+
+type recordingPublisher struct {
+	events []alerts.Event
+	fail   bool
+}
+
+func (p *recordingPublisher) Publish(_ context.Context, event alerts.Event) error {
+	p.events = append(p.events, event)
+	if p.fail {
+		return errors.New("outbox down")
+	}
+	return event.Validate()
+}
+
+func TestPendingApprovalAlertIsPublishedOncePerRequestWithoutArguments(t *testing.T) {
+	f := mcpfixture.New(t)
+	svc := New(f.Pool)
+	publisher := &recordingPublisher{}
+	svc.SetAlertPublisher(publisher)
+	const secret = "zq-secret-customer"
+	call := identity(t, `{"customer":"`+secret+`","amount":10}`)
+
+	first, outcome, err := svc.Decide(f.Ctx, f.Org, f.Agent, call)
+	if err != nil || outcome != OutcomePending {
+		t.Fatalf("first = %s, %v", outcome, err)
+	}
+	// The agent retries; an approver answers; the approved call runs. None of that publishes again.
+	for i := 0; i < 3; i++ {
+		if again, _, err := svc.Decide(f.Ctx, f.Org, f.Agent, call); err != nil || again.ID != first.ID {
+			t.Fatalf("retry = %+v, %v", again, err)
+		}
+	}
+	if _, err := svc.Approve(f.Ctx, f.Org, f.Agent, first.ID, f.Owner); err != nil {
+		t.Fatal(err)
+	}
+	if _, outcome, err := svc.Decide(f.Ctx, f.Org, f.Agent, call); err != nil || outcome != OutcomeAllowed {
+		t.Fatalf("approved call = %s, %v", outcome, err)
+	}
+	if len(publisher.events) != 1 {
+		t.Fatalf("published %d alerts for one request, want 1", len(publisher.events))
+	}
+	event := publisher.events[0]
+	if event.Key != alerts.EventAgentMCPApprovalPending || event.OrgID != f.Org || event.DedupKey != "mcp_approval:"+first.ID.String() || event.Validate() != nil ||
+		event.Fields["agent"] != "agent" || event.Fields["agent_id"] != f.Agent.String() || event.Fields["tool"] != call.ToolName || event.Fields["server"] != call.ServerName ||
+		event.Fields["request_id"] != first.ID.String() || event.Fields["expires_at"] == "" {
+		t.Fatalf("event = %+v", event)
+	}
+	raw, _ := json.Marshal(event)
+	if strings.Contains(string(raw), secret) || strings.Contains(string(raw), "amount") || strings.Contains(string(raw), call.RequestDigest) {
+		t.Fatalf("the alert carries the call's arguments: %s", raw)
+	}
+
+	// A new request (the approval was used) is a new alert. A failing outbox never fails the decision.
+	publisher.fail = true
+	second, outcome, err := svc.Decide(f.Ctx, f.Org, f.Agent, call)
+	if err != nil || outcome != OutcomePending || second.ID == first.ID || len(publisher.events) != 2 {
+		t.Fatalf("second request = %+v, %s, %v, %d events", second, outcome, err, len(publisher.events))
+	}
+}
+
+func TestOrganizationInboxCountAndState(t *testing.T) {
+	f := mcpfixture.New(t)
+	svc := New(f.Pool)
+	clock := time.Now().UTC()
+	svc.now = func() time.Time { return clock }
+	group := identity(t, `{"customer":"g"}`)
+	group.PolicySource, group.PolicyGroupID = PolicySourceGroup, f.Group
+
+	var ids []uuid.UUID
+	for i, in := range []Identity{identity(t, `{"customer":"a"}`), identity(t, `{"customer":"b"}`), group} {
+		r, _, err := svc.Decide(f.Ctx, f.Org, f.Agent, in)
+		if err != nil {
+			t.Fatal(err)
+		}
+		f.Exec(`UPDATE agent_mcp_tool_approval_requests SET requested_at=now()-make_interval(secs => $2) WHERE id=$1`, r.ID, float64(10-i))
+		ids = append(ids, r.ID)
+	}
+	// An agent with no owner and a request of a deleted agent.
+	other, _, err := svc.Decide(f.Ctx, f.Org, f.OtherAgent, identity(t, `{"customer":"o"}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := svc.Deny(f.Ctx, f.Org, f.Agent, ids[1], f.Owner); err != nil {
+		t.Fatal(err)
+	}
+
+	if n, err := svc.CountPending(f.Ctx, f.Org); err != nil || n != 3 {
+		t.Fatalf("pending = %d, %v; want 3", n, err)
+	}
+	if n, err := svc.CountPending(f.Ctx, uuid.New()); err != nil || n != 0 {
+		t.Fatalf("another organization's count = %d, %v", n, err)
+	}
+	pending, next, err := svc.ListOrganization(f.Ctx, f.Org, true, 50, "")
+	if err != nil || len(pending) != 3 || next != "" {
+		t.Fatalf("pending inbox = %d rows, next %q, %v", len(pending), next, err)
+	}
+	if pending[0].Request.ID != other.ID || pending[1].Request.ID != ids[2] || pending[2].Request.ID != ids[0] {
+		t.Fatal("the inbox is not newest first")
+	}
+	item := pending[1]
+	if item.AgentName != "agent" || item.OwnerEmail == nil || !strings.HasSuffix(*item.OwnerEmail, "@example.com") || item.Request.PolicySource != PolicySourceGroup || item.Request.PolicyGroupID != f.Group ||
+		item.Request.DeviceID != f.Agent || string(item.Request.Arguments) == "" || !item.Request.ExpiresAt.After(clock) {
+		t.Fatalf("inbox item = %+v", item)
+	}
+	if pending[2].Request.PolicySource != PolicySourceAgent || pending[2].Request.PolicyGroupID != uuid.Nil {
+		t.Fatalf("agent-policy item = %+v", pending[2].Request)
+	}
+
+	// All: decided ones too, paged with a cursor, no row twice.
+	seen := map[uuid.UUID]bool{}
+	cursor := ""
+	for page := 0; ; page++ {
+		rows, next, err := svc.ListOrganization(f.Ctx, f.Org, false, 3, cursor)
+		if err != nil || page > 3 {
+			t.Fatalf("page %d: %v", page, err)
+		}
+		for _, row := range rows {
+			if seen[row.Request.ID] {
+				t.Fatal("a request appeared on two pages")
+			}
+			seen[row.Request.ID] = true
+		}
+		if cursor = next; cursor == "" {
+			break
+		}
+	}
+	if len(seen) != 4 || !seen[ids[1]] {
+		t.Fatalf("all = %d requests", len(seen))
+	}
+	if _, _, err := svc.ListOrganization(f.Ctx, f.Org, false, 3, "not-a-cursor"); !errors.Is(err, ErrCursor) {
+		t.Fatalf("bad cursor err = %v", err)
+	}
+	if rows, _, err := svc.ListOrganization(f.Ctx, uuid.New(), false, 50, ""); err != nil || len(rows) != 0 {
+		t.Fatalf("another organization's inbox = %d, %v", len(rows), err)
+	}
+
+	// State, for a held call: only the agent's own request, and it changes nothing.
+	for id, want := range map[uuid.UUID]string{ids[0]: StatePending, ids[1]: StateDenied} {
+		if got, err := svc.State(f.Ctx, f.Org, f.Agent, id); err != nil || got != want {
+			t.Fatalf("state = %s, %v; want %s", got, err, want)
+		}
+	}
+	if _, err := svc.State(f.Ctx, f.Org, f.OtherAgent, ids[0]); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("another agent read the request: %v", err)
+	}
+	if _, err := svc.State(f.Ctx, uuid.New(), f.Agent, ids[0]); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("another organization read the request: %v", err)
+	}
+	if _, err := svc.Approve(f.Ctx, f.Org, f.Agent, ids[0], f.Owner); err != nil {
+		t.Fatal(err)
+	}
+	if got, _ := svc.State(f.Ctx, f.Org, f.Agent, ids[0]); got != StateApproved {
+		t.Fatalf("approved state = %s", got)
+	}
+	if n := f.Count(`SELECT count(*) FROM agent_mcp_tool_approval_requests WHERE id=$1 AND state='approved'`, ids[0]); n != 1 {
+		t.Fatal("reading the state spent the approval")
+	}
+	if _, outcome, _ := svc.Decide(f.Ctx, f.Org, f.Agent, identity(t, `{"customer":"a"}`)); outcome != OutcomeAllowed {
+		t.Fatalf("approved call = %s", outcome)
+	}
+	if got, _ := svc.State(f.Ctx, f.Org, f.Agent, ids[0]); got != StateExpired {
+		t.Fatalf("used approval state = %s, want expired", got)
+	}
+
+	// Past its lifetime a request is expired for a waiter and leaves the pending inbox and the count.
+	clock = clock.Add(lifetime + time.Second)
+	if got, _ := svc.State(f.Ctx, f.Org, f.Agent, ids[2]); got != StateExpired {
+		t.Fatalf("state past the lifetime = %s", got)
+	}
+	f.Exec(`UPDATE agent_mcp_tool_approval_requests SET expires_at=now()-interval '1 second' WHERE org_id=$1 AND state='pending'`, f.Org)
+	if rows, _, err := svc.ListOrganization(f.Ctx, f.Org, true, 50, ""); err != nil || len(rows) != 0 {
+		t.Fatalf("pending inbox after expiry = %d, %v", len(rows), err)
+	}
+	if n, _ := svc.CountPending(f.Ctx, f.Org); n != 0 {
+		t.Fatalf("pending count after expiry = %d", n)
+	}
+	// The request of an agent that was removed is not listed.
+	f.Exec(`UPDATE devices SET deleted_at=now(), status='revoked' WHERE id=$1`, f.OtherAgent)
+	if rows, _, _ := svc.ListOrganization(f.Ctx, f.Org, false, 50, ""); len(rows) != 3 {
+		t.Fatalf("inbox after removing an agent = %d, want 3", len(rows))
 	}
 }

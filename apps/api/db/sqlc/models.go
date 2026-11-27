@@ -161,12 +161,43 @@ type AgentGroup struct {
 	UpdatedAt   time.Time          `json:"updated_at"`
 }
 
+// AI-UX-1 immutable MCP tool allow policies for one agent group and MCP server. Rules contain only stable inventory identities; never arguments, results, OAuth tokens, or client secrets.
+type AgentGroupMcpToolPolicyVersion struct {
+	ID                  uuid.UUID `json:"id"`
+	OrgID               uuid.UUID `json:"org_id"`
+	AgentGroupID        uuid.UUID `json:"agent_group_id"`
+	ProfileID           uuid.UUID `json:"profile_id"`
+	Version             int64     `json:"version"`
+	Rules               []byte    `json:"rules"`
+	InventoryObservedAt time.Time `json:"inventory_observed_at"`
+	CreatedByUserID     uuid.UUID `json:"created_by_user_id"`
+	CreatedAt           time.Time `json:"created_at"`
+}
+
 type AgentGroupMember struct {
 	OrgID           uuid.UUID `json:"org_id"`
 	AgentGroupID    uuid.UUID `json:"agent_group_id"`
 	DeviceID        uuid.UUID `json:"device_id"`
 	CreatedByUserID uuid.UUID `json:"created_by_user_id"`
 	CreatedAt       time.Time `json:"created_at"`
+}
+
+type AgentMcpConnectionPreview struct {
+	ID                uuid.UUID          `json:"id"`
+	OrgID             uuid.UUID          `json:"org_id"`
+	Endpoint          string             `json:"endpoint"`
+	ViaDeviceID       pgtype.UUID        `json:"via_device_id"`
+	ViaGroupID        pgtype.UUID        `json:"via_group_id"`
+	NodeID            pgtype.UUID        `json:"node_id"`
+	State             string             `json:"state"`
+	FailureReason     string             `json:"failure_reason"`
+	ServerName        string             `json:"server_name"`
+	Tools             []byte             `json:"tools"`
+	RequestedByUserID pgtype.UUID        `json:"requested_by_user_id"`
+	ObservedAt        pgtype.Timestamptz `json:"observed_at"`
+	ExpiresAt         time.Time          `json:"expires_at"`
+	CreatedAt         time.Time          `json:"created_at"`
+	UpdatedAt         time.Time          `json:"updated_at"`
 }
 
 // F12 MCP shadow-mode metadata only; no credentials, session ids, contents, prompts, or tool results.
@@ -210,6 +241,7 @@ type AgentMcpProfile struct {
 	CreatedAt  time.Time          `json:"created_at"`
 	UpdatedAt  time.Time          `json:"updated_at"`
 	ArchivedAt pgtype.Timestamptz `json:"archived_at"`
+	ServerName string             `json:"server_name"`
 }
 
 type AgentMcpProfileAssignment struct {
@@ -244,6 +276,8 @@ type AgentMcpToolActivity struct {
 	OccurredAt         time.Time          `json:"occurred_at"`
 	CompletedAt        pgtype.Timestamptz `json:"completed_at"`
 	CreatedAt          time.Time          `json:"created_at"`
+	PolicySource       *string            `json:"policy_source"`
+	PolicyGroupID      pgtype.UUID        `json:"policy_group_id"`
 }
 
 type AgentMcpToolActivityRetentionSetting struct {
@@ -276,6 +310,18 @@ type AgentMcpToolApprovalRequest struct {
 	Arguments          []byte             `json:"arguments"`
 	ArgumentsTruncated bool               `json:"arguments_truncated"`
 	ToolDefinitionHash *string            `json:"tool_definition_hash"`
+	PolicySource       string             `json:"policy_source"`
+	PolicyGroupID      pgtype.UUID        `json:"policy_group_id"`
+}
+
+type AgentMcpToolMarker struct {
+	OrgID       uuid.UUID   `json:"org_id"`
+	ProfileID   uuid.UUID   `json:"profile_id"`
+	ToolName    string      `json:"tool_name"`
+	Effect      string      `json:"effect"`
+	SetByUserID pgtype.UUID `json:"set_by_user_id"`
+	CreatedAt   time.Time   `json:"created_at"`
+	UpdatedAt   time.Time   `json:"updated_at"`
 }
 
 // F14 immutable MCP tool allow policies. Rules contain only stable inventory identities; never arguments, results, OAuth tokens, or client secrets.
@@ -288,6 +334,7 @@ type AgentMcpToolPolicyVersion struct {
 	InventoryObservedAt time.Time `json:"inventory_observed_at"`
 	CreatedByUserID     uuid.UUID `json:"created_by_user_id"`
 	CreatedAt           time.Time `json:"created_at"`
+	OverrideEndpoints   []string  `json:"override_endpoints"`
 }
 
 type AgentPolicyTemplate struct {
@@ -389,6 +436,8 @@ type AgentRuntimeState struct {
 	UpdatedAt             time.Time          `json:"updated_at"`
 	RouteFingerprint      string             `json:"route_fingerprint"`
 	McpGatewayCapableAt   pgtype.Timestamptz `json:"mcp_gateway_capable_at"`
+	McpHoldCapableAt      pgtype.Timestamptz `json:"mcp_hold_capable_at"`
+	TunnelDnsApplied      *bool              `json:"tunnel_dns_applied"`
 }
 
 type AgentWireguardRotation struct {
@@ -2423,6 +2472,14 @@ type OrganizationMcpDirectPathGrace struct {
 	OrgID      uuid.UUID `json:"org_id"`
 	GraceUntil time.Time `json:"grace_until"`
 	CreatedAt  time.Time `json:"created_at"`
+}
+
+type OrganizationMcpSetting struct {
+	OrgID           uuid.UUID   `json:"org_id"`
+	Enabled         bool        `json:"enabled"`
+	UpdatedByUserID pgtype.UUID `json:"updated_by_user_id"`
+	CreatedAt       time.Time   `json:"created_at"`
+	UpdatedAt       time.Time   `json:"updated_at"`
 }
 
 type OvpnClientCert struct {

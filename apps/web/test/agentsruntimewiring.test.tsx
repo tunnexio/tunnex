@@ -122,7 +122,7 @@ describe("active Agent detail mutation ownership", () => {
     expect(await screen.findByText(/MCP tool policy could not be loaded: Unavailable/)).toBeTruthy();
     expect(screen.getByText(/Step-up requests could not be loaded: Unavailable/)).toBeTruthy();
     expect(screen.getByText(/Sign-in status could not be loaded: Unavailable/)).toBeTruthy();
-    expect(screen.queryByText("No policy yet: the local proxy denies every tool.")).toBeNull();
+    expect(screen.queryByText("No choices are saved yet, so every tool is Off.")).toBeNull();
     expect(screen.queryByText("No step-up requests.")).toBeNull();
   });
 
@@ -192,14 +192,21 @@ describe("active Agent detail mutation ownership", () => {
     seed(); const original = get.getMockImplementation()!;
     get.mockImplementation((path: string) => path.endsWith("/runtime-status") ? Promise.resolve({ error: { error: { code: "unavailable" } } }) : original(path));
     const page = renderDetail("runtime");
-    await screen.findByRole("heading", { name: "Runtime synchronization off" });
-    expect(screen.getByRole("link", { name: "Review runtime settings" }).getAttribute("href")).toBe("/settings?section=features&feature=agent-runtime");
+    // Off is fixed where it is found: the switch is on the tab, with no detour through Settings.
+    const toggle = await screen.findByRole("switch", { name: "Runtime synchronization" });
+    expect(toggle.getAttribute("aria-checked")).toBe("false");
+    expect(screen.queryByRole("link", { name: "Review runtime settings" })).toBeNull();
     expect(screen.queryByRole("heading", { name: "Runtime unavailable" })).toBeNull();
+    put.mockResolvedValue({ data: { enabled: true } });
+    await waitFor(() => expect((toggle as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(toggle);
+    await waitFor(() => expect(put).toHaveBeenCalledWith("/api/v1/organizations/{orgId}/agent-runtime-settings", { params: { path: { orgId: "org-a" } }, body: { enabled: true } }));
+    await screen.findByRole("heading", { name: "Runtime unavailable" });
     page.unmount(); org = { ...org, managed_agent_runtime_enabled: undefined };
     renderDetail("runtime");
     await screen.findByRole("heading", { name: "Runtime unavailable" });
     expect(screen.getByRole("button", { name: "Retry runtime" })).toBeTruthy();
-    expect(screen.queryByRole("heading", { name: "Runtime synchronization off" })).toBeNull();
+    expect(screen.queryByRole("switch", { name: "Runtime synchronization" })).toBeNull();
     expect(screen.queryByText("The server considers this report fresh.")).toBeNull();
   });
 
@@ -208,23 +215,23 @@ describe("active Agent detail mutation ownership", () => {
     get.mockImplementation((path: string) => path.endsWith("/mcp-inventory") ? Promise.resolve({ error: { error: { code } } }) : original(path));
     renderDetail("mcp");
     if (code === "mcp_inventory_not_found") {
-      await screen.findByText("No MCP inventory reported yet.");
-      expect(screen.queryByRole("button", { name: "Retry MCP inventory" })).toBeNull();
-      expect(screen.queryByRole("heading", { name: "MCP inventory unavailable" })).toBeNull();
+      await screen.findByText("The gateway has not read this agent's MCP servers yet.");
+      expect(screen.queryByRole("button", { name: "Retry MCP tool list" })).toBeNull();
+      expect(screen.queryByRole("heading", { name: "MCP tool list unavailable" })).toBeNull();
     } else {
-      await screen.findByRole("heading", { name: "MCP inventory unavailable" });
-      expect(screen.getByRole("button", { name: "Retry MCP inventory" })).toBeTruthy();
-      expect(screen.queryByText("No MCP inventory reported yet.")).toBeNull();
+      await screen.findByRole("heading", { name: "MCP tool list unavailable" });
+      expect(screen.getByRole("button", { name: "Retry MCP tool list" })).toBeTruthy();
+      expect(screen.queryByText("The gateway has not read this agent's MCP servers yet.")).toBeNull();
     }
-    expect(screen.queryByText("No servers observed in this snapshot.")).toBeNull();
+    expect(screen.queryByText("No servers were seen at the last read.")).toBeNull();
     expect(screen.queryByRole("button", { name: "Save tool policy" })).toBeNull();
     expect(get.mock.calls.some(([path]) => String(path).endsWith("/mcp-tool-policy"))).toBe(false);
     expect(put).not.toHaveBeenCalled();
     if (code === "mcp_inventory_unavailable") {
       get.mockImplementation(original);
-      fireEvent.click(screen.getByRole("button", { name: "Retry MCP inventory" }));
+      fireEvent.click(screen.getByRole("button", { name: "Retry MCP tool list" }));
       await screen.findByRole("button", { name: "Save tool policy" });
-      expect(screen.queryByRole("heading", { name: "MCP inventory unavailable" })).toBeNull();
+      expect(screen.queryByRole("heading", { name: "MCP tool list unavailable" })).toBeNull();
     }
   });
 });
@@ -234,21 +241,57 @@ it("allows creating the first MCP policy but does not hide permission failures",
  const original = get.getMockImplementation()!;
  get.mockImplementation(async (path: string) => path.endsWith("/mcp-tool-policy") ? {error:{error:{code:"mcp_tool_policy_not_found"}}} : original(path));
  renderDetail("mcp");
- expect(await screen.findByText("No policy yet: the local proxy denies every tool.")).toBeTruthy();
+ expect(await screen.findByText("No choices are saved yet, so every tool is Off.")).toBeTruthy();
  expect(screen.getByRole("button", {name:"Save tool policy"})).toBeTruthy();
 });
 
-it("explains missing argument constraint fields before submitting a tool policy", async () => {
+it("sets a tool to Allow from the MCP tab without any raw JSON box", async () => {
   seed();
   renderDetail("mcp");
-  fireEvent.click(await screen.findByRole("checkbox", {name: "inventory · read"}));
-  const constraints = screen.getByRole("textbox", {name: "Argument constraints for read"});
-  fireEvent.change(constraints, {target: {value: '{"required":[]}'}});
-  fireEvent.click(screen.getByRole("button", {name: "Save tool policy"}));
-  expect(await screen.findByText(/Argument constraints need a required array and a properties object/)).toBeTruthy();
-  expect(put).not.toHaveBeenCalled();
-  fireEvent.change(constraints, {target: {value: '{"required":[],"properties":{}}'}});
+  fireEvent.click(await screen.findByRole("radio", {name: "Allow"}));
+  expect(screen.queryByRole("textbox", {name: /Argument constraints/})).toBeNull();
   fireEvent.click(screen.getByRole("button", {name: "Save tool policy"}));
   await waitFor(() => expect(put).toHaveBeenCalled());
-  expect(put.mock.calls[0][1].body.rules[0].argument_constraints).toEqual({required: [], properties: {}});
+  expect(put.mock.calls[0][1].body.rules).toEqual([{endpoint: "https://mcp.example.test", server_name: "inventory", tool_name: "read", input_schema_hash: "hash", step_up_required: false}]);
+});
+
+it("names the MCP tab correctly in the footer buttons", async () => {
+  seed(); renderDetail("access");
+  expect(await screen.findByRole("button", {name: "Back to MCP"})).toBeTruthy();
+  expect(screen.queryByRole("button", {name: "Back to mcp"})).toBeNull();
+  expect(screen.getByRole("button", {name: "View activity"})).toBeTruthy();
+});
+
+it("lists the agent's MCP servers by name with their local addresses when the server reports them", async () => {
+  seed(); const original = get.getMockImplementation()!;
+  const one = { profile_id: "p1", profile_name: "Inventory", server_name: "inventory", endpoint: "https://mcp.example.test", group_id: "g1", group_name: "Agents", default: true, local_url: "http://127.0.0.1:17100/inventory", policy_source: "group" };
+  const two = { ...one, profile_id: "p2", profile_name: "Billing", server_name: "billing", endpoint: "https://billing.example.test", default: false, local_url: "http://127.0.0.1:17100/billing" };
+  get.mockImplementation(async (path: string) => path.endsWith("/effective-mcp-profile") ? { data: { assigned: true, enforcement: "gateway", servers: [one, two] } } : path.endsWith("/tool-policy") ? { data: { group_id: "g1", profile_id: "p1", server_name: "inventory", endpoint: one.endpoint, version: 0, tools: [] } } : original(path));
+  renderDetail("mcp");
+  const first = await screen.findByRole("region", {name: "Inventory"});
+  expect(within(first).getByText("http://127.0.0.1:17100/inventory")).toBeTruthy();
+  expect(within(screen.getByRole("region", {name: "Billing"})).getByText("http://127.0.0.1:17100/billing")).toBeTruthy();
+  expect(screen.getByRole("button", {name: "Connect MCP server"})).toBeTruthy();
+  // The group's policy decides here, so the agent's own policy is not read or offered for saving.
+  expect(get.mock.calls.some(([path]) => String(path).endsWith("/mcp-tool-policy"))).toBe(false);
+});
+
+it("says on the Runtime tab, beside Update runtime, when the runtime reports that tunnel DNS was not applied", async () => {
+  org = { ...org, managed_agent_runtime_enabled: true };
+  seed(); const original = get.getMockImplementation()!;
+  let dns: boolean | null = false;
+  get.mockImplementation(async (path: string) => path.endsWith("/runtime-status") ? { data: { ...runtime, tunnel_dns_applied: dns } } : original(path));
+  const page = renderDetail("runtime");
+  const note = await screen.findByRole("note", {name: "Private DNS names do not resolve on this host"});
+  expect(note.textContent).toContain("private DNS names pushed through the tunnel will not resolve here");
+  expect(note.textContent).toContain("sudo systemctl restart tunnex-agent-runtime");
+  // The in-place runtime update stays where it was, right after the note.
+  const update = screen.getByRole("heading", {name: "Update runtime"});
+  expect(note.compareDocumentPosition(update) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+  for (const value of [true, null]) {
+    page.unmount(); dns = value;
+    renderDetail("runtime");
+    await screen.findByRole("heading", {name: "Update runtime"});
+    expect(screen.queryByRole("note", {name: "Private DNS names do not resolve on this host"})).toBeNull();
+  }
 });

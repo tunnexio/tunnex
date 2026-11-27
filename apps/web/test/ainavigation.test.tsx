@@ -36,25 +36,27 @@ function workspace(path: string) {
 }
 function mount(path: string) { return render(workspace(path)); }
 describe("AI and identity navigation", () => {
-  it.each([true, false])("uses server-admin identity for the blocked transport link (cp_admin=%s)", async (cpAdmin) => {
+  it.each([true, false])("uses server-admin identity for the transport choice (cp_admin=%s)", async (cpAdmin) => {
     mocks.cpAdmin = cpAdmin;
     mocks.get.mockImplementation(async (path: string) => path.endsWith("/members")
       ? { data: [{ user_id: "person", role: "owner", roles: ["owner"] }] }
       : { error: { error: { code: "ai_https_required" } }, response: new Response(null, { status: 403 }) });
     mount("/ai-gateway/models");
-    await screen.findByRole("alert");
-    const link = screen.queryByRole("link", { name: "Open transport settings" });
+    const banner = await screen.findByRole("status", { name: "AI Gateway is not ready" });
+    const choose = screen.queryByRole("button", { name: "Choose transport" });
     if (cpAdmin) {
-      expect(link?.getAttribute("href")).toBe("/settings?section=ai-transport");
-      fireEvent.click(link!);
-      await screen.findByRole("heading", { name: "AI Gateway transport controls" });
-      expect(screen.getByLabelText("Current route").textContent).toBe("/settings?section=ai-transport");
-      expect(screen.queryByRole("button", { name: "Add Model" })).toBeNull();
-    } else expect(link).toBeNull();
+      fireEvent.click(choose!);
+      // The choice opens on this page; the administrator is not sent to Settings and back.
+      await screen.findByRole("dialog", { name: "Choose how AI Gateway is reached" });
+      expect(screen.getByLabelText("Current route").textContent).toBe("/ai-gateway/models");
+    } else {
+      expect(choose).toBeNull();
+      expect(banner.textContent).toContain("Ask a server administrator");
+    }
   });
 
   it("separates AI destinations from Network and puts identity beside access", () => {
-    expect(NAV_GROUPS.find((g) => g.group === "AI")?.items.map((i) => i.to)).toEqual(["/ai-gateway", "/agents", "/mcp"]);
+    expect(NAV_GROUPS.find((g) => g.group === "AI")?.items.map((i) => i.to)).toEqual(["/ai-gateway", "/agents", "/mcp", "/approvals"]);
     expect(NAV_GROUPS.find((g) => g.group === "NETWORK")?.items.some((i) => i.to.startsWith("/agents"))).toBe(false);
     expect(NAV_GROUPS.flatMap((g) => g.items).find((i) => i.to === "/users")?.label).toBe("Users & Groups");
   });
@@ -165,5 +167,23 @@ describe("AI and identity navigation", () => {
     expect(screen.getByLabelText("Current route").textContent).toBe("/ai-gateway/credentials");
     expect(screen.queryByRole("tablist", { name: "Model management view" })).toBeNull();
     expect(screen.getByRole("link", { name: "LLM credentials" }).getAttribute("aria-current")).toBe("page");
+  });
+});
+
+describe("AI Gateway access subjects (AI-UX-1)", () => {
+  it("offers agents and agent groups beside user groups, and says who can manage them when the role cannot", async () => {
+    mocks.roles = ["ai-admin"];
+    mount("/ai-gateway/access");
+    const subjects = await screen.findByRole("navigation", { name: "Access subjects" });
+    const link = Array.from(subjects.querySelectorAll("a")).find((a) => a.textContent === "Agents and agent groups")!;
+    expect(link.getAttribute("href")).toBe("/ai-gateway/access?subject=agents");
+    fireEvent.click(link);
+    await waitFor(() => expect(screen.getByLabelText("Current route").textContent).toBe("/ai-gateway/access?subject=agents"));
+    expect(await screen.findByText(/Your role cannot manage agent groups/)).toBeTruthy();
+  });
+  it("opens the agents section for a role that manages agent groups", async () => {
+    mocks.roles = ["owner"];
+    mount("/ai-gateway/access?subject=agents");
+    expect(await screen.findByRole("region", { name: "Agent model access" })).toBeTruthy();
   });
 });

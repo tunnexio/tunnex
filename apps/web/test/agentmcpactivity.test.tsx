@@ -1,4 +1,5 @@
-import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { MemoryRouter } from "react-router-dom";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 
 const { get } = vi.hoisted(() => ({ get: vi.fn() }));
@@ -7,7 +8,7 @@ vi.mock("../src/lib/api", async () => {
   return { ...actual, api: { GET: get } };
 });
 
-import { AgentMCPToolActivityPanel } from "../src/components/AgentMCPControls";
+import { AgentMCPToolActivityPanel, mcpActivityExportHref } from "../src/components/AgentMCPControls";
 
 const path = "/api/v1/organizations/{orgId}/agents/{deviceId}/mcp-tool-activity";
 const call = (over: Record<string, unknown>) => ({
@@ -44,31 +45,76 @@ it("lists each call with its time, tool, server, result and approval", async () 
   expect(get).toHaveBeenCalledWith(path, { params: { path: { orgId: "org", deviceId: "agent" }, query: { limit: 50 } } });
 });
 
-it("filters to the calls that ran on an approval", async () => {
+const lastQuery = () => get.mock.calls.at(-1)?.[1].params.query;
+const startOf = (day: string) => new Date(`${day}T00:00:00`).toISOString(), endOf = (day: string) => new Date(`${day}T23:59:59.999`).toISOString();
+
+it("asks the server for denied calls, and for calls that ran on an approval", async () => {
   show();
   await screen.findByText("list_invoices");
-  const all = screen.getByRole("button", { name: "All calls" }), approved = screen.getByRole("button", { name: "Approved calls" });
+  const all = screen.getByRole("button", { name: "All calls" }), denied = screen.getByRole("button", { name: "Denied calls" }), approved = screen.getByRole("button", { name: "Approved calls" });
   expect(all.getAttribute("aria-pressed")).toBe("true");
-  fireEvent.click(approved);
-  expect(approved.getAttribute("aria-pressed")).toBe("true");
-  expect(screen.getByText("refund_payment")).toBeTruthy();
+  get.mockResolvedValue({ data: { items: [rows[4]], next_cursor: null } });
+  fireEvent.click(denied);
+  await waitFor(() => expect(lastQuery()).toEqual({ limit: 50, decision: "deny" }));
+  expect(denied.getAttribute("aria-pressed")).toBe("true");
+  expect(await screen.findByText("run_sql")).toBeTruthy();
   expect(screen.queryByText("list_invoices")).toBeNull();
-  expect(screen.queryByText("run_sql")).toBeNull();
+  get.mockResolvedValue({ data: { items: [call({ id: "act-2", tool_name: "refund_payment", approval_request_id: "9f8e7d6c-1111-4222-8333-444455556666", approved_by_email: "dana@example.test", approved_at: "2026-11-27T09:59:30Z" })], next_cursor: null } });
+  fireEvent.click(approved);
+  await waitFor(() => expect(lastQuery()).toEqual({ limit: 50, approved: true }));
+  expect(await screen.findByText(/^Approved by dana@example\.test/)).toBeTruthy();
   fireEvent.click(all);
-  expect(screen.getByText("list_invoices")).toBeTruthy();
+  await waitFor(() => expect(lastQuery()).toEqual({ limit: 50 }));
 });
 
-it("says there are no MCP calls yet, and separately that none of them needed approval", async () => {
+it("filters by a date range and by server, and clears the filters in one step", async () => {
+  render(<AgentMCPToolActivityPanel orgId="org" deviceId="agent" servers={[{ server_name: "billing-tools", profile_name: "Billing tools" }, { server_name: "crm", profile_name: "CRM" }]} />);
+  await screen.findByText("list_invoices");
+  fireEvent.change(screen.getByLabelText("From"), { target: { value: "2026-11-20" } });
+  fireEvent.change(screen.getByLabelText("To"), { target: { value: "2026-11-27" } });
+  fireEvent.change(screen.getByLabelText("Server"), { target: { value: "crm" } });
+  await waitFor(() => expect(lastQuery()).toEqual({ limit: 50, from: startOf("2026-11-20"), to: endOf("2026-11-27"), server: "crm" }));
+  expect(within(screen.getByLabelText("Server")).getAllByRole("option").map((option) => option.textContent)).toEqual(["All servers", "Billing tools", "CRM"]);
+  fireEvent.click(screen.getByRole("button", { name: "Clear filters" }));
+  await waitFor(() => expect(lastQuery()).toEqual({ limit: 50 }));
+  expect(screen.queryByRole("button", { name: "Clear filters" })).toBeNull();
+});
+
+it("refuses a range that ends before it starts instead of showing an empty list", async () => {
+  show();
+  await screen.findByText("list_invoices");
+  fireEvent.change(screen.getByLabelText("From"), { target: { value: "2026-11-27" } });
+  await waitFor(() => expect(lastQuery()).toEqual({ limit: 50, from: startOf("2026-11-27") }));
+  const calls = get.mock.calls.length;
+  fireEvent.change(screen.getByLabelText("To"), { target: { value: "2026-11-20" } });
+  expect((await screen.findByRole("alert")).textContent).toBe("The From date is after the To date. Change one of them to see calls.");
+  expect(get.mock.calls.length).toBe(calls);
+  expect(screen.queryByRole("link", { name: "Download CSV" })).toBeNull();
+});
+
+it("offers the CSV as a normal link that carries the same filters", async () => {
+  const click = vi.spyOn(HTMLAnchorElement.prototype, "click");
+  show();
+  await screen.findByText("list_invoices");
+  const link = () => screen.getByRole("link", { name: "Download CSV" }) as HTMLAnchorElement;
+  expect(link().getAttribute("href")).toBe("/api/v1/organizations/org/agents/agent/mcp-tool-activity/export");
+  expect(link().hasAttribute("download")).toBe(true);
+  fireEvent.click(screen.getByRole("button", { name: "Denied calls" }));
+  fireEvent.change(screen.getByLabelText("From"), { target: { value: "2026-11-20" } });
+  await waitFor(() => expect(link().getAttribute("href")).toBe(`/api/v1/organizations/org/agents/agent/mcp-tool-activity/export?decision=deny&from=${encodeURIComponent(startOf("2026-11-20"))}`));
+  expect(mcpActivityExportHref("org", "agent", { show: "approved", from: "", to: "", server: "crm" })).toBe("/api/v1/organizations/org/agents/agent/mcp-tool-activity/export?approved=true&server=crm");
+  // Nothing starts the download from script.
+  expect(click).not.toHaveBeenCalled();
+  click.mockRestore();
+});
+
+it("says there are no MCP calls yet, and separately that no call matches the filters", async () => {
   get.mockResolvedValue({ data: { items: [], next_cursor: null } });
   show();
   expect(await screen.findByText("No MCP calls yet.")).toBeTruthy();
   expect(screen.queryByRole("table")).toBeNull();
-  cleanup();
-  get.mockResolvedValue({ data: { items: [call({})], next_cursor: null } });
-  show();
-  await screen.findByText("list_invoices");
   fireEvent.click(screen.getByRole("button", { name: "Approved calls" }));
-  expect(screen.getByText("None of the calls shown ran on an approval.")).toBeTruthy();
+  expect(await screen.findByText("No calls match these filters.")).toBeTruthy();
   expect(screen.queryByText("No MCP calls yet.")).toBeNull();
 });
 
@@ -90,4 +136,52 @@ it("never shows a failed load as an empty list", async () => {
   expect(screen.queryByText("No MCP calls yet.")).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: "Retry MCP calls" }));
   expect(await screen.findByText("list_invoices")).toBeTruthy();
+});
+
+it("names each call's server as the administrator named it, in the list and in the server filter", async () => {
+  get.mockResolvedValue({ data: { items: [call({}), call({ id: "act-9", tool_name: "old_tool", endpoint: "http://10.0.0.77:8080/mcp", server_name: "gone-server" })], next_cursor: null } });
+  render(<AgentMCPToolActivityPanel orgId="org" deviceId="agent" servers={[{ endpoint: "http://10.0.0.5:8080/mcp", profile_name: "Billing database", server_name: "billing-db" }]} />);
+  await screen.findByRole("table", { name: "MCP calls" });
+  expect(row("list_invoices").getByText("Billing database")).toBeTruthy();
+  expect(row("list_invoices").queryByText("billing")).toBeNull();
+  // A call to a server that is no longer connected keeps the name that server reported.
+  expect(row("old_tool").getByText("gone-server")).toBeTruthy();
+  expect(within(screen.getByLabelText("Server")).getAllByRole("option").map((option) => option.textContent)).toEqual(["All servers", "Billing database"]);
+});
+
+describe("the Approval column", () => {
+  const approval = (tool: string) => row(tool).getAllByRole("cell").at(-1) as HTMLElement;
+  const showLinked = (items: unknown[]) => { get.mockResolvedValue({ data: { items, next_cursor: null } }); return render(<MemoryRouter><AgentMCPToolActivityPanel orgId="org" deviceId="agent" /></MemoryRouter>); };
+
+  it("says a blocked call required approval, never that approval was not needed", async () => {
+    showLinked([call({ id: "w1", tool_name: "refund_payment", decision: "deny", reason: "step_up_required", result_status: "not_forwarded" })]);
+    await screen.findByRole("table", { name: "MCP calls" });
+    expect(row("refund_payment").getByText("Blocked: approval was required")).toBeTruthy();
+    expect(approval("refund_payment").textContent).toBe("Approval was required");
+    expect(row("refund_payment").queryByText("Not needed")).toBeNull();
+    // No request id on the row, so there is nothing to link to.
+    expect(within(approval("refund_payment")).queryByRole("link")).toBeNull();
+  });
+
+  it("links a waiting call to its request in Approvals when the row carries the request", async () => {
+    showLinked([call({ id: "w2", tool_name: "refund_payment", decision: "deny", reason: "step_up_required", result_status: "not_forwarded", approval_request_id: "9f8e7d6c-1111-4222-8333-444455556666" })]);
+    await screen.findByRole("table", { name: "MCP calls" });
+    const link = within(approval("refund_payment")).getByRole("link", { name: "Approval was required" });
+    expect(link.getAttribute("href")).toBe("/approvals");
+    expect(link.getAttribute("title")).toBe("Request 9f8e7d6c");
+  });
+
+  it("says a denied request was denied, keeps who approved a call that ran, and keeps Not needed for calls that never asked", async () => {
+    showLinked([
+      call({ id: "d1", tool_name: "close_account", decision: "deny", reason: "step_up_denied", result_status: "not_forwarded" }),
+      call({ id: "a1", tool_name: "refund_payment", approval_request_id: "9f8e7d6c-1111-4222-8333-444455556666", approved_by_email: "dana@example.test", approved_at: "2026-11-27T09:59:30Z" }),
+      call({ id: "n1", tool_name: "list_invoices" }),
+      call({ id: "n2", tool_name: "run_sql", decision: "deny", reason: "policy", result_status: "not_forwarded" }),
+    ]);
+    await screen.findByRole("table", { name: "MCP calls" });
+    expect(approval("close_account").textContent).toBe("Denied");
+    expect(approval("refund_payment").textContent).toMatch(/^Approved by dana@example\.test, /);
+    expect(approval("list_invoices").textContent).toBe("Not needed");
+    expect(approval("run_sql").textContent).toBe("Not needed");
+  });
 });

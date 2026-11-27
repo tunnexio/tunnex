@@ -190,6 +190,7 @@ func (a *AgentChannel) Handler() http.Handler {
 	r.Post(mcpwire.PathResult, a.mcpResult)
 	r.Get(mcpwire.PathTargets, a.mcpTargets)
 	r.Post(mcpwire.PathInventory, a.mcpInventory)
+	r.Post(mcpwire.PathWait, a.mcpWait)
 	r.Get("/agent/watch", a.watch)
 	r.Post("/agent/renew", a.renew)
 	r.Post("/agent/report", a.report)

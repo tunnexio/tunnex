@@ -42,7 +42,22 @@ func (s apiServer) IssueAgentBootstrapToken(ctx context.Context, req api.IssueAg
 	if err != nil {
 		return nil, err
 	}
-	return api.IssueAgentBootstrapToken201JSONResponse{Body: api.AgentBootstrapTokenResponse{BootstrapToken: tok, Release: toAPIBootstrapRelease(metadata)}, Headers: api.IssueAgentBootstrapToken201ResponseHeaders{XRequestId: middleware.GetReqID(ctx)}}, nil
+	return api.IssueAgentBootstrapToken201JSONResponse{Body: api.AgentBootstrapTokenResponse{BootstrapToken: tok, TokenId: s.bootstrapTokenID(ctx, req.OrgId, tok), Release: toAPIBootstrapRelease(metadata)}, Headers: api.IssueAgentBootstrapToken201ResponseHeaders{XRequestId: middleware.GetReqID(ctx)}}, nil
+}
+
+// bootstrapTokenID finds the id of the token just issued, for its status and for revocation, by the same
+// hash the redemption path looks it up with. It is nil when it cannot be read; the token is still valid
+// and the install step then shows no live status.
+func (s apiServer) bootstrapTokenID(ctx context.Context, orgID uuid.UUID, raw string) *uuid.UUID {
+	if s.system == nil {
+		return nil
+	}
+	h := sha256.Sum256([]byte(raw))
+	row, err := s.system.GetAgentBootstrapToken(ctx, h[:])
+	if err != nil || row.OrgID != orgID {
+		return nil
+	}
+	return &row.ID
 }
 
 // verifiedBootstrapRelease returns the release this deployment pins together with its separately
@@ -165,6 +180,13 @@ func (s apiServer) SetOrganizationAgentRuntimeEnabled(ctx context.Context, req a
 	}
 	if req.Body == nil {
 		return nil, apierr.BadRequest("invalid_request", "request body is required")
+	}
+	// Honest licensing: a plan that cannot use runtime synchronization is told so here, before anything is
+	// saved, instead of saving a switch whose status and poll then answer 503. Turning it off always works.
+	if req.Body.Enabled {
+		if err := s.requireAgentRuntimePlan(); err != nil {
+			return nil, err
+		}
 	}
 	org, err := s.orgs.SetAgentRuntimeEnabled(ctx, req.OrgId, req.Body.Enabled)
 	if err != nil {

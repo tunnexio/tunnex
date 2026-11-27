@@ -10,6 +10,8 @@ import { Button, DataTable, ErrorText, Field, Input, Loading, Modal, PageHeader,
 import { api, apiErrorMessage, loadOne, type AgentGroup, type AgentPolicyTemplate, type AgentPolicyTemplateAssignment, type AgentPolicyTemplatePreview, type AgentPolicyTemplateVersion, type Resource } from "../lib/api";
 import { relativeAge } from "../lib/format";
 import { useOrg } from "../lib/useOrg";
+import { useAgentFeatures } from "../lib/agentFeatures";
+import { FeatureEnableInline } from "../components/FeatureEnableInline";
 import { AgentsManagementGate } from "./AgentsManagementGate";
 import AppAccessRowMenu from "../components/AppAccessRowMenu";
 import AppAccessPagination from "../components/AppAccessPagination";
@@ -18,10 +20,11 @@ import AppAccessEmptyState from "../components/AppAccessEmptyState";
 export default function AgentsPolicyTemplates() {
   const { org } = useOrg();
   const enabled = Boolean(org?.agent_policy_templates_enabled);
+  const features = useAgentFeatures(org?.id);
   return <div className="network-management agents-workspace agents-management space-y-5">
     <PageHeader navigationTitle title="Policy templates" subtitle={org?.name} />
     <AgentsTabRail />
-    <AgentsManagementGate>{(orgId) => enabled ? <PolicyTemplatesWorkspace key={orgId} orgId={orgId} /> : <AppAccessEmptyState icon={null} title="Agent groups and policy templates are turned off" description="Enable this organization’s opt-in to configure reusable network policies." action={<Link className="agents-management-link" to="/settings?section=features&feature=agent-templates">Configure AI Agent settings</Link>} />}</AgentsManagementGate>
+    <AgentsManagementGate>{(orgId) => enabled ? <PolicyTemplatesWorkspace key={orgId} orgId={orgId} /> : <AppAccessEmptyState icon={null} title="Agent groups and policy templates are turned off" description="Enable this organization’s opt-in to configure reusable network policies." action={<FeatureEnableInline orgId={orgId} feature="agent_groups" features={features} />} />}</AgentsManagementGate>
   </div>;
 }
 

@@ -79,10 +79,13 @@ describe("central organization Features authority", () => {
     fixture.role = "member"; fixture.roles = ["member", "admin"];
     render(page());
     await screen.findByRole("switch", { name: "OpenVPN" });
-    expect(screen.getByText("16 features")).toBeTruthy();
+    expect(screen.getByText("17 features")).toBeTruthy();
     expect(screen.getByRole("region", { name: "Server Access" })).toBeTruthy();
     expect(screen.getByRole("region", { name: "Kubernetes cluster scopes" })).toBeTruthy();
     expect(screen.getByRole("region", { name: "Zero Trust enforcement" })).toBeTruthy();
+    // MCP has its own entry and its own switch, beside the agent-group one it used to depend on.
+    expect(within(screen.getByRole("region", { name: "MCP" })).getByRole("switch", { name: "MCP" })).toBeTruthy();
+    expect(within(screen.getByRole("region", { name: "Agent groups & policy templates" })).getByRole("switch", { name: "Agent groups & policy templates" })).toBeTruthy();
     expect(screen.getByRole("region", { name: "Sandbox creation" }).textContent).toContain("Unavailable");
     expect(fixture.GET.mock.calls.some(([path]) => path.includes("sandbox"))).toBe(false);
     for (const mutation of [fixture.PUT, fixture.PATCH, fixture.POST, fixture.DELETE]) expect(mutation).not.toHaveBeenCalled();
@@ -134,7 +137,7 @@ describe("central organization Features authority", () => {
     fireEvent.change(screen.getByRole("searchbox", { name: "Search features" }), { target: { value: "missing capability" } });
     expect(screen.getByText("No matching features")).toBeTruthy();
     fireEvent.click(screen.getByRole("button", { name: "Clear filters" }));
-    expect(screen.getByText("16 features")).toBeTruthy();
+    expect(screen.getByText("17 features")).toBeTruthy();
     expect(fixture.PUT).not.toHaveBeenCalled();
   });
 

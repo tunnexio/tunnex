@@ -8,6 +8,9 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -439,5 +442,176 @@ func TestMCPProxyUsesLegacyLocalPathWithoutGatewayURL(t *testing.T) {
 	gatewayURL = ""
 	if got := call("safe"); got != http.StatusNoContent || upstreamCalls.Load() != 2 {
 		t.Fatalf("back on the legacy path: status %d upstream %d", got, upstreamCalls.Load())
+	}
+}
+
+// ── AI-UX-1: several MCP servers behind one loopback address ───────────────────────
+
+func localMCPRequestAt(path, body string) *http.Request {
+	request := localMCPRequest(body)
+	request.URL.Path = path
+	return request
+}
+
+// /<server name> goes to the gateway's /mcp/<server name>. The bare address, and the /mcp path clients
+// were given before servers had names, go to the gateway's /mcp, which is the agent's first server.
+func TestMCPGatewayForwarderRoutesByServerName(t *testing.T) {
+	const body = `{"jsonrpc":"2.0","id":7,"method":"tools/call","params":{"name":"refund","arguments":{"order":"o1"}}}`
+	var mu sync.Mutex
+	var seen []string
+	gateway := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got, _ := io.ReadAll(r.Body)
+		mu.Lock()
+		seen = append(seen, r.Method+" "+r.URL.RequestURI())
+		mu.Unlock()
+		if string(got) != body || r.Header.Get("Mcp-Session-Id") != "session-1" || r.Header.Get("Authorization") != "" {
+			t.Errorf("gateway got body %q headers %v", got, r.Header)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"jsonrpc":"2.0","id":7,"result":{"path":"`+r.URL.Path+`"}}`)
+	}))
+	defer gateway.Close()
+	handler, policyCalls, leaseCalls := gatewayModeProxyWithServers(t, func() string { return gateway.URL + "/mcp" },
+		[]MCPProxyServer{{Name: "orders-db", Default: true}, {Name: "billing"}})
+	for _, tc := range []struct{ local, gateway string }{
+		{"/", "/mcp"},
+		{"", "/mcp"},
+		{"/mcp", "/mcp"},
+		{"/orders-db", "/mcp/orders-db"},
+		{"/billing", "/mcp/billing"},
+	} {
+		request := localMCPRequestAt(tc.local, body)
+		request.URL.RawQuery = "server=billing"
+		request.Header.Set("Mcp-Session-Id", "session-1")
+		request.Header.Set("Authorization", "Bearer caller-token")
+		recorder := httptest.NewRecorder()
+		handler.ServeHTTP(recorder, request)
+		if recorder.Code != http.StatusOK || recorder.Body.String() != `{"jsonrpc":"2.0","id":7,"result":{"path":"`+tc.gateway+`"}}` {
+			t.Fatalf("%q: %d %s", tc.local, recorder.Code, recorder.Body.String())
+		}
+		mu.Lock()
+		last := seen[len(seen)-1]
+		mu.Unlock()
+		// The caller's query never travels: the path alone names the server.
+		if last != "POST "+tc.gateway {
+			t.Fatalf("%q reached the gateway as %q, want POST %s", tc.local, last, tc.gateway)
+		}
+	}
+	if policyCalls.Load() != 0 || leaseCalls.Load() != 0 {
+		t.Fatalf("forwarder used local policy (%d) or leased a token (%d)", policyCalls.Load(), leaseCalls.Load())
+	}
+}
+
+// A name that is not one of the agent's servers answers 404 with a plain JSON-RPC error. Nothing is
+// forwarded, to the gateway or anywhere else.
+func TestMCPGatewayForwarderRefusesAnUnknownServerName(t *testing.T) {
+	var forwarded atomic.Int64
+	gateway := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { forwarded.Add(1); w.WriteHeader(http.StatusNoContent) }))
+	defer gateway.Close()
+	handler, policyCalls, leaseCalls := gatewayModeProxyWithServers(t, func() string { return gateway.URL + "/mcp" },
+		[]MCPProxyServer{{Name: "orders-db", Default: true}, {Name: "billing"}, {Name: "Not_A_Name"}, {Name: "a/b"}, {Name: "mcp"}, {Name: ""}})
+	const want = `{"jsonrpc":"2.0","error":{"code":-32600,"message":"No MCP server with this name is connected to this agent"},"id":null}`
+	for _, path := range []string{"/unknown", "/Orders-DB", "/orders-db/", "/orders-db/admin", "/mcp/orders-db", "/mcp/", "//billing", "/billing%2Fadmin",
+		"/Not_A_Name", "/a/b", "/..", "/../mcp", "/.", "/%6dcp"} {
+		request := localMCPRequest(`{"jsonrpc":"2.0","id":1,"method":"tools/list"}`)
+		// What the server hands the handler: the decoded path, and the raw one when it was escaped.
+		request.URL.Path, request.URL.RawPath = path, ""
+		if unescaped, err := url.PathUnescape(path); err != nil {
+			t.Fatal(err)
+		} else if unescaped != path {
+			request.URL.Path, request.URL.RawPath = unescaped, path
+		}
+		recorder := httptest.NewRecorder()
+		handler.ServeHTTP(recorder, request)
+		if recorder.Code != http.StatusNotFound || recorder.Body.String() != want || recorder.Header().Get("Content-Type") != "application/json" {
+			t.Fatalf("%s: %d %s", path, recorder.Code, recorder.Body.String())
+		}
+		var reply map[string]any
+		if err := json.Unmarshal(recorder.Body.Bytes(), &reply); err != nil {
+			t.Fatalf("%s: the refusal is not JSON: %v", path, err)
+		}
+	}
+	if forwarded.Load() != 0 || policyCalls.Load() != 0 || leaseCalls.Load() != 0 {
+		t.Fatalf("an unknown server was acted on: gateway %d policy %d lease %d", forwarded.Load(), policyCalls.Load(), leaseCalls.Load())
+	}
+}
+
+// A control plane that predates several servers sends no server list. The proxy then forwards every path
+// to the gateway URL as it is, exactly as before.
+func TestMCPGatewayForwarderWithoutAServerListForwardsAsBefore(t *testing.T) {
+	var mu sync.Mutex
+	var seen []string
+	gateway := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		seen = append(seen, r.URL.Path)
+		mu.Unlock()
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer gateway.Close()
+	for name, handler := range map[string]http.Handler{
+		"no source": func() http.Handler {
+			h, _, _ := gatewayModeProxy(t, func() string { return gateway.URL + "/mcp" })
+			return h
+		}(),
+		"an empty list": func() http.Handler {
+			h, _, _ := gatewayModeProxyWithServers(t, func() string { return gateway.URL + "/mcp" }, nil)
+			return h
+		}(),
+	} {
+		for _, path := range []string{"/", "/mcp", "/anything", "/v1/mcp"} {
+			recorder := httptest.NewRecorder()
+			handler.ServeHTTP(recorder, localMCPRequestAt(path, `{"jsonrpc":"2.0","id":1,"method":"tools/list"}`))
+			if recorder.Code != http.StatusNoContent {
+				t.Fatalf("%s %s: %d %s", name, path, recorder.Code, recorder.Body.String())
+			}
+		}
+	}
+	if strings.Join(seen, " ") != strings.TrimSpace(strings.Repeat("/mcp ", 8)) {
+		t.Fatalf("gateway paths: %v", seen)
+	}
+}
+
+// The legacy local path (no gateway URL) stays single-server: it ignores the path and the server list.
+func TestMCPLegacyLocalPathIgnoresServerNames(t *testing.T) {
+	var upstreamCalls atomic.Int64
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		upstreamCalls.Add(1)
+		w.WriteHeader(http.StatusNoContent)
+	}))
+	defer upstream.Close()
+	handler, err := managedMCPServersProxyHandler(mcpTestListen,
+		func(context.Context) string { return "" },
+		func(context.Context) []MCPProxyServer {
+			return []MCPProxyServer{{Name: "orders-db", Default: true}, {Name: "billing"}}
+		},
+		func(context.Context) (string, error) { return upstream.URL, nil },
+		func(context.Context) (MCPProxyPolicy, error) {
+			return MCPProxyPolicy{Version: 1, Rules: []MCPProxyRule{{Endpoint: upstream.URL, ToolName: "safe"}}}, nil
+		}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{"/", "/billing", "/unknown"} {
+		recorder := httptest.NewRecorder()
+		handler.ServeHTTP(recorder, localMCPRequestAt(path, `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"safe","arguments":{}}}`))
+		if recorder.Code != http.StatusNoContent {
+			t.Fatalf("%s: %d %s", path, recorder.Code, recorder.Body.String())
+		}
+	}
+	recorder := httptest.NewRecorder()
+	handler.ServeHTTP(recorder, localMCPRequestAt("/billing", `{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"dangerous","arguments":{}}}`))
+	if recorder.Code != http.StatusForbidden || upstreamCalls.Load() != 3 {
+		t.Fatalf("legacy deny: %d, upstream calls %d", recorder.Code, upstreamCalls.Load())
+	}
+}
+
+// A held "Ask first" call keeps the gateway silent for up to 45 seconds, so the proxy waits 60 for the
+// gateway's answer. Reaching the gateway is still bounded at five.
+func TestMCPGatewayForwarderWaitsLongEnoughForAHeldCall(t *testing.T) {
+	if mcpGatewayHeaderTimeout != 60*time.Second || mcpGatewayDialTimeout != 5*time.Second {
+		t.Fatalf("header timeout %s, dial timeout %s", mcpGatewayHeaderTimeout, mcpGatewayDialTimeout)
+	}
+	if got := newMCPGatewayForwarder(func(context.Context) string { return "" }).roundTripper().ResponseHeaderTimeout; got != 60*time.Second {
+		t.Fatalf("the transport gives the gateway %s", got)
 	}
 }

@@ -3,6 +3,7 @@ import { DiJava } from "react-icons/di";
 import { VscGlobe, VscTerminal } from "react-icons/vsc";
 import type { IconType } from "react-icons";
 import { useEffect, useId, useState } from "react";
+import { Link } from "react-router-dom";
 import type { components } from "@tunnex/shared";
 import { AICodeBlock } from "./AICodeBlock";
 import { HelpTooltip } from "./HelpTooltip";
@@ -15,10 +16,10 @@ import { Button, RefreshButton } from "./ui";
 const languageIcons: Record<string, IconType> = { python: SiPython, javascript: SiJavascript, typescript: SiTypescript, go: SiGo, php: SiPhp, ruby: SiRuby, shell: VscTerminal, csharp: SiDotnet, java: DiJava, http: VscGlobe };
 type UserModel = components["schemas"]["AIUserModel"];
 const unavailableMessages: Record<string, string> = {
-  deployment_disabled: "VPN AI access is not enabled on this installation. Ask your administrator to update the gateway setup, then refresh.",
+  deployment_disabled: "Reaching models over the VPN is not set up on this server. Only a server administrator can set it up, in the Tunnex Server configuration on the server itself. Ask them, then refresh.",
   http_disabled: "HTTP inside the VPN is turned off for this server, so models cannot be reached over the VPN. Ask a server administrator to turn on \"Inside the VPN\" in Settings → AI Gateway transport, then refresh.",
-  transport_unavailable: "Could not verify the VPN AI transport. Refresh or ask your installation administrator to check it.",
-  gateway_not_ready: "No ready VPN AI gateway is available for your device. Connect the Tunnex client and refresh; if this persists, ask your administrator to check the gateway.",
+  transport_unavailable: "Could not check how this server reaches models over the VPN. Refresh; if it keeps failing, ask a server administrator to check Settings → AI Gateway transport.",
+  gateway_not_ready: "No gateway is ready to carry model requests from your device. Connect the Tunnex client and refresh; if it keeps failing, ask an organization administrator to check that a gateway is online.",
   operation_unsupported: "VPN connection examples currently support chat models only. This model's operation is not supported over VPN yet.",
 };
 
@@ -26,6 +27,7 @@ export function AIModelConnectionDetails({ orgId, model, mode = "chat" }: { orgI
   const { orgs } = useOrg();
   const { state } = useAuth();
   const userId = state.status === "authed" ? state.user.id : "";
+  const serverAdmin = state.status === "authed" && Boolean(state.user.cp_admin);
   const organization = orgs.find((item) => item.id === orgId);
   const scope = JSON.stringify([orgId, userId, model, mode]);
   const [attempt, setAttempt] = useState(0);
@@ -70,7 +72,7 @@ export function AIModelConnectionDetails({ orgId, model, mode = "chat" }: { orgI
     : "Checking your VPN endpoint…";
   return <section className="ai-connection-details space-y-4" aria-label={`Connection details for ${model}`}>
     <div className="ai-connect-context"><span>{organization?.name ?? "Selected organization"}</span><HelpTooltip label="Connection requirements">Connect your Tunnex client to this organization's gateway. Every example uses your VPN device identity and model access policy; no API key is needed. These endpoints are reachable only through the VPN.</HelpTooltip></div>
-    {!base ? <div className="space-y-3"><p role={current?.failed ? "alert" : "status"}>{unavailable}</p>{mode === "chat" && userId && <RefreshButton label="Refresh VPN endpoint" disabled={!current} onClick={() => setAttempt(n => n + 1)} />}</div> : <>
+    {!base ? <div className="space-y-3"><p role={current?.failed ? "alert" : "status"}>{unavailable}</p>{serverAdmin && granted?.vpn_unavailable_reason === "http_disabled" && <Link className="ai-gateway-off-link" to="/settings?section=ai-transport">Open AI Gateway transport</Link>}{mode === "chat" && userId && <RefreshButton label="Refresh VPN endpoint" disabled={!current} onClick={() => setAttempt(n => n + 1)} />}</div> : <>
       <p className="text-sm text-ink-secondary">Connect your Tunnex client before running these examples. Access uses your VPN identity and model policy.</p>
       <div className="ai-connect-fields">{[["Base URL", base], ["Model ID", model], ["Org ID", orgId]].map(([label, value]) => <div className="ai-connect-field" key={label}><label>{label}</label><div><code title={value} tabIndex={0}>{value}</code><button type="button" aria-label={`Copy ${label}`} title={`Copy ${label}`} onClick={() => void copy(label, value)}><svg aria-hidden="true" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.7"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M15 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h3"/></svg></button></div></div>)}</div>
       <div className="ai-connect-example">

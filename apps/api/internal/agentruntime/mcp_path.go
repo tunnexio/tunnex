@@ -38,6 +38,26 @@ type MCPPath struct {
 	GatewayURL *string
 	// GraceUntil is the organization's direct-path grace date, nil when it has none.
 	GraceUntil *time.Time
+	// Servers are all the agent's MCP servers, first one first. Endpoint above is the first one's. The
+	// agent-host path only ever carries the first; the gateway path carries all of them.
+	Servers []MCPServer
+}
+
+// gatewayServers is what the runtime is told on the gateway path: every server by name.
+func (p MCPPath) gatewayServers() []MCPServer {
+	if p.GatewayURL == nil {
+		return nil
+	}
+	return p.Servers
+}
+
+// fingerprintServers is the part of the server list a config revision depends on. One server adds
+// nothing, so an agent that has a single MCP server keeps the revision it had before several were possible.
+func (p MCPPath) fingerprintServers() []MCPServer {
+	if p.GatewayURL == nil || len(p.Servers) < 2 {
+		return nil
+	}
+	return p.Servers
 }
 
 // mcpPath decides the path from four facts: the assigned profile, whether the agent's gateway freshly
@@ -47,14 +67,15 @@ type MCPPath struct {
 //	otherwise, inside the grace period  -> agent host (the path that existed before)
 //	otherwise                           -> unavailable
 func (s *Service) mcpPath(ctx context.Context, orgID, deviceID, nodeID uuid.UUID, poolCIDR string, runtimeCapable bool) (MCPPath, error) {
-	endpoint, err := s.mcpUpstreamForDevice(ctx, orgID, deviceID)
+	servers, err := s.mcpServersForDevice(ctx, orgID, deviceID)
 	if err != nil {
 		return MCPPath{}, err
 	}
-	if endpoint == nil {
+	if len(servers) == 0 {
 		return MCPPath{}, nil
 	}
-	out := MCPPath{Assigned: true, Endpoint: *endpoint, Enforcement: MCPEnforcementUnavailable}
+	endpoint := &servers[0].Endpoint
+	out := MCPPath{Assigned: true, Endpoint: *endpoint, Enforcement: MCPEnforcementUnavailable, Servers: servers}
 	grace, err := s.q.GetOrganizationMCPDirectPathGrace(ctx, orgID)
 	switch {
 	case err == nil:

@@ -20,6 +20,9 @@ func (s apiServer) PermitRuntimeMCPToolApproval(ctx context.Context, req api.Per
 	if !ok || req.Body == nil || s.mcpToolApproval == nil {
 		return nil, runtimeUnauthorized()
 	}
+	if !s.runtimeMCPOn(ctx, id.OrgID) {
+		return nil, apierr.New(http.StatusServiceUnavailable, "mcp_tool_approval_unavailable", "MCP tool approval is temporarily unavailable")
+	}
 	b := req.Body
 	r, allowed, err := s.mcpToolApproval.Permit(ctx, id.OrgID, id.DeviceID, mcptoolapproval.Identity{PolicyVersion: b.PolicyVersion, Endpoint: b.Endpoint, ServerName: b.ServerName, ToolName: b.ToolName, InputSchemaHash: b.InputSchemaHash, RequestDigest: b.RequestDigest})
 	if errors.Is(err, mcptoolapproval.ErrInvalid) {
@@ -33,6 +36,9 @@ func (s apiServer) PermitRuntimeMCPToolApproval(ctx context.Context, req api.Per
 
 func (s apiServer) ListAgentMCPToolApprovalRequests(ctx context.Context, req api.ListAgentMCPToolApprovalRequestsRequestObject) (api.ListAgentMCPToolApprovalRequestsResponseObject, error) {
 	if _, err := authorize(ctx, req.OrgId, rbac.PermAgentMCPToolApprovalApprove); err != nil {
+		return nil, err
+	}
+	if err := s.requireMCPOn(ctx, req.OrgId); err != nil {
 		return nil, err
 	}
 	if s.mcpToolApproval == nil {
@@ -53,6 +59,9 @@ func (s apiServer) ApproveAgentMCPToolApprovalRequest(ctx context.Context, req a
 	if _, err := authorize(ctx, req.OrgId, rbac.PermAgentMCPToolApprovalApprove); err != nil {
 		return nil, err
 	}
+	if err := s.requireMCPOn(ctx, req.OrgId); err != nil {
+		return nil, err
+	}
 	if s.mcpToolApproval == nil {
 		return nil, apierr.New(http.StatusServiceUnavailable, "mcp_tool_approval_unavailable", "MCP tool approval is temporarily unavailable")
 	}
@@ -70,6 +79,9 @@ func (s apiServer) ApproveAgentMCPToolApprovalRequest(ctx context.Context, req a
 // for the rest of the request's lifetime.
 func (s apiServer) DenyAgentMCPToolApprovalRequest(ctx context.Context, req api.DenyAgentMCPToolApprovalRequestRequestObject) (api.DenyAgentMCPToolApprovalRequestResponseObject, error) {
 	if _, err := authorize(ctx, req.OrgId, rbac.PermAgentMCPToolApprovalApprove); err != nil {
+		return nil, err
+	}
+	if err := s.requireMCPOn(ctx, req.OrgId); err != nil {
 		return nil, err
 	}
 	if s.mcpToolApproval == nil {
@@ -110,6 +122,14 @@ func toAPIMCPToolApproval(r mcptoolapproval.Request) api.AgentMCPToolApprovalReq
 	}
 	truncated := r.ArgumentsTruncated
 	out.ArgumentsTruncated = &truncated
+	if r.PolicySource != "" {
+		source := api.MCPToolPolicySource(r.PolicySource)
+		out.PolicySource = &source
+	}
+	if r.PolicyGroupID != uuid.Nil {
+		group := r.PolicyGroupID
+		out.PolicyGroupId = &group
+	}
 	if r.ToolDefinitionHash != "" {
 		v := r.ToolDefinitionHash
 		out.ToolDefinitionHash = &v

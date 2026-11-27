@@ -146,7 +146,9 @@ func RunManagedAgent(ctx context.Context, opts ManagedRuntimeOptions) error {
 	if err != nil {
 		return err
 	}
-	applier := &wireGuardRuntimeApplier{path: opts.ConfigPath, command: opts.ApplyCommand}
+	// What the applier learns about the host's resolver at each apply is what the source reports.
+	source.tunnelDNS = &tunnelDNSState{}
+	applier := &wireGuardRuntimeApplier{path: opts.ConfigPath, command: opts.ApplyCommand, dns: source.tunnelDNS}
 	runtimeApplied := state.AppliedRevision
 	runtimeInitialized := state.AppliedRevision > 0
 	if state.AppliedRevision > 0 {
@@ -168,7 +170,7 @@ func RunManagedAgent(ctx context.Context, opts ManagedRuntimeOptions) error {
 	proxyErr := make(chan error, 1)
 	if opts.MCPProxyListen != "" {
 		go func() {
-			proxyErr <- StartManagedMCPToolProxy(ctx, opts.MCPProxyListen, source.MCPProxyGateway, source.MCPProxyUpstream, source.MCPProxyPolicy, func(proxyCtx context.Context) (string, error) {
+			proxyErr <- StartManagedMCPServersProxy(ctx, opts.MCPProxyListen, source.MCPProxyGateway, source.MCPProxyServers, source.MCPProxyUpstream, source.MCPProxyPolicy, func(proxyCtx context.Context) (string, error) {
 				return source.MCPProxyAuthorization(proxyCtx, source.currentMCPUpstream())
 			}, source.MCPProxyStepUp)
 		}()
@@ -254,6 +256,8 @@ type managedRuntimeSource struct {
 	mcpEndpoints     []string
 	mcpUpstream      string
 	mcpGatewayURL    string // AI-SEC-2: set => forward MCP to the gateway listener, nothing local
+	mcpServers       []MCPProxyServer
+	tunnelDNS        *tunnelDNSState // nil (or nothing applied yet) => the report says nothing about DNS
 	mcpConfigMu      sync.RWMutex
 	mcpTokenMu       sync.Mutex
 	mcpToken         string
@@ -356,6 +360,7 @@ func (s *managedRuntimeSource) Poll(ctx context.Context, applied int64, version 
 	c := resp.JSON200
 	s.setMCPUpstream(c.McpUpstream)
 	s.setMCPGatewayURL(c.McpGatewayUrl)
+	s.setMCPServers(c.McpServers)
 	return ManagedAgentConfig{Revision: c.Revision, DeviceID: c.DeviceId.String(), OrgID: c.OrgId.String(), Address: c.Address, GatewayEndpoint: c.GatewayEndpoint, GatewayPublicKey: c.GatewayPublicKey, AllowedIPs: c.AllowedIps, DNS: c.Dns, PersistentKeepalive: c.PersistentKeepalive, MCPUpstream: c.McpUpstream, CredentialRotationRevision: c.CredentialRotationRevision,
 		WireGuardCurrentRevision:  c.WireguardCurrentRevision,
 		WireGuardRotationRevision: c.WireguardRotationRevision,
@@ -401,6 +406,28 @@ func (s *managedRuntimeSource) MCPProxyGateway(context.Context) string {
 	return s.currentMCPGatewayURL()
 }
 
+// setMCPServers records the MCP servers the control plane lists for this agent (AI-UX-1). None listed
+// (no server, or a control plane that predates several servers) leaves the proxy forwarding every path
+// to the gateway URL as it is.
+func (s *managedRuntimeSource) setMCPServers(servers *[]api.ManagedAgentMCPServer) {
+	var next []MCPProxyServer
+	if servers != nil {
+		for _, server := range *servers {
+			next = append(next, MCPProxyServer{Name: server.Name, Default: server.Default})
+		}
+	}
+	s.mcpConfigMu.Lock()
+	s.mcpServers = next
+	s.mcpConfigMu.Unlock()
+}
+
+// MCPProxyServers is the loopback proxy's server list: the paths it serves in gateway mode.
+func (s *managedRuntimeSource) MCPProxyServers(context.Context) []MCPProxyServer {
+	s.mcpConfigMu.RLock()
+	defer s.mcpConfigMu.RUnlock()
+	return s.mcpServers
+}
+
 func (s *managedRuntimeSource) currentMCPUpstream() string {
 	s.mcpConfigMu.RLock()
 	defer s.mcpConfigMu.RUnlock()
@@ -422,7 +449,10 @@ func (s *managedRuntimeSource) poll(ctx context.Context, applied int64, version 
 	// AI-SEC-2: this runtime forwards MCP to the gateway listener when the control plane names one. It
 	// cannot update itself, so this declaration (not the version string) is the capability signal.
 	mcpGateway := true
-	return s.client.PollAgentRuntimeWithResponse(ctx, &api.PollAgentRuntimeParams{AppliedRevision: applied, ClientVersion: version, WaitSeconds: &s.wait, WireguardRevision: &wgRevision, McpGateway: &mcpGateway})
+	// AI-UX-1: this runtime's proxy waits 60 seconds for the gateway's answer (mcpGatewayHeaderTimeout),
+	// so the gateway may hold an "Ask first" call while an approver decides. Declared the same way.
+	mcpHold := true
+	return s.client.PollAgentRuntimeWithResponse(ctx, &api.PollAgentRuntimeParams{AppliedRevision: applied, ClientVersion: version, WaitSeconds: &s.wait, WireguardRevision: &wgRevision, McpGateway: &mcpGateway, McpHold: &mcpHold})
 }
 
 func (s *managedRuntimeSource) MCPProxyPolicy(ctx context.Context) (MCPProxyPolicy, error) {
@@ -819,6 +849,9 @@ func (s *managedRuntimeSource) Report(ctx context.Context, report AgentRuntimeRe
 	if report.MCPOAuthDiscovery != nil {
 		body.McpOauthDiscovery = &report.MCPOAuthDiscovery
 	}
+	// Whether the tunnel DNS servers can be written on this host, so the console can say that private DNS
+	// names pushed through the tunnel do not resolve here. Nothing is said before the first apply.
+	body.TunnelDnsApplied = s.tunnelDNS.applied()
 	resp, err := s.client.ReportAgentRuntimeWithResponse(ctx, body)
 	if err != nil {
 		return err
@@ -835,6 +868,45 @@ func (s *managedRuntimeSource) Report(ctx context.Context, report AgentRuntimeRe
 type wireGuardRuntimeApplier struct {
 	path    string
 	command func(context.Context, string, string) error
+	dns     *tunnelDNSState
+}
+
+// tunnelDNSState is what the runtime knows about writing DNS servers into the tunnel configuration: unset
+// until the first successful apply of this process, then whether the host had resolvconf at the last one.
+type tunnelDNSState struct {
+	mu    sync.Mutex
+	known bool
+	value bool
+}
+
+func (s *tunnelDNSState) set(applied bool) {
+	if s == nil {
+		return
+	}
+	s.mu.Lock()
+	s.known, s.value = true, applied
+	s.mu.Unlock()
+}
+
+// applied is nil while nothing is known, so the report leaves the field out.
+func (s *tunnelDNSState) applied() *bool {
+	if s == nil {
+		return nil
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if !s.known {
+		return nil
+	}
+	value := s.value
+	return &value
+}
+
+// resolvconfOnPath reports whether wg-quick can apply a DNS line on this host. wg-quick runs resolvconf
+// for it and removes the interface again when that fails, so without resolvconf the line must stay out.
+func resolvconfOnPath() bool {
+	_, err := exec.LookPath("resolvconf")
+	return err == nil
 }
 
 // Restore re-applies the durable last-good file without rewriting it.
@@ -854,11 +926,13 @@ func (a *wireGuardRuntimeApplier) Apply(ctx context.Context, cfg ManagedAgentCon
 	if privateKey == "" {
 		return errors.New("managed-agent config has no local private key")
 	}
-	candidate := renderManagedConfig(privateKey, cfg)
+	withDNS := resolvconfOnPath()
+	candidate := renderManagedConfig(privateKey, cfg, withDNS)
 	if err := WriteFileAtomic0600(a.path, []byte(candidate)); err != nil {
 		return err
 	}
 	if a.command == nil {
+		a.dns.set(withDNS)
 		return nil
 	}
 	if err := a.command(ctx, a.path, "apply"); err != nil {
@@ -876,6 +950,7 @@ func (a *wireGuardRuntimeApplier) Apply(ctx context.Context, cfg ManagedAgentCon
 		}
 		return err
 	}
+	a.dns.set(withDNS)
 	return nil
 }
 
@@ -932,10 +1007,12 @@ func configValue(config, key string) string {
 	return ""
 }
 
-func renderManagedConfig(privateKey string, cfg ManagedAgentConfig) string {
+// renderManagedConfig writes the tunnel configuration. withDNS is false on a host without resolvconf
+// (AI-UX-1): the DNS line is left out there and everything else is the same.
+func renderManagedConfig(privateKey string, cfg ManagedAgentConfig, withDNS bool) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "[Interface]\nPrivateKey = %s\nAddress = %s\n", privateKey, cfg.Address)
-	if len(cfg.DNS) > 0 {
+	if withDNS && len(cfg.DNS) > 0 {
 		fmt.Fprintf(&b, "DNS = %s\n", strings.Join(cfg.DNS, ", "))
 	}
 	b.WriteString("MTU = 1420\n\n[Peer]\n")

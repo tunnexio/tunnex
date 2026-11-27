@@ -160,6 +160,8 @@ type Querier interface {
 	// operation to enable_serving. If any predicate is stale, it returns no row;
 	// it cannot leave a pool CAS without its receipt/audit/phase record.
 	CommitK8sConnectorHandoffCAS(ctx context.Context, arg CommitK8sConnectorHandoffCASParams) (K8sConnectorHandoffOperation, error)
+	// Records what the gateway read, once, and only for the gateway that was asked.
+	CompleteAgentMCPConnectionPreview(ctx context.Context, arg CompleteAgentMCPConnectionPreviewParams) (int64, error)
 	// Closes an allowed call once, and only for the gateway that was given it.
 	CompleteAgentMCPToolActivity(ctx context.Context, arg CompleteAgentMCPToolActivityParams) (int64, error)
 	CompleteAppAccessCheck(ctx context.Context, arg CompleteAppAccessCheckParams) (AppAccessOriginCheck, error)
@@ -207,6 +209,8 @@ type Querier interface {
 	ConsumeRekeyChallenge(ctx context.Context, arg ConsumeRekeyChallengeParams) (NodeRekeyChallenge, error)
 	ConsumeSandboxBootstrapToken(ctx context.Context, arg ConsumeSandboxBootstrapTokenParams) (uuid.UUID, error)
 	CountAccessSources(ctx context.Context, arg CountAccessSourcesParams) (int64, error)
+	// Turning MCP off is refused while this is not zero.
+	CountActiveAgentMCPAssignments(ctx context.Context, orgID uuid.UUID) (int64, error)
 	CountActiveDevicesByOrg(ctx context.Context, orgID uuid.UUID) (int64, error)
 	// ⛔ AGENTS ARE EXCLUDED FROM THE HUMAN DEVICE SURFACES. An AI agent is a `devices` row because it IS a
 	// WireGuard peer — the peer set, the pool allocation, the revocation sweep and the liveness upsert all read
@@ -354,6 +358,8 @@ type Querier interface {
 	// or revoked owner cannot administer the org, so it must not satisfy the last-owner guard.
 	CountOwners(ctx context.Context, orgID uuid.UUID) (int64, error)
 	CountPendingAppAccessRequests(ctx context.Context, arg CountPendingAppAccessRequestsParams) (int64, error)
+	// The sidebar count: live pending requests of current agents.
+	CountPendingOrganizationMCPToolApprovalRequests(ctx context.Context, orgID uuid.UUID) (int64, error)
 	// lint:cross-org — org-scoped by org_id; counts policy rules that name this site as src OR dst. S8.3 D1/D4:
 	// the reverse-link "rules referencing this site" and the delete-cascade preview share this ONE count.
 	CountPolicyRulesReferencingSite(ctx context.Context, arg CountPolicyRulesReferencingSiteParams) (int64, error)
@@ -380,7 +386,10 @@ type Querier interface {
 	// policy_rules projection from making an old-schema approval depend on new
 	// columns.
 	CreateAgentJITPolicyRule(ctx context.Context, arg CreateAgentJITPolicyRuleParams) (uuid.UUID, error)
+	CreateAgentMCPConnectionPreview(ctx context.Context, arg CreateAgentMCPConnectionPreviewParams) (AgentMcpConnectionPreview, error)
 	CreateAgentMCPProfile(ctx context.Context, arg CreateAgentMCPProfileParams) (AgentMcpProfile, error)
+	// An empty server_name lets the database derive one from the display name.
+	CreateAgentMCPProfileNamed(ctx context.Context, arg CreateAgentMCPProfileNamedParams) (AgentMcpProfile, error)
 	CreateAgentPolicyTemplate(ctx context.Context, arg CreateAgentPolicyTemplateParams) (AgentPolicyTemplate, error)
 	CreateAgentPolicyTemplateVersion(ctx context.Context, arg CreateAgentPolicyTemplateVersionParams) (AgentPolicyTemplateVersion, error)
 	CreateAgentPolicyTemplateVersionItem(ctx context.Context, arg CreateAgentPolicyTemplateVersionItemParams) (AgentPolicyTemplateVersionItem, error)
@@ -520,10 +529,13 @@ type Querier interface {
 	DecideAppAccessRequest(ctx context.Context, arg DecideAppAccessRequestParams) (int64, error)
 	// Retention sweep: one bounded batch of rows older than the cutoff.
 	DeleteAgentMCPToolActivityBatch(ctx context.Context, arg DeleteAgentMCPToolActivityBatchParams) (int64, error)
+	DeleteAgentMCPToolMarker(ctx context.Context, arg DeleteAgentMCPToolMarkerParams) (int64, error)
 	// lint:cross-org — keyed by device_id (the caller already authorized the device
 	// via its org). Clears a device's live status (on revoke) so a revoked device
 	// never reports stale online/handshake via the API.
 	DeleteDeviceStatus(ctx context.Context, deviceID uuid.UUID) error
+	// lint:cross-org — housekeeping sweep over every organization; it selects by age only and returns nothing.
+	DeleteExpiredAgentMCPConnectionPreviews(ctx context.Context, cutoff time.Time) (int64, error)
 	// The expiry sweeper (S7.5.4 story-end AMENDMENT — delete-on-sweep, replaced linger). A
 	// lapsed temporary grant is DELETED (not lingered), returning id+org for the same-tx
 	// grant_expired audit + the org-wide push. STATELESS — no window/`last` cursor: every
@@ -652,19 +664,32 @@ type Querier interface {
 	GetAIGatewaySettings(ctx context.Context, id uuid.UUID) (GetAIGatewaySettingsRow, error)
 	GetAccessEventRetentionSettings(ctx context.Context, orgID uuid.UUID) (AccessEventRetentionSetting, error)
 	GetAccessEventRetentionSettingsForUpdate(ctx context.Context, orgID uuid.UUID) (AccessEventRetentionSetting, error)
+	GetActiveAgentMCPProfileByServerName(ctx context.Context, arg GetActiveAgentMCPProfileByServerNameParams) (AgentMcpProfile, error)
 	GetActiveAgentPolicyTemplateAssignment(ctx context.Context, arg GetActiveAgentPolicyTemplateAssignmentParams) (AgentPolicyTemplateAssignment, error)
 	GetActiveAgentPolicyTemplateAssignmentForUpdate(ctx context.Context, arg GetActiveAgentPolicyTemplateAssignmentForUpdateParams) (AgentPolicyTemplateAssignment, error)
 	// Active = not revoked and not expired. Expired/revoked rows fail auth closed.
 	GetActiveCliCredentialByHash(ctx context.Context, tokenHash []byte) (CliCredential, error)
 	GetAgentAccessOperation(ctx context.Context, arg GetAgentAccessOperationParams) (AgentAccessRequestOperation, error)
+	// AI-UX-1: the agent Access tab (what an agent can reach now) and "create rules from the owner's access".
+	// Read-only. Rules are created through the policy service's rule insert, never from here.
+	// The agent and the person its access can be copied from. The owner columns are NULL when the owner's
+	// account is gone or is no longer a member of this organization: there is then nobody to copy from.
+	GetAgentAccessOwner(ctx context.Context, arg GetAgentAccessOwnerParams) (GetAgentAccessOwnerRow, error)
 	GetAgentAccessRequest(ctx context.Context, arg GetAgentAccessRequestParams) (AgentAccessRequest, error)
 	GetAgentAccessRequestByPolicyRule(ctx context.Context, arg GetAgentAccessRequestByPolicyRuleParams) (AgentAccessRequest, error)
 	GetAgentAccessRequestForUpdate(ctx context.Context, arg GetAgentAccessRequestForUpdateParams) (AgentAccessRequest, error)
 	// lint:cross-org — the public redemption credential is an unguessable hash; org is learned from the token row.
 	GetAgentBootstrapToken(ctx context.Context, tokenHash []byte) (AgentBootstrapToken, error)
+	// The install step's live status for one token the organization issued:
+	// whether it was used, by which agent, and that agent's tunnel facts from the
+	// same sources as the agents list (the gateway's status push, with the
+	// reporter's own clock). The token hash is deliberately not selected.
+	GetAgentBootstrapTokenStatus(ctx context.Context, arg GetAgentBootstrapTokenStatusParams) (GetAgentBootstrapTokenStatusRow, error)
 	GetAgentGovernanceForUpdate(ctx context.Context, arg GetAgentGovernanceForUpdateParams) (GetAgentGovernanceForUpdateRow, error)
 	GetAgentGroup(ctx context.Context, arg GetAgentGroupParams) (AgentGroup, error)
 	GetAgentGroupForUpdate(ctx context.Context, arg GetAgentGroupForUpdateParams) (AgentGroup, error)
+	// An expired preview is not found.
+	GetAgentMCPConnectionPreview(ctx context.Context, arg GetAgentMCPConnectionPreviewParams) (AgentMcpConnectionPreview, error)
 	GetAgentMCPInventory(ctx context.Context, arg GetAgentMCPInventoryParams) (AgentMcpInventory, error)
 	GetAgentMCPOAuthConnection(ctx context.Context, arg GetAgentMCPOAuthConnectionParams) (AgentMcpOauthConnection, error)
 	GetAgentMCPOAuthConnectionForCallback(ctx context.Context, arg GetAgentMCPOAuthConnectionForCallbackParams) (AgentMcpOauthConnection, error)
@@ -674,6 +699,11 @@ type Querier interface {
 	GetAgentMCPProfile(ctx context.Context, arg GetAgentMCPProfileParams) (AgentMcpProfile, error)
 	// No row means the application default (30 days).
 	GetAgentMCPToolActivityRetention(ctx context.Context, orgID uuid.UUID) (AgentMcpToolActivityRetentionSetting, error)
+	// What a held call waits on. Scoped to the agent the gateway identified.
+	GetAgentMCPToolApprovalRequestState(ctx context.Context, arg GetAgentMCPToolApprovalRequestStateParams) (GetAgentMCPToolApprovalRequestStateRow, error)
+	// The endpoints the agent's own policy decides for: those named by its latest
+	// version. No row means the agent has no policy of its own.
+	GetAgentMCPToolPolicyOverrideEndpoints(ctx context.Context, arg GetAgentMCPToolPolicyOverrideEndpointsParams) (GetAgentMCPToolPolicyOverrideEndpointsRow, error)
 	GetAgentPolicyTemplate(ctx context.Context, arg GetAgentPolicyTemplateParams) (AgentPolicyTemplate, error)
 	GetAgentPolicyTemplateForUpdate(ctx context.Context, arg GetAgentPolicyTemplateForUpdateParams) (AgentPolicyTemplate, error)
 	GetAgentPolicyTemplateVersion(ctx context.Context, arg GetAgentPolicyTemplateVersionParams) (AgentPolicyTemplateVersion, error)
@@ -681,6 +711,8 @@ type Querier interface {
 	// lint:cross-org — F04's bearer hash is the credential; the returned row supplies its org/device binding.
 	GetAgentRuntimeCredential(ctx context.Context, tokenHash []byte) (AgentRuntimeCredential, error)
 	GetAgentRuntimeCredentialRotation(ctx context.Context, arg GetAgentRuntimeCredentialRotationParams) (GetAgentRuntimeCredentialRotationRow, error)
+	// What the runtime has declared about itself beyond its revisions.
+	GetAgentRuntimeDeclarations(ctx context.Context, arg GetAgentRuntimeDeclarationsParams) (GetAgentRuntimeDeclarationsRow, error)
 	GetAgentRuntimeState(ctx context.Context, arg GetAgentRuntimeStateParams) (GetAgentRuntimeStateRow, error)
 	GetAgentScopedAuthority(ctx context.Context, arg GetAgentScopedAuthorityParams) (GetAgentScopedAuthorityRow, error)
 	GetAgentWireGuardRotation(ctx context.Context, arg GetAgentWireGuardRotationParams) (AgentWireguardRotation, error)
@@ -803,6 +835,7 @@ type Querier interface {
 	GetK8sConnectorPoolHealthStateForUpdate(ctx context.Context, arg GetK8sConnectorPoolHealthStateForUpdateParams) (K8sConnectorPoolHealthState, error)
 	GetK8sService(ctx context.Context, arg GetK8sServiceParams) (K8sService, error)
 	GetLatestAccessEventRetentionRun(ctx context.Context, orgID uuid.UUID) (AccessEventRetentionRun, error)
+	GetLatestAgentGroupMCPToolPolicy(ctx context.Context, arg GetLatestAgentGroupMCPToolPolicyParams) (AgentGroupMcpToolPolicyVersion, error)
 	GetLatestAuditLogRetentionRun(ctx context.Context, orgID uuid.UUID) (AuditLogRetentionRun, error)
 	GetLatestLifecycleInstallOperationForOrg(ctx context.Context, arg GetLatestLifecycleInstallOperationForOrgParams) (NodeLifecycleInstallOperation, error)
 	// D13h install-operation epochs. The caller always locks the lifecycle token
@@ -937,6 +970,10 @@ type Querier interface {
 	GetOrganizationBySlug(ctx context.Context, slug string) (Organization, error)
 	// No row means no grace: the direct path closes as soon as the gateway can enforce.
 	GetOrganizationMCPDirectPathGrace(ctx context.Context, orgID uuid.UUID) (time.Time, error)
+	// AI-UX-1: the MCP switch, several MCP servers per agent, group tool policy,
+	// connection previews, the approvals inbox and filtered activity.
+	// No row means MCP is off.
+	GetOrganizationMCPSetting(ctx context.Context, orgID uuid.UUID) (OrganizationMcpSetting, error)
 	// Policy snapshot construction is used by F09 membership removal. Keep its
 	// organization read compatible with schema 0109 while still exposing the
 	// current FQDN opt-in when the additive column exists. JSONB extraction is
@@ -1021,6 +1058,11 @@ type Querier interface {
 	InsertAccessEventRetentionSettings(ctx context.Context, arg InsertAccessEventRetentionSettingsParams) (AccessEventRetentionSetting, error)
 	InsertAgentAccessOperation(ctx context.Context, arg InsertAgentAccessOperationParams) (int64, error)
 	InsertAgentAccessRequestEvent(ctx context.Context, arg InsertAgentAccessRequestEventParams) (AgentAccessRequestEvent, error)
+	// The caller holds the group row lock and passes the next version.
+	InsertAgentGroupMCPToolPolicyVersion(ctx context.Context, arg InsertAgentGroupMCPToolPolicyVersionParams) (AgentGroupMcpToolPolicyVersion, error)
+	// AI-UX-1: policy_source says which policy decided ('agent' or 'group', with
+	// the group in policy_group_id). A caller that does not say is recorded as the
+	// per-agent policy whenever it names a policy version, as before.
 	InsertAgentMCPToolActivity(ctx context.Context, arg InsertAgentMCPToolActivityParams) (AgentMcpToolActivity, error)
 	InsertAppAccessEvent(ctx context.Context, arg InsertAppAccessEventParams) (AppAccessEvent, error)
 	InsertAppAccessRevision(ctx context.Context, arg InsertAppAccessRevisionParams) error
@@ -1090,6 +1132,10 @@ type Querier interface {
 	// src_user_id is the owner resolved and persisted at ingest, not a live
 	// ownership join and not proof that the human initiated the traffic.
 	ListAccessEventsByUser(ctx context.Context, arg ListAccessEventsByUserParams) ([]AccessEvent, error)
+	// Unexpired rules whose source is the given agent (the agent itself or an agent group it is in), or the
+	// given person (the person or a user group they are in), with the destination named. Pass only the subject
+	// wanted; a NULL subject matches nothing. An archived agent group contributes no rule, like the compiler.
+	ListAccessRulesForSubjects(ctx context.Context, arg ListAccessRulesForSubjectsParams) ([]ListAccessRulesForSubjectsRow, error)
 	ListAccessSources(ctx context.Context, arg ListAccessSourcesParams) ([]ListAccessSourcesRow, error)
 	// Compiler input only: inactive/deleted/non-agent devices must never expand an
 	// agent-group source. Suspension keeps the membership row but contributes no
@@ -1202,12 +1248,25 @@ type Querier interface {
 	ListAgentMCPProfileAssignments(ctx context.Context, orgID uuid.UUID) ([]ListAgentMCPProfileAssignmentsRow, error)
 	ListAgentMCPProfiles(ctx context.Context, orgID uuid.UUID) ([]AgentMcpProfile, error)
 	ListAgentMCPProfilesForDevice(ctx context.Context, arg ListAgentMCPProfilesForDeviceParams) ([]ListAgentMCPProfilesForDeviceRow, error)
+	// Every MCP server an agent inherits from its groups, first one first: "first"
+	// is the earliest active assignment (assigned_at, then id). The same profile
+	// reached through two groups appears once per group; the caller keeps the
+	// earliest.
+	ListAgentMCPServersForDevice(ctx context.Context, arg ListAgentMCPServersForDeviceParams) ([]ListAgentMCPServersForDeviceRow, error)
+	// The MCP servers assigned to one group, first one first.
+	ListAgentMCPServersForGroup(ctx context.Context, arg ListAgentMCPServersForGroupParams) ([]ListAgentMCPServersForGroupRow, error)
 	// The agents homed on one gateway and the MCP endpoint each inherits from its
 	// groups. An agent with more than one active profile appears more than once; the
 	// caller treats that as no target, exactly like the runtime poll does.
 	ListAgentMCPTargetsForNode(ctx context.Context, arg ListAgentMCPTargetsForNodeParams) ([]ListAgentMCPTargetsForNodeRow, error)
 	// Newest first for one agent. Keyset: pass the last row's occurred_at and id.
 	ListAgentMCPToolActivity(ctx context.Context, arg ListAgentMCPToolActivityParams) ([]AgentMcpToolActivity, error)
+	// The agent Activity tab with filters, newest first. Keyset: pass the last
+	// row's occurred_at and id. Every filter is optional. approved_only keeps calls
+	// that ran on an approval. The approver and time come from the approval row.
+	// lint:allow-deleted — the approver stays named after their account is removed; the agent must be current.
+	ListAgentMCPToolActivityFiltered(ctx context.Context, arg ListAgentMCPToolActivityFilteredParams) ([]ListAgentMCPToolActivityFilteredRow, error)
+	ListAgentMCPToolMarkers(ctx context.Context, arg ListAgentMCPToolMarkersParams) ([]AgentMcpToolMarker, error)
 	// Server-owned destructive-impact preview for F06. Deleting a group clears
 	// these exact assignments through ON DELETE SET NULL; the client must not
 	// infer this count from separately loaded agent rows.
@@ -1473,6 +1532,10 @@ type Querier interface {
 	// agree BY CONSTRUCTION (L2): a zone the gateway would REFUSE for (no Service yet) is never handed to a client
 	// as a resolver. DISTINCT collapses a multi-Service cluster to one zone row.
 	ListK8sServedZonesForOrg(ctx context.Context, orgID uuid.UUID) ([]ListK8sServedZonesForOrgRow, error)
+	// The group policy that applies to each of an agent's MCP servers, in server
+	// order (earliest assignment first). A server with no group policy yet has a
+	// NULL version: no policy means deny.
+	ListLatestAgentGroupMCPToolPoliciesForDevice(ctx context.Context, arg ListLatestAgentGroupMCPToolPoliciesForDeviceParams) ([]ListLatestAgentGroupMCPToolPoliciesForDeviceRow, error)
 	ListLiveAgentAccessRequestsByDeviceForUpdate(ctx context.Context, arg ListLiveAgentAccessRequestsByDeviceForUpdateParams) ([]AgentAccessRequest, error)
 	// lint:cross-org — keyed by node_id, which the caller resolved from an org-scoped node row.
 	// The TRANSFER candidate set (S12.12 D1/D4): the devices a revoke would cascade, named so they can be MOVED
@@ -1575,6 +1638,10 @@ type Querier interface {
 	// other organization; for anyone else it is org-scoped, so this count is an UPPER bound (the dialog says
 	// "up to") — over-stating the blast radius is the safe direction on the screen that exists to state it.
 	ListOrgMembersWithUser(ctx context.Context, orgID uuid.UUID) ([]ListOrgMembersWithUserRow, error)
+	// The Approvals inbox: every agent's requests, newest first. Keyset: pass the
+	// last row's requested_at and id. only_pending lists live pending requests.
+	// lint:allow-deleted — the owner stays named after their account is removed; the agent must be current.
+	ListOrganizationMCPToolApprovalRequests(ctx context.Context, arg ListOrganizationMCPToolApprovalRequestsParams) ([]ListOrganizationMCPToolApprovalRequestsRow, error)
 	// Admin/system listing of all orgs; user-facing listing uses
 	// ListOrganizationsForUser (membership-scoped).
 	ListOrganizations(ctx context.Context) ([]Organization, error)
@@ -1692,6 +1759,9 @@ type Querier interface {
 	// pool resize, site-subnet approval) must include the org's VIP ranges so disjointness stays bidirectional
 	// (the validator-input-filtering law). Returns the raw cidr text.
 	ListVIPRangesForOrg(ctx context.Context, orgID uuid.UUID) ([]string, error)
+	// The addresses a gateway is asked to read the tool list of on its next
+	// discovery pass.
+	ListWaitingAgentMCPConnectionPreviewsForNode(ctx context.Context, arg ListWaitingAgentMCPConnectionPreviewsForNodeParams) ([]ListWaitingAgentMCPConnectionPreviewsForNodeRow, error)
 	// lint:allow-deleted — retention must continue draining events for a soft-deleted
 	// tenant. The row lock serializes scheduled/manual claims for that tenant.
 	LockAccessEventRetentionOrganization(ctx context.Context, orgID uuid.UUID) (uuid.UUID, error)
@@ -1777,6 +1847,10 @@ type Querier interface {
 	// MCP to the gateway listener. Recorded on every declaring poll so the value is
 	// also a freshness signal. Never cleared by a poll that omits the declaration.
 	MarkAgentRuntimeMCPGatewayCapable(ctx context.Context, arg MarkAgentRuntimeMCPGatewayCapableParams) (int64, error)
+	// The runtime declared (poll query mcp_hold=true) that it keeps an MCP call
+	// open while an "Ask first" request waits. Recorded on every declaring poll so
+	// the value is also a freshness signal. Never cleared by a poll that omits it.
+	MarkAgentRuntimeMCPHoldCapable(ctx context.Context, arg MarkAgentRuntimeMCPHoldCapableParams) (int64, error)
 	MarkAppAccessPublicationActivated(ctx context.Context, arg MarkAppAccessPublicationActivatedParams) (AppAccessPublicationOperation, error)
 	// Delivery is recorded THE FIRST TIME a certificate authenticates, and only then: the WHERE clause makes this a
 	// no-op on every subsequent request, so the agent channel pays one write per credential rather than one per call.
@@ -2085,6 +2159,9 @@ type Querier interface {
 	SetAIGatewayEnabled(ctx context.Context, arg SetAIGatewayEnabledParams) (SetAIGatewayEnabledRow, error)
 	SetAgentManagingGroup(ctx context.Context, arg SetAgentManagingGroupParams) (AgentProfile, error)
 	SetAgentOwner(ctx context.Context, arg SetAgentOwnerParams) (Device, error)
+	// The runtime reported whether it wrote the pushed DNS servers into its tunnel
+	// configuration (false: the host has no resolvconf).
+	SetAgentRuntimeTunnelDNSApplied(ctx context.Context, arg SetAgentRuntimeTunnelDNSAppliedParams) (int64, error)
 	// The deployment-administrator capability, both directions (S12.11).
 	//
 	// ⛔ GrantCPAdmin IS NOT THIS QUERY WITH A PARAMETER. That one is the BOOTSTRAP grant: it runs inside the
@@ -2280,6 +2357,7 @@ type Querier interface {
 	UpsertAgentMCPInventory(ctx context.Context, arg UpsertAgentMCPInventoryParams) (AgentMcpInventory, error)
 	UpsertAgentMCPOAuthConnection(ctx context.Context, arg UpsertAgentMCPOAuthConnectionParams) (AgentMcpOauthConnection, error)
 	UpsertAgentMCPToolActivityRetention(ctx context.Context, arg UpsertAgentMCPToolActivityRetentionParams) (AgentMcpToolActivityRetentionSetting, error)
+	UpsertAgentMCPToolMarker(ctx context.Context, arg UpsertAgentMCPToolMarkerParams) (AgentMcpToolMarker, error)
 	// lint:cross-org — keyed by device_id; ownership + org checked by the service
 	// (GetDevice + owner match) in the same transaction. Snapshot-only (v1): the
 	// latest report replaces the prior one; reported_at is the SERVER clock that
@@ -2336,6 +2414,7 @@ type Querier interface {
 	// Used by the seed with a fixed id; idempotent. Also clears deleted_at so
 	// re-seeding restores a previously soft-deleted demo org to a clean live state.
 	UpsertOrganization(ctx context.Context, arg UpsertOrganizationParams) (Organization, error)
+	UpsertOrganizationMCPSetting(ctx context.Context, arg UpsertOrganizationMCPSettingParams) (OrganizationMcpSetting, error)
 	UpsertSSOConfig(ctx context.Context, arg UpsertSSOConfigParams) (SsoConfig, error)
 	UpsertServerAccessInstallationSettings(ctx context.Context, arg UpsertServerAccessInstallationSettingsParams) (UpsertServerAccessInstallationSettingsRow, error)
 	UpsertSystemSetting(ctx context.Context, arg UpsertSystemSettingParams) error

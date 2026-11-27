@@ -16,6 +16,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/tunnexio/tunnex/packages/apptransport/mcpwire"
 )
 
 // MCPProxyPolicy is a secret-free, fail-closed runtime projection. The proxy
@@ -334,13 +336,29 @@ func mcpLoopbackGuard(listen string, next http.Handler) http.Handler {
 // when the control plane named none (an older gateway, or the organization's grace period).
 type MCPGatewaySource func(context.Context) string
 
+// MCPProxyServer is one MCP server the agent may address through the gateway (AI-UX-1), as the runtime
+// configuration lists it. Default marks the agent's first server.
+type MCPProxyServer struct {
+	Name    string
+	Default bool
+}
+
+// MCPServersSource returns the servers of the runtime's current desired state, or none when the control
+// plane listed none (an agent with no MCP server, or a control plane that predates several servers).
+type MCPServersSource func(context.Context) []MCPProxyServer
+
+const messageUnknownMCPServer = "No MCP server with this name is connected to this agent"
+
 const (
 	// mcpGatewayDialTimeout bounds reaching the gateway listener (AI-SEC-2: five seconds).
 	mcpGatewayDialTimeout = 5 * time.Second
 	// mcpGatewayHeaderTimeout bounds a gateway that accepted the connection and then says nothing. It is
 	// longer than the dial bound on purpose: before it answers, the gateway asks the control plane for a
 	// decision and gives the MCP server its own five seconds, and that answer must not be cut short here.
-	mcpGatewayHeaderTimeout = 10 * time.Second
+	// Since AI-UX-1 the gateway may also hold an "Ask first" call for up to 45 seconds while an approver
+	// decides, so the bound is 60 seconds. The runtime declares this on its poll (mcp_hold); only then
+	// does the control plane let the gateway hold a call.
+	mcpGatewayHeaderTimeout = 60 * time.Second
 )
 
 // mcpGatewayForwarder is the loopback proxy once the gateway enforces MCP policy (AI-SEC-2). It decides
@@ -348,6 +366,7 @@ const (
 // and the control plane decides; this only carries the request there and the answer back.
 type mcpGatewayForwarder struct {
 	gateway       MCPGatewaySource
+	servers       MCPServersSource
 	dialTimeout   time.Duration
 	headerTimeout time.Duration
 	dial          func(context.Context, string, string) (net.Conn, error)
@@ -393,9 +412,49 @@ func mcpGatewayRequestHeader(name string) bool {
 	return false
 }
 
+// gatewayPath maps the local request path to what is appended to the gateway URL (AI-UX-1).
+//
+// The bare address, and the /mcp path clients were given before servers had names, are the agent's first
+// server: the gateway URL as it is. /<server name> is that server: the gateway URL + /<server name>. Any
+// other path names no server and ok is false. Only the path counts; a query never travels.
+//
+// With no server list (a control plane that predates several servers) every path is the gateway URL as it
+// is, which is what this proxy did before.
+func (f *mcpGatewayForwarder) gatewayPath(r *http.Request) (suffix string, ok bool) {
+	var servers []MCPProxyServer
+	if f.servers != nil {
+		servers = f.servers(r.Context())
+	}
+	if len(servers) == 0 {
+		return "", true
+	}
+	if r.URL.RawPath != "" {
+		return "", false
+	}
+	switch r.URL.Path {
+	case "", "/", mcpwire.ListenerPath:
+		return "", true
+	}
+	name, found := strings.CutPrefix(r.URL.Path, "/")
+	if !found || !mcpwire.ValidServerName(name) {
+		return "", false
+	}
+	for _, server := range servers {
+		if server.Name == name {
+			return "/" + name, true
+		}
+	}
+	return "", false
+}
+
 func (f *mcpGatewayForwarder) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		writeMCPProxyError(w, http.StatusMethodNotAllowed, -32600, "MCP proxy accepts POST only")
+		return
+	}
+	suffix, known := f.gatewayPath(r)
+	if !known {
+		writeMCPProxyError(w, http.StatusNotFound, -32600, messageUnknownMCPServer)
 		return
 	}
 	body, err := io.ReadAll(io.LimitReader(r.Body, maxMCPRequestBody+1))
@@ -407,6 +466,9 @@ func (f *mcpGatewayForwarder) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 	if err != nil || target.Scheme != "http" || target.Host == "" || target.User != nil {
 		writeMCPProxyError(w, http.StatusBadGateway, -32020, "MCP upstream is unavailable")
 		return
+	}
+	if suffix != "" {
+		target.Path, target.RawPath = strings.TrimRight(target.Path, "/")+suffix, ""
 	}
 	outbound, err := http.NewRequestWithContext(r.Context(), http.MethodPost, target.String(), bytes.NewReader(body))
 	if err != nil {
@@ -467,6 +529,13 @@ func (f *mcpGatewayForwarder) ServeHTTP(w http.ResponseWriter, r *http.Request) 
 // first in every mode. With a gateway URL the request is forwarded to the gateway and nothing local runs;
 // without one the legacy local proxy (policy, lease, direct upstream) handles it exactly as before.
 func managedMCPProxyHandler(listen string, gateway MCPGatewaySource, upstream MCPUpstreamSource, policy MCPPolicySource, authorization MCPAuthorizationSource, stepUp ...MCPStepUpSource) (http.Handler, error) {
+	return managedMCPServersProxyHandler(listen, gateway, nil, upstream, policy, authorization, stepUp...)
+}
+
+// managedMCPServersProxyHandler is managedMCPProxyHandler with the agent's server list (AI-UX-1). In
+// gateway mode /<server name> reaches that server and the bare address the first one; the legacy local
+// path stays single-server and ignores both the path and the list.
+func managedMCPServersProxyHandler(listen string, gateway MCPGatewaySource, servers MCPServersSource, upstream MCPUpstreamSource, policy MCPPolicySource, authorization MCPAuthorizationSource, stepUp ...MCPStepUpSource) (http.Handler, error) {
 	legacy, err := MCPToolProxyDynamic(upstream, policy, authorization, stepUp...)
 	if err != nil {
 		return nil, err
@@ -475,6 +544,7 @@ func managedMCPProxyHandler(listen string, gateway MCPGatewaySource, upstream MC
 		return mcpLoopbackGuard(listen, legacy), nil
 	}
 	forwarder := newMCPGatewayForwarder(gateway)
+	forwarder.servers = servers
 	return mcpLoopbackGuard(listen, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if gateway(r.Context()) != "" {
 			forwarder.ServeHTTP(w, r)
@@ -498,11 +568,17 @@ func StartMCPToolProxyDynamic(ctx context.Context, listen string, upstream MCPUp
 // MCP listener whenever gateway returns a URL, the legacy local proxy otherwise. A nil gateway source is
 // the legacy proxy alone.
 func StartManagedMCPToolProxy(ctx context.Context, listen string, gateway MCPGatewaySource, upstream MCPUpstreamSource, policy MCPPolicySource, authorization MCPAuthorizationSource, stepUp ...MCPStepUpSource) error {
+	return StartManagedMCPServersProxy(ctx, listen, gateway, nil, upstream, policy, authorization, stepUp...)
+}
+
+// StartManagedMCPServersProxy is StartManagedMCPToolProxy with the agent's server list, so the forwarder
+// serves one path per MCP server (AI-UX-1).
+func StartManagedMCPServersProxy(ctx context.Context, listen string, gateway MCPGatewaySource, servers MCPServersSource, upstream MCPUpstreamSource, policy MCPPolicySource, authorization MCPAuthorizationSource, stepUp ...MCPStepUpSource) error {
 	host, _, err := net.SplitHostPort(listen)
 	if err != nil || net.ParseIP(host) == nil || !net.ParseIP(host).IsLoopback() {
 		return errors.New("MCP proxy listener must be loopback")
 	}
-	handler, err := managedMCPProxyHandler(listen, gateway, upstream, policy, authorization, stepUp...)
+	handler, err := managedMCPServersProxyHandler(listen, gateway, servers, upstream, policy, authorization, stepUp...)
 	if err != nil {
 		return err
 	}

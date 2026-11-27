@@ -3,6 +3,7 @@ import type { components } from "@tunnex/shared";
 import { api } from "../lib/api";
 import { Button, Field, Input, Select, RefreshButton } from "./ui";
 import { AIUsageDashboard, formatAIUsageCost } from "./AIUsageDashboard";
+import { AIGatewayOffBanner, useAIGatewayStatus } from "./AIGatewayOffBanner";
 
 import AppAccessPagination from "./AppAccessPagination";
 
@@ -10,8 +11,10 @@ type Report = components["schemas"]["AIUsageReport"];
 type Inventory = {
   groups: { id: string; name: string }[];
   devices: { id: string; name: string }[];
-  teams: { team_id: string }[];
-  assignments: { device_id: string }[];
+  teams: { team_id: string; daily_cost_limit?: number | null }[];
+  assignments: { device_id: string; team_id?: string }[];
+  /** Teams and assignments were read in full, so an agent without a budget really has none. */
+  budgets?: boolean;
 };
 type Preset = "today" | "7" | "30" | "custom";
 function rangeFor(preset: Exclude<Preset, "custom">) {
@@ -22,7 +25,36 @@ function rangeFor(preset: Exclude<Preset, "custom">) {
   return { from: start.toISOString(), to: end.toISOString() };
 }
 
-export function AIUsageWorkspace({ orgId, inventory }: { orgId: string; inventory: Inventory }) {
+const noInventory: Inventory = { groups: [], devices: [], teams: [], assignments: [] };
+
+/** Usage with the gateway banner, and each agent's spend against its group's daily budget. */
+export function AIUsagePage({ orgId, canManage = false, serverAdmin = false }: { orgId: string; canManage?: boolean; serverAdmin?: boolean }) {
+  const gateway = useAIGatewayStatus(orgId);
+  const [inventory, setInventory] = useState<{ orgId: string; value: Inventory } | null>(null);
+  const [version, setVersion] = useState(0);
+  useEffect(() => {
+    let live = true;
+    void (async () => {
+      try {
+        const params = { params: { path: { orgId } } };
+        const [teams, assignments, groups] = await Promise.all([
+          api.GET("/api/v1/organizations/{orgId}/ai-gateway/teams", params),
+          api.GET("/api/v1/organizations/{orgId}/ai-gateway/agents", params),
+          api.GET("/api/v1/organizations/{orgId}/agent-groups", params),
+        ]);
+        if (!live || !Array.isArray(teams?.data) || !Array.isArray(assignments?.data)) return;
+        setInventory({ orgId, value: { groups: Array.isArray(groups?.data) ? groups.data.map((g) => ({ id: g.id, name: g.name })) : [], devices: [], teams: teams.data, assignments: assignments.data, budgets: true } });
+      } catch { /* budgets are an addition: usage is still shown without them */ }
+    })();
+    return () => { live = false; };
+  }, [orgId, version]);
+  return <>
+    <AIGatewayOffBanner orgId={orgId} gateway={gateway} canManage={canManage} serverAdmin={serverAdmin} onChanged={() => setVersion((value) => value + 1)} />
+    <AIUsageWorkspace key={version} orgId={orgId} inventory={inventory?.orgId === orgId ? inventory.value : noInventory} gatewayOff={gateway.off} onRefresh={gateway.reload} />
+  </>;
+}
+
+export function AIUsageWorkspace({ orgId, inventory, gatewayOff = false, onRefresh }: { orgId: string; inventory: Inventory; gatewayOff?: boolean; onRefresh?: () => void }) {
   const [preset, setPreset] = useState<Preset>("7");
   const [range, setRange] = useState(() => rangeFor("7"));
   const [customFrom, setCustomFrom] = useState(range.from.slice(0, 16));
@@ -67,6 +99,7 @@ export function AIUsageWorkspace({ orgId, inventory }: { orgId: string; inventor
   }, [orgId, range, team, device, reload]);
 
   function refresh() {
+    onRefresh?.();
     invalidate();
     if (preset !== "custom") setRange(rangeFor(preset));
     else setReload((v) => v + 1);
@@ -84,6 +117,11 @@ export function AIUsageWorkspace({ orgId, inventory }: { orgId: string; inventor
   const agents = unique([...inventory.assignments.map((a) => ({ id: a.device_id, name: inventory.devices.find((d) => d.id === a.device_id)?.name ?? `Retained agent (${a.device_id})` })), ...knownAgents]);
   const d = report?.dashboard;
   const ranked = (rows: NonNullable<Report["dashboard"]>["teams"]) => rows.map((r) => ({ ...r, uncostedRequests: r.uncosted_requests }));
+  const budgetOf = (deviceId: string) => {
+    const teamId = inventory.assignments.find((a) => a.device_id === deviceId)?.team_id;
+    const policy = teamId ? inventory.teams.find((t) => t.team_id === teamId) : undefined;
+    return { dailyLimit: policy?.daily_cost_limit ?? null, group: teamId ? teams.find((t) => t.id === teamId && !t.name.startsWith("Retained team"))?.name : undefined };
+  };
   return <div className="ai-usage-workspace"><AIUsageDashboard
     status={busy ? "loading" : error || !d ? "error" : "ready"}
     error={error}
@@ -115,7 +153,9 @@ export function AIUsageWorkspace({ orgId, inventory }: { orgId: string; inventor
     models={d?.models}
     userGroups={d?.user_groups ? ranked(d.user_groups) : undefined}
     teams={d ? ranked(d.teams) : undefined}
-    agents={d ? ranked(d.agents) : undefined}
+    agents={d ? ranked(d.agents).map((row) => inventory.budgets ? { ...row, budget: budgetOf(row.id) } : row) : undefined}
+    gatewayOff={gatewayOff}
+    budgetDay={preset === "today"}
     workloads={d && <WorkloadUsage rows={d.workloads} />}
   />
 

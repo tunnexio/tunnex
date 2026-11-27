@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { Link } from "react-router-dom";
 import { type components } from "@tunnex/shared";
-import { api, apiErrorMessage, loadOne } from "../lib/api";
+import { api, apiErrorCode, apiErrorMessage, loadOne } from "../lib/api";
 import { can } from "../lib/rbac";
 import { useAuth } from "../lib/auth";
 import { useOrg } from "../lib/useOrg";
@@ -12,15 +13,17 @@ import { AIModelConnectionDetails } from "./AIModelConnectionDetails";
 import AppAccessRowMenu from "./AppAccessRowMenu";
 import AppAccessPagination from "./AppAccessPagination";
 import AppAccessEmptyState from "./AppAccessEmptyState";
+import { AIGatewayOffBanner, useAIGatewayStatus } from "./AIGatewayOffBanner";
 import "./ai-gateway-access.css";
 type S = components["schemas"];
-type Capabilities = { view: boolean; manage: boolean; agents: boolean; workloadsView:boolean; workloadsManage:boolean };
+type Capabilities = { view: boolean; manage: boolean; agents: boolean; workloadsView:boolean; workloadsManage:boolean; serverAdmin: boolean };
 
 export function AIAccessGate({ children }: { children: (orgId: string, access: Capabilities) => ReactNode }) {
   const { org } = useOrg(); const { state } = useAuth();
   const user = state.status === "authed" ? state.user.id : "";
   const writable = state.status === "authed" && state.user.email_verified === true && !state.user.must_change_password;
-  const scope = `${org?.id}/${user}/${writable}`;
+  const serverAdmin = state.status === "authed" && Boolean(state.user.cp_admin);
+  const scope = `${org?.id}/${user}/${writable}/${serverAdmin}`;
   const [attempt, setAttempt] = useState(0);
   const [result, setResult] = useState<{ scope: string; access?: Capabilities } | null>(null);
   useEffect(() => {
@@ -30,7 +33,7 @@ export function AIAccessGate({ children }: { children: (orgId: string, access: C
       if (!active) return;
       const member = !error && data?.find((m) => m.user_id === user);
       const roles = member ? member.roles ?? [member.role] : [];
-      setResult({ scope, ...(member ? { access: { view: can(roles, "ai_gateway:view"), manage: writable && can(roles, "ai_gateway:manage"), agents: writable && can(roles, "agent_template:manage"),workloadsView:can(roles,"ai_workload:view"),workloadsManage:writable && can(roles,"ai_workload:manage") } } : {}) });
+      setResult({ scope, ...(member ? { access: { view: can(roles, "ai_gateway:view"), manage: writable && can(roles, "ai_gateway:manage"), agents: writable && can(roles, "agent_template:manage"),workloadsView:can(roles,"ai_workload:view"),workloadsManage:writable && can(roles,"ai_workload:manage"), serverAdmin } } : {}) });
     }).catch(() => { if (active) setResult({ scope }); });
     return () => { active = false; };
   }, [scope, attempt]);
@@ -51,6 +54,8 @@ function GroupAccessPanel({ orgId, canManage, initialConnection = "", initialMod
   const { state } = useAuth();
   const userId = state.status === "authed" ? state.user.id : "";
   const emailVerified = state.status === "authed" && state.user.email_verified;
+  const serverAdmin = state.status === "authed" && Boolean(state.user.cp_admin);
+  const gateway = useAIGatewayStatus(orgId);
   const scope = `${orgId}/${userId}`;
   const currentScope = useRef(scope); currentScope.current = scope;
   const alive = useRef(true), locked = useRef(false);
@@ -167,9 +172,11 @@ function GroupAccessPanel({ orgId, canManage, initialConnection = "", initialMod
   return <section className="ai-model-access ai-secondary-workspace" aria-label="Group model access">
     <div className="ai-secondary-toolbar">
       <Input aria-label="Search model access" placeholder="Search groups or models" value={query} onChange={(event) => { setQuery(event.target.value); setPage(1); }} />
-      <div className="ai-secondary-actions"><RefreshButton label="Refresh access" disabled={busy} onClick={() => { setError(""); setAttempt((n) => n + 1); }} />{canManage && <Button disabled={!data || busy} onClick={() => setGrantOpen(true)}>Grant access</Button>}</div>
+      <div className="ai-secondary-actions"><RefreshButton label="Refresh access" disabled={busy} onClick={() => { setError(""); gateway.reload(); setAttempt((n) => n + 1); }} />{canManage && <Button disabled={!data || busy} onClick={() => setGrantOpen(true)}>Grant access</Button>}</div>
     </div>
-    {error && !grantOpen && <p role="alert">{error}</p>}
+    <AIGatewayOffBanner orgId={orgId} gateway={gateway} canManage={canManage} serverAdmin={serverAdmin} onChanged={() => { setError(""); setAttempt((n) => n + 1); }} />
+    {/* While the banner says why nothing loads, a load error beside it would only repeat it less clearly. */}
+    {error && !grantOpen && !(gateway.off && !data) && <p role="alert">{error}</p>}
     {!data ? !error && <Loading label="Loading groups and models…" /> : visibleGrants.length ? <div className="ai-secondary-table-scroll"><table className="ai-compact-table">
       <caption className="sr-only">User group model grants</caption>
       <thead><tr><th scope="col">Group</th><th scope="col">Model</th><th scope="col">State</th>{canManage && <th scope="col" className="ai-secondary-action-column"><span className="sr-only">Actions</span></th>}</tr></thead>
@@ -190,8 +197,11 @@ function GroupAccessPanel({ orgId, canManage, initialConnection = "", initialMod
   </section>;
 }
 
-export function AIUseModel({ orgId }: { orgId: string }) {
+export function AIUseModel({ orgId, canManage = false, serverAdmin = false }: { orgId: string; canManage?: boolean; serverAdmin?: boolean }) {
+  const gateway = useAIGatewayStatus(orgId);
   const [models, setModels] = useState<S["AIUserModel"][] | null>(null);
+  // Whether the organization has any model at all. Only a manager can read that; null means not known.
+  const [configured, setConfigured] = useState<number | null | undefined>(undefined);
   const [model, setModel] = useState("");
   const [error, setError] = useState("");
   const [attempt, setAttempt] = useState(0);
@@ -206,16 +216,250 @@ export function AIUseModel({ orgId }: { orgId: string }) {
     }).catch(() => { if (active) setError("Could not load your models. Try refreshing."); });
     return () => { active = false; };
   }, [orgId, attempt]);
+  const none = models !== null && models.length === 0;
+  useEffect(() => {
+    let active = true;
+    setConfigured(none && canManage ? undefined : null);
+    if (!none || !canManage) return;
+    void loadOne(() => api.GET("/api/v1/organizations/{orgId}/ai-gateway/providers", { params: { path: { orgId } } })).then((result) => {
+      if (active) setConfigured(result.ok && Array.isArray(result.data?.items) ? result.data.items.reduce((total, connection) => total + (connection.models?.length ?? 0), 0) : null);
+    });
+    return () => { active = false; };
+  }, [orgId, none, canManage, attempt]);
   const selected = models?.find(m => m.model === model);
+  // "No models available" is a claim about the organization: only made when the gateway is on and has none.
+  const empty = configured === undefined ? null : configured === 0
+    ? <AppAccessEmptyState icon={null} title="No models available" description="AI Gateway is on, but no model has been added yet. Add a model, then grant it to a user group." action={<Link className="ai-gateway-off-link" to="/ai-gateway/models/new">Add a model</Link>} />
+    : canManage
+      ? <AppAccessEmptyState icon={null} title="No model is granted to you yet" description="A model reaches the playground once it is granted to one of your user groups." action={<Link className="ai-gateway-off-link" to="/ai-gateway/access">Grant model access</Link>} />
+      : <AppAccessEmptyState icon={null} title="No model is granted to you yet" description="Ask an organization owner or administrator to grant a model to one of your user groups." />;
   return <section className="ai-playground ai-secondary-workspace" aria-label="Use a model">
     <div className="ai-secondary-toolbar ai-playground-model-toolbar">
       {models && models.length > 0 && <Field label="Model"><Select value={model} onChange={(event) => setModel(event.target.value)}>{models.map((entry) => <option key={entry.model} value={entry.model}>{modelDisplayName(entry.model)} · {entry.mode}</option>)}</Select></Field>}
-      <div className="ai-secondary-actions">{selected && <Button variant="ghost" onClick={() => setDetailsOpen(true)}>Connection &amp; code</Button>}<RefreshButton label="Refresh" onClick={() => setAttempt((n) => n + 1)} /></div>
+      <div className="ai-secondary-actions">{selected && <Button variant="ghost" onClick={() => setDetailsOpen(true)}>Connection &amp; code</Button>}<RefreshButton label="Refresh" onClick={() => { gateway.reload(); setAttempt((n) => n + 1); }} /></div>
     </div>
-    {error && <p role="alert">{error}</p>}
-    {models === null ? !error && <Loading label="Loading your models…" /> : !models.length ? <AppAccessEmptyState icon={null} title="No models available" description="Ask your administrator to grant model access to your user group." /> : <>
+    <AIGatewayOffBanner orgId={orgId} gateway={gateway} canManage={canManage} serverAdmin={serverAdmin} onChanged={() => setAttempt((n) => n + 1)} />
+    {error && !gateway.off && <p role="alert">{error}</p>}
+    {models === null ? !error && !gateway.off && <Loading label="Loading your models…" /> : !models.length ? !gateway.off && !gateway.loading && empty : <>
       {selected?.mode === "chat" ? <AIChatPlayground key={`${orgId}:${model}`} orgId={orgId} model={model} /> : <div className="ai-secondary-empty"><h3>Use this model in your application</h3><p>This model supports {selected?.mode.replace(/_/g, " ")}. The conversation playground and VPN connection examples support chat models.</p><Button variant="ghost" onClick={() => setDetailsOpen(true)}>Connection availability</Button></div>}
       {detailsOpen && <Modal title="Connection & code" placement="right" size="enrollment" showClose onDismiss={() => setDetailsOpen(false)}><div className="ai-access-connection"><AIModelConnectionDetails key={`${orgId}:${model}`} orgId={orgId} model={model} mode={selected?.mode} /></div></Modal>}
     </>}
   </section>;
+}
+
+type AgentAccessData = {
+  /** Agent groups are switched off for the organization: nothing here can be granted until they are on. */
+  groupsOff: boolean;
+  groups: S["AgentGroup"][]; agents: { id: string; name: string }[];
+  teams: S["AITeamPolicy"][]; assignments: S["AIAssignment"][]; providers: S["AIProviderConnection"][];
+};
+const agentAccessState: Record<S["AIAssignment"]["status"], string> = { applied: "Active", pending: "Starting", error: "Not applied yet", disabled: "Revoked" };
+const usable = (c: S["AIProviderConnection"]) => c.enabled && c.status === "applied" && c.revision === c.applied_revision;
+const modelsLabel = (models: readonly string[]) => models.length === 1 ? modelDisplayName(models[0]) : `${models.length} models`;
+
+/** Model access for agents and agent groups, on the page where it is granted for everyone else. */
+export function AIAgentAccess(props: { orgId: string; canManage: boolean; serverAdmin?: boolean }) {
+  return <AgentAccessPanel key={`${props.orgId}:${props.canManage}`} {...props} />;
+}
+
+function AgentAccessPanel({ orgId, canManage, serverAdmin = false }: { orgId: string; canManage: boolean; serverAdmin?: boolean }) {
+  const gateway = useAIGatewayStatus(orgId);
+  const alive = useRef(true), serial = useRef(0), locked = useRef(false);
+  const [data, setData] = useState<AgentAccessData | null>(null);
+  const [loading, setLoading] = useState(true), [busy, setBusy] = useState(false), [error, setError] = useState("");
+  const [query, setQuery] = useState(""), [page, setPage] = useState(1), [pageSize, setPageSize] = useState(20);
+  const [grantGroup, setGrantGroup] = useState<string | null>(null);
+  const [revoking, setRevoking] = useState<S["AIAssignment"] | null>(null);
+  async function reload() {
+    const n = ++serial.current;
+    setLoading(true); setError("");
+    try {
+      const params = { params: { path: { orgId } } };
+      const [g, t, a, p] = await Promise.all([
+        api.GET("/api/v1/organizations/{orgId}/agent-groups", params),
+        api.GET("/api/v1/organizations/{orgId}/ai-gateway/teams", params),
+        api.GET("/api/v1/organizations/{orgId}/ai-gateway/agents", params),
+        api.GET("/api/v1/organizations/{orgId}/ai-gateway/providers", params),
+      ]);
+      // Names only: a list that cannot be read leaves agents shown by their group membership.
+      const agents: { id: string; name: string }[] = [];
+      let cursor: string | undefined;
+      for (let pageNumber = 0; pageNumber < 10; pageNumber++) {
+        const d = await api.GET("/api/v1/organizations/{orgId}/agents", { params: { path: { orgId }, query: { limit: 100, ...(cursor ? { cursor } : {}) } } });
+        if (d.error || !d.data || !Array.isArray(d.data.items)) break;
+        agents.push(...d.data.items.map((agent) => ({ id: agent.device_id, name: agent.name })));
+        if (!d.data.next_cursor || d.data.next_cursor === cursor) break;
+        cursor = d.data.next_cursor;
+      }
+      if (!alive.current || n !== serial.current) return;
+      const groupsOff = apiErrorCode(g.error) === "opt_in_required";
+      if ((g.error && !groupsOff) || t.error || a.error || p.error || !Array.isArray(t.data) || !Array.isArray(a.data) || !p.data || !Array.isArray(p.data.items) || (!groupsOff && !Array.isArray(g.data))) throw Error();
+      setData({ groupsOff, groups: g.data ?? [], agents, teams: t.data, assignments: a.data, providers: p.data.items });
+    } catch {
+      if (alive.current && n === serial.current) setError("Could not load model access for agents. Refresh to try again.");
+    } finally { if (alive.current && n === serial.current) setLoading(false); }
+  }
+  useEffect(() => { alive.current = true; void reload(); return () => { alive.current = false; serial.current++; }; }, [orgId]);
+  const groupName = (id: string) => data?.groups.find((g) => g.id === id)?.name ?? "Deleted agent group";
+  const agentName = (id: string) => data?.agents.find((agent) => agent.id === id)?.name ?? `Agent ${id.slice(0, 8)}`;
+  async function setAgentAccess(assignment: S["AIAssignment"], enabled: boolean) {
+    if (locked.current || !canManage) return;
+    locked.current = true; setBusy(true); setError("");
+    try {
+      const result = await api.PUT("/api/v1/organizations/{orgId}/ai-gateway/agents/{deviceId}", { params: { path: { orgId, deviceId: assignment.device_id } }, body: { team_id: assignment.team_id, enabled, models_override: assignment.models_override, expected_revision: assignment.revision } });
+      if (!alive.current) return;
+      const failure = result.error || !result.data ? apiErrorMessage(result.error, "Could not save this change. Refresh and try again.") : "";
+      if (!failure) toast.success(enabled ? "Model access restored" : "Model access revoked");
+      await reload();
+      if (alive.current && failure) setError(failure);
+    } catch { if (alive.current) setError("Could not reach the server. Refresh to see what was saved."); }
+    finally { locked.current = false; if (alive.current) setBusy(false); }
+  }
+  type Row = { key: string; name: string; search: string } & ({ kind: "group"; team: S["AITeamPolicy"] } | { kind: "agent"; assignment: S["AIAssignment"] });
+  const rows: Row[] = !data ? [] : [
+    ...data.teams.map((team): Row => ({ kind: "group", team, key: `group:${team.team_id}`, name: groupName(team.team_id), search: `${groupName(team.team_id)} ${team.models.join(" ")}` })),
+    ...data.assignments.map((assignment): Row => ({ kind: "agent", assignment, key: `agent:${assignment.device_id}`, name: agentName(assignment.device_id), search: `${agentName(assignment.device_id)} ${groupName(assignment.team_id)} ${assignment.models_override.join(" ")}` })),
+  ];
+  const matching = rows.filter((row) => row.search.toLowerCase().includes(query.trim().toLowerCase()));
+  const currentPage = Math.min(page, Math.max(1, Math.ceil(matching.length / pageSize)));
+  const visible = matching.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+  const wait = busy ? "Wait for the current change to finish." : undefined;
+  return <section className="ai-model-access ai-secondary-workspace" aria-label="Agent model access">
+    <div className="ai-secondary-toolbar">
+      <Input aria-label="Search agent model access" placeholder="Search agents, agent groups or models" value={query} onChange={(event) => { setQuery(event.target.value); setPage(1); }} />
+      <div className="ai-secondary-actions"><RefreshButton label="Refresh access" disabled={busy || loading} onClick={() => { gateway.reload(); void reload(); }} />{canManage && <Button disabled={!data || data.groupsOff || busy || loading} onClick={() => setGrantGroup("")}>Grant access</Button>}</div>
+    </div>
+    <AIGatewayOffBanner orgId={orgId} gateway={gateway} canManage={canManage} serverAdmin={serverAdmin} onChanged={() => void reload()} />
+    {error && grantGroup === null && !(gateway.off && !data) && <p role="alert">{error}</p>}
+    {!data ? loading && <Loading label="Loading agents and agent groups…" />
+      : data.groupsOff ? <AppAccessEmptyState icon={null} title="Agent groups are turned off" description="An agent gets model access through its agent group. Turn agent groups on, then grant access here." action={<Link className="ai-gateway-off-link" to="/agents/groups">Open agent groups</Link>} />
+      : visible.length ? <div className="ai-secondary-table-scroll"><table className="ai-compact-table">
+        <caption className="sr-only">Agents and agent groups with model access</caption>
+        <thead><tr><th scope="col">Name</th><th scope="col">Type</th><th scope="col">Models</th><th scope="col">State</th>{canManage && <th scope="col" className="ai-secondary-action-column"><span className="sr-only">Actions</span></th>}</tr></thead>
+        <tbody>{visible.map((row) => {
+          if (row.kind === "group") {
+            const agents = data.assignments.filter((a) => a.team_id === row.team.team_id && a.enabled).length;
+            return <tr key={row.key}>
+              <td>{row.name}</td><td>Agent group</td>
+              <td title={row.team.models.map(modelDisplayName).join(", ")}>{modelsLabel(row.team.models)}</td>
+              <td><span className="ai-secondary-status">{agents === 1 ? "1 agent has access" : `${agents} agents have access`}</span></td>
+              {canManage && <td><AppAccessRowMenu label={`Actions for agent group ${row.name}`} actions={[{ key: "edit", label: "Change models or agents", disabledReason: wait, onSelect: () => setGrantGroup(row.team.team_id) }]} /></td>}
+            </tr>;
+          }
+          const a = row.assignment, team = data.teams.find((t) => t.team_id === a.team_id);
+          const models = a.models_override.length ? a.models_override : team?.models ?? [];
+          return <tr key={row.key}>
+            <td>{row.name}<small className="block text-ink-tertiary">In {groupName(a.team_id)}</small></td><td>Agent</td>
+            <td title={models.map(modelDisplayName).join(", ")}>{models.length ? modelsLabel(models) : "None"}</td>
+            <td><span className="ai-secondary-status">{a.enabled ? agentAccessState[a.status] ?? a.status : "Revoked"}</span></td>
+            {canManage && <td><AppAccessRowMenu label={`Actions for agent ${row.name}`} actions={[{
+              key: a.enabled ? "revoke" : "restore", label: a.enabled ? "Revoke access" : "Restore access", danger: a.enabled, disabledReason: wait,
+              onSelect: () => { if (busy) return; if (a.enabled) setRevoking(a); else void setAgentAccess(a, true); },
+            }]} /></td>}
+          </tr>;
+        })}</tbody>
+      </table></div>
+      : <AppAccessEmptyState icon={null} title={query ? "No matching agents or agent groups" : "No agent has model access yet"} description={query ? "Try another agent, agent group or model." : "Choose an agent group, the models it may use, and which of its agents get them."} action={query ? <Button variant="ghost" onClick={() => { setQuery(""); setPage(1); }}>Clear search</Button> : undefined} />}
+    {data && !data.groupsOff && <AppAccessPagination page={currentPage} pageSize={pageSize} count={visible.length} hasNext={currentPage * pageSize < matching.length} maxOffset={null} busy={busy} onPageChange={setPage} onPageSizeChange={(size) => { setPageSize(size); setPage(1); }} />}
+    {data && canManage && grantGroup !== null && <AgentGrantDialog key={grantGroup} orgId={orgId} data={data} initialGroup={grantGroup} agentName={agentName} onClose={(saved) => { setGrantGroup(null); if (saved) void reload(); }} />}
+    {revoking && <Modal title="Revoke model access?" showClose onDismiss={() => !busy && setRevoking(null)} actions={<><Button disabled={busy} onClick={() => setRevoking(null)}>Cancel</Button><Button disabled={busy} onClick={async () => { await setAgentAccess(revoking, false); setRevoking(null); }}>{busy ? "Revoking…" : "Confirm revoke"}</Button></>}><p>Revoke model access for the agent <strong>{agentName(revoking.device_id)}</strong>?</p><p className="mt-3 text-sm text-ink-tertiary">New requests from this agent are refused. Requests already accepted may finish. Other agents in {groupName(revoking.team_id)} keep their access.</p></Modal>}
+  </section>;
+}
+
+type GroupMembers = { state: "idle" | "loading" | "error" } | { state: "ready"; items: S["AgentGroupMember"][] };
+
+function AgentGrantDialog({ orgId, data, initialGroup, agentName, onClose }: { orgId: string; data: AgentAccessData; initialGroup: string; agentName: (id: string) => string; onClose: (saved: boolean) => void }) {
+  const alive = useRef(true), locked = useRef(false);
+  useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
+  const [groupId, setGroupId] = useState(initialGroup);
+  const team = data.teams.find((t) => t.team_id === groupId);
+  const [models, setModels] = useState<string[]>(team?.models ?? []);
+  const [budget, setBudget] = useState(team?.daily_cost_limit == null ? "" : String(team.daily_cost_limit));
+  const [members, setMembers] = useState<GroupMembers>({ state: "idle" });
+  const [chosen, setChosen] = useState<string[]>([]);
+  const [attempt, setAttempt] = useState(0), [busy, setBusy] = useState(false), [error, setError] = useState(""), [saved, setSaved] = useState(false);
+  const hasAccess = (deviceId: string) => data.assignments.some((a) => a.device_id === deviceId && a.team_id === groupId && a.enabled);
+  useEffect(() => {
+    let live = true;
+    setMembers(groupId ? { state: "loading" } : { state: "idle" }); setChosen([]);
+    if (!groupId) return;
+    void loadOne(() => api.GET("/api/v1/organizations/{orgId}/agent-groups/{groupId}/members", { params: { path: { orgId, groupId } } })).then((result) => {
+      if (!live) return;
+      if (!result.ok || !Array.isArray(result.data)) { setMembers({ state: "error" }); return; }
+      const items = result.data.filter((member) => member.status === "active");
+      setMembers({ state: "ready", items }); setChosen(items.filter((member) => hasAccess(member.device_id)).map((member) => member.device_id));
+    });
+    return () => { live = false; };
+  }, [orgId, groupId, attempt]);
+  function chooseGroup(id: string) {
+    const next = data.teams.find((t) => t.team_id === id);
+    setGroupId(id); setModels(next?.models ?? []); setBudget(next?.daily_cost_limit == null ? "" : String(next.daily_cost_limit)); setError("");
+  }
+  const ready = data.providers.filter(usable);
+  const available = [...new Set([...ready.flatMap((c) => c.models), ...(team?.models ?? [])])];
+  // The policy names the credentials that serve its models. Keep any reference the server administrator set up.
+  const owned = new Set(data.providers.map((c) => c.key_id));
+  const keys = [...new Set([...ready.filter((c) => c.models.some((model) => models.includes(model))).map((c) => c.key_id), ...(team?.key_ids ?? []).filter((id) => !owned.has(id))])].slice(0, 8);
+  const limit = budget.trim() === "" ? null : Number(budget);
+  const budgetValid = limit === null || (Number.isFinite(limit) && limit > 0 && limit <= 100000);
+  const policyChanged = !team || team.daily_cost_limit !== limit && !(team.daily_cost_limit == null && limit === null) || team.models.length !== models.length || team.models.some((model) => !models.includes(model));
+  const valid = !!groupId && models.length > 0 && models.length <= 32 && keys.length > 0 && budgetValid && members.state === "ready";
+  async function save() {
+    if (locked.current || !valid || members.state !== "ready") return;
+    locked.current = true; setBusy(true); setError("");
+    let wrote = false;
+    try {
+      if (policyChanged) {
+        const result = await api.PUT("/api/v1/organizations/{orgId}/ai-gateway/teams/{teamId}", { params: { path: { orgId, teamId: groupId } }, body: { models, key_ids: keys, daily_cost_limit: limit, expected_revision: team?.revision ?? 0 } });
+        if (result.error || !result.data) throw Error(apiErrorMessage(result.error, "Could not save the models for this agent group."));
+        wrote = true;
+      }
+      for (const member of members.items) {
+        const current = data.assignments.find((a) => a.device_id === member.device_id);
+        const want = chosen.includes(member.device_id), has = !!current && current.team_id === groupId && current.enabled;
+        if (want === has) continue;
+        if (!want && current?.team_id !== groupId) continue;
+        const sameGroup = current?.team_id === groupId;
+        const result = await api.PUT("/api/v1/organizations/{orgId}/ai-gateway/agents/{deviceId}", { params: { path: { orgId, deviceId: member.device_id } }, body: { team_id: groupId, enabled: want, models_override: sameGroup ? current.models_override.filter((model) => !want || models.includes(model)) : [], expected_revision: current?.revision ?? 0 } });
+        if (result.error || !result.data) throw Error(apiErrorMessage(result.error, `Could not save access for ${member.name}.`));
+        wrote = true;
+      }
+      if (!alive.current) return;
+      toast.success("Agent model access saved");
+      onClose(true);
+    } catch (failure) {
+      if (!alive.current) return;
+      if (wrote) setSaved(true);
+      setError(`${failure instanceof Error && failure.message ? failure.message : "Could not reach the server."}${wrote ? " Earlier changes in this dialog were saved." : ""} Close and refresh before trying again.`);
+    } finally { locked.current = false; if (alive.current) setBusy(false); }
+  }
+  const toggle = (list: string[], id: string, on: boolean) => on ? [...new Set([...list, id])] : list.filter((value) => value !== id);
+  return <Modal title="Grant model access to agents" placement="right" size="enrollment" showClose onDismiss={() => !busy && onClose(saved)} actions={<><Button variant="ghost" disabled={busy} onClick={() => onClose(saved)}>Cancel</Button><Button disabled={busy || !valid || saved} onClick={() => void save()}>{busy ? "Saving…" : "Save agent access"}</Button></>}>
+    <div className="ai-access-editor grid gap-5">
+      {error && <p role="alert" className="text-danger">{error}</p>}
+      <Field label="Agent group"><Select value={groupId} disabled={busy} onChange={(event) => chooseGroup(event.target.value)}><option value="">Select an agent group</option>{data.groups.map((g) => <option key={g.id} value={g.id}>{g.name} ({g.member_count})</option>)}</Select></Field>
+      {!data.groups.length && <p>No agent groups yet. <Link className="ai-gateway-off-link" to="/agents/groups">Create an agent group</Link>, add agents to it, then grant access here.</p>}
+      {groupId && <>
+        <fieldset><legend className="mb-2 text-sm text-ink-heading">Models this group may use</legend>
+          {available.length ? <ul className="ai-agent-grant-list">{available.map((model) => <li key={model}><label><input type="checkbox" checked={models.includes(model)} disabled={busy || (!models.includes(model) && models.length >= 32)} onChange={(event) => setModels(toggle(models, model, event.target.checked))} /><span title={model}>{modelDisplayName(model)}</span></label></li>)}</ul>
+            : <p className="text-sm text-ink-tertiary">No model is ready yet. <Link className="ai-gateway-off-link" to="/ai-gateway/models/new">Add a model</Link> first.</p>}
+          {models.length > 0 && keys.length === 0 && <p className="mt-2 text-sm text-danger">The chosen models have no provider credential that is ready. Check LLM credentials.</p>}
+        </fieldset>
+        <fieldset><legend className="mb-2 text-sm text-ink-heading">Agents that get access</legend>
+          {members.state === "loading" ? <Loading size="inline" label="Loading the agents in this group…" />
+            : members.state === "error" ? <p role="alert">Could not load the agents in this group. <Button variant="ghost" disabled={busy} onClick={() => setAttempt((n) => n + 1)}>Retry agents</Button></p>
+            : members.state === "ready" && members.items.length ? <ul className="ai-agent-grant-list">{members.items.map((member) => {
+              const other = data.assignments.find((a) => a.device_id === member.device_id && a.team_id !== groupId && a.enabled);
+              const otherName = other ? data.groups.find((g) => g.id === other.team_id)?.name ?? "another agent group" : "";
+              return <li key={member.device_id}><label><input type="checkbox" checked={chosen.includes(member.device_id)} disabled={busy} onChange={(event) => setChosen(toggle(chosen, member.device_id, event.target.checked))} /><span>{member.name || agentName(member.device_id)}{other && <small>Uses the models of {otherName} now. Saving moves it to this group.</small>}</span></label></li>;
+            })}</ul>
+            : members.state === "ready" ? <p className="text-sm text-ink-tertiary">This group has no active agents. <Link className="ai-gateway-off-link" to="/agents/groups">Add agents to the group</Link> first.</p> : null}
+          <p className="mt-2 text-xs text-ink-tertiary">Clearing an agent that has access revokes it when you save.</p>
+        </fieldset>
+        <Field label="Daily budget for this group in USD (optional)"><Input type="number" min="0" max="100000" step="any" value={budget} disabled={busy} onChange={(event) => setBudget(event.target.value)} /></Field>
+        {!budgetValid && <p className="text-sm text-danger">Enter an amount above 0 and up to 100000, or leave it empty.</p>}
+        <p className="ai-access-context">Shared by every agent in the group <HelpTooltip label="How the daily budget works">Counted from midnight UTC against what the gateway observed. It is a soft limit, not an exact cap: requests already running can pass it.</HelpTooltip></p>
+      </>}
+    </div>
+  </Modal>;
 }

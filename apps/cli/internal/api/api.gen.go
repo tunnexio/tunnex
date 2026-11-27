@@ -44,10 +44,26 @@ const (
 	Float  AIEmbeddingRequestEncodingFormat = "float"
 )
 
+// Defines values for AIGatewayFixKind.
+const (
+	AIGatewayFixAddProvider     AIGatewayFixKind = "add_provider"
+	AIGatewayFixChooseTransport AIGatewayFixKind = "choose_transport"
+	AIGatewayFixEnable          AIGatewayFixKind = "enable"
+	AIGatewayFixInstallEngine   AIGatewayFixKind = "install_engine"
+)
+
 // Defines values for AIGatewaySettingsUnavailableReason.
 const (
 	EngineNotConfigured AIGatewaySettingsUnavailableReason = "engine_not_configured"
 	HttpsRequired       AIGatewaySettingsUnavailableReason = "https_required"
+)
+
+// Defines values for AIGatewayStatusReason.
+const (
+	AIGatewayOffEngineNotInstalled AIGatewayStatusReason = "engine_not_installed"
+	AIGatewayOffNoProvider         AIGatewayStatusReason = "no_provider"
+	AIGatewayOffNotEnabled         AIGatewayStatusReason = "not_enabled"
+	AIGatewayOffTransportRequired  AIGatewayStatusReason = "transport_required"
 )
 
 // Defines values for AIImageRequestN.
@@ -179,6 +195,11 @@ const (
 	AIProviderDefinitionIdOpenrouter   AIProviderDefinitionId = "openrouter"
 	AIProviderDefinitionIdSagemaker    AIProviderDefinitionId = "sagemaker"
 	AIProviderDefinitionIdXai          AIProviderDefinitionId = "xai"
+)
+
+// Defines values for AIProviderInUseConflictErrorCode.
+const (
+	AIProviderInUse AIProviderInUseConflictErrorCode = "ai_provider_in_use"
 )
 
 // Defines values for AIProviderProbeProvider.
@@ -431,9 +452,23 @@ const (
 	AgentAccessRequestStateRevoked   AgentAccessRequestState = "revoked"
 )
 
+// Defines values for AgentAccessRuleVia.
+const (
+	AgentAccessRuleViaAgent      AgentAccessRuleVia = "agent"
+	AgentAccessRuleViaAgentGroup AgentAccessRuleVia = "agent_group"
+)
+
 // Defines values for AgentBootstrapRuntimeReleaseBinary.
 const (
 	TunnexAgentRuntime AgentBootstrapRuntimeReleaseBinary = "tunnex-agent-runtime"
+)
+
+// Defines values for AgentBootstrapTokenStatusState.
+const (
+	AgentBootstrapTokenEnrolled AgentBootstrapTokenStatusState = "enrolled"
+	AgentBootstrapTokenExpired  AgentBootstrapTokenStatusState = "expired"
+	AgentBootstrapTokenPending  AgentBootstrapTokenStatusState = "pending"
+	AgentBootstrapTokenRevoked  AgentBootstrapTokenStatusState = "revoked"
 )
 
 // Defines values for AgentCredentialRotationStatusState.
@@ -456,6 +491,14 @@ const (
 	MCPEnforcementAgentHost   AgentEffectiveMCPProfileEnforcement = "agent_host"
 	MCPEnforcementGateway     AgentEffectiveMCPProfileEnforcement = "gateway"
 	MCPEnforcementUnavailable AgentEffectiveMCPProfileEnforcement = "unavailable"
+)
+
+// Defines values for AgentFeatureKey.
+const (
+	AgentFeatureAgentGroups AgentFeatureKey = "agent_groups"
+	AgentFeatureAgentJIT    AgentFeatureKey = "agent_jit"
+	AgentFeatureMCP         AgentFeatureKey = "mcp"
+	AgentFeatureRuntimeSync AgentFeatureKey = "runtime_sync"
 )
 
 // Defines values for AgentGroupMemberStatus.
@@ -522,6 +565,12 @@ const (
 	AgentMCPToolApprovalRequestStateDenied   AgentMCPToolApprovalRequestState = "denied"
 	AgentMCPToolApprovalRequestStateExpired  AgentMCPToolApprovalRequestState = "expired"
 	AgentMCPToolApprovalRequestStatePending  AgentMCPToolApprovalRequestState = "pending"
+)
+
+// Defines values for AgentOwnerAccessCandidateVia.
+const (
+	AgentOwnerAccessViaGroup AgentOwnerAccessCandidateVia = "group"
+	AgentOwnerAccessViaUser  AgentOwnerAccessCandidateVia = "user"
 )
 
 // Defines values for AgentPolicyTemplateItemInputDestinationKind.
@@ -642,6 +691,7 @@ const (
 	AlertEventKeyAgentAccessExpiring          AlertEventKey = "agent.access_expiring"
 	AlertEventKeyAgentConfigurationDrift      AlertEventKey = "agent.configuration_drift"
 	AlertEventKeyAgentDenialSpike             AlertEventKey = "agent.denial_spike"
+	AlertEventKeyAgentMcpApprovalPending      AlertEventKey = "agent.mcp_approval_pending"
 	AlertEventKeyAgentOffline                 AlertEventKey = "agent.offline"
 	AlertEventKeyAgentRotationFailed          AlertEventKey = "agent.rotation_failed"
 	AlertEventKeyDeviceOffline                AlertEventKey = "device.offline"
@@ -1653,10 +1703,55 @@ const (
 	String  MCPArgumentConstraintType = "string"
 )
 
+// Defines values for MCPConnectionPreviewState.
+const (
+	MCPConnectionPreviewFailed  MCPConnectionPreviewState = "failed"
+	MCPConnectionPreviewReady   MCPConnectionPreviewState = "ready"
+	MCPConnectionPreviewWaiting MCPConnectionPreviewState = "waiting"
+)
+
+// Defines values for MCPToolActivityDecisionFilter.
+const (
+	MCPToolActivityFilterAllow MCPToolActivityDecisionFilter = "allow"
+	MCPToolActivityFilterDeny  MCPToolActivityDecisionFilter = "deny"
+)
+
+// Defines values for MCPToolApprovalInboxFilter.
+const (
+	MCPToolApprovalInboxAll     MCPToolApprovalInboxFilter = "all"
+	MCPToolApprovalInboxPending MCPToolApprovalInboxFilter = "pending"
+)
+
+// Defines values for MCPToolEffect.
+const (
+	MCPToolEffectChanges     MCPToolEffect = "changes"
+	MCPToolEffectDestructive MCPToolEffect = "destructive"
+	MCPToolEffectReads       MCPToolEffect = "reads"
+)
+
+// Defines values for MCPToolMode.
+const (
+	MCPToolModeAllow MCPToolMode = "allow"
+	MCPToolModeAsk   MCPToolMode = "ask"
+	MCPToolModeOff   MCPToolMode = "off"
+)
+
 // Defines values for MCPToolPolicyRuleDefinitionState.
 const (
 	MCPToolDefinitionChanged MCPToolPolicyRuleDefinitionState = "changed"
 	MCPToolDefinitionCurrent MCPToolPolicyRuleDefinitionState = "current"
+)
+
+// Defines values for MCPToolPolicySource.
+const (
+	MCPToolPolicySourceAgent MCPToolPolicySource = "agent"
+	MCPToolPolicySourceGroup MCPToolPolicySource = "group"
+)
+
+// Defines values for MCPToolSettingDefinitionState.
+const (
+	MCPToolSettingDefinitionChanged MCPToolSettingDefinitionState = "changed"
+	MCPToolSettingDefinitionCurrent MCPToolSettingDefinitionState = "current"
 )
 
 // Defines values for ManagedAgentConfigWireguardRotationState.
@@ -2535,6 +2630,19 @@ type AIEmbeddingRequest_Input struct {
 	union json.RawMessage
 }
 
+// AIGatewayFix The control that resolves `reason`.
+type AIGatewayFix struct {
+	// Href In-app path of the page that holds the control, when it is not the current page.
+	Href *string          `json:"href"`
+	Kind AIGatewayFixKind `json:"kind"`
+
+	// RequiresServerAdmin True when only a server administrator can apply the fix; others are told who can.
+	RequiresServerAdmin *bool `json:"requires_server_admin,omitempty"`
+}
+
+// AIGatewayFixKind defines model for AIGatewayFix.Kind.
+type AIGatewayFixKind string
+
 // AIGatewayOptIn defines model for AIGatewayOptIn.
 type AIGatewayOptIn struct {
 	Enabled bool `json:"enabled"`
@@ -2557,12 +2665,29 @@ type AIGatewaySettings struct {
 	PrivateHttpAllowed *bool `json:"private_http_allowed,omitempty"`
 	Revision           int64 `json:"revision"`
 
+	// Status Whether the AI Gateway works for this organization right now and, when it does not, the one reason and the control that fixes it. Every AI Gateway page shows the same banner from this.
+	Status *AIGatewayStatus `json:"status,omitempty"`
+
 	// UnavailableReason Deployment prerequisite when AI is unavailable.
 	UnavailableReason *AIGatewaySettingsUnavailableReason `json:"unavailable_reason,omitempty"`
 }
 
 // AIGatewaySettingsUnavailableReason Deployment prerequisite when AI is unavailable.
 type AIGatewaySettingsUnavailableReason string
+
+// AIGatewayStatus Whether the AI Gateway works for this organization right now and, when it does not, the one reason and the control that fixes it. Every AI Gateway page shows the same banner from this.
+type AIGatewayStatus struct {
+	Fix *AIGatewayFix `json:"fix"`
+
+	// On True when the gateway is enabled and can serve a request.
+	On bool `json:"on"`
+
+	// Reason Null when `on` is true. `not_enabled`: the organization switch is off. `transport_required`: a server administrator must choose HTTPS or allow HTTP first. `no_provider`: no provider credential is configured. `engine_not_installed`: the installation has not prepared its AI backend. When several apply, the first in that order that the caller must fix first is reported.
+	Reason *AIGatewayStatusReason `json:"reason"`
+}
+
+// AIGatewayStatusReason Null when `on` is true. `not_enabled`: the organization switch is off. `transport_required`: a server administrator must choose HTTPS or allow HTTP first. `no_provider`: no provider credential is configured. `engine_not_installed`: the installation has not prepared its AI backend. When several apply, the first in that order that the caller must fix first is reported.
+type AIGatewayStatusReason string
 
 // AIImageRequest defines model for AIImageRequest.
 type AIImageRequest struct {
@@ -2697,6 +2822,29 @@ type AIProviderDefinition struct {
 
 // AIProviderDefinitionId defines model for AIProviderDefinition.Id.
 type AIProviderDefinitionId string
+
+// AIProviderInUseConflict Refusal to delete a provider connection that is still used, with what uses it.
+type AIProviderInUseConflict struct {
+	Error struct {
+		Code      AIProviderInUseConflictErrorCode `json:"code"`
+		Message   string                           `json:"message"`
+		RequestId *string                          `json:"request_id,omitempty"`
+	} `json:"error"`
+	InUse struct {
+		Agents []struct {
+			DeviceId openapi_types.UUID `json:"device_id"`
+			Name     string             `json:"name"`
+		} `json:"agents"`
+		Models   []string `json:"models"`
+		Policies []struct {
+			Name   string             `json:"name"`
+			TeamId openapi_types.UUID `json:"team_id"`
+		} `json:"policies"`
+	} `json:"in_use"`
+}
+
+// AIProviderInUseConflictErrorCode defines model for AIProviderInUseConflict.Error.Code.
+type AIProviderInUseConflictErrorCode string
 
 // AIProviderInputModels Exact canonical models for standard providers; custom connections accept upstream names or their own returned canonical names on update.
 type AIProviderInputModels = []string
@@ -3441,6 +3589,22 @@ type AgentAccessDestination struct {
 // AgentAccessDestinationKind defines model for AgentAccessDestinationKind.
 type AgentAccessDestinationKind string
 
+// AgentAccessDestinationSummary defines model for AgentAccessDestinationSummary.
+type AgentAccessDestinationSummary struct {
+	// Address The destination prefix or host name
+	Address *string             `json:"address"`
+	Id      *openapi_types.UUID `json:"id"`
+
+	// Kind The rule's destination kind: resource, group, site, k8s_service, k8s_cluster_scope, fqdn_resource or k8s_api.
+	Kind     string `json:"kind"`
+	Name     string `json:"name"`
+	PortHigh *int   `json:"port_high"`
+	PortLow  *int   `json:"port_low"`
+
+	// Protocol any, tcp or udp, when the kind has one.
+	Protocol *string `json:"protocol"`
+}
+
 // AgentAccessDiagnostic defines model for AgentAccessDiagnostic.
 type AgentAccessDiagnostic struct {
 	Checks       []AgentAccessCheck            `json:"checks"`
@@ -3461,6 +3625,25 @@ type AgentAccessDiagnosticProtocol string
 // AgentAccessIdempotencyRequest defines model for AgentAccessIdempotencyRequest.
 type AgentAccessIdempotencyRequest struct {
 	IdempotencyKey string `json:"idempotency_key"`
+}
+
+// AgentAccessRefusal defines model for AgentAccessRefusal.
+type AgentAccessRefusal struct {
+	Count int64 `json:"count"`
+
+	// Dst The destination address that was refused.
+	Dst      string    `json:"dst"`
+	LastSeen time.Time `json:"last_seen"`
+	Port     *int      `json:"port"`
+	Protocol string    `json:"protocol"`
+}
+
+// AgentAccessRefusals defines model for AgentAccessRefusals.
+type AgentAccessRefusals struct {
+	// Available False when the current plan does not include the access log. `items` is then empty.
+	Available    bool                 `json:"available"`
+	Items        []AgentAccessRefusal `json:"items"`
+	RequiredPlan *string              `json:"required_plan"`
 }
 
 // AgentAccessRequest defines model for AgentAccessRequest.
@@ -3514,6 +3697,28 @@ type AgentAccessRequestPage struct {
 
 // AgentAccessRequestState defines model for AgentAccessRequestState.
 type AgentAccessRequestState string
+
+// AgentAccessRule defines model for AgentAccessRule.
+type AgentAccessRule struct {
+	Destination AgentAccessDestinationSummary `json:"destination"`
+	Enabled     bool                          `json:"enabled"`
+	ExpiresAt   *time.Time                    `json:"expires_at"`
+	GroupId     *openapi_types.UUID           `json:"group_id"`
+	GroupName   *string                       `json:"group_name"`
+	RuleId      openapi_types.UUID            `json:"rule_id"`
+
+	// Via Whether the rule names the agent itself or an agent group it belongs to.
+	Via AgentAccessRuleVia `json:"via"`
+}
+
+// AgentAccessRuleVia Whether the rule names the agent itself or an agent group it belongs to.
+type AgentAccessRuleVia string
+
+// AgentAccessSummary defines model for AgentAccessSummary.
+type AgentAccessSummary struct {
+	Refusals AgentAccessRefusals `json:"refusals"`
+	Rules    []AgentAccessRule   `json:"rules"`
+}
 
 // AgentBootstrapRelease Server-verified immutable runtime release metadata. Contains no secret or signing private key.
 type AgentBootstrapRelease struct {
@@ -3587,6 +3792,40 @@ type AgentBootstrapTokenResponse struct {
 
 	// Release Server-verified immutable runtime release metadata. Contains no secret or signing private key.
 	Release AgentBootstrapRelease `json:"release"`
+
+	// TokenId Identifies the token for its status and for revocation. It is not the token value.
+	TokenId *openapi_types.UUID `json:"token_id,omitempty"`
+}
+
+// AgentBootstrapTokenStatus Whether one bootstrap token was used, and the tunnel facts of the agent it enrolled. Never contains the token value or its hash.
+type AgentBootstrapTokenStatus struct {
+	// AgentName The name the agent enrolls with.
+	AgentName string `json:"agent_name"`
+
+	// DeviceId The agent that redeemed the token; null until enrolled or when that agent was removed.
+	DeviceId   *openapi_types.UUID `json:"device_id"`
+	EnrolledAt *time.Time          `json:"enrolled_at"`
+	ExpiresAt  time.Time           `json:"expires_at"`
+	Id         openapi_types.UUID  `json:"id"`
+
+	// State `pending`: not used yet. `enrolled`: an agent redeemed it. `revoked` and `expired`: it can no longer be used.
+	State AgentBootstrapTokenStatusState `json:"state"`
+
+	// Tunnel Null until an agent enrolled.
+	Tunnel *AgentBootstrapTunnelStatus `json:"tunnel"`
+}
+
+// AgentBootstrapTokenStatusState `pending`: not used yet. `enrolled`: an agent redeemed it. `revoked` and `expired`: it can no longer be used.
+type AgentBootstrapTokenStatusState string
+
+// AgentBootstrapTunnelStatus defines model for AgentBootstrapTunnelStatus.
+type AgentBootstrapTunnelStatus struct {
+	// Connected True when the gateway saw a recent WireGuard handshake from the agent.
+	Connected bool `json:"connected"`
+
+	// GatewayReporting False when the agent's gateway is not reporting peer status. `connected` is then unknown, not offline.
+	GatewayReporting bool       `json:"gateway_reporting"`
+	LastHandshakeAt  *time.Time `json:"last_handshake_at"`
 }
 
 // AgentBootstrapVerifier Optional executable hashes from a separately signed descriptor verified against the installed release. Absent only for legacy releases without that descriptor; never an unsigned download fallback.
@@ -3640,10 +3879,33 @@ type AgentEffectiveMCPProfile struct {
 	GroupName   *string                              `json:"group_name"`
 	ProfileId   *openapi_types.UUID                  `json:"profile_id"`
 	ProfileName *string                              `json:"profile_name"`
+
+	// Servers Every MCP server the agent inherits from its groups, first one first. The scalar fields above describe the first. Empty or omitted when none is assigned.
+	Servers *[]AgentEffectiveMCPServer `json:"servers,omitempty"`
 }
 
 // AgentEffectiveMCPProfileEnforcement Where tool policy is enforced for this agent right now. `gateway`: the gateway's MCP listener decides every call and the agent has no direct path to the endpoint. `agent_host`: the older local-proxy path, allowed only until `direct_path_grace_until`. `unavailable`: the grace period is over and the agent's gateway or runtime cannot use the gateway path, so MCP is withheld.
 type AgentEffectiveMCPProfileEnforcement string
+
+// AgentEffectiveMCPServer One MCP server an agent reaches through one of its groups.
+type AgentEffectiveMCPServer struct {
+	// Default True for the first server (the earliest assignment), which also answers at the bare local address.
+	Default bool `json:"default"`
+
+	// Endpoint Credential-free MCP upstream endpoint.
+	Endpoint  string             `json:"endpoint"`
+	GroupId   openapi_types.UUID `json:"group_id"`
+	GroupName string             `json:"group_name"`
+
+	// LocalUrl The address an MCP client on the agent host uses, `http://127.0.0.1:17100/<server_name>`.
+	LocalUrl string `json:"local_url"`
+
+	// PolicySource Which tool policy decides or decided, the agent's own or its group's.
+	PolicySource MCPToolPolicySource `json:"policy_source"`
+	ProfileId    openapi_types.UUID  `json:"profile_id"`
+	ProfileName  string              `json:"profile_name"`
+	ServerName   string              `json:"server_name"`
+}
 
 // AgentEffectivePermissions Server-computed authority for this exact agent; clients must not infer it from the organization role.
 type AgentEffectivePermissions struct {
@@ -3653,6 +3915,29 @@ type AgentEffectivePermissions struct {
 	Revoke            bool `json:"revoke"`
 	RotateCredentials bool `json:"rotate_credentials"`
 	ViewPrivileged    bool `json:"view_privileged"`
+}
+
+// AgentFeature defines model for AgentFeature.
+type AgentFeature struct {
+	// Available False when the current plan does not include the feature. The switch is then disabled.
+	Available bool `json:"available"`
+
+	// Enabled The organization switch as saved.
+	Enabled bool `json:"enabled"`
+
+	// Key `runtime_sync`: runtime synchronization, needed to add an agent. `agent_groups`: agent groups and policy templates. `mcp`: MCP servers and tool policy. `agent_jit`: approval-based temporary access.
+	Key AgentFeatureKey `json:"key"`
+
+	// RequiredPlan The lowest plan that includes the feature (for example `starter` or `scale`); null when `available` is true.
+	RequiredPlan *string `json:"required_plan"`
+}
+
+// AgentFeatureKey `runtime_sync`: runtime synchronization, needed to add an agent. `agent_groups`: agent groups and policy templates. `mcp`: MCP servers and tool policy. `agent_jit`: approval-based temporary access.
+type AgentFeatureKey string
+
+// AgentFeatureList defines model for AgentFeatureList.
+type AgentFeatureList struct {
+	Items []AgentFeature `json:"items"`
 }
 
 // AgentGroup defines model for AgentGroup.
@@ -3666,6 +3951,23 @@ type AgentGroup struct {
 	Name        string             `json:"name"`
 	OrgId       openapi_types.UUID `json:"org_id"`
 	UpdatedAt   time.Time          `json:"updated_at"`
+}
+
+// AgentGroupMCPToolPolicy defines model for AgentGroupMCPToolPolicy.
+type AgentGroupMCPToolPolicy struct {
+	CreatedAt           *time.Time         `json:"created_at"`
+	Endpoint            string             `json:"endpoint"`
+	GroupId             openapi_types.UUID `json:"group_id"`
+	InventoryObservedAt *time.Time         `json:"inventory_observed_at"`
+
+	// OverridingAgentCount How many agents of the group have their own policy for this server and therefore do not follow this one.
+	OverridingAgentCount *int               `json:"overriding_agent_count,omitempty"`
+	ProfileId            openapi_types.UUID `json:"profile_id"`
+	ServerName           string             `json:"server_name"`
+	Tools                []MCPToolSetting   `json:"tools"`
+
+	// Version Zero means no policy was saved yet; every tool is Off.
+	Version int64 `json:"version"`
 }
 
 // AgentGroupMember defines model for AgentGroupMember.
@@ -3749,7 +4051,10 @@ type AgentMCPProfile struct {
 	Id         openapi_types.UUID `json:"id"`
 	Name       string             `json:"name"`
 	OrgId      openapi_types.UUID `json:"org_id"`
-	UpdatedAt  time.Time          `json:"updated_at"`
+
+	// ServerName The path the server is reached at on the agent host, `http://127.0.0.1:17100/<server_name>`. Unique among the organization's profiles that are not archived; never `mcp`.
+	ServerName *string   `json:"server_name,omitempty"`
+	UpdatedAt  time.Time `json:"updated_at"`
 }
 
 // AgentMCPProfileArchiveConflict defines model for AgentMCPProfileArchiveConflict.
@@ -3814,17 +4119,26 @@ type AgentMCPProfileMutationResult struct {
 
 // AgentMCPToolActivity One decision the control plane made for a gateway-forwarded MCP request. Never carries arguments, results or credentials.
 type AgentMCPToolActivity struct {
-	ApprovalRequestId *openapi_types.UUID          `json:"approval_request_id"`
-	ArgumentsDigest   *string                      `json:"arguments_digest"`
-	CompletedAt       *time.Time                   `json:"completed_at"`
-	Decision          AgentMCPToolActivityDecision `json:"decision"`
-	DeviceId          openapi_types.UUID           `json:"device_id"`
-	Endpoint          string                       `json:"endpoint"`
-	Id                openapi_types.UUID           `json:"id"`
-	Method            string                       `json:"method"`
-	NodeId            *openapi_types.UUID          `json:"node_id"`
-	OccurredAt        time.Time                    `json:"occurred_at"`
-	PolicyVersion     *int64                       `json:"policy_version"`
+	ApprovalRequestId *openapi_types.UUID `json:"approval_request_id"`
+	ApprovedAt        *time.Time          `json:"approved_at"`
+	ApprovedByEmail   *string             `json:"approved_by_email"`
+
+	// ApprovedByUserId Who approved the call
+	ApprovedByUserId *openapi_types.UUID          `json:"approved_by_user_id"`
+	ArgumentsDigest  *string                      `json:"arguments_digest"`
+	CompletedAt      *time.Time                   `json:"completed_at"`
+	Decision         AgentMCPToolActivityDecision `json:"decision"`
+	DeviceId         openapi_types.UUID           `json:"device_id"`
+	Endpoint         string                       `json:"endpoint"`
+	Id               openapi_types.UUID           `json:"id"`
+	Method           string                       `json:"method"`
+	NodeId           *openapi_types.UUID          `json:"node_id"`
+	OccurredAt       time.Time                    `json:"occurred_at"`
+	PolicyGroupId    *openapi_types.UUID          `json:"policy_group_id"`
+
+	// PolicySource Which policy decided; null when no policy was consulted (for example no server assigned).
+	PolicySource  *MCPToolPolicySource `json:"policy_source"`
+	PolicyVersion *int64               `json:"policy_version"`
 
 	// Reason Empty for an allow. For a deny, why (for example policy, arguments, rate_limit, step_up_required, definition_changed, no_profile).
 	Reason             string                           `json:"reason"`
@@ -3854,19 +4168,25 @@ type AgentMCPToolApprovalRequest struct {
 	ApprovedByUserId *openapi_types.UUID `json:"approved_by_user_id"`
 
 	// Arguments The arguments of the call awaiting approval, so the approver sees what they approve. At most 4 KiB of canonical JSON; a larger call is not stored and `arguments_truncated` is true. Null for a request created before arguments were kept. Visible only to roles that may approve.
-	Arguments          *map[string]interface{}          `json:"arguments"`
-	ArgumentsTruncated *bool                            `json:"arguments_truncated,omitempty"`
-	DeniedAt           *time.Time                       `json:"denied_at"`
-	DeniedByUserId     *openapi_types.UUID              `json:"denied_by_user_id"`
-	DeviceId           openapi_types.UUID               `json:"device_id"`
-	Endpoint           string                           `json:"endpoint"`
-	ExpiresAt          time.Time                        `json:"expires_at"`
-	Id                 openapi_types.UUID               `json:"id"`
-	InputSchemaHash    string                           `json:"input_schema_hash"`
-	PolicyVersion      int64                            `json:"policy_version"`
-	RequestedAt        time.Time                        `json:"requested_at"`
-	ServerName         string                           `json:"server_name"`
-	State              AgentMCPToolApprovalRequestState `json:"state"`
+	Arguments          *map[string]interface{} `json:"arguments"`
+	ArgumentsTruncated *bool                   `json:"arguments_truncated,omitempty"`
+	DeniedAt           *time.Time              `json:"denied_at"`
+	DeniedByUserId     *openapi_types.UUID     `json:"denied_by_user_id"`
+	DeviceId           openapi_types.UUID      `json:"device_id"`
+	Endpoint           string                  `json:"endpoint"`
+	ExpiresAt          time.Time               `json:"expires_at"`
+	Id                 openapi_types.UUID      `json:"id"`
+	InputSchemaHash    string                  `json:"input_schema_hash"`
+
+	// PolicyGroupId The agent group whose tool policy asked for approval, when `policy_source` is `group` and the group still exists.
+	PolicyGroupId *openapi_types.UUID `json:"policy_group_id"`
+
+	// PolicySource Which tool policy decides or decided, the agent's own or its group's.
+	PolicySource  *MCPToolPolicySource             `json:"policy_source,omitempty"`
+	PolicyVersion int64                            `json:"policy_version"`
+	RequestedAt   time.Time                        `json:"requested_at"`
+	ServerName    string                           `json:"server_name"`
+	State         AgentMCPToolApprovalRequestState `json:"state"`
 
 	// ToolDefinitionHash The exact tool definition (name, description, input schema) the approval is bound to.
 	ToolDefinitionHash *string `json:"tool_definition_hash"`
@@ -3878,15 +4198,50 @@ type AgentMCPToolApprovalRequestState string
 
 // AgentMCPToolPolicy defines model for AgentMCPToolPolicy.
 type AgentMCPToolPolicy struct {
-	CreatedAt           time.Time           `json:"created_at"`
-	InventoryObservedAt time.Time           `json:"inventory_observed_at"`
-	Rules               []MCPToolPolicyRule `json:"rules"`
-	Version             int64               `json:"version"`
+	CreatedAt           time.Time `json:"created_at"`
+	InventoryObservedAt time.Time `json:"inventory_observed_at"`
+
+	// OverrideEndpoints The MCP endpoints this agent's own policy decides for. For each of them these rules apply (none means every tool is denied) and the group's tool policy is ignored; for any other server the group's policy decides. Saving the agent's policy adds the endpoints its rules name.
+	OverrideEndpoints *[]string           `json:"override_endpoints,omitempty"`
+	Rules             []MCPToolPolicyRule `json:"rules"`
+	Version           int64               `json:"version"`
 }
 
 // AgentManagingGroupUpdate defines model for AgentManagingGroupUpdate.
 type AgentManagingGroupUpdate struct {
 	GroupId *openapi_types.UUID `json:"group_id"`
+}
+
+// AgentOwnerAccessCandidate defines model for AgentOwnerAccessCandidate.
+type AgentOwnerAccessCandidate struct {
+	// AlreadyCovered True when the agent already has a rule for this destination.
+	AlreadyCovered bool `json:"already_covered"`
+
+	// Copyable False for a destination kind an agent rule cannot name.
+	Copyable    bool                          `json:"copyable"`
+	Destination AgentAccessDestinationSummary `json:"destination"`
+
+	// Key Opaque. Sent back to create the rule.
+	Key          string             `json:"key"`
+	SourceRuleId openapi_types.UUID `json:"source_rule_id"`
+
+	// Via Whether the owner reaches the destination by a rule naming them or through a user group.
+	Via          AgentOwnerAccessCandidateVia `json:"via"`
+	ViaGroupName *string                      `json:"via_group_name"`
+}
+
+// AgentOwnerAccessCandidateVia Whether the owner reaches the destination by a rule naming them or through a user group.
+type AgentOwnerAccessCandidateVia string
+
+// AgentOwnerAccessPreview defines model for AgentOwnerAccessPreview.
+type AgentOwnerAccessPreview struct {
+	Candidates []AgentOwnerAccessCandidate `json:"candidates"`
+	OwnerEmail *string                     `json:"owner_email"`
+}
+
+// AgentOwnerAccessRulesResult defines model for AgentOwnerAccessRulesResult.
+type AgentOwnerAccessRulesResult struct {
+	RuleIds []openapi_types.UUID `json:"rule_ids"`
 }
 
 // AgentPolicyTemplate defines model for AgentPolicyTemplate.
@@ -4018,6 +4373,9 @@ type AgentRuntimeReport struct {
 
 	// McpOauthDiscovery Optional secret-free F13 protected-resource discovery for this runtime only.
 	McpOauthDiscovery *map[string]interface{} `json:"mcp_oauth_discovery"`
+
+	// TunnelDnsApplied False when the host has no `resolvconf`, so the runtime left the DNS servers out of its tunnel configuration and private DNS names pushed through the tunnel do not resolve there. True when they were written. Omitted by a runtime that predates the field.
+	TunnelDnsApplied *bool `json:"tunnel_dns_applied,omitempty"`
 }
 
 // AgentRuntimeReportErrorCode Empty means no error; otherwise a bounded stable code, never raw runtime output.
@@ -4048,8 +4406,14 @@ type AgentRuntimeStatus struct {
 	LastErrorRevision *int64                           `json:"last_error_revision"`
 	LastSeenAt        *time.Time                       `json:"last_seen_at"`
 
+	// McpHoldCapable True when the runtime declared that it keeps an MCP call open while an "Ask first" request waits.
+	McpHoldCapable *bool `json:"mcp_hold_capable,omitempty"`
+
 	// Stale Whether the last runtime report is absent or outside the server's three-minute freshness window.
 	Stale bool `json:"stale"`
+
+	// TunnelDnsApplied False when the runtime reported that the host has no `resolvconf` and private DNS names pushed through the tunnel do not resolve there. Null when the runtime has not said.
+	TunnelDnsApplied *bool `json:"tunnel_dns_applied"`
 }
 
 // AgentRuntimeStatusConnectivity Server-derived connectivity fact; unknown means the control plane cannot establish it.
@@ -5183,6 +5547,24 @@ type ConfigureK8sConnectorPoolRequest struct {
 	Members                 []K8sConnectorPoolMember `json:"members"`
 }
 
+// ConnectMCPServerRequest defines model for ConnectMCPServerRequest.
+type ConnectMCPServerRequest struct {
+	Endpoint string `json:"endpoint"`
+
+	// Name The display name of the MCP server.
+	Name string `json:"name"`
+
+	// PreviewId The preview whose tool list the administrator chose from. Tools are checked against it when the gateway has not observed the server for the target yet.
+	PreviewId *openapi_types.UUID `json:"preview_id,omitempty"`
+
+	// ServerName Optional. Omitted derives a free name from `name`. `mcp` is reserved.
+	ServerName *string `json:"server_name,omitempty"`
+
+	// Target Exactly one of `device_id` and `group_id` is given.
+	Target MCPConnectionTarget   `json:"target"`
+	Tools  []MCPToolSettingInput `json:"tools"`
+}
+
 // ConnectivityMailbox defines model for ConnectivityMailbox.
 type ConnectivityMailbox struct {
 	DeviceId         openapi_types.UUID       `json:"device_id"`
@@ -5256,6 +5638,9 @@ type CreateAgentGroupRequest struct {
 type CreateAgentMCPProfileRequest struct {
 	Endpoint string `json:"endpoint"`
 	Name     string `json:"name"`
+
+	// ServerName Optional. Omitted derives a free name from `name`. `mcp` is reserved.
+	ServerName *string `json:"server_name,omitempty"`
 }
 
 // CreateAgentPolicyTemplateRequest defines model for CreateAgentPolicyTemplateRequest.
@@ -5267,6 +5652,11 @@ type CreateAgentPolicyTemplateRequest struct {
 // CreateAgentPolicyTemplateVersionRequest defines model for CreateAgentPolicyTemplateVersionRequest.
 type CreateAgentPolicyTemplateVersionRequest struct {
 	Items []AgentPolicyTemplateItemInput `json:"items"`
+}
+
+// CreateAgentRulesFromOwnerAccessRequest defines model for CreateAgentRulesFromOwnerAccessRequest.
+type CreateAgentRulesFromOwnerAccessRequest struct {
+	Keys []string `json:"keys"`
 }
 
 // CreateAlertDestinationRequest defines model for CreateAlertDestinationRequest.
@@ -7002,6 +7392,98 @@ type MCPArgumentConstraints struct {
 	Required   []string                         `json:"required"`
 }
 
+// MCPConnection defines model for MCPConnection.
+type MCPConnection struct {
+	Assignment AgentMCPProfileAssignment `json:"assignment"`
+	Group      AgentGroup                `json:"group"`
+
+	// GroupCreated True when a group named for the agent was created for this connection.
+	GroupCreated bool                    `json:"group_created"`
+	Profile      AgentMCPProfile         `json:"profile"`
+	ToolPolicy   AgentGroupMCPToolPolicy `json:"tool_policy"`
+}
+
+// MCPConnectionPreview defines model for MCPConnectionPreview.
+type MCPConnectionPreview struct {
+	Endpoint  string    `json:"endpoint"`
+	ExpiresAt time.Time `json:"expires_at"`
+
+	// FailureReason Why a `failed` preview failed: `unreachable`, `unauthorized`, `invalid` (not an MCP server), `no_gateway` (no gateway that can read it is connected) or `timed_out`.
+	FailureReason *string            `json:"failure_reason"`
+	PreviewId     openapi_types.UUID `json:"preview_id"`
+
+	// ServerName The name the MCP server reports for itself.
+	ServerName *string                   `json:"server_name"`
+	State      MCPConnectionPreviewState `json:"state"`
+
+	// SuggestedServerName A free server name derived from what the server reports.
+	SuggestedServerName *string                    `json:"suggested_server_name"`
+	Tools               []MCPConnectionPreviewTool `json:"tools"`
+}
+
+// MCPConnectionPreviewState defines model for MCPConnectionPreview.State.
+type MCPConnectionPreviewState string
+
+// MCPConnectionPreviewTool defines model for MCPConnectionPreviewTool.
+type MCPConnectionPreviewTool struct {
+	Description     *string                 `json:"description"`
+	InputSchema     *map[string]interface{} `json:"input_schema"`
+	InputSchemaHash *string                 `json:"input_schema_hash,omitempty"`
+	Name            string                  `json:"name"`
+
+	// ToolDefinitionHash SHA-256 of the canonical name, description and input schema, computed by the control plane.
+	ToolDefinitionHash string `json:"tool_definition_hash"`
+}
+
+// MCPConnectionTarget Exactly one of `device_id` and `group_id` is given.
+type MCPConnectionTarget struct {
+	DeviceId *openapi_types.UUID `json:"device_id,omitempty"`
+	GroupId  *openapi_types.UUID `json:"group_id,omitempty"`
+}
+
+// MCPSetting defines model for MCPSetting.
+type MCPSetting struct {
+	// Enabled Explicit organization switch for MCP. Turning it off is refused while an MCP server is assigned.
+	Enabled bool `json:"enabled"`
+}
+
+// MCPToolActivityDecisionFilter defines model for MCPToolActivityDecisionFilter.
+type MCPToolActivityDecisionFilter string
+
+// MCPToolApprovalCount defines model for MCPToolApprovalCount.
+type MCPToolApprovalCount struct {
+	Pending int `json:"pending"`
+}
+
+// MCPToolApprovalInboxFilter defines model for MCPToolApprovalInboxFilter.
+type MCPToolApprovalInboxFilter string
+
+// MCPToolApprovalInboxItem defines model for MCPToolApprovalInboxItem.
+type MCPToolApprovalInboxItem struct {
+	AgentName string `json:"agent_name"`
+
+	// McpServerName The server name of the MCP profile the call was addressed to, when it is still assigned.
+	McpServerName *string `json:"mcp_server_name"`
+
+	// OwnerEmail The agent's owner
+	OwnerEmail *string                     `json:"owner_email"`
+	Request    AgentMCPToolApprovalRequest `json:"request"`
+}
+
+// MCPToolApprovalInboxPage defines model for MCPToolApprovalInboxPage.
+type MCPToolApprovalInboxPage struct {
+	Items []MCPToolApprovalInboxItem `json:"items"`
+
+	// NextCursor Opaque cursor for the next (older) page; null when there are no more rows.
+	NextCursor *string `json:"next_cursor"`
+}
+
+// MCPToolEffect What the tool does, as an administrator marked it. Never inferred from the tool's name.
+type MCPToolEffect string
+
+// MCPToolMode `allow`: the agent may call the tool. `ask`: each call waits for a person to approve it ("Ask first"). `off`: the tool is denied and hidden from the agent. A tool that is new is `off`.
+type MCPToolMode string
+
 // MCPToolPolicyRule defines model for MCPToolPolicyRule.
 type MCPToolPolicyRule struct {
 	ArgumentConstraints *MCPArgumentConstraints `json:"argument_constraints"`
@@ -7021,6 +7503,50 @@ type MCPToolPolicyRule struct {
 
 // MCPToolPolicyRuleDefinitionState `changed` when the observed definition no longer matches `tool_definition_hash`; the tool is denied until accepted. Ignored on write.
 type MCPToolPolicyRuleDefinitionState string
+
+// MCPToolPolicySource Which tool policy decides or decided, the agent's own or its group's.
+type MCPToolPolicySource string
+
+// MCPToolSetting defines model for MCPToolSetting.
+type MCPToolSetting struct {
+	ArgumentConstraints *MCPArgumentConstraints `json:"argument_constraints"`
+
+	// DefinitionState `changed` when the observed definition no longer matches the one the policy pinned; the tool is denied until the policy is saved again.
+	DefinitionState *MCPToolSettingDefinitionState `json:"definition_state,omitempty"`
+
+	// Description The words the server gives for the tool.
+	Description     *string        `json:"description"`
+	Effect          *MCPToolEffect `json:"effect"`
+	InputSchemaHash *string        `json:"input_schema_hash"`
+
+	// Mode `allow`: the agent may call the tool. `ask`: each call waits for a person to approve it ("Ask first"). `off`: the tool is denied and hidden from the agent. A tool that is new is `off`.
+	Mode MCPToolMode `json:"mode"`
+
+	// Observed False when the policy names a tool the gateway no longer sees on the server.
+	Observed           bool    `json:"observed"`
+	RateLimitPerMinute *int    `json:"rate_limit_per_minute"`
+	ToolDefinitionHash *string `json:"tool_definition_hash"`
+	ToolName           string  `json:"tool_name"`
+}
+
+// MCPToolSettingDefinitionState `changed` when the observed definition no longer matches the one the policy pinned; the tool is denied until the policy is saved again.
+type MCPToolSettingDefinitionState string
+
+// MCPToolSettingInput defines model for MCPToolSettingInput.
+type MCPToolSettingInput struct {
+	ArgumentConstraints *MCPArgumentConstraints `json:"argument_constraints"`
+
+	// Effect Null or omitted clears the marker.
+	Effect *MCPToolEffect `json:"effect"`
+
+	// Mode `allow`: the agent may call the tool. `ask`: each call waits for a person to approve it ("Ask first"). `off`: the tool is denied and hidden from the agent. A tool that is new is `off`.
+	Mode               MCPToolMode `json:"mode"`
+	RateLimitPerMinute *int        `json:"rate_limit_per_minute"`
+
+	// ToolDefinitionHash The definition the administrator was shown. Required for `allow` and `ask` when saving from a preview; omitted pins the definition currently observed. The save is refused if the tool changed.
+	ToolDefinitionHash *string `json:"tool_definition_hash"`
+	ToolName           string  `json:"tool_name"`
+}
 
 // MFAStepUpInput defines model for MFAStepUpInput.
 type MFAStepUpInput struct {
@@ -7071,6 +7597,9 @@ type ManagedAgentConfig struct {
 	// McpGatewayUrl The gateway's MCP listener on its tunnel address (for example `http://10.99.0.1:8084/mcp`). When present the local proxy forwards every MCP request there and applies no policy, token lease or discovery of its own: the gateway identifies the agent from the tunnel and enforces tool policy. Omitted or null when the agent's gateway has not reported the MCP capability; the runtime then stays on the direct path for as long as the organization's grace period allows.
 	McpGatewayUrl *string `json:"mcp_gateway_url"`
 
+	// McpServers The MCP servers this agent may address through the gateway, first one first. The local proxy serves each at `/<name>` and forwards it to `mcp_gateway_url` + `/<name>`; the one marked `default` also answers at the bare local address and is forwarded to `mcp_gateway_url` as is. Omitted for an agent with no MCP server and by a control plane that predates several servers.
+	McpServers *[]ManagedAgentMCPServer `json:"mcp_servers,omitempty"`
+
 	// McpUpstream Canonical Streamable HTTP MCP endpoint supplied by the assigned group profile. It is configuration, never a credential; null leaves the local proxy default-deny.
 	McpUpstream         *string            `json:"mcp_upstream"`
 	OrgId               openapi_types.UUID `json:"org_id"`
@@ -7089,6 +7618,15 @@ type ManagedAgentConfig struct {
 
 // ManagedAgentConfigWireguardRotationState Non-secret stage reached by the candidate on the assigned gateway.
 type ManagedAgentConfigWireguardRotationState string
+
+// ManagedAgentMCPServer defines model for ManagedAgentMCPServer.
+type ManagedAgentMCPServer struct {
+	// Default True for exactly one server
+	Default bool `json:"default"`
+
+	// Name The server name
+	Name string `json:"name"`
+}
 
 // Member defines model for Member.
 type Member struct {
@@ -7688,6 +8226,11 @@ type RekeyRequest struct {
 type RekeyResponse struct {
 	CaPem   string `json:"ca_pem"`
 	CertPem string `json:"cert_pem"`
+}
+
+// ReplaceAgentGroupMCPToolPolicyRequest defines model for ReplaceAgentGroupMCPToolPolicyRequest.
+type ReplaceAgentGroupMCPToolPolicyRequest struct {
+	Tools []MCPToolSettingInput `json:"tools"`
 }
 
 // ReplaceAgentMCPToolPolicyRequest defines model for ReplaceAgentMCPToolPolicyRequest.
@@ -8986,6 +9529,17 @@ type StartAgentMCPOAuthConnectionRequest struct {
 	Scopes            []string `json:"scopes"`
 }
 
+// StartMCPConnectionPreviewRequest Exactly one of `via_device_id` and `via_group_id` is given.
+type StartMCPConnectionPreviewRequest struct {
+	Endpoint string `json:"endpoint"`
+
+	// ViaDeviceId The agent the server is being connected to; its gateway reads the tool list.
+	ViaDeviceId *openapi_types.UUID `json:"via_device_id,omitempty"`
+
+	// ViaGroupId The agent group the server is being connected to; the gateway of one of its agents reads the tool list.
+	ViaGroupId *openapi_types.UUID `json:"via_group_id,omitempty"`
+}
+
 // TokenRequest defines model for TokenRequest.
 type TokenRequest struct {
 	Token string `json:"token"`
@@ -9424,6 +9978,9 @@ type PollAgentRuntimeParams struct {
 
 	// McpGateway True when this runtime forwards MCP to the gateway listener named by `mcp_gateway_url` instead of calling the MCP server itself. A runtime that predates gateway enforcement omits it. The runtime cannot update itself, so this explicit declaration, not `client_version`, is the capability signal.
 	McpGateway *bool `form:"mcp_gateway,omitempty" json:"mcp_gateway,omitempty"`
+
+	// McpHold True when this runtime's local proxy keeps an MCP request open for up to 60 seconds, so the gateway may hold an "Ask first" call while an approver decides. A runtime that predates held calls omits it and gets the immediate "requires step-up approval" error, as before.
+	McpHold *bool `form:"mcp_hold,omitempty" json:"mcp_hold,omitempty"`
 }
 
 // ChangePasswordJSONBody defines parameters for ChangePassword.
@@ -9581,6 +10138,45 @@ type ListAgentMCPToolActivityParams struct {
 
 	// Cursor The `next_cursor` of the previous page.
 	Cursor *string `form:"cursor,omitempty" json:"cursor,omitempty"`
+
+	// Decision Only allowed or only denied calls.
+	Decision *MCPToolActivityDecisionFilter `form:"decision,omitempty" json:"decision,omitempty"`
+
+	// Approved True keeps only calls that ran on an approval.
+	Approved *bool `form:"approved,omitempty" json:"approved,omitempty"`
+
+	// From Only calls at or after this instant.
+	From *time.Time `form:"from,omitempty" json:"from,omitempty"`
+
+	// To Only calls before this instant.
+	To *time.Time `form:"to,omitempty" json:"to,omitempty"`
+
+	// Server Only calls to the MCP server with this server name (the profile's `server_name`).
+	Server *string `form:"server,omitempty" json:"server,omitempty"`
+}
+
+// ExportAgentMCPToolActivityParams defines parameters for ExportAgentMCPToolActivity.
+type ExportAgentMCPToolActivityParams struct {
+	// Decision Only allowed or only denied calls.
+	Decision *MCPToolActivityDecisionFilter `form:"decision,omitempty" json:"decision,omitempty"`
+
+	// Approved True keeps only calls that ran on an approval.
+	Approved *bool `form:"approved,omitempty" json:"approved,omitempty"`
+
+	// From Only calls at or after this instant.
+	From *time.Time `form:"from,omitempty" json:"from,omitempty"`
+
+	// To Only calls before this instant.
+	To *time.Time `form:"to,omitempty" json:"to,omitempty"`
+
+	// Server Only calls to the MCP server with this server name (the profile's `server_name`).
+	Server *string `form:"server,omitempty" json:"server,omitempty"`
+}
+
+// RemoveAgentMCPToolPolicyOverrideParams defines parameters for RemoveAgentMCPToolPolicyOverride.
+type RemoveAgentMCPToolPolicyOverrideParams struct {
+	// Endpoint The MCP endpoint whose per-agent override is removed.
+	Endpoint string `form:"endpoint" json:"endpoint"`
 }
 
 // TestAgentAccessParams defines parameters for TestAgentAccess.
@@ -9888,6 +10484,16 @@ type DeleteK8sNamespaceRuleParams struct {
 // DeleteK8sNamespaceRuleParamsExposures defines parameters for DeleteK8sNamespaceRule.
 type DeleteK8sNamespaceRuleParamsExposures string
 
+// ListOrganizationMCPToolApprovalRequestsParams defines parameters for ListOrganizationMCPToolApprovalRequests.
+type ListOrganizationMCPToolApprovalRequestsParams struct {
+	// State `pending` lists requests that still await a decision; `all` also lists decided and expired ones.
+	State *MCPToolApprovalInboxFilter `form:"state,omitempty" json:"state,omitempty"`
+	Limit *int                        `form:"limit,omitempty" json:"limit,omitempty"`
+
+	// Cursor The `next_cursor` of the previous page.
+	Cursor *string `form:"cursor,omitempty" json:"cursor,omitempty"`
+}
+
 // ListRoutedRangesParams defines parameters for ListRoutedRanges.
 type ListRoutedRangesParams struct {
 	// DeviceId WF-A: when present, the response ALSO carries this device's dial (endpoint + gateway pubkey) derived from the org's ACTIVE HUB, so a running device re-homes on promotion via the SAME poll. The device MUST belong to the calling org AND be owned by the authenticated user — a device fetches only its OWN dial (cross-org/cross-device is refused). Omit for the pre-WF-A ranges-only behavior.
@@ -10125,6 +10731,9 @@ type ReplaceAgentGroupMCPProfileJSONRequestBody = SetAgentGroupMCPProfileRequest
 // PreviewAgentGroupMCPProfileImpactJSONRequestBody defines body for PreviewAgentGroupMCPProfileImpact for application/json ContentType.
 type PreviewAgentGroupMCPProfileImpactJSONRequestBody = AgentMCPProfileImpactRequest
 
+// ReplaceAgentGroupMCPToolPolicyJSONRequestBody defines body for ReplaceAgentGroupMCPToolPolicy for application/json ContentType.
+type ReplaceAgentGroupMCPToolPolicyJSONRequestBody = ReplaceAgentGroupMCPToolPolicyRequest
+
 // AddAgentGroupMemberJSONRequestBody defines body for AddAgentGroupMember for application/json ContentType.
 type AddAgentGroupMemberJSONRequestBody = AddAgentGroupMemberRequest
 
@@ -10175,6 +10784,9 @@ type ReplaceAgentMCPToolPolicyJSONRequestBody = ReplaceAgentMCPToolPolicyRequest
 
 // AcceptAgentMCPToolDefinitionJSONRequestBody defines body for AcceptAgentMCPToolDefinition for application/json ContentType.
 type AcceptAgentMCPToolDefinitionJSONRequestBody = AcceptAgentMCPToolDefinitionRequest
+
+// CreateAgentRulesFromOwnerAccessJSONRequestBody defines body for CreateAgentRulesFromOwnerAccess for application/json ContentType.
+type CreateAgentRulesFromOwnerAccessJSONRequestBody = CreateAgentRulesFromOwnerAccessRequest
 
 // SetAIGatewaySettingsJSONRequestBody defines body for SetAIGatewaySettings for application/json ContentType.
 type SetAIGatewaySettingsJSONRequestBody = AIGatewayOptIn
@@ -10445,6 +11057,15 @@ type MintMachineCredentialJSONRequestBody = MintMachineCredentialRequest
 
 // AssignMachineCredentialOwnerJSONRequestBody defines body for AssignMachineCredentialOwner for application/json ContentType.
 type AssignMachineCredentialOwnerJSONRequestBody = AssignMachineCredentialOwnerRequest
+
+// ConnectMCPServerJSONRequestBody defines body for ConnectMCPServer for application/json ContentType.
+type ConnectMCPServerJSONRequestBody = ConnectMCPServerRequest
+
+// StartMCPConnectionPreviewJSONRequestBody defines body for StartMCPConnectionPreview for application/json ContentType.
+type StartMCPConnectionPreviewJSONRequestBody = StartMCPConnectionPreviewRequest
+
+// SetOrganizationMCPEnabledJSONRequestBody defines body for SetOrganizationMCPEnabled for application/json ContentType.
+type SetOrganizationMCPEnabledJSONRequestBody = MCPSetting
 
 // DeactivateMemberJSONRequestBody defines body for DeactivateMember for application/json ContentType.
 type DeactivateMemberJSONRequestBody = MemberStepUpRequest
@@ -11186,6 +11807,9 @@ type ClientInterface interface {
 
 	RevokeAgentAccessRequest(ctx context.Context, orgId openapi_types.UUID, requestId openapi_types.UUID, body RevokeAgentAccessRequestJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// ListAgentFeatures request
+	ListAgentFeatures(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// ListAgentGroups request
 	ListAgentGroups(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -11214,6 +11838,14 @@ type ClientInterface interface {
 	PreviewAgentGroupMCPProfileImpactWithBody(ctx context.Context, orgId openapi_types.UUID, groupId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	PreviewAgentGroupMCPProfileImpact(ctx context.Context, orgId openapi_types.UUID, groupId openapi_types.UUID, body PreviewAgentGroupMCPProfileImpactJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetAgentGroupMCPToolPolicy request
+	GetAgentGroupMCPToolPolicy(ctx context.Context, orgId openapi_types.UUID, groupId openapi_types.UUID, profileId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ReplaceAgentGroupMCPToolPolicyWithBody request with any body
+	ReplaceAgentGroupMCPToolPolicyWithBody(ctx context.Context, orgId openapi_types.UUID, groupId openapi_types.UUID, profileId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	ReplaceAgentGroupMCPToolPolicy(ctx context.Context, orgId openapi_types.UUID, groupId openapi_types.UUID, profileId openapi_types.UUID, body ReplaceAgentGroupMCPToolPolicyJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListAgentGroupMembers request
 	ListAgentGroupMembers(ctx context.Context, orgId openapi_types.UUID, groupId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -11325,6 +11957,9 @@ type ClientInterface interface {
 	// RevokeAgentBootstrapToken request
 	RevokeAgentBootstrapToken(ctx context.Context, orgId openapi_types.UUID, tokenId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// GetAgentBootstrapTokenStatus request
+	GetAgentBootstrapTokenStatus(ctx context.Context, orgId openapi_types.UUID, tokenId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// GetAgentRuntimeRelease request
 	GetAgentRuntimeRelease(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -11335,6 +11970,9 @@ type ClientInterface interface {
 	UpdateAgentProfileWithBody(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	UpdateAgentProfile(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, body UpdateAgentProfileJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetAgentAccessSummary request
+	GetAgentAccessSummary(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetAgentCredentialRotation request
 	GetAgentCredentialRotation(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -11362,6 +12000,9 @@ type ClientInterface interface {
 	// ListAgentMCPToolActivity request
 	ListAgentMCPToolActivity(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, params *ListAgentMCPToolActivityParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// ExportAgentMCPToolActivity request
+	ExportAgentMCPToolActivity(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, params *ExportAgentMCPToolActivityParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// ListAgentMCPToolApprovalRequests request
 	ListAgentMCPToolApprovalRequests(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -11383,6 +12024,17 @@ type ClientInterface interface {
 	AcceptAgentMCPToolDefinitionWithBody(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	AcceptAgentMCPToolDefinition(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, body AcceptAgentMCPToolDefinitionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// RemoveAgentMCPToolPolicyOverride request
+	RemoveAgentMCPToolPolicyOverride(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, params *RemoveAgentMCPToolPolicyOverrideParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PreviewAgentOwnerAccess request
+	PreviewAgentOwnerAccess(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateAgentRulesFromOwnerAccessWithBody request with any body
+	CreateAgentRulesFromOwnerAccessWithBody(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	CreateAgentRulesFromOwnerAccess(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, body CreateAgentRulesFromOwnerAccessJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetAgentRuntimeStatus request
 	GetAgentRuntimeStatus(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -11499,6 +12151,9 @@ type ClientInterface interface {
 	TestAIProviderWithBody(ctx context.Context, orgId openapi_types.UUID, connectionId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	TestAIProvider(ctx context.Context, orgId openapi_types.UUID, connectionId openapi_types.UUID, body TestAIProviderJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetAIGatewayStatus request
+	GetAIGatewayStatus(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListAITeamPolicies request
 	ListAITeamPolicies(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -12185,6 +12840,33 @@ type ClientInterface interface {
 	AssignMachineCredentialOwnerWithBody(ctx context.Context, orgId openapi_types.UUID, credentialId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	AssignMachineCredentialOwner(ctx context.Context, orgId openapi_types.UUID, credentialId openapi_types.UUID, body AssignMachineCredentialOwnerJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ConnectMCPServerWithBody request with any body
+	ConnectMCPServerWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	ConnectMCPServer(ctx context.Context, orgId openapi_types.UUID, body ConnectMCPServerJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// StartMCPConnectionPreviewWithBody request with any body
+	StartMCPConnectionPreviewWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	StartMCPConnectionPreview(ctx context.Context, orgId openapi_types.UUID, body StartMCPConnectionPreviewJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetMCPConnectionPreview request
+	GetMCPConnectionPreview(ctx context.Context, orgId openapi_types.UUID, previewId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetOrganizationMCPSetting request
+	GetOrganizationMCPSetting(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SetOrganizationMCPEnabledWithBody request with any body
+	SetOrganizationMCPEnabledWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	SetOrganizationMCPEnabled(ctx context.Context, orgId openapi_types.UUID, body SetOrganizationMCPEnabledJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListOrganizationMCPToolApprovalRequests request
+	ListOrganizationMCPToolApprovalRequests(ctx context.Context, orgId openapi_types.UUID, params *ListOrganizationMCPToolApprovalRequestsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CountOrganizationMCPToolApprovalRequests request
+	CountOrganizationMCPToolApprovalRequests(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListMembers request
 	ListMembers(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -14477,6 +15159,18 @@ func (c *Client) RevokeAgentAccessRequest(ctx context.Context, orgId openapi_typ
 	return c.Client.Do(req)
 }
 
+func (c *Client) ListAgentFeatures(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListAgentFeaturesRequest(c.Server, orgId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 func (c *Client) ListAgentGroups(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewListAgentGroupsRequest(c.Server, orgId)
 	if err != nil {
@@ -14599,6 +15293,42 @@ func (c *Client) PreviewAgentGroupMCPProfileImpactWithBody(ctx context.Context, 
 
 func (c *Client) PreviewAgentGroupMCPProfileImpact(ctx context.Context, orgId openapi_types.UUID, groupId openapi_types.UUID, body PreviewAgentGroupMCPProfileImpactJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewPreviewAgentGroupMCPProfileImpactRequest(c.Server, orgId, groupId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetAgentGroupMCPToolPolicy(ctx context.Context, orgId openapi_types.UUID, groupId openapi_types.UUID, profileId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetAgentGroupMCPToolPolicyRequest(c.Server, orgId, groupId, profileId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ReplaceAgentGroupMCPToolPolicyWithBody(ctx context.Context, orgId openapi_types.UUID, groupId openapi_types.UUID, profileId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewReplaceAgentGroupMCPToolPolicyRequestWithBody(c.Server, orgId, groupId, profileId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ReplaceAgentGroupMCPToolPolicy(ctx context.Context, orgId openapi_types.UUID, groupId openapi_types.UUID, profileId openapi_types.UUID, body ReplaceAgentGroupMCPToolPolicyJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewReplaceAgentGroupMCPToolPolicyRequest(c.Server, orgId, groupId, profileId, body)
 	if err != nil {
 		return nil, err
 	}
@@ -15101,6 +15831,18 @@ func (c *Client) RevokeAgentBootstrapToken(ctx context.Context, orgId openapi_ty
 	return c.Client.Do(req)
 }
 
+func (c *Client) GetAgentBootstrapTokenStatus(ctx context.Context, orgId openapi_types.UUID, tokenId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetAgentBootstrapTokenStatusRequest(c.Server, orgId, tokenId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 func (c *Client) GetAgentRuntimeRelease(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewGetAgentRuntimeReleaseRequest(c.Server, orgId)
 	if err != nil {
@@ -15139,6 +15881,18 @@ func (c *Client) UpdateAgentProfileWithBody(ctx context.Context, orgId openapi_t
 
 func (c *Client) UpdateAgentProfile(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, body UpdateAgentProfileJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewUpdateAgentProfileRequest(c.Server, orgId, deviceId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetAgentAccessSummary(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetAgentAccessSummaryRequest(c.Server, orgId, deviceId)
 	if err != nil {
 		return nil, err
 	}
@@ -15257,6 +16011,18 @@ func (c *Client) ListAgentMCPToolActivity(ctx context.Context, orgId openapi_typ
 	return c.Client.Do(req)
 }
 
+func (c *Client) ExportAgentMCPToolActivity(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, params *ExportAgentMCPToolActivityParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewExportAgentMCPToolActivityRequest(c.Server, orgId, deviceId, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 func (c *Client) ListAgentMCPToolApprovalRequests(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewListAgentMCPToolApprovalRequestsRequest(c.Server, orgId, deviceId)
 	if err != nil {
@@ -15343,6 +16109,54 @@ func (c *Client) AcceptAgentMCPToolDefinitionWithBody(ctx context.Context, orgId
 
 func (c *Client) AcceptAgentMCPToolDefinition(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, body AcceptAgentMCPToolDefinitionJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewAcceptAgentMCPToolDefinitionRequest(c.Server, orgId, deviceId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) RemoveAgentMCPToolPolicyOverride(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, params *RemoveAgentMCPToolPolicyOverrideParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRemoveAgentMCPToolPolicyOverrideRequest(c.Server, orgId, deviceId, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) PreviewAgentOwnerAccess(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPreviewAgentOwnerAccessRequest(c.Server, orgId, deviceId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CreateAgentRulesFromOwnerAccessWithBody(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateAgentRulesFromOwnerAccessRequestWithBody(c.Server, orgId, deviceId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CreateAgentRulesFromOwnerAccess(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, body CreateAgentRulesFromOwnerAccessJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateAgentRulesFromOwnerAccessRequest(c.Server, orgId, deviceId, body)
 	if err != nil {
 		return nil, err
 	}
@@ -15871,6 +16685,18 @@ func (c *Client) TestAIProviderWithBody(ctx context.Context, orgId openapi_types
 
 func (c *Client) TestAIProvider(ctx context.Context, orgId openapi_types.UUID, connectionId openapi_types.UUID, body TestAIProviderJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewTestAIProviderRequest(c.Server, orgId, connectionId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetAIGatewayStatus(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetAIGatewayStatusRequest(c.Server, orgId)
 	if err != nil {
 		return nil, err
 	}
@@ -18907,6 +19733,126 @@ func (c *Client) AssignMachineCredentialOwnerWithBody(ctx context.Context, orgId
 
 func (c *Client) AssignMachineCredentialOwner(ctx context.Context, orgId openapi_types.UUID, credentialId openapi_types.UUID, body AssignMachineCredentialOwnerJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewAssignMachineCredentialOwnerRequest(c.Server, orgId, credentialId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ConnectMCPServerWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewConnectMCPServerRequestWithBody(c.Server, orgId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ConnectMCPServer(ctx context.Context, orgId openapi_types.UUID, body ConnectMCPServerJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewConnectMCPServerRequest(c.Server, orgId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) StartMCPConnectionPreviewWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewStartMCPConnectionPreviewRequestWithBody(c.Server, orgId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) StartMCPConnectionPreview(ctx context.Context, orgId openapi_types.UUID, body StartMCPConnectionPreviewJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewStartMCPConnectionPreviewRequest(c.Server, orgId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetMCPConnectionPreview(ctx context.Context, orgId openapi_types.UUID, previewId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetMCPConnectionPreviewRequest(c.Server, orgId, previewId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetOrganizationMCPSetting(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetOrganizationMCPSettingRequest(c.Server, orgId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) SetOrganizationMCPEnabledWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSetOrganizationMCPEnabledRequestWithBody(c.Server, orgId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) SetOrganizationMCPEnabled(ctx context.Context, orgId openapi_types.UUID, body SetOrganizationMCPEnabledJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSetOrganizationMCPEnabledRequest(c.Server, orgId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ListOrganizationMCPToolApprovalRequests(ctx context.Context, orgId openapi_types.UUID, params *ListOrganizationMCPToolApprovalRequestsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListOrganizationMCPToolApprovalRequestsRequest(c.Server, orgId, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CountOrganizationMCPToolApprovalRequests(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCountOrganizationMCPToolApprovalRequestsRequest(c.Server, orgId)
 	if err != nil {
 		return nil, err
 	}
@@ -23042,6 +23988,22 @@ func NewPollAgentRuntimeRequest(server string, params *PollAgentRuntimeParams) (
 
 		}
 
+		if params.McpHold != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "mcp_hold", runtime.ParamLocationQuery, *params.McpHold); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
 		queryURL.RawQuery = queryValues.Encode()
 	}
 
@@ -25456,6 +26418,40 @@ func NewRevokeAgentAccessRequestRequestWithBody(server string, orgId openapi_typ
 	return req, nil
 }
 
+// NewListAgentFeaturesRequest generates requests for ListAgentFeatures
+func NewListAgentFeaturesRequest(server string, orgId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/agent-features", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewListAgentGroupsRequest generates requests for ListAgentGroups
 func NewListAgentGroupsRequest(server string, orgId openapi_types.UUID) (*http.Request, error) {
 	var err error
@@ -25772,6 +26768,115 @@ func NewPreviewAgentGroupMCPProfileImpactRequestWithBody(server string, orgId op
 	}
 
 	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewGetAgentGroupMCPToolPolicyRequest generates requests for GetAgentGroupMCPToolPolicy
+func NewGetAgentGroupMCPToolPolicyRequest(server string, orgId openapi_types.UUID, groupId openapi_types.UUID, profileId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "groupId", runtime.ParamLocationPath, groupId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam2 string
+
+	pathParam2, err = runtime.StyleParamWithLocation("simple", false, "profileId", runtime.ParamLocationPath, profileId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/agent-groups/%s/mcp-servers/%s/tool-policy", pathParam0, pathParam1, pathParam2)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewReplaceAgentGroupMCPToolPolicyRequest calls the generic ReplaceAgentGroupMCPToolPolicy builder with application/json body
+func NewReplaceAgentGroupMCPToolPolicyRequest(server string, orgId openapi_types.UUID, groupId openapi_types.UUID, profileId openapi_types.UUID, body ReplaceAgentGroupMCPToolPolicyJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewReplaceAgentGroupMCPToolPolicyRequestWithBody(server, orgId, groupId, profileId, "application/json", bodyReader)
+}
+
+// NewReplaceAgentGroupMCPToolPolicyRequestWithBody generates requests for ReplaceAgentGroupMCPToolPolicy with any type of body
+func NewReplaceAgentGroupMCPToolPolicyRequestWithBody(server string, orgId openapi_types.UUID, groupId openapi_types.UUID, profileId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "groupId", runtime.ParamLocationPath, groupId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam2 string
+
+	pathParam2, err = runtime.StyleParamWithLocation("simple", false, "profileId", runtime.ParamLocationPath, profileId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/agent-groups/%s/mcp-servers/%s/tool-policy", pathParam0, pathParam1, pathParam2)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("PUT", queryURL.String(), body)
 	if err != nil {
 		return nil, err
 	}
@@ -27204,6 +28309,47 @@ func NewRevokeAgentBootstrapTokenRequest(server string, orgId openapi_types.UUID
 	return req, nil
 }
 
+// NewGetAgentBootstrapTokenStatusRequest generates requests for GetAgentBootstrapTokenStatus
+func NewGetAgentBootstrapTokenStatusRequest(server string, orgId openapi_types.UUID, tokenId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "tokenId", runtime.ParamLocationPath, tokenId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/agents/bootstrap-tokens/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewGetAgentRuntimeReleaseRequest generates requests for GetAgentRuntimeRelease
 func NewGetAgentRuntimeReleaseRequest(server string, orgId openapi_types.UUID) (*http.Request, error) {
 	var err error
@@ -27329,6 +28475,47 @@ func NewUpdateAgentProfileRequestWithBody(server string, orgId openapi_types.UUI
 	}
 
 	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewGetAgentAccessSummaryRequest generates requests for GetAgentAccessSummary
+func NewGetAgentAccessSummaryRequest(server string, orgId openapi_types.UUID, deviceId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "deviceId", runtime.ParamLocationPath, deviceId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/agents/%s/access-summary", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
 
 	return req, nil
 }
@@ -27708,6 +28895,213 @@ func NewListAgentMCPToolActivityRequest(server string, orgId openapi_types.UUID,
 
 		}
 
+		if params.Decision != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "decision", runtime.ParamLocationQuery, *params.Decision); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Approved != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "approved", runtime.ParamLocationQuery, *params.Approved); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.From != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "from", runtime.ParamLocationQuery, *params.From); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.To != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "to", runtime.ParamLocationQuery, *params.To); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Server != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "server", runtime.ParamLocationQuery, *params.Server); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewExportAgentMCPToolActivityRequest generates requests for ExportAgentMCPToolActivity
+func NewExportAgentMCPToolActivityRequest(server string, orgId openapi_types.UUID, deviceId openapi_types.UUID, params *ExportAgentMCPToolActivityParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "deviceId", runtime.ParamLocationPath, deviceId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/agents/%s/mcp-tool-activity/export", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if params.Decision != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "decision", runtime.ParamLocationQuery, *params.Decision); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Approved != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "approved", runtime.ParamLocationQuery, *params.Approved); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.From != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "from", runtime.ParamLocationQuery, *params.From); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.To != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "to", runtime.ParamLocationQuery, *params.To); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Server != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "server", runtime.ParamLocationQuery, *params.Server); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
 		queryURL.RawQuery = queryValues.Encode()
 	}
 
@@ -27986,6 +29380,160 @@ func NewAcceptAgentMCPToolDefinitionRequestWithBody(server string, orgId openapi
 	}
 
 	operationPath := fmt.Sprintf("/api/v1/organizations/%s/agents/%s/mcp-tool-policy/accept-definition", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewRemoveAgentMCPToolPolicyOverrideRequest generates requests for RemoveAgentMCPToolPolicyOverride
+func NewRemoveAgentMCPToolPolicyOverrideRequest(server string, orgId openapi_types.UUID, deviceId openapi_types.UUID, params *RemoveAgentMCPToolPolicyOverrideParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "deviceId", runtime.ParamLocationPath, deviceId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/agents/%s/mcp-tool-policy/override", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if queryFrag, err := runtime.StyleParamWithLocation("form", true, "endpoint", runtime.ParamLocationQuery, params.Endpoint); err != nil {
+			return nil, err
+		} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+			return nil, err
+		} else {
+			for k, v := range parsed {
+				for _, v2 := range v {
+					queryValues.Add(k, v2)
+				}
+			}
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
+	}
+
+	req, err := http.NewRequest("DELETE", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewPreviewAgentOwnerAccessRequest generates requests for PreviewAgentOwnerAccess
+func NewPreviewAgentOwnerAccessRequest(server string, orgId openapi_types.UUID, deviceId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "deviceId", runtime.ParamLocationPath, deviceId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/agents/%s/owner-access-preview", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewCreateAgentRulesFromOwnerAccessRequest calls the generic CreateAgentRulesFromOwnerAccess builder with application/json body
+func NewCreateAgentRulesFromOwnerAccessRequest(server string, orgId openapi_types.UUID, deviceId openapi_types.UUID, body CreateAgentRulesFromOwnerAccessJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreateAgentRulesFromOwnerAccessRequestWithBody(server, orgId, deviceId, "application/json", bodyReader)
+}
+
+// NewCreateAgentRulesFromOwnerAccessRequestWithBody generates requests for CreateAgentRulesFromOwnerAccess with any type of body
+func NewCreateAgentRulesFromOwnerAccessRequestWithBody(server string, orgId openapi_types.UUID, deviceId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "deviceId", runtime.ParamLocationPath, deviceId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/agents/%s/owner-access-rules", pathParam0, pathParam1)
 	if operationPath[0] == '/' {
 		operationPath = "." + operationPath
 	}
@@ -29390,6 +30938,40 @@ func NewTestAIProviderRequestWithBody(server string, orgId openapi_types.UUID, c
 	}
 
 	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewGetAIGatewayStatusRequest generates requests for GetAIGatewayStatus
+func NewGetAIGatewayStatusRequest(server string, orgId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/ai-gateway/status", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
 
 	return req, nil
 }
@@ -38944,6 +40526,344 @@ func NewAssignMachineCredentialOwnerRequestWithBody(server string, orgId openapi
 	return req, nil
 }
 
+// NewConnectMCPServerRequest calls the generic ConnectMCPServer builder with application/json body
+func NewConnectMCPServerRequest(server string, orgId openapi_types.UUID, body ConnectMCPServerJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewConnectMCPServerRequestWithBody(server, orgId, "application/json", bodyReader)
+}
+
+// NewConnectMCPServerRequestWithBody generates requests for ConnectMCPServer with any type of body
+func NewConnectMCPServerRequestWithBody(server string, orgId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/mcp-connections", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewStartMCPConnectionPreviewRequest calls the generic StartMCPConnectionPreview builder with application/json body
+func NewStartMCPConnectionPreviewRequest(server string, orgId openapi_types.UUID, body StartMCPConnectionPreviewJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewStartMCPConnectionPreviewRequestWithBody(server, orgId, "application/json", bodyReader)
+}
+
+// NewStartMCPConnectionPreviewRequestWithBody generates requests for StartMCPConnectionPreview with any type of body
+func NewStartMCPConnectionPreviewRequestWithBody(server string, orgId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/mcp-connections/preview", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewGetMCPConnectionPreviewRequest generates requests for GetMCPConnectionPreview
+func NewGetMCPConnectionPreviewRequest(server string, orgId openapi_types.UUID, previewId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "previewId", runtime.ParamLocationPath, previewId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/mcp-connections/preview/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetOrganizationMCPSettingRequest generates requests for GetOrganizationMCPSetting
+func NewGetOrganizationMCPSettingRequest(server string, orgId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/mcp-settings", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewSetOrganizationMCPEnabledRequest calls the generic SetOrganizationMCPEnabled builder with application/json body
+func NewSetOrganizationMCPEnabledRequest(server string, orgId openapi_types.UUID, body SetOrganizationMCPEnabledJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewSetOrganizationMCPEnabledRequestWithBody(server, orgId, "application/json", bodyReader)
+}
+
+// NewSetOrganizationMCPEnabledRequestWithBody generates requests for SetOrganizationMCPEnabled with any type of body
+func NewSetOrganizationMCPEnabledRequestWithBody(server string, orgId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/mcp-settings", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("PUT", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewListOrganizationMCPToolApprovalRequestsRequest generates requests for ListOrganizationMCPToolApprovalRequests
+func NewListOrganizationMCPToolApprovalRequestsRequest(server string, orgId openapi_types.UUID, params *ListOrganizationMCPToolApprovalRequestsParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/mcp-tool-approval-requests", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if params.State != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "state", runtime.ParamLocationQuery, *params.State); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "limit", runtime.ParamLocationQuery, *params.Limit); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Cursor != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "cursor", runtime.ParamLocationQuery, *params.Cursor); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewCountOrganizationMCPToolApprovalRequestsRequest generates requests for CountOrganizationMCPToolApprovalRequests
+func NewCountOrganizationMCPToolApprovalRequestsRequest(server string, orgId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/mcp-tool-approval-requests/count", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
 // NewListMembersRequest generates requests for ListMembers
 func NewListMembersRequest(server string, orgId openapi_types.UUID) (*http.Request, error) {
 	var err error
@@ -46056,6 +47976,9 @@ type ClientWithResponsesInterface interface {
 
 	RevokeAgentAccessRequestWithResponse(ctx context.Context, orgId openapi_types.UUID, requestId openapi_types.UUID, body RevokeAgentAccessRequestJSONRequestBody, reqEditors ...RequestEditorFn) (*RevokeAgentAccessRequestResponse, error)
 
+	// ListAgentFeaturesWithResponse request
+	ListAgentFeaturesWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ListAgentFeaturesResponse, error)
+
 	// ListAgentGroupsWithResponse request
 	ListAgentGroupsWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ListAgentGroupsResponse, error)
 
@@ -46084,6 +48007,14 @@ type ClientWithResponsesInterface interface {
 	PreviewAgentGroupMCPProfileImpactWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, groupId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PreviewAgentGroupMCPProfileImpactResponse, error)
 
 	PreviewAgentGroupMCPProfileImpactWithResponse(ctx context.Context, orgId openapi_types.UUID, groupId openapi_types.UUID, body PreviewAgentGroupMCPProfileImpactJSONRequestBody, reqEditors ...RequestEditorFn) (*PreviewAgentGroupMCPProfileImpactResponse, error)
+
+	// GetAgentGroupMCPToolPolicyWithResponse request
+	GetAgentGroupMCPToolPolicyWithResponse(ctx context.Context, orgId openapi_types.UUID, groupId openapi_types.UUID, profileId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetAgentGroupMCPToolPolicyResponse, error)
+
+	// ReplaceAgentGroupMCPToolPolicyWithBodyWithResponse request with any body
+	ReplaceAgentGroupMCPToolPolicyWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, groupId openapi_types.UUID, profileId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ReplaceAgentGroupMCPToolPolicyResponse, error)
+
+	ReplaceAgentGroupMCPToolPolicyWithResponse(ctx context.Context, orgId openapi_types.UUID, groupId openapi_types.UUID, profileId openapi_types.UUID, body ReplaceAgentGroupMCPToolPolicyJSONRequestBody, reqEditors ...RequestEditorFn) (*ReplaceAgentGroupMCPToolPolicyResponse, error)
 
 	// ListAgentGroupMembersWithResponse request
 	ListAgentGroupMembersWithResponse(ctx context.Context, orgId openapi_types.UUID, groupId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ListAgentGroupMembersResponse, error)
@@ -46195,6 +48126,9 @@ type ClientWithResponsesInterface interface {
 	// RevokeAgentBootstrapTokenWithResponse request
 	RevokeAgentBootstrapTokenWithResponse(ctx context.Context, orgId openapi_types.UUID, tokenId openapi_types.UUID, reqEditors ...RequestEditorFn) (*RevokeAgentBootstrapTokenResponse, error)
 
+	// GetAgentBootstrapTokenStatusWithResponse request
+	GetAgentBootstrapTokenStatusWithResponse(ctx context.Context, orgId openapi_types.UUID, tokenId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetAgentBootstrapTokenStatusResponse, error)
+
 	// GetAgentRuntimeReleaseWithResponse request
 	GetAgentRuntimeReleaseWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetAgentRuntimeReleaseResponse, error)
 
@@ -46205,6 +48139,9 @@ type ClientWithResponsesInterface interface {
 	UpdateAgentProfileWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateAgentProfileResponse, error)
 
 	UpdateAgentProfileWithResponse(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, body UpdateAgentProfileJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateAgentProfileResponse, error)
+
+	// GetAgentAccessSummaryWithResponse request
+	GetAgentAccessSummaryWithResponse(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetAgentAccessSummaryResponse, error)
 
 	// GetAgentCredentialRotationWithResponse request
 	GetAgentCredentialRotationWithResponse(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetAgentCredentialRotationResponse, error)
@@ -46232,6 +48169,9 @@ type ClientWithResponsesInterface interface {
 	// ListAgentMCPToolActivityWithResponse request
 	ListAgentMCPToolActivityWithResponse(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, params *ListAgentMCPToolActivityParams, reqEditors ...RequestEditorFn) (*ListAgentMCPToolActivityResponse, error)
 
+	// ExportAgentMCPToolActivityWithResponse request
+	ExportAgentMCPToolActivityWithResponse(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, params *ExportAgentMCPToolActivityParams, reqEditors ...RequestEditorFn) (*ExportAgentMCPToolActivityResponse, error)
+
 	// ListAgentMCPToolApprovalRequestsWithResponse request
 	ListAgentMCPToolApprovalRequestsWithResponse(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ListAgentMCPToolApprovalRequestsResponse, error)
 
@@ -46253,6 +48193,17 @@ type ClientWithResponsesInterface interface {
 	AcceptAgentMCPToolDefinitionWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*AcceptAgentMCPToolDefinitionResponse, error)
 
 	AcceptAgentMCPToolDefinitionWithResponse(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, body AcceptAgentMCPToolDefinitionJSONRequestBody, reqEditors ...RequestEditorFn) (*AcceptAgentMCPToolDefinitionResponse, error)
+
+	// RemoveAgentMCPToolPolicyOverrideWithResponse request
+	RemoveAgentMCPToolPolicyOverrideWithResponse(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, params *RemoveAgentMCPToolPolicyOverrideParams, reqEditors ...RequestEditorFn) (*RemoveAgentMCPToolPolicyOverrideResponse, error)
+
+	// PreviewAgentOwnerAccessWithResponse request
+	PreviewAgentOwnerAccessWithResponse(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*PreviewAgentOwnerAccessResponse, error)
+
+	// CreateAgentRulesFromOwnerAccessWithBodyWithResponse request with any body
+	CreateAgentRulesFromOwnerAccessWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateAgentRulesFromOwnerAccessResponse, error)
+
+	CreateAgentRulesFromOwnerAccessWithResponse(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, body CreateAgentRulesFromOwnerAccessJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateAgentRulesFromOwnerAccessResponse, error)
 
 	// GetAgentRuntimeStatusWithResponse request
 	GetAgentRuntimeStatusWithResponse(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetAgentRuntimeStatusResponse, error)
@@ -46369,6 +48320,9 @@ type ClientWithResponsesInterface interface {
 	TestAIProviderWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, connectionId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*TestAIProviderResponse, error)
 
 	TestAIProviderWithResponse(ctx context.Context, orgId openapi_types.UUID, connectionId openapi_types.UUID, body TestAIProviderJSONRequestBody, reqEditors ...RequestEditorFn) (*TestAIProviderResponse, error)
+
+	// GetAIGatewayStatusWithResponse request
+	GetAIGatewayStatusWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetAIGatewayStatusResponse, error)
 
 	// ListAITeamPoliciesWithResponse request
 	ListAITeamPoliciesWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ListAITeamPoliciesResponse, error)
@@ -47055,6 +49009,33 @@ type ClientWithResponsesInterface interface {
 	AssignMachineCredentialOwnerWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, credentialId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*AssignMachineCredentialOwnerResponse, error)
 
 	AssignMachineCredentialOwnerWithResponse(ctx context.Context, orgId openapi_types.UUID, credentialId openapi_types.UUID, body AssignMachineCredentialOwnerJSONRequestBody, reqEditors ...RequestEditorFn) (*AssignMachineCredentialOwnerResponse, error)
+
+	// ConnectMCPServerWithBodyWithResponse request with any body
+	ConnectMCPServerWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ConnectMCPServerResponse, error)
+
+	ConnectMCPServerWithResponse(ctx context.Context, orgId openapi_types.UUID, body ConnectMCPServerJSONRequestBody, reqEditors ...RequestEditorFn) (*ConnectMCPServerResponse, error)
+
+	// StartMCPConnectionPreviewWithBodyWithResponse request with any body
+	StartMCPConnectionPreviewWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*StartMCPConnectionPreviewResponse, error)
+
+	StartMCPConnectionPreviewWithResponse(ctx context.Context, orgId openapi_types.UUID, body StartMCPConnectionPreviewJSONRequestBody, reqEditors ...RequestEditorFn) (*StartMCPConnectionPreviewResponse, error)
+
+	// GetMCPConnectionPreviewWithResponse request
+	GetMCPConnectionPreviewWithResponse(ctx context.Context, orgId openapi_types.UUID, previewId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetMCPConnectionPreviewResponse, error)
+
+	// GetOrganizationMCPSettingWithResponse request
+	GetOrganizationMCPSettingWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetOrganizationMCPSettingResponse, error)
+
+	// SetOrganizationMCPEnabledWithBodyWithResponse request with any body
+	SetOrganizationMCPEnabledWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetOrganizationMCPEnabledResponse, error)
+
+	SetOrganizationMCPEnabledWithResponse(ctx context.Context, orgId openapi_types.UUID, body SetOrganizationMCPEnabledJSONRequestBody, reqEditors ...RequestEditorFn) (*SetOrganizationMCPEnabledResponse, error)
+
+	// ListOrganizationMCPToolApprovalRequestsWithResponse request
+	ListOrganizationMCPToolApprovalRequestsWithResponse(ctx context.Context, orgId openapi_types.UUID, params *ListOrganizationMCPToolApprovalRequestsParams, reqEditors ...RequestEditorFn) (*ListOrganizationMCPToolApprovalRequestsResponse, error)
+
+	// CountOrganizationMCPToolApprovalRequestsWithResponse request
+	CountOrganizationMCPToolApprovalRequestsWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*CountOrganizationMCPToolApprovalRequestsResponse, error)
 
 	// ListMembersWithResponse request
 	ListMembersWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ListMembersResponse, error)
@@ -49710,6 +51691,29 @@ func (r RevokeAgentAccessRequestResponse) StatusCode() int {
 	return 0
 }
 
+type ListAgentFeaturesResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AgentFeatureList
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r ListAgentFeaturesResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListAgentFeaturesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
 type ListAgentGroupsResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -49864,6 +51868,52 @@ func (r PreviewAgentGroupMCPProfileImpactResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r PreviewAgentGroupMCPProfileImpactResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetAgentGroupMCPToolPolicyResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AgentGroupMCPToolPolicy
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r GetAgentGroupMCPToolPolicyResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetAgentGroupMCPToolPolicyResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ReplaceAgentGroupMCPToolPolicyResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AgentGroupMCPToolPolicy
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r ReplaceAgentGroupMCPToolPolicyResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ReplaceAgentGroupMCPToolPolicyResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -50512,6 +52562,29 @@ func (r RevokeAgentBootstrapTokenResponse) StatusCode() int {
 	return 0
 }
 
+type GetAgentBootstrapTokenStatusResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AgentBootstrapTokenStatus
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r GetAgentBootstrapTokenStatusResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetAgentBootstrapTokenStatusResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
 type GetAgentRuntimeReleaseResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -50575,6 +52648,29 @@ func (r UpdateAgentProfileResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r UpdateAgentProfileResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetAgentAccessSummaryResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AgentAccessSummary
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r GetAgentAccessSummaryResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetAgentAccessSummaryResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -50764,6 +52860,28 @@ func (r ListAgentMCPToolActivityResponse) StatusCode() int {
 	return 0
 }
 
+type ExportAgentMCPToolActivityResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r ExportAgentMCPToolActivityResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ExportAgentMCPToolActivityResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
 type ListAgentMCPToolApprovalRequestsResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -50896,6 +53014,75 @@ func (r AcceptAgentMCPToolDefinitionResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r AcceptAgentMCPToolDefinitionResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type RemoveAgentMCPToolPolicyOverrideResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AgentMCPToolPolicy
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r RemoveAgentMCPToolPolicyOverrideResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r RemoveAgentMCPToolPolicyOverrideResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type PreviewAgentOwnerAccessResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AgentOwnerAccessPreview
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r PreviewAgentOwnerAccessResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PreviewAgentOwnerAccessResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type CreateAgentRulesFromOwnerAccessResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON201      *AgentOwnerAccessRulesResult
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateAgentRulesFromOwnerAccessResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateAgentRulesFromOwnerAccessResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -51478,6 +53665,7 @@ func (r TestAIProviderConnectionResponse) StatusCode() int {
 type DeleteAIProviderResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
+	JSON409      *AIProviderInUseConflict
 	JSONDefault  *Error
 }
 
@@ -51537,6 +53725,29 @@ func (r TestAIProviderResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r TestAIProviderResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetAIGatewayStatusResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AIGatewayStatus
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r GetAIGatewayStatusResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetAIGatewayStatusResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -55652,6 +57863,167 @@ func (r AssignMachineCredentialOwnerResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r AssignMachineCredentialOwnerResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ConnectMCPServerResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON201      *MCPConnection
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r ConnectMCPServerResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ConnectMCPServerResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type StartMCPConnectionPreviewResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON201      *MCPConnectionPreview
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r StartMCPConnectionPreviewResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r StartMCPConnectionPreviewResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetMCPConnectionPreviewResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *MCPConnectionPreview
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r GetMCPConnectionPreviewResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetMCPConnectionPreviewResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetOrganizationMCPSettingResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *MCPSetting
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r GetOrganizationMCPSettingResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetOrganizationMCPSettingResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type SetOrganizationMCPEnabledResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *MCPSetting
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r SetOrganizationMCPEnabledResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r SetOrganizationMCPEnabledResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ListOrganizationMCPToolApprovalRequestsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *MCPToolApprovalInboxPage
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r ListOrganizationMCPToolApprovalRequestsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListOrganizationMCPToolApprovalRequestsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type CountOrganizationMCPToolApprovalRequestsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *MCPToolApprovalCount
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r CountOrganizationMCPToolApprovalRequestsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CountOrganizationMCPToolApprovalRequestsResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -60177,6 +62549,15 @@ func (c *ClientWithResponses) RevokeAgentAccessRequestWithResponse(ctx context.C
 	return ParseRevokeAgentAccessRequestResponse(rsp)
 }
 
+// ListAgentFeaturesWithResponse request returning *ListAgentFeaturesResponse
+func (c *ClientWithResponses) ListAgentFeaturesWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ListAgentFeaturesResponse, error) {
+	rsp, err := c.ListAgentFeatures(ctx, orgId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListAgentFeaturesResponse(rsp)
+}
+
 // ListAgentGroupsWithResponse request returning *ListAgentGroupsResponse
 func (c *ClientWithResponses) ListAgentGroupsWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ListAgentGroupsResponse, error) {
 	rsp, err := c.ListAgentGroups(ctx, orgId, reqEditors...)
@@ -60270,6 +62651,32 @@ func (c *ClientWithResponses) PreviewAgentGroupMCPProfileImpactWithResponse(ctx 
 		return nil, err
 	}
 	return ParsePreviewAgentGroupMCPProfileImpactResponse(rsp)
+}
+
+// GetAgentGroupMCPToolPolicyWithResponse request returning *GetAgentGroupMCPToolPolicyResponse
+func (c *ClientWithResponses) GetAgentGroupMCPToolPolicyWithResponse(ctx context.Context, orgId openapi_types.UUID, groupId openapi_types.UUID, profileId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetAgentGroupMCPToolPolicyResponse, error) {
+	rsp, err := c.GetAgentGroupMCPToolPolicy(ctx, orgId, groupId, profileId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetAgentGroupMCPToolPolicyResponse(rsp)
+}
+
+// ReplaceAgentGroupMCPToolPolicyWithBodyWithResponse request with arbitrary body returning *ReplaceAgentGroupMCPToolPolicyResponse
+func (c *ClientWithResponses) ReplaceAgentGroupMCPToolPolicyWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, groupId openapi_types.UUID, profileId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ReplaceAgentGroupMCPToolPolicyResponse, error) {
+	rsp, err := c.ReplaceAgentGroupMCPToolPolicyWithBody(ctx, orgId, groupId, profileId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseReplaceAgentGroupMCPToolPolicyResponse(rsp)
+}
+
+func (c *ClientWithResponses) ReplaceAgentGroupMCPToolPolicyWithResponse(ctx context.Context, orgId openapi_types.UUID, groupId openapi_types.UUID, profileId openapi_types.UUID, body ReplaceAgentGroupMCPToolPolicyJSONRequestBody, reqEditors ...RequestEditorFn) (*ReplaceAgentGroupMCPToolPolicyResponse, error) {
+	rsp, err := c.ReplaceAgentGroupMCPToolPolicy(ctx, orgId, groupId, profileId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseReplaceAgentGroupMCPToolPolicyResponse(rsp)
 }
 
 // ListAgentGroupMembersWithResponse request returning *ListAgentGroupMembersResponse
@@ -60628,6 +63035,15 @@ func (c *ClientWithResponses) RevokeAgentBootstrapTokenWithResponse(ctx context.
 	return ParseRevokeAgentBootstrapTokenResponse(rsp)
 }
 
+// GetAgentBootstrapTokenStatusWithResponse request returning *GetAgentBootstrapTokenStatusResponse
+func (c *ClientWithResponses) GetAgentBootstrapTokenStatusWithResponse(ctx context.Context, orgId openapi_types.UUID, tokenId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetAgentBootstrapTokenStatusResponse, error) {
+	rsp, err := c.GetAgentBootstrapTokenStatus(ctx, orgId, tokenId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetAgentBootstrapTokenStatusResponse(rsp)
+}
+
 // GetAgentRuntimeReleaseWithResponse request returning *GetAgentRuntimeReleaseResponse
 func (c *ClientWithResponses) GetAgentRuntimeReleaseWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetAgentRuntimeReleaseResponse, error) {
 	rsp, err := c.GetAgentRuntimeRelease(ctx, orgId, reqEditors...)
@@ -60661,6 +63077,15 @@ func (c *ClientWithResponses) UpdateAgentProfileWithResponse(ctx context.Context
 		return nil, err
 	}
 	return ParseUpdateAgentProfileResponse(rsp)
+}
+
+// GetAgentAccessSummaryWithResponse request returning *GetAgentAccessSummaryResponse
+func (c *ClientWithResponses) GetAgentAccessSummaryWithResponse(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetAgentAccessSummaryResponse, error) {
+	rsp, err := c.GetAgentAccessSummary(ctx, orgId, deviceId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetAgentAccessSummaryResponse(rsp)
 }
 
 // GetAgentCredentialRotationWithResponse request returning *GetAgentCredentialRotationResponse
@@ -60743,6 +63168,15 @@ func (c *ClientWithResponses) ListAgentMCPToolActivityWithResponse(ctx context.C
 	return ParseListAgentMCPToolActivityResponse(rsp)
 }
 
+// ExportAgentMCPToolActivityWithResponse request returning *ExportAgentMCPToolActivityResponse
+func (c *ClientWithResponses) ExportAgentMCPToolActivityWithResponse(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, params *ExportAgentMCPToolActivityParams, reqEditors ...RequestEditorFn) (*ExportAgentMCPToolActivityResponse, error) {
+	rsp, err := c.ExportAgentMCPToolActivity(ctx, orgId, deviceId, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseExportAgentMCPToolActivityResponse(rsp)
+}
+
 // ListAgentMCPToolApprovalRequestsWithResponse request returning *ListAgentMCPToolApprovalRequestsResponse
 func (c *ClientWithResponses) ListAgentMCPToolApprovalRequestsWithResponse(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ListAgentMCPToolApprovalRequestsResponse, error) {
 	rsp, err := c.ListAgentMCPToolApprovalRequests(ctx, orgId, deviceId, reqEditors...)
@@ -60811,6 +63245,41 @@ func (c *ClientWithResponses) AcceptAgentMCPToolDefinitionWithResponse(ctx conte
 		return nil, err
 	}
 	return ParseAcceptAgentMCPToolDefinitionResponse(rsp)
+}
+
+// RemoveAgentMCPToolPolicyOverrideWithResponse request returning *RemoveAgentMCPToolPolicyOverrideResponse
+func (c *ClientWithResponses) RemoveAgentMCPToolPolicyOverrideWithResponse(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, params *RemoveAgentMCPToolPolicyOverrideParams, reqEditors ...RequestEditorFn) (*RemoveAgentMCPToolPolicyOverrideResponse, error) {
+	rsp, err := c.RemoveAgentMCPToolPolicyOverride(ctx, orgId, deviceId, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRemoveAgentMCPToolPolicyOverrideResponse(rsp)
+}
+
+// PreviewAgentOwnerAccessWithResponse request returning *PreviewAgentOwnerAccessResponse
+func (c *ClientWithResponses) PreviewAgentOwnerAccessWithResponse(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*PreviewAgentOwnerAccessResponse, error) {
+	rsp, err := c.PreviewAgentOwnerAccess(ctx, orgId, deviceId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePreviewAgentOwnerAccessResponse(rsp)
+}
+
+// CreateAgentRulesFromOwnerAccessWithBodyWithResponse request with arbitrary body returning *CreateAgentRulesFromOwnerAccessResponse
+func (c *ClientWithResponses) CreateAgentRulesFromOwnerAccessWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateAgentRulesFromOwnerAccessResponse, error) {
+	rsp, err := c.CreateAgentRulesFromOwnerAccessWithBody(ctx, orgId, deviceId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateAgentRulesFromOwnerAccessResponse(rsp)
+}
+
+func (c *ClientWithResponses) CreateAgentRulesFromOwnerAccessWithResponse(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, body CreateAgentRulesFromOwnerAccessJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateAgentRulesFromOwnerAccessResponse, error) {
+	rsp, err := c.CreateAgentRulesFromOwnerAccess(ctx, orgId, deviceId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateAgentRulesFromOwnerAccessResponse(rsp)
 }
 
 // GetAgentRuntimeStatusWithResponse request returning *GetAgentRuntimeStatusResponse
@@ -61191,6 +63660,15 @@ func (c *ClientWithResponses) TestAIProviderWithResponse(ctx context.Context, or
 		return nil, err
 	}
 	return ParseTestAIProviderResponse(rsp)
+}
+
+// GetAIGatewayStatusWithResponse request returning *GetAIGatewayStatusResponse
+func (c *ClientWithResponses) GetAIGatewayStatusWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetAIGatewayStatusResponse, error) {
+	rsp, err := c.GetAIGatewayStatus(ctx, orgId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetAIGatewayStatusResponse(rsp)
 }
 
 // ListAITeamPoliciesWithResponse request returning *ListAITeamPoliciesResponse
@@ -63395,6 +65873,93 @@ func (c *ClientWithResponses) AssignMachineCredentialOwnerWithResponse(ctx conte
 		return nil, err
 	}
 	return ParseAssignMachineCredentialOwnerResponse(rsp)
+}
+
+// ConnectMCPServerWithBodyWithResponse request with arbitrary body returning *ConnectMCPServerResponse
+func (c *ClientWithResponses) ConnectMCPServerWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*ConnectMCPServerResponse, error) {
+	rsp, err := c.ConnectMCPServerWithBody(ctx, orgId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseConnectMCPServerResponse(rsp)
+}
+
+func (c *ClientWithResponses) ConnectMCPServerWithResponse(ctx context.Context, orgId openapi_types.UUID, body ConnectMCPServerJSONRequestBody, reqEditors ...RequestEditorFn) (*ConnectMCPServerResponse, error) {
+	rsp, err := c.ConnectMCPServer(ctx, orgId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseConnectMCPServerResponse(rsp)
+}
+
+// StartMCPConnectionPreviewWithBodyWithResponse request with arbitrary body returning *StartMCPConnectionPreviewResponse
+func (c *ClientWithResponses) StartMCPConnectionPreviewWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*StartMCPConnectionPreviewResponse, error) {
+	rsp, err := c.StartMCPConnectionPreviewWithBody(ctx, orgId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseStartMCPConnectionPreviewResponse(rsp)
+}
+
+func (c *ClientWithResponses) StartMCPConnectionPreviewWithResponse(ctx context.Context, orgId openapi_types.UUID, body StartMCPConnectionPreviewJSONRequestBody, reqEditors ...RequestEditorFn) (*StartMCPConnectionPreviewResponse, error) {
+	rsp, err := c.StartMCPConnectionPreview(ctx, orgId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseStartMCPConnectionPreviewResponse(rsp)
+}
+
+// GetMCPConnectionPreviewWithResponse request returning *GetMCPConnectionPreviewResponse
+func (c *ClientWithResponses) GetMCPConnectionPreviewWithResponse(ctx context.Context, orgId openapi_types.UUID, previewId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetMCPConnectionPreviewResponse, error) {
+	rsp, err := c.GetMCPConnectionPreview(ctx, orgId, previewId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetMCPConnectionPreviewResponse(rsp)
+}
+
+// GetOrganizationMCPSettingWithResponse request returning *GetOrganizationMCPSettingResponse
+func (c *ClientWithResponses) GetOrganizationMCPSettingWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetOrganizationMCPSettingResponse, error) {
+	rsp, err := c.GetOrganizationMCPSetting(ctx, orgId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetOrganizationMCPSettingResponse(rsp)
+}
+
+// SetOrganizationMCPEnabledWithBodyWithResponse request with arbitrary body returning *SetOrganizationMCPEnabledResponse
+func (c *ClientWithResponses) SetOrganizationMCPEnabledWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetOrganizationMCPEnabledResponse, error) {
+	rsp, err := c.SetOrganizationMCPEnabledWithBody(ctx, orgId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSetOrganizationMCPEnabledResponse(rsp)
+}
+
+func (c *ClientWithResponses) SetOrganizationMCPEnabledWithResponse(ctx context.Context, orgId openapi_types.UUID, body SetOrganizationMCPEnabledJSONRequestBody, reqEditors ...RequestEditorFn) (*SetOrganizationMCPEnabledResponse, error) {
+	rsp, err := c.SetOrganizationMCPEnabled(ctx, orgId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSetOrganizationMCPEnabledResponse(rsp)
+}
+
+// ListOrganizationMCPToolApprovalRequestsWithResponse request returning *ListOrganizationMCPToolApprovalRequestsResponse
+func (c *ClientWithResponses) ListOrganizationMCPToolApprovalRequestsWithResponse(ctx context.Context, orgId openapi_types.UUID, params *ListOrganizationMCPToolApprovalRequestsParams, reqEditors ...RequestEditorFn) (*ListOrganizationMCPToolApprovalRequestsResponse, error) {
+	rsp, err := c.ListOrganizationMCPToolApprovalRequests(ctx, orgId, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListOrganizationMCPToolApprovalRequestsResponse(rsp)
+}
+
+// CountOrganizationMCPToolApprovalRequestsWithResponse request returning *CountOrganizationMCPToolApprovalRequestsResponse
+func (c *ClientWithResponses) CountOrganizationMCPToolApprovalRequestsWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*CountOrganizationMCPToolApprovalRequestsResponse, error) {
+	rsp, err := c.CountOrganizationMCPToolApprovalRequests(ctx, orgId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCountOrganizationMCPToolApprovalRequestsResponse(rsp)
 }
 
 // ListMembersWithResponse request returning *ListMembersResponse
@@ -68255,6 +70820,39 @@ func ParseRevokeAgentAccessRequestResponse(rsp *http.Response) (*RevokeAgentAcce
 	return response, nil
 }
 
+// ParseListAgentFeaturesResponse parses an HTTP response from a ListAgentFeaturesWithResponse call
+func ParseListAgentFeaturesResponse(rsp *http.Response) (*ListAgentFeaturesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListAgentFeaturesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AgentFeatureList
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseListAgentGroupsResponse parses an HTTP response from a ListAgentGroupsWithResponse call
 func ParseListAgentGroupsResponse(rsp *http.Response) (*ListAgentGroupsResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -68462,6 +71060,72 @@ func ParsePreviewAgentGroupMCPProfileImpactResponse(rsp *http.Response) (*Previe
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest AgentMCPProfileImpact
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetAgentGroupMCPToolPolicyResponse parses an HTTP response from a GetAgentGroupMCPToolPolicyWithResponse call
+func ParseGetAgentGroupMCPToolPolicyResponse(rsp *http.Response) (*GetAgentGroupMCPToolPolicyResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetAgentGroupMCPToolPolicyResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AgentGroupMCPToolPolicy
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseReplaceAgentGroupMCPToolPolicyResponse parses an HTTP response from a ReplaceAgentGroupMCPToolPolicyWithResponse call
+func ParseReplaceAgentGroupMCPToolPolicyResponse(rsp *http.Response) (*ReplaceAgentGroupMCPToolPolicyResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ReplaceAgentGroupMCPToolPolicyResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AgentGroupMCPToolPolicy
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
@@ -69389,6 +72053,39 @@ func ParseRevokeAgentBootstrapTokenResponse(rsp *http.Response) (*RevokeAgentBoo
 	return response, nil
 }
 
+// ParseGetAgentBootstrapTokenStatusResponse parses an HTTP response from a GetAgentBootstrapTokenStatusWithResponse call
+func ParseGetAgentBootstrapTokenStatusResponse(rsp *http.Response) (*GetAgentBootstrapTokenStatusResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetAgentBootstrapTokenStatusResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AgentBootstrapTokenStatus
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseGetAgentRuntimeReleaseResponse parses an HTTP response from a GetAgentRuntimeReleaseWithResponse call
 func ParseGetAgentRuntimeReleaseResponse(rsp *http.Response) (*GetAgentRuntimeReleaseResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -69471,6 +72168,39 @@ func ParseUpdateAgentProfileResponse(rsp *http.Response) (*UpdateAgentProfileRes
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest AgentProfile
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetAgentAccessSummaryResponse parses an HTTP response from a GetAgentAccessSummaryWithResponse call
+func ParseGetAgentAccessSummaryResponse(rsp *http.Response) (*GetAgentAccessSummaryResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetAgentAccessSummaryResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AgentAccessSummary
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
@@ -69745,6 +72475,32 @@ func ParseListAgentMCPToolActivityResponse(rsp *http.Response) (*ListAgentMCPToo
 	return response, nil
 }
 
+// ParseExportAgentMCPToolActivityResponse parses an HTTP response from a ExportAgentMCPToolActivityWithResponse call
+func ParseExportAgentMCPToolActivityResponse(rsp *http.Response) (*ExportAgentMCPToolActivityResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ExportAgentMCPToolActivityResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseListAgentMCPToolApprovalRequestsResponse parses an HTTP response from a ListAgentMCPToolApprovalRequestsWithResponse call
 func ParseListAgentMCPToolApprovalRequestsResponse(rsp *http.Response) (*ListAgentMCPToolApprovalRequestsResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -69930,6 +72686,105 @@ func ParseAcceptAgentMCPToolDefinitionResponse(rsp *http.Response) (*AcceptAgent
 			return nil, err
 		}
 		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseRemoveAgentMCPToolPolicyOverrideResponse parses an HTTP response from a RemoveAgentMCPToolPolicyOverrideWithResponse call
+func ParseRemoveAgentMCPToolPolicyOverrideResponse(rsp *http.Response) (*RemoveAgentMCPToolPolicyOverrideResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &RemoveAgentMCPToolPolicyOverrideResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AgentMCPToolPolicy
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParsePreviewAgentOwnerAccessResponse parses an HTTP response from a PreviewAgentOwnerAccessWithResponse call
+func ParsePreviewAgentOwnerAccessResponse(rsp *http.Response) (*PreviewAgentOwnerAccessResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PreviewAgentOwnerAccessResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AgentOwnerAccessPreview
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCreateAgentRulesFromOwnerAccessResponse parses an HTTP response from a CreateAgentRulesFromOwnerAccessWithResponse call
+func ParseCreateAgentRulesFromOwnerAccessResponse(rsp *http.Response) (*CreateAgentRulesFromOwnerAccessResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateAgentRulesFromOwnerAccessResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest AgentOwnerAccessRulesResult
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
 
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
 		var dest Error
@@ -70777,6 +73632,13 @@ func ParseDeleteAIProviderResponse(rsp *http.Response) (*DeleteAIProviderRespons
 	}
 
 	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 409:
+		var dest AIProviderInUseConflict
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON409 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
 		var dest Error
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
@@ -70838,6 +73700,39 @@ func ParseTestAIProviderResponse(rsp *http.Response) (*TestAIProviderResponse, e
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest AIProviderConnection
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetAIGatewayStatusResponse parses an HTTP response from a GetAIGatewayStatusWithResponse call
+func ParseGetAIGatewayStatusResponse(rsp *http.Response) (*GetAIGatewayStatusResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetAIGatewayStatusResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AIGatewayStatus
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
@@ -76608,6 +79503,237 @@ func ParseAssignMachineCredentialOwnerResponse(rsp *http.Response) (*AssignMachi
 	}
 
 	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseConnectMCPServerResponse parses an HTTP response from a ConnectMCPServerWithResponse call
+func ParseConnectMCPServerResponse(rsp *http.Response) (*ConnectMCPServerResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ConnectMCPServerResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest MCPConnection
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseStartMCPConnectionPreviewResponse parses an HTTP response from a StartMCPConnectionPreviewWithResponse call
+func ParseStartMCPConnectionPreviewResponse(rsp *http.Response) (*StartMCPConnectionPreviewResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &StartMCPConnectionPreviewResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest MCPConnectionPreview
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetMCPConnectionPreviewResponse parses an HTTP response from a GetMCPConnectionPreviewWithResponse call
+func ParseGetMCPConnectionPreviewResponse(rsp *http.Response) (*GetMCPConnectionPreviewResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetMCPConnectionPreviewResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest MCPConnectionPreview
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetOrganizationMCPSettingResponse parses an HTTP response from a GetOrganizationMCPSettingWithResponse call
+func ParseGetOrganizationMCPSettingResponse(rsp *http.Response) (*GetOrganizationMCPSettingResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetOrganizationMCPSettingResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest MCPSetting
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseSetOrganizationMCPEnabledResponse parses an HTTP response from a SetOrganizationMCPEnabledWithResponse call
+func ParseSetOrganizationMCPEnabledResponse(rsp *http.Response) (*SetOrganizationMCPEnabledResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &SetOrganizationMCPEnabledResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest MCPSetting
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListOrganizationMCPToolApprovalRequestsResponse parses an HTTP response from a ListOrganizationMCPToolApprovalRequestsWithResponse call
+func ParseListOrganizationMCPToolApprovalRequestsResponse(rsp *http.Response) (*ListOrganizationMCPToolApprovalRequestsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListOrganizationMCPToolApprovalRequestsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest MCPToolApprovalInboxPage
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCountOrganizationMCPToolApprovalRequestsResponse parses an HTTP response from a CountOrganizationMCPToolApprovalRequestsWithResponse call
+func ParseCountOrganizationMCPToolApprovalRequestsResponse(rsp *http.Response) (*CountOrganizationMCPToolApprovalRequestsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CountOrganizationMCPToolApprovalRequestsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest MCPToolApprovalCount
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
 		var dest Error
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {

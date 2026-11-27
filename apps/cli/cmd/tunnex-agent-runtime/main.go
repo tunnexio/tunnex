@@ -45,15 +45,12 @@ func main() {
 	}
 }
 
+// preflight refuses to start without WireGuard's own tool. resolvconf is no longer required (AI-UX-1): on a
+// host without it the runtime leaves the DNS servers out of the tunnel configuration, so wg-quick never
+// calls it, and reports that private DNS names pushed through the tunnel do not resolve there.
 func preflight() error {
 	if _, err := exec.LookPath("wg"); err != nil {
 		return errors.New("wg is required")
 	}
-	if _, err := exec.LookPath("resolvconf"); err == nil {
-		return nil
-	}
-	if _, err := exec.LookPath("openresolv"); err == nil {
-		return nil
-	}
-	return errors.New("resolvconf or openresolv is required")
+	return nil
 }

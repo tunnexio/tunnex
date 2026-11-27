@@ -17,6 +17,7 @@ import (
 
 	"github.com/tunnexio/tunnex/apps/api/db/sqlc"
 	"github.com/tunnexio/tunnex/apps/api/internal/alerts"
+	"github.com/tunnexio/tunnex/apps/api/internal/mcptoolpolicy"
 	"github.com/tunnexio/tunnex/apps/api/internal/policy"
 )
 
@@ -236,7 +237,10 @@ type Config struct {
 	MCPUpstream         *string
 	// MCPGatewayURL is the gateway's MCP listener. When set, MCPUpstream is withheld: the runtime forwards
 	// to the gateway and has no direct path of its own.
-	MCPGatewayURL              *string
+	MCPGatewayURL *string
+	// MCPServers names every MCP server the agent reaches through the gateway, first one first. Set only
+	// on the gateway path.
+	MCPServers                 []MCPServer
 	CredentialRotationRevision *int64
 	WireGuardCurrentRevision   int64
 	WireGuardRotationRevision  *int64
@@ -305,6 +309,9 @@ type PollOptions struct {
 	// MCPGateway is true when the runtime forwards MCP to the gateway listener (poll query
 	// mcp_gateway=true). A runtime that predates gateway enforcement never sends it.
 	MCPGateway bool
+	// MCPHold is true when the runtime keeps an MCP call open while an "Ask first" request waits for an
+	// approver (poll query mcp_hold=true). Only such a runtime is told to hold.
+	MCPHold bool
 }
 
 func (s *Service) Poll(ctx context.Context, id Identity, appliedRevision, wireGuardRevision int64, clientVersion string) (Config, bool, error) {
@@ -347,7 +354,7 @@ func (s *Service) PollWith(ctx context.Context, id Identity, appliedRevision, wi
 	if err != nil {
 		return Config{}, false, ErrRuntimeStateMissing
 	}
-	routeFingerprint := fingerprintRuntimeConfig(allowed, mcpPath.Upstream, mcpPath.GatewayURL)
+	routeFingerprint := fingerprintRuntimeConfig(allowed, mcpPath.Upstream, mcpPath.GatewayURL, mcpPath.fingerprintServers())
 	state, err := s.q.EnsureAgentRuntimeState(ctx, sqlc.EnsureAgentRuntimeStateParams{ID: id.DeviceID, OrgID: id.OrgID, RouteFingerprint: routeFingerprint})
 	if err != nil {
 		return Config{}, false, ErrRuntimeStateMissing
@@ -367,7 +374,14 @@ func (s *Service) PollWith(ctx context.Context, id Identity, appliedRevision, wi
 		if mcpPath, err = s.mcpPath(ctx, id.OrgID, id.DeviceID, dev.NodeID, org.PoolCidr, true); err != nil {
 			return Config{}, false, ErrRuntimeStateMissing
 		}
-		routeFingerprint = fingerprintRuntimeConfig(allowed, mcpPath.Upstream, mcpPath.GatewayURL)
+		routeFingerprint = fingerprintRuntimeConfig(allowed, mcpPath.Upstream, mcpPath.GatewayURL, mcpPath.fingerprintServers())
+	}
+	if opts.MCPHold {
+		// Stored like the gateway declaration: on a declaring poll, refreshed at most once a minute. A
+		// poll that leaves it out never clears it. Failing to store it only means calls are not held.
+		if decl, err := s.q.GetAgentRuntimeDeclarations(ctx, sqlc.GetAgentRuntimeDeclarationsParams{DeviceID: id.DeviceID, OrgID: id.OrgID}); err == nil && (!decl.McpHoldCapableAt.Valid || s.now().Sub(decl.McpHoldCapableAt.Time) > time.Minute) {
+			_, _ = s.q.MarkAgentRuntimeMCPHoldCapable(ctx, sqlc.MarkAgentRuntimeMCPHoldCapableParams{DeviceID: id.DeviceID, OrgID: id.OrgID})
+		}
 	}
 	mcpUpstream := mcpPath.Upstream
 	desiredRevision := state.DesiredRevision
@@ -413,7 +427,7 @@ func (s *Service) PollWith(ctx context.Context, id Identity, appliedRevision, wi
 		Revision: desiredRevision, DeviceID: id.DeviceID, OrgID: id.OrgID,
 		Address: *dev.AssignedIp + "/32", GatewayEndpoint: node.Endpoint,
 		GatewayPublicKey: node.WgPublicKey, AllowedIPs: allowed, DNS: dns,
-		PersistentKeepalive: 25, MCPUpstream: mcpUpstream, MCPGatewayURL: mcpPath.GatewayURL, CredentialRotationRevision: rotationRevision,
+		PersistentKeepalive: 25, MCPUpstream: mcpUpstream, MCPGatewayURL: mcpPath.GatewayURL, MCPServers: mcpPath.gatewayServers(), CredentialRotationRevision: rotationRevision,
 		WireGuardCurrentRevision: wgCurrentRevision, WireGuardRotationRevision: wgRotationRevision,
 		WireGuardRotationState: wgRotationState,
 	}, false, nil
@@ -464,8 +478,10 @@ func (s *Service) effectiveAllowedIPs(ctx context.Context, orgID, deviceID uuid.
 
 // fingerprintRuntimeConfig covers everything in the config that is derived rather than stored, so a change
 // to any of it advances the desired revision. Absent MCP fields add nothing: an agent without MCP keeps the
-// fingerprint it had before the gateway path existed.
-func fingerprintRuntimeConfig(allowed []string, mcpUpstream, mcpGatewayURL *string) string {
+// fingerprint it had before the gateway path existed, and an agent with one MCP server keeps the one it had
+// before an agent could have several (a new revision makes the runtime re-apply its tunnel, so it is not
+// spent on a change that changes nothing). servers is passed only for an agent with more than one.
+func fingerprintRuntimeConfig(allowed []string, mcpUpstream, mcpGatewayURL *string, servers []MCPServer) string {
 	h := sha256.New()
 	for _, route := range allowed {
 		_, _ = h.Write([]byte(route))
@@ -478,26 +494,43 @@ func fingerprintRuntimeConfig(allowed []string, mcpUpstream, mcpGatewayURL *stri
 		_, _ = h.Write([]byte{0})
 		_, _ = h.Write([]byte("mcp-gateway:" + *mcpGatewayURL))
 	}
+	for _, server := range servers {
+		_, _ = h.Write([]byte{0})
+		_, _ = h.Write([]byte("mcp-server:" + server.Name))
+		if server.Default {
+			_, _ = h.Write([]byte(":default"))
+		}
+	}
 	return hex.EncodeToString(h.Sum(nil))
 }
 
-func (s *Service) mcpUpstreamForDevice(ctx context.Context, orgID, deviceID uuid.UUID) (*string, error) {
-	profiles, err := s.q.ListAgentMCPProfilesForDevice(ctx, sqlc.ListAgentMCPProfilesForDeviceParams{OrgID: orgID, DeviceID: deviceID})
+// MCPServer is one MCP server of an agent as its runtime and the administrator see it.
+type MCPServer struct {
+	// Name is the server name: its path on the local proxy and on the gateway listener.
+	Name     string
+	Endpoint string
+	// Default is true for exactly one server, the first (the earliest assignment). It also answers at the
+	// bare address, so a client configured before server names existed keeps working.
+	Default bool
+}
+
+// mcpServersForDevice lists the agent's MCP servers, first one first. An endpoint that is not a
+// credential-free absolute URL fails the whole read, as it always has: a runtime is never handed a
+// configuration built around a server it cannot be sent to.
+func (s *Service) mcpServersForDevice(ctx context.Context, orgID, deviceID uuid.UUID) ([]MCPServer, error) {
+	assigned, err := mcptoolpolicy.AssignedServers(ctx, s.q, orgID, deviceID)
 	if err != nil {
 		return nil, err
 	}
-	if len(profiles) == 0 {
-		return nil, nil
+	out := make([]MCPServer, 0, len(assigned))
+	for i, server := range assigned {
+		u, err := url.Parse(server.Endpoint)
+		if err != nil || u.Scheme == "" || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
+			return nil, errors.New("invalid MCP profile endpoint")
+		}
+		out = append(out, MCPServer{Name: server.ServerName, Endpoint: server.Endpoint, Default: i == 0})
 	}
-	if len(profiles) != 1 {
-		return nil, errors.New("multiple MCP profiles assigned to agent")
-	}
-	endpoint := strings.TrimSpace(profiles[0].Endpoint)
-	u, err := url.Parse(endpoint)
-	if err != nil || u.Scheme == "" || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
-		return nil, errors.New("invalid MCP profile endpoint")
-	}
-	return &endpoint, nil
+	return out, nil
 }
 
 // PollWait performs an immediate read and, only while the caller is current,

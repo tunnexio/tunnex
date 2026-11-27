@@ -140,15 +140,19 @@ func (q *Queries) GetOrganizationMCPDirectPathGrace(ctx context.Context, orgID u
 const insertAgentMCPToolActivity = `-- name: InsertAgentMCPToolActivity :one
 INSERT INTO agent_mcp_tool_activity (
     org_id, device_id, node_id, endpoint, server_name, method, tool_name,
-    arguments_digest, decision, reason, policy_version, approval_request_id, result_status
+    arguments_digest, decision, reason, policy_version, approval_request_id, result_status,
+    policy_source, policy_group_id
 ) VALUES (
     $1, $2, $3, $4, $5,
     $6, $7, $8, $9, $10,
-    $11, $12, $13
+    $11, $12, $13,
+    COALESCE($14::text,
+             CASE WHEN $11::bigint IS NOT NULL THEN 'agent' END),
+    $15
 )
 RETURNING id, org_id, device_id, node_id, endpoint, server_name, method, tool_name, arguments_digest,
           decision, reason, policy_version, approval_request_id, result_status, upstream_http_status,
-          occurred_at, completed_at, created_at
+          occurred_at, completed_at, created_at, policy_source, policy_group_id
 `
 
 type InsertAgentMCPToolActivityParams struct {
@@ -165,8 +169,13 @@ type InsertAgentMCPToolActivityParams struct {
 	PolicyVersion     *int64      `json:"policy_version"`
 	ApprovalRequestID pgtype.UUID `json:"approval_request_id"`
 	ResultStatus      string      `json:"result_status"`
+	PolicySource      *string     `json:"policy_source"`
+	PolicyGroupID     pgtype.UUID `json:"policy_group_id"`
 }
 
+// AI-UX-1: policy_source says which policy decided ('agent' or 'group', with
+// the group in policy_group_id). A caller that does not say is recorded as the
+// per-agent policy whenever it names a policy version, as before.
 func (q *Queries) InsertAgentMCPToolActivity(ctx context.Context, arg InsertAgentMCPToolActivityParams) (AgentMcpToolActivity, error) {
 	row := q.db.QueryRow(ctx, insertAgentMCPToolActivity,
 		arg.OrgID,
@@ -182,6 +191,8 @@ func (q *Queries) InsertAgentMCPToolActivity(ctx context.Context, arg InsertAgen
 		arg.PolicyVersion,
 		arg.ApprovalRequestID,
 		arg.ResultStatus,
+		arg.PolicySource,
+		arg.PolicyGroupID,
 	)
 	var i AgentMcpToolActivity
 	err := row.Scan(
@@ -203,6 +214,8 @@ func (q *Queries) InsertAgentMCPToolActivity(ctx context.Context, arg InsertAgen
 		&i.OccurredAt,
 		&i.CompletedAt,
 		&i.CreatedAt,
+		&i.PolicySource,
+		&i.PolicyGroupID,
 	)
 	return i, err
 }
@@ -270,7 +283,8 @@ func (q *Queries) ListAgentMCPTargetsForNode(ctx context.Context, arg ListAgentM
 const listAgentMCPToolActivity = `-- name: ListAgentMCPToolActivity :many
 SELECT a.id, a.org_id, a.device_id, a.node_id, a.endpoint, a.server_name, a.method, a.tool_name,
        a.arguments_digest, a.decision, a.reason, a.policy_version, a.approval_request_id, a.result_status,
-       a.upstream_http_status, a.occurred_at, a.completed_at, a.created_at
+       a.upstream_http_status, a.occurred_at, a.completed_at, a.created_at,
+       a.policy_source, a.policy_group_id
 FROM agent_mcp_tool_activity a
 JOIN devices d ON d.id = a.device_id
 WHERE a.org_id = $1
@@ -327,6 +341,8 @@ func (q *Queries) ListAgentMCPToolActivity(ctx context.Context, arg ListAgentMCP
 			&i.OccurredAt,
 			&i.CompletedAt,
 			&i.CreatedAt,
+			&i.PolicySource,
+			&i.PolicyGroupID,
 		); err != nil {
 			return nil, err
 		}

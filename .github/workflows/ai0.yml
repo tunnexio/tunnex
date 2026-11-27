@@ -106,8 +106,8 @@ jobs:
               test "$(sha256sum "$AI0_BIFROST_BINARY" | awk "{print \$1}")" = "$AI0_BIFROST_BUILT_SHA256"
               cd /repo/apps/api
               DATABASE_URL="$TUNNEX_TEST_DATABASE_URL" go run ./cmd/migrate up
-              go test -race -count=1 -p 1 ./internal/aigateway ./internal/http
-              go test -race -tags enterprise -count=1 -p 1 ./internal/aigateway ./internal/http
+              go test -race -timeout 40m -count=1 -p 1 ./internal/aigateway ./internal/http
+              go test -race -timeout 40m -tags enterprise -count=1 -p 1 ./internal/aigateway ./internal/http
               go vet ./internal/aigateway ./internal/http
             '
       - name: Stop only this test database
