@@ -1,6 +1,6 @@
 import { MemoryRouter } from "react-router-dom";
 import { WorkspaceFeatureControl } from "../src/components/WorkspaceFeatureControl";
-import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AIGatewaySettings } from "../src/components/AIGatewaySettings";
 
@@ -111,17 +111,19 @@ describe("AI gateway organization settings", () => {
     expect(api.PUT).toHaveBeenCalledTimes(1);
     expect(api.PUT.mock.calls[0][1].params.path.orgId).toBe("org-a");
   });
-  it("points the HTTPS prerequisite to the administrator transport setting", async () => {
+  it("says who can choose the transport and leaves no silent grey switch", async () => {
     api.GET.mockResolvedValue({ data: { ...result(false, false).data, engine_installed: true, unavailable_reason: "https_required", http_allowed: false } });
-    render(view("org-a", true, false)); await state(false, false);
-    expect(screen.getByText(/Settings → AI Gateway transport/)).toBeTruthy();
-    expect(screen.getByText(/turn on Public internet/)).toBeTruthy();
-    expect(screen.queryByText(/endpoint restricted to your private or VPN network/)).toBeNull();
+    render(view("org-a", true, false)); await state(false);
+    const banner = screen.getByRole("status", { name: "AI Gateway is not ready" });
+    expect(banner.textContent).toContain("Ask a server administrator to open Settings, then AI Gateway transport");
+    expect((screen.getByRole("switch", { name: "AI Gateway" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByText("Transport not chosen")).toBeTruthy();
+    expect(screen.queryByRole("alert")).toBeNull();
   });
   it("reports the saved HTTP exception without claiming private-only access", async () => {
-    api.GET.mockResolvedValue({ data: { ...result(false).data, http_allowed: true, private_http_allowed: false } });
-    render(view("org-a", true, false)); await state(false, false);
-    expect(screen.getByText("Configured · HTTP allowed")).toBeTruthy();
+    api.GET.mockResolvedValue({ data: { ...result(true).data, http_allowed: true, private_http_allowed: false } });
+    render(view("org-a", true, false)); await state(true);
+    expect(screen.getByText("Ready · HTTP allowed")).toBeTruthy();
     expect(screen.getByText(/HTTP does not encrypt credentials or requests/)).toBeTruthy();
   });
   it("hides mutation controls when editing is forbidden", async () => {
@@ -133,10 +135,82 @@ describe("AI gateway organization settings", () => {
     expect(api.PUT).not.toHaveBeenCalled();
   });
 
-  it("keeps activation in Features while the product workspace shows saved state", async () => {
-    api.GET.mockResolvedValue(result(false));
-    render(view("org-a", true, false)); await state(false, false);
-    expect(screen.getByRole("link", { name: "Manage feature" }).getAttribute("href")).toBe("/settings?section=features&feature=ai-gateway");
-    expect(screen.queryByRole("switch")).toBeNull(); expect(api.PUT).not.toHaveBeenCalled();
+  it("puts the switch on the AI Gateway settings page instead of a link to Features", async () => {
+    let enabled = false;
+    api.GET.mockImplementation(async () => result(enabled));
+    api.PUT.mockImplementation(async () => { enabled = true; return result(true); });
+    render(view("org-a", true, false)); await state(false);
+    expect(screen.queryByRole("link", { name: "Manage feature" })).toBeNull();
+    expect(screen.getByRole("status", { name: "AI Gateway is not ready" }).textContent).toContain("AI Gateway is turned off");
+    fireEvent.click(screen.getByRole("switch", { name: "AI Gateway" }));
+    await state(true);
+    expect(api.PUT).toHaveBeenCalledExactlyOnceWith("/api/v1/organizations/{orgId}/ai-gateway", { params: { path: { orgId: "org-a" } }, body: { enabled: true } });
+    await waitFor(() => expect(screen.queryByRole("status", { name: "AI Gateway is not ready" })).toBeNull());
+  });
+  it("turns the gateway on from the banner and the switch follows", async () => {
+    let enabled = false;
+    api.GET.mockImplementation(async () => result(enabled));
+    api.PUT.mockImplementation(async () => { enabled = true; return result(true); });
+    render(view("org-a", true, false)); await state(false);
+    fireEvent.click(screen.getByRole("button", { name: "Turn on AI Gateway" }));
+    await state(true);
+    expect(api.PUT).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("AI Gateway switch when the transport is not chosen (AI-UX-1)", () => {
+  const settingsPath = "/api/v1/organizations/{orgId}/ai-gateway";
+  const transportRequired = { data: { enabled: false, available: false, revision: 1, unavailable_reason: "https_required", status: { on: false, reason: "transport_required", fix: { kind: "choose_transport", requires_server_admin: true } } } };
+  const central = (serverAdmin: boolean) => <MemoryRouter><WorkspaceFeatureControl feature="ai-gateway" orgId="org-a" canEdit roles={["admin"]} serverAdmin={serverAdmin} /></MemoryRouter>;
+
+  it("opens the transport choice for a server administrator, then finishes turning the gateway on", async () => {
+    let chosen = false, enabled = false;
+    api.GET.mockImplementation(async (path: string) => path === settingsPath
+      ? chosen ? { data: { enabled, available: true, revision: 2 } } : transportRequired
+      : { data: { allow_http: false, allow_vpn_http: false, revision: 1 } });
+    api.PUT.mockImplementation(async (path: string) => {
+      if (path === settingsPath) { enabled = true; return { data: { enabled: true, available: true, revision: 3 } }; }
+      chosen = true; return { data: { allow_http: false, allow_vpn_http: true, revision: 2 } };
+    });
+    render(central(true)); await state(false);
+    const toggle = screen.getByRole("switch", { name: "AI Gateway" }) as HTMLButtonElement;
+    expect(toggle.disabled).toBe(false);
+    expect(screen.getByText(/turning AI Gateway on first asks you to choose the transport/)).toBeTruthy();
+    fireEvent.click(toggle);
+    const dialog = await screen.findByRole("dialog", { name: "Choose how AI Gateway is reached" });
+    expect(api.PUT).not.toHaveBeenCalled();
+    fireEvent.click(await screen.findByRole("switch", { name: "Allow HTTP inside the VPN" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save changes" }));
+    await screen.findByText(/^Saved\./);
+    fireEvent.click(within(dialog).getByRole("button", { name: "Done" }));
+    await state(true);
+    expect(api.PUT).toHaveBeenLastCalledWith(settingsPath, { params: { path: { orgId: "org-a" } }, body: { enabled: true } });
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("does not turn the gateway on when the transport choice is closed without one", async () => {
+    api.GET.mockImplementation(async (path: string) => path === settingsPath ? transportRequired : { data: { allow_http: false, allow_vpn_http: false, revision: 1 } });
+    render(central(true)); await state(false);
+    fireEvent.click(screen.getByRole("switch", { name: "AI Gateway" }));
+    const dialog = await screen.findByRole("dialog", { name: "Choose how AI Gateway is reached" });
+    fireEvent.click(within(dialog).getByRole("button", { name: "Done" }));
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    await state(false);
+    expect(api.PUT).not.toHaveBeenCalled();
+  });
+
+  it("says who can choose the transport for anyone who is not a server administrator", async () => {
+    api.GET.mockResolvedValue(transportRequired);
+    render(central(false)); await state(false);
+    expect((screen.getByRole("switch", { name: "AI Gateway" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByText(/Ask a server administrator to open Settings, then AI Gateway transport/)).toBeTruthy();
+    expect(screen.queryByRole("dialog")).toBeNull();
+  });
+
+  it("says who installs the AI engine when that is what is missing", async () => {
+    api.GET.mockResolvedValue({ data: { enabled: false, available: false, revision: 1, unavailable_reason: "engine_not_configured" } });
+    render(central(false)); await state(false);
+    expect((screen.getByRole("switch", { name: "AI Gateway" }) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByText(/Only a server administrator can fix this: ask them to upgrade Tunnex Server/)).toBeTruthy();
   });
 });

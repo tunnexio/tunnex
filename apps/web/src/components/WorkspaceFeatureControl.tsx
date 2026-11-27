@@ -6,7 +6,8 @@ import { useAuth } from "../lib/auth";
 import { can } from "../lib/rbac";
 import { useSandboxModuleState } from "../lib/deploymentMeta";
 import { SANDBOX_PRODUCT_SHELVED } from "../lib/sandboxProduct";
-import { aiGatewayPrerequisite } from "../lib/aiGatewayPrerequisite";
+import { aiGatewayOffCopy, aiGatewayStatus } from "../lib/aiGatewayPrerequisite";
+import { AITransportSettings } from "./AITransportSettings";
 import { beamApi, type BeamPolicy, type BeamPolicyImpact } from "../lib/beam";
 import { Button, Loading, Modal, SettingRow, Switch } from "./ui";
 
@@ -27,7 +28,7 @@ export function WorkspaceFeatureControl(props: Props) {
   const key = `${props.feature}:${props.orgId}:${actor}:${[...props.roles].sort().join(",")}:${props.canEdit}:${props.serverAdmin}`;
   const editable = props.canEdit && state.status === "authed" && state.user.email_verified && !state.user.must_change_password;
   switch (props.feature) {
-    case "ai-gateway": return <AIFeature key={key} orgId={props.orgId} canEdit={editable} />;
+    case "ai-gateway": return <AIGatewaySwitch key={key} orgId={props.orgId} canEdit={editable} serverAdmin={props.serverAdmin} />;
     case "server-access": return <ServerFeature key={key} orgId={props.orgId} canEdit={editable} serverAdmin={props.serverAdmin} />;
     case "local-sharing": return <SharingFeature key={key} orgId={props.orgId} canEdit={editable} serverAdmin={props.serverAdmin} />;
     case "sandboxes": return <SandboxFeature key={key} orgId={props.orgId} canEdit={editable} />;
@@ -78,14 +79,46 @@ async function write<T>(operation: () => Promise<{ data?:T; error?:unknown }>): 
   return result.error ? {ok:false,error:apiErrorMessage(result.error,"The setting could not be updated.")} : result.data === undefined ? {ok:false,error:"Could not confirm the setting change."} : {ok:true,data:result.data};
 }
 
-function AIFeature({ orgId,canEdit }: { orgId:string;canEdit:boolean }) {
-  const control=useControl(() => loadOne(() => api.GET("/api/v1/organizations/{orgId}/ai-gateway",{params:{path:{orgId}}})), value => !!value && typeof value.enabled === "boolean" && typeof value.available === "boolean" && integer(value.revision));
+const aiGatewayPath = "/api/v1/organizations/{orgId}/ai-gateway" as const;
+/**
+ * The AI Gateway switch, wherever it is shown. It is never grey without a reason beside it: when the
+ * transport has to be chosen first, turning it on opens that choice for a server administrator.
+ */
+/** `explained`: a banner beside the switch already says what is missing, so the row does not repeat it. */
+export function AIGatewaySwitch({ orgId,canEdit,serverAdmin,onChanged,explained=false }: { orgId:string;canEdit:boolean;serverAdmin:boolean;onChanged?:()=>void;explained?:boolean }) {
+  const control=useControl(() => loadOne(() => api.GET(aiGatewayPath,{params:{path:{orgId}}})), value => !!value && typeof value.enabled === "boolean" && typeof value.available === "boolean" && integer(value.revision));
+  const [transportOpen,setTransportOpen]=useState(false), [finishing,setFinishing]=useState(false);
+  const alive=useRef(true);
+  useEffect(() => { alive.current=true; return () => { alive.current=false; }; },[]);
   const saved=control.data;
+  const status=saved ? aiGatewayStatus(saved) : null;
+  // The switch can still be turned off while the gateway is not usable; only turning it on needs the fix.
+  const missing=saved && !saved.available ? status?.reason === "transport_required" ? "transport_required" as const : "engine_not_installed" as const : null;
+  const opensTransport=missing === "transport_required" && serverAdmin;
   function change(enabled:boolean) {
-    if (!canEdit || !saved || enabled === saved.enabled || (enabled && !saved.available)) return;
-    void control.transact(() => write(() => api.PUT("/api/v1/organizations/{orgId}/ai-gateway",{params:{path:{orgId}},body:{enabled}})),control.commit);
+    if (!canEdit || !saved || enabled === saved.enabled) return;
+    if (enabled && missing) { if (opensTransport) setTransportOpen(true); return; }
+    void control.transact(() => write(() => api.PUT(aiGatewayPath,{params:{path:{orgId}},body:{enabled}})),value => { control.commit(value); onChanged?.(); });
   }
-  return <FeatureRow name="AI Gateway" description="Allow requests to configured models. Disabling blocks new requests; accepted requests may finish within 30 seconds." enabled={saved?.enabled} canEdit={canEdit} control={control} enableBlocked={!!saved && !saved.enabled && !saved.available} onChange={change}>{saved && !saved.available && <p className="text-sm text-ink-secondary">{aiGatewayPrerequisite(saved)}</p>}</FeatureRow>;
+  // The administrator asked to turn the gateway on. Once the transport allows it, finish that request.
+  async function closeTransport() {
+    if (finishing) return;
+    setFinishing(true);
+    try {
+      const fresh=await loadOne(() => api.GET(aiGatewayPath,{params:{path:{orgId}}}));
+      if (fresh.ok && fresh.data?.available === true && fresh.data.enabled === false) await api.PUT(aiGatewayPath,{params:{path:{orgId}},body:{enabled:true}});
+    } catch { /* the reload below shows what was saved */ }
+    if (!alive.current) return;
+    setFinishing(false); setTransportOpen(false);
+    await control.reload();
+    onChanged?.();
+  }
+  return <><FeatureRow name="AI Gateway" description="Allow requests to configured models. Disabling blocks new requests; accepted requests may finish within 30 seconds." enabled={saved?.enabled} canEdit={canEdit} control={control} enableBlocked={!!saved && !saved.enabled && !!missing && !opensTransport} onChange={change}>{missing && !explained && <p className="text-sm text-ink-secondary">{opensTransport && !saved?.enabled ? "This server is reached over plain HTTP, so turning AI Gateway on first asks you to choose the transport." : aiGatewayOffCopy(missing,{canManage:true,serverAdmin}).body}</p>}</FeatureRow>
+    {transportOpen && <Modal title="Choose how AI Gateway is reached" placement="right" size="enrollment" showClose onDismiss={() => void closeTransport()} actions={<Button disabled={finishing} onClick={() => void closeTransport()}>{finishing ? "Checking…" : "Done"}</Button>}>
+      <p className="mb-4 text-sm text-ink-secondary">Save a transport choice here, then choose Done. AI Gateway turns on as soon as the transport allows it.</p>
+      <AITransportSettings canEdit={canEdit} />
+    </Modal>}
+  </>;
 }
 
 function ServerFeature({ orgId,canEdit,serverAdmin }: { orgId:string;canEdit:boolean;serverAdmin:boolean }) {
