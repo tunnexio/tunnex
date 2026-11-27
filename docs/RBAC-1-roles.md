@@ -27,8 +27,9 @@ Admin is impossible:
 
 ### New roles
 
-- Locked: **Read-only admin** (`read-only-admin`). Sees what an admin sees and
-  changes nothing.
+- Locked: **Auditor** (`auditor`). Sees what an admin sees and changes nothing.
+  The founder chose the name on 2026-11-27, replacing "Read-only admin",
+  because it is the term buyers and other access products use.
   - Grants every view permission an admin has, plus a new `audit:view_all` for
     the organization-wide audit log.
   - Does not see: Vault secret values, Server Access session recordings, AI
@@ -50,8 +51,8 @@ Admin is impossible:
 - Locked: **Helpdesk** (`helpdesk`). Helps people get connected.
   - Member list, device approve and restore, MFA reset, devices view.
   - MFA reset and device actions only for a person who holds no admin-grade
-    role (Owner, Admin, Network admin, AI Agents admin, Read-only admin, AI
-    Gateway admin). Enforced on the server.
+    role (Owner, Admin, Network admin, AI Agents admin, Auditor, AI Gateway
+    admin). Enforced on the server.
   - Not: policies, rules, users' roles, anything else.
 - Not built: **Approver**. Dropped by the founder.
 - Not built: custom roles and SCIM role mapping; only if a customer asks.
@@ -92,8 +93,117 @@ Admin is impossible:
   route outside that role's grants answers 403, in both editions.
 - Separate tests: Helpdesk cannot reset MFA for, or act on devices of, a person
   with an admin-grade role; AI Agents admin can create agent rules and cannot
-  create a rule for a person, a user group or a device; Read-only admin reads
-  the organization audit log and cannot change anything; renamed labels appear
+  create a rule for a person, a user group or a device; Auditor reads the
+  organization audit log and cannot change anything; renamed labels appear
   everywhere a role is shown.
 - `make generate-check`, both editions, web unit suite, typecheck, build.
 - Live walk on the test deployment with one person per new role.
+
+## As built
+
+Implemented on `story/rbac-1`. Deviations from the decisions above, and choices
+the paper did not make, are listed here for the founder's disposition.
+
+### Grants
+
+- **Auditor** (`auditor`): `org:view`, `member:list`, `audit:view_all`,
+  `audit_log_retention:view`, `policy:view`, `fqdn_resource:view`,
+  `k8s_ha:view`, `k8s_scope:view`, `device:view`, `app_access:view`,
+  `app_access:event_view`, `beam:audit_view`, `ai_workload:view`,
+  `ai_model_access:view`, `ai_gateway:view`, `ai_provider:view`,
+  `agent:view_privileged`, `sandbox:view`. Derived mechanically from every
+  admin read (a test re-derives it). Left out: `server_access:replay`
+  (session recordings), Vault (no read permission exists), MCP approvals
+  (`agent_mcp_tool_approval:approve`), install tokens (`agent:enroll`), and
+  `server_access:view`, which gates no server route and would only offer a
+  terminal page the auditor cannot use. Checked against the handlers:
+  `ai_provider:view` returns a key id, never key material; MCP tool activity
+  carries an argument digest, never arguments. Admin reads that are gated by
+  a manage permission (pending devices, device-approval mode, MFA enforcement
+  state, SSO connections, agent groups and templates, site DNS forwards,
+  Kubernetes inventory, install tokens) are not visible to the auditor; no
+  per-read permission was invented for them.
+- **AI Agents admin** (`agents-admin`): the agent and MCP permissions in the
+  paper, plus `org:view`, `member:list` and **`policy:view`** (not in the
+  paper). The policy template and agent access screens pick destinations from
+  `/resources` and `/groups`, which are `policy:view`; without it those
+  screens cannot load. Read only.
+- **Network admin** (`network-admin`): as the paper, plus `policy:view` and
+  `policy_rule:manage` for access rules. It does not hold `connectivity:use`
+  (a member's "use" permission).
+- **Helpdesk** (`helpdesk`): `org:view`, `member:list`, `device:view`,
+  `device:approve`, `device:restore`, `mfa:reset`.
+
+### New permissions (split, never widened)
+
+The paper's roles could not be expressed with the existing permissions,
+because several bundled a capability a role needs with one it must not have.
+Owner and admin hold every new permission, so nothing changes for them.
+
+- `audit:view_all` (paper): the organization audit log.
+- `gateway:manage`: gateway routes (join token, rename, revoke, delete,
+  address pool, cross-gateway clients, OpenVPN, the lifecycle claim remint),
+  moved off `org:update`, which no new role may hold. Organization settings,
+  SSO, the agent quota and the deployment-wide gateway endpoint stay
+  `org:update`.
+- `mfa:reset`: admin MFA reset, split from `mfa:manage`, which keeps the
+  enforcement toggle (Helpdesk must not switch enforcement off).
+- `device_approval:manage`: the organization's device-approval toggle, split
+  from `device:approve` (Helpdesk approves devices and must not switch the
+  requirement off).
+- `device:view`: the organization-wide device list, previously decided by
+  `member:manage`.
+- `resource:manage`: resource create, edit and delete, split from
+  `policy:manage` (network admin manages resources and must not switch Zero
+  Trust off).
+- `alerting:private_destination`: owner only; replaces the owner-name check on
+  private alert destinations.
+
+### Rules
+
+- A rule, a cluster scope or a template assignment whose source is an agent or
+  an agent group needs `agent:grant_access`; any other source needs
+  `policy_rule:manage`. Template apply and remove no longer need
+  `policy:manage` (their rules are always agent-group rules). Creating a
+  Kubernetes cluster scope needs the rule permission for its source instead of
+  `policy:manage`.
+- Not changed, for disposition: rule enable/disable and grant extension stay
+  `policy:manage`. Moving them to `policy_rule:manage` would hand them to the
+  GitOps operator, which RBAC-0 D4 deliberately kept away. So a network admin
+  creates and deletes rules but cannot disable or extend one; the console says
+  so.
+
+### Helpdesk ceiling
+
+- Enforced in the MFA reset transaction and before device approve, reject,
+  restore and transfer, from the target's full role set. Restore and transfer
+  act on a whole gateway, so they are refused outright when any device on that
+  gateway belongs to an admin-grade person, rather than skipping those
+  devices. The device checks run just before the action, not inside its
+  transaction.
+- Helpdesk's restore is reachable through the API only: the gateway pages are
+  `gateway:manage`/`site:manage` and are not offered to Helpdesk.
+
+### Role checks converted
+
+Server: org-wide audit log (`audit:view_all`); private alert destinations;
+agent access requester authority (read from the role set, schema-agnostic);
+SSO connection test; every `RoleIn` + `rbac.Can` on the primary role (device
+list, device for another person, device mode, device lifecycle target, OpenVPN
+for another person, agent owners, agent profile permissions, agent access
+request authority) now reads the whole role set. Kept by name: last-owner
+guard, owner-grants-owner, owner MFA reset, and the SQL "member, admin or
+owner" standing checks for Beam and sandboxes (no new role holds a Beam or
+sandbox create permission). No new view-gated mutation was found: the auditor
+route walk reaches only the RBAC-0 D5 self-service set.
+
+Console: labels and one-sentence descriptions for every role; "AI Gateway
+admin" and "AI Gateway viewer" for `ai-admin` and `ai-view`. Role-name gating
+replaced with `can()` in the IPsec workspace, licence card, device approvals
+and posture, alerts, resources, people and agent groups, the audit log and the
+organization-deletion copy. `useOrgAdmins` still lists owners and admins by
+name: it is the "who to ask" contact list, not an access decision.
+
+### Not done
+
+- The live walk with one person per role on the test deployment.
