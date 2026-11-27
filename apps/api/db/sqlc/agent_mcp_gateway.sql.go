@@ -98,6 +98,31 @@ func (q *Queries) GetAgentMCPToolActivityRetention(ctx context.Context, orgID uu
 	return i, err
 }
 
+const getFreshNodeCapabilities = `-- name: GetFreshNodeCapabilities :one
+SELECT n.capabilities
+FROM nodes n
+WHERE n.org_id = $1
+  AND n.id = $2
+  AND n.status = 'active'
+  AND n.revoked_at IS NULL
+  AND n.policy_reported_at >= now() - interval '90 seconds'
+  AND n.policy_reported_at <= now()
+`
+
+type GetFreshNodeCapabilitiesParams struct {
+	OrgID  uuid.UUID `json:"org_id"`
+	NodeID uuid.UUID `json:"node_id"`
+}
+
+// A gateway's capability report, only while it is fresh by the database clock
+// (the same 90-second window the VPN AI listener uses). No row = not usable.
+func (q *Queries) GetFreshNodeCapabilities(ctx context.Context, arg GetFreshNodeCapabilitiesParams) ([]byte, error) {
+	row := q.db.QueryRow(ctx, getFreshNodeCapabilities, arg.OrgID, arg.NodeID)
+	var capabilities []byte
+	err := row.Scan(&capabilities)
+	return capabilities, err
+}
+
 const getOrganizationMCPDirectPathGrace = `-- name: GetOrganizationMCPDirectPathGrace :one
 SELECT grace_until
 FROM organization_mcp_direct_path_grace
@@ -180,6 +205,66 @@ func (q *Queries) InsertAgentMCPToolActivity(ctx context.Context, arg InsertAgen
 		&i.CreatedAt,
 	)
 	return i, err
+}
+
+const listAgentMCPTargetsForNode = `-- name: ListAgentMCPTargetsForNode :many
+SELECT d.id AS device_id, d.assigned_ip, p.id AS profile_id, p.endpoint
+FROM devices d
+JOIN agent_group_members m
+  ON m.org_id = d.org_id AND m.device_id = d.id
+JOIN agent_mcp_profile_assignments a
+  ON a.org_id = m.org_id AND a.agent_group_id = m.agent_group_id AND a.state = 'active'
+JOIN agent_mcp_profiles p
+  ON p.id = a.profile_id AND p.org_id = a.org_id
+WHERE d.org_id = $1
+  AND d.node_id = $2
+  AND d.transport = 'wireguard'
+  AND d.kind = 'agent'
+  AND d.status = 'active'
+  AND d.deleted_at IS NULL
+  AND NOT d.health_blocked
+  AND d.assigned_ip IS NOT NULL
+ORDER BY d.id, p.id
+`
+
+type ListAgentMCPTargetsForNodeParams struct {
+	OrgID  uuid.UUID `json:"org_id"`
+	NodeID uuid.UUID `json:"node_id"`
+}
+
+type ListAgentMCPTargetsForNodeRow struct {
+	DeviceID   uuid.UUID `json:"device_id"`
+	AssignedIp *string   `json:"assigned_ip"`
+	ProfileID  uuid.UUID `json:"profile_id"`
+	Endpoint   string    `json:"endpoint"`
+}
+
+// The agents homed on one gateway and the MCP endpoint each inherits from its
+// groups. An agent with more than one active profile appears more than once; the
+// caller treats that as no target, exactly like the runtime poll does.
+func (q *Queries) ListAgentMCPTargetsForNode(ctx context.Context, arg ListAgentMCPTargetsForNodeParams) ([]ListAgentMCPTargetsForNodeRow, error) {
+	rows, err := q.db.Query(ctx, listAgentMCPTargetsForNode, arg.OrgID, arg.NodeID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	items := []ListAgentMCPTargetsForNodeRow{}
+	for rows.Next() {
+		var i ListAgentMCPTargetsForNodeRow
+		if err := rows.Scan(
+			&i.DeviceID,
+			&i.AssignedIp,
+			&i.ProfileID,
+			&i.Endpoint,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listAgentMCPToolActivity = `-- name: ListAgentMCPToolActivity :many

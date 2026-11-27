@@ -755,6 +755,9 @@ type Querier interface {
 	// ── policy_rules (allow grants) ─────────────────────────────────────────────────
 	// A policy destination may only name a resource owned by this organization.
 	GetFQDNResourceForPolicy(ctx context.Context, arg GetFQDNResourceForPolicyParams) (uuid.UUID, error)
+	// A gateway's capability report, only while it is fresh by the database clock
+	// (the same 90-second window the VPN AI listener uses). No row = not usable.
+	GetFreshNodeCapabilities(ctx context.Context, arg GetFreshNodeCapabilitiesParams) ([]byte, error)
 	// S7.5.2 IdP-group sync. Enterprise. All tenant-scoped by org_id.
 	// The reconciler reads the desired membership from a DirectoryProvider (Graph/etc.) and drives
 	// these to converge group_members(origin='idp_sync') — NEVER touching manual rows (disjoint by D1).
@@ -1199,6 +1202,10 @@ type Querier interface {
 	ListAgentMCPProfileAssignments(ctx context.Context, orgID uuid.UUID) ([]ListAgentMCPProfileAssignmentsRow, error)
 	ListAgentMCPProfiles(ctx context.Context, orgID uuid.UUID) ([]AgentMcpProfile, error)
 	ListAgentMCPProfilesForDevice(ctx context.Context, arg ListAgentMCPProfilesForDeviceParams) ([]ListAgentMCPProfilesForDeviceRow, error)
+	// The agents homed on one gateway and the MCP endpoint each inherits from its
+	// groups. An agent with more than one active profile appears more than once; the
+	// caller treats that as no target, exactly like the runtime poll does.
+	ListAgentMCPTargetsForNode(ctx context.Context, arg ListAgentMCPTargetsForNodeParams) ([]ListAgentMCPTargetsForNodeRow, error)
 	// Newest first for one agent. Keyset: pass the last row's occurred_at and id.
 	ListAgentMCPToolActivity(ctx context.Context, arg ListAgentMCPToolActivityParams) ([]AgentMcpToolActivity, error)
 	// Server-owned destructive-impact preview for F06. Deleting a group clears
@@ -1768,6 +1775,10 @@ type Querier interface {
 	MarkEmailVerified(ctx context.Context, id uuid.UUID) error
 	MarkLifecycleInstallOperationAborted(ctx context.Context, arg MarkLifecycleInstallOperationAbortedParams) (NodeLifecycleInstallOperation, error)
 	MatchingAppAccessGrants(ctx context.Context, arg MatchingAppAccessGrantsParams) ([]MatchingAppAccessGrantsRow, error)
+	// AI-SEC-2: for a gateway-observed device the agent host may still refresh the
+	// OAuth discovery metadata an administrator starts consent from. Nothing else
+	// in the snapshot, and neither its time nor its source, changes.
+	MergeAgentMCPInventoryOAuthDiscovery(ctx context.Context, arg MergeAgentMCPInventoryOAuthDiscoveryParams) (int64, error)
 	NextAgentPolicyTemplateVersion(ctx context.Context, arg NextAgentPolicyTemplateVersionParams) (int32, error)
 	// JSON projection preserves historical pre-release schema qualification.
 	OwnsAppAccessHostname(ctx context.Context, arg OwnsAppAccessHostnameParams) (*bool, error)
@@ -2249,6 +2260,8 @@ type Querier interface {
 	UpdateOrganizationName(ctx context.Context, arg UpdateOrganizationNameParams) (Organization, error)
 	UpdateResource(ctx context.Context, arg UpdateResourceParams) (Resource, error)
 	UpdateUserGroup(ctx context.Context, arg UpdateUserGroupParams) (UserGroup, error)
+	// AI-SEC-2: once the gateway has observed this device, a list reported by the
+	// agent host never replaces it. No row is returned in that case.
 	UpsertAgentMCPInventory(ctx context.Context, arg UpsertAgentMCPInventoryParams) (AgentMcpInventory, error)
 	UpsertAgentMCPOAuthConnection(ctx context.Context, arg UpsertAgentMCPOAuthConnectionParams) (AgentMcpOauthConnection, error)
 	UpsertAgentMCPToolActivityRetention(ctx context.Context, arg UpsertAgentMCPToolActivityRetentionParams) (AgentMcpToolActivityRetentionSetting, error)

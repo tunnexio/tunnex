@@ -11,7 +11,8 @@ WHERE d.id = $1
 ON CONFLICT (device_id) DO UPDATE SET device_id = EXCLUDED.device_id
 RETURNING device_id, desired_revision, applied_revision,
           last_attempted_revision, client_version, last_seen_at,
-          last_error_code, last_error_revision, route_fingerprint, created_at, updated_at;
+          last_error_code, last_error_revision, route_fingerprint, created_at, updated_at,
+          mcp_gateway_capable_at;
 
 -- name: RefreshAgentRuntimeRouteFingerprint :one
 -- A route-set change is desired state, not an imperative host command. Advance
