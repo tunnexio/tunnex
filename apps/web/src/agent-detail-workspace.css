@@ -85,3 +85,17 @@
 .agent-detail-editor [role=alert] { color:var(--tnx-danger); }
 .agent-detail-editor button { width:fit-content; justify-self:start; min-height:32px; padding:6px 10px; font-size:12px; }
 @media(max-width:1100px) { .agent-detail-layout { grid-template-columns:148px minmax(0,1fr); gap:22px; } }
+/* MCP calls: below this width the stage is too narrow for five columns, so each call reads as a labelled block. */
+@media(max-width:900px) {
+  .agent-detail-workspace [data-testid=agent-mcp-tool-activity] table { display:block; width:100%; min-width:0!important; }
+  .agent-detail-workspace [data-testid=agent-mcp-tool-activity] thead { position:absolute; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); }
+  .agent-detail-workspace [data-testid=agent-mcp-tool-activity] tbody,.agent-detail-workspace [data-testid=agent-mcp-tool-activity] tbody tr { display:block; }
+  .agent-detail-workspace [data-testid=agent-mcp-tool-activity] tbody tr { padding:10px 0; border-bottom:1px solid var(--tnx-border); }
+  .agent-detail-workspace [data-testid=agent-mcp-tool-activity] tbody td { display:grid; grid-template-columns:64px minmax(0,1fr); gap:10px; min-width:0!important; padding:2px 0; border:0; overflow-wrap:anywhere; }
+  .agent-detail-workspace [data-testid=agent-mcp-tool-activity] tbody td::before { color:var(--tnx-text-secondary); }
+  .agent-detail-workspace [data-testid=agent-mcp-tool-activity] td[data-column=time]::before { content:"Time"; }
+  .agent-detail-workspace [data-testid=agent-mcp-tool-activity] td[data-column=tool]::before { content:"Tool"; }
+  .agent-detail-workspace [data-testid=agent-mcp-tool-activity] td[data-column=server]::before { content:"Server"; }
+  .agent-detail-workspace [data-testid=agent-mcp-tool-activity] td[data-column=result]::before { content:"Result"; }
+  .agent-detail-workspace [data-testid=agent-mcp-tool-activity] td[data-column=approval]::before { content:"Approval"; }
+}

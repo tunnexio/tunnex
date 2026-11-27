@@ -258,7 +258,7 @@ export function AgentMCPToolActivityPanel({ orgId, deviceId }: { orgId: string; 
   return <div data-testid="agent-mcp-tool-activity" className="min-w-0">
     {state.items.length === 0 ? <><p className="text-ink-heading">No MCP calls yet.</p><p>Calls this agent makes to its MCP server through the gateway are listed here.</p></> : <>
       <div role="group" aria-label="Show" className="flex flex-wrap items-center gap-2">{([["all", "All calls"], ["approved", "Approved calls"]] as const).map(([value, label]) => <Button key={value} size="sm" variant={filter === value ? "primary" : "ghost"} aria-pressed={filter === value} onClick={() => setFilter(value)}>{label}</Button>)}</div>
-      {shown.length === 0 ? <p className="mt-3">None of the calls shown ran on an approval.</p> : <div className="mt-3 min-w-0 overflow-x-auto"><DataTable caption="MCP calls" rows={shown} rowKey={(item) => item.id} failed={false} filterable={false} pageSize={0} empty={<>No MCP calls yet.</>} columns={[
+      {shown.length === 0 ? <p className="mt-3">None of the calls shown ran on an approval.</p> : <div className="mt-3 min-w-0"><DataTable caption="MCP calls" rows={shown} rowKey={(item) => item.id} failed={false} filterable={false} pageSize={0} empty={<>No MCP calls yet.</>} columns={[
         { key: "time", header: "Time", cell: (item) => <span className="whitespace-nowrap" title={new Date(item.occurred_at).toLocaleString()}>{compactDateTime(item.occurred_at)}</span> },
         { key: "tool", header: "Tool", cell: (item) => <span className="break-all font-mono">{item.tool_name || item.method}</span> },
         { key: "server", header: "Server", cell: (item) => <span className="break-all">{item.server_name || item.endpoint}</span> },
