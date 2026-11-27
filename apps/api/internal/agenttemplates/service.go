@@ -172,7 +172,7 @@ func (s *Service) CreateGroup(ctx context.Context, orgID, actor uuid.UUID, name,
 		return sqlc.AgentGroup{}, err
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
-	if err := requireEnabledTx(ctx, tx, orgID); err != nil {
+	if err := requireGroupsEnabledTx(ctx, tx, orgID); err != nil {
 		return sqlc.AgentGroup{}, err
 	}
 	row, err := sqlc.New(tx).CreateAgentGroup(ctx, sqlc.CreateAgentGroupParams{OrgID: orgID, Name: strings.TrimSpace(name), Description: strings.TrimSpace(description)})
@@ -197,7 +197,7 @@ func (s *Service) UpdateGroup(ctx context.Context, orgID, groupID, actor uuid.UU
 		return sqlc.AgentGroup{}, err
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
-	if err := requireEnabledTx(ctx, tx, orgID); err != nil {
+	if err := requireGroupsEnabledTx(ctx, tx, orgID); err != nil {
 		return sqlc.AgentGroup{}, err
 	}
 	if _, err := sqlc.New(tx).GetAgentGroupForUpdate(ctx, sqlc.GetAgentGroupForUpdateParams{ID: groupID, OrgID: orgID}); err != nil {
@@ -226,7 +226,7 @@ func (s *Service) ArchiveGroup(ctx context.Context, orgID, groupID, actor uuid.U
 		return RemovalImpact{}, err
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
-	if err := requireEnabledTx(ctx, tx, orgID); err != nil {
+	if err := requireGroupsEnabledTx(ctx, tx, orgID); err != nil {
 		return RemovalImpact{}, err
 	}
 	if _, err := sqlc.New(tx).GetAgentGroupForUpdate(ctx, sqlc.GetAgentGroupForUpdateParams{ID: groupID, OrgID: orgID}); err != nil {
@@ -264,7 +264,7 @@ func (s *Service) AddMember(ctx context.Context, orgID, groupID, deviceID, actor
 		return false, err
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
-	if err := requireEnabledTx(ctx, tx, orgID); err != nil {
+	if err := requireGroupsEnabledTx(ctx, tx, orgID); err != nil {
 		return false, err
 	}
 	q := sqlc.New(tx)
@@ -305,7 +305,7 @@ func (s *Service) RemoveMember(ctx context.Context, orgID, groupID, deviceID, ac
 		return RemovalImpact{}, err
 	}
 	defer tx.Rollback(ctx) //nolint:errcheck
-	if err := requireEnabledTx(ctx, tx, orgID); err != nil {
+	if err := requireGroupsEnabledTx(ctx, tx, orgID); err != nil {
 		return RemovalImpact{}, err
 	}
 	q := sqlc.New(tx)
@@ -909,6 +909,27 @@ func requireEnabledTx(ctx context.Context, tx pgx.Tx, orgID uuid.UUID) error {
 		return classifyNotFound(err)
 	}
 	if !enabled {
+		return ErrConflict
+	}
+	return nil
+}
+
+// requireGroupsEnabledTx gates agent groups and their members, which agent policy templates and MCP both
+// build on: either switch being on is enough (AI-UX-1). Template operations keep requireEnabledTx.
+func requireGroupsEnabledTx(ctx context.Context, tx pgx.Tx, orgID uuid.UUID) error {
+	q := sqlc.New(tx)
+	templates, err := q.GetOrganizationAgentPolicyTemplatesEnabled(ctx, orgID)
+	if err != nil {
+		return classifyNotFound(err)
+	}
+	if templates {
+		return nil
+	}
+	mcp, err := q.GetOrganizationMCPSetting(ctx, orgID)
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		return err
+	}
+	if err != nil || !mcp.Enabled {
 		return ErrConflict
 	}
 	return nil
