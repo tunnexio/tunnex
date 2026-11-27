@@ -56,7 +56,7 @@ describe("AI and identity navigation", () => {
   });
 
   it("separates AI destinations from Network and puts identity beside access", () => {
-    expect(NAV_GROUPS.find((g) => g.group === "AI")?.items.map((i) => i.to)).toEqual(["/ai-gateway", "/agents", "/mcp"]);
+    expect(NAV_GROUPS.find((g) => g.group === "AI")?.items.map((i) => i.to)).toEqual(["/ai-gateway", "/agents", "/mcp", "/approvals"]);
     expect(NAV_GROUPS.find((g) => g.group === "NETWORK")?.items.some((i) => i.to.startsWith("/agents"))).toBe(false);
     expect(NAV_GROUPS.flatMap((g) => g.items).find((i) => i.to === "/users")?.label).toBe("Users & Groups");
   });

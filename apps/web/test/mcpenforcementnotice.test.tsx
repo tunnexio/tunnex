@@ -111,15 +111,15 @@ describe("where the notices appear", () => {
     const notice = within(await screen.findByRole("note", { name: reinstall }));
     expect(notice.getByRole("link", { name: "Update runtime" }).getAttribute("href")).toBe("/agents/agent-a?tab=runtime");
     expect(screen.getByRole("note", { name: cannotClose })).toBeTruthy();
-    expect(await screen.findByText(/Seen by the gateway/)).toBeTruthy();
+    expect(await screen.findByText(/by the gateway\. This is the server.s tool list as last read/)).toBeTruthy();
   });
 
   it("words the tool policy for the gateway once the gateway applies it", async () => {
     effective = assigned({ enforcement: "gateway" });
     render(<MemoryRouter initialEntries={["/agents/agent-a?tab=mcp"]}><AgentDetail agentIdOverride="agent-a" /></MemoryRouter>);
     expect(await screen.findByText(gatewayLine)).toBeTruthy();
-    expect(await screen.findByText("Tools are blocked unless you tick them here. The gateway checks every call this agent makes.")).toBeTruthy();
-    expect(screen.queryByText(/local MCP proxy/)).toBeNull();
+    expect(await screen.findByText("Choose what this agent may do with each tool. A tool nobody has decided about is Off. The gateway checks every call this agent makes.")).toBeTruthy();
+    expect(screen.queryByText(/local MCP address/)).toBeNull();
   });
 
   it("shows them for the chosen agent on the MCP page, and flags a changed tool there", async () => {

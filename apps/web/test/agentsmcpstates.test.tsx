@@ -7,6 +7,9 @@ let mode: "denied" | "ready" = "denied";
 let assignmentMode: "none" | "same" | "different" = "none";
 let memberCount = 1;
 let archiveBlocked = false;
+// What the server says about the MCP switch; null leaves the page on the organization row, as before the switch existed.
+let mcpFeature: { enabled: boolean; available: boolean; required_plan?: string } | null = null;
+const { putFeature } = vi.hoisted(() => ({ putFeature: vi.fn(async () => ({ data: { enabled: true } })) }));
 const profileA = { id: "profile-a", org_id: "org-a", name: "Jira", endpoint: "https://mcp.example/jira", created_at: "2026-01-01T00:00:00Z", updated_at: "2026-01-01T00:00:00Z", archived_at: null };
 const profileB = { id: "profile-b", org_id: "org-a", name: "GitHub", endpoint: "https://mcp.example/github", created_at: "2026-01-01T00:00:00Z", updated_at: "2026-01-01T00:00:00Z", archived_at: null };
 
@@ -20,6 +23,7 @@ vi.mock("../src/lib/api", async () => {
     ...actual,
     api: {
       GET: vi.fn(async (path: string) => {
+        if (path.endsWith("/agent-features") && mcpFeature) return { data: { items: [{ key: "agent_groups", enabled: false, available: true }, { key: "mcp", ...mcpFeature }] } };
         if (path.endsWith("/agent-mcp-profiles")) return mode === "denied"
           ? { error: { error: { code: "permission_denied", message: "MCP profiles require permission." } } }
           : { data: [profileA, profileB] };
@@ -30,14 +34,14 @@ vi.mock("../src/lib/api", async () => {
       }),
       POST: vi.fn(async (path: string) => path.endsWith("/archive") && archiveBlocked
         ? { error: { code: "mcp_profile_in_use", active_group_count: 2, affected_agent_count: 3 } }
-        : { data: profileA }), PUT: vi.fn(), PATCH: vi.fn(), DELETE: vi.fn(),
+        : { data: profileA }), PUT: putFeature, PATCH: vi.fn(), DELETE: vi.fn(),
     },
   };
 });
 
 import AgentsMCP from "../src/pages/AgentsMCP";
 
-afterEach(() => { cleanup(); mode = "denied"; assignmentMode = "none"; memberCount = 1; archiveBlocked = false; });
+afterEach(() => { cleanup(); mode = "denied"; assignmentMode = "none"; memberCount = 1; archiveBlocked = false; mcpFeature = null; putFeature.mockClear(); });
 
 async function assignmentImpactText() {
   const heading = await screen.findByRole("heading", { name: "Shared assignment impact" });
@@ -47,6 +51,39 @@ async function assignmentImpactText() {
 async function findParagraphContaining(text: string) {
   return screen.findByText((_, element) => element?.tagName === "P" && Boolean(element.textContent?.includes(text)));
 }
+
+describe("MCP switch on the MCP page", () => {
+  it("turns MCP on in place with its own switch, without needing agent groups to be on", async () => {
+    mode = "ready"; mcpFeature = { enabled: false, available: true };
+    render(<MemoryRouter><AgentsMCP /></MemoryRouter>);
+    const toggle = await screen.findByRole("switch", { name: "MCP" });
+    expect(toggle.getAttribute("aria-checked")).toBe("false");
+    expect(screen.queryByRole("link", { name: "Open feature settings" })).toBeNull();
+    expect(screen.queryByText("MCP profile inventory")).toBeNull();
+    fireEvent.click(toggle);
+    expect(await screen.findByRole("button", { name: "Jira" })).toBeTruthy();
+    expect(putFeature).toHaveBeenCalledWith("/api/v1/organizations/{orgId}/mcp-settings", { params: { path: { orgId: "org-a" } }, body: { enabled: true } });
+  });
+
+  it("names the plan instead of offering a switch that would fail", async () => {
+    mode = "ready"; mcpFeature = { enabled: false, available: false, required_plan: "scale" };
+    render(<MemoryRouter><AgentsMCP /></MemoryRouter>);
+    expect(((await screen.findByRole("switch", { name: "MCP" })) as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByText(/Included in the Scale plan\./)).toBeTruthy();
+  });
+});
+
+describe("connecting a server from the MCP page", () => {
+  it("opens the one guided dialog, which first asks where to connect the server", async () => {
+    mode = "ready";
+    render(<MemoryRouter><AgentsMCP /></MemoryRouter>);
+    fireEvent.click(await screen.findByRole("button", { name: "Connect MCP server" }));
+    const dialog = await screen.findByRole("dialog", { name: "Connect MCP server" });
+    expect(dialog.textContent).toContain("Nothing is connected until you save.");
+    expect(await screen.findByLabelText("Connect to")).toBeTruthy();
+    expect(screen.queryByRole("button", { name: "Create profile" })).toBeNull();
+  });
+});
 
 describe("Agents MCP permission boundary", () => {
   it("renders forbidden inventory as permission denied, never as an empty or failed inventory", async () => {

@@ -66,6 +66,7 @@ const EXEMPT: Record<string, string> = {
 
 // COVERED — a screen enters this list when it has BOTH a wiring test and a failure-path test.
 const COVERED: Record<string, string> = {
+  "Approvals.tsx": "approvals.test.tsx: organization inbox read and refresh, empty distinct from a failed read, approve and in-page deny confirmation through the per-agent endpoints, already-handled requests, and the sidebar count",
   "Vault.tsx": "vault.test.tsx: personal and assigned API wiring, explicit version reads, stale-response concealment, conflict refusal and failed reads distinct from empty",
   "Beam.tsx": "beam.test.tsx — tenant-scoped shared/owner inventory, failed/empty separation, revisioned lifecycle confirmation, denied reviewer launch and stale organization responses",
   "SandboxSetup.tsx": "test/sandbox-setup.test.tsx, test/sandbox-runner-enrollment.test.tsx and test/sandbox-runner-qualification-trial.test.tsx — admin enrollment, prerequisites, one-time token, observed readiness, bounded native trial, exact-report review, settings CAS and catalog publication",
@@ -206,7 +207,7 @@ describe("screen census", () => {
   // THE LEDGER LINES. Not floors. Covering a screen means moving it from PENDING to COVERED and editing BOTH
   // numbers — two deliberate edits, in one diff a reviewer sees. A `>=` here would be satisfied forever.
   it("the COVERED count equals its ledger total", () => {
-    expect(Object.keys(COVERED).length).toBe(33);
+    expect(Object.keys(COVERED).length).toBe(34);
   });
 
   it("the PENDING count equals its ledger total — the backlog shrinks deliberately or not at all", () => {
@@ -226,7 +227,7 @@ describe("screen census", () => {
   //
   // RE-BASELINING IS A DELIBERATE, REVIEWABLE EDIT — which is exactly the property the equals-the-total form
   // was chosen for. A `>=` floor would have absorbed the growth silently and nobody would have had to look.
-  it("the ledger is a snapshot of today — 45 accountable screens, ceiling ~13 after the redesign", () => {
-    expect(Object.keys(COVERED).length + Object.keys(PENDING).length).toBe(45);
+  it("the ledger is a snapshot of today — 46 accountable screens, ceiling ~13 after the redesign", () => {
+    expect(Object.keys(COVERED).length + Object.keys(PENDING).length).toBe(46);
   });
 });

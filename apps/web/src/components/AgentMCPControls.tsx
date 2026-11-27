@@ -4,6 +4,7 @@ import type { components } from "@tunnex/shared";
 import { api, apiErrorCode, apiErrorMessage, loadOne, type Loaded } from "../lib/api";
 import { compactDateTime } from "../lib/format";
 import { Badge, Button, DataTable, Field, Input, Modal } from "./ui";
+import { MCPToolRows, modeSummary, parseRate, type MCPToolMode, type MCPToolRow } from "./MCPToolSettings";
 
 type Inventory = components["schemas"]["AgentMCPInventory"];
 type Policy = components["schemas"]["AgentMCPToolPolicy"];
@@ -23,10 +24,10 @@ const toolsFrom = (inventory: Inventory): Tool[] => (Array.isArray(inventory.sna
   });
 });
 
-const approvalOutcome: Record<Approval["state"], string> = { pending: "Waiting", approved: "Approved, not used yet", denied: "Denied", expired: "Expired", consumed: "Used" };
+export const approvalOutcome: Record<Approval["state"], string> = { pending: "Waiting", approved: "Approved, not used yet", denied: "Denied", expired: "Expired", consumed: "Used" };
 const EARLIER_REQUEST_LIMIT = 20;
 
-function timeLeft(expiresAt: string, now: number): string | null {
+export function approvalTimeLeft(expiresAt: string, now: number): string | null {
   const end = new Date(expiresAt).getTime();
   if (Number.isNaN(end)) return null;
   const seconds = Math.floor((end - now) / 1000);
@@ -41,7 +42,7 @@ function argumentText(value: unknown): string {
 }
 
 /** What the approver is being asked to allow. The arguments are data from the agent: shown as text, never run. */
-function ApprovalArguments({ item }: { item: Approval }) {
+export function ApprovalArguments({ item }: { item: Approval }) {
   const entries = item.arguments ? Object.entries(item.arguments) : null;
   return <div role="group" aria-label="Arguments" className="mt-1 min-w-0">
     <div className="text-slate-500">Arguments</div>
@@ -63,7 +64,7 @@ export function AgentMCPToolApprovalPanel({ orgId, deviceId, canApprove }: { org
   const items = requests?.ok ? requests.data : [];
   const pending = items.filter((item) => item.state === "pending");
   const earlier = items.filter((item) => item.state !== "pending").sort((a, b) => String(b.requested_at ?? "").localeCompare(String(a.requested_at ?? "")));
-  const counting = pending.some((item) => timeLeft(item.expires_at, now) !== null);
+  const counting = pending.some((item) => approvalTimeLeft(item.expires_at, now) !== null);
   useEffect(() => {
     if (!counting) return;
     setNow(Date.now());
@@ -84,11 +85,11 @@ export function AgentMCPToolApprovalPanel({ orgId, deviceId, canApprove }: { org
   };
   const title = (item: Approval) => <div className="min-w-0 break-words"><span className="font-mono text-ink-heading">{item.tool_name}</span> <span className="text-slate-400">on {item.server_name}</span></div>;
   return <div data-testid="agent-mcp-tool-approvals" className="text-xs text-slate-300">
-    <p className="text-slate-500">When a tool needs approval, the agent&apos;s call waits here. Approving lets that one call run once, with exactly the arguments shown.</p>
+    <p className="text-slate-500">When a tool is set to Ask first, the agent&apos;s call waits here. Approving lets that one call run once, with exactly the arguments shown. <Link className="underline" to="/approvals">See every agent&apos;s requests in Approvals</Link>.</p>
     {notice && <p role="status" className="mt-2 text-slate-300">{notice}</p>}
     {!canApprove ? <p role="status" className="mt-2 text-slate-500">You do not have permission to review or approve step-up requests.</p> : requests === null ? <p role="status" className="mt-2 text-slate-500">Loading step-up requests…</p> : !requests.ok ? <><p role="alert" className="mt-2 text-danger">Step-up requests could not be loaded: {requests.error}</p><Button size="sm" variant="ghost" className="mt-2" onClick={load}>Retry</Button></> : items.length === 0 ? <p className="mt-2 text-slate-500">No step-up requests.</p> : <>
       {pending.length === 0 ? <p className="mt-2 text-slate-500">Nothing is waiting for a decision.</p> : <ul aria-label="Waiting for a decision" className="mt-2 grid gap-3">{pending.map((item) => {
-        const left = timeLeft(item.expires_at, now);
+        const left = approvalTimeLeft(item.expires_at, now);
         return <li key={item.id} aria-label={`${item.tool_name} on ${item.server_name}`} className="min-w-0 border-t border-white/10 pt-3">
           <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">{title(item)}{left && <span className="text-slate-400">{left}</span>}</div>
           <ApprovalArguments item={item} />
@@ -104,66 +105,83 @@ export function AgentMCPToolApprovalPanel({ orgId, deviceId, canApprove }: { org
 }
 
 type Rule = Policy["rules"][number];
-type ToolControl = { rate: string; stepUp: boolean; constraints: string };
-const noControl: ToolControl = { rate: "", stepUp: false, constraints: "" };
-const toolKey = (tool: Pick<Tool, "endpoint" | "server_name" | "tool_name" | "input_schema_hash">) => `${tool.endpoint}\u0000${tool.server_name}\u0000${tool.tool_name}\u0000${tool.input_schema_hash}`;
+type Choice = { mode: MCPToolMode; rate: string };
 /** A tool keeps its identity (server address and name) when its description or inputs change. */
 const toolIdentity = (tool: Pick<Tool, "endpoint" | "tool_name">) => `${tool.endpoint}\u0000${tool.tool_name}`;
 /** The rule's own state wins: it is read with the policy, so it is newer than the inventory on the page. */
-const definitionChanged = (rule: Rule, tool: Tool | undefined) => rule.definition_state === "changed" || (rule.definition_state == null && tool?.definition_state === "changed");
+const definitionChanged = (rule: Rule, tool: Tool | undefined) => rule.definition_state === "changed" || (rule.definition_state == null && tool?.definition_state === "changed") || (tool !== undefined && rule.input_schema_hash !== tool.input_schema_hash);
+/** Only what a save may send: the server's own notes on a rule are left out. */
+const writable = (rule: Rule) => ({ endpoint: rule.endpoint, server_name: rule.server_name, tool_name: rule.tool_name, input_schema_hash: rule.input_schema_hash, step_up_required: rule.step_up_required ?? false, ...(rule.rate_limit_per_minute ? { rate_limit_per_minute: rule.rate_limit_per_minute } : {}), ...(rule.argument_constraints ? { argument_constraints: rule.argument_constraints } : {}) });
 
-export function AgentMCPToolPolicyPanel({ orgId, deviceId, inventory, canManage, enforcement }: { orgId: string; deviceId: string; inventory: Inventory; canManage: boolean; enforcement?: EffectiveMCP["enforcement"] }) {
-  const tools = toolsFrom(inventory); const [policy, setPolicy] = useState<Loaded<Policy | null> | null>(null); const [selected, setSelected] = useState<Set<string>>(new Set()); const [controls, setControls] = useState<Record<string, ToolControl>>({}); const [busy, setBusy] = useState(false); const [error, setError] = useState<string | null>(null);
-  // Ticked tools whose inputs changed: the saved rule no longer matches what is on screen, so saving it
-  // again would accept the new version without anyone having read it.
-  const [moved, setMoved] = useState<Set<string>>(new Set()); const [accepted, setAccepted] = useState<Set<string>>(new Set()); const [notice, setNotice] = useState<string | null>(null);
-  const key = toolKey;
-  const byIdentity = new Map(tools.map((tool) => [toolIdentity(tool), tool]));
-  const hydrate = (current: Policy) => {
-    const nextSelected = new Set<string>(), nextMoved = new Set<string>(); const nextControls: Record<string, ToolControl> = {};
-    for (const rule of current.rules) {
-      const tool = byIdentity.get(toolIdentity(rule));
-      const id = tool && definitionChanged(rule, tool) ? key(tool) : key(rule);
-      if (id !== key(rule)) nextMoved.add(id);
-      nextSelected.add(id);
-      nextControls[id] = { rate: rule.rate_limit_per_minute?.toString() ?? "", stepUp: rule.step_up_required ?? false, constraints: rule.argument_constraints ? JSON.stringify(rule.argument_constraints) : "" };
-    }
-    setSelected(nextSelected); setControls(nextControls); setMoved(nextMoved); setAccepted(new Set());
+/**
+ * This agent's own tool policy: Allow, Ask first or Off for each tool the gateway sees. With `endpoint` it
+ * shows one MCP server and leaves the agent's choices for its other servers exactly as they are.
+ */
+export function AgentMCPToolPolicyPanel({ orgId, deviceId, inventory, canManage, enforcement, endpoint, onSaved }: { orgId: string; deviceId: string; inventory: Inventory; canManage: boolean; enforcement?: EffectiveMCP["enforcement"]; endpoint?: string; onSaved?: () => void }) {
+  const tools = toolsFrom(inventory).filter((tool) => !endpoint || tool.endpoint === endpoint);
+  const [policy, setPolicy] = useState<Loaded<Policy | null> | null>(null); const [choices, setChoices] = useState<Record<string, Choice>>({}); const [busy, setBusy] = useState(false); const [error, setError] = useState<string | null>(null);
+  const [accepted, setAccepted] = useState<Set<string>>(new Set()); const [notice, setNotice] = useState<string | null>(null);
+  const hydrate = (current: Policy | null) => {
+    const next: Record<string, Choice> = {};
+    for (const rule of current?.rules ?? []) next[toolIdentity(rule)] = { mode: rule.step_up_required ? "ask" : "allow", rate: rule.rate_limit_per_minute?.toString() ?? "" };
+    setChoices(next); setAccepted(new Set());
   };
-  const loadPolicy = () => { if (!canManage) { setPolicy(null); setSelected(new Set()); return; } setPolicy(null); void loadOne(async () => { const result = await api.GET("/api/v1/organizations/{orgId}/agents/{deviceId}/mcp-tool-policy", { params: { path: { orgId, deviceId } } }); return apiErrorCode(result.error) === "mcp_tool_policy_not_found" ? { data: null } : result; }).then((result) => { if (!result.ok) { setPolicy(result as Loaded<Policy | null>); setSelected(new Set()); return; } if (result.data) { const current = result.data as Policy; setPolicy({ ok: true, data: current }); hydrate(current); } else { setPolicy({ ok: true, data: null }); setSelected(new Set()); } }); };
+  const loadPolicy = () => { if (!canManage) { setPolicy(null); return; } setPolicy(null); void loadOne(async () => { const result = await api.GET("/api/v1/organizations/{orgId}/agents/{deviceId}/mcp-tool-policy", { params: { path: { orgId, deviceId } } }); return apiErrorCode(result.error) === "mcp_tool_policy_not_found" ? { data: null } : result; }).then((result) => { if (!result.ok) { setPolicy(result as Loaded<Policy | null>); return; } const current = (result.data as Policy | null) ?? null; setPolicy({ ok: true, data: current }); hydrate(current); }); };
   useEffect(loadPolicy, [orgId, deviceId, canManage]);
   const rules = policy?.ok && policy.data && Array.isArray(policy.data.rules) ? policy.data.rules : [];
-  const changed = (tool: Tool) => { if (accepted.has(toolIdentity(tool))) return false; const rule = rules.find((item) => toolIdentity(item) === toolIdentity(tool)); return rule ? definitionChanged(rule, tool) : false; };
+  const ruleFor = (tool: Tool) => rules.find((item) => toolIdentity(item) === toolIdentity(tool));
+  const changed = (tool: Tool) => { if (accepted.has(toolIdentity(tool))) return false; const rule = ruleFor(tool); return rule ? definitionChanged(rule, tool) : false; };
+  const choiceFor = (tool: Tool): Choice => choices[toolIdentity(tool)] ?? { mode: "off", rate: "" };
   const save = async () => {
     setError(null); setNotice(null);
-    const unreviewed = tools.find((tool) => selected.has(key(tool)) && moved.has(key(tool)) && changed(tool));
-    if (unreviewed) { setError(`Review ${unreviewed.tool_name} first: accept its new version, or untick it to keep it blocked.`); return; }
+    const unreviewed = tools.find((tool) => choiceFor(tool).mode !== "off" && changed(tool));
+    if (unreviewed) { setError(`Review ${unreviewed.tool_name} first: accept its new version, or turn it Off.`); return; }
+    // The agent's choices for its other servers are sent back unchanged. One that changed would be accepted by this save, so it has to be reviewed first.
+    const kept = endpoint ? rules.filter((rule) => rule.endpoint !== endpoint) : [];
+    const keptChanged = kept.find((rule) => rule.definition_state === "changed");
+    if (keptChanged) { setError(`Review ${keptChanged.tool_name} on ${keptChanged.server_name} first: that server changed it, and saving here would accept the change.`); return; }
+    const invalid = tools.find((tool) => choiceFor(tool).mode !== "off" && !parseRate(choiceFor(tool).rate).ok);
+    if (invalid) { setError(`Calls per minute for ${invalid.tool_name} must be a whole number above zero, or empty for no limit.`); return; }
+    const body = [...kept.map(writable), ...tools.filter((tool) => choiceFor(tool).mode !== "off").map((tool) => { const choice = choiceFor(tool); const rate = parseRate(choice.rate); const constraints = ruleFor(tool)?.argument_constraints; return { endpoint: tool.endpoint, server_name: tool.server_name, tool_name: tool.tool_name, input_schema_hash: tool.input_schema_hash, step_up_required: choice.mode === "ask", ...(rate.ok && rate.rate ? { rate_limit_per_minute: rate.rate } : {}), ...(constraints ? { argument_constraints: constraints } : {}) }; })];
     setBusy(true);
-    let body;
-    try { body = tools.filter((tool) => selected.has(key(tool))).map((tool) => { const control = controls[key(tool)] ?? noControl; const rate = Number(control.rate); const constraints = control.constraints ? JSON.parse(control.constraints) : undefined; if (control.constraints && (!constraints || !Array.isArray(constraints.required) || !constraints.properties || typeof constraints.properties !== "object" || Array.isArray(constraints.properties))) { throw new Error('Argument constraints need a required array and a properties object, for example {"required":[],"properties":{}}.'); } return { endpoint: tool.endpoint, server_name: tool.server_name, tool_name: tool.tool_name, input_schema_hash: tool.input_schema_hash, step_up_required: control.stepUp, ...(Number.isInteger(rate) && rate > 0 ? { rate_limit_per_minute: rate } : {}), ...(constraints ? { argument_constraints: constraints } : {}) }; }); } catch (cause) { setBusy(false); setError(cause instanceof SyntaxError ? "Argument constraints must be valid JSON." : cause instanceof Error ? cause.message : "Argument constraints must be valid JSON."); return; }
     const result = await api.PUT("/api/v1/organizations/{orgId}/agents/{deviceId}/mcp-tool-policy", { params: { path: { orgId, deviceId } }, body: { rules: body } });
     setBusy(false);
-    if (result.error || !result.data) { setError(apiErrorMessage(result.error, "Could not save the MCP tool policy. Check argument constraints and rate limits, then refresh inventory if the tool changed.")); return; }
-    setPolicy({ ok: true, data: result.data as Policy });
+    if (result.error || !result.data) { setError(apiErrorMessage(result.error, "Could not save the tool policy. If the server changed a tool, refresh the page and review it, then save again.")); return; }
+    setPolicy({ ok: true, data: result.data as Policy }); hydrate(result.data as Policy); setNotice("Tool policy saved."); onSaved?.();
   };
   const accept = async (tool: Tool) => {
-    if (!tool.tool_definition_hash) return;
+    if (!tool.tool_definition_hash) { setError("Refresh the page to load the new version before accepting it."); return; }
     setBusy(true); setError(null); setNotice(null);
     const result = await api.POST("/api/v1/organizations/{orgId}/agents/{deviceId}/mcp-tool-policy/accept-definition", { params: { path: { orgId, deviceId } }, body: { endpoint: tool.endpoint, tool_name: tool.tool_name, tool_definition_hash: tool.tool_definition_hash } });
     setBusy(false);
     if (result.error || !result.data) {
       const code = apiErrorCode(result.error);
-      setError(code === "mcp_tool_definition_stale" ? "This tool changed again while you were reading. Refresh the page and review it once more." : code === "mcp_tool_rule_not_found" ? "This tool is no longer in the saved policy. Refresh the page, then tick it to allow it." : "Could not accept the new version. Refresh the page and try again.");
+      setError(code === "mcp_tool_definition_stale" ? "This tool changed again while you were reading. Refresh the page and review it once more." : code === "mcp_tool_rule_not_found" ? "This tool is no longer in the saved policy. Refresh the page, then allow it again." : "Could not accept the new version. Refresh the page and try again.");
       return;
     }
-    // Only this tool's rule moved; ticks and limits being edited for other tools stay as they are.
+    // Only this tool's rule moved; choices being edited for other tools stay as they are.
     setPolicy({ ok: true, data: result.data as Policy });
     setAccepted((previous) => new Set(previous).add(toolIdentity(tool)));
-    setMoved((previous) => { const next = new Set(previous); next.delete(key(tool)); return next; });
     setNotice(`New version accepted. ${tool.tool_name} can run again.`);
   };
   const atGateway = enforcement === "gateway";
-  return <div data-testid="agent-mcp-tool-policy" className="text-xs text-slate-300"><p className="text-slate-500">{atGateway ? "Tools are blocked unless you tick them here. The gateway checks every call this agent makes." : "Default deny. Only checked tools may pass through the agent’s explicit local MCP proxy; direct upstream use is not protected."}</p>{!canManage ? <p role="status" className="mt-2 text-slate-500">You do not have permission to view or change the MCP tool policy.</p> : policy === null ? <p role="status" className="mt-2 text-slate-500">Loading MCP tool policy…</p> : !policy.ok ? <><p role="alert" className="mt-2 text-danger">MCP tool policy could not be loaded: {policy.error}</p><Button size="sm" variant="ghost" className="mt-2" onClick={loadPolicy}>Retry</Button></> : <>{policy.data ? <p className="mt-1 text-slate-500">Current version {policy.data.version} · based on inventory observed {policy.data.inventory_observed_at}.</p> : <p className="mt-1 text-slate-500">{atGateway ? "No rules yet: every tool is blocked." : "No policy yet: the local proxy denies every tool."}</p>}{tools.length === 0 ? <p className="mt-2 text-slate-500">No observed tools are available to allow.</p> : <div className="mt-2 grid gap-2">{tools.map((tool) => { const id = key(tool); const control = controls[id] ?? noControl; const needsReview = changed(tool); return <div key={id} role="group" aria-label={`${tool.server_name} · ${tool.tool_name}`} className="min-w-0"><div className="flex flex-wrap items-center gap-x-3 gap-y-1"><label className="flex min-w-0 items-center gap-2"><input type="checkbox" checked={selected.has(id)} disabled={busy} onChange={(event) => setSelected((previous) => { const next = new Set(previous); if (event.target.checked) next.add(id); else next.delete(id); return next; })} /><span className="break-all">{tool.server_name} · <span className="font-mono">{tool.tool_name}</span></span></label>{needsReview && <><Badge tone="warn">Changed, review</Badge><Badge tone="danger">Blocked</Badge></>}</div>{needsReview && <div className="ml-6 mt-1 grid gap-1"><p className="text-slate-400">The server changed this tool&apos;s name, description or inputs. It is blocked until you accept the new version.</p><div><div className="text-slate-500">New description</div><p className="whitespace-pre-wrap break-words text-slate-200">{tool.description ?? "The new version has no description."}</p></div>{tool.tool_definition_hash ? <div><Button size="sm" disabled={busy} onClick={() => void accept(tool)}>Accept new version</Button></div> : <p className="text-slate-500">Refresh the page to load the new version before accepting it.</p>}</div>}{selected.has(id) && <div className="ml-6 mt-1 grid gap-1 sm:grid-cols-3"><Input aria-label={`Rate limit for ${tool.tool_name}`} placeholder="calls/min" value={control.rate} disabled={busy} onChange={(event) => setControls((old) => ({ ...old, [id]: { ...control, rate: event.target.value } }))} /><label className="flex items-center gap-1"><input type="checkbox" checked={control.stepUp} disabled={busy} onChange={(event) => setControls((old) => ({ ...old, [id]: { ...control, stepUp: event.target.checked } }))} />Step-up approval</label><textarea aria-label={`Argument constraints for ${tool.tool_name}`} className="min-h-10 rounded border border-slate-700 bg-surface px-2 py-1 font-mono" placeholder='{"required":[],"properties":{}}' value={control.constraints} disabled={busy} onChange={(event) => setControls((old) => ({ ...old, [id]: { ...control, constraints: event.target.value } }))} /></div>}</div>; })}</div>}<Button className="mt-3" disabled={busy || tools.length === 0} onClick={() => void save()}>{busy ? "Saving…" : "Save tool policy"}</Button></>}{notice && <p role="status" className="mt-2 text-slate-300">{notice}</p>}{error && <p role="alert" className="mt-2 text-danger">{error}</p>}</div>;
+  const servers = [...new Map(tools.map((tool) => [tool.endpoint, tool.server_name])).entries()];
+  const rowsFor = (server: string): MCPToolRow[] => tools.filter((tool) => tool.endpoint === server).map((tool) => { const choice = choiceFor(tool); return { name: tool.tool_name, description: tool.description, mode: choice.mode, effect: null, rate: choice.rate, changed: choice.mode !== "off" && changed(tool), argumentLimits: Boolean(ruleFor(tool)?.argument_constraints) }; });
+  const allRows = servers.flatMap(([server]) => rowsFor(server));
+  return <div data-testid="agent-mcp-tool-policy" className="min-w-0 text-sm">
+    <p className="text-ink-tertiary">{atGateway ? "Choose what this agent may do with each tool. A tool nobody has decided about is Off. The gateway checks every call this agent makes." : "Choose what this agent may do with each tool. A tool nobody has decided about is Off. The choices apply to calls made through the agent's local MCP address; a call sent straight to the server is not checked."}</p>
+    {!canManage ? <p role="status" className="mt-2 text-ink-secondary">You do not have permission to view or change the MCP tool policy.</p> : policy === null ? <p role="status" className="mt-2 text-ink-secondary">Loading MCP tool policy…</p> : !policy.ok ? <><p role="alert" className="mt-2 text-danger">MCP tool policy could not be loaded: {policy.error}</p><Button size="sm" variant="ghost" className="mt-2" onClick={loadPolicy}>Retry</Button></> : <>
+      {!policy.data && <p className="mt-1 text-ink-secondary">No choices are saved yet, so every tool is Off.</p>}
+      {tools.length === 0 ? <p className="mt-2 text-ink-secondary">The gateway has not read any tools for this agent yet.</p> : servers.map(([server, serverName]) => <div key={server} className="mt-2 min-w-0">
+        {servers.length > 1 && <h4 className="text-sm font-semibold text-ink-heading">{serverName}</h4>}
+        <MCPToolRows label={`Tools on ${serverName}`} rows={rowsFor(server)} disabled={busy} markers="hide" limits
+          onChange={(name, patch) => { const tool = tools.find((item) => item.endpoint === server && item.tool_name === name); if (!tool) return; setNotice(null); setChoices((old) => ({ ...old, [toolIdentity(tool)]: { ...(old[toolIdentity(tool)] ?? { mode: "off", rate: "" }), ...(patch.mode ? { mode: patch.mode } : {}), ...(patch.rate !== undefined ? { rate: patch.rate } : {}) } })); }}
+          onAccept={(name) => { const tool = tools.find((item) => item.endpoint === server && item.tool_name === name); if (tool) void accept(tool); }} />
+      </div>)}
+      <div className="mt-3 flex flex-wrap items-center gap-3 border-t border-line pt-3"><Button disabled={busy || tools.length === 0} onClick={() => void save()}>{busy ? "Saving…" : "Save tool policy"}</Button>{tools.length > 0 && <span className="text-ink-secondary">{modeSummary(allRows)}</span>}</div>
+    </>}
+    {notice && <p role="status" className="mt-2 text-ink-body">{notice}</p>}{error && <p role="alert" className="mt-2 text-danger">{error}</p>}
+  </div>;
 }
 
 const oauthOutcome: Record<string, { tone: "success" | "danger"; text: string }> = {
@@ -230,20 +248,51 @@ function activityResult(item: Activity): { text: string; tone: "ok" | "warn" | "
   return { text: "Still running", tone: "neutral" };
 }
 type ActivityState = { kind: "loading" } | { kind: "error"; message: string } | { kind: "ready"; items: Activity[]; next: string | null };
+type ActivityShow = "all" | "denied" | "approved";
+type ActivityFilters = { show: ActivityShow; from: string; to: string; server: string };
+const NO_FILTERS: ActivityFilters = { show: "all", from: "", to: "", server: "" };
+/** A day picked in the browser, as the instant it starts or ends in the person's own time zone. */
+const dayEdge = (day: string, end: boolean): string | undefined => {
+  if (!day) return undefined;
+  const at = new Date(`${day}T${end ? "23:59:59.999" : "00:00:00"}`);
+  return Number.isNaN(at.getTime()) ? undefined : at.toISOString();
+};
+/** The filters as the server takes them, shared by the list and the CSV export so both show the same calls. */
+function activityQuery(filters: ActivityFilters): Record<string, string | boolean> {
+  const from = dayEdge(filters.from, false), to = dayEdge(filters.to, true);
+  return { ...(filters.show === "denied" ? { decision: "deny" } : {}), ...(filters.show === "approved" ? { approved: true } : {}), ...(from ? { from } : {}), ...(to ? { to } : {}), ...(filters.server ? { server: filters.server } : {}) };
+}
+export function mcpActivityExportHref(orgId: string, deviceId: string, filters: ActivityFilters): string {
+  const query = new URLSearchParams(Object.entries(activityQuery(filters)).map(([key, value]) => [key, String(value)])).toString();
+  return `/api/v1/organizations/${encodeURIComponent(orgId)}/agents/${encodeURIComponent(deviceId)}/mcp-tool-activity/export${query ? `?${query}` : ""}`;
+}
+function activityApproval(item: Activity): ReactNode {
+  if (!item.approval_request_id) return <span>Not needed</span>;
+  const when = item.approved_at ? compactDateTime(item.approved_at) : "";
+  if (item.approved_by_email) return <span title={item.approved_at ? new Date(item.approved_at).toLocaleString() : undefined}>Approved by {item.approved_by_email}{when ? `, ${when}` : ""}</span>;
+  return <span title={item.approval_request_id}>Approved request {item.approval_request_id.slice(0, 8)}</span>;
+}
 
-/** What the agent did through MCP, newest first. Arguments and results are never stored, so none are shown. */
-export function AgentMCPToolActivityPanel({ orgId, deviceId }: { orgId: string; deviceId: string }) {
-  const [state, setState] = useState<ActivityState>({ kind: "loading" }); const [filter, setFilter] = useState<"all" | "approved">("all");
+/**
+ * What the agent did through MCP, newest first, with filters the server applies: denied or approved
+ * calls, a date range and one server. Arguments and results are never stored, so none are shown.
+ */
+export function AgentMCPToolActivityPanel({ orgId, deviceId, servers = [] }: { orgId: string; deviceId: string; /** The agent's MCP servers, for the server filter. */ servers?: Array<{ server_name: string; profile_name: string }> }) {
+  const [state, setState] = useState<ActivityState>({ kind: "loading" }); const [filters, setFilters] = useState<ActivityFilters>(NO_FILTERS);
   const [olderBusy, setOlderBusy] = useState(false); const [olderError, setOlderError] = useState<string | null>(null); const [version, setVersion] = useState(0);
-  const fetchPage = (cursor?: string) => loadOne(() => api.GET("/api/v1/organizations/{orgId}/agents/{deviceId}/mcp-tool-activity", { params: { path: { orgId, deviceId }, query: cursor ? { limit: ACTIVITY_PAGE, cursor } : { limit: ACTIVITY_PAGE } } }));
+  const dayId = useId();
+  const backwards = Boolean(filters.from && filters.to && filters.from > filters.to);
+  const filtered = filters.show !== "all" || Boolean(filters.from || filters.to || filters.server);
+  const fetchPage = (cursor?: string) => loadOne(() => api.GET("/api/v1/organizations/{orgId}/agents/{deviceId}/mcp-tool-activity", { params: { path: { orgId, deviceId }, query: { limit: ACTIVITY_PAGE, ...activityQuery(filters), ...(cursor ? { cursor } : {}) } as never } }));
   // Older fixtures answer with a bare list; the contract is { items, next_cursor }.
   const pageOf = (data: unknown): { items: Activity[]; next: string | null } => Array.isArray(data) ? { items: data as Activity[], next: null } : { items: (data as { items?: Activity[] } | undefined)?.items ?? [], next: (data as { next_cursor?: string | null } | undefined)?.next_cursor ?? null };
   useEffect(() => {
+    if (backwards) return;
     let cancelled = false;
     setState({ kind: "loading" }); setOlderError(null);
     void fetchPage().then((result) => { if (!cancelled) setState(result.ok ? { kind: "ready", ...pageOf(result.data) } : { kind: "error", message: result.error }); });
     return () => { cancelled = true; };
-  }, [orgId, deviceId, version]);
+  }, [orgId, deviceId, version, filters.show, filters.from, filters.to, filters.server, backwards]);
   const older = async () => {
     if (state.kind !== "ready" || !state.next) return;
     setOlderBusy(true); setOlderError(null);
@@ -253,22 +302,36 @@ export function AgentMCPToolActivityPanel({ orgId, deviceId }: { orgId: string; 
     const page = pageOf(result.data);
     setState((current) => current.kind === "ready" ? { kind: "ready", items: [...current.items, ...page.items], next: page.next } : current);
   };
-  if (state.kind === "loading") return <div data-testid="agent-mcp-tool-activity"><p role="status">Loading MCP calls…</p></div>;
-  if (state.kind === "error") return <div data-testid="agent-mcp-tool-activity"><p role="alert">MCP calls could not be loaded: {state.message}</p><Button size="sm" variant="ghost" className="mt-2" aria-label="Retry MCP calls" onClick={() => setVersion((value) => value + 1)}>Retry</Button></div>;
-  const shown = filter === "approved" ? state.items.filter((item) => item.approval_request_id) : state.items;
+  const set = (patch: Partial<ActivityFilters>) => setFilters((current) => ({ ...current, ...patch }));
+  const controls = <div role="group" aria-label="Filter MCP calls" className="grid min-w-0 gap-3">
+    <div role="group" aria-label="Show" className="flex flex-wrap items-center gap-2">{([["all", "All calls"], ["denied", "Denied calls"], ["approved", "Approved calls"]] as const).map(([value, label]) => <Button key={value} size="sm" variant={filters.show === value ? "primary" : "ghost"} aria-pressed={filters.show === value} onClick={() => set({ show: value })}>{label}</Button>)}</div>
+    <div className="flex min-w-0 flex-wrap items-end gap-3">
+      <label htmlFor={`${dayId}-from`} className="grid gap-1 text-xs text-ink-secondary">From<input id={`${dayId}-from`} type="date" value={filters.from} max={filters.to || undefined} onChange={(event) => set({ from: event.target.value })} className="min-h-9 rounded-md border border-line bg-surface px-2 text-sm text-ink-body" /></label>
+      <label htmlFor={`${dayId}-to`} className="grid gap-1 text-xs text-ink-secondary">To<input id={`${dayId}-to`} type="date" value={filters.to} min={filters.from || undefined} onChange={(event) => set({ to: event.target.value })} className="min-h-9 rounded-md border border-line bg-surface px-2 text-sm text-ink-body" /></label>
+      {servers.length > 0 && <label htmlFor={`${dayId}-server`} className="grid gap-1 text-xs text-ink-secondary">Server<select id={`${dayId}-server`} value={filters.server} onChange={(event) => set({ server: event.target.value })} className="min-h-9 rounded-md border border-line bg-surface px-2 text-sm text-ink-body"><option value="">All servers</option>{servers.map((server) => <option key={server.server_name} value={server.server_name}>{server.profile_name}</option>)}</select></label>}
+      {filtered && <Button size="sm" variant="ghost" onClick={() => setFilters(NO_FILTERS)}>Clear filters</Button>}
+      {/* A plain link, not a script-started download: the browser handles it even where scripted downloads are blocked. */}
+      {!backwards && <a className="inline-flex min-h-9 items-center text-sm underline sm:ml-auto" href={mcpActivityExportHref(orgId, deviceId, filters)} download>Download CSV</a>}
+    </div>
+    <p className="text-xs text-ink-secondary">The CSV holds the calls that match these filters, up to 10,000 rows.</p>
+  </div>;
   return <div data-testid="agent-mcp-tool-activity" className="min-w-0">
-    {state.items.length === 0 ? <><p className="text-ink-heading">No MCP calls yet.</p><p>Calls this agent makes to its MCP server through the gateway are listed here.</p></> : <>
-      <div role="group" aria-label="Show" className="flex flex-wrap items-center gap-2">{([["all", "All calls"], ["approved", "Approved calls"]] as const).map(([value, label]) => <Button key={value} size="sm" variant={filter === value ? "primary" : "ghost"} aria-pressed={filter === value} onClick={() => setFilter(value)}>{label}</Button>)}</div>
-      {shown.length === 0 ? <p className="mt-3">None of the calls shown ran on an approval.</p> : <div className="mt-3 min-w-0"><DataTable caption="MCP calls" rows={shown} rowKey={(item) => item.id} failed={false} filterable={false} pageSize={0} empty={<>No MCP calls yet.</>} columns={[
-        { key: "time", header: "Time", cell: (item) => <span className="whitespace-nowrap" title={new Date(item.occurred_at).toLocaleString()}>{compactDateTime(item.occurred_at)}</span> },
-        { key: "tool", header: "Tool", cell: (item) => <span className="break-all font-mono">{item.tool_name || item.method}</span> },
-        { key: "server", header: "Server", cell: (item) => <span className="break-all">{item.server_name || item.endpoint}</span> },
-        { key: "result", header: "Result", cell: (item) => { const result = activityResult(item); return <Badge tone={result.tone}>{result.text}</Badge>; } },
-        { key: "approval", header: "Approval", cell: (item) => item.approval_request_id ? <span title={item.approval_request_id}>Approved request {item.approval_request_id.slice(0, 8)}</span> : <span>Not needed</span> },
-      ]} /></div>}
-      {state.next && <Button size="sm" variant="ghost" className="mt-3" disabled={olderBusy} onClick={() => void older()}>{olderBusy ? "Loading…" : "Show older calls"}</Button>}
-      {olderError && <p role="alert" className="mt-2">{olderError}</p>}
-    </>}
+    {controls}
+    <div className="mt-3 min-w-0">{backwards ? <p role="alert">The From date is after the To date. Change one of them to see calls.</p>
+      : state.kind === "loading" ? <p role="status">Loading MCP calls…</p>
+        : state.kind === "error" ? <><p role="alert">MCP calls could not be loaded: {state.message}</p><Button size="sm" variant="ghost" className="mt-2" aria-label="Retry MCP calls" onClick={() => setVersion((value) => value + 1)}>Retry</Button></>
+          : state.items.length === 0 ? (filtered ? <p>No calls match these filters.</p> : <><p className="text-ink-heading">No MCP calls yet.</p><p>Calls this agent makes to its MCP servers through the gateway are listed here.</p></>)
+            : <>
+              <DataTable caption="MCP calls" rows={state.items} rowKey={(item) => item.id} failed={false} filterable={false} pageSize={0} empty={<>No MCP calls yet.</>} columns={[
+                { key: "time", header: "Time", cell: (item) => <span className="whitespace-nowrap" title={new Date(item.occurred_at).toLocaleString()}>{compactDateTime(item.occurred_at)}</span> },
+                { key: "tool", header: "Tool", cell: (item) => <span className="break-all font-mono">{item.tool_name || item.method}</span> },
+                { key: "server", header: "Server", cell: (item) => <span className="break-all">{item.server_name || item.endpoint}</span> },
+                { key: "result", header: "Result", cell: (item) => { const result = activityResult(item); return <Badge tone={result.tone}>{result.text}</Badge>; } },
+                { key: "approval", header: "Approval", cell: activityApproval },
+              ]} />
+              {state.next && <Button size="sm" variant="ghost" className="mt-3" disabled={olderBusy} onClick={() => void older()}>{olderBusy ? "Loading…" : "Show older calls"}</Button>}
+              {olderError && <p role="alert" className="mt-2">{olderError}</p>}
+            </>}</div>
   </div>;
 }
 

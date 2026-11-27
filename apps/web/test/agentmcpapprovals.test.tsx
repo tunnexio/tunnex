@@ -12,6 +12,7 @@ vi.mock("../src/lib/api", () => ({
   apiErrorCode: (value: { error?: { code?: string } } | undefined) => value?.error?.code,
 }));
 
+import { MemoryRouter } from "react-router-dom";
 import { AgentMCPToolApprovalPanel } from "../src/components/AgentMCPControls";
 
 const NOW = new Date("2026-11-27T10:00:00Z").getTime();
@@ -20,7 +21,7 @@ const request = (over: Record<string, unknown>) => ({
   input_schema_hash: "h", state: "pending", requested_at: "2026-11-27T09:59:00Z", expires_at: "2026-11-27T10:04:10Z",
   arguments: { customer: "cus_42", amount: 120, notify: true, note: { reason: "duplicate" } }, arguments_truncated: false, ...over,
 });
-const show = () => render(<AgentMCPToolApprovalPanel orgId="org" deviceId="agent" canApprove />);
+const show = () => render(<MemoryRouter><AgentMCPToolApprovalPanel orgId="org" deviceId="agent" canApprove /></MemoryRouter>);
 const denyPath = "/api/v1/organizations/{orgId}/agents/{deviceId}/mcp-tool-approval-requests/{requestId}/deny";
 
 let requests: Array<Record<string, unknown>> = [];

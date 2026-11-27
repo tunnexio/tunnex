@@ -1,10 +1,10 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { spawnSync, execFileSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, readlinkSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readlinkSync, rmSync, statSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { agentBootstrapCommand, agentRuntimeUpdateCommand, INSTALL_ON_ENROLLED_HOST } from "../src/lib/agentview";
+import { agentBootstrapCommand, agentRuntimeUpdateCommand, INSTALL_ON_ENROLLED_HOST, INSTALL_TOKEN_FILE, NO_TUNNEL_DNS_NOTE } from "../src/lib/agentview";
 import { readGeneratedFile } from "./support/source";
 import type { BootstrapRelease } from "../src/lib/api";
 
@@ -20,7 +20,10 @@ const token = "tnx_agent_fixture-only_TOKEN";
 // `typed` is what the operator enters at the hidden prompt; null means the
 // host has no terminal at all. stty and the terminal device are fakes; the
 // prompt, trimming and validation are the real generated shell.
-function harness(options: { missing?: string[]; resolver?: "existing" | "resolved" | "package" | "unavailable"; legacy?: boolean; arch?: string; root?: boolean; typed?: string | null; enrolled?: boolean } = {}) {
+// `tokenFile` selects the no-terminal command and places (or withholds) the root-only token file. The
+// file's owner is a fake, because the fixture cannot create a file owned by root; its type and mode are real.
+type TokenFile = { content?: string; mode?: number; kind?: "file" | "link" | "directory" | "missing"; owner?: number };
+function harness(options: { missing?: string[]; resolver?: "existing" | "resolved" | "package" | "unavailable"; legacy?: boolean; arch?: string; root?: boolean; typed?: string | null; enrolled?: boolean; tokenFile?: TokenFile } = {}) {
   const dir = mkdtempSync(join(tmpdir(), "tunnex-agent-host-"));
   fixtures.push(dir);
   const bin = join(dir, "bin");
@@ -31,6 +34,10 @@ function harness(options: { missing?: string[]; resolver?: "existing" | "resolve
   const ephemeral = join(dir, "ephemeral");
   for (const path of [bin, available, root, assets, join(root, "usr/local/bin"), join(root, "usr/local/sbin"), join(root, "etc/ssl/certs")]) mkdirSync(path, { recursive: true });
   const executable = (name: string, body: string, directory = bin) => writeFileSync(join(directory, name), `#!/bin/sh\nset -eu\n${body}\n`, { mode: 0o700 });
+  // Only `stat -c '%u %a'` is used. The owner is the fixture's stand-in for root; the mode is the file's own.
+  executable("stat", `echo "stat $*" >> "$FIXTURE_LOG"
+[ "$1" = -c ] && [ "$2" = '%u %a' ] || exit 2
+exec "$FIXTURE_NODE" -e 'const s=require("node:fs").lstatSync(process.argv[2]);console.log(process.argv[1]+" "+(s.mode&0o777).toString(8));' "\${FIXTURE_TOKEN_FILE_OWNER:-0}" "$3"`);
   for (const name of ["sh", "cat", "cp", "rm", "mkdir", "ln", "chmod", "sed", "awk", "cut", "wc", "env", "test", "tr", "mv"]) symlinkSync(execFileSync("which", [name]).toString().trim(), join(bin, name));
   const realInstall = execFileSync("which", ["install"]).toString().trim();
   executable("install", `# Production installs use root:root; the fixture runs unprivileged.\nif [ "$1" = -d ]; then shift; directory=1; else directory=0; fi\n[ "$1" = -o ] && shift 2\n[ "$1" = -g ] && shift 2\nif [ "$directory" = 1 ]; then exec '${realInstall}' -d "$@"; else exec '${realInstall}' "$@"; fi`);
@@ -69,6 +76,7 @@ esac`, available);
   executable("resolvectl", 'exit 0', available);
   symlinkSync(execFileSync("which", ["jq"]).toString().trim(), join(available, "jq"));
   executable("curl", `echo "curl $*" >> "$FIXTURE_LOG"
+[ ! -e "$FIXTURE_ROOT/root/tunnex-install-token" ] || echo "token file still present at a network step" >> "$FIXTURE_LOG"
 out=; url=
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -84,6 +92,7 @@ case "$url" in
 esac`, available);
   executable("apt-cache", `echo "apt-cache $*" >> "$FIXTURE_LOG"; [ "\${FIXTURE_PACKAGE_AVAILABLE:-1}" = 1 ]`);
   executable("apt-get", `echo "apt-get $*" >> "$FIXTURE_LOG"
+[ ! -e "$FIXTURE_ROOT/root/tunnex-install-token" ] || echo "token file still present at a network step" >> "$FIXTURE_LOG"
 [ "\${FIXTURE_APT_FAIL:-0}" = 0 ] || exit 99
 [ "$1" = install ] || exit 0
 for package in "$@"; do
@@ -95,6 +104,15 @@ for package in "$@"; do
     ca-certificates) echo installed-ca > "$FIXTURE_ROOT/etc/ssl/certs/ca-certificates.crt" ;;
   esac
 done`);
+  const tokenFile = join(root, INSTALL_TOKEN_FILE.slice(1));
+  const linkedToken = join(dir, "token-elsewhere");
+  if (options.tokenFile) {
+    mkdirSync(join(root, "root"), { recursive: true });
+    const kind = options.tokenFile.kind ?? "file";
+    if (kind === "file") { writeFileSync(tokenFile, options.tokenFile.content ?? `${token}\n`); chmodSync(tokenFile, options.tokenFile.mode ?? 0o600); }
+    if (kind === "directory") mkdirSync(tokenFile);
+    if (kind === "link") { writeFileSync(linkedToken, `${token}\n`, { mode: 0o600 }); symlinkSync(linkedToken, tokenFile); }
+  }
   const missing = options.missing ?? [];
   for (const name of ["wg", "wg-quick", "ip", "jq", "curl"]) if (!missing.includes(name)) symlinkSync(join(available, name), join(bin, name));
   const resolver = options.resolver ?? "existing";
@@ -139,19 +157,20 @@ printf '%s\\n' 'TUNNEX_AGENT_RUNTIME_BINARY=tunnex-agent-runtime' 'TUNNEX_AGENT_
       // root mode can be executed without touching the developer's machine.
       let command = built;
       expect(command).not.toContain(token);
-      command = command.replace(/\/(?:etc|usr\/local|var\/lib\/tunnex-agent|sys\/class\/net)(?=[/;"\s])/g, (path) => root + path);
+      command = command.replace(/\/(?:etc|usr\/local|var\/lib\/tunnex-agent|sys\/class\/net|root)(?=[/;"\s])/g, (path) => root + path);
       command = command.split("/dev/tty").join(tty);
       return spawnSync("/bin/sh", [], { input: command, encoding: "utf8", timeout: 30_000, env: {
         PATH: bin, FIXTURE_NODE: process.execPath, FIXTURE_DIR: dir, FIXTURE_BIN: bin, FIXTURE_ROOT: root,
         FIXTURE_AVAILABLE: available, FIXTURE_ASSETS: assets, FIXTURE_LOG: log, FIXTURE_EPHEMERAL: ephemeral,
         FIXTURE_ARCH: options.arch ?? "x86_64", FIXTURE_RESOLVED: resolver === "resolved" ? "1" : "0",
-        FIXTURE_PACKAGE_AVAILABLE: resolver === "unavailable" ? "0" : "1", ...extra,
+        FIXTURE_PACKAGE_AVAILABLE: resolver === "unavailable" ? "0" : "1",
+        ...(options.tokenFile?.owner !== undefined ? { FIXTURE_TOKEN_FILE_OWNER: String(options.tokenFile.owner) } : {}), ...extra,
       } });
   };
   return {
-    dir, bin, root, assets, release, log, ephemeral, installed, previous, runtime, unit,
+    dir, bin, root, assets, release, log, ephemeral, installed, previous, runtime, unit, tokenFile, linkedToken,
     calls: () => existsSync(log) ? readGeneratedFile(log, dir) : "",
-    run: (extra: Record<string, string> = {}) => execute(agentBootstrapCommand(release, "https://cp.example"), extra),
+    run: (extra: Record<string, string> = {}) => execute(agentBootstrapCommand(release, "https://cp.example", { tokenFile: Boolean(options.tokenFile) }), extra),
     runUpdate: (extra: Record<string, string> = {}) => execute(agentRuntimeUpdateCommand(release), { FIXTURE_RUNTIME_ACTIVE: "1", ...extra }),
   };
 }
@@ -399,11 +418,42 @@ describe("automatic managed-agent host preparation (executed shell)", { timeout:
     expect(f.calls()).toContain("apt-get install -y --no-install-recommends --no-remove openresolv");
     expect(readGeneratedFile(join(f.root, "etc/resolv.conf"), f.dir)).toBe("nameserver 127.0.0.53\n");
   });
-  it("stops if resolver compatibility is unavailable before installing packages or redeeming", () => {
+  // Ubuntu 24.04 server without systemd-resolved: no resolvconf, and openresolv has no install candidate.
+  it("installs on a host with no resolver helper and none installable, and says private tunnel names will not resolve", () => {
     const f = harness({ resolver: "unavailable", missing: ["wg", "wg-quick"] });
-    deniedBeforeRedeem(f, /no supported resolver compatibility/);
+    const result = f.run();
+    expect(result.status, result.stderr).toBe(0);
+    const calls = f.calls();
+    expect(calls).toContain("apt-get install -y --no-install-recommends --no-remove wireguard-tools");
+    expect(calls).toContain("apt-cache show openresolv");
+    expect(calls).not.toMatch(/apt-get install.*openresolv/);
+    expect(JSON.parse(readGeneratedFile(join(f.dir, "redeemed.json"), f.dir)).bootstrap_token).toBe(token);
+    expect(calls).toContain("systemctl enable --now tunnex-agent-runtime.service");
+    expect(result.stderr.trim().split("\n").at(-1)).toBe(`Note: ${NO_TUNNEL_DNS_NOTE}`);
+    expect(NO_TUNNEL_DNS_NOTE).toContain("private DNS names pushed through the tunnel will not resolve here");
+    expect(result.stderr).not.toContain("no supported resolver compatibility");
+    expect(existsSync(join(f.root, "usr/local/sbin/resolvconf"))).toBe(false);
+    expect(readGeneratedFile(join(f.root, "etc/resolv.conf"), f.dir)).toBe("nameserver 127.0.0.53\n");
+  });
+  it("installs with nothing else to fetch when the resolver helper cannot be installed", () => {
+    const f = harness({ resolver: "unavailable" });
+    const result = f.run();
+    expect(result.status, result.stderr).toBe(0);
     expect(f.calls()).not.toContain("apt-get install");
-    expect(f.calls()).not.toContain("curl");
+    expect(result.stderr).toContain(`Note: ${NO_TUNNEL_DNS_NOTE}`);
+  });
+  it("does not stop for a package index that cannot be refreshed when only the resolver helper is missing", () => {
+    const f = harness({ resolver: "package" });
+    const result = f.run({ FIXTURE_APT_FAIL: "1" });
+    expect(result.status, result.stderr).toBe(0);
+    expect(f.calls()).not.toContain("apt-get install");
+    expect(result.stderr).toContain(`Note: ${NO_TUNNEL_DNS_NOTE}`);
+  });
+  it.each(["existing", "resolved", "package"] as const)("prints no resolver note on a host whose resolver is %s", (resolver) => {
+    const f = harness({ resolver });
+    const result = f.run();
+    expect(result.status, result.stderr).toBe(0);
+    expect(result.stderr).not.toContain("will not resolve");
   });
   it("stops on dependency failure before downloads or redemption", () => {
     const f = harness({ missing: ["wg", "wg-quick"] });
@@ -469,5 +519,97 @@ describe("automatic managed-agent host preparation (executed shell)", { timeout:
     deniedBeforeRedeem(f, /older release requires a preinstalled signed release verifier/);
     expect(f.calls()).not.toContain("apt-get");
     expect(f.calls()).not.toContain("curl");
+  });
+});
+
+describe("install token from a root-only file, for a host with no terminal (executed shell)", { timeout: 45_000 }, () => {
+  const fileCommand = () => agentBootstrapCommand(harness().release, "https://cp.example", { tokenFile: true });
+  it("names only the fixed path: the command has no token, no prompt and no terminal use", () => {
+    const command = fileCommand();
+    expect(INSTALL_TOKEN_FILE).toBe("/root/tunnex-install-token");
+    expect(command).toContain("token_file=/root/tunnex-install-token;");
+    for (const absent of [token, "tnx_agent_fixture", "/dev/tty", "stty", "Paste the install token"]) expect(command, absent).not.toContain(absent);
+    // The terminal command is unchanged by the option existing: it never looks at the file.
+    const terminal = agentBootstrapCommand(harness().release, "https://cp.example");
+    expect(terminal).not.toContain("tunnex-install-token");
+    expect(terminal).toContain("/dev/tty");
+  });
+  it.each([["600", 0o600], ["400", 0o400]])("reads a mode %s file once with no terminal, removes it before any network step, and enrolls", (_label, mode) => {
+    const f = harness({ typed: null, missing: ["wg", "wg-quick"], tokenFile: { mode } });
+    const result = f.run();
+    expect(result.status, result.stderr).toBe(0);
+    const calls = f.calls();
+    expect(existsSync(f.tokenFile)).toBe(false);
+    expect(calls).not.toContain("token file still present at a network step");
+    expect(calls.indexOf("stat -c %u %a")).toBeGreaterThan(-1);
+    expect(calls.indexOf("stat -c %u %a")).toBeLessThan(calls.indexOf("apt-get"));
+    expect(calls).not.toContain("stty");
+    expect(JSON.parse(readGeneratedFile(join(f.dir, "redeemed.json"), f.dir))).toEqual({ bootstrap_token: token, public_key: "public-fixture-key=" });
+    expect(calls).not.toContain(token);
+    expect(result.stdout + result.stderr).not.toContain(token);
+    expect(result.stderr).not.toContain("Paste the install token");
+    expect(existsSync(f.ephemeral)).toBe(false);
+  });
+  it("reads the file through sudo when not run as root", () => {
+    const f = harness({ typed: null, root: false, tokenFile: {} });
+    const result = f.run();
+    expect(result.status, result.stderr).toBe(0);
+    const calls = f.calls();
+    expect(calls).toMatch(/^sudo test -L \S+\/root\/tunnex-install-token$/m);
+    expect(calls).toMatch(/^sudo stat -c %u %a \S+\/root\/tunnex-install-token$/m);
+    expect(calls).toMatch(/^sudo cat \S+\/root\/tunnex-install-token$/m);
+    expect(calls).toMatch(/^sudo rm -f \S+\/root\/tunnex-install-token$/m);
+    expect(calls.match(/^sudo cat \S+tunnex-install-token$/gm)).toHaveLength(1);
+    expect(existsSync(f.tokenFile)).toBe(false);
+  });
+  it("accepts a token saved with stray spaces or a Windows line ending", () => {
+    const f = harness({ typed: null, tokenFile: { content: `  ${token} \r\n` } });
+    expect(f.run().status).toBe(0);
+    expect(JSON.parse(readGeneratedFile(join(f.dir, "redeemed.json"), f.dir)).bootstrap_token).toBe(token);
+  });
+  it.each([["a missing file", { kind: "missing" }], ["a directory", { kind: "directory" }]] as const)("refuses %s before packages, downloads or redemption", (_label, tokenFile) => {
+    const f = harness({ typed: null, missing: ["wg", "wg-quick"], tokenFile });
+    deniedBeforeRedeem(f, /The install token file \S+\/root\/tunnex-install-token was not found, or it is not a regular file\..*no bootstrap token was used/);
+    for (const untouched of ["apt-get", "curl", "stat ", "stty"]) expect(f.calls(), untouched).not.toContain(untouched);
+    expect(existsSync(f.ephemeral)).toBe(false);
+  });
+  it("refuses a link without following it, and leaves the link and its target alone", () => {
+    const f = harness({ typed: null, missing: ["wg", "wg-quick"], tokenFile: { kind: "link" } });
+    const result = deniedBeforeRedeem(f, /not a regular file/);
+    expect(readlinkSync(f.tokenFile)).toBe(f.linkedToken);
+    expect(readGeneratedFile(f.linkedToken, f.dir)).toBe(`${token}\n`);
+    for (const untouched of ["apt-get", "curl", "stat "]) expect(f.calls(), untouched).not.toContain(untouched);
+    expect(result.stdout + result.stderr).not.toContain(token);
+  });
+  it.each([["readable by others", { mode: 0o644 }], ["writable by its group", { mode: 0o660 }], ["executable", { mode: 0o700 }], ["not owned by root", { owner: 1000 }]] as const)("refuses a file that is %s without reading it, and keeps it for the operator to correct", (_label, tokenFile) => {
+    const f = harness({ typed: null, missing: ["wg", "wg-quick"], tokenFile });
+    const result = deniedBeforeRedeem(f, /must be owned by root with mode 600 or 400\. It was not read\..*no bootstrap token was used/);
+    expect(existsSync(f.tokenFile)).toBe(true);
+    expect(readGeneratedFile(f.tokenFile, f.dir)).toBe(`${token}\n`);
+    expect(result.stderr).not.toContain("was read and removed");
+    for (const untouched of ["apt-get", "curl"]) expect(f.calls(), untouched).not.toContain(untouched);
+    expect(result.stdout + result.stderr).not.toContain(token);
+  });
+  it.each([["an empty file", "\n"], ["something that is not a token", "password123\n"], ["a token with unexpected characters", "tnx_agent_abc$(id)\n"]])("refuses %s, removes the file and never repeats its content", (_label, content) => {
+    const f = harness({ typed: null, missing: ["wg", "wg-quick"], tokenFile: { content } });
+    const result = deniedBeforeRedeem(f, /The install token file did not contain an install token\. It was removed\./);
+    expect(existsSync(f.tokenFile)).toBe(false);
+    for (const untouched of ["apt-get", "curl"]) expect(f.calls(), untouched).not.toContain(untouched);
+    if (content.trim()) expect(result.stdout + result.stderr).not.toContain(content.trim());
+    expect(existsSync(f.ephemeral)).toBe(false);
+  });
+  it("says the file is gone when the install stops after reading it", () => {
+    const f = harness({ typed: null, missing: ["wg", "wg-quick"], tokenFile: {} });
+    const result = deniedBeforeRedeem(f, /could not refresh dependency packages/, { FIXTURE_APT_FAIL: "1" });
+    expect(existsSync(f.tokenFile)).toBe(false);
+    expect(result.stderr.trim().split("\n").at(-1)).toBe("The install token file was read and removed. Create it again before you run this command again.");
+    expect(result.stdout + result.stderr).not.toContain(token);
+  });
+  it("refuses an enrolled host before looking at the file", () => {
+    const f = harness({ typed: null, enrolled: true, tokenFile: {} });
+    const result = deniedBeforeRedeem(f, /This host already runs a Tunnex agent/);
+    expect(result.stderr.trim()).toBe(installOnEnrolledHost);
+    expect(existsSync(f.tokenFile)).toBe(true);
+    expect(f.calls()).not.toContain("stat ");
   });
 });
