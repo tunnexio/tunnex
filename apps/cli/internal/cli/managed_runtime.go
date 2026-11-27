@@ -168,7 +168,7 @@ func RunManagedAgent(ctx context.Context, opts ManagedRuntimeOptions) error {
 	proxyErr := make(chan error, 1)
 	if opts.MCPProxyListen != "" {
 		go func() {
-			proxyErr <- StartMCPToolProxyDynamic(ctx, opts.MCPProxyListen, source.MCPProxyUpstream, source.MCPProxyPolicy, func(proxyCtx context.Context) (string, error) {
+			proxyErr <- StartManagedMCPToolProxy(ctx, opts.MCPProxyListen, source.MCPProxyGateway, source.MCPProxyUpstream, source.MCPProxyPolicy, func(proxyCtx context.Context) (string, error) {
 				return source.MCPProxyAuthorization(proxyCtx, source.currentMCPUpstream())
 			}, source.MCPProxyStepUp)
 		}()
@@ -253,6 +253,7 @@ type managedRuntimeSource struct {
 	rotateKey        func(context.Context, string, string) error
 	mcpEndpoints     []string
 	mcpUpstream      string
+	mcpGatewayURL    string // AI-SEC-2: set => forward MCP to the gateway listener, nothing local
 	mcpConfigMu      sync.RWMutex
 	mcpTokenMu       sync.Mutex
 	mcpToken         string
@@ -354,6 +355,7 @@ func (s *managedRuntimeSource) Poll(ctx context.Context, applied int64, version 
 	}
 	c := resp.JSON200
 	s.setMCPUpstream(c.McpUpstream)
+	s.setMCPGatewayURL(c.McpGatewayUrl)
 	return ManagedAgentConfig{Revision: c.Revision, DeviceID: c.DeviceId.String(), OrgID: c.OrgId.String(), Address: c.Address, GatewayEndpoint: c.GatewayEndpoint, GatewayPublicKey: c.GatewayPublicKey, AllowedIPs: c.AllowedIps, DNS: c.Dns, PersistentKeepalive: c.PersistentKeepalive, MCPUpstream: c.McpUpstream, CredentialRotationRevision: c.CredentialRotationRevision,
 		WireGuardCurrentRevision:  c.WireguardCurrentRevision,
 		WireGuardRotationRevision: c.WireguardRotationRevision,
@@ -369,6 +371,34 @@ func (s *managedRuntimeSource) setMCPUpstream(upstream *string) {
 		s.mcpUpstream = strings.TrimSpace(*upstream)
 		s.mcpEndpoints = []string{s.mcpUpstream}
 	}
+}
+
+// setMCPGatewayURL records the gateway MCP listener named by the control plane. Once one is named the
+// gateway holds the token for each call, so a token leased earlier for the direct path is dropped here.
+func (s *managedRuntimeSource) setMCPGatewayURL(gateway *string) {
+	value := ""
+	if gateway != nil {
+		value = strings.TrimSpace(*gateway)
+	}
+	s.mcpConfigMu.Lock()
+	s.mcpGatewayURL = value
+	s.mcpConfigMu.Unlock()
+	if value != "" {
+		s.mcpTokenMu.Lock()
+		s.mcpToken, s.mcpTokenEndpoint, s.mcpTokenExpires = "", "", time.Time{}
+		s.mcpTokenMu.Unlock()
+	}
+}
+
+func (s *managedRuntimeSource) currentMCPGatewayURL() string {
+	s.mcpConfigMu.RLock()
+	defer s.mcpConfigMu.RUnlock()
+	return s.mcpGatewayURL
+}
+
+// MCPProxyGateway is the loopback proxy's gateway source: "" keeps the legacy local path.
+func (s *managedRuntimeSource) MCPProxyGateway(context.Context) string {
+	return s.currentMCPGatewayURL()
 }
 
 func (s *managedRuntimeSource) currentMCPUpstream() string {
@@ -389,7 +419,10 @@ func (s *managedRuntimeSource) poll(ctx context.Context, applied int64, version 
 	if s.state != nil && s.state.WireGuardRevision > 0 {
 		wgRevision = s.state.WireGuardRevision
 	}
-	return s.client.PollAgentRuntimeWithResponse(ctx, &api.PollAgentRuntimeParams{AppliedRevision: applied, ClientVersion: version, WaitSeconds: &s.wait, WireguardRevision: &wgRevision})
+	// AI-SEC-2: this runtime forwards MCP to the gateway listener when the control plane names one. It
+	// cannot update itself, so this declaration (not the version string) is the capability signal.
+	mcpGateway := true
+	return s.client.PollAgentRuntimeWithResponse(ctx, &api.PollAgentRuntimeParams{AppliedRevision: applied, ClientVersion: version, WaitSeconds: &s.wait, WireguardRevision: &wgRevision, McpGateway: &mcpGateway})
 }
 
 func (s *managedRuntimeSource) MCPProxyPolicy(ctx context.Context) (MCPProxyPolicy, error) {
@@ -773,7 +806,9 @@ func (s *managedRuntimeSource) rotateCredential(ctx context.Context, applied int
 func (s *managedRuntimeSource) Report(ctx context.Context, report AgentRuntimeReport) error {
 	code := api.AgentRuntimeReportErrorCode(report.ErrorCode)
 	upstream := s.currentMCPUpstream()
-	if upstream != "" {
+	// With a gateway listener named, the gateway observes the MCP server and the agent host has no path
+	// to it: no inventory, no OAuth discovery and no token lease from here.
+	if upstream != "" && s.currentMCPGatewayURL() == "" {
 		report.MCPInventory = observeMCPInventoryAuthorized(ctx, upstream, func(ctx context.Context) (string, error) { return s.MCPProxyAuthorization(ctx, upstream) })
 		report.MCPOAuthDiscovery = ObserveMCPOAuthDiscovery(ctx, []string{upstream})
 	}
