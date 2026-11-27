@@ -203,3 +203,40 @@ MCP policy.
 - Real walk on the GCP test machines, repeating the seven cases above. The
   direct call that ran `run_sql` must fail, and the approved refund must appear
   in the audit log.
+
+## End-to-end walk (two GCP machines, signed test release)
+
+Control plane, gateway, AI engine and a Postgres-backed test MCP server on one
+machine; a managed agent on another. Builds `3ab909eb` and `2a9cf331`.
+
+- Old runtime against the new control plane: MCP kept working on the old path
+  and the organization showed a grace date 30 days out.
+- New runtime: a direct call from the agent host to the MCP server failed (the
+  gateway dropped it ahead of the allow rule that still existed); the same
+  tools worked through the loopback address. Forged identity headers sent to
+  the gateway listener were ignored.
+- Policy: tools not allowed were denied; an allowed tool refused a wrong type
+  and an undeclared argument with no extra constraint set; `tools/list`
+  returned only the callable tools; the rate limit held.
+- Approvals: the request showed the arguments; a repeat of the same call
+  returned the same request; approval ran exactly that call once; deny worked
+  and a second deny answered 409.
+- Records: audit rows for requested, approved, consumed, denied, expired and
+  each denied call with its reason; activity rows for every call.
+- Definition change: a rewritten description blocked the tool at once, the
+  policy showed it as changed, and accepting the new version restored it with
+  audit rows for both.
+- Runtime update: the install command on an enrolled host refused. The new
+  "Update runtime" command, taken from the console, replaced the runtime with
+  no token, left the credential and tunnel untouched, and MCP worked through
+  the gateway afterwards. Running it twice was harmless.
+- AI Gateway transport: with "Inside the VPN" off the relay route answered
+  `403 ai_vpn_http_disabled`; with it on the same request passed the transport
+  check and reached policy.
+- Revoke: within about five seconds MCP stopped, the tunnel was cut and the
+  runtime service stopped itself.
+- Test suites on Linux: gateway suite passed; API suite passed in both
+  editions (87 packages each). Two packages need more than ten minutes on a
+  4-vCPU machine and were run with a longer limit there.
+- Not walked: a full MCP OAuth sign-in (needs an OAuth MCP server; covered by
+  `mcpoauth` tests), hostname endpoints, an MCP server behind a second gateway.
