@@ -23,6 +23,16 @@ type hashAllow struct {
 	FQDNDeviceID         string   `json:"fqdn_device_id,omitempty"`
 }
 
+// hashDeny is the ENFORCEMENT-ONLY view of a DenyEntry (v16). Same rule as hashAllow: the match fields
+// only. Reason and SrcDeviceID explain the drop in the access log and are deliberately absent.
+type hashDeny struct {
+	SrcIP    string   `json:"src_ip"`
+	DstCIDR  string   `json:"dst_cidr"`
+	Protocol Protocol `json:"protocol"`
+	PortLow  int      `json:"port_low,omitempty"`
+	PortHigh int      `json:"port_high,omitempty"`
+}
+
 // hashView is the enforcement projection of a whole Compiled. Same rule as hashAllow:
 // enforcement fields ONLY, in the v1 field order/tags, so the byte stream is identical
 // to the pre-v2 full-Compiled marshal. Version IS enforcement-significant (it gates the
@@ -37,6 +47,8 @@ type hashView struct {
 	Allow               []hashAllow          `json:"allow"`
 	FQDNGenerations     []FQDNGeneration     `json:"fqdn_generations,omitempty"`
 	DNSResolverProfiles []DNSResolverProfile `json:"dns_resolver_profiles,omitempty"`
+	// Deny is LAST and omitempty, so an artifact with no deny hashes the same bytes it always did.
+	Deny []hashDeny `json:"deny,omitempty"`
 }
 
 // projectForHash maps a Compiled to its enforcement-only projection. Every NEW
@@ -54,6 +66,12 @@ func projectForHash(c Compiled) hashView {
 		v.FQDNGenerations = c.FQDNGenerations
 	}
 	v.DNSResolverProfiles = c.DNSResolverProfiles
+	if len(c.Deny) > 0 {
+		v.Deny = make([]hashDeny, len(c.Deny))
+		for i, e := range c.Deny {
+			v.Deny[i] = hashDeny{SrcIP: e.SrcIP, DstCIDR: e.DstCIDR, Protocol: e.Protocol, PortLow: e.PortLow, PortHigh: e.PortHigh}
+		}
+	}
 	return v
 }
 

@@ -45,6 +45,26 @@ const (
 // v15 (SSI-8): this agent renders SiteLANMasquerade (source NAT of remote-site traffic at the LAN edge).
 const MaxSupportedVersion = 15
 
+// RendersDeny says whether this gateway's forward chain renders Compiled.Deny (v16, AI-SEC-2). The wire type
+// below already carries the section so both modules hash it identically, but MaxSupportedVersion stays below
+// 16 until the render lands: a v16 artifact is refused (deny-all, reported) rather than accepted with its
+// denied paths left open. Set this to true and raise MaxSupportedVersion to 16 in the SAME change that
+// renders the denies ahead of the mesh accepts and the compiled allows.
+const RendersDeny = false
+
+// DenyEntry mirrors policyspec.DenyEntry (v16): the source may NOT reach DstCIDR on Protocol within
+// [PortLow,PortHigh], in either mode and whatever an allow says. Reason and SrcDeviceID are observability
+// metadata for the access log and are excluded from CanonicalHash.
+type DenyEntry struct {
+	SrcIP       string `json:"src_ip"`
+	DstCIDR     string `json:"dst_cidr"`
+	Protocol    string `json:"protocol"` // any | tcp | udp
+	PortLow     int    `json:"port_low,omitempty"`
+	PortHigh    int    `json:"port_high,omitempty"`
+	Reason      string `json:"reason,omitempty"`
+	SrcDeviceID string `json:"src_device_id,omitempty"`
+}
+
 // AllowEntry is one compiled default-deny grant: SrcIP (a device /32 host) may reach
 // DstCIDR on Protocol within [PortLow,PortHigh]. PortLow==0 means all ports.
 type AllowEntry struct {
@@ -125,6 +145,9 @@ type Compiled struct {
 	// SiteLANMasquerade (v15, SSI-8) — masquerade traffic sourced from a remote site range (Routes) as it
 	// leaves a non-tunnel interface. Out-of-hash PLUMBING; mirror of policyspec.Compiled.SiteLANMasquerade.
 	SiteLANMasquerade bool `json:"site_lan_masquerade,omitempty"`
+	// Deny (v16, AI-SEC-2): explicit drops rendered before the mesh accepts and before Allow, in both modes.
+	// Enforcement, so it is hashed. Carried on the wire now; rendered once RendersDeny is true.
+	Deny []DenyEntry `json:"deny,omitempty"`
 }
 
 // FQDNGeneration mirrors policyspec.FQDNGeneration. It participates in the
@@ -240,6 +263,14 @@ type hashAllow struct {
 	FQDNDeviceID         string `json:"fqdn_device_id,omitempty"`
 }
 
+type hashDeny struct {
+	SrcIP    string `json:"src_ip"`
+	DstCIDR  string `json:"dst_cidr"`
+	Protocol string `json:"protocol"`
+	PortLow  int    `json:"port_low,omitempty"`
+	PortHigh int    `json:"port_high,omitempty"`
+}
+
 type hashView struct {
 	Version             int                  `json:"version"`
 	NodeID              string               `json:"node_id"`
@@ -248,6 +279,8 @@ type hashView struct {
 	Allow               []hashAllow          `json:"allow"`
 	FQDNGenerations     []FQDNGeneration     `json:"fqdn_generations,omitempty"`
 	DNSResolverProfiles []DNSResolverProfile `json:"dns_resolver_profiles,omitempty"`
+	// Deny is LAST and omitempty, matching policyspec: no deny, same bytes as before.
+	Deny []hashDeny `json:"deny,omitempty"`
 }
 
 func projectForHash(c *Compiled) hashView {
@@ -263,6 +296,12 @@ func projectForHash(c *Compiled) hashView {
 	}
 	if c.DNSResolverProfiles != nil {
 		v.DNSResolverProfiles = c.DNSResolverProfiles
+	}
+	if len(c.Deny) > 0 {
+		v.Deny = make([]hashDeny, len(c.Deny))
+		for i, e := range c.Deny {
+			v.Deny[i] = hashDeny{SrcIP: e.SrcIP, DstCIDR: e.DstCIDR, Protocol: e.Protocol, PortLow: e.PortLow, PortHigh: e.PortHigh}
+		}
 	}
 	return v
 }

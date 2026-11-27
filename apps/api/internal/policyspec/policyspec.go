@@ -226,7 +226,15 @@ type AffectedDevice struct {
 // router and vanish, with the link reporting green (the dead-while-green class again). Presence therefore
 // triggers RequiredVersion=15 and an old gated agent refuses loudly. Content-derived: a site left on
 // preserve-source emits no flag and keeps its earlier version and hash.
-const ProtocolVersion = 15
+//
+// v16 (AI-SEC-2): Deny — explicit drops rendered BEFORE the blanket mesh accepts and before the compiled
+// allows, so they hold in both modes. They close an agent device's direct path to an MCP endpoint it may only
+// reach through the gateway's MCP listener, where tool policy is enforced. An old agent has no deny render:
+// it would leave the direct path open while reporting the policy applied, which is exactly the bypass the
+// deny exists to close. Presence therefore triggers RequiredVersion=16 and an old gated agent refuses
+// loudly. Content-derived: an artifact with no deny serializes no section and keeps its earlier version and
+// hash. The control plane emits a deny only toward a gateway that has reported the MCP capability.
+const ProtocolVersion = 16
 
 // SupportedWindow is the AGENT-VERSION CONTRACT the upgrade path commits to (S11 D1): the current protocol
 // version and the one before it. An agent at either must be able to run against this control plane, which is
@@ -256,6 +264,9 @@ const SupportedWindow = 2
 // leaves this function untouched is a silent-accept bug — the artifact would carry new content at an old
 // version and old agents would accept it. The D2 checklist asks "RequiredVersion updated? y/n".
 func RequiredVersion(c Compiled) int {
+	if len(c.Deny) > 0 {
+		return 16
+	}
 	if c.SiteLANMasquerade {
 		return 15
 	}
@@ -354,6 +365,28 @@ type AllowEntry struct {
 	FQDNManaged          bool   `json:"fqdn_managed,omitempty"`
 	DNSResolverProfileID string `json:"dns_resolver_profile_id,omitempty"`
 	FQDNDeviceID         string `json:"fqdn_device_id,omitempty"`
+}
+
+// DenyReasonMCPGatewayOnly marks a deny that closes an agent's direct path to an MCP endpoint assigned to it
+// by a profile: that endpoint is reachable only through the gateway MCP listener (AI-SEC-2).
+const DenyReasonMCPGatewayOnly = "mcp_gateway_only"
+
+// DenyEntry is ONE compiled explicit drop (v16, AI-SEC-2): the source device (its assigned host address) may
+// NOT reach DstCIDR on Protocol within [PortLow,PortHigh], whatever the mode and whatever an allow says. The
+// gateway renders every deny ahead of the blanket mesh accepts and ahead of the compiled allows, so a rule
+// that would open the same destination has no effect for that source. Scoped as narrowly as an allow: one
+// source, one destination prefix, one protocol and port range. PortLow==0 means "all ports".
+//
+// Enforcement-significant: the match fields are in CanonicalHash. Reason and SrcDeviceID are observability
+// metadata (they label the drop in the access log) and are excluded, like RuleID on an allow.
+type DenyEntry struct {
+	SrcIP       string   `json:"src_ip"`
+	DstCIDR     string   `json:"dst_cidr"`
+	Protocol    Protocol `json:"protocol"`
+	PortLow     int      `json:"port_low,omitempty"`
+	PortHigh    int      `json:"port_high,omitempty"`
+	Reason      string   `json:"reason,omitempty"`
+	SrcDeviceID string   `json:"src_device_id,omitempty"`
 }
 
 // SubjectAttribution is observability-only identity metadata captured in the
@@ -494,6 +527,10 @@ type Compiled struct {
 	// original source; only the LAN host sees the gateway. Out-of-hash PLUMBING like PoolCIDR; presence
 	// triggers RequiredVersion=15, and Version is in the hash, so toggling it re-converges the gateway.
 	SiteLANMasquerade bool `json:"site_lan_masquerade,omitempty"`
+	// Deny (v16, AI-SEC-2) is the explicit-drop list, rendered before the mesh accepts and before Allow in
+	// BOTH modes. Enforcement, so it is in CanonicalHash; presence triggers RequiredVersion=16. omitempty so
+	// an artifact with no deny is byte-identical to what it was before the field existed.
+	Deny []DenyEntry `json:"deny,omitempty"`
 }
 
 // FQDNGeneration is the active, selected-context answer set for one FQDN
