@@ -136,13 +136,16 @@ function OwnerAccessDialog({ orgId, deviceId, agentName, onDismiss, onCreated }:
     finally { if (alive.current) setBusy(false); }
   }
   const owner = state.kind === "ready" ? state.preview.owner_email : null;
-  return <Modal title="Create rules from the owner's access" size="wide" showClose onDismiss={() => !busy && onDismiss()} actions={<><Button variant="ghost" disabled={busy} onClick={onDismiss}>Cancel</Button><Button disabled={busy || ticked.size === 0} onClick={() => void create()}>{busy ? "Creating…" : ticked.size === 0 ? "Create rules" : ticked.size === 1 ? "Create 1 rule" : `Create ${ticked.size} rules`}</Button></>}>
+  // Creating is offered only when there is something to tick; otherwise the dialog can only be closed.
+  const canCreate = choices.length > 0;
+  return <Modal title="Create rules from the owner's access" size="wide" showClose onDismiss={() => !busy && onDismiss()} actions={!canCreate ? <Button variant="ghost" onClick={onDismiss}>Close</Button> : <><Button variant="ghost" disabled={busy} onClick={onDismiss}>Cancel</Button><Button disabled={busy || ticked.size === 0} onClick={() => void create()}>{busy ? "Creating…" : ticked.size === 0 ? "Create rules" : ticked.size === 1 ? "Create 1 rule" : `Create ${ticked.size} rules`}</Button></>}>
     <div className="grid gap-3">
-      <p className="text-ink-tertiary">{owner ? `These are the destinations ${owner} can reach now.` : "These are the destinations the agent's owner can reach now."} Tick the ones {agentName} should reach too. Each tick becomes a rule that names the agent. Nothing is created until you confirm.</p>
+      {!(state.kind === "ready" && candidates.length === 0) && <p className="text-ink-tertiary">{owner ? `These are the destinations ${owner} can reach now.` : "These are the destinations the agent's owner can reach now."} Tick the ones {agentName} should reach too. Each tick becomes a rule that names the agent. Nothing is created until you confirm.</p>}
       {state.kind === "loading" ? <p role="status" className="text-ink-secondary">Reading the owner&apos;s access…</p>
         : state.kind === "error" ? <div><p role="alert" className="text-danger">{state.message}</p><Button size="sm" variant="ghost" className="mt-2" onClick={() => setAttempt((value) => value + 1)}>Retry</Button></div>
           : candidates.length === 0 ? <p className="text-ink-secondary">The owner cannot reach anything right now, so there is nothing to copy.</p>
             : <>
+              {choices.length === 0 && <p className="text-ink-secondary">None of these can be added: the agent already has a rule for each, or a rule for an agent cannot name it.</p>}
               {choices.length > 1 && <div className="flex flex-wrap gap-2"><Button size="sm" variant="ghost" disabled={busy} onClick={() => setTicked(new Set(choices.map((candidate) => candidate.key)))}>Tick all</Button><Button size="sm" variant="ghost" disabled={busy || ticked.size === 0} onClick={() => setTicked(new Set())}>Untick all</Button></div>}
               <ul aria-label="The owner's destinations" className="grid gap-0">{candidates.map((candidate) => {
                 const why = candidate.already_covered ? "The agent already has a rule for this." : !candidate.copyable ? "A rule for an agent cannot name this kind of destination." : null;
