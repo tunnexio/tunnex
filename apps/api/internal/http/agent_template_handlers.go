@@ -78,9 +78,29 @@ func (s apiServer) requireAgentTemplates(ctx context.Context, orgID uuid.UUID) e
 	return requireAgentTemplates(s, ctx, orgID)
 }
 
-// requireAgentGroups gates what agent policy templates and MCP both build on: agent groups, their
-// members and the MCP endpoints. Either switch being on is enough, so MCP no longer depends on agent
-// groups and policy templates. Template-only endpoints keep requireAgentTemplates.
+// requireMCP gates every MCP endpoint on the organization's MCP switch alone: the switch is the truth for
+// MCP, whatever agent groups and policy templates is set to. Handlers in other files call it right after
+// authorizing.
+func (s apiServer) requireMCP(ctx context.Context, orgID uuid.UUID) error {
+	if s.agentTemplates == nil {
+		return agentTemplateServiceUnavailable()
+	}
+	if s.system == nil {
+		return apierr.Internal()
+	}
+	mcp, err := s.system.GetOrganizationMCPSetting(ctx, orgID)
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		return err
+	}
+	if err != nil || !mcp.Enabled {
+		return apierr.Forbidden("opt_in_required", "Turn on MCP for this organization first.")
+	}
+	return nil
+}
+
+// requireAgentGroups gates agent groups and their members, which agent policy templates and MCP both
+// build on: either switch being on is enough. MCP endpoints use requireMCP and template endpoints
+// requireAgentTemplates.
 func (s apiServer) requireAgentGroups(ctx context.Context, orgID uuid.UUID) error {
 	if s.agentTemplates == nil {
 		return agentTemplateServiceUnavailable()
@@ -112,7 +132,7 @@ func (s apiServer) ListAgentMCPProfiles(ctx context.Context, req api.ListAgentMC
 	if _, err := authorize(ctx, req.OrgId, rbac.PermAgentTemplateManage); err != nil {
 		return nil, err
 	}
-	if err := s.requireAgentGroups(ctx, req.OrgId); err != nil {
+	if err := s.requireMCP(ctx, req.OrgId); err != nil {
 		return nil, err
 	}
 	rows, err := s.system.ListAgentMCPProfiles(ctx, req.OrgId)
@@ -182,7 +202,7 @@ func (s apiServer) CreateAgentMCPProfile(ctx context.Context, req api.CreateAgen
 	if err != nil {
 		return nil, err
 	}
-	if err := s.requireAgentGroups(ctx, req.OrgId); err != nil {
+	if err := s.requireMCP(ctx, req.OrgId); err != nil {
 		return nil, err
 	}
 	if req.Body == nil {
@@ -208,7 +228,7 @@ func (s apiServer) AssignAgentMCPProfile(ctx context.Context, req api.AssignAgen
 	if err != nil {
 		return nil, err
 	}
-	if err := s.requireAgentGroups(ctx, req.OrgId); err != nil {
+	if err := s.requireMCP(ctx, req.OrgId); err != nil {
 		return nil, err
 	}
 	if req.Body == nil {
@@ -252,7 +272,7 @@ func (s apiServer) ListAgentMCPAssignments(ctx context.Context, req api.ListAgen
 	if _, err := authorize(ctx, req.OrgId, rbac.PermAgentTemplateManage); err != nil {
 		return nil, err
 	}
-	if err := s.requireAgentGroups(ctx, req.OrgId); err != nil {
+	if err := s.requireMCP(ctx, req.OrgId); err != nil {
 		return nil, err
 	}
 	var state *string
@@ -275,7 +295,7 @@ func (s apiServer) PreviewAgentGroupMCPProfileImpact(ctx context.Context, req ap
 	if _, err := authorize(ctx, req.OrgId, rbac.PermAgentTemplateManage); err != nil {
 		return nil, err
 	}
-	if err := s.requireAgentGroups(ctx, req.OrgId); err != nil {
+	if err := s.requireMCP(ctx, req.OrgId); err != nil {
 		return nil, err
 	}
 	var p *uuid.UUID
@@ -296,7 +316,7 @@ func (s apiServer) ReplaceAgentGroupMCPProfile(ctx context.Context, req api.Repl
 	if _, err := authorize(ctx, req.OrgId, rbac.PermAgentTemplateManage); err != nil {
 		return nil, err
 	}
-	if err := s.requireAgentGroups(ctx, req.OrgId); err != nil {
+	if err := s.requireMCP(ctx, req.OrgId); err != nil {
 		return nil, err
 	}
 	if req.Body == nil {
@@ -325,7 +345,7 @@ func (s apiServer) UnassignAgentGroupMCPProfile(ctx context.Context, req api.Una
 	if _, err := authorize(ctx, req.OrgId, rbac.PermAgentTemplateManage); err != nil {
 		return nil, err
 	}
-	if err := s.requireAgentGroups(ctx, req.OrgId); err != nil {
+	if err := s.requireMCP(ctx, req.OrgId); err != nil {
 		return nil, err
 	}
 	m, err := s.agentTemplates.UnassignGroupMCPProfile(ctx, req.OrgId, req.GroupId, actorID(ctx))
@@ -343,7 +363,7 @@ func (s apiServer) ArchiveAgentMCPProfile(ctx context.Context, req api.ArchiveAg
 	if _, err := authorize(ctx, req.OrgId, rbac.PermAgentTemplateManage); err != nil {
 		return nil, err
 	}
-	if err := s.requireAgentGroups(ctx, req.OrgId); err != nil {
+	if err := s.requireMCP(ctx, req.OrgId); err != nil {
 		return nil, err
 	}
 	archiveErr := s.agentTemplates.ArchiveMCPProfile(ctx, req.OrgId, req.ProfileId, actorID(ctx))

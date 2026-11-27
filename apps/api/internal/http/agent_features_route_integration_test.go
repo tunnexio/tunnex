@@ -180,15 +180,36 @@ func TestMCPSwitchIsIndependentOfAgentPolicyTemplates(t *testing.T) {
 		t.Fatalf("create group after MCP off: %v", err)
 	}
 
-	// Templates alone still open groups and MCP, exactly as before this change.
+	// Templates on, MCP off: groups and templates work, MCP does not. The MCP switch is the truth for MCP.
 	if _, err := s.SetOrganizationAgentPolicyTemplatesEnabled(owner, api.SetOrganizationAgentPolicyTemplatesEnabledRequestObject{OrgId: f.org, Body: &api.AgentPolicyTemplateSetting{Enabled: true}}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err := s.ListAgentGroups(owner, api.ListAgentGroupsRequestObject{OrgId: f.org}); err != nil {
 		t.Fatalf("groups with only templates on: %v", err)
 	}
-	if _, err := s.ListAgentMCPProfiles(owner, api.ListAgentMCPProfilesRequestObject{OrgId: f.org}); err != nil {
+	if _, err := s.AddAgentGroupMember(owner, api.AddAgentGroupMemberRequestObject{OrgId: f.org, GroupId: group, Body: &api.AddAgentGroupMemberRequest{DeviceId: f.device}}); err != nil {
+		t.Fatalf("members with only templates on: %v", err)
+	}
+	if _, err := s.ListAgentMCPProfiles(owner, api.ListAgentMCPProfilesRequestObject{OrgId: f.org}); !hasCode(err, 403, "opt_in_required") {
 		t.Fatalf("MCP profiles with only templates on: %v", err)
+	}
+	if _, err := s.CreateAgentMCPProfile(owner, api.CreateAgentMCPProfileRequestObject{OrgId: f.org, Body: &api.CreateAgentMCPProfileRequest{Name: "late", Endpoint: "https://late.example.test"}}); !hasCode(err, 403, "opt_in_required") {
+		t.Fatalf("create MCP profile with only templates on: %v", err)
+	}
+	if _, err := s.ReplaceAgentGroupMCPProfile(owner, api.ReplaceAgentGroupMCPProfileRequestObject{OrgId: f.org, GroupId: group, Body: &api.SetAgentGroupMCPProfileRequest{ProfileId: profile}}); !hasCode(err, 403, "opt_in_required") {
+		t.Fatalf("assign MCP profile with only templates on: %v", err)
+	}
+	if _, err := s.ListAgentMCPAssignments(owner, api.ListAgentMCPAssignmentsRequestObject{OrgId: f.org}); !hasCode(err, 403, "opt_in_required") {
+		t.Fatalf("MCP assignments with only templates on: %v", err)
+	}
+	if _, err := s.PreviewAgentGroupMCPProfileImpact(owner, api.PreviewAgentGroupMCPProfileImpactRequestObject{OrgId: f.org, GroupId: group, Body: &api.PreviewAgentGroupMCPProfileImpactJSONRequestBody{}}); !hasCode(err, 403, "opt_in_required") {
+		t.Fatalf("MCP impact with only templates on: %v", err)
+	}
+	if _, err := s.UnassignAgentGroupMCPProfile(owner, api.UnassignAgentGroupMCPProfileRequestObject{OrgId: f.org, GroupId: group}); !hasCode(err, 403, "opt_in_required") {
+		t.Fatalf("MCP unassign with only templates on: %v", err)
+	}
+	if _, err := s.ArchiveAgentMCPProfile(owner, api.ArchiveAgentMCPProfileRequestObject{OrgId: f.org, ProfileId: profile}); !hasCode(err, 403, "opt_in_required") {
+		t.Fatalf("MCP archive with only templates on: %v", err)
 	}
 	if _, err := s.ListAgentPolicyTemplates(owner, api.ListAgentPolicyTemplatesRequestObject{OrgId: f.org}); err != nil {
 		t.Fatalf("templates with templates on: %v", err)
