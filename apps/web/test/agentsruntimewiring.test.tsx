@@ -192,14 +192,21 @@ describe("active Agent detail mutation ownership", () => {
     seed(); const original = get.getMockImplementation()!;
     get.mockImplementation((path: string) => path.endsWith("/runtime-status") ? Promise.resolve({ error: { error: { code: "unavailable" } } }) : original(path));
     const page = renderDetail("runtime");
-    await screen.findByRole("heading", { name: "Runtime synchronization off" });
-    expect(screen.getByRole("link", { name: "Review runtime settings" }).getAttribute("href")).toBe("/settings?section=features&feature=agent-runtime");
+    // Off is fixed where it is found: the switch is on the tab, with no detour through Settings.
+    const toggle = await screen.findByRole("switch", { name: "Runtime synchronization" });
+    expect(toggle.getAttribute("aria-checked")).toBe("false");
+    expect(screen.queryByRole("link", { name: "Review runtime settings" })).toBeNull();
     expect(screen.queryByRole("heading", { name: "Runtime unavailable" })).toBeNull();
+    put.mockResolvedValue({ data: { enabled: true } });
+    await waitFor(() => expect((toggle as HTMLButtonElement).disabled).toBe(false));
+    fireEvent.click(toggle);
+    await waitFor(() => expect(put).toHaveBeenCalledWith("/api/v1/organizations/{orgId}/agent-runtime-settings", { params: { path: { orgId: "org-a" } }, body: { enabled: true } }));
+    await screen.findByRole("heading", { name: "Runtime unavailable" });
     page.unmount(); org = { ...org, managed_agent_runtime_enabled: undefined };
     renderDetail("runtime");
     await screen.findByRole("heading", { name: "Runtime unavailable" });
     expect(screen.getByRole("button", { name: "Retry runtime" })).toBeTruthy();
-    expect(screen.queryByRole("heading", { name: "Runtime synchronization off" })).toBeNull();
+    expect(screen.queryByRole("switch", { name: "Runtime synchronization" })).toBeNull();
     expect(screen.queryByText("The server considers this report fresh.")).toBeNull();
   });
 

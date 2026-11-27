@@ -15,6 +15,8 @@ import { AgentMCPOAuthPanel, AgentMCPToolActivityPanel, AgentMCPToolApprovalPane
 import { AgentWorkflowProvenancePanel } from "../components/AgentWorkflowProvenance";
 import { AgentRuntimeUpdate } from "../components/AgentRuntimeUpdate";
 import { ResourceSummary } from "../components/ResourceSummary";
+import { FeatureEnableInline } from "../components/FeatureEnableInline";
+import { useAgentFeatures } from "../lib/agentFeatures";
 
 type AgentProfile = components["schemas"]["AgentProfile"];
 type Runtime = components["schemas"]["AgentRuntimeStatus"];
@@ -127,6 +129,9 @@ function AgentDetailWorkspace({ fixture, agentIdOverride }: { fixture?: AgentDet
   const [assignmentOpen, setAssignmentOpen] = useState(false);
   const [readVersion, setReadVersion] = useState(0);
   const alive = useRef(true), mutationBusy = useRef(false);
+  const features = useAgentFeatures(fixture ? undefined : org?.id);
+  // Off only when the server said so (or the plan does not include it). Unknown is never shown as off.
+  const featureOff = (key: "runtime_sync" | "mcp") => { const feature = features.get(key); return feature !== null && !(feature.enabled && feature.available); };
   useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
   const myRole = members.kind === "ready" && authState.status === "authed"
     ? members.data.find((member) => member.user_id === authState.user.id)?.role
@@ -259,7 +264,7 @@ function AgentDetailWorkspace({ fixture, agentIdOverride }: { fixture?: AgentDet
           <details className="agent-detail-disclosure"><summary>Identity &amp; labels</summary><dl className="agent-detail-facts tnx-resource-facts"><div className="tnx-resource-fact-wide"><dt>Agent ID</dt><dd><code>{agent.device_id}</code></dd></div>{Object.entries(agent.labels).map(([key, value]) => <div key={key}><dt>{key}</dt><dd>{value}</dd></div>)}{Object.keys(agent.labels).length === 0 && <div><dt>Labels</dt><dd>None</dd></div>}</dl></details>
         </>}
         {tab === "runtime" && <>
-          {org.managed_agent_runtime_enabled === false ? <div className="agent-detail-notice" role="status"><h3>Runtime synchronization off</h3><p>Enable synchronization to receive managed runtime reports.</p><Link className="agent-detail-text-link" to="/settings?section=features&feature=agent-runtime">Review runtime settings</Link></div> : <ReadState state={runtime} onRetry={refreshAgent} title="Runtime unavailable" retryLabel="Retry runtime">{(value) => <Panel title="Managed runtime"><dl className="agent-detail-facts tnx-resource-facts">
+          {featureOff("runtime_sync") ? <FeatureEnableInline orgId={org.id} feature="runtime_sync" features={features} onChanged={refreshAgent} /> : <ReadState state={runtime} onRetry={refreshAgent} title="Runtime unavailable" retryLabel="Retry runtime">{(value) => <Panel title="Managed runtime"><dl className="agent-detail-facts tnx-resource-facts">
             <div><dt>Connectivity</dt><dd>{value.connectivity}</dd></div>
             <div><dt>Health</dt><dd>{value.health === "last_good" ? "Last good" : value.health === "ready" ? "Ready" : "Inconclusive"}</dd></div>
             <div><dt>Last report</dt><dd title={value.last_seen_at ?? undefined}>{value.last_seen_at ? `${age(value.last_seen_at)}${value.stale ? " (stale)" : ""}` : "Never reported"}</dd></div>
@@ -270,7 +275,8 @@ function AgentDetailWorkspace({ fixture, agentIdOverride }: { fixture?: AgentDet
           {agent.status === "active" && can(myRole, "agent:enroll") && <Panel title="Update runtime"><AgentRuntimeUpdate orgId={org.id} /></Panel>}
           <ReadState state={rotation} onRetry={refreshAgent} title="Credential status unavailable" retryLabel="Retry credentials">{(value) => <Panel title="Credential rotation"><dl className="agent-detail-facts tnx-resource-facts"><div><dt>Runtime credential</dt><dd>Revision {value.current_revision} · {value.state}</dd></div><div><dt>WireGuard key</dt><dd>Revision {value.wireguard_current_revision} · {value.wireguard_state}</dd></div>{value.deadline && <div><dt>Deadline</dt><dd>{value.deadline}</dd></div>}</dl>{agent.permissions.rotate_credentials && <div className="agent-detail-panel-actions"><Button variant="ghost" size="sm" disabled={busy || agent.status !== "active" || value.state !== "current" || value.wireguard_state !== "current"} onClick={() => void rotateCredential()}>Rotate credential</Button></div>}</Panel>}</ReadState>
         </>}
-        {tab === "mcp" && <>
+        {tab === "mcp" && featureOff("mcp") && <FeatureEnableInline orgId={org.id} feature="mcp" features={features} onChanged={refreshAgent} />}
+        {tab === "mcp" && !featureOff("mcp") && <>
           <ReadState state={effectiveMCP} onRetry={refreshAgent} title="MCP profile unavailable" retryLabel="Retry MCP profile">{(value) => <Panel title="Effective MCP profile">{value.assigned ? <><dl className="agent-detail-facts tnx-resource-facts"><div><dt>Profile</dt><dd>{value.profile_name ?? "MCP profile"}</dd></div><div><dt>Inherited from</dt><dd>{value.group_name ?? "Source group"}</dd></div>{value.endpoint && <div className="tnx-resource-fact-wide"><dt>Endpoint</dt><dd><code>{value.endpoint}</code></dd></div>}</dl><p className="agent-detail-context">Changing the shared group profile affects every member of that group.</p><MCPEnforcementNotices profile={value} updateHref={`/agents/${agentId}?tab=runtime`} /></> : <p className="agent-detail-context">No MCP profile is inherited through this agent’s groups.</p>}<Link className="agent-detail-text-link" to={`/mcp${value.group_id ? `?group=${value.group_id}` : ""}`}>Manage MCP profiles</Link></Panel>}</ReadState>
           {inventory.kind === "error" && inventory.code === "mcp_inventory_not_found" ? <div className="agent-detail-empty" role="status"><h3>No MCP inventory reported yet.</h3><p>Tool policy and OAuth controls require a reported inventory.</p></div> : <ReadState state={inventory} onRetry={refreshAgent} title="MCP inventory unavailable" retryLabel="Retry MCP inventory">{(value) => <>
             <ObservedMCP data={value} />

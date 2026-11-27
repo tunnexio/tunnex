@@ -132,6 +132,25 @@ describe("released F09 agent group and template workflow", () => {
     expect(f09Reads).toEqual([]);
   });
 
+  it("turns agent groups on from the agent groups page, with no link to Settings", async () => {
+    currentOrg = { id: "org-a", name: "Organization A", agent_policy_templates_enabled: false };
+    (api.PUT as Mock).mockResolvedValueOnce({ data: { enabled: true } });
+
+    render(<MemoryRouter><AccessGroups scope="agents" /></MemoryRouter>);
+
+    const toggle = await screen.findByRole("switch", { name: "Agent groups & policy templates" });
+    expect(toggle.getAttribute("aria-checked")).toBe("false");
+    expect(screen.queryByRole("link", { name: "Configure AI Agent settings" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Create agent group" })).toBeNull();
+    expect(f09Reads).toEqual([]);
+    await waitFor(() => expect((toggle as HTMLButtonElement).disabled).toBe(false));
+    // The server accepts the switch: from here its group inventory answers.
+    currentOrg.agent_policy_templates_enabled = true;
+    fireEvent.click(toggle);
+    await waitFor(() => expect(api.PUT).toHaveBeenCalledWith("/api/v1/organizations/{orgId}/agent-policy-template-settings", { params: { path: { orgId: "org-a" } }, body: { enabled: true } }));
+    expect(await screen.findByRole("button", { name: "Create agent group" })).toBeTruthy();
+  });
+
   it("renders the policy-template opt-in state without requesting protected inventory", async () => {
     currentOrg = { id: "org-a", name: "Organization A", agent_policy_templates_enabled: false };
 

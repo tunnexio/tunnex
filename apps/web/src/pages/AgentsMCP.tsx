@@ -8,6 +8,8 @@ import { Button, Card, DataTable, EmptyState, ErrorText, Field, Input, Loading, 
 import { api, apiErrorCode, apiErrorMessage, loadOne } from "../lib/api";
 import { MCPProfileTools } from "../components/MCPProfileTools";
 import { useOrg } from "../lib/useOrg";
+import { useAgentFeatures } from "../lib/agentFeatures";
+import { FeatureEnableInline } from "../components/FeatureEnableInline";
 
 type Profile = components["schemas"]["AgentMCPProfile"];
 type Group = components["schemas"]["AgentGroup"];
@@ -49,7 +51,10 @@ export default function AgentsMCP() {
   // profile click made while inventory is first appearing.
   const groupId = search.get("group") || (groups.kind === "ready" ? groups.data[0]?.id ?? "" : "");
   const profileId = search.get("profile") ?? "";
-  const enabled = Boolean(org?.agent_policy_templates_enabled);
+  // MCP has its own switch; it no longer follows "Agent groups & policy templates".
+  const features = useAgentFeatures(org?.id);
+  const mcpFeature = features.get("mcp");
+  const enabled = Boolean(mcpFeature?.enabled && mcpFeature.available);
   const selectedGroup = useMemo(() => groups.kind === "ready" ? groups.data.find((group) => group.id === groupId) : undefined, [groups, groupId]);
   const selectedProfile = useMemo(() => profiles.kind === "ready" ? profiles.data.find((profile) => profile.id === profileId) : undefined, [profiles, profileId]);
   const activeAssignment = useMemo(() => assignments.kind === "ready" ? assignments.data.find((assignment) => assignment.group_id === groupId && assignment.state === "active") : undefined, [assignments, groupId]);
@@ -150,7 +155,7 @@ export default function AgentsMCP() {
   return <div className="network-management agents-workspace space-y-5">
     <PageHeader navigationTitle title="MCP profiles" subtitle={org.name} actions={enabled && profiles.kind === "ready" && profiles.data.length > 0 ? createButton : undefined} />
     <div className="text-right"><HelpTooltip label="About MCP profiles">Create a profile, assign it to an agent group, then review discovered tools. Adding a profile does not grant tool access.</HelpTooltip></div>
-    {!enabled && <Card className="max-w-2xl"><h2 className="text-sm font-semibold text-ink-heading">MCP management is turned off</h2><p className="mt-2 text-cell text-ink-tertiary">Enable the organization opt-in to create reusable profiles. Profile assignment remains group-owned, never direct to an agent.</p><div className="mt-4"><Link className="text-brand text-sm" to="/settings?section=features&feature=agent-templates">Open feature settings</Link></div><ErrorText>{error}</ErrorText></Card>}
+    {!enabled && <div className="max-w-2xl"><FeatureEnableInline orgId={org.id} feature="mcp" features={features} /></div>}
     {enabled && profiles.kind === "loading" && <Card><Loading label="Loading MCP profiles…" /></Card>}
     {enabled && denied && <Card className="max-w-2xl"><h2 className="text-sm font-semibold text-ink-heading">You do not have permission to view MCP profiles</h2><p className="mt-2 text-cell text-ink-tertiary">No profile, group, assignment, or plan information is shown without the required permission.</p></Card>}
     {enabled && transportError && !denied && <Card className="max-w-2xl"><h2 className="text-sm font-semibold text-ink-heading">MCP profiles could not be loaded</h2><p className="mt-2 text-cell text-ink-tertiary">No empty inventory is shown because the current API response failed. Refresh to retry.</p><ErrorText>{transportError}</ErrorText></Card>}

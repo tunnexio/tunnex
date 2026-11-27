@@ -9,6 +9,8 @@ import "../agents-management-workspace.css";
 import { Badge, Button, Card, DataTable, EmptyState, ErrorText, Field, Input, Loading, Modal, PageHeader, Select, RefreshButton } from "../components/ui";
 import { api, apiErrorMessage, listItems, loadOne, type AgentGroup, type AgentGroupMember, type GroupMember, type Member, type UserGroup } from "../lib/api";
 import { useOrg } from "../lib/useOrg";
+import { useAgentFeatures, type AgentFeatures } from "../lib/agentFeatures";
+import { FeatureEnableInline } from "../components/FeatureEnableInline";
 import { useAuth } from "../lib/auth";
 import { DIRECTORY_MANAGED_NOTE, isDirectoryManaged } from "../lib/idpsyncview";
 import { relativeAge } from "../lib/format";
@@ -47,7 +49,10 @@ function AccessGroupsLoader({ scope }: { scope: GroupScope }) {
   const { org } = useOrg();
   const { state } = useAuth();
   const writable = state.status === "authed" && state.user.email_verified && !state.user.must_change_password;
-  const agentGroupsEnabled = scope === "agents" && Boolean(org?.agent_policy_templates_enabled);
+  // Agent groups serve both policy templates and MCP servers: either switch being on makes them usable.
+  const features = useAgentFeatures(scope === "agents" ? org?.id : undefined);
+  const featureOn = (key: "agent_groups" | "mcp") => { const feature = features.get(key); return Boolean(feature?.enabled && feature.available); };
+  const agentGroupsEnabled = scope === "agents" && (featureOn("agent_groups") || featureOn("mcp"));
   const [authorized, setAuthorized] = useState<boolean | null>(null);
   const [people, setPeople] = useState<UserGroup[] | null>(null);
   const [agentGroups, setAgentGroups] = useState<AgentGroup[] | null>(null);
@@ -95,7 +100,7 @@ function AccessGroupsLoader({ scope }: { scope: GroupScope }) {
   if (!writable && scope === "agents") return <div className="network-management agents-workspace space-y-5">{header}<p role="status" className="text-cell text-ink-tertiary">Verify your email before managing AI Agent groups.</p></div>;
   if (!authorized) return <div className="network-management agents-workspace space-y-5">{header}<Card><p role="alert" className="text-cell text-ink-tertiary">You do not have permission to manage groups.</p><ErrorText>{error}</ErrorText></Card></div>;
   if (!people || !agentGroups || !members) return <div className="network-management agents-workspace space-y-5">{header}<Card>{error ? <LoadRetry error={error} onRetry={() => void reload()} /> : <Loading label="Loading groups…" />}</Card></div>;
-  return <CanonicalGroupsWorkspace orgId={org.id} people={people} agentGroups={agentGroups} agentGroupsEnabled={agentGroupsEnabled} peopleOptions={members} scope={scope} onReload={reload} />;
+  return <CanonicalGroupsWorkspace orgId={org.id} people={people} agentGroups={agentGroups} agentGroupsEnabled={agentGroupsEnabled} features={features} peopleOptions={members} scope={scope} onReload={reload} />;
 }
 
 type CanonicalRow = {
@@ -113,6 +118,7 @@ function CanonicalGroupsWorkspace({
   people,
   agentGroups,
   agentGroupsEnabled,
+  features,
   peopleOptions,
   onReload,
   scope,
@@ -122,6 +128,7 @@ function CanonicalGroupsWorkspace({
   people: UserGroup[];
   agentGroups: AgentGroup[];
   agentGroupsEnabled: boolean;
+  features: AgentFeatures;
   peopleOptions: Member[];
   onReload: () => Promise<void>;
 }) {
@@ -285,7 +292,7 @@ function CanonicalGroupsWorkspace({
       <AgentsTabRail actions={<><RefreshButton label="Refresh groups" disabled={busy} onClick={() => void onReload()} />{agentGroupsEnabled && countsValid && !selected && <Button disabled={busy} onClick={openCreate}>Create agent group</Button>}</>} />
       <div className="agents-management-content">
       <ErrorText>{error}</ErrorText>{notice && <p role="status" className="agents-management-notice">{notice}</p>}
-      {!agentGroupsEnabled ? <AppAccessEmptyState icon={null} title="Agent groups are turned off" description="Enable this organization’s opt-in for agent groups and network policy templates." action={<Link className="agents-management-link" to="/settings?section=features&feature=agent-templates">Configure AI Agent settings</Link>} /> : !countsValid ? <p role="alert">Member counts require the matching control-plane API version. Refresh when the server can return a valid count for every group.</p> : selected ? <>
+      {!agentGroupsEnabled ? <FeatureEnableInline orgId={orgId} feature="agent_groups" features={features} /> : !countsValid ? <p role="alert">Member counts require the matching control-plane API version. Refresh when the server can return a valid count for every group.</p> : selected ? <>
         <nav aria-label="Breadcrumb" className="agents-management-breadcrumb"><button disabled={busy} onClick={() => update({ group: null })}>Agent groups</button><span aria-hidden="true">/</span><span aria-current="page">{selected.name}</span></nav>
         <div className="agents-management-heading"><div><h2>{selected.name}</h2></div><div className="agents-management-actions"><Button disabled={busy || !currentMembers || !!currentMemberError} onClick={() => { setMemberId(""); setDialog("add"); }}>Add member</Button><AppAccessRowMenu label={`Actions for ${selected.name}`} actions={[
           { key: "rename", label: "Rename", disabledReason: busy ? "Wait for the current action." : undefined, onSelect: () => { setName(selected.name); setDialog("rename"); } },

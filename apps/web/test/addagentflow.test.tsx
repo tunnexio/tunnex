@@ -7,11 +7,16 @@ vi.mock("../src/lib/api", async () => {
   return { ...actual, api: { GET: get, POST: post, PATCH: vi.fn(), PUT: vi.fn(), DELETE: vi.fn() } };
 });
 
-import { AddAgentFlow } from "../src/components/AddAgentFlow";
+import { MemoryRouter } from "react-router-dom";
+import type { ComponentProps } from "react";
+import { AddAgentFlow as Flow } from "../src/components/AddAgentFlow";
+
+const AddAgentFlow = (props: ComponentProps<typeof Flow>) => <MemoryRouter><Flow {...props} /></MemoryRouter>;
+const features = (runtime: boolean, available = true) => ({ data: { items: [{ key: "runtime_sync", enabled: runtime, available, required_plan: available ? null : "starter" }] } });
 
 beforeEach(() => {
   get.mockReset(); post.mockReset();
-  get.mockImplementation(async (path: string) => path.endsWith("/nodes") ? { data: [{ id: "gateway-a", name: "Gateway A", status: "active" }] } : { data: { managed_agent_runtime_enabled: true } });
+  get.mockImplementation(async (path: string) => path.endsWith("/nodes") ? { data: [{ id: "gateway-a", name: "Gateway A", status: "active" }] } : features(true));
   post.mockResolvedValue({ data: { bootstrap_token: "tnx_test_once", release: { tag: "v1.0.0", source_sha: "a".repeat(40), manifest_url: "https://example.test/release.json", verifier_key_id: "test", verifier_public_key: "key", runtime: { binary: "tunnex-agent-runtime", version: "v1.0.0", linux_amd64: { name: "runtime-amd64", sha256: "b".repeat(64), source_sha: "a".repeat(40) }, linux_arm64: { name: "runtime-arm64", sha256: "c".repeat(64), source_sha: "a".repeat(40) }, unit: { name: "runtime.service", sha256: "d".repeat(64), source_sha: "a".repeat(40) } } } } });
 });
 afterEach(() => cleanup());
@@ -92,26 +97,44 @@ describe("Add Agent flow", () => {
 });
 
 it("uses fresh runtime settings instead of a stale disabled organization snapshot", async () => {
-  get.mockImplementation(async (path: string) => path.endsWith("/nodes") ? {data:[{id:"gateway-a",name:"Gateway A",status:"active"}]} : {data:{managed_agent_runtime_enabled:true}});
   render(<AddAgentFlow orgId="org-a" enabled runtimeEnabled={false} onDismiss={vi.fn()} />);
   expect(await screen.findByRole("heading", {name:/Step 1 of 3/})).toBeTruthy();
-  expect(get).toHaveBeenCalledWith("/api/v1/organizations/{orgId}", {params:{path:{orgId:"org-a"}}});
+  expect(screen.getByLabelText("Agent name")).toBeTruthy();
+  expect(get).toHaveBeenCalledWith("/api/v1/organizations/{orgId}/agent-features", {params:{path:{orgId:"org-a"}}});
 });
 
-it("refuses a stale enabled snapshot when the server runtime opt-in is off", async () => {
-  get.mockResolvedValue({data:{managed_agent_runtime_enabled:false}});
+it("turns runtime synchronization on inside the flow instead of sending the administrator to Settings", async () => {
+  const put = vi.fn(async () => ({ data: { enabled: true } }));
+  const { api } = await import("../src/lib/api");
+  (api as unknown as { PUT: typeof put }).PUT = put;
+  get.mockImplementation(async (path: string) => path.endsWith("/nodes") ? {data:[{id:"gateway-a",name:"Gateway A",status:"active"}]} : features(false));
   render(<AddAgentFlow orgId="org-a" enabled runtimeEnabled onDismiss={vi.fn()} />);
-  expect(await screen.findByRole("heading", {name:"Enable the agent runtime first"})).toBeTruthy();
+  const toggle = await screen.findByRole("switch", {name:"Runtime synchronization"});
+  expect(screen.queryByRole("heading", {name:"Enable the agent runtime first"})).toBeNull();
+  expect(screen.queryByRole("link", {name:/Settings/})).toBeNull();
+  expect(screen.queryByLabelText("Agent name")).toBeNull();
   expect(post).not.toHaveBeenCalled();
+  fireEvent.click(toggle);
+  await waitFor(() => expect(put).toHaveBeenCalledWith("/api/v1/organizations/{orgId}/agent-runtime-settings", {params:{path:{orgId:"org-a"}},body:{enabled:true}}));
+  expect(await screen.findByLabelText("Agent name")).toBeTruthy();
+});
+
+it("names the plan and offers no working switch when this edition cannot add agents", async () => {
+  get.mockImplementation(async (path: string) => path.endsWith("/nodes") ? {data:[]} : features(true, false));
+  render(<AddAgentFlow orgId="org-a" enabled onDismiss={vi.fn()} />);
+  const toggle = await screen.findByRole("switch", {name:"Runtime synchronization"}) as HTMLButtonElement;
+  expect(toggle.disabled).toBe(true);
+  expect(screen.getByText(/Included in the Starter plan\./)).toBeTruthy();
+  expect(screen.queryByLabelText("Agent name")).toBeNull();
 });
 
 it("keeps unreadable runtime state unavailable and retries the read", async () => {
   get.mockResolvedValue({error:{error:{code:"unavailable"}}});
   render(<AddAgentFlow orgId="org-a" enabled onDismiss={vi.fn()} />);
   expect(await screen.findByText("Could not verify runtime synchronization. Retry before installing an agent.")).toBeTruthy();
-  expect(screen.queryByText(/It is currently off/)).toBeNull();
+  expect(screen.queryByRole("switch")).toBeNull();
   expect(post).not.toHaveBeenCalled();
-  get.mockImplementation(async (path: string) => path.endsWith("/nodes") ? {data:[]} : {data:{managed_agent_runtime_enabled:true}});
+  get.mockImplementation(async (path: string) => path.endsWith("/nodes") ? {data:[]} : features(true));
   fireEvent.click(screen.getByRole("button",{name:"Retry"}));
   expect(await screen.findByRole("heading",{name:/Step 1 of 3/})).toBeTruthy();
   expect(screen.queryByText(/Could not load gateways/)).toBeNull();

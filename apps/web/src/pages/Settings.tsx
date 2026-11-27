@@ -81,8 +81,9 @@ import { LicenceCard, type LicenceCardCache } from "../components/LicenceCard";
 import { MfaSettings } from "../components/MfaSettings";
 import {
   AgentQuotaCard,
-  AgentRuntimeSettingCard,
 } from "../components/AgentOrganizationSettings";
+import { FeatureEnableInline } from "../components/FeatureEnableInline";
+import { useAgentFeatures, type AgentFeatureKey } from "../lib/agentFeatures";
 import { AccessEventRetentionSettings } from "../components/AccessEventRetentionSettings";
 import { AuditLogRetentionSettings } from "../components/AuditLogRetentionSettings";
 
@@ -92,7 +93,7 @@ const DIRECTORY_PROVIDERS = [...PROVIDERS, "okta"] as const;
 const directoryLabel = (p: string) => p === "okta" ? "Okta" : providerLabel(p as Provider);
 type SsoView = SsoConfigView;
 
-const FEATURE_PERMISSIONS = ["org:update", "app_access:manage", "server_access:manage", "beam:policy_manage", "ai_gateway:manage", "agent_runtime:manage", "agent_template:manage", "agent_access:approve", "ipsec:manage", "fqdn_resource:manage", "policy:manage", "k8s_scope:manage", "k8s_ha:manage", "sandbox:admin", "alerting:manage"];
+const FEATURE_PERMISSIONS = ["org:update", "app_access:manage", "server_access:manage", "beam:policy_manage", "ai_gateway:manage", "agent_runtime:manage", "agent_template:manage", "mcp:manage", "agent_access:approve", "ipsec:manage", "fqdn_resource:manage", "policy:manage", "k8s_scope:manage", "k8s_ha:manage", "sandbox:admin", "alerting:manage"];
 
 export default function Settings() {
   const { org } = useOrg();
@@ -261,8 +262,9 @@ function SettingsWorkspace() {
     { id:"openvpn", name:"OpenVPN", category:"Network", keywords:"ovpn_enabled profiles tunnel", permission:"org:update", control:<OrgOVPNToggle key={org.id} org={org} canEdit={emailVerified} onSaved={saved => reconcileOrganization(saved)} /> },
     { id:"ipsec", name:"IPsec", category:"Network", keywords:"IKE tunnels connections enabled", permission:"ipsec:manage", control:<NetworkFeatureControl feature="ipsec" orgId={org.id} roles={appAccessRoles} canEdit={emailVerified} /> },
     { id:"ai-gateway", name:"AI Gateway", category:"AI", keywords:"models inference enabled", permission:"ai_gateway:manage", control:<WorkspaceFeatureControl feature="ai-gateway" orgId={org.id} roles={appAccessRoles} canEdit={emailVerified} serverAdmin={serverAdmin} /> },
-    { id:"agent-runtime", name:"Agent runtime synchronization", category:"AI", keywords:"managed_agent_runtime_enabled configuration sync", permission:"agent_runtime:manage", control:<AgentRuntimeSettingCard key={org.id} orgId={org.id} value={org.managed_agent_runtime_enabled} canEdit={emailVerified && can(appAccessRoles,"agent_runtime:manage")} central onSaved={enabled => reconcileOrganization({ ...org, managed_agent_runtime_enabled:enabled })} /> },
-    { id:"agent-templates", name:"Agent groups & policy templates", category:"AI", keywords:"agent_policy_templates_enabled MCP management reusable", permission:"agent_template:manage", control:<AgentPolicyTemplatesToggle key={org.id} org={org} canEdit={emailVerified && can(appAccessRoles,"agent_template:manage")} onSaved={saved => reconcileOrganization(saved)} /> },
+    { id:"agent-runtime", name:"Agent runtime synchronization", category:"AI", keywords:"managed_agent_runtime_enabled configuration sync", permission:"agent_runtime:manage", control:<AgentFeatureSetting key={org.id} orgId={org.id} feature="runtime_sync" canEdit={emailVerified && can(appAccessRoles,"agent_runtime:manage")} onSaved={enabled => reconcileOrganization({ ...org, managed_agent_runtime_enabled:enabled })} /> },
+    { id:"agent-templates", name:"Agent groups & policy templates", category:"AI", keywords:"agent_policy_templates_enabled MCP management reusable", permission:"agent_template:manage", control:<AgentFeatureSetting key={org.id} orgId={org.id} feature="agent_groups" canEdit={emailVerified && can(appAccessRoles,"agent_template:manage")} onSaved={enabled => reconcileOrganization({ ...org, agent_policy_templates_enabled:enabled })} /> },
+    { id:"agent-mcp", name:"MCP", category:"AI", keywords:"MCP servers tools gateway mcp_enabled", permission:"mcp:manage", control:<AgentFeatureSetting key={org.id} orgId={org.id} feature="mcp" canEdit={emailVerified && can(appAccessRoles,"mcp:manage")} /> },
     { id:"agent-jit", name:"Just-in-time agent access", category:"AI", keywords:"agent_jit_access_enabled JIT temporary approval", permission:"agent_access:approve", control:<AgentJITAccessToggle key={org.id} orgId={org.id} canEdit={emailVerified && can(appAccessRoles,"agent_access:approve")} onSaved={enabled => reconcileOrganization({ ...org, agent_jit_access_enabled:enabled })} /> },
     { id:"sandboxes", name:"Sandbox creation", category:"AI", keywords:"private workspaces enabled", permission:"sandbox:admin", control:<WorkspaceFeatureControl feature="sandboxes" orgId={org.id} roles={appAccessRoles} canEdit={emailVerified} serverAdmin={serverAdmin} /> },
     { id:"kubernetes-scopes", name:"Kubernetes cluster scopes", category:"Kubernetes", keywords:"cluster access governance opt in enabled", permission:"k8s_scope:manage", control:<NetworkFeatureControl feature="kubernetes-scopes" orgId={org.id} roles={appAccessRoles} canEdit={emailVerified} /> },
@@ -497,7 +499,7 @@ function SettingsWorkspace() {
           <SettingGroup id="ai-agents" title="AI Agents" tabpanel>
             <div className="flex flex-col gap-3.5">
               <AgentQuotaCard orgId={org.id} value={org.max_agent_identities ?? null} canEdit={can(myRole, "org:update") && emailVerified} />
-              <SettingRow label="Agent features" description="Runtime synchronization, agent groups, templates, and temporary access."><a className="feature-control-link" href="/settings?section=features&feature=agent-runtime">Manage in Features</a></SettingRow>
+              <SettingRow label="Agent features" description="Runtime synchronization, agent groups, MCP, and temporary access."><a className="feature-control-link" href="/settings?section=features&feature=agent-runtime">Manage in Features</a></SettingRow>
             </div>
           </SettingGroup>
         )}
@@ -533,64 +535,10 @@ function SettingsWorkspace() {
   );
 }
 
-function AgentPolicyTemplatesToggle({
-  org,
-  canEdit,
-  onSaved,
-}: {
-  org: Org;
-  canEdit: boolean;
-  onSaved: (org: Org) => void | Promise<void>;
-}) {
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState<string | null>(null);
-  const enabled = org.agent_policy_templates_enabled;
-  const alive = useRef(true), locked = useRef(false), allowed = useRef(canEdit);
-  allowed.current = canEdit;
-  useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
-
-  async function reload() {
-    if (!alive.current || locked.current) return;
-    locked.current = true; setBusy(true);
-    try {
-    const result = await loadOne(() => api.GET("/api/v1/organizations/{orgId}", { params: { path: { orgId: org.id } } }));
-    if (alive.current) {
-      if (!result.ok || result.data.id !== org.id || typeof result.data.agent_policy_templates_enabled !== "boolean") setErr(result.ok ? "The feature setting is unavailable." : result.error);
-      else { setErr(null); await onSaved(result.data); }
-    }
-    } catch { if (alive.current) setErr("Organization status could not be confirmed. Reload before another change."); }
-    finally { locked.current = false; if (alive.current) setBusy(false); }
-  }
-
-  async function toggle() {
-    if (!alive.current || !allowed.current || locked.current || err || typeof enabled !== "boolean") return;
-    locked.current = true; setBusy(true); setErr(null);
-    const next = !enabled;
-    try {
-      const result = await api.PUT("/api/v1/organizations/{orgId}/agent-policy-template-settings", { params: { path: { orgId: org.id } }, body: { enabled: next } });
-      if (!alive.current || !allowed.current) return;
-      if (result.error) return setErr(apiErrorMessage(result.error, "Could not update agent policy templates."));
-      const refetch = await api.GET("/api/v1/organizations/{orgId}", { params: { path: { orgId: org.id } } });
-      if (!alive.current || !allowed.current) return;
-      if (refetch.error || !refetch.data || refetch.data.id !== org.id || typeof refetch.data.agent_policy_templates_enabled !== "boolean") return setErr("The setting was saved, but the organization could not be refreshed. Reload Settings before another change.");
-      await onSaved(refetch.data);
-    } catch { if (alive.current) setErr("Could not confirm the saved setting. Reload Settings before another change."); }
-    finally { locked.current = false; if (alive.current) setBusy(false); }
-  }
-
-  return (
-    // data-testid stays ON THE ROW: it is the settings seam the F09 tests address, and moving it to the
-    // switch would quietly narrow what those tests can reach.
-    <SettingRow
-      label="Agent groups & policy templates"
-      description="Reusable agent-group policy authoring. Creates no access until a template is applied."
-      data-testid="agent-policy-template-settings"
-      error={err}
-    >
-      {typeof enabled === "boolean" && !err ? <Switch label="Agent groups & policy templates" checked={enabled} disabled={!canEdit || busy} onChange={toggle} /> : <SettingValue>Unavailable</SettingValue>}
-      {(err || typeof enabled !== "boolean") && <Button variant="ghost" disabled={busy} onClick={() => void reload()}>Reload template setting</Button>}
-    </SettingRow>
-  );
+/** The Settings row for an agent feature: the same switch the agent and MCP pages show in place. */
+function AgentFeatureSetting({ orgId, feature, canEdit, onSaved }: { orgId: string; feature: AgentFeatureKey; canEdit: boolean; onSaved?: (enabled: boolean) => void | Promise<void> }) {
+  const features = useAgentFeatures(orgId);
+  return <FeatureEnableInline orgId={orgId} feature={feature} features={features} variant="row" canEdit={canEdit} onChanged={onSaved} />;
 }
 
 function AccessSecuritySettings({ orgId, canEdit }: { orgId: string; canEdit: boolean }) {
