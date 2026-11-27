@@ -226,3 +226,45 @@ func TestGatewayAddressSelectionIsPrivateUnambiguousAndDualStack(t *testing.T) {
 		})
 	}
 }
+
+// Another tunnel-side listener (the MCP gateway) reuses this lifecycle with its own port and handler.
+func TestListenerRuntimeBindsItsOwnPortAndServesItsOwnHandler(t *testing.T) {
+	var bound []string
+	var served []string
+	var listener *testListener
+	healthy := true
+	r := NewListenerRuntime(ListenerConfig{
+		Interface: "vpn-test", Port: "8084", Name: "test_listener",
+		ReadTimeout: time.Second, WriteTimeout: time.Second,
+		Healthy: func() bool { return healthy },
+		Logger:  slog.New(slog.NewTextHandler(io.Discard, nil)),
+		Handler: func(address string, peers KernelPeers) http.Handler {
+			served = append(served, address)
+			if readback, err := peers(t.Context()); err != nil || readback != "readback:vpn-test" {
+				t.Fatalf("handler got the wrong peer readback: %q %v", readback, err)
+			}
+			return http.NotFoundHandler()
+		},
+		Observe: func(context.Context, string, netip.Addr) (int, error) { return 7, nil },
+		Listen: func(_ context.Context, iface, addr string) (net.Listener, error) {
+			bound = append(bound, iface+" "+addr)
+			listener = newTestListener()
+			return listener, nil
+		},
+		Peers: func(_ context.Context, iface string) (string, error) { return "readback:" + iface, nil },
+	})
+	t.Cleanup(r.Close)
+	r.SetDesired("10.77.0.9/24")
+	r.Reconcile(t.Context())
+	if ready, address := r.Status(); !ready || address != "10.77.0.9" {
+		t.Fatalf("ready=%v address=%q", ready, address)
+	}
+	if len(bound) != 1 || bound[0] != "vpn-test 10.77.0.9:8084" || len(served) != 1 || served[0] != "10.77.0.9" {
+		t.Fatalf("bound=%v served=%v", bound, served)
+	}
+	healthy = false
+	r.Reconcile(t.Context())
+	if ready, _ := r.Status(); ready || !listener.isClosed() {
+		t.Fatal("an unhealthy reconciler kept the listener")
+	}
+}

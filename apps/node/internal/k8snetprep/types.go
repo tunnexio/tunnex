@@ -54,6 +54,7 @@ const (
 	InputReplyRuleComment      = "tunnex_input_reply"
 	InputDNSRuleComment        = "tunnex_input_dns"
 	InputAIVPNRuleComment      = "tunnex_input_ai_vpn"
+	InputMCPGatewayRuleComment = "tunnex_input_mcp_gateway"
 	InputTunnelDropRuleComment = "tunnex_input_tunnel_drop"
 	// StoppedTunnelDropRuleComment marks the only rules a stopped in-cluster
 	// gateway leaves in its forward and input chains (K8N-5 item 1, K8N-7).
@@ -62,6 +63,8 @@ const (
 	InputDNSPort = 53
 	// InputAIVPNPort is aivpn.HTTPPort, the AI VPN inference listener (IPv4).
 	InputAIVPNPort = 8083
+	// InputMCPGatewayPort is mcpwire.ListenerPort, the MCP gateway listener (IPv4).
+	InputMCPGatewayPort = 8084
 )
 
 // AuthorityGuard holds the node-local operation lock and validates the current

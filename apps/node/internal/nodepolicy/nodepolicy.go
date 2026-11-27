@@ -43,14 +43,16 @@ const (
 // v13 adds explicitly configured public upstreams for allowed LAN DNS clients.
 // v14 adds explicit public resolver endpoints for static CNAME target completion.
 // v15 (SSI-8): this agent renders SiteLANMasquerade (source NAT of remote-site traffic at the LAN edge).
-const MaxSupportedVersion = 15
+// v16 (AI-SEC-2): this agent renders Deny (explicit drops ahead of the mesh accepts and the allows) and
+// cuts the established flows of a deny that arrives; an agent still at 15 refuses a deny-carrying
+// artifact rather than accepting it with the denied path left open.
+const MaxSupportedVersion = 16
 
-// RendersDeny says whether this gateway's forward chain renders Compiled.Deny (v16, AI-SEC-2). The wire type
-// below already carries the section so both modules hash it identically, but MaxSupportedVersion stays below
-// 16 until the render lands: a v16 artifact is refused (deny-all, reported) rather than accepted with its
-// denied paths left open. Set this to true and raise MaxSupportedVersion to 16 in the SAME change that
-// renders the denies ahead of the mesh accepts and the compiled allows.
-const RendersDeny = false
+// RendersDeny says whether this gateway's forward chain renders Compiled.Deny (v16, AI-SEC-2): egress
+// forwardRules writes the denies ahead of the mesh accepts and the compiled allows. It is true in the same
+// change that raised MaxSupportedVersion to 16; the two must never be separated, or a v16 artifact would be
+// accepted with its denied paths left open.
+const RendersDeny = true
 
 // DenyEntry mirrors policyspec.DenyEntry (v16): the source may NOT reach DstCIDR on Protocol within
 // [PortLow,PortHigh], in either mode and whatever an allow says. Reason and SrcDeviceID are observability
@@ -146,7 +148,7 @@ type Compiled struct {
 	// leaves a non-tunnel interface. Out-of-hash PLUMBING; mirror of policyspec.Compiled.SiteLANMasquerade.
 	SiteLANMasquerade bool `json:"site_lan_masquerade,omitempty"`
 	// Deny (v16, AI-SEC-2): explicit drops rendered before the mesh accepts and before Allow, in both modes.
-	// Enforcement, so it is hashed. Carried on the wire now; rendered once RendersDeny is true.
+	// Enforcement, so it is hashed. Rendered by egress forwardRules (RendersDeny).
 	Deny []DenyEntry `json:"deny,omitempty"`
 }
 
