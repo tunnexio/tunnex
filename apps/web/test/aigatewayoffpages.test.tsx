@@ -133,6 +133,46 @@ describe("'No models available' only when the gateway is on and truly has none",
     expect(screen.getByRole("link", { name: "Grant model access" }).getAttribute("href")).toBe("/ai-gateway/access");
   });
 
+  // A member may list their own models but may not read the AI Gateway settings (403). The reason comes
+  // from the status the member is allowed to read, which carries only that reason.
+  const forbidden = { error: { error: { code: "forbidden" } }, response: response(403) };
+  const asMember = (status: unknown) => api.GET.mockImplementation(async (path: string) => path.endsWith("/my-models") ? { data: [], response: response() } : path.endsWith("/ai-gateway/status") ? status : forbidden);
+
+  it.each([
+    ["not_enabled", "AI Gateway is turned off", "Ask an organization owner or administrator to turn it on."],
+    ["transport_required", "AI Gateway needs a transport choice first", "Ask a server administrator to open Settings, then AI Gateway transport, and choose how AI Gateway is reached."],
+    ["no_provider", "No provider credential yet", "Ask an organization owner or administrator to add one under AI Gateway, LLM credentials."],
+    ["engine_not_installed", "The AI engine is not installed on this server", "Only a server administrator can fix this"],
+  ] as const)("tells a member why no model can answer (%s), in plain words and with no control", async (reason, title, ask) => {
+    asMember({ data: { on: false, reason }, response: response() });
+    inRouter(<AIUseModel orgId="org" />);
+    const shown = await banner();
+    expect(shown.textContent).toContain(title);
+    expect(shown.textContent).toContain(ask);
+    expect(shown.querySelector("button, a")).toBeNull();
+    expect(screen.queryByText("No model is granted to you yet")).toBeNull();
+    expect(api.GET).toHaveBeenCalledWith("/api/v1/organizations/{orgId}/ai-gateway/status", { params: { path: { orgId: "org" } } });
+    expect(api.PUT).not.toHaveBeenCalled();
+  });
+
+  it("ignores a fix or a link in the member's status: only the reason is used", async () => {
+    asMember({ data: { on: false, reason: "no_provider", fix: { kind: "add_provider", href: "/ai-gateway/credentials" } }, response: response() });
+    inRouter(<AIUseModel orgId="org" />);
+    expect((await banner()).querySelector("button, a")).toBeNull();
+  });
+
+  it("shows a member no banner when the gateway is on, and does not ask for the status when the settings can be read", async () => {
+    asMember({ data: { on: true, reason: null }, response: response() });
+    inRouter(<AIUseModel orgId="org" />);
+    expect(await screen.findByText("No model is granted to you yet")).toBeTruthy();
+    expect(screen.queryByRole("status", { name: "AI Gateway is not ready" })).toBeNull();
+    cleanup(); api.GET.mockClear();
+    api.GET.mockImplementation(models([]));
+    inRouter(<AIUseModel orgId="org" canManage />);
+    await screen.findByText("No models available");
+    expect(api.GET.mock.calls.some(([path]) => String(path).endsWith("/ai-gateway/status"))).toBe(false);
+  });
+
   it("tells a member who to ask, without claiming the organization has no models", async () => {
     api.GET.mockImplementation(async (path: string) => path.endsWith("/my-models") ? { data: [], response: response() } : { error: { error: { code: "forbidden" } }, response: response(403) });
     inRouter(<AIUseModel orgId="org" />);
