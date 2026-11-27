@@ -20,7 +20,9 @@ import (
 	"github.com/tunnexio/tunnex/apps/api/internal/api"
 	"github.com/tunnexio/tunnex/apps/api/internal/apierr"
 	"github.com/tunnexio/tunnex/apps/api/internal/authctx"
+	"github.com/tunnexio/tunnex/apps/api/internal/mcptoolpolicy"
 	"github.com/tunnexio/tunnex/apps/api/internal/rbac"
+	"github.com/tunnexio/tunnex/packages/apptransport/mcpwire"
 )
 
 type agentTemplatePort interface {
@@ -47,7 +49,7 @@ type agentTemplatePort interface {
 	SetGroupMCPProfile(context.Context, uuid.UUID, uuid.UUID, uuid.UUID, uuid.UUID) (agenttemplates.MCPMutation, error)
 	UnassignGroupMCPProfile(context.Context, uuid.UUID, uuid.UUID, uuid.UUID) (agenttemplates.MCPMutation, error)
 	ArchiveMCPProfile(context.Context, uuid.UUID, uuid.UUID, uuid.UUID) error
-	CreateMCPProfile(context.Context, uuid.UUID, uuid.UUID, string, string) (sqlc.AgentMcpProfile, error)
+	CreateMCPProfile(context.Context, uuid.UUID, uuid.UUID, string, string, string) (sqlc.AgentMcpProfile, error)
 }
 
 func agentTemplateServiceUnavailable() error {
@@ -158,21 +160,41 @@ func (s apiServer) GetAgentEffectiveMCPProfile(ctx context.Context, req api.GetA
 	if s.system == nil {
 		return nil, apierr.Internal()
 	}
-	assignments, err := s.system.ListActiveMCPAssignmentsForDevice(ctx, sqlc.ListActiveMCPAssignmentsForDeviceParams{OrgID: req.OrgId, DeviceID: req.DeviceId})
+	servers, err := mcptoolpolicy.AssignedServers(ctx, s.system, req.OrgId, req.DeviceId)
 	if err != nil {
 		return nil, apierr.Internal()
 	}
-	if len(assignments) == 0 {
+	if len(servers) == 0 {
 		return api.GetAgentEffectiveMCPProfile200JSONResponse{Assigned: false}, nil
 	}
-	if len(assignments) != 1 {
-		return nil, apierr.New(http.StatusServiceUnavailable, "mcp_profile_unavailable", "multiple active MCP profiles are assigned to this agent")
-	}
-	matched := assignments[0]
+	// An agent can have several MCP servers. The scalar fields describe the first one (the earliest
+	// assignment), which is the one a client reaches at the bare local address.
+	matched := servers[0]
 	out := api.GetAgentEffectiveMCPProfile200JSONResponse{
 		Assigned: true, ProfileId: &matched.ProfileID, ProfileName: &matched.ProfileName, Endpoint: &matched.Endpoint,
-		GroupId: &matched.AgentGroupID, GroupName: &matched.GroupName,
+		GroupId: &matched.GroupID, GroupName: &matched.GroupName,
 	}
+	var overrides []string
+	if own, err := s.system.GetAgentMCPToolPolicyOverrideEndpoints(ctx, sqlc.GetAgentMCPToolPolicyOverrideEndpointsParams{OrgID: req.OrgId, DeviceID: req.DeviceId}); err == nil {
+		overrides = own.OverrideEndpoints
+	} else if !errors.Is(err, pgx.ErrNoRows) {
+		return nil, apierr.Internal()
+	}
+	list := make([]api.AgentEffectiveMCPServer, 0, len(servers))
+	for i, server := range servers {
+		source := api.MCPToolPolicySourceGroup
+		for _, endpoint := range overrides {
+			if endpoint == server.Endpoint {
+				source = api.MCPToolPolicySourceAgent
+			}
+		}
+		list = append(list, api.AgentEffectiveMCPServer{
+			ProfileId: server.ProfileID, ProfileName: server.ProfileName, ServerName: server.ServerName, Endpoint: server.Endpoint,
+			GroupId: server.GroupID, GroupName: server.GroupName, Default: i == 0, PolicySource: source,
+			LocalUrl: mcpLocalProxyURL + "/" + server.ServerName,
+		})
+	}
+	out.Servers = &list
 	// AI-SEC-2: where tool policy is enforced for this agent right now. Left out when it cannot be
 	// read; the profile itself is still shown.
 	if s.agentRuntime != nil {
@@ -184,6 +206,10 @@ func (s apiServer) GetAgentEffectiveMCPProfile(ctx context.Context, req api.GetA
 	}
 	return out, nil
 }
+
+// mcpLocalProxyURL is where an MCP client on the agent host reaches the agent's servers: each one at
+// /<server name>, and the first one at the bare address too.
+const mcpLocalProxyURL = "http://127.0.0.1:17100"
 
 // mcpDirectPathClosable reports whether the gateway can fully close the agent's own route to the endpoint:
 // only for a private IP literal. A hostname is closed just for addresses the gateway already resolves for
@@ -213,7 +239,17 @@ func (s apiServer) CreateAgentMCPProfile(ctx context.Context, req api.CreateAgen
 	if name == "" || parseErr != nil || u.Scheme == "" || u.Host == "" || u.User != nil || u.RawQuery != "" || u.Fragment != "" {
 		return nil, apierr.BadRequest("invalid_request", "name and credential-free absolute MCP endpoint are required")
 	}
-	row, err := s.agentTemplates.CreateMCPProfile(ctx, req.OrgId, actorID(ctx), name, endpoint)
+	serverName := ""
+	if req.Body.ServerName != nil {
+		// Optional: left out, a free name is derived from the display name.
+		if serverName = strings.TrimSpace(*req.Body.ServerName); !mcpwire.ValidServerName(serverName) {
+			return nil, apierr.BadRequest("invalid_request", "server name must be lowercase letters, digits and hyphens, and cannot be \"mcp\"")
+		}
+	}
+	row, err := s.agentTemplates.CreateMCPProfile(ctx, req.OrgId, actorID(ctx), name, endpoint, serverName)
+	if isMCPServerNameViolation(err) {
+		return nil, apierr.Conflict("mcp_server_name_taken", "Another MCP server already uses that server name")
+	}
 	if isUniqueViolation(err) {
 		return nil, apierr.Conflict("mcp_profile_conflict", "MCP profile name already exists")
 	}
@@ -239,7 +275,7 @@ func (s apiServer) AssignAgentMCPProfile(ctx context.Context, req api.AssignAgen
 		return nil, lifecycleErr
 	}
 	if errors.Is(err, agenttemplates.ErrConflict) {
-		return nil, apierr.Conflict("mcp_profile_assignment_conflict", "an agent may have only one MCP profile")
+		return nil, apierr.Conflict("mcp_profile_assignment_conflict", "profile is archived or assignment conflicts")
 	}
 	if err != nil {
 		return nil, apierr.Internal()
@@ -256,6 +292,8 @@ func mcpLifecycleError(err error) error {
 		return apierr.NotFound("mcp_profile_not_found", "MCP profile was not found")
 	case errors.Is(err, agenttemplates.ErrAgentGroupNotFound):
 		return apierr.NotFound("agent_group_not_found", "agent group was not found")
+	case errors.Is(err, agenttemplates.ErrMCPOff):
+		return apierr.Forbidden("opt_in_required", "Turn on MCP for this organization first.")
 	default:
 		return nil
 	}
@@ -389,6 +427,11 @@ func (s apiServer) ArchiveAgentMCPProfile(ctx context.Context, req api.ArchiveAg
 		return nil, apierr.Internal()
 	}
 	return api.ArchiveAgentMCPProfile200JSONResponse(toAPIAgentMCPProfile(row)), nil
+}
+
+func isMCPServerNameViolation(err error) bool {
+	var pgErr *pgconn.PgError
+	return errors.As(err, &pgErr) && pgErr.Code == "23505" && strings.Contains(pgErr.ConstraintName, "server_name")
 }
 
 func isUniqueViolation(err error) bool {
@@ -810,7 +853,12 @@ func toAPIAgentMCPProfile(row sqlc.AgentMcpProfile) api.AgentMCPProfile {
 	if row.ArchivedAt.Valid {
 		archivedAt = &row.ArchivedAt.Time
 	}
-	return api.AgentMCPProfile{Id: row.ID, OrgId: row.OrgID, Name: row.Name, Endpoint: row.Endpoint, CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt, ArchivedAt: archivedAt}
+	out := api.AgentMCPProfile{Id: row.ID, OrgId: row.OrgID, Name: row.Name, Endpoint: row.Endpoint, CreatedAt: row.CreatedAt, UpdatedAt: row.UpdatedAt, ArchivedAt: archivedAt}
+	if row.ServerName != "" {
+		name := row.ServerName
+		out.ServerName = &name
+	}
+	return out
 }
 
 func toAPIAgentPolicyTemplate(row sqlc.AgentPolicyTemplate) api.AgentPolicyTemplate {

@@ -45,6 +45,9 @@ type Policy struct {
 	Rules               []Rule
 	InventoryObservedAt time.Time
 	CreatedAt           time.Time
+	// OverrideEndpoints are the MCP endpoints this per-agent policy decides for. For any other endpoint the
+	// policy of the agent's group decides.
+	OverrideEndpoints []string
 }
 
 // InventoryFreshness is how old a gateway observation may be and still back a decision. The gateway
@@ -61,9 +64,9 @@ func (s *Service) Get(ctx context.Context, orgID, deviceID uuid.UUID) (Policy, e
 	}
 	var p Policy
 	var raw []byte
-	err := s.pool.QueryRow(ctx, `SELECT version, rules, inventory_observed_at, created_at
+	err := s.pool.QueryRow(ctx, `SELECT version, rules, inventory_observed_at, created_at, override_endpoints
 FROM agent_mcp_tool_policy_versions WHERE org_id=$1 AND device_id=$2 ORDER BY version DESC LIMIT 1`, orgID, deviceID).
-		Scan(&p.Version, &raw, &p.InventoryObservedAt, &p.CreatedAt)
+		Scan(&p.Version, &raw, &p.InventoryObservedAt, &p.CreatedAt, &p.OverrideEndpoints)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Policy{}, ErrNotFound
 	}
@@ -249,9 +252,18 @@ WHERE d.id=$1 AND d.org_id=$2 AND d.kind='agent' AND d.deleted_at IS NULL FOR SH
 	if err != nil {
 		return Policy{}, err
 	}
+	// What this version decides for: everything the agent's policy already decided for, plus every
+	// endpoint the new rules name. A first policy with no rules decides for every server the agent has
+	// now, so an empty per-agent policy still denies everything, as it always has.
+	overrides := mergeEndpoints(previous.OverrideEndpoints, ruleEndpoints(rules))
+	if len(overrides) == 0 {
+		if overrides, err = assignedEndpoints(ctx, tx, orgID, deviceID); err != nil {
+			return Policy{}, err
+		}
+	}
 	var created time.Time
-	err = tx.QueryRow(ctx, `INSERT INTO agent_mcp_tool_policy_versions (org_id, device_id, version, rules, inventory_observed_at, created_by_user_id)
-VALUES ($1,$2,$3,$4,$5,$6) RETURNING created_at`, orgID, deviceID, version, raw, observed, actorID).Scan(&created)
+	err = tx.QueryRow(ctx, `INSERT INTO agent_mcp_tool_policy_versions (org_id, device_id, version, rules, inventory_observed_at, created_by_user_id, override_endpoints)
+VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING created_at`, orgID, deviceID, version, raw, observed, actorID, overrides).Scan(&created)
 	if err != nil {
 		return Policy{}, err
 	}
@@ -263,13 +275,73 @@ VALUES ($1,$2,$3,$4,$5,$6) RETURNING created_at`, orgID, deviceID, version, raw,
 		return Policy{}, err
 	}
 	annotateDefinitionState(rules, parseInventory(snapshot, source, observed))
-	return Policy{Version: version, Rules: rules, InventoryObservedAt: observed, CreatedAt: created}, nil
+	return Policy{Version: version, Rules: rules, InventoryObservedAt: observed, CreatedAt: created, OverrideEndpoints: overrides}, nil
 }
 
 type storedPolicy struct {
-	Version   int64
-	Rules     []Rule
-	CreatedBy uuid.UUID
+	Version           int64
+	Rules             []Rule
+	CreatedBy         uuid.UUID
+	OverrideEndpoints []string
+}
+
+// mergeEndpoints returns the sorted, distinct union of two endpoint lists. It never returns nil, because
+// the column it is written to is NOT NULL.
+func mergeEndpoints(a, b []string) []string {
+	seen := make(map[string]bool, len(a)+len(b))
+	out := make([]string, 0, len(a)+len(b))
+	for _, list := range [][]string{a, b} {
+		for _, endpoint := range list {
+			if endpoint != "" && !seen[endpoint] {
+				seen[endpoint] = true
+				out = append(out, endpoint)
+			}
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+func ruleEndpoints(rules []Rule) []string {
+	out := make([]string, 0, len(rules))
+	for _, rule := range rules {
+		out = append(out, rule.Endpoint)
+	}
+	return out
+}
+
+func containsEndpoint(list []string, endpoint string) bool {
+	for _, item := range list {
+		if item == endpoint {
+			return true
+		}
+	}
+	return false
+}
+
+type querier interface {
+	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
+}
+
+// assignedEndpoints lists the MCP endpoints the agent inherits from its groups right now.
+func assignedEndpoints(ctx context.Context, q querier, orgID, deviceID uuid.UUID) ([]string, error) {
+	rows, err := q.Query(ctx, `SELECT DISTINCT btrim(p.endpoint) FROM agent_mcp_profiles p
+JOIN agent_mcp_profile_assignments a ON a.profile_id=p.id AND a.org_id=p.org_id AND a.state='active'
+JOIN agent_group_members m ON m.agent_group_id=a.agent_group_id AND m.org_id=a.org_id
+WHERE p.org_id=$1 AND m.device_id=$2 ORDER BY 1`, orgID, deviceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []string{}
+	for rows.Next() {
+		var endpoint string
+		if err := rows.Scan(&endpoint); err != nil {
+			return nil, err
+		}
+		out = append(out, endpoint)
+	}
+	return out, rows.Err()
 }
 
 // currentRules reads the newest stored version inside the caller's transaction. The caller holds the
@@ -277,7 +349,7 @@ type storedPolicy struct {
 func currentRules(ctx context.Context, tx pgx.Tx, deviceID uuid.UUID) (storedPolicy, error) {
 	var out storedPolicy
 	var raw []byte
-	err := tx.QueryRow(ctx, `SELECT version, rules, created_by_user_id FROM agent_mcp_tool_policy_versions WHERE device_id=$1 ORDER BY version DESC LIMIT 1`, deviceID).Scan(&out.Version, &raw, &out.CreatedBy)
+	err := tx.QueryRow(ctx, `SELECT version, rules, created_by_user_id, override_endpoints FROM agent_mcp_tool_policy_versions WHERE device_id=$1 ORDER BY version DESC LIMIT 1`, deviceID).Scan(&out.Version, &raw, &out.CreatedBy, &out.OverrideEndpoints)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return storedPolicy{}, nil
 	}

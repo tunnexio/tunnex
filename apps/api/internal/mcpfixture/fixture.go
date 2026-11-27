@@ -52,6 +52,7 @@ func New(t testing.TB) *Fixture {
  ($7,$2,$3,$4,'human',$8,$9,'active','human'),
  ($10,$2,$3,$11,'other-agent',$12,'10.123.0.4','active','agent')`,
 		f.Agent, f.Org, f.Owner, f.Node, f.AgentKey, f.AgentIP, f.Human, f.HumanKey, f.HumanIP, f.OtherAgent, f.OtherNode, key(3))
+	f.Exec(`INSERT INTO organization_mcp_settings (org_id,enabled) VALUES ($1,true)`, f.Org)
 	f.Exec(`INSERT INTO agent_groups (id,org_id,name) VALUES ($1,$2,'mcp agents')`, f.Group, f.Org)
 	f.Exec(`INSERT INTO agent_group_members (org_id,agent_group_id,device_id,created_by_user_id) VALUES ($1,$2,$3,$4)`, f.Org, f.Group, f.Agent, f.Owner)
 	f.Exec(`INSERT INTO agent_mcp_profiles (id,org_id,name,endpoint) VALUES ($1,$2,'billing',$3)`, f.Profile, f.Org, Endpoint)
@@ -81,4 +82,16 @@ func (f *Fixture) Count(sql string, args ...any) int {
 func (f *Fixture) AuditCount(action string) int {
 	f.T.Helper()
 	return f.Count(`SELECT count(*) FROM audit_logs WHERE org_id=$1 AND action=$2 AND target_id=$3`, f.Org, action, f.Agent.String())
+}
+
+// AddServer assigns a second MCP server to the fixture agent through a new group of its own, later than
+// the fixture's first assignment, and returns the new profile and group.
+func (f *Fixture) AddServer(name, endpoint string) (profile, group uuid.UUID) {
+	f.T.Helper()
+	profile, group = uuid.New(), uuid.New()
+	f.Exec(`INSERT INTO agent_groups (id,org_id,name) VALUES ($1,$2,$3)`, group, f.Org, name+" agents")
+	f.Exec(`INSERT INTO agent_group_members (org_id,agent_group_id,device_id,created_by_user_id) VALUES ($1,$2,$3,$4)`, f.Org, group, f.Agent, f.Owner)
+	f.Exec(`INSERT INTO agent_mcp_profiles (id,org_id,name,endpoint) VALUES ($1,$2,$3,$4)`, profile, f.Org, name, endpoint)
+	f.Exec(`INSERT INTO agent_mcp_profile_assignments (org_id,profile_id,agent_group_id,assigned_at) VALUES ($1,$2,$3,now()+interval '1 second')`, f.Org, profile, group)
+	return profile, group
 }

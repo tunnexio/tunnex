@@ -100,6 +100,39 @@ func (a *AgentChannel) mcpInventory(w http.ResponseWriter, r *http.Request) {
 	a.writeMCPOutcome(w, r, a.mcp.Inventory(r.Context(), node.OrgID, node.ID, report))
 }
 
+// mcpWait holds a gateway's wait for an approver's answer to one "Ask first" request (AI-UX-1). The agent
+// is identified exactly as for a decision, from one address header and one key header, and the answer is
+// only ever about that agent's own request: any other request is "not found". It answers 200 with the
+// state, or "pending" when the hold ran out.
+func (a *AgentChannel) mcpWait(w http.ResponseWriter, r *http.Request) {
+	node, r, ok := a.authenticateAgent(w, r)
+	if !ok {
+		return
+	}
+	if a.mcp == nil {
+		http.Error(w, "MCP gateway unavailable", http.StatusServiceUnavailable)
+		return
+	}
+	ips, keys := r.Header.Values(mcpwire.HeaderVPNIP), r.Header.Values(mcpwire.HeaderVPNKey)
+	if len(ips) != 1 || len(keys) != 1 || ips[0] == "" || keys[0] == "" {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+	var req mcpwire.WaitRequest
+	if !decodeMCPBody(w, r, 4<<10, &req) {
+		return
+	}
+	response, err := a.mcp.Wait(r.Context(), mcpdecision.Evidence{OrgID: node.OrgID, NodeID: node.ID, VPNIP: ips[0], VPNKey: keys[0]}, req)
+	if err != nil {
+		if r.Context().Err() != nil {
+			return
+		}
+		a.writeMCPOutcome(w, r, err)
+		return
+	}
+	writeMCPJSON(w, response)
+}
+
 func (a *AgentChannel) writeMCPOutcome(w http.ResponseWriter, r *http.Request, err error) {
 	switch {
 	case err == nil:

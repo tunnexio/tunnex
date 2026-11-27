@@ -8,12 +8,15 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"time"
 
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/tunnexio/tunnex/apps/api/internal/alerts"
 )
 
 const lifetime = 5 * time.Minute
@@ -59,9 +62,25 @@ type Request struct {
 	Arguments          json.RawMessage
 	ArgumentsTruncated bool
 	ToolDefinitionHash string
+	// PolicySource says which policy asked for the approval: the agent's own or its group's (PolicyGroupID).
+	PolicySource  string
+	PolicyGroupID uuid.UUID
 }
 
+// Which policy a request was decided under. Version numbers of the two are counted separately, so the
+// source and the group are part of what identifies a request.
+const (
+	PolicySourceAgent = "agent"
+	PolicySourceGroup = "group"
+)
+
+// AlertSubject is the subject of the alert published when a call starts waiting for approval.
+const AlertSubject = "An agent is waiting for approval to use an MCP tool"
+
 type Identity struct {
+	// PolicySource is empty or "agent" for the agent's own policy, "group" with PolicyGroupID for its group's.
+	PolicySource                                                   string
+	PolicyGroupID                                                  uuid.UUID
 	PolicyVersion                                                  int64
 	Endpoint, ServerName, ToolName, InputSchemaHash, RequestDigest string
 	// ToolDefinitionHash and Arguments describe the call to the approver. They are not part of the match:
@@ -71,11 +90,25 @@ type Identity struct {
 }
 
 type Service struct {
-	pool *pgxpool.Pool
-	now  func() time.Time
+	pool   *pgxpool.Pool
+	now    func() time.Time
+	alerts alerts.Publisher
+	logger *slog.Logger
 }
 
-func New(pool *pgxpool.Pool) *Service { return &Service{pool: pool, now: time.Now} }
+func New(pool *pgxpool.Pool) *Service {
+	return &Service{pool: pool, now: time.Now, alerts: alerts.NoopPublisher{}, logger: slog.Default()}
+}
+
+// SetAlertPublisher attaches the alert outbox. Every request that starts waiting is offered to it once,
+// so an organization with alert delivery on can be told. nil restores the no-op.
+func (s *Service) SetAlertPublisher(p alerts.Publisher) {
+	if p == nil {
+		s.alerts = alerts.NoopPublisher{}
+		return
+	}
+	s.alerts = p
+}
 
 // CanonicalArguments returns the call's arguments as canonical JSON: an object with sorted keys, no
 // insignificant whitespace, and number literals kept exactly. Absent or null arguments are the empty
@@ -117,7 +150,7 @@ func CanonicalDigest(method, tool string, arguments json.RawMessage) (digest str
 	return hex.EncodeToString(h.Sum(nil)), canonical, nil
 }
 
-const columns = `id,org_id,device_id,policy_version,endpoint,server_name,tool_name,input_schema_hash,request_digest,state,requested_at,expires_at,COALESCE(approved_by_user_id,'00000000-0000-0000-0000-000000000000'),COALESCE(approved_at,'epoch'),COALESCE(consumed_at,'epoch'),COALESCE(denied_by_user_id,'00000000-0000-0000-0000-000000000000'),COALESCE(denied_at,'epoch'),arguments,arguments_truncated,COALESCE(tool_definition_hash,'')`
+const columns = `id,org_id,device_id,policy_version,endpoint,server_name,tool_name,input_schema_hash,request_digest,state,requested_at,expires_at,COALESCE(approved_by_user_id,'00000000-0000-0000-0000-000000000000'),COALESCE(approved_at,'epoch'),COALESCE(consumed_at,'epoch'),COALESCE(denied_by_user_id,'00000000-0000-0000-0000-000000000000'),COALESCE(denied_at,'epoch'),arguments,arguments_truncated,COALESCE(tool_definition_hash,''),policy_source,COALESCE(policy_group_id,'00000000-0000-0000-0000-000000000000')`
 
 // Permit returns true exactly once after an authorized human has approved the
 // exact runtime request. Otherwise it records/reuses a pending request.
@@ -135,6 +168,9 @@ func (s *Service) Permit(ctx context.Context, orgID, deviceID uuid.UUID, in Iden
 //
 // Every state change writes its audit row in the same transaction.
 func (s *Service) Decide(ctx context.Context, orgID, deviceID uuid.UUID, in Identity) (Request, string, error) {
+	if in.PolicySource == "" {
+		in.PolicySource = PolicySourceAgent
+	}
 	if s == nil || s.pool == nil || !valid(orgID, deviceID, in) {
 		return Request{}, "", ErrInvalid
 	}
@@ -161,69 +197,110 @@ func (s *Service) Decide(ctx context.Context, orgID, deviceID uuid.UUID, in Iden
 	}
 	// A concurrent identical call can win the insert; the second attempt then finds its row.
 	for attempt := 0; ; attempt++ {
-		r, outcome, err := s.decide(ctx, orgID, deviceID, in, arguments, truncated, definition)
+		r, outcome, opened, err := s.decideTx(ctx, orgID, deviceID, in, arguments, truncated, definition)
 		var pgErr *pgconn.PgError
 		if attempt == 0 && errors.As(err, &pgErr) && pgErr.Code == "23505" {
 			continue
+		}
+		if err == nil && opened != "" {
+			s.publishPending(ctx, r, opened)
 		}
 		return r, outcome, err
 	}
 }
 
-func (s *Service) decide(ctx context.Context, orgID, deviceID uuid.UUID, in Identity, arguments *string, truncated bool, definition *string) (Request, string, error) {
+// publishPending offers a newly opened request to alert delivery. It runs once per request: only the
+// transaction that inserted the row reports it as opened, and a repeat of the same call finds that row.
+// The payload names the agent, the tool, the server and the request. It never carries the arguments.
+// A failure is logged and does not change the decision: the request is already in the inbox.
+func (s *Service) publishPending(ctx context.Context, r Request, agentName string) {
+	if s.alerts == nil {
+		return
+	}
+	err := s.alerts.Publish(ctx, alerts.Event{
+		OrgID: r.OrgID, Key: alerts.EventAgentMCPApprovalPending, Severity: alerts.SeverityWarning,
+		DedupKey: "mcp_approval:" + r.ID.String(),
+		Subject:  AlertSubject,
+		Fields: map[string]string{
+			"agent": agentName, "agent_id": r.DeviceID.String(), "tool": r.ToolName, "server": r.ServerName,
+			"request_id": r.ID.String(), "expires_at": r.ExpiresAt.UTC().Format(time.RFC3339),
+		},
+	})
+	if err != nil && s.logger != nil {
+		s.logger.Warn("mcp_approval_alert_failed", slog.String("request_id", r.ID.String()), slog.String("error", err.Error()))
+	}
+}
+
+// decideTx returns the agent's name as opened when, and only when, it inserted a new pending request.
+func (s *Service) decideTx(ctx context.Context, orgID, deviceID uuid.UUID, in Identity, arguments *string, truncated bool, definition *string) (Request, string, string, error) {
+	fail := func(err error) (Request, string, string, error) { return Request{}, "", "", err }
+	done := func(r Request, outcome string, tx pgx.Tx) (Request, string, string, error) {
+		return r, outcome, "", tx.Commit(ctx)
+	}
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
-		return Request{}, "", err
+		return fail(err)
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 	now := s.now().UTC()
-	match := []any{orgID, deviceID, in.PolicyVersion, in.Endpoint, in.ServerName, in.ToolName, in.InputSchemaHash, in.RequestDigest}
-	const where = ` FROM agent_mcp_tool_approval_requests WHERE org_id=$1 AND device_id=$2 AND policy_version=$3 AND endpoint=$4 AND server_name=$5 AND tool_name=$6 AND input_schema_hash=$7 AND request_digest=$8`
+	match := []any{orgID, deviceID, in.PolicyVersion, in.Endpoint, in.ServerName, in.ToolName, in.InputSchemaHash, in.RequestDigest, in.PolicySource, in.PolicyGroupID}
+	const where = ` FROM agent_mcp_tool_approval_requests WHERE org_id=$1 AND device_id=$2 AND policy_version=$3 AND endpoint=$4 AND server_name=$5 AND tool_name=$6 AND input_schema_hash=$7 AND request_digest=$8 AND policy_source=$9 AND COALESCE(policy_group_id,'00000000-0000-0000-0000-000000000000')=$10`
 	var r Request
 	err = scan(tx.QueryRow(ctx, `SELECT `+columns+where+` AND state IN ('pending','approved') FOR UPDATE`, match...), &r)
 	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
-		return Request{}, "", err
+		return fail(err)
 	}
 	live := err == nil
 	if live && !r.ExpiresAt.After(now) {
 		if _, err = tx.Exec(ctx, `UPDATE agent_mcp_tool_approval_requests SET state='expired' WHERE id=$1 AND state IN ('pending','approved')`, r.ID); err != nil {
-			return Request{}, "", err
+			return fail(err)
 		}
 		if err := audit(ctx, tx, r, "agent.mcp_tool_approval.expired", uuid.Nil); err != nil {
-			return Request{}, "", err
+			return fail(err)
 		}
 		live = false
 	}
 	if live && r.State == "approved" {
 		if _, err = tx.Exec(ctx, `UPDATE agent_mcp_tool_approval_requests SET state='consumed', consumed_at=$2 WHERE id=$1 AND state='approved'`, r.ID, now); err != nil {
-			return Request{}, "", err
+			return fail(err)
 		}
 		r.State, r.ConsumedAt = "consumed", now
 		if err := audit(ctx, tx, r, "agent.mcp_tool_approval.consumed", uuid.Nil); err != nil {
-			return Request{}, "", err
+			return fail(err)
 		}
-		return r, OutcomeAllowed, tx.Commit(ctx)
+		return done(r, OutcomeAllowed, tx)
 	}
 	if live {
-		return r, OutcomePending, tx.Commit(ctx)
+		return done(r, OutcomePending, tx)
 	}
 	// An approver's denial stands for the rest of the request's lifetime: the same call does not reopen it.
-	err = scan(tx.QueryRow(ctx, `SELECT `+columns+where+` AND state='denied' AND expires_at>$9 ORDER BY requested_at DESC LIMIT 1`, append(match, now)...), &r)
+	err = scan(tx.QueryRow(ctx, `SELECT `+columns+where+` AND state='denied' AND expires_at>$11 ORDER BY requested_at DESC LIMIT 1`, append(match, now)...), &r)
 	if err == nil {
-		return r, OutcomeDenied, tx.Commit(ctx)
+		return done(r, OutcomeDenied, tx)
 	}
 	if !errors.Is(err, pgx.ErrNoRows) {
-		return Request{}, "", err
+		return fail(err)
 	}
-	err = scan(tx.QueryRow(ctx, `INSERT INTO agent_mcp_tool_approval_requests (org_id,device_id,policy_version,endpoint,server_name,tool_name,input_schema_hash,request_digest,expires_at,arguments,arguments_truncated,tool_definition_hash) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb,$11,$12) RETURNING `+columns,
+	err = scan(tx.QueryRow(ctx, `INSERT INTO agent_mcp_tool_approval_requests (org_id,device_id,policy_version,endpoint,server_name,tool_name,input_schema_hash,request_digest,policy_source,policy_group_id,expires_at,arguments,arguments_truncated,tool_definition_hash) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,NULLIF($10::uuid,'00000000-0000-0000-0000-000000000000'::uuid),$11,$12::jsonb,$13,$14) RETURNING `+columns,
 		append(match, now.Add(lifetime), arguments, truncated, definition)...), &r)
 	if err != nil {
-		return Request{}, "", err
+		return fail(err)
 	}
 	if err := audit(ctx, tx, r, "agent.mcp_tool_approval.requested", uuid.Nil); err != nil {
-		return Request{}, "", err
+		return fail(err)
 	}
-	return r, OutcomePending, tx.Commit(ctx)
+	// The name is read for the alert only; a request is never refused because it cannot be read.
+	agentName := r.DeviceID.String()
+	var name string
+	if err := tx.QueryRow(ctx, `SELECT name FROM devices WHERE id=$1 AND org_id=$2 AND deleted_at IS NULL`, deviceID, orgID).Scan(&name); err == nil && name != "" {
+		agentName = name
+	} else if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		return fail(err)
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return fail(err)
+	}
+	return r, OutcomePending, agentName, nil
 }
 
 func (s *Service) Approve(ctx context.Context, orgID, deviceID, requestID, actorID uuid.UUID) (Request, error) {
@@ -331,7 +408,11 @@ func (s *Service) expire(ctx context.Context, orgID, deviceID *uuid.UUID, limit 
 // audit records one approval event. Arguments are never copied into the audit log: the row names the
 // request and its digest, and the request itself holds the arguments for as long as it exists.
 func audit(ctx context.Context, tx pgx.Tx, r Request, action string, actorID uuid.UUID) error {
-	metadata, _ := json.Marshal(map[string]any{"request_id": r.ID.String(), "endpoint": r.Endpoint, "server_name": r.ServerName, "tool_name": r.ToolName, "policy_version": r.PolicyVersion, "request_digest": r.RequestDigest})
+	fields := map[string]any{"request_id": r.ID.String(), "endpoint": r.Endpoint, "server_name": r.ServerName, "tool_name": r.ToolName, "policy_version": r.PolicyVersion, "request_digest": r.RequestDigest, "policy_source": r.PolicySource}
+	if r.PolicyGroupID != uuid.Nil {
+		fields["policy_group_id"] = r.PolicyGroupID.String()
+	}
+	metadata, _ := json.Marshal(fields)
 	if actorID != uuid.Nil {
 		_, err := tx.Exec(ctx, `INSERT INTO audit_logs (org_id, actor_user_id, action, target_type, target_id, metadata) VALUES ($1,$2,$3,'agent',$4,$5)`, r.OrgID, actorID, action, r.DeviceID.String(), metadata)
 		return err
@@ -341,12 +422,24 @@ func audit(ctx context.Context, tx pgx.Tx, r Request, action string, actorID uui
 }
 
 func valid(orgID, deviceID uuid.UUID, in Identity) bool {
+	switch in.PolicySource {
+	case PolicySourceAgent:
+		if in.PolicyGroupID != uuid.Nil {
+			return false
+		}
+	case PolicySourceGroup:
+		if in.PolicyGroupID == uuid.Nil {
+			return false
+		}
+	default:
+		return false
+	}
 	return orgID != uuid.Nil && deviceID != uuid.Nil && in.PolicyVersion > 0 && len(in.Endpoint) > 0 && len(in.ServerName) > 0 && len(in.ToolName) > 0 && len(in.InputSchemaHash) > 0 && len(in.RequestDigest) == 64
 }
 
 func scan(row pgx.Row, r *Request) error {
 	var arguments []byte
-	err := row.Scan(&r.ID, &r.OrgID, &r.DeviceID, &r.PolicyVersion, &r.Endpoint, &r.ServerName, &r.ToolName, &r.InputSchemaHash, &r.RequestDigest, &r.State, &r.RequestedAt, &r.ExpiresAt, &r.ApprovedByUserID, &r.ApprovedAt, &r.ConsumedAt, &r.DeniedByUserID, &r.DeniedAt, &arguments, &r.ArgumentsTruncated, &r.ToolDefinitionHash)
+	err := row.Scan(&r.ID, &r.OrgID, &r.DeviceID, &r.PolicyVersion, &r.Endpoint, &r.ServerName, &r.ToolName, &r.InputSchemaHash, &r.RequestDigest, &r.State, &r.RequestedAt, &r.ExpiresAt, &r.ApprovedByUserID, &r.ApprovedAt, &r.ConsumedAt, &r.DeniedByUserID, &r.DeniedAt, &arguments, &r.ArgumentsTruncated, &r.ToolDefinitionHash, &r.PolicySource, &r.PolicyGroupID)
 	r.Arguments = arguments
 	return err
 }

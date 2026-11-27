@@ -21,6 +21,9 @@ func (s apiServer) AcceptAgentMCPToolDefinition(ctx context.Context, req api.Acc
 	if _, err := authorize(ctx, req.OrgId, rbac.PermAgentMCPToolPolicyManage); err != nil {
 		return nil, err
 	}
+	if err := s.requireMCPOn(ctx, req.OrgId); err != nil {
+		return nil, err
+	}
 	if req.Body == nil || s.mcpToolPolicy == nil {
 		return nil, apierr.BadRequest("invalid_mcp_tool_definition", "endpoint, tool name and definition hash are required")
 	}
@@ -46,6 +49,9 @@ func (s apiServer) ListAgentMCPToolActivity(ctx context.Context, req api.ListAge
 	if err := s.requireAgentPermission(ctx, req.OrgId, req.DeviceId, rbac.PermAgentViewPrivileged); err != nil {
 		return nil, err
 	}
+	if err := s.requireMCPOn(ctx, req.OrgId); err != nil {
+		return nil, err
+	}
 	if s.mcpDecision == nil {
 		return nil, apierr.New(http.StatusServiceUnavailable, "mcp_tool_activity_unavailable", "MCP tool activity is temporarily unavailable")
 	}
@@ -56,21 +62,45 @@ func (s apiServer) ListAgentMCPToolActivity(ctx context.Context, req api.ListAge
 	if req.Params.Cursor != nil {
 		cursor = *req.Params.Cursor
 	}
-	rows, next, err := s.mcpDecision.ListActivity(ctx, req.OrgId, req.DeviceId, limit, cursor)
+	filter, err := mcpActivityFilter(req.Params.Decision, req.Params.Approved, req.Params.From, req.Params.To, req.Params.Server)
+	if err != nil {
+		return nil, err
+	}
+	rows, next, err := s.mcpDecision.ListActivityFiltered(ctx, req.OrgId, req.DeviceId, filter, limit, cursor)
 	if errors.Is(err, mcpdecision.ErrCursor) {
 		return nil, apierr.BadRequest("invalid_cursor", "The cursor is not one this list returned")
+	}
+	if errors.Is(err, mcpdecision.ErrInvalid) {
+		return nil, apierr.BadRequest("invalid_request", "The filters are not acceptable")
 	}
 	if err != nil {
 		return nil, apierr.New(http.StatusServiceUnavailable, "mcp_tool_activity_unavailable", "MCP tool activity is temporarily unavailable")
 	}
 	page := api.AgentMCPToolActivityPage{Items: make([]api.AgentMCPToolActivity, 0, len(rows))}
 	for _, row := range rows {
-		page.Items = append(page.Items, toAPIMCPToolActivity(row))
+		page.Items = append(page.Items, toAPIMCPToolActivityRow(row))
 	}
 	if next != "" {
 		page.NextCursor = &next
 	}
 	return api.ListAgentMCPToolActivity200JSONResponse(page), nil
+}
+
+// toAPIMCPToolActivityRow adds which policy decided and, for a call that ran on an approval, who approved
+// it and when.
+func toAPIMCPToolActivityRow(row mcpdecision.ActivityRow) api.AgentMCPToolActivity {
+	out := toAPIMCPToolActivity(sqlc.AgentMcpToolActivity{ID: row.ID, OrgID: row.OrgID, DeviceID: row.DeviceID, NodeID: row.NodeID, Endpoint: row.Endpoint, ServerName: row.ServerName, Method: row.Method,
+		ToolName: row.ToolName, ArgumentsDigest: row.ArgumentsDigest, Decision: row.Decision, Reason: row.Reason, PolicyVersion: row.PolicyVersion, ApprovalRequestID: row.ApprovalRequestID,
+		ResultStatus: row.ResultStatus, UpstreamHttpStatus: row.UpstreamHttpStatus, OccurredAt: row.OccurredAt, CompletedAt: row.CompletedAt, CreatedAt: row.CreatedAt, PolicySource: row.PolicySource, PolicyGroupID: row.PolicyGroupID})
+	if row.ApprovedByUserID.Valid {
+		id := uuid.UUID(row.ApprovedByUserID.Bytes)
+		out.ApprovedByUserId, out.ApprovedByEmail = &id, row.ApprovedByEmail
+	}
+	if row.ApprovedAt.Valid {
+		at := row.ApprovedAt.Time
+		out.ApprovedAt = &at
+	}
+	return out
 }
 
 func toAPIMCPToolActivity(row sqlc.AgentMcpToolActivity) api.AgentMCPToolActivity {
@@ -94,6 +124,14 @@ func toAPIMCPToolActivity(row sqlc.AgentMcpToolActivity) api.AgentMCPToolActivit
 	if row.CompletedAt.Valid {
 		at := row.CompletedAt.Time
 		out.CompletedAt = &at
+	}
+	if row.PolicySource != nil {
+		source := api.MCPToolPolicySource(*row.PolicySource)
+		out.PolicySource = &source
+	}
+	if row.PolicyGroupID.Valid {
+		group := uuid.UUID(row.PolicyGroupID.Bytes)
+		out.PolicyGroupId = &group
 	}
 	return out
 }
