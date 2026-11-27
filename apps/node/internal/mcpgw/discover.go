@@ -55,7 +55,12 @@ type discoverer struct {
 // pass runs one discovery round: fetch the targets, observe each server once, report per agent.
 //
 // Agents that share an endpoint and have no credential of their own share one observation. A target
-// that carries a credential is always observed on its own, with only that credential.
+// that carries a credential is always observed on its own, with only that credential. An agent with
+// several servers is listed once per server and gets one report per endpoint.
+//
+// A preview target (AI-UX-1) is an address an administrator is about to connect: it names a preview and
+// no agent, is observed the same way, and is reported under its preview id. The control plane lists it
+// only until that report arrives, so a preview is read once.
 func (d *discoverer) pass(ctx context.Context) {
 	ctx, cancel := context.WithTimeout(ctx, discoveryPassTimeout)
 	defer cancel()
@@ -67,18 +72,35 @@ func (d *discoverer) pass(ctx context.Context) {
 	if len(targets) > maxDiscoveryTargets {
 		targets = targets[:maxDiscoveryTargets]
 	}
+	// recipient is who one observation is reported for: an agent, or a preview when it names no agent.
+	type recipient struct{ device, preview string }
 	type group struct {
 		endpoint, authorization string
-		devices                 []string
+		recipients              []recipient
 	}
 	var groups []*group
 	shared := map[string]*group{}
+	type listing struct {
+		recipient
+		endpoint, authorization string
+	}
+	listed := map[listing]struct{}{}
 	for _, target := range targets {
-		if target.DeviceID == "" || target.Endpoint == "" {
+		to := recipient{device: target.DeviceID}
+		if to.device == "" {
+			to.preview = target.PreviewID
+		}
+		if to == (recipient{}) || target.Endpoint == "" {
 			continue
 		}
+		// The same server listed twice for one agent (it reaches it through two groups) is one report.
+		entry := listing{recipient: to, endpoint: target.Endpoint, authorization: target.Authorization}
+		if _, again := listed[entry]; again {
+			continue
+		}
+		listed[entry] = struct{}{}
 		if target.Authorization != "" {
-			groups = append(groups, &group{endpoint: target.Endpoint, authorization: target.Authorization, devices: []string{target.DeviceID}})
+			groups = append(groups, &group{endpoint: target.Endpoint, authorization: target.Authorization, recipients: []recipient{to}})
 			continue
 		}
 		g, ok := shared[target.Endpoint]
@@ -87,7 +109,7 @@ func (d *discoverer) pass(ctx context.Context) {
 			shared[target.Endpoint] = g
 			groups = append(groups, g)
 		}
-		g.devices = append(g.devices, target.DeviceID)
+		g.recipients = append(g.recipients, to)
 	}
 	slots := make(chan struct{}, discoveryConcurrency)
 	var wg sync.WaitGroup
@@ -98,9 +120,9 @@ func (d *discoverer) pass(ctx context.Context) {
 			defer wg.Done()
 			defer func() { <-slots }()
 			observed := d.observe(ctx, g.endpoint, g.authorization)
-			for _, device := range g.devices {
+			for _, to := range g.recipients {
 				report := observed
-				report.DeviceID = device
+				report.DeviceID, report.PreviewID = to.device, to.preview
 				if err := d.control.MCPInventory(ctx, report); err != nil {
 					d.logger.Warn("mcp_gateway_inventory_report_failed")
 				}
@@ -111,7 +133,7 @@ func (d *discoverer) pass(ctx context.Context) {
 }
 
 // observe runs initialize, notifications/initialized and tools/list against one server and returns what
-// it saw. It never calls a tool. The report has no device yet.
+// it saw. It never calls a tool. The report names no agent or preview yet.
 func (d *discoverer) observe(ctx context.Context, endpoint, authorization string) mcpwire.InventoryReport {
 	report := mcpwire.InventoryReport{Endpoint: endpoint, Status: statusUnavailable, Tools: []mcpwire.ObservedTool{}}
 	target, err := url.Parse(endpoint)
