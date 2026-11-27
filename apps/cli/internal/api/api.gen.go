@@ -11325,6 +11325,9 @@ type ClientInterface interface {
 	// RevokeAgentBootstrapToken request
 	RevokeAgentBootstrapToken(ctx context.Context, orgId openapi_types.UUID, tokenId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// GetAgentRuntimeRelease request
+	GetAgentRuntimeRelease(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// GetAgentProfile request
 	GetAgentProfile(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -15088,6 +15091,18 @@ func (c *Client) ListAgentBootstrapTokens(ctx context.Context, orgId openapi_typ
 
 func (c *Client) RevokeAgentBootstrapToken(ctx context.Context, orgId openapi_types.UUID, tokenId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewRevokeAgentBootstrapTokenRequest(c.Server, orgId, tokenId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetAgentRuntimeRelease(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetAgentRuntimeReleaseRequest(c.Server, orgId)
 	if err != nil {
 		return nil, err
 	}
@@ -27182,6 +27197,40 @@ func NewRevokeAgentBootstrapTokenRequest(server string, orgId openapi_types.UUID
 	}
 
 	req, err := http.NewRequest("DELETE", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewGetAgentRuntimeReleaseRequest generates requests for GetAgentRuntimeRelease
+func NewGetAgentRuntimeReleaseRequest(server string, orgId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/agents/runtime-release", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
 	if err != nil {
 		return nil, err
 	}
@@ -46146,6 +46195,9 @@ type ClientWithResponsesInterface interface {
 	// RevokeAgentBootstrapTokenWithResponse request
 	RevokeAgentBootstrapTokenWithResponse(ctx context.Context, orgId openapi_types.UUID, tokenId openapi_types.UUID, reqEditors ...RequestEditorFn) (*RevokeAgentBootstrapTokenResponse, error)
 
+	// GetAgentRuntimeReleaseWithResponse request
+	GetAgentRuntimeReleaseWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetAgentRuntimeReleaseResponse, error)
+
 	// GetAgentProfileWithResponse request
 	GetAgentProfileWithResponse(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetAgentProfileResponse, error)
 
@@ -50454,6 +50506,29 @@ func (r RevokeAgentBootstrapTokenResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r RevokeAgentBootstrapTokenResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetAgentRuntimeReleaseResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AgentBootstrapRelease
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r GetAgentRuntimeReleaseResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetAgentRuntimeReleaseResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -60553,6 +60628,15 @@ func (c *ClientWithResponses) RevokeAgentBootstrapTokenWithResponse(ctx context.
 	return ParseRevokeAgentBootstrapTokenResponse(rsp)
 }
 
+// GetAgentRuntimeReleaseWithResponse request returning *GetAgentRuntimeReleaseResponse
+func (c *ClientWithResponses) GetAgentRuntimeReleaseWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetAgentRuntimeReleaseResponse, error) {
+	rsp, err := c.GetAgentRuntimeRelease(ctx, orgId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetAgentRuntimeReleaseResponse(rsp)
+}
+
 // GetAgentProfileWithResponse request returning *GetAgentProfileResponse
 func (c *ClientWithResponses) GetAgentProfileWithResponse(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetAgentProfileResponse, error) {
 	rsp, err := c.GetAgentProfile(ctx, orgId, deviceId, reqEditors...)
@@ -69293,6 +69377,39 @@ func ParseRevokeAgentBootstrapTokenResponse(rsp *http.Response) (*RevokeAgentBoo
 	}
 
 	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetAgentRuntimeReleaseResponse parses an HTTP response from a GetAgentRuntimeReleaseWithResponse call
+func ParseGetAgentRuntimeReleaseResponse(rsp *http.Response) (*GetAgentRuntimeReleaseResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetAgentRuntimeReleaseResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AgentBootstrapRelease
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
 		var dest Error
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {

@@ -2672,6 +2672,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/organizations/{orgId}/agents/runtime-release": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Get the managed agent runtime release this control plane serves
+         * @description Requires `agent:enroll`, the same permission as issuing a bootstrap token. Returns the release metadata an install command carries, without issuing a token, so an already enrolled agent host can replace its runtime in place. The response contains public verifier material only. Answers 503 `bootstrap_unavailable` when no signed release is configured or its verifier descriptor cannot be validated, exactly as issuing a bootstrap token does.
+         */
+        get: operations["getAgentRuntimeRelease"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/sandbox/bootstrap": {
         parameters: {
             query?: never;
@@ -18378,6 +18400,30 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getAgentRuntimeRelease: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The pinned runtime release. */
+            200: {
+                headers: {
+                    "X-Request-Id": components["headers"]["RequestId"];
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AgentBootstrapRelease"];
+                };
             };
             default: components["responses"]["Error"];
         };
