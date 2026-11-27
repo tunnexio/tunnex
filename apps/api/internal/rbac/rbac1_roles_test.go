@@ -19,7 +19,7 @@ var rbac1Grants = map[string][]Permission{
 		PermAgentAccessApprove, PermAgentAccessRequest, PermAgentCredentialRotate, PermAgentEnroll,
 		PermAgentGrantAccess, PermAgentMCPToolApprovalApprove, PermAgentMCPToolPolicyManage, PermAgentManage,
 		PermAgentRevoke, PermAgentRuntimeManage, PermAgentTemplateManage, PermAgentViewPrivileged,
-		PermMCPManage, PermMemberList, PermOrgView,
+		PermMCPManage, PermMemberList, PermOrgView, PermPolicyView,
 	},
 	RoleNetworkAdmin: {
 		PermConnectivityManage, PermDeviceApprovalManage, PermDeviceApprove,

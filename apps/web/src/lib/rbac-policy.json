@@ -104,7 +104,8 @@
     "agent_template:manage",
     "mcp:manage",
     "member:list",
-    "org:view"
+    "org:view",
+    "policy:view"
   ],
   "ai-admin": [
     "ai_gateway:manage",

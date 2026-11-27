@@ -446,7 +446,9 @@ var rolePermissions = map[string]map[Permission]bool{
 	// agent group (agent:grant_access; the rule handlers enforce the source). Not people, groups, Zero Trust
 	// mode, AI Gateway model access, users or MFA.
 	RoleAgentsAdmin: {
-		PermOrgView: true, PermMemberList: true,
+		// policy:view (read only): the agent template and agent access screens pick destinations from the
+		// organization's resources and groups. Writing a rule for anything but an agent stays refused.
+		PermOrgView: true, PermMemberList: true, PermPolicyView: true,
 		PermAgentEnroll: true, PermAgentManage: true, PermAgentRevoke: true, PermAgentCredentialRotate: true,
 		PermAgentViewPrivileged: true, PermAgentRuntimeManage: true, PermAgentTemplateManage: true,
 		PermAgentGrantAccess: true, PermAgentAccessRequest: true, PermAgentAccessApprove: true,

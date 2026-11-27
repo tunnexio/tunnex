@@ -644,7 +644,10 @@ func requireAgent(ctx context.Context, tx pgx.Tx, orgID, deviceID uuid.UUID, act
 func requireRequesterAuthority(ctx context.Context, tx pgx.Tx, orgID, deviceID, requester uuid.UUID) error {
 	var role string
 	var roles []string
-	if err := tx.QueryRow(ctx, `SELECT m.role, m.roles FROM memberships m JOIN users u ON u.id=m.user_id
+	// The role set is read through to_jsonb so this also runs against schemas older than role sets (0152),
+	// which the pinned-schema integration tests exercise; there it is empty and the primary role decides.
+	if err := tx.QueryRow(ctx, `SELECT m.role, ARRAY(SELECT jsonb_array_elements_text(COALESCE(to_jsonb(m)->'roles','[]'::jsonb)))
+		FROM memberships m JOIN users u ON u.id=m.user_id
 		WHERE m.org_id=$1 AND m.user_id=$2 AND m.access_revoked_at IS NULL
 		AND u.status='active' AND u.deleted_at IS NULL FOR SHARE OF m,u`, orgID, requester).Scan(&role, &roles); err != nil {
 		return ErrConflict
