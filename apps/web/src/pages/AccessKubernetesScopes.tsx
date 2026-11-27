@@ -132,7 +132,7 @@ function KubernetesScopesWorkspace() {
 
   const canView = can(role, "k8s_scope:view") && can(role, "policy:view");
   const canManageScope = can(role, "k8s_scope:manage");
-  const canCreateScope = canManageScope && can(role, "policy:manage");
+  const canCreateScope = canManageScope && can(role, "policy_rule:manage");
   const canApprove = can(role, "k8s_scope:approve");
 
   const loadAll = useCallback(async () => {

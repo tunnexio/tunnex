@@ -102,6 +102,12 @@ function DevicesWorkspace() {
     return () => { alive.current = false; readEpoch.current++; nodeEpoch.current++; ready.current = false; gatewayReady.current = false; };
   }, []);
 
+  const [managesOthers, setManagesOthers] = useState<{ people: boolean; agents: boolean }>({ people: true, agents: true });
+  const othersReason = (device: Device): string | null => {
+    if (device.user_id === actorId) return null;
+    if (device.kind === "agent") return managesOthers.agents ? null : "Only owners, admins and AI Agents admins can revoke or remove someone else's agent.";
+    return managesOthers.people ? null : "Only owners and admins can revoke or remove someone else's device.";
+  };
   const loadDevices = useCallback(async () => {
     if (!orgId) return;
     const attempt = ++readEpoch.current;
@@ -128,7 +134,11 @@ function DevicesWorkspace() {
     if (members.ok && Array.isArray(members.data)) {
       setOwnerEmail(new Map(members.data.filter(member => member.email).map(member => [member.user_id, member.email])));
       const me = members.data.find(member => member && member.user_id === actorId);
-      setApproves(me ? can(Array.isArray(me.roles) && me.roles.length ? me.roles : [me.role], "device:approve") : true);
+      const roles = me ? Array.isArray(me.roles) && me.roles.length ? me.roles : [me.role] : [];
+      setApproves(me ? can(roles, "device:approve") : true);
+      // RBAC-1: Helpdesk, network admins and auditors see every device (device:view) but revoking or removing
+      // someone else's is member:manage, or agent:revoke for an agent.
+      setManagesOthers(me ? { people: can(roles, "member:manage"), agents: can(roles, "agent:revoke") } : { people: true, agents: true });
     } else setApproves(true);
   }, [orgId, actorId]);
 
@@ -260,8 +270,8 @@ function DevicesWorkspace() {
 
   function inspect(id: string) { if (ready.current && !mutation.current) { setInspectedId(id); setStage("overview"); } }
   const deviceActions = inspected && emailVerified ? [
-    { key: "revoke", label: "Revoke", danger: true, disabledReason: busy || devicesLoading ? "Wait for the current request." : inspected.status === "active" ? null : "A " + inspected.status + " device cannot be revoked.", onSelect: () => requestAction("revoke", [inspected]) },
-    { key: "remove", label: "Remove", danger: true, disabledReason: busy || devicesLoading ? "Wait for the current request." : inspected.status === "revoked" ? null : "Only a revoked device can be removed. Revoke it first.", onSelect: () => requestAction("remove", [inspected]) },
+    { key: "revoke", label: "Revoke", danger: true, disabledReason: busy || devicesLoading ? "Wait for the current request." : othersReason(inspected) ?? (inspected.status === "active" ? null : "A " + inspected.status + " device cannot be revoked."), onSelect: () => requestAction("revoke", [inspected]) },
+    { key: "remove", label: "Remove", danger: true, disabledReason: busy || devicesLoading ? "Wait for the current request." : othersReason(inspected) ?? (inspected.status === "revoked" ? null : "Only a revoked device can be removed. Revoke it first."), onSelect: () => requestAction("remove", [inspected]) },
   ] : [];
 
   if (orgLoading) return <div className="devices-workspace"><Loading label="Loading your organization…" /></div>;
@@ -277,7 +287,7 @@ function DevicesWorkspace() {
     {devicesLoadError && <LoadRetry error={devicesLoadError} onRetry={loadDevices} />}
     {nodesError && <LoadRetry error={nodesError} onRetry={loadNodes} />}
     {devicesLoaded && <div hidden={devicesLoading || Boolean(devicesLoadError) || inspectedId !== null}>
-      <DevicesInventory canMutate={emailVerified} devices={devices} nodes={nodes} ownerEmail={ownerEmail} busy={busy || devicesLoading} lastSeenLabel={device => lastSeen(device.last_handshake_at, !!device.public_key)} onInspect={inspect} onRequestAction={requestAction} onRefresh={() => { void loadDevices(); void loadNodes(); }} />
+      <DevicesInventory canMutate={emailVerified} othersReason={othersReason} devices={devices} nodes={nodes} ownerEmail={ownerEmail} busy={busy || devicesLoading} lastSeenLabel={device => lastSeen(device.last_handshake_at, !!device.public_key)} onInspect={inspect} onRequestAction={requestAction} onRefresh={() => { void loadDevices(); void loadNodes(); }} />
     </div>}
     {inspectedId && !devicesLoading && !devicesLoadError && (inspected ? <section className="device-detail" aria-label={inspected.name}>
       <nav aria-label="Breadcrumb" className="device-breadcrumb"><button type="button" onClick={() => setInspectedId(null)}>Devices</button><span aria-hidden="true">/</span><span>{inspected.name}</span></nav>

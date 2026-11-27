@@ -93,7 +93,7 @@ const DIRECTORY_PROVIDERS = [...PROVIDERS, "okta"] as const;
 const directoryLabel = (p: string) => p === "okta" ? "Okta" : providerLabel(p as Provider);
 type SsoView = SsoConfigView;
 
-const FEATURE_PERMISSIONS = ["org:update", "app_access:manage", "server_access:manage", "beam:policy_manage", "ai_gateway:manage", "agent_runtime:manage", "agent_template:manage", "mcp:manage", "agent_access:approve", "ipsec:manage", "fqdn_resource:manage", "policy:manage", "k8s_scope:manage", "k8s_ha:manage", "sandbox:admin", "alerting:manage"];
+const FEATURE_PERMISSIONS = ["org:update", "gateway:manage", "app_access:manage", "server_access:manage", "beam:policy_manage", "ai_gateway:manage", "agent_runtime:manage", "agent_template:manage", "mcp:manage", "agent_access:approve", "ipsec:manage", "fqdn_resource:manage", "policy:manage", "k8s_scope:manage", "k8s_ha:manage", "sandbox:admin", "alerting:manage"];
 
 export default function Settings() {
   const { org } = useOrg();
@@ -193,13 +193,15 @@ function SettingsWorkspace() {
     if (!member || !HUMAN_ROLES.includes(member.role) || (member.roles !== undefined && (!Array.isArray(member.roles) || member.roles.some(role => !HUMAN_ROLES.includes(role))))) return [];
     return Array.from(new Set([member.role, ...(member.roles ?? [])]));
   }, [members, myId]);
+  // RBAC-1: every permission check on this page reads the whole role set, not one compatibility role.
+  const myRoles: Role[] = appAccessRoles.length ? appAccessRoles : myRole ? [myRole] : [];
   const canViewAppAccess = can(appAccessRoles, "app_access:view");
   const canManageAppAccess = can(appAccessRoles, "app_access:manage");
   const canManageFeatures = FEATURE_PERMISSIONS.some(permission => can(appAccessRoles, permission));
-  const isAdmin = can(myRole, "org:update");
+  const isAdmin = can(myRoles, "org:update");
   const canManageDataRetention =
-    can(myRole, "access_event_retention:manage") ||
-    can(myRole, "audit_log_retention:manage");
+    can(myRoles, "access_event_retention:manage") ||
+    can(myRoles, "audit_log_retention:manage");
   // ⛔ A TAB WHOSE PANEL WOULD BE EMPTY IS NOT RENDERED. "CUT MEANS ABSENT, NOT HIDDEN" (S14.4): a member who
   // clicks Network and gets a blank card learns only that the product is broken. Each rail entry names the
   // exact generated server permission its panel requires, so navigation and controls cannot drift by role.
@@ -209,12 +211,12 @@ function SettingsWorkspace() {
         (r) =>
           (!r.serverAdminOnly || serverAdmin) &&
           (r.id !== "features" || canManageFeatures) &&
-          (!r.requiredPermission || can(myRole, r.requiredPermission)) &&
+          (!r.requiredPermission || can(myRoles, r.requiredPermission)) &&
           (!r.requiredAnyPermission ||
-            r.requiredAnyPermission.some((permission) => can(myRole, permission))) &&
+            r.requiredAnyPermission.some((permission) => can(myRoles, permission))) &&
           (!r.needsOrg || org !== null),
       ),
-    [myRole, org, serverAdmin, canManageFeatures],
+    [myRoles.join(","), org, serverAdmin, canManageFeatures],
   );
   const [section, setSection] = useState<string>(() => sectionFromLocation());
   useEffect(() => { setSection(sectionFromLocation()); }, [routeLocation.search]);
@@ -258,8 +260,8 @@ function SettingsWorkspace() {
     { id:"local-sharing", name:"Local Sharing", category:"Access", keywords:"local app publishing sharing enabled", permission:"beam:policy_manage", control:<WorkspaceFeatureControl feature="local-sharing" orgId={org.id} roles={appAccessRoles} canEdit={emailVerified} serverAdmin={serverAdmin} /> },
     { id:"zero-trust", name:"Zero Trust enforcement", category:"Access", keywords:"default deny open mesh enforcing mode", permission:"policy:manage", control:<NetworkFeatureControl feature="zero-trust" orgId={org.id} roles={appAccessRoles} canEdit={emailVerified} /> },
     { id:"fqdn", name:"FQDN access", category:"Access", keywords:"hostname domain DNS enforcement enabled", permission:"fqdn_resource:manage", control:<NetworkFeatureControl feature="fqdn" orgId={org.id} roles={appAccessRoles} canEdit={emailVerified} /> },
-    { id:"cross-gateway", name:"Cross-gateway clients", category:"Network", keywords:"cross_gateway_clients_enabled connectivity WireGuard", permission:"org:update", control:<CrossGatewaySettings key={org.id} org={org} canEdit={emailVerified} onSaved={saved => reconcileOrganization(saved)} /> },
-    { id:"openvpn", name:"OpenVPN", category:"Network", keywords:"ovpn_enabled profiles tunnel", permission:"org:update", control:<OrgOVPNToggle key={org.id} org={org} canEdit={emailVerified} onSaved={saved => reconcileOrganization(saved)} /> },
+    { id:"cross-gateway", name:"Cross-gateway clients", category:"Network", keywords:"cross_gateway_clients_enabled connectivity WireGuard", permission:"gateway:manage", control:<CrossGatewaySettings key={org.id} org={org} canEdit={emailVerified} onSaved={saved => reconcileOrganization(saved)} /> },
+    { id:"openvpn", name:"OpenVPN", category:"Network", keywords:"ovpn_enabled profiles tunnel", permission:"gateway:manage", control:<OrgOVPNToggle key={org.id} org={org} canEdit={emailVerified} onSaved={saved => reconcileOrganization(saved)} /> },
     { id:"ipsec", name:"IPsec", category:"Network", keywords:"IKE tunnels connections enabled", permission:"ipsec:manage", control:<NetworkFeatureControl feature="ipsec" orgId={org.id} roles={appAccessRoles} canEdit={emailVerified} /> },
     { id:"ai-gateway", name:"AI Gateway", category:"AI", keywords:"models inference enabled", permission:"ai_gateway:manage", control:<WorkspaceFeatureControl feature="ai-gateway" orgId={org.id} roles={appAccessRoles} canEdit={emailVerified} serverAdmin={serverAdmin} /> },
     { id:"agent-runtime", name:"Agent runtime synchronization", category:"AI", keywords:"managed_agent_runtime_enabled configuration sync", permission:"agent_runtime:manage", control:<AgentFeatureSetting key={org.id} orgId={org.id} feature="runtime_sync" canEdit={emailVerified && can(appAccessRoles,"agent_runtime:manage")} onSaved={enabled => reconcileOrganization({ ...org, managed_agent_runtime_enabled:enabled })} /> },
@@ -385,15 +387,15 @@ function SettingsWorkspace() {
           </SettingGroup>
         )}
 
-        {org && isAdmin && active === "network" && (
+        {org && (can(myRoles, "gateway:manage") || can(myRoles, "connectivity:manage")) && active === "network" && (
           <SettingGroup id="network" title="Network"
             tabpanel>
             <PoolSection
               org={org}
-              canEdit={emailVerified}
+              canEdit={emailVerified && can(myRoles, "gateway:manage")}
               onResized={(o) => setOrg(o)}
             />
-            <RelayFallbackSettings key={org.id} orgId={org.id} canEdit={emailVerified && can(myRole, "connectivity:manage")} />
+            <RelayFallbackSettings key={org.id} orgId={org.id} canEdit={emailVerified && can(myRoles, "connectivity:manage")} />
           </SettingGroup>
         )}
 
@@ -463,7 +465,7 @@ function SettingsWorkspace() {
           </SettingGroup>
         )}
 
-        {org && isAdmin && active === "access-security" && (
+        {org && can(myRoles, "device_approval:manage") && active === "access-security" && (
           <SettingGroup id="access-security" title="Access & security" tabpanel>
             <AccessSecuritySettings key={org.id} orgId={org.id} canEdit={emailVerified} />
           </SettingGroup>
@@ -471,14 +473,14 @@ function SettingsWorkspace() {
 
         {org && canManageDataRetention && active === "data-retention" && (
           <SettingGroup id="data-retention" title="Data retention" tabpanel>
-            {can(myRole, "access_event_retention:manage") && (
+            {can(myRoles, "access_event_retention:manage") && (
               <AccessEventRetentionSettings
                 key={`access-${org.id}`}
                 orgId={org.id}
                 canEdit={emailVerified}
               />
             )}
-            {can(myRole, "audit_log_retention:manage") && (
+            {can(myRoles, "audit_log_retention:manage") && (
               <AuditLogRetentionSettings
                 key={`audit-${org.id}`}
                 orgId={org.id}
@@ -498,7 +500,7 @@ function SettingsWorkspace() {
         {org && isAdmin && active === "ai-agents" && (
           <SettingGroup id="ai-agents" title="AI Agents" tabpanel>
             <div className="flex flex-col gap-3.5">
-              <AgentQuotaCard orgId={org.id} value={org.max_agent_identities ?? null} canEdit={can(myRole, "org:update") && emailVerified} />
+              <AgentQuotaCard orgId={org.id} value={org.max_agent_identities ?? null} canEdit={can(myRoles, "org:update") && emailVerified} />
               <SettingRow label="Agent features" description="Runtime synchronization, agent groups, MCP, and temporary access."><a className="feature-control-link" href="/settings?section=features&feature=agent-runtime">Manage in Features</a></SettingRow>
             </div>
           </SettingGroup>
@@ -509,7 +511,7 @@ function SettingsWorkspace() {
         {org && active === "licence" && (
           <SettingGroup id="licence" title="Licence &amp; plan"
             tabpanel>
-            <LicenceCard canManage={myRole === "owner"} cache={licenceCache} />
+            <LicenceCard canManage={can(myRoles, "license:manage")} cache={licenceCache} />
           </SettingGroup>
         )}
 
@@ -524,7 +526,7 @@ function SettingsWorkspace() {
             tabpanel>
             <DangerZone
               org={org}
-              canDelete={can(myRole, "org:delete")}
+              canDelete={can(myRoles, "org:delete")}
               role={myRole}
             />
           </SettingGroup>
@@ -755,7 +757,7 @@ function DangerZone({
           {/* ⚠ NOT THE SETTINGS-WIDE SENTENCE. Reusing "managed by owners and admins" put a second copy of
               it on the page for a plain member, and the e2e spec that asserts it went strict-mode red —
               correctly: two identical sentences in different sections is a page that cannot be pointed at. */}
-          {role === "admin"
+          {can(role as Role | undefined, "org:update")
             ? "Deleting an organization is reserved for owners."
             : "Only an owner can delete an organization."}
         </p>
@@ -1768,7 +1770,7 @@ const RAIL: ReadonlyArray<{
     needsOrg: true,
     label: "Network",
     hint: "Configure network settings and address pools.",
-    requiredPermission: "org:update",
+    requiredAnyPermission: ["gateway:manage", "connectivity:manage"],
   },
   {
     id: "authentication",
@@ -1787,7 +1789,7 @@ const RAIL: ReadonlyArray<{
     needsOrg: true,
     label: "Access & security",
     hint: "Control device approval and access safeguards.",
-    requiredPermission: "org:update",
+    requiredPermission: "device_approval:manage",
   },
   {
     id: "data-retention",

@@ -48,7 +48,7 @@ export function PrivateDNSResolvers({ orgId, role, scope }: { orgId: string; rol
 
 function PrivateDNSForScope({ orgId, role, canEdit, scope }: { orgId: string; role: Member["role"] | undefined; canEdit: boolean; scope?: ResolverScope }) {
   const canView = can(role, "fqdn_resource:view"), canManage = canEdit && can(role, "fqdn_resource:manage");
-  const canGrant = canManage && can(role, "policy:manage") && can(role, "ipsec:manage");
+  const canGrant = canManage && can(role, "policy_rule:manage") && can(role, "ipsec:manage");
   const [accessDraft, setAccessDraft] = useState<{ record?: HostnameRecord } | null>(null);
   const [sites, setSites] = useState<Site[] | null>(null), [nodes, setNodes] = useState<Node[] | null>(null);
   const [inventoryError, setInventoryError] = useState(""), [siteId, setSiteId] = useState(""), [gatewayId, setGatewayId] = useState("");

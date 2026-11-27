@@ -1,6 +1,6 @@
 import type { components } from "@tunnex/shared";
 import type { Role } from "./api";
-import { HUMAN_ROLES, can } from "./rbac";
+import { rolesWhoCan, can } from "./rbac";
 
 // K8N-3 stage 1 — a cluster's Kubernetes API as a named destination.
 //
@@ -47,10 +47,7 @@ export function k8sApiGate(input: { role: Role | readonly Role[] | undefined; em
   if (permitted && input.emailVerified) return { canManage: true, whoCan: null };
   if (permitted) return { canManage: false, whoCan: "Verify your email address to turn API access on or off." };
   // Read from the generated grant table, so the sentence cannot drift from who the server allows.
-  const roles = HUMAN_ROLES.filter((role) => can(role, K8S_API_MANAGE));
-  const who = roles.length === 0 ? "nobody in this organization" : roles.length === 1 ? `an organization ${roles[0]}`
-    : `an organization ${roles.slice(0, -1).join(", ")} or ${roles[roles.length - 1]}`;
-  return { canManage: false, whoCan: `Only ${who} can turn API access on or off.` };
+  return { canManage: false, whoCan: `Only ${rolesWhoCan(K8S_API_MANAGE)} can turn API access on or off.` };
 }
 
 /** The placeholder a person replaces with the host of their kubeconfig's original server line. */

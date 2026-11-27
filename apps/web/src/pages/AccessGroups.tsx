@@ -91,7 +91,8 @@ function AccessGroupsLoader({ scope }: { scope: GroupScope }) {
       setMembers(result.data);
       const mine = result.data.find((member) => member.user_id === state.user.id);
       const roles = mine ? [mine.role, ...(mine.roles ?? [])] : [];
-      setAuthorized(scope === "agents" ? writable && can(roles, "agent_template:manage") : roles.includes("owner") || roles.includes("admin"));
+      // Groups (people and agents) are managed with policy:manage; agent groups with agent_template:manage.
+      setAuthorized(scope === "agents" ? writable && can(roles, "agent_template:manage") : can(roles, "policy:manage"));
     });
     return () => { cancelled = true; };
   }, [org?.id, state.status, state.status === "authed" ? state.user.id : "", writable, permissionAttempt, scope]);
@@ -381,7 +382,9 @@ function PeopleGroupsWorkspace() {
   const alive = useRef(true), inventoryRequest = useRef(0), locked = useRef(false);
   useEffect(() => { alive.current = true; return () => { alive.current = false; inventoryRequest.current++; }; }, []);
   const orgId = org?.id ?? "";
-  const canWrite = permission === true && state.status === "authed" && state.user.email_verified;
+  // RBAC-1: everyone with policy:view reads groups; only policy:manage (owner, admin) changes them.
+  const [managesGroups, setManagesGroups] = useState(false);
+  const canWrite = permission === true && managesGroups && state.status === "authed" && state.user.email_verified;
   const selectedKey = search.get("group") ?? "";
   const selected = groups?.find((group) => `people:${group.id}` === selectedKey);
   const query = search.get("q") ?? "";
@@ -401,7 +404,8 @@ function PeopleGroupsWorkspace() {
       if (!Array.isArray(result.data) || !result.data.every((member) => member && typeof member.user_id === "string" && typeof member.role === "string" && (member.roles === undefined || Array.isArray(member.roles)))) { setPermissionError("The permission response was not valid. Retry to reload it."); return; }
       const mine = result.data.find((member) => member.user_id === state.user.id);
       const roles = mine?.roles ?? (mine ? [mine.role] : []);
-      setPermission(roles.includes("owner") || roles.includes("admin"));
+      setPermission(can(roles, "policy:view"));
+      setManagesGroups(can(roles, "policy:manage"));
     });
     return () => { current = false; };
   }, [orgId, state.status, state.status === "authed" ? state.user.id : "", state.status === "authed" ? state.user.email_verified : false, permissionAttempt]);
@@ -438,8 +442,8 @@ function PeopleGroupsWorkspace() {
     <UsersTabRail actions={permission === true ? actions : undefined} />
     <div className="users-groups-content">
       {!createOpen && <ErrorText>{error}</ErrorText>}{notice && <p role="status" className="users-groups-notice">{notice}</p>}
-      {!org || permission === null ? permissionError ? <LoadRetry error={`Could not check group permissions: ${permissionError}`} onRetry={() => { setPermission(null); setPermissionAttempt((attempt) => attempt + 1); }} /> : <Loading label="Checking group permissions…" /> : !permission ? <p role="alert" className="users-groups-copy">You do not have permission to manage groups.</p> : inventoryError ? <LoadRetry error={inventoryError} onRetry={() => void reload()} /> : !groups ? <Loading label="Loading groups…" /> : selected ? <PeopleGroupMembers key={selected.id} orgId={orgId} group={selected} canWrite={canWrite} initialDialog={opening} onBack={() => { setOpening(null); update({ group: null }); }} onReload={reload} onNotice={setNotice} /> : selectedKey ? <div><p role="alert" className="users-groups-copy">This group is not available in the current organization.</p><Button variant="ghost" onClick={() => { setOpening(null); update({ group: null }); }}>Back to groups</Button></div> : <>
-        {!canWrite && <p className="users-groups-copy">Verify your email to manage groups.</p>}
+      {!org || permission === null ? permissionError ? <LoadRetry error={`Could not check group permissions: ${permissionError}`} onRetry={() => { setPermission(null); setPermissionAttempt((attempt) => attempt + 1); }} /> : <Loading label="Checking group permissions…" /> : !permission ? <p role="alert" className="users-groups-copy">You do not have permission to manage groups.</p> : inventoryError ? <LoadRetry error={inventoryError} onRetry={() => void reload()} /> : !groups ? <Loading label="Loading groups…" /> : selected ? <PeopleGroupMembers key={selected.id} orgId={orgId} group={selected} canWrite={canWrite} canManage={managesGroups} initialDialog={opening} onBack={() => { setOpening(null); update({ group: null }); }} onReload={reload} onNotice={setNotice} /> : selectedKey ? <div><p role="alert" className="users-groups-copy">This group is not available in the current organization.</p><Button variant="ghost" onClick={() => { setOpening(null); update({ group: null }); }}>Back to groups</Button></div> : <>
+        {!canWrite && <p className="users-groups-copy">{managesGroups ? "Verify your email to manage groups." : "Only owners and admins can change groups."}</p>}
         <div className="users-groups-toolbar"><Input aria-label="Search groups" value={query} placeholder="Search groups" onChange={(event) => { setPage(1); update({ q: event.target.value || null }); }} /><Select width="auto" aria-label="Group source" value={source} onChange={(event) => { setPage(1); update({ type: event.target.value === "all" ? null : event.target.value }); }}><option value="all">All sources</option><option value="people">Manual</option><option value="directory">Directory sync</option></Select></div>
         <DataTable variant="flat" caption="Groups inventory" rows={visible} rowKey={(group) => group.id} rowLabel={(group) => group.name} failed={false} filterable={false} pageSize={0} empty={<AppAccessEmptyState icon={null} title={query || source !== "all" ? "No matching groups" : "No groups yet"} description={query || source !== "all" ? "Try another name or source." : canWrite ? "Create a people group, then add organization members." : "Groups will appear here when an administrator creates or syncs them."} action={query || source !== "all" ? <Button variant="ghost" onClick={() => { setPage(1); update({ q: null, type: null }); }}>Clear filters</Button> : undefined} />} columns={[
           { key: "name", header: "Group", cell: (group) => <button className="users-groups-name" onClick={() => openGroup(group)}>{group.name}</button> },
@@ -454,7 +458,7 @@ function PeopleGroupsWorkspace() {
   </div>;
 }
 
-function PeopleGroupMembers({ orgId, group, canWrite, initialDialog, onBack, onReload, onNotice }: { orgId: string; group: UserGroup; canWrite: boolean; initialDialog: PeopleGroupDialog; onBack: () => void; onReload: () => Promise<boolean>; onNotice: (notice: string) => void }) {
+function PeopleGroupMembers({ orgId, group, canWrite, canManage = true, initialDialog, onBack, onReload, onNotice }: { orgId: string; group: UserGroup; canWrite: boolean; canManage?: boolean; initialDialog: PeopleGroupDialog; onBack: () => void; onReload: () => Promise<boolean>; onNotice: (notice: string) => void }) {
   const directory = isDirectoryManaged(group), editable = canWrite && !directory;
   const [members, setMembers] = useState<GroupMember[] | null>(null), [memberError, setMemberError] = useState("");
   const [candidates, setCandidates] = useState<Member[] | null>(null), [candidateError, setCandidateError] = useState("");
@@ -522,7 +526,7 @@ function PeopleGroupMembers({ orgId, group, canWrite, initialDialog, onBack, onR
     <nav aria-label="Group breadcrumb" className="users-groups-breadcrumb"><button disabled={busy} onClick={onBack}>Groups</button><span aria-hidden="true">/</span><span aria-current="page">{group.name}</span></nav>
     <div className="users-groups-heading"><div><h1>{group.name}</h1></div>{editable && <div className="users-groups-actions"><Button disabled={mutationBlocked || !members || !!memberError} onClick={() => openDialog("add")}>Add member</Button><AppAccessRowMenu label={`Actions for ${group.name}`} actions={[{ key: "rename", label: "Rename", disabledReason: mutationBlocked ? "Refresh or wait for the current action." : undefined, onSelect: () => openDialog("rename") }, { key: "archive", label: "Archive", danger: true, disabledReason: mutationBlocked ? "Refresh or wait for the current action." : undefined, onSelect: () => openDialog("archive") }]} /></div>}</div>
     <ResourceSummary title="Group settings" className="group-saved-summary" footer={<Button variant="ghost" disabled={busy} onClick={onBack}>Back to groups</Button>}><div className="group-detail-content"><dl className="tnx-resource-facts tnx-resource-facts-three"><div><dt>Source</dt><dd>{directory ? "Directory sync" : "Manual"}</dd></div><div><dt>Reported membership</dt><dd>{memberLabel(group.member_count)} reported</dd></div><div><dt>Group identity</dt><dd>{group.id}</dd></div></dl>
-    {directory && <p className="users-groups-copy">{DIRECTORY_MANAGED_NOTE}</p>}{!canWrite && <p className="users-groups-copy">Verify your email to manage groups.</p>}
+    {directory && <p className="users-groups-copy">{DIRECTORY_MANAGED_NOTE}</p>}{!canWrite && <p className="users-groups-copy">{canManage ? "Verify your email to manage groups." : "Only owners and admins can change groups."}</p>}
     {!dialog && <ErrorText>{error}</ErrorText>}
     {memberError ? <LoadRetry error={memberError} onRetry={() => void reloadMembers()} /> : !members ? <Loading label="Loading members…" /> : <>
       <div className="users-groups-toolbar"><Input aria-label="Search group members" value={query} placeholder="Search name or email" onChange={(event) => { setPage(1); setQuery(event.target.value); }} /><Link className="users-groups-link" to="/audit">View audit context</Link></div>

@@ -30,6 +30,8 @@ export type GatewayInventoryState = {
   homedCounts: Record<string, number> | null;
   licence: GatewayLicence | null;
   role?: Role;
+  /** Every role held (RBAC-1): permission checks read the whole set. */
+  roles?: Role[];
 };
 
 const loadingState = (orgId: string | null = null): GatewayInventoryState => ({
@@ -121,10 +123,12 @@ export function useGatewayInventory() {
         }, {})
       : null;
     const userId = auth.status === "authed" ? auth.user.id : null;
-    const role =
+    const me =
       membersResult.ok && userId
-        ? membersResult.data.find((member) => member.user_id === userId)?.role
+        ? membersResult.data.find((member) => member.user_id === userId)
         : undefined;
+    const role = me?.role;
+    const roles = me ? me.roles ?? [me.role] : undefined;
 
     setState({
       kind: "ready",
@@ -137,6 +141,7 @@ export function useGatewayInventory() {
       homedCounts,
       licence: licenceResult.ok ? licenceResult.data : null,
       role,
+      roles,
     });
   }, [auth, org?.id, orgFailed, orgLoading]);
 
@@ -153,9 +158,10 @@ export function useGatewayInventory() {
     org,
     state: visibleState,
     reload,
-    canEnroll: can(visibleState.role, "org:update"),
-    canManage: can(visibleState.role, "org:update"),
-    canTransfer: can(visibleState.role, "device:transfer"),
-    canRestore: can(visibleState.role, "device:restore"),
+    // RBAC-1: gateways are gateway:manage (owner, admin, network admin), split from org:update.
+    canEnroll: can(visibleState.roles ?? visibleState.role, "gateway:manage"),
+    canManage: can(visibleState.roles ?? visibleState.role, "gateway:manage"),
+    canTransfer: can(visibleState.roles ?? visibleState.role, "device:transfer"),
+    canRestore: can(visibleState.roles ?? visibleState.role, "device:restore"),
   };
 }

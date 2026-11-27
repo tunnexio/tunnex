@@ -53,7 +53,7 @@ vi.mock("../src/lib/rbac", async () => {
   return {
     ...actual,
     can: (nextRole: Parameters<typeof actual.can>[0], permission: Parameters<typeof actual.can>[1]) =>
-      permission === "policy:manage" && !policyManageAllowed ? false : actual.can(nextRole, permission),
+      permission === "policy_rule:manage" && !policyManageAllowed ? false : actual.can(nextRole, permission),
   };
 });
 

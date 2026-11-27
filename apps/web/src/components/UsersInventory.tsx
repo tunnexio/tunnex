@@ -2,7 +2,7 @@ import { useLocation } from "react-router-dom";
 import "../users-inventory.css";
 import { useEffect, useId, useMemo, useState } from "react";
 import type { Device, Member, Role } from "../lib/api";
-import { canManageMembership, HUMAN_ROLES } from "../lib/rbac";
+import { can, canManageMembership, HUMAN_ROLES, roleLabel, roleListLabel } from "../lib/rbac";
 import { accountActionBlocked } from "../lib/usersview";
 import { deviceCountFor, deviceCountLabel, rosterShape } from "../lib/usersview";
 import AppAccessEmptyState from "./AppAccessEmptyState";
@@ -15,6 +15,8 @@ export type UsersInventoryProps = {
   devices: Device[] | null;
   actorId: string;
   actorRole: Role | undefined;
+  /** Every role the viewer holds; permission checks read these (actorRole is only for owner protection). */
+  actorRoles?: readonly Role[];
   emailVerified: boolean;
   busy: boolean;
   view: "users" | "roles";
@@ -34,7 +36,7 @@ const accountActionLabel: Record<AccountAction, string> = {
 };
 
 /** The page owns roster reads, confirmations, role editing and account mutations. */
-export default function UsersInventory({ members, devices, actorId, actorRole, emailVerified, busy, view, onInspect, onRequestAction, ownerCount }: UsersInventoryProps) {
+export default function UsersInventory({ members, devices, actorId, actorRole, actorRoles: actorRoleSet, emailVerified, busy, view, onInspect, onRequestAction, ownerCount }: UsersInventoryProps) {
   const linkedQuery = new URLSearchParams(useLocation().search).get("q") ?? "";
   const [query, setQuery] = useState(linkedQuery);
   useEffect(() => { if (linkedQuery) setQuery(linkedQuery); }, [linkedQuery]);
@@ -42,15 +44,18 @@ export default function UsersInventory({ members, devices, actorId, actorRole, e
   const [sort, setSort] = useState<{ key: SortKey; descending: boolean } | null>(null);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
-  const actorScope = `${actorId}/${actorRole ?? ""}/${emailVerified}`;
+  const actorRoles: readonly Role[] = actorRoleSet ?? (actorRole ? [actorRole] : []);
+  const actorScope = `${actorId}/${actorRole ?? ""}/${actorRoles.join(",")}/${emailVerified}`;
   const [selection, setSelection] = useState<{ scope: string; ids: Set<string> }>(() => ({ scope: actorScope, ids: new Set() }));
   const selectedIds = selection.scope === actorScope ? selection.ids : new Set<string>();
   const reasonPrefix = useId();
-  const { showDeviceCount } = rosterShape({ role: actorRole, isEnterprise: false });
+  const { showDeviceCount } = rosterShape({ role: actorRoles, isEnterprise: false });
   const roles = (member: Member) => member.roles ?? [member.role];
-  const deviceCount = (member: Member) => deviceCountFor({ role: actorRole, devices, userId: member.user_id });
+  const deviceCount = (member: Member) => deviceCountFor({ role: actorRoles, devices, userId: member.user_id });
   const canEditRoles = (member: Member) => emailVerified && canManageMembership(actorRole, member.role, "") && HUMAN_ROLES.some(role => canManageMembership(actorRole, member.role, role));
-  const hasRowActions = members.some(canEditRoles);
+  // RBAC-1: Helpdesk has a row menu for 2FA reset without being able to edit roles or deactivate anyone.
+  const canManagePeople = can(actorRoles, "member:manage"), canResetMfa = can(actorRoles, "mfa:reset");
+  const hasRowActions = members.some(canEditRoles) || (emailVerified && canResetMfa && members.some(member => member.user_id !== actorId));
   // Role editing includes self. Account selection retains the separate non-self gate.
   const canSelect = members.some(member => emailVerified && member.user_id !== actorId && canManageMembership(actorRole, member.role, ""));
   const counts = {
@@ -64,7 +69,7 @@ export default function UsersInventory({ members, devices, actorId, actorRole, e
     return members.filter(member => {
       if (filter !== "all" && member.status !== filter) return false;
       const count = deviceCountFor({ role: actorRole, devices, userId: member.user_id });
-      const text = [member.name, member.email, ...(member.roles ?? [member.role]), member.status, member.email_verified ? "" : "email unverified", member.user_id === actorId ? "you" : "", showDeviceCount ? deviceCountLabel(count) : ""].join(" ").toLowerCase();
+      const text = [member.name, member.email, ...(member.roles ?? [member.role]), ...(member.roles ?? [member.role]).map(roleLabel), member.status, member.email_verified ? "" : "email unverified", member.user_id === actorId ? "you" : "", showDeviceCount ? deviceCountLabel(count) : ""].join(" ").toLowerCase();
       return terms.every(term => text.includes(term));
     });
   }, [members, devices, query, filter, actorRole, actorId, showDeviceCount]);
@@ -72,7 +77,7 @@ export default function UsersInventory({ members, devices, actorId, actorRole, e
     if (!sort) return filteredMembers;
     const sortValue = (member: Member) => {
       if (sort.key === "person") return `${member.name ?? ""} ${member.email}`;
-      if (sort.key === "roles") return (member.roles ?? [member.role]).join(" + ");
+      if (sort.key === "roles") return roleListLabel(member.roles ?? [member.role]);
       if (sort.key === "state") return `${member.status} ${member.email_verified ? "" : "email unverified"}`;
       const count = deviceCountFor({ role: actorRole, devices, userId: member.user_id });
       return count.kind === "count" ? String(count.n) : deviceCountLabel(count);
@@ -98,7 +103,7 @@ export default function UsersInventory({ members, devices, actorId, actorRole, e
   // RBAC-0: one source for the reasons (lib/usersview accountActionBlocked), shared with the person page.
   const unavailable = (member: Member, action: AccountAction) => {
     if (busy) return "Wait for the current member operation.";
-    return accountActionBlocked(member, action, { actorId, actorRole, emailVerified, activeOwners: ownerCount });
+    return accountActionBlocked(member, action, { actorId, actorRole, actorRoles, emailVerified, activeOwners: ownerCount });
   };
   const requestAction = (action: AccountAction, targets: Member[]) => {
     if (busy || !emailVerified || (action === "reset" && targets.length !== 1)) return;
@@ -139,13 +144,13 @@ export default function UsersInventory({ members, devices, actorId, actorRole, e
       return <tr key={member.user_id} data-selected={canSelect && selectedIds.has(member.user_id) || undefined}>
         {canSelect && <td className="ur-select"><input type="checkbox" aria-label={`Select ${member.email}`} disabled={busy} checked={selectedIds.has(member.user_id)} onChange={event => { const checked = event.target.checked; updateSelection(previous => { const next = new Set(previous); if (checked) next.add(member.user_id); else next.delete(member.user_id); return next; }); }} /></td>}
         <td data-column="person"><div className="ur-person"><button type="button" className="ur-person-name" disabled={busy} onClick={() => onInspect(member.user_id, view === "roles" ? "roles" : "overview")}>{primary}</button>{member.user_id === actorId && <span className="ur-self">(you)</span>}</div>{primary !== member.email && <span className="ur-email">{member.email}</span>}</td>
-        <td data-column="roles"><span className="ur-roles">{roles(member).join(" + ")}</span></td>
+        <td data-column="roles"><span className="ur-roles">{roleListLabel(roles(member))}</span></td>
         <td data-column="state"><span className="ur-member-state" data-state={member.status === "active" && !member.email_verified ? "unverified" : member.status}>{member.status === "deactivated" ? "Deactivated" : !member.email_verified ? "Email unverified" : "Active"}</span>{member.status === "deactivated" && !member.email_verified && <span className="ur-unverified">Email unverified</span>}</td>
         {showDeviceCount && <td data-column="devices"><span className={count.kind === "count" ? "ur-device-count" : "ur-device-unknown"} aria-label={count.kind === "count" ? deviceCountLabel(count) : undefined}>{count.kind === "count" ? count.n : deviceCountLabel(count)}</span></td>}
         {hasRowActions && <td className="ur-actions">{(canEditRoles(member) || (emailVerified && member.user_id !== actorId)) && <AppAccessRowMenu label={`User actions for ${member.email}`} actions={[
           // RBAC-0: an action this person may not take stays listed WITH its reason (e.g. an admin looking at an owner).
-          { key: "roles", label: "Edit roles", disabledReason: busy ? "Wait for the current member operation." : canEditRoles(member) ? null : member.role === "owner" && actorRole !== "owner" ? "Only an owner can change an owner's roles." : "You cannot change this member's roles.", onSelect: () => { if (!busy && canEditRoles(member)) onInspect(member.user_id, "roles"); } },
-          ...(member.user_id === actorId ? [] : ([member.status === "active" ? "deactivate" : "reactivate", "reset"] as AccountAction[]).map(action => ({ key: action, label: accountActionLabel[action], danger: action === "deactivate" || action === "reset", disabledReason: unavailable(member, action), onSelect: () => requestAction(action, [member]) }))),
+          ...(canManagePeople ? [{ key: "roles", label: "Edit roles", disabledReason: busy ? "Wait for the current member operation." : canEditRoles(member) ? null : member.role === "owner" && actorRole !== "owner" ? "Only an owner can change an owner's roles." : "You cannot change this member's roles.", onSelect: () => { if (!busy && canEditRoles(member)) onInspect(member.user_id, "roles"); } }] : []),
+          ...(member.user_id === actorId ? [] : ([...(canManagePeople ? [member.status === "active" ? "deactivate" : "reactivate"] : []), ...(canResetMfa ? ["reset"] : [])] as AccountAction[]).map(action => ({ key: action, label: accountActionLabel[action], danger: action === "deactivate" || action === "reset", disabledReason: unavailable(member, action), onSelect: () => requestAction(action, [member]) }))),
         ]} />}</td>}
       </tr>;
     })}</tbody></table></div> : <AppAccessEmptyState icon={null} title={query.trim() ? "No people match this search." : filter === "active" ? "No active accounts." : filter === "deactivated" ? "No deactivated accounts." : "No members yet."} description={query.trim() || filter !== "all" ? "Try another search or view all accounts." : "People who join your organization will appear here."} action={query.trim() || filter !== "all" ? <Button size="sm" variant="ghost" onClick={clearFilters}>Clear filters</Button> : undefined} />}

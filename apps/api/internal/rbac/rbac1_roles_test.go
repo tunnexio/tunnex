@@ -1,6 +1,8 @@
 package rbac
 
 import (
+	"encoding/json"
+	"os"
 	"sort"
 	"strings"
 	"testing"
@@ -187,6 +189,34 @@ func TestRBAC1PrivateAlertDestinationStaysOwnerOnly(t *testing.T) {
 	for role := range rolePermissions {
 		if Can(role, PermAlertingPrivateDestination) != (role == RoleOwner) {
 			t.Errorf("alerting:private_destination held by %s", role)
+		}
+	}
+}
+
+// The shared fixture is also read by apps/web/test/rbac1roles.test.ts against the hand-mirrored
+// canManageMembership, so the two implementations are checked against one table.
+func TestRBAC1CanManageMembershipSharedFixture(t *testing.T) {
+	raw, err := os.ReadFile("testdata/can_manage_membership.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fixture struct {
+		Cases []struct {
+			Actor   string `json:"actor"`
+			Target  string `json:"target"`
+			NewRole string `json:"new_role"`
+			Allowed bool   `json:"allowed"`
+		} `json:"cases"`
+	}
+	if err := json.Unmarshal(raw, &fixture); err != nil {
+		t.Fatal(err)
+	}
+	if len(fixture.Cases) < 9*9 {
+		t.Fatalf("fixture has only %d cases", len(fixture.Cases))
+	}
+	for _, c := range fixture.Cases {
+		if got := CanManageMembership(c.Actor, c.Target, c.NewRole); got != c.Allowed {
+			t.Errorf("CanManageMembership(%q,%q,%q)=%v, fixture says %v", c.Actor, c.Target, c.NewRole, got, c.Allowed)
 		}
 	}
 }

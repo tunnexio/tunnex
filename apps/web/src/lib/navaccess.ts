@@ -10,16 +10,18 @@ import { useOrg } from "./useOrg";
 // Rules are ANY-OF permission lists, read from the generated grant table (rbac-policy.json), so a
 // role that gains a permission in Go gains the destination without touching this file.
 export const NAV_PERMISSIONS: Record<string, readonly string[]> = {
-  "/gateways": ["org:update", "site:manage"],
+  "/gateways": ["gateway:manage", "site:manage"],
   "/sites": ["site:manage", "ipsec:manage"],
   "/kubernetes": ["k8s:manage", "k8s_scope:view", "k8s_ha:view"],
   "/sandboxes": ["sandbox:view"],
   "/ai-gateway": ["ai_model:use", "ai_gateway:view"],
-  "/agents": ["agent:manage", "agent:enroll", "agent:grant_access", "agent_access:request"],
+  "/agents": ["agent:manage", "agent:enroll", "agent:grant_access", "agent_access:request", "agent:view_privileged"],
   "/mcp": ["agent_template:manage", "mcp:manage"],
   "/approvals": ["agent_mcp_tool_approval:approve"],
   "/access": ["policy:view"],
-  "/users": ["member:manage", "member:invite"],
+  // RBAC-1: Helpdesk resets 2FA from the Users page; the auditor reads it (audit:view_all marks the role that
+  // sees what an admin sees). Neither gets a control it cannot use there.
+  "/users": ["member:manage", "member:invite", "mfa:reset", "audit:view_all"],
   "/app-access": ["app_access:use", "app_access:view"],
   "/browser-access/terminal": ["server_access:use", "server_access:view"],
   "/beam": ["beam:use"],
@@ -28,15 +30,15 @@ export const NAV_PERMISSIONS: Record<string, readonly string[]> = {
   "/access-events": ["policy:view", "app_access:event_view", "beam:audit_view"],
   // Not sidebar destinations: sub-pages and tabs gated the same way (AdminOnlyRoute, tab rails).
   "/devices/approvals": ["device:approve"],
-  "/devices/posture": ["device:approve", "device_health:manage"],
+  "/devices/posture": ["device_health:manage"],
   "/users/groups": ["policy:view"],
   "/users/invitations": ["member:invite"],
 };
 
 /** Organization-wide audit (everyone else reads only their own actions). Mirrors audit_handlers.go. */
-export function seesOrgAudit(roles: readonly Role[]): boolean { return roles.includes("owner") || roles.includes("admin"); }
+export function seesOrgAudit(roles: readonly Role[]): boolean { return can(roles, "audit:view_all"); }
 /** The fleet overview is for people who administer the network; everyone else gets their workspace. */
-export function administersNetwork(roles: readonly Role[]): boolean { return can(roles, "org:update") || can(roles, "policy:view"); }
+export function administersNetwork(roles: readonly Role[]): boolean { return can(roles, "org:update") || can(roles, "gateway:manage") || can(roles, "policy:view"); }
 
 export type MyRoles = { state: "loading" } | { state: "failed" } | { state: "ready"; roles: Role[] };
 

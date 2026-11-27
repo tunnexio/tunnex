@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import type { Role } from "../lib/api";
+import { ROLE_DESCRIPTIONS, roleLabel, roleListLabel } from "../lib/rbac";
 
 export function RoleAssignment({ email, roles, options, soleOwner, onSave }: {
   email: string;
@@ -14,7 +15,7 @@ export function RoleAssignment({ email, roles, options, soleOwner, onSave }: {
   useEffect(() => setSelected(roles), [signature]);
   const unchanged = selected.length === roles.length && roles.every((r) => selected.includes(r));
   return <details className="relative min-w-40">
-    <summary className="cursor-pointer text-sm" aria-label={`Roles for ${email}`}>{roles.join(" + ")}</summary>
+    <summary className="cursor-pointer text-sm" aria-label={`Roles for ${email}`}>{roleListLabel(roles)}</summary>
     <fieldset className="my-2 space-y-2 rounded-lg border border-white/10 bg-ink-900 p-3" disabled={busy}>
       <legend className="sr-only">Roles for {email}</legend>
       {options.map((role) => <label key={role} className="flex items-center gap-2 text-sm">
@@ -22,7 +23,7 @@ export function RoleAssignment({ email, roles, options, soleOwner, onSave }: {
           disabled={soleOwner && role === "owner"}
           title={soleOwner && role === "owner" ? "An organization must always have at least one owner." : undefined}
           onChange={(e) => setSelected((current) => e.target.checked ? [...current, role] : current.filter((r) => r !== role))} />
-        {role}
+        <span>{roleLabel(role)}<small className="block text-xs text-ink-secondary">{ROLE_DESCRIPTIONS[role]}</small></span>
       </label>)}
       {soleOwner && <p className="text-xs text-ink-secondary">Keep at least one owner.</p>}
       <button type="button" className="rounded border border-white/10 px-3 py-1 text-sm disabled:opacity-50"

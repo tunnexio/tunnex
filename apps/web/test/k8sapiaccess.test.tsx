@@ -149,7 +149,7 @@ describe("API access on a cluster's page (K8N-3 stage 1)", () => {
     panel(K8S_MANAGE_ONLY);
     expect(await screen.findByText("On")).toBeTruthy();
     expect(screen.queryByRole("button", { name: /Turn o(n|ff) API access/ })).toBeNull();
-    expect(screen.getByText("Only an organization owner or admin can turn API access on or off.")).toBeTruthy();
+    expect(screen.getByText("Only owners, admins and network admins can turn API access on or off.")).toBeTruthy();
     // Without the control, the mode that only decides a dialog warning is not read.
     expect((get.mock.calls as unknown as Array<[string]>).some(([path]) => path.endsWith("/zero-trust-mode"))).toBe(false);
     // Everyone still sees the lines they need to use it.

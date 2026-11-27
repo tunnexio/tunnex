@@ -68,7 +68,7 @@ function AlertsWorkspace() {
   const [inspectedId, setInspectedId] = useState<string | null>(null);
   const [rows, setRows] = useState<AlertOccurrence[] | null>(null), [loadedView, setLoadedView] = useState<View | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [myRole, setMyRole] = useState<Role | undefined>(), [roleLoading, setRoleLoading] = useState(true), [roleError, setRoleError] = useState("");
+  const [myRole, setMyRole] = useState<Role[] | undefined>(), [roleLoading, setRoleLoading] = useState(true), [roleError, setRoleError] = useState("");
   const alive = useRef(true), occurrenceRequest = useRef(0), roleRequest = useRef(0), currentView = useRef(view);
   currentView.current = view;
   useEffect(() => { alive.current = true; return () => { alive.current = false; occurrenceRequest.current++; roleRequest.current++; }; }, []);
@@ -84,7 +84,7 @@ function AlertsWorkspace() {
     const own = result.data.find(member => member.user_id === actorId);
     if (own && (!validRole(own.role) || (own.roles !== undefined && (!Array.isArray(own.roles) || !own.roles.length || !own.roles.every(validRole) || !own.roles.includes(own.role) || new Set(own.roles).size !== own.roles.length)))) { setRoleError("Could not check alert permissions."); return; }
     const roles = own?.roles ?? (own ? [own.role] : []);
-    setMyRole(roles.includes("owner") ? "owner" : roles.includes("admin") ? "admin" : own?.role);
+    setMyRole(roles);
   }, [org?.id, actorId]);
   const load = useCallback(async () => {
     if (!org || view === "management") return;
@@ -126,7 +126,7 @@ function AlertsWorkspace() {
   if (orgLoading) return <Loading label="Loading alerts…" size="page" />;
   if (orgFailed || !org) return <ErrorText>Could not load the organization for alerts.</ErrorText>;
   return <div className="network-management alerts-workspace">
-    {view === "management" && canManage ? <AlertManagement orgId={org.id} canEdit={emailVerified} canAllowPrivate={myRole === "owner"} renderNavigation={navigation} onRefreshAuthority={loadRole} /> : <>
+    {view === "management" && canManage ? <AlertManagement orgId={org.id} canEdit={emailVerified} canAllowPrivate={can(myRole, "alerting:private_destination")} renderNavigation={navigation} onRefreshAuthority={loadRole} /> : <>
       {navigation(<RefreshButton label="Refresh" disabled={currentRows === null && !error} onClick={() => { void load(); void loadRole(); }} />)}
       {view === "management" ? <Loading label="Checking alert permissions…" /> : error ? <section className="alerts-read-state" role="alert"><h2>Could not load alerts.</h2>{error !== "Could not load alerts." && <p>{error}</p>}<Button variant="ghost" onClick={() => void load()}>Retry</Button></section> : currentRows === null ? <Loading label={`Loading ${view} alerts…`} /> : <section className="alerts-inventory" aria-label={view === "active" ? "Active alert inventory" : "Resolved alert inventory"}>
         <div className="alerts-inventory-toolbar"><Input type="search" aria-label="Search alerts" placeholder="Search alerts…" value={query} onChange={event => { setQuery(event.target.value); setPage(1); }} /><div className="alerts-filters" aria-label="Filter severity">{["all", "critical", "warning", "info"].map(value => <button type="button" key={value} aria-pressed={severity === value} onClick={() => { setSeverity(value); setPage(1); }}>{value === "all" ? "All severities" : value}</button>)}</div><span className="alerts-result-count">{filtered.length} {view === "active" ? "active" : "resolved"}</span></div>

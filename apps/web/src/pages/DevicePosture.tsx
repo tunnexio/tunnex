@@ -9,6 +9,7 @@ import { LoadRetry } from "../components/LoadRetry";
 import { api, loadOne, type Member } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { useOrg } from "../lib/useOrg";
+import { can } from "../lib/rbac";
 
 export default function DevicePosture() {
   const { org } = useOrg();
@@ -33,7 +34,7 @@ function DevicePolicyPage() {
       if (!result.ok) { setError(result.error); return; }
       if (!Array.isArray(result.data) || !result.data.every((member) => member && typeof member === "object" && typeof member.user_id === "string" && typeof member.role === "string")) { setError("The permission response was not valid. Retry to reload it."); return; }
       const mine = (result.data as Member[]).find((member) => member.user_id === state.user.id);
-      setCanManage(mine?.role === "owner" || mine?.role === "admin");
+      setCanManage(can(mine ? mine.roles ?? [mine.role] : [], "device_health:manage"));
     });
     return () => { stale = true; };
   }, [org?.id, state.status, state.status === "authed" ? state.user.id : "", state.status === "authed" ? state.user.email_verified : false, attempt]);
