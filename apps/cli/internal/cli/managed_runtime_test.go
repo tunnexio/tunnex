@@ -446,3 +446,185 @@ func TestManagedRuntimeDeclaresGatewayCapabilityAndStopsLocalMCPWork(t *testing.
 		}
 	}
 }
+
+// ── AI-UX-1 ───────────────────────────────────────────────────────────────────────
+
+func dnsTestConfig(dns ...string) ManagedAgentConfig {
+	return ManagedAgentConfig{Revision: 2, Address: "10.0.0.2/32", GatewayEndpoint: "gw.example:51820",
+		GatewayPublicKey: "MDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDA=", AllowedIPs: []string{"10.0.0.0/24"}, DNS: dns, PersistentKeepalive: 25}
+}
+
+// wg-quick runs resolvconf for a DNS line and tears the interface down when that fails. A host without
+// resolvconf therefore gets a configuration without the line; a host with it gets exactly what it got
+// before.
+func TestManagedRuntimeOmitsTheDNSLineWithoutResolvconf(t *testing.T) {
+	const before = "[Interface]\nPrivateKey = LOCAL-PRIVATE\nAddress = 10.0.0.2/32\nDNS = 10.0.0.53, 10.0.0.54\nMTU = 1420\n\n[Peer]\nPublicKey = MDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDA=\nEndpoint = gw.example:51820\nAllowedIPs = 10.0.0.0/24\nPersistentKeepalive = 25\n"
+	if got := renderManagedConfig("LOCAL-PRIVATE", dnsTestConfig("10.0.0.53", "10.0.0.54"), true); got != before {
+		t.Fatalf("a host with resolvconf must get the configuration it always got:\n%s", got)
+	}
+	without := renderManagedConfig("LOCAL-PRIVATE", dnsTestConfig("10.0.0.53", "10.0.0.54"), false)
+	if strings.Contains(without, "DNS") || without != strings.Replace(before, "DNS = 10.0.0.53, 10.0.0.54\n", "", 1) {
+		t.Fatalf("without resolvconf only the DNS line may differ:\n%s", without)
+	}
+	if a, b := renderManagedConfig("K", dnsTestConfig(), true), renderManagedConfig("K", dnsTestConfig(), false); a != b || strings.Contains(a, "DNS") {
+		t.Fatalf("no DNS servers pushed: %q vs %q", a, b)
+	}
+}
+
+func TestManagedRuntimeApplierLooksForResolvconfOnPATHAtEachApply(t *testing.T) {
+	dir := t.TempDir()
+	configPath := filepath.Join(dir, "runtime.conf")
+	if err := WriteFileAtomic0600(configPath, []byte("[Interface]\nPrivateKey = LOCAL-PRIVATE\nAddress = 10.0.0.2/32\n")); err != nil {
+		t.Fatal(err)
+	}
+	bin := filepath.Join(dir, "bin")
+	if err := os.Mkdir(bin, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin)
+	var applied []string
+	dns := &tunnelDNSState{}
+	applier := &wireGuardRuntimeApplier{path: configPath, dns: dns, command: func(_ context.Context, path, action string) error {
+		b, _ := os.ReadFile(path)
+		applied = append(applied, action+":"+string(b))
+		return nil
+	}}
+	if dns.applied() != nil {
+		t.Fatal("nothing is known before the first apply")
+	}
+
+	// No resolvconf on PATH: no DNS line, and the runtime knows it left it out.
+	if err := applier.Apply(t.Context(), dnsTestConfig("10.0.0.53")); err != nil {
+		t.Fatal(err)
+	}
+	if len(applied) != 1 || strings.Contains(applied[0], "DNS") || !strings.Contains(applied[0], "PrivateKey = LOCAL-PRIVATE") || !strings.Contains(applied[0], "AllowedIPs = 10.0.0.0/24") {
+		t.Fatalf("applied without resolvconf: %v", applied)
+	}
+	if got := dns.applied(); got == nil || *got {
+		t.Fatalf("tunnel DNS applied = %v, want false", got)
+	}
+
+	// resolvconf is installed later: the next apply writes the line, as on any host that has it.
+	if err := os.WriteFile(filepath.Join(bin, "resolvconf"), []byte("#!/bin/sh\nexit 0\n"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := applier.Apply(t.Context(), dnsTestConfig("10.0.0.53")); err != nil {
+		t.Fatal(err)
+	}
+	if len(applied) != 2 || !strings.Contains(applied[1], "\nDNS = 10.0.0.53\n") {
+		t.Fatalf("applied with resolvconf: %v", applied)
+	}
+	if got := dns.applied(); got == nil || !*got {
+		t.Fatalf("tunnel DNS applied = %v, want true", got)
+	}
+
+	// A failed apply restores the last-good file and what is known about it.
+	if err := os.Remove(filepath.Join(bin, "resolvconf")); err != nil {
+		t.Fatal(err)
+	}
+	failing := &wireGuardRuntimeApplier{path: configPath, dns: dns, command: func() func(context.Context, string, string) error {
+		calls := 0
+		return func(context.Context, string, string) error {
+			if calls++; calls == 1 {
+				return errors.New("wg-quick failed")
+			}
+			return nil
+		}
+	}()}
+	if err := failing.Apply(t.Context(), dnsTestConfig("10.0.0.53")); err == nil {
+		t.Fatal("the apply must fail")
+	}
+	restored, _ := os.ReadFile(configPath)
+	if !strings.Contains(string(restored), "\nDNS = 10.0.0.53\n") {
+		t.Fatalf("the last-good file was not restored: %s", restored)
+	}
+	if got := dns.applied(); got == nil || !*got {
+		t.Fatalf("after a restored apply, tunnel DNS applied = %v, want true (the restored file has the line)", got)
+	}
+}
+
+// The runtime declares on every poll that its proxy holds an MCP call open (mcp_hold), reads the server
+// list from the configuration, and reports whether the tunnel DNS servers were written.
+func TestManagedRuntimeDeclaresHoldReadsServersAndReportsTunnelDNS(t *testing.T) {
+	var mu sync.Mutex
+	var pollQueries []string
+	var reports []map[string]any
+	servers := any([]map[string]any{{"name": "orders-db", "default": true}, {"name": "billing", "default": false}})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		defer mu.Unlock()
+		switch r.URL.Path {
+		case "/api/v1/agent/runtime/poll":
+			pollQueries = append(pollQueries, r.URL.Query().Get("mcp_hold")+"/"+r.URL.Query().Get("mcp_gateway"))
+			config := map[string]any{"revision": 1, "device_id": "00000000-0000-0000-0000-000000000001", "org_id": "00000000-0000-0000-0000-000000000002", "address": "10.0.0.2/32", "gateway_endpoint": "gw.example:51820", "gateway_public_key": "MDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDA=", "allowed_ips": []string{"10.0.0.0/24"}, "dns": []string{"10.0.0.53"}, "persistent_keepalive": 25,
+				"mcp_upstream": nil, "mcp_gateway_url": "http://10.99.0.1:8084/mcp"}
+			if servers != nil {
+				config["mcp_servers"] = servers
+			}
+			w.Header().Set("Content-Type", "application/json")
+			_ = json.NewEncoder(w).Encode(config)
+		case "/api/v1/agent/runtime/report":
+			var body map[string]any
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			reports = append(reports, body)
+			w.WriteHeader(http.StatusNoContent)
+		default:
+			http.Error(w, "unexpected "+r.URL.Path, http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+	dir := t.TempDir()
+	state := ManagedRuntimeState{Server: server.URL, ClientVersion: "test"}
+	source, err := newManagedRuntimeSource(server.URL, "runtime-test", "", filepath.Join(dir, "runtime.conf"), filepath.Join(dir, "runtime-state.json"), &state, 0, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	report := func() map[string]any {
+		t.Helper()
+		if err := source.Report(t.Context(), AgentRuntimeReport{AppliedRevision: 1, AttemptedRevision: 1, ClientVersion: "test"}); err != nil {
+			t.Fatal(err)
+		}
+		mu.Lock()
+		defer mu.Unlock()
+		return reports[len(reports)-1]
+	}
+
+	if _, err := source.Poll(t.Context(), 0, "test"); err != nil {
+		t.Fatal(err)
+	}
+	got := source.MCPProxyServers(t.Context())
+	if len(got) != 2 || got[0] != (MCPProxyServer{Name: "orders-db", Default: true}) || got[1] != (MCPProxyServer{Name: "billing"}) {
+		t.Fatalf("servers = %+v", got)
+	}
+	// Before anything was applied by this process the runtime says nothing about DNS.
+	if body := report(); body["tunnel_dns_applied"] != nil {
+		t.Fatalf("report before an apply: %v", body)
+	}
+	source.tunnelDNS = &tunnelDNSState{}
+	source.tunnelDNS.set(false)
+	if body := report(); body["tunnel_dns_applied"] != false {
+		t.Fatalf("report on a host without resolvconf: %v", body)
+	}
+	source.tunnelDNS.set(true)
+	if body := report(); body["tunnel_dns_applied"] != true {
+		t.Fatalf("report on a host with resolvconf: %v", body)
+	}
+
+	// The control plane stops sending servers (the last one was removed, or it is an older one).
+	mu.Lock()
+	servers = nil
+	mu.Unlock()
+	if _, err := source.Poll(t.Context(), 0, "test"); err != nil {
+		t.Fatal(err)
+	}
+	if got := source.MCPProxyServers(t.Context()); len(got) != 0 {
+		t.Fatalf("servers after they were withdrawn = %+v", got)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	for i, q := range pollQueries {
+		if q != "true/true" {
+			t.Fatalf("poll %d sent mcp_hold/mcp_gateway = %q, want true/true", i, q)
+		}
+	}
+}
