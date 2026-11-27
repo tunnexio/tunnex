@@ -11,7 +11,7 @@ vi.mock("../src/lib/api", async () => {
 });
 
 import AgentDetail from "../src/pages/AgentDetail";
-import { agentRuntimeUpdateCommand } from "../src/lib/agentview";
+import { agentHostRemoveCommand, agentRuntimeUpdateCommand } from "../src/lib/agentview";
 import type { BootstrapRelease } from "../src/lib/api";
 
 const asset = (name: string, digit: string) => ({ name, sha256: digit.repeat(64), source_sha: "a".repeat(40) });
@@ -131,5 +131,48 @@ describe("Update runtime on the agent Runtime tab", () => {
     open();
     expect(await screen.findByRole("heading", { name: "Credential rotation" })).toBeTruthy();
     expect(screen.queryByRole("heading", { name: "Update runtime" })).toBeNull();
+  });
+});
+
+describe("Remove the agent from this host", () => {
+  const when = "Use this when the agent was revoked and its host should be cleared, for example before the host is enrolled again as a new agent.";
+  const what = "Run it on the agent's host as root or with sudo. It stops the runtime service, brings the tunnel down and removes the runtime, its credential, its state and its tunnel configuration. Nothing else on the host is changed, and no token is needed.";
+
+  it("is shown on a revoked agent's Runtime tab with when to use it, and copies", async () => {
+    status = "revoked";
+    open();
+    const removal = within((await screen.findByRole("heading", { name: "Remove the agent from this host" })).closest("section") as HTMLElement);
+    expect(removal.getByText(when)).toBeTruthy();
+    expect(removal.getByText(what)).toBeTruthy();
+    expect(screen.getByTestId("agent-host-remove-command").textContent).toBe(agentHostRemoveCommand());
+    fireEvent.click(removal.getByRole("button", { name: "Copy command" }));
+    await waitFor(() => expect(writeText).toHaveBeenCalledWith(agentHostRemoveCommand()));
+    // Nothing is asked of the server for it: no release, no token.
+    expect(releaseCalls()).toHaveLength(0);
+    expect(post).not.toHaveBeenCalled();
+  });
+
+  it("is not offered for an active agent, next to Update runtime or anywhere on the tab", async () => {
+    open();
+    await panel();
+    expect(screen.queryByRole("heading", { name: "Remove the agent from this host" })).toBeNull();
+    expect(screen.queryByTestId("agent-host-remove-command")).toBeNull();
+  });
+
+  it("is not offered to a member who cannot enrol agents", async () => {
+    status = "revoked"; role = "member";
+    open();
+    expect(await screen.findByRole("heading", { name: "Credential rotation" })).toBeTruthy();
+    expect(screen.queryByRole("heading", { name: "Remove the agent from this host" })).toBeNull();
+  });
+
+  it("is given in the Remove agent dialog, because the agent's page is gone once it is removed", async () => {
+    open();
+    await panel();
+    fireEvent.click(screen.getByRole("button", { name: "Agent actions for builder" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Remove agent" }));
+    const dialog = within(await screen.findByRole("dialog", { name: "Remove builder?" }));
+    expect(dialog.getByText("After the agent is removed, run this on its host to clear what it left there, so the host can be enrolled again.")).toBeTruthy();
+    expect(dialog.getByTestId("agent-host-remove-command").textContent).toBe(agentHostRemoveCommand());
   });
 });

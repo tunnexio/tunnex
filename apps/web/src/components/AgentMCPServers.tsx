@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState } from "react";
 import { Link } from "react-router-dom";
 import type { components } from "@tunnex/shared";
 import { api, apiErrorCode, apiErrorMessage, loadOne } from "../lib/api";
@@ -43,6 +43,9 @@ function AgentServer({ orgId, deviceId, server, several, inventory, canManagePol
   const [error, setError] = useState("");
   const address = server.local_url || mcpLocalAddress(server.server_name);
   const overrides = server.policy_source === "agent";
+  // An agent still on the older path reads only its own tool policy, so a group's choices do not reach it.
+  const olderPath = enforcement === "agent_host" && !overrides;
+  const noticeId = useId();
   async function useGroupPolicy() {
     setBusy(true); setError("");
     try {
@@ -70,12 +73,13 @@ function AgentServer({ orgId, deviceId, server, several, inventory, canManagePol
           ? <div className="mt-2 flex flex-wrap items-center gap-2 text-sm"><span>Use the group&apos;s policy? This agent&apos;s own choices for this server are removed, and it follows {server.group_name} from now on.</span><Button size="sm" variant="danger" disabled={busy} onClick={() => void useGroupPolicy()}>{busy ? "Switching…" : "Use the group's policy"}</Button><Button size="sm" variant="ghost" disabled={busy} onClick={() => { setConfirming(false); setError(""); }}>Keep this agent&apos;s policy</Button></div>
           : <Button size="sm" variant="ghost" className="mt-2" onClick={() => setConfirming(true)}>Use the group&apos;s policy</Button>)}
         {error && <p role="alert" className="mt-2 text-sm text-danger">{error}</p>}
-        <div className="mt-3">{inventory ? <AgentMCPToolPolicyPanel orgId={orgId} deviceId={deviceId} inventory={inventory} canManage={canManagePolicy} enforcement={enforcement} endpoint={server.endpoint} onSaved={onChanged} /> : <p className="text-sm text-ink-secondary">The gateway has not read this server&apos;s tool list for this agent yet.</p>}</div>
+        <div className="mt-3">{inventory ? <AgentMCPToolPolicyPanel orgId={orgId} deviceId={deviceId} inventory={inventory} canManage={canManagePolicy} enforcement={enforcement} endpoint={server.endpoint} servers={[server]} onSaved={onChanged} /> : <p className="text-sm text-ink-secondary">The gateway has not read this server&apos;s tool list for this agent yet.</p>}</div>
       </> : ownPolicy && inventory ? <>
         <p className="mt-1 text-sm text-ink-tertiary">Saving here gives this agent its own policy for this server. From then on it no longer follows {server.group_name}.</p>
         <Button size="sm" variant="ghost" className="mt-2" onClick={() => setOwnPolicy(false)}>Back to the group&apos;s policy</Button>
-        <div className="mt-3"><AgentMCPToolPolicyPanel orgId={orgId} deviceId={deviceId} inventory={inventory} canManage={canManagePolicy} enforcement={enforcement} endpoint={server.endpoint} onSaved={onChanged} /></div>
+        <div className="mt-3"><AgentMCPToolPolicyPanel orgId={orgId} deviceId={deviceId} inventory={inventory} canManage={canManagePolicy} enforcement={enforcement} endpoint={server.endpoint} servers={[server]} onSaved={onChanged} /></div>
       </> : <>
+        {olderPath && <div role="note" aria-labelledby={noticeId} className="mt-2 min-w-0 text-sm"><Badge tone="warn"><span id={noticeId} className="whitespace-normal text-ink-heading">This agent will not get these tool choices until its runtime is updated</span></Badge><p className="mt-1 text-ink-tertiary">Its runtime is an older version that reads only this agent&apos;s own tool policy, so the choices of {server.group_name} do not reach it and it has no tools from this server. Update the runtime, or give this agent its own policy for now. <Link className="underline" to={`/agents/${encodeURIComponent(deviceId)}?tab=runtime`}>Update runtime</Link></p></div>}
         <p className="mt-1 text-sm text-ink-tertiary">This agent follows the policy of <Link className="underline" to={groupHref(server.group_id)}>{server.group_name}</Link>. A change here applies to every agent in that group.</p>
         <div className="mt-3"><AgentGroupMCPToolPolicyPanel orgId={orgId} groupId={server.group_id} profileId={server.profile_id} groupName={server.group_name} canManage={canManagePolicy} /></div>
         {canManagePolicy && inventory && <Button size="sm" variant="ghost" className="mt-3" onClick={() => setOwnPolicy(true)}>Give this agent its own policy</Button>}

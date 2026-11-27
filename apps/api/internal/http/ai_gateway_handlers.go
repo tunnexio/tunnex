@@ -120,22 +120,54 @@ func (s apiServer) GetAIGatewaySettings(ctx context.Context, req api.GetAIGatewa
 	if err != nil {
 		return nil, err
 	}
+	out, err := s.aiGatewaySettingsWithStatus(ctx, req.OrgId)
+	if err != nil {
+		return nil, err
+	}
+	return api.GetAIGatewaySettings200JSONResponse(out), nil
+}
+
+// aiGatewaySettingsWithStatus is the settings answer with its status, for a caller that is already authorized.
+func (s apiServer) aiGatewaySettingsWithStatus(ctx context.Context, orgID uuid.UUID) (api.AIGatewaySettings, error) {
 	if s.aiCredentials == nil {
 		v, err := s.aiGatewaySettings(ctx, false, false, 0)
 		if err != nil {
-			return nil, err
+			return api.AIGatewaySettings{}, err
 		}
-		return api.GetAIGatewaySettings200JSONResponse(s.withAIGatewayStatus(ctx, req.OrgId, v, false)), nil
+		return s.withAIGatewayStatus(ctx, orgID, v, false), nil
 	}
-	v, err := s.aiCredentials.Settings(ctx, req.OrgId)
+	v, err := s.aiCredentials.Settings(ctx, orgID)
 	if err != nil {
-		return nil, err
+		return api.AIGatewaySettings{}, err
 	}
 	out, err := s.aiGatewaySettings(ctx, v.Enabled, v.Available, v.Revision)
 	if err != nil {
+		return api.AIGatewaySettings{}, err
+	}
+	return s.withAIGatewayStatus(ctx, orgID, out, v.Available), nil
+}
+
+// aiGatewayStatusReasonOnly keeps whether the gateway works and the one reason, and drops the control
+// that fixes it: that control and its link are for people who may read the settings.
+func aiGatewayStatusReasonOnly(status api.AIGatewayStatus) api.AIGatewayStatus {
+	return api.AIGatewayStatus{On: status.On, Reason: status.Reason}
+}
+
+// GetAIGatewayStatus tells a person who may use a model, and nothing more, why no model can answer. It
+// is authorized by the permission the list of their own models already needs, and returns no setting.
+func (s apiServer) GetAIGatewayStatus(ctx context.Context, req api.GetAIGatewayStatusRequestObject) (api.GetAIGatewayStatusResponseObject, error) {
+	ctx, err := authorize(ctx, req.OrgId, rbac.PermAIModelUse)
+	if err != nil {
 		return nil, err
 	}
-	return api.GetAIGatewaySettings200JSONResponse(s.withAIGatewayStatus(ctx, req.OrgId, out, v.Available)), nil
+	out, err := s.aiGatewaySettingsWithStatus(ctx, req.OrgId)
+	if err != nil {
+		return nil, err
+	}
+	if out.Status == nil {
+		return api.GetAIGatewayStatus200JSONResponse(api.AIGatewayStatus{On: out.Enabled && out.Available}), nil
+	}
+	return api.GetAIGatewayStatus200JSONResponse(aiGatewayStatusReasonOnly(*out.Status)), nil
 }
 
 func (s apiServer) SetAIGatewaySettings(ctx context.Context, req api.SetAIGatewaySettingsRequestObject) (api.SetAIGatewaySettingsResponseObject, error) {

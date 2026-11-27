@@ -14,9 +14,11 @@ import { can } from "../lib/rbac";
 import { AgentMCPOAuthPanel, AgentMCPToolActivityPanel, AgentMCPToolApprovalPanel, AgentMCPToolPolicyPanel, MCPEnforcementNotices } from "../components/AgentMCPControls";
 import { AgentWorkflowProvenancePanel } from "../components/AgentWorkflowProvenance";
 import { AgentRuntimeUpdate } from "../components/AgentRuntimeUpdate";
+import { AgentHostRemoval } from "../components/AgentHostRemoval";
 import { AgentMCPServers } from "../components/AgentMCPServers";
 import { AgentAccessPanel } from "../components/AgentAccess";
 import { NO_TUNNEL_DNS_NOTE } from "../lib/agentview";
+import { mcpServerName, type NamedMCPServer } from "../lib/mcpServerName";
 import { ResourceSummary } from "../components/ResourceSummary";
 import { FeatureEnableInline } from "../components/FeatureEnableInline";
 import { useAgentFeatures } from "../lib/agentFeatures";
@@ -75,21 +77,26 @@ function ReadState<T>({ state, children, onRetry, title = "Information unavailab
   return <>{children(state.data)}</>;
 }
 
-function ObservedMCP({ data }: { data: MCPInventory }) {
+function ObservedMCP({ data, named }: { data: MCPInventory; /** The agent's MCP servers as the administrator named them. */ named?: readonly NamedMCPServer[] }) {
   const servers = Array.isArray(data.snapshot.servers) ? data.snapshot.servers.map(value => value && typeof value === "object" && !Array.isArray(value) ? value as Record<string, unknown> : {}) : undefined;
   return <Panel title="What the gateway sees"><p className="agent-detail-context">Read {age(data.observed_at)}{data.source === "gateway" ? " by the gateway" : data.source === "agent" ? " by the agent's own machine" : ""}. This is the server&apos;s tool list as last read, not a live check, and it holds no secrets.</p>
-    {servers ? servers.length ? <ul className="agent-detail-observed-servers">{servers.map((server, index) => <li key={index}><div><strong>{typeof server.server_name === "string" && server.server_name ? server.server_name : "Unnamed server"}</strong>{typeof server.endpoint === "string" && server.endpoint && <small>{server.endpoint}</small>}</div><span>{Array.isArray(server.tools) ? `${server.tools.length} tool${server.tools.length === 1 ? "" : "s"}` : "Tools not reported"}</span></li>)}</ul> : <p className="agent-detail-context">No servers were seen at the last read.</p> : <p className="agent-detail-context">The last read did not include a server list.</p>}
+    {servers ? servers.length ? <ul className="agent-detail-observed-servers">{servers.map((server, index) => {
+      // The administrator's name leads. What the server calls itself is detail, shown only here.
+      const reported = typeof server.server_name === "string" ? server.server_name : "", address = typeof server.endpoint === "string" ? server.endpoint : "";
+      const name = mcpServerName(named, address, reported) || "Unnamed server";
+      return <li key={index}><div><strong>{name}</strong>{address && address !== name && <small>{address}</small>}{reported && reported !== name && <small>The server calls itself {reported}</small>}</div><span>{Array.isArray(server.tools) ? `${server.tools.length} tool${server.tools.length === 1 ? "" : "s"}` : "Tools not reported"}</span></li>;
+    })}</ul> : <p className="agent-detail-context">No servers were seen at the last read.</p> : <p className="agent-detail-context">The last read did not include a server list.</p>}
     <details className="agent-detail-disclosure"><summary>View the raw tool list</summary><pre>{JSON.stringify(data.snapshot, null, 2)}</pre></details>
   </Panel>;
 }
 
-function MCPAuthentication({ orgId, deviceId, inventory, canManage }: { orgId: string; deviceId: string; inventory: MCPInventory; canManage: boolean }) {
+function MCPAuthentication({ orgId, deviceId, inventory, canManage, enforcement }: { orgId: string; deviceId: string; inventory: MCPInventory; canManage: boolean; enforcement?: EffectiveMCP["enforcement"] }) {
   const discovery = inventory.snapshot.oauth_discovery as { servers?: Array<{ status?: string }> } | undefined;
   const servers = Array.isArray(discovery?.servers) ? discovery.servers : undefined;
   const protectedReported = servers?.some(server => server?.status === "protected") ?? false;
   // The sign-in callback returns here with a secret-free outcome in the address.
   const outcome = new URLSearchParams(window.location.search).get("mcp_oauth") ?? undefined;
-  return <Panel title="MCP sign-in"><AgentMCPOAuthPanel orgId={orgId} deviceId={deviceId} inventory={inventory} canManage={canManage} outcome={outcome} />{!protectedReported && <p className="agent-detail-context" role="status">{servers ? "None of this agent's MCP servers asks for a sign-in." : "The agent has not reported yet whether its MCP servers ask for a sign-in."}</p>}</Panel>;
+  return <Panel title="MCP sign-in"><AgentMCPOAuthPanel orgId={orgId} deviceId={deviceId} inventory={inventory} canManage={canManage} outcome={outcome} enforcement={enforcement} />{!protectedReported && <p className="agent-detail-context" role="status">{servers ? "None of this agent's MCP servers asks for a sign-in." : "The agent has not reported yet whether its MCP servers ask for a sign-in."}</p>}</Panel>;
 }
 
 function AgentAssignment({ profile, members, groups, busy, onSave }: { profile: AgentProfile; members: State<Member[]>; groups: State<UserGroup[]>; busy: boolean; onSave: (body: Record<string, unknown>) => void }) {
@@ -249,6 +256,8 @@ function AgentDetailWorkspace({ fixture, agentIdOverride }: { fixture?: AgentDet
     ...(data.permissions.revoke ? [{ key: "remove", label: "Remove agent", danger: true, disabledReason: actionBlock, onSelect: () => { setMutationError(""); setRemoveOpen(true); } }] : []),
   ] : [];
   const tabIndex = tabs.indexOf(tab);
+  // One name per server everywhere on this page: the one the administrator gave it, found by its address.
+  const namedServers = effectiveMCP.kind === "ready" ? effectiveMCP.data.servers : undefined;
   return <div className="agent-detail-workspace">
     <nav className="agent-detail-breadcrumb" aria-label="AI Agent breadcrumb"><Link to="/agents">AI Agents</Link><span aria-hidden="true">/</span><span aria-current="page">{data?.name ?? "Agent"}</span></nav>
     {data && <header className="agent-detail-header"><div><h1>{data.name}</h1>{detailSubtitle && <p>{detailSubtitle}</p>}</div><span className={`agent-detail-status agent-detail-status-${data.status}`}>{data.status}</span><RefreshButton label="Refresh agent" disabled={busy} onClick={refreshAgent} /><AppAccessRowMenu label={`Agent actions for ${data.name}`} actions={actions} /></header>}
@@ -281,6 +290,7 @@ function AgentDetailWorkspace({ fixture, agentIdOverride }: { fixture?: AgentDet
           </dl><p className="agent-detail-context">Source: agent runtime report. {value.stale ? "The server marks this report stale." : "The server considers this report fresh."}</p></Panel>}</ReadState>}
           {!featureOff("runtime_sync") && runtime.kind === "ready" && runtime.data.tunnel_dns_applied === false && <div className="agent-detail-notice" role="note" aria-label="Private DNS names do not resolve on this host"><h3>Private DNS names do not resolve on this host</h3><p>{NO_TUNNEL_DNS_NOTE}</p><p>The restart is on the host: <code>sudo systemctl restart tunnex-agent-runtime</code>. Updating the runtime below does not change this.</p></div>}
           {agent.status === "active" && can(myRole, "agent:enroll") && <Panel title="Update runtime"><AgentRuntimeUpdate orgId={org.id} /></Panel>}
+          {agent.status === "revoked" && can(myRole, "agent:enroll") && <Panel title="Remove the agent from this host"><AgentHostRemoval when="Use this when the agent was revoked and its host should be cleared, for example before the host is enrolled again as a new agent." /></Panel>}
           <ReadState state={rotation} onRetry={refreshAgent} title="Credential status unavailable" retryLabel="Retry credentials">{(value) => <Panel title="Credential rotation"><dl className="agent-detail-facts tnx-resource-facts"><div><dt>Runtime credential</dt><dd>Revision {value.current_revision} · {value.state}</dd></div><div><dt>WireGuard key</dt><dd>Revision {value.wireguard_current_revision} · {value.wireguard_state}</dd></div>{value.deadline && <div><dt>Deadline</dt><dd>{value.deadline}</dd></div>}</dl>{agent.permissions.rotate_credentials && <div className="agent-detail-panel-actions"><Button variant="ghost" size="sm" disabled={busy || agent.status !== "active" || value.state !== "current" || value.wireguard_state !== "current"} onClick={() => void rotateCredential()}>Rotate credential</Button></div>}</Panel>}</ReadState>
         </>}
         {tab === "mcp" && featureOff("mcp") && <FeatureEnableInline orgId={org.id} feature="mcp" features={features} onChanged={refreshAgent} />}
@@ -288,18 +298,20 @@ function AgentDetailWorkspace({ fixture, agentIdOverride }: { fixture?: AgentDet
           <ReadState state={effectiveMCP} onRetry={refreshAgent} title="MCP servers unavailable" retryLabel="Retry MCP servers">{(value) => {
             const observed = inventory.kind === "ready" ? inventory.data : null;
             // A control plane that lists the agent's servers gets the per-server view; an older one keeps the single profile.
-            return <Panel title="MCP servers">{Array.isArray(value.servers)
-              ? <AgentMCPServers orgId={org.id} deviceId={agentId} agentName={agent.name} effective={value} inventory={observed} canManagePolicy={can(myRole, "agent_mcp_tool_policy:manage")} canConnect={can(myRole, "mcp:manage")} onChanged={refreshAgent} />
-              : value.assigned ? <><dl className="agent-detail-facts tnx-resource-facts"><div><dt>Server</dt><dd>{value.profile_name ?? "MCP server"}</dd></div><div><dt>Connected through</dt><dd>{value.group_name ?? "An agent group"}</dd></div>{value.endpoint && <div className="tnx-resource-fact-wide"><dt>Address</dt><dd><code>{value.endpoint}</code></dd></div>}</dl><p className="agent-detail-context">Changing the server on the group affects every agent in that group.</p></> : <p className="agent-detail-context">No MCP server is connected to this agent yet.</p>}
+            // The list is left out when no server is assigned: that is the per-server view with nothing in it yet.
+            const perServer = Array.isArray(value.servers) || !value.assigned;
+            return <Panel title="MCP servers">{perServer
+              ? <AgentMCPServers orgId={org.id} deviceId={agentId} agentName={agent.name} effective={Array.isArray(value.servers) ? value : { ...value, servers: [] }} inventory={observed} canManagePolicy={can(myRole, "agent_mcp_tool_policy:manage")} canConnect={can(myRole, "mcp:manage")} onChanged={refreshAgent} />
+              : <><dl className="agent-detail-facts tnx-resource-facts"><div><dt>Server</dt><dd>{value.profile_name ?? "MCP server"}</dd></div><div><dt>Connected through</dt><dd>{value.group_name ?? "An agent group"}</dd></div>{value.endpoint && <div className="tnx-resource-fact-wide"><dt>Address</dt><dd><code>{value.endpoint}</code></dd></div>}</dl><p className="agent-detail-context">Changing the server on the group affects every agent in that group.</p></>}
               <MCPEnforcementNotices profile={value} updateHref={`/agents/${agentId}?tab=runtime`} />
-              {!Array.isArray(value.servers) && <Link className="agent-detail-text-link" to={`/mcp${value.group_id ? `?group=${value.group_id}` : ""}`}>Manage MCP servers</Link>}
+              {!perServer && <Link className="agent-detail-text-link" to={`/mcp${value.group_id ? `?group=${value.group_id}` : ""}`}>Manage MCP servers</Link>}
             </Panel>;
           }}</ReadState>
-          <Panel title="Approvals"><AgentMCPToolApprovalPanel orgId={org.id} deviceId={agentId} canApprove={can(myRole, "agent_mcp_tool_approval:approve")} /></Panel>
+          <Panel title="Approvals"><AgentMCPToolApprovalPanel orgId={org.id} deviceId={agentId} canApprove={can(myRole, "agent_mcp_tool_approval:approve")} servers={namedServers} /></Panel>
           {inventory.kind === "error" && inventory.code === "mcp_inventory_not_found" ? <div className="agent-detail-empty" role="status"><h3>The gateway has not read this agent&apos;s MCP servers yet.</h3><p>Once the agent is connected and has a server, the gateway reads the server&apos;s tool list about every 30 seconds. Sign-in settings appear here after that.</p></div> : <ReadState state={inventory} onRetry={refreshAgent} title="MCP tool list unavailable" retryLabel="Retry MCP tool list">{(value) => <>
             {effectiveMCP.kind === "ready" && !Array.isArray(effectiveMCP.data.servers) && <Panel title="MCP tool policy"><AgentMCPToolPolicyPanel orgId={org.id} deviceId={agentId} inventory={value} canManage={can(myRole, "agent_mcp_tool_policy:manage")} enforcement={effectiveMCP.data.enforcement} /></Panel>}
-            <MCPAuthentication orgId={org.id} deviceId={agentId} inventory={value} canManage={agent.permissions.manage} />
-            <ObservedMCP data={value} />
+            <MCPAuthentication orgId={org.id} deviceId={agentId} inventory={value} canManage={agent.permissions.manage} enforcement={effectiveMCP.kind === "ready" ? effectiveMCP.data.enforcement : undefined} />
+            <ObservedMCP data={value} named={namedServers} />
           </>}</ReadState>}
         </>}
         {tab === "access" && <>
@@ -314,6 +326,6 @@ function AgentDetailWorkspace({ fixture, agentIdOverride }: { fixture?: AgentDet
     </div>}</ReadState>
     {profileEditorOpen && data?.permissions.manage && <Modal title="Edit agent profile" placement="right" size="enrollment" showClose onDismiss={() => !busy && setProfileEditorOpen(false)} actions={<Button variant="ghost" disabled={busy} onClick={() => setProfileEditorOpen(false)}>Close</Button>}><div className="agent-detail-editor agent-detail-profile-editor">{mutationError && <p role="alert" className="agent-detail-error">{mutationError}</p>}<AgentProfileEditor key={`${data.device_id}:${data.status}:${data.environment}:${data.runtime}:${JSON.stringify(data.labels)}`} value={{ environment: data.environment, runtime: data.runtime, labels: data.labels, status: data.status as AgentProfileStatus }} canManageLifecycle={data.permissions.manage} disabled={busy} onSaveMetadata={(value: AgentProfileEditorValue) => void updateProfile(value, "Could not save agent metadata.").then(saved => saved && alive.current && setProfileEditorOpen(false))} onLifecycleChange={status => void updateProfile({ status }, "Could not change the agent lifecycle.").then(saved => saved && alive.current && setProfileEditorOpen(false))} /></div></Modal>}
     {assignmentOpen && data?.permissions.assign && <Modal title="Change agent ownership" placement="right" size="enrollment" showClose onDismiss={() => !busy && setAssignmentOpen(false)} actions={<Button variant="ghost" disabled={busy} onClick={() => setAssignmentOpen(false)}>Close</Button>}><div className="agent-detail-editor agent-detail-ownership-editor">{mutationError && <p role="alert" className="agent-detail-error">{mutationError}</p>}<AgentAssignment key={`${data.device_id}:${data.owner_id}:${data.managing_group_id ?? ""}`} profile={data} members={members} groups={groups} busy={busy} onSave={body => void updateProfile(body, "Could not save the agent assignment.").then(saved => saved && alive.current && setAssignmentOpen(false))} /></div></Modal>}
-    {removeOpen && data?.permissions.revoke && <Modal title={`Remove ${data.name}?`} placement="right" size="enrollment" showClose danger onDismiss={() => !busy && setRemoveOpen(false)} actions={<><Button variant="ghost" disabled={busy} onClick={() => setRemoveOpen(false)}>Cancel</Button><Button variant="danger" disabled={busy} onClick={() => void removeAgent()}>{busy ? "Removing…" : "Revoke and remove"}</Button></>}><div className="agent-detail-editor agent-detail-remove-editor"><p>This first revokes the agent’s tunnel credential, then removes the roster record. Pending credential rotation is cancelled. Access-policy evidence is retained for review; recovery requires enrolling a new agent.</p>{mutationError && <p role="alert" className="agent-detail-error">{mutationError}</p>}</div></Modal>}
+    {removeOpen && data?.permissions.revoke && <Modal title={`Remove ${data.name}?`} placement="right" size="enrollment" showClose danger onDismiss={() => !busy && setRemoveOpen(false)} actions={<><Button variant="ghost" disabled={busy} onClick={() => setRemoveOpen(false)}>Cancel</Button><Button variant="danger" disabled={busy} onClick={() => void removeAgent()}>{busy ? "Removing…" : "Revoke and remove"}</Button></>}><div className="agent-detail-editor agent-detail-remove-editor"><p>This first revokes the agent’s tunnel credential, then removes the roster record. Pending credential rotation is cancelled. Access-policy evidence is retained for review; recovery requires enrolling a new agent.</p><details className="agent-detail-disclosure"><summary>Remove the agent from its host</summary><AgentHostRemoval when="After the agent is removed, run this on its host to clear what it left there, so the host can be enrolled again." /></details>{mutationError && <p role="alert" className="agent-detail-error">{mutationError}</p>}</div></Modal>}
   </div>;
 }

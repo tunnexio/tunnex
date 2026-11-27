@@ -1552,6 +1552,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/organizations/{orgId}/ai-gateway/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Whether the AI gateway works for this organization and, when it does not, the one reason
+         * @description For a person who may use a model but may not read the AI gateway settings, so the page that lists their models can say why none can answer. Carries only `on` and `reason`: `fix` is never set and no setting is returned.
+         */
+        get: operations["getAIGatewayStatus"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/organizations/{orgId}/ai-gateway": {
         parameters: {
             query?: never;
@@ -17487,6 +17509,29 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AICredential"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getAIGatewayStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Whether the gateway is usable, and the reason when it is not. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AIGatewayStatus"];
                 };
             };
             default: components["responses"]["Error"];

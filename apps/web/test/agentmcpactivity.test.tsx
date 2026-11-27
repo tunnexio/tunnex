@@ -1,4 +1,5 @@
-import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { MemoryRouter } from "react-router-dom";
 import { cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 
 const { get } = vi.hoisted(() => ({ get: vi.fn() }));
@@ -135,4 +136,52 @@ it("never shows a failed load as an empty list", async () => {
   expect(screen.queryByText("No MCP calls yet.")).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: "Retry MCP calls" }));
   expect(await screen.findByText("list_invoices")).toBeTruthy();
+});
+
+it("names each call's server as the administrator named it, in the list and in the server filter", async () => {
+  get.mockResolvedValue({ data: { items: [call({}), call({ id: "act-9", tool_name: "old_tool", endpoint: "http://10.0.0.77:8080/mcp", server_name: "gone-server" })], next_cursor: null } });
+  render(<AgentMCPToolActivityPanel orgId="org" deviceId="agent" servers={[{ endpoint: "http://10.0.0.5:8080/mcp", profile_name: "Billing database", server_name: "billing-db" }]} />);
+  await screen.findByRole("table", { name: "MCP calls" });
+  expect(row("list_invoices").getByText("Billing database")).toBeTruthy();
+  expect(row("list_invoices").queryByText("billing")).toBeNull();
+  // A call to a server that is no longer connected keeps the name that server reported.
+  expect(row("old_tool").getByText("gone-server")).toBeTruthy();
+  expect(within(screen.getByLabelText("Server")).getAllByRole("option").map((option) => option.textContent)).toEqual(["All servers", "Billing database"]);
+});
+
+describe("the Approval column", () => {
+  const approval = (tool: string) => row(tool).getAllByRole("cell").at(-1) as HTMLElement;
+  const showLinked = (items: unknown[]) => { get.mockResolvedValue({ data: { items, next_cursor: null } }); return render(<MemoryRouter><AgentMCPToolActivityPanel orgId="org" deviceId="agent" /></MemoryRouter>); };
+
+  it("says a blocked call is waiting for approval, never that approval was not needed", async () => {
+    showLinked([call({ id: "w1", tool_name: "refund_payment", decision: "deny", reason: "step_up_required", result_status: "not_forwarded" })]);
+    await screen.findByRole("table", { name: "MCP calls" });
+    expect(row("refund_payment").getByText("Blocked: waiting for approval")).toBeTruthy();
+    expect(approval("refund_payment").textContent).toBe("Waiting for approval");
+    expect(row("refund_payment").queryByText("Not needed")).toBeNull();
+    // No request id on the row, so there is nothing to link to.
+    expect(within(approval("refund_payment")).queryByRole("link")).toBeNull();
+  });
+
+  it("links a waiting call to its request in Approvals when the row carries the request", async () => {
+    showLinked([call({ id: "w2", tool_name: "refund_payment", decision: "deny", reason: "step_up_required", result_status: "not_forwarded", approval_request_id: "9f8e7d6c-1111-4222-8333-444455556666" })]);
+    await screen.findByRole("table", { name: "MCP calls" });
+    const link = within(approval("refund_payment")).getByRole("link", { name: "Waiting for approval" });
+    expect(link.getAttribute("href")).toBe("/approvals");
+    expect(link.getAttribute("title")).toBe("Request 9f8e7d6c");
+  });
+
+  it("says a denied request was denied, keeps who approved a call that ran, and keeps Not needed for calls that never asked", async () => {
+    showLinked([
+      call({ id: "d1", tool_name: "close_account", decision: "deny", reason: "step_up_denied", result_status: "not_forwarded" }),
+      call({ id: "a1", tool_name: "refund_payment", approval_request_id: "9f8e7d6c-1111-4222-8333-444455556666", approved_by_email: "dana@example.test", approved_at: "2026-11-27T09:59:30Z" }),
+      call({ id: "n1", tool_name: "list_invoices" }),
+      call({ id: "n2", tool_name: "run_sql", decision: "deny", reason: "policy", result_status: "not_forwarded" }),
+    ]);
+    await screen.findByRole("table", { name: "MCP calls" });
+    expect(approval("close_account").textContent).toBe("Denied");
+    expect(approval("refund_payment").textContent).toMatch(/^Approved by dana@example\.test, /);
+    expect(approval("list_invoices").textContent).toBe("Not needed");
+    expect(approval("run_sql").textContent).toBe("Not needed");
+  });
 });

@@ -148,7 +148,7 @@ export function AgentInstallStep({ orgId, command, tokenFileCommand, token, toke
               <div className="flex flex-wrap items-center justify-between gap-2"><h3 className="text-sm font-semibold text-ink-heading">Install token</h3><CopyButton text={token} label="Copy token" /></div>
               <code data-testid="ots-extra-secret" className="mt-2 block min-w-0 overflow-x-auto whitespace-nowrap rounded-md border border-line bg-surface-inset p-3 font-mono text-xs text-ink-body">{token}</code>
               <p className="mt-2">{noTerminal ? "The token goes in a file on the host, never in the command, so it stays out of the shell history." : "The command asks for this token when it runs, so the token stays out of your shell history."}</p>
-              <label className="mt-2 flex items-start gap-2 text-ink-heading"><input type="checkbox" className="mt-0.5" checked={noTerminal} onChange={event => setNoTerminal(event.target.checked)} /><span>This host has no terminal</span></label>
+              <label className="mt-2 flex items-center gap-2 text-ink-heading"><input type="checkbox" checked={noTerminal} onChange={event => setNoTerminal(event.target.checked)} /><span>This host has no terminal</span></label>
               {noTerminal && <div role="group" aria-label="Supply the token from a file" className="mt-2 grid gap-2 rounded-lg border border-line p-3">
                 <p>For a host you reach through automation, the command above reads the token from a file instead of asking for it.</p>
                 <ol className="grid list-decimal gap-2 pl-5">

@@ -158,6 +158,45 @@ describe("agent Access tab", () => {
     await waitFor(() => expect((dialog.getByRole("checkbox", { name: "Reports" }) as HTMLInputElement).checked).toBe(false));
   });
 
+  it("offers only Close when the owner has nothing to copy", async () => {
+    summary = { ...summary, rules: [] };
+    preview = { data: { owner_email: "dana@example.test", candidates: [] } };
+    show();
+    fireEvent.click(await screen.findByRole("button", { name: "Create rules from the owner's access" }));
+    const dialog = within(await screen.findByRole("dialog", { name: "Create rules from the owner's access" }));
+    expect(await dialog.findByText("The owner cannot reach anything right now, so there is nothing to copy.")).toBeTruthy();
+    expect(dialog.queryByRole("button", { name: /^Create/ })).toBeNull();
+    expect(dialog.queryByRole("button", { name: "Cancel" })).toBeNull();
+    // The dialog's own corner control is also named Close; the action is the one in the footer.
+    const close = dialog.getAllByRole("button", { name: "Close" });
+    fireEvent.click(close[close.length - 1]);
+    expect(screen.queryByRole("dialog")).toBeNull();
+    expect(post.mock.calls.some(([path]) => path === createPath)).toBe(false);
+  });
+
+  it("offers only Close when nothing the owner reaches can be given to the agent", async () => {
+    summary = { ...summary, rules: [] };
+    preview = { data: { owner_email: "dana@example.test", candidates: [candidate({ key: "k3", already_covered: true }), candidate({ key: "k4", destination: destination({ name: "Wiki", kind: "app" }), copyable: false })] } };
+    show();
+    fireEvent.click(await screen.findByRole("button", { name: "Create rules from the owner's access" }));
+    const dialog = within(await screen.findByRole("dialog"));
+    await dialog.findByRole("list", { name: "The owner's destinations" });
+    expect(dialog.getByText("None of these can be added: the agent already has a rule for each, or a rule for an agent cannot name it.")).toBeTruthy();
+    expect(dialog.queryByRole("button", { name: /^Create/ })).toBeNull();
+    expect(dialog.getAllByRole("button", { name: "Close" }).length).toBeGreaterThan(0);
+  });
+
+  it("shows no create button while the owner's access is being read or could not be read", async () => {
+    summary = { ...summary, rules: [] };
+    preview = { error: { error: { code: "internal", message: "boom" } } };
+    show();
+    fireEvent.click(await screen.findByRole("button", { name: "Create rules from the owner's access" }));
+    const dialog = within(await screen.findByRole("dialog"));
+    await dialog.findByRole("alert");
+    expect(dialog.queryByRole("button", { name: /^Create/ })).toBeNull();
+    expect(dialog.getByRole("button", { name: "Retry" })).toBeTruthy();
+  });
+
   it("explains an owner whose access cannot be looked up", async () => {
     preview = { error: { error: { code: "agent_owner_unattributable", message: "no owner" } } };
     show();

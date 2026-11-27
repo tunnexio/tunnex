@@ -36,7 +36,7 @@ const chosen = (name: string) => within(screen.getByRole("radiogroup", { name: `
 beforeEach(() => {
   vi.useFakeTimers({ now: new Date("2026-11-27T10:00:00Z").getTime() });
   previewRead = () => ({ data: waiting });
-  get.mockImplementation(async (path: string) => path.endsWith("/preview/{previewId}") ? previewRead() : path.endsWith("/agent-groups") ? { data: [{ id: "group-9", name: "Support agents" }] } : path.endsWith("/agents") ? { data: { items: [{ device_id: "device-1", name: "billing-runner" }], next_cursor: null } } : { data: [] });
+  get.mockImplementation(async (path: string) => path.endsWith("/preview/{previewId}") ? previewRead() : path.endsWith("/agent-groups") ? { data: [{ id: "group-9", name: "Support agents" }] } : path.endsWith("/agents") ? { data: { items: [{ device_id: "device-1", name: "billing-runner", status: "active" }], next_cursor: null } } : { data: [] });
   post.mockImplementation(async (path: string) => path === previewPath ? { data: waiting } : { data: connection });
   connected.mockReset(); dismissed.mockReset();
 });
@@ -130,6 +130,26 @@ describe("Connect MCP server", () => {
     fireEvent.change(screen.getByLabelText("Agent group"), { target: { value: "group-9" } });
     await start();
     expect(post).toHaveBeenCalledWith(previewPath, expect.objectContaining({ body: { endpoint, via_group_id: "group-9" } }));
+  });
+
+  it("lists only active agents and groups that are not archived", async () => {
+    get.mockImplementation(async (path: string) => path.endsWith("/agent-groups")
+      ? { data: [{ id: "group-9", name: "Support agents" }, { id: "group-old", name: "Retired agents", archived_at: "2026-11-01T00:00:00Z" }] }
+      : path.endsWith("/agents") ? { data: { items: [{ device_id: "device-1", name: "billing-runner", status: "active" }, { device_id: "device-2", name: "old-runner", status: "revoked" }, { device_id: "device-3", name: "paused-runner", status: "suspended" }, { device_id: "device-4", name: "new-runner", status: "pending" }], next_cursor: null } } : { data: [] });
+    render(<MemoryRouter><ConnectMCPServer orgId="org-a" onDismiss={dismissed} /></MemoryRouter>);
+    await tick(0);
+    const names = (label: string) => within(screen.getByLabelText(label)).getAllByRole("option").map((option) => option.textContent);
+    expect(names("Agent group")).toEqual(["Select a group", "Support agents"]);
+    fireEvent.change(screen.getByLabelText("Connect to"), { target: { value: "agent" } });
+    expect(names("Agent")).toEqual(["Select an agent", "billing-runner"]);
+  });
+
+  it("says so when no agent is active", async () => {
+    get.mockImplementation(async (path: string) => path.endsWith("/agents") ? { data: { items: [{ device_id: "device-2", name: "old-runner", status: "revoked" }], next_cursor: null } } : { data: [] });
+    render(<MemoryRouter><ConnectMCPServer orgId="org-a" onDismiss={dismissed} /></MemoryRouter>);
+    await tick(0);
+    expect(screen.getByText("You have no active agent. Add an agent first, then connect a server to it.")).toBeTruthy();
+    expect(screen.queryByRole("option", { name: "old-runner" })).toBeNull();
   });
 
   it.each([

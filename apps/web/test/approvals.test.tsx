@@ -39,6 +39,21 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.useRealTimers(); vi.restoreAllMocks(); get.mockReset(); post.mockReset(); });
 
 describe("Approvals inbox", () => {
+  it("names the server as the administrator named it, not as the server calls itself", async () => {
+    items = [item({ mcp_server_name: "billing-db" }), item({ mcp_server_name: null }, { id: "req-2", tool_name: "close_account" }), item({ mcp_server_name: null }, { id: "req-3", tool_name: "old_tool", endpoint: "http://10.0.0.77:8080/mcp" })];
+    get.mockImplementation(async (path: string) => path === listPath ? { data: { items, next_cursor: null } }
+      : path.endsWith("/agent-mcp-profiles") ? { data: [{ id: "p1", name: "Billing database", endpoint: "http://10.0.0.5:8080/mcp", server_name: "billing-db", archived_at: null }, { id: "p0", name: "Old billing", endpoint: "http://10.0.0.77:8080/mcp", server_name: "old-billing", archived_at: "2026-11-01T00:00:00Z" }] }
+        : { data: { pending: items.length } });
+    show(); await flush();
+    expect(screen.getByRole("listitem", { name: "refund_payment on Billing database, from billing-runner" })).toBeTruthy();
+    // Found by the address when the request no longer carries the address name.
+    expect(screen.getByRole("listitem", { name: "close_account on Billing database, from billing-runner" })).toBeTruthy();
+    // No connected server has this address: the name the server reported is all there is.
+    expect(screen.getByRole("listitem", { name: "old_tool on billing, from billing-runner" })).toBeTruthy();
+    fireEvent.click(within(screen.getByRole("listitem", { name: "refund_payment on Billing database, from billing-runner" })).getByRole("button", { name: "Approve once" }));
+    expect(within(screen.getByRole("dialog")).getByText("Billing database / refund_payment")).toBeTruthy();
+  });
+
   it("says nothing is waiting when the inbox is empty, and that it keeps checking", async () => {
     items = [];
     show(); await flush();

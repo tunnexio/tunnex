@@ -2,6 +2,7 @@ package http
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"github.com/google/uuid"
 	"github.com/tunnexio/tunnex/apps/api/internal/aigateway"
@@ -125,5 +126,45 @@ func TestAIGatewaySettingsStatusKeepsExistingFields(t *testing.T) {
 				t.Fatalf("existing fields changed:\n%+v\n%+v", before, after)
 			}
 		})
+	}
+}
+
+// A person who may use a model but may not read the settings is told only whether the gateway works and
+// the one reason: no control, no link into settings and none of the settings themselves.
+func TestAIGatewayStatusForAModelUserCarriesOnlyTheReason(t *testing.T) {
+	href := "/settings?section=ai-transport"
+	admin := true
+	reason := api.AIGatewayOffTransportRequired
+	full := api.AIGatewayStatus{On: false, Reason: &reason, Fix: &api.AIGatewayFix{Kind: api.AIGatewayFixChooseTransport, Href: &href, RequiresServerAdmin: &admin}}
+	got := aiGatewayStatusReasonOnly(full)
+	if got.On || got.Reason == nil || *got.Reason != reason || got.Fix != nil {
+		t.Fatalf("status = %+v", got)
+	}
+	raw, err := json.Marshal(got)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var fields map[string]any
+	if err := json.Unmarshal(raw, &fields); err != nil {
+		t.Fatal(err)
+	}
+	for name, value := range fields {
+		if name != "on" && name != "reason" && value != nil {
+			t.Fatalf("unexpected field %q in %s", name, raw)
+		}
+	}
+	if on := aiGatewayStatusReasonOnly(api.AIGatewayStatus{On: true}); !on.On || on.Reason != nil || on.Fix != nil {
+		t.Fatalf("on = %+v", on)
+	}
+	// The same reason the settings page reports, computed from the same inputs.
+	ctx := context.WithValue(context.Background(), requestTransportKey{}, requestTransportState{secure: true})
+	s := apiServer{aiCredentials: &aigateway.Credentials{}, aiEngineInstalled: true, aiTransport: &aiTransportStub{value: aitransport.Settings{Revision: 1}}}
+	settings, err := s.aiGatewaySettings(ctx, false, true, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	status := aiGatewayStatusReasonOnly(*s.withAIGatewayStatus(ctx, uuid.New(), settings, true).Status)
+	if status.On || status.Reason == nil || *status.Reason != api.AIGatewayOffNotEnabled || status.Fix != nil {
+		t.Fatalf("switch off = %+v", status)
 	}
 }

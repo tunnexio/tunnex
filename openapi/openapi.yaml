@@ -1515,6 +1515,22 @@ paths:
             Cache-Control: { schema: { type: string, enum: [no-store] } }
           content: { application/json: { schema: { $ref: "#/components/schemas/AICredential" } } }
         default: { $ref: "#/components/responses/Error" }
+  /api/v1/organizations/{orgId}/ai-gateway/status:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: getAIGatewayStatus
+      summary: Whether the AI gateway works for this organization and, when it does not, the one reason
+      description: >-
+        For a person who may use a model but may not read the AI gateway settings, so the page that lists
+        their models can say why none can answer. Carries only `on` and `reason`: `fix` is never set and no
+        setting is returned.
+      tags: [ai-gateway]
+      responses:
+        "200":
+          description: Whether the gateway is usable, and the reason when it is not.
+          content: { application/json: { schema: { $ref: "#/components/schemas/AIGatewayStatus" } } }
+        default: { $ref: "#/components/responses/Error" }
   /api/v1/organizations/{orgId}/ai-gateway:
     parameters:
       - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }

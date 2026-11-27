@@ -183,7 +183,7 @@ describe("the runtime update command", () => {
   const cmd = agentRuntimeUpdateCommand(release);
   const install = agentBootstrapCommand("https://cp.example");
   it("says exactly what an enrolled host is told by the install command", () => {
-    expect(INSTALL_ON_ENROLLED_HOST).toBe(`This host already runs a Tunnex agent. Nothing was changed and the install token was not used. To update it, use "Update runtime" on the agent's page in Tunnex.`);
+    expect(INSTALL_ON_ENROLLED_HOST).toBe(`This host already runs a Tunnex agent. Nothing was changed and the install token was not used. To update a working agent, use "Update runtime" on the agent's page in Tunnex. If the agent was revoked, or you want to enrol this host as a new agent, first run the "Remove the agent from this host" command shown on the revoked agent's page in Tunnex, then run this install command again.`);
   });
   it("never asks for, carries or sends a token, and never calls the control plane", () => {
     for (const absent of ["bootstrap_token", "tnx_agent_", "/dev/tty", "stty", "install token", "/api/v1/", "cp.example", "wg genkey", "wg-quick", "jq "]) expect(cmd, absent).not.toContain(absent);

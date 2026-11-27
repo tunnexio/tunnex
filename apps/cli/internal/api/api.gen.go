@@ -12152,6 +12152,9 @@ type ClientInterface interface {
 
 	TestAIProvider(ctx context.Context, orgId openapi_types.UUID, connectionId openapi_types.UUID, body TestAIProviderJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// GetAIGatewayStatus request
+	GetAIGatewayStatus(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// ListAITeamPolicies request
 	ListAITeamPolicies(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -16682,6 +16685,18 @@ func (c *Client) TestAIProviderWithBody(ctx context.Context, orgId openapi_types
 
 func (c *Client) TestAIProvider(ctx context.Context, orgId openapi_types.UUID, connectionId openapi_types.UUID, body TestAIProviderJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewTestAIProviderRequest(c.Server, orgId, connectionId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetAIGatewayStatus(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetAIGatewayStatusRequest(c.Server, orgId)
 	if err != nil {
 		return nil, err
 	}
@@ -30923,6 +30938,40 @@ func NewTestAIProviderRequestWithBody(server string, orgId openapi_types.UUID, c
 	}
 
 	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewGetAIGatewayStatusRequest generates requests for GetAIGatewayStatus
+func NewGetAIGatewayStatusRequest(server string, orgId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/ai-gateway/status", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
 
 	return req, nil
 }
@@ -48272,6 +48321,9 @@ type ClientWithResponsesInterface interface {
 
 	TestAIProviderWithResponse(ctx context.Context, orgId openapi_types.UUID, connectionId openapi_types.UUID, body TestAIProviderJSONRequestBody, reqEditors ...RequestEditorFn) (*TestAIProviderResponse, error)
 
+	// GetAIGatewayStatusWithResponse request
+	GetAIGatewayStatusWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetAIGatewayStatusResponse, error)
+
 	// ListAITeamPoliciesWithResponse request
 	ListAITeamPoliciesWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ListAITeamPoliciesResponse, error)
 
@@ -53673,6 +53725,29 @@ func (r TestAIProviderResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r TestAIProviderResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetAIGatewayStatusResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AIGatewayStatus
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r GetAIGatewayStatusResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetAIGatewayStatusResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -63585,6 +63660,15 @@ func (c *ClientWithResponses) TestAIProviderWithResponse(ctx context.Context, or
 		return nil, err
 	}
 	return ParseTestAIProviderResponse(rsp)
+}
+
+// GetAIGatewayStatusWithResponse request returning *GetAIGatewayStatusResponse
+func (c *ClientWithResponses) GetAIGatewayStatusWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetAIGatewayStatusResponse, error) {
+	rsp, err := c.GetAIGatewayStatus(ctx, orgId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetAIGatewayStatusResponse(rsp)
 }
 
 // ListAITeamPoliciesWithResponse request returning *ListAITeamPoliciesResponse
@@ -73616,6 +73700,39 @@ func ParseTestAIProviderResponse(rsp *http.Response) (*TestAIProviderResponse, e
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest AIProviderConnection
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetAIGatewayStatusResponse parses an HTTP response from a GetAIGatewayStatusWithResponse call
+func ParseGetAIGatewayStatusResponse(rsp *http.Response) (*GetAIGatewayStatusResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetAIGatewayStatusResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AIGatewayStatus
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}

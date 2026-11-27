@@ -9,6 +9,8 @@ import "./ai-gateway-off-banner.css";
 
 type Settings = components["schemas"]["AIGatewaySettings"];
 const settingsPath = "/api/v1/organizations/{orgId}/ai-gateway" as const;
+const statusPath = "/api/v1/organizations/{orgId}/ai-gateway/status" as const;
+const offReasons: readonly string[] = ["not_enabled", "transport_required", "no_provider", "engine_not_installed"];
 
 export type AIGatewayState = {
   /** The saved settings, once read. Null while loading, after a failed read, or for a role that may not read them. */
@@ -25,7 +27,7 @@ export type AIGatewayState = {
 
 /** Reads why the gateway is not usable. Every AI Gateway page shows the same banner from this. */
 export function useAIGatewayStatus(orgId: string): AIGatewayState {
-  const [read, setRead] = useState<{ orgId: string; settings: Settings | null; failed: boolean } | null>(null);
+  const [read, setRead] = useState<{ orgId: string; settings: Settings | null; failed: boolean; reason: AIGatewayOffReason | null } | null>(null);
   const [assumed, setAssumed] = useState<{ orgId: string; reason: AIGatewayOffReason } | null>(null);
   const [attempt, setAttempt] = useState(0);
   useEffect(() => {
@@ -37,13 +39,23 @@ export function useAIGatewayStatus(orgId: string): AIGatewayState {
         const data = result?.data;
         if (data && typeof data.enabled === "boolean" && typeof data.available === "boolean") settings = data;
       } catch { /* an unreadable setting is unknown, never "off" */ }
-      if (live) setRead({ orgId, settings, failed: !settings });
+      // A member may not read the settings. The status they may read says only whether the gateway works
+      // and the one reason, which is all the banner needs to tell them whom to ask.
+      let reason: AIGatewayOffReason | null = null;
+      if (!settings) {
+        try {
+          const result = await api.GET(statusPath, { params: { path: { orgId } } });
+          const data = result?.data;
+          if (data && data.on === false && typeof data.reason === "string" && offReasons.includes(data.reason)) reason = data.reason;
+        } catch { /* still unknown */ }
+      }
+      if (live) setRead({ orgId, settings, failed: !settings, reason });
     })();
     return () => { live = false; };
   }, [orgId, attempt]);
   const current = read?.orgId === orgId ? read : null;
   const settings = current?.settings ?? null;
-  const fallback = assumed?.orgId === orgId ? assumed.reason : null;
+  const fallback = (assumed?.orgId === orgId ? assumed.reason : null) ?? current?.reason ?? null;
   const status: AIGatewayStatus | null = settings ? aiGatewayStatus(settings) : fallback ? { on: false, reason: fallback } : null;
   const reload = useCallback(() => setAttempt(value => value + 1), []);
   const assume = useCallback((reason: AIGatewayOffReason | null) => setAssumed(reason ? { orgId, reason } : null), [orgId]);
