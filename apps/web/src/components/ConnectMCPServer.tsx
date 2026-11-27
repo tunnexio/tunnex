@@ -72,8 +72,9 @@ export function ConnectMCPServer({ orgId, target: fixedTarget, onDismiss, onConn
     ]).then(([groups, agents]) => {
       if (cancelled) return;
       if (!groups.ok && !agents.ok) { setChoicesError("Could not load your agents and agent groups. Close this and try again."); return; }
-      const groupChoices = groups.ok && Array.isArray(groups.data) ? groups.data.map((group) => ({ kind: "group" as const, id: group.id, name: group.name })) : [];
-      const agentChoices = agents.ok ? listItems(agents.data).map((agent) => ({ kind: "agent" as const, id: agent.device_id, name: agent.name })) : [];
+      // Only what a server can be connected to now: a revoked, suspended or not yet enrolled agent cannot use one, and an archived group has no agents.
+      const groupChoices = groups.ok && Array.isArray(groups.data) ? groups.data.filter((group) => !(group as { archived_at?: string | null }).archived_at).map((group) => ({ kind: "group" as const, id: group.id, name: group.name })) : [];
+      const agentChoices = agents.ok ? listItems(agents.data).filter((agent) => agent.status === "active").map((agent) => ({ kind: "agent" as const, id: agent.device_id, name: agent.name })) : [];
       setChoices({ groups: groupChoices, agents: agentChoices });
       setPicked(groupChoices.length ? { kind: "group", id: "" } : { kind: "agent", id: "" });
     });
@@ -220,6 +221,7 @@ export function ConnectMCPServer({ orgId, target: fixedTarget, onDismiss, onConn
         <Field label="Connect to"><Select value={picked.kind} onChange={(event) => setPicked({ kind: event.target.value as "agent" | "group", id: "" })}><option value="group">An agent group</option><option value="agent">One agent</option></Select></Field>
         <Field label={picked.kind === "group" ? "Agent group" : "Agent"}><Select value={picked.id} onChange={(event) => setPicked({ kind: picked.kind, id: event.target.value })}><option value="">{picked.kind === "group" ? "Select a group" : "Select an agent"}</option>{(picked.kind === "group" ? choices.groups : choices.agents).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</Select></Field>
         {picked.kind === "group" && choices.groups.length === 0 && <p className="text-ink-secondary sm:col-span-2">You have no agent groups yet. Choose one agent instead: a group is created for it.</p>}
+        {picked.kind === "agent" && choices.agents.length === 0 && <p className="text-ink-secondary sm:col-span-2">You have no active agent. Add an agent first, then connect a server to it.</p>}
       </div>)}
       {target?.kind === "agent" && <p className="text-ink-tertiary">An agent group named for this agent is created to hold the server&apos;s tool choices, unless it already has one.</p>}
       <Field label="Server address"><Input autoFocus value={endpoint} placeholder="http://10.0.0.5:8080/mcp" inputMode="url" onChange={(event) => setEndpoint(event.target.value)} onKeyDown={(event) => { if (event.key === "Enter") void read(); }} /></Field>
