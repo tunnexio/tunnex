@@ -10,6 +10,9 @@ vi.mock("../src/lib/api", async () => {
 
 import { AgentInstallStep, INSTALL_SLOW_AFTER_MS, INSTALL_STATUS_POLL_MS } from "../src/components/AgentInstallStep";
 import { agentBootstrapCommand } from "../src/lib/agentview";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
+import { stripCssComments } from "./support/source";
 import type { BootstrapRelease } from "../src/lib/api";
 
 const TOKEN = "tnx_agent_fixture-only_TOKEN";
@@ -185,5 +188,24 @@ describe("add-agent install step", () => {
     expect(screen.getByTestId("ots-extra-secret").textContent).toBe(TOKEN);
     fireEvent.click(screen.getByRole("button", { name: /I.ve saved it/ }));
     expect(dismiss).toHaveBeenCalledOnce();
+  });
+});
+
+describe("the 'This host has no terminal' checkbox", () => {
+  // The Add agent panel sized every input like a text field (36px tall, padded), the checkbox included.
+  it("is not sized like a text field by the Add agent panel's stylesheet", () => {
+    const css = stripCssComments(readFileSync(join(process.cwd(), "src/agents-workspace.css"), "utf8"));
+    const sizing = [...css.matchAll(/([^{}]+)\{([^}]*)\}/g)].flatMap(([, selectors, body]) => /(?:^|[;\s])(?:min-)?height\s*:|padding\s*:/.test(body) ? selectors.split(",").map((selector) => selector.trim()) : []);
+    const inputs = sizing.filter((selector) => /\.agents-enroll\b.*\binput\b/.test(selector));
+    expect(inputs.length).toBeGreaterThan(0);
+    for (const selector of inputs) expect(selector, selector).toMatch(/input:not\(\[type=checkbox\]\)/);
+  });
+
+  it("uses the console's own checkbox, with no size of its own, next to its label", () => {
+    show();
+    const box = screen.getByRole("checkbox", { name: "This host has no terminal" });
+    expect(box.getAttribute("style")).toBeNull();
+    expect(box.className).not.toMatch(/\b(?:h|w|min-h|p|py|px)-/);
+    expect(box.closest("label")?.className).toContain("items-center");
   });
 });
