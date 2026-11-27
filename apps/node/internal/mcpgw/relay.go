@@ -209,10 +209,7 @@ func (h *relay) forward(ctx context.Context, w http.ResponseWriter, r *http.Requ
 		out.Header.Set("Accept", accept[0])
 	}
 	if credential := f.decision.Authorization; credential != "" {
-		if len(credential) < 7 || !strings.EqualFold(credential[:7], "bearer ") {
-			credential = "Bearer " + credential
-		}
-		out.Header.Set("Authorization", credential)
+		out.Header.Set("Authorization", bearer(credential))
 	}
 
 	// Connecting and receiving the response headers share one five-second budget. The body that follows
