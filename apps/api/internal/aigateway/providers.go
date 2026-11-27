@@ -61,6 +61,101 @@ func providerInvalid() error {
 func providerConflict() error {
 	return apierr.New(409, "ai_provider_conflict", "AI provider configuration changed or is still referenced; refresh and retry")
 }
+
+// ProviderInUse refuses the deletion of a provider credential that is still used and says by what, so
+// each user of it can be opened and changed first. It carries names and ids only, never a secret.
+type ProviderInUse struct {
+	// Models are the model names granted through this credential to user groups and workloads.
+	Models []string
+	// Policies are the agent group model policies that name this credential.
+	Policies []ProviderInUsePolicy
+	// Agents are the agents with model access through one of those policies.
+	Agents []ProviderInUseAgent
+}
+type ProviderInUsePolicy struct {
+	TeamID uuid.UUID
+	Name   string
+}
+type ProviderInUseAgent struct {
+	DeviceID uuid.UUID
+	Name     string
+}
+
+const providerInUseMessage = "This credential is still in use. Remove it from the models, policies and agents listed, then delete it."
+
+func (e *ProviderInUse) Error() string { return providerInUseMessage }
+
+// Unwrap keeps the refusal a 409 for any caller that only understands the standard error.
+func (e *ProviderInUse) Unwrap() error {
+	return apierr.New(409, "ai_provider_in_use", providerInUseMessage)
+}
+
+const providerInUseListLimit = 200
+
+// providerUse lists what uses a credential, inside the delete transaction. Nil means unused. What blocks a
+// deletion is unchanged: an agent group policy naming the credential, an enabled user group grant, or a
+// model of an enabled workload. Agents are listed for the blocking policies; they never block alone.
+func providerUse(ctx context.Context, tx pgx.Tx, org uuid.UUID, p ProviderConnection) (*ProviderInUse, error) {
+	out := &ProviderInUse{Models: []string{}, Policies: []ProviderInUsePolicy{}, Agents: []ProviderInUseAgent{}}
+	rows, err := tx.Query(ctx, `SELECT model FROM ai_user_model_grants WHERE org_id=$1 AND connection_id=$2 AND group_id IS NOT NULL AND enabled
+ UNION SELECT m.model FROM ai_workload_models m JOIN ai_workloads w ON w.org_id=m.org_id AND w.id=m.workload_id WHERE m.org_id=$1 AND m.connection_id=$2 AND w.enabled
+ ORDER BY 1 LIMIT $3`, org, p.ID, providerInUseListLimit)
+	if err != nil {
+		return nil, err
+	}
+	for rows.Next() {
+		var model string
+		if err = rows.Scan(&model); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		out.Models = append(out.Models, model)
+	}
+	rows.Close()
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+	rows, err = tx.Query(ctx, `SELECT t.team_id,COALESCE(g.name,'') FROM ai_gateway_team_policies t LEFT JOIN agent_groups g ON g.org_id=t.org_id AND g.id=t.team_id
+ WHERE t.org_id=$1 AND $2=ANY(t.key_ids) ORDER BY 2,1 LIMIT $3`, org, p.KeyID, providerInUseListLimit)
+	if err != nil {
+		return nil, err
+	}
+	for rows.Next() {
+		var v ProviderInUsePolicy
+		if err = rows.Scan(&v.TeamID, &v.Name); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		out.Policies = append(out.Policies, v)
+	}
+	rows.Close()
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+	rows, err = tx.Query(ctx, `SELECT d.id,d.name FROM ai_gateway_assignments a
+ JOIN ai_gateway_team_policies t ON t.org_id=a.org_id AND t.team_id=a.team_id
+ JOIN devices d ON d.org_id=a.org_id AND d.id=a.device_id AND d.kind='agent' AND d.deleted_at IS NULL
+ WHERE a.org_id=$1 AND a.enabled AND $2=ANY(t.key_ids) ORDER BY 2,1 LIMIT $3`, org, p.KeyID, providerInUseListLimit)
+	if err != nil {
+		return nil, err
+	}
+	for rows.Next() {
+		var v ProviderInUseAgent
+		if err = rows.Scan(&v.DeviceID, &v.Name); err != nil {
+			rows.Close()
+			return nil, err
+		}
+		out.Agents = append(out.Agents, v)
+	}
+	rows.Close()
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+	if len(out.Models) == 0 && len(out.Policies) == 0 {
+		return nil, nil
+	}
+	return out, nil
+}
 func validateProviderInput(in ProviderInput, required bool) (ProviderInput, error) {
 	in.Name = strings.TrimSpace(in.Name)
 	if (!supportedProvider(in.Provider) && !endpointProvider(in.Provider)) || utf8.RuneCountInString(in.Name) < 1 || utf8.RuneCountInString(in.Name) > 80 {
@@ -440,12 +535,12 @@ func (s *Policies) DeleteProvider(ctx context.Context, org, actor, id uuid.UUID,
 	if p.Revision != expected {
 		return providerConflict()
 	}
-	var refs bool
-	if tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM ai_gateway_team_policies WHERE org_id=$1 AND $2=ANY(key_ids)) OR EXISTS(SELECT 1 FROM ai_user_model_grants WHERE org_id=$1 AND connection_id=$3 AND group_id IS NOT NULL AND enabled) OR EXISTS(SELECT 1 FROM ai_workload_models m JOIN ai_workloads w ON w.org_id=m.org_id AND w.id=m.workload_id WHERE m.org_id=$1 AND m.connection_id=$3 AND w.enabled)`, org, p.KeyID, p.ID).Scan(&refs) != nil {
+	inUse, err := providerUse(ctx, tx, org, p)
+	if err != nil {
 		return aiUnavailable()
 	}
-	if refs {
-		return providerConflict()
+	if inUse != nil {
+		return inUse
 	}
 	_, err = tx.Exec(ctx, `UPDATE ai_provider_connections SET enabled=false,status='pending',revision=revision+1 WHERE org_id=$1 AND id=$2`, org, id)
 	if err != nil || auditPolicy(ctx, tx, org, actor, id, "ai_provider.deleted", p.Revision+1) != nil || tx.Commit(ctx) != nil {
