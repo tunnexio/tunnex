@@ -160,6 +160,8 @@ type Querier interface {
 	// operation to enable_serving. If any predicate is stale, it returns no row;
 	// it cannot leave a pool CAS without its receipt/audit/phase record.
 	CommitK8sConnectorHandoffCAS(ctx context.Context, arg CommitK8sConnectorHandoffCASParams) (K8sConnectorHandoffOperation, error)
+	// Closes an allowed call once, and only for the gateway that was given it.
+	CompleteAgentMCPToolActivity(ctx context.Context, arg CompleteAgentMCPToolActivityParams) (int64, error)
 	CompleteAppAccessCheck(ctx context.Context, arg CompleteAppAccessCheckParams) (AppAccessOriginCheck, error)
 	CompleteAppAccessPublicationReadiness(ctx context.Context, arg CompleteAppAccessPublicationReadinessParams) (AppAccessPublicationOperation, error)
 	CompleteLifecycleInstallOperation(ctx context.Context, arg CompleteLifecycleInstallOperationParams) (NodeLifecycleInstallOperation, error)
@@ -516,6 +518,8 @@ type Querier interface {
 	// lint:cross-org — user_deactivations is keyed by USER; its org_id records which organization acted.
 	DeactivateUserAccount(ctx context.Context, arg DeactivateUserAccountParams) (int64, error)
 	DecideAppAccessRequest(ctx context.Context, arg DecideAppAccessRequestParams) (int64, error)
+	// Retention sweep: one bounded batch of rows older than the cutoff.
+	DeleteAgentMCPToolActivityBatch(ctx context.Context, arg DeleteAgentMCPToolActivityBatchParams) (int64, error)
 	// lint:cross-org — keyed by device_id (the caller already authorized the device
 	// via its org). Clears a device's live status (on revoke) so a revoked device
 	// never reports stale online/handshake via the API.
@@ -668,6 +672,8 @@ type Querier interface {
 	// from the machine-authenticated runtime lease path, never a human/API list.
 	GetAgentMCPOAuthConnectionForRuntime(ctx context.Context, arg GetAgentMCPOAuthConnectionForRuntimeParams) (AgentMcpOauthConnection, error)
 	GetAgentMCPProfile(ctx context.Context, arg GetAgentMCPProfileParams) (AgentMcpProfile, error)
+	// No row means the application default (30 days).
+	GetAgentMCPToolActivityRetention(ctx context.Context, orgID uuid.UUID) (AgentMcpToolActivityRetentionSetting, error)
 	GetAgentPolicyTemplate(ctx context.Context, arg GetAgentPolicyTemplateParams) (AgentPolicyTemplate, error)
 	GetAgentPolicyTemplateForUpdate(ctx context.Context, arg GetAgentPolicyTemplateForUpdateParams) (AgentPolicyTemplate, error)
 	GetAgentPolicyTemplateVersion(ctx context.Context, arg GetAgentPolicyTemplateVersionParams) (AgentPolicyTemplateVersion, error)
@@ -926,6 +932,8 @@ type Querier interface {
 	GetOrganizationAgentPolicyTemplatesEnabled(ctx context.Context, id uuid.UUID) (bool, error)
 	GetOrganizationByID(ctx context.Context, id uuid.UUID) (Organization, error)
 	GetOrganizationBySlug(ctx context.Context, slug string) (Organization, error)
+	// NULL means no grace: the direct path closes as soon as the gateway can enforce.
+	GetOrganizationMCPDirectPathGrace(ctx context.Context, orgID uuid.UUID) (pgtype.Timestamptz, error)
 	// Policy snapshot construction is used by F09 membership removal. Keep its
 	// organization read compatible with schema 0109 while still exposing the
 	// current FQDN opt-in when the additive column exists. JSONB extraction is
@@ -1010,6 +1018,7 @@ type Querier interface {
 	InsertAccessEventRetentionSettings(ctx context.Context, arg InsertAccessEventRetentionSettingsParams) (AccessEventRetentionSetting, error)
 	InsertAgentAccessOperation(ctx context.Context, arg InsertAgentAccessOperationParams) (int64, error)
 	InsertAgentAccessRequestEvent(ctx context.Context, arg InsertAgentAccessRequestEventParams) (AgentAccessRequestEvent, error)
+	InsertAgentMCPToolActivity(ctx context.Context, arg InsertAgentMCPToolActivityParams) (AgentMcpToolActivity, error)
 	InsertAppAccessEvent(ctx context.Context, arg InsertAppAccessEventParams) (AppAccessEvent, error)
 	InsertAppAccessRevision(ctx context.Context, arg InsertAppAccessRevisionParams) error
 	InsertAppAccessSessionRevocation(ctx context.Context, arg InsertAppAccessSessionRevocationParams) (AppAccessSessionRevocation, error)
@@ -1190,6 +1199,8 @@ type Querier interface {
 	ListAgentMCPProfileAssignments(ctx context.Context, orgID uuid.UUID) ([]ListAgentMCPProfileAssignmentsRow, error)
 	ListAgentMCPProfiles(ctx context.Context, orgID uuid.UUID) ([]AgentMcpProfile, error)
 	ListAgentMCPProfilesForDevice(ctx context.Context, arg ListAgentMCPProfilesForDeviceParams) ([]ListAgentMCPProfilesForDeviceRow, error)
+	// Newest first for one agent. Keyset: pass the last row's occurred_at and id.
+	ListAgentMCPToolActivity(ctx context.Context, arg ListAgentMCPToolActivityParams) ([]AgentMcpToolActivity, error)
 	// Server-owned destructive-impact preview for F06. Deleting a group clears
 	// these exact assignments through ON DELETE SET NULL; the client must not
 	// infer this count from separately loaded agent rows.
@@ -1555,6 +1566,7 @@ type Querier interface {
 	// ListOrganizationsForUser (membership-scoped).
 	ListOrganizations(ctx context.Context) ([]Organization, error)
 	ListOrganizationsForUser(ctx context.Context, userID uuid.UUID) ([]Organization, error)
+	ListOrganizationsWithAgentMCPToolActivity(ctx context.Context) ([]uuid.UUID, error)
 	// Pending means still redeemable: not used, not revoked, not expired. The
 	// token hash is deliberately not selected; a listing never carries the value.
 	// Tokens live for one hour, so the newest 200 is a bound, not a page.
@@ -1739,6 +1751,10 @@ type Querier interface {
 	LookupAgentRuntimeCredentialBinding(ctx context.Context, tokenHash []byte) (LookupAgentRuntimeCredentialBindingRow, error)
 	// lint:cross-org -- Dedicated authenticated proxy derives tenant from globally unique exact publication hostname; live org and exact revision/gateway/host joins constrain projection.
 	LookupAppAccessServingRoute(ctx context.Context, hostname string) (LookupAppAccessServingRouteRow, error)
+	// AI-SEC-2: the runtime declared (poll query mcp_gateway=true) that it forwards
+	// MCP to the gateway listener. Recorded on every declaring poll so the value is
+	// also a freshness signal. Never cleared by a poll that omits the declaration.
+	MarkAgentRuntimeMCPGatewayCapable(ctx context.Context, arg MarkAgentRuntimeMCPGatewayCapableParams) (int64, error)
 	MarkAppAccessPublicationActivated(ctx context.Context, arg MarkAppAccessPublicationActivatedParams) (AppAccessPublicationOperation, error)
 	// Delivery is recorded THE FIRST TIME a certificate authenticates, and only then: the WHERE clause makes this a
 	// no-op on every subsequent request, so the agent channel pays one write per credential rather than one per call.
@@ -1886,6 +1902,13 @@ type Querier interface {
 	ReserveAlertDeliveryCooldown(ctx context.Context, arg ReserveAlertDeliveryCooldownParams) (AlertDeliveryCooldown, error)
 	ReserveAppAccessHostname(ctx context.Context, arg ReserveAppAccessHostnameParams) error
 	ResetK8sConnectorPoolHealthCandidateTicks(ctx context.Context, arg ResetK8sConnectorPoolHealthCandidateTicksParams) (int64, error)
+	// AI-SEC-2: gateway-enforced MCP. Device identity comes from tunnel evidence the
+	// gateway observed (source address + WireGuard key) and from the gateway's own
+	// mTLS identity (organization + node), never from anything the caller sent.
+	// The sibling of the AI Gateway VPN resolver for agent devices: an active agent
+	// with exactly this key and address, homed on the calling gateway. No
+	// membership join and no AI Gateway gate.
+	ResolveAgentDeviceByTunnelEvidence(ctx context.Context, arg ResolveAgentDeviceByTunnelEvidenceParams) (ResolveAgentDeviceByTunnelEvidenceRow, error)
 	// lint:cross-org — keyed by device id; the caller authorized via the org-scoped node and read the candidate set
 	// from ListCascadeRevokedDevicesForNode.
 	// Restores ONE cascade-revoked device (S13.1 D5), to the address the caller resolved.
@@ -2228,6 +2251,7 @@ type Querier interface {
 	UpdateUserGroup(ctx context.Context, arg UpdateUserGroupParams) (UserGroup, error)
 	UpsertAgentMCPInventory(ctx context.Context, arg UpsertAgentMCPInventoryParams) (AgentMcpInventory, error)
 	UpsertAgentMCPOAuthConnection(ctx context.Context, arg UpsertAgentMCPOAuthConnectionParams) (AgentMcpOauthConnection, error)
+	UpsertAgentMCPToolActivityRetention(ctx context.Context, arg UpsertAgentMCPToolActivityRetentionParams) (AgentMcpToolActivityRetentionSetting, error)
 	// lint:cross-org — keyed by device_id; ownership + org checked by the service
 	// (GetDevice + owner match) in the same transaction. Snapshot-only (v1): the
 	// latest report replaces the prior one; reported_at is the SERVER clock that
@@ -2239,6 +2263,11 @@ type Querier interface {
 	// row. Maps pubkey->active device on this node; an unknown pubkey is a no-op.
 	// rx/tx are raw gauges.
 	UpsertDeviceStatus(ctx context.Context, arg []UpsertDeviceStatusParams) *UpsertDeviceStatusBatchResults
+	// AI-SEC-2: the gateway observed this device's MCP server. The row becomes
+	// gateway-sourced and stays so; the control plane computes every hash in the
+	// snapshot itself and never stores one a caller reported. The device must be an
+	// active agent homed on the reporting gateway.
+	UpsertGatewayAgentMCPInventory(ctx context.Context, arg UpsertGatewayAgentMCPInventoryParams) (AgentMcpInventory, error)
 	// Connect / update a provider credential. The secret is pre-sealed (AES-GCM) by the caller;
 	// plaintext never reaches SQL. On re-set, credentials update but the sync-health columns are
 	// left intact (a credential rotation shouldn't fake a green health).

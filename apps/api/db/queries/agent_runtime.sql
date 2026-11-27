@@ -37,7 +37,8 @@ RETURNING ars.device_id, ars.desired_revision, ars.applied_revision,
 -- name: GetAgentRuntimeState :one
 SELECT ars.device_id, ars.desired_revision, ars.applied_revision,
        ars.last_attempted_revision, ars.client_version, ars.last_seen_at,
-       ars.last_error_code, ars.last_error_revision, ars.route_fingerprint, ars.created_at, ars.updated_at
+       ars.last_error_code, ars.last_error_revision, ars.route_fingerprint, ars.created_at, ars.updated_at,
+       ars.mcp_gateway_capable_at
 FROM agent_runtime_state ars
 JOIN devices d ON d.id = ars.device_id
 WHERE ars.device_id = $1
@@ -108,3 +109,16 @@ RETURNING ars.device_id, ars.desired_revision, ars.applied_revision,
           ars.last_attempted_revision, ars.client_version, ars.last_seen_at,
           ars.last_error_code, ars.last_error_revision, ars.created_at, ars.updated_at,
           d.node_id, ars.applied_revision > p.previous_applied_revision AS applied_changed;
+
+-- name: MarkAgentRuntimeMCPGatewayCapable :execrows
+-- AI-SEC-2: the runtime declared (poll query mcp_gateway=true) that it forwards
+-- MCP to the gateway listener. Recorded on every declaring poll so the value is
+-- also a freshness signal. Never cleared by a poll that omits the declaration.
+UPDATE agent_runtime_state ars
+SET mcp_gateway_capable_at = now()
+FROM devices d
+WHERE d.id = ars.device_id
+  AND ars.device_id = sqlc.arg(device_id)
+  AND d.org_id = sqlc.arg(org_id)
+  AND d.kind = 'agent'
+  AND d.deleted_at IS NULL;
