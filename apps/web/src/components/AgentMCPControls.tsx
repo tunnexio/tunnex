@@ -1,14 +1,15 @@
-import { useEffect, useState } from "react";
+import { useEffect, useId, useState, type ReactNode } from "react";
 import type { components } from "@tunnex/shared";
 import { api, apiErrorCode, apiErrorMessage, loadOne, type Loaded } from "../lib/api";
 import { compactDateTime } from "../lib/format";
-import { Badge, Button, Field, Input, Modal } from "./ui";
+import { Badge, Button, DataTable, Field, Input, Modal } from "./ui";
 
 type Inventory = components["schemas"]["AgentMCPInventory"];
 type Policy = components["schemas"]["AgentMCPToolPolicy"];
 type Approval = components["schemas"]["AgentMCPToolApprovalRequest"];
 type OAuthConnection = components["schemas"]["AgentMCPOAuthConnection"];
 type EffectiveMCP = components["schemas"]["AgentEffectiveMCPProfile"];
+type Activity = components["schemas"]["AgentMCPToolActivity"];
 type Tool = { endpoint: string; server_name: string; tool_name: string; input_schema_hash: string; description?: string; tool_definition_hash?: string; definition_state?: string };
 const toolsFrom = (inventory: Inventory): Tool[] => (Array.isArray(inventory.snapshot.servers) ? inventory.snapshot.servers as Array<Record<string, unknown>> : []).flatMap((server) => {
   const endpoint = typeof server.endpoint === "string" ? server.endpoint : "";
@@ -212,4 +213,88 @@ export function AgentMCPOAuthPanel({ orgId, deviceId, inventory, canManage, outc
     </>}
     {error && <p role="alert" className="mt-2 text-danger">{error}</p>}
   </div>;
+}
+
+const ACTIVITY_PAGE = 50;
+const blockedReason: Record<string, string> = {
+  policy: "not allowed by the tool rules", method: "this kind of request is not allowed", arguments: "the arguments are not allowed", schema: "the arguments do not fit the tool's inputs",
+  rate_limit: "too many calls in a minute", step_up_required: "waiting for approval", step_up_denied: "approval was denied", definition_changed: "the tool changed and needs review",
+  no_profile: "no MCP profile is assigned", no_inventory: "the tool list is not available yet", unavailable: "the rules could not be checked",
+};
+function activityResult(item: Activity): { text: string; tone: "ok" | "warn" | "danger" | "neutral" } {
+  if (item.decision === "deny" || item.result_status === "not_forwarded") { const reason = blockedReason[item.reason]; return { text: reason ? `Blocked: ${reason}` : "Blocked", tone: "warn" }; }
+  if (item.result_status === "ok") return { text: "Ran", tone: "neutral" };
+  if (item.result_status === "error") return { text: "Failed", tone: "danger" };
+  if (item.result_status === "upstream_unavailable") return { text: "Failed: the MCP server did not answer", tone: "danger" };
+  return { text: "Still running", tone: "neutral" };
+}
+type ActivityState = { kind: "loading" } | { kind: "error"; message: string } | { kind: "ready"; items: Activity[]; next: string | null };
+
+/** What the agent did through MCP, newest first. Arguments and results are never stored, so none are shown. */
+export function AgentMCPToolActivityPanel({ orgId, deviceId }: { orgId: string; deviceId: string }) {
+  const [state, setState] = useState<ActivityState>({ kind: "loading" }); const [filter, setFilter] = useState<"all" | "approved">("all");
+  const [olderBusy, setOlderBusy] = useState(false); const [olderError, setOlderError] = useState<string | null>(null); const [version, setVersion] = useState(0);
+  const fetchPage = (cursor?: string) => loadOne(() => api.GET("/api/v1/organizations/{orgId}/agents/{deviceId}/mcp-tool-activity", { params: { path: { orgId, deviceId }, query: cursor ? { limit: ACTIVITY_PAGE, cursor } : { limit: ACTIVITY_PAGE } } }));
+  // Older fixtures answer with a bare list; the contract is { items, next_cursor }.
+  const pageOf = (data: unknown): { items: Activity[]; next: string | null } => Array.isArray(data) ? { items: data as Activity[], next: null } : { items: (data as { items?: Activity[] } | undefined)?.items ?? [], next: (data as { next_cursor?: string | null } | undefined)?.next_cursor ?? null };
+  useEffect(() => {
+    let cancelled = false;
+    setState({ kind: "loading" }); setOlderError(null);
+    void fetchPage().then((result) => { if (!cancelled) setState(result.ok ? { kind: "ready", ...pageOf(result.data) } : { kind: "error", message: result.error }); });
+    return () => { cancelled = true; };
+  }, [orgId, deviceId, version]);
+  const older = async () => {
+    if (state.kind !== "ready" || !state.next) return;
+    setOlderBusy(true); setOlderError(null);
+    const result = await fetchPage(state.next);
+    setOlderBusy(false);
+    if (!result.ok) { setOlderError(`Older calls could not be loaded: ${result.error}`); return; }
+    const page = pageOf(result.data);
+    setState((current) => current.kind === "ready" ? { kind: "ready", items: [...current.items, ...page.items], next: page.next } : current);
+  };
+  if (state.kind === "loading") return <div data-testid="agent-mcp-tool-activity"><p role="status">Loading MCP calls…</p></div>;
+  if (state.kind === "error") return <div data-testid="agent-mcp-tool-activity"><p role="alert">MCP calls could not be loaded: {state.message}</p><Button size="sm" variant="ghost" className="mt-2" aria-label="Retry MCP calls" onClick={() => setVersion((value) => value + 1)}>Retry</Button></div>;
+  const shown = filter === "approved" ? state.items.filter((item) => item.approval_request_id) : state.items;
+  return <div data-testid="agent-mcp-tool-activity" className="min-w-0">
+    {state.items.length === 0 ? <><p className="text-ink-heading">No MCP calls yet.</p><p>Calls this agent makes to its MCP server through the gateway are listed here.</p></> : <>
+      <div role="group" aria-label="Show" className="flex flex-wrap items-center gap-2">{([["all", "All calls"], ["approved", "Approved calls"]] as const).map(([value, label]) => <Button key={value} size="sm" variant={filter === value ? "primary" : "ghost"} aria-pressed={filter === value} onClick={() => setFilter(value)}>{label}</Button>)}</div>
+      {shown.length === 0 ? <p className="mt-3">None of the calls shown ran on an approval.</p> : <div className="mt-3 min-w-0 overflow-x-auto"><DataTable caption="MCP calls" rows={shown} rowKey={(item) => item.id} failed={false} filterable={false} pageSize={0} empty={<>No MCP calls yet.</>} columns={[
+        { key: "time", header: "Time", cell: (item) => <span className="whitespace-nowrap" title={new Date(item.occurred_at).toLocaleString()}>{compactDateTime(item.occurred_at)}</span> },
+        { key: "tool", header: "Tool", cell: (item) => <span className="break-all font-mono">{item.tool_name || item.method}</span> },
+        { key: "server", header: "Server", cell: (item) => <span className="break-all">{item.server_name || item.endpoint}</span> },
+        { key: "result", header: "Result", cell: (item) => { const result = activityResult(item); return <Badge tone={result.tone}>{result.text}</Badge>; } },
+        { key: "approval", header: "Approval", cell: (item) => item.approval_request_id ? <span title={item.approval_request_id}>Approved request {item.approval_request_id.slice(0, 8)}</span> : <span>Not needed</span> },
+      ]} /></div>}
+      {state.next && <Button size="sm" variant="ghost" className="mt-3" disabled={olderBusy} onClick={() => void older()}>{olderBusy ? "Loading…" : "Show older calls"}</Button>}
+      {olderError && <p role="alert" className="mt-2">{olderError}</p>}
+    </>}
+  </div>;
+}
+
+const noticeDate = (at: Date) => new Intl.DateTimeFormat(undefined, { day: "numeric", month: "long", year: "numeric" }).format(at);
+function hostOf(endpoint: string | null | undefined): string {
+  try { return endpoint ? new URL(endpoint).hostname : ""; } catch { return ""; }
+}
+function EnforcementNotice({ tone, title, children }: { tone: "warn" | "danger"; title: string; children: ReactNode }) {
+  const id = useId();
+  return <div role="note" aria-labelledby={id} className="mt-3 min-w-0 text-xs"><Badge tone={tone}><span id={id} className="whitespace-normal text-ink-heading">{title}</span></Badge><p className="mt-1 text-ink-tertiary">{children}</p></div>;
+}
+
+/**
+ * Where this agent's tool rules are applied, and what the administrator has to do about it. Driven only by
+ * what the server reports for the agent's effective profile; nothing is shown when it did not say.
+ */
+export function MCPEnforcementNotices({ profile, now = new Date() }: { profile: EffectiveMCP; now?: Date }) {
+  if (!profile.assigned) return null;
+  const graceUntil = profile.direct_path_grace_until ? new Date(profile.direct_path_grace_until) : null;
+  const inGrace = graceUntil !== null && !Number.isNaN(graceUntil.getTime()) && graceUntil.getTime() > now.getTime();
+  const host = hostOf(profile.endpoint);
+  return <>
+    {profile.enforcement === "gateway" && <p role="note" className="mt-3 text-xs text-ink-tertiary">Tool rules are applied at the gateway. This agent needs no network rule for the MCP server.</p>}
+    {profile.enforcement === "agent_host" && (inGrace && graceUntil
+      ? <EnforcementNotice tone="warn" title={`Reinstall this agent before ${noticeDate(graceUntil)} to keep MCP working`}>The new version sends MCP calls through the gateway, which applies the tool rules; the older way is switched off after this date.</EnforcementNotice>
+      : <EnforcementNotice tone="warn" title="Reinstall this agent to keep MCP working">The new version sends MCP calls through the gateway, which applies the tool rules; the older way can be switched off at any time.</EnforcementNotice>)}
+    {profile.enforcement === "unavailable" && <EnforcementNotice tone="danger" title="Upgrade this agent's gateway to use MCP">MCP is off for this agent because its gateway cannot apply tool rules yet. If the gateway is already up to date, reinstall the agent.</EnforcementNotice>}
+    {profile.direct_path_closable === false && <EnforcementNotice tone="warn" title="Tunnex cannot fully block direct access to this server">The agent&apos;s machine may still reach {host || "this server"} without going through the gateway. Use a private IP address for the server, or add an FQDN resource with the same name. For a public server with no sign-in, tool rules cannot be guaranteed.</EnforcementNotice>}
+  </>;
 }
