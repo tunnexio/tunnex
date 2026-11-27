@@ -10,13 +10,15 @@ import (
 	"github.com/tunnexio/tunnex/apps/api/db/sqlc"
 )
 
-func (s *Service) CreateMCPProfile(ctx context.Context, orgID, actor uuid.UUID, name, endpoint string) (sqlc.AgentMcpProfile, error) {
+// CreateMCPProfile creates a profile. An empty serverName lets the database derive a free one from the
+// display name.
+func (s *Service) CreateMCPProfile(ctx context.Context, orgID, actor uuid.UUID, name, endpoint, serverName string) (sqlc.AgentMcpProfile, error) {
 	tx, err := s.pool.Begin(ctx)
 	if err != nil {
 		return sqlc.AgentMcpProfile{}, err
 	}
 	defer tx.Rollback(ctx)
-	row, err := sqlc.New(tx).CreateAgentMCPProfile(ctx, sqlc.CreateAgentMCPProfileParams{OrgID: orgID, Name: name, Endpoint: endpoint})
+	row, err := sqlc.New(tx).CreateAgentMCPProfileNamed(ctx, sqlc.CreateAgentMCPProfileNamedParams{OrgID: orgID, Name: name, Endpoint: endpoint, ServerName: serverName})
 	if err != nil {
 		return row, err
 	}
@@ -67,7 +69,8 @@ func (s *Service) assignmentForGroup(ctx context.Context, tx pgx.Tx, orgID, grou
 		FROM agent_mcp_profile_assignments a
 		JOIN agent_mcp_profiles p ON p.id=a.profile_id AND p.org_id=a.org_id
 		JOIN agent_groups g ON g.id=a.agent_group_id AND g.org_id=a.org_id
-		WHERE a.org_id=$1 AND a.agent_group_id=$2 AND a.state='active'`, orgID, groupID).Scan(&a.ID, &a.OrgID, &a.ProfileID, &a.GroupID, &a.ProfileName, &a.GroupName, &a.State, &a.AssignedAt, &a.EndedAt, &a.QuarantineReason)
+		WHERE a.org_id=$1 AND a.agent_group_id=$2 AND a.state='active'
+		ORDER BY a.assigned_at, a.id LIMIT 1`, orgID, groupID).Scan(&a.ID, &a.OrgID, &a.ProfileID, &a.GroupID, &a.ProfileName, &a.GroupName, &a.State, &a.AssignedAt, &a.EndedAt, &a.QuarantineReason)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, nil
 	}
@@ -114,9 +117,15 @@ func (s *Service) mcpImpact(ctx context.Context, tx pgx.Tx, orgID, groupID uuid.
 		}
 		return i, err
 	}
-	var current *uuid.UUID
-	if err := tx.QueryRow(ctx, `SELECT profile_id FROM agent_mcp_profile_assignments WHERE org_id=$1 AND agent_group_id=$2 AND state='active' FOR UPDATE`, orgID, groupID).Scan(&current); err != nil && !errors.Is(err, pgx.ErrNoRows) {
+	// A group can have several MCP servers. "Current" is the first one (the earliest assignment); the
+	// change below compares the whole set, so replacing several servers with one of them is still a change.
+	active, err := activeProfiles(ctx, tx, orgID, groupID)
+	if err != nil {
 		return i, err
+	}
+	var current *uuid.UUID
+	if len(active) > 0 {
+		current = &active[0]
 	}
 	i.CurrentProfileID = current
 	rows, err := tx.Query(ctx, `SELECT device_id FROM agent_group_members WHERE org_id=$1 AND agent_group_id=$2 ORDER BY device_id`, orgID, groupID)
@@ -132,9 +141,27 @@ func (s *Service) mcpImpact(ctx context.Context, tx pgx.Tx, orgID, groupID uuid.
 		i.AffectedAgentIDs = append(i.AffectedAgentIDs, id)
 	}
 	i.AffectedAgentCount = len(i.AffectedAgentIDs)
-	i.EffectiveUpstreamChanges = (current == nil && proposed != nil) || (current != nil && proposed == nil) || (current != nil && proposed != nil && *current != *proposed)
+	i.EffectiveUpstreamChanges = (current == nil && proposed != nil) || (current != nil && proposed == nil) || (current != nil && proposed != nil && (*current != *proposed || len(active) > 1))
 	i.MutationAllowed = true
 	return i, rows.Err()
+}
+
+// activeProfiles locks and lists the profiles actively assigned to a group, first one first.
+func activeProfiles(ctx context.Context, tx pgx.Tx, orgID, groupID uuid.UUID) ([]uuid.UUID, error) {
+	rows, err := tx.Query(ctx, `SELECT profile_id FROM agent_mcp_profile_assignments WHERE org_id=$1 AND agent_group_id=$2 AND state='active' ORDER BY assigned_at, id FOR UPDATE`, orgID, groupID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		out = append(out, id)
+	}
+	return out, rows.Err()
 }
 
 func (s *Service) PreviewMCPProfileImpact(ctx context.Context, orgID, groupID uuid.UUID, proposed *uuid.UUID) (MCPImpact, error) {
@@ -166,7 +193,7 @@ func (s *Service) SetGroupMCPProfile(ctx context.Context, orgID, groupID, profil
 	if err != nil {
 		return MCPMutation{}, err
 	}
-	if impact.CurrentProfileID != nil && *impact.CurrentProfileID == profileID {
+	if impact.CurrentProfileID != nil && *impact.CurrentProfileID == profileID && !impact.EffectiveUpstreamChanges {
 		assignment, err := s.assignmentForGroup(ctx, tx, orgID, groupID)
 		if err != nil {
 			return MCPMutation{}, err
@@ -177,21 +204,21 @@ func (s *Service) SetGroupMCPProfile(ctx context.Context, orgID, groupID, profil
 		impact.DesiredRuntimeUpdatesQueued = false
 		return MCPMutation{MCPImpact: impact, Assignment: assignment}, nil
 	}
-	var old uuid.UUID
-	err = tx.QueryRow(ctx, `SELECT id FROM agent_mcp_profile_assignments WHERE org_id=$1 AND agent_group_id=$2 AND state='active' FOR UPDATE`, orgID, groupID).Scan(&old)
-	if err == nil {
-		if _, err = tx.Exec(ctx, `UPDATE agent_mcp_profile_assignments SET state='replaced',ended_at=now(),ended_by_user_id=$1 WHERE id=$2`, actor, old); err != nil {
-			return MCPMutation{}, err
-		}
-	} else if !errors.Is(err, pgx.ErrNoRows) {
-		return MCPMutation{}, err
-	}
-	var a MCPAssignment
-	err = tx.QueryRow(ctx, `INSERT INTO agent_mcp_profile_assignments(org_id,profile_id,agent_group_id) VALUES($1,$2,$3) RETURNING id,org_id,profile_id,agent_group_id,state,assigned_at,ended_at,quarantine_reason`, orgID, profileID, groupID).Scan(&a.ID, &a.OrgID, &a.ProfileID, &a.GroupID, &a.State, &a.AssignedAt, &a.EndedAt, &a.QuarantineReason)
+	// This operation sets the group's MCP server to exactly this profile: every other active assignment
+	// of the group ends. (Connecting a server adds one beside the others instead.)
+	tag, err := tx.Exec(ctx, `UPDATE agent_mcp_profile_assignments SET state='replaced',ended_at=now(),ended_by_user_id=$1 WHERE org_id=$2 AND agent_group_id=$3 AND state='active' AND profile_id<>$4`, actor, orgID, groupID, profileID)
 	if err != nil {
 		return MCPMutation{}, err
 	}
-	if err := audit(ctx, tx, orgID, actor, map[bool]string{true: "agent_mcp_profile.replaced", false: "agent_mcp_profile.assigned"}[old != uuid.Nil], "agent_group", groupID, map[string]any{"affected_agent_count": impact.AffectedAgentCount}); err != nil {
+	replaced := tag.RowsAffected() > 0
+	// A profile can be assigned to a group only once, in any state: one that was assigned before and then
+	// replaced or unassigned is brought back instead of inserted again.
+	if _, err := tx.Exec(ctx, `INSERT INTO agent_mcp_profile_assignments(org_id,profile_id,agent_group_id) VALUES($1,$2,$3)
+		ON CONFLICT (profile_id, agent_group_id) DO UPDATE SET state='active',assigned_at=now(),ended_at=NULL,ended_by_user_id=NULL,quarantine_reason=NULL
+		WHERE agent_mcp_profile_assignments.state<>'active'`, orgID, profileID, groupID); err != nil {
+		return MCPMutation{}, err
+	}
+	if err := audit(ctx, tx, orgID, actor, map[bool]string{true: "agent_mcp_profile.replaced", false: "agent_mcp_profile.assigned"}[replaced], "agent_group", groupID, map[string]any{"affected_agent_count": impact.AffectedAgentCount}); err != nil {
 		return MCPMutation{}, err
 	}
 	assignment, err := s.assignmentForGroup(ctx, tx, orgID, groupID)
@@ -218,18 +245,17 @@ func (s *Service) UnassignGroupMCPProfile(ctx context.Context, orgID, groupID, a
 	if err != nil {
 		return MCPMutation{}, err
 	}
-	var id uuid.UUID
-	if err := tx.QueryRow(ctx, `SELECT id FROM agent_mcp_profile_assignments WHERE org_id=$1 AND agent_group_id=$2 AND state='active' FOR UPDATE`, orgID, groupID).Scan(&id); errors.Is(err, pgx.ErrNoRows) {
+	// Every MCP server of the group is taken away.
+	tag, err := tx.Exec(ctx, `UPDATE agent_mcp_profile_assignments SET state='unassigned',ended_at=now(),ended_by_user_id=$1 WHERE org_id=$2 AND agent_group_id=$3 AND state='active'`, actor, orgID, groupID)
+	if err != nil {
+		return MCPMutation{}, err
+	}
+	if tag.RowsAffected() == 0 {
 		if err := tx.Commit(ctx); err != nil {
 			return MCPMutation{}, err
 		}
 		impact.DesiredRuntimeUpdatesQueued = false
 		return MCPMutation{MCPImpact: impact}, nil
-	} else if err != nil {
-		return MCPMutation{}, err
-	}
-	if _, err = tx.Exec(ctx, `UPDATE agent_mcp_profile_assignments SET state='unassigned',ended_at=now(),ended_by_user_id=$1 WHERE id=$2`, actor, id); err != nil {
-		return MCPMutation{}, err
 	}
 	if err = audit(ctx, tx, orgID, actor, "agent_mcp_profile.unassigned", "agent_group", groupID, map[string]any{"affected_agent_count": impact.AffectedAgentCount}); err != nil {
 		return MCPMutation{}, err

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"sort"
 	"time"
 
 	"github.com/google/uuid"
@@ -41,14 +42,11 @@ func (s *Service) RecordGatewayInventory(ctx context.Context, orgID, nodeID, dev
 		}
 		return err
 	}
-	var assigned int
-	if err := tx.QueryRow(ctx, `SELECT count(*) FROM agent_mcp_profiles p
-JOIN agent_mcp_profile_assignments a ON a.profile_id=p.id AND a.org_id=p.org_id AND a.state='active'
-JOIN agent_group_members m ON m.agent_group_id=a.agent_group_id AND m.org_id=a.org_id
-WHERE p.org_id=$1 AND m.device_id=$2 AND btrim(p.endpoint)=$3`, orgID, deviceID, in.Endpoint).Scan(&assigned); err != nil {
+	assigned, err := assignedEndpoints(ctx, tx, orgID, deviceID)
+	if err != nil {
 		return err
 	}
-	if assigned == 0 {
+	if !containsEndpoint(assigned, in.Endpoint) {
 		return ErrEndpointNotAssigned
 	}
 
@@ -76,7 +74,20 @@ WHERE p.org_id=$1 AND m.device_id=$2 AND btrim(p.endpoint)=$3`, orgID, deviceID,
 		}
 	}
 
-	snapshot := map[string]interface{}{"servers": []InventoryServer{server}}
+	// An agent can have several MCP servers and the gateway reports them one at a time: this observation
+	// replaces only its own endpoint. What was seen for the agent's other assigned servers is kept, and a
+	// server that is no longer assigned is dropped.
+	merged := func(own InventoryServer) []InventoryServer {
+		servers := []InventoryServer{own}
+		for _, other := range prior.Servers {
+			if other.Endpoint != in.Endpoint && containsEndpoint(assigned, other.Endpoint) {
+				servers = append(servers, other)
+			}
+		}
+		sort.Slice(servers, func(i, j int) bool { return servers[i].Endpoint < servers[j].Endpoint })
+		return servers
+	}
+	snapshot := map[string]interface{}{"servers": merged(server)}
 	// OAuth discovery metadata is not a tool list and has no gateway source yet; keep what is there.
 	if discovery, ok := extras["oauth_discovery"]; ok {
 		snapshot["oauth_discovery"] = discovery
@@ -90,9 +101,17 @@ WHERE p.org_id=$1 AND m.device_id=$2 AND btrim(p.endpoint)=$3`, orgID, deviceID,
 		if !hadPrevious {
 			server.Tools = []InventoryTool{}
 		}
-		snapshot["servers"] = []InventoryServer{server}
+		snapshot["servers"] = merged(server)
 		if raw, err = json.Marshal(snapshot); err != nil {
 			return err
+		}
+		if len(raw) > maxSnapshotBytes {
+			// The agent's servers together are too large to store: keep this one's status alone.
+			server.Tools = []InventoryTool{}
+			snapshot["servers"] = []InventoryServer{server}
+			if raw, err = json.Marshal(snapshot); err != nil {
+				return err
+			}
 		}
 	}
 	tag, err := tx.Exec(ctx, `INSERT INTO agent_mcp_inventory (device_id, snapshot, observed_at, source) VALUES ($1,$2::jsonb,$3,'gateway')
@@ -149,7 +168,7 @@ func (s *Service) followDefinitions(ctx context.Context, tx pgx.Tx, orgID, devic
 		return err
 	}
 	version := current.Version + 1
-	if _, err := tx.Exec(ctx, `INSERT INTO agent_mcp_tool_policy_versions (org_id, device_id, version, rules, inventory_observed_at, created_by_user_id) VALUES ($1,$2,$3,$4,$5,$6)`, orgID, deviceID, version, raw, now.UTC(), current.CreatedBy); err != nil {
+	if _, err := tx.Exec(ctx, `INSERT INTO agent_mcp_tool_policy_versions (org_id, device_id, version, rules, inventory_observed_at, created_by_user_id, override_endpoints) VALUES ($1,$2,$3,$4,$5,$6,$7)`, orgID, deviceID, version, raw, now.UTC(), current.CreatedBy, mergeEndpoints(current.OverrideEndpoints, nil)); err != nil {
 		return err
 	}
 	metadata, _ := json.Marshal(map[string]any{"version": version, "rule_count": len(current.Rules), "cause": "definition_pin", "pinned_rule_count": pinned, "inventory_observed_at": now.UTC().Format(time.RFC3339Nano)})
@@ -212,7 +231,7 @@ func (s *Service) AcceptDefinition(ctx context.Context, orgID, deviceID, actorID
 	}
 	version := current.Version + 1
 	var created time.Time
-	if err := tx.QueryRow(ctx, `INSERT INTO agent_mcp_tool_policy_versions (org_id, device_id, version, rules, inventory_observed_at, created_by_user_id) VALUES ($1,$2,$3,$4,$5,$6) RETURNING created_at`, orgID, deviceID, version, raw, inventory.ObservedAt, actorID).Scan(&created); err != nil {
+	if err := tx.QueryRow(ctx, `INSERT INTO agent_mcp_tool_policy_versions (org_id, device_id, version, rules, inventory_observed_at, created_by_user_id, override_endpoints) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING created_at`, orgID, deviceID, version, raw, inventory.ObservedAt, actorID, mergeEndpoints(current.OverrideEndpoints, nil)).Scan(&created); err != nil {
 		return Policy{}, err
 	}
 	metadata, _ := json.Marshal(map[string]any{"endpoint": endpoint, "server_name": server.ServerName, "tool_name": toolName, "version": version, "previous_definition_hash": before, "accepted_definition_hash": definitionHash})
@@ -223,5 +242,5 @@ func (s *Service) AcceptDefinition(ctx context.Context, orgID, deviceID, actorID
 		return Policy{}, err
 	}
 	annotateDefinitionState(rules, inventory)
-	return Policy{Version: version, Rules: rules, InventoryObservedAt: inventory.ObservedAt, CreatedAt: created}, nil
+	return Policy{Version: version, Rules: rules, InventoryObservedAt: inventory.ObservedAt, CreatedAt: created, OverrideEndpoints: mergeEndpoints(current.OverrideEndpoints, nil)}, nil
 }

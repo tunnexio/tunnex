@@ -109,7 +109,7 @@ func (s apiServer) PollAgentRuntime(ctx context.Context, req api.PollAgentRuntim
 	if req.Params.WireguardRevision != nil {
 		wgRevision = *req.Params.WireguardRevision
 	}
-	opts := agentruntime.PollOptions{MCPGateway: req.Params.McpGateway != nil && *req.Params.McpGateway}
+	opts := agentruntime.PollOptions{MCPGateway: req.Params.McpGateway != nil && *req.Params.McpGateway, MCPHold: req.Params.McpHold != nil && *req.Params.McpHold}
 	cfg, unchanged, err := s.agentRuntime.PollWaitWith(ctx, id, req.Params.AppliedRevision, wgRevision, req.Params.ClientVersion, wait, opts)
 	if err != nil {
 		return nil, runtimeMachineError(err)
@@ -123,12 +123,26 @@ func (s apiServer) PollAgentRuntime(ctx context.Context, req api.PollAgentRuntim
 			AllowedIps: cfg.AllowedIPs, Dns: cfg.DNS, PersistentKeepalive: cfg.PersistentKeepalive,
 			McpUpstream:                cfg.MCPUpstream,
 			McpGatewayUrl:              cfg.MCPGatewayURL,
+			McpServers:                 runtimeMCPServers(cfg.MCPServers),
 			CredentialRotationRevision: cfg.CredentialRotationRevision,
 			WireguardCurrentRevision:   cfg.WireGuardCurrentRevision,
 			WireguardRotationRevision:  cfg.WireGuardRotationRevision,
 			WireguardRotationState:     runtimeWireGuardState(cfg.WireGuardRotationState)},
 		Headers: api.PollAgentRuntime200ResponseHeaders{XRequestId: reqID(ctx)},
 	}, nil
+}
+
+// runtimeMCPServers names the agent's MCP servers for its runtime. Nothing is sent for an agent that is
+// not on the gateway path, so its configuration is byte-for-byte what it was.
+func runtimeMCPServers(servers []agentruntime.MCPServer) *[]api.ManagedAgentMCPServer {
+	if len(servers) == 0 {
+		return nil
+	}
+	out := make([]api.ManagedAgentMCPServer, 0, len(servers))
+	for _, server := range servers {
+		out = append(out, api.ManagedAgentMCPServer{Name: server.Name, Default: server.Default})
+	}
+	return &out
 }
 
 func runtimeWireGuardState(state *string) *api.ManagedAgentConfigWireguardRotationState {
@@ -146,6 +160,11 @@ func (s apiServer) ReportAgentRuntime(ctx context.Context, req api.ReportAgentRu
 	}
 	if err := s.agentRuntime.Report(ctx, id, req.Body.AppliedRevision, req.Body.AttemptedRevision, req.Body.ClientVersion, string(req.Body.ErrorCode)); err != nil {
 		return nil, runtimeMachineError(err)
+	}
+	if req.Body.TunnelDnsApplied != nil && s.system != nil {
+		// Whether the runtime wrote the pushed DNS servers into its tunnel (false on a host with no
+		// resolvconf). Shown on the Runtime tab; a failure to store it never fails the report.
+		_, _ = s.system.SetAgentRuntimeTunnelDNSApplied(ctx, sqlc.SetAgentRuntimeTunnelDNSAppliedParams{TunnelDnsApplied: req.Body.TunnelDnsApplied, DeviceID: id.DeviceID, OrgID: id.OrgID})
 	}
 	if req.Body.McpInventory != nil {
 		inventory := *req.Body.McpInventory
@@ -322,7 +341,15 @@ func (s apiServer) GetAgentRuntimeStatus(ctx context.Context, req api.GetAgentRu
 		v := api.AgentRuntimeStatusLastErrorCode(*status.LastErrorCode)
 		lastError = &v
 	}
+	var holdCapable, dnsApplied *bool
+	if s.system != nil {
+		if decl, err := s.system.GetAgentRuntimeDeclarations(ctx, sqlc.GetAgentRuntimeDeclarationsParams{DeviceID: req.DeviceId, OrgID: req.OrgId}); err == nil {
+			capable := decl.McpHoldCapableAt.Valid
+			holdCapable, dnsApplied = &capable, decl.TunnelDnsApplied
+		}
+	}
 	return api.GetAgentRuntimeStatus200JSONResponse{Body: api.AgentRuntimeStatus{
+		McpHoldCapable: holdCapable, TunnelDnsApplied: dnsApplied,
 		DeviceId: req.DeviceId, DesiredRevision: status.DesiredRevision, AppliedRevision: status.AppliedRevision,
 		LastAttemptedRevision: status.LastAttemptedRevision, ClientVersion: status.ClientVersion,
 		Connectivity: api.AgentRuntimeStatusConnectivity(status.Connectivity), Health: api.AgentRuntimeStatusHealth(status.Health), Stale: status.Stale,

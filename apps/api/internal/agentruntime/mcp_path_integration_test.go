@@ -32,10 +32,10 @@ func TestReadyMCPGatewayAddress(t *testing.T) {
 func TestFingerprintCoversMCPGatewayURL(t *testing.T) {
 	upstream, gateway, other := "http://10.0.0.5/mcp", "http://10.123.0.1:8084/mcp", "http://10.123.0.2:8084/mcp"
 	routes := []string{"10.123.0.0/24"}
-	none := fingerprintRuntimeConfig(routes, nil, nil)
-	legacy := fingerprintRuntimeConfig(routes, &upstream, nil)
-	viaGateway := fingerprintRuntimeConfig(routes, nil, &gateway)
-	if none == legacy || none == viaGateway || legacy == viaGateway || viaGateway == fingerprintRuntimeConfig(routes, nil, &other) {
+	none := fingerprintRuntimeConfig(routes, nil, nil, nil)
+	legacy := fingerprintRuntimeConfig(routes, &upstream, nil, nil)
+	viaGateway := fingerprintRuntimeConfig(routes, nil, &gateway, nil)
+	if none == legacy || none == viaGateway || legacy == viaGateway || viaGateway == fingerprintRuntimeConfig(routes, nil, &other, nil) {
 		t.Fatal("the fingerprint does not separate the MCP paths")
 	}
 }
@@ -140,5 +140,73 @@ func TestPollMCPGatewayPath(t *testing.T) {
 	f.Exec(`UPDATE agent_runtime_state SET mcp_gateway_capable_at=NULL WHERE device_id=$1`, f.Agent)
 	if svc.MCPDirectLeaseAllowed(f.Ctx, f.Org, f.Agent) {
 		t.Fatal("direct lease allowed after grace")
+	}
+}
+
+func TestFingerprintKeepsOneServerAndCoversSeveral(t *testing.T) {
+	gateway := "http://10.123.0.1:8084/mcp"
+	routes := []string{"10.123.0.0/24"}
+	before := fingerprintRuntimeConfig(routes, nil, &gateway, nil)
+	one := MCPPath{GatewayURL: &gateway, Servers: []MCPServer{{Name: "billing", Default: true}}}
+	if got := fingerprintRuntimeConfig(routes, nil, one.GatewayURL, one.fingerprintServers()); got != before {
+		t.Fatal("an agent with one MCP server got a new revision")
+	}
+	if servers := one.gatewayServers(); len(servers) != 1 || servers[0].Name != "billing" || !servers[0].Default {
+		t.Fatalf("one server is still named to the runtime: %+v", servers)
+	}
+	two := MCPPath{GatewayURL: &gateway, Servers: []MCPServer{{Name: "billing", Default: true}, {Name: "crm"}}}
+	swapped := MCPPath{GatewayURL: &gateway, Servers: []MCPServer{{Name: "crm", Default: true}, {Name: "billing"}}}
+	a, b := fingerprintRuntimeConfig(routes, nil, two.GatewayURL, two.fingerprintServers()), fingerprintRuntimeConfig(routes, nil, swapped.GatewayURL, swapped.fingerprintServers())
+	if a == before || b == before || a == b {
+		t.Fatal("the fingerprint does not cover the server list and which one is first")
+	}
+	upstream := "http://10.0.0.5/mcp"
+	legacy := MCPPath{Upstream: &upstream, Servers: two.Servers}
+	if legacy.gatewayServers() != nil || legacy.fingerprintServers() != nil {
+		t.Fatal("the agent-host path names servers")
+	}
+}
+
+func TestPollSeveralMCPServers(t *testing.T) {
+	f := mcpfixture.New(t)
+	svc := New(f.Pool, func(context.Context, uuid.UUID) (OptInState, error) { return OptInEnabled, nil })
+	id := Identity{OrgID: f.Org, DeviceID: f.Agent}
+	f.Exec(`UPDATE nodes SET capabilities='{"mcp_gateway_ready":true,"mcp_gateway_address":"10.123.0.1"}'::jsonb, policy_reported_at=now() WHERE id=$1`, f.Node)
+	cfg, unchanged, err := svc.PollWith(f.Ctx, id, 0, 1, "v-test", PollOptions{MCPGateway: true})
+	if err != nil || unchanged || len(cfg.MCPServers) != 1 || cfg.MCPServers[0].Name != "billing" || !cfg.MCPServers[0].Default {
+		t.Fatalf("one server: %+v unchanged=%v err=%v", cfg, unchanged, err)
+	}
+	oneRevision := cfg.Revision
+	if f.Count(`SELECT count(*) FROM agent_runtime_state WHERE device_id=$1 AND mcp_hold_capable_at IS NOT NULL`, f.Agent) != 0 {
+		t.Fatal("hold capability stored for a runtime that did not declare it")
+	}
+
+	// A second server through a second group used to fail the poll. Now both are named, first one first.
+	f.AddServer("crm", "http://10.123.0.51:9000/mcp")
+	cfg, unchanged, err = svc.PollWith(f.Ctx, id, oneRevision, 1, "v-test", PollOptions{MCPGateway: true, MCPHold: true})
+	if err != nil || unchanged {
+		t.Fatalf("two servers: unchanged=%v err=%v", unchanged, err)
+	}
+	if len(cfg.MCPServers) != 2 || cfg.MCPServers[0].Name != "billing" || !cfg.MCPServers[0].Default || cfg.MCPServers[1].Name != "crm" || cfg.MCPServers[1].Default || cfg.Revision <= oneRevision {
+		t.Fatalf("two servers: %+v", cfg)
+	}
+	if cfg.MCPGatewayURL == nil || cfg.MCPUpstream != nil {
+		t.Fatalf("gateway path with two servers: %+v", cfg)
+	}
+	if f.Count(`SELECT count(*) FROM agent_runtime_state WHERE device_id=$1 AND mcp_hold_capable_at IS NOT NULL`, f.Agent) != 1 {
+		t.Fatal("declared hold capability was not stored")
+	}
+	if path, err := svc.DescribeMCPPath(f.Ctx, f.Org, f.Agent); err != nil || len(path.Servers) != 2 || path.Endpoint != mcpfixture.Endpoint {
+		t.Fatalf("described path = %+v, %v", path, err)
+	}
+
+	// A runtime on the older agent-host path only ever gets the first server.
+	other := mcpfixture.New(t)
+	legacy := New(other.Pool, func(context.Context, uuid.UUID) (OptInState, error) { return OptInEnabled, nil })
+	other.AddServer("crm", "http://10.123.0.51:9000/mcp")
+	other.Exec(`INSERT INTO organization_mcp_direct_path_grace (org_id, grace_until) VALUES ($1, now()+interval '30 days')`, other.Org)
+	cfg, _, err = legacy.PollWith(other.Ctx, Identity{OrgID: other.Org, DeviceID: other.Agent}, 0, 1, "v-test", PollOptions{})
+	if err != nil || cfg.MCPUpstream == nil || *cfg.MCPUpstream != mcpfixture.Endpoint || len(cfg.MCPServers) != 0 {
+		t.Fatalf("agent-host path with two servers: %+v, %v", cfg, err)
 	}
 }

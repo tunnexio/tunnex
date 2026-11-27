@@ -8,7 +8,6 @@ import (
 	"log/slog"
 	"net/http"
 	"net/netip"
-	"net/url"
 	"sort"
 	"strings"
 	"time"
@@ -87,13 +86,21 @@ type call struct {
 	serverName    string
 	digest        *string
 	policyVersion *int64
+	// server is the assigned MCP server the request is for. policySource and policyGroup say which
+	// policy decided (the agent's own or its group's); they are set together with policyVersion.
+	server       mcptoolpolicy.AssignedServer
+	policySource *string
+	policyGroup  pgtype.UUID
 }
 
 // Decide answers one MCP JSON-RPC request. It never returns an allow it is unsure of: any failure to read
 // state is a denial. The checks run in a fixed order and the first refusal wins:
 //
-//	device, assigned profile, method, fresh gateway inventory, allow-list rule, definition pin,
+//	device, assigned server, method, fresh gateway inventory, allow-list rule, definition pin,
 //	observed schema, argument constraints, rate limit, credential, step-up.
+//
+// An agent can have several MCP servers. The request names one by its server name; no name means the
+// first one (the earliest assignment), which is what a client that predates server names reaches.
 func (s *Service) Decide(ctx context.Context, ev Evidence, req mcpwire.DecideRequest) mcpwire.DecideResponse {
 	c := call{ev: ev, method: req.Method, toolName: req.ToolName}
 	deviceID, ok := s.resolveDevice(ctx, ev)
@@ -107,14 +114,17 @@ func (s *Service) Decide(ctx context.Context, ev Evidence, req mcpwire.DecideReq
 		c.method, c.toolName = boundedMethod(c.method), ""
 		return s.deny(ctx, c, mcpwire.ReasonMethod, http.StatusForbidden, mcpwire.CodeDenied, "")
 	}
-	endpoint, err := s.assignedEndpoint(ctx, ev.OrgID, deviceID)
+	if req.Server != "" && !mcpwire.ValidServerName(req.Server) {
+		return s.deny(ctx, c, mcpwire.ReasonNoProfile, http.StatusForbidden, mcpwire.CodeDenied, "")
+	}
+	server, found, err := s.assignedServer(ctx, ev.OrgID, deviceID, req.Server)
 	if err != nil {
 		return s.deny(ctx, c, mcpwire.ReasonUnavailable, http.StatusForbidden, mcpwire.CodeDenied, "")
 	}
-	if endpoint == "" {
+	if !found {
 		return s.deny(ctx, c, mcpwire.ReasonNoProfile, http.StatusForbidden, mcpwire.CodeDenied, "")
 	}
-	c.endpoint = endpoint
+	c.server, c.endpoint = server, server.Endpoint
 
 	switch c.method {
 	case "initialize", "notifications/initialized", "ping":
@@ -155,15 +165,20 @@ func (s *Service) decideToolCall(ctx context.Context, c call, arguments json.Raw
 	}
 	c.serverName = server.ServerName
 
-	policy, err := s.policy.Get(ctx, c.ev.OrgID, c.deviceID)
-	if errors.Is(err, mcptoolpolicy.ErrNotFound) {
-		return s.deny(ctx, c, mcpwire.ReasonPolicy, http.StatusForbidden, mcpwire.CodeDenied, "")
-	}
+	// One policy decides for this server: the agent's own where it overrides the endpoint, otherwise the
+	// group's. No policy at all denies.
+	policy, err := s.policy.Effective(ctx, c.ev.OrgID, c.deviceID, c.server)
 	if err != nil {
 		return s.deny(ctx, c, mcpwire.ReasonUnavailable, http.StatusForbidden, mcpwire.CodeDenied, "")
 	}
-	version := policy.Version
-	c.policyVersion = &version
+	if !policy.Found {
+		return s.deny(ctx, c, mcpwire.ReasonPolicy, http.StatusForbidden, mcpwire.CodeDenied, "")
+	}
+	version, source := policy.Version, policy.Source
+	c.policyVersion, c.policySource = &version, &source
+	if policy.GroupID != uuid.Nil {
+		c.policyGroup = pgtype.UUID{Bytes: policy.GroupID, Valid: true}
+	}
 	rule, ok := findRule(policy.Rules, c.endpoint, c.toolName)
 	if !ok {
 		return s.deny(ctx, c, mcpwire.ReasonPolicy, http.StatusForbidden, mcpwire.CodeDenied, "")
@@ -204,6 +219,7 @@ func (s *Service) decideToolCall(ctx context.Context, c call, arguments json.Raw
 			return s.deny(ctx, c, mcpwire.ReasonUnavailable, http.StatusForbidden, mcpwire.CodeDenied, "")
 		}
 		request, outcome, err := s.approvals.Decide(ctx, c.ev.OrgID, c.deviceID, mcptoolapproval.Identity{
+			PolicySource: policy.Source, PolicyGroupID: policy.GroupID,
 			PolicyVersion: policy.Version, Endpoint: c.endpoint, ServerName: server.ServerName, ToolName: c.toolName,
 			InputSchemaHash: tool.InputSchemaHash, RequestDigest: digest, ToolDefinitionHash: tool.ToolDefinitionHash, Arguments: canonical,
 		})
@@ -213,7 +229,13 @@ func (s *Service) decideToolCall(ctx context.Context, c call, arguments json.Raw
 		case outcome == mcptoolapproval.OutcomeDenied:
 			return s.deny(ctx, c, mcpwire.ReasonStepUpDenied, http.StatusForbidden, mcpwire.CodeDenied, "")
 		case outcome != mcptoolapproval.OutcomeAllowed:
-			return s.deny(ctx, c, mcpwire.ReasonStepUpRequired, http.StatusForbidden, mcpwire.CodeStepUpRequired, request.ID.String())
+			response := s.deny(ctx, c, mcpwire.ReasonStepUpRequired, http.StatusForbidden, mcpwire.CodeStepUpRequired, request.ID.String())
+			// Only a runtime that said it keeps the call open is told to wait; any other gets the
+			// refusal at once, as before.
+			if s.holdCapable(ctx, c) {
+				response.HoldSeconds = mcpwire.MaxHoldSeconds
+			}
+			return response
 		}
 		approvalID = pgtype.UUID{Bytes: request.ID, Valid: true}
 	}
@@ -221,6 +243,7 @@ func (s *Service) decideToolCall(ctx context.Context, c call, arguments json.Raw
 		OrgID: c.ev.OrgID, DeviceID: c.deviceID, NodeID: pgtype.UUID{Bytes: c.ev.NodeID, Valid: true}, Endpoint: c.endpoint, ServerName: c.serverName,
 		Method: c.method, ToolName: c.toolName, ArgumentsDigest: c.digest, Decision: mcpwire.DecisionAllow, Reason: "",
 		PolicyVersion: c.policyVersion, ApprovalRequestID: approvalID, ResultStatus: "pending",
+		PolicySource: c.policySource, PolicyGroupID: c.policyGroup,
 	})
 	if err != nil {
 		// An allowed call that cannot be recorded is not forwarded.
@@ -267,27 +290,31 @@ func (s *Service) resolveDevice(ctx context.Context, ev Evidence) (uuid.UUID, bo
 	return row.ID, true
 }
 
-// assignedEndpoint returns the one MCP endpoint the agent inherits, or "" when it has none or more than
-// one (a state the assignment trigger prevents; never pick).
-func (s *Service) assignedEndpoint(ctx context.Context, orgID, deviceID uuid.UUID) (string, error) {
-	profiles, err := s.q.ListAgentMCPProfilesForDevice(ctx, sqlc.ListAgentMCPProfilesForDeviceParams{OrgID: orgID, DeviceID: deviceID})
+// assignedServer returns the MCP server a request is for: the one it names, or the first when it names
+// none. A server whose endpoint is not a usable address is not offered.
+func (s *Service) assignedServer(ctx context.Context, orgID, deviceID uuid.UUID, name string) (mcptoolpolicy.AssignedServer, bool, error) {
+	servers, err := mcptoolpolicy.AssignedServers(ctx, s.q, orgID, deviceID)
 	if err != nil {
-		return "", err
+		return mcptoolpolicy.AssignedServer{}, false, err
 	}
-	if len(profiles) != 1 {
-		return "", nil
+	usable := servers[:0]
+	for _, server := range servers {
+		if validEndpoint(server.Endpoint) {
+			usable = append(usable, server)
+		}
 	}
-	endpoint := strings.TrimSpace(profiles[0].Endpoint)
-	if !validEndpoint(endpoint) {
-		return "", nil
-	}
-	return endpoint, nil
+	server, ok := mcptoolpolicy.FindServer(usable, name)
+	return server, ok, nil
 }
 
-func validEndpoint(endpoint string) bool {
-	u, err := url.Parse(endpoint)
-	return err == nil && (u.Scheme == "http" || u.Scheme == "https") && u.Host != "" && u.User == nil && u.RawQuery == "" && u.Fragment == ""
+// holdCapable reports whether the agent's runtime declared that it keeps an MCP call open while an
+// approval is pending. Any doubt is "no".
+func (s *Service) holdCapable(ctx context.Context, c call) bool {
+	row, err := s.q.GetAgentRuntimeDeclarations(ctx, sqlc.GetAgentRuntimeDeclarationsParams{DeviceID: c.deviceID, OrgID: c.ev.OrgID})
+	return err == nil && row.McpHoldCapableAt.Valid
 }
+
+func validEndpoint(endpoint string) bool { return mcptoolpolicy.ValidEndpoint(endpoint) }
 
 // freshServer returns the gateway's own, recent, healthy observation of the agent's endpoint. A list the
 // agent host reported, an old one, or a failed discovery is no inventory.
@@ -307,6 +334,11 @@ func (s *Service) freshServer(ctx context.Context, c call) (mcptoolpolicy.Invent
 	if !ok || server.Status != mcptoolpolicy.StatusHealthy {
 		return mcptoolpolicy.InventoryServer{}, false, nil
 	}
+	// The row's time is the newest report for any of the agent's servers. With several servers each one
+	// must itself have been seen recently.
+	if seen, err := time.Parse(time.RFC3339Nano, server.ObservedAt); err == nil && (now.Sub(seen) > mcptoolpolicy.InventoryFreshness || seen.After(now.Add(time.Minute))) {
+		return mcptoolpolicy.InventoryServer{}, false, nil
+	}
 	return server, true, nil
 }
 
@@ -318,11 +350,8 @@ func (s *Service) callableTools(ctx context.Context, c call) ([]string, error) {
 	if err != nil || !ok {
 		return nil, err
 	}
-	policy, err := s.policy.Get(ctx, c.ev.OrgID, c.deviceID)
-	if errors.Is(err, mcptoolpolicy.ErrNotFound) {
-		return nil, nil
-	}
-	if err != nil {
+	policy, err := s.policy.Effective(ctx, c.ev.OrgID, c.deviceID, c.server)
+	if err != nil || !policy.Found {
 		return nil, err
 	}
 	var out []string
@@ -368,6 +397,7 @@ func (s *Service) recordDenial(ctx context.Context, c call, reason string, audit
 		OrgID: c.ev.OrgID, DeviceID: c.deviceID, NodeID: pgtype.UUID{Bytes: c.ev.NodeID, Valid: true}, Endpoint: c.endpoint, ServerName: c.serverName,
 		Method: c.method, ToolName: c.toolName, ArgumentsDigest: c.digest, Decision: mcpwire.DecisionDeny, Reason: reason,
 		PolicyVersion: c.policyVersion, ResultStatus: "not_forwarded",
+		PolicySource: c.policySource, PolicyGroupID: c.policyGroup,
 	}); err != nil {
 		return err
 	}
@@ -378,6 +408,12 @@ func (s *Service) recordDenial(ctx context.Context, c call, reason string, audit
 		}
 		if c.policyVersion != nil {
 			metadata["policy_version"] = *c.policyVersion
+		}
+		if c.policySource != nil {
+			metadata["policy_source"] = *c.policySource
+		}
+		if c.policyGroup.Valid {
+			metadata["policy_group_id"] = uuid.UUID(c.policyGroup.Bytes).String()
 		}
 		raw, _ := json.Marshal(metadata)
 		if _, err := tx.Exec(ctx, `INSERT INTO audit_logs (org_id, actor_system, action, target_type, target_id, metadata) VALUES ($1,$2,$3,'agent',$4,$5)`, c.ev.OrgID, SystemActor, AuditCallDenied, c.deviceID.String(), raw); err != nil {
@@ -435,8 +471,9 @@ func (s *Service) Result(ctx context.Context, orgID, nodeID uuid.UUID, req mcpwi
 	return nil
 }
 
-// Targets lists the agents homed on the gateway that have exactly one valid MCP endpoint, each with the
-// credential (if any) the gateway needs to discover that agent's tools.
+// Targets lists what the gateway discovers: every MCP server of every agent homed on it, each with the
+// credential (if any) needed to read that server's tools, and the addresses an administrator asked it to
+// read while connecting a server. A preview target names no agent and carries no credential.
 func (s *Service) Targets(ctx context.Context, orgID, nodeID uuid.UUID) ([]mcpwire.Target, error) {
 	if orgID == uuid.Nil || nodeID == uuid.Nil {
 		return nil, ErrInvalid
@@ -445,35 +482,59 @@ func (s *Service) Targets(ctx context.Context, orgID, nodeID uuid.UUID) ([]mcpwi
 	if err != nil {
 		return nil, err
 	}
-	profiles := map[uuid.UUID]int{}
-	for _, row := range rows {
-		profiles[row.DeviceID]++
+	type key struct {
+		device   uuid.UUID
+		endpoint string
 	}
+	seen := make(map[key]bool, len(rows))
 	out := make([]mcpwire.Target, 0, len(rows))
 	for _, row := range rows {
 		endpoint := strings.TrimSpace(row.Endpoint)
-		if profiles[row.DeviceID] != 1 || row.AssignedIp == nil || !validEndpoint(endpoint) {
+		k := key{row.DeviceID, endpoint}
+		if seen[k] || row.AssignedIp == nil || !validEndpoint(endpoint) {
 			continue
 		}
+		seen[k] = true
 		target := mcpwire.Target{DeviceID: row.DeviceID.String(), VPNIP: *row.AssignedIp, Endpoint: endpoint}
 		target.Authorization = s.authorization(ctx, call{ev: Evidence{OrgID: orgID, NodeID: nodeID}, deviceID: row.DeviceID, endpoint: endpoint})
 		out = append(out, target)
 	}
+	previews, err := s.q.ListWaitingAgentMCPConnectionPreviewsForNode(ctx, sqlc.ListWaitingAgentMCPConnectionPreviewsForNodeParams{OrgID: orgID, NodeID: pgtype.UUID{Bytes: nodeID, Valid: true}})
+	if err != nil {
+		return nil, err
+	}
+	for _, preview := range previews {
+		if validEndpoint(preview.Endpoint) {
+			out = append(out, mcpwire.Target{PreviewID: preview.ID.String(), Endpoint: preview.Endpoint})
+		}
+	}
 	return out, nil
 }
 
-// Inventory stores what the gateway discovered for one of its agents. Hashes are computed here from the
-// raw definitions; the report carries none.
+// Inventory stores what the gateway discovered for one MCP server of one of its agents, or for a
+// connection preview. Hashes are computed here from the raw definitions; the report carries none.
 func (s *Service) Inventory(ctx context.Context, orgID, nodeID uuid.UUID, report mcpwire.InventoryReport) error {
-	deviceID, err := uuid.Parse(report.DeviceID)
-	if err != nil || orgID == uuid.Nil || nodeID == uuid.Nil || !validEndpoint(report.Endpoint) {
+	if orgID == uuid.Nil || nodeID == uuid.Nil || !validEndpoint(report.Endpoint) {
 		return ErrInvalid
 	}
 	observation := mcptoolpolicy.GatewayObservation{Endpoint: report.Endpoint, Status: report.Status, ServerName: report.ServerName, ProtocolVersion: report.ProtocolVersion, LatencyMillis: report.LatencyMillis, Tools: make([]mcptoolpolicy.ObservedTool, 0, len(report.Tools))}
 	for _, tool := range report.Tools {
 		observation.Tools = append(observation.Tools, mcptoolpolicy.ObservedTool{Name: tool.Name, Description: tool.Description, InputSchema: tool.InputSchema})
 	}
-	err = s.policy.RecordGatewayInventory(ctx, orgID, nodeID, deviceID, observation, s.now())
+	var err error
+	if report.PreviewID != "" {
+		previewID, parseErr := uuid.Parse(report.PreviewID)
+		if parseErr != nil || report.DeviceID != "" {
+			return ErrInvalid
+		}
+		err = s.policy.CompletePreview(ctx, orgID, nodeID, previewID, observation, s.now())
+	} else {
+		deviceID, parseErr := uuid.Parse(report.DeviceID)
+		if parseErr != nil {
+			return ErrInvalid
+		}
+		err = s.policy.RecordGatewayInventory(ctx, orgID, nodeID, deviceID, observation, s.now())
+	}
 	switch {
 	case errors.Is(err, mcptoolpolicy.ErrNotFound), errors.Is(err, mcptoolpolicy.ErrEndpointNotAssigned):
 		return ErrNotFound

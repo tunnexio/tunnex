@@ -409,3 +409,301 @@ func TestCredentialResultTargetsAndActivity(t *testing.T) {
 		t.Fatalf("sweep with a 1-day period = %+v, %v", result, err)
 	}
 }
+
+const crmEndpoint = "http://10.123.0.51:9000/mcp"
+
+func (h *harness) reportCRM() {
+	h.t.Helper()
+	if err := h.svc.Inventory(h.Ctx, h.Org, h.Node, mcpwire.InventoryReport{DeviceID: h.Agent.String(), Endpoint: crmEndpoint, Status: "healthy", ServerName: "crm-server", Tools: []mcpwire.ObservedTool{
+		{Name: "lookup", Description: "Look up a contact", InputSchema: json.RawMessage(listSchema)},
+	}}); err != nil {
+		h.t.Fatalf("crm inventory: %v", err)
+	}
+}
+
+func (h *harness) groupPolicy(group, profile uuid.UUID, tools ...mcptoolpolicy.ToolSetting) mcptoolpolicy.GroupPolicy {
+	h.t.Helper()
+	policy, err := h.policy.ReplaceGroup(h.Ctx, h.Org, group, profile, h.Owner, tools)
+	if err != nil {
+		h.t.Fatalf("group policy: %v", err)
+	}
+	return policy
+}
+
+func (h *harness) callOn(server, tool, arguments string) mcpwire.DecideResponse {
+	h.t.Helper()
+	response := h.svc.Decide(h.Ctx, h.evidence, mcpwire.DecideRequest{Method: "tools/call", Server: server, ToolName: tool, Arguments: json.RawMessage(arguments)})
+	if err := response.Valid(); err != nil {
+		h.t.Fatalf("decision for %s on %q is not valid on the wire: %+v", tool, server, response)
+	}
+	return response
+}
+
+func TestTwoServersRoutedByNameAndBarePathIsFirst(t *testing.T) {
+	h := newHarness(t)
+	crmProfile, crmGroup := h.AddServer("crm", crmEndpoint)
+	h.report(refundAbout)
+	h.reportCRM()
+	// Each report replaces only its own server: both are in the stored inventory, and a second report of
+	// the first does not drop the second.
+	h.report(refundAbout)
+	if n := h.Count(`SELECT jsonb_array_length(snapshot->'servers') FROM agent_mcp_inventory WHERE device_id=$1`, h.Agent); n != 2 {
+		t.Fatalf("stored servers = %d, want 2", n)
+	}
+	h.allow(mcptoolpolicy.Rule{ToolName: "list_customers"})
+	h.groupPolicy(crmGroup, crmProfile, mcptoolpolicy.ToolSetting{ToolName: "lookup", Mode: mcptoolpolicy.ModeAllow})
+
+	// No server name and the first server's own name both mean the first server.
+	for _, server := range []string{"", "billing"} {
+		if got := h.callOn(server, "list_customers", `{}`); got.Decision != mcpwire.DecisionAllow || got.Upstream != mcpfixture.Endpoint {
+			t.Fatalf("server %q: %+v %+v", server, got, got.Error)
+		}
+	}
+	got := h.callOn("crm", "lookup", `{}`)
+	if got.Decision != mcpwire.DecisionAllow || got.Upstream != crmEndpoint {
+		t.Fatalf("crm: %+v %+v", got, got.Error)
+	}
+	var source string
+	var group uuid.UUID
+	if err := h.Pool.QueryRow(h.Ctx, `SELECT policy_source, policy_group_id FROM agent_mcp_tool_activity WHERE id=$1 AND endpoint=$2`, got.CallID, crmEndpoint).Scan(&source, &group); err != nil || source != "group" || group != crmGroup {
+		t.Fatalf("crm activity = %s %s, %v", source, group, err)
+	}
+	// A tool is allowed on the server whose policy names it, not on the other.
+	h.wantDeny(h.callOn("crm", "list_customers", `{}`), mcpwire.ReasonPolicy, 403, mcpwire.CodeDenied)
+	h.wantDeny(h.callOn("", "lookup", `{}`), mcpwire.ReasonPolicy, 403, mcpwire.CodeDenied)
+	// An unknown or malformed server name is a clean refusal.
+	h.wantDeny(h.callOn("nope", "lookup", `{}`), mcpwire.ReasonNoProfile, 403, mcpwire.CodeDenied)
+	h.wantDeny(h.callOn("Not A Name", "lookup", `{}`), mcpwire.ReasonNoProfile, 403, mcpwire.CodeDenied)
+
+	list := h.svc.Decide(h.Ctx, h.evidence, mcpwire.DecideRequest{Method: "tools/list", Server: "crm"})
+	if list.Decision != mcpwire.DecisionAllow || list.Upstream != crmEndpoint || !equal(list.CallableTools, []string{"lookup"}) {
+		t.Fatalf("crm tools/list = %+v", list)
+	}
+	if first := h.svc.Decide(h.Ctx, h.evidence, mcpwire.DecideRequest{Method: "tools/list"}); !equal(first.CallableTools, []string{"list_customers"}) || first.Upstream != mcpfixture.Endpoint {
+		t.Fatalf("first tools/list = %+v", first)
+	}
+
+	// The gateway discovers every server of the agent.
+	targets, err := h.svc.Targets(h.Ctx, h.Org, h.Node)
+	if err != nil || len(targets) != 2 {
+		t.Fatalf("targets = %+v, %v", targets, err)
+	}
+	endpoints := map[string]bool{}
+	for _, target := range targets {
+		if target.DeviceID != h.Agent.String() || target.PreviewID != "" {
+			t.Fatalf("target = %+v", target)
+		}
+		endpoints[target.Endpoint] = true
+	}
+	if !endpoints[mcpfixture.Endpoint] || !endpoints[crmEndpoint] {
+		t.Fatalf("target endpoints = %v", endpoints)
+	}
+
+	// A server that stops being reported goes stale on its own, while the other stays usable.
+	h.Exec(`UPDATE agent_mcp_inventory SET snapshot=jsonb_set(snapshot,'{servers,1,observed_at}',to_jsonb(to_char(now()-interval '10 minutes','YYYY-MM-DD"T"HH24:MI:SS"Z"'))) WHERE device_id=$1`, h.Agent)
+	h.wantDeny(h.callOn("crm", "lookup", `{}`), mcpwire.ReasonNoInventory, 403, mcpwire.CodeDenied)
+	if got := h.callOn("", "list_customers", `{}`); got.Decision != mcpwire.DecisionAllow {
+		t.Fatalf("first server after the second went stale: %+v", got.Error)
+	}
+
+	// Taking the server away drops it from the inventory at the next report and from the targets.
+	h.Exec(`UPDATE agent_mcp_profile_assignments SET state='unassigned', ended_at=now() WHERE profile_id=$1`, crmProfile)
+	h.report(refundAbout)
+	if n := h.Count(`SELECT jsonb_array_length(snapshot->'servers') FROM agent_mcp_inventory WHERE device_id=$1`, h.Agent); n != 1 {
+		t.Fatalf("stored servers after unassign = %d, want 1", n)
+	}
+	h.wantDeny(h.callOn("crm", "lookup", `{}`), mcpwire.ReasonNoProfile, 403, mcpwire.CodeDenied)
+}
+
+func TestPolicyPrecedencePerEndpoint(t *testing.T) {
+	h := newHarness(t)
+	h.report(refundAbout)
+
+	// No policy anywhere denies.
+	h.wantDeny(h.call("refund", `{"customer":"c"}`), mcpwire.ReasonPolicy, 403, mcpwire.CodeDenied)
+	if n := h.Count(`SELECT count(*) FROM agent_mcp_tool_activity WHERE device_id=$1 AND (policy_version IS NOT NULL OR policy_source IS NOT NULL)`, h.Agent); n != 0 {
+		t.Fatal("a refusal with no policy names one")
+	}
+
+	// No override: the group's policy decides.
+	saved := h.groupPolicy(h.Group, h.Profile, mcptoolpolicy.ToolSetting{ToolName: "refund", Mode: mcptoolpolicy.ModeAllow, Effect: mcptoolpolicy.EffectChanges}, mcptoolpolicy.ToolSetting{ToolName: "run_sql", Mode: mcptoolpolicy.ModeOff, Effect: mcptoolpolicy.EffectDestructive})
+	if saved.Version != 1 || saved.OverridingAgents != 0 {
+		t.Fatalf("group policy = %+v", saved)
+	}
+	allowed := h.call("refund", `{"customer":"c"}`)
+	if allowed.Decision != mcpwire.DecisionAllow {
+		t.Fatalf("group allow = %+v", allowed.Error)
+	}
+	if n := h.Count(`SELECT count(*) FROM agent_mcp_tool_activity WHERE id=$1 AND policy_source='group' AND policy_group_id=$2 AND policy_version=1`, allowed.CallID, h.Group); n != 1 {
+		t.Fatal("the allow does not say the group policy decided")
+	}
+	h.wantDeny(h.call("run_sql", `{"query":"x"}`), mcpwire.ReasonPolicy, 403, mcpwire.CodeDenied)
+	h.wantDeny(h.call("list_customers", `{}`), mcpwire.ReasonPolicy, 403, mcpwire.CodeDenied)
+
+	// Override present: the agent's own policy decides for the endpoint, both ways.
+	h.allow(mcptoolpolicy.Rule{ToolName: "list_customers"})
+	if got := h.call("list_customers", `{}`); got.Decision != mcpwire.DecisionAllow {
+		t.Fatalf("override allow = %+v", got.Error)
+	}
+	h.wantDeny(h.call("refund", `{"customer":"c"}`), mcpwire.ReasonPolicy, 403, mcpwire.CodeDenied)
+	if n := h.Count(`SELECT count(*) FROM agent_mcp_tool_activity WHERE device_id=$1 AND decision='deny' AND tool_name='refund' AND policy_source='agent' AND policy_group_id IS NULL`, h.Agent); n != 1 {
+		t.Fatal("the refusal does not say the agent's own policy decided")
+	}
+	if shown, err := h.policy.GetGroup(h.Ctx, h.Org, h.Group, h.Profile); err != nil || shown.OverridingAgents != 1 {
+		t.Fatalf("overriding agents = %+v, %v", shown, err)
+	}
+
+	// Override empty: still the agent's policy, and it denies everything.
+	h.allow()
+	own, err := h.policy.Get(h.Ctx, h.Org, h.Agent)
+	if err != nil || len(own.Rules) != 0 || len(own.OverrideEndpoints) != 1 || own.OverrideEndpoints[0] != mcpfixture.Endpoint {
+		t.Fatalf("empty override = %+v, %v", own, err)
+	}
+	h.wantDeny(h.call("refund", `{"customer":"c"}`), mcpwire.ReasonPolicy, 403, mcpwire.CodeDenied)
+	h.wantDeny(h.call("list_customers", `{}`), mcpwire.ReasonPolicy, 403, mcpwire.CodeDenied)
+	if list := h.svc.Decide(h.Ctx, h.evidence, mcpwire.DecideRequest{Method: "tools/list"}); len(list.CallableTools) != 0 {
+		t.Fatalf("callable under an empty override = %v", list.CallableTools)
+	}
+
+	// Removing the override hands the server back to the group.
+	after, err := h.policy.RemoveOverride(h.Ctx, h.Org, h.Agent, h.Owner, mcpfixture.Endpoint)
+	if err != nil || len(after.OverrideEndpoints) != 0 || h.AuditCount("agent.mcp_tool_policy.override_removed") != 1 {
+		t.Fatalf("remove override = %+v, %v", after, err)
+	}
+	if got := h.call("refund", `{"customer":"c"}`); got.Decision != mcpwire.DecisionAllow {
+		t.Fatalf("group decides again = %+v", got.Error)
+	}
+	if list := h.svc.Decide(h.Ctx, h.evidence, mcpwire.DecideRequest{Method: "tools/list"}); !equal(list.CallableTools, []string{"refund"}) {
+		t.Fatalf("callable under the group = %v", list.CallableTools)
+	}
+	if _, err := h.policy.RemoveOverride(h.Ctx, h.Org, h.Agent, h.Owner, mcpfixture.Endpoint); !errors.Is(err, mcptoolpolicy.ErrOverrideNotFound) {
+		t.Fatalf("second removal err = %v", err)
+	}
+
+	// A group tool whose definition changed is refused until the group policy is saved again.
+	h.report(poisonedText)
+	h.wantDeny(h.call("refund", `{"customer":"c"}`), mcpwire.ReasonDefinitionChanged, 403, mcpwire.CodeDenied)
+	if shown, _ := h.policy.GetGroup(h.Ctx, h.Org, h.Group, h.Profile); toolState(shown, "refund") != mcptoolpolicy.DefinitionChanged {
+		t.Fatalf("group tool state = %+v", shown.Tools)
+	}
+	stale, _ := mcptoolpolicy.DefinitionHash("refund", refundAbout, json.RawMessage(refundTool))
+	if _, err := h.policy.ReplaceGroup(h.Ctx, h.Org, h.Group, h.Profile, h.Owner, []mcptoolpolicy.ToolSetting{{ToolName: "refund", Mode: mcptoolpolicy.ModeAllow, ToolDefinitionHash: stale}}); !errors.Is(err, mcptoolpolicy.ErrDefinitionStale) {
+		t.Fatalf("saving the definition that was shown before the change err = %v", err)
+	}
+	h.groupPolicy(h.Group, h.Profile, mcptoolpolicy.ToolSetting{ToolName: "refund", Mode: mcptoolpolicy.ModeAllow, Effect: mcptoolpolicy.EffectChanges})
+	if got := h.call("refund", `{"customer":"c"}`); got.Decision != mcpwire.DecisionAllow {
+		t.Fatalf("after saving again = %+v", got.Error)
+	}
+	// The marker of a tool that was not listed again survives.
+	if shown, _ := h.policy.GetGroup(h.Ctx, h.Org, h.Group, h.Profile); toolEffect(shown, "run_sql") != mcptoolpolicy.EffectDestructive || toolEffect(shown, "refund") != mcptoolpolicy.EffectChanges {
+		t.Fatalf("markers = %+v", shown.Tools)
+	}
+}
+
+func toolState(p mcptoolpolicy.GroupPolicy, name string) string {
+	for _, tool := range p.Tools {
+		if tool.ToolName == name {
+			return tool.DefinitionState
+		}
+	}
+	return ""
+}
+
+func toolEffect(p mcptoolpolicy.GroupPolicy, name string) string {
+	for _, tool := range p.Tools {
+		if tool.ToolName == name {
+			return tool.Effect
+		}
+	}
+	return ""
+}
+
+func TestApprovalDigestDoesNotCollideAcrossAgentAndGroupPolicyVersions(t *testing.T) {
+	h := newHarness(t)
+	h.report(refundAbout)
+	const arguments = `{"customer":"c"}`
+	requestOf := func(response mcpwire.DecideResponse) uuid.UUID {
+		t.Helper()
+		if response.Decision != mcpwire.DecisionDeny || response.Error.Code != mcpwire.CodeStepUpRequired || response.Error.Data == nil {
+			t.Fatalf("want a step-up refusal, got %+v %+v", response, response.Error)
+		}
+		return uuid.MustParse(response.Error.Data.RequestID)
+	}
+
+	// Group policy version 1 asks first.
+	h.groupPolicy(h.Group, h.Profile, mcptoolpolicy.ToolSetting{ToolName: "guarded", Mode: mcptoolpolicy.ModeAsk})
+	underGroup := requestOf(h.call("guarded", arguments))
+	// The agent's own policy, also version 1, takes the endpoint over and asks first for the same call.
+	h.allow(mcptoolpolicy.Rule{ToolName: "guarded", StepUpRequired: true})
+	underAgent := requestOf(h.call("guarded", arguments))
+	if underAgent == underGroup {
+		t.Fatal("the same request serves two policies that only share a version number")
+	}
+	if n := h.Count(`SELECT count(*) FROM agent_mcp_tool_approval_requests WHERE device_id=$1 AND state='pending' AND policy_version=1`, h.Agent); n != 2 {
+		t.Fatalf("pending requests at version 1 = %d, want 2", n)
+	}
+	if n := h.Count(`SELECT count(*) FROM agent_mcp_tool_approval_requests WHERE id=$1 AND policy_source='group' AND policy_group_id=$2`, underGroup, h.Group); n != 1 {
+		t.Fatal("the group request does not name its group")
+	}
+	if n := h.Count(`SELECT count(*) FROM agent_mcp_tool_approval_requests WHERE id=$1 AND policy_source='agent' AND policy_group_id IS NULL`, underAgent); n != 1 {
+		t.Fatal("the agent request names a group")
+	}
+
+	// Approving the group's request does not let the call through under the agent's policy.
+	if _, err := h.approvals.Approve(h.Ctx, h.Org, h.Agent, underGroup, h.Owner); err != nil {
+		t.Fatal(err)
+	}
+	if again := requestOf(h.call("guarded", arguments)); again != underAgent {
+		t.Fatalf("under the agent policy the call waits on %s, want %s", again, underAgent)
+	}
+	if _, err := h.approvals.Approve(h.Ctx, h.Org, h.Agent, underAgent, h.Owner); err != nil {
+		t.Fatal(err)
+	}
+	if got := h.call("guarded", arguments); got.Decision != mcpwire.DecisionAllow {
+		t.Fatalf("approved under the agent policy = %+v", got.Error)
+	}
+	// Back under the group, its own approval is still there, and is used once.
+	if _, err := h.policy.RemoveOverride(h.Ctx, h.Org, h.Agent, h.Owner, mcpfixture.Endpoint); err != nil {
+		t.Fatal(err)
+	}
+	if got := h.call("guarded", arguments); got.Decision != mcpwire.DecisionAllow {
+		t.Fatalf("approved under the group policy = %+v", got.Error)
+	}
+	if again := requestOf(h.call("guarded", arguments)); again == underGroup || again == underAgent {
+		t.Fatal("a consumed approval was used again")
+	}
+}
+
+func TestHoldSecondsOnlyForARuntimeThatDeclaredIt(t *testing.T) {
+	h := newHarness(t)
+	h.report(refundAbout)
+	h.allow(mcptoolpolicy.Rule{ToolName: "guarded", StepUpRequired: true}, mcptoolpolicy.Rule{ToolName: "list_customers"})
+
+	first := h.call("guarded", `{"customer":"c"}`)
+	if _, ok := first.Holdable(); ok || first.HoldSeconds != 0 || first.Error.Code != mcpwire.CodeStepUpRequired {
+		t.Fatalf("a runtime that declared nothing is told to hold: %+v", first)
+	}
+	h.Exec(`INSERT INTO agent_runtime_state (device_id) VALUES ($1)`, h.Agent)
+	if got := h.call("guarded", `{"customer":"c"}`); got.HoldSeconds != 0 {
+		t.Fatalf("hold without the declaration: %+v", got)
+	}
+	h.Exec(`UPDATE agent_runtime_state SET mcp_hold_capable_at=now() WHERE device_id=$1`, h.Agent)
+	held := h.call("guarded", `{"customer":"c"}`)
+	if seconds, ok := held.Holdable(); !ok || seconds != mcpwire.MaxHoldSeconds || held.Error.Data.RequestID != first.Error.Data.RequestID {
+		t.Fatalf("declared runtime: %+v", held)
+	}
+	// Only a call that is waiting for an approver is held: an allow, a plain refusal and an approver's
+	// denial are answered at once.
+	if got := h.call("list_customers", `{}`); got.HoldSeconds != 0 {
+		t.Fatalf("allow carries a hold: %+v", got)
+	}
+	if got := h.call("run_sql", `{"query":"x"}`); got.HoldSeconds != 0 {
+		t.Fatalf("policy refusal carries a hold: %+v", got)
+	}
+	if _, err := h.approvals.Deny(h.Ctx, h.Org, h.Agent, uuid.MustParse(first.Error.Data.RequestID), h.Owner); err != nil {
+		t.Fatal(err)
+	}
+	if got := h.call("guarded", `{"customer":"c"}`); got.HoldSeconds != 0 || got.Error.Code != mcpwire.CodeDenied {
+		t.Fatalf("denied call carries a hold: %+v", got)
+	}
+}
