@@ -344,7 +344,7 @@ const NO_TOKEN_USED = "; no bootstrap token was used";
  * for or used.
  */
 export const INSTALL_ON_ENROLLED_HOST =
-  `This host already runs a Tunnex agent. Nothing was changed and the install token was not used. To update it, use "Update runtime" on the agent's page in Tunnex.`;
+  `This host already runs a Tunnex agent. Nothing was changed and the install token was not used. To update a working agent, use "Update runtime" on the agent's page in Tunnex. If the agent was revoked, or you want to enrol this host as a new agent, first run the "Remove the agent from this host" command shown on the revoked agent's page in Tunnex, then run this install command again.`;
 
 /**
  * Where a host with no terminal supplies the install token. The path is fixed
@@ -482,6 +482,40 @@ export function agentRuntimeUpdateCommand(release: BootstrapRelease): string {
     `as_root cp -p "$runtime_bin" "$d/runtime-bin.snapshot"; as_root cp -p "$runtime_unit" "$d/runtime-unit.snapshot"; stage=1; put_file "$d/runtime" "$runtime_bin" 755; put_file "$d/unit" "$runtime_unit" 644; as_root systemctl daemon-reload; if as_root systemctl restart ${service} && sleep 3 && as_root systemctl is-active --quiet ${service}; then :; else echo 'The updated runtime did not start.' >&2; exit 1; fi; failed=0; stage=0; echo "Tunnex agent runtime updated to $runtime_version and restarted. The agent's identity, credential, tunnel and settings were not changed."`,
   ].join("; ");
   return ["sh <<'TUNNEX_RUNTIME_UPDATE'", script, "TUNNEX_RUNTIME_UPDATE"].join("\n");
+}
+
+/**
+ * The command an administrator runs on the host of an agent that was revoked
+ * or abandoned, so the host can be enrolled again.
+ *
+ * It is the same text for every agent: it takes no token, embeds no secret and
+ * contacts nothing. In order it stops and disables the runtime service, brings
+ * the managed tunnel interface down, then removes the unit, the runtime, the
+ * stored credential, the runtime state and the managed tunnel configuration,
+ * with the copies the runtime keeps beside them while a credential or key is
+ * being changed. Each path is named in full and removed with a plain `rm -f`:
+ * no pattern, no directory, nothing else on the host. Running it again, or on
+ * a host that never had an agent, changes nothing.
+ */
+export function agentHostRemoveCommand(): string {
+  const q = shq;
+  const service = "tunnex-agent-runtime.service";
+  const script = [
+    ...runtimeHostChecks().slice(0, 2),
+    "[ \"$(uname -s)\" = Linux ] || { echo 'This command removes the Tunnex agent from a Linux host. Nothing was changed.' >&2; exit 1; }",
+    runtimeHostChecks()[4],
+    "runtime_bin=/usr/local/bin/tunnex-agent-runtime; runtime_unit=/etc/systemd/system/tunnex-agent-runtime.service; runtime_cfg=/etc/wireguard/runtime.conf; runtime_cred=/etc/tunnex-agent/runtime-credential; runtime_state=/var/lib/tunnex-agent/runtime-state.json",
+    // `removed` is the summary. A stop part-way still says what was already removed.
+    `removed=; done=0; nl='\n'; note() { removed="$removed- $1$nl"; }; present() { as_root test -e "$1" || as_root test -L "$1"; }; finish() { rc=$?; set +e; if [ "$done" = 0 ] && [ -n "$removed" ]; then echo 'Removed before it stopped:' >&2; printf '%s' "$removed" >&2; fi; trap - EXIT; exit "$rc"; }; trap finish EXIT; trap 'exit 130' INT TERM HUP`,
+    `drop() { if present "$1"; then as_root rm -f "$1" 2>/dev/null || true; if present "$1"; then echo "$1 could not be removed. Remove it yourself, then run this command again." >&2; exit 1; fi; note "$2 $1"; fi; }`,
+    `if command -v systemctl >/dev/null 2>&1; then if present "$runtime_unit" || as_root systemctl is-active --quiet ${service} || as_root systemctl is-enabled --quiet ${service} 2>/dev/null; then as_root systemctl disable --now ${service} >/dev/null 2>&1 || true; as_root systemctl stop ${service} >/dev/null 2>&1 || true; if as_root systemctl is-active --quiet ${service}; then echo ${q("The tunnex-agent-runtime service could not be stopped, so nothing was removed. Run: sudo systemctl stop tunnex-agent-runtime. Then run this command again.")} >&2; exit 1; fi; note 'the tunnex-agent-runtime service was stopped and disabled'; fi; fi`,
+    // wg-quick also undoes the routes and DNS it added; deleting the link is the fallback.
+    `if [ -e /sys/class/net/runtime ]; then if command -v wg-quick >/dev/null 2>&1 && as_root test -f "$runtime_cfg"; then as_root wg-quick down "$runtime_cfg" >/dev/null 2>&1 || true; fi; if [ -e /sys/class/net/runtime ] && command -v ip >/dev/null 2>&1; then as_root ip link delete dev runtime >/dev/null 2>&1 || true; fi; if [ -e /sys/class/net/runtime ]; then echo ${q("The tunnel interface runtime could not be brought down, so no file was removed. Run: sudo ip link delete dev runtime. Then run this command again.")} >&2; exit 1; fi; note 'the tunnel interface runtime was brought down'; fi`,
+    `unit_gone=0; if present "$runtime_unit" || present "$runtime_unit.tunnex-update"; then unit_gone=1; fi; drop "$runtime_unit" 'the service unit'; drop "$runtime_unit.tunnex-update" 'an unfinished update of the service unit'; if [ "$unit_gone" = 1 ] && command -v systemctl >/dev/null 2>&1; then as_root systemctl daemon-reload >/dev/null 2>&1 || true; fi`,
+    `drop "$runtime_bin" 'the runtime program'; drop "$runtime_bin.tunnex-update" 'an unfinished update of the runtime program'; drop "$runtime_cred" 'the stored credential'; drop "$runtime_cred.previous" 'an earlier copy of the credential'; drop "$runtime_cred.candidate" 'an unfinished copy of the credential'; drop "$runtime_state" 'the runtime state'; drop "$runtime_cfg" 'the tunnel configuration'; drop "$runtime_cfg.previous" 'an earlier copy of the tunnel configuration'; drop "$runtime_cfg.candidate-key" 'an unfinished tunnel key'; drop "$runtime_cfg.restore-key" 'a saved tunnel key'`,
+    `done=1; if [ -z "$removed" ]; then echo 'No Tunnex agent was found on this host, so nothing was removed. This host can be enrolled with the install command from Add agent in Tunnex.'; else echo 'Removed the Tunnex agent from this host:'; printf '%s' "$removed"; echo 'Nothing else on this host was changed. This host can now be enrolled again with the install command from Add agent in Tunnex.'; fi`,
+  ].join("; ");
+  return ["sh <<'TUNNEX_AGENT_REMOVE'", script, "TUNNEX_AGENT_REMOVE"].join("\n");
 }
 
 /**
