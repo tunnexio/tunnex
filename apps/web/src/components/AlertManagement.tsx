@@ -8,7 +8,7 @@ import AppAccessRowMenu from "./AppAccessRowMenu";
 import { ResourceSummary } from "./ResourceSummary";
 
 const labels: Record<AlertEventKey, string> = {
-  "agent.offline": "Agent offline", "agent.denial_spike": "Agent denial spike", "agent.access_expiring": "Agent access expiring", "agent.rotation_failed": "Agent rotation failed", "agent.configuration_drift": "Agent configuration drift",
+  "agent.offline": "Agent offline", "agent.denial_spike": "Agent denial spike", "agent.access_expiring": "Agent access expiring", "agent.rotation_failed": "Agent rotation failed", "agent.configuration_drift": "Agent configuration drift", "agent.mcp_approval_pending": "MCP approval waiting",
   "gateway.offline": "Gateway offline", "gateway.policy_degraded": "Gateway policy degraded", "site.link_down": "WireGuard site link down", "ipsec.tunnel_down": "IPsec tunnel down", "ipsec.connection_down": "IPsec connection down", "ipsec.status_unavailable": "IPsec status unavailable", "device.offline": "Device offline", "device.posture_blocked": "Device posture blocked",
   "kubernetes.connector_degraded": "Connector degraded", "kubernetes.inventory_stale": "Inventory stale", "kubernetes.service_unavailable": "Service unavailable",
 };
@@ -17,7 +17,7 @@ const groups: Array<{ label: string; keys: AlertEventKey[] }> = [
   { label: "Site-to-site", keys: ["site.link_down", "ipsec.tunnel_down", "ipsec.connection_down", "ipsec.status_unavailable"] },
   { label: "Devices", keys: ["device.offline", "device.posture_blocked"] },
   { label: "Kubernetes", keys: ["kubernetes.connector_degraded", "kubernetes.inventory_stale", "kubernetes.service_unavailable"] },
-  { label: "AI agents", keys: ["agent.offline", "agent.denial_spike", "agent.access_expiring", "agent.rotation_failed", "agent.configuration_drift"] },
+  { label: "AI agents", keys: ["agent.offline", "agent.denial_spike", "agent.access_expiring", "agent.rotation_failed", "agent.configuration_drift", "agent.mcp_approval_pending"] },
 ];
 const kinds: Record<AlertDestinationKind, string> = { webhook: "Webhook", slack: "Slack", teams: "Microsoft Teams", pagerduty: "PagerDuty", opsgenie: "Opsgenie", discord: "Discord", google_chat: "Google Chat", email: "Email" };
 const severities = ["info", "warning", "critical"];
