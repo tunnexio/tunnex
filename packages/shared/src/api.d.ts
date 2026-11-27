@@ -10688,7 +10688,7 @@ export interface components {
         /** @enum {string} */
         AlertSeverity: "info" | "warning" | "critical";
         /** @enum {string} */
-        AlertEventKey: "agent.offline" | "agent.denial_spike" | "agent.access_expiring" | "agent.rotation_failed" | "agent.configuration_drift" | "gateway.offline" | "gateway.policy_degraded" | "site.link_down" | "ipsec.tunnel_down" | "ipsec.connection_down" | "ipsec.status_unavailable" | "device.offline" | "device.posture_blocked" | "kubernetes.connector_degraded" | "kubernetes.inventory_stale" | "kubernetes.service_unavailable";
+        AlertEventKey: "agent.offline" | "agent.denial_spike" | "agent.access_expiring" | "agent.rotation_failed" | "agent.configuration_drift" | "gateway.offline" | "gateway.policy_degraded" | "site.link_down" | "ipsec.tunnel_down" | "ipsec.connection_down" | "ipsec.status_unavailable" | "device.offline" | "device.posture_blocked" | "kubernetes.connector_degraded" | "kubernetes.inventory_stale" | "kubernetes.service_unavailable" | "agent.mcp_approval_pending";
         /** @enum {string} */
         AlertOccurrenceState: "firing" | "resolved";
         /** @enum {string} */

@@ -31,6 +31,10 @@ const (
 	EventKubernetesConnectorDegraded  EventKey = "kubernetes.connector_degraded"
 	EventKubernetesInventoryStale     EventKey = "kubernetes.inventory_stale"
 	EventKubernetesServiceUnavailable EventKey = "kubernetes.service_unavailable"
+	// EventAgentMCPApprovalPending fires when an "Ask first" MCP call starts
+	// waiting for a person (AI-UX-1). Its fields name the agent, tool, server,
+	// request and expiry; the call's arguments are never part of an alert.
+	EventAgentMCPApprovalPending EventKey = "agent.mcp_approval_pending"
 )
 
 // Keys is the closed F11 catalogue. Producers use these values rather than
@@ -51,6 +55,7 @@ func Keys() []EventKey {
 		EventKubernetesConnectorDegraded,
 		EventKubernetesInventoryStale,
 		EventKubernetesServiceUnavailable,
+		EventAgentMCPApprovalPending,
 	}
 }
 

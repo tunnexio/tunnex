@@ -691,6 +691,7 @@ const (
 	AlertEventKeyAgentAccessExpiring          AlertEventKey = "agent.access_expiring"
 	AlertEventKeyAgentConfigurationDrift      AlertEventKey = "agent.configuration_drift"
 	AlertEventKeyAgentDenialSpike             AlertEventKey = "agent.denial_spike"
+	AlertEventKeyAgentMcpApprovalPending      AlertEventKey = "agent.mcp_approval_pending"
 	AlertEventKeyAgentOffline                 AlertEventKey = "agent.offline"
 	AlertEventKeyAgentRotationFailed          AlertEventKey = "agent.rotation_failed"
 	AlertEventKeyDeviceOffline                AlertEventKey = "device.offline"
