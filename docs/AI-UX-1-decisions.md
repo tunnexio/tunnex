@@ -157,14 +157,21 @@ away. Security holds after AI-SEC-1 and AI-SEC-2. The path does not:
 
 ## End-to-end walk (two GCP machines, signed test release)
 
-Build `69b4a2ca`, then `72da6e84` with the walk fixes. Control plane, gateway,
+Build `69b4a2ca`, then `218e1aa1` with the walk fixes. Control plane, gateway,
 AI engine and a Postgres-backed test MCP server on one machine; a managed agent
 on another.
 
 - Add agent: the install step showed "Enrolled at", "Tunnel connected at" and
-  "The agent is connected." live. A host still holding a revoked agent was
-  refused with both paths explained; the new "Remove the agent from this host"
-  command on the revoked agent's page clears it.
+  "The agent is connected." live.
+- Re-enrolling a host: a fresh install command on a host with an active agent
+  was refused with both paths explained and the token left unused. After the
+  agent was revoked, the "Remove the agent from this host" command taken from
+  its page removed exactly the unit, the runtime program, the stored credential,
+  the runtime state and the tunnel configuration (a before/after file listing
+  showed nothing else changed); a second run reported nothing to remove. The
+  same, still unused token then enrolled the host as a new agent, and adding it
+  to the existing agent group gave it the server and tool choices within about
+  30 seconds.
 - Connect MCP server: one dialog read the tool list through the gateway, every
   tool started Off, Allow / Ask first / Off and markers were set, and saving
   created the profile, an agent group named for the agent, the assignment and
@@ -178,12 +185,15 @@ on another.
   after 45 seconds.
 - Access tab, owner-access preview, Activity with filters and CSV, and the AI
   Gateway banner ("No provider credential yet") on every gateway page.
-- Fixed in the walk: connect action on an agent with no server; revoked agents
-  in the connect picker; one server name everywhere (the administrator's, the
-  server's own only as detail); "Waiting for approval" in Activity; no create
-  button when nothing can be copied; checkbox layout; notice for an agent on the
-  older path whose tool choices come from its group; MCP sign-in wording; the
-  gateway reason shown to members.
+- Fixed after the first walk and seen again live: one server name everywhere
+  (the administrator's; the server's own only as "The server calls itself");
+  revoked agents no longer offered in the connect picker; the Activity approval
+  column ("Approval was required", "Approved by", "Not needed"); the remove
+  command and the new install refusal (above).
+- Fixed and covered by unit tests only: connect action on an agent with no
+  server, no create button when nothing can be copied, checkbox layout, notice
+  for an agent on the older path whose tool choices come from its group, MCP
+  sign-in wording, the gateway reason shown to members.
 - Test suites on Linux: gateway suite and API suite in both editions pass.
 - Not walked: Community plan screens, alert delivery to a real destination, a
   real model call (no provider key), MCP OAuth sign-in.
