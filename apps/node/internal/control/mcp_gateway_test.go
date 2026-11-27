@@ -184,3 +184,37 @@ func TestReportInfoCarriesTheMCPGatewayCapability(t *testing.T) {
 		}
 	}
 }
+
+// AI-UX-1: the wait for a held call is asked with the agent's evidence, and only a 200 with a readable
+// body is an answer. A control plane that predates the route (404), a redirect or an error is no answer.
+func TestMCPWaitSendsEvidenceAndAcceptsOnlyA200(t *testing.T) {
+	c := mcpTestClient(func(r *http.Request) (*http.Response, error) {
+		body, _ := io.ReadAll(r.Body)
+		if r.Method != http.MethodPost || r.URL.Path != mcpwire.PathWait || string(body) != `{"request_id":"req-42"}` {
+			t.Fatalf("wait request: %s %s %s", r.Method, r.URL.Path, body)
+		}
+		if got := r.Header.Values(mcpwire.HeaderVPNIP); len(got) != 1 || got[0] != "10.99.0.7" {
+			t.Fatalf("vpn ip header: %v", got)
+		}
+		if got := r.Header.Values(mcpwire.HeaderVPNKey); len(got) != 1 || got[0] != mcpTestKey {
+			t.Fatalf("vpn key header: %v", got)
+		}
+		return mcpReply(200, `{"state":"approved"}`), nil
+	})
+	got, err := c.MCPWait(t.Context(), "10.99.0.7", mcpTestKey, mcpwire.WaitRequest{RequestID: "req-42"})
+	if err != nil || got.State != mcpwire.WaitApproved {
+		t.Fatalf("wait: %+v %v", got, err)
+	}
+	for name, reply := range map[string]*http.Response{
+		"an older control plane": mcpReply(404, `{"state":"approved"}`),
+		"a server error":         mcpReply(500, `{"state":"approved"}`),
+		"a redirect":             {StatusCode: 307, Header: http.Header{"Location": {"https://elsewhere.test/"}}, Body: io.NopCloser(strings.NewReader(""))},
+		"not JSON":               mcpReply(200, `approved`),
+	} {
+		calls := 0
+		failing := mcpTestClient(func(*http.Request) (*http.Response, error) { calls++; return reply, nil })
+		if got, err := failing.MCPWait(t.Context(), "10.99.0.7", mcpTestKey, mcpwire.WaitRequest{RequestID: "req-42"}); err == nil || got.State != "" || calls != 1 {
+			t.Fatalf("%s: %+v err=%v calls=%d", name, got, err, calls)
+		}
+	}
+}

@@ -319,3 +319,131 @@ func TestDiscoveryPassWithoutTargetsDoesNothing(t *testing.T) {
 		t.Fatalf("reports without targets: %+v", control.reports)
 	}
 }
+
+// ── AI-UX-1: connection previews and several servers per agent ───────────────────
+
+// A preview target (an address an administrator is about to connect) carries a preview id and no device.
+// The gateway reads its tool list once and reports it under that preview id, beside the per-agent reports.
+func TestDiscoveryPassObservesAPreviewTargetAndReportsItByPreviewID(t *testing.T) {
+	assigned := newFakeMCP(t, func(f *fakeMCP) { f.pages = map[string]string{"": twoTools} })
+	previewed := newFakeMCP(t, func(f *fakeMCP) {
+		f.pages = map[string]string{"": `{"tools":[{"name":"refund","description":"Refund an order","inputSchema":{"type":"object","properties":{"order":{"type":"string"}}}}]}`}
+	})
+	protected := newFakeMCP(t, func(f *fakeMCP) {
+		f.requireKey = "preview-token"
+		f.pages = map[string]string{"": `{"tools":[{"name":"private","inputSchema":{"type":"object"}}]}`}
+	})
+	control := newFakeControl(nil)
+	control.targets = []mcpwire.Target{
+		{DeviceID: "agent-a", VPNIP: "10.99.0.7", Endpoint: assigned.server.URL},
+		{PreviewID: "preview-1", Endpoint: previewed.server.URL},
+		{PreviewID: "preview-2", Endpoint: protected.server.URL, Authorization: "preview-token"},
+		{PreviewID: "preview-3", Endpoint: "http://127.0.0.1:1/mcp"},
+		{PreviewID: "preview-4", Endpoint: ""},
+	}
+	testDiscoverer(control).pass(t.Context())
+
+	if got := previewed.count("initialize"); got != 1 {
+		t.Fatalf("the preview endpoint was observed %d times", got)
+	}
+	if previewed.count("tools/call") != 0 {
+		t.Fatal("a preview called a tool")
+	}
+	var got []string
+	for _, report := range control.reports {
+		encoded, _ := json.Marshal(report)
+		if strings.Contains(string(encoded), "preview-token") {
+			t.Fatalf("a report carries a credential: %s", encoded)
+		}
+		if (report.PreviewID == "") == (report.DeviceID == "") {
+			t.Fatalf("a report names both or neither of an agent and a preview: %s", encoded)
+		}
+		line := "device:" + report.DeviceID
+		if report.PreviewID != "" {
+			line = "preview:" + report.PreviewID
+		}
+		line += "=" + report.Status
+		for _, tool := range report.Tools {
+			line += ":" + tool.Name
+		}
+		got = append(got, line)
+		if report.PreviewID == "preview-1" {
+			if report.Endpoint != previewed.server.URL || report.ServerName != "orders-db" || report.Tools[0].Description != "Refund an order" ||
+				string(report.Tools[0].InputSchema) != `{"type":"object","properties":{"order":{"type":"string"}}}` {
+				t.Fatalf("preview report: %s", encoded)
+			}
+		}
+	}
+	sort.Strings(got)
+	want := "device:agent-a=healthy:run_sql:refund preview:preview-1=healthy:refund preview:preview-2=healthy:private preview:preview-3=unavailable"
+	if strings.Join(got, " ") != want {
+		t.Fatalf("reports:\n got %v\nwant %s", got, want)
+	}
+}
+
+// A preview of an address that agents on this gateway already use shares that one observation, and a
+// target that names both an agent and a preview is an agent's.
+func TestDiscoveryPassSharesAnObservationBetweenAPreviewAndAnAgent(t *testing.T) {
+	server := newFakeMCP(t, func(f *fakeMCP) { f.pages = map[string]string{"": twoTools} })
+	control := newFakeControl(nil)
+	control.targets = []mcpwire.Target{
+		{DeviceID: "agent-a", Endpoint: server.server.URL},
+		{PreviewID: "preview-1", Endpoint: server.server.URL},
+		{DeviceID: "agent-b", PreviewID: "preview-9", Endpoint: server.server.URL},
+	}
+	testDiscoverer(control).pass(t.Context())
+	if got := server.count("initialize"); got != 1 {
+		t.Fatalf("the endpoint was observed %d times", got)
+	}
+	var got []string
+	for _, report := range control.reports {
+		got = append(got, report.DeviceID+"/"+report.PreviewID+"="+report.Status)
+	}
+	sort.Strings(got)
+	if strings.Join(got, " ") != "/preview-1=healthy agent-a/=healthy agent-b/=healthy" {
+		t.Fatalf("reports: %v", got)
+	}
+}
+
+// An agent with several MCP servers appears once per server. Each endpoint is observed and reported for
+// that agent under its own endpoint, with its own credential where it has one.
+func TestDiscoveryPassReportsEveryEndpointOfOneAgent(t *testing.T) {
+	orders := newFakeMCP(t, func(f *fakeMCP) { f.pages = map[string]string{"": twoTools} })
+	billing := newFakeMCP(t, func(f *fakeMCP) {
+		f.requireKey = "billing-token"
+		f.pages = map[string]string{"": `{"tools":[{"name":"invoice","inputSchema":{"type":"object"}}]}`}
+	})
+	down := "http://127.0.0.1:1/mcp"
+	control := newFakeControl(nil)
+	control.targets = []mcpwire.Target{
+		{DeviceID: "agent-a", VPNIP: "10.99.0.7", Endpoint: orders.server.URL},
+		{DeviceID: "agent-a", VPNIP: "10.99.0.7", Endpoint: billing.server.URL, Authorization: "billing-token"},
+		{DeviceID: "agent-a", VPNIP: "10.99.0.7", Endpoint: down},
+		{DeviceID: "agent-b", VPNIP: "10.99.0.8", Endpoint: orders.server.URL},
+		// The same server listed twice for one agent is reported once.
+		{DeviceID: "agent-a", VPNIP: "10.99.0.7", Endpoint: orders.server.URL},
+	}
+	testDiscoverer(control).pass(t.Context())
+	if orders.count("initialize") != 1 || billing.count("initialize") != 1 {
+		t.Fatalf("observations: orders %d billing %d", orders.count("initialize"), billing.count("initialize"))
+	}
+	for _, request := range orders.seen() {
+		if request.authorization != "" {
+			t.Fatalf("another server's credential reached the open server: %q", request.authorization)
+		}
+	}
+	names := map[string]string{orders.server.URL: "orders", billing.server.URL: "billing", down: "down"}
+	var got []string
+	for _, report := range control.reports {
+		line := report.DeviceID + "@" + names[report.Endpoint] + "=" + report.Status
+		for _, tool := range report.Tools {
+			line += ":" + tool.Name
+		}
+		got = append(got, line)
+	}
+	sort.Strings(got)
+	want := "agent-a@billing=healthy:invoice agent-a@down=unavailable agent-a@orders=healthy:run_sql:refund agent-b@orders=healthy:run_sql:refund"
+	if strings.Join(got, " ") != want {
+		t.Fatalf("reports:\n got %v\nwant %s", got, want)
+	}
+}

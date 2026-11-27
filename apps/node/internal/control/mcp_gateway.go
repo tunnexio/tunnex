@@ -72,6 +72,26 @@ func (c *Client) MCPDecide(ctx context.Context, vpnIP, vpnKey string, request mc
 	return decision, nil
 }
 
+// MCPWait asks what became of the approval request a held "Ask first" call waits on (AI-UX-1). The control
+// plane answers when the request leaves pending or its own bound passes; the caller's context bounds the
+// request. Any error, or a status other than 200, means no answer, which the caller treats as not approved.
+func (c *Client) MCPWait(ctx context.Context, vpnIP, vpnKey string, request mcpwire.WaitRequest) (mcpwire.WaitResponse, error) {
+	resp, err := c.mcpDo(ctx, http.MethodPost, mcpwire.PathWait, request, mcpEvidence(vpnIP, vpnKey))
+	if err != nil {
+		return mcpwire.WaitResponse{}, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		_, _ = io.Copy(io.Discard, io.LimitReader(resp.Body, 1<<16))
+		return mcpwire.WaitResponse{}, fmt.Errorf("%s status %d", mcpwire.PathWait, resp.StatusCode)
+	}
+	var out mcpwire.WaitResponse
+	if err := json.NewDecoder(io.LimitReader(resp.Body, 1<<16)).Decode(&out); err != nil {
+		return mcpwire.WaitResponse{}, fmt.Errorf("%s response is invalid", mcpwire.PathWait)
+	}
+	return out, nil
+}
+
 // MCPResult closes an allowed call's activity row with what happened upstream.
 func (c *Client) MCPResult(ctx context.Context, vpnIP, vpnKey string, result mcpwire.ResultRequest) error {
 	return c.mcpReport(ctx, mcpwire.PathResult, result, mcpEvidence(vpnIP, vpnKey))
