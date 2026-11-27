@@ -115,3 +115,35 @@ Each was confirmed in code before this paper was written.
 - Open: a host with no terminal (cloud-init, piped ssh) is refused with "no
   bootstrap token was used". A file-based way to supply the token is not built.
 
+
+## End-to-end walk (local build, signed test release)
+
+Run on an isolated stack built from this branch, with a locally signed test
+release so the real install command and signed runtime download were used.
+
+- Install command: contains no token; the script prompted on the terminal and
+  enrolled an agent on a systemd Ubuntu 24.04 host. The tunnel connected.
+- Pending tokens: listed after issue, removed after revoke. A revoked token
+  was refused at redemption and nothing was installed. Issue and revoke wrote
+  audit rows.
+- Agent access, enforcement on: with only a rule for the agent's owner, the
+  gateway had no allow rule for the agent, the runtime got no route and the
+  connection failed. After a rule naming the agent, the gateway allowed that
+  one destination and port, the route was synced and the request succeeded.
+- MCP proxy: a request with an `Origin` header, a foreign `Host` or a
+  non-JSON content type was refused; a plain local JSON request reached policy.
+- Transport: both switches save independently. With "Public internet" off a
+  public AI path answered `403 ai_https_required`; with it on (and "Inside the
+  VPN" off) the same request passed the transport check.
+- Not walked live: the relay route refusal (the local stack has no AI engine,
+  covered by `ai_transport_matrix_test.go`) and a full MCP OAuth sign-in (needs
+  an OAuth MCP server, covered by `mcpoauth/lifecycle_test.go`).
+
+Fixed during the walk: the Revoke button was clipped in the pending-token
+table, two links on the agent Access tab ran together, and a refused token
+ended in a bare `curl` error instead of saying the token was used, expired or
+revoked.
+
+Found, not changed here: on an Ubuntu 24.04 host without `systemd-resolved`
+the dependency step fails because `openresolv` has no install candidate while
+`apt-cache show openresolv` still succeeds. Tracked for AI-UX-1.

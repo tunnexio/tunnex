@@ -315,7 +315,7 @@ while [ "$#" -gt 0 ]; do
   esac
 done
 case "$url" in
-  */api/v1/agent/bootstrap) cat >/dev/null; cat "$MOCK_RESPONSE" ;;
+  */api/v1/agent/bootstrap) cat >/dev/null; if [ "\${MOCK_BOOTSTRAP_REFUSED:-0}" = 1 ]; then echo 'curl: (22) The requested URL returned error: 401' >&2; exit 22; fi; cat "$MOCK_RESPONSE" ;;
   */release.json) [ "$out" = /dev/null ] || cp "$MOCK_MANIFEST" "$out" ;;
   *tunnex-agent-runtime-linux-amd64) cp "$MOCK_RUNTIME" "$out" ;;
   *tunnex-agent-runtime.service) cp "$MOCK_UNIT" "$out" ;;
@@ -360,7 +360,7 @@ esac`);
         .split("/etc/ssl/certs/ca-certificates.crt").join(join(dir, "ca-certificates.crt"));
       expect(generated).toMatch(/^sh <<'TUNNEX_BOOTSTRAP'/);
       expect(generated).not.toContain("sh -c");
-      const execute = (startFails: boolean) =>
+      const execute = (startFails: boolean, tokenRefused = false) =>
         execFileSync("/bin/sh", [], {
           input: generated,
           timeout: 30_000,
@@ -376,6 +376,7 @@ esac`);
           MOCK_RESPONSE: response,
           MOCK_RUNTIME: runtime,
           MOCK_START_FAIL: startFails ? "1" : "0",
+          MOCK_BOOTSTRAP_REFUSED: tokenRefused ? "1" : "0",
           MOCK_SYSTEMCTL_CALLS: systemctlCalls,
           MOCK_UNIT: unit,
           MOCK_UNIT_SHA: sha(unitBytes),
@@ -403,6 +404,13 @@ esac`);
       expect(readGeneratedFile(systemctlCalls, dir)).toBe(callsAfterRollback + "show --property=Version --value\n");
       expect(() => accessSync(ephemeral)).toThrow();
       writeFileSync(runtime, runtimeBytes);
+
+      // A used, expired or revoked token is refused by the control plane. The
+      // operator must be told that in words, and nothing may be installed.
+      expect(() => execute(false, true)).toThrow(/Tunnex refused the install token[^\n]*revoked[^\n]*nothing was installed/);
+      expect(() => accessSync(join(captured, "etc/wireguard/runtime.conf"))).toThrow();
+      expect(() => accessSync(join(captured, "etc/tunnex-agent/runtime-credential"))).toThrow();
+      expect(() => accessSync(ephemeral)).toThrow();
 
       const stdout = execute(false);
 
