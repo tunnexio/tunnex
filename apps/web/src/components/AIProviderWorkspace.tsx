@@ -12,12 +12,13 @@ import { HelpTooltip, modelDisplayName } from "./HelpTooltip";
 import { EntityPicker } from "./EntityPicker";
 import { parseFoundryEndpoint } from "../lib/aiFoundryEndpoint";
 import { aiProbeFailure } from "../lib/aiProbeFailure";
-import { aiGatewayPrerequisite } from "../lib/aiGatewayPrerequisite";
+import { AIGatewayOffBanner, useAIGatewayStatus } from "./AIGatewayOffBanner";
 import { AIGroupAccess } from "./AIUserAccess";
 import { AIModelConnectionDetails } from "./AIModelConnectionDetails";
 import { ProviderLogo } from "./ProviderLogo";
 import { ResourceSummary } from "./ResourceSummary";
 type S = components["schemas"];
+type InUse = S["AIProviderInUseConflict"]["in_use"];
 export type AIProviderConnection = S["AIProviderConnection"];
 type Definition = S["AIProviderDefinition"];
 type ModelMode = S["AIModelMode"];
@@ -50,6 +51,8 @@ function endpointBase(value: string): string {
     return `${url.origin}${path}`;
   } catch { return ""; }
 }
+const conflictMessage = "This connection changed or is referenced by a team policy or user group grant. Refresh and update those grants before removing models, changing their mode or deleting the connection.";
+const failureMessage = "The operation could not be completed. Check the connection state; an uncertain key update requires entering the API key again.";
 type WorkspaceView = "connections" | "models" | "add";
 type WorkspaceProps = {
   orgId: string; canManage?: boolean; canManageTransport?: boolean; view?: WorkspaceView;
@@ -68,10 +71,9 @@ function ProviderWorkspace({ orgId, canManage = true, canManageTransport = false
   const [inventory, setInventory] = useState<S["AIProviderList"] | null>(null);
   const [loading, setLoading] = useState(true), [busy, setBusy] = useState(false);
   const [error, setError] = useState(""), [notice, setNotice] = useState("");
-  const [httpsRequired, setHTTPSRequired] = useState(false);
-  const transportMessage = canManageTransport
-    ? "AI Gateway access over HTTP is disabled. Use HTTPS, or turn on Public internet in Settings → AI Gateway transport."
-    : "AI Gateway access over HTTP is disabled. Use HTTPS, or ask your server administrator to turn on Public internet in Settings → AI Gateway transport.";
+  const gateway = useAIGatewayStatus(orgId);
+  // What still uses the credentials being deleted, when the server refuses the deletion for that reason.
+  const [inUse, setInUse] = useState<InUse | null>(null);
   const drafts = useRef<Record<string, EditorDraft>>({});
   const [editing, setEditing] = useState<AIProviderConnection | "new" | null>(null);
   const [localView, setLocalView] = useState<WorkspaceView>("models");
@@ -89,31 +91,17 @@ function ProviderWorkspace({ orgId, canManage = true, canManageTransport = false
   async function reload() {
     const n = ++serial.current;
     setLoading(true);
-    setHTTPSRequired(false);
     try {
       const r = await api.GET("/api/v1/organizations/{orgId}/ai-gateway/providers", { params: { path: { orgId } } });
       if (!alive.current || n !== serial.current) return;
       if (r.error || !r.data) {
-        if (r.error?.error?.code === "ai_https_required") {
-          setInventory(null);
-          setHTTPSRequired(true);
-          setError(transportMessage);
-          return;
-        }
-        if (r.response.status === 503) {
-          const settings = await api.GET("/api/v1/organizations/{orgId}/ai-gateway", { params: { path: { orgId } } });
-          if (!alive.current || n !== serial.current) return;
-          if (settings.data && !settings.data.available) {
-            setInventory(null);
-            const needsHTTPS = settings.data.unavailable_reason === "https_required";
-            setHTTPSRequired(needsHTTPS);
-            setError(needsHTTPS ? transportMessage : aiGatewayPrerequisite(settings.data));
-            return;
-          }
-        }
+        // The refusal itself names the reason, so the banner can show it even if the settings could not be read.
+        if (r.error?.error?.code === "ai_https_required") gateway.assume("transport_required");
+        if (r.error?.error?.code === "ai_https_required" || r.response?.status === 503) { setInventory(null); gateway.reload(); }
         throw Error();
       }
       setInventory(r.data);
+      gateway.assume(null);
       setError("");
     } catch { if (alive.current && n === serial.current) setError("Could not load provider connections. Retry to refresh authoritative state."); }
     finally { if (alive.current && n === serial.current) setLoading(false); }
@@ -126,13 +114,31 @@ function ProviderWorkspace({ orgId, canManage = true, canManageTransport = false
     try {
       const r = await call();
       if (!alive.current) return false;
-      const failure = r.error ? r.response.status === 409 ? "This connection changed or is referenced by a team policy or user group grant. Refresh and update those grants before removing models, changing their mode or deleting the connection." : "The operation could not be completed. Check the connection state; an uncertain key update requires entering the API key again." : "";
+      const failure = r.error ? r.response.status === 409 ? conflictMessage : failureMessage : "";
       if (!r.error) { setNotice(success); ok = true; }
       await reload();
       if (alive.current && failure) setError(failure);
     } catch { if (alive.current) { await reload(); if (alive.current) setError("Could not reach the API. Refresh to check saved state. Enter the API key again if an update did not finish."); } }
     finally { if (alive.current) setBusy(false); }
     return ok;
+  }
+  async function remove(c: AIProviderConnection) {
+    if (busy || !canManage) return;
+    setBusy(true); setError(""); setNotice("");
+    try {
+      const r = await api.DELETE("/api/v1/organizations/{orgId}/ai-gateway/providers/{connectionId}", { params: { path: { orgId, connectionId: c.id } }, body: { expected_revision: c.revision } });
+      if (!alive.current) return;
+      // The 409 for credentials in use carries the lists beside the usual error envelope.
+      const conflict = r.error as Partial<S["AIProviderInUseConflict"]> | undefined;
+      const lists = conflict?.error?.code === "ai_provider_in_use" ? conflict.in_use : undefined;
+      const refused = lists && [lists.models, lists.policies, lists.agents].every(Array.isArray) ? lists : null;
+      await reload();
+      if (!alive.current) return;
+      if (!r.error) { setNotice("Provider connection deleted. Usage history is retained."); setRemoving(null); setInUse(null); setCredentialDetails(null); setConnectionModel(null); }
+      else if (refused) setInUse(refused);
+      else setError(r.response?.status === 409 ? conflictMessage : failureMessage);
+    } catch { if (alive.current) { await reload(); if (alive.current) setError("Could not reach the API. Refresh to check whether the credentials were deleted."); } }
+    finally { if (alive.current) setBusy(false); }
   }
   async function save(body: S["AIProviderCreate"] | S["AIProviderUpdate"], connection?: AIProviderConnection) {
     drafts.current = {};
@@ -177,7 +183,7 @@ function ProviderWorkspace({ orgId, canManage = true, canManageTransport = false
       { key: "edit", label: "Edit credentials", disabledReason: managementBlock, onSelect: () => setEditing(c) },
       { key: "check", label: "Check catalog", disabledReason: managementBlock, onSelect: () => checkCatalog(c) },
       { key: "toggle", label: c.enabled ? "Disable" : "Enable", disabledReason: managementBlock, onSelect: () => toggleCredential(c) },
-      { key: "delete", label: "Delete credentials", danger: true, disabledReason: managementBlock, onSelect: () => setRemoving(c) },
+      { key: "delete", label: "Delete credentials", danger: true, disabledReason: managementBlock, onSelect: () => { setInUse(null); setRemoving(c); } },
     ] : []),
   ];
   const modelActions = (c: AIProviderConnection, model: string): AppAccessRowMenuAction[] => [
@@ -192,12 +198,14 @@ function ProviderWorkspace({ orgId, canManage = true, canManageTransport = false
   const modelTable = (rows: typeof modelRows) => <div className="ai-gateway-table-scroll"><table className="ai-gateway-table"><caption className="sr-only">Configured models</caption><thead><tr><th>Model</th><th>Provider · mode</th><th>Credential</th><th>State</th><th><span className="sr-only">Actions</span></th></tr></thead><tbody>{rows.map(({ connection: c, model }) => <tr key={`${c.id}:${model}`}><th scope="row"><button className="ai-item-button" title={model} aria-label={`View model ${model}`} onClick={() => openModel(c, model)}>{modelDisplayName(model)}</button></th><td><span className="ai-gateway-provider-identity"><ProviderLogo provider={c.provider} /><span><span>{providerName(c.provider)}</span><small>{modeLabel(c.model_modes?.[model] ?? "chat").split(", ")[0]}</small></span></span></td><td><button className="ai-item-button ai-gateway-muted" onClick={() => openCredential(c)}>{c.name}</button></td><td>{stateTag(c)}</td><td><AppAccessRowMenu label={`Model actions for ${model} · ${c.name}`} actions={modelActions(c, model)} /></td></tr>)}</tbody></table></div>;
   const pager = (kind: "models" | "credentials") => { const isModels = kind === "models", rows = isModels ? visibleModels : visibleCredentials, page = isModels ? displayedModelPage : displayedCredentialPage, total = isModels ? modelRows.length : credentialRows.length; return <AppAccessPagination page={page} pageSize={pageSize} count={rows.length} hasNext={page * pageSize < total} busy={loading || busy} maxOffset={null} onPageChange={isModels ? setModelPage : setCredentialPage} onPageSizeChange={size => { setPageSize(size); setModelPage(1); setCredentialPage(1); }} />; };
   return <section className="ai-provider-workspace ai-gateway-provider" aria-label="Models and endpoints">
-    <header className="ai-gateway-toolbar"><span className="ai-gateway-count">{inventory ? view === "connections" ? `${credentialRows.length} credential${credentialRows.length === 1 ? "" : "s"}` : `${modelRows.length} model${modelRows.length === 1 ? "" : "s"}` : ""}</span><div className="ai-inventory-actions"><RefreshButton label="Refresh" disabled={loading || busy} onClick={() => { setError(""); void reload(); }} />{view !== "connections" && canManage && <Button disabled={loading || busy || !inventory?.management_available || !definitions.length} onClick={() => changeView("add")}>Add Model</Button>}{view === "connections" && canManage && <Button disabled={loading || busy || !inventory?.management_available || !definitions.length} onClick={() => setEditing("new")}>Add Credentials</Button>}</div></header>
-    {error && !editing && !removing && <div className="ai-gateway-error"><p role="alert">{error}{httpsRequired && canManageTransport && <> <Link to="/settings?section=ai-transport">Open transport settings</Link></>}</p>{!inventory && !loading && <Button variant="ghost" size="sm" onClick={() => { setError(""); void reload(); }}>Retry provider connections</Button>}</div>}
+    <header className="ai-gateway-toolbar"><span className="ai-gateway-count">{inventory ? view === "connections" ? `${credentialRows.length} credential${credentialRows.length === 1 ? "" : "s"}` : `${modelRows.length} model${modelRows.length === 1 ? "" : "s"}` : ""}</span><div className="ai-inventory-actions"><RefreshButton label="Refresh" disabled={loading || busy} onClick={() => { setError(""); gateway.reload(); void reload(); }} />{view !== "connections" && canManage && <Button disabled={loading || busy || !inventory?.management_available || !definitions.length} onClick={() => changeView("add")}>Add Model</Button>}{view === "connections" && canManage && <Button disabled={loading || busy || !inventory?.management_available || !definitions.length} onClick={() => setEditing("new")}>Add Credentials</Button>}</div></header>
+    <AIGatewayOffBanner orgId={orgId} gateway={gateway} canManage={canManage} serverAdmin={canManageTransport} onChanged={() => { setError(""); void reload(); }} onAddProvider={view === "connections" && inventory?.management_available && definitions.length ? () => setEditing("new") : undefined} />
+    {/* While the banner says why nothing loads, the load error beside it would only repeat it less clearly. */}
+    {error && !editing && !removing && !(gateway.off && !inventory) && <div className="ai-gateway-error"><p role="alert">{error}</p>{!inventory && !loading && <Button variant="ghost" size="sm" onClick={() => { setError(""); gateway.reload(); void reload(); }}>Retry provider connections</Button>}</div>}
     {notice && <p role="status" className="ai-gateway-notice">{notice}</p>}
     {loading && !inventory ? <p role="status" className="ai-gateway-loading">Loading provider connections…</p> : inventory && <>
       {inventory.management_available && !definitions.length && <p className="ai-gateway-notice">Supported provider definitions are unavailable. Existing credentials remain editable.</p>}
-      {!inventory.management_available && <div className="ai-gateway-empty"><h3>Provider setup required</h3><p>Ask your installation administrator to enable provider configuration. Existing operator policies remain in AI Agents.</p></div>}
+      {!inventory.management_available && !gateway.off && <div className="ai-gateway-empty"><h3>Provider credentials cannot be changed here</h3><p>{canManageTransport ? "This server keeps provider credentials in its own configuration, so this page cannot add or change them. To manage them here, turn on provider management in the Tunnex Server configuration on the server itself, then restart it." : "This server keeps provider credentials in its own configuration, so this page cannot add or change them. Only a server administrator can change that, in the Tunnex Server configuration on the server itself."}</p></div>}
       {!routeView && <nav className="ai-provider-view-tabs" role="tablist" aria-label="Model management view"><button role="tab" aria-selected={view !== "connections"} onClick={() => changeView("models")}>Models</button><button role="tab" aria-selected={view === "connections"} onClick={() => changeView("connections")}>LLM Credentials</button></nav>}
       {inspectedConnection && (credentialDetails || inspectedModel) ? <section className="ai-gateway-detail" aria-label={inspectedModel ? `${inspectedModel} model` : `${inspectedConnection.name} credentials`}>
         <nav className="ai-gateway-breadcrumb" aria-label="AI Gateway breadcrumb"><button onClick={() => { setConnectionModel(null); setCredentialDetails(null); }}>{view === "connections" ? "LLM credentials" : "Models"}</button><span aria-hidden="true">/</span><span>{inspectedModel ? modelDisplayName(inspectedModel) : inspectedConnection.name}</span></nav>
@@ -223,7 +231,13 @@ function ProviderWorkspace({ orgId, canManage = true, canManageTransport = false
         {credentialRows.length ? <><div className="ai-gateway-table-scroll"><table className="ai-gateway-table"><caption className="sr-only">Saved LLM credentials</caption><thead><tr><th>Credential</th><th>Provider</th><th>Models</th><th>State</th><th>Catalog check</th><th><span className="sr-only">Actions</span></th></tr></thead><tbody>{visibleCredentials.map(c => <tr key={c.id}><th scope="row"><button className="ai-item-button" onClick={() => openCredential(c)}>{c.name}</button></th><td>{providerBrand(c.provider)}</td><td>{c.models.length}</td><td>{stateTag(c)}</td><td title={c.last_test_at ? new Date(c.last_test_at).toLocaleString() : "No catalog check recorded"}><span className={c.last_test_status === "failed" ? "ai-gateway-state-error" : ""}>{c.last_test_status}</span></td><td><AppAccessRowMenu label={`Credential actions for ${c.name}`} actions={credentialActions(c)} /></td></tr>)}</tbody></table></div>{pager("credentials")}</> : <div className="ai-gateway-empty"><h3>{inventory.items.length ? "No matching credentials" : "Connect a provider"}</h3><p>{inventory.items.length ? "Try another credential name or provider." : "Save provider credentials to reuse them across models."}</p>{credentialSearch || credentialProvider ? <Button variant="ghost" onClick={() => { setCredentialSearch(""); setCredentialProvider(""); setCredentialPage(1); }}>Clear filters</Button> : canManage && <Button disabled={!!managementBlock || !definitions.length} onClick={() => setEditing("new")}>Add Credentials</Button>}</div>}
       </>}
       {view !== "add" && inventory.legacy_key_ids.length > 0 && <details className="ai-gateway-disclosure"><summary>Operator-managed references · {inventory.legacy_key_ids.length}</summary><p>Credentials and model scope are managed by your installation administrator.</p><div className="ai-provider-tags">{inventory.legacy_key_ids.map(id => <code key={id}>{id}</code>)}</div></details>}
-      {removing && canManage && <Modal title={`Delete ${removing.name}?`} placement="right" showClose danger onDismiss={() => !busy && setRemoving(null)} actions={<><Button disabled={busy} onClick={() => setRemoving(null)}>Cancel deletion</Button><Button disabled={busy || loading} onClick={async () => { const c = removing; if (await mutate(() => api.DELETE("/api/v1/organizations/{orgId}/ai-gateway/providers/{connectionId}", { params: { path: { orgId, connectionId: c.id } }, body: { expected_revision: c.revision } }), "Provider connection deleted. Usage history is retained.")) { setRemoving(null); setCredentialDetails(null); setConnectionModel(null); } }}>Confirm deletion</Button></>}><div className="ai-gateway-action-form">{error && <p role="alert">{error}</p>}<p>Delete these credentials and all {removing.models.length} configured models?</p><p>Remove all team policies and group grants that reference this connection first. Usage history is retained.</p></div></Modal>}
+      {removing && canManage && <Modal title={`Delete ${removing.name}?`} placement="right" showClose danger onDismiss={() => { if (!busy) { setRemoving(null); setInUse(null); } }} actions={<><Button disabled={busy} onClick={() => { setRemoving(null); setInUse(null); }}>{inUse ? "Close" : "Cancel deletion"}</Button>{!inUse && <Button disabled={busy || loading} onClick={() => void remove(removing)}>Confirm deletion</Button>}</>}><div className="ai-gateway-action-form">{inUse ? <div className="ai-in-use">
+        <p role="alert">These credentials are still in use, so they were not deleted. Remove them from each of the following first, then delete them.</p>
+        {inUse.models.length > 0 && <div><h4>Models with access granted</h4><ul>{inUse.models.map(model => <li key={model}><Link to="/ai-gateway/access" title={model}>{modelDisplayName(model)}</Link></li>)}</ul></div>}
+        {inUse.policies.length > 0 && <div><h4>Agent groups that may use them</h4><ul>{inUse.policies.map(policy => <li key={policy.team_id}><Link to="/ai-gateway/access?subject=agents">{policy.name}</Link></li>)}</ul></div>}
+        {inUse.agents.length > 0 && <div><h4>Agents with access</h4><ul>{inUse.agents.map(agent => <li key={agent.device_id}><Link to={`/agents/${encodeURIComponent(agent.device_id)}`}>{agent.name}</Link></li>)}</ul></div>}
+        {!inUse.models.length && !inUse.policies.length && !inUse.agents.length && <p>Open Access to find what still uses them.</p>}
+      </div> : <>{error && <p role="alert">{error}</p>}<p>Delete these credentials and all {removing.models.length} configured models?</p><p>Credentials that a user group, an agent group or an agent still uses are not deleted: you are shown what uses them. Usage history is retained.</p></>}</div></Modal>}
       {accessAfterSave && !grantAfterSave && <Modal title="Models saved" placement="right" showClose onDismiss={() => setAccessAfterSave(null)} actions={<><Button onClick={() => setAccessAfterSave(null)}>Later</Button><Button onClick={() => setGrantAfterSave(true)}>Grant access</Button></>}><div className="ai-gateway-action-form"><p>Choose a user group to make these models available in Playground.</p></div></Modal>}
       {accessAfterSave && grantAfterSave && <AIGroupAccess orgId={orgId} canManage={canManage} dialogOnly initialConnection={accessAfterSave.id} initialModel={accessAfterSave.models[accessAfterSave.models.length - 1]} onDone={() => { setAccessAfterSave(null); setGrantAfterSave(false); }} />}
       {canManage && (editing || view === "add") && <ProviderEditor draft={drafts.current[editing === "new" ? "new" : editing?.id ?? "model"]} key={editing === "new" ? "new-credentials" : editing ? `${editing.id}:${editing.revision}` : "new-model"} error={error} orgId={orgId} connection={editing === "new" ? undefined : editing ?? undefined} definitions={definitions} supportedModes={inventory.supported_modes ?? ["chat"]} testAvailable={inventory.test_available ?? false} publicEndpointsAvailable={inventory.public_endpoints_available ?? false} foundryAvailable={inventory.foundry_available ?? false} foundryEndpoints={inventory.foundry_endpoints ?? []} sagemakerAvailable={inventory.sagemaker_available ?? false} sagemakerEndpoints={inventory.sagemaker_endpoints ?? []} customAvailable={inventory.custom_available ?? false} endpoints={inventory.custom_endpoints ?? []} connections={inventory.items} modelOnly={!editing} busy={busy} onCancel={draft => { drafts.current[editing === "new" ? "new" : editing?.id ?? "model"] = { ...draft, secret: "" }; editing ? setEditing(null) : changeView("models"); }} onSave={save} />}
