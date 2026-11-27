@@ -122,7 +122,7 @@ describe("active Agent detail mutation ownership", () => {
     expect(await screen.findByText(/MCP tool policy could not be loaded: Unavailable/)).toBeTruthy();
     expect(screen.getByText(/Step-up requests could not be loaded: Unavailable/)).toBeTruthy();
     expect(screen.getByText(/Sign-in status could not be loaded: Unavailable/)).toBeTruthy();
-    expect(screen.queryByText("No policy yet: the local proxy denies every tool.")).toBeNull();
+    expect(screen.queryByText("No choices are saved yet, so every tool is Off.")).toBeNull();
     expect(screen.queryByText("No step-up requests.")).toBeNull();
   });
 
@@ -241,21 +241,16 @@ it("allows creating the first MCP policy but does not hide permission failures",
  const original = get.getMockImplementation()!;
  get.mockImplementation(async (path: string) => path.endsWith("/mcp-tool-policy") ? {error:{error:{code:"mcp_tool_policy_not_found"}}} : original(path));
  renderDetail("mcp");
- expect(await screen.findByText("No policy yet: the local proxy denies every tool.")).toBeTruthy();
+ expect(await screen.findByText("No choices are saved yet, so every tool is Off.")).toBeTruthy();
  expect(screen.getByRole("button", {name:"Save tool policy"})).toBeTruthy();
 });
 
-it("explains missing argument constraint fields before submitting a tool policy", async () => {
+it("sets a tool to Allow from the MCP tab without any raw JSON box", async () => {
   seed();
   renderDetail("mcp");
-  fireEvent.click(await screen.findByRole("checkbox", {name: "inventory · read"}));
-  const constraints = screen.getByRole("textbox", {name: "Argument constraints for read"});
-  fireEvent.change(constraints, {target: {value: '{"required":[]}'}});
-  fireEvent.click(screen.getByRole("button", {name: "Save tool policy"}));
-  expect(await screen.findByText(/Argument constraints need a required array and a properties object/)).toBeTruthy();
-  expect(put).not.toHaveBeenCalled();
-  fireEvent.change(constraints, {target: {value: '{"required":[],"properties":{}}'}});
+  fireEvent.click(await screen.findByRole("radio", {name: "Allow"}));
+  expect(screen.queryByRole("textbox", {name: /Argument constraints/})).toBeNull();
   fireEvent.click(screen.getByRole("button", {name: "Save tool policy"}));
   await waitFor(() => expect(put).toHaveBeenCalled());
-  expect(put.mock.calls[0][1].body.rules[0].argument_constraints).toEqual({required: [], properties: {}});
+  expect(put.mock.calls[0][1].body.rules).toEqual([{endpoint: "https://mcp.example.test", server_name: "inventory", tool_name: "read", input_schema_hash: "hash", step_up_required: false}]);
 });
