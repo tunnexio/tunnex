@@ -234,7 +234,7 @@ describe("in-place runtime update on an enrolled host (executed shell)", { timeo
     const f = harness({ enrolled: true });
     for (const [name, path] of Object.entries(f.installed)) if (!(present as readonly string[]).includes(name)) rmSync(path);
     if ((present as readonly string[]).includes("link")) symlinkSync("/missing-owned-runtime", f.installed.bin);
-    const result = updateRefused(f, /This host is not enrolled as a Tunnex agent\. Use the install command from Add agent in Tunnex instead\./);
+    const result = updateRefused(f, /This host is not enrolled with the Tunnex agent runtime, so there is nothing to update\. Use the install command from Add agent in Tunnex instead\./);
     expect(f.calls()).not.toContain("curl");
     expect(result.stderr.trim().split("\n")).toHaveLength(2);
   });
