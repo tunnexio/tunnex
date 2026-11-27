@@ -22,8 +22,8 @@ let groupPolicy: Record<string, unknown> = {};
 const agentPolicy = { version: 2, inventory_observed_at: "2026-11-27T10:00:00Z", created_at: "2026-11-27T09:00:00Z", override_endpoints: [billing], rules: [{ endpoint: billing, server_name: "billing", tool_name: "refund_payment", input_schema_hash: "s1", step_up_required: false, definition_state: "current" }] };
 const changed = vi.fn();
 const groupPolicyPath = "/api/v1/organizations/{orgId}/agent-groups/{groupId}/mcp-servers/{profileId}/tool-policy";
-function show(servers: Array<Record<string, unknown>>, props: { canManagePolicy?: boolean; canConnect?: boolean } = {}) {
-  return render(<MemoryRouter><AgentMCPServers orgId="org-a" deviceId="agent" agentName="billing-runner" effective={{ assigned: servers.length > 0, enforcement: "gateway", servers } as never} inventory={inventory} canManagePolicy={props.canManagePolicy ?? true} canConnect={props.canConnect ?? true} onChanged={changed} /></MemoryRouter>);
+function show(servers: Array<Record<string, unknown>>, props: { canManagePolicy?: boolean; canConnect?: boolean; enforcement?: string | null } = {}) {
+  return render(<MemoryRouter><AgentMCPServers orgId="org-a" deviceId="agent" agentName="billing-runner" effective={{ assigned: servers.length > 0, ...(props.enforcement === null ? {} : { enforcement: props.enforcement ?? "gateway" }), servers } as never} inventory={inventory} canManagePolicy={props.canManagePolicy ?? true} canConnect={props.canConnect ?? true} onChanged={changed} /></MemoryRouter>);
 }
 const chosen = (scope: HTMLElement, name: string) => within(within(scope).getByRole("radiogroup", { name: `Choice for ${name}` })).getAllByRole("radio").find((item) => item.getAttribute("aria-checked") === "true")?.textContent;
 
@@ -116,6 +116,32 @@ describe("an agent's MCP servers", () => {
     fireEvent.click(within(card).getByRole("button", { name: "Use the group's policy" }));
     await waitFor(() => expect(changed).toHaveBeenCalled());
     expect(within(card).queryByRole("alert")).toBeNull();
+  });
+
+  describe("an agent whose runtime has not been updated", () => {
+    const title = "This agent will not get these tool choices until its runtime is updated";
+    const body = "Its runtime is an older version that reads only this agent's own tool policy, so the choices of Finance agents do not reach it and it has no tools from this server. Update the runtime, or give this agent its own policy for now. Update runtime";
+
+    it("is told its group's tool choices do not reach it yet, with the link to Update runtime", async () => {
+      show([server({})], { enforcement: "agent_host" });
+      const card = screen.getByRole("region", { name: "Billing tools" });
+      const notice = within(card).getByRole("note", { name: title });
+      expect(notice.textContent).toBe(`${title}${body}`);
+      expect(within(notice).getByRole("link", { name: "Update runtime" }).getAttribute("href")).toBe("/agents/agent?tab=runtime");
+      // Nothing else changes: the group's policy is still shown and can still be edited.
+      await within(card).findByRole("list", { name: "Tools" });
+      expect(within(card).getByRole("button", { name: "Save tool policy" })).toBeTruthy();
+    });
+
+    it("is not warned about a server it has its own policy for, which the older runtime does read", () => {
+      show([server({ policy_source: "agent" })], { enforcement: "agent_host" });
+      expect(screen.queryByRole("note", { name: title })).toBeNull();
+    });
+
+    it.each([["the gateway applies the rules", "gateway"], ["MCP is withheld", "unavailable"], ["the server did not say", null]])("shows no such notice when %s", (_label, enforcement) => {
+      show([server({})], { enforcement });
+      expect(screen.queryByRole("note", { name: title })).toBeNull();
+    });
   });
 
   it("lists two servers by name, each with its own address, and marks the first", async () => {
