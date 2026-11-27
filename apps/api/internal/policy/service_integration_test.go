@@ -1021,3 +1021,227 @@ func TestPolicyMachineAudits(t *testing.T) {
 		t.Fatalf("machine grant-delete must have actor_user_id NULL, got %v (the M1b confidently-wrong attribution)", *dusr)
 	}
 }
+
+// ── AI-SEC-2: the snapshot decides which direct MCP paths are closed ──────────────
+
+type mcpFixture struct {
+	fixture
+	agent, group, profile uuid.UUID
+}
+
+// seedMCP adds an agent device in an agent group that has an MCP profile assigned. The gateway reports
+// nothing and the organization has no grace row, so each test sets exactly the gate it is about.
+func seedMCP(t *testing.T, pool *pgxpool.Pool, endpoint string) mcpFixture {
+	t.Helper()
+	f := mcpFixture{fixture: seed(t, pool), agent: uuid.New(), group: uuid.New(), profile: uuid.New()}
+	exec := func(sql string, args ...any) {
+		t.Helper()
+		if _, err := pool.Exec(f.ctx, sql, args...); err != nil {
+			t.Fatalf("seed %q: %v", sql, err)
+		}
+	}
+	exec(`INSERT INTO devices (id, org_id, user_id, node_id, name, public_key, assigned_ip, kind) VALUES ($1,$2,$3,$4,'agent','AzN444nzLsFjGeLNmSE9lzuvLAWI7mGMU2Z3fLroWnc=','10.99.0.20','agent')`, f.agent, f.org, f.user, f.node)
+	exec(`INSERT INTO agent_groups (id, org_id, name) VALUES ($1,$2,'mcp agents')`, f.group, f.org)
+	exec(`INSERT INTO agent_group_members (org_id, agent_group_id, device_id, created_by_user_id) VALUES ($1,$2,$3,$4)`, f.org, f.group, f.agent, f.user)
+	exec(`INSERT INTO agent_mcp_profiles (id, org_id, name, endpoint) VALUES ($1,$2,'db tools',$3)`, f.profile, f.org, endpoint)
+	exec(`INSERT INTO agent_mcp_profile_assignments (org_id, profile_id, agent_group_id) VALUES ($1,$2,$3)`, f.org, f.profile, f.group)
+	return f
+}
+
+func (f mcpFixture) set(t *testing.T, pool *pgxpool.Pool, gatewayCaps string, runtimeCapable bool, grace string) {
+	t.Helper()
+	exec := func(sql string, args ...any) {
+		t.Helper()
+		if _, err := pool.Exec(f.ctx, sql, args...); err != nil {
+			t.Fatalf("set %q: %v", sql, err)
+		}
+	}
+	exec(`UPDATE nodes SET capabilities=$2::jsonb WHERE id=$1`, f.node, gatewayCaps)
+	exec(`DELETE FROM agent_runtime_state WHERE device_id=$1`, f.agent)
+	if runtimeCapable {
+		exec(`INSERT INTO agent_runtime_state (device_id, mcp_gateway_capable_at) VALUES ($1, now())`, f.agent)
+	} else {
+		exec(`INSERT INTO agent_runtime_state (device_id) VALUES ($1)`, f.agent)
+	}
+	exec(`DELETE FROM organization_mcp_direct_path_grace WHERE org_id=$1`, f.org)
+	switch grace {
+	case "open":
+		exec(`INSERT INTO organization_mcp_direct_path_grace (org_id, grace_until) VALUES ($1, now() + interval '1 day')`, f.org)
+	case "ended":
+		exec(`INSERT INTO organization_mcp_direct_path_grace (org_id, grace_until) VALUES ($1, now() - interval '1 second')`, f.org)
+	}
+}
+
+const (
+	mcpCapableGateway = `{"mcp_gateway_ready":true,"max_policy_version":16}`
+	mcpOldGateway     = `{"max_policy_version":15,"ai_vpn_http_ready":true}`
+)
+
+func TestBuildSnapshotGatesMCPDirectPathDeny(t *testing.T) {
+	pool := testPool(t)
+	f := seedMCP(t, pool, "http://10.20.0.5:8080/mcp")
+	svc := policy.NewService(pool)
+	cases := []struct {
+		name, caps string
+		runtime    bool
+		grace      string
+		want       bool
+	}{
+		{"old gateway, no grace", mcpOldGateway, false, "none", false},
+		{"old gateway, capable runtime, grace ended", mcpOldGateway, true, "ended", false},
+		{"capable gateway, old runtime, grace open", mcpCapableGateway, false, "open", false},
+		{"capable gateway, old runtime, grace ended", mcpCapableGateway, false, "ended", true},
+		{"capable gateway, old runtime, never had grace", mcpCapableGateway, false, "none", true},
+		{"capable gateway, capable runtime, grace open", mcpCapableGateway, true, "open", true},
+		{"capable gateway, capable runtime, no grace", mcpCapableGateway, true, "none", true},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			f.set(t, pool, c.caps, c.runtime, c.grace)
+			snap, err := svc.BuildSnapshot(f.ctx, f.org)
+			if err != nil {
+				t.Fatalf("BuildSnapshot: %v", err)
+			}
+			compiled, err := svc.CompiledForNode(f.ctx, f.org, f.node, uuid.Nil)
+			if err != nil || compiled == nil {
+				t.Fatalf("CompiledForNode: %v %v", compiled, err)
+			}
+			if !c.want {
+				if len(snap.MCPDirectPathDenies) != 0 || len(compiled.Deny) != 0 || compiled.Version >= 16 {
+					t.Fatalf("no deny may be emitted, got inputs %+v, artifact v%d %+v", snap.MCPDirectPathDenies, compiled.Version, compiled.Deny)
+				}
+				return
+			}
+			want := []policyspec.DenyEntry{{SrcIP: "10.99.0.20", DstCIDR: "10.20.0.5/32", Protocol: policyspec.ProtoTCP, PortLow: 8080, PortHigh: 8080, Reason: policyspec.DenyReasonMCPGatewayOnly, SrcDeviceID: f.agent.String()}}
+			if !reflect.DeepEqual(compiled.Deny, want) || compiled.Version != 16 {
+				t.Fatalf("artifact v%d deny = %+v, want v16 %+v", compiled.Version, compiled.Deny, want)
+			}
+		})
+	}
+}
+
+func TestBuildSnapshotMCPDirectPathFollowsAssignmentAndMembership(t *testing.T) {
+	pool := testPool(t)
+	f := seedMCP(t, pool, "http://10.20.0.5:8080/mcp")
+	f.set(t, pool, mcpCapableGateway, true, "none")
+	svc := policy.NewService(pool)
+	inputs := func() []policy.MCPDirectPathDeny {
+		t.Helper()
+		snap, err := svc.BuildSnapshot(f.ctx, f.org)
+		if err != nil {
+			t.Fatalf("BuildSnapshot: %v", err)
+		}
+		return snap.MCPDirectPathDenies
+	}
+	if got := inputs(); !reflect.DeepEqual(got, []policy.MCPDirectPathDeny{{DeviceID: f.agent, Host: "10.20.0.5", Port: 8080}}) {
+		t.Fatalf("assigned agent: inputs = %+v", got)
+	}
+	// The person's laptop on the same gateway is never an input.
+	for _, in := range inputs() {
+		if in.DeviceID == f.device {
+			t.Fatal("a user device became a deny input")
+		}
+	}
+	if _, err := pool.Exec(f.ctx, `UPDATE agent_mcp_profile_assignments SET state='unassigned', ended_at=now(), ended_by_user_id=$2 WHERE org_id=$1`, f.org, f.user); err != nil {
+		t.Fatal(err)
+	}
+	if got := inputs(); len(got) != 0 {
+		t.Fatalf("unassigned profile still closes a path: %+v", got)
+	}
+	if _, err := pool.Exec(f.ctx, `INSERT INTO agent_mcp_profile_assignments (org_id, profile_id, agent_group_id) VALUES ($1,$2,$3)`, f.org, f.profile, f.group); err != nil {
+		t.Fatal(err)
+	}
+	if got := inputs(); len(got) != 1 {
+		t.Fatalf("re-assigned profile: inputs = %+v", got)
+	}
+	if _, err := pool.Exec(f.ctx, `DELETE FROM agent_group_members WHERE org_id=$1 AND device_id=$2`, f.org, f.agent); err != nil {
+		t.Fatal(err)
+	}
+	if got := inputs(); len(got) != 0 {
+		t.Fatalf("an agent removed from the group still has a closed path: %+v", got)
+	}
+}
+
+// An organization with no MCP assignment compiles exactly what it compiled before, whatever its gateway reports.
+func TestBuildSnapshotWithoutMCPAssignmentHasNoDenyInput(t *testing.T) {
+	pool := testPool(t)
+	f := seed(t, pool)
+	if _, err := pool.Exec(f.ctx, `UPDATE nodes SET capabilities=$2::jsonb WHERE id=$1`, f.node, mcpCapableGateway); err != nil {
+		t.Fatal(err)
+	}
+	svc := policy.NewService(pool)
+	snap, err := svc.BuildSnapshot(f.ctx, f.org)
+	if err != nil {
+		t.Fatalf("BuildSnapshot: %v", err)
+	}
+	if snap.MCPDirectPathDenies != nil {
+		t.Fatalf("no assignment must leave the deny input nil, got %+v", snap.MCPDirectPathDenies)
+	}
+	for node, c := range policy.Compile(snap) {
+		if len(c.Deny) != 0 || c.Version >= 16 {
+			t.Fatalf("node %s: artifact v%d carries a deny without any MCP assignment", node, c.Version)
+		}
+	}
+}
+
+// The grace date passing changes the compiled artifact with no mutation to hang a push on: the leader
+// sweep pushes each organization once when its date goes by.
+func TestMCPDirectPathGraceSweepPushesWhenGraceEnds(t *testing.T) {
+	pool := testPool(t)
+	f := seedMCP(t, pool, "http://10.20.0.5:8080/mcp")
+	f.set(t, pool, mcpCapableGateway, false, "open")
+	n := &fakeNotifier{}
+	svc := policy.NewService(pool)
+	svc.SetNotifier(n)
+	pushedOrg := func() bool {
+		for _, ids := range n.calls {
+			for _, id := range ids {
+				if id == f.node {
+					return true
+				}
+			}
+		}
+		return false
+	}
+
+	since, err := svc.SweepMCPDirectPathGrace(f.ctx, time.Time{})
+	if err != nil {
+		t.Fatalf("sweep: %v", err)
+	}
+	if pushedOrg() {
+		t.Fatal("grace still open: nothing to push")
+	}
+	if _, err := pool.Exec(f.ctx, `UPDATE organization_mcp_direct_path_grace SET grace_until = now() WHERE org_id=$1`, f.org); err != nil {
+		t.Fatal(err)
+	}
+	next, err := svc.SweepMCPDirectPathGrace(f.ctx, since)
+	if err != nil {
+		t.Fatalf("sweep: %v", err)
+	}
+	if !pushedOrg() {
+		t.Fatal("the organization's gateways were not pushed when its grace ended")
+	}
+	n.calls = nil
+	if _, err := svc.SweepMCPDirectPathGrace(f.ctx, next); err != nil {
+		t.Fatalf("sweep: %v", err)
+	}
+	if pushedOrg() {
+		t.Fatal("an ended grace must be pushed once, not on every tick")
+	}
+	// A new leader starts from the zero time and catches up on every ended grace.
+	if _, err := svc.SweepMCPDirectPathGrace(f.ctx, time.Time{}); err != nil || !pushedOrg() {
+		t.Fatalf("a fresh sweeper must push organizations whose grace already ended (err %v)", err)
+	}
+}
+
+func TestRecompileOrgPushesOrgGateways(t *testing.T) {
+	pool := testPool(t)
+	f := seed(t, pool)
+	n := &fakeNotifier{}
+	svc := policy.NewService(pool)
+	svc.SetNotifier(n)
+	svc.RecompileOrg(f.ctx, f.org)
+	if len(n.calls) != 1 || len(n.calls[0]) != 1 || n.calls[0][0] != f.node {
+		t.Fatalf("RecompileOrg must push the organization's gateways, got %v", n.calls)
+	}
+}

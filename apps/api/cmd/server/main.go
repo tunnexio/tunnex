@@ -1324,6 +1324,7 @@ func main() {
 	// a lapsed temporary grant's /32 is pushed off every org gateway promptly. Shares
 	// pollCtx (cancelled on shutdown).
 	apphttp.StartPolicyGrantSweeper(pollCtx, pool, pushHub, mayTick)
+	apphttp.StartPolicyMCPGraceTicker(pollCtx, pool, pushHub, mayTick)
 	// F10 JIT approvals own their request-bound rule expiry. The generic policy
 	// sweeper intentionally excludes those rows; the elected writer advances the
 	// workflow, audit and gateway push atomically here.
