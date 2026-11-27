@@ -36,6 +36,9 @@ type fakeControl struct {
 	targets   []mcpwire.Target
 	targetErr error
 	reports   []mcpwire.InventoryReport
+	// wait answers the held-call long poll; nil fails the test's expectation that nothing waits.
+	wait  func(ctx context.Context, vpnIP, vpnKey string, request mcpwire.WaitRequest) (mcpwire.WaitResponse, error)
+	waits []mcpwire.WaitRequest
 }
 
 func newFakeControl(decide func(vpnIP, vpnKey string, request mcpwire.DecideRequest) (mcpwire.DecideResponse, error)) *fakeControl {
@@ -64,6 +67,24 @@ func (c *fakeControl) MCPInventory(_ context.Context, report mcpwire.InventoryRe
 	defer c.mu.Unlock()
 	c.reports = append(c.reports, report)
 	return nil
+}
+
+func (c *fakeControl) MCPWait(ctx context.Context, vpnIP, vpnKey string, request mcpwire.WaitRequest) (mcpwire.WaitResponse, error) {
+	c.mu.Lock()
+	c.waits = append(c.waits, request)
+	c.evidence = append(c.evidence, [2]string{vpnIP, vpnKey})
+	wait := c.wait
+	c.mu.Unlock()
+	if wait == nil {
+		return mcpwire.WaitResponse{}, errors.New("no wait expected")
+	}
+	return wait(ctx, vpnIP, vpnKey, request)
+}
+
+func (c *fakeControl) waitCalls() int {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return len(c.waits)
 }
 
 func (c *fakeControl) decideCalls() int {
@@ -649,7 +670,39 @@ func TestRequestsRefusedBeforeAnyDecision(t *testing.T) {
 		}, 421, codeInvalidRequest},
 		"another path": {func() *http.Request {
 			r := mcpRequest(callBody)
-			r.URL.Path = "/mcp/admin"
+			r.URL.Path = "/admin"
+			return r
+		}, 404, codeInvalidRequest},
+		"a path below a server name": {func() *http.Request {
+			r := mcpRequest(callBody)
+			r.URL.Path = "/mcp/orders-db/admin"
+			return r
+		}, 404, codeInvalidRequest},
+		"a server name with a trailing slash": {func() *http.Request {
+			r := mcpRequest(callBody)
+			r.URL.Path = "/mcp/"
+			return r
+		}, 404, codeInvalidRequest},
+		"a server name that is not a name": {func() *http.Request {
+			r := mcpRequest(callBody)
+			r.URL.Path = "/mcp/Orders_DB"
+			return r
+		}, 404, codeInvalidRequest},
+		"the reserved server name": {func() *http.Request {
+			r := mcpRequest(callBody)
+			r.URL.Path = "/mcp/mcp"
+			return r
+		}, 404, codeInvalidRequest},
+		"an escaped server name": {func() *http.Request {
+			r := mcpRequest(callBody)
+			r.URL.Path = "/mcp/a/b"
+			r.URL.RawPath = "/mcp/a%2Fb"
+			return r
+		}, 404, codeInvalidRequest},
+		"a query on a server path": {func() *http.Request {
+			r := mcpRequest(callBody)
+			r.URL.Path = "/mcp/orders-db"
+			r.URL.RawQuery = "server=other"
 			return r
 		}, 404, codeInvalidRequest},
 		"a query": {func() *http.Request {
@@ -814,4 +867,341 @@ func TestBusyListenerRefusesInsteadOfQueueing(t *testing.T) {
 	if control.decideCalls() != 0 {
 		t.Fatal("a refused request reached the control plane")
 	}
+}
+
+// ── AI-UX-1: several servers ─────────────────────────────────────────────────────
+
+// The path names the server: /mcp is the agent's first server (an empty name on the wire, which is also
+// what a gateway that predates several servers sends) and /mcp/<name> is the server of that name. The
+// gateway only passes the name on; the control plane decides whether the agent has such a server.
+func TestServerNameComesFromThePath(t *testing.T) {
+	var paths []string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		paths = append(paths, r.URL.Path)
+		if r.Header.Get("Authorization") != "Bearer "+leasedToken {
+			t.Errorf("credential = %q", r.Header.Get("Authorization"))
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"jsonrpc":"2.0","id":7,"result":{}}`)
+	}))
+	defer upstream.Close()
+	control := newFakeControl(func(_, _ string, request mcpwire.DecideRequest) (mcpwire.DecideResponse, error) {
+		if request.Server == "not-assigned" {
+			return mcpwire.DecideResponse{Decision: mcpwire.DecisionDeny, Error: &mcpwire.Error{HTTPStatus: 403, Code: mcpwire.CodeDenied, Message: mcpwire.MessageDenied}}, nil
+		}
+		return mcpwire.DecideResponse{Decision: mcpwire.DecisionAllow, Upstream: upstream.URL + "/served/" + request.Server, Authorization: leasedToken, CallID: "call-1"}, nil
+	})
+	h := testRelay(control)
+	for _, tc := range []struct{ path, server string }{{"/mcp", ""}, {"/mcp/orders-db", "orders-db"}, {"/mcp/billing", "billing"}} {
+		r := mcpRequest(callBody)
+		r.URL.Path = tc.path
+		w := serve(h, r)
+		if w.Code != 200 || strings.Contains(w.Body.String(), leasedToken) {
+			t.Fatalf("%s: status=%d body=%s", tc.path, w.Code, w.Body)
+		}
+		control.result(t)
+		got := control.decisions[len(control.decisions)-1]
+		if got.Server != tc.server || got.Method != "tools/call" || got.ToolName != "run_sql" {
+			t.Fatalf("%s: decision request %+v, want server %q", tc.path, got, tc.server)
+		}
+		if evidence := control.evidence[len(control.evidence)-1]; evidence != [2]string{agentIP, peer} {
+			t.Fatalf("%s: evidence %v", tc.path, evidence)
+		}
+	}
+	if strings.Join(paths, " ") != "/served/ /served/orders-db /served/billing" {
+		t.Fatalf("forwarded to %v", paths)
+	}
+	// A name the agent has no server for is the control plane's refusal, and nothing is forwarded.
+	r := mcpRequest(callBody)
+	r.URL.Path = "/mcp/not-assigned"
+	requireError(t, serve(h, r), 403, mcpwire.CodeDenied, mcpwire.MessageDenied)
+	if len(paths) != 3 {
+		t.Fatalf("a refused server was forwarded: %v", paths)
+	}
+	control.noResult(t)
+}
+
+// ── AI-UX-1: held "Ask first" calls ──────────────────────────────────────────────
+
+func stepUp(requestID string, holdSeconds int) mcpwire.DecideResponse {
+	return mcpwire.DecideResponse{Decision: mcpwire.DecisionDeny, HoldSeconds: holdSeconds,
+		Error: &mcpwire.Error{HTTPStatus: 403, Code: mcpwire.CodeStepUpRequired, Message: mcpwire.MessageStepUpRequired, Data: &mcpwire.ErrorData{RequestID: requestID}}}
+}
+
+// holdControl answers the first decision with a holdable step-up refusal and every later one with next.
+func holdControl(next func(mcpwire.DecideRequest) mcpwire.DecideResponse) *fakeControl {
+	var mu sync.Mutex
+	asked := 0
+	return newFakeControl(func(_, _ string, request mcpwire.DecideRequest) (mcpwire.DecideResponse, error) {
+		mu.Lock()
+		defer mu.Unlock()
+		asked++
+		if asked == 1 {
+			return stepUp("req-42", 45), nil
+		}
+		return next(request), nil
+	})
+}
+
+func requireStepUp(t *testing.T, w *httptest.ResponseRecorder, requestID string) {
+	t.Helper()
+	reply := requireError(t, w, 403, mcpwire.CodeStepUpRequired, mcpwire.MessageStepUpRequired)
+	if string(reply.Error.Data) != `{"request_id":"`+requestID+`"}` {
+		t.Fatalf("error data = %s, want request id %s", reply.Error.Data, requestID)
+	}
+}
+
+// Approved while held: the gateway asks for the decision again (which consumes the approval) and forwards
+// on that allow. The agent sees a normal result.
+func TestHeldCallRunsWhenApproved(t *testing.T) {
+	forwardedCalls := 0
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		forwardedCalls++
+		body, _ := io.ReadAll(r.Body)
+		if string(body) != callBody || r.Header.Get("Authorization") != "Bearer "+leasedToken {
+			t.Errorf("forwarded %q with %q", body, r.Header.Get("Authorization"))
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"jsonrpc":"2.0","id":7,"result":{"content":[]}}`)
+	}))
+	defer upstream.Close()
+	control := holdControl(func(mcpwire.DecideRequest) mcpwire.DecideResponse {
+		return mcpwire.DecideResponse{Decision: mcpwire.DecisionAllow, Upstream: upstream.URL, Authorization: leasedToken, CallID: "call-9"}
+	})
+	control.wait = func(_ context.Context, vpnIP, vpnKey string, request mcpwire.WaitRequest) (mcpwire.WaitResponse, error) {
+		if vpnIP != agentIP || vpnKey != peer || request.RequestID != "req-42" {
+			t.Errorf("wait for %q as %s %s", request.RequestID, vpnIP, vpnKey)
+		}
+		if forwardedCalls != 0 {
+			t.Error("the call was forwarded before it was approved")
+		}
+		return mcpwire.WaitResponse{State: mcpwire.WaitApproved}, nil
+	}
+	h := testRelay(control)
+	r := mcpRequest(callBody)
+	r.URL.Path = "/mcp/orders-db"
+	w := serve(h, r)
+	if w.Code != 200 || w.Body.String() != `{"jsonrpc":"2.0","id":7,"result":{"content":[]}}` || strings.Contains(w.Body.String(), leasedToken) {
+		t.Fatalf("status=%d body=%s", w.Code, w.Body)
+	}
+	if result := control.result(t); result.CallID != "call-9" || result.Status != mcpwire.ResultOK {
+		t.Fatalf("result %+v", result)
+	}
+	if control.decideCalls() != 2 || control.waitCalls() != 1 || forwardedCalls != 1 {
+		t.Fatalf("decisions=%d waits=%d forwarded=%d", control.decideCalls(), control.waitCalls(), forwardedCalls)
+	}
+	// The second decision is asked about the same request, for the same server.
+	if first, second := control.decisions[0], control.decisions[1]; second.Server != "orders-db" || second.ToolName != first.ToolName || string(second.Arguments) != string(first.Arguments) || second.Method != first.Method {
+		t.Fatalf("second decision %+v differs from the first %+v", second, first)
+	}
+	if len(h.held) != 0 {
+		t.Fatalf("held slots still taken: %d", len(h.held))
+	}
+}
+
+// Anything but an approval returns the refusal the agent would have got at once, with the request id, and
+// forwards nothing.
+func TestHeldCallReturnsTheStepUpErrorUnlessApproved(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		t.Error("a call that was not approved was forwarded")
+	}))
+	defer upstream.Close()
+	for name, wait := range map[string]func(context.Context, string, string, mcpwire.WaitRequest) (mcpwire.WaitResponse, error){
+		"denied": func(context.Context, string, string, mcpwire.WaitRequest) (mcpwire.WaitResponse, error) {
+			return mcpwire.WaitResponse{State: mcpwire.WaitDenied}, nil
+		},
+		"expired": func(context.Context, string, string, mcpwire.WaitRequest) (mcpwire.WaitResponse, error) {
+			return mcpwire.WaitResponse{State: mcpwire.WaitExpired}, nil
+		},
+		"still pending when the control plane gives up": func(context.Context, string, string, mcpwire.WaitRequest) (mcpwire.WaitResponse, error) {
+			return mcpwire.WaitResponse{State: mcpwire.WaitPending}, nil
+		},
+		"a state the gateway does not know": func(context.Context, string, string, mcpwire.WaitRequest) (mcpwire.WaitResponse, error) {
+			return mcpwire.WaitResponse{State: "granted"}, nil
+		},
+		"the wait fails": func(context.Context, string, string, mcpwire.WaitRequest) (mcpwire.WaitResponse, error) {
+			return mcpwire.WaitResponse{State: mcpwire.WaitApproved}, errors.New("dial tcp: connection refused")
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			control := holdControl(func(mcpwire.DecideRequest) mcpwire.DecideResponse {
+				t.Error("the decision was asked again without an approval")
+				return mcpwire.DecideResponse{Decision: mcpwire.DecisionAllow, Upstream: upstream.URL, Authorization: leasedToken}
+			})
+			control.wait = wait
+			h := testRelay(control)
+			w := serve(h, mcpRequest(callBody))
+			requireStepUp(t, w, "req-42")
+			if strings.Contains(w.Body.String(), "connection refused") || strings.Contains(w.Body.String(), "hold_seconds") {
+				t.Fatalf("the refusal leaks: %s", w.Body)
+			}
+			if control.decideCalls() != 1 || control.waitCalls() != 1 || len(h.held) != 0 {
+				t.Fatalf("decisions=%d waits=%d held=%d", control.decideCalls(), control.waitCalls(), len(h.held))
+			}
+			control.noResult(t)
+		})
+	}
+}
+
+// The wait has its own bound. When it passes, the agent gets the step-up error and may retry later.
+func TestHeldCallTimesOutWithTheStepUpError(t *testing.T) {
+	if waitTimeout != mcpwire.WaitTimeoutSeconds*time.Second || waitTimeout <= decideTimeout {
+		t.Fatalf("the wait bound is %s", waitTimeout)
+	}
+	control := holdControl(func(mcpwire.DecideRequest) mcpwire.DecideResponse {
+		t.Error("the decision was asked again after a timeout")
+		return stepUp("req-43", 0)
+	})
+	control.wait = func(ctx context.Context, _, _ string, _ mcpwire.WaitRequest) (mcpwire.WaitResponse, error) {
+		<-ctx.Done()
+		return mcpwire.WaitResponse{}, ctx.Err()
+	}
+	h := testRelay(control)
+	h.waitTimeout = 100 * time.Millisecond
+	started := time.Now()
+	requireStepUp(t, serve(h, mcpRequest(callBody)), "req-42")
+	if elapsed := time.Since(started); elapsed < 100*time.Millisecond || elapsed > 3*time.Second {
+		t.Fatalf("the held call returned after %s", elapsed)
+	}
+	if control.decideCalls() != 1 || len(h.held) != 0 {
+		t.Fatalf("decisions=%d held=%d", control.decideCalls(), len(h.held))
+	}
+}
+
+// The hold the control plane asks for is honoured when it is shorter than the gateway's own bound.
+func TestHeldCallWaitsNoLongerThanTheControlPlaneAsked(t *testing.T) {
+	control := newFakeControl(func(string, string, mcpwire.DecideRequest) (mcpwire.DecideResponse, error) {
+		return stepUp("req-42", 1), nil
+	})
+	var deadline time.Duration
+	control.wait = func(ctx context.Context, _, _ string, _ mcpwire.WaitRequest) (mcpwire.WaitResponse, error) {
+		if at, ok := ctx.Deadline(); ok {
+			deadline = time.Until(at)
+		}
+		return mcpwire.WaitResponse{State: mcpwire.WaitPending}, nil
+	}
+	requireStepUp(t, serve(testRelay(control), mcpRequest(callBody)), "req-42")
+	if deadline <= 0 || deadline > 1*time.Second+holdGrace {
+		t.Fatalf("the wait was bounded at %s for a one-second hold", deadline)
+	}
+}
+
+// At most mcpwire.MaxHeldCalls calls are held at a time. One more is refused at once, as before holds.
+func TestHeldCallsAreCapped(t *testing.T) {
+	control := holdControl(nil)
+	h := testRelay(control)
+	if cap(h.held) != mcpwire.MaxHeldCalls || cap(h.held) >= cap(h.slots) {
+		t.Fatalf("held cap %d, listener cap %d", cap(h.held), cap(h.slots))
+	}
+	for i := 0; i < cap(h.held); i++ {
+		h.held <- struct{}{}
+	}
+	started := time.Now()
+	requireStepUp(t, serve(h, mcpRequest(callBody)), "req-42")
+	if control.waitCalls() != 0 || control.decideCalls() != 1 || time.Since(started) > time.Second {
+		t.Fatalf("waits=%d decisions=%d after %s", control.waitCalls(), control.decideCalls(), time.Since(started))
+	}
+}
+
+// The cap counts calls actually held, concurrently.
+func TestHeldCallsOverTheCapReturnAtOnceWhileOthersWait(t *testing.T) {
+	release := make(chan struct{})
+	control := newFakeControl(func(string, string, mcpwire.DecideRequest) (mcpwire.DecideResponse, error) {
+		return stepUp("req-42", 45), nil
+	})
+	waiting := make(chan struct{}, mcpwire.MaxHeldCalls+1)
+	control.wait = func(ctx context.Context, _, _ string, _ mcpwire.WaitRequest) (mcpwire.WaitResponse, error) {
+		waiting <- struct{}{}
+		select {
+		case <-release:
+		case <-ctx.Done():
+		}
+		return mcpwire.WaitResponse{State: mcpwire.WaitDenied}, nil
+	}
+	h := testRelay(control)
+	var wg sync.WaitGroup
+	for i := 0; i < mcpwire.MaxHeldCalls; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			serve(h, mcpRequest(callBody))
+		}()
+	}
+	for i := 0; i < mcpwire.MaxHeldCalls; i++ {
+		select {
+		case <-waiting:
+		case <-time.After(3 * time.Second):
+			t.Fatal("the held calls did not all start waiting")
+		}
+	}
+	requireStepUp(t, serve(h, mcpRequest(callBody)), "req-42")
+	if control.waitCalls() != mcpwire.MaxHeldCalls {
+		t.Fatalf("waits=%d, want %d", control.waitCalls(), mcpwire.MaxHeldCalls)
+	}
+	close(release)
+	wg.Wait()
+	if len(h.held) != 0 {
+		t.Fatalf("held slots still taken: %d", len(h.held))
+	}
+}
+
+// A runtime that did not declare the capability gets no hold_seconds from the control plane, and so the
+// immediate error, exactly as before. The same holds for any refusal that is not a step-up with a request.
+func TestNoHoldWithoutHoldSeconds(t *testing.T) {
+	for name, decision := range map[string]mcpwire.DecideResponse{
+		"an old runtime: step-up without hold_seconds": stepUp("req-42", 0),
+		"a negative hold": stepUp("req-42", -5),
+		"hold_seconds on a policy denial": {Decision: mcpwire.DecisionDeny, HoldSeconds: 45,
+			Error: &mcpwire.Error{HTTPStatus: 403, Code: mcpwire.CodeDenied, Message: mcpwire.MessageDenied}},
+		"hold_seconds on a step-up without a request id": {Decision: mcpwire.DecisionDeny, HoldSeconds: 45,
+			Error: &mcpwire.Error{HTTPStatus: 403, Code: mcpwire.CodeStepUpRequired, Message: mcpwire.MessageStepUpRequired}},
+	} {
+		t.Run(name, func(t *testing.T) {
+			control := newFakeControl(func(string, string, mcpwire.DecideRequest) (mcpwire.DecideResponse, error) { return decision, nil })
+			started := time.Now()
+			w := serve(testRelay(control), mcpRequest(callBody))
+			requireError(t, w, 403, decision.Error.Code, decision.Error.Message)
+			if control.waitCalls() != 0 || control.decideCalls() != 1 || time.Since(started) > time.Second {
+				t.Fatalf("waits=%d decisions=%d after %s", control.waitCalls(), control.decideCalls(), time.Since(started))
+			}
+		})
+	}
+}
+
+// After an approval the second decision is final: a refusal is returned as it is (never held again), and
+// no decision is still a denial.
+func TestHeldCallSecondDecisionIsFinal(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) {
+		t.Error("a request was forwarded without an allow")
+	}))
+	defer upstream.Close()
+	approved := func(context.Context, string, string, mcpwire.WaitRequest) (mcpwire.WaitResponse, error) {
+		return mcpwire.WaitResponse{State: mcpwire.WaitApproved}, nil
+	}
+	t.Run("step-up again", func(t *testing.T) {
+		control := holdControl(func(mcpwire.DecideRequest) mcpwire.DecideResponse { return stepUp("req-43", 45) })
+		control.wait = approved
+		requireStepUp(t, serve(testRelay(control), mcpRequest(callBody)), "req-43")
+		if control.decideCalls() != 2 || control.waitCalls() != 1 {
+			t.Fatalf("decisions=%d waits=%d", control.decideCalls(), control.waitCalls())
+		}
+	})
+	t.Run("rate limited", func(t *testing.T) {
+		control := holdControl(func(mcpwire.DecideRequest) mcpwire.DecideResponse {
+			return mcpwire.DecideResponse{Decision: mcpwire.DecisionDeny, Error: &mcpwire.Error{HTTPStatus: 429, Code: mcpwire.CodeRateLimited, Message: mcpwire.MessageRateLimited}}
+		})
+		control.wait = approved
+		requireError(t, serve(testRelay(control), mcpRequest(callBody)), 429, mcpwire.CodeRateLimited, mcpwire.MessageRateLimited)
+	})
+	t.Run("an answer the gateway may not act on", func(t *testing.T) {
+		control := holdControl(func(mcpwire.DecideRequest) mcpwire.DecideResponse {
+			return mcpwire.DecideResponse{Decision: mcpwire.DecisionAllow, Authorization: leasedToken}
+		})
+		control.wait = approved
+		w := serve(testRelay(control), mcpRequest(callBody))
+		requireError(t, w, 503, codeTransport, messageDecisionUnavailable)
+		if strings.Contains(w.Body.String(), leasedToken) {
+			t.Fatalf("the refusal leaks: %s", w.Body)
+		}
+	})
 }
