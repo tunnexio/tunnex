@@ -24,10 +24,10 @@ const toolsFrom = (inventory: Inventory): Tool[] => (Array.isArray(inventory.sna
   });
 });
 
-const approvalOutcome: Record<Approval["state"], string> = { pending: "Waiting", approved: "Approved, not used yet", denied: "Denied", expired: "Expired", consumed: "Used" };
+export const approvalOutcome: Record<Approval["state"], string> = { pending: "Waiting", approved: "Approved, not used yet", denied: "Denied", expired: "Expired", consumed: "Used" };
 const EARLIER_REQUEST_LIMIT = 20;
 
-function timeLeft(expiresAt: string, now: number): string | null {
+export function approvalTimeLeft(expiresAt: string, now: number): string | null {
   const end = new Date(expiresAt).getTime();
   if (Number.isNaN(end)) return null;
   const seconds = Math.floor((end - now) / 1000);
@@ -42,7 +42,7 @@ function argumentText(value: unknown): string {
 }
 
 /** What the approver is being asked to allow. The arguments are data from the agent: shown as text, never run. */
-function ApprovalArguments({ item }: { item: Approval }) {
+export function ApprovalArguments({ item }: { item: Approval }) {
   const entries = item.arguments ? Object.entries(item.arguments) : null;
   return <div role="group" aria-label="Arguments" className="mt-1 min-w-0">
     <div className="text-slate-500">Arguments</div>
@@ -64,7 +64,7 @@ export function AgentMCPToolApprovalPanel({ orgId, deviceId, canApprove }: { org
   const items = requests?.ok ? requests.data : [];
   const pending = items.filter((item) => item.state === "pending");
   const earlier = items.filter((item) => item.state !== "pending").sort((a, b) => String(b.requested_at ?? "").localeCompare(String(a.requested_at ?? "")));
-  const counting = pending.some((item) => timeLeft(item.expires_at, now) !== null);
+  const counting = pending.some((item) => approvalTimeLeft(item.expires_at, now) !== null);
   useEffect(() => {
     if (!counting) return;
     setNow(Date.now());
@@ -85,11 +85,11 @@ export function AgentMCPToolApprovalPanel({ orgId, deviceId, canApprove }: { org
   };
   const title = (item: Approval) => <div className="min-w-0 break-words"><span className="font-mono text-ink-heading">{item.tool_name}</span> <span className="text-slate-400">on {item.server_name}</span></div>;
   return <div data-testid="agent-mcp-tool-approvals" className="text-xs text-slate-300">
-    <p className="text-slate-500">When a tool needs approval, the agent&apos;s call waits here. Approving lets that one call run once, with exactly the arguments shown.</p>
+    <p className="text-slate-500">When a tool is set to Ask first, the agent&apos;s call waits here. Approving lets that one call run once, with exactly the arguments shown. <Link className="underline" to="/approvals">See every agent&apos;s requests in Approvals</Link>.</p>
     {notice && <p role="status" className="mt-2 text-slate-300">{notice}</p>}
     {!canApprove ? <p role="status" className="mt-2 text-slate-500">You do not have permission to review or approve step-up requests.</p> : requests === null ? <p role="status" className="mt-2 text-slate-500">Loading step-up requests…</p> : !requests.ok ? <><p role="alert" className="mt-2 text-danger">Step-up requests could not be loaded: {requests.error}</p><Button size="sm" variant="ghost" className="mt-2" onClick={load}>Retry</Button></> : items.length === 0 ? <p className="mt-2 text-slate-500">No step-up requests.</p> : <>
       {pending.length === 0 ? <p className="mt-2 text-slate-500">Nothing is waiting for a decision.</p> : <ul aria-label="Waiting for a decision" className="mt-2 grid gap-3">{pending.map((item) => {
-        const left = timeLeft(item.expires_at, now);
+        const left = approvalTimeLeft(item.expires_at, now);
         return <li key={item.id} aria-label={`${item.tool_name} on ${item.server_name}`} className="min-w-0 border-t border-white/10 pt-3">
           <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">{title(item)}{left && <span className="text-slate-400">{left}</span>}</div>
           <ApprovalArguments item={item} />

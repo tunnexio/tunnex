@@ -41,6 +41,7 @@ import Kubernetes from "./pages/Kubernetes";
 import AgentsIndex from "./pages/AgentsIndex";
 import AgentDetail from "./pages/AgentDetail";
 import AgentsMCP from "./pages/AgentsMCP";
+import Approvals from "./pages/Approvals";
 import AgentsAIGateway from "./pages/AgentsAIGateway";
 import AgentsPolicyTemplates from "./pages/AgentsPolicyTemplates";
 import AccessGroups from "./pages/AccessGroups";
@@ -215,6 +216,7 @@ function ProductApp() {
             </Route>}
             <Route path="/agents" element={<AgentsIndex />} />
             <Route path="/mcp" element={<AdminOnlyRoute to="/mcp" page="MCP"><AgentsMCP /></AdminOnlyRoute>} />
+            <Route path="/approvals" element={<AdminOnlyRoute to="/approvals" page="Approvals"><Approvals /></AdminOnlyRoute>} />
             <Route path="/agents/mcp" element={<LegacyWorkspaceRedirect to="/mcp" />} />
             <Route path="/agents/ai-gateway" element={<LegacyWorkspaceRedirect />} />
             <Route path="/ai-gateway" element={<AgentsAIGateway />} />
