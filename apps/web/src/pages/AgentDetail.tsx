@@ -288,11 +288,13 @@ function AgentDetailWorkspace({ fixture, agentIdOverride }: { fixture?: AgentDet
           <ReadState state={effectiveMCP} onRetry={refreshAgent} title="MCP servers unavailable" retryLabel="Retry MCP servers">{(value) => {
             const observed = inventory.kind === "ready" ? inventory.data : null;
             // A control plane that lists the agent's servers gets the per-server view; an older one keeps the single profile.
-            return <Panel title="MCP servers">{Array.isArray(value.servers)
-              ? <AgentMCPServers orgId={org.id} deviceId={agentId} agentName={agent.name} effective={value} inventory={observed} canManagePolicy={can(myRole, "agent_mcp_tool_policy:manage")} canConnect={can(myRole, "mcp:manage")} onChanged={refreshAgent} />
-              : value.assigned ? <><dl className="agent-detail-facts tnx-resource-facts"><div><dt>Server</dt><dd>{value.profile_name ?? "MCP server"}</dd></div><div><dt>Connected through</dt><dd>{value.group_name ?? "An agent group"}</dd></div>{value.endpoint && <div className="tnx-resource-fact-wide"><dt>Address</dt><dd><code>{value.endpoint}</code></dd></div>}</dl><p className="agent-detail-context">Changing the server on the group affects every agent in that group.</p></> : <p className="agent-detail-context">No MCP server is connected to this agent yet.</p>}
+            // The list is left out when no server is assigned: that is the per-server view with nothing in it yet.
+            const perServer = Array.isArray(value.servers) || !value.assigned;
+            return <Panel title="MCP servers">{perServer
+              ? <AgentMCPServers orgId={org.id} deviceId={agentId} agentName={agent.name} effective={Array.isArray(value.servers) ? value : { ...value, servers: [] }} inventory={observed} canManagePolicy={can(myRole, "agent_mcp_tool_policy:manage")} canConnect={can(myRole, "mcp:manage")} onChanged={refreshAgent} />
+              : <><dl className="agent-detail-facts tnx-resource-facts"><div><dt>Server</dt><dd>{value.profile_name ?? "MCP server"}</dd></div><div><dt>Connected through</dt><dd>{value.group_name ?? "An agent group"}</dd></div>{value.endpoint && <div className="tnx-resource-fact-wide"><dt>Address</dt><dd><code>{value.endpoint}</code></dd></div>}</dl><p className="agent-detail-context">Changing the server on the group affects every agent in that group.</p></>}
               <MCPEnforcementNotices profile={value} updateHref={`/agents/${agentId}?tab=runtime`} />
-              {!Array.isArray(value.servers) && <Link className="agent-detail-text-link" to={`/mcp${value.group_id ? `?group=${value.group_id}` : ""}`}>Manage MCP servers</Link>}
+              {!perServer && <Link className="agent-detail-text-link" to={`/mcp${value.group_id ? `?group=${value.group_id}` : ""}`}>Manage MCP servers</Link>}
             </Panel>;
           }}</ReadState>
           <Panel title="Approvals"><AgentMCPToolApprovalPanel orgId={org.id} deviceId={agentId} canApprove={can(myRole, "agent_mcp_tool_approval:approve")} /></Panel>
