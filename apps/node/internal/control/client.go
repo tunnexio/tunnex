@@ -24,6 +24,7 @@ import (
 	"github.com/tunnexio/tunnex/apps/node/internal/fqdnrpc"
 	"github.com/tunnexio/tunnex/apps/node/internal/ipsec"
 	"github.com/tunnexio/tunnex/apps/node/internal/reconcile"
+	"github.com/tunnexio/tunnex/packages/apptransport/mcpwire"
 )
 
 // GenerateKeyAndCSR creates an agent private key and a CSR for commonName.
@@ -246,6 +247,11 @@ type PolicyStatus struct {
 	// authoritative WireGuard address. Address is an IPv4 literal, without port.
 	AIVPNHTTPReady   bool
 	AIVPNHTTPAddress string
+	// MCPGatewayReady is true only while the MCP gateway listener (AI-SEC-2) is bound to the authoritative
+	// WireGuard address on mcpwire.ListenerPort. Address is that IPv4 literal, without port. The control
+	// plane closes an agent's direct path to its MCP server only for a gateway that reports this.
+	MCPGatewayReady   bool
+	MCPGatewayAddress string
 }
 
 // ReportInfo reports the node's locally-generated WireGuard public key, its public
@@ -268,13 +274,15 @@ func (c *Client) ReportInfo(ctx context.Context, publicKey, endpoint string, egr
 		"policy_failing_since": ps.FailingSince, "policy_refused_version": ps.RefusedVersion,
 		"site_link_stale": ps.SiteLinkStale, "site_subnet_unreachable": ps.SiteSubnetUnreachable,
 		"conntrack_flush_unavailable": ps.ConntrackFlushUnavailable, "k8s_endpoints_unavailable": ps.K8sEndpointsUnavailable, "max_policy_version": ps.MaxSupportedVersion,
-		"k8s_api_endpoint":          ps.K8sAPIEndpoint,
-		"ovpn_health":               ps.OVPNHealth,
-		"dns_resolve_rpc_version":   ps.DNSResolveRPCVersion,
-		"dns_ipsec_resolve_version": ps.DNSIPsecResolveVersion,
-		"flow_log_state":            ps.FlowLogState.Bounded(),
-		"ai_vpn_http_ready":         ps.AIVPNHTTPReady,
-		"ai_vpn_http_address":       ps.AIVPNHTTPAddress,
+		"k8s_api_endpoint":               ps.K8sAPIEndpoint,
+		"ovpn_health":                    ps.OVPNHealth,
+		"dns_resolve_rpc_version":        ps.DNSResolveRPCVersion,
+		"dns_ipsec_resolve_version":      ps.DNSIPsecResolveVersion,
+		"flow_log_state":                 ps.FlowLogState.Bounded(),
+		"ai_vpn_http_ready":              ps.AIVPNHTTPReady,
+		"ai_vpn_http_address":            ps.AIVPNHTTPAddress,
+		mcpwire.CapabilityGatewayReady:   ps.MCPGatewayReady,
+		mcpwire.CapabilityGatewayAddress: ps.MCPGatewayAddress,
 	}
 	if forwarder := c.dnsForwarder.Load(); forwarder != nil {
 		payload["dns_lan_listeners"] = forwarder.AppliedLANListeners()
