@@ -36,6 +36,9 @@ func (s apiServer) GetAgentMCPInventory(ctx context.Context, req api.GetAgentMCP
 	if err := s.requireAgentPermission(ctx, req.OrgId, req.DeviceId, rbac.PermAgentViewPrivileged); err != nil {
 		return nil, err
 	}
+	if err := s.requireMCPOn(ctx, req.OrgId); err != nil {
+		return nil, err
+	}
 	row, err := s.system.GetAgentMCPInventory(ctx, sqlc.GetAgentMCPInventoryParams{DeviceID: req.DeviceId, OrgID: req.OrgId})
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, apierr.NotFound("mcp_inventory_not_found", "MCP inventory has not been observed")

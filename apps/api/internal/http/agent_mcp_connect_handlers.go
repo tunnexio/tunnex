@@ -37,7 +37,7 @@ func (s apiServer) requireMCPOn(ctx context.Context, orgID uuid.UUID) error {
 		return mcpConnectionUnavailable()
 	}
 	if err != nil || !setting.Enabled {
-		return apierr.Forbidden("opt_in_required", "Turn on MCP for this organization first")
+		return apierr.Forbidden("opt_in_required", "Turn on MCP for this organization first.")
 	}
 	return nil
 }
@@ -186,7 +186,7 @@ func (s apiServer) ConnectMCPServer(ctx context.Context, req api.ConnectMCPServe
 	case errors.Is(err, mcptoolpolicy.ErrTargetNotFound):
 		return nil, apierr.NotFound("mcp_connection_target_not_found", "That agent or agent group was not found")
 	case errors.Is(err, mcptoolpolicy.ErrMCPOff):
-		return nil, apierr.Forbidden("opt_in_required", "Turn on MCP for this organization first")
+		return nil, apierr.Forbidden("opt_in_required", "Turn on MCP for this organization first.")
 	case errors.Is(err, mcptoolpolicy.ErrServerNameTaken):
 		return nil, apierr.Conflict("mcp_server_name_taken", "Another MCP server already uses that server name")
 	case errors.Is(err, mcptoolpolicy.ErrProfileConflict):
@@ -355,8 +355,9 @@ func (s apiServer) CountOrganizationMCPToolApprovalRequests(ctx context.Context,
 	if _, err := authorize(ctx, req.OrgId, rbac.PermAgentMCPToolApprovalApprove); err != nil {
 		return nil, err
 	}
-	if err := s.requireMCPOn(ctx, req.OrgId); err != nil {
-		return nil, err
+	// The sidebar asks this for every organization: with MCP off there is simply nothing waiting.
+	if s.requireMCPOn(ctx, req.OrgId) != nil {
+		return api.CountOrganizationMCPToolApprovalRequests200JSONResponse{Body: api.MCPToolApprovalCount{Pending: 0}, Headers: api.CountOrganizationMCPToolApprovalRequests200ResponseHeaders{XRequestId: reqID(ctx)}}, nil
 	}
 	if s.mcpToolApproval == nil {
 		return nil, apierr.New(http.StatusServiceUnavailable, "mcp_tool_approval_unavailable", "MCP tool approval is temporarily unavailable")

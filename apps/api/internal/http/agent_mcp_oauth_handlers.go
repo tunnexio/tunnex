@@ -23,6 +23,9 @@ func (s apiServer) ListAgentMCPOAuthConnections(ctx context.Context, req api.Lis
 	if err := s.requireAgentPermission(ctx, req.OrgId, req.DeviceId, rbac.PermAgentViewPrivileged); err != nil {
 		return nil, err
 	}
+	if err := s.requireMCPOn(ctx, req.OrgId); err != nil {
+		return nil, err
+	}
 	if s.mcpOAuth == nil {
 		return nil, apierr.New(http.StatusServiceUnavailable, "mcp_oauth_unavailable", "MCP OAuth is temporarily unavailable")
 	}
@@ -43,6 +46,9 @@ func (s apiServer) StartAgentMCPOAuthConnection(ctx context.Context, req api.Sta
 		return nil, err
 	}
 	if err := s.requireAgentPermission(ctx, req.OrgId, req.DeviceId, rbac.PermAgentManage); err != nil {
+		return nil, err
+	}
+	if err := s.requireMCPOn(ctx, req.OrgId); err != nil {
 		return nil, err
 	}
 	if req.Body == nil || s.mcpOAuth == nil {
@@ -85,6 +91,9 @@ func (s apiServer) DisconnectAgentMCPOAuthConnection(ctx context.Context, req ap
 		return nil, err
 	}
 	if err := s.requireAgentPermission(ctx, req.OrgId, req.DeviceId, rbac.PermAgentManage); err != nil {
+		return nil, err
+	}
+	if err := s.requireMCPOn(ctx, req.OrgId); err != nil {
 		return nil, err
 	}
 	if s.mcpOAuth == nil {

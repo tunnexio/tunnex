@@ -21,6 +21,9 @@ func (s apiServer) AcceptAgentMCPToolDefinition(ctx context.Context, req api.Acc
 	if _, err := authorize(ctx, req.OrgId, rbac.PermAgentMCPToolPolicyManage); err != nil {
 		return nil, err
 	}
+	if err := s.requireMCPOn(ctx, req.OrgId); err != nil {
+		return nil, err
+	}
 	if req.Body == nil || s.mcpToolPolicy == nil {
 		return nil, apierr.BadRequest("invalid_mcp_tool_definition", "endpoint, tool name and definition hash are required")
 	}
@@ -44,6 +47,9 @@ func (s apiServer) ListAgentMCPToolActivity(ctx context.Context, req api.ListAge
 		return nil, err
 	}
 	if err := s.requireAgentPermission(ctx, req.OrgId, req.DeviceId, rbac.PermAgentViewPrivileged); err != nil {
+		return nil, err
+	}
+	if err := s.requireMCPOn(ctx, req.OrgId); err != nil {
 		return nil, err
 	}
 	if s.mcpDecision == nil {

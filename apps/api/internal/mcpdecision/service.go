@@ -116,6 +116,10 @@ func (s *Service) Decide(ctx context.Context, ev Evidence, req mcpwire.DecideReq
 		c.method, c.toolName = boundedMethod(c.method), ""
 		return s.deny(ctx, c, mcpwire.ReasonMethod, http.StatusForbidden, mcpwire.CodeDenied, "")
 	}
+	// MCP off for the organization: nothing is forwarded. The refusal is the ordinary policy denial.
+	if !s.mcpOn(ctx, ev.OrgID) {
+		return s.deny(ctx, c, mcpwire.ReasonPolicy, http.StatusForbidden, mcpwire.CodeDenied, "")
+	}
 	if req.Server != "" && !mcpwire.ValidServerName(req.Server) {
 		return s.deny(ctx, c, mcpwire.ReasonNoProfile, http.StatusForbidden, mcpwire.CodeDenied, "")
 	}
@@ -309,6 +313,12 @@ func (s *Service) assignedServer(ctx context.Context, orgID, deviceID uuid.UUID,
 	return server, ok, nil
 }
 
+// mcpOn reports whether MCP is turned on for the organization. No setting, or any failure to read it, is off.
+func (s *Service) mcpOn(ctx context.Context, orgID uuid.UUID) bool {
+	setting, err := s.q.GetOrganizationMCPSetting(ctx, orgID)
+	return err == nil && setting.Enabled
+}
+
 // holdCapable reports whether the agent's runtime declared that it keeps an MCP call open while an
 // approval is pending. Any doubt is "no".
 func (s *Service) holdCapable(ctx context.Context, c call) bool {
@@ -480,6 +490,9 @@ func (s *Service) Targets(ctx context.Context, orgID, nodeID uuid.UUID) ([]mcpwi
 	if orgID == uuid.Nil || nodeID == uuid.Nil {
 		return nil, ErrInvalid
 	}
+	if !s.mcpOn(ctx, orgID) {
+		return []mcpwire.Target{}, nil
+	}
 	rows, err := s.q.ListAgentMCPTargetsForNode(ctx, sqlc.ListAgentMCPTargetsForNodeParams{OrgID: orgID, NodeID: nodeID})
 	if err != nil {
 		return nil, err
@@ -522,6 +535,9 @@ func (s *Service) Inventory(ctx context.Context, orgID, nodeID uuid.UUID, report
 	observation := mcptoolpolicy.GatewayObservation{Endpoint: report.Endpoint, Status: report.Status, ServerName: report.ServerName, ProtocolVersion: report.ProtocolVersion, LatencyMillis: report.LatencyMillis, Tools: make([]mcptoolpolicy.ObservedTool, 0, len(report.Tools))}
 	for _, tool := range report.Tools {
 		observation.Tools = append(observation.Tools, mcptoolpolicy.ObservedTool{Name: tool.Name, Description: tool.Description, InputSchema: tool.InputSchema})
+	}
+	if !s.mcpOn(ctx, orgID) {
+		return ErrNotFound
 	}
 	var err error
 	if report.PreviewID != "" {

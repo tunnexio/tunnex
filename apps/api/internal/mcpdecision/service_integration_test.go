@@ -901,3 +901,40 @@ func TestWaitReturnsApprovedDeniedExpiredAndTimesOutAsPending(t *testing.T) {
 		t.Fatalf("cancelled wait err = %v", err)
 	}
 }
+
+func TestMCPSwitchOffDeniesEveryRequestAndOffersNoTargets(t *testing.T) {
+	h := newHarness(t)
+	h.report(refundAbout)
+	h.allow(mcptoolpolicy.Rule{ToolName: "list_customers"}, mcptoolpolicy.Rule{ToolName: "guarded", StepUpRequired: true})
+	if got := h.call("list_customers", `{}`); got.Decision != mcpwire.DecisionAllow {
+		t.Fatalf("with MCP on = %+v", got.Error)
+	}
+	waiting := h.call("guarded", `{"customer":"c"}`)
+
+	for name, off := range map[string]string{
+		"switched off":   `UPDATE organization_mcp_settings SET enabled=false WHERE org_id=$1`,
+		"never switched": `DELETE FROM organization_mcp_settings WHERE org_id=$1`,
+	} {
+		h.Exec(off, h.Org)
+		// The same refusal an agent gets for a tool no policy allows: no new error shape.
+		h.wantDeny(h.call("list_customers", `{}`), mcpwire.ReasonPolicy, 403, mcpwire.CodeDenied)
+		for _, method := range []string{"initialize", "tools/list"} {
+			if got := h.svc.Decide(h.Ctx, h.evidence, mcpwire.DecideRequest{Method: method}); got.Decision != mcpwire.DecisionDeny || got.Valid() != nil || got.Error.Code != mcpwire.CodeDenied || got.Upstream != "" || got.Authorization != "" {
+				t.Fatalf("%s: %s = %+v", name, method, got)
+			}
+		}
+		if targets, err := h.svc.Targets(h.Ctx, h.Org, h.Node); err != nil || len(targets) != 0 {
+			t.Fatalf("%s: targets = %+v, %v", name, targets, err)
+		}
+		if err := h.svc.Inventory(h.Ctx, h.Org, h.Node, mcpwire.InventoryReport{DeviceID: h.Agent.String(), Endpoint: mcpfixture.Endpoint, Status: "healthy", ServerName: "billing"}); !errors.Is(err, ErrNotFound) {
+			t.Fatalf("%s: inventory err = %v", name, err)
+		}
+		if _, err := h.svc.Wait(h.Ctx, h.evidence, mcpwire.WaitRequest{RequestID: waiting.Error.Data.RequestID}); !errors.Is(err, ErrNotFound) {
+			t.Fatalf("%s: wait err = %v", name, err)
+		}
+		h.Exec(`INSERT INTO organization_mcp_settings (org_id,enabled) VALUES ($1,true) ON CONFLICT (org_id) DO UPDATE SET enabled=true`, h.Org)
+		if targets, err := h.svc.Targets(h.Ctx, h.Org, h.Node); err != nil || len(targets) != 1 {
+			t.Fatalf("%s: targets back on = %+v, %v", name, targets, err)
+		}
+	}
+}

@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/tunnexio/tunnex/apps/api/internal/agentruntime"
 	"github.com/tunnexio/tunnex/apps/api/internal/api"
 	"github.com/tunnexio/tunnex/apps/api/internal/apierr"
@@ -21,6 +23,10 @@ func (s apiServer) GetRuntimeMCPToolPolicy(ctx context.Context, req api.GetRunti
 	}
 	if s.mcpToolPolicy == nil {
 		return nil, apierr.New(http.StatusServiceUnavailable, "mcp_tool_policy_unavailable", "MCP tool policy is temporarily unavailable")
+	}
+	if !s.runtimeMCPOn(ctx, id.OrgID) {
+		// MCP off for the organization: the runtime gets the empty allow-list it gets with no policy.
+		return api.GetRuntimeMCPToolPolicy200JSONResponse(toAPIRuntimeMCPToolPolicy(mcptoolpolicy.Policy{})), nil
 	}
 	p, err := s.mcpToolPolicy.Runtime(ctx, id.OrgID, id.DeviceID, time.Now())
 	if err != nil {
@@ -40,7 +46,7 @@ func (s apiServer) GetRuntimeMCPOAuthLease(ctx context.Context, req api.GetRunti
 	// AI-SEC-2: the credential stays off the agent host. A runtime that forwards to the gateway, or any
 	// runtime once the organization's grace period is over, is refused here with the same answer as
 	// "no credential"; the gateway receives the token per forwarded call instead.
-	if s.agentRuntime == nil || !s.agentRuntime.MCPDirectLeaseAllowed(ctx, id.OrgID, id.DeviceID) {
+	if s.agentRuntime == nil || !s.runtimeMCPOn(ctx, id.OrgID) || !s.agentRuntime.MCPDirectLeaseAllowed(ctx, id.OrgID, id.DeviceID) {
 		return nil, apierr.New(http.StatusBadGateway, "mcp_oauth_lease_unavailable", "MCP OAuth authorization is unavailable")
 	}
 	token, expires, err := s.mcpOAuth.Lease(ctx, id.OrgID, id.DeviceID, req.Params.Endpoint)
@@ -62,6 +68,9 @@ func (s apiServer) GetAgentMCPToolPolicy(ctx context.Context, req api.GetAgentMC
 	if err := s.requireAgentPermission(ctx, req.OrgId, req.DeviceId, rbac.PermAgentViewPrivileged); err != nil {
 		return nil, err
 	}
+	if err := s.requireMCPOn(ctx, req.OrgId); err != nil {
+		return nil, err
+	}
 	if s.mcpToolPolicy == nil {
 		return nil, apierr.New(http.StatusServiceUnavailable, "mcp_tool_policy_unavailable", "MCP tool policy is temporarily unavailable")
 	}
@@ -77,6 +86,9 @@ func (s apiServer) GetAgentMCPToolPolicy(ctx context.Context, req api.GetAgentMC
 
 func (s apiServer) ReplaceAgentMCPToolPolicy(ctx context.Context, req api.ReplaceAgentMCPToolPolicyRequestObject) (api.ReplaceAgentMCPToolPolicyResponseObject, error) {
 	if _, err := authorize(ctx, req.OrgId, rbac.PermAgentMCPToolPolicyManage); err != nil {
+		return nil, err
+	}
+	if err := s.requireMCPOn(ctx, req.OrgId); err != nil {
 		return nil, err
 	}
 	if req.Body == nil || s.mcpToolPolicy == nil {
@@ -109,6 +121,16 @@ func (s apiServer) ReplaceAgentMCPToolPolicy(ctx context.Context, req api.Replac
 		return nil, apierr.New(http.StatusServiceUnavailable, "mcp_tool_policy_unavailable", "MCP tool policy is temporarily unavailable")
 	}
 	return api.ReplaceAgentMCPToolPolicy200JSONResponse(toAPIMCPToolPolicy(p)), nil
+}
+
+// runtimeMCPOn is the MCP switch for the runtime's own MCP routes, which answer in their existing shapes
+// when it is off.
+func (s apiServer) runtimeMCPOn(ctx context.Context, orgID uuid.UUID) bool {
+	if s.system == nil {
+		return false
+	}
+	setting, err := s.system.GetOrganizationMCPSetting(ctx, orgID)
+	return err == nil && setting.Enabled
 }
 
 func toAPIMCPToolPolicy(p mcptoolpolicy.Policy) api.AgentMCPToolPolicy {

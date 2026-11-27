@@ -30,7 +30,7 @@ func (s *Service) Wait(ctx context.Context, ev Evidence, req mcpwire.WaitRequest
 		return mcpwire.WaitResponse{}, ErrNotFound
 	}
 	deviceID, ok := s.resolveDevice(ctx, ev)
-	if !ok {
+	if !ok || !s.mcpOn(ctx, ev.OrgID) {
 		return mcpwire.WaitResponse{}, ErrNotFound
 	}
 	hold, tick := s.waitHold, s.waitTick

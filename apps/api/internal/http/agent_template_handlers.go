@@ -243,7 +243,7 @@ func mcpLifecycleError(err error) error {
 	case errors.Is(err, agenttemplates.ErrAgentGroupNotFound):
 		return apierr.NotFound("agent_group_not_found", "agent group was not found")
 	case errors.Is(err, agenttemplates.ErrMCPOff):
-		return apierr.Forbidden("opt_in_required", "Turn on MCP for this organization first")
+		return apierr.Forbidden("opt_in_required", "Turn on MCP for this organization first.")
 	default:
 		return nil
 	}

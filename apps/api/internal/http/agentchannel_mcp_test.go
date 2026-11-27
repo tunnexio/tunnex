@@ -29,7 +29,7 @@ import (
 )
 
 func TestMCPGatewayRoutesRequireNodeCertificate(t *testing.T) {
-	for method, routes := range map[string][]string{"POST": {mcpwire.PathDecide, mcpwire.PathResult, mcpwire.PathInventory}, "GET": {mcpwire.PathTargets}} {
+	for method, routes := range map[string][]string{"POST": {mcpwire.PathDecide, mcpwire.PathResult, mcpwire.PathInventory, mcpwire.PathWait}, "GET": {mcpwire.PathTargets}} {
 		for _, route := range routes {
 			a := &AgentChannel{}
 			r := httptest.NewRequest(method, "https://control"+route, strings.NewReader(`{}`))
@@ -321,5 +321,68 @@ func TestNodeReportStoresMCPGatewayCapabilityAndPushesOnChange(t *testing.T) {
 	}
 	if h.Count(`SELECT count(*) FROM nodes WHERE id=$1 AND capabilities ? 'mcp_gateway_ready'`, h.OtherNode) != 0 {
 		t.Fatal("another gateway's capabilities changed")
+	}
+}
+
+func TestMCPGatewayWaitAnswersOnlyForTheAgentBehindTheEvidence(t *testing.T) {
+	h := newMCPChannelHarness(t)
+	request, _, err := h.approval.Decide(h.Ctx, h.Org, h.Agent, mcptoolapproval.Identity{PolicyVersion: 1, Endpoint: mcpfixture.Endpoint, ServerName: "billing", ToolName: "refund", InputSchemaHash: "x", RequestDigest: strings.Repeat("a", 64)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := `{"request_id":"` + request.ID.String() + `"}`
+	agent := h.evidence(h.AgentIP, h.AgentKey)
+	wait := func(serial int64, headers http.Header, body string) (int, string) {
+		t.Helper()
+		w := h.do(serial, "POST", mcpwire.PathWait, body, headers)
+		var out mcpwire.WaitResponse
+		if w.Code == 200 {
+			if err := json.Unmarshal(w.Body.Bytes(), &out); err != nil || w.Header().Get("Cache-Control") != "no-store" {
+				t.Fatalf("wait body: %s", w.Body.String())
+			}
+		}
+		return w.Code, out.State
+	}
+
+	// Answered requests return at once; the route never changes one.
+	if _, err := h.approval.Approve(h.Ctx, h.Org, h.Agent, request.ID, h.Owner); err != nil {
+		t.Fatal(err)
+	}
+	if code, state := wait(0x6d6370, agent, body); code != 200 || state != mcpwire.WaitApproved {
+		t.Fatalf("approved wait = %d %q", code, state)
+	}
+	if n := h.Count(`SELECT count(*) FROM agent_mcp_tool_approval_requests WHERE id=$1 AND state='approved'`, request.ID); n != 1 {
+		t.Fatal("waiting spent the approval")
+	}
+
+	// Evidence is exactly one address and one key; anything else is refused before a lookup.
+	for name, headers := range map[string]http.Header{
+		"no evidence":   {},
+		"no key":        {mcpwire.HeaderVPNIP: {h.AgentIP}},
+		"two addresses": {mcpwire.HeaderVPNIP: {h.AgentIP, h.HumanIP}, mcpwire.HeaderVPNKey: {h.AgentKey}},
+		"two keys":      {mcpwire.HeaderVPNIP: {h.AgentIP}, mcpwire.HeaderVPNKey: {h.AgentKey, h.HumanKey}},
+	} {
+		if code, _ := wait(0x6d6370, headers, body); code != 403 {
+			t.Errorf("%s = %d, want 403", name, code)
+		}
+	}
+	// Another device, another gateway, an unknown request: one answer, not found.
+	for name, tc := range map[string]struct {
+		serial  int64
+		headers http.Header
+		body    string
+	}{
+		"a human device":  {0x6d6370, h.evidence(h.HumanIP, h.HumanKey), body},
+		"another gateway": {0x6d6371, agent, body},
+		"unknown request": {0x6d6370, agent, `{"request_id":"` + uuid.NewString() + `"}`},
+	} {
+		if code, _ := wait(tc.serial, tc.headers, tc.body); code != 404 {
+			t.Errorf("%s = %d, want 404", name, code)
+		}
+	}
+	for name, bad := range map[string]string{"not JSON": `{`, "not an id": `{"request_id":"abc"}`, "too large": `{"request_id":"` + strings.Repeat("a", 8<<10) + `"}`} {
+		if code, _ := wait(0x6d6370, agent, bad); code != 400 {
+			t.Errorf("%s = %d, want 400", name, code)
+		}
 	}
 }
