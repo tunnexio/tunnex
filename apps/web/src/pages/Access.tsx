@@ -1026,18 +1026,18 @@ function RulesSection({
   orgId,
   canManage,
   canAuthorRules = canManage,
-  canAuthorAgentRules = false,
+  canAuthorAgentRules = canManage,
   canManageAgentTemplates,
   agentGroupsEnabled,
   canViewFQDNResources,
   subjectsRev,
 }: {
   orgId: string;
-  /** policy:manage — enable, disable and extend rules (owner, admin). */
+  /** policy:manage — owner and admin. Rule actions themselves follow canAuthorRules / canAuthorAgentRules. */
   canManage: boolean;
-  /** policy_rule:manage — create, edit and delete rules (owner, admin, network admin). RBAC-1. */
+  /** policy_rule:manage — create, edit, enable, disable, extend and delete rules (owner, admin, network admin). RBAC-1. */
   canAuthorRules?: boolean;
-  /** agent:grant_access — delete rules whose source is an agent or agent group (AI Agents admin). RBAC-1. */
+  /** agent:grant_access — enable, disable, extend and delete rules whose source is an agent or agent group. RBAC-1. */
   canAuthorAgentRules?: boolean;
   canManageAgentTemplates: boolean;
   agentGroupsEnabled: boolean;
@@ -1372,10 +1372,12 @@ function RulesSection({
 
   const mutationUnavailable = (rule: PolicyRule, operation: "edit" | "extend" | "enable" | "disable" | "delete") => {
     if (!canTouchRules) return "Your role cannot manage access rules.";
+    // RBAC-1 (founder, 2026-11-28): whoever may create a rule may enable, disable, extend and delete it —
+    // agent:grant_access for an agent or agent-group source, policy_rule:manage for any other.
     const agentSource = rule.src_kind === "agent" || rule.src_kind === "agent_group";
-    if ((operation === "extend" || operation === "enable" || operation === "disable") && !canManage) return "Only owners and admins can enable, disable or extend rules.";
-    if ((operation === "edit" || operation === "delete") && !canAuthorRules && !(operation === "delete" && agentSource && canAuthorAgentRules)) {
-      return agentSource ? "Only owners, admins and AI Agents admins can change rules for agents." : "Only owners, admins and network admins can create, edit or delete rules.";
+    const authors = agentSource ? canAuthorAgentRules : canAuthorRules;
+    if (!authors || (operation === "edit" && !canAuthorRules)) {
+      return agentSource ? "Only owners, admins and AI Agents admins can change rules for agents." : "Only owners, admins and network admins can change this rule.";
     }
     if (rulesResult?.ok !== true) return "Load the current rule inventory first.";
     if (ruleBusy) return "A rule change is in progress.";

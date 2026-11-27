@@ -54,6 +54,8 @@ function AccessGroupsLoader({ scope }: { scope: GroupScope }) {
   const features = useAgentFeatures(scope === "agents" ? org?.id : undefined);
   const featureOn = (key: "agent_groups" | "mcp") => { const feature = features.get(key); return Boolean(feature?.enabled && feature.available); };
   const agentGroupsEnabled = scope === "agents" && (featureOn("agent_groups") || featureOn("mcp"));
+  const [writesAgents, setWritesAgents] = useState(false);
+  const [managesAgents, setManagesAgents] = useState(false);
   const [authorized, setAuthorized] = useState<boolean | null>(null);
   const [people, setPeople] = useState<UserGroup[] | null>(null);
   const [agentGroups, setAgentGroups] = useState<AgentGroup[] | null>(null);
@@ -92,17 +94,21 @@ function AccessGroupsLoader({ scope }: { scope: GroupScope }) {
       const mine = result.data.find((member) => member.user_id === state.user.id);
       const roles = mine ? [mine.role, ...(mine.roles ?? [])] : [];
       // Groups (people and agents) are managed with policy:manage; agent groups with agent_template:manage.
-      setAuthorized(scope === "agents" ? writable && can(roles, "agent_template:manage") : can(roles, "policy:manage"));
+      // RBAC-1: agent groups are readable with agent_template:view (the auditor); writing needs manage.
+      // A manager who is not verified gets the verify-email state (as before), never the read-only inventory.
+      setAuthorized(scope === "agents" ? (can(roles, "agent_template:manage") ? writable : can(roles, "agent_template:view")) : can(roles, "policy:manage"));
+      setWritesAgents(writable && can(roles, "agent_template:manage"));
+      setManagesAgents(can(roles, "agent_template:manage"));
     });
     return () => { cancelled = true; };
   }, [org?.id, state.status, state.status === "authed" ? state.user.id : "", writable, permissionAttempt, scope]);
   useEffect(() => { void reload(); }, [reload]);
   const header = <><PageHeader navigationTitle title={scope === "agents" ? "Agent groups" : "Users & Groups"} subtitle={scope === "agents" ? "Organize managed agents and their inherited policies." : "Manage people and directory-synced group membership."} />{scope === "agents" ? <AgentsTabRail /> : <UsersTabRail />}</>;
   if (!org || authorized === null) return <div className="network-management agents-workspace space-y-5">{header}<Card>{error ? <LoadRetry error={`Could not check group permissions: ${error}`} onRetry={() => setPermissionAttempt((attempt) => attempt + 1)} /> : <Loading label="Checking group permissions…" />}</Card></div>;
-  if (!writable && scope === "agents") return <div className="network-management agents-workspace space-y-5">{header}<p role="status" className="text-cell text-ink-tertiary">Verify your email before managing AI Agent groups.</p></div>;
+  if (!writable && scope === "agents" && managesAgents) return <div className="network-management agents-workspace space-y-5">{header}<p role="status" className="text-cell text-ink-tertiary">Verify your email before managing AI Agent groups.</p></div>;
   if (!authorized) return <div className="network-management agents-workspace space-y-5">{header}<Card><p role="alert" className="text-cell text-ink-tertiary">You do not have permission to manage groups.</p><ErrorText>{error}</ErrorText></Card></div>;
   if (!people || !agentGroups || !members) return <div className="network-management agents-workspace space-y-5">{header}<Card>{error ? <LoadRetry error={error} onRetry={() => void reload()} /> : <Loading label="Loading groups…" />}</Card></div>;
-  return <CanonicalGroupsWorkspace orgId={org.id} people={people} agentGroups={agentGroups} agentGroupsEnabled={agentGroupsEnabled} features={features} peopleOptions={members} scope={scope} onReload={reload} />;
+  return <CanonicalGroupsWorkspace orgId={org.id} people={people} agentGroups={agentGroups} agentGroupsEnabled={agentGroupsEnabled} features={features} peopleOptions={members} scope={scope} onReload={reload} canWrite={scope !== "agents" || writesAgents} />;
 }
 
 type CanonicalRow = {
@@ -124,9 +130,12 @@ function CanonicalGroupsWorkspace({
   peopleOptions,
   onReload,
   scope,
+  canWrite = true,
 }: {
   orgId: string;
   scope: GroupScope;
+  /** RBAC-1: false for a viewer of agent groups (agent_template:view without manage). */
+  canWrite?: boolean;
   people: UserGroup[];
   agentGroups: AgentGroup[];
   agentGroupsEnabled: boolean;
@@ -291,14 +300,15 @@ function CanonicalGroupsWorkspace({
     const openCreate = () => { setCreateKind("agents"); setName(""); setDialog("create"); };
     return <div className="network-management agents-workspace agents-management space-y-5">
       <PageHeader navigationTitle title="Agent groups" />
-      <AgentsTabRail actions={<><RefreshButton label="Refresh groups" disabled={busy} onClick={() => void onReload()} />{agentGroupsEnabled && countsValid && !selected && <Button disabled={busy} onClick={openCreate}>Create agent group</Button>}</>} />
+      <AgentsTabRail actions={<><RefreshButton label="Refresh groups" disabled={busy} onClick={() => void onReload()} />{agentGroupsEnabled && countsValid && !selected && canWrite && <Button disabled={busy} onClick={openCreate}>Create agent group</Button>}</>} />
       <div className="agents-management-content">
       <ErrorText>{error}</ErrorText>{notice && <p role="status" className="agents-management-notice">{notice}</p>}
+      {!canWrite && <p role="status" className="agents-management-notice">Only owners, admins and AI Agents admins can change agent groups.</p>}
       {!agentGroupsEnabled ? <FeatureEnableInline orgId={orgId} feature="agent_groups" features={features} /> : !countsValid ? <p role="alert">Member counts require the matching control-plane API version. Refresh when the server can return a valid count for every group.</p> : selected ? <>
         <nav aria-label="Breadcrumb" className="agents-management-breadcrumb"><button disabled={busy} onClick={() => update({ group: null })}>Agent groups</button><span aria-hidden="true">/</span><span aria-current="page">{selected.name}</span></nav>
-        <div className="agents-management-heading"><div><h2>{selected.name}</h2></div><div className="agents-management-actions"><Button disabled={busy || !currentMembers || !!currentMemberError} onClick={() => { setMemberId(""); setDialog("add"); }}>Add member</Button><AppAccessRowMenu label={`Actions for ${selected.name}`} actions={[
-          { key: "rename", label: "Rename", disabledReason: busy ? "Wait for the current action." : undefined, onSelect: () => { setName(selected.name); setDialog("rename"); } },
-          { key: "archive", label: "Archive", danger: true, disabledReason: busy ? "Wait for the current action." : undefined, onSelect: () => setDialog("archive") },
+        <div className="agents-management-heading"><div><h2>{selected.name}</h2></div><div className="agents-management-actions">{canWrite && <Button disabled={busy || !currentMembers || !!currentMemberError} onClick={() => { setMemberId(""); setDialog("add"); }}>Add member</Button>}<AppAccessRowMenu label={`Actions for ${selected.name}`} actions={[
+          ...(canWrite ? [{ key: "rename", label: "Rename", disabledReason: busy ? "Wait for the current action." : undefined, onSelect: () => { setName(selected.name); setDialog("rename"); } },
+          { key: "archive", label: "Archive", danger: true, disabledReason: busy ? "Wait for the current action." : undefined, onSelect: () => setDialog("archive") }] : []),
           { key: "network", label: "Network templates", href: `/agents/policies?group=${encodeURIComponent(selected.raw.id)}` },
           { key: "models", label: "Model policies", href: "/agents/model-access" },
         ]} /></div></div>
@@ -308,7 +318,7 @@ function CanonicalGroupsWorkspace({
           <DataTable variant="flat" caption="Agent group members" rows={memberRows} rowKey={(member) => (member as AgentGroupMember).device_id} failed={false} filterable={false} pageSize={0} empty={<AppAccessEmptyState icon={null} title={memberQuery ? "No matching members" : "No members."} description={memberQuery ? "Try another agent name." : "Add agents to share this group’s desired configuration."} action={memberQuery ? <Button variant="ghost" onClick={() => { setMemberQuery(""); setMemberPage(1); }}>Clear search</Button> : undefined} />} columns={[
             { key: "name", header: "Agent", cell: (member) => <Link className="agents-management-name" to={`/agents/${encodeURIComponent((member as AgentGroupMember).device_id)}`}>{(member as AgentGroupMember).name}</Link> },
             { key: "status", header: "Status", cell: (member) => (member as AgentGroupMember).status },
-            { key: "actions", header: "Actions", cell: (member) => <AppAccessRowMenu label={`Actions for ${(member as AgentGroupMember).name}`} actions={[{ key: "remove", label: "Remove member", danger: true, disabledReason: busy ? "Wait for the current action." : undefined, onSelect: () => { setRemoving(member); setDialog("remove"); } }]} /> },
+            { key: "actions", header: "Actions", cell: (member) => <AppAccessRowMenu label={`Actions for ${(member as AgentGroupMember).name}`} actions={canWrite ? [{ key: "remove", label: "Remove member", danger: true, disabledReason: busy ? "Wait for the current action." : undefined, onSelect: () => { setRemoving(member); setDialog("remove"); } }] : []} /> },
           ]} />
           <AppAccessPagination maxOffset={null} page={currentMemberPage} pageSize={memberPageSize} count={memberRows.length} hasNext={currentMemberPage * memberPageSize < matchedMembers.length} busy={busy} onPageChange={setMemberPage} onPageSizeChange={(size) => { setMemberPageSize(size); setMemberPage(1); }} />
         </>}

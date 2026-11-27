@@ -167,11 +167,13 @@ Owner and admin hold every new permission, so nothing changes for them.
   `policy:manage` (their rules are always agent-group rules). Creating a
   Kubernetes cluster scope needs the rule permission for its source instead of
   `policy:manage`.
-- Not changed, for disposition: rule enable/disable and grant extension stay
-  `policy:manage`. Moving them to `policy_rule:manage` would hand them to the
-  GitOps operator, which RBAC-0 D4 deliberately kept away. So a network admin
-  creates and deletes rules but cannot disable or extend one; the console says
-  so.
+- Founder decision (2026-11-28): enabling, disabling and extending a rule
+  need the same source-based permission as creating it (`policy_rule:manage`,
+  or `agent:grant_access` for an agent or agent-group source), so a network
+  admin and an AI Agents admin manage the whole life of the rules they may
+  create. Machine and agent principals still need `policy:manage` for these
+  verbs, which they never hold, so the GitOps operator stays as RBAC-0 D4 left
+  it. Zero Trust mode, user groups and directory sync stay `policy:manage`.
 
 ### Helpdesk ceiling
 
@@ -203,6 +205,47 @@ replaced with `can()` in the IPsec workspace, licence card, device approvals
 and posture, alerts, resources, people and agent groups, the audit log and the
 organization-deletion copy. `useOrgAdmins` still lists owners and admins by
 name: it is the "who to ask" contact list, not an access decision.
+
+### Founder decisions (2026-11-28)
+
+- Kept as built: AI Agents admin holds `policy:view`; network admin holds
+  `k8s_api:manage`; Helpdesk restore is reachable through the API only; the
+  gateway-level Helpdesk ceiling refuses the whole operation, and the device
+  ceiling checks run before the action rather than inside its transaction.
+- Rule lifecycle: see Rules above.
+- The Auditor reads the admin lists. Each read gets the read half of its
+  manage permission, held by owner, admin, auditor and the role that manages
+  the area; none returns a secret:
+  - `device:view`: pending devices, device-approval mode.
+  - `agent_template:view` (also AI Agents admin): agent groups and members,
+    MCP profiles and assignments, an agent group's MCP tool policy, policy
+    templates, versions and assignments.
+  - `alerting:view`: alert delivery setting, destinations (host and keyed
+    fingerprint only), subscriptions, deliveries (stable error codes only),
+    occurrences.
+  - `mfa:view`: organization MFA enforcement.
+  - `device_health:view` (also network admin): posture checks.
+  - `site:view` (also network admin): pending site ranges, site DNS forwards,
+    site deletion references.
+  - `k8s:view` (also network admin and the GitOps operator, which held the
+    read through `k8s:manage`): Kubernetes cluster inventory.
+  - `invitation:view`: invitations (no tokens are listed).
+  - `app_access:view` (existing): App Access grants and application sessions.
+  - Already readable before: SSO connections and SSO config (`org:view`, no
+    client secret is served).
+  - Still closed, by design: install tokens and their status (`agent:enroll`),
+    MCP approval requests (arguments; `agent_mcp_tool_approval:approve`),
+    Server Access recordings and storage settings, Vault, the agent JIT
+    setting toggle state, MCP connection previews and the write-flow impact
+    previews (template destination impact, App Access revoke and publication
+    impact, FQDN setting impact), the Kubernetes lifecycle claim and install
+    reads, and the agent runtime release.
+  - Console: device approvals, posture, alerts, MCP, agent groups, policy
+    templates, invitations, gateways, sites, App Access grants and sessions,
+    and the sign-in and MFA settings open read-only for the Auditor, each
+    with one sentence on who can change it. The pending-range queue on Sites
+    and the Kubernetes inventory picker stay in their editing flows; pending
+    ranges are listed in the ranges table.
 
 ### Not done
 

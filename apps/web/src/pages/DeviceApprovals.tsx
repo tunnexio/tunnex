@@ -24,6 +24,7 @@ function DevicePolicyPage() {
   const [canManage, setCanManage] = useState<boolean | null>(null);
   const [error, setError] = useState("");
   const [attempt, setAttempt] = useState(0);
+  const [decides, setDecides] = useState(false);
   const [blockedReason, setBlockedReason] = useState<(device: Device) => string | null>(() => () => null);
   const verified = state.status === "authed" && state.user.email_verified;
   useEffect(() => {
@@ -36,7 +37,9 @@ function DevicePolicyPage() {
       if (!Array.isArray(result.data) || !result.data.every((member) => member && typeof member === "object" && typeof member.user_id === "string" && typeof member.role === "string")) { setError("The permission response was not valid. Retry to reload it."); return; }
       const mine = (result.data as Member[]).find((member) => member.user_id === state.user.id);
       const roles = mine ? mine.roles ?? [mine.role] : [];
-      setCanManage(can(roles, "device:approve"));
+      // RBAC-1: the queue is readable with device:view (the auditor reads it); deciding is device:approve.
+      setCanManage(can(roles, "device:approve") || can(roles, "device:view"));
+      setDecides(can(roles, "device:approve"));
       // RBAC-1 Helpdesk ceiling, mirrored so a Helpdesk person never meets a button the server refuses.
       const ceiling = helpdeskCeilingApplies(roles, "device:approve");
       const byUser = new Map((result.data as Member[]).map((member) => [member.user_id, member.roles ?? [member.role]]));
@@ -45,6 +48,6 @@ function DevicePolicyPage() {
     return () => { stale = true; };
   }, [org?.id, state.status, state.status === "authed" ? state.user.id : "", state.status === "authed" ? state.user.email_verified : false, attempt]);
   return <div className="network-management devices-workspace devices-policy-workspace space-y-5"><PageHeader navigationTitle title="Device approvals" />
-    {canManage === true && org ? <DeviceApprovalSection orgId={org.id} canManage={verified} blockedReason={blockedReason} renderNavigation={(actions) => <><DevicesTabRail actions={actions} />{!verified && <p role="status" className="devices-policy-copy">Verify your email to manage device approvals.</p>}</>} /> : <><DevicesTabRail />{error ? <LoadRetry error={`Could not check device approval permission: ${error}`} onRetry={() => setAttempt((value) => value + 1)} /> : !org || canManage === null ? <Loading label="Checking device approval permission…" /> : <p role="alert" className="devices-policy-copy">You do not have permission to manage device approvals.</p>}</>}
+    {canManage === true && org ? <DeviceApprovalSection orgId={org.id} canManage={verified && decides} blockedReason={blockedReason} renderNavigation={(actions) => <><DevicesTabRail actions={actions} />{!decides ? <p role="status" className="devices-policy-copy">Only owners, admins, network admins and Helpdesk can approve or reject devices.</p> : !verified && <p role="status" className="devices-policy-copy">Verify your email to manage device approvals.</p>}</>} /> : <><DevicesTabRail />{error ? <LoadRetry error={`Could not check device approval permission: ${error}`} onRetry={() => setAttempt((value) => value + 1)} /> : !org || canManage === null ? <Loading label="Checking device approval permission…" /> : <p role="alert" className="devices-policy-copy">You do not have permission to manage device approvals.</p>}</>}
   </div>;
 }

@@ -98,7 +98,9 @@ function AlertsWorkspace() {
   }, [org?.id, view]);
   useEffect(() => { if (!orgLoading) void loadRole(); }, [orgLoading, loadRole]);
   useEffect(() => { if (!orgLoading) void load(); }, [orgLoading, load]);
-  const canManage = !roleLoading && can(myRole, "alerting:manage");
+  // RBAC-1: the auditor reads routing policies (alerting:view); changing them stays alerting:manage.
+  const canManage = !roleLoading && (can(myRole, "alerting:manage") || can(myRole, "alerting:view"));
+  const editsAlerts = can(myRole, "alerting:manage");
   useEffect(() => { if (!roleLoading && !canManage && view === "management") setView("active"); }, [roleLoading, canManage, view]);
   const currentRows = loadedView === view ? rows : null;
   const filtered = useMemo(() => {
@@ -126,7 +128,7 @@ function AlertsWorkspace() {
   if (orgLoading) return <Loading label="Loading alerts…" size="page" />;
   if (orgFailed || !org) return <ErrorText>Could not load the organization for alerts.</ErrorText>;
   return <div className="network-management alerts-workspace">
-    {view === "management" && canManage ? <AlertManagement orgId={org.id} canEdit={emailVerified} canAllowPrivate={can(myRole, "alerting:private_destination")} renderNavigation={navigation} onRefreshAuthority={loadRole} /> : <>
+    {view === "management" && canManage ? <AlertManagement orgId={org.id} canEdit={emailVerified && editsAlerts} readOnlyReason={editsAlerts ? undefined : "Only owners and admins can change alert routing."} canAllowPrivate={can(myRole, "alerting:private_destination")} renderNavigation={navigation} onRefreshAuthority={loadRole} /> : <>
       {navigation(<RefreshButton label="Refresh" disabled={currentRows === null && !error} onClick={() => { void load(); void loadRole(); }} />)}
       {view === "management" ? <Loading label="Checking alert permissions…" /> : error ? <section className="alerts-read-state" role="alert"><h2>Could not load alerts.</h2>{error !== "Could not load alerts." && <p>{error}</p>}<Button variant="ghost" onClick={() => void load()}>Retry</Button></section> : currentRows === null ? <Loading label={`Loading ${view} alerts…`} /> : <section className="alerts-inventory" aria-label={view === "active" ? "Active alert inventory" : "Resolved alert inventory"}>
         <div className="alerts-inventory-toolbar"><Input type="search" aria-label="Search alerts" placeholder="Search alerts…" value={query} onChange={event => { setQuery(event.target.value); setPage(1); }} /><div className="alerts-filters" aria-label="Filter severity">{["all", "critical", "warning", "info"].map(value => <button type="button" key={value} aria-pressed={severity === value} onClick={() => { setSeverity(value); setPage(1); }}>{value === "all" ? "All severities" : value}</button>)}</div><span className="alerts-result-count">{filtered.length} {view === "active" ? "active" : "resolved"}</span></div>

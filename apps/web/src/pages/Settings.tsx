@@ -416,6 +416,16 @@ function SettingsWorkspace() {
               <><SsoSettings orgId={org.id} canEdit={emailVerified} />
               <SsoConnections key={org.id} orgId={org.id} canEdit={emailVerified} /></>
             )}
+            {/* RBAC-1: the auditor reads company sign-in and MFA enforcement (mfa:view); only owners and admins
+                change them. The legacy SSO config card is not shown: it is an editing form. */}
+            {org && !isAdmin && can(myRoles, "mfa:view") && (
+              <SettingRow label="Sign-in and two-factor settings" description="Only owners and admins can change company sign-in and two-factor enforcement.">
+                <SettingValue>Read only</SettingValue>
+              </SettingRow>
+            )}
+            {org && !isAdmin && can(myRoles, "mfa:view") && meta?.edition === "enterprise" && (
+              <SsoConnections key={`view-${org.id}`} orgId={org.id} canEdit={false} />
+            )}
             {org && isAdmin && meta?.edition !== "enterprise" && (
               <SettingRow
                 label="Single sign-on"
@@ -425,8 +435,8 @@ function SettingsWorkspace() {
               </SettingRow>
             )}
 
-            {org && isAdmin && meta?.edition === "enterprise" && (
-              <OrgMfaEnforce orgId={org.id} canEdit={emailVerified} />
+            {org && (isAdmin || can(myRoles, "mfa:view")) && meta?.edition === "enterprise" && (
+              <OrgMfaEnforce orgId={org.id} canEdit={emailVerified && isAdmin} />
             )}
             {org && isAdmin && meta?.edition !== "enterprise" && (
               <SettingRow

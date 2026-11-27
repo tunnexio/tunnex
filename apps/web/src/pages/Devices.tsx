@@ -135,7 +135,7 @@ function DevicesWorkspace() {
       setOwnerEmail(new Map(members.data.filter(member => member.email).map(member => [member.user_id, member.email])));
       const me = members.data.find(member => member && member.user_id === actorId);
       const roles = me ? Array.isArray(me.roles) && me.roles.length ? me.roles : [me.role] : [];
-      setApproves(me ? can(roles, "device:approve") : true);
+      setApproves(me ? can(roles, "device:approve") || can(roles, "device:view") : true);
       // RBAC-1: Helpdesk, network admins and auditors see every device (device:view) but revoking or removing
       // someone else's is member:manage, or agent:revoke for an agent.
       setManagesOthers(me ? { people: can(roles, "member:manage"), agents: can(roles, "agent:revoke") } : { people: true, agents: true });

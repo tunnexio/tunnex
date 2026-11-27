@@ -64,7 +64,9 @@ describe("RBAC-1 navigation per role", () => {
   const visible = (...roles: Role[]) => Object.keys(NAV_PERMISSIONS).filter((to) => navAllows(to, ready(...roles))).sort();
 
   it("auditor sees what an admin reads, and the organization audit log", () => {
-    expect(visible("auditor")).toEqual(["/access", "/access-events", "/agents", "/ai-gateway", "/app-access", "/kubernetes", "/sandboxes", "/users", "/users/groups"].sort());
+    // Founder, 2026-11-28: the auditor also reads the admin lists (alerts, device approvals and posture, MCP,
+    // invitations, gateways and sites), read-only.
+    expect(visible("auditor")).toEqual(["/access", "/access-events", "/agents", "/ai-gateway", "/alerts", "/app-access", "/devices/approvals", "/devices/posture", "/gateways", "/kubernetes", "/mcp", "/sandboxes", "/sites", "/users", "/users/groups", "/users/invitations"].sort());
     expect(seesOrgAudit(["auditor"])).toBe(true);
   });
   it("helpdesk sees people and device approvals only", () => {

@@ -519,7 +519,7 @@ export default function Sites() {
                 />
               ) : (
                 <OperationalSection title="Range approvals">
-                  <p className="text-cell text-ink-tertiary">You can view networks, but approving ranges requires site:manage and a verified email.</p>
+                  <p className="text-cell text-ink-tertiary">Only owners, admins and network admins with a verified email can approve ranges. Pending ranges are listed below.</p>
                 </OperationalSection>
               )}
               <AllRangesTable cards={cards} onOpen={site => updateQuery({ section: null, site, gateway: null, dns: null, detail: "ranges" })} />
