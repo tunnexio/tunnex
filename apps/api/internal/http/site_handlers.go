@@ -281,7 +281,7 @@ func (s apiServer) ListSiteSubnets(ctx context.Context, req api.ListSiteSubnetsR
 }
 
 func (s apiServer) ListPendingSiteSubnets(ctx context.Context, req api.ListPendingSiteSubnetsRequestObject) (api.ListPendingSiteSubnetsResponseObject, error) {
-	if _, err := authorize(ctx, req.OrgId, rbac.PermSiteManage); err != nil {
+	if _, err := authorize(ctx, req.OrgId, rbac.PermSiteView); err != nil {
 		return nil, err
 	}
 	list, err := s.sites.ListPendingSubnets(ctx, req.OrgId)
@@ -309,7 +309,7 @@ func (s apiServer) ApproveSiteSubnet(ctx context.Context, req api.ApproveSiteSub
 
 // ListSiteDNSForwards GET /sites/{siteId}/dns-forwards — the site's cross-site DNS zones (S8.4; site:manage, core).
 func (s apiServer) ListSiteDNSForwards(ctx context.Context, req api.ListSiteDNSForwardsRequestObject) (api.ListSiteDNSForwardsResponseObject, error) {
-	if _, err := authorize(ctx, req.OrgId, rbac.PermSiteManage); err != nil {
+	if _, err := authorize(ctx, req.OrgId, rbac.PermSiteView); err != nil {
 		return nil, err
 	}
 	fwds, err := s.sites.ListDNSForwards(ctx, req.OrgId, req.SiteId)
@@ -370,7 +370,7 @@ func (s apiServer) RemoveSiteSubnet(ctx context.Context, req api.RemoveSiteSubne
 
 // GetSiteReferences GET /sites/{siteId} — the D1 reverse link + D4 cascade preview counts.
 func (s apiServer) GetSiteReferences(ctx context.Context, req api.GetSiteReferencesRequestObject) (api.GetSiteReferencesResponseObject, error) {
-	if _, err := authorize(ctx, req.OrgId, rbac.PermSiteManage); err != nil {
+	if _, err := authorize(ctx, req.OrgId, rbac.PermSiteView); err != nil {
 		return nil, err
 	}
 	refs, err := s.sites.GetReferences(ctx, req.OrgId, req.SiteId)

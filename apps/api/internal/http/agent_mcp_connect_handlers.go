@@ -200,7 +200,7 @@ func (s apiServer) ConnectMCPServer(ctx context.Context, req api.ConnectMCPServe
 }
 
 func (s apiServer) GetAgentGroupMCPToolPolicy(ctx context.Context, req api.GetAgentGroupMCPToolPolicyRequestObject) (api.GetAgentGroupMCPToolPolicyResponseObject, error) {
-	if _, err := authorize(ctx, req.OrgId, rbac.PermAgentMCPToolPolicyManage); err != nil {
+	if _, err := authorize(ctx, req.OrgId, rbac.PermAgentTemplateView); err != nil {
 		return nil, err
 	}
 	if err := s.requireMCPOn(ctx, req.OrgId); err != nil {

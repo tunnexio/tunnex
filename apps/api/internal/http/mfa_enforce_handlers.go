@@ -21,7 +21,7 @@ func mfaEnforceEditionRequired() error {
 
 // GetMfaEnforce GET .../mfa-enforce — read the org's MFA enforce flag (enterprise; PermMfaManage).
 func (s apiServer) GetMfaEnforce(ctx context.Context, req api.GetMfaEnforceRequestObject) (api.GetMfaEnforceResponseObject, error) {
-	if _, err := authorize(ctx, req.OrgId, rbac.PermMfaManage); err != nil {
+	if _, err := authorize(ctx, req.OrgId, rbac.PermMfaView); err != nil {
 		return nil, err
 	}
 	if !s.mfaEnforceEnabled {

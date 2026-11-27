@@ -209,7 +209,7 @@ func (s apiServer) DecideK8sClusterScopeMembership(ctx context.Context, req api.
 }
 
 func (s apiServer) ListK8sClusterInventory(ctx context.Context, req api.ListK8sClusterInventoryRequestObject) (api.ListK8sClusterInventoryResponseObject, error) {
-	if _, err := authorize(ctx, req.OrgId, rbac.PermK8sManage); err != nil {
+	if _, err := authorize(ctx, req.OrgId, rbac.PermK8sView); err != nil {
 		return nil, err
 	}
 	page, err := s.k8s.ListClusterScopeInventory(ctx, req.OrgId, req.ClusterId, stringValue(req.Params.Cursor), intValue(req.Params.Limit))

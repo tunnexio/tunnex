@@ -2,6 +2,7 @@ package http
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"io"
 	"log/slog"
@@ -10,6 +11,7 @@ import (
 	"sort"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -62,6 +64,8 @@ var rbac1WalkAllowed = map[string]map[string]rbac.Permission{
 		"CreateAgentPolicyTemplate":                  rbac.PermAgentTemplateManage,
 		"CreateAgentRulesFromOwnerAccess":            rbac.PermAgentGrantAccess,
 		"DeletePolicyRule":                           rbac.PermAgentGrantAccess,
+		"ExtendGrant":                                rbac.PermAgentGrantAccess,
+		"SetPolicyRuleEnabled":                       rbac.PermAgentGrantAccess,
 		"DenyAgentMCPToolApprovalRequest":            rbac.PermAgentMCPToolApprovalApprove,
 		"DisconnectAgentMCPOAuthConnection":          rbac.PermAgentManage,
 		"IssueAgentBootstrapToken":                   rbac.PermAgentEnroll,
@@ -117,6 +121,8 @@ var rbac1WalkAllowed = map[string]map[string]rbac.Permission{
 		"DeleteK8sNamespaceRule":            rbac.PermK8sManage,
 		"DeleteNode":                        rbac.PermGatewayManage,
 		"DeletePolicyRule":                  rbac.PermPolicyRuleManage,
+		"ExtendGrant":                       rbac.PermPolicyRuleManage,
+		"SetPolicyRuleEnabled":              rbac.PermPolicyRuleManage,
 		"DeleteResource":                    rbac.PermResourceManage,
 		"DeleteSite":                        rbac.PermSiteManage,
 		"DeregisterK8sCluster":              rbac.PermK8sManage,
@@ -188,6 +194,13 @@ type walkResult struct {
 // walkMutationsAs calls every state-changing, non-public operation as a verified person holding roles.
 func walkMutationsAs(t *testing.T, roles []string) map[string]walkResult {
 	t.Helper()
+	return walkAs(t, roles, false)
+}
+
+// walkAs calls every non-public operation as a verified person holding roles: the state-changing ones, or
+// (reads=true) the GETs.
+func walkAs(t *testing.T, roles []string, reads bool) map[string]walkResult {
+	t.Helper()
 	swagger, err := api.GetSwagger()
 	if err != nil {
 		t.Fatalf("GetSwagger: %v", err)
@@ -204,7 +217,7 @@ func walkMutationsAs(t *testing.T, roles []string) map[string]walkResult {
 	out := map[string]walkResult{}
 	for path, item := range swagger.Paths.Map() {
 		for method, op := range item.Operations() {
-			if method == http.MethodGet || method == http.MethodHead || method == http.MethodOptions {
+			if (method == http.MethodGet) != reads || method == http.MethodHead || method == http.MethodOptions {
 				continue
 			}
 			if op.Security != nil && len(*op.Security) == 0 {
@@ -328,5 +341,92 @@ func TestRBAC1SecondaryRoleGrantsAreHonoured(t *testing.T) {
 		if r := got[op]; r.status == http.StatusForbidden && r.code == "forbidden" {
 			t.Errorf("network-admin + agents-admin refused %s: the secondary role was ignored", op)
 		}
+	}
+}
+
+// rbac1AuditorReads are the admin lists the founder opened to the Auditor on 2026-11-28, each with the view
+// permission that now gates it. The walk has no database, so "allowed" means the permission gate let the
+// read through (any answer but 403); a caller with no grants and a plain member are still refused.
+var rbac1AuditorReads = map[string]rbac.Permission{
+	"ListPendingDevices":                 rbac.PermDeviceView,
+	"GetDeviceApproval":                  rbac.PermDeviceView,
+	"ListAgentGroups":                    rbac.PermAgentTemplateView,
+	"ListAgentGroupMembers":              rbac.PermAgentTemplateView,
+	"ListAgentMCPProfiles":               rbac.PermAgentTemplateView,
+	"ListAgentMCPAssignments":            rbac.PermAgentTemplateView,
+	"ListAgentPolicyTemplates":           rbac.PermAgentTemplateView,
+	"ListAgentPolicyTemplateVersions":    rbac.PermAgentTemplateView,
+	"ListAgentPolicyTemplateAssignments": rbac.PermAgentTemplateView,
+	"GetAgentGroupMCPToolPolicy":         rbac.PermAgentTemplateView,
+	"GetOrganizationAlertingSetting":     rbac.PermAlertingView,
+	"ListAlertDestinations":              rbac.PermAlertingView,
+	"ListAlertDestinationSubscriptions":  rbac.PermAlertingView,
+	"ListAlertDeliveries":                rbac.PermAlertingView,
+	"ListAlertOccurrences":               rbac.PermAlertingView,
+	"GetMfaEnforce":                      rbac.PermMfaView,
+	"ListHealthChecks":                   rbac.PermDeviceHealthView,
+	"ListPendingSiteSubnets":             rbac.PermSiteView,
+	"ListSiteDNSForwards":                rbac.PermSiteView,
+	"GetSiteReferences":                  rbac.PermSiteView,
+	"ListK8sClusterInventory":            rbac.PermK8sView,
+	"ListInvitations":                    rbac.PermInvitationView,
+	"ListAppAccessGrants":                rbac.PermAppAccessView,
+	"ListAppAccessApplicationSessions":   rbac.PermAppAccessView,
+}
+
+func TestRBAC1AuditorReadsAdminListsAndWritesNothing(t *testing.T) {
+	auditor := walkAs(t, []string{rbac.RoleAuditor}, true)
+	member := walkAs(t, []string{rbac.RoleMember}, true)
+	for op, perm := range rbac1AuditorReads {
+		if !rbac.Can(rbac.RoleAuditor, perm) || rbac.Can(rbac.RoleMember, perm) {
+			t.Errorf("%s: %s must be held by the auditor and not by a member", op, perm)
+		}
+		r, ok := auditor[op]
+		if !ok {
+			t.Errorf("%s is not a GET route", op)
+			continue
+		}
+		if r.status == http.StatusForbidden && r.code == "forbidden" {
+			t.Errorf("auditor refused %s", op)
+		}
+		if m := member[op]; m.status != http.StatusForbidden {
+			t.Errorf("a member reached %s (%d %s)", op, m.status, m.code)
+		}
+	}
+	// Secrets and approvals stay closed to the auditor.
+	for _, op := range []string{"ListAgentBootstrapTokens", "GetAgentBootstrapTokenStatus", "ListOrganizationMCPToolApprovalRequests", "ListAgentMCPToolApprovalRequests", "GetServerAccessRecording"} {
+		if r := auditor[op]; r.status != http.StatusForbidden {
+			t.Errorf("auditor reached %s (%d %s)", op, r.status, r.code)
+		}
+	}
+}
+
+// Founder, 2026-11-28: whoever may create a rule may enable, disable and extend it. The GitOps operator still
+// may not (RBAC-0 D4), and a plain member may not.
+func TestRBAC1RuleLifecycleFollowsRuleAuthoring(t *testing.T) {
+	org := uuid.New()
+	rule := uuid.New()
+	exp := time.Now().Add(time.Hour)
+	call := func(ctx context.Context) (error, error) {
+		_, a := (apiServer{}).SetPolicyRuleEnabled(ctx, api.SetPolicyRuleEnabledRequestObject{OrgId: org, RuleId: rule, Body: &api.SetPolicyRuleEnabledJSONRequestBody{Enabled: false}})
+		_, b := (apiServer{}).ExtendGrant(ctx, api.ExtendGrantRequestObject{OrgId: org, RuleId: rule, Body: &api.ExtendGrantJSONRequestBody{ExpiresAt: exp}})
+		return a, b
+	}
+	for _, roles := range [][]string{{rbac.RoleNetworkAdmin}, {rbac.RoleAgentsAdmin}, {rbac.RoleAdmin}} {
+		a, b := call(rbac1Principal(org, roles...))
+		if hasCode(a, 403, "forbidden") || hasCode(b, 403, "forbidden") {
+			t.Errorf("%v refused at the permission gate: %v / %v", roles, a, b)
+		}
+	}
+	for _, roles := range [][]string{{rbac.RoleMember}, {rbac.RoleAuditor}, {rbac.RoleHelpdesk}} {
+		a, b := call(rbac1Principal(org, roles...))
+		if !hasCode(a, 403, "forbidden") || !hasCode(b, 403, "forbidden") {
+			t.Errorf("%v toggled or extended a rule: %v / %v", roles, a, b)
+		}
+	}
+	operator := authctx.WithPrincipal(context.Background(), &authctx.Principal{MachineID: uuid.New(), MachineName: "gitops",
+		AuthMethod: authctx.AuthMachine, Roles: map[uuid.UUID]string{org: rbac.RoleOperator}})
+	if a, b := call(operator); !hasCode(a, 403, "forbidden") || !hasCode(b, 403, "forbidden") {
+		t.Errorf("the GitOps operator toggled or extended a rule: %v / %v", a, b)
 	}
 }

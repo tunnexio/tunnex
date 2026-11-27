@@ -16,12 +16,14 @@ var rbac1Grants = map[string][]Permission{
 		PermAgentViewPrivileged, PermAppAccessEventView, PermAppAccessView, PermAuditLogRetentionView,
 		PermAuditViewAll, PermBeamAuditView, PermDeviceView, PermFQDNResourceView, PermK8sHAView,
 		PermK8sScopeView, PermMemberList, PermOrgView, PermPolicyView, PermSandboxView,
+		PermAgentTemplateView, PermAlertingView, PermMfaView, PermDeviceHealthView, PermSiteView, PermK8sView,
+		PermInvitationView,
 	},
 	RoleAgentsAdmin: {
 		PermAgentAccessApprove, PermAgentAccessRequest, PermAgentCredentialRotate, PermAgentEnroll,
 		PermAgentGrantAccess, PermAgentMCPToolApprovalApprove, PermAgentMCPToolPolicyManage, PermAgentManage,
 		PermAgentRevoke, PermAgentRuntimeManage, PermAgentTemplateManage, PermAgentViewPrivileged,
-		PermMCPManage, PermMemberList, PermOrgView, PermPolicyView,
+		PermMCPManage, PermMemberList, PermOrgView, PermPolicyView, PermAgentTemplateView,
 	},
 	RoleNetworkAdmin: {
 		PermConnectivityManage, PermDeviceApprovalManage, PermDeviceApprove,
@@ -29,6 +31,7 @@ var rbac1Grants = map[string][]Permission{
 		PermFQDNResourceView, PermGatewayManage, PermIPsecManage, PermK8sAPIManage, PermK8sHAManage,
 		PermK8sHAView, PermK8sManage, PermK8sScopeApprove, PermK8sScopeManage, PermK8sScopeView, PermMemberList,
 		PermOrgView, PermPolicyRuleManage, PermPolicyView, PermResourceManage, PermSiteManage,
+		PermDeviceHealthView, PermSiteView, PermK8sView,
 	},
 	RoleHelpdesk: {
 		PermDeviceApprove, PermDeviceRestore, PermDeviceView, PermMemberList, PermMfaReset, PermOrgView,
@@ -217,6 +220,29 @@ func TestRBAC1CanManageMembershipSharedFixture(t *testing.T) {
 	for _, c := range fixture.Cases {
 		if got := CanManageMembership(c.Actor, c.Target, c.NewRole); got != c.Allowed {
 			t.Errorf("CanManageMembership(%q,%q,%q)=%v, fixture says %v", c.Actor, c.Target, c.NewRole, got, c.Allowed)
+		}
+	}
+}
+
+// Founder, 2026-11-28: every view permission is held by owner, admin and auditor, and by the role that
+// manages the area; never by member, helpdesk (unless it manages the area) or the agent.
+func TestRBAC1ViewPermissionsReachTheAuditor(t *testing.T) {
+	for perm, managers := range map[Permission][]string{
+		PermAgentTemplateView: {RoleAgentsAdmin}, PermAlertingView: nil, PermMfaView: nil,
+		PermDeviceHealthView: {RoleNetworkAdmin}, PermSiteView: {RoleNetworkAdmin},
+		PermK8sView: {RoleNetworkAdmin, RoleOperator}, PermInvitationView: nil,
+	} {
+		want := map[string]bool{RoleOwner: true, RoleAdmin: true, RoleAuditor: true}
+		for _, m := range managers {
+			want[m] = true
+		}
+		for role := range rolePermissions {
+			if Can(role, perm) != want[role] {
+				t.Errorf("%s held by %s = %v, want %v", perm, role, Can(role, perm), want[role])
+			}
+		}
+		if IsMutating(perm) {
+			t.Errorf("%s is a read", perm)
 		}
 	}
 }

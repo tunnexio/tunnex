@@ -240,6 +240,18 @@ const (
 	// PermAlertingPrivateDestination lets an alert destination point at a private network address. Owner
 	// only: it was a role-name check (owner) before RBAC-1, and stays exactly as narrow.
 	PermAlertingPrivateDestination Permission = "alerting:private_destination"
+	// RBAC-1 view permissions (founder, 2026-11-28): the Auditor reads every admin list. Each one is the
+	// read half of an existing manage permission, held by owner, admin, auditor and the narrower role that
+	// manages the area. None of them returns a secret: SSO client secrets, alert endpoints (only a host and a
+	// keyed fingerprint are served), install tokens and MCP approval arguments stay behind their manage or
+	// approve permissions.
+	PermAgentTemplateView Permission = "agent_template:view"
+	PermAlertingView      Permission = "alerting:view"
+	PermMfaView           Permission = "mfa:view"
+	PermDeviceHealthView  Permission = "device_health:view"
+	PermSiteView          Permission = "site:view"
+	PermK8sView           Permission = "k8s:view"
+	PermInvitationView    Permission = "invitation:view"
 )
 
 // Roles.
@@ -309,6 +321,8 @@ var rolePermissions = map[string]map[Permission]bool{
 		PermMemberList:      true,
 	},
 	RoleAdmin: {
+		PermAgentTemplateView: true, PermAlertingView: true, PermMfaView: true, PermDeviceHealthView: true,
+		PermSiteView: true, PermK8sView: true, PermInvitationView: true,
 		PermAuditViewAll: true, PermGatewayManage: true, PermDeviceView: true, PermMfaReset: true,
 		PermDeviceApprovalManage: true, PermResourceManage: true,
 		PermVaultUse: true, PermVaultAssign: true,
@@ -369,6 +383,8 @@ var rolePermissions = map[string]map[Permission]bool{
 		PermMCPManage:                   true,
 	},
 	RoleOwner: {
+		PermAgentTemplateView: true, PermAlertingView: true, PermMfaView: true, PermDeviceHealthView: true,
+		PermSiteView: true, PermK8sView: true, PermInvitationView: true,
 		PermAuditViewAll: true, PermGatewayManage: true, PermDeviceView: true, PermMfaReset: true,
 		PermDeviceApprovalManage: true, PermResourceManage: true,
 		PermVaultUse: true, PermVaultAssign: true,
@@ -441,6 +457,8 @@ var rolePermissions = map[string]map[Permission]bool{
 		PermDeviceView: true, PermAppAccessView: true, PermAppAccessEventView: true, PermBeamAuditView: true,
 		PermAIWorkloadView: true, PermAIModelAccessView: true, PermAIGatewayView: true, PermAIProviderView: true,
 		PermAgentViewPrivileged: true, PermSandboxView: true,
+		PermAgentTemplateView: true, PermAlertingView: true, PermMfaView: true, PermDeviceHealthView: true,
+		PermSiteView: true, PermK8sView: true, PermInvitationView: true,
 	},
 	// RoleAgentsAdmin (RBAC-1) runs AI agents and MCP. Access rules only where the source is an agent or an
 	// agent group (agent:grant_access; the rule handlers enforce the source). Not people, groups, Zero Trust
@@ -453,6 +471,7 @@ var rolePermissions = map[string]map[Permission]bool{
 		PermAgentViewPrivileged: true, PermAgentRuntimeManage: true, PermAgentTemplateManage: true,
 		PermAgentGrantAccess: true, PermAgentAccessRequest: true, PermAgentAccessApprove: true,
 		PermMCPManage: true, PermAgentMCPToolPolicyManage: true, PermAgentMCPToolApprovalApprove: true,
+		PermAgentTemplateView: true,
 	},
 	// RoleNetworkAdmin (RBAC-1) runs the network: gateways, connectivity, sites, IPsec, Kubernetes, FQDN
 	// resources, resources, access rules, devices and access events. Not Zero Trust on/off, groups or
@@ -466,6 +485,7 @@ var rolePermissions = map[string]map[Permission]bool{
 		PermFQDNResourceView: true, PermFQDNResourceManage: true, PermResourceManage: true, PermPolicyRuleManage: true,
 		PermDeviceView: true, PermDeviceApprove: true, PermDeviceApprovalManage: true, PermDeviceRestore: true,
 		PermDeviceTransfer: true, PermDeviceHealthManage: true,
+		PermDeviceHealthView: true, PermSiteView: true, PermK8sView: true,
 	},
 	// RoleHelpdesk (RBAC-1) helps people get connected. Its device and MFA actions refuse a person who holds
 	// an admin-grade role (HelpdeskCeilingApplies); the handlers enforce that.
@@ -482,6 +502,7 @@ var rolePermissions = map[string]map[Permission]bool{
 	RoleOperator: {
 		PermOrgView:          true,
 		PermK8sManage:        true,
+		PermK8sView:          true, // RBAC-1: the read half of k8s:manage, so the operator keeps its inventory read
 		PermK8sHAView:        true,
 		PermPolicyView:       true,
 		PermPolicyRuleManage: true,
@@ -540,7 +561,8 @@ func IsMutating(p Permission) bool {
 	// unverified user slipping through a mutation. Do NOT invert this into a
 	// mutating-allowlist.
 	switch p {
-	case PermBeamUse, PermBeamAuditView, PermSandboxView, PermServerAccessReplay, PermServerAccessView, PermServerAccessUse, PermAppAccessView, PermAppAccessUse, PermAppAccessEventView, PermAIModelAccessView, PermAIGatewayView, PermAIProviderView, PermOrgView, PermMemberList, PermPolicyView, PermAuditLogRetentionView, PermFQDNResourceView, PermAgentViewPrivileged, PermK8sHAView, PermK8sScopeView, PermAuditViewAll, PermDeviceView:
+	case PermBeamUse, PermBeamAuditView, PermSandboxView, PermServerAccessReplay, PermServerAccessView, PermServerAccessUse, PermAppAccessView, PermAppAccessUse, PermAppAccessEventView, PermAIModelAccessView, PermAIGatewayView, PermAIProviderView, PermOrgView, PermMemberList, PermPolicyView, PermAuditLogRetentionView, PermFQDNResourceView, PermAgentViewPrivileged, PermK8sHAView, PermK8sScopeView, PermAuditViewAll, PermDeviceView,
+		PermAgentTemplateView, PermAlertingView, PermMfaView, PermDeviceHealthView, PermSiteView, PermK8sView, PermInvitationView:
 		return false
 	default:
 		return true

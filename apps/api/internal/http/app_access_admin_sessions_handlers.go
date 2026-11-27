@@ -15,7 +15,8 @@ type appAdminSessionsHTTPPort interface {
 }
 
 func (s apiServer) ListAppAccessApplicationSessions(ctx context.Context, req api.ListAppAccessApplicationSessionsRequestObject) (api.ListAppAccessApplicationSessionsResponseObject, error) {
-	ctx, _, err := s.appAccessPermissionContext(ctx, req.OrgId, rbac.PermAppAccessSessionManage, false)
+	// RBAC-1: listing sessions is app_access:view (owner, admin, auditor); revoking stays app_access:session_manage.
+	ctx, _, err := s.appAccessPermissionContext(ctx, req.OrgId, rbac.PermAppAccessView, false)
 	if err != nil {
 		return nil, err
 	}

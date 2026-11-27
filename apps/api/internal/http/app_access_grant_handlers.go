@@ -17,7 +17,8 @@ func appAccessGrant(r appaccess.Grant) api.AppAccessGrant {
 	return api.AppAccessGrant{Id: r.ID, OrgId: r.OrgID, AppId: r.AppID, AppLabel: r.AppLabel, SubjectKind: api.AppAccessSubjectKind(r.SubjectKind), SubjectId: r.SubjectID, SubjectLabel: r.SubjectLabel, Enabled: r.Enabled, StartsAt: r.StartsAt, ExpiresAt: r.ExpiresAt, Version: r.Version, RevokedAt: r.RevokedAt, Status: api.AppAccessGrantStatus(r.Status), CreatedAt: r.CreatedAt, UpdatedAt: r.UpdatedAt}
 }
 func (s apiServer) ListAppAccessGrants(ctx context.Context, req api.ListAppAccessGrantsRequestObject) (api.ListAppAccessGrantsResponseObject, error) {
-	ctx, _, err := s.appAccessGrantContext(ctx, req.OrgId, false)
+	// RBAC-1: reading the grant list is app_access:view (owner, admin, auditor); changing grants stays app_access:grant.
+	ctx, _, err := s.appAccessPermissionContext(ctx, req.OrgId, rbac.PermAppAccessView, false)
 	if err != nil {
 		return nil, err
 	}

@@ -11,7 +11,7 @@ import (
 
 // ListPendingDevices GET .../devices/pending — the Community approval queue.
 func (s apiServer) ListPendingDevices(ctx context.Context, req api.ListPendingDevicesRequestObject) (api.ListPendingDevicesResponseObject, error) {
-	if _, err := authorize(ctx, req.OrgId, rbac.PermDeviceApprove); err != nil {
+	if _, err := authorize(ctx, req.OrgId, rbac.PermDeviceView); err != nil {
 		return nil, err
 	}
 	list, err := s.devices.ListPending(ctx, req.OrgId)
@@ -57,7 +57,7 @@ func (s apiServer) RejectDevice(ctx context.Context, req api.RejectDeviceRequest
 
 // GetDeviceApproval GET .../device-approval.
 func (s apiServer) GetDeviceApproval(ctx context.Context, req api.GetDeviceApprovalRequestObject) (api.GetDeviceApprovalResponseObject, error) {
-	if _, err := authorize(ctx, req.OrgId, rbac.PermDeviceApprove); err != nil {
+	if _, err := authorize(ctx, req.OrgId, rbac.PermDeviceView); err != nil {
 		return nil, err
 	}
 	mode, err := s.devices.GetDeviceApproval(ctx, req.OrgId)
