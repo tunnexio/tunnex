@@ -1480,6 +1480,12 @@ type Querier interface {
 	// that never polls and must be re-issued, while a managed device re-homes itself — but only through a
 	// hub-set member. The caller needs the mode to report which devices are broken until re-imported.
 	ListLiveDevicesForNode(ctx context.Context, nodeID uuid.UUID) ([]ListLiveDevicesForNodeRow, error)
+	// One row per agent device and MCP endpoint it inherits from a group's active
+	// profile assignment (the same join as ListAgentMCPProfilesForDevice), with the
+	// device's gateway capabilities, whether its runtime already forwards through
+	// the gateway, and whether the organization is still inside its grace period.
+	// No grace row means no grace. The clock is PostgreSQL's.
+	ListMCPDirectPathInputsForOrg(ctx context.Context, orgID uuid.UUID) ([]ListMCPDirectPathInputsForOrgRow, error)
 	// ⛔ owner_email IS RESOLVED HERE, FROM `users` AND NOT FROM `memberships` (S15.1, D22 ruled).
 	//
 	// The field was on the DTO, documented as "resolved from owner_user_id for display", and NEVER POPULATED —
@@ -1567,6 +1573,9 @@ type Querier interface {
 	ListOrganizations(ctx context.Context) ([]Organization, error)
 	ListOrganizationsForUser(ctx context.Context, userID uuid.UUID) ([]Organization, error)
 	ListOrganizationsWithAgentMCPToolActivity(ctx context.Context) ([]uuid.UUID, error)
+	// Organizations whose grace date went by in (after_time, until_time]. The grace
+	// sweep pushes each of them once so the deny is compiled when the date passes.
+	ListOrganizationsWithMCPDirectPathGraceEndedBetween(ctx context.Context, arg ListOrganizationsWithMCPDirectPathGraceEndedBetweenParams) ([]uuid.UUID, error)
 	// Pending means still redeemable: not used, not revoked, not expired. The
 	// token hash is deliberately not selected; a listing never carries the value.
 	// Tokens live for one hour, so the newest 200 is a bound, not a page.
@@ -1751,6 +1760,12 @@ type Querier interface {
 	LookupAgentRuntimeCredentialBinding(ctx context.Context, tokenHash []byte) (LookupAgentRuntimeCredentialBindingRow, error)
 	// lint:cross-org -- Dedicated authenticated proxy derives tenant from globally unique exact publication hostname; live org and exact revision/gateway/host joins constrain projection.
 	LookupAppAccessServingRoute(ctx context.Context, hostname string) (LookupAppAccessServingRouteRow, error)
+	// AI-SEC-2: inputs the policy snapshot needs to close an agent's direct path to
+	// an MCP endpoint assigned to it. The compiler stays pure; these reads carry the
+	// gating facts (gateway capability, runtime capability, grace date).
+	// The control plane also runs against a schema that has not been migrated to
+	// 0249; there the feature has no data and the snapshot must not name the table.
+	MCPDirectPathSchemaPresent(ctx context.Context) (bool, error)
 	// AI-SEC-2: the runtime declared (poll query mcp_gateway=true) that it forwards
 	// MCP to the gateway listener. Recorded on every declaring poll so the value is
 	// also a freshness signal. Never cleared by a poll that omits the declaration.

@@ -1276,6 +1276,11 @@ func buildSnapshotWithQueries(ctx context.Context, q *sqlc.Queries, orgID uuid.U
 			Kind: d.Kind, ConfigRevision: d.AgentConfigRevision,
 		})
 	}
+	// AI-SEC-2: the direct MCP paths to close, already gated on gateway capability, runtime capability and
+	// the grace date. Nothing is appended for an organization with no MCP assignment.
+	if err := appendMCPDirectPathDenies(ctx, q, &snap, orgID); err != nil {
+		return Snapshot{}, err
+	}
 	// Disabled orgs already withdraw all projections; skip the empty query.
 	if settings.SandboxesEnabled {
 		projections, err := q.ListActiveSandboxProjections(ctx, orgID)

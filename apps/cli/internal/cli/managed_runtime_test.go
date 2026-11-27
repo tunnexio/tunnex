@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -338,5 +339,110 @@ func TestMCPOAuthCacheBoundToEndpoint(t *testing.T) {
 	got, err = source.MCPProxyAuthorization(t.Context(), "https://b.example/mcp")
 	if err != nil || got != "token-b" || calls != 1 {
 		t.Fatal("same endpoint cache failed")
+	}
+}
+
+// AI-SEC-2: the runtime declares that it forwards MCP to the gateway, and once the control plane names the
+// gateway listener it neither observes the MCP server itself nor leases a token for it.
+func TestManagedRuntimeDeclaresGatewayCapabilityAndStopsLocalMCPWork(t *testing.T) {
+	var upstreamCalls atomic.Int64
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		upstreamCalls.Add(1)
+		http.Error(w, "nothing here", http.StatusNotFound)
+	}))
+	defer upstream.Close()
+
+	var mu sync.Mutex
+	var pollQueries []string
+	var reports []map[string]any
+	leases := 0
+	gatewayURL := any(nil)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		defer mu.Unlock()
+		switch r.URL.Path {
+		case "/api/v1/agent/runtime/poll":
+			w.Header().Set("Content-Type", "application/json")
+			pollQueries = append(pollQueries, r.URL.Query().Get("mcp_gateway"))
+			_ = json.NewEncoder(w).Encode(map[string]any{"revision": 1, "device_id": "00000000-0000-0000-0000-000000000001", "org_id": "00000000-0000-0000-0000-000000000002", "address": "10.0.0.2/32", "gateway_endpoint": "gw.example:51820", "gateway_public_key": "MDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDAwMDA=", "allowed_ips": []string{"10.0.0.0/24"}, "dns": []string{}, "persistent_keepalive": 25,
+				"mcp_upstream": upstream.URL, "mcp_gateway_url": gatewayURL})
+		case "/api/v1/agent/runtime/report":
+			var body map[string]any
+			_ = json.NewDecoder(r.Body).Decode(&body)
+			reports = append(reports, body)
+			w.WriteHeader(http.StatusNoContent)
+		case "/api/v1/agent/runtime/mcp-oauth-lease":
+			leases++
+			w.WriteHeader(http.StatusNoContent)
+		default:
+			http.Error(w, "unexpected "+r.URL.Path, http.StatusNotFound)
+		}
+	}))
+	defer server.Close()
+	dir := t.TempDir()
+	state := ManagedRuntimeState{Server: server.URL, ClientVersion: "test"}
+	source, err := newManagedRuntimeSource(server.URL, "runtime-test", "", filepath.Join(dir, "runtime.conf"), filepath.Join(dir, "runtime-state.json"), &state, 0, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// No gateway URL (an older gateway, or grace): the legacy path stays exactly as it was.
+	if _, err := source.Poll(t.Context(), 0, "test"); err != nil {
+		t.Fatal(err)
+	}
+	if source.currentMCPGatewayURL() != "" || source.currentMCPUpstream() != upstream.URL {
+		t.Fatalf("legacy poll: gateway %q upstream %q", source.currentMCPGatewayURL(), source.currentMCPUpstream())
+	}
+	if err := source.Report(t.Context(), AgentRuntimeReport{AppliedRevision: 1, AttemptedRevision: 1, ClientVersion: "test"}); err != nil {
+		t.Fatal(err)
+	}
+	mu.Lock()
+	legacyUpstreamCalls, legacyReport := upstreamCalls.Load(), reports[len(reports)-1]
+	mu.Unlock()
+	if legacyUpstreamCalls == 0 {
+		t.Fatal("legacy report must still observe the MCP server from the agent host")
+	}
+	if legacyReport["mcp_inventory"] == nil {
+		t.Fatalf("legacy report must still carry the inventory: %v", legacyReport)
+	}
+
+	// The control plane names the gateway listener: forward only.
+	mu.Lock()
+	gatewayURL = "http://10.99.0.1:8084/mcp"
+	leasesBefore := leases
+	mu.Unlock()
+	source.mcpToken, source.mcpTokenEndpoint, source.mcpTokenExpires = "held-token", upstream.URL, time.Now().Add(time.Hour)
+	if _, err := source.Poll(t.Context(), 0, "test"); err != nil {
+		t.Fatal(err)
+	}
+	if got := source.currentMCPGatewayURL(); got != "http://10.99.0.1:8084/mcp" {
+		t.Fatalf("gateway URL = %q", got)
+	}
+	if source.mcpToken != "" {
+		t.Fatal("a token leased on the old path must not stay on the agent host once the gateway enforces")
+	}
+	before := upstreamCalls.Load()
+	if err := source.Report(t.Context(), AgentRuntimeReport{AppliedRevision: 1, AttemptedRevision: 1, ClientVersion: "test"}); err != nil {
+		t.Fatal(err)
+	}
+	mu.Lock()
+	defer mu.Unlock()
+	if upstreamCalls.Load() != before {
+		t.Fatalf("gateway mode contacted the MCP server %d times from the agent host", upstreamCalls.Load()-before)
+	}
+	last := reports[len(reports)-1]
+	if last["mcp_inventory"] != nil {
+		t.Fatalf("gateway mode must not report inventory: %v", last)
+	}
+	if last["mcp_oauth_discovery"] != nil {
+		t.Fatalf("gateway mode must not report OAuth discovery: %v", last)
+	}
+	if leases != leasesBefore {
+		t.Fatalf("gateway mode leased a token %d times", leases-leasesBefore)
+	}
+	for i, q := range pollQueries {
+		if q != "true" {
+			t.Fatalf("poll %d sent mcp_gateway=%q, want true", i, q)
+		}
 	}
 }
