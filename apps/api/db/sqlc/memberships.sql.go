@@ -141,6 +141,8 @@ type GetDeviceOwnerMembershipRolesRow struct {
 
 // RBAC-1 Helpdesk ceiling. The roles of the person who owns a device in this organization (no row when the
 // device or the owner's active membership is gone).
+// lint:allow-deleted — the ceiling must still protect an admin-grade person's soft-deleted device (restore
+// acts on it); filtering it out would return no row and let a Helpdesk-only actor through.
 func (q *Queries) GetDeviceOwnerMembershipRoles(ctx context.Context, arg GetDeviceOwnerMembershipRolesParams) (GetDeviceOwnerMembershipRolesRow, error) {
 	row := q.db.QueryRow(ctx, getDeviceOwnerMembershipRoles, arg.OrgID, arg.ID)
 	var i GetDeviceOwnerMembershipRolesRow

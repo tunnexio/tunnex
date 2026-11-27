@@ -167,6 +167,8 @@ WHERE m.user_id = $1 AND m.role = 'owner' AND m.access_revoked_at IS NULL
 -- RBAC-1 Helpdesk ceiling. The roles of the person who owns a device in this organization (no row when the
 -- device or the owner's active membership is gone).
 -- name: GetDeviceOwnerMembershipRoles :one
+-- lint:allow-deleted — the ceiling must still protect an admin-grade person's soft-deleted device (restore
+-- acts on it); filtering it out would return no row and let a Helpdesk-only actor through.
 SELECT m.role, m.roles FROM devices d
 JOIN memberships m ON m.org_id = d.org_id AND m.user_id = d.user_id AND m.access_revoked_at IS NULL
 WHERE d.org_id = $1 AND d.id = $2;

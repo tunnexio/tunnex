@@ -782,6 +782,8 @@ type Querier interface {
 	GetDeviceHealth(ctx context.Context, deviceID uuid.UUID) (DeviceHealth, error)
 	// RBAC-1 Helpdesk ceiling. The roles of the person who owns a device in this organization (no row when the
 	// device or the owner's active membership is gone).
+	// lint:allow-deleted — the ceiling must still protect an admin-grade person's soft-deleted device (restore
+	// acts on it); filtering it out would return no row and let a Helpdesk-only actor through.
 	GetDeviceOwnerMembershipRoles(ctx context.Context, arg GetDeviceOwnerMembershipRolesParams) (GetDeviceOwnerMembershipRolesRow, error)
 	GetDomainClaim(ctx context.Context, arg GetDomainClaimParams) (DomainClaim, error)
 	// lint:cross-org — SSO callback resolves the config by (provider, client_id)
