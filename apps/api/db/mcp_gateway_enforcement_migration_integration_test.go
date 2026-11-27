@@ -29,7 +29,8 @@ func TestMCPGatewayEnforcementMigrationPostgres(t *testing.T) {
 	if err != nil {
 		t.Fatalf("admin connect: %v", err)
 	}
-	defer adminPool.Close()
+	// Registered first so it runs last: the database drop below still needs this pool.
+	t.Cleanup(adminPool.Close)
 	u, err := url.Parse(admin)
 	if err != nil {
 		t.Fatalf("parse admin DSN: %v", err)
@@ -39,7 +40,9 @@ func TestMCPGatewayEnforcementMigrationPostgres(t *testing.T) {
 		t.Fatalf("create database: %v", err)
 	}
 	t.Cleanup(func() {
-		_, _ = adminPool.Exec(context.Background(), "DROP DATABASE IF EXISTS "+name+" WITH (FORCE)")
+		if _, err := adminPool.Exec(context.Background(), "DROP DATABASE IF EXISTS "+name+" WITH (FORCE)"); err != nil {
+			t.Errorf("drop test database %s: %v", name, err)
+		}
 	})
 	branchURL := *u
 	branchURL.Path = "/" + name
