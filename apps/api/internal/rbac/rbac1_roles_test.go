@@ -199,7 +199,7 @@ func TestRBAC1PrivateAlertDestinationStaysOwnerOnly(t *testing.T) {
 // The shared fixture is also read by apps/web/test/rbac1roles.test.ts against the hand-mirrored
 // canManageMembership, so the two implementations are checked against one table.
 func TestRBAC1CanManageMembershipSharedFixture(t *testing.T) {
-	raw, err := os.ReadFile("testdata/can_manage_membership.json")
+	raw, err := os.ReadFile("../../../web/test/fixtures/can_manage_membership.json")
 	if err != nil {
 		t.Fatal(err)
 	}

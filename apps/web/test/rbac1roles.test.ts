@@ -6,7 +6,7 @@ import {
   ROLE_DESCRIPTIONS, ROLE_LABELS, roleLabel, roleListLabel, roleNoun, rolesWhoCan,
 } from "../src/lib/rbac";
 import { accountActionBlocked, deviceCountFor, roleTallyLabel } from "../src/lib/usersview";
-import sharedFixture from "../../api/internal/rbac/testdata/can_manage_membership.json";
+import sharedFixture from "./fixtures/can_manage_membership.json";
 
 // RBAC-1 (docs/RBAC-1-roles.md): four new human roles, the AI Gateway renames, and permission checks in place of
 // role-name checks. The grant table itself is generated from Go (rbac-policy.json) and drift-guarded there.
