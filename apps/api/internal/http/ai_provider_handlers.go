@@ -2,7 +2,9 @@ package http
 
 import (
 	"context"
+	"errors"
 	"github.com/google/uuid"
+	openapi_types "github.com/oapi-codegen/runtime/types"
 	"github.com/tunnexio/tunnex/apps/api/internal/aigateway"
 	"github.com/tunnexio/tunnex/apps/api/internal/api"
 	"github.com/tunnexio/tunnex/apps/api/internal/apierr"
@@ -117,9 +119,44 @@ func (s apiServer) DeleteAIProvider(ctx context.Context, r api.DeleteAIProviderR
 	}
 	actor, _ := aiManagementActor(ctx)
 	if err = s.aiPolicies.DeleteProvider(ctx, r.OrgId, actor, r.ConnectionId, r.Body.ExpectedRevision); err != nil {
+		var inUse *aigateway.ProviderInUse
+		if errors.As(err, &inUse) {
+			return aiProviderInUseResponse(ctx, inUse), nil
+		}
 		return nil, err
 	}
 	return api.DeleteAIProvider204Response{}, nil
+}
+
+// aiProviderInUseResponse is the 409 that lists what still uses a provider credential.
+func aiProviderInUseResponse(ctx context.Context, inUse *aigateway.ProviderInUse) api.DeleteAIProvider409JSONResponse {
+	var body api.AIProviderInUseConflict
+	body.Error.Code, body.Error.Message = api.AIProviderInUse, inUse.Error()
+	if id := reqID(ctx); id != "" {
+		body.Error.RequestId = &id
+	}
+	body.InUse.Models = append([]string{}, inUse.Models...)
+	body.InUse.Policies = make([]struct {
+		Name   string             `json:"name"`
+		TeamId openapi_types.UUID `json:"team_id"`
+	}, 0, len(inUse.Policies))
+	for _, p := range inUse.Policies {
+		body.InUse.Policies = append(body.InUse.Policies, struct {
+			Name   string             `json:"name"`
+			TeamId openapi_types.UUID `json:"team_id"`
+		}{Name: p.Name, TeamId: p.TeamID})
+	}
+	body.InUse.Agents = make([]struct {
+		DeviceId openapi_types.UUID `json:"device_id"`
+		Name     string             `json:"name"`
+	}, 0, len(inUse.Agents))
+	for _, a := range inUse.Agents {
+		body.InUse.Agents = append(body.InUse.Agents, struct {
+			DeviceId openapi_types.UUID `json:"device_id"`
+			Name     string             `json:"name"`
+		}{DeviceId: a.DeviceID, Name: a.Name})
+	}
+	return api.DeleteAIProvider409JSONResponse{Body: body, Headers: api.DeleteAIProvider409ResponseHeaders{XRequestId: reqID(ctx)}}
 }
 func (s apiServer) TestAIProvider(ctx context.Context, r api.TestAIProviderRequestObject) (api.TestAIProviderResponseObject, error) {
 	ctx, err := s.aiProviderContext(ctx, r.OrgId, true)

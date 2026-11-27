@@ -670,6 +670,11 @@ type Querier interface {
 	// Active = not revoked and not expired. Expired/revoked rows fail auth closed.
 	GetActiveCliCredentialByHash(ctx context.Context, tokenHash []byte) (CliCredential, error)
 	GetAgentAccessOperation(ctx context.Context, arg GetAgentAccessOperationParams) (AgentAccessRequestOperation, error)
+	// AI-UX-1: the agent Access tab (what an agent can reach now) and "create rules from the owner's access".
+	// Read-only. Rules are created through the policy service's rule insert, never from here.
+	// The agent and the person its access can be copied from. The owner columns are NULL when the owner's
+	// account is gone or is no longer a member of this organization: there is then nobody to copy from.
+	GetAgentAccessOwner(ctx context.Context, arg GetAgentAccessOwnerParams) (GetAgentAccessOwnerRow, error)
 	GetAgentAccessRequest(ctx context.Context, arg GetAgentAccessRequestParams) (AgentAccessRequest, error)
 	GetAgentAccessRequestByPolicyRule(ctx context.Context, arg GetAgentAccessRequestByPolicyRuleParams) (AgentAccessRequest, error)
 	GetAgentAccessRequestForUpdate(ctx context.Context, arg GetAgentAccessRequestForUpdateParams) (AgentAccessRequest, error)
@@ -1127,6 +1132,10 @@ type Querier interface {
 	// src_user_id is the owner resolved and persisted at ingest, not a live
 	// ownership join and not proof that the human initiated the traffic.
 	ListAccessEventsByUser(ctx context.Context, arg ListAccessEventsByUserParams) ([]AccessEvent, error)
+	// Unexpired rules whose source is the given agent (the agent itself or an agent group it is in), or the
+	// given person (the person or a user group they are in), with the destination named. Pass only the subject
+	// wanted; a NULL subject matches nothing. An archived agent group contributes no rule, like the compiler.
+	ListAccessRulesForSubjects(ctx context.Context, arg ListAccessRulesForSubjectsParams) ([]ListAccessRulesForSubjectsRow, error)
 	ListAccessSources(ctx context.Context, arg ListAccessSourcesParams) ([]ListAccessSourcesRow, error)
 	// Compiler input only: inactive/deleted/non-agent devices must never expand an
 	// agent-group source. Suspension keeps the membership row but contributes no
