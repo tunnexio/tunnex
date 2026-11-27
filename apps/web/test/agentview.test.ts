@@ -15,6 +15,8 @@ import {
   livenessLabel,
   formatTraffic,
   agentBootstrapCommand as buildAgentBootstrapCommand,
+  agentRuntimeUpdateCommand,
+  INSTALL_ON_ENROLLED_HOST,
   type AgentRow,
 } from "../src/lib/agentview";
 import type { BootstrapRelease } from "../src/lib/api";
@@ -174,6 +176,39 @@ describe("the connect command — S15.3", () => {
 
   it("⚠ the config is chmod 600 — a private key must not be world-readable", () => {
     expect(agentConnectCommand(conf)).toMatch(/chmod 600/);
+  });
+});
+
+describe("the runtime update command", () => {
+  const cmd = agentRuntimeUpdateCommand(release);
+  const install = agentBootstrapCommand("https://cp.example");
+  it("says exactly what an enrolled host is told by the install command", () => {
+    expect(INSTALL_ON_ENROLLED_HOST).toBe(`This host already runs a Tunnex agent. Nothing was changed and the install token was not used. To update it, use "Update runtime" on the agent's page in Tunnex.`);
+  });
+  it("never asks for, carries or sends a token, and never calls the control plane", () => {
+    for (const absent of ["bootstrap_token", "tnx_agent_", "/dev/tty", "stty", "install token", "/api/v1/", "cp.example", "wg genkey", "wg-quick", "jq "]) expect(cmd, absent).not.toContain(absent);
+  });
+  it("obtains and verifies the runtime with the very shell the install command uses", () => {
+    // Every statement from the first download to the last digest check is the
+    // install command's, apart from its token wording.
+    const verified = (text: string) => text.slice(text.indexOf("download_asset() {"), text.indexOf("'runtime unit refused'")).split("; no bootstrap token was used").join("");
+    expect(verified(cmd).length).toBeGreaterThan(1500);
+    expect(verified(cmd)).toBe(verified(install));
+    expect(cmd).toContain(`release_key='${release.verifier_public_key}'`);
+    expect(cmd).toContain('-public-key "$release_key" -expected-source-sha "$source_sha" -expected-key-id "$verifier_key_id"');
+    expect(cmd.indexOf("'runtime unit refused'")).toBeLessThan(cmd.indexOf("stage=1"));
+  });
+  it("replaces only the runtime and its unit, by rename, and leaves credential, tunnel and state alone", () => {
+    expect(cmd).toContain('put_file "$d/runtime" "$runtime_bin" 755; put_file "$d/unit" "$runtime_unit" 644');
+    expect(cmd).toContain('as_root mv -f "$2.tunnex-update" "$2"');
+    // The shared variable block names these paths; nothing after it may use them to write, copy or remove.
+    const afterVars = cmd.slice(cmd.indexOf("'signed runtime unit source refused'"));
+    for (const name of ["$runtime_cfg", "$runtime_state", "/etc/wireguard", "/var/lib/tunnex-agent", "/etc/tunnex-agent"]) expect(afterVars, name).not.toContain(name);
+    expect(afterVars.split("$runtime_cred")).toHaveLength(2);
+    expect(afterVars).toContain('for target in "$runtime_bin" "$runtime_unit" "$runtime_cred"; do if as_root test -L "$target" || ! as_root test -f "$target"');
+  });
+  it("applies no version ordering of its own", () => {
+    expect(cmd).not.toMatch(/sort -V|dpkg --compare-versions|-(?:lt|gt|le|ge) /);
   });
 });
 
@@ -545,7 +580,9 @@ esac`);
     const cmd = agentBootstrapCommand("https://cp.example");
     // Refusal occurs before token redemption, key generation, download, writes,
     // service mutation, or cleanup of an existing managed installation.
-    expect(cmd).toMatch(/existing managed (?:runtime interface|installation) refused/i);
+    expect(cmd).toContain("This host already runs a Tunnex agent. Nothing was changed and the install token was not used.");
+    expect(cmd).toContain("Part of an earlier Tunnex agent installation is still on this host");
+    expect(cmd.indexOf("refuse_existing")).toBeLessThan(cmd.indexOf("Paste the install token"));
     expect(cmd).toContain('for target in "$runtime_bin" "$runtime_unit"');
     expect(cmd.indexOf('for target in "$runtime_bin"')).toBeLessThan(cmd.indexOf("trap cleanup EXIT"));
     expect(cmd).toContain("wg show runtime");
