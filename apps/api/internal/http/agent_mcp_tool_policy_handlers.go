@@ -37,6 +37,12 @@ func (s apiServer) GetRuntimeMCPOAuthLease(ctx context.Context, req api.GetRunti
 	if s.mcpOAuth == nil {
 		return nil, apierr.New(http.StatusServiceUnavailable, "mcp_oauth_unavailable", "MCP OAuth is temporarily unavailable")
 	}
+	// AI-SEC-2: the credential stays off the agent host. A runtime that forwards to the gateway, or any
+	// runtime once the organization's grace period is over, is refused here with the same answer as
+	// "no credential"; the gateway receives the token per forwarded call instead.
+	if s.agentRuntime == nil || !s.agentRuntime.MCPDirectLeaseAllowed(ctx, id.OrgID, id.DeviceID) {
+		return nil, apierr.New(http.StatusBadGateway, "mcp_oauth_lease_unavailable", "MCP OAuth authorization is unavailable")
+	}
 	token, expires, err := s.mcpOAuth.Lease(ctx, id.OrgID, id.DeviceID, req.Params.Endpoint)
 	if err != nil {
 		// A runtime caller learns only that it cannot use a credential. It gets
@@ -83,7 +89,11 @@ func (s apiServer) ReplaceAgentMCPToolPolicy(ctx context.Context, req api.Replac
 			raw, _ := json.Marshal(rule.ArgumentConstraints)
 			constraints = raw
 		}
-		rules = append(rules, mcptoolpolicy.Rule{Endpoint: rule.Endpoint, ServerName: rule.ServerName, ToolName: rule.ToolName, InputSchemaHash: rule.InputSchemaHash, ArgumentConstraints: constraints, RateLimitPerMinute: rule.RateLimitPerMinute, StepUpRequired: rule.StepUpRequired != nil && *rule.StepUpRequired})
+		definitionHash := ""
+		if rule.ToolDefinitionHash != nil {
+			definitionHash = *rule.ToolDefinitionHash
+		}
+		rules = append(rules, mcptoolpolicy.Rule{Endpoint: rule.Endpoint, ServerName: rule.ServerName, ToolName: rule.ToolName, InputSchemaHash: rule.InputSchemaHash, ArgumentConstraints: constraints, RateLimitPerMinute: rule.RateLimitPerMinute, StepUpRequired: rule.StepUpRequired != nil && *rule.StepUpRequired, ToolDefinitionHash: definitionHash})
 	}
 	p, err := s.mcpToolPolicy.Replace(ctx, req.OrgId, req.DeviceId, actorID(ctx), rules)
 	if errors.Is(err, mcptoolpolicy.ErrNotFound) {
@@ -122,6 +132,14 @@ func toAPIMCPToolPolicyRule(rule mcptoolpolicy.Rule) api.MCPToolPolicyRule {
 	if rule.StepUpRequired {
 		value := true
 		out.StepUpRequired = &value
+	}
+	if rule.ToolDefinitionHash != "" {
+		value := rule.ToolDefinitionHash
+		out.ToolDefinitionHash = &value
+	}
+	if rule.DefinitionState != "" {
+		value := api.MCPToolPolicyRuleDefinitionState(rule.DefinitionState)
+		out.DefinitionState = &value
 	}
 	if len(rule.ArgumentConstraints) > 0 {
 		var constraints api.MCPArgumentConstraints

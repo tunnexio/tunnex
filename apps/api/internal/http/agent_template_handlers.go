@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/netip"
 	"net/url"
 	"strings"
 	"time"
@@ -118,10 +119,32 @@ func (s apiServer) GetAgentEffectiveMCPProfile(ctx context.Context, req api.GetA
 		return nil, apierr.New(http.StatusServiceUnavailable, "mcp_profile_unavailable", "multiple active MCP profiles are assigned to this agent")
 	}
 	matched := assignments[0]
-	return api.GetAgentEffectiveMCPProfile200JSONResponse{
+	out := api.GetAgentEffectiveMCPProfile200JSONResponse{
 		Assigned: true, ProfileId: &matched.ProfileID, ProfileName: &matched.ProfileName, Endpoint: &matched.Endpoint,
 		GroupId: &matched.AgentGroupID, GroupName: &matched.GroupName,
-	}, nil
+	}
+	// AI-SEC-2: where tool policy is enforced for this agent right now. Left out when it cannot be
+	// read; the profile itself is still shown.
+	if s.agentRuntime != nil {
+		if path, err := s.agentRuntime.DescribeMCPPath(ctx, req.OrgId, req.DeviceId); err == nil && path.Assigned {
+			enforcement := api.AgentEffectiveMCPProfileEnforcement(path.Enforcement)
+			closable := mcpDirectPathClosable(matched.Endpoint)
+			out.Enforcement, out.DirectPathGraceUntil, out.DirectPathClosable = &enforcement, path.GraceUntil, &closable
+		}
+	}
+	return out, nil
+}
+
+// mcpDirectPathClosable reports whether the gateway can fully close the agent's own route to the endpoint:
+// only for a private IP literal. A hostname is closed just for addresses the gateway already resolves for
+// an FQDN resource of the same name, and a public server is reachable over the agent host's own internet.
+func mcpDirectPathClosable(endpoint string) bool {
+	u, err := url.Parse(strings.TrimSpace(endpoint))
+	if err != nil {
+		return false
+	}
+	ip, err := netip.ParseAddr(u.Hostname())
+	return err == nil && (ip.IsPrivate() || ip.IsLoopback() || ip.IsLinkLocalUnicast())
 }
 
 func (s apiServer) CreateAgentMCPProfile(ctx context.Context, req api.CreateAgentMCPProfileRequestObject) (api.CreateAgentMCPProfileResponseObject, error) {

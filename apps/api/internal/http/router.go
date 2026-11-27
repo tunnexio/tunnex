@@ -42,6 +42,7 @@ import (
 	"github.com/tunnexio/tunnex/apps/api/internal/licence"
 	applog "github.com/tunnexio/tunnex/apps/api/internal/log"
 	"github.com/tunnexio/tunnex/apps/api/internal/machineauth"
+	"github.com/tunnexio/tunnex/apps/api/internal/mcpdecision"
 	"github.com/tunnexio/tunnex/apps/api/internal/mcpoauth"
 	"github.com/tunnexio/tunnex/apps/api/internal/mcptoolapproval"
 	"github.com/tunnexio/tunnex/apps/api/internal/mcptoolpolicy"
@@ -118,12 +119,14 @@ type Deps struct {
 	Machine                  *machineauth.Service // OPEN (S10.2): machine credentials (GitOps operator identity)
 	// Licence is the entitlement source. ⚠ Never nil in production; a nil manager would mean Community,
 	// which is the fail-open default rather than a failure.
-	Licence              *licence.Manager
-	Sessions             *session.Store
-	Mfa                  *mfa.Service // OPEN (all editions): TOTP enrollment + login challenge (S7.5.5)
-	MCPOAuth             *mcpoauth.Service
-	MCPToolPolicy        *mcptoolpolicy.Service
-	MCPToolApproval      *mcptoolapproval.Service
+	Licence         *licence.Manager
+	Sessions        *session.Store
+	Mfa             *mfa.Service // OPEN (all editions): TOTP enrollment + login challenge (S7.5.5)
+	MCPOAuth        *mcpoauth.Service
+	MCPToolPolicy   *mcptoolpolicy.Service
+	MCPToolApproval *mcptoolapproval.Service
+	// MCPDecision reads the MCP tool activity the gateway decision path writes (AI-SEC-2).
+	MCPDecision          *mcpdecision.Service
 	WorkflowProvenance   *workflowprovenance.Service
 	SSO                  ssoPort    // nil => open build (SSO endpoints return edition_required)
 	Policy               policyPort // nil => open build (policy endpoints return edition_required)
@@ -333,7 +336,7 @@ func NewRouter(logger *slog.Logger, d Deps) (http.Handler, error) {
 		return nil, err
 	}
 	swagger.Servers = nil // don't enforce a server URL (we run behind nginx)
-	srv := apiServer{vault: d.Vault, serverAccess: d.ServerAccess, runnerQualification: d.SandboxRunnerQualification, runnerEnrollment: d.SandboxRunnerEnrollment, appAccess: d.AppAccess, crossGatewaySettings: d.Orgs, crossGatewaySettingsNotify: d.FQDNSettingNotify, sandboxes: d.Sandboxes, sandboxModuleState: d.SandboxModuleState, sandboxProvisioningReady: d.SandboxProvisioningReady, sandboxWake: d.SandboxWake, sandboxSkillsReady: d.SandboxSkillsReady, emailSettings: d.EmailSettings, ipsecStatus: d.IPsecStatus, ipsecRuntime: d.IPsecRuntime, ipsecEligibility: d.IPsecEligibility, ipsecProviders: d.IPsecProviders, ipsecSealer: d.IPsecSealer, ipsecConnections: d.IPsecConnections, ipsecSettings: d.IPsecSettings, aiWorkloads: d.AIWorkloads, aiCredentials: d.AICredentials, aiPolicies: d.AIPolicies, aiEngineInstalled: d.AIEngineInstalled, aiAllowPrivateHTTP: d.AIAllowPrivateHTTP, system: d.System, orgs: d.Orgs, licence: licenceOrCommunity(d.Licence), cliAuth: d.CliAuth, auth: d.Auth, members: d.Members, invites: d.Invites, nodes: d.Nodes, agentRuntime: agentRuntime, alertConfig: d.AlertConfig, devices: d.Devices, ovpn: d.Ovpn, sites: d.Sites, k8s: d.K8s, machine: d.Machine, sessions: d.Sessions, mfa: d.Mfa, mcpOAuth: d.MCPOAuth, mcpToolPolicy: d.MCPToolPolicy, mcpToolApproval: d.MCPToolApproval, workflowProvenance: d.WorkflowProvenance, sso: d.SSO, policy: d.Policy, fqdnResources: d.FQDNResources, fqdnSettingNotify: d.FQDNSettingNotify, agentTemplates: d.AgentTemplates, agentAccess: d.AgentAccess, accessLog: d.AccessLog, accessEventRetention: d.AccessEventRetention, auditLogRetention: d.AuditLogRetention, idpSync: d.IdpSync, deviceApprovalEnabled: d.DeviceApprovalEnabled, deviceHealthEnabled: d.DeviceHealthEnabled, mfaEnforceEnabled: d.MfaEnforceEnabled, cookieSecure: d.CookieSecure, appBaseURL: d.AppBaseURL, gatewayControlURL: d.GatewayControlURL, nodeAgentImage: d.NodeAgentImage, smtpConfigured: d.SMTPConfigured, releaseStatus: d.ReleaseStatus, releaseStatusProvider: d.ReleaseStatusProvider, releaseBootstrap: d.ReleaseBootstrap, hostUpgrade: d.HostUpgrade}
+	srv := apiServer{vault: d.Vault, serverAccess: d.ServerAccess, runnerQualification: d.SandboxRunnerQualification, runnerEnrollment: d.SandboxRunnerEnrollment, appAccess: d.AppAccess, crossGatewaySettings: d.Orgs, crossGatewaySettingsNotify: d.FQDNSettingNotify, sandboxes: d.Sandboxes, sandboxModuleState: d.SandboxModuleState, sandboxProvisioningReady: d.SandboxProvisioningReady, sandboxWake: d.SandboxWake, sandboxSkillsReady: d.SandboxSkillsReady, emailSettings: d.EmailSettings, ipsecStatus: d.IPsecStatus, ipsecRuntime: d.IPsecRuntime, ipsecEligibility: d.IPsecEligibility, ipsecProviders: d.IPsecProviders, ipsecSealer: d.IPsecSealer, ipsecConnections: d.IPsecConnections, ipsecSettings: d.IPsecSettings, aiWorkloads: d.AIWorkloads, aiCredentials: d.AICredentials, aiPolicies: d.AIPolicies, aiEngineInstalled: d.AIEngineInstalled, aiAllowPrivateHTTP: d.AIAllowPrivateHTTP, system: d.System, orgs: d.Orgs, licence: licenceOrCommunity(d.Licence), cliAuth: d.CliAuth, auth: d.Auth, members: d.Members, invites: d.Invites, nodes: d.Nodes, agentRuntime: agentRuntime, alertConfig: d.AlertConfig, devices: d.Devices, ovpn: d.Ovpn, sites: d.Sites, k8s: d.K8s, machine: d.Machine, sessions: d.Sessions, mfa: d.Mfa, mcpOAuth: d.MCPOAuth, mcpToolPolicy: d.MCPToolPolicy, mcpToolApproval: d.MCPToolApproval, mcpDecision: d.MCPDecision, workflowProvenance: d.WorkflowProvenance, sso: d.SSO, policy: d.Policy, fqdnResources: d.FQDNResources, fqdnSettingNotify: d.FQDNSettingNotify, agentTemplates: d.AgentTemplates, agentAccess: d.AgentAccess, accessLog: d.AccessLog, accessEventRetention: d.AccessEventRetention, auditLogRetention: d.AuditLogRetention, idpSync: d.IdpSync, deviceApprovalEnabled: d.DeviceApprovalEnabled, deviceHealthEnabled: d.DeviceHealthEnabled, mfaEnforceEnabled: d.MfaEnforceEnabled, cookieSecure: d.CookieSecure, appBaseURL: d.AppBaseURL, gatewayControlURL: d.GatewayControlURL, nodeAgentImage: d.NodeAgentImage, smtpConfigured: d.SMTPConfigured, releaseStatus: d.ReleaseStatus, releaseStatusProvider: d.ReleaseStatusProvider, releaseBootstrap: d.ReleaseBootstrap, hostUpgrade: d.HostUpgrade}
 	if d.Beam != nil {
 		srv.beam = d.Beam
 	}

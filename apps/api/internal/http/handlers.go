@@ -29,6 +29,7 @@ import (
 	"github.com/tunnexio/tunnex/apps/api/internal/k8s"
 	"github.com/tunnexio/tunnex/apps/api/internal/licence"
 	"github.com/tunnexio/tunnex/apps/api/internal/machineauth"
+	"github.com/tunnexio/tunnex/apps/api/internal/mcpdecision"
 	"github.com/tunnexio/tunnex/apps/api/internal/mcpoauth"
 	"github.com/tunnexio/tunnex/apps/api/internal/mcptoolapproval"
 	"github.com/tunnexio/tunnex/apps/api/internal/mcptoolpolicy"
@@ -251,6 +252,7 @@ type apiServer struct {
 	mcpOAuth           *mcpoauth.Service
 	mcpToolPolicy      *mcptoolpolicy.Service
 	mcpToolApproval    *mcptoolapproval.Service
+	mcpDecision        *mcpdecision.Service
 	workflowProvenance *workflowprovenance.Service
 	sso                ssoPort    // nil in the open build
 	policy             policyPort // nil in the open build (Zero Trust, S7.1)

@@ -98,3 +98,37 @@ VALUES (sqlc.arg(org_id), sqlc.arg(retention_days), sqlc.narg(updated_by_user_id
 ON CONFLICT (org_id) DO UPDATE
 SET retention_days = EXCLUDED.retention_days, updated_by_user_id = EXCLUDED.updated_by_user_id
 RETURNING org_id, retention_days, updated_by_user_id, created_at, updated_at;
+
+-- name: ListAgentMCPTargetsForNode :many
+-- The agents homed on one gateway and the MCP endpoint each inherits from its
+-- groups. An agent with more than one active profile appears more than once; the
+-- caller treats that as no target, exactly like the runtime poll does.
+SELECT d.id AS device_id, d.assigned_ip, p.id AS profile_id, p.endpoint
+FROM devices d
+JOIN agent_group_members m
+  ON m.org_id = d.org_id AND m.device_id = d.id
+JOIN agent_mcp_profile_assignments a
+  ON a.org_id = m.org_id AND a.agent_group_id = m.agent_group_id AND a.state = 'active'
+JOIN agent_mcp_profiles p
+  ON p.id = a.profile_id AND p.org_id = a.org_id
+WHERE d.org_id = sqlc.arg(org_id)
+  AND d.node_id = sqlc.arg(node_id)
+  AND d.transport = 'wireguard'
+  AND d.kind = 'agent'
+  AND d.status = 'active'
+  AND d.deleted_at IS NULL
+  AND NOT d.health_blocked
+  AND d.assigned_ip IS NOT NULL
+ORDER BY d.id, p.id;
+
+-- name: GetFreshNodeCapabilities :one
+-- A gateway's capability report, only while it is fresh by the database clock
+-- (the same 90-second window the VPN AI listener uses). No row = not usable.
+SELECT n.capabilities
+FROM nodes n
+WHERE n.org_id = sqlc.arg(org_id)
+  AND n.id = sqlc.arg(node_id)
+  AND n.status = 'active'
+  AND n.revoked_at IS NULL
+  AND n.policy_reported_at >= now() - interval '90 seconds'
+  AND n.policy_reported_at <= now();

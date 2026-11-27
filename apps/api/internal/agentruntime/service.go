@@ -91,6 +91,8 @@ type Service struct {
 	ranges   RoutedRangesFunc
 	now      func() time.Time
 	pollTick time.Duration
+	// onMCPGatewayCapable runs once, when a runtime first declares that it forwards MCP to the gateway.
+	onMCPGatewayCapable func(ctx context.Context, orgID, deviceID uuid.UUID)
 }
 
 // Notifier wakes the assigned gateway after an agent's applied configuration
@@ -110,6 +112,14 @@ func New(pool *pgxpool.Pool, optIn OptInFunc) *Service {
 func (s *Service) SetNotifier(n Notifier) { s.notify = n }
 
 func (s *Service) SetRoutedRanges(r RoutedRangesFunc) { s.ranges = r }
+
+// SetMCPGatewayCapableHook attaches what happens when agent_runtime_state.mcp_gateway_capable_at first
+// becomes set for a runtime (AI-SEC-2): the organization's policy must be recompiled, because the direct
+// path to the agent's MCP endpoint closes from that moment. nil (the default) does nothing. The hook runs
+// after the capability is stored, outside any transaction, and its failure never fails the poll.
+func (s *Service) SetMCPGatewayCapableHook(fn func(ctx context.Context, orgID, deviceID uuid.UUID)) {
+	s.onMCPGatewayCapable = fn
+}
 
 // SetAlertPublisher attaches F11's durable outbox without making runtime
 // reporting depend on a particular transport. A nil value restores the
@@ -214,16 +224,19 @@ func (s *Service) requireOptIn(ctx context.Context, orgID uuid.UUID) error {
 }
 
 type Config struct {
-	Revision                   int64
-	DeviceID                   uuid.UUID
-	OrgID                      uuid.UUID
-	Address                    string
-	GatewayEndpoint            string
-	GatewayPublicKey           string
-	AllowedIPs                 []string
-	DNS                        []string
-	PersistentKeepalive        int
-	MCPUpstream                *string
+	Revision            int64
+	DeviceID            uuid.UUID
+	OrgID               uuid.UUID
+	Address             string
+	GatewayEndpoint     string
+	GatewayPublicKey    string
+	AllowedIPs          []string
+	DNS                 []string
+	PersistentKeepalive int
+	MCPUpstream         *string
+	// MCPGatewayURL is the gateway's MCP listener. When set, MCPUpstream is withheld: the runtime forwards
+	// to the gateway and has no direct path of its own.
+	MCPGatewayURL              *string
 	CredentialRotationRevision *int64
 	WireGuardCurrentRevision   int64
 	WireGuardRotationRevision  *int64
@@ -287,7 +300,18 @@ func (s *Service) PrepareWireGuardCandidate(ctx context.Context, id Identity, re
 	return nil
 }
 
+// PollOptions are the optional declarations a runtime makes with a poll.
+type PollOptions struct {
+	// MCPGateway is true when the runtime forwards MCP to the gateway listener (poll query
+	// mcp_gateway=true). A runtime that predates gateway enforcement never sends it.
+	MCPGateway bool
+}
+
 func (s *Service) Poll(ctx context.Context, id Identity, appliedRevision, wireGuardRevision int64, clientVersion string) (Config, bool, error) {
+	return s.PollWith(ctx, id, appliedRevision, wireGuardRevision, clientVersion, PollOptions{})
+}
+
+func (s *Service) PollWith(ctx context.Context, id Identity, appliedRevision, wireGuardRevision int64, clientVersion string, opts PollOptions) (Config, bool, error) {
 	if appliedRevision < 0 || wireGuardRevision < 1 || strings.TrimSpace(clientVersion) == "" || len(clientVersion) > 128 {
 		return Config{}, false, ErrInvalidReport
 	}
@@ -319,15 +343,33 @@ func (s *Service) Poll(ctx context.Context, id Identity, appliedRevision, wireGu
 	if err != nil {
 		return Config{}, false, ErrRuntimeStateMissing
 	}
-	mcpUpstream, err := s.mcpUpstreamForDevice(ctx, id.OrgID, id.DeviceID)
+	mcpPath, err := s.mcpPath(ctx, id.OrgID, id.DeviceID, dev.NodeID, org.PoolCidr, opts.MCPGateway)
 	if err != nil {
 		return Config{}, false, ErrRuntimeStateMissing
 	}
-	routeFingerprint := fingerprintRuntimeConfig(allowed, mcpUpstream)
+	routeFingerprint := fingerprintRuntimeConfig(allowed, mcpPath.Upstream, mcpPath.GatewayURL)
 	state, err := s.q.EnsureAgentRuntimeState(ctx, sqlc.EnsureAgentRuntimeStateParams{ID: id.DeviceID, OrgID: id.OrgID, RouteFingerprint: routeFingerprint})
 	if err != nil {
 		return Config{}, false, ErrRuntimeStateMissing
 	}
+	switch {
+	case opts.MCPGateway && (!state.McpGatewayCapableAt.Valid || s.now().Sub(state.McpGatewayCapableAt.Time) > time.Minute):
+		// Recorded on a declaring poll, refreshed at most once a minute while a long poll re-checks.
+		if _, err := s.q.MarkAgentRuntimeMCPGatewayCapable(ctx, sqlc.MarkAgentRuntimeMCPGatewayCapableParams{DeviceID: id.DeviceID, OrgID: id.OrgID}); err != nil {
+			return Config{}, false, ErrRuntimeStateMissing
+		}
+		if !state.McpGatewayCapableAt.Valid && s.onMCPGatewayCapable != nil {
+			s.onMCPGatewayCapable(ctx, id.OrgID, id.DeviceID)
+		}
+	case !opts.MCPGateway && state.McpGatewayCapableAt.Valid:
+		// A runtime that once declared the gateway path does not get the direct path back by leaving
+		// the declaration out.
+		if mcpPath, err = s.mcpPath(ctx, id.OrgID, id.DeviceID, dev.NodeID, org.PoolCidr, true); err != nil {
+			return Config{}, false, ErrRuntimeStateMissing
+		}
+		routeFingerprint = fingerprintRuntimeConfig(allowed, mcpPath.Upstream, mcpPath.GatewayURL)
+	}
+	mcpUpstream := mcpPath.Upstream
 	desiredRevision := state.DesiredRevision
 	if state.RouteFingerprint != routeFingerprint {
 		refreshed, refreshErr := s.q.RefreshAgentRuntimeRouteFingerprint(ctx, sqlc.RefreshAgentRuntimeRouteFingerprintParams{DeviceID: id.DeviceID, OrgID: id.OrgID, RouteFingerprint: routeFingerprint})
@@ -371,7 +413,7 @@ func (s *Service) Poll(ctx context.Context, id Identity, appliedRevision, wireGu
 		Revision: desiredRevision, DeviceID: id.DeviceID, OrgID: id.OrgID,
 		Address: *dev.AssignedIp + "/32", GatewayEndpoint: node.Endpoint,
 		GatewayPublicKey: node.WgPublicKey, AllowedIPs: allowed, DNS: dns,
-		PersistentKeepalive: 25, MCPUpstream: mcpUpstream, CredentialRotationRevision: rotationRevision,
+		PersistentKeepalive: 25, MCPUpstream: mcpUpstream, MCPGatewayURL: mcpPath.GatewayURL, CredentialRotationRevision: rotationRevision,
 		WireGuardCurrentRevision: wgCurrentRevision, WireGuardRotationRevision: wgRotationRevision,
 		WireGuardRotationState: wgRotationState,
 	}, false, nil
@@ -420,7 +462,10 @@ func (s *Service) effectiveAllowedIPs(ctx context.Context, orgID, deviceID uuid.
 	return allowed, nil
 }
 
-func fingerprintRuntimeConfig(allowed []string, mcpUpstream *string) string {
+// fingerprintRuntimeConfig covers everything in the config that is derived rather than stored, so a change
+// to any of it advances the desired revision. Absent MCP fields add nothing: an agent without MCP keeps the
+// fingerprint it had before the gateway path existed.
+func fingerprintRuntimeConfig(allowed []string, mcpUpstream, mcpGatewayURL *string) string {
 	h := sha256.New()
 	for _, route := range allowed {
 		_, _ = h.Write([]byte(route))
@@ -428,6 +473,10 @@ func fingerprintRuntimeConfig(allowed []string, mcpUpstream *string) string {
 	}
 	if mcpUpstream != nil {
 		_, _ = h.Write([]byte("mcp:" + *mcpUpstream))
+	}
+	if mcpGatewayURL != nil {
+		_, _ = h.Write([]byte{0})
+		_, _ = h.Write([]byte("mcp-gateway:" + *mcpGatewayURL))
 	}
 	return hex.EncodeToString(h.Sum(nil))
 }
@@ -456,15 +505,19 @@ func (s *Service) mcpUpstreamForDevice(ctx context.Context, orgID, deviceID uuid
 // desired state changes. The ticker is the safety net for changes written by
 // any API replica; it deliberately does not rely on an in-process-only signal.
 func (s *Service) PollWait(ctx context.Context, id Identity, appliedRevision, wireGuardRevision int64, clientVersion string, wait time.Duration) (Config, bool, error) {
+	return s.PollWaitWith(ctx, id, appliedRevision, wireGuardRevision, clientVersion, wait, PollOptions{})
+}
+
+func (s *Service) PollWaitWith(ctx context.Context, id Identity, appliedRevision, wireGuardRevision int64, clientVersion string, wait time.Duration, opts PollOptions) (Config, bool, error) {
 	if wait <= 0 {
-		return s.Poll(ctx, id, appliedRevision, wireGuardRevision, clientVersion)
+		return s.PollWith(ctx, id, appliedRevision, wireGuardRevision, clientVersion, opts)
 	}
 	tick := s.pollTick
 	if tick <= 0 {
 		tick = time.Second
 	}
 	return pollUntil(ctx, wait, tick, func() (Config, bool, error) {
-		return s.Poll(ctx, id, appliedRevision, wireGuardRevision, clientVersion)
+		return s.PollWith(ctx, id, appliedRevision, wireGuardRevision, clientVersion, opts)
 	})
 }
 

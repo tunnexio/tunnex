@@ -77,7 +77,8 @@ WHERE d.id = $1
 ON CONFLICT (device_id) DO UPDATE SET device_id = EXCLUDED.device_id
 RETURNING device_id, desired_revision, applied_revision,
           last_attempted_revision, client_version, last_seen_at,
-          last_error_code, last_error_revision, route_fingerprint, created_at, updated_at
+          last_error_code, last_error_revision, route_fingerprint, created_at, updated_at,
+          mcp_gateway_capable_at
 `
 
 type EnsureAgentRuntimeStateParams struct {
@@ -98,6 +99,7 @@ type EnsureAgentRuntimeStateRow struct {
 	RouteFingerprint      string             `json:"route_fingerprint"`
 	CreatedAt             time.Time          `json:"created_at"`
 	UpdatedAt             time.Time          `json:"updated_at"`
+	McpGatewayCapableAt   pgtype.Timestamptz `json:"mcp_gateway_capable_at"`
 }
 
 // The org join is the tenant boundary; device ids are globally unique, but a
@@ -117,6 +119,7 @@ func (q *Queries) EnsureAgentRuntimeState(ctx context.Context, arg EnsureAgentRu
 		&i.RouteFingerprint,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.McpGatewayCapableAt,
 	)
 	return i, err
 }

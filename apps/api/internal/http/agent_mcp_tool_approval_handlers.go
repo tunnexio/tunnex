@@ -2,6 +2,7 @@ package http
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"time"
@@ -65,6 +66,25 @@ func (s apiServer) ApproveAgentMCPToolApprovalRequest(ctx context.Context, req a
 	return api.ApproveAgentMCPToolApprovalRequest200JSONResponse(toAPIMCPToolApproval(r)), nil
 }
 
+// DenyAgentMCPToolApprovalRequest refuses a pending step-up request. The call it describes stays refused
+// for the rest of the request's lifetime.
+func (s apiServer) DenyAgentMCPToolApprovalRequest(ctx context.Context, req api.DenyAgentMCPToolApprovalRequestRequestObject) (api.DenyAgentMCPToolApprovalRequestResponseObject, error) {
+	if _, err := authorize(ctx, req.OrgId, rbac.PermAgentMCPToolApprovalApprove); err != nil {
+		return nil, err
+	}
+	if s.mcpToolApproval == nil {
+		return nil, apierr.New(http.StatusServiceUnavailable, "mcp_tool_approval_unavailable", "MCP tool approval is temporarily unavailable")
+	}
+	r, err := s.mcpToolApproval.Deny(ctx, req.OrgId, req.DeviceId, req.RequestId, actorID(ctx))
+	if errors.Is(err, mcptoolapproval.ErrConflict) {
+		return nil, apierr.Conflict("mcp_tool_approval_not_pending", "MCP tool approval is not pending")
+	}
+	if err != nil {
+		return nil, apierr.New(http.StatusServiceUnavailable, "mcp_tool_approval_unavailable", "MCP tool approval is temporarily unavailable")
+	}
+	return api.DenyAgentMCPToolApprovalRequest200JSONResponse(toAPIMCPToolApproval(r)), nil
+}
+
 func toAPIMCPToolApproval(r mcptoolapproval.Request) api.AgentMCPToolApprovalRequest {
 	out := api.AgentMCPToolApprovalRequest{Id: r.ID, DeviceId: r.DeviceID, PolicyVersion: r.PolicyVersion, Endpoint: r.Endpoint, ServerName: r.ServerName, ToolName: r.ToolName, InputSchemaHash: r.InputSchemaHash, State: api.AgentMCPToolApprovalRequestState(r.State), RequestedAt: r.RequestedAt, ExpiresAt: r.ExpiresAt}
 	if r.ApprovedAt.After(time.Unix(0, 0)) {
@@ -73,6 +93,26 @@ func toAPIMCPToolApproval(r mcptoolapproval.Request) api.AgentMCPToolApprovalReq
 	if r.ApprovedByUserID != uuid.Nil {
 		v := r.ApprovedByUserID
 		out.ApprovedByUserId = &v
+	}
+	if r.DeniedAt.After(time.Unix(0, 0)) {
+		out.DeniedAt = &r.DeniedAt
+	}
+	if r.DeniedByUserID != uuid.Nil {
+		v := r.DeniedByUserID
+		out.DeniedByUserId = &v
+	}
+	// The arguments are shown to whoever may approve; this type is only returned to that permission.
+	if len(r.Arguments) > 0 {
+		var arguments map[string]interface{}
+		if json.Unmarshal(r.Arguments, &arguments) == nil && arguments != nil {
+			out.Arguments = &arguments
+		}
+	}
+	truncated := r.ArgumentsTruncated
+	out.ArgumentsTruncated = &truncated
+	if r.ToolDefinitionHash != "" {
+		v := r.ToolDefinitionHash
+		out.ToolDefinitionHash = &v
 	}
 	return out
 }
