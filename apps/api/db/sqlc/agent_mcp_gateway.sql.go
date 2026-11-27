@@ -99,18 +99,17 @@ func (q *Queries) GetAgentMCPToolActivityRetention(ctx context.Context, orgID uu
 }
 
 const getOrganizationMCPDirectPathGrace = `-- name: GetOrganizationMCPDirectPathGrace :one
-SELECT mcp_direct_path_grace_until
-FROM organizations
-WHERE id = $1
-  AND deleted_at IS NULL
+SELECT grace_until
+FROM organization_mcp_direct_path_grace
+WHERE org_id = $1
 `
 
-// NULL means no grace: the direct path closes as soon as the gateway can enforce.
-func (q *Queries) GetOrganizationMCPDirectPathGrace(ctx context.Context, orgID uuid.UUID) (pgtype.Timestamptz, error) {
+// No row means no grace: the direct path closes as soon as the gateway can enforce.
+func (q *Queries) GetOrganizationMCPDirectPathGrace(ctx context.Context, orgID uuid.UUID) (time.Time, error) {
 	row := q.db.QueryRow(ctx, getOrganizationMCPDirectPathGrace, orgID)
-	var mcp_direct_path_grace_until pgtype.Timestamptz
-	err := row.Scan(&mcp_direct_path_grace_until)
-	return mcp_direct_path_grace_until, err
+	var grace_until time.Time
+	err := row.Scan(&grace_until)
+	return grace_until, err
 }
 
 const insertAgentMCPToolActivity = `-- name: InsertAgentMCPToolActivity :one

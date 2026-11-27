@@ -2417,7 +2417,12 @@ type Organization struct {
 	MaxSandboxesPerUser         int32              `json:"max_sandboxes_per_user"`
 	MaxSandboxes                int32              `json:"max_sandboxes"`
 	SandboxDelegationEnabled    bool               `json:"sandbox_delegation_enabled"`
-	McpDirectPathGraceUntil     pgtype.Timestamptz `json:"mcp_direct_path_grace_until"`
+}
+
+type OrganizationMcpDirectPathGrace struct {
+	OrgID      uuid.UUID `json:"org_id"`
+	GraceUntil time.Time `json:"grace_until"`
+	CreatedAt  time.Time `json:"created_at"`
 }
 
 type OvpnClientCert struct {

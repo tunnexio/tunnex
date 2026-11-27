@@ -932,8 +932,8 @@ type Querier interface {
 	GetOrganizationAgentPolicyTemplatesEnabled(ctx context.Context, id uuid.UUID) (bool, error)
 	GetOrganizationByID(ctx context.Context, id uuid.UUID) (Organization, error)
 	GetOrganizationBySlug(ctx context.Context, slug string) (Organization, error)
-	// NULL means no grace: the direct path closes as soon as the gateway can enforce.
-	GetOrganizationMCPDirectPathGrace(ctx context.Context, orgID uuid.UUID) (pgtype.Timestamptz, error)
+	// No row means no grace: the direct path closes as soon as the gateway can enforce.
+	GetOrganizationMCPDirectPathGrace(ctx context.Context, orgID uuid.UUID) (time.Time, error)
 	// Policy snapshot construction is used by F09 membership removal. Keep its
 	// organization read compatible with schema 0109 while still exposing the
 	// current FQDN opt-in when the additive column exists. JSONB extraction is

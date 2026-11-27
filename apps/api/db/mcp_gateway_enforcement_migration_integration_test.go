@@ -93,20 +93,18 @@ func TestMCPGatewayEnforcementMigrationPostgres(t *testing.T) {
 	}
 
 	// Grace: 30 days for the organization that already uses MCP, none for the other.
-	var grace *time.Time
-	if err := pool.QueryRow(ctx, `SELECT mcp_direct_path_grace_until FROM organizations WHERE id=$1`, withMCP).Scan(&grace); err != nil {
-		t.Fatal(err)
-	}
-	if grace == nil {
-		t.Fatal("an organization with an active MCP assignment must get a grace date")
+	var grace time.Time
+	if err := pool.QueryRow(ctx, `SELECT grace_until FROM organization_mcp_direct_path_grace WHERE org_id=$1`, withMCP).Scan(&grace); err != nil {
+		t.Fatalf("an organization with an active MCP assignment must get a grace date: %v", err)
 	}
 	if d := grace.Sub(before); d < 29*24*time.Hour || d > 31*24*time.Hour {
 		t.Fatalf("grace is %s from the upgrade, want about 30 days", d)
 	}
-	if err := pool.QueryRow(ctx, `SELECT mcp_direct_path_grace_until FROM organizations WHERE id=$1`, withoutMCP).Scan(&grace); err != nil {
+	var graceRows int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM organization_mcp_direct_path_grace WHERE org_id=$1`, withoutMCP).Scan(&graceRows); err != nil {
 		t.Fatal(err)
 	}
-	if grace != nil {
+	if graceRows != 0 {
 		t.Fatal("an organization with no MCP assignment must start with the direct path closed (no grace)")
 	}
 
@@ -169,18 +167,17 @@ func TestMCPGatewayEnforcementMigrationPostgres(t *testing.T) {
 	if err := pool.QueryRow(ctx, `SELECT count(*) FROM information_schema.columns WHERE
 		(table_name='agent_mcp_inventory' AND column_name='source') OR
 		(table_name='agent_runtime_state' AND column_name='mcp_gateway_capable_at') OR
-		(table_name='organizations' AND column_name='mcp_direct_path_grace_until') OR
 		(table_name='agent_mcp_tool_approval_requests' AND column_name IN ('arguments','arguments_truncated','tool_definition_hash'))`).Scan(&n); err != nil {
 		t.Fatal(err)
 	}
 	if n != 0 {
 		t.Fatalf("0249 down left %d column(s)", n)
 	}
-	if err := pool.QueryRow(ctx, `SELECT count(*) FROM information_schema.tables WHERE table_name IN ('agent_mcp_tool_activity','agent_mcp_tool_activity_retention_settings')`).Scan(&n); err != nil {
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM information_schema.tables WHERE table_name IN ('agent_mcp_tool_activity','agent_mcp_tool_activity_retention_settings','organization_mcp_direct_path_grace')`).Scan(&n); err != nil {
 		t.Fatal(err)
 	}
 	if n != 0 {
-		t.Fatalf("0250 down left %d table(s)", n)
+		t.Fatalf("rolling back left %d table(s)", n)
 	}
 	if err := pool.QueryRow(ctx, `SELECT count(*) FROM agent_mcp_tool_approval_requests WHERE id=$1`, approval).Scan(&n); err != nil || n != 1 {
 		t.Fatalf("rolling back must keep the approval request itself (n=%d, err=%v)", n, err)

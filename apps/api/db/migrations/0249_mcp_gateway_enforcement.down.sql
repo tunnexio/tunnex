@@ -14,8 +14,7 @@ ALTER TABLE agent_mcp_tool_approval_requests
     DROP COLUMN IF EXISTS arguments_truncated,
     DROP COLUMN IF EXISTS arguments;
 
-ALTER TABLE organizations
-    DROP COLUMN IF EXISTS mcp_direct_path_grace_until;
+DROP TABLE IF EXISTS organization_mcp_direct_path_grace;
 
 ALTER TABLE agent_runtime_state
     DROP COLUMN IF EXISTS mcp_gateway_capable_at;

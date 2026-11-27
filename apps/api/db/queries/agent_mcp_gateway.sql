@@ -19,11 +19,10 @@ WHERE d.org_id = sqlc.arg(org_id)
   AND NOT d.health_blocked;
 
 -- name: GetOrganizationMCPDirectPathGrace :one
--- NULL means no grace: the direct path closes as soon as the gateway can enforce.
-SELECT mcp_direct_path_grace_until
-FROM organizations
-WHERE id = sqlc.arg(org_id)
-  AND deleted_at IS NULL;
+-- No row means no grace: the direct path closes as soon as the gateway can enforce.
+SELECT grace_until
+FROM organization_mcp_direct_path_grace
+WHERE org_id = sqlc.arg(org_id);
 
 -- name: InsertAgentMCPToolActivity :one
 INSERT INTO agent_mcp_tool_activity (

@@ -1191,7 +1191,7 @@ const setOrgZeroTrustMode = `-- name: SetOrgZeroTrustMode :one
 UPDATE organizations
 SET zero_trust_mode = $2
 WHERE id = $1 AND deleted_at IS NULL
-RETURNING id, name, slug, created_at, updated_at, deleted_at, max_devices_per_user, pool_cidr, zero_trust_mode, device_approval, flow_seq, ovpn_enabled, max_agent_identities, managed_agent_runtime_enabled, agent_policy_templates_enabled, agent_jit_access_enabled, alerting_enabled, fqdn_resources_enabled, ai_gateway_enabled, ai_gateway_revision, cross_gateway_clients_enabled, sandboxes_enabled, max_sandboxes_per_user, max_sandboxes, sandbox_delegation_enabled, mcp_direct_path_grace_until
+RETURNING id, name, slug, created_at, updated_at, deleted_at, max_devices_per_user, pool_cidr, zero_trust_mode, device_approval, flow_seq, ovpn_enabled, max_agent_identities, managed_agent_runtime_enabled, agent_policy_templates_enabled, agent_jit_access_enabled, alerting_enabled, fqdn_resources_enabled, ai_gateway_enabled, ai_gateway_revision, cross_gateway_clients_enabled, sandboxes_enabled, max_sandboxes_per_user, max_sandboxes, sandbox_delegation_enabled
 `
 
 type SetOrgZeroTrustModeParams struct {
@@ -1229,7 +1229,6 @@ func (q *Queries) SetOrgZeroTrustMode(ctx context.Context, arg SetOrgZeroTrustMo
 		&i.MaxSandboxesPerUser,
 		&i.MaxSandboxes,
 		&i.SandboxDelegationEnabled,
-		&i.McpDirectPathGraceUntil,
 	)
 	return i, err
 }

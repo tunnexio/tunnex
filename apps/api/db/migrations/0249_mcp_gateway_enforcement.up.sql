@@ -15,15 +15,23 @@ ALTER TABLE agent_mcp_inventory
 ALTER TABLE agent_runtime_state
     ADD COLUMN mcp_gateway_capable_at timestamptz;
 
--- Until this instant an older runtime may keep the direct path to its MCP
--- endpoint. NULL = no grace: the direct path is closed as soon as the gateway
+-- Until grace_until an older runtime may keep the direct path to its MCP
+-- endpoint. No row = no grace: the direct path is closed as soon as the gateway
 -- can enforce. Organizations that already have an active MCP assignment get 30
 -- days from the upgrade; everyone else starts closed.
-ALTER TABLE organizations
-    ADD COLUMN mcp_direct_path_grace_until timestamptz;
+--
+-- A table of its own rather than a column on organizations: the organization
+-- row is read by `SELECT *` everywhere, including by tests that pin an older
+-- schema version, and this date concerns only MCP.
+CREATE TABLE organization_mcp_direct_path_grace (
+    org_id      uuid PRIMARY KEY REFERENCES organizations (id) ON DELETE CASCADE,
+    grace_until timestamptz NOT NULL,
+    created_at  timestamptz NOT NULL DEFAULT now()
+);
 
-UPDATE organizations o
-SET mcp_direct_path_grace_until = now() + interval '30 days'
+INSERT INTO organization_mcp_direct_path_grace (org_id, grace_until)
+SELECT o.id, now() + interval '30 days'
+FROM organizations o
 WHERE EXISTS (
     SELECT 1 FROM agent_mcp_profile_assignments a
     WHERE a.org_id = o.id AND a.state = 'active'
