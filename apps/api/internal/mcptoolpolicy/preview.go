@@ -100,7 +100,7 @@ func (s *Service) StartPreview(ctx context.Context, orgID, actorID uuid.UUID, en
 	// such gateway of any of its agents.
 	var rows pgx.Rows
 	const gateway = `SELECT n.id, n.capabilities,
- (n.status='active' AND n.revoked_at IS NULL AND n.policy_reported_at >= now() - interval '90 seconds' AND n.policy_reported_at <= now()) AS fresh
+ COALESCE(n.status='active' AND n.revoked_at IS NULL AND n.policy_reported_at >= now() - interval '90 seconds' AND n.policy_reported_at <= now(), false) AS fresh
 FROM devices d JOIN nodes n ON n.id=d.node_id AND n.org_id=d.org_id`
 	if viaDeviceID != nil {
 		rows, err = tx.Query(ctx, gateway+` WHERE d.org_id=$1 AND d.id=$2 AND d.kind='agent' AND d.deleted_at IS NULL`, orgID, *viaDeviceID)

@@ -110,6 +110,14 @@ func toAPIMCPToolApproval(r mcptoolapproval.Request) api.AgentMCPToolApprovalReq
 	}
 	truncated := r.ArgumentsTruncated
 	out.ArgumentsTruncated = &truncated
+	if r.PolicySource != "" {
+		source := api.MCPToolPolicySource(r.PolicySource)
+		out.PolicySource = &source
+	}
+	if r.PolicyGroupID != uuid.Nil {
+		group := r.PolicyGroupID
+		out.PolicyGroupId = &group
+	}
 	if r.ToolDefinitionHash != "" {
 		v := r.ToolDefinitionHash
 		out.ToolDefinitionHash = &v

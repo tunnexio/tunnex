@@ -8,6 +8,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/tunnexio/tunnex/apps/api/db/sqlc"
+	"github.com/tunnexio/tunnex/apps/api/internal/mcptoolpolicy"
 )
 
 // CreateMCPProfile creates a profile. An empty serverName lets the database derive a free one from the
@@ -60,6 +61,8 @@ func (e *MCPArchiveBlockedError) Error() string { return "MCP profile has active
 
 var (
 	ErrMCPProfileNotFound = errors.New("MCP profile not found")
+	// ErrMCPOff means MCP is not turned on for the organization.
+	ErrMCPOff             = errors.New("MCP is off for the organization")
 	ErrAgentGroupNotFound = errors.New("agent group not found")
 )
 
@@ -179,6 +182,14 @@ func (s *Service) SetGroupMCPProfile(ctx context.Context, orgID, groupID, profil
 		return MCPMutation{}, err
 	}
 	defer tx.Rollback(ctx)
+	// Checked inside the transaction, so MCP being turned off at the same moment cannot leave an active
+	// assignment behind.
+	if err := mcptoolpolicy.RequireMCPOnTx(ctx, tx, orgID); err != nil {
+		if errors.Is(err, mcptoolpolicy.ErrMCPOff) {
+			return MCPMutation{}, ErrMCPOff
+		}
+		return MCPMutation{}, err
+	}
 	var archived *time.Time
 	if err := tx.QueryRow(ctx, `SELECT archived_at FROM agent_mcp_profiles WHERE id=$1 AND org_id=$2 FOR UPDATE`, profileID, orgID).Scan(&archived); err != nil {
 		if errors.Is(err, pgx.ErrNoRows) {

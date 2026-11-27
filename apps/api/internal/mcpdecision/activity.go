@@ -3,6 +3,7 @@ package mcpdecision
 import (
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"errors"
 	"strings"
 	"time"
@@ -56,6 +57,132 @@ func (s *Service) ListActivity(ctx context.Context, orgID, deviceID uuid.UUID, l
 		next = encodeCursor(last.OccurredAt, last.ID)
 	}
 	return rows, next, nil
+}
+
+// ActivityFilter narrows an agent's MCP activity. The zero value keeps everything.
+type ActivityFilter struct {
+	// Decision is "allow", "deny" or empty for both.
+	Decision string
+	// ApprovedOnly keeps calls that ran on an approval.
+	ApprovedOnly bool
+	From, To     *time.Time
+	// Server is the server name of an MCP profile; empty for every server.
+	Server string
+}
+
+// ActivityRow is one activity row with the approval it ran on, if any.
+type ActivityRow = sqlc.ListAgentMCPToolActivityFilteredRow
+
+// ExportLimit is the most rows one CSV export carries.
+const ExportLimit = 10000
+
+// AuditActivityExported is written for every CSV export.
+const AuditActivityExported = "agent.mcp_tool_activity.exported"
+
+func (s *Service) filterParams(ctx context.Context, orgID, deviceID uuid.UUID, filter ActivityFilter) (sqlc.ListAgentMCPToolActivityFilteredParams, bool, error) {
+	params := sqlc.ListAgentMCPToolActivityFilteredParams{OrgID: orgID, DeviceID: deviceID, ApprovedOnly: filter.ApprovedOnly}
+	switch filter.Decision {
+	case "":
+	case "allow", "deny":
+		decision := filter.Decision
+		params.Decision = &decision
+	default:
+		return params, false, ErrInvalid
+	}
+	if filter.From != nil {
+		params.OccurredFrom = pgtype.Timestamptz{Time: *filter.From, Valid: true}
+	}
+	if filter.To != nil {
+		params.OccurredTo = pgtype.Timestamptz{Time: *filter.To, Valid: true}
+	}
+	if filter.Server != "" {
+		// Activity stores the address a call went to. The name is the profile's, so a profile that no
+		// longer exists matches nothing.
+		profile, err := s.q.GetActiveAgentMCPProfileByServerName(ctx, sqlc.GetActiveAgentMCPProfileByServerNameParams{OrgID: orgID, ServerName: filter.Server})
+		if errors.Is(err, pgx.ErrNoRows) {
+			return params, false, nil
+		}
+		if err != nil {
+			return params, false, err
+		}
+		endpoint := strings.TrimSpace(profile.Endpoint)
+		params.Endpoint = &endpoint
+	}
+	return params, true, nil
+}
+
+// ListActivityFiltered returns one page of an agent's MCP activity that matches the filter, newest first,
+// each row with who approved it and when, and the cursor of the next page ("" when there is none).
+func (s *Service) ListActivityFiltered(ctx context.Context, orgID, deviceID uuid.UUID, filter ActivityFilter, limit int, cursor string) ([]ActivityRow, string, error) {
+	if orgID == uuid.Nil || deviceID == uuid.Nil {
+		return nil, "", ErrInvalid
+	}
+	if limit < 1 || limit > 200 {
+		limit = 50
+	}
+	params, matches, err := s.filterParams(ctx, orgID, deviceID, filter)
+	if err != nil || !matches {
+		return []ActivityRow{}, "", err
+	}
+	params.PageLimit = int32(limit) + 1
+	if cursor != "" {
+		at, id, err := decodeCursor(cursor)
+		if err != nil {
+			return nil, "", ErrCursor
+		}
+		params.BeforeOccurredAt, params.BeforeID = pgtype.Timestamptz{Time: at, Valid: true}, pgtype.UUID{Bytes: id, Valid: true}
+	}
+	rows, err := s.q.ListAgentMCPToolActivityFiltered(ctx, params)
+	if err != nil {
+		return nil, "", err
+	}
+	next := ""
+	if len(rows) > limit {
+		rows = rows[:limit]
+		last := rows[len(rows)-1]
+		next = encodeCursor(last.OccurredAt, last.ID)
+	}
+	return rows, next, nil
+}
+
+// ExportActivity returns up to ExportLimit rows that match the filter, newest first, and records who
+// exported them. truncated is true when more rows matched than were returned.
+func (s *Service) ExportActivity(ctx context.Context, orgID, deviceID, actorID uuid.UUID, filter ActivityFilter) (rows []ActivityRow, truncated bool, err error) {
+	if orgID == uuid.Nil || deviceID == uuid.Nil || actorID == uuid.Nil {
+		return nil, false, ErrInvalid
+	}
+	params, matches, err := s.filterParams(ctx, orgID, deviceID, filter)
+	if err != nil {
+		return nil, false, err
+	}
+	if matches {
+		params.PageLimit = ExportLimit + 1
+		if rows, err = s.q.ListAgentMCPToolActivityFiltered(ctx, params); err != nil {
+			return nil, false, err
+		}
+		if len(rows) > ExportLimit {
+			rows, truncated = rows[:ExportLimit], true
+		}
+	}
+	metadata := map[string]any{"row_count": len(rows), "truncated": truncated, "approved_only": filter.ApprovedOnly}
+	if filter.Decision != "" {
+		metadata["decision"] = filter.Decision
+	}
+	if filter.Server != "" {
+		metadata["server"] = filter.Server
+	}
+	if filter.From != nil {
+		metadata["from"] = filter.From.UTC().Format(time.RFC3339)
+	}
+	if filter.To != nil {
+		metadata["to"] = filter.To.UTC().Format(time.RFC3339)
+	}
+	raw, _ := json.Marshal(metadata)
+	if _, err := s.pool.Exec(ctx, `INSERT INTO audit_logs (org_id, actor_user_id, action, target_type, target_id, metadata) VALUES ($1,$2,$3,'agent',$4,$5)`, orgID, actorID, AuditActivityExported, deviceID.String(), raw); err != nil {
+		// An export that cannot be recorded is not handed out.
+		return nil, false, err
+	}
+	return rows, truncated, nil
 }
 
 func encodeCursor(at time.Time, id uuid.UUID) string {

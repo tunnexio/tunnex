@@ -116,7 +116,11 @@ func toAPIMCPToolPolicy(p mcptoolpolicy.Policy) api.AgentMCPToolPolicy {
 	for _, rule := range p.Rules {
 		rules = append(rules, toAPIMCPToolPolicyRule(rule))
 	}
-	return api.AgentMCPToolPolicy{Version: p.Version, Rules: rules, InventoryObservedAt: p.InventoryObservedAt, CreatedAt: p.CreatedAt}
+	overrides := p.OverrideEndpoints
+	if overrides == nil {
+		overrides = []string{}
+	}
+	return api.AgentMCPToolPolicy{Version: p.Version, Rules: rules, InventoryObservedAt: p.InventoryObservedAt, CreatedAt: p.CreatedAt, OverrideEndpoints: &overrides}
 }
 
 func toAPIRuntimeMCPToolPolicy(p mcptoolpolicy.Policy) api.RuntimeMCPToolPolicy {

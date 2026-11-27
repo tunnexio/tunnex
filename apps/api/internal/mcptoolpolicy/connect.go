@@ -21,6 +21,8 @@ var (
 	ErrServerNameTaken = errors.New("MCP server name is in use")
 	// ErrProfileConflict means an MCP server with that display name exists and is not the same server.
 	ErrProfileConflict = errors.New("an MCP server with that name already exists")
+	// ErrMCPOff means MCP is not turned on for the organization.
+	ErrMCPOff = errors.New("MCP is off for the organization")
 	// ErrTargetNotFound means the agent or agent group to connect to does not exist.
 	ErrTargetNotFound = errors.New("agent or agent group not found")
 )
@@ -77,6 +79,9 @@ func (s *Service) Connect(ctx context.Context, in ConnectInput) (Connection, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
 	var out Connection
+	if err := RequireMCPOnTx(ctx, tx, in.OrgID); err != nil {
+		return Connection{}, err
+	}
 
 	if in.GroupID != nil {
 		if out.Group, err = scanGroup(tx.QueryRow(ctx, `SELECT `+groupColumns+` FROM agent_groups WHERE org_id=$1 AND id=$2 AND archived_at IS NULL FOR UPDATE`, in.OrgID, *in.GroupID)); err != nil {
@@ -151,6 +156,18 @@ func (s *Service) Connect(ctx context.Context, in ConnectInput) (Connection, err
 		}
 	}
 	return out, tx.Commit(ctx)
+}
+
+// RequireMCPOnTx checks, inside a transaction that is about to assign an MCP server, that MCP is on for
+// the organization, and holds the setting until the transaction ends. Turning MCP off is refused while
+// an assignment is active, so a switch-off racing an assignment cannot leave one behind with MCP off.
+func RequireMCPOnTx(ctx context.Context, tx pgx.Tx, orgID uuid.UUID) error {
+	var enabled bool
+	err := tx.QueryRow(ctx, `SELECT enabled FROM organization_mcp_settings WHERE org_id=$1 FOR SHARE`, orgID).Scan(&enabled)
+	if errors.Is(err, pgx.ErrNoRows) || (err == nil && !enabled) {
+		return ErrMCPOff
+	}
+	return err
 }
 
 const groupColumns = `id, org_id, name, description, archived_at, created_at, updated_at`

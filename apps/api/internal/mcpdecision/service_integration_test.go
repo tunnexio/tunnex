@@ -707,3 +707,197 @@ func TestHoldSecondsOnlyForARuntimeThatDeclaredIt(t *testing.T) {
 		t.Fatalf("denied call carries a hold: %+v", got)
 	}
 }
+
+func TestActivityFiltersApproverAndExportCap(t *testing.T) {
+	h := newHarness(t)
+	crmProfile, crmGroup := h.AddServer("crm", crmEndpoint)
+	h.report(refundAbout)
+	h.reportCRM()
+	h.allow(mcptoolpolicy.Rule{ToolName: "list_customers"}, mcptoolpolicy.Rule{ToolName: "guarded", StepUpRequired: true})
+	h.groupPolicy(crmGroup, crmProfile, mcptoolpolicy.ToolSetting{ToolName: "lookup", Mode: mcptoolpolicy.ModeAllow})
+
+	h.call("list_customers", `{}`)                   // allow
+	h.call("run_sql", `{"query":"x"}`)               // deny
+	h.callOn("crm", "lookup", `{}`)                  // allow, other server
+	pending := h.call("guarded", `{"customer":"c"}`) // deny, waiting
+	if _, err := h.approvals.Approve(h.Ctx, h.Org, h.Agent, uuid.MustParse(pending.Error.Data.RequestID), h.Owner); err != nil {
+		t.Fatal(err)
+	}
+	approved := h.call("guarded", `{"customer":"c"}`) // allow, on an approval
+	if approved.Decision != mcpwire.DecisionAllow {
+		t.Fatalf("approved call = %+v", approved.Error)
+	}
+	list := func(filter ActivityFilter) []ActivityRow {
+		t.Helper()
+		rows, _, err := h.svc.ListActivityFiltered(h.Ctx, h.Org, h.Agent, filter, 200, "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		return rows
+	}
+	if all := list(ActivityFilter{}); len(all) != 5 {
+		t.Fatalf("all = %d rows, want 5", len(all))
+	}
+	if rows := list(ActivityFilter{Decision: "deny"}); len(rows) != 2 {
+		t.Fatalf("denied = %d rows, want 2", len(rows))
+	}
+	if rows := list(ActivityFilter{Decision: "allow"}); len(rows) != 3 {
+		t.Fatalf("allowed = %d rows, want 3", len(rows))
+	}
+	onApproval := list(ActivityFilter{ApprovedOnly: true})
+	if len(onApproval) != 1 || onApproval[0].ID.String() != approved.CallID || !onApproval[0].ApprovedByUserID.Valid || uuid.UUID(onApproval[0].ApprovedByUserID.Bytes) != h.Owner ||
+		onApproval[0].ApprovedByEmail == nil || !strings.HasSuffix(*onApproval[0].ApprovedByEmail, "@example.com") || !onApproval[0].ApprovedAt.Valid {
+		t.Fatalf("approved-only = %+v", onApproval)
+	}
+	if rows := list(ActivityFilter{Server: "crm"}); len(rows) != 1 || rows[0].Endpoint != crmEndpoint || rows[0].PolicySource == nil || *rows[0].PolicySource != "group" {
+		t.Fatalf("server crm = %+v", rows)
+	}
+	if rows := list(ActivityFilter{Server: "billing"}); len(rows) != 4 {
+		t.Fatalf("server billing = %d rows, want 4", len(rows))
+	}
+	if rows := list(ActivityFilter{Server: "no-such-server"}); len(rows) != 0 {
+		t.Fatalf("unknown server = %d rows", len(rows))
+	}
+	past, future := time.Now().Add(-time.Hour), time.Now().Add(time.Hour)
+	if rows := list(ActivityFilter{From: &future}); len(rows) != 0 {
+		t.Fatalf("from the future = %d rows", len(rows))
+	}
+	if rows := list(ActivityFilter{From: &past, To: &future}); len(rows) != 5 {
+		t.Fatalf("within the period = %d rows", len(rows))
+	}
+	if rows := list(ActivityFilter{To: &past}); len(rows) != 0 {
+		t.Fatalf("before the period = %d rows", len(rows))
+	}
+	if _, _, err := h.svc.ListActivityFiltered(h.Ctx, h.Org, h.Agent, ActivityFilter{Decision: "maybe"}, 50, ""); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("unknown decision err = %v", err)
+	}
+	// Filters and the cursor work together.
+	first, next, err := h.svc.ListActivityFiltered(h.Ctx, h.Org, h.Agent, ActivityFilter{Decision: "allow"}, 2, "")
+	if err != nil || len(first) != 2 || next == "" {
+		t.Fatalf("page 1 = %d, %q, %v", len(first), next, err)
+	}
+	second, next, err := h.svc.ListActivityFiltered(h.Ctx, h.Org, h.Agent, ActivityFilter{Decision: "allow"}, 2, next)
+	if err != nil || len(second) != 1 || next != "" || second[0].ID == first[0].ID || second[0].ID == first[1].ID {
+		t.Fatalf("page 2 = %d, %q, %v", len(second), next, err)
+	}
+
+	// Export: same filters, an audit row each time, arguments never in it.
+	rows, truncated, err := h.svc.ExportActivity(h.Ctx, h.Org, h.Agent, h.Owner, ActivityFilter{Decision: "deny"})
+	if err != nil || truncated || len(rows) != 2 {
+		t.Fatalf("export = %d rows, truncated %v, %v", len(rows), truncated, err)
+	}
+	if n := h.Count(`SELECT count(*) FROM audit_logs WHERE org_id=$1 AND action='agent.mcp_tool_activity.exported' AND actor_user_id=$2 AND target_id=$3 AND (metadata->>'row_count')::int=2 AND metadata->>'decision'='deny'`, h.Org, h.Owner, h.Agent.String()); n != 1 {
+		t.Fatal("the export was not recorded")
+	}
+	if _, _, err := h.svc.ExportActivity(h.Ctx, h.Org, h.Agent, uuid.Nil, ActivityFilter{}); !errors.Is(err, ErrInvalid) {
+		t.Fatalf("export with no actor err = %v", err)
+	}
+	// The cap: 10 000 rows, newest first, and the audit row says it was cut.
+	h.Exec(`INSERT INTO agent_mcp_tool_activity (org_id, device_id, endpoint, server_name, method, tool_name, decision, reason, result_status, occurred_at)
+SELECT $1, $2, $3, 'billing', 'tools/call', 'bulk', 'deny', 'policy', 'not_forwarded', now() - make_interval(secs => g) FROM generate_series(1, $4) g`, h.Org, h.Agent, mcpfixture.Endpoint, ExportLimit+25)
+	rows, truncated, err = h.svc.ExportActivity(h.Ctx, h.Org, h.Agent, h.Owner, ActivityFilter{})
+	if err != nil || !truncated || len(rows) != ExportLimit {
+		t.Fatalf("capped export = %d rows, truncated %v, %v", len(rows), truncated, err)
+	}
+	if rows[0].ToolName == "bulk" || !rows[0].OccurredAt.After(rows[len(rows)-1].OccurredAt) {
+		t.Fatal("the capped export is not the newest rows first")
+	}
+	if n := h.Count(`SELECT count(*) FROM audit_logs WHERE org_id=$1 AND action='agent.mcp_tool_activity.exported' AND (metadata->>'row_count')::int=$2 AND (metadata->>'truncated')::boolean`, h.Org, ExportLimit); n != 1 {
+		t.Fatal("the capped export was not recorded as cut")
+	}
+}
+
+func TestWaitReturnsApprovedDeniedExpiredAndTimesOutAsPending(t *testing.T) {
+	h := newHarness(t)
+	h.report(refundAbout)
+	h.allow(mcptoolpolicy.Rule{ToolName: "guarded", StepUpRequired: true})
+	h.svc.waitHold, h.svc.waitTick = 400*time.Millisecond, 20*time.Millisecond
+	open := func(customer string) uuid.UUID {
+		t.Helper()
+		response := h.call("guarded", `{"customer":"`+customer+`"}`)
+		if response.Error == nil || response.Error.Data == nil {
+			t.Fatalf("no request for %s: %+v", customer, response)
+		}
+		return uuid.MustParse(response.Error.Data.RequestID)
+	}
+	wait := func(id uuid.UUID) (string, time.Duration) {
+		t.Helper()
+		started := time.Now()
+		response, err := h.svc.Wait(h.Ctx, h.evidence, mcpwire.WaitRequest{RequestID: id.String()})
+		if err != nil {
+			t.Fatalf("wait: %v", err)
+		}
+		return response.State, time.Since(started)
+	}
+	during := func(do func()) {
+		go func() {
+			time.Sleep(80 * time.Millisecond)
+			do()
+		}()
+	}
+
+	// Nobody answers: pending, after the whole hold and no sooner.
+	unanswered := open("nobody")
+	if state, took := wait(unanswered); state != mcpwire.WaitPending || took < 350*time.Millisecond {
+		t.Fatalf("unanswered = %s after %s", state, took)
+	}
+
+	// Approved while waiting: the wait ends early, and it has not spent the approval.
+	toApprove := open("approve")
+	during(func() { _, _ = h.approvals.Approve(h.Ctx, h.Org, h.Agent, toApprove, h.Owner) })
+	if state, took := wait(toApprove); state != mcpwire.WaitApproved || took > 350*time.Millisecond {
+		t.Fatalf("approved = %s after %s", state, took)
+	}
+	if got := h.call("guarded", `{"customer":"approve"}`); got.Decision != mcpwire.DecisionAllow {
+		t.Fatalf("the decision after an approved wait = %+v", got.Error)
+	}
+	// Used: a second waiter on the same request does not see "approved" again.
+	if state, _ := wait(toApprove); state != mcpwire.WaitExpired {
+		t.Fatalf("a used approval waits as %s", state)
+	}
+
+	toDeny := open("deny")
+	during(func() { _, _ = h.approvals.Deny(h.Ctx, h.Org, h.Agent, toDeny, h.Owner) })
+	if state, took := wait(toDeny); state != mcpwire.WaitDenied || took > 350*time.Millisecond {
+		t.Fatalf("denied = %s after %s", state, took)
+	}
+
+	toExpire := open("expire")
+	during(func() {
+		h.Exec(`UPDATE agent_mcp_tool_approval_requests SET expires_at=now()-interval '1 second' WHERE id=$1`, toExpire)
+	})
+	if state, took := wait(toExpire); state != mcpwire.WaitExpired || took > 350*time.Millisecond {
+		t.Fatalf("expired = %s after %s", state, took)
+	}
+
+	// Only the agent the gateway identified, about its own request.
+	for name, tc := range map[string]struct {
+		ev  Evidence
+		id  string
+		err error
+	}{
+		"a human device":          {Evidence{OrgID: h.Org, NodeID: h.Node, VPNIP: h.HumanIP, VPNKey: h.HumanKey}, unanswered.String(), ErrNotFound},
+		"another gateway":         {Evidence{OrgID: h.Org, NodeID: h.OtherNode, VPNIP: h.AgentIP, VPNKey: h.AgentKey}, unanswered.String(), ErrNotFound},
+		"another organization":    {Evidence{OrgID: uuid.New(), NodeID: h.Node, VPNIP: h.AgentIP, VPNKey: h.AgentKey}, unanswered.String(), ErrNotFound},
+		"a request that is not":   {h.evidence, uuid.NewString(), ErrNotFound},
+		"something not a request": {h.evidence, "not-a-uuid", ErrInvalid},
+	} {
+		if _, err := h.svc.Wait(h.Ctx, tc.ev, mcpwire.WaitRequest{RequestID: tc.id}); !errors.Is(err, tc.err) {
+			t.Errorf("%s: err = %v, want %v", name, err, tc.err)
+		}
+	}
+	// Another agent's request is not this agent's to wait on.
+	otherRequest, _, err := h.approvals.Decide(h.Ctx, h.Org, h.OtherAgent, mcptoolapproval.Identity{PolicyVersion: 1, Endpoint: mcpfixture.Endpoint, ServerName: "billing", ToolName: "guarded", InputSchemaHash: "x", RequestDigest: strings.Repeat("a", 64)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h.svc.Wait(h.Ctx, h.evidence, mcpwire.WaitRequest{RequestID: otherRequest.ID.String()}); !errors.Is(err, ErrNotFound) {
+		t.Fatalf("waited on another agent's request: %v", err)
+	}
+	// A caller that goes away releases the wait.
+	ctx, cancel := context.WithCancel(h.Ctx)
+	go func() { time.Sleep(50 * time.Millisecond); cancel() }()
+	if _, err := h.svc.Wait(ctx, h.evidence, mcpwire.WaitRequest{RequestID: unanswered.String()}); !errors.Is(err, context.Canceled) {
+		t.Fatalf("cancelled wait err = %v", err)
+	}
+}

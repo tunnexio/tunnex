@@ -331,7 +331,7 @@ func (s *Service) ReplaceGroup(ctx context.Context, orgID, groupID, profileID, a
 }
 
 // GetGroup returns an agent group's tool policy for one MCP server: every tool the gateway observes on
-// the server with its mode and marker, plus tools the policy names that are no longer observed.
+// the server with its mode and marker, plus tools the policy or a marker names that are not observed.
 func (s *Service) GetGroup(ctx context.Context, orgID, groupID, profileID uuid.UUID) (GroupPolicy, error) {
 	if s == nil || s.pool == nil || orgID == uuid.Nil || groupID == uuid.Nil || profileID == uuid.Nil {
 		return GroupPolicy{}, ErrInvalid
@@ -402,6 +402,13 @@ WHERE org_id=$1 AND agent_group_id=$2 AND profile_id=$3 ORDER BY version DESC LI
 		}
 	}
 	for name := range byTool {
+		if !listed[name] {
+			add(GroupTool{ToolName: name})
+		}
+	}
+	// A tool that carries a marker is shown even when it is Off and not observed (for example right
+	// after a server is connected, before an agent's gateway has read it).
+	for name := range markers {
 		if !listed[name] {
 			add(GroupTool{ToolName: name})
 		}

@@ -65,6 +65,8 @@ type Service struct {
 	limiter   RateLimiter
 	logger    *slog.Logger
 	now       func() time.Time
+	// waitHold and waitTick bound a held call; zero means the defaults (45 seconds, re-read every second).
+	waitHold, waitTick time.Duration
 }
 
 // New builds the decision service. oauth may be nil (no MCP server credential is ever attached). A nil
