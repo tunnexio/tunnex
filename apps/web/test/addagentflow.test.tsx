@@ -16,8 +16,8 @@ const features = (runtime: boolean, available = true) => ({ data: { items: [{ ke
 
 beforeEach(() => {
   get.mockReset(); post.mockReset();
-  get.mockImplementation(async (path: string) => path.endsWith("/nodes") ? { data: [{ id: "gateway-a", name: "Gateway A", status: "active" }] } : features(true));
-  post.mockResolvedValue({ data: { bootstrap_token: "tnx_test_once", release: { tag: "v1.0.0", source_sha: "a".repeat(40), manifest_url: "https://example.test/release.json", verifier_key_id: "test", verifier_public_key: "key", runtime: { binary: "tunnex-agent-runtime", version: "v1.0.0", linux_amd64: { name: "runtime-amd64", sha256: "b".repeat(64), source_sha: "a".repeat(40) }, linux_arm64: { name: "runtime-arm64", sha256: "c".repeat(64), source_sha: "a".repeat(40) }, unit: { name: "runtime.service", sha256: "d".repeat(64), source_sha: "a".repeat(40) } } } } });
+  get.mockImplementation(async (path: string) => path.endsWith("/nodes") ? { data: [{ id: "gateway-a", name: "Gateway A", status: "active" }] } : path.endsWith("/bootstrap-tokens/{tokenId}") ? { data: { id: "token-1", agent_name: "jira-runner", state: "pending", expires_at: "2099-01-01T00:00:00Z" } } : features(true));
+  post.mockResolvedValue({ data: { bootstrap_token: "tnx_test_once", token_id: "token-1", release: { tag: "v1.0.0", source_sha: "a".repeat(40), manifest_url: "https://example.test/release.json", verifier_key_id: "test", verifier_public_key: "key", runtime: { binary: "tunnex-agent-runtime", version: "v1.0.0", linux_amd64: { name: "runtime-amd64", sha256: "b".repeat(64), source_sha: "a".repeat(40) }, linux_arm64: { name: "runtime-arm64", sha256: "c".repeat(64), source_sha: "a".repeat(40) }, unit: { name: "runtime.service", sha256: "d".repeat(64), source_sha: "a".repeat(40) } } } } });
 });
 afterEach(() => cleanup());
 
@@ -44,7 +44,10 @@ describe("Add Agent flow", () => {
       { params: { path: { orgId: "org-a" } }, body: { name: "jira-runner", gateway_id: "gateway-a" } },
     ));
     await screen.findByText(/Step 3 of 3/);
-    expect(screen.getByText(/no agent is claimed as enrolled/i)).toBeTruthy();
+    // The status under the command is what the server reports for this token, not a guess.
+    expect(await screen.findByText("Waiting for the agent to enroll. Run the command on the host.")).toBeTruthy();
+    expect(get).toHaveBeenCalledWith("/api/v1/organizations/{orgId}/agents/bootstrap-tokens/{tokenId}", { params: { path: { orgId: "org-a", tokenId: "token-1" } } });
+    expect(screen.queryByText(/Enrolled at|Tunnel connected/)).toBeNull();
 
     // The command and the token are separate. The command is what gets pasted
     // into a shell (and its history), so it must not carry the token.
@@ -53,7 +56,7 @@ describe("Add Agent flow", () => {
     expect(command.textContent).not.toContain("tnx_test_once");
     expect(screen.getByTestId("ots-extra-secret").textContent).toBe("tnx_test_once");
     expect(screen.getAllByText("tnx_test_once")).toHaveLength(1);
-    expect(screen.getByText("Install token")).toBeTruthy();
+    expect(screen.getByRole("heading", { name: "Install token" })).toBeTruthy();
     expect(screen.getByText("The command asks for this token when it runs, so the token stays out of your shell history.")).toBeTruthy();
     const writeText = vi.fn().mockResolvedValue(undefined);
     Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
@@ -89,10 +92,11 @@ describe("Add Agent flow", () => {
     expect(screen.getByTestId("ots-extra-secret").textContent).toMatch(/^tnx_agent_/);
   });
 
-  it("keeps the waiting specimen pending until a server-owned status contract exists", () => {
+  it("shows the waiting specimen as waiting, with no live read and no claim of enrollment", () => {
     render(<AddAgentFlow orgId="org-a" enabled visualStage="waiting" onDismiss={vi.fn()} />);
-    expect(screen.getByText(/Enrollment remains pending until a future server-owned status contract/i)).toBeTruthy();
-    expect(screen.queryByText(/Agent connected/i)).toBeNull();
+    expect(screen.getByText("Waiting for the agent to enroll. Run the command on the host.")).toBeTruthy();
+    expect(screen.queryByText(/Enrolled at|Tunnel connected|future server-owned status contract/i)).toBeNull();
+    expect(get.mock.calls.some(([path]) => String(path).includes("bootstrap-tokens"))).toBe(false);
   });
 });
 
