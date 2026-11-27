@@ -269,6 +269,11 @@ export function mcpActivityExportHref(orgId: string, deviceId: string, filters: 
   return `/api/v1/organizations/${encodeURIComponent(orgId)}/agents/${encodeURIComponent(deviceId)}/mcp-tool-activity/export${query ? `?${query}` : ""}`;
 }
 function activityApproval(item: Activity): ReactNode {
+  // A call that was stopped to ask a person: it needed approval, whatever the row carries about the request.
+  if (item.decision === "deny" && item.reason === "step_up_required") return item.approval_request_id
+    ? <Link className="underline" to="/approvals" title={`Request ${item.approval_request_id.slice(0, 8)}`}>Waiting for approval</Link>
+    : <span>Waiting for approval</span>;
+  if (item.decision === "deny" && item.reason === "step_up_denied") return <span>Denied</span>;
   if (!item.approval_request_id) return <span>Not needed</span>;
   const when = item.approved_at ? compactDateTime(item.approved_at) : "";
   if (item.approved_by_email) return <span title={item.approved_at ? new Date(item.approved_at).toLocaleString() : undefined}>Approved by {item.approved_by_email}{when ? `, ${when}` : ""}</span>;
