@@ -1142,23 +1142,23 @@ func TestBuildSnapshotMCPDirectPathFollowsAssignmentAndMembership(t *testing.T) 
 			t.Fatal("a user device became a deny input")
 		}
 	}
-	if _, err := pool.Exec(f.ctx, `UPDATE agent_mcp_profile_assignments SET state='unassigned', ended_at=now(), ended_by_user_id=$2 WHERE org_id=$1`, f.org, f.user); err != nil {
-		t.Fatal(err)
-	}
-	if got := inputs(); len(got) != 0 {
-		t.Fatalf("unassigned profile still closes a path: %+v", got)
-	}
-	if _, err := pool.Exec(f.ctx, `INSERT INTO agent_mcp_profile_assignments (org_id, profile_id, agent_group_id) VALUES ($1,$2,$3)`, f.org, f.profile, f.group); err != nil {
-		t.Fatal(err)
-	}
-	if got := inputs(); len(got) != 1 {
-		t.Fatalf("re-assigned profile: inputs = %+v", got)
-	}
 	if _, err := pool.Exec(f.ctx, `DELETE FROM agent_group_members WHERE org_id=$1 AND device_id=$2`, f.org, f.agent); err != nil {
 		t.Fatal(err)
 	}
 	if got := inputs(); len(got) != 0 {
 		t.Fatalf("an agent removed from the group still has a closed path: %+v", got)
+	}
+	if _, err := pool.Exec(f.ctx, `INSERT INTO agent_group_members (org_id, agent_group_id, device_id, created_by_user_id) VALUES ($1,$2,$3,$4)`, f.org, f.group, f.agent, f.user); err != nil {
+		t.Fatal(err)
+	}
+	if got := inputs(); len(got) != 1 {
+		t.Fatalf("an agent added back to the group: inputs = %+v", got)
+	}
+	if _, err := pool.Exec(f.ctx, `UPDATE agent_mcp_profile_assignments SET state='unassigned', ended_at=now(), ended_by_user_id=$2 WHERE org_id=$1`, f.org, f.user); err != nil {
+		t.Fatal(err)
+	}
+	if got := inputs(); len(got) != 0 {
+		t.Fatalf("an unassigned profile still closes a path: %+v", got)
 	}
 }
 
