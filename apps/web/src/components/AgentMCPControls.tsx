@@ -2,20 +2,22 @@ import { useEffect, useState } from "react";
 import type { components } from "@tunnex/shared";
 import { api, apiErrorCode, apiErrorMessage, loadOne, type Loaded } from "../lib/api";
 import { compactDateTime } from "../lib/format";
-import { Button, Field, Input, Modal } from "./ui";
+import { Badge, Button, Field, Input, Modal } from "./ui";
 
 type Inventory = components["schemas"]["AgentMCPInventory"];
 type Policy = components["schemas"]["AgentMCPToolPolicy"];
 type Approval = components["schemas"]["AgentMCPToolApprovalRequest"];
 type OAuthConnection = components["schemas"]["AgentMCPOAuthConnection"];
-type Tool = { endpoint: string; server_name: string; tool_name: string; input_schema_hash: string };
+type EffectiveMCP = components["schemas"]["AgentEffectiveMCPProfile"];
+type Tool = { endpoint: string; server_name: string; tool_name: string; input_schema_hash: string; description?: string; tool_definition_hash?: string; definition_state?: string };
 const toolsFrom = (inventory: Inventory): Tool[] => (Array.isArray(inventory.snapshot.servers) ? inventory.snapshot.servers as Array<Record<string, unknown>> : []).flatMap((server) => {
   const endpoint = typeof server.endpoint === "string" ? server.endpoint : "";
   const serverName = typeof server.server_name === "string" ? server.server_name : "";
   return (Array.isArray(server.tools) ? server.tools as Array<Record<string, unknown>> : []).flatMap((tool) => {
     const name = typeof tool.name === "string" ? tool.name : "";
     const hash = typeof tool.input_schema_hash === "string" ? tool.input_schema_hash : "";
-    return endpoint && serverName && name && hash ? [{ endpoint, server_name: serverName, tool_name: name, input_schema_hash: hash }] : [];
+    const text = (value: unknown) => typeof value === "string" && value ? value : undefined;
+    return endpoint && serverName && name && hash ? [{ endpoint, server_name: serverName, tool_name: name, input_schema_hash: hash, description: text(tool.description), tool_definition_hash: text(tool.tool_definition_hash), definition_state: text(tool.definition_state) }] : [];
   });
 });
 
@@ -99,13 +101,67 @@ export function AgentMCPToolApprovalPanel({ orgId, deviceId, canApprove }: { org
   </div>;
 }
 
-export function AgentMCPToolPolicyPanel({ orgId, deviceId, inventory, canManage }: { orgId: string; deviceId: string; inventory: Inventory; canManage: boolean }) {
-  const tools = toolsFrom(inventory); const [policy, setPolicy] = useState<Loaded<Policy | null> | null>(null); const [selected, setSelected] = useState<Set<string>>(new Set()); const [controls, setControls] = useState<Record<string, { rate: string; stepUp: boolean; constraints: string }>>({}); const [busy, setBusy] = useState(false); const [error, setError] = useState<string | null>(null);
-  const key = (tool: Tool) => `${tool.endpoint}\u0000${tool.server_name}\u0000${tool.tool_name}\u0000${tool.input_schema_hash}`;
-  const loadPolicy = () => { if (!canManage) { setPolicy(null); setSelected(new Set()); return; } setPolicy(null); void loadOne(async () => { const result = await api.GET("/api/v1/organizations/{orgId}/agents/{deviceId}/mcp-tool-policy", { params: { path: { orgId, deviceId } } }); return apiErrorCode(result.error) === "mcp_tool_policy_not_found" ? { data: null } : result; }).then((result) => { if (!result.ok) { setPolicy(result as Loaded<Policy | null>); setSelected(new Set()); return; } if (result.data) { const current = result.data as Policy; setPolicy({ ok: true, data: current }); setSelected(new Set(current.rules.map((rule) => key(rule)))); setControls(Object.fromEntries(current.rules.map((rule) => [key(rule), { rate: rule.rate_limit_per_minute?.toString() ?? "", stepUp: rule.step_up_required ?? false, constraints: rule.argument_constraints ? JSON.stringify(rule.argument_constraints) : "" }]))); } else { setPolicy({ ok: true, data: null }); setSelected(new Set()); } }); };
+type Rule = Policy["rules"][number];
+type ToolControl = { rate: string; stepUp: boolean; constraints: string };
+const noControl: ToolControl = { rate: "", stepUp: false, constraints: "" };
+const toolKey = (tool: Pick<Tool, "endpoint" | "server_name" | "tool_name" | "input_schema_hash">) => `${tool.endpoint}\u0000${tool.server_name}\u0000${tool.tool_name}\u0000${tool.input_schema_hash}`;
+/** A tool keeps its identity (server address and name) when its description or inputs change. */
+const toolIdentity = (tool: Pick<Tool, "endpoint" | "tool_name">) => `${tool.endpoint}\u0000${tool.tool_name}`;
+/** The rule's own state wins: it is read with the policy, so it is newer than the inventory on the page. */
+const definitionChanged = (rule: Rule, tool: Tool | undefined) => rule.definition_state === "changed" || (rule.definition_state == null && tool?.definition_state === "changed");
+
+export function AgentMCPToolPolicyPanel({ orgId, deviceId, inventory, canManage, enforcement }: { orgId: string; deviceId: string; inventory: Inventory; canManage: boolean; enforcement?: EffectiveMCP["enforcement"] }) {
+  const tools = toolsFrom(inventory); const [policy, setPolicy] = useState<Loaded<Policy | null> | null>(null); const [selected, setSelected] = useState<Set<string>>(new Set()); const [controls, setControls] = useState<Record<string, ToolControl>>({}); const [busy, setBusy] = useState(false); const [error, setError] = useState<string | null>(null);
+  // Ticked tools whose inputs changed: the saved rule no longer matches what is on screen, so saving it
+  // again would accept the new version without anyone having read it.
+  const [moved, setMoved] = useState<Set<string>>(new Set()); const [accepted, setAccepted] = useState<Set<string>>(new Set()); const [notice, setNotice] = useState<string | null>(null);
+  const key = toolKey;
+  const byIdentity = new Map(tools.map((tool) => [toolIdentity(tool), tool]));
+  const hydrate = (current: Policy) => {
+    const nextSelected = new Set<string>(), nextMoved = new Set<string>(); const nextControls: Record<string, ToolControl> = {};
+    for (const rule of current.rules) {
+      const tool = byIdentity.get(toolIdentity(rule));
+      const id = tool && definitionChanged(rule, tool) ? key(tool) : key(rule);
+      if (id !== key(rule)) nextMoved.add(id);
+      nextSelected.add(id);
+      nextControls[id] = { rate: rule.rate_limit_per_minute?.toString() ?? "", stepUp: rule.step_up_required ?? false, constraints: rule.argument_constraints ? JSON.stringify(rule.argument_constraints) : "" };
+    }
+    setSelected(nextSelected); setControls(nextControls); setMoved(nextMoved); setAccepted(new Set());
+  };
+  const loadPolicy = () => { if (!canManage) { setPolicy(null); setSelected(new Set()); return; } setPolicy(null); void loadOne(async () => { const result = await api.GET("/api/v1/organizations/{orgId}/agents/{deviceId}/mcp-tool-policy", { params: { path: { orgId, deviceId } } }); return apiErrorCode(result.error) === "mcp_tool_policy_not_found" ? { data: null } : result; }).then((result) => { if (!result.ok) { setPolicy(result as Loaded<Policy | null>); setSelected(new Set()); return; } if (result.data) { const current = result.data as Policy; setPolicy({ ok: true, data: current }); hydrate(current); } else { setPolicy({ ok: true, data: null }); setSelected(new Set()); } }); };
   useEffect(loadPolicy, [orgId, deviceId, canManage]);
-  const save = async () => { setBusy(true); setError(null); let rules; try { rules = tools.filter((tool) => selected.has(key(tool))).map((tool) => { const control = controls[key(tool)] ?? { rate: "", stepUp: false, constraints: "" }; const rate = Number(control.rate); const constraints = control.constraints ? JSON.parse(control.constraints) : undefined; if (control.constraints && (!constraints || !Array.isArray(constraints.required) || !constraints.properties || typeof constraints.properties !== "object" || Array.isArray(constraints.properties))) { throw new Error('Argument constraints need a required array and a properties object, for example {"required":[],"properties":{}}.'); } return { ...tool, step_up_required: control.stepUp, ...(Number.isInteger(rate) && rate > 0 ? { rate_limit_per_minute: rate } : {}), ...(constraints ? { argument_constraints: constraints } : {}) }; }); } catch (cause) { setBusy(false); setError(cause instanceof SyntaxError ? "Argument constraints must be valid JSON." : cause instanceof Error ? cause.message : "Argument constraints must be valid JSON."); return; } const result = await api.PUT("/api/v1/organizations/{orgId}/agents/{deviceId}/mcp-tool-policy", { params: { path: { orgId, deviceId } }, body: { rules } }); setBusy(false); if (result.error || !result.data) { setError(apiErrorMessage(result.error, "Could not save the MCP tool policy. Check argument constraints and rate limits, then refresh inventory if the tool changed.")); return; } setPolicy({ ok: true, data: result.data as Policy }); };
-  return <div data-testid="agent-mcp-tool-policy" className="text-xs text-slate-300"><p className="text-slate-500">Default deny. Only checked tools may pass through the agent’s explicit local MCP proxy; direct upstream use is not protected.</p>{!canManage ? <p role="status" className="mt-2 text-slate-500">You do not have permission to view or change the MCP tool policy.</p> : policy === null ? <p role="status" className="mt-2 text-slate-500">Loading MCP tool policy…</p> : !policy.ok ? <><p role="alert" className="mt-2 text-danger">MCP tool policy could not be loaded: {policy.error}</p><Button size="sm" variant="ghost" className="mt-2" onClick={loadPolicy}>Retry</Button></> : <>{policy.data ? <p className="mt-1 text-slate-500">Current version {policy.data.version} · based on inventory observed {policy.data.inventory_observed_at}.</p> : <p className="mt-1 text-slate-500">No policy yet: the local proxy denies every tool.</p>}{tools.length === 0 ? <p className="mt-2 text-slate-500">No observed tools are available to allow.</p> : <div className="mt-2 grid gap-2">{tools.map((tool) => { const id = key(tool); const control = controls[id] ?? { rate: "", stepUp: false, constraints: "" }; return <div key={id}><label className="flex items-center gap-2"><input type="checkbox" checked={selected.has(id)} disabled={busy} onChange={(event) => setSelected((previous) => { const next = new Set(previous); if (event.target.checked) next.add(id); else next.delete(id); return next; })} /><span>{tool.server_name} · <span className="font-mono">{tool.tool_name}</span></span></label>{selected.has(id) && <div className="ml-6 mt-1 grid gap-1 sm:grid-cols-3"><Input aria-label={`Rate limit for ${tool.tool_name}`} placeholder="calls/min" value={control.rate} disabled={busy} onChange={(event) => setControls((old) => ({ ...old, [id]: { ...control, rate: event.target.value } }))} /><label className="flex items-center gap-1"><input type="checkbox" checked={control.stepUp} disabled={busy} onChange={(event) => setControls((old) => ({ ...old, [id]: { ...control, stepUp: event.target.checked } }))} />Step-up approval</label><textarea aria-label={`Argument constraints for ${tool.tool_name}`} className="min-h-10 rounded border border-slate-700 bg-surface px-2 py-1 font-mono" placeholder='{"required":[],"properties":{}}' value={control.constraints} disabled={busy} onChange={(event) => setControls((old) => ({ ...old, [id]: { ...control, constraints: event.target.value } }))} /></div>}</div>; })}</div>}<Button className="mt-3" disabled={busy || tools.length === 0} onClick={() => void save()}>{busy ? "Saving…" : "Save tool policy"}</Button></>}{error && <p role="alert" className="mt-2 text-danger">{error}</p>}</div>;
+  const rules = policy?.ok && policy.data && Array.isArray(policy.data.rules) ? policy.data.rules : [];
+  const changed = (tool: Tool) => { if (accepted.has(toolIdentity(tool))) return false; const rule = rules.find((item) => toolIdentity(item) === toolIdentity(tool)); return rule ? definitionChanged(rule, tool) : false; };
+  const save = async () => {
+    setError(null); setNotice(null);
+    const unreviewed = tools.find((tool) => selected.has(key(tool)) && moved.has(key(tool)) && changed(tool));
+    if (unreviewed) { setError(`Review ${unreviewed.tool_name} first: accept its new version, or untick it to keep it blocked.`); return; }
+    setBusy(true);
+    let body;
+    try { body = tools.filter((tool) => selected.has(key(tool))).map((tool) => { const control = controls[key(tool)] ?? noControl; const rate = Number(control.rate); const constraints = control.constraints ? JSON.parse(control.constraints) : undefined; if (control.constraints && (!constraints || !Array.isArray(constraints.required) || !constraints.properties || typeof constraints.properties !== "object" || Array.isArray(constraints.properties))) { throw new Error('Argument constraints need a required array and a properties object, for example {"required":[],"properties":{}}.'); } return { endpoint: tool.endpoint, server_name: tool.server_name, tool_name: tool.tool_name, input_schema_hash: tool.input_schema_hash, step_up_required: control.stepUp, ...(Number.isInteger(rate) && rate > 0 ? { rate_limit_per_minute: rate } : {}), ...(constraints ? { argument_constraints: constraints } : {}) }; }); } catch (cause) { setBusy(false); setError(cause instanceof SyntaxError ? "Argument constraints must be valid JSON." : cause instanceof Error ? cause.message : "Argument constraints must be valid JSON."); return; }
+    const result = await api.PUT("/api/v1/organizations/{orgId}/agents/{deviceId}/mcp-tool-policy", { params: { path: { orgId, deviceId } }, body: { rules: body } });
+    setBusy(false);
+    if (result.error || !result.data) { setError(apiErrorMessage(result.error, "Could not save the MCP tool policy. Check argument constraints and rate limits, then refresh inventory if the tool changed.")); return; }
+    setPolicy({ ok: true, data: result.data as Policy });
+  };
+  const accept = async (tool: Tool) => {
+    if (!tool.tool_definition_hash) return;
+    setBusy(true); setError(null); setNotice(null);
+    const result = await api.POST("/api/v1/organizations/{orgId}/agents/{deviceId}/mcp-tool-policy/accept-definition", { params: { path: { orgId, deviceId } }, body: { endpoint: tool.endpoint, tool_name: tool.tool_name, tool_definition_hash: tool.tool_definition_hash } });
+    setBusy(false);
+    if (result.error || !result.data) {
+      const code = apiErrorCode(result.error);
+      setError(code === "mcp_tool_definition_stale" ? "This tool changed again while you were reading. Refresh the page and review it once more." : code === "mcp_tool_rule_not_found" ? "This tool is no longer in the saved policy. Refresh the page, then tick it to allow it." : "Could not accept the new version. Refresh the page and try again.");
+      return;
+    }
+    // Only this tool's rule moved; ticks and limits being edited for other tools stay as they are.
+    setPolicy({ ok: true, data: result.data as Policy });
+    setAccepted((previous) => new Set(previous).add(toolIdentity(tool)));
+    setMoved((previous) => { const next = new Set(previous); next.delete(key(tool)); return next; });
+    setNotice(`New version accepted. ${tool.tool_name} can run again.`);
+  };
+  const atGateway = enforcement === "gateway";
+  return <div data-testid="agent-mcp-tool-policy" className="text-xs text-slate-300"><p className="text-slate-500">{atGateway ? "Tools are blocked unless you tick them here. The gateway checks every call this agent makes." : "Default deny. Only checked tools may pass through the agent’s explicit local MCP proxy; direct upstream use is not protected."}</p>{!canManage ? <p role="status" className="mt-2 text-slate-500">You do not have permission to view or change the MCP tool policy.</p> : policy === null ? <p role="status" className="mt-2 text-slate-500">Loading MCP tool policy…</p> : !policy.ok ? <><p role="alert" className="mt-2 text-danger">MCP tool policy could not be loaded: {policy.error}</p><Button size="sm" variant="ghost" className="mt-2" onClick={loadPolicy}>Retry</Button></> : <>{policy.data ? <p className="mt-1 text-slate-500">Current version {policy.data.version} · based on inventory observed {policy.data.inventory_observed_at}.</p> : <p className="mt-1 text-slate-500">{atGateway ? "No rules yet: every tool is blocked." : "No policy yet: the local proxy denies every tool."}</p>}{tools.length === 0 ? <p className="mt-2 text-slate-500">No observed tools are available to allow.</p> : <div className="mt-2 grid gap-2">{tools.map((tool) => { const id = key(tool); const control = controls[id] ?? noControl; const needsReview = changed(tool); return <div key={id} role="group" aria-label={`${tool.server_name} · ${tool.tool_name}`} className="min-w-0"><div className="flex flex-wrap items-center gap-x-3 gap-y-1"><label className="flex min-w-0 items-center gap-2"><input type="checkbox" checked={selected.has(id)} disabled={busy} onChange={(event) => setSelected((previous) => { const next = new Set(previous); if (event.target.checked) next.add(id); else next.delete(id); return next; })} /><span className="break-all">{tool.server_name} · <span className="font-mono">{tool.tool_name}</span></span></label>{needsReview && <><Badge tone="warn">Changed, review</Badge><Badge tone="danger">Blocked</Badge></>}</div>{needsReview && <div className="ml-6 mt-1 grid gap-1"><p className="text-slate-400">The server changed this tool&apos;s name, description or inputs. It is blocked until you accept the new version.</p><div><div className="text-slate-500">New description</div><p className="whitespace-pre-wrap break-words text-slate-200">{tool.description ?? "The new version has no description."}</p></div>{tool.tool_definition_hash ? <div><Button size="sm" disabled={busy} onClick={() => void accept(tool)}>Accept new version</Button></div> : <p className="text-slate-500">Refresh the page to load the new version before accepting it.</p>}</div>}{selected.has(id) && <div className="ml-6 mt-1 grid gap-1 sm:grid-cols-3"><Input aria-label={`Rate limit for ${tool.tool_name}`} placeholder="calls/min" value={control.rate} disabled={busy} onChange={(event) => setControls((old) => ({ ...old, [id]: { ...control, rate: event.target.value } }))} /><label className="flex items-center gap-1"><input type="checkbox" checked={control.stepUp} disabled={busy} onChange={(event) => setControls((old) => ({ ...old, [id]: { ...control, stepUp: event.target.checked } }))} />Step-up approval</label><textarea aria-label={`Argument constraints for ${tool.tool_name}`} className="min-h-10 rounded border border-slate-700 bg-surface px-2 py-1 font-mono" placeholder='{"required":[],"properties":{}}' value={control.constraints} disabled={busy} onChange={(event) => setControls((old) => ({ ...old, [id]: { ...control, constraints: event.target.value } }))} /></div>}</div>; })}</div>}<Button className="mt-3" disabled={busy || tools.length === 0} onClick={() => void save()}>{busy ? "Saving…" : "Save tool policy"}</Button></>}{notice && <p role="status" className="mt-2 text-slate-300">{notice}</p>}{error && <p role="alert" className="mt-2 text-danger">{error}</p>}</div>;
 }
 
 const oauthOutcome: Record<string, { tone: "success" | "danger"; text: string }> = {
