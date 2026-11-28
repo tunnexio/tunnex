@@ -77,7 +77,13 @@ func (s apiServer) CreateK8sClusterScope(ctx context.Context, req api.CreateK8sC
 	if _, err := authorize(ctx, req.OrgId, rbac.PermK8sScopeManage); err != nil {
 		return nil, err
 	}
-	if _, err := authorize(ctx, req.OrgId, rbac.PermPolicyManage); err != nil {
+	// A cluster scope is an access rule to a cluster (RBAC-1): it needs the rule permission for its source
+	// (policy_rule:manage, or agent:grant_access for an agent source), not policy:manage.
+	srcKind := ""
+	if req.Body != nil {
+		srcKind = string(req.Body.Source.Kind)
+	}
+	if _, err := authorize(ctx, req.OrgId, rulePermissionForSource(srcKind)); err != nil {
 		return nil, err
 	}
 	if req.Body == nil {
@@ -203,7 +209,7 @@ func (s apiServer) DecideK8sClusterScopeMembership(ctx context.Context, req api.
 }
 
 func (s apiServer) ListK8sClusterInventory(ctx context.Context, req api.ListK8sClusterInventoryRequestObject) (api.ListK8sClusterInventoryResponseObject, error) {
-	if _, err := authorize(ctx, req.OrgId, rbac.PermK8sManage); err != nil {
+	if _, err := authorize(ctx, req.OrgId, rbac.PermK8sView); err != nil {
 		return nil, err
 	}
 	page, err := s.k8s.ListClusterScopeInventory(ctx, req.OrgId, req.ClusterId, stringValue(req.Params.Cursor), intValue(req.Params.Limit))

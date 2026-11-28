@@ -52,13 +52,14 @@ const supportsPrivate = (kind: AlertDestinationKind) => !["email", "pagerduty", 
 const dateLabel = (value?: string) => value && Number.isFinite(new Date(value).getTime()) ? new Date(value).toLocaleString() : "Not reported";
 const routeSignature = (route: AlertDestination) => `${route.id}:${route.name}:${route.updated_at ?? ""}:${route.endpoint_fingerprint}:${route.archived}`;
 type SubscriptionRead = { data: AlertEventKey[] | null; error: string };
-type ManagementProps = { orgId: string; canEdit: boolean; canAllowPrivate: boolean; renderNavigation?: (actions: ReactNode) => ReactNode; onRefreshAuthority?: () => Promise<void> };
+// readOnlyReason (RBAC-1): why a viewer cannot change routing at all (the auditor), replacing the verify-email notes.
+type ManagementProps = { orgId: string; canEdit: boolean; canAllowPrivate: boolean; readOnlyReason?: string; renderNavigation?: (actions: ReactNode) => ReactNode; onRefreshAuthority?: () => Promise<void> };
 
 export function AlertManagement(props: ManagementProps) {
   return <AlertManagementWorkspace key={`${props.orgId}:${props.canEdit}:${props.canAllowPrivate}`} {...props} />;
 }
 
-function AlertManagementWorkspace({ orgId, canEdit, canAllowPrivate, renderNavigation, onRefreshAuthority }: ManagementProps) {
+function AlertManagementWorkspace({ orgId, canEdit, canAllowPrivate, readOnlyReason, renderNavigation, onRefreshAuthority }: ManagementProps) {
   const [setting, setSetting] = useState<AlertingSetting | null>(null), [routes, setRoutes] = useState<AlertDestination[] | null>(null), [deliveries, setDeliveries] = useState<AlertDelivery[] | null>(null);
   const [subs, setSubs] = useState<Record<string, SubscriptionRead>>({});
   const [readErrors, setReadErrors] = useState({ setting: "", routes: "", deliveries: "" });
@@ -164,7 +165,7 @@ function AlertManagementWorkspace({ orgId, canEdit, canAllowPrivate, renderNavig
     finally { if (alive.current) { locked.current = false; setBusy(false); } }
   }
   const openRoute = (route: AlertDestination, stage: "overview" | "signals") => { if (!blocked) { setInspectedId(route.id); setRouteStage(stage); } };
-  const actions = <><RefreshButton label="Refresh" disabled={blocked} onClick={() => { if (onRefreshAuthority) void onRefreshAuthority(); else void load(); }} /><Button disabled={!canEdit || blocked || routes === null} title={!canEdit ? "Verify your email to manage alert routing." : undefined} onClick={() => setCreating(true)}>New routing policy</Button></>;
+  const actions = <><RefreshButton label="Refresh" disabled={blocked} onClick={() => { if (onRefreshAuthority) void onRefreshAuthority(); else void load(); }} /><Button disabled={!canEdit || blocked || routes === null} title={!canEdit ? readOnlyReason ?? "Verify your email to manage alert routing." : undefined} onClick={() => setCreating(true)}>New routing policy</Button></>;
   const routeActions = (route: AlertDestination) => [
     { key: "overview", label: "View policy", disabledReason: blocked ? "Wait for the current operation." : null, onSelect: () => openRoute(route, "overview") },
     { key: "signals", label: canEdit ? "Edit signals" : "View signals", disabledReason: blocked ? "Wait for the current operation." : null, onSelect: () => openRoute(route, "signals") },
@@ -178,7 +179,7 @@ function AlertManagementWorkspace({ orgId, canEdit, canAllowPrivate, renderNavig
     {error && <ErrorText>{error}</ErrorText>}{notice && <p className="alerts-notice" role="status">{notice}</p>}
     {loading ? <Loading label="Loading alert management..." /> : <>
       {setting ? <div className="alert-delivery-setting"><div><span>Automatic delivery</span><strong>{setting.enabled ? "Enabled" : "Paused"}</strong>{!setting.enabled && <small>Conditions remain recorded.</small>}</div><Link className="text-brand text-sm" to="/settings?section=features&feature=alert-delivery">Manage feature</Link></div> : <AlertReadState title="Delivery setting unavailable" message={readErrors.setting} onRetry={() => void load()} />}
-      {!canEdit && <p className="alerts-permission-note">Verify your email to change routing policies.</p>}
+      {!canEdit && <p className="alerts-permission-note">{readOnlyReason ?? "Verify your email to change routing policies."}</p>}
       <nav className="alert-management-sections" aria-label="Alert management sections"><button type="button" aria-current={section === "routes" ? "page" : undefined} onClick={() => { setSection("routes"); setQuery(""); setPage(1); }}>Routing policies{routes && <span>{routes.length}</span>}</button><button type="button" aria-current={section === "deliveries" ? "page" : undefined} onClick={() => { setSection("deliveries"); setQuery(""); setPage(1); }}>Delivery activity{deliveries && <span>{deliveries.length}</span>}</button></nav>
       {section === "routes" ? routes === null ? <AlertReadState title="Routing policies unavailable" message={readErrors.routes} onRetry={() => void load()} /> : <section className="alert-routing-inventory" aria-label="Routing policy inventory"><div className="alerts-inventory-toolbar"><Input type="search" aria-label="Search routing policies" placeholder="Search routing policies…" value={query} onChange={event => { setQuery(event.target.value); setPage(1); }} /><span className="alerts-result-count">{filteredRoutes.length} policies</span></div>{shownRoutes.length ? <div className="alerts-table-scroll"><table className="alerts-native-table alerts-routing-table"><caption className="sr-only">Routing policies</caption><thead><tr><th>Policy</th><th>Channel</th><th>Signals</th><th>Delivery rules</th><th><span className="sr-only">Actions</span></th></tr></thead><tbody>{shownRoutes.map(route => {
         const selected = subs[route.id]?.data;
@@ -197,7 +198,7 @@ function AlertManagementWorkspace({ orgId, canEdit, canAllowPrivate, renderNavig
           </> : subs[inspected.id]?.data == null ? subs[inspected.id]?.error ? <AlertReadState title="Signals unavailable" message={subs[inspected.id].error} onRetry={() => void retrySignals(inspected.id)} retryLabel="Retry signals" /> : <Loading label="Loading subscribed signals…" /> : <>
             <SignalPicker selected={subs[inspected.id].data!} disabled={!canEdit || busy} onToggle={key => void toggleSignal(inspected, key)} />
             {signalError?.routeId === inspected.id && <ErrorText>{signalError.message}</ErrorText>}
-            {!canEdit && <p className="alerts-permission-note">Verify your email to change subscribed signals.</p>}
+            {!canEdit && <p className="alerts-permission-note">{readOnlyReason ?? "Verify your email to change subscribed signals."}</p>}
             <p className="alert-editor-note">Changes apply to future alerts. Queued deliveries keep their original routing.</p>
           </>}
         </div>

@@ -16,9 +16,10 @@ type Application = components["schemas"]["AppAccessApplication"];
 type Preview = components["schemas"]["AppAccessEffectiveAccess"];
 
 /** Shared grant store projection. The outer permission boundary mounts no readers. */
-export default function AppAccessAccess({ orgId, appId, permitted, canViewAudit = false }: { orgId: string; appId?: string; permitted: boolean; canViewEvents?: boolean; canViewAudit?: boolean }) {
-  if (!permitted) return <ErrorText>You do not have permission to manage application grants.</ErrorText>;
-  return <AccessWorkspace key={`${orgId}:${appId ?? "global"}`} orgId={orgId} appId={appId} canViewAudit={canViewAudit} />;
+// RBAC-1: canView (app_access:view, the auditor) reads grants; permitted (app_access:grant) also changes them.
+export default function AppAccessAccess({ orgId, appId, permitted, canView = false, canViewAudit = false }: { orgId: string; appId?: string; permitted: boolean; canView?: boolean; canViewEvents?: boolean; canViewAudit?: boolean }) {
+  if (!permitted && !canView) return <ErrorText>You do not have permission to manage application grants.</ErrorText>;
+  return <AccessWorkspace key={`${orgId}:${appId ?? "global"}`} orgId={orgId} appId={appId} canViewAudit={canViewAudit} canChange={permitted} />;
 }
 function localDate(value?: string | null) {
   if (!value) return "";
@@ -30,7 +31,7 @@ function utcDate(value: string) { return value ? new Date(value).toISOString() :
 function failure(error: unknown, fallback: string) {
   return ["version_conflict", "stale_version"].includes(apiErrorCode(error) ?? "") ? "This grant changed. Your edits are preserved; close and refresh grants to review the latest version before retrying." : apiErrorMessage(error, fallback);
 }
-function AccessWorkspace({ orgId, appId, canViewAudit }: { orgId: string; appId?: string; canViewAudit: boolean }) {
+function AccessWorkspace({ orgId, appId, canViewAudit, canChange = true }: { orgId: string; appId?: string; canViewAudit: boolean; canChange?: boolean }) {
   const [params, setParams] = useSearchParams();
   const filter = appId ?? params.get("app_id") ?? "";
   const search = params.get("grant_search") ?? "";
@@ -120,7 +121,7 @@ function AccessWorkspace({ orgId, appId, canViewAudit }: { orgId: string; appId?
   const addGrant = <Button disabled={addDisabled} onClick={() => setDialog({ action: "edit", grant: null })}>Add grant</Button>;
 
   const rowActions = (grant: Grant): AppAccessRowMenuAction[] => [
-    ...(!grant.revoked_at ? [
+    ...(!grant.revoked_at && canChange ? [
       { key: "edit", label: "Edit grant", disabledReason: addUnavailable, icon: <Icon name="settings" size={16} />, onSelect: () => setDialog({ action: "edit", grant }) },
       // Enabling adds access, so it is gated like Edit; disabling stays available after entitlement loss.
       grant.enabled ? { key: "disable", label: "Disable grant", icon: <Icon name="ban" size={16} />, onSelect: () => setDialog({ action: "disable", grant }) }
@@ -135,7 +136,7 @@ function AccessWorkspace({ orgId, appId, canViewAudit }: { orgId: string; appId?
     : <AppAccessEmptyState icon={appId ? null : "users"} title="No access granted" description={filter ? "Grant access to a person or group to get started." : "Choose an application, then grant access to a person or group."} action={!addDisabled ? <Button onClick={() => setDialog({ action: "edit", grant: null })}>Grant access</Button> : !filter ? <Link className="text-brand" to="/app-access/applications">View applications</Link> : undefined} />;
   return <section aria-label="Application access" className={`aa-access-focus${appId ? " aa-access-scoped" : " aa-access-global"}`}>
     <div className="aa-access-panel">
-      <div className="aa-access-topbar"><div role="group" aria-label="Grant view" className="aa-access-view"><Button type="button" variant="ghost" aria-pressed={view === "current"} onClick={() => changeView("current")}>Current access</Button><Button type="button" variant="ghost" aria-pressed={view === "history"} onClick={() => changeView("history")}>History</Button></div>{addGrant}</div>
+      <div className="aa-access-topbar"><div role="group" aria-label="Grant view" className="aa-access-view"><Button type="button" variant="ghost" aria-pressed={view === "current"} onClick={() => changeView("current")}>Current access</Button><Button type="button" variant="ghost" aria-pressed={view === "history"} onClick={() => changeView("history")}>History</Button></div>{canChange ? addGrant : <p role="status" className="aa-access-preview-help">Only owners and admins can add or change application grants.</p>}</div>
       {view === "history" && !!grants?.length && <p className="aa-access-view-help">Revoked and expired grants.</p>}
       <form className="aa-access-toolbar" onSubmit={event => { event.preventDefault(); changeFilter("grant_search", searchInput.trim()); }}>
         {!appId && <div className="aa-access-app-filter"><Field label="Filter by application"><Select aria-label="Filter by application" width="auto" value={filter} onChange={event => changeFilter("app_id", event.target.value)}><option value="">All applications</option>{filter && !applications.some(app => app.id === filter) && <option value={filter}>Selected application</option>}{applications.map(app => <option key={app.id} value={app.id}>{app.draft.name}</option>)}</Select></Field></div>}
@@ -156,7 +157,7 @@ function AccessWorkspace({ orgId, appId, canViewAudit }: { orgId: string; appId?
       ]} /></div>}
       {grants && !error && <AppAccessPagination page={page} pageSize={pageSize} count={grants.length} hasNext={hasNext} onPageChange={changePage} onPageSizeChange={changePageSize} previousLabel="Previous grants" nextLabel="Next grants" />}
     </div>
-    {filter && <details className="aa-editor-disclosure aa-access-preview"><summary>Preview effective access</summary><div className="aa-editor-disclosure-content"><div className="aa-access-preview-content">
+    {filter && canChange && <details className="aa-editor-disclosure aa-access-preview"><summary>Preview effective access</summary><div className="aa-editor-disclosure-content"><div className="aa-access-preview-content">
       <p className="aa-access-preview-help">Check one user against the current grants and application requirements.</p>
       <EntityPicker label="Preview user" placeholder="Select an active user" value={previewUser?.value ?? ""} options={options.filter(option => option.kind === "user")} onSelect={option => { setPreviewUser(option); setPreview(null); }} />
       <Button variant="ghost" disabled={!previewUser || previewBusy || subjectsLoading || !!subjectError} onClick={() => void checkAccess()}>{previewBusy ? "Checking access…" : "Check effective access"}</Button><ErrorText>{previewError}</ErrorText>

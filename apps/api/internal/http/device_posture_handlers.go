@@ -11,7 +11,7 @@ import (
 
 // ListPendingDevices GET .../devices/pending — the Community approval queue.
 func (s apiServer) ListPendingDevices(ctx context.Context, req api.ListPendingDevicesRequestObject) (api.ListPendingDevicesResponseObject, error) {
-	if _, err := authorize(ctx, req.OrgId, rbac.PermDeviceApprove); err != nil {
+	if _, err := authorize(ctx, req.OrgId, rbac.PermDeviceView); err != nil {
 		return nil, err
 	}
 	list, err := s.devices.ListPending(ctx, req.OrgId)
@@ -30,6 +30,9 @@ func (s apiServer) ApproveDevice(ctx context.Context, req api.ApproveDeviceReque
 	if _, err := authorize(ctx, req.OrgId, rbac.PermDeviceApprove); err != nil {
 		return nil, err
 	}
+	if err := s.requireHelpdeskDeviceCeiling(ctx, req.OrgId, req.DeviceId, rbac.PermDeviceApprove); err != nil {
+		return nil, err
+	}
 	p, _ := authctx.PrincipalFrom(ctx)
 	if err := s.devices.Approve(ctx, req.OrgId, p.UserID, req.DeviceId); err != nil {
 		return nil, err
@@ -42,6 +45,9 @@ func (s apiServer) RejectDevice(ctx context.Context, req api.RejectDeviceRequest
 	if _, err := authorize(ctx, req.OrgId, rbac.PermDeviceApprove); err != nil {
 		return nil, err
 	}
+	if err := s.requireHelpdeskDeviceCeiling(ctx, req.OrgId, req.DeviceId, rbac.PermDeviceApprove); err != nil {
+		return nil, err
+	}
 	p, _ := authctx.PrincipalFrom(ctx)
 	if err := s.devices.Reject(ctx, req.OrgId, p.UserID, req.DeviceId); err != nil {
 		return nil, err
@@ -51,7 +57,7 @@ func (s apiServer) RejectDevice(ctx context.Context, req api.RejectDeviceRequest
 
 // GetDeviceApproval GET .../device-approval.
 func (s apiServer) GetDeviceApproval(ctx context.Context, req api.GetDeviceApprovalRequestObject) (api.GetDeviceApprovalResponseObject, error) {
-	if _, err := authorize(ctx, req.OrgId, rbac.PermDeviceApprove); err != nil {
+	if _, err := authorize(ctx, req.OrgId, rbac.PermDeviceView); err != nil {
 		return nil, err
 	}
 	mode, err := s.devices.GetDeviceApproval(ctx, req.OrgId)
@@ -66,8 +72,10 @@ func (s apiServer) GetDeviceApproval(ctx context.Context, req api.GetDeviceAppro
 
 // SetDeviceApproval PUT .../device-approval — flip the gate; returns the grandfathered
 // count when enabling (best-effort; a committed flip never fails on the count).
+// RBAC-1: device_approval:manage, split from device:approve so approving one device never lets a Helpdesk
+// person switch the requirement off for the whole organization.
 func (s apiServer) SetDeviceApproval(ctx context.Context, req api.SetDeviceApprovalRequestObject) (api.SetDeviceApprovalResponseObject, error) {
-	if _, err := authorize(ctx, req.OrgId, rbac.PermDeviceApprove); err != nil {
+	if _, err := authorize(ctx, req.OrgId, rbac.PermDeviceApprovalManage); err != nil {
 		return nil, err
 	}
 	p, _ := authctx.PrincipalFrom(ctx)

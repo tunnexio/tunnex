@@ -10,7 +10,8 @@ import { personLabel } from "../lib/personLabel";
 type Sessions = components["schemas"]["AppAccessApplicationSessions"];
 type Session = components["schemas"]["AppAccessApplicationSession"];
 
-export default function AppAccessSessions({ orgId, appId }: { orgId: string; appId: string }) {
+// canRevoke (RBAC-1): false for a viewer (app_access:view), who lists sessions without revoking them.
+export default function AppAccessSessions({ orgId, appId, canRevoke = true }: { orgId: string; appId: string; canRevoke?: boolean }) {
   // SA-UX-2 audit A4: name people when the viewer may list members; otherwise keep the short id.
   const [members, setMembers] = useState<{ user_id: string; name?: string; email?: string }[]>([]);
   useEffect(() => { let live = true; void api.GET("/api/v1/organizations/{orgId}/members", { params: { path: { orgId } } }).then(r => { if (live && r.data) setMembers(r.data); }).catch(() => {}); return () => { live = false; }; }, [orgId]);
@@ -49,6 +50,6 @@ export default function AppAccessSessions({ orgId, appId }: { orgId: string; app
     { key: "user", header: "User", cell: session => <span title={session.user_id}>{personLabel(members.find(m => m.user_id === session.user_id), `Member ${session.user_id.slice(0, 8)}`)}</span> },
     { key: "started", header: "Started", cell: session => <time dateTime={session.created_at}>{new Date(session.created_at).toLocaleString()}</time> },
     { key: "expires", header: "Expires", cell: session => <time dateTime={session.expires_at}>{new Date(session.expires_at).toLocaleString()}</time> },
-    { key: "actions", header: "Actions", cell: session => <div className="flex flex-wrap items-center gap-3"><Button variant="ghost" size="sm" disabled={busy} onClick={() => setSelected(session)}>Revoke {session.id.slice(0, 8)}</Button><Link className="text-brand" to={`/access-events?source=applications&app_id=${encodeURIComponent(appId)}&session_id=${encodeURIComponent(session.id)}`}>Session events</Link></div> },
+    { key: "actions", header: "Actions", cell: session => <div className="flex flex-wrap items-center gap-3">{canRevoke && <Button variant="ghost" size="sm" disabled={busy} onClick={() => setSelected(session)}>Revoke {session.id.slice(0, 8)}</Button>}<Link className="text-brand" to={`/access-events?source=applications&app_id=${encodeURIComponent(appId)}&session_id=${encodeURIComponent(session.id)}`}>Session events</Link></div> },
   ]} />}<AppAccessPagination page={page} pageSize={pageSize} count={sessions.items.length} hasNext={sessions.items.length === pageSize} busy={busy} previousLabel="Previous sessions" nextLabel="Next sessions" onPageChange={next => setPage(Math.max(1, Math.min(Math.floor(10000 / pageSize) + 1, next)))} onPageSizeChange={size => { setPageSize(appAccessPageSize(String(size))); setPage(1); }} /></>}{selected && <Modal title="Revoke application session" danger onDismiss={() => setSelected(null)} actions={<><Button variant="ghost" onClick={() => setSelected(null)}>Keep session</Button><Button onClick={() => void revoke(selected)}>Confirm session revocation</Button></>}><p>Withdraw session {selected.id.slice(0, 8)} for user {selected.user_id.slice(0, 8)}. New requests will be denied, and live connections may take a few seconds to close.</p></Modal>}</Card>;
 }

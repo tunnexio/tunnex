@@ -73,7 +73,7 @@ test("a member sees the roster but no management controls", async ({
   await page.getByRole("table", { name: "Members" }).getByRole("row").filter({ hasText: MEMBER.email }).getByRole("button", { name: "Demo Member", exact: true }).click();
   const detail = page.getByRole("region", { name: "Person details" });
   await detail.getByRole("navigation", { name: "Person detail sections" }).getByRole("button", { name: "Roles", exact: true }).click();
-  await expect(detail.getByRole("group", { name: `Roles for ${MEMBER.email}`, exact: true })).toContainText("member");
+  await expect(detail.getByRole("group", { name: `Roles for ${MEMBER.email}`, exact: true })).toContainText("Member");
   await expect(detail.getByRole("checkbox", { includeHidden: true })).toHaveCount(0);
   await expect(detail.getByRole("button", { name: "Save roles", exact: true, includeHidden: true })).toHaveCount(0);
 });
@@ -97,8 +97,8 @@ test("an owner sees the invite form and per-member controls", async ({
   await page.getByRole("menuitem", { name: "Edit roles", exact: true }).click();
   const detail = page.getByRole("region", { name: "Person details" });
   const roles = detail.getByRole("group", { name: `Roles for ${MEMBER.email}`, exact: true });
-  await expect(roles.getByRole("checkbox", { name: "member", exact: true })).toBeChecked();
-  await expect(roles.getByRole("checkbox", { name: "admin", exact: true })).toBeEnabled();
+  await expect(roles.getByRole("checkbox", { name: "Member", exact: true })).toBeChecked();
+  await expect(roles.getByRole("checkbox", { name: "Admin", exact: true })).toBeEnabled();
   await detail.getByRole("button", { name: "Back to users", exact: true }).click();
   // Bulk account management remains separate from role authoring.
   await memberRow.getByRole("checkbox", { name: `Select ${MEMBER.email}`, exact: true }).check();
@@ -124,7 +124,7 @@ test("an unverified admin is offered no mutating controls despite the role", asy
   await page.getByRole("table", { name: "Members" }).getByRole("row").filter({ hasText: MEMBER.email }).getByRole("button", { name: "Demo Member", exact: true }).click();
   const detail = page.getByRole("region", { name: "Person details" });
   await detail.getByRole("navigation", { name: "Person detail sections" }).getByRole("button", { name: "Roles", exact: true }).click();
-  await expect(detail.getByRole("group", { name: `Roles for ${MEMBER.email}`, exact: true })).toContainText("member");
+  await expect(detail.getByRole("group", { name: `Roles for ${MEMBER.email}`, exact: true })).toContainText("Member");
   await expect(detail.getByRole("checkbox", { includeHidden: true })).toHaveCount(0);
   await expect(detail.getByRole("button", { name: "Save roles", exact: true, includeHidden: true })).toHaveCount(0);
 });
@@ -159,7 +159,7 @@ test("the sole owner's own role control is disabled with an explanation", async 
 }) => {
   await loginAs(page, OWNER);
   const roles = await openRoles(page, OWNER.email);
-  const ownerRole = roles.getByRole("checkbox", { name: "owner", exact: true });
+  const ownerRole = roles.getByRole("checkbox", { name: "Owner", exact: true });
   await expect(ownerRole).toBeChecked();
   await expect(ownerRole).toBeDisabled();
   await expect(ownerRole).toHaveAttribute("title", /at least one owner/i);
@@ -212,7 +212,7 @@ test("a role change in the UI appears in the audit log", async ({ page }) => {
   await loginAs(page, OWNER);
   try {
     const roles = await openRoles(page, MEMBER.email);
-    await roles.getByRole("checkbox", { name: "admin", exact: true }).check();
+    await roles.getByRole("checkbox", { name: "Admin", exact: true }).check();
     // RBAC-0 D9: a role change re-authenticates; the owner confirms with their current password.
     await page.getByRole("region", { name: "Person details" }).getByLabel("Your current password").fill(OWNER.pass);
     const saved = page.waitForResponse((response) =>
@@ -221,12 +221,12 @@ test("a role change in the UI appears in the audit log", async ({ page }) => {
     );
     await page.getByRole("region", { name: "Person details" }).getByRole("button", { name: "Save roles", exact: true }).click();
     expect((await saved).status()).toBe(204);
-    await expect(roles.getByRole("checkbox", { name: "admin", exact: true })).toBeChecked();
-    await expect(roles.getByRole("checkbox", { name: "member", exact: true })).toBeChecked();
+    await expect(roles.getByRole("checkbox", { name: "Admin", exact: true })).toBeChecked();
+    await expect(roles.getByRole("checkbox", { name: "Member", exact: true })).toBeChecked();
     await expect(page.getByText("Roles updated.", { exact: true })).toBeVisible();
     await page.getByRole("region", { name: "Person details" }).getByRole("button", { name: "Back to users", exact: true }).click();
     const memberRow = page.getByRole("table", { name: "Members", exact: true }).getByRole("row").filter({ hasText: MEMBER.email });
-    await expect(memberRow.getByRole("cell", { name: "admin + member", exact: true })).toBeVisible();
+    await expect(memberRow.getByRole("cell", { name: "Admin + Member", exact: true })).toBeVisible();
 
     await page.getByRole("link", { name: "Audit Log" }).click();
     await expect(page).toHaveURL(/\/audit(?:\?|$)/);

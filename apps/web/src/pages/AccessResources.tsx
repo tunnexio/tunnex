@@ -29,7 +29,10 @@ function AccessResourcesWorkspace() {
   const { org } = useOrg();
   const { state } = useAuth();
   const [authorized, setAuthorized] = useState<boolean | null>(null);
-  const canWrite = authorized === true && state.status === "authed" && state.user.email_verified && !state.user.must_change_password;
+  // RBAC-1: reading resources is policy:view (auditor, AI Agents admin, network admin); changing them is
+  // resource:manage (owner, admin, network admin).
+  const [manages, setManages] = useState(false);
+  const canWrite = authorized === true && manages && state.status === "authed" && state.user.email_verified && !state.user.must_change_password;
   const [role, setRole] = useState<Member["role"] | undefined>(undefined);
   const [membershipError, setMembershipError] = useState("");
   const [membershipAttempt, setMembershipAttempt] = useState(0);
@@ -79,8 +82,10 @@ function AccessResourcesWorkspace() {
       if (cancelled) return;
       if (!result.ok) { setMembershipError(result.error); return; }
       const mine = (result.data as Member[]).find((member) => member.user_id === state.user.id);
+      const roles = mine ? mine.roles ?? [mine.role] : [];
       setRole(mine?.role);
-      setAuthorized(mine?.role === "owner" || mine?.role === "admin");
+      setAuthorized(can(roles, "policy:view"));
+      setManages(can(roles, "resource:manage"));
     });
     return () => { cancelled = true; };
   }, [membershipAttempt, org?.id, state.status, state.status === "authed" ? state.user.id : ""]);
@@ -136,7 +141,7 @@ function AccessResourcesWorkspace() {
   const currentPage = Math.min(page, Math.max(1, Math.ceil(filteredResources.length / pageSize)));
   const visibleResources = filteredResources.slice((currentPage - 1) * pageSize, currentPage * pageSize);
   const updateCidrQuery = (next: Record<string, string>) => { setPage(1); updateIndex(next); };
-  return <div className={shellClass}>{header}{resourceTypeTabs}<div className="access-resource-content">{!canWrite && <p role="status" className="access-resource-context">Verify your email to manage resources.</p>}<ErrorText>{error}</ErrorText>
+  return <div className={shellClass}>{header}{resourceTypeTabs}<div className="access-resource-content">{!canWrite && <p role="status" className="access-resource-context">{manages ? "Verify your email to manage resources." : "Only owners, admins and network admins can change resources."}</p>}<ErrorText>{error}</ErrorText>
     <div className="access-resource-toolbar"><Input aria-label="Search resources" value={query} placeholder="Search resources" onChange={(event) => updateCidrQuery({ q: event.target.value })} /><div className="access-resource-actions"><Select width="auto" aria-label="Sort CIDR resources" value={cidrSort} onChange={(event) => updateCidrQuery({ sort: event.target.value })}><option value="name">Name</option><option value="cidr">CIDR</option><option value="protocol">Protocol</option></Select><Select width="auto" aria-label="CIDR sort direction" value={cidrDir} onChange={(event) => updateCidrQuery({ dir: event.target.value })}><option value="asc">Ascending</option><option value="desc">Descending</option></Select><RefreshButton label="Refresh resources" disabled={busy} onClick={() => void reload()} /></div></div>
     <DataTable variant="flat" caption="Resources inventory" rows={visibleResources} rowKey={(resource) => resource.id} failed={false} filterable={false} pageSize={0} empty={<AppAccessEmptyState icon={null} title={resources.length === 0 ? "No resources yet" : "No matching resources"} description={resources.length === 0 ? "Create a named destination range for reusable policy rules." : "Try another name, range, or protocol."} action={query ? <Button variant="ghost" onClick={() => updateCidrQuery({ q: "" })}>Clear search</Button> : undefined} />} columns={[
       { key: "name", header: "Resource", cell: (resource) => <div className="access-resource-cell">{canWrite ? <button className="access-resource-name" onClick={() => openEdit(resource)}>{resource.name}</button> : <span>{resource.name}</span>}{resource.label && <small>{resource.label}</small>}</div> },

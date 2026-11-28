@@ -16,6 +16,7 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 	"github.com/tunnexio/tunnex/apps/api/db/sqlc"
 	"github.com/tunnexio/tunnex/apps/api/internal/apierr"
+	"github.com/tunnexio/tunnex/apps/api/internal/rbac"
 )
 
 type ConnectionInput struct {
@@ -241,7 +242,8 @@ func (s *Service) CompleteConnection(ctx context.Context, code, state, browserBi
 		if result.Test || result.Link {
 			// Recheck current admin membership after the external round-trip.
 			membership, e := q.GetMembership(ctx, sqlc.GetMembershipParams{OrgID: c.OrgID, UserID: actor})
-			if e != nil || (result.Test && membership.Role != "owner" && membership.Role != "admin") {
+			// RBAC-1: testing a connection is SaveSsoConnection's authority (org:update), read from the role set.
+			if e != nil || (result.Test && !rbac.CanAny(rbac.MembershipRoles(membership.Role, membership.Roles), rbac.PermOrgUpdate)) {
 				return apierr.New(403, "forbidden", "organization administrator access is required")
 			}
 			if flow.Link {

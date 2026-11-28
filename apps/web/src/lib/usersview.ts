@@ -1,5 +1,5 @@
 import type { Device, Member, Role } from "./api";
-import { can, canManageMembership } from "./rbac";
+import { can, canManageMembership, HELPDESK_CEILING_REASON, helpdeskCeilingApplies, HUMAN_ROLES, isAdminGrade, roleLabel, roleNoun } from "./rbac";
 
 // usersview — PURE view-model for Users & Roles (S14.11).
 //
@@ -41,7 +41,8 @@ export type DeviceCount =
   | { kind: "unknown" };
 
 export function deviceCountFor(input: {
-  role: Role | undefined;
+  /** The viewer's roles (or one role). The organization-wide device list is device:view (RBAC-1). */
+  role: Role | readonly Role[] | undefined;
   /** null = the devices read failed or has not resolved. NOT an empty array. */
   devices: Device[] | null;
   userId: string;
@@ -49,7 +50,7 @@ export function deviceCountFor(input: {
   // ⛔ THE PERMISSION IS CHECKED BEFORE THE DATA, deliberately. Checking the array first would let a member's
   // own-devices list produce a confident `0` for a colleague — the exact false zero this type exists to make
   // unrepresentable.
-  if (!can(input.role, "member:manage")) return { kind: "hidden" };
+  if (!can(input.role, "device:view")) return { kind: "hidden" };
   if (input.devices === null) return { kind: "unknown" };
   return {
     kind: "count",
@@ -116,10 +117,10 @@ export interface RosterShape {
 }
 
 export function rosterShape(input: {
-  role: Role | undefined;
+  role: Role | readonly Role[] | undefined;
   isEnterprise: boolean;
 }): RosterShape {
-  const showDeviceCount = can(input.role, "member:manage");
+  const showDeviceCount = can(input.role, "device:view");
   const showGroupDerived = input.isEnterprise && can(input.role, "policy:view");
 
   // ⛔ THE NOTE NAMES THE REASON, AND THE TWO REASONS ARE NOT INTERCHANGEABLE. "You cannot see this" and "this
@@ -138,7 +139,7 @@ export function rosterShape(input: {
       : "Group membership is a Tunnex Enterprise feature, so it is not shown here.";
   }
   if (!showDeviceCount) {
-    const devices = "Device counts are only shown to admins.";
+    const devices = "Device counts are shown to people who can see every device (owners, admins, network admins, Helpdesk and auditors).";
     gateNote = gateNote === null ? devices : `${gateNote} ${devices}`;
   }
   return { showDeviceCount, showGroupDerived, gateNote };
@@ -244,8 +245,7 @@ export interface RoleTally {
  * where it is non-zero.
  */
 export function roleDistribution(members: Member[]): RoleTally[] {
-  const order: Role[] = ["owner", "admin", "member", "ai-admin", "ai-view"];
-  return order.map((role) => ({
+  return HUMAN_ROLES.map((role) => ({
     role,
     n: members.filter((m) => (m.roles ?? [m.role]).includes(role)).length,
     deactivated: members.filter(
@@ -300,7 +300,7 @@ export function deactivationImpactCopy(members: Member[]): string | null {
 
 /** `2 owners` / `1 owner` / `0 owners` — the zero is stated, never dropped. */
 export function roleTallyLabel(t: RoleTally): string {
-  return `${t.n} ${t.n === 1 ? t.role : t.role + "s"}`;
+  return `${t.n} ${roleNoun(t.role, t.n !== 1)}`;
 }
 
 // ── LAST-OWNER: MIRRORED FROM THE 403, NEVER PRE-EMPTED ─────────────────────────────────────────────────
@@ -329,7 +329,7 @@ export function filterMembers(members: Member[], q: string): Member[] {
     (m) =>
       m.email.toLowerCase().includes(needle) ||
       m.name.toLowerCase().includes(needle) ||
-      m.role.toLowerCase().includes(needle),
+      (m.roles ?? [m.role]).some((role) => role.toLowerCase().includes(needle) || roleLabel(role).toLowerCase().includes(needle)),
   );
 }
 
@@ -349,15 +349,21 @@ export function activeOwnerCount(members: Member[]): number {
 export function accountActionBlocked(
   member: Member,
   action: AccountAction,
-  ctx: { actorId: string; actorRole: Role | undefined; emailVerified: boolean; activeOwners: number },
+  ctx: { actorId: string; actorRole: Role | undefined; actorRoles?: readonly Role[]; emailVerified: boolean; activeOwners: number },
 ): string | null {
+  // RBAC-1: 2FA reset is mfa:reset, held by Helpdesk too; deactivate and reactivate stay member:manage.
+  const actorRoles = ctx.actorRoles ?? (ctx.actorRole ? [ctx.actorRole] : []);
+  if (action === "reset" && !can(actorRoles, "mfa:reset")) return "Only an owner, an admin or Helpdesk can reset 2FA.";
+  if (action !== "reset" && !can(actorRoles, "member:manage")) return "Only an owner or an admin can deactivate or reactivate people.";
   if (!ctx.emailVerified) return "Verify your email before managing members.";
   if (action === "deactivate" && member.user_id === ctx.actorId) return "You cannot deactivate your own account.";
   if (action === "reset" && member.user_id === ctx.actorId) return "Reset your own 2FA from your account settings.";
   if (member.role === "owner" && ctx.actorRole !== "owner") {
     return action === "reset" ? "Only an owner can reset an owner's 2FA." : `Only an owner can ${action} an owner.`;
   }
-  if (!canManageMembership(ctx.actorRole, member.role, "")) return "You cannot manage this member.";
+  if (action === "reset") {
+    if (helpdeskCeilingApplies(actorRoles, "mfa:reset") && isAdminGrade(member.roles ?? [member.role])) return HELPDESK_CEILING_REASON;
+  } else if (!canManageMembership(ctx.actorRole, member.role, "")) return "You cannot manage this member.";
   if (action === "deactivate") {
     if (member.status !== "active") return "Already deactivated.";
     if (member.role === "owner" && ctx.activeOwners <= 1) return "An organization must always have at least one owner.";

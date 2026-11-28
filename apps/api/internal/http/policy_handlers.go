@@ -225,7 +225,7 @@ func (s apiServer) ListResources(ctx context.Context, req api.ListResourcesReque
 }
 
 func (s apiServer) CreateResource(ctx context.Context, req api.CreateResourceRequestObject) (api.CreateResourceResponseObject, error) {
-	if _, err := authorize(ctx, req.OrgId, rbac.PermPolicyManage); err != nil {
+	if _, err := authorize(ctx, req.OrgId, rbac.PermResourceManage); err != nil {
 		return nil, err
 	}
 	if s.policy == nil {
@@ -242,7 +242,7 @@ func (s apiServer) CreateResource(ctx context.Context, req api.CreateResourceReq
 }
 
 func (s apiServer) UpdateResource(ctx context.Context, req api.UpdateResourceRequestObject) (api.UpdateResourceResponseObject, error) {
-	if _, err := authorize(ctx, req.OrgId, rbac.PermPolicyManage); err != nil {
+	if _, err := authorize(ctx, req.OrgId, rbac.PermResourceManage); err != nil {
 		return nil, err
 	}
 	if s.policy == nil {
@@ -259,7 +259,7 @@ func (s apiServer) UpdateResource(ctx context.Context, req api.UpdateResourceReq
 }
 
 func (s apiServer) DeleteResource(ctx context.Context, req api.DeleteResourceRequestObject) (api.DeleteResourceResponseObject, error) {
-	if _, err := authorize(ctx, req.OrgId, rbac.PermPolicyManage); err != nil {
+	if _, err := authorize(ctx, req.OrgId, rbac.PermResourceManage); err != nil {
 		return nil, err
 	}
 	if s.policy == nil {
@@ -276,6 +276,52 @@ func (s apiServer) DeleteResource(ctx context.Context, req api.DeleteResourceReq
 // requireSpecialPermissionsForExistingRule preserves the named capability
 // boundaries of policy rows that have a dedicated management surface. A
 // generic policy mutation must never become a lower-permission bypass.
+// rulePermissionForSource is the RBAC-1 rule-authoring permission: agent:grant_access for a rule whose source
+// is an agent or an agent group, policy_rule:manage for every other source.
+func rulePermissionForSource(srcKind string) rbac.Permission {
+	if srcKind == "agent" || srcKind == "agent_group" {
+		return rbac.PermAgentGrantAccess
+	}
+	return rbac.PermPolicyRuleManage
+}
+
+// authorizeAnyRuleAuthoring admits a caller who holds either rule-authoring permission. A caller holding
+// neither gets the same refusal as before RBAC-1 (policy_rule:manage).
+func authorizeAnyRuleAuthoring(ctx context.Context, orgID uuid.UUID) (context.Context, error) {
+	if p, ok := authctx.PrincipalFrom(ctx); ok && !rbac.CanAny(p.RolesIn(orgID), rbac.PermPolicyRuleManage) && rbac.CanAny(p.RolesIn(orgID), rbac.PermAgentGrantAccess) {
+		return authorize(ctx, orgID, rbac.PermAgentGrantAccess)
+	}
+	return authorize(ctx, orgID, rbac.PermPolicyRuleManage)
+}
+
+// authorizeRuleLifecycle admits a HUMAN who holds either rule permission to enable, disable or extend a rule.
+// RBAC-0 D4 kept those verbs from the GitOps operator, which authors rules through policy_rule:manage; a
+// machine or agent principal therefore needs policy:manage here, which it never holds.
+func authorizeRuleLifecycle(ctx context.Context, orgID uuid.UUID) (context.Context, error) {
+	if p, ok := authctx.PrincipalFrom(ctx); ok && (p.IsMachine() || p.IsAgent()) {
+		return authorize(ctx, orgID, rbac.PermPolicyManage)
+	}
+	return authorizeAnyRuleAuthoring(ctx, orgID)
+}
+
+// requireRuleAuthoringForExistingRule applies rulePermissionForSource to an existing rule, then the special
+// destination checks. An unknown rule falls through to the service's normalized not-found.
+func (s apiServer) requireRuleAuthoringForExistingRule(ctx context.Context, orgID, ruleID uuid.UUID) error {
+	rules, err := s.policy.ListPolicyRules(ctx, orgID)
+	if err != nil {
+		return err
+	}
+	for _, rule := range rules {
+		if rule.ID == ruleID {
+			if _, err := authorize(ctx, orgID, rulePermissionForSource(rule.SrcKind)); err != nil {
+				return err
+			}
+			break
+		}
+	}
+	return s.requireSpecialPermissionsForExistingRule(ctx, orgID, ruleID)
+}
+
 func (s apiServer) requireSpecialPermissionsForExistingRule(ctx context.Context, orgID, ruleID uuid.UUID) error {
 	rules, err := s.policy.ListPolicyRules(ctx, orgID)
 	if err != nil {
@@ -375,13 +421,15 @@ func (s apiServer) ListPolicyRules(ctx context.Context, req api.ListPolicyRulesR
 func (s apiServer) CreatePolicyRule(ctx context.Context, req api.CreatePolicyRuleRequestObject) (api.CreatePolicyRuleResponseObject, error) {
 	// RBAC-0 D4: rule authoring is its own permission so the GitOps operator holds it without the rest of
 	// policy administration (Zero Trust mode, groups, resources, directory sync).
-	if _, err := authorize(ctx, req.OrgId, rbac.PermPolicyRuleManage); err != nil {
-		return nil, err
+	// RBAC-1: a rule whose source is an agent needs agent:grant_access and NOT policy_rule:manage, so the AI
+	// Agents admin authors agent access without being able to write a rule for a person, a group, a site or a
+	// CIDR. Every other source still needs policy_rule:manage.
+	srcKind := ""
+	if req.Body != nil && req.Body.SrcKind != nil {
+		srcKind = string(*req.Body.SrcKind)
 	}
-	if req.Body != nil && req.Body.SrcKind != nil && string(*req.Body.SrcKind) == "agent" {
-		if _, err := authorize(ctx, req.OrgId, rbac.PermAgentGrantAccess); err != nil {
-			return nil, err
-		}
+	if _, err := authorize(ctx, req.OrgId, rulePermissionForSource(srcKind)); err != nil {
+		return nil, err
 	}
 	if s.policy == nil {
 		return nil, policyServiceUnavailable()
@@ -435,13 +483,15 @@ func (s apiServer) CreatePolicyRule(ctx context.Context, req api.CreatePolicyRul
 func (s apiServer) DeletePolicyRule(ctx context.Context, req api.DeletePolicyRuleRequestObject) (api.DeletePolicyRuleResponseObject, error) {
 	// RBAC-0 D4: rule authoring is its own permission so the GitOps operator holds it without the rest of
 	// policy administration (Zero Trust mode, groups, resources, directory sync).
-	if _, err := authorize(ctx, req.OrgId, rbac.PermPolicyRuleManage); err != nil {
+	// RBAC-1: either authoring permission admits the caller this far (nobody else learns whether the rule
+	// exists); the rule's source then decides which one is needed (rulePermissionForSource).
+	if _, err := authorizeAnyRuleAuthoring(ctx, req.OrgId); err != nil {
 		return nil, err
 	}
 	if s.policy == nil {
 		return nil, policyServiceUnavailable()
 	}
-	if err := s.requireSpecialPermissionsForExistingRule(ctx, req.OrgId, req.RuleId); err != nil {
+	if err := s.requireRuleAuthoringForExistingRule(ctx, req.OrgId, req.RuleId); err != nil {
 		return nil, err
 	}
 	uid, sys, cause := auditActor(ctx)
@@ -453,13 +503,15 @@ func (s apiServer) DeletePolicyRule(ctx context.Context, req api.DeletePolicyRul
 
 // ExtendGrant PUT .../policies/{ruleId} — extend a temporary grant's window (S7.5.4).
 func (s apiServer) ExtendGrant(ctx context.Context, req api.ExtendGrantRequestObject) (api.ExtendGrantResponseObject, error) {
-	if _, err := authorize(ctx, req.OrgId, rbac.PermPolicyManage); err != nil {
+	// RBAC-1 (founder, 2026-11-28): whoever may create a rule may extend it — the source-based rule
+	// permission, not policy:manage. Machine principals stay refused (RBAC-0 D4).
+	if _, err := authorizeRuleLifecycle(ctx, req.OrgId); err != nil {
 		return nil, err
 	}
 	if s.policy == nil {
 		return nil, policyServiceUnavailable()
 	}
-	if err := s.requireSpecialPermissionsForExistingRule(ctx, req.OrgId, req.RuleId); err != nil {
+	if err := s.requireRuleAuthoringForExistingRule(ctx, req.OrgId, req.RuleId); err != nil {
 		return nil, err
 	}
 	if req.Body == nil {
@@ -486,16 +538,18 @@ func (s apiServer) ExtendGrant(ctx context.Context, req api.ExtendGrantRequestOb
 	return api.ExtendGrant200JSONResponse{Body: withK8sAPITarget(toAPIRuleWithFQDNStatus(r, warn[r.ID], van[r.ID], fqdnStatus[r.ID]), apiTarget, isAPI), Headers: api.ExtendGrant200ResponseHeaders{XRequestId: reqID(ctx)}}, nil
 }
 
-// SetPolicyRuleEnabled (F3) — enable/disable a rule without deleting it. policy:manage;
+// SetPolicyRuleEnabled (F3) — enable/disable a rule without deleting it. the source-based rule permission (RBAC-1);
 // disabling is an in-hash policy change (recompile + push). The response echoes the new enabled state.
 func (s apiServer) SetPolicyRuleEnabled(ctx context.Context, req api.SetPolicyRuleEnabledRequestObject) (api.SetPolicyRuleEnabledResponseObject, error) {
-	if _, err := authorize(ctx, req.OrgId, rbac.PermPolicyManage); err != nil {
+	// RBAC-1 (founder, 2026-11-28): enabling and disabling follow the same source-based rule permission as
+	// creating and deleting. Machine principals stay refused (RBAC-0 D4).
+	if _, err := authorizeRuleLifecycle(ctx, req.OrgId); err != nil {
 		return nil, err
 	}
 	if s.policy == nil {
 		return nil, policyServiceUnavailable()
 	}
-	if err := s.requireSpecialPermissionsForExistingRule(ctx, req.OrgId, req.RuleId); err != nil {
+	if err := s.requireRuleAuthoringForExistingRule(ctx, req.OrgId, req.RuleId); err != nil {
 		return nil, err
 	}
 	if req.Body == nil {

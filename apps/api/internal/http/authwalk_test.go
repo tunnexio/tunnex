@@ -197,6 +197,28 @@ var walkBodies = map[string]string{
 	"rejectagentaccessrequest":             `{"reason":"walk","idempotency_key":"walk-reject"}`,
 	"cancelagentaccessrequest":             `{"idempotency_key":"walk-cancel"}`,
 	"revokeagentaccessrequest":             `{"idempotency_key":"walk-revoke"}`,
+	// RBAC-1 role walk: structurally valid bodies so an authenticated walker reaches the permission gate
+	// rather than the request validator (a 400 there proves nothing about authorization).
+	"createaiworkload":                   `{"name":"walk","enabled":false,"models":[],"expected_revision":0}`,
+	"updateaiworkload":                   `{"name":"walk","enabled":false,"models":[],"expected_revision":0}`,
+	"createaiworkloadkey":                `{"name":"walk","reusable":false,"ephemeral":false,"expires_at":"2099-01-01T00:00:00Z","max_uses":1}`,
+	"revokeaiworkloadkey":                `{"revoke_instances":false}`,
+	"putaiteampolicy":                    `{"models":[],"key_ids":["walk"],"expected_revision":0}`,
+	"putaiassignment":                    `{"team_id":"00000000-0000-4000-8000-000000000001","enabled":false,"models_override":[],"expected_revision":0}`,
+	"setaigatewaysettings":               `{"enabled":false}`,
+	"replaceagentmcptoolpolicy":          `{"rules":[]}`,
+	"startagentmcpoauthconnection":       `{"endpoint":"https://mcp.example.test/mcp","protected_resource":"https://mcp.example.test/mcp","issuer":"https://issuer.example.test","scopes":["walk"],"client_id":"walk"}`,
+	"updateauditlogretention":            `{"retention_days":30,"cleanup_interval_minutes":60,"expected_revision":0}`,
+	"runauditlogprune":                   `{"idempotency_key":"walk-prune"}`,
+	"createfqdnresource":                 `{"name":"walk","fqdn":"walk.example.test","protocol":"any"}`,
+	"updatefqdnresource":                 `{"name":"walk","fqdn":"walk.example.test","protocol":"any"}`,
+	"previewfqdnresourceimpact":          `{"name":"walk","fqdn":"walk.example.test","protocol":"any"}`,
+	"setfqdnresourceenabled":             `{"enabled":false}`,
+	"setorganizationagentquota":          `{"max_agent_identities":1}`,
+	"setorganizationagentruntimeenabled": `{"enabled":false}`,
+	"setorganizationalertingenabled":     `{"enabled":false}`,
+	"createalertdestination":             `{"kind":"webhook","name":"walk","endpoint":"https://hooks.example.test/walk"}`,
+	"addalertdestinationsubscription":    `{"event_key":"gateway.offline"}`,
 }
 
 // Required query tuples serve the same purpose as walkBodies: make the request
@@ -242,42 +264,7 @@ func TestSessionlessRequestsAre401(t *testing.T) {
 			if public {
 				continue
 			}
-			reqPath := strings.ReplaceAll(path, "{orgId}", uuid.NewString())
-			reqPath = strings.ReplaceAll(reqPath, "{appId}", uuid.NewString())
-			reqPath = strings.ReplaceAll(reqPath, "{checkId}", uuid.NewString())
-			reqPath = strings.ReplaceAll(reqPath, "{grantId}", uuid.NewString())
-			reqPath = strings.ReplaceAll(reqPath, "{revision}", "1")
-			reqPath = strings.ReplaceAll(reqPath, "{connectionId}", uuid.NewString())
-			reqPath = strings.ReplaceAll(reqPath, "{sandboxId}", uuid.NewString())
-			reqPath = strings.ReplaceAll(reqPath, "{skillId}", uuid.NewString())
-			reqPath = strings.ReplaceAll(reqPath, "{provider}", "google")
-			reqPath = strings.ReplaceAll(reqPath, "{userId}", uuid.NewString())
-			reqPath = strings.ReplaceAll(reqPath, "{nodeId}", uuid.NewString())
-			reqPath = strings.ReplaceAll(reqPath, "{gatewayId}", uuid.NewString())
-			reqPath = strings.ReplaceAll(reqPath, "{deviceId}", uuid.NewString())
-			reqPath = strings.ReplaceAll(reqPath, "{sessionId}", uuid.NewString())
-			reqPath = strings.ReplaceAll(reqPath, "{credentialId}", uuid.NewString())
-			reqPath = strings.ReplaceAll(reqPath, "{groupId}", uuid.NewString())
-			reqPath = strings.ReplaceAll(reqPath, "{resourceId}", uuid.NewString())
-			reqPath = strings.ReplaceAll(reqPath, "{ruleId}", uuid.NewString())
-			reqPath = strings.ReplaceAll(reqPath, "{siteId}", uuid.NewString())
-			reqPath = strings.ReplaceAll(reqPath, "{subnetId}", uuid.NewString())
-			reqPath = strings.ReplaceAll(reqPath, "{clusterId}", uuid.NewString())
-			reqPath = strings.ReplaceAll(reqPath, "{serviceId}", uuid.NewString())
-			reqPath = strings.ReplaceAll(reqPath, "{poolId}", uuid.NewString())
-			reqPath = strings.ReplaceAll(reqPath, "{inventoryRef}", uuid.NewString())
-			reqPath = strings.ReplaceAll(reqPath, "{serviceChildId}", uuid.NewString())
-			reqPath = strings.ReplaceAll(reqPath, "{claim}", uuid.NewString())
-			reqPath = strings.ReplaceAll(reqPath, "{operationId}", uuid.NewString())
-			reqPath = strings.ReplaceAll(reqPath, "{idempotencyKey}", uuid.NewString())
-			reqPath = strings.ReplaceAll(reqPath, "{checkKind}", "disk_encryption")
-			reqPath = strings.ReplaceAll(reqPath, "{templateId}", uuid.NewString())
-			reqPath = strings.ReplaceAll(reqPath, "{profileId}", uuid.NewString())
-			reqPath = strings.ReplaceAll(reqPath, "{assignmentId}", uuid.NewString())
-			reqPath = strings.ReplaceAll(reqPath, "{requestId}", uuid.NewString())
-			reqPath = strings.ReplaceAll(reqPath, "{tokenId}", uuid.NewString())
-			reqPath = strings.ReplaceAll(reqPath, "{previewId}", uuid.NewString())
-			reqPath = strings.ReplaceAll(reqPath, "{connectionId}", uuid.NewString())
+			reqPath := walkPath(path, uuid.New())
 
 			var body io.Reader
 			if b, ok := walkBodies[strings.ToLower(op.OperationID)]; ok {
@@ -321,4 +308,54 @@ func TestSessionlessRequestsAre401(t *testing.T) {
 		t.Fatal("no gated operations checked — walk is vacuous")
 	}
 	t.Logf("verified %d gated operations reject sessionless requests; shelved routes remain 404", checked)
+}
+
+// walkPath fills every path parameter with an inert value so a walk request
+// reaches the router's handler. orgID is the organization the caller is asked
+// about (a random one for the sessionless walk, the walker's own org for the
+// role walk).
+func walkPath(path string, orgID uuid.UUID) string {
+	reqPath := strings.ReplaceAll(path, "{orgId}", orgID.String())
+	reqPath = strings.ReplaceAll(reqPath, "{appId}", uuid.NewString())
+	reqPath = strings.ReplaceAll(reqPath, "{checkId}", uuid.NewString())
+	reqPath = strings.ReplaceAll(reqPath, "{grantId}", uuid.NewString())
+	reqPath = strings.ReplaceAll(reqPath, "{revision}", "1")
+	reqPath = strings.ReplaceAll(reqPath, "{connectionId}", uuid.NewString())
+	reqPath = strings.ReplaceAll(reqPath, "{sandboxId}", uuid.NewString())
+	reqPath = strings.ReplaceAll(reqPath, "{skillId}", uuid.NewString())
+	reqPath = strings.ReplaceAll(reqPath, "{provider}", "google")
+	reqPath = strings.ReplaceAll(reqPath, "{userId}", uuid.NewString())
+	reqPath = strings.ReplaceAll(reqPath, "{nodeId}", uuid.NewString())
+	reqPath = strings.ReplaceAll(reqPath, "{gatewayId}", uuid.NewString())
+	reqPath = strings.ReplaceAll(reqPath, "{deviceId}", uuid.NewString())
+	reqPath = strings.ReplaceAll(reqPath, "{sessionId}", uuid.NewString())
+	reqPath = strings.ReplaceAll(reqPath, "{credentialId}", uuid.NewString())
+	reqPath = strings.ReplaceAll(reqPath, "{groupId}", uuid.NewString())
+	reqPath = strings.ReplaceAll(reqPath, "{resourceId}", uuid.NewString())
+	reqPath = strings.ReplaceAll(reqPath, "{ruleId}", uuid.NewString())
+	reqPath = strings.ReplaceAll(reqPath, "{siteId}", uuid.NewString())
+	reqPath = strings.ReplaceAll(reqPath, "{subnetId}", uuid.NewString())
+	reqPath = strings.ReplaceAll(reqPath, "{clusterId}", uuid.NewString())
+	reqPath = strings.ReplaceAll(reqPath, "{serviceId}", uuid.NewString())
+	reqPath = strings.ReplaceAll(reqPath, "{poolId}", uuid.NewString())
+	reqPath = strings.ReplaceAll(reqPath, "{inventoryRef}", uuid.NewString())
+	reqPath = strings.ReplaceAll(reqPath, "{serviceChildId}", uuid.NewString())
+	reqPath = strings.ReplaceAll(reqPath, "{claim}", uuid.NewString())
+	reqPath = strings.ReplaceAll(reqPath, "{operationId}", uuid.NewString())
+	reqPath = strings.ReplaceAll(reqPath, "{idempotencyKey}", uuid.NewString())
+	reqPath = strings.ReplaceAll(reqPath, "{checkKind}", "disk_encryption")
+	reqPath = strings.ReplaceAll(reqPath, "{templateId}", uuid.NewString())
+	reqPath = strings.ReplaceAll(reqPath, "{profileId}", uuid.NewString())
+	reqPath = strings.ReplaceAll(reqPath, "{assignmentId}", uuid.NewString())
+	reqPath = strings.ReplaceAll(reqPath, "{requestId}", uuid.NewString())
+	reqPath = strings.ReplaceAll(reqPath, "{tokenId}", uuid.NewString())
+	reqPath = strings.ReplaceAll(reqPath, "{previewId}", uuid.NewString())
+	reqPath = strings.ReplaceAll(reqPath, "{connectionId}", uuid.NewString())
+	reqPath = strings.ReplaceAll(reqPath, "{destinationId}", uuid.NewString())
+	reqPath = strings.ReplaceAll(reqPath, "{workloadId}", uuid.NewString())
+	reqPath = strings.ReplaceAll(reqPath, "{keyId}", uuid.NewString())
+	reqPath = strings.ReplaceAll(reqPath, "{instanceId}", uuid.NewString())
+	reqPath = strings.ReplaceAll(reqPath, "{teamId}", uuid.NewString())
+	reqPath = strings.ReplaceAll(reqPath, "{eventKey}", "gateway.offline")
+	return reqPath
 }

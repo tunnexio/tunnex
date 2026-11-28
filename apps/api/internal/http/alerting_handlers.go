@@ -15,7 +15,7 @@ import (
 )
 
 func (s apiServer) GetOrganizationAlertingSetting(ctx context.Context, req api.GetOrganizationAlertingSettingRequestObject) (api.GetOrganizationAlertingSettingResponseObject, error) {
-	if _, err := authorize(ctx, req.OrgId, rbac.PermAlertingManage); err != nil {
+	if _, err := authorize(ctx, req.OrgId, rbac.PermAlertingView); err != nil {
 		return nil, err
 	}
 	org, err := s.orgs.GetOrganization(ctx, req.OrgId)
@@ -41,7 +41,7 @@ func (s apiServer) SetOrganizationAlertingEnabled(ctx context.Context, req api.S
 }
 
 func (s apiServer) ListAlertDestinations(ctx context.Context, req api.ListAlertDestinationsRequestObject) (api.ListAlertDestinationsResponseObject, error) {
-	if _, err := authorize(ctx, req.OrgId, rbac.PermAlertingManage); err != nil {
+	if _, err := authorize(ctx, req.OrgId, rbac.PermAlertingView); err != nil {
 		return nil, err
 	}
 	if s.alertConfig == nil {
@@ -68,8 +68,7 @@ func (s apiServer) CreateAlertDestination(ctx context.Context, req api.CreateAle
 	}
 	p, _ := authctx.PrincipalFrom(ctx)
 	allowPrivate := req.Body.AllowPrivate != nil && *req.Body.AllowPrivate
-	role, _ := p.RoleIn(req.OrgId)
-	if allowPrivate && role != rbac.RoleOwner {
+	if allowPrivate && !rbac.CanAny(p.RolesIn(req.OrgId), rbac.PermAlertingPrivateDestination) {
 		return nil, apierr.New(http.StatusForbidden, "forbidden", "only the organization owner may enable private alert destinations")
 	}
 	if s.alertConfig == nil {
@@ -90,7 +89,7 @@ func (s apiServer) CreateAlertDestination(ctx context.Context, req api.CreateAle
 }
 
 func (s apiServer) ListAlertDestinationSubscriptions(ctx context.Context, req api.ListAlertDestinationSubscriptionsRequestObject) (api.ListAlertDestinationSubscriptionsResponseObject, error) {
-	if _, err := authorize(ctx, req.OrgId, rbac.PermAlertingManage); err != nil {
+	if _, err := authorize(ctx, req.OrgId, rbac.PermAlertingView); err != nil {
 		return nil, err
 	}
 	if s.alertConfig == nil {
@@ -182,7 +181,7 @@ func (s apiServer) TestAlertDestination(ctx context.Context, req api.TestAlertDe
 }
 
 func (s apiServer) ListAlertDeliveries(ctx context.Context, req api.ListAlertDeliveriesRequestObject) (api.ListAlertDeliveriesResponseObject, error) {
-	if _, err := authorize(ctx, req.OrgId, rbac.PermAlertingManage); err != nil {
+	if _, err := authorize(ctx, req.OrgId, rbac.PermAlertingView); err != nil {
 		return nil, err
 	}
 	if s.alertConfig == nil {
@@ -205,7 +204,7 @@ func (s apiServer) ListAlertDeliveries(ctx context.Context, req api.ListAlertDel
 }
 
 func (s apiServer) ListAlertOccurrences(ctx context.Context, req api.ListAlertOccurrencesRequestObject) (api.ListAlertOccurrencesResponseObject, error) {
-	if _, err := authorize(ctx, req.OrgId, rbac.PermAlertingManage); err != nil {
+	if _, err := authorize(ctx, req.OrgId, rbac.PermAlertingView); err != nil {
 		return nil, err
 	}
 	if s.alertConfig == nil {

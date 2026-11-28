@@ -8,7 +8,8 @@ import { can } from "../lib/rbac";
 export function AgentsManagementGate({
   children,
 }: {
-  children: (orgId: string) => ReactNode;
+  /** canWrite (RBAC-1): agent_template:manage; a viewer holding agent_template:view gets the read-only page. */
+  children: (orgId: string, canWrite: boolean) => ReactNode;
 }) {
   const { org } = useOrg();
   const { state } = useAuth();
@@ -17,7 +18,7 @@ export function AgentsManagementGate({
   const scope = `${org?.id ?? ""}/${state.status}/${userId}/${writable}`;
   const [result, setResult] = useState<{
     scope: string;
-    status: "allowed" | "denied" | "error";
+    status: "allowed" | "readonly" | "denied" | "error";
   } | null>(null);
   const [attempt, setAttempt] = useState(0);
   useEffect(() => {
@@ -42,7 +43,9 @@ export function AgentsManagementGate({
           status:
             can(member ? [member.role, ...(member.roles ?? [])] : [], "agent_template:manage")
               ? "allowed"
-              : "denied",
+              : can(member ? [member.role, ...(member.roles ?? [])] : [], "agent_template:view")
+                ? "readonly"
+                : "denied",
         });
       })
       .catch(() => {
@@ -80,13 +83,13 @@ export function AgentsManagementGate({
         </Button>
       </div>
     );
-  if (result.status !== "allowed")
+  if (result.status === "denied")
     return (
       <p role="alert" className="text-cell text-ink-tertiary">
         You do not have permission to manage AI Agent groups or policy
         templates.
       </p>
     );
-  if (!writable) return <p role="status" className="text-cell text-ink-tertiary">Verify your email before managing AI Agent groups or policy templates.</p>;
-  return <>{children(org.id)}</>;
+  if (result.status === "allowed" && !writable) return <p role="status" className="text-cell text-ink-tertiary">Verify your email before managing AI Agent groups or policy templates.</p>;
+  return <>{children(org.id, result.status === "allowed")}</>;
 }

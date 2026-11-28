@@ -130,7 +130,7 @@ func (s apiServer) requireAgentGroups(ctx context.Context, orgID uuid.UUID) erro
 }
 
 func (s apiServer) ListAgentMCPProfiles(ctx context.Context, req api.ListAgentMCPProfilesRequestObject) (api.ListAgentMCPProfilesResponseObject, error) {
-	if _, err := authorize(ctx, req.OrgId, rbac.PermAgentTemplateManage); err != nil {
+	if _, err := authorize(ctx, req.OrgId, rbac.PermAgentTemplateView); err != nil {
 		return nil, err
 	}
 	if err := s.requireMCP(ctx, req.OrgId); err != nil {
@@ -306,7 +306,7 @@ func toAPIMCPImpact(x agenttemplates.MCPImpact) api.AgentMCPProfileImpact {
 }
 
 func (s apiServer) ListAgentMCPAssignments(ctx context.Context, req api.ListAgentMCPAssignmentsRequestObject) (api.ListAgentMCPAssignmentsResponseObject, error) {
-	if _, err := authorize(ctx, req.OrgId, rbac.PermAgentTemplateManage); err != nil {
+	if _, err := authorize(ctx, req.OrgId, rbac.PermAgentTemplateView); err != nil {
 		return nil, err
 	}
 	if err := s.requireMCP(ctx, req.OrgId); err != nil {
@@ -509,7 +509,7 @@ func (s apiServer) GetAgentPolicyTemplateDestinationImpact(ctx context.Context, 
 }
 
 func (s apiServer) ListAgentGroups(ctx context.Context, req api.ListAgentGroupsRequestObject) (api.ListAgentGroupsResponseObject, error) {
-	if _, err := authorize(ctx, req.OrgId, rbac.PermAgentTemplateManage); err != nil {
+	if _, err := authorize(ctx, req.OrgId, rbac.PermAgentTemplateView); err != nil {
 		return nil, err
 	}
 	if err := s.requireAgentGroups(ctx, req.OrgId); err != nil {
@@ -589,7 +589,7 @@ func (s apiServer) ArchiveAgentGroup(ctx context.Context, req api.ArchiveAgentGr
 }
 
 func (s apiServer) ListAgentGroupMembers(ctx context.Context, req api.ListAgentGroupMembersRequestObject) (api.ListAgentGroupMembersResponseObject, error) {
-	if _, err := authorize(ctx, req.OrgId, rbac.PermAgentTemplateManage); err != nil {
+	if _, err := authorize(ctx, req.OrgId, rbac.PermAgentTemplateView); err != nil {
 		return nil, err
 	}
 	if err := s.requireAgentGroups(ctx, req.OrgId); err != nil {
@@ -639,7 +639,7 @@ func (s apiServer) RemoveAgentGroupMember(ctx context.Context, req api.RemoveAge
 }
 
 func (s apiServer) ListAgentPolicyTemplates(ctx context.Context, req api.ListAgentPolicyTemplatesRequestObject) (api.ListAgentPolicyTemplatesResponseObject, error) {
-	if _, err := authorize(ctx, req.OrgId, rbac.PermAgentTemplateManage); err != nil {
+	if _, err := authorize(ctx, req.OrgId, rbac.PermAgentTemplateView); err != nil {
 		return nil, err
 	}
 	if err := s.requireAgentTemplates(ctx, req.OrgId); err != nil {
@@ -707,7 +707,7 @@ func (s apiServer) ArchiveAgentPolicyTemplate(ctx context.Context, req api.Archi
 }
 
 func (s apiServer) ListAgentPolicyTemplateVersions(ctx context.Context, req api.ListAgentPolicyTemplateVersionsRequestObject) (api.ListAgentPolicyTemplateVersionsResponseObject, error) {
-	if _, err := authorize(ctx, req.OrgId, rbac.PermAgentTemplateManage); err != nil {
+	if _, err := authorize(ctx, req.OrgId, rbac.PermAgentTemplateView); err != nil {
 		return nil, err
 	}
 	if err := s.requireAgentTemplates(ctx, req.OrgId); err != nil {
@@ -771,10 +771,10 @@ func (s apiServer) ApplyAgentPolicyTemplate(ctx context.Context, req api.ApplyAg
 	if err != nil {
 		return nil, err
 	}
-	for _, perm := range []rbac.Permission{rbac.PermPolicyManage, rbac.PermAgentGrantAccess} {
-		if _, err := authorize(ctx, req.OrgId, perm); err != nil {
-			return nil, err
-		}
+	// RBAC-1: a template only ever writes rules whose source is an agent group, so it needs the agent rule
+	// permission (agent:grant_access) and not policy:manage.
+	if _, err := authorize(ctx, req.OrgId, rbac.PermAgentGrantAccess); err != nil {
+		return nil, err
 	}
 	if err := s.requireAgentTemplates(ctx, req.OrgId); err != nil {
 		return nil, err
@@ -790,7 +790,7 @@ func (s apiServer) ApplyAgentPolicyTemplate(ctx context.Context, req api.ApplyAg
 }
 
 func (s apiServer) ListAgentPolicyTemplateAssignments(ctx context.Context, req api.ListAgentPolicyTemplateAssignmentsRequestObject) (api.ListAgentPolicyTemplateAssignmentsResponseObject, error) {
-	if _, err := authorize(ctx, req.OrgId, rbac.PermAgentTemplateManage); err != nil {
+	if _, err := authorize(ctx, req.OrgId, rbac.PermAgentTemplateView); err != nil {
 		return nil, err
 	}
 	if err := s.requireAgentTemplates(ctx, req.OrgId); err != nil {
@@ -812,10 +812,10 @@ func (s apiServer) RemoveAgentPolicyTemplateAssignment(ctx context.Context, req 
 	if err != nil {
 		return nil, err
 	}
-	for _, perm := range []rbac.Permission{rbac.PermPolicyManage, rbac.PermAgentGrantAccess} {
-		if _, err := authorize(ctx, req.OrgId, perm); err != nil {
-			return nil, err
-		}
+	// RBAC-1: a template only ever writes rules whose source is an agent group, so it needs the agent rule
+	// permission (agent:grant_access) and not policy:manage.
+	if _, err := authorize(ctx, req.OrgId, rbac.PermAgentGrantAccess); err != nil {
+		return nil, err
 	}
 	if err := s.requireAgentTemplates(ctx, req.OrgId); err != nil {
 		return nil, err

@@ -24,11 +24,13 @@ func (s apiServer) ListDevices(ctx context.Context, req api.ListDevicesRequestOb
 		return nil, err
 	}
 	p, _ := authctx.PrincipalFrom(ctx)
-	role, _ := p.RoleIn(req.OrgId)
+	roles := p.RolesIn(req.OrgId)
 
 	var devs []devices.DeviceWithStatus
 	var err error
-	if rbac.Can(role, rbac.PermMemberManage) {
+	// RBAC-1: the organization-wide list is device:view (member:manage before), so Helpdesk, Network admin
+	// and the auditor see every device without being able to manage people.
+	if rbac.CanAny(roles, rbac.PermDeviceView) {
 		devs, err = s.devices.ListForOrg(ctx, req.OrgId)
 	} else {
 		devs, err = s.devices.ListForUser(ctx, req.OrgId, p.UserID)
@@ -97,8 +99,7 @@ func (s apiServer) CreateDevice(ctx context.Context, req api.CreateDeviceRequest
 	owner := p.UserID
 	if req.Body.UserId != nil && *req.Body.UserId != p.UserID {
 		// Creating a device for someone else is an admin action.
-		role, _ := p.RoleIn(req.OrgId)
-		if !rbac.Can(role, rbac.PermMemberManage) {
+		if !rbac.CanAny(p.RolesIn(req.OrgId), rbac.PermMemberManage) {
 			return nil, apierr.New(403, "forbidden", "you may not create a device for another user")
 		}
 		owner = *req.Body.UserId
@@ -151,12 +152,11 @@ func (s apiServer) UpdateDeviceMode(ctx context.Context, req api.UpdateDeviceMod
 		return nil, err
 	}
 	p, _ := authctx.PrincipalFrom(ctx)
-	role, _ := p.RoleIn(req.OrgId)
 	dev, err := s.devices.Get(ctx, req.OrgId, req.DeviceId)
 	if err != nil {
 		return nil, err
 	}
-	if dev.UserID != p.UserID && !rbac.Can(role, rbac.PermMemberManage) {
+	if dev.UserID != p.UserID && !rbac.CanAny(p.RolesIn(req.OrgId), rbac.PermMemberManage) {
 		return nil, apierr.New(403, "forbidden", "you may not change this device")
 	}
 	if req.Params.FullTunnel == nil {
@@ -201,9 +201,9 @@ func (s apiServer) RemoveDevice(ctx context.Context, req api.RemoveDeviceRequest
 		return nil, err
 	}
 	p, _ := authctx.PrincipalFrom(ctx)
-	role, _ := p.RoleIn(req.OrgId)
+	roles := p.RolesIn(req.OrgId)
 
-	target, err := s.authorizeDeviceLifecycleTarget(ctx, req.OrgId, req.DeviceId, p.UserID, role, "remove")
+	target, err := s.authorizeDeviceLifecycleTarget(ctx, req.OrgId, req.DeviceId, p.UserID, roles, "remove")
 	if err != nil {
 		return nil, err
 	}
@@ -224,9 +224,9 @@ func (s apiServer) RevokeDevice(ctx context.Context, req api.RevokeDeviceRequest
 		return nil, err
 	}
 	p, _ := authctx.PrincipalFrom(ctx)
-	role, _ := p.RoleIn(req.OrgId)
+	roles := p.RolesIn(req.OrgId)
 
-	target, err := s.authorizeDeviceLifecycleTarget(ctx, req.OrgId, req.DeviceId, p.UserID, role, "revoke")
+	target, err := s.authorizeDeviceLifecycleTarget(ctx, req.OrgId, req.DeviceId, p.UserID, roles, "revoke")
 	if err != nil {
 		return nil, err
 	}
@@ -249,11 +249,11 @@ func (s apiServer) RevokeDevice(ctx context.Context, req api.RevokeDeviceRequest
 // agent:revoke first proves relational agent authority. If that fails, the
 // target may still be their human device; a missing/foreign row returns the
 // same forbidden envelope as an existing unauthorized agent.
-func (s apiServer) authorizeDeviceLifecycleTarget(ctx context.Context, orgID, deviceID, userID uuid.UUID, role, verb string) (sqlc.Device, error) {
+func (s apiServer) authorizeDeviceLifecycleTarget(ctx context.Context, orgID, deviceID, userID uuid.UUID, roles []string, verb string) (sqlc.Device, error) {
 	if target, err := s.devices.Get(ctx, orgID, deviceID); err == nil && target.Kind == "sandbox" {
 		return sqlc.Device{}, apierr.Conflict("sandbox_lifecycle_required", "manage this sandbox through the Sandboxes section")
 	}
-	if rbac.Can(role, rbac.PermAgentRevoke) {
+	if rbac.CanAny(roles, rbac.PermAgentRevoke) {
 		return s.devices.Get(ctx, orgID, deviceID)
 	}
 	agentErr := s.requireAgentPermission(ctx, orgID, deviceID, rbac.PermAgentRevoke)
@@ -267,7 +267,7 @@ func (s apiServer) authorizeDeviceLifecycleTarget(ctx context.Context, orgID, de
 	if dev.Kind == "agent" {
 		return sqlc.Device{}, agentErr
 	}
-	if dev.UserID != userID && !rbac.Can(role, rbac.PermMemberManage) {
+	if dev.UserID != userID && !rbac.CanAny(roles, rbac.PermMemberManage) {
 		return sqlc.Device{}, apierr.New(403, "forbidden", "you may not "+verb+" this device")
 	}
 	return dev, nil

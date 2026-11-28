@@ -27,13 +27,15 @@ export type DevicesInventoryProps = {
   lastSeenLabel: (device: Device) => string;
   onInspect: (id: string) => void;
   onRequestAction: (action: "revoke" | "remove", devices: Device[]) => void;
+  /** RBAC-1: why this person may not revoke or remove a given device (someone else's, without member:manage), or null. */
+  othersReason?: (device: Device) => string | null;
   onRefresh: () => void;
 };
 
 type SortKey = "name" | "connection" | "state" | "posture";
 
 /** Presentation of an authoritative loaded inventory. The page owns reads and mutations. */
-export default function DevicesInventory({ devices, nodes, ownerEmail, busy, canMutate = true, lastSeenLabel, onInspect, onRequestAction, onRefresh }: DevicesInventoryProps) {
+export default function DevicesInventory({ devices, nodes, ownerEmail, busy, canMutate = true, lastSeenLabel, onInspect, onRequestAction, onRefresh, othersReason = () => null }: DevicesInventoryProps) {
   const location = useLocation();
   const gatewayId = new URLSearchParams(location.search).get("gateway") ?? "";
   const [filter, setFilter] = useState<DeviceFilter>("all");
@@ -100,6 +102,8 @@ export default function DevicesInventory({ devices, nodes, ownerEmail, busy, can
   const unavailable = (device: Device, action: "revoke" | "remove") => {
     if (!canMutate) return "Verify your email to manage devices.";
     if (busy) return "Wait for the current device operation.";
+    const others = othersReason(device);
+    if (others) return others;
     return action === "revoke"
       ? device.status === "active" ? null : `A ${device.status} device cannot be revoked.`
       : device.status === "revoked" ? null : "Only a revoked device can be removed. Revoke it first.";

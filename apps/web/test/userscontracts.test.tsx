@@ -62,22 +62,22 @@ describe("Users authoritative role and account changes", () => {
     render(workspace()); await rowAction("person2@example.test", "Edit roles");
     const detail = screen.getByRole("region", { name: "Person details" });
     expect(within(detail).getByRole("button", { name: "Roles" }).getAttribute("aria-current")).toBe("step");
-    fireEvent.click(within(detail).getByRole("checkbox", { name: "ai-admin" }));
+    fireEvent.click(within(detail).getByRole("checkbox", { name: "AI Gateway admin" }));
     expect(state.PUT).not.toHaveBeenCalled();
     fireEvent.click(within(detail).getByRole("button", { name: "Save roles" }));
     await waitFor(() => expect(state.PUT).toHaveBeenCalledTimes(1));
     expect(state.PUT).toHaveBeenCalledWith("/api/v1/organizations/{orgId}/members/{userId}/roles", { params: { path: { orgId: "org-a", userId: "person-2" } }, body: { roles: ["member", "ai-admin"] } });
     await screen.findByText("Roles updated.");
-    expect(screen.getByRole("checkbox", { name: "ai-admin" })).toHaveProperty("checked", true);
+    expect(screen.getByRole("checkbox", { name: "AI Gateway admin" })).toHaveProperty("checked", true);
   });
 
   it("reconciles a refused role change without claiming it succeeded", async () => {
     state.PUT.mockResolvedValueOnce({ error: { error: { code: "last_owner", message: "Role update refused" } } });
     render(workspace()); await rowAction("person2@example.test", "Edit roles");
-    fireEvent.click(screen.getByRole("checkbox", { name: "ai-view" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "AI Gateway viewer" }));
     fireEvent.click(screen.getByRole("button", { name: "Save roles" }));
     await screen.findByText("Role update refused");
-    await screen.findByRole("checkbox", { name: "ai-view" });
+    await screen.findByRole("checkbox", { name: "AI Gateway viewer" });
     expect(screen.queryByText("Roles updated.")).toBeNull();
     expect(state.GET.mock.calls.filter(([path]) => path.endsWith("/members"))).toHaveLength(2);
     expect(state.members[1].roles).toBeUndefined();

@@ -135,7 +135,7 @@ func (s apiServer) ChangeMemberRole(ctx context.Context, req api.ChangeMemberRol
 // minting a read-only one whose grant table would have to answer "who may see who was invited, but do
 // nothing about it".
 func (s apiServer) ListInvitations(ctx context.Context, req api.ListInvitationsRequestObject) (api.ListInvitationsResponseObject, error) {
-	if _, err := authorize(ctx, req.OrgId, rbac.PermMemberInvite); err != nil {
+	if _, err := authorize(ctx, req.OrgId, rbac.PermInvitationView); err != nil {
 		return nil, err
 	}
 	rows, err := s.invites.List(ctx, req.OrgId)

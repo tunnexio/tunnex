@@ -15,6 +15,7 @@ import { TerminalReplay } from "../components/TerminalReplay";
 import "../network-workspaces.css";
 import "../app-access-workspace.css";
 import "../audit-workspace.css";
+import { seesOrgAudit } from "../lib/navaccess";
 
 type Filters = { actor: string; action: string; from: string; to: string; targetType: string; targetId: string };
 const NO_FILTERS: Filters = { actor: "", action: "", from: "", to: "", targetType: "", targetId: "" };
@@ -90,7 +91,7 @@ function AuditWorkspace({ targetType, targetId, orgLoading, orgFailed }: { targe
     if (!result.ok || !validRoster(result.data)) { setRosterError(!result.ok ? result.error : "The actor roster was not returned correctly."); return; }
     setMembers(result.data); setRosterKnown(true);
     const mine = result.data.find((member) => member.user_id === actorId);
-    setMemberScoped(!(mine?.roles ?? (mine ? [mine.role] : [])).some((role) => role === "owner" || role === "admin"));
+    setMemberScoped(!seesOrgAudit(mine?.roles ?? (mine ? [mine.role] : [])));
   }
   async function fetchPage(next: PageRequest, reset = false) {
     if (!orgId || !actorId) return;
@@ -145,7 +146,7 @@ function AuditWorkspace({ targetType, targetId, orgLoading, orgFailed }: { targe
   }
   const actor = selected ? resolveActor(selected, members, rosterKnown) : null;
   const details = selected ? selected.action.startsWith("beam.") ? beamAuditDetails(selected.details ?? {}) : selected.action.startsWith("vault.") ? vaultAuditDetails(selected.details ?? {}) : Object.entries(selected.details ?? {}) : [];
-  const scopeNotice = memberScoped === true ? "Showing your activity only. Organization-wide activity is visible to admins and owners." : null;
+  const scopeNotice = memberScoped === true ? "Showing your activity only. Organization-wide activity is visible to owners, admins and auditors." : null;
 
   return <div className="network-management audit-workspace">
     {selected && actor ? <section aria-label="Audit evidence" className="audit-detail">

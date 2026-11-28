@@ -51,7 +51,7 @@ func TestRemintNodeLifecycleClaimRequiresCredentialMintPermissionBeforeInput(t *
 		}
 	}
 
-	for _, role := range []string{rbac.RoleOwner, rbac.RoleAdmin} {
+	for _, role := range []string{rbac.RoleOwner, rbac.RoleAdmin, rbac.RoleNetworkAdmin} {
 		response, err := (apiServer{}).RemintNodeLifecycleClaim(
 			principalWithRole(orgID, role),
 			api.RemintNodeLifecycleClaimRequestObject{OrgId: orgID, Claim: uuid.New()},
@@ -75,7 +75,7 @@ func TestRemintNodeLifecycleClaimPermissionIntersectionPrecedesInputInSource(t *
 		t.Fatal("could not find RemintNodeLifecycleClaim; permission guard is no longer guarding a route")
 	}
 	k8sGate := strings.Index(body, "rbac.PermK8sManage")
-	credentialGate := strings.Index(body, "rbac.PermOrgUpdate")
+	credentialGate := strings.Index(body, "rbac.PermGatewayManage")
 	inputValidation := strings.Index(body, "if req.Body == nil")
 	if k8sGate < 0 || credentialGate < 0 || inputValidation < 0 {
 		t.Fatalf("remint source lost a required gate or the guarded input seam")

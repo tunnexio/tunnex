@@ -24,11 +24,12 @@ export default function AgentsPolicyTemplates() {
   return <div className="network-management agents-workspace agents-management space-y-5">
     <PageHeader navigationTitle title="Policy templates" subtitle={org?.name} />
     <AgentsTabRail />
-    <AgentsManagementGate>{(orgId) => enabled ? <PolicyTemplatesWorkspace key={orgId} orgId={orgId} /> : <AppAccessEmptyState icon={null} title="Agent groups and policy templates are turned off" description="Enable this organization’s opt-in to configure reusable network policies." action={<FeatureEnableInline orgId={orgId} feature="agent_groups" features={features} />} />}</AgentsManagementGate>
+    <AgentsManagementGate>{(orgId, canWrite) => enabled ? <PolicyTemplatesWorkspace key={orgId} orgId={orgId} canWrite={canWrite} /> : <AppAccessEmptyState icon={null} title="Agent groups and policy templates are turned off" description="Enable this organization’s opt-in to configure reusable network policies." action={<FeatureEnableInline orgId={orgId} feature="agent_groups" features={features} />} />}</AgentsManagementGate>
   </div>;
 }
 
-function PolicyTemplatesWorkspace({ orgId }: { orgId: string }) {
+// canWrite (RBAC-1): false for a viewer (the auditor), who reads templates, versions and assignments only.
+function PolicyTemplatesWorkspace({ orgId, canWrite = true }: { orgId: string; canWrite?: boolean }) {
   const [search, setSearch] = useSearchParams();
   const templateId = search.get("template") ?? "";
   const groupId = search.get("group") ?? "";
@@ -174,27 +175,28 @@ function PolicyTemplatesWorkspace({ orgId }: { orgId: string }) {
     <ErrorText>{error}</ErrorText>{notice && <p role="status" className="agents-management-notice">{notice}</p>}
     {templateId ? selected ? <>
       <nav aria-label="Breadcrumb" className="agents-management-breadcrumb"><button disabled={busy} onClick={() => choose("template", null)}>Policy templates</button><span aria-hidden="true">/</span><span aria-current="page">{selected.name}</span></nav>
-      <div className="agents-management-heading"><h2>{selected.name}</h2><div className="agents-management-actions"><RefreshButton label="Refresh templates" disabled={busy} onClick={refresh} /><AppAccessRowMenu label={`Actions for ${selected.name}`} actions={[
+      <div className="agents-management-heading"><h2>{selected.name}</h2><div className="agents-management-actions"><RefreshButton label="Refresh templates" disabled={busy} onClick={refresh} />{canWrite && <AppAccessRowMenu label={`Actions for ${selected.name}`} actions={[
         { key: "rename", label: "Rename", disabledReason: unavailable ? "Refresh the saved state or finish the current action first." : undefined, onSelect: () => { setName(selected.name); setDialog("rename"); } },
         { key: "archive", label: "Archive", danger: true, disabledReason: unavailable ? "Refresh the saved state or finish the current action first." : undefined, onSelect: () => setDialog("archive") },
-      ]} /></div></div>
-      <div className="agents-management-toolbar"><h3>Version & assignment</h3><Button variant="ghost" disabled={unavailable} onClick={() => setDialog("version")}>New version</Button></div>
+      ]} />}</div></div>
+      {!canWrite && <p role="status" className="agents-management-notice">Only owners, admins and AI Agents admins can change policy templates.</p>}
+      <div className="agents-management-toolbar"><h3>Version & assignment</h3>{canWrite && <Button variant="ghost" disabled={unavailable} onClick={() => setDialog("version")}>New version</Button>}</div>
       <div className="agents-management-assignment-fields">
         {versions === null ? versionError ? <LoadRetry error={versionError} onRetry={() => setVersionAttempt((attempt) => attempt + 1)} /> : <Loading label="Loading versions…" /> : <Field label="Template version"><Select disabled={unavailable} value={versionId} onChange={(event) => { setVersionId(event.target.value); setPreview(null); setPreviewTarget(null); }}>{versions.length === 0 ? <option value="">No versions</option> : versions.map((version) => <option key={version.id} value={version.id}>v{version.version}</option>)}</Select></Field>}
         <Field label="Assignment group"><Select disabled={unavailable} value={groupId} onChange={(event) => choose("group", event.target.value || null)}><option value="">Select group</option>{groups.map((group) => <option key={group.id} value={group.id}>{group.name}</option>)}</Select></Field>
-        <Button disabled={unavailable || !groupId || !versions?.some((v) => v.id === versionId)} onClick={() => void previewApply()}>Preview impact</Button>
+        {canWrite && <Button disabled={unavailable || !groupId || !versions?.some((v) => v.id === versionId)} onClick={() => void previewApply()}>Preview impact</Button>}
       </div>
       <div className="agents-management-toolbar"><h3>Current assignments</h3><Link className="agents-management-link" to="/agents/groups">Manage agent groups</Link></div>
       <DataTable variant="flat" caption="Template assignments" rows={assignmentRows} rowKey={(assignment) => assignment.id} failed={false} filterable={false} pageSize={0} empty={<p className="agents-management-inline-empty">No active assignments.</p>} columns={[
         { key: "group", header: "Agent group", cell: (assignment) => <span>{assignment.group_name} · v{assignment.version}</span> },
         { key: "rules", header: "Rules", cell: (assignment) => assignment.rule_count },
         { key: "applied", header: "Applied", cell: (assignment) => relativeAge(assignment.applied_at) },
-        { key: "actions", header: "Actions", cell: (assignment) => <AppAccessRowMenu label={`Actions for assignment to ${assignment.group_name}`} actions={[{ key: "remove", label: "Remove", danger: true, disabledReason: unavailable ? "Refresh the saved state or finish the current action first." : undefined, onSelect: () => setRemoving(assignment) }]} /> },
+        ...(canWrite ? [{ key: "actions", header: "Actions", cell: (assignment: (typeof assignmentRows)[number]) => <AppAccessRowMenu label={`Actions for assignment to ${assignment.group_name}`} actions={[{ key: "remove", label: "Remove", danger: true, disabledReason: unavailable ? "Refresh the saved state or finish the current action first." : undefined, onSelect: () => setRemoving(assignment) }]} /> }] : []),
       ]} />
       <AppAccessPagination maxOffset={null} page={currentAssignments} pageSize={assignmentSize} count={assignmentRows.length} hasNext={currentAssignments * assignmentSize < selectedAssignments.length} busy={busy} onPageChange={setAssignmentPage} onPageSizeChange={(size) => { setAssignmentSize(size); setAssignmentPage(1); }} />
       <details className="agents-management-help"><summary>How network templates apply</summary><p>Versions are immutable. Applying a version adds managed network rules; removing an assignment withdraws only its owned rules. Shared rules remain. Network restrictions require organization enforcement. Model grants and MCP tool permissions are configured separately.</p><Link className="agents-management-link" to="/access/policies">View Access Policies</Link></details>
     </> : <AppAccessEmptyState icon={null} title="Template unavailable" description="Refresh the inventory or return to policy templates." action={<Button variant="ghost" onClick={() => choose("template", null)}>Back to templates</Button>} /> : <>
-      <div className="agents-management-toolbar"><Input aria-label="Search policy templates" value={query} onChange={(event) => choose("q", event.target.value || null)} placeholder="Search policy templates" /><div className="agents-management-actions"><HelpTooltip label="About policy templates">Reusable network rules for agent groups. Model grants and MCP tool permissions are configured separately; network restrictions require organization enforcement.</HelpTooltip><RefreshButton label="Refresh templates" disabled={busy} onClick={refresh} /><Button disabled={unavailable} onClick={() => { setName(""); setDialog("create"); }}>Create template</Button></div></div>
+      <div className="agents-management-toolbar"><Input aria-label="Search policy templates" value={query} onChange={(event) => choose("q", event.target.value || null)} placeholder="Search policy templates" /><div className="agents-management-actions"><HelpTooltip label="About policy templates">Reusable network rules for agent groups. Model grants and MCP tool permissions are configured separately; network restrictions require organization enforcement.</HelpTooltip><RefreshButton label="Refresh templates" disabled={busy} onClick={refresh} />{canWrite && <Button disabled={unavailable} onClick={() => { setName(""); setDialog("create"); }}>Create template</Button>}</div></div>
       <DataTable variant="flat" caption="Agent policy templates" rows={tableRows} rowKey={(template) => template.id} failed={false} filterable={false} pageSize={0} empty={<AppAccessEmptyState icon={null} title={query ? "No matching templates" : "No policy templates yet"} description={query ? "Try another template name." : "Create a template, add a version, then preview its network impact."} action={query ? <Button variant="ghost" onClick={() => choose("q", null)}>Clear search</Button> : undefined} />} columns={[
         { key: "name", header: "Template", cell: (template) => <button type="button" onClick={() => choose("template", template.id)} className="agents-management-name">{template.name}</button> },
         { key: "assigned", header: "Assignments", cell: (template) => assignments.filter((item) => item.template_id === template.id).length },

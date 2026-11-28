@@ -112,7 +112,7 @@ func (s apiServer) ListNodes(ctx context.Context, req api.ListNodesRequestObject
 
 // IssueJoinToken POST /api/v1/organizations/{orgId}/nodes/join-token.
 func (s apiServer) IssueJoinToken(ctx context.Context, req api.IssueJoinTokenRequestObject) (api.IssueJoinTokenResponseObject, error) {
-	if _, err := authorize(ctx, req.OrgId, rbac.PermOrgUpdate); err != nil {
+	if _, err := authorize(ctx, req.OrgId, rbac.PermGatewayManage); err != nil {
 		return nil, err
 	}
 	p, _ := authctx.PrincipalFrom(ctx)
@@ -138,7 +138,7 @@ func (s apiServer) IssueJoinToken(ctx context.Context, req api.IssueJoinTokenReq
 
 // RevokeNode POST /api/v1/organizations/{orgId}/nodes/{nodeId}/revoke.
 func (s apiServer) RevokeNode(ctx context.Context, req api.RevokeNodeRequestObject) (api.RevokeNodeResponseObject, error) {
-	if _, err := authorize(ctx, req.OrgId, rbac.PermOrgUpdate); err != nil {
+	if _, err := authorize(ctx, req.OrgId, rbac.PermGatewayManage); err != nil {
 		return nil, err
 	}
 	p, _ := authctx.PrincipalFrom(ctx)
@@ -159,10 +159,13 @@ func (s apiServer) RevokeNode(ctx context.Context, req api.RevokeNodeRequestObje
 // device:restore names the dead gateway and the live replacement, and the act is audited whether or not anything
 // came back.
 //
-// device:restore rather than org:update (which revokes a node): granting the power to take access away must not
+// device:restore rather than gateway:manage (which revokes a node): granting the power to take access away must not
 // silently grant the power to hand it back.
 func (s apiServer) RestoreNodeDevices(ctx context.Context, req api.RestoreNodeDevicesRequestObject) (api.RestoreNodeDevicesResponseObject, error) {
 	if _, err := authorize(ctx, req.OrgId, rbac.PermDeviceRestore); err != nil {
+		return nil, err
+	}
+	if err := s.requireHelpdeskNodeCeiling(ctx, req.OrgId, req.NodeId, rbac.PermDeviceRestore); err != nil {
 		return nil, err
 	}
 	if req.Body == nil {

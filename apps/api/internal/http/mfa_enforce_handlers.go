@@ -21,7 +21,7 @@ func mfaEnforceEditionRequired() error {
 
 // GetMfaEnforce GET .../mfa-enforce — read the org's MFA enforce flag (enterprise; PermMfaManage).
 func (s apiServer) GetMfaEnforce(ctx context.Context, req api.GetMfaEnforceRequestObject) (api.GetMfaEnforceResponseObject, error) {
-	if _, err := authorize(ctx, req.OrgId, rbac.PermMfaManage); err != nil {
+	if _, err := authorize(ctx, req.OrgId, rbac.PermMfaView); err != nil {
 		return nil, err
 	}
 	if !s.mfaEnforceEnabled {
@@ -54,9 +54,10 @@ func (s apiServer) SetMfaEnforce(ctx context.Context, req api.SetMfaEnforceReque
 }
 
 // AdminResetMfa POST .../members/{userId}/mfa-reset — disenroll a member's MFA (enterprise;
-// PermMfaManage). Disenroll-only (never authenticates as them), audited + target-notified.
+// PermMfaReset since RBAC-1; mfa:manage keeps the enforcement toggle). Disenroll-only (never authenticates as
+// them), audited + target-notified.
 func (s apiServer) AdminResetMfa(ctx context.Context, req api.AdminResetMfaRequestObject) (api.AdminResetMfaResponseObject, error) {
-	if _, err := authorize(ctx, req.OrgId, rbac.PermMfaManage); err != nil {
+	if _, err := authorize(ctx, req.OrgId, rbac.PermMfaReset); err != nil {
 		return nil, err
 	}
 	if !s.mfaEnforceEnabled {
@@ -72,7 +73,9 @@ func (s apiServer) AdminResetMfa(ctx context.Context, req api.AdminResetMfaReque
 	// and runs the step-up after those checks.
 	if err := s.mfa.AdminReset(ctx, req.OrgId, p.UserID, req.UserId, mfa.AdminResetOptions{
 		ActorRole: actorRole, ActorCPAdmin: p.CPAdmin,
-		StepUp: s.peopleStepUp(p, currentPassword, "reset this member's two-factor authentication"),
+		// RBAC-1: a Helpdesk-only actor may not reset an admin-grade person's factor.
+		HelpdeskCeiling: rbac.HelpdeskCeilingApplies(p.RolesIn(req.OrgId), rbac.PermMfaReset),
+		StepUp:          s.peopleStepUp(p, currentPassword, "reset this member's two-factor authentication"),
 	}); err != nil {
 		return nil, err
 	}

@@ -1,0 +1,4865 @@
+{
+"_comment": "RBAC-1: the executable spec for CanManageMembership, checked by rbac (Go) and apps/web/src/lib/rbac.ts (TypeScript) so the hand mirror cannot drift. Only owner and admin hold member:manage; only an owner acts on an owner or grants owner.",
+"cases": [
+{
+"actor": "owner",
+"target": "owner",
+"new_role": "owner",
+"allowed": true
+},
+{
+"actor": "owner",
+"target": "owner",
+"new_role": "admin",
+"allowed": true
+},
+{
+"actor": "owner",
+"target": "owner",
+"new_role": "network-admin",
+"allowed": true
+},
+{
+"actor": "owner",
+"target": "owner",
+"new_role": "agents-admin",
+"allowed": true
+},
+{
+"actor": "owner",
+"target": "owner",
+"new_role": "auditor",
+"allowed": true
+},
+{
+"actor": "owner",
+"target": "owner",
+"new_role": "helpdesk",
+"allowed": true
+},
+{
+"actor": "owner",
+"target": "owner",
+"new_role": "ai-admin",
+"allowed": true
+},
+{
+"actor": "owner",
+"target": "owner",
+"new_role": "ai-view",
+"allowed": true
+},
+{
+"actor": "owner",
+"target": "owner",
+"new_role": "member",
+"allowed": true
+},
+{
+"actor": "owner",
+"target": "owner",
+"new_role": "",
+"allowed": true
+},
+{
+"actor": "owner",
+"target": "admin",
+"new_role": "owner",
+"allowed": true
+},
+{
+"actor": "owner",
+"target": "admin",
+"new_role": "admin",
+"allowed": true
+},
+{
+"actor": "owner",
+"target": "admin",
+"new_role": "network-admin",
+"allowed": true
+},
+{
+"actor": "owner",
+"target": "admin",
+"new_role": "agents-admin",
+"allowed": true
+},
+{
+"actor": "owner",
+"target": "admin",
+"new_role": "auditor",
+"allowed": true
+},
+{
+"actor": "owner",
+"target": "admin",
+"new_role": "helpdesk",
+"allowed": true
+},
+{
+"actor": "owner",
+"target": "admin",
+"new_role": "ai-admin",
+"allowed": true
+},
+{
+"actor": "owner",
+"target": "admin",
+"new_role": "ai-view",
+"allowed": true
+},
+{
+"actor": "owner",
+"target": "admin",
+"new_role": "member",
+"allowed": true
+},
+{
+"actor": "owner",
+"target": "admin",
+"new_role": "",
+"allowed": true
+},
+{
+"actor": "owner",
+"target": "network-admin",
+"new_role": "owner",
+"allowed": true
+},
+{
+"actor": "owner",
+"target": "network-admin",
+"new_role": "admin",
+"allowed": true
+},
+{
+"actor": "owner",
+"target": "network-admin",
+"new_role": "network-admin",
+"allowed": true
+},
+{
+"actor": "owner",
+"target": "network-admin",
+"new_role": "agents-admin",
+"allowed": true
+},
+{
+"actor": "owner",
+"target": "network-admin",
+"new_role": "auditor",
+"allowed": true
+},
+{
+"actor": "owner",
+"target": "network-admin",
+"new_role": "helpdesk",
+"allowed": true
+},
+{
+"actor": "owner",
+"target": "network-admin",
+"new_role": "ai-admin",
+"allowed": true
+},
+{
+"actor": "owner",
+"target": "network-admin",
+"new_role": "ai-view",
+"allowed": true
+},
+{
+"actor": "owner",
+"target": "network-admin",
+"new_role": "member",
+"allowed": true
+},
+{
+"actor": "owner",
+"target": "network-admin",
+"new_role": "",
+"allowed": true
+},
+{
+"actor": "owner",
+"target": "agents-admin",
+"new_role": "owner",
+"allowed": true
+},
+{
+"actor": "owner",
+"target": "agents-admin",
+"new_role": "admin",
+"allowed": true
+},
+{
+"actor": "owner",
+"target": "agents-admin",
+"new_role": "network-admin",
+"allowed": true
+},
+{
+"actor": "owner",
+"target": "agents-admin",
+"new_role": "agents-admin",
+"allowed": true
+},
+{
+"actor": "owner",
+"target": "agents-admin",
+"new_role": "auditor",
+"allowed": true
+},
+{
+"actor": "owner",
+"target": "agents-admin",
+"new_role": "helpdesk",
+"allowed": true
+},
+{
+"actor": "owner",
+"target": "agents-admin",
+"new_role": "ai-admin",
+"allowed": true
+},
+{
+"actor": "owner",
+"target": "agents-admin",
+"new_role": "ai-view",
+"allowed": true
+},
+{
+"actor": "owner",
+"target": "agents-admin",
+"new_role": "member",
+"allowed": true
+},
+{
+"actor": "owner",
+"target": "agents-admin",
+"new_role": "",
+"allowed": true
+},
+{
+"actor": "owner",
+"target": "auditor",
+"new_role": "owner",
+"allowed": true
+},
+{
+"actor": "owner",
+"target": "auditor",
+"new_role": "admin",
+"allowed": true
+},
+{
+"actor": "owner",
+"target": "auditor",
+"new_role": "network-admin",
+"allowed": true
+},
+{
+"actor": "owner",
+"target": "auditor",
+"new_role": "agents-admin",
+"allowed": true
+},
+{
+"actor": "owner",
+"target": "auditor",
+"new_role": "auditor",
+"allowed": true
+},
+{
+"actor": "owner",
+"target": "auditor",
+"new_role": "helpdesk",
+"allowed": true
+},
+{
+"actor": "owner",
+"target": "auditor",
+"new_role": "ai-admin",
+"allowed": true
+},
+{
+"actor": "owner",
+"target": "auditor",
+"new_role": "ai-view",
+"allowed": true
+},
+{
+"actor": "owner",
+"target": "auditor",
+"new_role": "member",
+"allowed": true
+},
+{
+"actor": "owner",
+"target": "auditor",
+"new_role": "",
+"allowed": true
+},
+{
+"actor": "owner",
+"target": "helpdesk",
+"new_role": "owner",
+"allowed": true
+},
+{
+"actor": "owner",
+"target": "helpdesk",
+"new_role": "admin",
+"allowed": true
+},
+{
+"actor": "owner",
+"target": "helpdesk",
+"new_role": "network-admin",
+"allowed": true
+},
+{
+"actor": "owner",
+"target": "helpdesk",
+"new_role": "agents-admin",
+"allowed": true
+},
+{
+"actor": "owner",
+"target": "helpdesk",
+"new_role": "auditor",
+"allowed": true
+},
+{
+"actor": "owner",
+"target": "helpdesk",
+"new_role": "helpdesk",
+"allowed": true
+},
+{
+"actor": "owner",
+"target": "helpdesk",
+"new_role": "ai-admin",
+"allowed": true
+},
+{
+"actor": "owner",
+"target": "helpdesk",
+"new_role": "ai-view",
+"allowed": true
+},
+{
+"actor": "owner",
+"target": "helpdesk",
+"new_role": "member",
+"allowed": true
+},
+{
+"actor": "owner",
+"target": "helpdesk",
+"new_role": "",
+"allowed": true
+},
+{
+"actor": "owner",
+"target": "ai-admin",
+"new_role": "owner",
+"allowed": true
+},
+{
+"actor": "owner",
+"target": "ai-admin",
+"new_role": "admin",
+"allowed": true
+},
+{
+"actor": "owner",
+"target": "ai-admin",
+"new_role": "network-admin",
+"allowed": true
+},
+{
+"actor": "owner",
+"target": "ai-admin",
+"new_role": "agents-admin",
+"allowed": true
+},
+{
+"actor": "owner",
+"target": "ai-admin",
+"new_role": "auditor",
+"allowed": true
+},
+{
+"actor": "owner",
+"target": "ai-admin",
+"new_role": "helpdesk",
+"allowed": true
+},
+{
+"actor": "owner",
+"target": "ai-admin",
+"new_role": "ai-admin",
+"allowed": true
+},
+{
+"actor": "owner",
+"target": "ai-admin",
+"new_role": "ai-view",
+"allowed": true
+},
+{
+"actor": "owner",
+"target": "ai-admin",
+"new_role": "member",
+"allowed": true
+},
+{
+"actor": "owner",
+"target": "ai-admin",
+"new_role": "",
+"allowed": true
+},
+{
+"actor": "owner",
+"target": "ai-view",
+"new_role": "owner",
+"allowed": true
+},
+{
+"actor": "owner",
+"target": "ai-view",
+"new_role": "admin",
+"allowed": true
+},
+{
+"actor": "owner",
+"target": "ai-view",
+"new_role": "network-admin",
+"allowed": true
+},
+{
+"actor": "owner",
+"target": "ai-view",
+"new_role": "agents-admin",
+"allowed": true
+},
+{
+"actor": "owner",
+"target": "ai-view",
+"new_role": "auditor",
+"allowed": true
+},
+{
+"actor": "owner",
+"target": "ai-view",
+"new_role": "helpdesk",
+"allowed": true
+},
+{
+"actor": "owner",
+"target": "ai-view",
+"new_role": "ai-admin",
+"allowed": true
+},
+{
+"actor": "owner",
+"target": "ai-view",
+"new_role": "ai-view",
+"allowed": true
+},
+{
+"actor": "owner",
+"target": "ai-view",
+"new_role": "member",
+"allowed": true
+},
+{
+"actor": "owner",
+"target": "ai-view",
+"new_role": "",
+"allowed": true
+},
+{
+"actor": "owner",
+"target": "member",
+"new_role": "owner",
+"allowed": true
+},
+{
+"actor": "owner",
+"target": "member",
+"new_role": "admin",
+"allowed": true
+},
+{
+"actor": "owner",
+"target": "member",
+"new_role": "network-admin",
+"allowed": true
+},
+{
+"actor": "owner",
+"target": "member",
+"new_role": "agents-admin",
+"allowed": true
+},
+{
+"actor": "owner",
+"target": "member",
+"new_role": "auditor",
+"allowed": true
+},
+{
+"actor": "owner",
+"target": "member",
+"new_role": "helpdesk",
+"allowed": true
+},
+{
+"actor": "owner",
+"target": "member",
+"new_role": "ai-admin",
+"allowed": true
+},
+{
+"actor": "owner",
+"target": "member",
+"new_role": "ai-view",
+"allowed": true
+},
+{
+"actor": "owner",
+"target": "member",
+"new_role": "member",
+"allowed": true
+},
+{
+"actor": "owner",
+"target": "member",
+"new_role": "",
+"allowed": true
+},
+{
+"actor": "admin",
+"target": "owner",
+"new_role": "owner",
+"allowed": false
+},
+{
+"actor": "admin",
+"target": "owner",
+"new_role": "admin",
+"allowed": false
+},
+{
+"actor": "admin",
+"target": "owner",
+"new_role": "network-admin",
+"allowed": false
+},
+{
+"actor": "admin",
+"target": "owner",
+"new_role": "agents-admin",
+"allowed": false
+},
+{
+"actor": "admin",
+"target": "owner",
+"new_role": "auditor",
+"allowed": false
+},
+{
+"actor": "admin",
+"target": "owner",
+"new_role": "helpdesk",
+"allowed": false
+},
+{
+"actor": "admin",
+"target": "owner",
+"new_role": "ai-admin",
+"allowed": false
+},
+{
+"actor": "admin",
+"target": "owner",
+"new_role": "ai-view",
+"allowed": false
+},
+{
+"actor": "admin",
+"target": "owner",
+"new_role": "member",
+"allowed": false
+},
+{
+"actor": "admin",
+"target": "owner",
+"new_role": "",
+"allowed": false
+},
+{
+"actor": "admin",
+"target": "admin",
+"new_role": "owner",
+"allowed": false
+},
+{
+"actor": "admin",
+"target": "admin",
+"new_role": "admin",
+"allowed": true
+},
+{
+"actor": "admin",
+"target": "admin",
+"new_role": "network-admin",
+"allowed": true
+},
+{
+"actor": "admin",
+"target": "admin",
+"new_role": "agents-admin",
+"allowed": true
+},
+{
+"actor": "admin",
+"target": "admin",
+"new_role": "auditor",
+"allowed": true
+},
+{
+"actor": "admin",
+"target": "admin",
+"new_role": "helpdesk",
+"allowed": true
+},
+{
+"actor": "admin",
+"target": "admin",
+"new_role": "ai-admin",
+"allowed": true
+},
+{
+"actor": "admin",
+"target": "admin",
+"new_role": "ai-view",
+"allowed": true
+},
+{
+"actor": "admin",
+"target": "admin",
+"new_role": "member",
+"allowed": true
+},
+{
+"actor": "admin",
+"target": "admin",
+"new_role": "",
+"allowed": true
+},
+{
+"actor": "admin",
+"target": "network-admin",
+"new_role": "owner",
+"allowed": false
+},
+{
+"actor": "admin",
+"target": "network-admin",
+"new_role": "admin",
+"allowed": true
+},
+{
+"actor": "admin",
+"target": "network-admin",
+"new_role": "network-admin",
+"allowed": true
+},
+{
+"actor": "admin",
+"target": "network-admin",
+"new_role": "agents-admin",
+"allowed": true
+},
+{
+"actor": "admin",
+"target": "network-admin",
+"new_role": "auditor",
+"allowed": true
+},
+{
+"actor": "admin",
+"target": "network-admin",
+"new_role": "helpdesk",
+"allowed": true
+},
+{
+"actor": "admin",
+"target": "network-admin",
+"new_role": "ai-admin",
+"allowed": true
+},
+{
+"actor": "admin",
+"target": "network-admin",
+"new_role": "ai-view",
+"allowed": true
+},
+{
+"actor": "admin",
+"target": "network-admin",
+"new_role": "member",
+"allowed": true
+},
+{
+"actor": "admin",
+"target": "network-admin",
+"new_role": "",
+"allowed": true
+},
+{
+"actor": "admin",
+"target": "agents-admin",
+"new_role": "owner",
+"allowed": false
+},
+{
+"actor": "admin",
+"target": "agents-admin",
+"new_role": "admin",
+"allowed": true
+},
+{
+"actor": "admin",
+"target": "agents-admin",
+"new_role": "network-admin",
+"allowed": true
+},
+{
+"actor": "admin",
+"target": "agents-admin",
+"new_role": "agents-admin",
+"allowed": true
+},
+{
+"actor": "admin",
+"target": "agents-admin",
+"new_role": "auditor",
+"allowed": true
+},
+{
+"actor": "admin",
+"target": "agents-admin",
+"new_role": "helpdesk",
+"allowed": true
+},
+{
+"actor": "admin",
+"target": "agents-admin",
+"new_role": "ai-admin",
+"allowed": true
+},
+{
+"actor": "admin",
+"target": "agents-admin",
+"new_role": "ai-view",
+"allowed": true
+},
+{
+"actor": "admin",
+"target": "agents-admin",
+"new_role": "member",
+"allowed": true
+},
+{
+"actor": "admin",
+"target": "agents-admin",
+"new_role": "",
+"allowed": true
+},
+{
+"actor": "admin",
+"target": "auditor",
+"new_role": "owner",
+"allowed": false
+},
+{
+"actor": "admin",
+"target": "auditor",
+"new_role": "admin",
+"allowed": true
+},
+{
+"actor": "admin",
+"target": "auditor",
+"new_role": "network-admin",
+"allowed": true
+},
+{
+"actor": "admin",
+"target": "auditor",
+"new_role": "agents-admin",
+"allowed": true
+},
+{
+"actor": "admin",
+"target": "auditor",
+"new_role": "auditor",
+"allowed": true
+},
+{
+"actor": "admin",
+"target": "auditor",
+"new_role": "helpdesk",
+"allowed": true
+},
+{
+"actor": "admin",
+"target": "auditor",
+"new_role": "ai-admin",
+"allowed": true
+},
+{
+"actor": "admin",
+"target": "auditor",
+"new_role": "ai-view",
+"allowed": true
+},
+{
+"actor": "admin",
+"target": "auditor",
+"new_role": "member",
+"allowed": true
+},
+{
+"actor": "admin",
+"target": "auditor",
+"new_role": "",
+"allowed": true
+},
+{
+"actor": "admin",
+"target": "helpdesk",
+"new_role": "owner",
+"allowed": false
+},
+{
+"actor": "admin",
+"target": "helpdesk",
+"new_role": "admin",
+"allowed": true
+},
+{
+"actor": "admin",
+"target": "helpdesk",
+"new_role": "network-admin",
+"allowed": true
+},
+{
+"actor": "admin",
+"target": "helpdesk",
+"new_role": "agents-admin",
+"allowed": true
+},
+{
+"actor": "admin",
+"target": "helpdesk",
+"new_role": "auditor",
+"allowed": true
+},
+{
+"actor": "admin",
+"target": "helpdesk",
+"new_role": "helpdesk",
+"allowed": true
+},
+{
+"actor": "admin",
+"target": "helpdesk",
+"new_role": "ai-admin",
+"allowed": true
+},
+{
+"actor": "admin",
+"target": "helpdesk",
+"new_role": "ai-view",
+"allowed": true
+},
+{
+"actor": "admin",
+"target": "helpdesk",
+"new_role": "member",
+"allowed": true
+},
+{
+"actor": "admin",
+"target": "helpdesk",
+"new_role": "",
+"allowed": true
+},
+{
+"actor": "admin",
+"target": "ai-admin",
+"new_role": "owner",
+"allowed": false
+},
+{
+"actor": "admin",
+"target": "ai-admin",
+"new_role": "admin",
+"allowed": true
+},
+{
+"actor": "admin",
+"target": "ai-admin",
+"new_role": "network-admin",
+"allowed": true
+},
+{
+"actor": "admin",
+"target": "ai-admin",
+"new_role": "agents-admin",
+"allowed": true
+},
+{
+"actor": "admin",
+"target": "ai-admin",
+"new_role": "auditor",
+"allowed": true
+},
+{
+"actor": "admin",
+"target": "ai-admin",
+"new_role": "helpdesk",
+"allowed": true
+},
+{
+"actor": "admin",
+"target": "ai-admin",
+"new_role": "ai-admin",
+"allowed": true
+},
+{
+"actor": "admin",
+"target": "ai-admin",
+"new_role": "ai-view",
+"allowed": true
+},
+{
+"actor": "admin",
+"target": "ai-admin",
+"new_role": "member",
+"allowed": true
+},
+{
+"actor": "admin",
+"target": "ai-admin",
+"new_role": "",
+"allowed": true
+},
+{
+"actor": "admin",
+"target": "ai-view",
+"new_role": "owner",
+"allowed": false
+},
+{
+"actor": "admin",
+"target": "ai-view",
+"new_role": "admin",
+"allowed": true
+},
+{
+"actor": "admin",
+"target": "ai-view",
+"new_role": "network-admin",
+"allowed": true
+},
+{
+"actor": "admin",
+"target": "ai-view",
+"new_role": "agents-admin",
+"allowed": true
+},
+{
+"actor": "admin",
+"target": "ai-view",
+"new_role": "auditor",
+"allowed": true
+},
+{
+"actor": "admin",
+"target": "ai-view",
+"new_role": "helpdesk",
+"allowed": true
+},
+{
+"actor": "admin",
+"target": "ai-view",
+"new_role": "ai-admin",
+"allowed": true
+},
+{
+"actor": "admin",
+"target": "ai-view",
+"new_role": "ai-view",
+"allowed": true
+},
+{
+"actor": "admin",
+"target": "ai-view",
+"new_role": "member",
+"allowed": true
+},
+{
+"actor": "admin",
+"target": "ai-view",
+"new_role": "",
+"allowed": true
+},
+{
+"actor": "admin",
+"target": "member",
+"new_role": "owner",
+"allowed": false
+},
+{
+"actor": "admin",
+"target": "member",
+"new_role": "admin",
+"allowed": true
+},
+{
+"actor": "admin",
+"target": "member",
+"new_role": "network-admin",
+"allowed": true
+},
+{
+"actor": "admin",
+"target": "member",
+"new_role": "agents-admin",
+"allowed": true
+},
+{
+"actor": "admin",
+"target": "member",
+"new_role": "auditor",
+"allowed": true
+},
+{
+"actor": "admin",
+"target": "member",
+"new_role": "helpdesk",
+"allowed": true
+},
+{
+"actor": "admin",
+"target": "member",
+"new_role": "ai-admin",
+"allowed": true
+},
+{
+"actor": "admin",
+"target": "member",
+"new_role": "ai-view",
+"allowed": true
+},
+{
+"actor": "admin",
+"target": "member",
+"new_role": "member",
+"allowed": true
+},
+{
+"actor": "admin",
+"target": "member",
+"new_role": "",
+"allowed": true
+},
+{
+"actor": "network-admin",
+"target": "owner",
+"new_role": "owner",
+"allowed": false
+},
+{
+"actor": "network-admin",
+"target": "owner",
+"new_role": "admin",
+"allowed": false
+},
+{
+"actor": "network-admin",
+"target": "owner",
+"new_role": "network-admin",
+"allowed": false
+},
+{
+"actor": "network-admin",
+"target": "owner",
+"new_role": "agents-admin",
+"allowed": false
+},
+{
+"actor": "network-admin",
+"target": "owner",
+"new_role": "auditor",
+"allowed": false
+},
+{
+"actor": "network-admin",
+"target": "owner",
+"new_role": "helpdesk",
+"allowed": false
+},
+{
+"actor": "network-admin",
+"target": "owner",
+"new_role": "ai-admin",
+"allowed": false
+},
+{
+"actor": "network-admin",
+"target": "owner",
+"new_role": "ai-view",
+"allowed": false
+},
+{
+"actor": "network-admin",
+"target": "owner",
+"new_role": "member",
+"allowed": false
+},
+{
+"actor": "network-admin",
+"target": "owner",
+"new_role": "",
+"allowed": false
+},
+{
+"actor": "network-admin",
+"target": "admin",
+"new_role": "owner",
+"allowed": false
+},
+{
+"actor": "network-admin",
+"target": "admin",
+"new_role": "admin",
+"allowed": false
+},
+{
+"actor": "network-admin",
+"target": "admin",
+"new_role": "network-admin",
+"allowed": false
+},
+{
+"actor": "network-admin",
+"target": "admin",
+"new_role": "agents-admin",
+"allowed": false
+},
+{
+"actor": "network-admin",
+"target": "admin",
+"new_role": "auditor",
+"allowed": false
+},
+{
+"actor": "network-admin",
+"target": "admin",
+"new_role": "helpdesk",
+"allowed": false
+},
+{
+"actor": "network-admin",
+"target": "admin",
+"new_role": "ai-admin",
+"allowed": false
+},
+{
+"actor": "network-admin",
+"target": "admin",
+"new_role": "ai-view",
+"allowed": false
+},
+{
+"actor": "network-admin",
+"target": "admin",
+"new_role": "member",
+"allowed": false
+},
+{
+"actor": "network-admin",
+"target": "admin",
+"new_role": "",
+"allowed": false
+},
+{
+"actor": "network-admin",
+"target": "network-admin",
+"new_role": "owner",
+"allowed": false
+},
+{
+"actor": "network-admin",
+"target": "network-admin",
+"new_role": "admin",
+"allowed": false
+},
+{
+"actor": "network-admin",
+"target": "network-admin",
+"new_role": "network-admin",
+"allowed": false
+},
+{
+"actor": "network-admin",
+"target": "network-admin",
+"new_role": "agents-admin",
+"allowed": false
+},
+{
+"actor": "network-admin",
+"target": "network-admin",
+"new_role": "auditor",
+"allowed": false
+},
+{
+"actor": "network-admin",
+"target": "network-admin",
+"new_role": "helpdesk",
+"allowed": false
+},
+{
+"actor": "network-admin",
+"target": "network-admin",
+"new_role": "ai-admin",
+"allowed": false
+},
+{
+"actor": "network-admin",
+"target": "network-admin",
+"new_role": "ai-view",
+"allowed": false
+},
+{
+"actor": "network-admin",
+"target": "network-admin",
+"new_role": "member",
+"allowed": false
+},
+{
+"actor": "network-admin",
+"target": "network-admin",
+"new_role": "",
+"allowed": false
+},
+{
+"actor": "network-admin",
+"target": "agents-admin",
+"new_role": "owner",
+"allowed": false
+},
+{
+"actor": "network-admin",
+"target": "agents-admin",
+"new_role": "admin",
+"allowed": false
+},
+{
+"actor": "network-admin",
+"target": "agents-admin",
+"new_role": "network-admin",
+"allowed": false
+},
+{
+"actor": "network-admin",
+"target": "agents-admin",
+"new_role": "agents-admin",
+"allowed": false
+},
+{
+"actor": "network-admin",
+"target": "agents-admin",
+"new_role": "auditor",
+"allowed": false
+},
+{
+"actor": "network-admin",
+"target": "agents-admin",
+"new_role": "helpdesk",
+"allowed": false
+},
+{
+"actor": "network-admin",
+"target": "agents-admin",
+"new_role": "ai-admin",
+"allowed": false
+},
+{
+"actor": "network-admin",
+"target": "agents-admin",
+"new_role": "ai-view",
+"allowed": false
+},
+{
+"actor": "network-admin",
+"target": "agents-admin",
+"new_role": "member",
+"allowed": false
+},
+{
+"actor": "network-admin",
+"target": "agents-admin",
+"new_role": "",
+"allowed": false
+},
+{
+"actor": "network-admin",
+"target": "auditor",
+"new_role": "owner",
+"allowed": false
+},
+{
+"actor": "network-admin",
+"target": "auditor",
+"new_role": "admin",
+"allowed": false
+},
+{
+"actor": "network-admin",
+"target": "auditor",
+"new_role": "network-admin",
+"allowed": false
+},
+{
+"actor": "network-admin",
+"target": "auditor",
+"new_role": "agents-admin",
+"allowed": false
+},
+{
+"actor": "network-admin",
+"target": "auditor",
+"new_role": "auditor",
+"allowed": false
+},
+{
+"actor": "network-admin",
+"target": "auditor",
+"new_role": "helpdesk",
+"allowed": false
+},
+{
+"actor": "network-admin",
+"target": "auditor",
+"new_role": "ai-admin",
+"allowed": false
+},
+{
+"actor": "network-admin",
+"target": "auditor",
+"new_role": "ai-view",
+"allowed": false
+},
+{
+"actor": "network-admin",
+"target": "auditor",
+"new_role": "member",
+"allowed": false
+},
+{
+"actor": "network-admin",
+"target": "auditor",
+"new_role": "",
+"allowed": false
+},
+{
+"actor": "network-admin",
+"target": "helpdesk",
+"new_role": "owner",
+"allowed": false
+},
+{
+"actor": "network-admin",
+"target": "helpdesk",
+"new_role": "admin",
+"allowed": false
+},
+{
+"actor": "network-admin",
+"target": "helpdesk",
+"new_role": "network-admin",
+"allowed": false
+},
+{
+"actor": "network-admin",
+"target": "helpdesk",
+"new_role": "agents-admin",
+"allowed": false
+},
+{
+"actor": "network-admin",
+"target": "helpdesk",
+"new_role": "auditor",
+"allowed": false
+},
+{
+"actor": "network-admin",
+"target": "helpdesk",
+"new_role": "helpdesk",
+"allowed": false
+},
+{
+"actor": "network-admin",
+"target": "helpdesk",
+"new_role": "ai-admin",
+"allowed": false
+},
+{
+"actor": "network-admin",
+"target": "helpdesk",
+"new_role": "ai-view",
+"allowed": false
+},
+{
+"actor": "network-admin",
+"target": "helpdesk",
+"new_role": "member",
+"allowed": false
+},
+{
+"actor": "network-admin",
+"target": "helpdesk",
+"new_role": "",
+"allowed": false
+},
+{
+"actor": "network-admin",
+"target": "ai-admin",
+"new_role": "owner",
+"allowed": false
+},
+{
+"actor": "network-admin",
+"target": "ai-admin",
+"new_role": "admin",
+"allowed": false
+},
+{
+"actor": "network-admin",
+"target": "ai-admin",
+"new_role": "network-admin",
+"allowed": false
+},
+{
+"actor": "network-admin",
+"target": "ai-admin",
+"new_role": "agents-admin",
+"allowed": false
+},
+{
+"actor": "network-admin",
+"target": "ai-admin",
+"new_role": "auditor",
+"allowed": false
+},
+{
+"actor": "network-admin",
+"target": "ai-admin",
+"new_role": "helpdesk",
+"allowed": false
+},
+{
+"actor": "network-admin",
+"target": "ai-admin",
+"new_role": "ai-admin",
+"allowed": false
+},
+{
+"actor": "network-admin",
+"target": "ai-admin",
+"new_role": "ai-view",
+"allowed": false
+},
+{
+"actor": "network-admin",
+"target": "ai-admin",
+"new_role": "member",
+"allowed": false
+},
+{
+"actor": "network-admin",
+"target": "ai-admin",
+"new_role": "",
+"allowed": false
+},
+{
+"actor": "network-admin",
+"target": "ai-view",
+"new_role": "owner",
+"allowed": false
+},
+{
+"actor": "network-admin",
+"target": "ai-view",
+"new_role": "admin",
+"allowed": false
+},
+{
+"actor": "network-admin",
+"target": "ai-view",
+"new_role": "network-admin",
+"allowed": false
+},
+{
+"actor": "network-admin",
+"target": "ai-view",
+"new_role": "agents-admin",
+"allowed": false
+},
+{
+"actor": "network-admin",
+"target": "ai-view",
+"new_role": "auditor",
+"allowed": false
+},
+{
+"actor": "network-admin",
+"target": "ai-view",
+"new_role": "helpdesk",
+"allowed": false
+},
+{
+"actor": "network-admin",
+"target": "ai-view",
+"new_role": "ai-admin",
+"allowed": false
+},
+{
+"actor": "network-admin",
+"target": "ai-view",
+"new_role": "ai-view",
+"allowed": false
+},
+{
+"actor": "network-admin",
+"target": "ai-view",
+"new_role": "member",
+"allowed": false
+},
+{
+"actor": "network-admin",
+"target": "ai-view",
+"new_role": "",
+"allowed": false
+},
+{
+"actor": "network-admin",
+"target": "member",
+"new_role": "owner",
+"allowed": false
+},
+{
+"actor": "network-admin",
+"target": "member",
+"new_role": "admin",
+"allowed": false
+},
+{
+"actor": "network-admin",
+"target": "member",
+"new_role": "network-admin",
+"allowed": false
+},
+{
+"actor": "network-admin",
+"target": "member",
+"new_role": "agents-admin",
+"allowed": false
+},
+{
+"actor": "network-admin",
+"target": "member",
+"new_role": "auditor",
+"allowed": false
+},
+{
+"actor": "network-admin",
+"target": "member",
+"new_role": "helpdesk",
+"allowed": false
+},
+{
+"actor": "network-admin",
+"target": "member",
+"new_role": "ai-admin",
+"allowed": false
+},
+{
+"actor": "network-admin",
+"target": "member",
+"new_role": "ai-view",
+"allowed": false
+},
+{
+"actor": "network-admin",
+"target": "member",
+"new_role": "member",
+"allowed": false
+},
+{
+"actor": "network-admin",
+"target": "member",
+"new_role": "",
+"allowed": false
+},
+{
+"actor": "agents-admin",
+"target": "owner",
+"new_role": "owner",
+"allowed": false
+},
+{
+"actor": "agents-admin",
+"target": "owner",
+"new_role": "admin",
+"allowed": false
+},
+{
+"actor": "agents-admin",
+"target": "owner",
+"new_role": "network-admin",
+"allowed": false
+},
+{
+"actor": "agents-admin",
+"target": "owner",
+"new_role": "agents-admin",
+"allowed": false
+},
+{
+"actor": "agents-admin",
+"target": "owner",
+"new_role": "auditor",
+"allowed": false
+},
+{
+"actor": "agents-admin",
+"target": "owner",
+"new_role": "helpdesk",
+"allowed": false
+},
+{
+"actor": "agents-admin",
+"target": "owner",
+"new_role": "ai-admin",
+"allowed": false
+},
+{
+"actor": "agents-admin",
+"target": "owner",
+"new_role": "ai-view",
+"allowed": false
+},
+{
+"actor": "agents-admin",
+"target": "owner",
+"new_role": "member",
+"allowed": false
+},
+{
+"actor": "agents-admin",
+"target": "owner",
+"new_role": "",
+"allowed": false
+},
+{
+"actor": "agents-admin",
+"target": "admin",
+"new_role": "owner",
+"allowed": false
+},
+{
+"actor": "agents-admin",
+"target": "admin",
+"new_role": "admin",
+"allowed": false
+},
+{
+"actor": "agents-admin",
+"target": "admin",
+"new_role": "network-admin",
+"allowed": false
+},
+{
+"actor": "agents-admin",
+"target": "admin",
+"new_role": "agents-admin",
+"allowed": false
+},
+{
+"actor": "agents-admin",
+"target": "admin",
+"new_role": "auditor",
+"allowed": false
+},
+{
+"actor": "agents-admin",
+"target": "admin",
+"new_role": "helpdesk",
+"allowed": false
+},
+{
+"actor": "agents-admin",
+"target": "admin",
+"new_role": "ai-admin",
+"allowed": false
+},
+{
+"actor": "agents-admin",
+"target": "admin",
+"new_role": "ai-view",
+"allowed": false
+},
+{
+"actor": "agents-admin",
+"target": "admin",
+"new_role": "member",
+"allowed": false
+},
+{
+"actor": "agents-admin",
+"target": "admin",
+"new_role": "",
+"allowed": false
+},
+{
+"actor": "agents-admin",
+"target": "network-admin",
+"new_role": "owner",
+"allowed": false
+},
+{
+"actor": "agents-admin",
+"target": "network-admin",
+"new_role": "admin",
+"allowed": false
+},
+{
+"actor": "agents-admin",
+"target": "network-admin",
+"new_role": "network-admin",
+"allowed": false
+},
+{
+"actor": "agents-admin",
+"target": "network-admin",
+"new_role": "agents-admin",
+"allowed": false
+},
+{
+"actor": "agents-admin",
+"target": "network-admin",
+"new_role": "auditor",
+"allowed": false
+},
+{
+"actor": "agents-admin",
+"target": "network-admin",
+"new_role": "helpdesk",
+"allowed": false
+},
+{
+"actor": "agents-admin",
+"target": "network-admin",
+"new_role": "ai-admin",
+"allowed": false
+},
+{
+"actor": "agents-admin",
+"target": "network-admin",
+"new_role": "ai-view",
+"allowed": false
+},
+{
+"actor": "agents-admin",
+"target": "network-admin",
+"new_role": "member",
+"allowed": false
+},
+{
+"actor": "agents-admin",
+"target": "network-admin",
+"new_role": "",
+"allowed": false
+},
+{
+"actor": "agents-admin",
+"target": "agents-admin",
+"new_role": "owner",
+"allowed": false
+},
+{
+"actor": "agents-admin",
+"target": "agents-admin",
+"new_role": "admin",
+"allowed": false
+},
+{
+"actor": "agents-admin",
+"target": "agents-admin",
+"new_role": "network-admin",
+"allowed": false
+},
+{
+"actor": "agents-admin",
+"target": "agents-admin",
+"new_role": "agents-admin",
+"allowed": false
+},
+{
+"actor": "agents-admin",
+"target": "agents-admin",
+"new_role": "auditor",
+"allowed": false
+},
+{
+"actor": "agents-admin",
+"target": "agents-admin",
+"new_role": "helpdesk",
+"allowed": false
+},
+{
+"actor": "agents-admin",
+"target": "agents-admin",
+"new_role": "ai-admin",
+"allowed": false
+},
+{
+"actor": "agents-admin",
+"target": "agents-admin",
+"new_role": "ai-view",
+"allowed": false
+},
+{
+"actor": "agents-admin",
+"target": "agents-admin",
+"new_role": "member",
+"allowed": false
+},
+{
+"actor": "agents-admin",
+"target": "agents-admin",
+"new_role": "",
+"allowed": false
+},
+{
+"actor": "agents-admin",
+"target": "auditor",
+"new_role": "owner",
+"allowed": false
+},
+{
+"actor": "agents-admin",
+"target": "auditor",
+"new_role": "admin",
+"allowed": false
+},
+{
+"actor": "agents-admin",
+"target": "auditor",
+"new_role": "network-admin",
+"allowed": false
+},
+{
+"actor": "agents-admin",
+"target": "auditor",
+"new_role": "agents-admin",
+"allowed": false
+},
+{
+"actor": "agents-admin",
+"target": "auditor",
+"new_role": "auditor",
+"allowed": false
+},
+{
+"actor": "agents-admin",
+"target": "auditor",
+"new_role": "helpdesk",
+"allowed": false
+},
+{
+"actor": "agents-admin",
+"target": "auditor",
+"new_role": "ai-admin",
+"allowed": false
+},
+{
+"actor": "agents-admin",
+"target": "auditor",
+"new_role": "ai-view",
+"allowed": false
+},
+{
+"actor": "agents-admin",
+"target": "auditor",
+"new_role": "member",
+"allowed": false
+},
+{
+"actor": "agents-admin",
+"target": "auditor",
+"new_role": "",
+"allowed": false
+},
+{
+"actor": "agents-admin",
+"target": "helpdesk",
+"new_role": "owner",
+"allowed": false
+},
+{
+"actor": "agents-admin",
+"target": "helpdesk",
+"new_role": "admin",
+"allowed": false
+},
+{
+"actor": "agents-admin",
+"target": "helpdesk",
+"new_role": "network-admin",
+"allowed": false
+},
+{
+"actor": "agents-admin",
+"target": "helpdesk",
+"new_role": "agents-admin",
+"allowed": false
+},
+{
+"actor": "agents-admin",
+"target": "helpdesk",
+"new_role": "auditor",
+"allowed": false
+},
+{
+"actor": "agents-admin",
+"target": "helpdesk",
+"new_role": "helpdesk",
+"allowed": false
+},
+{
+"actor": "agents-admin",
+"target": "helpdesk",
+"new_role": "ai-admin",
+"allowed": false
+},
+{
+"actor": "agents-admin",
+"target": "helpdesk",
+"new_role": "ai-view",
+"allowed": false
+},
+{
+"actor": "agents-admin",
+"target": "helpdesk",
+"new_role": "member",
+"allowed": false
+},
+{
+"actor": "agents-admin",
+"target": "helpdesk",
+"new_role": "",
+"allowed": false
+},
+{
+"actor": "agents-admin",
+"target": "ai-admin",
+"new_role": "owner",
+"allowed": false
+},
+{
+"actor": "agents-admin",
+"target": "ai-admin",
+"new_role": "admin",
+"allowed": false
+},
+{
+"actor": "agents-admin",
+"target": "ai-admin",
+"new_role": "network-admin",
+"allowed": false
+},
+{
+"actor": "agents-admin",
+"target": "ai-admin",
+"new_role": "agents-admin",
+"allowed": false
+},
+{
+"actor": "agents-admin",
+"target": "ai-admin",
+"new_role": "auditor",
+"allowed": false
+},
+{
+"actor": "agents-admin",
+"target": "ai-admin",
+"new_role": "helpdesk",
+"allowed": false
+},
+{
+"actor": "agents-admin",
+"target": "ai-admin",
+"new_role": "ai-admin",
+"allowed": false
+},
+{
+"actor": "agents-admin",
+"target": "ai-admin",
+"new_role": "ai-view",
+"allowed": false
+},
+{
+"actor": "agents-admin",
+"target": "ai-admin",
+"new_role": "member",
+"allowed": false
+},
+{
+"actor": "agents-admin",
+"target": "ai-admin",
+"new_role": "",
+"allowed": false
+},
+{
+"actor": "agents-admin",
+"target": "ai-view",
+"new_role": "owner",
+"allowed": false
+},
+{
+"actor": "agents-admin",
+"target": "ai-view",
+"new_role": "admin",
+"allowed": false
+},
+{
+"actor": "agents-admin",
+"target": "ai-view",
+"new_role": "network-admin",
+"allowed": false
+},
+{
+"actor": "agents-admin",
+"target": "ai-view",
+"new_role": "agents-admin",
+"allowed": false
+},
+{
+"actor": "agents-admin",
+"target": "ai-view",
+"new_role": "auditor",
+"allowed": false
+},
+{
+"actor": "agents-admin",
+"target": "ai-view",
+"new_role": "helpdesk",
+"allowed": false
+},
+{
+"actor": "agents-admin",
+"target": "ai-view",
+"new_role": "ai-admin",
+"allowed": false
+},
+{
+"actor": "agents-admin",
+"target": "ai-view",
+"new_role": "ai-view",
+"allowed": false
+},
+{
+"actor": "agents-admin",
+"target": "ai-view",
+"new_role": "member",
+"allowed": false
+},
+{
+"actor": "agents-admin",
+"target": "ai-view",
+"new_role": "",
+"allowed": false
+},
+{
+"actor": "agents-admin",
+"target": "member",
+"new_role": "owner",
+"allowed": false
+},
+{
+"actor": "agents-admin",
+"target": "member",
+"new_role": "admin",
+"allowed": false
+},
+{
+"actor": "agents-admin",
+"target": "member",
+"new_role": "network-admin",
+"allowed": false
+},
+{
+"actor": "agents-admin",
+"target": "member",
+"new_role": "agents-admin",
+"allowed": false
+},
+{
+"actor": "agents-admin",
+"target": "member",
+"new_role": "auditor",
+"allowed": false
+},
+{
+"actor": "agents-admin",
+"target": "member",
+"new_role": "helpdesk",
+"allowed": false
+},
+{
+"actor": "agents-admin",
+"target": "member",
+"new_role": "ai-admin",
+"allowed": false
+},
+{
+"actor": "agents-admin",
+"target": "member",
+"new_role": "ai-view",
+"allowed": false
+},
+{
+"actor": "agents-admin",
+"target": "member",
+"new_role": "member",
+"allowed": false
+},
+{
+"actor": "agents-admin",
+"target": "member",
+"new_role": "",
+"allowed": false
+},
+{
+"actor": "auditor",
+"target": "owner",
+"new_role": "owner",
+"allowed": false
+},
+{
+"actor": "auditor",
+"target": "owner",
+"new_role": "admin",
+"allowed": false
+},
+{
+"actor": "auditor",
+"target": "owner",
+"new_role": "network-admin",
+"allowed": false
+},
+{
+"actor": "auditor",
+"target": "owner",
+"new_role": "agents-admin",
+"allowed": false
+},
+{
+"actor": "auditor",
+"target": "owner",
+"new_role": "auditor",
+"allowed": false
+},
+{
+"actor": "auditor",
+"target": "owner",
+"new_role": "helpdesk",
+"allowed": false
+},
+{
+"actor": "auditor",
+"target": "owner",
+"new_role": "ai-admin",
+"allowed": false
+},
+{
+"actor": "auditor",
+"target": "owner",
+"new_role": "ai-view",
+"allowed": false
+},
+{
+"actor": "auditor",
+"target": "owner",
+"new_role": "member",
+"allowed": false
+},
+{
+"actor": "auditor",
+"target": "owner",
+"new_role": "",
+"allowed": false
+},
+{
+"actor": "auditor",
+"target": "admin",
+"new_role": "owner",
+"allowed": false
+},
+{
+"actor": "auditor",
+"target": "admin",
+"new_role": "admin",
+"allowed": false
+},
+{
+"actor": "auditor",
+"target": "admin",
+"new_role": "network-admin",
+"allowed": false
+},
+{
+"actor": "auditor",
+"target": "admin",
+"new_role": "agents-admin",
+"allowed": false
+},
+{
+"actor": "auditor",
+"target": "admin",
+"new_role": "auditor",
+"allowed": false
+},
+{
+"actor": "auditor",
+"target": "admin",
+"new_role": "helpdesk",
+"allowed": false
+},
+{
+"actor": "auditor",
+"target": "admin",
+"new_role": "ai-admin",
+"allowed": false
+},
+{
+"actor": "auditor",
+"target": "admin",
+"new_role": "ai-view",
+"allowed": false
+},
+{
+"actor": "auditor",
+"target": "admin",
+"new_role": "member",
+"allowed": false
+},
+{
+"actor": "auditor",
+"target": "admin",
+"new_role": "",
+"allowed": false
+},
+{
+"actor": "auditor",
+"target": "network-admin",
+"new_role": "owner",
+"allowed": false
+},
+{
+"actor": "auditor",
+"target": "network-admin",
+"new_role": "admin",
+"allowed": false
+},
+{
+"actor": "auditor",
+"target": "network-admin",
+"new_role": "network-admin",
+"allowed": false
+},
+{
+"actor": "auditor",
+"target": "network-admin",
+"new_role": "agents-admin",
+"allowed": false
+},
+{
+"actor": "auditor",
+"target": "network-admin",
+"new_role": "auditor",
+"allowed": false
+},
+{
+"actor": "auditor",
+"target": "network-admin",
+"new_role": "helpdesk",
+"allowed": false
+},
+{
+"actor": "auditor",
+"target": "network-admin",
+"new_role": "ai-admin",
+"allowed": false
+},
+{
+"actor": "auditor",
+"target": "network-admin",
+"new_role": "ai-view",
+"allowed": false
+},
+{
+"actor": "auditor",
+"target": "network-admin",
+"new_role": "member",
+"allowed": false
+},
+{
+"actor": "auditor",
+"target": "network-admin",
+"new_role": "",
+"allowed": false
+},
+{
+"actor": "auditor",
+"target": "agents-admin",
+"new_role": "owner",
+"allowed": false
+},
+{
+"actor": "auditor",
+"target": "agents-admin",
+"new_role": "admin",
+"allowed": false
+},
+{
+"actor": "auditor",
+"target": "agents-admin",
+"new_role": "network-admin",
+"allowed": false
+},
+{
+"actor": "auditor",
+"target": "agents-admin",
+"new_role": "agents-admin",
+"allowed": false
+},
+{
+"actor": "auditor",
+"target": "agents-admin",
+"new_role": "auditor",
+"allowed": false
+},
+{
+"actor": "auditor",
+"target": "agents-admin",
+"new_role": "helpdesk",
+"allowed": false
+},
+{
+"actor": "auditor",
+"target": "agents-admin",
+"new_role": "ai-admin",
+"allowed": false
+},
+{
+"actor": "auditor",
+"target": "agents-admin",
+"new_role": "ai-view",
+"allowed": false
+},
+{
+"actor": "auditor",
+"target": "agents-admin",
+"new_role": "member",
+"allowed": false
+},
+{
+"actor": "auditor",
+"target": "agents-admin",
+"new_role": "",
+"allowed": false
+},
+{
+"actor": "auditor",
+"target": "auditor",
+"new_role": "owner",
+"allowed": false
+},
+{
+"actor": "auditor",
+"target": "auditor",
+"new_role": "admin",
+"allowed": false
+},
+{
+"actor": "auditor",
+"target": "auditor",
+"new_role": "network-admin",
+"allowed": false
+},
+{
+"actor": "auditor",
+"target": "auditor",
+"new_role": "agents-admin",
+"allowed": false
+},
+{
+"actor": "auditor",
+"target": "auditor",
+"new_role": "auditor",
+"allowed": false
+},
+{
+"actor": "auditor",
+"target": "auditor",
+"new_role": "helpdesk",
+"allowed": false
+},
+{
+"actor": "auditor",
+"target": "auditor",
+"new_role": "ai-admin",
+"allowed": false
+},
+{
+"actor": "auditor",
+"target": "auditor",
+"new_role": "ai-view",
+"allowed": false
+},
+{
+"actor": "auditor",
+"target": "auditor",
+"new_role": "member",
+"allowed": false
+},
+{
+"actor": "auditor",
+"target": "auditor",
+"new_role": "",
+"allowed": false
+},
+{
+"actor": "auditor",
+"target": "helpdesk",
+"new_role": "owner",
+"allowed": false
+},
+{
+"actor": "auditor",
+"target": "helpdesk",
+"new_role": "admin",
+"allowed": false
+},
+{
+"actor": "auditor",
+"target": "helpdesk",
+"new_role": "network-admin",
+"allowed": false
+},
+{
+"actor": "auditor",
+"target": "helpdesk",
+"new_role": "agents-admin",
+"allowed": false
+},
+{
+"actor": "auditor",
+"target": "helpdesk",
+"new_role": "auditor",
+"allowed": false
+},
+{
+"actor": "auditor",
+"target": "helpdesk",
+"new_role": "helpdesk",
+"allowed": false
+},
+{
+"actor": "auditor",
+"target": "helpdesk",
+"new_role": "ai-admin",
+"allowed": false
+},
+{
+"actor": "auditor",
+"target": "helpdesk",
+"new_role": "ai-view",
+"allowed": false
+},
+{
+"actor": "auditor",
+"target": "helpdesk",
+"new_role": "member",
+"allowed": false
+},
+{
+"actor": "auditor",
+"target": "helpdesk",
+"new_role": "",
+"allowed": false
+},
+{
+"actor": "auditor",
+"target": "ai-admin",
+"new_role": "owner",
+"allowed": false
+},
+{
+"actor": "auditor",
+"target": "ai-admin",
+"new_role": "admin",
+"allowed": false
+},
+{
+"actor": "auditor",
+"target": "ai-admin",
+"new_role": "network-admin",
+"allowed": false
+},
+{
+"actor": "auditor",
+"target": "ai-admin",
+"new_role": "agents-admin",
+"allowed": false
+},
+{
+"actor": "auditor",
+"target": "ai-admin",
+"new_role": "auditor",
+"allowed": false
+},
+{
+"actor": "auditor",
+"target": "ai-admin",
+"new_role": "helpdesk",
+"allowed": false
+},
+{
+"actor": "auditor",
+"target": "ai-admin",
+"new_role": "ai-admin",
+"allowed": false
+},
+{
+"actor": "auditor",
+"target": "ai-admin",
+"new_role": "ai-view",
+"allowed": false
+},
+{
+"actor": "auditor",
+"target": "ai-admin",
+"new_role": "member",
+"allowed": false
+},
+{
+"actor": "auditor",
+"target": "ai-admin",
+"new_role": "",
+"allowed": false
+},
+{
+"actor": "auditor",
+"target": "ai-view",
+"new_role": "owner",
+"allowed": false
+},
+{
+"actor": "auditor",
+"target": "ai-view",
+"new_role": "admin",
+"allowed": false
+},
+{
+"actor": "auditor",
+"target": "ai-view",
+"new_role": "network-admin",
+"allowed": false
+},
+{
+"actor": "auditor",
+"target": "ai-view",
+"new_role": "agents-admin",
+"allowed": false
+},
+{
+"actor": "auditor",
+"target": "ai-view",
+"new_role": "auditor",
+"allowed": false
+},
+{
+"actor": "auditor",
+"target": "ai-view",
+"new_role": "helpdesk",
+"allowed": false
+},
+{
+"actor": "auditor",
+"target": "ai-view",
+"new_role": "ai-admin",
+"allowed": false
+},
+{
+"actor": "auditor",
+"target": "ai-view",
+"new_role": "ai-view",
+"allowed": false
+},
+{
+"actor": "auditor",
+"target": "ai-view",
+"new_role": "member",
+"allowed": false
+},
+{
+"actor": "auditor",
+"target": "ai-view",
+"new_role": "",
+"allowed": false
+},
+{
+"actor": "auditor",
+"target": "member",
+"new_role": "owner",
+"allowed": false
+},
+{
+"actor": "auditor",
+"target": "member",
+"new_role": "admin",
+"allowed": false
+},
+{
+"actor": "auditor",
+"target": "member",
+"new_role": "network-admin",
+"allowed": false
+},
+{
+"actor": "auditor",
+"target": "member",
+"new_role": "agents-admin",
+"allowed": false
+},
+{
+"actor": "auditor",
+"target": "member",
+"new_role": "auditor",
+"allowed": false
+},
+{
+"actor": "auditor",
+"target": "member",
+"new_role": "helpdesk",
+"allowed": false
+},
+{
+"actor": "auditor",
+"target": "member",
+"new_role": "ai-admin",
+"allowed": false
+},
+{
+"actor": "auditor",
+"target": "member",
+"new_role": "ai-view",
+"allowed": false
+},
+{
+"actor": "auditor",
+"target": "member",
+"new_role": "member",
+"allowed": false
+},
+{
+"actor": "auditor",
+"target": "member",
+"new_role": "",
+"allowed": false
+},
+{
+"actor": "helpdesk",
+"target": "owner",
+"new_role": "owner",
+"allowed": false
+},
+{
+"actor": "helpdesk",
+"target": "owner",
+"new_role": "admin",
+"allowed": false
+},
+{
+"actor": "helpdesk",
+"target": "owner",
+"new_role": "network-admin",
+"allowed": false
+},
+{
+"actor": "helpdesk",
+"target": "owner",
+"new_role": "agents-admin",
+"allowed": false
+},
+{
+"actor": "helpdesk",
+"target": "owner",
+"new_role": "auditor",
+"allowed": false
+},
+{
+"actor": "helpdesk",
+"target": "owner",
+"new_role": "helpdesk",
+"allowed": false
+},
+{
+"actor": "helpdesk",
+"target": "owner",
+"new_role": "ai-admin",
+"allowed": false
+},
+{
+"actor": "helpdesk",
+"target": "owner",
+"new_role": "ai-view",
+"allowed": false
+},
+{
+"actor": "helpdesk",
+"target": "owner",
+"new_role": "member",
+"allowed": false
+},
+{
+"actor": "helpdesk",
+"target": "owner",
+"new_role": "",
+"allowed": false
+},
+{
+"actor": "helpdesk",
+"target": "admin",
+"new_role": "owner",
+"allowed": false
+},
+{
+"actor": "helpdesk",
+"target": "admin",
+"new_role": "admin",
+"allowed": false
+},
+{
+"actor": "helpdesk",
+"target": "admin",
+"new_role": "network-admin",
+"allowed": false
+},
+{
+"actor": "helpdesk",
+"target": "admin",
+"new_role": "agents-admin",
+"allowed": false
+},
+{
+"actor": "helpdesk",
+"target": "admin",
+"new_role": "auditor",
+"allowed": false
+},
+{
+"actor": "helpdesk",
+"target": "admin",
+"new_role": "helpdesk",
+"allowed": false
+},
+{
+"actor": "helpdesk",
+"target": "admin",
+"new_role": "ai-admin",
+"allowed": false
+},
+{
+"actor": "helpdesk",
+"target": "admin",
+"new_role": "ai-view",
+"allowed": false
+},
+{
+"actor": "helpdesk",
+"target": "admin",
+"new_role": "member",
+"allowed": false
+},
+{
+"actor": "helpdesk",
+"target": "admin",
+"new_role": "",
+"allowed": false
+},
+{
+"actor": "helpdesk",
+"target": "network-admin",
+"new_role": "owner",
+"allowed": false
+},
+{
+"actor": "helpdesk",
+"target": "network-admin",
+"new_role": "admin",
+"allowed": false
+},
+{
+"actor": "helpdesk",
+"target": "network-admin",
+"new_role": "network-admin",
+"allowed": false
+},
+{
+"actor": "helpdesk",
+"target": "network-admin",
+"new_role": "agents-admin",
+"allowed": false
+},
+{
+"actor": "helpdesk",
+"target": "network-admin",
+"new_role": "auditor",
+"allowed": false
+},
+{
+"actor": "helpdesk",
+"target": "network-admin",
+"new_role": "helpdesk",
+"allowed": false
+},
+{
+"actor": "helpdesk",
+"target": "network-admin",
+"new_role": "ai-admin",
+"allowed": false
+},
+{
+"actor": "helpdesk",
+"target": "network-admin",
+"new_role": "ai-view",
+"allowed": false
+},
+{
+"actor": "helpdesk",
+"target": "network-admin",
+"new_role": "member",
+"allowed": false
+},
+{
+"actor": "helpdesk",
+"target": "network-admin",
+"new_role": "",
+"allowed": false
+},
+{
+"actor": "helpdesk",
+"target": "agents-admin",
+"new_role": "owner",
+"allowed": false
+},
+{
+"actor": "helpdesk",
+"target": "agents-admin",
+"new_role": "admin",
+"allowed": false
+},
+{
+"actor": "helpdesk",
+"target": "agents-admin",
+"new_role": "network-admin",
+"allowed": false
+},
+{
+"actor": "helpdesk",
+"target": "agents-admin",
+"new_role": "agents-admin",
+"allowed": false
+},
+{
+"actor": "helpdesk",
+"target": "agents-admin",
+"new_role": "auditor",
+"allowed": false
+},
+{
+"actor": "helpdesk",
+"target": "agents-admin",
+"new_role": "helpdesk",
+"allowed": false
+},
+{
+"actor": "helpdesk",
+"target": "agents-admin",
+"new_role": "ai-admin",
+"allowed": false
+},
+{
+"actor": "helpdesk",
+"target": "agents-admin",
+"new_role": "ai-view",
+"allowed": false
+},
+{
+"actor": "helpdesk",
+"target": "agents-admin",
+"new_role": "member",
+"allowed": false
+},
+{
+"actor": "helpdesk",
+"target": "agents-admin",
+"new_role": "",
+"allowed": false
+},
+{
+"actor": "helpdesk",
+"target": "auditor",
+"new_role": "owner",
+"allowed": false
+},
+{
+"actor": "helpdesk",
+"target": "auditor",
+"new_role": "admin",
+"allowed": false
+},
+{
+"actor": "helpdesk",
+"target": "auditor",
+"new_role": "network-admin",
+"allowed": false
+},
+{
+"actor": "helpdesk",
+"target": "auditor",
+"new_role": "agents-admin",
+"allowed": false
+},
+{
+"actor": "helpdesk",
+"target": "auditor",
+"new_role": "auditor",
+"allowed": false
+},
+{
+"actor": "helpdesk",
+"target": "auditor",
+"new_role": "helpdesk",
+"allowed": false
+},
+{
+"actor": "helpdesk",
+"target": "auditor",
+"new_role": "ai-admin",
+"allowed": false
+},
+{
+"actor": "helpdesk",
+"target": "auditor",
+"new_role": "ai-view",
+"allowed": false
+},
+{
+"actor": "helpdesk",
+"target": "auditor",
+"new_role": "member",
+"allowed": false
+},
+{
+"actor": "helpdesk",
+"target": "auditor",
+"new_role": "",
+"allowed": false
+},
+{
+"actor": "helpdesk",
+"target": "helpdesk",
+"new_role": "owner",
+"allowed": false
+},
+{
+"actor": "helpdesk",
+"target": "helpdesk",
+"new_role": "admin",
+"allowed": false
+},
+{
+"actor": "helpdesk",
+"target": "helpdesk",
+"new_role": "network-admin",
+"allowed": false
+},
+{
+"actor": "helpdesk",
+"target": "helpdesk",
+"new_role": "agents-admin",
+"allowed": false
+},
+{
+"actor": "helpdesk",
+"target": "helpdesk",
+"new_role": "auditor",
+"allowed": false
+},
+{
+"actor": "helpdesk",
+"target": "helpdesk",
+"new_role": "helpdesk",
+"allowed": false
+},
+{
+"actor": "helpdesk",
+"target": "helpdesk",
+"new_role": "ai-admin",
+"allowed": false
+},
+{
+"actor": "helpdesk",
+"target": "helpdesk",
+"new_role": "ai-view",
+"allowed": false
+},
+{
+"actor": "helpdesk",
+"target": "helpdesk",
+"new_role": "member",
+"allowed": false
+},
+{
+"actor": "helpdesk",
+"target": "helpdesk",
+"new_role": "",
+"allowed": false
+},
+{
+"actor": "helpdesk",
+"target": "ai-admin",
+"new_role": "owner",
+"allowed": false
+},
+{
+"actor": "helpdesk",
+"target": "ai-admin",
+"new_role": "admin",
+"allowed": false
+},
+{
+"actor": "helpdesk",
+"target": "ai-admin",
+"new_role": "network-admin",
+"allowed": false
+},
+{
+"actor": "helpdesk",
+"target": "ai-admin",
+"new_role": "agents-admin",
+"allowed": false
+},
+{
+"actor": "helpdesk",
+"target": "ai-admin",
+"new_role": "auditor",
+"allowed": false
+},
+{
+"actor": "helpdesk",
+"target": "ai-admin",
+"new_role": "helpdesk",
+"allowed": false
+},
+{
+"actor": "helpdesk",
+"target": "ai-admin",
+"new_role": "ai-admin",
+"allowed": false
+},
+{
+"actor": "helpdesk",
+"target": "ai-admin",
+"new_role": "ai-view",
+"allowed": false
+},
+{
+"actor": "helpdesk",
+"target": "ai-admin",
+"new_role": "member",
+"allowed": false
+},
+{
+"actor": "helpdesk",
+"target": "ai-admin",
+"new_role": "",
+"allowed": false
+},
+{
+"actor": "helpdesk",
+"target": "ai-view",
+"new_role": "owner",
+"allowed": false
+},
+{
+"actor": "helpdesk",
+"target": "ai-view",
+"new_role": "admin",
+"allowed": false
+},
+{
+"actor": "helpdesk",
+"target": "ai-view",
+"new_role": "network-admin",
+"allowed": false
+},
+{
+"actor": "helpdesk",
+"target": "ai-view",
+"new_role": "agents-admin",
+"allowed": false
+},
+{
+"actor": "helpdesk",
+"target": "ai-view",
+"new_role": "auditor",
+"allowed": false
+},
+{
+"actor": "helpdesk",
+"target": "ai-view",
+"new_role": "helpdesk",
+"allowed": false
+},
+{
+"actor": "helpdesk",
+"target": "ai-view",
+"new_role": "ai-admin",
+"allowed": false
+},
+{
+"actor": "helpdesk",
+"target": "ai-view",
+"new_role": "ai-view",
+"allowed": false
+},
+{
+"actor": "helpdesk",
+"target": "ai-view",
+"new_role": "member",
+"allowed": false
+},
+{
+"actor": "helpdesk",
+"target": "ai-view",
+"new_role": "",
+"allowed": false
+},
+{
+"actor": "helpdesk",
+"target": "member",
+"new_role": "owner",
+"allowed": false
+},
+{
+"actor": "helpdesk",
+"target": "member",
+"new_role": "admin",
+"allowed": false
+},
+{
+"actor": "helpdesk",
+"target": "member",
+"new_role": "network-admin",
+"allowed": false
+},
+{
+"actor": "helpdesk",
+"target": "member",
+"new_role": "agents-admin",
+"allowed": false
+},
+{
+"actor": "helpdesk",
+"target": "member",
+"new_role": "auditor",
+"allowed": false
+},
+{
+"actor": "helpdesk",
+"target": "member",
+"new_role": "helpdesk",
+"allowed": false
+},
+{
+"actor": "helpdesk",
+"target": "member",
+"new_role": "ai-admin",
+"allowed": false
+},
+{
+"actor": "helpdesk",
+"target": "member",
+"new_role": "ai-view",
+"allowed": false
+},
+{
+"actor": "helpdesk",
+"target": "member",
+"new_role": "member",
+"allowed": false
+},
+{
+"actor": "helpdesk",
+"target": "member",
+"new_role": "",
+"allowed": false
+},
+{
+"actor": "ai-admin",
+"target": "owner",
+"new_role": "owner",
+"allowed": false
+},
+{
+"actor": "ai-admin",
+"target": "owner",
+"new_role": "admin",
+"allowed": false
+},
+{
+"actor": "ai-admin",
+"target": "owner",
+"new_role": "network-admin",
+"allowed": false
+},
+{
+"actor": "ai-admin",
+"target": "owner",
+"new_role": "agents-admin",
+"allowed": false
+},
+{
+"actor": "ai-admin",
+"target": "owner",
+"new_role": "auditor",
+"allowed": false
+},
+{
+"actor": "ai-admin",
+"target": "owner",
+"new_role": "helpdesk",
+"allowed": false
+},
+{
+"actor": "ai-admin",
+"target": "owner",
+"new_role": "ai-admin",
+"allowed": false
+},
+{
+"actor": "ai-admin",
+"target": "owner",
+"new_role": "ai-view",
+"allowed": false
+},
+{
+"actor": "ai-admin",
+"target": "owner",
+"new_role": "member",
+"allowed": false
+},
+{
+"actor": "ai-admin",
+"target": "owner",
+"new_role": "",
+"allowed": false
+},
+{
+"actor": "ai-admin",
+"target": "admin",
+"new_role": "owner",
+"allowed": false
+},
+{
+"actor": "ai-admin",
+"target": "admin",
+"new_role": "admin",
+"allowed": false
+},
+{
+"actor": "ai-admin",
+"target": "admin",
+"new_role": "network-admin",
+"allowed": false
+},
+{
+"actor": "ai-admin",
+"target": "admin",
+"new_role": "agents-admin",
+"allowed": false
+},
+{
+"actor": "ai-admin",
+"target": "admin",
+"new_role": "auditor",
+"allowed": false
+},
+{
+"actor": "ai-admin",
+"target": "admin",
+"new_role": "helpdesk",
+"allowed": false
+},
+{
+"actor": "ai-admin",
+"target": "admin",
+"new_role": "ai-admin",
+"allowed": false
+},
+{
+"actor": "ai-admin",
+"target": "admin",
+"new_role": "ai-view",
+"allowed": false
+},
+{
+"actor": "ai-admin",
+"target": "admin",
+"new_role": "member",
+"allowed": false
+},
+{
+"actor": "ai-admin",
+"target": "admin",
+"new_role": "",
+"allowed": false
+},
+{
+"actor": "ai-admin",
+"target": "network-admin",
+"new_role": "owner",
+"allowed": false
+},
+{
+"actor": "ai-admin",
+"target": "network-admin",
+"new_role": "admin",
+"allowed": false
+},
+{
+"actor": "ai-admin",
+"target": "network-admin",
+"new_role": "network-admin",
+"allowed": false
+},
+{
+"actor": "ai-admin",
+"target": "network-admin",
+"new_role": "agents-admin",
+"allowed": false
+},
+{
+"actor": "ai-admin",
+"target": "network-admin",
+"new_role": "auditor",
+"allowed": false
+},
+{
+"actor": "ai-admin",
+"target": "network-admin",
+"new_role": "helpdesk",
+"allowed": false
+},
+{
+"actor": "ai-admin",
+"target": "network-admin",
+"new_role": "ai-admin",
+"allowed": false
+},
+{
+"actor": "ai-admin",
+"target": "network-admin",
+"new_role": "ai-view",
+"allowed": false
+},
+{
+"actor": "ai-admin",
+"target": "network-admin",
+"new_role": "member",
+"allowed": false
+},
+{
+"actor": "ai-admin",
+"target": "network-admin",
+"new_role": "",
+"allowed": false
+},
+{
+"actor": "ai-admin",
+"target": "agents-admin",
+"new_role": "owner",
+"allowed": false
+},
+{
+"actor": "ai-admin",
+"target": "agents-admin",
+"new_role": "admin",
+"allowed": false
+},
+{
+"actor": "ai-admin",
+"target": "agents-admin",
+"new_role": "network-admin",
+"allowed": false
+},
+{
+"actor": "ai-admin",
+"target": "agents-admin",
+"new_role": "agents-admin",
+"allowed": false
+},
+{
+"actor": "ai-admin",
+"target": "agents-admin",
+"new_role": "auditor",
+"allowed": false
+},
+{
+"actor": "ai-admin",
+"target": "agents-admin",
+"new_role": "helpdesk",
+"allowed": false
+},
+{
+"actor": "ai-admin",
+"target": "agents-admin",
+"new_role": "ai-admin",
+"allowed": false
+},
+{
+"actor": "ai-admin",
+"target": "agents-admin",
+"new_role": "ai-view",
+"allowed": false
+},
+{
+"actor": "ai-admin",
+"target": "agents-admin",
+"new_role": "member",
+"allowed": false
+},
+{
+"actor": "ai-admin",
+"target": "agents-admin",
+"new_role": "",
+"allowed": false
+},
+{
+"actor": "ai-admin",
+"target": "auditor",
+"new_role": "owner",
+"allowed": false
+},
+{
+"actor": "ai-admin",
+"target": "auditor",
+"new_role": "admin",
+"allowed": false
+},
+{
+"actor": "ai-admin",
+"target": "auditor",
+"new_role": "network-admin",
+"allowed": false
+},
+{
+"actor": "ai-admin",
+"target": "auditor",
+"new_role": "agents-admin",
+"allowed": false
+},
+{
+"actor": "ai-admin",
+"target": "auditor",
+"new_role": "auditor",
+"allowed": false
+},
+{
+"actor": "ai-admin",
+"target": "auditor",
+"new_role": "helpdesk",
+"allowed": false
+},
+{
+"actor": "ai-admin",
+"target": "auditor",
+"new_role": "ai-admin",
+"allowed": false
+},
+{
+"actor": "ai-admin",
+"target": "auditor",
+"new_role": "ai-view",
+"allowed": false
+},
+{
+"actor": "ai-admin",
+"target": "auditor",
+"new_role": "member",
+"allowed": false
+},
+{
+"actor": "ai-admin",
+"target": "auditor",
+"new_role": "",
+"allowed": false
+},
+{
+"actor": "ai-admin",
+"target": "helpdesk",
+"new_role": "owner",
+"allowed": false
+},
+{
+"actor": "ai-admin",
+"target": "helpdesk",
+"new_role": "admin",
+"allowed": false
+},
+{
+"actor": "ai-admin",
+"target": "helpdesk",
+"new_role": "network-admin",
+"allowed": false
+},
+{
+"actor": "ai-admin",
+"target": "helpdesk",
+"new_role": "agents-admin",
+"allowed": false
+},
+{
+"actor": "ai-admin",
+"target": "helpdesk",
+"new_role": "auditor",
+"allowed": false
+},
+{
+"actor": "ai-admin",
+"target": "helpdesk",
+"new_role": "helpdesk",
+"allowed": false
+},
+{
+"actor": "ai-admin",
+"target": "helpdesk",
+"new_role": "ai-admin",
+"allowed": false
+},
+{
+"actor": "ai-admin",
+"target": "helpdesk",
+"new_role": "ai-view",
+"allowed": false
+},
+{
+"actor": "ai-admin",
+"target": "helpdesk",
+"new_role": "member",
+"allowed": false
+},
+{
+"actor": "ai-admin",
+"target": "helpdesk",
+"new_role": "",
+"allowed": false
+},
+{
+"actor": "ai-admin",
+"target": "ai-admin",
+"new_role": "owner",
+"allowed": false
+},
+{
+"actor": "ai-admin",
+"target": "ai-admin",
+"new_role": "admin",
+"allowed": false
+},
+{
+"actor": "ai-admin",
+"target": "ai-admin",
+"new_role": "network-admin",
+"allowed": false
+},
+{
+"actor": "ai-admin",
+"target": "ai-admin",
+"new_role": "agents-admin",
+"allowed": false
+},
+{
+"actor": "ai-admin",
+"target": "ai-admin",
+"new_role": "auditor",
+"allowed": false
+},
+{
+"actor": "ai-admin",
+"target": "ai-admin",
+"new_role": "helpdesk",
+"allowed": false
+},
+{
+"actor": "ai-admin",
+"target": "ai-admin",
+"new_role": "ai-admin",
+"allowed": false
+},
+{
+"actor": "ai-admin",
+"target": "ai-admin",
+"new_role": "ai-view",
+"allowed": false
+},
+{
+"actor": "ai-admin",
+"target": "ai-admin",
+"new_role": "member",
+"allowed": false
+},
+{
+"actor": "ai-admin",
+"target": "ai-admin",
+"new_role": "",
+"allowed": false
+},
+{
+"actor": "ai-admin",
+"target": "ai-view",
+"new_role": "owner",
+"allowed": false
+},
+{
+"actor": "ai-admin",
+"target": "ai-view",
+"new_role": "admin",
+"allowed": false
+},
+{
+"actor": "ai-admin",
+"target": "ai-view",
+"new_role": "network-admin",
+"allowed": false
+},
+{
+"actor": "ai-admin",
+"target": "ai-view",
+"new_role": "agents-admin",
+"allowed": false
+},
+{
+"actor": "ai-admin",
+"target": "ai-view",
+"new_role": "auditor",
+"allowed": false
+},
+{
+"actor": "ai-admin",
+"target": "ai-view",
+"new_role": "helpdesk",
+"allowed": false
+},
+{
+"actor": "ai-admin",
+"target": "ai-view",
+"new_role": "ai-admin",
+"allowed": false
+},
+{
+"actor": "ai-admin",
+"target": "ai-view",
+"new_role": "ai-view",
+"allowed": false
+},
+{
+"actor": "ai-admin",
+"target": "ai-view",
+"new_role": "member",
+"allowed": false
+},
+{
+"actor": "ai-admin",
+"target": "ai-view",
+"new_role": "",
+"allowed": false
+},
+{
+"actor": "ai-admin",
+"target": "member",
+"new_role": "owner",
+"allowed": false
+},
+{
+"actor": "ai-admin",
+"target": "member",
+"new_role": "admin",
+"allowed": false
+},
+{
+"actor": "ai-admin",
+"target": "member",
+"new_role": "network-admin",
+"allowed": false
+},
+{
+"actor": "ai-admin",
+"target": "member",
+"new_role": "agents-admin",
+"allowed": false
+},
+{
+"actor": "ai-admin",
+"target": "member",
+"new_role": "auditor",
+"allowed": false
+},
+{
+"actor": "ai-admin",
+"target": "member",
+"new_role": "helpdesk",
+"allowed": false
+},
+{
+"actor": "ai-admin",
+"target": "member",
+"new_role": "ai-admin",
+"allowed": false
+},
+{
+"actor": "ai-admin",
+"target": "member",
+"new_role": "ai-view",
+"allowed": false
+},
+{
+"actor": "ai-admin",
+"target": "member",
+"new_role": "member",
+"allowed": false
+},
+{
+"actor": "ai-admin",
+"target": "member",
+"new_role": "",
+"allowed": false
+},
+{
+"actor": "ai-view",
+"target": "owner",
+"new_role": "owner",
+"allowed": false
+},
+{
+"actor": "ai-view",
+"target": "owner",
+"new_role": "admin",
+"allowed": false
+},
+{
+"actor": "ai-view",
+"target": "owner",
+"new_role": "network-admin",
+"allowed": false
+},
+{
+"actor": "ai-view",
+"target": "owner",
+"new_role": "agents-admin",
+"allowed": false
+},
+{
+"actor": "ai-view",
+"target": "owner",
+"new_role": "auditor",
+"allowed": false
+},
+{
+"actor": "ai-view",
+"target": "owner",
+"new_role": "helpdesk",
+"allowed": false
+},
+{
+"actor": "ai-view",
+"target": "owner",
+"new_role": "ai-admin",
+"allowed": false
+},
+{
+"actor": "ai-view",
+"target": "owner",
+"new_role": "ai-view",
+"allowed": false
+},
+{
+"actor": "ai-view",
+"target": "owner",
+"new_role": "member",
+"allowed": false
+},
+{
+"actor": "ai-view",
+"target": "owner",
+"new_role": "",
+"allowed": false
+},
+{
+"actor": "ai-view",
+"target": "admin",
+"new_role": "owner",
+"allowed": false
+},
+{
+"actor": "ai-view",
+"target": "admin",
+"new_role": "admin",
+"allowed": false
+},
+{
+"actor": "ai-view",
+"target": "admin",
+"new_role": "network-admin",
+"allowed": false
+},
+{
+"actor": "ai-view",
+"target": "admin",
+"new_role": "agents-admin",
+"allowed": false
+},
+{
+"actor": "ai-view",
+"target": "admin",
+"new_role": "auditor",
+"allowed": false
+},
+{
+"actor": "ai-view",
+"target": "admin",
+"new_role": "helpdesk",
+"allowed": false
+},
+{
+"actor": "ai-view",
+"target": "admin",
+"new_role": "ai-admin",
+"allowed": false
+},
+{
+"actor": "ai-view",
+"target": "admin",
+"new_role": "ai-view",
+"allowed": false
+},
+{
+"actor": "ai-view",
+"target": "admin",
+"new_role": "member",
+"allowed": false
+},
+{
+"actor": "ai-view",
+"target": "admin",
+"new_role": "",
+"allowed": false
+},
+{
+"actor": "ai-view",
+"target": "network-admin",
+"new_role": "owner",
+"allowed": false
+},
+{
+"actor": "ai-view",
+"target": "network-admin",
+"new_role": "admin",
+"allowed": false
+},
+{
+"actor": "ai-view",
+"target": "network-admin",
+"new_role": "network-admin",
+"allowed": false
+},
+{
+"actor": "ai-view",
+"target": "network-admin",
+"new_role": "agents-admin",
+"allowed": false
+},
+{
+"actor": "ai-view",
+"target": "network-admin",
+"new_role": "auditor",
+"allowed": false
+},
+{
+"actor": "ai-view",
+"target": "network-admin",
+"new_role": "helpdesk",
+"allowed": false
+},
+{
+"actor": "ai-view",
+"target": "network-admin",
+"new_role": "ai-admin",
+"allowed": false
+},
+{
+"actor": "ai-view",
+"target": "network-admin",
+"new_role": "ai-view",
+"allowed": false
+},
+{
+"actor": "ai-view",
+"target": "network-admin",
+"new_role": "member",
+"allowed": false
+},
+{
+"actor": "ai-view",
+"target": "network-admin",
+"new_role": "",
+"allowed": false
+},
+{
+"actor": "ai-view",
+"target": "agents-admin",
+"new_role": "owner",
+"allowed": false
+},
+{
+"actor": "ai-view",
+"target": "agents-admin",
+"new_role": "admin",
+"allowed": false
+},
+{
+"actor": "ai-view",
+"target": "agents-admin",
+"new_role": "network-admin",
+"allowed": false
+},
+{
+"actor": "ai-view",
+"target": "agents-admin",
+"new_role": "agents-admin",
+"allowed": false
+},
+{
+"actor": "ai-view",
+"target": "agents-admin",
+"new_role": "auditor",
+"allowed": false
+},
+{
+"actor": "ai-view",
+"target": "agents-admin",
+"new_role": "helpdesk",
+"allowed": false
+},
+{
+"actor": "ai-view",
+"target": "agents-admin",
+"new_role": "ai-admin",
+"allowed": false
+},
+{
+"actor": "ai-view",
+"target": "agents-admin",
+"new_role": "ai-view",
+"allowed": false
+},
+{
+"actor": "ai-view",
+"target": "agents-admin",
+"new_role": "member",
+"allowed": false
+},
+{
+"actor": "ai-view",
+"target": "agents-admin",
+"new_role": "",
+"allowed": false
+},
+{
+"actor": "ai-view",
+"target": "auditor",
+"new_role": "owner",
+"allowed": false
+},
+{
+"actor": "ai-view",
+"target": "auditor",
+"new_role": "admin",
+"allowed": false
+},
+{
+"actor": "ai-view",
+"target": "auditor",
+"new_role": "network-admin",
+"allowed": false
+},
+{
+"actor": "ai-view",
+"target": "auditor",
+"new_role": "agents-admin",
+"allowed": false
+},
+{
+"actor": "ai-view",
+"target": "auditor",
+"new_role": "auditor",
+"allowed": false
+},
+{
+"actor": "ai-view",
+"target": "auditor",
+"new_role": "helpdesk",
+"allowed": false
+},
+{
+"actor": "ai-view",
+"target": "auditor",
+"new_role": "ai-admin",
+"allowed": false
+},
+{
+"actor": "ai-view",
+"target": "auditor",
+"new_role": "ai-view",
+"allowed": false
+},
+{
+"actor": "ai-view",
+"target": "auditor",
+"new_role": "member",
+"allowed": false
+},
+{
+"actor": "ai-view",
+"target": "auditor",
+"new_role": "",
+"allowed": false
+},
+{
+"actor": "ai-view",
+"target": "helpdesk",
+"new_role": "owner",
+"allowed": false
+},
+{
+"actor": "ai-view",
+"target": "helpdesk",
+"new_role": "admin",
+"allowed": false
+},
+{
+"actor": "ai-view",
+"target": "helpdesk",
+"new_role": "network-admin",
+"allowed": false
+},
+{
+"actor": "ai-view",
+"target": "helpdesk",
+"new_role": "agents-admin",
+"allowed": false
+},
+{
+"actor": "ai-view",
+"target": "helpdesk",
+"new_role": "auditor",
+"allowed": false
+},
+{
+"actor": "ai-view",
+"target": "helpdesk",
+"new_role": "helpdesk",
+"allowed": false
+},
+{
+"actor": "ai-view",
+"target": "helpdesk",
+"new_role": "ai-admin",
+"allowed": false
+},
+{
+"actor": "ai-view",
+"target": "helpdesk",
+"new_role": "ai-view",
+"allowed": false
+},
+{
+"actor": "ai-view",
+"target": "helpdesk",
+"new_role": "member",
+"allowed": false
+},
+{
+"actor": "ai-view",
+"target": "helpdesk",
+"new_role": "",
+"allowed": false
+},
+{
+"actor": "ai-view",
+"target": "ai-admin",
+"new_role": "owner",
+"allowed": false
+},
+{
+"actor": "ai-view",
+"target": "ai-admin",
+"new_role": "admin",
+"allowed": false
+},
+{
+"actor": "ai-view",
+"target": "ai-admin",
+"new_role": "network-admin",
+"allowed": false
+},
+{
+"actor": "ai-view",
+"target": "ai-admin",
+"new_role": "agents-admin",
+"allowed": false
+},
+{
+"actor": "ai-view",
+"target": "ai-admin",
+"new_role": "auditor",
+"allowed": false
+},
+{
+"actor": "ai-view",
+"target": "ai-admin",
+"new_role": "helpdesk",
+"allowed": false
+},
+{
+"actor": "ai-view",
+"target": "ai-admin",
+"new_role": "ai-admin",
+"allowed": false
+},
+{
+"actor": "ai-view",
+"target": "ai-admin",
+"new_role": "ai-view",
+"allowed": false
+},
+{
+"actor": "ai-view",
+"target": "ai-admin",
+"new_role": "member",
+"allowed": false
+},
+{
+"actor": "ai-view",
+"target": "ai-admin",
+"new_role": "",
+"allowed": false
+},
+{
+"actor": "ai-view",
+"target": "ai-view",
+"new_role": "owner",
+"allowed": false
+},
+{
+"actor": "ai-view",
+"target": "ai-view",
+"new_role": "admin",
+"allowed": false
+},
+{
+"actor": "ai-view",
+"target": "ai-view",
+"new_role": "network-admin",
+"allowed": false
+},
+{
+"actor": "ai-view",
+"target": "ai-view",
+"new_role": "agents-admin",
+"allowed": false
+},
+{
+"actor": "ai-view",
+"target": "ai-view",
+"new_role": "auditor",
+"allowed": false
+},
+{
+"actor": "ai-view",
+"target": "ai-view",
+"new_role": "helpdesk",
+"allowed": false
+},
+{
+"actor": "ai-view",
+"target": "ai-view",
+"new_role": "ai-admin",
+"allowed": false
+},
+{
+"actor": "ai-view",
+"target": "ai-view",
+"new_role": "ai-view",
+"allowed": false
+},
+{
+"actor": "ai-view",
+"target": "ai-view",
+"new_role": "member",
+"allowed": false
+},
+{
+"actor": "ai-view",
+"target": "ai-view",
+"new_role": "",
+"allowed": false
+},
+{
+"actor": "ai-view",
+"target": "member",
+"new_role": "owner",
+"allowed": false
+},
+{
+"actor": "ai-view",
+"target": "member",
+"new_role": "admin",
+"allowed": false
+},
+{
+"actor": "ai-view",
+"target": "member",
+"new_role": "network-admin",
+"allowed": false
+},
+{
+"actor": "ai-view",
+"target": "member",
+"new_role": "agents-admin",
+"allowed": false
+},
+{
+"actor": "ai-view",
+"target": "member",
+"new_role": "auditor",
+"allowed": false
+},
+{
+"actor": "ai-view",
+"target": "member",
+"new_role": "helpdesk",
+"allowed": false
+},
+{
+"actor": "ai-view",
+"target": "member",
+"new_role": "ai-admin",
+"allowed": false
+},
+{
+"actor": "ai-view",
+"target": "member",
+"new_role": "ai-view",
+"allowed": false
+},
+{
+"actor": "ai-view",
+"target": "member",
+"new_role": "member",
+"allowed": false
+},
+{
+"actor": "ai-view",
+"target": "member",
+"new_role": "",
+"allowed": false
+},
+{
+"actor": "member",
+"target": "owner",
+"new_role": "owner",
+"allowed": false
+},
+{
+"actor": "member",
+"target": "owner",
+"new_role": "admin",
+"allowed": false
+},
+{
+"actor": "member",
+"target": "owner",
+"new_role": "network-admin",
+"allowed": false
+},
+{
+"actor": "member",
+"target": "owner",
+"new_role": "agents-admin",
+"allowed": false
+},
+{
+"actor": "member",
+"target": "owner",
+"new_role": "auditor",
+"allowed": false
+},
+{
+"actor": "member",
+"target": "owner",
+"new_role": "helpdesk",
+"allowed": false
+},
+{
+"actor": "member",
+"target": "owner",
+"new_role": "ai-admin",
+"allowed": false
+},
+{
+"actor": "member",
+"target": "owner",
+"new_role": "ai-view",
+"allowed": false
+},
+{
+"actor": "member",
+"target": "owner",
+"new_role": "member",
+"allowed": false
+},
+{
+"actor": "member",
+"target": "owner",
+"new_role": "",
+"allowed": false
+},
+{
+"actor": "member",
+"target": "admin",
+"new_role": "owner",
+"allowed": false
+},
+{
+"actor": "member",
+"target": "admin",
+"new_role": "admin",
+"allowed": false
+},
+{
+"actor": "member",
+"target": "admin",
+"new_role": "network-admin",
+"allowed": false
+},
+{
+"actor": "member",
+"target": "admin",
+"new_role": "agents-admin",
+"allowed": false
+},
+{
+"actor": "member",
+"target": "admin",
+"new_role": "auditor",
+"allowed": false
+},
+{
+"actor": "member",
+"target": "admin",
+"new_role": "helpdesk",
+"allowed": false
+},
+{
+"actor": "member",
+"target": "admin",
+"new_role": "ai-admin",
+"allowed": false
+},
+{
+"actor": "member",
+"target": "admin",
+"new_role": "ai-view",
+"allowed": false
+},
+{
+"actor": "member",
+"target": "admin",
+"new_role": "member",
+"allowed": false
+},
+{
+"actor": "member",
+"target": "admin",
+"new_role": "",
+"allowed": false
+},
+{
+"actor": "member",
+"target": "network-admin",
+"new_role": "owner",
+"allowed": false
+},
+{
+"actor": "member",
+"target": "network-admin",
+"new_role": "admin",
+"allowed": false
+},
+{
+"actor": "member",
+"target": "network-admin",
+"new_role": "network-admin",
+"allowed": false
+},
+{
+"actor": "member",
+"target": "network-admin",
+"new_role": "agents-admin",
+"allowed": false
+},
+{
+"actor": "member",
+"target": "network-admin",
+"new_role": "auditor",
+"allowed": false
+},
+{
+"actor": "member",
+"target": "network-admin",
+"new_role": "helpdesk",
+"allowed": false
+},
+{
+"actor": "member",
+"target": "network-admin",
+"new_role": "ai-admin",
+"allowed": false
+},
+{
+"actor": "member",
+"target": "network-admin",
+"new_role": "ai-view",
+"allowed": false
+},
+{
+"actor": "member",
+"target": "network-admin",
+"new_role": "member",
+"allowed": false
+},
+{
+"actor": "member",
+"target": "network-admin",
+"new_role": "",
+"allowed": false
+},
+{
+"actor": "member",
+"target": "agents-admin",
+"new_role": "owner",
+"allowed": false
+},
+{
+"actor": "member",
+"target": "agents-admin",
+"new_role": "admin",
+"allowed": false
+},
+{
+"actor": "member",
+"target": "agents-admin",
+"new_role": "network-admin",
+"allowed": false
+},
+{
+"actor": "member",
+"target": "agents-admin",
+"new_role": "agents-admin",
+"allowed": false
+},
+{
+"actor": "member",
+"target": "agents-admin",
+"new_role": "auditor",
+"allowed": false
+},
+{
+"actor": "member",
+"target": "agents-admin",
+"new_role": "helpdesk",
+"allowed": false
+},
+{
+"actor": "member",
+"target": "agents-admin",
+"new_role": "ai-admin",
+"allowed": false
+},
+{
+"actor": "member",
+"target": "agents-admin",
+"new_role": "ai-view",
+"allowed": false
+},
+{
+"actor": "member",
+"target": "agents-admin",
+"new_role": "member",
+"allowed": false
+},
+{
+"actor": "member",
+"target": "agents-admin",
+"new_role": "",
+"allowed": false
+},
+{
+"actor": "member",
+"target": "auditor",
+"new_role": "owner",
+"allowed": false
+},
+{
+"actor": "member",
+"target": "auditor",
+"new_role": "admin",
+"allowed": false
+},
+{
+"actor": "member",
+"target": "auditor",
+"new_role": "network-admin",
+"allowed": false
+},
+{
+"actor": "member",
+"target": "auditor",
+"new_role": "agents-admin",
+"allowed": false
+},
+{
+"actor": "member",
+"target": "auditor",
+"new_role": "auditor",
+"allowed": false
+},
+{
+"actor": "member",
+"target": "auditor",
+"new_role": "helpdesk",
+"allowed": false
+},
+{
+"actor": "member",
+"target": "auditor",
+"new_role": "ai-admin",
+"allowed": false
+},
+{
+"actor": "member",
+"target": "auditor",
+"new_role": "ai-view",
+"allowed": false
+},
+{
+"actor": "member",
+"target": "auditor",
+"new_role": "member",
+"allowed": false
+},
+{
+"actor": "member",
+"target": "auditor",
+"new_role": "",
+"allowed": false
+},
+{
+"actor": "member",
+"target": "helpdesk",
+"new_role": "owner",
+"allowed": false
+},
+{
+"actor": "member",
+"target": "helpdesk",
+"new_role": "admin",
+"allowed": false
+},
+{
+"actor": "member",
+"target": "helpdesk",
+"new_role": "network-admin",
+"allowed": false
+},
+{
+"actor": "member",
+"target": "helpdesk",
+"new_role": "agents-admin",
+"allowed": false
+},
+{
+"actor": "member",
+"target": "helpdesk",
+"new_role": "auditor",
+"allowed": false
+},
+{
+"actor": "member",
+"target": "helpdesk",
+"new_role": "helpdesk",
+"allowed": false
+},
+{
+"actor": "member",
+"target": "helpdesk",
+"new_role": "ai-admin",
+"allowed": false
+},
+{
+"actor": "member",
+"target": "helpdesk",
+"new_role": "ai-view",
+"allowed": false
+},
+{
+"actor": "member",
+"target": "helpdesk",
+"new_role": "member",
+"allowed": false
+},
+{
+"actor": "member",
+"target": "helpdesk",
+"new_role": "",
+"allowed": false
+},
+{
+"actor": "member",
+"target": "ai-admin",
+"new_role": "owner",
+"allowed": false
+},
+{
+"actor": "member",
+"target": "ai-admin",
+"new_role": "admin",
+"allowed": false
+},
+{
+"actor": "member",
+"target": "ai-admin",
+"new_role": "network-admin",
+"allowed": false
+},
+{
+"actor": "member",
+"target": "ai-admin",
+"new_role": "agents-admin",
+"allowed": false
+},
+{
+"actor": "member",
+"target": "ai-admin",
+"new_role": "auditor",
+"allowed": false
+},
+{
+"actor": "member",
+"target": "ai-admin",
+"new_role": "helpdesk",
+"allowed": false
+},
+{
+"actor": "member",
+"target": "ai-admin",
+"new_role": "ai-admin",
+"allowed": false
+},
+{
+"actor": "member",
+"target": "ai-admin",
+"new_role": "ai-view",
+"allowed": false
+},
+{
+"actor": "member",
+"target": "ai-admin",
+"new_role": "member",
+"allowed": false
+},
+{
+"actor": "member",
+"target": "ai-admin",
+"new_role": "",
+"allowed": false
+},
+{
+"actor": "member",
+"target": "ai-view",
+"new_role": "owner",
+"allowed": false
+},
+{
+"actor": "member",
+"target": "ai-view",
+"new_role": "admin",
+"allowed": false
+},
+{
+"actor": "member",
+"target": "ai-view",
+"new_role": "network-admin",
+"allowed": false
+},
+{
+"actor": "member",
+"target": "ai-view",
+"new_role": "agents-admin",
+"allowed": false
+},
+{
+"actor": "member",
+"target": "ai-view",
+"new_role": "auditor",
+"allowed": false
+},
+{
+"actor": "member",
+"target": "ai-view",
+"new_role": "helpdesk",
+"allowed": false
+},
+{
+"actor": "member",
+"target": "ai-view",
+"new_role": "ai-admin",
+"allowed": false
+},
+{
+"actor": "member",
+"target": "ai-view",
+"new_role": "ai-view",
+"allowed": false
+},
+{
+"actor": "member",
+"target": "ai-view",
+"new_role": "member",
+"allowed": false
+},
+{
+"actor": "member",
+"target": "ai-view",
+"new_role": "",
+"allowed": false
+},
+{
+"actor": "member",
+"target": "member",
+"new_role": "owner",
+"allowed": false
+},
+{
+"actor": "member",
+"target": "member",
+"new_role": "admin",
+"allowed": false
+},
+{
+"actor": "member",
+"target": "member",
+"new_role": "network-admin",
+"allowed": false
+},
+{
+"actor": "member",
+"target": "member",
+"new_role": "agents-admin",
+"allowed": false
+},
+{
+"actor": "member",
+"target": "member",
+"new_role": "auditor",
+"allowed": false
+},
+{
+"actor": "member",
+"target": "member",
+"new_role": "helpdesk",
+"allowed": false
+},
+{
+"actor": "member",
+"target": "member",
+"new_role": "ai-admin",
+"allowed": false
+},
+{
+"actor": "member",
+"target": "member",
+"new_role": "ai-view",
+"allowed": false
+},
+{
+"actor": "member",
+"target": "member",
+"new_role": "member",
+"allowed": false
+},
+{
+"actor": "member",
+"target": "member",
+"new_role": "",
+"allowed": false
+}
+]
+}

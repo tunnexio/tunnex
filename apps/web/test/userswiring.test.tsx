@@ -213,7 +213,7 @@ describe("Users — wiring: the last owner cannot be demoted", () => {
     withAuth(<Users />);
     for (const name of ["Sam Second", "Olive Owner"]) {
       const detail = await openRoles(name);
-      const owner = within(detail).getByRole("checkbox", { name: "owner" });
+      const owner = within(detail).getByRole("checkbox", { name: "Owner" });
       expect(owner).toHaveProperty("checked", true);
       expect(owner).toHaveProperty("disabled", false);
       expect(within(detail).queryByTitle("An organization must always have at least one owner.")).toBeNull();
@@ -633,11 +633,11 @@ describe("Users — invitation delivery", () => {
 });
 
 describe("Users — complete invite role choices", () => {
-  it.each(["ai-admin", "ai-view"])("submits the selected %s starting role", async (role) => {
+  it.each(["ai-admin", "ai-view", "auditor", "agents-admin", "network-admin", "helpdesk"])("submits the selected %s starting role", async (role) => {
     withAuth(<Users />);
     fireEvent.click(await screen.findByRole("button", {name:"Invite user"}));
     const select = screen.getByRole("combobox", {name:"Role"});
-    expect(within(select).getAllByRole("option").map(o => (o as HTMLOptionElement).value)).toEqual(["owner", "admin", "member", "ai-admin", "ai-view"]);
+    expect(within(select).getAllByRole("option").map(o => (o as HTMLOptionElement).value)).toEqual(["owner", "admin", "network-admin", "agents-admin", "auditor", "helpdesk", "ai-admin", "ai-view", "member"]);
     fireEvent.change(select, {target:{value:role}});
     fireEvent.change(screen.getByRole("textbox", {name:"Email address"}), {target:{value:"ai-person@example.test"}});
     fireEvent.click(screen.getByRole("button", {name:"Create invite"}));
@@ -648,9 +648,11 @@ describe("Users — complete invite role choices", () => {
     withAuth(<Users />);
     fireEvent.click(await screen.findByRole("button", {name:"Invite user"}));
     const select = screen.getByRole("combobox", {name:"Role"});
-    expect(within(select).queryByRole("option", {name:"owner"})).toBeNull();
-    expect(within(select).getByRole("option", {name:"ai-admin"})).toBeTruthy();
-    expect(within(select).getByRole("option", {name:"ai-view"})).toBeTruthy();
+    expect(within(select).queryByRole("option", {name:"Owner"})).toBeNull();
+    // RBAC-1: options carry the display labels; the stored values are unchanged.
+    expect((within(select).getByRole("option", {name:"AI Gateway admin"}) as HTMLOptionElement).value).toBe("ai-admin");
+    expect((within(select).getByRole("option", {name:"AI Gateway viewer"}) as HTMLOptionElement).value).toBe("ai-view");
+    for (const name of ["Auditor", "AI Agents admin", "Network admin", "Helpdesk"]) expect(within(select).getByRole("option", {name})).toBeTruthy();
   });
 });
 

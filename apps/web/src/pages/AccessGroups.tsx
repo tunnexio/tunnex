@@ -54,6 +54,8 @@ function AccessGroupsLoader({ scope }: { scope: GroupScope }) {
   const features = useAgentFeatures(scope === "agents" ? org?.id : undefined);
   const featureOn = (key: "agent_groups" | "mcp") => { const feature = features.get(key); return Boolean(feature?.enabled && feature.available); };
   const agentGroupsEnabled = scope === "agents" && (featureOn("agent_groups") || featureOn("mcp"));
+  const [writesAgents, setWritesAgents] = useState(false);
+  const [managesAgents, setManagesAgents] = useState(false);
   const [authorized, setAuthorized] = useState<boolean | null>(null);
   const [people, setPeople] = useState<UserGroup[] | null>(null);
   const [agentGroups, setAgentGroups] = useState<AgentGroup[] | null>(null);
@@ -91,17 +93,22 @@ function AccessGroupsLoader({ scope }: { scope: GroupScope }) {
       setMembers(result.data);
       const mine = result.data.find((member) => member.user_id === state.user.id);
       const roles = mine ? [mine.role, ...(mine.roles ?? [])] : [];
-      setAuthorized(scope === "agents" ? writable && can(roles, "agent_template:manage") : roles.includes("owner") || roles.includes("admin"));
+      // Groups (people and agents) are managed with policy:manage; agent groups with agent_template:manage.
+      // RBAC-1: agent groups are readable with agent_template:view (the auditor); writing needs manage.
+      // A manager who is not verified gets the verify-email state (as before), never the read-only inventory.
+      setAuthorized(scope === "agents" ? (can(roles, "agent_template:manage") ? writable : can(roles, "agent_template:view")) : can(roles, "policy:manage"));
+      setWritesAgents(writable && can(roles, "agent_template:manage"));
+      setManagesAgents(can(roles, "agent_template:manage"));
     });
     return () => { cancelled = true; };
   }, [org?.id, state.status, state.status === "authed" ? state.user.id : "", writable, permissionAttempt, scope]);
   useEffect(() => { void reload(); }, [reload]);
   const header = <><PageHeader navigationTitle title={scope === "agents" ? "Agent groups" : "Users & Groups"} subtitle={scope === "agents" ? "Organize managed agents and their inherited policies." : "Manage people and directory-synced group membership."} />{scope === "agents" ? <AgentsTabRail /> : <UsersTabRail />}</>;
   if (!org || authorized === null) return <div className="network-management agents-workspace space-y-5">{header}<Card>{error ? <LoadRetry error={`Could not check group permissions: ${error}`} onRetry={() => setPermissionAttempt((attempt) => attempt + 1)} /> : <Loading label="Checking group permissions…" />}</Card></div>;
-  if (!writable && scope === "agents") return <div className="network-management agents-workspace space-y-5">{header}<p role="status" className="text-cell text-ink-tertiary">Verify your email before managing AI Agent groups.</p></div>;
+  if (!writable && scope === "agents" && managesAgents) return <div className="network-management agents-workspace space-y-5">{header}<p role="status" className="text-cell text-ink-tertiary">Verify your email before managing AI Agent groups.</p></div>;
   if (!authorized) return <div className="network-management agents-workspace space-y-5">{header}<Card><p role="alert" className="text-cell text-ink-tertiary">You do not have permission to manage groups.</p><ErrorText>{error}</ErrorText></Card></div>;
   if (!people || !agentGroups || !members) return <div className="network-management agents-workspace space-y-5">{header}<Card>{error ? <LoadRetry error={error} onRetry={() => void reload()} /> : <Loading label="Loading groups…" />}</Card></div>;
-  return <CanonicalGroupsWorkspace orgId={org.id} people={people} agentGroups={agentGroups} agentGroupsEnabled={agentGroupsEnabled} features={features} peopleOptions={members} scope={scope} onReload={reload} />;
+  return <CanonicalGroupsWorkspace orgId={org.id} people={people} agentGroups={agentGroups} agentGroupsEnabled={agentGroupsEnabled} features={features} peopleOptions={members} scope={scope} onReload={reload} canWrite={scope !== "agents" || writesAgents} />;
 }
 
 type CanonicalRow = {
@@ -123,9 +130,12 @@ function CanonicalGroupsWorkspace({
   peopleOptions,
   onReload,
   scope,
+  canWrite = true,
 }: {
   orgId: string;
   scope: GroupScope;
+  /** RBAC-1: false for a viewer of agent groups (agent_template:view without manage). */
+  canWrite?: boolean;
   people: UserGroup[];
   agentGroups: AgentGroup[];
   agentGroupsEnabled: boolean;
@@ -290,14 +300,15 @@ function CanonicalGroupsWorkspace({
     const openCreate = () => { setCreateKind("agents"); setName(""); setDialog("create"); };
     return <div className="network-management agents-workspace agents-management space-y-5">
       <PageHeader navigationTitle title="Agent groups" />
-      <AgentsTabRail actions={<><RefreshButton label="Refresh groups" disabled={busy} onClick={() => void onReload()} />{agentGroupsEnabled && countsValid && !selected && <Button disabled={busy} onClick={openCreate}>Create agent group</Button>}</>} />
+      <AgentsTabRail actions={<><RefreshButton label="Refresh groups" disabled={busy} onClick={() => void onReload()} />{agentGroupsEnabled && countsValid && !selected && canWrite && <Button disabled={busy} onClick={openCreate}>Create agent group</Button>}</>} />
       <div className="agents-management-content">
       <ErrorText>{error}</ErrorText>{notice && <p role="status" className="agents-management-notice">{notice}</p>}
+      {!canWrite && <p role="status" className="agents-management-notice">Only owners, admins and AI Agents admins can change agent groups.</p>}
       {!agentGroupsEnabled ? <FeatureEnableInline orgId={orgId} feature="agent_groups" features={features} /> : !countsValid ? <p role="alert">Member counts require the matching control-plane API version. Refresh when the server can return a valid count for every group.</p> : selected ? <>
         <nav aria-label="Breadcrumb" className="agents-management-breadcrumb"><button disabled={busy} onClick={() => update({ group: null })}>Agent groups</button><span aria-hidden="true">/</span><span aria-current="page">{selected.name}</span></nav>
-        <div className="agents-management-heading"><div><h2>{selected.name}</h2></div><div className="agents-management-actions"><Button disabled={busy || !currentMembers || !!currentMemberError} onClick={() => { setMemberId(""); setDialog("add"); }}>Add member</Button><AppAccessRowMenu label={`Actions for ${selected.name}`} actions={[
-          { key: "rename", label: "Rename", disabledReason: busy ? "Wait for the current action." : undefined, onSelect: () => { setName(selected.name); setDialog("rename"); } },
-          { key: "archive", label: "Archive", danger: true, disabledReason: busy ? "Wait for the current action." : undefined, onSelect: () => setDialog("archive") },
+        <div className="agents-management-heading"><div><h2>{selected.name}</h2></div><div className="agents-management-actions">{canWrite && <Button disabled={busy || !currentMembers || !!currentMemberError} onClick={() => { setMemberId(""); setDialog("add"); }}>Add member</Button>}<AppAccessRowMenu label={`Actions for ${selected.name}`} actions={[
+          ...(canWrite ? [{ key: "rename", label: "Rename", disabledReason: busy ? "Wait for the current action." : undefined, onSelect: () => { setName(selected.name); setDialog("rename"); } },
+          { key: "archive", label: "Archive", danger: true, disabledReason: busy ? "Wait for the current action." : undefined, onSelect: () => setDialog("archive") }] : []),
           { key: "network", label: "Network templates", href: `/agents/policies?group=${encodeURIComponent(selected.raw.id)}` },
           { key: "models", label: "Model policies", href: "/agents/model-access" },
         ]} /></div></div>
@@ -307,7 +318,7 @@ function CanonicalGroupsWorkspace({
           <DataTable variant="flat" caption="Agent group members" rows={memberRows} rowKey={(member) => (member as AgentGroupMember).device_id} failed={false} filterable={false} pageSize={0} empty={<AppAccessEmptyState icon={null} title={memberQuery ? "No matching members" : "No members."} description={memberQuery ? "Try another agent name." : "Add agents to share this group’s desired configuration."} action={memberQuery ? <Button variant="ghost" onClick={() => { setMemberQuery(""); setMemberPage(1); }}>Clear search</Button> : undefined} />} columns={[
             { key: "name", header: "Agent", cell: (member) => <Link className="agents-management-name" to={`/agents/${encodeURIComponent((member as AgentGroupMember).device_id)}`}>{(member as AgentGroupMember).name}</Link> },
             { key: "status", header: "Status", cell: (member) => (member as AgentGroupMember).status },
-            { key: "actions", header: "Actions", cell: (member) => <AppAccessRowMenu label={`Actions for ${(member as AgentGroupMember).name}`} actions={[{ key: "remove", label: "Remove member", danger: true, disabledReason: busy ? "Wait for the current action." : undefined, onSelect: () => { setRemoving(member); setDialog("remove"); } }]} /> },
+            { key: "actions", header: "Actions", cell: (member) => <AppAccessRowMenu label={`Actions for ${(member as AgentGroupMember).name}`} actions={canWrite ? [{ key: "remove", label: "Remove member", danger: true, disabledReason: busy ? "Wait for the current action." : undefined, onSelect: () => { setRemoving(member); setDialog("remove"); } }] : []} /> },
           ]} />
           <AppAccessPagination maxOffset={null} page={currentMemberPage} pageSize={memberPageSize} count={memberRows.length} hasNext={currentMemberPage * memberPageSize < matchedMembers.length} busy={busy} onPageChange={setMemberPage} onPageSizeChange={(size) => { setMemberPageSize(size); setMemberPage(1); }} />
         </>}
@@ -381,7 +392,9 @@ function PeopleGroupsWorkspace() {
   const alive = useRef(true), inventoryRequest = useRef(0), locked = useRef(false);
   useEffect(() => { alive.current = true; return () => { alive.current = false; inventoryRequest.current++; }; }, []);
   const orgId = org?.id ?? "";
-  const canWrite = permission === true && state.status === "authed" && state.user.email_verified;
+  // RBAC-1: everyone with policy:view reads groups; only policy:manage (owner, admin) changes them.
+  const [managesGroups, setManagesGroups] = useState(false);
+  const canWrite = permission === true && managesGroups && state.status === "authed" && state.user.email_verified;
   const selectedKey = search.get("group") ?? "";
   const selected = groups?.find((group) => `people:${group.id}` === selectedKey);
   const query = search.get("q") ?? "";
@@ -401,7 +414,8 @@ function PeopleGroupsWorkspace() {
       if (!Array.isArray(result.data) || !result.data.every((member) => member && typeof member.user_id === "string" && typeof member.role === "string" && (member.roles === undefined || Array.isArray(member.roles)))) { setPermissionError("The permission response was not valid. Retry to reload it."); return; }
       const mine = result.data.find((member) => member.user_id === state.user.id);
       const roles = mine?.roles ?? (mine ? [mine.role] : []);
-      setPermission(roles.includes("owner") || roles.includes("admin"));
+      setPermission(can(roles, "policy:view"));
+      setManagesGroups(can(roles, "policy:manage"));
     });
     return () => { current = false; };
   }, [orgId, state.status, state.status === "authed" ? state.user.id : "", state.status === "authed" ? state.user.email_verified : false, permissionAttempt]);
@@ -438,8 +452,8 @@ function PeopleGroupsWorkspace() {
     <UsersTabRail actions={permission === true ? actions : undefined} />
     <div className="users-groups-content">
       {!createOpen && <ErrorText>{error}</ErrorText>}{notice && <p role="status" className="users-groups-notice">{notice}</p>}
-      {!org || permission === null ? permissionError ? <LoadRetry error={`Could not check group permissions: ${permissionError}`} onRetry={() => { setPermission(null); setPermissionAttempt((attempt) => attempt + 1); }} /> : <Loading label="Checking group permissions…" /> : !permission ? <p role="alert" className="users-groups-copy">You do not have permission to manage groups.</p> : inventoryError ? <LoadRetry error={inventoryError} onRetry={() => void reload()} /> : !groups ? <Loading label="Loading groups…" /> : selected ? <PeopleGroupMembers key={selected.id} orgId={orgId} group={selected} canWrite={canWrite} initialDialog={opening} onBack={() => { setOpening(null); update({ group: null }); }} onReload={reload} onNotice={setNotice} /> : selectedKey ? <div><p role="alert" className="users-groups-copy">This group is not available in the current organization.</p><Button variant="ghost" onClick={() => { setOpening(null); update({ group: null }); }}>Back to groups</Button></div> : <>
-        {!canWrite && <p className="users-groups-copy">Verify your email to manage groups.</p>}
+      {!org || permission === null ? permissionError ? <LoadRetry error={`Could not check group permissions: ${permissionError}`} onRetry={() => { setPermission(null); setPermissionAttempt((attempt) => attempt + 1); }} /> : <Loading label="Checking group permissions…" /> : !permission ? <p role="alert" className="users-groups-copy">You do not have permission to manage groups.</p> : inventoryError ? <LoadRetry error={inventoryError} onRetry={() => void reload()} /> : !groups ? <Loading label="Loading groups…" /> : selected ? <PeopleGroupMembers key={selected.id} orgId={orgId} group={selected} canWrite={canWrite} canManage={managesGroups} initialDialog={opening} onBack={() => { setOpening(null); update({ group: null }); }} onReload={reload} onNotice={setNotice} /> : selectedKey ? <div><p role="alert" className="users-groups-copy">This group is not available in the current organization.</p><Button variant="ghost" onClick={() => { setOpening(null); update({ group: null }); }}>Back to groups</Button></div> : <>
+        {!canWrite && <p className="users-groups-copy">{managesGroups ? "Verify your email to manage groups." : "Only owners and admins can change groups."}</p>}
         <div className="users-groups-toolbar"><Input aria-label="Search groups" value={query} placeholder="Search groups" onChange={(event) => { setPage(1); update({ q: event.target.value || null }); }} /><Select width="auto" aria-label="Group source" value={source} onChange={(event) => { setPage(1); update({ type: event.target.value === "all" ? null : event.target.value }); }}><option value="all">All sources</option><option value="people">Manual</option><option value="directory">Directory sync</option></Select></div>
         <DataTable variant="flat" caption="Groups inventory" rows={visible} rowKey={(group) => group.id} rowLabel={(group) => group.name} failed={false} filterable={false} pageSize={0} empty={<AppAccessEmptyState icon={null} title={query || source !== "all" ? "No matching groups" : "No groups yet"} description={query || source !== "all" ? "Try another name or source." : canWrite ? "Create a people group, then add organization members." : "Groups will appear here when an administrator creates or syncs them."} action={query || source !== "all" ? <Button variant="ghost" onClick={() => { setPage(1); update({ q: null, type: null }); }}>Clear filters</Button> : undefined} />} columns={[
           { key: "name", header: "Group", cell: (group) => <button className="users-groups-name" onClick={() => openGroup(group)}>{group.name}</button> },
@@ -454,7 +468,7 @@ function PeopleGroupsWorkspace() {
   </div>;
 }
 
-function PeopleGroupMembers({ orgId, group, canWrite, initialDialog, onBack, onReload, onNotice }: { orgId: string; group: UserGroup; canWrite: boolean; initialDialog: PeopleGroupDialog; onBack: () => void; onReload: () => Promise<boolean>; onNotice: (notice: string) => void }) {
+function PeopleGroupMembers({ orgId, group, canWrite, canManage = true, initialDialog, onBack, onReload, onNotice }: { orgId: string; group: UserGroup; canWrite: boolean; canManage?: boolean; initialDialog: PeopleGroupDialog; onBack: () => void; onReload: () => Promise<boolean>; onNotice: (notice: string) => void }) {
   const directory = isDirectoryManaged(group), editable = canWrite && !directory;
   const [members, setMembers] = useState<GroupMember[] | null>(null), [memberError, setMemberError] = useState("");
   const [candidates, setCandidates] = useState<Member[] | null>(null), [candidateError, setCandidateError] = useState("");
@@ -522,7 +536,7 @@ function PeopleGroupMembers({ orgId, group, canWrite, initialDialog, onBack, onR
     <nav aria-label="Group breadcrumb" className="users-groups-breadcrumb"><button disabled={busy} onClick={onBack}>Groups</button><span aria-hidden="true">/</span><span aria-current="page">{group.name}</span></nav>
     <div className="users-groups-heading"><div><h1>{group.name}</h1></div>{editable && <div className="users-groups-actions"><Button disabled={mutationBlocked || !members || !!memberError} onClick={() => openDialog("add")}>Add member</Button><AppAccessRowMenu label={`Actions for ${group.name}`} actions={[{ key: "rename", label: "Rename", disabledReason: mutationBlocked ? "Refresh or wait for the current action." : undefined, onSelect: () => openDialog("rename") }, { key: "archive", label: "Archive", danger: true, disabledReason: mutationBlocked ? "Refresh or wait for the current action." : undefined, onSelect: () => openDialog("archive") }]} /></div>}</div>
     <ResourceSummary title="Group settings" className="group-saved-summary" footer={<Button variant="ghost" disabled={busy} onClick={onBack}>Back to groups</Button>}><div className="group-detail-content"><dl className="tnx-resource-facts tnx-resource-facts-three"><div><dt>Source</dt><dd>{directory ? "Directory sync" : "Manual"}</dd></div><div><dt>Reported membership</dt><dd>{memberLabel(group.member_count)} reported</dd></div><div><dt>Group identity</dt><dd>{group.id}</dd></div></dl>
-    {directory && <p className="users-groups-copy">{DIRECTORY_MANAGED_NOTE}</p>}{!canWrite && <p className="users-groups-copy">Verify your email to manage groups.</p>}
+    {directory && <p className="users-groups-copy">{DIRECTORY_MANAGED_NOTE}</p>}{!canWrite && <p className="users-groups-copy">{canManage ? "Verify your email to manage groups." : "Only owners and admins can change groups."}</p>}
     {!dialog && <ErrorText>{error}</ErrorText>}
     {memberError ? <LoadRetry error={memberError} onRetry={() => void reloadMembers()} /> : !members ? <Loading label="Loading members…" /> : <>
       <div className="users-groups-toolbar"><Input aria-label="Search group members" value={query} placeholder="Search name or email" onChange={(event) => { setPage(1); setQuery(event.target.value); }} /><Link className="users-groups-link" to="/audit">View audit context</Link></div>

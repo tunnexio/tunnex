@@ -163,3 +163,22 @@ WHERE m.user_id = $1 AND m.role = 'owner' AND m.access_revoked_at IS NULL
   AND (SELECT count(*) FROM memberships o JOIN users ou ON ou.id = o.user_id
         WHERE o.org_id = m.org_id AND o.role = 'owner' AND o.access_revoked_at IS NULL
           AND ou.status = 'active' AND ou.deleted_at IS NULL) = 1;
+
+-- RBAC-1 Helpdesk ceiling. The roles of the person who owns a device in this organization (no row when the
+-- device or the owner's active membership is gone).
+-- name: GetDeviceOwnerMembershipRoles :one
+-- lint:allow-deleted — the ceiling must still protect an admin-grade person's soft-deleted device (restore
+-- acts on it); filtering it out would return no row and let a Helpdesk-only actor through.
+SELECT m.role, m.roles FROM devices d
+JOIN memberships m ON m.org_id = d.org_id AND m.user_id = d.user_id AND m.access_revoked_at IS NULL
+WHERE d.org_id = $1 AND d.id = $2;
+
+-- RBAC-1 Helpdesk ceiling for gateway-level device actions: does any device homed on this gateway belong
+-- to a person holding one of the given roles?
+-- name: NodeHasDeviceOwnedByRoles :one
+SELECT EXISTS (
+    SELECT 1 FROM devices d
+    JOIN memberships m ON m.org_id = d.org_id AND m.user_id = d.user_id
+    WHERE d.org_id = $1 AND d.node_id = $2 AND d.deleted_at IS NULL
+      AND COALESCE(m.roles, ARRAY[m.role]) && sqlc.arg(roles)::text[]
+);

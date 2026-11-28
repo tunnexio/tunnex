@@ -13,6 +13,8 @@ import { AWS_GENERIC_MAX_BYTES, AWS_REQUIRED_CRYPTO, AWSImportError, parseAWSGen
 import { IPsecTunnelHealth } from "./IPsecTunnelHealth";
 import { IPsecStaticDesktopRoutes } from "./IPsecStaticDesktopRoutes";
 import { IPsecRotateKeys, canRotateIPsecKeys } from "./IPsecRotateKeys";
+import { can } from "../lib/rbac";
+import type { Role } from "../lib/api";
 
 type Connection = components["schemas"]["IPsecConnection"];
 type Settings = components["schemas"]["IPsecSettings"];
@@ -105,7 +107,7 @@ export function IPsecWorkspace(props: Props) {
   return <IPsecSession key={`${props.orgId}:${props.userId}:${props.emailVerified}:${props.role ?? ""}`} {...props} />;
 }
 function IPsecSession({ orgId, emailVerified, role, sites, initialProfile = "aws", createRequest = 0, onRequestCreate, onCreateHandled }: Props) {
-  const manage = emailVerified && (role === "owner" || role === "admin");
+  const manage = emailVerified && can(role as Role | undefined, "ipsec:manage");
   const alive = useLifetime();
   const [settings, setSettings] = useState<Settings | null>(null);
   const [items, setItems] = useState<Connection[]>([]);

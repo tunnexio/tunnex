@@ -16,7 +16,7 @@ type crossGatewaySettingsRepository interface {
 }
 
 func (s apiServer) SetCrossGatewayClientsEnabled(ctx context.Context, req api.SetCrossGatewayClientsEnabledRequestObject) (api.SetCrossGatewayClientsEnabledResponseObject, error) {
-	ctx, err := authorize(ctx, req.OrgId, rbac.PermOrgUpdate)
+	ctx, err := authorize(ctx, req.OrgId, rbac.PermGatewayManage)
 	if err != nil {
 		return nil, err
 	}

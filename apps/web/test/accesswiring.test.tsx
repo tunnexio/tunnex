@@ -32,6 +32,7 @@ afterEach(cleanup); // docs/laws.md — no globals/setup file, so auto-cleanup n
 
 let mode: "off" | "enforcing" = "enforcing";
 let rulesFail = false;
+let memberRole = "admin";
 let modeFail = false;
 let deferRulesAndMode = false;
 let resolveDeferredRules: (() => void) | null = null;
@@ -109,7 +110,7 @@ vi.mock("../src/lib/api", async () => {
           };
         if (path.endsWith("/members"))
           return {
-            data: [{ user_id: "u1", role: "admin", email_verified: true }],
+            data: [{ user_id: "u1", role: memberRole, roles: [memberRole], email_verified: true }],
           };
         if (path.endsWith("/zero-trust-mode")) {
           if (deferRulesAndMode) return new Promise((resolve) => { resolveDeferredMode = () => resolve({ data: { mode } }); });
@@ -200,6 +201,7 @@ const withAuth = (ui: React.ReactElement) =>
   );
 
 beforeEach(() => {
+  memberRole = "admin";
   mode = "enforcing";
   rulesFail = false;
   modeFail = false;
@@ -1017,5 +1019,29 @@ describe("Access flow panel — the geometry contract and the type tags", () => 
     ).toBe(false);
     // The reveal lives on the GROUP, on a property nothing else encodes.
     expect(svg.querySelector("g.tnx-flow-edges")).toBeTruthy();
+  });
+});
+
+// RBAC-1 (founder, 2026-11-28): a network admin enables, disables, extends and deletes rules it may create
+// (policy_rule:manage), and still cannot switch Zero Trust enforcement (policy:manage).
+describe("Access — network admin rule lifecycle", () => {
+  it("offers Disable and Delete on a group rule but no enforcement switch", async () => {
+    memberRole = "network-admin";
+    rulesForTest = [RULES[0]];
+    withAuth(<Access />);
+    fireEvent.click(await screen.findByRole("button", { name: "Rule actions for r-enabled" }));
+    expect((screen.getByRole("menuitem", { name: "Disable" }) as HTMLButtonElement).disabled).toBe(false);
+    expect((screen.getByRole("menuitem", { name: "Delete" }) as HTMLButtonElement).disabled).toBe(false);
+    expect(screen.queryByRole("button", { name: /^Disable$|Enable enforcing/ })).toBeNull();
+  });
+  it("the auditor reads rules without any rule or enforcement control", async () => {
+    memberRole = "auditor";
+    rulesForTest = [RULES[0]];
+    withAuth(<Access />);
+    fireEvent.click(await screen.findByRole("button", { name: "Rule actions for r-enabled" }));
+    expect(screen.getByRole("menuitem", { name: "View details" })).toBeTruthy();
+    for (const name of ["Edit", "Disable", "Extend", "Delete"]) expect(screen.queryByRole("menuitem", { name })).toBeNull();
+    expect(screen.queryByRole("checkbox", { name: "Select Engineering" })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Add rule|New rule|Create rule/ })).toBeNull();
   });
 });

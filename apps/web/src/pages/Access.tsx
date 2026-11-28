@@ -127,6 +127,8 @@ function AccessWorkspace() {
   const emailVerified = state.status === "authed" && state.user.email_verified;
   const [org, setOrg] = useState<Org | null>(null);
   const [myRole, setMyRole] = useState<Role | undefined>(undefined);
+  // RBAC-1: rule authoring reads the whole role set (a network admin who is also AI Agents admin holds both).
+  const [myRoles, setMyRoles] = useState<Role[]>([]);
   // Page-level gating inputs, kept DISTINCT so no signal blanks another (fold-2):
   // - loadError: organization context could not be loaded → retry, nothing renderable.
   // - fatal: terminal, non-retryable (no org).
@@ -182,6 +184,8 @@ function AccessWorkspace() {
         memRes.ok ? "Couldn't determine your role." : memRes.error,
       );
     setMyRole(resolved.role);
+    const me = memRes.ok ? memRes.data.find((member) => member.user_id === myId) : undefined;
+    setMyRoles(me ? me.roles ?? [me.role] : resolved.role ? [resolved.role] : []);
     setRoleResolved(true);
     // ⚠ currentOrg IS A DEPENDENCY, AND THAT IS THE HALF THAT MAKES THE SWITCHER WORK. Without it the
     // page keeps rendering the org it mounted with — the control moves, the data does not, and the user is
@@ -252,6 +256,8 @@ function AccessWorkspace() {
             <RulesSection
               orgId={org.id}
               canManage={gate.canManagePolicy}
+              canAuthorRules={gate.canView && emailVerified && can(myRoles, "policy_rule:manage")}
+              canAuthorAgentRules={gate.canView && emailVerified && can(myRoles, "agent:grant_access")}
               canManageAgentTemplates={gate.canManageAgentTemplates}
               agentGroupsEnabled={Boolean(
                 org.agent_policy_templates_enabled,
@@ -1019,18 +1025,27 @@ export function ModeSection({ orgId, canManage, onPolicyChange, central = false 
 function RulesSection({
   orgId,
   canManage,
+  canAuthorRules = canManage,
+  canAuthorAgentRules = canManage,
   canManageAgentTemplates,
   agentGroupsEnabled,
   canViewFQDNResources,
   subjectsRev,
 }: {
   orgId: string;
+  /** policy:manage — owner and admin. Rule actions themselves follow canAuthorRules / canAuthorAgentRules. */
   canManage: boolean;
+  /** policy_rule:manage — create, edit, enable, disable, extend and delete rules (owner, admin, network admin). RBAC-1. */
+  canAuthorRules?: boolean;
+  /** agent:grant_access — enable, disable, extend and delete rules whose source is an agent or agent group. RBAC-1. */
+  canAuthorAgentRules?: boolean;
   canManageAgentTemplates: boolean;
   agentGroupsEnabled: boolean;
   canViewFQDNResources: boolean;
   subjectsRev: number;
 }) {
+  // Anything at all this person may change on a rule; individual actions say who can when they cannot.
+  const canTouchRules = canManage || canAuthorRules || canAuthorAgentRules;
   const [rules, setRules] = useState<PolicyRule[]>([]);
   const [groups, setGroups] = useState<UserGroup[]>([]);
   const [resources, setResources] = useState<Resource[]>([]);
@@ -1290,6 +1305,8 @@ function RulesSection({
   }, [
     agentGroupsEnabled,
     canManage,
+    canAuthorRules,
+    canAuthorAgentRules,
     canManageAgentTemplates,
     canViewFQDNResources,
     orgId,
@@ -1354,7 +1371,14 @@ function RulesSection({
   }, [visualization.kind, visualizing]);
 
   const mutationUnavailable = (rule: PolicyRule, operation: "edit" | "extend" | "enable" | "disable" | "delete") => {
-    if (!canManage) return "Your role cannot manage access rules.";
+    if (!canTouchRules) return "Your role cannot manage access rules.";
+    // RBAC-1 (founder, 2026-11-28): whoever may create a rule may enable, disable, extend and delete it —
+    // agent:grant_access for an agent or agent-group source, policy_rule:manage for any other.
+    const agentSource = rule.src_kind === "agent" || rule.src_kind === "agent_group";
+    const authors = agentSource ? canAuthorAgentRules : canAuthorRules;
+    if (!authors || (operation === "edit" && !canAuthorRules)) {
+      return agentSource ? "Only owners, admins and AI Agents admins can change rules for agents." : "Only owners, admins and network admins can change this rule.";
+    }
     if (rulesResult?.ok !== true) return "Load the current rule inventory first.";
     if (ruleBusy) return "A rule change is in progress.";
     const row = ruleRow(rule, groups, resources, members, sites, loaded, services);
@@ -1367,7 +1391,7 @@ function RulesSection({
   };
 
   async function mutateRules(selected: PolicyRule[], operation: "enable" | "disable" | "delete") {
-    if (!alive.current || currentScope.current !== readScope || mutationBusy.current || !canManage || rulesResult?.ok !== true || selected.length === 0) return;
+    if (!alive.current || currentScope.current !== readScope || mutationBusy.current || !canTouchRules || rulesResult?.ok !== true || selected.length === 0) return;
     // Confirmed rows must still be present and editable. Never turn a stale dialog
     // into an operation on a changed or workflow-owned rule.
     const current = selected.map(rule => rules.find(value => value.id === rule.id));
@@ -1699,7 +1723,7 @@ function RulesSection({
   };
   const rowActions = (rule: PolicyRule) => [
     { key: "inspect", label: "View details", onSelect: () => inspectRule(rule) },
-    ...(canManage ? [
+    ...(canTouchRules ? [
       { key: "edit", label: "Edit", disabledReason: mutationUnavailable(rule, "edit"), onSelect: () => setEditing(rule) },
       { key: "extend", label: "Extend", disabledReason: mutationUnavailable(rule, "extend"), onSelect: () => setExtendingGrant(rule) },
       { key: "toggle", label: rule.enabled ? "Disable" : "Enable", disabledReason: mutationUnavailable(rule, rule.enabled ? "disable" : "enable"), onSelect: () => { if (rule.enabled) setDisablingRules([rule]); else void mutateRules([rule], "enable"); } },
@@ -1736,7 +1760,7 @@ function RulesSection({
       ) : (
         <div className="ap-rules-heading">
           <div><h2 id="access-rules-heading">Rules</h2><span className="ap-rules-count">{rulesResult?.ok ? `${rulesResult.data} total · ${rules.filter(rule => rule.enabled).length} enabled` : "Loading rule inventory…"}</span></div>
-          {canManage && !view.showRetry && <PrimaryActionSlot><ComposeGate surface="Access rules"><Button size="sm" disabled={ruleBusy || !rulesAuthoritative || (groups.length === 0 && sites.length === 0 && visibleAgents.length === 0)} onClick={() => setCreating(true)}>Add rule</Button></ComposeGate></PrimaryActionSlot>}
+          {canAuthorRules && !view.showRetry && <PrimaryActionSlot><ComposeGate surface="Access rules"><Button size="sm" disabled={ruleBusy || !rulesAuthoritative || (groups.length === 0 && sites.length === 0 && visibleAgents.length === 0)} onClick={() => setCreating(true)}>Add rule</Button></ComposeGate></PrimaryActionSlot>}
         </div>
       )}
       {/* S8.3 CP: the posture summary line. enforcing+0 is LOUD (a live default-deny with no rules); a
@@ -1986,7 +2010,7 @@ function RulesSection({
               </div>
             );
           })()}
-          {canManage && selectedRules.length > 0 && <div className="ap-rules-selection" role="group" aria-label="Selected rule actions">
+          {canTouchRules && selectedRules.length > 0 && <div className="ap-rules-selection" role="group" aria-label="Selected rule actions">
             <div className="ap-rules-selection-summary"><strong>{selectedRules.length} selected</strong>{hiddenSelectionCount > 0 && <span>{hiddenSelectionCount} outside this page</span>}<Button size="sm" variant="ghost" onClick={() => setSelectedRuleIds(new Set())}>Clear</Button>{pageSelected && filteredRules.length > pageRules.length && <Button size="sm" variant="ghost" onClick={() => setSelectedRuleIds(new Set(filteredRules.map(rule => rule.id)))}>Select all {filteredRules.length} matching</Button>}</div>
             <div className="ap-rules-selection-actions">{bulkActions.map(action => {
               const eligible = selectedRules.filter(rule => !mutationUnavailable(rule, action.key));
@@ -1995,14 +2019,14 @@ function RulesSection({
               return <div key={action.key}>{!wrongArity && eligible.length > 0 && eligible.length < selectedRules.length && <span>{eligible.length} of {selectedRules.length}</span>}<Button size="sm" variant={action.key === "delete" ? "danger" : "ghost"} disabled={ruleBusy || wrongArity || eligible.length === 0} title={reason ?? undefined} onClick={() => action.run(eligible)}>{action.label}</Button></div>;
             })}</div>
           </div>}
-          {pageRules.length > 0 ? <div className="ap-rules-table-scroll"><table className={`ap-rules-table${canManage ? " ap-rules-table-selectable" : ""}`}><caption className="sr-only">Rules</caption><thead><tr>
-            {canManage && <th className="ap-rule-select"><input type="checkbox" aria-label={`Select all ${pageRules.length} on this page`} checked={pageSelected} ref={element => { if (element) element.indeterminate = !pageSelected && pageRules.some(rule => selectedRuleIds.has(rule.id)); }} onChange={event => { const checked = event.target.checked; setSelectedRuleIds(previous => { const next = new Set(previous); pageRules.forEach(rule => { if (checked) next.add(rule.id); else next.delete(rule.id); }); return next; }); }} /></th>}
+          {pageRules.length > 0 ? <div className="ap-rules-table-scroll"><table className={`ap-rules-table${canTouchRules ? " ap-rules-table-selectable" : ""}`}><caption className="sr-only">Rules</caption><thead><tr>
+            {canTouchRules && <th className="ap-rule-select"><input type="checkbox" aria-label={`Select all ${pageRules.length} on this page`} checked={pageSelected} ref={element => { if (element) element.indeterminate = !pageSelected && pageRules.some(rule => selectedRuleIds.has(rule.id)); }} onChange={event => { const checked = event.target.checked; setSelectedRuleIds(previous => { const next = new Set(previous); pageRules.forEach(rule => { if (checked) next.add(rule.id); else next.delete(rule.id); }); return next; }); }} /></th>}
             {ruleColumns.map(column => <th key={column.key} scope="col" data-column={column.key} aria-sort={ruleSort?.key === column.key ? ruleSort.descending ? "descending" : "ascending" : "none"}><button type="button" onClick={() => { setRuleSort(previous => ({ key: column.key, descending: previous?.key === column.key ? !previous.descending : false })); setRulePage(1); }}>{column.header}<span aria-hidden="true">{ruleSort?.key === column.key ? ruleSort.descending ? " ↓" : " ↑" : ""}</span></button></th>)}
             <th className="ap-rule-actions"><span className="sr-only">Actions</span></th>
           </tr></thead><tbody>{pageRules.map(rule => {
             const row = ruleRow(rule, groups, resources, members, sites, loaded, services);
             return <tr key={rule.id} data-selected={selectedRuleIds.has(rule.id) || undefined}>
-              {canManage && <td className="ap-rule-select"><input type="checkbox" aria-label={`Select ${row.src.label}`} checked={selectedRuleIds.has(rule.id)} onChange={event => selectRule(rule.id, event.target.checked)} /></td>}
+              {canTouchRules && <td className="ap-rule-select"><input type="checkbox" aria-label={`Select ${row.src.label}`} checked={selectedRuleIds.has(rule.id)} onChange={event => selectRule(rule.id, event.target.checked)} /></td>}
               {ruleColumns.map(column => <td key={column.key} data-column={column.key}>{column.key === "path" ? <button type="button" className="ap-rule-path" aria-label={`View rule ${row.src.label} to ${row.dst.label}`} onClick={() => inspectRule(rule)}>{column.cell(rule)}</button> : column.cell(rule)}</td>)}
               <td className="ap-rule-actions"><AppAccessRowMenu label={`Rule actions for ${rule.id}`} actions={rowActions(rule)} /></td>
             </tr>;

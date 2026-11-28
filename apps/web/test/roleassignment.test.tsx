@@ -9,7 +9,7 @@ describe("multiple role assignment", () => {
     const save = vi.fn().mockResolvedValue(undefined);
     render(<RoleAssignment email="eng@example.test" roles={["member", "ai-admin"]}
       options={["member", "ai-admin", "ai-view"]} soleOwner={false} onSave={save} />);
-    fireEvent.click(screen.getByText("ai-admin", { selector: "label" }));
+    fireEvent.click(screen.getByLabelText(/AI Gateway admin/));
     fireEvent.click(screen.getByRole("button", { name: "Save roles", hidden: true }));
     expect(save).toHaveBeenCalledWith(["member"]);
   });
@@ -17,7 +17,7 @@ describe("multiple role assignment", () => {
   it("allows adding a role to the sole owner without removing ownership", () => {
     render(<RoleAssignment email="owner@example.test" roles={["owner"]}
       options={["owner", "ai-admin"]} soleOwner onSave={vi.fn()} />);
-    expect((screen.getByLabelText("owner") as HTMLInputElement).disabled).toBe(true);
-    expect((screen.getByLabelText("ai-admin") as HTMLInputElement).disabled).toBe(false);
+    expect((screen.getByLabelText(/^Owner/) as HTMLInputElement).disabled).toBe(true);
+    expect((screen.getByLabelText(/AI Gateway admin/) as HTMLInputElement).disabled).toBe(false);
   });
 });

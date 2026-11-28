@@ -129,14 +129,14 @@ describe("AuditLog — AI roles keep a self-activity view", () => {
   it.each([["member"], ["ai-view"], ["ai-admin"], ["ai-admin", "member"], ["ai-view", "member"]])("scopes %j to the signed-in user's activity", async (...roles) => {
     viewerRoles = roles;
     withAuth(<AuditLog />);
-    await screen.findByText("Showing your activity only. Organization-wide activity is visible to admins and owners.");
+    await screen.findByText("Showing your activity only. Organization-wide activity is visible to owners, admins and auditors.");
     expect((screen.getByRole("combobox", { name: "Actor" }) as HTMLSelectElement).disabled).toBe(true);
   });
   it.each([["admin", "ai-view"], ["owner", "ai-admin"]])("retains organization audit access for %j", async (...roles) => {
     viewerRoles = roles;
     withAuth(<AuditLog />);
     await screen.findByRole("table", { name: "Audit events" });
-    expect(screen.queryByText("Showing your activity only. Organization-wide activity is visible to admins and owners.")).toBeNull();
+    expect(screen.queryByText("Showing your activity only. Organization-wide activity is visible to owners, admins and auditors.")).toBeNull();
     expect((screen.getByRole("combobox", { name: "Actor" }) as HTMLSelectElement).disabled).toBe(false);
   });
 });

@@ -126,7 +126,7 @@ describe("UsersInventory roster and account targets", () => {
     const members = [member(1, { roles: ["owner", "ai-admin"] }), member(2)];
     const view = mount(members, { devices: null });
     const row = screen.getByRole("button", { name: "Person 1" }).closest("tr")!;
-    expect(within(row).getByText("owner + ai-admin")).toBeTruthy();
+    expect(within(row).getByText("Owner + AI Gateway admin")).toBeTruthy();
     expect(within(row).getByText("could not load")).toBeTruthy();
     expect(within(row).queryByText("0")).toBeNull();
     view.rerender(view.ui({ ...view.props, devices: [] }));

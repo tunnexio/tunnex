@@ -13,7 +13,7 @@ import (
 
 // ListHealthChecks GET .../health-checks — the Community org's configured (opted-in) checks.
 func (s apiServer) ListHealthChecks(ctx context.Context, req api.ListHealthChecksRequestObject) (api.ListHealthChecksResponseObject, error) {
-	if _, err := authorize(ctx, req.OrgId, rbac.PermDeviceHealthManage); err != nil {
+	if _, err := authorize(ctx, req.OrgId, rbac.PermDeviceHealthView); err != nil {
 		return nil, err
 	}
 	checks, err := s.devices.ListHealthChecks(ctx, req.OrgId)

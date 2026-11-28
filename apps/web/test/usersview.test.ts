@@ -317,12 +317,16 @@ describe("roleDistribution — the one of the panel's three promised facts that 
     expect(d).toEqual([
       { role: "owner", n: 1, deactivated: 0 },
       { role: "admin", n: 0, deactivated: 0 },
-      { role: "member", n: 2, deactivated: 0 },
+      { role: "network-admin", n: 0, deactivated: 0 },
+      { role: "agents-admin", n: 0, deactivated: 0 },
+      { role: "auditor", n: 0, deactivated: 0 },
+      { role: "helpdesk", n: 0, deactivated: 0 },
       { role: "ai-admin", n: 0, deactivated: 0 },
       { role: "ai-view", n: 0, deactivated: 0 },
+      { role: "member", n: 2, deactivated: 0 },
     ]);
-    // Hierarchy order, not insertion order and not alphabetical (which would put admin first).
-    expect(d.map((t) => t.role)).toEqual(["owner", "admin", "member", "ai-admin", "ai-view"]);
+    // Hierarchy order (RBAC-1 roles below admin, member last), not insertion order and not alphabetical.
+    expect(d.map((t) => t.role)).toEqual(["owner", "admin", "network-admin", "agents-admin", "auditor", "helpdesk", "ai-admin", "ai-view", "member"]);
   });
 
   it("⛔ COUNTS DEACTIVATED IN `n`, AND REPORTS THEM SEPARATELY — two facts, not one number", () => {
@@ -334,7 +338,7 @@ describe("roleDistribution — the one of the panel's three promised facts that 
       m("member"),
       m("member", "deactivated"),
     ]);
-    expect(d[2]).toEqual({ role: "member", n: 2, deactivated: 1 });
+    expect(d[8]).toEqual({ role: "member", n: 2, deactivated: 1 });
     expect(d[0]).toEqual({ role: "owner", n: 1, deactivated: 0 });
   });
 
@@ -345,8 +349,8 @@ describe("roleDistribution — the one of the panel's three promised facts that 
     expect(d[0]).toEqual({ role: "owner", n: 1, deactivated: 1 });
   });
 
-  it("an empty roster gives five zeros, not an empty list", () => {
-    expect(roleDistribution([])).toHaveLength(5);
+  it("an empty roster gives a zero for every human role, not an empty list", () => {
+    expect(roleDistribution([])).toHaveLength(9);
     expect(roleDistribution([]).every((t) => t.n === 0)).toBe(true);
   });
 
