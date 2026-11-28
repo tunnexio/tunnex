@@ -46,7 +46,7 @@ EOF
 # truthfully model a host with no Docker CLI until apt installs the test double.
 SYSTEM_BIN="$TMP/system-bin"
 mkdir -p "$SYSTEM_BIN"
-for tool in awk basename cat chmod cp cut date dd dirname env grep head mkdir mktemp mv openssl rm sed sh shasum sleep sort stty tail tr; do
+for tool in awk basename cat chmod cmp cp cut date dd dirname env grep head mkdir mktemp mv openssl rm sed sh shasum sleep sort stty tail tr; do
 	tool_path=$(command -v "$tool" || true)
 	[ -n "$tool_path" ] && ln -s "$tool_path" "$SYSTEM_BIN/$tool"
 done
