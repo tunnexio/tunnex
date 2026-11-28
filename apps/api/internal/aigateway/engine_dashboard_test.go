@@ -28,7 +28,11 @@ func TestAIEngineDashboardScopedAggregates(t *testing.T) {
 				case "/api/logs/stats":
 					response = map[string]any{"total_requests": 2, "total_tokens": 12, "prompt_tokens": 7, "completion_tokens": 5, "total_cost": 0.25}
 					if missing {
-						response = map[string]any{"total_requests": 1}
+						// AI-READY-1: uncosted = successful without cost, plus cancelled with tokens.
+						response = map[string]any{"total_requests": 0, "total_tokens": 0}
+						if q.Get("status") == "success" {
+							response = map[string]any{"total_requests": 1, "total_tokens": 3}
+						}
 					}
 				case "/api/logs/rankings/by-dimension":
 					if q.Get("dimension") != "virtual_key" || q.Get("limit") != "65" {
@@ -91,7 +95,7 @@ func TestAIEngineDashboardScopedAggregates(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			if calls != 8 || got.Usage.TotalRequests != 2 || len(got.Dashboard.Daily) != 1 || got.Dashboard.Daily[0].Requests != 2 || got.Dashboard.Daily[0].UncostedRequests != 1 || got.Keys["key-a"].UncostedRequests != 1 || got.Dashboard.FailedRequests != 1 {
+			if calls != 9 || got.Usage.TotalRequests != 2 || len(got.Dashboard.Daily) != 1 || got.Dashboard.Daily[0].Requests != 2 || got.Dashboard.Daily[0].UncostedRequests != 1 || got.Keys["key-a"].UncostedRequests != 1 || got.Dashboard.FailedRequests != 1 {
 				t.Fatalf("wrong scoped aggregate: calls=%d", calls)
 			}
 			raw, _ := json.Marshal(got.Dashboard)

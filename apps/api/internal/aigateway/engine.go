@@ -434,12 +434,37 @@ func (e *Engine) Usage(ctx context.Context, ids []string, from, to time.Time) (U
 	if raw.TotalRequests == nil || raw.TotalTokens == nil || raw.PromptTokens == nil || raw.CompletionTokens == nil || raw.TotalCost == nil || *raw.TotalRequests < 0 || *raw.TotalTokens < 0 || *raw.PromptTokens < 0 || *raw.CompletionTokens < 0 || !validEngineCost(*raw.TotalCost) {
 		return Usage{}, errEngine
 	}
+	// AI-READY-1: a request is uncosted only if it may have cost something. The
+	// engine already leaves failed requests out of missing_cost_only. A
+	// successful request without a cost counts; a cancelled one (client
+	// disconnected) counts only when it consumed tokens, so a stream closed
+	// before any output cannot block a limited subject for the rest of the day.
 	q.Set("missing_cost_only", "true")
-	var missing struct {
-		TotalRequests *int64 `json:"total_requests"`
+	missingBy := func(status string) (int64, int64, error) {
+		q.Set("status", status)
+		var missing struct {
+			TotalRequests *int64 `json:"total_requests"`
+			TotalTokens   *int64 `json:"total_tokens"`
+		}
+		if _, err := e.request(ctx, http.MethodGet, "/api/logs/stats", q, nil, &missing); err != nil || missing.TotalRequests == nil || missing.TotalTokens == nil || *missing.TotalRequests < 0 || *missing.TotalTokens < 0 || *missing.TotalRequests > *raw.TotalRequests {
+			return 0, 0, errEngine
+		}
+		return *missing.TotalRequests, *missing.TotalTokens, nil
 	}
-	if _, err := e.request(ctx, http.MethodGet, "/api/logs/stats", q, nil, &missing); err != nil || missing.TotalRequests == nil || *missing.TotalRequests < 0 || *missing.TotalRequests > *raw.TotalRequests {
+	succeeded, _, err := missingBy("success")
+	if err != nil {
+		return Usage{}, err
+	}
+	cancelled, cancelledTokens, err := missingBy("cancelled")
+	if err != nil {
+		return Usage{}, err
+	}
+	uncosted := succeeded
+	if cancelledTokens > 0 {
+		uncosted += cancelled
+	}
+	if uncosted > *raw.TotalRequests {
 		return Usage{}, errEngine
 	}
-	return Usage{TotalRequests: *raw.TotalRequests, TotalTokens: *raw.TotalTokens, PromptTokens: *raw.PromptTokens, CompletionTokens: *raw.CompletionTokens, TotalCost: *raw.TotalCost, UncostedRequests: *missing.TotalRequests}, nil
+	return Usage{TotalRequests: *raw.TotalRequests, TotalTokens: *raw.TotalTokens, PromptTokens: *raw.PromptTokens, CompletionTokens: *raw.CompletionTokens, TotalCost: *raw.TotalCost, UncostedRequests: uncosted}, nil
 }

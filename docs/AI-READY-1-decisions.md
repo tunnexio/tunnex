@@ -338,3 +338,39 @@ tokens. Docs say so.
   permissions for prices, cost settings and the request log for launch.
 - Engine walk: the founder runs the engine walk (proof status above) on the
   test deployment before release.
+
+## Walk on the test deployment (2026-11-28)
+
+Rebased on main (schema 259) and deployed to the GCP test stack. OpenRouter,
+Groq and Gemini credentials; user group DataScience with one member using the
+VPN path.
+
+- **Engine behaviour proven.** `groq/allam-2-7b` (live Groq model, absent from
+  the bundled catalog) granted to DataScience with a $1/day limit: the call
+  was refused with internal reason `ai_price_unavailable`. After setting a
+  price ($0.0000001 in, $0.0000002 out per token) the call succeeded and the
+  engine's own log entry was costed exactly from the override (12 in + 20 out
+  tokens = $0.0000052) under the managed key `tnx-managed-<id>-r3`. The three
+  facts assumed from the engine source (prefix-less model match, managed key
+  id, inbound request id) all hold.
+- **Request log.** The row shows user, group, model, mode, ingress `vpn`,
+  status 200, latency, tokens and `cost_usd` 0.0000052 `costed`. The
+  `ai_request_log` table has no column that could hold prompt, output,
+  headers or keys.
+- **Budget alerts.** With the limit lowered to $0.20 and $0.13 spent today,
+  the next pass wrote the 50% mark for DataScience once. No alert destination
+  is subscribed on the test stack, so delivery was not walked (covered by
+  tests).
+
+**Fixed on the way: a cancelled request blocked a limited subject for the
+day.** Cost admission refuses a subject with any uncosted usage today. The
+engine's "missing cost" count already excluded failed requests but included a
+cancelled one (client disconnected) with zero tokens, so one interrupted
+stream refused every call of the group until 00:00 UTC. `Engine.Usage` now
+counts successful requests without a cost, plus cancelled requests only when
+they consumed tokens (the engine stats endpoint filters by status). The cost
+limit stays a soft threshold.
+
+Also found (fixed in AI-COMPAT-1, PR #148): the caller saw the generic
+`ai_policy_denied` for these refusals; `ai_daily_threshold_reached` and
+`ai_price_unavailable` now reach the caller with static messages.
