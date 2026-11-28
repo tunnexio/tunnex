@@ -1,5 +1,5 @@
 -- AI-CATALOG-1: a shared daily USD soft threshold for a human user group.
--- Requires 0256 (open PR #145) to be merged first.
+-- Requires 0256 (RBAC-1, merged as #145).
 CREATE TABLE ai_user_group_cost_limits (
     org_id uuid NOT NULL REFERENCES organizations(id) ON DELETE CASCADE,
     group_id uuid NOT NULL,
