@@ -226,7 +226,7 @@ test("a role change in the UI appears in the audit log", async ({ page }) => {
     await expect(page.getByText("Roles updated.", { exact: true })).toBeVisible();
     await page.getByRole("region", { name: "Person details" }).getByRole("button", { name: "Back to users", exact: true }).click();
     const memberRow = page.getByRole("table", { name: "Members", exact: true }).getByRole("row").filter({ hasText: MEMBER.email });
-    await expect(memberRow.getByRole("cell", { name: "admin + member", exact: true })).toBeVisible();
+    await expect(memberRow.getByRole("cell", { name: "Admin + Member", exact: true })).toBeVisible();
 
     await page.getByRole("link", { name: "Audit Log" }).click();
     await expect(page).toHaveURL(/\/audit(?:\?|$)/);
