@@ -300,7 +300,7 @@ func ingressNode(ingress StaticKeyIngress) *uuid.UUID {
 func (s *StaticKeys) recordUse(ctx context.Context, k staticKeyRecord, ingress StaticKeyIngress) {
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 2*time.Second)
 	defer cancel()
-	_, _ = s.w.policies.pool.Exec(ctx, `UPDATE ai_workload_static_keys SET last_used_at=now(),last_used_ingress=$4,last_used_source=$5::inet,last_used_node_id=$6 WHERE org_id=$1 AND workload_id=$2 AND id=$3 AND (last_used_at IS NULL OR last_used_at<now()-interval '1 minute' OR last_used_ingress IS DISTINCT FROM $4 OR last_used_source IS DISTINCT FROM $5::inet)`,
+	_, _ = s.w.policies.pool.Exec(ctx, `UPDATE ai_workload_static_keys SET last_used_at=now(),last_used_ingress=$4,last_used_source=$5::inet,last_used_node_id=$6 WHERE org_id=$1 AND workload_id=$2 AND id=$3 AND (last_used_at IS NULL OR last_used_at<now()-interval '1 minute' OR last_used_ingress IS DISTINCT FROM $4)`,
 		k.org, k.WorkloadId, k.Id, ingress.kind, ingressSourceText(ingress), ingressNode(ingress))
 }
 
@@ -321,7 +321,7 @@ func (s *StaticKeys) recordRefusal(ctx context.Context, k staticKeyRecord, reaso
  UPDATE ai_workload_static_keys k SET last_refused_at=now(),last_refused_reason=$4,last_refused_ingress=$5,last_refused_source=$6::inet,last_refused_node_id=$7,
  last_refusal_audit_at=CASE WHEN $8 AND (prior.last_refusal_audit_at IS NULL OR prior.last_refusal_audit_at<now()-interval '1 hour') THEN now() ELSE k.last_refusal_audit_at END
  FROM prior WHERE k.org_id=$1 AND k.workload_id=$2 AND k.id=$3
- AND (k.last_refused_at IS NULL OR k.last_refused_at<now()-interval '1 minute' OR k.last_refused_reason IS DISTINCT FROM $4 OR k.last_refused_source IS DISTINCT FROM $6::inet)
+ AND (k.last_refused_at IS NULL OR k.last_refused_at<now()-interval '1 minute' OR k.last_refused_reason IS DISTINCT FROM $4)
  RETURNING $8 AND (prior.last_refusal_audit_at IS NULL OR prior.last_refusal_audit_at<now()-interval '1 hour')`,
 		k.org, k.WorkloadId, k.Id, reason, ingress.kind, ingressSourceText(ingress), ingressNode(ingress), auditedRefusals[reason]).Scan(&audit)
 	if errors.Is(err, pgx.ErrNoRows) {
