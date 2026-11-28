@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { generateCatalog, generateNativeDatasheets, serialize, sha256, priceUnit } from './ai-model-catalog.mjs';
+import { generateCatalog, generateNativeDatasheets, serialize, sha256, priceUnit, refreshPin, refreshSummary, updateReadme } from './ai-model-catalog.mjs';
 
 function fixture(extra = {}) {
   const source = Object.fromEntries(['openai', 'anthropic', 'gemini', 'openrouter', 'groq', 'mistral', 'cerebras', 'xai', 'deepseek'].map(provider => [provider + '/test', { litellm_provider: provider, mode: 'chat', max_input_tokens: 1024, supports_vision: false, input_cost_per_token: 0.000001, output_cost_per_token: 0.000002 }]));
@@ -68,4 +68,41 @@ test('regional and image-size paths are excluded from model suggestions', () => 
   f.pin.reference_entries--;
   const catalog = generate(f);
   assert.equal(catalog.entries.some(row => row.id.includes('512x512')), false);
+});
+
+test('refresh derives a new pin from the downloaded bytes and keeps every guard', () => {
+  const previous = fixture();
+  const next = fixture({ 'gemini/gemini-3.5-flash': { litellm_provider: 'gemini', mode: 'chat', input_cost_per_token: 0.0000003, output_cost_per_token: 0.0000025 } });
+  const commit = 'b'.repeat(40);
+  const pin = refreshPin(previous.pin, next.sourceBytes, next.licenseBytes, commit, '2026-11-28T05:24:55Z');
+  assert.equal(pin.commit, commit);
+  assert.equal(pin.source_date, '2026-11-28T05:24:55Z');
+  assert.equal(pin.source_sha256, sha256(next.sourceBytes));
+  assert.equal(pin.reference_entries, previous.pin.reference_entries + 1);
+  const summary = refreshSummary(generate(previous), generateCatalog(next.sourceBytes, next.licenseBytes, pin));
+  assert.deepEqual(summary.added, ['gemini/gemini-3.5-flash chat']);
+  assert.deepEqual(summary.removed, []);
+  assert.throws(() => refreshPin(previous.pin, next.sourceBytes, next.licenseBytes, 'main', '2026-11-28T05:24:55Z'), /pin/);
+});
+
+test('refresh refuses an upstream file that lost a provider or shrank', () => {
+  const previous = fixture();
+  const source = JSON.parse(previous.sourceBytes);
+  delete source['xai/test'];
+  const lost = serialize(source);
+  assert.throws(() => refreshPin({ ...previous.pin, reference_entries: 9 }, lost, previous.licenseBytes, 'c'.repeat(40), '2026-11-28T05:24:55Z'), /absent|shrank/);
+  const big = { ...previous.pin, reference_entries: 100 };
+  assert.throws(() => refreshPin(big, previous.sourceBytes, previous.licenseBytes, 'c'.repeat(40), '2026-11-28T05:24:55Z'), /shrank/);
+  const bad = serialize({ ...source, 'openai/bad': { litellm_provider: 'openai', mode: 'chat', input_cost_per_token: -1 } });
+  assert.throws(() => refreshPin(previous.pin, bad, previous.licenseBytes, 'c'.repeat(40), '2026-11-28T05:24:55Z'), /Invalid/);
+});
+
+test('refresh rewrites the README pin lines', () => {
+  const previous = fixture().pin;
+  const pin = { ...previous, commit: 'd'.repeat(40), source_date: '2026-11-28T05:24:55Z', reference_entries: 12 };
+  const text = `Pinned source commit: \`${previous.commit}\`.\nSource date: \`${previous.source_date}\`.\n[x](https://h/${previous.commit}/f)\nembeds 9 source rows\n`;
+  const out = updateReadme(text, previous, pin);
+  assert.ok(out.includes(pin.commit) && !out.includes(previous.commit));
+  assert.ok(out.includes('Source date: `2026-11-28T05:24:55Z`.'));
+  assert.ok(out.includes('embeds 12 source rows'));
 });

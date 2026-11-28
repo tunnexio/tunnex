@@ -34,11 +34,18 @@ build fails on network/source/license/checksum/schema drift. It never updates to
 `main` or imports upstream code. For offline checks with previously verified
 files, pass `--source FILE --license FILE --check` instead of `--fetch`.
 
-To update deliberately, select a reviewed immutable commit, update its source
-date and hashes/counts in `source.pin.json`, then run the generator without
-`--check`. Review model/mode, price/unit, capability and context changes together;
-commit the pin, license, generated artifacts and tests. Releasing refreshed
-metadata follows the normal signed Tunnex release process.
+To update deliberately (every release, see
+`docs/upgrade-release-signing-checklist.md`), run
+`make ai-catalog-refresh [LITELLM_COMMIT=<sha>|main]`. It runs
+`node scripts/ai-model-catalog.mjs --refresh <sha|main>`, which resolves one
+immutable commit, downloads only that commit's files, derives the new hashes
+and counts, refuses a reference set that shrinks by more than 10%, rewrites
+`source.pin.json` and this README's pin lines, regenerates and re-verifies
+every artifact, and prints added, removed and repriced models. Review
+model/mode, price/unit, capability and context changes together; commit the
+pin, license, generated artifacts and tests. Never loosen a guard to pass a
+refresh. Releasing refreshed metadata follows the normal signed Tunnex release
+process.
 
 ## Artifacts and meaning
 

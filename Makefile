@@ -152,6 +152,20 @@ migrate-create: ## Scaffold a migration pair: make migrate-create name=add_widge
 
 SQLC_IMAGE ?= sqlc/sqlc:1.31.1
 
+.PHONY: ai-catalog-check ai-catalog-refresh
+ai-catalog-check: ## Verify the bundled AI model catalog against its LiteLLM pin (as CI does)
+	node --test scripts/ai-model-catalog.test.mjs
+	node scripts/ai-model-catalog.mjs --fetch --check
+
+# Release step (docs/upgrade-release-signing-checklist.md): move the pin to a newer immutable LiteLLM
+# commit, regenerate every artifact and re-verify. Guards are never loosened; a failure is reported.
+LITELLM_COMMIT ?= main
+ai-catalog-refresh: ## Refresh the AI model catalog pin: make ai-catalog-refresh [LITELLM_COMMIT=<sha>|main]
+	node --test scripts/ai-model-catalog.test.mjs
+	node scripts/ai-model-catalog.mjs --refresh $(LITELLM_COMMIT)
+	node scripts/ai-model-catalog.mjs --fetch --check
+	cd apps/api && go test ./internal/aigateway -run 'Reference|Catalog|Price' -count=1
+
 .PHONY: sqlc
 sqlc: ## Regenerate typed query code from db/queries
 	docker run --rm -v "$(PWD)/apps/api":/src -w /src $(SQLC_IMAGE) generate
