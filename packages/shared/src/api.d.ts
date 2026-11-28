@@ -1004,6 +1004,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/organizations/{orgId}/ai-gateway/user-groups/{groupId}/cost-limit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                groupId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /** Set or remove a user group's shared daily USD soft threshold */
+        put: operations["putAIUserGroupCostLimit"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/organizations/{orgId}/ai-gateway/user-model-grants": {
         parameters: {
             query?: never;
@@ -9867,6 +9887,25 @@ export interface components {
             id: string;
             name: string;
             members: number;
+            /**
+             * Format: double
+             * @description Daily USD soft threshold shared by all members across the group's model grants, based on native observed usage since midnight UTC. Concurrent calls can exceed it. Null means no limit.
+             */
+            daily_usd_threshold: number | null;
+            /**
+             * Format: int64
+             * @description Revision of the limit; 0 when it was never set.
+             */
+            limit_revision: number;
+        };
+        AIUserGroupCostLimitInput: {
+            /**
+             * Format: double
+             * @description Null removes the limit.
+             */
+            daily_usd_threshold: number | null;
+            /** Format: int64 */
+            expected_revision: number;
         };
         AIUserModel: {
             model: string;
@@ -16715,6 +16754,34 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AIUserGroup"][];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    putAIUserGroupCostLimit: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                groupId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AIUserGroupCostLimitInput"];
+            };
+        };
+        responses: {
+            /** @description The group with its saved limit. A stale expected_revision is refused with 409. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AIUserGroup"];
                 };
             };
             default: components["responses"]["Error"];

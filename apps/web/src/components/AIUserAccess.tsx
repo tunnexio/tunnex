@@ -69,6 +69,7 @@ function GroupAccessPanel({ orgId, canManage, initialConnection = "", initialMod
   const [expanded, setExpanded] = useState<string[]>([]);
   const [page, setPage] = useState(1), [pageSize, setPageSize] = useState(20);
   const [revokeGrant, setRevokeGrant] = useState<S["AIUserModelGrant"] | null>(null);
+  const [limitGroup, setLimitGroup] = useState<{ id: string; name: string } | null>(null), [limitInput, setLimitInput] = useState(""), [limitError, setLimitError] = useState("");
   const closeGrant = () => { setGrantOpen(false); setCreateGroupOpen(false); setGroupName(""); setModelQuery(""); setSelections([]); onDone?.(); };
   const [data, setData] = useState<{ groups: S["AIUserGroup"][]; grants: S["AIUserModelGrant"][]; providers: S["AIProviderConnection"][] } | null>(null);
   const [attempt, setAttempt] = useState(0), [busy, setBusy] = useState(false), [error, setError] = useState("");
@@ -147,7 +148,7 @@ function GroupAccessPanel({ orgId, canManage, initialConnection = "", initialMod
         return;
       }
       const created = result.data;
-      setData((d) => d ? { ...d, groups: [...d.groups.filter((g) => g.id !== created.id), { id: created.id, name: created.name, members: created.member_count }] } : d);
+      setData((d) => d ? { ...d, groups: [...d.groups.filter((g) => g.id !== created.id), { id: created.id, name: created.name, members: created.member_count, daily_usd_threshold: null, limit_revision: 0 }] } : d);
       setGroup(created.id); setGroupName(""); setCreateGroupOpen(false);
       toast.success("User group created");
       await refreshGroups(created.id);
@@ -201,6 +202,52 @@ function GroupAccessPanel({ orgId, canManage, initialConnection = "", initialMod
       setError(messages.join(" "));
     } finally { locked.current = false; if (alive.current) setBusy(false); }
   }
+  // A user group's daily cost limit is a soft threshold shared by all its members (AI-CATALOG-1).
+  const groupLimit = (groupId: string | null) => groupId ? data?.groups.find((g) => g.id === groupId)?.daily_usd_threshold ?? null : null;
+  const limitValue = limitInput.trim() === "" ? NaN : Number(limitInput);
+  const limitValid = Number.isFinite(limitValue) && limitValue > 0 && limitValue <= 100000;
+  function openLimit(groupId: string, name: string) {
+    const current = groupLimit(groupId);
+    setLimitGroup({ id: groupId, name }); setLimitInput(current == null ? "" : String(current)); setLimitError("");
+  }
+  async function saveLimit(value: number | null) {
+    const target = limitGroup;
+    const saved = target && data?.groups.find((g) => g.id === target.id);
+    if (locked.current || !alive.current || !canManage || !target) return;
+    if (!saved) { setLimitError("This group is no longer in the list. Refresh access and try again."); return; }
+    const startScope = scope;
+    locked.current = true; setBusy(true); setLimitError("");
+    try {
+      const result = await api.PUT("/api/v1/organizations/{orgId}/ai-gateway/user-groups/{groupId}/cost-limit", { params: { path: { orgId, groupId: target.id } }, body: { daily_usd_threshold: value, expected_revision: saved.limit_revision } });
+      if (!alive.current || currentScope.current !== startScope) return;
+      if (result.error || !result.data) {
+        if (result.response?.status !== 409) { setLimitError(apiErrorMessage(result.error, "Could not save the daily cost limit.")); return; }
+        // Someone else saved first: load the current limit so the next save is made against it.
+        const latest = await loadOne(() => api.GET("/api/v1/organizations/{orgId}/ai-gateway/user-groups", { params: { path: { orgId } } }));
+        if (!alive.current || currentScope.current !== startScope) return;
+        if (!latest.ok) { setLimitError("Someone else changed this limit. Refresh access to load it before saving again."); return; }
+        const current = latest.data.find((g) => g.id === target.id);
+        setData((d) => d ? { ...d, groups: latest.data } : d);
+        setLimitInput(current?.daily_usd_threshold == null ? "" : String(current.daily_usd_threshold));
+        setLimitError("Someone else changed this limit. The latest value is loaded; review it and save again.");
+        return;
+      }
+      const updated = result.data;
+      setData((d) => d ? { ...d, groups: d.groups.map((g) => g.id === updated.id ? updated : g) } : d);
+      toast.success(value == null ? "Daily cost limit removed" : "Daily cost limit saved");
+      setLimitGroup(null);
+    } catch { if (alive.current) setLimitError("Could not reach the API. Refresh access to check the saved limit before retrying."); }
+    finally { locked.current = false; if (alive.current) setBusy(false); }
+  }
+  const limitDialog = limitGroup && canManage && <Modal title="Daily cost limit" showClose onDismiss={() => !busy && setLimitGroup(null)} actions={<><Button variant="ghost" disabled={busy} onClick={() => setLimitGroup(null)}>Cancel</Button>{groupLimit(limitGroup.id) != null && <Button variant="ghost" disabled={busy} onClick={() => void saveLimit(null)}>Remove limit</Button>}<Button disabled={busy || !limitValid} onClick={() => void saveLimit(limitValue)}>{busy ? "Saving…" : "Save"}</Button></>}>
+    <div className="grid gap-4">
+      {limitError && <p role="alert" className="text-danger">{limitError}</p>}
+      <p>Daily soft threshold for <strong>{limitGroup.name}</strong>, shared by all its members across all of its models.</p>
+      <Field label="Daily limit (USD)"><Input type="number" inputMode="decimal" min="0.01" max="100000" step="0.01" placeholder="No limit" value={limitInput} disabled={busy} onChange={(e) => setLimitInput(e.target.value)} /></Field>
+      {limitInput.trim() !== "" && !limitValid && <p className="text-sm text-danger">Enter an amount greater than 0 and at most 100000.</p>}
+      <p className="text-sm text-ink-tertiary">Counted from midnight UTC on usage the gateway has already seen, so calls running at the same time can go over it. Once it is reached, new requests through this group are refused until midnight UTC. While a limit is set, models without exact pricing are refused.</p>
+    </div>
+  </Modal>;
   const grantDialog = grantOpen && canManage && <Modal title="Grant model access" placement="right" size="enrollment" showClose onDismiss={() => !busy && closeGrant()} actions={<><Button variant="ghost" disabled={busy} onClick={closeGrant}>Cancel</Button><Button disabled={busy || createGroupOpen || groupRefreshFailed || !selected.length || !data?.groups.some((g) => g.id === group)} onClick={() => void grantMany(group, selected)}>{busy ? "Saving…" : selected.length > 1 ? `Grant access to ${selected.length} models` : "Grant model access"}</Button></>}>
     <div className="ai-access-editor">
     {error && <p role="alert" className="text-danger">{error}</p>}
@@ -238,7 +285,8 @@ function GroupAccessPanel({ orgId, canManage, initialConnection = "", initialMod
         const active = row.grants.filter((g) => g.enabled && g.group_id && g.status === "applied").length;
         const pending = row.grants.filter((g) => g.enabled && g.group_id && g.status !== "applied").length;
         const revoked = row.grants.length - active - pending;
-        const summary = [active && `${active} active`, pending && `${pending} pending`, revoked && `${revoked} revoked`].filter(Boolean).join(" · ");
+        const limit = groupLimit(row.groupId);
+        const summary = [active && `${active} active`, pending && `${pending} pending`, revoked && `${revoked} revoked`, limit != null && `limit $${limit}/day`].filter(Boolean).join(" · ");
         const chips = row.grants.slice(0, 3).map((g) => modelDisplayName(g.model));
         return <Fragment key={row.key}><tr>
           <td><button type="button" className="ai-item-button" aria-expanded={open} aria-label={`${open ? "Hide" : "Show"} models for ${row.name}`} onClick={() => setExpanded((list) => open ? list.filter((k) => k !== row.key) : [...list, row.key])}>{row.name}</button>{!row.groupId && " (deleted)"}</td>
@@ -247,6 +295,7 @@ function GroupAccessPanel({ orgId, canManage, initialConnection = "", initialMod
           {canManage && <td><AppAccessRowMenu label={`Group actions for ${row.name}`} actions={[
             { key: "models", label: open ? "Hide models" : "Show models", onSelect: () => setExpanded((list) => open ? list.filter((k) => k !== row.key) : [...list, row.key]) },
             { key: "grant", label: "Grant more models", disabledReason: busy ? "Wait for the current change to finish." : !row.groupId ? "This group was deleted." : undefined, onSelect: () => { if (!row.groupId || busy) return; setGroup(row.groupId); setSelections([]); setGrantOpen(true); } },
+            { key: "limit", label: "Set daily cost limit", disabledReason: busy ? "Wait for the current change to finish." : !row.groupId ? "This group was deleted." : undefined, onSelect: () => { if (!row.groupId || busy) return; openLimit(row.groupId, row.name); } },
           ]} /></td>}
         </tr>
         {open && <tr className="ai-access-group-models"><td colSpan={canManage ? 4 : 3}><ul aria-label={`Models for ${row.name}`} className="grid gap-1">{row.grants.map((grant) => <li key={grant.id} className="flex flex-wrap items-center justify-between gap-2">
@@ -263,6 +312,7 @@ function GroupAccessPanel({ orgId, canManage, initialConnection = "", initialMod
     </table></div> : <AppAccessEmptyState icon={null} title={filtering ? "No matching model access" : "No model access granted."} description={filtering ? "Try another group or model." : "Grant a configured model to a user group."} action={filtering ? <Button variant="ghost" onClick={() => { setQuery(""); setModelFilter(""); setPage(1); }}>Clear filters</Button> : undefined} />}
     {data && <AppAccessPagination page={currentPage} pageSize={pageSize} count={visibleRows.length} hasNext={currentPage * pageSize < groupRows.length} maxOffset={null} busy={busy} onPageChange={setPage} onPageSizeChange={(size) => { setPageSize(size); setPage(1); }} />}
     {grantDialog}
+    {limitDialog}
     {revokeGrant && <Modal title="Revoke model access?" showClose onDismiss={() => !busy && setRevokeGrant(null)} actions={<><Button disabled={busy} onClick={() => setRevokeGrant(null)}>Cancel</Button><Button disabled={busy} onClick={async () => { if (!revokeGrant.group_id) return; await save(revokeGrant.group_id, revokeGrant.connection_id, revokeGrant.model, false); setRevokeGrant(null); }}>{busy ? "Revoking…" : "Confirm revoke"}</Button></>}><p>Revoke <strong>{modelDisplayName(revokeGrant.model)}</strong> access for <strong>{revokeGrant.group_name}</strong>?</p><p className="mt-3 text-sm text-ink-tertiary">Members will lose access through this grant. Other grants remain in effect. Requests already accepted may finish.</p></Modal>}
   </section>;
 }

@@ -3109,9 +3109,21 @@ type AIUsageReportSemantics string
 
 // AIUserGroup defines model for AIUserGroup.
 type AIUserGroup struct {
-	Id      openapi_types.UUID `json:"id"`
-	Members int                `json:"members"`
-	Name    string             `json:"name"`
+	// DailyUsdThreshold Daily USD soft threshold shared by all members across the group's model grants, based on native observed usage since midnight UTC. Concurrent calls can exceed it. Null means no limit.
+	DailyUsdThreshold *float64           `json:"daily_usd_threshold"`
+	Id                openapi_types.UUID `json:"id"`
+
+	// LimitRevision Revision of the limit; 0 when it was never set.
+	LimitRevision int64  `json:"limit_revision"`
+	Members       int    `json:"members"`
+	Name          string `json:"name"`
+}
+
+// AIUserGroupCostLimitInput defines model for AIUserGroupCostLimitInput.
+type AIUserGroupCostLimitInput struct {
+	// DailyUsdThreshold Null removes the limit.
+	DailyUsdThreshold *float64 `json:"daily_usd_threshold"`
+	ExpectedRevision  int64    `json:"expected_revision"`
 }
 
 // AIUserModel defines model for AIUserModel.
@@ -10866,6 +10878,9 @@ type TestAIProviderJSONRequestBody = AIProviderRevision
 // PutAITeamPolicyJSONRequestBody defines body for PutAITeamPolicy for application/json ContentType.
 type PutAITeamPolicyJSONRequestBody = AITeamPolicyWrite
 
+// PutAIUserGroupCostLimitJSONRequestBody defines body for PutAIUserGroupCostLimit for application/json ContentType.
+type PutAIUserGroupCostLimitJSONRequestBody = AIUserGroupCostLimitInput
+
 // PutAIUserModelGrantJSONRequestBody defines body for PutAIUserModelGrant for application/json ContentType.
 type PutAIUserModelGrantJSONRequestBody = AIUserModelGrantInput
 
@@ -12192,6 +12207,11 @@ type ClientInterface interface {
 
 	// ListAIUserGroups request
 	ListAIUserGroups(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PutAIUserGroupCostLimitWithBody request with any body
+	PutAIUserGroupCostLimitWithBody(ctx context.Context, orgId openapi_types.UUID, groupId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	PutAIUserGroupCostLimit(ctx context.Context, orgId openapi_types.UUID, groupId openapi_types.UUID, body PutAIUserGroupCostLimitJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListAIUserModelGrants request
 	ListAIUserModelGrants(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -16781,6 +16801,30 @@ func (c *Client) GetAIUsage(ctx context.Context, orgId openapi_types.UUID, param
 
 func (c *Client) ListAIUserGroups(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewListAIUserGroupsRequest(c.Server, orgId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) PutAIUserGroupCostLimitWithBody(ctx context.Context, orgId openapi_types.UUID, groupId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPutAIUserGroupCostLimitRequestWithBody(c.Server, orgId, groupId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) PutAIUserGroupCostLimit(ctx context.Context, orgId openapi_types.UUID, groupId openapi_types.UUID, body PutAIUserGroupCostLimitJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPutAIUserGroupCostLimitRequest(c.Server, orgId, groupId, body)
 	if err != nil {
 		return nil, err
 	}
@@ -31238,6 +31282,60 @@ func NewListAIUserGroupsRequest(server string, orgId openapi_types.UUID) (*http.
 	if err != nil {
 		return nil, err
 	}
+
+	return req, nil
+}
+
+// NewPutAIUserGroupCostLimitRequest calls the generic PutAIUserGroupCostLimit builder with application/json body
+func NewPutAIUserGroupCostLimitRequest(server string, orgId openapi_types.UUID, groupId openapi_types.UUID, body PutAIUserGroupCostLimitJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewPutAIUserGroupCostLimitRequestWithBody(server, orgId, groupId, "application/json", bodyReader)
+}
+
+// NewPutAIUserGroupCostLimitRequestWithBody generates requests for PutAIUserGroupCostLimit with any type of body
+func NewPutAIUserGroupCostLimitRequestWithBody(server string, orgId openapi_types.UUID, groupId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "groupId", runtime.ParamLocationPath, groupId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/ai-gateway/user-groups/%s/cost-limit", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("PUT", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
 
 	return req, nil
 }
@@ -48362,6 +48460,11 @@ type ClientWithResponsesInterface interface {
 	// ListAIUserGroupsWithResponse request
 	ListAIUserGroupsWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ListAIUserGroupsResponse, error)
 
+	// PutAIUserGroupCostLimitWithBodyWithResponse request with any body
+	PutAIUserGroupCostLimitWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, groupId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PutAIUserGroupCostLimitResponse, error)
+
+	PutAIUserGroupCostLimitWithResponse(ctx context.Context, orgId openapi_types.UUID, groupId openapi_types.UUID, body PutAIUserGroupCostLimitJSONRequestBody, reqEditors ...RequestEditorFn) (*PutAIUserGroupCostLimitResponse, error)
+
 	// ListAIUserModelGrantsWithResponse request
 	ListAIUserModelGrantsWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ListAIUserModelGrantsResponse, error)
 
@@ -53864,6 +53967,29 @@ func (r ListAIUserGroupsResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r ListAIUserGroupsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type PutAIUserGroupCostLimitResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AIUserGroup
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r PutAIUserGroupCostLimitResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PutAIUserGroupCostLimitResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -63737,6 +63863,23 @@ func (c *ClientWithResponses) ListAIUserGroupsWithResponse(ctx context.Context, 
 		return nil, err
 	}
 	return ParseListAIUserGroupsResponse(rsp)
+}
+
+// PutAIUserGroupCostLimitWithBodyWithResponse request with arbitrary body returning *PutAIUserGroupCostLimitResponse
+func (c *ClientWithResponses) PutAIUserGroupCostLimitWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, groupId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PutAIUserGroupCostLimitResponse, error) {
+	rsp, err := c.PutAIUserGroupCostLimitWithBody(ctx, orgId, groupId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePutAIUserGroupCostLimitResponse(rsp)
+}
+
+func (c *ClientWithResponses) PutAIUserGroupCostLimitWithResponse(ctx context.Context, orgId openapi_types.UUID, groupId openapi_types.UUID, body PutAIUserGroupCostLimitJSONRequestBody, reqEditors ...RequestEditorFn) (*PutAIUserGroupCostLimitResponse, error) {
+	rsp, err := c.PutAIUserGroupCostLimit(ctx, orgId, groupId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePutAIUserGroupCostLimitResponse(rsp)
 }
 
 // ListAIUserModelGrantsWithResponse request returning *ListAIUserModelGrantsResponse
@@ -73889,6 +74032,39 @@ func ParseListAIUserGroupsResponse(rsp *http.Response) (*ListAIUserGroupsRespons
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest []AIUserGroup
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParsePutAIUserGroupCostLimitResponse parses an HTTP response from a PutAIUserGroupCostLimitWithResponse call
+func ParsePutAIUserGroupCostLimitResponse(rsp *http.Response) (*PutAIUserGroupCostLimitResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PutAIUserGroupCostLimitResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AIUserGroup
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}

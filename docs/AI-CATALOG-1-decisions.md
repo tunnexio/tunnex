@@ -89,3 +89,58 @@ showed two groups.
   are more than six models.
 - Not changed: grants still load in one request. Server-side paging is worth
   it only at thousands of grants; revisit after launch.
+
+## Daily cost limit for a user group
+
+Founder request: workloads have a daily USD threshold and agent teams have a
+daily cost limit, but user groups (Access, User groups) had none, so a group of
+people could not be held to a daily budget.
+
+- A user group can have one daily cost limit in USD. It is shared by the whole
+  group: the spend of all members together, through all of the group's model
+  grants, since midnight UTC.
+- Same semantics and wording as the workload threshold: a daily soft
+  threshold, not a reservation. It is checked against usage the gateway has
+  already observed, so calls running at the same time can overshoot it. Once
+  observed spend reaches the limit, new requests through that group are
+  refused with `ai_daily_threshold_reached` until midnight UTC.
+- Unknown prices block when a limit is set. A model or mode without exact
+  pricing is refused with `ai_price_unavailable` for a group with a limit, as
+  for workloads. Groups without a limit are unaffected.
+- Spend counts every grant the group has held, including revoked ones, because
+  their usage today still happened. A grant whose group was deleted no longer
+  counts; the limit goes with the group.
+- A user in several groups that grant the same model is admitted through any
+  group still under its limit. Grants of groups without a limit are tried
+  first, so a member's calls do not use up a limited group's shared budget
+  when an unlimited group already allows them.
+- When no grant admits the request and at least one was stopped by a limit,
+  the request gets that error, not a generic denial. Order: threshold reached,
+  then price unavailable, then gateway unavailable (a usage read that failed),
+  then the usual denial. A failed usage read for one group moves on to the
+  next group instead of failing the request.
+- "My models" lists a model even while its group is over the limit. The
+  refusal comes on the call, with the threshold message, rather than the model
+  silently disappearing. The list also does not read usage per model.
+- Who can set it: the permission that manages user-group model grants
+  (`ai_model_access:manage`). Viewers see the limit in the list.
+- Every change writes an audit entry (`ai_user_group.cost_limit_changed`) with
+  the new revision and value.
+- Removing the limit sets it to null. The row is kept so the revision only
+  goes up: a stale editor gets 409 instead of silently overwriting. (The brief
+  suggested a NOT NULL column; a nullable one avoids the revision resetting to
+  0 after a removal.)
+- Changes use an expected revision; a mismatch is 409. Valid values are finite,
+  greater than 0 and at most 100000, as for workloads.
+- API: `AIUserGroup` gains `daily_usd_threshold` (nullable) and
+  `limit_revision`; `PUT /ai-gateway/user-groups/{groupId}/cost-limit` takes
+  `{daily_usd_threshold, expected_revision}` and returns the group.
+- UI: the group row menu gets "Set daily cost limit" (a small dialog with the
+  amount, Remove limit and Save), and the Access column shows it, for example
+  "3 active · limit $5/day". Groups with a limit but no grants are not listed;
+  the limit has no effect until the group holds a model.
+- Migration `0257_ai_user_group_cost_limits`. 0256 is taken by open PR #145,
+  which must merge first: golang-migrate does not apply a lower-numbered
+  migration to a database already at 0257.
+- Rejected: per-member limits. The request was a budget for the group; a
+  per-person limit can be added later as its own setting.

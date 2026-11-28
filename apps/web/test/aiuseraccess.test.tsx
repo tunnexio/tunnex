@@ -2,8 +2,8 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AIAccessGate, AIGroupAccess, AIUseModel } from "../src/components/AIUserAccess";
 import { AIProviderWorkspace } from "../src/components/AIProviderWorkspace";
-const mock = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), success: vi.fn(), roles: ["owner"], emailVerified: true }));
-vi.mock("../src/lib/api", async () => ({ ...await vi.importActual("../src/lib/api"), api: { GET: mock.get, POST: mock.post } }));
+const mock = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), put: vi.fn(), success: vi.fn(), roles: ["owner"], emailVerified: true }));
+vi.mock("../src/lib/api", async () => ({ ...await vi.importActual("../src/lib/api"), api: { GET: mock.get, POST: mock.post, PUT: mock.put } }));
 vi.mock("../src/lib/auth", () => ({ useAuth: () => ({ state: { status: "authed", user: { id: "user", email_verified: mock.emailVerified } } }) }));
 vi.mock("../src/lib/useOrg", () => ({ useOrg: () => ({ org: { id: "org" }, orgs: [{ id: "org", name: "Demo" }], loading: false, failed: false }) }));
 vi.mock("../src/components/Toasts", () => ({ toast: { success: mock.success, error: vi.fn() } }));
@@ -337,5 +337,82 @@ describe("AI user access", () => {
     expect(screen.queryByRole("menuitem", { name: "Check catalog" })).toBeNull();
     expect(screen.getByRole("menuitem", { name: "View model" })).toBeTruthy();
     expect(mock.post).not.toHaveBeenCalled();
+  });
+  describe("daily cost limit for a user group", () => {
+    const limitGrant = (id: string, group: string, name: string) => ({ id, group_id: group, group_name: name, connection_id: provider.id, model: provider.models[0], enabled: true, status: "applied", revision: 1 });
+    function limitInventory(groups: Array<{ id: string; name: string; members: number; daily_usd_threshold: number | null; limit_revision: number }>) {
+      mock.get.mockImplementation(async (path: string) => ({ data: path.endsWith("/members") ? [{ user_id: "user", role: "owner" }] : path.endsWith("user-groups") ? groups : path.endsWith("user-model-grants") ? [limitGrant("a", "eng", "Engineering"), limitGrant("b", "ops", "Operations")] : { items: [provider] } }));
+    }
+    async function openLimit(name: string) {
+      await screen.findByRole("table", { name: "User group model grants" });
+      fireEvent.click(screen.getByRole("button", { name: `Group actions for ${name}` }));
+      fireEvent.click(screen.getByRole("menuitem", { name: "Set daily cost limit" }));
+      return within(await screen.findByRole("dialog", { name: "Daily cost limit" }));
+    }
+    const row = (name: string) => screen.getByRole("button", { name: `Show models for ${name}`, hidden: true }).closest("tr")!;
+    it("shows the limit in the Access column and changes it from the row menu", async () => {
+      limitInventory([{ id: "eng", name: "Engineering", members: 3, daily_usd_threshold: 5, limit_revision: 2 }, { id: "ops", name: "Operations", members: 1, daily_usd_threshold: null, limit_revision: 0 }]);
+      mock.put.mockResolvedValue({ data: { id: "eng", name: "Engineering", members: 3, daily_usd_threshold: 7.5, limit_revision: 3 } });
+      render(<AIGroupAccess orgId="org" canManage />);
+      const dialog = await openLimit("Engineering");
+      expect(row("Engineering").textContent).toContain("1 active · limit $5/day");
+      expect(row("Operations").textContent).not.toContain("limit");
+      expect(dialog.getByText(/shared by all its members/)).toBeTruthy();
+      const input = dialog.getByLabelText("Daily limit (USD)") as HTMLInputElement;
+      expect(input.value).toBe("5");
+      fireEvent.change(input, { target: { value: "7.5" } });
+      fireEvent.click(dialog.getByRole("button", { name: "Save" }));
+      await waitFor(() => expect(mock.put).toHaveBeenCalledExactlyOnceWith("/api/v1/organizations/{orgId}/ai-gateway/user-groups/{groupId}/cost-limit", { params: { path: { orgId: "org", groupId: "eng" } }, body: { daily_usd_threshold: 7.5, expected_revision: 2 } }));
+      await waitFor(() => expect(screen.queryByRole("dialog", { name: "Daily cost limit" })).toBeNull());
+      expect(row("Engineering").textContent).toContain("1 active · limit $7.5/day");
+      expect(mock.success).toHaveBeenCalledWith("Daily cost limit saved");
+      expect(mock.post).not.toHaveBeenCalled();
+    });
+    it("removes a limit, and offers no removal or invalid save for a group without one", async () => {
+      limitInventory([{ id: "eng", name: "Engineering", members: 3, daily_usd_threshold: 5, limit_revision: 2 }, { id: "ops", name: "Operations", members: 1, daily_usd_threshold: null, limit_revision: 0 }]);
+      mock.put.mockResolvedValue({ data: { id: "eng", name: "Engineering", members: 3, daily_usd_threshold: null, limit_revision: 3 } });
+      render(<AIGroupAccess orgId="org" canManage />);
+      let dialog = await openLimit("Operations");
+      expect(dialog.queryByRole("button", { name: "Remove limit" })).toBeNull();
+      const save = dialog.getByRole("button", { name: "Save" }) as HTMLButtonElement;
+      expect(save.disabled).toBe(true);
+      for (const bad of ["0", "-1", "100000.01"]) {
+        fireEvent.change(dialog.getByLabelText("Daily limit (USD)"), { target: { value: bad } });
+        expect(save.disabled).toBe(true);
+      }
+      fireEvent.change(dialog.getByLabelText("Daily limit (USD)"), { target: { value: "100000" } });
+      expect(save.disabled).toBe(false);
+      fireEvent.click(dialog.getByRole("button", { name: "Cancel" }));
+      dialog = await openLimit("Engineering");
+      fireEvent.click(dialog.getByRole("button", { name: "Remove limit" }));
+      await waitFor(() => expect(mock.put).toHaveBeenCalledExactlyOnceWith(expect.any(String), { params: { path: { orgId: "org", groupId: "eng" } }, body: { daily_usd_threshold: null, expected_revision: 2 } }));
+      await waitFor(() => expect(row("Engineering").textContent).not.toContain("limit"));
+      expect(mock.success).toHaveBeenCalledWith("Daily cost limit removed");
+    });
+    it("loads the latest limit after someone else changed it", async () => {
+      const groups = [{ id: "eng", name: "Engineering", members: 3, daily_usd_threshold: 5 as number | null, limit_revision: 2 }];
+      limitInventory(groups);
+      mock.put.mockImplementation(async () => { groups[0] = { ...groups[0], daily_usd_threshold: 9, limit_revision: 3 }; return { error: { error: { code: "ai_policy_revision_conflict", message: "AI policy changed; refresh and retry" } }, response: new Response("{}", { status: 409 }) }; });
+      render(<AIGroupAccess orgId="org" canManage />);
+      const dialog = await openLimit("Engineering");
+      fireEvent.change(dialog.getByLabelText("Daily limit (USD)"), { target: { value: "6" } });
+      fireEvent.click(dialog.getByRole("button", { name: "Save" }));
+      expect((await dialog.findByRole("alert")).textContent).toContain("Someone else changed this limit. The latest value is loaded");
+      expect((dialog.getByLabelText("Daily limit (USD)") as HTMLInputElement).value).toBe("9");
+      expect(row("Engineering").textContent).toContain("limit $9/day");
+      mock.put.mockResolvedValue({ data: { id: "eng", name: "Engineering", members: 3, daily_usd_threshold: 9, limit_revision: 4 } });
+      fireEvent.click(dialog.getByRole("button", { name: "Save" }));
+      await waitFor(() => expect(mock.put).toHaveBeenLastCalledWith(expect.any(String), expect.objectContaining({ body: { daily_usd_threshold: 9, expected_revision: 3 } })));
+    });
+    it("disables the limit for a deleted group", async () => {
+      mock.get.mockImplementation(async (path: string) => ({ data: path.endsWith("/members") ? [{ user_id: "user", role: "owner" }] : path.endsWith("user-groups") ? [] : path.endsWith("user-model-grants") ? [{ ...limitGrant("a", "", "Old team"), group_id: undefined, enabled: false, status: "revoked" }] : { items: [provider] } }));
+      render(<AIGroupAccess orgId="org" canManage />);
+      await screen.findByRole("table", { name: "User group model grants" });
+      fireEvent.click(screen.getByRole("button", { name: "Group actions for Old team" }));
+      const item = screen.getByRole("menuitem", { name: /Set daily cost limit/ });
+      fireEvent.click(item);
+      expect(screen.queryByRole("dialog", { name: "Daily cost limit" })).toBeNull();
+      expect(mock.put).not.toHaveBeenCalled();
+    });
   });
 });
