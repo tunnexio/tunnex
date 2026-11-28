@@ -85,3 +85,5 @@ Status: implemented on `story/ai-vpn-models-1` (local, not pushed).
 
 - No new modes over the VPN relay (embeddings, images, audio). That is a
   separate decision: each needs its own relay route and body cap.
+  *Superseded by AI-COMPAT-1*: the relay now carries every synchronous mode
+  and the model list includes every mode except video generation.
