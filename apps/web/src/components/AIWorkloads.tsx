@@ -3,6 +3,7 @@ import type { components } from "@tunnex/shared";
 import { api, loadOne } from "../lib/api";
 import { Badge, Button, Card, DataTable, Field, Input, Loading, Modal, Select, RefreshButton } from "./ui";
 import { OneTimeSecretModal } from "./OneTimeSecret";
+import { AIWorkloadStaticKeys } from "./AIWorkloadStaticKeys";
 import { toast } from "./Toasts";
 import AppAccessRowMenu from "./AppAccessRowMenu";
 import AppAccessPagination from "./AppAccessPagination";
@@ -184,8 +185,10 @@ function WorkloadDetail({ orgId, workload, providers, canManage, refreshing, onB
   orgId: string; workload: Workload; providers: S["AIProviderConnection"][]; canManage: boolean; refreshing: boolean;
   onBack: () => void; onEdit: () => void; onRefresh: () => Promise<void>;
 }) {
-  const tabs = ["Overview", "Enrollment keys", "Instances"] as const;
+  const tabs = ["Overview", "Enrollment keys", "API keys", "Instances"] as const;
   const [tab, setTab] = useState<typeof tabs[number]>("Overview");
+  const [connect, setConnect] = useState<"cli" | "key">("cli"), [startKey, setStartKey] = useState(false);
+  const connectName = useId();
   const [modelPage, setModelPage] = useState(1), [modelPageSize, setModelPageSize] = useState(20);
   const [keyPage, setKeyPage] = useState(1), [keyPageSize, setKeyPageSize] = useState(20);
   const [instancePage, setInstancePage] = useState(1), [instancePageSize, setInstancePageSize] = useState(20);
@@ -282,7 +285,15 @@ function WorkloadDetail({ orgId, workload, providers, canManage, refreshing, onB
         </Card>
         <Card>
           <h3 className="font-semibold text-ink-heading">Connect application</h3>
-          <p className="mt-1 text-sm text-ink-secondary">Create an enrollment key, download the configuration, then start your application with the Tunnex CLI.</p>
+          <div role="radiogroup" aria-label="How the application connects" className="mt-3 grid gap-3 sm:grid-cols-2">
+            <label className="flex items-start gap-2 rounded-md border border-line p-3"><input className="mt-1" type="radio" name={connectName} checked={connect === "cli"} onChange={() => setConnect("cli")} /><span><span className="block text-sm font-medium text-ink-heading">Run with Tunnex CLI (recommended)</span><span className="block text-xs text-ink-secondary">Each replica gets its own identity and short-lived tokens. Linux and macOS.</span></span></label>
+            <label className="flex items-start gap-2 rounded-md border border-line p-3"><input className="mt-1" type="radio" name={connectName} checked={connect === "key"} onChange={() => setConnect("key")} /><span><span className="block text-sm font-medium text-ink-heading">Static API key (for serverless, Windows and SaaS tools)</span><span className="block text-xs text-ink-secondary">One key you paste into the tool. It expires and you rotate it.</span></span></label>
+          </div>
+          {connect === "key" ? <div className="mt-4 space-y-3">
+            <p className="text-sm text-ink-secondary">Create an API key, paste it into the tool, and point the tool at your internal AI endpoint or the public endpoint. Keys inside your network are the safer choice.</p>
+            <div className="flex flex-wrap gap-2">{canManage && workload.enabled && <Button onClick={() => { setStartKey(true); setTab("API keys"); }}>Create API key</Button>}<Button variant={canManage && workload.enabled ? "ghost" : "primary"} onClick={() => setTab("API keys")}>Manage API keys</Button></div>
+          </div> : <>
+          <p className="mt-4 text-sm text-ink-secondary">Create an enrollment key, download the configuration, then start your application with the Tunnex CLI.</p>
           <div className="my-4 flex flex-wrap gap-2"><Button onClick={() => setTab("Enrollment keys")}>Manage enrollment keys</Button><Button variant="ghost" onClick={() => download("workload.json", config)}>Download configuration</Button><Button variant="ghost" onClick={() => download("workload-instructions.txt", instructions)}>Download instructions</Button></div>
           <pre className="overflow-x-auto rounded-md border border-line bg-surface-inset p-3 text-xs text-ink-body">{command}</pre>
           <details className="mt-4 text-sm text-ink-secondary"><summary className="cursor-pointer text-ink-heading">Deployment setup</summary><div className="mt-3 space-y-3">
@@ -290,6 +301,7 @@ function WorkloadDetail({ orgId, workload, providers, canManage, refreshing, onB
             <p>The configuration references /run/secrets/tunnex/enrollment-key. Deliver that secret separately through your deployment secret store. If it mounts symlinks, provision protected regular files before starting the CLI.</p>
             <p>Gateway endpoint: <code className="break-all">{window.location.origin}/ai/v1</code>. No human login or network device is required.</p>
           </div></details>
+          </>}
         </Card>
       </>}
       {tab === "Enrollment keys" && <Card>
@@ -308,6 +320,7 @@ function WorkloadDetail({ orgId, workload, providers, canManage, refreshing, onB
         </>}
         <details className="mt-4 text-sm text-ink-secondary"><summary className="cursor-pointer text-ink-heading">Rotate an enrollment key</summary><p className="mt-3">Before expiry, create a replacement key, update your deployment secret, verify a fresh replica, then revoke the old key. Total uses count successful enrollments, not active replicas.</p></details>
       </Card>}
+      {tab === "API keys" && <AIWorkloadStaticKeys orgId={orgId} workload={workload} canManage={canManage} startCreate={startKey} onStartCreateHandled={() => setStartKey(false)} />}
       {tab === "Instances" && <Card>
         <div className="mb-4"><h3 className="font-semibold text-ink-heading">Instances</h3><p className="mt-1 text-sm text-ink-secondary">Each replica has its own identity. Offline reports contact state; revocation blocks its next authentication and request.</p></div>
         {loading ? <Loading label="Loading instances…" /> : instances && <>

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import type { components } from "@tunnex/shared";
 import { api } from "../lib/api";
 import { Button, Field, Input, Select, RefreshButton } from "./ui";
@@ -156,14 +156,16 @@ export function AIUsageWorkspace({ orgId, inventory, gatewayOff = false, onRefre
     agents={d ? ranked(d.agents).map((row) => inventory.budgets ? { ...row, budget: budgetOf(row.id) } : row) : undefined}
     gatewayOff={gatewayOff}
     budgetDay={preset === "today"}
-    workloads={d && <WorkloadUsage rows={d.workloads} />}
+    workloads={d && <WorkloadUsage rows={d.workloads} keys={d.workload_keys} />}
   />
 
   </div>;
 }
 
-function WorkloadUsage({ rows }: { rows: NonNullable<Report["dashboard"]>["workloads"] }) {
+function WorkloadUsage({ rows, keys }: { rows: NonNullable<Report["dashboard"]>["workloads"]; keys?: NonNullable<Report["dashboard"]>["workload_keys"] }) {
   const [page, setPage] = useState(1), [pageSize, setPageSize] = useState(20);
+  const [open, setOpen] = useState<Set<string>>(new Set());
+  const keysFor = (id: string) => (keys ?? []).filter((k) => k.workload_id === id).sort((a, b) => b.cost - a.cost || a.name.localeCompare(b.name));
   const sorted = rows ? [...rows].sort((a, b) => b.cost - a.cost || a.name.localeCompare(b.name)) : undefined;
   const currentPage = Math.min(page, Math.max(1, Math.ceil((sorted?.length ?? 0) / pageSize)));
   const visibleRows = sorted?.slice((currentPage - 1) * pageSize, currentPage * pageSize) ?? [];
@@ -177,10 +179,14 @@ function WorkloadUsage({ rows }: { rows: NonNullable<Report["dashboard"]>["workl
         : <><div className="ai-usage-table-scroll"><table>
           <caption className="sr-only">Spend by workload</caption>
           <thead><tr><th scope="col">Workload</th><th scope="col">Requests</th><th scope="col">Tokens</th><th scope="col">Estimated cost</th><th scope="col">Without cost</th></tr></thead>
-          <tbody>{visibleRows.map((row) => <tr key={row.id}>
-            <th scope="row"><span className="ai-usage-rank-name" title={row.id}>{row.name}</span><span className="ai-usage-rank-track" aria-hidden="true"><i style={{ width: `${max > 0 ? Math.max(0, row.cost / max * 100) : 0}%` }} /></span></th>
+          <tbody>{visibleRows.map((row) => { const own = keysFor(row.id), expanded = open.has(row.id); return <Fragment key={row.id}><tr>
+            <th scope="row"><span className="ai-usage-rank-name" title={row.id}>{row.name}</span><span className="ai-usage-rank-track" aria-hidden="true"><i style={{ width: `${max > 0 ? Math.max(0, row.cost / max * 100) : 0}%` }} /></span>
+              {own.length > 0 && <button type="button" className="text-xs text-ink-secondary underline underline-offset-2" aria-expanded={expanded} aria-label={`${expanded ? "Hide" : "Show"} API keys for ${row.name}`} onClick={() => setOpen((current) => { const next = new Set(current); if (next.has(row.id)) next.delete(row.id); else next.add(row.id); return next; })}>{expanded ? "Hide" : "Show"} {own.length} API key{own.length === 1 ? "" : "s"}</button>}</th>
             <td>{count(row.requests)}</td><td>{count(row.tokens)}</td><td>{row.requests > 0 && row.uncosted_requests === row.requests ? "Unavailable" : formatAIUsageCost(row.cost)}</td><td>{count(row.uncosted_requests)}</td>
-          </tr>)}</tbody>
+          </tr>{expanded && own.map((k) => <tr key={k.id} className="ai-usage-workload-key">
+            <th scope="row"><span className="ai-usage-rank-name pl-4" title={k.id}>{k.name}</span><small className="block pl-4 text-ink-secondary">API key · {k.scope === "public" ? "Public" : "Internal"}</small></th>
+            <td>{count(k.requests)}</td><td>{count(k.tokens)}</td><td>{k.requests > 0 && k.uncosted_requests === k.requests ? "Unavailable" : formatAIUsageCost(k.cost)}</td><td>{count(k.uncosted_requests)}</td>
+          </tr>)}</Fragment>; })}</tbody>
         </table></div><AppAccessPagination page={currentPage} pageSize={pageSize} count={visibleRows.length} hasNext={currentPage * pageSize < sorted.length} maxOffset={null} onPageChange={setPage} onPageSizeChange={(size) => { setPageSize(size); setPage(1); }} /></>}
     </div>
   </section>;
