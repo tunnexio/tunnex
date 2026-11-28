@@ -1007,9 +1007,10 @@ option was taken.
 - **Migration 0258 with a gap.** origin/main ends at 0256 and 0257 is reserved
   for the user-group cost limit branch. golang-migrate reads the sorted file
   list, so a fresh database goes 0256 → 0258 and `down` goes 0258 → 0256
-  (checked: up, down, up on a scratch database). Caveat for merge order: a
-  database that already recorded 0258 will never run a 0257 merged later,
-  because migrate only moves forward from the recorded version. 0257 must
+  (checked: up, down, up on a scratch database). Caveat for merge order, from
+  how golang-migrate works and not exercised here: a database that already
+  recorded 0258 would never run a 0257 merged later, because migrate only
+  moves forward from the recorded version. 0257 must
   merge first, as planned, or this migration must be renumbered at merge time.
 - **Extra columns on `ai_workload_static_keys`.** `engine_disabled_at` (the
   maintenance sweep disables an engine key once and retries on failure),
@@ -1078,6 +1079,25 @@ option was taken.
   days, critical at 3), not directly to `ai_workload:manage` holders: alert
   routing is by subscription today. A key created with less than 3 days left
   gets one reminder, not two.
+
+- **The 64-binding cap is partially enforced.** Static key creation and
+  workload creation count active static keys toward the 64. The user-grant and
+  bound-key paths (for example `policy_reconcile.go:118`) still count without
+  them. Nothing breaks: usage ids are batched and their base query is
+  unchanged. Revisit with the cap itself.
+- **Public client address, not done.** The Helm edge
+  (`edge-ai-nginx.conf:38`) still sets `X-Real-IP` from its own peer, and the
+  settings message "Client address not available behind this proxy" was not
+  built. This fails closed (the edge address is private, so it never matches a
+  public-only allowlist), but the key page will show the edge address as the
+  refused source. An administrator must not try to allowlist it (private
+  ranges are refused anyway). Fix the edge before allowlists are used on Helm.
+- **Trust in nginx.** The HTTPS check and the client address both trust what
+  nginx forwards (`X-Forwarded-Proto` and `X-Real-IP` from the caller it saw),
+  exactly as session cookies already do. In `deploy/tunnex.yml` only Caddy is
+  published and it overwrites both. The development `docker-compose.yml`
+  publishes nginx on the host directly; there a caller could forge both, so
+  public allowlists must not be relied on in that stack.
 
 ### Internal endpoint
 
