@@ -1,6 +1,7 @@
 package aigateway
 
 import (
+	"context"
 	"errors"
 	"testing"
 
@@ -80,9 +81,26 @@ func TestBudgetAlertsOncePerThresholdPerDay(t *testing.T) {
 		t.Fatalf("retry after a failed read: %+v", r)
 	}
 
+	// A failed send keeps no mark, so the next pass sends it.
+	f.exec(`DELETE FROM ai_gateway_alert_marks WHERE org_id=$1`, f.org)
+	f.policies.SetAlertPublisher(failingPublisher{})
+	if r := pass(); r.Published != 0 || r.Skipped != 1 {
+		t.Fatalf("failed send: %+v", r)
+	}
+	f.policies.SetAlertPublisher(publisher)
+	if r := pass(); r.Published != 1 {
+		t.Fatalf("resend after a failed send: %+v", r)
+	}
+
 	// An organization with the gateway off is not evaluated.
 	f.exec(`UPDATE organizations SET ai_gateway_enabled=false WHERE id=$1`, f.org)
 	if r := pass(); r.Subjects != 0 {
 		t.Fatalf("gateway off: %+v", r)
 	}
+}
+
+type failingPublisher struct{}
+
+func (failingPublisher) Publish(context.Context, alerts.Event) error {
+	return errors.New("outbox down")
 }

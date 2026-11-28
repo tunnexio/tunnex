@@ -283,3 +283,44 @@ tokens. Docs say so.
   branch owns them).
 - Engine image, pins and the Bifrost build.
 - Usage semantics: still an observed estimate, not an invoice or a cap.
+
+## Proof status and known gaps
+
+- **SUBSTITUTE, not satisfied: engine behaviour.** The price overrides and the
+  request-log enrichment rely on three facts read from the pinned engine
+  source, not exercised against a running engine: (1) the override match key
+  is the native model name without `provider/`; (2) the cost path's selected
+  key ID equals the Tunnex `tnx-managed-<uuid>` key ID; (3) the logging plugin
+  stores an entry under the inbound `X-Request-Id`, readable at
+  `GET /api/logs/{id}` within 1 MiB with content logging off. Tests use
+  in-memory and HTTP fakes of the engine. Trigger for the real proof: the
+  test-deployment walk before release (set a price for an unknown model under a
+  user-group limit, make one call, check the engine log entry has a cost and
+  the Requests view shows it costed). If (1) is wrong the symptom is fail
+  closed (`ai_gateway_unavailable` for that subject), not free usage.
+- Legacy provider keys (`ai_provider_legacy_keys`, older agent-group policies)
+  never receive overrides, while admission still uses an applied override.
+  Calls through such a key are logged uncosted and the subject then fails
+  closed with `ai_gateway_unavailable` until midnight UTC. Same for a new
+  connection whose immediate reconcile fails, for up to five minutes.
+- A failed alert send releases its marks, so the next pass (or next allowed
+  call, for unknown prices) sends it again.
+- RBAC: prices reuse `ai_provider:manage`/`view`, the log reuses
+  `ai_provider:view` or `ai_gateway:view`, as the brief asked. CLAUDE.md asks
+  for per-feature permissions; a founder ruling keeps or splits them.
+- The request log shows a user's name, else email. Every built-in role that
+  can read the log (ai-view, ai-admin, auditor, admin, owner) already holds
+  `member:list`.
+
+## Catalog refresh result (item 2)
+
+- LiteLLM `main` (`cf56141e`, 2026-11-28): reference rows 969 → 820. OpenRouter
+  went from 260 rows to 6 (upstream removed most OpenRouter entries on
+  2026-10-09), plus deprecated models. The 10% shrink guard refuses it.
+- The last commits before that removal (`aa31c0b9`, `d1945f69`, 2026-10-09)
+  fail the existing identifier guard: OpenRouter added `~`-prefixed alias
+  models (for example `openrouter/~anthropic/claude-opus-latest`) that the
+  Tunnex model ID rule rejects.
+- The upstream LICENSE text also changed (the enterprise path moved to
+  `litellm/enterprise/`); review it with the next pin.
+- The pin stays at `eeb7732f`. Founder decision needed (see the report).

@@ -104,17 +104,23 @@ func (s *Policies) alertBudget(ctx context.Context, subject budgetSubject, spend
 		percent  int
 		severity alerts.Severity
 	}
+	var claimedKeys []string
 	for i := range budgetThresholds {
 		t := budgetThresholds[i]
 		if spend < subject.limit*float64(t.percent)/100 {
 			continue
 		}
-		claimed, err := s.claimAlertMark(ctx, subject.org, day, "budget:"+subject.kind+":"+subject.id.String()+":"+strconv.Itoa(t.percent))
+		key := "budget:" + subject.kind + ":" + subject.id.String() + ":" + strconv.Itoa(t.percent)
+		claimed, err := s.claimAlertMark(ctx, subject.org, day, key)
 		if err != nil {
+			s.releaseAlertMarks(subject.org, day, claimedKeys)
 			return false, err
 		}
-		if claimed && publish == nil {
-			publish = &budgetThresholds[i]
+		if claimed {
+			claimedKeys = append(claimedKeys, key)
+			if publish == nil {
+				publish = &budgetThresholds[i]
+			}
 		}
 	}
 	if publish == nil {
@@ -138,7 +144,21 @@ func (s *Policies) alertBudget(ctx context.Context, subject budgetSubject, spend
 			"day":               dayText,
 		},
 	})
-	return err == nil, err
+	if err != nil {
+		// Not sent: release today's marks so the next pass tries again.
+		s.releaseAlertMarks(subject.org, day, claimedKeys)
+		return false, err
+	}
+	return true, nil
+}
+
+func (s *Policies) releaseAlertMarks(org uuid.UUID, day time.Time, keys []string) {
+	if len(keys) == 0 {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	_, _ = s.pool.Exec(ctx, `DELETE FROM ai_gateway_alert_marks WHERE org_id=$1 AND day=$2::date AND mark_key=ANY($3::text[])`, org, day.UTC().Format("2006-01-02"), keys)
 }
 
 // limitedSubjects reads one page of subjects with a daily limit in

@@ -12,9 +12,10 @@ export type ModelPriceInfo = { effective?: S["AIEffectiveModelPrice"]; saved?: S
 const PER_MILLION = 1_000_000;
 
 export function formatPerMillion(perToken: number | null | undefined): string {
-  if (perToken == null) return "—";
+  if (perToken == null) return "n/a";
   const v = perToken * PER_MILLION;
-  return `$${v >= 100 ? v.toFixed(0) : v >= 1 ? v.toFixed(2) : v.toPrecision(2).replace(/0+$/, "").replace(/\.$/, "")}`;
+  // Two decimals as prices are quoted; more only for sub-cent rates.
+  return `$${v >= 100 ? v.toFixed(0) : v >= 0.01 || v === 0 ? v.toFixed(2) : String(Number(v.toPrecision(2)))}`;
 }
 
 export function useModelPrices(orgId: string, models: string[]) {
@@ -22,19 +23,22 @@ export function useModelPrices(orgId: string, models: string[]) {
   const [failed, setFailed] = useState(false);
   const [version, setVersion] = useState(0);
   const serial = useRef(0);
-  const key = [...new Set(models)].sort().slice(0, 200).join("\n");
+  const key = [...new Set(models)].sort().slice(0, 1000).join("\n");
   useEffect(() => {
     const n = ++serial.current;
     const list = key ? key.split("\n") : [];
     if (!list.length) { setByModel({}); return; }
     void (async () => {
       try {
-        const r = await api.GET("/api/v1/organizations/{orgId}/ai-gateway/model-prices", { params: { path: { orgId }, query: { model: list } } });
+        // Small batches keep each request line well under proxy limits.
+        const batches: string[][] = [];
+        for (let i = 0; i < list.length; i += 40) batches.push(list.slice(i, i + 40));
+        const results = await Promise.all(batches.map((model) => api.GET("/api/v1/organizations/{orgId}/ai-gateway/model-prices", { params: { path: { orgId }, query: { model } } })));
         if (n !== serial.current) return;
-        if (r.error || !r.data) { setFailed(true); return; }
+        if (results.some((r) => r.error || !r.data)) { setFailed(true); return; }
         const next: Record<string, ModelPriceInfo> = {};
-        for (const e of r.data.effective) next[e.model] = { effective: e };
-        for (const p of r.data.prices) next[p.model] = { ...next[p.model], saved: p };
+        for (const r of results) for (const e of r.data!.effective) next[e.model] = { effective: e };
+        for (const p of results[0].data!.prices) next[p.model] = { ...next[p.model], saved: p };
         setByModel(next); setFailed(false);
       } catch { if (n === serial.current) setFailed(true); }
     })();
@@ -43,7 +47,7 @@ export function useModelPrices(orgId: string, models: string[]) {
 }
 
 export function ModelPriceCell({ info, failed }: { info?: ModelPriceInfo; failed: boolean }) {
-  if (!info?.effective) return <span className="ai-gateway-muted">{failed ? "Unavailable" : "—"}</span>;
+  if (!info?.effective) return <span className="ai-gateway-muted">{failed ? "Unavailable" : "Loading"}</span>;
   const e = info.effective;
   const pending = info.saved && info.saved.status !== "applied";
   if (e.source === "unknown") return <span className="ai-price-cell"><span className="ai-gateway-state ai-gateway-state-pending" title="No price is known for this model. Under a daily limit it is refused unless AI Gateway settings allow models without a price.">Price unknown</span>{pending && <small>Custom price pending</small>}</span>;

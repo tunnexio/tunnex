@@ -111,18 +111,15 @@ func (e *Engine) ListPriceOverrides(ctx context.Context, providerKeyID string) (
 	}
 	out := make([]EnginePriceOverride, 0, len(raw.Overrides))
 	for _, o := range raw.Overrides {
-		if o.ProviderKeyID == nil || *o.ProviderKeyID != providerKeyID || o.ScopeKind != "provider_key" || !engineOverrideID.MatchString(o.ID) {
+		// Overrides Tunnex did not name are someone else's: never read, changed or deleted.
+		if !strings.HasPrefix(o.Name, priceOverrideNamePrefix) {
+			continue
+		}
+		var patch enginePricingPatch
+		if o.ProviderKeyID == nil || *o.ProviderKeyID != providerKeyID || o.ScopeKind != "provider_key" || o.MatchType != "exact" || !engineOverrideID.MatchString(o.ID) || json.Unmarshal([]byte(o.Patch), &patch) != nil {
 			return nil, errEngineScope
 		}
-		item := EnginePriceOverride{ID: o.ID, Name: o.Name, ProviderKeyID: providerKeyID, Pattern: o.Pattern, RequestTypes: o.RequestTypes}
-		if strings.HasPrefix(o.Name, priceOverrideNamePrefix) {
-			var patch enginePricingPatch
-			if o.MatchType != "exact" || json.Unmarshal([]byte(o.Patch), &patch) != nil {
-				return nil, errEngineScope
-			}
-			item.Input, item.Output = patch.InputCostPerToken, patch.OutputCostPerToken
-		}
-		out = append(out, item)
+		out = append(out, EnginePriceOverride{ID: o.ID, Name: o.Name, ProviderKeyID: providerKeyID, Pattern: o.Pattern, RequestTypes: o.RequestTypes, Input: patch.InputCostPerToken, Output: patch.OutputCostPerToken})
 	}
 	return out, nil
 }

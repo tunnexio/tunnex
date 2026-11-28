@@ -22,7 +22,7 @@ function costText(e: Entry): string {
     case "pending": return "Pending";
     case "uncosted": return "Uncosted";
     case "unavailable": return "Unavailable";
-    default: return "—";
+    default: return "Not charged";
   }
 }
 
@@ -68,11 +68,11 @@ export function AIRequestLog({ orgId }: { orgId: string }) {
       <tbody>{rows.map((e) => <tr key={e.id}>
         <td title={e.request_id ? `Request ${e.request_id}` : undefined}>{new Date(e.occurred_at).toLocaleString()}</td>
         <td><span>{e.subject_name || (e.subject_id ? "Removed" : "Unidentified")}</span><small className="block text-ink-tertiary">{subjectLabel[e.subject_kind]}</small></td>
-        <td>{e.group_name || "—"}</td>
+        <td>{e.group_name || "None"}</td>
         <td title={e.model}>{modelDisplayName(e.model)}<small className="block text-ink-tertiary">{e.mode}</small></td>
         <td>{e.outcome === "ok" ? "Succeeded" : e.outcome === "refused" ? "Refused" : "Failed"}<small className="block text-ink-tertiary">{e.refusal_code ? refusalLabel[e.refusal_code] ?? e.refusal_code : `HTTP ${e.status_code}`}</small></td>
         <td>{e.latency_ms.toLocaleString()} ms</td>
-        <td>{e.prompt_tokens == null ? "—" : `${e.prompt_tokens.toLocaleString()} / ${(e.completion_tokens ?? 0).toLocaleString()}`}</td>
+        <td>{e.prompt_tokens == null ? "n/a" : `${e.prompt_tokens.toLocaleString()} / ${(e.completion_tokens ?? 0).toLocaleString()}`}</td>
         <td>{costText(e)}</td>
         <td>{ingressLabel[e.ingress]}</td>
       </tr>)}</tbody>

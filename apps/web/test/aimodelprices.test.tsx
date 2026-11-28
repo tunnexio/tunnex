@@ -14,7 +14,7 @@ const saved = { model: "gemini/gemini-3.5-flash", input_cost_per_token: 3e-7, ou
 describe("model price cell", () => {
   it("reads per million tokens and names the source", () => {
     render(<ModelPriceCell failed={false} info={{ effective: { model: saved.model, source: "override", input_cost_per_token: 3e-7, output_cost_per_token: 2.5e-6 }, saved }} />);
-    expect(screen.getByText("$0.3 / $2.50")).toBeTruthy();
+    expect(screen.getByText("$0.30 / $2.50")).toBeTruthy();
     expect(screen.getByText("Custom")).toBeTruthy();
   });
   it("marks an unknown price", () => {
@@ -27,7 +27,8 @@ describe("model price cell", () => {
   });
   it("formats small and large prices", () => {
     expect(formatPerMillion(0.000015)).toBe("$15.00");
-    expect(formatPerMillion(null)).toBe("—");
+    expect(formatPerMillion(null)).toBe("n/a");
+    expect(formatPerMillion(2e-9)).toBe("$0.002");
   });
 });
 

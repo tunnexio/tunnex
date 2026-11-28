@@ -153,7 +153,8 @@ func (s *Policies) notifyUnknownPrice(org uuid.UUID, subject costSubject, model 
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
 		now := time.Now().UTC()
-		claimed, err := s.claimAlertMark(ctx, org, now, "price_unknown:"+subject.Kind+":"+subject.ID.String()+":"+model)
+		key := "price_unknown:" + subject.Kind + ":" + subject.ID.String() + ":" + model
+		claimed, err := s.claimAlertMark(ctx, org, now, key)
 		if err != nil || !claimed {
 			return
 		}
@@ -162,7 +163,7 @@ func (s *Policies) notifyUnknownPrice(org uuid.UUID, subject costSubject, model 
 		if subjectLabel == "" {
 			subjectLabel = subject.ID.String()
 		}
-		_ = s.alerts.Publish(ctx, alerts.Event{
+		err = s.alerts.Publish(ctx, alerts.Event{
 			OrgID: org, Key: alerts.EventAIPriceUnknown, Severity: alerts.SeverityWarning,
 			DedupKey: "ai_price_unknown:" + subject.Kind + ":" + subject.ID.String() + ":" + model + ":" + now.Format("2006-01-02"),
 			Subject:  "Model without a price used under a daily limit: " + model,
@@ -171,6 +172,9 @@ func (s *Policies) notifyUnknownPrice(org uuid.UUID, subject costSubject, model 
 				"model": model, "day": now.Format("2006-01-02"),
 			},
 		})
+		if err != nil {
+			s.releaseAlertMarks(org, now, []string{key}) // the next allowed call tries again
+		}
 	}()
 }
 
