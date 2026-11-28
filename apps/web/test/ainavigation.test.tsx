@@ -73,7 +73,8 @@ describe("AI and identity navigation", () => {
     fireEvent.click(await screen.findByRole("button", { name: `Model actions for ${connection.models[0]} · ${connection.name}` }));
     fireEvent.click(screen.getByRole("menuitem", { name: "Grant access" }));
     await screen.findByRole("option", { name: "Engineering (4)" });
-    expect((screen.getByLabelText("Model") as HTMLSelectElement).value).toBe(JSON.stringify([connection.id, connection.models[0]]));
+    expect(screen.getAllByRole("checkbox").filter((box) => (box as HTMLInputElement).checked)).toHaveLength(1);
+    expect((screen.getByRole("checkbox", { name: new RegExp(`· ${connection.name}$`) }) as HTMLInputElement).checked).toBe(true);
     expect((screen.getByRole("button", { name: "Grant model access" }) as HTMLButtonElement).disabled).toBe(true);
     fireEvent.change(screen.getByLabelText("User group"), { target: { value: "engineering" } });
     expect((screen.getByRole("button", { name: "Grant model access" }) as HTMLButtonElement).disabled).toBe(false);

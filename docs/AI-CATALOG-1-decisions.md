@@ -50,3 +50,22 @@ Saved credentials already use it. New credentials did not.
 The test deployment did not set `TUNNEX_AI_PROVIDER_MANAGEMENT_ENABLED=true`,
 which the installer (`deploy/tunnex.yml`, `deploy/ai-bootstrap.sh`) sets. Fixed
 on that deployment only; no product change.
+
+## Grant several models to a user group at once
+
+Founder report, same walk: Access, Grant model access took one model per
+grant, so giving a group three models meant opening the dialog three times.
+The agent grant dialog already takes several models.
+
+- The Model dropdown becomes a checklist. A model the selected group already
+  holds through an enabled grant shows as checked, disabled and "Already
+  granted", and is not sent again.
+- The API is unchanged: one grant per call. The dialog sends the selected
+  models one after another with the same body as before.
+- Each grant stands on its own. If some fail, the ones that applied stay
+  applied, only the failed models stay selected, and the dialog names them:
+  "Granted 1 of 2 models. Could not apply: …". A grant saved but not yet
+  active is named the same way.
+- The button reads "Grant access to N models" when more than one is selected.
+- Rejected: a batch grant endpoint. It would add an API for no safety gain;
+  each grant is already independent and audited on its own.

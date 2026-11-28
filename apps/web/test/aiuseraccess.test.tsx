@@ -21,6 +21,7 @@ function inlineGrant(onDone = vi.fn()) {
   render(<AIGroupAccess orgId="org" canManage dialogOnly initialConnection={provider.id} initialModel={provider.models[0]} onDone={onDone} />);
   return onDone;
 }
+const modelBox = (name = "gpt-5") => screen.getByRole("checkbox", { name: new RegExp(`(^|/)${name} · `) }) as HTMLInputElement;
 async function openGroupCreation() {
   const button = await screen.findByRole("button", { name: "Create user group" });
   await waitFor(() => expect((button as HTMLButtonElement).disabled).toBe(false));
@@ -40,7 +41,7 @@ describe("AI user access", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Grant access" }));
     await screen.findByRole("option", { name: "Engineering (4)" });
     fireEvent.change(screen.getByLabelText("User group"), { target: { value: "engineering" } });
-    fireEvent.change(screen.getByLabelText("Model"), { target: { value: JSON.stringify([provider.id, provider.models[0]]) } });
+    fireEvent.click(modelBox());
     fireEvent.click(screen.getByRole("button", { name: "Grant model access" }));
     await waitFor(() => expect(mock.post).toHaveBeenCalledWith(expect.stringContaining("user-model-grants"), expect.objectContaining({ body: { group_id: "engineering", connection_id: provider.id, model: provider.models[0], enabled: true, expected_revision: 0 } })));
     fireEvent.click(await screen.findByRole("button", { name: /^Actions for Engineering · / }));
@@ -62,7 +63,7 @@ describe("AI user access", () => {
     await screen.findByRole("option", { name: "Research (0)" });
     await waitFor(() => expect((screen.getByRole("button", { name: "Grant model access" }) as HTMLButtonElement).disabled).toBe(false));
     expect((screen.getByLabelText("User group") as HTMLSelectElement).value).toBe(createdGroup.id);
-    expect((screen.getByLabelText("Model") as HTMLSelectElement).value).toBe(JSON.stringify([provider.id, provider.models[0]]));
+    expect(modelBox().checked).toBe(true);
     expect(mock.post).toHaveBeenCalledExactlyOnceWith("/api/v1/organizations/{orgId}/groups", { params: { path: { orgId: "org" } }, body: { name: "Research" } });
     expect(mock.get.mock.calls.filter(([path]) => path.endsWith("user-groups"))).toHaveLength(2);
     expect(done).not.toHaveBeenCalled();
@@ -70,6 +71,39 @@ describe("AI user access", () => {
     fireEvent.click(screen.getByRole("button", { name: "Grant model access" }));
     await waitFor(() => expect(mock.post).toHaveBeenCalledWith(expect.stringContaining("user-model-grants"), expect.objectContaining({ body: { group_id: createdGroup.id, connection_id: provider.id, model: provider.models[0], enabled: true, expected_revision: 0 } })));
     await waitFor(() => expect(done).toHaveBeenCalledTimes(1));
+  });
+  it("grants several models to a group in one step and skips models it already has", async () => {
+    const multi = { ...provider, models: ["custom-connection/gpt-5", "custom-connection/gpt-5-mini", "custom-connection/o4"], model_modes: {} };
+    const existing = { id: "g0", group_id: "engineering", group_name: "Engineering", connection_id: multi.id, model: "custom-connection/o4", enabled: true, status: "applied", revision: 3 };
+    mock.get.mockImplementation((path: string) => Promise.resolve({ data: path.endsWith("/members") ? [{ user_id: "user", role: "owner" }] : path.endsWith("user-groups") ? [{ id: "engineering", name: "Engineering", members: 4 }] : path.endsWith("user-model-grants") ? [existing] : { items: [multi] } }));
+    mock.post.mockImplementation(async (_: string, options: { body: { model: string } }) => ({ data: { id: `grant-${options.body.model}`, group_id: "engineering", group_name: "Engineering", connection_id: multi.id, model: options.body.model, enabled: true, status: "applied", revision: 1 } }));
+    render(<AIGroupAccess orgId="org" canManage />);
+    fireEvent.click(await screen.findByRole("button", { name: "Grant access" }));
+    await screen.findByRole("option", { name: "Engineering (4)" });
+    fireEvent.change(screen.getByLabelText("User group"), { target: { value: "engineering" } });
+    expect(modelBox("o4").checked).toBe(true); expect(modelBox("o4").disabled).toBe(true);
+    fireEvent.click(modelBox("gpt-5")); fireEvent.click(modelBox("gpt-5-mini"));
+    fireEvent.click(screen.getByRole("button", { name: "Grant access to 2 models" }));
+    await waitFor(() => expect(mock.success).toHaveBeenCalledWith("Model access granted to 2 models"));
+    expect(mock.post).toHaveBeenCalledTimes(2);
+    expect(mock.post.mock.calls.map((call) => call[1].body.model)).toEqual(["custom-connection/gpt-5", "custom-connection/gpt-5-mini"]);
+    expect(mock.post.mock.calls.every((call) => call[1].body.enabled === true && call[1].body.expected_revision === 0 && call[1].body.group_id === "engineering")).toBe(true);
+  });
+  it("keeps only the failed models selected when part of a multi-model grant fails", async () => {
+    const multi = { ...provider, models: ["custom-connection/gpt-5", "custom-connection/gpt-5-mini"], model_modes: {} };
+    mock.get.mockImplementation((path: string) => Promise.resolve({ data: path.endsWith("/members") ? [{ user_id: "user", role: "owner" }] : path.endsWith("user-groups") ? [{ id: "engineering", name: "Engineering", members: 4 }] : path.endsWith("user-model-grants") ? [] : { items: [multi] } }));
+    mock.post.mockImplementation(async (_: string, options: { body: { model: string } }) => options.body.model.endsWith("mini") ? { error: {}, response: new Response("{}", { status: 500 }) } : { data: { id: "grant", group_id: "engineering", group_name: "Engineering", connection_id: multi.id, model: options.body.model, enabled: true, status: "applied", revision: 1 } });
+    render(<AIGroupAccess orgId="org" canManage />);
+    fireEvent.click(await screen.findByRole("button", { name: "Grant access" }));
+    await screen.findByRole("option", { name: "Engineering (4)" });
+    fireEvent.change(screen.getByLabelText("User group"), { target: { value: "engineering" } });
+    fireEvent.click(modelBox("gpt-5")); fireEvent.click(modelBox("gpt-5-mini"));
+    fireEvent.click(screen.getByRole("button", { name: "Grant access to 2 models" }));
+    expect((await screen.findByRole("alert")).textContent).toContain("Granted 1 of 2 models. Could not apply: custom-connection/gpt-5-mini.");
+    expect(modelBox("gpt-5").disabled).toBe(true);
+    expect(modelBox("gpt-5-mini").checked).toBe(true);
+    expect(screen.getByRole("button", { name: "Grant model access" })).toBeTruthy();
+    expect(mock.success).not.toHaveBeenCalled();
   });
   it.each(["ai-admin", "unverified"])("does not offer group creation to %s", async (role) => {
     grantInventory();
@@ -93,7 +127,7 @@ describe("AI user access", () => {
     failed = false;
     fireEvent.click(retry);
     await openGroupCreation();
-    expect((screen.getByLabelText("Model") as HTMLSelectElement).value).toBe(JSON.stringify([provider.id, provider.models[0]]));
+    expect(modelBox().checked).toBe(true);
     expect(mock.post).not.toHaveBeenCalled();
   });
   it("keeps a duplicate-name error in the dialog without granting access", async () => {
@@ -104,7 +138,7 @@ describe("AI user access", () => {
     fireEvent.click(screen.getByRole("button", { name: "Create user group" }));
     expect((await screen.findByRole("alert")).textContent).toContain("A group with that name already exists.");
     expect((screen.getByLabelText("New group name") as HTMLInputElement).value).toBe(" Research ");
-    expect((screen.getByLabelText("Model") as HTMLSelectElement).value).toBe(JSON.stringify([provider.id, provider.models[0]]));
+    expect(modelBox().checked).toBe(true);
     expect(mock.post).toHaveBeenCalledTimes(1);
     expect(done).not.toHaveBeenCalled();
   });
@@ -120,7 +154,7 @@ describe("AI user access", () => {
     expect(mock.post).toHaveBeenCalledTimes(1);
     fireEvent.click(screen.getByRole("button", { name: "Refresh groups" }));
     await waitFor(() => expect((screen.getByRole("button", { name: "Create user group" }) as HTMLButtonElement).disabled).toBe(false));
-    expect((screen.getByLabelText("Model") as HTMLSelectElement).value).toBe(JSON.stringify([provider.id, provider.models[0]]));
+    expect(modelBox().checked).toBe(true);
     expect(mock.post).toHaveBeenCalledTimes(1);
   });
   it("keeps the new group selected when inventory refresh needs retry", async () => {
@@ -156,7 +190,7 @@ describe("AI user access", () => {
     fireEvent.click(screen.getByRole("button", { name: "Refresh groups" }));
     await screen.findByRole("option", { name: "Research (0)" });
     expect(mock.post).toHaveBeenCalledTimes(1);
-    expect((screen.getByLabelText("Model") as HTMLSelectElement).value).toBe(JSON.stringify([provider.id, provider.models[0]]));
+    expect(modelBox().checked).toBe(true);
   });
   it("uses the login endpoint with conversation history and no provider key input", async () => {
     mock.get.mockResolvedValue({ data: [{ model: provider.models[0], mode: "chat" }] });
