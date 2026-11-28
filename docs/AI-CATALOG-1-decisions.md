@@ -202,6 +202,11 @@ Decision:
   model-list call with the saved key. It returns only model names, costs
   nothing at the providers we support, and is bounded by the limiter (one at a
   time and six a minute per organization).
+- Shared limiter: saved-credential searches use the same per-organization
+  window as Test Connect and the draft search (one at a time, six a minute).
+  Searching a lot, or clicking Test Connect while a slow live list is still
+  loading, can make Test Connect answer 429 ("connection test limit
+  reached"). The draft flow already behaves this way.
 - Known limit: the search runs half a second after typing stops, so typing a
   lot within a minute can use up the limiter and drop to the reference list.
   The draft search behaves the same way.
@@ -223,6 +228,10 @@ obvious next step.
   reaches the provider and credential steps.
 - Not shown after editing an existing credential, after Add Model, or to
   users who cannot manage providers.
+- The credentials and Add Model routes are separate page instances, so the
+  credential travels in the URL (`/ai-gateway/models/new?credential=<id>`)
+  rather than in page memory. The id is only a preselection; Add Model still
+  lists only that organization's saved credentials.
 
 Validation:
 

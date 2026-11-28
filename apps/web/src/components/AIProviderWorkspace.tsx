@@ -56,19 +56,23 @@ const failureMessage = "The operation could not be completed. Check the connecti
 type WorkspaceView = "connections" | "models" | "add";
 type WorkspaceProps = {
   orgId: string; canManage?: boolean; canManageTransport?: boolean; view?: WorkspaceView;
-  onViewChange?: (view: WorkspaceView) => void;
+  // credential: a saved credential to preselect in Add Model (view "add" only).
+  onViewChange?: (view: WorkspaceView, credential?: string) => void;
   onGrantAccess?: (connection: string, model: string) => void;
+  /** Saved credential preselected when the workspace opens in Add Model. */
+  initialCredential?: string;
 };
 export function AIProviderWorkspace(props: WorkspaceProps) {
   return <ProviderWorkspace key={`${props.orgId}:${props.canManage ?? true}`} {...props} />;
 }
-function ProviderWorkspace({ orgId, canManage = true, canManageTransport = false, view: routeView, onViewChange, onGrantAccess }: WorkspaceProps) {
+function ProviderWorkspace({ orgId, canManage = true, canManageTransport = false, view: routeView, onViewChange, onGrantAccess, initialCredential }: WorkspaceProps) {
   const [credentialSearch, setCredentialSearch] = useState("");
   const [credentialProvider, setCredentialProvider] = useState("");
   const [accessAfterSave, setAccessAfterSave] = useState<AIProviderConnection | null>(null);
   const [grantAfterSave, setGrantAfterSave] = useState(false);
   // A credential saved without models: offer Add Model with it preselected as the next step.
   const [modelsAfterSave, setModelsAfterSave] = useState<AIProviderConnection | null>(null);
+  const [localPreselect, setLocalPreselect] = useState<string | undefined>();
   const [credentialDetails, setCredentialDetails] = useState<AIProviderConnection | null>(null);
   const [inventory, setInventory] = useState<S["AIProviderList"] | null>(null);
   const [loading, setLoading] = useState(true), [busy, setBusy] = useState(false);
@@ -80,7 +84,7 @@ function ProviderWorkspace({ orgId, canManage = true, canManageTransport = false
   const [editing, setEditing] = useState<AIProviderConnection | "new" | null>(null);
   const [localView, setLocalView] = useState<WorkspaceView>("models");
   const view = routeView ?? localView;
-  const setView = (next: WorkspaceView) => { setLocalView(next); onViewChange?.(next); };
+  const setView = (next: WorkspaceView, credential?: string) => { setLocalView(next); onViewChange?.(next, credential); };
   useEffect(() => { setEditing(null); setRemoving(null); setCredentialDetails(null); setConnectionModel(null); }, [routeView]);
   useEffect(() => { if (!canManage) { setEditing(null); setRemoving(null); setAccessAfterSave(null); setModelsAfterSave(null); setGrantAfterSave(false); drafts.current = {}; } }, [canManage]);
   const [connectionModel, setConnectionModel] = useState<{ model: string; connectionId: string } | null>(null);
@@ -161,13 +165,18 @@ function ProviderWorkspace({ orgId, canManage = true, canManageTransport = false
     }
   }
   function addModelsFrom(saved: AIProviderConnection) {
-    setModelsAfterSave(null);
-    // Open Add Model at its Models step with this credential selected; its catalog reads the
-    // provider's live list with the saved key. The wizard's steps are unchanged.
-    drafts.current.model = { step: 2, provider: saved.provider, endpoint: "", existingID: saved.id, name: "", secret: "", models: "", enabled: true, mode: "chat", selectedModes: {}, manualModel: "", query: "" };
-    changeView("add");
+    // Open Add Model with this credential selected; its catalog reads the provider's live list
+    // with the saved key. A routed workspace may remount, so the id travels with the view change.
+    setModelsAfterSave(null); delete drafts.current.model;
+    changeView("add", saved.id);
   }
-  function changeView(next: typeof view) { setView(next); setEditing(null); setRemoving(null); setCredentialDetails(null); setConnectionModel(null); }
+  // Add Model opens at its Models step with the preselected credential; the wizard's steps are unchanged.
+  const preselect = view === "add" ? initialCredential ?? localPreselect : undefined;
+  const preselectedDraft = (): EditorDraft | undefined => {
+    const saved = preselect ? inventory?.items.find((c) => c.id === preselect) : undefined;
+    return saved && { step: 2, provider: saved.provider, endpoint: "", existingID: saved.id, name: "", secret: "", models: "", enabled: true, mode: "chat", selectedModes: {}, manualModel: "", query: "" };
+  };
+  function changeView(next: typeof view, credential?: string) { setLocalPreselect(credential); setView(next, credential); setEditing(null); setRemoving(null); setCredentialDetails(null); setConnectionModel(null); }
   const definitions = inventory?.definitions ?? [];
   const providerName = (id: string) => definitions.find((d) => d.id === id)?.name ?? id;
   const providerBrand = (id: string) => <span className="ai-gateway-provider-brand"><ProviderLogo provider={id} /><span>{providerName(id)}</span></span>;
@@ -251,7 +260,7 @@ function ProviderWorkspace({ orgId, canManage = true, canManageTransport = false
       {modelsAfterSave && canManage && <Modal title="Credentials saved" placement="right" showClose onDismiss={() => setModelsAfterSave(null)} actions={<><Button onClick={() => setModelsAfterSave(null)}>Later</Button><Button onClick={() => addModelsFrom(modelsAfterSave)}>Add models from this credential</Button></>}><div className="ai-gateway-action-form"><p>{modelsAfterSave.name} has no models yet. Add models to make them available through the gateway.</p></div></Modal>}
       {accessAfterSave && !grantAfterSave && <Modal title="Models saved" placement="right" showClose onDismiss={() => setAccessAfterSave(null)} actions={<><Button onClick={() => setAccessAfterSave(null)}>Later</Button><Button onClick={() => setGrantAfterSave(true)}>Grant access</Button></>}><div className="ai-gateway-action-form"><p>Choose a user group to make these models available in Playground.</p></div></Modal>}
       {accessAfterSave && grantAfterSave && <AIGroupAccess orgId={orgId} canManage={canManage} dialogOnly initialConnection={accessAfterSave.id} initialModel={accessAfterSave.models[accessAfterSave.models.length - 1]} onDone={() => { setAccessAfterSave(null); setGrantAfterSave(false); }} />}
-      {canManage && (editing || view === "add") && <ProviderEditor draft={drafts.current[editing === "new" ? "new" : editing?.id ?? "model"]} key={editing === "new" ? "new-credentials" : editing ? `${editing.id}:${editing.revision}` : "new-model"} error={error} orgId={orgId} connection={editing === "new" ? undefined : editing ?? undefined} definitions={definitions} supportedModes={inventory.supported_modes ?? ["chat"]} testAvailable={inventory.test_available ?? false} publicEndpointsAvailable={inventory.public_endpoints_available ?? false} foundryAvailable={inventory.foundry_available ?? false} foundryEndpoints={inventory.foundry_endpoints ?? []} sagemakerAvailable={inventory.sagemaker_available ?? false} sagemakerEndpoints={inventory.sagemaker_endpoints ?? []} customAvailable={inventory.custom_available ?? false} endpoints={inventory.custom_endpoints ?? []} connections={inventory.items} modelOnly={!editing} busy={busy} onCancel={draft => { drafts.current[editing === "new" ? "new" : editing?.id ?? "model"] = { ...draft, secret: "" }; editing ? setEditing(null) : changeView("models"); }} onSave={save} />}
+      {canManage && (editing || view === "add") && <ProviderEditor draft={drafts.current[editing === "new" ? "new" : editing?.id ?? "model"] ?? (editing ? undefined : preselectedDraft())} key={editing === "new" ? "new-credentials" : editing ? `${editing.id}:${editing.revision}` : "new-model"} error={error} orgId={orgId} connection={editing === "new" ? undefined : editing ?? undefined} definitions={definitions} supportedModes={inventory.supported_modes ?? ["chat"]} testAvailable={inventory.test_available ?? false} publicEndpointsAvailable={inventory.public_endpoints_available ?? false} foundryAvailable={inventory.foundry_available ?? false} foundryEndpoints={inventory.foundry_endpoints ?? []} sagemakerAvailable={inventory.sagemaker_available ?? false} sagemakerEndpoints={inventory.sagemaker_endpoints ?? []} customAvailable={inventory.custom_available ?? false} endpoints={inventory.custom_endpoints ?? []} connections={inventory.items} modelOnly={!editing} busy={busy} onCancel={draft => { drafts.current[editing === "new" ? "new" : editing?.id ?? "model"] = { ...draft, secret: "" }; editing ? setEditing(null) : changeView("models"); }} onSave={save} />}
     </>}
   </section>;
 }

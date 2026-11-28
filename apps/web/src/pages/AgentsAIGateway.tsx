@@ -90,7 +90,8 @@ export default function AgentsAIGateway() {
           : page === "usage" ? <AIUsagePage key={orgId} orgId={orgId} canManage={access.manage} serverAdmin={canManageTransport} />
           : page === "models" || page === "credentials" ? <AIProviderWorkspace key={`${orgId}:${page}`} orgId={orgId} canManage={access.manage} canManageTransport={canManageTransport}
             view={page === "credentials" ? "connections" : pathname.endsWith("/new") && access.manage ? "add" : "models"}
-            onViewChange={(view) => navigate(view === "connections" ? "/ai-gateway/credentials" : view === "add" ? "/ai-gateway/models/new" : "/ai-gateway/models")}
+            initialCredential={pathname.endsWith("/new") ? search.get("credential") ?? undefined : undefined}
+            onViewChange={(view, credential) => navigate(view === "connections" ? "/ai-gateway/credentials" : view === "add" ? `/ai-gateway/models/new${credential ? `?credential=${encodeURIComponent(credential)}` : ""}` : "/ai-gateway/models")}
             onGrantAccess={(connection, model) => setGrant({ connection, model })} />
           : <div className="ai-gateway-configuration"><h2 className="sr-only">Gateway settings</h2>
             <AIGatewaySettings orgId={orgId} canEdit={access.manage} serverAdmin={canManageTransport} />

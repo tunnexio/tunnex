@@ -246,6 +246,23 @@ describe("AI provider onboarding", () => {
     expect(api.GET).toHaveBeenCalledWith(expect.stringMatching(/\/ai-gateway\/models$/), expect.objectContaining({ params: expect.objectContaining({ query: expect.objectContaining({ provider: "openrouter", connection_id: c.id }) }) }));
     expect(JSON.stringify(api.GET.mock.calls)).not.toContain("new-credential-fixture");
   });
+  it("carries the new credential through a routed view change that remounts the workspace", async () => {
+    api.GET.mockImplementation((path: string) => Promise.resolve({ data: path.endsWith("/my-models") ? [] : path.endsWith("/models") ? { items: [{ id: "openrouter/live-only", name: "Live only" }], total: 1, limit: 50, offset: 0, source: "provider" } : inventory, response: response() }));
+    const routes: unknown[][] = [];
+    // The routed page keys the workspace by page, so the credentials and Add Model routes are separate instances.
+    const routed = (view: "connections" | "models" | "add", credential?: string) => createElement(AIProviderWorkspace, { key: view === "connections" ? "credentials" : "models", orgId: "org-a", view, initialCredential: credential, onViewChange: (next: "connections" | "models" | "add", id?: string) => { routes.push([next, id]); view$.rerender(routed(next, id)); } });
+    const view$ = render(routed("connections")); await screen.findByText("Engineering");
+    fireEvent.click(screen.getByRole("button", { name: "Add Credentials" })); selectProvider();
+    fireEvent.change(screen.getByLabelText("API key"), { target: { value: "new-credential-fixture" } });
+    fireEvent.click(screen.getByRole("button", { name: "Create credentials" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Add models from this credential" }));
+    expect(routes).toContainEqual(["add", c.id]);
+    const dialog = await screen.findByRole("dialog", { name: "Add Model" });
+    await waitFor(() => expect((within(dialog).getByLabelText("Existing Credentials") as HTMLSelectElement).value).toBe(c.id));
+    fireEvent.focus(within(dialog).getByLabelText("Search model catalog"));
+    await within(dialog).findByText(/^Provider catalog/);
+    expect(api.GET).toHaveBeenCalledWith(expect.stringMatching(/\/ai-gateway\/models$/), expect.objectContaining({ params: expect.objectContaining({ query: expect.objectContaining({ connection_id: c.id }) }) }));
+  });
   it("closes the Add Model offer when Later is chosen", async () => {
     render(show()); await screen.findByText("Engineering"); fireEvent.click(screen.getByRole("tab", { name: /LLM Credentials/ }));
     fireEvent.click(screen.getByRole("button", { name: "Add Credentials" })); selectProvider();
