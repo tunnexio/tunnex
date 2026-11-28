@@ -917,3 +917,34 @@ func TestWorkloadRunHelper(t *testing.T) {
 		os.Exit(7)
 	}
 }
+
+// AI-COMPAT-1: the local endpoint forwards every adapter route the SDKs use
+// and its bounds are above the control plane's largest configurable limits.
+func TestWorkloadProxyRoutesAndBounds(t *testing.T) {
+	for _, tc := range []struct{ method, path, want string }{
+		{"POST", "/v1/chat/completions", "/ai/v1/chat/completions"},
+		{"POST", "/v1/responses", "/ai/v1/responses"},
+		{"POST", "/v1/embeddings", "/ai/v1/embeddings"},
+		{"POST", "/v1/completions", "/ai/v1/completions"},
+		{"POST", "/v1/audio/speech", "/ai/v1/audio/speech"},
+		{"POST", "/v1/audio/transcriptions", "/ai/v1/audio/transcriptions"},
+		{"POST", "/v1/images/generations", "/ai/v1/images/generations"},
+		{"POST", "/v1/rerank", "/ai/v1/rerank"},
+		{"POST", "/v1/messages", "/ai/anthropic/v1/messages"},
+		{"GET", "/v1/models", "/ai/v1/models"},
+		{"POST", "/v1/files", ""},
+		{"GET", "/v1/responses/resp_1", ""},
+		{"POST", "/v1/messages/count_tokens", ""},
+	} {
+		got, ok := workloadProxyPath(tc.method, tc.path)
+		if ok != (tc.want != "") || got != tc.want {
+			t.Errorf("%s %s -> %q %v", tc.method, tc.path, got, ok)
+		}
+	}
+	if workloadProxyRequestTimeout <= 60*time.Minute || workloadProxyHeaderTimeout <= 30*time.Minute || workloadProxyTransport().ResponseHeaderTimeout != workloadProxyHeaderTimeout {
+		t.Fatal("local endpoint bounds below the control plane's maximums")
+	}
+	if workloadTransport().ResponseHeaderTimeout != 30*time.Second {
+		t.Fatal("control requests lost their short header bound")
+	}
+}

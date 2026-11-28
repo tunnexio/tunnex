@@ -143,13 +143,22 @@ loopback endpoint. Use an OpenAI-compatible client that honors those settings an
 select an exact permitted model ID. Applications with hardcoded endpoints or
 credentials need their configuration changed. The wrapper also supplies
 `ANTHROPIC_BASE_URL` at the loopback origin and `ANTHROPIC_API_KEY`; its native
-message path is `/v1/messages`. Compatibility with every SDK is not established.
+message path is `/v1/messages`. The OpenAI and Messages SDKs, LangChain and
+LangGraph (tools, structured output, streaming with usage, embeddings) are
+covered by the allowlist in `docs/AI-COMPAT-1-decisions.md`;
+`scripts/ai-compat/lc_matrix.py` is the manual qualification run.
 
 The wrapper holds the remote token in memory, renews it before expiry, and replaces
 the local session credential with the remote bearer on allowed gateway requests.
-It streams responses; its current request timeout is 35 seconds, including
-streams. The application receives a local credential, not the remote bearer.
-Only supported AI routes are forwarded. This is not a general network proxy or
+It streams responses. Request size, output length and duration are governed
+by the control plane's limits (by default 8 MiB requests, 5 minutes without
+streaming, 10 minutes for streams, cut after 150 seconds without data); the
+wrapper's own bounds are above the largest allowed settings. A request that
+outlives its five-minute token continues while the workload stays authorized.
+The application receives a local credential, not the remote bearer. Only
+supported AI routes are forwarded (chat completions, completions, responses,
+embeddings, speech, transcription, images, video jobs, rerank, `/v1/messages`
+and the model list). This is not a general network proxy or
 an isolation boundary between processes running as the same operating-system user.
 
 The gateway checks the current workload, instance, model policy and provider
