@@ -1004,6 +1004,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/organizations/{orgId}/ai-gateway/user-groups/{groupId}/cost-limit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                groupId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /** Set or remove a user group's shared daily USD soft threshold */
+        put: operations["putAIUserGroupCostLimit"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/organizations/{orgId}/ai-gateway/user-model-grants": {
         parameters: {
             query?: never;
@@ -1385,7 +1405,7 @@ export interface paths {
         parameters: {
             query?: {
                 mode?: components["schemas"]["AIModelMode"];
-                /** @description Same-organization connection required for saved custom or SageMaker catalogs. Foundry without a connection searches the release-bundled reference suggestions; a connection searches the saved endpoint. */
+                /** @description Same-organization connection required for saved custom or SageMaker catalogs. Foundry without a connection searches the release-bundled reference suggestions; a connection searches the saved endpoint. For a standard provider */
                 connection_id?: string;
                 provider?: "openai" | "anthropic" | "gemini" | "openrouter" | "groq" | "mistral" | "cerebras" | "xai" | "deepseek" | "custom" | "sagemaker" | "azure_foundry";
                 query?: string;
@@ -9867,6 +9887,25 @@ export interface components {
             id: string;
             name: string;
             members: number;
+            /**
+             * Format: double
+             * @description Daily USD soft threshold shared by all members across the group's model grants, based on native observed usage since midnight UTC. Concurrent calls can exceed it. Null means no limit.
+             */
+            daily_usd_threshold: number | null;
+            /**
+             * Format: int64
+             * @description Revision of the limit; 0 when it was never set.
+             */
+            limit_revision: number;
+        };
+        AIUserGroupCostLimitInput: {
+            /**
+             * Format: double
+             * @description Null removes the limit.
+             */
+            daily_usd_threshold: number | null;
+            /** Format: int64 */
+            expected_revision: number;
         };
         AIUserModel: {
             model: string;
@@ -10158,6 +10197,11 @@ export interface components {
             total: number;
             limit: number;
             offset: number;
+            /**
+             * @description Set only for a saved standard-provider connection. `provider` is the provider's live model list, read with the saved key. `reference` means that list could not be read; the items are known models that may no longer be available.
+             * @enum {string}
+             */
+            source?: "provider" | "reference";
         };
         AIProviderModel: {
             mode?: components["schemas"]["AIModelMode"];
@@ -16720,6 +16764,34 @@ export interface operations {
             default: components["responses"]["Error"];
         };
     };
+    putAIUserGroupCostLimit: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                groupId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AIUserGroupCostLimitInput"];
+            };
+        };
+        responses: {
+            /** @description The group with its saved limit. A stale expected_revision is refused with 409. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AIUserGroup"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
     listAIUserModelGrants: {
         parameters: {
             query?: never;
@@ -17309,7 +17381,7 @@ export interface operations {
         parameters: {
             query?: {
                 mode?: components["schemas"]["AIModelMode"];
-                /** @description Same-organization connection required for saved custom or SageMaker catalogs. Foundry without a connection searches the release-bundled reference suggestions; a connection searches the saved endpoint. */
+                /** @description Same-organization connection required for saved custom or SageMaker catalogs. Foundry without a connection searches the release-bundled reference suggestions; a connection searches the saved endpoint. For a standard provider */
                 connection_id?: string;
                 provider?: "openai" | "anthropic" | "gemini" | "openrouter" | "groq" | "mistral" | "cerebras" | "xai" | "deepseek" | "custom" | "sagemaker" | "azure_foundry";
                 query?: string;

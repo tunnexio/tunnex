@@ -28,7 +28,8 @@ with tempfile.TemporaryDirectory(prefix="tunnex-saved-probe-") as scratch:
     routes.write_text(text.replace(marker,
         '\tr.POST("/api/providers/{provider}/keys/{key_id}/test-connection", lib.ChainMiddlewares(h.tunnexSavedKeyProbe, middlewares...))\n'
         '\tr.POST("/api/tunnex/test-connection", lib.ChainMiddlewares(h.tunnexDraftProbe, middlewares...))\n'
-        '\tr.POST("/api/tunnex/model-catalog", lib.ChainMiddlewares(h.tunnexDraftCatalog, middlewares...))\n' + marker))
+        '\tr.POST("/api/tunnex/model-catalog", lib.ChainMiddlewares(h.tunnexDraftCatalog, middlewares...))\n'
+        '\tr.POST("/api/tunnex/saved-model-catalog", lib.ChainMiddlewares(h.tunnexSavedCatalog, middlewares...))\n' + marker))
     (handlers / "tunnex_saved_probe.go").write_bytes((extension / "saved_probe.go").read_bytes())
     (handlers / "tunnex_native_operations.go").write_bytes((extension / "native_operations.go").read_bytes())
     native = root / "core/providers/tunnexsagemaker"

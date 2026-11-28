@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { Fragment, useEffect, useRef, useState, type ReactNode } from "react";
 import { Link } from "react-router-dom";
 import { type components } from "@tunnex/shared";
 import { api, apiErrorCode, apiErrorMessage, loadOne } from "../lib/api";
@@ -65,13 +65,15 @@ function GroupAccessPanel({ orgId, canManage, initialConnection = "", initialMod
   const [groupPermission, setGroupPermission] = useState<{ scope: string; allowed: boolean | null } | null>(null);
   const [permissionAttempt, setPermissionAttempt] = useState(0), [groupRefreshFailed, setGroupRefreshFailed] = useState(false);
   const creationAllowed = groupPermission?.scope === scope ? groupPermission.allowed : undefined;
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(""), [modelFilter, setModelFilter] = useState(""), [modelQuery, setModelQuery] = useState("");
+  const [expanded, setExpanded] = useState<string[]>([]);
   const [page, setPage] = useState(1), [pageSize, setPageSize] = useState(20);
   const [revokeGrant, setRevokeGrant] = useState<S["AIUserModelGrant"] | null>(null);
-  const closeGrant = () => { setGrantOpen(false); setCreateGroupOpen(false); setGroupName(""); onDone?.(); };
+  const [limitGroup, setLimitGroup] = useState<{ id: string; name: string } | null>(null), [limitInput, setLimitInput] = useState(""), [limitError, setLimitError] = useState("");
+  const closeGrant = () => { setGrantOpen(false); setCreateGroupOpen(false); setGroupName(""); setModelQuery(""); setSelections([]); onDone?.(); };
   const [data, setData] = useState<{ groups: S["AIUserGroup"][]; grants: S["AIUserModelGrant"][]; providers: S["AIProviderConnection"][] } | null>(null);
   const [attempt, setAttempt] = useState(0), [busy, setBusy] = useState(false), [error, setError] = useState("");
-  const [group, setGroup] = useState(""), [selection, setSelection] = useState(initialConnection && initialModel ? JSON.stringify([initialConnection, initialModel]) : "");
+  const [group, setGroup] = useState(""), [selections, setSelections] = useState<string[]>(initialConnection && initialModel ? [JSON.stringify([initialConnection, initialModel])] : []);
   useEffect(() => {
     if (!grantOpen || !canManage) return;
     let active = true;
@@ -96,10 +98,31 @@ function GroupAccessPanel({ orgId, canManage, initialConnection = "", initialMod
     return () => { active = false; };
   }, [orgId, attempt]);
   const models = data?.providers.filter((p) => p.enabled && p.status === "applied" && p.revision === p.applied_revision).flatMap((p) => p.models.map((model) => ({ key: JSON.stringify([p.id, model]), model, connection: p.id, name: p.name }))) ?? [];
-  const selected = models.find((m) => m.key === selection);
-  const matchingGrants = data?.grants.filter((grant) => `${grant.group_name} ${grant.model}`.toLowerCase().includes(query.trim().toLowerCase())) ?? [];
-  const currentPage = Math.min(page, Math.max(1, Math.ceil(matchingGrants.length / pageSize)));
-  const visibleGrants = matchingGrants.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+  // A model this group already holds through an enabled grant is shown as granted and not sent again.
+  const heldByGroup = (m: { connection: string; model: string }) => !!group && !!data?.grants.some((g) => g.group_id === group && g.connection_id === m.connection && g.model === m.model && g.enabled);
+  const selected = models.filter((m) => selections.includes(m.key) && !heldByGroup(m));
+  const toggleModel = (key: string, on: boolean) => setSelections((current) => on ? [...current.filter((k) => k !== key), key] : current.filter((k) => k !== key));
+  // One row per group (AI-CATALOG-1). A search matching the group name keeps all its models; a search
+  // matching only model names keeps just those models. The model filter keeps groups that hold that model.
+  const groupRows = (() => {
+    const rows = new Map<string, { key: string; groupId: string | null; name: string; grants: S["AIUserModelGrant"][] }>();
+    for (const grant of data?.grants ?? []) {
+      const key = grant.group_id ?? `deleted:${grant.group_name ?? ""}`;
+      const row = rows.get(key) ?? { key, groupId: grant.group_id ?? null, name: grant.group_name || "Deleted group", grants: [] };
+      row.grants.push(grant); rows.set(key, row);
+    }
+    const q = query.trim().toLowerCase();
+    return [...rows.values()].map((row) => {
+      const byModel = modelFilter ? row.grants.filter((g) => g.model === modelFilter) : row.grants;
+      const shown = !q || row.name.toLowerCase().includes(q) ? byModel : byModel.filter((g) => g.model.toLowerCase().includes(q));
+      return { ...row, grants: [...shown].sort((a, b) => a.model.localeCompare(b.model)) };
+    }).filter((row) => row.grants.length).sort((a, b) => a.name.localeCompare(b.name));
+  })();
+  const grantedModels = [...new Set((data?.grants ?? []).map((g) => g.model))].sort();
+  const currentPage = Math.min(page, Math.max(1, Math.ceil(groupRows.length / pageSize)));
+  const visibleRows = groupRows.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+  const filtering = Boolean(query || modelFilter);
+  const visibleChoices = models.filter((m) => `${m.model} ${m.name}`.toLowerCase().includes(modelQuery.trim().toLowerCase()));
   async function refreshGroups(createdId?: string) {
     const result = await loadOne(() => api.GET("/api/v1/organizations/{orgId}/ai-gateway/user-groups", { params: { path: { orgId } } }));
     if (!alive.current || currentScope.current !== scope) return;
@@ -125,7 +148,7 @@ function GroupAccessPanel({ orgId, canManage, initialConnection = "", initialMod
         return;
       }
       const created = result.data;
-      setData((d) => d ? { ...d, groups: [...d.groups.filter((g) => g.id !== created.id), { id: created.id, name: created.name, members: created.member_count }] } : d);
+      setData((d) => d ? { ...d, groups: [...d.groups.filter((g) => g.id !== created.id), { id: created.id, name: created.name, members: created.member_count, daily_usd_threshold: null, limit_revision: 0 }] } : d);
       setGroup(created.id); setGroupName(""); setCreateGroupOpen(false);
       toast.success("User group created");
       await refreshGroups(created.id);
@@ -149,7 +172,83 @@ function GroupAccessPanel({ orgId, canManage, initialConnection = "", initialMod
     } catch { if (alive.current) setError("Could not apply this change. Refresh the saved state before retrying."); }
     finally { locked.current = false; if (alive.current) setBusy(false); }
   }
-  const grantDialog = grantOpen && canManage && <Modal title="Grant model access" placement="right" size="enrollment" showClose onDismiss={() => !busy && closeGrant()} actions={<><Button variant="ghost" disabled={busy} onClick={closeGrant}>Cancel</Button><Button disabled={busy || createGroupOpen || groupRefreshFailed || !selected || !data?.groups.some((g) => g.id === group)} onClick={() => selected && void save(group, selected.connection, selected.model, true)}>{busy ? "Saving…" : "Grant model access"}</Button></>}>
+  // The API takes one grant per call; several models are granted one after another. Each grant stands on
+  // its own, so a failure leaves only the models that did not apply selected for a retry.
+  async function grantMany(groupId: string, picks: typeof selected) {
+    if (locked.current || !alive.current || !canManage || !data || !picks.length) return;
+    const startScope = scope;
+    locked.current = true; setBusy(true); setError("");
+    const failed: typeof picks = [], pending: typeof picks = [], saved: S["AIUserModelGrant"][] = [];
+    try {
+      for (const pick of picks) {
+        if (!alive.current || currentScope.current !== startScope) return;
+        const old = data.grants.find((g) => g.group_id === groupId && g.connection_id === pick.connection && g.model === pick.model);
+        try {
+          const result = await api.POST("/api/v1/organizations/{orgId}/ai-gateway/user-model-grants", { params: { path: { orgId } }, body: { group_id: groupId, connection_id: pick.connection, model: pick.model, enabled: true, expected_revision: old?.revision ?? 0 } });
+          if (!alive.current || currentScope.current !== startScope) return;
+          if (result.error || !result.data) { failed.push(pick); continue; }
+          saved.push(result.data);
+          if (result.data.status !== "applied") pending.push(pick);
+        } catch { failed.push(pick); }
+      }
+      if (!alive.current || currentScope.current !== startScope) return;
+      setData((d) => d ? { ...d, grants: [...d.grants.filter((g) => !saved.some((s) => s.id === g.id)), ...saved] } : d);
+      if (!failed.length && !pending.length) { toast.success(picks.length === 1 ? "Model access granted" : `Model access granted to ${picks.length} models`); closeGrant(); return; }
+      setSelections(failed.map((m) => m.key));
+      const names = (list: typeof picks) => list.map((m) => modelDisplayName(m.model)).join(", ");
+      const messages = [];
+      if (failed.length) messages.push(`Granted ${picks.length - failed.length} of ${picks.length} model${picks.length === 1 ? "" : "s"}. Could not apply: ${names(failed)}. Refresh the saved state, then retry the models still selected.`);
+      if (pending.length) messages.push(`Access is saved but not active yet for ${names(pending)}. Provisioning will retry; refresh to check its state.`);
+      setError(messages.join(" "));
+    } finally { locked.current = false; if (alive.current) setBusy(false); }
+  }
+  // A user group's daily cost limit is a soft threshold shared by all its members (AI-CATALOG-1).
+  const groupLimit = (groupId: string | null) => groupId ? data?.groups.find((g) => g.id === groupId)?.daily_usd_threshold ?? null : null;
+  const limitValue = limitInput.trim() === "" ? NaN : Number(limitInput);
+  const limitValid = Number.isFinite(limitValue) && limitValue > 0 && limitValue <= 100000;
+  function openLimit(groupId: string, name: string) {
+    const current = groupLimit(groupId);
+    setLimitGroup({ id: groupId, name }); setLimitInput(current == null ? "" : String(current)); setLimitError("");
+  }
+  async function saveLimit(value: number | null) {
+    const target = limitGroup;
+    const saved = target && data?.groups.find((g) => g.id === target.id);
+    if (locked.current || !alive.current || !canManage || !target) return;
+    if (!saved) { setLimitError("This group is no longer in the list. Refresh access and try again."); return; }
+    const startScope = scope;
+    locked.current = true; setBusy(true); setLimitError("");
+    try {
+      const result = await api.PUT("/api/v1/organizations/{orgId}/ai-gateway/user-groups/{groupId}/cost-limit", { params: { path: { orgId, groupId: target.id } }, body: { daily_usd_threshold: value, expected_revision: saved.limit_revision } });
+      if (!alive.current || currentScope.current !== startScope) return;
+      if (result.error || !result.data) {
+        if (result.response?.status !== 409) { setLimitError(apiErrorMessage(result.error, "Could not save the daily cost limit.")); return; }
+        // Someone else saved first: load the current limit so the next save is made against it.
+        const latest = await loadOne(() => api.GET("/api/v1/organizations/{orgId}/ai-gateway/user-groups", { params: { path: { orgId } } }));
+        if (!alive.current || currentScope.current !== startScope) return;
+        if (!latest.ok) { setLimitError("Someone else changed this limit. Refresh access to load it before saving again."); return; }
+        const current = latest.data.find((g) => g.id === target.id);
+        setData((d) => d ? { ...d, groups: latest.data } : d);
+        setLimitInput(current?.daily_usd_threshold == null ? "" : String(current.daily_usd_threshold));
+        setLimitError("Someone else changed this limit. The latest value is loaded; review it and save again.");
+        return;
+      }
+      const updated = result.data;
+      setData((d) => d ? { ...d, groups: d.groups.map((g) => g.id === updated.id ? updated : g) } : d);
+      toast.success(value == null ? "Daily cost limit removed" : "Daily cost limit saved");
+      setLimitGroup(null);
+    } catch { if (alive.current) setLimitError("Could not reach the API. Refresh access to check the saved limit before retrying."); }
+    finally { locked.current = false; if (alive.current) setBusy(false); }
+  }
+  const limitDialog = limitGroup && canManage && <Modal title="Daily cost limit" showClose onDismiss={() => !busy && setLimitGroup(null)} actions={<><Button variant="ghost" disabled={busy} onClick={() => setLimitGroup(null)}>Cancel</Button>{groupLimit(limitGroup.id) != null && <Button variant="ghost" disabled={busy} onClick={() => void saveLimit(null)}>Remove limit</Button>}<Button disabled={busy || !limitValid} onClick={() => void saveLimit(limitValue)}>{busy ? "Saving…" : "Save"}</Button></>}>
+    <div className="grid gap-4">
+      {limitError && <p role="alert" className="text-danger">{limitError}</p>}
+      <p>Daily soft threshold for <strong>{limitGroup.name}</strong>, shared by all its members across all of its models.</p>
+      <Field label="Daily limit (USD)"><Input type="number" inputMode="decimal" min="0.01" max="100000" step="0.01" placeholder="No limit" value={limitInput} disabled={busy} onChange={(e) => setLimitInput(e.target.value)} /></Field>
+      {limitInput.trim() !== "" && !limitValid && <p className="text-sm text-danger">Enter an amount greater than 0 and at most 100000.</p>}
+      <p className="text-sm text-ink-tertiary">Counted from midnight UTC on usage the gateway has already seen, so calls running at the same time can go over it. Once it is reached, new requests through this group are refused until midnight UTC. While a limit is set, models without exact pricing are refused.</p>
+    </div>
+  </Modal>;
+  const grantDialog = grantOpen && canManage && <Modal title="Grant model access" placement="right" size="enrollment" showClose onDismiss={() => !busy && closeGrant()} actions={<><Button variant="ghost" disabled={busy} onClick={closeGrant}>Cancel</Button><Button disabled={busy || createGroupOpen || groupRefreshFailed || !selected.length || !data?.groups.some((g) => g.id === group)} onClick={() => void grantMany(group, selected)}>{busy ? "Saving…" : selected.length > 1 ? `Grant access to ${selected.length} models` : "Grant model access"}</Button></>}>
     <div className="ai-access-editor">
     {error && <p role="alert" className="text-danger">{error}</p>}
     {!data ? error ? <Button variant="ghost" onClick={() => { setError(""); setAttempt((value) => value + 1); }}>Retry access inventory</Button> : <Loading label="Loading groups and models…" /> : <div className="grid gap-5">
@@ -162,7 +261,7 @@ function GroupAccessPanel({ orgId, canManage, initialConnection = "", initialMod
       {creationAllowed === false && <p className="text-sm text-ink-tertiary">{emailVerified ? "An owner or administrator must create user groups." : "Verify your email to create a user group."}</p>}
       {creationAllowed === null && <p role="alert">Could not check group creation permissions. <Button variant="ghost" disabled={busy} onClick={() => setPermissionAttempt((n) => n + 1)}>Retry group permissions</Button></p>}
       {groupRefreshFailed && <RefreshButton label="Refresh groups" disabled={busy} onClick={async () => { setBusy(true); setError(""); try { await refreshGroups(); } finally { setBusy(false); } }} />}
-      <Field label="Model"><Select value={selection} onChange={(e) => setSelection(e.target.value)} disabled={busy}><option value="">Select a configured model</option>{models.map((m) => <option key={m.key} value={m.key}>{modelDisplayName(m.model)} · {m.name}</option>)}</Select></Field>
+      <fieldset className="ai-access-models"><legend>Models</legend>{models.length > 6 && <div className="mb-2 flex flex-wrap items-center gap-2"><Input aria-label="Search models to grant" placeholder="Search models" value={modelQuery} disabled={busy} onChange={(e) => setModelQuery(e.target.value)} /><Button variant="ghost" size="sm" disabled={busy || !visibleChoices.some((m) => !heldByGroup(m) && !selections.includes(m.key))} onClick={() => setSelections((current) => [...new Set([...current, ...visibleChoices.filter((m) => !heldByGroup(m)).map((m) => m.key)])])}>Select all shown</Button></div>}{models.length ? visibleChoices.length ? <ul className="grid gap-2">{visibleChoices.map((m) => { const held = heldByGroup(m); return <li key={m.key}><label className="flex items-center gap-2"><input type="checkbox" checked={held || selections.includes(m.key)} disabled={busy || held} onChange={(e) => toggleModel(m.key, e.target.checked)} /><span title={m.model}>{modelDisplayName(m.model)} · {m.name}</span>{held && <small className="text-ink-tertiary">Already granted</small>}</label></li>; })}</ul> : <p>No model matches this search.</p> : <p>No configured model is ready to grant.</p>}{selections.length > 0 && <p className="mt-2 text-sm text-ink-tertiary">{selected.length} selected</p>}</fieldset>
       {!data.groups.length && <p>No user groups yet.</p>}
       <p className="ai-access-context">Members use their Tunnex login <HelpTooltip label="How model access works">The provider key stays in the gateway. Removing a grant blocks new requests; accepted requests may finish.</HelpTooltip></p>
     </div>}
@@ -172,27 +271,48 @@ function GroupAccessPanel({ orgId, canManage, initialConnection = "", initialMod
   return <section className="ai-model-access ai-secondary-workspace" aria-label="Group model access">
     <div className="ai-secondary-toolbar">
       <Input aria-label="Search model access" placeholder="Search groups or models" value={query} onChange={(event) => { setQuery(event.target.value); setPage(1); }} />
+      {grantedModels.length > 1 && <Select aria-label="Filter by model" value={modelFilter} onChange={(event) => { setModelFilter(event.target.value); setPage(1); }}><option value="">All models</option>{grantedModels.map((m) => <option key={m} value={m}>{modelDisplayName(m)}</option>)}</Select>}
       <div className="ai-secondary-actions"><RefreshButton label="Refresh access" disabled={busy} onClick={() => { setError(""); gateway.reload(); setAttempt((n) => n + 1); }} />{canManage && <Button disabled={!data || busy} onClick={() => setGrantOpen(true)}>Grant access</Button>}</div>
     </div>
     <AIGatewayOffBanner orgId={orgId} gateway={gateway} canManage={canManage} serverAdmin={serverAdmin} onChanged={() => { setError(""); setAttempt((n) => n + 1); }} />
     {/* While the banner says why nothing loads, a load error beside it would only repeat it less clearly. */}
     {error && !grantOpen && !(gateway.off && !data) && <p role="alert">{error}</p>}
-    {!data ? !error && <Loading label="Loading groups and models…" /> : visibleGrants.length ? <div className="ai-secondary-table-scroll"><table className="ai-compact-table">
+    {!data ? !error && <Loading label="Loading groups and models…" /> : visibleRows.length ? <div className="ai-secondary-table-scroll"><table className="ai-compact-table">
       <caption className="sr-only">User group model grants</caption>
-      <thead><tr><th scope="col">Group</th><th scope="col">Model</th><th scope="col">State</th>{canManage && <th scope="col" className="ai-secondary-action-column"><span className="sr-only">Actions</span></th>}</tr></thead>
-      <tbody>{visibleGrants.map((grant) => <tr key={grant.id}>
-        <td>{grant.group_name || "Deleted group"}{!grant.group_id && " (deleted)"}</td>
-        <td title={grant.model}>{modelDisplayName(grant.model)}</td>
-        <td><span className="ai-secondary-status">{grant.enabled && grant.group_id ? grant.status : "Revoked"}</span></td>
-        {canManage && <td><AppAccessRowMenu label={`Actions for ${grant.group_name ?? "Deleted group"} · ${modelDisplayName(grant.model)}`} actions={[{
-          key: grant.enabled ? "revoke" : "restore", label: grant.enabled ? "Revoke access" : "Restore access", danger: grant.enabled,
-          disabledReason: busy ? "Wait for the current change to finish." : !grant.group_id ? "This group was deleted." : undefined,
-          onSelect: () => { if (!grant.group_id || busy) return; if (grant.enabled) setRevokeGrant(grant); else void save(grant.group_id, grant.connection_id, grant.model, true); },
-        }]} /></td>}
-      </tr>)}</tbody>
-    </table></div> : <AppAccessEmptyState icon={null} title={matchingGrants.length || query ? "No matching model access" : "No model access granted."} description={query ? "Try another group or model." : "Grant a configured model to a user group."} action={query ? <Button variant="ghost" onClick={() => { setQuery(""); setPage(1); }}>Clear search</Button> : undefined} />}
-    {data && <AppAccessPagination page={currentPage} pageSize={pageSize} count={visibleGrants.length} hasNext={currentPage * pageSize < matchingGrants.length} maxOffset={null} busy={busy} onPageChange={setPage} onPageSizeChange={(size) => { setPageSize(size); setPage(1); }} />}
+      <thead><tr><th scope="col">Group</th><th scope="col">Models</th><th scope="col">Access</th>{canManage && <th scope="col" className="ai-secondary-action-column"><span className="sr-only">Actions</span></th>}</tr></thead>
+      <tbody>{visibleRows.map((row) => {
+        const open = expanded.includes(row.key);
+        const active = row.grants.filter((g) => g.enabled && g.group_id && g.status === "applied").length;
+        const pending = row.grants.filter((g) => g.enabled && g.group_id && g.status !== "applied").length;
+        const revoked = row.grants.length - active - pending;
+        const limit = groupLimit(row.groupId);
+        const summary = [active && `${active} active`, pending && `${pending} pending`, revoked && `${revoked} revoked`, limit != null && `limit $${limit}/day`].filter(Boolean).join(" · ");
+        const chips = row.grants.slice(0, 3).map((g) => modelDisplayName(g.model));
+        return <Fragment key={row.key}><tr>
+          <td><button type="button" className="ai-item-button" aria-expanded={open} aria-label={`${open ? "Hide" : "Show"} models for ${row.name}`} onClick={() => setExpanded((list) => open ? list.filter((k) => k !== row.key) : [...list, row.key])}>{row.name}</button>{!row.groupId && " (deleted)"}</td>
+          <td title={row.grants.map((g) => g.model).join("\n")}>{chips.join(", ")}{row.grants.length > 3 && ` +${row.grants.length - 3} more`}</td>
+          <td><span className="ai-secondary-status">{summary}</span></td>
+          {canManage && <td><AppAccessRowMenu label={`Group actions for ${row.name}`} actions={[
+            { key: "models", label: open ? "Hide models" : "Show models", onSelect: () => setExpanded((list) => open ? list.filter((k) => k !== row.key) : [...list, row.key]) },
+            { key: "grant", label: "Grant more models", disabledReason: busy ? "Wait for the current change to finish." : !row.groupId ? "This group was deleted." : undefined, onSelect: () => { if (!row.groupId || busy) return; setGroup(row.groupId); setSelections([]); setGrantOpen(true); } },
+            { key: "limit", label: "Set daily cost limit", disabledReason: busy ? "Wait for the current change to finish." : !row.groupId ? "This group was deleted." : undefined, onSelect: () => { if (!row.groupId || busy) return; openLimit(row.groupId, row.name); } },
+          ]} /></td>}
+        </tr>
+        {open && <tr className="ai-access-group-models"><td colSpan={canManage ? 4 : 3}><ul aria-label={`Models for ${row.name}`} className="grid gap-1">{row.grants.map((grant) => <li key={grant.id} className="flex flex-wrap items-center justify-between gap-2">
+          <span title={grant.model}>{modelDisplayName(grant.model)}</span>
+          <span className="flex items-center gap-2"><span className="ai-secondary-status">{grant.enabled && grant.group_id ? grant.status : "Revoked"}</span>
+          {canManage && <AppAccessRowMenu label={`Actions for ${grant.group_name ?? "Deleted group"} · ${modelDisplayName(grant.model)}`} actions={[{
+            key: grant.enabled ? "revoke" : "restore", label: grant.enabled ? "Revoke access" : "Restore access", danger: grant.enabled,
+            disabledReason: busy ? "Wait for the current change to finish." : !grant.group_id ? "This group was deleted." : undefined,
+            onSelect: () => { if (!grant.group_id || busy) return; if (grant.enabled) setRevokeGrant(grant); else void save(grant.group_id, grant.connection_id, grant.model, true); },
+          }]} />}</span>
+        </li>)}</ul></td></tr>}
+        </Fragment>;
+      })}</tbody>
+    </table></div> : <AppAccessEmptyState icon={null} title={filtering ? "No matching model access" : "No model access granted."} description={filtering ? "Try another group or model." : "Grant a configured model to a user group."} action={filtering ? <Button variant="ghost" onClick={() => { setQuery(""); setModelFilter(""); setPage(1); }}>Clear filters</Button> : undefined} />}
+    {data && <AppAccessPagination page={currentPage} pageSize={pageSize} count={visibleRows.length} hasNext={currentPage * pageSize < groupRows.length} maxOffset={null} busy={busy} onPageChange={setPage} onPageSizeChange={(size) => { setPageSize(size); setPage(1); }} />}
     {grantDialog}
+    {limitDialog}
     {revokeGrant && <Modal title="Revoke model access?" showClose onDismiss={() => !busy && setRevokeGrant(null)} actions={<><Button disabled={busy} onClick={() => setRevokeGrant(null)}>Cancel</Button><Button disabled={busy} onClick={async () => { if (!revokeGrant.group_id) return; await save(revokeGrant.group_id, revokeGrant.connection_id, revokeGrant.model, false); setRevokeGrant(null); }}>{busy ? "Revoking…" : "Confirm revoke"}</Button></>}><p>Revoke <strong>{modelDisplayName(revokeGrant.model)}</strong> access for <strong>{revokeGrant.group_name}</strong>?</p><p className="mt-3 text-sm text-ink-tertiary">Members will lose access through this grant. Other grants remain in effect. Requests already accepted may finish.</p></Modal>}
   </section>;
 }

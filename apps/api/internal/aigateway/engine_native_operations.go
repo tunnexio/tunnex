@@ -57,6 +57,42 @@ func (e *Engine) nativeOperationEngine() *Engine {
 }
 
 func (e *Engine) DraftProviderCatalog(ctx context.Context, in ProviderCatalogInput) (ProviderModelPage, error) {
+	return e.nativeCatalog(ctx, "/api/tunnex/model-catalog", in, "", in.Secret, in.Query, in.Limit, in.Offset)
+}
+
+// SavedProviderCatalogEngine lists a standard provider's models with the key
+// the engine already stores. No key travels in the request or the result.
+type SavedProviderCatalogEngine interface {
+	SavedProviderCatalog(ctx context.Context, s ProviderKeySpec, mode ModelMode, query string, limit, offset int) (ProviderModelPage, error)
+}
+
+func (e *Engine) SavedProviderCatalog(ctx context.Context, s ProviderKeySpec, mode ModelMode, query string, limit, offset int) (ProviderModelPage, error) {
+	if !supportedProvider(s.Provider) || s.BaseURL != "" || (!s.Enabled && len(s.Models) > 0) || !ValidModelMode(mode) {
+		return ProviderModelPage{}, errEngineScope
+	}
+	name, _, err := nativeProviderSpec(s)
+	if err != nil {
+		return ProviderModelPage{}, err
+	}
+	// The stored key must still be exactly this revision before it is used.
+	if err = e.VerifyProviderKey(ctx, s); err != nil {
+		return ProviderModelPage{}, err
+	}
+	payload := struct {
+		Provider string    `json:"provider"`
+		KeyID    string    `json:"key_id"`
+		KeyName  string    `json:"key_name"`
+		Mode     ModelMode `json:"mode"`
+		Query    string    `json:"query"`
+		Limit    int       `json:"limit"`
+		Offset   int       `json:"offset"`
+	}{s.Provider, s.ID, name, mode, query, limit, offset}
+	return e.nativeCatalog(ctx, "/api/tunnex/saved-model-catalog", payload, s.Provider, "", query, limit, offset)
+}
+
+// nativeCatalog accepts only a bounded, sorted, unique page that matches the
+// request. provider, when set, is the prefix every returned model must carry.
+func (e *Engine) nativeCatalog(ctx context.Context, path string, payload any, provider, secret, query string, limit, offset int) (ProviderModelPage, error) {
 	var result struct {
 		Items []struct {
 			ID   string `json:"id"`
@@ -72,16 +108,16 @@ func (e *Engine) DraftProviderCatalog(ctx context.Context, in ProviderCatalogInp
 	if transport, ok := probe.client.Transport.(*http.Transport); ok {
 		defer transport.CloseIdleConnections()
 	}
-	_, err := probe.request(ctx, http.MethodPost, "/api/tunnex/model-catalog", nil, in, &result)
-	if err != nil || result.Items == nil || result.Limit != in.Limit || result.Offset != in.Offset || result.Total < 0 || result.Total > 10000 || len(result.Items) > in.Limit || len(result.Items) > 0 && result.Total < in.Offset+len(result.Items) {
+	_, err := probe.request(ctx, http.MethodPost, path, nil, payload, &result)
+	if err != nil || result.Items == nil || result.Limit != limit || result.Offset != offset || result.Total < 0 || result.Total > 10000 || len(result.Items) > limit || len(result.Items) > 0 && result.Total < offset+len(result.Items) {
 		return ProviderModelPage{}, errEngine
 	}
 	out := ProviderModelPage{Models: []ProviderModel{}, Total: result.Total}
 	previous := ""
-	query := strings.ToLower(in.Query)
+	query = strings.ToLower(query)
 	for _, m := range result.Items {
 		prefix, _, _ := strings.Cut(m.ID, "/")
-		if !engineModel.MatchString(m.ID) || len(m.ID) > 255 || m.Name != m.ID || m.ID <= previous || customProviderName(prefix) || strings.Contains(m.ID, in.Secret) || !strings.Contains(strings.ToLower(m.ID), query) {
+		if !engineModel.MatchString(m.ID) || len(m.ID) > 255 || m.Name != m.ID || m.ID <= previous || customProviderName(prefix) || secret != "" && strings.Contains(m.ID, secret) || !strings.Contains(strings.ToLower(m.ID), query) || provider != "" && (prefix != provider || m.ID == prefix) {
 			return ProviderModelPage{}, errEngine
 		}
 		previous = m.ID

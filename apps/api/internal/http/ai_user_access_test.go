@@ -154,3 +154,75 @@ func TestAIUserGrantRoleBoundary(t *testing.T) {
 		}
 	}
 }
+
+func TestAIUserGroupCostLimitRoleBoundary(t *testing.T) {
+	org := uuid.New()
+	srv := apiServer{}
+	limit := 5.0
+	for _, tc := range []struct {
+		role string
+		want int
+	}{{"member", 403}, {"ai-view", 403}, {"ai-admin", 503}, {"owner", 503}, {"admin", 503}} {
+		ctx := authctx.WithPrincipal(context.Background(), &authctx.Principal{UserID: uuid.New(), EmailVerified: true, Roles: map[uuid.UUID]string{org: tc.role}})
+		_, err := srv.PutAIUserGroupCostLimit(ctx, api.PutAIUserGroupCostLimitRequestObject{OrgId: org, GroupId: uuid.New(), Body: &api.AIUserGroupCostLimitInput{DailyUsdThreshold: &limit}})
+		var domain *apierr.Error
+		if !errors.As(err, &domain) || domain.Status != tc.want {
+			t.Errorf("%s: %v", tc.role, err)
+		}
+	}
+	ctx := authctx.WithPrincipal(context.Background(), &authctx.Principal{UserID: uuid.New(), EmailVerified: true, Roles: map[uuid.UUID]string{org: "owner"}})
+	_, err := srv.PutAIUserGroupCostLimit(ctx, api.PutAIUserGroupCostLimitRequestObject{OrgId: org, GroupId: uuid.New()})
+	var domain *apierr.Error
+	if !errors.As(err, &domain) || domain.Status != 400 {
+		t.Errorf("missing body: %v", err)
+	}
+}
+
+func TestAIUserGroupCostLimitHandler(t *testing.T) {
+	ctx, pool := testpostgres.New(t)
+	org, group, owner := uuid.New(), uuid.New(), uuid.New()
+	exec := func(q string, args ...any) {
+		t.Helper()
+		if _, err := pool.Exec(ctx, q, args...); err != nil {
+			t.Fatal(err)
+		}
+	}
+	exec(`INSERT INTO organizations(id,name,slug,ai_gateway_enabled) VALUES($1,'Engineering',$2,true)`, org, "eng-"+org.String())
+	exec(`INSERT INTO user_groups(id,org_id,name) VALUES($1,$2,'Engineering')`, group, org)
+	exec(`INSERT INTO users(id,email,email_verified_at) VALUES($1,$2,now())`, owner, owner.String()+"@test.local")
+	exec(`INSERT INTO memberships(org_id,user_id,role) VALUES($1,$2,'owner')`, org, owner)
+	sealer, _ := crypto.NewSealer(bytes.Repeat([]byte{7}, 32))
+	srv := apiServer{aiPolicies: aigateway.NewPolicies(pool, sealer, userAccessEngine{})}
+	actx := authctx.WithPrincipal(ctx, &authctx.Principal{UserID: owner, EmailVerified: true, Roles: map[uuid.UUID]string{org: "owner"}})
+	limit := 5.0
+	res, err := srv.PutAIUserGroupCostLimit(actx, api.PutAIUserGroupCostLimitRequestObject{OrgId: org, GroupId: group, Body: &api.AIUserGroupCostLimitInput{DailyUsdThreshold: &limit, ExpectedRevision: 0}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, ok := res.(api.PutAIUserGroupCostLimit200JSONResponse)
+	if !ok || got.Id != group || got.Name != "Engineering" || got.LimitRevision != 1 || got.DailyUsdThreshold == nil || *got.DailyUsdThreshold != 5 {
+		t.Fatalf("response: %#v", res)
+	}
+	_, err = srv.PutAIUserGroupCostLimit(actx, api.PutAIUserGroupCostLimitRequestObject{OrgId: org, GroupId: group, Body: &api.AIUserGroupCostLimitInput{DailyUsdThreshold: nil, ExpectedRevision: 0}})
+	var domain *apierr.Error
+	if !errors.As(err, &domain) || domain.Status != 409 {
+		t.Fatalf("stale revision: %v", err)
+	}
+	bad := 0.0
+	_, err = srv.PutAIUserGroupCostLimit(actx, api.PutAIUserGroupCostLimitRequestObject{OrgId: org, GroupId: group, Body: &api.AIUserGroupCostLimitInput{DailyUsdThreshold: &bad, ExpectedRevision: 1}})
+	if !errors.As(err, &domain) || domain.Status != 400 {
+		t.Fatalf("zero limit: %v", err)
+	}
+	list, err := srv.ListAIUserGroups(actx, api.ListAIUserGroupsRequestObject{OrgId: org})
+	if err != nil {
+		t.Fatal(err)
+	}
+	groups, ok := list.(api.ListAIUserGroups200JSONResponse)
+	if !ok || len(groups) != 1 || groups[0].LimitRevision != 1 || groups[0].DailyUsdThreshold == nil || *groups[0].DailyUsdThreshold != 5 {
+		t.Fatalf("list: %#v", list)
+	}
+	var audits int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM audit_logs WHERE org_id=$1 AND actor_user_id=$2 AND action='ai_user_group.cost_limit_changed' AND target_id=$3`, org, owner, group.String()).Scan(&audits); err != nil || audits != 1 {
+		t.Fatalf("audit entries: %d %v", audits, err)
+	}
+}

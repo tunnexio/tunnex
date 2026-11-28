@@ -419,10 +419,21 @@ func (h *ProviderHandler) tunnexDraftCatalog(ctx *fasthttp.RequestCtx) {
 		tunnexFail(ctx, 400)
 		return
 	}
-	p, err := tunnexProvider(in, nil)
-	if err != nil {
-		tunnexFail(ctx, 503)
+	code, body := tunnexCatalog(in, nil)
+	if code != 200 {
+		tunnexFail(ctx, code)
 		return
+	}
+	SendJSON(ctx, body)
+}
+
+// tunnexCatalog reads every provider page within one deadline, then filters,
+// sorts and pages locally. The credential is used only for this call; no
+// result, failure or log line carries it.
+func tunnexCatalog(in tunnexOperation, native *schemas.ProviderConfig) (int, map[string]any) {
+	p, err := tunnexProvider(in, native)
+	if err != nil {
+		return 503, nil
 	}
 	defer tunnexClose(p)
 	deadline, cancel := schemas.NewBifrostContextWithTimeout(context.Background(), 9*time.Second)
@@ -434,8 +445,7 @@ func (h *ProviderHandler) tunnexDraftCatalog(ctx *fasthttp.RequestCtx) {
 	for page := 0; page < 20; page++ {
 		r, e := p.ListModels(deadline, []schemas.Key{key}, &schemas.BifrostListModelsRequest{Provider: schemas.ModelProvider(in.Provider), PageSize: 1000, PageToken: token, Unfiltered: true})
 		if e != nil || r == nil || len(r.Data) > 10000 {
-			tunnexFail(ctx, 503)
-			return
+			return 503, nil
 		}
 		for _, m := range r.Data {
 			name := m.ID
@@ -453,22 +463,19 @@ func (h *ProviderHandler) tunnexDraftCatalog(ctx *fasthttp.RequestCtx) {
 			}
 		}
 		if len(names) > 10000 {
-			tunnexFail(ctx, 503)
-			return
+			return 503, nil
 		}
 		if r.NextPageToken == "" {
 			done = true
 			break
 		}
 		if r.NextPageToken == token {
-			tunnexFail(ctx, 503)
-			return
+			return 503, nil
 		}
 		token = r.NextPageToken
 	}
 	if !done {
-		tunnexFail(ctx, 503)
-		return
+		return 503, nil
 	}
 	sorted := make([]string, 0, len(names))
 	for n := range names {
@@ -479,7 +486,7 @@ func (h *ProviderHandler) tunnexDraftCatalog(ctx *fasthttp.RequestCtx) {
 	for _, n := range sorted[min(in.Offset, len(sorted)):min(in.Offset+in.Limit, len(sorted))] {
 		items = append(items, map[string]string{"id": n, "name": n})
 	}
-	SendJSON(ctx, map[string]any{"items": items, "total": len(sorted), "limit": in.Limit, "offset": in.Offset})
+	return 200, map[string]any{"items": items, "total": len(sorted), "limit": in.Limit, "offset": in.Offset}
 }
 
 func tunnexClose(p schemas.Provider) {

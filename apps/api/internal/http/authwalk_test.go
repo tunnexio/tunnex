@@ -62,6 +62,7 @@ var walkBodies = map[string]string{
 	"setipsecconnectionintent":      `{"intent":"disabled"}`,
 	"setipsecsettings":              `{"enabled":false,"expected_revision":0}`,
 	"putaiusermodelgrant":           `{"group_id":"00000000-0000-4000-8000-000000000001","connection_id":"00000000-0000-4000-8000-000000000002","model":"openrouter/test","enabled":true,"expected_revision":0}`,
+	"putaiusergroupcostlimit":       `{"daily_usd_threshold":5,"expected_revision":0}`,
 	"savessoconnection":             `{"name":"Walk","provider":"okta","issuer_url":"https://company.okta.com","client_id":"walk"}`,
 	"activatessoconnection":         `{"enabled":false,"revision":1}`,
 	"testssoconnection":             `{"link_account":false}`,

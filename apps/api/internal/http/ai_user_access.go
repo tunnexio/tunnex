@@ -23,9 +23,32 @@ func (s apiServer) ListAIUserGroups(ctx context.Context, req api.ListAIUserGroup
 	}
 	out := api.ListAIUserGroups200JSONResponse{}
 	for _, v := range values {
-		out = append(out, api.AIUserGroup{Id: v.ID, Name: v.Name, Members: v.Members})
+		out = append(out, toAIUserGroup(v))
 	}
 	return out, nil
+}
+func toAIUserGroup(v aigateway.UserGroup) api.AIUserGroup {
+	return api.AIUserGroup{Id: v.ID, Name: v.Name, Members: v.Members, DailyUsdThreshold: v.DailyUsdThreshold, LimitRevision: v.LimitRevision}
+}
+
+// PutAIUserGroupCostLimit is authorized exactly like a user-group model grant.
+func (s apiServer) PutAIUserGroupCostLimit(ctx context.Context, req api.PutAIUserGroupCostLimitRequestObject) (api.PutAIUserGroupCostLimitResponseObject, error) {
+	ctx, err := authorize(ctx, req.OrgId, rbac.PermAIModelAccessManage)
+	if err != nil {
+		return nil, err
+	}
+	actor, err := aiManagementActor(ctx)
+	if err != nil {
+		return nil, err
+	}
+	if req.Body == nil {
+		return nil, apierr.BadRequest("invalid_request", "request body required")
+	}
+	v, err := s.aiPolicies.PutUserGroupCostLimit(ctx, req.OrgId, actor, req.GroupId, req.Body.DailyUsdThreshold, req.Body.ExpectedRevision)
+	if err != nil {
+		return nil, err
+	}
+	return api.PutAIUserGroupCostLimit200JSONResponse(toAIUserGroup(v)), nil
 }
 func toAIUserModelGrant(v aigateway.UserModelGrant) api.AIUserModelGrant {
 	return api.AIUserModelGrant{Id: v.ID, GroupId: v.GroupID, GroupName: v.GroupName, ConnectionId: v.ConnectionID, Model: v.Model, Mode: api.AIModelMode(v.Mode), Enabled: v.Enabled, Revision: v.Revision, AppliedRevision: v.AppliedRevision, Status: api.AIUserModelGrantStatus(v.Status)}

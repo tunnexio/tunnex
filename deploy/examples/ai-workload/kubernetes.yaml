@@ -1,0 +1,79 @@
+# Tunnex AI Gateway workload on Kubernetes (EKS, GKE, AKS or any cluster).
+#
+# Each pod is one workload instance with its own identity. The enrollment key is
+# a reusable ("Autoscaling deployment") key from AI Gateway -> Access -> Workloads.
+#
+# Create the Secret from the two files downloaded in "Connect application"
+# (never put the key in a manifest, image or command line):
+#
+#   kubectl create secret generic tunnex-workload \
+#     --from-file=workload.json=./workload.json \
+#     --from-file=enrollment-key=./enrollment-key
+#
+# workload.json must use the paths below:
+#   { "server": "https://tunnex.example.com",
+#     "enrollment_key_file": "/run/secrets/tunnex/enrollment-key",
+#     "state_directory": "/var/lib/tunnex-workload" }
+#
+# Your image needs the `tunnex` Linux binary on PATH and your application.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: support-bot
+spec:
+  replicas: 3
+  selector:
+    matchLabels: { app: support-bot }
+  template:
+    metadata:
+      labels: { app: support-bot }
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+        runAsGroup: 10001
+        fsGroup: 10001
+      initContainers:
+        # Secret volumes are symlinks; the CLI accepts only private regular files.
+        # Copy them into a memory-backed volume with owner-only permissions.
+        - name: tunnex-secrets
+          image: your-registry/support-bot:1.0.0
+          command: ["sh", "-c"]
+          args:
+            - |
+              set -eu
+              umask 077
+              cp /secret-src/workload.json /run/secrets/tunnex/workload.json
+              cp /secret-src/enrollment-key /run/secrets/tunnex/enrollment-key
+              chmod 600 /run/secrets/tunnex/workload.json /run/secrets/tunnex/enrollment-key
+              chmod 700 /run/secrets/tunnex /var/lib/tunnex-workload
+          volumeMounts:
+            - { name: secret-src, mountPath: /secret-src, readOnly: true }
+            - { name: tunnex-secrets, mountPath: /run/secrets/tunnex }
+            - { name: tunnex-state, mountPath: /var/lib/tunnex-workload }
+      containers:
+        - name: app
+          image: your-registry/support-bot:1.0.0
+          # The wrapper enrolls this pod, keeps a short-lived token in memory and
+          # gives the app OPENAI_BASE_URL / OPENAI_API_KEY on a loopback address.
+          command: ["tunnex", "workload", "run", "--config", "/run/secrets/tunnex/workload.json", "--"]
+          args: ["python", "app.py"]
+          volumeMounts:
+            - { name: tunnex-secrets, mountPath: /run/secrets/tunnex }
+            - { name: tunnex-state, mountPath: /var/lib/tunnex-workload }
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+      volumes:
+        - name: secret-src
+          # 0440 with fsGroup lets the non-root init container read the files.
+          secret: { secretName: tunnex-workload, defaultMode: 0440 }
+        - name: tunnex-secrets
+          emptyDir: { medium: Memory, sizeLimit: 1Mi }
+        # One state directory per pod, never shared. emptyDir survives container
+        # restarts inside the pod; a replacement pod enrolls as a new instance and
+        # the old one is retired automatically after 24 hours without contact.
+        # For a stable identity per replica, use a StatefulSet with a
+        # volumeClaimTemplate instead.
+        - name: tunnex-state
+          emptyDir: { sizeLimit: 10Mi }

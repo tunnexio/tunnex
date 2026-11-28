@@ -69,7 +69,7 @@ func (s *Policies) resolveVPNPeerModel(ctx context.Context, org, node uuid.UUID,
 			}
 		}
 		return user, nil
-	})
+	}, true)
 }
 
 // VPNIngress is an explicitly provisioned single-gateway ingress. Configuration

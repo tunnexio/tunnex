@@ -565,6 +565,15 @@ type AiProviderLegacyKey struct {
 	KeyID string    `json:"key_id"`
 }
 
+// Daily USD soft threshold shared by all members of a user group across its AI model grants. Observed spend since midnight UTC; concurrent calls can overshoot.
+type AiUserGroupCostLimit struct {
+	OrgID             uuid.UUID `json:"org_id"`
+	GroupID           uuid.UUID `json:"group_id"`
+	DailyUsdThreshold *float64  `json:"daily_usd_threshold"`
+	Revision          int64     `json:"revision"`
+	UpdatedAt         time.Time `json:"updated_at"`
+}
+
 // Human group model grants; deleted groups lose access immediately. Retained rows preserve native usage attribution. No provider secrets.
 type AiUserModelGrant struct {
 	ID              uuid.UUID          `json:"id"`

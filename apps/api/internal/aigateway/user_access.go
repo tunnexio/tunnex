@@ -24,9 +24,11 @@ type UserModelGrant struct {
 }
 
 type UserGroup struct {
-	ID      uuid.UUID
-	Name    string
-	Members int
+	ID                uuid.UUID
+	Name              string
+	Members           int
+	DailyUsdThreshold *float64
+	LimitRevision     int64
 }
 type UserModel struct {
 	Model string
@@ -41,15 +43,24 @@ func scanUserGrant(row pgx.Row) (UserModelGrant, error) {
 	return g, err
 }
 
+// userGroupQuery lists groups with member counts and their optional shared
+// daily cost limit. $2 NULL lists every group of the organization.
+const userGroupQuery = `SELECT g.id,g.name,count(u.id),l.daily_usd_threshold,COALESCE(l.revision,0) FROM user_groups g
+ LEFT JOIN ai_user_group_cost_limits l ON l.org_id=g.org_id AND l.group_id=g.id
+ LEFT JOIN group_members gm ON gm.org_id=g.org_id AND gm.group_id=g.id
+ LEFT JOIN memberships m ON m.org_id=gm.org_id AND m.user_id=gm.user_id AND m.access_revoked_at IS NULL
+ LEFT JOIN users u ON u.id=m.user_id AND u.status='active' AND u.deleted_at IS NULL
+ WHERE g.org_id=$1 AND ($2::uuid IS NULL OR g.id=$2) GROUP BY g.id,g.name,l.daily_usd_threshold,l.revision ORDER BY g.name,g.id LIMIT 512`
+
 func (s *Policies) ListUserGroups(ctx context.Context, org uuid.UUID) ([]UserGroup, error) {
 	if s == nil || s.pool == nil {
 		return nil, aiUnavailable()
 	}
-	rows, err := s.pool.Query(ctx, `SELECT g.id,g.name,count(u.id) FROM user_groups g
- LEFT JOIN group_members gm ON gm.org_id=g.org_id AND gm.group_id=g.id
- LEFT JOIN memberships m ON m.org_id=gm.org_id AND m.user_id=gm.user_id AND m.access_revoked_at IS NULL
- LEFT JOIN users u ON u.id=m.user_id AND u.status='active' AND u.deleted_at IS NULL
- WHERE g.org_id=$1 GROUP BY g.id,g.name ORDER BY g.name,g.id LIMIT 512`, org)
+	return s.queryUserGroups(ctx, org, nil)
+}
+
+func (s *Policies) queryUserGroups(ctx context.Context, org uuid.UUID, group *uuid.UUID) ([]UserGroup, error) {
+	rows, err := s.pool.Query(ctx, userGroupQuery, org, group)
 	if err != nil {
 		return nil, aiUnavailable()
 	}
@@ -57,7 +68,7 @@ func (s *Policies) ListUserGroups(ctx context.Context, org uuid.UUID) ([]UserGro
 	out := []UserGroup{}
 	for rows.Next() {
 		var v UserGroup
-		if rows.Scan(&v.ID, &v.Name, &v.Members) != nil {
+		if rows.Scan(&v.ID, &v.Name, &v.Members, &v.DailyUsdThreshold, &v.LimitRevision) != nil {
 			return nil, aiUnavailable()
 		}
 		out = append(out, v)
@@ -66,6 +77,66 @@ func (s *Policies) ListUserGroups(ctx context.Context, org uuid.UUID) ([]UserGro
 		return nil, aiUnavailable()
 	}
 	return out, nil
+}
+
+func validDailyUsdThreshold(limit *float64) bool {
+	return limit == nil || (*limit > 0 && *limit <= 100000 && !math.IsNaN(*limit) && !math.IsInf(*limit, 0))
+}
+
+// PutUserGroupCostLimit sets or removes (nil) the daily USD soft threshold
+// shared by all members of a user group. Removal keeps the row so the revision
+// only increases and a stale editor always conflicts.
+func (s *Policies) PutUserGroupCostLimit(ctx context.Context, org, actor, group uuid.UUID, limit *float64, expected int64) (UserGroup, error) {
+	if s == nil || s.pool == nil {
+		return UserGroup{}, aiUnavailable()
+	}
+	if org == uuid.Nil || actor == uuid.Nil || group == uuid.Nil || expected < 0 || expected == math.MaxInt64 || !validDailyUsdThreshold(limit) {
+		return UserGroup{}, policyInvalid()
+	}
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return UserGroup{}, aiUnavailable()
+	}
+	defer rollbackAI(tx)
+	var found uuid.UUID
+	if tx.QueryRow(ctx, `SELECT id FROM user_groups WHERE org_id=$1 AND id=$2 FOR SHARE`, org, group).Scan(&found) != nil {
+		return UserGroup{}, policyNotFound()
+	}
+	var current int64
+	err = tx.QueryRow(ctx, `SELECT revision FROM ai_user_group_cost_limits WHERE org_id=$1 AND group_id=$2 FOR UPDATE`, org, group).Scan(&current)
+	if err != nil && !errors.Is(err, pgx.ErrNoRows) {
+		return UserGroup{}, aiUnavailable()
+	}
+	if current != expected {
+		return UserGroup{}, policyConflict()
+	}
+	var revision int64
+	if current == 0 {
+		// A concurrent first save inserts the same key; the loser conflicts.
+		err = tx.QueryRow(ctx, `INSERT INTO ai_user_group_cost_limits(org_id,group_id,daily_usd_threshold) VALUES($1,$2,$3) ON CONFLICT DO NOTHING RETURNING revision`, org, group, limit).Scan(&revision)
+		if errors.Is(err, pgx.ErrNoRows) {
+			return UserGroup{}, policyConflict()
+		}
+	} else {
+		err = tx.QueryRow(ctx, `UPDATE ai_user_group_cost_limits SET daily_usd_threshold=$3,revision=revision+1 WHERE org_id=$1 AND group_id=$2 RETURNING revision`, org, group, limit).Scan(&revision)
+	}
+	if err != nil {
+		return UserGroup{}, aiUnavailable()
+	}
+	if _, err := tx.Exec(ctx, `INSERT INTO audit_logs(org_id,actor_user_id,action,target_type,target_id,metadata) VALUES($1,$2,'ai_user_group.cost_limit_changed','ai_policy',$3,jsonb_build_object('revision',$4::bigint,'daily_usd_threshold',$5::double precision))`, org, actor, group.String(), revision, limit); err != nil {
+		return UserGroup{}, aiUnavailable()
+	}
+	if tx.Commit(ctx) != nil {
+		return UserGroup{}, aiUnavailable()
+	}
+	groups, err := s.queryUserGroups(ctx, org, &group)
+	if err != nil {
+		return UserGroup{}, err
+	}
+	if len(groups) != 1 {
+		return UserGroup{}, policyNotFound()
+	}
+	return groups[0], nil
 }
 
 func (s *Policies) ListUserModelGrants(ctx context.Context, org uuid.UUID) ([]UserModelGrant, error) {
@@ -228,10 +299,13 @@ const userGrantKeyPurpose = "tunnex-ai-user-group-key"
 // ResolveUserModel never treats an organization role as inference authority.
 // All identity, membership, provider and opt-in facts are read for this request.
 func (s *Policies) ResolveUserModel(ctx context.Context, org, user uuid.UUID, model string) (Grant, error) {
-	return s.resolveUserModel(ctx, org, user, model, nil)
+	return s.resolveUserModel(ctx, org, user, model, nil, true)
 }
 
-func (s *Policies) resolveUserModel(ctx context.Context, org, user uuid.UUID, model string, vpnUser func(pgx.Tx) (uuid.UUID, error)) (Grant, error) {
+// resolveUserModel admits through the first usable grant. With cost set, a
+// grant whose group has a daily cost limit is usable only while the group's
+// observed spend today is under it; grants of unlimited groups are tried first.
+func (s *Policies) resolveUserModel(ctx context.Context, org, user uuid.UUID, model string, vpnUser func(pgx.Tx) (uuid.UUID, error), cost bool) (Grant, error) {
 	if s == nil || s.pool == nil || s.sealer == nil || org == uuid.Nil || (user == uuid.Nil && vpnUser == nil) {
 		return Grant{}, policyDenied()
 	}
@@ -273,6 +347,25 @@ func (s *Policies) resolveUserModel(ctx context.Context, org, user uuid.UUID, mo
 	if rows.Err() != nil {
 		return Grant{}, aiUnavailable()
 	}
+	limits := map[uuid.UUID]*float64{}
+	if cost && len(grants) > 0 {
+		if limits, err = userGroupLimits(ctx, tx, org, grants); err != nil {
+			return Grant{}, err
+		}
+		// Stable: unlimited groups first, grant id order within each set.
+		slices.SortStableFunc(grants, func(a, b UserModelGrant) int {
+			la, lb := a.GroupID != nil && limits[*a.GroupID] != nil, b.GroupID != nil && limits[*b.GroupID] != nil
+			switch {
+			case la == lb:
+				return 0
+			case lb:
+				return -1
+			default:
+				return 1
+			}
+		})
+	}
+	var costErr error
 	for _, g := range grants {
 		p, err := scanProvider(tx.QueryRow(ctx, `SELECT `+providerColumns+` FROM ai_provider_connections WHERE org_id=$1 AND id=$2 FOR SHARE`, org, g.ConnectionID))
 		if err != nil {
@@ -285,12 +378,98 @@ func (s *Policies) resolveUserModel(ctx context.Context, org, user uuid.UUID, mo
 		if err != nil {
 			continue
 		}
+		if g.GroupID != nil && limits[*g.GroupID] != nil {
+			group := *g.GroupID
+			if err := s.enforceCostBindings(ctx, tx, org, model, g.Mode, limits[group], func() ([]string, error) {
+				return userGroupUsageIDs(ctx, tx, org, group)
+			}); err != nil {
+				costErr = strongerCostError(costErr, err)
+				continue
+			}
+		}
 		if tx.Commit(ctx) != nil {
 			return Grant{}, aiUnavailable()
 		}
 		return Grant{Tenant: org.String(), Agent: user.String(), SubjectKind: "user", VirtualKey: value, Mode: g.Mode, Expires: time.Now().Add(30 * time.Second)}, nil
 	}
+	if costErr != nil {
+		return Grant{}, costErr
+	}
 	return Grant{}, policyDenied()
+}
+
+// userGroupLimits reads the daily cost limits of the candidate grants' groups.
+func userGroupLimits(ctx context.Context, tx pgx.Tx, org uuid.UUID, grants []UserModelGrant) (map[uuid.UUID]*float64, error) {
+	ids := make([]uuid.UUID, 0, len(grants))
+	for _, g := range grants {
+		if g.GroupID != nil {
+			ids = append(ids, *g.GroupID)
+		}
+	}
+	out := map[uuid.UUID]*float64{}
+	rows, err := tx.Query(ctx, `SELECT group_id,daily_usd_threshold FROM ai_user_group_cost_limits WHERE org_id=$1 AND group_id=ANY($2::uuid[]) AND daily_usd_threshold IS NOT NULL`, org, ids)
+	if err != nil {
+		return nil, aiUnavailable()
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var group uuid.UUID
+		var limit float64
+		if rows.Scan(&group, &limit) != nil {
+			return nil, aiUnavailable()
+		}
+		out[group] = &limit
+	}
+	if rows.Err() != nil {
+		return nil, aiUnavailable()
+	}
+	return out, nil
+}
+
+// userGroupUsageIDs is the group's retained attribution: every grant it holds
+// or held (revoked included), each with its own native key. Grants of a
+// deleted group lose group_id and with it the limit.
+func userGroupUsageIDs(ctx context.Context, tx pgx.Tx, org, group uuid.UUID) ([]string, error) {
+	rows, err := tx.Query(ctx, `SELECT native_key_id FROM ai_user_model_grants WHERE org_id=$1 AND group_id=$2 AND native_key_id<>'' ORDER BY native_key_id LIMIT 65`, org, group)
+	if err != nil {
+		return nil, aiUnavailable()
+	}
+	defer rows.Close()
+	ids := make([]string, 0)
+	for rows.Next() {
+		var id string
+		if rows.Scan(&id) != nil {
+			return nil, aiUnavailable()
+		}
+		ids = append(ids, id)
+	}
+	if rows.Err() != nil || len(ids) > maxAIUsageBindings || (len(ids) > 0 && !validEngineList(ids, false)) {
+		return nil, aiUnavailable()
+	}
+	return ids, nil
+}
+
+// strongerCostError keeps the most specific refusal across candidate grants:
+// threshold reached, then price unavailable, then anything else (unavailable).
+func strongerCostError(current, next error) error {
+	rank := func(err error) int {
+		var e *apierr.Error
+		if !errors.As(err, &e) {
+			return 0
+		}
+		switch e.Code {
+		case "ai_daily_threshold_reached":
+			return 3
+		case "ai_price_unavailable":
+			return 2
+		default:
+			return 1
+		}
+	}
+	if current == nil || rank(next) > rank(current) {
+		return next
+	}
+	return current
 }
 
 func (s *Policies) UserModels(ctx context.Context, org, user uuid.UUID) ([]UserModel, error) {
@@ -316,7 +495,9 @@ func (s *Policies) UserModels(ctx context.Context, org, user uuid.UUID) ([]UserM
 	}
 	out := []UserModel{}
 	for _, model := range models {
-		grant, err := s.ResolveUserModel(ctx, org, user, model)
+		// Listing skips the cost check: an over-limit model stays listed and the
+		// call itself is refused with the threshold message.
+		grant, err := s.resolveUserModel(ctx, org, user, model, nil, false)
 		if err == nil {
 			out = append(out, UserModel{Model: model, Mode: grant.Mode})
 		} else {

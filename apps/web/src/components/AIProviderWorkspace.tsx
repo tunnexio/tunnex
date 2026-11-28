@@ -56,17 +56,23 @@ const failureMessage = "The operation could not be completed. Check the connecti
 type WorkspaceView = "connections" | "models" | "add";
 type WorkspaceProps = {
   orgId: string; canManage?: boolean; canManageTransport?: boolean; view?: WorkspaceView;
-  onViewChange?: (view: WorkspaceView) => void;
+  // credential: a saved credential to preselect in Add Model (view "add" only).
+  onViewChange?: (view: WorkspaceView, credential?: string) => void;
   onGrantAccess?: (connection: string, model: string) => void;
+  /** Saved credential preselected when the workspace opens in Add Model. */
+  initialCredential?: string;
 };
 export function AIProviderWorkspace(props: WorkspaceProps) {
   return <ProviderWorkspace key={`${props.orgId}:${props.canManage ?? true}`} {...props} />;
 }
-function ProviderWorkspace({ orgId, canManage = true, canManageTransport = false, view: routeView, onViewChange, onGrantAccess }: WorkspaceProps) {
+function ProviderWorkspace({ orgId, canManage = true, canManageTransport = false, view: routeView, onViewChange, onGrantAccess, initialCredential }: WorkspaceProps) {
   const [credentialSearch, setCredentialSearch] = useState("");
   const [credentialProvider, setCredentialProvider] = useState("");
   const [accessAfterSave, setAccessAfterSave] = useState<AIProviderConnection | null>(null);
   const [grantAfterSave, setGrantAfterSave] = useState(false);
+  // A credential saved without models: offer Add Model with it preselected as the next step.
+  const [modelsAfterSave, setModelsAfterSave] = useState<AIProviderConnection | null>(null);
+  const [localPreselect, setLocalPreselect] = useState<string | undefined>();
   const [credentialDetails, setCredentialDetails] = useState<AIProviderConnection | null>(null);
   const [inventory, setInventory] = useState<S["AIProviderList"] | null>(null);
   const [loading, setLoading] = useState(true), [busy, setBusy] = useState(false);
@@ -78,9 +84,9 @@ function ProviderWorkspace({ orgId, canManage = true, canManageTransport = false
   const [editing, setEditing] = useState<AIProviderConnection | "new" | null>(null);
   const [localView, setLocalView] = useState<WorkspaceView>("models");
   const view = routeView ?? localView;
-  const setView = (next: WorkspaceView) => { setLocalView(next); onViewChange?.(next); };
+  const setView = (next: WorkspaceView, credential?: string) => { setLocalView(next); onViewChange?.(next, credential); };
   useEffect(() => { setEditing(null); setRemoving(null); setCredentialDetails(null); setConnectionModel(null); }, [routeView]);
-  useEffect(() => { if (!canManage) { setEditing(null); setRemoving(null); setAccessAfterSave(null); setGrantAfterSave(false); drafts.current = {}; } }, [canManage]);
+  useEffect(() => { if (!canManage) { setEditing(null); setRemoving(null); setAccessAfterSave(null); setModelsAfterSave(null); setGrantAfterSave(false); drafts.current = {}; } }, [canManage]);
   const [connectionModel, setConnectionModel] = useState<{ model: string; connectionId: string } | null>(null);
   const [detailSection, setDetailSection] = useState<"overview" | "connection" | "models">("overview");
   const [modelPage, setModelPage] = useState(1), [credentialPage, setCredentialPage] = useState(1);
@@ -152,12 +158,25 @@ function ProviderWorkspace({ orgId, canManage = true, canManageTransport = false
       saved = result.data;
       return result;
     }, view === "add" ? "Models saved." : "Credentials saved.");
+    if (ok && saved && !connection && view !== "add" && !saved.models.length) setModelsAfterSave(saved);
     if (ok && saved?.models.length) {
       if (view === "add") setAccessAfterSave(saved);
       else { setConnectionModel({model: saved.models[0], connectionId: saved.id}); setDetailSection("connection"); }
     }
   }
-  function changeView(next: typeof view) { setView(next); setEditing(null); setRemoving(null); setCredentialDetails(null); setConnectionModel(null); }
+  function addModelsFrom(saved: AIProviderConnection) {
+    // Open Add Model with this credential selected; its catalog reads the provider's live list
+    // with the saved key. A routed workspace may remount, so the id travels with the view change.
+    setModelsAfterSave(null); delete drafts.current.model;
+    changeView("add", saved.id);
+  }
+  // Add Model opens at its Models step with the preselected credential; the wizard's steps are unchanged.
+  const preselect = view === "add" ? initialCredential ?? localPreselect : undefined;
+  const preselectedDraft = (): EditorDraft | undefined => {
+    const saved = preselect ? inventory?.items.find((c) => c.id === preselect) : undefined;
+    return saved && { step: 2, provider: saved.provider, endpoint: "", existingID: saved.id, name: "", secret: "", models: "", enabled: true, mode: "chat", selectedModes: {}, manualModel: "", query: "" };
+  };
+  function changeView(next: typeof view, credential?: string) { setLocalPreselect(credential); setView(next, credential); setEditing(null); setRemoving(null); setCredentialDetails(null); setConnectionModel(null); }
   const definitions = inventory?.definitions ?? [];
   const providerName = (id: string) => definitions.find((d) => d.id === id)?.name ?? id;
   const providerBrand = (id: string) => <span className="ai-gateway-provider-brand"><ProviderLogo provider={id} /><span>{providerName(id)}</span></span>;
@@ -238,9 +257,10 @@ function ProviderWorkspace({ orgId, canManage = true, canManageTransport = false
         {inUse.agents.length > 0 && <div><h4>Agents with access</h4><ul>{inUse.agents.map(agent => <li key={agent.device_id}><Link to={`/agents/${encodeURIComponent(agent.device_id)}`}>{agent.name}</Link></li>)}</ul></div>}
         {!inUse.models.length && !inUse.policies.length && !inUse.agents.length && <p>Open Access to find what still uses them.</p>}
       </div> : <>{error && <p role="alert">{error}</p>}<p>Delete these credentials and all {removing.models.length} configured models?</p><p>Credentials that a user group, an agent group or an agent still uses are not deleted: you are shown what uses them. Usage history is retained.</p></>}</div></Modal>}
+      {modelsAfterSave && canManage && <Modal title="Credentials saved" placement="right" showClose onDismiss={() => setModelsAfterSave(null)} actions={<><Button onClick={() => setModelsAfterSave(null)}>Later</Button><Button onClick={() => addModelsFrom(modelsAfterSave)}>Add models from this credential</Button></>}><div className="ai-gateway-action-form"><p>{modelsAfterSave.name} has no models yet. Add models to make them available through the gateway.</p></div></Modal>}
       {accessAfterSave && !grantAfterSave && <Modal title="Models saved" placement="right" showClose onDismiss={() => setAccessAfterSave(null)} actions={<><Button onClick={() => setAccessAfterSave(null)}>Later</Button><Button onClick={() => setGrantAfterSave(true)}>Grant access</Button></>}><div className="ai-gateway-action-form"><p>Choose a user group to make these models available in Playground.</p></div></Modal>}
       {accessAfterSave && grantAfterSave && <AIGroupAccess orgId={orgId} canManage={canManage} dialogOnly initialConnection={accessAfterSave.id} initialModel={accessAfterSave.models[accessAfterSave.models.length - 1]} onDone={() => { setAccessAfterSave(null); setGrantAfterSave(false); }} />}
-      {canManage && (editing || view === "add") && <ProviderEditor draft={drafts.current[editing === "new" ? "new" : editing?.id ?? "model"]} key={editing === "new" ? "new-credentials" : editing ? `${editing.id}:${editing.revision}` : "new-model"} error={error} orgId={orgId} connection={editing === "new" ? undefined : editing ?? undefined} definitions={definitions} supportedModes={inventory.supported_modes ?? ["chat"]} testAvailable={inventory.test_available ?? false} publicEndpointsAvailable={inventory.public_endpoints_available ?? false} foundryAvailable={inventory.foundry_available ?? false} foundryEndpoints={inventory.foundry_endpoints ?? []} sagemakerAvailable={inventory.sagemaker_available ?? false} sagemakerEndpoints={inventory.sagemaker_endpoints ?? []} customAvailable={inventory.custom_available ?? false} endpoints={inventory.custom_endpoints ?? []} connections={inventory.items} modelOnly={!editing} busy={busy} onCancel={draft => { drafts.current[editing === "new" ? "new" : editing?.id ?? "model"] = { ...draft, secret: "" }; editing ? setEditing(null) : changeView("models"); }} onSave={save} />}
+      {canManage && (editing || view === "add") && <ProviderEditor draft={drafts.current[editing === "new" ? "new" : editing?.id ?? "model"] ?? (editing ? undefined : preselectedDraft())} key={editing === "new" ? "new-credentials" : editing ? `${editing.id}:${editing.revision}` : "new-model"} error={error} orgId={orgId} connection={editing === "new" ? undefined : editing ?? undefined} definitions={definitions} supportedModes={inventory.supported_modes ?? ["chat"]} testAvailable={inventory.test_available ?? false} publicEndpointsAvailable={inventory.public_endpoints_available ?? false} foundryAvailable={inventory.foundry_available ?? false} foundryEndpoints={inventory.foundry_endpoints ?? []} sagemakerAvailable={inventory.sagemaker_available ?? false} sagemakerEndpoints={inventory.sagemaker_endpoints ?? []} customAvailable={inventory.custom_available ?? false} endpoints={inventory.custom_endpoints ?? []} connections={inventory.items} modelOnly={!editing} busy={busy} onCancel={draft => { drafts.current[editing === "new" ? "new" : editing?.id ?? "model"] = { ...draft, secret: "" }; editing ? setEditing(null) : changeView("models"); }} onSave={save} />}
     </>}
   </section>;
 }
@@ -271,6 +291,7 @@ function ProviderEditor({ draft, error, orgId, connection: initialConnection, de
   const [manualModel, setManualModel] = useState(draft?.manualModel ?? "");
   const [catalogOpen, setCatalogOpen] = useState(false), [catalogDismissed, setCatalogDismissed] = useState(false);
   const [query, setQuery] = useState(draft?.query ?? ""), [catalog, setCatalog] = useState<S["AIProviderModelList"] | null>(null), [catalogError, setCatalogError] = useState(""), [searching, setSearching] = useState(false);
+  const [catalogSource, setCatalogSource] = useState<"live" | "reference">("reference");
   const active = useRef(true), searchSerial = useRef(0);
   useEffect(() => { active.current = true; return () => { active.current = false; searchSerial.current++; }; }, []);
   async function search(offset = 0, limit = catalogPageSize) {
@@ -278,15 +299,35 @@ function ProviderEditor({ draft, error, orgId, connection: initialConnection, de
     catalogRequest.current = true;
     const n = ++searchSerial.current;
     setSearching(true); setCatalogError(""); setCatalogOpen(true);
+    const current = () => active.current && n === searchSerial.current;
+    // AI-CATALOG-1: a standard provider's draft search falls back to the release-bundled reference
+    // catalog (no key sent) when the live provider list cannot be read. Paging stays on the source
+    // that answered the first page.
+    const bundled = async () => { const r = await api.GET("/api/v1/organizations/{orgId}/ai-gateway/models", { params: { path: { orgId }, query: { provider, query: query.trim(), mode, limit, offset } } }); return r.error || !r.data ? null : r.data; };
     try {
-      const r = draftCatalog
-        ? await api.POST("/api/v1/organizations/{orgId}/ai-gateway/providers/model-catalog", { params: { path: { orgId } }, body: { provider, api_key: secret, endpoint_url: usesEndpoint ? selectedEndpoint : "", query: query.trim(), mode, limit, offset } })
-        : await api.GET("/api/v1/organizations/{orgId}/ai-gateway/models", { params: { path: { orgId }, query: { provider, ...(usesEndpoint && connection ? { connection_id: connection.id } : {}), query: query.trim(), mode, limit, offset } } });
-      if (!active.current || n !== searchSerial.current) return;
-      if (r.error || !r.data) throw Error();
-      const page = r.data;
-      setCatalog(page);
-    } catch { if (active.current && n === searchSerial.current) { setCatalog(null); setCatalogError("Model suggestions are unavailable. Enter the exact model or Azure deployment name manually below."); } }
+      let page: S["AIProviderModelList"] | null = null, source: "live" | "reference" = "reference";
+      if (draftCatalog && !(offset > 0 && catalogSource === "reference")) {
+        const r = await api.POST("/api/v1/organizations/{orgId}/ai-gateway/providers/model-catalog", { params: { path: { orgId } }, body: { provider, api_key: secret, endpoint_url: usesEndpoint ? selectedEndpoint : "", query: query.trim(), mode, limit, offset } }).catch(() => null);
+        if (!current()) return;
+        if (r && !r.error && r.data) { page = r.data; source = "live"; }
+        else if (referenceFallback && offset === 0) page = await bundled();
+      } else if (draftCatalog) {
+        page = await bundled();
+      } else {
+        // A saved standard credential reads the provider's live list with its stored key; the
+        // response says whether it fell back to the reference list. Paging stays on that source.
+        const scoped = !!connection && (usesEndpoint || !(offset > 0 && catalogSource === "reference"));
+        const r = await api.GET("/api/v1/organizations/{orgId}/ai-gateway/models", { params: { path: { orgId }, query: { provider, ...(scoped && connection ? { connection_id: connection.id } : {}), query: query.trim(), mode, limit, offset } } });
+        page = r.error || !r.data ? null : r.data;
+        if (page && savedCatalog) {
+          if (offset > 0 && catalogSource === "live" && page.source !== "provider") page = null;
+          else source = offset > 0 && catalogSource === "reference" ? "reference" : page.source === "provider" ? "live" : "reference";
+        }
+      }
+      if (!current()) return;
+      if (!page) throw Error();
+      setCatalog(page); setCatalogSource(source);
+    } catch { if (current()) { setCatalog(null); setCatalogError("Model suggestions are unavailable. Enter the exact model or Azure deployment name manually below."); } }
     finally { if (active.current && n === searchSerial.current) { setSearching(false); catalogRequest.current = false; } }
   }
   function switchProvider(next: AIProviderConnection["provider"]) {
@@ -335,10 +376,12 @@ function ProviderEditor({ draft, error, orgId, connection: initialConnection, de
   const endpointReady = endpointAvailable && endpointApproved && foundryFormatValid;
   const secretValid = secret.length > 0 && secret.length <= 4096 && !/\s/.test(secret);
   const draftCatalog = !!provider && provider !== "azure_foundry" && !connection;
+  const referenceFallback = draftCatalog && !usesEndpoint;
+  const savedCatalog = !!provider && !!connection && !usesEndpoint;
   const canSearch = !!definition && supportedModes.includes(mode) && (!draftCatalog || (!usesEndpoint || endpointReady) && secretValid);
   const searchEndpoint = draftCatalog ? selectedEndpoint : "";
   const searchSecret = draftCatalog ? secret : "";
-  const searchConnection = usesEndpoint && connection ? connection.id : "";
+  const searchConnection = connection ? connection.id : "";
   useEffect(() => { searchSerial.current++; setCatalog(null); setCatalogError(""); setCatalogOpen(false); setSearching(false); }, [provider, mode, searchEndpoint, searchSecret, searchConnection]);
   useEffect(() => {
     if (!canSearch || catalogDismissed) return;
@@ -454,7 +497,7 @@ function ProviderEditor({ draft, error, orgId, connection: initialConnection, de
     <div className="ai-model-choice-heading"><strong>Models <span>{chosen.length}/32 selected</span></strong><HelpTooltip label="Selecting models">Select multiple models from the catalog. Your selections stay when searching or changing pages. Remove a selected chip to deselect it.</HelpTooltip></div>
     <div className="ai-provider-selected-models" aria-label="Selected models">{chosen.map((model) => <span key={model}><code title={model}>{modelDisplayName(model)}</code><button type="button" aria-label={`Remove model ${model}`} onClick={() => setModels(chosen.filter((m) => m !== model).join("\n"))}>×</button></span>)}</div>
     <Field label="Catalog mode" help={<HelpTooltip>Filter suggestions and set the default for newly added models. Each selected model has its own mode below. One credential can serve chat, images, embeddings and other supported operations.</HelpTooltip>}><select value={mode} onChange={(e) => changeMode(e.target.value as ModelMode)}>{modelModes.map((item) => <option key={item.value} value={item.value} disabled={!supportedModes.includes(item.value)}>{item.label.split(", ")[0]}{!supportedModes.includes(item.value) ? ", unavailable" : ""}</option>)}</select></Field>
-    <div className="ai-provider-catalog ai-provider-model-dropdown" onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget)) setCatalogFocused(false); }} onKeyDown={(e) => { if (e.key === "Escape" && catalogOpen) { e.stopPropagation(); setCatalogOpen(false); setCatalogDismissed(true); } }}><div className="ai-provider-catalog-search"><Field label="Search model catalog"><Input value={query} maxLength={100} onFocus={() => { setCatalogFocused(true); setCatalogDismissed(false); if (catalog) setCatalogOpen(true); }} onChange={(e) => { setQuery(e.target.value); setCatalogDismissed(false); searchSerial.current++; setSearching(false); setCatalog(null); setCatalogError(""); }} placeholder="Search model name" /></Field></div>{searching && <p role="status">Searching models…</p>}{draftCatalog && !canSearch && <p>{usesEndpoint && !endpointReady ? "Enter a supported endpoint to search models. Public HTTPS endpoints are checked automatically when public egress is available; private endpoints need configured network access." : "Enter the provider API key to search models. No model selection is required."}</p>}{catalogError && <p role="alert">{catalogError}</p>}{catalogFocused && catalogOpen && catalog && <div className="ai-provider-model-options" role="region" aria-label="Model suggestions"><p>{draftCatalog ? "Provider catalog" : "Unverified catalog suggestions"}<HelpTooltip>Catalog entries do not confirm access or current availability. Each selected model must pass a connection test before saving. Select the operation you intend to use; unsupported model and operation combinations will fail validation.</HelpTooltip></p><p>{catalog.total} matching models</p><div className="ai-provider-catalog-items">{catalog.items.map((m) => <label key={m.id} className={chosen.includes(m.id) ? "ai-model-option-selected" : undefined}><input type="checkbox" checked={chosen.includes(m.id)} disabled={!chosen.includes(m.id) && chosen.length >= 32} onChange={(e) => e.target.checked ? addModel(m.id) : setModels(chosen.filter((id) => id !== m.id).join("\n"))} /><span title={m.id}>{m.name}<small className="sr-only">{m.id}</small></span></label>)}</div><AppAccessPagination page={Math.floor(catalog.offset / catalog.limit) + 1} pageSize={catalog.limit} count={catalog.items.length} hasNext={catalog.offset + catalog.limit < catalog.total} busy={searching} onPageChange={page => void search((page - 1) * catalog.limit)} onPageSizeChange={size => { setCatalogPageSize(size); void search(0, size); }} previousLabel="Previous model suggestions" nextLabel="Next model suggestions" /><div className="ai-provider-form-actions"><Button type="button" onClick={() => { setCatalogOpen(false); setCatalogDismissed(true); }} aria-label="Done selecting models">Done ({chosen.length} selected)</Button></div></div>}</div>
+    <div className="ai-provider-catalog ai-provider-model-dropdown" onBlur={event => { if (!event.currentTarget.contains(event.relatedTarget)) setCatalogFocused(false); }} onKeyDown={(e) => { if (e.key === "Escape" && catalogOpen) { e.stopPropagation(); setCatalogOpen(false); setCatalogDismissed(true); } }}><div className="ai-provider-catalog-search"><Field label="Search model catalog"><Input value={query} maxLength={100} onFocus={() => { setCatalogFocused(true); setCatalogDismissed(false); if (catalog) setCatalogOpen(true); }} onChange={(e) => { setQuery(e.target.value); setCatalogDismissed(false); searchSerial.current++; setSearching(false); setCatalog(null); setCatalogError(""); }} placeholder="Search model name" /></Field></div>{searching && <p role="status">Searching models…</p>}{draftCatalog && !canSearch && <p>{usesEndpoint && !endpointReady ? "Enter a supported endpoint to search models. Public HTTPS endpoints are checked automatically when public egress is available; private endpoints need configured network access." : "Enter the provider API key to search models. No model selection is required."}</p>}{catalogError && <p role="alert">{catalogError}</p>}{catalogFocused && catalogOpen && catalog && <div className="ai-provider-model-options" role="region" aria-label="Model suggestions">{(draftCatalog || savedCatalog) && catalogSource === "reference" && <p role="status">Your provider's live model list could not be read. Showing known models; Test Connect confirms access.</p>}<p>{(draftCatalog || savedCatalog) && catalogSource === "live" ? "Provider catalog" : "Unverified catalog suggestions"}<HelpTooltip>Catalog entries do not confirm access or current availability. Each selected model must pass a connection test before saving. Select the operation you intend to use; unsupported model and operation combinations will fail validation.</HelpTooltip></p><p>{catalog.total} matching models</p><div className="ai-provider-catalog-items">{catalog.items.map((m) => <label key={m.id} className={chosen.includes(m.id) ? "ai-model-option-selected" : undefined}><input type="checkbox" checked={chosen.includes(m.id)} disabled={!chosen.includes(m.id) && chosen.length >= 32} onChange={(e) => e.target.checked ? addModel(m.id) : setModels(chosen.filter((id) => id !== m.id).join("\n"))} /><span title={m.id}>{m.name}<small className="sr-only">{m.id}</small></span></label>)}</div><AppAccessPagination page={Math.floor(catalog.offset / catalog.limit) + 1} pageSize={catalog.limit} count={catalog.items.length} hasNext={catalog.offset + catalog.limit < catalog.total} busy={searching} onPageChange={page => void search((page - 1) * catalog.limit)} onPageSizeChange={size => { setCatalogPageSize(size); void search(0, size); }} previousLabel="Previous model suggestions" nextLabel="Next model suggestions" /><div className="ai-provider-form-actions"><Button type="button" onClick={() => { setCatalogOpen(false); setCatalogDismissed(true); }} aria-label="Done selecting models">Done ({chosen.length} selected)</Button></div></div>}</div>
     <details className="ai-manual-disclosure"><summary>Model not listed? Add manually</summary><div className="ai-provider-manual-model"><Field label="Exact model name"><Input value={manualModel} maxLength={255} disabled={!provider} onChange={(e) => setManualModel(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); if (validModel(manualModel.trim()) && !chosen.includes(manualModel.trim()) && finalModels.length < 32) { addModel(manualModel.trim()); setManualModel(""); } } }} placeholder={definition?.model_placeholder ?? "Select a provider first"} /></Field><Button type="button" disabled={!provider || !validModel(manualModel.trim()) || chosen.includes(manualModel.trim()) || finalModels.length >= 32} onClick={() => { addModel(manualModel.trim()); setManualModel(""); }}>Add exact model</Button></div></details><p className="ai-provider-model-help">{finalModels.length}/32 models. {provider === "sagemaker" ? "Use exact model aliases configured for this SageMaker binding; no wildcards." : "Exact API names only; no aliases or wildcards."}</p>
 
     <details className="ai-provider-mappings ai-gateway-disclosure"><summary>Model mappings</summary><div className="ai-provider-table-scroll"><table><caption className="sr-only">Model mapping preview</caption><thead><tr><th>Gateway model name</th><th>Upstream model name</th><th>Mode</th></tr></thead><tbody>{chosen.map((model) => {

@@ -2,8 +2,8 @@ import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testi
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AIAccessGate, AIGroupAccess, AIUseModel } from "../src/components/AIUserAccess";
 import { AIProviderWorkspace } from "../src/components/AIProviderWorkspace";
-const mock = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), success: vi.fn(), roles: ["owner"], emailVerified: true }));
-vi.mock("../src/lib/api", async () => ({ ...await vi.importActual("../src/lib/api"), api: { GET: mock.get, POST: mock.post } }));
+const mock = vi.hoisted(() => ({ get: vi.fn(), post: vi.fn(), put: vi.fn(), success: vi.fn(), roles: ["owner"], emailVerified: true }));
+vi.mock("../src/lib/api", async () => ({ ...await vi.importActual("../src/lib/api"), api: { GET: mock.get, POST: mock.post, PUT: mock.put } }));
 vi.mock("../src/lib/auth", () => ({ useAuth: () => ({ state: { status: "authed", user: { id: "user", email_verified: mock.emailVerified } } }) }));
 vi.mock("../src/lib/useOrg", () => ({ useOrg: () => ({ org: { id: "org" }, orgs: [{ id: "org", name: "Demo" }], loading: false, failed: false }) }));
 vi.mock("../src/components/Toasts", () => ({ toast: { success: mock.success, error: vi.fn() } }));
@@ -21,6 +21,7 @@ function inlineGrant(onDone = vi.fn()) {
   render(<AIGroupAccess orgId="org" canManage dialogOnly initialConnection={provider.id} initialModel={provider.models[0]} onDone={onDone} />);
   return onDone;
 }
+const modelBox = (name = "gpt-5") => screen.getByRole("checkbox", { name: new RegExp(`(^|/)${name} · `) }) as HTMLInputElement;
 async function openGroupCreation() {
   const button = await screen.findByRole("button", { name: "Create user group" });
   await waitFor(() => expect((button as HTMLButtonElement).disabled).toBe(false));
@@ -40,10 +41,11 @@ describe("AI user access", () => {
     fireEvent.click(await screen.findByRole("button", { name: "Grant access" }));
     await screen.findByRole("option", { name: "Engineering (4)" });
     fireEvent.change(screen.getByLabelText("User group"), { target: { value: "engineering" } });
-    fireEvent.change(screen.getByLabelText("Model"), { target: { value: JSON.stringify([provider.id, provider.models[0]]) } });
+    fireEvent.click(modelBox());
     fireEvent.click(screen.getByRole("button", { name: "Grant model access" }));
     await waitFor(() => expect(mock.post).toHaveBeenCalledWith(expect.stringContaining("user-model-grants"), expect.objectContaining({ body: { group_id: "engineering", connection_id: provider.id, model: provider.models[0], enabled: true, expected_revision: 0 } })));
-    fireEvent.click(await screen.findByRole("button", { name: /^Actions for Engineering · / }));
+    fireEvent.click(await screen.findByRole("button", { name: "Show models for Engineering" }));
+    fireEvent.click(screen.getByRole("button", { name: /^Actions for Engineering · / }));
     fireEvent.click(screen.getByRole("menuitem", { name: "Revoke access" }));
     const confirmation = within(screen.getByRole("dialog", { name: "Revoke model access?" }));
     expect(confirmation.getByText(/Other grants remain in effect/)).toBeTruthy();
@@ -62,7 +64,7 @@ describe("AI user access", () => {
     await screen.findByRole("option", { name: "Research (0)" });
     await waitFor(() => expect((screen.getByRole("button", { name: "Grant model access" }) as HTMLButtonElement).disabled).toBe(false));
     expect((screen.getByLabelText("User group") as HTMLSelectElement).value).toBe(createdGroup.id);
-    expect((screen.getByLabelText("Model") as HTMLSelectElement).value).toBe(JSON.stringify([provider.id, provider.models[0]]));
+    expect(modelBox().checked).toBe(true);
     expect(mock.post).toHaveBeenCalledExactlyOnceWith("/api/v1/organizations/{orgId}/groups", { params: { path: { orgId: "org" } }, body: { name: "Research" } });
     expect(mock.get.mock.calls.filter(([path]) => path.endsWith("user-groups"))).toHaveLength(2);
     expect(done).not.toHaveBeenCalled();
@@ -70,6 +72,80 @@ describe("AI user access", () => {
     fireEvent.click(screen.getByRole("button", { name: "Grant model access" }));
     await waitFor(() => expect(mock.post).toHaveBeenCalledWith(expect.stringContaining("user-model-grants"), expect.objectContaining({ body: { group_id: createdGroup.id, connection_id: provider.id, model: provider.models[0], enabled: true, expected_revision: 0 } })));
     await waitFor(() => expect(done).toHaveBeenCalledTimes(1));
+  });
+  it("grants several models to a group in one step and skips models it already has", async () => {
+    const multi = { ...provider, models: ["custom-connection/gpt-5", "custom-connection/gpt-5-mini", "custom-connection/o4"], model_modes: {} };
+    const existing = { id: "g0", group_id: "engineering", group_name: "Engineering", connection_id: multi.id, model: "custom-connection/o4", enabled: true, status: "applied", revision: 3 };
+    mock.get.mockImplementation((path: string) => Promise.resolve({ data: path.endsWith("/members") ? [{ user_id: "user", role: "owner" }] : path.endsWith("user-groups") ? [{ id: "engineering", name: "Engineering", members: 4 }] : path.endsWith("user-model-grants") ? [existing] : { items: [multi] } }));
+    mock.post.mockImplementation(async (_: string, options: { body: { model: string } }) => ({ data: { id: `grant-${options.body.model}`, group_id: "engineering", group_name: "Engineering", connection_id: multi.id, model: options.body.model, enabled: true, status: "applied", revision: 1 } }));
+    render(<AIGroupAccess orgId="org" canManage />);
+    fireEvent.click(await screen.findByRole("button", { name: "Grant access" }));
+    await screen.findByRole("option", { name: "Engineering (4)" });
+    fireEvent.change(screen.getByLabelText("User group"), { target: { value: "engineering" } });
+    expect(modelBox("o4").checked).toBe(true); expect(modelBox("o4").disabled).toBe(true);
+    fireEvent.click(modelBox("gpt-5")); fireEvent.click(modelBox("gpt-5-mini"));
+    fireEvent.click(screen.getByRole("button", { name: "Grant access to 2 models" }));
+    await waitFor(() => expect(mock.success).toHaveBeenCalledWith("Model access granted to 2 models"));
+    expect(mock.post).toHaveBeenCalledTimes(2);
+    expect(mock.post.mock.calls.map((call) => call[1].body.model)).toEqual(["custom-connection/gpt-5", "custom-connection/gpt-5-mini"]);
+    expect(mock.post.mock.calls.every((call) => call[1].body.enabled === true && call[1].body.expected_revision === 0 && call[1].body.group_id === "engineering")).toBe(true);
+  });
+  it("keeps only the failed models selected when part of a multi-model grant fails", async () => {
+    const multi = { ...provider, models: ["custom-connection/gpt-5", "custom-connection/gpt-5-mini"], model_modes: {} };
+    mock.get.mockImplementation((path: string) => Promise.resolve({ data: path.endsWith("/members") ? [{ user_id: "user", role: "owner" }] : path.endsWith("user-groups") ? [{ id: "engineering", name: "Engineering", members: 4 }] : path.endsWith("user-model-grants") ? [] : { items: [multi] } }));
+    mock.post.mockImplementation(async (_: string, options: { body: { model: string } }) => options.body.model.endsWith("mini") ? { error: {}, response: new Response("{}", { status: 500 }) } : { data: { id: "grant", group_id: "engineering", group_name: "Engineering", connection_id: multi.id, model: options.body.model, enabled: true, status: "applied", revision: 1 } });
+    render(<AIGroupAccess orgId="org" canManage />);
+    fireEvent.click(await screen.findByRole("button", { name: "Grant access" }));
+    await screen.findByRole("option", { name: "Engineering (4)" });
+    fireEvent.change(screen.getByLabelText("User group"), { target: { value: "engineering" } });
+    fireEvent.click(modelBox("gpt-5")); fireEvent.click(modelBox("gpt-5-mini"));
+    fireEvent.click(screen.getByRole("button", { name: "Grant access to 2 models" }));
+    expect((await screen.findByRole("alert")).textContent).toContain("Granted 1 of 2 models. Could not apply: custom-connection/gpt-5-mini.");
+    expect(modelBox("gpt-5").disabled).toBe(true);
+    expect(modelBox("gpt-5-mini").checked).toBe(true);
+    expect(screen.getByRole("button", { name: "Grant model access" })).toBeTruthy();
+    expect(mock.success).not.toHaveBeenCalled();
+  });
+  it("shows one row per group with its models, filters by model, and grants more from the row", async () => {
+    const multi = { ...provider, models: ["custom-connection/gpt-5", "custom-connection/gpt-5-mini", "custom-connection/o4", "custom-connection/o5"], model_modes: {} };
+    const grant = (id: string, group: string, name: string, model: string, enabled = true) => ({ id, group_id: group, group_name: name, connection_id: multi.id, model, enabled, status: enabled ? "applied" : "revoked", revision: 2 });
+    const grants = [grant("a", "eng", "Engineering", multi.models[0]), grant("b", "eng", "Engineering", multi.models[1]), grant("c", "eng", "Engineering", multi.models[2]), grant("d", "eng", "Engineering", multi.models[3], false), grant("e", "ops", "Operations", multi.models[0])];
+    mock.get.mockImplementation(async (path: string) => ({ data: path.endsWith("/members") ? [{ user_id: "user", role: "owner" }] : path.endsWith("user-groups") ? [{ id: "eng", name: "Engineering", members: 3 }, { id: "ops", name: "Operations", members: 1 }] : path.endsWith("user-model-grants") ? grants : { items: [multi] } }));
+    render(<AIGroupAccess orgId="org" canManage />);
+    const table = await screen.findByRole("table", { name: "User group model grants" });
+    expect(within(table).getAllByRole("row")).toHaveLength(3);
+    const eng = within(table).getByRole("button", { name: "Show models for Engineering" }).closest("tr")!;
+    expect(eng.textContent).toContain("+1 more");
+    expect(eng.textContent).toContain("3 active · 1 revoked");
+    expect(screen.queryByRole("list", { name: "Models for Engineering" })).toBeNull();
+    fireEvent.click(within(table).getByRole("button", { name: "Show models for Engineering" }));
+    expect(within(screen.getByRole("list", { name: "Models for Engineering" })).getAllByRole("listitem")).toHaveLength(4);
+    fireEvent.change(screen.getByRole("combobox", { name: "Filter by model" }), { target: { value: multi.models[2] } });
+    expect(screen.queryByRole("button", { name: /models for Operations/ })).toBeNull();
+    expect(within(screen.getByRole("list", { name: "Models for Engineering" })).getAllByRole("listitem")).toHaveLength(1);
+    fireEvent.change(screen.getByRole("combobox", { name: "Filter by model" }), { target: { value: "" } });
+    fireEvent.change(screen.getByRole("textbox", { name: "Search model access" }), { target: { value: "Operations" } });
+    expect(within(table).getAllByRole("row")).toHaveLength(2);
+    fireEvent.change(screen.getByRole("textbox", { name: "Search model access" }), { target: { value: "" } });
+    fireEvent.click(screen.getByRole("button", { name: "Group actions for Operations" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Grant more models" }));
+    await screen.findByRole("dialog", { name: "Grant model access" });
+    await waitFor(() => expect((screen.getByLabelText("User group") as HTMLSelectElement).value).toBe("ops"));
+    expect(modelBox("gpt-5").disabled).toBe(true);
+    expect(modelBox("o4").disabled).toBe(false);
+    expect(mock.post).not.toHaveBeenCalled();
+  });
+  it("searches a long model list in the grant dialog and selects all shown", async () => {
+    const many = { ...provider, models: Array.from({ length: 8 }, (_, i) => `custom-connection/${i < 3 ? "mini" : "large"}-${i}`), model_modes: {} };
+    mock.get.mockImplementation(async (path: string) => ({ data: path.endsWith("/members") ? [{ user_id: "user", role: "owner" }] : path.endsWith("user-groups") ? [{ id: "eng", name: "Engineering", members: 3 }] : path.endsWith("user-model-grants") ? [] : { items: [many] } }));
+    render(<AIGroupAccess orgId="org" canManage />);
+    fireEvent.click(await screen.findByRole("button", { name: "Grant access" }));
+    await screen.findByRole("option", { name: "Engineering (3)" });
+    fireEvent.change(screen.getByLabelText("User group"), { target: { value: "eng" } });
+    fireEvent.change(screen.getByRole("textbox", { name: "Search models to grant" }), { target: { value: "mini" } });
+    expect(screen.getAllByRole("checkbox")).toHaveLength(3);
+    fireEvent.click(screen.getByRole("button", { name: "Select all shown" }));
+    expect(screen.getByRole("button", { name: "Grant access to 3 models" })).toBeTruthy();
   });
   it.each(["ai-admin", "unverified"])("does not offer group creation to %s", async (role) => {
     grantInventory();
@@ -93,7 +169,7 @@ describe("AI user access", () => {
     failed = false;
     fireEvent.click(retry);
     await openGroupCreation();
-    expect((screen.getByLabelText("Model") as HTMLSelectElement).value).toBe(JSON.stringify([provider.id, provider.models[0]]));
+    expect(modelBox().checked).toBe(true);
     expect(mock.post).not.toHaveBeenCalled();
   });
   it("keeps a duplicate-name error in the dialog without granting access", async () => {
@@ -104,7 +180,7 @@ describe("AI user access", () => {
     fireEvent.click(screen.getByRole("button", { name: "Create user group" }));
     expect((await screen.findByRole("alert")).textContent).toContain("A group with that name already exists.");
     expect((screen.getByLabelText("New group name") as HTMLInputElement).value).toBe(" Research ");
-    expect((screen.getByLabelText("Model") as HTMLSelectElement).value).toBe(JSON.stringify([provider.id, provider.models[0]]));
+    expect(modelBox().checked).toBe(true);
     expect(mock.post).toHaveBeenCalledTimes(1);
     expect(done).not.toHaveBeenCalled();
   });
@@ -120,7 +196,7 @@ describe("AI user access", () => {
     expect(mock.post).toHaveBeenCalledTimes(1);
     fireEvent.click(screen.getByRole("button", { name: "Refresh groups" }));
     await waitFor(() => expect((screen.getByRole("button", { name: "Create user group" }) as HTMLButtonElement).disabled).toBe(false));
-    expect((screen.getByLabelText("Model") as HTMLSelectElement).value).toBe(JSON.stringify([provider.id, provider.models[0]]));
+    expect(modelBox().checked).toBe(true);
     expect(mock.post).toHaveBeenCalledTimes(1);
   });
   it("keeps the new group selected when inventory refresh needs retry", async () => {
@@ -156,7 +232,7 @@ describe("AI user access", () => {
     fireEvent.click(screen.getByRole("button", { name: "Refresh groups" }));
     await screen.findByRole("option", { name: "Research (0)" });
     expect(mock.post).toHaveBeenCalledTimes(1);
-    expect((screen.getByLabelText("Model") as HTMLSelectElement).value).toBe(JSON.stringify([provider.id, provider.models[0]]));
+    expect(modelBox().checked).toBe(true);
   });
   it("uses the login endpoint with conversation history and no provider key input", async () => {
     mock.get.mockResolvedValue({ data: [{ model: provider.models[0], mode: "chat" }] });
@@ -189,6 +265,7 @@ describe("AI user access", () => {
     expect(within(table).getAllByRole("row")).toHaveLength(16);
     expect(screen.getByRole("button", { name: "Next page" })).toHaveProperty("disabled", true);
     expect(screen.getByRole("button", { name: "Previous page" })).toHaveProperty("disabled", false);
+    fireEvent.click(screen.getByRole("button", { name: "Show models for Group 55" }));
     fireEvent.click(screen.getByRole("button", { name: /^Actions for Group 55 · / }));
     fireEvent.click(screen.getByRole("menuitem", { name: "Restore access" }));
     await waitFor(() => expect(mock.post).toHaveBeenCalledExactlyOnceWith("/api/v1/organizations/{orgId}/ai-gateway/user-model-grants", {
@@ -260,5 +337,82 @@ describe("AI user access", () => {
     expect(screen.queryByRole("menuitem", { name: "Check catalog" })).toBeNull();
     expect(screen.getByRole("menuitem", { name: "View model" })).toBeTruthy();
     expect(mock.post).not.toHaveBeenCalled();
+  });
+  describe("daily cost limit for a user group", () => {
+    const limitGrant = (id: string, group: string, name: string) => ({ id, group_id: group, group_name: name, connection_id: provider.id, model: provider.models[0], enabled: true, status: "applied", revision: 1 });
+    function limitInventory(groups: Array<{ id: string; name: string; members: number; daily_usd_threshold: number | null; limit_revision: number }>) {
+      mock.get.mockImplementation(async (path: string) => ({ data: path.endsWith("/members") ? [{ user_id: "user", role: "owner" }] : path.endsWith("user-groups") ? groups : path.endsWith("user-model-grants") ? [limitGrant("a", "eng", "Engineering"), limitGrant("b", "ops", "Operations")] : { items: [provider] } }));
+    }
+    async function openLimit(name: string) {
+      await screen.findByRole("table", { name: "User group model grants" });
+      fireEvent.click(screen.getByRole("button", { name: `Group actions for ${name}` }));
+      fireEvent.click(screen.getByRole("menuitem", { name: "Set daily cost limit" }));
+      return within(await screen.findByRole("dialog", { name: "Daily cost limit" }));
+    }
+    const row = (name: string) => screen.getByRole("button", { name: `Show models for ${name}`, hidden: true }).closest("tr")!;
+    it("shows the limit in the Access column and changes it from the row menu", async () => {
+      limitInventory([{ id: "eng", name: "Engineering", members: 3, daily_usd_threshold: 5, limit_revision: 2 }, { id: "ops", name: "Operations", members: 1, daily_usd_threshold: null, limit_revision: 0 }]);
+      mock.put.mockResolvedValue({ data: { id: "eng", name: "Engineering", members: 3, daily_usd_threshold: 7.5, limit_revision: 3 } });
+      render(<AIGroupAccess orgId="org" canManage />);
+      const dialog = await openLimit("Engineering");
+      expect(row("Engineering").textContent).toContain("1 active · limit $5/day");
+      expect(row("Operations").textContent).not.toContain("limit");
+      expect(dialog.getByText(/shared by all its members/)).toBeTruthy();
+      const input = dialog.getByLabelText("Daily limit (USD)") as HTMLInputElement;
+      expect(input.value).toBe("5");
+      fireEvent.change(input, { target: { value: "7.5" } });
+      fireEvent.click(dialog.getByRole("button", { name: "Save" }));
+      await waitFor(() => expect(mock.put).toHaveBeenCalledExactlyOnceWith("/api/v1/organizations/{orgId}/ai-gateway/user-groups/{groupId}/cost-limit", { params: { path: { orgId: "org", groupId: "eng" } }, body: { daily_usd_threshold: 7.5, expected_revision: 2 } }));
+      await waitFor(() => expect(screen.queryByRole("dialog", { name: "Daily cost limit" })).toBeNull());
+      expect(row("Engineering").textContent).toContain("1 active · limit $7.5/day");
+      expect(mock.success).toHaveBeenCalledWith("Daily cost limit saved");
+      expect(mock.post).not.toHaveBeenCalled();
+    });
+    it("removes a limit, and offers no removal or invalid save for a group without one", async () => {
+      limitInventory([{ id: "eng", name: "Engineering", members: 3, daily_usd_threshold: 5, limit_revision: 2 }, { id: "ops", name: "Operations", members: 1, daily_usd_threshold: null, limit_revision: 0 }]);
+      mock.put.mockResolvedValue({ data: { id: "eng", name: "Engineering", members: 3, daily_usd_threshold: null, limit_revision: 3 } });
+      render(<AIGroupAccess orgId="org" canManage />);
+      let dialog = await openLimit("Operations");
+      expect(dialog.queryByRole("button", { name: "Remove limit" })).toBeNull();
+      const save = dialog.getByRole("button", { name: "Save" }) as HTMLButtonElement;
+      expect(save.disabled).toBe(true);
+      for (const bad of ["0", "-1", "100000.01"]) {
+        fireEvent.change(dialog.getByLabelText("Daily limit (USD)"), { target: { value: bad } });
+        expect(save.disabled).toBe(true);
+      }
+      fireEvent.change(dialog.getByLabelText("Daily limit (USD)"), { target: { value: "100000" } });
+      expect(save.disabled).toBe(false);
+      fireEvent.click(dialog.getByRole("button", { name: "Cancel" }));
+      dialog = await openLimit("Engineering");
+      fireEvent.click(dialog.getByRole("button", { name: "Remove limit" }));
+      await waitFor(() => expect(mock.put).toHaveBeenCalledExactlyOnceWith(expect.any(String), { params: { path: { orgId: "org", groupId: "eng" } }, body: { daily_usd_threshold: null, expected_revision: 2 } }));
+      await waitFor(() => expect(row("Engineering").textContent).not.toContain("limit"));
+      expect(mock.success).toHaveBeenCalledWith("Daily cost limit removed");
+    });
+    it("loads the latest limit after someone else changed it", async () => {
+      const groups = [{ id: "eng", name: "Engineering", members: 3, daily_usd_threshold: 5 as number | null, limit_revision: 2 }];
+      limitInventory(groups);
+      mock.put.mockImplementation(async () => { groups[0] = { ...groups[0], daily_usd_threshold: 9, limit_revision: 3 }; return { error: { error: { code: "ai_policy_revision_conflict", message: "AI policy changed; refresh and retry" } }, response: new Response("{}", { status: 409 }) }; });
+      render(<AIGroupAccess orgId="org" canManage />);
+      const dialog = await openLimit("Engineering");
+      fireEvent.change(dialog.getByLabelText("Daily limit (USD)"), { target: { value: "6" } });
+      fireEvent.click(dialog.getByRole("button", { name: "Save" }));
+      expect((await dialog.findByRole("alert")).textContent).toContain("Someone else changed this limit. The latest value is loaded");
+      expect((dialog.getByLabelText("Daily limit (USD)") as HTMLInputElement).value).toBe("9");
+      expect(row("Engineering").textContent).toContain("limit $9/day");
+      mock.put.mockResolvedValue({ data: { id: "eng", name: "Engineering", members: 3, daily_usd_threshold: 9, limit_revision: 4 } });
+      fireEvent.click(dialog.getByRole("button", { name: "Save" }));
+      await waitFor(() => expect(mock.put).toHaveBeenLastCalledWith(expect.any(String), expect.objectContaining({ body: { daily_usd_threshold: 9, expected_revision: 3 } })));
+    });
+    it("disables the limit for a deleted group", async () => {
+      mock.get.mockImplementation(async (path: string) => ({ data: path.endsWith("/members") ? [{ user_id: "user", role: "owner" }] : path.endsWith("user-groups") ? [] : path.endsWith("user-model-grants") ? [{ ...limitGrant("a", "", "Old team"), group_id: undefined, enabled: false, status: "revoked" }] : { items: [provider] } }));
+      render(<AIGroupAccess orgId="org" canManage />);
+      await screen.findByRole("table", { name: "User group model grants" });
+      fireEvent.click(screen.getByRole("button", { name: "Group actions for Old team" }));
+      const item = screen.getByRole("menuitem", { name: /Set daily cost limit/ });
+      fireEvent.click(item);
+      expect(screen.queryByRole("dialog", { name: "Daily cost limit" })).toBeNull();
+      expect(mock.put).not.toHaveBeenCalled();
+    });
   });
 });

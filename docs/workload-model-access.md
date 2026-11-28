@@ -156,6 +156,25 @@ identities under one workload, with a shared policy and stable workload accounti
 it does not create twenty separate workload policies or billing keys. Changing
 the policy governs subsequent admissions without editing each replica's files.
 
+## Kubernetes, ECS and container examples
+
+[`deploy/examples/ai-workload/`](../deploy/examples/ai-workload/) has a
+starting point for each platform:
+
+- `kubernetes.yaml`: a Deployment whose init container copies the Secret's
+  symlinked files into owner-only regular files, with one state directory per
+  pod. Use a StatefulSet with a volume claim template for a stable identity per
+  replica.
+- `ecs-task-definition.json` and `entrypoint.sh`: the enrollment key comes
+  from Secrets Manager as an environment variable; the entrypoint writes it to
+  a private file, removes it from the environment and starts the wrapper. The
+  same entrypoint works for plain Docker, Cloud Run and Nomad.
+- `Dockerfile`: an application image with the `tunnex` binary and the private
+  directories owned by the non-root application user.
+
+On EC2 or any VM, provision the files as in "Provision private files" and run
+the wrapper from the application's systemd unit.
+
 ## Replica replacement and access changes
 
 VMs, containers, bare-metal hosts and on-premises deployments use the same HTTPS

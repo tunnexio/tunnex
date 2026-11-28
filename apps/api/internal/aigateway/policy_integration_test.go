@@ -25,6 +25,9 @@ type policyEngineFixture struct {
 	fail         bool
 	usage        float64
 	beforeEnsure func()
+	// usageFor, when set, replaces the single usage figure with per-key spend.
+	usageFor func([]string) (float64, error)
+	unpriced bool
 }
 
 func newPolicyEngineFixture() *policyEngineFixture {
@@ -61,10 +64,17 @@ func (e *policyEngineFixture) DisableKey(_ context.Context, id string) error {
 	return nil
 }
 func (e *policyEngineFixture) Price(context.Context, string, string) (Price, error) {
+	if e.unpriced {
+		return Price{}, nil
+	}
 	v := 0.0001
 	return Price{Known: true, InputCostPerToken: &v, OutputCostPerToken: &v}, nil
 }
-func (e *policyEngineFixture) Usage(context.Context, []string, time.Time, time.Time) (Usage, error) {
+func (e *policyEngineFixture) Usage(_ context.Context, ids []string, _, _ time.Time) (Usage, error) {
+	if e.usageFor != nil {
+		cost, err := e.usageFor(ids)
+		return Usage{TotalCost: cost}, err
+	}
 	return Usage{TotalCost: e.usage}, nil
 }
 

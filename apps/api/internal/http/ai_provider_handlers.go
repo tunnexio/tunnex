@@ -198,6 +198,7 @@ func (s apiServer) ListAIProviderModels(ctx context.Context, r api.ListAIProvide
 		return nil, apierr.BadRequest("invalid_ai_provider", "Unsupported model mode")
 	}
 	var p aigateway.ProviderModelPage
+	var source *api.AIProviderModelListSource
 	if provider == "azure_foundry" && r.Params.ConnectionId == nil {
 		p, err = aigateway.FoundryReferenceModelsForMode(mode, query, limit, offset)
 	} else if provider == "custom" || provider == "sagemaker" || provider == "azure_foundry" {
@@ -206,10 +207,28 @@ func (s apiServer) ListAIProviderModels(ctx context.Context, r api.ListAIProvide
 		}
 		p, err = s.aiPolicies.CustomProviderModelsForMode(ctx, r.OrgId, *r.Params.ConnectionId, mode, query, limit, offset)
 	} else {
-		if r.Params.ConnectionId != nil {
-			return nil, apierr.BadRequest("invalid_ai_provider", "Connection-scoped catalog requires a custom, SageMaker or Foundry provider")
-		}
-		if mode == aigateway.ModeChat {
+		_, manageErr := authorize(ctx, r.OrgId, rbac.PermAIProviderManage)
+		if r.Params.ConnectionId != nil && manageErr != nil {
+			// Only a provider manager adds models, so only a manager makes the gateway call the provider
+			// with the stored key. A viewer gets the reference list and no provider call.
+			if mode == aigateway.ModeChat {
+				p, err = s.aiPolicies.ProviderModels(ctx, provider, query, limit, offset)
+			} else {
+				p, err = aigateway.ProviderReferenceModels(provider, mode, query, limit, offset)
+			}
+			v := api.AIProviderModelListSourceReference
+			source = &v
+		} else if r.Params.ConnectionId != nil {
+			// A saved connection reads the provider's live list with its stored
+			// key and says whether it fell back to the reference list.
+			var live bool
+			p, live, err = s.aiPolicies.SavedProviderModels(ctx, r.OrgId, *r.Params.ConnectionId, provider, mode, query, limit, offset)
+			v := api.AIProviderModelListSourceReference
+			if live {
+				v = api.AIProviderModelListSourceProvider
+			}
+			source = &v
+		} else if mode == aigateway.ModeChat {
 			p, err = s.aiPolicies.ProviderModels(ctx, provider, query, limit, offset)
 		} else {
 			p, err = aigateway.ProviderReferenceModels(provider, mode, query, limit, offset)
@@ -218,7 +237,7 @@ func (s apiServer) ListAIProviderModels(ctx context.Context, r api.ListAIProvide
 	if err != nil {
 		return nil, err
 	}
-	out := api.AIProviderModelList{Items: []api.AIProviderModel{}, Total: p.Total, Limit: limit, Offset: offset}
+	out := api.AIProviderModelList{Items: []api.AIProviderModel{}, Total: p.Total, Limit: limit, Offset: offset, Source: source}
 	for _, m := range p.Models {
 		out.Items = append(out.Items, api.AIProviderModel{Id: m.ID, Name: m.Name})
 	}

@@ -235,3 +235,77 @@ func TestTunnexFoundryNativeAuthenticatedTLSConnect(t *testing.T) {
 		})
 	}
 }
+
+// The saved-key catalog shares the draft listing. A stored provider config
+// points the native transport at a synthetic provider; the key never returns.
+func TestTunnexCatalogSavedConfigListsWithoutKey(t *testing.T) {
+	for _, kind := range []string{"openai", "groq"} {
+		t.Run(kind, func(t *testing.T) {
+			calls := 0
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				calls++
+				if r.Method != "GET" || !strings.HasSuffix(r.URL.Path, "/models") || r.Header.Get("Authorization") != "Bearer fixture-private-key" {
+					t.Errorf("unexpected list transport %s %s", r.Method, r.URL.Path)
+				}
+				w.Header().Set("Content-Type", "application/json")
+				w.Write([]byte(`{"object":"list","data":[{"id":"zeta","object":"model"},{"id":"alpha","object":"model"},{"id":"leak-fixture-private-key","object":"model"},{"id":"beta","object":"model"}]}`))
+			}))
+			defer server.Close()
+			native := &schemas.ProviderConfig{NetworkConfig: schemas.NetworkConfig{BaseURL: server.URL, AllowPrivateNetwork: true}}
+			in := tunnexOperation{Provider: kind, Mode: "chat", Secret: "fixture-private-key", Query: "", Limit: 2, Offset: 0}
+			if !tunnexValidate(in, true) {
+				t.Fatal("catalog input refused")
+			}
+			code, body := tunnexCatalog(in, native)
+			raw, _ := json.Marshal(body)
+			if code != 200 || calls == 0 || strings.Contains(string(raw), "fixture-private-key") {
+				t.Fatalf("code %d calls %d body %s", code, calls, raw)
+			}
+			want := `{"items":[{"id":"` + kind + `/alpha","name":"` + kind + `/alpha"},{"id":"` + kind + `/beta","name":"` + kind + `/beta"}],"limit":2,"offset":0,"total":3}`
+			if string(raw) != want {
+				t.Fatalf("got %s want %s", raw, want)
+			}
+			in.Query, in.Offset = "ZET", 0
+			if code, body = tunnexCatalog(in, native); code != 200 || body["total"] != 1 {
+				t.Fatalf("query filter %d %v", code, body)
+			}
+		})
+	}
+}
+func TestTunnexCatalogSanitizesProviderFailure(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(401)
+		w.Write([]byte(`{"error":{"message":"fixture-private-key rejected"}}`))
+	}))
+	defer server.Close()
+	native := &schemas.ProviderConfig{NetworkConfig: schemas.NetworkConfig{BaseURL: server.URL, AllowPrivateNetwork: true}}
+	code, body := tunnexCatalog(tunnexOperation{Provider: "groq", Mode: "chat", Secret: "fixture-private-key", Limit: 50}, native)
+	if code != 503 || body != nil {
+		t.Fatalf("provider failure surfaced: %d %v", code, body)
+	}
+}
+func TestTunnexSavedSecretBindsKeyRevisionAndState(t *testing.T) {
+	on, off := true, false
+	id := "tnx-managed-00000000-0000-4000-8000-000000000001"
+	key := func(id, name string, enabled *bool, models ...string) schemas.Key {
+		return schemas.Key{ID: id, Name: name, Value: *schemas.NewSecretVar("fixture-private-key"), Enabled: enabled, Models: models}
+	}
+	for _, tc := range []struct {
+		name, id, keyName string
+		keys              []schemas.Key
+		want              string
+	}{
+		{"enabled", id, id + "-r2", []schemas.Key{key(id, id+"-r2", &on, "existing")}, "fixture-private-key"},
+		{"disabled-without-models", id, id + "-r2", []schemas.Key{key(id, id+"-r2", &off)}, "fixture-private-key"},
+		{"disabled-with-models", id, id + "-r2", []schemas.Key{key(id, id+"-r2", &off, "existing")}, ""},
+		{"unknown-state", id, id + "-r2", []schemas.Key{key(id, id+"-r2", nil)}, ""},
+		{"stale-revision", id, id + "-r1", []schemas.Key{key(id, id+"-r2", &on)}, ""},
+		{"other-key", id, id + "-r2", []schemas.Key{key("tnx-managed-other", id+"-r2", &on)}, ""},
+		{"unowned-key", "operator-key", "operator-key-r2", []schemas.Key{key("operator-key", "operator-key-r2", &on)}, ""},
+		{"empty-name", id, "", []schemas.Key{key(id, "", &on)}, ""},
+	} {
+		if got := tunnexSavedSecret(tc.keys, tc.id, tc.keyName); got != tc.want {
+			t.Fatalf("%s: got %q", tc.name, got)
+		}
+	}
+}

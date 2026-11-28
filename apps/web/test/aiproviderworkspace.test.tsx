@@ -228,7 +228,50 @@ describe("AI provider onboarding", () => {
     fireEvent.click(screen.getByRole("button", { name: "Create credentials" }));
     await waitFor(() => expect(api.POST).toHaveBeenCalledWith(expect.stringMatching(/providers$/), expect.objectContaining({ body: { provider: "openai", name: "Production OpenAI", models: [], model_modes: {}, enabled: true, api_key: "new-credential-fixture" } })));
     expect(screen.queryByLabelText("API key")).toBeNull();
+    fireEvent.click(await screen.findByRole("button", { name: "Later" }));
     await waitFor(() => expect(screen.getByRole("tab", { name: /LLM Credentials/ }).getAttribute("aria-selected")).toBe("true"));
+  });
+  it("offers Add Model with a newly saved credential preselected so its live catalog is searched", async () => {
+    api.GET.mockImplementation((path: string) => Promise.resolve({ data: path.endsWith("/my-models") ? [] : path.endsWith("/models") ? { items: [{ id: "openrouter/live-only", name: "Live only" }], total: 1, limit: 50, offset: 0, source: "provider" } : inventory, response: response() }));
+    render(show()); await screen.findByText("Engineering"); fireEvent.click(screen.getByRole("tab", { name: /LLM Credentials/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Add Credentials" })); selectProvider();
+    fireEvent.change(screen.getByLabelText("API key"), { target: { value: "new-credential-fixture" } });
+    fireEvent.click(screen.getByRole("button", { name: "Create credentials" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Add models from this credential" }));
+    const dialog = await screen.findByRole("dialog", { name: "Add Model" });
+    expect((within(dialog).getByLabelText("Existing Credentials") as HTMLSelectElement).value).toBe(c.id);
+    expect(within(dialog).queryByLabelText("API key")).toBeNull();
+    fireEvent.focus(within(dialog).getByLabelText("Search model catalog"));
+    await within(dialog).findByText(/^Provider catalog/);
+    expect(api.GET).toHaveBeenCalledWith(expect.stringMatching(/\/ai-gateway\/models$/), expect.objectContaining({ params: expect.objectContaining({ query: expect.objectContaining({ provider: "openrouter", connection_id: c.id }) }) }));
+    expect(JSON.stringify(api.GET.mock.calls)).not.toContain("new-credential-fixture");
+  });
+  it("carries the new credential through a routed view change that remounts the workspace", async () => {
+    api.GET.mockImplementation((path: string) => Promise.resolve({ data: path.endsWith("/my-models") ? [] : path.endsWith("/models") ? { items: [{ id: "openrouter/live-only", name: "Live only" }], total: 1, limit: 50, offset: 0, source: "provider" } : inventory, response: response() }));
+    const routes: unknown[][] = [];
+    // The routed page keys the workspace by page, so the credentials and Add Model routes are separate instances.
+    const routed = (view: "connections" | "models" | "add", credential?: string) => createElement(AIProviderWorkspace, { key: view === "connections" ? "credentials" : "models", orgId: "org-a", view, initialCredential: credential, onViewChange: (next: "connections" | "models" | "add", id?: string) => { routes.push([next, id]); view$.rerender(routed(next, id)); } });
+    const view$ = render(routed("connections")); await screen.findByText("Engineering");
+    fireEvent.click(screen.getByRole("button", { name: "Add Credentials" })); selectProvider();
+    fireEvent.change(screen.getByLabelText("API key"), { target: { value: "new-credential-fixture" } });
+    fireEvent.click(screen.getByRole("button", { name: "Create credentials" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Add models from this credential" }));
+    expect(routes).toContainEqual(["add", c.id]);
+    const dialog = await screen.findByRole("dialog", { name: "Add Model" });
+    await waitFor(() => expect((within(dialog).getByLabelText("Existing Credentials") as HTMLSelectElement).value).toBe(c.id));
+    fireEvent.focus(within(dialog).getByLabelText("Search model catalog"));
+    await within(dialog).findByText(/^Provider catalog/);
+    expect(api.GET).toHaveBeenCalledWith(expect.stringMatching(/\/ai-gateway\/models$/), expect.objectContaining({ params: expect.objectContaining({ query: expect.objectContaining({ connection_id: c.id }) }) }));
+  });
+  it("closes the Add Model offer when Later is chosen", async () => {
+    render(show()); await screen.findByText("Engineering"); fireEvent.click(screen.getByRole("tab", { name: /LLM Credentials/ }));
+    fireEvent.click(screen.getByRole("button", { name: "Add Credentials" })); selectProvider();
+    fireEvent.change(screen.getByLabelText("API key"), { target: { value: "new-credential-fixture" } });
+    fireEvent.click(screen.getByRole("button", { name: "Create credentials" }));
+    await screen.findByRole("button", { name: "Add models from this credential" });
+    fireEvent.click(screen.getByRole("button", { name: "Later" }));
+    expect(screen.queryByRole("button", { name: "Add models from this credential" })).toBeNull();
+    expect(screen.queryByRole("dialog", { name: "Add Model" })).toBeNull();
   });
   it("discards direct credential drafts on cancel and tab navigation", async () => {
     render(show()); await screen.findByText("Engineering"); fireEvent.click(screen.getByRole("tab", { name: /LLM Credentials/ }));
@@ -317,9 +360,60 @@ describe("AI provider onboarding", () => {
     page.rerender(show("org-b")); await screen.findByText("Engineering"); expect(screen.queryByLabelText("API key")).toBeNull(); openAddModel(); selectProvider();
     expect((screen.getByLabelText("API key") as HTMLInputElement).value).toBe(""); expect(api.POST).not.toHaveBeenCalled();
   });
-  it("keeps exact model entry when suggestions fail", async () => {
-    api.POST.mockRejectedValue(Error()); render(show()); await screen.findByText("Engineering");
+  it("keeps exact model entry when live and bundled suggestions both fail", async () => {
+    api.POST.mockRejectedValue(Error());
+    api.GET.mockImplementation((path: string) => path.endsWith("/models") ? Promise.reject(Error()) : Promise.resolve({ data: path.endsWith("/my-models") ? [] : inventory, response: response() }));
+    render(show()); await screen.findByText("Engineering");
     openAddModel(); selectProvider(); fireEvent.change(screen.getByLabelText("API key"), { target: { value: "catalog-fixture" } }); advanceWizard(2); fireEvent.focus(screen.getByLabelText("Search model catalog")); await screen.findByText(/Model suggestions are unavailable/); expect(manualModelInput()).toBeTruthy();
+  });
+  it("falls back to the bundled catalog when the provider's live list fails", async () => {
+    api.POST.mockImplementation((path: string) => path.endsWith("/model-catalog") ? Promise.resolve({ error: { code: "ai_gateway_unavailable" }, response: response(503) }) : Promise.resolve({ data: { status: "success", duration_ms: 20 }, response: response() }));
+    render(show()); await screen.findByText("Engineering");
+    openAddModel(); selectProvider(); fireEvent.change(screen.getByLabelText("API key"), { target: { value: "catalog-fixture" } }); advanceWizard(2); fireEvent.focus(screen.getByLabelText("Search model catalog"));
+    await screen.findByText(/live model list could not be read/);
+    expect(screen.getByText(/Unverified catalog suggestions/)).toBeTruthy();
+    expect(screen.getByRole("checkbox", { name: /GPT-4o mini/ })).toBeTruthy();
+    expect(screen.queryByText(/Model suggestions are unavailable/)).toBeNull();
+    const reference = api.GET.mock.calls.find((call: unknown[]) => String(call[0]).endsWith("/ai-gateway/models"));
+    expect(reference?.[1]).toEqual(expect.objectContaining({ params: expect.objectContaining({ query: expect.objectContaining({ provider: "openrouter", mode: "chat" }) }) }));
+    expect(JSON.stringify(reference)).not.toContain("catalog-fixture");
+  });
+  it("labels a live provider list as the provider catalog", async () => {
+    render(show()); await screen.findByText("Engineering");
+    openAddModel(); selectProvider(); fireEvent.change(screen.getByLabelText("API key"), { target: { value: "catalog-fixture" } }); advanceWizard(2); fireEvent.focus(screen.getByLabelText("Search model catalog"));
+    await screen.findByText(/^Provider catalog/);
+    expect(screen.queryByText(/live model list could not be read/)).toBeNull();
+  });
+  it("searches a saved credential's live provider list with its connection and labels it the provider catalog", async () => {
+    api.GET.mockImplementation((path: string) => Promise.resolve({ data: path.endsWith("/my-models") ? [] : path.endsWith("/models") ? { items: [{ id: "openrouter/live-only", name: "Live only" }], total: 1, limit: 50, offset: 0, source: "provider" } : inventory, response: response() }));
+    render(show()); await screen.findByText("Engineering");
+    openAddModel(); selectProvider(); fireEvent.change(screen.getByLabelText("Existing Credentials"), { target: { value: c.id } }); advanceWizard(2); fireEvent.focus(screen.getByLabelText("Search model catalog"));
+    await screen.findByText(/^Provider catalog/);
+    expect(screen.getByRole("checkbox", { name: /Live only/ })).toBeTruthy();
+    expect(screen.queryByText(/live model list could not be read/)).toBeNull();
+    expect(api.GET).toHaveBeenCalledWith(expect.stringMatching(/\/ai-gateway\/models$/), { params: { path: { orgId: "org-a" }, query: { provider: "openrouter", connection_id: c.id, query: "", mode: "chat", limit: 50, offset: 0 } } });
+    expect(api.POST).not.toHaveBeenCalledWith(expect.stringMatching(/\/model-catalog$/), expect.anything());
+  });
+  it("marks a saved credential's reference fallback as unverified and pages it without the connection", async () => {
+    api.GET.mockImplementation((path: string, options: { params: { query: { offset: number; limit: number } } }) => Promise.resolve({ data: path.endsWith("/my-models") ? [] : path.endsWith("/models") ? { items: options.params.query.offset ? [{ id: "openrouter/second", name: "Second" }] : [{ id: "openrouter/first", name: "First" }], total: 51, limit: options.params.query.limit, offset: options.params.query.offset, ...(options.params.query.offset ? {} : { source: "reference" }) } : inventory, response: response() }));
+    render(show()); await screen.findByText("Engineering");
+    openAddModel(); selectProvider(); fireEvent.change(screen.getByLabelText("Existing Credentials"), { target: { value: c.id } }); advanceWizard(2); fireEvent.focus(screen.getByLabelText("Search model catalog"));
+    await screen.findByText(/live model list could not be read/);
+    expect(screen.getByText(/Unverified catalog suggestions/)).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Next model suggestions" }));
+    await screen.findByLabelText(/Second/);
+    expect(screen.getByText(/Unverified catalog suggestions/)).toBeTruthy();
+    expect(api.GET).toHaveBeenLastCalledWith(expect.stringMatching(/\/ai-gateway\/models$/), { params: { path: { orgId: "org-a" }, query: { provider: "openrouter", query: "", mode: "chat", limit: 50, offset: 50 } } });
+  });
+  it("does not mix a saved credential's live pages with reference pages", async () => {
+    api.GET.mockImplementation((path: string, options: { params: { query: { offset: number; limit: number } } }) => Promise.resolve({ data: path.endsWith("/my-models") ? [] : path.endsWith("/models") ? { items: options.params.query.offset ? [{ id: "openrouter/second", name: "Second" }] : [{ id: "openrouter/first", name: "First" }], total: 51, limit: options.params.query.limit, offset: options.params.query.offset, source: options.params.query.offset ? "reference" : "provider" } : inventory, response: response() }));
+    render(show()); await screen.findByText("Engineering");
+    openAddModel(); selectProvider(); fireEvent.change(screen.getByLabelText("Existing Credentials"), { target: { value: c.id } }); advanceWizard(2); fireEvent.focus(screen.getByLabelText("Search model catalog"));
+    await screen.findByText(/^Provider catalog/);
+    fireEvent.click(screen.getByRole("button", { name: "Next model suggestions" }));
+    await screen.findByText(/Model suggestions are unavailable/);
+    expect(screen.queryByLabelText(/Second/)).toBeNull();
+    expect(api.GET).toHaveBeenLastCalledWith(expect.stringMatching(/\/ai-gateway\/models$/), expect.objectContaining({ params: expect.objectContaining({ query: expect.objectContaining({ connection_id: c.id, offset: 50 }) }) }));
   });
   it("uses backend provider definitions and clears secret/model drafts and stale catalog on provider changes", async () => {
     let finish!: (v: unknown) => void;
@@ -1033,7 +1127,7 @@ it("opens catalog on focus, retains selections across replacement pages and appl
   fireEvent.click(screen.getByRole("button", { name: "Previous model suggestions" }));
   expect(await screen.findByLabelText(/First/)).toHaveProperty("checked", true);
   fireEvent.change(screen.getByRole("combobox", { name: "Rows per page" }), { target: { value: "10" } });
-  await waitFor(() => expect(api.GET).toHaveBeenLastCalledWith(expect.stringMatching(/\/models$/), { params: { path: { orgId: "org-a" }, query: { provider: "openrouter", query: "", mode: "chat", limit: 10, offset: 0 } } }));
+  await waitFor(() => expect(api.GET).toHaveBeenLastCalledWith(expect.stringMatching(/\/models$/), { params: { path: { orgId: "org-a" }, query: { provider: "openrouter", connection_id: c.id, query: "", mode: "chat", limit: 10, offset: 0 } } }));
   expect(screen.getByRole("button", { name: "Remove model openrouter/first" })).toBeTruthy();
   fireEvent.blur(search, { relatedTarget: screen.getByRole("button", { name: "Cancel" }) });
   expect(screen.queryByRole("region", { name: "Model suggestions" })).toBeNull();

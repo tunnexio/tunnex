@@ -2,10 +2,12 @@ package aigateway
 
 import (
 	"context"
+	"errors"
 	"time"
 	"unicode/utf8"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 	"github.com/tunnexio/tunnex/apps/api/internal/apierr"
 )
 
@@ -60,4 +62,63 @@ func (s *Policies) SearchProviderCatalog(ctx context.Context, org, actor uuid.UU
 		return ProviderModelPage{}, aiUnavailable()
 	}
 	return out, nil
+}
+
+// SavedProviderModels lists models for a saved standard-provider connection.
+// It reads the provider's live list with the key the engine stores for that
+// connection (live=true). When that cannot run or fails, it returns the same
+// list as a connection-less search (live=false): merged for chat, reference
+// otherwise. A connection of another organization or provider is refused
+// before any engine call.
+func (s *Policies) SavedProviderModels(ctx context.Context, org, id uuid.UUID, provider string, mode ModelMode, query string, limit, offset int) (ProviderModelPage, bool, error) {
+	if !s.ProviderManagementAvailable() {
+		return ProviderModelPage{}, false, aiUnavailable()
+	}
+	if org == uuid.Nil || id == uuid.Nil || !supportedProvider(provider) || !ValidModelMode(mode) || utf8.RuneCountInString(query) > 100 || limit < 1 || limit > 100 || offset < 0 || offset > 10000 {
+		return ProviderModelPage{}, false, providerInvalid()
+	}
+	if s.pool == nil {
+		return ProviderModelPage{}, false, aiUnavailable()
+	}
+	p, err := scanProvider(s.pool.QueryRow(ctx, `SELECT `+providerColumns+` FROM ai_provider_connections WHERE org_id=$1 AND id=$2 AND deleted_at IS NULL`, org, id))
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ProviderModelPage{}, false, providerMissing()
+	}
+	if err != nil {
+		return ProviderModelPage{}, false, aiUnavailable()
+	}
+	if p.Provider != provider {
+		return ProviderModelPage{}, false, providerInvalid()
+	}
+	if page, ok := s.liveSavedCatalog(ctx, org, p, mode, query, limit, offset); ok {
+		return page, true, nil
+	}
+	var page ProviderModelPage
+	if mode == ModeChat {
+		page, err = mergedProviderCatalog(ctx, s.engine.(ProviderEngine), provider, ModeChat, false, nil, query, limit, offset)
+	} else {
+		page, err = ProviderReferenceModels(provider, mode, query, limit, offset)
+	}
+	return page, false, err
+}
+
+func (s *Policies) liveSavedCatalog(ctx context.Context, org uuid.UUID, p ProviderConnection, mode ModelMode, query string, limit, offset int) (ProviderModelPage, bool) {
+	if !p.Enabled || p.Status != "applied" || p.AppliedRevision != p.Revision || !s.NativeProviderOperationsAvailable() {
+		return ProviderModelPage{}, false
+	}
+	engine, ok := s.engine.(SavedProviderCatalogEngine)
+	if !ok {
+		return ProviderModelPage{}, false
+	}
+	// The draft catalog's limiter: a full window falls back instead of failing.
+	b := s.probes
+	if !b.admit(org, time.Now()) {
+		return ProviderModelPage{}, false
+	}
+	defer b.release(org)
+	page, err := engine.SavedProviderCatalog(ctx, providerSpec(p), mode, query, limit, offset)
+	if err != nil {
+		return ProviderModelPage{}, false
+	}
+	return page, true
 }
