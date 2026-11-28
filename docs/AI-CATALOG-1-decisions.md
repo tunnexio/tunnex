@@ -69,3 +69,23 @@ The agent grant dialog already takes several models.
 - The button reads "Grant access to N models" when more than one is selected.
 - Rejected: a batch grant endpoint. It would add an API for no safety gain;
   each grant is already independent and audited on its own.
+
+## One row per group on Access, User groups
+
+Founder question: does the grants table scale? It listed one row per group and
+model pair, so a group with ten models took ten rows and a page of twenty rows
+showed two groups.
+
+- One row per group: the first three models, "+N more", and a count such as
+  "3 active · 1 revoked". "Show models" (the group name, or the row menu)
+  opens that group's models, each with its own Revoke or Restore.
+- The row menu has "Grant more models", which opens the grant dialog with the
+  group selected and its granted models marked.
+- A model filter ("Filter by model") answers "which groups hold this model".
+  A search that matches a group name shows all its models; one that matches
+  only model names shows just those models.
+- Paging counts groups, not grants.
+- The grant dialog's checklist gets a search and "Select all shown" once there
+  are more than six models.
+- Not changed: grants still load in one request. Server-side paging is worth
+  it only at thousands of grants; revisit after launch.

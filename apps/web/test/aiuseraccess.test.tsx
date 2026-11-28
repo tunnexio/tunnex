@@ -44,7 +44,8 @@ describe("AI user access", () => {
     fireEvent.click(modelBox());
     fireEvent.click(screen.getByRole("button", { name: "Grant model access" }));
     await waitFor(() => expect(mock.post).toHaveBeenCalledWith(expect.stringContaining("user-model-grants"), expect.objectContaining({ body: { group_id: "engineering", connection_id: provider.id, model: provider.models[0], enabled: true, expected_revision: 0 } })));
-    fireEvent.click(await screen.findByRole("button", { name: /^Actions for Engineering · / }));
+    fireEvent.click(await screen.findByRole("button", { name: "Show models for Engineering" }));
+    fireEvent.click(screen.getByRole("button", { name: /^Actions for Engineering · / }));
     fireEvent.click(screen.getByRole("menuitem", { name: "Revoke access" }));
     const confirmation = within(screen.getByRole("dialog", { name: "Revoke model access?" }));
     expect(confirmation.getByText(/Other grants remain in effect/)).toBeTruthy();
@@ -104,6 +105,47 @@ describe("AI user access", () => {
     expect(modelBox("gpt-5-mini").checked).toBe(true);
     expect(screen.getByRole("button", { name: "Grant model access" })).toBeTruthy();
     expect(mock.success).not.toHaveBeenCalled();
+  });
+  it("shows one row per group with its models, filters by model, and grants more from the row", async () => {
+    const multi = { ...provider, models: ["custom-connection/gpt-5", "custom-connection/gpt-5-mini", "custom-connection/o4", "custom-connection/o5"], model_modes: {} };
+    const grant = (id: string, group: string, name: string, model: string, enabled = true) => ({ id, group_id: group, group_name: name, connection_id: multi.id, model, enabled, status: enabled ? "applied" : "revoked", revision: 2 });
+    const grants = [grant("a", "eng", "Engineering", multi.models[0]), grant("b", "eng", "Engineering", multi.models[1]), grant("c", "eng", "Engineering", multi.models[2]), grant("d", "eng", "Engineering", multi.models[3], false), grant("e", "ops", "Operations", multi.models[0])];
+    mock.get.mockImplementation(async (path: string) => ({ data: path.endsWith("/members") ? [{ user_id: "user", role: "owner" }] : path.endsWith("user-groups") ? [{ id: "eng", name: "Engineering", members: 3 }, { id: "ops", name: "Operations", members: 1 }] : path.endsWith("user-model-grants") ? grants : { items: [multi] } }));
+    render(<AIGroupAccess orgId="org" canManage />);
+    const table = await screen.findByRole("table", { name: "User group model grants" });
+    expect(within(table).getAllByRole("row")).toHaveLength(3);
+    const eng = within(table).getByRole("button", { name: "Show models for Engineering" }).closest("tr")!;
+    expect(eng.textContent).toContain("+1 more");
+    expect(eng.textContent).toContain("3 active · 1 revoked");
+    expect(screen.queryByRole("list", { name: "Models for Engineering" })).toBeNull();
+    fireEvent.click(within(table).getByRole("button", { name: "Show models for Engineering" }));
+    expect(within(screen.getByRole("list", { name: "Models for Engineering" })).getAllByRole("listitem")).toHaveLength(4);
+    fireEvent.change(screen.getByRole("combobox", { name: "Filter by model" }), { target: { value: multi.models[2] } });
+    expect(screen.queryByRole("button", { name: /models for Operations/ })).toBeNull();
+    expect(within(screen.getByRole("list", { name: "Models for Engineering" })).getAllByRole("listitem")).toHaveLength(1);
+    fireEvent.change(screen.getByRole("combobox", { name: "Filter by model" }), { target: { value: "" } });
+    fireEvent.change(screen.getByRole("textbox", { name: "Search model access" }), { target: { value: "Operations" } });
+    expect(within(table).getAllByRole("row")).toHaveLength(2);
+    fireEvent.change(screen.getByRole("textbox", { name: "Search model access" }), { target: { value: "" } });
+    fireEvent.click(screen.getByRole("button", { name: "Group actions for Operations" }));
+    fireEvent.click(screen.getByRole("menuitem", { name: "Grant more models" }));
+    await screen.findByRole("dialog", { name: "Grant model access" });
+    await waitFor(() => expect((screen.getByLabelText("User group") as HTMLSelectElement).value).toBe("ops"));
+    expect(modelBox("gpt-5").disabled).toBe(true);
+    expect(modelBox("o4").disabled).toBe(false);
+    expect(mock.post).not.toHaveBeenCalled();
+  });
+  it("searches a long model list in the grant dialog and selects all shown", async () => {
+    const many = { ...provider, models: Array.from({ length: 8 }, (_, i) => `custom-connection/${i < 3 ? "mini" : "large"}-${i}`), model_modes: {} };
+    mock.get.mockImplementation(async (path: string) => ({ data: path.endsWith("/members") ? [{ user_id: "user", role: "owner" }] : path.endsWith("user-groups") ? [{ id: "eng", name: "Engineering", members: 3 }] : path.endsWith("user-model-grants") ? [] : { items: [many] } }));
+    render(<AIGroupAccess orgId="org" canManage />);
+    fireEvent.click(await screen.findByRole("button", { name: "Grant access" }));
+    await screen.findByRole("option", { name: "Engineering (3)" });
+    fireEvent.change(screen.getByLabelText("User group"), { target: { value: "eng" } });
+    fireEvent.change(screen.getByRole("textbox", { name: "Search models to grant" }), { target: { value: "mini" } });
+    expect(screen.getAllByRole("checkbox")).toHaveLength(3);
+    fireEvent.click(screen.getByRole("button", { name: "Select all shown" }));
+    expect(screen.getByRole("button", { name: "Grant access to 3 models" })).toBeTruthy();
   });
   it.each(["ai-admin", "unverified"])("does not offer group creation to %s", async (role) => {
     grantInventory();
@@ -223,6 +265,7 @@ describe("AI user access", () => {
     expect(within(table).getAllByRole("row")).toHaveLength(16);
     expect(screen.getByRole("button", { name: "Next page" })).toHaveProperty("disabled", true);
     expect(screen.getByRole("button", { name: "Previous page" })).toHaveProperty("disabled", false);
+    fireEvent.click(screen.getByRole("button", { name: "Show models for Group 55" }));
     fireEvent.click(screen.getByRole("button", { name: /^Actions for Group 55 · / }));
     fireEvent.click(screen.getByRole("menuitem", { name: "Restore access" }));
     await waitFor(() => expect(mock.post).toHaveBeenCalledExactlyOnceWith("/api/v1/organizations/{orgId}/ai-gateway/user-model-grants", {
