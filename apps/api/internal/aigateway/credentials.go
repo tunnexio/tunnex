@@ -170,7 +170,45 @@ func (s *Credentials) Authorize(ctx context.Context, rawAI, model string) (Grant
 	if !grant.Expires.After(time.Now()) || tx.Commit(ctx) != nil {
 		return Grant{}, aiUnauthorized()
 	}
+	grant.Renew = s.renewal(id, model)
 	return grant, nil
+}
+
+// renewingResolver is implemented by resolvers that can extend an in-flight
+// request's lease without repeating per-request cost admission.
+type renewingResolver interface {
+	ResolveRenewal(context.Context, pgx.Tx, agentruntime.Identity, string) (Grant, error)
+}
+
+// renewal binds an in-flight request to the agent identity its credential
+// proved at admission (device and current runtime credential revision), not to
+// the five-minute AI credential itself, which rotates while long streams run.
+func (s *Credentials) renewal(id agentruntime.Identity, model string) func(context.Context) (Grant, error) {
+	rr, ok := s.resolver.(renewingResolver)
+	if !ok {
+		return nil
+	}
+	return func(ctx context.Context) (Grant, error) {
+		if !s.ready() {
+			return Grant{}, aiUnavailable()
+		}
+		tx, err := s.pool.BeginTx(ctx, pgx.TxOptions{IsoLevel: pgx.ReadCommitted})
+		if err != nil {
+			return Grant{}, aiUnavailable()
+		}
+		defer rollbackAI(tx)
+		if err = lockAIIdentity(ctx, tx, id); err != nil {
+			return Grant{}, err
+		}
+		grant, err := rr.ResolveRenewal(ctx, tx, id, model)
+		if err != nil {
+			return Grant{}, apierr.New(403, "ai_policy_denied", "AI access is not available under the current policy")
+		}
+		if grant.Tenant != id.OrgID.String() || grant.Agent != id.DeviceID.String() || grant.VirtualKey == "" || !grant.Expires.After(time.Now()) || tx.Commit(ctx) != nil {
+			return Grant{}, aiUnauthorized()
+		}
+		return grant, nil
+	}
 }
 
 func (s *Credentials) Settings(ctx context.Context, orgID uuid.UUID) (Settings, error) {

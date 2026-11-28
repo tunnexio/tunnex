@@ -9,6 +9,7 @@ import (
 	"net/netip"
 	"net/url"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -20,10 +21,20 @@ const (
 	// transcriptionsPath carries audio uploads and has the adapter's larger body cap.
 	transcriptionsPath = "/v1/audio/transcriptions"
 
-	maxConcurrent     = 16
-	requestDeadline   = 35 * time.Second
-	bodyLimit         = 256 << 10
-	transcriptionCap  = 8<<20 + 64<<10
+	// Outer bounds, the same as the AI VPN relay's: the control plane enforces
+	// the configured limits (TUNNEX_AI_*, up to 32 MiB bodies, 30-minute
+	// requests, 60-minute streams and its idle cut); these only have to be
+	// above them. Non-streaming answers arrive only when generation completes,
+	// so the control transport waits up to 31 minutes for response headers.
+	maxConcurrent   = 64
+	requestDeadline = 61 * time.Minute
+	bodyLimit       = 33 << 20
+	// bodyReadTimeout bounds reading the request body, so a slow upload cannot
+	// hold a slot for the request deadline.
+	bodyReadTimeout = 60 * time.Second
+	// bodyBudget bounds the request bodies held in memory at once across all
+	// slots (bodies are read whole before anything is sent upstream).
+	bodyBudget        = 256 << 20
 	peerHeader        = "X-Tunnex-Peer-IP"
 	staticKeyPrefix   = "tnx_sk_"
 	staticKeyLength   = 56
@@ -39,6 +50,7 @@ var routes = map[string]string{
 	transcriptionsPath:       http.MethodPost,
 	"/v1/images/generations": http.MethodPost,
 	"/v1/rerank":             http.MethodPost,
+	"/v1/responses":          http.MethodPost,
 	messagesPath:             http.MethodPost,
 	"/v1/models":             http.MethodGet,
 }
@@ -94,6 +106,7 @@ type outboundKey struct{}
 // gateway sets from the TCP peer.
 func Handler(control *url.URL, transport http.RoundTripper, sources []netip.Prefix) http.Handler {
 	slots := make(chan struct{}, maxConcurrent)
+	budget := &byteBudget{max: bodyBudget}
 	proxy := &httputil.ReverseProxy{
 		Transport:     transport,
 		FlushInterval: -1,
@@ -151,9 +164,6 @@ func Handler(control *url.URL, transport http.RoundTripper, sources []netip.Pref
 			return
 		}
 		limit := int64(bodyLimit)
-		if r.URL.Path == transcriptionsPath {
-			limit = transcriptionCap
-		}
 		if method == http.MethodGet && (r.ContentLength != 0 || len(r.TransferEncoding) > 0) {
 			refuse(w, http.StatusBadRequest, "invalid request")
 			return
@@ -174,8 +184,21 @@ func Handler(control *url.URL, transport http.RoundTripper, sources []netip.Pref
 		out := outbound{path: r.URL.Path, peer: peer, credName: credName, credValue: credValue}
 		if method == http.MethodPost {
 			// The whole body is read before anything is sent, so an oversized body never leaves the
-			// gateway. The slots bound the memory this holds.
+			// gateway. The memory budget bounds what all slots hold together: a declared length
+			// reserves that much, an undeclared one reserves the cap.
+			reserve := limit
+			if r.ContentLength > 0 {
+				reserve = r.ContentLength
+			}
+			if !budget.take(reserve) {
+				refuse(w, http.StatusTooManyRequests, "busy")
+				return
+			}
+			defer budget.give(reserve)
+			rc := http.NewResponseController(w)
+			_ = rc.SetReadDeadline(time.Now().Add(bodyReadTimeout))
 			body, err := io.ReadAll(io.LimitReader(r.Body, limit+1))
+			_ = rc.SetReadDeadline(time.Now().Add(requestDeadline))
 			if err != nil {
 				refuse(w, http.StatusBadRequest, "invalid request")
 				return
@@ -194,4 +217,26 @@ func Handler(control *url.URL, transport http.RoundTripper, sources []netip.Pref
 func refuse(w http.ResponseWriter, code int, message string) {
 	w.Header().Set("Cache-Control", "no-store")
 	http.Error(w, message, code)
+}
+
+// byteBudget is a non-blocking reservation of bytes held in memory.
+type byteBudget struct {
+	mu        sync.Mutex
+	used, max int64
+}
+
+func (b *byteBudget) take(n int64) bool {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if n < 0 || b.used+n > b.max {
+		return false
+	}
+	b.used += n
+	return true
+}
+
+func (b *byteBudget) give(n int64) {
+	b.mu.Lock()
+	b.used -= n
+	b.mu.Unlock()
 }

@@ -21,8 +21,10 @@ func (c *Client) AIVPNTransport() (*url.URL, http.RoundTripper, error) {
 	}
 	tr := base.Clone()
 	tr.DisableKeepAlives = true
-	tr.MaxConnsPerHost = 16
-	tr.ResponseHeaderTimeout = 30 * time.Second
+	// Outer bounds above the control plane's largest configurable limits;
+	// non-streaming providers send headers only when generation completes.
+	tr.MaxConnsPerHost = 64
+	tr.ResponseHeaderTimeout = 31 * time.Minute
 	tr.TLSHandshakeTimeout = 10 * time.Second
 	return target, tr, nil
 }

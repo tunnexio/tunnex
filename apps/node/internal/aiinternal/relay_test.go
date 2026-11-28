@@ -276,26 +276,23 @@ func TestRelayBodyCapsNeverLetAnOversizedBodyLeave(t *testing.T) {
 		return w.Code
 	}
 	for _, declared := range []bool{true, false} {
-		if code := send("/v1/chat/completions", bodyLimit+1, declared); code != http.StatusRequestEntityTooLarge {
-			t.Fatalf("declared=%v: %d", declared, code)
-		}
-		if code := send(transcriptionsPath, transcriptionCap+1, declared); code != http.StatusRequestEntityTooLarge {
-			t.Fatalf("transcription declared=%v: %d", declared, code)
+		for _, path := range []string{"/v1/chat/completions", transcriptionsPath} {
+			if code := send(path, bodyLimit+1, declared); code != http.StatusRequestEntityTooLarge {
+				t.Fatalf("%s declared=%v: %d", path, declared, code)
+			}
 		}
 	}
 	if n := len(up.requests()); n != 0 {
 		t.Fatalf("%d oversized bodies reached the control plane", n)
 	}
+	// One cap for every route, above the control plane's largest body setting.
 	if code := send("/v1/chat/completions", bodyLimit, false); code != 200 {
 		t.Fatalf("a body at the cap: %d", code)
 	}
-	if code := send(transcriptionsPath, bodyLimit+1, true); code != 200 {
-		t.Fatalf("a transcription above the chat cap: %d", code)
+	if code := send(transcriptionsPath, 9<<20, true); code != 200 {
+		t.Fatalf("a large transcription: %d", code)
 	}
-	if code := send(transcriptionsPath, transcriptionCap, false); code != 200 {
-		t.Fatalf("a transcription at its cap: %d", code)
-	}
-	if got := up.requests(); len(got) != 3 || len(got[0].body) != bodyLimit || got[0].header.Get("Content-Length") == "" {
+	if got := up.requests(); len(got) != 2 || len(got[0].body) != bodyLimit || got[0].header.Get("Content-Length") == "" {
 		t.Fatalf("forwarded bodies: %d", len(got))
 	}
 	r := httptest.NewRequest(http.MethodGet, "/v1/models", strings.NewReader("x"))
@@ -307,7 +304,7 @@ func TestRelayBodyCapsNeverLetAnOversizedBodyLeave(t *testing.T) {
 	}
 }
 
-func TestRelayHasSixteenSlots(t *testing.T) {
+func TestRelaySlotsAreBounded(t *testing.T) {
 	up := &fakeControl{block: make(chan struct{}), entered: make(chan struct{}, maxConcurrent)}
 	h := newRelay(t, up)
 	var wg sync.WaitGroup
@@ -326,7 +323,7 @@ func TestRelayHasSixteenSlots(t *testing.T) {
 		}
 	}
 	if w := call(h, http.MethodPost, "/v1/embeddings", "10.20.3.4:5000", bearer(), `{}`); w.Code != http.StatusTooManyRequests {
-		t.Fatalf("the 17th request: %d", w.Code)
+		t.Fatalf("the request past the slots: %d", w.Code)
 	}
 	close(up.block)
 	wg.Wait()
@@ -357,5 +354,31 @@ func TestRelayPassesTheControlPlaneAnswerThrough(t *testing.T) {
 	w := call(h, http.MethodPost, "/v1/chat/completions", "10.20.3.4:5000", bearer(), `{}`)
 	if w.Code != http.StatusForbidden || !strings.Contains(w.Body.String(), "current policy") {
 		t.Fatalf("status=%d body=%q", w.Code, w.Body.String())
+	}
+}
+
+// Bodies held in memory are bounded across slots: a declared length reserves
+// that much, an undeclared one reserves the cap.
+func TestRelayBodyMemoryBudget(t *testing.T) {
+	b := &byteBudget{max: bodyBudget}
+	n := 0
+	for b.take(bodyLimit) {
+		n++
+	}
+	if n != bodyBudget/bodyLimit || b.take(bodyBudget) {
+		t.Fatalf("budget admitted %d undeclared bodies", n)
+	}
+	b.give(bodyLimit)
+	if !b.take(1024) || b.take(-1) {
+		t.Fatal("released budget not reusable or negative accepted")
+	}
+}
+
+func TestRelayBoundsMatchTheVPNRelay(t *testing.T) {
+	if requestDeadline != 61*time.Minute || maxConcurrent != 64 || bodyLimit != 33<<20 || bodyReadTimeout != 60*time.Second {
+		t.Fatal("relay bounds differ from the AI VPN relay")
+	}
+	if _, ok := routes["/v1/responses"]; !ok {
+		t.Fatal("responses route not relayed")
 	}
 }

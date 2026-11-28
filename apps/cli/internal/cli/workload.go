@@ -306,6 +306,21 @@ func workloadPrivateKeyValid(private []byte) bool {
 func workloadTransport() *http.Transport {
 	return &http.Transport{Proxy: nil, DialContext: (&net.Dialer{Timeout: 5 * time.Second}).DialContext, TLSHandshakeTimeout: 5 * time.Second, ResponseHeaderTimeout: 30 * time.Second, MaxResponseHeaderBytes: 32 << 10, DisableKeepAlives: true}
 }
+
+// Outer bounds of the local gateway endpoint. The control plane enforces the
+// configured limits (TUNNEX_AI_*: up to 30-minute requests and 60-minute
+// streams); these only have to be above them. Non-streaming providers send
+// response headers only when generation completes.
+const (
+	workloadProxyRequestTimeout = 61 * time.Minute
+	workloadProxyHeaderTimeout  = 31 * time.Minute
+)
+
+func workloadProxyTransport() *http.Transport {
+	t := workloadTransport()
+	t.ResponseHeaderTimeout = workloadProxyHeaderTimeout
+	return t
+}
 func (s *workloadSession) close() {
 	if s.client != nil {
 		s.client.CloseIdleConnections()
@@ -628,7 +643,7 @@ func (t *workloadTokens) renew(ctx context.Context, fatal chan<- error) {
 func workloadProxyPath(method, path string) (string, bool) {
 	if method == http.MethodPost {
 		switch path {
-		case "/v1/chat/completions", "/v1/completions", "/v1/embeddings", "/v1/audio/speech", "/v1/audio/transcriptions", "/v1/images/generations", "/v1/videos", "/v1/rerank":
+		case "/v1/chat/completions", "/v1/completions", "/v1/embeddings", "/v1/audio/speech", "/v1/audio/transcriptions", "/v1/images/generations", "/v1/videos", "/v1/rerank", "/v1/responses":
 			return "/ai" + path, true
 		case "/v1/messages":
 			return "/ai/anthropic/v1/messages", true
@@ -658,7 +673,7 @@ type workloadProxyContextKey struct{}
 
 func workloadProxy(tokens *workloadTokens, localHost, secret string) http.Handler {
 	remote, _ := url.Parse(tokens.session.config.Server)
-	proxy := &httputil.ReverseProxy{Transport: workloadTransport(), FlushInterval: -1, ErrorLog: log.New(io.Discard, "", 0),
+	proxy := &httputil.ReverseProxy{Transport: workloadProxyTransport(), FlushInterval: -1, ErrorLog: log.New(io.Discard, "", 0),
 		Rewrite: func(p *httputil.ProxyRequest) {
 			identity := p.In.Context().Value(workloadProxyContextKey{}).(workloadProxyIdentity)
 			p.Out.URL = &url.URL{Scheme: remote.Scheme, Host: remote.Host, Path: identity.target}
@@ -708,7 +723,7 @@ func workloadProxy(tokens *workloadTokens, localHost, secret string) http.Handle
 			http.Error(w, "unsupported gateway route", 404)
 			return
 		}
-		ctx, cancel := context.WithTimeout(r.Context(), 35*time.Second)
+		ctx, cancel := context.WithTimeout(r.Context(), workloadProxyRequestTimeout)
 		defer cancel()
 		token, err := tokens.get(ctx)
 		if err != nil {
@@ -790,7 +805,7 @@ func (s *workloadSession) run(ctx context.Context, args []string, out io.Writer)
 	}
 	secret := base64.RawURLEncoding.EncodeToString(random[:])
 	clear(random[:])
-	server := &http.Server{Handler: workloadProxy(tokens, listener.Addr().String(), secret), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 35 * time.Second, WriteTimeout: 35 * time.Second, IdleTimeout: 30 * time.Second, MaxHeaderBytes: 32 << 10, ErrorLog: log.New(io.Discard, "", 0)}
+	server := &http.Server{Handler: workloadProxy(tokens, listener.Addr().String(), secret), ReadHeaderTimeout: 5 * time.Second, ReadTimeout: workloadProxyRequestTimeout, WriteTimeout: workloadProxyRequestTimeout + time.Minute, IdleTimeout: 30 * time.Second, MaxHeaderBytes: 32 << 10, ErrorLog: log.New(io.Discard, "", 0)}
 	server.BaseContext = func(net.Listener) context.Context { return runCtx }
 	served := make(chan error, 1)
 	go func() { served <- server.Serve(listener) }()

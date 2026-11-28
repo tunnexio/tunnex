@@ -95,8 +95,62 @@ func TestVPNModelChecksCurrentDeviceAndUserGrant(t *testing.T) {
 			f.exec("UPDATE devices SET "+tc.restore+" WHERE org_id=$1 AND id=$2", f.org, device)
 		})
 	}
+	// The model list shares the exact identity checks and lists every mode the
+	// relay serves (AI-COMPAT-1: all but video generation).
+	embedSecret := "fixture-secret"
+	embed, err := f.policies.CreateProvider(ctx, f.org, f.owner, ProviderInput{Provider: "openrouter", Name: "VPN embeddings", Models: []string{"openrouter/embed"}, ModelModes: map[string]ModelMode{"openrouter/embed": ModeEmbedding}, Secret: &embedSecret, Enabled: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if eg, err := f.policies.PutUserModelGrant(ctx, f.org, f.owner, group, embed.ID, "openrouter/embed", true, 0); err != nil || eg.Status != "applied" {
+		t.Fatalf("embedding grant=%v err=%v", eg, err)
+	}
+	video, err := f.policies.CreateProvider(ctx, f.org, f.owner, ProviderInput{Provider: "openrouter", Name: "VPN video", Models: []string{"openrouter/video"}, ModelModes: map[string]ModelMode{"openrouter/video": ModeVideoGeneration}, Secret: &embedSecret, Enabled: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if vg, err := f.policies.PutUserModelGrant(ctx, f.org, f.owner, group, video.ID, "openrouter/video", true, 0); err != nil || vg.Status != "applied" {
+		t.Fatalf("video grant=%v err=%v", vg, err)
+	}
+	list := func(org, node uuid.UUID, ip, key string, singleOrg bool) ([]UserModel, error) {
+		return f.policies.VPNModels(ctx, org, node, ip, key, singleOrg)
+	}
+	models, err := list(f.org, node, "10.99.0.2", key, false)
+	modes := map[string]ModelMode{}
+	for _, m := range models {
+		modes[m.Model] = DefaultModelMode(m.Mode)
+	}
+	if err != nil || len(models) != 2 || modes["openrouter/vpn"] != ModeChat || modes["openrouter/embed"] != ModeEmbedding {
+		t.Fatalf("VPN models=%v err=%v", models, err)
+	}
+	if models, err := list(f.org, node, "10.99.0.2", key, true); err != nil || len(models) != 2 {
+		t.Fatalf("single-org VPN models=%v err=%v", models, err)
+	}
+	for _, tc := range []struct {
+		name      string
+		org, node uuid.UUID
+		ip, key   string
+	}{
+		{"wrong-org", uuid.New(), node, "10.99.0.2", key}, {"wrong-node", f.org, uuid.New(), "10.99.0.2", key},
+		{"wrong-ip", f.org, node, "10.99.0.3", key}, {"wrong-key", f.org, node, "10.99.0.2", "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBA="},
+		{"malformed-key", f.org, node, "10.99.0.2", "forged"},
+	} {
+		t.Run("list-"+tc.name, func(t *testing.T) {
+			if models, err := list(tc.org, tc.node, tc.ip, tc.key, false); err == nil {
+				t.Fatalf("invalid peer listed %v", models)
+			}
+		})
+	}
+	f.exec(`UPDATE users SET status='deactivated' WHERE id=$1`, user)
+	if _, err := list(f.org, node, "10.99.0.2", key, false); err == nil {
+		t.Fatal("deactivated user listed")
+	}
+	f.exec(`UPDATE users SET status='active' WHERE id=$1`, user)
 	f.exec(`DELETE FROM group_members WHERE org_id=$1 AND group_id=$2 AND user_id=$3`, f.org, group, user)
 	if call() == nil {
 		t.Fatal("removed grant allowed")
+	}
+	if models, err := list(f.org, node, "10.99.0.2", key, false); err != nil || len(models) != 0 {
+		t.Fatalf("user without grants listed %v err=%v", models, err)
 	}
 }

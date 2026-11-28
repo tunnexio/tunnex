@@ -118,7 +118,7 @@ func TestAIGatewaySocketRoutes(t *testing.T) {
 			{`{"model":"openrouter/allowed","messages":[{"role":"user","content":"test"}]}`, "wrong", 403},
 			{`{"model":"openrouter/allowed","messages":[{"role":"user","content":"test"}],"fallbacks":[]}`, "fixture-ai", 400},
 			{`{"model":"openrouter/allowed","model":"openrouter/other"}`, "fixture-ai", 400},
-			{strings.Repeat("x", aigateway.MaxBodyBytes+1), "fixture-ai", 413},
+			{strings.Repeat("x", int(aigateway.DefaultAdapterLimits().MaxRequestBytes)+1), "fixture-ai", 413},
 		}
 		for _, tc := range cases {
 			res := aiSocketRequest(t, srv, "POST", "/ai/v1/chat/completions", tc.body, tc.bearer, "")

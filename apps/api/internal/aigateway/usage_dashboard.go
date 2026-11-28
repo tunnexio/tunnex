@@ -23,11 +23,29 @@ type usageBinding struct {
 	teamName, agentName string
 }
 
+// UsageScope narrows the dashboard to one agent group (team), agent (device),
+// user group or workload. At most one is set.
+type UsageScope struct {
+	Team, Device, UserGroup, Workload *uuid.UUID
+}
+
 // UsageDashboard joins native accounting to retained request-time attribution.
 // No native key IDs or names cross the customer API boundary.
-func (p *Policies) UsageDashboard(ctx context.Context, org uuid.UUID, team, device *uuid.UUID, from, to time.Time) (Usage, api.AIUsageDashboard, error) {
+func (p *Policies) UsageDashboard(ctx context.Context, org uuid.UUID, scope UsageScope, from, to time.Time) (Usage, api.AIUsageDashboard, error) {
 	empty := emptyDashboard()
-	if org == uuid.Nil || (team != nil && *team == uuid.Nil) || (device != nil && *device == uuid.Nil) {
+	team, device, userGroup, workload := scope.Team, scope.Device, scope.UserGroup, scope.Workload
+	set := 0
+	for _, id := range []*uuid.UUID{team, device, userGroup, workload} {
+		if id != nil {
+			set++
+			if *id == uuid.Nil {
+				return Usage{}, empty, apierr.BadRequest("invalid_usage_scope", "invalid AI usage scope")
+			}
+		}
+	}
+	// Agent group and agent combine (an agent within a group); user groups and
+	// workloads are separate subjects and stand alone.
+	if org == uuid.Nil || ((userGroup != nil || workload != nil) && set > 1) {
 		return Usage{}, empty, apierr.BadRequest("invalid_usage_scope", "invalid AI usage scope")
 	}
 	from, to, err := usageWindow(from, to, time.Now())
@@ -60,15 +78,35 @@ func (p *Policies) UsageDashboard(ctx context.Context, org uuid.UUID, team, devi
 			return Usage{}, empty, apierr.NotFound("not_found", "AI agent not found")
 		}
 	}
+	if userGroup != nil {
+		var exists bool
+		// A deleted group's retained grants keep its usage reportable.
+		if tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM user_groups WHERE org_id=$1 AND id=$2) OR EXISTS(SELECT 1 FROM ai_user_model_grants WHERE org_id=$1 AND group_ref=$2)`, org, *userGroup).Scan(&exists) != nil {
+			return Usage{}, empty, aiUnavailable()
+		}
+		if !exists {
+			return Usage{}, empty, apierr.NotFound("not_found", "user group not found")
+		}
+	}
+	if workload != nil {
+		var exists bool
+		if tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM ai_workloads WHERE org_id=$1 AND id=$2)`, org, *workload).Scan(&exists) != nil {
+			return Usage{}, empty, aiUnavailable()
+		}
+		if !exists {
+			return Usage{}, empty, apierr.NotFound("not_found", "workload not found")
+		}
+	}
 	rows, err := tx.Query(ctx, `SELECT b.native_key_id,b.team_id,b.device_id,g.name,d.name,false,false
  FROM ai_gateway_key_bindings b
  JOIN agent_groups g ON g.org_id=b.org_id AND g.id=b.team_id
  JOIN devices d ON d.org_id=b.org_id AND d.id=b.device_id AND d.kind='agent'
- WHERE b.org_id=$1 AND ($2::uuid IS NULL OR b.team_id=$2) AND ($3::uuid IS NULL OR b.device_id=$3)
+ WHERE b.org_id=$1 AND ($2::uuid IS NULL OR b.team_id=$2) AND ($3::uuid IS NULL OR b.device_id=$3) AND $4::uuid IS NULL AND $5::uuid IS NULL
  UNION ALL SELECT native_key_id,group_ref,group_ref,group_name,group_name,true,false FROM ai_user_model_grants
- WHERE org_id=$1 AND $2::uuid IS NULL AND $3::uuid IS NULL AND native_key_id<>''
- UNION ALL SELECT native_key_id,id,id,name,name,false,true FROM ai_workloads WHERE org_id=$1 AND $2::uuid IS NULL AND $3::uuid IS NULL AND native_key_id<>''
- ORDER BY 1 LIMIT 65`, org, team, device)
+ WHERE org_id=$1 AND $2::uuid IS NULL AND $3::uuid IS NULL AND $5::uuid IS NULL AND ($4::uuid IS NULL OR group_ref=$4) AND native_key_id<>''
+ UNION ALL SELECT native_key_id,id,id,name,name,false,true FROM ai_workloads
+ WHERE org_id=$1 AND $2::uuid IS NULL AND $3::uuid IS NULL AND $4::uuid IS NULL AND ($5::uuid IS NULL OR id=$5) AND native_key_id<>''
+ ORDER BY 1 LIMIT 65`, org, team, device, userGroup, workload)
 	if err != nil {
 		return Usage{}, empty, aiUnavailable()
 	}

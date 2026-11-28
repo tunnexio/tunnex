@@ -1440,8 +1440,9 @@ mv "$STAGE_DIR/release.json" release.json
 chmod 0644 release.json
 if [ "$AI_BUNDLED" = true ]; then
 	mv "$STAGE_DIR/ai-bootstrap.sh" ai-bootstrap.sh
-	# Existing managed configuration and encrypted volumes remain authoritative.
-	[ -f ai-engine.json ] || mv "$STAGE_DIR/ai-engine.json" ai-engine.json
+	# Existing managed configuration and encrypted volumes remain authoritative;
+	# only the release's own body-limit update is applied to an unedited file.
+	ai_refresh_engine_config ai-engine.json "$STAGE_DIR/ai-engine.json"
 	chmod 0644 ai-engine.json ai-bootstrap.sh
 fi
 RELEASE_MANIFEST_PATH="/var/lib/tunnex/release.json"
@@ -1701,6 +1702,11 @@ if [ "$GATEWAY_PLACEMENT" = separate ]; then
 else
 	run_with_loader 'Starting the Tunnex Server and Linux gateway (initial migrations may take up to 15 minutes)' tunnex_compose up -d --wait --wait-timeout 900 ||
 		die 'Tunnex Server and Linux gateway did not become healthy'
+fi
+if [ "${AI_ENGINE_CONFIG_UPDATED:-false}" = true ]; then
+	# The engine reads ai-engine.json only at start; recreate it after an update.
+	run_with_loader 'Applying the updated AI engine configuration' tunnex_compose up -d --wait --wait-timeout 300 --no-deps --force-recreate bifrost ||
+		die 'The AI engine did not become healthy after its configuration update'
 fi
 
 # The API prints the one-time credential to stdout. Surface that banner here because `up -d` is detached;

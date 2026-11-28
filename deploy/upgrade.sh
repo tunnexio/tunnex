@@ -1183,7 +1183,7 @@ chmod 0644 "$DIR/release.json"
 ensure_edge_config
 if [ "$AI_BUNDLED" = true ]; then
   mv "$TMPDIR/ai-bootstrap.sh" "$DIR/ai-bootstrap.sh"
-  [ -f "$DIR/ai-engine.json" ] || mv "$TMPDIR/ai-engine.json" "$DIR/ai-engine.json"
+  ai_refresh_engine_config "$DIR/ai-engine.json" "$TMPDIR/ai-engine.json"
   chmod 0644 "$DIR/ai-engine.json" "$DIR/ai-bootstrap.sh"
   ai_set_env() { set_dotenv "$@"; }
   ai_prepare_config
@@ -1232,6 +1232,11 @@ if [ "$AA_PRESENT" = true ]; then
   AA_PROFILE_ON=false
 fi
 compose_up -d --wait --wait-timeout 900
+if [ "${AI_ENGINE_CONFIG_UPDATED:-false}" = true ]; then
+  # The engine reads ai-engine.json only at start; Compose does not recreate it
+  # for a changed bind-mounted file when its image is unchanged.
+  compose up -d --wait --wait-timeout 300 --no-deps --force-recreate bifrost
+fi
 compose ps --all
 if [ "$AA_PRESENT" = true ]; then
   # The API checked the barrier before migrating. Readback with the target

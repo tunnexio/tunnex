@@ -488,6 +488,38 @@ run_ai_upgrade >"$TMP/ai-upgrade-rerun-output"
 cmp -s "$TMP/ai-before.env" "$TMP/ai-upgrade/.env"
 cmp -s "$TMP/ai-before.json" "$TMP/ai-upgrade/ai-engine.json"
 cmp -s "$TMP/ai-before-policy.json" "$TMP/ai-upgrade/ai-egress-policy.json"
+# AI-COMPAT-1: an unedited managed file that still carries the old 1 MB body
+# limit is updated in place; a file with any other edit is preserved.
+grep -Fq 'ai_refresh_engine_config "$DIR/ai-engine.json" "$TMPDIR/ai-engine.json"' "$ROOT/deploy/upgrade.sh"
+grep -Fq 'ai_refresh_engine_config ai-engine.json "$STAGE_DIR/ai-engine.json"' "$ROOT/deploy/install.sh"
+(
+  . "$ROOT/deploy/ai-bootstrap.sh"
+  release="$ROOT/deploy/ai-gateway/config-managed.json"
+  mkdir "$TMP/ai-compat"
+  sed 's/"max_request_body_size_mb": [0-9]*,/"max_request_body_size_mb": 1,/' "$release" >"$TMP/ai-compat/ai-engine.json"
+  ! cmp -s "$release" "$TMP/ai-compat/ai-engine.json"
+  cp "$release" "$TMP/ai-compat/next.json"
+  ai_refresh_engine_config "$TMP/ai-compat/ai-engine.json" "$TMP/ai-compat/next.json"
+  cmp -s "$release" "$TMP/ai-compat/ai-engine.json"
+  [ ! -e "$TMP/ai-compat/next.json" ]
+  sed 's/"log_retention_days": [0-9]*/"log_retention_days": 3/; s/"max_request_body_size_mb": [0-9]*,/"max_request_body_size_mb": 1,/' "$release" >"$TMP/ai-compat/ai-engine.json"
+  cp "$TMP/ai-compat/ai-engine.json" "$TMP/ai-compat/edited.json"
+  cp "$release" "$TMP/ai-compat/next.json"
+  ai_refresh_engine_config "$TMP/ai-compat/ai-engine.json" "$TMP/ai-compat/next.json" 2>"$TMP/ai-compat/stderr"
+  cmp -s "$TMP/ai-compat/edited.json" "$TMP/ai-compat/ai-engine.json"
+  grep -Fq 'ai-engine.json has local changes' "$TMP/ai-compat/stderr"
+  # A trailing-newline edit is an edit too.
+  cp "$release" "$TMP/ai-compat/ai-engine.json"
+  printf '\n' >>"$TMP/ai-compat/ai-engine.json"
+  cp "$TMP/ai-compat/ai-engine.json" "$TMP/ai-compat/edited.json"
+  cp "$release" "$TMP/ai-compat/next.json"
+  ai_refresh_engine_config "$TMP/ai-compat/ai-engine.json" "$TMP/ai-compat/next.json" 2>/dev/null
+  cmp -s "$TMP/ai-compat/edited.json" "$TMP/ai-compat/ai-engine.json"
+  rm "$TMP/ai-compat/ai-engine.json"
+  cp "$release" "$TMP/ai-compat/next.json"
+  ai_refresh_engine_config "$TMP/ai-compat/ai-engine.json" "$TMP/ai-compat/next.json"
+  cmp -s "$release" "$TMP/ai-compat/ai-engine.json"
+)
 grep -Fq 'stop bifrost' "$TMP/ai-upgrade.log"
 grep -Fq 'start bifrost' "$TMP/ai-upgrade.log"
 grep -Fq 'ai-upgrade_ai_engine_config:/snapshot/config:ro' "$TMP/ai-upgrade.log"

@@ -58,8 +58,13 @@ config = JSON.parse(select.call('ConfigMap', 'ai-contract-tunnex-cp-ai')['data']
 raise 'content logging or open inference' unless config.dig('client','disable_content_logging') && config.dig('client','enforce_auth_on_inference')
 raise 'bootstrap keys granted' unless config.dig('governance','virtual_keys') == []
 nginx = select.call('ConfigMap', 'ai-contract-tunnex-cp-edge')['data']['default.conf']
-raise 'SSE proxy missing' unless nginx.include?('location /ai/') && nginx.include?('proxy_buffering off;') && nginx.include?('proxy_read_timeout 35s;')
+raise 'SSE proxy missing' unless nginx.include?('location /ai/') && nginx.include?('proxy_buffering off;') && nginx.include?('proxy_read_timeout 1860s;')
 raise 'Docker DNS used in Kubernetes' if nginx.include?('127.0.0.11')
+raise 'AI body/request buffering bounds missing' unless nginx.include?('client_max_body_size 33m;') && nginx.include?('proxy_request_buffering off;')
+limited, _, limited_status = Open3.capture3('helm', 'template', 'ai-contract', chart, *args, '--set', 'aiGateway.enabled=true', '--set', 'aiGateway.existingSecret=ai-fixture', '--set-string', 'aiGateway.limits.TUNNEX_AI_STREAM_TIMEOUT=20m')
+raise 'inference limits not passed to the API' unless limited_status.success? && limited.include?("name: TUNNEX_AI_STREAM_TIMEOUT\n              value: \"20m\"")
+_, _, bogus_limit = Open3.capture3('helm', 'template', 'ai-contract', chart, *args, '--set', 'aiGateway.enabled=true', '--set', 'aiGateway.existingSecret=ai-fixture', '--set-string', 'aiGateway.limits.TUNNEX_AI_BOGUS=1')
+raise 'unknown inference limit accepted' if bogus_limit.success?
 [['--set','aiGateway.enabled=true'], ['--set','aiGateway.enabled=true','--set','aiGateway.existingSecret=ai-fixture','--set','api.replicas=2']].each do |bad|
   _, _, status = Open3.capture3('helm', 'template', 'ai-contract', chart, *args, *bad)
   raise 'unsafe values accepted' if status.success?

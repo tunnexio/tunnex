@@ -20,6 +20,18 @@ type Inventory = {
   budgets?: boolean;
 };
 type Preset = "today" | "7" | "30" | "custom";
+/**
+ * What the usage is narrowed to, one subject kind at a time: an agent group (`team_id`, the
+ * agent group policy shown as "Agents and agent groups" on Access), an agent (`device_id`),
+ * a user group (`user_group_id`) or a workload (`workload_id`). All filtering is server-side.
+ */
+type Scope = "all" | "user-group" | "agent-group" | "agent" | "workload";
+const scopeLabels: Record<Exclude<Scope, "all">, { label: string; choose: string }> = {
+  "user-group": { label: "User group", choose: "Choose a user group" },
+  "agent-group": { label: "Agent group", choose: "Choose an agent group" },
+  agent: { label: "Agent", choose: "Choose an agent" },
+  workload: { label: "Workload", choose: "Choose a workload" },
+};
 function rangeFor(preset: Exclude<Preset, "custom">) {
   const end = new Date();
   const start = new Date(end);
@@ -67,8 +79,12 @@ export function AIUsageWorkspace({ orgId, inventory, gatewayOff = false, onRefre
   const [range, setRange] = useState(() => rangeFor("7"));
   const [customFrom, setCustomFrom] = useState(range.from.slice(0, 16));
   const [customTo, setCustomTo] = useState(range.to.slice(0, 16));
-  const [team, setTeam] = useState("");
-  const [device, setDevice] = useState("");
+  const [scope, setScope] = useState<Scope>("all");
+  const [item, setItem] = useState("");
+  const team = scope === "agent-group" ? item : "";
+  const device = scope === "agent" ? item : "";
+  const userGroup = scope === "user-group" ? item : "";
+  const workload = scope === "workload" ? item : "";
   const [reload, setReload] = useState(0);
   const [report, setReport] = useState<Report | null>(null);
   const [error, setError] = useState("");
@@ -76,6 +92,8 @@ export function AIUsageWorkspace({ orgId, inventory, gatewayOff = false, onRefre
   const [busy, setBusy] = useState(true);
   const [knownTeams, setKnownTeams] = useState<{ id: string; name: string }[]>([]);
   const [knownAgents, setKnownAgents] = useState<{ id: string; name: string }[]>([]);
+  const [knownUserGroups, setKnownUserGroups] = useState<{ id: string; name: string }[]>([]);
+  const [knownWorkloads, setKnownWorkloads] = useState<{ id: string; name: string }[]>([]);
   const serial = useRef(0);
   const invalidate = () => { serial.current++; setReport(null); setError(""); setBusy(true); };
   useEffect(() => {
@@ -88,6 +106,7 @@ export function AIUsageWorkspace({ orgId, inventory, gatewayOff = false, onRefre
           params: { path: { orgId }, query: {
             ...range, dashboard: true,
             ...(team ? { team_id: team } : {}), ...(device ? { device_id: device } : {}),
+            ...(userGroup ? { user_group_id: userGroup } : {}), ...(workload ? { workload_id: workload } : {}),
           } }, signal: controller.signal,
         });
         if (id !== serial.current) return;
@@ -97,6 +116,8 @@ export function AIUsageWorkspace({ orgId, inventory, gatewayOff = false, onRefre
           [...new Map([...old, ...next].map((row) => [row.id, { id: row.id, name: row.name }])).values()];
         setKnownTeams((old) => merge(old, result.data!.dashboard!.teams));
         setKnownAgents((old) => merge(old, result.data!.dashboard!.agents));
+        setKnownUserGroups((old) => merge(old, result.data!.dashboard!.user_groups ?? []));
+        setKnownWorkloads((old) => merge(old, result.data!.dashboard!.workloads ?? []));
       } catch {
         if (id === serial.current) setError("Usage could not be loaded. Try again to see your gateway's latest records.");
       } finally {
@@ -104,7 +125,7 @@ export function AIUsageWorkspace({ orgId, inventory, gatewayOff = false, onRefre
       }
     })();
     return () => { serial.current++; controller.abort(); };
-  }, [orgId, range, team, device, reload]);
+  }, [orgId, range, team, device, userGroup, workload, reload]);
 
   function refresh() {
     onRefresh?.();
@@ -121,14 +142,14 @@ export function AIUsageWorkspace({ orgId, inventory, gatewayOff = false, onRefre
     invalidate(); setRangeError(""); setRange({ from: from.toISOString(), to: to.toISOString() });
   }
   const unique = (rows: { id: string; name: string }[]) => [...new Map(rows.map((row) => [row.id, row])).values()];
-  const teams = unique([...inventory.teams.map((t) => ({ id: t.team_id, name: inventory.groups.find((g) => g.id === t.team_id)?.name ?? `Retained team (${t.team_id})` })), ...knownTeams]);
+  const teams = unique([...inventory.teams.map((t) => ({ id: t.team_id, name: inventory.groups.find((g) => g.id === t.team_id)?.name ?? `Retained agent group (${t.team_id})` })), ...knownTeams]);
   const agents = unique([...inventory.assignments.map((a) => ({ id: a.device_id, name: inventory.devices.find((d) => d.id === a.device_id)?.name ?? `Retained agent (${a.device_id})` })), ...knownAgents]);
   const d = report?.dashboard;
   const ranked = (rows: NonNullable<Report["dashboard"]>["teams"]) => rows.map((r) => ({ ...r, uncostedRequests: r.uncosted_requests }));
   const budgetOf = (deviceId: string) => {
     const teamId = inventory.assignments.find((a) => a.device_id === deviceId)?.team_id;
     const policy = teamId ? inventory.teams.find((t) => t.team_id === teamId) : undefined;
-    return { dailyLimit: policy?.daily_cost_limit ?? null, group: teamId ? teams.find((t) => t.id === teamId && !t.name.startsWith("Retained team"))?.name : undefined };
+    return { dailyLimit: policy?.daily_cost_limit ?? null, group: teamId ? teams.find((t) => t.id === teamId && !t.name.startsWith("Retained agent group"))?.name : undefined };
   };
   return <div className="ai-usage-workspace"><AIUsageDashboard
     status={busy ? "loading" : error || !d ? "error" : "ready"}
@@ -136,12 +157,13 @@ export function AIUsageWorkspace({ orgId, inventory, gatewayOff = false, onRefre
     onRetry={refresh}
     filters={<div className="ai-usage-filter-content">
       <div className="ai-usage-filter-row">
-        <Field label="Usage team"><Select value={team} onChange={(e) => { invalidate(); setTeam(e.target.value); }}>
-          <option value="">All teams</option>{teams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
+        <Field label="Usage scope"><Select value={scope} onChange={(e) => { if (item) invalidate(); setScope(e.target.value as Scope); setItem(""); }}>
+          <option value="all">All</option><option value="user-group">User group</option><option value="agent-group">Agent group</option><option value="agent">Agent</option><option value="workload">Workload</option>
         </Select></Field>
-        <Field label="Usage agent"><Select value={device} onChange={(e) => { invalidate(); setDevice(e.target.value); }}>
-          <option value="">All agents</option>{agents.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
-        </Select></Field>
+        {scope !== "all" && <Field label={scopeLabels[scope].label}><Select value={item} onChange={(e) => { invalidate(); setItem(e.target.value); }}>
+          <option value="">{scopeLabels[scope].choose}</option>
+          {{ "user-group": knownUserGroups, "agent-group": teams, agent: agents, workload: knownWorkloads }[scope].map((row) => <option key={row.id} value={row.id}>{row.name}</option>)}
+        </Select></Field>}
         <Field label="Time range"><Select value={preset} onChange={(e) => {
           const v = e.target.value as Preset; setPreset(v); setRangeError("");
           if (v !== "custom") { invalidate(); setRange(rangeFor(v)); }
@@ -160,7 +182,7 @@ export function AIUsageWorkspace({ orgId, inventory, gatewayOff = false, onRefre
     daily={d?.daily.map((r) => ({ ...r, uncostedRequests: r.uncosted_requests }))}
     models={d?.models}
     userGroups={d?.user_groups ? ranked(d.user_groups) : undefined}
-    teams={d ? ranked(d.teams) : undefined}
+    agentGroups={d ? ranked(d.teams) : undefined}
     agents={d ? ranked(d.agents).map((row) => inventory.budgets ? { ...row, budget: budgetOf(row.id) } : row) : undefined}
     gatewayOff={gatewayOff}
     budgetDay={preset === "today"}

@@ -189,7 +189,7 @@ func (h *videoHandler) serve(w http.ResponseWriter, r *http.Request, authorize A
 		writeAdapterError(w, r, 429)
 		return
 	}
-	deadline := time.Now().Add(a.requestTimeout)
+	deadline := time.Now().Add(videoRequestTimeout)
 	rc := http.NewResponseController(w)
 	if rc.SetReadDeadline(deadline) != nil || rc.SetWriteDeadline(deadline) != nil {
 		writeAdapterError(w, r, 500)

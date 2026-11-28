@@ -478,9 +478,35 @@ func requestTimeout(timeout, runtimePollTimeout time.Duration) func(http.Handler
 				pollTimed.ServeHTTP(w, r)
 				return
 			}
+			if isAIInferencePath(r.URL.Path) {
+				// The inference adapter owns these deadlines (body read, request or
+				// stream timeout, idle cut and authorization lease).
+				next.ServeHTTP(w, r)
+				return
+			}
 			timed.ServeHTTP(w, r)
 		})
 	}
+}
+
+// isAIInferencePath matches only the exact inference routes the adapter serves
+// on the public origin and the console path. Video job routes are not included.
+func isAIInferencePath(path string) bool {
+	route := ""
+	switch {
+	case strings.HasPrefix(path, "/ai/"):
+		route = strings.TrimPrefix(path, "/ai")
+	case strings.HasPrefix(path, "/api/v1/organizations/"):
+		parts := strings.SplitN(strings.TrimPrefix(path, "/api/v1/organizations/"), "/", 2)
+		if len(parts) != 2 || !strings.HasPrefix(parts[1], "ai-gateway/inference/") {
+			return false
+		}
+		route = "/" + strings.TrimPrefix(parts[1], "ai-gateway/inference/")
+	default:
+		return false
+	}
+	mode, ok := aigateway.InferencePathMode(route)
+	return ok && mode != aigateway.ModeVideoGeneration
 }
 
 // validationErrorHandler renders spec-validation failures as the error envelope.

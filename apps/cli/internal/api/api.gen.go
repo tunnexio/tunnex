@@ -10713,8 +10713,14 @@ type ListAIRequestsParamsOutcome string
 type GetAIUsageParams struct {
 	TeamId   *openapi_types.UUID `form:"team_id,omitempty" json:"team_id,omitempty"`
 	DeviceId *openapi_types.UUID `form:"device_id,omitempty" json:"device_id,omitempty"`
-	From     *time.Time          `form:"from,omitempty" json:"from,omitempty"`
-	To       *time.Time          `form:"to,omitempty" json:"to,omitempty"`
+
+	// UserGroupId Dashboard only: usage of one user group's model grants. At most one of team_id, device_id, user_group_id and workload_id.
+	UserGroupId *openapi_types.UUID `form:"user_group_id,omitempty" json:"user_group_id,omitempty"`
+
+	// WorkloadId Dashboard only: usage of one workload. At most one of team_id, device_id, user_group_id and workload_id.
+	WorkloadId *openapi_types.UUID `form:"workload_id,omitempty" json:"workload_id,omitempty"`
+	From       *time.Time          `form:"from,omitempty" json:"from,omitempty"`
+	To         *time.Time          `form:"to,omitempty" json:"to,omitempty"`
 
 	// Dashboard Include bounded native daily and historical attribution aggregates.
 	Dashboard *bool `form:"dashboard,omitempty" json:"dashboard,omitempty"`
@@ -32687,6 +32693,38 @@ func NewGetAIUsageRequest(server string, orgId openapi_types.UUID, params *GetAI
 		if params.DeviceId != nil {
 
 			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "device_id", runtime.ParamLocationQuery, *params.DeviceId); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.UserGroupId != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "user_group_id", runtime.ParamLocationQuery, *params.UserGroupId); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.WorkloadId != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "workload_id", runtime.ParamLocationQuery, *params.WorkloadId); err != nil {
 				return nil, err
 			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
 				return nil, err

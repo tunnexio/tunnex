@@ -307,6 +307,17 @@ func (s *Policies) CanIssue(ctx context.Context, tx pgx.Tx, id agentruntime.Iden
 	return err
 }
 func (s *Policies) Resolve(ctx context.Context, tx pgx.Tx, id agentruntime.Identity, model string) (Grant, error) {
+	return s.resolveAgent(ctx, tx, id, model, true)
+}
+
+// ResolveRenewal repeats Resolve for an in-flight request's lease renewal:
+// identity, assignment, team policy, provider access and key binding are read
+// again; per-request cost admission is not repeated.
+func (s *Policies) ResolveRenewal(ctx context.Context, tx pgx.Tx, id agentruntime.Identity, model string) (Grant, error) {
+	return s.resolveAgent(ctx, tx, id, model, false)
+}
+
+func (s *Policies) resolveAgent(ctx context.Context, tx pgx.Tx, id agentruntime.Identity, model string, cost bool) (Grant, error) {
 	a, p, keyID, rev, sealed, err := s.authorizedPolicy(ctx, tx, id)
 	if err != nil {
 		return Grant{}, err
@@ -319,13 +330,15 @@ func (s *Policies) Resolve(ctx context.Context, tx pgx.Tx, id agentruntime.Ident
 	if err != nil {
 		return Grant{}, err
 	}
-	if err = s.enforceCostMode(ctx, tx, id.OrgID, a.TeamID, model, mode, p.DailyCostLimit); err != nil {
-		return Grant{}, err
+	if cost {
+		if err = s.enforceCostMode(ctx, tx, id.OrgID, a.TeamID, model, mode, p.DailyCostLimit); err != nil {
+			return Grant{}, err
+		}
 	}
 	noteRequestGroup(ctx, "agent_group", a.TeamID)
 	value, err := OpenKey(s.sealer, id.OrgID, id.DeviceID, keyID, rev, sealed)
 	if err != nil {
 		return Grant{}, policyDenied()
 	}
-	return Grant{Mode: mode, Tenant: id.OrgID.String(), Agent: id.DeviceID.String(), VirtualKey: value, Expires: time.Now().Add(30 * time.Second)}, nil
+	return Grant{Mode: mode, Tenant: id.OrgID.String(), Agent: id.DeviceID.String(), VirtualKey: value, Expires: time.Now().Add(grantLease)}, nil
 }

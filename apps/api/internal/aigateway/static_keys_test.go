@@ -568,3 +568,41 @@ func TestAdapterMapsRequestLimitedTo429(t *testing.T) {
 		t.Fatalf("rate limited: %d %s", res.StatusCode, body)
 	}
 }
+
+// AI-COMPAT-1: lease renewal of a static-key request repeats the key, ingress
+// and model checks pinned to the admitted key, without the per-request rate
+// limit or cost admission.
+func TestStaticKeyLeaseRenewalPostgres(t *testing.T) {
+	ctx, pool := testpostgres.New(t)
+	s := newStaticKeyFixture(t, ctx, newWorkloadLifecycleFixture(t, ctx, pool, []string{"openrouter/a"}, nil))
+	k := s.create("internal", func(in *api.AIWorkloadStaticKeyInput) { in.RateLimitPerMinute = ptr(1) })
+	g, err := s.keys.Authorize(ctx, k.Secret, "openrouter/a", s.internal("10.20.1.5"))
+	if err != nil || g.Renew == nil {
+		t.Fatalf("admission: %v", err)
+	}
+	// The per-minute limit is used up: new requests are refused, renewal is not.
+	if _, err := s.keys.Authorize(ctx, k.Secret, "openrouter/a", s.internal("10.20.1.5")); !errors.Is(err, ErrRequestLimited) {
+		t.Fatalf("second request: %v", err)
+	}
+	next, err := g.Renew(ctx)
+	if err != nil || next.Agent != g.Agent || next.VirtualKey != g.VirtualKey {
+		t.Fatalf("renewal: %v", err)
+	}
+	for name, change := range map[string][2]string{
+		"endpoint disabled": {`UPDATE ai_internal_endpoints SET enabled=false WHERE id=$1`, `UPDATE ai_internal_endpoints SET enabled=true WHERE id=$1`},
+		"peer range moved":  {`UPDATE ai_internal_endpoints SET source_cidrs='{10.30.0.0/16}' WHERE id=$1`, `UPDATE ai_internal_endpoints SET source_cidrs='{10.20.0.0/16}' WHERE id=$1`},
+	} {
+		s.exec(change[0], s.ep)
+		if _, err := g.Renew(ctx); err == nil {
+			t.Fatalf("renewal survived: %s", name)
+		}
+		s.exec(change[1], s.ep)
+	}
+	if _, err := g.Renew(ctx); err != nil {
+		t.Fatalf("renewal after restore: %v", err)
+	}
+	s.exec(`UPDATE ai_workload_static_keys SET expires_at=now()-interval '1 second' WHERE id=$1`, k.Key.Id)
+	if _, err := g.Renew(ctx); err == nil {
+		t.Fatal("renewal survived key expiry")
+	}
+}

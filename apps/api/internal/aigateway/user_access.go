@@ -305,7 +305,14 @@ func (s *Policies) ResolveUserModel(ctx context.Context, org, user uuid.UUID, mo
 // resolveUserModel admits through the first usable grant. With cost set, a
 // grant whose group has a daily cost limit is usable only while the group's
 // observed spend today is under it; grants of unlimited groups are tried first.
-func (s *Policies) resolveUserModel(ctx context.Context, org, user uuid.UUID, model string, vpnUser func(pgx.Tx) (uuid.UUID, error), cost bool) (Grant, error) {
+func (s *Policies) resolveUserModel(ctx context.Context, org, user uuid.UUID, model string, vpnUser vpnIdentity, cost bool) (Grant, error) {
+	return s.resolveUserGrant(ctx, org, user, model, vpnUser, cost, uuid.Nil)
+}
+
+// resolveUserGrant resolves a user's model grant. pin, when set, restricts the
+// resolution to that grant: lease renewal re-checks the grant the request was
+// admitted with (the same virtual key), without repeating cost admission.
+func (s *Policies) resolveUserGrant(ctx context.Context, org, user uuid.UUID, model string, vpnUser vpnIdentity, cost bool, pin uuid.UUID) (Grant, error) {
 	if s == nil || s.pool == nil || s.sealer == nil || org == uuid.Nil || (user == uuid.Nil && vpnUser == nil) {
 		return Grant{}, policyDenied()
 	}
@@ -314,21 +321,9 @@ func (s *Policies) resolveUserModel(ctx context.Context, org, user uuid.UUID, mo
 		return Grant{}, aiUnavailable()
 	}
 	defer rollbackAI(tx)
-	if vpnUser != nil {
-		user, err = vpnUser(tx)
-		if err != nil {
-			return Grant{}, err
-		}
-		if user == uuid.Nil {
-			return Grant{}, policyDenied()
-		}
-	}
-	var live bool
-	if tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM memberships m JOIN users u ON u.id=m.user_id JOIN organizations o ON o.id=m.org_id WHERE m.org_id=$1 AND m.user_id=$2 AND m.access_revoked_at IS NULL AND u.status='active' AND u.deleted_at IS NULL AND u.email_verified_at IS NOT NULL AND NOT (u.must_change_password AND u.password_hash IS NOT NULL) AND o.deleted_at IS NULL AND o.ai_gateway_enabled)`, org, user).Scan(&live) != nil {
-		return Grant{}, aiUnavailable()
-	}
-	if !live {
-		return Grant{}, policyDenied()
+	user, err = liveAIUser(ctx, tx, org, user, vpnUser)
+	if err != nil {
+		return Grant{}, err
 	}
 	rows, err := tx.Query(ctx, `SELECT `+userGrantColumns+` FROM ai_user_model_grants g WHERE g.org_id=$1 AND g.model=$3 AND g.enabled AND g.status='applied' AND g.revision=g.applied_revision AND EXISTS(SELECT 1 FROM group_members m JOIN user_groups ug ON ug.id=m.group_id AND ug.org_id=m.org_id WHERE m.org_id=g.org_id AND m.group_id=g.group_id AND m.user_id=$2) ORDER BY g.id LIMIT 64`, org, user, model)
 	if err != nil {
@@ -367,6 +362,9 @@ func (s *Policies) resolveUserModel(ctx context.Context, org, user uuid.UUID, mo
 	}
 	var costErr error
 	for _, g := range grants {
+		if pin != uuid.Nil && g.ID != pin {
+			continue
+		}
 		p, err := scanProvider(tx.QueryRow(ctx, `SELECT `+providerColumns+` FROM ai_provider_connections WHERE org_id=$1 AND id=$2 FOR SHARE`, org, g.ConnectionID))
 		if err != nil {
 			continue
@@ -393,7 +391,17 @@ func (s *Policies) resolveUserModel(ctx context.Context, org, user uuid.UUID, mo
 		if g.GroupID != nil {
 			noteRequestGroup(ctx, "user_group", *g.GroupID)
 		}
-		return Grant{Tenant: org.String(), Agent: user.String(), SubjectKind: "user", VirtualKey: value, Mode: g.Mode, Expires: time.Now().Add(30 * time.Second)}, nil
+		// Renewal repeats this resolution (including any VPN peer evidence
+		// check) for the same user, model and grant; there is no bearer or
+		// cost step (cost admission is per request).
+		renewUser, pinned := user, g.ID
+		renew := func(ctx context.Context) (Grant, error) {
+			if vpnUser != nil {
+				return s.resolveUserGrant(ctx, org, uuid.Nil, model, vpnUser, false, pinned)
+			}
+			return s.resolveUserGrant(ctx, org, renewUser, model, nil, false, pinned)
+		}
+		return Grant{Tenant: org.String(), Agent: user.String(), SubjectKind: "user", VirtualKey: value, Mode: g.Mode, Expires: time.Now().Add(grantLease), Renew: renew}, nil
 	}
 	if costErr != nil {
 		return Grant{}, costErr
@@ -473,6 +481,50 @@ func strongerCostError(current, next error) error {
 		return next
 	}
 	return current
+}
+
+// liveAIUser is the identity step shared by inference and the VPN model list:
+// an optional VPN evidence resolver, then the current live-user/org check.
+func liveAIUser(ctx context.Context, tx pgx.Tx, org, user uuid.UUID, vpnUser vpnIdentity) (uuid.UUID, error) {
+	if vpnUser != nil {
+		var err error
+		user, err = vpnUser(ctx, tx)
+		if err != nil {
+			return uuid.Nil, err
+		}
+	}
+	if user == uuid.Nil {
+		return uuid.Nil, policyDenied()
+	}
+	var live bool
+	if tx.QueryRow(ctx, `SELECT EXISTS(SELECT 1 FROM memberships m JOIN users u ON u.id=m.user_id JOIN organizations o ON o.id=m.org_id WHERE m.org_id=$1 AND m.user_id=$2 AND m.access_revoked_at IS NULL AND u.status='active' AND u.deleted_at IS NULL AND u.email_verified_at IS NOT NULL AND NOT (u.must_change_password AND u.password_hash IS NOT NULL) AND o.deleted_at IS NULL AND o.ai_gateway_enabled)`, org, user).Scan(&live) != nil {
+		return uuid.Nil, aiUnavailable()
+	}
+	if !live {
+		return uuid.Nil, policyDenied()
+	}
+	return user, nil
+}
+
+// resolveVPNUser runs the shared identity step in its own transaction for the
+// VPN model list. Each listed model is then re-resolved by UserModels.
+func (s *Policies) resolveVPNUser(ctx context.Context, org uuid.UUID, vpnUser vpnIdentity) (uuid.UUID, error) {
+	if s == nil || s.pool == nil || s.sealer == nil || org == uuid.Nil || vpnUser == nil {
+		return uuid.Nil, policyDenied()
+	}
+	tx, err := s.pool.Begin(ctx)
+	if err != nil {
+		return uuid.Nil, aiUnavailable()
+	}
+	defer rollbackAI(tx)
+	user, err := liveAIUser(ctx, tx, org, uuid.Nil, vpnUser)
+	if err != nil {
+		return uuid.Nil, err
+	}
+	if tx.Commit(ctx) != nil {
+		return uuid.Nil, aiUnavailable()
+	}
+	return user, nil
 }
 
 func (s *Policies) UserModels(ctx context.Context, org, user uuid.UUID) ([]UserModel, error) {

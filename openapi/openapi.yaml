@@ -1764,6 +1764,8 @@ paths:
       - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
       - { name: team_id, in: query, schema: { type: string, format: uuid } }
       - { name: device_id, in: query, schema: { type: string, format: uuid } }
+      - { name: user_group_id, in: query, schema: { type: string, format: uuid }, description: "Dashboard only: usage of one user group's model grants. At most one of team_id, device_id, user_group_id and workload_id." }
+      - { name: workload_id, in: query, schema: { type: string, format: uuid }, description: "Dashboard only: usage of one workload. At most one of team_id, device_id, user_group_id and workload_id." }
       - { name: from, in: query, schema: { type: string, format: date-time } }
       - { name: to, in: query, schema: { type: string, format: date-time } }
       - { name: dashboard, in: query, schema: { type: boolean, default: false }, description: Include bounded native daily and historical attribution aggregates. }

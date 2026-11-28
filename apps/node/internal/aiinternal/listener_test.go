@@ -221,7 +221,7 @@ func TestTLSServesTheEndpointAndRefusesAnotherSNI(t *testing.T) {
 
 func TestServerTimeoutsAndLimitsAreTheRelays(t *testing.T) {
 	srv := newServer(context.Background(), http.NotFoundHandler(), &tls.Config{})
-	if srv.ReadHeaderTimeout != 5*time.Second || srv.ReadTimeout != 35*time.Second || srv.WriteTimeout != 40*time.Second ||
+	if srv.ReadHeaderTimeout != 5*time.Second || srv.ReadTimeout != 61*time.Minute || srv.WriteTimeout != 62*time.Minute ||
 		srv.IdleTimeout != 30*time.Second || srv.MaxHeaderBytes != 16<<10 {
 		t.Fatalf("server: %+v", srv)
 	}
@@ -231,8 +231,5 @@ func TestServerTimeoutsAndLimitsAreTheRelays(t *testing.T) {
 	cfg := tlsConfig("", nil)
 	if cfg.MinVersion != tls.VersionTLS12 || len(cfg.NextProtos) != 1 || cfg.NextProtos[0] != "http/1.1" {
 		t.Fatalf("tls: %+v", cfg)
-	}
-	if requestDeadline != 35*time.Second || maxConcurrent != 16 || bodyLimit != 256<<10 || transcriptionCap != 8<<20+64<<10 {
-		t.Fatal("relay limits changed")
 	}
 }

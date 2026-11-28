@@ -45,8 +45,37 @@ func readyVPNAddress(raw []byte, poolCIDR string) string {
 // HTTP relay route, after its current saved HTTP policy check. Manual TLS keeps
 // its independent explicitly provisioned gateway restriction.
 func (s *Policies) ResolveAutomaticVPNModel(ctx context.Context, org, node uuid.UUID, source, key, model string, singleOrg bool) (Grant, error) {
+	if err := s.automaticVPNReady(ctx, org, node); err != nil {
+		return Grant{}, err
+	}
+	g, err := s.resolveVPNPeerModel(ctx, org, node, source, key, model, singleOrg)
+	if err != nil || g.Renew == nil {
+		return g, err
+	}
+	// Lease renewal repeats the gateway readiness check as well as the peer
+	// and grant checks.
+	peer := g.Renew
+	g.Renew = func(ctx context.Context) (Grant, error) {
+		if err := s.automaticVPNReady(ctx, org, node); err != nil {
+			return Grant{}, err
+		}
+		return peer(ctx)
+	}
+	return g, nil
+}
+
+// AutomaticVPNModels lists chat models for the dedicated automatic HTTP relay
+// route with the same gateway readiness and peer checks as inference.
+func (s *Policies) AutomaticVPNModels(ctx context.Context, org, node uuid.UUID, source, key string, singleOrg bool) ([]UserModel, error) {
+	if err := s.automaticVPNReady(ctx, org, node); err != nil {
+		return nil, err
+	}
+	return s.vpnPeerModels(ctx, org, node, source, key, singleOrg)
+}
+
+func (s *Policies) automaticVPNReady(ctx context.Context, org, node uuid.UUID) error {
 	if !s.AutomaticVPNEnabled() || s.pool == nil {
-		return Grant{}, policyDenied()
+		return policyDenied()
 	}
 	var caps []byte
 	var cidr string
@@ -55,15 +84,15 @@ func (s *Policies) ResolveAutomaticVPNModel(ctx context.Context, org, node uuid.
  AND n.status='active' AND n.revoked_at IS NULL AND o.deleted_at IS NULL AND o.ai_gateway_enabled
  AND n.policy_reported_at >= now()-interval '90 seconds' AND n.policy_reported_at <= now()`, org, node).Scan(&caps, &cidr)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return Grant{}, policyDenied()
+		return policyDenied()
 	}
 	if err != nil {
-		return Grant{}, aiUnavailable()
+		return aiUnavailable()
 	}
 	if readyVPNAddress(caps, cidr) == "" {
-		return Grant{}, policyDenied()
+		return policyDenied()
 	}
-	return s.resolveVPNPeerModel(ctx, org, node, source, key, model, singleOrg)
+	return nil
 }
 
 // AutomaticVPNBaseURL discovers an endpoint on the requesting user's own live

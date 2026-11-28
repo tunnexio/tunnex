@@ -43,12 +43,13 @@ func tcpPeer(conn net.Conn) (netip.Addr, bool) {
 	return ap.Addr().Unmap(), true
 }
 
-// Server timeouts, copied from the AI VPN listener. net/http bounds the TLS handshake by the smallest
-// of these (5 s).
+// Server timeouts, the same as the AI VPN listener's. net/http bounds the TLS handshake by the smallest
+// of these (5 s). Reading and writing may last as long as one relayed request (streams run for the
+// control plane's stream timeout); the handler bounds the body read separately.
 const (
 	readHeaderTimeout = 5 * time.Second
-	readTimeout       = 35 * time.Second
-	writeTimeout      = 40 * time.Second
+	readTimeout       = requestDeadline
+	writeTimeout      = requestDeadline + time.Minute
 	idleTimeout       = 30 * time.Second
 	maxHeaderBytes    = 16 << 10
 )

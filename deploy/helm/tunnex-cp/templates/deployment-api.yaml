@@ -128,6 +128,10 @@ spec:
                 secretKeyRef:
                   name: {{ .Values.aiGateway.existingSecret }}
                   key: {{ .Values.aiGateway.secretKeys.adminPassword | quote }}
+            {{- range $name, $value := .Values.aiGateway.limits }}
+            - name: {{ $name }}
+              value: {{ $value | quote }}
+            {{- end }}
             {{- end }}
             {{- if .Values.aiGateway.customProviders.enabled }}
             - name: TUNNEX_AI_CUSTOM_ENDPOINTS_FILE

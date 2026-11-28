@@ -16,7 +16,7 @@ export type AIUsageDashboardProps = {
   status: "loading" | "error" | "ready";
   error?: string; onRetry?: () => void; filters?: ReactNode;
   totals?: AIUsageTotals; daily?: AIUsageDay[];
-  models?: { name: string; cost: number }[]; teams?: AIUsageRank[]; agents?: AIUsageRank[]; userGroups?: AIUsageRank[];
+  models?: { name: string; cost: number }[]; agentGroups?: AIUsageRank[]; agents?: AIUsageRank[]; userGroups?: AIUsageRank[];
   /** A banner above already says why the gateway does not answer, so a failed read shows nothing more. */
   gatewayOff?: boolean;
   /** The period is the current UTC day, the window a daily budget counts, so spend compares to it directly. */
@@ -82,10 +82,10 @@ export function AIUsageDashboard(props: AIUsageDashboardProps) {
         </div>
         {totals.requests === 0 && <div className="ai-usage-empty" role="status"><h3>No requests in this period</h3><p>Choose another period or send an authorized agent request to begin seeing usage.</p></div>}
         <div className="ai-usage-analysis-grid"><DailyChart days={props.daily} />
-        <div className="ai-usage-breakdowns"><div className="ai-usage-panel-title"><h3>Spend breakdown</h3></div><div className="ai-usage-tabs" role="tablist" aria-label="Usage breakdown">{["User groups", "Teams", "Agents", "Models", ...(props.workloads ? ["Workloads"] : [])].map(name => <button key={name} type="button" role="tab" aria-selected={breakdown === name} onClick={() => setBreakdown(name)}>{name}</button>)}</div>
+        <div className="ai-usage-breakdowns"><div className="ai-usage-panel-title"><h3>Spend breakdown</h3></div><div className="ai-usage-tabs" role="tablist" aria-label="Usage breakdown">{["User groups", "Agent groups", "Agents", ...(props.workloads ? ["Workloads"] : []), "Models"].map(name => <button key={name} type="button" role="tab" aria-selected={breakdown === name} onClick={() => setBreakdown(name)}>{name}</button>)}</div>
         <div role="tabpanel" aria-label={breakdown}>
         {breakdown === "User groups" && <Ranked title="Spend by user group" label="User group" rows={props.userGroups} />}
-        {breakdown === "Teams" && <Ranked title="Spend by team" label="Team" rows={props.teams} />}
+        {breakdown === "Agent groups" && <Ranked title="Spend by agent group" label="Agent group" rows={props.agentGroups} />}
         {breakdown === "Agents" && <Ranked title="Usage by agent" label="Agent" rows={props.agents} detailed budgetDay={props.budgetDay} />}
         {breakdown === "Models" && <Ranked emptyMessage="No priced model usage." title="Spend by model" label="Model" rows={props.models?.map(m => ({ ...m, id: m.name }))} />}
         {breakdown === "Workloads" && props.workloads}

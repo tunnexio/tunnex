@@ -566,6 +566,17 @@ func main() {
 			logger.Error("ai_gateway_invalid_configuration")
 			os.Exit(1)
 		}
+		// AI-COMPAT-1: administrator limits (TUNNEX_AI_*) and concurrency
+		// leases shared by every API replica through Redis.
+		aiLimits, limitsErr := aigateway.LoadAdapterLimits(os.Getenv)
+		if limitsErr == nil {
+			limitsErr = aiAdapter.ConfigureLimits(aiLimits)
+		}
+		if limitsErr != nil {
+			logger.Error("ai_gateway_limits_invalid", slog.String("error", limitsErr.Error()))
+			os.Exit(1)
+		}
+		aiAdapter.ConfigureSharedLeases(aigateway.NewRedisLeases(sessions.Client()))
 		aiAdapter.ConfigureVideoStore(pool)
 		aiRequestLog = aigateway.NewRequestLog(pool, aiPolicies, logger)
 		aiAdapter.ConfigureRequestLog(aiRequestLog)

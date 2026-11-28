@@ -234,6 +234,18 @@ func (s *Workloads) authenticate(ctx context.Context, tx pgx.Tx, raw string, exc
 	if err := tx.QueryRow(ctx, `SELECT org_id,workload_id,instance_id,key_generation,workload_epoch,org_revision,expires_at FROM ai_workload_tokens WHERE token_hash=$1 AND audience='tunnex-ai' AND expires_at>now()`, hash[:]).Scan(&org, &id, &instance, &generation, &epoch, &orgRevision, &expires); err != nil {
 		return workloadBearer{}, workloadLookupError(err, aiUnauthorized())
 	}
+	return s.authenticateFacts(ctx, tx, workloadFacts{org, id, instance, generation, epoch, orgRevision}, expires, exclusive)
+}
+
+// workloadFacts is what a workload bearer proved at admission. Lease renewal
+// re-checks these facts, not the (short-lived, rotating) bearer row itself.
+type workloadFacts struct {
+	org, workload, instance        uuid.UUID
+	generation, epoch, orgRevision int64
+}
+
+func (s *Workloads) authenticateFacts(ctx context.Context, tx pgx.Tx, f workloadFacts, expires time.Time, exclusive bool) (workloadBearer, error) {
+	org, id, instance, generation, epoch, orgRevision := f.org, f.workload, f.instance, f.generation, f.epoch, f.orgRevision
 	w, err := liveWorkload(ctx, tx, org, id)
 	if err != nil {
 		return workloadBearer{}, err
@@ -276,7 +288,32 @@ func (s *Workloads) Authorize(ctx context.Context, raw, model string) (Grant, er
 	if err != nil {
 		return Grant{}, err
 	}
-	return s.resolve(ctx, tx, b, model, true)
+	grant, err := s.resolve(ctx, tx, b, model, true)
+	if err != nil {
+		return Grant{}, err
+	}
+	facts := workloadFacts{b.instance.org, b.instance.workload, b.instance.id, b.instance.generation, b.workload.epoch, b.orgRevision}
+	grant.Renew = func(ctx context.Context) (Grant, error) { return s.renew(ctx, facts, model) }
+	return grant, nil
+}
+
+// renew extends an in-flight request's lease: the same instance, generation,
+// epoch and organization revision must still be live and the model still
+// granted. Cost admission is per request and is not repeated.
+func (s *Workloads) renew(ctx context.Context, f workloadFacts, model string) (Grant, error) {
+	if !s.ready() {
+		return Grant{}, aiUnavailable()
+	}
+	tx, err := s.policies.pool.Begin(ctx)
+	if err != nil {
+		return Grant{}, aiUnavailable()
+	}
+	defer rollbackAI(tx)
+	b, err := s.authenticateFacts(ctx, tx, f, time.Now().Add(grantLease), false)
+	if err != nil {
+		return Grant{}, err
+	}
+	return s.resolve(ctx, tx, b, model, false)
 }
 func (s *Workloads) resolve(ctx context.Context, tx pgx.Tx, b workloadBearer, model string, cost bool) (Grant, error) {
 	w, i := b.workload, b.instance
@@ -319,7 +356,7 @@ func (s *Workloads) resolve(ctx context.Context, tx pgx.Tx, b workloadBearer, mo
 	if err != nil {
 		return Grant{}, aiUnavailable()
 	}
-	expires := time.Now().Add(30 * time.Second)
+	expires := time.Now().Add(grantLease)
 	if b.expires.Before(expires) {
 		expires = b.expires
 	}

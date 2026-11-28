@@ -378,6 +378,77 @@
         "engineImage": {
           "type": "string",
           "description": "Exact native ai-engine image digest from the matching signed Tunnex release."
+        },
+        "limits": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "TUNNEX_AI_MAX_OUTPUT_TOKENS": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 32
+            },
+            "TUNNEX_AI_DEFAULT_OUTPUT_TOKENS": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 32
+            },
+            "TUNNEX_AI_MAX_MESSAGES": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 32
+            },
+            "TUNNEX_AI_MAX_REQUEST_BYTES": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 32
+            },
+            "TUNNEX_AI_MAX_RESPONSE_BYTES": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 32
+            },
+            "TUNNEX_AI_MAX_STREAM_BYTES": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 32
+            },
+            "TUNNEX_AI_BODY_READ_TIMEOUT": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 32
+            },
+            "TUNNEX_AI_REQUEST_TIMEOUT": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 32
+            },
+            "TUNNEX_AI_STREAM_TIMEOUT": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 32
+            },
+            "TUNNEX_AI_IDLE_TIMEOUT": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 32
+            },
+            "TUNNEX_AI_MAX_CONCURRENT": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 32
+            },
+            "TUNNEX_AI_MAX_CONCURRENT_PER_SUBJECT": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 32
+            },
+            "TUNNEX_AI_MAX_CONCURRENT_PER_ORG": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 32
+            }
+          }
         }
       },
       "allOf": [
