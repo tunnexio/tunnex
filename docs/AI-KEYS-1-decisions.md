@@ -1,7 +1,7 @@
 # AI-KEYS-1: static API keys for workloads, internal only by default
 
 Status: decision paper, 2026-11-28. Direction approved by the founder on
-2026-11-28. No code yet. Branch `story/ai-static-keys-1`, not pushed. Open
+2026-11-28. Open questions answered (see "Founder decisions"). Being built. Branch `story/ai-static-keys-1`, not pushed. Open
 questions are at the end, each with a recommended answer.
 
 ## Problem
@@ -889,6 +889,30 @@ The workload row expands to its keys.
       control. Raise it in a separate change if the walk or a customer needs
       more. The 429 body says "AI request limit reached" for both, so the
       key page shows which limit refused.
+
+## Founder decisions (2026-11-28)
+
+The founder approved building AI-KEYS-1 with the recommended answer to every
+open question above:
+
+1. Each static key has its own engine key. Only active keys count toward the
+   64-binding cap. Usage queries are window-scoped and batched in groups of 64.
+2. A valid key on the wrong endpoint gets the same generic 403 as any policy
+   refusal. The exact reason is shown on the key page and in the audit log.
+3. The organization switch "Allow public static keys" exists, is off by
+   default and is held by `ai_gateway:manage`.
+4. No per-gateway pinning of internal keys in v1.
+5. The `x-api-key` header is accepted only on the `/anthropic/v1/messages`
+   route, on both endpoints, and only when it is the one credential header
+   present.
+6. TLS on the internal endpoint: a private Tunnex CA per organization by
+   default, customer certificate files as the second mode, DNS-01 later.
+7. Expiry: a console badge from 14 days, plus alerts at 14 and 3 days.
+8. No workload tokens (`tnx_wai_`) on the internal endpoint in v1.
+9. The internal endpoint listens on the gateway tunnel address plus at most
+   one LAN address in an approved site subnet.
+10. 4 concurrent requests per key per process. The per-minute rate limit is the
+    real control.
 
 ## Validation plan
 
