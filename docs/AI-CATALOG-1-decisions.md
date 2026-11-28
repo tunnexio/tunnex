@@ -197,11 +197,11 @@ Decision:
   could not be read. Showing known models; Test Connect confirms access.").
   Paging stays on the source that answered the first page. The draft search is
   unchanged.
-- Authorization unchanged: the endpoint stays readable by anyone who can read
-  provider connections. That now lets a read-only user cause a provider
-  model-list call with the saved key. It returns only model names, costs
-  nothing at the providers we support, and is bounded by the limiter (one at a
-  time and six a minute per organization).
+- The endpoint stays readable by anyone who can read provider connections,
+  but only a provider manager (`ai_provider:manage`) gets the live list. Only
+  managers add models, so only they make the gateway call a provider with a
+  stored key. A viewer with `connection_id` gets the reference list, marked
+  `source: reference`, and no provider call is made.
 - Shared limiter: saved-credential searches use the same per-organization
   window as Test Connect and the draft search (one at a time, six a minute).
   Searching a lot, or clicking Test Connect while a slow live list is still

@@ -152,6 +152,24 @@ func TestAIProviderModelsSavedStandardConnection(t *testing.T) {
 			})
 		}
 	})
+	t.Run("viewer-gets-reference-without-provider-call", func(t *testing.T) {
+		reset()
+		engine.mu.Lock()
+		savedBefore := engine.calls
+		engine.mu.Unlock()
+		code, out, raw := get(t, "provider=groq&connection_id="+groq.String(), "ai-view")
+		engine.mu.Lock()
+		savedAfter := engine.calls
+		engine.mu.Unlock()
+		if code != 200 || out.Source == nil || *out.Source != api.AIProviderModelListSourceReference || savedAfter != savedBefore {
+			t.Fatalf("status=%d saved-catalog calls=%d %s", code, savedAfter-savedBefore, raw)
+		}
+		for _, item := range out.Items {
+			if item.Id == "groq/live-only" {
+				t.Fatal("a viewer received the live list", raw)
+			}
+		}
+	})
 	t.Run("other-paths-carry-no-source", func(t *testing.T) {
 		reset()
 		before := engine.engineCalls()

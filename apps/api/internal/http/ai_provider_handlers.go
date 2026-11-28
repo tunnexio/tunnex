@@ -207,7 +207,18 @@ func (s apiServer) ListAIProviderModels(ctx context.Context, r api.ListAIProvide
 		}
 		p, err = s.aiPolicies.CustomProviderModelsForMode(ctx, r.OrgId, *r.Params.ConnectionId, mode, query, limit, offset)
 	} else {
-		if r.Params.ConnectionId != nil {
+		_, manageErr := authorize(ctx, r.OrgId, rbac.PermAIProviderManage)
+		if r.Params.ConnectionId != nil && manageErr != nil {
+			// Only a provider manager adds models, so only a manager makes the gateway call the provider
+			// with the stored key. A viewer gets the reference list and no provider call.
+			if mode == aigateway.ModeChat {
+				p, err = s.aiPolicies.ProviderModels(ctx, provider, query, limit, offset)
+			} else {
+				p, err = aigateway.ProviderReferenceModels(provider, mode, query, limit, offset)
+			}
+			v := api.AIProviderModelListSourceReference
+			source = &v
+		} else if r.Params.ConnectionId != nil {
 			// A saved connection reads the provider's live list with its stored
 			// key and says whether it fell back to the reference list.
 			var live bool
