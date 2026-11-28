@@ -993,3 +993,104 @@ for any firewall rule.
     closes within one poll.
 15. Run the old gateway image: the console refuses to configure it and says
     to upgrade.
+
+## As built
+
+Built on `story/ai-static-keys-1` in phases (control plane public scope,
+internal endpoint control plane side, gateway listener, web console, docs).
+Everything follows the paper and the founder decisions except the points
+below. Where the paper turned out unsafe or ambiguous in the code, the safer
+option was taken.
+
+### Data model
+
+- **Migration 0258 with a gap.** origin/main ends at 0256 and 0257 is reserved
+  for the user-group cost limit branch. golang-migrate reads the sorted file
+  list, so a fresh database goes 0256 → 0258 and `down` goes 0258 → 0256
+  (checked: up, down, up on a scratch database). Caveat for merge order: a
+  database that already recorded 0258 will never run a 0257 merged later,
+  because migrate only moves forward from the recorded version. 0257 must
+  merge first, as planned, or this migration must be renumbered at merge time.
+- **Extra columns on `ai_workload_static_keys`.** `engine_disabled_at` (the
+  maintenance sweep disables an engine key once and retries on failure),
+  `last_refused_ingress`, `last_refused_source`, `last_refused_node_id` (the key
+  page shows where a refusal came from), `last_refusal_audit_at` (the hourly
+  audit limit), `expiry_alert_14_at` and `expiry_alert_3_at` (each reminder is
+  sent once). The API also derives a status `expired` for display.
+- **`ai_internal_endpoints.node_id`** references `nodes(id)` with cascade, plus a
+  trigger that refuses a row whose node belongs to another organization.
+  `nodes` has no `(org_id, id)` unique key to build a composite foreign key on,
+  and adding one would change an existing table.
+- **Alert event.** The migration widens the four alert event-key checks with
+  `ai_workload.static_key_expiring` (the same pattern as 0254). Its down
+  migration refuses to run while such alert rows exist, so history is never
+  deleted.
+
+### Keys and admission
+
+- **The organization switch has its own route**,
+  `GET/PUT /ai-gateway/static-key-settings`, instead of a new field on
+  `PUT /ai-gateway` (the existing opt-in body has `additionalProperties: false`
+  and only `enabled`; changing it would change the enable flow). GET needs
+  `ai_workload:view` so the create form can explain why Public is disabled;
+  PUT needs `ai_gateway:manage`.
+- **Update also takes `allow_any_source`**, so removing every range from a
+  public key needs the same second confirmation as creating it.
+- **A key's daily limit may equal the workload's** (the paper says "lower");
+  equal is harmless because both are checked on every request.
+- **Internal key ranges and endpoint ranges** use the DNS LAN rule: RFC 1918
+  IPv4 only (10/8, 172.16/12, 192.168/16), canonical, no duplicates.
+- **Public key ranges** refuse any range that overlaps private, CGNAT,
+  loopback, link-local, multicast, reserved or documentation space, in IPv4 and
+  IPv6. 0.0.0.0/0 and ::/0 therefore fail; "any address" is an empty list plus
+  the confirmation.
+- **Rate limit.** The shared Redis limiter used for MCP calls
+  (`mcpdecision.RedisLimiter`), key `ai-static-key:<id>`, one-minute window. A
+  limiter error, or no limiter at all, refuses the request (503). The adapter
+  maps only the static key sentinel `ErrRequestLimited` to its fixed 429 body;
+  every other resolver keeps today's 401/403/503 mapping.
+- **Refusal recording.** Every refusal of a known key records its reason on the
+  key (at most once a minute per reason), written after the admission
+  transaction rolled back so it never changes the response. Only
+  `wrong_ingress` and `source_not_allowed` also write
+  `ai_workload.static_key_refused`, at most once per key per hour. A key of
+  another organization arriving on a gateway is refused as unknown and nothing
+  is recorded on it.
+- **Authorize re-checks the endpoint row** (enabled, peer inside its ranges) in
+  its own transaction, in addition to the mTLS route's check.
+- **Videos** are refused for static keys on the public path (404), as on the
+  internal endpoint, because they need the video job routes.
+- **The default closure** moved from `main.go` into
+  `aigateway.DefaultAuthorize` so its `tnx_sk_` refusal has a unit test.
+- **Engine keys.** Created in the same transaction as the key. If the engine
+  call fails the key stays `error` (or `pending` while the workload has no
+  models) and cannot authorize; maintenance retries it. Revoke disables the
+  engine key right after the commit and maintenance retries a failure. When a
+  workload loses all its models, its static keys' engine keys are not disabled
+  (the workload's own key is); admission refuses every model anyway, and the
+  engine key values are known only to the control plane.
+- **Usage windows.** Static key engine ids are picked with one hour of slack on
+  each side of the window (the engine itself filters by time), so clock skew
+  between the API host and the database cannot drop a key. Lists longer than 64
+  ids are validated without the 64 bound and sent in batches of 64.
+- **Expiry reminders** go through the alert outbox to the organization's alert
+  destinations subscribed to `ai_workload.static_key_expiring` (warning at 14
+  days, critical at 3), not directly to `ai_workload:manage` holders: alert
+  routing is by subscription today. A key created with less than 3 days left
+  gets one reminder, not two.
+
+### Internal endpoint
+
+- **The CA download is `GET /ai-gateway/internal-endpoint-ca`** and returns
+  JSON (`certificate_pem`, `not_after`, `sha256`); the console saves it as
+  `ca.pem`. A literal `/internal-endpoints/ca.pem` next to
+  `/internal-endpoints/{nodeId}` would have been ambiguous for the validator.
+- **Capability fields.** `ai_internal_endpoint_addresses` is a list (the
+  endpoint can listen on two addresses) instead of one
+  `ai_internal_endpoint_address`, and `ai_internal_endpoint_revision` was added
+  so the console shows Ready only for the revision actually being served.
+- **CSR signing** accepts ECDSA P-256/P-384 and RSA of at least 2048 bits,
+  ignores every name in the CSR, and writes a system audit row
+  `ai_gateway.internal_endpoint_certificate_issued` per leaf.
+- **The CA is created on first use by any reader** of the CA route
+  (`ai_workload:view`); it holds no secret the reader can see.
