@@ -168,7 +168,7 @@ func validStaticKeyExpiry(expires, now time.Time) bool {
 
 func orgAllowsPublicStaticKeys(ctx context.Context, tx pgx.Tx, org uuid.UUID) (bool, error) {
 	var allowed bool
-	err := tx.QueryRow(ctx, `SELECT ai_public_static_keys_allowed FROM organizations WHERE id=$1 AND deleted_at IS NULL`, org).Scan(&allowed)
+	err := tx.QueryRow(ctx, `SELECT COALESCE(s.public_static_keys_allowed,false) FROM organizations o LEFT JOIN ai_static_key_settings s ON s.org_id=o.id WHERE o.id=$1 AND o.deleted_at IS NULL`, org).Scan(&allowed)
 	return allowed, err
 }
 
@@ -602,7 +602,7 @@ func (s *StaticKeys) SetPublicAllowed(ctx context.Context, org, actor uuid.UUID,
 		return false, aiUnavailable()
 	}
 	defer rollbackAI(tx)
-	res, err := tx.Exec(ctx, `UPDATE organizations SET ai_public_static_keys_allowed=$2 WHERE id=$1 AND deleted_at IS NULL`, org, allowed)
+	res, err := tx.Exec(ctx, `INSERT INTO ai_static_key_settings(org_id,public_static_keys_allowed) SELECT o.id,$2 FROM organizations o WHERE o.id=$1 AND o.deleted_at IS NULL ON CONFLICT (org_id) DO UPDATE SET public_static_keys_allowed=EXCLUDED.public_static_keys_allowed`, org, allowed)
 	if err != nil {
 		return false, aiUnavailable()
 	}
@@ -620,7 +620,7 @@ func (s *StaticKeys) PublicAllowed(ctx context.Context, org uuid.UUID) (bool, er
 		return false, aiUnavailable()
 	}
 	var allowed bool
-	err := s.w.policies.pool.QueryRow(ctx, `SELECT ai_public_static_keys_allowed FROM organizations WHERE id=$1 AND deleted_at IS NULL`, org).Scan(&allowed)
+	err := s.w.policies.pool.QueryRow(ctx, `SELECT COALESCE(s.public_static_keys_allowed,false) FROM organizations o LEFT JOIN ai_static_key_settings s ON s.org_id=o.id WHERE o.id=$1 AND o.deleted_at IS NULL`, org).Scan(&allowed)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return false, policyNotFound()
 	}

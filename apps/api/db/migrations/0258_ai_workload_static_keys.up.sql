@@ -1,7 +1,16 @@
 -- AI-KEYS-1: static API keys for workloads, the internal AI endpoint served by
 -- a gateway, and its per-organization private CA. Additive only.
 
-ALTER TABLE organizations ADD COLUMN ai_public_static_keys_allowed boolean NOT NULL DEFAULT false;
+-- The organization switch lives in its own table, not on organizations, so the
+-- many sqlc queries that select organizations are unchanged (and historical
+-- schema tests keep working). No row means public keys are off.
+CREATE TABLE ai_static_key_settings (
+    org_id uuid PRIMARY KEY REFERENCES organizations(id) ON DELETE CASCADE,
+    public_static_keys_allowed boolean NOT NULL DEFAULT false,
+    updated_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE TRIGGER set_updated_at BEFORE UPDATE ON ai_static_key_settings
+    FOR EACH ROW EXECUTE FUNCTION set_updated_at();
 
 CREATE TABLE ai_workload_static_keys (
     id uuid PRIMARY KEY DEFAULT uuid_generate_v7(),

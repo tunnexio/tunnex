@@ -591,6 +591,12 @@ type AiProviderLegacyKey struct {
 	KeyID string    `json:"key_id"`
 }
 
+type AiStaticKeySetting struct {
+	OrgID                   uuid.UUID `json:"org_id"`
+	PublicStaticKeysAllowed bool      `json:"public_static_keys_allowed"`
+	UpdatedAt               time.Time `json:"updated_at"`
+}
+
 // Daily USD soft threshold shared by all members of a user group across its AI model grants. Observed spend since midnight UTC; concurrent calls can overshoot.
 type AiUserGroupCostLimit struct {
 	OrgID             uuid.UUID `json:"org_id"`
@@ -2539,7 +2545,6 @@ type Organization struct {
 	MaxSandboxesPerUser         int32              `json:"max_sandboxes_per_user"`
 	MaxSandboxes                int32              `json:"max_sandboxes"`
 	SandboxDelegationEnabled    bool               `json:"sandbox_delegation_enabled"`
-	AiPublicStaticKeysAllowed   bool               `json:"ai_public_static_keys_allowed"`
 }
 
 type OrganizationMcpDirectPathGrace struct {

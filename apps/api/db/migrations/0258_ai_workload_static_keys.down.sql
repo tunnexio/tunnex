@@ -13,4 +13,4 @@ DROP TRIGGER ai_internal_endpoint_same_org ON ai_internal_endpoints;
 DROP FUNCTION ai_internal_endpoint_same_org();
 DROP TABLE ai_internal_endpoints;
 DROP TABLE ai_workload_static_keys;
-ALTER TABLE organizations DROP COLUMN ai_public_static_keys_allowed;
+DROP TABLE ai_static_key_settings;
