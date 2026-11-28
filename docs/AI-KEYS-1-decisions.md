@@ -1163,3 +1163,39 @@ option was taken.
   new rule, `cmd/agent`) passed in a `golang:1.26.11-alpine` container with
   `NET_ADMIN`; a real `nft -j list ruleset` with a two-address endpoint has not
   been captured yet.
+
+## Walk on the test deployment (2026-11-28)
+
+Branch rebased on main after #146 (schema 258). Control plane, gateway and
+console rebuilt on the GCP test machines. Workload `walk/support-bot` with one
+model (OpenRouter Claude Haiku). Internal endpoint on the gateway's tunnel
+address `10.99.0.1:9443`, source range `10.99.0.0/24`, TLS from the
+organization CA (endpoint reported ready with a 30-day certificate).
+
+| Check | Result |
+|---|---|
+| Internal key on the internal endpoint, from a VPN laptop (`10.99.0.3`) | 200 |
+| Same key from the agent host (`10.99.0.2`) | 200 |
+| Internal key on the public endpoint | 403; key page `wrong_ingress` |
+| Public key on the internal endpoint | 403 |
+| No key on the internal endpoint | 401 |
+| Plain HTTP to 9443 | refused (TLS only) |
+| `GET /v1/models` with an internal key | the workload's models |
+| Public key from the allowed laptop address | 200 |
+| Public key from another host, forging `X-Real-IP` and `X-Forwarded-For` to the allowed address | 403; key page `source_not_allowed` with the real address |
+| Public key from the allowed laptop sending `X-Real-IP: 8.8.8.8` | 200 (forged header ignored) |
+| Internal key narrowed to the laptop `/32`, called from the agent host | 403 |
+| Rate limit 2 per minute | then 429 |
+| Rotate the public key with 1 h overlap | old and new key both 200 |
+| Revoke the internal key | 401; key page `revoked` |
+| Usage | each key listed with requests and cost under its workload |
+
+Found on the way, test deployment only: its hand-written Caddy (Ubuntu
+2.6.2) did not set `X-Real-IP`, so public keys were refused with no client
+address (fail closed). The shipped `deploy/tunnex.yml` pins a newer Caddy and
+sets `header_up X-Real-IP {client_ip}`; `{client_ip}` needs Caddy 2.7 or
+later. The test Caddy now sets `{remote_host}`.
+
+Not walked: customer certificate files, a LAN listen address in a site subnet,
+expiry (keys cannot be created with a past date) and the 14/3-day expiry
+alerts (covered by tests), Helm.
