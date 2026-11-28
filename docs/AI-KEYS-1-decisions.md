@@ -276,6 +276,9 @@ also leaves Tunnex for good.
   transport, `requestHTTPS` (`request_transport.go:129-132`).
 - A source IP allowlist is strongly encouraged. Saving a public key with no
   allowlist needs a second confirmation: "Allow from any address".
+- A public key's allowlist may hold only public ranges. A private range would
+  match the proxy's own address when the proxy chain is misconfigured, and let
+  every caller through.
 - The client address is read only through the trusted proxy chain (see
   "Admission, public").
 - Public keys are off for an organization until an AI administrator turns on
@@ -398,7 +401,7 @@ the `set_updated_at` trigger (`apps/api/db/migrations/README.md:14-35`).
 | `last_used_source` | inet NULL | |
 | `last_used_node_id` | uuid NULL | internal only |
 | `last_refused_at` | timestamptz NULL | |
-| `last_refused_reason` | text NULL | e.g. `wrong_ingress`, `source_not_allowed` |
+| `last_refused_reason` | text NULL | e.g. `wrong_ingress`, `source_not_allowed`, `rate_limited`, `concurrency_limit`, `threshold_reached` |
 | `created_by` | uuid NOT NULL | |
 
 Indexes: unique `(org_id, workload_id, id)`; `(org_id, workload_id)
@@ -414,7 +417,7 @@ One row per gateway that serves the endpoint.
 | `org_id` | uuid NOT NULL | |
 | `node_id` | uuid NOT NULL UNIQUE | FK to `nodes`, same org, ON DELETE CASCADE |
 | `enabled` | boolean NOT NULL | |
-| `listen_address` | inet NOT NULL | private IPv4 |
+| `listen_addresses` | inet[] NOT NULL | 1 or 2 private IPv4: the gateway's tunnel address and/or one LAN address (see "Reach") |
 | `port` | integer NOT NULL DEFAULT 9443 | 1024 to 65535, not 8083 or 8084 |
 | `dns_name` | text NULL | lower case, valid hostname |
 | `source_cidrs` | cidr[] NOT NULL | 1 to 32 private IPv4 CIDRs |
@@ -489,14 +492,14 @@ admin; `rbac.go:300-306`), because the endpoint is a gateway setting.
 - `GET /internal-endpoints` → one row per gateway in the organization with
   its configuration (if any), capability and status: `supported`, `ready`,
   `error`, `certificate_not_after`, `certificate_sha256`, `url`.
-- `PUT /internal-endpoints/{nodeId}` with `enabled`, `listen_address`, `port`,
+- `PUT /internal-endpoints/{nodeId}` with `enabled`, `listen_addresses`, `port`,
   `dns_name`, `source_cidrs`, `tls_mode`, `expected_revision`.
   - 409 `ai_internal_endpoint_unsupported` when the gateway's fresh report
     (90 s) lacks `ai_internal_endpoint_version >= 1`.
-  - 409 `ai_internal_endpoint_address_unapproved` when the gateway belongs to
-    a site and the address is not inside one of its approved subnets. Same
-    query as `resolver_static.go:177-193`. A gateway without a site relies on
-    the gateway's own ownership check.
+  - 409 `ai_internal_endpoint_address_unapproved` when an address is neither
+    the organization's pool gateway address (`ipalloc.GatewayCIDR`, as in
+    `vpn_auto.go:22-41`) nor inside an approved subnet of the gateway's site
+    (same query as `resolver_static.go:177-193`). At most one of each.
   - 400 for public or overlapping CIDRs, using the DNS LAN validation
     (`resolver_static.go:128-160`).
 - `DELETE /internal-endpoints/{nodeId}` → 204.
@@ -507,7 +510,7 @@ admin; `rbac.go:300-306`), because the endpoint is a gateway setting.
 ### Agent channel (node mTLS)
 
 - `GET /agent/ai-internal/desired-state` →
-  `{ "version": 1, "endpoint": null | { "id", "revision", "listen_address",
+  `{ "version": 1, "endpoint": null | { "id", "revision", "listen_addresses",
   "port", "dns_name", "source_cidrs", "tls_mode" } }`.
 - `POST /agent/ai-internal/certificate` with a PEM CSR → leaf and chain. The
   control plane signs only the configured SANs, for the calling node.
@@ -559,8 +562,12 @@ admin; `rbac.go:300-306`), because the endpoint is a gateway setting.
        workload threshold over the workload's engine key plus the engine keys
        of all its static keys that were active at any time today.
     9. Open the key's sealed engine key. Return a `Grant` with
-       `SubjectKind: "workload"`, `Agent: workloadID`, `Instance: "key:<id>"`,
-       expiry 30 s.
+       `SubjectKind: "workload_key"`, `Agent: <key id>`, `Instance: ""`,
+       expiry 30 s. The adapter's concurrency counter is keyed by
+       `Tenant/SubjectKind/Agent` (`adapter.go:200-208`), so each key gets its
+       own 4 slots per process instead of sharing the workload's. Nothing else
+       reads `Grant.Agent` or `Grant.Instance` today (`adapter.go:30`,
+       `workload_auth.go:326`).
 11. The adapter forwards to the engine and streams the answer back, unchanged
     from today (`adapter.go:196-300`).
 12. `last_used_*` is updated when older than one minute. A refusal sets
@@ -600,11 +607,25 @@ admin; `rbac.go:300-306`), because the endpoint is a gateway setting.
 
 ## Gateway internal listener
 
+- **Reach.** A caller needs a route to the listen address. v1 allows up to
+  two addresses per gateway:
+  - **The gateway's tunnel address**, the organization pool gateway address
+    the 8083 listener uses (`vpn_auto.go:22-41`). Every VPN device on that
+    gateway already routes it, with no subnet grant. This is the path for
+    laptops, Windows machines and build agents on the VPN.
+  - **One LAN address** inside an approved subnet of the gateway's site
+    (`resolver_static.go:177-193`). Hosts on that LAN reach it directly.
+    Other sites reach it over site-to-site, because the site subnet is
+    already routed between linked sites. A VPN device reaches it only if it
+    has a route and grant to that subnet, as for any site resource.
+  - A gateway without a site can use only its tunnel address.
+  - The leaf certificate carries every configured address as an IP SAN.
+  - See Open question 9.
 - **Package.** A new `apps/node/internal/aiinternal`. It reuses the relay
   shape of `aivpn` (reverse proxy, `FlushInterval: -1`, fixed outgoing
   headers, `relay.go:91-103`) and the transport from
   `client.AIVPNTransport()` (`ai_vpn_transport.go:13-27`).
-- **Not bound to a device.** It listens on `listen_address:port` with
+- **Not bound to a device.** It listens on each `listen_addresses` entry, on `port`, with
   `tcp4`, without `SO_BINDTODEVICE`. VPN and site traffic to the LAN address
   arrives on the tunnel interface. A device-bound socket would refuse it. The
   peer CIDR check is the guard.
@@ -638,8 +659,9 @@ admin; `rbac.go:300-306`), because the endpoint is a gateway setting.
     console says so.
   - In-cluster gateways drop tunnel input except listed listeners
     (`apps/node/internal/egress/egress_linux.go:960-996`). Add one rule while
-    the endpoint is on: tunnel ingress, `ip daddr <listen_address> tcp dport
-    <port>`, accept. Add its comment to `k8snetprep` and to
+    the endpoint is on: tunnel ingress, `tcp dport <port>`, destination the
+    tunnel address (`fib daddr . iif type local`, as the 8083 rule) or the
+    configured LAN address (`ip daddr <address>`), accept. Add its comment to `k8snetprep` and to
     `validateTunnexInput`, because that chain's shape is a contract
     (`egress_linux.go:975`).
   - This input accept sits outside Zero Trust forward rules. The source CIDRs
@@ -855,6 +877,18 @@ The workload row expands to its keys.
 8. **Workload tokens (`tnx_wai_`) on the internal endpoint.**
    - Recommended: not in v1. The CLI path already works over the public
      endpoint. Adding it later is one more prefix on the gateway allowlist.
+9. **Which addresses the internal endpoint may listen on.**
+   - Recommended: the gateway's tunnel address (every VPN device routes it,
+     no subnet grant needed) and at most one LAN address in an approved site
+     subnet (LAN and site-to-site callers). Not an arbitrary address on a
+     gateway without a site.
+10. **Concurrency per key.** The adapter allows 4 requests at once per
+    subject per process (`adapter.go:200-208`). Lambda fan-out can hit it.
+    - Recommended: give each key its own 4 (Admission flow, internal scope, step 10.9), keep the
+      number in v1 and document it. The per-minute rate limit is the real
+      control. Raise it in a separate change if the walk or a customer needs
+      more. The 429 body says "AI request limit reached" for both, so the
+      key page shows which limit refused.
 
 ## Validation plan
 
@@ -910,20 +944,26 @@ for any firewall rule.
    endpoint". An audit row exists.
 5. Same key over plain HTTP, and with TLS verification on but without
    `ca.pem`. Both fail.
-6. From an address outside the range (the control plane host itself, if not
-   in the range): the connection is closed before TLS.
-7. Turn on public keys. Create a public key with the agent VM's public egress
+6. Narrow the endpoint range to the agent VM's /32. Call from the control
+   plane host: the connection is closed before TLS. Restore the range.
+7. Add the gateway's tunnel address to the endpoint. From a VPN-connected
+   device on that gateway (in the range), call
+   `https://<gateway tunnel address>:9443/v1/chat/completions`: it works. This
+   proves the listener is not bound to a device and that tunnel traffic
+   reaches it.
+8. Turn on public keys. Create a public key with the agent VM's public egress
    IP as the allowlist. Call the public endpoint from the agent VM: works.
    Call from another address: refused. Call the internal endpoint with it:
    refused.
-8. Create a key that expires in a few minutes (test build with a short
-   minimum). After expiry: refused.
-9. Revoke a key during a stream of requests. The next request is refused.
-10. Rotate with a 1-hour overlap. Both keys work. Revoke the old one. Only the
+9. Create a key whose expiry is a few minutes out (no minimum applies).
+   After expiry: refused.
+10. Revoke a key during a stream of requests. The next request is refused.
+11. Rotate with a 1-hour overlap. Both keys work. Revoke the old one. Only the
     new one works.
-11. Rate limit 5 per minute: the sixth request in a minute gets 429.
-12. Key threshold, then workload threshold: requests stop at each.
-13. Disable the endpoint in the console: refused at once, then the listener
+12. Rate limit 5 per minute: the sixth request in a minute gets 429, and the
+    key page shows `rate_limited`.
+13. Key threshold, then workload threshold: requests stop at each.
+14. Disable the endpoint in the console: refused at once, then the listener
     closes within one poll.
-14. Run the old gateway image: the console refuses to configure it and says
+15. Run the old gateway image: the console refuses to configure it and says
     to upgrade.
