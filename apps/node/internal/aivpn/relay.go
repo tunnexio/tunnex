@@ -1,5 +1,5 @@
-// Package aivpn relays SDK chat requests and the model list from a VPN-only
-// socket over node mTLS.
+// Package aivpn relays SDK inference requests (every synchronous mode) and the
+// model list from a VPN-only socket over node mTLS.
 package aivpn
 
 import (
@@ -75,6 +75,31 @@ func PeerKey(readback, source string) (string, error) {
 
 type KernelPeers func(context.Context) (string, error)
 
+// Outer bounds of the relay. The control plane enforces the configured limits
+// (TUNNEX_AI_*); these only have to be above the largest allowed settings
+// (32 MiB bodies, 30-minute requests, 60-minute streams).
+const (
+	MaxBodyBytes          = 33 << 20
+	RequestTimeout        = 61 * time.Minute
+	ResponseHeaderTimeout = 31 * time.Minute
+	Slots                 = 64
+)
+
+// Routes are the exact inference routes relayed, the same list the control
+// plane registers. Video jobs (asynchronous, with follow-up GET routes) are not
+// relayed.
+var Routes = []string{"/v1/chat/completions", "/v1/completions", "/v1/embeddings", "/v1/audio/speech", "/v1/audio/transcriptions",
+	"/v1/images/generations", "/v1/rerank", "/v1/responses", "/anthropic/v1/messages"}
+
+func relayedRoute(route string) bool {
+	for _, r := range Routes {
+		if r == route {
+			return true
+		}
+	}
+	return false
+}
+
 // Handler must ONLY be served by an interface-bound VPN listener. The caller's
 // Forwarded, Authorization, Cookie and custom identity headers are never used.
 func Handler(host string, control *url.URL, transport http.RoundTripper, peers KernelPeers, web http.Handler) http.Handler {
@@ -88,7 +113,7 @@ func HTTPHandler(host string, control *url.URL, transport http.RoundTripper, pee
 }
 
 func handler(host string, control *url.URL, transport http.RoundTripper, peers KernelPeers, web http.Handler, routePrefix string) http.Handler {
-	slots := make(chan struct{}, 16)
+	slots := make(chan struct{}, Slots)
 	proxy := &httputil.ReverseProxy{
 		Transport:     transport,
 		FlushInterval: -1,
@@ -116,13 +141,23 @@ func handler(host string, control *url.URL, transport http.RoundTripper, peers K
 		}
 		prefix := "/api/v1/organizations/"
 		parts := strings.Split(strings.TrimPrefix(r.URL.Path, prefix), "/")
-		isChat := strings.HasPrefix(r.URL.Path, prefix) && len(parts) == 6 && parts[1] == "ai-gateway" && parts[2] == "inference" && parts[3] == "v1" && parts[4] == "chat" && parts[5] == "completions"
-		isAlias := r.URL.Path == "/ai/v1/chat/completions"
+		org, scopedRoute := "", ""
+		if strings.HasPrefix(r.URL.Path, prefix) && len(parts) >= 4 && parts[0] != "" && parts[1] == "ai-gateway" && parts[2] == "inference" {
+			org, scopedRoute = parts[0], "/"+strings.Join(parts[3:], "/")
+		}
+		route := ""
+		switch {
+		case org != "" && relayedRoute(scopedRoute):
+			route = scopedRoute
+		case strings.HasPrefix(r.URL.Path, "/ai/") && relayedRoute(strings.TrimPrefix(r.URL.Path, "/ai")):
+			route = strings.TrimPrefix(r.URL.Path, "/ai")
+		}
+		isInference, isAlias := route != "", route != "" && org == ""
 		// SDK discovery: the caller's own granted models, same identity path.
-		isModels := strings.HasPrefix(r.URL.Path, prefix) && len(parts) == 5 && parts[0] != "" && parts[1] == "ai-gateway" && parts[2] == "inference" && parts[3] == "v1" && parts[4] == "models"
+		isModels := org != "" && scopedRoute == "/v1/models"
 		isAliasModels := r.URL.Path == "/ai/v1/models"
 		listing := isModels || isAliasModels
-		if !isChat && !isAlias && !listing {
+		if !isInference && !listing {
 			web.ServeHTTP(w, r)
 			return
 		}
@@ -146,7 +181,7 @@ func handler(host string, control *url.URL, transport http.RoundTripper, peers K
 			http.Error(w, "unauthorized", 401)
 			return
 		}
-		ctx, cancel := context.WithTimeout(r.Context(), 35*time.Second)
+		ctx, cancel := context.WithTimeout(r.Context(), RequestTimeout)
 		defer cancel()
 		readback, err := peers(ctx)
 		if err != nil {
@@ -161,9 +196,9 @@ func handler(host string, control *url.URL, transport http.RoundTripper, peers K
 		clone := r.Clone(context.WithValue(ctx, peerContextKey{}, peerEvidence{source, key}))
 		switch {
 		case isAlias:
-			clone.URL.Path = routePrefix + "/v1/chat/completions"
-		case isChat:
-			clone.URL.Path = routePrefix + "/organizations/" + parts[0] + "/v1/chat/completions"
+			clone.URL.Path = routePrefix + route
+		case isInference:
+			clone.URL.Path = routePrefix + "/organizations/" + org + route
 		case isAliasModels:
 			clone.URL.Path = routePrefix + "/v1/models"
 		default:
@@ -172,7 +207,7 @@ func handler(host string, control *url.URL, transport http.RoundTripper, peers K
 		if listing {
 			clone.Body, clone.ContentLength = http.NoBody, 0
 		} else {
-			clone.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+			clone.Body = http.MaxBytesReader(w, r.Body, MaxBodyBytes)
 		}
 		proxy.ServeHTTP(w, clone)
 	})

@@ -64,7 +64,7 @@ func main() {
 		GetClientCertificate: func(*tls.CertificateRequestInfo) (*tls.Certificate, error) {
 			c, err := tls.LoadX509KeyPair(filepath.Join(*state, "cert.pem"), filepath.Join(*state, "key.pem"))
 			return &c, err
-		}}, ResponseHeaderTimeout: 30 * time.Second, MaxConnsPerHost: 16, MaxIdleConnsPerHost: 4}
+		}}, ResponseHeaderTimeout: aivpn.ResponseHeaderTimeout, MaxConnsPerHost: aivpn.Slots, MaxIdleConnsPerHost: 4}
 	// Disable connection reuse so each request authenticates with current node cert.
 	transport.DisableKeepAlives = true
 	web := httputil.NewSingleHostReverseProxy(upstream)
@@ -99,7 +99,9 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	srv := &http.Server{Handler: handler, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: 35 * time.Second, WriteTimeout: 40 * time.Second, IdleTimeout: 30 * time.Second, MaxHeaderBytes: 16 << 10,
+	// Inference streams may run for the control plane's stream timeout; the
+	// control plane enforces body-read, idle and total limits per request.
+	srv := &http.Server{Handler: handler, ReadHeaderTimeout: 5 * time.Second, ReadTimeout: aivpn.RequestTimeout, WriteTimeout: aivpn.RequestTimeout + time.Minute, IdleTimeout: 30 * time.Second, MaxHeaderBytes: 16 << 10,
 		TLSConfig: &tls.Config{MinVersion: tls.VersionTLS12, GetCertificate: func(hello *tls.ClientHelloInfo) (*tls.Certificate, error) {
 			if hello.ServerName != *host {
 				return nil, fmt.Errorf("unexpected SNI")

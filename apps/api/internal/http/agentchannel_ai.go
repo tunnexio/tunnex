@@ -24,12 +24,10 @@ func (a *AgentChannel) SetVPNHTTPTransport(settings aiTransportRepository) {
 	a.vpnHTTPTransport = settings
 }
 
-func (a *AgentChannel) vpnAIChat(w http.ResponseWriter, r *http.Request) {
-	a.serveVPNChat(w, r, false)
-}
-
-func (a *AgentChannel) vpnAIHTTPChat(w http.ResponseWriter, r *http.Request) {
-	a.serveVPNChat(w, r, true)
+// vpnAIInference serves one exact adapter route over the node channel. The
+// route comes from the registration, never from the request.
+func (a *AgentChannel) vpnAIInference(route string, automaticHTTP bool) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) { a.serveVPNInference(w, r, automaticHTTP, route) }
 }
 
 // vpnRequest is the shared node-channel prelude for VPN inference and the VPN
@@ -73,14 +71,14 @@ func (a *AgentChannel) vpnPrelude(w http.ResponseWriter, r *http.Request, automa
 	return vpnRequest{node: node, explicitOrg: explicitOrg, source: ips[0], peerKey: keys[0]}, r, true
 }
 
-func (a *AgentChannel) serveVPNChat(w http.ResponseWriter, r *http.Request, automaticHTTP bool) {
+func (a *AgentChannel) serveVPNInference(w http.ResponseWriter, r *http.Request, automaticHTTP bool, route string) {
 	v, r, ok := a.vpnPrelude(w, r, automaticHTTP)
 	if !ok {
 		return
 	}
 	node, explicitOrg := v.node, v.explicitOrg
 	clone := r.Clone(r.Context())
-	clone.URL.Path = "/v1/chat/completions"
+	clone.URL.Path = route
 	// Only gateway-observed evidence crosses this mTLS boundary. Caller credentials
 	// and identity headers are not forwarded to the provider adapter.
 	clone.Header = http.Header{"Content-Type": {r.Header.Get("Content-Type")}}
@@ -107,7 +105,8 @@ func (a *AgentChannel) vpnAIHTTPModels(w http.ResponseWriter, r *http.Request) {
 }
 
 // serveVPNModels answers the OpenAI model list for the user behind the VPN
-// evidence: only that user's granted chat models, resolved exactly like chat.
+// evidence: that user's granted models for every mode the relay serves,
+// resolved exactly like inference.
 func (a *AgentChannel) serveVPNModels(w http.ResponseWriter, r *http.Request, automaticHTTP bool) {
 	w.Header().Set("Cache-Control", "no-store")
 	v, r, ok := a.vpnPrelude(w, r, automaticHTTP)

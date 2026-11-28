@@ -184,10 +184,13 @@ func (a *AgentChannel) Handler() http.Handler {
 	r.Get("/agent/app-access/proxy-endpoint", a.appAccessProxyEndpoint)
 	r.Post("/agent/app-access/report", a.appAccessReport)
 	r.Post("/agent/app-access/checks/{requestId}/result", a.appAccessResult)
-	r.Post("/agent/ai/organizations/{orgId}/v1/chat/completions", a.vpnAIChat)
-	r.Post("/agent/ai/v1/chat/completions", a.vpnAIChat)
-	r.Post("/agent/ai-http/organizations/{orgId}/v1/chat/completions", a.vpnAIHTTPChat)
-	r.Post("/agent/ai-http/v1/chat/completions", a.vpnAIHTTPChat)
+	// VPN inference: the same exact adapter routes under each relay prefix.
+	for _, route := range aigateway.VPNInferenceRoutes() {
+		r.Post("/agent/ai/organizations/{orgId}"+route, a.vpnAIInference(route, false))
+		r.Post("/agent/ai"+route, a.vpnAIInference(route, false))
+		r.Post("/agent/ai-http/organizations/{orgId}"+route, a.vpnAIInference(route, true))
+		r.Post("/agent/ai-http"+route, a.vpnAIInference(route, true))
+	}
 	r.Get("/agent/ai/organizations/{orgId}/v1/models", a.vpnAIModels)
 	r.Get("/agent/ai/v1/models", a.vpnAIModels)
 	r.Get("/agent/ai-http/organizations/{orgId}/v1/models", a.vpnAIHTTPModels)

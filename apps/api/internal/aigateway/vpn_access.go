@@ -105,11 +105,12 @@ func (s *Policies) vpnPeerModels(ctx context.Context, org, node uuid.UUID, sourc
 	if err != nil {
 		return nil, err
 	}
-	// The VPN relay serves chat completions only; other modes would be listed
-	// but refused, so they are left out.
+	// The VPN relay serves every synchronous mode; video generation (an
+	// asynchronous job) is public-origin only, so it would be listed but
+	// refused and is left out.
 	out := []UserModel{}
 	for _, m := range models {
-		if DefaultModelMode(m.Mode) == ModeChat {
+		if DefaultModelMode(m.Mode) != ModeVideoGeneration {
 			out = append(out, m)
 		}
 	}

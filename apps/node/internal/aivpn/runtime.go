@@ -49,7 +49,7 @@ type binding struct {
 func NewRuntime(iface string, target *url.URL, transport http.RoundTripper, healthy func() bool, notify func(), logger *slog.Logger) *Runtime {
 	return &Runtime{iface: iface, target: target, transport: transport, healthy: healthy,
 		notify: notify, logger: logger, observe: observeInterface, listen: listenInterface, peers: kernelPeers,
-		port: HTTPPort, name: "ai_vpn", readTimeout: 35 * time.Second, writeTimeout: 40 * time.Second,
+		port: HTTPPort, name: "ai_vpn", readTimeout: RequestTimeout, writeTimeout: RequestTimeout + time.Minute,
 		handler: func(address string, peers KernelPeers) http.Handler {
 			return HTTPHandler(address, target, transport, peers)
 		}}

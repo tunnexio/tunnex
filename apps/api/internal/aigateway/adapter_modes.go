@@ -41,6 +41,14 @@ func InferencePathMode(path string) (ModelMode, bool) {
 	return "", false
 }
 
+// VPNInferenceRoutes are the adapter routes relayed over the VPN: every
+// synchronous mode. Video generation is an asynchronous job with follow-up
+// GET routes and stays on the public origin.
+func VPNInferenceRoutes() []string {
+	return []string{"/v1/chat/completions", "/v1/completions", "/v1/embeddings", "/v1/audio/speech", "/v1/audio/transcriptions",
+		"/v1/images/generations", "/v1/rerank", "/v1/responses", "/anthropic/v1/messages"}
+}
+
 // decodeModeObject rejects duplicate fields, nulls, unknown keys and trailing
 // data before model authorization or any upstream side effect.
 func decodeModeObject(body []byte, allowed string) (map[string]json.RawMessage, error) {

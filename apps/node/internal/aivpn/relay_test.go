@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 )
 
 const peer = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
@@ -197,7 +198,11 @@ func TestHTTPRelayHasNoWebPublicIdentityOrOperationFallback(t *testing.T) {
 	}{
 		{"GET", "/", "10.99.0.1:8083", "10.99.0.2:1234", 404},
 		{"GET", "/api/v1/auth/me", "10.99.0.1:8083", "10.99.0.2:1234", 404},
-		{"POST", "/ai/v1/embeddings", "10.99.0.1:8083", "10.99.0.2:1234", 404},
+		{"POST", "/ai/v1/videos", "10.99.0.1:8083", "10.99.0.2:1234", 404},
+		{"POST", "/ai/v1/files", "10.99.0.1:8083", "10.99.0.2:1234", 404},
+		{"POST", "/ai/v1/embeddings/extra", "10.99.0.1:8083", "10.99.0.2:1234", 404},
+		{"POST", "/api/v1/organizations//ai-gateway/inference/v1/embeddings", "10.99.0.1:8083", "10.99.0.2:1234", 404},
+		{"GET", "/ai/v1/embeddings", "10.99.0.1:8083", "10.99.0.2:1234", 400},
 		{"GET", "/ai/v1/chat/completions", "10.99.0.1:8083", "10.99.0.2:1234", 400},
 		{"POST", "/ai/v1/chat/completions?override=https", "10.99.0.1:8083", "10.99.0.2:1234", 400},
 		{"POST", "/ai/v1/chat/completions", "public.example:8083", "10.99.0.2:1234", 421},
@@ -322,5 +327,54 @@ func TestModelListEmptyOrgIsNotRelayed(t *testing.T) {
 	h.ServeHTTP(w, r)
 	if w.Code != 404 {
 		t.Fatalf("empty organization status %d", w.Code)
+	}
+}
+
+// AI-COMPAT-1: every synchronous mode is relayed to the same exact route on the
+// control channel, with only evidence and the content type forwarded.
+func TestRelayCarriesEveryMode(t *testing.T) {
+	target, _ := url.Parse("https://control.test:8443")
+	var got []string
+	tr := roundTrip(func(r *http.Request) (*http.Response, error) {
+		got = append(got, r.URL.Path+" "+r.Header.Get("Content-Type"))
+		if r.Header.Get("X-Tunnex-VPN-IP") != "10.99.0.2" || r.Header.Get("X-Tunnex-VPN-Key") != peer || r.Header.Get("Authorization") != "" {
+			t.Error("identity headers not replaced")
+		}
+		return &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": {"application/json"}}, Body: io.NopCloser(strings.NewReader(`{}`))}, nil
+	})
+	h := HTTPHandler("10.99.0.1", target, tr, func(context.Context) (string, error) { return peer + "\t10.99.0.2/32", nil })
+	want := []string{}
+	for _, route := range Routes {
+		for _, path := range []string{"/ai" + route, "/api/v1/organizations/org/ai-gateway/inference" + route} {
+			ct := "application/json"
+			if route == "/v1/audio/transcriptions" {
+				ct = "multipart/form-data; boundary=x"
+			}
+			r := httptest.NewRequest("POST", "http://10.99.0.1:8083"+path, strings.NewReader(`{}`))
+			r.RemoteAddr = "10.99.0.2:1234"
+			r.Header.Set("Content-Type", ct)
+			r.Header.Set("Authorization", "Bearer forged")
+			w := httptest.NewRecorder()
+			h.ServeHTTP(w, r)
+			if w.Code != 200 {
+				t.Fatalf("%s: %d", path, w.Code)
+			}
+			if strings.HasPrefix(path, "/ai/") {
+				want = append(want, "/agent/ai-http"+route+" "+ct)
+			} else {
+				want = append(want, "/agent/ai-http/organizations/org"+route+" "+ct)
+			}
+		}
+	}
+	if strings.Join(got, "\n") != strings.Join(want, "\n") {
+		t.Fatalf("routes:\n%s\nwant:\n%s", strings.Join(got, "\n"), strings.Join(want, "\n"))
+	}
+}
+
+func TestRelayBoundsAreAboveControlPlaneMaximums(t *testing.T) {
+	// The control plane allows up to 32 MiB bodies, 30-minute requests and
+	// 60-minute streams (apps/api AdapterLimits); the relay must not cut first.
+	if MaxBodyBytes <= 32<<20 || RequestTimeout <= 60*time.Minute || ResponseHeaderTimeout <= 30*time.Minute || Slots < 64 {
+		t.Fatal("relay bounds below the control plane's maximums")
 	}
 }
