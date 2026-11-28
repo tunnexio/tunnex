@@ -115,3 +115,63 @@ func TestUserLeaseRenewalPostgres(t *testing.T) {
 		t.Fatal("renewal survived group removal")
 	}
 }
+
+// Renewal of a user request re-checks the grant it was admitted with (same
+// virtual key) and does not repeat the group's daily cost admission.
+func TestUserLeaseRenewalPinsGrantAndSkipsCostPostgres(t *testing.T) {
+	ctx, pool := testpostgres.New(t)
+	f := newPolicyFixture(t, ctx, pool)
+	engine := newProviderFixtureEngine()
+	f.policies.engine = engine
+	f.policies.EnableProviderManagement(true)
+	secret := "fixture-provider-secret"
+	const model = "openrouter/pinned"
+	p, err := f.policies.CreateProvider(ctx, f.org, f.owner, ProviderInput{Provider: "openrouter", Name: "Pinned provider", Models: []string{model}, Secret: &secret, Enabled: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	limited, open, user := uuid.New(), uuid.New(), uuid.New()
+	f.exec(`INSERT INTO user_groups(id,org_id,name) VALUES($1,$2,'Limited'),($3,$2,'Open')`, limited, f.org, open)
+	f.exec(`INSERT INTO users(id,email,name,email_verified_at) VALUES($1,$2,'User',now())`, user, user.String()+"@test.local")
+	f.exec(`INSERT INTO memberships(org_id,user_id,role) VALUES($1,$2,'member')`, f.org, user)
+	f.exec(`INSERT INTO group_members(org_id,group_id,user_id) VALUES($1,$2,$4),($1,$3,$4)`, f.org, limited, open, user)
+	gl, err := f.policies.PutUserModelGrant(ctx, f.org, f.owner, limited, p.ID, model, true, 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := f.policies.PutUserModelGrant(ctx, f.org, f.owner, open, p.ID, model, true, 0); err != nil {
+		t.Fatal(err)
+	}
+	spend := 0.0
+	engine.usageFor = func([]string) (float64, error) { return spend, nil }
+	if _, err := f.policies.PutUserGroupCostLimit(ctx, f.org, f.owner, limited, floatPtr(10), 0); err != nil {
+		t.Fatal(err)
+	}
+	// Only the limited group remains: admitted under its limit.
+	f.exec(`DELETE FROM group_members WHERE org_id=$1 AND group_id=$2 AND user_id=$3`, f.org, open, user)
+	grant, err := f.policies.ResolveUserModel(ctx, f.org, user, model)
+	if err != nil || grant.Renew == nil {
+		t.Fatalf("admission: %v", err)
+	}
+	limitedKey, _ := openBoundKey(f.policies.sealer, userGrantKeyPurpose, f.org, gl.ID, gl.native, gl.bindingRevision, gl.sealed)
+	if grant.VirtualKey != limitedKey {
+		t.Fatal("admitted through an unexpected grant")
+	}
+	// The threshold is reached mid-request: new requests are refused, the
+	// in-flight one renews (admission is per request).
+	spend = 50
+	if _, err := f.policies.ResolveUserModel(ctx, f.org, user, model); err == nil {
+		t.Fatal("new request admitted past the threshold")
+	}
+	next, err := grant.Renew(ctx)
+	if err != nil || next.VirtualKey != grant.VirtualKey {
+		t.Fatalf("renewal repeated cost admission or switched grants: %v", err)
+	}
+	// Leaving the admitted group ends renewal even though another group
+	// (re-added) still grants the model: renewal is pinned to the grant.
+	f.exec(`INSERT INTO group_members(org_id,group_id,user_id) VALUES($1,$2,$3)`, f.org, open, user)
+	f.exec(`DELETE FROM group_members WHERE org_id=$1 AND group_id=$2 AND user_id=$3`, f.org, limited, user)
+	if _, err := grant.Renew(ctx); err == nil {
+		t.Fatal("renewal switched to another group's grant")
+	}
+}
