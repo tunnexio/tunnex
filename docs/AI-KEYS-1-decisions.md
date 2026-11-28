@@ -1094,3 +1094,51 @@ option was taken.
   `ai_gateway.internal_endpoint_certificate_issued` per leaf.
 - **The CA is created on first use by any reader** of the CA route
   (`ai_workload:view`); it holds no secret the reader can see.
+
+### Gateway listener
+
+- **Handshake deadline 5 s**, not 10 s: net/http bounds the TLS handshake by
+  its smallest server timeout (header 5 s). Stricter.
+- **In-cluster input rule** matches `ip daddr <configured addresses>` for both
+  the tunnel and LAN address (one rule shape, narrower than `fib daddr`). It
+  is rendered only while the endpoint is served; with no endpoint the chain is
+  byte-identical to before (existing goldens unchanged). `validateTunnexInput`
+  checks the rule's shape, not the configured values, so a restarted agent
+  does not refuse its previous chain before it has fetched the document.
+  Still to prove on Linux: the kernel's JSON for a two-address set.
+- **SNI.** With no DNS name set, any non-empty SNI is refused (clients that
+  connect by IP send none). With a DNS name, only that name or no SNI.
+- **Custom certificate** that does not cover the configured addresses is still
+  served and reported as `custom_certificate_not_covering` (the console warns,
+  as the paper says). An expired certificate, a mismatched pair or a key file
+  readable by group or others is not served.
+- **A fresh in-memory key per CSR**, not one per process.
+- **The gateway checks the key's shape only** (prefix, length, base62); the
+  checksum and everything else are checked by the control plane.
+- **Desired-state errors.** Any 3xx/4xx (including 404 from an old control
+  plane), a non-200 or an invalid document stops the listener at once. Network
+  errors, timeouts and 5xx keep the last good document for at most 60 s.
+- **Errors reported** are fixed codes only (`invalid_desired_state`,
+  `desired_state_unavailable`, `certificate_unavailable`,
+  `custom_certificate_unavailable`, `custom_key_permissions`,
+  `custom_certificate_not_covering`, `address_not_owned`, `bind_failed`).
+- **Bodies are buffered** at the paper's caps so an oversized body never leaves
+  the gateway (worst case about 130 MiB across 16 slots).
+
+### Console
+
+- Create key is one form with numbered steps, not a multi-page wizard.
+- The "Inside your network" choice stays selectable when no gateway serves the
+  endpoint yet (with the note and link); otherwise, with public keys off, no
+  key could be created at all. The key works once a gateway serves it.
+- The Internal AI endpoint section sits beside the existing AI Gateway settings
+  card on the Settings page, so that component and its tests are unchanged.
+- The API keys tab loads its data only when opened; existing requests on the
+  workload page are unchanged.
+
+### Not proven yet
+
+- The real walk on the GCP test machines (validation plan, 15 steps) has not
+  run. Linux-only gateway tests (egress and k8snetprep goldens with the new
+  rule, `cmd/agent`, real interface ownership and binding) compile but have not
+  run on Linux.
