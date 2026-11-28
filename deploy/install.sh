@@ -1440,8 +1440,9 @@ mv "$STAGE_DIR/release.json" release.json
 chmod 0644 release.json
 if [ "$AI_BUNDLED" = true ]; then
 	mv "$STAGE_DIR/ai-bootstrap.sh" ai-bootstrap.sh
-	# Existing managed configuration and encrypted volumes remain authoritative.
-	[ -f ai-engine.json ] || mv "$STAGE_DIR/ai-engine.json" ai-engine.json
+	# Existing managed configuration and encrypted volumes remain authoritative;
+	# only the release's own body-limit update is applied to an unedited file.
+	ai_refresh_engine_config ai-engine.json "$STAGE_DIR/ai-engine.json"
 	chmod 0644 ai-engine.json ai-bootstrap.sh
 fi
 RELEASE_MANIFEST_PATH="/var/lib/tunnex/release.json"

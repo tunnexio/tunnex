@@ -44,7 +44,7 @@ assert bootstrap["providers"]["openrouter"]["network_config"]["max_retries"] == 
 assert bootstrap["providers"]["openrouter"]["keys"][0]["value"] == "env.OPENROUTER_API_KEY"
 nginx = (root / "deploy/nginx/nginx.conf").read_text()
 ai_route = nginx.split("location /ai/ {", 1)[1].split("}", 1)[0]
-for directive in ("set $tunnex_api api:8080;", "proxy_pass http://$tunnex_api;", "proxy_buffering off;", "proxy_read_timeout 35s;"):
+for directive in ("set $tunnex_api api:8080;", "proxy_pass http://$tunnex_api;", "proxy_buffering off;", "proxy_request_buffering off;", "client_max_body_size 33m;", "proxy_read_timeout 1860s;"):
     assert directive in ai_route
 print("PASS: pinned opt-in engine, private network/no host ports, distinct persistent state, secret references, enforced authentication, content logging off")
 

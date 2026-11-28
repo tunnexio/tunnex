@@ -197,6 +197,10 @@ aiGateway:
   vpnAuto: true
   # Explicit transition to database-owned providers; preserve volumes and encryption key.
   providerManagementEnabled: false
+  # Inference limits passed to the API as TUNNEX_AI_* (see docs/AI-COMPAT-1-decisions.md),
+  # for example {TUNNEX_AI_MAX_OUTPUT_TOKENS: "65536", TUNNEX_AI_STREAM_TIMEOUT: "20m"}.
+  # Empty keeps the defaults; invalid values stop the API at startup.
+  limits: {}
   # Exact image/platform digest from the matching signed Tunnex release.
   engineImage: ""
   sagemaker:

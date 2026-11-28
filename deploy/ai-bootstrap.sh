@@ -221,3 +221,26 @@ ai_prepare_config() {
   chmod 0600 "$AI_ENV_FILE"
 }
 # END HOSTED AI BOOTSTRAP
+
+# Install the release's managed engine configuration. An existing file that
+# differs from the release only in max_request_body_size_mb (AI-COMPAT-1 raised
+# it from 1 MB) is updated in place; any other difference is an administrator's
+# edit and the file is preserved. The engine reads it at its next start.
+ai_refresh_engine_config() {
+  if [ ! -f "$1" ]; then
+    mv "$2" "$1"
+    return 0
+  fi
+  if cmp -s "$1" "$2"; then
+    rm -f "$2"
+    return 0
+  fi
+  _ai_old=$(sed 's/"max_request_body_size_mb": *[0-9][0-9]*,/"max_request_body_size_mb": N,/' "$1")
+  _ai_new=$(sed 's/"max_request_body_size_mb": *[0-9][0-9]*,/"max_request_body_size_mb": N,/' "$2")
+  if [ "$_ai_old" = "$_ai_new" ]; then
+    cat "$2" >"$1"
+  else
+    echo 'note: ai-engine.json has local changes and was preserved; compare it with the release managed configuration.' >&2
+  fi
+  rm -f "$2"
+}

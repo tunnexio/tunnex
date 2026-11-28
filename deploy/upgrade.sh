@@ -1183,7 +1183,7 @@ chmod 0644 "$DIR/release.json"
 ensure_edge_config
 if [ "$AI_BUNDLED" = true ]; then
   mv "$TMPDIR/ai-bootstrap.sh" "$DIR/ai-bootstrap.sh"
-  [ -f "$DIR/ai-engine.json" ] || mv "$TMPDIR/ai-engine.json" "$DIR/ai-engine.json"
+  ai_refresh_engine_config "$DIR/ai-engine.json" "$TMPDIR/ai-engine.json"
   chmod 0644 "$DIR/ai-engine.json" "$DIR/ai-bootstrap.sh"
   ai_set_env() { set_dotenv "$@"; }
   ai_prepare_config
