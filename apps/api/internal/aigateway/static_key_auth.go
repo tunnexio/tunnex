@@ -129,7 +129,46 @@ func (s *StaticKeys) Authorize(ctx context.Context, raw, model string, ingress S
 	if errors.As(err, &refusal) {
 		return Grant{}, refusal.err
 	}
+	if err == nil {
+		admitted := grant.Agent
+		grant.Renew = func(ctx context.Context) (Grant, error) { return s.renew(ctx, raw, model, ingress, admitted) }
+	}
 	return grant, err
+}
+
+// renew extends an in-flight request's lease. It repeats every key check on
+// the same ingress (revocation, expiry, workload epoch and switch, scope,
+// public opt-in or internal endpoint and peer range, source ranges) and the
+// model grant, pinned to the key that was admitted. Rate limiting and cost
+// admission are per request and are not repeated; nothing is recorded.
+func (s *StaticKeys) renew(ctx context.Context, raw, model string, ingress StaticKeyIngress, admitted string) (Grant, error) {
+	if !s.ready() {
+		return Grant{}, aiUnavailable()
+	}
+	tx, err := s.w.policies.pool.Begin(ctx)
+	if err != nil {
+		return Grant{}, aiUnavailable()
+	}
+	defer rollbackAI(tx)
+	b, _, err := s.authenticate(ctx, tx, raw, ingress)
+	if err == nil && b.key.Id.String() != admitted {
+		err = aiUnauthorized()
+	}
+	var g Grant
+	if err == nil {
+		g, err = s.resolve(ctx, tx, b, model, false)
+	}
+	if err != nil {
+		var refusal *staticKeyRefusal
+		if errors.As(err, &refusal) {
+			return Grant{}, refusal.err
+		}
+		return Grant{}, err
+	}
+	if tx.Commit(ctx) != nil {
+		return Grant{}, aiUnavailable()
+	}
+	return g, nil
 }
 
 func (s *StaticKeys) authorize(ctx context.Context, raw, model string, ingress StaticKeyIngress) (Grant, *staticKeyRecord, error) {
@@ -205,7 +244,7 @@ func (s *StaticKeys) resolve(ctx context.Context, tx pgx.Tx, b staticKeyBearer, 
 	if err != nil {
 		return Grant{}, aiUnavailable()
 	}
-	expires := time.Now().Add(30 * time.Second)
+	expires := time.Now().Add(grantLease)
 	if k.ExpiresAt.Before(expires) {
 		expires = k.ExpiresAt
 	}

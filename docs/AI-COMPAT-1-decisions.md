@@ -240,6 +240,11 @@ Instead, renewal binds to the identity the bearer proved at admission:
   organization AI revision; instance must still be active;
 - agent: the same device and runtime credential revision (still current, not
   revoked), the agent assignment, team policy and key binding;
+- static key (AI-KEYS-1; public route and internal endpoint): the same key on
+  the same ingress, re-checking revocation, expiry, workload switch and epoch,
+  scope, the public opt-in or the internal endpoint and its peer range, the
+  key's source ranges and the model grant; the per-minute rate limit and cost
+  admission are per request and are not repeated;
 - user (console and VPN): the same resolver as admission (no bearer involved);
   VPN renewal re-checks the peer evidence, membership and permission, the
   provisioned ingress (manual TLS route) or the gateway's fresh readiness
@@ -310,6 +315,10 @@ there.
   `POST /api/v1/agent/runtime/ai-credential` and call the public `/ai/` origin
   directly; there is no loopback proxy in the CLI. Its fixes are the router
   exemption, nginx, the adapter limits and lease renewal.
+- **Static keys, internal endpoint.** The gateway's internal listener uses the
+  AI VPN relay's outer bounds (33 MiB bodies, 61-minute requests, 31-minute
+  header wait, 64 slots), reads bodies whole within 60 s and a 256 MiB memory
+  budget before relaying, and relays `/v1/responses` too.
 - **Workload.** The wrapper forwards the same route list (adding `/v1/responses`)
   with the outer bounds above.
 
