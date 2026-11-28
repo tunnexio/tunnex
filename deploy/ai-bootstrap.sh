@@ -235,12 +235,15 @@ ai_refresh_engine_config() {
     rm -f "$2"
     return 0
   fi
-  _ai_old=$(sed 's/"max_request_body_size_mb": *[0-9][0-9]*,/"max_request_body_size_mb": N,/' "$1")
-  _ai_new=$(sed 's/"max_request_body_size_mb": *[0-9][0-9]*,/"max_request_body_size_mb": N,/' "$2")
-  if [ "$_ai_old" = "$_ai_new" ]; then
+  # Compare whole files (not command substitutions, which drop trailing
+  # newlines) with only the body-limit value normalized.
+  sed 's/"max_request_body_size_mb": *[0-9][0-9]*,/"max_request_body_size_mb": N,/' "$1" >"$2.old-normalized"
+  sed 's/"max_request_body_size_mb": *[0-9][0-9]*,/"max_request_body_size_mb": N,/' "$2" >"$2.new-normalized"
+  if cmp -s "$2.old-normalized" "$2.new-normalized"; then
     cat "$2" >"$1"
+    AI_ENGINE_CONFIG_UPDATED=true
   else
     echo 'note: ai-engine.json has local changes and was preserved; compare it with the release managed configuration.' >&2
   fi
-  rm -f "$2"
+  rm -f "$2" "$2.old-normalized" "$2.new-normalized"
 }

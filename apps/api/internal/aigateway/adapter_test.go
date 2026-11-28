@@ -426,7 +426,7 @@ func TestAdapterOutputBoundsOnWire(t *testing.T) {
 		field  string
 		want   int
 		status int
-	}{{`,"max_completion_tokens":256`, 256, 200}, {`,"max_completion_tokens":6000`, 6000, 200}, {`,"max_completion_tokens":32769`, 0, 400}, {`,"max_completion_tokens":0`, 0, 400}, {`,"max_completion_tokens":null`, 0, 400}, {`,"max_completion_tokens":1.5`, 0, 400}, {`,"max_completion_tokens":256,"max_tokens":256`, 0, 400}, {"", 4096, 200}, {`,"max_tokens":1`, 1, 200}, {`,"max_tokens":4097`, 4097, 200}, {`,"max_tokens":32768`, 32768, 200}, {`,"max_tokens":32769`, 0, 400}, {`,"max_tokens":0`, 0, 400}, {`,"max_tokens":-1`, 0, 400}, {`,"max_tokens":null`, 0, 400}, {`,"max_tokens":1.5`, 0, 400}, {`,"max_tokens":"1024"`, 0, 400}} {
+	}{{`,"max_completion_tokens":256`, 256, 200}, {`,"max_completion_tokens":6000`, 6000, 200}, {`,"max_completion_tokens":64000`, 32768, 200}, {`,"max_completion_tokens":100000001`, 0, 400}, {`,"max_completion_tokens":0`, 0, 400}, {`,"max_completion_tokens":null`, 0, 400}, {`,"max_completion_tokens":1.5`, 0, 400}, {`,"max_completion_tokens":256,"max_tokens":256`, 0, 400}, {"", 4096, 200}, {`,"max_tokens":1`, 1, 200}, {`,"max_tokens":4097`, 4097, 200}, {`,"max_tokens":32768`, 32768, 200}, {`,"max_tokens":32769`, 32768, 200}, {`,"max_tokens":0`, 0, 400}, {`,"max_tokens":-1`, 0, 400}, {`,"max_tokens":null`, 0, 400}, {`,"max_tokens":1.5`, 0, 400}, {`,"max_tokens":"1024"`, 0, 400}} {
 		before := arrivals.Load()
 		body := `{"model":"openrouter/allowed","messages":[{"role":"user","content":"OK"}]` + tc.field + `}`
 		r, _ := http.NewRequest("POST", server.URL+"/v1/chat/completions", strings.NewReader(body))

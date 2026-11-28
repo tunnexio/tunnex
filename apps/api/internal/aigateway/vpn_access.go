@@ -30,7 +30,18 @@ func (s *Policies) resolveVPNModel(ctx context.Context, org, node uuid.UUID, sou
 	if s == nil || s.vpnIngress == nil || s.vpnIngress.Node != node {
 		return Grant{}, policyDenied()
 	}
-	return s.resolveVPNPeerModel(ctx, org, node, source, key, model, singleOrg)
+	g, err := s.resolveVPNPeerModel(ctx, org, node, source, key, model, singleOrg)
+	if err != nil || g.Renew == nil {
+		return g, err
+	}
+	peer := g.Renew
+	g.Renew = func(ctx context.Context) (Grant, error) {
+		if s.vpnIngress == nil || s.vpnIngress.Node != node {
+			return Grant{}, policyDenied()
+		}
+		return peer(ctx)
+	}
+	return g, nil
 }
 
 func (s *Policies) resolveVPNPeerModel(ctx context.Context, org, node uuid.UUID, source, key, model string, singleOrg bool) (Grant, error) {

@@ -65,7 +65,7 @@ covers all of it plus the standard fields below.
 | `messages` | array 1–`max_messages` (see limits), required |
 | `stream` | boolean |
 | `stream_options` | object, only `include_usage` (boolean) |
-| `max_tokens`, `max_completion_tokens` | integer 1–output ceiling; not both |
+| `max_tokens`, `max_completion_tokens` | integer ≥ 1, lowered to the output ceiling; not both |
 | `temperature` | number 0–2 |
 | `top_p` | number 0–1 |
 | `frequency_penalty`, `presence_penalty` | number −2–2 |
@@ -112,7 +112,7 @@ refused: the pinned engine downloads image URLs itself for some providers
 from the engine network. Audio data is ≤ the body cap. Parts per message ≤ 256.
 
 **`/anthropic/v1/messages`** (Messages API): `model`, `messages`, `max_tokens`
-(required, 1–output ceiling), `system` (string or text blocks), `stream`,
+(integer ≥ 1, lowered to the output ceiling; the chat default is supplied when absent), `system` (string or text blocks), `stream`,
 `temperature` 0–1, `top_p` 0–1, `top_k` integer 1–1000, `stop_sequences`
 (≤ 16 strings ≤ 256 bytes), `metadata` (`user_id` string ≤ 256 only),
 `tools` (1–128 custom tools: `name` pattern as above, `description` ≤ 4096,
@@ -143,7 +143,11 @@ of token ids, or an array of 1–2048 token-id arrays (each ≤ 8192 ids, ids
 ### 2. Output tokens
 
 - `TUNNEX_AI_MAX_OUTPUT_TOKENS` (default **32768**) is the ceiling for any
-  requested output limit on every text route. Above it: 400.
+  requested output limit on every text route. A larger requested value is
+  lowered to the ceiling rather than refused (newer framework releases default
+  `max_tokens` to the model's maximum, e.g. 64000, and refusing would break
+  default calls); a Messages API thinking budget above the lowered limit is
+  lowered with it. Non-integers, zero and values above 100,000,000 are refused.
 - When a chat, completions or responses request names no limit, the adapter
   inserts the model's own maximum from the bundled catalog
   (`max_output_tokens`, else `max_tokens`) capped by the ceiling; for a model the
@@ -238,7 +242,10 @@ Instead, renewal binds to the identity the bearer proved at admission:
 - agent: the same device and runtime credential revision (still current, not
   revoked), the agent assignment, team policy and key binding;
 - user (console and VPN): the same resolver as admission (no bearer involved);
-  VPN renewal re-checks the peer evidence, membership and permission.
+  VPN renewal re-checks the peer evidence, membership and permission, the
+  provisioned ingress (manual TLS route) or the gateway's fresh readiness
+  report (automatic route), and for the automatic HTTP route the automatic VPN
+  switch and the saved "Inside the VPN" HTTP policy.
 
 A failed or mismatched renewal (different tenant, subject, mode or key) aborts
 the request at once (context cancelled and socket deadlines moved to now).
@@ -307,8 +314,11 @@ The engine configs (`deploy/ai-gateway/config*.json`, Helm `bifrost-config.json`
 set `max_request_body_size_mb` to 33. The engine re-reads the file on restart
 (file wins on a hash change). Existing installations keep their `ai-engine.json`;
 the installer and the upgrade replace it only when it differs from the release
-file solely in that one value (an administrator-edited file is preserved). This
-is an installer change and needs a real-stack upgrade walk.
+file solely in that one value (an administrator-edited file, including a
+whitespace-only edit, is preserved). When it was updated, the engine container
+is recreated after the stack starts, because Compose does not recreate a
+container for a changed bind-mounted file. This is an installer change and needs
+a real-stack upgrade walk.
 
 ## Qualification
 

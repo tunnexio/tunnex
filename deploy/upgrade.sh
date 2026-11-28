@@ -1232,6 +1232,11 @@ if [ "$AA_PRESENT" = true ]; then
   AA_PROFILE_ON=false
 fi
 compose_up -d --wait --wait-timeout 900
+if [ "${AI_ENGINE_CONFIG_UPDATED:-false}" = true ]; then
+  # The engine reads ai-engine.json only at start; Compose does not recreate it
+  # for a changed bind-mounted file when its image is unchanged.
+  compose up -d --wait --wait-timeout 300 --no-deps --force-recreate bifrost
+fi
 compose ps --all
 if [ "$AA_PRESENT" = true ]; then
   # The API checked the barrier before migrating. Readback with the target

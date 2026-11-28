@@ -87,7 +87,8 @@ func (a *AgentChannel) serveVPNInference(w http.ResponseWriter, r *http.Request,
 	trace.SetOrganization(node.OrgID, "user")
 	a.vpnAIAdapter.ServeAuthorized(tw, traced, aigateway.TraceAuthorize(func(ctx context.Context, _ string, model string) (aigateway.Grant, error) {
 		if automaticHTTP {
-			return a.vpnAIPolicies.ResolveAutomaticVPNModel(ctx, node.OrgID, node.ID, v.source, v.peerKey, model, explicitOrg == "")
+			g, err := a.vpnAIPolicies.ResolveAutomaticVPNModel(ctx, node.OrgID, node.ID, v.source, v.peerKey, model, explicitOrg == "")
+			return a.withVPNHTTPRenewalGates(g), err
 		}
 		if explicitOrg == "" {
 			return a.vpnAIPolicies.ResolveSingleOrgVPNModel(ctx, node.OrgID, node.ID, v.source, v.peerKey, model)
@@ -143,4 +144,24 @@ func (a *AgentChannel) serveVPNModels(w http.ResponseWriter, r *http.Request, au
 	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]any{"object": "list", "data": data})
+}
+
+// withVPNHTTPRenewalGates makes lease renewal of an automatic HTTP relay
+// request repeat that route's gates: the automatic VPN switch and the saved
+// "Inside the VPN" HTTP policy.
+func (a *AgentChannel) withVPNHTTPRenewalGates(g aigateway.Grant) aigateway.Grant {
+	if g.Renew == nil {
+		return g
+	}
+	inner := g.Renew
+	g.Renew = func(ctx context.Context) (aigateway.Grant, error) {
+		if !a.vpnAIPolicies.AutomaticVPNEnabled() {
+			return aigateway.Grant{}, apierr.New(403, "ai_vpn_unavailable", "Automatic VPN AI access is unavailable.")
+		}
+		if err := requireVPNAIHTTP(ctx, a.vpnHTTPTransport); err != nil {
+			return aigateway.Grant{}, err
+		}
+		return inner(ctx)
+	}
+	return g
 }

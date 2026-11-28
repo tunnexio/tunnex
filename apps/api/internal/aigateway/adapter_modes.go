@@ -168,7 +168,7 @@ func (a *Adapter) normalizedModeJSON(body []byte, mode ModelMode) ([]byte, strin
 	valid := false
 	switch mode {
 	case ModeCompletion:
-		valid = modeString(p, "prompt", 1, 1<<30) && modeNumber(p, "max_tokens", 1, float64(a.limits.MaxOutputTokens), true) && modeNumber(p, "temperature", 0, 2, false) && modeBool(p, "stream") &&
+		valid = modeString(p, "prompt", 1, 1<<30) && a.clampOutput(p, "max_tokens") && modeNumber(p, "temperature", 0, 2, false) && modeBool(p, "stream") &&
 			modeNumber(p, "top_p", 0, 1, false) && modeNumber(p, "seed", -(1<<53), 1<<53, true) &&
 			(p["stop"] == nil || stringOrList(p["stop"], 4, maxStopBytes)) && (p["user"] == nil || modeString(p, "user", 1, maxIdentifierBytes))
 		if p["stream_options"] != nil {

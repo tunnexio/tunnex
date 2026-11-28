@@ -48,7 +48,20 @@ func (s *Policies) ResolveAutomaticVPNModel(ctx context.Context, org, node uuid.
 	if err := s.automaticVPNReady(ctx, org, node); err != nil {
 		return Grant{}, err
 	}
-	return s.resolveVPNPeerModel(ctx, org, node, source, key, model, singleOrg)
+	g, err := s.resolveVPNPeerModel(ctx, org, node, source, key, model, singleOrg)
+	if err != nil || g.Renew == nil {
+		return g, err
+	}
+	// Lease renewal repeats the gateway readiness check as well as the peer
+	// and grant checks.
+	peer := g.Renew
+	g.Renew = func(ctx context.Context) (Grant, error) {
+		if err := s.automaticVPNReady(ctx, org, node); err != nil {
+			return Grant{}, err
+		}
+		return peer(ctx)
+	}
+	return g, nil
 }
 
 // AutomaticVPNModels lists chat models for the dedicated automatic HTTP relay

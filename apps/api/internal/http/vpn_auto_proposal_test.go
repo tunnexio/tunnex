@@ -249,6 +249,37 @@ func TestProposalVPNHTTPChannelPolicyAndReports(t *testing.T) {
 	if arrivals.Load() != 3 {
 		t.Fatal("mode routing reached the engine unexpectedly")
 	}
+	// Lease renewal of an in-flight automatic HTTP request repeats the route's
+	// gates, the gateway readiness and the peer/grant checks.
+	grant, err := policies.ResolveAutomaticVPNModel(ctx, org, node, "10.99.0.2", "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=", "openrouter/vpn", true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	grant = channel.withVPNHTTPRenewalGates(grant)
+	if grant.Renew == nil {
+		t.Fatal("VPN grant has no renewal")
+	}
+	if _, err := grant.Renew(ctx); err != nil {
+		t.Fatalf("VPN renewal failed: %v", err)
+	}
+	exec(`UPDATE server_ai_transport_settings SET allow_vpn_http=false,revision=revision+1 WHERE singleton`)
+	if _, err := grant.Renew(ctx); err == nil {
+		t.Fatal("renewal survived VPN HTTP switch-off")
+	}
+	exec(`UPDATE server_ai_transport_settings SET allow_vpn_http=true,revision=revision+1 WHERE singleton`)
+	policies.ConfigureAutomaticVPNIngress(false)
+	if _, err := grant.Renew(ctx); err == nil {
+		t.Fatal("renewal survived automatic VPN switch-off")
+	}
+	policies.ConfigureAutomaticVPNIngress(true)
+	exec(`UPDATE devices SET status='revoked' WHERE id=$1`, device)
+	if _, err := grant.Renew(ctx); err == nil {
+		t.Fatal("renewal survived device revocation")
+	}
+	exec(`UPDATE devices SET status='active' WHERE id=$1`, device)
+	if _, err := grant.Renew(ctx); err != nil {
+		t.Fatalf("renewal after restore: %v", err)
+	}
 	// Model list: same channel, same peer evidence, no body, no engine call.
 	list := func(path, peerKey string, cert bool) (int, string) {
 		t.Helper()

@@ -210,7 +210,8 @@ func TestMessagesRefusesUnqualifiedShapes(t *testing.T) {
 		"server_tool":        messagesBody(`,"tools":[{"type":"web_search_20250305","name":"web_search"}]`, ""),
 		"mcp_servers":        messagesBody(`,"mcp_servers":[]`, ""),
 		"container":          messagesBody(`,"container":"x"`, ""),
-		"max_tokens_high":    `{"model":"m","max_tokens":32769,"messages":[{"role":"user","content":"x"}]}`,
+		"max_tokens_huge":    `{"model":"m","max_tokens":100000001,"messages":[{"role":"user","content":"x"}]}`,
+		"max_tokens_zero":    `{"model":"m","max_tokens":0,"messages":[{"role":"user","content":"x"}]}`,
 		"budget_too_high":    `{"model":"m","max_tokens":1024,"messages":[{"role":"user","content":"x"}],"thinking":{"type":"enabled","budget_tokens":1024}}`,
 		"budget_too_low":     `{"model":"m","max_tokens":5000,"messages":[{"role":"user","content":"x"}],"thinking":{"type":"enabled","budget_tokens":100}}`,
 		"temperature":        messagesBody(`,"temperature":1.5`, ""),
@@ -267,7 +268,7 @@ func TestResponsesAllowlist(t *testing.T) {
 		"remote_image":   `{"model":"m","input":[{"role":"user","content":[{"type":"input_image","image_url":"https://x/a.png"}]}]}`,
 		"include_search": `{"model":"m","input":"x","include":["file_search_call.results"]}`,
 		"tier":           `{"model":"m","input":"x","service_tier":"priority"}`,
-		"output_high":    `{"model":"m","input":"x","max_output_tokens":32769}`,
+		"output_huge":    `{"model":"m","input":"x","max_output_tokens":100000001}`,
 	} {
 		t.Run("refuse_"+name, func(t *testing.T) {
 			if _, _, _, err := a.normalizeResponses([]byte(body)); err == nil {
@@ -644,6 +645,39 @@ func TestLostSharedLeaseEndsStream(t *testing.T) {
 	body, err := streamThrough(t, a)
 	if err == nil || strings.Contains(body, "[DONE]") {
 		t.Fatal("stream continued without its shared lease")
+	}
+}
+
+// Output limits above the ceiling are lowered to it on every text route (some
+// SDK releases default max_tokens to the model's maximum); a thinking budget
+// above the lowered limit is lowered with it.
+func TestOutputLimitsAboveCeilingAreLowered(t *testing.T) {
+	a := compatAdapter(t)
+	check := func(name string, out []byte, err error, want ...string) {
+		t.Helper()
+		if err != nil {
+			t.Fatalf("%s refused: %v", name, err)
+		}
+		for _, w := range want {
+			if !strings.Contains(string(out), w) {
+				t.Fatalf("%s: %s missing in %s", name, w, out)
+			}
+		}
+	}
+	out, _, _, err := a.normalizeChat([]byte(chatBody(`,"max_completion_tokens":64000`, "")))
+	check("chat", out, err, `"max_tokens":32768`)
+	out, _, _, err = a.normalizeMessages([]byte(`{"model":"m","max_tokens":64000,"messages":[{"role":"user","content":"x"}],"thinking":{"type":"enabled","budget_tokens":40000}}`))
+	check("messages", out, err, `"max_tokens":32768`, `"budget_tokens":32767`)
+	out, _, _, err = a.normalizeResponses([]byte(`{"model":"m","input":"x","max_output_tokens":64000}`))
+	check("responses", out, err, `"max_output_tokens":32768`)
+	out, _, err = a.normalizedModeJSON([]byte(`{"model":"openai/m","prompt":"x","max_tokens":64000}`), ModeCompletion)
+	check("completions", out, err, `"max_tokens":32768`)
+	// Within the ceiling, the Messages body is forwarded byte for byte.
+	body := `{"model":"m","max_tokens":1024,"messages":[{"role":"user","content":"x"}]}`
+	out, _, _, err = a.normalizeMessages([]byte(body))
+	check("messages unchanged", out, err)
+	if string(out) != body {
+		t.Fatal("messages body rewritten without need")
 	}
 }
 

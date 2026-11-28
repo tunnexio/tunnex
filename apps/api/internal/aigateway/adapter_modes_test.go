@@ -196,7 +196,7 @@ func TestAdapterModesRejectControlsBeforeAuthorization(t *testing.T) {
 		path, base string
 		invalid    []string
 	}{
-		{ModeCompletion, "/v1/completions", `"prompt":"hello"`, []string{`"prompt":{"api_key":"secret"}`, `"prompt":"hello","max_tokens":0`, `"prompt":"hello","max_tokens":1.5`, `"prompt":"hello","max_tokens":32769`, `"prompt":"hello","stream":"true"`, `"prompt":"hello","temperature":3`, `"prompt":"hello","prompt max_tokens":1`}},
+		{ModeCompletion, "/v1/completions", `"prompt":"hello"`, []string{`"prompt":{"api_key":"secret"}`, `"prompt":"hello","max_tokens":0`, `"prompt":"hello","max_tokens":1.5`, `"prompt":"hello","max_tokens":100000001`, `"prompt":"hello","stream":"true"`, `"prompt":"hello","temperature":3`, `"prompt":"hello","prompt max_tokens":1`}},
 		{ModeEmbedding, "/v1/embeddings", `"input":"hello"`, []string{`"input":[]`, `"input":[{"text":"hello","api_base":"https://evil.invalid"}]`, `"input":"hello","dimensions":0`, `"input":"hello","encoding_format":"url"`}},
 		{ModeAudioSpeech, "/v1/audio/speech", `"input":"hello","voice":"alloy"`, []string{`"input":"hello","voice":{"id":"alloy"}`, `"input":"hello","voice":"../alloy"`, `"input":"hello","voice":"alloy","speed":0`, `"input":"hello","voice":"alloy","response_format":"url"`}},
 		{ModeImageGeneration, "/v1/images/generations", `"prompt":"hello"`, []string{`"prompt":"hello","n":2`, `"prompt":"hello","size":"1x1"`, `"prompt":"hello","quality":null`, `"prompt":"hello","response_format":"binary"`}},

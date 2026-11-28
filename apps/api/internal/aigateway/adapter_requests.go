@@ -287,9 +287,26 @@ func validModel(raw json.RawMessage) (string, bool) {
 	return model, ok && strings.TrimSpace(model) == model
 }
 
-func (a *Adapter) outputLimit(raw json.RawMessage) bool {
-	_, ok := jsonInt(raw, 1, int64(a.limits.MaxOutputTokens))
-	return ok
+// maxRequestedOutput bounds the integer a caller may send. Values above the
+// administrator ceiling are lowered to it: SDKs such as newer framework
+// releases default max_tokens to the model's maximum, and refusing those would
+// break default calls. The value forwarded never exceeds the ceiling.
+const maxRequestedOutput = 100_000_000
+
+// clampOutput validates p[key] (when present) and lowers it to the ceiling.
+func (a *Adapter) clampOutput(p map[string]json.RawMessage, key string) bool {
+	raw, ok := p[key]
+	if !ok {
+		return true
+	}
+	n, ok := jsonInt(raw, 1, maxRequestedOutput)
+	if !ok {
+		return false
+	}
+	if n > int64(a.limits.MaxOutputTokens) {
+		p[key] = json.RawMessage(strconv.Itoa(a.limits.MaxOutputTokens))
+	}
+	return true
 }
 
 // ---- OpenAI chat completions ----
@@ -309,13 +326,13 @@ func (a *Adapter) normalizeChat(body []byte) ([]byte, string, bool, error) {
 		return nil, "", false, errInvalidRequest
 	}
 	tools, ok := validChatTools(p["tools"])
-	if !ok {
+	if !ok || !a.clampOutput(p, "max_tokens") || !a.clampOutput(p, "max_completion_tokens") {
 		return nil, "", false, errInvalidRequest
 	}
 	for key, raw := range p {
 		valid := true
 		switch key {
-		case "model", "tools":
+		case "model", "tools", "max_tokens", "max_completion_tokens":
 		case "messages":
 			valid = a.validChatMessages(raw)
 		case "stream", "logprobs", "parallel_tool_calls":
@@ -323,8 +340,6 @@ func (a *Adapter) normalizeChat(body []byte) ([]byte, string, bool, error) {
 		case "stream_options":
 			m, ok := strictObject(raw)
 			valid = ok && onlyKeys(m, "include_usage") && (m["include_usage"] == nil || jsonBool(m["include_usage"]))
-		case "max_tokens", "max_completion_tokens":
-			valid = a.outputLimit(raw)
 		case "temperature":
 			valid = jsonNumber(raw, 0, 2)
 		case "top_p":
@@ -623,9 +638,22 @@ func (a *Adapter) normalizeMessages(body []byte) ([]byte, string, bool, error) {
 		p["max_tokens"] = json.RawMessage(strconv.Itoa(a.defaultOutputTokens(model)))
 		rewrite = true
 	}
-	maxTokens, ok := jsonInt(p["max_tokens"], 1, int64(a.limits.MaxOutputTokens))
-	if !ok {
+	before := string(p["max_tokens"])
+	if !a.clampOutput(p, "max_tokens") {
 		return nil, "", false, errInvalidRequest
+	}
+	rewrite = rewrite || string(p["max_tokens"]) != before
+	maxTokens, _ := jsonInt(p["max_tokens"], 1, maxRequestedOutput)
+	if p["thinking"] != nil {
+		// A thinking budget above a lowered max_tokens is lowered with it.
+		if t, ok := strictObject(p["thinking"]); ok && jsonEnum(t["type"], "enabled") {
+			if budget, ok := jsonInt(t["budget_tokens"], 1024, maxRequestedOutput); ok && budget >= maxTokens && maxTokens > 1024 {
+				t["budget_tokens"] = json.RawMessage(strconv.FormatInt(maxTokens-1, 10))
+				if out, err := json.Marshal(t); err == nil {
+					p["thinking"], rewrite = out, true
+				}
+			}
+		}
 	}
 	tools, ok := validMessagesTools(p["tools"])
 	if !ok {
@@ -852,7 +880,7 @@ func (a *Adapter) normalizeResponses(body []byte) ([]byte, string, bool, error) 
 		return nil, "", false, errInvalidRequest
 	}
 	tools, ok := validResponsesTools(p["tools"])
-	if !ok {
+	if !ok || !a.clampOutput(p, "max_output_tokens") {
 		return nil, "", false, errInvalidRequest
 	}
 	for key, raw := range p {
@@ -870,7 +898,6 @@ func (a *Adapter) normalizeResponses(body []byte) ([]byte, string, bool, error) 
 		case "instructions":
 			_, valid = jsonString(raw, 0, 1<<30)
 		case "max_output_tokens":
-			valid = a.outputLimit(raw)
 		case "temperature":
 			valid = jsonNumber(raw, 0, 2)
 		case "top_p":

@@ -1703,6 +1703,11 @@ else
 	run_with_loader 'Starting the Tunnex Server and Linux gateway (initial migrations may take up to 15 minutes)' tunnex_compose up -d --wait --wait-timeout 900 ||
 		die 'Tunnex Server and Linux gateway did not become healthy'
 fi
+if [ "${AI_ENGINE_CONFIG_UPDATED:-false}" = true ]; then
+	# The engine reads ai-engine.json only at start; recreate it after an update.
+	run_with_loader 'Applying the updated AI engine configuration' tunnex_compose up -d --wait --wait-timeout 300 --no-deps --force-recreate bifrost ||
+		die 'The AI engine did not become healthy after its configuration update'
+fi
 
 # The API prints the one-time credential to stdout. Surface that banner here because `up -d` is detached;
 # operators should not need to search container logs, and the API will also email it when SMTP is configured.

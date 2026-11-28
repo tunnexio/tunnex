@@ -508,6 +508,13 @@ grep -Fq 'ai_refresh_engine_config ai-engine.json "$STAGE_DIR/ai-engine.json"' "
   ai_refresh_engine_config "$TMP/ai-compat/ai-engine.json" "$TMP/ai-compat/next.json" 2>"$TMP/ai-compat/stderr"
   cmp -s "$TMP/ai-compat/edited.json" "$TMP/ai-compat/ai-engine.json"
   grep -Fq 'ai-engine.json has local changes' "$TMP/ai-compat/stderr"
+  # A trailing-newline edit is an edit too.
+  cp "$release" "$TMP/ai-compat/ai-engine.json"
+  printf '\n' >>"$TMP/ai-compat/ai-engine.json"
+  cp "$TMP/ai-compat/ai-engine.json" "$TMP/ai-compat/edited.json"
+  cp "$release" "$TMP/ai-compat/next.json"
+  ai_refresh_engine_config "$TMP/ai-compat/ai-engine.json" "$TMP/ai-compat/next.json" 2>/dev/null
+  cmp -s "$TMP/ai-compat/edited.json" "$TMP/ai-compat/ai-engine.json"
   rm "$TMP/ai-compat/ai-engine.json"
   cp "$release" "$TMP/ai-compat/next.json"
   ai_refresh_engine_config "$TMP/ai-compat/ai-engine.json" "$TMP/ai-compat/next.json"
