@@ -832,6 +832,10 @@ func main() {
 	agentCh.SetConnectivityStore(connectivityStore)
 	agentCh.SetVPNInference(aiAdapter, aiPolicies)
 	agentCh.SetVPNHTTPTransport(aitransport.New(pool))
+	if aiInternal != nil {
+		agentCh.SetAIInternal(aiInternal, aiAdapter)
+		aiInternal.SetKick(agentCh.NotifyNode)
+	}
 	agentCh.SetMCPDecision(mcpDecisionSvc)
 	// S20.3a P2: ownership deliveries are a durable, private mTLS mailbox.
 	// Attaching the store starts no scheduler and does not issue work; old agents
