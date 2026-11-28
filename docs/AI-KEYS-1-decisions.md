@@ -948,9 +948,11 @@ for any firewall rule.
    plane host: the connection is closed before TLS. Restore the range.
 7. Add the gateway's tunnel address to the endpoint. From a VPN-connected
    device on that gateway (in the range), call
-   `https://<gateway tunnel address>:9443/v1/chat/completions`: it works. This
-   proves the listener is not bound to a device and that tunnel traffic
-   reaches it.
+   `https://<gateway tunnel address>:9443/v1/chat/completions`: it works.
+   Then give that device a route and grant to the gateway's LAN subnet and
+   call the LAN address: it works too. That request arrives on the tunnel
+   interface for an address on the LAN interface, which proves the listener
+   is not bound to a device.
 8. Turn on public keys. Create a public key with the agent VM's public egress
    IP as the allowlist. Call the public endpoint from the agent VM: works.
    Call from another address: refused. Call the internal endpoint with it:
