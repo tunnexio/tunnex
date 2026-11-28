@@ -8,7 +8,7 @@ const report: AIUsageDashboardProps = {
   totals: { requests: 5, tokens: 30, inputTokens: 20, outputTokens: 10, cost: 0.00017, uncostedRequests: 1, successfulRequests: 4, failedRequests: 1 },
   daily: [{ date: "2026-09-07", requests: 5, tokens: 30, cost: 0.00017, uncostedRequests: 1 }],
   models: [{ name: "openrouter/example", cost: 0.00017 }],
-  teams: [{ id: "team-a", name: "Engineering", requests: 5, tokens: 30, cost: 0.00017, uncostedRequests: 1 }],
+  agentGroups: [{ id: "team-a", name: "Engineering", requests: 5, tokens: 30, cost: 0.00017, uncostedRequests: 1 }],
   agents: [{ id: "agent-a", name: "Build assistant", requests: 5, tokens: 30, cost: 0.00017, uncostedRequests: 1 }],
 };
 describe("AI usage dashboard", () => {
@@ -64,6 +64,16 @@ describe("AI usage dashboard", () => {
     const partial = within(table.getByRole("rowheader", { name: "2026-10-09" }).closest("tr")!);
     expect(partial.getByRole("cell", { name: "$0.000170" })).toBeTruthy();
     expect(screen.getByRole("button", { name: "2026-10-09: $0.000170, 3 requests, 100 tokens, 1 without cost" })).toBeTruthy();
+  });
+  it("names the agent group breakdown and keeps the tab order", () => {
+    render(createElement(AIUsageDashboard, { ...report, workloads: createElement("p", null, "Workload rows") }));
+    expect(within(screen.getByRole("tablist", { name: "Usage breakdown" })).getAllByRole("tab").map((tab) => tab.textContent)).toEqual(["User groups", "Agent groups", "Agents", "Workloads", "Models"]);
+    fireEvent.click(screen.getByRole("tab", { name: "Agent groups" }));
+    const table = screen.getByRole("table", { name: "Spend by agent group" });
+    expect(within(table).getByRole("columnheader", { name: "Agent group" })).toBeTruthy();
+    expect(within(table).getByText("Engineering")).toBeTruthy();
+    expect(screen.getByText("1 agent group")).toBeTruthy();
+    expect(screen.queryByText(/team/i)).toBeNull();
   });
   it("renders model costs without inventing model request counts", () => {
     render(createElement(AIUsageDashboard, report));

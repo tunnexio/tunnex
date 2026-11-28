@@ -16,7 +16,7 @@ vi.mock("../src/components/AIUsageDashboard", async (importOriginal) => ({
       createElement("button", { onClick: p.onRetry }, "Retry dashboard"));
   },
 }));
-const inventory = { groups: [{ id: "team-a", name: "Team A" }], devices: [{ id: "agent-a", name: "Agent A" }], teams: [{ team_id: "team-a" }], assignments: [{ device_id: "agent-a" }] };
+const inventory = { groups: [{ id: "team-a", name: "Group A" }], devices: [{ id: "agent-a", name: "Agent A" }], teams: [{ team_id: "team-a" }], assignments: [{ device_id: "agent-a" }] };
 const report = { total_requests: 8, total_tokens: 56, prompt_tokens: 32, completion_tokens: 24, total_cost: 0.00017, uncosted_requests: 0, semantics: "observed_estimate", dashboard: { successful_requests: 8, failed_requests: 0, cancelled_requests: 0, daily: [], models: [], teams: [], agents: [] } };
 const show = (orgId = "org-a") => createElement(AIUsageWorkspace, { orgId, inventory, key: orgId });
 beforeEach(() => { vi.resetAllMocks(); mocks.GET.mockResolvedValue({ data: report }); });
@@ -35,16 +35,75 @@ describe("AI usage dashboard requests", () => {
     expect(request.params.query.from).toMatch(/T00:00:00.000Z$/);
     expect(screen.getByRole("combobox", { name: "Time range" })).toHaveProperty("value", "7");
   });
-  it("clears data immediately and ignores a late response after changing team", async () => {
+  it("clears data immediately and ignores a late response after choosing an agent group", async () => {
     let resolve!: (v: unknown) => void;
     mocks.GET.mockImplementationOnce(() => new Promise((r) => { resolve = r; })).mockResolvedValue({ data: { ...report, total_cost: 2 } });
     render(show());
-    fireEvent.change(screen.getByLabelText("Usage team"), { target: { value: "team-a" } });
+    fireEvent.change(screen.getByLabelText("Usage scope"), { target: { value: "agent-group" } });
+    fireEvent.change(screen.getByLabelText("Agent group"), { target: { value: "team-a" } });
     await screen.findByText("Cost 2");
     await act(async () => resolve({ data: { ...report, total_cost: 999 } }));
     expect(screen.queryByText("Cost 999")).toBeNull();
     expect(mocks.GET.mock.calls[1][1].params.query.team_id).toBe("team-a");
+    expect(mocks.GET.mock.calls[1][1].params.query.device_id).toBeUndefined();
     expect(mocks.GET.mock.calls[0][1].signal.aborted).toBe(true);
+  });
+  it("offers one usage scope, then the items of that kind", async () => {
+    render(show()); await screen.findByText("Cost 0.00017");
+    const scope = screen.getByRole("combobox", { name: "Usage scope" });
+    expect(within(scope).getAllByRole("option").map((o) => o.textContent)).toEqual(["All", "User group", "Agent group", "Agent", "Workload"]);
+    expect(screen.queryByRole("combobox", { name: "Agent group" })).toBeNull();
+    expect(screen.queryByRole("combobox", { name: "Agent" })).toBeNull();
+    expect(screen.queryByText(/team/i)).toBeNull();
+
+    fireEvent.change(scope, { target: { value: "agent-group" } });
+    const groups = screen.getByRole("combobox", { name: "Agent group" });
+    expect(within(groups).getAllByRole("option").map((o) => o.textContent)).toEqual(["Choose an agent group", "Group A"]);
+    expect(mocks.GET).toHaveBeenCalledTimes(1);
+
+    fireEvent.change(scope, { target: { value: "agent" } });
+    const agents = screen.getByRole("combobox", { name: "Agent" });
+    expect(within(agents).getAllByRole("option").map((o) => o.textContent)).toEqual(["Choose an agent", "Agent A"]);
+    fireEvent.change(agents, { target: { value: "agent-a" } });
+    await waitFor(() => expect(mocks.GET).toHaveBeenCalledTimes(2));
+    expect(mocks.GET.mock.calls[1][1].params.query).toMatchObject({ device_id: "agent-a" });
+    expect(mocks.GET.mock.calls[1][1].params.query.team_id).toBeUndefined();
+    await screen.findByText("Cost 0.00017");
+
+    fireEvent.change(scope, { target: { value: "all" } });
+    await waitFor(() => expect(mocks.GET).toHaveBeenCalledTimes(3));
+    expect(mocks.GET.mock.calls[2][1].params.query.team_id).toBeUndefined();
+    expect(mocks.GET.mock.calls[2][1].params.query.device_id).toBeUndefined();
+    expect(screen.queryByRole("combobox", { name: "Agent" })).toBeNull();
+  });
+  it("filters by one user group or one workload with their own query parameters", async () => {
+    const group = { id: "ug-1", name: "Engineering", requests: 1, tokens: 1, cost: 0, uncosted_requests: 0 };
+    const wl = { id: "wl-1", name: "support-bot", requests: 1, tokens: 1, cost: 0, uncosted_requests: 0 };
+    mocks.GET.mockResolvedValue({ data: { ...report, dashboard: { ...report.dashboard, user_groups: [group], workloads: [wl] } } });
+    render(show()); await screen.findByText("Cost 0.00017");
+    const scope = screen.getByRole("combobox", { name: "Usage scope" });
+    fireEvent.change(scope, { target: { value: "user-group" } });
+    const groups = screen.getByRole("combobox", { name: "User group" });
+    expect(within(groups).getAllByRole("option").map((o) => o.textContent)).toEqual(["Choose a user group", "Engineering"]);
+    fireEvent.change(groups, { target: { value: "ug-1" } });
+    await waitFor(() => expect(mocks.GET).toHaveBeenCalledTimes(2));
+    expect(mocks.GET.mock.calls[1][1].params.query).toMatchObject({ user_group_id: "ug-1" });
+    for (const key of ["team_id", "device_id", "workload_id"]) expect(mocks.GET.mock.calls[1][1].params.query[key]).toBeUndefined();
+    await screen.findByText("Cost 0.00017");
+    fireEvent.change(scope, { target: { value: "workload" } });
+    await waitFor(() => expect(mocks.GET).toHaveBeenCalledTimes(3));
+    const workloads = screen.getByRole("combobox", { name: "Workload" });
+    expect(within(workloads).getAllByRole("option").map((o) => o.textContent)).toEqual(["Choose a workload", "support-bot"]);
+    fireEvent.change(workloads, { target: { value: "wl-1" } });
+    await waitFor(() => expect(mocks.GET).toHaveBeenCalledTimes(4));
+    expect(mocks.GET.mock.calls[3][1].params.query).toMatchObject({ workload_id: "wl-1" });
+    for (const key of ["team_id", "device_id", "user_group_id"]) expect(mocks.GET.mock.calls[3][1].params.query[key]).toBeUndefined();
+  });
+  it("names a retained agent group without calling it a team", async () => {
+    render(createElement(AIUsageWorkspace, { orgId: "org-a", inventory: { ...inventory, groups: [] } }));
+    await screen.findByText("Cost 0.00017");
+    fireEvent.change(screen.getByLabelText("Usage scope"), { target: { value: "agent-group" } });
+    expect(screen.getByRole("option", { name: "Retained agent group (team-a)" })).toBeTruthy();
   });
   it("ignores another organization's pending data and names", async () => {
     let resolve!: (v: unknown) => void;
@@ -97,7 +156,7 @@ describe("AI usage dashboard requests", () => {
     expect(props.totals).toMatchObject({ requests: 8, tokens: 56, cost: 0.00017, uncostedRequests: 1 });
     expect(props.agents).toEqual([{ ...agent, uncostedRequests: 0 }]);
     expect(props.userGroups).toEqual([{ ...group, uncostedRequests: 0 }]);
-    expect(props.teams).toEqual([]);
+    expect(props.agentGroups).toEqual([]);
     expect(screen.queryByRole("option", { name: "Support worker" })).toBeNull();
     expect(workloads[0].id).toBe("workload-b");
   });

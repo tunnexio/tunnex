@@ -12,7 +12,7 @@ vi.mock("../src/lib/api", async () => ({ ...await vi.importActual("../src/lib/ap
 const totals = { requests: 12, tokens: 900, inputTokens: 600, outputTokens: 300, cost: 3, uncostedRequests: 0, successfulRequests: 12, failedRequests: 0 };
 const agent = { id: "agent-1", name: "builder-01", requests: 8, tokens: 640, cost: 2, uncostedRequests: 0 };
 const other = { id: "agent-2", name: "builder-02", requests: 4, tokens: 260, cost: 1, uncostedRequests: 0 };
-const board = (props: Partial<AIUsageDashboardProps>) => { render(<AIUsageDashboard status="ready" totals={totals} daily={[]} models={[]} teams={[]} userGroups={[]} {...props} />); fireEvent.click(screen.getByRole("tab", { name: "Agents" })); return within(screen.getByRole("table", { name: "Usage by agent" })); };
+const board = (props: Partial<AIUsageDashboardProps>) => { render(<AIUsageDashboard status="ready" totals={totals} daily={[]} models={[]} agentGroups={[]} userGroups={[]} {...props} />); fireEvent.click(screen.getByRole("tab", { name: "Agents" })); return within(screen.getByRole("table", { name: "Usage by agent" })); };
 beforeEach(() => { vi.resetAllMocks(); });
 afterEach(cleanup);
 

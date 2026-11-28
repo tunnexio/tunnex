@@ -146,8 +146,10 @@ func (s apiServer) GetAIUsage(ctx context.Context, r api.GetAIUsageRequestObject
 	var dashboard *api.AIUsageDashboard
 	if r.Params.Dashboard != nil && *r.Params.Dashboard {
 		var d api.AIUsageDashboard
-		v, d, err = s.aiPolicies.UsageDashboard(ctx, r.OrgId, r.Params.TeamId, r.Params.DeviceId, from, to)
+		v, d, err = s.aiPolicies.UsageDashboard(ctx, r.OrgId, aigateway.UsageScope{Team: r.Params.TeamId, Device: r.Params.DeviceId, UserGroup: r.Params.UserGroupId, Workload: r.Params.WorkloadId}, from, to)
 		dashboard = &d
+	} else if r.Params.UserGroupId != nil || r.Params.WorkloadId != nil {
+		return nil, apierr.BadRequest("invalid_usage_scope", "user group and workload filters require the dashboard")
 	} else {
 		v, err = s.aiPolicies.Usage(ctx, r.OrgId, r.Params.TeamId, r.Params.DeviceId, from, to)
 	}

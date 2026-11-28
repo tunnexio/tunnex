@@ -1769,6 +1769,10 @@ export interface paths {
             query?: {
                 team_id?: string;
                 device_id?: string;
+                /** @description Dashboard only: usage of one user group's model grants. At most one of team_id, device_id, user_group_id and workload_id. */
+                user_group_id?: string;
+                /** @description Dashboard only: usage of one workload. At most one of team_id, device_id, user_group_id and workload_id. */
+                workload_id?: string;
                 from?: string;
                 to?: string;
                 /** @description Include bounded native daily and historical attribution aggregates. */
@@ -18530,6 +18534,10 @@ export interface operations {
             query?: {
                 team_id?: string;
                 device_id?: string;
+                /** @description Dashboard only: usage of one user group's model grants. At most one of team_id, device_id, user_group_id and workload_id. */
+                user_group_id?: string;
+                /** @description Dashboard only: usage of one workload. At most one of team_id, device_id, user_group_id and workload_id. */
+                workload_id?: string;
                 from?: string;
                 to?: string;
                 /** @description Include bounded native daily and historical attribution aggregates. */
