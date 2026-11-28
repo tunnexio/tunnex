@@ -35,6 +35,9 @@ const (
 	// waiting for a person (AI-UX-1). Its fields name the agent, tool, server,
 	// request and expiry; the call's arguments are never part of an alert.
 	EventAgentMCPApprovalPending EventKey = "agent.mcp_approval_pending"
+	// EventAIWorkloadStaticKeyExpiring fires 14 and 3 days before a workload's
+	// static API key expires (AI-KEYS-1). The key itself is never included.
+	EventAIWorkloadStaticKeyExpiring EventKey = "ai_workload.static_key_expiring"
 )
 
 // Keys is the closed F11 catalogue. Producers use these values rather than
@@ -56,6 +59,7 @@ func Keys() []EventKey {
 		EventKubernetesInventoryStale,
 		EventKubernetesServiceUnavailable,
 		EventAgentMCPApprovalPending,
+		EventAIWorkloadStaticKeyExpiring,
 	}
 }
 

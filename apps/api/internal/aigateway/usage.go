@@ -16,6 +16,51 @@ const maxAIUsageBindings = 64
 // current assignment or group membership. Moving an agent must not relabel its
 // historical requests. Native IDs are never accepted from a public caller.
 func bindingUsageIDs(ctx context.Context, tx pgx.Tx, org uuid.UUID, team, device *uuid.UUID) ([]string, error) {
+	ids, err := bindingUsageIDsBase(ctx, tx, org, team, device)
+	if err != nil || team != nil || device != nil {
+		return ids, err
+	}
+	return appendStaticKeyUsageIDs(ctx, tx, org, ids, time.Time{}, time.Time{})
+}
+
+// appendStaticKeyUsageIDs adds the engine ids of static keys active at any
+// time in [from,to) (AI-KEYS-1). A zero window means every key ever created,
+// for callers that do not pass a window. Only org-wide usage includes them.
+func appendStaticKeyUsageIDs(ctx context.Context, tx pgx.Tx, org uuid.UUID, ids []string, from, to time.Time) ([]string, error) {
+	var rows pgx.Rows
+	var err error
+	if from.IsZero() || to.IsZero() {
+		rows, err = tx.Query(ctx, `SELECT native_key_id FROM ai_workload_static_keys WHERE org_id=$1 AND native_key_id<>'' ORDER BY native_key_id LIMIT 4097`, org)
+	} else {
+		rows, err = tx.Query(ctx, `SELECT native_key_id FROM ai_workload_static_keys WHERE org_id=$1 AND native_key_id<>'' AND created_at<$3::timestamptz+interval '1 hour' AND least(revoked_at,expires_at)>$2::timestamptz-interval '1 hour' ORDER BY native_key_id LIMIT 4097`, org, from, to)
+	}
+	if err != nil {
+		return nil, aiUnavailable()
+	}
+	defer rows.Close()
+	seen := map[string]bool{}
+	for _, id := range ids {
+		seen[id] = true
+	}
+	added := 0
+	for rows.Next() {
+		var id string
+		if rows.Scan(&id) != nil {
+			return nil, aiUnavailable()
+		}
+		added++
+		if !seen[id] {
+			seen[id] = true
+			ids = append(ids, id)
+		}
+	}
+	if rows.Err() != nil || added > 4096 || len(ids) > 0 && !validEngineIDs(ids) {
+		return nil, aiUnavailable()
+	}
+	return ids, nil
+}
+
+func bindingUsageIDsBase(ctx context.Context, tx pgx.Tx, org uuid.UUID, team, device *uuid.UUID) ([]string, error) {
 	rows, err := tx.Query(ctx, `SELECT native_key_id FROM ai_gateway_key_bindings
  WHERE org_id=$1 AND ($2::uuid IS NULL OR team_id=$2) AND ($3::uuid IS NULL OR device_id=$3)
  UNION SELECT native_key_id FROM ai_user_model_grants WHERE org_id=$1 AND $2::uuid IS NULL AND $3::uuid IS NULL AND native_key_id<>''
@@ -96,9 +141,14 @@ func (p *Policies) Usage(ctx context.Context, org uuid.UUID, teamID, deviceID *u
 			return Usage{}, apierr.NotFound("not_found", "AI agent not found")
 		}
 	}
-	ids, err := bindingUsageIDs(ctx, tx, org, teamID, deviceID)
+	ids, err := bindingUsageIDsBase(ctx, tx, org, teamID, deviceID)
 	if err != nil {
 		return Usage{}, err
+	}
+	if teamID == nil && deviceID == nil {
+		if ids, err = appendStaticKeyUsageIDs(ctx, tx, org, ids, from, to); err != nil {
+			return Usage{}, err
+		}
 	}
 	if tx.Commit(ctx) != nil {
 		return Usage{}, aiUnavailable()
@@ -109,11 +159,33 @@ func (p *Policies) Usage(ctx context.Context, org uuid.UUID, teamID, deviceID *u
 	if p.engine == nil {
 		return Usage{}, aiUnavailable()
 	}
-	result, err := p.engine.Usage(ctx, ids, from, to)
+	result, err := engineUsageBatched(ctx, p.engine, ids, from, to)
 	if err != nil || !validObservedUsage(result) {
 		return Usage{}, aiUnavailable()
 	}
 	return result, nil
+}
+
+// engineUsageBatched asks the engine in batches of at most 64 ids and sums the
+// results. Up to 64 ids it is exactly one engine call, as before AI-KEYS-1.
+// Any failed or invalid batch fails the whole query.
+func engineUsageBatched(ctx context.Context, engine PolicyEngine, ids []string, from, to time.Time) (Usage, error) {
+	if len(ids) <= maxAIUsageBindings {
+		return engine.Usage(ctx, ids, from, to)
+	}
+	var total Usage
+	for start := 0; start < len(ids); start += maxAIUsageBindings {
+		end := min(start+maxAIUsageBindings, len(ids))
+		part, err := engine.Usage(ctx, ids[start:end], from, to)
+		if err != nil || !validObservedUsage(part) {
+			return Usage{}, aiUnavailable()
+		}
+		if !addCount(&total.TotalRequests, part.TotalRequests) || !addCount(&total.TotalTokens, part.TotalTokens) || !addCount(&total.PromptTokens, part.PromptTokens) ||
+			!addCount(&total.CompletionTokens, part.CompletionTokens) || !addCount(&total.UncostedRequests, part.UncostedRequests) || !addCost(&total.TotalCost, part.TotalCost) {
+			return Usage{}, aiUnavailable()
+		}
+	}
+	return total, nil
 }
 
 // enforceCost is observational admission, not a reservation or another ledger.
@@ -168,7 +240,7 @@ func (p *Policies) enforceCostBindings(ctx context.Context, tx pgx.Tx, org uuid.
 	}
 	now := time.Now().UTC()
 	day := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
-	observed, err := p.engine.Usage(ctx, ids, day, now)
+	observed, err := engineUsageBatched(ctx, p.engine, ids, day, now)
 	if err != nil || !validObservedUsage(observed) || observed.UncostedRequests > 0 {
 		return aiUnavailable()
 	}
@@ -176,4 +248,20 @@ func (p *Policies) enforceCostBindings(ctx context.Context, tx pgx.Tx, org uuid.
 		return apierr.Forbidden("ai_daily_threshold_reached", "AI daily soft usage threshold reached")
 	}
 	return nil
+}
+
+// validEngineIDs is validEngineList without the 64-id bound, for lists that
+// are sent to the engine in batches (AI-KEYS-1).
+func validEngineIDs(values []string) bool {
+	if len(values) == 0 || len(values) > 8192 {
+		return false
+	}
+	seen := map[string]bool{}
+	for _, v := range values {
+		if !engineIdentifier.MatchString(v) || seen[v] {
+			return false
+		}
+		seen[v] = true
+	}
+	return true
 }

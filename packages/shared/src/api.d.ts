@@ -901,6 +901,169 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/organizations/{orgId}/ai-gateway/workloads/{workloadId}/static-keys": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                workloadId: string;
+            };
+            cookie?: never;
+        };
+        /** List static API keys without their secrets */
+        get: operations["listAIWorkloadStaticKeys"];
+        put?: never;
+        /** Create a static API key for this workload, shown once */
+        post: operations["createAIWorkloadStaticKey"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/ai-gateway/workloads/{workloadId}/static-keys/{keyId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                workloadId: string;
+                keyId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /** Change a static key's name, source ranges or limits. Scope and expiry never change. */
+        put: operations["updateAIWorkloadStaticKey"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/ai-gateway/workloads/{workloadId}/static-keys/{keyId}/rotate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                workloadId: string;
+                keyId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Create a replacement key shown once; the old key expires after the overlap */
+        post: operations["rotateAIWorkloadStaticKey"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/ai-gateway/workloads/{workloadId}/static-keys/{keyId}/revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                workloadId: string;
+                keyId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Revoke a static key; the next request is refused */
+        post: operations["revokeAIWorkloadStaticKey"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/ai-gateway/static-key-settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        /** Read whether public static keys are allowed in this organization */
+        get: operations["getAIStaticKeySettings"];
+        /** Allow or stop public static keys (AI Gateway administrators) */
+        put: operations["setAIStaticKeySettings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/ai-gateway/internal-endpoints": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        /** One row per gateway with its internal AI endpoint configuration and status */
+        get: operations["listAIInternalEndpoints"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/ai-gateway/internal-endpoints/{nodeId}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                nodeId: string;
+            };
+            cookie?: never;
+        };
+        get?: never;
+        /** Configure the internal AI endpoint served by this gateway */
+        put: operations["putAIInternalEndpoint"];
+        post?: never;
+        /** Remove the internal AI endpoint from this gateway */
+        delete: operations["deleteAIInternalEndpoint"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/ai-gateway/internal-endpoint-ca": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        /** The organization's internal AI CA certificate (public). Created on first use. */
+        get: operations["getAIInternalEndpointCA"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/workload/enroll": {
         parameters: {
             query?: never;
@@ -9822,6 +9985,168 @@ export interface components {
             /** Format: uuid */
             next_cursor?: string | null;
         };
+        /**
+         * @description internal: accepted only on a gateway internal AI endpoint. public: accepted only on the control plane public AI endpoint over HTTPS.
+         * @enum {string}
+         */
+        AIWorkloadStaticKeyScope: "internal" | "public";
+        AIWorkloadStaticKeyInput: {
+            name: string;
+            scope: components["schemas"]["AIWorkloadStaticKeyScope"];
+            /**
+             * Format: date-time
+             * @description Required, at most 90 days from now. Cannot be extended; rotate instead.
+             */
+            expires_at: string;
+            /** @description Internal keys: private IPv4 ranges. Public keys: public ranges only. */
+            source_cidrs?: string[];
+            /** Format: double */
+            daily_usd_threshold?: number | null;
+            rate_limit_per_minute?: number | null;
+            /** @description Second confirmation required to save a public key with no source ranges. */
+            allow_any_source?: boolean;
+        };
+        AIWorkloadStaticKeyUpdate: {
+            name: string;
+            source_cidrs?: string[];
+            /** Format: double */
+            daily_usd_threshold?: number | null;
+            rate_limit_per_minute?: number | null;
+            allow_any_source?: boolean;
+            /** Format: date-time */
+            expected_updated_at: string;
+        };
+        AIWorkloadStaticKeyRotate: {
+            /** @default 24 */
+            overlap_hours: number;
+            /** Format: date-time */
+            expires_at: string;
+        };
+        AIWorkloadStaticKey: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            workload_id: string;
+            name: string;
+            /** @description Last four characters of the key. */
+            hint: string;
+            scope: components["schemas"]["AIWorkloadStaticKeyScope"];
+            source_cidrs: string[];
+            /** Format: double */
+            daily_usd_threshold?: number | null;
+            rate_limit_per_minute?: number | null;
+            /** Format: date-time */
+            expires_at: string;
+            /** Format: date-time */
+            revoked_at?: string | null;
+            /** Format: uuid */
+            rotated_from_id?: string | null;
+            /** @enum {string} */
+            status: "pending" | "applied" | "error" | "revoked" | "expired";
+            /** Format: date-time */
+            last_used_at?: string | null;
+            /** @enum {string|null} */
+            last_used_ingress?: "internal" | "public" | null;
+            last_used_source?: string | null;
+            /** Format: uuid */
+            last_used_node_id?: string | null;
+            /** Format: date-time */
+            last_refused_at?: string | null;
+            /** @description wrong_ingress, source_not_allowed, public_keys_disabled, rate_limited, threshold_reached, expired, revoked, workload_disabled, model_not_allowed, unavailable */
+            last_refused_reason?: string | null;
+            /** @enum {string|null} */
+            last_refused_ingress?: "internal" | "public" | null;
+            last_refused_source?: string | null;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        AIWorkloadStaticKeySecret: {
+            key: components["schemas"]["AIWorkloadStaticKey"];
+            /** @description Shown once. Paste it into the tool; it is never shown again. */
+            secret: string;
+            previous?: components["schemas"]["AIWorkloadStaticKey"];
+        };
+        AIWorkloadStaticKeyPage: {
+            items: components["schemas"]["AIWorkloadStaticKey"][];
+            /** Format: uuid */
+            next_cursor?: string | null;
+        };
+        AIStaticKeySettings: {
+            public_static_keys_allowed: boolean;
+        };
+        /** @enum {string} */
+        AIInternalEndpointTLSMode: "tunnex_ca" | "custom";
+        AIInternalEndpointInput: {
+            enabled: boolean;
+            listen_addresses: string[];
+            port: number;
+            dns_name?: string | null;
+            source_cidrs: string[];
+            tls_mode: components["schemas"]["AIInternalEndpointTLSMode"];
+            /**
+             * Format: int64
+             * @description Zero creates; otherwise the current revision.
+             */
+            expected_revision: number;
+        };
+        AIInternalEndpointConfig: {
+            /** Format: uuid */
+            id: string;
+            enabled: boolean;
+            listen_addresses: string[];
+            port: number;
+            dns_name?: string | null;
+            source_cidrs: string[];
+            tls_mode: components["schemas"]["AIInternalEndpointTLSMode"];
+            /** Format: int64 */
+            revision: number;
+            /** Format: date-time */
+            updated_at: string;
+        };
+        AIInternalEndpoint: {
+            /** Format: uuid */
+            node_id: string;
+            node_name: string;
+            /** @description The organization's gateway tunnel address */
+            tunnel_address?: string | null;
+            has_site?: boolean;
+            /** @description A fresh report from this gateway says it can serve the endpoint. */
+            supported: boolean;
+            ready: boolean;
+            error?: string | null;
+            /** Format: date-time */
+            certificate_not_after?: string | null;
+            certificate_sha256?: string | null;
+            url?: string | null;
+            endpoint?: components["schemas"]["AIInternalEndpointConfig"];
+        };
+        AIInternalEndpointList: {
+            items: components["schemas"]["AIInternalEndpoint"][];
+        };
+        AIInternalEndpointCA: {
+            certificate_pem: string;
+            /** Format: date-time */
+            not_after: string;
+            sha256: string;
+        };
+        AIUsageWorkloadKey: {
+            /** Format: uuid */
+            id: string;
+            name: string;
+            /** Format: uuid */
+            workload_id: string;
+            scope: components["schemas"]["AIWorkloadStaticKeyScope"];
+            /** Format: int64 */
+            requests: number;
+            /** Format: int64 */
+            tokens: number;
+            /** Format: double */
+            cost: number;
+            /** Format: int64 */
+            uncosted_requests: number;
+        };
         AIWorkloadEnrollInput: {
             enrollment_key: string;
             /** Format: uuid */
@@ -10291,6 +10616,8 @@ export interface components {
             agents: components["schemas"]["AIUsageAttribution"][];
             user_groups?: components["schemas"]["AIUsageAttribution"][];
             workloads?: components["schemas"]["AIUsageAttribution"][];
+            /** @description Static API keys; their cost is also included in their workload row. */
+            workload_keys?: components["schemas"]["AIUsageWorkloadKey"][];
         };
         AIUsageDay: {
             date: string;
@@ -10776,7 +11103,7 @@ export interface components {
         /** @enum {string} */
         AlertSeverity: "info" | "warning" | "critical";
         /** @enum {string} */
-        AlertEventKey: "agent.offline" | "agent.denial_spike" | "agent.access_expiring" | "agent.rotation_failed" | "agent.configuration_drift" | "gateway.offline" | "gateway.policy_degraded" | "site.link_down" | "ipsec.tunnel_down" | "ipsec.connection_down" | "ipsec.status_unavailable" | "device.offline" | "device.posture_blocked" | "kubernetes.connector_degraded" | "kubernetes.inventory_stale" | "kubernetes.service_unavailable" | "agent.mcp_approval_pending";
+        AlertEventKey: "agent.offline" | "agent.denial_spike" | "agent.access_expiring" | "agent.rotation_failed" | "agent.configuration_drift" | "gateway.offline" | "gateway.policy_degraded" | "site.link_down" | "ipsec.tunnel_down" | "ipsec.connection_down" | "ipsec.status_unavailable" | "device.offline" | "device.posture_blocked" | "kubernetes.connector_degraded" | "kubernetes.inventory_stale" | "kubernetes.service_unavailable" | "agent.mcp_approval_pending" | "ai_workload.static_key_expiring";
         /** @enum {string} */
         AlertOccurrenceState: "firing" | "resolved";
         /** @enum {string} */
@@ -16614,6 +16941,306 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content?: never;
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listAIWorkloadStaticKeys: {
+        parameters: {
+            query?: {
+                after?: string;
+                limit?: number;
+            };
+            header?: never;
+            path: {
+                orgId: string;
+                workloadId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description List static API keys without their secrets */
+            200: {
+                headers: {
+                    /** @description no-store */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AIWorkloadStaticKeyPage"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    createAIWorkloadStaticKey: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                workloadId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AIWorkloadStaticKeyInput"];
+            };
+        };
+        responses: {
+            /** @description Create a static API key for this workload, shown once */
+            201: {
+                headers: {
+                    /** @description no-store */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AIWorkloadStaticKeySecret"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    updateAIWorkloadStaticKey: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                workloadId: string;
+                keyId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AIWorkloadStaticKeyUpdate"];
+            };
+        };
+        responses: {
+            /** @description Updated static key */
+            200: {
+                headers: {
+                    /** @description no-store */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AIWorkloadStaticKey"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    rotateAIWorkloadStaticKey: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                workloadId: string;
+                keyId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AIWorkloadStaticKeyRotate"];
+            };
+        };
+        responses: {
+            /** @description Replacement key and the shortened previous key */
+            201: {
+                headers: {
+                    /** @description no-store */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AIWorkloadStaticKeySecret"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    revokeAIWorkloadStaticKey: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                workloadId: string;
+                keyId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Revoked */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getAIStaticKeySettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Static key settings */
+            200: {
+                headers: {
+                    /** @description no-store */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AIStaticKeySettings"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    setAIStaticKeySettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AIStaticKeySettings"];
+            };
+        };
+        responses: {
+            /** @description Static key settings */
+            200: {
+                headers: {
+                    /** @description no-store */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AIStaticKeySettings"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listAIInternalEndpoints: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Internal AI endpoints */
+            200: {
+                headers: {
+                    /** @description no-store */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AIInternalEndpointList"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    putAIInternalEndpoint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                nodeId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AIInternalEndpointInput"];
+            };
+        };
+        responses: {
+            /** @description Saved configuration and status */
+            200: {
+                headers: {
+                    /** @description no-store */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AIInternalEndpoint"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    deleteAIInternalEndpoint: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+                nodeId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Removed */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getAIInternalEndpointCA: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description CA certificate */
+            200: {
+                headers: {
+                    /** @description no-store */
+                    "Cache-Control"?: string;
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AIInternalEndpointCA"];
+                };
             };
             default: components["responses"]["Error"];
         };

@@ -240,6 +240,8 @@ type apiServer struct {
 	agentRuntime       *agentruntime.Service
 	aiCredentials      *aigateway.Credentials
 	aiWorkloads        *aigateway.Workloads
+	aiStaticKeys       *aigateway.StaticKeys
+	aiInternal         *aigateway.InternalEndpoints
 	aiPolicies         *aigateway.Policies
 	alertConfig        *alerts.ConfigService
 	devices            *devices.Service

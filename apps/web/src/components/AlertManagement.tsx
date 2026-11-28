@@ -11,6 +11,7 @@ const labels: Record<AlertEventKey, string> = {
   "agent.offline": "Agent offline", "agent.denial_spike": "Agent denial spike", "agent.access_expiring": "Agent access expiring", "agent.rotation_failed": "Agent rotation failed", "agent.configuration_drift": "Agent configuration drift", "agent.mcp_approval_pending": "MCP approval waiting",
   "gateway.offline": "Gateway offline", "gateway.policy_degraded": "Gateway policy degraded", "site.link_down": "WireGuard site link down", "ipsec.tunnel_down": "IPsec tunnel down", "ipsec.connection_down": "IPsec connection down", "ipsec.status_unavailable": "IPsec status unavailable", "device.offline": "Device offline", "device.posture_blocked": "Device posture blocked",
   "kubernetes.connector_degraded": "Connector degraded", "kubernetes.inventory_stale": "Inventory stale", "kubernetes.service_unavailable": "Service unavailable",
+  "ai_workload.static_key_expiring": "Workload API key expiring",
 };
 const groups: Array<{ label: string; keys: AlertEventKey[] }> = [
   { label: "Gateways", keys: ["gateway.offline", "gateway.policy_degraded"] },
@@ -18,6 +19,7 @@ const groups: Array<{ label: string; keys: AlertEventKey[] }> = [
   { label: "Devices", keys: ["device.offline", "device.posture_blocked"] },
   { label: "Kubernetes", keys: ["kubernetes.connector_degraded", "kubernetes.inventory_stale", "kubernetes.service_unavailable"] },
   { label: "AI agents", keys: ["agent.offline", "agent.denial_spike", "agent.access_expiring", "agent.rotation_failed", "agent.configuration_drift", "agent.mcp_approval_pending"] },
+  { label: "AI workloads", keys: ["ai_workload.static_key_expiring"] },
 ];
 const kinds: Record<AlertDestinationKind, string> = { webhook: "Webhook", slack: "Slack", teams: "Microsoft Teams", pagerduty: "PagerDuty", opsgenie: "Opsgenie", discord: "Discord", google_chat: "Google Chat", email: "Email" };
 const severities = ["info", "warning", "critical"];

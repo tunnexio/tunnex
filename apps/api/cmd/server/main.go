@@ -19,7 +19,6 @@ import (
 	"net/url"
 	"os"
 	"os/signal"
-	"strings"
 	"syscall"
 	"time"
 
@@ -507,6 +506,8 @@ func main() {
 	// policies grant access. Community requires no paid runtime entitlement.
 	var aiPolicies *aigateway.Policies
 	var aiWorkloads *aigateway.Workloads
+	var aiStaticKeys *aigateway.StaticKeys
+	var aiInternal *aigateway.InternalEndpoints
 	var aiAdapter *aigateway.Adapter
 	aiRuntime := agentruntime.New(pool, nil)
 	aiCredentials := aigateway.NewCredentials(pool, aiRuntime, nil)
@@ -553,12 +554,11 @@ func main() {
 			logger.Error("ai_workload_invalid_configuration")
 			os.Exit(1)
 		}
-		aiAdapter, engineErr = aigateway.NewAdapter(cfg.AIGatewayURL, func(ctx context.Context, raw, model string) (aigateway.Grant, error) {
-			if strings.HasPrefix(raw, "tnx_wai_") {
-				return aiWorkloads.Authorize(ctx, raw, model)
-			}
-			return aiCredentials.Authorize(ctx, raw, model)
-		})
+		// AI-KEYS-1: static keys share the Redis rate limiter used for MCP calls,
+		// so a per-minute limit holds across control-plane replicas.
+		aiStaticKeys = aigateway.NewStaticKeys(aiWorkloads, mcpdecision.NewRedisLimiter(sessions.Client()))
+		aiInternal = aigateway.NewInternalEndpoints(aiWorkloads, aiStaticKeys)
+		aiAdapter, engineErr = aigateway.NewAdapter(cfg.AIGatewayURL, aigateway.DefaultAuthorize(aiWorkloads, aiCredentials))
 		if engineErr != nil {
 			logger.Error("ai_gateway_invalid_configuration")
 			os.Exit(1)
@@ -728,6 +728,8 @@ func main() {
 		System:                     systemQueries,
 		AICredentials:              aiCredentials,
 		AIWorkloads:                aiWorkloads,
+		AIStaticKeys:               aiStaticKeys,
+		AIInternal:                 aiInternal,
 		AIPolicies:                 aiPolicies,
 		AIEngineInstalled:          cfg.AIBootstrapInstalled,
 		AIAllowPrivateHTTP:         cfg.AIAllowPrivateHTTP,
@@ -901,6 +903,9 @@ func main() {
 						workloadCtx, workloadCancel := context.WithTimeout(electorCtx, 20*time.Second)
 						if aiWorkloads.Maintain(workloadCtx, 64) != nil {
 							logger.Warn("ai_workload_maintenance_incomplete")
+						}
+						if aiStaticKeys != nil && aiStaticKeys.Maintain(workloadCtx, 64, staticKeyExpiryAlerts(alertPublisher)) != nil {
+							logger.Warn("ai_static_key_maintenance_incomplete")
 						}
 						workloadCancel()
 					}
