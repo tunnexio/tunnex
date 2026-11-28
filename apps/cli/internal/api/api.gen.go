@@ -202,6 +202,12 @@ const (
 	AIProviderInUse AIProviderInUseConflictErrorCode = "ai_provider_in_use"
 )
 
+// Defines values for AIProviderModelListSource.
+const (
+	AIProviderModelListSourceProvider  AIProviderModelListSource = "provider"
+	AIProviderModelListSourceReference AIProviderModelListSource = "reference"
+)
+
 // Defines values for AIProviderProbeProvider.
 const (
 	AIProviderProbeProviderAnthropic    AIProviderProbeProvider = "anthropic"
@@ -2409,8 +2415,8 @@ const (
 
 // Defines values for VaultEntrySubjectKind.
 const (
-	Group VaultEntrySubjectKind = "group"
-	User  VaultEntrySubjectKind = "user"
+	VaultEntrySubjectKindGroup VaultEntrySubjectKind = "group"
+	VaultEntrySubjectKindUser  VaultEntrySubjectKind = "user"
 )
 
 // Defines values for VaultEntryVisibility.
@@ -2910,8 +2916,14 @@ type AIProviderModelList struct {
 	Items  []AIProviderModel `json:"items"`
 	Limit  int               `json:"limit"`
 	Offset int               `json:"offset"`
-	Total  int               `json:"total"`
+
+	// Source Set only for a saved standard-provider connection. `provider` is the provider's live model list, read with the saved key. `reference` means that list could not be read; the items are known models that may no longer be available.
+	Source *AIProviderModelListSource `json:"source,omitempty"`
+	Total  int                        `json:"total"`
 }
+
+// AIProviderModelListSource Set only for a saved standard-provider connection. `provider` is the provider's live model list, read with the saved key. `reference` means that list could not be read; the items are known models that may no longer be available.
+type AIProviderModelListSource string
 
 // AIProviderProbe defines model for AIProviderProbe.
 type AIProviderProbe struct {
@@ -10234,7 +10246,7 @@ type AiUserVideoGenerationParams struct {
 type ListAIProviderModelsParams struct {
 	Mode *AIModelMode `form:"mode,omitempty" json:"mode,omitempty"`
 
-	// ConnectionId Same-organization connection required for saved custom or SageMaker catalogs. Foundry without a connection searches the release-bundled reference suggestions; a connection searches the saved endpoint.
+	// ConnectionId Same-organization connection required for saved custom or SageMaker catalogs. Foundry without a connection searches the release-bundled reference suggestions; a connection searches the saved endpoint. For a standard provider
 	ConnectionId *openapi_types.UUID `form:"connection_id,omitempty" json:"connection_id,omitempty"`
 	Provider     *string             `form:"provider,omitempty" json:"provider,omitempty"`
 	Query        *string             `form:"query,omitempty" json:"query,omitempty"`

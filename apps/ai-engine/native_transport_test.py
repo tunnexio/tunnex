@@ -105,6 +105,7 @@ with tempfile.TemporaryDirectory(prefix="tunnex-native-test-") as directory:
     endpoint = "http://provider.fixture:8080"
     owned = "custom-" + str(uuid.uuid4())
     key_id = "tnx-managed-" + str(uuid.uuid4())
+    saved_id = "tnx-managed-" + str(uuid.uuid4())
     virtual_key = "sk-bf-fixture-scoped-virtual-key"
     for name in ("prices.json", "params.json"):
         (root / name).write_text("{}")
@@ -123,6 +124,10 @@ with tempfile.TemporaryDirectory(prefix="tunnex-native-test-") as directory:
             "proxy_config": {"type": "http", "url": "env.TUNNEX_AI_CUSTOM_PROXY_URL"},
             "custom_provider_config": {"base_provider_type": "openai", "is_key_less": False, "allowed_requests": {"list_models": True, "chat_completion": True, "chat_completion_stream": True}},
             "keys": [{"id": key_id, "name": key_id + "-r1", "value": KEY, "models": ["allowed"], "enabled": True, "weight": 1}],
+        }, "openai": {
+            # A standard provider whose stored key lists the synthetic provider directly.
+            "network_config": {"base_url": f"http://127.0.0.1:{provider.server_address[1]}", "allow_private_network": True, "max_retries": 0},
+            "keys": [{"id": saved_id, "name": saved_id + "-r2", "value": KEY, "models": ["allowed"], "enabled": True, "weight": 1}],
         }},
     }
     (root / "config.json").write_text(json.dumps(config))
@@ -168,6 +173,19 @@ with tempfile.TemporaryDirectory(prefix="tunnex-native-test-") as directory:
         status, raw = call(port, "POST", "/api/tunnex/model-catalog", catalog)
         result = json.loads(raw)
         assert status == 200 and [row["id"] for row in result["items"]] == ["allowed", "draft-only"], (status, raw)
+        saved_path = f"/api/providers/openai/keys/{saved_id}"
+        code, saved_before = call(port, "GET", saved_path)
+        assert code == 200 and KEY.encode() not in saved_before, code
+        saved = {"provider": "openai", "key_id": saved_id, "key_name": saved_id + "-r2", "mode": "chat", "query": "", "limit": 50, "offset": 0}
+        for changed, auth, want in [(saved, False, 401), ({**saved, "key_name": saved_id + "-r1"}, True, 409), ({**saved, "key_id": key_id, "key_name": key_id + "-r1"}, True, 409), ({**saved, "api_key": "injected"}, True, 400), ({**saved, "provider": "custom"}, True, 400)]:
+            status, raw = call(port, "POST", "/api/tunnex/saved-model-catalog", changed, auth=auth)
+            assert status == want, (status, want, raw)
+            assert KEY.encode() not in raw
+        status, raw = call(port, "POST", "/api/tunnex/saved-model-catalog", saved)
+        result = json.loads(raw)
+        assert status == 200 and [row["id"] for row in result["items"]] == ["openai/allowed", "openai/draft-only"] and result["total"] == 2, (status, raw)
+        assert KEY.encode() not in raw
+        assert call(port, "GET", saved_path)[1] == saved_before, "saved catalog mutated serving key/model scope"
         expected_arrivals = len(arrivals)
         serving = {"model": owned + "/draft-only", "messages": [{"role": "user", "content": "OK"}], "max_tokens": 8}
         status,raw=call(port, "POST", "/v1/chat/completions", serving, auth=False, vk=virtual_key)
@@ -180,7 +198,7 @@ with tempfile.TemporaryDirectory(prefix="tunnex-native-test-") as directory:
             assert status == 200 and (b"[DONE]" in raw if stream else json.loads(raw)["choices"][0]["message"]["content"] == "OK"), (status, raw)
             assert KEY.encode() not in raw
         assert call(port, "GET", path)[1] == before
-        print("Native Bifrost: authenticated draft/catalog, saved-key scope preservation, VK denial, serving and streaming passed.")
+        print("Native Bifrost: authenticated draft/catalog, saved-key catalog, saved-key scope preservation, VK denial, serving and streaming passed.")
     finally:
         process.send_signal(signal.SIGINT)
         try:

@@ -1405,7 +1405,7 @@ export interface paths {
         parameters: {
             query?: {
                 mode?: components["schemas"]["AIModelMode"];
-                /** @description Same-organization connection required for saved custom or SageMaker catalogs. Foundry without a connection searches the release-bundled reference suggestions; a connection searches the saved endpoint. */
+                /** @description Same-organization connection required for saved custom or SageMaker catalogs. Foundry without a connection searches the release-bundled reference suggestions; a connection searches the saved endpoint. For a standard provider */
                 connection_id?: string;
                 provider?: "openai" | "anthropic" | "gemini" | "openrouter" | "groq" | "mistral" | "cerebras" | "xai" | "deepseek" | "custom" | "sagemaker" | "azure_foundry";
                 query?: string;
@@ -10197,6 +10197,11 @@ export interface components {
             total: number;
             limit: number;
             offset: number;
+            /**
+             * @description Set only for a saved standard-provider connection. `provider` is the provider's live model list, read with the saved key. `reference` means that list could not be read; the items are known models that may no longer be available.
+             * @enum {string}
+             */
+            source?: "provider" | "reference";
         };
         AIProviderModel: {
             mode?: components["schemas"]["AIModelMode"];
@@ -17376,7 +17381,7 @@ export interface operations {
         parameters: {
             query?: {
                 mode?: components["schemas"]["AIModelMode"];
-                /** @description Same-organization connection required for saved custom or SageMaker catalogs. Foundry without a connection searches the release-bundled reference suggestions; a connection searches the saved endpoint. */
+                /** @description Same-organization connection required for saved custom or SageMaker catalogs. Foundry without a connection searches the release-bundled reference suggestions; a connection searches the saved endpoint. For a standard provider */
                 connection_id?: string;
                 provider?: "openai" | "anthropic" | "gemini" | "openrouter" | "groq" | "mistral" | "cerebras" | "xai" | "deepseek" | "custom" | "sagemaker" | "azure_foundry";
                 query?: string;

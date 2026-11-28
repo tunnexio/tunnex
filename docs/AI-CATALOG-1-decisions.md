@@ -144,3 +144,94 @@ people could not be held to a daily budget.
   migration to a database already at 0257.
 - Rejected: per-member limits. The request was a budget for the group; a
   per-person limit can be added later as its own setting.
+
+## Live model list when adding a model to a saved credential
+
+Founder report, test deployment: Add Model for an existing Groq credential
+suggested `groq/gemma-7b-it`, which Groq has decommissioned. Test Connect
+failed with provider HTTP 400.
+
+Cause: a new credential searches the provider's live list with the typed key
+(`POST /ai-gateway/providers/model-catalog`). A saved credential called
+`GET /ai-gateway/models`, which merges the bundled LiteLLM reference list with
+the engine's retained model list. For Groq and Gemini the retained list is
+empty, so only the reference list showed, and it keeps retired models. It has
+no deprecation dates, so filtering by date is not possible.
+
+The control plane does not hold provider keys; the engine does, keyed by the
+connection's `key_id`. The saved Test Connect path already uses the stored key
+inside the engine without returning it.
+
+Decision:
+
+- Engine: a private route, `POST /api/tunnex/saved-model-catalog`, takes
+  `{provider, key_id, key_name, mode, query, limit, offset}`. It finds the
+  stored key the way the saved Test Connect does: the `tnx-managed-` id, the
+  revision name (`key_name`, so a rotated or replaced key is never used) and
+  the same enabled rule. It then runs the same list, filter, paging and
+  response shape as the draft catalog, sharing one code path. The key is held
+  only in memory for that call; it is never returned or logged, and the route
+  takes no `api_key`. Standard providers only: endpoint providers already have
+  a connection-scoped catalog.
+- The listing uses a transient key with all models allowed, as the draft
+  search does, not the stored key's allowlist. The allowlist is the models
+  already configured, which would hide the ones the user wants to add.
+- API: `GET /ai-gateway/models` with `connection_id` and a standard provider
+  is accepted for a saved connection of the same organization and provider.
+  It calls the new route with the same 15-second bound and response checks as
+  the draft catalog, and the same per-organization probe limiter.
+- Refused, with no provider call: a connection of another organization or a
+  missing one (404); a connection of a different provider, or an endpoint
+  provider on this path (400).
+- Falls back to today's list (merged for chat, reference for other modes)
+  when the live call cannot run or fails: engine error or bad response,
+  provider operations off, the limiter full, or the credential disabled or not
+  yet applied. Falling back on the limiter rather than returning 429 matches
+  the draft search.
+- `AIProviderModelList` gains an optional `source`: `provider` (live list)
+  or `reference` (fallback). It is set only on this path; custom, SageMaker
+  and Foundry responses are unchanged.
+- Web: for a saved standard credential the search sends `connection_id`.
+  `source=provider` shows "Provider catalog"; otherwise "Unverified catalog
+  suggestions" with the AI-CATALOG-1 notice ("Your provider's live model list
+  could not be read. Showing known models; Test Connect confirms access.").
+  Paging stays on the source that answered the first page. The draft search is
+  unchanged.
+- Authorization unchanged: the endpoint stays readable by anyone who can read
+  provider connections. That now lets a read-only user cause a provider
+  model-list call with the saved key. It returns only model names, costs
+  nothing at the providers we support, and is bounded by the limiter (one at a
+  time and six a minute per organization).
+- Known limit: the search runs half a second after typing stops, so typing a
+  lot within a minute can use up the limiter and drop to the reference list.
+  The draft search behaves the same way.
+- Not audited, like the draft catalog and other catalog reads.
+- Rejected: dropping the reference list for saved credentials. It is still
+  the only answer when the provider list cannot be read.
+- Rejected: storing deprecation data. The bundled list has none, and the
+  provider's own list is the source of truth.
+
+Next step after Add Credentials (founder feedback, same walk): Add
+Credentials asks only for a name and key, so after saving there was no
+obvious next step.
+
+- A new credential saved from Add Credentials without models opens a small
+  "Credentials saved" panel: "Add models from this credential" or "Later".
+- "Add models from this credential" opens the existing Add Model wizard at its
+  Models step with that credential selected, so its search uses the live
+  saved-key catalog above. The wizard's steps are unchanged, and Back still
+  reaches the provider and credential steps.
+- Not shown after editing an existing credential, after Add Model, or to
+  users who cannot manage providers.
+
+Validation:
+
+- Engine Go tests: the shared listing reads every page, filters, sorts and
+  never returns the key; the stored-key lookup matches id, revision name and
+  enabled state. The native transport test calls the route on a built engine.
+- API tests: live success gives `source=provider`; engine failure gives the
+  merged list with `source=reference`; another organization's connection is
+  refused; custom and Foundry paths are unchanged.
+- Web tests: saved standard credential sends `connection_id`, labels by
+  `source`, pages on one source, and the draft search is unchanged; a new
+  credential from Add Credentials offers Add Model with it preselected.
