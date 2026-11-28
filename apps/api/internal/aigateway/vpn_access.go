@@ -52,15 +52,21 @@ func (s *Policies) resolveVPNPeerModel(ctx context.Context, org, node uuid.UUID,
 	return s.resolveUserModel(ctx, org, uuid.Nil, model, vpnUser, true)
 }
 
+// vpnIdentity resolves the user behind verified VPN evidence inside the
+// caller's transaction, using the caller's context.
+type vpnIdentity func(context.Context, pgx.Tx) (uuid.UUID, error)
+
 // vpnPeerUser is the single VPN identity check shared by inference and the
 // model list. The returned query runs inside the caller's transaction.
-func vpnPeerUser(ctx context.Context, org, node uuid.UUID, source, key string, singleOrg bool) (func(pgx.Tx) (uuid.UUID, error), error) {
+func vpnPeerUser(ctx context.Context, org, node uuid.UUID, source, key string, singleOrg bool) (vpnIdentity, error) {
 	ip, err := netip.ParseAddr(source)
 	raw, keyErr := base64.StdEncoding.DecodeString(key)
 	if err != nil || !ip.Is4() || ip.IsUnspecified() || keyErr != nil || len(raw) != 32 || node == uuid.Nil {
 		return nil, policyDenied()
 	}
-	return func(tx pgx.Tx) (uuid.UUID, error) {
+	// The check runs with the caller's context, never one captured here: lease
+	// renewal calls it again long after admission's context has ended.
+	return func(ctx context.Context, tx pgx.Tx) (uuid.UUID, error) {
 		var user uuid.UUID
 		var roles []string
 		// Org and gateway come from the authenticated node, never from the client.

@@ -309,7 +309,7 @@ func (s *Workloads) renew(ctx context.Context, f workloadFacts, model string) (G
 		return Grant{}, aiUnavailable()
 	}
 	defer rollbackAI(tx)
-	b, err := s.authenticateFacts(ctx, tx, f, time.Now().Add(30*time.Second), false)
+	b, err := s.authenticateFacts(ctx, tx, f, time.Now().Add(grantLease), false)
 	if err != nil {
 		return Grant{}, err
 	}
@@ -356,7 +356,7 @@ func (s *Workloads) resolve(ctx context.Context, tx pgx.Tx, b workloadBearer, mo
 	if err != nil {
 		return Grant{}, aiUnavailable()
 	}
-	expires := time.Now().Add(30 * time.Second)
+	expires := time.Now().Add(grantLease)
 	if b.expires.Before(expires) {
 		expires = b.expires
 	}

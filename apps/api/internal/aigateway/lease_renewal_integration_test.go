@@ -1,7 +1,15 @@
 package aigateway
 
 import (
+	"context"
+	"errors"
+	"fmt"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -174,4 +182,93 @@ func TestUserLeaseRenewalPinsGrantAndSkipsCostPostgres(t *testing.T) {
 	if _, err := grant.Renew(ctx); err == nil {
 		t.Fatal("renewal switched to another group's grant")
 	}
+}
+
+// Long requests through the adapter with the real resolvers: the adapter
+// cancels admission's context after authorization, so renewal must not depend
+// on it. Covers the workload, agent (tnx_ai_) and console user paths.
+func TestLongRequestsThroughAdapterRenewPostgres(t *testing.T) {
+	restore := SetGrantLeaseForTests(600 * time.Millisecond)
+	defer restore()
+	ctx, pool := testpostgres.New(t)
+	const hold = 1500 * time.Millisecond
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		if strings.Contains(string(body), `"stream":true`) {
+			w.Header().Set("Content-Type", "text/event-stream")
+			for end := time.Now().Add(hold); time.Now().Before(end); {
+				io.WriteString(w, "data: {}\n\n")
+				w.(http.Flusher).Flush()
+				time.Sleep(100 * time.Millisecond)
+			}
+			io.WriteString(w, "data: [DONE]\n\n")
+			return
+		}
+		time.Sleep(hold)
+		w.Header().Set("Content-Type", "application/json")
+		io.WriteString(w, `{"done":true}`)
+	}))
+	defer upstream.Close()
+	run := func(t *testing.T, name string, authorize Authorize, model string) {
+		for _, stream := range []bool{false, true} {
+			t.Run(fmt.Sprintf("%s stream=%v", name, stream), func(t *testing.T) {
+				a, err := NewAdapter(upstream.URL, func(context.Context, string, string) (Grant, error) { return Grant{}, errors.New("unused") })
+				if err != nil {
+					t.Fatal(err)
+				}
+				server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { a.ServeAuthorized(w, r, authorize) }))
+				defer server.Close()
+				body := `{"model":"` + model + `","messages":[{"role":"user","content":"x"}]` + map[bool]string{true: `,"stream":true`}[stream] + `}`
+				res, err := (&http.Client{Timeout: 10 * time.Second}).Post(server.URL+"/v1/chat/completions", "application/json", strings.NewReader(body))
+				if err != nil {
+					t.Fatal(err)
+				}
+				data, err := io.ReadAll(res.Body)
+				res.Body.Close()
+				want := `{"done":true}`
+				if stream {
+					want = "[DONE]"
+				}
+				if err != nil || res.StatusCode != 200 || !strings.Contains(string(data), want) {
+					t.Fatalf("status=%d err=%v body=%.120s", res.StatusCode, err, data)
+				}
+			})
+		}
+	}
+	// Workload.
+	w := newWorkloadLifecycleFixture(t, ctx, pool, []string{"openrouter/a"}, nil)
+	r := w.enroll(w.key(false, 1))
+	token := w.token(r)
+	run(t, "workload", func(ctx context.Context, _ string, model string) (Grant, error) {
+		return w.workloads.Authorize(ctx, token, model)
+	}, "openrouter/a")
+	// Agent AI credential.
+	f := newPolicyFixture(t, ctx, pool)
+	if a := f.reconcile(); a.Status != "applied" {
+		t.Fatalf("not applied: %+v", a)
+	}
+	c := f.mint()
+	run(t, "agent", func(ctx context.Context, _ string, model string) (Grant, error) {
+		return f.service.Authorize(ctx, c.Token, model)
+	}, "openrouter/a")
+	// Console user.
+	u := newPolicyFixture(t, ctx, pool)
+	u.policies.engine = newProviderFixtureEngine()
+	u.policies.EnableProviderManagement(true)
+	secret := "fixture-provider-secret"
+	p, err := u.policies.CreateProvider(ctx, u.org, u.owner, ProviderInput{Provider: "openrouter", Name: "Long provider", Models: []string{"openrouter/long"}, Secret: &secret, Enabled: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	group, user := uuid.New(), uuid.New()
+	u.exec(`INSERT INTO user_groups(id,org_id,name) VALUES($1,$2,'Long')`, group, u.org)
+	u.exec(`INSERT INTO users(id,email,name,email_verified_at) VALUES($1,$2,'User',now())`, user, user.String()+"@test.local")
+	u.exec(`INSERT INTO memberships(org_id,user_id,role) VALUES($1,$2,'member')`, u.org, user)
+	u.exec(`INSERT INTO group_members(org_id,group_id,user_id) VALUES($1,$2,$3)`, u.org, group, user)
+	if _, err := u.policies.PutUserModelGrant(ctx, u.org, u.owner, group, p.ID, "openrouter/long", true, 0); err != nil {
+		t.Fatal(err)
+	}
+	run(t, "user", func(ctx context.Context, _ string, model string) (Grant, error) {
+		return u.policies.ResolveUserModel(ctx, u.org, user, model)
+	}, "openrouter/long")
 }

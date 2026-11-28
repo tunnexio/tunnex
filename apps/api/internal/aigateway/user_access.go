@@ -305,14 +305,14 @@ func (s *Policies) ResolveUserModel(ctx context.Context, org, user uuid.UUID, mo
 // resolveUserModel admits through the first usable grant. With cost set, a
 // grant whose group has a daily cost limit is usable only while the group's
 // observed spend today is under it; grants of unlimited groups are tried first.
-func (s *Policies) resolveUserModel(ctx context.Context, org, user uuid.UUID, model string, vpnUser func(pgx.Tx) (uuid.UUID, error), cost bool) (Grant, error) {
+func (s *Policies) resolveUserModel(ctx context.Context, org, user uuid.UUID, model string, vpnUser vpnIdentity, cost bool) (Grant, error) {
 	return s.resolveUserGrant(ctx, org, user, model, vpnUser, cost, uuid.Nil)
 }
 
 // resolveUserGrant resolves a user's model grant. pin, when set, restricts the
 // resolution to that grant: lease renewal re-checks the grant the request was
 // admitted with (the same virtual key), without repeating cost admission.
-func (s *Policies) resolveUserGrant(ctx context.Context, org, user uuid.UUID, model string, vpnUser func(pgx.Tx) (uuid.UUID, error), cost bool, pin uuid.UUID) (Grant, error) {
+func (s *Policies) resolveUserGrant(ctx context.Context, org, user uuid.UUID, model string, vpnUser vpnIdentity, cost bool, pin uuid.UUID) (Grant, error) {
 	if s == nil || s.pool == nil || s.sealer == nil || org == uuid.Nil || (user == uuid.Nil && vpnUser == nil) {
 		return Grant{}, policyDenied()
 	}
@@ -401,7 +401,7 @@ func (s *Policies) resolveUserGrant(ctx context.Context, org, user uuid.UUID, mo
 			}
 			return s.resolveUserGrant(ctx, org, renewUser, model, nil, false, pinned)
 		}
-		return Grant{Tenant: org.String(), Agent: user.String(), SubjectKind: "user", VirtualKey: value, Mode: g.Mode, Expires: time.Now().Add(30 * time.Second), Renew: renew}, nil
+		return Grant{Tenant: org.String(), Agent: user.String(), SubjectKind: "user", VirtualKey: value, Mode: g.Mode, Expires: time.Now().Add(grantLease), Renew: renew}, nil
 	}
 	if costErr != nil {
 		return Grant{}, costErr
@@ -485,10 +485,10 @@ func strongerCostError(current, next error) error {
 
 // liveAIUser is the identity step shared by inference and the VPN model list:
 // an optional VPN evidence resolver, then the current live-user/org check.
-func liveAIUser(ctx context.Context, tx pgx.Tx, org, user uuid.UUID, vpnUser func(pgx.Tx) (uuid.UUID, error)) (uuid.UUID, error) {
+func liveAIUser(ctx context.Context, tx pgx.Tx, org, user uuid.UUID, vpnUser vpnIdentity) (uuid.UUID, error) {
 	if vpnUser != nil {
 		var err error
-		user, err = vpnUser(tx)
+		user, err = vpnUser(ctx, tx)
 		if err != nil {
 			return uuid.Nil, err
 		}
@@ -508,7 +508,7 @@ func liveAIUser(ctx context.Context, tx pgx.Tx, org, user uuid.UUID, vpnUser fun
 
 // resolveVPNUser runs the shared identity step in its own transaction for the
 // VPN model list. Each listed model is then re-resolved by UserModels.
-func (s *Policies) resolveVPNUser(ctx context.Context, org uuid.UUID, vpnUser func(pgx.Tx) (uuid.UUID, error)) (uuid.UUID, error) {
+func (s *Policies) resolveVPNUser(ctx context.Context, org uuid.UUID, vpnUser vpnIdentity) (uuid.UUID, error) {
 	if s == nil || s.pool == nil || s.sealer == nil || org == uuid.Nil || vpnUser == nil {
 		return uuid.Nil, policyDenied()
 	}

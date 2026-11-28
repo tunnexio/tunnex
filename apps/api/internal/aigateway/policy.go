@@ -340,5 +340,5 @@ func (s *Policies) resolveAgent(ctx context.Context, tx pgx.Tx, id agentruntime.
 	if err != nil {
 		return Grant{}, policyDenied()
 	}
-	return Grant{Mode: mode, Tenant: id.OrgID.String(), Agent: id.DeviceID.String(), VirtualKey: value, Expires: time.Now().Add(30 * time.Second)}, nil
+	return Grant{Mode: mode, Tenant: id.OrgID.String(), Agent: id.DeviceID.String(), VirtualKey: value, Expires: time.Now().Add(grantLease)}, nil
 }
