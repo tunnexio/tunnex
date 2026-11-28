@@ -12,6 +12,7 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -338,7 +339,16 @@ func (a *Adapter) serve(w http.ResponseWriter, r *http.Request, authorize Author
 	idle := newIdleReader(res.Body, a.limits.IdleTimeout, guard.abort)
 	defer idle.stop()
 	if res.StatusCode < 200 || res.StatusCode >= 300 {
-		writeAdapterError(w, r, upstreamErrorStatus(res.StatusCode))
+		// Only a bounded prefix of the engine's error is read, to classify it;
+		// no provider text reaches the caller.
+		head, _ := io.ReadAll(io.LimitReader(res.Body, 16<<10))
+		status := upstreamErrorStatus(res.StatusCode, head)
+		if status == statusProviderRateLimited || status == statusProviderUnavailable {
+			if after, ok := boundedRetryAfter(res.Header.Get("Retry-After"), time.Now()); ok {
+				w.Header().Set("Retry-After", after)
+			}
+		}
+		writeAdapterError(w, r, status)
 		return
 	}
 	ct, _, parseErr := mime.ParseMediaType(res.Header.Get("Content-Type"))
@@ -459,23 +469,71 @@ func (a *Adapter) keepConcurrencyLease(done <-chan struct{}, guard *requestGuard
 	}
 }
 
-// upstreamErrorStatus maps engine failures to static public statuses: a
-// provider refusal of the request is the caller's 400, provider rate limiting
-// is 429, anything else is an engine failure.
-func upstreamErrorStatus(status int) int {
+// upstreamErrorStatus maps engine failures to static public statuses so the
+// caller can tell its own request, the provider and Tunnex apart:
+//   - a provider refusal of the request (400/404/413/422) is the caller's 400;
+//   - billing or credit refusal (402) is 402;
+//   - provider rate limiting (429) is 429;
+//   - provider overload or outage (503, 529, or an "overloaded" error type on
+//     another 5xx) is 503;
+//   - anything else is an engine or transport failure (502).
+func upstreamErrorStatus(status int, body []byte) int {
 	switch status {
 	case http.StatusBadRequest, http.StatusNotFound, http.StatusRequestEntityTooLarge, http.StatusUnprocessableEntity:
 		return statusProviderRejected
+	case http.StatusPaymentRequired:
+		return statusProviderPayment
 	case http.StatusTooManyRequests:
 		return statusProviderRateLimited
+	case http.StatusServiceUnavailable, 529:
+		return statusProviderUnavailable
+	}
+	if status >= 500 && upstreamOverloaded(body) {
+		return statusProviderUnavailable
 	}
 	return http.StatusBadGateway
+}
+
+// upstreamOverloaded reports an engine error whose type names provider
+// overload (for example the Messages API's overloaded_error).
+func upstreamOverloaded(body []byte) bool {
+	var e struct {
+		Type  string `json:"type"`
+		Error struct {
+			Type string `json:"type"`
+		} `json:"error"`
+	}
+	if json.Unmarshal(body, &e) != nil {
+		return false
+	}
+	return strings.Contains(strings.ToLower(e.Error.Type), "overloaded") || strings.Contains(strings.ToLower(e.Type), "overloaded")
+}
+
+// boundedRetryAfter passes a provider's Retry-After as whole seconds between
+// 1 and 300. A delta or an HTTP date is accepted; anything else is dropped.
+func boundedRetryAfter(raw string, now time.Time) (string, bool) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return "", false
+	}
+	seconds := 0
+	if n, err := strconv.Atoi(raw); err == nil {
+		seconds = n
+	} else if at, err := http.ParseTime(raw); err == nil {
+		seconds = int(at.Sub(now).Round(time.Second) / time.Second)
+	} else {
+		return "", false
+	}
+	seconds = max(1, min(seconds, 300))
+	return strconv.Itoa(seconds), true
 }
 
 // Internal markers for writeAdapterError; never sent as-is.
 const (
 	statusProviderRejected    = 1400
+	statusProviderPayment     = 1402
 	statusProviderRateLimited = 1429
+	statusProviderUnavailable = 1503
 )
 
 // idleReader cuts a read side that produces no bytes for the idle timeout.
@@ -522,6 +580,10 @@ func writeAdapterError(w http.ResponseWriter, r *http.Request, status int) {
 		code, message = "ai_engine_unavailable", "AI engine is unavailable"
 	case statusProviderRejected:
 		status, code, message = http.StatusBadRequest, "ai_provider_rejected", "The AI provider refused this request."
+	case statusProviderPayment:
+		status, code, message = http.StatusPaymentRequired, "ai_provider_payment_required", "The AI provider refused the request for billing or credit reasons. Check the provider account."
+	case statusProviderUnavailable:
+		status, code, message = http.StatusServiceUnavailable, "ai_provider_unavailable", "The AI provider is temporarily unavailable. Try again later."
 	case statusProviderRateLimited:
 		status, code, message = http.StatusTooManyRequests, "ai_provider_rate_limited", "The AI provider is limiting requests. Try again later."
 	case http.StatusServiceUnavailable:

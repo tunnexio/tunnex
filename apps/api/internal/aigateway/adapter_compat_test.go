@@ -327,9 +327,33 @@ func TestLoadAdapterLimits(t *testing.T) {
 }
 
 func TestUpstreamErrorsAreStatic(t *testing.T) {
-	for status, want := range map[int][2]any{400: {400, "ai_provider_rejected"}, 404: {400, "ai_provider_rejected"}, 413: {400, "ai_provider_rejected"}, 422: {400, "ai_provider_rejected"}, 429: {429, "ai_provider_rate_limited"}, 401: {502, "ai_engine_unavailable"}, 500: {502, "ai_engine_unavailable"}} {
+	for _, tc := range []struct {
+		status      int
+		body, retry string
+		want        int
+		code        string
+		wantRetry   string
+	}{
+		{400, `{"error":{"message":"private-message"}}`, "", 400, "ai_provider_rejected", ""},
+		{404, "private-message", "", 400, "ai_provider_rejected", ""},
+		{413, "private-message", "", 400, "ai_provider_rejected", ""},
+		{422, "private-message", "", 400, "ai_provider_rejected", ""},
+		{402, `{"error":{"message":"private-message: would exceed your available credits"}}`, "", 402, "ai_provider_payment_required", ""},
+		{429, "private-message", "7", 429, "ai_provider_rate_limited", "7"},
+		{429, "private-message", "9999", 429, "ai_provider_rate_limited", "300"},
+		{503, `{"error":{"message":"private-message: high demand"}}`, "30", 503, "ai_provider_unavailable", "30"},
+		{503, "private-message", "soon", 503, "ai_provider_unavailable", ""},
+		{529, `{"type":"error","error":{"type":"overloaded_error","message":"private-message"}}`, "", 503, "ai_provider_unavailable", ""},
+		{500, `{"type":"error","error":{"type":"overloaded_error","message":"private-message"}}`, "0", 503, "ai_provider_unavailable", "1"},
+		{500, `{"error":{"type":"internal","message":"private-message"}}`, "5", 502, "ai_engine_unavailable", ""},
+		{401, "private-message fixture-internal", "", 502, "ai_engine_unavailable", ""},
+		{504, "private-message", "", 502, "ai_engine_unavailable", ""},
+	} {
 		up := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			http.Error(w, `{"error":{"message":"private-message fixture-internal"}}`, status)
+			if tc.retry != "" {
+				w.Header().Set("Retry-After", tc.retry)
+			}
+			http.Error(w, tc.body, tc.status)
 		}))
 		a, _ := NewAdapter(up.URL, fixture)
 		server := httptest.NewServer(a)
@@ -341,11 +365,24 @@ func TestUpstreamErrorsAreStatic(t *testing.T) {
 		}
 		body, _ := io.ReadAll(res.Body)
 		res.Body.Close()
-		if res.StatusCode != want[0].(int) || !strings.Contains(string(body), want[1].(string)) || strings.Contains(string(body), "private-message") {
-			t.Errorf("upstream %d → %d %s", status, res.StatusCode, body)
+		if res.StatusCode != tc.want || !strings.Contains(string(body), tc.code) || strings.Contains(string(body), "private-message") || res.Header.Get("Retry-After") != tc.wantRetry {
+			t.Errorf("upstream %d (retry %q) → %d retry=%q %s", tc.status, tc.retry, res.StatusCode, res.Header.Get("Retry-After"), body)
 		}
 		server.Close()
 		up.Close()
+	}
+}
+
+func TestBoundedRetryAfterDate(t *testing.T) {
+	now := time.Date(2026, 11, 28, 12, 0, 0, 0, time.UTC)
+	if v, ok := boundedRetryAfter(now.Add(45*time.Second).Format(http.TimeFormat), now); !ok || v != "45" {
+		t.Fatalf("date: %q %v", v, ok)
+	}
+	if v, ok := boundedRetryAfter(now.Add(time.Hour).Format(http.TimeFormat), now); !ok || v != "300" {
+		t.Fatalf("far date: %q %v", v, ok)
+	}
+	if _, ok := boundedRetryAfter("", now); ok {
+		t.Fatal("empty accepted")
 	}
 }
 

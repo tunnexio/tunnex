@@ -268,10 +268,22 @@ runs with Redis (sessions require it); an adapter built without a Redis client
 
 ### 7. Upstream errors
 
-Previously every engine non-2xx became 502, which the OpenAI SDK retries and which
-reads as an outage for an over-long prompt. Mapping now (static messages, no
-provider text): 400/404/413/422 → 400 `ai_provider_rejected` "The AI provider
-refused this request."; 429 → 429 `ai_provider_rate_limited`; others → 502.
+Previously every engine non-2xx became 502 `ai_engine_unavailable`, which blames
+Tunnex for provider problems (seen live: an OpenRouter credit refusal and a
+Gemini overload both reached callers as "AI engine is unavailable"). Mapping now,
+with static messages and no provider text:
+
+| Engine answer | Caller gets |
+|---|---|
+| 400, 404, 413, 422 | 400 `ai_provider_rejected` "The AI provider refused this request." |
+| 402 | 402 `ai_provider_payment_required` "The AI provider refused the request for billing or credit reasons. Check the provider account." |
+| 429 | 429 `ai_provider_rate_limited` |
+| 503, 529, or a 5xx whose error type names overload | 503 `ai_provider_unavailable` "The AI provider is temporarily unavailable. Try again later." |
+| anything else (other 5xx, 401/403 from the engine, transport failure) | 502 `ai_engine_unavailable` |
+
+For 429 and 503 the provider's `Retry-After` (seconds or an HTTP date) is passed
+as whole seconds bounded to 1–300; an unparsable value is dropped. Only a 16 KiB
+prefix of the engine's error is read, to classify it.
 
 ### 8. Three access paths carry every mode
 
