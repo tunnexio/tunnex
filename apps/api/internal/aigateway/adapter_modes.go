@@ -11,6 +11,7 @@ import (
 	"net/textproto"
 	"regexp"
 	"slices"
+	"strconv"
 	"strings"
 )
 
@@ -20,7 +21,7 @@ const MaxMediaResponseBytes = 32 << 20
 // InferencePathMode is an exact route allowlist, never a generic proxy prefix.
 func InferencePathMode(path string) (ModelMode, bool) {
 	switch path {
-	case "/v1/chat/completions", "/anthropic/v1/messages":
+	case "/v1/chat/completions", "/anthropic/v1/messages", "/v1/responses":
 		return ModeChat, true
 	case "/v1/completions":
 		return ModeCompletion, true
@@ -121,13 +122,20 @@ func modeStrings(p map[string]json.RawMessage, k string, scalar bool, maxCount, 
 	return true
 }
 
+// normalizedModeJSON validates the non-chat JSON modes with the default limits
+// (video jobs use it directly).
 func normalizedModeJSON(body []byte, mode ModelMode) ([]byte, string, error) {
+	a := &Adapter{limits: DefaultAdapterLimits()}
+	return a.normalizedModeJSON(body, mode)
+}
+
+func (a *Adapter) normalizedModeJSON(body []byte, mode ModelMode) ([]byte, string, error) {
 	fields := "model "
 	switch mode {
 	case ModeCompletion:
-		fields += "prompt max_tokens temperature stream"
+		fields += "prompt max_tokens temperature stream stream_options stop top_p seed user"
 	case ModeEmbedding:
-		fields += "input encoding_format dimensions"
+		fields += "input encoding_format dimensions user"
 	case ModeAudioSpeech:
 		fields += "input voice response_format speed"
 	case ModeImageGeneration:
@@ -152,12 +160,19 @@ func normalizedModeJSON(body []byte, mode ModelMode) ([]byte, string, error) {
 	valid := false
 	switch mode {
 	case ModeCompletion:
-		valid = modeString(p, "prompt", 1, 65536) && modeNumber(p, "max_tokens", 1, 4096, true) && modeNumber(p, "temperature", 0, 2, false) && modeBool(p, "stream")
+		valid = modeString(p, "prompt", 1, 1<<30) && modeNumber(p, "max_tokens", 1, float64(a.limits.MaxOutputTokens), true) && modeNumber(p, "temperature", 0, 2, false) && modeBool(p, "stream") &&
+			modeNumber(p, "top_p", 0, 1, false) && modeNumber(p, "seed", -(1<<53), 1<<53, true) &&
+			(p["stop"] == nil || stringOrList(p["stop"], 4, maxStopBytes)) && (p["user"] == nil || modeString(p, "user", 1, maxIdentifierBytes))
+		if p["stream_options"] != nil {
+			m, ok := strictObject(p["stream_options"])
+			valid = valid && ok && onlyKeys(m, "include_usage") && (m["include_usage"] == nil || jsonBool(m["include_usage"]))
+		}
 		if p["max_tokens"] == nil {
-			p["max_tokens"] = json.RawMessage("1024")
+			p["max_tokens"] = json.RawMessage(strconv.Itoa(a.defaultOutputTokens(model)))
 		}
 	case ModeEmbedding:
-		valid = modeStrings(p, "input", true, 128, 65536) && modeEnum(p, "encoding_format", "float", "base64") && modeNumber(p, "dimensions", 1, 65536, true)
+		valid = validEmbeddingInput(p["input"]) && modeEnum(p, "encoding_format", "float", "base64") && modeNumber(p, "dimensions", 1, 65536, true) &&
+			(p["user"] == nil || modeString(p, "user", 1, maxIdentifierBytes))
 	case ModeAudioSpeech:
 		valid = modeString(p, "input", 1, 4096) && modeString(p, "voice", 1, 100) && modeEnum(p, "response_format", "mp3", "opus", "aac", "flac", "wav", "pcm") && modeNumber(p, "speed", 0.25, 4, false)
 		var voice string
@@ -277,6 +292,48 @@ func normalizedTranscription(r *http.Request) ([]byte, string, string, error) {
 		return nil, "", "", bad
 	}
 	return buf.Bytes(), fields["model"], mw.FormDataContentType(), nil
+}
+
+// validEmbeddingInput accepts a string, strings, token ids or token-id arrays
+// (LangChain sends token arrays by default).
+func validEmbeddingInput(raw json.RawMessage) bool {
+	if _, ok := jsonString(raw, 1, 1<<30); ok {
+		return true
+	}
+	items, ok := jsonArray(raw, 1, maxEmbeddingInputs)
+	if !ok {
+		return false
+	}
+	tokens := func(list []json.RawMessage) bool {
+		if len(list) < 1 || len(list) > maxEmbeddingTokens {
+			return false
+		}
+		for _, t := range list {
+			if !tokenIDPattern.MatchString(string(bytes.TrimSpace(t))) {
+				return false
+			}
+		}
+		return true
+	}
+	first := bytes.TrimSpace(items[0])
+	switch {
+	case len(first) > 0 && first[0] == '"':
+		for _, item := range items {
+			if _, ok := jsonString(item, 1, 1<<30); !ok {
+				return false
+			}
+		}
+		return true
+	case len(first) > 0 && first[0] == '[':
+		for _, item := range items {
+			list, ok := jsonArray(item, 1, maxEmbeddingTokens)
+			if !ok || !tokens(list) {
+				return false
+			}
+		}
+		return true
+	}
+	return tokens(items)
 }
 
 func modeResponseAllowed(mode ModelMode, ct string) bool {

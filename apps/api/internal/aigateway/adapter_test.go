@@ -84,7 +84,7 @@ func TestSlowUploadAndDownloadStopAtDeadline(t *testing.T) {
 			}))
 			defer up.Close()
 			a, _ := NewAdapter(up.URL, fixture)
-			a.requestTimeout = 150 * time.Millisecond
+			a.limits.BodyReadTimeout, a.limits.RequestTimeout, a.limits.StreamTimeout = 150*time.Millisecond, 150*time.Millisecond, 150*time.Millisecond
 			done := make(chan struct{})
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { defer close(done); a.ServeHTTP(w, r) }))
 			defer server.Close()
@@ -138,7 +138,7 @@ func TestDeniedRequestsNeverArrive(t *testing.T) {
 		{"query injection", "/v1/chat/completions?api_key=evil", "fixture-agent-a", `{"model":"openrouter/allowed","messages":[{"role":"user","content":"OK"}]}`, 400},
 		{"duplicate model", "/v1/chat/completions", "fixture-agent-a", `{"model":"openrouter/allowed","model":"openrouter/denied"}`, 400},
 		{"invalid json", "/v1/chat/completions", "fixture-agent-a", `{`, 400},
-		{"oversized", "/v1/chat/completions", "fixture-agent-a", strings.Repeat("x", MaxBodyBytes+1), 413},
+		{"oversized", "/v1/chat/completions", "fixture-agent-a", strings.Repeat("x", int(DefaultAdapterLimits().MaxRequestBytes)+1), 413},
 		{"provider override", "/v1/chat/completions", "fixture-agent-a", `{"model":"openrouter/allowed","fallbacks":["openrouter/denied"]}`, 400},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -311,7 +311,7 @@ func TestActiveGrantExpiryStopsStream(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			a.requestTimeout = 5 * time.Second
+			a.limits.StreamTimeout = 5 * time.Second
 			done := make(chan struct{})
 			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				defer close(done)
@@ -426,7 +426,7 @@ func TestAdapterOutputBoundsOnWire(t *testing.T) {
 		field  string
 		want   int
 		status int
-	}{{`,"max_completion_tokens":256`, 256, 200}, {`,"max_completion_tokens":4097`, 0, 400}, {`,"max_completion_tokens":0`, 0, 400}, {`,"max_completion_tokens":null`, 0, 400}, {`,"max_completion_tokens":1.5`, 0, 400}, {`,"max_completion_tokens":256,"max_tokens":256`, 0, 400}, {"", 1024, 200}, {`,"max_tokens":1`, 1, 200}, {`,"max_tokens":4096`, 4096, 200}, {`,"max_tokens":4097`, 0, 400}, {`,"max_tokens":0`, 0, 400}, {`,"max_tokens":-1`, 0, 400}, {`,"max_tokens":null`, 0, 400}, {`,"max_tokens":1.5`, 0, 400}, {`,"max_tokens":"1024"`, 0, 400}} {
+	}{{`,"max_completion_tokens":256`, 256, 200}, {`,"max_completion_tokens":6000`, 6000, 200}, {`,"max_completion_tokens":32769`, 0, 400}, {`,"max_completion_tokens":0`, 0, 400}, {`,"max_completion_tokens":null`, 0, 400}, {`,"max_completion_tokens":1.5`, 0, 400}, {`,"max_completion_tokens":256,"max_tokens":256`, 0, 400}, {"", 4096, 200}, {`,"max_tokens":1`, 1, 200}, {`,"max_tokens":4097`, 4097, 200}, {`,"max_tokens":32768`, 32768, 200}, {`,"max_tokens":32769`, 0, 400}, {`,"max_tokens":0`, 0, 400}, {`,"max_tokens":-1`, 0, 400}, {`,"max_tokens":null`, 0, 400}, {`,"max_tokens":1.5`, 0, 400}, {`,"max_tokens":"1024"`, 0, 400}} {
 		before := arrivals.Load()
 		body := `{"model":"openrouter/allowed","messages":[{"role":"user","content":"OK"}]` + tc.field + `}`
 		r, _ := http.NewRequest("POST", server.URL+"/v1/chat/completions", strings.NewReader(body))
@@ -477,6 +477,13 @@ func TestAdapterAdmissionBoundsAndCancellationRecovery(t *testing.T) {
 				return Grant{Tenant: "tenant-a", Agent: token, VirtualKey: "fixture-internal", Expires: time.Now().Add(10 * time.Second)}, nil
 			})
 			if err != nil {
+				t.Fatal(err)
+			}
+			// Smaller limits than the defaults keep the socket count low; the
+			// mechanism is the same.
+			limits := DefaultAdapterLimits()
+			limits.MaxConcurrent, limits.MaxConcurrentPerSubj = 64, 4
+			if err := a.ConfigureLimits(limits); err != nil {
 				t.Fatal(err)
 			}
 			server := httptest.NewServer(a)
@@ -665,15 +672,14 @@ func TestAdapterRejectsUnqualifiedMessagesBeforeAuthorization(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// AI-COMPAT-1 qualified text parts, data-URL images, audio parts, tool
+	// calls, names and the tool/developer roles on the chat route; these shapes
+	// remain refused on both routes.
 	invalid := []string{
 		`[{"role":"user","content":[{"type":"image_url","image_url":{"url":"https://example.invalid/image.png"}}]}]`,
-		`[{"role":"user","content":[{"type":"input_audio","input_audio":{"data":"AA==","format":"wav"}}]}]`,
-		`[{"role":"user","content":[{"type":"text","text":"OK"}]}]`,
 		`[{"role":"user","content":"OK","tool_calls":[]}]`,
-		`[{"role":"user","content":"OK","name":"override"}]`,
+		`[{"role":"user","content":"OK","name":"bad name"}]`,
 		`[{"role":"user","content":"OK","provider":{"key":"override"}}]`,
-		`[{"role":"tool","content":"OK"}]`,
-		`[{"role":"developer","content":"OK"}]`,
 		`[{"role":"function","content":"OK"}]`,
 		`[{"role":"USER","content":"OK"}]`,
 		`[{"role":"user","role":"assistant","content":"OK"}]`,
@@ -681,16 +687,20 @@ func TestAdapterRejectsUnqualifiedMessagesBeforeAuthorization(t *testing.T) {
 		`[{"role":"user","content":null}]`,
 		`[{"role":null,"content":"OK"}]`,
 		`[{"role":"user","content":42}]`,
+		`[{"role":"user","content":[{"type":"text","text":"OK","extra":1}]}]`,
 		`[{"role":"user"}]`, `[{"content":"OK"}]`, `[null]`, `[{}]`, `[]`,
 	}
 	for _, path := range []string{"/v1/chat/completions", "/anthropic/v1/messages"} {
 		cases := append([]string(nil), invalid...)
+		limit := ""
 		if path == "/anthropic/v1/messages" {
-			cases = append(cases, `[{"role":"system","content":"OK"}]`)
+			limit = `,"max_tokens":16`
+			cases = append(cases, `[{"role":"system","content":"OK"}]`, `[{"role":"tool","content":"OK"}]`, `[{"role":"developer","content":"OK"}]`,
+				`[{"role":"user","content":[{"type":"image","source":{"type":"url","url":"https://example.invalid/a.png"}}]}]`)
 		}
 		for i, messages := range cases {
 			t.Run(fmt.Sprintf("%s/%d", path, i), func(t *testing.T) {
-				r := httptest.NewRequest("POST", path, strings.NewReader(`{"model":"openrouter/allowed","messages":`+messages+`}`))
+				r := httptest.NewRequest("POST", path, strings.NewReader(`{"model":"openrouter/allowed","messages":`+messages+limit+`}`))
 				r.Header.Set("Authorization", "Bearer fixture-agent-a")
 				w := newDeadlineRecorder()
 				a.ServeHTTP(w, r)
@@ -706,11 +716,12 @@ func TestAdapterRejectsUnqualifiedMessagesBeforeAuthorization(t *testing.T) {
 }
 
 func TestAdapterQualifiedTextMessages(t *testing.T) {
+	a, _ := NewAdapter("http://127.0.0.1:1", fixture)
 	for _, body := range []string{
 		`{"model":"openrouter/allowed","messages":[{"role":"system","content":"Be concise."},{"role":"user","content":"Hi"},{"role":"assistant","content":"Hello"},{"role":"user","content":""}]}`,
-		`{"model":"openrouter/allowed","system":"Be concise.","messages":[{"role":"user","content":"Reply with OK only."}],"max_tokens":16,"stream":true}`,
+		`{"model":"openrouter/allowed","messages":[{"role":"user","content":"Reply with OK only."}],"max_tokens":16,"stream":true}`,
 	} {
-		if model, err := requestModel([]byte(body)); err != nil || model != "openrouter/allowed" {
+		if _, model, _, err := a.normalizeChat([]byte(body)); err != nil || model != "openrouter/allowed" {
 			t.Fatalf("qualified text refused: %v", err)
 		}
 	}

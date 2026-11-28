@@ -163,7 +163,7 @@ func TestAdapterModesSixRoutesOnWire(t *testing.T) {
 					if json.NewDecoder(r.Body).Decode(&body) != nil {
 						t.Error("invalid upstream JSON")
 					}
-					if tc.mode == ModeCompletion && string(body["max_tokens"]) != "1024" {
+					if tc.mode == ModeCompletion && string(body["max_tokens"]) != "4096" {
 						t.Error("completion default bound missing")
 					}
 					if tc.mode == ModeImageGeneration && string(body["n"]) != "1" {
@@ -196,7 +196,7 @@ func TestAdapterModesRejectControlsBeforeAuthorization(t *testing.T) {
 		path, base string
 		invalid    []string
 	}{
-		{ModeCompletion, "/v1/completions", `"prompt":"hello"`, []string{`"prompt":{"api_key":"secret"}`, `"prompt":"hello","max_tokens":0`, `"prompt":"hello","max_tokens":1.5`, `"prompt":"hello","max_tokens":4097`, `"prompt":"hello","stream":"true"`, `"prompt":"hello","temperature":3`, `"prompt":"hello","prompt max_tokens":1`}},
+		{ModeCompletion, "/v1/completions", `"prompt":"hello"`, []string{`"prompt":{"api_key":"secret"}`, `"prompt":"hello","max_tokens":0`, `"prompt":"hello","max_tokens":1.5`, `"prompt":"hello","max_tokens":32769`, `"prompt":"hello","stream":"true"`, `"prompt":"hello","temperature":3`, `"prompt":"hello","prompt max_tokens":1`}},
 		{ModeEmbedding, "/v1/embeddings", `"input":"hello"`, []string{`"input":[]`, `"input":[{"text":"hello","api_base":"https://evil.invalid"}]`, `"input":"hello","dimensions":0`, `"input":"hello","encoding_format":"url"`}},
 		{ModeAudioSpeech, "/v1/audio/speech", `"input":"hello","voice":"alloy"`, []string{`"input":"hello","voice":{"id":"alloy"}`, `"input":"hello","voice":"../alloy"`, `"input":"hello","voice":"alloy","speed":0`, `"input":"hello","voice":"alloy","response_format":"url"`}},
 		{ModeImageGeneration, "/v1/images/generations", `"prompt":"hello"`, []string{`"prompt":"hello","n":2`, `"prompt":"hello","size":"1x1"`, `"prompt":"hello","quality":null`, `"prompt":"hello","response_format":"binary"`}},
@@ -221,7 +221,7 @@ func TestAdapterModesRejectControlsBeforeAuthorization(t *testing.T) {
 					t.Errorf("case %d status=%d payload=%s", i, status, p)
 				}
 			}
-			status, _, _ := modeWireRequest(t, s, tc.path, "application/json", bytes.Repeat([]byte("x"), MaxBodyBytes+1))
+			status, _, _ := modeWireRequest(t, s, tc.path, "application/json", bytes.Repeat([]byte("x"), int(DefaultAdapterLimits().MaxRequestBytes)+1))
 			if status != 413 {
 				t.Errorf("JSON bound status=%d", status)
 			}
@@ -300,7 +300,7 @@ func TestAdapterModesFiniteResponsesOnWire(t *testing.T) {
 	}{
 		{"invalid_json", ModeEmbedding, "/v1/embeddings", `"input":"hello"`, "application/json", "{", 502},
 		{"empty_json", ModeEmbedding, "/v1/embeddings", `"input":"hello"`, "application/json", "", 502},
-		{"json_limit", ModeEmbedding, "/v1/embeddings", `"input":"hello"`, "application/json", `"` + strings.Repeat("a", 2<<20) + `"`, 502},
+		{"json_limit", ModeEmbedding, "/v1/embeddings", `"input":"hello"`, "application/json", `"` + strings.Repeat("a", int(DefaultAdapterLimits().MaxResponseBytes)) + `"`, 502},
 		{"embedding_sse", ModeEmbedding, "/v1/embeddings", `"input":"hello"`, "text/event-stream", "data: fake\n\n", 502},
 		{"speech_json", ModeAudioSpeech, "/v1/audio/speech", `"input":"hello","voice":"alloy"`, "application/json", `{"url":"https://evil.invalid"}`, 502},
 		{"speech_html", ModeAudioSpeech, "/v1/audio/speech", `"input":"hello","voice":"alloy"`, "text/html", "audio", 502},
@@ -329,12 +329,17 @@ func TestAdapterModesFiniteResponsesOnWire(t *testing.T) {
 }
 
 func TestAdapterModesCompletionStreamBoundOnWire(t *testing.T) {
-	_, s := modeWireServer(t, ModeCompletion, func(w http.ResponseWriter, r *http.Request) {
+	a, s := modeWireServer(t, ModeCompletion, func(w http.ResponseWriter, r *http.Request) {
 		io.Copy(io.Discard, r.Body)
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.(http.Flusher).Flush()
 		io.WriteString(w, strings.Repeat("data: x\n\n", 300000))
 	})
+	limits := DefaultAdapterLimits()
+	limits.MaxStreamBytes = 2 << 20
+	if err := a.ConfigureLimits(limits); err != nil {
+		t.Fatal(err)
+	}
 	req, _ := http.NewRequest(http.MethodPost, s.URL+"/v1/completions", strings.NewReader(`{"model":"openai/fixture-model","prompt":"hello","stream":true}`))
 	req.Header.Set("Authorization", "Bearer fixture-caller")
 	res, err := s.Client().Do(req)
@@ -352,7 +357,7 @@ func TestAdapterModesNonchatLeaseAndAdmission(t *testing.T) {
 	var arrivals atomic.Int32
 	entered := make(chan struct{}, 8)
 	release := make(chan struct{})
-	_, s := modeWireServer(t, ModeEmbedding, func(w http.ResponseWriter, r *http.Request) {
+	a, s := modeWireServer(t, ModeEmbedding, func(w http.ResponseWriter, r *http.Request) {
 		io.Copy(io.Discard, r.Body)
 		arrivals.Add(1)
 		entered <- struct{}{}
@@ -364,6 +369,11 @@ func TestAdapterModesNonchatLeaseAndAdmission(t *testing.T) {
 		w.Header().Set("Content-Type", "application/json")
 		io.WriteString(w, `{"data":[]}`)
 	})
+	limits := DefaultAdapterLimits()
+	limits.MaxConcurrentPerSubj = 4
+	if err := a.ConfigureLimits(limits); err != nil {
+		t.Fatal(err)
+	}
 	statuses := make(chan int, 4)
 	for i := 0; i < 4; i++ {
 		go func() {

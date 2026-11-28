@@ -306,6 +306,13 @@ func (s *Policies) ResolveUserModel(ctx context.Context, org, user uuid.UUID, mo
 // grant whose group has a daily cost limit is usable only while the group's
 // observed spend today is under it; grants of unlimited groups are tried first.
 func (s *Policies) resolveUserModel(ctx context.Context, org, user uuid.UUID, model string, vpnUser func(pgx.Tx) (uuid.UUID, error), cost bool) (Grant, error) {
+	return s.resolveUserGrant(ctx, org, user, model, vpnUser, cost, uuid.Nil)
+}
+
+// resolveUserGrant resolves a user's model grant. pin, when set, restricts the
+// resolution to that grant: lease renewal re-checks the grant the request was
+// admitted with (the same virtual key), without repeating cost admission.
+func (s *Policies) resolveUserGrant(ctx context.Context, org, user uuid.UUID, model string, vpnUser func(pgx.Tx) (uuid.UUID, error), cost bool, pin uuid.UUID) (Grant, error) {
 	if s == nil || s.pool == nil || s.sealer == nil || org == uuid.Nil || (user == uuid.Nil && vpnUser == nil) {
 		return Grant{}, policyDenied()
 	}
@@ -355,6 +362,9 @@ func (s *Policies) resolveUserModel(ctx context.Context, org, user uuid.UUID, mo
 	}
 	var costErr error
 	for _, g := range grants {
+		if pin != uuid.Nil && g.ID != pin {
+			continue
+		}
 		p, err := scanProvider(tx.QueryRow(ctx, `SELECT `+providerColumns+` FROM ai_provider_connections WHERE org_id=$1 AND id=$2 FOR SHARE`, org, g.ConnectionID))
 		if err != nil {
 			continue
@@ -381,7 +391,17 @@ func (s *Policies) resolveUserModel(ctx context.Context, org, user uuid.UUID, mo
 		if g.GroupID != nil {
 			noteRequestGroup(ctx, "user_group", *g.GroupID)
 		}
-		return Grant{Tenant: org.String(), Agent: user.String(), SubjectKind: "user", VirtualKey: value, Mode: g.Mode, Expires: time.Now().Add(30 * time.Second)}, nil
+		// Renewal repeats this resolution (including any VPN peer evidence
+		// check) for the same user, model and grant; there is no bearer or
+		// cost step (cost admission is per request).
+		renewUser, pinned := user, g.ID
+		renew := func(ctx context.Context) (Grant, error) {
+			if vpnUser != nil {
+				return s.resolveUserGrant(ctx, org, uuid.Nil, model, vpnUser, false, pinned)
+			}
+			return s.resolveUserGrant(ctx, org, renewUser, model, nil, false, pinned)
+		}
+		return Grant{Tenant: org.String(), Agent: user.String(), SubjectKind: "user", VirtualKey: value, Mode: g.Mode, Expires: time.Now().Add(30 * time.Second), Renew: renew}, nil
 	}
 	if costErr != nil {
 		return Grant{}, costErr

@@ -142,11 +142,15 @@ func copySSEStripped(dst io.Writer, flush func() error, src io.Reader, limit int
 			}
 		}
 		if err != nil {
-			// End of stream or upstream failure: deliver what was received.
+			// End of stream or upstream failure: deliver what was received,
+			// then report a failure so the caller can abort the connection.
 			if werr := emit(); werr != nil {
 				return werr
 			}
-			return nil
+			if errors.Is(err, io.EOF) {
+				return nil
+			}
+			return err
 		}
 	}
 }
