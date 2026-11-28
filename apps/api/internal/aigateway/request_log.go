@@ -201,8 +201,10 @@ func (a *Adapter) RequestLog() *RequestLog {
 	return nil
 }
 
-// statusWriter records the status code. Unwrap keeps ResponseController
-// (deadlines, flush) working through it, as the adapter requires.
+// statusWriter records the status code only; body writes go straight to the
+// embedded writer, so this wrapper never handles response bytes. A response
+// written without WriteHeader is 200 (status 0 is read as 200 at finish).
+// Unwrap keeps ResponseController (deadlines, flush) working through it.
 type statusWriter struct {
 	http.ResponseWriter
 	status int
@@ -213,12 +215,6 @@ func (w *statusWriter) WriteHeader(code int) {
 		w.status = code
 	}
 	w.ResponseWriter.WriteHeader(code)
-}
-func (w *statusWriter) Write(b []byte) (int, error) {
-	if w.status == 0 {
-		w.status = http.StatusOK
-	}
-	return w.ResponseWriter.Write(b)
 }
 func (w *statusWriter) Unwrap() http.ResponseWriter { return w.ResponseWriter }
 
