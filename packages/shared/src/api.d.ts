@@ -1187,6 +1187,59 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/organizations/{orgId}/ai-gateway/model-prices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Operator model prices, and the price admission uses for each requested model
+         * @description Readable with ai_provider:view or ai_gateway:view.
+         */
+        get: operations["listAIModelPrices"];
+        /**
+         * Set one model's USD per-token price for this organization
+         * @description Requires ai_provider:manage. The price reaches the private engine as an override scoped to this organization's provider keys; admission uses it only once the engine confirms it (status applied). Audited.
+         */
+        put: operations["putAIModelPrice"];
+        post?: never;
+        /**
+         * Remove one model's operator price
+         * @description Requires ai_provider:manage. The bundled price, if any, applies again. Audited.
+         */
+        delete: operations["deleteAIModelPrice"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v1/organizations/{orgId}/ai-gateway/cost-settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        /** Unknown-price policy and request log retention */
+        get: operations["getAICostSettings"];
+        /**
+         * Change the unknown-price policy and request log retention
+         * @description Requires ai_gateway:manage. Audited.
+         */
+        put: operations["putAICostSettings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/organizations/{orgId}/ai-gateway/user-model-grants": {
         parameters: {
             query?: never;
@@ -10223,6 +10276,85 @@ export interface components {
              */
             limit_revision: number;
         };
+        AIModelPrice: {
+            model: string;
+            /**
+             * Format: double
+             * @description USD per input token.
+             */
+            input_cost_per_token: number | null;
+            /**
+             * Format: double
+             * @description USD per output token; null for an embedding model.
+             */
+            output_cost_per_token: number | null;
+            removed: boolean;
+            /** Format: int64 */
+            revision: number;
+            /** Format: int64 */
+            applied_revision: number;
+            /**
+             * @description applied: the private engine confirmed this revision and admission uses it.
+             * @enum {string}
+             */
+            status: "pending" | "applied" | "error";
+            /** Format: date-time */
+            updated_at: string;
+        };
+        AIModelPriceInput: {
+            /** @description Provider-qualified, for example gemini/gemini-3.5-flash. */
+            model: string;
+            /** Format: double */
+            input_cost_per_token: number;
+            /**
+             * Format: double
+             * @description Required except for embedding models.
+             */
+            output_cost_per_token: number | null;
+            /**
+             * Format: int64
+             * @description 0 when the model has never had a price.
+             */
+            expected_revision: number;
+        };
+        AIEffectiveModelPrice: {
+            model: string;
+            /**
+             * @description override: an applied operator price. catalog: the bundled reference price. unknown: no price.
+             * @enum {string}
+             */
+            source: "override" | "catalog" | "unknown";
+            /** Format: double */
+            input_cost_per_token: number | null;
+            /** Format: double */
+            output_cost_per_token: number | null;
+        };
+        AIModelPriceList: {
+            prices: components["schemas"]["AIModelPrice"][];
+            effective: components["schemas"]["AIEffectiveModelPrice"][];
+        };
+        AICostSettings: {
+            /**
+             * @description For subjects with a daily limit. block (default): a model without a price is refused. allow_and_alert: it is admitted, only costed spend counts against the limit, and ai.price_unknown is raised once per subject, model and day.
+             * @enum {string}
+             */
+            unknown_price_policy: "block" | "allow_and_alert";
+            request_log_retention_days: number;
+            /**
+             * Format: int64
+             * @description 0 when never saved.
+             */
+            revision: number;
+            /** Format: date-time */
+            updated_at?: string | null;
+        };
+        AICostSettingsInput: {
+            /** @enum {string} */
+            unknown_price_policy: "block" | "allow_and_alert";
+            request_log_retention_days: number;
+            /** Format: int64 */
+            expected_revision: number;
+        };
         AIUserGroupCostLimitInput: {
             /**
              * Format: double
@@ -11103,7 +11235,7 @@ export interface components {
         /** @enum {string} */
         AlertSeverity: "info" | "warning" | "critical";
         /** @enum {string} */
-        AlertEventKey: "agent.offline" | "agent.denial_spike" | "agent.access_expiring" | "agent.rotation_failed" | "agent.configuration_drift" | "gateway.offline" | "gateway.policy_degraded" | "site.link_down" | "ipsec.tunnel_down" | "ipsec.connection_down" | "ipsec.status_unavailable" | "device.offline" | "device.posture_blocked" | "kubernetes.connector_degraded" | "kubernetes.inventory_stale" | "kubernetes.service_unavailable" | "agent.mcp_approval_pending" | "ai_workload.static_key_expiring";
+        AlertEventKey: "agent.offline" | "agent.denial_spike" | "agent.access_expiring" | "agent.rotation_failed" | "agent.configuration_drift" | "gateway.offline" | "gateway.policy_degraded" | "site.link_down" | "ipsec.tunnel_down" | "ipsec.connection_down" | "ipsec.status_unavailable" | "device.offline" | "device.posture_blocked" | "kubernetes.connector_degraded" | "kubernetes.inventory_stale" | "kubernetes.service_unavailable" | "agent.mcp_approval_pending" | "ai_workload.static_key_expiring" | "ai.budget_threshold" | "ai.price_unknown";
         /** @enum {string} */
         AlertOccurrenceState: "firing" | "resolved";
         /** @enum {string} */
@@ -17414,6 +17546,135 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AIUserGroup"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listAIModelPrices: {
+        parameters: {
+            query?: {
+                /** @description Provider-qualified models whose effective price to return. */
+                model?: string[];
+            };
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Saved prices (removed ones omitted) and effective prices with their source. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AIModelPriceList"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    putAIModelPrice: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AIModelPriceInput"];
+            };
+        };
+        responses: {
+            /** @description The saved price. A stale expected_revision is refused with 409. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AIModelPrice"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    deleteAIModelPrice: {
+        parameters: {
+            query: {
+                model: string;
+                expected_revision: number;
+            };
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The removed price (removed true). A stale expected_revision is refused with 409. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AIModelPrice"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    getAICostSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The organization's settings; defaults when never saved (revision 0). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AICostSettings"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    putAICostSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AICostSettingsInput"];
+            };
+        };
+        responses: {
+            /** @description The saved settings. A stale expected_revision is refused with 409. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AICostSettings"];
                 };
             };
             default: components["responses"]["Error"];

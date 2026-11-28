@@ -343,3 +343,7 @@ body:has(.ai-workspace) .tnx-modal-body .ai-connection-details{padding:0;border:
 .ai-provider-access-toggle .ai-provider-enabled{align-items:center}
 .ai-provider-access-toggle .ai-provider-enabled input{margin-top:0}
 .ai-provider-access-toggle .ai-help{margin-left:2px}
+/* AI-READY-1: model price column. */
+.ai-provider-workspace .ai-price-cell { display:inline-flex; flex-direction:column; gap:2px; font-variant-numeric:tabular-nums; }
+.ai-provider-workspace .ai-price-cell small { font-size:12px; color:var(--tnx-text-secondary); }
+.ai-provider-workspace .ai-gateway-muted { color:var(--tnx-text-secondary); }

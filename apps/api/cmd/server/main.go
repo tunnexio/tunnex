@@ -518,6 +518,7 @@ func main() {
 			os.Exit(1)
 		}
 		aiPolicies = aigateway.NewPolicies(pool, sealer, engine)
+		aiPolicies.SetAlertPublisher(alertPublisher)
 		if err := aiPolicies.ConfigureVPNIngress(cfg.AIVPNHostname, cfg.AIVPNNodeID, cfg.AIVPNAddress); err != nil {
 			logger.Error("invalid VPN AI ingress configuration")
 			os.Exit(1)
@@ -913,6 +914,30 @@ func main() {
 						}
 						workloadCancel()
 					}
+				}
+			}
+		}()
+	}
+
+	// AI-READY-1: leader-only, bounded AI cost maintenance every five minutes:
+	// operator model prices converge on the engine.
+	if aiPolicies != nil {
+		go func() {
+			ticker := time.NewTicker(5 * time.Minute)
+			defer ticker.Stop()
+			for {
+				select {
+				case <-electorCtx.Done():
+					return
+				case <-ticker.C:
+					if !elector.IsLeader() || !elector.ConfirmLeader(electorCtx, pool) {
+						continue
+					}
+					workCtx, cancel := context.WithTimeout(electorCtx, 2*time.Minute)
+					if _, err := aiPolicies.ReconcileAllModelPrices(workCtx, 50); err != nil {
+						logger.Warn("ai_model_price_reconcile_incomplete")
+					}
+					cancel()
 				}
 			}
 		}()

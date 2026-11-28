@@ -196,14 +196,27 @@ func (p *Policies) enforceCost(ctx context.Context, tx pgx.Tx, org, team uuid.UU
 	return p.enforceCostMode(ctx, tx, org, team, model, ModeChat, limit)
 }
 func (p *Policies) enforceCostMode(ctx context.Context, tx pgx.Tx, org, team uuid.UUID, model string, mode ModelMode, limit *float64) error {
-	return p.enforceCostBindings(ctx, tx, org, model, mode, limit, func() ([]string, error) {
+	return p.enforceCostFor(ctx, tx, org, costSubject{Kind: "agent_group", ID: team}, model, mode, limit, func() ([]string, error) {
 		if team == uuid.Nil {
 			return nil, aiUnavailable()
 		}
 		return bindingUsageIDs(ctx, tx, org, &team, nil)
 	})
 }
+
+// enforceCostBindings keeps its signature for callers without a named subject;
+// an unknown-price alert then cannot name one and is not raised.
 func (p *Policies) enforceCostBindings(ctx context.Context, tx pgx.Tx, org uuid.UUID, model string, mode ModelMode, limit *float64, bindings func() ([]string, error)) error {
+	return p.enforceCostFor(ctx, tx, org, costSubject{}, model, mode, limit, bindings)
+}
+
+// enforceCostFor applies a daily limit. The price is an engine-confirmed
+// operator price, else the bundled exact price. Without one, the
+// organization's unknown-price policy decides: Block (default) refuses with
+// ai_price_unavailable and fails closed on uncosted observed usage; Allow and
+// alert admits, compares only the costed spend with the limit, and raises
+// ai.price_unknown once per subject, model and UTC day.
+func (p *Policies) enforceCostFor(ctx context.Context, tx pgx.Tx, org uuid.UUID, subject costSubject, model string, mode ModelMode, limit *float64, bindings func() ([]string, error)) error {
 	if limit == nil {
 		return nil
 	}
@@ -217,16 +230,24 @@ func (p *Policies) enforceCostBindings(ctx context.Context, tx pgx.Tx, org uuid.
 	if !valid {
 		return apierr.Forbidden("ai_price_unavailable", "exact model pricing is required for this policy")
 	}
-	if mode != ModeChat && mode != ModeCompletion && mode != ModeEmbedding {
-		return apierr.Forbidden("ai_price_unavailable", "mode-specific pricing is required for this policy")
-	}
-	price, err := p.engine.Price(ctx, provider, nativeModel)
+	allowUnknown, err := unknownPriceAllowed(ctx, tx, org)
 	if err != nil {
 		return aiUnavailable()
 	}
-	inputReady := price.InputCostPerToken != nil && validEngineCost(*price.InputCostPerToken)
-	outputReady := price.OutputCostPerToken != nil && validEngineCost(*price.OutputCostPerToken)
-	if !inputReady || (mode != ModeEmbedding && (!price.Known || !outputReady)) {
+	priced := false
+	if mode == ModeChat || mode == ModeCompletion || mode == ModeEmbedding {
+		price, err := p.admissionPrice(ctx, tx, org, provider, nativeModel)
+		if err != nil {
+			return aiUnavailable()
+		}
+		inputReady := price.InputCostPerToken != nil && validEngineCost(*price.InputCostPerToken)
+		outputReady := price.OutputCostPerToken != nil && validEngineCost(*price.OutputCostPerToken)
+		priced = inputReady && (mode == ModeEmbedding || (price.Known && outputReady))
+	}
+	if !priced && !allowUnknown {
+		if mode != ModeChat && mode != ModeCompletion && mode != ModeEmbedding {
+			return apierr.Forbidden("ai_price_unavailable", "mode-specific pricing is required for this policy")
+		}
 		return apierr.Forbidden("ai_price_unavailable", "exact model pricing is required for this policy")
 	}
 	ids, err := bindings()
@@ -241,11 +262,14 @@ func (p *Policies) enforceCostBindings(ctx context.Context, tx pgx.Tx, org uuid.
 	now := time.Now().UTC()
 	day := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
 	observed, err := engineUsageBatched(ctx, p.engine, ids, day, now)
-	if err != nil || !validObservedUsage(observed) || observed.UncostedRequests > 0 {
+	if err != nil || !validObservedUsage(observed) || (observed.UncostedRequests > 0 && !allowUnknown) {
 		return aiUnavailable()
 	}
 	if observed.TotalCost >= *limit {
 		return apierr.Forbidden("ai_daily_threshold_reached", "AI daily soft usage threshold reached")
+	}
+	if !priced {
+		p.notifyUnknownPrice(org, subject, model)
 	}
 	return nil
 }

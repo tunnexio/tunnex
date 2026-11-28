@@ -1240,6 +1240,75 @@ paths:
           description: The group with its saved limit. A stale expected_revision is refused with 409.
           content: { application/json: { schema: { $ref: '#/components/schemas/AIUserGroup' } } }
         default: { $ref: '#/components/responses/Error' }
+  /api/v1/organizations/{orgId}/ai-gateway/model-prices:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: listAIModelPrices
+      tags: [ai-gateway]
+      summary: Operator model prices, and the price admission uses for each requested model
+      description: Readable with ai_provider:view or ai_gateway:view.
+      parameters:
+        - { name: model, in: query, required: false, style: form, explode: true, schema: { type: array, maxItems: 200, items: { type: string, maxLength: 511 } }, description: Provider-qualified models whose effective price to return. }
+      responses:
+        '200':
+          description: Saved prices (removed ones omitted) and effective prices with their source.
+          content: { application/json: { schema: { $ref: '#/components/schemas/AIModelPriceList' } } }
+        default: { $ref: '#/components/responses/Error' }
+    put:
+      operationId: putAIModelPrice
+      tags: [ai-gateway]
+      summary: Set one model's USD per-token price for this organization
+      description: >-
+        Requires ai_provider:manage. The price reaches the private engine as an override scoped to this
+        organization's provider keys; admission uses it only once the engine confirms it (status applied).
+        Audited.
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/AIModelPriceInput' } } }
+      responses:
+        '200':
+          description: The saved price. A stale expected_revision is refused with 409.
+          content: { application/json: { schema: { $ref: '#/components/schemas/AIModelPrice' } } }
+        default: { $ref: '#/components/responses/Error' }
+    delete:
+      operationId: deleteAIModelPrice
+      tags: [ai-gateway]
+      summary: Remove one model's operator price
+      description: Requires ai_provider:manage. The bundled price, if any, applies again. Audited.
+      parameters:
+        - { name: model, in: query, required: true, schema: { type: string, maxLength: 511 } }
+        - { name: expected_revision, in: query, required: true, schema: { type: integer, format: int64, minimum: 1 } }
+      responses:
+        '200':
+          description: The removed price (removed true). A stale expected_revision is refused with 409.
+          content: { application/json: { schema: { $ref: '#/components/schemas/AIModelPrice' } } }
+        default: { $ref: '#/components/responses/Error' }
+  /api/v1/organizations/{orgId}/ai-gateway/cost-settings:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: getAICostSettings
+      tags: [ai-gateway]
+      summary: Unknown-price policy and request log retention
+      responses:
+        '200':
+          description: The organization's settings; defaults when never saved (revision 0).
+          content: { application/json: { schema: { $ref: '#/components/schemas/AICostSettings' } } }
+        default: { $ref: '#/components/responses/Error' }
+    put:
+      operationId: putAICostSettings
+      tags: [ai-gateway]
+      summary: Change the unknown-price policy and request log retention
+      description: Requires ai_gateway:manage. Audited.
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/AICostSettingsInput' } } }
+      responses:
+        '200':
+          description: The saved settings. A stale expected_revision is refused with 409.
+          content: { application/json: { schema: { $ref: '#/components/schemas/AICostSettings' } } }
+        default: { $ref: '#/components/responses/Error' }
   /api/v1/organizations/{orgId}/ai-gateway/user-model-grants:
     parameters:
       - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
@@ -11900,6 +11969,61 @@ components:
         members: { type: integer, minimum: 0 }
         daily_usd_threshold: { type: number, format: double, nullable: true, description: "Daily USD soft threshold shared by all members across the group's model grants, based on native observed usage since midnight UTC. Concurrent calls can exceed it. Null means no limit." }
         limit_revision: { type: integer, format: int64, minimum: 0, description: "Revision of the limit; 0 when it was never set." }
+    AIModelPrice:
+      type: object
+      additionalProperties: false
+      required: [model, input_cost_per_token, output_cost_per_token, removed, revision, applied_revision, status, updated_at]
+      properties:
+        model: { type: string }
+        input_cost_per_token: { type: number, format: double, nullable: true, description: USD per input token. }
+        output_cost_per_token: { type: number, format: double, nullable: true, description: USD per output token; null for an embedding model. }
+        removed: { type: boolean }
+        revision: { type: integer, format: int64 }
+        applied_revision: { type: integer, format: int64 }
+        status: { type: string, enum: [pending, applied, error], description: "applied: the private engine confirmed this revision and admission uses it." }
+        updated_at: { type: string, format: date-time }
+    AIModelPriceInput:
+      type: object
+      additionalProperties: false
+      required: [model, input_cost_per_token, output_cost_per_token, expected_revision]
+      properties:
+        model: { type: string, maxLength: 511, description: "Provider-qualified, for example gemini/gemini-3.5-flash." }
+        input_cost_per_token: { type: number, format: double, minimum: 0, maximum: 0.01 }
+        output_cost_per_token: { type: number, format: double, nullable: true, minimum: 0, maximum: 0.01, description: Required except for embedding models. }
+        expected_revision: { type: integer, format: int64, minimum: 0, description: 0 when the model has never had a price. }
+    AIEffectiveModelPrice:
+      type: object
+      additionalProperties: false
+      required: [model, source, input_cost_per_token, output_cost_per_token]
+      properties:
+        model: { type: string }
+        source: { type: string, enum: [override, catalog, unknown], description: "override: an applied operator price. catalog: the bundled reference price. unknown: no price." }
+        input_cost_per_token: { type: number, format: double, nullable: true }
+        output_cost_per_token: { type: number, format: double, nullable: true }
+    AIModelPriceList:
+      type: object
+      additionalProperties: false
+      required: [prices, effective]
+      properties:
+        prices: { type: array, items: { $ref: '#/components/schemas/AIModelPrice' } }
+        effective: { type: array, items: { $ref: '#/components/schemas/AIEffectiveModelPrice' } }
+    AICostSettings:
+      type: object
+      additionalProperties: false
+      required: [unknown_price_policy, request_log_retention_days, revision]
+      properties:
+        unknown_price_policy: { type: string, enum: [block, allow_and_alert], description: "For subjects with a daily limit. block (default): a model without a price is refused. allow_and_alert: it is admitted, only costed spend counts against the limit, and ai.price_unknown is raised once per subject, model and day." }
+        request_log_retention_days: { type: integer, minimum: 1, maximum: 365 }
+        revision: { type: integer, format: int64, minimum: 0, description: 0 when never saved. }
+        updated_at: { type: string, format: date-time, nullable: true }
+    AICostSettingsInput:
+      type: object
+      additionalProperties: false
+      required: [unknown_price_policy, request_log_retention_days, expected_revision]
+      properties:
+        unknown_price_policy: { type: string, enum: [block, allow_and_alert] }
+        request_log_retention_days: { type: integer, minimum: 1, maximum: 365 }
+        expected_revision: { type: integer, format: int64, minimum: 0 }
     AIUserGroupCostLimitInput:
       type: object
       additionalProperties: false
@@ -12885,7 +13009,7 @@ components:
       enum: [info, warning, critical]
     AlertEventKey:
       type: string
-      enum: [agent.offline, agent.denial_spike, agent.access_expiring, agent.rotation_failed, agent.configuration_drift, gateway.offline, gateway.policy_degraded, site.link_down, ipsec.tunnel_down, ipsec.connection_down, ipsec.status_unavailable, device.offline, device.posture_blocked, kubernetes.connector_degraded, kubernetes.inventory_stale, kubernetes.service_unavailable, agent.mcp_approval_pending, ai_workload.static_key_expiring]
+      enum: [agent.offline, agent.denial_spike, agent.access_expiring, agent.rotation_failed, agent.configuration_drift, gateway.offline, gateway.policy_degraded, site.link_down, ipsec.tunnel_down, ipsec.connection_down, ipsec.status_unavailable, device.offline, device.posture_blocked, kubernetes.connector_degraded, kubernetes.inventory_stale, kubernetes.service_unavailable, agent.mcp_approval_pending, ai_workload.static_key_expiring, ai.budget_threshold, ai.price_unknown]
 
     AlertOccurrenceState:
       type: string

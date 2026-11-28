@@ -63,6 +63,8 @@ var walkBodies = map[string]string{
 	"setipsecsettings":              `{"enabled":false,"expected_revision":0}`,
 	"putaiusermodelgrant":           `{"group_id":"00000000-0000-4000-8000-000000000001","connection_id":"00000000-0000-4000-8000-000000000002","model":"openrouter/test","enabled":true,"expected_revision":0}`,
 	"putaiusergroupcostlimit":       `{"daily_usd_threshold":5,"expected_revision":0}`,
+	"putaimodelprice":               `{"model":"openrouter/walk","input_cost_per_token":0.0000001,"output_cost_per_token":0.0000002,"expected_revision":0}`,
+	"putaicostsettings":             `{"unknown_price_policy":"block","request_log_retention_days":30,"expected_revision":0}`,
 	"savessoconnection":             `{"name":"Walk","provider":"okta","issuer_url":"https://company.okta.com","client_id":"walk"}`,
 	"activatessoconnection":         `{"enabled":false,"revision":1}`,
 	"testssoconnection":             `{"link_account":false}`,
@@ -231,6 +233,7 @@ var walkBodies = map[string]string{
 // structurally valid so this walk measures authentication rather than the
 // generated parameter validator. Keep values inert and non-secret.
 var walkQueries = map[string]string{
+	"deleteaimodelprice":                      "?model=openrouter/walk&expected_revision=1",
 	"deletecustomsandboxskill":                "?generation=1",
 	"listappaccessgrantsubjects":              "?kind=user",
 	"archiveappaccessapplication":             "?expected_version=1",

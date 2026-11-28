@@ -33,9 +33,28 @@ const (
 	AIAssignmentStatusPending  AIAssignmentStatus = "pending"
 )
 
+// Defines values for AICostSettingsUnknownPricePolicy.
+const (
+	AICostSettingsUnknownPricePolicyAllowAndAlert AICostSettingsUnknownPricePolicy = "allow_and_alert"
+	AICostSettingsUnknownPricePolicyBlock         AICostSettingsUnknownPricePolicy = "block"
+)
+
+// Defines values for AICostSettingsInputUnknownPricePolicy.
+const (
+	AICostSettingsInputUnknownPricePolicyAllowAndAlert AICostSettingsInputUnknownPricePolicy = "allow_and_alert"
+	AICostSettingsInputUnknownPricePolicyBlock         AICostSettingsInputUnknownPricePolicy = "block"
+)
+
 // Defines values for AICredentialAudience.
 const (
 	TunnexAi AICredentialAudience = "tunnex-ai"
+)
+
+// Defines values for AIEffectiveModelPriceSource.
+const (
+	AIEffectiveModelPriceSourceCatalog  AIEffectiveModelPriceSource = "catalog"
+	AIEffectiveModelPriceSourceOverride AIEffectiveModelPriceSource = "override"
+	AIEffectiveModelPriceSourceUnknown  AIEffectiveModelPriceSource = "unknown"
 )
 
 // Defines values for AIEmbeddingRequestEncodingFormat.
@@ -122,6 +141,13 @@ const (
 	ImageGeneration    AIModelMode = "image_generation"
 	Rerank             AIModelMode = "rerank"
 	VideoGeneration    AIModelMode = "video_generation"
+)
+
+// Defines values for AIModelPriceStatus.
+const (
+	AIModelPriceStatusApplied AIModelPriceStatus = "applied"
+	AIModelPriceStatusError   AIModelPriceStatus = "error"
+	AIModelPriceStatusPending AIModelPriceStatus = "pending"
 )
 
 // Defines values for AIProviderCatalogRequestProvider.
@@ -733,6 +759,8 @@ const (
 	AlertEventKeyAgentMcpApprovalPending      AlertEventKey = "agent.mcp_approval_pending"
 	AlertEventKeyAgentOffline                 AlertEventKey = "agent.offline"
 	AlertEventKeyAgentRotationFailed          AlertEventKey = "agent.rotation_failed"
+	AlertEventKeyAiBudgetThreshold            AlertEventKey = "ai.budget_threshold"
+	AlertEventKeyAiPriceUnknown               AlertEventKey = "ai.price_unknown"
 	AlertEventKeyAiWorkloadStaticKeyExpiring  AlertEventKey = "ai_workload.static_key_expiring"
 	AlertEventKeyDeviceOffline                AlertEventKey = "device.offline"
 	AlertEventKeyDevicePostureBlocked         AlertEventKey = "device.posture_blocked"
@@ -2653,6 +2681,31 @@ type AICompletionRequest struct {
 	Temperature *float32 `json:"temperature,omitempty"`
 }
 
+// AICostSettings defines model for AICostSettings.
+type AICostSettings struct {
+	RequestLogRetentionDays int `json:"request_log_retention_days"`
+
+	// Revision 0 when never saved.
+	Revision int64 `json:"revision"`
+
+	// UnknownPricePolicy For subjects with a daily limit. block (default): a model without a price is refused. allow_and_alert: it is admitted, only costed spend counts against the limit, and ai.price_unknown is raised once per subject, model and day.
+	UnknownPricePolicy AICostSettingsUnknownPricePolicy `json:"unknown_price_policy"`
+	UpdatedAt          *time.Time                       `json:"updated_at"`
+}
+
+// AICostSettingsUnknownPricePolicy For subjects with a daily limit. block (default): a model without a price is refused. allow_and_alert: it is admitted, only costed spend counts against the limit, and ai.price_unknown is raised once per subject, model and day.
+type AICostSettingsUnknownPricePolicy string
+
+// AICostSettingsInput defines model for AICostSettingsInput.
+type AICostSettingsInput struct {
+	ExpectedRevision        int64                                 `json:"expected_revision"`
+	RequestLogRetentionDays int                                   `json:"request_log_retention_days"`
+	UnknownPricePolicy      AICostSettingsInputUnknownPricePolicy `json:"unknown_price_policy"`
+}
+
+// AICostSettingsInputUnknownPricePolicy defines model for AICostSettingsInput.UnknownPricePolicy.
+type AICostSettingsInputUnknownPricePolicy string
+
 // AICredential defines model for AICredential.
 type AICredential struct {
 	Audience  AICredentialAudience `json:"audience"`
@@ -2671,6 +2724,19 @@ type AICustomEndpoint struct {
 	Name string `json:"name"`
 	Url  string `json:"url"`
 }
+
+// AIEffectiveModelPrice defines model for AIEffectiveModelPrice.
+type AIEffectiveModelPrice struct {
+	InputCostPerToken  *float64 `json:"input_cost_per_token"`
+	Model              string   `json:"model"`
+	OutputCostPerToken *float64 `json:"output_cost_per_token"`
+
+	// Source override: an applied operator price. catalog: the bundled reference price. unknown: no price.
+	Source AIEffectiveModelPriceSource `json:"source"`
+}
+
+// AIEffectiveModelPriceSource override: an applied operator price. catalog: the bundled reference price. unknown: no price.
+type AIEffectiveModelPriceSource string
 
 // AIEmbeddingRequest defines model for AIEmbeddingRequest.
 type AIEmbeddingRequest struct {
@@ -2864,6 +2930,46 @@ type AIModelModes map[string]AIModelMode
 
 // AIModelNames defines model for AIModelNames.
 type AIModelNames = []string
+
+// AIModelPrice defines model for AIModelPrice.
+type AIModelPrice struct {
+	AppliedRevision int64 `json:"applied_revision"`
+
+	// InputCostPerToken USD per input token.
+	InputCostPerToken *float64 `json:"input_cost_per_token"`
+	Model             string   `json:"model"`
+
+	// OutputCostPerToken USD per output token; null for an embedding model.
+	OutputCostPerToken *float64 `json:"output_cost_per_token"`
+	Removed            bool     `json:"removed"`
+	Revision           int64    `json:"revision"`
+
+	// Status applied: the private engine confirmed this revision and admission uses it.
+	Status    AIModelPriceStatus `json:"status"`
+	UpdatedAt time.Time          `json:"updated_at"`
+}
+
+// AIModelPriceStatus applied: the private engine confirmed this revision and admission uses it.
+type AIModelPriceStatus string
+
+// AIModelPriceInput defines model for AIModelPriceInput.
+type AIModelPriceInput struct {
+	// ExpectedRevision 0 when the model has never had a price.
+	ExpectedRevision  int64   `json:"expected_revision"`
+	InputCostPerToken float64 `json:"input_cost_per_token"`
+
+	// Model Provider-qualified, for example gemini/gemini-3.5-flash.
+	Model string `json:"model"`
+
+	// OutputCostPerToken Required except for embedding models.
+	OutputCostPerToken *float64 `json:"output_cost_per_token"`
+}
+
+// AIModelPriceList defines model for AIModelPriceList.
+type AIModelPriceList struct {
+	Effective []AIEffectiveModelPrice `json:"effective"`
+	Prices    []AIModelPrice          `json:"prices"`
+}
 
 // AIProviderCatalogRequest defines model for AIProviderCatalogRequest.
 type AIProviderCatalogRequest struct {
@@ -10451,6 +10557,18 @@ type AiUserVideoGenerationParams struct {
 	IdempotencyKey string `json:"Idempotency-Key"`
 }
 
+// DeleteAIModelPriceParams defines parameters for DeleteAIModelPrice.
+type DeleteAIModelPriceParams struct {
+	Model            string `form:"model" json:"model"`
+	ExpectedRevision int64  `form:"expected_revision" json:"expected_revision"`
+}
+
+// ListAIModelPricesParams defines parameters for ListAIModelPrices.
+type ListAIModelPricesParams struct {
+	// Model Provider-qualified models whose effective price to return.
+	Model *[]string `form:"model,omitempty" json:"model,omitempty"`
+}
+
 // ListAIProviderModelsParams defines parameters for ListAIProviderModels.
 type ListAIProviderModelsParams struct {
 	Mode *AIModelMode `form:"mode,omitempty" json:"mode,omitempty"`
@@ -11057,6 +11175,9 @@ type SetAIGatewaySettingsJSONRequestBody = AIGatewayOptIn
 // PutAIAssignmentJSONRequestBody defines body for PutAIAssignment for application/json ContentType.
 type PutAIAssignmentJSONRequestBody = AIAssignmentWrite
 
+// PutAICostSettingsJSONRequestBody defines body for PutAICostSettings for application/json ContentType.
+type PutAICostSettingsJSONRequestBody = AICostSettingsInput
+
 // AiUserAnthropicMessageJSONRequestBody defines body for AiUserAnthropicMessage for application/json ContentType.
 type AiUserAnthropicMessageJSONRequestBody = AIInferenceRequest
 
@@ -11086,6 +11207,9 @@ type AiUserVideoGenerationJSONRequestBody = AIVideoRequest
 
 // PutAIInternalEndpointJSONRequestBody defines body for PutAIInternalEndpoint for application/json ContentType.
 type PutAIInternalEndpointJSONRequestBody = AIInternalEndpointInput
+
+// PutAIModelPriceJSONRequestBody defines body for PutAIModelPrice for application/json ContentType.
+type PutAIModelPriceJSONRequestBody = AIModelPriceInput
 
 // CreateAIProviderJSONRequestBody defines body for CreateAIProvider for application/json ContentType.
 type CreateAIProviderJSONRequestBody = AIProviderCreate
@@ -12345,6 +12469,14 @@ type ClientInterface interface {
 	// ReconcileAIAssignment request
 	ReconcileAIAssignment(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// GetAICostSettings request
+	GetAICostSettings(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PutAICostSettingsWithBody request with any body
+	PutAICostSettingsWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	PutAICostSettings(ctx context.Context, orgId openapi_types.UUID, body PutAICostSettingsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// AiUserAnthropicMessageWithBody request with any body
 	AiUserAnthropicMessageWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -12407,6 +12539,17 @@ type ClientInterface interface {
 	PutAIInternalEndpointWithBody(ctx context.Context, orgId openapi_types.UUID, nodeId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	PutAIInternalEndpoint(ctx context.Context, orgId openapi_types.UUID, nodeId openapi_types.UUID, body PutAIInternalEndpointJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DeleteAIModelPrice request
+	DeleteAIModelPrice(ctx context.Context, orgId openapi_types.UUID, params *DeleteAIModelPriceParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListAIModelPrices request
+	ListAIModelPrices(ctx context.Context, orgId openapi_types.UUID, params *ListAIModelPricesParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PutAIModelPriceWithBody request with any body
+	PutAIModelPriceWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	PutAIModelPrice(ctx context.Context, orgId openapi_types.UUID, body PutAIModelPriceJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListAIProviderModels request
 	ListAIProviderModels(ctx context.Context, orgId openapi_types.UUID, params *ListAIProviderModelsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -16616,6 +16759,42 @@ func (c *Client) ReconcileAIAssignment(ctx context.Context, orgId openapi_types.
 	return c.Client.Do(req)
 }
 
+func (c *Client) GetAICostSettings(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetAICostSettingsRequest(c.Server, orgId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) PutAICostSettingsWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPutAICostSettingsRequestWithBody(c.Server, orgId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) PutAICostSettings(ctx context.Context, orgId openapi_types.UUID, body PutAICostSettingsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPutAICostSettingsRequest(c.Server, orgId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 func (c *Client) AiUserAnthropicMessageWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewAiUserAnthropicMessageRequestWithBody(c.Server, orgId, contentType, body)
 	if err != nil {
@@ -16894,6 +17073,54 @@ func (c *Client) PutAIInternalEndpointWithBody(ctx context.Context, orgId openap
 
 func (c *Client) PutAIInternalEndpoint(ctx context.Context, orgId openapi_types.UUID, nodeId openapi_types.UUID, body PutAIInternalEndpointJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewPutAIInternalEndpointRequest(c.Server, orgId, nodeId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) DeleteAIModelPrice(ctx context.Context, orgId openapi_types.UUID, params *DeleteAIModelPriceParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteAIModelPriceRequest(c.Server, orgId, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ListAIModelPrices(ctx context.Context, orgId openapi_types.UUID, params *ListAIModelPricesParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListAIModelPricesRequest(c.Server, orgId, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) PutAIModelPriceWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPutAIModelPriceRequestWithBody(c.Server, orgId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) PutAIModelPrice(ctx context.Context, orgId openapi_types.UUID, body PutAIModelPriceJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPutAIModelPriceRequest(c.Server, orgId, body)
 	if err != nil {
 		return nil, err
 	}
@@ -30473,6 +30700,87 @@ func NewReconcileAIAssignmentRequest(server string, orgId openapi_types.UUID, de
 	return req, nil
 }
 
+// NewGetAICostSettingsRequest generates requests for GetAICostSettings
+func NewGetAICostSettingsRequest(server string, orgId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/ai-gateway/cost-settings", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewPutAICostSettingsRequest calls the generic PutAICostSettings builder with application/json body
+func NewPutAICostSettingsRequest(server string, orgId openapi_types.UUID, body PutAICostSettingsJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewPutAICostSettingsRequestWithBody(server, orgId, "application/json", bodyReader)
+}
+
+// NewPutAICostSettingsRequestWithBody generates requests for PutAICostSettings with any type of body
+func NewPutAICostSettingsRequestWithBody(server string, orgId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/ai-gateway/cost-settings", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("PUT", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewAiUserAnthropicMessageRequest calls the generic AiUserAnthropicMessage builder with application/json body
 func NewAiUserAnthropicMessageRequest(server string, orgId openapi_types.UUID, body AiUserAnthropicMessageJSONRequestBody) (*http.Request, error) {
 	var bodyReader io.Reader
@@ -31124,6 +31432,173 @@ func NewPutAIInternalEndpointRequestWithBody(server string, orgId openapi_types.
 	}
 
 	operationPath := fmt.Sprintf("/api/v1/organizations/%s/ai-gateway/internal-endpoints/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("PUT", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewDeleteAIModelPriceRequest generates requests for DeleteAIModelPrice
+func NewDeleteAIModelPriceRequest(server string, orgId openapi_types.UUID, params *DeleteAIModelPriceParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/ai-gateway/model-prices", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if queryFrag, err := runtime.StyleParamWithLocation("form", true, "model", runtime.ParamLocationQuery, params.Model); err != nil {
+			return nil, err
+		} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+			return nil, err
+		} else {
+			for k, v := range parsed {
+				for _, v2 := range v {
+					queryValues.Add(k, v2)
+				}
+			}
+		}
+
+		if queryFrag, err := runtime.StyleParamWithLocation("form", true, "expected_revision", runtime.ParamLocationQuery, params.ExpectedRevision); err != nil {
+			return nil, err
+		} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+			return nil, err
+		} else {
+			for k, v := range parsed {
+				for _, v2 := range v {
+					queryValues.Add(k, v2)
+				}
+			}
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
+	}
+
+	req, err := http.NewRequest("DELETE", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewListAIModelPricesRequest generates requests for ListAIModelPrices
+func NewListAIModelPricesRequest(server string, orgId openapi_types.UUID, params *ListAIModelPricesParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/ai-gateway/model-prices", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if params.Model != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "model", runtime.ParamLocationQuery, *params.Model); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewPutAIModelPriceRequest calls the generic PutAIModelPrice builder with application/json body
+func NewPutAIModelPriceRequest(server string, orgId openapi_types.UUID, body PutAIModelPriceJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewPutAIModelPriceRequestWithBody(server, orgId, "application/json", bodyReader)
+}
+
+// NewPutAIModelPriceRequestWithBody generates requests for PutAIModelPrice with any type of body
+func NewPutAIModelPriceRequestWithBody(server string, orgId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/ai-gateway/model-prices", pathParam0)
 	if operationPath[0] == '/' {
 		operationPath = "." + operationPath
 	}
@@ -49379,6 +49854,14 @@ type ClientWithResponsesInterface interface {
 	// ReconcileAIAssignmentWithResponse request
 	ReconcileAIAssignmentWithResponse(ctx context.Context, orgId openapi_types.UUID, deviceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ReconcileAIAssignmentResponse, error)
 
+	// GetAICostSettingsWithResponse request
+	GetAICostSettingsWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetAICostSettingsResponse, error)
+
+	// PutAICostSettingsWithBodyWithResponse request with any body
+	PutAICostSettingsWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PutAICostSettingsResponse, error)
+
+	PutAICostSettingsWithResponse(ctx context.Context, orgId openapi_types.UUID, body PutAICostSettingsJSONRequestBody, reqEditors ...RequestEditorFn) (*PutAICostSettingsResponse, error)
+
 	// AiUserAnthropicMessageWithBodyWithResponse request with any body
 	AiUserAnthropicMessageWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*AiUserAnthropicMessageResponse, error)
 
@@ -49441,6 +49924,17 @@ type ClientWithResponsesInterface interface {
 	PutAIInternalEndpointWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, nodeId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PutAIInternalEndpointResponse, error)
 
 	PutAIInternalEndpointWithResponse(ctx context.Context, orgId openapi_types.UUID, nodeId openapi_types.UUID, body PutAIInternalEndpointJSONRequestBody, reqEditors ...RequestEditorFn) (*PutAIInternalEndpointResponse, error)
+
+	// DeleteAIModelPriceWithResponse request
+	DeleteAIModelPriceWithResponse(ctx context.Context, orgId openapi_types.UUID, params *DeleteAIModelPriceParams, reqEditors ...RequestEditorFn) (*DeleteAIModelPriceResponse, error)
+
+	// ListAIModelPricesWithResponse request
+	ListAIModelPricesWithResponse(ctx context.Context, orgId openapi_types.UUID, params *ListAIModelPricesParams, reqEditors ...RequestEditorFn) (*ListAIModelPricesResponse, error)
+
+	// PutAIModelPriceWithBodyWithResponse request with any body
+	PutAIModelPriceWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PutAIModelPriceResponse, error)
+
+	PutAIModelPriceWithResponse(ctx context.Context, orgId openapi_types.UUID, body PutAIModelPriceJSONRequestBody, reqEditors ...RequestEditorFn) (*PutAIModelPriceResponse, error)
 
 	// ListAIProviderModelsWithResponse request
 	ListAIProviderModelsWithResponse(ctx context.Context, orgId openapi_types.UUID, params *ListAIProviderModelsParams, reqEditors ...RequestEditorFn) (*ListAIProviderModelsResponse, error)
@@ -54467,6 +54961,52 @@ func (r ReconcileAIAssignmentResponse) StatusCode() int {
 	return 0
 }
 
+type GetAICostSettingsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AICostSettings
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r GetAICostSettingsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetAICostSettingsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type PutAICostSettingsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AICostSettings
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r PutAICostSettingsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PutAICostSettingsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
 type AiUserAnthropicMessageResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -54803,6 +55343,75 @@ func (r PutAIInternalEndpointResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r PutAIInternalEndpointResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type DeleteAIModelPriceResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AIModelPrice
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r DeleteAIModelPriceResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeleteAIModelPriceResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ListAIModelPricesResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AIModelPriceList
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r ListAIModelPricesResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListAIModelPricesResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type PutAIModelPriceResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AIModelPrice
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r PutAIModelPriceResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PutAIModelPriceResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -64838,6 +65447,32 @@ func (c *ClientWithResponses) ReconcileAIAssignmentWithResponse(ctx context.Cont
 	return ParseReconcileAIAssignmentResponse(rsp)
 }
 
+// GetAICostSettingsWithResponse request returning *GetAICostSettingsResponse
+func (c *ClientWithResponses) GetAICostSettingsWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetAICostSettingsResponse, error) {
+	rsp, err := c.GetAICostSettings(ctx, orgId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetAICostSettingsResponse(rsp)
+}
+
+// PutAICostSettingsWithBodyWithResponse request with arbitrary body returning *PutAICostSettingsResponse
+func (c *ClientWithResponses) PutAICostSettingsWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PutAICostSettingsResponse, error) {
+	rsp, err := c.PutAICostSettingsWithBody(ctx, orgId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePutAICostSettingsResponse(rsp)
+}
+
+func (c *ClientWithResponses) PutAICostSettingsWithResponse(ctx context.Context, orgId openapi_types.UUID, body PutAICostSettingsJSONRequestBody, reqEditors ...RequestEditorFn) (*PutAICostSettingsResponse, error) {
+	rsp, err := c.PutAICostSettings(ctx, orgId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePutAICostSettingsResponse(rsp)
+}
+
 // AiUserAnthropicMessageWithBodyWithResponse request with arbitrary body returning *AiUserAnthropicMessageResponse
 func (c *ClientWithResponses) AiUserAnthropicMessageWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*AiUserAnthropicMessageResponse, error) {
 	rsp, err := c.AiUserAnthropicMessageWithBody(ctx, orgId, contentType, body, reqEditors...)
@@ -65043,6 +65678,41 @@ func (c *ClientWithResponses) PutAIInternalEndpointWithResponse(ctx context.Cont
 		return nil, err
 	}
 	return ParsePutAIInternalEndpointResponse(rsp)
+}
+
+// DeleteAIModelPriceWithResponse request returning *DeleteAIModelPriceResponse
+func (c *ClientWithResponses) DeleteAIModelPriceWithResponse(ctx context.Context, orgId openapi_types.UUID, params *DeleteAIModelPriceParams, reqEditors ...RequestEditorFn) (*DeleteAIModelPriceResponse, error) {
+	rsp, err := c.DeleteAIModelPrice(ctx, orgId, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteAIModelPriceResponse(rsp)
+}
+
+// ListAIModelPricesWithResponse request returning *ListAIModelPricesResponse
+func (c *ClientWithResponses) ListAIModelPricesWithResponse(ctx context.Context, orgId openapi_types.UUID, params *ListAIModelPricesParams, reqEditors ...RequestEditorFn) (*ListAIModelPricesResponse, error) {
+	rsp, err := c.ListAIModelPrices(ctx, orgId, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListAIModelPricesResponse(rsp)
+}
+
+// PutAIModelPriceWithBodyWithResponse request with arbitrary body returning *PutAIModelPriceResponse
+func (c *ClientWithResponses) PutAIModelPriceWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PutAIModelPriceResponse, error) {
+	rsp, err := c.PutAIModelPriceWithBody(ctx, orgId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePutAIModelPriceResponse(rsp)
+}
+
+func (c *ClientWithResponses) PutAIModelPriceWithResponse(ctx context.Context, orgId openapi_types.UUID, body PutAIModelPriceJSONRequestBody, reqEditors ...RequestEditorFn) (*PutAIModelPriceResponse, error) {
+	rsp, err := c.PutAIModelPrice(ctx, orgId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePutAIModelPriceResponse(rsp)
 }
 
 // ListAIProviderModelsWithResponse request returning *ListAIProviderModelsResponse
@@ -74686,6 +75356,72 @@ func ParseReconcileAIAssignmentResponse(rsp *http.Response) (*ReconcileAIAssignm
 	return response, nil
 }
 
+// ParseGetAICostSettingsResponse parses an HTTP response from a GetAICostSettingsWithResponse call
+func ParseGetAICostSettingsResponse(rsp *http.Response) (*GetAICostSettingsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetAICostSettingsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AICostSettings
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParsePutAICostSettingsResponse parses an HTTP response from a PutAICostSettingsWithResponse call
+func ParsePutAICostSettingsResponse(rsp *http.Response) (*PutAICostSettingsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PutAICostSettingsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AICostSettings
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseAiUserAnthropicMessageResponse parses an HTTP response from a AiUserAnthropicMessageWithResponse call
 func ParseAiUserAnthropicMessageResponse(rsp *http.Response) (*AiUserAnthropicMessageResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -75152,6 +75888,105 @@ func ParsePutAIInternalEndpointResponse(rsp *http.Response) (*PutAIInternalEndpo
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest AIInternalEndpoint
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDeleteAIModelPriceResponse parses an HTTP response from a DeleteAIModelPriceWithResponse call
+func ParseDeleteAIModelPriceResponse(rsp *http.Response) (*DeleteAIModelPriceResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteAIModelPriceResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AIModelPrice
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListAIModelPricesResponse parses an HTTP response from a ListAIModelPricesWithResponse call
+func ParseListAIModelPricesResponse(rsp *http.Response) (*ListAIModelPricesResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListAIModelPricesResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AIModelPriceList
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParsePutAIModelPriceResponse parses an HTTP response from a PutAIModelPriceWithResponse call
+func ParsePutAIModelPriceResponse(rsp *http.Response) (*PutAIModelPriceResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PutAIModelPriceResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AIModelPrice
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}

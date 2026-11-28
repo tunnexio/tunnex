@@ -17,6 +17,7 @@ import { AIGroupAccess } from "./AIUserAccess";
 import { AIModelConnectionDetails } from "./AIModelConnectionDetails";
 import { ProviderLogo } from "./ProviderLogo";
 import { ResourceSummary } from "./ResourceSummary";
+import { ModelPriceCell, ModelPriceDialog, useModelPrices } from "./AIModelPrices";
 type S = components["schemas"];
 type InUse = S["AIProviderInUseConflict"]["in_use"];
 export type AIProviderConnection = S["AIProviderConnection"];
@@ -93,6 +94,7 @@ function ProviderWorkspace({ orgId, canManage = true, canManageTransport = false
   const [pageSize, setPageSize] = useState(20);
   const [modelSearch, setModelSearch] = useState(""), [modelProvider, setModelProvider] = useState("");
   const [removing, setRemoving] = useState<AIProviderConnection | null>(null);
+  const [pricing, setPricing] = useState<{ model: string; mode: ModelMode } | null>(null);
   const alive = useRef(true), serial = useRef(0);
   async function reload() {
     const n = ++serial.current;
@@ -181,6 +183,8 @@ function ProviderWorkspace({ orgId, canManage = true, canManageTransport = false
   const providerName = (id: string) => definitions.find((d) => d.id === id)?.name ?? id;
   const providerBrand = (id: string) => <span className="ai-gateway-provider-brand"><ProviderLogo provider={id} /><span>{providerName(id)}</span></span>;
   const modelRows = (inventory?.items ?? []).flatMap((connection) => connection.models.map((model) => ({ connection, model }))).filter(({ connection, model }) => (!modelProvider || connection.provider === modelProvider) && `${model} ${connection.name}`.toLowerCase().includes(modelSearch.toLowerCase()));
+  // AI-READY-1: the price admission and cost estimates use, per configured model.
+  const prices = useModelPrices(orgId, (inventory?.items ?? []).flatMap((c) => c.models));
   const credentialRows = (inventory?.items ?? []).filter(c => (!credentialProvider || c.provider === credentialProvider) && `${c.name} ${c.provider}`.toLowerCase().includes(credentialSearch.toLowerCase()));
   const displayedModelPage = Math.min(modelPage, Math.max(1, Math.ceil(modelRows.length / pageSize)));
   const displayedCredentialPage = Math.min(credentialPage, Math.max(1, Math.ceil(credentialRows.length / pageSize)));
@@ -210,13 +214,15 @@ function ProviderWorkspace({ orgId, canManage = true, canManageTransport = false
     { key: "use", label: "Use model", disabledReason: loading || busy ? "An update is in progress." : null, onSelect: () => openModel(c, model, "connection") },
     ...(onGrantAccess && canManage ? [{ key: "grant", label: "Grant access", disabledReason: loading || busy ? "An update is in progress." : !c.enabled || c.status !== "applied" || c.revision !== c.applied_revision ? "Apply and enable these credentials before granting access." : null, onSelect: () => onGrantAccess(c.id, model) }] : []),
     ...(canManage ? [
+      { key: "price", label: prices.byModel[model]?.saved ? "Edit price" : "Set price", disabledReason: loading || busy ? "An update is in progress." : null, onSelect: () => setPricing({ model, mode: c.model_modes?.[model] ?? "chat" }) },
       { key: "edit", label: "Edit credentials", disabledReason: managementBlock, onSelect: () => setEditing(c) },
       { key: "check", label: "Check catalog", disabledReason: managementBlock, onSelect: () => checkCatalog(c) },
     ] : []),
   ];
-  const modelTable = (rows: typeof modelRows) => <div className="ai-gateway-table-scroll"><table className="ai-gateway-table"><caption className="sr-only">Configured models</caption><thead><tr><th>Model</th><th>Provider · mode</th><th>Credential</th><th>State</th><th><span className="sr-only">Actions</span></th></tr></thead><tbody>{rows.map(({ connection: c, model }) => <tr key={`${c.id}:${model}`}><th scope="row"><button className="ai-item-button" title={model} aria-label={`View model ${model}`} onClick={() => openModel(c, model)}>{modelDisplayName(model)}</button></th><td><span className="ai-gateway-provider-identity"><ProviderLogo provider={c.provider} /><span><span>{providerName(c.provider)}</span><small>{modeLabel(c.model_modes?.[model] ?? "chat").split(", ")[0]}</small></span></span></td><td><button className="ai-item-button ai-gateway-muted" onClick={() => openCredential(c)}>{c.name}</button></td><td>{stateTag(c)}</td><td><AppAccessRowMenu label={`Model actions for ${model} · ${c.name}`} actions={modelActions(c, model)} /></td></tr>)}</tbody></table></div>;
+  const modelTable = (rows: typeof modelRows) => <div className="ai-gateway-table-scroll"><table className="ai-gateway-table"><caption className="sr-only">Configured models</caption><thead><tr><th>Model</th><th>Provider · mode</th><th>Credential</th><th>Price <HelpTooltip label="About model prices">Input / output, USD per million tokens. Custom prices are set here; others come from the bundled catalog. Daily limits refuse a model with an unknown price unless AI Gateway settings allow it.</HelpTooltip></th><th>State</th><th><span className="sr-only">Actions</span></th></tr></thead><tbody>{rows.map(({ connection: c, model }) => <tr key={`${c.id}:${model}`}><th scope="row"><button className="ai-item-button" title={model} aria-label={`View model ${model}`} onClick={() => openModel(c, model)}>{modelDisplayName(model)}</button></th><td><span className="ai-gateway-provider-identity"><ProviderLogo provider={c.provider} /><span><span>{providerName(c.provider)}</span><small>{modeLabel(c.model_modes?.[model] ?? "chat").split(", ")[0]}</small></span></span></td><td><button className="ai-item-button ai-gateway-muted" onClick={() => openCredential(c)}>{c.name}</button></td><td><ModelPriceCell info={prices.byModel[model]} failed={prices.failed} /></td><td>{stateTag(c)}</td><td><AppAccessRowMenu label={`Model actions for ${model} · ${c.name}`} actions={modelActions(c, model)} /></td></tr>)}</tbody></table></div>;
   const pager = (kind: "models" | "credentials") => { const isModels = kind === "models", rows = isModels ? visibleModels : visibleCredentials, page = isModels ? displayedModelPage : displayedCredentialPage, total = isModels ? modelRows.length : credentialRows.length; return <AppAccessPagination page={page} pageSize={pageSize} count={rows.length} hasNext={page * pageSize < total} busy={loading || busy} maxOffset={null} onPageChange={isModels ? setModelPage : setCredentialPage} onPageSizeChange={size => { setPageSize(size); setModelPage(1); setCredentialPage(1); }} />; };
   return <section className="ai-provider-workspace ai-gateway-provider" aria-label="Models and endpoints">
+    {pricing && canManage && <ModelPriceDialog orgId={orgId} model={pricing.model} mode={pricing.mode} info={prices.byModel[pricing.model]} onClose={() => setPricing(null)} onSaved={() => { setPricing(null); prices.reload(); }} />}
     <header className="ai-gateway-toolbar"><span className="ai-gateway-count">{inventory ? view === "connections" ? `${credentialRows.length} credential${credentialRows.length === 1 ? "" : "s"}` : `${modelRows.length} model${modelRows.length === 1 ? "" : "s"}` : ""}</span><div className="ai-inventory-actions"><RefreshButton label="Refresh" disabled={loading || busy} onClick={() => { setError(""); gateway.reload(); void reload(); }} />{view !== "connections" && canManage && <Button disabled={loading || busy || !inventory?.management_available || !definitions.length} onClick={() => changeView("add")}>Add Model</Button>}{view === "connections" && canManage && <Button disabled={loading || busy || !inventory?.management_available || !definitions.length} onClick={() => setEditing("new")}>Add Credentials</Button>}</div></header>
     <AIGatewayOffBanner orgId={orgId} gateway={gateway} canManage={canManage} serverAdmin={canManageTransport} onChanged={() => { setError(""); void reload(); }} onAddProvider={view === "connections" && inventory?.management_available && definitions.length ? () => setEditing("new") : undefined} />
     {/* While the banner says why nothing loads, the load error beside it would only repeat it less clearly. */}

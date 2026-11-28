@@ -380,7 +380,7 @@ func (s *Policies) resolveUserModel(ctx context.Context, org, user uuid.UUID, mo
 		}
 		if g.GroupID != nil && limits[*g.GroupID] != nil {
 			group := *g.GroupID
-			if err := s.enforceCostBindings(ctx, tx, org, model, g.Mode, limits[group], func() ([]string, error) {
+			if err := s.enforceCostFor(ctx, tx, org, costSubject{Kind: "user_group", ID: group}, model, g.Mode, limits[group], func() ([]string, error) {
 				return userGroupUsageIDs(ctx, tx, org, group)
 			}); err != nil {
 				costErr = strongerCostError(costErr, err)
