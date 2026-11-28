@@ -77,6 +77,21 @@ func runningInputWithMCP(family string, aiVPN bool, tunnels any) []nftRuleView {
 	return append(rules[:len(rules)-1:len(rules)-1], inputListener(family, InputMCPGatewayRuleComment, "tcp", InputMCPGatewayPort), drop)
 }
 
+func nftDaddr(right any) map[string]any {
+	return map[string]any{"match": map[string]any{"op": "==", "left": map[string]any{"payload": map[string]any{"protocol": "ip", "field": "daddr"}}, "right": right}}
+}
+
+// inputAIInternal is the internal AI endpoint accept (AI-KEYS-1) on the given destination match.
+func inputAIInternal(family string, daddr any, port int) nftRuleView {
+	return inputRule(family, InputAIInternalRuleComment, nftIifname("wg0"), nftDaddr(daddr), nftDport("tcp", port), nftCounter, nftAccept)
+}
+
+// withAIInternal inserts rule before the drop.
+func withAIInternal(rules []nftRuleView, rule nftRuleView) []nftRuleView {
+	drop := rules[len(rules)-1]
+	return append(rules[:len(rules)-1:len(rules)-1], rule, drop)
+}
+
 func stoppedInput(family string, tunnels any) []nftRuleView {
 	return []nftRuleView{inputRule(family, StoppedTunnelDropRuleComment, nftIifname(tunnels), nftCounter, nftDrop)}
 }
@@ -117,6 +132,10 @@ func TestTunnexInputAcceptsTheRunningAndTheStoppedChain(t *testing.T) {
 			inputChain("ip"): runningInputWithMCP("ip", false, "wg0"), inputChain("ip6"): runningInput("ip6", false, "wg0")}},
 		"running with the AI VPN and the MCP gateway listeners in IPv4": {chains: map[nftChainView][]nftRuleView{
 			inputChain("ip"): runningInputWithMCP("ip", true, "wg0"), inputChain("ip6"): runningInput("ip6", false, "wg0")}},
+		"running with the internal AI endpoint on one address": {chains: map[nftChainView][]nftRuleView{
+			inputChain("ip"): withAIInternal(runningInput("ip", false, "wg0"), inputAIInternal("ip", "10.123.0.1", 9443)), inputChain("ip6"): runningInput("ip6", false, "wg0")}},
+		"running with every listener and the internal AI endpoint on two addresses": {chains: map[nftChainView][]nftRuleView{
+			inputChain("ip"): withAIInternal(runningInputWithMCP("ip", true, "wg0"), inputAIInternal("ip", nftNameSet("10.123.0.1", "192.168.10.5"), 9443)), inputChain("ip6"): runningInput("ip6", false, "wg0")}},
 		"running with OpenVPN: the reply and the drop name the set": {
 			tunnels: []string{"wg0", "tun0"},
 			chains: map[nftChainView][]nftRuleView{
@@ -144,19 +163,20 @@ func TestTunnexInputAcceptsTheRunningAndTheStoppedChain(t *testing.T) {
 
 func TestTunnexInputRefusesEveryNearMiss(t *testing.T) {
 	const (
-		notChain     = "Tunnex input hook is not the exact registered chain"
-		notRules     = "Tunnex input chain does not hold exactly the registered rules"
-		notListener  = "Tunnex input listener is not the exact registered accept"
-		notReply     = "Tunnex input reply accept is not limited to replies"
-		notState     = "Tunnex input reply accept is not limited to established and related"
-		replyShape   = "Tunnex input reply accept is not exact"
-		dropShape    = "Tunnex input tunnel drop is not exact"
-		leavesOpen   = "Tunnex input rule leaves a tunnel interface open"
-		notIngress   = "Tunnex input rule is not limited to tunnel ingress"
-		differ       = "Tunnex input reply and drop name different tunnels"
-		unknownHook  = "unknown Tunnex hook"
-		notHook      = "Tunnex input chain is not the registered input hook"
-		invalidNames = "Tunnex input interface set is invalid"
+		notChain      = "Tunnex input hook is not the exact registered chain"
+		notRules      = "Tunnex input chain does not hold exactly the registered rules"
+		notListener   = "Tunnex input listener is not the exact registered accept"
+		notReply      = "Tunnex input reply accept is not limited to replies"
+		notState      = "Tunnex input reply accept is not limited to established and related"
+		replyShape    = "Tunnex input reply accept is not exact"
+		dropShape     = "Tunnex input tunnel drop is not exact"
+		leavesOpen    = "Tunnex input rule leaves a tunnel interface open"
+		notIngress    = "Tunnex input rule is not limited to tunnel ingress"
+		differ        = "Tunnex input reply and drop name different tunnels"
+		unknownHook   = "unknown Tunnex hook"
+		notHook       = "Tunnex input chain is not the registered input hook"
+		invalidNames  = "Tunnex input interface set is invalid"
+		notAIInternal = "Tunnex input internal AI endpoint accept is not exact"
 	)
 	running := func() []nftRuleView { return runningInput("ip", false, "wg0") }
 	with := func(i int, rule nftRuleView) []nftRuleView { rules := running(); rules[i] = rule; return rules }
@@ -192,6 +212,34 @@ func TestTunnexInputRefusesEveryNearMiss(t *testing.T) {
 			inputListener("ip", InputMCPGatewayRuleComment, "tcp", 10250), inputDrop("ip", "wg0"))}, reason: notListener},
 		"the MCP gateway marker on the AI VPN port": {chains: map[nftChainView][]nftRuleView{inputChain("ip"): append(running()[:3],
 			inputListener("ip", InputMCPGatewayRuleComment, "tcp", InputAIVPNPort), inputDrop("ip", "wg0"))}, reason: notListener},
+		"the internal AI endpoint in IPv6": {chains: map[nftChainView][]nftRuleView{
+			inputChain("ip6"): withAIInternal(runningInput("ip6", false, "wg0"), inputAIInternal("ip6", "10.123.0.1", 9443))}, reason: notRules},
+		"the internal AI endpoint twice": {chains: map[nftChainView][]nftRuleView{
+			inputChain("ip"): withAIInternal(withAIInternal(running(), inputAIInternal("ip", "10.123.0.1", 9443)), inputAIInternal("ip", "10.123.0.1", 9443))}, reason: notRules},
+		"the internal AI endpoint before the MCP gateway listener": {chains: map[nftChainView][]nftRuleView{inputChain("ip"): append(running()[:3],
+			inputAIInternal("ip", "10.123.0.1", 9443), inputListener("ip", InputMCPGatewayRuleComment, "tcp", InputMCPGatewayPort), inputDrop("ip", "wg0"))}, reason: notRules},
+		"the internal AI endpoint on a public address": {chains: map[nftChainView][]nftRuleView{
+			inputChain("ip"): withAIInternal(running(), inputAIInternal("ip", "203.0.113.7", 9443))}, reason: notAIInternal},
+		"the internal AI endpoint on three addresses": {chains: map[nftChainView][]nftRuleView{
+			inputChain("ip"): withAIInternal(running(), inputAIInternal("ip", nftNameSet("10.0.0.1", "10.0.0.2", "10.0.0.3"), 9443))}, reason: notAIInternal},
+		"the internal AI endpoint on a duplicated address": {chains: map[nftChainView][]nftRuleView{
+			inputChain("ip"): withAIInternal(running(), inputAIInternal("ip", nftNameSet("10.0.0.1", "10.0.0.1"), 9443))}, reason: notAIInternal},
+		"the internal AI endpoint on a range": {chains: map[nftChainView][]nftRuleView{
+			inputChain("ip"): withAIInternal(running(), inputAIInternal("ip", map[string]any{"prefix": map[string]any{"addr": "10.0.0.0", "len": float64(8)}}, 9443))}, reason: notAIInternal},
+		"the internal AI endpoint on the AI VPN port": {chains: map[nftChainView][]nftRuleView{
+			inputChain("ip"): withAIInternal(running(), inputAIInternal("ip", "10.123.0.1", InputAIVPNPort))}, reason: notAIInternal},
+		"the internal AI endpoint on a privileged port (kubelet is above, SSH below)": {chains: map[nftChainView][]nftRuleView{
+			inputChain("ip"): withAIInternal(running(), inputAIInternal("ip", "10.123.0.1", 22))}, reason: notAIInternal},
+		"the internal AI endpoint on any local address": {chains: map[nftChainView][]nftRuleView{
+			inputChain("ip"): withAIInternal(running(), inputRule("ip", InputAIInternalRuleComment, nftIifname("wg0"), nftLocalOnIif, nftDport("tcp", 9443), nftCounter, nftAccept))}, reason: notAIInternal},
+		"the internal AI endpoint without a destination": {chains: map[nftChainView][]nftRuleView{
+			inputChain("ip"): withAIInternal(running(), inputRule("ip", InputAIInternalRuleComment, nftIifname("wg0"), nftDport("tcp", 9443), nftCounter, nftAccept))}, reason: notAIInternal},
+		"the internal AI endpoint on another interface": {chains: map[nftChainView][]nftRuleView{
+			inputChain("ip"): withAIInternal(running(), inputRule("ip", InputAIInternalRuleComment, nftIifname("eth0"), nftDaddr("10.123.0.1"), nftDport("tcp", 9443), nftCounter, nftAccept))}, reason: notAIInternal},
+		"the internal AI endpoint over UDP": {chains: map[nftChainView][]nftRuleView{
+			inputChain("ip"): withAIInternal(running(), inputRule("ip", InputAIInternalRuleComment, nftIifname("wg0"), nftDaddr("10.123.0.1"), nftDport("udp", 9443), nftCounter, nftAccept))}, reason: notAIInternal},
+		"the internal AI endpoint marker on a drop": {chains: map[nftChainView][]nftRuleView{
+			inputChain("ip"): withAIInternal(running(), inputRule("ip", InputAIInternalRuleComment, nftIifname("wg0"), nftDaddr("10.123.0.1"), nftDport("tcp", 9443), nftCounter, nftDrop))}, reason: notAIInternal},
 		"the stopped drop beside running rules": {chains: map[nftChainView][]nftRuleView{inputChain("ip"): append(running()[:4], stoppedInput("ip", "wg0")...)}, reason: notRules},
 		"the stopped drop twice":                {chains: map[nftChainView][]nftRuleView{inputChain("ip"): append(stoppedInput("ip", "wg0"), stoppedInput("ip", "wg0")...)}, reason: notRules},
 		"an unknown comment":                    {chains: map[nftChainView][]nftRuleView{inputChain("ip"): with(3, inputRule("ip", "tunnex_other", nftIifname("wg0"), nftCounter, nftDrop))}, reason: notRules},

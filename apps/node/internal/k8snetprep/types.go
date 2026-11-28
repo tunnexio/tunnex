@@ -55,6 +55,9 @@ const (
 	InputDNSRuleComment        = "tunnex_input_dns"
 	InputAIVPNRuleComment      = "tunnex_input_ai_vpn"
 	InputMCPGatewayRuleComment = "tunnex_input_mcp_gateway"
+	// InputAIInternalRuleComment marks the internal AI endpoint accept (AI-KEYS-1): `iifname <wg> ip
+	// daddr <addresses> tcp dport <port> accept`, IPv4 only, present only while an endpoint is configured.
+	InputAIInternalRuleComment = "tunnex_input_ai_internal"
 	InputTunnelDropRuleComment = "tunnex_input_tunnel_drop"
 	// StoppedTunnelDropRuleComment marks the only rules a stopped in-cluster
 	// gateway leaves in its forward and input chains (K8N-5 item 1, K8N-7).

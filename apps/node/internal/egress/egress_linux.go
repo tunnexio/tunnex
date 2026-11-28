@@ -170,6 +170,9 @@ type Manager struct {
 	// mcpGatewayInput is set when the MCP gateway runtime is configured on this gateway (AI-SEC-2): in
 	// Kubernetes mode the input chain then accepts its tunnel-side listener.
 	mcpGatewayInput atomic.Bool
+	// aiInternalInput is the internal AI endpoint (AI-KEYS-1) while one is configured on this gateway:
+	// in Kubernetes mode the input chain then accepts its port on its addresses. nil renders nothing.
+	aiInternalInput atomic.Pointer[aiInternalInput]
 	// forwardBlocked (WF-4 / D-WF4-d): true when this is a Docker host (DOCKER-USER exists),
 	// FORWARD is policy-drop, there ARE remote routes to carry, yet the agent could NOT place
 	// its DOCKER-USER accept — so forwarded site traffic is silently dropped by Docker's chain.
@@ -967,7 +970,12 @@ func (m *Manager) inputChains(pol *nodepolicy.Compiled, tun []string) (v4, v6 st
 //     listener on TCP 8084 (both IPv4 only). Each is limited to
 //     an address configured ON that interface (`fib daddr . iif type local`):
 //     the tunnel address and every cluster DNS VIP, never the node's other
-//     addresses.
+//     addresses;
+//   - while an internal AI endpoint is configured (AI-KEYS-1), its port on its
+//     configured addresses only (`ip daddr <addresses> tcp dport <port>`), IPv4
+//     only, last before the drop. It is not device-bound (a LAN address is
+//     reached through the tunnel too); the endpoint's source ranges, checked by
+//     the listener, and the key are its controls.
 //
 // The chain is policy accept and every rule is limited to tunnel ingress, so
 // node traffic on other interfaces meets no Tunnex rule. It does not depend on
@@ -993,6 +1001,10 @@ func (m *Manager) k8sInputChain(v6 bool, tun []string) string {
 	if !v6 && m.mcpGatewayInput.Load() {
 		fmt.Fprintf(&b, "    %s fib daddr . iif type local tcp dport %d counter accept comment \"%s\"\n",
 			wg, k8snetprep.InputMCPGatewayPort, k8snetprep.InputMCPGatewayRuleComment)
+	}
+	if ai := m.aiInternalInput.Load(); !v6 && ai != nil {
+		fmt.Fprintf(&b, "    %s ip daddr %s tcp dport %d counter accept comment \"%s\"\n",
+			wg, ai.daddr(), ai.port, k8snetprep.InputAIInternalRuleComment)
 	}
 	fmt.Fprintf(&b, "    %s counter drop comment \"%s\"\n  }\n", ifClause("iifname", tun, false), k8snetprep.InputTunnelDropRuleComment)
 	return b.String()
@@ -1685,6 +1697,52 @@ func (m *Manager) SetKubernetesMode(enabled bool) {
 // (aivpn.HTTPPort on the WireGuard IPv4 address) is configured. In Kubernetes
 // mode the input chain accepts it only then (K8N-7); the next pass renders it.
 func (m *Manager) SetAIVPNListener(enabled bool) { m.aiVPNInput.Store(enabled) }
+
+type aiInternalInput struct {
+	addrs []netip.Addr // sorted, 1 or 2 private IPv4 addresses
+	port  int
+}
+
+func (a *aiInternalInput) daddr() string {
+	if len(a.addrs) == 1 {
+		return a.addrs[0].String()
+	}
+	parts := make([]string, len(a.addrs))
+	for i, addr := range a.addrs {
+		parts[i] = addr.String()
+	}
+	return "{ " + strings.Join(parts, ", ") + " }"
+}
+
+func (a *aiInternalInput) equal(o *aiInternalInput) bool {
+	if a == nil || o == nil {
+		return a == o
+	}
+	return a.port == o.port && slices.Equal(a.addrs, o.addrs)
+}
+
+// SetAIInternalListener tells the renderer which internal AI endpoint (AI-KEYS-1) is configured: its
+// listen addresses and port, or none (nil, 0). Only 1 or 2 distinct private IPv4 addresses and a port
+// in 1024-65535 other than the AI VPN and MCP gateway ports are rendered; anything else renders no
+// rule. It returns true when the rendered chain changes, so the caller can kick a re-apply.
+func (m *Manager) SetAIInternalListener(addrs []netip.Addr, port int) bool {
+	var next *aiInternalInput
+	if valid := len(addrs) >= 1 && len(addrs) <= 2 && port >= 1024 && port <= 65535 &&
+		port != k8snetprep.InputAIVPNPort && port != k8snetprep.InputMCPGatewayPort; valid {
+		sorted := slices.Clone(addrs)
+		slices.SortFunc(sorted, func(a, b netip.Addr) int { return a.Compare(b) })
+		for i, addr := range sorted {
+			if !addr.Is4() || !addr.IsPrivate() || (i > 0 && sorted[i-1] == addr) {
+				valid = false
+			}
+		}
+		if valid {
+			next = &aiInternalInput{addrs: sorted, port: port}
+		}
+	}
+	prev := m.aiInternalInput.Swap(next)
+	return !prev.equal(next)
+}
 
 // SetMCPGatewayListener tells the renderer that the MCP gateway listener (mcpgw, TCP 8084 on the tunnel
 // address) is configured, so an in-cluster gateway's input chain accepts it. Set once at wiring time.

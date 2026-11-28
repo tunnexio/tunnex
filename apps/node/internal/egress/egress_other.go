@@ -5,6 +5,7 @@ package egress
 import (
 	"context"
 	"fmt"
+	"net/netip"
 	"time"
 
 	"github.com/tunnexio/tunnex/apps/node/internal/flowlog"
@@ -34,6 +35,9 @@ func (m *Manager) SetAIVPNListener(bool) {}
 
 // SetMCPGatewayListener is a no-op off Linux.
 func (m *Manager) SetMCPGatewayListener(bool) {}
+
+// SetAIInternalListener is a no-op off Linux.
+func (m *Manager) SetAIInternalListener([]netip.Addr, int) bool { return false }
 
 // SetKubernetesCNIAuthority cannot enable a non-Linux gateway data plane.
 func (m *Manager) SetKubernetesCNIAuthority(k8snetprep.AuthorityGuard, k8snetprep.HostFactsSource, k8snetprep.CiliumFactsSource) {
