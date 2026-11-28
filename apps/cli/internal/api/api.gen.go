@@ -313,6 +313,7 @@ const (
 // Defines values for AIRequestLogEntryIngress.
 const (
 	AIRequestIngressAgent    AIRequestLogEntryIngress = "agent"
+	AIRequestIngressInternal AIRequestLogEntryIngress = "internal"
 	AIRequestIngressPublic   AIRequestLogEntryIngress = "public"
 	AIRequestIngressVPN      AIRequestLogEntryIngress = "vpn"
 	AIRequestIngressWorkload AIRequestLogEntryIngress = "workload"
@@ -327,9 +328,10 @@ const (
 
 // Defines values for AIRequestLogEntrySubjectKind.
 const (
-	AIRequestSubjectAgent    AIRequestLogEntrySubjectKind = "agent"
-	AIRequestSubjectUser     AIRequestLogEntrySubjectKind = "user"
-	AIRequestSubjectWorkload AIRequestLogEntrySubjectKind = "workload"
+	AIRequestSubjectAgent       AIRequestLogEntrySubjectKind = "agent"
+	AIRequestSubjectUser        AIRequestLogEntrySubjectKind = "user"
+	AIRequestSubjectWorkload    AIRequestLogEntrySubjectKind = "workload"
+	AIRequestSubjectWorkloadKey AIRequestLogEntrySubjectKind = "workload_key"
 )
 
 // Defines values for AISpeechRequestResponseFormat.
@@ -2610,9 +2612,10 @@ const (
 
 // Defines values for ListAIRequestsParamsSubjectKind.
 const (
-	AIRequestFilterAgent    ListAIRequestsParamsSubjectKind = "agent"
-	AIRequestFilterUser     ListAIRequestsParamsSubjectKind = "user"
-	AIRequestFilterWorkload ListAIRequestsParamsSubjectKind = "workload"
+	AIRequestFilterAgent       ListAIRequestsParamsSubjectKind = "agent"
+	AIRequestFilterUser        ListAIRequestsParamsSubjectKind = "user"
+	AIRequestFilterWorkload    ListAIRequestsParamsSubjectKind = "workload"
+	AIRequestFilterWorkloadKey ListAIRequestsParamsSubjectKind = "workload_key"
 )
 
 // Defines values for ListAIRequestsParamsOutcome.

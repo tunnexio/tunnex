@@ -101,7 +101,7 @@ func (s *Policies) SetAlertPublisher(p alerts.Publisher) {
 
 // costSubject names who a daily limit belongs to, for unknown-price alerts.
 type costSubject struct {
-	Kind string // user_group, workload or agent_group
+	Kind string // user_group, workload, workload_key or agent_group
 	ID   uuid.UUID
 }
 
@@ -126,6 +126,8 @@ func (s *Policies) subjectName(ctx context.Context, org uuid.UUID, subject costS
 		q = `SELECT name FROM ai_workloads WHERE org_id=$1 AND id=$2`
 	case "agent_group":
 		q = `SELECT name FROM agent_groups WHERE org_id=$1 AND id=$2`
+	case "workload_key":
+		q = `SELECT name FROM ai_workload_static_keys WHERE org_id=$1 AND id=$2`
 	default:
 		return ""
 	}

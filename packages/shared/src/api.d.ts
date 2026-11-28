@@ -10383,7 +10383,7 @@ export interface components {
             /** Format: date-time */
             occurred_at: string;
             /** @enum {string} */
-            subject_kind: "user" | "agent" | "workload";
+            subject_kind: "user" | "agent" | "workload" | "workload_key";
             /** Format: uuid */
             subject_id?: string | null;
             /** @description Current name; empty when the subject no longer exists or was not identified. */
@@ -10401,7 +10401,7 @@ export interface components {
             model: string;
             mode: string;
             /** @enum {string} */
-            ingress: "public" | "vpn" | "agent" | "workload";
+            ingress: "public" | "vpn" | "agent" | "workload" | "internal";
             status_code: number;
             /** @enum {string} */
             outcome: "ok" | "refused" | "error";
@@ -17755,7 +17755,7 @@ export interface operations {
             query?: {
                 from?: string;
                 to?: string;
-                subject_kind?: "user" | "agent" | "workload";
+                subject_kind?: "user" | "agent" | "workload" | "workload_key";
                 /** @description A user */
                 subject_id?: string;
                 model?: string;

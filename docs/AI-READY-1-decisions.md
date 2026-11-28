@@ -22,8 +22,12 @@ One migration, `0259_ai_gateway_readiness`.
   its lists include that key (and its down migration restores the 0258 list).
   On a database without 0258, allowing one extra value is harmless. Without
   this, merging both would silently drop the static-key alert.
-- The static-keys branch's own per-key daily threshold is not covered by the
-  budget alerts here; add it when both are merged (one more subject kind).
+- Rebased onto `main` after #146 and #147 (0258, static keys) merged. Static
+  keys are integrated: a key's own daily limit is a budget-alert subject
+  (`workload_key`); a workload's limit counts its live static keys' usage, as
+  admission does; static-key calls (public and the gateway's internal
+  endpoint, ingress `internal`) are in the request log as subject
+  `workload_key`; unknown-price alerts name the key or the workload.
 
 ## 1. Model prices the operator can set
 
@@ -324,3 +328,13 @@ tokens. Docs say so.
 - The upstream LICENSE text also changed (the enterprise path moved to
   `litellm/enterprise/`); review it with the next pin.
 - The pin stays at `eeb7732f`. Founder decision needed (see the report).
+
+## Founder decisions (2026-11-28)
+
+- Catalog: keep the current pin (`eeb7732f`) for this release. Making the
+  generator skip identifiers Tunnex cannot accept (OpenRouter `~` aliases), and
+  deciding whether to pin past the upstream OpenRouter removal, is a next story.
+- Permissions: keep the reused `ai_provider:*` and `ai_gateway:view`
+  permissions for prices, cost settings and the request log for launch.
+- Engine walk: the founder runs the engine walk (proof status above) on the
+  test deployment before release.

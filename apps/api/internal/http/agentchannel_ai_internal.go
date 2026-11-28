@@ -3,6 +3,7 @@ package http
 import (
 	"context"
 	"encoding/json"
+	"github.com/go-chi/chi/v5/middleware"
 	"io"
 	"net/http"
 	"net/netip"
@@ -150,7 +151,10 @@ func (a *AgentChannel) aiKey(w http.ResponseWriter, r *http.Request) {
 	// Only gateway-observed evidence crosses this boundary. The credential is
 	// bound into the closure; no caller header reaches the adapter.
 	clone.Header = http.Header{"Content-Type": {r.Header.Get("Content-Type")}}
-	a.aiInternalAdapter.ServeAuthorized(w, clone, func(ctx context.Context, _ string, model string) (aigateway.Grant, error) {
+	tw, traced, trace, finish := a.aiInternalAdapter.RequestLog().Begin(w, clone, aigateway.IngressInternal, middleware.GetReqID(r.Context()))
+	defer finish()
+	trace.SetOrganization(node.OrgID, "workload_key")
+	a.aiInternalAdapter.ServeAuthorized(tw, traced, aigateway.TraceAuthorize(func(ctx context.Context, _ string, model string) (aigateway.Grant, error) {
 		return keys.Authorize(ctx, raw, model, ingress)
-	})
+	}))
 }

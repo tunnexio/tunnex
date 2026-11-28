@@ -9,8 +9,8 @@ import { formatAIUsageCost } from "./AIUsageDashboard";
 // and responses are never stored, so there is nothing more to open.
 type Entry = components["schemas"]["AIRequestLogEntry"];
 type Range = "1" | "7" | "30";
-const subjectLabel: Record<Entry["subject_kind"], string> = { user: "User", agent: "Agent", workload: "Workload" };
-const ingressLabel: Record<Entry["ingress"], string> = { public: "Public", vpn: "VPN", agent: "Agent", workload: "Workload" };
+const subjectLabel: Record<Entry["subject_kind"], string> = { user: "User", agent: "Agent", workload: "Workload", workload_key: "Workload API key" };
+const ingressLabel: Record<Entry["ingress"], string> = { public: "Public", vpn: "VPN", agent: "Agent", workload: "Workload", internal: "Internal endpoint" };
 const refusalLabel: Record<string, string> = {
   ai_daily_threshold_reached: "Daily limit reached", ai_price_unavailable: "Price unknown", ai_policy_denied: "No access",
   ai_gateway_unavailable: "Gateway unavailable", unauthenticated: "Not signed in",
@@ -53,7 +53,7 @@ export function AIRequestLog({ orgId }: { orgId: string }) {
   return <section className="ai-request-log" aria-label="AI requests">
     <div className="ai-gateway-filters">
       <Select aria-label="Time range" value={range} onChange={(e) => setRange(e.target.value as Range)}><option value="1">Last 24 hours</option><option value="7">Last 7 days</option><option value="30">Last 30 days</option></Select>
-      <Select aria-label="Filter by subject" value={subjectKind} onChange={(e) => setSubjectKind(e.target.value as typeof subjectKind)}><option value="">All subjects</option><option value="user">Users</option><option value="agent">Agents</option><option value="workload">Workloads</option></Select>
+      <Select aria-label="Filter by subject" value={subjectKind} onChange={(e) => setSubjectKind(e.target.value as typeof subjectKind)}><option value="">All subjects</option><option value="user">Users</option><option value="agent">Agents</option><option value="workload">Workloads</option><option value="workload_key">Workload API keys</option></Select>
       <Select aria-label="Filter by status" value={outcome} onChange={(e) => setOutcome(e.target.value as typeof outcome)}><option value="">All statuses</option><option value="ok">Succeeded</option><option value="refused">Refused</option><option value="error">Failed</option></Select>
       <form onSubmit={(e) => { e.preventDefault(); setModel(modelInput.trim()); }}><Input aria-label="Filter by model" placeholder="Exact model, for example openai/gpt-4o-mini" value={modelInput} onChange={(e) => setModelInput(e.target.value)} /></form>
       <Button variant="ghost" size="sm" onClick={() => setVersion((v) => v + 1)}>Refresh</Button>

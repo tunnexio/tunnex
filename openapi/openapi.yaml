@@ -1323,7 +1323,7 @@ paths:
       parameters:
         - { name: from, in: query, schema: { type: string, format: date-time } }
         - { name: to, in: query, schema: { type: string, format: date-time } }
-        - { name: subject_kind, in: query, schema: { type: string, enum: [user, agent, workload], x-enum-varnames: [AIRequestFilterUser, AIRequestFilterAgent, AIRequestFilterWorkload] } }
+        - { name: subject_kind, in: query, schema: { type: string, enum: [user, agent, workload, workload_key], x-enum-varnames: [AIRequestFilterUser, AIRequestFilterAgent, AIRequestFilterWorkload, AIRequestFilterWorkloadKey] } }
         - { name: subject_id, in: query, schema: { type: string, format: uuid }, description: A user, agent, workload, user group or agent group. }
         - { name: model, in: query, schema: { type: string, maxLength: 512 } }
         - { name: outcome, in: query, schema: { type: string, enum: [ok, refused, error], x-enum-varnames: [AIRequestFilterOk, AIRequestFilterRefused, AIRequestFilterError] } }
@@ -12056,7 +12056,7 @@ components:
       properties:
         id: { type: string, format: uuid }
         occurred_at: { type: string, format: date-time }
-        subject_kind: { type: string, enum: [user, agent, workload], x-enum-varnames: [AIRequestSubjectUser, AIRequestSubjectAgent, AIRequestSubjectWorkload] }
+        subject_kind: { type: string, enum: [user, agent, workload, workload_key], x-enum-varnames: [AIRequestSubjectUser, AIRequestSubjectAgent, AIRequestSubjectWorkload, AIRequestSubjectWorkloadKey] }
         subject_id: { type: string, format: uuid, nullable: true }
         subject_name: { type: string, description: Current name; empty when the subject no longer exists or was not identified. }
         group_kind: { type: string, enum: [user_group, agent_group], nullable: true, x-enum-varnames: [AIRequestGroupUser, AIRequestGroupAgent] }
@@ -12065,7 +12065,7 @@ components:
         instance_id: { type: string, format: uuid, nullable: true, description: Workload replica, when known. }
         model: { type: string }
         mode: { type: string }
-        ingress: { type: string, enum: [public, vpn, agent, workload], x-enum-varnames: [AIRequestIngressPublic, AIRequestIngressVPN, AIRequestIngressAgent, AIRequestIngressWorkload] }
+        ingress: { type: string, enum: [public, vpn, agent, workload, internal], x-enum-varnames: [AIRequestIngressPublic, AIRequestIngressVPN, AIRequestIngressAgent, AIRequestIngressWorkload, AIRequestIngressInternal] }
         status_code: { type: integer }
         outcome: { type: string, enum: [ok, refused, error], x-enum-varnames: [AIRequestOutcomeOk, AIRequestOutcomeRefused, AIRequestOutcomeError] }
         refusal_code: { type: string, nullable: true, description: "Internal refusal code, for example ai_daily_threshold_reached. Never a message." }

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/google/uuid"
 	"github.com/tunnexio/tunnex/apps/api/internal/alerts"
 )
 
@@ -103,4 +104,45 @@ type failingPublisher struct{}
 
 func (failingPublisher) Publish(context.Context, alerts.Event) error {
 	return errors.New("outbox down")
+}
+
+// A workload's daily limit counts its static keys' usage too, and a static key
+// with its own daily limit is its own subject (AI-KEYS-1 + AI-READY-1).
+func TestBudgetAlertsCoverWorkloadsAndStaticKeys(t *testing.T) {
+	ctx, f := newPriceFixture(t)
+	publisher := &recordingPublisher{}
+	f.policies.SetAlertPublisher(publisher)
+	f.engine.unpriced = false
+	budgetPage = budgetCursor{}
+	f.exec(`UPDATE organizations SET ai_gateway_enabled=true WHERE id=$1`, f.org)
+	f.exec(`DELETE FROM ai_user_group_cost_limits WHERE org_id=$1`, f.org)
+	workload, key := uuid.New(), uuid.New()
+	f.exec(`INSERT INTO ai_workloads(id,org_id,name,daily_usd_threshold,native_key_id) VALUES($1,$2,'billing-api',10,'workload-native')`, workload, f.org)
+	f.exec(`INSERT INTO ai_workload_static_keys(id,org_id,workload_id,name,secret_hash,hint,scope,workload_epoch,expires_at,created_by,native_key_id,daily_usd_threshold)
+ VALUES($1,$2,$3,'ci-key',$4,'abcd','internal',1,now()+interval '10 days',$5,'key-native',2)`, key, f.org, workload, make([]byte, 32), f.owner)
+	seen := map[string][]string{}
+	f.engine.usageFor = func(ids []string) (float64, error) {
+		if len(ids) == 1 && ids[0] == "key-native" {
+			seen["key"] = ids
+			return 1.5, nil // 75% of the key's 2 USD
+		}
+		seen["workload"] = ids
+		return 9, nil // 90% of the workload's 10 USD
+	}
+	r, err := f.policies.EvaluateBudgetAlerts(ctx, 500)
+	if err != nil || r.Subjects != 2 || r.Published != 2 {
+		t.Fatalf("pass: %+v %v", r, err)
+	}
+	if got := seen["workload"]; len(got) != 2 || got[0] != "key-native" || got[1] != "workload-native" {
+		t.Fatalf("workload usage ids: %v", got)
+	}
+	kinds := map[string]string{}
+	publisher.mu.Lock()
+	for _, e := range publisher.events {
+		kinds[e.Fields["subject_kind"]] = e.Fields["threshold_percent"]
+	}
+	publisher.mu.Unlock()
+	if kinds["workload"] != "80" || kinds["workload_key"] != "50" {
+		t.Fatalf("alerts: %v", kinds)
+	}
 }

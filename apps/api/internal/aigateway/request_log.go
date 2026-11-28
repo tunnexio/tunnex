@@ -47,6 +47,7 @@ const (
 	IngressVPN      = "vpn"
 	IngressAgent    = "agent"
 	IngressWorkload = "workload"
+	IngressInternal = "internal" // a workload static key through a gateway's internal endpoint
 )
 
 type requestTraceKey struct{}
@@ -624,9 +625,9 @@ func (s *Policies) ListRequests(ctx context.Context, org uuid.UUID, f RequestLog
 		limit = 50
 	}
 	switch f.SubjectKind {
-	case "", "user", "agent", "workload":
+	case "", "user", "agent", "workload", "workload_key":
 	default:
-		return nil, "", apierr.BadRequest("invalid_filter", "subject_kind must be user, agent or workload")
+		return nil, "", apierr.BadRequest("invalid_filter", "subject_kind must be user, agent, workload or workload_key")
 	}
 	switch f.Outcome {
 	case "", "ok", "refused", "error":
@@ -646,13 +647,14 @@ func (s *Policies) ListRequests(ctx context.Context, org uuid.UUID, f RequestLog
 		beforeAt, beforeID = &at, &id
 	}
 	rows, err := s.pool.Query(ctx, `SELECT l.id,l.occurred_at,l.subject_kind,l.subject_id,
- COALESCE(CASE l.subject_kind WHEN 'user' THEN COALESCE(NULLIF(u.name,''),u.email) WHEN 'agent' THEN d.name WHEN 'workload' THEN w.name END,''),
+ COALESCE(CASE l.subject_kind WHEN 'user' THEN COALESCE(NULLIF(u.name,''),u.email) WHEN 'agent' THEN d.name WHEN 'workload' THEN w.name WHEN 'workload_key' THEN sk.name END,''),
  l.group_kind,l.group_id,COALESCE(CASE l.group_kind WHEN 'user_group' THEN ug.name WHEN 'agent_group' THEN ag.name END,''),
  l.instance_id,l.model,l.mode,l.ingress,l.status_code,l.outcome,l.refusal_code,l.latency_ms,l.prompt_tokens,l.completion_tokens,l.cost_usd,l.cost_state,l.request_id
  FROM ai_request_log l
  LEFT JOIN users u ON l.subject_kind='user' AND u.id=l.subject_id
  LEFT JOIN devices d ON l.subject_kind='agent' AND d.org_id=l.org_id AND d.id=l.subject_id
  LEFT JOIN ai_workloads w ON l.subject_kind='workload' AND w.org_id=l.org_id AND w.id=l.subject_id
+ LEFT JOIN ai_workload_static_keys sk ON l.subject_kind='workload_key' AND sk.org_id=l.org_id AND sk.id=l.subject_id
  LEFT JOIN user_groups ug ON l.group_kind='user_group' AND ug.org_id=l.org_id AND ug.id=l.group_id
  LEFT JOIN agent_groups ag ON l.group_kind='agent_group' AND ag.org_id=l.org_id AND ag.id=l.group_id
  WHERE l.org_id=$1 AND ($2::timestamptz IS NULL OR l.occurred_at >= $2) AND ($3::timestamptz IS NULL OR l.occurred_at < $3)

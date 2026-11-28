@@ -74,7 +74,7 @@ func (s *Policies) EvaluateBudgetAlerts(ctx context.Context, maxSubjects int) (B
 		if len(subject.ids) == 0 {
 			continue // no attributed key yet: nothing spent
 		}
-		usage, err := s.engine.Usage(ctx, subject.ids, day, now)
+		usage, err := engineUsageBatched(ctx, s.engine, subject.ids, day, now)
 		if err != nil || !validObservedUsage(usage) {
 			out.Skipped++
 			continue
@@ -130,7 +130,7 @@ func (s *Policies) alertBudget(ctx context.Context, subject budgetSubject, spend
 	if label == "" {
 		label = subject.id.String()
 	}
-	kind := map[string]string{"user_group": "User group", "workload": "Workload", "agent_group": "Agent group"}[subject.kind]
+	kind := map[string]string{"user_group": "User group", "workload": "Workload", "workload_key": "Workload API key", "agent_group": "Agent group"}[subject.kind]
 	dayText := day.Format("2006-01-02")
 	err := s.alerts.Publish(ctx, alerts.Event{
 		OrgID: subject.org, Key: alerts.EventAIBudgetThreshold, Severity: publish.severity,
@@ -174,6 +174,7 @@ func (s *Policies) limitedSubjects(ctx context.Context, limit int) ([]budgetSubj
  SELECT 'agent_group' AS kind,t.team_id AS id,t.org_id,g.name,t.daily_cost_limit AS daily_limit FROM ai_gateway_team_policies t JOIN agent_groups g ON g.org_id=t.org_id AND g.id=t.team_id WHERE t.daily_cost_limit IS NOT NULL
  UNION ALL SELECT 'user_group',l.group_id,l.org_id,g.name,l.daily_usd_threshold FROM ai_user_group_cost_limits l JOIN user_groups g ON g.org_id=l.org_id AND g.id=l.group_id WHERE l.daily_usd_threshold IS NOT NULL
  UNION ALL SELECT 'workload',w.id,w.org_id,w.name,w.daily_usd_threshold FROM ai_workloads w WHERE w.daily_usd_threshold IS NOT NULL
+ UNION ALL SELECT 'workload_key',k.id,k.org_id,k.name,k.daily_usd_threshold FROM ai_workload_static_keys k WHERE k.daily_usd_threshold IS NOT NULL AND k.revoked_at IS NULL AND k.expires_at>now()
 ) s WHERE EXISTS (SELECT 1 FROM organizations o WHERE o.id=s.org_id AND o.ai_gateway_enabled)
  AND (kind,id) > ($1::text,$2::uuid) ORDER BY kind,id LIMIT $3`
 	budgetPageMu.Lock()
@@ -213,8 +214,15 @@ func (s *Policies) limitedSubjects(ctx context.Context, limit int) ([]budgetSubj
 			team := b.id
 			b.ids, err = bindingUsageIDs(ctx, tx, b.org, &team, nil)
 		case "workload":
+			// The workload's own key plus its static keys live today, as admission counts them.
+			var ids []string
+			if err = tx.QueryRow(ctx, `SELECT coalesce(array_agg(id ORDER BY id),'{}') FROM (SELECT native_key_id AS id FROM ai_workloads WHERE org_id=$1 AND id=$2 AND native_key_id<>''
+ UNION SELECT native_key_id FROM ai_workload_static_keys WHERE org_id=$1 AND workload_id=$2 AND native_key_id<>'' AND coalesce(least(revoked_at,expires_at),expires_at)>date_trunc('day',now() AT TIME ZONE 'UTC') AT TIME ZONE 'UTC') x`, b.org, b.id).Scan(&ids); err == nil && len(ids) > 0 && len(ids) <= 1000 {
+				b.ids = ids
+			}
+		case "workload_key":
 			var native string
-			if err = tx.QueryRow(ctx, `SELECT native_key_id FROM ai_workloads WHERE org_id=$1 AND id=$2`, b.org, b.id).Scan(&native); err == nil && native != "" {
+			if err = tx.QueryRow(ctx, `SELECT native_key_id FROM ai_workload_static_keys WHERE org_id=$1 AND id=$2`, b.org, b.id).Scan(&native); err == nil && native != "" {
 				b.ids = []string{native}
 			}
 		}
