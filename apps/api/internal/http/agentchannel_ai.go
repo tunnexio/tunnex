@@ -2,10 +2,14 @@ package http
 
 import (
 	"context"
-	"github.com/go-chi/chi/v5/middleware"
+	"encoding/json"
+	"errors"
 	"net/http"
+	"time"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
+	"github.com/tunnexio/tunnex/apps/api/db/sqlc"
 	"github.com/tunnexio/tunnex/apps/api/internal/aigateway"
 	"github.com/tunnexio/tunnex/apps/api/internal/apierr"
 )
@@ -28,35 +32,53 @@ func (a *AgentChannel) vpnAIHTTPChat(w http.ResponseWriter, r *http.Request) {
 	a.serveVPNChat(w, r, true)
 }
 
-func (a *AgentChannel) serveVPNChat(w http.ResponseWriter, r *http.Request, automaticHTTP bool) {
+// vpnRequest is the shared node-channel prelude for VPN inference and the VPN
+// model list: node certificate, org match, configured services, the automatic
+// HTTP policy, and exactly one gateway-observed evidence pair.
+type vpnRequest struct {
+	node            sqlc.Node
+	explicitOrg     string
+	source, peerKey string
+}
+
+func (a *AgentChannel) vpnPrelude(w http.ResponseWriter, r *http.Request, automaticHTTP bool) (vpnRequest, *http.Request, bool) {
 	node, r, ok := a.authenticateAgent(w, r)
 	if !ok {
-		return
+		return vpnRequest{}, r, false
 	}
 	explicitOrg := chi.URLParam(r, "orgId")
 	if explicitOrg != "" && explicitOrg != node.OrgID.String() {
 		http.Error(w, "forbidden", http.StatusForbidden)
-		return
+		return vpnRequest{}, r, false
 	}
 	if a.vpnAIAdapter == nil || a.vpnAIPolicies == nil {
 		http.Error(w, "AI gateway unavailable", http.StatusServiceUnavailable)
-		return
+		return vpnRequest{}, r, false
 	}
 	if automaticHTTP {
 		if !a.vpnAIPolicies.AutomaticVPNEnabled() {
 			apierr.Write(w, r, apierr.New(403, "ai_vpn_unavailable", "Automatic VPN AI access is unavailable."))
-			return
+			return vpnRequest{}, r, false
 		}
 		if err := requireVPNAIHTTP(r.Context(), a.vpnHTTPTransport); err != nil {
 			apierr.Write(w, r, err)
-			return
+			return vpnRequest{}, r, false
 		}
 	}
 	ips, keys := r.Header.Values("X-Tunnex-VPN-IP"), r.Header.Values("X-Tunnex-VPN-Key")
 	if len(ips) != 1 || len(keys) != 1 {
 		http.Error(w, "forbidden", http.StatusForbidden)
+		return vpnRequest{}, r, false
+	}
+	return vpnRequest{node: node, explicitOrg: explicitOrg, source: ips[0], peerKey: keys[0]}, r, true
+}
+
+func (a *AgentChannel) serveVPNChat(w http.ResponseWriter, r *http.Request, automaticHTTP bool) {
+	v, r, ok := a.vpnPrelude(w, r, automaticHTTP)
+	if !ok {
 		return
 	}
+	node, explicitOrg := v.node, v.explicitOrg
 	clone := r.Clone(r.Context())
 	clone.URL.Path = "/v1/chat/completions"
 	// Only gateway-observed evidence crosses this mTLS boundary. Caller credentials
@@ -67,11 +89,59 @@ func (a *AgentChannel) serveVPNChat(w http.ResponseWriter, r *http.Request, auto
 	trace.SetOrganization(node.OrgID, "user")
 	a.vpnAIAdapter.ServeAuthorized(tw, traced, aigateway.TraceAuthorize(func(ctx context.Context, _ string, model string) (aigateway.Grant, error) {
 		if automaticHTTP {
-			return a.vpnAIPolicies.ResolveAutomaticVPNModel(ctx, node.OrgID, node.ID, ips[0], keys[0], model, explicitOrg == "")
+			return a.vpnAIPolicies.ResolveAutomaticVPNModel(ctx, node.OrgID, node.ID, v.source, v.peerKey, model, explicitOrg == "")
 		}
 		if explicitOrg == "" {
-			return a.vpnAIPolicies.ResolveSingleOrgVPNModel(ctx, node.OrgID, node.ID, ips[0], keys[0], model)
+			return a.vpnAIPolicies.ResolveSingleOrgVPNModel(ctx, node.OrgID, node.ID, v.source, v.peerKey, model)
 		}
-		return a.vpnAIPolicies.ResolveVPNModel(ctx, node.OrgID, node.ID, ips[0], keys[0], model)
+		return a.vpnAIPolicies.ResolveVPNModel(ctx, node.OrgID, node.ID, v.source, v.peerKey, model)
 	}))
+}
+
+func (a *AgentChannel) vpnAIModels(w http.ResponseWriter, r *http.Request) {
+	a.serveVPNModels(w, r, false)
+}
+
+func (a *AgentChannel) vpnAIHTTPModels(w http.ResponseWriter, r *http.Request) {
+	a.serveVPNModels(w, r, true)
+}
+
+// serveVPNModels answers the OpenAI model list for the user behind the VPN
+// evidence: only that user's granted chat models, resolved exactly like chat.
+func (a *AgentChannel) serveVPNModels(w http.ResponseWriter, r *http.Request, automaticHTTP bool) {
+	w.Header().Set("Cache-Control", "no-store")
+	v, r, ok := a.vpnPrelude(w, r, automaticHTTP)
+	if !ok {
+		return
+	}
+	if r.URL.RawQuery != "" || r.URL.RawPath != "" || r.ContentLength != 0 {
+		apierr.Write(w, r, apierr.New(400, "invalid_request", "invalid model list request"))
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
+	defer cancel()
+	singleOrg := v.explicitOrg == ""
+	var models []aigateway.UserModel
+	var err error
+	if automaticHTTP {
+		models, err = a.vpnAIPolicies.AutomaticVPNModels(ctx, v.node.OrgID, v.node.ID, v.source, v.peerKey, singleOrg)
+	} else {
+		models, err = a.vpnAIPolicies.VPNModels(ctx, v.node.OrgID, v.node.ID, v.source, v.peerKey, singleOrg)
+	}
+	if err != nil {
+		// Like the inference adapter, never forward resolver codes or messages.
+		var domain *apierr.Error
+		if errors.As(err, &domain) && domain.Status == http.StatusServiceUnavailable {
+			apierr.Write(w, r, apierr.New(503, "ai_gateway_unavailable", "AI gateway is unavailable"))
+		} else {
+			apierr.Write(w, r, apierr.New(403, "ai_policy_denied", "AI access is not available under the current policy"))
+		}
+		return
+	}
+	data := []map[string]string{}
+	for _, m := range models {
+		data = append(data, map[string]string{"id": m.Model, "object": "model", "owned_by": "tunnex", "mode": string(aigateway.DefaultModelMode(m.Mode))})
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]any{"object": "list", "data": data})
 }

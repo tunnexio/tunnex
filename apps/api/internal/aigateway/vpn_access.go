@@ -34,12 +34,22 @@ func (s *Policies) resolveVPNModel(ctx context.Context, org, node uuid.UUID, sou
 }
 
 func (s *Policies) resolveVPNPeerModel(ctx context.Context, org, node uuid.UUID, source, key, model string, singleOrg bool) (Grant, error) {
+	vpnUser, err := vpnPeerUser(ctx, org, node, source, key, singleOrg)
+	if err != nil {
+		return Grant{}, err
+	}
+	return s.resolveUserModel(ctx, org, uuid.Nil, model, vpnUser, true)
+}
+
+// vpnPeerUser is the single VPN identity check shared by inference and the
+// model list. The returned query runs inside the caller's transaction.
+func vpnPeerUser(ctx context.Context, org, node uuid.UUID, source, key string, singleOrg bool) (func(pgx.Tx) (uuid.UUID, error), error) {
 	ip, err := netip.ParseAddr(source)
 	raw, keyErr := base64.StdEncoding.DecodeString(key)
 	if err != nil || !ip.Is4() || ip.IsUnspecified() || keyErr != nil || len(raw) != 32 || node == uuid.Nil {
-		return Grant{}, policyDenied()
+		return nil, policyDenied()
 	}
-	return s.resolveUserModel(ctx, org, uuid.Nil, model, func(tx pgx.Tx) (uuid.UUID, error) {
+	return func(tx pgx.Tx) (uuid.UUID, error) {
 		var user uuid.UUID
 		var roles []string
 		// Org and gateway come from the authenticated node, never from the client.
@@ -69,7 +79,41 @@ func (s *Policies) resolveVPNPeerModel(ctx context.Context, org, node uuid.UUID,
 			}
 		}
 		return user, nil
-	}, true)
+	}, nil
+}
+
+// VPNModels lists the chat models of the user behind verified VPN evidence on
+// the explicitly provisioned TLS ingress. It applies exactly the identity
+// checks of ResolveVPNModel/ResolveSingleOrgVPNModel.
+func (s *Policies) VPNModels(ctx context.Context, org, node uuid.UUID, source, key string, singleOrg bool) ([]UserModel, error) {
+	if s == nil || s.vpnIngress == nil || s.vpnIngress.Node != node {
+		return nil, policyDenied()
+	}
+	return s.vpnPeerModels(ctx, org, node, source, key, singleOrg)
+}
+
+func (s *Policies) vpnPeerModels(ctx context.Context, org, node uuid.UUID, source, key string, singleOrg bool) ([]UserModel, error) {
+	vpnUser, err := vpnPeerUser(ctx, org, node, source, key, singleOrg)
+	if err != nil {
+		return nil, err
+	}
+	user, err := s.resolveVPNUser(ctx, org, vpnUser)
+	if err != nil {
+		return nil, err
+	}
+	models, err := s.UserModels(ctx, org, user)
+	if err != nil {
+		return nil, err
+	}
+	// The VPN relay serves chat completions only; other modes would be listed
+	// but refused, so they are left out.
+	out := []UserModel{}
+	for _, m := range models {
+		if DefaultModelMode(m.Mode) == ModeChat {
+			out = append(out, m)
+		}
+	}
+	return out, nil
 }
 
 // VPNIngress is an explicitly provisioned single-gateway ingress. Configuration

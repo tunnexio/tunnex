@@ -275,6 +275,14 @@ func (a *Adapter) serve(w http.ResponseWriter, r *http.Request, authorize Author
 			_ = json.Unmarshal(body, &speech)
 			ct = map[string]string{"": "audio/mpeg", "mp3": "audio/mpeg", "opus": "audio/ogg", "aac": "audio/aac", "flac": "audio/flac", "wav": "audio/wav", "pcm": "audio/pcm"}[speech.Format]
 		}
+		if ct == "application/json" {
+			// Engine diagnostics (internal key names, provider headers) never
+			// reach the caller; everything else is passed through byte for byte.
+			if data, err = stripEngineMetadata(data); err != nil {
+				writeAdapterError(w, r, 502)
+				return
+			}
+		}
 		w.Header().Set("Content-Type", ct)
 		w.WriteHeader(res.StatusCode)
 		_, _ = w.Write(data)
@@ -282,25 +290,10 @@ func (a *Adapter) serve(w http.ResponseWriter, r *http.Request, authorize Author
 	}
 	w.Header().Set("Content-Type", ct)
 	w.WriteHeader(res.StatusCode)
-	buf := make([]byte, 8<<10)
-	var delivered int64
-	for {
-		n, readErr := res.Body.Read(buf)
-		if n > 0 {
-			delivered += int64(n)
-			if delivered > responseLimit {
-				panic(http.ErrAbortHandler)
-			}
-			if _, err := w.Write(buf[:n]); err != nil {
-				return
-			}
-			if rc.Flush() != nil {
-				return
-			}
-		}
-		if readErr != nil {
-			return
-		}
+	// One SSE event at a time, engine metadata removed from each event. The
+	// response cap still counts every upstream byte.
+	if err := copySSEStripped(w, rc.Flush, res.Body, responseLimit); errors.Is(err, errResponseTooLarge) || errors.Is(err, errInvalidStrip) {
+		panic(http.ErrAbortHandler)
 	}
 }
 

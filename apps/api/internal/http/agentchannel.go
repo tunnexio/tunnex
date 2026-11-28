@@ -188,6 +188,10 @@ func (a *AgentChannel) Handler() http.Handler {
 	r.Post("/agent/ai/v1/chat/completions", a.vpnAIChat)
 	r.Post("/agent/ai-http/organizations/{orgId}/v1/chat/completions", a.vpnAIHTTPChat)
 	r.Post("/agent/ai-http/v1/chat/completions", a.vpnAIHTTPChat)
+	r.Get("/agent/ai/organizations/{orgId}/v1/models", a.vpnAIModels)
+	r.Get("/agent/ai/v1/models", a.vpnAIModels)
+	r.Get("/agent/ai-http/organizations/{orgId}/v1/models", a.vpnAIHTTPModels)
+	r.Get("/agent/ai-http/v1/models", a.vpnAIHTTPModels)
 	// AI-KEYS-1: the internal AI endpoint served by this gateway.
 	r.Get("/agent/ai-internal/desired-state", a.aiInternalDesiredState)
 	r.Post("/agent/ai-internal/certificate", a.aiInternalCertificate)

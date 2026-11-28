@@ -217,3 +217,110 @@ func TestHTTPRelayHasNoWebPublicIdentityOrOperationFallback(t *testing.T) {
 		})
 	}
 }
+
+func TestModelListForwardsOnlyEvidence(t *testing.T) {
+	target, _ := url.Parse("https://control.test:8443")
+	for _, tc := range []struct {
+		name   string
+		build  func(KernelPeers, http.RoundTripper) http.Handler
+		host   string
+		prefix string
+	}{
+		{"manual TLS", func(p KernelPeers, tr http.RoundTripper) http.Handler {
+			return Handler("internal.test", target, tr, p, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { http.Error(w, "ordinary web", 418) }))
+		}, "internal.test", "/agent/ai"},
+		{"automatic HTTP", func(p KernelPeers, tr http.RoundTripper) http.Handler {
+			return HTTPHandler("10.99.0.1", target, tr, p)
+		}, "10.99.0.1:8083", "/agent/ai-http"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			var paths []string
+			tr := roundTrip(func(r *http.Request) (*http.Response, error) {
+				paths = append(paths, r.URL.Path)
+				if r.Method != "GET" || r.URL.RawQuery != "" || r.URL.Host != "control.test:8443" {
+					t.Fatalf("wrong upstream request %s %s", r.Method, r.URL)
+				}
+				if r.Body != nil {
+					if b, _ := io.ReadAll(r.Body); len(b) != 0 {
+						t.Fatal("body forwarded")
+					}
+				}
+				for name := range r.Header {
+					switch http.CanonicalHeaderKey(name) {
+					case "X-Tunnex-Vpn-Ip", "X-Tunnex-Vpn-Key":
+					case "User-Agent":
+						if r.Header.Get(name) != "" {
+							t.Fatal("caller user agent forwarded")
+						}
+					default:
+						t.Fatalf("header escaped: %s", name)
+					}
+				}
+				if r.Header.Get("X-Tunnex-VPN-IP") != "10.99.0.2" || r.Header.Get("X-Tunnex-VPN-Key") != peer {
+					t.Fatal("wrong evidence")
+				}
+				return &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": {"application/json"}}, Body: io.NopCloser(strings.NewReader(`{"object":"list","data":[]}`))}, nil
+			})
+			h := tc.build(func(context.Context) (string, error) { return peer + "\t10.99.0.2/32", nil }, tr)
+			for _, path := range []string{"/ai/v1/models", "/api/v1/organizations/org/ai-gateway/inference/v1/models"} {
+				r := httptest.NewRequest("GET", "http://"+tc.host+path, nil)
+				r.RemoteAddr = "10.99.0.2:1234"
+				for _, h := range []string{"Authorization", "Cookie", "Forwarded", "X-Forwarded-For", "X-Api-Key", "X-Tunnex-User", "X-Tunnex-VPN-IP", "X-Tunnex-VPN-Key", "Content-Type", "User-Agent"} {
+					r.Header.Set(h, "forged")
+				}
+				w := httptest.NewRecorder()
+				h.ServeHTTP(w, r)
+				if w.Code != 200 || !strings.Contains(w.Body.String(), `"object":"list"`) {
+					t.Fatalf("%s: status=%d body=%q", path, w.Code, w.Body.String())
+				}
+			}
+			want := []string{tc.prefix + "/v1/models", tc.prefix + "/organizations/org/v1/models"}
+			if strings.Join(paths, ",") != strings.Join(want, ",") {
+				t.Fatalf("upstream paths %v want %v", paths, want)
+			}
+			for _, refusal := range []struct {
+				method, path, host, source, body string
+				want                             int
+			}{
+				{"POST", "/ai/v1/models", tc.host, "10.99.0.2:1234", "", 400},
+				{"POST", "/api/v1/organizations/org/ai-gateway/inference/v1/models", tc.host, "10.99.0.2:1234", "{}", 400},
+				{"GET", "/ai/v1/models?limit=1", tc.host, "10.99.0.2:1234", "", 400},
+				{"GET", "/ai/v1/models", tc.host, "10.99.0.2:1234", "{}", 400},
+				{"GET", "/ai/v1/models", "public.example", "10.99.0.2:1234", "", 421},
+				{"GET", "/api/v1/organizations/org/ai-gateway/inference/v1/models", "public.example", "10.99.0.2:1234", "", 421},
+				{"GET", "/ai/v1/models", tc.host, "203.0.113.5:1234", "", 401},
+			} {
+				var body io.Reader
+				if refusal.body != "" {
+					body = strings.NewReader(refusal.body)
+				}
+				r := httptest.NewRequest(refusal.method, "http://"+refusal.host+refusal.path, body)
+				r.RemoteAddr = refusal.source
+				w := httptest.NewRecorder()
+				h.ServeHTTP(w, r)
+				if w.Code != refusal.want {
+					t.Fatalf("%s %s from %s: status=%d want=%d", refusal.method, refusal.path, refusal.source, w.Code, refusal.want)
+				}
+			}
+			if len(paths) != 2 {
+				t.Fatalf("refused request reached control plane: %v", paths)
+			}
+		})
+	}
+}
+
+func TestModelListEmptyOrgIsNotRelayed(t *testing.T) {
+	target, _ := url.Parse("https://control.test:8443")
+	tr := roundTrip(func(*http.Request) (*http.Response, error) {
+		t.Fatal("refused request reached control plane")
+		return nil, nil
+	})
+	h := HTTPHandler("10.99.0.1", target, tr, func(context.Context) (string, error) { return peer + "\t10.99.0.2/32", nil })
+	r := httptest.NewRequest("GET", "http://10.99.0.1:8083/api/v1/organizations//ai-gateway/inference/v1/models", nil)
+	r.RemoteAddr = "10.99.0.2:1234"
+	w := httptest.NewRecorder()
+	h.ServeHTTP(w, r)
+	if w.Code != 404 {
+		t.Fatalf("empty organization status %d", w.Code)
+	}
+}

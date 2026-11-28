@@ -69,7 +69,7 @@ func TestProposalVPNHTTPChannelPolicyAndReports(t *testing.T) {
 			}
 		}
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = io.WriteString(w, `{"choices":[{"message":{"content":"VPN fixture success"}}]}`)
+		_, _ = io.WriteString(w, `{"choices":[{"message":{"content":"VPN fixture success"}}],"extra_fields":{"routing_info":{"key":"tnx-managed-fixture-r1"},"provider_response_headers":{"Cf-Ray":"fixture"}}}`)
 	}))
 	defer upstream.Close()
 	adapter, err := aigateway.NewAdapter(upstream.URL, func(context.Context, string, string) (aigateway.Grant, error) {
@@ -219,7 +219,7 @@ func TestProposalVPNHTTPChannelPolicyAndReports(t *testing.T) {
 		t.Fatal("ready report failed")
 	}
 	exec(`UPDATE server_ai_transport_settings SET allow_vpn_http=true,revision=revision+1 WHERE singleton`)
-	if w := call(route, chat, true); w.Code != 200 || !strings.Contains(w.Body.String(), "VPN fixture success") {
+	if w := call(route, chat, true); w.Code != 200 || w.Body.String() != `{"choices":[{"message":{"content":"VPN fixture success"}}]}` {
 		t.Fatalf("valid inference %d: %s", w.Code, w.Body.String())
 	}
 	if arrivals.Load() != 1 {
@@ -231,6 +231,75 @@ func TestProposalVPNHTTPChannelPolicyAndReports(t *testing.T) {
 	if arrivals.Load() != 2 {
 		t.Fatal("short route did not reach fixture engine once")
 	}
+	// Model list: same channel, same peer evidence, no body, no engine call.
+	list := func(path, peerKey string, cert bool) (int, string) {
+		t.Helper()
+		r, err := http.NewRequestWithContext(ctx, "GET", srv.URL+path, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		r.Header.Set("X-Tunnex-VPN-IP", "10.99.0.2")
+		r.Header.Set("X-Tunnex-VPN-Key", peerKey)
+		r.Header.Set("Authorization", "Bearer unused")
+		client := plainClient
+		if cert {
+			client = certClient
+		}
+		response, err := client.Do(r)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer response.Body.Close()
+		body, err := io.ReadAll(response.Body)
+		if err != nil {
+			t.Fatal(err)
+		}
+		return response.StatusCode, string(body)
+	}
+	const peerKey = "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA="
+	modelsRoute := "/agent/ai-http/organizations/" + org.String() + "/v1/models"
+	for _, path := range []string{modelsRoute, "/agent/ai-http/v1/models"} {
+		code, body := list(path, peerKey, true)
+		var got struct {
+			Object string `json:"object"`
+			Data   []struct {
+				ID, Object, OwnedBy, Mode string
+			} `json:"data"`
+		}
+		if code != 200 || json.Unmarshal([]byte(body), &got) != nil || got.Object != "list" || len(got.Data) != 1 || got.Data[0].ID != "openrouter/vpn" || got.Data[0].Object != "model" || got.Data[0].Mode != "chat" {
+			t.Fatalf("model list %s: %d %s", path, code, body)
+		}
+	}
+	for _, tc := range []struct {
+		name, path, key string
+		cert            bool
+		want            int
+		code            string
+	}{
+		{"no certificate", modelsRoute, peerKey, false, 401, ""},
+		{"wrong org", "/agent/ai-http/organizations/" + uuid.NewString() + "/v1/models", peerKey, true, 403, ""},
+		{"unknown peer", modelsRoute, "BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBA=", true, 403, "ai_policy_denied"},
+		{"query", modelsRoute + "?limit=1", peerKey, true, 400, "invalid_request"},
+		// The manual TLS route still requires the explicitly provisioned ingress.
+		{"manual without ingress", "/agent/ai/v1/models", peerKey, true, 403, "ai_policy_denied"},
+	} {
+		if code, body := list(tc.path, tc.key, tc.cert); code != tc.want || !strings.Contains(body, tc.code) || strings.Contains(body, "openrouter/vpn") {
+			t.Fatalf("%s: %d %s", tc.name, code, body)
+		}
+	}
+	policies.ConfigureAutomaticVPNIngress(false)
+	if code, body := list(modelsRoute, peerKey, true); code != 403 || !strings.Contains(body, "ai_vpn_unavailable") {
+		t.Fatalf("automatic disabled listed: %d %s", code, body)
+	}
+	policies.ConfigureAutomaticVPNIngress(true)
+	exec(`UPDATE server_ai_transport_settings SET allow_vpn_http=false,revision=revision+1 WHERE singleton`)
+	if code, body := list(modelsRoute, peerKey, true); code != 403 || !strings.Contains(body, "ai_vpn_http_disabled") {
+		t.Fatalf("VPN HTTP off listed: %d %s", code, body)
+	}
+	exec(`UPDATE server_ai_transport_settings SET allow_vpn_http=true,revision=revision+1 WHERE singleton`)
+	if arrivals.Load() != 2 {
+		t.Fatal("model list reached the engine")
+	}
 	exec(`UPDATE devices SET status='revoked' WHERE id=$1`, device)
 	if w := call(route, chat, true); w.Code != 403 {
 		t.Fatalf("revoked peer status %d", w.Code)
@@ -239,6 +308,9 @@ func TestProposalVPNHTTPChannelPolicyAndReports(t *testing.T) {
 	exec(`DELETE FROM group_members WHERE org_id=$1 AND group_id=$2 AND user_id=$3`, org, group, user)
 	if w := call(route, chat, true); w.Code != 403 {
 		t.Fatalf("revoked grant status %d", w.Code)
+	}
+	if code, body := list(modelsRoute, peerKey, true); code != 200 || !strings.Contains(body, `"data":[]`) {
+		t.Fatalf("user without grants: %d %s", code, body)
 	}
 	exec(`INSERT INTO group_members(org_id,group_id,user_id) VALUES($1,$2,$3)`, org, group, user)
 	exec(`UPDATE server_ai_transport_settings SET allow_vpn_http=false,revision=revision+1 WHERE singleton`)

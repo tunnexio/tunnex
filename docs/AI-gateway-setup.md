@@ -56,6 +56,8 @@ affected by either switch.
   to the VPN reach their models over HTTP at the gateway's VPN address. Requests
   travel inside the encrypted WireGuard tunnel. It opens nothing on the public
   internet.
+  Tools that list models first (`GET .../v1/models`) get the member's own
+  granted chat models on the same VPN address.
 - **Public internet** (off by default): permits AI setup and model requests
   over plain HTTP on the server's public address. Provider keys and access
   tokens then travel unencrypted; someone on the network path can read or

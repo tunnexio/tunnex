@@ -1,4 +1,5 @@
-// Package aivpn relays SDK chat requests from a VPN-only socket over node mTLS.
+// Package aivpn relays SDK chat requests and the model list from a VPN-only
+// socket over node mTLS.
 package aivpn
 
 import (
@@ -95,6 +96,9 @@ func handler(host string, control *url.URL, transport http.RoundTripper, peers K
 			pr.SetURL(control)
 			pr.Out.Host = control.Host
 			pr.Out.Header = http.Header{"Content-Type": {pr.In.Header.Get("Content-Type")}}
+			if pr.In.Method == http.MethodGet {
+				pr.Out.Header = http.Header{}
+			}
 			evidence := pr.In.Context().Value(peerContextKey{}).(peerEvidence)
 			pr.Out.Header.Set("X-Tunnex-VPN-IP", evidence.ip)
 			pr.Out.Header.Set("X-Tunnex-VPN-Key", evidence.key)
@@ -114,11 +118,19 @@ func handler(host string, control *url.URL, transport http.RoundTripper, peers K
 		parts := strings.Split(strings.TrimPrefix(r.URL.Path, prefix), "/")
 		isChat := strings.HasPrefix(r.URL.Path, prefix) && len(parts) == 6 && parts[1] == "ai-gateway" && parts[2] == "inference" && parts[3] == "v1" && parts[4] == "chat" && parts[5] == "completions"
 		isAlias := r.URL.Path == "/ai/v1/chat/completions"
-		if !isChat && !isAlias {
+		// SDK discovery: the caller's own granted models, same identity path.
+		isModels := strings.HasPrefix(r.URL.Path, prefix) && len(parts) == 5 && parts[0] != "" && parts[1] == "ai-gateway" && parts[2] == "inference" && parts[3] == "v1" && parts[4] == "models"
+		isAliasModels := r.URL.Path == "/ai/v1/models"
+		listing := isModels || isAliasModels
+		if !isChat && !isAlias && !listing {
 			web.ServeHTTP(w, r)
 			return
 		}
-		if r.Method != "POST" || r.URL.RawQuery != "" || r.URL.RawPath != "" {
+		method := "POST"
+		if listing {
+			method = "GET"
+		}
+		if r.Method != method || r.URL.RawQuery != "" || r.URL.RawPath != "" || (listing && r.ContentLength != 0) {
 			http.Error(w, "invalid request", 400)
 			return
 		}
@@ -147,12 +159,21 @@ func handler(host string, control *url.URL, transport http.RoundTripper, peers K
 			return
 		}
 		clone := r.Clone(context.WithValue(ctx, peerContextKey{}, peerEvidence{source, key}))
-		if isAlias {
+		switch {
+		case isAlias:
 			clone.URL.Path = routePrefix + "/v1/chat/completions"
-		} else {
+		case isChat:
 			clone.URL.Path = routePrefix + "/organizations/" + parts[0] + "/v1/chat/completions"
+		case isAliasModels:
+			clone.URL.Path = routePrefix + "/v1/models"
+		default:
+			clone.URL.Path = routePrefix + "/organizations/" + parts[0] + "/v1/models"
 		}
-		clone.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+		if listing {
+			clone.Body, clone.ContentLength = http.NoBody, 0
+		} else {
+			clone.Body = http.MaxBytesReader(w, r.Body, 1<<20)
+		}
 		proxy.ServeHTTP(w, clone)
 	})
 }
