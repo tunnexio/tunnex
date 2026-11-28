@@ -148,19 +148,18 @@ of token ids, or an array of 1–2048 token-id arrays (each ≤ 8192 ids, ids
   `max_tokens` to the model's maximum, e.g. 64000, and refusing would break
   default calls); a Messages API thinking budget above the lowered limit is
   lowered with it. Non-integers, zero and values above 100,000,000 are refused.
-- When a chat, completions or responses request names no limit, the adapter
-  inserts the model's own maximum from the bundled catalog
-  (`max_output_tokens`, else `max_tokens`) capped by the ceiling; for a model the
-  catalog does not know, `TUNNEX_AI_DEFAULT_OUTPUT_TOKENS` (default **4096**).
-  This replaces the fixed 1024 that truncated LangChain answers. A requested
-  value above the catalog maximum but below the ceiling is passed through; the
-  provider decides (the catalog can lag a provider).
+- When a chat, completions, responses or Messages API request names no limit,
+  the adapter inserts `TUNNEX_AI_DEFAULT_OUTPUT_TOKENS` (default **4096**) for
+  every model, capped by the ceiling (founder decision 2026-11-28; the catalog
+  maximum is not used). This replaces the fixed 1024 that truncated LangChain
+  answers. An explicit value up to the ceiling is passed through; the provider
+  decides.
 - Cost: daily thresholds are observational admission, not a reservation.
   Admission still runs before every request is forwarded. The worst case past a
   threshold is about `max_tokens × output price × concurrent requests` per
   subject. With the defaults and a model priced at $15 per million output tokens,
-  that is 32768 × 15e-6 × 16 ≈ $7.90 in flight per subject. **Founder
-  decision:** the default ceiling and the absent-limit default.
+  that is 32768 × 15e-6 × 16 ≈ $7.90 in flight per subject for requests that ask
+  for the ceiling, and 4096 × 15e-6 × 16 ≈ $0.98 for requests that name no limit.
 
 ### 3. `/v1/responses`
 
@@ -193,7 +192,7 @@ Helm values.
 | Variable | Default | Range | Meaning |
 |---|---|---|---|
 | `TUNNEX_AI_MAX_OUTPUT_TOKENS` | 32768 | 256–1,000,000 | output ceiling |
-| `TUNNEX_AI_DEFAULT_OUTPUT_TOKENS` | 4096 | 1–ceiling | absent limit, model unknown to the catalog |
+| `TUNNEX_AI_DEFAULT_OUTPUT_TOKENS` | 4096 | 1–ceiling | output limit inserted when a request names none (every model) |
 | `TUNNEX_AI_MAX_MESSAGES` | 2048 | 1–10,000 | chat/messages history length, responses input items |
 | `TUNNEX_AI_MAX_REQUEST_BYTES` | 8 MiB | 64 KiB–32 MiB | JSON body (transcription keeps 8 MiB audio + 64 KiB) |
 | `TUNNEX_AI_MAX_RESPONSE_BYTES` | 16 MiB | 1–64 MiB | buffered (non-stream) JSON response |
@@ -318,7 +317,21 @@ file solely in that one value (an administrator-edited file, including a
 whitespace-only edit, is preserved). When it was updated, the engine container
 is recreated after the stack starts, because Compose does not recreate a
 container for a changed bind-mounted file. This is an installer change and needs
-a real-stack upgrade walk.
+a real-stack upgrade walk (**pending**: the founder runs it before release).
+
+## Founder decisions (2026-11-28)
+
+1. **Output tokens.** The ceiling `TUNNEX_AI_MAX_OUTPUT_TOKENS` stays 32768; an
+   explicit larger value is lowered to it. When `max_tokens` is absent, every
+   model gets `TUNNEX_AI_DEFAULT_OUTPUT_TOKENS` = 4096 (not the catalog maximum).
+2. **Lease renewal skips cost admission.** A running stream is not cut when the
+   daily threshold is crossed; the threshold applies to each new request.
+3. **Remote image URLs stay refused** (data URLs only) until the engine's image
+   download is guarded.
+4. **Installer and upgrade change.** The real-stack upgrade walk is pending; the
+   founder runs it before release.
+5. **Relay version skew** is accepted (gateways follow the control plane's
+   version; no customers before launch).
 
 ## Qualification
 

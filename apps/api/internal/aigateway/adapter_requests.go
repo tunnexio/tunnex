@@ -225,37 +225,11 @@ func validBase64(data string, maxDecoded int) bool {
 	return err == nil
 }
 
-// catalogOutputLimit is the bundled catalog's maximum output for an exact
-// provider/model id, or 0 when unknown or ambiguous.
-func catalogOutputLimit(model string) int {
-	if loadModelCatalog() != nil {
-		return 0
-	}
-	best := 0
-	for _, row := range bakedCatalogIndex[model] {
-		n := 0
-		for _, key := range []string{"max_output_tokens", "max_tokens"} {
-			if v, ok := jsonInt(row.Metadata[key], 1, 10_000_000); ok {
-				n = int(v)
-				break
-			}
-		}
-		if n == 0 {
-			return 0
-		}
-		if best == 0 || n < best {
-			best = n
-		}
-	}
-	return best
-}
-
-// defaultOutputTokens is used when a request names no output limit.
-func (a *Adapter) defaultOutputTokens(model string) int {
-	if n := catalogOutputLimit(model); n > 0 {
-		return min(n, a.limits.MaxOutputTokens)
-	}
-	return a.limits.DefaultOutputTokens
+// defaultOutputTokens is used when a request names no output limit: the
+// administrator default (TUNNEX_AI_DEFAULT_OUTPUT_TOKENS, 4096) for every model,
+// never above the ceiling (founder decision 2026-11-28).
+func (a *Adapter) defaultOutputTokens(string) int {
+	return min(a.limits.DefaultOutputTokens, a.limits.MaxOutputTokens)
 }
 
 func (a *Adapter) normalizeJSON(path string, mode ModelMode, body []byte) ([]byte, string, bool, error) {

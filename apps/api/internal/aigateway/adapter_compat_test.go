@@ -145,27 +145,35 @@ func TestMessageHistoryLimit(t *testing.T) {
 	}
 }
 
-func TestOutputDefaultsFromCatalog(t *testing.T) {
+func TestOutputDefaultIsTheAdministratorDefault(t *testing.T) {
 	a := compatAdapter(t)
-	cases := map[string]string{
-		"openrouter/openai/gpt-4o-mini":       "16384", // catalog 16384
-		"openrouter/anthropic/claude-3-haiku": "4096",  // catalog 4096
-		"anthropic/claude-haiku-4-5":          "32768", // catalog 64000, capped by the ceiling
-		"openrouter/unknown-model":            "4096",  // not in the catalog
-	}
-	for model, want := range cases {
+	// Founder decision 2026-11-28: absent max_tokens gets 4096 for every model,
+	// whatever the catalog maximum.
+	for _, model := range []string{"openrouter/openai/gpt-4o-mini", "openrouter/anthropic/claude-3-haiku", "anthropic/claude-haiku-4-5", "openrouter/unknown-model"} {
 		out, _, _, err := a.normalizeChat([]byte(`{"model":"` + model + `","messages":[{"role":"user","content":"hi"}]}`))
 		if err != nil {
 			t.Fatal(err)
 		}
 		var p map[string]json.RawMessage
 		_ = json.Unmarshal(out, &p)
-		if string(p["max_tokens"]) != want {
-			t.Errorf("%s max_tokens=%s want %s", model, p["max_tokens"], want)
+		if string(p["max_tokens"]) != "4096" {
+			t.Errorf("%s max_tokens=%s want 4096", model, p["max_tokens"])
 		}
 	}
+	limits := DefaultAdapterLimits()
+	limits.DefaultOutputTokens = 8192
+	_ = a.ConfigureLimits(limits)
+	out, _, _, _ := a.normalizeResponses([]byte(`{"model":"m","input":"x"}`))
+	if !strings.Contains(string(out), `"max_output_tokens":8192`) {
+		t.Fatalf("configured default not applied: %s", out)
+	}
+	out, _, _, _ = a.normalizeMessages([]byte(`{"model":"m","messages":[{"role":"user","content":"x"}]}`))
+	if !strings.Contains(string(out), `"max_tokens":8192`) {
+		t.Fatalf("configured default not applied to messages: %s", out)
+	}
+	_ = a.ConfigureLimits(DefaultAdapterLimits())
 	// max_completion_tokens is forwarded as the engine's max_tokens.
-	out, _, _, _ := a.normalizeChat([]byte(chatBody(`,"max_completion_tokens":6000`, "")))
+	out, _, _, _ = a.normalizeChat([]byte(chatBody(`,"max_completion_tokens":6000`, "")))
 	if !strings.Contains(string(out), `"max_tokens":6000`) || strings.Contains(string(out), "max_completion_tokens") {
 		t.Fatalf("output limit not normalized: %s", out)
 	}
