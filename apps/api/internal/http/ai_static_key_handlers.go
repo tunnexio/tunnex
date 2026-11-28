@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/go-chi/chi/v5/middleware"
 	"net/http"
 	"strings"
 
@@ -215,9 +216,11 @@ func staticKeyMiddleware(keys *aigateway.StaticKeys, adapter *aigateway.Adapter)
 			}
 			clone := r.Clone(r.Context())
 			clone.URL.Path = path
-			adapter.ServeAuthorized(w, clone, func(ctx context.Context, _ string, model string) (aigateway.Grant, error) {
+			tw, traced, _, finish := adapter.RequestLog().Begin(w, clone, aigateway.IngressWorkload, middleware.GetReqID(r.Context()))
+			defer finish()
+			adapter.ServeAuthorized(tw, traced, aigateway.TraceAuthorize(func(ctx context.Context, _ string, model string) (aigateway.Grant, error) {
 				return keys.Authorize(ctx, raw, model, ingress)
-			})
+			}))
 		})
 	}
 }

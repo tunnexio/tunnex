@@ -380,7 +380,7 @@ func (s *Policies) resolveUserModel(ctx context.Context, org, user uuid.UUID, mo
 		}
 		if g.GroupID != nil && limits[*g.GroupID] != nil {
 			group := *g.GroupID
-			if err := s.enforceCostBindings(ctx, tx, org, model, g.Mode, limits[group], func() ([]string, error) {
+			if err := s.enforceCostFor(ctx, tx, org, costSubject{Kind: "user_group", ID: group}, model, g.Mode, limits[group], func() ([]string, error) {
 				return userGroupUsageIDs(ctx, tx, org, group)
 			}); err != nil {
 				costErr = strongerCostError(costErr, err)
@@ -389,6 +389,9 @@ func (s *Policies) resolveUserModel(ctx context.Context, org, user uuid.UUID, mo
 		}
 		if tx.Commit(ctx) != nil {
 			return Grant{}, aiUnavailable()
+		}
+		if g.GroupID != nil {
+			noteRequestGroup(ctx, "user_group", *g.GroupID)
 		}
 		return Grant{Tenant: org.String(), Agent: user.String(), SubjectKind: "user", VirtualKey: value, Mode: g.Mode, Expires: time.Now().Add(30 * time.Second)}, nil
 	}

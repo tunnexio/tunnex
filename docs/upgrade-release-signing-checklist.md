@@ -55,6 +55,28 @@ private key. Store the displayed public value in the updater's trusted-key
 configuration. After saving the GitHub secret, clear the clipboard and allow
 the trap to remove the temporary files; never commit any generated key file.
 
+## Before every release: refresh the AI model catalog
+
+The AI Gateway bundles model names and USD prices from a pinned LiteLLM commit
+(`apps/api/internal/aigateway/reference/`). New provider models are unknown
+(and blocked under a daily limit, unless an operator sets a price) until the
+pin moves, so refresh it in every release:
+
+1. On the release branch, run `make ai-catalog-refresh` (or
+   `make ai-catalog-refresh LITELLM_COMMIT=<40-character sha>` for a reviewed
+   commit). It resolves the commit, downloads only that commit's catalog and
+   license, rewrites `source.pin.json` and the README pin lines, regenerates
+   every artifact, verifies them byte for byte and runs the catalog tests.
+2. Review the printed summary: source and reference row counts, added,
+   removed and repriced models. A large removal or a price that moved by an
+   order of magnitude needs a look upstream before it ships.
+3. If a guard fails (schema, provider coverage, completeness, or the reference
+   set shrinking by more than 10%), stop and report it. Do not loosen a guard
+   to make the refresh pass; keep the previous pin for this release instead.
+4. Commit the pin, license, generated files and README together
+   ("AI Gateway: refresh model catalog to LiteLLM <short sha>"). The engine
+   image copies these files, so the release images carry the new prices.
+
 ## Successful-main verification
 
 1. Merge the intended commit and allow the successful-main image publication to

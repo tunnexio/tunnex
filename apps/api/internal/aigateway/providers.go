@@ -511,6 +511,11 @@ func (s *Policies) syncProvider(ctx context.Context, org, id uuid.UUID, revision
 	if remove && err != nil {
 		return p, aiUnavailable()
 	}
+	// AI-READY-1: a new or replaced key receives the organization's model
+	// prices at once; the leader's pass retries a failure.
+	if err == nil && !remove {
+		_ = s.ReconcileModelPrices(ctx, org)
+	}
 	return p, nil
 }
 func (s *Policies) DeleteProvider(ctx context.Context, org, actor, id uuid.UUID, expected int64) error {

@@ -12,7 +12,14 @@ import (
 
 func TestReferenceCatalogProvenanceAndCompleteness(t *testing.T) {
 	provenance, err := ReferenceCatalogProvenance()
-	if err != nil || provenance.Commit != "eeb7732fc11fd47762ca84cc3fb7cc74235d7097" || provenance.SourceDate != "2026-09-06T01:12:56Z" || provenance.SourceSHA256 != "f68d88c12610ea31ab355a1293fde55aeed6fa78a1f4b182c67be47d80b1d202" || provenance.ReferenceEntries != 969 || provenance.SourceEntries != 3818 || provenance.License != "MIT" {
+	// The embedded catalog must carry exactly the reviewed pin (refreshed each
+	// release by scripts/ai-model-catalog.mjs --refresh).
+	pinJSON, pinErr := os.ReadFile("reference/source.pin.json")
+	var pin CatalogProvenance
+	if pinErr != nil || json.Unmarshal(pinJSON, &pin) != nil || len(pin.Commit) != 40 || len(pin.SourceSHA256) != 64 || pin.ReferenceEntries < 500 || pin.SourceEntries < pin.ReferenceEntries {
+		t.Fatal("invalid source pin", pinErr)
+	}
+	if err != nil || provenance != pin || provenance.License != "MIT" || provenance.Repository != "https://github.com/BerriAI/litellm" {
 		t.Fatal("unqualified source provenance", provenance, err)
 	}
 	manifestJSON, err := os.ReadFile("reference/catalog-manifest.json")

@@ -493,6 +493,13 @@ type AgentWorkflowSigningKey struct {
 	RevokedAt pgtype.Timestamptz `json:"revoked_at"`
 }
 
+type AiGatewayAlertMark struct {
+	OrgID     uuid.UUID   `json:"org_id"`
+	Day       pgtype.Date `json:"day"`
+	MarkKey   string      `json:"mark_key"`
+	CreatedAt time.Time   `json:"created_at"`
+}
+
 type AiGatewayAssignment struct {
 	OrgID               uuid.UUID          `json:"org_id"`
 	DeviceID            uuid.UUID          `json:"device_id"`
@@ -504,6 +511,15 @@ type AiGatewayAssignment struct {
 	AppliedTeamRevision int64              `json:"applied_team_revision"`
 	Status              string             `json:"status"`
 	LastReconcileAt     pgtype.Timestamptz `json:"last_reconcile_at"`
+}
+
+type AiGatewayCostSetting struct {
+	OrgID                   uuid.UUID   `json:"org_id"`
+	UnknownPricePolicy      string      `json:"unknown_price_policy"`
+	RequestLogRetentionDays int32       `json:"request_log_retention_days"`
+	Revision                int64       `json:"revision"`
+	UpdatedBy               pgtype.UUID `json:"updated_by"`
+	UpdatedAt               time.Time   `json:"updated_at"`
 }
 
 type AiGatewayCredential struct {
@@ -564,6 +580,21 @@ type AiInternalEndpoint struct {
 	UpdatedAt       time.Time      `json:"updated_at"`
 }
 
+// Operator USD per-token prices per organization and canonical model. Pushed to the engine as provider-key-scoped pricing overrides; never global.
+type AiModelPriceOverride struct {
+	OrgID              uuid.UUID   `json:"org_id"`
+	Model              string      `json:"model"`
+	InputCostPerToken  *float64    `json:"input_cost_per_token"`
+	OutputCostPerToken *float64    `json:"output_cost_per_token"`
+	Removed            bool        `json:"removed"`
+	Revision           int64       `json:"revision"`
+	AppliedRevision    int64       `json:"applied_revision"`
+	Status             string      `json:"status"`
+	UpdatedBy          pgtype.UUID `json:"updated_by"`
+	CreatedAt          time.Time   `json:"created_at"`
+	UpdatedAt          time.Time   `json:"updated_at"`
+}
+
 // Ownership and desired state only. Provider secrets live exclusively in private engine storage. Tombstones reserve ownership.
 type AiProviderConnection struct {
 	ID              uuid.UUID          `json:"id"`
@@ -589,6 +620,30 @@ type AiProviderConnection struct {
 type AiProviderLegacyKey struct {
 	OrgID uuid.UUID `json:"org_id"`
 	KeyID string    `json:"key_id"`
+}
+
+// AI request metadata with retention. Never stores prompts, outputs, headers or keys.
+type AiRequestLog struct {
+	ID               uuid.UUID   `json:"id"`
+	OrgID            uuid.UUID   `json:"org_id"`
+	OccurredAt       time.Time   `json:"occurred_at"`
+	SubjectKind      string      `json:"subject_kind"`
+	SubjectID        pgtype.UUID `json:"subject_id"`
+	GroupKind        *string     `json:"group_kind"`
+	GroupID          pgtype.UUID `json:"group_id"`
+	InstanceID       pgtype.UUID `json:"instance_id"`
+	Model            string      `json:"model"`
+	Mode             string      `json:"mode"`
+	Ingress          string      `json:"ingress"`
+	StatusCode       int16       `json:"status_code"`
+	Outcome          string      `json:"outcome"`
+	RefusalCode      *string     `json:"refusal_code"`
+	LatencyMs        int32       `json:"latency_ms"`
+	PromptTokens     *int64      `json:"prompt_tokens"`
+	CompletionTokens *int64      `json:"completion_tokens"`
+	CostUsd          *float64    `json:"cost_usd"`
+	CostState        string      `json:"cost_state"`
+	RequestID        *string     `json:"request_id"`
 }
 
 type AiStaticKeySetting struct {

@@ -306,7 +306,7 @@ func (s *Workloads) resolve(ctx context.Context, tx pgx.Tx, b workloadBearer, mo
 		return Grant{}, aiUnauthorized()
 	}
 	if cost {
-		if err = s.policies.enforceCostBindings(ctx, tx, i.org, model, mode, w.DailyUsdThreshold, func() ([]string, error) {
+		if err = s.policies.enforceCostFor(ctx, tx, i.org, costSubject{Kind: "workload", ID: i.workload}, model, mode, w.DailyUsdThreshold, func() ([]string, error) {
 			if w.native == "" {
 				return nil, aiUnavailable()
 			}

@@ -35,7 +35,7 @@ ruby -ryaml -e '
     edge = docs.find { |d| d["kind"] == "Deployment" && d.dig("metadata", "labels", "app.kubernetes.io/component") == "edge" }
     abort "edge config not mounted when AI disabled" unless edge.dig("spec", "template", "spec", "containers").first.fetch("volumeMounts").any? { |m| m["mountPath"] == "/etc/nginx/conf.d/default.conf" }
     config = docs.find { |d| d["kind"] == "ConfigMap" && d.fetch("data", {}).key?("default.conf") }.fetch("data").fetch("default.conf")
-    ["geo $remote_addr $tunnex_ingress_trusted", "default 0;", "default $scheme;", "\"1:http\" http;", "\"1:https\" https;", "~^1: invalid;", "if ($tunnex_client_scheme = invalid) { return 400; }", "proxy_set_header X-Forwarded-Proto $tunnex_client_scheme;", "map $http_host $tunnex_client_authority", "proxy_set_header Host $tunnex_client_authority;", "proxy_set_header X-Forwarded-Host \"\";"].each { |part| abort "missing ingress trust boundary: #{part}" unless config.include?(part) }
+    ["geo $realip_remote_addr $tunnex_ingress_trusted", "default 0;", "default $scheme;", "\"1:http\" http;", "\"1:https\" https;", "~^1: invalid;", "if ($tunnex_client_scheme = invalid) { return 400; }", "proxy_set_header X-Forwarded-Proto $tunnex_client_scheme;", "map $http_host $tunnex_client_authority", "proxy_set_header Host $tunnex_client_authority;", "proxy_set_header X-Forwarded-Host \"\";"].each { |part| abort "missing ingress trust boundary: #{part}" unless config.include?(part) }
     abort "wildcard trust introduced" if config.include?("0.0.0.0/0") || config.include?("::/0")
   end
   configs = [defaults, explicit].map { |docs| docs.find { |d| d["kind"] == "ConfigMap" && d.fetch("data", {}).key?("default.conf") }.dig("data", "default.conf") }
@@ -48,7 +48,24 @@ ruby -ryaml -e '
 # Exercise nginx itself: a string-only assertion cannot prove map precedence or
 # the forwarding behavior that decides whether HTTP may use the AI gateway.
 helm template transport "$CHART" "${BASE[@]}" --set 'edge.trustedIngressCIDRs[0]=127.0.0.1/32' >"$TMP/loopback.yaml"
-for fixture in default loopback docker; do
+# AI-READY-1: the real client address from a trusted load balancer only. The
+# scheme trust stays keyed on the direct peer: a forwarded address that names
+# a trusted ingress peer must not let the caller report HTTPS.
+helm template transport "$CHART" "${BASE[@]}" --set 'edge.realClientAddressFrom[0]=127.0.0.1/32' \
+  --set 'edge.trustedIngressCIDRs[0]=192.0.2.10/32' >"$TMP/realip.yaml"
+for bad in '0.0.0.0/0' '::/0' '10.0.0.1/32; injected'; do
+  if helm template transport "$CHART" "${BASE[@]}" --set "edge.realClientAddressFrom[0]=$bad" >"$TMP/rejected" 2>&1; then
+    echo "edge accepted $bad as a load-balancer address" >&2; exit 1
+  fi
+done
+ruby -ryaml -e '
+  conf = ->(path) { YAML.load_stream(File.read(path)).compact.find { |d| d["kind"] == "ConfigMap" && d.fetch("data", {}).key?("default.conf") }.dig("data", "default.conf") }
+  default, realip = conf.(ARGV[0]), conf.(ARGV[1])
+  abort "default resolves client addresses" if default.include?("set_real_ip_from") || default.include?("real_ip_header")
+  ["set_real_ip_from 127.0.0.1/32;", "real_ip_header X-Forwarded-For;", "real_ip_recursive on;", "geo $realip_remote_addr $tunnex_ingress_trusted"].each { |part| abort "missing real client address part: #{part}" unless realip.include?(part) }
+  [default, realip].each { |c| abort "X-Real-IP not the resolved address" unless c.scan("proxy_set_header X-Real-IP $remote_addr;").length == 2 && c.scan("proxy_set_header True-Client-IP \"\";").length == 2 }
+' "$TMP/default.yaml" "$TMP/realip.yaml"
+for fixture in default loopback docker realip; do
   ruby -ryaml -e '
     if ARGV[2] == "docker"
       conf = File.read(ARGV[3])
@@ -57,7 +74,7 @@ for fixture in default loopback docker; do
       conf = docs.find { |d| d["kind"] == "ConfigMap" && d.fetch("data", {}).key?("default.conf") }.dig("data", "default.conf")
     end
     conf = conf.gsub("api:8080", "127.0.0.1:18081").gsub("web:8080", "127.0.0.1:18081")
-    conf += %Q(\nserver { listen 18081; location = /api/authority { return 200 "$http_host|$http_x_forwarded_host"; } location / { return 200 "$http_x_forwarded_proto"; } }\n)
+    conf += %Q(\nserver { listen 18081; location = /api/authority { return 200 "$http_host|$http_x_forwarded_host"; } location = /api/realip { return 200 "$http_x_real_ip|$http_true_client_ip"; } location / { return 200 "$http_x_forwarded_proto"; } }\n)
     File.write(ARGV[1], conf)
   ' "$TMP/$fixture.yaml" "$TMP/$fixture.conf" "$fixture" "$ROOT/deploy/nginx/nginx.conf"
   docker run --rm --network none --entrypoint sh \
@@ -71,6 +88,16 @@ for fixture in default loopback docker; do
         i=$((i+1)); [ "$i" -lt 20 ] || exit 1; sleep 0.1
       done
       scheme=$(wget -qO- --header="X-Forwarded-Proto: https" http://127.0.0.1:8080/api/check)
+      # The Compose edge (docker fixture) takes X-Real-IP from Caddy instead.
+      client="127.0.0.1|"
+      [ "$1" = docker ] || client=$(wget -qO- --header="X-Forwarded-Proto: http" --header="X-Forwarded-For: 198.51.100.9, 203.0.113.7" --header="True-Client-IP: 198.51.100.1" http://127.0.0.1:8080/api/realip)
+      if [ "$1" = realip ]; then
+        [ "$client" = "203.0.113.7|" ] || { echo "trusted load balancer client address lost: $client" >&2; exit 1; }
+        scheme=$(wget -qO- --header="X-Forwarded-For: 192.0.2.10" --header="X-Forwarded-Proto: https" http://127.0.0.1:8080/api/check)
+        [ "$scheme" = http ] || { echo "a forwarded address widened scheme trust" >&2; exit 1; }
+        exit 0
+      fi
+      [ "$client" = "127.0.0.1|" ] || { echo "untrusted X-Forwarded-For or True-Client-IP believed: $client" >&2; exit 1; }
       if [ "$1" = default ]; then
         [ "$scheme" = http ] || { echo "untrusted client forged HTTPS" >&2; exit 1; }
       else

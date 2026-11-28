@@ -85,6 +85,30 @@ Updating the peer list changes the edge configuration checksum and rolls its
 pods. The headless peer service publishes not-ready pod addresses so the edge's
 API-backed readiness probe does not create a DNS/readiness cycle.
 
+### Real client address behind a load balancer
+
+By default the edge reports its direct peer (the ingress controller or load
+balancer) as the client address, so audit entries, access events and the AI
+request log show that peer. To record the real client, list the load-balancer
+or ingress-controller addresses whose `X-Forwarded-For` you trust:
+
+```yaml
+edge:
+  realClientAddressFrom:
+    - 192.0.2.10/32 # Example only: replace with your verified load-balancer peer.
+```
+
+The edge then takes the client address from `X-Forwarded-For` only when the
+direct peer is in that list, skipping every listed hop, and sends it to the
+API as `X-Real-IP`. A client's own `X-Forwarded-For` is ignored when it does
+not come through a listed peer. The list defaults to empty (unchanged
+behaviour); all-address ranges are refused. It does not change who may report
+the scheme: that stays `edge.trustedIngressCIDRs`, checked against the direct
+peer. The edge does not accept PROXY protocol; terminate it at the ingress
+controller or load balancer and let that hop send `X-Forwarded-For`.
+`deploy/trusted-proxy-chart-contract_test.sh` checks both cases with the pinned
+nginx image.
+
 ## Validate a Docker proxy change
 
 Run `python3 deploy/edge-ip-tls_test.py` for startup and input validation. With

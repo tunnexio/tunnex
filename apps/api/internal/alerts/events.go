@@ -38,6 +38,14 @@ const (
 	// EventAIWorkloadStaticKeyExpiring fires 14 and 3 days before a workload's
 	// static API key expires (AI-KEYS-1). The key itself is never included.
 	EventAIWorkloadStaticKeyExpiring EventKey = "ai_workload.static_key_expiring"
+	// EventAIBudgetThreshold fires once per subject, threshold and UTC day when
+	// a user group, workload or agent group reaches 50% (info), 80% (warning)
+	// or 100% (critical) of its daily cost limit (AI-READY-1).
+	EventAIBudgetThreshold EventKey = "ai.budget_threshold"
+	// EventAIPriceUnknown fires once per subject, model and UTC day when a
+	// model without a price is used under a daily limit with the organization
+	// set to "Allow and alert".
+	EventAIPriceUnknown EventKey = "ai.price_unknown"
 )
 
 // Keys is the closed F11 catalogue. Producers use these values rather than
@@ -60,6 +68,8 @@ func Keys() []EventKey {
 		EventKubernetesServiceUnavailable,
 		EventAgentMCPApprovalPending,
 		EventAIWorkloadStaticKeyExpiring,
+		EventAIBudgetThreshold,
+		EventAIPriceUnknown,
 	}
 }
 

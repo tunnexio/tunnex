@@ -60,6 +60,14 @@ type usageTxFixture struct {
 func (tx usageTxFixture) Query(ctx context.Context, query string, args ...any) (pgx.Rows, error) {
 	return tx.query(ctx, query, args...)
 }
+
+// QueryRow answers the AI-READY-1 admission lookups (cost settings, operator
+// price) with no row: the defaults (Block, bundled price).
+func (tx usageTxFixture) QueryRow(context.Context, string, ...any) pgx.Row { return usageNoRow{} }
+
+type usageNoRow struct{}
+
+func (usageNoRow) Scan(...any) error { return pgx.ErrNoRows }
 func usageStatus(err error) int {
 	if err == nil {
 		return 0

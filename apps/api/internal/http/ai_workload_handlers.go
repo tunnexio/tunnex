@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/go-chi/chi/v5/middleware"
 	"github.com/google/uuid"
 	"github.com/tunnexio/tunnex/apps/api/internal/aigateway"
 	"github.com/tunnexio/tunnex/apps/api/internal/api"
@@ -197,9 +198,11 @@ func workloadMiddleware(service *aigateway.Workloads, adapter *aigateway.Adapter
 					return
 				}
 				bearer := strings.TrimPrefix(headers[0], "Bearer ")
-				adapter.ServeAuthorized(w, clone, func(ctx context.Context, _ string, model string) (aigateway.Grant, error) {
+				tw, traced, _, finish := adapter.RequestLog().Begin(w, clone, aigateway.IngressWorkload, middleware.GetReqID(r.Context()))
+				defer finish()
+				adapter.ServeAuthorized(tw, traced, aigateway.TraceAuthorize(func(ctx context.Context, _ string, model string) (aigateway.Grant, error) {
 					return service.Authorize(ctx, bearer, model)
-				})
+				}))
 				return
 			}
 			if !strings.HasPrefix(path, "/api/v1/workload/") && path != "/ai/v1/models" {

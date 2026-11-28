@@ -12,6 +12,7 @@ const labels: Record<AlertEventKey, string> = {
   "gateway.offline": "Gateway offline", "gateway.policy_degraded": "Gateway policy degraded", "site.link_down": "WireGuard site link down", "ipsec.tunnel_down": "IPsec tunnel down", "ipsec.connection_down": "IPsec connection down", "ipsec.status_unavailable": "IPsec status unavailable", "device.offline": "Device offline", "device.posture_blocked": "Device posture blocked",
   "kubernetes.connector_degraded": "Connector degraded", "kubernetes.inventory_stale": "Inventory stale", "kubernetes.service_unavailable": "Service unavailable",
   "ai_workload.static_key_expiring": "Workload API key expiring",
+  "ai.budget_threshold": "Daily cost limit 50%, 80% or 100% reached", "ai.price_unknown": "Model without a price used under a limit",
 };
 const groups: Array<{ label: string; keys: AlertEventKey[] }> = [
   { label: "Gateways", keys: ["gateway.offline", "gateway.policy_degraded"] },
@@ -20,6 +21,7 @@ const groups: Array<{ label: string; keys: AlertEventKey[] }> = [
   { label: "Kubernetes", keys: ["kubernetes.connector_degraded", "kubernetes.inventory_stale", "kubernetes.service_unavailable"] },
   { label: "AI agents", keys: ["agent.offline", "agent.denial_spike", "agent.access_expiring", "agent.rotation_failed", "agent.configuration_drift", "agent.mcp_approval_pending"] },
   { label: "AI workloads", keys: ["ai_workload.static_key_expiring"] },
+  { label: "AI Gateway", keys: ["ai.budget_threshold", "ai.price_unknown"] },
 ];
 const kinds: Record<AlertDestinationKind, string> = { webhook: "Webhook", slack: "Slack", teams: "Microsoft Teams", pagerduty: "PagerDuty", opsgenie: "Opsgenie", discord: "Discord", google_chat: "Google Chat", email: "Email" };
 const severities = ["info", "warning", "critical"];

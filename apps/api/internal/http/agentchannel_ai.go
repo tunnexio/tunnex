@@ -2,6 +2,7 @@ package http
 
 import (
 	"context"
+	"github.com/go-chi/chi/v5/middleware"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -61,7 +62,10 @@ func (a *AgentChannel) serveVPNChat(w http.ResponseWriter, r *http.Request, auto
 	// Only gateway-observed evidence crosses this mTLS boundary. Caller credentials
 	// and identity headers are not forwarded to the provider adapter.
 	clone.Header = http.Header{"Content-Type": {r.Header.Get("Content-Type")}}
-	a.vpnAIAdapter.ServeAuthorized(w, clone, func(ctx context.Context, _ string, model string) (aigateway.Grant, error) {
+	tw, traced, trace, finish := a.vpnAIAdapter.RequestLog().Begin(w, clone, aigateway.IngressVPN, middleware.GetReqID(r.Context()))
+	defer finish()
+	trace.SetOrganization(node.OrgID, "user")
+	a.vpnAIAdapter.ServeAuthorized(tw, traced, aigateway.TraceAuthorize(func(ctx context.Context, _ string, model string) (aigateway.Grant, error) {
 		if automaticHTTP {
 			return a.vpnAIPolicies.ResolveAutomaticVPNModel(ctx, node.OrgID, node.ID, ips[0], keys[0], model, explicitOrg == "")
 		}
@@ -69,5 +73,5 @@ func (a *AgentChannel) serveVPNChat(w http.ResponseWriter, r *http.Request, auto
 			return a.vpnAIPolicies.ResolveSingleOrgVPNModel(ctx, node.OrgID, node.ID, ips[0], keys[0], model)
 		}
 		return a.vpnAIPolicies.ResolveVPNModel(ctx, node.OrgID, node.ID, ips[0], keys[0], model)
-	})
+	}))
 }

@@ -256,7 +256,11 @@ func TestEngineUsageNeverDefaultsToGlobal(t *testing.T) {
 			t.Error("usage escaped explicit key/time scope")
 		}
 		if q.Get("missing_cost_only") == "true" {
-			writeEngineJSON(w, map[string]any{"total_requests": 1})
+			if q.Get("status") == "success" {
+				writeEngineJSON(w, map[string]any{"total_requests": 1, "total_tokens": 4})
+			} else {
+				writeEngineJSON(w, map[string]any{"total_requests": 0, "total_tokens": 0})
+			}
 			return
 		}
 		writeEngineJSON(w, map[string]any{"total_requests": 3, "total_tokens": 10, "prompt_tokens": 8, "completion_tokens": 2, "total_cost": 0.25})
@@ -274,8 +278,43 @@ func TestEngineUsageNeverDefaultsToGlobal(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got.TotalRequests != 3 || got.UncostedRequests != 1 || got.TotalCost != 0.25 || calls != 2 {
+	if got.TotalRequests != 3 || got.UncostedRequests != 1 || got.TotalCost != 0.25 || calls != 3 {
 		t.Fatalf("aggregate mismatch: %+v calls=%d", got, calls)
+	}
+}
+func TestEngineUsageCountsOnlyRequestsThatMayHaveCost(t *testing.T) {
+	for _, tc := range []struct {
+		name                       string
+		success, cancelled, tokens int64
+		want                       int64
+	}{
+		{"cancelled before any output is free", 0, 1, 0, 0},
+		{"cancelled after output counts", 0, 2, 7, 2},
+		{"successful without cost counts", 1, 0, 0, 1},
+		{"both", 1, 1, 3, 2},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			e, _ := newEngineFixture(t, func(w http.ResponseWriter, r *http.Request) {
+				q := r.URL.Query()
+				if q.Get("missing_cost_only") != "true" {
+					writeEngineJSON(w, map[string]any{"total_requests": 5, "total_tokens": 50, "prompt_tokens": 40, "completion_tokens": 10, "total_cost": 0.1})
+					return
+				}
+				switch q.Get("status") {
+				case "success":
+					writeEngineJSON(w, map[string]any{"total_requests": tc.success, "total_tokens": 0})
+				case "cancelled":
+					writeEngineJSON(w, map[string]any{"total_requests": tc.cancelled, "total_tokens": tc.tokens})
+				default:
+					t.Errorf("unexpected status filter %q", q.Get("status"))
+				}
+			})
+			end := time.Now()
+			got, err := e.Usage(context.Background(), []string{"key-a"}, end.Add(-time.Hour), end)
+			if err != nil || got.UncostedRequests != tc.want {
+				t.Fatalf("uncosted=%d want %d err=%v", got.UncostedRequests, tc.want, err)
+			}
+		})
 	}
 }
 func TestEngineRefusesRedirectOversizeAndLeakedErrors(t *testing.T) {

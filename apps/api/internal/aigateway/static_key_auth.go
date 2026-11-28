@@ -190,12 +190,12 @@ func (s *StaticKeys) resolve(ctx context.Context, tx pgx.Tx, b staticKeyBearer, 
 				return Grant{}, refuse(ErrRequestLimited, "rate_limited")
 			}
 		}
-		if err = s.w.policies.enforceCostBindings(ctx, tx, k.org, model, mode, k.DailyUsdThreshold, func() ([]string, error) {
+		if err = s.w.policies.enforceCostFor(ctx, tx, k.org, costSubject{Kind: "workload_key", ID: k.Id}, model, mode, k.DailyUsdThreshold, func() ([]string, error) {
 			return []string{k.native}, nil
 		}); err != nil {
 			return Grant{}, refuse(err, costRefusalReason(err))
 		}
-		if err = s.w.policies.enforceCostBindings(ctx, tx, k.org, model, mode, w.DailyUsdThreshold, func() ([]string, error) {
+		if err = s.w.policies.enforceCostFor(ctx, tx, k.org, costSubject{Kind: "workload", ID: w.Id}, model, mode, w.DailyUsdThreshold, func() ([]string, error) {
 			return workloadUsageIDsToday(ctx, tx, k.org, w)
 		}); err != nil {
 			return Grant{}, refuse(err, costRefusalReason(err))

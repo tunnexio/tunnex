@@ -12,6 +12,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/tunnexio/tunnex/apps/api/internal/agentruntime"
 	"github.com/tunnexio/tunnex/apps/api/internal/aiegress"
+	"github.com/tunnexio/tunnex/apps/api/internal/alerts"
 	"github.com/tunnexio/tunnex/apps/api/internal/apierr"
 	"github.com/tunnexio/tunnex/apps/api/internal/crypto"
 )
@@ -44,6 +45,8 @@ type Policies struct {
 	providerManagement bool
 	customPolicy       *aiegress.Policy
 	probes             *providerOperations
+	// AI-READY-1: budget and unknown-price alerts.
+	alerts alerts.Publisher
 }
 
 func NewPolicies(pool *pgxpool.Pool, sealer *crypto.Sealer, engine PolicyEngine) *Policies {
@@ -319,6 +322,7 @@ func (s *Policies) Resolve(ctx context.Context, tx pgx.Tx, id agentruntime.Ident
 	if err = s.enforceCostMode(ctx, tx, id.OrgID, a.TeamID, model, mode, p.DailyCostLimit); err != nil {
 		return Grant{}, err
 	}
+	noteRequestGroup(ctx, "agent_group", a.TeamID)
 	value, err := OpenKey(s.sealer, id.OrgID, id.DeviceID, keyID, rev, sealed)
 	if err != nil {
 		return Grant{}, policyDenied()
