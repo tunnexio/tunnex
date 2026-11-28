@@ -310,6 +310,19 @@ the installer and the upgrade replace it only when it differs from the release
 file solely in that one value (an administrator-edited file is preserved). This
 is an installer change and needs a real-stack upgrade walk.
 
+## Qualification
+
+- Unit tests cover every allowlisted field (accepted shapes, refused malformed
+  or oversized values), roles and content parts, limits, lease renewal, idle
+  and request timeouts, shared concurrency (two adapters on one Redis) and
+  each path's routing of each mode.
+- Every request body that langchain-openai, langchain-anthropic, LangGraph, the
+  OpenAI SDK and the Messages SDK sent in the capture and in a full run of the
+  matrix script against a local fake engine (79 bodies) passes the validators.
+- `scripts/ai-compat/lc_matrix.py` is the manual, paid qualification against a
+  real deployment (VPN, agent runtime/public origin, workload wrapper); see its
+  header for usage. CI never runs it.
+
 ## Not done
 
 - Remote image URLs (refused, see decision 1).
