@@ -920,10 +920,11 @@ func main() {
 	}
 
 	// AI-READY-1: leader-only, bounded AI cost maintenance every five minutes:
-	// operator model prices converge on the engine.
+	// operator model prices converge on the engine, and daily cost limits
+	// raise their 50/80/100% alerts once per subject and UTC day.
 	if aiPolicies != nil {
 		go func() {
-			ticker := time.NewTicker(5 * time.Minute)
+			ticker := time.NewTicker(aigateway.BudgetAlertInterval)
 			defer ticker.Stop()
 			for {
 				select {
@@ -936,6 +937,11 @@ func main() {
 					workCtx, cancel := context.WithTimeout(electorCtx, 2*time.Minute)
 					if _, err := aiPolicies.ReconcileAllModelPrices(workCtx, 50); err != nil {
 						logger.Warn("ai_model_price_reconcile_incomplete")
+					}
+					if result, err := aiPolicies.EvaluateBudgetAlerts(workCtx, 500); err != nil {
+						logger.Warn("ai_budget_alerts_incomplete")
+					} else if result.Published > 0 || result.Skipped > 0 || result.MorePending {
+						logger.Info("ai_budget_alerts", slog.Int("subjects", result.Subjects), slog.Int("published", result.Published), slog.Int("skipped", result.Skipped), slog.Bool("more_pending", result.MorePending))
 					}
 					cancel()
 				}
