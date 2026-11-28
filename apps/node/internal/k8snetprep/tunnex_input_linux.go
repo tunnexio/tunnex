@@ -4,6 +4,7 @@ package k8snetprep
 
 import (
 	"errors"
+	"net/netip"
 	"reflect"
 	"slices"
 )
@@ -21,8 +22,10 @@ var knownTunnexHooks = map[string]bool{"prerouting": true, "postrouting": true, 
 //     reply ct state established,related accept`), the DNS listener in UDP and
 //     TCP and, in IPv4 only and each at most once, the AI VPN listener and
 //     then the MCP gateway listener (`iifname <wg> fib daddr . iif type local
-//     <proto> dport <port> accept`), then the tunnel drop (`iifname <tunnels>
-//     drop`), in that order, each under its marker;
+//     <proto> dport <port> accept`), then, IPv4 only and at most once, the
+//     internal AI endpoint accept (`iifname <wg> ip daddr <one or two private
+//     IPv4 addresses> tcp dport <port> accept`), then the tunnel drop
+//     (`iifname <tunnels> drop`), in that order, each under its marker;
 //   - the stopped chain: one tunnel drop under the stopped marker.
 //
 // Both tunnel sets are the same and cover the WireGuard interface and every
@@ -83,6 +86,14 @@ func validateTunnexInputRules(family string, rules []nftRuleView, iface string, 
 			}
 		}
 	}
+	// The internal AI endpoint accept (AI-KEYS-1), IPv4 only, at most once, last before the drop. Its
+	// shape is checked, not its configured addresses or port: a restarted agent reads the previous
+	// process's chain before it has fetched the endpoint configuration.
+	aiInternal := -1
+	if family == "ip" && len(want) < len(rules) && rules[len(want)].Comment == InputAIInternalRuleComment {
+		aiInternal = len(want)
+		want = append(want, InputAIInternalRuleComment)
+	}
 	want = append(want, InputTunnelDropRuleComment)
 	if len(rules) != len(want) {
 		return errors.New("Tunnex input chain does not hold exactly the registered rules")
@@ -100,6 +111,9 @@ func validateTunnexInputRules(family string, rules []nftRuleView, iface string, 
 		if !tunnexInputListener(withoutCounters(rules[1+i].Expr), iface, listener[0], listener[1]) {
 			return errors.New("Tunnex input listener is not the exact registered accept")
 		}
+	}
+	if aiInternal >= 0 && !tunnexInputAIInternal(withoutCounters(rules[aiInternal].Expr), iface) {
+		return errors.New("Tunnex input internal AI endpoint accept is not exact")
 	}
 	drop, err := tunnexInputDrop(withoutCounters(rules[len(rules)-1].Expr), tunnels)
 	if err != nil {
@@ -144,6 +158,52 @@ func tunnexInputListener(expr []map[string]any, iface string, proto, port any) b
 	}
 	dport, ok := nftMatch(expr[2], "==", map[string]any{"payload": map[string]any{"protocol": proto, "field": "dport"}})
 	return ok && dport == port
+}
+
+// tunnexInputAIInternal matches `iifname <wg> ip daddr <address | { address, address }> tcp dport
+// <port> accept` exactly: one or two distinct canonical private IPv4 addresses and a port in 1024-65535
+// that is not the AI VPN or the MCP gateway port.
+func tunnexInputAIInternal(expr []map[string]any, iface string) bool {
+	if len(expr) != 4 || !reflect.DeepEqual(expr[3], map[string]any{"accept": nil}) {
+		return false
+	}
+	ingress, ok := nftNamedInterfaceMatch(expr[0], "==", "iifname")
+	if !ok || ingress != iface {
+		return false
+	}
+	daddr, ok := nftMatch(expr[1], "==", map[string]any{"payload": map[string]any{"protocol": "ip", "field": "daddr"}})
+	if !ok {
+		return false
+	}
+	var addrs []any
+	switch value := daddr.(type) {
+	case string:
+		addrs = []any{value}
+	case map[string]any:
+		members, ok := value["set"].([]any)
+		if len(value) != 1 || !ok || len(members) < 1 || len(members) > 2 {
+			return false
+		}
+		addrs = members
+	default:
+		return false
+	}
+	seen := map[netip.Addr]bool{}
+	for _, raw := range addrs {
+		text, ok := raw.(string)
+		if !ok {
+			return false
+		}
+		addr, err := netip.ParseAddr(text)
+		if err != nil || !addr.Is4() || !addr.IsPrivate() || addr.String() != text || seen[addr] {
+			return false
+		}
+		seen[addr] = true
+	}
+	dport, ok := nftMatch(expr[2], "==", map[string]any{"payload": map[string]any{"protocol": "tcp", "field": "dport"}})
+	port, isNumber := dport.(float64)
+	return ok && isNumber && port == float64(int(port)) && port >= 1024 && port <= 65535 &&
+		port != InputAIVPNPort && port != InputMCPGatewayPort
 }
 
 // tunnexInputDrop accepts `iifname <tunnels> drop` and returns the set.

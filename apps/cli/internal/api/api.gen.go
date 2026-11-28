@@ -106,6 +106,12 @@ const (
 	AIInferenceRequestMessagesRoleUser      AIInferenceRequestMessagesRole = "user"
 )
 
+// Defines values for AIInternalEndpointTLSMode.
+const (
+	AIInternalTLSCustom   AIInternalEndpointTLSMode = "custom"
+	AIInternalTLSTunnexCA AIInternalEndpointTLSMode = "tunnex_ca"
+)
+
 // Defines values for AIModelMode.
 const (
 	AudioSpeech        AIModelMode = "audio_speech"
@@ -352,6 +358,33 @@ const (
 // Defines values for AIWorkloadModelListObject.
 const (
 	List AIWorkloadModelListObject = "list"
+)
+
+// Defines values for AIWorkloadStaticKeyLastRefusedIngress.
+const (
+	AIStaticKeyRefusedInternal AIWorkloadStaticKeyLastRefusedIngress = "internal"
+	AIStaticKeyRefusedPublic   AIWorkloadStaticKeyLastRefusedIngress = "public"
+)
+
+// Defines values for AIWorkloadStaticKeyLastUsedIngress.
+const (
+	AIStaticKeyUsedInternal AIWorkloadStaticKeyLastUsedIngress = "internal"
+	AIStaticKeyUsedPublic   AIWorkloadStaticKeyLastUsedIngress = "public"
+)
+
+// Defines values for AIWorkloadStaticKeyStatus.
+const (
+	AIStaticKeyStatusApplied AIWorkloadStaticKeyStatus = "applied"
+	AIStaticKeyStatusError   AIWorkloadStaticKeyStatus = "error"
+	AIStaticKeyStatusExpired AIWorkloadStaticKeyStatus = "expired"
+	AIStaticKeyStatusPending AIWorkloadStaticKeyStatus = "pending"
+	AIStaticKeyStatusRevoked AIWorkloadStaticKeyStatus = "revoked"
+)
+
+// Defines values for AIWorkloadStaticKeyScope.
+const (
+	AIStaticKeyScopeInternal AIWorkloadStaticKeyScope = "internal"
+	AIStaticKeyScopePublic   AIWorkloadStaticKeyScope = "public"
 )
 
 // Defines values for AIWorkloadTokenScope.
@@ -700,6 +733,7 @@ const (
 	AlertEventKeyAgentMcpApprovalPending      AlertEventKey = "agent.mcp_approval_pending"
 	AlertEventKeyAgentOffline                 AlertEventKey = "agent.offline"
 	AlertEventKeyAgentRotationFailed          AlertEventKey = "agent.rotation_failed"
+	AlertEventKeyAiWorkloadStaticKeyExpiring  AlertEventKey = "ai_workload.static_key_expiring"
 	AlertEventKeyDeviceOffline                AlertEventKey = "device.offline"
 	AlertEventKeyDevicePostureBlocked         AlertEventKey = "device.posture_blocked"
 	AlertEventKeyGatewayOffline               AlertEventKey = "gateway.offline"
@@ -2762,6 +2796,66 @@ type AIInferenceRequest struct {
 // AIInferenceRequestMessagesRole Anthropic messages accept user or assistant; its system text is top-level.
 type AIInferenceRequestMessagesRole string
 
+// AIInternalEndpoint defines model for AIInternalEndpoint.
+type AIInternalEndpoint struct {
+	CertificateNotAfter *time.Time                `json:"certificate_not_after"`
+	CertificateSha256   *string                   `json:"certificate_sha256"`
+	Endpoint            *AIInternalEndpointConfig `json:"endpoint,omitempty"`
+	Error               *string                   `json:"error"`
+	HasSite             *bool                     `json:"has_site,omitempty"`
+	NodeId              openapi_types.UUID        `json:"node_id"`
+	NodeName            string                    `json:"node_name"`
+	Ready               bool                      `json:"ready"`
+
+	// Supported A fresh report from this gateway says it can serve the endpoint.
+	Supported bool `json:"supported"`
+
+	// TunnelAddress The organization's gateway tunnel address
+	TunnelAddress *string `json:"tunnel_address"`
+	Url           *string `json:"url"`
+}
+
+// AIInternalEndpointCA defines model for AIInternalEndpointCA.
+type AIInternalEndpointCA struct {
+	CertificatePem string    `json:"certificate_pem"`
+	NotAfter       time.Time `json:"not_after"`
+	Sha256         string    `json:"sha256"`
+}
+
+// AIInternalEndpointConfig defines model for AIInternalEndpointConfig.
+type AIInternalEndpointConfig struct {
+	DnsName         *string                   `json:"dns_name"`
+	Enabled         bool                      `json:"enabled"`
+	Id              openapi_types.UUID        `json:"id"`
+	ListenAddresses []string                  `json:"listen_addresses"`
+	Port            int                       `json:"port"`
+	Revision        int64                     `json:"revision"`
+	SourceCidrs     []string                  `json:"source_cidrs"`
+	TlsMode         AIInternalEndpointTLSMode `json:"tls_mode"`
+	UpdatedAt       time.Time                 `json:"updated_at"`
+}
+
+// AIInternalEndpointInput defines model for AIInternalEndpointInput.
+type AIInternalEndpointInput struct {
+	DnsName *string `json:"dns_name"`
+	Enabled bool    `json:"enabled"`
+
+	// ExpectedRevision Zero creates; otherwise the current revision.
+	ExpectedRevision int64                     `json:"expected_revision"`
+	ListenAddresses  []string                  `json:"listen_addresses"`
+	Port             int                       `json:"port"`
+	SourceCidrs      []string                  `json:"source_cidrs"`
+	TlsMode          AIInternalEndpointTLSMode `json:"tls_mode"`
+}
+
+// AIInternalEndpointList defines model for AIInternalEndpointList.
+type AIInternalEndpointList struct {
+	Items []AIInternalEndpoint `json:"items"`
+}
+
+// AIInternalEndpointTLSMode defines model for AIInternalEndpointTLSMode.
+type AIInternalEndpointTLSMode string
+
 // AIModelMode defines model for AIModelMode.
 type AIModelMode string
 
@@ -3018,6 +3112,11 @@ type AISpeechRequest struct {
 // AISpeechRequestResponseFormat defines model for AISpeechRequest.ResponseFormat.
 type AISpeechRequestResponseFormat string
 
+// AIStaticKeySettings defines model for AIStaticKeySettings.
+type AIStaticKeySettings struct {
+	PublicStaticKeysAllowed bool `json:"public_static_keys_allowed"`
+}
+
 // AITeamPolicy defines model for AITeamPolicy.
 type AITeamPolicy struct {
 	DailyCostLimit *float64           `json:"daily_cost_limit"`
@@ -3082,7 +3181,10 @@ type AIUsageDashboard struct {
 	SuccessfulRequests int64                 `json:"successful_requests"`
 	Teams              []AIUsageAttribution  `json:"teams"`
 	UserGroups         *[]AIUsageAttribution `json:"user_groups,omitempty"`
-	Workloads          *[]AIUsageAttribution `json:"workloads,omitempty"`
+
+	// WorkloadKeys Static API keys; their cost is also included in their workload row.
+	WorkloadKeys *[]AIUsageWorkloadKey `json:"workload_keys,omitempty"`
+	Workloads    *[]AIUsageAttribution `json:"workloads,omitempty"`
 }
 
 // AIUsageDay defines model for AIUsageDay.
@@ -3118,6 +3220,20 @@ type AIUsageReport struct {
 
 // AIUsageReportSemantics Native reported usage estimates; not a provider invoice or hard spending cap.
 type AIUsageReportSemantics string
+
+// AIUsageWorkloadKey defines model for AIUsageWorkloadKey.
+type AIUsageWorkloadKey struct {
+	Cost     float64            `json:"cost"`
+	Id       openapi_types.UUID `json:"id"`
+	Name     string             `json:"name"`
+	Requests int64              `json:"requests"`
+
+	// Scope internal: accepted only on a gateway internal AI endpoint. public: accepted only on the control plane public AI endpoint over HTTPS.
+	Scope            AIWorkloadStaticKeyScope `json:"scope"`
+	Tokens           int64                    `json:"tokens"`
+	UncostedRequests int64                    `json:"uncosted_requests"`
+	WorkloadId       openapi_types.UUID       `json:"workload_id"`
+}
 
 // AIUserGroup defines model for AIUserGroup.
 type AIUserGroup struct {
@@ -3352,6 +3468,99 @@ type AIWorkloadRotationInput struct {
 	OldProof   string             `json:"old_proof"`
 	PublicKey  string             `json:"public_key"`
 	RequestId  openapi_types.UUID `json:"request_id"`
+}
+
+// AIWorkloadStaticKey defines model for AIWorkloadStaticKey.
+type AIWorkloadStaticKey struct {
+	CreatedAt         time.Time `json:"created_at"`
+	DailyUsdThreshold *float64  `json:"daily_usd_threshold"`
+	ExpiresAt         time.Time `json:"expires_at"`
+
+	// Hint Last four characters of the key.
+	Hint               string                                 `json:"hint"`
+	Id                 openapi_types.UUID                     `json:"id"`
+	LastRefusedAt      *time.Time                             `json:"last_refused_at"`
+	LastRefusedIngress *AIWorkloadStaticKeyLastRefusedIngress `json:"last_refused_ingress"`
+
+	// LastRefusedReason wrong_ingress, source_not_allowed, public_keys_disabled, rate_limited, threshold_reached, expired, revoked, workload_disabled, model_not_allowed, unavailable
+	LastRefusedReason  *string                             `json:"last_refused_reason"`
+	LastRefusedSource  *string                             `json:"last_refused_source"`
+	LastUsedAt         *time.Time                          `json:"last_used_at"`
+	LastUsedIngress    *AIWorkloadStaticKeyLastUsedIngress `json:"last_used_ingress"`
+	LastUsedNodeId     *openapi_types.UUID                 `json:"last_used_node_id"`
+	LastUsedSource     *string                             `json:"last_used_source"`
+	Name               string                              `json:"name"`
+	RateLimitPerMinute *int                                `json:"rate_limit_per_minute"`
+	RevokedAt          *time.Time                          `json:"revoked_at"`
+	RotatedFromId      *openapi_types.UUID                 `json:"rotated_from_id"`
+
+	// Scope internal: accepted only on a gateway internal AI endpoint. public: accepted only on the control plane public AI endpoint over HTTPS.
+	Scope       AIWorkloadStaticKeyScope  `json:"scope"`
+	SourceCidrs []string                  `json:"source_cidrs"`
+	Status      AIWorkloadStaticKeyStatus `json:"status"`
+	UpdatedAt   time.Time                 `json:"updated_at"`
+	WorkloadId  openapi_types.UUID        `json:"workload_id"`
+}
+
+// AIWorkloadStaticKeyLastRefusedIngress defines model for AIWorkloadStaticKey.LastRefusedIngress.
+type AIWorkloadStaticKeyLastRefusedIngress string
+
+// AIWorkloadStaticKeyLastUsedIngress defines model for AIWorkloadStaticKey.LastUsedIngress.
+type AIWorkloadStaticKeyLastUsedIngress string
+
+// AIWorkloadStaticKeyStatus defines model for AIWorkloadStaticKey.Status.
+type AIWorkloadStaticKeyStatus string
+
+// AIWorkloadStaticKeyInput defines model for AIWorkloadStaticKeyInput.
+type AIWorkloadStaticKeyInput struct {
+	// AllowAnySource Second confirmation required to save a public key with no source ranges.
+	AllowAnySource    *bool    `json:"allow_any_source,omitempty"`
+	DailyUsdThreshold *float64 `json:"daily_usd_threshold"`
+
+	// ExpiresAt Required, at most 90 days from now. Cannot be extended; rotate instead.
+	ExpiresAt          time.Time `json:"expires_at"`
+	Name               string    `json:"name"`
+	RateLimitPerMinute *int      `json:"rate_limit_per_minute"`
+
+	// Scope internal: accepted only on a gateway internal AI endpoint. public: accepted only on the control plane public AI endpoint over HTTPS.
+	Scope AIWorkloadStaticKeyScope `json:"scope"`
+
+	// SourceCidrs Internal keys: private IPv4 ranges. Public keys: public ranges only.
+	SourceCidrs *[]string `json:"source_cidrs,omitempty"`
+}
+
+// AIWorkloadStaticKeyPage defines model for AIWorkloadStaticKeyPage.
+type AIWorkloadStaticKeyPage struct {
+	Items      []AIWorkloadStaticKey `json:"items"`
+	NextCursor *openapi_types.UUID   `json:"next_cursor"`
+}
+
+// AIWorkloadStaticKeyRotate defines model for AIWorkloadStaticKeyRotate.
+type AIWorkloadStaticKeyRotate struct {
+	ExpiresAt    time.Time `json:"expires_at"`
+	OverlapHours *int      `json:"overlap_hours,omitempty"`
+}
+
+// AIWorkloadStaticKeyScope internal: accepted only on a gateway internal AI endpoint. public: accepted only on the control plane public AI endpoint over HTTPS.
+type AIWorkloadStaticKeyScope string
+
+// AIWorkloadStaticKeySecret defines model for AIWorkloadStaticKeySecret.
+type AIWorkloadStaticKeySecret struct {
+	Key      AIWorkloadStaticKey  `json:"key"`
+	Previous *AIWorkloadStaticKey `json:"previous,omitempty"`
+
+	// Secret Shown once. Paste it into the tool; it is never shown again.
+	Secret string `json:"secret"`
+}
+
+// AIWorkloadStaticKeyUpdate defines model for AIWorkloadStaticKeyUpdate.
+type AIWorkloadStaticKeyUpdate struct {
+	AllowAnySource     *bool     `json:"allow_any_source,omitempty"`
+	DailyUsdThreshold  *float64  `json:"daily_usd_threshold"`
+	ExpectedUpdatedAt  time.Time `json:"expected_updated_at"`
+	Name               string    `json:"name"`
+	RateLimitPerMinute *int      `json:"rate_limit_per_minute"`
+	SourceCidrs        *[]string `json:"source_cidrs,omitempty"`
 }
 
 // AIWorkloadToken defines model for AIWorkloadToken.
@@ -10277,6 +10486,12 @@ type ListAIWorkloadInstancesParams struct {
 	Limit *int                `form:"limit,omitempty" json:"limit,omitempty"`
 }
 
+// ListAIWorkloadStaticKeysParams defines parameters for ListAIWorkloadStaticKeys.
+type ListAIWorkloadStaticKeysParams struct {
+	After *openapi_types.UUID `form:"after,omitempty" json:"after,omitempty"`
+	Limit *int                `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
 // ListAlertOccurrencesParams defines parameters for ListAlertOccurrences.
 type ListAlertOccurrencesParams struct {
 	State *AlertOccurrenceState `form:"state,omitempty" json:"state,omitempty"`
@@ -10869,6 +11084,9 @@ type AiUserRerankJSONRequestBody = AIRerankRequest
 // AiUserVideoGenerationJSONRequestBody defines body for AiUserVideoGeneration for application/json ContentType.
 type AiUserVideoGenerationJSONRequestBody = AIVideoRequest
 
+// PutAIInternalEndpointJSONRequestBody defines body for PutAIInternalEndpoint for application/json ContentType.
+type PutAIInternalEndpointJSONRequestBody = AIInternalEndpointInput
+
 // CreateAIProviderJSONRequestBody defines body for CreateAIProvider for application/json ContentType.
 type CreateAIProviderJSONRequestBody = AIProviderCreate
 
@@ -10886,6 +11104,9 @@ type UpdateAIProviderJSONRequestBody = AIProviderUpdate
 
 // TestAIProviderJSONRequestBody defines body for TestAIProvider for application/json ContentType.
 type TestAIProviderJSONRequestBody = AIProviderRevision
+
+// SetAIStaticKeySettingsJSONRequestBody defines body for SetAIStaticKeySettings for application/json ContentType.
+type SetAIStaticKeySettingsJSONRequestBody = AIStaticKeySettings
 
 // PutAITeamPolicyJSONRequestBody defines body for PutAITeamPolicy for application/json ContentType.
 type PutAITeamPolicyJSONRequestBody = AITeamPolicyWrite
@@ -10907,6 +11128,15 @@ type CreateAIWorkloadKeyJSONRequestBody = AIWorkloadKeyInput
 
 // RevokeAIWorkloadKeyJSONRequestBody defines body for RevokeAIWorkloadKey for application/json ContentType.
 type RevokeAIWorkloadKeyJSONRequestBody = AIWorkloadKeyRevoke
+
+// CreateAIWorkloadStaticKeyJSONRequestBody defines body for CreateAIWorkloadStaticKey for application/json ContentType.
+type CreateAIWorkloadStaticKeyJSONRequestBody = AIWorkloadStaticKeyInput
+
+// UpdateAIWorkloadStaticKeyJSONRequestBody defines body for UpdateAIWorkloadStaticKey for application/json ContentType.
+type UpdateAIWorkloadStaticKeyJSONRequestBody = AIWorkloadStaticKeyUpdate
+
+// RotateAIWorkloadStaticKeyJSONRequestBody defines body for RotateAIWorkloadStaticKey for application/json ContentType.
+type RotateAIWorkloadStaticKeyJSONRequestBody = AIWorkloadStaticKeyRotate
 
 // CreateAlertDestinationJSONRequestBody defines body for CreateAlertDestination for application/json ContentType.
 type CreateAlertDestinationJSONRequestBody = CreateAlertDestinationRequest
@@ -12164,6 +12394,20 @@ type ClientInterface interface {
 	// AiUserVideoContent request
 	AiUserVideoContent(ctx context.Context, orgId openapi_types.UUID, jobId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
 
+	// GetAIInternalEndpointCA request
+	GetAIInternalEndpointCA(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListAIInternalEndpoints request
+	ListAIInternalEndpoints(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// DeleteAIInternalEndpoint request
+	DeleteAIInternalEndpoint(ctx context.Context, orgId openapi_types.UUID, nodeId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// PutAIInternalEndpointWithBody request with any body
+	PutAIInternalEndpointWithBody(ctx context.Context, orgId openapi_types.UUID, nodeId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	PutAIInternalEndpoint(ctx context.Context, orgId openapi_types.UUID, nodeId openapi_types.UUID, body PutAIInternalEndpointJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
 	// ListAIProviderModels request
 	ListAIProviderModels(ctx context.Context, orgId openapi_types.UUID, params *ListAIProviderModelsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
@@ -12202,6 +12446,14 @@ type ClientInterface interface {
 	TestAIProviderWithBody(ctx context.Context, orgId openapi_types.UUID, connectionId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	TestAIProvider(ctx context.Context, orgId openapi_types.UUID, connectionId openapi_types.UUID, body TestAIProviderJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// GetAIStaticKeySettings request
+	GetAIStaticKeySettings(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// SetAIStaticKeySettingsWithBody request with any body
+	SetAIStaticKeySettingsWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	SetAIStaticKeySettings(ctx context.Context, orgId openapi_types.UUID, body SetAIStaticKeySettingsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetAIGatewayStatus request
 	GetAIGatewayStatus(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -12264,6 +12516,27 @@ type ClientInterface interface {
 
 	// RevokeAIWorkloadInstance request
 	RevokeAIWorkloadInstance(ctx context.Context, orgId openapi_types.UUID, workloadId openapi_types.UUID, instanceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListAIWorkloadStaticKeys request
+	ListAIWorkloadStaticKeys(ctx context.Context, orgId openapi_types.UUID, workloadId openapi_types.UUID, params *ListAIWorkloadStaticKeysParams, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// CreateAIWorkloadStaticKeyWithBody request with any body
+	CreateAIWorkloadStaticKeyWithBody(ctx context.Context, orgId openapi_types.UUID, workloadId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	CreateAIWorkloadStaticKey(ctx context.Context, orgId openapi_types.UUID, workloadId openapi_types.UUID, body CreateAIWorkloadStaticKeyJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// UpdateAIWorkloadStaticKeyWithBody request with any body
+	UpdateAIWorkloadStaticKeyWithBody(ctx context.Context, orgId openapi_types.UUID, workloadId openapi_types.UUID, keyId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	UpdateAIWorkloadStaticKey(ctx context.Context, orgId openapi_types.UUID, workloadId openapi_types.UUID, keyId openapi_types.UUID, body UpdateAIWorkloadStaticKeyJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// RevokeAIWorkloadStaticKey request
+	RevokeAIWorkloadStaticKey(ctx context.Context, orgId openapi_types.UUID, workloadId openapi_types.UUID, keyId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// RotateAIWorkloadStaticKeyWithBody request with any body
+	RotateAIWorkloadStaticKeyWithBody(ctx context.Context, orgId openapi_types.UUID, workloadId openapi_types.UUID, keyId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	RotateAIWorkloadStaticKey(ctx context.Context, orgId openapi_types.UUID, workloadId openapi_types.UUID, keyId openapi_types.UUID, body RotateAIWorkloadStaticKeyJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// ListAlertDeliveries request
 	ListAlertDeliveries(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -16571,6 +16844,66 @@ func (c *Client) AiUserVideoContent(ctx context.Context, orgId openapi_types.UUI
 	return c.Client.Do(req)
 }
 
+func (c *Client) GetAIInternalEndpointCA(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetAIInternalEndpointCARequest(c.Server, orgId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ListAIInternalEndpoints(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListAIInternalEndpointsRequest(c.Server, orgId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) DeleteAIInternalEndpoint(ctx context.Context, orgId openapi_types.UUID, nodeId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewDeleteAIInternalEndpointRequest(c.Server, orgId, nodeId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) PutAIInternalEndpointWithBody(ctx context.Context, orgId openapi_types.UUID, nodeId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPutAIInternalEndpointRequestWithBody(c.Server, orgId, nodeId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) PutAIInternalEndpoint(ctx context.Context, orgId openapi_types.UUID, nodeId openapi_types.UUID, body PutAIInternalEndpointJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewPutAIInternalEndpointRequest(c.Server, orgId, nodeId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
 func (c *Client) ListAIProviderModels(ctx context.Context, orgId openapi_types.UUID, params *ListAIProviderModelsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewListAIProviderModelsRequest(c.Server, orgId, params)
 	if err != nil {
@@ -16741,6 +17074,42 @@ func (c *Client) TestAIProviderWithBody(ctx context.Context, orgId openapi_types
 
 func (c *Client) TestAIProvider(ctx context.Context, orgId openapi_types.UUID, connectionId openapi_types.UUID, body TestAIProviderJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewTestAIProviderRequest(c.Server, orgId, connectionId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) GetAIStaticKeySettings(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewGetAIStaticKeySettingsRequest(c.Server, orgId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) SetAIStaticKeySettingsWithBody(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSetAIStaticKeySettingsRequestWithBody(c.Server, orgId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) SetAIStaticKeySettings(ctx context.Context, orgId openapi_types.UUID, body SetAIStaticKeySettingsJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewSetAIStaticKeySettingsRequest(c.Server, orgId, body)
 	if err != nil {
 		return nil, err
 	}
@@ -17017,6 +17386,102 @@ func (c *Client) ListAIWorkloadInstances(ctx context.Context, orgId openapi_type
 
 func (c *Client) RevokeAIWorkloadInstance(ctx context.Context, orgId openapi_types.UUID, workloadId openapi_types.UUID, instanceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewRevokeAIWorkloadInstanceRequest(c.Server, orgId, workloadId, instanceId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ListAIWorkloadStaticKeys(ctx context.Context, orgId openapi_types.UUID, workloadId openapi_types.UUID, params *ListAIWorkloadStaticKeysParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListAIWorkloadStaticKeysRequest(c.Server, orgId, workloadId, params)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CreateAIWorkloadStaticKeyWithBody(ctx context.Context, orgId openapi_types.UUID, workloadId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateAIWorkloadStaticKeyRequestWithBody(c.Server, orgId, workloadId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) CreateAIWorkloadStaticKey(ctx context.Context, orgId openapi_types.UUID, workloadId openapi_types.UUID, body CreateAIWorkloadStaticKeyJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewCreateAIWorkloadStaticKeyRequest(c.Server, orgId, workloadId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) UpdateAIWorkloadStaticKeyWithBody(ctx context.Context, orgId openapi_types.UUID, workloadId openapi_types.UUID, keyId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateAIWorkloadStaticKeyRequestWithBody(c.Server, orgId, workloadId, keyId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) UpdateAIWorkloadStaticKey(ctx context.Context, orgId openapi_types.UUID, workloadId openapi_types.UUID, keyId openapi_types.UUID, body UpdateAIWorkloadStaticKeyJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewUpdateAIWorkloadStaticKeyRequest(c.Server, orgId, workloadId, keyId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) RevokeAIWorkloadStaticKey(ctx context.Context, orgId openapi_types.UUID, workloadId openapi_types.UUID, keyId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRevokeAIWorkloadStaticKeyRequest(c.Server, orgId, workloadId, keyId)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) RotateAIWorkloadStaticKeyWithBody(ctx context.Context, orgId openapi_types.UUID, workloadId openapi_types.UUID, keyId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRotateAIWorkloadStaticKeyRequestWithBody(c.Server, orgId, workloadId, keyId, contentType, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) RotateAIWorkloadStaticKey(ctx context.Context, orgId openapi_types.UUID, workloadId openapi_types.UUID, keyId openapi_types.UUID, body RotateAIWorkloadStaticKeyJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewRotateAIWorkloadStaticKeyRequest(c.Server, orgId, workloadId, keyId, body)
 	if err != nil {
 		return nil, err
 	}
@@ -30515,6 +30980,169 @@ func NewAiUserVideoContentRequest(server string, orgId openapi_types.UUID, jobId
 	return req, nil
 }
 
+// NewGetAIInternalEndpointCARequest generates requests for GetAIInternalEndpointCA
+func NewGetAIInternalEndpointCARequest(server string, orgId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/ai-gateway/internal-endpoint-ca", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewListAIInternalEndpointsRequest generates requests for ListAIInternalEndpoints
+func NewListAIInternalEndpointsRequest(server string, orgId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/ai-gateway/internal-endpoints", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewDeleteAIInternalEndpointRequest generates requests for DeleteAIInternalEndpoint
+func NewDeleteAIInternalEndpointRequest(server string, orgId openapi_types.UUID, nodeId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "nodeId", runtime.ParamLocationPath, nodeId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/ai-gateway/internal-endpoints/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("DELETE", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewPutAIInternalEndpointRequest calls the generic PutAIInternalEndpoint builder with application/json body
+func NewPutAIInternalEndpointRequest(server string, orgId openapi_types.UUID, nodeId openapi_types.UUID, body PutAIInternalEndpointJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewPutAIInternalEndpointRequestWithBody(server, orgId, nodeId, "application/json", bodyReader)
+}
+
+// NewPutAIInternalEndpointRequestWithBody generates requests for PutAIInternalEndpoint with any type of body
+func NewPutAIInternalEndpointRequestWithBody(server string, orgId openapi_types.UUID, nodeId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "nodeId", runtime.ParamLocationPath, nodeId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/ai-gateway/internal-endpoints/%s", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("PUT", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
 // NewListAIProviderModelsRequest generates requests for ListAIProviderModels
 func NewListAIProviderModelsRequest(server string, orgId openapi_types.UUID, params *ListAIProviderModelsParams) (*http.Request, error) {
 	var err error
@@ -31013,6 +31641,87 @@ func NewTestAIProviderRequestWithBody(server string, orgId openapi_types.UUID, c
 	}
 
 	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewGetAIStaticKeySettingsRequest generates requests for GetAIStaticKeySettings
+func NewGetAIStaticKeySettingsRequest(server string, orgId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/ai-gateway/static-key-settings", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewSetAIStaticKeySettingsRequest calls the generic SetAIStaticKeySettings builder with application/json body
+func NewSetAIStaticKeySettingsRequest(server string, orgId openapi_types.UUID, body SetAIStaticKeySettingsJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewSetAIStaticKeySettingsRequestWithBody(server, orgId, "application/json", bodyReader)
+}
+
+// NewSetAIStaticKeySettingsRequestWithBody generates requests for SetAIStaticKeySettings with any type of body
+func NewSetAIStaticKeySettingsRequestWithBody(server string, orgId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/ai-gateway/static-key-settings", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("PUT", queryURL.String(), body)
 	if err != nil {
 		return nil, err
 	}
@@ -31885,6 +32594,309 @@ func NewRevokeAIWorkloadInstanceRequest(server string, orgId openapi_types.UUID,
 	if err != nil {
 		return nil, err
 	}
+
+	return req, nil
+}
+
+// NewListAIWorkloadStaticKeysRequest generates requests for ListAIWorkloadStaticKeys
+func NewListAIWorkloadStaticKeysRequest(server string, orgId openapi_types.UUID, workloadId openapi_types.UUID, params *ListAIWorkloadStaticKeysParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "workloadId", runtime.ParamLocationPath, workloadId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/ai-gateway/workloads/%s/static-keys", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if params.After != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "after", runtime.ParamLocationQuery, *params.After); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "limit", runtime.ParamLocationQuery, *params.Limit); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewCreateAIWorkloadStaticKeyRequest calls the generic CreateAIWorkloadStaticKey builder with application/json body
+func NewCreateAIWorkloadStaticKeyRequest(server string, orgId openapi_types.UUID, workloadId openapi_types.UUID, body CreateAIWorkloadStaticKeyJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewCreateAIWorkloadStaticKeyRequestWithBody(server, orgId, workloadId, "application/json", bodyReader)
+}
+
+// NewCreateAIWorkloadStaticKeyRequestWithBody generates requests for CreateAIWorkloadStaticKey with any type of body
+func NewCreateAIWorkloadStaticKeyRequestWithBody(server string, orgId openapi_types.UUID, workloadId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "workloadId", runtime.ParamLocationPath, workloadId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/ai-gateway/workloads/%s/static-keys", pathParam0, pathParam1)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewUpdateAIWorkloadStaticKeyRequest calls the generic UpdateAIWorkloadStaticKey builder with application/json body
+func NewUpdateAIWorkloadStaticKeyRequest(server string, orgId openapi_types.UUID, workloadId openapi_types.UUID, keyId openapi_types.UUID, body UpdateAIWorkloadStaticKeyJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewUpdateAIWorkloadStaticKeyRequestWithBody(server, orgId, workloadId, keyId, "application/json", bodyReader)
+}
+
+// NewUpdateAIWorkloadStaticKeyRequestWithBody generates requests for UpdateAIWorkloadStaticKey with any type of body
+func NewUpdateAIWorkloadStaticKeyRequestWithBody(server string, orgId openapi_types.UUID, workloadId openapi_types.UUID, keyId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "workloadId", runtime.ParamLocationPath, workloadId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam2 string
+
+	pathParam2, err = runtime.StyleParamWithLocation("simple", false, "keyId", runtime.ParamLocationPath, keyId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/ai-gateway/workloads/%s/static-keys/%s", pathParam0, pathParam1, pathParam2)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("PUT", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewRevokeAIWorkloadStaticKeyRequest generates requests for RevokeAIWorkloadStaticKey
+func NewRevokeAIWorkloadStaticKeyRequest(server string, orgId openapi_types.UUID, workloadId openapi_types.UUID, keyId openapi_types.UUID) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "workloadId", runtime.ParamLocationPath, workloadId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam2 string
+
+	pathParam2, err = runtime.StyleParamWithLocation("simple", false, "keyId", runtime.ParamLocationPath, keyId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/ai-gateway/workloads/%s/static-keys/%s/revoke", pathParam0, pathParam1, pathParam2)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
+
+	return req, nil
+}
+
+// NewRotateAIWorkloadStaticKeyRequest calls the generic RotateAIWorkloadStaticKey builder with application/json body
+func NewRotateAIWorkloadStaticKeyRequest(server string, orgId openapi_types.UUID, workloadId openapi_types.UUID, keyId openapi_types.UUID, body RotateAIWorkloadStaticKeyJSONRequestBody) (*http.Request, error) {
+	var bodyReader io.Reader
+	buf, err := json.Marshal(body)
+	if err != nil {
+		return nil, err
+	}
+	bodyReader = bytes.NewReader(buf)
+	return NewRotateAIWorkloadStaticKeyRequestWithBody(server, orgId, workloadId, keyId, "application/json", bodyReader)
+}
+
+// NewRotateAIWorkloadStaticKeyRequestWithBody generates requests for RotateAIWorkloadStaticKey with any type of body
+func NewRotateAIWorkloadStaticKeyRequestWithBody(server string, orgId openapi_types.UUID, workloadId openapi_types.UUID, keyId openapi_types.UUID, contentType string, body io.Reader) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam1 string
+
+	pathParam1, err = runtime.StyleParamWithLocation("simple", false, "workloadId", runtime.ParamLocationPath, workloadId)
+	if err != nil {
+		return nil, err
+	}
+
+	var pathParam2 string
+
+	pathParam2, err = runtime.StyleParamWithLocation("simple", false, "keyId", runtime.ParamLocationPath, keyId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/ai-gateway/workloads/%s/static-keys/%s/rotate", pathParam0, pathParam1, pathParam2)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	req, err := http.NewRequest("POST", queryURL.String(), body)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Add("Content-Type", contentType)
 
 	return req, nil
 }
@@ -48416,6 +49428,20 @@ type ClientWithResponsesInterface interface {
 	// AiUserVideoContentWithResponse request
 	AiUserVideoContentWithResponse(ctx context.Context, orgId openapi_types.UUID, jobId openapi_types.UUID, reqEditors ...RequestEditorFn) (*AiUserVideoContentResponse, error)
 
+	// GetAIInternalEndpointCAWithResponse request
+	GetAIInternalEndpointCAWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetAIInternalEndpointCAResponse, error)
+
+	// ListAIInternalEndpointsWithResponse request
+	ListAIInternalEndpointsWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ListAIInternalEndpointsResponse, error)
+
+	// DeleteAIInternalEndpointWithResponse request
+	DeleteAIInternalEndpointWithResponse(ctx context.Context, orgId openapi_types.UUID, nodeId openapi_types.UUID, reqEditors ...RequestEditorFn) (*DeleteAIInternalEndpointResponse, error)
+
+	// PutAIInternalEndpointWithBodyWithResponse request with any body
+	PutAIInternalEndpointWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, nodeId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PutAIInternalEndpointResponse, error)
+
+	PutAIInternalEndpointWithResponse(ctx context.Context, orgId openapi_types.UUID, nodeId openapi_types.UUID, body PutAIInternalEndpointJSONRequestBody, reqEditors ...RequestEditorFn) (*PutAIInternalEndpointResponse, error)
+
 	// ListAIProviderModelsWithResponse request
 	ListAIProviderModelsWithResponse(ctx context.Context, orgId openapi_types.UUID, params *ListAIProviderModelsParams, reqEditors ...RequestEditorFn) (*ListAIProviderModelsResponse, error)
 
@@ -48454,6 +49480,14 @@ type ClientWithResponsesInterface interface {
 	TestAIProviderWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, connectionId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*TestAIProviderResponse, error)
 
 	TestAIProviderWithResponse(ctx context.Context, orgId openapi_types.UUID, connectionId openapi_types.UUID, body TestAIProviderJSONRequestBody, reqEditors ...RequestEditorFn) (*TestAIProviderResponse, error)
+
+	// GetAIStaticKeySettingsWithResponse request
+	GetAIStaticKeySettingsWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetAIStaticKeySettingsResponse, error)
+
+	// SetAIStaticKeySettingsWithBodyWithResponse request with any body
+	SetAIStaticKeySettingsWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetAIStaticKeySettingsResponse, error)
+
+	SetAIStaticKeySettingsWithResponse(ctx context.Context, orgId openapi_types.UUID, body SetAIStaticKeySettingsJSONRequestBody, reqEditors ...RequestEditorFn) (*SetAIStaticKeySettingsResponse, error)
 
 	// GetAIGatewayStatusWithResponse request
 	GetAIGatewayStatusWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetAIGatewayStatusResponse, error)
@@ -48516,6 +49550,27 @@ type ClientWithResponsesInterface interface {
 
 	// RevokeAIWorkloadInstanceWithResponse request
 	RevokeAIWorkloadInstanceWithResponse(ctx context.Context, orgId openapi_types.UUID, workloadId openapi_types.UUID, instanceId openapi_types.UUID, reqEditors ...RequestEditorFn) (*RevokeAIWorkloadInstanceResponse, error)
+
+	// ListAIWorkloadStaticKeysWithResponse request
+	ListAIWorkloadStaticKeysWithResponse(ctx context.Context, orgId openapi_types.UUID, workloadId openapi_types.UUID, params *ListAIWorkloadStaticKeysParams, reqEditors ...RequestEditorFn) (*ListAIWorkloadStaticKeysResponse, error)
+
+	// CreateAIWorkloadStaticKeyWithBodyWithResponse request with any body
+	CreateAIWorkloadStaticKeyWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, workloadId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateAIWorkloadStaticKeyResponse, error)
+
+	CreateAIWorkloadStaticKeyWithResponse(ctx context.Context, orgId openapi_types.UUID, workloadId openapi_types.UUID, body CreateAIWorkloadStaticKeyJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateAIWorkloadStaticKeyResponse, error)
+
+	// UpdateAIWorkloadStaticKeyWithBodyWithResponse request with any body
+	UpdateAIWorkloadStaticKeyWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, workloadId openapi_types.UUID, keyId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateAIWorkloadStaticKeyResponse, error)
+
+	UpdateAIWorkloadStaticKeyWithResponse(ctx context.Context, orgId openapi_types.UUID, workloadId openapi_types.UUID, keyId openapi_types.UUID, body UpdateAIWorkloadStaticKeyJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateAIWorkloadStaticKeyResponse, error)
+
+	// RevokeAIWorkloadStaticKeyWithResponse request
+	RevokeAIWorkloadStaticKeyWithResponse(ctx context.Context, orgId openapi_types.UUID, workloadId openapi_types.UUID, keyId openapi_types.UUID, reqEditors ...RequestEditorFn) (*RevokeAIWorkloadStaticKeyResponse, error)
+
+	// RotateAIWorkloadStaticKeyWithBodyWithResponse request with any body
+	RotateAIWorkloadStaticKeyWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, workloadId openapi_types.UUID, keyId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*RotateAIWorkloadStaticKeyResponse, error)
+
+	RotateAIWorkloadStaticKeyWithResponse(ctx context.Context, orgId openapi_types.UUID, workloadId openapi_types.UUID, keyId openapi_types.UUID, body RotateAIWorkloadStaticKeyJSONRequestBody, reqEditors ...RequestEditorFn) (*RotateAIWorkloadStaticKeyResponse, error)
 
 	// ListAlertDeliveriesWithResponse request
 	ListAlertDeliveriesWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ListAlertDeliveriesResponse, error)
@@ -53663,6 +54718,97 @@ func (r AiUserVideoContentResponse) StatusCode() int {
 	return 0
 }
 
+type GetAIInternalEndpointCAResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AIInternalEndpointCA
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r GetAIInternalEndpointCAResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetAIInternalEndpointCAResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ListAIInternalEndpointsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AIInternalEndpointList
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r ListAIInternalEndpointsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListAIInternalEndpointsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type DeleteAIInternalEndpointResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r DeleteAIInternalEndpointResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r DeleteAIInternalEndpointResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type PutAIInternalEndpointResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AIInternalEndpoint
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r PutAIInternalEndpointResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r PutAIInternalEndpointResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
 type ListAIProviderModelsResponse struct {
 	Body         []byte
 	HTTPResponse *http.Response
@@ -53864,6 +55010,52 @@ func (r TestAIProviderResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r TestAIProviderResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type GetAIStaticKeySettingsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AIStaticKeySettings
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r GetAIStaticKeySettingsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r GetAIStaticKeySettingsResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type SetAIStaticKeySettingsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AIStaticKeySettings
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r SetAIStaticKeySettingsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r SetAIStaticKeySettingsResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -54230,6 +55422,120 @@ func (r RevokeAIWorkloadInstanceResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r RevokeAIWorkloadInstanceResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ListAIWorkloadStaticKeysResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AIWorkloadStaticKeyPage
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r ListAIWorkloadStaticKeysResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListAIWorkloadStaticKeysResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type CreateAIWorkloadStaticKeyResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON201      *AIWorkloadStaticKeySecret
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r CreateAIWorkloadStaticKeyResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r CreateAIWorkloadStaticKeyResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type UpdateAIWorkloadStaticKeyResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AIWorkloadStaticKey
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r UpdateAIWorkloadStaticKeyResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r UpdateAIWorkloadStaticKeyResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type RevokeAIWorkloadStaticKeyResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r RevokeAIWorkloadStaticKeyResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r RevokeAIWorkloadStaticKeyResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type RotateAIWorkloadStaticKeyResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON201      *AIWorkloadStaticKeySecret
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r RotateAIWorkloadStaticKeyResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r RotateAIWorkloadStaticKeyResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -63695,6 +65001,50 @@ func (c *ClientWithResponses) AiUserVideoContentWithResponse(ctx context.Context
 	return ParseAiUserVideoContentResponse(rsp)
 }
 
+// GetAIInternalEndpointCAWithResponse request returning *GetAIInternalEndpointCAResponse
+func (c *ClientWithResponses) GetAIInternalEndpointCAWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetAIInternalEndpointCAResponse, error) {
+	rsp, err := c.GetAIInternalEndpointCA(ctx, orgId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetAIInternalEndpointCAResponse(rsp)
+}
+
+// ListAIInternalEndpointsWithResponse request returning *ListAIInternalEndpointsResponse
+func (c *ClientWithResponses) ListAIInternalEndpointsWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*ListAIInternalEndpointsResponse, error) {
+	rsp, err := c.ListAIInternalEndpoints(ctx, orgId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListAIInternalEndpointsResponse(rsp)
+}
+
+// DeleteAIInternalEndpointWithResponse request returning *DeleteAIInternalEndpointResponse
+func (c *ClientWithResponses) DeleteAIInternalEndpointWithResponse(ctx context.Context, orgId openapi_types.UUID, nodeId openapi_types.UUID, reqEditors ...RequestEditorFn) (*DeleteAIInternalEndpointResponse, error) {
+	rsp, err := c.DeleteAIInternalEndpoint(ctx, orgId, nodeId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseDeleteAIInternalEndpointResponse(rsp)
+}
+
+// PutAIInternalEndpointWithBodyWithResponse request with arbitrary body returning *PutAIInternalEndpointResponse
+func (c *ClientWithResponses) PutAIInternalEndpointWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, nodeId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*PutAIInternalEndpointResponse, error) {
+	rsp, err := c.PutAIInternalEndpointWithBody(ctx, orgId, nodeId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePutAIInternalEndpointResponse(rsp)
+}
+
+func (c *ClientWithResponses) PutAIInternalEndpointWithResponse(ctx context.Context, orgId openapi_types.UUID, nodeId openapi_types.UUID, body PutAIInternalEndpointJSONRequestBody, reqEditors ...RequestEditorFn) (*PutAIInternalEndpointResponse, error) {
+	rsp, err := c.PutAIInternalEndpoint(ctx, orgId, nodeId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParsePutAIInternalEndpointResponse(rsp)
+}
+
 // ListAIProviderModelsWithResponse request returning *ListAIProviderModelsResponse
 func (c *ClientWithResponses) ListAIProviderModelsWithResponse(ctx context.Context, orgId openapi_types.UUID, params *ListAIProviderModelsParams, reqEditors ...RequestEditorFn) (*ListAIProviderModelsResponse, error) {
 	rsp, err := c.ListAIProviderModels(ctx, orgId, params, reqEditors...)
@@ -63822,6 +65172,32 @@ func (c *ClientWithResponses) TestAIProviderWithResponse(ctx context.Context, or
 		return nil, err
 	}
 	return ParseTestAIProviderResponse(rsp)
+}
+
+// GetAIStaticKeySettingsWithResponse request returning *GetAIStaticKeySettingsResponse
+func (c *ClientWithResponses) GetAIStaticKeySettingsWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetAIStaticKeySettingsResponse, error) {
+	rsp, err := c.GetAIStaticKeySettings(ctx, orgId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseGetAIStaticKeySettingsResponse(rsp)
+}
+
+// SetAIStaticKeySettingsWithBodyWithResponse request with arbitrary body returning *SetAIStaticKeySettingsResponse
+func (c *ClientWithResponses) SetAIStaticKeySettingsWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*SetAIStaticKeySettingsResponse, error) {
+	rsp, err := c.SetAIStaticKeySettingsWithBody(ctx, orgId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSetAIStaticKeySettingsResponse(rsp)
+}
+
+func (c *ClientWithResponses) SetAIStaticKeySettingsWithResponse(ctx context.Context, orgId openapi_types.UUID, body SetAIStaticKeySettingsJSONRequestBody, reqEditors ...RequestEditorFn) (*SetAIStaticKeySettingsResponse, error) {
+	rsp, err := c.SetAIStaticKeySettings(ctx, orgId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseSetAIStaticKeySettingsResponse(rsp)
 }
 
 // GetAIGatewayStatusWithResponse request returning *GetAIGatewayStatusResponse
@@ -64022,6 +65398,75 @@ func (c *ClientWithResponses) RevokeAIWorkloadInstanceWithResponse(ctx context.C
 		return nil, err
 	}
 	return ParseRevokeAIWorkloadInstanceResponse(rsp)
+}
+
+// ListAIWorkloadStaticKeysWithResponse request returning *ListAIWorkloadStaticKeysResponse
+func (c *ClientWithResponses) ListAIWorkloadStaticKeysWithResponse(ctx context.Context, orgId openapi_types.UUID, workloadId openapi_types.UUID, params *ListAIWorkloadStaticKeysParams, reqEditors ...RequestEditorFn) (*ListAIWorkloadStaticKeysResponse, error) {
+	rsp, err := c.ListAIWorkloadStaticKeys(ctx, orgId, workloadId, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListAIWorkloadStaticKeysResponse(rsp)
+}
+
+// CreateAIWorkloadStaticKeyWithBodyWithResponse request with arbitrary body returning *CreateAIWorkloadStaticKeyResponse
+func (c *ClientWithResponses) CreateAIWorkloadStaticKeyWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, workloadId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*CreateAIWorkloadStaticKeyResponse, error) {
+	rsp, err := c.CreateAIWorkloadStaticKeyWithBody(ctx, orgId, workloadId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateAIWorkloadStaticKeyResponse(rsp)
+}
+
+func (c *ClientWithResponses) CreateAIWorkloadStaticKeyWithResponse(ctx context.Context, orgId openapi_types.UUID, workloadId openapi_types.UUID, body CreateAIWorkloadStaticKeyJSONRequestBody, reqEditors ...RequestEditorFn) (*CreateAIWorkloadStaticKeyResponse, error) {
+	rsp, err := c.CreateAIWorkloadStaticKey(ctx, orgId, workloadId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseCreateAIWorkloadStaticKeyResponse(rsp)
+}
+
+// UpdateAIWorkloadStaticKeyWithBodyWithResponse request with arbitrary body returning *UpdateAIWorkloadStaticKeyResponse
+func (c *ClientWithResponses) UpdateAIWorkloadStaticKeyWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, workloadId openapi_types.UUID, keyId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*UpdateAIWorkloadStaticKeyResponse, error) {
+	rsp, err := c.UpdateAIWorkloadStaticKeyWithBody(ctx, orgId, workloadId, keyId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateAIWorkloadStaticKeyResponse(rsp)
+}
+
+func (c *ClientWithResponses) UpdateAIWorkloadStaticKeyWithResponse(ctx context.Context, orgId openapi_types.UUID, workloadId openapi_types.UUID, keyId openapi_types.UUID, body UpdateAIWorkloadStaticKeyJSONRequestBody, reqEditors ...RequestEditorFn) (*UpdateAIWorkloadStaticKeyResponse, error) {
+	rsp, err := c.UpdateAIWorkloadStaticKey(ctx, orgId, workloadId, keyId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseUpdateAIWorkloadStaticKeyResponse(rsp)
+}
+
+// RevokeAIWorkloadStaticKeyWithResponse request returning *RevokeAIWorkloadStaticKeyResponse
+func (c *ClientWithResponses) RevokeAIWorkloadStaticKeyWithResponse(ctx context.Context, orgId openapi_types.UUID, workloadId openapi_types.UUID, keyId openapi_types.UUID, reqEditors ...RequestEditorFn) (*RevokeAIWorkloadStaticKeyResponse, error) {
+	rsp, err := c.RevokeAIWorkloadStaticKey(ctx, orgId, workloadId, keyId, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRevokeAIWorkloadStaticKeyResponse(rsp)
+}
+
+// RotateAIWorkloadStaticKeyWithBodyWithResponse request with arbitrary body returning *RotateAIWorkloadStaticKeyResponse
+func (c *ClientWithResponses) RotateAIWorkloadStaticKeyWithBodyWithResponse(ctx context.Context, orgId openapi_types.UUID, workloadId openapi_types.UUID, keyId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*RotateAIWorkloadStaticKeyResponse, error) {
+	rsp, err := c.RotateAIWorkloadStaticKeyWithBody(ctx, orgId, workloadId, keyId, contentType, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRotateAIWorkloadStaticKeyResponse(rsp)
+}
+
+func (c *ClientWithResponses) RotateAIWorkloadStaticKeyWithResponse(ctx context.Context, orgId openapi_types.UUID, workloadId openapi_types.UUID, keyId openapi_types.UUID, body RotateAIWorkloadStaticKeyJSONRequestBody, reqEditors ...RequestEditorFn) (*RotateAIWorkloadStaticKeyResponse, error) {
+	rsp, err := c.RotateAIWorkloadStaticKey(ctx, orgId, workloadId, keyId, body, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseRotateAIWorkloadStaticKeyResponse(rsp)
 }
 
 // ListAlertDeliveriesWithResponse request returning *ListAlertDeliveriesResponse
@@ -73599,6 +75044,131 @@ func ParseAiUserVideoContentResponse(rsp *http.Response) (*AiUserVideoContentRes
 	return response, nil
 }
 
+// ParseGetAIInternalEndpointCAResponse parses an HTTP response from a GetAIInternalEndpointCAWithResponse call
+func ParseGetAIInternalEndpointCAResponse(rsp *http.Response) (*GetAIInternalEndpointCAResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetAIInternalEndpointCAResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AIInternalEndpointCA
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListAIInternalEndpointsResponse parses an HTTP response from a ListAIInternalEndpointsWithResponse call
+func ParseListAIInternalEndpointsResponse(rsp *http.Response) (*ListAIInternalEndpointsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListAIInternalEndpointsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AIInternalEndpointList
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseDeleteAIInternalEndpointResponse parses an HTTP response from a DeleteAIInternalEndpointWithResponse call
+func ParseDeleteAIInternalEndpointResponse(rsp *http.Response) (*DeleteAIInternalEndpointResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &DeleteAIInternalEndpointResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParsePutAIInternalEndpointResponse parses an HTTP response from a PutAIInternalEndpointWithResponse call
+func ParsePutAIInternalEndpointResponse(rsp *http.Response) (*PutAIInternalEndpointResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &PutAIInternalEndpointResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AIInternalEndpoint
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
 // ParseListAIProviderModelsResponse parses an HTTP response from a ListAIProviderModelsWithResponse call
 func ParseListAIProviderModelsResponse(rsp *http.Response) (*ListAIProviderModelsResponse, error) {
 	bodyBytes, err := io.ReadAll(rsp.Body)
@@ -73879,6 +75449,72 @@ func ParseTestAIProviderResponse(rsp *http.Response) (*TestAIProviderResponse, e
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest AIProviderConnection
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseGetAIStaticKeySettingsResponse parses an HTTP response from a GetAIStaticKeySettingsWithResponse call
+func ParseGetAIStaticKeySettingsResponse(rsp *http.Response) (*GetAIStaticKeySettingsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &GetAIStaticKeySettingsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AIStaticKeySettings
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseSetAIStaticKeySettingsResponse parses an HTTP response from a SetAIStaticKeySettingsWithResponse call
+func ParseSetAIStaticKeySettingsResponse(rsp *http.Response) (*SetAIStaticKeySettingsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &SetAIStaticKeySettingsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AIStaticKeySettings
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}
@@ -74398,6 +76034,164 @@ func ParseRevokeAIWorkloadInstanceResponse(rsp *http.Response) (*RevokeAIWorkloa
 	}
 
 	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListAIWorkloadStaticKeysResponse parses an HTTP response from a ListAIWorkloadStaticKeysWithResponse call
+func ParseListAIWorkloadStaticKeysResponse(rsp *http.Response) (*ListAIWorkloadStaticKeysResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListAIWorkloadStaticKeysResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AIWorkloadStaticKeyPage
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseCreateAIWorkloadStaticKeyResponse parses an HTTP response from a CreateAIWorkloadStaticKeyWithResponse call
+func ParseCreateAIWorkloadStaticKeyResponse(rsp *http.Response) (*CreateAIWorkloadStaticKeyResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &CreateAIWorkloadStaticKeyResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest AIWorkloadStaticKeySecret
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseUpdateAIWorkloadStaticKeyResponse parses an HTTP response from a UpdateAIWorkloadStaticKeyWithResponse call
+func ParseUpdateAIWorkloadStaticKeyResponse(rsp *http.Response) (*UpdateAIWorkloadStaticKeyResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &UpdateAIWorkloadStaticKeyResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AIWorkloadStaticKey
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseRevokeAIWorkloadStaticKeyResponse parses an HTTP response from a RevokeAIWorkloadStaticKeyWithResponse call
+func ParseRevokeAIWorkloadStaticKeyResponse(rsp *http.Response) (*RevokeAIWorkloadStaticKeyResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &RevokeAIWorkloadStaticKeyResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseRotateAIWorkloadStaticKeyResponse parses an HTTP response from a RotateAIWorkloadStaticKeyWithResponse call
+func ParseRotateAIWorkloadStaticKeyResponse(rsp *http.Response) (*RotateAIWorkloadStaticKeyResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &RotateAIWorkloadStaticKeyResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 201:
+		var dest AIWorkloadStaticKeySecret
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON201 = &dest
+
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
 		var dest Error
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {

@@ -226,7 +226,7 @@ func (s *Workloads) Put(ctx context.Context, org, actor, id uuid.UUID, in api.AI
 			return api.AIWorkload{}, policyNotFound()
 		}
 		var count int
-		if tx.QueryRow(ctx, `SELECT (SELECT count(*) FROM ai_workloads WHERE org_id=$1)+(SELECT count(*) FROM ai_user_model_grants WHERE org_id=$1)+(SELECT count(*) FROM ai_gateway_key_bindings WHERE org_id=$1)`, org).Scan(&count) != nil {
+		if tx.QueryRow(ctx, `SELECT `+activeBindingCountSQL, org).Scan(&count) != nil {
 			return api.AIWorkload{}, aiUnavailable()
 		}
 		if count >= maxAIUsageBindings {
@@ -242,6 +242,11 @@ func (s *Workloads) Put(ctx context.Context, org, actor, id uuid.UUID, in api.AI
 	if !in.Enabled {
 		// Re-enabling a workload cannot revive revoked introductions or old tokens.
 		if _, err = tx.Exec(ctx, `UPDATE ai_workload_enrollment_keys SET revoked_at=coalesce(revoked_at,now()) WHERE org_id=$1 AND workload_id=$2`, org, id); err != nil {
+			return api.AIWorkload{}, aiUnavailable()
+		}
+		// AI-KEYS-1 D3: static keys die with the workload too. Their stored epoch
+		// is a second guard; re-enabling the workload does not revive them.
+		if err = revokeStaticKeysForDisabledWorkload(ctx, tx, org, id); err != nil {
 			return api.AIWorkload{}, aiUnavailable()
 		}
 	}
@@ -298,28 +303,12 @@ func (s *Workloads) Reconcile(ctx context.Context, org, id uuid.UUID) (api.AIWor
 		}
 		return finish("applied")
 	}
-	scopes := []EngineProviderScope{}
-	for _, m := range w.Models {
-		p, e := scanProvider(tx.QueryRow(ctx, `SELECT `+providerColumns+` FROM ai_provider_connections WHERE org_id=$1 AND id=$2 FOR SHARE`, org, m.ConnectionId))
-		if e != nil || DefaultModelMode(p.ModelModes[m.Model]) != ModelMode(m.Mode) {
-			return finish("error")
-		}
-		v, e := s.policies.providerScopes(ctx, tx, org, []string{p.KeyID}, []string{m.Model})
-		if e != nil {
-			return finish("error")
-		}
-		scopes = append(scopes, v...)
-	}
-	scopes = mergeWorkloadScopes(scopes)
-	name := "ai-workload-" + org.String() + "-" + id.String()
-	var key EngineKey
-	if engine, ok := s.policies.engine.(ScopedPolicyEngine); ok {
-		key, err = engine.EnsureScopedKey(ctx, name, scopes)
-	} else if len(scopes) == 1 {
-		key, err = s.policies.engine.EnsureKey(ctx, name, scopes[0].Provider, scopes[0].Models, scopes[0].KeyIDs)
-	} else {
+	scopes, err := s.workloadScopes(ctx, tx, org, w.Models)
+	if err != nil {
 		return finish("error")
 	}
+	name := "ai-workload-" + org.String() + "-" + id.String()
+	key, err := s.ensureEngineKey(ctx, name, scopes)
 	if err != nil || key.ID == "" || key.Value == "" || w.native != "" && w.native != key.ID {
 		return finish("error")
 	}
@@ -328,7 +317,81 @@ func (s *Workloads) Reconcile(ctx context.Context, org, id uuid.UUID) (api.AIWor
 		return finish("error")
 	}
 	w.native, w.sealed, w.bindingRevision = key.ID, sealed, w.Revision
+	// AI-KEYS-1 D7: every active static key has its own engine key with the
+	// same model scopes. Any failure marks the workload as error, as today.
+	if !s.reconcileStaticKeys(ctx, tx, w) {
+		return finish("error")
+	}
 	return finish("applied")
+}
+
+func (s *Workloads) workloadScopes(ctx context.Context, tx pgx.Tx, org uuid.UUID, models []api.AIWorkloadModel) ([]EngineProviderScope, error) {
+	scopes := []EngineProviderScope{}
+	for _, m := range models {
+		p, e := scanProvider(tx.QueryRow(ctx, `SELECT `+providerColumns+` FROM ai_provider_connections WHERE org_id=$1 AND id=$2 FOR SHARE`, org, m.ConnectionId))
+		if e != nil || DefaultModelMode(p.ModelModes[m.Model]) != ModelMode(m.Mode) {
+			return nil, policyInvalid()
+		}
+		v, e := s.policies.providerScopes(ctx, tx, org, []string{p.KeyID}, []string{m.Model})
+		if e != nil {
+			return nil, e
+		}
+		scopes = append(scopes, v...)
+	}
+	return mergeWorkloadScopes(scopes), nil
+}
+
+func (s *Workloads) ensureEngineKey(ctx context.Context, name string, scopes []EngineProviderScope) (EngineKey, error) {
+	if engine, ok := s.policies.engine.(ScopedPolicyEngine); ok {
+		return engine.EnsureScopedKey(ctx, name, scopes)
+	}
+	if len(scopes) == 1 {
+		return s.policies.engine.EnsureKey(ctx, name, scopes[0].Provider, scopes[0].Models, scopes[0].KeyIDs)
+	}
+	return EngineKey{}, errEngineScope
+}
+
+// reconcileStaticKeys ensures the engine key of every active static key of
+// an applied workload. It reports false when any of them failed.
+func (s *Workloads) reconcileStaticKeys(ctx context.Context, tx pgx.Tx, w workloadRecord) bool {
+	org, ok := workloadOrg(ctx, tx, w.Id)
+	if !ok {
+		return false
+	}
+	rows, err := tx.Query(ctx, `SELECT `+staticKeyColumns+` FROM ai_workload_static_keys WHERE org_id=$1 AND workload_id=$2 AND revoked_at IS NULL AND expires_at>now() ORDER BY id FOR UPDATE`, org, w.Id)
+	if err != nil {
+		return false
+	}
+	keys := []staticKeyRecord{}
+	for rows.Next() {
+		k, e := scanStaticKey(rows)
+		if e != nil {
+			rows.Close()
+			return false
+		}
+		keys = append(keys, k)
+	}
+	rows.Close()
+	if rows.Err() != nil {
+		return false
+	}
+	helper := &StaticKeys{w: s}
+	for _, k := range keys {
+		if helper.ensureEngineKey(ctx, tx, w, k).Status != "applied" {
+			return false
+		}
+	}
+	return true
+}
+
+func workloadOrg(ctx context.Context, tx pgx.Tx, id uuid.UUID) (uuid.UUID, bool) {
+	var org uuid.UUID
+	// lint:cross-org the workload id was already read under its organization in
+	// this transaction; this only recovers that organization for the key query.
+	if tx.QueryRow(ctx, `SELECT org_id FROM ai_workloads WHERE id=$1`, id).Scan(&org) != nil {
+		return uuid.Nil, false
+	}
+	return org, true
 }
 
 func mergeWorkloadScopes(in []EngineProviderScope) []EngineProviderScope {

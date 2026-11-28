@@ -4,6 +4,7 @@ package egress
 
 import (
 	"context"
+	"net/netip"
 	"os"
 	"os/exec"
 	"strconv"
@@ -232,6 +233,7 @@ func TestKubernetesInputChainIsValidNft(t *testing.T) {
 		m := inputTestManager(true)
 		m.SetAIVPNListener(true)
 		m.SetMCPGatewayListener(true)
+		m.SetAIInternalListener([]netip.Addr{netip.MustParseAddr("10.123.0.1"), netip.MustParseAddr("192.168.10.5")}, 9443)
 		m.SetOVPNTun(tun)
 		rs := m.rulesetWith("10.99.0.0/24", nil)
 		cmd := exec.Command("nft", "-c", "-f", "-")
@@ -317,5 +319,94 @@ func TestInputChainRenderingIsTheOneTheOwnershipCheckWasProvedOn(t *testing.T) {
 	gotV4, gotV6 := inputChains(t, m.rulesetWith("100.65.0.2/32", nil))
 	if gotV4 != wantV4 || gotV6 != wantV6 {
 		t.Fatalf("the input chains are rendered as:\n%s%s\nthe ownership check was proved on a kernel that loaded:\n%s%s", gotV4, gotV6, wantV4, wantV6)
+	}
+}
+
+const wantInputChainV4AIInternalOne = `  chain input {
+    type filter hook input priority filter; policy accept;
+    iifname "wg0" ct direction reply ct state established,related counter accept comment "tunnex_input_reply"
+    iifname "wg0" fib daddr . iif type local udp dport 53 counter accept comment "tunnex_input_dns"
+    iifname "wg0" fib daddr . iif type local tcp dport 53 counter accept comment "tunnex_input_dns"
+    iifname "wg0" ip daddr 10.123.0.1 tcp dport 9443 counter accept comment "tunnex_input_ai_internal"
+    iifname "wg0" counter drop comment "tunnex_input_tunnel_drop"
+  }
+`
+
+const wantInputChainV4AllListeners = `  chain input {
+    type filter hook input priority filter; policy accept;
+    iifname "wg0" ct direction reply ct state established,related counter accept comment "tunnex_input_reply"
+    iifname "wg0" fib daddr . iif type local udp dport 53 counter accept comment "tunnex_input_dns"
+    iifname "wg0" fib daddr . iif type local tcp dport 53 counter accept comment "tunnex_input_dns"
+    iifname "wg0" fib daddr . iif type local tcp dport 8083 counter accept comment "tunnex_input_ai_vpn"
+    iifname "wg0" fib daddr . iif type local tcp dport 8084 counter accept comment "tunnex_input_mcp_gateway"
+    iifname "wg0" ip daddr { 10.123.0.1, 192.168.10.5 } tcp dport 9443 counter accept comment "tunnex_input_ai_internal"
+    iifname "wg0" counter drop comment "tunnex_input_tunnel_drop"
+  }
+`
+
+// AI-KEYS-1: the internal AI endpoint accept exists only while an endpoint is configured, only in IPv4,
+// last before the drop, on exactly its addresses and port. Without one the chain is byte for byte the
+// chain before AI-KEYS-1 (the goldens above are unchanged).
+func TestKubernetesInputChainAcceptsTheInternalAIEndpointOnlyWhileConfigured(t *testing.T) {
+	m := inputTestManager(true)
+	if v4, v6 := inputChains(t, m.rulesetWith("10.99.0.0/24", nil)); v4 != wantInputChainV4 || v6 != wantInputChainV4 {
+		t.Fatalf("no endpoint changed the chain:\n%s\n%s", v4, v6)
+	}
+	if !m.SetAIInternalListener([]netip.Addr{netip.MustParseAddr("10.123.0.1")}, 9443) {
+		t.Fatal("enabling did not report a change")
+	}
+	if m.SetAIInternalListener([]netip.Addr{netip.MustParseAddr("10.123.0.1")}, 9443) {
+		t.Fatal("the same endpoint reported a change")
+	}
+	v4, v6 := inputChains(t, m.rulesetWith("10.99.0.0/24", nil))
+	if v4 != wantInputChainV4AIInternalOne {
+		t.Fatalf("ip tunnex input with the internal AI endpoint:\n%s\nwant:\n%s", v4, wantInputChainV4AIInternalOne)
+	}
+	if v6 != wantInputChainV4 {
+		t.Fatalf("ip6 tunnex input must not carry the IPv4-only endpoint:\n%s", v6)
+	}
+	m.SetAIVPNListener(true)
+	m.SetMCPGatewayListener(true)
+	// Addresses render sorted, whatever order they are configured in.
+	m.SetAIInternalListener([]netip.Addr{netip.MustParseAddr("192.168.10.5"), netip.MustParseAddr("10.123.0.1")}, 9443)
+	if v4, _ := inputChains(t, m.rulesetWith("10.99.0.0/24", nil)); v4 != wantInputChainV4AllListeners {
+		t.Fatalf("all listeners:\n%s\nwant:\n%s", v4, wantInputChainV4AllListeners)
+	}
+	m.SetAIVPNListener(false)
+	m.SetMCPGatewayListener(false)
+	if !m.SetAIInternalListener(nil, 0) {
+		t.Fatal("disabling did not report a change")
+	}
+	if v4, _ := inputChains(t, m.rulesetWith("10.99.0.0/24", nil)); v4 != wantInputChainV4 {
+		t.Fatalf("the endpoint accept outlived the endpoint:\n%s", v4)
+	}
+	for name, tc := range map[string]struct {
+		addrs []string
+		port  int
+	}{
+		"no address":        {nil, 9443},
+		"three addresses":   {[]string{"10.0.0.1", "10.0.0.2", "10.0.0.3"}, 9443},
+		"duplicate":         {[]string{"10.0.0.1", "10.0.0.1"}, 9443},
+		"public address":    {[]string{"203.0.113.7"}, 9443},
+		"IPv6 address":      {[]string{"fd00::1"}, 9443},
+		"privileged port":   {[]string{"10.0.0.1"}, 443},
+		"the AI VPN port":   {[]string{"10.0.0.1"}, 8083},
+		"the MCP port":      {[]string{"10.0.0.1"}, 8084},
+		"port out of range": {[]string{"10.0.0.1"}, 70000},
+	} {
+		var addrs []netip.Addr
+		for _, a := range tc.addrs {
+			addrs = append(addrs, netip.MustParseAddr(a))
+		}
+		m.SetAIInternalListener(addrs, tc.port)
+		if v4, _ := inputChains(t, m.rulesetWith("10.99.0.0/24", nil)); v4 != wantInputChainV4 {
+			t.Fatalf("%s rendered an accept:\n%s", name, v4)
+		}
+	}
+	// A VM gateway never renders an input chain for it.
+	vm := inputTestManager(false)
+	vm.SetAIInternalListener([]netip.Addr{netip.MustParseAddr("10.123.0.1")}, 9443)
+	if rs := vm.rulesetWith("10.99.0.0/24", &nodepolicy.Compiled{Version: 15, Mode: nodepolicy.ModeEnforcing}); strings.Contains(rs, "input") || strings.Contains(rs, "9443") {
+		t.Fatalf("a VM gateway rendered the endpoint accept:\n%s", rs)
 	}
 }

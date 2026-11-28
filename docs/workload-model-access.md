@@ -19,7 +19,9 @@ tunnex workload run --config /run/secrets/tunnex/workload.json -- python agent.p
 
 Replace `python agent.py` with your application command. This implementation provides
 model access. Central MCP execution, trusted-issuer/OIDC federation and the
-Windows workload runtime are not available.
+Windows workload runtime are not available. Where the wrapper cannot run
+(serverless functions, Windows, SaaS and no-code tools, quick scripts), use a
+[static API key](#static-api-keys) instead.
 
 ## Configure access
 
@@ -250,6 +252,118 @@ guarantee uninterrupted service during an outage. On access refusal,
 check the workload and instance state with the AI administrator and preserve
 private state for diagnosis.
 
+## Static API keys
+
+A workload has two ways to connect an application. **Run with Tunnex CLI** is
+recommended: each replica gets its own identity and 5-minute tokens. A **static
+API key** is one key you paste into a tool that cannot run the wrapper. It
+expires, and you rotate it.
+
+A key belongs to exactly one workload. It uses the workload's model list and
+daily threshold, read live on every request. Optionally a key has its own lower
+daily USD threshold and a requests-per-minute limit. People do not get personal
+keys; a person's access stays tied to their device.
+
+### Create a key
+
+Select the workload, open **API keys** and choose **Create key**. Only holders of
+`ai_workload:manage` (Owner, Admin, AI Gateway admin) can create, edit, rotate
+or revoke keys.
+
+| Setting | Behaviour |
+| --- | --- |
+| Where the tool runs | **Inside your network (recommended)**: the key works only on your internal AI endpoint and is refused on the internet. **Public internet**: the key works only on the control plane's public endpoint, over HTTPS. Chosen at creation; it never changes. |
+| Expiry | Required, at most 90 days. Default 30. It cannot be extended: rotate instead. A badge shows from 14 days before expiry, and an alert (`ai_workload.static_key_expiring`) is sent 14 and 3 days before. |
+| Source ranges | Optional, up to 32. Internal keys: private IPv4 ranges. Public keys: public ranges only; private, reserved and all-address ranges are refused. A public key with no ranges needs the extra confirmation **Allow from any address**. |
+| Daily limit | Optional USD soft threshold for this key, not higher than the workload's. |
+| Requests per minute | Optional, 1 to 60000, shared by every control-plane replica. |
+
+The key is shown once, in the form `tnx_sk_` plus 49 characters. Afterwards the
+console shows only its last 4 characters. Only a SHA-256 hash is stored. At most
+8 keys per workload are active at once; rotation needs two for the overlap.
+
+Public keys are off for an organization until an AI Gateway administrator turns
+on **Allow public static keys** in AI Gateway settings.
+
+### Use a key
+
+Send the key as `Authorization: Bearer tnx_sk_...`. On the messages route
+(`/anthropic/v1/messages`) the `x-api-key: tnx_sk_...` header is also accepted,
+but only when it is the one credential header on the request.
+
+```sh
+# Internal key, Tunnex private CA trusted from ca.pem
+curl --cacert ca.pem https://10.123.0.1:9443/v1/chat/completions \
+  -H "Authorization: Bearer $TUNNEX_KEY" -H "Content-Type: application/json" \
+  -d '{"model":"openrouter/openai/gpt-4o-mini","messages":[{"role":"user","content":"hi"}]}'
+
+# Public key
+curl https://<control plane>/ai/v1/chat/completions -H "Authorization: Bearer $TUNNEX_KEY" ...
+```
+
+OpenAI-compatible SDKs take the base URL (`https://<address>:<port>/v1` or
+`https://<control plane>/ai/v1`) and the key. `GET /v1/models` lists the
+workload's models. Videos are not available with a static key.
+
+Each key may run 4 requests at once per control-plane process; the
+requests-per-minute limit is the main control. A refused request gets the same
+short message as any policy refusal (`401`, `403`, or `429 AI request limit
+reached`). The key's row shows the exact reason ("Used on the wrong endpoint",
+"Source address not allowed", "Daily limit reached", ...) and where it was last
+used from. Wrong-endpoint and source refusals also write an audit row
+(`ai_workload.static_key_refused`), at most once per key per hour.
+
+### Rotate and revoke
+
+**Rotate** creates a new key with the same settings and shows it once. The old
+key then expires after the overlap (1 hour to 7 days, default 24 hours) or at
+its own expiry, whichever is first. **Revoke** takes effect on the next request.
+Disabling the workload revokes all its keys; enabling it again does not bring
+them back.
+
+### The internal AI endpoint
+
+An internal key is accepted only on the internal AI endpoint, served by one of
+your gateways on a private address with TLS. Configure it in **AI Gateway →
+Settings → Internal AI endpoint** (`ai_gateway:manage`):
+
+- **Addresses.** The gateway's tunnel address (every VPN device on that gateway
+  already routes it), and at most one LAN address inside an approved subnet of
+  the gateway's site (LAN hosts reach it directly; other sites reach it over
+  site-to-site). A gateway without a site can use only its tunnel address.
+- **Port.** Default 9443. Open this TCP port from the source ranges only, in the
+  host or cloud firewall. Traffic to this port is not covered by access rules:
+  the source ranges and the key are the only controls.
+- **Source ranges.** 1 to 32 private IPv4 ranges. The gateway closes a
+  connection from outside them before TLS, and the control plane checks the
+  address again, together with the key's own ranges. If traffic passes source
+  NAT (a NAT gateway, a load balancer, a site that masquerades), every caller
+  behind it looks the same.
+- **Certificate.** *Tunnex private CA* (default): each organization has its own
+  CA; the gateway keeps its key in memory and gets a 30-day certificate for the
+  configured addresses and DNS name. Download `ca.pem` from the settings page and
+  trust it: `SSL_CERT_FILE` / `REQUESTS_CA_BUNDLE` (Python), `NODE_EXTRA_CA_CERTS`
+  (Node.js), the Windows certificate store, or the Java trust store. *Your own
+  certificate*: put `tls-cert.pem` and `tls-key.pem` (mode 0600) in
+  `/var/lib/tunnex-node/ai-internal/` on the gateway host; the private key never
+  leaves it.
+
+A gateway must run a version that reports the internal endpoint before it can
+be configured; the console says "Upgrade this gateway to use the internal AI
+endpoint" otherwise. Turning the endpoint off refuses requests at once and
+closes the listener within one poll.
+
+Public keys: behind an external load balancer the control plane needs the
+client address from a trusted proxy (`TUNNEX_EDGE_TRUSTED_PROXIES`, see
+[trusted proxy transport](trusted-proxy-transport.md)); when it cannot get one,
+keys with source ranges are refused.
+
+### Usage
+
+A key's cost is counted on its own engine key and rolls up into its workload's
+row in Usage, where the workload row expands to its keys. Keys revoked today
+still count toward the workload's threshold today.
+
 ## Advanced commands
 
 These commands operate on the same private configuration and state:
@@ -277,4 +391,8 @@ document. Current commands and storage rules are in the
 [workload authentication](../apps/api/internal/aigateway/workload_auth.go),
 [workload management](../apps/api/internal/aigateway/workloads.go),
 [maintenance](../apps/api/internal/aigateway/workload_maintenance.go) and
-[cost admission](../apps/api/internal/aigateway/usage.go).
+[cost admission](../apps/api/internal/aigateway/usage.go). Static keys are in
+[static key admission](../apps/api/internal/aigateway/static_key_auth.go),
+[static key management](../apps/api/internal/aigateway/static_keys.go) and
+[the internal endpoint](../apps/api/internal/aigateway/internal_endpoints.go);
+the decisions are in [AI-KEYS-1](AI-KEYS-1-decisions.md).

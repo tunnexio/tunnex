@@ -159,3 +159,51 @@ func TestQueriesScopeOrgID(t *testing.T) {
 		}
 	}
 }
+
+// TestAIStaticKeyQueriesScopeOrgID extends the tenancy lint to the inline SQL
+// of AI-KEYS-1 (static keys, internal endpoints and their CA), which does not
+// live in db/queries. Every SELECT/UPDATE/DELETE on those tables must filter
+// by org_id after WHERE, or carry a `lint:cross-org` justification just above
+// it (the hashed key lookup and the elected maintenance sweeps).
+func TestAIStaticKeyQueriesScopeOrgID(t *testing.T) {
+	tables := []string{"ai_workload_static_keys", "ai_internal_endpoints", "ai_internal_cas"}
+	files, err := filepath.Glob("../internal/aigateway/*.go")
+	if err != nil {
+		t.Fatal(err)
+	}
+	more, _ := filepath.Glob("../internal/http/agentchannel_ai_internal*.go")
+	files = append(files, more...)
+	literal := regexp.MustCompile("`[^`]*`")
+	scoped := regexp.MustCompile(`(?s)\bwhere\b.*\borg_id\b`)
+	checked := 0
+	for _, file := range files {
+		if strings.HasSuffix(file, "_test.go") {
+			continue
+		}
+		raw, err := os.ReadFile(file)
+		if err != nil {
+			t.Fatal(err)
+		}
+		src := string(raw)
+		for _, loc := range literal.FindAllStringIndex(src, -1) {
+			low := strings.ToLower(src[loc[0]:loc[1]])
+			for _, tbl := range tables {
+				if !refersTo(low, tbl) {
+					continue
+				}
+				checked++
+				if scoped.MatchString(low) {
+					continue
+				}
+				before := src[max(0, loc[0]-400):loc[0]]
+				if !strings.Contains(before, "lint:cross-org") {
+					line := strings.Count(src[:loc[0]], "\n") + 1
+					t.Errorf("%s:%d touches %q without org_id after WHERE (scope it or annotate lint:cross-org)", file, line, tbl)
+				}
+			}
+		}
+	}
+	if checked == 0 {
+		t.Fatal("no static key queries found — lint would pass vacuously")
+	}
+}

@@ -252,6 +252,30 @@ type PolicyStatus struct {
 	// plane closes an agent's direct path to its MCP server only for a gateway that reports this.
 	MCPGatewayReady   bool
 	MCPGatewayAddress string
+	// AIInternalEndpoint* (AI-KEYS-1) is the internal AI endpoint listener. Version is 1 when this build
+	// runs the listener runtime (it needs the authenticated HTTPS control channel), else 0. Ready is true
+	// only while every configured address is bound and a usable certificate is loaded; Addresses lists the
+	// addresses actually listening. Port and Revision are those of the endpoint configuration the gateway
+	// holds (0 without one). Error is a short fixed code (bounded, never a secret). CertNotAfter (RFC3339)
+	// and CertSHA256 (lower-case hex of the leaf DER) describe the certificate being served, or are empty.
+	AIInternalEndpointVersion      int
+	AIInternalEndpointReady        bool
+	AIInternalEndpointAddresses    []string
+	AIInternalEndpointPort         int
+	AIInternalEndpointRevision     int64
+	AIInternalEndpointError        string
+	AIInternalEndpointCertNotAfter string
+	AIInternalEndpointCertSHA256   string
+}
+
+// aiInternalErrorLimit bounds the reported internal AI endpoint error.
+const aiInternalErrorLimit = 256
+
+func boundedAIInternalError(s string) string {
+	if len(s) <= aiInternalErrorLimit {
+		return s
+	}
+	return s[:aiInternalErrorLimit]
 }
 
 // ReportInfo reports the node's locally-generated WireGuard public key, its public
@@ -274,15 +298,23 @@ func (c *Client) ReportInfo(ctx context.Context, publicKey, endpoint string, egr
 		"policy_failing_since": ps.FailingSince, "policy_refused_version": ps.RefusedVersion,
 		"site_link_stale": ps.SiteLinkStale, "site_subnet_unreachable": ps.SiteSubnetUnreachable,
 		"conntrack_flush_unavailable": ps.ConntrackFlushUnavailable, "k8s_endpoints_unavailable": ps.K8sEndpointsUnavailable, "max_policy_version": ps.MaxSupportedVersion,
-		"k8s_api_endpoint":               ps.K8sAPIEndpoint,
-		"ovpn_health":                    ps.OVPNHealth,
-		"dns_resolve_rpc_version":        ps.DNSResolveRPCVersion,
-		"dns_ipsec_resolve_version":      ps.DNSIPsecResolveVersion,
-		"flow_log_state":                 ps.FlowLogState.Bounded(),
-		"ai_vpn_http_ready":              ps.AIVPNHTTPReady,
-		"ai_vpn_http_address":            ps.AIVPNHTTPAddress,
-		mcpwire.CapabilityGatewayReady:   ps.MCPGatewayReady,
-		mcpwire.CapabilityGatewayAddress: ps.MCPGatewayAddress,
+		"k8s_api_endpoint":                    ps.K8sAPIEndpoint,
+		"ovpn_health":                         ps.OVPNHealth,
+		"dns_resolve_rpc_version":             ps.DNSResolveRPCVersion,
+		"dns_ipsec_resolve_version":           ps.DNSIPsecResolveVersion,
+		"flow_log_state":                      ps.FlowLogState.Bounded(),
+		"ai_vpn_http_ready":                   ps.AIVPNHTTPReady,
+		"ai_vpn_http_address":                 ps.AIVPNHTTPAddress,
+		mcpwire.CapabilityGatewayReady:        ps.MCPGatewayReady,
+		mcpwire.CapabilityGatewayAddress:      ps.MCPGatewayAddress,
+		"ai_internal_endpoint_version":        ps.AIInternalEndpointVersion,
+		"ai_internal_endpoint_ready":          ps.AIInternalEndpointReady,
+		"ai_internal_endpoint_addresses":      nonNilStrings(ps.AIInternalEndpointAddresses),
+		"ai_internal_endpoint_port":           ps.AIInternalEndpointPort,
+		"ai_internal_endpoint_revision":       ps.AIInternalEndpointRevision,
+		"ai_internal_endpoint_error":          boundedAIInternalError(ps.AIInternalEndpointError),
+		"ai_internal_endpoint_cert_not_after": ps.AIInternalEndpointCertNotAfter,
+		"ai_internal_endpoint_cert_sha256":    ps.AIInternalEndpointCertSHA256,
 	}
 	if forwarder := c.dnsForwarder.Load(); forwarder != nil {
 		payload["dns_lan_listeners"] = forwarder.AppliedLANListeners()
@@ -467,4 +499,12 @@ func (c *Client) Watch(ctx context.Context, since uint64) error {
 		return fmt.Errorf("watch status %d", resp.StatusCode)
 	}
 	return nil
+}
+
+// nonNilStrings keeps an empty list `[]` on the wire rather than `null`.
+func nonNilStrings(in []string) []string {
+	if in == nil {
+		return []string{}
+	}
+	return in
 }

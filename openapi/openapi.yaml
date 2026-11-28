@@ -977,6 +977,171 @@ paths:
         "204":
           description: Revoke only this instance; no automatic reenrollment
         default: { $ref: "#/components/responses/Error" }
+  /api/v1/organizations/{orgId}/ai-gateway/workloads/{workloadId}/static-keys:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: workloadId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: listAIWorkloadStaticKeys
+      tags: [ai-workloads]
+      summary: List static API keys without their secrets
+      parameters:
+        - { name: after, in: query, schema: { type: string, format: uuid } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 50 } }
+      responses:
+        "200":
+          description: List static API keys without their secrets
+          headers:
+            Cache-Control: { schema: { type: string }, description: no-store }
+          content: { application/json: { schema: { $ref: '#/components/schemas/AIWorkloadStaticKeyPage' } } }
+        default: { $ref: "#/components/responses/Error" }
+    post:
+      operationId: createAIWorkloadStaticKey
+      tags: [ai-workloads]
+      summary: Create a static API key for this workload, shown once
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/AIWorkloadStaticKeyInput' } } }
+      responses:
+        "201":
+          description: Create a static API key for this workload, shown once
+          headers:
+            Cache-Control: { schema: { type: string }, description: no-store }
+          content: { application/json: { schema: { $ref: '#/components/schemas/AIWorkloadStaticKeySecret' } } }
+        default: { $ref: "#/components/responses/Error" }
+  /api/v1/organizations/{orgId}/ai-gateway/workloads/{workloadId}/static-keys/{keyId}:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: workloadId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: keyId, in: path, required: true, schema: { type: string, format: uuid } }
+    put:
+      operationId: updateAIWorkloadStaticKey
+      tags: [ai-workloads]
+      summary: Change a static key's name, source ranges or limits. Scope and expiry never change.
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/AIWorkloadStaticKeyUpdate' } } }
+      responses:
+        "200":
+          description: Updated static key
+          headers:
+            Cache-Control: { schema: { type: string }, description: no-store }
+          content: { application/json: { schema: { $ref: '#/components/schemas/AIWorkloadStaticKey' } } }
+        default: { $ref: "#/components/responses/Error" }
+  /api/v1/organizations/{orgId}/ai-gateway/workloads/{workloadId}/static-keys/{keyId}/rotate:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: workloadId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: keyId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      operationId: rotateAIWorkloadStaticKey
+      tags: [ai-workloads]
+      summary: Create a replacement key shown once; the old key expires after the overlap
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/AIWorkloadStaticKeyRotate' } } }
+      responses:
+        "201":
+          description: Replacement key and the shortened previous key
+          headers:
+            Cache-Control: { schema: { type: string }, description: no-store }
+          content: { application/json: { schema: { $ref: '#/components/schemas/AIWorkloadStaticKeySecret' } } }
+        default: { $ref: "#/components/responses/Error" }
+  /api/v1/organizations/{orgId}/ai-gateway/workloads/{workloadId}/static-keys/{keyId}/revoke:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: workloadId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: keyId, in: path, required: true, schema: { type: string, format: uuid } }
+    post:
+      operationId: revokeAIWorkloadStaticKey
+      tags: [ai-workloads]
+      summary: Revoke a static key; the next request is refused
+      responses:
+        "204":
+          description: Revoked
+        default: { $ref: "#/components/responses/Error" }
+  /api/v1/organizations/{orgId}/ai-gateway/static-key-settings:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: getAIStaticKeySettings
+      tags: [ai-workloads]
+      summary: Read whether public static keys are allowed in this organization
+      responses:
+        "200":
+          description: Static key settings
+          headers:
+            Cache-Control: { schema: { type: string }, description: no-store }
+          content: { application/json: { schema: { $ref: '#/components/schemas/AIStaticKeySettings' } } }
+        default: { $ref: "#/components/responses/Error" }
+    put:
+      operationId: setAIStaticKeySettings
+      tags: [ai-gateway]
+      summary: Allow or stop public static keys (AI Gateway administrators)
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/AIStaticKeySettings' } } }
+      responses:
+        "200":
+          description: Static key settings
+          headers:
+            Cache-Control: { schema: { type: string }, description: no-store }
+          content: { application/json: { schema: { $ref: '#/components/schemas/AIStaticKeySettings' } } }
+        default: { $ref: "#/components/responses/Error" }
+  /api/v1/organizations/{orgId}/ai-gateway/internal-endpoints:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: listAIInternalEndpoints
+      tags: [ai-gateway]
+      summary: One row per gateway with its internal AI endpoint configuration and status
+      responses:
+        "200":
+          description: Internal AI endpoints
+          headers:
+            Cache-Control: { schema: { type: string }, description: no-store }
+          content: { application/json: { schema: { $ref: '#/components/schemas/AIInternalEndpointList' } } }
+        default: { $ref: "#/components/responses/Error" }
+  /api/v1/organizations/{orgId}/ai-gateway/internal-endpoints/{nodeId}:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: nodeId, in: path, required: true, schema: { type: string, format: uuid } }
+    put:
+      operationId: putAIInternalEndpoint
+      tags: [ai-gateway]
+      summary: Configure the internal AI endpoint served by this gateway
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/AIInternalEndpointInput' } } }
+      responses:
+        "200":
+          description: Saved configuration and status
+          headers:
+            Cache-Control: { schema: { type: string }, description: no-store }
+          content: { application/json: { schema: { $ref: '#/components/schemas/AIInternalEndpoint' } } }
+        default: { $ref: "#/components/responses/Error" }
+    delete:
+      operationId: deleteAIInternalEndpoint
+      tags: [ai-gateway]
+      summary: Remove the internal AI endpoint from this gateway
+      responses:
+        "204":
+          description: Removed
+        default: { $ref: "#/components/responses/Error" }
+  /api/v1/organizations/{orgId}/ai-gateway/internal-endpoint-ca:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: getAIInternalEndpointCA
+      tags: [ai-gateway]
+      summary: The organization's internal AI CA certificate (public). Created on first use.
+      responses:
+        "200":
+          description: CA certificate
+          headers:
+            Cache-Control: { schema: { type: string }, description: no-store }
+          content: { application/json: { schema: { $ref: '#/components/schemas/AIInternalEndpointCA' } } }
+        default: { $ref: "#/components/responses/Error" }
   /api/v1/workload/enroll:
     post:
       operationId: enrollWorkload
@@ -11515,6 +11680,155 @@ components:
       properties:
         items: { type: array, items: { $ref: '#/components/schemas/AIWorkloadInstance' } }
         next_cursor: { type: string, format: uuid, nullable: true }
+    AIWorkloadStaticKeyScope:
+      type: string
+      enum: [internal, public]
+      x-enum-varnames: [AIStaticKeyScopeInternal, AIStaticKeyScopePublic]
+      description: 'internal: accepted only on a gateway internal AI endpoint. public: accepted only on the control plane public AI endpoint over HTTPS.'
+    AIWorkloadStaticKeyInput:
+      type: object
+      additionalProperties: false
+      required: [name, scope, expires_at]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 100 }
+        scope: { $ref: '#/components/schemas/AIWorkloadStaticKeyScope' }
+        expires_at: { type: string, format: date-time, description: 'Required, at most 90 days from now. Cannot be extended; rotate instead.' }
+        source_cidrs: { type: array, maxItems: 32, items: { type: string, maxLength: 64 }, description: 'Internal keys: private IPv4 ranges. Public keys: public ranges only.' }
+        daily_usd_threshold: { type: number, format: double, minimum: 0, exclusiveMinimum: true, maximum: 100000, nullable: true }
+        rate_limit_per_minute: { type: integer, minimum: 1, maximum: 60000, nullable: true }
+        allow_any_source: { type: boolean, description: 'Second confirmation required to save a public key with no source ranges.' }
+    AIWorkloadStaticKeyUpdate:
+      type: object
+      additionalProperties: false
+      required: [name, expected_updated_at]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 100 }
+        source_cidrs: { type: array, maxItems: 32, items: { type: string, maxLength: 64 } }
+        daily_usd_threshold: { type: number, format: double, minimum: 0, exclusiveMinimum: true, maximum: 100000, nullable: true }
+        rate_limit_per_minute: { type: integer, minimum: 1, maximum: 60000, nullable: true }
+        allow_any_source: { type: boolean }
+        expected_updated_at: { type: string, format: date-time }
+    AIWorkloadStaticKeyRotate:
+      type: object
+      additionalProperties: false
+      required: [expires_at]
+      properties:
+        overlap_hours: { type: integer, minimum: 1, maximum: 168, default: 24 }
+        expires_at: { type: string, format: date-time }
+    AIWorkloadStaticKey:
+      type: object
+      required: [id, workload_id, name, hint, scope, source_cidrs, expires_at, status, created_at, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        workload_id: { type: string, format: uuid }
+        name: { type: string }
+        hint: { type: string, description: Last four characters of the key. }
+        scope: { $ref: '#/components/schemas/AIWorkloadStaticKeyScope' }
+        source_cidrs: { type: array, items: { type: string } }
+        daily_usd_threshold: { type: number, format: double, nullable: true }
+        rate_limit_per_minute: { type: integer, nullable: true }
+        expires_at: { type: string, format: date-time }
+        revoked_at: { type: string, format: date-time, nullable: true }
+        rotated_from_id: { type: string, format: uuid, nullable: true }
+        status: { type: string, enum: [pending, applied, error, revoked, expired], x-enum-varnames: [AIStaticKeyStatusPending, AIStaticKeyStatusApplied, AIStaticKeyStatusError, AIStaticKeyStatusRevoked, AIStaticKeyStatusExpired] }
+        last_used_at: { type: string, format: date-time, nullable: true }
+        last_used_ingress: { type: string, enum: [internal, public], x-enum-varnames: [AIStaticKeyUsedInternal, AIStaticKeyUsedPublic], nullable: true }
+        last_used_source: { type: string, nullable: true }
+        last_used_node_id: { type: string, format: uuid, nullable: true }
+        last_refused_at: { type: string, format: date-time, nullable: true }
+        last_refused_reason: { type: string, nullable: true, description: 'wrong_ingress, source_not_allowed, public_keys_disabled, rate_limited, threshold_reached, expired, revoked, workload_disabled, model_not_allowed, unavailable' }
+        last_refused_ingress: { type: string, enum: [internal, public], x-enum-varnames: [AIStaticKeyRefusedInternal, AIStaticKeyRefusedPublic], nullable: true }
+        last_refused_source: { type: string, nullable: true }
+        created_at: { type: string, format: date-time }
+        updated_at: { type: string, format: date-time }
+    AIWorkloadStaticKeySecret:
+      type: object
+      required: [key, secret]
+      properties:
+        key: { $ref: '#/components/schemas/AIWorkloadStaticKey' }
+        secret: { type: string, description: 'Shown once. Paste it into the tool; it is never shown again.' }
+        previous: { $ref: '#/components/schemas/AIWorkloadStaticKey' }
+    AIWorkloadStaticKeyPage:
+      type: object
+      required: [items]
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/AIWorkloadStaticKey' } }
+        next_cursor: { type: string, format: uuid, nullable: true }
+    AIStaticKeySettings:
+      type: object
+      additionalProperties: false
+      required: [public_static_keys_allowed]
+      properties:
+        public_static_keys_allowed: { type: boolean }
+    AIInternalEndpointTLSMode:
+      type: string
+      enum: [tunnex_ca, custom]
+      x-enum-varnames: [AIInternalTLSTunnexCA, AIInternalTLSCustom]
+    AIInternalEndpointInput:
+      type: object
+      additionalProperties: false
+      required: [enabled, listen_addresses, port, source_cidrs, tls_mode, expected_revision]
+      properties:
+        enabled: { type: boolean }
+        listen_addresses: { type: array, minItems: 1, maxItems: 2, items: { type: string, maxLength: 15 } }
+        port: { type: integer, minimum: 1024, maximum: 65535 }
+        dns_name: { type: string, maxLength: 253, nullable: true }
+        source_cidrs: { type: array, minItems: 1, maxItems: 32, items: { type: string, maxLength: 18 } }
+        tls_mode: { $ref: '#/components/schemas/AIInternalEndpointTLSMode' }
+        expected_revision: { type: integer, format: int64, minimum: 0, description: 'Zero creates; otherwise the current revision.' }
+    AIInternalEndpointConfig:
+      type: object
+      required: [id, enabled, listen_addresses, port, source_cidrs, tls_mode, revision, updated_at]
+      properties:
+        id: { type: string, format: uuid }
+        enabled: { type: boolean }
+        listen_addresses: { type: array, items: { type: string } }
+        port: { type: integer }
+        dns_name: { type: string, nullable: true }
+        source_cidrs: { type: array, items: { type: string } }
+        tls_mode: { $ref: '#/components/schemas/AIInternalEndpointTLSMode' }
+        revision: { type: integer, format: int64 }
+        updated_at: { type: string, format: date-time }
+    AIInternalEndpoint:
+      type: object
+      required: [node_id, node_name, supported, ready]
+      properties:
+        node_id: { type: string, format: uuid }
+        node_name: { type: string }
+        tunnel_address: { type: string, nullable: true, description: The organization's gateway tunnel address, always allowed as a listen address. }
+        has_site: { type: boolean }
+        supported: { type: boolean, description: A fresh report from this gateway says it can serve the endpoint. }
+        ready: { type: boolean }
+        error: { type: string, nullable: true }
+        certificate_not_after: { type: string, format: date-time, nullable: true }
+        certificate_sha256: { type: string, nullable: true }
+        url: { type: string, nullable: true }
+        endpoint: { $ref: '#/components/schemas/AIInternalEndpointConfig' }
+    AIInternalEndpointList:
+      type: object
+      required: [items]
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/AIInternalEndpoint' } }
+    AIInternalEndpointCA:
+      type: object
+      required: [certificate_pem, not_after, sha256]
+      properties:
+        certificate_pem: { type: string }
+        not_after: { type: string, format: date-time }
+        sha256: { type: string }
+    AIUsageWorkloadKey:
+      type: object
+      additionalProperties: false
+      required: [id, name, workload_id, scope, requests, tokens, cost, uncosted_requests]
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        workload_id: { type: string, format: uuid }
+        scope: { $ref: '#/components/schemas/AIWorkloadStaticKeyScope' }
+        requests: { type: integer, format: int64, minimum: 0 }
+        tokens: { type: integer, format: int64, minimum: 0 }
+        cost: { type: number, format: double, minimum: 0 }
+        uncosted_requests: { type: integer, format: int64, minimum: 0 }
     AIWorkloadEnrollInput:
       type: object
       additionalProperties: false
@@ -11960,6 +12274,7 @@ components:
         agents: { type: array, items: { $ref: "#/components/schemas/AIUsageAttribution" } }
         user_groups: { type: array, items: { $ref: '#/components/schemas/AIUsageAttribution' } }
         workloads: { type: array, items: { $ref: '#/components/schemas/AIUsageAttribution' } }
+        workload_keys: { type: array, items: { $ref: '#/components/schemas/AIUsageWorkloadKey' }, description: Static API keys; their cost is also included in their workload row. }
     AIUsageDay:
       type: object
       additionalProperties: false
@@ -12570,7 +12885,7 @@ components:
       enum: [info, warning, critical]
     AlertEventKey:
       type: string
-      enum: [agent.offline, agent.denial_spike, agent.access_expiring, agent.rotation_failed, agent.configuration_drift, gateway.offline, gateway.policy_degraded, site.link_down, ipsec.tunnel_down, ipsec.connection_down, ipsec.status_unavailable, device.offline, device.posture_blocked, kubernetes.connector_degraded, kubernetes.inventory_stale, kubernetes.service_unavailable, agent.mcp_approval_pending]
+      enum: [agent.offline, agent.denial_spike, agent.access_expiring, agent.rotation_failed, agent.configuration_drift, gateway.offline, gateway.policy_degraded, site.link_down, ipsec.tunnel_down, ipsec.connection_down, ipsec.status_unavailable, device.offline, device.posture_blocked, kubernetes.connector_degraded, kubernetes.inventory_stale, kubernetes.service_unavailable, agent.mcp_approval_pending, ai_workload.static_key_expiring]
 
     AlertOccurrenceState:
       type: string

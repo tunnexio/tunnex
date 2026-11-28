@@ -538,6 +538,32 @@ type AiGatewayTeamPolicy struct {
 	Revision       int64     `json:"revision"`
 }
 
+type AiInternalCa struct {
+	OrgID          uuid.UUID `json:"org_id"`
+	CertificatePem string    `json:"certificate_pem"`
+	SealedKey      string    `json:"sealed_key"`
+	NotAfter       time.Time `json:"not_after"`
+	CreatedAt      time.Time `json:"created_at"`
+	UpdatedAt      time.Time `json:"updated_at"`
+}
+
+type AiInternalEndpoint struct {
+	ID              uuid.UUID      `json:"id"`
+	OrgID           uuid.UUID      `json:"org_id"`
+	NodeID          uuid.UUID      `json:"node_id"`
+	Enabled         bool           `json:"enabled"`
+	ListenAddresses []netip.Addr   `json:"listen_addresses"`
+	Port            int32          `json:"port"`
+	DnsName         *string        `json:"dns_name"`
+	SourceCidrs     []netip.Prefix `json:"source_cidrs"`
+	TlsMode         string         `json:"tls_mode"`
+	Revision        int64          `json:"revision"`
+	CreatedBy       pgtype.UUID    `json:"created_by"`
+	UpdatedBy       pgtype.UUID    `json:"updated_by"`
+	CreatedAt       time.Time      `json:"created_at"`
+	UpdatedAt       time.Time      `json:"updated_at"`
+}
+
 // Ownership and desired state only. Provider secrets live exclusively in private engine storage. Tombstones reserve ownership.
 type AiProviderConnection struct {
 	ID              uuid.UUID          `json:"id"`
@@ -563,6 +589,12 @@ type AiProviderConnection struct {
 type AiProviderLegacyKey struct {
 	OrgID uuid.UUID `json:"org_id"`
 	KeyID string    `json:"key_id"`
+}
+
+type AiStaticKeySetting struct {
+	OrgID                   uuid.UUID `json:"org_id"`
+	PublicStaticKeysAllowed bool      `json:"public_static_keys_allowed"`
+	UpdatedAt               time.Time `json:"updated_at"`
 }
 
 // Daily USD soft threshold shared by all members of a user group across its AI model grants. Observed spend since midnight UTC; concurrent calls can overshoot.
@@ -671,6 +703,44 @@ type AiWorkloadModel struct {
 	ConnectionID uuid.UUID `json:"connection_id"`
 	Model        string    `json:"model"`
 	Mode         string    `json:"mode"`
+}
+
+type AiWorkloadStaticKey struct {
+	ID                 uuid.UUID          `json:"id"`
+	OrgID              uuid.UUID          `json:"org_id"`
+	WorkloadID         uuid.UUID          `json:"workload_id"`
+	Name               string             `json:"name"`
+	SecretHash         []byte             `json:"secret_hash"`
+	Hint               string             `json:"hint"`
+	Scope              string             `json:"scope"`
+	SourceCidrs        []netip.Prefix     `json:"source_cidrs"`
+	DailyUsdThreshold  *float64           `json:"daily_usd_threshold"`
+	RateLimitPerMinute *int32             `json:"rate_limit_per_minute"`
+	WorkloadEpoch      int64              `json:"workload_epoch"`
+	ExpiresAt          time.Time          `json:"expires_at"`
+	RevokedAt          pgtype.Timestamptz `json:"revoked_at"`
+	RevokedBy          pgtype.UUID        `json:"revoked_by"`
+	RotatedFromID      pgtype.UUID        `json:"rotated_from_id"`
+	NativeKeyID        string             `json:"native_key_id"`
+	SealedKey          string             `json:"sealed_key"`
+	BindingRevision    int64              `json:"binding_revision"`
+	Status             string             `json:"status"`
+	EngineDisabledAt   pgtype.Timestamptz `json:"engine_disabled_at"`
+	LastUsedAt         pgtype.Timestamptz `json:"last_used_at"`
+	LastUsedIngress    *string            `json:"last_used_ingress"`
+	LastUsedSource     *netip.Addr        `json:"last_used_source"`
+	LastUsedNodeID     pgtype.UUID        `json:"last_used_node_id"`
+	LastRefusedAt      pgtype.Timestamptz `json:"last_refused_at"`
+	LastRefusedReason  *string            `json:"last_refused_reason"`
+	LastRefusedIngress *string            `json:"last_refused_ingress"`
+	LastRefusedSource  *netip.Addr        `json:"last_refused_source"`
+	LastRefusedNodeID  pgtype.UUID        `json:"last_refused_node_id"`
+	LastRefusalAuditAt pgtype.Timestamptz `json:"last_refusal_audit_at"`
+	ExpiryAlert14At    pgtype.Timestamptz `json:"expiry_alert_14_at"`
+	ExpiryAlert3At     pgtype.Timestamptz `json:"expiry_alert_3_at"`
+	CreatedBy          uuid.UUID          `json:"created_by"`
+	CreatedAt          time.Time          `json:"created_at"`
+	UpdatedAt          time.Time          `json:"updated_at"`
 }
 
 type AiWorkloadToken struct {

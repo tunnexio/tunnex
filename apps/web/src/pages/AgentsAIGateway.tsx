@@ -10,6 +10,7 @@ import { modelDisplayName } from "../components/HelpTooltip";
 import { WorkspaceTabs } from "../components/WorkspaceTabs";
 import { AgentsTabRail } from "../components/AgentsTabRail";
 import { AIGatewaySettings } from "../components/AIGatewaySettings";
+import { AIInternalEndpointSettings } from "../components/AIInternalEndpointSettings";
 import { AIProviderWorkspace } from "../components/AIProviderWorkspace";
 import { AIWorkloads } from "../components/AIWorkloads";
 import { AIUsagePage } from "../components/AIUsageWorkspace";
@@ -95,6 +96,7 @@ export default function AgentsAIGateway() {
             onGrantAccess={(connection, model) => setGrant({ connection, model })} />
           : <div className="ai-gateway-configuration"><h2 className="sr-only">Gateway settings</h2>
             <AIGatewaySettings orgId={orgId} canEdit={access.manage} serverAdmin={canManageTransport} />
+            {access.workloadsView && <AIInternalEndpointSettings orgId={orgId} canEdit={access.manage} />}
             {access.agents && <Card className="ai-setting-card"><div className="ai-setting-row"><div className="ai-setting-copy"><h3>Agent model access</h3><p>Choose which models your managed agents can use.</p></div><Link className="network-setup-link" to="/ai-gateway/access?subject=agents">Manage access</Link></div></Card>}
           </div>}
       </>;

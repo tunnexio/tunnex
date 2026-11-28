@@ -180,7 +180,11 @@ func (a *Adapter) serve(w http.ResponseWriter, r *http.Request, authorize Author
 	if err != nil {
 		status := http.StatusForbidden
 		var domain *apierr.Error
-		if errors.As(err, &domain) {
+		if errors.Is(err, ErrRequestLimited) {
+			// A per-key rate limit (AI-KEYS-1) uses the same fixed 429 body as
+			// the concurrency limit; the key page shows which one refused.
+			status = http.StatusTooManyRequests
+		} else if errors.As(err, &domain) {
 			switch domain.Status {
 			case http.StatusUnauthorized:
 				status = http.StatusUnauthorized

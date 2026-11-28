@@ -8,6 +8,7 @@ import (
 	"crypto/rand"
 	"crypto/sha256"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -2379,6 +2380,9 @@ type AppliedPolicy struct {
 	// validated pair; a report without it clears both.
 	MCPGatewayReady   bool   `json:"mcp_gateway_ready"`
 	MCPGatewayAddress string `json:"mcp_gateway_address"`
+	// AI-KEYS-1: the internal AI endpoint listener. Stored only after the
+	// typed validation in ReportWGInfo; old reports clear every field.
+	AIInternalEndpoint AIInternalEndpointState `json:"-"`
 	// IPsecConfigVersion is an authenticated configuration protocol assertion.
 	// Only exact version 1 is recognized; current shipped agents report zero.
 	IPsecConfigVersion                 int    `json:"ipsec_config_version"`
@@ -2538,6 +2542,7 @@ func (s *Service) ReportWGInfo(ctx context.Context, node sqlc.Node, publicKey, e
 		applied.MCPGatewayReady = false
 		applied.MCPGatewayAddress = ""
 	}
+	applied.AIInternalEndpoint = applied.AIInternalEndpoint.normalized()
 	// Gateway capabilities the agent probes + re-reports every reconcile (S3.7 +
 	// S7.2 applied-policy status). The column is a forward-compat JSONB map; we build
 	// it server-side from the typed report so a compromised agent can't inject
@@ -2552,6 +2557,14 @@ func (s *Service) ReportWGInfo(ctx context.Context, node sqlc.Node, publicKey, e
 		"ai_vpn_http_address":                    applied.AIVPNHTTPAddress,
 		"mcp_gateway_ready":                      applied.MCPGatewayReady,
 		"mcp_gateway_address":                    applied.MCPGatewayAddress,
+		"ai_internal_endpoint_version":           applied.AIInternalEndpoint.Version,
+		"ai_internal_endpoint_ready":             applied.AIInternalEndpoint.Ready,
+		"ai_internal_endpoint_addresses":         applied.AIInternalEndpoint.Addresses,
+		"ai_internal_endpoint_port":              applied.AIInternalEndpoint.Port,
+		"ai_internal_endpoint_revision":          applied.AIInternalEndpoint.Revision,
+		"ai_internal_endpoint_error":             applied.AIInternalEndpoint.Error,
+		"ai_internal_endpoint_cert_not_after":    applied.AIInternalEndpoint.CertNotAfter,
+		"ai_internal_endpoint_cert_sha256":       applied.AIInternalEndpoint.CertSHA256,
 		"ipsec_config_version":                   applied.IPsecConfigVersion,
 		"ipsec_recovery_version":                 applied.IPsecRecoveryVersion,
 		"ipsec_bgp_version":                      applied.IPsecBGPVersion,
@@ -3641,4 +3654,62 @@ func ipsecFQDNPolicyCapability(configVersion, fqdnVersion int) int {
 		return fqdnVersion
 	}
 	return 0
+}
+
+// AIInternalEndpointState is the gateway's typed report for the internal AI
+// endpoint listener (AI-KEYS-1). The capabilities JSON is rebuilt from these
+// fields only, so an unknown field never reaches it.
+type AIInternalEndpointState struct {
+	Version      int      `json:"ai_internal_endpoint_version"`
+	Ready        bool     `json:"ai_internal_endpoint_ready"`
+	Addresses    []string `json:"ai_internal_endpoint_addresses"`
+	Port         int      `json:"ai_internal_endpoint_port"`
+	Revision     int64    `json:"ai_internal_endpoint_revision"`
+	Error        string   `json:"ai_internal_endpoint_error"`
+	CertNotAfter string   `json:"ai_internal_endpoint_cert_not_after"`
+	CertSHA256   string   `json:"ai_internal_endpoint_cert_sha256"`
+}
+
+// normalized keeps only values this control plane understands: exact version
+// 1, at most two canonical private IPv4 addresses, a valid port, a bounded
+// printable error, an RFC 3339 expiry and a 64-hex fingerprint. Anything else
+// is cleared; a report without the version clears every field.
+func (v AIInternalEndpointState) normalized() AIInternalEndpointState {
+	if v.Version != 1 {
+		return AIInternalEndpointState{Addresses: []string{}}
+	}
+	out := AIInternalEndpointState{Version: 1, Addresses: []string{}}
+	valid := len(v.Addresses) <= 2
+	for _, raw := range v.Addresses {
+		ip, err := netip.ParseAddr(raw)
+		if err != nil || !ip.Is4() || !ip.IsPrivate() || ip.String() != raw {
+			valid = false
+			break
+		}
+	}
+	if valid && v.Port >= 1024 && v.Port <= 65535 && v.Revision >= 0 {
+		out.Addresses = append(out.Addresses, v.Addresses...)
+		out.Port = v.Port
+		out.Revision = v.Revision
+		out.Ready = v.Ready && len(v.Addresses) > 0
+	}
+	errText := strings.Map(func(r rune) rune {
+		if r < 32 || r == 127 {
+			return ' '
+		}
+		return r
+	}, v.Error)
+	if len(errText) > 256 {
+		errText = errText[:256]
+	}
+	out.Error = errText
+	if t, err := time.Parse(time.RFC3339, v.CertNotAfter); err == nil {
+		out.CertNotAfter = t.UTC().Format(time.RFC3339)
+	}
+	if len(v.CertSHA256) == 64 {
+		if _, err := hex.DecodeString(v.CertSHA256); err == nil {
+			out.CertSHA256 = strings.ToLower(v.CertSHA256)
+		}
+	}
+	return out
 }

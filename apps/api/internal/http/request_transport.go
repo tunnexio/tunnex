@@ -32,6 +32,10 @@ type requestTransportState struct {
 	sessionToken     string
 	ambiguousSession bool
 	authority        string
+	// clientAddr is the caller's address from the trusted proxy chain only
+	// (AI-KEYS-1): X-Real-IP from a trusted immediate peer, or the raw peer
+	// when no trusted proxy is configured. Invalid when unknown.
+	clientAddr netip.Addr
 }
 
 var proxyDNSName = regexp.MustCompile(`(?i)^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)*\.?$`)
@@ -90,9 +94,19 @@ func (t *requestTransport) middleware(next http.Handler) http.Handler {
 	configured := len(t.prefixes)+len(t.names) > 0
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		state := requestTransportState{secure: r.TLS != nil, splitCookies: configured, authority: r.Host}
+		if !configured {
+			state.clientAddr = peerAddr(r.RemoteAddr)
+		}
 		if configured {
 			values := r.Header.Values("X-Forwarded-Proto")
 			trusted := t.trusted(r.Context(), r.RemoteAddr)
+			if trusted {
+				if real := r.Header.Values("X-Real-IP"); len(real) == 1 {
+					if addr, err := netip.ParseAddr(strings.TrimSpace(real[0])); err == nil && addr.Zone() == "" {
+						state.clientAddr = addr.Unmap()
+					}
+				}
+			}
 			if len(values) > 0 && (trusted || !state.secure) {
 				if len(values) != 1 || (values[0] != "http" && values[0] != "https") || !trusted {
 					apierr.Write(w, r, apierr.BadRequest("invalid_forwarded_transport", "request transport could not be verified"))
@@ -122,6 +136,29 @@ func (t *requestTransport) middleware(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
+}
+
+func peerAddr(remote string) netip.Addr {
+	host, _, err := net.SplitHostPort(remote)
+	if err != nil {
+		host = remote
+	}
+	addr, err := netip.ParseAddr(host)
+	if err != nil || addr.Zone() != "" {
+		return netip.Addr{}
+	}
+	return addr.Unmap()
+}
+
+// requestClientAddr returns the client address recorded from the trusted
+// proxy chain before middleware.RealIP rewrites RemoteAddr. It never reads a
+// forwarding header from an untrusted peer.
+func requestClientAddr(ctx context.Context) (netip.Addr, bool) {
+	state, ok := ctx.Value(requestTransportKey{}).(requestTransportState)
+	if !ok || !state.clientAddr.IsValid() {
+		return netip.Addr{}, false
+	}
+	return state.clientAddr, true
 }
 
 // requestHTTPS reports the observed request transport, never APP_BASE_URL. The

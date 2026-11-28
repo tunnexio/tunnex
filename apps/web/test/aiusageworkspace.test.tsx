@@ -144,4 +144,27 @@ describe("AI usage dashboard requests", () => {
     expect(props.totals).toMatchObject({ requests: 8, tokens: 56, cost: 0.00017 });
     expect(mocks.GET).toHaveBeenCalledTimes(1);
   });
+  it("expands a workload row to its API keys", async () => {
+    const workloads = [{ id: "workload-a", name: "Support worker", requests: 5, tokens: 40, cost: 0.0002, uncosted_requests: 0 }, { id: "workload-b", name: "Nightly indexing", requests: 1, tokens: 10, cost: 0.00001, uncosted_requests: 0 }];
+    const workload_keys = [
+      { id: "key-a", name: "lambda-parser", workload_id: "workload-a", scope: "internal", requests: 3, tokens: 20, cost: 0.00015, uncosted_requests: 0 },
+      { id: "key-b", name: "saas-tool", workload_id: "workload-a", scope: "public", requests: 1, tokens: 5, cost: 0.00002, uncosted_requests: 0 },
+    ];
+    mocks.GET.mockResolvedValue({ data: { ...report, dashboard: { ...report.dashboard, workloads, workload_keys } } });
+    render(show());
+    const table = await screen.findByRole("table", { name: "Spend by workload" });
+    expect(within(table).getAllByRole("row")).toHaveLength(3);
+    expect(within(table).queryByRole("button", { name: "Show API keys for Nightly indexing" })).toBeNull();
+    const toggle = within(table).getByRole("button", { name: "Show API keys for Support worker" });
+    expect(toggle.getAttribute("aria-expanded")).toBe("false");
+    fireEvent.click(toggle);
+    const rows = within(table).getAllByRole("row");
+    expect(rows).toHaveLength(5);
+    expect(within(rows[2]).getByText("lambda-parser")).toBeTruthy();
+    expect(within(rows[2]).getByText("API key · Internal")).toBeTruthy();
+    expect(within(rows[2]).getAllByRole("cell").map((cell) => cell.textContent)).toEqual(["3", "20", "$0.000150", "0"]);
+    expect(within(rows[3]).getByText("API key · Public")).toBeTruthy();
+    fireEvent.click(within(table).getByRole("button", { name: "Hide API keys for Support worker" }));
+    expect(within(table).getAllByRole("row")).toHaveLength(3);
+  });
 });
