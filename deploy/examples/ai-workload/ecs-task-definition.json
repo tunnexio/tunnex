@@ -1,0 +1,45 @@
+{
+  "family": "support-bot",
+  "requiresCompatibilities": [
+    "FARGATE"
+  ],
+  "networkMode": "awsvpc",
+  "cpu": "256",
+  "memory": "512",
+  "executionRoleArn": "arn:aws:iam::123456789012:role/support-bot-execution",
+  "containerDefinitions": [
+    {
+      "name": "app",
+      "image": "123456789012.dkr.ecr.us-east-1.amazonaws.com/support-bot:1.0.0",
+      "essential": true,
+      "user": "10001:10001",
+      "entryPoint": [
+        "/usr/local/bin/entrypoint.sh"
+      ],
+      "command": [
+        "python",
+        "app.py"
+      ],
+      "environment": [
+        {
+          "name": "TUNNEX_WORKLOAD_SERVER",
+          "value": "https://tunnex.example.com"
+        }
+      ],
+      "secrets": [
+        {
+          "name": "TUNNEX_WORKLOAD_ENROLLMENT_KEY",
+          "valueFrom": "arn:aws:secretsmanager:us-east-1:123456789012:secret:tunnex/support-bot/enrollment-key"
+        }
+      ],
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/support-bot",
+          "awslogs-region": "us-east-1",
+          "awslogs-stream-prefix": "app"
+        }
+      }
+    }
+  ]
+}
