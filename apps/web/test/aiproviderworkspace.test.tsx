@@ -317,9 +317,29 @@ describe("AI provider onboarding", () => {
     page.rerender(show("org-b")); await screen.findByText("Engineering"); expect(screen.queryByLabelText("API key")).toBeNull(); openAddModel(); selectProvider();
     expect((screen.getByLabelText("API key") as HTMLInputElement).value).toBe(""); expect(api.POST).not.toHaveBeenCalled();
   });
-  it("keeps exact model entry when suggestions fail", async () => {
-    api.POST.mockRejectedValue(Error()); render(show()); await screen.findByText("Engineering");
+  it("keeps exact model entry when live and bundled suggestions both fail", async () => {
+    api.POST.mockRejectedValue(Error());
+    api.GET.mockImplementation((path: string) => path.endsWith("/models") ? Promise.reject(Error()) : Promise.resolve({ data: path.endsWith("/my-models") ? [] : inventory, response: response() }));
+    render(show()); await screen.findByText("Engineering");
     openAddModel(); selectProvider(); fireEvent.change(screen.getByLabelText("API key"), { target: { value: "catalog-fixture" } }); advanceWizard(2); fireEvent.focus(screen.getByLabelText("Search model catalog")); await screen.findByText(/Model suggestions are unavailable/); expect(manualModelInput()).toBeTruthy();
+  });
+  it("falls back to the bundled catalog when the provider's live list fails", async () => {
+    api.POST.mockImplementation((path: string) => path.endsWith("/model-catalog") ? Promise.resolve({ error: { code: "ai_gateway_unavailable" }, response: response(503) }) : Promise.resolve({ data: { status: "success", duration_ms: 20 }, response: response() }));
+    render(show()); await screen.findByText("Engineering");
+    openAddModel(); selectProvider(); fireEvent.change(screen.getByLabelText("API key"), { target: { value: "catalog-fixture" } }); advanceWizard(2); fireEvent.focus(screen.getByLabelText("Search model catalog"));
+    await screen.findByText(/live model list could not be read/);
+    expect(screen.getByText(/Unverified catalog suggestions/)).toBeTruthy();
+    expect(screen.getByRole("checkbox", { name: /GPT-4o mini/ })).toBeTruthy();
+    expect(screen.queryByText(/Model suggestions are unavailable/)).toBeNull();
+    const reference = api.GET.mock.calls.find((call: unknown[]) => String(call[0]).endsWith("/ai-gateway/models"));
+    expect(reference?.[1]).toEqual(expect.objectContaining({ params: expect.objectContaining({ query: expect.objectContaining({ provider: "openrouter", mode: "chat" }) }) }));
+    expect(JSON.stringify(reference)).not.toContain("catalog-fixture");
+  });
+  it("labels a live provider list as the provider catalog", async () => {
+    render(show()); await screen.findByText("Engineering");
+    openAddModel(); selectProvider(); fireEvent.change(screen.getByLabelText("API key"), { target: { value: "catalog-fixture" } }); advanceWizard(2); fireEvent.focus(screen.getByLabelText("Search model catalog"));
+    await screen.findByText(/^Provider catalog/);
+    expect(screen.queryByText(/live model list could not be read/)).toBeNull();
   });
   it("uses backend provider definitions and clears secret/model drafts and stale catalog on provider changes", async () => {
     let finish!: (v: unknown) => void;
