@@ -1125,7 +1125,7 @@ option was taken.
   byte-identical to before (existing goldens unchanged). `validateTunnexInput`
   checks the rule's shape, not the configured values, so a restarted agent
   does not refuse its previous chain before it has fetched the document.
-  Still to prove on Linux: the kernel's JSON for a two-address set.
+  Still to capture on a real host: the kernel's JSON for a two-address set.
 - **SNI.** With no DNS name set, any non-empty SNI is refused (clients that
   connect by IP send none). With a DNS name, only that name or no SNI.
 - **Custom certificate** that does not cover the configured addresses is still
@@ -1159,6 +1159,7 @@ option was taken.
 ### Not proven yet
 
 - The real walk on the GCP test machines (validation plan, 15 steps) has not
-  run. Linux-only gateway tests (egress and k8snetprep goldens with the new
-  rule, `cmd/agent`, real interface ownership and binding) compile but have not
-  run on Linux.
+  run. The Linux-only gateway tests (aiinternal, egress and k8snetprep with the
+  new rule, `cmd/agent`) passed in a `golang:1.26.11-alpine` container with
+  `NET_ADMIN`; a real `nft -j list ruleset` with a two-address endpoint has not
+  been captured yet.
