@@ -1,0 +1,14 @@
+-- Refuse rollback while AI budget or unknown-price alert data exists; never
+-- delete history. (Re-adding the narrower constraint fails on such a row.)
+ALTER TABLE alert_subscriptions DROP CONSTRAINT alert_subscriptions_event_key_check;
+ALTER TABLE alert_subscriptions ADD CONSTRAINT alert_subscriptions_event_key_check CHECK (event_key IN ('agent.offline','agent.denial_spike','agent.access_expiring','agent.rotation_failed','agent.configuration_drift','gateway.offline','gateway.policy_degraded','site.link_down','device.offline','device.posture_blocked','kubernetes.connector_degraded','kubernetes.inventory_stale','kubernetes.service_unavailable','ipsec.tunnel_down','ipsec.connection_down','ipsec.status_unavailable','agent.mcp_approval_pending','ai_workload.static_key_expiring'));
+ALTER TABLE alert_deliveries DROP CONSTRAINT alert_deliveries_event_key_check;
+ALTER TABLE alert_deliveries ADD CONSTRAINT alert_deliveries_event_key_check CHECK (event_key IN ('agent.offline','agent.denial_spike','agent.access_expiring','agent.rotation_failed','agent.configuration_drift','gateway.offline','gateway.policy_degraded','site.link_down','device.offline','device.posture_blocked','kubernetes.connector_degraded','kubernetes.inventory_stale','kubernetes.service_unavailable','ipsec.tunnel_down','ipsec.connection_down','ipsec.status_unavailable','agent.mcp_approval_pending','ai_workload.static_key_expiring'));
+ALTER TABLE alert_delivery_cooldowns DROP CONSTRAINT alert_delivery_cooldowns_event_key_check;
+ALTER TABLE alert_delivery_cooldowns ADD CONSTRAINT alert_delivery_cooldowns_event_key_check CHECK (event_key IN ('agent.offline','agent.denial_spike','agent.access_expiring','agent.rotation_failed','agent.configuration_drift','gateway.offline','gateway.policy_degraded','site.link_down','device.offline','device.posture_blocked','kubernetes.connector_degraded','kubernetes.inventory_stale','kubernetes.service_unavailable','ipsec.tunnel_down','ipsec.connection_down','ipsec.status_unavailable','agent.mcp_approval_pending','ai_workload.static_key_expiring'));
+ALTER TABLE alert_occurrences DROP CONSTRAINT alert_occurrences_event_key_check;
+ALTER TABLE alert_occurrences ADD CONSTRAINT alert_occurrences_event_key_check CHECK (event_key IN ('agent.offline','agent.denial_spike','agent.access_expiring','agent.rotation_failed','agent.configuration_drift','gateway.offline','gateway.policy_degraded','site.link_down','device.offline','device.posture_blocked','kubernetes.connector_degraded','kubernetes.inventory_stale','kubernetes.service_unavailable','ipsec.tunnel_down','ipsec.connection_down','ipsec.status_unavailable','agent.mcp_approval_pending','ai_workload.static_key_expiring'));
+DROP TABLE ai_request_log;
+DROP TABLE ai_gateway_alert_marks;
+DROP TABLE ai_gateway_cost_settings;
+DROP TABLE ai_model_price_overrides;
