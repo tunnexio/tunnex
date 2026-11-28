@@ -113,6 +113,28 @@ A provider account can expose a model in its catalog while refusing requests to
 that model. Usage and cost are observed estimates; daily thresholds are soft
 admission limits and concurrent requests can exceed them.
 
+## Prices, limits, alerts and the request log
+
+- **Model prices.** Cost estimates and daily limits use the bundled catalog
+  price (refreshed every release). For a model the catalog does not know, or a
+  private contract rate, a provider manager can set a price in Models &
+  endpoints (USD per million tokens, chat, completion and embedding models).
+  The price is applied to this organization's provider keys only and is used
+  once the gateway confirms it.
+- **Models without a price.** Under a daily limit (user group, workload, agent
+  group) such a model is refused by default. AI Gateway settings can switch to
+  "Allow and alert": the call goes through, does not count against the limit,
+  and the "Model without a price" alert is sent once a day per group and model.
+- **Budget alerts.** "Daily cost limit 50%, 80% or 100% reached" is sent at
+  most once per subject, threshold and UTC day, within about five minutes of
+  the spend. Subscribe to it in Alerts.
+- **Request log.** Usage & cost, Requests lists each AI call: time, who, group,
+  model, status or refusal reason, latency, tokens, cost and the path it came
+  in on. **Prompts, outputs, request and response bodies, headers and keys are
+  never stored.** Rows are kept for the organization's retention (default 30
+  days, 1 to 365 in AI Gateway settings). Logging never slows or fails a call;
+  under extreme load records may be dropped and counted.
+
 ## Verify the installation
 
 The installation administrator can use the existing project and configuration:

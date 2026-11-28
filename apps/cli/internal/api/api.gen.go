@@ -295,6 +295,43 @@ const (
 	AIProviderUpdateProviderXai          AIProviderUpdateProvider = "xai"
 )
 
+// Defines values for AIRequestLogEntryCostState.
+const (
+	AIRequestCostCosted        AIRequestLogEntryCostState = "costed"
+	AIRequestCostNotApplicable AIRequestLogEntryCostState = "not_applicable"
+	AIRequestCostPending       AIRequestLogEntryCostState = "pending"
+	AIRequestCostUnavailable   AIRequestLogEntryCostState = "unavailable"
+	AIRequestCostUncosted      AIRequestLogEntryCostState = "uncosted"
+)
+
+// Defines values for AIRequestLogEntryGroupKind.
+const (
+	AIRequestGroupAgent AIRequestLogEntryGroupKind = "agent_group"
+	AIRequestGroupUser  AIRequestLogEntryGroupKind = "user_group"
+)
+
+// Defines values for AIRequestLogEntryIngress.
+const (
+	AIRequestIngressAgent    AIRequestLogEntryIngress = "agent"
+	AIRequestIngressPublic   AIRequestLogEntryIngress = "public"
+	AIRequestIngressVPN      AIRequestLogEntryIngress = "vpn"
+	AIRequestIngressWorkload AIRequestLogEntryIngress = "workload"
+)
+
+// Defines values for AIRequestLogEntryOutcome.
+const (
+	AIRequestOutcomeError   AIRequestLogEntryOutcome = "error"
+	AIRequestOutcomeOk      AIRequestLogEntryOutcome = "ok"
+	AIRequestOutcomeRefused AIRequestLogEntryOutcome = "refused"
+)
+
+// Defines values for AIRequestLogEntrySubjectKind.
+const (
+	AIRequestSubjectAgent    AIRequestLogEntrySubjectKind = "agent"
+	AIRequestSubjectUser     AIRequestLogEntrySubjectKind = "user"
+	AIRequestSubjectWorkload AIRequestLogEntrySubjectKind = "workload"
+)
+
 // Defines values for AISpeechRequestResponseFormat.
 const (
 	Aac  AISpeechRequestResponseFormat = "aac"
@@ -2571,6 +2608,20 @@ const (
 	TestAgentAccessParamsProtocolUdp TestAgentAccessParamsProtocol = "udp"
 )
 
+// Defines values for ListAIRequestsParamsSubjectKind.
+const (
+	AIRequestFilterAgent    ListAIRequestsParamsSubjectKind = "agent"
+	AIRequestFilterUser     ListAIRequestsParamsSubjectKind = "user"
+	AIRequestFilterWorkload ListAIRequestsParamsSubjectKind = "workload"
+)
+
+// Defines values for ListAIRequestsParamsOutcome.
+const (
+	AIRequestFilterError   ListAIRequestsParamsOutcome = "error"
+	AIRequestFilterOk      ListAIRequestsParamsOutcome = "ok"
+	AIRequestFilterRefused ListAIRequestsParamsOutcome = "refused"
+)
+
 // Defines values for ListAppAccessRequestsParamsScope.
 const (
 	CompanyScopeManaged ListAppAccessRequestsParamsScope = "managed"
@@ -3196,6 +3247,60 @@ type AIProviderUpdate struct {
 
 // AIProviderUpdateProvider defines model for AIProviderUpdate.Provider.
 type AIProviderUpdateProvider string
+
+// AIRequestLogEntry defines model for AIRequestLogEntry.
+type AIRequestLogEntry struct {
+	CompletionTokens *int64 `json:"completion_tokens"`
+
+	// CostState pending: tokens and cost not read from the engine yet. uncosted: the engine had no price. not_applicable: refused before reaching a model.
+	CostState AIRequestLogEntryCostState  `json:"cost_state"`
+	CostUsd   *float64                    `json:"cost_usd"`
+	GroupId   *openapi_types.UUID         `json:"group_id"`
+	GroupKind *AIRequestLogEntryGroupKind `json:"group_kind"`
+	GroupName string                      `json:"group_name"`
+	Id        openapi_types.UUID          `json:"id"`
+	Ingress   AIRequestLogEntryIngress    `json:"ingress"`
+
+	// InstanceId Workload replica
+	InstanceId   *openapi_types.UUID      `json:"instance_id"`
+	LatencyMs    int                      `json:"latency_ms"`
+	Mode         string                   `json:"mode"`
+	Model        string                   `json:"model"`
+	OccurredAt   time.Time                `json:"occurred_at"`
+	Outcome      AIRequestLogEntryOutcome `json:"outcome"`
+	PromptTokens *int64                   `json:"prompt_tokens"`
+
+	// RefusalCode Internal refusal code, for example ai_daily_threshold_reached. Never a message.
+	RefusalCode *string                      `json:"refusal_code"`
+	RequestId   *string                      `json:"request_id"`
+	StatusCode  int                          `json:"status_code"`
+	SubjectId   *openapi_types.UUID          `json:"subject_id"`
+	SubjectKind AIRequestLogEntrySubjectKind `json:"subject_kind"`
+
+	// SubjectName Current name; empty when the subject no longer exists or was not identified.
+	SubjectName string `json:"subject_name"`
+}
+
+// AIRequestLogEntryCostState pending: tokens and cost not read from the engine yet. uncosted: the engine had no price. not_applicable: refused before reaching a model.
+type AIRequestLogEntryCostState string
+
+// AIRequestLogEntryGroupKind defines model for AIRequestLogEntry.GroupKind.
+type AIRequestLogEntryGroupKind string
+
+// AIRequestLogEntryIngress defines model for AIRequestLogEntry.Ingress.
+type AIRequestLogEntryIngress string
+
+// AIRequestLogEntryOutcome defines model for AIRequestLogEntry.Outcome.
+type AIRequestLogEntryOutcome string
+
+// AIRequestLogEntrySubjectKind defines model for AIRequestLogEntry.SubjectKind.
+type AIRequestLogEntrySubjectKind string
+
+// AIRequestLogPage defines model for AIRequestLogPage.
+type AIRequestLogPage struct {
+	Items      []AIRequestLogEntry `json:"items"`
+	NextCursor *string             `json:"next_cursor"`
+}
 
 // AIRerankRequest defines model for AIRerankRequest.
 type AIRerankRequest struct {
@@ -10581,6 +10686,26 @@ type ListAIProviderModelsParams struct {
 	Offset       *int                `form:"offset,omitempty" json:"offset,omitempty"`
 }
 
+// ListAIRequestsParams defines parameters for ListAIRequests.
+type ListAIRequestsParams struct {
+	From        *time.Time                       `form:"from,omitempty" json:"from,omitempty"`
+	To          *time.Time                       `form:"to,omitempty" json:"to,omitempty"`
+	SubjectKind *ListAIRequestsParamsSubjectKind `form:"subject_kind,omitempty" json:"subject_kind,omitempty"`
+
+	// SubjectId A user
+	SubjectId *openapi_types.UUID          `form:"subject_id,omitempty" json:"subject_id,omitempty"`
+	Model     *string                      `form:"model,omitempty" json:"model,omitempty"`
+	Outcome   *ListAIRequestsParamsOutcome `form:"outcome,omitempty" json:"outcome,omitempty"`
+	Limit     *int                         `form:"limit,omitempty" json:"limit,omitempty"`
+	Cursor    *string                      `form:"cursor,omitempty" json:"cursor,omitempty"`
+}
+
+// ListAIRequestsParamsSubjectKind defines parameters for ListAIRequests.
+type ListAIRequestsParamsSubjectKind string
+
+// ListAIRequestsParamsOutcome defines parameters for ListAIRequests.
+type ListAIRequestsParamsOutcome string
+
 // GetAIUsageParams defines parameters for GetAIUsage.
 type GetAIUsageParams struct {
 	TeamId   *openapi_types.UUID `form:"team_id,omitempty" json:"team_id,omitempty"`
@@ -12589,6 +12714,9 @@ type ClientInterface interface {
 	TestAIProviderWithBody(ctx context.Context, orgId openapi_types.UUID, connectionId openapi_types.UUID, contentType string, body io.Reader, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	TestAIProvider(ctx context.Context, orgId openapi_types.UUID, connectionId openapi_types.UUID, body TestAIProviderJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error)
+
+	// ListAIRequests request
+	ListAIRequests(ctx context.Context, orgId openapi_types.UUID, params *ListAIRequestsParams, reqEditors ...RequestEditorFn) (*http.Response, error)
 
 	// GetAIStaticKeySettings request
 	GetAIStaticKeySettings(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*http.Response, error)
@@ -17301,6 +17429,18 @@ func (c *Client) TestAIProviderWithBody(ctx context.Context, orgId openapi_types
 
 func (c *Client) TestAIProvider(ctx context.Context, orgId openapi_types.UUID, connectionId openapi_types.UUID, body TestAIProviderJSONRequestBody, reqEditors ...RequestEditorFn) (*http.Response, error) {
 	req, err := NewTestAIProviderRequest(c.Server, orgId, connectionId, body)
+	if err != nil {
+		return nil, err
+	}
+	req = req.WithContext(ctx)
+	if err := c.applyEditors(ctx, req, reqEditors); err != nil {
+		return nil, err
+	}
+	return c.Client.Do(req)
+}
+
+func (c *Client) ListAIRequests(ctx context.Context, orgId openapi_types.UUID, params *ListAIRequestsParams, reqEditors ...RequestEditorFn) (*http.Response, error) {
+	req, err := NewListAIRequestsRequest(c.Server, orgId, params)
 	if err != nil {
 		return nil, err
 	}
@@ -32121,6 +32261,174 @@ func NewTestAIProviderRequestWithBody(server string, orgId openapi_types.UUID, c
 	}
 
 	req.Header.Add("Content-Type", contentType)
+
+	return req, nil
+}
+
+// NewListAIRequestsRequest generates requests for ListAIRequests
+func NewListAIRequestsRequest(server string, orgId openapi_types.UUID, params *ListAIRequestsParams) (*http.Request, error) {
+	var err error
+
+	var pathParam0 string
+
+	pathParam0, err = runtime.StyleParamWithLocation("simple", false, "orgId", runtime.ParamLocationPath, orgId)
+	if err != nil {
+		return nil, err
+	}
+
+	serverURL, err := url.Parse(server)
+	if err != nil {
+		return nil, err
+	}
+
+	operationPath := fmt.Sprintf("/api/v1/organizations/%s/ai-gateway/requests", pathParam0)
+	if operationPath[0] == '/' {
+		operationPath = "." + operationPath
+	}
+
+	queryURL, err := serverURL.Parse(operationPath)
+	if err != nil {
+		return nil, err
+	}
+
+	if params != nil {
+		queryValues := queryURL.Query()
+
+		if params.From != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "from", runtime.ParamLocationQuery, *params.From); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.To != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "to", runtime.ParamLocationQuery, *params.To); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.SubjectKind != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "subject_kind", runtime.ParamLocationQuery, *params.SubjectKind); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.SubjectId != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "subject_id", runtime.ParamLocationQuery, *params.SubjectId); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Model != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "model", runtime.ParamLocationQuery, *params.Model); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Outcome != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "outcome", runtime.ParamLocationQuery, *params.Outcome); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Limit != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "limit", runtime.ParamLocationQuery, *params.Limit); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		if params.Cursor != nil {
+
+			if queryFrag, err := runtime.StyleParamWithLocation("form", true, "cursor", runtime.ParamLocationQuery, *params.Cursor); err != nil {
+				return nil, err
+			} else if parsed, err := url.ParseQuery(queryFrag); err != nil {
+				return nil, err
+			} else {
+				for k, v := range parsed {
+					for _, v2 := range v {
+						queryValues.Add(k, v2)
+					}
+				}
+			}
+
+		}
+
+		queryURL.RawQuery = queryValues.Encode()
+	}
+
+	req, err := http.NewRequest("GET", queryURL.String(), nil)
+	if err != nil {
+		return nil, err
+	}
 
 	return req, nil
 }
@@ -49975,6 +50283,9 @@ type ClientWithResponsesInterface interface {
 
 	TestAIProviderWithResponse(ctx context.Context, orgId openapi_types.UUID, connectionId openapi_types.UUID, body TestAIProviderJSONRequestBody, reqEditors ...RequestEditorFn) (*TestAIProviderResponse, error)
 
+	// ListAIRequestsWithResponse request
+	ListAIRequestsWithResponse(ctx context.Context, orgId openapi_types.UUID, params *ListAIRequestsParams, reqEditors ...RequestEditorFn) (*ListAIRequestsResponse, error)
+
 	// GetAIStaticKeySettingsWithResponse request
 	GetAIStaticKeySettingsWithResponse(ctx context.Context, orgId openapi_types.UUID, reqEditors ...RequestEditorFn) (*GetAIStaticKeySettingsResponse, error)
 
@@ -55619,6 +55930,29 @@ func (r TestAIProviderResponse) Status() string {
 
 // StatusCode returns HTTPResponse.StatusCode
 func (r TestAIProviderResponse) StatusCode() int {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.StatusCode
+	}
+	return 0
+}
+
+type ListAIRequestsResponse struct {
+	Body         []byte
+	HTTPResponse *http.Response
+	JSON200      *AIRequestLogPage
+	JSONDefault  *Error
+}
+
+// Status returns HTTPResponse.Status
+func (r ListAIRequestsResponse) Status() string {
+	if r.HTTPResponse != nil {
+		return r.HTTPResponse.Status
+	}
+	return http.StatusText(0)
+}
+
+// StatusCode returns HTTPResponse.StatusCode
+func (r ListAIRequestsResponse) StatusCode() int {
 	if r.HTTPResponse != nil {
 		return r.HTTPResponse.StatusCode
 	}
@@ -65842,6 +66176,15 @@ func (c *ClientWithResponses) TestAIProviderWithResponse(ctx context.Context, or
 		return nil, err
 	}
 	return ParseTestAIProviderResponse(rsp)
+}
+
+// ListAIRequestsWithResponse request returning *ListAIRequestsResponse
+func (c *ClientWithResponses) ListAIRequestsWithResponse(ctx context.Context, orgId openapi_types.UUID, params *ListAIRequestsParams, reqEditors ...RequestEditorFn) (*ListAIRequestsResponse, error) {
+	rsp, err := c.ListAIRequests(ctx, orgId, params, reqEditors...)
+	if err != nil {
+		return nil, err
+	}
+	return ParseListAIRequestsResponse(rsp)
 }
 
 // GetAIStaticKeySettingsWithResponse request returning *GetAIStaticKeySettingsResponse
@@ -76284,6 +76627,39 @@ func ParseTestAIProviderResponse(rsp *http.Response) (*TestAIProviderResponse, e
 	switch {
 	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
 		var dest AIProviderConnection
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSON200 = &dest
+
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && true:
+		var dest Error
+		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
+			return nil, err
+		}
+		response.JSONDefault = &dest
+
+	}
+
+	return response, nil
+}
+
+// ParseListAIRequestsResponse parses an HTTP response from a ListAIRequestsWithResponse call
+func ParseListAIRequestsResponse(rsp *http.Response) (*ListAIRequestsResponse, error) {
+	bodyBytes, err := io.ReadAll(rsp.Body)
+	defer func() { _ = rsp.Body.Close() }()
+	if err != nil {
+		return nil, err
+	}
+
+	response := &ListAIRequestsResponse{
+		Body:         bodyBytes,
+		HTTPResponse: rsp,
+	}
+
+	switch {
+	case strings.Contains(rsp.Header.Get("Content-Type"), "json") && rsp.StatusCode == 200:
+		var dest AIRequestLogPage
 		if err := json.Unmarshal(bodyBytes, &dest); err != nil {
 			return nil, err
 		}

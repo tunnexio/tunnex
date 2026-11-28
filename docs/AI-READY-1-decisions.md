@@ -240,11 +240,30 @@ tokens. Docs say so.
 
 - A bounded in-memory queue (4096) and one batch writer per API process
   (up to 200 rows or one second per batch). A full queue drops the record and
-  counts it (`DroppedRequestLogs`, logged once a minute when non-zero).
-  Inference never waits on the database for the log.
+  counts it (`RequestLog.Dropped()`; the writer logs `ai_request_log_dropped`
+  with the running total whenever it grows). Inference never waits on the
+  database for the log.
 - Refusals before an organization is known (missing or invalid bearer) are not
   logged; there is no tenant to attribute them to.
-- Video jobs are not logged in this story (separate job handler).
+- Video jobs are not logged in this story (separate job handler and engine
+  calls); `/v1/videos` paths pass through untraced.
+- The enricher checks leadership cheaply every five seconds without the
+  database confirmation the deletion jobs use: its updates are idempotent
+  (`WHERE cost_state='pending'`), so a brief overlap after a leader change
+  only repeats a read. Pruning confirms leadership like other retention jobs.
+
+### Where the hooks are (no `adapter.go` change)
+
+- `request_log.go`: `RequestLog.Begin` (trace, status writer, deferred record),
+  `TraceAuthorize`, `Adapter.ConfigureRequestLog` (wraps the adapter's HTTP
+  transport to add `X-Request-Id`; the log is kept beside the adapter in a
+  package map, so the adapter type is unchanged).
+- Entry points: `aiInferenceMiddleware` (agent), `workloadMiddleware`
+  (workload), `aiUserInferenceMiddleware` (public user) and
+  `AgentChannel.serveVPNChat` (VPN); `cmd/server/main.go` wraps the token
+  authorizer with `TraceAuthorize`.
+- Group attribution: one `noteRequestGroup` line in `resolveUserModel`
+  (user group) and in the agent resolver (agent group).
 
 ### Retention, API, console
 

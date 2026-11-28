@@ -509,6 +509,7 @@ func main() {
 	var aiStaticKeys *aigateway.StaticKeys
 	var aiInternal *aigateway.InternalEndpoints
 	var aiAdapter *aigateway.Adapter
+	var aiRequestLog *aigateway.RequestLog
 	aiRuntime := agentruntime.New(pool, nil)
 	aiCredentials := aigateway.NewCredentials(pool, aiRuntime, nil)
 	if cfg.AIGatewayURL != "" {
@@ -559,12 +560,15 @@ func main() {
 		// so a per-minute limit holds across control-plane replicas.
 		aiStaticKeys = aigateway.NewStaticKeys(aiWorkloads, mcpdecision.NewRedisLimiter(sessions.Client()))
 		aiInternal = aigateway.NewInternalEndpoints(aiWorkloads, aiStaticKeys)
-		aiAdapter, engineErr = aigateway.NewAdapter(cfg.AIGatewayURL, aigateway.DefaultAuthorize(aiWorkloads, aiCredentials))
+		// AI-READY-1: TraceAuthorize lets the request log attribute the call.
+		aiAdapter, engineErr = aigateway.NewAdapter(cfg.AIGatewayURL, aigateway.TraceAuthorize(aigateway.DefaultAuthorize(aiWorkloads, aiCredentials)))
 		if engineErr != nil {
 			logger.Error("ai_gateway_invalid_configuration")
 			os.Exit(1)
 		}
 		aiAdapter.ConfigureVideoStore(pool)
+		aiRequestLog = aigateway.NewRequestLog(pool, aiPolicies, logger)
+		aiAdapter.ConfigureRequestLog(aiRequestLog)
 		aiCredentials.SetAvailable(true)
 	}
 	relayLimits, err := connectivity.LoadIssuanceLimits(os.Getenv)
@@ -919,6 +923,43 @@ func main() {
 		}()
 	}
 
+	// AI-READY-1 request log: every replica writes its own queue; the leader
+	// fills tokens and cost from the engine and prunes by retention.
+	if aiRequestLog != nil {
+		go aiRequestLog.Run(electorCtx)
+		go func() {
+			enrich := time.NewTicker(aigateway.RequestLogEnrichTick)
+			prune := time.NewTicker(aigateway.RequestLogRetentionTick)
+			defer enrich.Stop()
+			defer prune.Stop()
+			for {
+				select {
+				case <-electorCtx.Done():
+					return
+				case <-enrich.C:
+					if !elector.IsLeader() {
+						continue
+					}
+					workCtx, cancel := context.WithTimeout(electorCtx, 30*time.Second)
+					if _, err := aiRequestLog.Enrich(workCtx); err != nil {
+						logger.Warn("ai_request_log_enrich_incomplete")
+					}
+					cancel()
+				case <-prune.C:
+					if !elector.IsLeader() || !elector.ConfirmLeader(electorCtx, pool) {
+						continue
+					}
+					workCtx, cancel := context.WithTimeout(electorCtx, 2*time.Minute)
+					if deleted, more, err := aiRequestLog.Prune(workCtx); err != nil {
+						logger.Warn("ai_request_log_retention_failed")
+					} else if deleted > 0 {
+						logger.Info("ai_request_log_retention_run", slog.Int64("deleted", deleted), slog.Bool("more_pending", more))
+					}
+					cancel()
+				}
+			}
+		}()
+	}
 	// AI-READY-1: leader-only, bounded AI cost maintenance every five minutes:
 	// operator model prices converge on the engine, and daily cost limits
 	// raise their 50/80/100% alerts once per subject and UTC day.

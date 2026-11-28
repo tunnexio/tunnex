@@ -2,6 +2,7 @@ package http
 
 import (
 	"context"
+	"github.com/go-chi/chi/v5/middleware"
 	"net/http"
 	"strings"
 
@@ -226,7 +227,11 @@ func aiInferenceMiddleware(adapter *aigateway.Adapter) func(http.Handler) http.H
 			}
 			clone := r.Clone(r.Context())
 			clone.URL.Path = strings.TrimPrefix(r.URL.Path, "/ai")
-			adapter.ServeHTTP(w, clone)
+			// AI-READY-1: the agent's grant (from the token authorizer, wrapped in
+			// main) attributes the request log row.
+			tw, traced, _, finish := adapter.RequestLog().Begin(w, clone, aigateway.IngressAgent, middleware.GetReqID(r.Context()))
+			defer finish()
+			adapter.ServeHTTP(tw, traced)
 		})
 	}
 }

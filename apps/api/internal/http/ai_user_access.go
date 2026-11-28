@@ -2,6 +2,7 @@ package http
 
 import (
 	"context"
+	"github.com/go-chi/chi/v5/middleware"
 	"net/http"
 	"strings"
 
@@ -157,9 +158,12 @@ func aiUserInferenceMiddleware(adapter *aigateway.Adapter, policies *aigateway.P
 			}
 			clone := r.Clone(ctx)
 			clone.URL.Path = "/" + strings.TrimPrefix(parts[1], "ai-gateway/inference/")
-			adapter.ServeAuthorized(w, clone, func(ctx context.Context, _ string, model string) (aigateway.Grant, error) {
+			tw, traced, trace, finish := adapter.RequestLog().Begin(w, clone, aigateway.IngressPublic, middleware.GetReqID(r.Context()))
+			defer finish()
+			trace.SetSubject(org, "user", p.UserID)
+			adapter.ServeAuthorized(tw, traced, aigateway.TraceAuthorize(func(ctx context.Context, _ string, model string) (aigateway.Grant, error) {
 				return policies.ResolveUserModel(ctx, org, p.UserID, model)
-			})
+			}))
 		})
 	}
 }

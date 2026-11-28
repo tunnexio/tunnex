@@ -4,6 +4,9 @@ import { api } from "../lib/api";
 import { Button, Field, Input, Select, RefreshButton } from "./ui";
 import { AIUsageDashboard, formatAIUsageCost } from "./AIUsageDashboard";
 import { AIGatewayOffBanner, useAIGatewayStatus } from "./AIGatewayOffBanner";
+import { AIRequestLog } from "./AIRequestLog";
+import "./ai-provider-workspace.css";
+import "../ai-gateway-workspace.css";
 
 import AppAccessPagination from "./AppAccessPagination";
 
@@ -32,6 +35,7 @@ export function AIUsagePage({ orgId, canManage = false, serverAdmin = false }: {
   const gateway = useAIGatewayStatus(orgId);
   const [inventory, setInventory] = useState<{ orgId: string; value: Inventory } | null>(null);
   const [version, setVersion] = useState(0);
+  const [view, setView] = useState<"overview" | "requests">("overview");
   useEffect(() => {
     let live = true;
     void (async () => {
@@ -50,7 +54,11 @@ export function AIUsagePage({ orgId, canManage = false, serverAdmin = false }: {
   }, [orgId, version]);
   return <>
     <AIGatewayOffBanner orgId={orgId} gateway={gateway} canManage={canManage} serverAdmin={serverAdmin} onChanged={() => setVersion((value) => value + 1)} />
-    <AIUsageWorkspace key={version} orgId={orgId} inventory={inventory?.orgId === orgId ? inventory.value : noInventory} gatewayOff={gateway.off} onRefresh={gateway.reload} />
+    <nav className="ai-provider-view-tabs" role="tablist" aria-label="Usage view">
+      <button role="tab" aria-selected={view === "overview"} onClick={() => setView("overview")}>Overview</button>
+      <button role="tab" aria-selected={view === "requests"} onClick={() => setView("requests")}>Requests</button>
+    </nav>
+    {view === "requests" ? <AIRequestLog orgId={orgId} /> : <AIUsageWorkspace key={version} orgId={orgId} inventory={inventory?.orgId === orgId ? inventory.value : noInventory} gatewayOff={gateway.off} onRefresh={gateway.reload} />}
   </>;
 }
 

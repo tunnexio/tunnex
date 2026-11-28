@@ -1240,6 +1240,28 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v1/organizations/{orgId}/ai-gateway/requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        /**
+         * Per-request AI log (metadata only), newest first
+         * @description Readable with ai_provider:view or ai_gateway:view. Each row records time, subject, group, model, mode, ingress, status, refusal code, latency, tokens and cost. Prompts, completions, headers and keys are never stored. Rows are kept for the organization's request log retention (default 30 days).
+         */
+        get: operations["listAIRequests"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v1/organizations/{orgId}/ai-gateway/user-model-grants": {
         parameters: {
             query?: never;
@@ -10355,6 +10377,54 @@ export interface components {
             /** Format: int64 */
             expected_revision: number;
         };
+        AIRequestLogEntry: {
+            /** Format: uuid */
+            id: string;
+            /** Format: date-time */
+            occurred_at: string;
+            /** @enum {string} */
+            subject_kind: "user" | "agent" | "workload";
+            /** Format: uuid */
+            subject_id?: string | null;
+            /** @description Current name; empty when the subject no longer exists or was not identified. */
+            subject_name: string;
+            /** @enum {string|null} */
+            group_kind?: "user_group" | "agent_group" | null;
+            /** Format: uuid */
+            group_id?: string | null;
+            group_name: string;
+            /**
+             * Format: uuid
+             * @description Workload replica
+             */
+            instance_id?: string | null;
+            model: string;
+            mode: string;
+            /** @enum {string} */
+            ingress: "public" | "vpn" | "agent" | "workload";
+            status_code: number;
+            /** @enum {string} */
+            outcome: "ok" | "refused" | "error";
+            /** @description Internal refusal code, for example ai_daily_threshold_reached. Never a message. */
+            refusal_code?: string | null;
+            latency_ms: number;
+            /** Format: int64 */
+            prompt_tokens?: number | null;
+            /** Format: int64 */
+            completion_tokens?: number | null;
+            /** Format: double */
+            cost_usd?: number | null;
+            /**
+             * @description pending: tokens and cost not read from the engine yet. uncosted: the engine had no price. not_applicable: refused before reaching a model.
+             * @enum {string}
+             */
+            cost_state: "pending" | "costed" | "uncosted" | "unavailable" | "not_applicable";
+            request_id?: string | null;
+        };
+        AIRequestLogPage: {
+            items: components["schemas"]["AIRequestLogEntry"][];
+            next_cursor?: string | null;
+        };
         AIUserGroupCostLimitInput: {
             /**
              * Format: double
@@ -17675,6 +17745,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["AICostSettings"];
+                };
+            };
+            default: components["responses"]["Error"];
+        };
+    };
+    listAIRequests: {
+        parameters: {
+            query?: {
+                from?: string;
+                to?: string;
+                subject_kind?: "user" | "agent" | "workload";
+                /** @description A user */
+                subject_id?: string;
+                model?: string;
+                outcome?: "ok" | "refused" | "error";
+                limit?: number;
+                cursor?: string;
+            };
+            header?: never;
+            path: {
+                orgId: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description One page and the cursor of the next (absent at the end). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AIRequestLogPage"];
                 };
             };
             default: components["responses"]["Error"];

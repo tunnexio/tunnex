@@ -322,6 +322,7 @@ func (s *Policies) Resolve(ctx context.Context, tx pgx.Tx, id agentruntime.Ident
 	if err = s.enforceCostMode(ctx, tx, id.OrgID, a.TeamID, model, mode, p.DailyCostLimit); err != nil {
 		return Grant{}, err
 	}
+	noteRequestGroup(ctx, "agent_group", a.TeamID)
 	value, err := OpenKey(s.sealer, id.OrgID, id.DeviceID, keyID, rev, sealed)
 	if err != nil {
 		return Grant{}, policyDenied()

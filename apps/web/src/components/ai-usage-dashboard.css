@@ -93,3 +93,7 @@
  .tnx-ai-usage .ai-usage-analysis-grid { grid-template-columns:minmax(0,1fr); gap:24px; }
  .tnx-ai-usage .ai-usage-plot { max-width:650px; }
 }
+/* AI-READY-1: per-request log. */
+.ai-request-log { display:grid; gap:12px; margin-top:12px; }
+.ai-request-log .ai-gateway-filters { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+.ai-request-log td small { font-size:12px; }

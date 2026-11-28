@@ -1309,6 +1309,31 @@ paths:
           description: The saved settings. A stale expected_revision is refused with 409.
           content: { application/json: { schema: { $ref: '#/components/schemas/AICostSettings' } } }
         default: { $ref: '#/components/responses/Error' }
+  /api/v1/organizations/{orgId}/ai-gateway/requests:
+    parameters:
+      - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      operationId: listAIRequests
+      tags: [ai-gateway]
+      summary: Per-request AI log (metadata only), newest first
+      description: >-
+        Readable with ai_provider:view or ai_gateway:view. Each row records time, subject, group, model,
+        mode, ingress, status, refusal code, latency, tokens and cost. Prompts, completions, headers and keys
+        are never stored. Rows are kept for the organization's request log retention (default 30 days).
+      parameters:
+        - { name: from, in: query, schema: { type: string, format: date-time } }
+        - { name: to, in: query, schema: { type: string, format: date-time } }
+        - { name: subject_kind, in: query, schema: { type: string, enum: [user, agent, workload], x-enum-varnames: [AIRequestFilterUser, AIRequestFilterAgent, AIRequestFilterWorkload] } }
+        - { name: subject_id, in: query, schema: { type: string, format: uuid }, description: A user, agent, workload, user group or agent group. }
+        - { name: model, in: query, schema: { type: string, maxLength: 512 } }
+        - { name: outcome, in: query, schema: { type: string, enum: [ok, refused, error], x-enum-varnames: [AIRequestFilterOk, AIRequestFilterRefused, AIRequestFilterError] } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 200, default: 50 } }
+        - { name: cursor, in: query, schema: { type: string, maxLength: 512 } }
+      responses:
+        '200':
+          description: One page and the cursor of the next (absent at the end).
+          content: { application/json: { schema: { $ref: '#/components/schemas/AIRequestLogPage' } } }
+        default: { $ref: '#/components/responses/Error' }
   /api/v1/organizations/{orgId}/ai-gateway/user-model-grants:
     parameters:
       - { name: orgId, in: path, required: true, schema: { type: string, format: uuid } }
@@ -12024,6 +12049,39 @@ components:
         unknown_price_policy: { type: string, enum: [block, allow_and_alert] }
         request_log_retention_days: { type: integer, minimum: 1, maximum: 365 }
         expected_revision: { type: integer, format: int64, minimum: 0 }
+    AIRequestLogEntry:
+      type: object
+      additionalProperties: false
+      required: [id, occurred_at, subject_kind, subject_name, group_name, model, mode, ingress, status_code, outcome, latency_ms, cost_state]
+      properties:
+        id: { type: string, format: uuid }
+        occurred_at: { type: string, format: date-time }
+        subject_kind: { type: string, enum: [user, agent, workload], x-enum-varnames: [AIRequestSubjectUser, AIRequestSubjectAgent, AIRequestSubjectWorkload] }
+        subject_id: { type: string, format: uuid, nullable: true }
+        subject_name: { type: string, description: Current name; empty when the subject no longer exists or was not identified. }
+        group_kind: { type: string, enum: [user_group, agent_group], nullable: true, x-enum-varnames: [AIRequestGroupUser, AIRequestGroupAgent] }
+        group_id: { type: string, format: uuid, nullable: true }
+        group_name: { type: string }
+        instance_id: { type: string, format: uuid, nullable: true, description: Workload replica, when known. }
+        model: { type: string }
+        mode: { type: string }
+        ingress: { type: string, enum: [public, vpn, agent, workload], x-enum-varnames: [AIRequestIngressPublic, AIRequestIngressVPN, AIRequestIngressAgent, AIRequestIngressWorkload] }
+        status_code: { type: integer }
+        outcome: { type: string, enum: [ok, refused, error], x-enum-varnames: [AIRequestOutcomeOk, AIRequestOutcomeRefused, AIRequestOutcomeError] }
+        refusal_code: { type: string, nullable: true, description: "Internal refusal code, for example ai_daily_threshold_reached. Never a message." }
+        latency_ms: { type: integer, minimum: 0 }
+        prompt_tokens: { type: integer, format: int64, nullable: true }
+        completion_tokens: { type: integer, format: int64, nullable: true }
+        cost_usd: { type: number, format: double, nullable: true }
+        cost_state: { type: string, enum: [pending, costed, uncosted, unavailable, not_applicable], x-enum-varnames: [AIRequestCostPending, AIRequestCostCosted, AIRequestCostUncosted, AIRequestCostUnavailable, AIRequestCostNotApplicable], description: "pending: tokens and cost not read from the engine yet. uncosted: the engine had no price. not_applicable: refused before reaching a model." }
+        request_id: { type: string, nullable: true }
+    AIRequestLogPage:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items: { type: array, items: { $ref: '#/components/schemas/AIRequestLogEntry' } }
+        next_cursor: { type: string, nullable: true }
     AIUserGroupCostLimitInput:
       type: object
       additionalProperties: false

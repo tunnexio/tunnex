@@ -141,3 +141,48 @@ func (s apiServer) PutAICostSettings(ctx context.Context, req api.PutAICostSetti
 	}
 	return api.PutAICostSettings200JSONResponse(toAICostSettings(v)), nil
 }
+
+func (s apiServer) ListAIRequests(ctx context.Context, req api.ListAIRequestsRequestObject) (api.ListAIRequestsResponseObject, error) {
+	ctx, err := authorizeAIUsageRead(ctx, req.OrgId)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.aiPoliciesAvailable(); err != nil {
+		return nil, err
+	}
+	p := req.Params
+	f := aigateway.RequestLogFilter{From: p.From, To: p.To, SubjectID: p.SubjectId}
+	if p.SubjectKind != nil {
+		f.SubjectKind = string(*p.SubjectKind)
+	}
+	if p.Outcome != nil {
+		f.Outcome = string(*p.Outcome)
+	}
+	if p.Model != nil {
+		f.Model = *p.Model
+	}
+	limit, cursor := 50, ""
+	if p.Limit != nil {
+		limit = *p.Limit
+	}
+	if p.Cursor != nil {
+		cursor = *p.Cursor
+	}
+	rows, next, err := s.aiPolicies.ListRequests(ctx, req.OrgId, f, limit, cursor)
+	if err != nil {
+		return nil, err
+	}
+	out := api.AIRequestLogPage{Items: make([]api.AIRequestLogEntry, 0, len(rows))}
+	if next != "" {
+		out.NextCursor = &next
+	}
+	for _, e := range rows {
+		item := api.AIRequestLogEntry{Id: e.ID, OccurredAt: e.OccurredAt, SubjectKind: api.AIRequestLogEntrySubjectKind(e.SubjectKind), SubjectId: e.SubjectID, SubjectName: e.SubjectName, GroupId: e.GroupID, GroupName: e.GroupName, InstanceId: e.InstanceID, Model: e.Model, Mode: e.Mode, Ingress: api.AIRequestLogEntryIngress(e.Ingress), StatusCode: e.StatusCode, Outcome: api.AIRequestLogEntryOutcome(e.Outcome), RefusalCode: e.RefusalCode, LatencyMs: e.LatencyMS, PromptTokens: e.PromptTokens, CompletionTokens: e.CompletionTokens, CostUsd: e.CostUSD, CostState: api.AIRequestLogEntryCostState(e.CostState), RequestId: e.RequestID}
+		if e.GroupKind != nil {
+			kind := api.AIRequestLogEntryGroupKind(*e.GroupKind)
+			item.GroupKind = &kind
+		}
+		out.Items = append(out.Items, item)
+	}
+	return api.ListAIRequests200JSONResponse(out), nil
+}

@@ -390,6 +390,9 @@ func (s *Policies) resolveUserModel(ctx context.Context, org, user uuid.UUID, mo
 		if tx.Commit(ctx) != nil {
 			return Grant{}, aiUnavailable()
 		}
+		if g.GroupID != nil {
+			noteRequestGroup(ctx, "user_group", *g.GroupID)
+		}
 		return Grant{Tenant: org.String(), Agent: user.String(), SubjectKind: "user", VirtualKey: value, Mode: g.Mode, Expires: time.Now().Add(30 * time.Second)}, nil
 	}
 	if costErr != nil {

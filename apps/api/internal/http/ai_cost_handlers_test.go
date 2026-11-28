@@ -44,6 +44,8 @@ func TestAICostRoleBoundary(t *testing.T) {
 		wantAIStatus(t, tc.role+" list prices", err, tc.read)
 		_, err = srv.GetAICostSettings(ctx, api.GetAICostSettingsRequestObject{OrgId: org})
 		wantAIStatus(t, tc.role+" read settings", err, tc.read)
+		_, err = srv.ListAIRequests(ctx, api.ListAIRequestsRequestObject{OrgId: org})
+		wantAIStatus(t, tc.role+" list requests", err, tc.read)
 		_, err = srv.PutAIModelPrice(ctx, api.PutAIModelPriceRequestObject{OrgId: org, Body: &api.AIModelPriceInput{Model: "openrouter/x"}})
 		wantAIStatus(t, tc.role+" put price", err, tc.price)
 		_, err = srv.DeleteAIModelPrice(ctx, api.DeleteAIModelPriceRequestObject{OrgId: org, Params: api.DeleteAIModelPriceParams{Model: "openrouter/x", ExpectedRevision: 1}})
