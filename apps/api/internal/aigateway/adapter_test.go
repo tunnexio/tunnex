@@ -379,6 +379,9 @@ func TestAdapterResolverErrorsHaveSafeStatus(t *testing.T) {
 		{"wrapped unauthorized", fmt.Errorf("private cause: %w", apierr.New(401, "private-code", "private-message")), 401, "authentication required"},
 		{"unavailable", apierr.New(503, "private-code", "private-message"), 503, "AI gateway is unavailable"},
 		{"policy", apierr.New(403, "private-code", "private-message"), 403, "AI access is not available under the current policy"},
+		{"daily limit reached", fmt.Errorf("private cause: %w", apierr.New(403, "ai_daily_threshold_reached", "private-message")), 403, "The daily AI spending limit for this group, workload or key has been reached. It resets at 00:00 UTC."},
+		{"model price unknown", apierr.New(403, "ai_price_unavailable", "private-message"), 403, "This model has no price and a spending limit applies. Ask an administrator to set the model price."},
+		{"known code on another status", apierr.New(429, "ai_daily_threshold_reached", "private-message"), 403, "AI access is not available under the current policy"},
 		{"unsupported status", apierr.New(418, "private-code", "private-message"), 403, "AI access is not available under the current policy"},
 		{"untyped denied", errors.New("private-message"), 403, "AI access is not available under the current policy"},
 	} {

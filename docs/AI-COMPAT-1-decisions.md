@@ -373,3 +373,16 @@ a real-stack upgrade walk (**pending**: the founder runs it before release).
 - Stored responses, background responses, provider-side tools.
 - Video over the VPN.
 - `n > 1`.
+
+## As built: spending refusals reach the caller (2026-11-28)
+
+Found on the test deployment: a request refused by a daily cost limit or for
+a model without a price returned the generic 403 `ai_policy_denied`, because
+the adapter maps every resolver 403 to one message. The caller could not tell
+that a limit or a missing price was the reason. These two exact codes now pass
+through with static messages (no resolver text): 403
+`ai_daily_threshold_reached` ("The daily AI spending limit for this group,
+workload or key has been reached. It resets at 00:00 UTC.") and 403
+`ai_price_unavailable` ("This model has no price and a spending limit applies.
+Ask an administrator to set the model price."). Every other refusal keeps the
+generic 403. They describe only the caller's own spending state.

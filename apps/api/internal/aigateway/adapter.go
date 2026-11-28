@@ -255,11 +255,17 @@ func (a *Adapter) serve(w http.ResponseWriter, r *http.Request, authorize Author
 			// the concurrency limit; the key page shows which one refused.
 			status = http.StatusTooManyRequests
 		} else if errors.As(err, &domain) {
-			switch domain.Status {
-			case http.StatusUnauthorized:
+			switch {
+			case domain.Status == http.StatusUnauthorized:
 				status = http.StatusUnauthorized
-			case http.StatusServiceUnavailable:
+			case domain.Status == http.StatusServiceUnavailable:
 				status = http.StatusServiceUnavailable
+			// The caller's own spending state, so they know what to do next. Only these
+			// two exact codes; every other refusal stays the generic 403.
+			case domain.Status == http.StatusForbidden && domain.Code == "ai_daily_threshold_reached":
+				status = statusDailyLimitReached
+			case domain.Status == http.StatusForbidden && domain.Code == "ai_price_unavailable":
+				status = statusModelPriceUnknown
 			}
 		}
 		// Do not propagate resolver codes, messages, details or wrapped causes:
@@ -534,6 +540,8 @@ const (
 	statusProviderPayment     = 1402
 	statusProviderRateLimited = 1429
 	statusProviderUnavailable = 1503
+	statusDailyLimitReached   = 2403
+	statusModelPriceUnknown   = 2404
 )
 
 // idleReader cuts a read side that produces no bytes for the idle timeout.
@@ -586,6 +594,10 @@ func writeAdapterError(w http.ResponseWriter, r *http.Request, status int) {
 		status, code, message = http.StatusServiceUnavailable, "ai_provider_unavailable", "The AI provider is temporarily unavailable. Try again later."
 	case statusProviderRateLimited:
 		status, code, message = http.StatusTooManyRequests, "ai_provider_rate_limited", "The AI provider is limiting requests. Try again later."
+	case statusDailyLimitReached:
+		status, code, message = http.StatusForbidden, "ai_daily_threshold_reached", "The daily AI spending limit for this group, workload or key has been reached. It resets at 00:00 UTC."
+	case statusModelPriceUnknown:
+		status, code, message = http.StatusForbidden, "ai_price_unavailable", "This model has no price and a spending limit applies. Ask an administrator to set the model price."
 	case http.StatusServiceUnavailable:
 		code, message = "ai_gateway_unavailable", "AI gateway is unavailable"
 	default:
