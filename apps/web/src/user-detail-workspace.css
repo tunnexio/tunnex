@@ -28,7 +28,9 @@
 .user-role-option[data-selected=true] { background: var(--tnx-surface-inset); }
 .user-role-editor[data-editable=false] .user-role-option,.user-role-editor fieldset:disabled .user-role-option { cursor: default; }
 .user-role-editor label > span { flex: 1; min-width: 0; }
-.user-role-editor input { flex-shrink: 0; height: 15px; width: 15px; margin-top: 2px; accent-color: var(--tnx-text-primary); }
+.user-role-editor input[type=checkbox] { flex-shrink: 0; height: 15px; width: 15px; margin-top: 2px; accent-color: var(--tnx-text-primary); }
+/* The step-up password sits under the role grid; give it a full-width, readable field. */
+.user-role-editor > div.block { margin-top: 16px; max-width: 360px; }
 .user-role-editor strong { display: block; font-size: 13px; font-weight: 500; color: var(--tnx-text-primary); }
 .user-role-editor small { display: block; margin-top: 3px; font-size: 12px; color: var(--tnx-text-secondary); line-height: 1.4; }
 .user-role-editor em { font-size: 10px; font-style: normal; color: var(--tnx-text-secondary); line-height: 1.6; }
